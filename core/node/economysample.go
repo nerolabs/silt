@@ -325,9 +325,9 @@ func (n *Node) EconomySample() EconomySample {
 	// CapableSize walks Mix through the SAME RepairCapable predicate the repairs series
 	// uses, rather than naming horse and archival again: the two cannot drift onto
 	// different populations, and a future change to the capable set moves both at once.
-	for tier, n := range es.Mix {
+	for tier, count := range es.Mix {
 		if RepairCapable(tier) {
-			es.CapableSize += n
+			es.CapableSize += count
 		}
 	}
 	return es

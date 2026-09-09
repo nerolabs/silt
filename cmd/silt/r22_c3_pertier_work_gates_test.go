@@ -53,14 +53,25 @@ const (
 	// mix-conditioned null, and it is [ASSUMPTION] in the advisory's own labelling — the
 	// Economist's, not this seat's, and owed a re-derivation on the first field data.
 	//
-	// IT IS A RATIO AND NOT THE LITERAL 0.80 FOR A MEASURED REASON. The validity boundary
-	// is a FIXED POINT: at a disk-weighted null of exactly 0.625 the conditioned floor
-	// equals the flat floor exactly. 0.8 is not representable in binary, so 0.8*0.625
-	// lands within half an ulp of 0.5 and whether it rounds to 0.5 is a property of the
-	// rounding mode rather than of the economics. 0.625*4/5 is exact (2.5/5), so the
-	// boundary row of the table below is decided by the arithmetic it claims to be
-	// decided by. TestGateC3_3c_TheValidityBoundaryIsMeasuredNotDerivedFromTheComparison
-	// drives that row.
+	// IT IS SPELLED AS A RATIO, AND AN EARLIER COMMENT HERE GAVE A FALSE REASON FOR THAT.
+	// The struck claim was that with the literal 0.80 the fixed-point row would be "decided
+	// by a rounding mode". MEASURED, and two blind seats measured it independently before
+	// this seat re-ran it: fl(0.8) = 0x3fe999999999999a, the exact product 0.625*fl(0.8) is
+	// 0.5 + 2^-55 -- a QUARTER ulp above 0.5, where half an ulp is 2^-53 -- so it rounds to
+	// exactly 0.5 under round-to-nearest, which Go mandates and exposes no mode for. Both
+	// forms give bits 0x3fe0000000000000 at k = 10, substituting the literal leaves every
+	// arm in this file GREEN, and the assertion that claimed to drive it drove nothing.
+	//
+	// THE TRUE REASON TO KEEP THE RATIO, and it is a preference and not a hazard: E*4 is
+	// exact (a power-of-two scaling) and the single division that follows is correctly
+	// rounded, so E*4/5 IS the correctly-rounded 4E/5 while E*0.8 carries two roundings.
+	// They do differ, by one ulp, OFF the fixed point -- measured over 240,000 mixes of this
+	// family, 83,512 of them (34.8 %), including the k = 4 row of the table in
+	// TestGateC3_3c_TheValidityBoundaryIsMeasuredNotDerivedFromTheComparison, where min()
+	// differs too (0.34042553191489361 against 0.34042553191489366). The table is written in
+	// the ratio's values, so the code should be too. NOTHING DEPENDS ON IT: the min() clamp
+	// absorbs an upward ulp at 0.50, and a downward ulp only loosens the floor, which is the
+	// false-PASS direction and never a false RED.
 	ptValidityMarginNum = 4.0
 	ptValidityMarginDen = 5.0
 )
@@ -111,13 +122,19 @@ func (v ptVerdict) String() string {
 }
 
 type ptReading struct {
-	Verdict        ptVerdict
-	Why            string
-	Observed       float64 // the published ponyShareOfServedBytes
-	TierCoverage   float64 // reporting ponies / sampled ponies
-	SeriesCoverage float64 // the serve series' reporting fraction of the whole sample
-	ExpectedNull   float64 // the disk-weighted honest share for THIS sampled mix
-	Floor          float64 // min(tarEdgeMajorityFloor, 4/5 * ExpectedNull)
+	Verdict      ptVerdict
+	Why          string
+	Observed     float64 // the published ponyShareOfServedBytes
+	TierCoverage float64 // reporting ponies / sampled ponies
+	// WorstTierCoverage is phi: the LEAST-covered tier present in the sampled mix, and the
+	// term that turns an observation into an interval. WorstTier names it.
+	WorstTierCoverage float64
+	WorstTier         string
+	// Lower and Upper are [phi*observed, observed/phi], the interval the observation bounds
+	// the truth to. The verdict is which side of the floor that interval lands on.
+	Lower, Upper float64
+	ExpectedNull float64 // the disk-weighted honest share for THIS sampled mix
+	Floor        float64 // min(tarEdgeMajorityFloor, 4/5 * ExpectedNull)
 }
 
 // ptExpectedPonyShareDiskWeighted is the honest null for the SAMPLED mix. It is computed
@@ -149,21 +166,50 @@ func ptExpectedPonyShareDiskWeighted(nw c3NetworkWire) float64 {
 // because the failure this gate is most likely to see in the field is not capture, it is
 // darkness, and a dark surface reported as a tenet violation is its own defect.
 //
-// THE COVERAGE CLAUSE REUSES c3ServeReportingMin AND INTRODUCES NO NEW PARAMETER. It is
-// the SAME serve series over the SAME population, so it inherits that series' own
-// indeterminacy boundary (1 - c3ServeGiniMax = 0.85, a theorem of the tolerance, pinned by
-// TestGateC3_IndeterminacyBoundaryIsATheoremOfTheTolerance).
+// THE COVERAGE CLAUSE IS PER-TIER, AND ITS FLOOR IS A THEOREM OF THE TENET FLOOR RATHER
+// THAN A NEW PARAMETER. Its first form was the SAMPLE-WIDE reporting fraction against
+// c3ServeReportingMin (0.85), and the Economist measured that structurally incapable of the
+// job it was standing in for: see
+// TestGateC3_3g_TheConcentratingTierCannotBuyAPassBySayingNothing, where five nodes of 1,011
+// -- 0.49 % of the sample -- turn a measured EDGE-MINORITY of 0.1998 into a PASS of 0.9940
+// while the sample-wide fraction stays at 0.9951. Under the ratified 10000:100:1 target the
+// non-edge tiers ARE the sample's one percent, so a COUNT-WEIGHTED coverage measure is blind
+// to exactly the tiers whose silence matters -- and the target ratio is what makes it so.
 //
-// AND HERE IS WHY THE COVERAGE CLAUSE CANNOT BE DERIVED THE WAY THE GINI'S WAS, which is a
-// correction to the advisory's framing and this seat measured it rather than assuming it.
-// For the Gini, silence-means-idle yields a two-sided identity, G_adj = (1-c) + c*G_pub.
-// For a tier SHARE it does not: the true share is (P + P_s) / (P + P_s + O + O_s), and O_s
-// -- work done by silent NON-pony peers -- is unbounded above, so the observed share is
-// neither an upper nor a lower bound on the truth in general. What IS derivable, and is
-// asserted by TestGateC3_3b_EdgeSilenceDepressesTheEdgesOwnShare, is the ONE-TIER case: if only ponies go silent, the published
-// share falls, because (P-d)/(P+O-d) < P/(P+O) for d,O > 0. So the honest statement is
-// "this is a share over the REPORTING population", and coverage is published so the reader
-// can see how much of the population that is.
+// WHY A TIER SHARE NEEDS AN INTERVAL WHERE THE GINI GETS AN IDENTITY. For the Gini,
+// silence-means-idle yields the two-sided identity G_adj = (1-c) + c*G_pub. For a tier SHARE
+// it does not: the true share is (P + P_s) / (P + P_s + O + O_s), and O_s -- work done by
+// silent NON-edge peers -- is unbounded above, so the observation bounds the truth in
+// NEITHER direction on its own. Only the one-tier case is derivable, and
+// TestGateC3_3b_EdgeSilenceDepressesTheEdgesOwnShare asserts it: if only ponies go silent
+// the published share falls, because (P-d)/(P+O-d) < P/(P+O) for d,O > 0.
+//
+// SO THE BOUND IS BOUGHT WITH A NAMED ASSUMPTION, and it is the analogue of the Gini's
+// "silence means idle": WITHIN A TIER, silence is uncorrelated with work rate, so that
+// tier's true bytes are B_t = R_t / c_t. Under it, with phi = the least coverage among the
+// tiers PRESENT in the sampled mix:
+//
+//	R_t <= R_t/c_t <= R_t/phi   for every tier
+//	=>  phi * s_obs  <=  s_true  <=  s_obs / phi
+//
+// [DERIVED] That interval IS the gate. PASS iff its LOWER end clears the floor,
+// EDGE-MINORITY iff its UPPER end is below the floor, INDETERMINATE iff it straddles --
+// three cases, exhaustive, with no fourth.
+//
+// AND THE COVERAGE FLOOR FALLS OUT AS A THEOREM. s_obs <= 1, so a PASS requires
+// phi >= phi*s_obs >= F: the minimum per-tier coverage a PASS needs is the tenet floor
+// itself. No second parameter, exactly as the Gini's 1-T boundary is a theorem of T. Pinned
+// with its endpoints run by
+// TestGateC3_3f_ThePerTierCoverageFloorIsATheoremOfTheTenetFloor.
+//
+// THE SAMPLE-WIDE CLAUSE IS NOT KEPT AS A BELT TO THIS BRACES. It is dominated, and where
+// the two disagree it is WRONG: every tier at coverage 0.6 with s_obs 0.95 gives a lower
+// bound of 0.57, a sound PASS, which the 0.85 fraction refuses. A dominated clause that
+// refuses sound readings is not a defence, so it is removed rather than carried.
+//
+// THE UNIFYING RULE, stated once because two seats rediscovered it separately (Economist
+// addendum Part 2 §7.3): every concentration statistic carries a coverage refusal at its OWN
+// granularity, and is never aggregated above the granularity at which capture can occur.
 func ptEdgeMajorityGate(conc c3ConcentrationWire, nw c3NetworkWire) ptReading {
 	if conc.CountersWithheld {
 		return ptReading{Verdict: ptIndeterminate, Why: "the tenet figure is withheld: the reader cannot see it at all"}
@@ -186,25 +232,35 @@ func ptEdgeMajorityGate(conc c3ConcentrationWire, nw c3NetworkWire) ptReading {
 		r.Verdict = ptIndeterminate
 		return r
 	}
-	// The serve series' own coverage, off the two fields the panel already publishes.
-	if conc.ServeGini == nil || !conc.ServeGini.Known || conc.Sample.Size <= 0 {
-		r.Verdict, r.Why = ptIndeterminate, "the serve series is dark, so the share is over a population of unknown size"
+	// phi, and the interval it buys. It is read off the CONCENTRATION document, so the
+	// observation and its validity input come from ONE snapshot -- the same reason
+	// capableSize was moved onto this document.
+	if conc.WorstTierCoverage == nil {
+		r.Verdict, r.Why = ptIndeterminate, "the document publishes no per-tier coverage, so the share is over a population whose completeness is unknown"
 		return r
 	}
-	r.SeriesCoverage = float64(conc.ServeGini.SampleSize) / float64(conc.Sample.Size)
-	if r.SeriesCoverage < c3ServeReportingMin {
+	r.WorstTierCoverage, r.WorstTier = conc.WorstTierCoverage.Coverage, conc.WorstTierCoverage.Class
+	seen := itoa(conc.WorstTierCoverage.Reporting) + " of " + itoa(conc.WorstTierCoverage.Population)
+	if r.WorstTierCoverage <= 0 {
 		r.Verdict = ptIndeterminate
-		r.Why = "the serve series covers " + ftoa(r.SeriesCoverage) + " of the sample, below the boundary " +
-			ftoa(c3ServeReportingMin) + ": a tier share over a minority of the population is not a reading of that population"
+		r.Why = "the whole " + r.WorstTier + " tier is silent (" + seen + " reporting), so it is absent from the denominator entirely and the edge share is unbounded above"
 		return r
 	}
-	if r.Observed < r.Floor {
+	r.Lower, r.Upper = r.WorstTierCoverage*r.Observed, r.Observed/r.WorstTierCoverage
+	switch {
+	case r.Lower >= r.Floor:
+		r.Verdict = ptPass
+	case r.Upper < r.Floor:
 		r.Verdict = ptEdgeMinority
-		r.Why = "the edge tier serves " + ftoa(r.Observed) + " of the reported bytes, below the floor " + ftoa(r.Floor) +
-			" that this sampled mix justifies (honest disk-weighted null " + ftoa(r.ExpectedNull) + ")"
-		return r
+		r.Why = "the edge tier serves " + ftoa(r.Observed) + " of the reported bytes and even its UPPER bound " + ftoa(r.Upper) +
+			" is below the floor " + ftoa(r.Floor) + " this sampled mix justifies (honest disk-weighted null " + ftoa(r.ExpectedNull) +
+			"): work is concentrating away from the edge, measured"
+	default:
+		r.Verdict = ptIndeterminate
+		r.Why = "the " + r.WorstTier + " tier reports only " + ftoa(r.WorstTierCoverage) + " of itself (" + seen +
+			"), so the published " + ftoa(r.Observed) + " bounds the truth only to [" + ftoa(r.Lower) + ", " + ftoa(r.Upper) +
+			"], which straddles the floor " + ftoa(r.Floor) + ". A silent tier leaves the DENOMINATOR, so its silence inflates every other tier's share"
 	}
-	r.Verdict = ptPass
 	return r
 }
 
@@ -265,7 +321,7 @@ func TestGateC3_3_EdgeMajorityOfServeWorkIsTheTenetNotTheNodeShare(t *testing.T)
 		t.Fatalf("HEALTHY ARM %s: %s\n  The ratified vision shape must clear its own tenet, or this gate fires on the network silt is trying to build.", rH.Verdict, rH.Why)
 	}
 	t.Logf("healthy: %s  edge serves %.4f of reported bytes (floor %.4f from a disk-weighted null of %.4f); tier coverage %.4f, series coverage %.4f",
-		rH.Verdict, rH.Observed, rH.Floor, rH.ExpectedNull, rH.TierCoverage, rH.SeriesCoverage)
+		rH.Verdict, rH.Observed, rH.Floor, rH.ExpectedNull, rH.TierCoverage, rH.WorstTierCoverage)
 
 	// The tenet figure must be a MEASUREMENT and not merely present.
 	if !concH.PonyShareOfServedBytes.Known || concH.PonyShareOfServedBytes.Value == nil {
@@ -274,6 +330,13 @@ func TestGateC3_3_EdgeMajorityOfServeWorkIsTheTenetNotTheNodeShare(t *testing.T)
 	// 1000 ponies at 1 unit, 10 horses at 7, 1 archival at 24: 1000/1094.
 	if want := 1000.0 / 1094.0; math.Abs(rH.Observed-want) > 1e-12 {
 		t.Fatalf("HEALTHY ARM: the published edge share is %.9f, want %.9f (1000 pony-units of 1094 total). The figure is not the sum this fixture built.", rH.Observed, want)
+	}
+	// THE HARNESS DISCIPLINE (Economist addendum Part 1 §5), asserted rather than assumed: on
+	// a GRADED arm the conditioned branch must be inert (the floor IS the flat tenet floor)
+	// and coverage must be 1.0. Anything less is a fixture defect, not a finding.
+	if rH.Floor != tarEdgeMajorityFloor || rH.WorstTierCoverage != 1 {
+		t.Fatalf("HEALTHY ARM: floor %.6f (want the flat %.2f) at worst-tier coverage %.4f (want 1.0000). A graded arm that depends on the conditioned branch, or that runs short of full coverage, is a fixture defect.",
+			rH.Floor, tarEdgeMajorityFloor, rH.WorstTierCoverage)
 	}
 
 	// --- CONCENTRATED: the same MIX, the bytes moved to five horses.
@@ -284,6 +347,14 @@ func TestGateC3_3_EdgeMajorityOfServeWorkIsTheTenetNotTheNodeShare(t *testing.T)
 	}
 	if rC.Floor != rH.Floor {
 		t.Fatalf("the two arms must share a floor (%.6f vs %.6f) for the comparison to isolate the WORK: they were built with the same mix on purpose", rC.Floor, rH.Floor)
+	}
+	if rC.WorstTierCoverage != 1 {
+		t.Fatalf("CONCENTRATED ARM: worst-tier coverage %.4f, want 1.0000 — a graded arm short of full coverage is a fixture defect, and the silence case has its own gate (TestGateC3_3g)", rC.WorstTierCoverage)
+	}
+	// The fixture's OWN assigned share: 1000 ponies x 200 units of
+	// 5*160000 + 1000*200 + 5*200 + 200 = 1,001,200.
+	if want := 200_000.0 / 1_001_200.0; math.Abs(rC.Observed-want) > 1e-12 {
+		t.Fatalf("CONCENTRATED ARM: the published edge share is %.9f, want %.9f from the fixture's own assignment", rC.Observed, want)
 	}
 	t.Logf("concentrated: %s  edge serves %.4f (floor %.4f) — same mix, same floor, the bytes moved",
 		rC.Verdict, rC.Observed, rC.Floor)
@@ -466,31 +537,41 @@ func TestGateC3_3a_ATierWithNoReportingPeerIsANamedAbsenceNeverAZero(t *testing.
 // share is not a bound on the truth in general. The coverage clause is what stands in for
 // the bound the Gini gets from its identity.
 //
+// CONTROLLED REVERT (G-PT-10, shared with TestGateC3_3f and TestGateC3_3g): gate the raw
+// observation instead of the interval's lower bound. MEASURED: arm B goes to PASS at 0.8449.
+//
 // CONTROLLED REVERT (G-PT-3): scale the pony numerator by population/reporting — the obvious
 // "correct for coverage" edit. MEASURED: arm B's share goes to 0.694444444 against the built
 // 0.347222222, so the extrapolation makes edge silence RAISE the edge's share. That is the
 // false-clean-bill direction, and it is why this figure is published raw with its coverage
 // beside it rather than extrapolated.
 func TestGateC3_3b_EdgeSilenceDepressesTheEdgesOwnShare(t *testing.T) {
+	// THE MIX IS THE VISION FAMILY AT k = 11, DELIBERATELY (Economist addendum Part 1 §5):
+	// at k >= 11 the min() clamp is strictly active, so the conditioned floor IS the flat
+	// 0.50 tenet floor and no arm here depends on the conditioned branch. That branch belongs
+	// to TestGateC3_3c, which is where a boundary belongs. An earlier draft used a
+	// 100 : 10 : 1 mix, where the honest disk-weighted null is 0.1429 and the conditioned
+	// floor drops to 0.1143 -- and arm B then read PASS, correctly against THAT floor, which
+	// told the reader nothing about edge silence.
 	full := []c3Peer{
-		{capTotal: c3PonyCap, served: 1 * c3Unit, repairs: 0, n: 100},
-		{capTotal: c3HorseCap, served: 7 * c3Unit, repairs: 10, n: 10},
+		{capTotal: c3PonyCap, served: 1 * c3Unit, repairs: 0, n: 1100},
+		{capTotal: c3HorseCap, served: 7 * c3Unit, repairs: 10, n: 11},
 		{capTotal: c3ArchivalCap, served: 24 * c3Unit, repairs: 10, n: 1},
 	}
 	// The SAME network with half the edge tier withholding. Nothing about the work changed;
 	// only what was said about it.
 	half := []c3Peer{
-		{capTotal: c3PonyCap, served: 1 * c3Unit, repairs: 0, n: 50},
-		{capTotal: c3PonyCap, served: 0, repairs: 0, n: 50},
-		{capTotal: c3HorseCap, served: 7 * c3Unit, repairs: 10, n: 10},
+		{capTotal: c3PonyCap, served: 1 * c3Unit, repairs: 0, n: 550},
+		{capTotal: c3PonyCap, served: 0, repairs: 0, n: 550},
+		{capTotal: c3HorseCap, served: 7 * c3Unit, repairs: 10, n: 11},
 		{capTotal: c3ArchivalCap, served: 24 * c3Unit, repairs: 10, n: 1},
 	}
 	concA, nwA := c3Fixture(t, 44, full)
 	concB, nwB := c3Fixture(t, 45, half)
 	rA, rB := ptEdgeMajorityGate(concA, nwA), ptEdgeMajorityGate(concB, nwB)
 
-	t.Logf("full reporting: %s share %.4f (tier coverage %.4f, series coverage %.4f) | half the edge silent: %s share %.4f (tier coverage %.4f, series coverage %.4f)",
-		rA.Verdict, rA.Observed, rA.TierCoverage, rA.SeriesCoverage, rB.Verdict, rB.Observed, rB.TierCoverage, rB.SeriesCoverage)
+	t.Logf("full reporting: %s share %.4f (tier coverage %.4f, worst-tier coverage %.4f) | half the edge silent: %s share %.4f (tier coverage %.4f, worst-tier coverage %.4f)",
+		rA.Verdict, rA.Observed, rA.TierCoverage, rA.WorstTierCoverage, rB.Verdict, rB.Observed, rB.TierCoverage, rB.WorstTierCoverage)
 
 	if rA.Verdict != ptPass {
 		t.Fatalf("the fully-reporting arm reads %s (%s); it is the control and must be a measurement", rA.Verdict, rA.Why)
@@ -498,8 +579,11 @@ func TestGateC3_3b_EdgeSilenceDepressesTheEdgesOwnShare(t *testing.T) {
 	if concB.PonyShareOfServedBytes == nil || !concB.PonyShareOfServedBytes.Known {
 		t.Fatalf("arm B publishes no measured edge share (%+v); half the edge tier IS reporting, so the figure exists", concB.PonyShareOfServedBytes)
 	}
-	// 100/194 = 0.515464 with everyone reporting; 50/144 = 0.347222 with half silent.
-	if wantA, wantB := 100.0/194.0, 50.0/144.0; math.Abs(rA.Observed-wantA) > 1e-12 || math.Abs(concB.PonyShareOfServedBytes.val()-wantB) > 1e-12 {
+	// The fixture's OWN assigned shares (Economist addendum Part 1 §5: in a harness the
+	// ground truth is known, so assert against it and not against a model). 1100 pony-units
+	// of 1100 + 11*7 + 24 = 1201 with everyone reporting; 550 of 550 + 77 + 24 = 651 with
+	// half the edge silent.
+	if wantA, wantB := 1100.0/1201.0, 550.0/651.0; math.Abs(rA.Observed-wantA) > 1e-12 || math.Abs(concB.PonyShareOfServedBytes.val()-wantB) > 1e-12 {
 		t.Fatalf("arms measured %.9f and %.9f, want %.9f and %.9f — the fixtures did not land as built", rA.Observed, concB.PonyShareOfServedBytes.val(), wantA, wantB)
 	}
 	// THE PIN, part 1 — strictly DOWN. Not "differs": the direction is the whole claim.
@@ -513,8 +597,14 @@ func TestGateC3_3b_EdgeSilenceDepressesTheEdgesOwnShare(t *testing.T) {
 	if rB.Verdict != ptIndeterminate {
 		t.Fatalf("arm B reads %s (%s). The share fell BECAUSE of silence, and a false alarm that reports itself as measured capture is the failure this verdict split exists to prevent.", rB.Verdict, rB.Why)
 	}
-	if rB.Observed >= tarEdgeMajorityFloor {
-		t.Fatalf("arm B's share %.4f still clears the flat floor, so the INDETERMINATE verdict above is not being reached through the case this gate is about. Silence more of the edge tier.", rB.Observed)
+	if rB.Floor != tarEdgeMajorityFloor {
+		t.Fatalf("arm B's floor is %.6f, not the flat %.2f. This fixture sits at k = 11 so the conditioned branch is INERT here; if the floor has moved, the arm is measuring the branch instead of the silence.", rB.Floor, tarEdgeMajorityFloor)
+	}
+	if !(rB.Lower < tarEdgeMajorityFloor && rB.Upper >= tarEdgeMajorityFloor) {
+		t.Fatalf("arm B's interval [%.4f, %.4f] does not STRADDLE the floor %.2f, so the INDETERMINATE verdict above is not being reached through the case this gate is about", rB.Lower, rB.Upper, tarEdgeMajorityFloor)
+	}
+	if rA.WorstTierCoverage != 1 {
+		t.Fatalf("the control arm's worst-tier coverage is %.4f, not 1.0000. On a graded harness arm anything less is a fixture defect (Economist addendum Part 1 §5).", rA.WorstTierCoverage)
 	}
 	if rB.TierCoverage != 0.5 {
 		t.Fatalf("arm B tier coverage %.4f, want 0.5000 — the reader's handle on the gap must be exact", rB.TierCoverage)
@@ -560,11 +650,17 @@ func TestGateC3_3b_EdgeSilenceDepressesTheEdgesOwnShare(t *testing.T) {
 // THE DRIVEN ARM: a real 556-node disk-weighted sample through the real routes, where the
 // bare floor and the conditioned floor DISAGREE, so the correction is not only arithmetic.
 //
-// CONTROLLED REVERT (G-PT-4): change ptDiskWeightArchival from 50 to 49. MEASURED, the table
+// TWO CONTROLLED REVERTS, AND ONE THAT CANNOT REDDEN — recorded because a green ablation is
+// itself the finding. G-PT-4: change ptDiskWeightArchival from 50 to 49. MEASURED, the table
 // reddens on its FIRST row — `k=4 (n=405, 400:4:1): null 0.430108 floor 0.344086, want
 // 0.425532 / 0.340426` — and the k=10 fixed point moves with it. Literal expected values are
 // the only teeth a fixed point can have: there is no mutation to ablate at the boundary
 // itself, so the gate must BE the table and never `want := theFunctionUnderTest(...)`.
+// G-PT-11: change tarEdgeMajorityFloor from 0.50 to 0.51 — the k = 11 row and the fixed-point
+// assertion both redden, so the flat floor is pinned in both directions.
+// AND THE ONE THAT DOES NOT: substituting the literal 0.80 for ptValidityMarginNum/Den leaves
+// every arm GREEN. Measured, recorded in the const block, and the reason the margin's FORM
+// carries no claim in this file.
 func TestGateC3_3c_TheValidityBoundaryIsMeasuredNotDerivedFromTheComparison(t *testing.T) {
 	type row struct {
 		k                   int
@@ -590,14 +686,19 @@ func TestGateC3_3c_TheValidityBoundaryIsMeasuredNotDerivedFromTheComparison(t *t
 		}
 		t.Logf("k=%2d  n=%4d  %5d:%2d:1   null %.6f   (4/5)null %.6f   floor %.6f", r.k, 101*r.k+1, 100*r.k, r.k, null, null*4/5, floor)
 	}
-	// THE FIXED POINT, exactly. k=10 is where the conditioned floor becomes the flat tenet
-	// floor, and one step either side is on the other side of that statement.
+	// THE FIXED POINT, exactly -- and what this pins is the BOUNDARY, not the spelling of
+	// the margin. Substituting the literal 0.80 for the 4/5 ratio leaves this assertion and
+	// every other arm in the file GREEN (measured, by two blind seats and then by this one),
+	// because both forms give bits 0x3fe0000000000000 here. What it DOES pin is that k = 10
+	// is a true fixed point rather than a near-miss inside the table's 5e-7 tolerance, and it
+	// moves with the tenet floor: at tarEdgeMajorityFloor = 0.51 this line reddens, as does
+	// the k = 11 row above.
 	null10 := ptExpectedPonyShareDiskWeighted(ptVisionMix(10))
 	if null10 != 0.625 {
 		t.Fatalf("the k=10 null is %.17g, want exactly 0.625: the fixed point is the claim", null10)
 	}
 	if got := null10 * ptValidityMarginNum / ptValidityMarginDen; got != tarEdgeMajorityFloor {
-		t.Fatalf("(4/5)*0.625 = %.17g, want exactly %.17g. If this needs a tolerance the margin has stopped being a ratio and the boundary row is decided by a rounding.", got, tarEdgeMajorityFloor)
+		t.Fatalf("(4/5)*0.625 = %.17g, want exactly %.17g. k=10 is meant to be an EXACT fixed point, so if this needs a tolerance either the null or the tenet floor has moved.", got, tarEdgeMajorityFloor)
 	}
 	for _, k := range []int{9, 11} {
 		null := ptExpectedPonyShareDiskWeighted(ptVisionMix(k))
@@ -653,6 +754,28 @@ func TestGateC3_3c_TheValidityBoundaryIsMeasuredNotDerivedFromTheComparison(t *t
 	}
 	t.Logf("driven n=554 honest disk-weighted: observed %.6f — BELOW the bare 0.50 floor, ABOVE the conditioned floor %.4f. Bare: EDGE-MINORITY (false). Conditioned: %s.",
 		r2.Observed, r2.Floor, r2.Verdict)
+
+	// AND THE CONDITIONED FLOOR MUST BITE IN THE RED DIRECTION TOO, or the branch is
+	// exercised only where it forgives (blind PE ruling N-3). Every other violation arm in
+	// this file sits at k = 10, where the conditioned floor IS the flat 0.50, so none of them
+	// reaches EDGE-MINORITY through the min(). This one does: a 500 : 5 : 1 mix has a null of
+	// 0.4762 and a conditioned floor of 0.3810, and the edge tier serves 0.3333 of the bytes
+	// — under the CONDITIONED floor, not merely under the flat one.
+	belowTheConditionedFloor := []c3Peer{
+		{capTotal: c3PonyCap, served: 1 * c3Unit, repairs: 0, n: 500},
+		{capTotal: c3HorseCap, served: 100 * c3Unit, repairs: 10, n: 5},
+		{capTotal: c3ArchivalCap, served: 500 * c3Unit, repairs: 10, n: 1},
+	}
+	conc3, nw3 := c3Fixture(t, 56, belowTheConditionedFloor)
+	r3 := ptEdgeMajorityGate(conc3, nw3)
+	if r3.Floor >= tarEdgeMajorityFloor {
+		t.Fatalf("this arm's floor is %.6f, at or above the flat %.2f, so the verdict below does not come through the conditioned branch and the arm has no subject", r3.Floor, tarEdgeMajorityFloor)
+	}
+	if r3.Verdict != ptEdgeMinority {
+		t.Fatalf("an edge share of %.4f against a CONDITIONED floor of %.4f reads %s (%s); the min() branch must be able to refuse and not only to forgive", r3.Observed, r3.Floor, r3.Verdict, r3.Why)
+	}
+	t.Logf("driven n=506 EDGE-MINORITY through the CONDITIONED floor: observed %.4f, null %.4f, floor %.4f (below the flat %.2f) -> %s",
+		r3.Observed, r3.ExpectedNull, r3.Floor, tarEdgeMajorityFloor, r3.Verdict)
 }
 
 // ptVisionMix builds the mix of the vision-ratio family at scale k: 100k ponies, k horses,
@@ -709,17 +832,27 @@ func TestGateC3_3d_RepairShareIsRelativeToHoldingsWhichIsWhatTheWithdrawnConstan
 	// HONEST, holdings-proportional: a 4 TiB archival node holds 64x a 64 GiB horse, so it
 	// repairs 64x as much. Ponies serve but do no durability work (D-TIERING coupling (b)).
 	//
-	// AND THE FIXTURE CARRIES FIVE SILENT HORSES, which is not decoration. Without them
-	// every classifiable peer is also a reporting peer, the two populations coincide, and
-	// the gate cannot see whether the expectation is computed over the reporting set or over
-	// the whole sample. Measured: with full coverage the G-PT-5 revert leaves this gate
-	// GREEN; with the silent horses in it the honest arm's excess moves off 0 to +0.0547.
-	// A fully-covered fixture is an excused row.
+	// FULL CAPABLE COVERAGE, and it is now a REQUIREMENT rather than an accident: the
+	// coverage refusal in ptWorstRepairExcess declines to grade this arm otherwise. An earlier
+	// draft carried five SILENT horses here so the G-PT-5 revert would be visible at this
+	// tier; that made the arm undecidable under the refusal, and the honest reading is that a
+	// partly silent capable tier cannot be graded at all. G-PT-5 is a core/node-tier defect
+	// and core/node's own gate reddens on it -- an ablation belongs at the tier the defect
+	// lives at, not at whichever tier can be contorted to see it.
+	//
+	// THE ARCHIVAL TIER HAS THREE NODES, not the vision ratio's one, and that is forced
+	// rather than chosen: a tier share is published only over minGossipSample reporters
+	// (TestGateC3_3h_ATierShareWithOneReporterIsThatPeersCounter), so a one-node archival tier
+	// publishes NO share and drops out of the renormalisation entirely. Measured on the
+	// one-node version, the honest excess reads -0.8649 instead of 0. That is the honest
+	// consequence and not a fixture convenience: at the ratified 10000 : 100 : 1 target three
+	// archival nodes need 30,000 ponies and maxPeerInfo is 4,096, so THE REPAIR ALARM IS
+	// STRUCTURALLY DARK ON A VISION-RATIO SAMPLE. It grades a harness topology, which is what
+	// D-WORK-VISIBILITY asks of it.
 	honest := []c3Peer{
 		{capTotal: c3PonyCap, served: 1 * c3Unit, repairs: 0, n: 1000},
 		{capTotal: c3HorseCap, served: 7 * c3Unit, repairs: 1, n: 10},
-		{capTotal: c3HorseCap, served: 0, repairs: 0, n: 5}, // classifiable, capable, SILENT
-		{capTotal: c3ArchivalCap, served: 24 * c3Unit, repairs: 64, n: 1},
+		{capTotal: c3ArchivalCap, served: 24 * c3Unit, repairs: 64, n: 3},
 	}
 	conc, nw := c3Fixture(t, 48, honest)
 	if conc.RepairGini == nil || !conc.RepairGini.Known {
@@ -736,7 +869,10 @@ func TestGateC3_3d_RepairShareIsRelativeToHoldingsWhichIsWhatTheWithdrawnConstan
 	// published over the capable reporters, so the two must be brought onto one population
 	// before they are compared. That renormalisation is derivable from the wire alone,
 	// which is the reason pledgedShare ships as a share rather than as a byte total.
-	worst, worstTier := ptWorstRepairExcess(t, nw)
+	worst, worstTier, ok := ptWorstRepairExcess(t, nw)
+	if !ok {
+		t.Fatalf("the HONEST arm was refused for coverage on the %s tier; a graded arm must have full capable coverage or it measures nothing", worstTier)
+	}
 	t.Logf("HONEST: max(observed repair share - expected from holdings) = %+.4f on %q", worst, worstTier)
 	if math.Abs(worst) > 1e-9 {
 		t.Fatalf("on a repair distribution built EXACTLY proportional to holdings the excess is %+.6f on %q, not 0. The expectation and the observation are not over the same population.", worst, worstTier)
@@ -745,27 +881,174 @@ func TestGateC3_3d_RepairShareIsRelativeToHoldingsWhichIsWhatTheWithdrawnConstan
 	// CAPTURED: the same holdings, all the repair on one horse.
 	captured := []c3Peer{
 		{capTotal: c3PonyCap, served: 1 * c3Unit, repairs: 0, n: 1000},
-		{capTotal: c3HorseCap, served: 7 * c3Unit, repairs: 74, n: 1},
+		{capTotal: c3HorseCap, served: 7 * c3Unit, repairs: 202, n: 1},
 		{capTotal: c3HorseCap, served: 7 * c3Unit, repairs: 0, n: 9},
-		{capTotal: c3ArchivalCap, served: 24 * c3Unit, repairs: 0, n: 1},
+		{capTotal: c3ArchivalCap, served: 24 * c3Unit, repairs: 0, n: 3},
 	}
 	_, nwCap := c3Fixture(t, 49, captured)
-	worstCap, worstCapTier := ptWorstRepairExcess(t, nwCap)
-	t.Logf("CAPTURED: max(observed - expected) = %+.4f on %q, against the advisory's [ASSUMPTION] margin of 0.20", worstCap, worstCapTier)
-	const advisoryMargin = 0.20
-	if !(worstCap > advisoryMargin) {
-		t.Fatalf("all the repair on one horse gives an excess of %+.4f on %q, which does not clear the %.2f margin. The relative reading has no teeth on the shape the absolute one was supposed to catch.", worstCap, worstCapTier, advisoryMargin)
+	worstCap, worstCapTier, okCap := ptWorstRepairExcess(t, nwCap)
+	if !okCap {
+		t.Fatalf("the CAPTURED arm was refused for coverage on the %s tier; it is built at full coverage", worstCapTier)
 	}
-	if !(math.Abs(worst) < advisoryMargin) {
-		t.Fatalf("the honest arm's excess %+.4f already clears the margin, so the two arms do not straddle it", worst)
+	t.Logf("CAPTURED: max(observed - expected) = %+.4f on %q, against the advisory's [ASSUMPTION] margin of 0.20", worstCap, worstCapTier)
+	// WITHDRAWN as a margin (Economist addendum Part 2 §7.2(a)) and kept only as the constant
+	// the two-arm straddle is asserted against. The NAME says so, because the promotion this
+	// file most has to survive is a later seat reading it as a threshold.
+	const ptWithdrawnMargin = 0.20
+	if !(worstCap > ptWithdrawnMargin) {
+		t.Fatalf("all the repair on one horse gives an excess of %+.4f on %q, which does not clear the %.2f margin. The relative reading has no teeth on the shape the absolute one was supposed to catch.", worstCap, worstCapTier, ptWithdrawnMargin)
+	}
+	if !(math.Abs(worst) < ptWithdrawnMargin) {
+		t.Fatalf("the honest arm's excess %+.4f already clears the constant, so the two arms do not straddle it", worst)
+	}
+
+	// ADVERSARIAL SILENCE (Economist addendum Part 1 §4, second half). The SAME capture, with
+	// the capturing horse withholding. It leaves BOTH terms and the remaining tiers
+	// renormalise, so the alarm reads clean unless the coverage refusal declines to grade it.
+	capturedMute := []c3Peer{
+		{capTotal: c3PonyCap, served: 1 * c3Unit, repairs: 0, n: 1000},
+		{capTotal: c3HorseCap, served: 0, repairs: 0, n: 1}, // does 202 repairs, says nothing
+		{capTotal: c3HorseCap, served: 7 * c3Unit, repairs: 0, n: 9},
+		{capTotal: c3ArchivalCap, served: 24 * c3Unit, repairs: 10, n: 3},
+	}
+	_, nwMute := c3Fixture(t, 55, capturedMute)
+	_, muteTier, okMute := ptWorstRepairExcess(t, nwMute)
+	raw, rawTier := ptRawRepairExcess(t, nwMute)
+	if okMute {
+		t.Fatalf("a capable tier at partial coverage was GRADED: excess %+.4f on %q against a %.2f constant, while the horse that did 202 of 232 repairs said nothing. Its silence bought it the clean bill.", raw, rawTier, ptWithdrawnMargin)
+	}
+	t.Logf("ADVERSARIAL SILENCE: refused on the %q tier. Ungated, the same sample reads %+.4f on %q — under the WITHDRAWN %.2f, so NO ALARM — while the withholding horse did 202 of 232 repairs (0.8707 observed against a holdings expectation of 0.0448, a true excess of +0.8259).",
+		muteTier, raw, rawTier, ptWithdrawnMargin)
+
+	// THE INTRA-TIER ARM. Item 3 of ptWorstRepairExcess's doc block, DRIVEN rather than
+	// asserted: route the whole horse tier's repairs onto ONE horse, everybody still
+	// reporting. The tier statistic cannot move, because the tier's total did not. Nothing is
+	// withheld, so no coverage refusal can see it.
+	intraTier := []c3Peer{
+		{capTotal: c3PonyCap, served: 1 * c3Unit, repairs: 0, n: 1000},
+		{capTotal: c3HorseCap, served: 7 * c3Unit, repairs: 10, n: 1}, // one horse does the tier's ten
+		{capTotal: c3HorseCap, served: 7 * c3Unit, repairs: 0, n: 9},
+		{capTotal: c3ArchivalCap, served: 24 * c3Unit, repairs: 64, n: 3},
+	}
+	_, nwIntra := c3Fixture(t, 57, intraTier)
+	intraExcess, intraTierName, okIntra := ptWorstRepairExcess(t, nwIntra)
+	if !okIntra {
+		t.Fatalf("the intra-tier arm was refused on %q; it withholds NOTHING and must be graded, or it does not demonstrate the blind spot", intraTierName)
+	}
+	if intraExcess != worst {
+		t.Fatalf("routing the whole horse tier's repairs onto one horse moved the tier excess to %+.6f, from %+.6f on the evenly-spread arm. If the tier statistic CAN see intra-tier concentration, item 3 of ptWorstRepairExcess's doc block is wrong and must be re-derived.", intraExcess, worst)
+	}
+	t.Logf("INTRA-TIER: ten horse repairs on ONE horse reads %+.4f on %q — IDENTICAL to the evenly-spread honest arm, at coverage 1.0000. A tier statistic cannot see within-tier capture, and no coverage refusal can, because nothing is withheld.",
+		intraExcess, intraTierName)
+
+	// THE CEILING, in the same breath as the separation (blind PE ruling N-1, Economist
+	// addendum Part 2 §7.1). Item 1 of the doc block, measured on this fixture.
+	var archExpected, capablePledged float64
+	for _, r := range nw.Mix {
+		if node.RepairCapable(r.Class) && r.Work != nil && r.Work.PledgedShare != nil && r.Work.PledgedShare.Known {
+			capablePledged += r.Work.PledgedShare.val()
+			if r.Class == node.TierArchival {
+				archExpected = r.Work.PledgedShare.val()
+			}
+		}
+	}
+	archExpected /= capablePledged
+	if ceiling := 1 - archExpected; ceiling >= ptWithdrawnMargin {
+		t.Fatalf("the archival tier's expected share is %.4f, so its total-capture excess ceiling is %.4f, which CLEARS %.2f. Item 1 of the doc block has changed and must be re-derived.", archExpected, ceiling, ptWithdrawnMargin)
+	} else {
+		t.Logf("THE CEILING: the archival tier's holdings already predict %.4f of the repairs, so TOTAL capture by it reads at most %+.4f — under the WITHDRAWN %.2f and undetectable for ANY repair distribution. The normalisation N = (observed-expected)/(1-expected) is the specified cure and it is OWED.",
+			archExpected, ceiling, ptWithdrawnMargin)
 	}
 }
 
 // ptWorstRepairExcess is the Finding-2b statistic: the largest amount by which any capable
 // tier's observed repair share exceeds the share its holdings predict. Both terms come off
 // the SAME mix rows of the SAME document, so there is no join.
-func ptWorstRepairExcess(t *testing.T, nw c3NetworkWire) (float64, string) {
+// WHAT THIS STATISTIC DOES NOT CATCH — the doc block Economist addendum Part 2 §7.5 requires
+// before this merges, because the promotion path is short and inviting: a later seat reads a
+// passing test and adds an "archival capture" arm to it. Every item is a MEASURED limit of
+// the statistic, not of the fixtures.
+//
+//  1. THE EXCESS IS CAPPED AT 1 - expected(tier), so a tier whose holdings already predict
+//     most of the repairs cannot travel far enough to trip an additive margin however
+//     completely it captures the work. On the 1000 : 10 : 1 mix the ceilings are 0.8649
+//     (horse) and 0.1351 (archival) against a 0.20 margin, a 6.40x spread in ONE sample --
+//     so TOTAL ARCHIVAL CAPTURE READS +0.1351 AND PASSES, for ANY repair distribution
+//     whatsoever. On THIS file's fixture, which carries three archival nodes so the tier
+//     clears the reporting floor, it is worse: the ceiling is 0.0495, measured and logged by
+//     the arm below. NO ARM ASSERTING ARCHIVAL CAPTURE MAY BE ADDED AGAINST THIS MARGIN. It
+//     would not be a stronger gate; it would be a gate that cannot fire.
+//
+//  2. ON A SAMPLE WITH EXACTLY ONE CAPABLE TIER THE EXCESS IS IDENTICALLY 0.0000, for every
+//     possible repair distribution: expected = observed = 1.0 by construction. That is not a
+//     weak reading, it is no reading -- and the Economist puts it at ~59.5 % of honest
+//     4,096-node draws, since a uniform 4,096-of-10,101 draw contains the single archival
+//     node only 40.5 % of the time. The same single-archival integer floor that distorted the
+//     Gini's null deletes this one.
+//
+//  3. IT IS A TIER STATISTIC WHERE THE CONSTANT IT REPLACED WAS A NODE STATISTIC, so
+//     intra-tier capture is invisible to it AT FULL COVERAGE -- routing the whole horse
+//     tier's repairs onto ONE horse reads +0.0000 at the tier. The coverage refusal below
+//     closes the WITHHOLDING door and cannot close this one, because this attack withholds
+//     nothing. DRIVEN by the intra-tier arm of
+//     TestGateC3_3d_RepairShareIsRelativeToHoldingsWhichIsWhatTheWithdrawnConstantCouldNotBe
+//     rather than asserted here.
+//
+//  4. THE 0.20 IS WITHDRAWN by Economist addendum Part 2 §7.2(a) -- withdrawn OUTRIGHT as an
+//     additive margin, not re-priced downward, because an additive excess is
+//     tier-incomparable and no value of it works. It survives in this file only as the
+//     constant a TWO-ARM FIXTURE STRADDLE is asserted against (0.0000 honest, +0.9505
+//     captured, both live), which is sound as a regression gate over named synthetic
+//     distributions and unsound the moment it is read as a band. The replacement is the
+//     NORMALISATION N = (observed - expected)/(1 - expected), which reads 1.0 for total
+//     capture in EVERY tier and 0.0 for exactly-holdings, so any margin below 1.0 is
+//     non-vacuous -- and it needs no data. OWED, not built here; see
+//     docs/thinking/2026-09-09-per-tier-work-totals.md.
+//
+// AND THE LARGEST LIMIT, which is about the QUESTION and not the number: this statistic
+// CONDITIONS ON HOLDINGS, so recentralization that lives IN THE HOLDINGS is invisible to it
+// by construction. On this file's own honest fixture the archival tier holds 0.9505 of the
+// repair-capable bytes before a single repair is routed, and nothing in this lane gates that.
+// The Economist withdraws its own substitution on that ground: the raw repair Gini asked "is
+// repair piling onto the few?" and this asks "is repair allocated other than by holdings?",
+// and the second was adopted for having a convenient null of 0. Publishing the capable-set
+// pledged concentration beside the excess is the specified follow-on; it is OWED, with no
+// threshold, the Economist having no honest null for a pledged distribution.
+//
+// THE COVERAGE REFUSAL (Economist addendum Part 1 §4, second half). The same hole that
+// defeats the edge share defeats this alarm and by the same mechanism: a wholly or partly
+// silent capable tier leaves BOTH the observed numerator and the expected denominator, the
+// remaining tiers renormalise, and the offending tier's own silence buys it a clean bill.
+// Measured in the adversarial arm below: the horse that does 202 of 232 repairs withholds and
+// the excess reads +0.0448, no alarm, where the truth is +0.8259.
+//
+// THE FLOOR HERE IS 1.0, and that is a deliberate difference from the edge share's derived
+// floor. The edge share's floor falls out of the tenet floor as a theorem; this alarm's only
+// tolerance is a WITHDRAWN assumption, and a coverage floor derived from an unfounded
+// tolerance would inherit the assumption rather than answer it. Under D-WORK-VISIBILITY this
+// is harness apparatus and the harness answer to coverage is 1.0 -- anything less is a
+// fixture defect, the same discipline arms A1a and B3 already apply to the Gini. It is
+// strictly stronger than any floor and costs no parameter.
+func ptWorstRepairExcess(t *testing.T, nw c3NetworkWire) (float64, string, bool) {
 	t.Helper()
+	for _, r := range nw.Mix {
+		if !node.RepairCapable(r.Class) || r.Work == nil {
+			continue
+		}
+		if r.Work.Coverage != 1 {
+			t.Logf("REFUSED: the %s tier reports %d of %d (coverage %.4f). A silent capable peer leaves BOTH terms of the excess and the rest renormalise, so the offending tier's silence would buy it a clean bill.",
+				r.Class, r.Work.Reporting, r.Sampled, r.Work.Coverage)
+			return 0, r.Class, false
+		}
+		// A capable tier that publishes no share is not a tier that contributed nothing --
+		// it is a tier the renormalisation cannot see. Dropping it silently is the same
+		// defect one level in.
+		if r.Work.RepairShare == nil || !r.Work.RepairShare.Known || r.Work.PledgedShare == nil || !r.Work.PledgedShare.Known {
+			t.Logf("REFUSED: the %s tier publishes no share (repair %+v, pledged %+v) over %d reporter(s); a capable tier the renormalisation cannot see is not a capable tier that did nothing.",
+				r.Class, r.Work.RepairShare, r.Work.PledgedShare, r.Work.Reporting)
+			return 0, r.Class, false
+		}
+	}
 	var capablePledged float64
 	for _, r := range nw.Mix {
 		if node.RepairCapable(r.Class) && r.Work != nil && r.Work.PledgedShare != nil && r.Work.PledgedShare.Known {
@@ -787,6 +1070,32 @@ func ptWorstRepairExcess(t *testing.T, nw c3NetworkWire) (float64, string) {
 	}
 	if worstTier == "" {
 		t.Fatalf("no capable tier published a known repair share: %+v", nw.Mix)
+	}
+	return worst, worstTier, true
+}
+
+// ptRawRepairExcess is ptWorstRepairExcess WITHOUT the refusals: what the alarm would read if
+// it graded a sample it should decline. It exists so the adversarial arm can report the number
+// the refusal suppressed, rather than asserting that suppressing it was worthwhile.
+func ptRawRepairExcess(t *testing.T, nw c3NetworkWire) (float64, string) {
+	t.Helper()
+	var capablePledged float64
+	for _, r := range nw.Mix {
+		if node.RepairCapable(r.Class) && r.Work != nil && r.Work.PledgedShare != nil && r.Work.PledgedShare.Known {
+			capablePledged += r.Work.PledgedShare.val()
+		}
+	}
+	if capablePledged <= 0 {
+		return 0, ""
+	}
+	worst, worstTier := math.Inf(-1), ""
+	for _, r := range nw.Mix {
+		if !node.RepairCapable(r.Class) || r.Work == nil || r.Work.RepairShare == nil || !r.Work.RepairShare.Known {
+			continue
+		}
+		if excess := r.Work.RepairShare.val() - r.Work.PledgedShare.val()/capablePledged; excess > worst {
+			worst, worstTier = excess, r.Class
+		}
 	}
 	return worst, worstTier
 }
@@ -881,4 +1190,223 @@ func TestGateC3_3e_CapableSizeClosesTheCrossDocumentRepairCoverageJoin(t *testin
 	}
 	t.Logf("population rule: 40 ponies reported 280 repairs and hold NO repair share (%q); the horse tier holds %.4f of the CAPABLE series' 70 repairs",
 		pony.RepairShare.Reason, horse.RepairShare.val())
+}
+
+// ---- the two silence holes, and the two floors that close them -------------------------
+
+// ptConcentratedPeersTop5Silent is ptConcentratedPeers with the FIVE HORSES DOING THE
+// CONCENTRATING withholding their counters. Nothing else changes: same pledges, same mix,
+// same everything the composition answer sees.
+func ptConcentratedPeersTop5Silent() []c3Peer {
+	const ponies = 1000
+	return []c3Peer{
+		{capTotal: c3HorseCap, served: 0, repairs: 0, n: 5}, // the concentrating horses WITHHOLD
+		{capTotal: c3PonyCap, served: (200_000 / ponies) * c3Unit, repairs: 0, n: ponies},
+		{capTotal: c3HorseCap, served: (200_000 / ponies) * c3Unit, repairs: 10, n: 5},
+		{capTotal: c3ArchivalCap, served: (200_000 / ponies) * c3Unit, repairs: 10, n: 1},
+	}
+}
+
+// TestGateC3_3f_ThePerTierCoverageFloorIsATheoremOfTheTenetFloor pins the coverage floor the
+// edge-share gate uses, and pins that it is DERIVED rather than chosen.
+//
+// THE DERIVATION. Under the named assumption (within a tier, silence is uncorrelated with
+// work rate) the observation bounds the truth to [phi*s_obs, s_obs/phi], where phi is the
+// least coverage among the tiers present. A PASS is the lower end clearing the floor F, and
+// s_obs <= 1, so
+//
+//	PASS  =>  phi >= phi * s_obs  =>  phi >= F
+//
+// The minimum per-tier coverage a PASS requires IS the tenet floor. No second parameter, the
+// same shape as the Gini's 1-T indeterminacy boundary being a theorem of T.
+//
+// THE ENDPOINTS ARE RUN, not read off the inequality. The fixture puts s_obs at exactly 1.0 —
+// every served byte in the sample is a pony's — so phi alone decides and the boundary sits at
+// phi = F = 0.50 exactly. The horse tier has ten members of which m report (serving zero and
+// repairing, so they are REPORTING peers under M-2 and contribute a measured zero to the
+// serve series). m = 4 / 5 / 6 straddles it.
+//
+// MEASURED, and this table is the claim:
+//
+//	m   phi    lower = phi * 1.0   F      verdict
+//	4   0.4    0.4                 0.50   INDETERMINATE
+//	5   0.5    0.5                 0.50   PASS          <- the boundary; 5/10 is exact in binary
+//	6   0.6    0.6                 0.50   PASS
+//
+// CONTROLLED REVERT (G-PT-10, shared with TestGateC3_3g and TestGateC3_3b): change the PASS
+// test in ptEdgeMajorityGate from `r.Lower >= r.Floor` to `r.Observed >= r.Floor`, dropping
+// the interval and gating the raw observation. MEASURED, the m = 4 row then PASSES.
+func TestGateC3_3f_ThePerTierCoverageFloorIsATheoremOfTheTenetFloor(t *testing.T) {
+	type row struct {
+		reporting int
+		wantPhi   float64
+		want      ptVerdict
+	}
+	for _, r := range []row{{4, 0.4, ptIndeterminate}, {5, 0.5, ptPass}, {6, 0.6, ptPass}} {
+		peers := []c3Peer{
+			// The edge tier holds every served byte, so s_obs is exactly 1.0 and phi is the
+			// only term left. 1000 reporters clears the per-tier reporting floor.
+			{capTotal: c3PonyCap, served: 1 * c3Unit, repairs: 0, n: 1000},
+			// Reporting horses serve NOTHING and repair, so they are in the series with a
+			// measured zero. Silent horses report neither and are excluded.
+			{capTotal: c3HorseCap, served: 0, repairs: 10, n: r.reporting},
+			{capTotal: c3HorseCap, served: 0, repairs: 0, n: 10 - r.reporting},
+			// ONE archival node, so the mix is the vision family at k = 10 and the
+			// conditioned floor is exactly the flat 0.50. Three would drag the disk-weighted
+			// null to 0.3846 and the floor to 0.3077 (measured), moving the boundary off
+			// phi = F and making this table about the wrong thing.
+			{capTotal: c3ArchivalCap, served: 0, repairs: 10, n: 1},
+		}
+		conc, nw := c3Fixture(t, int64(60+r.reporting), peers)
+		got := ptEdgeMajorityGate(conc, nw)
+		if got.Observed != 1 {
+			t.Fatalf("m=%d: the edge share is %.9f, want exactly 1.0 — this fixture exists to take s_obs out of the comparison so phi alone decides", r.reporting, got.Observed)
+		}
+		if got.Floor != tarEdgeMajorityFloor {
+			t.Fatalf("m=%d: the floor is %.6f, not the flat %.2f; the conditioned branch must be inert here or the boundary is not at phi = F", r.reporting, got.Floor, tarEdgeMajorityFloor)
+		}
+		if got.WorstTierCoverage != r.wantPhi || got.WorstTier != node.TierHorse {
+			t.Fatalf("m=%d: phi = %.6f on %q, want %.6f on horse", r.reporting, got.WorstTierCoverage, got.WorstTier, r.wantPhi)
+		}
+		if got.Verdict != r.want {
+			t.Fatalf("m=%d of 10 horses reporting: phi %.4f, lower bound %.4f against floor %.4f reads %s, want %s (%s)",
+				r.reporting, got.WorstTierCoverage, got.Lower, got.Floor, got.Verdict, r.want, got.Why)
+		}
+		t.Logf("m=%2d  phi %.4f  lower %.4f  F %.4f  -> %s", r.reporting, got.WorstTierCoverage, got.Lower, got.Floor, got.Verdict)
+	}
+	// THE THEOREM ITSELF, as an equality rather than as the table: at the boundary row phi and
+	// F coincide, and 5/10 is exact in binary so this is not a tolerance question.
+	if 5.0/10.0 != tarEdgeMajorityFloor {
+		t.Fatalf("the boundary fixture's phi is %.17g and the floor is %.17g; they must coincide EXACTLY for the m=5 row to be the boundary", 5.0/10.0, tarEdgeMajorityFloor)
+	}
+}
+
+// TestGateC3_3g_TheConcentratingTierCannotBuyAPassBySayingNothing is the Economist's
+// addendum Part 1 §4 arm, encoded permanently.
+//
+// THE ATTACK COSTS NOTHING: the party doing the concentrating simply stops reporting, which
+// is the compiled default (D-WORK-VISIBILITY). No Sybils, no forged counters, five nodes.
+//
+// MEASURED, BEFORE THE FIX, on this exact fixture pair:
+//
+//	all report:        EDGE-MINORITY  edge share 0.1998  sample-wide coverage 1.0000
+//	top-5 horses mute: PASS           edge share 0.9940  sample-wide coverage 0.9951
+//
+// The sample-wide floor is 0.85 and the silence is 0.49 % of the sample, so no count-weighted
+// coverage clause can ever reach it. Under the ratified 10000:100:1 target the non-edge tiers
+// ARE the sample's one percent — 1.088 % at 1000:10:1, 0.9999 % at 10000:100:1 — so the tiers
+// whose silence matters are structurally invisible to a count-weighted measure, and the
+// target ratio is what makes it so.
+//
+// CONTROLLED REVERT (G-PT-10): see TestGateC3_3f.
+func TestGateC3_3g_TheConcentratingTierCannotBuyAPassBySayingNothing(t *testing.T) {
+	concC, nwC := c3Fixture(t, 52, ptConcentratedPeers())
+	rC := ptEdgeMajorityGate(concC, nwC)
+	concS, nwS := c3Fixture(t, 53, ptConcentratedPeersTop5Silent())
+	rS := ptEdgeMajorityGate(concS, nwS)
+	t.Logf("all report:        %s  edge share %.4f  worst-tier coverage %.4f on %q", rC.Verdict, rC.Observed, rC.WorstTierCoverage, rC.WorstTier)
+	t.Logf("top-5 horses mute: %s  edge share %.4f  worst-tier coverage %.4f on %q  interval [%.4f, %.4f] against floor %.4f",
+		rS.Verdict, rS.Observed, rS.WorstTierCoverage, rS.WorstTier, rS.Lower, rS.Upper, rS.Floor)
+	if rC.Verdict != ptEdgeMinority {
+		t.Fatalf("the control arm reads %s; it must be EDGE-MINORITY or this gate has no subject", rC.Verdict)
+	}
+	// The sample-wide fraction the first version of this clause used. Asserted so the reason
+	// the clause was replaced cannot rot into a claim nobody re-runs.
+	if concS.ServeGini == nil || concS.Sample == nil {
+		t.Fatalf("the silent arm publishes no serve series; the sample-wide comparison below has no terms")
+	}
+	if wide := float64(concS.ServeGini.SampleSize) / float64(concS.Sample.Size); wide < c3ServeReportingMin {
+		t.Fatalf("the sample-wide reporting fraction on the silent arm is %.4f, already BELOW the old %.2f clause — this arm exists because that clause CANNOT reach this attack, so if it now can, the finding must be re-derived", wide, c3ServeReportingMin)
+	} else {
+		t.Logf("the sample-wide fraction the old clause read is %.4f, clear of its %.2f floor: 5 silent nodes of %d is %.2f %% of the sample, and a count-weighted measure cannot see it",
+			wide, c3ServeReportingMin, concS.Sample.Size, 100*5.0/float64(concS.Sample.Size))
+	}
+	if rS.Verdict != ptIndeterminate {
+		t.Fatalf("silencing FIVE nodes of %d turned a measured EDGE-MINORITY of %.4f into %s at %.4f. The party doing the concentrating bought a clean bill by saying nothing, at zero cost and with no Sybils.",
+			concS.Sample.Size, rC.Observed, rS.Verdict, rS.Observed)
+	}
+}
+
+// TestGateC3_3h_ATierShareWithOneReporterIsThatPeersCounter is the second floor, and it is a
+// DIFFERENT quantity from the coverage refusal above (blind PE ruling B-1).
+//
+// COVERAGE asks "how much of this tier is in the series" and defends the MEASUREMENT: a
+// silent tier leaves the denominator and inflates everyone else. REPORTERS asks "how many
+// peers is this figure over" and defends the PEERS: a tier share over one reporter IS that
+// peer's counter. Neither implies the other — a tier of 1 node fully reporting has coverage
+// 1.0 and one reporter, and a tier of 1,000 with 999 silent has one reporter too. Both floors
+// are needed and this file drives both.
+//
+// THE INVERSION IS ONE DIVISION. The published share is R_t / SIGMA R; a reader that supplied
+// every other term knows SIGMA R − R_t, so R_t = share · SIGMA R recovers the tier's TOTAL —
+// and at one reporter that total is that peer's exact counter. MEASURED before the fix, on
+// this exact fixture:
+//
+//	serveGini published?    false      <- suppressed by ITS OWN floor, on the same document
+//	ponyShareOfServedBytes: known=true value=0.230769231 reporting=1
+//	INVERSION: 1000/(1-share) = 1300   -> the single honest pony served exactly 300
+//
+// Strictly easier than the two-term Gini inversion that floor exists to stop, reaching the
+// same reader it still defends.
+//
+// THE FLOOR IS DERIVED, AND IT IS minGossipSample UNCHANGED. That constant's derivation is
+// about how many terms a reader does not already know: at n = 1 the aggregate IS the value,
+// at n = 2 it resolves to two named peers, 3 is the smallest where neither holds. Applied to
+// a tier's REPORTER count the same three cases give the same answer — the same constant
+// reaching a population it had not been applied to, not a second parameter.
+//
+// AND IT BUYS PARITY, NOT CLOSURE: at three reporters an adversary holding two sybils IN THAT
+// BAND still recovers the third, exactly as four sybils recover the Gini's secret
+// (r22_gini_reconstruction_test.go). Reconstruction is closed by gossipWithheld. What this
+// closes is the ASYMMETRY of one document suppressing serveGini at two reporters while
+// publishing a figure that inverts to one.
+//
+// CONTROLLED REVERT (G-PT-13): delete the `reporters < minGossipSample` branch from
+// tierShareOf and this gate reddens on the inversion above, with the recovered 300 in the
+// failure message.
+func TestGateC3_3h_ATierShareWithOneReporterIsThatPeersCounter(t *testing.T) {
+	const secret, sybil = 300, 1000
+	peers := []c3Peer{
+		{capTotal: c3PonyCap, served: secret * c3Unit, repairs: 0, n: 1},
+		{capTotal: c3PonyCap, served: 0, repairs: 0, n: 89},
+		{capTotal: c3HorseCap, served: sybil * c3Unit, repairs: 0, n: 1},
+		{capTotal: c3HorseCap, served: 0, repairs: 0, n: 9},
+	}
+	conc, nw := c3Fixture(t, 54, peers)
+
+	// THE CONTROL: the sibling aggregate on the same document IS dark here, by its own floor.
+	// Without it this arm could pass on a document where nothing was suppressed, and the
+	// asymmetry it is about would not exist.
+	if conc.ServeGini != nil {
+		t.Fatalf("serveGini is published over a 2-member series (%+v). minGossipSample=%d is what suppresses it, and this arm is about a NEW figure escaping the same floor on the same document.", conc.ServeGini, minGossipSample)
+	}
+	ps := conc.PonyShareOfServedBytes
+	if ps == nil {
+		t.Fatalf("the tenet figure vanished entirely; it must be PRESENT and named as below the floor")
+	}
+	if ps.Known {
+		got := float64(sybil) / (1 - ps.val())
+		t.Fatalf("ponyShareOfServedBytes is published as %.9f over %d reporter(s). A reader that supplied the other term inverts it in ONE DIVISION: %d/(1-share) = %.4f, so the single honest pony served exactly %.0f — the counter -privacy withholds, recovered from a document whose serveGini is dark for being over TWO peers.",
+			ps.val(), ps.Reporting, sybil, got, got-float64(sybil))
+	}
+	if ps.Reason != belowTierReportingFloor {
+		t.Fatalf("the tenet figure is unknown for the reason %q; at %d reporter(s) with work reported elsewhere the fact is the FLOOR, which is a different fact from having no reporter at all", ps.Reason, ps.Reporting)
+	}
+	if ps.Reporting != 1 {
+		t.Fatalf("the fixture did not land: %d pony reporters, want 1", ps.Reporting)
+	}
+	for _, row := range nw.Mix {
+		if row.Work == nil {
+			t.Fatalf("mix row %s lost its work block", row.Class)
+		}
+		if row.Work.ServeShare == nil || row.Work.ServeShare.Known {
+			t.Fatalf("mix[%s].work.serveShare is published as %.9f over %d reporter(s): the same inversion, on the other route",
+				row.Class, row.Work.ServeShare.val(), row.Work.Reporting)
+		}
+	}
+	r := ptEdgeMajorityGate(conc, nw)
+	if r.Verdict != ptIndeterminate {
+		t.Fatalf("a sample with one reporter per tier reads %s; it must be INDETERMINATE", r.Verdict)
+	}
+	t.Logf("one reporter per tier: serveGini dark, every tier share dark, gate %s", r.Verdict)
 }

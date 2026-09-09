@@ -162,6 +162,12 @@ type c3ConcentrationWire struct {
 	// measurement, and an absent key is not.
 	PonyShareOfServedBytes *c3TenetShareWire `json:"ponyShareOfServedBytes"`
 	CapableSize            *int              `json:"capableSize"`
+	WorstTierCoverage      *struct {
+		Class      string  `json:"class"`
+		Reporting  int     `json:"reporting"`
+		Population int     `json:"population"`
+		Coverage   float64 `json:"coverage"`
+	} `json:"worstTierCoverage"`
 }
 
 // c3TenetShareWire is the T-AR figure as served. Value is a POINTER for the same reason

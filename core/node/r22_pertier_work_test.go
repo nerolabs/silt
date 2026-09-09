@@ -27,9 +27,15 @@ import "testing"
 //     entry however many repairs it claims, because it is outside the repair series'
 //     denominator.
 //
-// ABLATION: move the three per-tier lines in EconomySample's add closure ABOVE the
-// `if srv <= 0 && rep <= 0 { return }` and rule 1 reddens on the pledged total; delete the
-// RepairCapable guard around the RepairsByTier line and rule 4 reddens.
+// ABLATIONS, each with the point it was MEASURED to redden at rather than the point it was
+// expected to (a blind PE re-ran the first one and found the description named the wrong
+// line):
+//   - move the THREE per-tier lines above the `if srv <= 0 && rep <= 0 { return }` and rule 1
+//     reddens at the FIRST of its three assertions, `ReportersByTier[pony] = 3, want 2` --
+//     not on the pledged total, which is simply never reached.
+//   - move ONLY the PledgedBytesByTier line and it reddens on the pledged total:
+//     `PledgedBytesByTier[pony] = 12884901888, want 8589934592`.
+//   - delete the RepairCapable guard around the RepairsByTier line and rule 4 reddens.
 func TestR22PerTierTotalsFollowTheExclusionRuleAndNameTheirAbsences(t *testing.T) {
 	n := r22Node(t)
 	const gib = int64(1) << 30
