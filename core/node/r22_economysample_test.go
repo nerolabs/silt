@@ -102,10 +102,10 @@ func TestR22TierBandsCutWhereThePublishedTableCuts(t *testing.T) {
 			t.Fatalf("capacityTier(%d) = %q, want %q", tc.bytes, got, tc.want)
 		}
 	}
-	if repairCapable(TierPony) {
+	if RepairCapable(TierPony) {
 		t.Fatal("the pony is repair-CAPABLE in this build. D-TIERING coupling (b) is that durability is guaranteed by the persistent tiers, never the transient edge — and if the pony is in the repair sample the repair Gini goes back to ~0.99 by construction")
 	}
-	if !repairCapable(TierHorse) || !repairCapable(TierArchival) {
+	if !RepairCapable(TierHorse) || !RepairCapable(TierArchival) {
 		t.Fatal("the persistent tiers are not repair-capable — the repair sample would be empty")
 	}
 }

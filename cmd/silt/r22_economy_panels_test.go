@@ -68,9 +68,22 @@ out.gossipMeasuredZero = r.gossipCell(bigSample, { known: true, value: 0, sample
 // NAMED absence. The block still carries its note, and the cell must not fall through to
 // "no sample", which would read as a node that knows nobody.
 out.gossipPrivacy = r.gossipCell({ countersWithheld: true, note: "withheld by this node's privacy setting (-privacy=on, the default)" }, undefined);
+// The PER-TIER work cells (Economist advisory §3a). A tier that reported nothing must NOT
+// render 0 %: its share computes to a well-formed 0.0 because the exclusion rule keeps it
+// out of the numerator while other tiers hold the denominator up, and 0 % on the panel says
+// the tier does none of the work.
+out.tierAbsent = r.tierShareCell(null);
+out.tierUnknown = r.tierShareCell({ known: false, reason: "no peer of this tier reported any work" });
+out.tierMeasuredZero = r.tierShareCell({ known: true, value: 0 });
+out.tierValue = r.tierShareCell({ known: true, value: 0.1998 });
+out.edgeWithheld = r.edgeShareCell({ countersWithheld: true, note: "withheld by this node's privacy setting (-privacy=on, the default)" });
+out.edgeAbsent = r.edgeShareCell(bigSample);
+out.edgeUnknown = r.edgeShareCell(Object.assign({}, bigSample, { ponyShareOfServedBytes: { known: false, reporting: 0, population: 100, coverage: 0, reason: "no peer of this tier reported any work" } }));
+out.edgeValue = r.edgeShareCell(Object.assign({}, bigSample, { ponyShareOfServedBytes: { known: true, value: 0.1998, reporting: 1000, population: 1000, coverage: 1, epoch: "since each node's process started, NOT lifetime" } }));
 // And the shapes a real withheld/absent document actually has: nothing may throw.
 out.nulls = [r.solvencyCell(null).text, r.marginCard(null).margin, r.selfFundingCard(null).net,
-             r.washCard(null).light, r.gossipCell(null, null).text, r.economyObjects(null).rows.length];
+             r.washCard(null).light, r.gossipCell(null, null).text, r.economyObjects(null).rows.length,
+             r.tierShareCell(null).text, r.edgeShareCell(null).text];
 console.log(JSON.stringify(out));`
 	cmd := exec.Command(node, "-e", script, filepath.Join("ui", "render.js"))
 	cmd.Dir = "."
@@ -91,6 +104,10 @@ console.log(JSON.stringify(out));`
 		GossipSmall, GossipAbsent, GossipValue            cell
 		GossipNoWork, GossipZeroValue, GossipMeasuredZero cell
 		GossipPrivacy                                     cell
+		TierAbsent, TierUnknown                           cell
+		TierMeasuredZero, TierValue                       cell
+		EdgeWithheld, EdgeAbsent                          cell
+		EdgeUnknown, EdgeValue                            cell
 		Nulls                                             []json.RawMessage
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
@@ -184,12 +201,60 @@ console.log(JSON.stringify(out));`
 		t.Fatalf("the withheld cell does not name the setting responsible: %q", out.GossipPrivacy.Sub)
 	}
 
+	// THE PER-TIER CELLS (Economist advisory §3a). The rule is the SAME one as the Gini's
+	// and it has a second edge here: a tier's share of the work is 0.0 both when the tier
+	// did nothing and when the tier SAID nothing, and on the shipped -privacy default it is
+	// always the second.
+	//
+	// TWO CONTROLLED REVERTS. G-PT-8: make tierShareCell format an UNKNOWN share as a
+	// percentage — measured, the silent tier renders "0.0%%". G-PT-8b: stop edgeShareCell
+	// delegating to gossipCell — measured, a privacy-withheld document renders
+	// `{Text:— Sub:no sample Withheld:false}`, which reads as a node that knows no peers
+	// rather than as a withhold, and that is the shape that made the delegation the design
+	// rather than a duplicated branch.
+	if out.TierAbsent.Text != "—" {
+		t.Fatalf("an absent per-tier share renders %q; a missing block is not a zero", out.TierAbsent.Text)
+	}
+	if out.TierUnknown.Text != "not reported" || !out.TierUnknown.Unknown {
+		t.Fatalf("a tier with no reporting peer renders %q. 0 %% would say the tier does none of the work; the truth is that no peer of that tier said anything, and under the certified exclusion rule a silent peer is out of the numerator AND the denominator", out.TierUnknown.Text)
+	}
+	if out.TierUnknown.Title == "" {
+		t.Fatalf("the not-reported cell carries no reason in its title: %+v. A named absence is named", out.TierUnknown)
+	}
+	if out.TierMeasuredZero.Text != "0.0%" || !out.TierMeasuredZero.Known {
+		t.Fatalf("a MEASURED zero share renders %q; a tier that reported and did none of this work is a real result and must publish, or the branch above is a blanket refusal to show zeros", out.TierMeasuredZero.Text)
+	}
+	if out.TierValue.Text != "20.0%" {
+		t.Fatalf("a measured 0.1998 share renders %q, want \"20.0%%\"", out.TierValue.Text)
+	}
+	// The edge card delegates every not-a-number case to gossipCell, so these four arms are
+	// the proof that the delegation is live rather than a comment.
+	if !out.EdgeWithheld.Withheld || !strings.Contains(out.EdgeWithheld.Text, "withheld") {
+		t.Fatalf("the edge-share card on a privacy-withheld document = %+v", out.EdgeWithheld)
+	}
+	if !strings.Contains(out.EdgeAbsent.Text, "not published") {
+		t.Fatalf("an absent ponyShareOfServedBytes renders %q; absent is not zero", out.EdgeAbsent.Text)
+	}
+	if !out.EdgeUnknown.Unknown || out.EdgeUnknown.Text == "0.0%" {
+		t.Fatalf("an UNKNOWN edge share renders %+v. This is the reading on every node running the shipped -privacy default (D-WORK-VISIBILITY), so rendering it as 0 %% would tell every operator the edge tier does none of the work", out.EdgeUnknown)
+	}
+	if out.EdgeValue.Text != "20.0%" || !out.EdgeValue.Known {
+		t.Fatalf("a measured edge share renders %+v, want \"20.0%%\"", out.EdgeValue)
+	}
+	if !strings.Contains(out.EdgeValue.Sub, "1000 of 1000") || !strings.Contains(out.EdgeValue.Sub, "coverage") {
+		t.Fatalf("the edge-share card does not carry its own coverage: %q. Edge silence depresses the edge's own share, so the coverage is how a reader tells a real minority from a quiet one", out.EdgeValue.Sub)
+	}
+	if !strings.Contains(out.EdgeValue.Sub, "NOT lifetime") {
+		t.Fatalf("the edge-share card lost the epoch: %q", out.EdgeValue.Sub)
+	}
+
 	// SOURCE GATE: the page must go through render.js, like every other page.
 	html, err := os.ReadFile(filepath.Join("ui", "economy.html"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`<script src="render.js"></script>`, "siltRender.solvencyCell(", "siltRender.washCard(", "siltRender.gossipCell(", "siltRender.selfFundingCard(", "siltRender.marginCard("} {
+	for _, want := range []string{`<script src="render.js"></script>`, "siltRender.solvencyCell(", "siltRender.washCard(", "siltRender.gossipCell(", "siltRender.selfFundingCard(", "siltRender.marginCard(",
+		"siltRender.edgeShareCell(", "siltRender.tierShareCell("} {
 		if !strings.Contains(string(html), want) {
 			t.Fatalf("SOURCE GATE: economy.html does not use %s — a panel built inline is a panel the honesty gate above cannot see", want)
 		}

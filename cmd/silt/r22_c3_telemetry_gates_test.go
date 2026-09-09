@@ -104,8 +104,12 @@ import (
 // measurably, and that is the whole claim. These are REGRESSION gates: they catch a change
 // to EconomySample, credit.Gini, giniOver or the two route documents. They do not grade a
 // network. The field alarms that replace them are mix-conditioned (serve) and
-// relative-to-holdings (repair), and neither is buildable until the per-tier work totals
-// land -- Builder item, advisory §3a.
+// relative-to-holdings (repair). THE PER-TIER WORK TOTALS THEY NEEDED HAVE LANDED (advisory
+// §3a, Builder item 1): node.EconomySample carries ServeBytesByTier / RepairsByTier /
+// PledgedBytesByTier / ReportersByTier / CapableSize, the mix rows carry a `work` block and
+// the concentration document carries `ponyShareOfServedBytes`. The T-AR alarm built on them
+// is r22_c3_pertier_work_gates_test.go. The two constants below are unchanged and still
+// fixture constants; what changed is that the replacement is now buildable.
 const (
 	// c3ServeGiniMax is the tolerance the serve gate asserts G_adj against. Fixture
 	// constant for the CPU-weighted (1/7/24) vision shape with every node reporting,
@@ -152,13 +156,67 @@ type c3ConcentrationWire struct {
 	ServeGini        *c3GiniWire `json:"serveGini"`
 	RepairGini       *c3GiniWire `json:"repairGini"`
 	CountersWithheld bool        `json:"countersWithheld"`
+	// The two fields the per-tier work totals added (r22_c3_pertier_work_gates_test.go).
+	// Decoded here rather than in a second wire type so ONE decoder serves the fixture both
+	// gate files drive. CapableSize is a POINTER: 0 capable nodes in the sample is a
+	// measurement, and an absent key is not.
+	PonyShareOfServedBytes *c3TenetShareWire `json:"ponyShareOfServedBytes"`
+	CapableSize            *int              `json:"capableSize"`
+	WorstTierCoverage      *struct {
+		Class      string  `json:"class"`
+		Reporting  int     `json:"reporting"`
+		Population int     `json:"population"`
+		Coverage   float64 `json:"coverage"`
+	} `json:"worstTierCoverage"`
+}
+
+// c3TenetShareWire is the T-AR figure as served. Value is a POINTER for the same reason
+// c3GiniWire.Value is: it is omitempty, so a measured 0.0 arrives as an absent key beside
+// known:true and a plain float64 could not tell it from "no such field".
+type c3TenetShareWire struct {
+	Known      bool     `json:"known"`
+	Value      *float64 `json:"value"`
+	Reporting  int      `json:"reporting"`
+	Population int      `json:"population"`
+	Coverage   float64  `json:"coverage"`
+	Reason     string   `json:"reason"`
+}
+
+func (t *c3TenetShareWire) val() float64 {
+	if t == nil || t.Value == nil {
+		return 0
+	}
+	return *t.Value
+}
+
+// c3TierShareWire and c3TierWorkWire are the per-tier work block on a mix row.
+type c3TierShareWire struct {
+	Known  bool     `json:"known"`
+	Value  *float64 `json:"value"`
+	Reason string   `json:"reason"`
+}
+
+func (t *c3TierShareWire) val() float64 {
+	if t == nil || t.Value == nil {
+		return 0
+	}
+	return *t.Value
+}
+
+type c3TierWorkWire struct {
+	Reporting    int              `json:"reporting"`
+	Coverage     float64          `json:"coverage"`
+	ServeShare   *c3TierShareWire `json:"serveShare"`
+	RepairShare  *c3TierShareWire `json:"repairShare"`
+	PledgedShare *c3TierShareWire `json:"pledgedShare"`
 }
 
 type c3NetworkWire struct {
 	Mix []struct {
-		Class   string  `json:"class"`
-		Sampled int     `json:"sampled"`
-		Share   float64 `json:"share"`
+		Class   string          `json:"class"`
+		Sampled int             `json:"sampled"`
+		Share   float64         `json:"share"`
+		Work    *c3TierWorkWire `json:"work"`
 	} `json:"mix"`
 }
 
@@ -284,11 +342,15 @@ func c3ServeGate(c c3ConcentrationWire) c3Reading {
 // c3RepairGate is advisory assertion 2. Population = the repair-CAPABLE subset, because
 // the series is scoped to it.
 //
-// KNOWN BUILD DEFECT this reads across (advisory §1, Builder item 3): the capable count
-// comes from /api/economy/network while the numerator comes from /api/economy/concentration
-// -- two separate s.nd.EconomySample() calls, two snapshots. The fixture reads both at one
-// instant so they agree; on a live node peerCaps moves between them and the coverage ratio
-// can exceed 1. economyConcentration must carry CapableSize itself.
+// THE BUILD DEFECT THIS READ ACROSS IS FIXED, and this gate has not yet been re-pointed at
+// the fix. The capable count still comes from /api/economy/network while the numerator comes
+// from /api/economy/concentration -- two separate s.nd.EconomySample() calls, two snapshots;
+// the fixture reads both at one instant so they agree, but on a live node peerCaps moves
+// between them and the coverage ratio can exceed 1. economyConcentration now carries
+// `capableSize` itself (advisory §1, Builder item 3), and
+// TestGateC3_3e_CapableSizeClosesTheCrossDocumentRepairCoverageJoin asserts it equals this
+// function's nw.capable() on one snapshot. Re-pointing this gate at c.CapableSize is the
+// Tester's call, not the Builder's.
 func c3RepairGate(c c3ConcentrationWire, nw c3NetworkWire) c3Reading {
 	if c.CountersWithheld {
 		return c3Reading{Verdict: c3Indeterminate, Why: "repairGini withheld: the reader cannot see the figure at all"}
@@ -806,9 +868,14 @@ func TestGateC3_2_RepairNullIsHoldingsProportionalSoTheConstantIsNotAFieldThresh
 // argument for moving the T-AR gate to the tier share (TestGateC3_1b_TierMixShareIsNodeCountNotServedBytes, and the Builder's
 // per-tier work totals).
 //
-// DISCHARGE CONDITION: this pin clears when the serve series' honest weighting is MEASURED
-// (per-tier serve bytes on the wire) and the alarm is computed against a mix-conditioned
-// null — never when a Gini happens to fall below a constant.
+// DISCHARGE CONDITION, and HALF OF IT IS NOW MET: this pin clears when the serve series'
+// honest weighting is MEASURED (per-tier serve bytes on the wire) and the alarm is computed
+// against a mix-conditioned null — never when a Gini happens to fall below a constant. The
+// per-tier serve bytes ARE on the wire now (mix[].work.serveShare,
+// concentration.ponyShareOfServedBytes) and the mix-conditioned floor is built in
+// r22_c3_pertier_work_gates_test.go. What this pin still records is unchanged and still
+// true: the GINI's honest null moves with the sampled mix, so a size-based alarm on the
+// Gini is unsound. Whether that retires this test is the Tester's call.
 func TestGateC3_1_ServeGiniHonestNullIsMixDependentNotSampleSizeDependent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("drives two 4,096-peer samples; -short runs the two gates only")
@@ -853,8 +920,12 @@ func TestGateC3_1_ServeGiniHonestNullIsMixDependentNotSampleSizeDependent(t *tes
 
 	// THE PIN, part 2 — the Gini and T-AR disagree on the SAME sample. The Gini calls
 	// ARM 1 concentrated; the pony tier serves 81.8 % of its bytes, far above the tenet
-	// floor of 0.50. The tier share is computed from the fixture because no product
-	// surface publishes it (see TestGateC3_1b_TierMixShareIsNodeCountNotServedBytes) — that absence is the build item.
+	// floor of 0.50. The tier share is computed from the FIXTURE here, deliberately: this
+	// arm is about the two statistics disagreeing, and computing one of them from its own
+	// definition keeps the comparison independent of the surface that publishes the other.
+	// The product now publishes it too (concentration.ponyShareOfServedBytes), and
+	// TestGateC3_3_EdgeMajorityOfServeWorkIsTheTenetNotTheNodeShare drives the product's
+	// figure through the same disagreement.
 	ponyBytes := float64(4055 * 100)
 	totalBytes := float64(4055*100 + 40*1000 + 1*50000)
 	ponyServeShare := ponyBytes / totalBytes
@@ -871,11 +942,16 @@ func TestGateC3_1_ServeGiniHonestNullIsMixDependentNotSampleSizeDependent(t *tes
 // has a SECOND clause this file cannot encode: "pony share of served bytes >= 0.50", the
 // T-AR tenet read literally (the edge tier does the MAJORITY of the work).
 //
-// NO PRODUCT SURFACE PUBLISHES IT. node.EconomySample carries Mix (a count per tier),
-// ServeGini, ServeSampleSize and ServeWorkTotal (the sample-wide SUM). It does not carry a
-// per-tier serve-byte total, and neither of the two gossip-estimated routes derives one.
-// So the clause is STOPPED pending a product change, and this test is the guard that stops
-// the nearest-looking field from being substituted for it.
+// THE PRODUCT NOW PUBLISHES IT (advisory §3a, Builder item 1): node.EconomySample carries
+// ServeBytesByTier / ReportersByTier beside Mix, the mix rows carry work.serveShare and
+// /api/economy/concentration carries ponyShareOfServedBytes. The clause is no longer
+// STOPPED; the gate built on it is
+// TestGateC3_3_EdgeMajorityOfServeWorkIsTheTenetNotTheNodeShare.
+//
+// THIS TEST STAYS, and it is now MORE load-bearing rather than less: the trap it closes is
+// the RESEMBLANCE between two adjacent fields on the same row, and adding the right one
+// beside the wrong one does not remove the wrong one. Its sibling gate drives the same
+// inversion off the PRODUCT'S figure; this one keeps the fixture-computed control.
 //
 // THE TRAP THIS CLOSES. economyNetwork's mix[].share LOOKS like the missing number and is
 // not: it is a share of NODE COUNT. Under the vision ratio the pony share of nodes is

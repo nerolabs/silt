@@ -222,7 +222,37 @@
         (gini.epoch ? " · " + gini.epoch : "") };
   }
 
+  // The PER-TIER work cells (Economist advisory §3a). Same honesty rules as gossipCell and,
+  // where they overlap, THE SAME CODE: edgeShareCell delegates every not-a-number case to
+  // gossipCell and only re-formats the number, so the withhold / floor / absent / unknown
+  // branches cannot drift between two panels that must agree.
+  //
+  // WHY A SHARE NEEDS THIS AT ALL. A tier that reported NOTHING contributes 0 to the
+  // numerator while other tiers keep the denominator positive, so its share computes to a
+  // perfectly well-formed 0.0 — "this tier does none of the work" when the truth is "no
+  // peer of this tier told me anything". On the shipped -privacy default that is every
+  // tier, every time (D-WORK-VISIBILITY), so this is the NORMAL rendering in production and
+  // not an edge case.
+  function tierShareCell(share) {
+    if (!share) return { text: "—", title: "this figure is absent on the wire, which is not a zero" };
+    if (share.known !== true) return { text: "not reported", unknown: true, title: share.reason || "" };
+    return { text: (Number(share.value || 0) * 100).toFixed(1) + "%", known: true, title: "" };
+  }
+
+  // The T-AR figure: the edge tier's share of the reported serve bytes. It reads as a
+  // PERCENTAGE because it is a share and not a dispersion index, and it carries its own
+  // coverage because edge silence depresses the edge's own share — a false alarm that names
+  // itself, never a false clean bill.
+  function edgeShareCell(conc) {
+    const c = gossipCell(conc, conc && conc.ponyShareOfServedBytes);
+    const ps = conc && conc.ponyShareOfServedBytes;
+    if (!c.known || !ps) return c;
+    return { text: (Number(ps.value || 0) * 100).toFixed(1) + "%", known: true,
+      sub: ps.reporting + " of " + ps.population + " edge nodes reporting (coverage " +
+        Number(ps.coverage || 0).toFixed(2) + ")" + (ps.epoch ? " · " + ps.epoch : "") };
+  }
+
   return { fmtB, fmtDur, withheld, statusCards, prereleaseBanner, observatoryTotals, servedCell, libraryGetCell,
     solvencyCell, economyObjects, marginCard, selfFundingCard, washCard, gossipCell,
-    WITHHELD_HINT, LINK_WITHHELD_HINT };
+    tierShareCell, edgeShareCell, WITHHELD_HINT, LINK_WITHHELD_HINT };
 });
