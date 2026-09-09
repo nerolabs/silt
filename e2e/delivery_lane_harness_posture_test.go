@@ -29,9 +29,19 @@ func TestPaidDeliveryLaneArmsInTheHarnessPosture(t *testing.T) {
 		"-validator", "-objective",
 		"-min-bond", "1M", "-min-bond-floor", "0", "-bond", "8M",
 		"-mature-validators", "1", "-quorum", "1",
-		// The cold-start scaffolding an objective validator refuses to start without: this
-		// node is its own anchor (silt id -id-seed 4811).
-		"-anchors", "023bfdb715f3452ede2812ed3124a58230a5a3659314650c1ef94512805ffcd6",
+		// The cold-start scaffolding an objective validator refuses to start without. TWO
+		// anchors, only one of them live here — which is the harness's actual shape, not a
+		// concession to the MinObjectiveAnchors floor: topology.py declares EVERY validator
+		// as an anchor (`anchors = ",".join(... for v in validators)`), and the boot
+		// validator starts before any peer exists. Declaring itself as the sole anchor was
+		// the simplification, and it is the posture the daemon now refuses, because at one
+		// anchor bftThreshold is 0, the #402 majority is self-satisfied by the proposer and
+		// finality engages at 0 — the node would commit alone with zero attestations.
+		// Nothing here needs a commit: the assertions are start-up lines plus a withdrawal
+		// refused for want of a committed E->key binding, which an un-committed chain gives
+		// all the more surely. IDs are silt id -id-seed 4811 (this node) and 4812.
+		"-anchors", "023bfdb715f3452ede2812ed3124a58230a5a3659314650c1ef94512805ffcd6,"+
+			"399301aaac39f431ed526fb4f8d643ced1c3317072580741e8a8afd228481662",
 		"-capacity", "1G", "-mdns=false", "-id-seed", "4811",
 		// topology.py, boot validator — verbatim:
 		"-accept-delivery-receipts", "-delivery-idle-window", "90s", "-grant-capacity", "64", "-grant-per-hour", "64")
