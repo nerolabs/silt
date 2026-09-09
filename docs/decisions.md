@@ -2543,3 +2543,40 @@ showing the one-byte value IS committed).
   rate (a band still yields a monotone step sequence under probing; a rate publishes the derivative the
   attack must compute), and opt-in telemetry (a self-selected sample is biased in the dangerous direction,
   since an operator running a capture would not opt in).
+
+## D-GENESIS-MOVE-2 — the second content-addressing break is accepted; the genesis ROOT moves, not only the block hash
+
+- **Status:** ✅ RATIFIED 2026-09-09 by the owner ("yes, regenerate"), on the Lane C5 pre-flip closers
+  (PR #787). The first break was ruled the same way on 2026-09-07 under `D-R2.9-NODE-HALF-CALLS`
+  ("accept the new genesis"; no live network exists, every development chain is wiped on upgrade), and
+  that ruling explicitly did NOT cover this one — the second break class was filed forward, not
+  pre-approved, so this is its own ratification rather than an extension of the first.
+
+- **What moves, and why it is larger than 4′.** The 4′ break re-framed only the manifest, and the
+  genesis ROOT does not cover the manifest — so 4′ moved the block hash alone. Computing a
+  single-frame object's parity at the shard's TRUE length changes the object's own chunk IDs, so this
+  time **all three move**: root `fce9eeeb…20d6` → `31768fb4…7dd1`, manifest chunk `5478750c…d107` →
+  `f761f80b…fcf6`, block hash `f428d0a8…0951` → `e44344ea…72c0`. All three are re-pinned in
+  `core/genesis/genesis_test.go`, so a future move stays an explicit, reviewed act.
+
+- **The blast radius, measured rather than asserted.** Objects of `chunkSize − 9` bytes or fewer
+  (262,135 B at the shipped default) re-address; two-or-more-frame objects are byte-identical, because
+  they share a stripe and the tail stays padded. The manifest format is unchanged — no new field, no
+  new CBOR key — and the erasure geometry is unchanged for every object; only a single-frame stripe's
+  shard length moves. An existing store keeps working: nothing on the read path consults the default,
+  so old objects fetch, audit and repair under their own committed geometry. A re-publish of the same
+  bytes yields a new root, so dedup does not span the boundary.
+
+- **What the owner accepted WITH it, each filed as its own register row rather than folded into this
+  sentence:** sub-frame objects become **prepay-only** for durability (`R-SUBFRAME-PREPAY-ONLY`) —
+  their bounty base is zero and serve revenue provably does not cover it, since revenue accumulates
+  per `(server, requester, root)` lane, so traffic that skims 250 credits at a full shard skims 0 at a
+  1 KB shard; and two privacy reductions (`R-SUBFRAME-SIZE-ORACLE`) — an exact byte-length oracle over
+  the whole sub-frame class, and the loss of chunk size as an accidental salt against the confirmation
+  attack. Both are threat-catalog updates, explicitly NOT mitigations, with a red-team pass owed.
+
+- **The reason the change could not be declined on its own terms.** The proof-of-retrieval auditor
+  sizes its challenge from the committed chunk size and demands it EXACTLY of every leaf — that
+  exactness is red-team finding F4 — so a short shard under an unchanged committed size makes the
+  auditor refuse every HONEST holder and every sub-frame object silently read as lost. The frame size
+  actually used therefore travels in the EXISTING committed field: no format change, F4 intact.
