@@ -2281,8 +2281,11 @@ EOF
 #                             dark, or banked while live; a lane-OFF server refuses with the
 #                             announced NOT-banked marker; the two refusals never conflated.
 #   13b-delivery-settlement — pass ONLY when the receipt actually banked on the wire (the
-#                             server's `delivery receipt banked` + the idle `delivery session
-#                             closed`, both in debug.log); SKIP behind the binding probe while
+#                             server's `delivery receipt banked` in debug.log; the idle
+#                             `delivery session closed` line is NOT required — at the shipped
+#                             24m window it cannot occur inside a graded flow, and the close
+#                             is asserted at the e2e tier instead, Lane C2 2026-09-09);
+#                             SKIP behind the binding probe while
 #                             the lane is dark (a skip keeps the RC gate reachable — the PE's
 #                             recommendation; OWNER RATIFICATION of skip-vs-gap is owed and
 #                             recorded in the PR; the skip text says what is untested). This
@@ -2398,22 +2401,26 @@ import json;t=json.load(open('$FT_TOPO'));n=t['nodes']['$offnode'];print(n['node
 
   local t1; t1="$(date +%s)"
   if printf '%s' "$out" | grep -q "delivery receipt banked by"; then
-    # LIVE LANE (the binding committed: post stamp raise). The server's own markers must
-    # agree — banked now, and the session closed on the 90s idle window with no identity or
-    # object on the close line (the M0 log audit) — both read from debug.log after the baseline.
-    local closed="" waited=0
-    while [ "$waited" -lt 150 ]; do
-      closed="$(ssh_node "$boot" "sudo tail -n +$((n0 + 1)) /var/lib/silt/debug.log 2>/dev/null | grep -E 'delivery session closed' | tail -1" || true)"
-      [ -n "$closed" ] && break
-      sleep 10; waited=$((waited + 10))
-    done
+    # LIVE LANE (the binding committed: post stamp raise). The server's own marker must
+    # agree: banked now, read from debug.log after the baseline.
+    #
+    # The idle CLOSE is no longer part of this verdict (Lane C2, 2026-09-09). The shipped
+    # -delivery-idle-window is 24m by derivation, not the 90s this harness used to set, so
+    # an idle close cannot occur inside a graded flow at all — requiring it would fail the
+    # row for the window being correctly sized. It is still READ when it happens (a stale
+    # session from an earlier flow), because the M0 log audit below is worth running on a
+    # real line; its home as a REQUIRED assertion is the e2e tier, where the clock is
+    # injected: e2e TestPaidDeliverySessionEndToEnd drives open → settle → idle close and
+    # asserts the deposit accounting and the no-identity/no-object close line.
+    local closed=""
+    closed="$(ssh_node "$boot" "sudo tail -n +$((n0 + 1)) /var/lib/silt/debug.log 2>/dev/null | grep -E 'delivery session closed' | tail -1" || true)"
     if [ "$off_noise" = 1 ]; then
       record "13-delivery-lane" gap major "LIVE lane: client banked, but the lane-off control at ${offnode} could not be driven (transport noise after 3 attempts: $(printf '%s' "$off" | head -c 200)) — property UNTESTED"
     fi
-    local ok=0; [ -n "$sbanked" ] && [ -n "$closed" ] && [ "$off_ok" = 1 ] && ok=1
+    local ok=0; [ -n "$sbanked" ] && [ "$off_ok" = 1 ] && ok=1
     [ "$off_noise" = 1 ] || slo_assert "13-delivery-lane" major "LIVE lane: client banked (${out##*: }); server debug.log banked=$([ -n "$sbanked" ] && echo yes || echo NO) closed=$([ -n "$closed" ] && echo yes || echo NO); lane-off control at ${offnode} $([ "$off_ok" = 1 ] && echo refused-with-marker || echo "WRONG: $off")" "$ok" $((t1 - t0))
-    local sok=0; [ -n "$sbanked" ] && [ -n "$closed" ] && ! printf '%s' "$closed" | grep -qE "object=|fetcher=" && sok=1
-    slo_assert "13b-delivery-settlement" major "R2.9 settlement ON THE WIRE: ${sbanked:-no banked line}; close: ${closed:-no close line within 150s}${afford:+; $afford}" "$sok" $((t1 - t0))
+    local sok=0; [ -n "$sbanked" ] && ! printf '%s' "$closed" | grep -qE "object=|fetcher=" && sok=1
+    slo_assert "13b-delivery-settlement" major "R2.9 settlement ON THE WIRE: ${sbanked:-no banked line}; close: ${closed:-not observable at the shipped 24m idle window (graded at the e2e tier)}${afford:+; $afford}" "$sok" $((t1 - t0))
     return
   fi
   if printf '%s' "$out" | grep -q "committed E->key binding"; then

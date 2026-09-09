@@ -155,12 +155,75 @@ func tenthsPct(t int64) string {
 
 // ---- R2.9 delivery session: the derived ceiling, the quantized pin, the S5 line.
 
-// deliveryIdleFloor is the smallest -delivery-idle-window the daemon accepts: the reaper
-// ticks at idle/2 on a wall-clock ticker, and a sub-second window would make that ticker
-// interval round to zero (time.NewTicker panics on a non-positive interval — blind PE
-// item 3). The floor is an engineering bound, not the certified VALUE, which is still
-// refuse-until-set above it.
-const deliveryIdleFloor = time.Second
+// ---- the delivery idle window: the bound, the floor, the shipped default.
+//
+// The window is a LIVENESS choice: how long a paid delivery session survives a gap in its
+// fetcher's settlements. An honest fetcher goes quiet while the chain it needs is stalled,
+// so the window must dominate the worst stall the published liveness model admits. All
+// three constants below are DERIVED from that one sentence; none is chosen.
+
+// deliveryIdleBound is the worst stall the model admits: a LOST entry forward is bounded
+// by the re-keyed takeover at ≤ (N+2)·ChainSyncInterval + G = 14·30 + 10 s at N = 12
+// (docs/decisions.md D-H43-WORKLESS-DESIGNEE (21), ratified 2026-09-07). It DOMINATES the
+// 190 s modal tier of D-CONSENSUS-ARMING (19), which is why a defensive window is sized
+// against it and not against the tier: a window that only clears the modal case is broken
+// by the worst case the same document publishes. Both were field-confirmed on the graded
+// run integration/cloudtest/report-97e3101-deep.md (rows 6-fault-tolerance, 10a-stall-drill).
+const deliveryIdleBound = 430 * time.Second
+
+// deliveryIdleStampDivisor mirrors core/node's unexported deliveryStampDivisor, which
+// coarsens the last-settle stamp into buckets of window/divisor (a fine per-identity
+// activity timestamp would be a finer access record than the reaper needs). cmd/silt
+// cannot import it; core/node TestC2StampDivisorIsFour pins the original and cmd/silt
+// TestC2ShippedFloorIsDerivedFromTheBound pins this mirror against it.
+const deliveryIdleStampDivisor = 4
+
+// deliveryIdleFloor is the smallest -delivery-idle-window the daemon accepts. The stamp
+// coarsening spends up to a whole bucket of the window before the reaper ever looks, so a
+// window of D only GUARANTEES D − D/divisor of survival since a real settlement (MEASURED
+// at 0.751× on a 1000 s window: core/node TestC2GuaranteedSurvivalIsThreeQuartersOfTheWindow).
+// The floor is therefore the bound scaled by divisor/(divisor−1), not the bound itself:
+// a daemon started at exactly deliveryIdleBound reaps a session gapped only 322.5 s.
+// This REPLACES the old 1 s floor, which existed only to keep the idle/2 ticker interval
+// positive (blind PE item 3) and enforced nothing about the bound.
+const deliveryIdleFloor = deliveryIdleBound * deliveryIdleStampDivisor / (deliveryIdleStampDivisor - 1)
+
+// deliveryIdleFieldStall is the one stall the field has actually produced: run
+// c450985-deep, block 43 committed 17 min 20 s after block 42. That is the DEFECT the A1
+// fix closed, so it is not a bound — it is carried here as the margin datum the shipped
+// default is required to clear.
+const deliveryIdleFieldStall = 1040 * time.Second
+
+// deliveryIdleDefault is the SHIPPED -delivery-idle-window (owner call 4 of
+// D-TRUE-UP-CALLS-2026-09-07: refuse-until-set is released once the bound is
+// field-confirmed, and the default is then set ABOVE the bound).
+//
+// 24m, not the tighter 10m that also clears the floor, for two measured reasons:
+//   - 10m guarantees 450 s against a 430 s bound: 4.7 % of margin, inside the measurement
+//     error of the block interval the bound's inputs are quoted at (45.865 s/height
+//     measured vs the 30 s ChainSyncInterval the bound is computed at).
+//   - 10m does NOT survive a repeat of the stall the field produced. Driven, both
+//     candidates, both directions: core/node TestC2SessionSurvivesTheWorstAdmittedStall
+//     rows candidate-tight-10m/1040s (reaped) and candidate-margin-24m/1040s (alive).
+//
+// It is a DURATION, not an epoch count: the bound is denominated in ChainSyncInterval and
+// does not move with the block time, so an epoch-denominated default would drift away from
+// the number it has to dominate. The cost of the longer window is a session slot held
+// (deliveryMaxLiveSessions = 4096, and filling it is faucet-limited — one demand-domain
+// anchor per session), and a deposit returned at the LATER of the anchor's release epoch
+// and the close (core/credit/deliveryanchor.go CloseDeliverySession), so the release epoch
+// is the binding term at this window on the measured cohort.
+const deliveryIdleDefault = 24 * time.Minute
+
+// Compile-time proof of the three sentences above, in the same arithmetic the reaper runs.
+// A future edit to the bound, the divisor or the default that breaks one of them fails to
+// BUILD: a negative constant does not convert to uint.
+const (
+	_ = uint(deliveryIdleFloor - deliveryIdleFloor/deliveryIdleStampDivisor - deliveryIdleBound)          // the floor's guaranteed survival clears the bound
+	_ = uint(deliveryIdleDefault - deliveryIdleFloor)                                                     // the default is at or above the floor
+	_ = uint(deliveryIdleDefault - deliveryIdleDefault/deliveryIdleStampDivisor - deliveryIdleFieldStall) // and clears the observed field stall
+	_ = uint(deliveryIdleFloor/2 - time.Second)                                                           // the idle/2 ticker interval stays positive (PE item 3)
+)
 
 // deliverySessionCeiling is C3 (G-R212-8 cert §3.1): D_max = ⌊f/p⌋·U bytes per anchor
 // and k_max_delivery = ⌈D_max·p/(U·f)⌉ = 1 anchor per open, DERIVED from the face this

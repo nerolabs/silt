@@ -44,7 +44,7 @@ func TestPaidDeliveryLaneArmsInTheHarnessPosture(t *testing.T) {
 			"399301aaac39f431ed526fb4f8d643ced1c3317072580741e8a8afd228481662",
 		"-capacity", "1G", "-mdns=false", "-id-seed", "4811",
 		// topology.py, boot validator — verbatim:
-		"-accept-delivery-receipts", "-delivery-idle-window", "90s", "-grant-capacity", "64", "-grant-per-hour", "64")
+		"-accept-delivery-receipts", "-delivery-idle-window", "24m", "-grant-capacity", "64", "-grant-per-hour", "64")
 	a.waitFor(t, regexp.MustCompile(`epoch-blocks defaulted to [1-9]`), 20*time.Second)
 	a.waitFor(t, regexp.MustCompile(`delivery receipts: ACCEPTING`), 20*time.Second)
 	a.waitFor(t, regexp.MustCompile(`delivery settlement: p=`), 20*time.Second)

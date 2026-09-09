@@ -395,7 +395,13 @@ def main():
                 # trade (blind PE re-review): 64/hour is the boot validator's publish-mint
                 # headroom once the lane is LIVE (17 ft_publish sites x retries); safe today by
                 # the faucet's one-fee advance floor — re-measure at the stamp raise.
-                a += " -accept-delivery-receipts -delivery-idle-window 90s -grant-capacity 64 -grant-per-hour 64"
+                # Lane C2: the idle window is the SHIPPED default (24m), not the 90s this
+                # harness ran on every graded sheet until 2026-09-09. 90s guarantees only
+                # 67.5s of survival since a real settlement (the stamp is coarsened to
+                # window/4), which is under even the 190s down-designee escape bound this
+                # same sheet confirms in row 6-fault-tolerance — so the paid lane was
+                # graded under a window the liveness model the sheet grades can break.
+                a += " -accept-delivery-receipts -delivery-idle-window 24m -grant-capacity 64 -grant-per-hour 64"
             else:
                 a += f" -bootstrap {bootstrap}"
             return a

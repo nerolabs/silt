@@ -128,10 +128,14 @@ func TestC2AcceptedIdleFloorClearsTheLivenessBound(t *testing.T) {
 	}
 }
 
-// G-C2-9 — the shipped flag DEFAULT is no longer the refuse-until-set 0. RED today. This
-// is a source-text pin and it verifies exactly one thing: that the literal in the
-// fs.Duration call is not 0. It does NOT evaluate the default; G-C2-8 is the arm that runs
-// a number through the derivation.
+// G-C2-9 — the shipped flag DEFAULT is no longer the refuse-until-set 0. This is a
+// source-text pin and it verifies exactly one thing: that the literal in the fs.Duration
+// call is not 0. It sees STRINGS ONLY — it does NOT evaluate the default; G-C2-8 is the
+// arm that runs a number through the derivation, and G-C2-15 pins the expression to the
+// derived constant.
+// RUNTIME GATE: e2e TestDeliveryIdleWindowDefaultBootsThePaidLane — a daemon with
+// -accept-delivery-receipts and no -delivery-idle-window boots and announces the window
+// it got.
 func TestC2DeliveryIdleWindowDefaultIsSet(t *testing.T) {
 	src, err := os.ReadFile("daemon.go")
 	if err != nil {
@@ -139,10 +143,10 @@ func TestC2DeliveryIdleWindowDefaultIsSet(t *testing.T) {
 	}
 	got, ok := c2DefaultLiteral(src)
 	if !ok {
-		t.Fatal("daemon.go no longer declares -delivery-idle-window with fs.Duration — this gate has lost its subject")
+		t.Fatal("SOURCE GATE: daemon.go no longer declares -delivery-idle-window with fs.Duration — this gate has lost its subject")
 	}
 	if got == "0" {
-		t.Fatalf("-delivery-idle-window default is still %q (REFUSE-UNTIL-SET). Owner call 4 of "+
+		t.Fatalf("SOURCE GATE: the -delivery-idle-window default expression is still %q (REFUSE-UNTIL-SET). Owner call 4 of "+
 			"D-TRUE-UP-CALLS-2026-09-07 releases it now that the bound is field-confirmed "+
 			"(integration/cloudtest/report-97e3101-deep.md, rows 6-fault-tolerance and 10a-stall-drill). "+
 			"The derived floor is %v; the Tester's recommendation is 24m (guaranteed survival 18m = 2.51× "+

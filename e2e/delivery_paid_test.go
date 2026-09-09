@@ -19,6 +19,7 @@ import (
 	"crypto/rsa"
 	"encoding/hex"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -264,11 +265,16 @@ func TestPaidDeliverySessionEndToEnd(t *testing.T) {
 	}
 }
 
-// TestDeliveryIdleWindowIsRefuseUntilSet — the runtime half of the C9 refuse-until-set
-// (blind PE item 2): a daemon with -accept-delivery-receipts and no -delivery-idle-window
-// exits with a refusal naming the flag, and never becomes a peer; a sub-second window is
-// refused the same way (item 3: the idle/2 ticker must never see a zero interval).
-func TestDeliveryIdleWindowIsRefuseUntilSet(t *testing.T) {
+// TestDeliveryIdleWindowFloorIsEnforcedAtStartUp — the runtime half of the idle-window
+// floor. Refuse-until-set is RELEASED (Lane C2, owner call 4 of D-TRUE-UP-CALLS-2026-09-07:
+// the default ships now that the bound is field-confirmed), so what the daemon enforces is
+// no longer "set it" but "set it high enough": a window below deliveryIdleFloor reaps an
+// honest fetcher gapped by a stall the liveness model admits, and is refused.
+//
+// Both polarities, at the endpoints of the floor rather than at a token value: one second
+// UNDER the derived floor refuses, and the shipped DEFAULT (no flag at all) boots to a peer.
+// The old "unset refuses" arm is gone because the behaviour it asserted is what shipped.
+func TestDeliveryIdleWindowFloorIsEnforcedAtStartUp(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e spawns processes; skipped under -short")
 	}
@@ -276,8 +282,14 @@ func TestDeliveryIdleWindowIsRefuseUntilSet(t *testing.T) {
 		name, seed string
 		extra      []string
 	}{
-		{"unset", "4830", nil},
-		{"below-floor", "4831", []string{"-delivery-idle-window", "1ns"}},
+		// 1ns: the original floor's job (item 3 — the idle/2 ticker must never see a
+		// zero interval). Still refused, now by the bound-derived floor above it.
+		{"sub-second", "4831", []string{"-delivery-idle-window", "1ns"}},
+		// One second under the derived floor of 9m33.333333333s = bound × 4/3. This is
+		// the arm that fails if the floor is ever quietly lowered back toward the bound
+		// itself: 9m32s clears 430 s naively and is still refused, because the stamp
+		// coarsening spends a quarter of it.
+		{"one-second-under-the-derived-floor", "4832", []string{"-delivery-idle-window", "9m32s"}},
 	} {
 		arm := arm
 		t.Run(arm.name, func(t *testing.T) {
@@ -308,5 +320,33 @@ func TestDeliveryIdleWindowIsRefuseUntilSet(t *testing.T) {
 				t.Fatalf("a refused daemon became a peer first: %q", m[0])
 			}
 		})
+	}
+}
+
+// TestDeliveryIdleWindowDefaultBootsThePaidLane — the OTHER polarity of the gate above,
+// and the runtime arm the cmd/silt source pin cannot reach: a daemon that arms the paid
+// delivery lane and sets NO -delivery-idle-window boots, announces the lane, and echoes
+// the shipped default on its affordability line. Before Lane C2 this exact argv refused.
+//
+// It asserts the ANNOUNCED window, not just the absence of a refusal, because that is the
+// only surface an operator reads to learn what window it got.
+func TestDeliveryIdleWindowDefaultBootsThePaidLane(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e spawns processes; skipped under -short")
+	}
+	d := startDaemon(t, "r29-idle-default",
+		"-listen", "127.0.0.1:0", "-store", t.TempDir(),
+		"-serve-registry", "127.0.0.1:0", "-validator",
+		"-accept-delivery-receipts", "-epoch-blocks", "8",
+		"-grant-capacity", "256", "-grant-per-hour", "256",
+		"-objective=false", "-min-rep", "100", "-quorum", "1",
+		"-bond", "8M", "-min-bond-floor", "0",
+		"-capacity", "1G", "-mdns=false", "-id-seed", "4833")
+	line := d.waitFor(t, regexp.MustCompile(`delivery settlement: .*idle window \S+`), 30*time.Second)[0]
+	if !strings.Contains(line, "idle window 24m0s") {
+		t.Fatalf("the daemon booted on an idle window it did not announce as the shipped default:\n\t%s", line)
+	}
+	if m := d.out.find(reRefuseLine); m != nil {
+		t.Fatalf("the default window was refused at start-up: %q", m[0])
 	}
 }
