@@ -1994,9 +1994,22 @@ func (c *Chain) validateBondRegs(b *Block) error {
 			// the pruned-tolerance rule through StateView.PrunedTolerated, which answers the question
 			// and never the scalar (D0 / H-4: a floor on that interface is a wrong-accept vector), so
 			// the mirror structurally cannot know the number. The v4/v5 parity oracle requires the two
-			// renderings to be IDENTICAL — the #572 attribution contract — and a value on one side only
-			// is exactly the drift it exists to catch. The floor is node-local and queryable; the
-			// sentinel and the height carry what an operator acts on.
+			// renderings to be IDENTICAL — the #572 attribution contract, which already carries its
+			// one permitted text departure (rootsRendered) — and a value on one side only is exactly
+			// the drift it exists to catch.
+			//
+			// WHAT THIS COSTS THE OPERATOR, stated rather than glossed. An earlier draft of this
+			// comment said the floor is "node-local and queryable". It is node-local; it is NOT
+			// queryable. trustFloor() is unexported and has no reader in cmd/, core/node/, adapters/
+			// or internal/, and chain-status prints the pruned block COUNT, not the floor. So an
+			// operator who sees this refusal learns the height of the offending block and not how far
+			// under their anchor it sits. Surfacing it is not the one-line fix it looks like:
+			// chain-status never constructs a Chain — it decodes chain.cbor directly, which is why it
+			// already takes the epoch cadence as a FLAG — and trustFloor is max(RetentionHorizon(),
+			// WSCheckpoint.Height) with RetentionHorizon() gated on finalityQuorumActive(), a
+			// predicate over committed state under the full consensus config. A queryable floor is a
+			// real operator-surface change, not a print statement, and it is not in this row's scope.
+			// Recorded here as a known gap rather than papered over by a false clause.
 			return fmt.Errorf("%w: pruned block at height %d", ErrPrunedAboveHorizon, b.Height)
 		}
 		// Below the anchor: skip the space-time re-verify. Belt (decode-invariant): a
