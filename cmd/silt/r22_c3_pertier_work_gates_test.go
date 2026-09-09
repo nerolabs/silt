@@ -697,15 +697,25 @@ func ptVisionMix(k int) c3NetworkWire {
 // asserted as a field alarm — this is a harness gate under D-WORK-VISIBILITY.
 //
 // CONTROLLED REVERT (G-PT-5): accumulate PledgedBytesByTier over every CLASSIFIABLE peer
-// instead of every REPORTING peer (move the two lines above the M-2 return in
-// core/node/economysample.go) and the honest arm's expectation shifts off its observation,
-// reddening the honest arm.
+// instead of every REPORTING peer (move the line above the M-2 return in
+// core/node/economysample.go). MEASURED at both tiers: the five silent horses' pledge enters
+// the expectation, the honest arm's excess moves from 0.0000 to +0.0547 on "archival", and
+// core/node's TestR22PerTierTotalsFollowTheExclusionRuleAndNameTheirAbsences reddens on
+// `PledgedBytesByTier[pony] = 12884901888, want 8589934592`.
 func TestGateC3_3d_RepairShareIsRelativeToHoldingsWhichIsWhatTheWithdrawnConstantCouldNotBe(t *testing.T) {
 	// HONEST, holdings-proportional: a 4 TiB archival node holds 64x a 64 GiB horse, so it
 	// repairs 64x as much. Ponies serve but do no durability work (D-TIERING coupling (b)).
+	//
+	// AND THE FIXTURE CARRIES FIVE SILENT HORSES, which is not decoration. Without them
+	// every classifiable peer is also a reporting peer, the two populations coincide, and
+	// the gate cannot see whether the expectation is computed over the reporting set or over
+	// the whole sample. Measured: with full coverage the G-PT-5 revert leaves this gate
+	// GREEN; with the silent horses in it the honest arm's excess moves off 0 to +0.0547.
+	// A fully-covered fixture is an excused row.
 	honest := []c3Peer{
 		{capTotal: c3PonyCap, served: 1 * c3Unit, repairs: 0, n: 1000},
 		{capTotal: c3HorseCap, served: 7 * c3Unit, repairs: 1, n: 10},
+		{capTotal: c3HorseCap, served: 0, repairs: 0, n: 5}, // classifiable, capable, SILENT
 		{capTotal: c3ArchivalCap, served: 24 * c3Unit, repairs: 64, n: 1},
 	}
 	conc, nw := c3Fixture(t, 48, honest)
