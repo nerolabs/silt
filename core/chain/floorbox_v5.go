@@ -129,14 +129,21 @@ var (
 // ambiguity. Matching the gate exactly avoids flagging a height that would not actually
 // trigger the recovery re-base (a false indeterminate would needlessly stall an honest box).
 //
-// The floor box learns the chain's LivenessRecoveryHeight from the same public consensus
-// config a full node uses; the AMBIGUITY is not whether recovery is configured (that is
-// public) but whether the box may TRUST the re-base — which is the box-local directive's job.
-// A box whose own directive covers h has resolved the ambiguity for itself; a box without one
-// has not.
+// The floor box learns the chain's LivenessRecoveryHeight from the same public consensus config a
+// full node uses; the AMBIGUITY is not whether recovery is configured (that is public) but whether
+// the box may TRUST the re-base. Before D0 that was the box-local directive's job. It is nobody's
+// job now: the directive is deleted and the box never trusts a re-base, so an ambiguous boundary is
+// an unconditional stall.
+//
+// FOUR conditions, not five. `EpochBlocks != 0` used to sit between epochsEnabled() and the modulo
+// as a division-by-zero guard; epochsEnabled() is `EpochBlocks > 0 && objective()` (chain.go) and &&
+// short-circuits, so it could never be reached with EpochBlocks == 0 and was dead. Measured: the PE
+// dropped it and the suite stayed green. Removed rather than kept-as-defensive, because a conjunct
+// no input can falsify is one a reader must re-derive to discover is inert — and its presence made
+// this predicate's own ablation claim false.
 func (c *Chain) isAmbiguousRecoveryBoundary(h uint64) bool {
 	return c.cfg.LivenessRecoveryHeight != 0 && h == c.cfg.LivenessRecoveryHeight &&
-		c.epochsEnabled() && c.cfg.EpochBlocks != 0 && h%c.cfg.EpochBlocks == 0
+		c.epochsEnabled() && h%c.cfg.EpochBlocks == 0
 }
 
 // recoveryBoundaryDecision is the #535 policy unit: whether the box may proceed to trustless

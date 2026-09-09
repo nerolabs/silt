@@ -213,6 +213,39 @@ composition through the door to the downgrade. A box that stalled on everything 
 | no floor on the surface | re-add a floor-shaped method to `StateView` |
 | class coverage | add a payload field to `Block` and leave it undriven |
 
+## The through-line: a comment is an assertion, and only execution keeps it true
+
+Not an incident — a pattern, four times in one branch, each caught by someone RE-RUNNING the claim
+rather than reading it. Recording it because the shape is the lesson, not any one instance.
+
+| # | The sentence | What was actually true | Caught by |
+|---|---|---|---|
+| 1 | `coldAuditorUndriven["Height"]`: *"P1 binds it to the box's OWN head before any other read"* | three block reads precede P1, and the door read `b.Height` under cover of it | blind PE, B-1 |
+| 2 | H-4 clause (2): *"any method whose NAME carries 'floor' ⇒ RED"* | name-contains AND arity-1-uint64; `Anchor() uint64` walked past | blind PE, ablation |
+| 3 | H-4 clause (2) v2: *"no method returns a lone scalar today, so the rule is exact"* | a fact about the surface, not the rule; three re-spellings walked past | blind PE, ablation |
+| 4 | *"each conjunct dropped in turn flips exactly one row"* | one conjunct was dead, and after deleting it a second was still not isolated by any row | blind PE, then me, running it |
+
+Number 4 is the one worth dwelling on. The PE found the dead conjunct; I deleted it and wrote a
+corrected sentence saying each of the four survivors flips a row. Then I ran the matrix instead of
+trusting my own correction, and `LivenessRecoveryHeight != 0` came back **GREEN** — no row isolated
+it, because the only input that does is height 0 on an unconfigured chain (genesis), which the table
+did not contain. Dropping it makes genesis read as an ambiguous recovery boundary and every box stall
+at height 0 forever. So the corrected sentence would have shipped false too, and the fix is a new
+row, not more careful wording.
+
+**The rule this yields.** A sentence describing what a gate checks is itself an assertion, and it
+decays exactly like a cited test name: nothing executes it. Three defences, in order of strength:
+
+1. **Prefer a rule with a closed complement to a pattern.** Clause (2)'s first two forms matched a
+   name, then a shape; both had unbounded escapes and both were escaped. The partition — *on the
+   allow-list, or ends in `Availability`* — has none, because there is no third option to spell.
+2. **Run the claim, one condition at a time.** "Each conjunct is load-bearing" is a measurement, not
+   a description. Two of five were not, and only the matrix said so.
+3. **Put the prose where a machine reads it.** The excuse rows name their gate so
+   `check_cited_tests` resolves the name — which is why this round also had to fix that lint, since
+   it scanned comments only and every excuse row is a string literal. A claim a tool can check is
+   the only kind that stays true without someone choosing to re-derive it.
+
 ## What this row does NOT do
 
 It does not flip the box to Accept (R1.8, a consensus-rule change, research-gated and outside the

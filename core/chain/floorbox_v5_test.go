@@ -96,7 +96,14 @@ func TestRecoveryBoundaryDecision_NonBoundaryHeightNotAmbiguous(t *testing.T) {
 // config the full node itself ignores, so the box must ignore it too; adopting the LOOSER form at
 // both sites was the rejected direction, because it stalls at heights that are not boundaries.
 //
-// ABLATION: each conjunct dropped in turn flips exactly one row of the table below.
+// ABLATION: each of the FOUR conditions dropped in turn flips at least one row — verified, one
+// condition at a time, not assumed. Four, not five —
+// the table has five rows plus a legacy arm because condition 3, epochsEnabled(), is
+// `EpochBlocks > 0 && objective()` and is exercised from BOTH sides: the "epochs disabled" row
+// falsifies the cadence half, the legacy-fixture arm falsifies the objective half. The predicate
+// carried a fifth conjunct, `EpochBlocks != 0`, until D0's re-review measured it dead (implied by
+// epochsEnabled(), which is evaluated first and short-circuits); it is deleted, so no row here is
+// asserting against a condition no input can falsify.
 func TestIsAmbiguousRecoveryBoundary_IsTheStricterForm(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -107,6 +114,12 @@ func TestIsAmbiguousRecoveryBoundary_IsTheStricterForm(t *testing.T) {
 		{"boundary height, epochs on, divides", Config{EpochBlocks: 4, LivenessRecoveryHeight: 8}, 8, true},
 		{"height is not the configured one", Config{EpochBlocks: 4, LivenessRecoveryHeight: 8}, 4, false},
 		{"no recovery height configured", Config{EpochBlocks: 4, LivenessRecoveryHeight: 0}, 8, false},
+		// Height 0 with recovery UNCONFIGURED is the only input that isolates the first conjunct:
+		// drop `LivenessRecoveryHeight != 0` and `h == c.cfg.LivenessRecoveryHeight` becomes 0 == 0,
+		// epochs are on and 0 % 4 == 0, so genesis reads as an ambiguous recovery boundary and every
+		// box stalls at height 0 forever. Without this row that conjunct is inert under the table —
+		// measured, and it is why the row exists.
+		{"height 0, recovery unconfigured (genesis)", Config{EpochBlocks: 4, LivenessRecoveryHeight: 0}, 0, false},
 		{"height is not an epoch boundary", Config{EpochBlocks: 4, LivenessRecoveryHeight: 5}, 5, false},
 		{"epochs disabled (EpochBlocks 0)", Config{EpochBlocks: 0, LivenessRecoveryHeight: 8}, 8, false},
 	} {
