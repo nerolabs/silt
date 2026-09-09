@@ -147,8 +147,8 @@ func (s *Box) view() provenView {
 // with the P13a predicate wired to the certified witness recompute. Order, load-bearing:
 //
 //  1. the byte budget over FRAME + WITNESS, before any crypto and before any read (BG-3);
-//  2. the #535 recovery decision (cold auditor: an UNCONDITIONAL loud stall — no directive, no
-//     opt-in, no fall-through; never trust the proposer);
+//  2. the #535 recovery decision, over the box's OWN head height (cold auditor: an UNCONDITIONAL
+//     loud stall — no directive, no opt-in, no fall-through, and no field of the block);
 //  3. a pruned block stalls (ErrPrunedBlockUnreproducible);
 //  4. ValidateCommitV5: P1 binds (b.Prev, b.Height) to the box's OWN head FIRST — so the carrier
 //     leg (P12) and the class-A fold (P13a) run over a parent the box chose, not the author;
@@ -157,7 +157,26 @@ func (s *Box) Validate(b Block, w StateRootWitness) (FloorBoxOutcome, error) {
 	if err := s.budget.Check(len(Encode(&b))+witnessBytes(w), "frame+witness"); err != nil {
 		return IndeterminateTrustlessly, err
 	}
-	if proceed, reason := s.c.recoveryBoundaryDecision(b.Height); !proceed {
+	// B-1. The height this reads is the BOX'S OWN — head.NextHeight, derived from the parent block
+	// the box holds — and never b.Height, which is the block author's self-declared field.
+	//
+	// It was b.Height, and that made the "unconditional" stall a proposer's choice in both
+	// directions. A box at height 2 with the boundary at 100 emitted ErrRecoveryBoundaryStall for
+	// any block that merely DECLARED Height=100 — and that error tells the operator the condition
+	// is terminal until they re-anchor, whose contract (owned-residuals.md E2a clause 3) is to
+	// treat an unreachable pin as a critical and irrecoverable failure. One integer from any
+	// unauthenticated peer, ninety-eight blocks early, invoked it. In the other direction a box AT
+	// the boundary, handed a block declaring Height+1, returned Reject/ErrWrongParent — the same
+	// reason it gives ordinary stale traffic — so E2a's "the stall propagates to every descendant"
+	// was true only by the accident that the box cannot advance its head, and a proposer that
+	// simply never sent a boundary-height block suppressed the name the operator needs.
+	//
+	// Keyed on head.NextHeight, both directions close: the posture is a property of WHERE THE BOX
+	// IS, so every block it is handed at that position gets the same terminal name, and no block
+	// can move it there. This read precedes P1 — the budget, this decision and the pruned refusal
+	// all run before the composition binds (b.Prev, b.Height) — which is exactly why it must not
+	// read a block field: at this point in the door nothing about the block is bound to anything.
+	if proceed, reason := s.c.recoveryBoundaryDecision(s.head.NextHeight); !proceed {
 		return IndeterminateTrustlessly, reason
 	}
 	if b.IsPruned() {

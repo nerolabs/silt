@@ -124,7 +124,17 @@ func coldAuditorClasses() []coldAuditorClass {
 // table does not drive it. The coverage meta-test requires the union to be EXACTLY Block's
 // exported fields, so a new payload field reddens rather than silently escaping the suite.
 var coldAuditorUndriven = map[string]string{
-	"Height":      "position, not a payload class; P1 binds it to the box's OWN head before any other read, and TestG3_ParentBindingPrecedesTheCarrierLeg drives that",
+	// The Height row is written the way it is because its FIRST version was the coverage hole this
+	// list exists to prevent. It said "P1 binds it to the box's OWN head before any other read",
+	// which is measurably false — the budget check, the recovery decision and the pruned refusal all
+	// run BEFORE P1 — and the door read b.Height for the recovery decision under cover of that
+	// sentence (B-1). A meta-test whose excuses are prose is only as good as the prose: an excuse
+	// must name the gate that actually covers the field, not the gate a reader would assume.
+	"Height": "position, not a payload class, and it is read in TWO places with two different rules. " +
+		"Inside the composition P1 binds it to the box's own head (TestG3_ParentBindingPrecedesTheCarrierLeg). " +
+		"BEFORE the composition the door reads three things — budget, recovery boundary, pruned — and none " +
+		"of them may key on it: the recovery decision keys on head.NextHeight, driven both directions by " +
+		"TestColdAuditor_TheBoundaryPostureIsThePositionOfTheBoxNotTheClaimOfTheBlock",
 	"Prev":        "position, not a payload class; bound to the box's own head at P1 (same gate)",
 	"Proposer":    "identity, not a payload class; NewBox refuses a parent whose proposer signature does not verify, and the proposer screens run in the composition",
 	"ProposerSig": "the signature over the class payloads above; every arm here re-signs after forging, so it is exercised by all of them",
@@ -365,6 +375,86 @@ func TestColdAuditor_StallsUnconditionallyAtARecoveryBoundary(t *testing.T) {
 	f.c.cfg.LivenessRecoveryHeight = b.Height + f.c.cfg.EpochBlocks
 	if out, err := boxOver(t, f, src).Validate(b, w); errors.Is(err, ErrRecoveryBoundaryStall) {
 		t.Fatalf("away from the configured boundary the door must NOT stall on it; got %s / %v", out, err)
+	}
+}
+
+// TestColdAuditor_TheBoundaryPostureIsThePositionOfTheBoxNotTheClaimOfTheBlock is B-1's gate,
+// driven in BOTH directions. The cold auditor's boundary posture is a fact about WHERE THE BOX IS.
+// It must not be a fact about what a block says it is, because the two failures are not symmetric
+// and neither is benign:
+//
+//   - FALSE POSITIVE. The stall's own text tells the operator the condition is terminal until they
+//     re-anchor, and owned-residuals.md E2a clause 3 makes an unreachable pin a CRITICAL AND
+//     IRRECOVERABLE FAILURE. If a declared height could invoke it, any unauthenticated peer could
+//     invoke that contract on a box ninety-eight blocks early with one integer.
+//   - FALSE NEGATIVE. A box AT the boundary handed a block declaring some other height used to
+//     answer Reject/ErrWrongParent — the reason it gives ordinary stale traffic — so the terminal
+//     name the operator needs was emitted for one block and never again, and a proposer that never
+//     sent a boundary-height block suppressed it entirely.
+//
+// The fixture that shipped first could not see either, because it set LivenessRecoveryHeight to the
+// block's height where the block already sat at head.NextHeight: the two quantities coincided, so no
+// assertion over them could tell them apart. This arm SEPARATES them and drives each alone.
+//
+// ABLATION: key the door's recoveryBoundaryDecision on b.Height instead of s.head.NextHeight ⇒ both
+// halves go RED — the away-from-the-boundary half sees the terminal stall it must never see, and the
+// at-the-boundary half loses it for a block declaring another height.
+func TestColdAuditor_TheBoundaryPostureIsThePositionOfTheBoxNotTheClaimOfTheBlock(t *testing.T) {
+	f := buildStructFixture(t)
+	src := newProverSource(t, f.c)
+	b := f.mkBlock(t, nil)
+	w := structWitnessFor(t, f, src, b)
+	assertBoxReachesTheDowngrade(t, boxOver(t, f, src), b, w)
+
+	const far = 100 // an epoch boundary far above the box's head
+	f.c.cfg.EpochBlocks = 2
+	if b.Height >= far || far%f.c.cfg.EpochBlocks != 0 {
+		t.Fatalf("fixture: the far boundary (%d) must be an epoch boundary above the box's head (%d)", far, b.Height)
+	}
+
+	// DIRECTION 1 — the box is NOT at the boundary. No claim the block makes may put it there.
+	f.c.cfg.LivenessRecoveryHeight = far
+	away := boxOver(t, f, src)
+	if away.Head().NextHeight == far {
+		t.Fatalf("arm vacuous: the box's head (%d) must differ from the configured boundary (%d)", away.Head().NextHeight, far)
+	}
+	claimant := b
+	claimant.Height = far // the author's self-declared field, and nothing else
+	for _, tc := range []struct {
+		name string
+		blk  Block
+	}{{"honest height", b}, {"declares the boundary height", claimant}} {
+		out, err := away.Validate(tc.blk, w)
+		assertNeverAccept(t, "away-from-boundary/"+tc.name, out, err)
+		if errors.Is(err, ErrRecoveryBoundaryStall) {
+			t.Fatalf("B-1 (%s): a box at head %d emitted the TERMINAL boundary stall for a configured "+
+				"boundary of %d. That error tells the operator to re-anchor and treat an unreachable "+
+				"pin as a critical and irrecoverable failure — it must never be reachable by a field "+
+				"the block's author fills in. Got %s / %v", tc.name, away.Head().NextHeight, far, out, err)
+		}
+	}
+
+	// DIRECTION 2 — the box IS at the boundary. Every block it is handed gets the terminal name,
+	// whatever height that block declares, because the posture is the box's position.
+	f.c.cfg.LivenessRecoveryHeight = b.Height
+	at := boxOver(t, f, src)
+	if !f.c.isAmbiguousRecoveryBoundary(at.Head().NextHeight) {
+		t.Fatalf("arm vacuous: the box's head (%d) must BE the ambiguous boundary", at.Head().NextHeight)
+	}
+	elsewhere := b
+	elsewhere.Height = b.Height + 1 // stale/ahead traffic, the shape that used to answer ErrWrongParent
+	for _, tc := range []struct {
+		name string
+		blk  Block
+	}{{"honest height", b}, {"declares another height", elsewhere}} {
+		out, err := at.Validate(tc.blk, w)
+		assertNeverAccept(t, "at-boundary/"+tc.name, out, err)
+		if !errors.Is(err, ErrRecoveryBoundaryStall) {
+			t.Fatalf("B-1 (%s): a box AT the ambiguous boundary (head %d) must give the TERMINAL "+
+				"boundary name for every block it is handed — E2a says the stall propagates to every "+
+				"descendant, and a name emitted only for a boundary-height block is one a proposer "+
+				"suppresses by never sending one. Got %s / %v", tc.name, at.Head().NextHeight, out, err)
+		}
 	}
 }
 

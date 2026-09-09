@@ -53,6 +53,19 @@ function collapses to the boundary predicate itself.
 - **Chosen:** `recoveryBoundaryDecision(h)` returns `(false, ErrRecoveryBoundaryStall)` iff
   `isAmbiguousRecoveryBoundary(h)`. The `RecoveryDirective` type, `hasDirective`, `BoxConfig.Recovery`
   and `Box.recovery` are deleted outright, and `WitnessValidateV5` loses its third parameter.
+- **CORRECTED after the blind PE review (B-1,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-d0-cold-auditor-3539b2a-2026-09-09.md`):
+  the height that decision reads is the BOX'S OWN (`head.NextHeight`), never `b.Height`.** The first
+  cut deleted the knob and then handed the same authority to the block's author. Measured both ways:
+  a box at height 2 with the boundary at 100 emitted the stall for a block that merely *declared*
+  Height=100 — and that stall's text invokes a contract (E2a clause 3) whose operator response is to
+  treat an unreachable pin as a critical and irrecoverable failure, so one integer from any peer was
+  a remote liveness kill; and a box AT the boundary handed a block declaring Height+1 answered
+  `Reject`/`ErrWrongParent`, the reason it gives ordinary stale traffic, so "the stall propagates to
+  every descendant" was true only by the accident that the box cannot advance its head. The lesson
+  is narrower than "bind the height": **deleting a knob does not make a decision unconditional if the
+  replacement input is still someone else's.** The knob's authority has to land on something the box
+  owns, and the box owned `head.NextHeight` the whole time.
 - **Rejected — keep the type, ignore the fields.** It leaves a struct whose whole meaning is a
   policy that no longer exists, and the next reader has to prove it inert. The certification's
   §2.1 already had to prove exactly that (the knob was inert DOUBLY and the ruling named only one
