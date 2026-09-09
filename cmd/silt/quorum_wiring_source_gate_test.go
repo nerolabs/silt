@@ -30,9 +30,22 @@ import (
 //   - shadow `effByz` just for this call and the original validity-lowering blocker
 //     re-opens with both gates green.
 //
-// So this file asserts the two structural facts that close those: the derivation precedes
-// its consumer, and `effByz` is declared exactly once in the file. Anything beyond string,
-// order and count here is unobserved, and a future edit should assume so.
+// So this file asserts the structural facts that close the shapes seen so far: the
+// derivation precedes its consumer, and no other binding of `effByz` exists in the file.
+//
+// UNGATED: the VALUE of effByz AT the call site. This is a deliberate stop, not an
+// oversight. A second review broke the value arm three more ways in ten minutes, all
+// compiling and all leaving every arm here green — `var effByz bool = true` in an
+// enclosing block (one token off the spelling this file greps for, and it re-opens the
+// validity-lowering blocker verbatim), a plain `effByz = true` reassignment, and widening
+// the derivation's own condition. Which binding an identifier resolves to is a property of
+// scope, and a substring search cannot decide it. Each additional arm would close one
+// spelling while advertising coverage it does not have, which is the exact failure this
+// repo's source-gate lint exists to prevent. The honest cover is a RUNTIME one: drive the
+// daemon and assert the "gather target derived to" line is absent under
+// -byzantine-quorum=false and present with sizing on, which kills every spelling at once.
+// It is owed on the next visit to this file (e2e tier, since e2e is skipped under -short).
+// Until then this gate holds string, order and count — nothing more.
 func TestDerivedQuorumIsWiredWithBothPreconditions(t *testing.T) {
 	src, err := os.ReadFile("daemon.go")
 	if err != nil {
