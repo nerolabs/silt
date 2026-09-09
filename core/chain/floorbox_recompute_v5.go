@@ -46,7 +46,7 @@ import (
 // total = Σ verified weights; support = proposer + Σ seen verified weights; 3*support > 2*total.
 //
 // STOP BOUNDARY (this increment). It reproduces ONE predicate. It does NOT flip #657
-// WitnessValidateV5 to Accept — that is the final increment, only after ALL predicates are
+// the box to Accept — that is the final increment, only after ALL predicates are
 // reproduced. The box STILL never-Accepts. It reproduces the NON-boundary epochSet fold only;
 // the #535 recovery boundary (effectiveEpochSet = liveQualifiedSet) stays the ratified trust-
 // the-directive carve-out (cert C-2), governed by the #535 policy floorbox_v5.go already ships.

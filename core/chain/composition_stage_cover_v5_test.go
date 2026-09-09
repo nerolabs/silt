@@ -543,7 +543,7 @@ var nodeBodyDigests = map[string]string{
 	"restoresHeldStanding":       "1dd120f427f6eb4c3f93103afa61770b4bf2f03153c5bfc97596d04e1263d499",
 	"validateBondReg":            "595b695e1d665885b4de70585fe94ed4b09654ce956b6b08fe712665b80f3bf6",
 	"validateBondRegWindow":      "cceaf238101c9a751ebba1bfcb406ce01c90387d03fc62fdd8015b5e98ad7745",
-	"validateBondRegs":           "ec0fdfd68d488ca5faa1d72462be6e9af04485217cd296f55ad08b88e8516042",
+	"validateBondRegs":           "11e6fe97b14dd3b1ca4fae6538d8dd75dc467ec48634ff36561ce08898129955",
 	"validateCarrier":            "fb137538622a06a27dea8039ddc0438889c94230d729cd3cae8e74ea13a7508a",
 	"validateEra3Roots":          "a7ec421d2ea91224cec48dc7cfe34f935908fdf0bc46d8e3dcbd8addf6823b92",
 	"validateEra3Version":        "1ff98cdc43e91fb10dc080c41a0c788beb6b8ddc06a87461a7fceea55fe4dc0b",

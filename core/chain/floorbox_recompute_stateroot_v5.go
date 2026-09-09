@@ -49,7 +49,7 @@ import (
 //
 // STOP BOUNDARY (this sub-increment). It reproduces the root-equality MECHANISM on classes E + R
 // only; classes S/A (screens), T (TTL), B (bond regs), P (rotation), M (maturity) are later
-// sub-increments. It does NOT flip #657 WitnessValidateV5 to Accept — the box STILL never-Accepts
+// sub-increments. It does NOT flip the box (#657) to Accept — the box STILL never-Accepts
 // (research cert R-scope: do not flip Accept for E/R until R-fold is fully pinned AND owner-
 // ratified; this increment keeps never-Accept). It changes NO apply() rule.
 
@@ -222,7 +222,7 @@ type StateRootWitness struct {
 // composition's P13a. A direct caller would be a second door with no P1 in front of it.
 //
 // It reads EpochBlocks / epochsEnabled / BondTTLBlocks from the box's OWN cfg (C-6) for the scope
-// gate — never from the witness. This does NOT flip WitnessValidateV5 to Accept (the STOP boundary).
+// gate — never from the witness. This does NOT flip the box to Accept (the STOP boundary is the R1.8 downgrade in (*Box).Validate).
 func (c *Chain) recomputeStateRootEntriesRevocations(
 	prevStateRoot ports.Hash,
 	committedStateRoot ports.Hash,

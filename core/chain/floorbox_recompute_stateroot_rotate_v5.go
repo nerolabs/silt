@@ -236,7 +236,15 @@ func (c *Chain) rotateOps(
 	}
 	// R-P-recovery: the box cannot reconstruct liveQualifiedSet() from the qualified digest alone.
 	// Stall at a recovery boundary (never wrong-accept).
-	if c.cfg.LivenessRecoveryHeight != 0 && b.Height == c.cfg.LivenessRecoveryHeight {
+	//
+	// H-1 (D0, certification §2.1/§2.2): ONE predicate, and it is the STRICTER form. This site used
+	// to test LivenessRecoveryHeight alone while isAmbiguousRecoveryBoundary also required
+	// epochsEnabled, EpochBlocks != 0 and h % EpochBlocks == 0. The two agreed only because rotateOps
+	// is reached only on an epoch boundary — two copies of one consensus-adjacent predicate agreeing
+	// by reachability is a drift hazard, so the copy is gone. Taking the LOOSER form at both sites
+	// was the rejected direction: it would newly stall at non-boundary heights, a real liveness
+	// regression bought for nothing.
+	if c.isAmbiguousRecoveryBoundary(b.Height) {
 		return nil, fmt.Errorf("%w: height %d is the #535 recovery boundary (liveQualifiedSet re-base is a trust-the-directive carve-out, not reconstructed)",
 			ErrRecomputeStateRootScopeStall, b.Height)
 	}

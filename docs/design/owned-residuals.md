@@ -381,6 +381,39 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
 - **Open question:** the exact WS period derivation for silt's turnover/eviction dynamics, and
   checkpoint *distribution* tooling (explorer endpoints, client-bundled checkpoints) — post-M0.
 
+### E2a. The floor box's re-anchor contract — an unreachable pin is IRRECOVERABLE (D0)
+- **Class:** contract (the operator's, stated; it is E2's failure behaviour written down).
+- **Decided:** 2026-09-07, owner call 2 of `D-TRUE-UP-CALLS-2026-09-07`, on direction (a′) of the
+  recovery-boundary certification
+  (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R-membership-unbounded-sets-and-recovery-boundary-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`
+  §2.3). Built at Lane D row D0.
+- **What it is:** the floor box's role at an ambiguous `#535` recovery boundary is **cold
+  auditor** — it stalls, unconditionally and loudly, and never trusts the proposer. The stall is
+  **terminal, not per-block**: the box needs a *verified* parent state root for H+1, and its only
+  source is H's committed `StateRoot`, the exact quantity it declined to reproduce at H, so the
+  stall propagates to every descendant.
+- **The four clauses the S7 driver contract states**, adopted from Ethereum's consensus specs
+  (the schema, not merely the purpose):
+  1. At an ambiguous recovery boundary the box is a cold auditor: unconditional loud stall, never
+     proposer-trust.
+  2. Recovery is an **operator action**, out of band: supply a fresh `H+1:HASH` pin over the
+     existing `-ws-checkpoint` channel.
+  3. **An unreachable pin is a CRITICAL AND IRRECOVERABLE FAILURE.** The box must not silently
+     degrade to indeterminate-and-keep-going. This is the clause silt had not written down before
+     D0, and it is the one the analogue supplies.
+  4. The re-anchor is a **restart**, not a new mechanism: the box discards its derived state and
+     cold-starts from H+1, which is what checkpoint sync is. That is what makes "no new trust
+     class" true rather than merely asserted.
+- **Why the pin must not name a pruned block:** `Hash()` short-circuits on a pruned block and
+  returns a stored linkage token bound to **no struct field at all**, `StateRoot` included, so a
+  pin on it binds nothing. The box therefore refuses pruned blocks outright rather than taking a
+  trust floor from its caller — a raised floor makes the reader *skip* space-time re-verification
+  for everything under it. The cost is a held liveness residual: a box cannot audit history below
+  any node's prune floor.
+- **Pinned by:** `TestColdAuditor_StallsUnconditionallyAtARecoveryBoundary`,
+  `TestColdAuditor_RefusesPrunedBlocks`, `TestColdAuditor_NoTrustFloorOnTheContractSurface`
+  (`core/chain/floorbox_coldauditor_v5_test.go`).
+
 ### E3. Reachability of maturity (held in tension; a conditional theorem, CT-1)
 - **Class:** scope (a conditional theorem, not an unconditional one).
 - **What it is:** M0's Sybil soundness is conditional on the mature regime being reached before

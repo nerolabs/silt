@@ -41,7 +41,12 @@ func (v liveView) VerifyBond(pub []byte, root ports.Hash, size int64, nonce uint
 // returns UnlimitedBudget() (M-4, G-D10).
 func (v liveView) WitnessBudget() Budget { return UnlimitedBudget() }
 
-func (v liveView) TrustFloor() uint64 { return v.c.trustFloor() }
+// PrunedTolerated is the node's OWN Q2 pruned-tolerance rule, verbatim: a payload-pruned block is
+// trusted only strictly below this node's finalized/checkpoint anchor. The floor stays inside the
+// node; only the answer crosses the interface (H-4).
+func (v liveView) PrunedTolerated(h uint64) (bool, Availability) {
+	return h < v.c.trustFloor(), Present
+}
 
 // ---- class 3: position ----
 

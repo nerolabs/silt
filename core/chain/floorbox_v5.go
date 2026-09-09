@@ -11,18 +11,17 @@ import "errors"
 // file is the ADDITIVE validation MODE — a SEPARATE path a root-only client calls INSTEAD of
 // holding the tree. It does NOT modify apply(), validateEra3Roots, postApplyRoots, any
 // validity predicate, or any consensus invariant I1–I5. A full node's acceptance path is
-// unchanged; a full node never calls WitnessValidateV5.
+// unchanged; a full node never constructs a Box.
 //
-// WHAT THIS INCREMENT SHIPS (the sound, non-gated slice — see the PACE deliberation,
-// docs/thinking/2026-08-30-lane1-partB-witness-validation-options.md):
-//   - the #535 cold-auditor recovery-boundary policy (RATIFIED, decisions.md 2026-08-30
-//     item 3): box-LOCAL directive drives recovery-boundary validation; a directive ABSENT
-//     at an ambiguous recovery boundary yields a LOUD IndeterminateTrustlessly (default =
-//     do NOT accept, never trust the proposer); live-follower is an OPT-IN flip;
-//   - the additive entry point WitnessValidateV5, wired to apply the #535 decision FIRST and
-//     then — on the trustless path — return IndeterminateTrustlessly with ErrRecomputeGated,
-//     because the bounded witnessable RECOMPUTE (the accept core) is research-gated and does
-//     NOT yet exist.
+// WHAT THIS FILE HOLDS, as D0 leaves it: the three-valued verdict type, its sentinels, and the
+// #535 cold-auditor recovery-boundary POLICY UNIT — isAmbiguousRecoveryBoundary and
+// recoveryBoundaryDecision. The policy is an UNCONDITIONAL loud stall at an ambiguous boundary
+// (owner call 2 of D-TRUE-UP-CALLS-2026-09-07, direction (a')): the box-local directive, the
+// live-follower opt-in and the un-gated fall-through that used to sit between are all deleted.
+//
+// The ENTRY POINT that used to live here — Chain.WitnessValidateV5 — is deleted too. There is one
+// door and it is (*Box).Validate (floorbox_box_v5.go), which consults this policy over the BOX'S
+// OWN head height. See the re-anchor contract at the foot of this file.
 //
 // WHAT THIS INCREMENT DELIBERATELY DOES NOT SHIP (routed to the research gate): the bounded
 // witnessable recompute that decides Accept/Reject. The PE ruling confirms this recompute
@@ -35,14 +34,15 @@ import "errors"
 // statehash.go:224), not the typed data apply iterates, so the box cannot enumerate the
 // expiring members from the witness. A correct bounded recompute is a NEW, soundness-critical
 // computation that must provably match apply()'s v5 post-state root — a research-gated
-// consensus/published-claim surface. This increment REFUSES to guess it: WitnessValidateV5
+// consensus/published-claim surface. The box REFUSES to guess it: (*Box).Validate
 // never returns Accept. The safe default (stall/indeterminate) holds until a certified
 // recompute lands, at which point its verdict slots into the marked seam below.
 //
 // CERTIFIED / RATIFIED basis:
-//   - decisions.md 2026-08-30 (lane-1 increment 3): the #535 recovery directive is box-LOCAL,
-//     default cold-auditor, live-follower opt-in; the read-set identity is the 23-keyspace
-//     amended form (cited in readset_v5.go).
+//   - decisions.md 2026-08-30 (lane-1 increment 3), SUPERSEDED on the directive by
+//     D-TRUE-UP-CALLS-2026-09-07 (2): the recovery directive and the live-follower opt-in are
+//     deleted and the stall is unconditional. The read-set identity is the 23-keyspace amended
+//     form (cited in readset_v5.go), unchanged.
 //   - era4-witness-floor-box-readset-v5-AMENDED-RESEARCH-CERTIFICATION-2026-08-30 (R2: the
 //     recovery-boundary observable keys on cfg.LivenessRecoveryHeight, a non-committed
 //     operator config the box cannot witness — the exact ambiguity this policy governs).
@@ -100,12 +100,18 @@ var (
 	// "recovery-boundary indeterminate" by this reason.
 	ErrRecomputeGated = errors.New("chain: floor-box v5 witnessable recompute is research-gated (lane-1 Part B core, not yet built) — trustless accept/reject withheld")
 
-	// ErrRecoveryDirectiveAbsent marks an IndeterminateTrustlessly caused by the #535
-	// cold-auditor policy: the height is an ambiguous recovery boundary and the box has NO
-	// local directive for it. The box refuses to trust the proposer's recovery re-base; it
-	// stalls loudly. Flipping RecoveryDirective.LiveFollower opts into proceeding on the full
-	// node's weak-subjectivity residual instead (never the default).
-	ErrRecoveryDirectiveAbsent = errors.New("chain: floor-box v5 recovery boundary has no box-local directive (#535 cold-auditor: indeterminate-trustlessly, will not trust the proposer)")
+	// ErrRecoveryBoundaryStall marks the cold auditor's UNCONDITIONAL stall at an ambiguous
+	// #535 recovery boundary (D0, owner call 2 of D-TRUE-UP-CALLS-2026-09-07 on direction (a')).
+	// There is no directive, no opt-in and no fall-through: the correct qualification set at that
+	// height depends on a non-committed operator decision the box cannot witness, so the box
+	// declines to have a view of it rather than take one from the proposer.
+	//
+	// The stall is TERMINAL, not per-block (certification §2.1). The box needs a VERIFIED parent
+	// state root for H+1, and its only source is H's committed StateRoot — the exact quantity it
+	// declined to reproduce at H. Recovery is the operator's, out of band: a fresh
+	// -ws-checkpoint-class H+1:HASH pin, on which the box cold-starts. See the four-clause
+	// re-anchor contract at the foot of this file and docs/design/owned-residuals.md E2a.
+	ErrRecoveryBoundaryStall = errors.New("chain: floor-box v5 height is an ambiguous #535 recovery boundary (cold auditor: indeterminate-trustlessly, terminal until the operator re-anchors, will not trust the proposer)")
 
 	// ErrNotWitnessableVersion marks a Reject for a sub-v5 block handed to the v5 floor-box
 	// mode. The mode validates only v5 blocks (the maintenance-spine committed keyspaces + the
@@ -113,43 +119,6 @@ var (
 	// out of this mode's scope.
 	ErrNotWitnessableVersion = errors.New("chain: floor-box v5 mode requires a v5 (witnessable) block")
 )
-
-// RecoveryDirective is the box-LOCAL #535 recovery-boundary configuration. It is a
-// -ws-checkpoint-class operator config sourced ONLY from the box's own configuration, NEVER
-// from the proposer or the block (decisions.md 2026-08-30 item 3; amended cert R2). It is the
-// floor-box analogue of Config.LivenessRecoveryHeight (the full node's own operator config):
-// the box declares, out-of-band and per its own operator's judgment, which heights it has a
-// recovery directive for.
-//
-// The #535 residual is the weak-subjectivity trust class: at an ambiguous recovery boundary
-// the correct qualification set depends on a NON-committed operator decision the box cannot
-// witness. A cold auditor (default) refuses to guess and stalls loudly; a live follower opts
-// into the full node's existing residual.
-type RecoveryDirective struct {
-	// Heights is the set of block heights for which this box's operator has a local recovery
-	// directive: "at height h, a recovery re-base is authorized, validate trustlessly against
-	// the recomputed witnessable set." A height PRESENT here means the box may proceed past the
-	// recovery gate for that height. A height ABSENT means the box has no directive; at an
-	// AMBIGUOUS boundary that yields IndeterminateTrustlessly (cold-auditor). Built from local
-	// config only.
-	Heights map[uint64]struct{}
-
-	// LiveFollower is the OPT-IN flip: when true, the box behaves as a live follower and
-	// proceeds past an ambiguous recovery boundary on the full node's existing
-	// weak-subjectivity residual (as if it inherited the proposer chain's finality), instead
-	// of stalling. Default false = cold-auditor (favors full trustlessness). This is an opt-in
-	// of the SAME flag class, never the default (decisions.md 2026-08-30 item 3).
-	LiveFollower bool
-}
-
-// hasDirective reports whether the box has a local recovery directive for height h.
-func (d RecoveryDirective) hasDirective(h uint64) bool {
-	if d.Heights == nil {
-		return false
-	}
-	_, ok := d.Heights[h]
-	return ok
-}
 
 // isAmbiguousRecoveryBoundary reports whether height h is an ambiguous recovery boundary for
 // this chain's config — the height at which full-node validation WOULD take effectiveEpochSet's
@@ -160,79 +129,68 @@ func (d RecoveryDirective) hasDirective(h uint64) bool {
 // ambiguity. Matching the gate exactly avoids flagging a height that would not actually
 // trigger the recovery re-base (a false indeterminate would needlessly stall an honest box).
 //
-// The floor box learns the chain's LivenessRecoveryHeight from the same public consensus
-// config a full node uses; the AMBIGUITY is not whether recovery is configured (that is
-// public) but whether the box may TRUST the re-base — which is the box-local directive's job.
-// A box whose own directive covers h has resolved the ambiguity for itself; a box without one
-// has not.
+// The floor box learns the chain's LivenessRecoveryHeight from the same public consensus config a
+// full node uses; the AMBIGUITY is not whether recovery is configured (that is public) but whether
+// the box may TRUST the re-base. Before D0 that was the box-local directive's job. It is nobody's
+// job now: the directive is deleted and the box never trusts a re-base, so an ambiguous boundary is
+// an unconditional stall.
+//
+// FOUR conditions, not five. `EpochBlocks != 0` used to sit between epochsEnabled() and the modulo
+// as a division-by-zero guard; epochsEnabled() is `EpochBlocks > 0 && objective()` (chain.go) and &&
+// short-circuits, so it could never be reached with EpochBlocks == 0 and was dead. Measured: the PE
+// dropped it and the suite stayed green. Removed rather than kept-as-defensive, because a conjunct
+// no input can falsify is one a reader must re-derive to discover is inert — and its presence made
+// this predicate's own ablation claim false.
 func (c *Chain) isAmbiguousRecoveryBoundary(h uint64) bool {
 	return c.cfg.LivenessRecoveryHeight != 0 && h == c.cfg.LivenessRecoveryHeight &&
-		c.epochsEnabled() && c.cfg.EpochBlocks != 0 && h%c.cfg.EpochBlocks == 0
+		c.epochsEnabled() && h%c.cfg.EpochBlocks == 0
 }
 
 // recoveryBoundaryDecision is the #535 policy unit: whether the box may proceed to trustless
 // validation at height h, or must emit IndeterminateTrustlessly. It is a PURE function of the
-// height, the chain's public recovery config, and the box's LOCAL directive — it reads NOTHING
-// from the proposer or the block. Separated out so it is unit-testable in isolation and so
-// B2's recompute consumes exactly this decision.
+// height and the chain's public recovery config — it reads NOTHING from the proposer, from the
+// block, and (since D0) from any box-local knob.
 //
-// The policy (decisions.md 2026-08-30 item 3):
-//   - not an ambiguous recovery boundary ⇒ proceed (proceed=true): normal trustless path.
-//   - ambiguous boundary WITH a box-local directive ⇒ proceed: the operator authorized the
-//     re-base; validate trustlessly against the recomputed set.
-//   - ambiguous boundary WITHOUT a directive, cold-auditor (default) ⇒ do NOT proceed:
-//     IndeterminateTrustlessly (ErrRecoveryDirectiveAbsent). Never trust the proposer.
-//   - ambiguous boundary WITHOUT a directive, live-follower (opt-in) ⇒ proceed on the weak-
-//     subjectivity residual.
-func (c *Chain) recoveryBoundaryDecision(h uint64, d RecoveryDirective) (proceed bool, reason error) {
-	if !c.isAmbiguousRecoveryBoundary(h) {
-		return true, nil // no ambiguity: the qualification set is the frozen, witnessable epochSet.
+// The policy (D-TRUE-UP-CALLS-2026-09-07 (2), direction (a'), certification Definition 2):
+//   - not an ambiguous recovery boundary => proceed: the qualification set there is the frozen,
+//     witnessable epochSet, so there is no ambiguity and an honest box is not stalled needlessly;
+//   - an ambiguous recovery boundary => STALL, unconditionally and loudly.
+//
+// (a') is strictly narrowing: it removes the only three paths by which the box could proceed past
+// the boundary (directive-present, live-follower, the un-gated fall-through). Removing paths to
+// Accept is monotone in the safe direction and cannot manufacture a wrong-accept, which is why the
+// certification could preserve I1/I3/I4 in three sentences.
+func (c *Chain) recoveryBoundaryDecision(h uint64) (proceed bool, reason error) {
+	if c.isAmbiguousRecoveryBoundary(h) {
+		return false, ErrRecoveryBoundaryStall
 	}
-	if d.hasDirective(h) {
-		return true, nil // the box's own operator authorized the recovery re-base at h.
-	}
-	if d.LiveFollower {
-		return true, nil // opt-in: proceed on the full node's weak-subjectivity residual.
-	}
-	// Cold-auditor default: no directive at an ambiguous boundary ⇒ loud indeterminate.
-	return false, ErrRecoveryDirectiveAbsent
+	return true, nil
 }
 
-// WitnessValidateV5 is the PRE-STRUCTURE floor-box scaffold, retained under Round 1A (P-table delta
-// certification §6 lists it three-parameter). It NEVER returns Accept and it reaches NO recompute:
-// after the version gate and the #535 recovery decision it returns IndeterminateTrustlessly /
-// ErrRecomputeGated unconditionally.
+// THE RE-ANCHOR CONTRACT — the four clauses of the certification's §2.3, which the box's operator
+// (the S7 driver) is held to. It is the Ethereum weak-subjectivity checkpoint schema, which silt
+// already ships as -ws-checkpoint HEIGHT:HASH (cmd/silt/daemon.go), so this is not a new trust
+// class:
 //
-// THE DOOR IS (*Box).Validate (floorbox_box_v5.go), NOT this function. Do NOT build the trustless
-// recompute here. This signature — a bare parentStateRoot PARAMETER and no head record of its own
-// — is the RT2-CARRIER-13 shape: a recompute entry with no position lets the block's author choose
-// the parent everything downstream is verified against (the carrier over b.Prev, the class-A
-// fold's excluded proposer). Round 1A closed that by deriving the head from a parent BLOCK the box
-// holds (NewBox → HeadRef) and binding (b.Prev, b.Height) to it at P1 before any other read; the
-// recompute is reached only through P13 of the ONE composition (ValidateCommitV5 over provenView).
-// A caller that wants a trustless verdict constructs a Box.
+//  1. At an ambiguous recovery boundary the box's role is COLD AUDITOR: it stalls, unconditionally
+//     and loudly, and never trusts the proposer. "Unconditionally" is load-bearing in a way the
+//     first cut of D0 got wrong: the posture is keyed on the BOX'S OWN head height, never on the
+//     block's self-declared Height, or a peer could invoke clause 3 on any box with one integer.
+//  2. Recovery is an OPERATOR ACTION, out of band: supply a fresh H+1:HASH pin over the existing
+//     -ws-checkpoint channel.
+//  3. An UNREACHABLE pin is a CRITICAL AND IRRECOVERABLE FAILURE. The box must not silently
+//     degrade to indeterminate-and-keep-going. This is the clause silt had not written down.
+//  4. The re-anchor is a RESTART, not a new mechanism: the box discards its derived state and
+//     cold-starts from H+1, which is what checkpoint sync is.
 //
-// What stays here, and why: the version gate (a sub-v5 block is Reject, ErrNotWitnessableVersion)
-// and the #535 recovery-boundary decision (a cold-auditor box with no directive stalls loudly
-// rather than trust the proposer) — both of which the door also performs, in the same order.
-// parentStateRoot is accepted and ignored so the exported signature stays stable for its callers;
-// it is NOT a seam for the recompute (M-1A-2, R-SECOND-DOOR-COMMENT).
-func (c *Chain) WitnessValidateV5(b Block, parentStateRoot [32]byte, d RecoveryDirective) (FloorBoxOutcome, error) {
-	// (1) Version gate — v5-only mode.
-	if b.Version < BlockVersionWitnessable {
-		return Reject, ErrNotWitnessableVersion
-	}
-
-	// (2) #535 recovery-boundary decision, FIRST. A cold-auditor box with no directive at an
-	// ambiguous boundary stalls loudly here, never trusting the proposer, never reaching the
-	// recompute seam.
-	if proceed, reason := c.recoveryBoundaryDecision(b.Height, d); !proceed {
-		return IndeterminateTrustlessly, reason
-	}
-
-	// (3) NO recompute here. The recompute runs behind P1 in the ONE composition, reached only
-	// through (*Box).Validate — a function with a bare parent-root parameter has no position
-	// of its own and must not verify anything against it (the doc comment above). Never Accept.
-	_ = parentStateRoot // ignored; kept so the exported signature is stable. Not a seam.
-	return IndeterminateTrustlessly, ErrRecomputeGated
-}
+// The pin binds StateRoot only for a NON-PRUNED block (certification §2.4): Hash() short-circuits
+// on a pruned block and returns a stored token bound to no struct field at all, StateRoot included.
+// That is why (*Box).Validate's pruned refusal, and NewBox's refusal of a pruned parent, are part
+// of the same decision and not a separate hardening.
+//
+// THERE IS ONE DOOR, AND IT IS (*Box).Validate. Chain.WitnessValidateV5 — the pre-structure
+// scaffold that used to sit here, taking a bare parentStateRoot and returning
+// IndeterminateTrustlessly unconditionally — is DELETED (D0, on the blind PE's simplicity ruling).
+// It held no head, so it could not key its recovery posture on anything it owned; keeping it meant
+// shipping two exported box entries with two different recovery semantics, one fixable and one not,
+// on the last floor-box item before the freeze. It had zero non-test callers.

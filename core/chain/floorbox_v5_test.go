@@ -7,20 +7,27 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Tests for the sound, additive slice of lane-1 Part B increment B1 (floorbox_v5.go):
-// the #535 cold-auditor recovery-boundary policy + the additive entry point WitnessValidateV5.
+// The #535 cold-auditor recovery-boundary POLICY UNIT (floorbox_v5.go), as D0 leaves it: the stall
+// at an ambiguous recovery boundary is UNCONDITIONAL — no directive, no live-follower opt-in, no
+// fall-through — and the predicate it keys on is the STRICTER of the two forms that used to exist
+// (H-1), so an honest box is not stalled at a height the full node's recovery branch would never
+// take.
 //
-// EACH proof case is ABLATED — the defect it claims to catch is injected and watched to flip
-// the outcome — per the standing "a check is not shipped until you have injected its defect and
-// watched it go red" discipline. The bounded witnessable RECOMPUTE (the accept core) is
-// research-gated and NOT built here; the safety-invariant test proves this build never returns
-// Accept, so a green Accept would be a guessed recompute (the banned move) and is asserted
-// impossible.
+// THIS FILE TESTS THE PREDICATE AND THE DECISION DIRECTLY, not through an entry point. It used to
+// drive Chain.WitnessValidateV5, the pre-structure scaffold, which D0 deleted: there is one door
+// and it is (*Box).Validate. What the door does with this decision — including that it keys on the
+// BOX'S OWN head height rather than the block's declared one — is
+// TestColdAuditor_TheBoundaryPostureIsThePositionOfTheBoxNotTheClaimOfTheBlock's job. What is
+// pinned here is the rule the door consults.
+//
+// EACH proof case is ABLATED — the defect it claims to catch is injected and watched to flip the
+// outcome (simplicity rule 7). With the knob deleted, the only ablation available is the CONFIG:
+// the same height is driven with and without LivenessRecoveryHeight pointing at it, and with and
+// without an epoch cadence that divides it.
 
 // floorBoxChain builds a minimal objective v5 chain whose config sets an ambiguous recovery
 // boundary at height recoveryH (an epoch boundary). It is the pre-state a floor box would hold;
-// WitnessValidateV5 reads only its public config, so no committed state is needed for these
-// policy tests.
+// the policy unit reads only this public config, so no committed state is needed.
 func floorBoxChain(t *testing.T, recoveryH uint64) *Chain {
 	t.Helper()
 	cfg := Config{
@@ -33,195 +40,139 @@ func floorBoxChain(t *testing.T, recoveryH uint64) *Chain {
 	return c
 }
 
-// v5Block returns a minimal v5 block at height h. The policy path reads only Version and
-// Height, so the block needs no witnesses or roots for these tests.
-func v5Block(h uint64) Block {
-	return Block{Version: BlockVersionWitnessable, Height: h}
-}
-
-// TestWitnessValidateV5_RecoveryBoundaryColdAuditorStalls is the #535 cold-auditor proof:
-// at an ambiguous recovery boundary with NO box-local directive, the default box emits a LOUD
-// IndeterminateTrustlessly (never Accept, never proposer-trust).
+// TestRecoveryBoundaryDecision_StallsUnconditionally is D0's first deliverable at the policy unit.
+// At an ambiguous recovery boundary the decision is a stall, and there is no second argument that
+// could change it: the three paths (a′) removed — a box-local directive for the height, the
+// live-follower opt-in, the un-gated fall-through — are gone from the SIGNATURE, so their absence
+// is a compile-time property rather than something a test still has to assert.
 //
-// ABLATION: adding a box-local directive for the SAME height flips the #535 arm — the box no
-// longer stalls on ErrRecoveryDirectiveAbsent (it proceeds and then hits the gated recompute
-// seam). Proving the directive is what drives the arm, not an unconditional stall.
-func TestWitnessValidateV5_RecoveryBoundaryColdAuditorStalls(t *testing.T) {
+// ABLATION: point LivenessRecoveryHeight at a different epoch boundary; the same height then
+// proceeds. The boundary predicate drives the arm, not an unconditional stall on everything.
+func TestRecoveryBoundaryDecision_StallsUnconditionally(t *testing.T) {
 	const recoveryH = 8 // an epoch boundary (8 % 4 == 0) equal to LivenessRecoveryHeight
 	c := floorBoxChain(t, recoveryH)
 
-	// Cold auditor: empty directive, default LiveFollower=false.
-	got, reason := c.WitnessValidateV5(v5Block(recoveryH), [32]byte{}, RecoveryDirective{})
-	if got != IndeterminateTrustlessly {
-		t.Fatalf("cold-auditor at ambiguous recovery boundary: got %s, want INDETERMINATE_TRUSTLESSLY", got)
+	proceed, reason := c.recoveryBoundaryDecision(recoveryH)
+	if proceed {
+		t.Fatal("cold auditor at an ambiguous recovery boundary must NOT proceed")
 	}
-	if !errors.Is(reason, ErrRecoveryDirectiveAbsent) {
-		t.Fatalf("cold-auditor stall reason: got %v, want ErrRecoveryDirectiveAbsent", reason)
-	}
-
-	// ABLATION: a box-local directive for recoveryH must flip the #535 arm off (no longer the
-	// directive-absent stall). The box proceeds past the recovery gate and stalls instead on the
-	// gated recompute seam — a DIFFERENT reason, proving the directive drove the first arm.
-	d := RecoveryDirective{Heights: map[uint64]struct{}{recoveryH: {}}}
-	got2, reason2 := c.WitnessValidateV5(v5Block(recoveryH), [32]byte{}, d)
-	if errors.Is(reason2, ErrRecoveryDirectiveAbsent) {
-		t.Fatalf("ablation: a present directive must NOT yield the directive-absent stall; got %v", reason2)
-	}
-	if got2 != IndeterminateTrustlessly || !errors.Is(reason2, ErrRecomputeGated) {
-		t.Fatalf("ablation: with a directive the box should proceed to the gated recompute seam; got %s / %v", got2, reason2)
-	}
-}
-
-// TestWitnessValidateV5_RecoveryDirectivePresentProceeds proves the directive-present arm: at
-// an ambiguous boundary WITH a box-local directive, the recovery gate passes (the box would
-// validate trustlessly). Since the recompute is gated, it then returns ErrRecomputeGated — the
-// point is it did NOT stall on the #535 arm.
-//
-// ABLATION: removing the directive returns the box to the cold-auditor stall (proven by the
-// test above's first arm), so the directive is load-bearing.
-func TestWitnessValidateV5_RecoveryDirectivePresentProceeds(t *testing.T) {
-	const recoveryH = 8
-	c := floorBoxChain(t, recoveryH)
-	d := RecoveryDirective{Heights: map[uint64]struct{}{recoveryH: {}}}
-
-	got, reason := c.WitnessValidateV5(v5Block(recoveryH), [32]byte{}, d)
-	if got != IndeterminateTrustlessly {
-		t.Fatalf("directive-present: got %s, want INDETERMINATE_TRUSTLESSLY (gated recompute)", got)
-	}
-	if !errors.Is(reason, ErrRecomputeGated) {
-		t.Fatalf("directive-present should pass the recovery gate and hit the gated seam; got %v", reason)
-	}
-}
-
-// TestWitnessValidateV5_LiveFollowerOptInFlipsDefault proves the live-follower opt-in flips the
-// cold-auditor default: at an ambiguous boundary with NO directive, a live-follower box proceeds
-// past the recovery gate instead of stalling on ErrRecoveryDirectiveAbsent.
-//
-// ABLATION: the SAME height and empty directive with LiveFollower=false stalls (the cold-auditor
-// test above), and with LiveFollower=true proceeds — the flag is the only difference, so it is
-// what flips the behavior.
-func TestWitnessValidateV5_LiveFollowerOptInFlipsDefault(t *testing.T) {
-	const recoveryH = 8
-	c := floorBoxChain(t, recoveryH)
-
-	// Cold-auditor (default) with no directive: stalls on the #535 arm.
-	_, coldReason := c.WitnessValidateV5(v5Block(recoveryH), [32]byte{}, RecoveryDirective{})
-	if !errors.Is(coldReason, ErrRecoveryDirectiveAbsent) {
-		t.Fatalf("precondition: cold-auditor should stall on ErrRecoveryDirectiveAbsent; got %v", coldReason)
+	if !errors.Is(reason, ErrRecoveryBoundaryStall) {
+		t.Fatalf("stall reason: got %v, want ErrRecoveryBoundaryStall", reason)
 	}
 
-	// Live-follower opt-in, same empty directive: proceeds past the recovery gate.
-	live := RecoveryDirective{LiveFollower: true}
-	_, liveReason := c.WitnessValidateV5(v5Block(recoveryH), [32]byte{}, live)
-	if errors.Is(liveReason, ErrRecoveryDirectiveAbsent) {
-		t.Fatalf("live-follower must NOT stall on the #535 directive-absent arm; got %v", liveReason)
-	}
-	if !errors.Is(liveReason, ErrRecomputeGated) {
-		t.Fatalf("live-follower should proceed to the gated recompute seam; got %v", liveReason)
-	}
-}
-
-// TestWitnessValidateV5_NonBoundaryHeightNotAmbiguous proves the policy does NOT stall at a
-// height that is NOT the recovery boundary: the qualification set there is the frozen,
-// witnessable epochSet, so a cold auditor with no directive proceeds (no false indeterminate
-// that would needlessly stall an honest box).
-//
-// ABLATION: setting LivenessRecoveryHeight to the tested height (making it the ambiguous
-// boundary) flips the same height to a cold-auditor stall — proving the non-stall is because
-// the height is NOT the configured recovery boundary, not an unconditional proceed.
-func TestWitnessValidateV5_NonBoundaryHeightNotAmbiguous(t *testing.T) {
-	const h = 8
-
-	// LivenessRecoveryHeight = 4 (a different boundary), so h=8 is NOT ambiguous.
-	c := floorBoxChain(t, 4)
-	_, reason := c.WitnessValidateV5(v5Block(h), [32]byte{}, RecoveryDirective{})
-	if errors.Is(reason, ErrRecoveryDirectiveAbsent) {
-		t.Fatalf("a non-recovery-boundary height must not stall on the #535 arm; got %v", reason)
-	}
-	if !errors.Is(reason, ErrRecomputeGated) {
-		t.Fatalf("a non-ambiguous height should proceed to the gated recompute seam; got %v", reason)
-	}
-
-	// ABLATION: make h itself the recovery boundary → now it stalls cold-auditor.
-	c2 := floorBoxChain(t, h)
-	_, reason2 := c2.WitnessValidateV5(v5Block(h), [32]byte{}, RecoveryDirective{})
-	if !errors.Is(reason2, ErrRecoveryDirectiveAbsent) {
-		t.Fatalf("ablation: with LivenessRecoveryHeight=%d the same height must stall cold-auditor; got %v", h, reason2)
-	}
-}
-
-// TestWitnessValidateV5_RecoveryHeightMustBeEpochBoundary proves isAmbiguousRecoveryBoundary
-// mirrors the full-node gate EXACTLY: a LivenessRecoveryHeight that is NOT an epoch boundary
-// never triggers the recovery branch (chain.go:1466-1468 requires h%EpochBlocks==0), so the
-// box does not treat it as ambiguous. A non-boundary recovery height is a config the full node
-// itself would ignore, so the box must too.
-func TestWitnessValidateV5_RecoveryHeightMustBeEpochBoundary(t *testing.T) {
-	const recoveryH = 5 // 5 % 4 != 0: NOT an epoch boundary, so the recovery branch never fires
-	c := floorBoxChain(t, recoveryH)
-	_, reason := c.WitnessValidateV5(v5Block(recoveryH), [32]byte{}, RecoveryDirective{})
-	if errors.Is(reason, ErrRecoveryDirectiveAbsent) {
-		t.Fatalf("a non-epoch-boundary recovery height must not be treated as ambiguous; got %v", reason)
-	}
-	if !errors.Is(reason, ErrRecomputeGated) {
-		t.Fatalf("a non-boundary recovery height should proceed to the gated seam; got %v", reason)
-	}
-}
-
-// TestWitnessValidateV5_SubV5BlockRejected proves the v5-only version gate: a sub-v5 block
-// handed to the v5 floor-box mode is Reject (ErrNotWitnessableVersion), not indeterminate — the
-// mode can positively disprove a malformed-version input without the recompute.
-//
-// ABLATION: the same block at v5 is NOT rejected on the version gate (it reaches the gated
-// seam), proving the gate keys on the version.
-func TestWitnessValidateV5_SubV5BlockRejected(t *testing.T) {
-	c := floorBoxChain(t, 0) // no recovery boundary configured
-
-	for _, v := range []uint64{1, 2, 3, BlockVersionStateRoot} { // v1..v4, all sub-v5
-		b := Block{Version: v, Height: 1}
-		got, reason := c.WitnessValidateV5(b, [32]byte{}, RecoveryDirective{})
-		if got != Reject || !errors.Is(reason, ErrNotWitnessableVersion) {
-			t.Fatalf("sub-v5 block (v%d): got %s / %v, want REJECT / ErrNotWitnessableVersion", v, got, reason)
+	// The decision is a pure function of the height and the chain's own config, so it repeats.
+	for i := 0; i < 3; i++ {
+		if p, again := c.recoveryBoundaryDecision(recoveryH); p || !errors.Is(again, ErrRecoveryBoundaryStall) {
+			t.Fatalf("call %d: the stall must not depend on anything but the height and the config; got %v / %v", i, p, again)
 		}
 	}
 
-	// ABLATION: a v5 block is NOT rejected on the version gate.
-	got, reason := c.WitnessValidateV5(v5Block(1), [32]byte{}, RecoveryDirective{})
-	if got == Reject && errors.Is(reason, ErrNotWitnessableVersion) {
-		t.Fatal("ablation: a v5 block must pass the version gate")
-	}
-	if !errors.Is(reason, ErrRecomputeGated) {
-		t.Fatalf("a v5 block should reach the gated recompute seam; got %s / %v", got, reason)
+	// ABLATION: a chain whose recovery boundary is elsewhere does NOT stall this height.
+	if p, r := floorBoxChain(t, 4).recoveryBoundaryDecision(recoveryH); !p || r != nil {
+		t.Fatalf("ablation: with LivenessRecoveryHeight=4 height %d must proceed; got %v / %v", recoveryH, p, r)
 	}
 }
 
-// TestWitnessValidateV5_NeverAcceptsWhileRecomputeGated is THE SAFETY INVARIANT of this
-// increment: because the bounded witnessable recompute is research-gated and not built,
-// WitnessValidateV5 NEVER returns Accept. A green Accept here would be a guessed recompute — the
-// exact banned move (C-7 §104). This test sweeps the reachable input classes and asserts Accept
-// never occurs. It is the ablation of the whole increment: if a future edit wires a recompute
-// that can return Accept, this test must be updated deliberately (with its own certified proof),
-// not left green by accident.
-func TestWitnessValidateV5_NeverAcceptsWhileRecomputeGated(t *testing.T) {
-	cases := []struct {
-		name      string
-		recoveryH uint64
-		height    uint64
-		directive RecoveryDirective
-	}{
-		{"no-recovery-config", 0, 3, RecoveryDirective{}},
-		{"recovery-boundary-cold-auditor", 8, 8, RecoveryDirective{}},
-		{"recovery-boundary-with-directive", 8, 8, RecoveryDirective{Heights: map[uint64]struct{}{8: {}}}},
-		{"recovery-boundary-live-follower", 8, 8, RecoveryDirective{LiveFollower: true}},
-		{"non-boundary-height", 4, 7, RecoveryDirective{}},
+// TestRecoveryBoundaryDecision_NonBoundaryHeightNotAmbiguous proves the policy does NOT stall at a
+// height that is NOT the recovery boundary: the qualification set there is the frozen, witnessable
+// epochSet, so the box proceeds. A false indeterminate would needlessly stall an honest box, and
+// that is the liveness regression H-1 rejected the looser predicate to avoid.
+//
+// ABLATION: set LivenessRecoveryHeight to the tested height and it flips to a stall.
+func TestRecoveryBoundaryDecision_NonBoundaryHeightNotAmbiguous(t *testing.T) {
+	const h = 8
+	if p, r := floorBoxChain(t, 4).recoveryBoundaryDecision(h); !p || r != nil {
+		t.Fatalf("a non-recovery-boundary height must proceed; got %v / %v", p, r)
 	}
-	for _, tc := range cases {
+	if p, r := floorBoxChain(t, h).recoveryBoundaryDecision(h); p || !errors.Is(r, ErrRecoveryBoundaryStall) {
+		t.Fatalf("ablation: with LivenessRecoveryHeight=%d the same height must stall; got %v / %v", h, p, r)
+	}
+}
+
+// TestIsAmbiguousRecoveryBoundary_IsTheStricterForm is H-1's gate. The box's predicate mirrors the
+// full node's recovery branch EXACTLY — the height must equal LivenessRecoveryHeight AND epochs must
+// be enabled AND EpochBlocks must be non-zero AND the height must be an epoch boundary — and D0
+// folded rotateOps' looser copy onto it. A LivenessRecoveryHeight that is not an epoch boundary is a
+// config the full node itself ignores, so the box must ignore it too; adopting the LOOSER form at
+// both sites was the rejected direction, because it stalls at heights that are not boundaries.
+//
+// ABLATION: each of the FOUR conditions dropped in turn flips at least one row — verified, one
+// condition at a time, not assumed. Four, not five —
+// the table has five rows plus a legacy arm because condition 3, epochsEnabled(), is
+// `EpochBlocks > 0 && objective()` and is exercised from BOTH sides: the "epochs disabled" row
+// falsifies the cadence half, the legacy-fixture arm falsifies the objective half. The predicate
+// carried a fifth conjunct, `EpochBlocks != 0`, until D0's re-review measured it dead (implied by
+// epochsEnabled(), which is evaluated first and short-circuits); it is deleted, so no row here is
+// asserting against a condition no input can falsify.
+func TestIsAmbiguousRecoveryBoundary_IsTheStricterForm(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		cfg      Config
+		h        uint64
+		ambiguos bool
+	}{
+		{"boundary height, epochs on, divides", Config{EpochBlocks: 4, LivenessRecoveryHeight: 8}, 8, true},
+		{"height is not the configured one", Config{EpochBlocks: 4, LivenessRecoveryHeight: 8}, 4, false},
+		{"no recovery height configured", Config{EpochBlocks: 4, LivenessRecoveryHeight: 0}, 8, false},
+		// Height 0 with recovery UNCONFIGURED is the only input that isolates the first conjunct:
+		// drop `LivenessRecoveryHeight != 0` and `h == c.cfg.LivenessRecoveryHeight` becomes 0 == 0,
+		// epochs are on and 0 % 4 == 0, so genesis reads as an ambiguous recovery boundary and every
+		// box stalls at height 0 forever. Without this row that conjunct is inert under the table —
+		// measured, and it is why the row exists.
+		{"height 0, recovery unconfigured (genesis)", Config{EpochBlocks: 4, LivenessRecoveryHeight: 0}, 0, false},
+		{"height is not an epoch boundary", Config{EpochBlocks: 4, LivenessRecoveryHeight: 5}, 5, false},
+		{"epochs disabled (EpochBlocks 0)", Config{EpochBlocks: 0, LivenessRecoveryHeight: 8}, 8, false},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
-			c := floorBoxChain(t, tc.recoveryH)
-			got, _ := c.WitnessValidateV5(v5Block(tc.height), [32]byte{}, tc.directive)
-			if got == Accept {
-				t.Fatalf("SAFETY VIOLATION: WitnessValidateV5 returned ACCEPT while the recompute is gated (%s)", tc.name)
+			cfg := tc.cfg
+			cfg.Quorum, cfg.MinBond, cfg.ByzantineQuorum, cfg.MatureValidators = 1, era4MinBond, true, 2
+			c := New(cfg, func(ports.NodeID) int64 { return 0 })
+			c.SetBondVerifier(objectiveVerify)
+			if got := c.isAmbiguousRecoveryBoundary(tc.h); got != tc.ambiguos {
+				t.Fatalf("isAmbiguousRecoveryBoundary(%d) = %v, want %v — the box's predicate must mirror the "+
+					"full node's recovery branch exactly, or it stalls where the node would not (liveness) or "+
+					"proceeds where the node re-bases (the ambiguity this policy governs)", tc.h, got, tc.ambiguos)
 			}
 		})
+	}
+
+	// The legacy fence rides on the same predicate: epochsEnabled() is EpochBlocks > 0 AND objective().
+	lf := buildLegacyFixture(t)
+	lf.c.cfg.EpochBlocks, lf.c.cfg.LivenessRecoveryHeight = 4, 8
+	if lf.c.isAmbiguousRecoveryBoundary(8) {
+		t.Fatal("a legacy (non-objective) chain has no epochs, so no height is an ambiguous recovery boundary")
+	}
+}
+
+// TestFloorBox_SubV5BlockRejectedAtTheDoor is the v5-only version partition, driven where it now
+// lives: composition step 0, reached through the ONE door. A sub-v5 block is Reject
+// (ErrNotWitnessableVersion) and an above-era block is Reject (ErrAboveCurrentEraVersion) — both
+// positive disproofs, distinct from a stall, and neither needs the recompute.
+//
+// ABLATION: a v5 block is NOT rejected on the version partition; it reaches the R1.8 downgrade.
+// That is the honest twin, and it runs first.
+func TestFloorBox_SubV5BlockRejectedAtTheDoor(t *testing.T) {
+	f := buildStructFixture(t)
+	src := newProverSource(t, f.c)
+	box := boxOver(t, f, src)
+	b := f.mkBlock(t, nil)
+	w := structWitnessFor(t, f, src, b)
+	assertBoxReachesTheDowngrade(t, box, b, w)
+
+	for _, v := range []uint64{1, 2, 3, BlockVersionStateRoot} { // v1..v4, all sub-v5
+		sub := b
+		sub.Version = v
+		sub.hashMemoSet = false
+		got, reason := box.Validate(sub, w)
+		if got != Reject || !errors.Is(reason, ErrNotWitnessableVersion) {
+			t.Fatalf("sub-v5 block (v%d) at the door: got %s / %v, want REJECT / ErrNotWitnessableVersion", v, got, reason)
+		}
+	}
+	above := b
+	above.Version = BlockVersionWitnessable + 1
+	above.hashMemoSet = false
+	if got, reason := box.Validate(above, w); got != Reject || !errors.Is(reason, ErrAboveCurrentEraVersion) {
+		t.Fatalf("above-era block at the door: got %s / %v, want REJECT / ErrAboveCurrentEraVersion", got, reason)
 	}
 }
 

@@ -27,6 +27,11 @@ import (
 //	                     there is no way to express ∞ (BG-3, M-4).
 //	src     WitnessSource the delivery seam; nil is a legal, never-Accepting box.
 //
+// WHAT WAS DELETED AT D0 (owner call 2, D-TRUE-UP-CALLS-2026-09-07): BoxConfig.Recovery and the
+// RecoveryDirective it carried. A recovery directive was a knob the recompute cannot honour, and a
+// box that could be TOLD to proceed past an ambiguous boundary is not a cold auditor. The stall is
+// unconditional now, so there is nothing left to configure.
+//
 // WHAT IS NOT HERE (1B, blocked on the box-entry round; build brief "Do NOT touch"): pin adoption
 // (AdoptPin / PinAdoptionInput), the held height and lineage (N2/N3/N6/N7). This box holds ONE
 // parent block, given at construction. Whether that parent is TRUSTED is the pin question, which
@@ -71,19 +76,15 @@ type BoxConfig struct {
 	// NewBox refuses 0 (unset) and there is no value that means "unlimited". The number a
 	// deployment should use is not fixed here (the pony measurement is owed, build-plan cert §6.3).
 	BudgetBytes int
-	// Recovery is the box-LOCAL #535 recovery directive (cold-auditor by default): at an ambiguous
-	// recovery boundary with no directive the door stalls loudly rather than trust the proposer.
-	Recovery RecoveryDirective
 }
 
 // Box is the trustless floor box: its config-bearing chain (never a state source), its derived
 // head record, its derived budget, and its witness-delivery seam.
 type Box struct {
-	c        *Chain
-	head     HeadRef
-	budget   Budget
-	src      WitnessSource
-	recovery RecoveryDirective
+	c      *Chain
+	head   HeadRef
+	budget Budget
+	src    WitnessSource
 }
 
 // NewBox constructs a box over `ch` (its own config + injected bond verifier; NOT a state source),
@@ -108,7 +109,7 @@ func NewBox(ch *Chain, parent Block, cfg BoxConfig, src WitnessSource) (*Box, er
 	if !ed25519.Verify(ed25519.PublicKey(parent.Proposer), ph[:], parent.ProposerSig) {
 		return nil, ErrBoxParentUnsigned
 	}
-	return &Box{c: ch, head: headRefOf(parent), budget: bud, src: src, recovery: cfg.Recovery}, nil
+	return &Box{c: ch, head: headRefOf(parent), budget: bud, src: src}, nil
 }
 
 // headRefOf derives the box's head record from the parent block it holds — the SAME derivation
@@ -146,7 +147,8 @@ func (s *Box) view() provenView {
 // with the P13a predicate wired to the certified witness recompute. Order, load-bearing:
 //
 //  1. the byte budget over FRAME + WITNESS, before any crypto and before any read (BG-3);
-//  2. the #535 recovery decision (cold-auditor: stall, never trust the proposer);
+//  2. the #535 recovery decision, over the box's OWN head height (cold auditor: an UNCONDITIONAL
+//     loud stall — no directive, no opt-in, no fall-through, and no field of the block);
 //  3. a pruned block stalls (ErrPrunedBlockUnreproducible);
 //  4. ValidateCommitV5: P1 binds (b.Prev, b.Height) to the box's OWN head FIRST — so the carrier
 //     leg (P12) and the class-A fold (P13a) run over a parent the box chose, not the author;
@@ -155,7 +157,26 @@ func (s *Box) Validate(b Block, w StateRootWitness) (FloorBoxOutcome, error) {
 	if err := s.budget.Check(len(Encode(&b))+witnessBytes(w), "frame+witness"); err != nil {
 		return IndeterminateTrustlessly, err
 	}
-	if proceed, reason := s.c.recoveryBoundaryDecision(b.Height, s.recovery); !proceed {
+	// B-1. The height this reads is the BOX'S OWN — head.NextHeight, derived from the parent block
+	// the box holds — and never b.Height, which is the block author's self-declared field.
+	//
+	// It was b.Height, and that made the "unconditional" stall a proposer's choice in both
+	// directions. A box at height 2 with the boundary at 100 emitted ErrRecoveryBoundaryStall for
+	// any block that merely DECLARED Height=100 — and that error tells the operator the condition
+	// is terminal until they re-anchor, whose contract (owned-residuals.md E2a clause 3) is to
+	// treat an unreachable pin as a critical and irrecoverable failure. One integer from any
+	// unauthenticated peer, ninety-eight blocks early, invoked it. In the other direction a box AT
+	// the boundary, handed a block declaring Height+1, returned Reject/ErrWrongParent — the same
+	// reason it gives ordinary stale traffic — so E2a's "the stall propagates to every descendant"
+	// was true only by the accident that the box cannot advance its head, and a proposer that
+	// simply never sent a boundary-height block suppressed the name the operator needs.
+	//
+	// Keyed on head.NextHeight, both directions close: the posture is a property of WHERE THE BOX
+	// IS, so every block it is handed at that position gets the same terminal name, and no block
+	// can move it there. This read precedes P1 — the budget, this decision and the pruned refusal
+	// all run before the composition binds (b.Prev, b.Height) — which is exactly why it must not
+	// read a block field: at this point in the door nothing about the block is bound to anything.
+	if proceed, reason := s.c.recoveryBoundaryDecision(s.head.NextHeight); !proceed {
 		return IndeterminateTrustlessly, reason
 	}
 	if b.IsPruned() {

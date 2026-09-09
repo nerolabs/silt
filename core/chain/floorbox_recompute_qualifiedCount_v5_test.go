@@ -27,7 +27,7 @@ import (
 //     screen from the WITNESS instead of own config would let an attacker inflate N with cheap bonds.
 //     The correct own-config count is INVARIANT; the negative control demonstrates the shift.
 //
-// The recompute NEVER flips WitnessValidateV5 to Accept (the STOP boundary); it reproduces ONE
+// The recompute NEVER flips the box to Accept (the STOP boundary); it reproduces ONE
 // predicate.
 
 // qualifiedCountFixture is an objective v5 chain with a populated bonded map whose members span the
@@ -454,13 +454,11 @@ func TestRecomputeQualifiedCount_MissingMemberWitnessStalls(t *testing.T) {
 	}
 }
 
-// TestRecomputeQualifiedCount_NeverFlipsWitnessValidateAccept pins the STOP boundary: this increment
-// reproduces ONE predicate; it must NOT have flipped WitnessValidateV5 to Accept.
-func TestRecomputeQualifiedCount_NeverFlipsWitnessValidateAccept(t *testing.T) {
-	const minBond = int64(1) << 20
-	f := buildQualifiedCountFixture(t, minBond, mixedQCBonds())
-	got, _ := f.c.WitnessValidateV5(v5Block(3), f.root, RecoveryDirective{})
-	if got == Accept {
-		t.Fatal("STOP boundary violated: WitnessValidateV5 returned ACCEPT — the accept flip (#657) must wait until ALL predicates are reproduced")
-	}
-}
+// THE STOP-BOUNDARY GUARD FOR THIS INCREMENT MOVED (D0). It was TestRecomputeQualifiedCount_NeverFlipsWitnessValidateAccept
+// here: a call to Chain.WitnessValidateV5 asserting the box had not been flipped to Accept. That
+// scaffold is deleted, and the guard it stood for is now held ONCE, at the only place a flip can
+// happen — the R1.8 downgrade in (*Box).Validate — driven on real, node-accepted blocks of every
+// v5 class by TestColdAuditor_NeverAcceptsAnyV5BlockClass. The old form could not have caught a
+// flip in this increment anyway: it passed Block{Version: 5, Height: 3} with no roots and no
+// signatures, and the scaffold short-circuited before reading anything. Four copies of one guard,
+// none of which reached the code it guarded.

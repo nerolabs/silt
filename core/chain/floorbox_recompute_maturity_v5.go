@@ -62,7 +62,7 @@ import (
 // 2194): min(NakamotoOperators, NakamotoDomains) >= MatureValidators.
 //
 // STOP BOUNDARY (this increment). It reproduces ONE predicate. It does NOT flip #657
-// WitnessValidateV5 to Accept — that is the final increment, only after ALL predicates are
+// the box to Accept — that is the final increment, only after ALL predicates are
 // reproduced. The box STILL never-Accepts. It reproduces the OBJECTIVE branch of matureNow
 // (objective() = MinBond>0 && verifyBond!=nil, true for any untrusted deployment); the
 // non-objective launch branch is the trusted-anchor phase, out of scope.
@@ -191,7 +191,7 @@ type SeenSetStreamWitness struct {
 // never the witness. This is the first predicate whose fold reads genesis config, so the C-6
 // obligation has TEETH here (the config-from-witness ablation).
 //
-// This does NOT flip WitnessValidateV5 to Accept (the STOP boundary): it reproduces ONE predicate.
+// This does NOT flip the box to Accept (the STOP boundary is the R1.8 downgrade in (*Box).Validate): it reproduces ONE predicate.
 //
 // This is the RESIDENT-MAP adapter over the streaming core: it wraps w.Members in a pull provider and
 // delegates to recomputeMatureNowStreaming, so the fold logic lives in ONE place and the resident and

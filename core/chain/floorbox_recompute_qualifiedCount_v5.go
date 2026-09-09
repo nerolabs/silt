@@ -64,7 +64,7 @@ import (
 // digest-root read. slashedRoot remains a legitimately-inert derived commitment.
 //
 // STOP BOUNDARY (this increment). It reproduces ONE predicate. It does NOT flip #657
-// WitnessValidateV5 to Accept — that is the final increment, only after ALL predicates are
+// the box to Accept — that is the final increment, only after ALL predicates are
 // reproduced. The box STILL never-Accepts. It reproduces the raw COUNT N (and the derived
 // bftThreshold(N) count floor); the anchor-window and mature-epoch legs of RequiredQuorum are
 // governed by other predicates (the launch anchor gate; requireEpochWeightQuorum, increment 1), out
@@ -151,7 +151,7 @@ type QualifiedCountWitness struct {
 // map is anchored on the committed bondedRoot (set-completeness), with each member's bonded weight
 // and slashed bit proven per-member against the committed StateRoot.
 //
-// This does NOT flip WitnessValidateV5 to Accept (the STOP boundary): it reproduces ONE predicate.
+// This does NOT flip the box to Accept (the STOP boundary is the R1.8 downgrade in (*Box).Validate): it reproduces ONE predicate.
 func (c *Chain) recomputeQualifiedCount(
 	committedStateRoot ports.Hash,
 	w QualifiedCountWitness,

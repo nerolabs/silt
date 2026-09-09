@@ -120,3 +120,6 @@ integration/cloudtest/terraform/network/.terraform/
 integration/cloudtest/terraform/network/.terraform.lock.hcl
 integration/cloudtest/terraform/network/*.tfstate
 integration/cloudtest/terraform/network/*.tfstate.*
+
+# macOS Spotlight/Time Machine artifacts, created in-tree by the OS, never by the build.
+.metadata_never_index

@@ -434,7 +434,7 @@ func TestPerFieldProbeBites(t *testing.T) {
 // UNCONDITIONALLY, before the branch read. A forged OldValue that cannot Resolve present ⇒ NoWitness
 // ⇒ STALL. These gates now assert the STALL (err != nil): each forges the lock-in OldValue=true, the
 // box refuses to agree with the lock-free forgedRoot, and the anchor is the difference. The box still
-// NEVER Accepts (WitnessValidateV5 → Gated); this is STALL-ADDING ONLY.
+// NEVER Accepts ((*Box).Validate → Gated); this is STALL-ADDING ONLY.
 
 // allThreeLockFixture builds a chain where the honest h=2 boundary locks gate+era3+era4 (a single
 // dominant rv=5 member added post-genesis to a rv=0 genesis). Returns the fixture, the boundary block,

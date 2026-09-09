@@ -16,7 +16,7 @@ import (
 //   design:    docs/thinking/2026-09-01-floorbox-witness-soundness-fix-design.md
 //
 // WHY THIS EXISTS. The consensus model-check has ZERO coverage of the floor-box Resolve
-// path because WitnessValidateV5 short-circuits at (IndeterminateTrustlessly,
+// path because the box short-circuits at (IndeterminateTrustlessly,
 // ErrRecomputeGated) BEFORE the recompute (floorbox_v5.go:244 — the never-Accept STOP
 // boundary certified in R1.4-Q5). This oracle exercises the recompute DIRECTLY, calling
 // recomputeStateRootEntriesRevocations (the box's Resolve function) and bypassing the
@@ -54,7 +54,7 @@ import (
 //       + STALL-on-suppressed.
 //
 // A blind Tester verifies the oracle BITES: each gate asserts the box now STALLS the forgery (and,
-// for (b), AGREES on the honest in-block boundary). The box STILL never Accepts (WitnessValidateV5 →
+// for (b), AGREES on the honest in-block boundary). The box STILL never Accepts ((*Box).Validate →
 // Gated); these are recompute-verdict gates, stall-adding only.
 
 // =============================================================================

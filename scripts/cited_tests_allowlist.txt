@@ -131,3 +131,34 @@ TestEpochWatermark_UnguardedRedeemIsUnaffected
 # TestGateC3_1_ServeGiniHonestNullIsMixDependentNotSampleSizeDependent, so a reader
 # arriving from that advisory can find where it went.
 TestGateC3_1_ThresholdProvenanceIsUnreachableUnderDiskWeighting
+
+# ---------------------------------------------------------------------------
+# (H) HISTORICAL — Lane D0, the cold auditor, 2026-09-09.
+# Both names are the pre-D0 never-Accept test, cited by CHANGELOG entries that record the
+# increments which shipped it. It swept the RecoveryDirective input space (directive-absent,
+# directive-present, live-follower) against a bare synthetic height, and owner call 2 of
+# D-TRUE-UP-CALLS-2026-09-07 deleted that input space: the box's stall at an ambiguous #535
+# recovery boundary is unconditional now, so a test parameterized on the knob cannot exist.
+# The property it held is not weaker, it is stronger and it lives in
+# TestColdAuditor_NeverAcceptsAnyV5BlockClass, which drives a real, node-accepted v5 block of
+# EVERY class through the door with a divergent committed root re-signed and re-certified —
+# rather than a height with no payload — and in TestColdAuditor_ClassCoverageIsComplete, which
+# reflects over Block so a new payload class cannot escape the sweep.
+TestWitnessValidateV5_NeverAccepts
+TestWitnessValidateV5_NeverAcceptsWhileRecomputeGated
+
+# ---------------------------------------------------------------------------
+# (H) HISTORICAL — Lane D0, the WitnessValidateV5 deletion, 2026-09-09.
+# Four per-increment "STOP boundary" guards, each named once by the pointer comment left in the
+# increment file it used to live in, so a reader who grepped for the old name lands on where the
+# guard went. All four called Chain.WitnessValidateV5 — deleted on the blind PE's simplicity
+# ruling — and each passed Block{Version: 5, Height: 3} with no roots and no signatures to a
+# function that short-circuited before reading anything, so none could have caught a flip in the
+# increment it sat beside. The property they stood for (the box is never flipped to Accept before
+# R1.8) is now held ONCE, at the only place a flip can happen — the downgrade in (*Box).Validate —
+# and driven on real node-accepted blocks of every v5 class by
+# TestColdAuditor_NeverAcceptsAnyV5BlockClass.
+TestRecomputeDeMatureSuperQuorum_NeverFlipsWitnessValidateAccept
+TestRecomputeQualifiedCount_NeverFlipsWitnessValidateAccept
+TestRecomputeMatureNow_NeverFlipsWitnessValidateAccept
+TestRecomputeEpochWeightQuorum_NeverFlipsWitnessValidateAccept
