@@ -630,6 +630,21 @@ type Block struct {
 	// (R-CONSENSUS-CONFIG-UNBOUND) also proposed key 19 for `Params *ConsensusParams`; that
 	// change takes key 20. Both certs said "next free, verify at build", and both were right to.
 	SlashesDigest *ports.Hash `cbor:"19,keyasint,omitempty"`
+	// Params is the CONSENSUS-CRITICAL GENESIS CONFIG, committed on the GENESIS BLOCK ONLY so the
+	// genesis hash covers it. See ConsensusParams for why this exists and why the alternatives were
+	// refuted. A node configured differently computes a different genesis hash and cannot join —
+	// Reconcile refuses the fork with ErrForeignGenesis before any validity question arises.
+	//
+	// KEY 20, allocated after verifying 1..19 were taken. The genesis-config certification proposed
+	// key 19 and so did (d-3)'s SlashesDigest; both said "next free, verify at build", and both
+	// were right to. (d-3) landed first and took 19.
+	//
+	// POINTER, per the same rule as the (d-3) digests: cbor's omitempty never omits a struct value,
+	// so a non-pointer field would emit an empty map into EVERY block body and move every committed
+	// hash. Nil here means "this genesis predates the bind", which keeps ~250 existing
+	// AppendGenesis fixtures byte-identical. That paramless path SURVIVING is a disclosed residual,
+	// not an oversight: only the daemon refuses to launch a new untrusted network without it.
+	Params *ConsensusParams `cbor:"20,keyasint,omitempty"`
 
 	// hashMemo caches Hash() (#555). A block's hashed content is immutable once
 	// minted (Sign computes the hash it signs) or decoded, but Hash() re-marshaled
@@ -898,13 +913,13 @@ func (b *Block) bodyHash() ports.Hash {
 		// sha256 of its content — so coverage of Answer/Slashes on v5 is TRANSITIVE through that
 		// rule, not direct. Mutating either makes the block INVALID rather than differently
 		// hashed, which is the property the era-aware runtime pin encodes.
-		unsigned = Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: v5PreimageBondRegs(b.BondRegs), Slashes: nil, SlashesDigest: b.SlashesDigest, StateRoot: b.StateRoot, LogRoot: b.LogRoot, IssuerKeys: b.IssuerKeys, LastCommit: b.LastCommit}
+		unsigned = Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: v5PreimageBondRegs(b.BondRegs), Slashes: nil, SlashesDigest: b.SlashesDigest, Params: b.Params, StateRoot: b.StateRoot, LogRoot: b.LogRoot, IssuerKeys: b.IssuerKeys, LastCommit: b.LastCommit}
 	} else {
 		// pre-v5: BYTE-IDENTICAL to before (d-3). AnswerDigest and SlashesDigest are POINTERS and
 		// are nil on every pre-v5 block (validity refuses a pre-v5 block that carries either), so
 		// omitempty omits them and no committed v2/v4 hash moves. That is the frozen-format
 		// immutable, and TestCarrierHashDriftGuard's WITH-a-bond-reg cases are what hold it.
-		unsigned = Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: b.BondRegs, Slashes: b.Slashes, SlashesDigest: b.SlashesDigest, StateRoot: b.StateRoot, LogRoot: b.LogRoot, IssuerKeys: b.IssuerKeys, LastCommit: b.LastCommit}
+		unsigned = Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: b.BondRegs, Slashes: b.Slashes, SlashesDigest: b.SlashesDigest, Params: b.Params, StateRoot: b.StateRoot, LogRoot: b.LogRoot, IssuerKeys: b.IssuerKeys, LastCommit: b.LastCommit}
 	}
 	buf := hashBufPool.Get().(*bytes.Buffer)
 	buf.Reset()
@@ -3054,6 +3069,10 @@ func (c *Chain) ValidateProposal(b *Block) error {
 	if err := validateD3Digests(b); err != nil {
 		return err
 	}
+	// Genesis-config placement: only height 0 may commit consensus params.
+	if err := validateParamsPlacement(b); err != nil {
+		return err
+	}
 	// era-4 (v5) LastCommit carrier validity (R-BOX-ATTESTS, O1). A pure block-local check
 	// (header + signatures, no committed state), placed BEFORE the roots predicate so a bad
 	// carrier fails naming itself rather than as an opaque root mismatch — the roots
@@ -3550,6 +3569,9 @@ func (c *Chain) appendStructural(b Block) error {
 	// the commit path.
 	// (d-3) digest consistency on the OWN-DISK reload path, mirroring the commit path above.
 	if err := validateD3Digests(&b); err != nil {
+		return err
+	}
+	if err := validateParamsPlacement(&b); err != nil {
 		return err
 	}
 	if err := c.validateEra4Version(&b); err != nil {

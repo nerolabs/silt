@@ -1613,6 +1613,18 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 				// SIGNAL the remedy, never silently fail to adopt (I4/S5).
 				n.Stats.ChainSyncNeedCheckpoint++
 				n.logf(ports.LogWarn, "cannot catch up from peer: behind the weak-subjectivity window and the peer pruned the gap — obtain a recent -ws-checkpoint out-of-band or sync from an archive node", "peer", p, "err", ErrNeedCheckpoint)
+			} else if errors.Is(rerr, chain.ErrForeignGenesis) {
+				// LOUD, not LogDebug. A foreign genesis is not a routine non-adoption: since the
+				// genesis hash commits the consensus-critical config (chain.ConsensusParams), the
+				// overwhelmingly likely cause is that THIS node is configured for a different
+				// network — a divergent -min-bond, -quorum, -bond-label-k, era height or anchor set.
+				// At LogDebug the operator saw a node that never synced and said nothing, which the
+				// genesis-config certification named as the gap between "detected at handshake" and
+				// what actually shipped. The remedy is nameable, so name it.
+				diag.lastErr = fmt.Sprintf("foreign genesis from %x: %v", p[:4], rerr)
+				n.Stats.ChainSyncForeignGenesis++
+				n.logf(ports.LogWarn, "peer is on a DIFFERENT NETWORK: its genesis is not ours, so no block from it can ever be adopted — the genesis hash commits the consensus-critical config, so check -min-bond, -quorum, -anchors, -epoch-blocks, -bond-label-k and -bond-vdf against the network you meant to join",
+					"peer", p, "err", rerr)
 			} else if rerr != nil {
 				diag.lastErr = fmt.Sprintf("not adopted from %x: %v", p[:4], rerr)
 				n.logf(ports.LogDebug, "peer chain not adopted", "peer", p, "err", rerr)

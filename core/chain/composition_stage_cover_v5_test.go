@@ -420,7 +420,7 @@ func callsViewMethod(body *ast.BlockStmt, method string) bool {
 // error-message tweak inside validateBondRegs and be turned off within a month; that
 // calibration is the certification's, and its cost (an inline change INSIDE a called stage is
 // unseen) is R-PTABLE-DRIFT's stated bound.
-const nodeAcceptPathDigest = "38d1866795ffd2c101b79ef5604a176280079b8908623d8872f94214a5c18eec"
+const nodeAcceptPathDigest = "85396257ed5cac47c4a54156273f1d7a096b481451817bbcbc6f06dfb324ab8b"
 
 // TestStageCover_ArmB_NodeBodyDigest is a CHANGE DETECTOR, not a cover proof.
 // Ablation (G-D3): add `&& true` to the P5 clause chain in ValidateProposal ⇒ RED.
@@ -525,7 +525,7 @@ func TestStageCover_ArmC_ReverseCover(t *testing.T) {
 var nodeBodyDigests = map[string]string{
 	"ValidateEntry":              "f6844363fb7212b625f60ca726f3d361b7b3eaca7f4af22efb33703c2f5bf3e5",
 	"RequiredQuorum":             "c3a413ba707abae6cfdd40806fe5c195a79a2c4a7e4fa2939d8ee1cb92257454",
-	"ValidateProposal":           "b95af85c882a1dfcf442a5ca07840fea18c0296c9c56fb83bfc8f62b980134b6",
+	"ValidateProposal":           "5fa4a475aa2da7f2495d767beb38c029d3c1cbaed62ba3adb0d2e5d5671d3d9a",
 	"attesterQualifiedAt":        "fd5de208dcecba70d1fcaf32172ef185c20b12020413ba7fff0ddd04fef3723f",
 	"collectQuorumSigs":          "9f48ce5d93ade7351cf817212e823e420c5480f542f4d9bd4c3dd732c86ecbb8",
 	"effectiveEpochSet":          "8da6023fc1b8b0e5482b8f8c275ad9d93a7db8edf304750fdd15e6bfca4d292a",

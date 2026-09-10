@@ -165,6 +165,15 @@ var coldAuditorUndriven = map[string]string{
 		"slashes with no digest, a forged digest, and a digest of nothing are each refused by validateD3Digests, " +
 		"which runs on every disk-write path beside validateEra3Version/validateEra4Version. The Slashes class ABOVE " +
 		"still drives the payload itself through the door to slashedRoot",
+	// The genesis-config bind. Params is GENESIS-ONLY by rule, and this suite drives block classes
+	// at heights above zero, so it is unreachable here by construction rather than by omission —
+	// and the rule that makes it unreachable is itself driven, which is what this list demands of
+	// an excuse:
+	"Params": "genesis-only by validity rule — validateParamsPlacement refuses Params on any block above height 0, " +
+		"DRIVEN by G-CFGBIND-3 (TestGCFGBIND3_ParamsOnlyOnGenesis) on the node path and mirrored into the composition " +
+		"at ValidateProposalV5. This suite drives classes at h>0, where a Params-carrying block is refused before any " +
+		"class question arises. Its coverage as a COMMITMENT is G-CFGBIND-2, which asserts every carried field moves " +
+		"the genesis hash",
 	"CommitRound": "excluded from Hash — a certificate slot a replica may hold differently, not committed state",
 	"PrepareQC":   "excluded from Hash; the quorum stacks C1..C5 read it, and every arm here carries a real one",
 	"Atts":        "excluded from Hash; same as PrepareQC, and the carrier arm drives the parent's copy as committed state",

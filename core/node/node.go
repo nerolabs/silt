@@ -452,6 +452,10 @@ type Stats struct {
 	// A nonzero value means an operator must obtain a recent -ws-checkpoint out-of-band or
 	// point at an archive node — surfaced, never silent (I4/S5).
 	ChainSyncNeedCheckpoint int
+	// ChainSyncForeignGenesis counts peers refused because their genesis is not ours. Since the
+	// genesis hash commits the consensus-critical config, a non-zero count on a node that expected
+	// to be on this network almost always means a divergent local flag, not a hostile peer.
+	ChainSyncForeignGenesis int
 	// ChainSyncWindows: non-empty MsgGetChain reply windows decoded during full
 	// fetches (#466). windows/full-fetch ≈ suffix bytes / maxChainReplyBytes; a
 	// value equal to FullFetches means every fetch fit one window.

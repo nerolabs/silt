@@ -25,6 +25,28 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   itself is certified in-process. No OOM-kill and no crash-loop across the cohort, so the sheet was graded on a healthy network.
   Teardown verified: 40 resources destroyed, no instance left running.
 ### Added
+- **The consensus-critical genesis config is bound to the chain** (owner call F,
+  [`docs/decisions.md`](docs/decisions.md) `D-CFGBIND-BUILT-2026-09-10`). A new `ConsensusParams` —
+  **17 fields carried by value** — is committed on the genesis block as `Block.Params` at cbor key
+  20, so the genesis hash covers it. **A node configured differently computes a different genesis
+  hash and cannot join at all**; the fork is refused with `ErrForeignGenesis` before any validity
+  question arises. This closes `R-CONSENSUS-CONFIG-UNBOUND` on the production path — the class that
+  produced #380's `Config.Quorum`, `SlashesBytesCap`'s flag-derived invariant, and `MinBond` as a
+  bare command-line flag.
+  **Values, not a digest**, so a mismatch names the field that differs. **Canon rule 8's two arms
+  compose:** a refuse-to-start was refuted for this class because divergence is not locally
+  observable — but committing the values manufactures the referent it lacked, which makes
+  `CheckConsensusParams` required to catch the one case joining cannot, an operator editing a flag
+  and restarting on a chain already joined.
+  **The two sharpest members were in `node.Config`, not `chain.Config`:** `-bond-label-k` and
+  `-bond-vdf`, where a `k=32` node rejects every bond registration a `k=64` swarm accepts.
+  **The foreign-genesis refusal is now loud** — it logged at `LogDebug`, so an operator saw a node
+  that never synced and said nothing. It now warns, names the flags to check, and counts a
+  `ChainSyncForeignGenesis` stat.
+  Five fields are deliberately excluded, each for a different reason — notably `WSCheckpoint`, where
+  sharing it would destroy weak subjectivity, and `LivenessRecoveryHeight`, which is structurally
+  unbindable. Gates `G-CFGBIND-1..5` with a six-step ablation battery verified by exit code.
+
 - **(d-3) the two-level v5 block hash — `Pruned` is retired for era-4** (owner call C,
   [`docs/decisions.md`](docs/decisions.md) `D-D3-BUILT-2026-09-10`). From v5 the block preimage
   commits the heavy payloads by digest: `BondReg.Answer` by a new `AnswerDigest`, and `Slashes` by a

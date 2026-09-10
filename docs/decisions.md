@@ -3701,3 +3701,89 @@ INADMISSIBLE ALONE) is **not ratified and not reserved** — it becomes an input
 rather than a frozen constant, and its self-corrections of freeze-manifest §4.6 travel with it.
 
 **Net effect on D1: the manifest loses one FORMAT item and gains none.**
+
+---
+
+## D-CFGBIND-BUILT-2026-09-10 — the genesis-config family is bound to the chain; canon rule 8's two arms compose
+
+- **Status:** ✅ BUILT, `core/chain` and `core/node` green — 2026-09-10. Owner call F
+  (`D-FREEZE-CALLS-CDEF-2026-09-10`) delivered against
+  `GENESIS-CONFIG-FAMILY-BIND-RESEARCH-CERTIFICATION-2026-09-10.md`. Closes
+  `R-CONSENSUS-CONFIG-UNBOUND` **on the production path**.
+- **The mechanism:** `ConsensusParams` — **17 fields carried by VALUE** — committed on the genesis
+  block as `Block.Params *ConsensusParams` at **cbor key 20**, so the genesis hash covers it. A node
+  configured differently computes a different genesis hash and **cannot join at all**: `Reconcile`
+  refuses the fork with `ErrForeignGenesis` before any validity question arises. Divergence becomes
+  *impossible to join with* rather than fatal at validation.
+- **Key 20, not 19.** Both the genesis-config and (d-3) certifications proposed key 19 and both said
+  *"next free, verify at build"*. Verified: 1..18 were taken, (d-3) landed first and took 19.
+- **VALUES, not a digest** — so a mismatch is **diagnosable**: `CheckConsensusParams` names the field
+  that differs. A digest would only prove two hashes differ, and a *gossiped* digest was refuted
+  separately as an unauthenticated claim where a genesis hash is self-authenticating.
+
+### Rule 8's two arms COMPOSE (T-REFERENT) — this is the part worth carrying forward
+
+A refuse-to-start was **refuted for this class**: `MinBond` divergence is not locally observable, so
+a start-up assertion has nothing to assert against. But **committing the values MANUFACTURES the
+referent it lacked**, which makes a start-up check *required* rather than redundant — it catches the
+one case joining cannot: **an operator editing a flag and restarting on a chain the node has ALREADY
+joined.** The genesis on disk is unchanged, so no fork boundary is crossed and nothing else would
+notice. `Chain.CheckConsensusParams` is that arm, driven by G-CFGBIND-4.
+
+### Membership: 17 IN, 5 OUT, and the exclusions differ from each other
+
+Getting membership wrong is **asymmetric**: too few leaves a consensus quantity unbound; too many
+refuses honest operators for differing on something that was never theirs to agree on. So each
+exclusion carries its own reason, and a reflective gate (G-CFGBIND-1) fails on any `Config` field
+that is neither carried nor excluded.
+
+| OUT | Why — and they are not the same reason |
+|---|---|
+| `Archive` | retention only; reaches no verdict |
+| `WSCheckpoint` | **sharing it would DESTROY weak subjectivity** — it is the operator's own trust anchor |
+| `MinProposerRep` / `MinAttesterRep` | **binding is INEFFECTIVE** — the divergent term is the local reputation *view*, not the threshold |
+| `LivenessRecoveryHeight` | **structurally unbindable** — set after launch on a chain that by construction cannot commit it (`R-LIVENESS-RECOVERY-UNBOUND`) |
+
+**The two sharpest members came from `node.Config`, not `chain.Config`:** `BondLabelSamples` and
+`BondVDFDelay`. `core/bond` compares a proof's label count against the verifier's **own local** value,
+so a `k=32` node rejects **every** bond registration a `k=64` swarm accepts — and the flag help
+states the coordination requirement while inviting the change. They are carried by value here to
+avoid an import cycle. The divergence gate never saw them because its reflection is closed over
+`chain.Config` (`R-CONFIG-GATE-NODE-SCOPE`, still open).
+
+### "Detected at handshake" was refuted as a description of what SHIPPED — and is now fixed
+
+The certification found there is no genesis exchange at the TLS handshake, and the refusal that does
+fire logged at **`LogDebug`** (`core/node/chainrole.go`) — so *"the operator sees a node that never
+syncs and says nothing."* `ErrForeignGenesis` is now split out of the generic non-adoption branch and
+logged at **`LogWarn`**, naming the likely cause and the flags to check, with a
+`ChainSyncForeignGenesis` stat. Because the genesis now commits the config, the overwhelmingly likely
+cause of a foreign genesis is a **divergent local flag**, not a hostile peer — so the remedy is
+nameable, and it is named.
+
+### Gates and ablations
+
+`G-CFGBIND-1..5`, ablation battery **B0–B6**, all verified by exit code: drop `Params` from the
+pre-v5 literal → G-CFGBIND-2 RED; drop a field from `ParamsFromConfig` → G-CFGBIND-4 RED; remove a
+`Config` field's decision → membership RED; drop the placement rule → G-CFGBIND-3 RED; make the
+refusal undiagnosable → G-CFGBIND-4 RED.
+
+**Two of those first reported FALSE GREEN because the patch never applied**, and the battery caught
+it: this run carried an explicit no-op guard (`diff` the patched file against its original before
+believing the result), added after the (d-3) battery was bitten by exactly this. **A patch that
+silently no-ops is indistinguishable from a passing ablation**, and the guard is now the habit.
+
+### What this does NOT close
+
+`R-CONSENSUS-CONFIG-UNBOUND` closes **on the production path only**. Still open:
+`R-LIVENESS-RECOVERY-UNBOUND`; `R-CONFIG-GATE-NODE-SCOPE` (the divergence gate still reflects over
+`chain.Config` alone); **the surviving paramless path** — a genesis predating the bind carries nil
+and still starts, which keeps ~250 fixtures byte-identical and is **disclosed, with G-CFGBIND-5
+asserting it deliberately** rather than leaving it to chance; and the legacy-leg subjectivity, which
+no bind can reach.
+
+### Ordering that still stands
+
+**F moves the genesis hash; call A (the chain id in the signature preimage) consumes it.** They must
+land in ONE genesis move or the graded re-run set is paid twice — which, with the freeze re-priced,
+is the actual cost of the freeze.

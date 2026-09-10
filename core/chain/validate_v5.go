@@ -231,6 +231,15 @@ func ValidateProposalV5(v StateView, b *Block) (FloorBoxOutcome, error) {
 		return Reject, err
 	}
 
+	// ---- 1c. GENESIS-CONFIG PLACEMENT. Block-local, no state read. ----
+	// The mirror of validateParamsPlacement on the node path (G-D13). Only the genesis block may
+	// commit consensus params: they bind because the GENESIS hash covers them, and Reconcile's
+	// foreign-genesis check reads blocks[0] alone. Params on any later block would be hash-covered
+	// by a hash no joining node compares — committed-looking, binding nothing.
+	if err := validateParamsPlacement(b); err != nil {
+		return Reject, err
+	}
+
 	// ---- 2. P2/P3 proposer key size and proposer signature over b.Hash(). ----
 	if len(b.Proposer) != ed25519.PublicKeySize {
 		return Reject, ErrBadSignature
