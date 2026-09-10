@@ -1362,6 +1362,44 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   knowing it is also the evidence size above which a double-signer keeps its seat with no on-chain
   penalty, including every member of a ≥⅓ coalition that splits finality using ~9 MB valid
   blocks, a face no value of the cap closes and only (d-3) removes.
+
+  > **⚠ THE RATIFIED SENTENCE ABOVE IS LEFT VERBATIM AND IS PARTLY REFUTED — 2026-09-10.** It is not
+  > rewritten, because the owner ratified those words and only the owner unratifies them; this note
+  > records what a research certification found and what he must now re-ratify. Certification:
+  > `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/SLASHCAP-NESTED-EVIDENCE-FIXED-POINT-RESEARCH-CERTIFICATION-2026-09-10.md`.
+  > **(i)** *"and only (d-3) removes"* is **FALSE**. §4.3's `Slashes′` is a recursively reduced COPY,
+  > not a digest, and it leaves `Entries` and `LastCommit` — neither of which has a validity bound on a
+  > peer's block — so (d-3) is a ~40× constant shrink (2 → ~80 committed proofs), not a close.
+  > **(ii)** The *"≥⅓ coalition"* clause is true but **materially understates**: `CheckEquivocation`
+  > (`core/chain/equivocation.go:68`, verified at source) checks only key SIZE, equal height, differing
+  > body, matching era and a shared `(round, phase)`. It never checks that the culprit is a bonded
+  > validator, that the evidence blocks belong to this chain, or that a proof is not a duplicate. So a
+  > **lone** proposer can armor itself with throwaway-key junk proofs — no bond, no coalition, no
+  > misconfiguration. **DRIVEN AND CONFIRMED 2026-09-10** against real production code on `4c330c8` —
+  > shipped `CheckEquivocation`, `SlashesEncodedSize`, `v5ValidateSlashes` and the full
+  > `Chain.ValidateProposal` path, no mocks, reproduced independently. **A throwaway-key proof about two
+  > never-committed blocks is 687 B and is ACCEPTED as evidence.** 24,456 of them pack `Slashes` to
+  > 16,776,819 B — 397 B under the cap — and that block is **VALID under `v5ValidateSlashes` AND
+  > `ValidateProposal` at shipped `DefaultConfig`**. A legitimate proof about it is 33,555,157 B, i.e.
+  > 16,777,941 B over cap, and is REJECTED with `ErrSlashesBytesCapExceeded`: **the equivocator keeps its
+  > seat.** Gate: `core/chain/TestRNestGate_SelfArmorMeasurement` + `TestRNestGate_JunkKeyProofIsAcceptedEvidence`
+  > (`R-NEST-GATE`).
+  > **The measurement CORRECTED the certification's own arithmetic.** §2.2 derived the armor threshold as
+  > ≈8.39 MiB per side and flagged it unmeasured; binary search over junk-proof count puts it at
+  > **≈7.9998 MiB** (12,227 proofs/side still admissible, 12,228 over) — essentially `SlashesBytesCap/2`
+  > less ~1.5 KB of overhead. The derivation **overstated the attacker's cost by ~5 %**. Do not re-cite
+  > 8.39 MiB.
+  > **And the cheap route is not the one modelled.** Both the PE table and the certification reasoned from
+  > two ordinary ~4.14 MiB reg-laden proofs; the driven construction reaches the same armored state with
+  > **header-only** 687 B proofs, which is far cheaper for an attacker to build. Anything that prices the
+  > attacker's cost must use the header-only route.
+  > **(iii)** The close that does exist is not (d-3): `consensusSigBytes` (`core/chain/chain.go:918`)
+  > omits **Height** from the signature preimage — "the height rides inside the hash" — which is the
+  > entire reason evidence carries full bodies (`equivocation.go:54-60` says so). Putting
+  > `(height, round, phase)` in the v5 preimage makes evidence `O(1)`, ~200 bytes. That is CometBFT's
+  > `CanonicalVote`. It is a **FORMAT** change and a **WIDENING** one, so it rides D1 or it costs an era.
+  > **The 16 MiB VALUE does not move.** Three owner calls are in §9 of the certification.
+
   Derived from shipped bounds: one legitimate evidence pair is at most two blocks at the
   default per-block budgets (2 MiB regs + 64 KiB entries) ≈ 4.2 MiB, so 16 MiB admits three
   fat proofs (or ~18k header-only ones) and is 1/8 of the 128 MiB transport frame. G-3
@@ -2677,3 +2715,64 @@ showing the one-byte value IS committed).
 - **What this does NOT decide:** the relay successor's MECHANISM (periodic sweep vs incremental
   settlement — the Researcher certifies, the owner ratifies); which external party takes the B8
   engagement; the freeze act itself (D3).
+
+## D-SLASHCAP-ROUTE — `SlashesBytesCap` keeps its value and loses its route; a consensus rule may not be a function of local config
+
+- **Status:** ✅ DECIDED — 2026-09-09 (owner: *"The SlashesBytesCap call: CLOSE THE ROUTE. Not a
+  re-ratification. The value stays 16 MiB. The route goes."*), on the pre-freeze derivation-route audit
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-derivation-route-audit-pre-freeze-2026-09-09.md`.
+  Deliberation: [`thinking/2026-09-10-slashcap-route-close-design.md`](thinking/2026-09-10-slashcap-route-close-design.md).
+- **The value is unchanged.** `chain.SlashesBytesCap` stays 16 MiB. Nothing about the constant moved.
+- **The defect.** The cap is a consensus validity rule enforced on every validator
+  (`core/chain/validate_v5_predicates.go:285`), and its invariant `cap ≥ 2 × (honest block) + overhead`
+  was computed from the DEFAULTS of `-max-bondreg-bytes-per-block` and `-max-entry-bytes-per-block`.
+  Both flags are **proposer-side only** (every non-test read: `core/node/chainrole.go:890`,
+  `core/node/entrypool.go:116`) and documented `0 = unbounded`. So an operator could raise its own
+  budget past ~7.9 MiB and make its OWN equivocation unprovable — the evidence pair exceeds the cap,
+  the cap rejects it before `CheckEquivocation` runs, and the double-signer **keeps its seat**.
+- **The owner's three reasons, in his order of weight.** (1) *"It's the same class as #380, which we
+  just paid for.* `RequiredQuorum()` *read the local* `cfg.Quorum` *and produced an I1 divergence.
+  A consensus rule must be a function of the chain, never of local config. Two instances of one class
+  inside a week isn't a coincidence, it's an unguarded seam."* (2) The accountability face is the real
+  severity: *"that's slashing defeated by making the evidence too big. Accountability is a Part-0
+  corner."* (3) Timing is decisive and the tier correction is accepted — this is a VALIDITY rule
+  (freeze manifest item 10), so the deadline is the STAMP RAISE, not the freeze; but *"raising a cap
+  later is a widening rule change, outside the narrowing exemption. 'Fix it cheaply later' isn't on
+  the menu. It's now, or it's a coordinated fleet fork."*
+- **The fix.** `core/node.CheckSlashEvidenceHeadroom(cfg)` expresses the invariant on the values IN
+  FORCE; `cmd/silt` refuses to start on a non-nil return. `0` and negative budgets are refused (the
+  proposer's guard is `budget > 0`, so both read as unbounded), rather than clamped — clamping would
+  silently re-interpret an explicit operator request. Driven by G-SLASHCAP-1..4, ablation red first.
+  No consensus rule, block format or published claim changes; this binds a configuration to an
+  already-ratified derivation.
+- **Scope, so it is not over-read.** This closes the CONFIGURATION route only. The cap's disclosed
+  SECOND FACE — a ≥⅓ coalition making every evidence pair over-cap with its own valid renewals, so
+  accountable safety degrades to plain safety for fat coalitions — is UNTOUCHED, and no admissible cap
+  value closes it; only the v5 two-level block hash (d-3, a FORMAT item in the D1 train) removes it.
+- **CORRECTION, 2026-09-10, by the blind PE review of the close itself — the stronger claim is
+  REFUTED and the owner must see this.** The first version of this entry and of the code comment said
+  the derivation was now "bound by construction". **It is not, and it cannot be.** `Equivocation`
+  carries two FULL `Block`s (`core/chain/equivocation.go:26-27`) and a `Block` carries its own
+  `Slashes` field (`core/chain/chain.go:518`), bounded only by the cap being defended. So
+  `cap ≥ 2 × body + overhead` with `body ⊇ Slashes ≤ cap` **has no positive solution at any cap** — a
+  fixed point, not a tuning error. Measured on signature-valid fixtures at the SHIPPED defaults, with
+  **no coalition and no misconfiguration**: a block committing two ordinary 4.14 MiB proofs is VALID
+  (8.28 MiB of `Slashes` under the 16 MiB cap), and a LEGITIMATE proof about that block is
+  **17,373,935 B — 596 KB over cap**. The equivocator keeps its seat.
+- **So the cap has a THIRD face: `R-NESTED-EVIDENCE-OVERCAP`.** The two faces already disclosed on the
+  constant need a ≥⅓ coalition or (as of this entry) a misconfiguration; this one needs **neither** and
+  is reachable on the honest path at shipped defaults. What `D-SLASHCAP-ROUTE` buys is therefore
+  stated exactly: it closes the OPERATOR MISCONFIGURATION route — a validator can no longer make its
+  own equivocation unprovable by editing a local flag — and it makes the configurable half of the
+  derivation true instead of assumed. It is **necessary, not sufficient**. Whether a validity rule
+  bounding the encoded block body closes the rest (it would bind PEERS, which no start-up check can),
+  or whether fixed-size evidence (d-3) is the only close, is **RESEARCH-GATED and in flight**; the
+  verdict may partly refute the R0.6 value certification, and the owner ratifies that.
+- **What this does NOT decide:** the single-reg overflow (`R-BONDREG-SINGLE-OVERSIZE`) — silt has no
+  per-reg byte cap and `core/node/chainrole.go:902` embeds the first fresh reg unconditionally, so one
+  oversized registration can still exceed the configured budget. That needs a validity rule of its own
+  and is filed, not folded in. Nor the nested-evidence face above. Nor **the one call the PE routed to
+  the owner: retiring the documented `0 = unbounded` posture on two shipped flags pre-RC.** The blast
+  radius is empty in-tree (verified: no script, CI workflow, integration topology, cloudtest launcher
+  or deploy file sets either flag) and the PE recommends taking it; it ships in this change and the
+  owner may reverse it.

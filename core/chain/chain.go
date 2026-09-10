@@ -409,7 +409,8 @@ const RegCap = 256
 // never admits a forged slash (CheckEquivocation is the only thing that convicts) and
 // lowering it never convicts an honest validator; on I5's COMPLETENESS axis it is the
 // evidence size above which a double-signer keeps its seat (below). NOT RegCap's class.
-// Invariant the value must satisfy: SlashesBytesCap ≥ 2 × (default honest block) +
+// Invariant the value ASPIRES to (unsatisfiable as stated — see THE FIXED POINT below):
+// SlashesBytesCap ≥ 2 × (configured honest block) +
 // overhead — 16 MiB against ~4.2 MiB. It is needed because F2-EVIDENCE-RECOMPUTE makes FULL bodies the only
 // admissible evidence and Prune() never recurses into Slashes, so every admitted proof
 // pins two full block bodies — BondReg.Answer included — permanently resident on every
@@ -435,13 +436,44 @@ const RegCap = 256
 //
 // PROVISIONAL VALUE — OWNER RATIFIES on immutable-#8 grounds (G-3 measurement pending;
 // TestSlashesBytesCapWorstCaseCost reports the resident/decode/validate cost at the cap).
-// Derivation from shipped bounds, not taste: an honest block is at most the default
-// per-block budgets (2 MiB of BondRegs + 64 KiB of entries, cmd/silt/daemon.go
+// Derivation from shipped bounds, not taste: an honest block is at most the CONFIGURED
+// per-block budgets (defaults 2 MiB of BondRegs + 64 KiB of entries, cmd/silt/daemon.go
 // -max-bondreg-bytes-per-block / -max-entry-bytes-per-block) plus a small header, so one
 // legitimate evidence pair is ≤ ~4.2 MiB; 16 MiB admits three such fat proofs, or
 // ~18,000 header-only proofs, per block, and is 1/8 of the 128 MiB transport frame
 // (adapters/tcpnet) that already bounds a block non-uniformly. A larger legitimate
 // backlog drains over successive blocks (liveness, not safety).
+//
+// THE CONFIGURATION ROUTE IS CLOSED — AND THE INVARIANT ABOVE IS NOT SATISFIABLE
+// (2026-09-09 owner call: "CLOSE THE ROUTE. Not a re-ratification. The value stays 16 MiB.
+// The route goes."; corrected 2026-09-10 by the blind PE review of the close itself, which
+// REFUTED the stronger claim this comment first carried).
+//
+// What was wrong. The invariant three paragraphs up read "2 × (DEFAULT honest block)", and
+// nothing held the RUNNING configuration to it. The two budgets are PROPOSER-SIDE ONLY —
+// every non-test read is core/node/chainrole.go (foldPendingBondRegs) and
+// core/node/entrypool.go (foldPendingEntries) — and their help documented "0 = unbounded",
+// so an operator could raise its own budget past ~7.9 MiB and make its OWN equivocation
+// unprovable: the pair exceeds this cap, the cap rejects it before CheckEquivocation runs,
+// and the double-signer keeps its seat. That is the #380 class — a consensus quantity that
+// is a function of LOCAL CONFIG rather than of the chain. It is closed by
+// core/node.CheckSlashEvidenceHeadroom, which cmd/silt refuses to start on (G-SLASHCAP-1..4).
+//
+// THE FIXED POINT — and this is why that close is NECESSARY BUT NOT SUFFICIENT. Equivocation
+// carries two FULL Blocks (equivocation.go), and a Block carries its own Slashes field
+// (below), bounded only by this cap. So "cap ≥ 2 × body + overhead" with "body ⊇ Slashes ≤
+// cap" has NO positive solution, for any cap. Measured at the SHIPPED defaults, with no
+// coalition and no misconfiguration: a block committing two ordinary 4.14 MiB proofs is
+// VALID (8.28 MiB of Slashes under a 16 MiB cap), and a LEGITIMATE proof about that block is
+// 17,373,935 B — 596 KB over cap. The equivocator keeps its seat.
+//
+// So this constant has a THIRD face beside the two above: the NESTED-EVIDENCE face. Unlike
+// the coalition face it needs no coalition, and unlike the configuration route it needs no
+// misconfiguration — it is reachable on the honest path at shipped defaults. Like the other
+// two it routes to the v5 two-level block hash (d-3, fixed-size evidence), which is the only
+// close any of the three has. Whether a validity rule bounding the ENCODED BLOCK BODY could
+// close it instead — binding PEERS, which no start-up check can — is RESEARCH-GATED and open;
+// nothing in the config route-close improved that answer, and this comment does not claim it.
 const SlashesBytesCap = 16 << 20
 
 // Consensus signature phases (#432 two-phase gather, research-certified).
