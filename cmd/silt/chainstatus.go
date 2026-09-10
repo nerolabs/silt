@@ -4,8 +4,11 @@ import (
 	"flag"
 	"fmt"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/nerolabs/silt/adapters/chainstore"
+	"github.com/nerolabs/silt/core/chain"
 )
 
 // cmdChainStatus prints a read-only summary of a validator's committed chain
@@ -52,6 +55,7 @@ func cmdChainStatus(args []string) error {
 	// nonzero count here is how an operator (or the field harness) confirms
 	// the prune is engaged from real persisted state, not a log line.
 	fmt.Printf("  pruned:       %d blocks payload-stripped below the retention horizon\n", pruned)
+	printEraObservable(blocks)
 	// #535 diagnosis (S5 — never silently fail): when the NEXT height to commit
 	// is an epoch boundary, a head that is not advancing may be the epoch-
 	// boundary liveness wedge — members holding > 1/3 of the frozen epoch's
@@ -65,4 +69,58 @@ func cmdChainStatus(args []string) error {
 	}
 	fmt.Println("  → identical values across replicas mean they agree on the committed history")
 	return nil
+}
+
+// printEraObservable prints the era half of chain-status: the block-version census and the two
+// era lines (R-CLOUD-ERA-PROBE, freeze manifest item 19). It reads the persisted blocks and
+// NOTHING ELSE — no config, no flag, no replay. See chain.CensusOf for why.
+//
+// WHAT THIS PATH CANNOT SEE, AND SAYS SO. chain-status holds a []Block, not a chain.Chain, so the
+// readiness-tally latch is out of reach. It must not be rebuilt here: recovering the latch means
+// replaying into a fresh Chain with a Config this command does not have, so EpochBlocks would come
+// from a CLI flag and the reported activation height would be a function of what the operator
+// typed. That is the #380 class, manufactured inside the tool built to observe era state. So
+// EraLine is called with tallyVisible=false, and the dark case names the limit and where to get
+// the answer instead of printing a false that means "not observable here".
+func printEraObservable(blocks []chain.Block) {
+	c := chain.CensusOf(blocks)
+	fmt.Printf("  head version: v%d\n", c.HeadVersion)
+	fmt.Printf("  versions:     %s\n", versionCensusLine(c))
+	// The two era lines. Only era-3 and era-4 have activation state; v2 needs none.
+	for _, v := range []uint64{chain.BlockVersionStateRoot, chain.BlockVersionWitnessable} {
+		s := chain.EraStatus{Version: v, Phase: chain.EraDark}
+		if h, ok := c.FirstHeights[v]; ok {
+			hh := h
+			s.FirstHeight, s.Phase = &hh, chain.EraActive
+		}
+		fmt.Printf("  %s\n", s.EraLine(false))
+	}
+	// max_h len(blocks[h].Atts) — the live attestation-carrier width, a figure two certification
+	// items name as unmeasured and no shipped command produced before this one. A bare "0" would
+	// be unreadable against "never computed", so zero is narrated.
+	switch {
+	case !c.AttsMeasured:
+		fmt.Println("  max atts:     NOT MEASURED — no block was walked")
+	case c.MaxAtts == 0:
+		fmt.Println("  max atts:     0 — measured across every block; none carries an attestation (a genesis-only or single-signer chain)")
+	default:
+		fmt.Printf("  max atts:     %d, first at height %d (max_h len(blocks[h].Atts) across all %d blocks)\n",
+			c.MaxAtts, c.MaxAttsHeight, c.Blocks)
+	}
+}
+
+// versionCensusLine renders the per-version block counts in ascending version order, e.g.
+// "v2 x 41, v4 x 2, v5 x 3 (highest v5, first at height 43)".
+func versionCensusLine(c chain.VersionCensus) string {
+	vs := make([]uint64, 0, len(c.Counts))
+	for v := range c.Counts {
+		vs = append(vs, v)
+	}
+	sort.Slice(vs, func(i, j int) bool { return vs[i] < vs[j] })
+	parts := make([]string, 0, len(vs))
+	for _, v := range vs {
+		parts = append(parts, fmt.Sprintf("v%d x %d", v, c.Counts[v]))
+	}
+	return fmt.Sprintf("%s (highest v%d, first at height %d)",
+		strings.Join(parts, ", "), c.MaxVersion, c.MaxVersionFirstHeight)
 }
