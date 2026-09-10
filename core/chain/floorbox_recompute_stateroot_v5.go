@@ -65,6 +65,14 @@ var (
 	// fires at b.Height, so it cannot rule the block E/R-only. It stalls (never guesses absence).
 	ErrRecomputeStateRootTTLWitness = errors.New("chain: floor-box O(payload) state-root recompute — dueBucket TTL scope-gate witness did not prove non-membership against prevStateRoot; cannot rule the block E/R-only, stalling")
 
+	// ErrRecomputeStateRootRevLogSize marks a stall on the class-R COUNTER leaf (tagRevLogSize,
+	// freeze-manifest item 1): the committed pre-state log size is not an 8-byte uint64, so the box
+	// cannot derive the post value m+k. It stalls rather than defaulting m — a defaulted m is the
+	// wrong-accept this leaf exists to close (translog.VerifyConsistency degenerates at m = 0 and
+	// m = 1). A MISSING witness for the key lands on ErrRecomputeStateRootFold's no-witness arm,
+	// which is the same never-Accept verdict by the shared route.
+	ErrRecomputeStateRootRevLogSize = errors.New("chain: floor-box O(payload) state-root recompute — the committed revocation-log size (tagRevLogSize) pre-state value is not an 8-byte uint64; the box cannot derive the post-apply size and stalls rather than defaulting m")
+
 	// ErrRecomputeStateRootFold marks a stall from the R-fold primitive: a changed-leaf proof failed
 	// to verify against prevStateRoot, or the library replay of a payload write failed. The box
 	// stalls rather than recompute over an unverified change.
@@ -451,10 +459,25 @@ func (c *Chain) assembleStateRootRecomputeOps(
 		if wr.newValue == nil && len(wit.OldValue) == 0 {
 			return nil, fmt.Errorf("%w: un-revocation delete of key %x claims an absent pre-state", ErrRecomputeStateRootFold, wr.key)
 		}
+		newValue := wr.newValue
+		if wr.countDelta != 0 {
+			// A COUNTER leaf (tagRevLogSize): the post value is the pre-state count plus the
+			// payload-derived delta. The pre-state count is read from the CLAIMED OldValue, which
+			// the fold verifies against prevStateRoot before folding — so a witness that lies about
+			// m produces a failed proof (a stall), never a shifted count. C-a always-emit is what
+			// makes the read total: every v5 root commits this leaf, so a missing one is a witness
+			// gap, never an empty log.
+			m, ok := decodeUint64Leaf(wit.OldValue)
+			if !ok {
+				return nil, fmt.Errorf("%w: counter leaf %x has a %d-byte pre-state value, want an 8-byte uint64",
+					ErrRecomputeStateRootRevLogSize, wr.key, len(wit.OldValue))
+			}
+			newValue = statehash.EncodeUint64(m + wr.countDelta)
+		}
 		ops = append(ops, statehash.FoldOp{
 			Key:            wr.key,
 			OldValue:       wit.OldValue, // the claimed pre-state; the fold verifies it against prevStateRoot
-			NewValue:       wr.newValue,
+			NewValue:       newValue,
 			Proof:          wit.Proof,
 			DeleteSiblings: wit.DeleteSiblings,
 		})
@@ -551,6 +574,14 @@ func (c *Chain) stateRootScopeGate(prevStateRoot ports.Hash, b Block, w StateRoo
 type stateRootWrite struct {
 	key      []byte
 	newValue []byte
+	// countDelta, when non-zero, marks a COUNTER leaf whose post value is not a pure function of
+	// the payload: the new value is the pre-state uint64 PLUS this delta. Only tagRevLogSize uses
+	// it — the committed revocation-log size moves m -> m+k, and m lives in the pre-state. newValue
+	// is ignored for such a write; the op builder derives it from the MATCHED witness's OldValue,
+	// which the fold verifies against prevStateRoot, so a lying witness stalls rather than shifts
+	// the count. The KEY is still a pure function of the payload (present iff k > 0), so the
+	// completeness bound the derived write-set rests on is unchanged.
+	countDelta uint64
 }
 
 // applyEntriesRevocationsWriteSet derives the class-E and class-R committed-leaf write-set for a
@@ -568,8 +599,14 @@ type stateRootWrite struct {
 //
 // It reproduces the leaf EFFECT of apply()'s two classes, not apply() itself: the byRoot/spent/
 // revoked leaves are the committed image of those maps (statehash.go), so folding these writes is
-// byte-identical to apply()+stateRootLeavesV5 for these classes. The revLog append (LogRoot, not
-// StateRoot) is out of scope — this is the STATE root.
+// byte-identical to apply()+stateRootLeavesV5 for these classes.
+//
+// THE revLog APPEND IS IN SCOPE FOR ITS SIZE (freeze-manifest item 1). The log's ROOT is a separate
+// committed root and stays out of the state root, but tagRevLogSize commits the log's SIZE as a v5
+// state leaf, and apply() appends exactly one log entry per revocation and per un-revocation
+// (chain.go apply, both loops unconditional — the LOG does not dedup the way the STATE write-set
+// does). So a block with k = len(Revocations)+len(Unrevocations) > 0 moves that scalar by exactly
+// k. It is emitted as a countDelta write because its post value depends on the pre-state m.
 func applyEntriesRevocationsWriteSet(b Block) []stateRootWrite {
 	// Dedup by key: a block may repeat a root/serial; the committed leaf is set-valued, so the last
 	// write wins and the leaf is present-once. A revocation followed by an un-revocation of the same
@@ -600,7 +637,7 @@ func applyEntriesRevocationsWriteSet(b Block) []stateRootWrite {
 	for _, r := range b.Unrevocations {
 		remember(statehash.Key(tagRevoked, r[:]), nil, true)
 	}
-	out := make([]stateRootWrite, 0, len(order))
+	out := make([]stateRootWrite, 0, len(order)+1)
 	for _, k := range order {
 		v := byKey[k]
 		nv := v.newValue
@@ -608,6 +645,23 @@ func applyEntriesRevocationsWriteSet(b Block) []stateRootWrite {
 			nv = nil
 		}
 		out = append(out, stateRootWrite{key: []byte(k), newValue: nv})
+	}
+	// Class R, the committed log SIZE. k counts DUPLICATES — apply()'s two revLog.Append loops are
+	// unconditional, so a repeated root or a revoke/un-revoke pair of the same root in one block
+	// still appends one log entry each, even though the STATE write-set above nets them to one leaf.
+	// Deriving k from the payload rather than from len(out) is what keeps the two counts apart.
+	if k := len(b.Revocations) + len(b.Unrevocations); k > 0 {
+		// newValue is a PLACEHOLDER, not the committed value: the op builder replaces it with
+		// EncodeUint64(m+k) from the matched witness's verified pre-state. It is deliberately
+		// non-nil, because nil newValue is this write-set's vocabulary for a DELETE and every
+		// witness builder branches on it. If the countDelta derivation is ever dropped, the fold
+		// commits size 0, the post-root diverges and the box stalls on the root mismatch — the
+		// placeholder cannot become a silent wrong-accept.
+		out = append(out, stateRootWrite{
+			key:        statehash.Key(tagRevLogSize, nil),
+			newValue:   statehash.EncodeUint64(0),
+			countDelta: uint64(k),
+		})
 	}
 	return out
 }

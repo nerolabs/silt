@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/nerolabs/silt/core/statehash"
+	"github.com/nerolabs/silt/core/translog"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -118,7 +119,7 @@ func digestRootLeafKeys() map[string]struct{} {
 //
 // epochSetRoot (increment 1), validatorsSeenRoot (increment 2), and bondedRoot (increment 3) are
 // NO LONGER excluded (their recomputes read them): the exclusions were removed so each recompute's
-// dependence on its digest is caught by the same discipline the 23 member keyspaces get
+// dependence on its digest is caught by the same discipline the 24 member keyspaces get
 // (TestEpochSetRootReadReddensOnDrop, TestValidatorsSeenRootReadReddensOnDrop,
 // TestBondedRootReadReddensOnDrop).
 func isDigestRootLeaf(k string) bool {
@@ -341,6 +342,17 @@ func perturbLeaf(clone *Chain, key, curVal []byte) bool {
 		return true
 	case tagEra4Height:
 		clone.era4Height++
+		return true
+	case tagRevLogSize:
+		// The committed log SIZE. Perturb it by APPENDING a synthetic log entry — the same way
+		// production moves it — on a private copy of the log, so the perturbation cannot alias
+		// back into the source chain.
+		if clone.revLog == nil {
+			clone.revLog = translog.New()
+		} else {
+			clone.revLog = clone.revLog.Clone()
+		}
+		clone.revLog.Append(RevocationLeaf(RevOp, ports.Hash{0xDE, 0xAD}, 0))
 		return true
 	}
 	// Map keyspaces: flip the leaf's presence (delete it), which any recompute that reads it
@@ -1142,17 +1154,17 @@ func allV5GuardCorpora(t *testing.T) []v5GuardCorpus {
 }
 
 // TestWitnessReadSetV5AllKeyspacesRedOnDrop is THE DEFINITIVE COMPLETENESS PROOF: drop EACH of
-// the 23 committed keyspaces from the producer, one at a time, over the UNION of the maintenance
+// the 24 committed keyspaces from the producer, one at a time, over the UNION of the maintenance
 // and validity corpora, and assert the execution-derived guard goes RED for EVERY one. A
 // keyspace reddens if some corpus block has a ground-truth read of it the ablated producer no
-// longer covers. All 23 must redden — including spent and revoked, which the prior guard was
+// longer covers. All 24 must redden — including spent and revoked, which the prior guard was
 // blind to (Sources 1/2 are apply()-shaped; Source 3, the validity-read perturbation, catches
 // them). A keyspace that stays GREEN on drop is a read no guard catches — the exact defect this
 // guard exists to kill.
 func TestWitnessReadSetV5AllKeyspacesRedOnDrop(t *testing.T) {
 	tags := v5CommittedKeyspaceTags()
-	if len(tags) != 23 {
-		t.Fatalf("expected 23 committed keyspaces, got %d — the completeness proof must cover the full set", len(tags))
+	if len(tags) != 24 {
+		t.Fatalf("expected 24 committed keyspaces, got %d — the completeness proof must cover the full set", len(tags))
 	}
 	for _, tag := range tags {
 		tag := tag
@@ -1166,14 +1178,14 @@ func TestWitnessReadSetV5AllKeyspacesRedOnDrop(t *testing.T) {
 
 // TestEpochSetRootReadReddensOnDrop is the increment-1 red-on-drop ablation for the epochSetRoot
 // DIGEST-root READ: dropping the epochSetRoot leaf from the producer must redden the
-// execution-derived guard, exactly as dropping any of the 23 member keyspaces does. This is the
+// execution-derived guard, exactly as dropping any of the 24 member keyspaces does. This is the
 // discipline the digest root EARNS by becoming a genuine recompute read (the recompute of
 // requireEpochWeightQuorum reconstructs the frozen set's MTH and compares it to this committed
 // leaf). F1 committed epochSetRoot INERT (excluded from the ground truth); increment 1 removed
 // that exclusion, so a producer that forgets to emit it now fails coverage.
 //
 // It reddens because at the boundary block (h4), where epochSet is (re)frozen, the write-diff
-// flags epochSetRoot as a changed leaf the recompute reads — the same ground-truth signal the 23
+// flags epochSetRoot as a changed leaf the recompute reads — the same ground-truth signal the 24
 // member keyspaces get. A dropped epochSetRoot leaves that ground-truth read uncovered.
 func TestEpochSetRootReadReddensOnDrop(t *testing.T) {
 	if !keyspaceReddensOnDrop(t, tagEpochSetRoot) {
@@ -1185,7 +1197,7 @@ func TestEpochSetRootReadReddensOnDrop(t *testing.T) {
 
 // TestValidatorsSeenRootReadReddensOnDrop is the increment-2 red-on-drop ablation for the
 // validatorsSeenRoot DIGEST-root READ: dropping the validatorsSeenRoot leaf from the producer must
-// redden the execution-derived guard, exactly as dropping any of the 23 member keyspaces does.
+// redden the execution-derived guard, exactly as dropping any of the 24 member keyspaces does.
 // This is the discipline the digest root EARNS by becoming a genuine recompute read (the recompute
 // of matureNow reconstructs the validatorsSeen set's MTH and compares it to this committed leaf).
 // F1 committed validatorsSeenRoot INERT (excluded from the ground truth); increment 2 removed that
@@ -1193,7 +1205,7 @@ func TestEpochSetRootReadReddensOnDrop(t *testing.T) {
 //
 // It reddens because on a block where validatorsSeen mutates (an attestation seats a new
 // validator), the write-diff flags validatorsSeenRoot as a changed leaf the recompute reads — the
-// same ground-truth signal the 23 member keyspaces get. A dropped validatorsSeenRoot leaves that
+// same ground-truth signal the 24 member keyspaces get. A dropped validatorsSeenRoot leaves that
 // ground-truth read uncovered.
 func TestValidatorsSeenRootReadReddensOnDrop(t *testing.T) {
 	if !keyspaceReddensOnDrop(t, tagValidatorsSeenRoot) {
@@ -1205,7 +1217,7 @@ func TestValidatorsSeenRootReadReddensOnDrop(t *testing.T) {
 
 // TestBondedRootReadReddensOnDrop is the increment-3 red-on-drop ablation for the bondedRoot
 // DIGEST-root READ: dropping the bondedRoot leaf from the producer must redden the
-// execution-derived guard, exactly as dropping any of the 23 member keyspaces does. This is the
+// execution-derived guard, exactly as dropping any of the 24 member keyspaces does. This is the
 // discipline the digest root EARNS by becoming a genuine recompute read (the recompute of
 // requireDeMatureSuperQuorum reconstructs the whole bonded set's MTH and compares it to this
 // committed leaf). F1 committed bondedRoot INERT (excluded from the ground truth); increment 3
@@ -1213,7 +1225,7 @@ func TestValidatorsSeenRootReadReddensOnDrop(t *testing.T) {
 //
 // It reddens because on a block where bonded mutates (a bond reg seats or a slash evicts a
 // validator), the write-diff flags bondedRoot as a changed leaf the recompute reads — the same
-// ground-truth signal the 23 member keyspaces get. A dropped bondedRoot leaves that ground-truth
+// ground-truth signal the 24 member keyspaces get. A dropped bondedRoot leaves that ground-truth
 // read uncovered.
 func TestBondedRootReadReddensOnDrop(t *testing.T) {
 	if !keyspaceReddensOnDrop(t, tagBondedRoot) {
@@ -1324,13 +1336,16 @@ func keyspaceReddensOnDrop(t *testing.T, tag string) bool {
 	return false
 }
 
-// v5CommittedKeyspaceTags is the closed set of the 23 committed v5 keyspaces (statehash.go:39-81).
+// v5CommittedKeyspaceTags is the closed set of the 24 committed v5 keyspaces the drift guard
+// iterates: the tag constants of statehash.go MINUS the five whole-set digest roots (which
+// allDigestRootLeafKeys covers) and MINUS tagIssuerKey (nothing folds that keyspace,
+// v5TagsNotReadByBox). tagRevLogSize joined with freeze-manifest item 1.
 func v5CommittedKeyspaceTags() []string {
 	return []string{
 		tagByRoot, tagSpent, tagRevoked, tagSlashed, tagValidatorsSeen, tagBonded, tagEpochSet,
 		tagBondRootOwner, tagBondRootProven, tagBondRegHeight, tagRegVersion, tagBondDomain,
 		tagQualified, tagDueBucket, tagEverMature, tagMatureEpoch, tagGateLockedIn, tagGateHeight,
-		tagEra3LockedIn, tagEra3Height, tagEpochStart, tagEra4LockedIn, tagEra4Height,
+		tagEra3LockedIn, tagEra3Height, tagEpochStart, tagEra4LockedIn, tagEra4Height, tagRevLogSize,
 	}
 }
 

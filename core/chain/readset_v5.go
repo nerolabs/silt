@@ -374,6 +374,15 @@ func (c *Chain) readSetTakedowns(b Block, acc *readSetAcc) {
 	for _, r := range b.Unrevocations {
 		acc.addPresent(tagRevoked, r[:], statehash.Present)
 	}
+	// The committed revocation-log SIZE (tagRevLogSize, freeze-manifest item 1). A block that
+	// touches the log moves that scalar by k = len(Revocations)+len(Unrevocations), and the
+	// recompute derives the post value from the PRE-state m — so m is a genuine committed read,
+	// not an output. One scalar leaf, O(1), emitted only when the log is touched (k = 0 blocks
+	// leave the scalar alone and read nothing). C-a always-emit is what makes the read total: the
+	// leaf is on every v5 root, so a missing witness is a gap, never an empty log.
+	if len(b.Revocations)+len(b.Unrevocations) > 0 {
+		acc.addPresent(tagRevLogSize, nil, statehash.EncodeUint64(uint64(c.revLog.Size())))
+	}
 }
 
 // encodeEntryPresence returns the committed leaf value for a byRoot membership read.

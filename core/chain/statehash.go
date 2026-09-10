@@ -131,7 +131,53 @@ const (
 	// registration is REJECTED (validateIssuerKeys) so no committed state can escape
 	// its own committed root.
 	tagIssuerKey = "issuerKeyCommit\x00"
+
+	// revLogSize (era-4 / v5 only) — freeze-manifest item 1, the SAFETY leaf. ONE scalar
+	// leaf whose value is EncodeUint64 of the revocation log's size AFTER this block's own
+	// appends. Certified 2026-09-07 (freeze manifest §4.1), ratified the same day (§8, owner
+	// call 9).
+	//
+	// WHY IT IS COMMITTED AT ALL. The floor box verifies a revocation-bearing block's LogRoot
+	// verify-not-recompute: an RFC-6962 consistency proof from the parent's log root at size m
+	// to the block's LogRoot at size m+k. Every OTHER fact the box needs rides the box-owned
+	// head record, because each is self-checking against a block whose Hash() the box verifies
+	// against its pin. m is not: it is a field of no block and a value of no committed root,
+	// and it is NOT recoverable from committed state — apply() DELETES from `revoked` on an
+	// un-revocation (chain.go apply), so |revoked| ≠ len(revLog), and revLog is deliberately
+	// outside the SMT (it is history-dependent, so it stays an ordered CT root, #597).
+	//
+	// AND A WRONG m IS A WRONG-ACCEPT, NOT A STALL. translog.VerifyConsistency returns true at
+	// m == 0 without reading either root, and at m == 1 the isPow2 seeding leaves the
+	// accumulator equal to oldRoot for the whole loop, so an adversary who chooses m claims
+	// m = 1 and presents ANY right-spine extension of the parent's log root as valid. That
+	// asymmetry — a wrong parentStateRoot STALLS, a wrong m ACCEPTS — is why m cannot be seeded
+	// from the checkpoint like parentStateRoot. TestGD9_WitnessSuppliedLogSizeIsUnsound_Control
+	// drives the forgery and asserts it passes; this leaf is what refuses it.
+	//
+	// C-a ALWAYS-EMIT: emitted on EVERY v5 root, including an empty log (EncodeUint64(0)). No
+	// absent-vs-empty shortcut, for the same reason the five digest roots pay C-4 — a box
+	// reading absence could not tell "empty log" from "no witness".
+	// C-b POST-APPLY: the value is len(revLog) AFTER this block's appends, which is what
+	// postApplyRoots computes (clone → apply → StateRootForVersion). The box validating H
+	// resolves it against H−1's committed StateRoot and gets exactly the m its proof needs.
+	// C-7 PREFIX-SAFE: `revLogSize\x00` diverges from `revoked\x00` at byte 3 (`L` 0x4C vs `o`
+	// 0x6F), before either tag's NUL, and no other tag shares the `rev` prefix. It is a scalar
+	// leaf at tag||"" and every per-member raw key is non-empty, so no scalar-vs-member
+	// collision either.
+	// v5-ONLY: emitted by stateRootLeavesV5 alone, so a v4 block's root stays byte-identical to
+	// the frozen era-3 leaf set (#632) and no live-history block hash moves.
+	tagRevLogSize = "revLogSize\x00"
 )
+
+// stateRootDerivedTagsV5 is the v5-only leaves DERIVED from a committedLog field rather than
+// from a committedSet field. It is its own list for the same reason stateRootDigestTagsV5 is:
+// revLogSize is NOT a committedSet field name, so putting it in stateRootTagsV5 (which is pinned
+// by reflection to the live field classification) would report it as an unclassified extra; and
+// it is not a whole-set membership MTH, so stateRootDigestTagsV5 would be a semantic lie — the
+// readset drift guard partitions that list into inert/read digest ROOTS and provenView.members
+// resolves its entries as id-list digests. revLog is classified committedLog and is committed by
+// its own LogRoot; this leaf commits its SIZE, which the LogRoot does not.
+var stateRootDerivedTagsV5 = []string{"revLogSize"}
 
 // stateRootDigestTagsV5 is the five v5-only WHOLE-SET digest-root tags added in F1. They
 // are NOT committedSet field names — they are DERIVED digests over existing keyspaces —
@@ -280,6 +326,21 @@ func (c *Chain) stateRootLeavesV5() []statehash.Leaf {
 
 	// epochStart: one scalar leaf (O-1).
 	add(tagEpochStart, nil, statehash.EncodeUint64(c.epochStart))
+
+	// revLogSize: one scalar leaf, the revocation log's size AFTER this block's appends
+	// (freeze-manifest item 1). UNCONDITIONAL — C-a always-emit: an empty log commits
+	// EncodeUint64(0), never an absent leaf. This is the value that makes the parent tree size
+	// m non-forgeable for the box's LogRoot consistency proof; see tagRevLogSize.
+	//
+	// The nil check is the same tolerance every keyspace above already has: a zero-value Chain
+	// has a nil revLog exactly as it has nil maps, and both mean EMPTY. New() always installs a
+	// log and adopt/cloneForDryRun copy a non-nil one, so a nil revLog is unreachable for a
+	// chain with any history — this cannot silently commit 0 for a populated log.
+	revLogSize := 0
+	if c.revLog != nil {
+		revLogSize = c.revLog.Size()
+	}
+	add(tagRevLogSize, nil, statehash.EncodeUint64(uint64(revLogSize)))
 
 	// issuerKeyCommit (R0.4b): one value-carrying leaf per (epoch, issuer), key =
 	// uint64BE(epoch) || issuerNodeID, value = the 32-byte key fingerprint. Order-free

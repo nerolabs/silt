@@ -57,7 +57,7 @@ func v5TagSetGaps(s v5TagSetSides) []string {
 	}
 	for val := range declaredValues {
 		if !s.runtime[val] {
-			gaps = append(gaps, "declared tag const "+declaredValues[val]+" ("+strconv.Quote(val)+") is in none of stateRootTags / stateRootTagsV5 / stateRootDigestTagsV5")
+			gaps = append(gaps, "declared tag const "+declaredValues[val]+" ("+strconv.Quote(val)+") is in none of stateRootTags / stateRootTagsV5 / stateRootDigestTagsV5 / stateRootDerivedTagsV5")
 		}
 	}
 	for val := range s.runtime {
@@ -184,7 +184,7 @@ func boxSideFiles(t *testing.T) map[string]string {
 
 func runtimeTagValues() map[string]bool {
 	out := map[string]bool{}
-	for _, list := range [][]string{stateRootTags, stateRootTagsV5, stateRootDigestTagsV5} {
+	for _, list := range [][]string{stateRootTags, stateRootTagsV5, stateRootDigestTagsV5, stateRootDerivedTagsV5} {
 		for _, v := range list {
 			out[v] = true
 		}
