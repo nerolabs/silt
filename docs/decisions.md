@@ -1416,6 +1416,32 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   > > **(d-3) shrinks the face roughly 40× but does not remove it; what removes it is the v5
   > > signature-preimage change, which makes evidence O(1).**
   >
+  > **⚠ WRONG A THIRD TIME, AND REPLACED BY THE OWNER — 2026-09-10
+  > (`D-D3-CERT-REFUTATION-2026-09-10`).** The *"roughly 40×"* figure is refuted. `SlashesBytesCap` is
+  > enforced against `SlashesEncodedSize` (`core/chain/chain.go:2217`), which marshals the ACTUAL
+  > `[]Equivocation` — real encoded bytes with full `Block` bodies. (d-3) reduces the HASH PREIMAGE,
+  > which that function never reads. **As specified, (d-3) shrinks the face by ZERO and is marginally
+  > negative.**
+  >
+  > **THE REPLACEMENT SENTENCE, ratified 2026-09-10 — and it carries NO shrink figure, deliberately:**
+  >
+  > > **(d-3) does not shrink the evidence face. `SlashesBytesCap` is enforced against
+  > > `SlashesEncodedSize`, which reads real encoded bytes, not the hash preimage. What (d-3) buys is
+  > > the self-covering pruned body — retiring `Pruned`. What removes the face is the v5
+  > > signature-preimage change.**
+  >
+  > **Why no number appears, recorded so it is not "helpfully" restored:** three shrink figures have
+  > now been wrong, and the structural statement needs none. Any future shrink claim requires the
+  > **mandatory evidence-strip validity rule**, which nobody has bought and which is not on the table.
+  >
+  > **The owner's own lesson, in his words — it is about the method, not the number:**
+  >
+  > > *"Three corrections to one sentence: 'only (d-3) removes' → false. The coalition clause → false.
+  > > '40×' → zero. Each time I accepted a number I was handed and wrote it into the ratified record.
+  > > I gave you the rule that every value claim must name what it closes independently versus in
+  > > combination — and never once applied it to my own ratifications. **I ratified the figure instead
+  > > of demanding its derivation.** That's mine, three times."*
+  >
   > The 16 MiB VALUE is untouched by this unratification — only the disclosure sentence moved. The
   > owner also ratified the HANDLING as a standing practice: *"the annotate-in-place-rather-than-rewrite
   > handling was exactly right. Keep doing that with ratified text — the correction should be visible
@@ -2393,6 +2419,13 @@ showing the one-byte value IS committed).
   verdict contradicts it.
 - **(14) `R-ISSUERKEY-POP` and `R-E2E-ERA4-FIXTURE` (Lanes D1/D2):** the PoP slot is RESERVED inert at the stamp
   raise (not built); the e2e cost of the objective + bonded + epoch-enabled fixture is accepted.
+
+  > **⚠ THE PoP HALF IS UNRATIFIED — 2026-09-10, owner call D (`D-ITEM4-DROPPED-2026-09-10`).** The
+  > sentence is left verbatim because those are the owner's ratified words; this note records what he
+  > has since withdrawn. **The reservation is DROPPED.** It was bought on a cost that no longer
+  > exists: reserving an INERT, unpopulated field buys exactly one thing — not paying an era later —
+  > and the freeze deadline is SOFT pre-launch (`D-FREEZE-REPRICE-2026-09-10`). **The e2e-fixture half
+  > of (14) is untouched and still stands.**
 - **(15) The `-grant-capacity` help note:** left as is.
 - **(16) Structure Round 1B (Lane B1):** main-only FIRST — Round 1A is the main-only spine per the PE's 12-step
   brief; the five box-entry-dependent closers wait for Round 1B after the HELD `builder/floorbox-structure`
@@ -3347,3 +3380,410 @@ replicas.** All five, before D3. Mechanism is the builder's plus research, as de
 
 **Net scope moves DOWN:** one drop, one trivial addition, one item already owed, and a five-field
 bind that costs the same as two. *"That's buy-less-and-better with a number attached."*
+
+---
+
+## D-D3-CERT-REFUTATION-2026-09-10 — the (d-3) DIRECTION is certified; its SPECIFICATION is refuted in two clauses, one of which would have broken a frozen format on live history
+
+- **Status:** ⛔ STOPPED AND REPORTED — 2026-09-10, per the owner's standing instruction on owner call C:
+  *"If the cert refutes, come back to me, don't route around it."* Certification:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/D3-ANSWERDIGEST-TWO-LEVEL-HASH-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md`.
+  **Verdict: GATED.** Nothing is built. Owner call D (drop manifest item 4) is sequenced after C and
+  therefore also stalls.
+- **THE PURCHASE SURVIVES; THE SPECIFICATION DOES NOT.** The owner bought (d-3) for **self-covering**
+  — retiring `Pruned` — on the third-time rule, and **that limb is CERTIFIED.** The size leg was
+  already withdrawn from his justification before this cert ran. What is refuted is the freeze
+  manifest's §4.3 spec text and one surviving size sentence.
+
+### The stop-and-report finding — the spec as written breaks the frozen-format immutable
+
+Freeze-manifest §4.3 item 1 specifies `AnswerDigest ports.Hash \`cbor:"8,keyasint,omitempty"\``, and
+item 3 asserts *"`omitempty` already gives that property for every additive field."* **Both are
+false, and this repo says so in two places — verified at source:**
+
+- `core/chain/chain.go:569-572`: *"A plain `ports.Hash` (`[32]byte`) would NOT work: `omitempty` never
+  omits a fixed-size ARRAY (it is never 'empty'), so a zero `[32]byte` would be emitted as 32 zero
+  bytes and change every era-2 hash. The byte-identity oracle caught exactly that; the pointer is the
+  fix."*
+- `core/chain/lastcommit_carrier_pins_test.go:35-37`: **`Pruned` is the living proof** — a
+  `[32]byte`, so *"key 14 is present in EVERY encoded block body, zero-valued for a non-pruned
+  block. It is part of the frozen bytes."*
+
+**Why that is a bright-line breach and not a bug.** `bodyHash()` (`core/chain/chain.go:822`, verified)
+folds `BondRegs: b.BondRegs` into the unsigned literal with **no version branch at all**. So a
+fixed-size field on `BondReg` is emitted into every era's preimage, and **the hash of every v2 and v4
+block carrying a bond registration changes — on live history, before era-4 ever activates.** That is
+immutable **F** (frozen consensus formats), which is amended only by a new era, never by an edit.
+
+**Repair, CERTIFIED:** `AnswerDigest *ports.Hash` — the pointer form, which is the *exact* era-3
+step-2a fix already proven in this repo for `StateRoot`/`LogRoot`. Mechanism, not a new purchase.
+
+### The second refuted clause — `Slashes'` is unnecessary and harmful
+
+§4.3 reduces each embedded evidence block to *"its own era's header form"* — a recursively reduced
+COPY. **REFUTED:** `Prune()` never touches `Slashes` (`core/chain/chain.go:852-854`, verified:
+*"Note that Prune does NOT recurse into Slashes: evidence bodies embedded in a committed block stay
+resident forever, which is why `SlashesBytesCap` bounds that slot"*), so the reduction buys nothing
+for the self-covering property — and it adds a **per-hash 16 MiB deep copy**, re-opening `#563`.
+**`SlashesDigest` is CERTIFIED as the required form.** This closes C-4 of `R-CERT-REDERIVE`, whose
+one-word spec repair was exactly this. Scope add → **owner call 1**.
+
+### THE OWNER'S RATIFIED SENTENCE IS WRONG A THIRD TIME — on the number this time
+
+The replacement he ratified on 2026-09-10 reads: ***"(d-3) shrinks the face roughly 40× but does not
+remove it."*** The cert self-corrects its own earlier arithmetic: **as specified, (d-3) shrinks the
+face by ZERO, and is marginally negative.**
+
+The mechanism, verified: `SlashesBytesCap` is enforced against `SlashesEncodedSize`
+(`core/chain/chain.go:2217`), which **marshals the actual `[]Equivocation`** — real encoded bytes,
+full `Block` bodies included. §4.3 reduces the **hash preimage**. Changing what `bodyHash` folds does
+**nothing** to what `SlashesEncodedSize` measures.
+
+Recovering any shrink at all needs a **mandatory evidence-strip validity rule that nobody has
+bought** → **owner call 2**.
+
+**This is the third correction to one ratified sentence** (*"only (d-3) removes"* → false; the
+coalition clause → materially under-disclosing; now *"roughly 40×"* → zero). It is left in place and
+annotated, per the standing practice on ratified text.
+
+### The rest of the cert
+
+- **Limb 1 — direction CERTIFIED**, and the close needs no new code: it makes four **existing**
+  proposer-signature checks (`chain.go:2835`, `:3454`, `:3524`, `floorbox_box_v5.go:108`) stop being
+  vacuous on pruned blocks. The owner's ratio decidendi is upheld.
+- **Limb 3 — 16 sites, 12 change.** `Reconcile` needs **no** change, which corrects the blast radius
+  routed to the researcher; four sites were missing from it. The **disqualifying widening** to refuse
+  is *"a pruned v5 block is self-authenticating, so trust it at any height"* — identity ≠ bond
+  possession, and `trustFloor` stays.
+- **Limb 4 — NO era-boundary wedge**, and the reason matters: `bodyHash` is **unary**, so `b.Version`
+  IS the signed object's version. The carrier wedges because it is **binary** (child verifying a
+  parent's attestations). **A builder over-generalising the sibling preimage cert gets this exactly
+  backwards.**
+- **Limb 6 — CERTIFIED**, with a trap named: the v5 pruned-evidence refusal becomes structurally
+  unreachable, but **deleting `ErrPrunedEvidence` re-opens I5 for every pre-v5 height, permanently.**
+- **Limb 7 — the witness read-set does NOT move** (a freeze surface). Frame/resident cost
+  +≤8.5 KiB per block at `RegCap = 256`.
+- **Three gates on `main` would stay GREEN straight through this change** and must be re-pointed
+  first: `TestHashLiteralPinsEveryHashCoveredField` (it unions the two literals),
+  `TestHashLiteralPinRuntimePair` (fixture is `Version: 1`), `TestCarrierHashDriftGuard` (its v5 case
+  carries no `BondRegs`). Gates `G-D3-1 … G-D3-11`, all RED-first.
+
+### Execution caveat, recorded rather than smoothed over
+
+The Researcher ran **no shell commands** this round: every finding is source-read or derived, and
+labelled as such in the cert. The builder independently verified the load-bearing ones at source
+(`chain.go:569-572`, `:822`, `:852-854`, `:2217`; `lastcommit_carrier_pins_test.go:35-37`). The cert
+also could not read the then-unmerged branch; that branch is now `main` @ `76bf707` and touched **no
+`.go` file** except the new divergence gate, so its reads stand.
+
+---
+
+## D-CFGBIND-CERT-2026-09-10 — the genesis-config bind is certified; membership corrects UPWARD to 17, and a live unbound consensus parameter was found OUTSIDE the gate's scope
+
+- **Status:** ✅ CERT RECEIVED, ⚠ GATED — 2026-09-10. Certification:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/GENESIS-CONFIG-FAMILY-BIND-RESEARCH-CERTIFICATION-2026-09-10.md`.
+  Answers owner call F (`D-FREEZE-CALLS-CDEF-2026-09-10`). **Direction CERTIFIED, mechanism
+  specified, membership corrected upward, four limbs GATED.**
+
+### The finding that changes the work — and it indicts the gate this session shipped
+
+**`-bond-label-k` (`BondLabelSamples`) is a live, shipped, UNBOUND consensus parameter, and it is
+sharper than anything in the owner's five.** Verified independently at source:
+
+- `core/bond/bond.go:489` — `if len(a.LabelIndices) != kk || len(a.LabelBundles) != kk { return false }`
+  — **exact equality against the verifier's OWN local value.**
+- `cmd/silt/daemon.go:930` wires it from local config:
+  `SetBondVerifier(node.SpaceTimeBondVerifier(cfg.BondVDFDelay, cfg.BondLabelSamples))`, reaching a
+  hard `Reject` at `core/chain/validate_v5_quorum.go:228`.
+- `cmd/silt/daemon.go:128` — the flag help states the coordination requirement *"prover and verifier
+  must MATCH … set it uniformly across the swarm"* **and in the same breath invites the change:**
+  *"Lower it only to shrink on-chain proof size, at a soundness cost."*
+
+**A node with `k = 32` rejects EVERY bond registration a `k = 64` swarm accepts** — not a straddling
+bond, all of them. `BondVDFDelay` is the same shape, latent.
+
+**Why the divergence gate missed it: its closed complement is closed over the WRONG SET.**
+`TestConsensusVerdictIsNotAFunctionOfLocalConfig` reflects over **`chain.Config`**; these fields live
+in **`node.Config`**. The gate's central claim — that a new field cannot be added without forcing a
+declaration — holds only inside the package it reflects over. Filed as `R-CONFIG-GATE-NODE-SCOPE`.
+
+### Membership — 17 IN, 5 OUT, and the exclusions each differ
+
+**IN:** the 15 `chain.Config` fields that reach a verdict, plus `BondLabelSamples` and `BondVDFDelay`.
+**This is absorbed by the owner's existing ruling** — he ruled the growth *"nominal, not material… a
+genesis-hash-covered bind covers a FAMILY, so going from two fields to five is adding entries to a
+digest."* The same reasoning carries 5 → 17.
+
+**OUT, each for a different and load-bearing reason:**
+
+| Field | Why out |
+|---|---|
+| `Archive` | retention only; never reaches a verdict |
+| `WSCheckpoint` | narrowing-only, and **sharing it would destroy weak subjectivity** — it is the operator's own trust anchor |
+| `MinProposerRep` / `MinAttesterRep` | **binding is INEFFECTIVE** — the input is the local `rep` view, so a shared threshold still diverges |
+| `LivenessRecoveryHeight` | **structurally unbindable** — set after launch, on a chain that by construction cannot commit it (`R-LIVENESS-RECOVERY-UNBOUND`, new) |
+
+### The mechanism
+
+- **Shape (1) CERTIFIED and needs no new machinery** — `core/chain/chain.go:4145-4147` already refuses
+  a foreign genesis. **Carry VALUES, not a digest:** values reuse `Block.Hash()`'s canonical CBOR (so
+  no new injectivity proof is owed) and make the refusal *diagnosable*. `Params *ConsensusParams`,
+  cbor key 19, **pointer per the omitempty-array rule**, no `omitempty` inside, `Anchors` as a sorted
+  slice. Optional field, so ~250 `AppendGenesis` fixtures stay untouched.
+- **Shape (2) REFUTED** as a family mechanism, except the era heights, where the tally branch is
+  already bound and certified — F's job there is to close the **override**.
+- **Shape (3) REFUTED:** a gossiped digest is an unauthenticated claim; a genesis hash is
+  self-authenticating.
+- **⚠ "DETECTED AT HANDSHAKE" IS REFUTED AS A DESCRIPTION OF WHAT SHIPS.** The owner called that
+  *"the right failure surface"*, and it remains the right one — but **there is no genesis exchange at
+  the TLS handshake**, and the refusal that does fire is logged at `LogDebug`
+  (`core/node/chainrole.go:1616-1618`), so **the operator sees a node that never syncs and says
+  nothing.** Making that refusal loud is part of the build, not a nicety.
+- **T-REFERENT — rule 8's two arms COMPOSE.** Genesis-covering manufactures the referent, which makes
+  a refuse-to-start *required* rather than redundant: it catches the case nothing else does — an
+  operator editing a flag and restarting on an existing chain.
+
+### Ordering, and the calendar cost
+
+**F moves the genesis hash; call A (the chain id in the preimage) consumes it. Land F before or with
+A, in ONE genesis move, or the re-run set is paid twice** — that is the entire calendar cost, which
+is the freeze's actual currency (`D-FREEZE-REPRICE-2026-09-10`). (d-3) is independent in value but
+coupled in build: it splits `bodyHash` into two literals and CD-0's gate unioned them
+(`G-CFGBIND-11`) — **already closed this session** by the red-first gate re-point.
+
+### GATED limbs, recorded rather than smoothed
+
+**G-A** — the Researcher had **no shell** and never ran the divergence gate; the map was read from
+its `wantDivergence` literal. **G-B** — `-bond-label-k` is proven by source reads, not a driven
+verdict (the builder verified the three cited lines independently; a DRIVEN gate is still owed).
+**G-C** — "~0 fixtures affected" is a grep claim, not a compile. **G-D** — the graded re-run count is
+the Tester's to price.
+
+### What it does NOT close
+
+`R-CONSENSUS-CONFIG-UNBOUND` closes **on the production path only**. Still open:
+`R-LIVENESS-RECOVERY-UNBOUND` (new, unbindable), `R-CONFIG-GATE-NODE-SCOPE` (new — `node.Config` is
+unaudited beyond two fields), the surviving paramless path, and the legacy-leg subjectivity.
+
+---
+
+## D-D3-BUILT-2026-09-10 — (d-3) is built: `Pruned` is retired for v5, and the parity contract is NOT amended
+
+- **Status:** ✅ BUILT, package green — 2026-09-10. Owner call C (`D-FREEZE-CALLS-CDEF-2026-09-10`)
+  delivered against `D3-ANSWERDIGEST-TWO-LEVEL-HASH-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md` and
+  the follow-on
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/D3-PARITY-MALFORMEDPRUNED-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md`.
+- **The purchase, driven not asserted (G-D3-7).** A pruned v5 block recomputes its own hash from
+  what it retains, carries no `Pruned` token, and mutating its retained body MOVES the hash. The
+  same gate drives the **contrast on v2**, where the identical rewrite is invisible — so the defect
+  `Block.Hash()`'s comment records as having "shipped false three times" is demonstrated, not
+  described.
+- **The certified spec repairs both landed:** `AnswerDigest *ports.Hash` (the pointer form — the
+  manifest's bare array would have broken frozen v2/v4 bytes) and `SlashesDigest` replacing the
+  recursively-reduced `Slashes'`. **cbor key 19 allocated to `SlashesDigest` after verifying 1..18
+  were taken; the genesis-config family bind takes key 20.** Both certs said "next free, verify at
+  build", and both were right to — they had each claimed 19.
+
+### The defect this build introduced, and the cert that named it in advance
+
+Retiring `Pruned` for v5 broke a signal that was **serving two masters**: `IsPruned()` meant BOTH
+*"identity is declared, not recomputable"* AND *"heavy proofs are shed, so bond verification cannot
+be re-run"*. (d-3) changes only the first. Left alone, the trust-floor refusal
+(`ErrPrunedAboveHorizon`) would have gone **silently dead for v5** — the exact disqualifying
+widening the build cert named: ***identity != bond possession, trustFloor stays.***
+
+Fixed by splitting the signal (build-immutable #3): **`Block.HeavyProofsShed()`** — a registration
+carrying no `Answer` but committing a digest that is not `answerDigestOf(nil)`. The bond-possession
+sites are re-keyed to it; the identity sites keep `IsPruned()`. The floor-box sites 9 and 10 are
+**KEEP, re-keyed** per the cert, which warned that letting site 10 die for v5 makes D0's ablation
+vacuous (simplicity rule 7) — which is precisely what began to happen.
+
+### The parity question: the ACCEPTANCE was sound, the REASON was refuted
+
+The builder proposed that (d-3) *deletes* the malformed-pruned category on v5 — *"there is no v5
+block that can be marked pruned while carrying an Answer."* **That is FALSE**, and the delta
+certification refuted it against a live site: `core/chain/validate_v5_quorum.go:48-52` is reachable,
+v5-only, and still returns `ErrMalformedPruned` (verified at source).
+
+**What actually changed is GRANULARITY, not existence.** `Pruned` was a per-BLOCK mark, so ONE
+registration could contradict it. `HeavyProofsShed()` is a per-ITEM property lifted by `∃`, so
+contradicting it needs a **SECOND** registration. The one-reg fixture could only reconstitute the
+byte-identical valid original, which a v5 reader **must** accept. **The fixture failed, not the
+contract.**
+
+**So the #572 attribution contract is NOT amended.** The arm now carries two registrations and
+restores the `Answer` on one; both twins still want `ErrMalformedPruned`, with identical rendering.
+The builder's own proposal — an era-specific expectation — was refuted on two independent grounds,
+either sufficient: it is factually wrong, and it would have deleted the **only** driven coverage of
+that v5 site.
+
+**A sixth EXCLUSION is added and DRIVEN** (G-PMP-3): a **forged** `Answer` is a genuine by-rule
+divergence — v4 reaches `ErrMalformedPruned`, v5 is caught earlier and more specifically by
+`ErrD3DigestMismatch`. Driven rather than claimed in the header, per simplicity rule 7.
+
+### What the certification found that nobody routed — Probe C
+
+A block below the trust floor with `reg0` genuinely shed, where an attacker **appends** a `reg1`
+carrying `Answer == nil` and `AnswerDigest == answerDigestOf(nil)`. `HeavyProofsShed()` is true from
+`reg0`, so the verify loop is skipped and `reg1` would take bonded standing **with no proof ever
+verified**. **This works on v4** and is **structurally closed on v5** — the appended registration is
+inside the v5 preimage, so the hash moves. That is the (d-3) purchase paying out on a surface nobody
+aimed it at, and it is *why* the `answerDigestOf(nil)` carve-out in the predicate is safe rather
+than a hole. **Name that precondition wherever the predicate is defended.**
+
+### Corrections to the certifications themselves
+
+1. The build cert's `T-TWO-JOBS` predicate was **under-specified** — without the third conjunct, a
+   registration that never had a proof reads as shed. The implemented form is the correct one.
+2. **`chain.go`'s `validateBondRegs` is UNREACHABLE for a v5 block on the node path** (its sole
+   non-test caller sits inside `ValidateProposal`, which returns for v5 earlier). The re-key stays —
+   it is correct and defensive — but **it must not be counted as v5 coverage**. Related: a comment
+   claiming v5 `RegCap` is "enforced here, on the commit path" is false.
+3. Both delta certifications ran **with no shell**. Every load-bearing claim was re-verified at
+   source by the builder before being acted on, and the gates below are what lift them from derived
+   to measured.
+
+### Gates
+
+`G-D3-1..7` with a six-ablation battery, and `G-PMP-2` (ablate the v5 malformed-pruned arm → the
+parity arm reddens, proving it drives the v5 site and not the v4 one alone). All verified by **exit
+code**. One ablation in the battery first reported a **false GREEN**: the patch anchor matched two
+sites, so the edit silently no-opped and never ran. **A no-op patch is indistinguishable from a
+passing ablation** — verify the source actually changed before believing the result. Recorded in the
+gate's own comment, and it is why the D0 ablation instructions that still named `IsPruned()` targets
+were corrected in the same commit: an ablation instruction naming a line no longer in the source is
+worse than none.
+
+---
+
+## D-ITEM4-DROPPED-2026-09-10 — freeze-manifest item 4, the inert PoP slot, comes out of the train
+
+- **Status:** ✅ DECIDED — 2026-09-10, owner call D (`D-FREEZE-CALLS-CDEF-2026-09-10`), executed after
+  call C landed so the fallback below actually exists. Sequenced by the owner, not by convenience.
+- **Verified before acting: it was never built.** Zero non-test PoP sites across `core/`, `cmd/` and
+  `ports/`; `IssuerKeyReg` (`core/chain/issuerkey.go`) carries four fields — `Pub`, `Epoch`,
+  `Fingerprint`, `Sig` — and no slot. **Dropping it is a ledger act with no code change.**
+
+### Why it comes out
+
+**Reserving an inert, unpopulated field buys exactly one thing: not paying an era later.** With the
+freeze deadline re-priced as SOFT (`D-FREEZE-REPRICE-2026-09-10`), that cost is void, so the
+reservation buys **nothing at all**.
+
+It is the same reserve-only error the freeze-manifest certification names **twice** — it refutes the
+A-axis tag reservation on this exact ground as its own item 5, and warns *"do NOT propose a
+reserve-only hedge"* about (d-3). **Item 4 survived only because the era clause was still standing.**
+It was found by re-reading the manifest with that clause struck, which is the audit the owner
+ordered.
+
+### Dropping it removes a real surface, not just a line
+
+`Prune()` drops only `BondReg.Answer`, so `IssuerKeys` is **UNPRUNABLE like `Slashes`**. At the
+certified count cap the reserved slot would add `4,096 × 4,096` = **16 MiB per block — a second
+permanent surface EQUAL to `SlashesBytesCap`**, which is the surface `R-NEST-GATE` measured being
+weaponised by a lone proposer with throwaway keys. **Buying 16 MiB per block of permanent attack
+surface as insurance against a cost that no longer exists is negative-value insurance.**
+
+### The fallback now exists, which is why C went first
+
+If the off-chain `demandMsg` binding ever proves insufficient, the answer is **not** a pre-reserved
+slot. It is option beta of the PoP certification — fold `PoPDigest` into (d-3), which makes those
+bytes **PRUNABLE**. **(d-3) landed today** (`D-D3-BUILT-2026-09-10`), so that route is available.
+The owner's instruction if the need lands post-freeze: *"add the field then and pay in re-runs and
+calendar — which is what the freeze actually costs."*
+
+### What is NOT decided here
+
+The **research-gated D-DEMAND change** (the DSKS close — a PoP in the registration, or the RFC 9578
+binding) is unaffected and stays post-RC. Dropping the reservation removes a *format hedge*, not the
+security question it was hedging. `IssuerKeyPoPMaxBytes` (certified 2026-09-10 at 4,096 bytes,
+INADMISSIBLE ALONE) is **not ratified and not reserved** — it becomes an input to that post-RC work
+rather than a frozen constant, and its self-corrections of freeze-manifest §4.6 travel with it.
+
+**Net effect on D1: the manifest loses one FORMAT item and gains none.**
+
+---
+
+## D-CFGBIND-BUILT-2026-09-10 — the genesis-config family is bound to the chain; canon rule 8's two arms compose
+
+- **Status:** ✅ BUILT, `core/chain` and `core/node` green — 2026-09-10. Owner call F
+  (`D-FREEZE-CALLS-CDEF-2026-09-10`) delivered against
+  `GENESIS-CONFIG-FAMILY-BIND-RESEARCH-CERTIFICATION-2026-09-10.md`. Closes
+  `R-CONSENSUS-CONFIG-UNBOUND` **on the production path**.
+- **The mechanism:** `ConsensusParams` — **17 fields carried by VALUE** — committed on the genesis
+  block as `Block.Params *ConsensusParams` at **cbor key 20**, so the genesis hash covers it. A node
+  configured differently computes a different genesis hash and **cannot join at all**: `Reconcile`
+  refuses the fork with `ErrForeignGenesis` before any validity question arises. Divergence becomes
+  *impossible to join with* rather than fatal at validation.
+- **Key 20, not 19.** Both the genesis-config and (d-3) certifications proposed key 19 and both said
+  *"next free, verify at build"*. Verified: 1..18 were taken, (d-3) landed first and took 19.
+- **VALUES, not a digest** — so a mismatch is **diagnosable**: `CheckConsensusParams` names the field
+  that differs. A digest would only prove two hashes differ, and a *gossiped* digest was refuted
+  separately as an unauthenticated claim where a genesis hash is self-authenticating.
+
+### Rule 8's two arms COMPOSE (T-REFERENT) — this is the part worth carrying forward
+
+A refuse-to-start was **refuted for this class**: `MinBond` divergence is not locally observable, so
+a start-up assertion has nothing to assert against. But **committing the values MANUFACTURES the
+referent it lacked**, which makes a start-up check *required* rather than redundant — it catches the
+one case joining cannot: **an operator editing a flag and restarting on a chain the node has ALREADY
+joined.** The genesis on disk is unchanged, so no fork boundary is crossed and nothing else would
+notice. `Chain.CheckConsensusParams` is that arm, driven by G-CFGBIND-4.
+
+### Membership: 17 IN, 5 OUT, and the exclusions differ from each other
+
+Getting membership wrong is **asymmetric**: too few leaves a consensus quantity unbound; too many
+refuses honest operators for differing on something that was never theirs to agree on. So each
+exclusion carries its own reason, and a reflective gate (G-CFGBIND-1) fails on any `Config` field
+that is neither carried nor excluded.
+
+| OUT | Why — and they are not the same reason |
+|---|---|
+| `Archive` | retention only; reaches no verdict |
+| `WSCheckpoint` | **sharing it would DESTROY weak subjectivity** — it is the operator's own trust anchor |
+| `MinProposerRep` / `MinAttesterRep` | **binding is INEFFECTIVE** — the divergent term is the local reputation *view*, not the threshold |
+| `LivenessRecoveryHeight` | **structurally unbindable** — set after launch on a chain that by construction cannot commit it (`R-LIVENESS-RECOVERY-UNBOUND`) |
+
+**The two sharpest members came from `node.Config`, not `chain.Config`:** `BondLabelSamples` and
+`BondVDFDelay`. `core/bond` compares a proof's label count against the verifier's **own local** value,
+so a `k=32` node rejects **every** bond registration a `k=64` swarm accepts — and the flag help
+states the coordination requirement while inviting the change. They are carried by value here to
+avoid an import cycle. The divergence gate never saw them because its reflection is closed over
+`chain.Config` (`R-CONFIG-GATE-NODE-SCOPE`, still open).
+
+### "Detected at handshake" was refuted as a description of what SHIPPED — and is now fixed
+
+The certification found there is no genesis exchange at the TLS handshake, and the refusal that does
+fire logged at **`LogDebug`** (`core/node/chainrole.go`) — so *"the operator sees a node that never
+syncs and says nothing."* `ErrForeignGenesis` is now split out of the generic non-adoption branch and
+logged at **`LogWarn`**, naming the likely cause and the flags to check, with a
+`ChainSyncForeignGenesis` stat. Because the genesis now commits the config, the overwhelmingly likely
+cause of a foreign genesis is a **divergent local flag**, not a hostile peer — so the remedy is
+nameable, and it is named.
+
+### Gates and ablations
+
+`G-CFGBIND-1..5`, ablation battery **B0–B6**, all verified by exit code: drop `Params` from the
+pre-v5 literal → G-CFGBIND-2 RED; drop a field from `ParamsFromConfig` → G-CFGBIND-4 RED; remove a
+`Config` field's decision → membership RED; drop the placement rule → G-CFGBIND-3 RED; make the
+refusal undiagnosable → G-CFGBIND-4 RED.
+
+**Two of those first reported FALSE GREEN because the patch never applied**, and the battery caught
+it: this run carried an explicit no-op guard (`diff` the patched file against its original before
+believing the result), added after the (d-3) battery was bitten by exactly this. **A patch that
+silently no-ops is indistinguishable from a passing ablation**, and the guard is now the habit.
+
+### What this does NOT close
+
+`R-CONSENSUS-CONFIG-UNBOUND` closes **on the production path only**. Still open:
+`R-LIVENESS-RECOVERY-UNBOUND`; `R-CONFIG-GATE-NODE-SCOPE` (the divergence gate still reflects over
+`chain.Config` alone); **the surviving paramless path** — a genesis predating the bind carries nil
+and still starts, which keeps ~250 fixtures byte-identical and is **disclosed, with G-CFGBIND-5
+asserting it deliberately** rather than leaving it to chance; and the legacy-leg subjectivity, which
+no bind can reach.
+
+### Ordering that still stands
+
+**F moves the genesis hash; call A (the chain id in the signature preimage) consumes it.** They must
+land in ONE genesis move or the graded re-run set is paid twice — which, with the freeze re-priced,
+is the actual cost of the freeze.

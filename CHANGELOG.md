@@ -25,6 +25,52 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   itself is certified in-process. No OOM-kill and no crash-loop across the cohort, so the sheet was graded on a healthy network.
   Teardown verified: 40 resources destroyed, no instance left running.
 ### Added
+- **The consensus-critical genesis config is bound to the chain** (owner call F,
+  [`docs/decisions.md`](docs/decisions.md) `D-CFGBIND-BUILT-2026-09-10`). A new `ConsensusParams` —
+  **17 fields carried by value** — is committed on the genesis block as `Block.Params` at cbor key
+  20, so the genesis hash covers it. **A node configured differently computes a different genesis
+  hash and cannot join at all**; the fork is refused with `ErrForeignGenesis` before any validity
+  question arises. This closes `R-CONSENSUS-CONFIG-UNBOUND` on the production path — the class that
+  produced #380's `Config.Quorum`, `SlashesBytesCap`'s flag-derived invariant, and `MinBond` as a
+  bare command-line flag.
+  **Values, not a digest**, so a mismatch names the field that differs. **Canon rule 8's two arms
+  compose:** a refuse-to-start was refuted for this class because divergence is not locally
+  observable — but committing the values manufactures the referent it lacked, which makes
+  `CheckConsensusParams` required to catch the one case joining cannot, an operator editing a flag
+  and restarting on a chain already joined.
+  **The two sharpest members were in `node.Config`, not `chain.Config`:** `-bond-label-k` and
+  `-bond-vdf`, where a `k=32` node rejects every bond registration a `k=64` swarm accepts.
+  **The foreign-genesis refusal is now loud** — it logged at `LogDebug`, so an operator saw a node
+  that never synced and said nothing. It now warns, names the flags to check, and counts a
+  `ChainSyncForeignGenesis` stat.
+  Five fields are deliberately excluded, each for a different reason — notably `WSCheckpoint`, where
+  sharing it would destroy weak subjectivity, and `LivenessRecoveryHeight`, which is structurally
+  unbindable. Gates `G-CFGBIND-1..5` with a six-step ablation battery verified by exit code.
+
+- **(d-3) the two-level v5 block hash — `Pruned` is retired for era-4** (owner call C,
+  [`docs/decisions.md`](docs/decisions.md) `D-D3-BUILT-2026-09-10`). From v5 the block preimage
+  commits the heavy payloads by digest: `BondReg.Answer` by a new `AnswerDigest`, and `Slashes` by a
+  new `SlashesDigest`. **A pruned v5 block therefore recomputes its own hash from what it retains**,
+  so the declared `Pruned` token — which nothing recomputed — is no longer written. What that closes,
+  in `Block.Hash()`'s own words: before this, once a block was pruned **none** of its retained
+  `LastCommit` / `StateRoot` / `Entries` / `Revocations` / `Slashes` was hash-covered, and *"the
+  attack is not forging `Pruned`, it is KEEPING `Pruned` and the real signatures while mutating the
+  body."* That comment recorded the claim shipping false three times; **G-D3-7 now drives it both
+  ways**, including a v2 arm where the identical rewrite is still invisible.
+  Bought on the third-time rule, not on evidence size: **(d-3) does not shrink the evidence face** —
+  `SlashesBytesCap` is enforced against real encoded bytes, not the hash preimage.
+  **Pre-v5 bytes do not move.** The digests are POINTERS, because cbor's `omitempty` never omits a
+  fixed-size array; the freeze manifest's own `ports.Hash` spelling would have changed the hash of
+  every v2/v4 block carrying a bond registration, and `TestCarrierHashDriftGuard` now has cases that
+  catch exactly that.
+  **One signal was split** (build-immutable #3): `IsPruned()` meant both "identity is declared" and
+  "heavy proofs are shed", and only the first changed — so `Block.HeavyProofsShed()` now carries the
+  bond-possession half and the trust-floor refusal is re-keyed to it. Without that split the refusal
+  would have gone silently dead on v5.
+  Gates `G-D3-1..7` and `G-PMP-2`, ablations verified by exit code. The v4/v5 parity contract is
+  **not** amended: the malformed-pruned arm needed two registrations, not an era-specific
+  expectation.
+
 - **A driven gate that a consensus validity verdict is not a function of local config**
   (`core/chain/consensus_config_divergence_test.go`, canon rule 8 in
   [`docs/build-process.md`](docs/build-process.md), owner ruling 2026-09-10). Two honest replicas whose
@@ -59,6 +105,25 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   file header — `scripts/check_source_gates.py`'s own convention, applied to this gate's declaration
   table so a reader of a passing report cannot mistake a justification for evidence the test
   produced. A v5 citation without a marker is RED (ablation A9).
+
+### Removed
+- **Freeze-manifest item 4 — the inert `IssuerKeyReg` proof-of-possession slot — is DROPPED**
+  (owner call D, [`docs/decisions.md`](docs/decisions.md) `D-ITEM4-DROPPED-2026-09-10`). No code
+  changes: verified never built — zero non-test PoP sites, and `IssuerKeyReg` carries four fields
+  with no slot.
+  Reserving an **inert, unpopulated** field buys exactly one thing — not paying an era later — and
+  the freeze deadline is now priced as SOFT, so it buys nothing. It is the same reserve-only error
+  the freeze-manifest certification names twice, and it survived only because the era clause was
+  still standing.
+  **Dropping it removes a real surface:** `IssuerKeys` is unprunable like `Slashes`, so at the
+  certified count cap the slot would have added `4,096 × 4,096` = **16 MiB per block** — a second
+  permanent surface equal to `SlashesBytesCap`, which is the surface `R-NEST-GATE` measured being
+  weaponised.
+  **The security question it hedged is untouched:** the research-gated DSKS close (a PoP in the
+  registration, or the RFC 9578 binding) stays post-RC. If it ever needs committed bytes, (d-3)'s
+  option beta folds a `PoPDigest` in and makes them **prunable** — which is why this was sequenced
+  after (d-3) landed rather than before. `IssuerKeyPoPMaxBytes` is not ratified and not reserved; it
+  becomes an input to that post-RC work instead of a frozen constant.
 
 ### Changed
 - **The relay lane is disclosed as UNFIT FOR THE EDGE TIER and stays off at every tier (`D-RC-POSTURE-2026-09-09` (1),

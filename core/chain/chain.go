@@ -605,6 +605,46 @@ type Block struct {
 	// field above (merged to main before this carrier), so the two additive open-era fields
 	// never collide on the wire.
 	LastCommit []Attestation `cbor:"18,keyasint,omitempty"`
+	// SlashesDigest is sha256(canonical(Slashes)) — the second application of (d-3)'s
+	// two-level idiom, after AnswerDigest. The v5 preimage folds THIS instead of Slashes.
+	//
+	// WHY A DIGEST AND NOT THE REDUCED COPY THE FREEZE MANIFEST SPECIFIED. §4.3's recursively
+	// reduced `Slashes'` was REFUTED (D-D3-CERT-REFUTATION-2026-09-10): Prune() never recurses
+	// into Slashes (see Prune's comment), so the reduction buys nothing for self-covering, and it
+	// costs a per-hash deep copy of up to SlashesBytesCap — re-opening #563. The owner's test for
+	// it: "does it add a concept or remove one? Slashes' is a recursively-reduced copy — a
+	// genuinely complex object. A digest is a hash."
+	//
+	// WHAT IT BUYS BEYOND SIMPLICITY: it is the only form that keeps nested evidence bodies
+	// PRUNABLE later without an era. Folding Slashes verbatim would commit the outer block's hash
+	// to every byte of every embedded evidence body, permanently — and that 16 MiB unprunable
+	// slot is the surface R-NEST-GATE measured being weaponised. Settled corner: Ethereum's
+	// BeaconBlockHeader committing its body by a single body_root.
+	//
+	// COVERAGE ON v5 IS TRANSITIVE, AND THAT IS DELIBERATE. Mutating Slashes does not move a v5
+	// block's hash; it makes the block INVALID, because validity requires
+	// SlashesDigest == sha256(canonical(Slashes)) whenever Slashes is present. Same shape as
+	// AnswerDigest. The era-aware half of TestHashLiteralPinRuntimePair encodes exactly this.
+	//
+	// KEY 19 — allocated here after verifying 1..18 were taken. The genesis-config family bind
+	// (R-CONSENSUS-CONFIG-UNBOUND) also proposed key 19 for `Params *ConsensusParams`; that
+	// change takes key 20. Both certs said "next free, verify at build", and both were right to.
+	SlashesDigest *ports.Hash `cbor:"19,keyasint,omitempty"`
+	// Params is the CONSENSUS-CRITICAL GENESIS CONFIG, committed on the GENESIS BLOCK ONLY so the
+	// genesis hash covers it. See ConsensusParams for why this exists and why the alternatives were
+	// refuted. A node configured differently computes a different genesis hash and cannot join —
+	// Reconcile refuses the fork with ErrForeignGenesis before any validity question arises.
+	//
+	// KEY 20, allocated after verifying 1..19 were taken. The genesis-config certification proposed
+	// key 19 and so did (d-3)'s SlashesDigest; both said "next free, verify at build", and both
+	// were right to. (d-3) landed first and took 19.
+	//
+	// POINTER, per the same rule as the (d-3) digests: cbor's omitempty never omits a struct value,
+	// so a non-pointer field would emit an empty map into EVERY block body and move every committed
+	// hash. Nil here means "this genesis predates the bind", which keeps ~250 existing
+	// AppendGenesis fixtures byte-identical. That paramless path SURVIVING is a disclosed residual,
+	// not an oversight: only the daemon refuses to launch a new untrusted network without it.
+	Params *ConsensusParams `cbor:"20,keyasint,omitempty"`
 
 	// hashMemo caches Hash() (#555). A block's hashed content is immutable once
 	// minted (Sign computes the hash it signs) or decoded, but Hash() re-marshaled
@@ -678,7 +718,48 @@ type BondReg struct {
 	// 0 (absent — a pre-gate binary's reg) reads as NOT rule-aware, the safe
 	// default. Kept by Prune (a light field, like Domain).
 	Version uint8 `cbor:"7,keyasint,omitempty"`
+	// AnswerDigest is sha256(Answer) — the (d-3) two-level hash. It exists so a v5 block's
+	// preimage can commit to the heavy space-time proof WITHOUT carrying it, which is what lets
+	// a PRUNED v5 block recompute its own hash from what it retains. That is the whole purchase:
+	// `Pruned` — a DECLARED identity nothing recomputes — is retired for v5, and the retained
+	// body (LastCommit / StateRoot / Entries / Revocations / Slashes) becomes self-covering
+	// instead of covered by nothing. See Block.Hash's comment for the defect this closes, and
+	// docs/decisions.md D-FREEZE-CALLS-CDEF-2026-09-10 (owner call C, bought on the third-time
+	// rule: a proof that a property holds today is not a structure that makes violating it
+	// impossible).
+	//
+	// IT IS A POINTER, AND THAT IS LOAD-BEARING — NOT A STYLE CHOICE. The freeze manifest
+	// specified a bare `ports.Hash`, and that spec was REFUTED
+	// (D-D3-CERT-REFUTATION-2026-09-10): cbor's omitempty NEVER omits a fixed-size ARRAY, so a
+	// zero [32]byte is emitted as 32 zero bytes. bodyHash folds BondRegs with NO version branch
+	// for v2/v4, so a bare array here would have changed the hash of EVERY v2 and v4 block
+	// carrying a bond registration — breaking the frozen-format immutable on LIVE history,
+	// before era-4 ever activates. A nil pointer omits cleanly and pre-v5 bytes are unchanged.
+	// This is exactly the era-3 step-2a fix already proven here for StateRoot/LogRoot
+	// (chain.go:565-575). Gate: TestCarrierHashDriftGuard's WITH-a-bond-reg cases.
+	AnswerDigest *ports.Hash `cbor:"8,keyasint,omitempty"`
 }
+
+// v5PreimageBondRegs projects registrations onto their v5 PREIMAGE form: the heavy Answer is
+// replaced by the committed AnswerDigest. It is a per-registration SHALLOW copy — the reduced
+// copy the freeze manifest specified for Slashes was refuted partly for costing a deep copy of up
+// to SlashesBytesCap on every hash (#563); this one copies a slice header per reg and nils it.
+// Returns nil for nil so the omitempty bytes are unchanged for a reg-free block.
+func v5PreimageBondRegs(in []BondReg) []BondReg {
+	if in == nil {
+		return nil
+	}
+	out := make([]BondReg, len(in))
+	for i, r := range in {
+		r.Answer = nil
+		out[i] = r
+	}
+	return out
+}
+
+// answerDigestOf returns sha256(answer) for a non-nil answer, or the zero hash when the
+// registration carries no heavy proof. Used to derive the committed digest and to check it.
+func answerDigestOf(answer []byte) ports.Hash { return sha256.Sum256(answer) }
 
 // ValidatorID is the NodeID (hash of the public key) that a registration bonds.
 func (r BondReg) ValidatorID() ports.NodeID { return sha256.Sum256(r.Validator) }
@@ -819,7 +900,27 @@ func (b *Block) Hash() ports.Hash {
 // open-era additive fields (IssuerKeys, LastCommit): TestHashLiteralPinsEveryHashCoveredField
 // (hash_literal_pin_test.go) is RED if either is dropped (CD-0).
 func (b *Block) bodyHash() ports.Hash {
-	unsigned := Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: b.BondRegs, Slashes: b.Slashes, StateRoot: b.StateRoot, LogRoot: b.LogRoot, IssuerKeys: b.IssuerKeys, LastCommit: b.LastCommit}
+	// (d-3) — the preimage is VERSION-DEPENDENT from era-4 on. Two literals, and the gate that
+	// polices them judges EACH ONE separately (TestHashLiteralPinsEveryHashCoveredField): it used
+	// to union them, which would have let a field folded here and dropped there read as covered
+	// in both. Every non-excluded Block field must appear in BOTH literals.
+	var unsigned Block
+	if b.Version >= BlockVersionWitnessable {
+		// v5: the heavy payloads are committed by DIGEST, not by value. That is what lets a
+		// PRUNED v5 block recompute its own hash from what it retains — the whole (d-3) purchase.
+		// Answer is replaced by AnswerDigest per registration; Slashes by the single
+		// SlashesDigest. Both digests are the STORED fields, and validity requires each to equal
+		// sha256 of its content — so coverage of Answer/Slashes on v5 is TRANSITIVE through that
+		// rule, not direct. Mutating either makes the block INVALID rather than differently
+		// hashed, which is the property the era-aware runtime pin encodes.
+		unsigned = Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: v5PreimageBondRegs(b.BondRegs), Slashes: nil, SlashesDigest: b.SlashesDigest, Params: b.Params, StateRoot: b.StateRoot, LogRoot: b.LogRoot, IssuerKeys: b.IssuerKeys, LastCommit: b.LastCommit}
+	} else {
+		// pre-v5: BYTE-IDENTICAL to before (d-3). AnswerDigest and SlashesDigest are POINTERS and
+		// are nil on every pre-v5 block (validity refuses a pre-v5 block that carries either), so
+		// omitempty omits them and no committed v2/v4 hash moves. That is the frozen-format
+		// immutable, and TestCarrierHashDriftGuard's WITH-a-bond-reg cases are what hold it.
+		unsigned = Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: b.BondRegs, Slashes: b.Slashes, SlashesDigest: b.SlashesDigest, Params: b.Params, StateRoot: b.StateRoot, LogRoot: b.LogRoot, IssuerKeys: b.IssuerKeys, LastCommit: b.LastCommit}
+	}
 	buf := hashBufPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	if err := encModeBuf.MarshalToBuffer(&unsigned, buf); err != nil {
@@ -842,6 +943,35 @@ var blockHashComputes atomic.Uint64
 // BondReg.Answer proofs dropped and its pre-prune Hash stored in Pruned.
 func (b *Block) IsPruned() bool { return b.Pruned != (ports.Hash{}) }
 
+// HeavyProofsShed reports whether this block COMMITTED space-time proofs it no longer CARRIES.
+//
+// ONE SIGNAL, ONE JOB (build-immutable #3). Before (d-3), `Pruned` served two masters and nobody
+// had to notice: it meant BOTH "this block's identity is declared, not recomputable" AND "this
+// block's heavy bond proofs are gone, so bond verification cannot be re-run". Those are different
+// facts, and (d-3) changes only the first — a pruned v5 block reproduces its own hash, so it is
+// not `IsPruned`. Retiring `Pruned` for v5 without splitting the signal would therefore silently
+// stop the SECOND fact from firing, and the trust-floor refusal that rests on it
+// (ErrPrunedAboveHorizon) would quietly stop protecting v5 blocks.
+//
+// That is the disqualifying widening the (d-3) delta certification named in advance:
+// *identity != bond possession, trustFloor stays.* This predicate is the "bond possession" half.
+//
+// A registration has shed its proof when it carries no Answer but commits a digest of one. A
+// registration that never had an Answer commits answerDigestOf(nil) and has shed nothing.
+func (b *Block) HeavyProofsShed() bool {
+	if b.IsPruned() {
+		return true // pre-v5: the declared token is the only signal there is
+	}
+	empty := answerDigestOf(nil)
+	for i := range b.BondRegs {
+		r := &b.BondRegs[i]
+		if r.Answer == nil && r.AnswerDigest != nil && *r.AnswerDigest != empty {
+			return true
+		}
+	}
+	return false
+}
+
 // Prune returns a payload-selective pruned copy of a FULL block: the heavy space-time
 // proofs (BondReg.Answer, ~1.5 MB each) are dropped and the pre-prune hash is stored,
 // so the block still hash-links and still carries its consensus signatures while
@@ -856,7 +986,9 @@ func (b *Block) IsPruned() bool { return b.Pruned != (ports.Hash{}) }
 // finalized block strictly below the retention horizon — the caller enforces that gate.
 // Idempotent.
 func (b Block) Prune() Block {
-	if b.IsPruned() {
+	// Idempotence keys on BOND POSSESSION, not the declared token: a pruned v5 block sets no
+	// `Pruned`, so IsPruned() would say "not pruned" and this would re-run on every call.
+	if b.HeavyProofsShed() {
 		return b
 	}
 	h := b.Hash() // over the FULL body, before dropping anything
@@ -864,9 +996,26 @@ func (b Block) Prune() Block {
 	if len(b.BondRegs) > 0 {
 		out.BondRegs = make([]BondReg, len(b.BondRegs))
 		for i, r := range b.BondRegs {
-			r.Answer = nil // drop the heavy proof; keep the light fields
+			r.Answer = nil // drop the heavy proof; keep the light fields (AnswerDigest included)
 			out.BondRegs[i] = r
 		}
+	}
+	if b.Version >= BlockVersionWitnessable {
+		// (d-3) — THIS IS THE PURCHASE. A v5 block's preimage already folds AnswerDigest in place
+		// of Answer, and AnswerDigest survives the prune above, so the pruned body STILL
+		// reproduces its own hash. `Pruned` is therefore not set, and is retired for v5.
+		//
+		// What that buys, stated as the defect it closes: on pre-v5, Hash() short-circuits to the
+		// declared b.Pruned, so once a block is pruned NONE of its retained body — LastCommit,
+		// StateRoot, Entries, Revocations, Slashes — is hash-covered, and an attacker who KEEPS
+		// Pruned and the real signatures while mutating the body passes every signature check.
+		// See Block.Hash's comment, which records that this safety claim has shipped false three
+		// times. Here the retained body is self-covering, so the violation is impossible rather
+		// than merely absent (docs/decisions.md D-FREEZE-CALLS-CDEF-2026-09-10, owner call C).
+		//
+		// Gate: G-D3-7 asserts out.Hash() == h with no Pruned set, and that mutating the pruned
+		// body moves the hash — the two halves of "self-covering".
+		return out
 	}
 	out.Pruned = h
 	return out
@@ -2020,7 +2169,13 @@ func (c *Chain) validateBondRegs(b *Block) error {
 	// During a Reconcile replay trustFloor() reflects the RECEIVER's anchor (threaded via
 	// trustFloorOverride), never the attacker-supplied fork's. A full block (Answer
 	// present) falls through to full verification at any height, unchanged.
-	if b.IsPruned() {
+	//
+	// BOND POSSESSION, not identity — the node-path twin of v5ValidateBondRegs's arm. (d-3)
+	// retires `Pruned` for v5, so IsPruned() no longer detects a v5 block that shed its proofs;
+	// HeavyProofsShed() does. Keeping IsPruned() here would let an Answer-less v5 block past the
+	// trust floor, which is a no-discount break and the disqualifying widening the (d-3) delta
+	// cert named: "identity != bond possession, trustFloor stays".
+	if b.HeavyProofsShed() {
 		if b.Height >= c.trustFloor() {
 			// The floor VALUE is deliberately not rendered. Its v5 mirror (v5ValidateBondRegs) reads
 			// the pruned-tolerance rule through StateView.PrunedTolerated, which answers the question
@@ -2909,6 +3064,15 @@ func (c *Chain) ValidateProposal(b *Block) error {
 	if err := c.validateEra4Version(b); err != nil {
 		return err
 	}
+	// (d-3) digest consistency — the transitive half of the v5 preimage. Runs beside the two
+	// version-boundary rules, on the same disk-write paths, for the same #572 symmetry reason.
+	if err := validateD3Digests(b); err != nil {
+		return err
+	}
+	// Genesis-config placement: only height 0 may commit consensus params.
+	if err := validateParamsPlacement(b); err != nil {
+		return err
+	}
 	// era-4 (v5) LastCommit carrier validity (R-BOX-ATTESTS, O1). A pure block-local check
 	// (header + signatures, no committed state), placed BEFORE the roots predicate so a bad
 	// carrier fails naming itself rather than as an opaque root mismatch — the roots
@@ -3403,6 +3567,13 @@ func (c *Chain) appendStructural(b Block) error {
 	// era-3 version check above has: both era boundaries are enforced on every disk-write
 	// path (4d, mirroring 2c). A v4 block at/above H_era4 is rejected here just as it is on
 	// the commit path.
+	// (d-3) digest consistency on the OWN-DISK reload path, mirroring the commit path above.
+	if err := validateD3Digests(&b); err != nil {
+		return err
+	}
+	if err := validateParamsPlacement(&b); err != nil {
+		return err
+	}
 	if err := c.validateEra4Version(&b); err != nil {
 		return err
 	}
@@ -4044,6 +4215,12 @@ func (c *Chain) PopulateEra3Roots(b *Block) error {
 // only when MintVersion(h) == BlockVersionWitnessable.
 func (c *Chain) PopulateEra4Roots(b *Block) error {
 	b.Version = BlockVersionWitnessable // select the v5 leaf set for the recompute below
+	// (d-3): populate the two-level digests BEFORE anything hashes this block. A v5 preimage
+	// folds AnswerDigest / SlashesDigest in place of the payloads, so an honest producer must
+	// commit them here or validateD3Digests refuses its own block. This is the ONE proposer-side
+	// home — deliberately not inside Sign(), because a red-team fixture that forges a payload and
+	// re-signs must NOT have its forgery silently re-committed by the signing step.
+	setD3Digests(b)
 	sr, lr, err := c.postApplyRoots(*b)
 	if err != nil {
 		return err

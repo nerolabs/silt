@@ -99,7 +99,12 @@ func NewBox(ch *Chain, parent Block, cfg BoxConfig, src WitnessSource) (*Box, er
 	if err != nil {
 		return nil, fmt.Errorf("%w (BoxConfig.BudgetBytes is unset)", err)
 	}
-	if parent.IsPruned() {
+	// KEEP, RE-KEYED (d-3 delta certification site 9: "widening if dropped — DO NOT"). The box
+	// refuses a parent whose heavy proofs are gone. (d-3) retires `Pruned` for v5, so IsPruned()
+	// would silently stop detecting a shed v5 parent and this refusal would go dead exactly where
+	// it is still needed. HeavyProofsShed() is the bond-possession signal; IsPruned() is the
+	// identity one, and only the identity fact changed.
+	if parent.HeavyProofsShed() {
 		return nil, ErrBoxParentPruned
 	}
 	if len(parent.Proposer) != ed25519.PublicKeySize {
@@ -179,7 +184,10 @@ func (s *Box) Validate(b Block, w StateRootWitness) (FloorBoxOutcome, error) {
 	if proceed, reason := s.c.recoveryBoundaryDecision(s.head.NextHeight); !proceed {
 		return IndeterminateTrustlessly, reason
 	}
-	if b.IsPruned() {
+	// KEEP, RE-KEYED (site 10, same certification). The explicit warning there: if this stall
+	// silently goes dead for v5, D0's ablation becomes vacuous — a green gate with no demonstrated
+	// red, simplicity rule 7. Re-keyed to bond possession for the same reason as site 9.
+	if b.HeavyProofsShed() {
 		return IndeterminateTrustlessly, ErrPrunedBlockUnreproducible
 	}
 	v := s.view()
