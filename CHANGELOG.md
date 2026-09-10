@@ -85,6 +85,39 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   itself is certified in-process. No OOM-kill and no crash-loop across the cohort, so the sheet was graded on a healthy network.
   Teardown verified: 40 resources destroyed, no instance left running.
 ### Added
+- **`scripts/check_reachability.py` — a lane the release checklist claims must be REACHABLE in the
+  linked binary** (`scar:mechanism-shipped-inert-2026-09-10`). Six mechanisms shipped inert in one
+  month: present in source, recorded as delivered and enforcing, and with zero non-test callers, so
+  the linker dropped every one of them out of `./cmd/silt` — a refuse-to-start on consensus-config
+  divergence (`(*Chain).CheckConsensusParams`), the client half of delivery top-up
+  (`(*Node).FundDeliverySessionRemote`), the entire paid-relay client (`AcquireRelayAnchors`,
+  `OpenRelaySessionRemote`, `SubmitRelayPay`) and a per-lane counter nothing reads
+  (`(*Ledger).GuardFullRefusalsByLane`).
+  **No Go test can catch this, and neither can grep.** A test that can call the symbol is itself the
+  caller that keeps it alive. A grep sweep keys on BARE IDENTIFIERS, so an inert method hides behind a
+  live namesake — the 117-site sweep that preceded this lint missed `demand.Commit` outright, and
+  every common verb (`Verify`, `Close`, `Root`, `Get`) has the same hole. `go tool nm` on the linked
+  binary has neither hole: dead-code elimination already decided the question, and the name it reports
+  is fully qualified.
+  **The gate asserts one equality per lane, with a closed complement:** *the checklist label says THIS
+  SYMBOL is unreachable == the symbol is absent*. The label's claim is a PAIR — the phrase **"cannot
+  be exercised"** and the symbol's own name, in the lane's posture line in `docs/release-checklist.md`.
+  Both halves are load-bearing: the phrase alone would let one line excuse a whole lane, and the name
+  scopes the claim, because a lane routinely has a live half and a dropped half. The paid delivery
+  lane opens and settles but cannot top up. A label claiming both postures at once is AMBIGUOUS and
+  fails either way. **This lint fails the build on a doc's POSTURE**, which is why it is logged here
+  even though `docs-shipped` asks for no changelog line on a `scripts/` change.
+  **It refuses a thin entry rather than passing it.** A one-line wrapper is inlined into its caller
+  and vanishes from the symbol table in a build where the lane is perfectly live —
+  `adapters/relay.DialThroughPaid`'s whole body is `return dialThrough(...)`. Entries must name a
+  SUBSTANTIAL symbol, enforced by measuring the declaration (>= 8 body lines AND a function literal,
+  which surfaces as `<symbol>.funcN` and is required as a second witness when the symbol is present,
+  so a hollowed-out stub that kept its name cannot pass). Every lane record carries a written `claim`
+  and a written `substantial`, and each has a mechanical companion, because an allowlist rationale is
+  itself a claim and decays exactly like a cited test name. Scope is deliberately bounded to lanes the
+  release checklist makes a public claim about; it is not a sweep of exported symbols, since the
+  floor-box keystone is inert by ratified owner direction (`D-RECOMPUTE-FREEZE`) and would drown the
+  signal. Lanes live in `scripts/reachability_lanes.txt`; runs as its own `reachability` CI job.
 - **`scripts/check_cited_tests.py` now resolves Go SYMBOLS and source COORDINATES**
   (`scar:cited-source-coordinate-decayed-2026-09-10`). A `path.go:NNN` in prose reads as "open this
   file at this line and see the thing I named", and nothing checked it. Three coordinates in

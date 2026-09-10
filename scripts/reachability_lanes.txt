@@ -39,6 +39,19 @@
 # ---------------------------------------------------------------------------
 # The paid delivery lane — RC-open, graded at E5. Three client entry points:
 # open, top-up, settle. Two are linked; the top-up is not.
+#
+# THE TWO HALVES ANCHOR ON SEPARATE POSTURE LINES, AND THEY HAVE TO. A block is
+# classified as a WHOLE: it says "cannot be exercised", or it says the lane has
+# not yet been exercised, and one that says both states no posture and FAILS. The
+# open/settle halves are linked and unrun in the field; the top-up half is not in
+# the binary at all. Those are the two postures, so pointing both at one label
+# would force the honest text to drop one of the two facts — or to reword around
+# the phrase list, which is defeating this gate with a thesaurus. Two labels, two
+# blocks, each classified on its own.
+#
+# An anchor never contains the reserved phrase or the symbol's own name. If it
+# did, resolving the anchor would satisfy the assertion by itself and both halves
+# of the pair would go unchecked.
 # ---------------------------------------------------------------------------
 
 lane: paid-delivery
@@ -55,7 +68,7 @@ substantial: Signs a cumulative receipt and passes n.request a closure that read
 
 lane: paid-delivery-topup
 symbol: github.com/nerolabs/silt/core/node.(*Node).FundDeliverySessionRemote
-label: Open at the RC: the paid delivery
+label: Open at the RC: the delivery top-up
 claim: The checklist claims a paid delivery lane whose sessions are budgeted; top-up is how a session's budget rises after admission, so the RC posture line has to say whether an operator can do it. It cannot: this symbol has zero non-test callers and the linker drops it.
 substantial: Signs a SessionFund, marshals it and passes n.request a closure that reads the post-top-up budget; the closure surfaces as FundDeliverySessionRemote.func1, so its absence from the table is the linker dropping it, not an inline.
 
