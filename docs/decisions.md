@@ -1399,7 +1399,9 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   > entire reason evidence carries full bodies (`equivocation.go:54-60` says so). Putting
   > `(height, round, phase)` in the v5 preimage makes evidence `O(1)`, ~200 bytes **[the ~200 B figure
   > is SUPERSEDED — ~251 B derived, unmeasured until G-PRE-9; see `D-PREIMAGE-CERT-2026-09-10`]**. That is CometBFT's
-  > `CanonicalVote`. It is a **FORMAT** change and a **WIDENING** one, so it rides D1 or it costs an era.
+  > `CanonicalVote`. It is a **FORMAT** change and a **WIDENING** one, so it rides D1 or it costs an era
+  > **[the "costs an era" clause is WITHDRAWN as a reason to buy — `D-FREEZE-REPRICE-2026-09-10`. The
+  > freeze deadline is SOFT pre-launch; this change is bought on the #397 schema argument alone]**.
   > **The 16 MiB VALUE does not move.** Three owner calls are in §9 of the certification.
   >
   > **✅ UNRATIFIED AND REPLACED BY THE OWNER — 2026-09-10 (owner call 2).** The owner read the
@@ -2847,8 +2849,10 @@ The citation is verified at source: `docs/build-process.md:204-213` states rule 
 
 **The corroborating reasons, in the owner's order:** it kills the nesting attack at the root rather
 than bounding a symptom (a legitimate proof is ~251 B derived, regardless of how bloated the target block is, so the 687 B × 24,456 route dies completely); it names its settled corner, so the B8 gate is
-satisfied; its blast radius is smaller than (d-3)'s, which is already bought; and it is **FORMAT +
-WIDENING**, so it rides D1 or it costs an era.
+satisfied; and its blast radius is smaller than (d-3)'s. It is FORMAT + WIDENING, so it rides the D1
+train. **The "or it costs an era" clause that originally accompanied this is WITHDRAWN**
+(`D-FREEZE-REPRICE-2026-09-10`): the freeze deadline is SOFT pre-launch, and this change stands on
+the #397 schema argument by itself — which is the leg that was always load-bearing.
 
 **Three conditions, all binding:**
 
@@ -3023,6 +3027,12 @@ door" argument, on the fact that makes it wrong:
 > freeze doesn't close the door on the bug; it closes the door on the repair. After D3, binding
 > MinBond costs an era, exactly like the preimage change."*
 
+**⚠ THE OWNER CORRECTED THIS REASONING THE SAME DAY — `D-FREEZE-REPRICE-2026-09-10`.** The freeze
+deadline is SOFT pre-launch, so the freeze does NOT lock the repair. **The conclusion is unchanged and
+the honest reason is:** D3 gates the B8 engagement, and silt does not spend the longest-lead item on
+the roadmap attacking an artifact with a known I1 divergence. The paragraph above is left in place,
+per the standing practice on superseded reasoning.
+
 And the severity argument runs the **same** direction, not the opposite one: an I1 divergence is
 worse in kind than a format mistake — *"a format mistake costs an era, an I1 divergence costs a fork,
 and forks are the thing the whole trust plane exists to prevent"* — so the item with the worse
@@ -3095,3 +3105,150 @@ never "currently bonded"). Measure first, then design.
 nothing for it.** So the answer to call 1's condition (b) is: he is **not** buying two things where
 one would do — he is buying a second thing **worth less than the manifest told him**. The Researcher
 recommends shipping both. This is the C-3/C-4 re-derivation of `R-CERT-REDERIVE` landing.
+
+---
+
+## D-FREEZE-REPRICE-2026-09-10 — the freeze deadline is SOFT; "or it costs an era" is withdrawn as a reason to buy
+
+- **Status:** ✅ OWNER CORRECTION — 2026-09-10, correcting his own three rulings of the same day
+  (`D-PREIMAGE-CERT-2026-09-10`) and the framing of `D-PREIMAGE-BUY-2026-09-10`. **This entry
+  governs every open D1 item.**
+
+### The correction
+
+The owner justified several buys with *"it's format and widening, so it rides D1 or it costs an
+era."* **Pre-launch that is wrong.** With no live network, genesis and format can both move — silt
+already moved genesis once (`D-GENESIS-MOVE-2`).
+
+> *"The freeze's real currency is re-running graded field runs and delaying the external B8
+> engagement — days and cloud spend, not permanence. That deadline is real and it's soft."*
+
+**Price the freeze in re-runs and calendar, not in permanence** — *"which is what it actually costs,
+and which is a number you can weigh instead of a threat you can't argue with."*
+
+### What the freeze still means, so this is not read as licence to churn
+
+It remains **the forcing function and the B8 gate.** At some point the format stops moving or silt
+never ships, and the external engagement cannot meaningfully attack a moving artifact. **Still
+freeze, still soon, still the gate on the calendar-critical item.** What is withdrawn is
+*permanence* as the reason.
+
+### The governance lesson — the owner's, in his words
+
+> *"Two sessions ago I told you the trust plane was making a complicated thing more complicated, and
+> gave you ten rules to stop it. Then I spent two sessions supplying 'now or it costs an era' as a
+> reason to buy things. Artificial deadline pressure is one of the most reliable drivers of
+> over-buying — it's how a freeze train turns into a scope magnet. I supplied the pressure. That's
+> mine."*
+
+**The corrected posture: with the deadline soft, buy LESS and BETTER, not more and faster.** Every
+item currently justified partly by *"or it costs an era"* is re-read with that clause **deleted**,
+and anything that does not survive on merit **comes out of the train**. This is the operative rule
+for the rest of D1, and it composes with simplicity rules 1 and 8.
+
+### The three calls, re-priced
+
+**A — chain id in the v5 preimage: BUY, unchanged, on the leg that was always load-bearing.** The
+argument had two legs and only one mattered. **The deadline leg is void.** The **schema leg stands
+entirely on its own:** silt named CanonicalVote as its settled corner, `ChainID` is in it, and
+dropping it **repeats the #397 scar inside the very fix meant to pay it back** (`build-process.md`
+rule 6). And the I5 break is **live on the two test networks today**. Buy it because it is correct.
+If genesis can move freely, this gets *easier*, not harder.
+
+**B — the FORMAT-vs-VALIDITY pricing ask is WITHDRAWN.** It was asked because it set a deadline; it
+barely does now. **Do not spend a session on it.** What remains is unchanged and small: make the
+standing predicate correct — *"was bonded at that height,"* with late-reveal preserved — and let the
+planner sequence it against the last graded run. `R-SLASH-CULPRIT-ADMISSIBILITY` keeps its row; it
+loses its pricing sub-task.
+
+**C — (d-3) genuinely re-opens, and is RE-JUSTIFIED BELOW on correctness alone.** The owner:
+*"I told you 'buy it: it's format, and declining costs an era.' That reason is void. What's left is
+a purchase whose advertised value has been re-priced downward twice — first 'removes the face' →
+shrinks it 40×, then 'two things' → one thing worth a third. Justify the remaining third on its own
+merit, or drop it. Do not buy it because a train is leaving."*
+
+### (d-3) re-justified on merit — RECOMMEND BUY, as a correctness fix, with the value restated
+
+**The advertised value is not the real value.** (d-3) was sold on evidence size, and that leg fell
+twice. Read at source, its merit is a different and larger thing: **it retires `Pruned` — the
+declared-identity field — for v5.**
+
+**What is actually broken today**, from `Block.Hash()`'s own comment (`core/chain/chain.go:756-765`,
+read at source):
+
+> *"THE PRUNED FIELD IS A LINKAGE TOKEN, NOT A CONTENT COMMITMENT… The attack is not forging
+> `Pruned`. It is KEEPING `Pruned` and the real signatures while mutating the body: `Hash()` returns
+> `b.Pruned` unchanged, so every signature still verifies. `Prune()` drops only `BondReg.Answer` — it
+> KEEPS `LastCommit`, `StateRoot`, `Entries`, `Revocations`, `Slashes` and the light `BondReg`
+> fields, and **none of them is covered by `Hash()` once the block is pruned.**"*
+
+So **once a block is pruned, none of its retained content is hash-covered.** Today's defences are
+(i) the recompute chain to the first non-pruned descendant, (ii) `trustFloor`, and (iii) a
+**discipline** — *"NO CONSENSUS DECISION MAY DEPEND ON RE-READING THE BODY OF A PRUNED BLOCK"* —
+whose *proof* is the owed `R-CARRIER-PRUNED-HASH`. The same comment notes this is **"the third time
+this comment has shipped a false safety claim."**
+
+**What (d-3) changes:** `Prune()` for v5 drops `Answer`, keeps `AnswerDigest`, and **does not set
+`Pruned`** — a pruned v5 block **recomputes its own hash from what it retains**. `Pruned` is retired
+for v5. That converts a discipline plus an owed proof into a **structural property**, and it is the
+root-cause fix for the class R0.6 patched by *refusing* pruned evidence (a narrowing workaround that
+costs `R-LATE-REVEAL`).
+
+**What it protects, stated plainly, as the owner asked:** the integrity of a pruned block's retained
+body — `LastCommit`, `StateRoot`, `Entries`, `Revocations`, `Slashes` — which today is covered by
+nothing.
+
+**The honest cost, not soft-pedalled.** It is not a one-clause change: `bodyHash` becomes
+version-dependent, `IsPruned()` is read across six non-test files
+(`core/chain/{floorbox_box_v5,validate_v5_quorum,chain,retention,equivocation}.go`,
+`cmd/silt/chainstatus.go`), `Reconcile` compares `fork[0].Hash()`, and the carrier's `Hash()` pin
+(CD-0) moves with it. **Era-1/2 keep the full-body rule and the pruned-evidence refusal forever**, so
+silt carries BOTH paths — the change adds a branch rather than deleting one. The build needs its own
+delta certification.
+
+**Verdict on merit:** it removes a class of defect (declared identity in place of recomputed
+identity) rather than shrinking a symptom, and it retires a concept plus two downstream defences for
+v5. That survives simplicity rule 1 and rule 8 with the era clause deleted. **RECOMMEND BUY as
+correctness — and, per rule 2, buy it under the restated justification, not the fallen one.** A
+FORMAT item, so the **OWNER** takes it individually.
+
+### MinBond — same conclusion, honest reason
+
+**Withdrawn:** *"it blocks D3 because the freeze locks the fix."* It does not; the fix can land after
+a soft freeze. **The honest reason, which reaches the same place:** **D3 gates the B8 engagement, and
+silt does not spend the longest-lead item on the roadmap attacking an artifact with a known I1
+divergence.** `R-CONSENSUS-CONFIG-UNBOUND` should land before D3 on that ground.
+
+### The manifest audit with the clause deleted — ONE ITEM SHOULD COME OUT
+
+Re-reading the 22-item manifest (§ groups A–D) with *"or it costs an era"* struck:
+
+| Item | Survives on merit? | Why |
+|---|---|---|
+| 1 `tagRevLogSize` | **YES, strongly** | A wrong `m` is a WRONG-ACCEPT, and every floor box *dies permanently* at the first takedown block after its pin. Safety + liveness, no deadline needed. |
+| 2 digest set 5 → 3 (`R-membership`) | **YES** | It is a **removal** — two committed leaves fewer. Its urgency is honest and is not permanence: it is free *while era-4 is dark*, because nothing has committed under it. |
+| 3 (d-3) | **YES, re-justified above** | Retires `Pruned` for v5; restores hash coverage to a pruned block's retained body. Bought as correctness, not as evidence size. |
+| **4 `IssuerKeyReg` PoP slot, reserved inert** | **NO — RECOMMEND DROP** | See below. |
+| 5 `R-AAXIS-TAG-RESERVE` | already REFUTED | — |
+| 6 height-0 identity | not in the freeze surface | — |
+| 7–13 (validity rules) | unaffected | They are DoS bounds and wrong-accept closes with independent merit, or already DECLINED / NOT-THIS-RELEASE. |
+
+**Item 4 is a pure deadline artifact and should come out of the train.** Reserving an *inert,
+unpopulated* field buys exactly one thing: not paying an era later. **Delete the era cost and the
+reservation buys nothing at all.** It is the same error the manifest certification itself names
+twice — it refutes the A-axis tag reservation on this ground as its own item 5 (already closed), and
+says of (d-3) *"Do NOT propose a reserve-only hedge… That is the same error."* Item 4 survived only
+because the era clause was still standing.
+
+**And dropping it removes a real surface, not just a line.** Per the 2026-09-10 PoP certification,
+`Prune()` drops only `BondReg.Answer`, so `IssuerKeys` is **UNPRUNABLE like `Slashes`**: at the
+count cap the reserved slot adds `4,096 × 4,096` = **16 MiB per block, a second permanent surface
+EQUAL to `SlashesBytesCap`** — the very surface `R-NEST-GATE` just measured being weaponised. Buying
+a 16 MiB permanent attack surface as a hedge against a future era cost, when the era cost is void, is
+the scope-magnet failure in its clearest form.
+
+**If a PoP is ever needed, (d-3) makes it cheaper than the reservation does:** option beta in that
+certification folds `PoPDigest` into (d-3), which makes the bytes **PRUNABLE**. Buying item 3 is
+therefore also the better hedge, and it is bought on correctness.
+
+**Owner call: DROP item 4.** Recommendation only — a FORMAT item is his.
