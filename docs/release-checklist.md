@@ -93,9 +93,53 @@ signing is wired up; V1 is not cut until signing/notarization is in place.)
     is a RULE, not a per-lane judgment call (`D-RC-POSTURE-2026-09-09` (3)):
     omission decides these by default, and the default is always the over-claim.
     A lane earns the sentence's removal by a green graded field run that exercises
-    it end to end, not by a passing simulation. **Open at the RC: the paid delivery
-    lane** — no delivery session has ever settled on a real network, so every C2
-    number is sim-driven; it is graded at E5 after the stamp raise.
+    it end to end, not by a passing simulation.
+  - **There are THREE postures, not two, and one lane can hold two of them at
+    once.** *Exercised* / *has not been exercised* / **cannot be exercised**. The
+    middle says an operator could run the lane tomorrow and nobody has; the last
+    says the shipped binary contains no client half to run, so nobody can — a
+    reader hears a different promise from each, and the standard sentence above is
+    only ever the middle one. Which posture a lane gets is not a judgment call:
+    `scripts/check_reachability.py` builds `./cmd/silt`, reads its symbol table and
+    fails the build when a label below claims a posture the linked binary
+    contradicts. A label claiming a lane **cannot be exercised** must NAME the
+    client entry symbol that is missing, or the claim cannot be re-checked
+    (`scar:mechanism-shipped-inert-2026-09-10`). Each lane's posture is its own
+    bullet for the same reason: a shared bullet claims both postures at once and
+    so states neither.
+  - **Open at the RC: the paid delivery lane — built, sim-proven, and it has not
+    been exercised on a real network.** `OpenDeliverySessionRemote` and
+    `SubmitDeliverySettle` are both linked into `./cmd/silt`, so an operator could
+    open and settle a delivery session tomorrow; none ever has, which is why every
+    C2 number is sim-driven. It is graded at E5 after the stamp raise.
+  - **Open at the RC: the delivery top-up — it cannot be exercised, and the
+    missing client entry point is `FundDeliverySessionRemote`.** Raising a live
+    session's budget after admission has no client half in the shipped binary:
+    `FundDeliverySessionRemote` has zero non-test callers, so the linker drops it
+    out of `./cmd/silt`. The lane opens and settles but cannot top up, and that is
+    a strictly stronger claim than the bullet above — do not merge the two into
+    one sentence.
+  - **Open at the RC: the paid relay client — it cannot be exercised, and the
+    missing client entry points are `AcquireRelayAnchors`,
+    `OpenRelaySessionRemote` and `SubmitRelayPay`.** The standard sentence
+    over-claims here, because it implies an operator could exercise this lane and
+    simply has not. Verified by `nm` on a fresh `./cmd/silt` and confirmed by
+    call-graph read: all three, plus `DialThroughPaid`, are absent from the linked
+    binary (zero non-test callers), while the server half is present and
+    dispatched — which is exactly how the lane came to read as delivered.
+    In one sentence: the paid relay lane ships server-only, is e2e-proven in
+    process, and no operator can open a paid relay session from a stock build. **Keep the qualifier, because
+    over-correcting here is the same failure with the sign flipped:** the server
+    accepts `MsgRelayOpen` from any peer, so a third party could hand-write a
+    client. The accurate scope is *"the shipped binary has no client,"* never
+    *"the protocol is unreachable."* Source:
+    `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/2026-09-10-inert-mechanism-sweep-core-adapters-0ed3b92.md`.
+  - **OWED, not done here — one site still carries the standard sentence.**
+    `cmd/silt/daemon.go`'s `-accept-relay-payments` flag help ends on *"built,
+    sim-proven, never exercised on a real network"*; that file belongs to another
+    seat's open branch, so it must take the paid-relay label above before the RC
+    is cut. `docs/design/pod.md` §7.3's **Field status** line carried the same
+    sentence and was corrected with this change.
 - [ ] **`CHANGELOG.md` `[Unreleased]` is accurate** — it becomes the release
       notes verbatim. For `1.0.0` it should read like an honest first-release
       summary.

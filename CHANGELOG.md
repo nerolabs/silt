@@ -8,6 +8,66 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Documentation
+- **The 2026-09-10 docs true-up — the residual register goes 35 → 34 while absorbing three
+  certifications, and four claims that said "delivered" are corrected in place.** The owner's ask was
+  *"make sure we are clean and have an understanding on where we are at and where we are going."* The
+  governing constraint was that the ledger must end SMALLER, because the diagnosis is that the
+  decisions got simpler while the bookkeeping got heavier (simplicity rules 3 and 4,
+  `docs/build-process.md`).
+  **The triage.** Three certifications filed **24** new residual names under two unratified prefixes
+  (`R-CB-`, `R-ATTS-`). Both prefixes die. **Four rows survive**, all under the existing `R-CARRIER-*`
+  family: `R-CARRIER-QC-NESTED-ROUNDCHANGE` (routes ahead of the cap — `(*roundChangeEnv).sigBytes`
+  omits `LockQC`, so a replayed genuine envelope can be padded in flight, and one padded entry makes
+  `(*Node).newViewFor` hard-fail a whole new-view certificate: a liveness veto any peer can cast),
+  `R-CARRIER-ATTS-PREPAREQC` (one replayed signature buys 131,072 verifies, because
+  `(*Chain).collectQuorumSigs` sets `seen[id]` only for qualified ids), `R-CARRIER-ATTS-NORMALIZE`
+  (one fix closes three faces), and `R-CARRIER-ATTS-BLOCKS-CEILING` (post-RC, launch blocker). Six
+  held-in-tension filings became **§10.1 disclosures**, three measurement asks went to the Tester's
+  queue, and both `*-WORKTREE-PROVENANCE` rows were deleted — **a method caveat belongs in a cert's
+  method section, never as a register row.**
+  **Five EXISTING rows retired**, which is where the register actually shrinks:
+  `R-CONFIG-GATE-NODE-SCOPE` folds into `R-CONFIG-GATE-V5-REGIME` (two defects in the same test
+  function, one PR); `R-NEST-GATE` and `R-NESTED-EVIDENCE-OVERCAP` fold into
+  `R-BIG-EVIDENCE-UNSLASHABLE` (**three rows that end in the same sentence — the equivocator keeps its
+  seat — and close on one act**, the `(height, round, phase)` preimage); `R-LIVENESS-RECOVERY-UNBOUND`
+  becomes a §10.1 disclosure because "structurally unbindable" is not a closer; and
+  `R-CARRIER-CREDIT-DENIAL` closes because its entire remaining content was a doc fix, written here.
+  **`R-ATTS-ERA3-ROOT-COUPLING` collapses entirely**: mechanism CONFIRMED, stated failure mode
+  REFUTED, field reachability ZERO. It fires at commit (`(*Chain).ValidateProposal` →
+  `(*Chain).validateEra3Roots`), not only at reload, so a block that would brick reload cannot commit;
+  and no v4 block can exist, because era-3 lock-in needs `regVersion >= 4` while `chain.NewBondReg`
+  hard-codes 3 and `Era3ActivationHeight` is set nowhere outside `_test.go`. It **re-derives a defect
+  the ledger closed by RETIRING the era it lives in** (owner calls O1/O2, 2026-09-02) — recorded in
+  §10.1 so it is not filed a third time.
+  **Four corrections, annotated in place rather than laundered.** (1) The `Atts` exposure figure is
+  **wrong by 10×**: 1,318,209 entries / 132 MiB / 42–68 s is unreachable, because `chain.Decode` uses
+  the package-default cbor `DecMode` whose `defaultMaxArrayElements` of 131,072 is enforced before
+  allocation. True ceiling **131,072 / 13.1 MiB / 4.2–6.9 s**, amplification **15.5×, not 156×** — and
+  the finding survives in a **worse** dimension, cumulative and permanent: a poisoned 1,000-block
+  history is 13.1 GiB on disk and 70–115 min per daemon start, forever. (2) The genesis ordering
+  constraint was **void as stated** — F shipped schema only, and F's wiring does not move the
+  *paramless* genesis hash either (`Block.Params` is a pointer with `omitempty`), so it binds for a
+  different reason: **call A joins F's wiring in one network RE-SEED, not one fixture re-pin.**
+  (3) `D-CFGBIND-CERT` says the foreign-genesis refusal is `LogDebug`; it is **`LogWarn`**, and the
+  class is named explicitly — the *coordinate* still resolves, so the symbol-anchored lint from #803
+  cannot catch this; only the **claim about content** rotted. Same entry also specifies cbor key 19
+  where shipped is key 20. (4) The `[Unreleased]` "settled 104 receipts" sentence is a **unit test**,
+  not a graded run, and the tier is now named — the `R-SESSION-WALLCLOCK-STEP` refutation is
+  unaffected.
+  **Where we are going, in the plan.** Boulder 3 is the whole remaining critical path (D1 → D2 → D3),
+  and **D1's real remaining FORMAT set is two manifest items** plus F's wiring and call A — a blind
+  audit classified all 22. The reachability headline is **two numbers**: 117 inert sites, of which
+  **71 (61 %) are the frozen recompute keystone**, leaving **46**; three of those are "the record says
+  delivered" and **the other 43 get no rows**, because a lint regenerates that list and 43 rows is 43
+  things a human reads forever. Two published claims are corrected here for the same reason
+  (`BBootstrapRunPrecondition` voids nothing; D-DEMAND P3b cannot be enabled), and the **paid relay
+  lane's honest label** is fixed in the over-claiming direction — the shipped binary contains no relay
+  client, so the lane is *unexercisable*, not merely unexercised. `docs/TENETS.md` needs no change;
+  checked, not assumed. Deliberation:
+  `docs/thinking/2026-09-10-session-docs-true-up-residual-triage.md`.
+
+
 ### Graded
 - **Cloud field test `97e3101-deep` (2026-09-09, main `97e3101`; Lane A3, launched on the owner's standing go): REVIEW — 31 pass /
   1 gap / 0 fail / 3 skip** (`integration/cloudtest/report-97e3101-deep.md`, results/rss/console/flow-evidence force-added). The
@@ -322,7 +382,16 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   the e2e tier instead). **A premise in canon is corrected by a driven run:** `R-SESSION-WALLCLOCK-STEP` (`docs/design/m0.md`
   §10) said a chain stall "reaps every live session" — with the chain frozen for 1040 s the lane admitted a session,
   settled 104 receipts, took a top-up and the session lived, because nothing in `SettleDeliveryReceipt` →
-  `credit.SettleDelivery` reads the chain and `MsgFetchChunk` has no chain gate. The clause is withdrawn; the forward
+  `credit.SettleDelivery` reads the chain and `MsgFetchChunk` has no chain gate.
+  **⚠ TIER CORRECTED 2026-09-10 (docs true-up): this is a UNIT TEST, not a graded run**, and the
+  sentence read as a field observation. It is `core/node` `TestC2FrozenChainDoesNotStarveTheDeliveryLane`,
+  and the `104` is `1040s / 10s`. **No graded run has ever opened a delivery session at all** — row 13
+  on both reports has the client refusing at the withdrawal, dark lane — and `FundDeliverySessionRemote`
+  is absent from the linked binary, so the shipped daemon has no delivery-funding client to open one
+  with. **The refutation of `R-SESSION-WALLCLOCK-STEP` is UNAFFECTED and still stands:** the reaper was
+  armed and swept 104 times, the chain-freeze arm is *asserted* rather than assumed, and the `fund` arm
+  is corroborating only. `docs/design/m0.md` already cites the test by symbol and needs no change; only
+  this sentence's TIER was wrong. The clause is withdrawn; the forward
   wall-clock STEP half stands and what is driven is the mechanism behind it — the reaper is keyed on the injected clock
   with no monotonic guard, so a whole-window advance reaps even a session that settled one second earlier, and the cost is
   a deposit, never bytes. **The number survives the correction; its STATUS does not.** With the causal path withdrawn,
@@ -8137,7 +8206,15 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   as `Node.RequireBondedFetchers`), a delivery receipt counts toward an object's demand only if the
   fetcher's signing key is a bond-distinct identity in the **committed on-chain bond ledger**
   (`chain.IsBonded` — the same Sybil-priced, deduped supply the C2 metric measures), and demand then
-  counts **distinct bonded fetchers per object**. So a self-dealer running one bonded identity can
+  counts **distinct bonded fetchers per object**.
+  **⚠ CORRECTION 2026-09-10 (docs true-up) — the lever is BUILT and CANNOT BE PULLED.**
+  `(*Node).RequireBondedFetchers` has **zero non-test callers**, so `Bank.bonded` stays nil and the
+  admission branch in `core/demand/session.go` is never taken: P3b is off in the shipped daemon with
+  no enable path. The entry keeps its ratified text and carries this dated correction. Measured by the
+  2026-09-10 inert-mechanism sweep
+  (`silt-reviews/principle-engineer/2026-09-10-inert-mechanism-sweep-core-adapters-0ed3b92.md`),
+  confirmed by call-graph read. This is a published economic-mechanism claim (C1/C2 cost-to-wash), so
+  wiring it is RESEARCH-GATED; it is tracked as ordinary lane work and gets no residual name. So a self-dealer running one bonded identity can
   still mint N perfectly valid receipts (a self-fetch *is* a real paid delivery — Douceur is
   unbeaten), but witnessed demand rises by **1, not N** — re-pricing wash to *one real storage bond
   per faked unit of demand*, the best achievable under no-center. This is the second lever alongside

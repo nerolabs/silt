@@ -306,8 +306,17 @@ Consult `PoD-neutral-lane-B3-close-CONSULT-2026-08-26.md`; certification
 > it lands, relay is horse-and-above by construction** — that sentence is the design debt, and it is
 > owed a mechanism, not a knob.
 >
-> **Field status:** built, sim-proven, **never exercised on a real network** (release-checklist rule,
-> `D-RC-POSTURE-2026-09-09` (3)).
+> **Field status: the CLIENT half is not in the shipped binary, so this lane CANNOT BE EXERCISED**
+> — a stronger claim than the standard *"built, sim-proven, never exercised on a real network"*
+> posture, which would imply an operator could run it tomorrow. `AcquireRelayAnchors`,
+> `OpenRelaySessionRemote` and `SubmitRelayPay` each have zero non-test callers, so the linker drops
+> all three (plus `DialThroughPaid`) out of `./cmd/silt`; the server half is present and dispatched,
+> which is exactly how this lane came to read as delivered. Scope the claim precisely, because
+> over-correcting is the same failure with the sign flipped: the server accepts `MsgRelayOpen` from
+> any peer, so a third party could hand-write a client. The true statement is *"the shipped binary
+> has no client,"* never *"the protocol is unreachable."* `scripts/check_reachability.py` holds this
+> posture against the linked binary on every CI run
+> (`scar:mechanism-shipped-inert-2026-09-10`; release-checklist rule `D-RC-POSTURE-2026-09-09` (3)).
 
 ### 7.3.1 Why relay needs a different mechanism than the neutral lane
 

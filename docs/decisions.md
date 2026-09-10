@@ -1609,6 +1609,12 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   G-BB-15 already requires monotone uptime ≥ 2× the read bucket's upper edge — the wait is the run's
   own precondition, not a new cost on top. `BBootstrapRunPrecondition` voids a run carrying any
   unstamped account, so the half-stamped population is refused rather than fitted.
+  **⚠ CORRECTION 2026-09-10 (docs true-up): it voids nothing — `BBootstrapRunPrecondition` has ZERO
+  non-test callers.** `cmd/silt/bbootstrap.go` describes it in a comment and does not call it, so the
+  half-stamped population is neither refused nor detected. The sentence above keeps its ratified text
+  and carries this dated correction. Measured by the 2026-09-10 inert-mechanism sweep
+  (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/2026-09-10-inert-mechanism-sweep-core-adapters-0ed3b92.md`),
+  confirmed here by call-graph read. Wiring it is ordinary lane work; it gets no residual name.
 - **Alternatives rejected.**
   - **A token-gated endpoint (containment #2).** REJECTED: silt's status token is a **single
     unscoped secret that also authorises publishing and funding** (`cmd/silt/ui.go` `guard()`), so
@@ -3557,6 +3563,19 @@ digest."* The same reasoning carries 5 → 17.
   the TLS handshake**, and the refusal that does fire is logged at `LogDebug`
   (`core/node/chainrole.go:1616-1618`), so **the operator sees a node that never syncs and says
   nothing.** Making that refusal loud is part of the build, not a nicety.
+
+  > **⚠ CORRECTION 2026-09-10 (docs true-up) — the sentence above is now FALSE, and is annotated
+  > rather than rewritten.** The refusal fires at **`ports.LogWarn`**, inside `(*Node).SyncChain`,
+  > naming the likely cause and the flags to check. `#800` made it loud and this certification's text
+  > was never annotated. **Name the class, because it is the one the new lint cannot catch:** the
+  > coordinate `core/node/chainrole.go:1616-1618` still resolves to the right symbol — the cited-source
+  > check shipped in `#803` verifies exactly that and passes — so what rotted was the **claim about
+  > the content**, not the pointer to it. A symbol-anchored coordinate proves you are looking in the
+  > right place; it cannot prove the sentence about what you find there is still true.
+  >
+  > **Second stale claim in this entry, same class:** the mechanism section below specifies `Params`
+  > at **cbor key 19**. Shipped is **key 20** (`core/chain/chain.go`, `Block.Params`); **19 is
+  > `SlashesDigest`**. The build is right and the certification text is stale.
 - **T-REFERENT — rule 8's two arms COMPOSE.** Genesis-covering manufactures the referent, which makes
   a refuse-to-start *required* rather than redundant: it catches the case nothing else does — an
   operator editing a flag and restarting on an existing chain.
@@ -3565,7 +3584,23 @@ digest."* The same reasoning carries 5 → 17.
 
 **F moves the genesis hash; call A (the chain id in the preimage) consumes it. Land F before or with
 A, in ONE genesis move, or the re-run set is paid twice** — that is the entire calendar cost, which
-is the freeze's actual currency (`D-FREEZE-REPRICE-2026-09-10`). (d-3) is independent in value but
+is the freeze's actual currency (`D-FREEZE-REPRICE-2026-09-10`).
+
+> **⚠ CORRECTION 2026-09-10 (docs true-up) — the constraint above was VOID AS STATED. It still binds,
+> for a different reason.** Two errors, both verified at source:
+>
+> 1. **F as merged moved nothing.** It shipped schema only — `core/genesis/genesis.go` mints genesis
+>    with no `Params` field and `(*Chain).CheckConsensusParams` had zero non-test callers.
+> 2. **F's wiring, now built, does not move the *paramless* genesis hash either.** `Block.Params` is
+>    `*ConsensusParams` with `omitempty`, so a genesis minted without params drops key 20 entirely:
+>    `e44344ea…72c0` is unchanged and the ~250 `AppendGenesis` fixtures are untouched. What moves is
+>    any genesis a **daemon** mints.
+>
+> **The corrected constraint: call A joins F's WIRING in ONE network re-seed, not one fixture
+> re-pin.** The currency is graded field re-runs and calendar, exactly as
+> `D-FREEZE-REPRICE-2026-09-10` prices it. This matters because the constraint as written would have
+> been discharged by a fixture edit that buys nothing, and the double payment it exists to prevent
+> would have been paid anyway. (d-3) is independent in value but
 coupled in build: it splits `bodyHash` into two literals and CD-0's gate unioned them
 (`G-CFGBIND-11`) — **already closed this session** by the red-first gate re-point.
 
