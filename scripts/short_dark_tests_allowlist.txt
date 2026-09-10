@@ -1,0 +1,45 @@
+# Baseline for scripts/check_short_dark_tests.py
+# scar:short-run-is-zero-execution-2026-09-10
+#
+# One row per line:   <pkg>  <TestName>   # <written reason>
+# `#` at the start of a line is a comment.
+#
+# A ROW HERE SAYS: this test skips under `-short`, no merge-gating CI job runs it
+# without `-short`, and that is ACCEPTABLE. An unreasoned row FAILS — an allowlist
+# rationale is itself a claim (scar:allowlist-rationale-is-itself-a-claim).
+#
+# THE ONLY LEGITIMATE REASON is that the test ASSERTS NOTHING: it is a measurement
+# harness whose output is read by a human through `t.Logf`, and whose properties are
+# gated by a separate always-on test. Such a harness cannot go RED, so running it in
+# CI buys minutes and no signal.
+#
+# NOT a legitimate reason: "it is slow", "it allocates a lot", "it is a bench". A slow
+# test that ASSERTS belongs in a required job (that is what the `go` job's unshortened
+# step is for), or its assertion belongs in a cheaper test. Five tests came out of this
+# file's finding set that way and now run on every PR.
+#
+# TWO MECHANICAL COMPANIONS keep these reasons from rotting, both enforced:
+#   - a `Test...` name inside a reason must resolve to a real test that is not itself
+#     dark. Naming the always-on cover is therefore a checkable claim, not a comfort.
+#   - a row for a test that is no longer dark FAILS as STALE. Wiring a test into CI
+#     means deleting its row here, in the same commit.
+
+# ---------------------------------------------------------------------------
+# core/chain — the floor-box recompute cost tables (R-RECOMPUTE)
+# ---------------------------------------------------------------------------
+core/chain  TestMeasureRecomputeMatureNowFoldCost       # Pure measurement: it prints the fold-cost table at N in {10k,100k,1M} and asserts nothing. Every property is gated by TestMeasureRecomputeMatureNowFoldCost_Structural, which is always-on. Its own comment records that `go test -race -short` paid 34.4 s here for output no gate reads.
+core/chain  TestMeasureRecomputeMatureNowFoldCostN500k  # A single-point N=500k spot check that bounds the extrapolation between the 100k and 1M rungs. It logs one row and asserts no cost bound; the structural properties are asserted by TestMeasureRecomputeMatureNowFoldCost_Structural, which is always-on.
+core/chain  TestMeasureRecomputeMatureNowStreamingWin   # Pure measurement of resident-map vs streaming witness RSS and fold time at N up to 1e6, no assertions. The O(depth) streaming-witness accounting gate is TestMeasureRecomputeMatureNowStreamingWin_Structural, always-on at N=2000.
+core/chain  TestMeasureFloorBoxWholeSetWitnessSize      # Reports the marshaled witness size and heap cost at N in {10k,100k,1M} for the budget verdict; it asserts no bound. The fast structural check that does assert is TestMeasureWholeSetWitnessProofStructure, always-on.
+
+# ---------------------------------------------------------------------------
+# core/bond — the #299 answer-size and verify-CPU decompositions
+# ---------------------------------------------------------------------------
+core/bond   TestMeasure_AnswerSizeBreakdown299          # The #299 byte-term decomposition of an encoded answer, printed so the compression tiers are chosen on evidence. It asserts no size bound, so it cannot go RED on drift; the encode/decode round-trip properties are covered by the always-on core/bond unit tests.
+core/bond   TestMeasure_VerifyCPUBreakdown299           # Times where per-answer verify CPU goes, the term that prices every new block on the event loop (#528). Wall-clock timings vary several-fold with the host, which is exactly why this harness asserts none of them and is read with -v.
+
+# ---------------------------------------------------------------------------
+# core/node — drain rate and the R2.11 issuer-key carrier fraction
+# ---------------------------------------------------------------------------
+core/node   TestMeasure_StoreChunkDrainRate             # A ~10 s wall-clock drain-rate measurement of the store-chunk path. It reports a rate and asserts no floor; a rate assertion on shared CI hardware would be a flake, not a gate.
+core/node   TestR34IssuerKeyCarrierFractionMeasurement  # Logs the issuer-key carrier fraction before and after R2.11 for V in {2,4,8} over 2V round-robin proposals. Its own doc says "read the table, not the pass" — the fraction is an input to a design call, not a bound the code must hold.
