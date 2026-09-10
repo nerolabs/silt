@@ -219,3 +219,22 @@ deterministically, not discovered one field run at a time.
    permanent I4-liveness wedge). Same class as a harness hard-coding "#351 egress" into a
    verdict. If your test's setup or teardown shows behavior you can't prove benign, that
    observation is a finding to route, not a comment to write.
+8. **A consensus quantity must be a function of the CHAIN — and how you bind it depends on
+   whether its invariant is locally checkable.** (Owner ruling, 2026-09-10,
+   `decisions.md` `D-PREIMAGE-CERT-2026-09-10`.) When the invariant is **locally checkable**,
+   bind it with a **refuse-to-start** — `SlashesBytesCap`'s `2 × (budgets) ≤ cap` is pure local
+   arithmetic, so a node can check its own config and refuse (`D-SLASHCAP-ROUTE`). When it
+   requires **distributed agreement**, bind it to **committed or genesis-covered state** —
+   `MinBond` divergence is *not locally observable*: no node can tell from its own config that a
+   peer set a different value, so a start-up assertion has nothing to assert against and would
+   ship a gate that looks green and enforces nothing. **A local assertion cannot enforce a
+   distributed agreement.** Three instances taught this one at a time — #380 (`RequiredQuorum()`
+   read `cfg.Quorum` on the objective path), `SlashesBytesCap` (an invariant derived from two
+   proposer-side flag defaults), and `MinBond` (a validity threshold that is a bare flag) — and
+   silt names the class in prose as *"consensus-critical genesis config"* (`core/chain/chain.go:190`,
+   `:253`) with **no enumeration and no enforcement**, so membership is a human remembering to
+   write the sentence. The corollary for tooling: **a config-in-consensus lint must check this
+   PRINCIPLE, not pattern-match the instances already found** — a `Config` field that moves a
+   validity verdict is either bound to the chain or it is a defect, and a field claimed safe must
+   be DRIVEN into a regime where it could have mattered (simplicity rule 7), never assumed safe
+   because an undriven fixture left it quiet.

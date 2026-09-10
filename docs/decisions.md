@@ -1397,7 +1397,8 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   > **(iii)** The close that does exist is not (d-3): `consensusSigBytes` (`core/chain/chain.go:918`)
   > omits **Height** from the signature preimage — "the height rides inside the hash" — which is the
   > entire reason evidence carries full bodies (`equivocation.go:54-60` says so). Putting
-  > `(height, round, phase)` in the v5 preimage makes evidence `O(1)`, ~200 bytes. That is CometBFT's
+  > `(height, round, phase)` in the v5 preimage makes evidence `O(1)`, ~200 bytes **[the ~200 B figure
+  > is SUPERSEDED — ~251 B derived, unmeasured until G-PRE-9; see `D-PREIMAGE-CERT-2026-09-10`]**. That is CometBFT's
   > `CanonicalVote`. It is a **FORMAT** change and a **WIDENING** one, so it rides D1 or it costs an era.
   > **The 16 MiB VALUE does not move.** Three owner calls are in §9 of the certification.
   >
@@ -2825,7 +2826,7 @@ showing the one-byte value IS committed).
 
 **BOUGHT.** `consensusSigBytes` (`core/chain/chain.go:918`) omits **Height** from the signed
 preimage; the v5 preimage carries `(height, round, phase)`, after CometBFT's `CanonicalVote`.
-Evidence then becomes `O(1)` (~200 bytes) instead of two full `Block` bodies.
+Evidence then becomes `O(1)` — **~251 B DERIVED, not the ~200 B first cited; unmeasured until gate G-PRE-9** — instead of two full `Block` bodies.
 
 **The decisive argument is the scar, not the optimization — and it is the owner's, not the
 write-up's.** In his words:
@@ -2845,8 +2846,7 @@ The citation is verified at source: `docs/build-process.md:204-213` states rule 
 `(height, ROUND, step)` drop in exactly those terms. **This is the second occurrence of that scar.**
 
 **The corroborating reasons, in the owner's order:** it kills the nesting attack at the root rather
-than bounding a symptom (a legitimate proof is ~200 B regardless of how bloated the target block
-is, so the 687 B × 24,456 route dies completely); it names its settled corner, so the B8 gate is
+than bounding a symptom (a legitimate proof is ~251 B derived, regardless of how bloated the target block is, so the 687 B × 24,456 route dies completely); it names its settled corner, so the B8 gate is
 satisfied; its blast radius is smaller than (d-3)'s, which is already bought; and it is **FORMAT +
 WIDENING**, so it rides D1 or it costs an era.
 
@@ -2865,17 +2865,22 @@ WIDENING**, so it rides D1 or it costs an era.
 
 **⚠ A CORRECTION TO THE CALL'S OWN BLAST-RADIUS SENTENCE, found while acting on it (2026-09-10).**
 The roadmap sold this as *"eight non-test `verifyAtt` call sites, all with the block in scope."*
-Verified at source, there are **nine**, and one does not match the claim:
-`core/chain/validate_v5_quorum.go:243,274` · `core/chain/carrier.go:135,233` ·
-`core/chain/chain.go:3095,3126,3487,3601` · `core/chain/equivocation.go:121`. **`carrier.go:135`
-does not have the attested block in scope.** It sits inside `validateCarrier(b *Block)` but verifies
-`PhasePrecommit` attestations over `b.Prev` — the **parent's** hash — so the height to sign is
-`b.Height - 1`, derived rather than read. (`carrier.go:121` refuses `b.Height <= 1`, so the
-subtraction cannot underflow.) `chain.go:3601` is the genesis-`Atts` filter at height 0, a second
-special case. A derived signing height at a carrier seam is precisely the #397 off-by-one class this
-call is paying back, so it is a **named gate on the delta cert**, not a detail. The BUY stands: the
-owner bought on the scar argument, which is independent of this sentence and verified. This is the
-derive-then-DRIVE shape again — the number was reviewed, the route was not.
+Verified at source, there are **nine**: `core/chain/validate_v5_quorum.go:243,274` ·
+`core/chain/carrier.go:135,233` · `core/chain/chain.go:3095,3126,3487,3601` ·
+`core/chain/equivocation.go:121`. `carrier.go:135` is the only one whose signing height is DERIVED:
+it sits in `validateCarrier(b *Block)` but verifies `PhasePrecommit` attestations over `b.Prev` — the
+**parent's** hash — so the height to sign is `b.Height - 1`. The delta certification made the same
+error one better: it *listed* nine and *called* them eight in the same sentence whose parenthetical
+conceded the exception.
+
+**AND A CORRECTION TO THAT CORRECTION — the delta cert REFUTED my reading of it (2026-09-10).** I
+filed `carrier.go:135` as the #397 off-by-one class. **It is not.** The derived height is SOUND, on
+an invariant named **P1 PARENT BINDING** (`core/chain/validate_v5.go:211-215`, `chain.go:3446-3450`;
+`HeadRef.NextHeight = parent.Height+1` at `stateview_v5.go:83-86`), and the derivation is strictly
+**narrowing** — a mis-declared height makes genuine entries fail, never forged ones pass.
+`chain.go:3601` is likewise not a derivation problem: the height is read and is 0.
+
+**The #397 class is one line over, and it is worse.** See `D-PREIMAGE-CERT-2026-09-10`.
 
 ### Call 2 — UNRATIFY and replace the `SlashesBytesCap` disclosure sentence
 
@@ -2939,3 +2944,154 @@ cert returns.
 
 Condition 2 is a hard gate on row D3: a decline is not silence — it is an entry in this ledger
 naming what silt keeps instead.
+
+---
+
+## D-PREIMAGE-CERT-2026-09-10 — the preimage delta cert returns GATED; the consensus quantity rule enters the canon; `MinBond` is a defect to fix, bound to the chain
+
+- **Status:** ✅ CERT RECEIVED + ✅ ONE OWNER RULING — 2026-09-10. Certification:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/V5-SIGNATURE-PREIMAGE-HEIGHT-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md`.
+  Follows `D-PREIMAGE-BUY-2026-09-10`. **Verdict: GATED — the DIRECTION is CERTIFIED, the build is
+  gated on five conditions, two of which correct the change as the owner bought it.**
+- **The BUY stands.** The owner's scar argument is independent of everything the cert found and is
+  verified at `docs/build-process.md:204-213`. Nothing below reopens call 1.
+
+### The canon rule — what three instances have been teaching one at a time
+
+**RATIFIED 2026-09-10 by the owner, and written into `docs/build-process.md` as rule 8** (his
+direction: it *"belongs in the canon before the config-in-consensus lint gets written — the lint
+should check the principle, not just pattern-match the three cases found"*):
+
+> **A consensus quantity must be a function of the chain.** When its invariant is **locally
+> checkable**, bind it with a refuse-to-start (`SlashesBytesCap`). When it requires **distributed
+> agreement**, bind it to **committed or genesis-covered state** (`MinBond`). **A local assertion
+> cannot enforce a distributed agreement.**
+
+The three instances: **#380** `RequiredQuorum()` read `cfg.Quorum` on the objective path (fixed);
+**`SlashesBytesCap`** derived its invariant from two proposer-side flag defaults (`D-SLASHCAP-ROUTE`,
+refuse-to-start); **`MinBond`** below.
+
+### `MinBond` — a genuine defect, and the `SlashesBytesCap` treatment does NOT transfer
+
+**Measured, not derived.** A driven divergence probe over 17 `Config` fields in both quorum regimes:
+`Quorum` is CLOSED on the objective path (the #380 fix holds — ablating it reddens the probe, 2 → 3
+diverging fields), but **`MinBond` and `MinBondBytes` still change the validity verdict there.** Two
+honest replicas on one network with different `-min-bond` disagree about the validity of the same
+block. The owner confirmed three v5 Reject paths at source:
+`core/chain/validate_v5_predicates.go:246-249` (proposer qualification),
+`core/chain/validate_v5_quorum.go:222` (bond-reg admission, with `MinBondBytes` at `:225`) and
+`:522` (the qualification filter). **That is I1, and it is the #380 class, third instance.**
+
+Root cause: `Params` embeds `Config` verbatim (`core/chain/stateview_live_v5.go:26`), and every
+`Config` field is a command-line flag (`cmd/silt/daemon.go:905-916`). The v5 floor box is therefore
+**not** clean-by-construction. silt already names the class in prose — *"consensus-critical genesis
+config"* (`core/chain/chain.go:190`, `:253`, listing `MinBond`/`Anchors`/`EpochBlocks`/
+`RegGateActivationHeight`) — but it exists ONLY in scattered doc comments: no enumeration, no
+enforcement. Membership is a human remembering to write the sentence.
+
+**The owner's ruling — the disposition is his, the mechanism is ours:**
+
+> *"I'm ruling it's a defect to fix, not a requirement to document harder, and that the fix must bind
+> it to the chain rather than to a local assertion. Which of the three shapes, and how, is yours plus
+> research."*
+
+**Why the `SlashesBytesCap` fix does not transfer, in his words** — this is the load-bearing part:
+that cap's invariant is `2 × (budgets) ≤ cap`, **pure local arithmetic**, so a node can check its own
+config and refuse to start. **`MinBond` divergence is not locally observable.** No node can tell from
+its own config that a peer set a different value, so *"a refuse-to-start assertion has nothing to
+assert against… 'the same treatment' would produce a gate that looks green and enforces nothing — the
+decoration failure, in a new place."* `MinBond` lives in `Config` (`core/chain/chain.go:126`) and the
+genesis hash covers block content, not `Config`, so the coordination requirement is today
+**documented and structurally unbindable**.
+
+**Three candidate shapes, to be PRICED by research rather than picked blind:**
+
+1. Commit the genesis-config family (`MinBond`, `MinBondBytes`, `Anchors`, `EpochBlocks`,
+   `RegGateActivationHeight`) into something the **genesis hash covers**. Divergence then becomes
+   impossible to *join* with rather than fatal at validation — detected at handshake, *"which is the
+   right failure surface."*
+2. **Derive `MinBond` from committed state**, if the maintenance claim already implies it.
+3. A **network-identity digest** over the consensus-critical config, checked at peering.
+
+### `MinBond` BLOCKS D3 — the freeze locks the repair, not the bug
+
+The owner rejected the builder's "`MinBond` isn't a format item, so the freeze doesn't close the
+door" argument, on the fact that makes it wrong:
+
+> *"'MinBond isn't a format item' is true of MinBond as it exists today — a local flag. But every
+> viable fix moves the value into committed or genesis-covered state. That's a format change. The
+> freeze doesn't close the door on the bug; it closes the door on the repair. After D3, binding
+> MinBond costs an era, exactly like the preimage change."*
+
+And the severity argument runs the **same** direction, not the opposite one: an I1 divergence is
+worse in kind than a format mistake — *"a format mistake costs an era, an I1 divergence costs a fork,
+and forks are the thing the whole trust plane exists to prevent"* — so the item with the worse
+failure mode is also the one whose fix the freeze locks.
+
+**Proportionality, so this does not become an emergency:** exploitability is LOW. Divergence requires
+someone to actually set a different value, and the flag is documented as coordination-required. This
+is a **latent structural hole, not a live break** — the same posture as the floor-box wrong-accepts.
+**So it is D1 SCOPE: it rides the format train with the preimage change.** If the delta cert on the
+chosen shape says it is more than D1 can absorb, that comes back to the owner rather than shipping
+the freeze around it.
+
+### The cert's three findings that change the build
+
+1. **`carrier.go:135`'s derived height is SOUND — and the #397 class is one line over.** The
+   derivation rests on **P1 PARENT BINDING** and is strictly narrowing. But `era4Active` is `>=`
+   (`core/chain/chain.go:3980-3985`, verified), so `H_era4` is the first v5 height and **its parent
+   is v4**. `validateCarrier` already keys on `b.Version` (`core/chain/carrier.go:117`, verified).
+   If the new v5 phase dispatch is likewise keyed on `b.Version`, then at exactly `H_era4`
+   `HeadCarrier` (`carrier.go:233`) filters with the **v4 parent** in scope while `validateCarrier`
+   verifies with the **v5 child** in scope, every entry fails, and the honest proposer rejects its
+   own block (`core/node/chainrole.go:1076` → `:1090`) — a **permanent liveness wedge at `H_era4`**.
+   **Fix: dispatch on the attestation's own `Phase`**, the mechanism `verifyAtt` already uses for
+   era-1 vs era-2 (`core/chain/chain.go:951-958`), which is wire-additive and is what the #558
+   one-dispatcher pin demands. Gate **G-PRE-1** must be seen RED first.
+2. **A second seam nobody routed — the DURABLE `ports.SignMark.Phase`.** It is fsynced to disk
+   (`ports/ports.go:322-353`) and `slotCompare` compares it **numerically**
+   (`core/node/chainrole.go:87-91`, verified). A mark written `(H, r, PhasePrecommit=2)` probed with
+   a v5 constant of 3 compares `3 > 2` → not blocked → **the node proposes a different block at a
+   height it already precommitted: a self-manufactured double-sign produced by the upgrade itself.**
+   The bitter joke is that `SignMark` IS the #397 artifact — Tendermint's `priv_validator_state`.
+   **Fix, no migration: the watermark records the STEP, the attestation records the ERA-FORM.** Gate
+   **G-PRE-3** must be seen RED first.
+3. **The chain id is not optional; the drop-claim is disprovable.** `consensusSigDomain` is constant
+   across every silt network — a domain tag separates message *kinds*, not *networks* — and the
+   genesis moved 2026-09-07, so two silt networks exist. One key honestly precommitting at the same
+   `(h, r)` on both yields a **valid** equivocation proof on either: `validateSlashes`
+   (`core/chain/chain.go:2200-2213`) has no chain-membership check and `apply()` evicts permanently.
+   The face exists TODAY with bodies; route (C) drops its price from two megabyte blocks to ~251 B.
+   Ethereum's `compute_fork_data_root` names the purpose verbatim.
+   **Certified layout — 99 bytes, fixed-width, no length prefix** (a fixed-width concatenation is
+   injective by construction; CometBFT length-prefixes only because protobuf is variable-length):
+   `"silt/consensus/v5\x00"(18) ‖ genesisHash(32) ‖ phase(1) ‖ height(8 LE) ‖ round(8 LE) ‖ hash(32)`.
+
+**Also corrected: "~200 bytes" is wrong — ~251 B derived** (raw field material alone is 241 B). It
+had propagated into this ledger and into `ROADMAP.md`; every site is now annotated. **It is DERIVED
+and must be MEASURED before any doc cites it as fact** (gate G-PRE-9). It is not load-bearing for the
+verdict; it IS load-bearing for the junk-leaf re-pricing in owner call B.
+
+### THREE NEW OWNER CALLS — A, B, C
+
+**A. The chain id in the preimage is a SCOPE ADD relative to what was bought. The Researcher
+recommends BUY; the builder does NOT decide it** (a scope change is a veto-gate item). Cost is one
+class-3 (box-owned) `HeadRef` field: no witnessed leaf, no digest, no SMT tag, so **the freeze
+read-set does not move**. The tension the owner must weigh: it adds a concept to the floor box, which
+**simplicity rule 8 freezes**.
+
+**B. `R-SLASH-CULPRIT-ADMISSIBILITY` — NEW, OPEN, and it re-prices owner call 3.** Route (C) makes
+junk-proof state growth **~2.8× cheaper**: ~23,857 → ~66,842 permanent SMT leaves per 16 MiB block,
+from any 32-byte key, with no bond. **This is exactly the pricing the owner sequenced call 3 to wait
+for** — and it runs against the expectation: `O(1)` evidence bounds the face from the cap side while
+making each junk leaf cheaper. CometBFT and Ethereum both gate evidence on set membership; silt gates
+on nothing. **Do not bolt a screen on blind** — a naive `bonded > 0` makes an unbonded double-signer
+unslashable, which is the same trap the owner already named in call 3 ("was bonded at that height,"
+never "currently bonded"). Measure first, then design.
+
+**C. (d-3) now rests on ONE residual, not three — and the owner should hear it plainly.**
+`R-BIG-EVIDENCE-UNSLASHABLE` is route (C)'s job; `R-LATE-REVEAL` is double-covered;
+**`R-CARRIER-PRUNED-HASH`'s structural half is (d-3)'s SOLE independent work, and route (C) does
+nothing for it.** So the answer to call 1's condition (b) is: he is **not** buying two things where
+one would do — he is buying a second thing **worth less than the manifest told him**. The Researcher
+recommends shipping both. This is the C-3/C-4 re-derivation of `R-CERT-REDERIVE` landing.
