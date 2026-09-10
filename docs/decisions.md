@@ -1394,7 +1394,7 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   > two ordinary ~4.14 MiB reg-laden proofs; the driven construction reaches the same armored state with
   > **header-only** 687 B proofs, which is far cheaper for an attacker to build. Anything that prices the
   > attacker's cost must use the header-only route.
-  > **(iii)** The close that does exist is not (d-3): `consensusSigBytes` (`core/chain/chain.go:918`)
+  > **(iii)** The close that does exist is not (d-3): `consensusSigBytes` (`core/chain/chain.go:1067`)
   > omits **Height** from the signature preimage — "the height rides inside the hash" — which is the
   > entire reason evidence carries full bodies (`equivocation.go:54-60` says so). Putting
   > `(height, round, phase)` in the v5 preimage makes evidence `O(1)`, ~200 bytes **[the ~200 B figure
@@ -1418,7 +1418,7 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   >
   > **⚠ WRONG A THIRD TIME, AND REPLACED BY THE OWNER — 2026-09-10
   > (`D-D3-CERT-REFUTATION-2026-09-10`).** The *"roughly 40×"* figure is refuted. `SlashesBytesCap` is
-  > enforced against `SlashesEncodedSize` (`core/chain/chain.go:2217`), which marshals the ACTUAL
+  > enforced against `SlashesEncodedSize` (`core/chain/chain.go:2372`), which marshals the ACTUAL
   > `[]Equivocation` — real encoded bytes with full `Block` bodies. (d-3) reduces the HASH PREIMAGE,
   > which that function never reads. **As specified, (d-3) shrinks the face by ZERO and is marginally
   > negative.**
@@ -2866,7 +2866,7 @@ showing the one-byte value IS committed).
 
 ### Call 1 — BUY the signature-preimage change at D1, conditional on its delta cert
 
-**BOUGHT.** `consensusSigBytes` (`core/chain/chain.go:918`) omits **Height** from the signed
+**BOUGHT.** `consensusSigBytes` (`core/chain/chain.go:1067`) omits **Height** from the signed
 preimage; the v5 preimage carries `(height, round, phase)`, after CometBFT's `CanonicalVote`.
 Evidence then becomes `O(1)` — **~251 B DERIVED, not the ~200 B first cited; unmeasured until gate G-PRE-9** — instead of two full `Block` bodies.
 
@@ -2932,6 +2932,17 @@ an invariant named **P1 PARENT BINDING** (`core/chain/validate_v5.go:211-215`, `
 
 > **(d-3) shrinks the face roughly 40× but does not remove it; what removes it is the v5
 > signature-preimage change, which makes evidence O(1).**
+
+> ⚠ **SUPERSEDED 2026-09-10 — the replacement sentence quoted immediately above is itself
+> REFUTED, and it is left standing so the correction is visible as a correction.** The
+> *"roughly 40×"* figure is **ZERO**: `SlashesBytesCap` is enforced against
+> `SlashesEncodedSize`, which marshals real encoded `[]Equivocation` bytes, and (d-3) reduces
+> the HASH PREIMAGE, which that function never reads. The refutation and the sentence that
+> now stands — carrying **no shrink figure, deliberately**, because three shrink figures have
+> now been wrong — are recorded in place under `D-F2-EVIDENCE-RECOMPUTE` above, as
+> `D-D3-CERT-REFUTATION-2026-09-10`. Read that, not this. *(Pointed by decision ID rather than
+> by line number on purpose: an annotation inserted above a coordinate moves it, which is the
+> defect `scar:cited-source-coordinate-decayed-2026-09-10` was widened to catch.)*
 
 **The 16 MiB VALUE does not move.** Only the disclosure sentence moved. The unratification is
 recorded **in place** at the original ratified text (this file, the R0.6 value entry) rather than by
@@ -3416,7 +3427,7 @@ false, and this repo says so in two places — verified at source:**
   `[32]byte`, so *"key 14 is present in EVERY encoded block body, zero-valued for a non-pruned
   block. It is part of the frozen bytes."*
 
-**Why that is a bright-line breach and not a bug.** `bodyHash()` (`core/chain/chain.go:822`, verified)
+**Why that is a bright-line breach and not a bug.** `bodyHash()` (`core/chain/chain.go:902`, verified)
 folds `BondRegs: b.BondRegs` into the unsigned literal with **no version branch at all**. So a
 fixed-size field on `BondReg` is emitted into every era's preimage, and **the hash of every v2 and v4
 block carrying a bond registration changes — on live history, before era-4 ever activates.** That is
@@ -3428,7 +3439,7 @@ step-2a fix already proven in this repo for `StateRoot`/`LogRoot`. Mechanism, no
 ### The second refuted clause — `Slashes'` is unnecessary and harmful
 
 §4.3 reduces each embedded evidence block to *"its own era's header form"* — a recursively reduced
-COPY. **REFUTED:** `Prune()` never touches `Slashes` (`core/chain/chain.go:852-854`, verified:
+COPY. **REFUTED:** `Prune()` never touches `Slashes` (`core/chain/chain.go:982-984`, verified:
 *"Note that Prune does NOT recurse into Slashes: evidence bodies embedded in a committed block stay
 resident forever, which is why `SlashesBytesCap` bounds that slot"*), so the reduction buys nothing
 for the self-covering property — and it adds a **per-hash 16 MiB deep copy**, re-opening `#563`.
@@ -3442,7 +3453,7 @@ remove it."*** The cert self-corrects its own earlier arithmetic: **as specified
 face by ZERO, and is marginally negative.**
 
 The mechanism, verified: `SlashesBytesCap` is enforced against `SlashesEncodedSize`
-(`core/chain/chain.go:2217`), which **marshals the actual `[]Equivocation`** — real encoded bytes,
+(`core/chain/chain.go:2372`), which **marshals the actual `[]Equivocation`** — real encoded bytes,
 full `Block` bodies included. §4.3 reduces the **hash preimage**. Changing what `bodyHash` folds does
 **nothing** to what `SlashesEncodedSize` measures.
 
@@ -3712,6 +3723,29 @@ rather than a frozen constant, and its self-corrections of freeze-manifest §4.6
 ---
 
 ## D-CFGBIND-BUILT-2026-09-10 — the genesis-config family is bound to the chain; canon rule 8's two arms compose
+
+> ⚠ **CORRECTION 2026-09-10, filed the same day and left beside the claim rather than folded
+> into it — the SCHEMA shipped, the WIRING did not.** The entry below says the family binds *on
+> the production path* and that a differently-configured node "computes a different genesis hash
+> and cannot join". **That is false on `main` as built.** Verified at source:
+>
+> - `core/genesis/genesis.go` mints genesis as `chain.Block{Version: …, Height: 0, Entries: …}`.
+>   It sets **no `Params` field**, so cbor `omitempty` drops key 20 and the production genesis
+>   hash is **byte-identical to before this change**. Nothing populates the slot.
+> - The **only** `Params:` literals on a `Block` anywhere in the tree are in
+>   `core/chain/consensusparams_test.go`. (`chain.go`'s two `Params: b.Params` copies are
+>   signature-preimage plumbing, not a mint.)
+> - `CheckConsensusParams` has **zero non-test callers**, so rule 8's second arm is not armed
+>   on any running node either.
+>
+> What is true today: the `Block.Params *ConsensusParams` field, its cbor key, its
+> `CheckConsensusParams` comparator and its tests all exist and are green. What is NOT true is
+> that any of it is reached in production. **`R-CONSENSUS-CONFIG-UNBOUND` is therefore NOT
+> closed on the production path** — the divergence it names is still live. The wiring is a
+> separate task pending an owner call; it is deliberately not built here, because binding the
+> production genesis moves the genesis hash and that is a FORMAT act the owner ratifies
+> individually. Read every "BOUND"/"cannot join" sentence below as describing the mechanism the
+> schema makes POSSIBLE, not the behaviour of a node on `main`.
 
 - **Status:** ✅ BUILT, `core/chain` and `core/node` green — 2026-09-10. Owner call F
   (`D-FREEZE-CALLS-CDEF-2026-09-10`) delivered against

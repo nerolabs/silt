@@ -312,7 +312,7 @@ jobs:
         run: python3 scripts/check_tenet_qualifiers.py
       - name: Scar-lint — no doc's not-built Status header may contradict a built/shipped body (scar:status-header-vs-body-contradiction-2026-09-01)
         run: python3 scripts/check_status_headers.py
-      - name: Scar-lint — every cited test name must resolve to a real test (scar:cited-test-does-not-exist-2026-09-02)
+      - name: Scar-lint — every cited test name must resolve to a real test, and every symbol-anchored source coordinate must point at its symbol (scar:cited-test-does-not-exist-2026-09-02, scar:cited-source-coordinate-decayed-2026-09-10)
         # External review trees are absent in CI, so this checks the repo only.
         run: python3 scripts/check_cited_tests.py
       - name: Scar-lint — a source-text test gate must be labelled and must name its runtime cover (scar:source-gate-promises-a-runtime-property-2026-09-03)
