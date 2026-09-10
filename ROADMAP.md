@@ -204,9 +204,28 @@ items trains the reader to skim, and then a real call gets waved through. Work w
 earned is tracked as ordinary lane work below, and the call re-appears when the evidence lands.
 Nothing else in this file is owed to the owner.
 
-**ONE call is open.**
+**FOUR calls are open — three of them arrived overnight from a research certification that partly
+refutes four earlier ones.**
 
-1. **D3 — the freeze act itself** (row D3). The RC gate, after D0 (DONE) + D1 + D2. It is accompanied
+1. **Buy the signature-preimage change at D1** (`R-NESTED-EVIDENCE-OVERCAP`; certification
+   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/SLASHCAP-NESTED-EVIDENCE-FIXED-POINT-RESEARCH-CERTIFICATION-2026-09-10.md`).
+   `consensusSigBytes` (`core/chain/chain.go:918`, verified) omits **Height** from the signed preimage —
+   *"the height rides inside the hash"* — and `equivocation.go:54-60` says that omission is the entire
+   reason evidence must carry two FULL block bodies. Put `(height, round, phase)` in the v5 preimage and
+   evidence becomes **~200 bytes, O(1)**. This is CometBFT's `CanonicalVote`, so it names its settled
+   corner (B8 gate). Eight non-test `verifyAtt` call sites, all with the block in scope — a **smaller**
+   blast radius than (d-3). It is a **FORMAT** change and a **WIDENING** one, so it rides D1 or it costs
+   an era. GATED: the build needs its own delta cert. **Complements (d-3); does not replace it.**
+2. **Re-ratify the `SlashesBytesCap` disclosure sentence.** **The 16 MiB VALUE does not move.** What
+   moves is what the owner is told he is buying: `docs/decisions.md`'s ratified sentence says the
+   double-signer face is *"a face no value of the cap closes and only (d-3) removes"* — **(d-3) does not
+   remove it** (§4.3's `Slashes'` is a recursively reduced COPY, not a digest, and leaves `Entries` and
+   `LastCommit` unbounded on a peer's block; it is a ~40x constant shrink, 2 to ~80 proofs). The ratified
+   text is annotated in place, **not rewritten** — those are the owner's words to unratify.
+3. **The state-growth face.** `apply()` writes `slashed[culprit]=true` unconditionally and the recompute
+   mints a permanent SMT leaf per culprit, so a 16 MiB block of proofs implies ~23,800 permanent leaves.
+   Disposition is the owner's; priced in the certification's §9.
+4. **D3 — the freeze act itself** (row D3). The RC gate, after D0 (DONE) + D1 + D2. It is accompanied
    by ONE page in plain English — *what is frozen, and what can never change without a new era*, the
    doors that close, not the 22-item manifest — which D1 owes the owner to read BEFORE signing
    (`D-RC-POSTURE-2026-09-09` (7)). Call 12 (commissioning the external B8 seat) is RATIFIED at the
