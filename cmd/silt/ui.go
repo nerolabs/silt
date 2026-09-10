@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/core/dht"
 	"io"
 	"io/fs"
@@ -497,6 +498,25 @@ func httpError(w http.ResponseWriter, code int, err error) {
 type chainInfo struct {
 	Height  int `json:"height"`
 	Entries int `json:"entries"`
+	// HeadVersion is the head block's rule era, and Era the whole era observable —
+	// the block-version census plus the two era statuses (R-CLOUD-ERA-PROBE, freeze
+	// manifest item 19). This is the programmatic half: the cloud sheet's
+	// 13b-delivery-settlement row reads `.chain.era.era4.phase` to tell "era-4 dark"
+	// from "the issuer's keys are off-commitment", two worlds its SKIP sentence has
+	// been covering with one clause because nothing distinguished them.
+	//
+	// Unlike the offline `silt chain-status` path, this one holds a real chain.Chain,
+	// so the readiness-tally latch IS visible here and `phase` can be "pending" — the
+	// one-epoch-of-notice window in which the tally has locked in and no block of the
+	// new era exists yet. See chain.EraPhase.
+	//
+	// NOT a pointer and NOT omitempty: `chain` itself is already omitempty, so an
+	// absent `chain` key means "this node is not a validator". Making `era` optional
+	// too would add a second, ambiguous absence, and an era block that renders
+	// identically whether it was computed or forgotten is precisely the vacuity this
+	// row exists to close.
+	HeadVersion uint64         `json:"headVersion"`
+	Era         chain.EraState `json:"era"`
 }
 
 // statusInfo is the GET /api/status document. It is a NAMED type because it is cached:
@@ -957,7 +977,9 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 		out.Stats = &st
 		out.Network = s.nd.EstimateNetwork()
 		if ch := s.nd.Chain(); ch != nil {
-			out.Chain = &chainInfo{Height: ch.Len(), Entries: len(ch.AllEntries())}
+			era := ch.EraState()
+			out.Chain = &chainInfo{Height: ch.Len(), Entries: len(ch.AllEntries()),
+				HeadVersion: era.Census.HeadVersion, Era: era}
 		}
 		out.Durability = s.durabilitySnapshot(uptime)
 		if fs := s.nd.FaucetStats(); fs.Configured {

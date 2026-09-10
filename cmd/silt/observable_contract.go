@@ -63,4 +63,16 @@ var ObservableContract = []ContractedString{
 	{"delivery receipt paid NO credit", "core/node/deliverysession.go", "the only signal an operator gets when a receipt settles nothing (B-9: re-homed from the retired flat lane to the session lane's refused settlement)", "TestBankedButUnpaidReceiptLogsTheWarnLine"},
 	{"relay session settled", "core/node/relaytransport.go", "e2e TestPaidRelaySessionEndToEnd and the M0 log audit (TestRelaySettlementLogCarriesNoDurableField) find the settlement line by it", "TestPaidRelaySessionEndToEnd"},
 	{"anchored", "core/node/relaytransport.go", "R2.14: the settlement line's reason field says the paid session was anchored (min(count, Σ face) settled); the R0.7 interim's no-anchor value is retired — an unanchored open is refused and never settles", "TestRelayAnchorsAreBoughtOnTheRelaysOwnLedger"},
+	// The era observable (R-CLOUD-ERA-PROBE, freeze manifest item 19). These are the strings the
+	// cloud sheet's 13b-delivery-settlement row reads to tell "era-4 dark" from "keys
+	// off-commitment". Both the ACTIVE and the NOT-ON-THIS-CHAIN form are registered: the row's
+	// whole content is that the two RENDER DIFFERENTLY, so deleting either half to make a build
+	// green would restore exactly the ambiguity the row closes.
+	{"head version: v%d", "cmd/silt/chainstatus.go", "the head block's rule era; a Tester reading a live net's chain.cbor could not see it before this row", "TestChainStatusDistinguishesAnEra4ChainFromADarkOne"},
+	{"era-%d (v%d): ACTIVE", "core/chain/erastate.go", "the era is live on this chain, and the height its first block landed at", "TestChainStatusDistinguishesAnEra4ChainFromADarkOne"},
+	{"era-%d (v%d): NOT ON THIS CHAIN", "core/chain/erastate.go", "the OFFLINE dark form: it names the state without claiming a readiness-tally fact chain-status cannot observe", "TestChainStatusDistinguishesAnEra4ChainFromADarkOne"},
+	{"era-%d (v%d): PENDING", "core/chain/erastate.go", "the one-epoch-of-notice window — the tally locked in, no block of the era yet; visible only to a caller holding a chain.Chain", "TestEraStateDrivesEveryPhaseFromCommittedState"},
+	{"era-%d (v%d): DARK", "core/chain/erastate.go", "the dark form for a caller that CAN see the tally, distinct from the offline form above", "TestEraLineDistinguishesAnUnobservableTallyFromADarkOne"},
+	{"max atts:     %d, first at height %d", "cmd/silt/chainstatus.go", "max_h len(blocks[h].Atts), the live attestation-carrier width two certifications name as unmeasured", "TestCensusMeasuresMaxAttsOnANonUniformChain"},
+	{"max atts:     0 — measured across every block", "cmd/silt/chainstatus.go", "the MEASURED zero: a bare 0 would be unreadable against a figure nobody computed", "TestChainStatusNarratesAMeasuredZeroCarrier"},
 }
