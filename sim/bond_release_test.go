@@ -46,7 +46,7 @@ func TestReleasedBondEarnsNoStandingOverTheNetwork(t *testing.T) {
 			nd.ReleaseBond() // ...then free the bytes: still advertised, no longer held
 		}
 		ch := chain.New(cfg, repFn)
-		if gb, _, _, gerr := genesis.Build(st); gerr == nil {
+		if gb, _, _, gerr := genesis.Build(st, nil); gerr == nil {
 			ch.AppendGenesis(gb)
 		}
 		nd.EnableChain(ch, ident.Signer())

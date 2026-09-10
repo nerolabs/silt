@@ -85,7 +85,31 @@ func Options() pipeline.Options {
 // Every node calls this at startup with its own store; because the
 // process is deterministic, every node gets the identical block and
 // link, and ends up holding the manifesto's chunks.
-func Build(store ports.ChunkStore) (chain.Block, link.Handle, ports.Entry, error) {
+//
+// params IS THE CONSENSUS-CRITICAL CONFIG THIS NETWORK COMMITS AT HEIGHT 0
+// (owner call F). Height-0 identity is no longer a function of the manifesto
+// alone: a network minted with a different -min-bond, -quorum, -anchors,
+// -epoch-blocks or -bond-label-k — or a different compiled bond-VDF delay, which has
+// no flag — has a DIFFERENT genesis hash, so a
+// divergently-configured node cannot join it at all — Reconcile refuses the fork
+// with chain.ErrForeignGenesis before any validity question arises. That is
+// canon rule 8's second arm (docs/build-process.md): a consensus quantity must
+// be a function of the CHAIN.
+//
+// THE PARAMETER IS REQUIRED, NOT OPTIONAL, AND THAT IS THE POINT. The schema for
+// chain.ConsensusParams shipped while NOTHING populated it: genesis was minted as
+// a Block literal with no Params, cbor omitempty dropped the key, and
+// CheckConsensusParams had zero non-test callers. A BuildWithParams variant
+// beside a paramless Build would leave exactly that shape available to the next
+// call site. Requiring the argument makes a paramless production genesis
+// something a caller must WRITE `nil` to ask for.
+//
+// nil remains legal and means the PRE-BIND genesis: byte-identical to one minted
+// before Params existed, which is what keeps the committed fixture hashes and the
+// deterministic sim where they are. Every nil call site in this repo is a test or
+// a sim; the daemon passes real params, pinned by
+// TestG_CFGBIND_7_TheGenesisWiringIsOnTheProductionPath_Source.
+func Build(store ports.ChunkStore, params *chain.ConsensusParams) (chain.Block, link.Handle, ports.Entry, error) {
 	reg := registry.New() // throwaway: the entry goes in the block, not a registry
 	h, err := pipeline.Add(context.Background(), store, reg, bytes.NewReader(Manifesto), Options())
 	if err != nil {
@@ -95,7 +119,7 @@ func Build(store ports.ChunkStore) (chain.Block, link.Handle, ports.Entry, error
 	if err != nil {
 		return chain.Block{}, link.Handle{}, ports.Entry{}, err
 	}
-	b := chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{entry}}
+	b := chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{entry}, Params: params}
 	chain.Sign(&b, Key())
 	return b, h, entry, nil
 }

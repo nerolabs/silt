@@ -85,7 +85,7 @@ func Consensus(seed int64, o ConsensusOpts) (ConsensusResult, error) {
 		st := memstore.New()
 		nd := node.New(id, o.NodeCfg, sched, net.Endpoint(id), st)
 		ch := chain.New(o.Chain, repFn)
-		gb, _, _, gerr := genesis.Build(st)
+		gb, _, _, gerr := genesis.Build(st, nil)
 		if gerr == nil {
 			ch.AppendGenesis(gb)
 		}
@@ -191,7 +191,7 @@ func Consensus(seed int64, o ConsensusOpts) (ConsensusResult, error) {
 	lateStore := memstore.New()
 	lateNode := node.New(lateID, o.NodeCfg, sched, net.Endpoint(lateID), lateStore)
 	lateCh := chain.New(o.Chain, repFn)
-	if gb, _, _, gerr := genesis.Build(lateStore); gerr == nil {
+	if gb, _, _, gerr := genesis.Build(lateStore, nil); gerr == nil {
 		lateCh.AppendGenesis(gb)
 	}
 	lateNode.EnableChain(lateCh, lateIdent.Signer())

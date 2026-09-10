@@ -35,8 +35,8 @@ func TestProductionGenesisCarriesNoBondRegs(t *testing.T) {
 	// Byte-identity across nodes: two independent Build calls (distinct stores,
 	// standing in for two nodes) must yield the identical block hash. This is the
 	// "declared, not agreed" property the whole residual safety rests on.
-	gb1, _, _, err1 := genesis.Build(memstore.New())
-	gb2, _, _, err2 := genesis.Build(memstore.New())
+	gb1, _, _, err1 := genesis.Build(memstore.New(), nil)
+	gb2, _, _, err2 := genesis.Build(memstore.New(), nil)
 	if err1 != nil || err2 != nil {
 		t.Fatalf("genesis.Build failed: %v / %v", err1, err2)
 	}

@@ -258,6 +258,74 @@ var configDecls = map[string]configDecl{
 	},
 }
 
+// THE MEMBERSHIP RULE, chain.Config half (owner, 2026-09-10): every field that can change a
+// validity verdict is BOUND TO THE CHAIN, or is EXPLICITLY EXCLUDED WITH A RECORDED REASON.
+//
+// The owner rejected both "five fields" and "17 fields" as the thing to ratify. The RULE is
+// ratified and the field count is its OUTPUT — so this table names, per field, the
+// ConsensusParams field that binds it, or the reason it is not bound. G-CFGBIND-1 resolves every
+// carriedAs against the REAL struct by reflection, which is what stops it decaying into prose: a
+// sentence describing what a gate checks decays exactly like a cited test name.
+//
+// It is a SEPARATE map from configDecls on purpose. configDecls answers "what class is this
+// field"; this answers "what makes it uniform". Keeping them apart kept a 200-line declaration
+// table from being rewritten wholesale, and the gate asserts both are complete over chain.Config,
+// so the two cannot drift apart.
+//
+// THE COUNT FALLS OUT: 15 carried here + 2 carried by core/node's table (the residue named below)
+// = the 17 fields of chain.ConsensusParams. Nobody has to remember 17.
+type configMembership struct {
+	// carriedAs names the chain.ConsensusParams field that binds this one, resolved by reflection.
+	carriedAs string
+	// reasonNotCarried is the recorded reason it is not. These five ARE the owner's ratified
+	// exclusions, and each is a DIFFERENT reason — that is why they are five strings and not one
+	// "excluded" boolean.
+	reasonNotCarried string
+}
+
+var configMemberships = map[string]configMembership{
+	"Quorum":                  {carriedAs: "Quorum"},
+	"ByzantineQuorum":         {carriedAs: "ByzantineQuorum"},
+	"Anchors":                 {carriedAs: "Anchors"},
+	"AnchorQuorum":            {carriedAs: "AnchorQuorum"},
+	"MatureValidators":        {carriedAs: "MatureValidators"},
+	"OperatorMargin":          {carriedAs: "OperatorMargin"},
+	"MinBond":                 {carriedAs: "MinBond"},
+	"MinBondBytes":            {carriedAs: "MinBondBytes"},
+	"BondTTLBlocks":           {carriedAs: "BondTTLBlocks"},
+	"BondRegHeadWindow":       {carriedAs: "BondRegHeadWindow"},
+	"EpochBlocks":             {carriedAs: "EpochBlocks"},
+	"RegGateActivationHeight": {carriedAs: "RegGateActivationHeight"},
+	"Era3ActivationHeight":    {carriedAs: "Era3ActivationHeight"},
+	"Era4ActivationHeight":    {carriedAs: "Era4ActivationHeight"},
+	"AllowPublisher":          {carriedAs: "AllowPublisher"},
+
+	// ---- THE FIVE RATIFIED EXCLUSIONS. Read them as five distinct arguments, not one policy. ----
+	"Archive": {reasonNotCarried: "RETENTION ONLY — it reaches no verdict. Whether THIS node keeps full bodies is " +
+		"an operator's storage choice and is deliberately per-node (build-immutable #8). Binding it would forbid " +
+		"the heterogeneity the durability design depends on."},
+	"WSCheckpoint": {reasonNotCarried: "SHARING IT WOULD DESTROY WEAK SUBJECTIVITY. It is the operator's OWN trust " +
+		"anchor, and silt is weakly subjective by design (TENETS Part 0). It narrows what this node accepts and can " +
+		"never widen it, so divergence is safe — and it MUST vary per node, because a checkpoint every operator got " +
+		"from the same place is not an independent anchor at all."},
+	"MinProposerRep": {reasonNotCarried: "BINDING IS INEFFECTIVE. The divergent term is the local reputation VIEW, " +
+		"not the threshold: two nodes agreeing on the number still disagree on the verdict because they are " +
+		"comparing it against different inputs. Committing it would look like a fix and change nothing. The real " +
+		"close is objective mode, where MinBond > 0 replaces the reputation gate with committed bond (D2 / F6)."},
+	"MinAttesterRep": {reasonNotCarried: "Same argument as MinProposerRep, same leg: the input is the local view."},
+	"LivenessRecoveryHeight": {reasonNotCarried: "STRUCTURALLY UNBINDABLE. It is set AFTER launch, on a chain that " +
+		"by construction cannot commit it — genesis is already written by the time an operator knows the outage " +
+		"happened. This is not a decision deferred; it is a shape the mechanism cannot hold " +
+		"(R-LIVENESS-RECOVERY-UNBOUND, open and honestly so)."},
+}
+
+// theTwoNodeSideParams is the residue: the chain.ConsensusParams fields this table does NOT claim,
+// because they live in core/node.Config. core/node's gate
+// (TestNodeConsensusVerdictIsNotAFunctionOfLocalConfig) claims exactly these, and asserts the same
+// list from its side. Naming the residue in both places is what makes the two tables a checked
+// bijection onto ConsensusParams without either package importing the other's test fixtures.
+var theTwoNodeSideParams = []string{"BondLabelSamples", "BondVDFDelay"}
+
 // The driven regimes. A LOCAL field is DRIVEN-SAFE only if a regime naming it actually ran.
 const (
 	// regimeLegacy is the TRUE legacy path: MinBond == 0, so objective() is false and
@@ -355,6 +423,89 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 	for name := range configDecls {
 		if _, ok := ct.FieldByName(name); !ok {
 			t.Fatalf("configDecls declares %q, which is no longer a chain.Config field — remove the row", name)
+		}
+	}
+
+	// ---- THE MEMBERSHIP RULE: bound to the chain, or excluded with a recorded reason ----
+	// This is the owner's rule made machine-checkable. It runs over EVERY chain.Config field, not
+	// only the consensus-critical ones, because all five ratified exclusions were adjudicated
+	// individually and two of them (Archive, WSCheckpoint) are classLocal. A local classification
+	// is not by itself a recorded reason for leaving a field out of the committed set.
+	params := reflect.TypeOf(ConsensusParams{})
+	claimed := map[string]string{} // ConsensusParams field -> the Config field claiming it
+	var unruled []string
+	for _, f := range fields {
+		m, ok := configMemberships[f]
+		if !ok {
+			unruled = append(unruled, f)
+			continue
+		}
+		switch {
+		case m.carriedAs != "" && m.reasonNotCarried != "":
+			t.Fatalf("%s is declared BOTH carried (as %q) and not-carried. A field is bound to the chain or it is "+
+				"excluded, never both, or a reader cannot tell which claim is load-bearing.", f, m.carriedAs)
+		case m.carriedAs == "" && m.reasonNotCarried == "":
+			unruled = append(unruled, f)
+		case m.carriedAs != "":
+			// THE STRUCTURAL BIND. A pin on prose is not a pin (blind PE F-4 broke the earlier
+			// binding pin for exactly this reason: it keyed on free text). Resolve the named field
+			// against the REAL struct, so removing or renaming it turns this gate red.
+			if _, ok := params.FieldByName(m.carriedAs); !ok {
+				t.Fatalf("%s declares carriedAs=%q, but chain.ConsensusParams has NO such field. Either the bind was "+
+					"never written, or the field was renamed/removed and this knob is silently unbound again.", f, m.carriedAs)
+			}
+			if prev, dup := claimed[m.carriedAs]; dup {
+				t.Fatalf("chain.ConsensusParams.%s is claimed by BOTH %s and %s. One committed field cannot bind two "+
+					"local knobs — one of them is unbound and the table hides which.", m.carriedAs, prev, f)
+			}
+			claimed[m.carriedAs] = f
+		}
+	}
+	sort.Strings(unruled)
+	if len(unruled) > 0 {
+		t.Fatalf("%d chain.Config field(s) have NO membership ruling: %v\n"+
+			"THE MEMBERSHIP RULE (owner, 2026-09-10): every field that can change a validity verdict is BOUND TO THE\n"+
+			"CHAIN, or is EXPLICITLY EXCLUDED WITH A RECORDED REASON. The owner rejected both \"five fields\" and\n"+
+			"\"17 fields\" as the thing to ratify — the RULE is what is ratified, and the count is its OUTPUT.\n"+
+			"Add a configMemberships row naming the ConsensusParams field that binds it, or the reason it is not bound.",
+			len(unruled), unruled)
+	}
+	// And no ruling may survive its field.
+	for name := range configMemberships {
+		if _, ok := ct.FieldByName(name); !ok {
+			t.Fatalf("configMemberships rules on %q, which is no longer a chain.Config field — remove the row", name)
+		}
+	}
+
+	// THE BIJECTION. Every ConsensusParams field must be claimed exactly once, here or by
+	// core/node's table. A field claimed by neither is COMMITTED BUT UNOWNED: it rides in the
+	// genesis hash while no local knob is known to feed it, which is how a committed value and the
+	// config it is supposed to bind quietly stop being the same thing.
+	var unclaimed []string
+	nodeSide := map[string]bool{}
+	for _, p := range theTwoNodeSideParams {
+		nodeSide[p] = true
+	}
+	for i := 0; i < params.NumField(); i++ {
+		name := params.Field(i).Name
+		if claimed[name] == "" && !nodeSide[name] {
+			unclaimed = append(unclaimed, name)
+		}
+	}
+	sort.Strings(unclaimed)
+	if len(unclaimed) > 0 {
+		t.Fatalf("%d chain.ConsensusParams field(s) are claimed by NO membership table: %v\n"+
+			"Every committed field must trace to the local knob it binds — here for chain.Config, or in core/node's\n"+
+			"gate for the node-side residue %v. A committed-but-unowned field is hash-covered decoration: it moves\n"+
+			"the genesis hash while binding nothing an operator can actually set.",
+			len(unclaimed), unclaimed, theTwoNodeSideParams)
+	}
+	// The residue must also not be claimed HERE, or it is double-counted across the two tables.
+	for _, p := range theTwoNodeSideParams {
+		if by := claimed[p]; by != "" {
+			t.Fatalf("chain.ConsensusParams.%s is named as the node-side residue but is ALSO claimed here by %s. "+
+				"core/node's gate claims it too, so the membership is double-counted and one of the two knobs is "+
+				"unbound while both tables read as complete.", p, by)
 		}
 	}
 

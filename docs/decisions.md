@@ -3863,3 +3863,278 @@ no bind can reach.
 **F moves the genesis hash; call A (the chain id in the signature preimage) consumes it.** They must
 land in ONE genesis move or the graded re-run set is paid twice — which, with the freeze re-priced,
 is the actual cost of the freeze.
+
+## D-CFGBIND-MEMBERSHIP-RULE-2026-09-10 — the membership RULE replaces the field list, and owner call F is delivered
+
+**Status:** BUILT. Supersedes the membership half of `D-CFGBIND-BUILT-2026-09-10`, whose "17 IN, 5
+OUT" table was a list where the owner wanted a rule, and whose wiring claims were true of the schema
+and false of the binary.
+
+### What was actually wrong
+
+`D-CFGBIND-BUILT-2026-09-10` reads as a shipped mechanism. It was a shipped **schema**.
+`ConsensusParams` declared 17 fields at cbor key 20 and **nothing populated it**, verified at source
+on `0ed3b92`:
+
+- `core/genesis.Build` minted `chain.Block{Version, Height: 0, Entries}` — no `Params`. cbor
+  `omitempty` on the pointer dropped the key, so every network on every binary minted the identical
+  paramless genesis.
+- `Chain.CheckConsensusParams` had **zero non-test callers**. All four call sites were in
+  `core/chain/consensusparams_test.go`.
+- `ParamsFromConfig` and `ConsensusParams.Diff` were dead by closure.
+- The only non-test `Params:` occurrences were the two preimage pass-throughs in `Block.bodyHash`.
+
+So the failure surface the decision described — *a divergently-configured node computes a different
+genesis hash and cannot join* — did not exist. Every node computed the same hash regardless of its
+`-min-bond`, `-quorum`, `-anchors`, `-epoch-blocks`, `-bond-label-k` or compiled bond-VDF delay
+(which has no flag).
+
+**Why five green gates did not notice.** Each of `G-CFGBIND-1..5` hand-constructs
+`chain.Block{… Params: &p}` in its own fixture. **A gate that constructs the exact state whose
+production absence is the defect cannot detect that defect.** The gates were correct about the
+predicates and silent about the wiring, and nothing distinguished the two.
+
+The instructive contrast is *inside the same commit* (`82fe56d`): (d-3) was wired end to end —
+`setD3Digests` → `PopulateEra4Roots` → the two `core/node/chainrole.go` call sites — while the
+genesis-config bind was inert. **One half of one commit was live and the other was dead, and no gate
+told them apart.** That is the generalisable lesson, and it is the reason for the wiring pin below.
+
+### The RULE, which is what is ratified
+
+> **Every field that can change a validity verdict is BOUND TO THE CHAIN, or is EXPLICITLY EXCLUDED
+> WITH A RECORDED REASON.**
+
+The owner rejected both "five fields" and "17 fields" as the thing to ratify. A list has to be
+remembered; a rule has to be satisfied. **17 is now the rule's OUTPUT** — 15 fields claimed by
+`chain.Config`'s table plus 2 claimed by `node.Config`'s — and no one has to hold the number.
+
+### The five exclusions stand, and they are five DIFFERENT arguments
+
+They are recorded as five strings rather than one flag precisely because collapsing them would lose
+the reasoning that makes each one safe.
+
+| OUT | The argument, and it is not shared with any other row |
+|---|---|
+| `Archive` | **Retention only** — it reaches no verdict. Per-node by build-immutable #8; binding it would forbid the heterogeneity durability depends on. |
+| `WSCheckpoint` | **Sharing it would DESTROY weak subjectivity.** It is the operator's own trust anchor and MUST vary per node — a checkpoint every operator got from the same place is not an independent anchor. It narrows and can never widen. |
+| `MinProposerRep` / `MinAttesterRep` | **Binding is INEFFECTIVE.** The divergent term is the local reputation *view*, not the threshold: two nodes agreeing on the number still disagree, because they compare it against different inputs. Committing it would look like a fix and change nothing. |
+| `LivenessRecoveryHeight` | **Structurally unbindable** — set after launch, on a chain that by construction cannot commit it (`R-LIVENESS-RECOVERY-UNBOUND`). Not a deferred decision; a shape the mechanism cannot hold. |
+
+### The gate now covers BOTH structs, and the two tables are a checked bijection
+
+`R-CONFIG-GATE-NODE-SCOPE` is **CLOSED**. `TestConsensusVerdictIsNotAFunctionOfLocalConfig`
+reflected over `chain.Config` alone, which is the wrong set — and the cost was measured, not
+hypothetical: `BondLabelSamples` and `BondVDFDelay` live in `node.Config`, reach a hard chain
+`Reject` through `core/bond`'s verifier, and were invisible to it.
+
+`TestNodeConsensusVerdictIsNotAFunctionOfLocalConfig` (`core/node`) closes the complement over
+`node.Config`'s 36 fields. Both tables now name, per field, the `ConsensusParams` field that binds it
+or the reason it is not bound, **resolved by reflection against the real struct** — a pin on prose is
+not a pin, and blind PE F-4 already broke one binding pin that keyed on free text.
+
+Together they must claim every `ConsensusParams` field **exactly once**:
+
+- claimed by **neither** ⇒ committed but **unowned**: it rides in the genesis hash while binding
+  nothing an operator can set;
+- claimed by **both** ⇒ **double-counted**: one of the two knobs is unbound while both tables read as
+  complete.
+
+The bijection earned its place the moment it was written: it caught `MinBondBytes`, which exists in
+both structs, being claimed twice. The daemon copies the `node.Config` value into
+`chain.Config.MinBondBytes`, so the binding is real but the claimant is `core/chain`'s table — the
+node-side row now records that, transitively, instead of asserting a second claim.
+
+### The driven half, and what it deliberately refuses to claim
+
+Simplicity rule 7 binds here. The `node.Config` gate seals a **real 1 MiB plot**, produces a **real
+space-time answer**, and perturbs fields through **the production verifier closure**
+(`SpaceTimeBondVerifier`), not a re-implementation. Measured divergence: exactly
+`{BondLabelSamples, BondVDFDelay}`, and that set is pinned.
+
+The other **31 fields report UNPROVEN, never "safe"**. Most of `node.Config` is transport, DHT and
+repair policy the bond verifier never reads, so no probe here can move it. *A field that does not
+diverge in a regime that could never have exercised it has been shown UNTESTED, not shown safe.*
+Calling them safe would be the decoration failure in a new place.
+
+### The wiring, and the pin that is the actual deliverable
+
+- **`genesis.Build` REQUIRES the params argument.** A `BuildWithParams` variant beside a paramless
+  `Build` would have left exactly the shape the defect shipped in available to the next call site.
+  `nil` remains legal and means the pre-bind genesis; every `nil` site in the repo is a test or a sim.
+- **The daemon projects params off the CHAIN** (`Chain.ConsensusParams`), not off the `chain.Config`
+  literal, so the arm that WRITES genesis and the arm that CHECKS it read one source. Reading a
+  second copy would mean the node that founded a network could refuse its own genesis at the next
+  restart if `New` ever normalised anything.
+- **`CheckConsensusParams` has its production caller**, as a refuse-to-start, placed **after the
+  replay** — `chainstore.Recover` is the load-bearing boundary. The check reads `blocks[0]`, so it
+  is meaningful only against a chain LOADED FROM DISK; ahead of the replay it reads an empty chain,
+  returns nil, and the daemon serves under a config its own chain contradicts.
+
+  **CORRECTED 2026-09-10 — and the correction is the lesson, so the wrong version stays visible.**
+  The first draft of this line named the *genesis seed* as the boundary ("wired earlier it would be
+  green on every start while checking nothing"). A blind review built that tree and measured it
+  FALSE: relative to the mint the check is a **tautology** on a fresh node — both sides are
+  `ParamsFromConfig` over one `cfg` in one process — so it refuses identically on either side of the
+  seed. The gate that enforced the false boundary was therefore inverted with respect to severity:
+  RED on the benign edit (W2) and **GREEN on the fatal one** (S4 — the check lifted into a helper
+  defined later in `daemon.go` and called before `Recover`: both source gates green, the binary
+  serving under a divergent `-bond-label-k`, zero refusal lines). Ruling:
+  `silt-reviews/principle-engineer/RULING-owner-call-F-genesis-params-wiring-CODE-0d99aef-2026-09-10.md`.
+- **`silt genesis` prints its hash labelled PARAMLESS.** A daemon-launched network no longer has one
+  true genesis hash; the link and the manifesto root remain config-independent and are printed
+  unqualified.
+
+**The pin (`G-CFGBIND-6/6b/7/8`) is the part the audit says was missing.** It never constructs a
+`Block{Params: …}` literal — it drives `genesis.Build`, and it reads `daemon.go` as text for the
+call strings and their order. **For a new field on a consensus type, a pin requires a non-test
+WRITER, not merely a reader**, and `G-CFGBIND-7` is that requirement: it fails if `genesis.Build`
+stops being handed real params on the daemon path, which is precisely the state the tree was in.
+
+**The instrument of record is `G-CFGBIND-10/11`, in `e2e`, added after the review.** A source gate
+can only see strings, and S4 is the proof that a green one can sit over a completely dead mechanism.
+`TestGenesisHashMovesWithTheConsensusConfig` starts real daemons and asserts the minted genesis hash
+MOVES with `-bond-label-k` and is stable within a config;
+`TestDaemonRefusesToStartOnADivergentConsensusConfig` persists a genesis committing `k=64`, starts a
+daemon with `32`, and asserts the process exits naming that field. `G-CFGBIND-8`'s order assertion
+was re-anchored to a SANDWICH — `chainstore.Recover` < the check < `nd.EnableChain` — which is RED on
+S4 and correctly GREEN on W2; it remains a lexical proxy and now says so, and names the e2e as its
+runtime cover.
+
+### The genesis hash: what moved and what did not
+
+The **paramless** hash is **unchanged** at `e44344ea…72c0`, and that is asserted, not assumed:
+`Block.Params` is a pointer with `omitempty`, so `nil` omits cbor key 20 entirely and every committed
+fixture keeps its identity. What moves is the hash of a **daemon-minted** genesis, which is now a
+function of the config and therefore has no single value to pin. A representative params set is
+pinned instead at `4a305b96…9c46`, so a cbor renumbering or a field reorder — which would change
+every network's height-0 identity while leaving a "the hash moved with the params" assertion
+perfectly green — turns `G-CFGBIND-6b` red.
+
+### Ablations, each verified by EXIT CODE, each with a no-op guard
+
+A patch that silently fails to apply reports GREEN and is indistinguishable from a passing ablation,
+so every patched file was `diff`ed against its original before the result was believed.
+
+| # | Ablation | Result |
+|---|---|---|
+| W1a | daemon mints with `genesis.Build(store, nil)` | RED (G-CFGBIND-7, 8) |
+| W1b | remove the `CheckConsensusParams` caller | RED (G-CFGBIND-8) |
+| W2 | wire the check between the replay and the genesis seed | **GREEN, correctly** — re-measured 2026-09-10: the daemon refuses identically, so the old RED was a lexical fact with no behavioural referent |
+| **S4** | **lift the check into a helper defined later in `daemon.go`, called BEFORE `chainstore.Recover`** | **RED** (G-CFGBIND-8 upper bound; e2e `G-CFGBIND-11` times out waiting for a refusal that never comes). This is the ablation that was GREEN before the re-anchor |
+| W3 | `Build` accepts params and drops them | RED (G-CFGBIND-6, 6b) |
+| W4 | drop `Params` from the pre-v5 hash preimage | RED (G-CFGBIND-6, "the commitment is decoration") |
+| N1 | **add a fake verdict-reaching field to `node.Config`** | **RED** — the owner's binding condition |
+| N2 | stale declaration for a field `node.Config` lacks | RED |
+| N3 | re-declare `BondLabelSamples` as local | RED (bijection) |
+| N3b | …with the tables made self-consistent, so **only the measurement can catch it** | RED (driven half) |
+| N4 | `carriedAs` names a field `ConsensusParams` lacks | RED |
+| N6 | verifier ignores `k`, so the probe goes dead | RED (divergence-map pin) |
+| C1 | an 18th `ConsensusParams` field claimed by nobody | RED (committed but unowned) |
+| C2 | a `chain.Config` field with no membership ruling | RED |
+
+N3b exists because N3 was caught by the *structural* half, which would have left the driven half
+unproven. A gate whose two arms are never separated cannot tell you which one is load-bearing.
+
+### What this does NOT close, and one correction to the record
+
+- `R-LIVENESS-RECOVERY-UNBOUND` — structurally unbindable, unchanged; it moved off the register
+  2026-09-10 and is a disclosure in [`design/m0.md`](design/m0.md) 10.1, because it has no closer.
+- `R-CONFIG-GATE-V5-REGIME` — the chain gate still validates a `Version: 1` block.
+- **The carrier bound is NOT built here**, and its `|Anchors|` and `EpochBlocks` terms **depend on
+  this wiring landing**: before it, those quantities were not committed anywhere, so a bound derived
+  from them had nothing to read. No `Atts` cap is built either. Both are separate changes, separately
+  certified.
+- **Correction to the brief that ordered this work:** the foreign-genesis refusal was reported as
+  still `LogDebug`. It is not. `core/node/chainrole.go` already logs `ErrForeignGenesis` at
+  `LogWarn`, names the flags to check, and increments `ChainSyncForeignGenesis` — landed in
+  `82fe56d`, confirmed by `git log -L`. Re-verified at source and left alone rather than rebuilt.
+
+### Ordering that still stands
+
+**Call A (the chain id in `consensusSigBytes`) must land in the SAME genesis move as F**, or the
+graded re-run set is paid twice. That is the freeze's actual cost now — re-runs and calendar, not
+permanence.
+
+---
+
+## D-CFGBIND-TIER-PROMOTION-2026-09-11 — the genesis bind promotes six compile-time defaults out of the Evolving tier, and the owner accepts it explicitly
+
+- **Status:** ✅ RATIFIED — 2026-09-11, owner. The promotion is **accepted**, not narrowed, and the
+  constraint it creates is written down here. Filed the same day owner call F's delivery merged, so
+  the record and the behaviour land together.
+- **Raised by:** the blind PE review of the call-F wiring
+  (`silt-reviews/principle-engineer/RULING-owner-call-F-genesis-params-wiring-CODE-0d99aef-2026-09-10.md`),
+  as *"the coupling the consult missed"*. It was routed to the owner rather than settled by the
+  reviewer or the builder, because a tier reclassification is not a build decision.
+- **Canon:** `docs/TENETS.md` Part IX now carries the PRINCIPLE (a value bound into a frozen
+  consensus format leaves the Evolving tier for that network's lifetime). This entry is the build
+  state that principle points at. `docs/build-process.md` rule 8 is the rule that motivated the bind.
+
+### The finding, DRIVEN — not argued
+
+`ConsensusParams` commits the consensus-critical config **by value** into the genesis block, so the
+genesis hash covers it. The reviewer moved **one flag default** — `-quorum` from 3 to 2, no semantics
+touched — rebuilt, and restarted the new binary on a chain the previous binary had minted, with the
+operator's **argv unchanged**:
+
+```
+### v1 binary on the v1-minted chain (control) ###
+serving; Ctrl-C to stop
+
+### v2 binary (ONLY the -quorum flag DEFAULT moved 3 -> 2) on the SAME chain ###
+silt: consensus config: REFUSING TO START — … 1 field(s) differ:
+  -quorum: this node has 2, the chain's genesis commits 3
+serving lines: 0
+>> EXITED (refused)
+```
+
+A **pure binary upgrade** — no configuration change by anyone — refuses to start. That is correct
+under canon rule 8: a value that changes a validity verdict must be a function of the chain, and this
+is what "a function of the chain" costs.
+
+### Which values are affected
+
+Six inputs reach `ParamsFromConfig` through an *effective-value* helper that supplies a compile-time
+default when the operator sets no flag: `effectiveQuorum`, `effectiveByzantineQuorum`,
+`effectiveOperatorMargin`, `effectiveBondFloor` (`DerivedBondFloor`), `effectiveBondTTL`
+(`DerivedBondTTL`) and `effectiveEpochBlocks`. For these six, the *build* is the operator: change the
+default, ship the binary, and every node that upgrades disagrees with the chain it is on.
+
+The other committed values are supplied by a flag the operator actually passes. They are frozen
+per-network too, but changing them requires someone to change an argv, which is visible.
+
+**`DerivedBondFloor` is CLEARED as a source of hardware-dependent divergence**, and that is the one
+thing that would have made this severe. It is a compile-time constant —
+`2 × (AntiReleaseComputeWindow/s × bond.PlotSealThroughput)` — and `bond.PlotSealThroughput` is a
+literal in `core/bond/bond.go`, **not** a machine measurement, so two nodes on different hardware
+derive the same floor and mint the same genesis. Verified at source, not assumed. It is frozen
+per-network like the other five; it does not fork a network at mint time.
+
+### One published sentence this falsifies, corrected in the same commit
+
+`DerivedBondTTL`'s own doc comment read *"A tuning knob (Evolving), not a fixed law; a real deployment
+can tighten it."* True of a network that has not launched. **False for one that has** — tightening it
+and rebuilding refuses on every existing chain. The comment now says so.
+
+### The two alternatives, both DECLINED, and why
+
+1. **Narrow the committed set to the flags an operator actually sets.** Declined. It re-opens the
+   17-in / 5-out membership analysis the certification settled, and it replaces the ratified rule
+   (*every field that can change a validity verdict is bound to the chain, or is explicitly excluded
+   with a recorded reason*) with an accident of which knobs happen to carry a flag today. Adding a
+   flag to a value would then silently change its consensus status.
+2. **Require explicit values, with no defaults at all.** Declined. It charges every operator, on
+   every launch, to protect a case that **already fails safe**: the node refuses to start, loudly,
+   naming the field and both values, instead of diverging silently. Paying a permanent usability cost
+   to avoid a loud refusal is the wrong trade, and it does not even remove the class — an operator
+   can still pass a different value.
+
+### Why the safe direction is the reason this must be WRITTEN, not discovered
+
+The failure mode of the promotion is a **refusal to start**, never a fork. That is exactly why it
+needs a written rule: a loud, correct refusal that nobody expected reads as a bug in the release, and
+the tempting fix is to weaken the check. The rule below forecloses that reading before it happens.
+
+**The rule, and it lives in `docs/release-checklist.md`:** changing any of these compile-time defaults
+is a **breaking change requiring a new network**, because every upgrading node refuses to start on the
+existing chain.

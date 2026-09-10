@@ -44,7 +44,8 @@ import (
 // operator's own trust anchor; MinProposerRep/MinAttesterRep cannot be usefully bound because the
 // INPUT is the local reputation view, so a shared threshold still diverges; and
 // LivenessRecoveryHeight is structurally unbindable — it is set AFTER launch, on a chain that by
-// construction cannot commit it (R-LIVENESS-RECOVERY-UNBOUND).
+// construction cannot commit it (R-LIVENESS-RECOVERY-UNBOUND, which is a DISCLOSURE in
+// docs/design/m0.md 10.1 rather than a register row — it has no closer).
 //
 // NO `omitempty` ON ANY FIELD. A zero value here is a MEANING (Quorum 0, MinBond 0 = legacy mode),
 // not an absence, and omitting it would make two different configurations encode identically. The
@@ -80,7 +81,9 @@ type ConsensusParams struct {
 	// OWN local k, so a k=32 node rejects EVERY bond registration a k=64 swarm accepts. The flag
 	// help states the coordination requirement and in the same breath invites the change. They live
 	// outside chain.Config, which is why the divergence gate's reflection never saw them
-	// (R-CONFIG-GATE-NODE-SCOPE).
+	// (R-CONFIG-GATE-NODE-SCOPE — now CLOSED: core/node's
+	// TestNodeConsensusVerdictIsNotAFunctionOfLocalConfig closes the complement over node.Config, and
+	// the two declaration tables are a checked bijection onto this struct).
 	BondLabelSamples int    `cbor:"16,keyasint"`
 	BondVDFDelay     uint64 `cbor:"17,keyasint"`
 }
@@ -158,7 +161,10 @@ func (p ConsensusParams) Diff(q ConsensusParams) []string {
 	add("era4-activation-height", p.Era4ActivationHeight, q.Era4ActivationHeight)
 	add("-allow-publisher", p.AllowPublisher, q.AllowPublisher)
 	add("-bond-label-k", p.BondLabelSamples, q.BondLabelSamples)
-	add("-bond-vdf", p.BondVDFDelay, q.BondVDFDelay)
+	// NOT a flag: node.Config.BondVDFDelay is a compiled default (core/node/node.go), so a
+	// divergence here means the two nodes are running different BUILDS. Naming "-bond-vdf" here
+	// told the operator to change something that does not exist.
+	add("bond-vdf-delay (compiled default, no flag)", p.BondVDFDelay, q.BondVDFDelay)
 	return out
 }
 
@@ -210,4 +216,20 @@ func (c *Chain) CheckConsensusParams(bondLabelSamples int, bondVDFDelay uint64) 
 		"or two honest nodes reach different verdicts on the same block (I1). The genesis commits them, so this node "+
 		"would apply different rules to a history it has already joined. Restore the committed values, or start a "+
 		"different network", ErrParamsDiverge, len(diff), msg)
+}
+
+// ConsensusParams projects THIS chain's live configuration onto the committed form, so the
+// genesis a node MINTS and the params that node later CHECKS are read from one place.
+//
+// WHY THIS EXISTS RATHER THAN A DIRECT ParamsFromConfig CALL AT THE MINT SITE. The two arms must
+// project the SAME config or the mechanism inverts: the node that founded the network would refuse
+// its own genesis at the next restart. CheckConsensusParams reads c.cfg; a mint site that built
+// params from the Config LITERAL it passed to New would be reading a second copy, and any future
+// normalisation inside New would silently separate them. Routing both arms through the chain makes
+// that class of drift unrepresentable instead of merely absent today.
+//
+// The two node-side verifier knobs are arguments because they live in core/node.Config, which
+// core/chain cannot import (cycle). See the ConsensusParams field docs.
+func (c *Chain) ConsensusParams(bondLabelSamples int, bondVDFDelay uint64) ConsensusParams {
+	return ParamsFromConfig(c.cfg, bondLabelSamples, bondVDFDelay)
 }

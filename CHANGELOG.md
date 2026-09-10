@@ -96,6 +96,9 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   (`(*Node).FundDeliverySessionRemote`), the entire paid-relay client (`AcquireRelayAnchors`,
   `OpenRelaySessionRemote`, `SubmitRelayPay`) and a per-lane counter nothing reads
   (`(*Ledger).GuardFullRefusalsByLane`).
+  **One of those six is LIVE as of 2026-09-11** — owner call F's delivery gave
+  `CheckConsensusParams` its production caller (see the entry above). The finding stands as
+  written: it is what the six were when this lint was built, and the other five are unchanged.
   **No Go test can catch this, and neither can grep.** A test that can call the symbol is itself the
   caller that keeps it alive. A grep sweep keys on BARE IDENTIFIERS, so an inert method hides behind a
   live namesake — the 117-site sweep that preceded this lint missed `demand.Commit` outright, and
@@ -172,8 +175,75 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   decayed Go coordinate, the re-decayed corrected coordinate, the substring revert, the
   nearest-anchor revert, the deleted allowlist entry and the dropped keyword filter each turn it
   RED, and the baseline is green either side.
+- **Owner call F, the DELIVERY: the genesis config bind is actually wired** (2026-09-10,
+  [`docs/decisions.md`](docs/decisions.md) `D-CFGBIND-MEMBERSHIP-RULE-2026-09-10`). The schema below
+  shipped **inert**: `ConsensusParams` declared 17 fields at cbor key 20 and *nothing populated it*.
+  `core/genesis.Build` minted the block with no `Params`, cbor `omitempty` dropped the key, and
+  `CheckConsensusParams` had **zero non-test callers**. All five `G-CFGBIND-*` gates hand-built
+  `Block{… Params: &p}` in their own fixtures — **a gate that constructs the exact state whose
+  production absence is the defect cannot detect that defect.**
+  Now: `genesis.Build` **requires** a `*ConsensusParams` argument (a `BuildWithParams` variant beside
+  a paramless `Build` would have left the same shape available to the next call site); the daemon
+  projects them off the chain via `Chain.ConsensusParams`, so the arm that WRITES genesis and the arm
+  that CHECKS it read one source; and `CheckConsensusParams` gets its production caller as a
+  **refuse-to-start**, placed after the **replay**: it reads `blocks[0]`, so it is meaningful only
+  against a chain loaded from disk, and ahead of `chainstore.Recover` it reads an empty chain,
+  returns nil, and the daemon serves under a config its own chain contradicts. Its runtime cover is
+  two driven daemons in `e2e/consensus_config_bind_test.go` — the minted genesis hash MOVES with
+  `-bond-label-k`, and a daemon started against a chain that commits a different value EXITS — after
+  a blind review measured the source gates GREEN over a tree where that mechanism was dead.
+  **That runtime cover is not merge-blocking, and the gates now say so rather than imply otherwise:**
+  the e2e job is not a required status check and both tests skip under `-short`, and a second review
+  measured the source gates still GREEN over a check defined between the landmarks and never invoked.
+  No stronger lexical gate closes that, so both gates and the `R-CONSENSUS-CONFIG-UNBOUND` register
+  row carry an `UNGATED:` admission in the DECLARATION and in the FAILURE TEXT — a green there means
+  the strings are present and in order, never that the mechanism is live.
+  `silt genesis` now prints its hash labelled as the *paramless* one, because a daemon-launched
+  network no longer has a single genesis hash.
+- **The tier promotion the bind creates is ACCEPTED, and the constraint is written down**
+  (owner ratification, 2026-09-11, [`docs/decisions.md`](docs/decisions.md)
+  `D-CFGBIND-TIER-PROMOTION-2026-09-11`). Committing the config by value freezes it per network —
+  including the values a build supplies when the operator sets nothing. **Driven, not argued:** move
+  the `-quorum` flag default 3 -> 2, rebuild, restart on the same chain with an **unchanged argv**,
+  and the node refuses to start naming the field and both values. A pure binary upgrade, no
+  configuration change by anyone. Six inputs reach the committed params through an effective-value
+  helper and are affected; `DerivedBondFloor` is CLEARED as a source of hardware-dependent
+  divergence, because `bond.PlotSealThroughput` is a literal constant and not a machine measurement,
+  so two nodes on different hardware mint the same genesis. The owner declined both narrowing
+  alternatives, each for its own reason: narrowing the bound set to operator-set flags re-opens the
+  settled membership analysis and makes consensus status an accident of which knobs carry a flag,
+  and requiring explicit values everywhere charges every operator to protect a case that already
+  fails safe. `docs/TENETS.md` Part IX gains the PRINCIPLE (a value bound into a frozen consensus
+  format leaves the Evolving tier for that network's lifetime) and names no fields, because the
+  formats and their membership are build state. `docs/release-checklist.md` gains the RULE: moving
+  one of these defaults is a breaking change requiring a NEW NETWORK. `DerivedBondTTL`'s own doc
+  comment — *"a real deployment can tighten it"* — was falsified by the bind and is corrected in the
+  same commit.
+- **`Go — multi-process e2e (real TCP)` becomes a required status check** (owner ratification,
+  2026-09-11; ruleset `19729396`, five contexts -> six). The e2e job is where several mechanisms'
+  only merge-relevant coverage lives — including owner call F's refuse-to-start arm, whose source
+  gates a blind review measured GREEN over a completely dead mechanism. **The evidence:** three
+  commits (`18e267a`, `c22fa2c`, `55900ac`) were merge-eligible with that job as the sole red and
+  every required check green. It costs no wall-clock — **measured over the last 40 completed `ci.yml`
+  runs on `main`**, the e2e job's mean is **448 s** against the already-required race job's **525 s**,
+  so it is off the critical path — and it is **40/40 green** over that same window. `nat`, `netem` and fuzz stay non-required, and
+  `strict_required_status_checks_policy` stays OFF. **The flip is applied AFTER the merge that
+  lands this entry**, deliberately: a job must not be made required while the change it was added to
+  protect is still in flight.
+- **The membership rule, replacing the field list** (owner ratification, 2026-09-10). *Every field
+  that can change a validity verdict is bound to the chain, or is explicitly excluded with a recorded
+  reason.* The **rule** is ratified; **17 is its output**. The reflective gate now covers **both**
+  `chain.Config` and `node.Config` (`R-CONFIG-GATE-NODE-SCOPE`, **closed** — that scope gap is
+  exactly why `-bond-label-k` and the compiled bond-VDF delay were missed), and the two declaration tables form a
+  **checked bijection** onto `ConsensusParams`: a committed field claimed by neither table is
+  hash-covered decoration, and one claimed by both hides an unbound knob. The bijection caught a real
+  double-claim on `MinBondBytes` the moment it was written. `node.Config`'s gate drives a **real
+  sealed plot and a real space-time answer** through the production verifier closure, and pins the
+  measured divergence set; 31 fields report **UNPROVEN, never "safe"**. Ablations `N1–N6` and `C1–C2`
+  each verified RED by exit code, including the owner's binding condition — a fake verdict-reaching
+  field added to `node.Config` turns the gate RED.
 - **The consensus-critical genesis config: the SCHEMA is in; the production BIND is not.**
-  **⚠ Corrected 2026-09-10, before release, with the original claim left beside it.** The entry
+  **⚠ Corrected 2026-09-10, before release, with the original claim left beside it — and CLOSED 2026-09-11 by the DELIVERY entry above, which is why this correction is a record and not a live caveat.** The entry
   below states that a differently-configured node "computes a different genesis hash and cannot
   join at all". **That is not what shipped.** `core/genesis/genesis.go` mints genesis with no
   `Params` field, so cbor `omitempty` drops key 20 and the production genesis hash is unchanged;
@@ -182,12 +252,15 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   their tests are real and green — **nothing populates them**, so no node yet refuses on a config
   divergence and `R-CONSENSUS-CONFIG-UNBOUND` stays OPEN. Wiring the production mint moves the
   genesis hash, which is a FORMAT act the owner ratifies separately. ORIGINAL ENTRY:
-- **The consensus-critical genesis config is bound to the chain** (owner call F,
+- **The consensus-critical genesis config is bound to the chain** — *schema only; see the delivery
+  above* (owner call F,
   [`docs/decisions.md`](docs/decisions.md) `D-CFGBIND-BUILT-2026-09-10`). A new `ConsensusParams` —
   **17 fields carried by value** — is committed on the genesis block as `Block.Params` at cbor key
   20, so the genesis hash covers it. **A node configured differently computes a different genesis
   hash and cannot join at all**; the fork is refused with `ErrForeignGenesis` before any validity
-  question arises. This closes `R-CONSENSUS-CONFIG-UNBOUND` on the production path — the class that
+  question arises. **That sentence was true of the schema and false of the shipped binary until the
+  delivery entry above** — nothing wrote `Params`, so every network minted the same paramless
+  genesis. This closes `R-CONSENSUS-CONFIG-UNBOUND` on the production path — the class that
   produced #380's `Config.Quorum`, `SlashesBytesCap`'s flag-derived invariant, and `MinBond` as a
   bare command-line flag.
   **Values, not a digest**, so a mismatch names the field that differs. **Canon rule 8's two arms
@@ -195,8 +268,9 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   observable — but committing the values manufactures the referent it lacked, which makes
   `CheckConsensusParams` required to catch the one case joining cannot, an operator editing a flag
   and restarting on a chain already joined.
-  **The two sharpest members were in `node.Config`, not `chain.Config`:** `-bond-label-k` and
-  `-bond-vdf`, where a `k=32` node rejects every bond registration a `k=64` swarm accepts.
+  **The two sharpest members were in `node.Config`, not `chain.Config`:** `-bond-label-k` and the
+  compiled bond-VDF delay, which has no flag at all, where a `k=32` node rejects every bond
+  registration a `k=64` swarm accepts.
   **The foreign-genesis refusal is now loud** — it logged at `LogDebug`, so an operator saw a node
   that never synced and said nothing. It now warns, names the flags to check, and counts a
   `ChainSyncForeignGenesis` stat.

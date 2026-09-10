@@ -140,6 +140,15 @@ signing is wired up; V1 is not cut until signing/notarization is in place.)
     seat's open branch, so it must take the paid-relay label above before the RC
     is cut. `docs/design/pod.md` §7.3's **Field status** line carried the same
     sentence and was corrected with this change.
+- [ ] **No compile-time default that the genesis commits has moved since the last
+      release.** Changing one is a **breaking change requiring a NEW NETWORK**, not a tuning
+      change: the genesis block commits the consensus config by value, so every upgrading node
+      refuses to start on the existing chain even though nobody touched its argv. This is a RULE,
+      not a judgment call (`D-CFGBIND-TIER-PROMOTION-2026-09-11`, ratified by the owner after the
+      behaviour was driven). It is stated here rather than left to be discovered because the
+      failure is a loud, correct refusal that reads like a release bug — and the tempting fix for
+      a refusal nobody expected is to weaken the check. The six defaults are enumerated in that
+      decision entry; the principle is `docs/TENETS.md` Part IX.
 - [ ] **`CHANGELOG.md` `[Unreleased]` is accurate** — it becomes the release
       notes verbatim. For `1.0.0` it should read like an honest first-release
       summary.

@@ -33,7 +33,7 @@ func committedChain(t *testing.T, rep func(ports.NodeID) int64) *chain.Chain {
 	cfg := chain.DefaultConfig() // MinProposerRep/MinAttesterRep = 100, Quorum = 3
 	c := chain.New(cfg, rep)
 
-	gb, _, _, err := genesis.Build(memstore.New())
+	gb, _, _, err := genesis.Build(memstore.New(), nil)
 	if err != nil {
 		t.Fatalf("genesis build: %v", err)
 	}
