@@ -214,6 +214,15 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   about a gate is itself a claim* — and it was caught by re-deriving the citation rather than reading it.
 
 ### Documentation
+- **The ten simplicity rules move out of the agent harness and into silt's own canon**
+  ([`docs/build-process.md`](docs/build-process.md), section "The ten simplicity rules"; owner-directed
+  2026-09-10). They were filed in `.claude/CLAUDE.md` on 2026-09-08 (`D-RECOMPUTE-FREEZE` (5), now annotated
+  in place rather than rewritten). **Rules 1–10 keep their numbers and their text verbatim** — they are cited
+  by number in `ROADMAP.md`, `CHANGELOG.md`, `docs/decisions.md`, `docs/design/m0.md`, `docs/build-process.md`
+  and the `docs/thinking/` deliberations, and a wrong rule number still reads as a sensible sentence, so a
+  renumbering would break every citation silently. `.claude/CLAUDE.md` keeps a pointer, not a copy. **The
+  reason for the move:** canon that lives in the harness travels with the harness — a session run without the
+  usual configuration silently unloads it, and several of the ten were breached while nobody was reading them.
 - **A release-checklist RULE replaces per-lane honesty calls: every lane that has never run in the field is labelled**
   *"built, sim-proven, never exercised on a real network"* wherever the release claims it — README, website, release notes
   and the flag's own help (`docs/release-checklist.md`; `D-RC-POSTURE-2026-09-09` (3)). A lane earns the sentence's removal

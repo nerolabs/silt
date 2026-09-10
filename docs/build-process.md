@@ -238,3 +238,52 @@ deterministically, not discovered one field run at a time.
    validity verdict is either bound to the chain or it is a defect, and a field claimed safe must
    be DRIVEN into a regime where it could have mattered (simplicity rule 7), never assumed safe
    because an undriven fixture left it quiet.
+
+---
+
+## The ten simplicity rules (canon, owner direction 2026-09-08)
+
+Standing owner direction, given via the PE seat and ratified in
+[`decisions.md`](decisions.md) `D-RECOMPUTE-FREEZE` (5). **This is their canonical home.**
+They were filed in the agent harness (`.claude/CLAUDE.md`) from 2026-09-08 until 2026-09-10
+and moved here because canon that lives in the harness travels with the harness: a session
+run without the usual configuration silently unloads it, and several of the ten were
+breached while nobody was reading them. `.claude/CLAUDE.md` now carries a pointer.
+
+**The numbering is load-bearing.** Rules 1–10 are cited by number across `docs/`,
+`ROADMAP.md`, `CHANGELOG.md` and the `docs/thinking/` deliberations. Do not renumber, do
+not insert. A wrong rule number still reads as a sensible sentence, so a renumbering breaks
+every citation silently.
+
+The owner asked which team we are: the one that takes a complicated thing and makes it simple, or the
+one that takes a simple thing and makes it complicated. The measured answer for the trust plane's
+last three weeks was the second (`docs/decisions.md` `D-RECOMPUTE-FREEZE`; the note:
+`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/NOTE-to-silt-team-simplicity-and-roadmap-reorder-2026-09-08.md`).
+These ten rules bind every seat from now on:
+
+1. **The B8 gate, at every design decision.** Before any seat proposes a mechanism, it names the
+   settled corner it is buying — or states why none fits. "Novel" is a cost, not a feature, on
+   anything outside M0. The planner does not dispatch a build that cannot name its corner.
+2. **The PE seat's mandate widens: correctness AND simplicity of approach.** The PE's first question
+   on any consult is *"is this the simplest approach the tenets permit?"* — before severity, before
+   sequencing. This is the check the PE failed to run on the recompute keystone and now owns.
+3. **Cap the bookkeeping ratio.** Bookkeeping commits (structure / register / residual / re-ruling /
+   canon) may not exceed the count of `fix(` + `feat(` commits in any week. When they do, the loop
+   stops registering and starts closing.
+4. **A residual must be actionable or it does not exist.** A new `R-*` row requires an owner, a
+   closer, and a Boulder. Otherwise it is a sentence in `docs/design/m0.md` §10 or nothing. No new
+   prefixes (`R-BB-`, `G-`, …) without an owner ratification.
+5. **Owner calls are batched and bounded.** At most five per true-up. If a true-up needs more than
+   five, the loop is deciding by escalation instead of by design — stop and simplify the question.
+6. **No new era without a ratified reason that is not "the recompute needs it."** A block-format
+   change is the most expensive edit in the system; era 5 is not pre-approved.
+7. **"A green gate with no demonstrated red is decoration" is a RULE, not an observation.** A field
+   classified "safe" in any coverage table must be a DRIVEN probe (forge it, commit the divergent
+   root, assert a stall). The completeness meta-test fails on an un-driven "safe" row, not only a
+   missing one.
+8. **Structure rounds are frozen on the keystone.** No refactor adds concepts to a component slated
+   for re-scope. Rigor applied to accidental complexity produces more of it, beautifully certified.
+9. **A cert per consensus-rule change — and only per consensus-rule change.** Not per probe, not per
+   register row, not per re-ruling.
+10. **Step back to TENETS + VISION once a week, as the planner.** No seat holds that vantage in the
+    loop; the planner schedules it.

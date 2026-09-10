@@ -568,7 +568,8 @@ demand→standing bright-line to R4.1 and is post-RC.
   validation of unbounded state — to a problem with three settled corners) and sat on the RC
   critical path though the RC ships never-Accept. The track is FROZEN, Boulder 1 is re-scoped to
   "the cheap validator" post-RC, the economy is promoted to the RC's substance, the register is
-  pruned to actionable rows, and ten simplicity rules are standing in `.claude/CLAUDE.md`
+  pruned to actionable rows, and ten simplicity rules are standing — canon since 2026-09-10 in
+  [`docs/build-process.md`](docs/build-process.md), filed in `.claude/CLAUDE.md` until then
   (`D-RECOMPUTE-FREEZE`; the note: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/NOTE-to-silt-team-simplicity-and-roadmap-reorder-2026-09-08.md`).
 - **The 2026-09-01→07 build run closed the live breaks and built the paid economy dark.** Sixty-seven
   PRs (#697–#767): the A4 money-pump (Boulder 0), the I5 pruned-slash forgery, the relay-lane mint, the
