@@ -1353,7 +1353,8 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   whole signed body — so the number is still ratifiable on immutable-#8 grounds with the face
   DISCLOSED; only the v5 two-level block hash (d-3) removes it, which therefore joins the R3.4
   pre-freeze carry-list, and the face goes to the R4.4 external brief. Invariant on the value:
-  `SlashesBytesCap ≥ 2 × (default honest block) + overhead`. Two interims REFUTED: a
+  `SlashesBytesCap ≥ 2 × (default honest block) + overhead`. **⚠ SUPERSEDED 2026-09-10 — this invariant is
+  UNSATISFIABLE as written; see the annotation below and `D-SLASHCAP-ROUTE`.** Two interims REFUTED: a
   consensus block byte cap (collides with `RegCap`); an attester-side byte policy (collides with
   the #432 forced-value rule). Source:
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.6-SlashesBytesCap-value-security-face-DELTA-CERTIFICATION-2026-09-03.md`.
@@ -1399,6 +1400,23 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   > `(height, round, phase)` in the v5 preimage makes evidence `O(1)`, ~200 bytes. That is CometBFT's
   > `CanonicalVote`. It is a **FORMAT** change and a **WIDENING** one, so it rides D1 or it costs an era.
   > **The 16 MiB VALUE does not move.** Three owner calls are in §9 of the certification.
+  >
+  > **✅ UNRATIFIED AND REPLACED BY THE OWNER — 2026-09-10 (owner call 2).** The owner read the
+  > refutation and unratified his own sentence in his own words: *"Those were my words and they're
+  > wrong. The ratified text told me that buying (d-3) removes the double-signer face. It doesn't —
+  > §4.3's `Slashes'` is a recursively reduced copy, not a digest, and leaves `Entries` and
+  > `LastCommit` unbounded. A ~40× shrink (2 → ~80 proofs) is not a removal, and I ratified a sentence
+  > that said it was."*
+  >
+  > **The replacement sentence, ratified 2026-09-10 — this is what the owner is buying:**
+  >
+  > > **(d-3) shrinks the face roughly 40× but does not remove it; what removes it is the v5
+  > > signature-preimage change, which makes evidence O(1).**
+  >
+  > The 16 MiB VALUE is untouched by this unratification — only the disclosure sentence moved. The
+  > owner also ratified the HANDLING as a standing practice: *"the annotate-in-place-rather-than-rewrite
+  > handling was exactly right. Keep doing that with ratified text — the correction should be visible
+  > as a correction, not laundered into the original."* See `D-PREIMAGE-BUY-2026-09-10`.
 
   Derived from shipped bounds: one legitimate evidence pair is at most two blocks at the
   default per-block budgets (2 MiB regs + 64 KiB entries) ≈ 4.2 MiB, so 16 MiB admits three
@@ -2726,6 +2744,7 @@ showing the one-byte value IS committed).
 - **The defect.** The cap is a consensus validity rule enforced on every validator
   (`core/chain/validate_v5_predicates.go:285`), and its invariant `cap ≥ 2 × (honest block) + overhead`
   was computed from the DEFAULTS of `-max-bondreg-bytes-per-block` and `-max-entry-bytes-per-block`.
+  **⚠ THE INVARIANT ITSELF IS SUPERSEDED — see the SUPERSESSION note at the end of this entry.**
   Both flags are **proposer-side only** (every non-test read: `core/node/chainrole.go:890`,
   `core/node/entrypool.go:116`) and documented `0 = unbounded`. So an operator could raise its own
   budget past ~7.9 MiB and make its OWN equivocation unprovable — the evidence pair exceeds the cap,
@@ -2776,3 +2795,147 @@ showing the one-byte value IS committed).
   radius is empty in-tree (verified: no script, CI workflow, integration topology, cloudtest launcher
   or deploy file sets either flag) and the PE recommends taking it; it ships in this change and the
   owner may reverse it.
+- **⚠ SUPERSESSION — the `cap ≥ 2 × body + overhead` INVARIANT is retired, not merely qualified
+  (2026-09-10, at the reviewing engineer's own instruction).** The engineer whose ruling prescribed
+  that invariant asked that this entry say so in as many words, so that no future reader finds a
+  ruling on record that reads as adequate:
+
+  > *"The nest-gate finding supersedes my invariant. My `2 × body + overhead` was necessary, not
+  > sufficient."*
+
+  The invariant is not a threshold that was set too low. It **has no positive solution at any cap**,
+  because `body ⊇ Slashes ≤ cap` makes it self-referential — a fixed point, not a tuning error
+  (`R-NESTED-EVIDENCE-OVERCAP`, measured as `R-NEST-GATE`). Any document, comment or review that
+  states the invariant as the cap's sufficient condition is wrong as of this date. The invariant's
+  surviving role is narrow and should be cited only as such: it bounds the CONFIGURABLE half of the
+  derivation, which is what `CheckSlashEvidenceHeadroom` now enforces. **The sufficient close is the
+  v5 signature-preimage change** (`D-PREIMAGE-BUY-2026-09-10`, owner call 1), which makes evidence
+  `O(1)` and removes the self-reference entirely rather than bounding its symptom.
+
+---
+
+## D-PREIMAGE-BUY-2026-09-10 — the v5 signature preimage carries Height; the `SlashesBytesCap` disclosure sentence is unratified and replaced; state growth is bounded by standing; D3 stays unsigned
+
+- **Status:** ✅ FOUR OWNER CALLS DECIDED — 2026-09-10, answering the four open questions in
+  `ROADMAP.md` "▶ OPEN QUESTIONS FOR THE OWNER". Basis: the nested-evidence certification
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/SLASHCAP-NESTED-EVIDENCE-FIXED-POINT-RESEARCH-CERTIFICATION-2026-09-10.md`
+  and the driven measurement `R-NEST-GATE` (#795). Companion: `D-SLASHCAP-ROUTE`.
+
+### Call 1 — BUY the signature-preimage change at D1, conditional on its delta cert
+
+**BOUGHT.** `consensusSigBytes` (`core/chain/chain.go:918`) omits **Height** from the signed
+preimage; the v5 preimage carries `(height, round, phase)`, after CometBFT's `CanonicalVote`.
+Evidence then becomes `O(1)` (~200 bytes) instead of two full `Block` bodies.
+
+**The decisive argument is the scar, not the optimization — and it is the owner's, not the
+write-up's.** In his words:
+
+> *"`consensusSigBytes` omits Height from the signed preimage with the justification 'the height
+> rides inside the hash.' CometBFT's `CanonicalVote` signs (height, round, step). That is the #397
+> watermark scar, second occurrence — `build-process.md` rule 6, from a PE ruling on #432: 'cite the
+> analogue means adopt the SCHEMA and know why each field exists, never just the purpose… every
+> field you drop is a claim you can prove you don't need it.' The #397 watermark copied
+> `priv_validator_state`'s purpose and dropped its (height, round, step) schema, and the dropped
+> field was the liveness. Here we dropped the same field from the same schema family, and the
+> dropped field is why evidence must carry two full blocks. The claim 'we don't need height' is
+> precisely the claim that failed. So this isn't a clever optimization. It's paying back a known
+> scar at the one moment it's still cheap."*
+
+The citation is verified at source: `docs/build-process.md:204-213` states rule 6 and the #397
+`(height, ROUND, step)` drop in exactly those terms. **This is the second occurrence of that scar.**
+
+**The corroborating reasons, in the owner's order:** it kills the nesting attack at the root rather
+than bounding a symptom (a legitimate proof is ~200 B regardless of how bloated the target block
+is, so the 687 B × 24,456 route dies completely); it names its settled corner, so the B8 gate is
+satisfied; its blast radius is smaller than (d-3)'s, which is already bought; and it is **FORMAT +
+WIDENING**, so it rides D1 or it costs an era.
+
+**Three conditions, all binding:**
+
+1. **The delta cert lands.** *"If it refutes, come back to me, don't route around it."* Commissioned
+   2026-09-10; verdict filed to
+   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/V5-SIGNATURE-PREIMAGE-HEIGHT-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md`.
+2. **It COMPLEMENTS (d-3); it does not replace it.** (d-3) `AnswerDigest` still ships. The delta
+   cert is asked to confirm (d-3) retains independent work once evidence is `O(1)`, and to say so
+   plainly if it does not — the owner wants to know if he is buying two things where one would do.
+3. **Do NOT shrink `SlashesBytesCap` in the same breath.** *"Once evidence is O(1), 16 MiB is
+   absurd, but shrinking a cap is a narrowing change and stays cheap after the freeze. Land the
+   preimage change, re-derive the cap afterward."* This is a standing prohibition on the D1 train:
+   no PR may move the constant and the preimage together.
+
+**⚠ A CORRECTION TO THE CALL'S OWN BLAST-RADIUS SENTENCE, found while acting on it (2026-09-10).**
+The roadmap sold this as *"eight non-test `verifyAtt` call sites, all with the block in scope."*
+Verified at source, there are **nine**, and one does not match the claim:
+`core/chain/validate_v5_quorum.go:243,274` · `core/chain/carrier.go:135,233` ·
+`core/chain/chain.go:3095,3126,3487,3601` · `core/chain/equivocation.go:121`. **`carrier.go:135`
+does not have the attested block in scope.** It sits inside `validateCarrier(b *Block)` but verifies
+`PhasePrecommit` attestations over `b.Prev` — the **parent's** hash — so the height to sign is
+`b.Height - 1`, derived rather than read. (`carrier.go:121` refuses `b.Height <= 1`, so the
+subtraction cannot underflow.) `chain.go:3601` is the genesis-`Atts` filter at height 0, a second
+special case. A derived signing height at a carrier seam is precisely the #397 off-by-one class this
+call is paying back, so it is a **named gate on the delta cert**, not a detail. The BUY stands: the
+owner bought on the scar argument, which is independent of this sentence and verified. This is the
+derive-then-DRIVE shape again — the number was reviewed, the route was not.
+
+### Call 2 — UNRATIFY and replace the `SlashesBytesCap` disclosure sentence
+
+**UNRATIFIED.** The owner withdrew his own ratified words. The replacement, ratified 2026-09-10:
+
+> **(d-3) shrinks the face roughly 40× but does not remove it; what removes it is the v5
+> signature-preimage change, which makes evidence O(1).**
+
+**The 16 MiB VALUE does not move.** Only the disclosure sentence moved. The unratification is
+recorded **in place** at the original ratified text (this file, the R0.6 value entry) rather than by
+rewriting it, and the owner ratified that handling as standing practice: *"the correction should be
+visible as a correction, not laundered into the original."* Apply it to all ratified text.
+
+**Tracked, not merely annotated (at the reviewing engineer's instruction).** The certification's §8
+enumerates five prior sentences that fall (C-1…C-5). C-5 is the owner sentence replaced above. The
+remaining four are certification sentences whose **claims now have no support**, and annotating them
+is not the same as re-deriving what they asserted. They are tracked as one actionable register row,
+`R-CERT-REDERIVE` (`ROADMAP.md`), with a per-sentence closer:
+
+| # | The sentence that fell | What must be RE-DERIVED, not just annotated |
+|---|---|---|
+| C-1 | I5-cross-height cert §7: *"two constraints bracket it… liveness floor"* | The bracket is EMPTY. 16 MiB was chosen against a **restricted** floor — largest legitimate pair among blocks whose `Slashes` is empty — and that restriction was never stated. Re-derive the floor the value actually satisfies, and state the restriction. |
+| C-2 | R0.6 delta V-2: *"so an honest-shaped pair is always slashable"* | The property is gone; the inequality survives only as arithmetic about the **non-`Slashes`** body. Scope every citation to that. Done for the ledger in `D-SLASHCAP-ROUTE`'s SUPERSESSION note; `core/chain/chain.go:412-414` already carries corrected wording. |
+| C-3 | R0.6 delta §5.2: *"(d-3) → two headers + digests, ~KB fixed; completeness face gone"* | Falls. Re-derive what (d-3) actually delivers — and do it on the **header-only** proof route, since the measurement refuted the reg-laden route both the PE table and the cert modelled. |
+| C-4 | Freeze-manifest cert §4.3: *"what it closes, all three at once"* | Falls in its first third. `R-LATE-REVEAL` and `R-CARRIER-PRUNED-HASH` close as stated; `R-BIG-EVIDENCE-UNSLASHABLE` does not. **This one is inside the FREEZE MANIFEST, so it is D1 content, not bookkeeping.** Manifest item 3 stays BOUGHT on its surviving two-thirds; the spec repair (the v5 preimage carries a single `SlashesDigest`, never a `Slashes'` copy) is a FORMAT question the owner takes individually. |
+
+### Call 3 — do not accept unbounded state growth; bound it by STANDING, and decide it after call 1
+
+**REFUSED as stated; the disposition is bounded rather than accepted.** `apply()` writes
+`slashed[culprit] = true` unconditionally and the recompute mints a permanent SMT leaf per culprit,
+so a 16 MiB block of proofs implies ~23,800 permanent leaves. The owner:
+
+> *"~23,800 permanent SMT leaves from one block is a state-growth DoS, and the nest measurement
+> showed how it's reached: throwaway keys about never-committed blocks. An attacker mints permanent
+> committed state for identities that never mattered."*
+
+**The disposition he wants:** *a slash mints no permanent leaf for an identity that had no bonded
+standing at the height in question.* Slashing an identity with no standing achieves nothing
+legitimate, so nothing real is lost.
+
+**The nuance is load-bearing and the owner named it himself:** the predicate **cannot** be
+*"currently bonded"* — late-reveal evidence about a since-lapsed bond is legitimate and must record.
+It has to be *"was bonded at that height,"* which the chain can check. **The exact predicate is
+routed to research.**
+
+**Sequenced AFTER call 1, deliberately:** *"with O(1) evidence the cap can shrink as a narrowing
+change, which bounds this from the other side. Deciding 3 in isolation prices it against a world
+call 1 is about to change."* So the research question is NOT commissioned until the call-1 delta
+cert returns.
+
+### Call 4 — D3 is not signed today; two conditions before the owner signs
+
+**NOTHING TODAY.** The freeze act waits. Two conditions, both new:
+
+1. The plain-English one-pager (`docs/era4-freeze-what-closes.md`) is re-checked against the
+   manifest's **final** content — already owed under `D-RC-POSTURE-2026-09-09` (7).
+2. **D3 cannot be signed until the preimage change has either LANDED or been explicitly DECLINED
+   with the consequence recorded in the entry.** *"Calls 1–3 all change what D1 contains, and the
+   freeze is the door that closes on all of them. I'm not signing a freeze whose contents were still
+   moving the day before."*
+
+Condition 2 is a hard gate on row D3: a decline is not silence — it is an entry in this ledger
+naming what silt keeps instead.
