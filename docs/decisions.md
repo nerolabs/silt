@@ -3886,7 +3886,8 @@ on `0ed3b92`:
 
 So the failure surface the decision described — *a divergently-configured node computes a different
 genesis hash and cannot join* — did not exist. Every node computed the same hash regardless of its
-`-min-bond`, `-quorum`, `-anchors`, `-epoch-blocks`, `-bond-label-k` or `-bond-vdf`.
+`-min-bond`, `-quorum`, `-anchors`, `-epoch-blocks`, `-bond-label-k` or compiled bond-VDF delay
+(which has no flag).
 
 **Why five green gates did not notice.** Each of `G-CFGBIND-1..5` hand-constructs
 `chain.Block{… Params: &p}` in its own fixture. **A gate that constructs the exact state whose

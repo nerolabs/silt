@@ -27,17 +27,57 @@ import (
 // drives both halves in real processes and is what actually holds the seam; the order assertion
 // below was re-anchored on that finding.
 //
+// UNGATED: R-CONSENSUS-CONFIG-UNBOUND — WHAT A GREEN IN THIS FILE DOES NOT MEAN. This hole is
+// DISCLOSED, not closed, and the disclosure is deliberate. A second blind review measured the
+// strongest surviving shape: the check written as a closure defined BETWEEN the two landmarks and
+// NEVER INVOKED (`_ = checkParams`). Both gates in this file PASS over it, the mechanism is
+// entirely dead, and only the e2e reddens. No stronger lexical gate closes that — a call-string
+// check locates a STRING, and an uninvoked closure supplies the string by construction. What closes
+// it is the runtime cover, and THE RUNTIME COVER IS NOT MERGE-BLOCKING: `Go — multi-process e2e
+// (real TCP)` (.github/workflows/ci.yml:198) is not among the five required status checks on
+// ruleset 19729396, and both e2e tests skip under the -short that the required job runs
+// (.github/workflows/ci.yml:45). So the MERGE-BLOCKING coverage of owner call F's refusal arm is
+// exactly this file, over a shape this file cannot see. Making that job required is a repo-wide CI
+// policy call the owner holds; until it is made, read a green here as "the strings are present and
+// in this order", never as "the mechanism is live", and run
+// `go test ./e2e -run ConsensusConfig`.
+//
 // FOR A NEW FIELD ON A CONSENSUS TYPE, A READER IS NOT ENOUGH — the pin must require a non-test
 // WRITER. G-CFGBIND-7 is that requirement: it fails if genesis.Build stops being handed real
 // params on the daemon path, which is precisely the state the tree was in before this change.
+
+// ungatedDisclosure rides EVERY failure message in this file, so the admission above is where a
+// reader MEETS the gate and not only where a reader browses it. That is the repo's convention
+// (ROADMAP.md, the R-CONFIG-GATE-V5-REGIME row): the marker in the DECLARATION and in the FAILURE
+// TEXT, because the failure text is the sentence someone reads at 2 a.m. after a red.
+//
+// AND THE MARKER ITSELF IS NOT MACHINE-ENFORCED, measured: scripts/check_source_gates.py accepts
+// `RUNTIME GATE:` OR `UNGATED:` (COVER_RE), and these gates carry both, so deleting every
+// `UNGATED:` here leaves the lint at EXIT=0. What the lint DOES enforce, now that the daemon.go
+// read is inlined into both test bodies rather than hidden behind a helper, is that both gates are
+// in its scope at all (its count went 34 -> 36) and that every failure message opens with
+// `SOURCE GATE:` (stripping one prefix reddens it, measured). Treat the disclosure as prose a human
+// must keep true, not as a gate.
+const ungatedDisclosure = " · UNGATED: R-CONSENSUS-CONFIG-UNBOUND — this is a STRING check on " +
+	"daemon.go, and it is GREEN over a check that is defined between the landmarks and never " +
+	"invoked (measured), so a green here is not evidence the mechanism is live. The instrument that " +
+	"binds is e2e/consensus_config_bind_test.go (G-CFGBIND-10/11) — which is NOT a required status " +
+	"check and skips under -short. Run `go test ./e2e -run ConsensusConfig`."
 
 // G-CFGBIND-7 — THE GENESIS MINT WRITES REAL PARAMS, on the production path.
 //
 // RUNTIME GATE: e2e TestGenesisHashMovesWithTheConsensusConfig — two daemons differing only in
 // -bond-label-k must mint DIFFERENT genesis blocks, and the same config the same one. The
 // paramless mint compiles and prints the same line; what it cannot do is move the hash.
+//
+// UNGATED: R-CONSENSUS-CONFIG-UNBOUND — that runtime gate is not a required status check. See the
+// disclosure at the top of this file.
 func TestG_CFGBIND_7_TheGenesisWiringIsOnTheProductionPath_Source(t *testing.T) {
-	s := daemonSource(t)
+	src, err := os.ReadFile("daemon.go")
+	if err != nil {
+		t.Fatalf("SOURCE GATE: cannot read daemon.go as text, so the wiring is unverified: %v", err)
+	}
+	s := string(src)
 
 	// The WRITER. `nil` here is the pre-bind path and is exactly the defect: it compiles, it is
 	// silent, and it mints a network that commits no configuration.
@@ -45,14 +85,14 @@ func TestG_CFGBIND_7_TheGenesisWiringIsOnTheProductionPath_Source(t *testing.T) 
 	mintAt := strings.Index(s, mint)
 	if mintAt < 0 {
 		if strings.Contains(s, "genesis.Build(store, nil)") {
-			t.Fatal("WIRING REGRESSED: daemon.go mints genesis with `genesis.Build(store, nil)`. A network " +
+			t.Fatal("SOURCE GATE: WIRING REGRESSED — daemon.go mints genesis with `genesis.Build(store, nil)`. A network " +
 				"launched by this binary commits NO consensus config at height 0, so -min-bond, -quorum, " +
 				"-anchors, -epoch-blocks and -bond-label-k are local knobs again and two honest " +
 				"operators who differ on any of them reach different validity verdicts on the same block (I1). " +
-				"This is the exact shape the schema shipped in and sat inert.")
+				"This is the exact shape the schema shipped in and sat inert." + ungatedDisclosure)
 		}
 		t.Fatalf("SOURCE GATE: the string %q is absent from daemon.go. Either the mint moved (re-home this "+
-			"gate) or the production genesis no longer carries params at all.", mint)
+			"gate) or the production genesis no longer carries params at all.%s", mint, ungatedDisclosure)
 	}
 
 	// The params must be projected off the CHAIN, not rebuilt from the Config literal. Both arms
@@ -63,19 +103,23 @@ func TestG_CFGBIND_7_TheGenesisWiringIsOnTheProductionPath_Source(t *testing.T) 
 	if projAt < 0 {
 		t.Fatalf("SOURCE GATE: the string %q is absent from daemon.go. The committed params must be projected "+
 			"off the chain's own config, so that the arm that WRITES genesis and the arm that CHECKS it read the "+
-			"same source; a second projection built from the Config literal can drift from it silently.", project)
+			"same source; a second projection built from the Config literal can drift from it silently.%s",
+			project, ungatedDisclosure)
 	}
 	if projAt > mintAt {
 		t.Fatal("SOURCE GATE: by string OFFSET the params projection follows the genesis mint in daemon.go, " +
-			"so the mint cannot be using it.")
+			"so the mint cannot be using it." + ungatedDisclosure)
 	}
 }
 
 // G-CFGBIND-8 — THE REFUSE-TO-START ARM HAS ITS PRODUCTION CALLER, between the replay and the
-// point this node joins consensus, and it REFUSES rather than warns.
+// point this node arms its consensus role, and it REFUSES rather than warns.
 //
 // RUNTIME GATE: e2e TestDaemonRefusesToStartOnADivergentConsensusConfig — a persisted genesis
 // committing k=64, a daemon started with -bond-label-k 32, a non-zero exit and no peer line.
+//
+// UNGATED: R-CONSENSUS-CONFIG-UNBOUND — that runtime gate is not a required status check, and this
+// gate is green over an uninvoked closure. See the disclosure at the top of this file.
 //
 // WHAT THIS CATCHES THAT JOINING CANNOT (and therefore why the call must exist at all): an
 // operator who edits a consensus flag and restarts on a chain this node has ALREADY joined. The
@@ -93,11 +137,22 @@ func TestG_CFGBIND_7_TheGenesisWiringIsOnTheProductionPath_Source(t *testing.T) 
 // too, with the previous form of this gate GREEN over it.
 //
 // So the assertion is a SANDWICH: Recover < check < EnableChain. The lower bound is the state the
-// check reads; the upper bound is the point this node joins consensus with that chain, after which
-// refusing is too late. It is still a lexical proxy — a helper defined BETWEEN the two landmarks
-// would satisfy it — which is why the e2e above, not this gate, is the instrument of record.
+// check reads. THE UPPER BOUND IS NOT A LAST-SAFE-MOMENT, and an earlier draft of this comment
+// wrongly said refusing after it was too late: measured, with the check moved after EnableChain the
+// daemon still exits 1 and never prints a peer line, and the TCP listener has been accepting since
+// tcpnet.New (cmd/silt/daemon.go:266) in either position. What EnableChain actually is, is the
+// point this node ARMS its consensus role — two field assignments (core/node/chainrole.go:22-25),
+// with every chain-role handler nil-guarded on n.chain — which makes it a cheap lexical anchor for
+// "still inside startup". Its measured WORK is the other half of the sandwich: it is what catches
+// the check lifted into a helper defined further down the file, whose text lands after every
+// landmark here. Both bounds are lexical; see the UNGATED disclosure at the top of this file for
+// the shape neither of them can see.
 func TestG_CFGBIND_8_TheParamsRefusalIsWiredAtStartup_Source(t *testing.T) {
-	s := daemonSource(t)
+	src, err := os.ReadFile("daemon.go")
+	if err != nil {
+		t.Fatalf("SOURCE GATE: cannot read daemon.go as text, so the wiring is unverified: %v", err)
+	}
+	s := string(src)
 
 	const call = "ch.CheckConsensusParams(cfg.BondLabelSamples, cfg.BondVDFDelay)"
 	callAt := strings.Index(s, call)
@@ -105,7 +160,8 @@ func TestG_CFGBIND_8_TheParamsRefusalIsWiredAtStartup_Source(t *testing.T) {
 		t.Fatalf("SOURCE GATE: the string %q is absent from daemon.go, so the refuse-to-start arm has NO "+
 			"production caller — the state this gate was written to close, in which the predicate existed, was "+
 			"tested, and was never reached. An operator can edit a consensus flag, restart on a chain the node "+
-			"has already joined, and apply different rules to that history with nothing objecting.", call)
+			"has already joined, and apply different rules to that history with nothing objecting.%s",
+			call, ungatedDisclosure)
 	}
 
 	// ORDER, LOWER BOUND: after the replay that populates the chain from disk.
@@ -114,30 +170,34 @@ func TestG_CFGBIND_8_TheParamsRefusalIsWiredAtStartup_Source(t *testing.T) {
 	if recoverAt < 0 {
 		t.Fatalf("SOURCE GATE: the string %q is absent from daemon.go, so this gate cannot locate the "+
 			"replay it anchors the check against — re-home it, or the chain is no longer loaded from disk at "+
-			"startup at all.", recover_)
+			"startup at all.%s", recover_, ungatedDisclosure)
 	}
 	if callAt < recoverAt {
 		t.Fatal("SOURCE GATE: by string OFFSET the params check precedes chainstore.Recover in daemon.go. " +
 			"CheckConsensusParams reads blocks[0] and returns nil on an EMPTY chain, and the chain is empty " +
 			"until the replay fills it — so the check would pass unconditionally on every start while the " +
 			"divergent config it exists to catch is loaded a moment later. MEASURED: in that position the " +
-			"binary serves under a -bond-label-k the chain's genesis contradicts, with zero refusal lines.")
+			"binary serves under a -bond-label-k the chain's genesis contradicts, with zero refusal lines." +
+			ungatedDisclosure)
 	}
-	// ORDER, UPPER BOUND: before this node joins consensus with that chain. Refusing after
-	// EnableChain is refusing after the damage. This bound is what catches the check being lifted
-	// into a helper defined further down the file (its text then lands after every landmark here).
+	// ORDER, UPPER BOUND: before this node arms its consensus role. Its measured work is catching
+	// the check lifted into a helper defined further down the file (its text then lands after every
+	// landmark here). It is an anchor for "inside startup", not a last-safe-moment — see the
+	// SANDWICH paragraph above.
 	const enable = "nd.EnableChain(ch, ident.Signer())"
 	enableAt := strings.Index(s, enable)
 	if enableAt < 0 {
 		t.Fatalf("SOURCE GATE: the string %q is absent from daemon.go, so this gate cannot locate the point "+
-			"the node joins consensus — re-home it.", enable)
+			"the node arms its consensus role — re-home it.%s", enable, ungatedDisclosure)
 	}
 	if callAt > enableAt {
 		t.Fatal("SOURCE GATE: by string OFFSET the params check follows nd.EnableChain in daemon.go, so " +
-			"this node has already joined consensus with the chain before anything compares its config " +
-			"against what that chain commits. If the check was moved into a helper, the CALL SITE is what " +
-			"must sit between chainstore.Recover and EnableChain — and e2e " +
-			"TestDaemonRefusesToStartOnADivergentConsensusConfig is the gate that decides whether it does.")
+			"this node arms its consensus role with the chain before anything compares its config against " +
+			"what that chain commits. What this gate LOCATES is the predicate INVOCATION STRING " +
+			"`ch.CheckConsensusParams(cfg.BondLabelSamples, cfg.BondVDFDelay)` and its offset, and nothing " +
+			"else: a closure that contains that string between the two landmarks and is never invoked is " +
+			"GREEN here (measured). e2e TestDaemonRefusesToStartOnADivergentConsensusConfig is what decides " +
+			"whether the check actually runs." + ungatedDisclosure)
 	}
 
 	// It must REFUSE, not warn. A warning lets the node start and reach the divergent verdicts.
@@ -145,15 +205,6 @@ func TestG_CFGBIND_8_TheParamsRefusalIsWiredAtStartup_Source(t *testing.T) {
 	if !strings.Contains(tail, "return fmt.Errorf") {
 		t.Fatalf("SOURCE GATE: the 320 bytes of text after the params check contain no \"return fmt.Errorf\" — "+
 			"a warning lets the node start and apply the divergent rules anyway, which is the whole failure this "+
-			"arm exists to prevent; got: %q", tail)
+			"arm exists to prevent; got: %q%s", tail, ungatedDisclosure)
 	}
-}
-
-func daemonSource(t *testing.T) string {
-	t.Helper()
-	src, err := os.ReadFile("daemon.go")
-	if err != nil {
-		t.Fatalf("SOURCE GATE: cannot read daemon.go as text, so the wiring is unverified: %v", err)
-	}
-	return string(src)
 }

@@ -189,6 +189,12 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   two driven daemons in `e2e/consensus_config_bind_test.go` — the minted genesis hash MOVES with
   `-bond-label-k`, and a daemon started against a chain that commits a different value EXITS — after
   a blind review measured the source gates GREEN over a tree where that mechanism was dead.
+  **That runtime cover is not merge-blocking, and the gates now say so rather than imply otherwise:**
+  the e2e job is not a required status check and both tests skip under `-short`, and a second review
+  measured the source gates still GREEN over a check defined between the landmarks and never invoked.
+  No stronger lexical gate closes that, so both gates and the `R-CONSENSUS-CONFIG-UNBOUND` register
+  row carry an `UNGATED:` admission in the DECLARATION and in the FAILURE TEXT — a green there means
+  the strings are present and in order, never that the mechanism is live.
   `silt genesis` now prints its hash labelled as the *paramless* one, because a daemon-launched
   network no longer has a single genesis hash.
 - **The membership rule, replacing the field list** (owner ratification, 2026-09-10). *Every field
@@ -229,8 +235,9 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   observable — but committing the values manufactures the referent it lacked, which makes
   `CheckConsensusParams` required to catch the one case joining cannot, an operator editing a flag
   and restarting on a chain already joined.
-  **The two sharpest members were in `node.Config`, not `chain.Config`:** `-bond-label-k` and
-  `-bond-vdf`, where a `k=32` node rejects every bond registration a `k=64` swarm accepts.
+  **The two sharpest members were in `node.Config`, not `chain.Config`:** `-bond-label-k` and the
+  compiled bond-VDF delay, which has no flag at all, where a `k=32` node rejects every bond
+  registration a `k=64` swarm accepts.
   **The foreign-genesis refusal is now loud** — it logged at `LogDebug`, so an operator saw a node
   that never synced and said nothing. It now warns, names the flags to check, and counts a
   `ChainSyncForeignGenesis` stat.
