@@ -75,11 +75,39 @@ turns the economy on over a live mint (Boulder 0 is DONE); a graded field run is
 model-check tier covering its regime — a field run confirms, it never discovers
 (`docs/build-process.md`).
 
-**Where the critical path stands (2026-09-09).** Lane A is CLOSED and field-confirmed. Boulder 2's
+**Where the critical path stands (2026-09-10).** Lane A is CLOSED and field-confirmed. Boulder 2's
 RC-relevant work is merged — the flat delivery path retired, the R2.7 detectors, the observability set
-with per-tier work totals, the pre-flip code closers, and the idle window. **Boulder 3 is now the whole
-remaining critical path: D1 → D2 → D3 (the owner's freeze), then E4 (the external pass) and E5 (the
-field grade).** Nothing in Boulder 2 blocks the freeze; C6 the flip is a `0.9.x` release AFTER it.
+with per-tier work totals, the pre-flip code closers, and the idle window (value RATIFIED at 24m).
+**Boulder 3 is the whole remaining critical path: D1 → D2 → D3 (the owner's freeze), then E4 (the
+external pass) and E5 (the field grade).** Nothing in Boulder 2 blocks the freeze; C6 the flip is a
+`0.9.x` release AFTER it.
+
+**What the 2026-09-09/10 session changed, and it is mostly one thing.** A question the owner asked
+about ONE ratified number — *the idle window's magnitude survived but its reasoning changed; was the
+original derivation wrong, and what else was derived the same way?* — was answered by a blind
+derivation-route audit, and the answer cascaded:
+
+- **`SlashesBytesCap`'s CONFIGURATION route is CLOSED** (#795, `D-SLASHCAP-ROUTE`). The value stays
+  16 MiB; a consensus validity rule no longer rests on the DEFAULTS of two proposer-side-only flags.
+  The owner's framing is the durable half: this is the **#380 class** — a consensus quantity that is a
+  function of local config rather than of the chain — and the second instance inside one week.
+- **A THIRD face on that cap is now MEASURED, not disclosed-in-theory** (`R-NEST-GATE`,
+  `R-NESTED-EVIDENCE-OVERCAP`). `cap ≥ 2 × body + overhead` is an unsatisfiable fixed point because
+  evidence nests. **A 687 B throwaway-key proof about never-committed blocks is accepted; 24,456 of
+  them make a block VALID under `ValidateProposal` at shipped defaults; a legitimate proof about it is
+  16,777,941 B over cap and is REJECTED — the equivocator keeps its seat, with no bond, no coalition
+  and no misconfiguration.** Four certifications carry sentences that fall; one is inside an
+  OWNER-RATIFIED sentence, annotated in place rather than rewritten.
+- **G-1 is CLOSED** (#797), so `R-membership` — the digest 5 → 3 retirement, the LAST format touch —
+  is unblocked and ready to build.
+- **Three findings were written up and deliberately NOT acted on**: the FT tier priced below its own
+  published bound (#796), the relay lane's edge-tier unfitness (row C11), and the PoP bound
+  (CERTIFIED at 4,096 B, not built — a format surface).
+
+**The pattern worth carrying into the next session:** three times in that session a NUMBER survived
+review and its ROUTE did not — the idle window, `SlashesBytesCap`, and the self-armor threshold the
+certification itself derived 5 % wrong. Derive, then DRIVE, in that order; never let the derivation be
+the citation.
 
 **The order of active work:** Lane A (consensus liveness) → Boulder 2 / Lane C (the economy — the
 RC's substance) → Boulder 3 / Lane D (the freeze = the RC) → Boulder 4 / Lane E (B8 on the frozen
@@ -216,6 +244,13 @@ refutes four earlier ones.**
    corner (B8 gate). Eight non-test `verifyAtt` call sites, all with the block in scope — a **smaller**
    blast radius than (d-3). It is a **FORMAT** change and a **WIDENING** one, so it rides D1 or it costs
    an era. GATED: the build needs its own delta cert. **Complements (d-3); does not replace it.**
+   **The evidence under this call is MEASURED, not derived** (`R-NEST-GATE`, 2026-09-10, reproduced
+   independently): a 687 B throwaway-key proof about never-committed blocks is ACCEPTED; 24,456 of them
+   make a block VALID under `ValidateProposal` at shipped `DefaultConfig`; a legitimate proof about it is
+   16,777,941 B over cap and REJECTED. No bond, no coalition, no misconfiguration. The measurement also
+   CORRECTED the certification's own derived threshold (~8.39 → ~7.9998 MiB/side) and found the cheap
+   attacker route is HEADER-ONLY proofs, not the reg-laden ones the analysis modelled — so any sentence
+   pricing the attacker's cost must be rebuilt on that route.
 2. **Re-ratify the `SlashesBytesCap` disclosure sentence.** **The 16 MiB VALUE does not move.** What
    moves is what the owner is told he is buying: `docs/decisions.md`'s ratified sentence says the
    double-signer face is *"a face no value of the cap closes and only (d-3) removes"* — **(d-3) does not
@@ -316,6 +351,9 @@ forgery (#714; `SlashesBytesCap` 16 MiB); R0.7 relay-lane mint (interim #718 →
   R2.9a `B_bootstrap` (#734–#745; `grant/r` = 64 GiB) · R2.10 F8 (#727) · R2.11 (#747) · R2.12 the
   faucet (#746, #754, #755, #758, #761) · R2.13 (#717) · R2.13b (#724) · R2.14 (#721) · the
   per-stripe parity fetch (#751).
+- **DONE 2026-09-10:** the `SlashesBytesCap` configuration route close + `R-NEST-GATE` (#795), the
+  owner-call records and the relay edge-unfitness disclosure (#791), and the FT-tier finding (#796,
+  write-up only). C2's idle-window VALUE is RATIFIED at 24m.
 - **DONE 2026-09-08/09:** C1 the v2 flat primitive + the ledger's flat leg retired (#780) · C3 R2.2 the
   observability set (#784) with the per-tier work totals that re-found the withdrawn thresholds (#788) ·
   C4 the R2.7 blocking detectors (#781) · C5's two CODE closers (#787, with `D-GENESIS-MOVE-2` ratified) ·
@@ -331,6 +369,10 @@ forgery (#714; `SlashesBytesCap` 16 MiB); R0.7 relay-lane mint (interim #718 →
 - **DONE:** R3.1 the SMT domain-separation residual (#731, #749, #754) · R3.3 (doc-only; re-derive
   only if #299 moves) · `#558` the chain-store refusal (2026-09-07).
 - **DONE 2026-09-09:** D0 the cold auditor (#786) — **the RC's only floor-box requirement, closed.**
+- **DONE 2026-09-10:** **G-1** (#797) — the box entry asserts BOTH arms of `objective()`, which is the
+  certified precondition on item 2, so **`R-membership` (digest 5 → 3, the LAST format touch) is
+  UNBLOCKED and ready to build.** Not itself a format change. Owed alongside it and filed:
+  `R-G1-POSTLATCH-DRIVEN` (the post-latch maturity row is not yet driven).
 - **OPEN (Lane D) — this is now the WHOLE remaining critical path to the RC:** D1 the freeze manifest
   (the FORMAT items in one train; the digest set drops to three leaves and that is the LAST format
   touch) · D2 the four stamp-raise test deliverables · D3 the freeze act (**OWNER**).
