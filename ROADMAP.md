@@ -239,8 +239,8 @@ Nothing else in this file is owed to the owner.
 The DIRECTION is certified and the BUY stands; the build is gated on five conditions, two of which
 correct the change as it was bought.
 
-**⚠ ALL SIX CALLS (A-F) ARE NOW DECIDED — `D-FREEZE-CALLS-CDEF-2026-09-10`. NOTHING IS OWED TO THE
-OWNER UNTIL D1 LANDS**, when he reads the one-page *what is frozen, and what can never change without
+**⚠ ALL SIX CALLS (A-F) ARE DECIDED, AND C / D / F ARE BUILT AND MERGED (PR #800, main `82fe56d`).
+NOTHING IS OWED TO THE OWNER UNTIL D1 LANDS**, when he reads the one-page *what is frozen, and what can never change without
 a new era*, re-checked against the manifest's FINAL content.
 
 **The frame that decided them: the freeze deadline is SOFT** (`D-FREEZE-REPRICE-2026-09-10`) — genesis
@@ -254,7 +254,14 @@ WITHDRAWN as a reason to buy anything.***
   today**. One class-3 (box-owned) `HeadRef` field; the freeze read-set does not move.
 - **B — the pricing ask: WITHDRAWN.** What remains is small: make the standing predicate correct
   (**"was bonded at that height,"** late-reveal preserved).
-- **C — (d-3) `AnswerDigest`: BOUGHT, and the delta cert came back GATED — ⛔ STOPPED AND REPORTED**
+- **✅ C — (d-3): BUILT AND MERGED** (`D-D3-BUILT-2026-09-10`). A pruned v5 block now recomputes its
+  own hash, so its retained body is SELF-COVERING and `Pruned` is retired for era-4 — the defect
+  `Block.Hash()`'s own comment records as having shipped false three times, now driven both ways by
+  G-D3-7. **cbor key 19.** A signal was split (`HeavyProofsShed()` vs `IsPruned()`) without which the
+  trust-floor refusal would have gone SILENTLY DEAD on v5. **The v4/v5 parity contract is NOT
+  amended** — the malformed-pruned arm needed TWO registrations, not an era-specific expectation.
+  *The purchase record, kept:*
+- **C (as bought) — (d-3) `AnswerDigest`: BOUGHT, and the delta cert came back GATED — ⛔ STOPPED AND REPORTED**
   (`D-D3-CERT-REFUTATION-2026-09-10`). **The DIRECTION is certified; the SPECIFICATION is refuted in
   two clauses.** (i) §4.3's `AnswerDigest ports.Hash` would break the **frozen-format immutable on
   LIVE v2/v4 history** — `omitempty` never omits a fixed-size array (`Pruned` is the living proof,
@@ -272,7 +279,9 @@ WITHDRAWN as a reason to buy anything.***
   impossible rather than absent. `Block.Hash()`'s own comment records this safety claim shipping
   false **three times**. The dual-era branch survives: it keys on `BlockVersion`, which already
   discriminates eras everywhere.
-- **D — manifest item 4 (the inert PoP slot): DROPPED.** Reserving an unpopulated field bought only
+- **✅ D — manifest item 4: DROPPED AND RECORDED** (`D-ITEM4-DROPPED-2026-09-10`). Verified never
+  built; removes **16 MiB per block of permanent unprunable surface**. *The record, kept:*
+- **D (as decided) — manifest item 4 (the inert PoP slot): DROPPED.** Reserving an unpopulated field bought only
   "not paying an era later", and that cost is void. Keeping it costs **16 MiB per block of permanent
   unprunable surface** — the exact surface `R-NEST-GATE` measured being weaponised. **Sequenced AFTER
   C**, so option beta's prunable-`PoPDigest` fallback exists. If `demandMsg` proves insufficient
@@ -283,7 +292,16 @@ WITHDRAWN as a reason to buy anything.***
   convention). **Built and gated** — a v5 citation with no marker is RED (ablation A9). The gate's
   limit is regime coverage, not efficacy: it found the third and fifth unbound fields, and its
   reflective half caught two `Config` fields a hand-read had missed.
-- **F — the genesis-config family: ALL FIVE FIELDS, ONE CHANGE, BEFORE D3.** The scope growth is
+- **✅ F — the genesis-config family: BOUND AND MERGED** (`D-CFGBIND-BUILT-2026-09-10`).
+  `ConsensusParams`, **17 fields by VALUE**, committed on genesis at **cbor key 20** — a
+  differently-configured node computes a different genesis hash and **cannot join**. Rule 8's two
+  arms COMPOSE: committing the values manufactures the referent a local assertion lacked, so
+  `CheckConsensusParams` catches the one case joining cannot — an operator editing a flag and
+  restarting on a chain already joined. The foreign-genesis refusal is now LOUD (was `LogDebug`).
+  **⚠ ORDERING THAT SURVIVES THIS SESSION: call A moves the signature preimage and F moved the
+  genesis hash — they must land in ONE genesis move, or the graded re-run set is paid twice, which
+  IS what the freeze costs.** *The ruling, kept:*
+- **F (as ruled) — the genesis-config family: ALL FIVE FIELDS, ONE CHANGE, BEFORE D3.** The scope growth is
   **nominal, not material** — the genesis-hash-covered shape binds a FAMILY, so two fields to five is
   adding entries to a digest. **And the two that arrived after the ruling are the SHARPEST of the
   set:** an activation-height divergence needs **no malice at all** — two honest operators with
