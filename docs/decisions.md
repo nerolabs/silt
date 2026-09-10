@@ -3252,3 +3252,98 @@ certification folds `PoPDigest` into (d-3), which makes the bytes **PRUNABLE**. 
 therefore also the better hedge, and it is bought on correctness.
 
 **Owner call: DROP item 4.** Recommendation only — a FORMAT item is his.
+
+---
+
+## D-FREEZE-CALLS-CDEF-2026-09-10 — (d-3) bought on the third-time rule; item 4 dropped; the config gate merges with its scope marked; the genesis-config family binds as ONE change
+
+- **Status:** ✅ FOUR OWNER CALLS DECIDED — 2026-09-10, closing the docket opened by
+  `D-PREIMAGE-CERT-2026-09-10` and re-priced by `D-FREEZE-REPRICE-2026-09-10`. **No further calls go
+  to the owner before D1 lands.** What he reads next is the one-page *what is frozen, and what can
+  never change without a new era*, re-checked against the manifest's FINAL content.
+
+### Call C — (d-3) `AnswerDigest`: BUY. The argument is the third-time rule, not elegance.
+
+**BOUGHT**, gated on its delta cert (commissioned 2026-09-10). The owner resolved the question the
+builder flagged as the strongest objection — *would landing `R-CARRIER-PRUNED-HASH` be enough and
+cheaper?* — and the resolution is the governing principle here:
+
+> **A proof that a property holds today is not a structure that makes violating it impossible.**
+> `R-CARRIER-PRUNED-HASH` would prove the discipline currently holds; any later change can silently
+> violate it. (d-3) makes the retained body self-covering, so **violation becomes impossible rather
+> than absent.**
+
+**Why this is the third-time rule (`build-process.md` rule 5) rather than a preference for elegance.**
+Documented-discipline-plus-proof has degraded to decoration three times in one month: the coverage
+classification that was *"TRUE but un-driven"*; the `SlashesBytesCap` invariant nothing bound; the
+`MinBond` coordination requirement nothing enforced. And `Block.Hash()`'s own comment records that
+**this specific safety claim has shipped false three times.** The rule fires: **encode it as
+structure, not as a fourth proof.**
+
+**On the dual-era branch (the builder's other objection): it survives.** The branch is keyed on
+`BlockVersion`, which already discriminates eras everywhere. The alternative is freezing v5 onto a
+rule whose own comment documents three false safety claims, purely to avoid a branch — *"that's the
+wrong trade, and it isn't elegance-seduction, it's refusing to carry a known defect across the
+door."*
+
+### Call D — manifest item 4 (the inert PoP slot): DROP
+
+**DROPPED.** The certification refutes reserve-only hedges twice, and item 4 survived only on the era
+clause the owner has since withdrawn. Buying **16 MiB per block of permanent unprunable surface** —
+the exact surface `R-NEST-GATE` measured being weaponised — as insurance against a cost that no
+longer exists is **negative-value insurance**.
+
+- **Sequencing: C lands first**, so option beta's prunable-`PoPDigest` fallback exists.
+- **If the off-chain `demandMsg` binding proves insufficient post-freeze:** add the field then and
+  pay in re-runs and calendar, *"which is what the freeze actually costs."*
+
+### Call E — the config-in-consensus gate: MERGE, with one condition drawn from silt's own lint
+
+**MERGE.** The owner accepted the builder's own strongest objection as valid — declarations citing
+`validate_v5_*` files the test never executes is the decoration shape — and then named the
+distinguishing fact: **this gate has demonstrated efficacy** (it found the third and fifth unbound
+fields, and its reflective half caught two `Config` fields a hand-read missed minutes earlier).
+*"Its limit is regime coverage, not efficacy."*
+
+**The condition:** apply `scripts/check_source_gates.py`'s own rule to the gate's declaration table —
+every declaration citing a `validate_v5_*` file carries **`UNGATED: R-CONFIG-GATE-V5-REGIME`**, in
+the **declaration and the failure text**, not only the header. That converts a misleading citation
+into a disclosed one using a convention silt already has. **Built and gated:** the marker is
+enforced (a v5 citation without one is RED, ablation A9) and travels into both the report and the
+violation text. `R-CONFIG-GATE-V5-REGIME` is filed as a **replacement** for the era-1 regime, not a
+sixth.
+
+*On blind review breaking the gate twice:* **"evidence the loop works. A gate that survived review
+unbroken would worry me more."**
+
+### Call F — the genesis-config family: ALL FIVE FIELDS, ONE CHANGE, BEFORE D3
+
+**The scope growth is nominal, not material, and the ruling absorbs it.** The builder escalated
+rather than absorbing it, which was correct; the answer is that **the genesis-hash-covered shape
+binds a FAMILY, so going from two fields to five is adding entries to a digest.** The mechanism the
+owner already specified covers it. **One change, not five.**
+
+**And the two fields that arrived AFTER the ruling are the SHARPEST of the set — this corrects the
+builder's own framing.** The builder asked whether this is latent like the floor-box wrong-accepts.
+**No, and `Era3/Era4ActivationHeight` is exactly why:**
+
+> *"The floor-box holes are latent because the code is dead. `MinBond` divergence needs an operator
+> to set a divergent value — low exploitability, agreed. But an **activation-height divergence needs
+> no malice at all.** Two honest operators with different values flip eras at different heights and
+> validate different blocks under different rules. That isn't a hole waiting for an attacker; **it's
+> a scheduled fork that fires on a date.**"*
+
+**The governing sentence: you cannot freeze an era boundary whose value nothing binds across
+replicas.** All five, before D3. Mechanism is the builder's plus research, as delegated.
+
+### The session scope the owner set, in order
+
+1. **C** — (d-3), gated on its delta cert. **If the cert refutes, STOP and report; do not route
+   around it.**
+2. **D** — drop manifest item 4, *after* C lands so the fallback exists.
+3. **E** — merge the config gate with the `UNGATED` markers; file `R-CONFIG-GATE-V5-REGIME` as a
+   replacement.
+4. **F** — bind the genesis-config family, all five fields, one genesis-hash-covered bind.
+
+**Net scope moves DOWN:** one drop, one trivial addition, one item already owed, and a five-field
+bind that costs the same as two. *"That's buy-less-and-better with a number attached."*

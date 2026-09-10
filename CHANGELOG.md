@@ -54,6 +54,11 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `MinAttesterRep` and `LivenessRecoveryHeight` are re-classified consensus-critical. **Scope stated
   honestly:** the fixture validates a `Version: 1` block, so the v5 composition is not executed here
   (`R-CONFIG-GATE-V5-REGIME`); the v5 twin is covered by `TestM1A3_V4V5ParityOracle`.
+  **Merged with the owner's condition:** every declaration citing a `validate_v5_*` file carries an
+  `UNGATED: R-CONFIG-GATE-V5-REGIME` marker in the DECLARATION and in the FAILURE TEXT, not only the
+  file header — `scripts/check_source_gates.py`'s own convention, applied to this gate's declaration
+  table so a reader of a passing report cannot mistake a justification for evidence the test
+  produced. A v5 citation without a marker is RED (ablation A9).
 
 ### Changed
 - **The relay lane is disclosed as UNFIT FOR THE EDGE TIER and stays off at every tier (`D-RC-POSTURE-2026-09-09` (1),

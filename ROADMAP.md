@@ -239,56 +239,47 @@ Nothing else in this file is owed to the owner.
 The DIRECTION is certified and the BUY stands; the build is gated on five conditions, two of which
 correct the change as it was bought.
 
-**⚠ ALL THREE WERE RE-PRICED THE SAME DAY — `D-FREEZE-REPRICE-2026-09-10`. The freeze deadline is
-SOFT pre-launch** (genesis and format can both still move; silt already moved genesis once,
-`D-GENESIS-MOVE-2`). **Its real currency is re-running graded field runs and delaying the external B8
-engagement — days and cloud spend, not permanence. "Or it costs an era" is WITHDRAWN as a reason to
-buy anything.** Every open D1 item is re-read with that clause deleted, and what does not survive on
-merit comes OUT of the train. The freeze remains the forcing function and the B8 gate — still freeze,
-still soon — but it is priced in re-runs and calendar.
+**⚠ ALL SIX CALLS (A-F) ARE NOW DECIDED — `D-FREEZE-CALLS-CDEF-2026-09-10`. NOTHING IS OWED TO THE
+OWNER UNTIL D1 LANDS**, when he reads the one-page *what is frozen, and what can never change without
+a new era*, re-checked against the manifest's FINAL content.
 
-- **A. The chain id in the v5 preimage — BUY, unchanged, on the leg that was always load-bearing.**
-  The deadline leg is void; the SCHEMA leg stands alone: silt named CanonicalVote as its settled
-  corner, `ChainID` is in it, and dropping it **repeats the #397 scar inside the very fix meant to pay
-  it back**. The I5 break is **live on the two test networks today**: `consensusSigDomain` is constant
-  across every silt network and the genesis moved 2026-09-07, so one key honestly precommitting at the
-  same `(h, r)` on both yields a VALID equivocation proof on either, and `apply()` evicts permanently.
-  Cost is one class-3 (box-owned) `HeadRef` field — **the freeze read-set does not move**. Bought
-  because it is correct; if genesis can move freely this gets EASIER, not harder.
-- **B. The pricing ask is WITHDRAWN — do not spend a session on it.** It was asked because it set a
-  deadline, and it barely does now. What remains is small and unchanged: make the standing predicate
-  correct (**"was bonded at that height,"** late-reveal preserved) and let the planner sequence it
-  against the last graded run. `R-SLASH-CULPRIT-ADMISSIBILITY` keeps its row and loses its pricing
-  sub-task. (The measured fact stands: route (C) makes junk leaves ~2.8x cheaper.)
-- **C. (d-3) RE-JUSTIFIED ON CORRECTNESS — recommend BUY under a RESTATED value.** Its advertised
-  value fell twice (*"removes the face"* -> a 40x shrink; *"three residuals"* -> one). Read at source,
-  the real merit is larger and different: **(d-3) retires `Pruned`, the declared-identity field, for
-  v5.** `Block.Hash()`'s own comment (`core/chain/chain.go:756-765`) states the defect — *"the attack
-  is … KEEPING `Pruned` and the real signatures while mutating the body … none of them is covered by
-  `Hash()` once the block is pruned"* — and notes it is **the third time that comment shipped a false
-  safety claim**. Today's defence is a DISCIPLINE plus an owed proof (`R-CARRIER-PRUNED-HASH`); (d-3)
-  makes a pruned v5 block **recompute its own hash from what it retains**, converting both into a
-  structural property. **What it protects: the integrity of a pruned block's retained
-  `LastCommit`/`StateRoot`/`Entries`/`Revocations`/`Slashes`, which today is covered by nothing.**
-  Honest cost: `bodyHash` becomes version-dependent, `IsPruned()` spans six non-test files, the CD-0
-  carrier pin moves, and **era-1/2 keep the old rule forever** — it ADDS a branch rather than deleting
-  one. Needs its own delta cert. **OWNER takes it individually.**
-- **D. NEW — DROP manifest item 4 (the `IssuerKeyReg` PoP slot, reserved inert).** Recommendation from
-  the clause-deleted audit. Reserving an INERT, unpopulated field buys exactly one thing: not paying
-  an era later. **Delete the era cost and it buys nothing.** It is the same error the manifest
-  certification names twice — it refutes the A-axis tag reservation on this ground as its own item 5
-  (already closed), and warns *"Do NOT propose a reserve-only hedge"* about (d-3). Item 4 survived
-  only because the era clause still stood. **Dropping it removes a real surface:** `IssuerKeys` is UNPRUNABLE like `Slashes`, so at the
-  count cap the slot adds `4,096 x 4,096` = **16 MiB per block — a second permanent surface EQUAL to
-  `SlashesBytesCap`**, the very surface `R-NEST-GATE` just measured being weaponised. If a PoP is ever
-  needed, (d-3)'s option beta folds `PoPDigest` in and makes the bytes PRUNABLE, so buying item 3 is
-  the better hedge and it is bought on correctness.
+**The frame that decided them: the freeze deadline is SOFT** (`D-FREEZE-REPRICE-2026-09-10`) — genesis
+and format can both still move pre-launch. Its real currency is re-running graded field runs and
+delaying the external B8 engagement: days and cloud spend, not permanence. ***"Or it costs an era" is
+WITHDRAWN as a reason to buy anything.***
 
-**The rest of the manifest survives the clause-deleted re-read:** item 1 `tagRevLogSize` (a wrong `m`
-is a WRONG-ACCEPT and every floor box dies permanently at the first takedown block after its pin);
-item 2 the digest set 5 -> 3 (a REMOVAL, and free *while era-4 is dark* — an honest cost argument, not
-permanence); items 7-13 are DoS bounds and wrong-accept closes with independent merit, or already
-DECLINED / NOT-THIS-RELEASE.
+- **A — the chain id in the v5 preimage: BOUGHT**, on the SCHEMA leg alone. CometBFT's
+  `CanonicalVote` was named as the settled corner and carries `ChainID`; dropping it repeats the #397
+  scar inside the very fix meant to pay it back. The I5 break is **live on the two test networks
+  today**. One class-3 (box-owned) `HeadRef` field; the freeze read-set does not move.
+- **B — the pricing ask: WITHDRAWN.** What remains is small: make the standing predicate correct
+  (**"was bonded at that height,"** late-reveal preserved).
+- **C — (d-3) `AnswerDigest`: BOUGHT**, gated on its delta cert (commissioned 2026-09-10; **if it
+  REFUTES, stop and report — do not route around it**). Bought on the **third-time rule**, not on
+  elegance: *a proof that a property holds today is not a structure that makes violating it
+  impossible.* `R-CARRIER-PRUNED-HASH` would prove the discipline holds now; any later change can
+  silently violate it. (d-3) makes the retained body **self-covering**, so violation becomes
+  impossible rather than absent. `Block.Hash()`'s own comment records this safety claim shipping
+  false **three times**. The dual-era branch survives: it keys on `BlockVersion`, which already
+  discriminates eras everywhere.
+- **D — manifest item 4 (the inert PoP slot): DROPPED.** Reserving an unpopulated field bought only
+  "not paying an era later", and that cost is void. Keeping it costs **16 MiB per block of permanent
+  unprunable surface** — the exact surface `R-NEST-GATE` measured being weaponised. **Sequenced AFTER
+  C**, so option beta's prunable-`PoPDigest` fallback exists. If `demandMsg` proves insufficient
+  post-freeze, add the field then and pay in re-runs and calendar.
+- **E — the config-in-consensus gate: MERGE**, with one condition drawn from silt's own lint. Every
+  declaration citing a `validate_v5_*` file carries **`UNGATED: R-CONFIG-GATE-V5-REGIME`** in the
+  DECLARATION and the FAILURE TEXT, not only the header (`scripts/check_source_gates.py`'s
+  convention). **Built and gated** — a v5 citation with no marker is RED (ablation A9). The gate's
+  limit is regime coverage, not efficacy: it found the third and fifth unbound fields, and its
+  reflective half caught two `Config` fields a hand-read had missed.
+- **F — the genesis-config family: ALL FIVE FIELDS, ONE CHANGE, BEFORE D3.** The scope growth is
+  **nominal, not material** — the genesis-hash-covered shape binds a FAMILY, so two fields to five is
+  adding entries to a digest. **And the two that arrived after the ruling are the SHARPEST of the
+  set:** an activation-height divergence needs **no malice at all** — two honest operators with
+  different values flip eras at different heights and validate different blocks under different
+  rules. *That is not a hole waiting for an attacker; it is a scheduled fork that fires on a date.*
+  **You cannot freeze an era boundary whose value nothing binds across replicas.**
 
 **Also DECIDED 2026-09-10 (`D-PREIMAGE-CERT-2026-09-10`), needing nothing further from the owner:**
 `MinBond` is a **defect to fix**, bound to the CHAIN rather than to a local assertion, and it should
@@ -670,7 +661,7 @@ verdict is rendered by the external red-team + the field test, together.
 | `R-SUBFRAME-SIZE-ORACLE` | ACTIONABLE | **Lane E3 (red-team) — SCHEDULED AHEAD OF THE C6 FLIP by the owner, 2026-09-09** (`D-RC-POSTURE-2026-09-09` (8)): privacy is a Part-0 corner, an immutable rather than a tunable, and the fix window NARROWS once the format freezes, so this pass runs before the economy flip and before D3 wherever a fix would touch format. (The repair statistic's normalisation and node-level granularity WAIT, by the same call — a measurement does not hold a corner.) · TWO privacy reductions in the same direction from one change, both measured and both recorded in `docs/threat-catalog.md` under the existing F3 entry as a CATALOG UPDATE, explicitly not a mitigation: (i) padding previously blurred a sub-frame object's size to "somewhere in one chunk" and its exact byte length is now an oracle to any caretaker (layout) and any holder (stored shard length) over the whole class ≤ `chunkSize − 9`; (ii) convergent dedup for sub-frame objects now SPANS `-chunk-size` — the same payload yields ONE root at 64 KiB / 256 KiB / 1 MiB (a multi-frame object still yields two, which bounds it), so chunk size was an accidental salt against the confirmation attack and no longer is. Closer: a red-team pass on this surface before the flip; inventing a salt without one is the unreviewed novelty B8 forbids | silt-reviews/principle-engineer/RULING-c5-preflip-closers-399f842-2026-09-09.md | — |
 | `R-ANCHOR-BEARER-TRANSFER` | ACTIONABLE | Lane C5 · red-team: a demand anchor is a bearer instrument — its presenter need not be its payer (the refund therefore pays only an existing account); one pass on the transfer surface before R2.4 | silt-reviews/research/research-outcome/R2.9-session-remainder-refund-and-live-anchor-cap-RESEARCH-CERTIFICATION-2026-09-06.md | — |
 | `R-SLASH-CULPRIT-ADMISSIBILITY` | ACTIONABLE | Lane D1 · Researcher -> **OWNER** (call B): `validateSlashes` (`core/chain/chain.go:2200-2213`) has NO chain-membership and NO culprit-standing check, so `apply()` mints a permanent SMT leaf for any 32-byte key named in an accepted proof -- no bond, no coalition. Route (C) (`O(1)` evidence) makes this **~2.8x CHEAPER**: ~23,857 -> ~66,842 permanent leaves per 16 MiB block. **This RE-PRICES owner call 3** (state growth bounded by standing), which was deliberately sequenced to wait for exactly this number -- and it runs AGAINST the expectation, since `O(1)` evidence bounds the face from the cap side while making each junk leaf cheaper. CometBFT and Ethereum both gate evidence on set membership; silt gates on nothing. Closer: the culprit-admissibility predicate, research-gated -- and NOT bolted on blind, since a naive `bonded > 0` makes an unbonded double-signer unslashable (the owner's own trap: **"was bonded at that height"**, never "currently bonded"). MEASURE before designing (gate G-PRE-9 also converts the ~251 B derived evidence size) | silt-reviews/research/research-outcome/V5-SIGNATURE-PREIMAGE-HEIGHT-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md | — |
-| `R-CONFIG-GATE-V5-REGIME` | ACTIONABLE | Lane D1 · Builder: `TestConsensusVerdictIsNotAFunctionOfLocalConfig` validates a **`Version: 1`** block (`core/chain/redteam_consensus_test.go:61`) and `ValidateCommit` dispatches to the v5 composition only at `Version >= 5` (`core/chain/chain.go:3020`). Measured statement coverage under that test ALONE: `validate_v5_predicates.go` **0/178**, `validate_v5_quorum.go` **0/229**, `validate_v5.go` **0/53**, `stateview_live_v5.go` **0/64** — so the gate pins the ERA-1 twin `RequiredQuorum`, and restoring the same #380 defect in `v5RequiredQuorum` (`validate_v5_quorum.go:350`) **alone leaves it GREEN**. Found by blind PE review (F-1), which also verified the v5 twin is NOT unguarded: `TestM1A3_V4V5ParityOracle` covers it. Closer: a v5 regime that **REPLACES** the era-1 one (the reviewer's explicit advice is to replace, not to add regimes six through nine). Couples to `R-CONSENSUS-CONFIG-UNBOUND`: `Era3/Era4ActivationHeight` are simultaneously the fields whose probes were dead by one height, the fields that escaped the old prose-keyed pin, and the boundary the D1 freeze is about | silt-reviews/principle-engineer/ruling-config-in-consensus-gate-05b527c.md | — |
+| `R-CONFIG-GATE-V5-REGIME` | ACTIONABLE | Lane D1 · Builder: `TestConsensusVerdictIsNotAFunctionOfLocalConfig` validates a **`Version: 1`** block (`core/chain/redteam_consensus_test.go:61`) and `ValidateCommit` dispatches to the v5 composition only at `Version >= 5` (`core/chain/chain.go:3020`). Measured statement coverage under that test ALONE: `validate_v5_predicates.go` **0/178**, `validate_v5_quorum.go` **0/229**, `validate_v5.go` **0/53**, `stateview_live_v5.go` **0/64** — so the gate pins the ERA-1 twin `RequiredQuorum`, and restoring the same #380 defect in `v5RequiredQuorum` (`validate_v5_quorum.go:350`) **alone leaves it GREEN**. Found by blind PE review (F-1), which also verified the v5 twin is NOT unguarded: `TestM1A3_V4V5ParityOracle` covers it. **MERGED with the owner's condition 2026-09-10**: every declaration citing a `validate_v5_*` file now carries an `UNGATED: R-CONFIG-GATE-V5-REGIME` marker in the DECLARATION and the FAILURE TEXT (`scripts/check_source_gates.py`'s convention), enforced RED and driven by ablation A9. Closer: a v5 regime that **REPLACES** the era-1 one (the reviewer's explicit advice is to replace, not to add regimes six through nine). Couples to `R-CONSENSUS-CONFIG-UNBOUND`: `Era3/Era4ActivationHeight` are simultaneously the fields whose probes were dead by one height, the fields that escaped the old prose-keyed pin, and the boundary the D1 freeze is about | silt-reviews/principle-engineer/ruling-config-in-consensus-gate-05b527c.md | — |
 | `R-CONSENSUS-CONFIG-UNBOUND` | ACTIONABLE | Lane D1 · Builder + Researcher -> **OWNER** ratifies the shape: `MinBond` and `MinBondBytes` change the v5 VALIDITY VERDICT (`validate_v5_predicates.go:246-249`, `validate_v5_quorum.go:222`/`:225`/`:522`, all verified) while being bare command-line flags (`cmd/silt/daemon.go:905-916`) -- two honest replicas with different `-min-bond` disagree on the same block. **I1, the #380 class, third instance**, MEASURED by a driven divergence probe in both quorum regimes (`Quorum` is CLOSED on the objective path; ablating the #380 fix reddens it 2 -> 3 fields). silt names the class in prose as *"consensus-critical genesis config"* (`core/chain/chain.go:190`, `:253`) with **no enumeration and no enforcement**. **The `SlashesBytesCap` refuse-to-start does NOT transfer** -- that invariant is locally checkable arithmetic; `MinBond` divergence is not locally observable, so a start-up assertion has nothing to assert against and would ship a green gate that enforces nothing. **GATE LANDED 2026-09-10**: `core/chain/TestConsensusVerdictIsNotAFunctionOfLocalConfig` -- reflective over every `chain.Config` field (an undeclared field is RED, which caught `Era3ActivationHeight`/`Era4ActivationHeight` that a hand-read had missed), five driven regimes, four-ablation battery verified by exit code. It measured a THIRD unbound field, **`Anchors`** (diverges in the young-anchors launch window), and PINS the unbound set so a fourth instance fails immediately. `Quorum` diverges only on the sanctioned legacy/trusted-opt-out legs, so the #380 fix is now held by a driven assertion rather than prose. Fourteen fields report UNPROVEN, never safe (simplicity rule 7). Closer: bind it to the chain -- (1) commit the genesis-config family into genesis-hash-covered state so divergence is detected at HANDSHAKE, (2) derive it from committed state, or (3) a network-identity digest checked at peering; research prices the three. **LANDS BEFORE D3** — reason corrected 2026-09-10 (`D-FREEZE-REPRICE-2026-09-10`): not because a soft freeze locks the repair, but because **D3 gates the B8 engagement and the longest-lead item on the roadmap must not be spent attacking an artifact with a known I1 divergence.** Exploitability LOW (someone must actually set a different value), so it is D1 scope, not an emergency. Canon: `docs/build-process.md` rule 8 | silt-reviews/research/research-outcome/V5-SIGNATURE-PREIMAGE-HEIGHT-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md | — |
 | `R-BIG-EVIDENCE-UNSLASHABLE` | ACTIONABLE | Lane D1 · Builder -> **OWNER** (a FORMAT item): a double-signer whose evidence pair exceeds `SlashesBytesCap` keeps its on-chain seat, so accountable safety degrades to plain safety -- attribution survives, eviction is lost. Named in the R0.6 delta and the freeze-manifest certifications since 2026-09-03 but **never given a register row until 2026-09-10**, which is why its status kept being asserted from prose rather than tracked. Its reachability is now MEASURED, not theorized (`R-NEST-GATE`): a lone proposer with throwaway keys arms it at shipped `DefaultConfig` -- no bond, no coalition, no misconfiguration. **CLOSER: the v5 signature-preimage change** (`(height, round, phase)` in `consensusSigBytes`), which makes evidence `O(1)` (~251 B derived, unmeasured until G-PRE-9) so no legitimate proof can be priced out of the block. BOUGHT by the owner 2026-09-10 (`D-PREIMAGE-BUY-2026-09-10`, call 1), GATED on its delta cert. **(d-3) does NOT close it** -- that claim is C-3/C-4 of `R-CERT-REDERIVE` and it fell; (d-3) is a ~40x shrink. Row closes when the preimage change lands and `R-NEST-GATE` flips from reporting to asserting | silt-reviews/research/research-outcome/SLASHCAP-NESTED-EVIDENCE-FIXED-POINT-RESEARCH-CERTIFICATION-2026-09-10.md | — |
 | `R-CERT-REDERIVE` | ACTIONABLE | Lane D1 · Researcher (owner) → the four sentences close individually: the 2026-09-10 nested-evidence certification's §8 fells FIVE prior sentences (C-1..C-5). C-5 was the OWNER-RATIFIED one and is CLOSED by owner call 2 (`D-PREIMAGE-BUY-2026-09-10`). The other four are certification sentences whose CLAIMS now have no support, and the reviewing engineer's instruction is that annotating them is NOT re-deriving them. **C-1** (I5-cross-height cert §7): the two constraints do not bracket -- the bracket is EMPTY; 16 MiB was chosen against a RESTRICTED floor (largest legitimate pair among blocks whose `Slashes` is empty) that was never stated, so re-derive the floor the value actually satisfies and state the restriction. **C-2** (R0.6 delta V-2): "an honest-shaped pair is always slashable" is gone; the inequality survives only as arithmetic about the NON-`Slashes` body -- scope every citation to that (ledger half done in `D-SLASHCAP-ROUTE`'s SUPERSESSION note; `core/chain/chain.go:412-414` already corrected). **C-3** (R0.6 delta §5.2): re-derive what (d-3) actually delivers, on the HEADER-ONLY proof route, since the measurement refuted the reg-laden route both the PE table and the cert modelled. **C-4** (freeze-manifest cert §4.3): falls in its first third -- `R-LATE-REVEAL` and `R-CARRIER-PRUNED-HASH` close as stated, `R-BIG-EVIDENCE-UNSLASHABLE` does not; **this one is INSIDE THE FREEZE MANIFEST so it is D1 content, not bookkeeping**, and the spec repair (the v5 preimage carries a single `SlashesDigest`, never a `Slashes'` copy) is a FORMAT question the owner takes individually. Item 3 stays BOUGHT on its surviving two-thirds. Row closes when all four have a re-derived replacement on record | silt-reviews/research/research-outcome/SLASHCAP-NESTED-EVIDENCE-FIXED-POINT-RESEARCH-CERTIFICATION-2026-09-10.md | — |

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/nerolabs/silt/ports"
@@ -48,6 +49,8 @@ import (
 //	A6 DELETE a field's perturbation entirely ..................... RED  (added after review)
 //	A7 weaken the era probe to a dead value (H=2 at height 1) ..... RED  (added after review)
 //	A8 restore everything ......................................... GREEN
+//	A9 strip an UNGATED marker off a v5-citing declaration ........ RED  (owner merge condition)
+//	A10 restore everything ........................................ GREEN
 //
 // A6 and A7 exist because a BLIND review broke the first version of this gate with exactly those
 // two moves, and the first fix for A6 was itself insufficient — it stayed GREEN until the
@@ -99,6 +102,15 @@ type configDecl struct {
 	// readIn names the regimes that actually exercise this field. A LOCAL field is only
 	// DRIVEN-SAFE if one of these regimes ran; otherwise it reports UNPROVEN.
 	readIn []string
+	// ungated marks a declaration whose justification cites code this gate does NOT execute.
+	// The convention is scripts/check_source_gates.py's own: a structural claim must name its
+	// runtime cover, or state plainly that it has none. This gate validates a Version: 1 block,
+	// so every citation of a validate_v5_* file is justification, NOT evidence this test produced
+	// — and the marker must travel with the DECLARATION and into the FAILURE TEXT, not sit only
+	// in the file header where a reader of a failure never sees it. Owner condition on the merge
+	// of this gate, 2026-09-10.
+	ungated string
+
 	// sanctionedIn names the regimes where divergence is CORRECT and intended. Config.Quorum
 	// IS the count floor on the legacy and trusted-opt-out legs — that is the design. It is
 	// NOT a validity term on the objective path, and divergence there is the #380 defect.
@@ -114,6 +126,7 @@ var configDecls = map[string]configDecl{
 		class:   classConsensusCritical,
 		why:     "#380: on the objective path this is NOT a validity term — RequiredQuorum defers to the chain-derived bftThreshold(N). It survives as the proposer-side GATHER target only. On the legacy/opt-out leg it IS the count floor, and that leg is a trusted deployment.",
 		binding: "chain-derived: RequiredQuorum()/v5RequiredQuorum() ignore it on the objective path (D-CONSENSUS-ARMING (20), G-380-B)",
+		ungated: "R-CONFIG-GATE-V5-REGIME — v5RequiredQuorum is NOT executed here; the era-1 twin RequiredQuorum is. Restoring the #380 defect in the v5 twin alone leaves this gate green. Runtime cover for the v5 twin: TestM1A3_V4V5ParityOracle.",
 		readIn:  []string{regimeLegacy, regimeTrustedOptOut, regimeObjective},
 		// The #380 PIN. Legacy and trusted-opt-out are trusted deployments where the local
 		// count floor is the intended rule; the objective path must be chain-derived.
@@ -122,12 +135,14 @@ var configDecls = map[string]configDecl{
 	"MinBond": {
 		class:   classConsensusCritical,
 		why:     "Gates Reject in three v5 validity paths: proposer qualification (validate_v5_predicates.go:246-249), bond-reg admission (validate_v5_quorum.go:222) and the qualification filter (:522). Divergent values mean two honest replicas disagree on the same block — I1.",
+		ungated: "R-CONFIG-GATE-V5-REGIME — those three v5 sites are NOT executed here (measured: validate_v5_predicates.go 0/178, validate_v5_quorum.go 0/229). The divergence this gate measures is on the era-1 path; the v5 citation is the classification's justification, not this test's evidence.",
 		binding: "", // NOTHING. R-CONSENSUS-CONFIG-UNBOUND.
 		readIn:  []string{regimeObjective},
 	},
 	"MinBondBytes": {
 		class:   classConsensusCritical,
 		why:     "The anti-release floor is a second bond-reg admission threshold (validate_v5_quorum.go:225), same class and same failure as MinBond.",
+		ungated: "R-CONFIG-GATE-V5-REGIME — as MinBond: validate_v5_quorum.go is not executed here.",
 		binding: "", // NOTHING. R-CONSENSUS-CONFIG-UNBOUND.
 		readIn:  []string{regimeObjective},
 	},
@@ -479,7 +494,11 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 					}
 				}
 			}
-			divergingCritical = append(divergingCritical, fmt.Sprintf("%s in %v [%s]", f, where, bind))
+			line := fmt.Sprintf("%s in %v [%s]", f, where, bind)
+			if d.ungated != "" {
+				line += " (UNGATED: " + d.ungated + ")"
+			}
+			divergingCritical = append(divergingCritical, line)
 		case d.class == classLocal && driven[f]:
 			drivenSafe = append(drivenSafe, f)
 		default:
@@ -502,6 +521,24 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 			"A consensus quantity must be a function of the CHAIN. Either bind it to the chain, or\n"+
 			"re-declare the field with the binding that actually makes it swarm-uniform.",
 			len(violations), violations)
+	}
+
+	// EVERY v5 CITATION MUST NAME ITS COVER. scripts/check_source_gates.py's rule, applied to this
+	// gate's own declaration table: a justification that cites code this test does not execute is
+	// a structural claim, and it must say so or name the test that does observe it. Without this,
+	// a future reader sees `validate_v5_quorum.go:222` in a passing gate's table and reasonably
+	// concludes the gate exercised it.
+	for _, f := range fields {
+		d := configDecls[f]
+		if !strings.Contains(d.why+d.binding, "validate_v5_") && !strings.Contains(d.binding, "v5RequiredQuorum") {
+			continue
+		}
+		if d.ungated == "" {
+			t.Fatalf("%s cites a validate_v5_* site in its justification but carries no `ungated` marker.\n"+
+				"This gate validates a Version: 1 block and does not execute the v5 composition, so such a\n"+
+				"citation is JUSTIFICATION, not evidence this test produced. Name the residual and the\n"+
+				"runtime cover (scripts/check_source_gates.py's convention), or drop the citation.", f)
+		}
 	}
 
 	// EVERY FIELD MUST HAVE A PROBE. A field perturbConfig cannot move is a field this gate
