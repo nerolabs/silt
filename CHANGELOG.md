@@ -301,6 +301,45 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   of silt's derived parameters for the same defect shape, partitioned by whether a parameter FREEZES at D3.
 
 ### Fixed
+- **Five asserting tests were running in NO CI job, and a lint now stops a sixth from going dark
+  (`scar:short-run-is-zero-execution-2026-09-10`, count 2).** Every `go test` invocation in
+  `.github/workflows/ci.yml` passed `-short` except the two that run `./e2e`. Fifteen-odd tests
+  `t.Skip` under `-short`, and `go test` reports a skip as a pass — so the required job went green
+  having executed none of them. Driven with the required job's exact shape: `--- SKIP:
+  TestSlashesBytesCapWorstCaseCost`, `--- SKIP: TestReconcileMemoryBounded_563`, `PASS`,
+  `SHORT_EXIT=0`. **A green check containing zero execution.** Instance 1 of this scar was a *seat*
+  choosing `-short` by hand and recorded the owed gate — *"CI must fail any artifact whose only suite
+  evidence is a `-short` run"* — which was never encoded; instance 2 is the workflow itself, so it
+  recurred on every push.
+  **The five that assert now run unshortened in the required `Go — vet, fmt, test` job**, by name and
+  with a no-`--- SKIP` assertion (the idiom the two R2.9a anchor steps already use, because a `-run`
+  filter matching nothing still exits 0): `TestRNestGate_SelfArmorMeasurement` (the nested-evidence
+  fixed point), `TestReconcileMemoryBounded_563` (the #563 field-confirmed OOM budget),
+  `TestSlashesBytesCapWorstCaseCost` (the derivation witness for the frozen `SlashesBytesCap`),
+  `TestGateC3_1_ServeGiniHonestNullIsMixDependentNotSampleSizeDependent`, and
+  `TestReconstructMemoryFootprint_SimVsProd`. Measured cost 36.9 s of test time on a throttled 2-core
+  box, dominated by the nest-gate harness at 29.8 s. **Not** the race job:
+  `TestReconcileMemoryBounded_563` self-skips under `-race` too.
+  **And `scripts/check_short_dark_tests.py` closes the general case**, so a seventh test cannot go
+  dark silently. The naive predicate — "is the name mentioned in a workflow?" — reports 51 and is
+  wrong: the whole `e2e` package self-skips and is named nowhere, because the `e2e` job runs it by
+  package without `-short`. The unit is the INVOCATION: a test is dark iff it self-skips **and** every
+  merge-gating `go test` covering its package passes `-short`. That gives **13** on the tree before
+  this change, **8** after. Two scoping calls are load-bearing and stated in the script: `release.yml`
+  runs `go test ./...` unshortened but triggers on a version TAG, so it cannot gate a PR and does not
+  count; and step `name:` lines are labels, not commands — `- name: go test ./e2e` would otherwise
+  have granted false coverage, which is this same defect one level up. The eight remaining are
+  baselined with written reasons in `scripts/short_dark_tests_allowlist.txt`; an unreasoned row FAILS,
+  a row naming a cover test that does not exist or is itself dark FAILS, and a row for a test that is
+  no longer dark FAILS as stale.
+- **`SlashesBytesCap`'s comment said "G-3 measurement pending" while `docs/decisions.md` said "G-3
+  measured".** Both cannot be current; the code comment was the stale half. It now carries the
+  measured figures — 5 reg-laden proofs of 3.00 MiB fill the cap, 15.0 MiB resident after decode —
+  **and the fact that makes them honest: `TestSlashesBytesCapWorstCaseCost` is a derivation WITNESS,
+  not a derivation gate.** All four figures go through `t.Logf` and are asserted by nothing, so it
+  cannot go RED on figure drift. The wall time demonstrates it: 11.5 ms when recorded, 37.8 ms
+  re-running it on a throttled box — same green. Wiring it into CI buys execution of its
+  preconditions, not protection of its numbers.
 - **G-1 CLOSED: the floor box's entry assertion covers BOTH arms of `objective()`, unblocking the v5 digest 5 → 3
   retirement (freeze-manifest item 2; cert §4.11).** `objective() = cfg.MinBond > 0 && verifyBond != nil`, but the box
   entry asserted only `verifyBond == nil`. So a box with a **wired** verifier and `cfg.MinBond == 0` passed the entry,

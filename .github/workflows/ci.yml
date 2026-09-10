@@ -97,6 +97,49 @@ jobs:
             echo "$out" | grep '^--- SKIP'; exit 1
           fi
           echo "OK — every named untagged gate ran and passed"
+      # EVERY OTHER `go test` IN THIS FILE PASSES `-short`, AND THESE FIVE TESTS SKIP
+      # UNDER IT. Measured: they executed in NO CI job at all — `--- SKIP` on each, exit
+      # 0, a green check standing for zero execution (scar:short-run-is-zero-execution-
+      # 2026-09-10, count 2; instance 1 was a seat choosing -short by hand, this one is
+      # the workflow itself, so it recurred on every push). NO `-short` here, deliberately.
+      #
+      # These are the ones that ASSERT, so a skip costs real coverage. Four carry
+      # substantive t.Fatalf regressions: the nested-evidence fixed point ("Q2/Q3
+      # REGRESSED"), the #563 field-confirmed OOM budget ("#563 REPRODUCED"), the C3
+      # serve-Gini honest-null pin, and the §0.1 reconstruct resident floor. The fifth,
+      # TestSlashesBytesCapWorstCaseCost, asserts only PRECONDITIONS — its four figures
+      # go through t.Logf, so running it buys execution, not protection of the numbers
+      # (said in full at core/chain.SlashesBytesCap). It is here because it is the
+      # derivation witness for a FROZEN era-4 parameter and must at least run.
+      #
+      # NOT in the race job: TestReconcileMemoryBounded_563 self-skips under -race too,
+      # so -race would put it straight back in the dark.
+      #
+      # Measured on a throttled 2-core box: 36.9 s of test time, 58 s wall including the
+      # test-binary builds. TestRNestGate_SelfArmorMeasurement dominates at 28-30 s; the
+      # other four total ~6 s. -timeout 20m leaves headroom on a slower runner.
+      #
+      # scripts/check_short_dark_tests.py READS THIS `-run` LIST as the source of truth
+      # for what runs unshortened. Dropping a name here does not just lose the run — it
+      # turns that test dark, and the lint goes red in the website job.
+      - name: the -short-dark asserting tests really ran (no other job executes these)
+        run: |
+          out=$(go test -count=1 -v ./core/chain/ ./cmd/silt/ ./core/erasure/ -run '^(TestRNestGate_SelfArmorMeasurement|TestGateC3_1_ServeGiniHonestNullIsMixDependentNotSampleSizeDependent|TestReconcileMemoryBounded_563|TestSlashesBytesCapWorstCaseCost|TestReconstructMemoryFootprint_SimVsProd)$' -timeout 20m 2>&1)
+          echo "$out"
+          for tst in \
+            TestRNestGate_SelfArmorMeasurement \
+            TestGateC3_1_ServeGiniHonestNullIsMixDependentNotSampleSizeDependent \
+            TestReconcileMemoryBounded_563 \
+            TestSlashesBytesCapWorstCaseCost \
+            TestReconstructMemoryFootprint_SimVsProd ; do
+            echo "$out" | grep -q "^--- PASS: ${tst} " || {
+              echo "::error::${tst} did not PASS unshortened. Either it was renamed (fix BOTH lists in this step), it skipped, or it failed. A -run filter matching nothing still exits 0, which is why this asserts by name."; exit 1; }
+          done
+          if echo "$out" | grep -q '^--- SKIP'; then
+            echo "::error::a test SKIPPED in the step whose entire purpose is that these do not skip."
+            echo "$out" | grep '^--- SKIP'; exit 1
+          fi
+          echo "OK — five formerly-dark tests executed unshortened, none skipped"
 
   race:
     name: Go — race detector
@@ -344,6 +387,8 @@ jobs:
         run: python3 scripts/check_conflict_markers.py
       - name: Scar-lint — every residual named in ROADMAP.md has a register row with a bucket and a closer (scar:residual-backlog-unbucketed-2026-09-06)
         run: python3 scripts/check_residual_register.py
+      - name: Scar-lint — no test may skip under -short in every merge-gating job (scar:short-run-is-zero-execution-2026-09-10)
+        run: python3 scripts/check_short_dark_tests.py
 
   docs-shipped:
     name: Docs ship with code

@@ -434,8 +434,23 @@ const RegCap = 256
 // is disclosed to the R4.4 external brief. PE ruling
 // RULING-R0.6-i5-evidence-recompute-3131d5a-2026-09-03 F-2 raised it.
 //
-// PROVISIONAL VALUE — OWNER RATIFIES on immutable-#8 grounds (G-3 measurement pending;
-// TestSlashesBytesCapWorstCaseCost reports the resident/decode/validate cost at the cap).
+// PROVISIONAL VALUE — OWNER RATIFIES on immutable-#8 grounds. G-3 is MEASURED, not
+// pending (this line read "G-3 measurement pending" until 2026-09-10, while
+// docs/decisions.md already recorded the measurement; the code comment was the stale
+// half). TestSlashesBytesCapWorstCaseCost reports, at the shipped defaults: 5 reg-laden
+// proofs of 3.00 MiB each fill the cap (15,733,931 B on the wire), 15.0 MiB resident
+// after decode, validateSlashes in single-to-tens of milliseconds.
+//
+// AND THAT TEST IS A DERIVATION WITNESS, NOT A DERIVATION GATE. Its own doc says so —
+// "the R0.6 G-3 MEASUREMENT harness, not a gate". All four figures go through t.Logf
+// and are asserted by nothing; its only t.Fatal calls are preconditions (the double-sign
+// must be provable; an at-cap field must validate). So it CANNOT go RED on figure drift.
+// The wall time is the plainest demonstration: 11.5 ms when first recorded, 37.8 ms on a
+// throttled 2-core box re-running it — same green. Do not read its pass as protection of
+// the numbers above; if a change moves them, re-run it by name and re-derive the value.
+// It runs unshortened in the required CI job only because it would otherwise execute
+// nowhere at all (scar:short-run-is-zero-execution-2026-09-10) — that buys EXECUTION of
+// its preconditions, not a bound on its figures.
 // Derivation from shipped bounds, not taste: an honest block is at most the CONFIGURED
 // per-block budgets (defaults 2 MiB of BondRegs + 64 KiB of entries, cmd/silt/daemon.go
 // -max-bondreg-bytes-per-block / -max-entry-bytes-per-block) plus a small header, so one

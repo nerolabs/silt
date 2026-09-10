@@ -1394,7 +1394,7 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   > two ordinary ~4.14 MiB reg-laden proofs; the driven construction reaches the same armored state with
   > **header-only** 687 B proofs, which is far cheaper for an attacker to build. Anything that prices the
   > attacker's cost must use the header-only route.
-  > **(iii)** The close that does exist is not (d-3): `consensusSigBytes` (`core/chain/chain.go:1067`)
+  > **(iii)** The close that does exist is not (d-3): `consensusSigBytes` (`core/chain/chain.go:1076`)
   > omits **Height** from the signature preimage — "the height rides inside the hash" — which is the
   > entire reason evidence carries full bodies (`equivocation.go:54-60` says so). Putting
   > `(height, round, phase)` in the v5 preimage makes evidence `O(1)`, ~200 bytes **[the ~200 B figure
@@ -2872,7 +2872,7 @@ showing the one-byte value IS committed).
 
 ### Call 1 — BUY the signature-preimage change at D1, conditional on its delta cert
 
-**BOUGHT.** `consensusSigBytes` (`core/chain/chain.go:1067`) omits **Height** from the signed
+**BOUGHT.** `consensusSigBytes` (`core/chain/chain.go:1076`) omits **Height** from the signed
 preimage; the v5 preimage carries `(height, round, phase)`, after CometBFT's `CanonicalVote`.
 Evidence then becomes `O(1)` — **~251 B DERIVED, not the ~200 B first cited; unmeasured until gate G-PRE-9** — instead of two full `Block` bodies.
 
@@ -3445,7 +3445,7 @@ step-2a fix already proven in this repo for `StateRoot`/`LogRoot`. Mechanism, no
 ### The second refuted clause — `Slashes'` is unnecessary and harmful
 
 §4.3 reduces each embedded evidence block to *"its own era's header form"* — a recursively reduced
-COPY. **REFUTED:** `Prune()` never touches `Slashes` (`core/chain/chain.go:982-984`, verified:
+COPY. **REFUTED:** `Prune()` never touches `Slashes` (`core/chain/chain.go:990-992`, verified:
 *"Note that Prune does NOT recurse into Slashes: evidence bodies embedded in a committed block stay
 resident forever, which is why `SlashesBytesCap` bounds that slot"*), so the reduction buys nothing
 for the self-covering property — and it adds a **per-hash 16 MiB deep copy**, re-opening `#563`.
