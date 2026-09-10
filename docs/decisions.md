@@ -3468,3 +3468,92 @@ labelled as such in the cert. The builder independently verified the load-bearin
 (`chain.go:569-572`, `:822`, `:852-854`, `:2217`; `lastcommit_carrier_pins_test.go:35-37`). The cert
 also could not read the then-unmerged branch; that branch is now `main` @ `76bf707` and touched **no
 `.go` file** except the new divergence gate, so its reads stand.
+
+---
+
+## D-CFGBIND-CERT-2026-09-10 — the genesis-config bind is certified; membership corrects UPWARD to 17, and a live unbound consensus parameter was found OUTSIDE the gate's scope
+
+- **Status:** ✅ CERT RECEIVED, ⚠ GATED — 2026-09-10. Certification:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/GENESIS-CONFIG-FAMILY-BIND-RESEARCH-CERTIFICATION-2026-09-10.md`.
+  Answers owner call F (`D-FREEZE-CALLS-CDEF-2026-09-10`). **Direction CERTIFIED, mechanism
+  specified, membership corrected upward, four limbs GATED.**
+
+### The finding that changes the work — and it indicts the gate this session shipped
+
+**`-bond-label-k` (`BondLabelSamples`) is a live, shipped, UNBOUND consensus parameter, and it is
+sharper than anything in the owner's five.** Verified independently at source:
+
+- `core/bond/bond.go:489` — `if len(a.LabelIndices) != kk || len(a.LabelBundles) != kk { return false }`
+  — **exact equality against the verifier's OWN local value.**
+- `cmd/silt/daemon.go:930` wires it from local config:
+  `SetBondVerifier(node.SpaceTimeBondVerifier(cfg.BondVDFDelay, cfg.BondLabelSamples))`, reaching a
+  hard `Reject` at `core/chain/validate_v5_quorum.go:228`.
+- `cmd/silt/daemon.go:128` — the flag help states the coordination requirement *"prover and verifier
+  must MATCH … set it uniformly across the swarm"* **and in the same breath invites the change:**
+  *"Lower it only to shrink on-chain proof size, at a soundness cost."*
+
+**A node with `k = 32` rejects EVERY bond registration a `k = 64` swarm accepts** — not a straddling
+bond, all of them. `BondVDFDelay` is the same shape, latent.
+
+**Why the divergence gate missed it: its closed complement is closed over the WRONG SET.**
+`TestConsensusVerdictIsNotAFunctionOfLocalConfig` reflects over **`chain.Config`**; these fields live
+in **`node.Config`**. The gate's central claim — that a new field cannot be added without forcing a
+declaration — holds only inside the package it reflects over. Filed as `R-CONFIG-GATE-NODE-SCOPE`.
+
+### Membership — 17 IN, 5 OUT, and the exclusions each differ
+
+**IN:** the 15 `chain.Config` fields that reach a verdict, plus `BondLabelSamples` and `BondVDFDelay`.
+**This is absorbed by the owner's existing ruling** — he ruled the growth *"nominal, not material… a
+genesis-hash-covered bind covers a FAMILY, so going from two fields to five is adding entries to a
+digest."* The same reasoning carries 5 → 17.
+
+**OUT, each for a different and load-bearing reason:**
+
+| Field | Why out |
+|---|---|
+| `Archive` | retention only; never reaches a verdict |
+| `WSCheckpoint` | narrowing-only, and **sharing it would destroy weak subjectivity** — it is the operator's own trust anchor |
+| `MinProposerRep` / `MinAttesterRep` | **binding is INEFFECTIVE** — the input is the local `rep` view, so a shared threshold still diverges |
+| `LivenessRecoveryHeight` | **structurally unbindable** — set after launch, on a chain that by construction cannot commit it (`R-LIVENESS-RECOVERY-UNBOUND`, new) |
+
+### The mechanism
+
+- **Shape (1) CERTIFIED and needs no new machinery** — `core/chain/chain.go:4145-4147` already refuses
+  a foreign genesis. **Carry VALUES, not a digest:** values reuse `Block.Hash()`'s canonical CBOR (so
+  no new injectivity proof is owed) and make the refusal *diagnosable*. `Params *ConsensusParams`,
+  cbor key 19, **pointer per the omitempty-array rule**, no `omitempty` inside, `Anchors` as a sorted
+  slice. Optional field, so ~250 `AppendGenesis` fixtures stay untouched.
+- **Shape (2) REFUTED** as a family mechanism, except the era heights, where the tally branch is
+  already bound and certified — F's job there is to close the **override**.
+- **Shape (3) REFUTED:** a gossiped digest is an unauthenticated claim; a genesis hash is
+  self-authenticating.
+- **⚠ "DETECTED AT HANDSHAKE" IS REFUTED AS A DESCRIPTION OF WHAT SHIPS.** The owner called that
+  *"the right failure surface"*, and it remains the right one — but **there is no genesis exchange at
+  the TLS handshake**, and the refusal that does fire is logged at `LogDebug`
+  (`core/node/chainrole.go:1616-1618`), so **the operator sees a node that never syncs and says
+  nothing.** Making that refusal loud is part of the build, not a nicety.
+- **T-REFERENT — rule 8's two arms COMPOSE.** Genesis-covering manufactures the referent, which makes
+  a refuse-to-start *required* rather than redundant: it catches the case nothing else does — an
+  operator editing a flag and restarting on an existing chain.
+
+### Ordering, and the calendar cost
+
+**F moves the genesis hash; call A (the chain id in the preimage) consumes it. Land F before or with
+A, in ONE genesis move, or the re-run set is paid twice** — that is the entire calendar cost, which
+is the freeze's actual currency (`D-FREEZE-REPRICE-2026-09-10`). (d-3) is independent in value but
+coupled in build: it splits `bodyHash` into two literals and CD-0's gate unioned them
+(`G-CFGBIND-11`) — **already closed this session** by the red-first gate re-point.
+
+### GATED limbs, recorded rather than smoothed
+
+**G-A** — the Researcher had **no shell** and never ran the divergence gate; the map was read from
+its `wantDivergence` literal. **G-B** — `-bond-label-k` is proven by source reads, not a driven
+verdict (the builder verified the three cited lines independently; a DRIVEN gate is still owed).
+**G-C** — "~0 fixtures affected" is a grep claim, not a compile. **G-D** — the graded re-run count is
+the Tester's to price.
+
+### What it does NOT close
+
+`R-CONSENSUS-CONFIG-UNBOUND` closes **on the production path only**. Still open:
+`R-LIVENESS-RECOVERY-UNBOUND` (new, unbindable), `R-CONFIG-GATE-NODE-SCOPE` (new — `node.Config` is
+unaudited beyond two fields), the surviving paramless path, and the legacy-leg subjectivity.
