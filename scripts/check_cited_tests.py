@@ -66,6 +66,63 @@ SCOPE NOTES (deliberate limits)
     phantom "resolve" against a test that exists only on an unmerged branch, which
     is precisely the unsoundness this lint exists to catch.
 
+SCOPE NOTES FOR COORDINATES (deliberate limits, each measured before it was drawn)
+  - AN UNANCHORED COORDINATE IS NOT CHECKED. `chain.go:1198` with no symbol beside
+    it asserts nothing a machine can test, and guessing what a reader "meant" would
+    be the vacuous-gate defect in a new costume. 134 of the 187 coordinates on the
+    linted surface are unanchored today. Naming the symbol is what buys coverage;
+    that is the behaviour this lint is trying to create, not a hole to paper over.
+  - CHANGELOG.md is exempt from the COORDINATE check (its TEST-name checking is
+    unchanged). A CHANGELOG entry is a DATED point-in-time record — the same reason
+    docs/buildlog/ is skipped above. A coordinate in a released entry was true when
+    written, and "correcting" it would falsify the record. 16 stale coordinates sit
+    there and every one of them is correct history.
+  - RANGES check their FIRST number only: `chain.go:3005-3013` is checked at 3005.
+  - MARKDOWN ONLY. Coordinates inside Go comments are not scanned: the anchor is a
+    BACKTICKED identifier, which is a markdown convention, and no coordinate defect
+    has been observed in a Go comment. Widen when one is.
+  - THE EXTERNAL REVIEW TREES ARE NOT COORDINATE-CHECKED, for the CHANGELOG reason
+    at full strength. A ruling or certification is a review OF A NAMED SHA; its
+    coordinates were true at that SHA and are not the current tree's to correct.
+    Measured before the arm was dropped: 1844 stale coordinates across 304 review
+    documents, back to the #286 and #357 rounds — an advisory nobody could read,
+    naming nothing anyone should change. Their TEST-name citations stay advisory
+    (a test name is not SHA-relative the way a line number is).
+  - A BARE SYMBOL MENTION — a backticked identifier with no file and no coordinate
+    — is NOT checked. Measured: 213 distinct backticked camelCase identifiers on
+    this surface resolve to no declaration in the tree, over 497 occurrences,
+    dominated by names that are HISTORICALLY CORRECT in the two append-only ledgers
+    (docs/decisions.md, CHANGELOG.md) precisely because the symbol was later
+    deleted. Gating that class would need a ~213-line allowlist of entries with no
+    defect-catching power, which is what the allowlist header below forbids.
+
+WIDENED 2026-09-10 — SYMBOL-ANCHORED SOURCE COORDINATES
+  Same defect family, second carrier. A `path.go:NNN` coordinate in prose reads as
+  "open this file at this line and you will see the thing I just named". Nothing
+  checked that. Three coordinates in docs/decisions.md — two of them written
+  "verified" — pointed at unrelated lines, because every insertion above a symbol
+  moves it and nothing tells the doc:
+
+    `consensusSigBytes`  cited chain.go:918   actually core/chain/chain.go:1067
+    `bodyHash`           cited chain.go:822   actually core/chain/chain.go:902
+    `SlashesEncodedSize` cited chain.go:2217  actually core/chain/chain.go:2372
+
+  LINE NUMBERS ROT; SYMBOLS DO NOT. A renamed or deleted symbol goes loud — the
+  compiler sees it, and this lint sees it. A shifted line number goes silent. So
+  the resolution key is the SYMBOL, and a coordinate is checkable ONLY when it is
+  tied to one:
+
+    A `path.go:NNN` whose NEAREST PRECEDING backticked identifier is a symbol
+    DECLARED in that file must land ON that symbol — inside its declaration (doc
+    comment through closing brace) or on a line where the name literally occurs
+    (±2 lines, for wrapped signatures). Otherwise the coordinate is rotten.
+
+  The "or the name occurs at that line" arm is load-bearing: prose legitimately
+  cites a CALL SITE, not only a declaration ("every non-test read of the flag:
+  `core/node/chainrole.go:890`). Such a citation still points at the symbol, so it
+  passes. What fails is a coordinate that points at neither — which is exactly what
+  a decayed line number looks like.
+
 STRICT vs ADVISORY
   - IN-REPO citations are STRICT: a phantom fails the build (exit 1).
   - EXTERNAL-TREE citations are ADVISORY by default: those trees are outside this
@@ -86,6 +143,7 @@ ROOT = Path(__file__).resolve().parent.parent
 ALLOWLIST = ROOT / "scripts" / "cited_tests_allowlist.txt"
 
 SCAR_ID = "scar:cited-test-does-not-exist-2026-09-02"
+COORD_SCAR_ID = "scar:cited-source-coordinate-decayed-2026-09-10"
 
 # Go source roots whose COMMENTS are scanned for test citations.
 GO_ROOTS = ["cmd", "core", "adapters", "ports", "sim", "integration", "e2e"]
@@ -116,6 +174,41 @@ DEFAULT_EXTERNAL_ROOTS = [
 
 TEST_NAME_RE = re.compile(r"\bTest[A-Z][A-Za-z0-9_]*\b")
 TEST_FUNC_RE = re.compile(r"^func\s+(Test[A-Za-z0-9_]+)\s*\(", re.MULTILINE)
+
+# --- symbol-anchored source coordinates -----------------------------------
+# Markdown that is NOT coordinate-checked because it is dated history (see the
+# scope notes). Its TEST-name checking is unchanged.
+COORD_EXEMPT_MD = {"CHANGELOG.md"}
+
+# `core/chain/chain.go:918`, chain.go:2217, `…/foo_test.go:79`. The optional
+# leading backtick is consumed so an offset comparison against a preceding
+# identifier stays honest.
+COORD_RE = re.compile(r"`?((?:[A-Za-z0-9_./-]+/)?[A-Za-z0-9_.-]+\.go):(\d+)")
+
+# The ANCHOR: a backticked identifier, optionally written call-style. Markdown
+# in this tree spells every code reference this way.
+TICKED_IDENT_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_]*)(?:\(\))?`")
+
+# How far back from a coordinate an anchor may sit. 140 chars covers this tree's
+# widest observed "`Sym` (`path.go:N`)" phrasing including a wrapped clause.
+ANCHOR_WINDOW = 140
+
+# Tolerance around a cited line when looking for the bare name. A signature
+# wrapped over two lines puts the name up to two lines off the cited one.
+NEAR_LINES = 2
+
+# Top-level Go declaration forms. A struct FIELD and a const/var BLOCK MEMBER are
+# included on purpose: docs cite `Slashes` and `bondRegHeight` as often as they
+# cite a func, and the "or the name occurs at that line" arm keeps their many use
+# sites from reading as failures.
+DECL_RES = (
+    re.compile(r"^func\s+(?:\([^)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*[\(\[]"),
+    re.compile(r"^type\s+([A-Za-z_][A-Za-z0-9_]*)\b"),
+    re.compile(r"^(?:const|var)\s+([A-Za-z_][A-Za-z0-9_]*)\b"),
+    re.compile(r"^\t([A-Za-z_][A-Za-z0-9_]*)(?:,\s*[A-Za-z_][A-Za-z0-9_]*)*\s*(?:[A-Za-z_\[\*].*)?="),
+    re.compile(r"^\t([A-Za-z_][A-Za-z0-9_]*)\s+[\*\[\]A-Za-z_]"),
+)
+BRACED_DECL = (0, 1)  # indices into DECL_RES whose bodies run to a column-0 close
 
 # Metasyntactic placeholders. Prose that EXPLAINS test naming (this lint's own
 # CHANGELOG entry, a design doc describing a convention) writes these to stand for
@@ -242,15 +335,152 @@ def defined_tests() -> set:
     return found
 
 
-def load_allowlist() -> set:
+class SymbolIndex:
+    """Every top-level Go declaration in this repo, keyed (relpath, name) -> spans.
+
+    A SPAN runs from the first line of the declaration's doc comment through the
+    line that closes its body. Citing a symbol's doc comment is citing the symbol,
+    so the comment is inside the span deliberately: without it a citation of
+    `cloneForDryRun` at era3validity.go:173 reads as rotten when it points two
+    lines above the `func`, at the comment that explains it.
+    """
+
+    def __init__(self):
+        self.spans = {}   # (relpath, name) -> [(start, end)]
+        self.lines = {}   # relpath -> [str]
+        self.by_base = {} # basename -> {relpath}
+
+    def build(self):
+        for rel in GO_ROOTS:
+            base = ROOT / rel
+            if not base.exists():
+                continue
+            for path in iter_files(base, ".go"):
+                self._index(path)
+        return self
+
+    def _index(self, path: Path):
+        disp = str(path.relative_to(ROOT))
+        lines = read_text(path).splitlines()
+        self.lines[disp] = lines
+        self.by_base.setdefault(os.path.basename(disp), set()).add(disp)
+        for i, ln in enumerate(lines, 1):
+            name, which = None, None
+            for k, rx in enumerate(DECL_RES):
+                m = rx.match(ln)
+                if m:
+                    name, which = m.group(1), k
+                    break
+            if not name:
+                continue
+            end = i
+            if which in BRACED_DECL and ln.rstrip().endswith(("{", "(")):
+                for j in range(i, len(lines)):
+                    if lines[j].startswith(("}", ")")):
+                        end = j + 1
+                        break
+            start = i
+            k = i - 2
+            while k >= 0 and lines[k].lstrip().startswith("//"):
+                start = k + 1
+                k -= 1
+            self.spans.setdefault((disp, name), []).append((start, end))
+
+    def resolve_path(self, cited: str):
+        """Map a cited path to a repo-relative one, or None if it is not ours.
+
+        A bare basename resolves only when it is UNAMBIGUOUS in the tree. Two
+        files named chain.go would make the check guess, and a guessing gate is
+        worse than no gate.
+        """
+        cited = cited.lstrip("./")
+        if cited in self.lines:
+            return cited
+        hits = self.by_base.get(os.path.basename(cited), set())
+        return next(iter(hits)) if len(hits) == 1 else None
+
+    def declared_in(self, rel: str, name: str) -> bool:
+        return (rel, name) in self.spans
+
+    def decl_line(self, rel: str, name: str) -> int:
+        return self.spans[(rel, name)][0][0]
+
+    def points_at(self, rel: str, name: str, n: int) -> bool:
+        """True if line `n` of `rel` is ON the symbol `name`."""
+        if any(start <= n <= end for start, end in self.spans[(rel, name)]):
+            return True
+        lines = self.lines[rel]
+        lo, hi = max(1, n - NEAR_LINES), min(len(lines), n + NEAR_LINES)
+        return any(name in lines[k - 1] for k in range(lo, hi + 1))
+
+
+def coord_citations_in_md(path: Path, index: SymbolIndex):
+    """Yield (line_no, symbol, cited_coord, line_number) for ANCHORED coordinates.
+
+    The anchor is the nearest backticked identifier within ANCHOR_WINDOW chars
+    before the coordinate that is actually DECLARED in the cited file. Requiring
+    the declaration is what keeps the pairing honest: an identifier that the file
+    does not declare is prose, not a claim about that file.
+    """
+    for i, line in enumerate(read_text(path).splitlines(), 1):
+        for m in COORD_RE.finditer(line):
+            rel = index.resolve_path(m.group(1))
+            if rel is None:
+                continue  # not a file this repo owns; nothing to check against
+            window = line[max(0, m.start() - ANCHOR_WINDOW):m.start()]
+            for cand in reversed(TICKED_IDENT_RE.findall(window)):
+                if index.declared_in(rel, cand):
+                    yield i, cand, m.group(1), int(m.group(2)), rel
+                    break
+
+
+def collect_coords_in_repo(index: SymbolIndex):
+    for rel in MD_FILES:
+        if rel in COORD_EXEMPT_MD:
+            continue
+        path = ROOT / rel
+        if path.exists():
+            for rec in coord_citations_in_md(path, index):
+                yield (rel,) + rec
+
+    for rel in MD_ROOTS:
+        base = ROOT / rel
+        if not base.exists():
+            continue
+        for path in iter_files(base, ".md"):
+            parts = path.relative_to(base).parts
+            if parts and parts[0] in DOC_SKIP_DIRS:
+                continue
+            for rec in coord_citations_in_md(path, index):
+                yield (str(path.relative_to(ROOT)),) + rec
+
+
+def load_allowlist():
+    """Return (test_names, coord_keys) from the one allowlist file.
+
+    Two entry shapes, told apart by arity — one file, because two files invite a
+    second discipline and the H/O rule in its header is what makes this work:
+      TestFoo                                   a test-name citation
+      docs/x.md  symbolName  path/to/f.go:918   a source-coordinate citation
+    A coordinate entry carries NO doc line number on purpose: keyed that way it
+    survives an unrelated edit above it, and only goes stale when the citation it
+    excuses is actually repaired — which is the moment it should be deleted.
+    """
     if not ALLOWLIST.exists():
-        return set()
-    names = set()
+        return set(), set()
+    names, coords = set(), set()
     for line in ALLOWLIST.read_text().splitlines():
         line = line.split("#", 1)[0].strip()
-        if line:
-            names.add(line)
-    return names
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) == 1:
+            names.add(parts[0])
+        elif len(parts) == 3:
+            coords.add(tuple(parts))
+        else:
+            print(f"warning: unparsable allowlist entry: {line!r}", file=sys.stderr)
+    return names, coords
 
 
 def scan_lines(lines):
@@ -367,6 +597,16 @@ def report(title: str, phantoms: list, stream) -> None:
         print(f"  {path}:{line_no}  {name}  (no such test)", file=stream)
 
 
+def report_coords(title: str, rotten: list, stream) -> None:
+    print(title, file=stream)
+    for doc, line_no, sym, cited, n, rel, decl in rotten:
+        print(
+            f"  {doc}:{line_no}  `{sym}` cited at {cited}:{n}"
+            f"  ->  {rel}:{n} is not on `{sym}` (declared {rel}:{decl})",
+            file=stream,
+        )
+
+
 def main() -> int:
     argv = sys.argv[1:]
     strict_external = "--strict-external" in argv
@@ -375,8 +615,13 @@ def main() -> int:
     if not defined:
         print("error: no `func TestX(` declarations found — refusing to run", file=sys.stderr)
         return 1
-    allowed = load_allowlist()
+    allowed, allowed_coords = load_allowlist()
     known = defined | allowed | PLACEHOLDER_NAMES
+
+    index = SymbolIndex().build()
+    if not index.spans:
+        print("error: no Go declarations indexed — refusing to run", file=sys.stderr)
+        return 1
 
     def phantoms(records):
         out, seen = [], set()
@@ -388,8 +633,24 @@ def main() -> int:
             out.append(key)
         return out
 
+    def rotten(records):
+        out, seen = [], set()
+        for doc, line_no, sym, cited, n, rel in records:
+            if (doc, sym, f"{cited}:{n}") in allowed_coords:
+                continue
+            if index.points_at(rel, sym, n):
+                continue
+            key = (doc, line_no, sym, cited, n)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append((doc, line_no, sym, cited, n, rel, index.decl_line(rel, sym)))
+        return out
+
+    roots = external_roots(argv)
     in_repo = phantoms(collect_in_repo())
-    ext = phantoms(collect_external(external_roots(argv)))
+    ext = phantoms(collect_external(roots))
+    coords_in_repo = rotten(collect_coords_in_repo(index))
 
     failed = False
 
@@ -410,6 +671,24 @@ def main() -> int:
             file=sys.stderr,
         )
 
+    if coords_in_repo:
+        failed = True
+        report_coords(
+            f"FAIL [{COORD_SCAR_ID}] — these source coordinates no longer point at the\n"
+            f"  symbol they are cited beside. A reader who opens the file at that line\n"
+            f"  sees unrelated code, and several of these are written \"verified\".\n"
+            f"  Line numbers rot on every insertion above them; symbol names do not.\n",
+            coords_in_repo,
+            sys.stderr,
+        )
+        print(
+            "\nFix: re-read the source and correct the line number, or drop the number\n"
+            "and cite the symbol alone. If the citation is deliberately historical, add\n"
+            "`<doc-path> <symbol> <cited-coord>` to scripts/cited_tests_allowlist.txt\n"
+            "with a comment saying which case it is.\n",
+            file=sys.stderr,
+        )
+
     if ext:
         stream = sys.stderr if strict_external else sys.stdout
         label = "FAIL" if strict_external else "ADVISORY"
@@ -427,10 +706,13 @@ def main() -> int:
     if failed:
         return 1
 
-    n_allow = len(allowed)
     print(
         f"OK [{SCAR_ID}] — every cited test name resolves to a real `func TestX(` "
-        f"({len(defined)} tests defined, {n_allow} allowlisted)."
+        f"({len(defined)} tests defined, {len(allowed)} allowlisted)."
+    )
+    print(
+        f"OK [{COORD_SCAR_ID}] — every symbol-anchored source coordinate points at its "
+        f"symbol ({len(index.spans)} declarations indexed, {len(allowed_coords)} allowlisted)."
     )
     return 0
 

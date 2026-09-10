@@ -83,11 +83,14 @@ is why the format items come to you individually and the rest do not.
 POPULATES a field every frozen binary already round-trips.** It buys nothing when the future change
 alters the hash preimage, the leaf set, or a rule's activation.
 
-That theorem cuts both ways in this manifest, which is why two superficially similar "just reserve
-it now" proposals were resolved in opposite directions: the proof-of-possession slot is worth
-reserving, and two others were refuted as reservations that buy nothing. If someone proposes a
-"reserve it now, swap the meaning later" hedge for anything that changes the hash itself, that is
-the same error in a new costume.
+The worked example is the proof-of-possession slot, and it is on the LOSING side of that theorem.
+It was proposed as a "reserve it inert now, populate it later" hedge, and it was **DROPPED on
+2026-09-10** (`D-ITEM4-DROPPED-2026-09-10`, owner call D). The reason is the theorem's own second
+half: a reservation's only payment is *not owing an era later*, and once the freeze deadline was
+re-priced as SOFT (`D-FREEZE-REPRICE-2026-09-10`) that payment fell to zero — leaving a permanent,
+unprunable block field bought with nothing. Two other "just reserve it now" proposals were refuted
+the same way. If someone proposes a "reserve it now, swap the meaning later" hedge for anything that
+changes the hash itself, that is the same error in a new costume.
 
 ## What you are actually signing at D3
 

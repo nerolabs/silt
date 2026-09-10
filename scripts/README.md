@@ -23,7 +23,7 @@ generated page is stale.
 | `check_claims.py` | a claim in `docs/design/claims-ledger.md` points at a test that no longer exists | — |
 | `check_tenet_qualifiers.py` | the TENETS.md Sybil composition drops its design-target qualifier | `scar:sybil-design-target-overclaim-2026-09-01` |
 | `check_status_headers.py` | a doc's not-built Status header contradicts a built/shipped body | `scar:status-header-vs-body-contradiction-2026-09-01` |
-| `check_cited_tests.py` | a Go comment or doc cites a `TestXxx` that has no `func TestXxx(` anywhere | `scar:cited-test-does-not-exist-2026-09-02` |
+| `check_cited_tests.py` | a Go comment or doc cites a `TestXxx` that has no `func TestXxx(` anywhere; **or** a doc's `path.go:NNN` no longer points at the symbol cited beside it | `scar:cited-test-does-not-exist-2026-09-02`, `scar:cited-source-coordinate-decayed-2026-09-10` |
 | `check_residual_register.py` | a residual name (`R-…`) appears in `ROADMAP.md` without a Residual-register row carrying a bucket, a closer and a source | `scar:residual-backlog-unbucketed-2026-09-06` |
 
 Each check exits `0` on pass and `1` on failure, and prints its findings to
@@ -35,11 +35,22 @@ for c in links claims tenet_qualifiers status_headers cited_tests source_gates r
 done
 ```
 
-### `check_cited_tests.py` — the cited-test lint
+### `check_cited_tests.py` — the cited-test and cited-coordinate lint
 
 Catches *a green check that does not verify the property it claims*: a comment or
 doc naming a test that does not exist. It reads as "this is verified"; nothing
 verifies it.
+
+Since 2026-09-10 it catches the same defect in its second carrier: a `path.go:NNN`
+coordinate that no longer points at the symbol cited beside it. Three in
+`docs/decisions.md` — two written *"verified"* — pointed at unrelated lines.
+**Line numbers rot; symbols do not.** So the resolution key is the SYMBOL, and a
+coordinate is checkable only when it is tied to one: a coordinate whose nearest
+preceding backticked identifier is declared in that file must land on that symbol,
+either inside its declaration or on a line where the name occurs. An unanchored
+coordinate is not checked — naming the symbol is what buys coverage. `CHANGELOG.md`
+and the external review trees are exempt from the coordinate arm; both are dated
+point-in-time records whose coordinates were true when written.
 
 It widens `check_claims.py`, which enforces the same linkage for
 `docs/design/claims-ledger.md` only. That narrow scope is why the instance that

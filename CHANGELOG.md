@@ -25,6 +25,39 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   itself is certified in-process. No OOM-kill and no crash-loop across the cohort, so the sheet was graded on a healthy network.
   Teardown verified: 40 resources destroyed, no instance left running.
 ### Added
+- **`scripts/check_cited_tests.py` now resolves Go SYMBOLS and source COORDINATES**
+  (`scar:cited-source-coordinate-decayed-2026-09-10`). A `path.go:NNN` in prose reads as "open this
+  file at this line and see the thing I named", and nothing checked it. Three coordinates in
+  `docs/decisions.md` — two written *"verified"* — pointed at unrelated lines:
+  `consensusSigBytes` at `chain.go:918` (really `core/chain/chain.go:1067`), `bodyHash` at
+  `chain.go:822` (really `:902`), `SlashesEncodedSize` at `chain.go:2217` (really `:2372`). All three
+  are corrected here, in `docs/decisions.md` and in `ROADMAP.md`.
+  **Line numbers rot; symbols do not** — a rename goes loud, a shifted line goes silent — so the
+  resolution key is the SYMBOL and a coordinate is checkable ONLY when tied to one: a coordinate
+  whose nearest preceding backticked identifier is declared in that file must land on that symbol,
+  inside its declaration or on a line where the name occurs. The "or the name occurs" arm keeps a
+  legitimate CALL-SITE citation passing. Same script, same allowlist, no new prefix and no new
+  residual class. Verified red-first, then by two ablations: re-decaying a corrected coordinate goes
+  RED, and shifting an ALLOWLISTED coordinate by one line also goes RED, so the allowlist excuses an
+  exact citation rather than a symbol.
+  **Deliberate limits, each measured before it was drawn:** an UNANCHORED coordinate is not checked
+  (134 of 187 on this surface — naming the symbol is what buys coverage); `CHANGELOG.md` and the
+  external review trees are not coordinate-checked because both are dated point-in-time records
+  (1844 stale coordinates across 304 review documents, back to #286); and a bare symbol mention is
+  not checked (213 distinct unresolved identifiers over 497 occurrences, dominated by names that are
+  historically correct in the two append-only ledgers). 13 coordinates that were already stale are
+  enumerated in `scripts/cited_tests_allowlist.txt` as `(O)` OWED so the gate is STRICT from its
+  first green run; nothing new belongs there.
+- **The consensus-critical genesis config: the SCHEMA is in; the production BIND is not.**
+  **⚠ Corrected 2026-09-10, before release, with the original claim left beside it.** The entry
+  below states that a differently-configured node "computes a different genesis hash and cannot
+  join at all". **That is not what shipped.** `core/genesis/genesis.go` mints genesis with no
+  `Params` field, so cbor `omitempty` drops key 20 and the production genesis hash is unchanged;
+  the only `Params:` literals on a `Block` in the tree are in `core/chain/consensusparams_test.go`;
+  and `CheckConsensusParams` has zero non-test callers. The field, the cbor key, the comparator and
+  their tests are real and green — **nothing populates them**, so no node yet refuses on a config
+  divergence and `R-CONSENSUS-CONFIG-UNBOUND` stays OPEN. Wiring the production mint moves the
+  genesis hash, which is a FORMAT act the owner ratifies separately. ORIGINAL ENTRY:
 - **The consensus-critical genesis config is bound to the chain** (owner call F,
   [`docs/decisions.md`](docs/decisions.md) `D-CFGBIND-BUILT-2026-09-10`). A new `ConsensusParams` —
   **17 fields carried by value** — is committed on the genesis block as `Block.Params` at cbor key

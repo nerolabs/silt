@@ -162,3 +162,53 @@ TestRecomputeDeMatureSuperQuorum_NeverFlipsWitnessValidateAccept
 TestRecomputeQualifiedCount_NeverFlipsWitnessValidateAccept
 TestRecomputeMatureNow_NeverFlipsWitnessValidateAccept
 TestRecomputeEpochWeightQuorum_NeverFlipsWitnessValidateAccept
+
+# ===========================================================================
+# SOURCE COORDINATES — scar:cited-source-coordinate-decayed-2026-09-10
+# ===========================================================================
+# Entry shape: <doc-path>  <symbol>  <cited-coordinate>
+# No doc LINE number, on purpose: keyed this way an entry survives an unrelated
+# edit above it and goes stale only when the citation is actually repaired —
+# which is the moment to delete the line.
+#
+# Everything below is (O) OWED, one debt with one closer: a coordinate sweep
+# over the live doc surface. These are the coordinates that were ALREADY stale
+# when the check was widened on 2026-09-10; they are enumerated rather than
+# silenced so the gate can be STRICT from its first green run. Three more were
+# stale in the same measurement and were FIXED instead, because the owner had
+# verified their true locations at source: `consensusSigBytes` 918 -> 1067,
+# `bodyHash` 822 -> 902, `SlashesEncodedSize` 2217 -> 2372.
+#
+# NOTHING NEW BELONGS HERE. A coordinate written after 2026-09-10 that does not
+# point at its symbol is a fresh defect; correct it, or drop the line number and
+# cite the symbol alone, which is the form this lint exists to encourage.
+#
+# The declaration line the check found is recorded beside each entry so the
+# sweep is a read, not a search. It is NOT asserted to be the intended target:
+# several of these cite a USE site (a scan inside a func, a field read), and
+# guessing which line the author meant is the defect in a new costume.
+
+# --- ROADMAP.md ---
+ROADMAP.md  DerivedBondFloor  cmd/silt/daemon.go:2104     # declared daemon.go:2118
+ROADMAP.md  validateSlashes   core/chain/chain.go:2200    # declared chain.go:2346
+ROADMAP.md  ValidateCommit    core/chain/chain.go:3020    # declared chain.go:3165
+ROADMAP.md  Slashes           core/chain/chain.go:518     # field declared chain.go:522
+
+# --- docs/decisions.md ---
+docs/decisions.md  liveQualifiedSet   chain.go:1198             # declared chain.go:1713
+docs/decisions.md  effectiveEpochSet  chain.go:1243             # declared chain.go:1824
+docs/decisions.md  everMature         chain.go:2820             # field declared chain.go:1297
+docs/decisions.md  Slashes            core/chain/chain.go:518   # field declared chain.go:522
+# The next one is an ANCHOR MIS-PAIRING as well as a stale coordinate: the
+# sentence is about `Prune()` (declared chain.go:988) and the nearest backticked
+# identifier the check could bind to was `Slashes`. The coordinate is stale
+# either way; the sweep should re-read the sentence, not just the number.
+docs/decisions.md  Slashes            core/chain/chain.go:852   # sentence is about Prune(), declared chain.go:988
+
+# --- docs/design/block-format-by-era.md ---
+# All four predate the era-4 field additions that pushed the Block declarations
+# down; this file's whole coordinate column wants one pass.
+docs/design/block-format-by-era.md  BlockVersion       chain.go:260   # declared chain.go:294
+docs/design/block-format-by-era.md  Attestation        chain.go:401   # declared chain.go:664
+docs/design/block-format-by-era.md  BondReg            chain.go:419   # declared chain.go:680
+docs/design/block-format-by-era.md  canonicalBondRegs  chain.go:404   # declared chain.go:3946
