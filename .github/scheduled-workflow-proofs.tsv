@@ -15,3 +15,4 @@
 # commit that records its id. It names which tree was proven.
 #
 # workflow path<TAB>run id<TAB>head sha<TAB>date<TAB>note
+.github/workflows/nightly-netem.yml	34542396732	461445019532f4ae66457777b1f6fae988c50dfe	2026-09-11	first green in the workflow lifetime; all 4 arms 7/7 drills, 0 skipped
