@@ -227,9 +227,13 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   every required check green. It costs no wall-clock — **measured over the last 40 completed `ci.yml`
   runs on `main`**, the e2e job's mean is **448 s** against the already-required race job's **525 s**,
   so it is off the critical path — and it is **40/40 green** over that same window. `nat`, `netem` and fuzz stay non-required, and
-  `strict_required_status_checks_policy` stays OFF. **The flip is applied AFTER the merge that
-  lands this entry**, deliberately: a job must not be made required while the change it was added to
-  protect is still in flight.
+  `strict_required_status_checks_policy` stays OFF. **DONE, and read back:** the ruleset returns
+  **six** required contexts, the five prior ones byte-unchanged, `strict` still off, and nothing
+  outside the status-check rule modified. The flip was applied AFTER the merge that landed the gate
+  it protects (`#807`), deliberately: a job must not be made required while the change it was added
+  to protect is still in flight. **The `UNGATED:` markers in `cmd/silt/genesis_params_route_test.go`
+  STAY** — only the "not merge-blocking" leg retires; a call-string gate is green over an uninvoked
+  closure whatever CI requires.
 - **The membership rule, replacing the field list** (owner ratification, 2026-09-10). *Every field
   that can change a validity verdict is bound to the chain, or is explicitly excluded with a recorded
   reason.* The **rule** is ratified; **17 is its output**. The reflective gate now covers **both**
