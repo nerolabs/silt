@@ -45,7 +45,7 @@ import (
 // applied history.
 var foldLiveStateAllowed = map[string]string{
 	"cfg":            "own-cfg (C-6): genesis/operator configuration the box is trusted to hold",
-	"objective":      "cfg.MinBond>0 && verifyBond!=nil — own-cfg + the INJECTED verifier, asserted wired at the box entry (ErrRecomputeBoxWiring)",
+	"objective":      "cfg.MinBond>0 && verifyBond!=nil — own-cfg + the INJECTED verifier, asserted at the box entry on BOTH arms since G-1 (ErrRecomputeBoxWiring; driven by TestColdBox_G1_WiredVerifierWithZeroMinBondStallsAtEntry)",
 	"epochsEnabled":  "cfg.EpochBlocks>0 && objective() — own-cfg + the injected verifier",
 	"operatorMargin": "cfg.OperatorMargin accessor — own-cfg",
 	"launchAnchorGiven": "the SHARED launch-anchor predicate with the handoff bool SUPPLIED by the caller " +
@@ -78,8 +78,10 @@ var foldLiveStateDenied = map[string]string{
 // `verifyBond` is the injected-wiring read the cert requires be asserted LOUDLY at the box entry
 // (R-VERIFYBOND-WIRING, Q4 row 3: the #572 replay shape — objective()/epochsEnabled() silently take
 // the legacy branch on an unwired box). Asserting it there is the fix; BRANCHING on it anywhere else
-// in a fold file is the defect. Two sites read it, neither branches on it:
-//   - assembleStateRootRecomputeOps: the recompute entry's loud non-nil assertion (ErrRecomputeBoxWiring);
+// in a fold file is the defect. Since G-1 the ENTRY asserts objective() rather than verifyBond
+// directly (both arms, not one), so the entry's scope is listed under `objective` and one site
+// still reads verifyBond itself:
+//   - assembleStateRootRecomputeOps: the recompute entry's loud objective() assertion (ErrRecomputeBoxWiring);
 //   - (*Box).view (floorbox_box_v5.go): THREADS the verifier into provenView as its class-3
 //     VerifyBond capability. NewBox already refused a chain whose verifier is unwired (objective()
 //     requires verifyBond != nil, ErrBoxLegacyMode), so the value is asserted non-nil at
@@ -89,10 +91,23 @@ var foldLiveStateDenied = map[string]string{
 // assertion reddens rather than silently going missing.
 var foldLiveStateSiteAllowed = map[string]map[string]string{
 	"verifyBond": {
-		"assembleStateRootRecomputeOps": "the recompute entry asserts the injected verifier is wired (R-VERIFYBOND-WIRING)",
-		"view":                          "(*Box).view threads the verifier, asserted wired by NewBox, into provenView.VerifyBond (class 3); no branch",
+		"view": "(*Box).view threads the verifier, asserted wired by NewBox, into provenView.VerifyBond (class 3); no branch",
 	},
 }
+
+// WHERE THE ENTRY-ASSERTION-STILL-EXISTS PROPERTY LIVES NOW (G-1, 2026-09-10) — read this before
+// concluding a gate was weakened. The recompute entry used to read `verifyBond` directly, so this
+// map could carry a site scope for it and the stale-site check below doubled as "the assertion did
+// not go missing". G-1 widened the entry to assert objective() — BOTH arms, since the narrower read
+// let a box with a WIRED verifier and cfg.MinBond == 0 past the entry and into a legacy/objective
+// divergence. `objective` is BLANKET-allowed here (fold files may read it), and this file correctly
+// refuses to let one name be both blanket-allowed and site-scoped, because that scope is vacuous.
+//
+// So the property MOVED to a stronger owner rather than being dropped: it is now held by
+// TestColdBox_G1_WiredVerifierWithZeroMinBondStallsAtEntry, which DRIVES the box and was proven
+// red-first. Delete the entry assertion and that test fails — a runtime observation, where this map
+// could only ever observe a read site. That is a net strengthening, and it is stated here so the
+// next reader does not restore a vacuous scope to "fix" an absence.
 
 // foldFileGlob is the set of non-test floor-box files the pin covers. Widened 2026-09-03
 // (R-AST-PIN-GLOB): the earlier `floorbox_recompute_*_v5.go` missed `floorbox_recompute_v5.go`
