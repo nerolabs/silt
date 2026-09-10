@@ -221,12 +221,20 @@ func TestHashLiteralPinHasTeeth(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := hashCoveredFields(t)
-	base, found := hashLiteralKeys(string(src))
+	sets, found := hashLiteralKeySets(string(src))
 	if !found {
 		t.Fatal("SOURCE GATE: precondition — the real literal must parse")
 	}
-	if m, x := hashLiteralGaps(base, want); len(m)+len(x) != 0 {
-		t.Fatalf("SOURCE GATE: precondition — the real literal must be gap-free before the teeth are meaningful (missing %v extra %v)", m, x)
+	if len(sets) == 0 {
+		t.Fatal("SOURCE GATE: precondition — at least one `unsigned` literal must be found")
+	}
+	// Teeth run against the FIRST literal. Every literal must be gap-free (the main gate asserts
+	// that per-literal), so any one of them is a valid fixture.
+	base := sets[0]
+	for i, ks := range sets {
+		if m, x := hashLiteralGaps(ks, want); len(m)+len(x) != 0 {
+			t.Fatalf("SOURCE GATE: precondition — every real literal must be gap-free before the teeth are meaningful (literal %d: missing %v extra %v)", i+1, m, x)
+		}
 	}
 
 	// Teeth 1: drop one folded key (the CD-0 shape: a merge loses IssuerKeys).
@@ -234,27 +242,52 @@ func TestHashLiteralPinHasTeeth(t *testing.T) {
 	if dropped == string(src) {
 		t.Fatal("SOURCE GATE: teeth fixture — `, IssuerKeys: b.IssuerKeys` not found verbatim in the literal; update the teeth to the literal's current spelling")
 	}
-	keys, found := hashLiteralKeys(dropped)
+	dropSets, found := hashLiteralKeySets(dropped)
 	if !found {
 		t.Fatal("SOURCE GATE: teeth fixture — edited literal no longer parses")
 	}
-	if missing, _ := hashLiteralGaps(keys, want); !contains(missing, "IssuerKeys") {
-		t.Errorf("SOURCE GATE: TEETH FAILED — removing IssuerKeys from the literal was not reported missing (got %v)", missing)
+	// PER-LITERAL, and this is the teeth test proving its own re-point: the drop above edits ONE
+	// occurrence, so a UNION view still sees IssuerKeys via the other literal and reports nothing
+	// missing. That is precisely the defect hashLiteralKeySets removes — the teeth failed here on
+	// the first run after bodyHash became version-dependent, which is the shape working.
+	sawMissing := false
+	for _, ks := range dropSets {
+		if missing, _ := hashLiteralGaps(ks, want); contains(missing, "IssuerKeys") {
+			sawMissing = true
+		}
+	}
+	if !sawMissing {
+		t.Errorf("SOURCE GATE: TEETH FAILED — removing IssuerKeys from a literal was not reported missing by any literal's check")
 	}
 
 	// Teeth 2: fold an exclusion (Atts) — must be reported extra. Injected at the HEAD of the
 	// literal so the fixture does not depend on which field the literal happens to end with
 	// (it ended with IssuerKeys before the LastCommit carrier landed, LastCommit after).
-	injected := strings.Replace(string(src), "unsigned := Block{", "unsigned := Block{Atts: b.Atts, ", 1)
-	if injected == string(src) {
-		t.Fatal("SOURCE GATE: teeth fixture — `unsigned := Block{` not found verbatim in bodyHash; update the teeth to the literal's current spelling")
+	// (d-3) made bodyHash version-dependent, so the literal is spelled `unsigned = Block{` inside
+	// a branch rather than `unsigned := Block{`. Try both, and fail loudly if neither is present —
+	// a teeth fixture that silently matches nothing is the decoration this file exists to prevent.
+	injected := string(src)
+	for _, spelling := range []string{"unsigned = Block{", "unsigned := Block{"} {
+		if strings.Contains(injected, spelling) {
+			injected = strings.Replace(injected, spelling, spelling+"Atts: b.Atts, ", 1)
+			break
+		}
 	}
-	keys, found = hashLiteralKeys(injected)
+	if injected == string(src) {
+		t.Fatal("SOURCE GATE: teeth fixture — neither `unsigned = Block{` nor `unsigned := Block{` found in bodyHash; update the teeth to the literal's current spelling")
+	}
+	injSets, found := hashLiteralKeySets(injected)
 	if !found {
 		t.Fatal("SOURCE GATE: teeth fixture — injected literal no longer parses")
 	}
-	if _, extra := hashLiteralGaps(keys, want); !contains(extra, "Atts") {
-		t.Errorf("SOURCE GATE: TEETH FAILED — folding the excluded Atts was not reported extra (got %v)", extra)
+	sawExtra := false
+	for _, ks := range injSets {
+		if _, extra := hashLiteralGaps(ks, want); contains(extra, "Atts") {
+			sawExtra = true
+		}
+	}
+	if !sawExtra {
+		t.Errorf("SOURCE GATE: TEETH FAILED — folding the excluded Atts into a literal was not reported extra")
 	}
 
 	// Teeth 3: a new Block field the literal does not know (the "field added, not
@@ -262,6 +295,23 @@ func TestHashLiteralPinHasTeeth(t *testing.T) {
 	if missing, _ := hashLiteralGaps(base, append(append([]string{}, want...), "LastCommitPhantom")); !contains(missing, "LastCommitPhantom") {
 		t.Errorf("SOURCE GATE: TEETH FAILED — a new field absent from the literal was not reported missing (got %v)", missing)
 	}
+}
+
+// v5DigestCommitted names the fields the v5 preimage commits by DIGEST rather than by value
+// ((d-3)). On v5 these must NOT move bodyHash when mutated — the preimage folds AnswerDigest and
+// SlashesDigest instead — and their coverage is TRANSITIVE, enforced by the validity rules that
+// require each digest to equal sha256 of its content. Mutating one makes the block INVALID, not
+// differently hashed.
+//
+// THIS IS A NARROWING OF THE PIN AND IT IS DANGEROUS IF LEFT UNGUARDED, so it is guarded twice:
+// the case below asserts these fields DO move on pre-v5 (where they are folded by value), and it
+// asserts they do NOT move on v5 (so a v5 literal that quietly folds the field itself, forfeiting
+// future prunability, reddens). The digest fields themselves are NOT listed here — AnswerDigest
+// lives on BondReg, and SlashesDigest is folded by value and must move.
+//
+// RUNTIME COVER for the transitive half: the digest-consistency validity gates (G-D3-*).
+var v5DigestCommitted = map[string]string{
+	"Slashes": "committed by SlashesDigest on v5; validity requires SlashesDigest == sha256(canonical(Slashes))",
 }
 
 // TestHashLiteralPinRuntimePair is the RUNTIME half of R-HASH-LITERAL-PIN: for every
@@ -295,10 +345,14 @@ func TestHashLiteralPinRuntimePair(t *testing.T) {
 				}
 				moved := b.bodyHash() != h0
 				_, excluded := hashPreimageExclusions[f.Name]
+				_, transitive := v5DigestCommitted[f.Name]
+				transitive = transitive && ver >= BlockVersionWitnessable
 				switch {
 				case excluded && moved:
 					t.Errorf("v%d: Block.%s is a declared exclusion but mutating it MOVED bodyHash — this era's literal folds an excluded field", ver, f.Name)
-				case !excluded && !moved:
+				case transitive && moved:
+					t.Errorf("v%d: Block.%s is declared DIGEST-COMMITTED on v5, so mutating it must NOT move bodyHash — the preimage folds its digest, not the field. It moved, so the v5 literal is folding the field itself and the payload is no longer prunable-by-digest", ver, f.Name)
+				case !excluded && !transitive && !moved:
 					t.Errorf("v%d: Block.%s is hash-covered by declaration but mutating it did NOT move bodyHash — a HOLE in this era's signed body", ver, f.Name)
 				}
 			}

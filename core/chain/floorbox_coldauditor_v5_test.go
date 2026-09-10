@@ -156,6 +156,15 @@ var coldAuditorUndriven = map[string]string{
 	"Proposer":    "identity, not a payload class; NewBox refuses a parent whose proposer signature does not verify, and the proposer screens run in the composition",
 	"ProposerSig": "the signature over the class payloads above; every arm here re-signs after forging, so it is exercised by all of them",
 	"Version":     "the class SELECTOR, not a class: TestFloorBox_SubV5BlockRejectedAtTheDoor drives every sub-v5 version, and an above-era version, to Reject through the door",
+	// (d-3). SlashesDigest is a COMMITMENT, not a state-transition payload: the box recomputes a
+	// state root, and no leaf changes because a digest is present. Its soundness is a VALIDITY
+	// question — does the digest equal its content — and that is a different gate from this door.
+	// The excuse names the gate that actually covers it, per this list's own rule:
+	"SlashesDigest": "not a payload class — it commits Slashes rather than transitioning state, so no committed leaf moves for it. " +
+		"Its real risk is digest/content divergence, DRIVEN by G-D3-3/4/5 (TestGD3_345_SlashesDigestConsistency): " +
+		"slashes with no digest, a forged digest, and a digest of nothing are each refused by validateD3Digests, " +
+		"which runs on every disk-write path beside validateEra3Version/validateEra4Version. The Slashes class ABOVE " +
+		"still drives the payload itself through the door to slashedRoot",
 	"CommitRound": "excluded from Hash — a certificate slot a replica may hold differently, not committed state",
 	"PrepareQC":   "excluded from Hash; the quorum stacks C1..C5 read it, and every arm here carries a real one",
 	"Atts":        "excluded from Hash; same as PrepareQC, and the carrier arm drives the parent's copy as committed state",
@@ -493,13 +502,26 @@ func TestColdAuditor_TheBoundaryPostureIsThePositionOfTheBoxNotTheClaimOfTheBloc
 	}
 }
 
-// TestColdAuditor_RefusesPrunedBlocks is H-3, at every box surface. A pruned block's Hash()
-// short-circuits to a stored token bound to NO struct field — StateRoot included (§2.4) — so a pin
-// on it binds nothing and a floor over it would make the reader skip proof verification entirely
+// TestColdAuditor_RefusesPrunedBlocks is H-3, at every box surface. On PRE-v5 a pruned block's
+// Hash() short-circuits to a stored token bound to NO struct field — StateRoot included (§2.4) — so
+// a pin on it binds nothing. (d-3) retires that token for v5: a shed v5 block recomputes its own
+// hash, so the refusal here is no longer about IDENTITY at all. It survives on BOND POSSESSION —
+// the proofs are gone and cannot be re-verified — which is why both sites key on
+// HeavyProofsShed(). Dropping either is a widening the (d-3) delta cert refused by name (sites
+// 9 and 10, "KEEP, re-keyed").
+//
+// The pre-v5 statement still holds where it applies: a pin on a pre-v5 pruned token binds nothing and a floor over it would make the reader skip proof verification entirely
 // (§2.5, chain.go's pruned leg). The box refuses rather than taking a trust floor from its caller.
 //
-// ABLATION: delete the b.IsPruned() stall from (*Box).Validate ⇒ the door arm lands on another
-// reason ⇒ RED; delete the parent.IsPruned() refusal from NewBox ⇒ the construction arm ⇒ RED.
+// ABLATION: delete the b.HeavyProofsShed() stall from (*Box).Validate ⇒ the door arm lands on
+// another reason ⇒ RED; delete the parent.HeavyProofsShed() refusal from NewBox ⇒ the construction
+// arm ⇒ RED.
+//
+// THOSE TARGETS ARE NAMED AS THEY NOW STAND, 2026-09-10. They used to say IsPruned(), and after
+// (d-3) re-keyed both sites to bond possession an IsPruned() ablation would have edited nothing —
+// a no-op patch that reports GREEN and reads exactly like a passing ablation. That failure was hit
+// for real this session and is recorded at d3digests_test.go's ablation block. An ablation
+// instruction that names a line no longer in the source is worse than none.
 func TestColdAuditor_RefusesPrunedBlocks(t *testing.T) {
 	f := buildStructFixture(t)
 	src := newProverSource(t, f.c)
@@ -508,19 +530,44 @@ func TestColdAuditor_RefusesPrunedBlocks(t *testing.T) {
 	box := boxOver(t, f, src)
 	assertBoxReachesTheDowngrade(t, box, b, w)
 
-	out, err := box.Validate(b.Prune(), w)
+	// The block must actually HAVE something to shed. (d-3) retires `Pruned` for v5, so a v5 block
+	// with no bond registrations has nothing to prune and Prune() is a legitimate no-op on it —
+	// pruning an entry-only block would leave this arm asserting against an unpruned block and the
+	// ablation would be vacuous, which the (d-3) delta certification named as the risk on this
+	// exact site (site 10, simplicity rule 7). Shed a real proof instead.
+	shed := f.mkBlock(t, func(nb *Block) {
+		nb.BondRegs = []BondReg{bondReg(f.keys[0], twoMiB, nb.Prev)}
+	})
+	shedPruned := shed.Prune()
+	if !shedPruned.HeavyProofsShed() {
+		t.Fatal("fixture: the block under test must actually have shed a proof, or this arm is vacuous")
+	}
+	out, err := box.Validate(shedPruned, w)
 	if out != IndeterminateTrustlessly || !errors.Is(err, ErrPrunedBlockUnreproducible) {
-		t.Fatalf("the door must refuse a pruned block (ErrPrunedBlockUnreproducible); got %s / %v", out, err)
+		t.Fatalf("the door must refuse a block whose proofs are shed (ErrPrunedBlockUnreproducible); got %s / %v", out, err)
 	}
 	// The pruned re-anchor case (§2.4): a pruned PARENT cannot anchor a head record either.
-	if _, err := NewBox(f.c, f.c.Blocks(1)[0].Prune(), BoxConfig{BudgetBytes: 1 << 22}, src); !errors.Is(err, ErrBoxParentPruned) {
+	// shedPruned, not a committed entry-only block: on v5 only a block that actually SHED a proof
+	// is distinguishable from a complete one, so an entry-only Prune() would anchor this arm on an
+	// unpruned block and prove nothing.
+	if _, err := NewBox(f.c, shedPruned, BoxConfig{BudgetBytes: 1 << 22}, src); !errors.Is(err, ErrBoxParentPruned) {
 		t.Fatalf("NewBox must refuse a pruned parent (ErrBoxParentPruned); got %v", err)
 	}
 	// The composition's own pruned leg, reached directly over the box's view, stalls rather than
 	// answering from a floor the box does not have (H-4's belt).
-	pruned := b.Prune()
-	if out, err := ValidateCommitV5(box.view(), &pruned); out == Accept {
-		t.Fatalf("the composition must not Accept a pruned block over a proven view; got %s / %v", out, err)
+	// Same reason as above: prune a block that actually sheds a proof, or the leg is vacuous.
+	pruned := shed.Prune()
+	// ASSERT THE VERDICT, not merely "not Accept". `out != Accept` passes on ANY error, including
+	// one that has nothing to do with pruning — the shape that lets an arm drift onto somebody
+	// else's refusal and still look green (the same failure the class table's wantSentry exists to
+	// stop). The real verdict over a proven view is the no-witness stall.
+	cout, cerr := ValidateCommitV5(box.view(), &pruned)
+	if cout == Accept {
+		t.Fatalf("the composition must not Accept a block whose proofs are shed over a proven view; got %s / %v", cout, cerr)
+	}
+	if !errors.Is(cerr, ErrViewNoWitness) {
+		t.Fatalf("the composition must stall with ErrViewNoWitness over a proven view rather than "+
+			"answering from a floor it does not have (H-4's belt); got %s / %v", cout, cerr)
 	}
 }
 

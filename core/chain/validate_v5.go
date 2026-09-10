@@ -214,6 +214,23 @@ func ValidateProposalV5(v StateView, b *Block) (FloorBoxOutcome, error) {
 			ErrWrongParent, b.Height, b.Prev, head.NextHeight, head.Hash)
 	}
 
+	// ---- 1b. (d-3) DIGEST CONSISTENCY. Block-local, no state read, no witness. ----
+	// The MIRROR of validateD3Digests on the node path (G-D13: a node body the composition
+	// mirrors changed, so the mirror is re-derived here in the SAME commit — updating the pin
+	// alone would split the v5 accept path from the v2/v4 path, which is R-PTABLE-DRIFT).
+	//
+	// It runs BEFORE the proposer-signature check below on purpose. From era-4 the preimage folds
+	// AnswerDigest / SlashesDigest in place of the payloads, so a signature verifies over a block
+	// whose heavy content is committed only THROUGH those digests. Checking them first means a
+	// block whose digest lies is refused on its own terms rather than passing a signature check
+	// that says nothing about the payload.
+	//
+	// Reject, not Indeterminate: the inputs are entirely block-local, so a floor box can decide it
+	// without witnessing anything.
+	if err := validateD3Digests(b); err != nil {
+		return Reject, err
+	}
+
 	// ---- 2. P2/P3 proposer key size and proposer signature over b.Hash(). ----
 	if len(b.Proposer) != ed25519.PublicKeySize {
 		return Reject, ErrBadSignature

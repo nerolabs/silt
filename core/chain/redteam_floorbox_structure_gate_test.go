@@ -80,6 +80,7 @@ func (f structFixture) mkBlock(t *testing.T, mutate func(*Block)) Block {
 	if mutate != nil {
 		mutate(b)
 	}
+	setD3Digests(b) // (d-3): an honest v5 proposer commits Answer/Slashes by digest before signing
 	state, log, err := f.c.postApplyRoots(*b)
 	if err != nil {
 		t.Fatalf("postApplyRoots: %v", err)

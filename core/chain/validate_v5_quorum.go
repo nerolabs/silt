@@ -29,7 +29,13 @@ func v5ValidateBondRegs(v StateView, b *Block) (FloorBoxOutcome, error) {
 		return Accept, nil
 	}
 	p := v.Params()
-	if b.IsPruned() {
+	// BOND POSSESSION, not identity. This refusal exists because a block whose space-time proofs
+	// are gone cannot have them re-verified — it is nothing to do with whether the block can
+	// recompute its own hash. (d-3) retires `Pruned` for v5, so IsPruned() no longer detects a v5
+	// block that shed its proofs; HeavyProofsShed() does. Using IsPruned() here after (d-3) would
+	// be the disqualifying widening the delta cert named: "identity != bond possession, trustFloor
+	// stays". Gate: the P7 pruned arm of the v4/v5 parity oracle.
+	if b.HeavyProofsShed() {
 		tolerated, av := v.PrunedTolerated(b.Height)
 		if av != Present {
 			// No view of the pruned-tolerance rule: STALL. A view that cannot answer must not have

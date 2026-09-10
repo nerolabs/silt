@@ -3557,3 +3557,92 @@ the Tester's to price.
 `R-CONSENSUS-CONFIG-UNBOUND` closes **on the production path only**. Still open:
 `R-LIVENESS-RECOVERY-UNBOUND` (new, unbindable), `R-CONFIG-GATE-NODE-SCOPE` (new — `node.Config` is
 unaudited beyond two fields), the surviving paramless path, and the legacy-leg subjectivity.
+
+---
+
+## D-D3-BUILT-2026-09-10 — (d-3) is built: `Pruned` is retired for v5, and the parity contract is NOT amended
+
+- **Status:** ✅ BUILT, package green — 2026-09-10. Owner call C (`D-FREEZE-CALLS-CDEF-2026-09-10`)
+  delivered against `D3-ANSWERDIGEST-TWO-LEVEL-HASH-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md` and
+  the follow-on
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/D3-PARITY-MALFORMEDPRUNED-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md`.
+- **The purchase, driven not asserted (G-D3-7).** A pruned v5 block recomputes its own hash from
+  what it retains, carries no `Pruned` token, and mutating its retained body MOVES the hash. The
+  same gate drives the **contrast on v2**, where the identical rewrite is invisible — so the defect
+  `Block.Hash()`'s comment records as having "shipped false three times" is demonstrated, not
+  described.
+- **The certified spec repairs both landed:** `AnswerDigest *ports.Hash` (the pointer form — the
+  manifest's bare array would have broken frozen v2/v4 bytes) and `SlashesDigest` replacing the
+  recursively-reduced `Slashes'`. **cbor key 19 allocated to `SlashesDigest` after verifying 1..18
+  were taken; the genesis-config family bind takes key 20.** Both certs said "next free, verify at
+  build", and both were right to — they had each claimed 19.
+
+### The defect this build introduced, and the cert that named it in advance
+
+Retiring `Pruned` for v5 broke a signal that was **serving two masters**: `IsPruned()` meant BOTH
+*"identity is declared, not recomputable"* AND *"heavy proofs are shed, so bond verification cannot
+be re-run"*. (d-3) changes only the first. Left alone, the trust-floor refusal
+(`ErrPrunedAboveHorizon`) would have gone **silently dead for v5** — the exact disqualifying
+widening the build cert named: ***identity != bond possession, trustFloor stays.***
+
+Fixed by splitting the signal (build-immutable #3): **`Block.HeavyProofsShed()`** — a registration
+carrying no `Answer` but committing a digest that is not `answerDigestOf(nil)`. The bond-possession
+sites are re-keyed to it; the identity sites keep `IsPruned()`. The floor-box sites 9 and 10 are
+**KEEP, re-keyed** per the cert, which warned that letting site 10 die for v5 makes D0's ablation
+vacuous (simplicity rule 7) — which is precisely what began to happen.
+
+### The parity question: the ACCEPTANCE was sound, the REASON was refuted
+
+The builder proposed that (d-3) *deletes* the malformed-pruned category on v5 — *"there is no v5
+block that can be marked pruned while carrying an Answer."* **That is FALSE**, and the delta
+certification refuted it against a live site: `core/chain/validate_v5_quorum.go:48-52` is reachable,
+v5-only, and still returns `ErrMalformedPruned` (verified at source).
+
+**What actually changed is GRANULARITY, not existence.** `Pruned` was a per-BLOCK mark, so ONE
+registration could contradict it. `HeavyProofsShed()` is a per-ITEM property lifted by `∃`, so
+contradicting it needs a **SECOND** registration. The one-reg fixture could only reconstitute the
+byte-identical valid original, which a v5 reader **must** accept. **The fixture failed, not the
+contract.**
+
+**So the #572 attribution contract is NOT amended.** The arm now carries two registrations and
+restores the `Answer` on one; both twins still want `ErrMalformedPruned`, with identical rendering.
+The builder's own proposal — an era-specific expectation — was refuted on two independent grounds,
+either sufficient: it is factually wrong, and it would have deleted the **only** driven coverage of
+that v5 site.
+
+**A sixth EXCLUSION is added and DRIVEN** (G-PMP-3): a **forged** `Answer` is a genuine by-rule
+divergence — v4 reaches `ErrMalformedPruned`, v5 is caught earlier and more specifically by
+`ErrD3DigestMismatch`. Driven rather than claimed in the header, per simplicity rule 7.
+
+### What the certification found that nobody routed — Probe C
+
+A block below the trust floor with `reg0` genuinely shed, where an attacker **appends** a `reg1`
+carrying `Answer == nil` and `AnswerDigest == answerDigestOf(nil)`. `HeavyProofsShed()` is true from
+`reg0`, so the verify loop is skipped and `reg1` would take bonded standing **with no proof ever
+verified**. **This works on v4** and is **structurally closed on v5** — the appended registration is
+inside the v5 preimage, so the hash moves. That is the (d-3) purchase paying out on a surface nobody
+aimed it at, and it is *why* the `answerDigestOf(nil)` carve-out in the predicate is safe rather
+than a hole. **Name that precondition wherever the predicate is defended.**
+
+### Corrections to the certifications themselves
+
+1. The build cert's `T-TWO-JOBS` predicate was **under-specified** — without the third conjunct, a
+   registration that never had a proof reads as shed. The implemented form is the correct one.
+2. **`chain.go`'s `validateBondRegs` is UNREACHABLE for a v5 block on the node path** (its sole
+   non-test caller sits inside `ValidateProposal`, which returns for v5 earlier). The re-key stays —
+   it is correct and defensive — but **it must not be counted as v5 coverage**. Related: a comment
+   claiming v5 `RegCap` is "enforced here, on the commit path" is false.
+3. Both delta certifications ran **with no shell**. Every load-bearing claim was re-verified at
+   source by the builder before being acted on, and the gates below are what lift them from derived
+   to measured.
+
+### Gates
+
+`G-D3-1..7` with a six-ablation battery, and `G-PMP-2` (ablate the v5 malformed-pruned arm → the
+parity arm reddens, proving it drives the v5 site and not the v4 one alone). All verified by **exit
+code**. One ablation in the battery first reported a **false GREEN**: the patch anchor matched two
+sites, so the edit silently no-opped and never ran. **A no-op patch is indistinguishable from a
+passing ablation** — verify the source actually changed before believing the result. Recorded in the
+gate's own comment, and it is why the D0 ablation instructions that still named `IsPruned()` targets
+were corrected in the same commit: an ablation instruction naming a line no longer in the source is
+worse than none.

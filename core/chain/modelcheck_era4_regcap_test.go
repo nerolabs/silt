@@ -95,6 +95,7 @@ func buildV5WithRegs(t *testing.T, c *Chain, prop ed25519.PrivateKey, regs []ed2
 	for _, r := range regs {
 		b.BondRegs = append(b.BondRegs, bondReg(r, twoMiB, prev))
 	}
+	setD3Digests(b) // (d-3): an honest v5 proposer commits Answer/Slashes by digest before signing
 	state, log, err := c.postApplyRoots(*b)
 	if err != nil {
 		t.Fatalf("postApplyRoots: %v", err)
@@ -210,6 +211,7 @@ func TestRegCapCountedAfterCanonicalFold(t *testing.T) {
 	if canon := len(canonicalBondRegs(b.BondRegs)); canon != RegCap {
 		t.Fatalf("fixture: canonical count = %d, want %d (the same-id pair must fold)", canon, RegCap)
 	}
+	setD3Digests(b) // (d-3): honest v5 proposer commits the digests before signing
 	state, log, err := c.postApplyRoots(*b)
 	if err != nil {
 		t.Fatalf("postApplyRoots: %v", err)
@@ -268,6 +270,7 @@ func TestRegCapDoesNotAffectV4(t *testing.T) {
 	for _, r := range fresh {
 		b.BondRegs = append(b.BondRegs, bondReg(r, twoMiB, prev))
 	}
+	setD3Digests(b) // (d-3): honest v5 proposer commits the digests before signing
 	state, log, err := c.postApplyRoots(*b)
 	if err != nil {
 		t.Fatalf("postApplyRoots: %v", err)

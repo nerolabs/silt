@@ -86,6 +86,18 @@ func freezeBondRegs(in []BondReg) []preCarrierBondReg {
 // era-2 block, an era-3 (v4) block with committed roots, and a v5 block with no carrier.
 //
 // The era-3 format is FROZEN (#632). If this guard ever reddens, the freeze is broken.
+func hasV5Substitutable(b Block) bool {
+	if len(b.Slashes) > 0 {
+		return true
+	}
+	for i := range b.BondRegs {
+		if b.BondRegs[i].Answer != nil {
+			return true
+		}
+	}
+	return false
+}
+
 func TestCarrierHashDriftGuard(t *testing.T) {
 	enc, err := cbor.CanonicalEncOptions().EncMode()
 	if err != nil {
@@ -95,17 +107,29 @@ func TestCarrierHashDriftGuard(t *testing.T) {
 	lr := ports.HashBytes([]byte("log"))
 	k := key(58401)
 
+	// hasV5Substitutable reports whether a block carries content the v5 preimage actually
+	// substitutes. A v5 block with no bond registrations and no slashes has NOTHING to substitute,
+	// so it hashes identically to the pre-(d-3) bytes — that is correct additive-compat, not a
+	// regression, and the complement assertion below must not fire on it. (Caught by this very
+	// guard on the first run: asserting "every v5 block must differ" failed the empty v5 row.)
+	//
+	// frozen says whether this era's preimage is FROZEN and must still hash to the pre-carrier
+	// bytes. v2 and v4 are frozen (#632) and always will be. v5 is NOT: era-4 is dark, and (d-3)
+	// deliberately changes its preimage to commit the heavy payloads by digest. So the v5 rows
+	// assert the COMPLEMENT — they must DIFFER — which keeps them load-bearing instead of
+	// deleting them: a regression that quietly gave v5 the pre-(d-3) preimage reddens here.
 	cases := []struct {
-		name string
-		b    Block
+		name   string
+		b      Block
+		frozen bool
 	}{
 		{"era-2 v2", Block{Version: BlockVersionRounds, Height: 7, Prev: ports.HashBytes([]byte("p")),
-			Entries: []ports.Entry{entry(1)}, Proposer: pubOf(k)}},
+			Entries: []ports.Entry{entry(1)}, Proposer: pubOf(k)}, true},
 		{"era-3 v4 with roots", Block{Version: BlockVersionStateRoot, Height: 8, Prev: ports.HashBytes([]byte("p")),
 			Entries: []ports.Entry{entry(2)}, Proposer: pubOf(k), StateRoot: &sr, LogRoot: &lr,
-			Revocations: []ports.Hash{ports.HashBytes([]byte("r"))}}},
+			Revocations: []ports.Hash{ports.HashBytes([]byte("r"))}}, true},
 		{"era-4 v5 with NO carrier", Block{Version: BlockVersionWitnessable, Height: 9, Prev: ports.HashBytes([]byte("p")),
-			Entries: []ports.Entry{entry(3)}, Proposer: pubOf(k), StateRoot: &sr, LogRoot: &lr}},
+			Entries: []ports.Entry{entry(3)}, Proposer: pubOf(k), StateRoot: &sr, LogRoot: &lr}, false},
 
 		// WITH BOND REGISTRATIONS. Re-point, 2026-09-10: every case above carries NO BondRegs, so
 		// key 10 was absent from the preimage in all three and a change to the BondReg wire shape
@@ -114,13 +138,13 @@ func TestCarrierHashDriftGuard(t *testing.T) {
 		// v2/v4 history.
 		{"era-2 v2 WITH a bond reg", Block{Version: BlockVersionRounds, Height: 10, Prev: ports.HashBytes([]byte("p")),
 			Entries: []ports.Entry{entry(4)}, Proposer: pubOf(k),
-			BondRegs: []BondReg{bondReg(k, twoMiB, ports.Hash{})}}},
+			BondRegs: []BondReg{bondReg(k, twoMiB, ports.Hash{})}}, true},
 		{"era-3 v4 WITH a bond reg", Block{Version: BlockVersionStateRoot, Height: 11, Prev: ports.HashBytes([]byte("p")),
 			Entries: []ports.Entry{entry(5)}, Proposer: pubOf(k), StateRoot: &sr, LogRoot: &lr,
-			BondRegs: []BondReg{bondReg(k, twoMiB, ports.Hash{})}}},
+			BondRegs: []BondReg{bondReg(k, twoMiB, ports.Hash{})}}, true},
 		{"era-4 v5 WITH a bond reg, no carrier", Block{Version: BlockVersionWitnessable, Height: 12, Prev: ports.HashBytes([]byte("p")),
 			Entries: []ports.Entry{entry(6)}, Proposer: pubOf(k), StateRoot: &sr, LogRoot: &lr,
-			BondRegs: []BondReg{bondReg(k, twoMiB, ports.Hash{})}}},
+			BondRegs: []BondReg{bondReg(k, twoMiB, ports.Hash{})}}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -135,11 +159,21 @@ func TestCarrierHashDriftGuard(t *testing.T) {
 				t.Fatal(mErr)
 			}
 			want := ports.Hash(sha256.Sum256(raw))
-			if got := b.Hash(); got != want {
+			got := b.Hash()
+			switch {
+			case tc.frozen && got != want:
 				t.Fatalf("CARRIER HASH DRIFT: a carrier-free %s block no longer hashes to its "+
-					"pre-carrier bytes.\n  got  %x\n  want %x\nThe era-3 format is FROZEN (#632) and "+
-					"the carrier is ADDITIVE + omitempty — every block that carries no LastCommit must "+
-					"hash byte-identically to pre-carrier origin/main.", tc.name, got, want)
+					"pre-carrier bytes.\n  got  %x\n  want %x\nThe era-2/era-3 formats are FROZEN (#632) "+
+					"and every additive field since must omit cleanly — every block that carries no "+
+					"LastCommit must hash byte-identically to pre-carrier origin/main. A fixed-size "+
+					"array field is the classic way to break this: cbor's omitempty never omits one "+
+					"(chain.go:565-575).", tc.name, got, want)
+			case !tc.frozen && hasV5Substitutable(b) && got == want:
+				t.Fatalf("(d-3) REGRESSION: %s hashes to the PRE-(d-3) bytes, so its preimage is not "+
+					"the v5 one.\n  hash %x\nv5 must commit BondReg.Answer by AnswerDigest and Slashes "+
+					"by SlashesDigest — that substitution is what lets a PRUNED v5 block recompute its "+
+					"own hash, which is the entire purchase. If v5's preimage was deliberately reverted, "+
+					"this row is what must change, and the decision belongs in docs/decisions.md.", tc.name, got)
 			}
 		})
 	}

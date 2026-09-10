@@ -420,7 +420,7 @@ func callsViewMethod(body *ast.BlockStmt, method string) bool {
 // error-message tweak inside validateBondRegs and be turned off within a month; that
 // calibration is the certification's, and its cost (an inline change INSIDE a called stage is
 // unseen) is R-PTABLE-DRIFT's stated bound.
-const nodeAcceptPathDigest = "42b27dc5d6485dca09653d6df8969aa2e5df2e9c241a3c7bdc01bdea4172319a"
+const nodeAcceptPathDigest = "38d1866795ffd2c101b79ef5604a176280079b8908623d8872f94214a5c18eec"
 
 // TestStageCover_ArmB_NodeBodyDigest is a CHANGE DETECTOR, not a cover proof.
 // Ablation (G-D3): add `&& true` to the P5 clause chain in ValidateProposal ⇒ RED.
@@ -525,7 +525,7 @@ func TestStageCover_ArmC_ReverseCover(t *testing.T) {
 var nodeBodyDigests = map[string]string{
 	"ValidateEntry":              "f6844363fb7212b625f60ca726f3d361b7b3eaca7f4af22efb33703c2f5bf3e5",
 	"RequiredQuorum":             "c3a413ba707abae6cfdd40806fe5c195a79a2c4a7e4fa2939d8ee1cb92257454",
-	"ValidateProposal":           "6d873361520430de96ae22073a77d9e1c13455df6940950c925641621446449f",
+	"ValidateProposal":           "b95af85c882a1dfcf442a5ca07840fea18c0296c9c56fb83bfc8f62b980134b6",
 	"attesterQualifiedAt":        "fd5de208dcecba70d1fcaf32172ef185c20b12020413ba7fff0ddd04fef3723f",
 	"collectQuorumSigs":          "9f48ce5d93ade7351cf817212e823e420c5480f542f4d9bd4c3dd732c86ecbb8",
 	"effectiveEpochSet":          "8da6023fc1b8b0e5482b8f8c275ad9d93a7db8edf304750fdd15e6bfca4d292a",
@@ -543,7 +543,7 @@ var nodeBodyDigests = map[string]string{
 	"restoresHeldStanding":       "1dd120f427f6eb4c3f93103afa61770b4bf2f03153c5bfc97596d04e1263d499",
 	"validateBondReg":            "595b695e1d665885b4de70585fe94ed4b09654ce956b6b08fe712665b80f3bf6",
 	"validateBondRegWindow":      "cceaf238101c9a751ebba1bfcb406ce01c90387d03fc62fdd8015b5e98ad7745",
-	"validateBondRegs":           "11e6fe97b14dd3b1ca4fae6538d8dd75dc467ec48634ff36561ce08898129955",
+	"validateBondRegs":           "44a7b37852f162e47a7b409222f86251d846c959163659f07ac2d758fb39c08d",
 	"validateCarrier":            "fb137538622a06a27dea8039ddc0438889c94230d729cd3cae8e74ea13a7508a",
 	"validateEra3Roots":          "a7ec421d2ea91224cec48dc7cfe34f935908fdf0bc46d8e3dcbd8addf6823b92",
 	"validateEra3Version":        "1ff98cdc43e91fb10dc080c41a0c788beb6b8ddc06a87461a7fceea55fe4dc0b",

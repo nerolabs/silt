@@ -38,6 +38,15 @@ import (
 // RENDERED roots differ — the one case where text parity is not asserted). A fifth is driven as
 // an EXPECTED divergence: at/past Era4ActivationHeight the v4 twin is refused by name.
 //
+// A SIXTH, added 2026-09-10 with (d-3): a FORGED Answer smuggled onto a shed registration is a
+// by-rule divergence. On v4 it is ErrMalformedPruned (the Pruned mark contradicts the body); on v5
+// the digest catches it FIRST — ErrD3DigestMismatch from validateD3Digests, which runs before P7
+// is reached. Both refuse; the sentinels differ because v5 has a strictly earlier, more specific
+// check. NOTE the distinction this turns on: smuggling back the ORIGINAL Answer is NOT this case —
+// it reconstitutes a byte-identical valid block, and the malformed-pruned arm below drives that
+// with TWO registrations so the block still reports shed. Delta cert
+// D3-PARITY-MALFORMEDPRUNED-DELTA-RESEARCH-CERTIFICATION-2026-09-10, G-PMP-3.
+//
 // WHAT IT COVERS. Every regime the round's other fixtures never reach (certification §7.2): the
 // mature epoch (Q3 and the frozen arms of P4 / the attester filter), the launch window (Q2 and the
 // anchor-only proposer arm), the reg gate (P7's active arm, including the #535 restore exemption),
@@ -112,6 +121,7 @@ func (w *parityWorld) mint(version uint64, proposer ed25519.PrivateKey, attester
 			b.Atts = append(b.Atts, AttestAt(b, k, 0, PhasePrecommit))
 		}
 	}
+	setD3Digests(b)   // (d-3): an honest v5 proposer commits Answer/Slashes by digest. No-op below v5.
 	Sign(b, proposer) // provisional: sets b.Proposer for the seating exclusion in apply
 	attach()
 	state, log, err := w.c.postApplyRoots(*b)
@@ -238,8 +248,20 @@ func TestM1A3_V4V5ParityOracle(t *testing.T) {
 		// reader's: a Reconcile replay threads the RECEIVER's anchor through trustFloorOverride,
 		// which is the only way a block at the head can sit below it; the box's provenView never
 		// answers a floor at all (its door stalls on a pruned block before the composition).
-		fresh := key(91100)
-		reg4, reg5 := w.pair(a[0], a[1:], func(b *Block) { b.BondRegs = []BondReg{bondReg(fresh, twoMiB, b.Prev)} })
+		// TWO registrations, deliberately. (d-3) did not delete the malformed-pruned category on v5
+		// — validate_v5_quorum.go:48-52 is live, reachable and v5-only — but it changed its
+		// GRANULARITY. `Pruned` was a per-BLOCK mark, so ONE registration could contradict it.
+		// HeavyProofsShed() is a per-ITEM property lifted by exists, so contradicting it needs a
+		// SECOND registration: shed both, restore the Answer on one, and the block still reports
+		// shed (from the other) while carrying an Answer. With a single reg the restore
+		// reconstitutes the byte-identical valid original, which a v5 reader MUST accept — the
+		// fixture would fail, not the contract. Delta certification
+		// D3-PARITY-MALFORMEDPRUNED-DELTA-RESEARCH-CERTIFICATION-2026-09-10 (option (c)); the #572
+		// attribution contract is NOT amended, both twins still want ErrMalformedPruned.
+		fresh, fresh2 := key(91100), key(91101)
+		reg4, reg5 := w.pair(a[0], a[1:], func(b *Block) {
+			b.BondRegs = []BondReg{bondReg(fresh, twoMiB, b.Prev), bondReg(fresh2, twoMiB, b.Prev)}
+		})
 		if floor := w.c.trustFloor(); reg4.Height < floor {
 			t.Fatalf("world: the candidate (h%d) must sit at/above the reader's floor (%d) for the refusal arm", reg4.Height, floor)
 		}
@@ -252,6 +274,16 @@ func TestM1A3_V4V5ParityOracle(t *testing.T) {
 		smuggled4.BondRegs[0].Answer, smuggled5.BondRegs[0].Answer = []byte("valid"), []byte("valid")
 		w.assertParity(parityCase{name: "pruned block below the anchor with an Answer smuggled back (P7 pruned arm)", v4: smuggled4, v5: smuggled5, want: ErrMalformedPruned})
 		w.driven("v5ValidateBondRegs", "P7 pruned arm below the floor — Answer-less regs ACCEPTED, a smuggled Answer is ErrMalformedPruned")
+
+		// G-PMP-3, the SIXTH exclusion DRIVEN rather than asserted: a FORGED Answer diverges BY
+		// RULE. v4 reaches ErrMalformedPruned; v5 is caught earlier and more specifically by the
+		// (d-3) digest check. Driven so the divergence is a measured fact rather than a claim in
+		// the header — the shape simplicity rule 7 demands of every "expected" row.
+		forged5 := reg5.Prune()
+		forged5.BondRegs[0].Answer = []byte("forged, not the committed proof")
+		if err := validateD3Digests(&forged5); !errors.Is(err, ErrD3DigestMismatch) {
+			t.Fatalf("G-PMP-3: the v5 twin with a FORGED Answer must be ErrD3DigestMismatch (caught before P7), got %v", err)
+		}
 		w.c.trustFloorOverride = nil
 
 		v4, v5 := w.pair(a[0], a[1:], func(b *Block) { b.Revocations = []ports.Hash{ports.HashBytes([]byte("never-published"))} })

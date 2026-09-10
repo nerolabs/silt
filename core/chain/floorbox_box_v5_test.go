@@ -206,8 +206,16 @@ func TestNewBox_RefusesWhatItCannotOwn(t *testing.T) {
 	if _, err := NewBox(lf.c, lf.c.Blocks(0)[0], BoxConfig{BudgetBytes: 1 << 20}, nil); !errors.Is(err, ErrBoxLegacyMode) {
 		t.Fatalf("NewBox over a legacy chain must REFUSE (ErrBoxLegacyMode); got %v", err)
 	}
-	// A pruned parent's hash is a token, not a commitment.
-	if _, err := NewBox(f.c, parent.Prune(), BoxConfig{BudgetBytes: 1 << 20}, nil); !errors.Is(err, ErrBoxParentPruned) {
+	// A parent whose heavy proofs are shed cannot anchor the box. The parent must actually HAVE a
+	// proof to shed: (d-3) retires `Pruned` for v5, so Prune() on an entry-only v5 block is a
+	// legitimate no-op and this arm would assert against an unpruned parent.
+	shedParent := parent
+	d := answerDigestOf([]byte("valid"))
+	shedParent.BondRegs = []BondReg{{Validator: pubOf(f.keys[0]), Root: ports.Hash{0x11}, Size: twoMiB, AnswerDigest: &d}}
+	if !shedParent.HeavyProofsShed() {
+		t.Fatal("fixture: the parent under test must actually have shed a proof, or this arm is vacuous")
+	}
+	if _, err := NewBox(f.c, shedParent, BoxConfig{BudgetBytes: 1 << 20}, nil); !errors.Is(err, ErrBoxParentPruned) {
 		t.Fatalf("NewBox over a pruned parent must REFUSE (ErrBoxParentPruned); got %v", err)
 	}
 	// A parent that does not verify over its own hash anchors nothing.
