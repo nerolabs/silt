@@ -1362,6 +1362,28 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   knowing it is also the evidence size above which a double-signer keeps its seat with no on-chain
   penalty, including every member of a ≥⅓ coalition that splits finality using ~9 MB valid
   blocks, a face no value of the cap closes and only (d-3) removes.
+
+  > **⚠ THE RATIFIED SENTENCE ABOVE IS LEFT VERBATIM AND IS PARTLY REFUTED — 2026-09-10.** It is not
+  > rewritten, because the owner ratified those words and only the owner unratifies them; this note
+  > records what a research certification found and what he must now re-ratify. Certification:
+  > `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/SLASHCAP-NESTED-EVIDENCE-FIXED-POINT-RESEARCH-CERTIFICATION-2026-09-10.md`.
+  > **(i)** *"and only (d-3) removes"* is **FALSE**. §4.3's `Slashes′` is a recursively reduced COPY,
+  > not a digest, and it leaves `Entries` and `LastCommit` — neither of which has a validity bound on a
+  > peer's block — so (d-3) is a ~40× constant shrink (2 → ~80 committed proofs), not a close.
+  > **(ii)** The *"≥⅓ coalition"* clause is true but **materially understates**: `CheckEquivocation`
+  > (`core/chain/equivocation.go:68`, verified at source) checks only key SIZE, equal height, differing
+  > body, matching era and a shared `(round, phase)`. It never checks that the culprit is a bonded
+  > validator, that the evidence blocks belong to this chain, or that a proof is not a duplicate. So a
+  > **lone** proposer can armor itself with throwaway-key junk proofs — no bond, no coalition, no
+  > misconfiguration. **That construction is DERIVED from source, not yet driven**; the Tester owes
+  > `R-NEST-GATE`, and it must not be cited as measured until then.
+  > **(iii)** The close that does exist is not (d-3): `consensusSigBytes` (`core/chain/chain.go:918`)
+  > omits **Height** from the signature preimage — "the height rides inside the hash" — which is the
+  > entire reason evidence carries full bodies (`equivocation.go:54-60` says so). Putting
+  > `(height, round, phase)` in the v5 preimage makes evidence `O(1)`, ~200 bytes. That is CometBFT's
+  > `CanonicalVote`. It is a **FORMAT** change and a **WIDENING** one, so it rides D1 or it costs an era.
+  > **The 16 MiB VALUE does not move.** Three owner calls are in §9 of the certification.
+
   Derived from shipped bounds: one legitimate evidence pair is at most two blocks at the
   default per-block budgets (2 MiB regs + 64 KiB entries) ≈ 4.2 MiB, so 16 MiB admits three
   fat proofs (or ~18k header-only ones) and is 1/8 of the 128 MiB transport frame. G-3
