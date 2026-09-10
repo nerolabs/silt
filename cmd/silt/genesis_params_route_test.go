@@ -33,14 +33,23 @@ import (
 // NEVER INVOKED (`_ = checkParams`). Both gates in this file PASS over it, the mechanism is
 // entirely dead, and only the e2e reddens. No stronger lexical gate closes that — a call-string
 // check locates a STRING, and an uninvoked closure supplies the string by construction. What closes
-// it is the runtime cover, and THE RUNTIME COVER IS NOT MERGE-BLOCKING: `Go — multi-process e2e
-// (real TCP)` (.github/workflows/ci.yml:198) is not among the five required status checks on
-// ruleset 19729396, and both e2e tests skip under the -short that the required job runs
-// (.github/workflows/ci.yml:45). So the MERGE-BLOCKING coverage of owner call F's refusal arm is
-// exactly this file, over a shape this file cannot see. Making that job required is a repo-wide CI
-// policy call the owner holds; until it is made, read a green here as "the strings are present and
-// in this order", never as "the mechanism is live", and run
-// `go test ./e2e -run ConsensusConfig`.
+// it is the runtime cover in the `Go — multi-process e2e (real TCP)` job, which runs the e2e
+// package BY PACKAGE and without -short (every other go test in ci.yml passes -short, and both
+// e2e tests skip under it).
+//
+// THAT COVER WAS NOT MERGE-BLOCKING WHEN THIS GATE WAS WRITTEN, and the fix is a repo-wide CI
+// policy call the owner holds. He made it on 2026-09-11: the e2e job is added to ruleset 19729396's
+// required status checks (five -> six) immediately AFTER the merge that lands this file —
+// deliberately after, because a job must not be made required while the change it was added to
+// protect is still in flight. Evidence he ruled on: three commits (18e267a, c22fa2c, 55900ac) were
+// merge-eligible with that job as the sole red, and over the last 40 completed ci.yml runs on main
+// the e2e job's mean is 448 s against the already required race job's 525 s (40/40 green), so it
+// costs no wall-clock.
+//
+// SO READ THIS DISCLOSURE IN TWO LEGS. Leg one — "the runtime cover is not merge-blocking" —
+// RETIRES the moment the ruleset read-back shows six contexts. Leg two does not retire and is the
+// reason the marker stays: a green in THIS file means "the strings are present and in this order",
+// never "the mechanism is live". Locally, run `go test ./e2e -run ConsensusConfig`.
 //
 // FOR A NEW FIELD ON A CONSENSUS TYPE, A READER IS NOT ENOUGH — the pin must require a non-test
 // WRITER. G-CFGBIND-7 is that requirement: it fails if genesis.Build stops being handed real
@@ -61,8 +70,9 @@ import (
 const ungatedDisclosure = " · UNGATED: R-CONSENSUS-CONFIG-UNBOUND — this is a STRING check on " +
 	"daemon.go, and it is GREEN over a check that is defined between the landmarks and never " +
 	"invoked (measured), so a green here is not evidence the mechanism is live. The instrument that " +
-	"binds is e2e/consensus_config_bind_test.go (G-CFGBIND-10/11) — which is NOT a required status " +
-	"check and skips under -short. Run `go test ./e2e -run ConsensusConfig`."
+	"binds is e2e/consensus_config_bind_test.go (G-CFGBIND-10/11), in the `Go — multi-process e2e " +
+	"(real TCP)` job — it skips under -short, so no other job runs it. Run " +
+	"`go test ./e2e -run ConsensusConfig`."
 
 // G-CFGBIND-7 — THE GENESIS MINT WRITES REAL PARAMS, on the production path.
 //
@@ -70,8 +80,8 @@ const ungatedDisclosure = " · UNGATED: R-CONSENSUS-CONFIG-UNBOUND — this is a
 // -bond-label-k must mint DIFFERENT genesis blocks, and the same config the same one. The
 // paramless mint compiles and prints the same line; what it cannot do is move the hash.
 //
-// UNGATED: R-CONSENSUS-CONFIG-UNBOUND — that runtime gate is not a required status check. See the
-// disclosure at the top of this file.
+// UNGATED: R-CONSENSUS-CONFIG-UNBOUND — that runtime gate lives in the e2e job, and this source
+// gate cannot see whether the mechanism is live. See the two-leg disclosure at the top of this file.
 func TestG_CFGBIND_7_TheGenesisWiringIsOnTheProductionPath_Source(t *testing.T) {
 	src, err := os.ReadFile("daemon.go")
 	if err != nil {
@@ -118,8 +128,8 @@ func TestG_CFGBIND_7_TheGenesisWiringIsOnTheProductionPath_Source(t *testing.T) 
 // RUNTIME GATE: e2e TestDaemonRefusesToStartOnADivergentConsensusConfig — a persisted genesis
 // committing k=64, a daemon started with -bond-label-k 32, a non-zero exit and no peer line.
 //
-// UNGATED: R-CONSENSUS-CONFIG-UNBOUND — that runtime gate is not a required status check, and this
-// gate is green over an uninvoked closure. See the disclosure at the top of this file.
+// UNGATED: R-CONSENSUS-CONFIG-UNBOUND — this gate is green over an uninvoked closure, and only the
+// e2e decides whether the check runs. See the two-leg disclosure at the top of this file.
 //
 // WHAT THIS CATCHES THAT JOINING CANNOT (and therefore why the call must exist at all): an
 // operator who edits a consensus flag and restarts on a chain this node has ALREADY joined. The

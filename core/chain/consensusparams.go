@@ -44,7 +44,8 @@ import (
 // operator's own trust anchor; MinProposerRep/MinAttesterRep cannot be usefully bound because the
 // INPUT is the local reputation view, so a shared threshold still diverges; and
 // LivenessRecoveryHeight is structurally unbindable — it is set AFTER launch, on a chain that by
-// construction cannot commit it (R-LIVENESS-RECOVERY-UNBOUND).
+// construction cannot commit it (R-LIVENESS-RECOVERY-UNBOUND, which is a DISCLOSURE in
+// docs/design/m0.md 10.1 rather than a register row — it has no closer).
 //
 // NO `omitempty` ON ANY FIELD. A zero value here is a MEANING (Quorum 0, MinBond 0 = legacy mode),
 // not an absence, and omitting it would make two different configurations encode identically. The

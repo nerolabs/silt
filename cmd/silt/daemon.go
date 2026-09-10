@@ -2276,7 +2276,11 @@ func effectiveBondFloor(floorSet bool, explicit int64, objectivePath bool) (floo
 // coast: the paired non-proposer renewal path (node.SubmitBondRenewal) fires
 // every chain-sync sweep, so an honest validator gets many inclusion chances per
 // window and never lapses, while a coaster is pruned within this many blocks. A
-// tuning knob (Evolving), not a fixed law; a real deployment can tighten it.
+// tuning knob (Evolving), not a fixed law — BEFORE LAUNCH. Once a network's
+// genesis commits this value, tightening it and rebuilding makes every
+// upgrading node refuse to start on that chain with an unchanged argv, so it
+// is a NEW NETWORK and not a tuning change (D-CFGBIND-TIER-PROMOTION-2026-09-11,
+// driven; docs/TENETS.md Part IX).
 const DerivedBondTTL = uint64(32)
 
 // effectiveBondTTL decides the objective re-challenge TTL, mirroring

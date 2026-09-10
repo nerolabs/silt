@@ -4037,7 +4037,8 @@ unproven. A gate whose two arms are never separated cannot tell you which one is
 
 ### What this does NOT close, and one correction to the record
 
-- `R-LIVENESS-RECOVERY-UNBOUND` — structurally unbindable, unchanged.
+- `R-LIVENESS-RECOVERY-UNBOUND` — structurally unbindable, unchanged; it moved off the register
+  2026-09-10 and is a disclosure in [`design/m0.md`](design/m0.md) 10.1, because it has no closer.
 - `R-CONFIG-GATE-V5-REGIME` — the chain gate still validates a `Version: 1` block.
 - **The carrier bound is NOT built here**, and its `|Anchors|` and `EpochBlocks` terms **depend on
   this wiring landing**: before it, those quantities were not committed anywhere, so a bound derived
@@ -4053,3 +4054,87 @@ unproven. A gate whose two arms are never separated cannot tell you which one is
 **Call A (the chain id in `consensusSigBytes`) must land in the SAME genesis move as F**, or the
 graded re-run set is paid twice. That is the freeze's actual cost now — re-runs and calendar, not
 permanence.
+
+---
+
+## D-CFGBIND-TIER-PROMOTION-2026-09-11 — the genesis bind promotes six compile-time defaults out of the Evolving tier, and the owner accepts it explicitly
+
+- **Status:** ✅ RATIFIED — 2026-09-11, owner. The promotion is **accepted**, not narrowed, and the
+  constraint it creates is written down here. Filed the same day owner call F's delivery merged, so
+  the record and the behaviour land together.
+- **Raised by:** the blind PE review of the call-F wiring
+  (`silt-reviews/principle-engineer/RULING-owner-call-F-genesis-params-wiring-CODE-0d99aef-2026-09-10.md`),
+  as *"the coupling the consult missed"*. It was routed to the owner rather than settled by the
+  reviewer or the builder, because a tier reclassification is not a build decision.
+- **Canon:** `docs/TENETS.md` Part IX now carries the PRINCIPLE (a value bound into a frozen
+  consensus format leaves the Evolving tier for that network's lifetime). This entry is the build
+  state that principle points at. `docs/build-process.md` rule 8 is the rule that motivated the bind.
+
+### The finding, DRIVEN — not argued
+
+`ConsensusParams` commits the consensus-critical config **by value** into the genesis block, so the
+genesis hash covers it. The reviewer moved **one flag default** — `-quorum` from 3 to 2, no semantics
+touched — rebuilt, and restarted the new binary on a chain the previous binary had minted, with the
+operator's **argv unchanged**:
+
+```
+### v1 binary on the v1-minted chain (control) ###
+serving; Ctrl-C to stop
+
+### v2 binary (ONLY the -quorum flag DEFAULT moved 3 -> 2) on the SAME chain ###
+silt: consensus config: REFUSING TO START — … 1 field(s) differ:
+  -quorum: this node has 2, the chain's genesis commits 3
+serving lines: 0
+>> EXITED (refused)
+```
+
+A **pure binary upgrade** — no configuration change by anyone — refuses to start. That is correct
+under canon rule 8: a value that changes a validity verdict must be a function of the chain, and this
+is what "a function of the chain" costs.
+
+### Which values are affected
+
+Six inputs reach `ParamsFromConfig` through an *effective-value* helper that supplies a compile-time
+default when the operator sets no flag: `effectiveQuorum`, `effectiveByzantineQuorum`,
+`effectiveOperatorMargin`, `effectiveBondFloor` (`DerivedBondFloor`), `effectiveBondTTL`
+(`DerivedBondTTL`) and `effectiveEpochBlocks`. For these six, the *build* is the operator: change the
+default, ship the binary, and every node that upgrades disagrees with the chain it is on.
+
+The other committed values are supplied by a flag the operator actually passes. They are frozen
+per-network too, but changing them requires someone to change an argv, which is visible.
+
+**`DerivedBondFloor` is CLEARED as a source of hardware-dependent divergence**, and that is the one
+thing that would have made this severe. It is a compile-time constant —
+`2 × (AntiReleaseComputeWindow/s × bond.PlotSealThroughput)` — and `bond.PlotSealThroughput` is a
+literal in `core/bond/bond.go`, **not** a machine measurement, so two nodes on different hardware
+derive the same floor and mint the same genesis. Verified at source, not assumed. It is frozen
+per-network like the other five; it does not fork a network at mint time.
+
+### One published sentence this falsifies, corrected in the same commit
+
+`DerivedBondTTL`'s own doc comment read *"A tuning knob (Evolving), not a fixed law; a real deployment
+can tighten it."* True of a network that has not launched. **False for one that has** — tightening it
+and rebuilding refuses on every existing chain. The comment now says so.
+
+### The two alternatives, both DECLINED, and why
+
+1. **Narrow the committed set to the flags an operator actually sets.** Declined. It re-opens the
+   17-in / 5-out membership analysis the certification settled, and it replaces the ratified rule
+   (*every field that can change a validity verdict is bound to the chain, or is explicitly excluded
+   with a recorded reason*) with an accident of which knobs happen to carry a flag today. Adding a
+   flag to a value would then silently change its consensus status.
+2. **Require explicit values, with no defaults at all.** Declined. It charges every operator, on
+   every launch, to protect a case that **already fails safe**: the node refuses to start, loudly,
+   naming the field and both values, instead of diverging silently. Paying a permanent usability cost
+   to avoid a loud refusal is the wrong trade, and it does not even remove the class — an operator
+   can still pass a different value.
+
+### Why the safe direction is the reason this must be WRITTEN, not discovered
+
+The failure mode of the promotion is a **refusal to start**, never a fork. That is exactly why it
+needs a written rule: a loud, correct refusal that nobody expected reads as a bug in the release, and
+the tempting fix is to weaken the check. The rule below forecloses that reading before it happens.
+
+**The rule, and it lives in `docs/release-checklist.md`:** changing any of these compile-time defaults
+is a **breaking change requiring a new network**, because every upgrading node refuses to start on the
+existing chain.

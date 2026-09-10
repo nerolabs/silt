@@ -96,6 +96,9 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   (`(*Node).FundDeliverySessionRemote`), the entire paid-relay client (`AcquireRelayAnchors`,
   `OpenRelaySessionRemote`, `SubmitRelayPay`) and a per-lane counter nothing reads
   (`(*Ledger).GuardFullRefusalsByLane`).
+  **One of those six is LIVE as of 2026-09-11** — owner call F's delivery gave
+  `CheckConsensusParams` its production caller (see the entry above). The finding stands as
+  written: it is what the six were when this lint was built, and the other five are unchanged.
   **No Go test can catch this, and neither can grep.** A test that can call the symbol is itself the
   caller that keeps it alive. A grep sweep keys on BARE IDENTIFIERS, so an inert method hides behind a
   live namesake — the 117-site sweep that preceded this lint missed `demand.Commit` outright, and
@@ -197,6 +200,36 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   the strings are present and in order, never that the mechanism is live.
   `silt genesis` now prints its hash labelled as the *paramless* one, because a daemon-launched
   network no longer has a single genesis hash.
+- **The tier promotion the bind creates is ACCEPTED, and the constraint is written down**
+  (owner ratification, 2026-09-11, [`docs/decisions.md`](docs/decisions.md)
+  `D-CFGBIND-TIER-PROMOTION-2026-09-11`). Committing the config by value freezes it per network —
+  including the values a build supplies when the operator sets nothing. **Driven, not argued:** move
+  the `-quorum` flag default 3 -> 2, rebuild, restart on the same chain with an **unchanged argv**,
+  and the node refuses to start naming the field and both values. A pure binary upgrade, no
+  configuration change by anyone. Six inputs reach the committed params through an effective-value
+  helper and are affected; `DerivedBondFloor` is CLEARED as a source of hardware-dependent
+  divergence, because `bond.PlotSealThroughput` is a literal constant and not a machine measurement,
+  so two nodes on different hardware mint the same genesis. The owner declined both narrowing
+  alternatives, each for its own reason: narrowing the bound set to operator-set flags re-opens the
+  settled membership analysis and makes consensus status an accident of which knobs carry a flag,
+  and requiring explicit values everywhere charges every operator to protect a case that already
+  fails safe. `docs/TENETS.md` Part IX gains the PRINCIPLE (a value bound into a frozen consensus
+  format leaves the Evolving tier for that network's lifetime) and names no fields, because the
+  formats and their membership are build state. `docs/release-checklist.md` gains the RULE: moving
+  one of these defaults is a breaking change requiring a NEW NETWORK. `DerivedBondTTL`'s own doc
+  comment — *"a real deployment can tighten it"* — was falsified by the bind and is corrected in the
+  same commit.
+- **`Go — multi-process e2e (real TCP)` becomes a required status check** (owner ratification,
+  2026-09-11; ruleset `19729396`, five contexts -> six). The e2e job is where several mechanisms'
+  only merge-relevant coverage lives — including owner call F's refuse-to-start arm, whose source
+  gates a blind review measured GREEN over a completely dead mechanism. **The evidence:** three
+  commits (`18e267a`, `c22fa2c`, `55900ac`) were merge-eligible with that job as the sole red and
+  every required check green. It costs no wall-clock — **measured over the last 40 completed `ci.yml`
+  runs on `main`**, the e2e job's mean is **448 s** against the already-required race job's **525 s**,
+  so it is off the critical path — and it is **40/40 green** over that same window. `nat`, `netem` and fuzz stay non-required, and
+  `strict_required_status_checks_policy` stays OFF. **The flip is applied AFTER the merge that
+  lands this entry**, deliberately: a job must not be made required while the change it was added to
+  protect is still in flight.
 - **The membership rule, replacing the field list** (owner ratification, 2026-09-10). *Every field
   that can change a validity verdict is bound to the chain, or is explicitly excluded with a recorded
   reason.* The **rule** is ratified; **17 is its output**. The reflective gate now covers **both**
