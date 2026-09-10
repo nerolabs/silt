@@ -1375,8 +1375,24 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   > body, matching era and a shared `(round, phase)`. It never checks that the culprit is a bonded
   > validator, that the evidence blocks belong to this chain, or that a proof is not a duplicate. So a
   > **lone** proposer can armor itself with throwaway-key junk proofs — no bond, no coalition, no
-  > misconfiguration. **That construction is DERIVED from source, not yet driven**; the Tester owes
-  > `R-NEST-GATE`, and it must not be cited as measured until then.
+  > misconfiguration. **DRIVEN AND CONFIRMED 2026-09-10** against real production code on `4c330c8` —
+  > shipped `CheckEquivocation`, `SlashesEncodedSize`, `v5ValidateSlashes` and the full
+  > `Chain.ValidateProposal` path, no mocks, reproduced independently. **A throwaway-key proof about two
+  > never-committed blocks is 687 B and is ACCEPTED as evidence.** 24,456 of them pack `Slashes` to
+  > 16,776,819 B — 397 B under the cap — and that block is **VALID under `v5ValidateSlashes` AND
+  > `ValidateProposal` at shipped `DefaultConfig`**. A legitimate proof about it is 33,555,157 B, i.e.
+  > 16,777,941 B over cap, and is REJECTED with `ErrSlashesBytesCapExceeded`: **the equivocator keeps its
+  > seat.** Gate: `core/chain/TestRNestGate_SelfArmorMeasurement` + `TestRNestGate_JunkKeyProofIsAcceptedEvidence`
+  > (`R-NEST-GATE`).
+  > **The measurement CORRECTED the certification's own arithmetic.** §2.2 derived the armor threshold as
+  > ≈8.39 MiB per side and flagged it unmeasured; binary search over junk-proof count puts it at
+  > **≈7.9998 MiB** (12,227 proofs/side still admissible, 12,228 over) — essentially `SlashesBytesCap/2`
+  > less ~1.5 KB of overhead. The derivation **overstated the attacker's cost by ~5 %**. Do not re-cite
+  > 8.39 MiB.
+  > **And the cheap route is not the one modelled.** Both the PE table and the certification reasoned from
+  > two ordinary ~4.14 MiB reg-laden proofs; the driven construction reaches the same armored state with
+  > **header-only** 687 B proofs, which is far cheaper for an attacker to build. Anything that prices the
+  > attacker's cost must use the header-only route.
   > **(iii)** The close that does exist is not (d-3): `consensusSigBytes` (`core/chain/chain.go:918`)
   > omits **Height** from the signature preimage — "the height rides inside the hash" — which is the
   > entire reason evidence carries full bodies (`equivocation.go:54-60` says so). Putting
