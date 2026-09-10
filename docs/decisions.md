@@ -1416,13 +1416,31 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   > > **(d-3) shrinks the face roughly 40× but does not remove it; what removes it is the v5
   > > signature-preimage change, which makes evidence O(1).**
   >
-  > **⚠ WRONG A THIRD TIME — 2026-09-10, `D-D3-CERT-REFUTATION-2026-09-10`.** The *"roughly 40×"*
-  > figure is itself refuted. `SlashesBytesCap` is enforced against `SlashesEncodedSize`
-  > (`core/chain/chain.go:2217`), which marshals the ACTUAL `[]Equivocation` — real encoded bytes with
-  > full `Block` bodies. (d-3) reduces the HASH PREIMAGE, which does nothing to what that function
-  > measures. **As specified, (d-3) shrinks the face by ZERO and is marginally negative.** Recovering
-  > any shrink needs a mandatory evidence-strip validity rule that has not been bought. The second
-  > half of the sentence — that the signature-preimage change is what removes the face — STANDS.
+  > **⚠ WRONG A THIRD TIME, AND REPLACED BY THE OWNER — 2026-09-10
+  > (`D-D3-CERT-REFUTATION-2026-09-10`).** The *"roughly 40×"* figure is refuted. `SlashesBytesCap` is
+  > enforced against `SlashesEncodedSize` (`core/chain/chain.go:2217`), which marshals the ACTUAL
+  > `[]Equivocation` — real encoded bytes with full `Block` bodies. (d-3) reduces the HASH PREIMAGE,
+  > which that function never reads. **As specified, (d-3) shrinks the face by ZERO and is marginally
+  > negative.**
+  >
+  > **THE REPLACEMENT SENTENCE, ratified 2026-09-10 — and it carries NO shrink figure, deliberately:**
+  >
+  > > **(d-3) does not shrink the evidence face. `SlashesBytesCap` is enforced against
+  > > `SlashesEncodedSize`, which reads real encoded bytes, not the hash preimage. What (d-3) buys is
+  > > the self-covering pruned body — retiring `Pruned`. What removes the face is the v5
+  > > signature-preimage change.**
+  >
+  > **Why no number appears, recorded so it is not "helpfully" restored:** three shrink figures have
+  > now been wrong, and the structural statement needs none. Any future shrink claim requires the
+  > **mandatory evidence-strip validity rule**, which nobody has bought and which is not on the table.
+  >
+  > **The owner's own lesson, in his words — it is about the method, not the number:**
+  >
+  > > *"Three corrections to one sentence: 'only (d-3) removes' → false. The coalition clause → false.
+  > > '40×' → zero. Each time I accepted a number I was handed and wrote it into the ratified record.
+  > > I gave you the rule that every value claim must name what it closes independently versus in
+  > > combination — and never once applied it to my own ratifications. **I ratified the figure instead
+  > > of demanding its derivation.** That's mine, three times."*
   >
   > The 16 MiB VALUE is untouched by this unratification — only the disclosure sentence moved. The
   > owner also ratified the HANDLING as a standing practice: *"the annotate-in-place-rather-than-rewrite

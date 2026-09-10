@@ -23,20 +23,61 @@ import (
 // literal, deliberately NOT derived from Block, so a change to Block cannot move both sides of
 // the comparison at once.
 type preCarrierUnsigned struct {
-	Height        uint64         `cbor:"1,keyasint"`
-	Prev          ports.Hash     `cbor:"2,keyasint"`
-	Entries       []ports.Entry  `cbor:"3,keyasint"`
-	Proposer      []byte         `cbor:"4,keyasint"`
-	Revocations   []ports.Hash   `cbor:"7,keyasint,omitempty"`
-	Version       uint64         `cbor:"8,keyasint"`
-	Unrevocations []ports.Hash   `cbor:"9,keyasint,omitempty"`
-	BondRegs      []BondReg      `cbor:"10,keyasint,omitempty"`
-	Slashes       []Equivocation `cbor:"11,keyasint,omitempty"`
+	Height        uint64              `cbor:"1,keyasint"`
+	Prev          ports.Hash          `cbor:"2,keyasint"`
+	Entries       []ports.Entry       `cbor:"3,keyasint"`
+	Proposer      []byte              `cbor:"4,keyasint"`
+	Revocations   []ports.Hash        `cbor:"7,keyasint,omitempty"`
+	Version       uint64              `cbor:"8,keyasint"`
+	Unrevocations []ports.Hash        `cbor:"9,keyasint,omitempty"`
+	BondRegs      []preCarrierBondReg `cbor:"10,keyasint,omitempty"`
+	Slashes       []Equivocation      `cbor:"11,keyasint,omitempty"`
 	// Pruned is a [32]byte, so cbor's omitempty never omits it — key 14 is present in EVERY
 	// encoded block body, zero-valued for a non-pruned block. It is part of the frozen bytes.
 	Pruned    ports.Hash  `cbor:"14,keyasint,omitempty"`
 	StateRoot *ports.Hash `cbor:"15,keyasint,omitempty"`
 	LogRoot   *ports.Hash `cbor:"16,keyasint,omitempty"`
+}
+
+// preCarrierBondReg is the FROZEN pre-(d-3) BondReg wire shape — the seven fields with their
+// cbor keys, as they stand on era-2/era-3 committed history.
+//
+// WHY IT EXISTS (re-point, 2026-09-10, owner precondition on owner call C). The struct above
+// claims it is "deliberately NOT derived from Block, so a change to Block cannot move both sides
+// of the comparison at once" — but it declared `BondRegs []BondReg`, the LIVE type. A change to
+// BondReg therefore moved BOTH sides together and this guard stayed GREEN.
+//
+// That is not hypothetical. Freeze-manifest §4.3 specifies `AnswerDigest ports.Hash` on BondReg,
+// and cbor's omitempty NEVER omits a fixed-size array (chain.go:569-572; Pruned is the living
+// proof at key 14). bodyHash folds BondRegs with no version branch (chain.go:822), so that field
+// would have emitted 32 zero bytes into the preimage of EVERY v2 and v4 block carrying a bond
+// registration — breaking the frozen-format immutable on live history. This guard is the
+// instrument that should catch it, and unfrozen it could not. Mirroring the type freezes it.
+type preCarrierBondReg struct {
+	Validator []byte     `cbor:"1,keyasint"`
+	Root      ports.Hash `cbor:"2,keyasint"`
+	Size      int64      `cbor:"3,keyasint"`
+	Answer    []byte     `cbor:"4,keyasint,omitempty"`
+	Sig       []byte     `cbor:"5,keyasint,omitempty"`
+	Domain    uint64     `cbor:"6,keyasint,omitempty"`
+	Version   uint8      `cbor:"7,keyasint,omitempty"`
+}
+
+// freezeBondRegs projects live BondRegs onto the frozen mirror. A field ADDED to BondReg is
+// simply not copied, so the frozen bytes stay frozen and the comparison reddens — which is the
+// whole point.
+func freezeBondRegs(in []BondReg) []preCarrierBondReg {
+	if in == nil {
+		return nil
+	}
+	out := make([]preCarrierBondReg, 0, len(in))
+	for _, r := range in {
+		out = append(out, preCarrierBondReg{
+			Validator: r.Validator, Root: r.Root, Size: r.Size,
+			Answer: r.Answer, Sig: r.Sig, Domain: r.Domain, Version: r.Version,
+		})
+	}
+	return out
 }
 
 // TestCarrierHashDriftGuard pins the additive-compat property O1 requires: adding LastCommit to
@@ -65,6 +106,21 @@ func TestCarrierHashDriftGuard(t *testing.T) {
 			Revocations: []ports.Hash{ports.HashBytes([]byte("r"))}}},
 		{"era-4 v5 with NO carrier", Block{Version: BlockVersionWitnessable, Height: 9, Prev: ports.HashBytes([]byte("p")),
 			Entries: []ports.Entry{entry(3)}, Proposer: pubOf(k), StateRoot: &sr, LogRoot: &lr}},
+
+		// WITH BOND REGISTRATIONS. Re-point, 2026-09-10: every case above carries NO BondRegs, so
+		// key 10 was absent from the preimage in all three and a change to the BondReg wire shape
+		// could not move any of these hashes. These rows are the ones that redden if a field is
+		// added to BondReg — the break freeze-manifest §4.3's own spec would have caused on live
+		// v2/v4 history.
+		{"era-2 v2 WITH a bond reg", Block{Version: BlockVersionRounds, Height: 10, Prev: ports.HashBytes([]byte("p")),
+			Entries: []ports.Entry{entry(4)}, Proposer: pubOf(k),
+			BondRegs: []BondReg{bondReg(k, twoMiB, ports.Hash{})}}},
+		{"era-3 v4 WITH a bond reg", Block{Version: BlockVersionStateRoot, Height: 11, Prev: ports.HashBytes([]byte("p")),
+			Entries: []ports.Entry{entry(5)}, Proposer: pubOf(k), StateRoot: &sr, LogRoot: &lr,
+			BondRegs: []BondReg{bondReg(k, twoMiB, ports.Hash{})}}},
+		{"era-4 v5 WITH a bond reg, no carrier", Block{Version: BlockVersionWitnessable, Height: 12, Prev: ports.HashBytes([]byte("p")),
+			Entries: []ports.Entry{entry(6)}, Proposer: pubOf(k), StateRoot: &sr, LogRoot: &lr,
+			BondRegs: []BondReg{bondReg(k, twoMiB, ports.Hash{})}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -72,7 +128,7 @@ func TestCarrierHashDriftGuard(t *testing.T) {
 			raw, mErr := enc.Marshal(preCarrierUnsigned{
 				Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer,
 				Revocations: b.Revocations, Version: b.Version, Unrevocations: b.Unrevocations,
-				BondRegs: b.BondRegs, Slashes: b.Slashes, Pruned: b.Pruned,
+				BondRegs: freezeBondRegs(b.BondRegs), Slashes: b.Slashes, Pruned: b.Pruned,
 				StateRoot: b.StateRoot, LogRoot: b.LogRoot,
 			})
 			if mErr != nil {
