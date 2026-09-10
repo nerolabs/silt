@@ -199,11 +199,22 @@ docs/decisions.md  liveQualifiedSet   chain.go:1198             # declared chain
 docs/decisions.md  effectiveEpochSet  chain.go:1243             # declared chain.go:1824
 docs/decisions.md  everMature         chain.go:2820             # field declared chain.go:1297
 docs/decisions.md  Slashes            core/chain/chain.go:518   # field declared chain.go:522
-# The next one is an ANCHOR MIS-PAIRING as well as a stale coordinate: the
-# sentence is about `Prune()` (declared chain.go:988) and the nearest backticked
-# identifier the check could bind to was `Slashes`. The coordinate is stale
-# either way; the sweep should re-read the sentence, not just the number.
-docs/decisions.md  Slashes            core/chain/chain.go:852   # sentence is about Prune(), declared chain.go:988
+
+# (A) ANCHOR MIS-PAIRING — the coordinate is CORRECT, the anchor is not.
+# Both sentences cite the `SlashesBytesCap` invariant comment, which really is at
+# core/chain/chain.go:412-414. Neither line writes `SlashesBytesCap` inside the
+# anchor window, so the only backticked identifier the check can bind to is the
+# `Slashes` earlier in the sentence. Repair by naming the symbol in the prose,
+# not by moving the number — the number is right.
+ROADMAP.md         Slashes  core/chain/chain.go:412
+docs/decisions.md  Slashes  core/chain/chain.go:412
+
+# (H) HISTORICAL — a citation explicitly pinned to an OLD SHA.
+# The sentence reads "verified against code at `7089d27`", so chain.go:295 was
+# true at that commit and `type Block struct` has since moved to chain.go:489.
+# Correcting the number would falsify a dated verification record — the same
+# reason CHANGELOG.md is exempt from this arm.
+docs/decisions.md  Block  core/chain/chain.go:295
 
 # --- docs/design/block-format-by-era.md ---
 # All four predate the era-4 field additions that pushed the Block declarations
@@ -212,3 +223,95 @@ docs/design/block-format-by-era.md  BlockVersion       chain.go:260   # declared
 docs/design/block-format-by-era.md  Attestation        chain.go:401   # declared chain.go:664
 docs/design/block-format-by-era.md  BondReg            chain.go:419   # declared chain.go:680
 docs/design/block-format-by-era.md  canonicalBondRegs  chain.go:404   # declared chain.go:3946
+
+# ===========================================================================
+# SOURCE COORDINATES IN PRODUCTION GO COMMENTS — baselined 2026-09-10
+# ===========================================================================
+# (O) OWED. The coordinate arm was widened to production Go comments on
+# 2026-09-10 because the exclusion note's stated reason — "no coordinate defect
+# has been observed in a Go comment" — was FALSE when it was written: 49 were
+# already decayed, in comments sitting beside the code they describe, which is
+# the citation a reader trusts most. Two examples of the spread:
+#   core/node/dht_diversity.go:65  "the distance walk (node.go:1132)" — `walk`
+#     is at node.go:1917; node.go:1132 is `IsStaticPeer`. Off by 785.
+#   core/node/slashheadroom.go:56  "a Block carries its own Slashes field
+#     (chain.go:518)" — the field is chain.go:522; :518 is a BondRegs comment.
+#
+# They are ENUMERATED rather than silenced so the arm is STRICT from its first
+# green run: a coordinate written into a Go comment from here on must point at
+# its symbol. Nothing new belongs in this block.
+#
+# 45 of the 49 sit in the FROZEN floor-box recompute / read-set v5 files
+# (`D-RECOMPUTE-FREEZE`), so the sweep that repairs them is Boulder 1's
+# re-scope, post-RC — not RC work. Owner: Builder. Closer: one coordinate pass
+# over the files below, deleting each line as it is repaired.
+#
+# The declaration line the check found is recorded beside each entry, with the
+# drift, so the sweep is a read and not a search. It is NOT asserted to be the
+# intended target: several of these cite a USE site, and guessing which line the
+# author meant is the defect in a new costume.
+# --- core/chain/chain.go ---
+core/chain/chain.go  Build  core/genesis/genesis.go:79   # declared core/genesis/genesis.go:83  (off by 4)
+core/chain/chain.go  Hash  chain.go:260   # declared core/chain/chain.go:287  (off by 27)
+# --- core/chain/floorbox_recompute_dematureQuorum_v5.go ---
+core/chain/floorbox_recompute_dematureQuorum_v5.go  everMature  chain.go:2827   # declared core/chain/chain.go:1297  (off by 1530)
+core/chain/floorbox_recompute_dematureQuorum_v5.go  requireDeMatureSuperQuorum  chain.go:2947   # declared core/chain/chain.go:3469  (off by 522)
+# --- core/chain/floorbox_recompute_maturity_v5.go ---
+core/chain/floorbox_recompute_maturity_v5.go  C2Metric  chain.go:2300   # declared core/chain/chain.go:2764  (off by 464)
+core/chain/floorbox_recompute_maturity_v5.go  C2Metric  chain.go:2323   # declared core/chain/chain.go:2764  (off by 441)
+core/chain/floorbox_recompute_maturity_v5.go  matureNow  chain.go:2178   # declared core/chain/chain.go:2644  (off by 466)
+core/chain/floorbox_recompute_maturity_v5.go  matureNow  chain.go:2827   # declared core/chain/chain.go:2644  (off by 183)
+# --- core/chain/floorbox_recompute_qualifiedCount_v5.go ---
+core/chain/floorbox_recompute_qualifiedCount_v5.go  RequiredQuorum  chain.go:1526   # declared core/chain/chain.go:1888  (off by 362)
+core/chain/floorbox_recompute_qualifiedCount_v5.go  bonded  chain.go:1482   # declared core/chain/chain.go:1318  (off by 164)
+core/chain/floorbox_recompute_qualifiedCount_v5.go  qualifiedCount  chain.go:1479   # declared core/chain/chain.go:1844  (off by 365)
+core/chain/floorbox_recompute_qualifiedCount_v5.go  validatorSetSize  chain.go:1563   # declared core/chain/chain.go:1973  (off by 410)
+# --- core/chain/floorbox_recompute_stateroot_atts_v5.go ---
+core/chain/floorbox_recompute_stateroot_atts_v5.go  apply  chain.go:3293   # declared core/chain/chain.go:3782  (off by 489)
+core/chain/floorbox_recompute_stateroot_atts_v5.go  attesterQualifiedAt  chain.go:1279   # declared core/chain/chain.go:1644  (off by 365)
+core/chain/floorbox_recompute_stateroot_atts_v5.go  rotateEpoch  chain.go:3306   # declared core/chain/chain.go:4013  (off by 707)
+# --- core/chain/floorbox_recompute_stateroot_bondreg_v5.go ---
+core/chain/floorbox_recompute_stateroot_bondreg_v5.go  apply  chain.go:3228   # declared core/chain/chain.go:3782  (off by 554)
+core/chain/floorbox_recompute_stateroot_bondreg_v5.go  canonicalBondRegs  chain.go:3345   # declared core/chain/chain.go:3946  (off by 601)
+# --- core/chain/floorbox_recompute_stateroot_maturitylatch_v5.go ---
+core/chain/floorbox_recompute_stateroot_maturitylatch_v5.go  apply  chain.go:3293   # declared core/chain/chain.go:3782  (off by 489)
+core/chain/floorbox_recompute_stateroot_maturitylatch_v5.go  apply  chain.go:3398   # declared core/chain/chain.go:3782  (off by 384)
+core/chain/floorbox_recompute_stateroot_maturitylatch_v5.go  handedOff  chain.go:1223   # declared core/chain/chain.go:1573  (off by 350)
+# --- core/chain/floorbox_recompute_stateroot_rotate_v5.go ---
+core/chain/floorbox_recompute_stateroot_rotate_v5.go  epochSet  chain.go:3393   # declared core/chain/chain.go:1419  (off by 1974)
+core/chain/floorbox_recompute_stateroot_rotate_v5.go  regVersion  chain.go:3444   # declared core/chain/chain.go:1347  (off by 2097)
+core/chain/floorbox_recompute_stateroot_rotate_v5.go  rotateEpoch  chain.go:3440   # declared core/chain/chain.go:4013  (off by 573)
+# --- core/chain/floorbox_recompute_stateroot_slash_v5.go ---
+core/chain/floorbox_recompute_stateroot_slash_v5.go  apply  chain.go:3285   # declared core/chain/chain.go:3782  (off by 497)
+# --- core/chain/floorbox_recompute_stateroot_ttl_v5.go ---
+core/chain/floorbox_recompute_stateroot_ttl_v5.go  apply  chain.go:3271   # declared core/chain/chain.go:3782  (off by 511)
+core/chain/floorbox_recompute_stateroot_ttl_v5.go  bondDomain  chain.go:3275   # declared core/chain/chain.go:1410  (off by 1865)
+# --- core/chain/floorbox_recompute_stateroot_v5.go ---
+core/chain/floorbox_recompute_stateroot_v5.go  apply  chain.go:3187   # declared core/chain/chain.go:3782  (off by 595)
+# --- core/chain/floorbox_recompute_v5.go ---
+core/chain/floorbox_recompute_v5.go  cfg  chain.go:1352   # declared core/chain/chain.go:1282  (off by 70)
+core/chain/floorbox_recompute_v5.go  liveQualifiedSet  chain.go:1352   # declared core/chain/chain.go:1713  (off by 361)
+# --- core/chain/floorbox_v5.go ---
+core/chain/floorbox_v5.go  bondRegHeight  chain.go:3272   # declared core/chain/chain.go:1341  (off by 1931)
+# --- core/chain/readset_v5.go ---
+core/chain/readset_v5.go  BondTTLBlocks  chain.go:3271   # declared core/chain/chain.go:135  (off by 3136)
+core/chain/readset_v5.go  Mature  chain.go:2140   # declared core/chain/chain.go:2597  (off by 457)
+core/chain/readset_v5.go  MatureValidators  chain.go:2140   # declared core/chain/chain.go:86  (off by 2054)
+core/chain/readset_v5.go  Objective  chain.go:2305   # declared core/chain/chain.go:1588  (off by 717)
+core/chain/readset_v5.go  ValidateCommit  chain.go:2827   # declared core/chain/chain.go:3165  (off by 338)
+core/chain/readset_v5.go  bonded  chain.go:1379   # declared core/chain/chain.go:1318  (off by 61)
+core/chain/readset_v5.go  bonded  chain.go:3288   # declared core/chain/chain.go:1318  (off by 1970)
+core/chain/readset_v5.go  byRoot  chain.go:2638   # declared core/chain/chain.go:1285  (off by 1353)
+core/chain/readset_v5.go  dueBucketMoveOnReg  chain.go:1394   # declared core/chain/chain.go:1757  (off by 363)
+core/chain/readset_v5.go  dueBucketMoveOnReg  chain.go:1399   # declared core/chain/chain.go:1757  (off by 358)
+core/chain/readset_v5.go  matureNow  chain.go:2181   # declared core/chain/chain.go:2644  (off by 463)
+core/chain/readset_v5.go  qualified  chain.go:3425   # declared core/chain/chain.go:1430  (off by 1995)
+core/chain/readset_v5.go  regVersion  chain.go:3444   # declared core/chain/chain.go:1347  (off by 2097)
+core/chain/readset_v5.go  revoked  chain.go:2643   # declared core/chain/chain.go:1286  (off by 1357)
+core/chain/readset_v5.go  rotateEpoch  chain.go:3442   # declared core/chain/chain.go:4013  (off by 571)
+core/chain/readset_v5.go  slashed  chain.go:3236   # declared core/chain/chain.go:1415  (off by 1821)
+core/chain/readset_v5.go  slashed  chain.go:3287   # declared core/chain/chain.go:1415  (off by 1872)
+# --- core/node/dht_diversity.go ---
+core/node/dht_diversity.go  walk  node.go:1132   # declared core/node/node.go:1917  (off by 785)
+# --- core/node/slashheadroom.go ---
+core/node/slashheadroom.go  Slashes  chain.go:518   # declared core/chain/chain.go:522  (off by 4)

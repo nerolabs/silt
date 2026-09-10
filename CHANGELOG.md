@@ -30,24 +30,52 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   file at this line and see the thing I named", and nothing checked it. Three coordinates in
   `docs/decisions.md` — two written *"verified"* — pointed at unrelated lines:
   `consensusSigBytes` at `chain.go:918` (really `core/chain/chain.go:1067`), `bodyHash` at
-  `chain.go:822` (really `:902`), `SlashesEncodedSize` at `chain.go:2217` (really `:2372`). All three
-  are corrected here, in `docs/decisions.md` and in `ROADMAP.md`.
-  **Line numbers rot; symbols do not** — a rename goes loud, a shifted line goes silent — so the
-  resolution key is the SYMBOL and a coordinate is checkable ONLY when tied to one: a coordinate
-  whose nearest preceding backticked identifier is declared in that file must land on that symbol,
-  inside its declaration or on a line where the name occurs. The "or the name occurs" arm keeps a
-  legitimate CALL-SITE citation passing. Same script, same allowlist, no new prefix and no new
-  residual class. Verified red-first, then by two ablations: re-decaying a corrected coordinate goes
-  RED, and shifting an ALLOWLISTED coordinate by one line also goes RED, so the allowlist excuses an
-  exact citation rather than a symbol.
-  **Deliberate limits, each measured before it was drawn:** an UNANCHORED coordinate is not checked
-  (134 of 187 on this surface — naming the symbol is what buys coverage); `CHANGELOG.md` and the
-  external review trees are not coordinate-checked because both are dated point-in-time records
-  (1844 stale coordinates across 304 review documents, back to #286); and a bare symbol mention is
-  not checked (213 distinct unresolved identifiers over 497 occurrences, dominated by names that are
-  historically correct in the two append-only ledgers). 13 coordinates that were already stale are
-  enumerated in `scripts/cited_tests_allowlist.txt` as `(O)` OWED so the gate is STRICT from its
-  first green run; nothing new belongs there.
+  `chain.go:822` (really `:902`), `SlashesEncodedSize` at `chain.go:2217` (really `:2372`). Three
+  more are corrected here: `Prune()` never touches `Slashes` moves from `chain.go:852-854` to
+  `:982-984` in both `ROADMAP.md` and `docs/decisions.md` — the quoted comment text pins it, so no
+  guessing was involved — and `docs/design/block-format-by-era.md` moves the one `Block` struct from
+  `chain.go:311` to `:489`.
+  **A coordinate is checkable only when it is tied to a SYMBOL**, so a `path.go:NNN` cited beside
+  identifiers that the file declares must land on one of them, inside the declaration or on a line
+  where the name occurs as a whole word. Three properties of that rule were measured, not assumed:
+  the coordinate is checked against **every** identifier the sentence names rather than the nearest
+  one (binding only the nearest reddened *correct* prose of the shape ``` `bodyHash()` folds
+  `Slashes` into the preimage (`chain.go:902`) ```, and a lint that cries wolf gets disabled); the
+  "name occurs at that line" arm matches on a **word boundary**, because as a substring `Block`
+  matched inside `BlockVersion` and passed a coordinate 177 lines from `type Block struct`; and a
+  comment may not verify **itself**, because a Go comment citing a line within ±2 of its own text
+  otherwise resolves against the citation it is making.
+  **What this does NOT catch, stated because an earlier draft of this entry claimed the opposite:**
+  it does not see a rename. Renaming a cited symbol, moving its file, and deleting it outright were
+  each driven and each left the check at exit 0 with zero findings — an anchor that resolves to
+  nothing is treated as prose, so its coordinate becomes silently *unchecked*. What the check buys
+  is narrower and still worth it: a coordinate that has drifted off a symbol which still exists.
+  **Production Go comments are in scope**, and the note that used to exclude them — *"no coordinate
+  defect has been observed in a Go comment"* — was false when it was written: **49 were already
+  decayed**, by as much as 785 lines (`core/node/dht_diversity.go:65` cites `node.go:1132` for
+  `walk`, which is at `node.go:1917`). A comment beside the code is the citation a reader trusts
+  most. The mechanical half of that objection is answered rather than waived: Go comments do not use
+  backticks, so the anchor there is a bare identifier filtered to what the cited file declares.
+  **Coverage, counted on the surface the check actually walks:** 151 markdown coordinates (12
+  path-unresolvable, 36 anchored) and 145 production-Go coordinates (26 path-unresolvable, 58
+  anchored); 64 are allowlisted, leaving **30 enforced**. The figure this replaces — "134 of 187
+  unanchored" — was computed including `CHANGELOG.md`, which the same note declares exempt.
+  **Deliberate limits, each measured and now each recorded:** an unanchored coordinate is not
+  checked; `CHANGELOG.md` (58 coordinates, 18 of them stale) and the external review trees (1,844
+  stale across 304 documents) are exempt because both are dated point-in-time records;
+  **`docs/thinking/` is exempt — the largest exclusion at 983 coordinates across 203 files**, and it
+  was silent until now; `*_test.go` comments are out (272 coordinates) until a rot is measured
+  there; an ambiguous basename drops silently and is counted in the path-unresolvable column (4
+  markdown, 12 Go); and a bare symbol mention is not checked (re-derived: 212 distinct identifiers
+  over 409 occurrences resolve to no declaration, against an earlier "213 over 497" whose derivation
+  could not be reproduced). The 49 Go and 15 markdown coordinates that were already stale are
+  enumerated in `scripts/cited_tests_allowlist.txt` so the arm is STRICT from its first green run;
+  45 of the 49 Go entries sit in the frozen floor-box recompute and read-set files, so their repair
+  is Boulder 1's re-scope, not RC work. Nothing new belongs there. Same script, same allowlist, no new prefix
+  and no new residual class. Every rule above was verified by ablation, by exit code: the new
+  decayed Go coordinate, the re-decayed corrected coordinate, the substring revert, the
+  nearest-anchor revert, the deleted allowlist entry and the dropped keyword filter each turn it
+  RED, and the baseline is green either side.
 - **The consensus-critical genesis config: the SCHEMA is in; the production BIND is not.**
   **⚠ Corrected 2026-09-10, before release, with the original claim left beside it.** The entry
   below states that a differently-configured node "computes a different genesis hash and cannot

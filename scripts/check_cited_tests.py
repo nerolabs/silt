@@ -69,18 +69,47 @@ SCOPE NOTES (deliberate limits)
 SCOPE NOTES FOR COORDINATES (deliberate limits, each measured before it was drawn)
   - AN UNANCHORED COORDINATE IS NOT CHECKED. `chain.go:1198` with no symbol beside
     it asserts nothing a machine can test, and guessing what a reader "meant" would
-    be the vacuous-gate defect in a new costume. 134 of the 187 coordinates on the
-    linted surface are unanchored today. Naming the symbol is what buys coverage;
-    that is the behaviour this lint is trying to create, not a hole to paper over.
+    be the vacuous-gate defect in a new costume. Naming the symbol is what buys
+    coverage; that is the behaviour this lint is trying to create, not a hole to
+    paper over. THE COVERAGE, COUNTED ON THE SURFACE THIS CHECK ACTUALLY WALKS
+    (2026-09-10, both arms):
+
+      markdown          151 coordinates  12 path-unresolvable  36 ANCHORED
+      production Go     145 coordinates  26 path-unresolvable  58 ANCHORED
+      allowlisted       64 (15 markdown + 49 Go)  ->  30 ENFORCED today
+
+    An earlier version of this note published "134 of 187 unanchored". That figure
+    was computed INCLUDING CHANGELOG.md, which the next bullet declares exempt, so
+    it described a surface this check does not walk. Count on the linted surface.
   - CHANGELOG.md is exempt from the COORDINATE check (its TEST-name checking is
     unchanged). A CHANGELOG entry is a DATED point-in-time record — the same reason
     docs/buildlog/ is skipped above. A coordinate in a released entry was true when
-    written, and "correcting" it would falsify the record. 16 stale coordinates sit
-    there and every one of them is correct history.
+    written, and "correcting" it would falsify the record. 58 coordinates sit
+    there, 18 of them stale, and every one of the 18 is correct history.
   - RANGES check their FIRST number only: `chain.go:3005-3013` is checked at 3005.
-  - MARKDOWN ONLY. Coordinates inside Go comments are not scanned: the anchor is a
-    BACKTICKED identifier, which is a markdown convention, and no coordinate defect
-    has been observed in a Go comment. Widen when one is.
+  - PRODUCTION GO COMMENTS ARE IN SCOPE (widened 2026-09-10). The previous note
+    excluded them "because no coordinate defect has been observed in a Go comment".
+    THAT WAS FALSE WHEN IT WAS WRITTEN: 49 were already decayed, three of them by
+    178, 371 and 527 lines, and one by 785 (core/node/dht_diversity.go:65 cites
+    node.go:1132 for `walk`, which is at node.go:1917). A comment beside the code
+    is the citation a reader trusts MOST. The mechanical half of the old objection
+    was real and is answered rather than waived: Go comments do not use backticks,
+    so the anchor there is a BARE identifier, filtered to those the cited file
+    declares. The 49 are enumerated in the allowlist as OWED, so this arm is STRICT
+    from its first green run.
+  - *_test.go COMMENTS ARE OUT OF SCOPE (272 coordinates in 559 files). Production
+    comments first: that is where all four measured multi-hundred-line rots live.
+    Widen if a test-comment rot is ever measured, and record the measurement here.
+  - docs/thinking/ IS OUT OF SCOPE — the largest exclusion on this surface, 983
+    coordinates across 203 files, seven times the whole linted markdown surface.
+    Those are DATED deliberations; drift in one is expected, not a defect, and the
+    file's date tells the reader what SHA it was written against. This exclusion
+    was silent until 2026-09-10; it is recorded here with its count so that it is a
+    decision rather than an accident.
+  - AN AMBIGUOUS BASENAME DROPS SILENTLY, and is counted in the "path-unresolvable"
+    column above: 4 on the markdown surface, 12 in Go comments. `statehash.go:40`
+    names a basename this tree carries more than once, and a check that guesses
+    which one is worse than no check.
   - THE EXTERNAL REVIEW TREES ARE NOT COORDINATE-CHECKED, for the CHANGELOG reason
     at full strength. A ruling or certification is a review OF A NAMED SHA; its
     coordinates were true at that SHA and are not the current tree's to correct.
@@ -89,12 +118,15 @@ SCOPE NOTES FOR COORDINATES (deliberate limits, each measured before it was draw
     naming nothing anyone should change. Their TEST-name citations stay advisory
     (a test name is not SHA-relative the way a line number is).
   - A BARE SYMBOL MENTION — a backticked identifier with no file and no coordinate
-    — is NOT checked. Measured: 213 distinct backticked camelCase identifiers on
-    this surface resolve to no declaration in the tree, over 497 occurrences,
-    dominated by names that are HISTORICALLY CORRECT in the two append-only ledgers
-    (docs/decisions.md, CHANGELOG.md) precisely because the symbol was later
-    deleted. Gating that class would need a ~213-line allowlist of entries with no
-    defect-catching power, which is what the allowlist header below forbids.
+    — is NOT checked. Re-measured 2026-09-10, with the definition stated because
+    the earlier figure ("213 distinct over 497 occurrences") could not be
+    reproduced from it: counting every backticked identifier on the linted
+    markdown surface that matches no top-level declaration under GO_ROOTS gives
+    212 distinct names over 409 occurrences (111 / 237 if restricted to
+    camelCase). They are dominated by names that are HISTORICALLY CORRECT in the
+    append-only ledgers precisely because the symbol was later deleted. Gating
+    that class would need a ~200-line allowlist of entries with no defect-catching
+    power, which is what the allowlist header below forbids.
 
 WIDENED 2026-09-10 — SYMBOL-ANCHORED SOURCE COORDINATES
   Same defect family, second carrier. A `path.go:NNN` coordinate in prose reads as
@@ -107,21 +139,37 @@ WIDENED 2026-09-10 — SYMBOL-ANCHORED SOURCE COORDINATES
     `bodyHash`           cited chain.go:822   actually core/chain/chain.go:902
     `SlashesEncodedSize` cited chain.go:2217  actually core/chain/chain.go:2372
 
-  LINE NUMBERS ROT; SYMBOLS DO NOT. A renamed or deleted symbol goes loud — the
-  compiler sees it, and this lint sees it. A shifted line number goes silent. So
-  the resolution key is the SYMBOL, and a coordinate is checkable ONLY when it is
-  tied to one:
+  LINE NUMBERS ROT SILENTLY; A SYMBOL NAME DOES NOT MOVE. That is why the symbol
+  is the resolution key, and a coordinate is checkable ONLY when it is tied to one:
 
-    A `path.go:NNN` whose NEAREST PRECEDING backticked identifier is a symbol
-    DECLARED in that file must land ON that symbol — inside its declaration (doc
-    comment through closing brace) or on a line where the name literally occurs
-    (±2 lines, for wrapped signatures). Otherwise the coordinate is rotten.
+    A `path.go:NNN` cited beside one or more identifiers DECLARED in that file
+    must land ON one of them — inside its declaration (doc comment through
+    closing brace) or on a line where the name occurs as a WHOLE WORD (±2 lines,
+    for wrapped signatures). Otherwise the coordinate is rotten.
+
+  WHAT THIS CHECK DOES NOT DO, stated because the sentence it replaces claimed the
+  opposite: IT DOES NOT SEE A RENAME. Measured 2026-09-10 by driving all three —
+  renaming a cited symbol throughout its file, `mv`-ing the file, and deleting the
+  symbol outright each leave this check at EXIT 0 with zero findings. An anchor
+  that resolves to no declaration is treated exactly like prose, so the coordinate
+  beside it becomes SILENTLY UNCHECKED rather than reported. The compiler goes loud
+  about the code; nothing goes loud about the doc. The gate this buys is narrower
+  than "symbols do not rot": it catches a coordinate that has DRIFTED off a symbol
+  that still exists, which is the defect measured 49 + 3 times in this tree.
 
   The "or the name occurs at that line" arm is load-bearing: prose legitimately
   cites a CALL SITE, not only a declaration ("every non-test read of the flag:
   `core/node/chainrole.go:890`). Such a citation still points at the symbol, so it
   passes. What fails is a coordinate that points at neither — which is exactly what
-  a decayed line number looks like.
+  a decayed line number looks like. That arm matched on a SUBSTRING until
+  2026-09-10, which let `Block` match inside `BlockVersion` and passed
+  docs/design/block-format-by-era.md:16 — `Block` cited at chain.go:311, 177 lines
+  above `type Block struct`. It matches on a word boundary now: the green surface
+  over the enforced symbols shrinks from 3,488 lines to 2,451 (-30 %).
+
+  ONE ANCHOR IS NOT ENOUGH, AND THE NEAREST ONE IS THE WRONG ONE. See
+  anchored_coords(): the coordinate is checked against EVERY identifier the
+  sentence names, and is rotten only when it lands on none of them.
 
 STRICT vs ADVISORY
   - IN-REPO citations are STRICT: a phantom fails the build (exit 1).
@@ -189,6 +237,16 @@ COORD_RE = re.compile(r"`?((?:[A-Za-z0-9_./-]+/)?[A-Za-z0-9_.-]+\.go):(\d+)")
 # in this tree spells every code reference this way.
 TICKED_IDENT_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_]*)(?:\(\))?`")
 
+# The ANCHOR in a GO comment, where backticks are not the convention: a bare
+# identifier. Only identifiers DECLARED in the cited file survive the filter, so
+# ordinary English words in the window drop out.
+BARE_IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+# Whether *_test.go comments are coordinate-checked. Production comments only,
+# for now: a comment beside production code is the one a reader trusts most, and
+# it is where all three measured Go-comment rots live.
+COORD_GO_TESTS = False
+
 # How far back from a coordinate an anchor may sit. 140 chars covers this tree's
 # widest observed "`Sym` (`path.go:N`)" phrasing including a wrapped clause.
 ANCHOR_WINDOW = 140
@@ -209,6 +267,18 @@ DECL_RES = (
     re.compile(r"^\t([A-Za-z_][A-Za-z0-9_]*)\s+[\*\[\]A-Za-z_]"),
 )
 BRACED_DECL = (0, 1)  # indices into DECL_RES whose bodies run to a column-0 close
+
+# The two tab-indented forms above also match STATEMENTS: `\tfor i := range x`,
+# `\tif v, ok := m[k]`, `\treturn n + 1`. Indexing `for` as a declaration of
+# chain.go was harmless while the anchor had to be BACKTICKED, and stopped being
+# harmless the moment Go comments — where the anchor is a bare word — came in
+# scope: it invented anchors, and an invented anchor is an invented finding.
+GO_KEYWORDS = {
+    "break", "case", "chan", "const", "continue", "default", "defer", "else",
+    "fallthrough", "for", "func", "go", "goto", "if", "import", "interface",
+    "map", "package", "range", "return", "select", "struct", "switch", "type",
+    "var",
+}
 
 # Metasyntactic placeholders. Prose that EXPLAINS test naming (this lint's own
 # CHANGELOG entry, a design doc describing a convention) writes these to stand for
@@ -371,7 +441,7 @@ class SymbolIndex:
                 if m:
                     name, which = m.group(1), k
                     break
-            if not name:
+            if not name or name in GO_KEYWORDS:
                 continue
             end = i
             if which in BRACED_DECL and ln.rstrip().endswith(("{", "(")):
@@ -402,39 +472,105 @@ class SymbolIndex:
     def declared_in(self, rel: str, name: str) -> bool:
         return (rel, name) in self.spans
 
-    def decl_line(self, rel: str, name: str) -> int:
-        return self.spans[(rel, name)][0][0]
+    def decl_line(self, rel: str, name: str, near: int = 0) -> int:
+        """The declaration line of `name` NEAREST to `near`.
 
-    def points_at(self, rel: str, name: str, n: int) -> bool:
-        """True if line `n` of `rel` is ON the symbol `name`."""
+        Reporting spans[0][0] unconditionally sends a fixer to the wrong place
+        when a name is declared more than once in a file (a method and a field,
+        a func and its var). `near` is the cited line, so the reported number is
+        the candidate the reader was most plausibly aiming at.
+        """
+        return min(self.spans[(rel, name)], key=lambda sp: abs(sp[0] - near))[0]
+
+    def points_at(self, rel: str, name: str, n: int, exclude: int = 0) -> bool:
+        """True if line `n` of `rel` is ON the symbol `name`.
+
+        `exclude` drops one line from the near-window: the CITING line, when the
+        citation lives in the file it cites. Without it a Go comment that cites a
+        line within NEAR_LINES of itself verifies against its own text — measured
+        while driving this arm, and a self-verifying check is no check.
+
+        The second arm matches on a WORD BOUNDARY, not a substring. Measured
+        2026-09-10: `name in line` let `Block` match inside `BlockVersion`, so
+        `docs/design/block-format-by-era.md:16` cited `Block` at chain.go:311 —
+        177 lines above `type Block struct` — and this check passed it. The
+        substring form spread the green surface over the enforced symbols from
+        1,227 lines to 3,488 (+184 %).
+        """
         if any(start <= n <= end for start, end in self.spans[(rel, name)]):
             return True
         lines = self.lines[rel]
         lo, hi = max(1, n - NEAR_LINES), min(len(lines), n + NEAR_LINES)
-        return any(name in lines[k - 1] for k in range(lo, hi + 1))
+        word = re.compile(r"\b" + re.escape(name) + r"\b")
+        return any(
+            k != exclude and word.search(lines[k - 1]) for k in range(lo, hi + 1)
+        )
 
 
-def coord_citations_in_md(path: Path, index: SymbolIndex):
-    """Yield (line_no, symbol, cited_coord, line_number) for ANCHORED coordinates.
+def anchored_coords(lines, index: SymbolIndex, ident_re):
+    """Yield (line_no, symbols, cited_path, cited_line, relpath) for ANCHORED coordinates.
 
-    The anchor is the nearest backticked identifier within ANCHOR_WINDOW chars
-    before the coordinate that is actually DECLARED in the cited file. Requiring
-    the declaration is what keeps the pairing honest: an identifier that the file
-    does not declare is prose, not a claim about that file.
+    THE ANCHOR IS EVERY IDENTIFIER IN THE WINDOW, NOT THE NEAREST ONE. The
+    coordinate is a claim about the SENTENCE, so it is honest exactly when it
+    lands on SOME symbol the sentence names.
+
+    Binding only the nearest declared identifier was measured wrong on this
+    tree's most common citation shape, *`Subject` verb `Object` (`path.go:N`)*:
+
+        `bodyHash()` folds `Slashes` into the preimage (`core/chain/chain.go:902`)
+
+    `chain.go:902` IS `func (b *Block) bodyHash()`, and the check reddened it,
+    because `Slashes` is nearer. 33 of the 36 coordinates on the surface bound to
+    the immediately preceding token, so in practice the rule was "the last thing
+    in backticks", which is not how this repo writes. A doc lint that reddens a
+    CORRECT citation is the one that gets disabled.
+
+    The cost is stated rather than hidden: a coordinate that has decayed onto a
+    DIFFERENT symbol the same sentence names now passes. Measured on the current
+    surface, that costs zero findings, and it removes two false positives.
     """
-    for i, line in enumerate(read_text(path).splitlines(), 1):
+    for i, line in enumerate(lines, 1):
         for m in COORD_RE.finditer(line):
             rel = index.resolve_path(m.group(1))
             if rel is None:
-                continue  # not a file this repo owns; nothing to check against
+                continue  # not a file this repo owns, or an ambiguous basename
             window = line[max(0, m.start() - ANCHOR_WINDOW):m.start()]
-            for cand in reversed(TICKED_IDENT_RE.findall(window)):
-                if index.declared_in(rel, cand):
-                    yield i, cand, m.group(1), int(m.group(2)), rel
-                    break
+            syms = tuple(dict.fromkeys(
+                c for c in ident_re.findall(window) if index.declared_in(rel, c)
+            ))
+            if syms:
+                yield i, syms, m.group(1), int(m.group(2)), rel
+
+
+def coord_citations_in_md(path: Path, index: SymbolIndex):
+    """Markdown: the anchor is a BACKTICKED identifier, the markdown convention."""
+    return anchored_coords(read_text(path).splitlines(), index, TICKED_IDENT_RE)
+
+
+def coord_citations_in_go(path: Path, index: SymbolIndex):
+    """Go: the anchor is a BARE identifier, because Go comments do not use backticks.
+
+    Comments and string literals only — the same citation sites the test-name arm
+    reads, masked by the same scanner, so a coordinate written in bare code (there
+    is no such thing) can never be read as a claim.
+    """
+    return anchored_coords(
+        go_citation_mask(read_text(path)).splitlines(), index, BARE_IDENT_RE
+    )
 
 
 def collect_coords_in_repo(index: SymbolIndex):
+    for rel in GO_ROOTS:
+        base = ROOT / rel
+        if not base.exists():
+            continue
+        for path in iter_files(base, ".go"):
+            if not COORD_GO_TESTS and path.name.endswith("_test.go"):
+                continue
+            disp = str(path.relative_to(ROOT))
+            for rec in coord_citations_in_go(path, index):
+                yield (disp,) + rec
+
     for rel in MD_FILES:
         if rel in COORD_EXEMPT_MD:
             continue
@@ -599,10 +735,12 @@ def report(title: str, phantoms: list, stream) -> None:
 
 def report_coords(title: str, rotten: list, stream) -> None:
     print(title, file=stream)
-    for doc, line_no, sym, cited, n, rel, decl in rotten:
+    for doc, line_no, syms, cited, n, rel, decls in rotten:
+        named = ", ".join(f"`{s}`" for s in syms)
+        where = "; ".join(f"`{s}` at {rel}:{d}" for s, d in decls)
         print(
-            f"  {doc}:{line_no}  `{sym}` cited at {cited}:{n}"
-            f"  ->  {rel}:{n} is not on `{sym}` (declared {rel}:{decl})",
+            f"  {doc}:{line_no}  {named} cited at {cited}:{n}"
+            f"  ->  {rel}:{n} is on none of them (nearest declaration: {where})",
             file=stream,
         )
 
@@ -635,16 +773,18 @@ def main() -> int:
 
     def rotten(records):
         out, seen = [], set()
-        for doc, line_no, sym, cited, n, rel in records:
-            if (doc, sym, f"{cited}:{n}") in allowed_coords:
+        for doc, line_no, syms, cited, n, rel in records:
+            if any((doc, s, f"{cited}:{n}") in allowed_coords for s in syms):
                 continue
-            if index.points_at(rel, sym, n):
+            self_cite = line_no if doc == rel else 0
+            if any(index.points_at(rel, s, n, exclude=self_cite) for s in syms):
                 continue
-            key = (doc, line_no, sym, cited, n)
+            key = (doc, line_no, syms, cited, n)
             if key in seen:
                 continue
             seen.add(key)
-            out.append((doc, line_no, sym, cited, n, rel, index.decl_line(rel, sym)))
+            decls = [(s, index.decl_line(rel, s, near=n)) for s in syms]
+            out.append((doc, line_no, syms, cited, n, rel, decls))
         return out
 
     roots = external_roots(argv)

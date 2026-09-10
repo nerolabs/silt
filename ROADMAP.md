@@ -268,7 +268,7 @@ WITHDRAWN as a reason to buy anything.***
   key 14 in every encoded block), and `bodyHash()` folds `BondRegs` with **no version branch**
   (`chain.go:902`); repair certified as `AnswerDigest *ports.Hash`, the proven era-3 step-2a form.
   (ii) The recursively-reduced `Slashes'` is REFUTED — `Prune()` never touches `Slashes`
-  (`chain.go:852-854`) — and adds a per-hash 16 MiB deep copy re-opening #563; **`SlashesDigest` is
+  (`chain.go:982-984`) — and adds a per-hash 16 MiB deep copy re-opening #563; **`SlashesDigest` is
   the certified form**, which closes C-4 of `R-CERT-REDERIVE`. **And the ratified sentence is wrong a
   THIRD time:** *"shrinks the face roughly 40×"* is ZERO, because the cap measures ENCODED bytes
   (`SlashesEncodedSize`, `chain.go:2372`) while (d-3) reduces the PREIMAGE. **Two new owner calls and

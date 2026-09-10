@@ -3439,7 +3439,7 @@ step-2a fix already proven in this repo for `StateRoot`/`LogRoot`. Mechanism, no
 ### The second refuted clause — `Slashes'` is unnecessary and harmful
 
 §4.3 reduces each embedded evidence block to *"its own era's header form"* — a recursively reduced
-COPY. **REFUTED:** `Prune()` never touches `Slashes` (`core/chain/chain.go:852-854`, verified:
+COPY. **REFUTED:** `Prune()` never touches `Slashes` (`core/chain/chain.go:982-984`, verified:
 *"Note that Prune does NOT recurse into Slashes: evidence bodies embedded in a committed block stay
 resident forever, which is why `SlashesBytesCap` bounds that slot"*), so the reduction buys nothing
 for the self-covering property — and it adds a **per-hash 16 MiB deep copy**, re-opening `#563`.

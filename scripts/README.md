@@ -43,14 +43,28 @@ verifies it.
 
 Since 2026-09-10 it catches the same defect in its second carrier: a `path.go:NNN`
 coordinate that no longer points at the symbol cited beside it. Three in
-`docs/decisions.md` — two written *"verified"* — pointed at unrelated lines.
-**Line numbers rot; symbols do not.** So the resolution key is the SYMBOL, and a
-coordinate is checkable only when it is tied to one: a coordinate whose nearest
-preceding backticked identifier is declared in that file must land on that symbol,
-either inside its declaration or on a line where the name occurs. An unanchored
-coordinate is not checked — naming the symbol is what buys coverage. `CHANGELOG.md`
-and the external review trees are exempt from the coordinate arm; both are dated
-point-in-time records whose coordinates were true when written.
+`docs/decisions.md` — two written *"verified"* — pointed at unrelated lines, and 49
+production Go comments were decayed by as much as 785 lines.
+
+**Line numbers rot silently; a symbol name does not move.** So the resolution key is
+the SYMBOL, and a coordinate is checkable only when it is tied to one: a coordinate
+cited beside identifiers the file declares must land on ONE OF THEM, either inside a
+declaration or on a line where the name occurs as a whole word. It is checked against
+every identifier the sentence names, not the nearest one, because binding only the
+nearest reddens correct prose of the shape *`Subject` verb `Object` (`path.go:N`)* —
+and a doc lint that cries wolf is the one that gets disabled.
+
+**It does not see a rename.** Renaming a cited symbol, moving its file or deleting it
+outright each leave this check at exit 0: an anchor that resolves to no declaration is
+treated as prose, so the coordinate goes silently unchecked. What it catches is a
+coordinate that has drifted off a symbol that still exists.
+
+Scope: markdown plus PRODUCTION Go comments. An unanchored coordinate is not checked —
+naming the symbol is what buys coverage. `CHANGELOG.md`, the external review trees and
+`docs/thinking/` (983 coordinates, the largest exclusion) are exempt because all three
+are dated point-in-time records; `*_test.go` comments are out until a rot is measured
+there. Coverage on the walked surface: 296 coordinates, 94 anchored, 64 allowlisted as
+enumerated debt, **30 enforced**.
 
 It widens `check_claims.py`, which enforces the same linkage for
 `docs/design/claims-ledger.md` only. That narrow scope is why the instance that
