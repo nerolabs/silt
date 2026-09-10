@@ -194,6 +194,29 @@ jobs:
           echo "OK — every named tagged gate ran and passed"
 
 
+  reachability:
+    name: Go — every claimed lane is IN the linked binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      # THE OTHER DIRECTION OF THE bbootstrap CHECK ABOVE. That step reads the linked
+      # binary to prove a mechanism is ABSENT; this one reads it to prove the lanes the
+      # release checklist makes a public claim about are PRESENT — or that the checklist
+      # says outright that they cannot be exercised.
+      #
+      # Six mechanisms shipped inert this month: present in source, recorded as
+      # delivered and enforcing, zero non-test callers, so the linker dropped every one.
+      # No Go test can catch that; a test that can see the symbol is itself the caller
+      # that keeps it alive. A grep sweep cannot catch it either — it keys on bare
+      # identifiers, so an inert method hides behind a live namesake (it missed
+      # demand.Commit outright). `go tool nm` on the linked binary has neither hole.
+      - name: Scar-lint — a lane the release checklist claims must be reachable in ./cmd/silt (scar:mechanism-shipped-inert-2026-09-10)
+        run: python3 scripts/check_reachability.py
+
   e2e:
     name: Go — multi-process e2e (real TCP)
     runs-on: ubuntu-latest

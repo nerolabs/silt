@@ -1,0 +1,97 @@
+# Lane -> client entry symbol, for scripts/check_reachability.py
+# scar:mechanism-shipped-inert-2026-09-10
+#
+# One record per blank-line-separated block. Five REQUIRED fields, all non-empty:
+#
+#   lane         a short id for the lane. Repeated across records when a lane has
+#                several client entry points (open / pay / settle).
+#   symbol       the FULLY QUALIFIED symbol as `go tool nm` prints it:
+#                  github.com/nerolabs/silt/core/node.(*Node).SubmitRelayPay
+#                A bare identifier is refused. A bare identifier is what the grep
+#                sweep keyed on, and it is why an inert method hid behind a live
+#                namesake (demand.Commit) and never showed up in the count.
+#   label        a substring that occurs EXACTLY ONCE in docs/release-checklist.md,
+#                inside the lane's posture line. The gate reads the enclosing bullet
+#                or paragraph and asks whether it says the lane CANNOT BE EXERCISED.
+#   claim        the public claim in the release checklist this lane backs. This is
+#                why the lane is in a BOUNDED gate at all.
+#   substantial  why this symbol cannot be inlined away, so that its ABSENCE from the
+#                symbol table is proof and not noise.
+#
+# WHAT `substantial` MUST BE ABLE TO SAY, AND WHY THE GATE RE-CHECKS IT
+#   Never name a one-line wrapper. adapters/relay.DialThroughPaid's whole body is
+#   `return dialThrough(...)`; the compiler inlines it into its caller and the symbol
+#   vanishes from a binary where the lane is perfectly live. Name the substantial
+#   entry point — one whose body carries a CALLBACK CLOSURE, which surfaces as
+#   `<symbol>.funcN` in the table. The gate measures the declaration and REFUSES a
+#   thin entry rather than passing it.
+#
+# AN UNREASONED ROW FAILS. `claim` and `substantial` are checked for length and for
+# null-words, and each has a mechanical companion: `label` must resolve in the
+# checklist, and the body measurement must agree with `substantial`. An allowlist
+# rationale is itself a claim, and it decays exactly like a cited test name.
+#
+# ADDING A LANE IS ADDING A RECORD. Keep the set bounded to lanes the release
+# checklist makes a public claim about. This is not a sweep of exported symbols: the
+# floor-box keystone is inert by ratified owner direction (D-RECOMPUTE-FREEZE) and
+# would drown the signal.
+
+# ---------------------------------------------------------------------------
+# The paid delivery lane — RC-open, graded at E5. Three client entry points:
+# open, top-up, settle. Two are linked; the top-up is not.
+#
+# THE TWO HALVES ANCHOR ON SEPARATE POSTURE LINES, AND THEY HAVE TO. A block is
+# classified as a WHOLE: it says "cannot be exercised", or it says the lane has
+# not yet been exercised, and one that says both states no posture and FAILS. The
+# open/settle halves are linked and unrun in the field; the top-up half is not in
+# the binary at all. Those are the two postures, so pointing both at one label
+# would force the honest text to drop one of the two facts — or to reword around
+# the phrase list, which is defeating this gate with a thesaurus. Two labels, two
+# blocks, each classified on its own.
+#
+# An anchor never contains the reserved phrase or the symbol's own name. If it
+# did, resolving the anchor would satisfy the assertion by itself and both halves
+# of the pair would go unchecked.
+# ---------------------------------------------------------------------------
+
+lane: paid-delivery
+symbol: github.com/nerolabs/silt/core/node.(*Node).OpenDeliverySessionRemote
+label: Open at the RC: the paid delivery
+claim: The checklist declares the paid delivery lane open at the RC and graded at E5; a fetcher that cannot open a session cannot produce any C2 number at all, so this symbol is the lane's first load-bearing claim.
+substantial: Signs the open, marshals it and hands n.request a callback closure that decodes the handle and the commitment; the closure surfaces as OpenDeliverySessionRemote.func1, so this symbol is far past the inliner's budget and its absence would be real.
+
+lane: paid-delivery
+symbol: github.com/nerolabs/silt/core/node.(*Node).SubmitDeliverySettle
+label: Open at the RC: the paid delivery
+claim: The C2 numbers the checklist calls sim-driven are settlement numbers; this is the fetcher half that signs the cumulative count and submits it, so the lane's economic claim rests on this symbol being in the binary.
+substantial: Signs a cumulative receipt and passes n.request a closure that reads the settled credits off the response; the closure surfaces as SubmitDeliverySettle.func1, so an absence here is a dropped symbol, never an inline.
+
+lane: paid-delivery-topup
+symbol: github.com/nerolabs/silt/core/node.(*Node).FundDeliverySessionRemote
+label: Open at the RC: the delivery top-up
+claim: The checklist claims a paid delivery lane whose sessions are budgeted; top-up is how a session's budget rises after admission, so the RC posture line has to say whether an operator can do it. It cannot: this symbol has zero non-test callers and the linker drops it.
+substantial: Signs a SessionFund, marshals it and passes n.request a closure that reads the post-top-up budget; the closure surfaces as FundDeliverySessionRemote.func1, so its absence from the table is the linker dropping it, not an inline.
+
+# ---------------------------------------------------------------------------
+# The paid relay lane — the whole CLIENT half is absent from the binary. The
+# server half is linked (handleRelayOpen, handleRelayPay, SettleRelaySession,
+# SplicePaid, paidPump), which is exactly how this reads as delivered.
+# ---------------------------------------------------------------------------
+
+lane: paid-relay-client
+symbol: github.com/nerolabs/silt/core/node.(*Node).AcquireRelayAnchors
+claim: The relay lane's posture line claims a paid relay; anchors are step 1 of PoD 7.3.2 and the only way a fetcher pre-buys relay capacity, so a lane label that does not mention this symbol is claiming a step no shipped binary can take.
+label: the paid relay lane
+substantial: Runs a sequential blind-withdrawal loop against the pinned epoch key and carries a done closure that returns the anchors bought before a failure; the loop plus the closure put it far past the inliner's budget.
+
+lane: paid-relay-client
+symbol: github.com/nerolabs/silt/core/node.(*Node).OpenRelaySessionRemote
+label: the paid relay lane
+claim: Opening the session is the step that binds the fetcher's ephemeral identity to the anchors and returns the handle every later relay frame carries; without it in the binary no operator can start a paid relay session, whatever the server half implements.
+substantial: Builds and signs the open commitment, marshals a RelayOpen and passes n.request a callback closure that maps the reply's Height field to the session handle; the closure surfaces as OpenRelaySessionRemote.func1.
+
+lane: paid-relay-client
+symbol: github.com/nerolabs/silt/core/node.(*Node).SubmitRelayPay
+label: the paid relay lane
+claim: Revealing preimages is what raises the relay's authorizer ceiling as bytes forward; it is the paying half of the paid relay claim, so the checklist's posture on that lane is a claim about this symbol being reachable.
+substantial: Marshals a RelayPay and hands n.request a closure that reads the authorized count off the reply and maps a refusal to a named error; the closure surfaces as SubmitRelayPay.func1.

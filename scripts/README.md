@@ -15,7 +15,10 @@ with no install step, so the same command works locally and in CI.
 Edit the markdown, re-run the generator, commit both. CI fails the build if a
 generated page is stale.
 
-## Checks — all wired into the `website` job in `.github/workflows/ci.yml`
+## Checks — wired into `.github/workflows/ci.yml`
+
+All of these run in the `website` job except `check_reachability.py`, which needs a Go
+toolchain and runs in its own `reachability` job.
 
 | Script | Fails the build when | Scar |
 | --- | --- | --- |
@@ -25,12 +28,14 @@ generated page is stale.
 | `check_status_headers.py` | a doc's not-built Status header contradicts a built/shipped body | `scar:status-header-vs-body-contradiction-2026-09-01` |
 | `check_cited_tests.py` | a Go comment or doc cites a `TestXxx` that has no `func TestXxx(` anywhere; **or** a doc's `path.go:NNN` no longer points at the symbol cited beside it | `scar:cited-test-does-not-exist-2026-09-02`, `scar:cited-source-coordinate-decayed-2026-09-10` |
 | `check_residual_register.py` | a residual name (`R-…`) appears in `ROADMAP.md` without a Residual-register row carrying a bucket, a closer and a source | `scar:residual-backlog-unbucketed-2026-09-06` |
+| `check_source_gates.py` | a test that reads the project's own `.go` source does not say so in its failure text, or does not name its runtime cover | `scar:source-gate-promises-a-runtime-property-2026-09-03` |
+| `check_reachability.py` | a lane the release checklist makes a public claim about has no client entry point in the linked `./cmd/silt` binary, and the checklist does not say the lane **cannot be exercised** | `scar:mechanism-shipped-inert-2026-09-10` |
 
 Each check exits `0` on pass and `1` on failure, and prints its findings to
 stderr. Run them all with:
 
 ```sh
-for c in links claims tenet_qualifiers status_headers cited_tests source_gates residual_register; do
+for c in links claims tenet_qualifiers status_headers cited_tests source_gates residual_register reachability; do
   python3 "scripts/check_$c.py" || echo "FAILED: $c"
 done
 ```
@@ -88,3 +93,57 @@ SILT_CITED_TESTS_EXTERNAL_ROOTS=a:b python3 scripts/check_cited_tests.py
 Known-unbacked citations live in `cited_tests_allowlist.txt`. That file is a
 ledger, not an exemption list: every entry says whether it is frozen HISTORY or an
 OWED test, and an OWED entry is a debt whose repayment is deleting the line.
+
+### `check_reachability.py` — is the mechanism in the shipped binary?
+
+Catches *a mechanism recorded as delivered that no operator can run*: present in
+source, described as enforcing, and with zero non-test callers, so the linker drops
+it out of `./cmd/silt`. Six shipped that way in one month, including a refuse-to-start
+on consensus-config divergence and the entire paid-relay client.
+
+**No Go test can see this.** A test that can call the symbol is itself the caller that
+keeps it alive. A grep sweep cannot see it either: it keys on bare identifiers, so an
+inert method hides behind a live namesake — the 117-site sweep that preceded this lint
+missed `demand.Commit` outright, and every common verb (`Verify`, `Close`, `Root`,
+`Get`) has the same hole. `go tool nm` on the linked binary has neither hole: the name
+is fully qualified, and dead-code elimination already decided the question.
+
+The gate asserts one equality per entry, with a closed complement:
+
+> the checklist label says THIS SYMBOL is unreachable  ==  the symbol is absent
+
+The label's claim is a PAIR — the phrase **"cannot be exercised"** and the symbol's own
+name, in the lane's posture line in `docs/release-checklist.md`. Both halves are needed.
+The phrase alone would let one line excuse a whole lane; the name scopes the claim,
+because a lane routinely has a live half and a dropped half (the paid delivery lane
+opens and settles but cannot top up). "Cannot be exercised" and "has not been exercised"
+are different claims to a reader, and only one of them is true of a lane whose client
+entry point is not linked.
+
+**Never point an entry at a one-line wrapper.** A thin function is inlined into its
+caller and vanishes from the symbol table in a build where the lane is perfectly live —
+`adapters/relay.DialThroughPaid` is exactly that. Entries must name a SUBSTANTIAL
+symbol, and the lint measures the declaration to enforce it: at least 8 body lines AND a
+function literal, which surfaces as `<symbol>.funcN` and is required as a second witness
+when the symbol is present. The lint REFUSES a thin entry rather than passing it, and
+lowering that threshold is how this gate stops meaning anything.
+
+Lanes live in `reachability_lanes.txt`, one record per client entry symbol, each
+carrying a written `claim` and a written `substantial`. An unreasoned row fails: an
+allowlist rationale is itself a claim, and it decays exactly like a cited test name. So
+each written reason has a mechanical companion — `label` must resolve in the checklist,
+and the measured body must agree with `substantial`.
+
+Scope is deliberately bounded to lanes the release checklist makes a public claim
+about. It is not a sweep of exported symbols; the floor-box keystone is inert by
+ratified owner direction (`D-RECOMPUTE-FREEZE`) and would drown the signal.
+
+```sh
+python3 scripts/check_reachability.py                    # builds ./cmd/silt, then checks
+python3 scripts/check_reachability.py --binary PATH      # reuse a build
+python3 scripts/check_reachability.py --checklist PATH   # read the labels elsewhere
+python3 scripts/check_reachability.py --lanes PATH       # a different lane table
+```
+
+On the shared dev box the build runs under `taskpolicy -c background nice -n 19`
+automatically; CI has no `taskpolicy` and builds at full speed.
