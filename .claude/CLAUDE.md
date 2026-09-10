@@ -14,8 +14,8 @@ The seats build under silt's existing rules. They are not overridden by anything
 - **The bright lines:** `docs/TENETS.md` Part VI — the don'ts.
 - **Decisions + roadmap:** `docs/decisions.md`, `ROADMAP.md` — the ledger and the order.
 - **Build discipline:** `docs/build-process.md` — #6 root-cause-before-you-patch,
-  #7 evidence-or-nothing, and the consensus-correctness discipline (model-check before
-  field; a field run confirms, never discovers).
+  #7 evidence-or-nothing, the consensus-correctness discipline (model-check before
+  field; a field run confirms, never discovers), and **the ten simplicity rules**.
 - **Consensus invariants:** `docs/design/consensus-invariants.md` (I1–I5), the closed set.
 
 ## Coordination rules — the orchestra way (reusable methodology)
@@ -52,40 +52,18 @@ The seats build under silt's existing rules. They are not overridden by anything
 6. **Scars survive pruning.** The Tester owns scar-counting and the third-time rule; a
    lesson is encoded as a gate/test before context is cleared.
 
-## Simplicity rules — owner direction via the PE (standing, 2026-09-08)
+## Simplicity rules — POINTER (they are silt canon, not harness content)
 
-The owner asked which team we are: the one that takes a complicated thing and makes it simple, or the
-one that takes a simple thing and makes it complicated. The measured answer for the trust plane's
-last three weeks was the second (`docs/decisions.md` `D-RECOMPUTE-FREEZE`; the note:
-`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/NOTE-to-silt-team-simplicity-and-roadmap-reorder-2026-09-08.md`).
-These ten rules bind every seat from now on:
+**The ten simplicity rules live in [`docs/build-process.md`](../docs/build-process.md), section
+"The ten simplicity rules".** That is their canonical and only home; do not copy them back here.
+They are standing owner direction (2026-09-08, via the PE seat), ratified in `docs/decisions.md`
+`D-RECOMPUTE-FREEZE` (5), and they bind every seat.
 
-1. **The B8 gate, at every design decision.** Before any seat proposes a mechanism, it names the
-   settled corner it is buying — or states why none fits. "Novel" is a cost, not a feature, on
-   anything outside M0. The planner does not dispatch a build that cannot name its corner.
-2. **The PE seat's mandate widens: correctness AND simplicity of approach.** The PE's first question
-   on any consult is *"is this the simplest approach the tenets permit?"* — before severity, before
-   sequencing. This is the check the PE failed to run on the recompute keystone and now owns.
-3. **Cap the bookkeeping ratio.** Bookkeeping commits (structure / register / residual / re-ruling /
-   canon) may not exceed the count of `fix(` + `feat(` commits in any week. When they do, the loop
-   stops registering and starts closing.
-4. **A residual must be actionable or it does not exist.** A new `R-*` row requires an owner, a
-   closer, and a Boulder. Otherwise it is a sentence in `docs/design/m0.md` §10 or nothing. No new
-   prefixes (`R-BB-`, `G-`, …) without an owner ratification.
-5. **Owner calls are batched and bounded.** At most five per true-up. If a true-up needs more than
-   five, the loop is deciding by escalation instead of by design — stop and simplify the question.
-6. **No new era without a ratified reason that is not "the recompute needs it."** A block-format
-   change is the most expensive edit in the system; era 5 is not pre-approved.
-7. **"A green gate with no demonstrated red is decoration" is a RULE, not an observation.** A field
-   classified "safe" in any coverage table must be a DRIVEN probe (forge it, commit the divergent
-   root, assert a stall). The completeness meta-test fails on an un-driven "safe" row, not only a
-   missing one.
-8. **Structure rounds are frozen on the keystone.** No refactor adds concepts to a component slated
-   for re-scope. Rigor applied to accidental complexity produces more of it, beautifully certified.
-9. **A cert per consensus-rule change — and only per consensus-rule change.** Not per probe, not per
-   register row, not per re-ruling.
-10. **Step back to TENETS + VISION once a week, as the planner.** No seat holds that vantage in the
-    loop; the planner schedules it.
+They moved out of this file on 2026-09-10. Canon that lives in the harness travels with the
+harness — a session run without the usual configuration silently unloads it, which is how several
+of the ten came to be breached with nobody reading them. This file is a MERGE POINT for orchestra
+coordination rules plus silt *deployment* content; the simplicity rules are neither. **Rules 1–10
+are cited by number across the repo; the numbering does not move.**
 
 ## Load discipline — this box is shared (standing rule, owner, 2026-09-08)
 
@@ -96,8 +74,13 @@ The Mac that runs the seats is Andrew's working machine. Every seat, every sessi
   the background QoS class does (measured: 90 % → 14 % CPU on a running test). A PreToolUse hook
   blocks an un-throttled heavy `go` command; `GOFLAGS=-p=1` and `GOMAXPROCS=2` are set in the
   session env. Use `-short` locally; the full suites are CI's job unless a ruling names one.
-- **One heavy process at a time.** A PE or Researcher that runs ablations counts as heavy; a
-  Builder never runs beside one. Read-only reviewers may overlap. Check `uptime` before spawning.
+- **Up to three heavy jobs at a time** (raised from one, owner, 2026-09-10). The old cap was
+  compensating for Spotlight indexing the Go build cache, which was eating the disk and CPU the
+  cap was protecting; that directory is now hidden from Spotlight, so the box carries three. A PE
+  or Researcher that runs ablations counts as heavy. Read-only reviewers do not count against the
+  three. Check `uptime` before spawning, and stay at one if the load average is already high.
+  **This raises the concurrency number only — every heavy command is still throttled per the rule
+  above.** The throttle rests on its own measurement and is not relaxed by this change.
 - **Retro-fit anything already running:** `taskpolicy -b -p PID`.
 - Cloud-run orchestrators launch under the same prefix (inside the detached `nohup`).
 

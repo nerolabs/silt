@@ -2521,6 +2521,13 @@ showing the one-byte value IS committed).
      or it does not exist; at most five owner calls per true-up; no new era without a ratified non-recompute reason;
      a green gate with no demonstrated red is decoration — a RULE; structure rounds frozen on the keystone; one cert
      per consensus-rule change and only per consensus-rule change; the planner steps back to TENETS + VISION weekly).
+     > **ANNOTATION 2026-09-10 — the location above is superseded; the rules are unchanged.** The ten rules now live
+     > in [`build-process.md`](build-process.md), section "The ten simplicity rules", which is their canonical home;
+     > `silt/.claude/CLAUDE.md` carries a pointer. **Rules 1–10 keep their original numbers**, so every `simplicity
+     > rule N` citation in the repo still resolves to the same rule. Owner-directed: canon that lives in the agent
+     > harness travels with the harness — a session run without the usual configuration silently unloads it, and
+     > several of the ten were breached while nobody was reading them. The sentence above is left as written rather
+     > than rewritten, per the standing practice that a correction is visible as a correction.
 - **What this does NOT decide:** the pony's validation model itself — that is the design consult's output, owner-ratified;
   whether R1.8 ever lands. The A1 h43 fix (`D-CONSENSUS-ARMING`, `D-H43-WORKLESS-DESIGNEE`) is untouched — core, live, real.
 - **Fact check recorded at the reorder:** the note's "close the cross-server double-redeem (fix `fcbab7e`)" is already
