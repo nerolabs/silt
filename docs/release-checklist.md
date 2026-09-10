@@ -96,6 +96,29 @@ signing is wired up; V1 is not cut until signing/notarization is in place.)
     it end to end, not by a passing simulation. **Open at the RC: the paid delivery
     lane** — no delivery session has ever settled on a real network, so every C2
     number is sim-driven; it is graded at E5 after the stamp raise.
+  - **⚠ THE PAID RELAY LANE NEEDS A DIFFERENT SENTENCE, AND THE STANDARD ONE
+    OVER-CLAIMS (2026-09-10).** *"Built, sim-proven, never exercised on a real
+    network"* implies an operator could exercise it and nobody has. Verified by `nm`
+    on a fresh `./cmd/silt` and confirmed by call-graph read: `OpenRelaySessionRemote`,
+    `AcquireRelayAnchors`, `SubmitRelayPay` and `DialThroughPaid` are **all absent
+    from the linked binary** (zero non-test callers), while the server half is present
+    and dispatched. The label this lane carries is:
+
+    > *"built server-only, e2e-proven in-process, and NOT EXERCISABLE on a real
+    > network: the shipped binary contains no paid-relay client, so no operator can
+    > open a paid relay session — this lane is unexercised because it cannot be
+    > reached, not because no one has tried."*
+
+    **Keep the qualifier, because over-correcting here is the same failure with the
+    sign flipped:** the server accepts `MsgRelayOpen` from any peer, so a third party
+    could hand-write a client. The accurate scope is *"the shipped binary has no
+    client,"* never *"the protocol is unreachable."*
+
+    **OWED, not done here — two sites carry the standard sentence and belong to
+    other seats:** `cmd/silt/daemon.go`'s `-accept-relay-payments` flag help, and
+    `docs/design/pod.md` §7.3's **Field status** line. Both must carry the label
+    above before the RC is cut. Source:
+    `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/2026-09-10-inert-mechanism-sweep-core-adapters-0ed3b92.md`.
 - [ ] **`CHANGELOG.md` `[Unreleased]` is accurate** — it becomes the release
       notes verbatim. For `1.0.0` it should read like an honest first-release
       summary.
