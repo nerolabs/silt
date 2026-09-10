@@ -277,6 +277,38 @@ Consult `PoD-neutral-lane-B3-close-CONSULT-2026-08-26.md`; certification
 > deliberation
 > [`thinking/2026-09-04-r2.14-relay-prepayment-anchor-design.md`](../thinking/2026-09-04-r2.14-relay-prepayment-anchor-design.md).
 
+> **⚠ THE SETTLEMENT MODEL IS UNFIT FOR THE EDGE TIER — off by default at EVERY tier**
+> (`D-RC-POSTURE-2026-09-09` (1), owner, 2026-09-09). This is not a disabled feature; it is a
+> mechanism whose economics exclude the tier silt's decentralization thesis depends on, disclosed
+> so no pony is silently enrolled in a losing game.
+>
+> **The math, plainly.** Settlement is **all-or-nothing at session CLOSE**. `sweepRelaySeen` drops a
+> session at `admitEpoch+2` UNSETTLED, so an over-running session forfeits **100 % of the credit it
+> earned** — while the fetcher's face was already spent at open. Driven: 8 increments forwarded, paid
+> 0 (`core/node/TestC2RelaySessionReapedByTheEpochSweepSettlesZero`). A session lives 9–16 blocks =
+> 413–734 s at the measured `T_b` = 45.865 s/height, so clearing one 24.41 GiB face inside it needs
+> **286–508 Mbit/s sustained on a single session**. At a 100 Mbit/s edge uplink a session moves
+> **4.81 of 24.41 GiB and is paid nothing.**
+>
+> **Why that is a corner problem, not a tuning problem.** A lane that only settles above ~300 Mbit/s
+> is structurally horse-and-above. Relay revenue therefore concentrates on the few while the pony
+> tier — the tier the 10000/100/1 thesis rests on — gets a lane that *punishes* participation. That
+> is an economic-recentralization vector against build-immutable #3 (no permanent center), not merely
+> an unattractive default.
+>
+> **The posture.** Built, correct, and off at every tier. A horse operator whose uplink clears the
+> ratio opts in knowingly. The lane is additionally DARK until era-4 activation (above).
+>
+> **The real fix is routed, not built.** Settling incrementally rather than at close, or adding a
+> periodic relay sweep (the delivery lane has `SweepDeliverySessions` plus a daemon ticker; the relay
+> reap is lazy with exactly one production caller, `OpenRelaySession`), moves an economic rule and is
+> therefore research-gated. It is tracked as a named Boulder-2-successor item with an owner. **Until
+> it lands, relay is horse-and-above by construction** — that sentence is the design debt, and it is
+> owed a mechanism, not a knob.
+>
+> **Field status:** built, sim-proven, **never exercised on a real network** (release-checklist rule,
+> `D-RC-POSTURE-2026-09-09` (3)).
+
 ### 7.3.1 Why relay needs a different mechanism than the neutral lane
 
 The neutral lane (§3) prices a *completed, content-verified* delivery. A

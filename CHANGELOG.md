@@ -25,6 +25,55 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   itself is certified in-process. No OOM-kill and no crash-loop across the cohort, so the sheet was graded on a healthy network.
   Teardown verified: 40 resources destroyed, no instance left running.
 ### Changed
+- **The relay lane is disclosed as UNFIT FOR THE EDGE TIER and stays off at every tier (`D-RC-POSTURE-2026-09-09` (1),
+  owner, 2026-09-09; ROADMAP row C11).** No default moved — `-accept-relay-payments` was already `false` — what ships is
+  the DISCLOSURE, because the measurement behind it is an economics finding, not a knob preference. Relay settles
+  all-or-nothing at session CLOSE and `sweepRelaySeen` drops a session at `admitEpoch+2` UNSETTLED, so an over-running
+  session forfeits 100 % of earned credit while the fetcher's face was already spent at open (driven: 8 increments
+  forwarded, paid 0). A session lives 9–16 blocks = 413–734 s at the measured `T_b`, so clearing one 24.41 GiB face
+  inside it needs **286–508 Mbit/s sustained on a single session**; at a 100 Mbit/s edge uplink a session moves 4.81 of
+  24.41 GiB and is paid **nothing**. The owner ruled this an **economic-recentralization vector**, not a bad default: a
+  lane that only settles horse-and-above concentrates revenue on the few while punishing the pony tier the 10000/100/1
+  thesis depends on (build-immutable #3). The flag's own help text and `docs/design/pod.md` §7.3 now carry the arithmetic
+  and the sentence *"the settlement model is unfit for the edge tier"*, so a horse with the uplink opts in knowingly and a
+  pony is never silently enrolled in a losing game. The FIX — incremental settlement, or a periodic relay sweep (the
+  delivery lane has `SweepDeliverySessions` plus a daemon ticker; the relay reap is lazy with one production caller) —
+  moves an economic rule and is research-gated, tracked as owned design debt rather than shipped as a v1 default.
+- **The delivery idle-window VALUE is RATIFIED at 24m** (`D-C2-IDLE-WINDOW-VALUE`), closing the value
+  `D-TRUE-UP-CALLS-2026-09-07` reserved as owed after A3. Cost verified zero: the deposit release epoch (30m35s) binds
+  before either candidate window. The number did not move but its ROUTE did — call (4) was epoch-denominated against the
+  190 s modal tier, the shipped value is a duration against the 430 s envelope — so the owner commissioned a blind audit
+  of silt's derived parameters for the same defect shape, partitioned by whether a parameter FREEZES at D3.
+
+### Fixed
+- **A FALSE field-confirmation claim in `cmd/silt/numeraire.go`, found by the pre-freeze
+  derivation-route audit.** The comment asserted that both the 190 s modal tier and the 430 s envelope
+  were field-confirmed on `97e3101-deep`. The 190 s tier is (row `6-fault-tolerance`). **The 430 s
+  figure is not.** Row `10a-stall-drill` also computes 430, but from an unrelated formula —
+  `(3+n_syb)*30 + 220` at `n_syb = 4`, the staggered-takeover ladder for DECLINING ATTESTERS — which
+  merely collides numerically with `(N+2)*30 + G = 430` at `N = 12`. A coincident total is not a
+  measurement: 10a never exercises a lost entry forward. The comment now states the field status
+  precisely, marks the 430 s figure as a ratified-model envelope rather than a confirmed quantity, and
+  records that call (4)'s stated release precondition named the 190 s bound and does not cover this
+  one. Driving the lost-forward path is owed at E5. This is the session-24 scar recurring — *a claim
+  about a gate is itself a claim* — and it was caught by re-deriving the citation rather than reading it.
+
+### Documentation
+- **A release-checklist RULE replaces per-lane honesty calls: every lane that has never run in the field is labelled**
+  *"built, sim-proven, never exercised on a real network"* wherever the release claims it — README, website, release notes
+  and the flag's own help (`docs/release-checklist.md`; `D-RC-POSTURE-2026-09-09` (3)). A lane earns the sentence's removal
+  by a green graded field run that exercises it end to end, never by a passing simulation. Open at the RC: **the paid
+  delivery lane**, since no delivery session has ever settled on a real network, which makes every C2 number sim-driven;
+  it is graded at E5 after the stamp raise. The owner's reason for making it a rule rather than a judgment: *"omission
+  decides these by default, and the default is always the over-claim."*
+- **`ROADMAP.md`'s owner-question block now lists a call only when its evidence exists** (`D-RC-POSTURE-2026-09-09` (4)) —
+  a list carrying not-yet-ready items trains the reader to skim, and then a real call gets waved through. One call is open
+  (D3, the freeze act). Call 12 is decoupled: contracting the external B8 seat starts NOW and the owner ratifies the
+  engagement at D3, because procurement has no code dependency, is the longest-lead item on the roadmap, and is what lifts
+  M0 from *built + internally-clean* to *held* — calendar-critical even though it is not code-critical. D1 additionally
+  owes the owner **one page in plain English — what is frozen, and what can never change without a new era** — read before
+  the freeze act is signed, and no FORMAT item merges under delegation.
+
 - **The delivery idle window is DERIVED and SHIPPED: default 24m, floor `430 s × 4/3` = 9m33.33s (Lane C2,
   `R-REAPER-FORFEIT`; owner call 4 of `D-TRUE-UP-CALLS-2026-09-07` releases refuse-until-set now that the bound is
   field-confirmed).** Two corrections to the arithmetic the call was sized on. The governing stall is **430 s**, not the

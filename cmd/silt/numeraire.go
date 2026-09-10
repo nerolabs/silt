@@ -174,8 +174,21 @@ func tenthsPct(t int64) string {
 // (docs/decisions.md D-H43-WORKLESS-DESIGNEE (21), ratified 2026-09-07). It DOMINATES the
 // 190 s modal tier of D-CONSENSUS-ARMING (19), which is why a defensive window is sized
 // against it and not against the tier: a window that only clears the modal case is broken
-// by the worst case the same document publishes. Both were field-confirmed on the graded
-// run integration/cloudtest/report-97e3101-deep.md (rows 6-fault-tolerance, 10a-stall-drill).
+// by the worst case the same document publishes.
+//
+// FIELD STATUS, stated precisely (corrected 2026-09-09 by the pre-freeze derivation-route
+// audit; the prior sentence here claimed BOTH numbers were field-confirmed and that is
+// FALSE). The 190 s modal tier IS field-confirmed: report-97e3101-deep.md row
+// 6-fault-tolerance drives exactly it. The 430 s figure is NOT. Row 10a-stall-drill also
+// computes 430, but from an UNRELATED formula — (3+n_syb)*30 + 220 at n_syb = 4
+// (integration/cloudtest/scenarios.sh, the staggered-takeover ladder for DECLINING
+// ATTESTERS) — which merely collides numerically with (N+2)*30 + G = 430 at N = 12. A
+// coincident total is not a measurement of this bound: 10a never exercises a lost entry
+// forward. So the number governing this floor rests on the ratified MODEL
+// (D-H43-WORKLESS-DESIGNEE (21)) and on call 4's instruction to size above the bound, and
+// it is a conservative envelope rather than a confirmed quantity. Call 4's own stated
+// release precondition named the 190 s bound and IS met; do not read that as covering this
+// one. Driving the lost-forward path in the field is owed (Lane E5, at the RC grade).
 const deliveryIdleBound = 430 * time.Second
 
 // deliveryIdleStampDivisor mirrors core/node's unexported deliveryStampDivisor, which
