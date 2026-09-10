@@ -1416,6 +1416,14 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   > > **(d-3) shrinks the face roughly 40× but does not remove it; what removes it is the v5
   > > signature-preimage change, which makes evidence O(1).**
   >
+  > **⚠ WRONG A THIRD TIME — 2026-09-10, `D-D3-CERT-REFUTATION-2026-09-10`.** The *"roughly 40×"*
+  > figure is itself refuted. `SlashesBytesCap` is enforced against `SlashesEncodedSize`
+  > (`core/chain/chain.go:2217`), which marshals the ACTUAL `[]Equivocation` — real encoded bytes with
+  > full `Block` bodies. (d-3) reduces the HASH PREIMAGE, which does nothing to what that function
+  > measures. **As specified, (d-3) shrinks the face by ZERO and is marginally negative.** Recovering
+  > any shrink needs a mandatory evidence-strip validity rule that has not been bought. The second
+  > half of the sentence — that the signature-preimage change is what removes the face — STANDS.
+  >
   > The 16 MiB VALUE is untouched by this unratification — only the disclosure sentence moved. The
   > owner also ratified the HANDLING as a standing practice: *"the annotate-in-place-rather-than-rewrite
   > handling was exactly right. Keep doing that with ratified text — the correction should be visible
@@ -3347,3 +3355,98 @@ replicas.** All five, before D3. Mechanism is the builder's plus research, as de
 
 **Net scope moves DOWN:** one drop, one trivial addition, one item already owed, and a five-field
 bind that costs the same as two. *"That's buy-less-and-better with a number attached."*
+
+---
+
+## D-D3-CERT-REFUTATION-2026-09-10 — the (d-3) DIRECTION is certified; its SPECIFICATION is refuted in two clauses, one of which would have broken a frozen format on live history
+
+- **Status:** ⛔ STOPPED AND REPORTED — 2026-09-10, per the owner's standing instruction on owner call C:
+  *"If the cert refutes, come back to me, don't route around it."* Certification:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/D3-ANSWERDIGEST-TWO-LEVEL-HASH-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md`.
+  **Verdict: GATED.** Nothing is built. Owner call D (drop manifest item 4) is sequenced after C and
+  therefore also stalls.
+- **THE PURCHASE SURVIVES; THE SPECIFICATION DOES NOT.** The owner bought (d-3) for **self-covering**
+  — retiring `Pruned` — on the third-time rule, and **that limb is CERTIFIED.** The size leg was
+  already withdrawn from his justification before this cert ran. What is refuted is the freeze
+  manifest's §4.3 spec text and one surviving size sentence.
+
+### The stop-and-report finding — the spec as written breaks the frozen-format immutable
+
+Freeze-manifest §4.3 item 1 specifies `AnswerDigest ports.Hash \`cbor:"8,keyasint,omitempty"\``, and
+item 3 asserts *"`omitempty` already gives that property for every additive field."* **Both are
+false, and this repo says so in two places — verified at source:**
+
+- `core/chain/chain.go:569-572`: *"A plain `ports.Hash` (`[32]byte`) would NOT work: `omitempty` never
+  omits a fixed-size ARRAY (it is never 'empty'), so a zero `[32]byte` would be emitted as 32 zero
+  bytes and change every era-2 hash. The byte-identity oracle caught exactly that; the pointer is the
+  fix."*
+- `core/chain/lastcommit_carrier_pins_test.go:35-37`: **`Pruned` is the living proof** — a
+  `[32]byte`, so *"key 14 is present in EVERY encoded block body, zero-valued for a non-pruned
+  block. It is part of the frozen bytes."*
+
+**Why that is a bright-line breach and not a bug.** `bodyHash()` (`core/chain/chain.go:822`, verified)
+folds `BondRegs: b.BondRegs` into the unsigned literal with **no version branch at all**. So a
+fixed-size field on `BondReg` is emitted into every era's preimage, and **the hash of every v2 and v4
+block carrying a bond registration changes — on live history, before era-4 ever activates.** That is
+immutable **F** (frozen consensus formats), which is amended only by a new era, never by an edit.
+
+**Repair, CERTIFIED:** `AnswerDigest *ports.Hash` — the pointer form, which is the *exact* era-3
+step-2a fix already proven in this repo for `StateRoot`/`LogRoot`. Mechanism, not a new purchase.
+
+### The second refuted clause — `Slashes'` is unnecessary and harmful
+
+§4.3 reduces each embedded evidence block to *"its own era's header form"* — a recursively reduced
+COPY. **REFUTED:** `Prune()` never touches `Slashes` (`core/chain/chain.go:852-854`, verified:
+*"Note that Prune does NOT recurse into Slashes: evidence bodies embedded in a committed block stay
+resident forever, which is why `SlashesBytesCap` bounds that slot"*), so the reduction buys nothing
+for the self-covering property — and it adds a **per-hash 16 MiB deep copy**, re-opening `#563`.
+**`SlashesDigest` is CERTIFIED as the required form.** This closes C-4 of `R-CERT-REDERIVE`, whose
+one-word spec repair was exactly this. Scope add → **owner call 1**.
+
+### THE OWNER'S RATIFIED SENTENCE IS WRONG A THIRD TIME — on the number this time
+
+The replacement he ratified on 2026-09-10 reads: ***"(d-3) shrinks the face roughly 40× but does not
+remove it."*** The cert self-corrects its own earlier arithmetic: **as specified, (d-3) shrinks the
+face by ZERO, and is marginally negative.**
+
+The mechanism, verified: `SlashesBytesCap` is enforced against `SlashesEncodedSize`
+(`core/chain/chain.go:2217`), which **marshals the actual `[]Equivocation`** — real encoded bytes,
+full `Block` bodies included. §4.3 reduces the **hash preimage**. Changing what `bodyHash` folds does
+**nothing** to what `SlashesEncodedSize` measures.
+
+Recovering any shrink at all needs a **mandatory evidence-strip validity rule that nobody has
+bought** → **owner call 2**.
+
+**This is the third correction to one ratified sentence** (*"only (d-3) removes"* → false; the
+coalition clause → materially under-disclosing; now *"roughly 40×"* → zero). It is left in place and
+annotated, per the standing practice on ratified text.
+
+### The rest of the cert
+
+- **Limb 1 — direction CERTIFIED**, and the close needs no new code: it makes four **existing**
+  proposer-signature checks (`chain.go:2835`, `:3454`, `:3524`, `floorbox_box_v5.go:108`) stop being
+  vacuous on pruned blocks. The owner's ratio decidendi is upheld.
+- **Limb 3 — 16 sites, 12 change.** `Reconcile` needs **no** change, which corrects the blast radius
+  routed to the researcher; four sites were missing from it. The **disqualifying widening** to refuse
+  is *"a pruned v5 block is self-authenticating, so trust it at any height"* — identity ≠ bond
+  possession, and `trustFloor` stays.
+- **Limb 4 — NO era-boundary wedge**, and the reason matters: `bodyHash` is **unary**, so `b.Version`
+  IS the signed object's version. The carrier wedges because it is **binary** (child verifying a
+  parent's attestations). **A builder over-generalising the sibling preimage cert gets this exactly
+  backwards.**
+- **Limb 6 — CERTIFIED**, with a trap named: the v5 pruned-evidence refusal becomes structurally
+  unreachable, but **deleting `ErrPrunedEvidence` re-opens I5 for every pre-v5 height, permanently.**
+- **Limb 7 — the witness read-set does NOT move** (a freeze surface). Frame/resident cost
+  +≤8.5 KiB per block at `RegCap = 256`.
+- **Three gates on `main` would stay GREEN straight through this change** and must be re-pointed
+  first: `TestHashLiteralPinsEveryHashCoveredField` (it unions the two literals),
+  `TestHashLiteralPinRuntimePair` (fixture is `Version: 1`), `TestCarrierHashDriftGuard` (its v5 case
+  carries no `BondRegs`). Gates `G-D3-1 … G-D3-11`, all RED-first.
+
+### Execution caveat, recorded rather than smoothed over
+
+The Researcher ran **no shell commands** this round: every finding is source-read or derived, and
+labelled as such in the cert. The builder independently verified the load-bearing ones at source
+(`chain.go:569-572`, `:822`, `:852-854`, `:2217`; `lastcommit_carrier_pins_test.go:35-37`). The cert
+also could not read the then-unmerged branch; that branch is now `main` @ `76bf707` and touched **no
+`.go` file** except the new divergence gate, so its reads stand.

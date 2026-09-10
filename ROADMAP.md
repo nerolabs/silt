@@ -254,8 +254,18 @@ WITHDRAWN as a reason to buy anything.***
   today**. One class-3 (box-owned) `HeadRef` field; the freeze read-set does not move.
 - **B — the pricing ask: WITHDRAWN.** What remains is small: make the standing predicate correct
   (**"was bonded at that height,"** late-reveal preserved).
-- **C — (d-3) `AnswerDigest`: BOUGHT**, gated on its delta cert (commissioned 2026-09-10; **if it
-  REFUTES, stop and report — do not route around it**). Bought on the **third-time rule**, not on
+- **C — (d-3) `AnswerDigest`: BOUGHT, and the delta cert came back GATED — ⛔ STOPPED AND REPORTED**
+  (`D-D3-CERT-REFUTATION-2026-09-10`). **The DIRECTION is certified; the SPECIFICATION is refuted in
+  two clauses.** (i) §4.3's `AnswerDigest ports.Hash` would break the **frozen-format immutable on
+  LIVE v2/v4 history** — `omitempty` never omits a fixed-size array (`Pruned` is the living proof,
+  key 14 in every encoded block), and `bodyHash()` folds `BondRegs` with **no version branch**
+  (`chain.go:822`); repair certified as `AnswerDigest *ports.Hash`, the proven era-3 step-2a form.
+  (ii) The recursively-reduced `Slashes'` is REFUTED — `Prune()` never touches `Slashes`
+  (`chain.go:852-854`) — and adds a per-hash 16 MiB deep copy re-opening #563; **`SlashesDigest` is
+  the certified form**, which closes C-4 of `R-CERT-REDERIVE`. **And the ratified sentence is wrong a
+  THIRD time:** *"shrinks the face roughly 40×"* is ZERO, because the cap measures ENCODED bytes
+  (`SlashesEncodedSize`, `chain.go:2217`) while (d-3) reduces the PREIMAGE. **Two new owner calls and
+  nothing built.** Bought on the **third-time rule**, not on
   elegance: *a proof that a property holds today is not a structure that makes violating it
   impossible.* `R-CARRIER-PRUNED-HASH` would prove the discipline holds now; any later change can
   silently violate it. (d-3) makes the retained body **self-covering**, so violation becomes
