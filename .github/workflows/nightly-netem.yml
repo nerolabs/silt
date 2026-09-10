@@ -4,6 +4,17 @@
 # red night is a durability FINDING with an exact local reproducer, caught before
 # any field run meets it. Scheduled (not merge-gating): minutes-long, and loss
 # injection is too jittery for a merge gate.
+#
+# HISTORY — this workflow was red 19 of its first 21 lifetime runs, starting the
+# night after it landed, and nobody triaged it. Two defects, both now fixed:
+# integration/adversarial/run.sh mounted the host module cache READ-ONLY over the
+# container's writable /go/pkg/mod (so a partial cache made the e2e package
+# unbuildable), and run.sh rendered EVERY non-zero exit as "a property did NOT
+# hold" — so thirteen nights of a package that failed to COMPILE, with zero drills
+# run, read as a durability finding. It also shipped inside a seven-item omnibus
+# commit and was never once observed green; scripts/check_scheduled_workflow_proof.py
+# now refuses that. Do not weaken an arm to make it pass — a drill tuned down until
+# it goes green is exactly the failure this repair is about.
 name: nightly-netem
 on:
   schedule:
@@ -12,18 +23,37 @@ on:
 
 jobs:
   adversarial-netem:
-    name: Adversarial consensus drills under netem (docker)
+    # Build-immutable #5 names jitter, latency, packet loss AND reordering as the
+    # everyday case. Only jitter used to run: loss was opt-in and never set, and
+    # reorder was never exercised at all. One job per arm, so a red names its own
+    # impairment and the arms do not serialise into one 45-minute job.
+    name: ${{ matrix.arm }} — full P0 gate under netem (docker)
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false   # one arm's finding must not hide the others' results
+      matrix:
+        include:
+          - arm: clean
+            # The control. A red here is a plain product/harness break, not a
+            # durability finding, and it is what tells the other arms apart from
+            # "the suite was broken tonight".
+            netem: ""
+          - arm: jitter
+            netem: "delay 80ms 20ms distribution normal"
+          - arm: loss
+            netem: "delay 120ms 40ms distribution normal loss 2%"
+          - arm: reorder
+            # `reorder` requires a delay — tc rejects it outright otherwise, which
+            # the harness renders as a HARNESS ERROR (exit 3), never a clean pass.
+            netem: "delay 20ms reorder 25% 50%"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: Clean-network control (must PASS)
-        run: NETEM="" ./integration/adversarial/run.sh
-      - name: Full P0 gate under impairment (delay+jitter)
-        run: SUITE=all ./integration/adversarial/run.sh
+      - name: Full P0 gate (substrate + adversarial) under [${{ matrix.netem || 'CLEAN' }}]
+        run: SUITE=all NETEM="${{ matrix.netem }}" ./integration/adversarial/run.sh
 
   flakynet:
     name: Flaky-network consensus bootstrap (docker + netem)

@@ -393,6 +393,9 @@ jobs:
   docs-shipped:
     name: Docs ship with code
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read   # check_scheduled_workflow_proof.py resolves a run id via the API
     steps:
       - uses: actions/checkout@v4
         with:
@@ -411,3 +414,11 @@ jobs:
             exit 1
           fi
           echo "OK — docs ship with code"
+      - name: Scar-lint — a changed SCHEDULED workflow must show a verified green workflow_dispatch run (scar:scheduled-workflow-never-observed-green-2026-09-11)
+        # nightly-netem merged inside an omnibus commit, was red on its FIRST cron
+        # run, and stayed red 19 of its first 21 — it had never been watched.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/check_scheduled_workflow_proof.py
