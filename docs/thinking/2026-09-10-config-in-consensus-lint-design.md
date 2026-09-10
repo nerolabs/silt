@@ -5,8 +5,10 @@
 
 ## The problem, measured not assumed
 
-`Params` embeds `Config` verbatim (`core/chain/stateview_live_v5.go:26`) and every `Config` field is
-a command-line flag (`cmd/silt/daemon.go:905-916`). So a consensus validity predicate can read local
+`Params` embeds `Config` verbatim (`core/chain/stateview_live_v5.go:26`) and **most** `Config` fields
+are command-line flags (`cmd/silt/daemon.go:905-916`). *(Corrected after blind review, F-7: "every
+field is a flag" is false for four of them — some are derived or defaulted before reaching `New`.
+The claim that matters is unaffected: a validity predicate can read a value an operator sets.)* So a consensus validity predicate can read local
 config, and three times it has: **#380** (`RequiredQuorum()` read `cfg.Quorum` on the objective path),
 **`SlashesBytesCap`** (an invariant derived from two proposer-side flag defaults), and **`MinBond`**
 (a validity threshold that is a bare flag — found by a driven probe this session).
@@ -26,7 +28,10 @@ field read). **REJECTED.**
 
 **Option B — hand-maintained list of consensus-critical fields, checked for doc annotation.**
 *Cost:* cheap. *Benefit:* small. It re-encodes the exact failure mode being fixed: the list is a human
-enumeration, so a new field is a new miss. **REJECTED** — it is the disease, formalised.
+enumeration, so a new field is a new miss. **REJECTED.** *(Corrected after blind review: calling this
+"the disease, formalised" was too glib. It is HAND-MAINTAINED enumeration that is the disease.
+Enumeration itself is right — reflection just makes it mechanical, and the reviewer's judgment is
+that the reflective half is where nearly all the value sits.)*
 
 **Option C — driven divergence sweep + a reflective declaration table.** Two honest replicas whose
 `Config` differs in exactly ONE field must reach the SAME validity verdict on the SAME block. Every

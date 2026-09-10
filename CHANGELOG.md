@@ -41,8 +41,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   immediately rather than waiting for a fourth audit. Ablation battery run before the gate was
   trusted, verified by exit code: restoring the #380 defect, adding an undeclared field, re-declaring
   `MinBond` as `LOCAL`, and leaving a stale declaration each turn it RED; baseline green either side.
-  Fourteen fields report **UNPROVEN rather than safe** — no driven regime exercises them yet, and
+  Twelve fields report **UNPROVEN rather than safe** — no driven regime exercises them yet, and
   simplicity rule 7 forbids calling an undriven row safe.
+  **Corrected by blind review before merge** (`silt-reviews/principle-engineer/ruling-config-in-consensus-gate-05b527c.md`),
+  which broke the first version twice. `DRIVEN-SAFE` was a sentence in the table rather than a
+  measurement — deleting a field's probe still reported it safe — so it now requires a probe to have
+  actually run, and a field with NO probe is a hard failure. The unbound pin keyed on free text, so
+  both era-activation fields escaped it while carrying prose that itself admitted nothing binds them;
+  it now pins the measured divergence MAP, which no comment can satisfy. Two probes were dead on
+  arrival: `MinProposerRep`/`MinAttesterRep` landed exactly ON the `>=` boundary, and the era probes
+  were dead by one height. With potent probes all four diverge, so `MinProposerRep`,
+  `MinAttesterRep` and `LivenessRecoveryHeight` are re-classified consensus-critical. **Scope stated
+  honestly:** the fixture validates a `Version: 1` block, so the v5 composition is not executed here
+  (`R-CONFIG-GATE-V5-REGIME`); the v5 twin is covered by `TestM1A3_V4V5ParityOracle`.
 
 ### Changed
 - **The relay lane is disclosed as UNFIT FOR THE EDGE TIER and stays off at every tier (`D-RC-POSTURE-2026-09-09` (1),
