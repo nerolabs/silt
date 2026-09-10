@@ -183,14 +183,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   a paramless `Build` would have left the same shape available to the next call site); the daemon
   projects them off the chain via `Chain.ConsensusParams`, so the arm that WRITES genesis and the arm
   that CHECKS it read one source; and `CheckConsensusParams` gets its production caller as a
-  **refuse-to-start**, placed after the replay and the genesis seed because it reads `blocks[0]` and
-  is vacuous on an empty chain. `silt genesis` now prints its hash labelled as the *paramless* one,
-  because a daemon-launched network no longer has a single genesis hash.
+  **refuse-to-start**, placed after the **replay**: it reads `blocks[0]`, so it is meaningful only
+  against a chain loaded from disk, and ahead of `chainstore.Recover` it reads an empty chain,
+  returns nil, and the daemon serves under a config its own chain contradicts. Its runtime cover is
+  two driven daemons in `e2e/consensus_config_bind_test.go` — the minted genesis hash MOVES with
+  `-bond-label-k`, and a daemon started against a chain that commits a different value EXITS — after
+  a blind review measured the source gates GREEN over a tree where that mechanism was dead.
+  `silt genesis` now prints its hash labelled as the *paramless* one, because a daemon-launched
+  network no longer has a single genesis hash.
 - **The membership rule, replacing the field list** (owner ratification, 2026-09-10). *Every field
   that can change a validity verdict is bound to the chain, or is explicitly excluded with a recorded
   reason.* The **rule** is ratified; **17 is its output**. The reflective gate now covers **both**
   `chain.Config` and `node.Config` (`R-CONFIG-GATE-NODE-SCOPE`, **closed** — that scope gap is
-  exactly why `-bond-label-k` and `-bond-vdf` were missed), and the two declaration tables form a
+  exactly why `-bond-label-k` and the compiled bond-VDF delay were missed), and the two declaration tables form a
   **checked bijection** onto `ConsensusParams`: a committed field claimed by neither table is
   hash-covered decoration, and one claimed by both hides an unbound knob. The bijection caught a real
   double-claim on `MinBondBytes` the moment it was written. `node.Config`'s gate drives a **real

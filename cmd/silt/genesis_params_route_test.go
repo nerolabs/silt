@@ -16,15 +16,26 @@ import (
 // What the runtime gates CAN see is covered next door: core/genesis G-CFGBIND-6 drives
 // genesis.Build itself, and core/chain G-CFGBIND-1..5 drive the predicates.
 //
-// This gate observes strings and their ORDER in cmd/silt/daemon.go, and it claims nothing else.
+// These gates observe strings and their ORDER in cmd/silt/daemon.go, and they claim nothing else.
 // That is the convention scripts/check_source_gates.py enforces and the idiom
 // TestG_SLASHCAP_4_TheRefusalIsWiredAtStartup_Source already uses in this package.
+//
+// THE RUNTIME COVER IS IN e2e, AND IT IS NOT OPTIONAL. A blind review measured the shape a
+// source gate cannot see: the check lifted into a helper defined later in daemon.go and called
+// BEFORE chainstore.Recover left every gate in this file GREEN while the mechanism was dead — the
+// binary served under a divergent -bond-label-k with zero refusal lines. e2e/consensus_config_bind_test.go
+// drives both halves in real processes and is what actually holds the seam; the order assertion
+// below was re-anchored on that finding.
 //
 // FOR A NEW FIELD ON A CONSENSUS TYPE, A READER IS NOT ENOUGH — the pin must require a non-test
 // WRITER. G-CFGBIND-7 is that requirement: it fails if genesis.Build stops being handed real
 // params on the daemon path, which is precisely the state the tree was in before this change.
 
 // G-CFGBIND-7 — THE GENESIS MINT WRITES REAL PARAMS, on the production path.
+//
+// RUNTIME GATE: e2e TestGenesisHashMovesWithTheConsensusConfig — two daemons differing only in
+// -bond-label-k must mint DIFFERENT genesis blocks, and the same config the same one. The
+// paramless mint compiles and prints the same line; what it cannot do is move the hash.
 func TestG_CFGBIND_7_TheGenesisWiringIsOnTheProductionPath_Source(t *testing.T) {
 	s := daemonSource(t)
 
@@ -36,7 +47,7 @@ func TestG_CFGBIND_7_TheGenesisWiringIsOnTheProductionPath_Source(t *testing.T) 
 		if strings.Contains(s, "genesis.Build(store, nil)") {
 			t.Fatal("WIRING REGRESSED: daemon.go mints genesis with `genesis.Build(store, nil)`. A network " +
 				"launched by this binary commits NO consensus config at height 0, so -min-bond, -quorum, " +
-				"-anchors, -epoch-blocks, -bond-label-k and -bond-vdf are local knobs again and two honest " +
+				"-anchors, -epoch-blocks and -bond-label-k are local knobs again and two honest " +
 				"operators who differ on any of them reach different validity verdicts on the same block (I1). " +
 				"This is the exact shape the schema shipped in and sat inert.")
 		}
@@ -60,17 +71,31 @@ func TestG_CFGBIND_7_TheGenesisWiringIsOnTheProductionPath_Source(t *testing.T) 
 	}
 }
 
-// G-CFGBIND-8 — THE REFUSE-TO-START ARM HAS ITS PRODUCTION CALLER, in the right place, and it
-// REFUSES rather than warns.
+// G-CFGBIND-8 — THE REFUSE-TO-START ARM HAS ITS PRODUCTION CALLER, between the replay and the
+// point this node joins consensus, and it REFUSES rather than warns.
+//
+// RUNTIME GATE: e2e TestDaemonRefusesToStartOnADivergentConsensusConfig — a persisted genesis
+// committing k=64, a daemon started with -bond-label-k 32, a non-zero exit and no peer line.
 //
 // WHAT THIS CATCHES THAT JOINING CANNOT (and therefore why the call must exist at all): an
 // operator who edits a consensus flag and restarts on a chain this node has ALREADY joined. The
 // genesis on disk is unchanged, so no fork boundary is crossed, no hash mismatch exists to detect,
 // and the node simply begins applying different rules to a history it already holds.
 //
-// THE ORDER IS LOAD-BEARING, and getting it wrong is the vacuous-gate shape: CheckConsensusParams
-// reads c.blocks[0] and returns nil on an EMPTY chain. Placed before the replay and the genesis
-// seed it would be green on every start while checking nothing at all.
+// THE ORDER IS LOAD-BEARING, AND THE BOUNDARY IS THE REPLAY — NOT THE GENESIS SEED. The check is
+// meaningful only against a chain LOADED FROM DISK. On a fresh node the committed params and the
+// local ones are both ParamsFromConfig over the same cfg in the same process, so wherever it sits
+// relative to the mint it is a TAUTOLOGY; an earlier draft of this gate pinned mint -> check and
+// published that ordering as the reason, which is false and was measured false (a tree with the
+// check moved ahead of the mint refuses identically). What kills the mechanism is placing the
+// check ahead of chainstore.Recover: the chain is then empty, CheckConsensusParams returns nil on
+// blocks[0], and the daemon serves under a config its own chain contradicts. That was measured
+// too, with the previous form of this gate GREEN over it.
+//
+// So the assertion is a SANDWICH: Recover < check < EnableChain. The lower bound is the state the
+// check reads; the upper bound is the point this node joins consensus with that chain, after which
+// refusing is too late. It is still a lexical proxy — a helper defined BETWEEN the two landmarks
+// would satisfy it — which is why the e2e above, not this gate, is the instrument of record.
 func TestG_CFGBIND_8_TheParamsRefusalIsWiredAtStartup_Source(t *testing.T) {
 	s := daemonSource(t)
 
@@ -83,17 +108,36 @@ func TestG_CFGBIND_8_TheParamsRefusalIsWiredAtStartup_Source(t *testing.T) {
 			"has already joined, and apply different rules to that history with nothing objecting.", call)
 	}
 
-	// ORDER: after the genesis seed (which is itself after the replay). Anchored on the mint,
-	// which G-CFGBIND-7 has already proven present.
-	mintAt := strings.Index(s, "genesis.Build(store, &gp)")
-	if mintAt < 0 {
-		t.Fatal("SOURCE GATE: this gate checks an ORDER against the genesis mint, which is no longer in " +
-			"daemon.go — re-home it (G-CFGBIND-7 reports the same absence).")
+	// ORDER, LOWER BOUND: after the replay that populates the chain from disk.
+	const recover_ = "chainstore.Recover("
+	recoverAt := strings.Index(s, recover_)
+	if recoverAt < 0 {
+		t.Fatalf("SOURCE GATE: the string %q is absent from daemon.go, so this gate cannot locate the "+
+			"replay it anchors the check against — re-home it, or the chain is no longer loaded from disk at "+
+			"startup at all.", recover_)
 	}
-	if callAt < mintAt {
-		t.Fatal("SOURCE GATE: by string OFFSET the params check precedes the genesis seed in daemon.go. " +
-			"CheckConsensusParams returns nil on an EMPTY chain (it reads blocks[0]), so on a fresh node it " +
-			"would pass unconditionally while checking nothing — a green gate over an empty chain.")
+	if callAt < recoverAt {
+		t.Fatal("SOURCE GATE: by string OFFSET the params check precedes chainstore.Recover in daemon.go. " +
+			"CheckConsensusParams reads blocks[0] and returns nil on an EMPTY chain, and the chain is empty " +
+			"until the replay fills it — so the check would pass unconditionally on every start while the " +
+			"divergent config it exists to catch is loaded a moment later. MEASURED: in that position the " +
+			"binary serves under a -bond-label-k the chain's genesis contradicts, with zero refusal lines.")
+	}
+	// ORDER, UPPER BOUND: before this node joins consensus with that chain. Refusing after
+	// EnableChain is refusing after the damage. This bound is what catches the check being lifted
+	// into a helper defined further down the file (its text then lands after every landmark here).
+	const enable = "nd.EnableChain(ch, ident.Signer())"
+	enableAt := strings.Index(s, enable)
+	if enableAt < 0 {
+		t.Fatalf("SOURCE GATE: the string %q is absent from daemon.go, so this gate cannot locate the point "+
+			"the node joins consensus — re-home it.", enable)
+	}
+	if callAt > enableAt {
+		t.Fatal("SOURCE GATE: by string OFFSET the params check follows nd.EnableChain in daemon.go, so " +
+			"this node has already joined consensus with the chain before anything compares its config " +
+			"against what that chain commits. If the check was moved into a helper, the CALL SITE is what " +
+			"must sit between chainstore.Recover and EnableChain — and e2e " +
+			"TestDaemonRefusesToStartOnADivergentConsensusConfig is the gate that decides whether it does.")
 	}
 
 	// It must REFUSE, not warn. A warning lets the node start and reach the divergent verdicts.

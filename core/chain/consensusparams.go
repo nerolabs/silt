@@ -160,7 +160,10 @@ func (p ConsensusParams) Diff(q ConsensusParams) []string {
 	add("era4-activation-height", p.Era4ActivationHeight, q.Era4ActivationHeight)
 	add("-allow-publisher", p.AllowPublisher, q.AllowPublisher)
 	add("-bond-label-k", p.BondLabelSamples, q.BondLabelSamples)
-	add("-bond-vdf", p.BondVDFDelay, q.BondVDFDelay)
+	// NOT a flag: node.Config.BondVDFDelay is a compiled default (core/node/node.go), so a
+	// divergence here means the two nodes are running different BUILDS. Naming "-bond-vdf" here
+	// told the operator to change something that does not exist.
+	add("bond-vdf-delay (compiled default, no flag)", p.BondVDFDelay, q.BondVDFDelay)
 	return out
 }
 

@@ -33,7 +33,7 @@ func cmdGenesis(args []string) error {
 	fmt.Printf("genesis link:   %s\n", h)
 	fmt.Printf("manifesto root: %s (%d bytes)\n", entry.Root, entry.FileSize)
 	fmt.Println("\nNOTE: a daemon-launched network COMMITS its consensus config into height 0 (-quorum,")
-	fmt.Println("-min-bond, -min-bond-floor, -anchors, -epoch-blocks, -bond-label-k, -bond-vdf, ...), so its")
+	fmt.Println("-min-bond, -min-bond-floor, -anchors, -epoch-blocks, -bond-label-k, ...), so its")
 	fmt.Println("genesis block hash DIFFERS from the one above — that is what stops a differently-configured")
 	fmt.Println("node from joining. The link and the manifesto root are config-independent and are the same")
 	fmt.Println("on every network. To see a real network's genesis hash, read the daemon's own startup line.")

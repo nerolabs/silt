@@ -3964,9 +3964,21 @@ Calling them safe would be the decoration failure in a new place.
   literal, so the arm that WRITES genesis and the arm that CHECKS it read one source. Reading a
   second copy would mean the node that founded a network could refuse its own genesis at the next
   restart if `New` ever normalised anything.
-- **`CheckConsensusParams` has its production caller**, as a refuse-to-start, placed **after** the
-  replay and the genesis seed: it reads `blocks[0]` and returns nil on an empty chain, so wired
-  earlier it would be green on every start while checking nothing.
+- **`CheckConsensusParams` has its production caller**, as a refuse-to-start, placed **after the
+  replay** — `chainstore.Recover` is the load-bearing boundary. The check reads `blocks[0]`, so it
+  is meaningful only against a chain LOADED FROM DISK; ahead of the replay it reads an empty chain,
+  returns nil, and the daemon serves under a config its own chain contradicts.
+
+  **CORRECTED 2026-09-10 — and the correction is the lesson, so the wrong version stays visible.**
+  The first draft of this line named the *genesis seed* as the boundary ("wired earlier it would be
+  green on every start while checking nothing"). A blind review built that tree and measured it
+  FALSE: relative to the mint the check is a **tautology** on a fresh node — both sides are
+  `ParamsFromConfig` over one `cfg` in one process — so it refuses identically on either side of the
+  seed. The gate that enforced the false boundary was therefore inverted with respect to severity:
+  RED on the benign edit (W2) and **GREEN on the fatal one** (S4 — the check lifted into a helper
+  defined later in `daemon.go` and called before `Recover`: both source gates green, the binary
+  serving under a divergent `-bond-label-k`, zero refusal lines). Ruling:
+  `silt-reviews/principle-engineer/RULING-owner-call-F-genesis-params-wiring-CODE-0d99aef-2026-09-10.md`.
 - **`silt genesis` prints its hash labelled PARAMLESS.** A daemon-launched network no longer has one
   true genesis hash; the link and the manifesto root remain config-independent and are printed
   unqualified.
@@ -3976,6 +3988,16 @@ Calling them safe would be the decoration failure in a new place.
 call strings and their order. **For a new field on a consensus type, a pin requires a non-test
 WRITER, not merely a reader**, and `G-CFGBIND-7` is that requirement: it fails if `genesis.Build`
 stops being handed real params on the daemon path, which is precisely the state the tree was in.
+
+**The instrument of record is `G-CFGBIND-10/11`, in `e2e`, added after the review.** A source gate
+can only see strings, and S4 is the proof that a green one can sit over a completely dead mechanism.
+`TestGenesisHashMovesWithTheConsensusConfig` starts real daemons and asserts the minted genesis hash
+MOVES with `-bond-label-k` and is stable within a config;
+`TestDaemonRefusesToStartOnADivergentConsensusConfig` persists a genesis committing `k=64`, starts a
+daemon with `32`, and asserts the process exits naming that field. `G-CFGBIND-8`'s order assertion
+was re-anchored to a SANDWICH — `chainstore.Recover` < the check < `nd.EnableChain` — which is RED on
+S4 and correctly GREEN on W2; it remains a lexical proxy and now says so, and names the e2e as its
+runtime cover.
 
 ### The genesis hash: what moved and what did not
 
@@ -3996,7 +4018,8 @@ so every patched file was `diff`ed against its original before the result was be
 |---|---|---|
 | W1a | daemon mints with `genesis.Build(store, nil)` | RED (G-CFGBIND-7, 8) |
 | W1b | remove the `CheckConsensusParams` caller | RED (G-CFGBIND-8) |
-| W2 | wire the check BEFORE the chain is populated | RED (G-CFGBIND-8, order) |
+| W2 | wire the check between the replay and the genesis seed | **GREEN, correctly** — re-measured 2026-09-10: the daemon refuses identically, so the old RED was a lexical fact with no behavioural referent |
+| **S4** | **lift the check into a helper defined later in `daemon.go`, called BEFORE `chainstore.Recover`** | **RED** (G-CFGBIND-8 upper bound; e2e `G-CFGBIND-11` times out waiting for a refusal that never comes). This is the ablation that was GREEN before the re-anchor |
 | W3 | `Build` accepts params and drops them | RED (G-CFGBIND-6, 6b) |
 | W4 | drop `Params` from the pre-v5 hash preimage | RED (G-CFGBIND-6, "the commitment is decoration") |
 | N1 | **add a fake verdict-reaching field to `node.Config`** | **RED** — the owner's binding condition |

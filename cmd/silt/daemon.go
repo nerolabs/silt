@@ -125,7 +125,7 @@ func cmdDaemon(args []string) error {
 	auditInterval := fs.Duration("audit", 0, "run the verify-without-fetch PoR AUDIT sweep this often over every -care'd root: challenge each shard's holders and grade their proofs against the key derived from the care link — NO ground-truth fetch — settling rent for the honest and SLASHING a liar that kept its proof tags but dropped the bytes (#232). Requires -care (supplies the root + layout key) and a -registry. 0 = off (repair-only caretaker)")
 	maxBondRegBytes := fs.Int64("max-bondreg-bytes-per-block", defaultMaxBondRegBytesPerBlock, "byte budget for bond registrations embedded in ONE block (#286 Layer 2b). A fresh multi-validator OBJECTIVE genesis otherwise piles every founding validator's ~1.5 MB space-time proof into one ~8 MB block that can't gather to quorum over a real WAN (the cert stalled at regs=5). The founding set are anchors (training wheels), so genesis commits SMALL on anchor attestations and the registrations DRAIN over the next blocks — each validator still gains real bonded weight and reaches maturity. A BYTE budget (not a count) fits one full ~1.5 MB genesis proof OR many small steady-state renewals, so an attest-only validator is never starved under a tight TTL. Default ~2 MiB stays within the size that gathers cross-region; a non-positive value is REFUSED at start-up (see below) (legacy). The structural close is a succinct proof (#299) BOUND TO CONSENSUS (2026-09-09, owner call 'close the route'): this budget is an input to the derivation of chain.SlashesBytesCap, a validity rule every validator enforces, so the daemon REFUSES to start when 2*(bondreg budget + entry budget + overhead) exceeds that cap -- past the boundary a REAL double-signer's evidence no longer fits and the equivocator keeps its seat. 0 (unbounded) is therefore refused too: an unbounded body defeats the invariant at any cap.")
 	maxEntryBytes := fs.Int64("max-entry-bytes-per-block", defaultMaxEntryBytesPerBlock, "byte budget for mempool publish ENTRIES folded into ONE block (#441) — SEPARATE from -max-bondreg-bytes-per-block by design: a single ~1.5 MB bond reg fills the whole reg cap, so a shared budget would leave the tens-of-bytes entry no room (the publish starvation one layer down), and the dual — an entry flood must never crowd out consensus-critical renewals. Each stream is guaranteed its own slice; their SUM must stay WAN-gatherable (#286 L2b). At least one entry always folds. a non-positive value is REFUSED at start-up (see below) BOUND TO CONSENSUS (2026-09-09, owner call 'close the route'): this budget is an input to the derivation of chain.SlashesBytesCap, a validity rule every validator enforces, so the daemon REFUSES to start when 2*(bondreg budget + entry budget + overhead) exceeds that cap -- past the boundary a REAL double-signer's evidence no longer fits and the equivocator keeps its seat. 0 (unbounded) is therefore refused too: an unbounded body defeats the invariant at any cap.")
-	bondLabelK := fs.Int("bond-label-k", 64, "labeling-consistency opens per bond challenge (M0 Sybil G2): each recomputes one block's label from its DRSample parents, so a prover holding arbitrary/reused/wrong-size bytes (not a real plot for its identity+size) fails. Soundness error ≤ (1-ε)^k against an ε-short prover. A per-network knob — prover and verifier must MATCH (like -bond-vdf), so set it uniformly across the swarm. Lower it only to shrink on-chain proof size, at a soundness cost. 0 = default (64)")
+	bondLabelK := fs.Int("bond-label-k", 64, "labeling-consistency opens per bond challenge (M0 Sybil G2): each recomputes one block's label from its DRSample parents, so a prover holding arbitrary/reused/wrong-size bytes (not a real plot for its identity+size) fails. Soundness error ≤ (1-ε)^k against an ε-short prover. A per-network knob — prover and verifier must MATCH (as must the compiled bond-VDF delay, which has no flag), so set it uniformly across the swarm. Lower it only to shrink on-chain proof size, at a soundness cost. 0 = default (64)")
 	bondAnswerLatency := fs.Duration("bond-answer-latency", 1500*time.Millisecond, "SOFT partial-storage timing signal on a live bond challenge (M0 C1 / owned-residual A5). A validator that deleted part of its plot must RECOMPUTE the missing blocks on demand, and past the DRSample knee that is a sequential cost that shows up as reply latency. This is NOT a standing gate (build-immutable #3: reply-latency is transport+compute, and gating security on the sum reads network jitter/loss as a cheat — #289): a valid answer earns standing however slow it arrives. Instead the node tracks the windowed-MINIMUM of each peer's reply latencies (the low quantile, which filters one-sided network noise) and raises a DISCLOSED suspicion only when that floor is SUSTAINED above this deadline — a partial-storage prover is consistently slow, an honest bad-path node only randomly slow. Set generously above the honest answer time; 0 = off. The hard structural close is tight-PoS (H-track).")
 	signedProviders := fs.Bool("signed-providers", true, "self-certifying DHT provider records (M0 H5): a node signs its 'I hold this' announcements with its identity key and re-verifies records served back on lookup, so a node holding the k-closest slots to a key cannot fabricate provider records for identities that never announced. Default ON; =false drops to the legacy unsigned path (trusted/demo swarm only)")
 	signedProviderTTL := fs.Duration("signed-provider-ttl", 30*time.Minute, "freshness window stamped on signed provider records (M0 H5): a re-served record older than this is treated as expired, so an eclipsing node can't replay an ancient claim forever")
@@ -978,17 +978,19 @@ func cmdDaemon(args []string) error {
 		// core/chain cannot import core/node.
 		//
 		// The consequence is intended and is the whole mechanism: two operators who
-		// differ on -min-bond, -quorum, -anchors, -epoch-blocks, -bond-label-k or
-		// -bond-vdf now mint DIFFERENT genesis hashes and cannot join each other's
-		// network at all. Divergence becomes impossible to join with, instead of fatal at
-		// validation on some later block.
+		// differ on -min-bond, -quorum, -anchors, -epoch-blocks or -bond-label-k — or who
+		// run BUILDS with different compiled defaults, since the projection reads
+		// effective values and node.Config.BondVDFDelay has no flag at all — now mint
+		// DIFFERENT genesis hashes and cannot join each other's network. Divergence
+		// becomes impossible to join with, instead of fatal at validation on some later
+		// block.
 		if ch.Len() == 0 {
 			gp := ch.ConsensusParams(cfg.BondLabelSamples, cfg.BondVDFDelay)
 			if gb, gh, _, gerr := genesis.Build(store, &gp); gerr == nil {
 				if err := ch.AppendGenesis(gb); err == nil {
 					gbh := gb.Hash()
 					fmt.Printf("genesis: %s\n", gh)
-					fmt.Printf("genesis: block %s — height 0 COMMITS this network's consensus config (-quorum=%d -min-bond=%d -min-bond-floor=%d -epoch-blocks=%d -bond-label-k=%d -bond-vdf=%d, %d anchor(s)). A node configured differently computes a different genesis hash and cannot join this network.\n",
+					fmt.Printf("genesis: block %s — height 0 COMMITS this network's consensus config (-quorum=%d -min-bond=%d -min-bond-floor=%d -epoch-blocks=%d -bond-label-k=%d bond-vdf-delay=%d [compiled default, no flag], %d anchor(s)). A node configured differently computes a different genesis hash and cannot join this network.\n",
 						gbh, gp.Quorum, gp.MinBond, gp.MinBondBytes, gp.EpochBlocks, gp.BondLabelSamples, gp.BondVDFDelay, len(gp.Anchors))
 				}
 			} else {
@@ -1003,10 +1005,15 @@ func cmdDaemon(args []string) error {
 		// hash mismatch to detect, and the node would simply begin applying different
 		// rules to a history it already holds. Nothing else in the daemon notices.
 		//
-		// It runs HERE, after the replay and after the genesis seed, because it reads the
-		// committed blocks[0]: before either, the chain is empty and the check is vacuous.
-		// It returns rather than warns — a warning lets the node start and reach the
-		// divergent verdicts anyway.
+		// IT RUNS AFTER THE REPLAY, and the replay is the load-bearing boundary — not the
+		// genesis seed above. The check is only ever meaningful against a chain LOADED FROM
+		// DISK: on a fresh node the committed params and the local ones are both
+		// ParamsFromConfig over this same cfg in the same process, so relative to the mint
+		// the check is a tautology in either position. Placed ahead of chainstore.Recover it
+		// reads an EMPTY blocks[0], returns nil, and the daemon serves under a config its
+		// own chain contradicts — measured, with the source gates green over it. It returns
+		// rather than warns: a warning lets the node start and reach the divergent verdicts
+		// anyway.
 		if err := ch.CheckConsensusParams(cfg.BondLabelSamples, cfg.BondVDFDelay); err != nil {
 			return fmt.Errorf("consensus config: REFUSING TO START — %w", err)
 		}

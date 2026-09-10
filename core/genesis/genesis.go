@@ -89,7 +89,8 @@ func Options() pipeline.Options {
 // params IS THE CONSENSUS-CRITICAL CONFIG THIS NETWORK COMMITS AT HEIGHT 0
 // (owner call F). Height-0 identity is no longer a function of the manifesto
 // alone: a network minted with a different -min-bond, -quorum, -anchors,
-// -epoch-blocks, -bond-label-k or -bond-vdf has a DIFFERENT genesis hash, so a
+// -epoch-blocks or -bond-label-k — or a different compiled bond-VDF delay, which has
+// no flag — has a DIFFERENT genesis hash, so a
 // divergently-configured node cannot join it at all — Reconcile refuses the fork
 // with chain.ErrForeignGenesis before any validity question arises. That is
 // canon rule 8's second arm (docs/build-process.md): a consensus quantity must

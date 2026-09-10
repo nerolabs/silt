@@ -1623,7 +1623,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 				// what actually shipped. The remedy is nameable, so name it.
 				diag.lastErr = fmt.Sprintf("foreign genesis from %x: %v", p[:4], rerr)
 				n.Stats.ChainSyncForeignGenesis++
-				n.logf(ports.LogWarn, "peer is on a DIFFERENT NETWORK: its genesis is not ours, so no block from it can ever be adopted — the genesis hash commits the consensus-critical config, so check -min-bond, -quorum, -anchors, -epoch-blocks, -bond-label-k and -bond-vdf against the network you meant to join",
+				n.logf(ports.LogWarn, "peer is on a DIFFERENT NETWORK: its genesis is not ours, so no block from it can ever be adopted — the genesis hash commits the consensus-critical config, so check -min-bond, -quorum, -anchors, -epoch-blocks and -bond-label-k against the network you meant to join, and confirm both nodes run the same BUILD (the bond-VDF delay is a compiled default with no flag)",
 					"peer", p, "err", rerr)
 			} else if rerr != nil {
 				diag.lastErr = fmt.Sprintf("not adopted from %x: %v", p[:4], rerr)
