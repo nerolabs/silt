@@ -237,11 +237,29 @@ The lane is *unexercised because it cannot be reached*, not because no one has t
 hand-write a client. The accurate scope is *"the shipped binary has no client,"* not *"the protocol is
 unreachable."* Over-correcting here would be the same failure with the sign flipped.
 
-Two further sites carry the same sentence and are **owed to their owners, not edited here**
-(file ownership — another builder holds `cmd/silt/daemon.go` this session):
+**THERE ARE THREE POSTURES, NOT TWO — and the first draft of this section conflated the last two.**
+*Exercised* / *has not been exercised* / *cannot be exercised*. Read off the symbol table of a fresh
+`./cmd/silt`, the paid delivery lane holds two of them at once:
 
-- `cmd/silt/daemon.go`, the `-accept-relay-payments` flag help.
-- `docs/design/pod.md` §7.3's **Field status** line.
+| Lane | Posture | Read from the binary |
+| --- | --- | --- |
+| paid delivery | has not been exercised | `OpenDeliverySessionRemote` and `SubmitDeliverySettle` are linked — an operator could run it tomorrow |
+| delivery top-up | **cannot be exercised** | `FundDeliverySessionRemote` is absent |
+| paid relay client | **cannot be exercised** | `AcquireRelayAnchors`, `OpenRelaySessionRemote`, `SubmitRelayPay` all absent |
+
+So each posture gets its **own bullet** in the checklist, and each *cannot be exercised* label
+**names the symbols that are missing**. Both are load-bearing, and neither is stylistic. A shared
+bullet inherits the parent's *"never run in the field"* prose, which claims both postures at once and
+therefore states neither. A label that omits the symbol names cannot be re-checked at all — a lane
+routinely has a live half and a dropped half, and *which* half is the whole claim.
+`scripts/check_reachability.py` enforces exactly that pair against the linked binary.
+
+One further site carries the standard sentence and is **owed to its owner, not edited here** (file
+ownership — another builder holds `cmd/silt/daemon.go` this session):
+
+- `cmd/silt/daemon.go:87`, the `-accept-relay-payments` flag help.
+
+`docs/design/pod.md` §7.3's **Field status** line carried it too and **is corrected in this change**.
 
 ---
 
