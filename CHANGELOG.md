@@ -84,6 +84,25 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   table so a reader of a passing report cannot mistake a justification for evidence the test
   produced. A v5 citation without a marker is RED (ablation A9).
 
+### Removed
+- **Freeze-manifest item 4 — the inert `IssuerKeyReg` proof-of-possession slot — is DROPPED**
+  (owner call D, [`docs/decisions.md`](docs/decisions.md) `D-ITEM4-DROPPED-2026-09-10`). No code
+  changes: verified never built — zero non-test PoP sites, and `IssuerKeyReg` carries four fields
+  with no slot.
+  Reserving an **inert, unpopulated** field buys exactly one thing — not paying an era later — and
+  the freeze deadline is now priced as SOFT, so it buys nothing. It is the same reserve-only error
+  the freeze-manifest certification names twice, and it survived only because the era clause was
+  still standing.
+  **Dropping it removes a real surface:** `IssuerKeys` is unprunable like `Slashes`, so at the
+  certified count cap the slot would have added `4,096 × 4,096` = **16 MiB per block** — a second
+  permanent surface equal to `SlashesBytesCap`, which is the surface `R-NEST-GATE` measured being
+  weaponised.
+  **The security question it hedged is untouched:** the research-gated DSKS close (a PoP in the
+  registration, or the RFC 9578 binding) stays post-RC. If it ever needs committed bytes, (d-3)'s
+  option beta folds a `PoPDigest` in and makes them **prunable** — which is why this was sequenced
+  after (d-3) landed rather than before. `IssuerKeyPoPMaxBytes` is not ratified and not reserved; it
+  becomes an input to that post-RC work instead of a frozen constant.
+
 ### Changed
 - **The relay lane is disclosed as UNFIT FOR THE EDGE TIER and stays off at every tier (`D-RC-POSTURE-2026-09-09` (1),
   owner, 2026-09-09; ROADMAP row C11).** No default moved — `-accept-relay-payments` was already `false` — what ships is

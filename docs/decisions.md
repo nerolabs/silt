@@ -2419,6 +2419,13 @@ showing the one-byte value IS committed).
   verdict contradicts it.
 - **(14) `R-ISSUERKEY-POP` and `R-E2E-ERA4-FIXTURE` (Lanes D1/D2):** the PoP slot is RESERVED inert at the stamp
   raise (not built); the e2e cost of the objective + bonded + epoch-enabled fixture is accepted.
+
+  > **⚠ THE PoP HALF IS UNRATIFIED — 2026-09-10, owner call D (`D-ITEM4-DROPPED-2026-09-10`).** The
+  > sentence is left verbatim because those are the owner's ratified words; this note records what he
+  > has since withdrawn. **The reservation is DROPPED.** It was bought on a cost that no longer
+  > exists: reserving an INERT, unpopulated field buys exactly one thing — not paying an era later —
+  > and the freeze deadline is SOFT pre-launch (`D-FREEZE-REPRICE-2026-09-10`). **The e2e-fixture half
+  > of (14) is untouched and still stands.**
 - **(15) The `-grant-capacity` help note:** left as is.
 - **(16) Structure Round 1B (Lane B1):** main-only FIRST — Round 1A is the main-only spine per the PE's 12-step
   brief; the five box-entry-dependent closers wait for Round 1B after the HELD `builder/floorbox-structure`
@@ -3646,3 +3653,51 @@ passing ablation** — verify the source actually changed before believing the r
 gate's own comment, and it is why the D0 ablation instructions that still named `IsPruned()` targets
 were corrected in the same commit: an ablation instruction naming a line no longer in the source is
 worse than none.
+
+---
+
+## D-ITEM4-DROPPED-2026-09-10 — freeze-manifest item 4, the inert PoP slot, comes out of the train
+
+- **Status:** ✅ DECIDED — 2026-09-10, owner call D (`D-FREEZE-CALLS-CDEF-2026-09-10`), executed after
+  call C landed so the fallback below actually exists. Sequenced by the owner, not by convenience.
+- **Verified before acting: it was never built.** Zero non-test PoP sites across `core/`, `cmd/` and
+  `ports/`; `IssuerKeyReg` (`core/chain/issuerkey.go`) carries four fields — `Pub`, `Epoch`,
+  `Fingerprint`, `Sig` — and no slot. **Dropping it is a ledger act with no code change.**
+
+### Why it comes out
+
+**Reserving an inert, unpopulated field buys exactly one thing: not paying an era later.** With the
+freeze deadline re-priced as SOFT (`D-FREEZE-REPRICE-2026-09-10`), that cost is void, so the
+reservation buys **nothing at all**.
+
+It is the same reserve-only error the freeze-manifest certification names **twice** — it refutes the
+A-axis tag reservation on this exact ground as its own item 5, and warns *"do NOT propose a
+reserve-only hedge"* about (d-3). **Item 4 survived only because the era clause was still standing.**
+It was found by re-reading the manifest with that clause struck, which is the audit the owner
+ordered.
+
+### Dropping it removes a real surface, not just a line
+
+`Prune()` drops only `BondReg.Answer`, so `IssuerKeys` is **UNPRUNABLE like `Slashes`**. At the
+certified count cap the reserved slot would add `4,096 × 4,096` = **16 MiB per block — a second
+permanent surface EQUAL to `SlashesBytesCap`**, which is the surface `R-NEST-GATE` measured being
+weaponised by a lone proposer with throwaway keys. **Buying 16 MiB per block of permanent attack
+surface as insurance against a cost that no longer exists is negative-value insurance.**
+
+### The fallback now exists, which is why C went first
+
+If the off-chain `demandMsg` binding ever proves insufficient, the answer is **not** a pre-reserved
+slot. It is option beta of the PoP certification — fold `PoPDigest` into (d-3), which makes those
+bytes **PRUNABLE**. **(d-3) landed today** (`D-D3-BUILT-2026-09-10`), so that route is available.
+The owner's instruction if the need lands post-freeze: *"add the field then and pay in re-runs and
+calendar — which is what the freeze actually costs."*
+
+### What is NOT decided here
+
+The **research-gated D-DEMAND change** (the DSKS close — a PoP in the registration, or the RFC 9578
+binding) is unaffected and stays post-RC. Dropping the reservation removes a *format hedge*, not the
+security question it was hedging. `IssuerKeyPoPMaxBytes` (certified 2026-09-10 at 4,096 bytes,
+INADMISSIBLE ALONE) is **not ratified and not reserved** — it becomes an input to that post-RC work
+rather than a frozen constant, and its self-corrections of freeze-manifest §4.6 travel with it.
+
+**Net effect on D1: the manifest loses one FORMAT item and gains none.**
