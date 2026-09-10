@@ -41,7 +41,7 @@ func TestBondFloorDeniesStandingOverTheNetwork(t *testing.T) {
 		nd.SetLedger(ledger)
 		nd.EnableBond(ident.Signer(), bondSize)
 		ch := chain.New(cfg, repFn)
-		if gb, _, _, gerr := genesis.Build(st); gerr == nil {
+		if gb, _, _, gerr := genesis.Build(st, nil); gerr == nil {
 			ch.AppendGenesis(gb)
 		}
 		nd.EnableChain(ch, ident.Signer())

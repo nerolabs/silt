@@ -172,8 +172,34 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   decayed Go coordinate, the re-decayed corrected coordinate, the substring revert, the
   nearest-anchor revert, the deleted allowlist entry and the dropped keyword filter each turn it
   RED, and the baseline is green either side.
+- **Owner call F, the DELIVERY: the genesis config bind is actually wired** (2026-09-10,
+  [`docs/decisions.md`](docs/decisions.md) `D-CFGBIND-MEMBERSHIP-RULE-2026-09-10`). The schema below
+  shipped **inert**: `ConsensusParams` declared 17 fields at cbor key 20 and *nothing populated it*.
+  `core/genesis.Build` minted the block with no `Params`, cbor `omitempty` dropped the key, and
+  `CheckConsensusParams` had **zero non-test callers**. All five `G-CFGBIND-*` gates hand-built
+  `Block{… Params: &p}` in their own fixtures — **a gate that constructs the exact state whose
+  production absence is the defect cannot detect that defect.**
+  Now: `genesis.Build` **requires** a `*ConsensusParams` argument (a `BuildWithParams` variant beside
+  a paramless `Build` would have left the same shape available to the next call site); the daemon
+  projects them off the chain via `Chain.ConsensusParams`, so the arm that WRITES genesis and the arm
+  that CHECKS it read one source; and `CheckConsensusParams` gets its production caller as a
+  **refuse-to-start**, placed after the replay and the genesis seed because it reads `blocks[0]` and
+  is vacuous on an empty chain. `silt genesis` now prints its hash labelled as the *paramless* one,
+  because a daemon-launched network no longer has a single genesis hash.
+- **The membership rule, replacing the field list** (owner ratification, 2026-09-10). *Every field
+  that can change a validity verdict is bound to the chain, or is explicitly excluded with a recorded
+  reason.* The **rule** is ratified; **17 is its output**. The reflective gate now covers **both**
+  `chain.Config` and `node.Config` (`R-CONFIG-GATE-NODE-SCOPE`, **closed** — that scope gap is
+  exactly why `-bond-label-k` and `-bond-vdf` were missed), and the two declaration tables form a
+  **checked bijection** onto `ConsensusParams`: a committed field claimed by neither table is
+  hash-covered decoration, and one claimed by both hides an unbound knob. The bijection caught a real
+  double-claim on `MinBondBytes` the moment it was written. `node.Config`'s gate drives a **real
+  sealed plot and a real space-time answer** through the production verifier closure, and pins the
+  measured divergence set; 31 fields report **UNPROVEN, never "safe"**. Ablations `N1–N6` and `C1–C2`
+  each verified RED by exit code, including the owner's binding condition — a fake verdict-reaching
+  field added to `node.Config` turns the gate RED.
 - **The consensus-critical genesis config: the SCHEMA is in; the production BIND is not.**
-  **⚠ Corrected 2026-09-10, before release, with the original claim left beside it.** The entry
+  **⚠ Corrected 2026-09-10, before release, with the original claim left beside it — and CLOSED 2026-09-11 by the DELIVERY entry above, which is why this correction is a record and not a live caveat.** The entry
   below states that a differently-configured node "computes a different genesis hash and cannot
   join at all". **That is not what shipped.** `core/genesis/genesis.go` mints genesis with no
   `Params` field, so cbor `omitempty` drops key 20 and the production genesis hash is unchanged;
@@ -182,12 +208,15 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   their tests are real and green — **nothing populates them**, so no node yet refuses on a config
   divergence and `R-CONSENSUS-CONFIG-UNBOUND` stays OPEN. Wiring the production mint moves the
   genesis hash, which is a FORMAT act the owner ratifies separately. ORIGINAL ENTRY:
-- **The consensus-critical genesis config is bound to the chain** (owner call F,
+- **The consensus-critical genesis config is bound to the chain** — *schema only; see the delivery
+  above* (owner call F,
   [`docs/decisions.md`](docs/decisions.md) `D-CFGBIND-BUILT-2026-09-10`). A new `ConsensusParams` —
   **17 fields carried by value** — is committed on the genesis block as `Block.Params` at cbor key
   20, so the genesis hash covers it. **A node configured differently computes a different genesis
   hash and cannot join at all**; the fork is refused with `ErrForeignGenesis` before any validity
-  question arises. This closes `R-CONSENSUS-CONFIG-UNBOUND` on the production path — the class that
+  question arises. **That sentence was true of the schema and false of the shipped binary until the
+  delivery entry above** — nothing wrote `Params`, so every network minted the same paramless
+  genesis. This closes `R-CONSENSUS-CONFIG-UNBOUND` on the production path — the class that
   produced #380's `Config.Quorum`, `SlashesBytesCap`'s flag-derived invariant, and `MinBond` as a
   bare command-line flag.
   **Values, not a digest**, so a mismatch names the field that differs. **Canon rule 8's two arms

@@ -41,7 +41,7 @@ func TestPartitionHealsToHeavierFork(t *testing.T) {
 		nd := node.New(id, nodeCfg, sched, net.Endpoint(id), st)
 		nd.SetLedger(ledger)
 		ch := chain.New(cfg, repFn)
-		if gb, _, _, gerr := genesis.Build(st); gerr == nil { // identical genesis on every node
+		if gb, _, _, gerr := genesis.Build(st, nil); gerr == nil { // identical genesis on every node
 			ch.AppendGenesis(gb)
 		}
 		nd.EnableChain(ch, ident.Signer())

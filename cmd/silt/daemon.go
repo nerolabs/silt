@@ -969,14 +969,46 @@ func cmdDaemon(args []string) error {
 		// genesis file into its own store so the whole swarm always hosts
 		// it. Idempotent across restarts: genesis is deterministic and
 		// chainstore already restored it if present.
+		//
+		// OWNER CALL F, THE DELIVERY: the genesis this daemon MINTS commits this
+		// network's consensus-critical configuration (canon rule 8's second arm). The
+		// values are projected off the CHAIN's own config — ch.ConsensusParams, not the
+		// literal above — so the arm that WRITES and the arm that CHECKS read one source
+		// and cannot drift apart. The two node-side verifier knobs come from cfg because
+		// core/chain cannot import core/node.
+		//
+		// The consequence is intended and is the whole mechanism: two operators who
+		// differ on -min-bond, -quorum, -anchors, -epoch-blocks, -bond-label-k or
+		// -bond-vdf now mint DIFFERENT genesis hashes and cannot join each other's
+		// network at all. Divergence becomes impossible to join with, instead of fatal at
+		// validation on some later block.
 		if ch.Len() == 0 {
-			if gb, gh, _, gerr := genesis.Build(store); gerr == nil {
+			gp := ch.ConsensusParams(cfg.BondLabelSamples, cfg.BondVDFDelay)
+			if gb, gh, _, gerr := genesis.Build(store, &gp); gerr == nil {
 				if err := ch.AppendGenesis(gb); err == nil {
+					gbh := gb.Hash()
 					fmt.Printf("genesis: %s\n", gh)
+					fmt.Printf("genesis: block %s — height 0 COMMITS this network's consensus config (-quorum=%d -min-bond=%d -min-bond-floor=%d -epoch-blocks=%d -bond-label-k=%d -bond-vdf=%d, %d anchor(s)). A node configured differently computes a different genesis hash and cannot join this network.\n",
+						gbh, gp.Quorum, gp.MinBond, gp.MinBondBytes, gp.EpochBlocks, gp.BondLabelSamples, gp.BondVDFDelay, len(gp.Anchors))
 				}
 			} else {
 				fmt.Fprintln(os.Stderr, "genesis seed:", gerr)
 			}
+		}
+		// THE REFUSE-TO-START ARM (canon rule 8's first arm, T-REFERENT). Committing the
+		// values above MANUFACTURED the referent a local assertion previously lacked, so
+		// this check is now possible AND required: it catches the one case joining cannot.
+		// An operator who edits a flag and restarts on a chain this node has ALREADY
+		// joined crosses no fork boundary — the genesis on disk is unchanged, there is no
+		// hash mismatch to detect, and the node would simply begin applying different
+		// rules to a history it already holds. Nothing else in the daemon notices.
+		//
+		// It runs HERE, after the replay and after the genesis seed, because it reads the
+		// committed blocks[0]: before either, the chain is empty and the check is vacuous.
+		// It returns rather than warns — a warning lets the node start and reach the
+		// divergent verdicts anyway.
+		if err := ch.CheckConsensusParams(cfg.BondLabelSamples, cfg.BondVDFDelay); err != nil {
+			return fmt.Errorf("consensus config: REFUSING TO START — %w", err)
 		}
 		nd.EnableChain(ch, ident.Signer())
 		// R2.10 / F8: the ledger's consensus epoch is READ from this node's chain,

@@ -80,7 +80,9 @@ type ConsensusParams struct {
 	// OWN local k, so a k=32 node rejects EVERY bond registration a k=64 swarm accepts. The flag
 	// help states the coordination requirement and in the same breath invites the change. They live
 	// outside chain.Config, which is why the divergence gate's reflection never saw them
-	// (R-CONFIG-GATE-NODE-SCOPE).
+	// (R-CONFIG-GATE-NODE-SCOPE — now CLOSED: core/node's
+	// TestNodeConsensusVerdictIsNotAFunctionOfLocalConfig closes the complement over node.Config, and
+	// the two declaration tables are a checked bijection onto this struct).
 	BondLabelSamples int    `cbor:"16,keyasint"`
 	BondVDFDelay     uint64 `cbor:"17,keyasint"`
 }
@@ -210,4 +212,20 @@ func (c *Chain) CheckConsensusParams(bondLabelSamples int, bondVDFDelay uint64) 
 		"or two honest nodes reach different verdicts on the same block (I1). The genesis commits them, so this node "+
 		"would apply different rules to a history it has already joined. Restore the committed values, or start a "+
 		"different network", ErrParamsDiverge, len(diff), msg)
+}
+
+// ConsensusParams projects THIS chain's live configuration onto the committed form, so the
+// genesis a node MINTS and the params that node later CHECKS are read from one place.
+//
+// WHY THIS EXISTS RATHER THAN A DIRECT ParamsFromConfig CALL AT THE MINT SITE. The two arms must
+// project the SAME config or the mechanism inverts: the node that founded the network would refuse
+// its own genesis at the next restart. CheckConsensusParams reads c.cfg; a mint site that built
+// params from the Config LITERAL it passed to New would be reading a second copy, and any future
+// normalisation inside New would silently separate them. Routing both arms through the chain makes
+// that class of drift unrepresentable instead of merely absent today.
+//
+// The two node-side verifier knobs are arguments because they live in core/node.Config, which
+// core/chain cannot import (cycle). See the ConsensusParams field docs.
+func (c *Chain) ConsensusParams(bondLabelSamples int, bondVDFDelay uint64) ConsensusParams {
+	return ParamsFromConfig(c.cfg, bondLabelSamples, bondVDFDelay)
 }
