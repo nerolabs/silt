@@ -23,7 +23,7 @@ import (
 //
 // Research certification (binding, verdict GATED — direction CERTIFIED, build gated on five
 // conditions with these ten RED-first gates):
-// /Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/V5-SIGNATURE-PREIMAGE-HEIGHT-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md
+// /Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/V5-SIGNATURE-PREIMAGE-HEIGHT-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md
 //
 // EVERY GATE IN THIS FILE CARRIES ITS ABLATION IN-PROCESS. Simplicity rule 7: a green gate with no
 // demonstrated red is decoration. Where the certification names an ablation as a source edit ("key

@@ -3,7 +3,7 @@
 **Date:** 2026-09-11
 **Seat:** Builder
 **Certification (binding, verdict GATED):**
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/V5-SIGNATURE-PREIMAGE-HEIGHT-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/V5-SIGNATURE-PREIMAGE-HEIGHT-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md`
 **Status:** BUILT AND HELD. Not merged. This is a FORMAT item; the owner reviews each one
 individually.
 
