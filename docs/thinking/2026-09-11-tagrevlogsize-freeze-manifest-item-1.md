@@ -90,3 +90,40 @@ is satisfied by a leaf that was never added).
 `RevocationLogRootAt` accessors have zero non-test callers, and `NewBox` has no production caller
 at all. Committing the size does not by itself put an inclusion-proof server on the wire. That is
 the witness-server surface, out of scope here (`R-WITNESS-RESIDENT-HEAP`, Boulder 1).
+
+## The ablations, run — and one thing they corrected
+
+Recorded here because two of them changed what the code says.
+
+| # | Ablation | Expected | Observed |
+|---|---|---|---|
+| 1 | Emit the leaf from `stateRootLeaves` (the era-3 set) too | the frozen-format gate reds | RED: *"the era-3 root moved with the revocation-log size"*, plus a duplicate-key error on the v5 path |
+| 2 | `if false` over the `countDelta` derivation in the op builder | the fold commits size 0 and stalls | RED on `ErrRecomputeStateRootMismatch` — a stall, never a wrong-accept |
+| 3 | Take the source's size WITHOUT Resolving it (m witness-supplied, as before the leaf) | the `m = 1` forgery becomes a wrong-accept | RED: the forged `LogRoot` passes P13b and reaches `ErrRecomputeGated` |
+
+Each patch was `diff`-verified against the original before the run and restored byte-identical
+after (`scar:ablation-noop-guard` — a patch that silently fails to apply reports green and is
+indistinguishable from a passing ablation).
+
+**Ablation 3 corrected a claim this branch first wrote.** The certification names two degeneracies,
+`m == 0` and `m == 1`, and the obvious reading is that either one breaks the construction. Measured:
+with the Resolve removed, the `m = 1` forgery passes and **the `m = 0` claim still fails**. At
+`n = k` the per-leaf inclusion legs pin the tree to `MTH(leaves)`, and the block's real `LogRoot` is
+not that. So the two legs of `verifyLogExtension` are not belt-and-braces — the consistency leg
+binds the PREFIX and the inclusion legs bind the CONTENT, and `m = 0` discards only the first. The
+gate's comment says that now instead of over-reading the certification.
+
+`m = 0` is still refused at authentication, and the arm is kept, because `m = 0` is what a box would
+compute if it read an ABSENT leaf as "empty log". That is exactly what C-a always-emit exists to
+foreclose, and why `logExtends` treats `ProvenAbsent` as a stall rather than a zero.
+
+## One finding the lift surfaced, diagnosed by evidence
+
+Lifting the P13b stall made the cold auditor's `unrevocations` class reach the fold for the first
+time, where it failed: *"delete revoked\x00||… : key already empty"*. The first hypothesis was that
+the new counter write caused it. **Suppressing the counter write entirely reproduced the identical
+failure**, which ruled that out. The real cause is `structWitnessFor` serving no `DeleteSiblings`
+for a delete — a fixture gap the stall had masked since the class never reached the fold. It is the
+coverage `R-LOGROOT-FORMAT-SCOPE` recorded as *"owed when the leaf lands"*, and the fix is the
+witness a real server would serve (`ProveWithSiblings`, which the sibling helper `witnessForBlock`
+has used all along).

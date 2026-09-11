@@ -35,17 +35,18 @@ import (
 // attacker owns the payload, the root, the proposer signature and the whole quorum. The box owns
 // its parent block and its own config, and that is what it stalls on.
 //
-// HOW FAR EACH ARM ACTUALLY GETS, measured, because the headline over-reads on six of seven arms.
+// HOW FAR EACH ARM ACTUALLY GETS, measured, because the headline over-reads on four of seven arms.
 // structWitnessFor builds a witness for the entries/revocations write-set plus the maturity latch
-// and nothing else, so only the ENTRIES arm reaches the point where a root is compared: honest root
-// ⇒ the composition Accepts and the downgrade catches it, divergent root ⇒ Reject on the recompute
-// mismatch. The other six stall EARLIER, on witness starvation, and their divergent-root leg is
-// therefore byte-identical to their honest leg. Those six are not testing root forgery; they are
-// testing that a block of that class reaches the door, is refused, and is refused BY ITS OWN NAME
-// rather than falling through to somebody else's. Both legs are kept: the divergent leg costs one
-// call and would become live the moment a class gains a complete witness.
+// and nothing else, so the ENTRIES, REVOCATIONS and UNREVOCATIONS arms reach the point where a root
+// is compared: honest root ⇒ the composition Accepts and the downgrade catches it, divergent root ⇒
+// Reject on the recompute mismatch. The other four stall EARLIER, on witness starvation, and their
+// divergent-root leg is therefore byte-identical to their honest leg. Those four are not testing
+// root forgery; they are testing that a block of that class reaches the door, is refused, and is
+// refused BY ITS OWN NAME rather than falling through to somebody else's. Both legs are kept: the
+// divergent leg costs one call and becomes live the moment a class gains a complete witness —
+// which is exactly what happened to the two takedown classes when tagRevLogSize landed.
 //
-// WHAT THIS SUITE THEREFORE DOES NOT COVER, recorded so nobody reads it as covering it: because six
+// WHAT THIS SUITE THEREFORE DOES NOT COVER, recorded so nobody reads it as covering it: because four
 // classes never receive a complete witness, the composition is never exercised PAST the class-S
 // digest reconstruction for bond regs, slashes or the carrier. Whether the recompute would
 // mis-accept a forged root for those classes is not tested here. D-RECOMPUTE-FREEZE scopes that to
@@ -90,18 +91,24 @@ func coldAuditorClasses() []coldAuditorClass {
 			wantSentry: ErrRecomputeGated,
 		},
 		{
+			// Since tagRevLogSize landed (2026-09-11) these two classes no longer stall at P13b:
+			// the parent log size Resolves from the parent's committed StateRoot, the extension
+			// verifies, and the block reaches the SAME far end as the entries class — accepted by
+			// the composition and downgraded at the door. They are now the second and third arms
+			// that exercise root forgery rather than witness starvation, which is what the
+			// divergent-root leg of each was waiting for.
 			name: "revocations", blockField: "Revocations", nodeAccept: true,
 			mutate: func(t *testing.T, f structFixture, b *Block) {
 				b.Revocations = []ports.Hash{entry(1).Root} // the root the fixture committed at h1
 			},
-			wantSubstr: "tagRevLogSize",
+			wantSentry: ErrRecomputeGated,
 		},
 		{
 			name: "unrevocations", blockField: "Unrevocations", nodeAccept: true,
 			mutate: func(t *testing.T, f structFixture, b *Block) {
 				b.Unrevocations = []ports.Hash{entry(1).Root} // revoked by the fixture's own h2 block
 			},
-			wantSubstr: "tagRevLogSize",
+			wantSentry: ErrRecomputeGated,
 		},
 		{
 			name: "bondregs", blockField: "BondRegs", nodeAccept: true,
@@ -259,7 +266,8 @@ func forgeDivergentRoot(t *testing.T, f structFixture, honest Block) Block {
 // Per-class ablations, each of which reddens exactly one arm by changing the name it lands on:
 // remove the `len(b.IssuerKeys) > 0` clause from stateRootScopeGate (issuerkeys); remove the digest
 // pre-set requirement from the class-S/B/A digest reconstruction (bondregs, slashes, carrier);
-// remove the tagRevLogSize stall (revocations, unrevocations).
+// drop the countDelta derivation in assembleStateRootRecomputeOps so the committed log size folds
+// as 0 (revocations, unrevocations).
 func TestColdAuditor_NeverAcceptsAnyV5BlockClass(t *testing.T) {
 	// NG-2: the door can reach the far end. Everything below is a refusal, and a door that stalls
 	// on everything would pass every one of them for the wrong reason.

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/nerolabs/silt/core/statehash"
+	"github.com/nerolabs/silt/core/translog"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -48,6 +49,10 @@ type proverSource struct {
 	leaves  map[string][]byte
 	members map[string][]ports.NodeID
 	chain   []ports.Hash
+	// log is the PARENT chain's transparency log, the tree the extension proofs start from. It is
+	// the source's own log, never the box's claim: if the box asks for an m this log does not have,
+	// the proofs it gets back will not verify and the box stalls. Honest by construction.
+	log *translog.Log
 }
 
 func newProverSource(t *testing.T, c *Chain) *proverSource {
@@ -82,6 +87,7 @@ func newProverSource(t *testing.T, c *Chain) *proverSource {
 	src.members[tagBondedRoot] = ids(c.bonded)
 	src.members[tagValidatorsSeenRoot] = flags(c.validatorsSeen)
 	src.members[tagSlashedRoot] = flags(c.slashed)
+	src.log = c.revLog
 	cur, _ := c.Head()
 	for i := 0; i < 64; i++ {
 		src.chain = append(src.chain, cur)
@@ -110,6 +116,34 @@ func (s *proverSource) Members(digestTag string) ([]ports.NodeID, bool) {
 	return ids, true
 }
 
+// LogExtension serves the RFC-6962 proofs for a block that appends `leaves` to the parent log: it
+// clones its OWN log, appends the caller's derived leaves, and produces the consistency proof from
+// the caller's m plus one inclusion proof per appended leaf. The clone is what keeps the source
+// side-effect free across the two calls a divergent-root arm makes.
+func (s *proverSource) LogExtension(m int, leaves []ports.Hash) ([]ports.Hash, [][]ports.Hash, bool) {
+	if s.log == nil {
+		return nil, nil, false
+	}
+	ext := s.log.Clone()
+	for _, lf := range leaves {
+		ext.Append(lf)
+	}
+	n := ext.Size()
+	cons, err := ext.ConsistencyProof(m, n)
+	if err != nil {
+		return nil, nil, false
+	}
+	incl := make([][]ports.Hash, 0, len(leaves))
+	for j := range leaves {
+		pf, iErr := ext.InclusionProof(m+j, n)
+		if iErr != nil {
+			return nil, nil, false
+		}
+		incl = append(incl, pf)
+	}
+	return cons, incl, true
+}
+
 func (s *proverSource) Ancestors(k int) ([]ports.Hash, bool) {
 	if len(s.chain) == 0 {
 		return nil, false
@@ -120,14 +154,31 @@ func (s *proverSource) Ancestors(k int) ([]ports.Hash, bool) {
 	return s.chain[:k], true
 }
 
-// structWitnessFor is the honest, prover-built StateRootWitness for an ENTRIES-ONLY v5 block on the
-// struct fixture (no TTL, no carrier, mature-from-genesis): the E changed-leaf proofs and the
+// structWitnessFor is the honest, prover-built StateRootWitness for an E/R v5 block on the struct
+// fixture (no TTL, no carrier, mature-from-genesis): the class-E/R changed-leaf proofs and the
 // class-M latch scalars.
+//
+// A DELETE (an un-revocation) takes ProveWithSiblings, not Prove. The fold replays the write onto a
+// partial trie built from the supplied proofs, and removing a leaf needs the off-path sibling
+// preimages to re-collapse the branch — without them the replay fails with "key already empty".
+// That was invisible for as long as provenView refused every revocation-bearing block at P13b: the
+// un-revocation class never reached the fold. It reaches it now, so the fixture has to serve the
+// witness a real witness server would (the sibling helper witnessForBlock has used all along).
 func structWitnessFor(t *testing.T, f structFixture, src *proverSource, b Block) StateRootWitness {
 	t.Helper()
 	var w StateRootWitness
 	preValue := func(k []byte) []byte { return src.leaves[string(k)] }
 	for _, wr := range applyEntriesRevocationsWriteSet(b) {
+		if wr.newValue == nil {
+			wit, sibs, err := src.prover.ProveWithSiblings(wr.key)
+			if err != nil {
+				t.Fatalf("ProveWithSiblings: %v", err)
+			}
+			w.ChangedLeaves = append(w.ChangedLeaves, StateRootChangedLeafWitness{
+				Key: wr.key, OldValue: preValue(wr.key), Proof: wit, DeleteSiblings: sibs,
+			})
+			continue
+		}
 		wit, err := src.prover.Prove(wr.key)
 		if err != nil {
 			t.Fatalf("Prove: %v", err)

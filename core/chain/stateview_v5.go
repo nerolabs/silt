@@ -269,8 +269,9 @@ type StateView interface {
 	// ---- THE ONE SUBSTITUTED STEP (P13 = P13a StateRoot ∧ P13b LogRoot). Not shared, by design. ----
 	//
 	// The node substitutes validateEra3Roots → postApplyRoots → cloneForDryRun (a real apply on a
-	// deep clone, BOTH roots); the box substitutes the certified witness recompute for P13a and
-	// the k = 0 LogRoot equality (k ≥ 1 STALLS until tagRevLogSize ships at R3.4) for P13b. This
+	// deep clone, BOTH roots); the box substitutes the certified witness recompute for P13a and,
+	// for P13b, the k = 0 LogRoot equality plus — since tagRevLogSize landed (freeze-manifest
+	// item 1) — the k ≥ 1 RFC-6962 extension check against the parent log size that leaf pins. This
 	// seam stays an EQUIVALENCE WITH GATES, never a shared function — it is the half that has held
 	// under four blind rounds, and collapsing it would be a new soundness claim, not a refactor.
 	// R-STATEROOT-EQUIVALENCE-SEAM (to be renamed R-COMMITTEDROOTS-EQUIVALENCE-SEAM: held-in-
