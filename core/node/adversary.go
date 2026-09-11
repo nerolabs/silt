@@ -353,9 +353,15 @@ func (n *Node) PlaceConflictingSigned() (uint64, error) {
 	for i := len(blocks) - 1; i >= 1; i-- {
 		w := blocks[i]
 		var slot *chain.Attestation
+		// THE PREPARE IS IN W'S OWN ERA FORM (T-ERA-DISPATCH). Era 4 renames the two steps on
+		// the wire (PhasePrepare -> PhasePrepareV5) and Era4ActivationHeight defaults to 1, so
+		// every committed block above the genesis of a fresh network carries the v5 form.
+		// Matching the canonical constant here found nothing, this function returned "not a
+		// gathered signer" forever, and the harness never double-signed at all.
+		wantPrep := chain.AttPhase(w.Version, chain.PhasePrepare)
 		for j := range w.PrepareQC {
 			att := w.PrepareQC[j]
-			if att.Phase == chain.PhasePrepare && bytes.Equal(att.PubKey, selfPub) {
+			if att.Phase == wantPrep && bytes.Equal(att.PubKey, selfPub) {
 				slot = &w.PrepareQC[j]
 				break
 			}
@@ -366,7 +372,11 @@ func (n *Node) PlaceConflictingSigned() (uint64, error) {
 		// The conflicting fork block L@H — different entry, same height/base as W,
 		// so the hashes differ and the double-sign is provable — signed at the SAME
 		// (H, round, prepare) slot this node used for W.
-		l := &chain.Block{Version: chain.BlockVersionRounds, Height: w.Height, Prev: w.Prev, Entries: []ports.Entry{advEntry("conflict")}}
+		// L IS MINTED IN W'S ERA, not a fixed one: the forged fork must be the block this
+		// validator could plausibly have signed at that height, and AttestAt keys the signature
+		// FORM on l.Version, so the two signatures land at the same canonical (round, step) slot
+		// that CheckEquivocation matches on.
+		l := &chain.Block{Version: w.Version, Height: w.Height, Prev: w.Prev, Entries: []ports.Entry{advEntry("conflict")}}
 		l.PrepareQC = []chain.Attestation{chain.AttestAt(l, n.signer, slot.Round, chain.PhasePrepare, n.chainID())}
 		if l.Hash() == w.Hash() {
 			return 0, fmt.Errorf("place-conflicting-signed: L did not diverge from W at h%d", w.Height)
