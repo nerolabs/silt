@@ -197,7 +197,7 @@ func newCarrierWorld(t *testing.T, mature bool) *carrierWorld {
 	}
 	h1 := &Block{Height: next, Prev: prev, Entries: []ports.Entry{entry(1)},
 		BondRegs: []BondReg{bondReg(w.midEpoch, csLateBond, prev)},
-		Slashes:  []Equivocation{slashProof(w.slashed, prev, 0xC1, 0xC2)}}
+		Slashes:  []Equivocation{slashProofV5(w.c.ChainID(), w.slashed, prev, 0xC1, 0xC2)}}
 	if mv := w.c.MintVersion(next); mv != BlockVersionWitnessable {
 		t.Fatalf("fixture: height 1 must mint v5 (%d), got v%d", BlockVersionWitnessable, mv)
 	}
@@ -759,7 +759,7 @@ func TestModelCheck_CarrierSeating_ScreenReadsTheParentPostState(t *testing.T) {
 		carrier := w.carrierFrom(w.allScreenedKeys(), 0)
 		prev, _ := w.c.Head()
 		b := mintSubject(t, w, carrier, 0, func(b *Block) {
-			b.Slashes = []Equivocation{slashProof(w.mid, prev, 0xD1, 0xD2)} // disqualifies mid, in THIS block
+			b.Slashes = []Equivocation{slashProofV5(w.c.ChainID(), w.mid, prev, 0xD1, 0xD2)} // disqualifies mid, in THIS block
 		})
 		assertFoldOrderDiverges(t, w, b, idOf(w.mid), true)
 	})

@@ -35,12 +35,19 @@ const equivocationGoldenPath = "testdata/equivocation_golden.cbor"
 
 // equivocationGoldenCases is the pinned case count. A builder that grows or shrinks
 // must update this AND the corpus in the same commit.
-const equivocationGoldenCases = 26
+const equivocationGoldenCases = 31
 
 type equivocationGoldenCase struct {
 	Name    string       `cbor:"1,keyasint"`
 	Proof   Equivocation `cbor:"2,keyasint"`
 	Verdict string       `cbor:"3,keyasint"`
+	// ActivationHeight is the Era3/Era4ActivationHeight of the chain this case is judged ON, and
+	// it is PINNED WITH THE PROOF rather than derived beside it (M2). A verdict is a function of
+	// (evidence, chain id, ERA FLOOR); pinning the first two and leaving the third to a lookup
+	// beside the corpus would let the floor drift silently under a pinned verdict. 0 is the
+	// weakest floor any silt chain can have (v2 at every height); 1 is the RC shape (v5 above the
+	// genesis). The floor is never read off the proof — that would take the guard from its subject.
+	ActivationHeight uint64 `cbor:"4,keyasint"`
 }
 
 const (
@@ -110,11 +117,20 @@ func buildEquivocationGoldenCorpus() []equivocationGoldenCase {
 		return goldenAtt{k: k, round: r, phase: ph, inQC: qc}
 	}
 	var cases []equivocationGoldenCase
-	add := func(name string, e Equivocation) {
-		cases = append(cases, equivocationGoldenCase{Name: name, Proof: e, Verdict: equivocationVerdict(CheckEquivocation(&e, goldenChainID()))})
+	// addAt judges the case on a chain whose genesis commits Era3/Era4ActivationHeight = at.
+	addAt := func(at uint64, name string, e Equivocation) {
+		cases = append(cases, equivocationGoldenCase{Name: name, Proof: e, ActivationHeight: at,
+			Verdict: equivocationVerdict(CheckEquivocation(&e, goldenChainID(), eraFloorOf(at)))})
 	}
+	// add judges on the WEAKEST floor a silt chain can have — the latch route with nothing
+	// latched, v2 at every height. A case that refuses even here refuses on every chain.
+	add := func(name string, e Equivocation) { addAt(0, name, e) }
 
 	// ---- era 1 ----
+	// THE ERA-1 CASES ARE UNCHANGED BY M2, and that is a pin, not an omission: the era floor is
+	// SCOPED to the heights where the chain requires the chain-bound era-4 form (CheckEquivocation),
+	// and these are judged at the weakest floor a silt chain can have. If an unscoped floor ever
+	// lands, these three flip to REFUSE and the diff says so.
 	a1 := goldenBlock(1, 1, prev, 1, prop, leg(culprit), leg(other))
 	b1 := goldenBlock(1, 1, prev, 2, propB, leg(culprit))
 	add("era1-attester-in-both-ACCEPT", Equivocation{Culprit: cul, A: a1, B: b1})
@@ -156,6 +172,27 @@ func buildEquivocationGoldenCorpus() []equivocationGoldenCase {
 	v4 := goldenBlock(4, 1, prev, 1, prop, e2(culprit, 3, PhasePrecommit, false))
 	v5 := goldenBlock(5, 1, prev, 2, propB, e2(culprit, 3, PhasePrecommit, false))
 	add("v4-vs-v5-both-rounds-era-same-slot-ACCEPT", Equivocation{Culprit: cul, A: v4, B: v5})
+
+	// ---- era 4, and the ERA FLOOR itself (M2) ----
+	//
+	// The floor dimension has teeth exactly when ONE proof object gets TWO verdicts under TWO
+	// floors. era2-precommit-same-round-ACCEPT (at = 0, floor v2) and the case immediately below
+	// (at = 1, floor v5) are the same bytes: that pair is the corpus's proof that the floor is
+	// read and not decoration.
+	addAt(1, "era2-precommit-same-round-below-an-era4-floor-REFUSE", Equivocation{Culprit: cul, A: a2, B: b2})
+	// The harvest itself: a sub-era-4 leg (portable between silt networks, because its preimage
+	// carries no chain id) paired with the victim's own era-4-form precommit at one slot. This is
+	// the pair that convicted the honest before M2.
+	addAt(1, "era4-mixed-form-harvest-below-the-floor-REFUSE", Equivocation{Culprit: cul, A: v4, B: v5})
+	// Non-vacuity for the floor: at/above it, a real era-4 double-sign still convicts.
+	e4a := goldenBlock(5, 1, prev, 1, prop, e2(culprit, 1, PhasePrecommitV5, false))
+	e4b := goldenBlock(5, 1, prev, 2, propB, e2(culprit, 1, PhasePrecommitV5, false))
+	addAt(1, "era4-precommit-same-round-ACCEPT", Equivocation{Culprit: cul, A: e4a, B: e4b})
+	q4a := goldenBlock(5, 1, prev, 1, prop, e2(culprit, 1, PhasePrepareV5, true))
+	q4b := goldenBlock(5, 1, prev, 2, propB, e2(culprit, 1, PhasePrepareV5, true))
+	addAt(1, "era4-prepareqc-only-signer-ACCEPT", Equivocation{Culprit: cul, A: q4a, B: q4b})
+	x4a := goldenBlock(5, 1, prev, 1, prop, e2(culprit, 1, PhasePrepareV5, false))
+	addAt(1, "era4-prepare-in-Atts-vs-PrepareQC-same-slot-ACCEPT", Equivocation{Culprit: cul, A: x4a, B: q4b})
 
 	// ---- mixed eras ----
 	add("mixed-era1-era2-REFUSE", Equivocation{Culprit: cul, A: a1, B: b2})
@@ -227,9 +264,10 @@ func TestEquivocationGoldenCorpusVerdicts(t *testing.T) {
 	accepts := 0
 	for i := range cases {
 		c := &cases[i]
-		got := equivocationVerdict(CheckEquivocation(&c.Proof, goldenChainID()))
+		got := equivocationVerdict(CheckEquivocation(&c.Proof, goldenChainID(), eraFloorOf(c.ActivationHeight)))
 		if got != c.Verdict {
-			t.Errorf("ACCEPT SET MOVED: case %q pinned %s, CheckEquivocation now returns %s", c.Name, c.Verdict, got)
+			t.Errorf("ACCEPT SET MOVED: case %q (era activation height %d) pinned %s, CheckEquivocation now returns %s",
+				c.Name, c.ActivationHeight, c.Verdict, got)
 		}
 		if c.Verdict == verdictAccept {
 			accepts++
@@ -239,7 +277,7 @@ func TestEquivocationGoldenCorpusVerdicts(t *testing.T) {
 		if strings.HasSuffix(c.Name, "-ACCEPT") != (c.Verdict == verdictAccept) {
 			t.Errorf("case %q is named for one verdict and pinned with another (%s)", c.Name, c.Verdict)
 		}
-		if VerifyEquivocation(&c.Proof, goldenChainID()) != (c.Verdict == verdictAccept) {
+		if VerifyEquivocation(&c.Proof, goldenChainID(), eraFloorOf(c.ActivationHeight)) != (c.Verdict == verdictAccept) {
 			t.Errorf("case %q: VerifyEquivocation disagrees with CheckEquivocation==nil", c.Name)
 		}
 	}
@@ -280,12 +318,50 @@ func TestEquivocationGoldenCorpusHasTeeth(t *testing.T) {
 			continue
 		}
 		c.Proof.A.Entries[0].FileSize++
-		if got := equivocationVerdict(CheckEquivocation(&c.Proof, goldenChainID())); got == verdictAccept {
+		if got := equivocationVerdict(CheckEquivocation(&c.Proof, goldenChainID(), eraFloorOf(c.ActivationHeight))); got == verdictAccept {
 			t.Errorf("TEETH FAILED: case %q still ACCEPTS after its body was perturbed — the verdict does not depend on the body hash", c.Name)
 		}
 		flipped++
 	}
 	if flipped == 0 {
 		t.Fatal("TEETH FAILED: no accept case to perturb")
+	}
+}
+
+// TestEquivocationGoldenCorpusFloorHasTeeth is the floor half of the teeth gate (M2). A per-case
+// floor that no case is sensitive to is a pinned constant, not a guard. This asserts the corpus
+// contains at least one PROOF OBJECT that is pinned ACCEPT under one activation height and REFUSE
+// under another — i.e. the verdict genuinely reads the floor — and that the accept cases are not
+// all judged on one floor.
+func TestEquivocationGoldenCorpusFloorHasTeeth(t *testing.T) {
+	cases := readEquivocationGolden(t)
+	byBytes := map[string]map[string]bool{}
+	floors := map[uint64]bool{}
+	for i := range cases {
+		c := &cases[i]
+		floors[c.ActivationHeight] = true
+		raw, err := encMode.Marshal(c.Proof)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if byBytes[string(raw)] == nil {
+			byBytes[string(raw)] = map[string]bool{}
+		}
+		byBytes[string(raw)][c.Verdict] = true
+	}
+	if len(floors) < 2 {
+		t.Fatalf("VACUOUS: every case is judged on one era floor (%v), so the pinned floor could be any "+
+			"constant and no verdict would move", floors)
+	}
+	split := 0
+	for _, verdicts := range byBytes {
+		if len(verdicts) > 1 {
+			split++
+		}
+	}
+	if split == 0 {
+		t.Fatal("FLOOR TEETH FAILED: no proof object in the corpus is pinned to two different verdicts " +
+			"under two different era floors, so nothing here would redden if CheckEquivocation stopped " +
+			"reading the floor at all")
 	}
 }

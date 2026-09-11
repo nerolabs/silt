@@ -100,7 +100,7 @@ func TestPlaceConflictingSignedIsEra4Aware(t *testing.T) {
 			L.Version, head.Version)
 	}
 	e := chain.Equivocation{Culprit: append([]byte(nil), selfPub...), A: head, B: L}
-	if err := chain.CheckEquivocation(&e, byz.chain.ChainID()); err != nil {
+	if err := chain.CheckEquivocation(&e, byz.chain.ChainID(), byz.chain.EraFloor()); err != nil {
 		t.Fatalf("the served fork is NOT slashable evidence: %v.\n"+
 			"W and L are two different blocks at one height, both carrying this key's prepare at the "+
 			"same round — if that does not convict, the harness announces a double-sign no honest "+
@@ -109,7 +109,7 @@ func TestPlaceConflictingSignedIsEra4Aware(t *testing.T) {
 
 	// The chain id is load-bearing from era 4: the same pair under ANOTHER network's id must not
 	// convict, or the evidence would be portable across silt networks (the owner-call-A break).
-	if err := chain.CheckEquivocation(&e, ports.HashBytes([]byte("some other silt network"))); err == nil {
+	if err := chain.CheckEquivocation(&e, ports.HashBytes([]byte("some other silt network")), byz.chain.EraFloor()); err == nil {
 		t.Fatal("the v5-form pair convicted under a FOREIGN chain id — the era-4 preimage binds the " +
 			"network, so evidence minted here must be inert elsewhere")
 	}

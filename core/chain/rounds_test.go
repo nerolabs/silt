@@ -245,15 +245,15 @@ func TestV2EquivocationRoundScoped(t *testing.T) {
 	}
 
 	samePR := &Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: mk(1, 2, PhasePrecommit), B: mk(2, 2, PhasePrecommit)}
-	if !VerifyEquivocation(samePR, ports.Hash{}) {
+	if !VerifyEquivocation(samePR, ports.Hash{}, eraFloorOf(0)) {
 		t.Fatal("two different-hash precommits at the same (h, r) must be slashable equivocation")
 	}
 	crossRound := &Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: mk(1, 2, PhasePrecommit), B: mk(2, 3, PhasePrecommit)}
-	if VerifyEquivocation(crossRound, ports.Hash{}) {
+	if VerifyEquivocation(crossRound, ports.Hash{}, eraFloorOf(0)) {
 		t.Fatal("different-hash precommits at DIFFERENT rounds are an honest lock-change, never slashable (I5 under #432)")
 	}
 	crossPhase := &Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: mk(1, 2, PhasePrepare), B: mk(2, 2, PhasePrecommit)}
-	if VerifyEquivocation(crossPhase, ports.Hash{}) {
+	if VerifyEquivocation(crossPhase, ports.Hash{}, eraFloorOf(0)) {
 		t.Fatal("a prepare and a precommit at one (h, r) are two phases of one honest flow, never slashable")
 	}
 
@@ -264,7 +264,7 @@ func TestV2EquivocationRoundScoped(t *testing.T) {
 	pb := Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(4)}}
 	Sign(&pb, culprit)
 	author := &Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: pa, B: pb}
-	if VerifyEquivocation(author, ports.Hash{}) {
+	if VerifyEquivocation(author, ports.Hash{}, eraFloorOf(0)) {
 		t.Fatal("era-2 authorship signatures alone must not be slashable (the consensus vote is the phase-scoped attestation)")
 	}
 
@@ -274,7 +274,7 @@ func TestV2EquivocationRoundScoped(t *testing.T) {
 	// shape, restored in era 2 via the round-scoped prepare.
 	pa.PrepareQC = append(pa.PrepareQC, AttestAt(&pa, culprit, 0, PhasePrepare, ports.Hash{}))
 	pb.PrepareQC = append(pb.PrepareQC, AttestAt(&pb, culprit, 0, PhasePrepare, ports.Hash{}))
-	if !VerifyEquivocation(&Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: pa, B: pb}, ports.Hash{}) {
+	if !VerifyEquivocation(&Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: pa, B: pb}, ports.Hash{}, eraFloorOf(0)) {
 		t.Fatal("a double-proposer's same-(h, r) self-prepares over different hashes must be slashable (#345/#378 in era 2)")
 	}
 
@@ -283,7 +283,7 @@ func TestV2EquivocationRoundScoped(t *testing.T) {
 	pc := Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(7)}}
 	Sign(&pc, culprit)
 	pc.PrepareQC = append(pc.PrepareQC, AttestAt(&pc, culprit, 1, PhasePrepare, ports.Hash{}))
-	if VerifyEquivocation(&Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: pa, B: pc}, ports.Hash{}) {
+	if VerifyEquivocation(&Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: pa, B: pc}, ports.Hash{}, eraFloorOf(0)) {
 		t.Fatal("an honest cross-round re-proposal (self-prepares at different rounds) must never be slashable (I5)")
 	}
 
@@ -292,7 +292,7 @@ func TestV2EquivocationRoundScoped(t *testing.T) {
 	Sign(&v1, keys[0])
 	v1.Atts = append(v1.Atts, Attest(&v1, culprit))
 	mixed := &Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: v1, B: mk(6, 0, PhasePrecommit)}
-	if VerifyEquivocation(mixed, ports.Hash{}) {
+	if VerifyEquivocation(mixed, ports.Hash{}, eraFloorOf(0)) {
 		t.Fatal("a cross-era signature pair must never be slashable (fail-safe)")
 	}
 }

@@ -166,18 +166,18 @@ func TestPrunedEvidenceIsRefused(t *testing.T) {
 	a, b := w.conflicting(g, w.prop, w.vals[3], []ed25519.PrivateKey{w.vals[0]}, []ed25519.PrivateKey{w.vals[0]})
 	culpritID := idOf(w.vals[0])
 
-	if !VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: *b}, ports.Hash{}) {
+	if !VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: *b}, ports.Hash{}, eraFloorOf(0)) {
 		t.Fatal("precondition: the full (unpruned) double-sign must still be provable")
 	}
 
 	// Both sides pruned: F2-EVIDENCE-RECOMPUTE means this is NO LONGER valid evidence.
 	pa, pb := a.Prune(), b.Prune()
-	if VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: pa, B: pb}, ports.Hash{}) {
+	if VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: pa, B: pb}, ports.Hash{}, eraFloorOf(0)) {
 		t.Fatal("T-4: a both-pruned pair must be REFUSED as evidence — Hash() must never trust " +
 			"the stored Pruned digest")
 	}
 	// The realistic late-reveal (one side already pruned) must ALSO be refused.
-	if VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: pb}, ports.Hash{}) {
+	if VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: pb}, ports.Hash{}, eraFloorOf(0)) {
 		t.Fatal("T-4: a mixed full/pruned pair must be REFUSED as evidence")
 	}
 

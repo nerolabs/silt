@@ -55,7 +55,7 @@ func TestSlashProofBindsHeightToTheSignedHash_Era1(t *testing.T) {
 	Sign(&honestA, culprit)
 	honestB := Block{Version: 1, Height: 2, Prev: honestA.Hash(), Entries: []ports.Entry{entry(3)}}
 	Sign(&honestB, culprit)
-	if VerifyEquivocation(&Equivocation{Culprit: culpritPub, A: honestA, B: honestB}, ports.Hash{}) {
+	if VerifyEquivocation(&Equivocation{Culprit: culpritPub, A: honestA, B: honestB}, ports.Hash{}, eraFloorOf(0)) {
 		t.Fatal("precondition broken: honest sequential proposing is not equivocation")
 	}
 
@@ -115,7 +115,7 @@ func TestSlashProofBindsHeightToTheSignedHash_Era2(t *testing.T) {
 	attB := AttestAt(&realB, culprit, 0, PhasePrecommit, ports.Hash{})
 	realA.Atts = append(realA.Atts, attA)
 	realB.Atts = append(realB.Atts, attB)
-	if VerifyEquivocation(&Equivocation{Culprit: culpritPub, A: realA, B: realB}, ports.Hash{}) {
+	if VerifyEquivocation(&Equivocation{Culprit: culpritPub, A: realA, B: realB}, ports.Hash{}, eraFloorOf(0)) {
 		t.Fatal("precondition broken: same-round precommits at DIFFERENT heights are honest")
 	}
 
@@ -154,7 +154,7 @@ func TestGenuineDoubleSignStillConvictsThroughAppend(t *testing.T) {
 	culpritID := idOf(w.vals[0])
 
 	e := Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: *b}
-	if !VerifyEquivocation(&e, ports.Hash{}) {
+	if !VerifyEquivocation(&e, ports.Hash{}, eraFloorOf(0)) {
 		t.Fatal("precondition: the full double-sign must be genuinely provable")
 	}
 
@@ -233,7 +233,7 @@ func fatGenuineProof(t *testing.T, w *world, g *Block) Equivocation {
 	Sign(b, w.vals[3])
 	b.Atts = append(b.Atts, Attest(b, w.vals[0]))
 	e := Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: *b}
-	if !VerifyEquivocation(&e, ports.Hash{}) {
+	if !VerifyEquivocation(&e, ports.Hash{}, eraFloorOf(0)) {
 		t.Fatal("precondition: the double-sign must be genuinely provable")
 	}
 	return e
@@ -307,7 +307,7 @@ func TestFindEquivocationsNeverPairsAPrunedBlock(t *testing.T) {
 	// legitimate late-reveal shape (or an attacker manufacturing the same effect).
 	pb := b.Prune()
 
-	found := FindEquivocations([]Block{*g, *a}, []Block{*g, pb}, ports.Hash{})
+	found := FindEquivocations([]Block{*g, *a}, []Block{*g, pb}, ports.Hash{}, eraFloorOf(0))
 	for _, e := range found {
 		if e.A.IsPruned() || e.B.IsPruned() {
 			t.Fatalf("G-2 VIOLATION: FindEquivocations produced an Equivocation with a PRUNED "+
@@ -350,7 +350,7 @@ func TestVerifyEquivocationNotSatisfiableByStaleMemo(t *testing.T) {
 	honestB := Block{Version: 1, Height: 2, Prev: honestA.Hash(), Entries: []ports.Entry{entry(3)}}
 	Sign(&honestB, culprit) // an honest, later, sequential block — never equivocation with honestA
 
-	if VerifyEquivocation(&Equivocation{Culprit: culpritPub, A: honestA, B: honestB}, ports.Hash{}) {
+	if VerifyEquivocation(&Equivocation{Culprit: culpritPub, A: honestA, B: honestB}, ports.Hash{}, eraFloorOf(0)) {
 		t.Fatal("precondition broken: two honest sequential blocks must not verify as equivocation")
 	}
 
@@ -366,7 +366,7 @@ func TestVerifyEquivocationNotSatisfiableByStaleMemo(t *testing.T) {
 	}
 
 	forged := Equivocation{Culprit: culpritPub, A: forgedA, B: honestB}
-	if VerifyEquivocation(&forged, ports.Hash{}) {
+	if VerifyEquivocation(&forged, ports.Hash{}, eraFloorOf(0)) {
 		t.Fatal("G-4 VIOLATION (RED expected): VerifyEquivocation accepted evidence whose " +
 			"declared Height (the struct field) does not match what its OWN memoized Hash() " +
 			"covers — the recompute must bypass hashMemo (cert §5.1 point 3), never trust a " +

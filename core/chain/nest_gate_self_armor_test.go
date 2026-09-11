@@ -110,7 +110,7 @@ func TestRNestGate_JunkKeyProofIsAcceptedEvidence(t *testing.T) {
 	g := w.genesis()
 
 	e := junkEquivocation(g, 1)
-	if err := CheckEquivocation(&e, ports.Hash{}); err != nil {
+	if err := CheckEquivocation(&e, ports.Hash{}, eraFloorOf(0)); err != nil {
 		t.Fatalf("ROOT CAUSE GONE: CheckEquivocation now REFUSES a throwaway-key proof about "+
 			"two never-committed blocks (%v). The T1 self-armor variant (no bond, no coalition) "+
 			"is closed; R-NEST-GATE's T0 variant (two genuine committed proofs) is not — see this "+
@@ -189,7 +189,7 @@ func TestRNestGate_SelfArmorMeasurement(t *testing.T) {
 	legitB.Entries = []ports.Entry{entry(202)}
 	Sign(&legitB, realKey)
 	legit := Equivocation{Culprit: pubOf(realKey), A: legitA, B: legitB}
-	if err := CheckEquivocation(&legit, ports.Hash{}); err != nil {
+	if err := CheckEquivocation(&legit, ports.Hash{}, eraFloorOf(0)); err != nil {
 		t.Fatalf("Q3: a genuine double-sign by a real bonded key over two differing bodies at one "+
 			"height is not recognized as equivocation: %v", err)
 	}

@@ -25,7 +25,7 @@ func TestGenesisBogusSlashDenied(t *testing.T) {
 	b := &Block{Version: 1, Height: 1, Entries: []ports.Entry{entry(2)}}
 	Sign(b, w.prop)
 	bogus := Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: *b}
-	if VerifyEquivocation(&bogus, ports.Hash{}) {
+	if VerifyEquivocation(&bogus, ports.Hash{}, eraFloorOf(0)) {
 		t.Fatal("precondition: the forged slash must not verify")
 	}
 
@@ -61,7 +61,7 @@ func TestGenesisBogusSlashDenied(t *testing.T) {
 	ra, rb := real.conflicting(gc, real.prop, real.vals[3],
 		[]ed25519.PrivateKey{real.vals[0]}, []ed25519.PrivateKey{real.vals[0]})
 	proven := Equivocation{Culprit: pubOf(real.vals[0]), A: *ra, B: *rb}
-	if !VerifyEquivocation(&proven, ports.Hash{}) {
+	if !VerifyEquivocation(&proven, ports.Hash{}, eraFloorOf(0)) {
 		t.Fatal("setup: the real double-sign proof must verify")
 	}
 	if err := real.c.validateSlashes(&Block{Slashes: []Equivocation{proven}}); err != nil {

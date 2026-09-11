@@ -105,7 +105,7 @@ func TestModelCheck_I5_AccountableSafety_Exhaustive(t *testing.T) {
 
 				want := diffHash && slotsIntersect(sa, sb)
 				e := Equivocation{Culprit: pub, A: a, B: bb}
-				got := VerifyEquivocation(&e, ports.Hash{})
+				got := VerifyEquivocation(&e, ports.Hash{}, eraFloorOf(0))
 				if got != want {
 					t.Fatalf("I5 accountable-safety VIOLATION: slots A=%v B=%v diffHash=%v → VerifyEquivocation=%v, want %v (a false slash convicts an honest cross-round/re-sign schedule; a false negative lets a same-slot double-sign escape)",
 						sa, sb, diffHash, got, want)
@@ -232,14 +232,14 @@ func TestModelCheck_I5_ProposerSigIsNotAVote_Exhaustive(t *testing.T) {
 		return b
 	}
 	a, bb := mkAuthored(1), mkAuthored(2)
-	if VerifyEquivocation(&Equivocation{Culprit: pub, A: a, B: bb}, ports.Hash{}) {
+	if VerifyEquivocation(&Equivocation{Culprit: pub, A: a, B: bb}, ports.Hash{}, eraFloorOf(0)) {
 		t.Fatal("I5 VIOLATION: authoring two different blocks at one height was convicted — a bare-hash ProposerSig is authorship, not a consensus vote (#432)")
 	}
 	// Now the author ALSO consensus-signs both at the same (r0, prepare) slot →
 	// that is the double-vote, and it must convict.
 	a.PrepareQC = append(a.PrepareQC, AttestAt(&a, author, 0, PhasePrepare, ports.Hash{}))
 	bb.PrepareQC = append(bb.PrepareQC, AttestAt(&bb, author, 0, PhasePrepare, ports.Hash{}))
-	if !VerifyEquivocation(&Equivocation{Culprit: pub, A: a, B: bb}, ports.Hash{}) {
+	if !VerifyEquivocation(&Equivocation{Culprit: pub, A: a, B: bb}, ports.Hash{}, eraFloorOf(0)) {
 		t.Fatal("I5 VIOLATION: a real same-slot consensus double-sign by the author was NOT convicted")
 	}
 }
@@ -432,7 +432,7 @@ func TestModelCheck_I5_CrossHeightPrunedExtension_Era2(t *testing.T) {
 							want := trueDiffHash && slotsIntersect(sa, sb) &&
 								pmA == prunedUnset && pmB == prunedUnset && heightsAgree
 
-							got := VerifyEquivocation(&Equivocation{Culprit: pub, A: exA, B: exB}, ports.Hash{})
+							got := VerifyEquivocation(&Equivocation{Culprit: pub, A: exA, B: exB}, ports.Hash{}, eraFloorOf(0))
 							if got != want {
 								t.Fatalf("I5 §9 EXTENSION VIOLATION (era 2): slots A=%v B=%v diffHash(seed)=%v trueDiffHash=%v "+
 									"heightsAgree=%v prunedA=%v prunedB=%v -> VerifyEquivocation=%v, want %v",
@@ -502,7 +502,7 @@ func TestModelCheck_I5_CrossHeightPrunedExtension_Era1(t *testing.T) {
 							want := trueDiffHash && era1RolesOverlap(ra, rb) &&
 								pmA == prunedUnset && pmB == prunedUnset && heightsAgree
 
-							got := VerifyEquivocation(&Equivocation{Culprit: pub, A: exA, B: exB}, ports.Hash{})
+							got := VerifyEquivocation(&Equivocation{Culprit: pub, A: exA, B: exB}, ports.Hash{}, eraFloorOf(0))
 							if got != want {
 								t.Fatalf("I5 §9 EXTENSION VIOLATION (era 1): roles A=%v B=%v diffHash(seed)=%v trueDiffHash=%v "+
 									"heightsAgree=%v prunedA=%v prunedB=%v -> VerifyEquivocation=%v, want %v",

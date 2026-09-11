@@ -663,7 +663,17 @@ func TestColdAuditor_NoTrustFloorOnTheContractSurface(t *testing.T) {
 		}
 		if in.Kind() == reflect.Uint64 {
 			t.Fatalf("H-4: ValidateCommitV5 parameter %d is a bare uint64 — a caller-supplied height or "+
-				"floor is exactly the wrong-accept vector §2.5 refutes", i)
+				"floor is exactly the wrong-accept vector §2.5 refutes. TWO DIFFERENT QUANTITIES ARE "+
+				"CALLED FLOOR HERE AND BOTH ARE BARRED: the pruned-TRUST floor (PrunedTolerated), which a "+
+				"caller RAISES to make the reader skip proof verification; and the ERA floor (M2, "+
+				"v5EraFloorAt inside P8), which a caller LOWERS to re-admit cross-network slash evidence. "+
+				"Both are wrong-accept in the caller-supplied direction, so both are derived from the "+
+				"StateView and neither is ever a parameter", i)
+		}
+		if in.Kind() == reflect.Func {
+			t.Fatalf("H-4: ValidateCommitV5 parameter %d is a func — a caller-supplied SUPPLIER of a "+
+				"verifier fact (an era floor, a trust floor, a clock) is the same wrong-accept vector as "+
+				"the bare uint64 above, one indirection further out", i)
 		}
 	}
 

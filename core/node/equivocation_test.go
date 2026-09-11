@@ -49,6 +49,23 @@ func TestReconcileSlashesEquivocator(t *testing.T) {
 	a := fork("A", v.Signer(), other.Signer())
 	b := fork("B", v.Signer(), other.Signer())
 
+	// THE NODE MUST HOLD A CHAIN, and that is a property of the path under test, not a convenience.
+	// slashEquivocators derives its ERA FLOOR from n.chain (M2), and a chainless node supplies none,
+	// which chain.CheckEquivocation refuses — the same direction n.chainID() already takes with its
+	// zero hash: a node that cannot know which network it is on convicts nobody. The only production
+	// caller (syncOnce) dereferences n.chain several lines above the call, so a chainless detection
+	// sweep is unreachable there; a fixture without one would be driving a state production cannot
+	// produce.
+	ch := chain.New(chain.DefaultConfig(), func(n ports.NodeID) int64 { return ledger.Reputation(n) })
+	if err := ch.AppendGenesis(*g); err != nil {
+		t.Fatalf("genesis: %v", err)
+	}
+	nd.EnableChain(ch, ndi.Signer())
+	if got := ch.EraFloor()(1); got >= chain.BlockVersionWitnessable {
+		t.Fatalf("fixture: this arm drives the era-1 form, so the floor at height 1 must be below v%d, got v%d",
+			chain.BlockVersionWitnessable, got)
+	}
+
 	// Give V real standing, then reconcile-detect its double-sign.
 	vid := v.NodeID()
 	ledger.RecordBondChallenge(vid, ports.HashBytes(vid[:]), 64<<20, true, 1)

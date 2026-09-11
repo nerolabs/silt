@@ -138,17 +138,40 @@ func tokenEntry(b byte, tok *ports.PublishToken) ports.Entry {
 	return e
 }
 
-// slashProof builds a self-verifying equivocation proof against culprit: the
-// culprit signs two DIFFERENT blocks at the same height (the era-1 shape
-// VerifyEquivocation proves). Committing the proof drives `slashed[culprit] =
-// true`. The culprit is NOT an anchor, so slashing it never disturbs the anchor
-// quorum that commits the carrying block.
+// slashProof builds a self-verifying equivocation proof against culprit at the ERA-2 FORM: the
+// culprit releases two precommits at one (height, round, step) over two DIFFERENT bodies.
+// Committing the proof drives `slashed[culprit] = true`. The culprit is NOT an anchor, so
+// slashing it never disturbs the anchor quorum that commits the carrying block.
+//
+// THE FORM MATTERS SINCE M2. The era floor refuses evidence below the form the chain requires at
+// the evidence's own height, scoped to the heights where that form is the chain-bound era-4 one.
+// This shape is admissible on a chain whose floor at the evidence height is v2 or v4 — which is
+// every caller here except the era-4 carrier world, which must use slashProofV5.
 func slashProof(culprit ed25519.PrivateKey, prev ports.Hash, tagA, tagB byte) Equivocation {
-	xa := &Block{Version: 1, Height: 9, Prev: prev, Entries: []ports.Entry{entry(tagA)}}
-	Sign(xa, culprit)
-	xb := &Block{Version: 1, Height: 9, Prev: prev, Entries: []ports.Entry{entry(tagB)}}
-	Sign(xb, culprit)
-	return Equivocation{Culprit: append([]byte(nil), culprit.Public().(ed25519.PublicKey)...), A: *xa, B: *xb}
+	return slashProofForm(1, ports.Hash{}, culprit, prev, tagA, tagB)
+}
+
+// slashProofV5 is slashProof at the ERA-4 FORM, bound to chainID. Required on any chain whose
+// era floor at the evidence height is v5, and admissible on every other chain too.
+func slashProofV5(chainID ports.Hash, culprit ed25519.PrivateKey, prev ports.Hash, tagA, tagB byte) Equivocation {
+	return slashProofForm(BlockVersionWitnessable, chainID, culprit, prev, tagA, tagB)
+}
+
+func slashProofForm(version uint64, chainID ports.Hash, culprit ed25519.PrivateKey, prev ports.Hash, tagA, tagB byte) Equivocation {
+	mk := func(tag byte) Block {
+		b := Block{Version: version, Height: 9, Prev: prev, Entries: []ports.Entry{entry(tag)}}
+		if version >= BlockVersionWitnessable {
+			b.StateRoot, b.LogRoot = &ports.Hash{}, &ports.Hash{}
+			setD3Digests(&b)
+		}
+		Sign(&b, culprit)
+		if version >= BlockVersionRounds {
+			b.Atts = []Attestation{AttestAt(&b, culprit, 0, PhasePrecommit, chainID)}
+		}
+		return b
+	}
+	return Equivocation{Culprit: append([]byte(nil), culprit.Public().(ed25519.PublicKey)...),
+		A: mk(tagA), B: mk(tagB)}
 }
 
 // bondRegFull mints a signed, verifier-accepted registration carrying a non-zero

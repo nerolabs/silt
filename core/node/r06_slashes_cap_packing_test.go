@@ -60,7 +60,7 @@ func TestProposerPacksPendingSlashesUnderTheBytesCap(t *testing.T) {
 			return b
 		}
 		// The shared proposer signs both sides too, so pick the attester's proof.
-		for _, e := range chain.FindEquivocations([]chain.Block{*g, *mk(0)}, []chain.Block{*g, *mk(1)}, ports.Hash{}) {
+		for _, e := range chain.FindEquivocations([]chain.Block{*g, *mk(0)}, []chain.Block{*g, *mk(1)}, ports.Hash{}, testEraFloor(0)) {
 			if e.CulpritID() == v.NodeID() {
 				return e
 			}

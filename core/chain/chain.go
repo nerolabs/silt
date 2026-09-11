@@ -2585,7 +2585,7 @@ func (c *Chain) validateSlashes(b *Block) error {
 		return fmt.Errorf("%w: %d bytes (cap %d)", ErrSlashesBytesCapExceeded, n, SlashesBytesCap)
 	}
 	for i := range b.Slashes {
-		if err := CheckEquivocation(&b.Slashes[i], c.ChainID()); err != nil {
+		if err := CheckEquivocation(&b.Slashes[i], c.ChainID(), c.EraFloor()); err != nil {
 			return fmt.Errorf("%w: proof %d: %w", ErrBadSlash, i, err)
 		}
 	}
@@ -4435,6 +4435,18 @@ func (c *Chain) MintVersion(h uint64) uint64 {
 	}
 	return BlockVersionRounds
 }
+
+// EraFloor is this chain's era floor as the height-indexed supplier CheckEquivocation requires
+// (M2) — MintVersion itself, not a second copy of the era -> version map. Evidence below the
+// floor at its own height is not evidence here, because a sub-era-4 attestation binds no chain
+// id and is therefore portable between silt networks.
+//
+// It is the supplier for the three sites that hold a *Chain: (*Chain).validateSlashes, and
+// (*Node).slashEquivocators / (*Node).proposeBlock through (*Node).eraFloor. The fourth site,
+// v5ValidateSlashes, holds a StateView and no *Chain by design, and derives the same floor with
+// v5EraFloorAt; that the two derivations agree is DRIVEN by
+// TestGEF6_TheTwoEraFloorDerivationsAgree, not assumed from a doc claim.
+func (c *Chain) EraFloor() EraFloor { return c.MintVersion }
 
 // PopulateEra3Roots stamps b as a v4 block and attaches this chain's committed
 // StateRoot/LogRoot over the POST-APPLY state of b — the roots a validator will

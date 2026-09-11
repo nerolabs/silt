@@ -39,7 +39,7 @@ func slashOnChain(t *testing.T, g *chain.Block, culprit *identity.Identity, ids 
 		Culprit: append([]byte(nil), culprit.Signer().Public().(ed25519.PublicKey)...),
 		A:       mkFork('a'), B: mkFork('b'),
 	}
-	if !chain.VerifyEquivocation(&proof, ports.Hash{}) {
+	if !chain.VerifyEquivocation(&proof, ports.Hash{}, testEraFloor(0)) {
 		t.Fatal("setup: the equivocation proof must self-verify")
 	}
 	sb := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Slashes: []chain.Equivocation{proof}}
