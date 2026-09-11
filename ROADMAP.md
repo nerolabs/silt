@@ -99,8 +99,10 @@ derivation-route audit, and the answer cascaded:
   16,777,941 B over cap and is REJECTED — the equivocator keeps its seat, with no bond, no coalition
   and no misconfiguration.** Four certifications carry sentences that fall; one is inside an
   OWNER-RATIFIED sentence, annotated in place rather than rewritten.
-- **G-1 is CLOSED** (#797), so `R-membership` — the digest 5 → 3 retirement, the LAST format touch —
-  is unblocked and ready to build.
+- **`R-membership`'s digest 5 → 3 retirement is DROPPED** (`D-MEMBERSHIP-KEEP-FIVE-2026-09-11`, owner,
+  REVERSING owner call 1 of 2026-09-07). The v5 digest set freezes at FIVE; the residual's closer is
+  **G-3, unbuilt**; **G-2 comes out**, so `D-RECOMPUTE-FREEZE` is untouched. G-1 (#797) remains closed
+  and remains worth having — it is the `objective()` entry assertion, not the retirement.
 - **Owner call F is DELIVERED, and the node-scope config-gate residual is CLOSED and off the register**
   (its name is removed from the plan per the filing rule; the audit trail is git)
   (`D-CFGBIND-MEMBERSHIP-RULE-2026-09-10`). The genesis-config bind had shipped as a **schema with no
@@ -508,13 +510,17 @@ forgery (#714; `SlashesBytesCap` 16 MiB); R0.7 relay-lane mint (interim #718 →
 - **DONE:** R3.1 the SMT domain-separation residual (#731, #749, #754) · R3.3 (doc-only; re-derive
   only if #299 moves) · `#558` the chain-store refusal (2026-09-07).
 - **DONE 2026-09-09:** D0 the cold auditor (#786) — **the RC's only floor-box requirement, closed.**
-- **DONE 2026-09-10:** **G-1** (#797) — the box entry asserts BOTH arms of `objective()`, which is the
-  certified precondition on item 2, so **`R-membership` (digest 5 → 3, the LAST format touch) is
-  UNBLOCKED and ready to build.** Not itself a format change. Owed alongside it and filed:
-  `R-G1-POSTLATCH-DRIVEN` (the post-latch maturity row is not yet driven).
+- **DONE 2026-09-10:** **G-1** (#797) — the box entry asserts BOTH arms of `objective()`. It was the
+  certified precondition on item 2; item 2 is now DROPPED, and G-1 stands on its own merit (it caught a
+  wired verifier with `cfg.MinBond == 0` reaching two verdicts at one config). Not itself a format
+  change. Owed alongside it and filed: `R-G1-POSTLATCH-DRIVEN` (the post-latch maturity row is not yet
+  driven).
+- **DONE 2026-09-11:** the D1 FORMAT train is **CLOSED** — `tagRevLogSize` (#819, manifest item 1) and
+  owner call A's preimage inside M1 (#818) merged, and **manifest item 2 (the digest 5 → 3 retirement)
+  is DROPPED** (`D-MEMBERSHIP-KEEP-FIVE-2026-09-11`). The digest set freezes at FIVE.
 - **OPEN (Lane D) — this is now the WHOLE remaining critical path to the RC:** D1 the freeze manifest
-  (the FORMAT items in one train; the digest set drops to three leaves and that is the LAST format
-  touch) · D2 the four stamp-raise test deliverables · D3 the freeze act (**OWNER**).
+  (FORMAT content delivered; what remains is the one-page *what closes*, re-checked against the
+  manifest's final content) · D2 the four stamp-raise test deliverables · D3 the freeze act (**OWNER**).
 
 #### Boulder 4 — B8 on the frozen artifact + the M0 endgame
 - **DONE:** R4.3a (#715) · R4.3b shadow mode (#725).
@@ -575,7 +581,10 @@ defaulting to 1/1.
 **Boulder 3 is the whole remaining critical path: D1 → D2 → D3.** Everything else is either done,
 post-RC, or standing work that runs beside it.
 
-**D1's real remaining FORMAT set is small — two manifest items, plus F's wiring and call A.** A blind
+**D1's FORMAT set is CLOSED as of 2026-09-11 — item 1 merged (#819), call A merged inside M1 (#818),
+and item 2 DROPPED** (`D-MEMBERSHIP-KEEP-FIVE-2026-09-11`: the digest set freezes at FIVE, and the
+retirement was never `R-membership`'s closer — G-3 is). The audit that sized the set is kept below as
+the record of how it was sized. A blind
 audit classified all 22 manifest items against `0ed3b92`: ten are BUILT or disposed, ten are owed at
 the stamp raise or later, and **exactly two carry a freeze deadline — item 1 (`tagRevLogSize`) and
 item 2 (the digest 5 → 3 retirement)**
@@ -825,7 +834,7 @@ verdict is rendered by the external red-team + the field test, together.
 | `R-BONDREG-SINGLE-OVERSIZE` | ACTIONABLE | Lane D2 (stamp raise) · Builder → Researcher: silt has NO per-reg byte cap, and `core/node/chainrole.go:902` embeds the FIRST fresh registration unconditionally when the block carries no regs yet ("never stall the queue on a single oversized proof"), so one arbitrarily large registration exceeds the configured budget and re-opens the gap `D-SLASHCAP-ROUTE` closed for the budget itself — the headroom check bounds the BUDGET, not this overflow. Closer: a per-reg byte ceiling, which is a validity rule of its own and rides the stamp-raise train (a WIDENING change later is outside the narrowing exemption) | silt-agent-memory/principal-engineer/reviews/RULING-derivation-route-audit-pre-freeze-2026-09-09.md | — |
 | `R-COMPACT-ORPHAN` | ACTIONABLE | Lane C10 · Builder: the BENIGN compaction-failure class has no daemon WARN line — surface `CompactFailures` / `LastCompactError` on the banked/status path (WIP `builder/c10-compact-orphan-warn` @ `49eb5d1`: the line + both ablations RED; suites not run) | silt-agent-memory/principal-engineer/reviews/RULING-residual-register-true-up-e963034-2026-09-07.md | — |
 | `R-PRIVACY-OPERATOR-TAB-TOKEN` | ACTIONABLE | Lane C10 · Builder: a persistent operator-token route is the UX follow-on before the `-privacy` default reaches real operators (`D-UI-PRIVACY-FLAG`) | silt-agent-memory/principal-engineer/reviews/RULING-residual-register-true-up-e963034-2026-09-07.md | — |
-| `R-membership` | ACTIONABLE | Lane D1 · Builder: retire `slashedRoot` and `validatorsSeenRoot` from the v5 digest set (D-V5-WHOLESET-ROOTS five → three; owner call 1 RATIFIED 2026-09-07) in one pre-freeze PR with the explicit `objective()` guard that also covers `MinBond` (G-1 is NOT satisfied on main — the box-entry assert covers `verifyBond` only); a hard fork at activation, free while era-4 is dark; the LAST format touch | silt-agent-memory/researcher/reviews/research-outcome/R-membership-unbounded-sets-and-recovery-boundary-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md | — |
+| `R-membership` | ACTIONABLE | Lane D1 · Builder: **the digest retirement is DROPPED — `D-MEMBERSHIP-KEEP-FIVE-2026-09-11` REVERSES owner call 1 of `D-TRUE-UP-CALLS-2026-09-07`. The v5 digest set freezes at FIVE.** The closer is **G-3, the witness id-list size gate, still UNBUILT** — that is the mechanism that bounds the two grow-only sets; retiring `slashedRoot` / `validatorsSeenRoot` never bounded anything and was assigned to a residual it does not close. **G-2 is dropped with it, so `D-RECOMPUTE-FREEZE` is untouched.** Driven: the two roots are the only set-completeness anchor a root-only holder has (`provenView.members`, `anchoredPreSet(byTag, tagSlashedRoot)`, `recomputeMatureNowStreaming`'s `validatorsSeenRoot` proof — the C2 quantity the anchor shed gates on); removing the two emits turns 70 top-level tests and 31 subtests RED in `core/chain`; keeping them costs 2 leaves / 95 bytes, fixed and independent of N. **No longer a FORMAT item and no longer in the D1 train.** | silt-agent-memory/researcher/reviews/research-outcome/R-membership-unbounded-sets-and-recovery-boundary-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md | — |
 | `R-LATE-REVEAL` | ACTIONABLE | Lane D1 · Builder: closes with the (d-3) two-level block hash `AnswerDigest`, BOUGHT (owner call 9, freeze manifest item 3) — lands in the stamp-raising train | silt-agent-memory/researcher/reviews/research-outcome/ERA4-V5-FREEZE-MANIFEST-RESEARCH-CERTIFICATION-2026-09-07.md | — |
 | `R-R3-GOB-ALLOC-AMPLIFICATION` | ACTIONABLE | Lane D1 · Builder: a 5-byte hand-crafted gob length prefix forces a ~10 MB allocation in `proof.Unmarshal` — `SProofMax` bounds ENCODED bytes, not parse memory (`core/statehash/witness_bound.go:78`); bound parse memory with a decoder limit in the stamp-raise train (deadline moved 2026-09-08 from the frozen flip) | silt-agent-memory/principal-engineer/reviews/RULING-residual-register-true-up-e963034-2026-09-07.md | — |
 | `R-BOX-STALLS-ON-TAKEDOWN` | ACTIONABLE | Lane D1 · Builder: a revocation-bearing v5 block STALLS on `provenView` by name (`ErrRevLogSizeUnauthenticated`, driven by G-D8) until `tagRevLogSize` lands as the safety leaf (BOUGHT, owner call 9); the leaf in the stamp-raise train closes it and the k ≥ 1 `LogRoot` coverage lands with it | silt-agent-memory/researcher/reviews/research-outcome/FLOORBOX-STRUCTURE-ROUND-1A-COMPOSED-DIFF-869399e-RESEARCH-CERTIFICATION-2026-09-08.md | — |

@@ -2394,6 +2394,13 @@ showing the one-byte value IS committed).
 - **(1) `R-membership` (Lane B2):** retire `slashedRoot` and `validatorsSeenRoot` from the v5 committed digest
   set (D-V5-WHOLESET-ROOTS five → three) rather than cap seated identities; a hard fork at activation, free while
   era-4 is dark; not certified until the `objective()` guard (G-1, covering `MinBond` too) lands. PRE-FREEZE.
+  - **⚠ REVERSED 2026-09-11 by the owner — `D-MEMBERSHIP-KEEP-FIVE-2026-09-11`. RETIRE NEITHER; the digest
+    set freezes at FIVE; G-3 is built; G-2 is dropped.** The call above is left exactly as ratified, because
+    the correction has to be visible as a correction rather than laundered into the original. It was ratified
+    on a LEAF-COUNT argument that never priced what the leaves do: the two roots are the only
+    set-completeness anchor a root-only holder has, three live box paths read them, and removing the two
+    emits turns 70 top-level tests and 31 subtests RED in `core/chain`. They cost 2 leaves / 95 bytes, fixed
+    and independent of N. A PE ruling held the opposite and is recorded with it.
 - **(2) The recovery boundary (Lane B3):** the floor box is a COLD AUDITOR — unconditional loud stall,
   `RecoveryDirective.Heights` and `LiveFollower` deleted, pruned blocks refused, `trustFloor` off the contract
   surface, recovery by a fresh `-ws-checkpoint`-class anchor at H+1, irrecoverable if unreachable.
@@ -2506,6 +2513,10 @@ showing the one-byte value IS committed).
   1. **FREEZE the trustless-recompute track now:** no new floor-box classes, no Structure Round 1B, no more R1.x rungs,
      no structure rounds on the keystone, no era whose reason is "the recompute needs it" (era 5 is not pre-approved).
      Every existing gate stays GREEN and is not weakened. The state-root commitment (three v5 digest leaves) stays.
+     **⚠ THE NUMBER IS FIVE, not three, from 2026-09-11 (`D-MEMBERSHIP-KEEP-FIVE-2026-09-11`): the retirement
+     that would have made it three is REVERSED. The decision this item states — the commitment STAYS — is
+     unaffected, and the freeze itself is untouched, because the G-2 that would have reached into the frozen
+     track is dropped.**
   2. **Reorder the ROADMAP to the note's §5 spine:** Boulder 0 (done) → Lane A consensus liveness (essential, first) →
      Boulder 2 the economy (promoted to the RC's substance) → Boulder 3 the freeze = the RC, its dependency on the
      recompute spine CUT (the RC's only floor-box requirement is owner call 2's cold auditor: never-Accept,
@@ -2518,6 +2529,9 @@ showing the one-byte value IS committed).
      set freezes at three leaves and that is the last format touch; the box witness/frame byte ceiling leaves the
      manifest for the design consult; the `proof.Unmarshal` decoder bound's deadline moves from the frozen flip to the
      stamp-raise train.
+     **⚠ CORRECTED 2026-09-11 (`D-MEMBERSHIP-KEEP-FIVE-2026-09-11`): the digest set freezes at FIVE leaves, and
+     manifest item 2 is DROPPED rather than delivered. "The last format touch" was delivered by `tagRevLogSize`
+     (#819) and owner call A's preimage (#818) instead.**
   4. **The residual register is pruned to ACTIONABLE rows** with an owner, a closer and a lane (25 rows from 125);
      held-in-tension and owner-disclosed residuals are folded into `docs/design/m0.md` §10.1; closed rows are deleted
      (verbatim in `/archive/roadmap-reorder-2026-09-08.md`). The 23-item owner-call block is archived; owner calls are
@@ -3283,7 +3297,7 @@ Re-reading the 22-item manifest (§ groups A–D) with *"or it costs an era"* st
 | Item | Survives on merit? | Why |
 |---|---|---|
 | 1 `tagRevLogSize` | **YES, strongly** | A wrong `m` is a WRONG-ACCEPT, and every floor box *dies permanently* at the first takedown block after its pin. Safety + liveness, no deadline needed. |
-| 2 digest set 5 → 3 (`R-membership`) | **YES** | It is a **removal** — two committed leaves fewer. Its urgency is honest and is not permanence: it is free *while era-4 is dark*, because nothing has committed under it. |
+| 2 digest set 5 → 3 (`R-membership`) | ~~YES~~ **DROPPED 2026-09-11** | The merit argument here is a LEAF COUNT and it is the reason this row was wrong: two committed leaves fewer says nothing about what the two leaves do. They are the only set-completeness anchor a root-only holder has, and removing them turns 70 top-level tests and 31 subtests RED. `D-MEMBERSHIP-KEEP-FIVE-2026-09-11`. |
 | 3 (d-3) | **YES, re-justified above** | Retires `Pruned` for v5; restores hash coverage to a pruned block's retained body. Bought as correctness, not as evidence size. |
 | **4 `IssuerKeyReg` PoP slot, reserved inert** | **NO — RECOMMEND DROP** | See below. |
 | 5 `R-AAXIS-TAG-RESERVE` | already REFUTED | — |
@@ -4276,3 +4290,68 @@ here.**
 - The silent singleton (a typo'd flag founds a network of one that reports healthy) — **made more
   legible, not closed.** JOIN/START is its fix, a later move. The display rule is what keeps a
   committed name from making it harder to see in the meantime.
+
+---
+
+## D-MEMBERSHIP-KEEP-FIVE-2026-09-11 — the v5 digest set freezes at FIVE; the retirement is reversed, G-3 is the bound, G-2 comes out
+
+- **Status:** ✅ RATIFIED — 2026-09-11 (owner). **This REVERSES `D-TRUE-UP-CALLS-2026-09-07` (1)**, the
+  call that ratified retiring `slashedRoot` and `validatorsSeenRoot` from the committed v5 digest set
+  (`D-V5-WHOLESET-ROOTS`, five leaves → three). The original call is annotated where it stands and is
+  NOT rewritten: a correction only does its work if a reader can see that it was one.
+- **The ruling.** **Retire NEITHER. The v5 digest set freezes at FIVE. Build G-3. Drop G-2.**
+  Freeze-manifest item 2 leaves the D1 format train, which leaves `tagRevLogSize` (merged, #819) and
+  owner call A's preimage (merged inside M1, #818) as the train's whole format content.
+- **The evidence — DRIVEN, not argued.** The two roots are the **only set-completeness anchor a
+  root-only holder has.** An SMT proves inclusion, never completeness: a withholding prover hands a
+  short read-set whose every inclusion proof verifies, and only the MTH root closes that. Three LIVE
+  paths read them, by symbol:
+  - `provenView.SlashedSet` / `provenView.ValidatorsSeen` (`core/chain/stateview_proven_v5.go`) both
+    route through `provenView.members`, which returns `NoWitness` unless the digest-root leaf is
+    proven present AND `nodeSetMTH(ids)` equals its committed value.
+  - `stateRootSlashDigestOps` (`core/chain/floorbox_recompute_stateroot_slash_v5.go`) and the bond-reg
+    fold (`core/chain/floorbox_recompute_stateroot_bondreg_v5.go`) call
+    `anchoredPreSet(byTag, tagSlashedRoot)`, which stalls with `ErrRecomputeStateRootDigest` without it.
+  - `recomputeMatureNowStreaming` (`core/chain/floorbox_recompute_maturity_v5.go`) proves
+    `statehash.Key(tagValidatorsSeenRoot, nil)` against the committed `StateRoot`. That is the **C2
+    decentralisation quantity** the anchor shed gates on.
+
+  **THE ABLATION, RE-DRIVEN AT THE MERGE.** Commenting out the two `add(…)` emits in
+  `stateRootLeavesV5` and running `go test ./core/chain/ -short`: **70 top-level tests and 31
+  subtests RED** at `13c10e7` (EXIT=1; green returns on a byte-exact restore, EXIT=0). The Tester
+  measured **19 subtests** at `a28a5b5`
+  (`/Users/andrewedmond/.claude/silt-agent-memory/tester/era4-stateroot-leaf-shape-2026-09-11.md`);
+  the figure is re-measured here rather than carried, because M1 and `tagRevLogSize` landed in
+  between and a driven number is only true of the tree it was driven on. The RED spans the cold
+  auditor, the class-M maturity latch, the digest-root tag gates and the box-door classes — not one
+  cluster.
+
+  Keeping them costs **2 leaves, 95 bytes of key+value, FIXED and independent of N** — the two tag
+  strings (`"slashedRoot\x00"` 12 B + `"validatorsSeenRoot\x00"` 19 B) plus two 32-byte MTH values.
+  Measured at N = 4 / 100 / 1000; at N = 1000 the two roots are 2 of 1,127 era-4 leaves.
+- **Why the original ratification was wrong.** `R-membership` exists to **bound unbounded sets**, and
+  **G-3 is the mechanism that bounds them** — the retirement is not. The retirement was assigned to a
+  residual it does not close, and it was ratified on a **leaf-count argument that never priced what
+  the leaves DO**. "Two committed leaves fewer" is a true sentence about size and says nothing about
+  the completeness obligation those same two leaves discharge. It is the derive-then-drive shape
+  again: the size was reviewed and the route never was.
+- **The disagreement, on the record — there was no consensus and none is claimed.** A PE ruling
+  (`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-r-membership-g3-versus-retirement-a28a5b5-2026-09-11.md`)
+  held that **the retirement is REQUIRED** and that G-3 is required independently: G-3 caps what one
+  box will ACCEPT as a witness and bounds neither set, and **G-2 sits on the accept-flip path whether
+  or not the leaf is retired**, because `v5MatureNow` enumerates the whole `validatorsSeen` set on the
+  one accept composition — so keeping the leaf saves no G-2, and once G-2 lands *"nothing reads
+  `tagValidatorsSeenRoot` and the leaf is dead weight"*. A Tester ablation then MEASURED the roots
+  load-bearing on three live paths. **The owner weighted the measurement over the argument.** The PE's
+  conclusion is not refuted so much as conditional: it holds *once G-2 lands*, and G-2 is now dropped,
+  which removes the branch on which the leaf becomes dead weight. Both seats' positions stand as filed;
+  neither was talked out of its own.
+- **What this buys back.** `D-RECOMPUTE-FREEZE` stays **intact**: G-2 was the piece that would have
+  reached back into the frozen recompute track, and it is no longer needed. One fewer FORMAT item is
+  also one fewer irreversible act before D3 — and per `D-FREEZE-REPRICE-2026-09-10` the freeze costs
+  re-runs and calendar, never permanence, so *"or it would cost an era"* is not available as a reason
+  to buy the retirement back later.
+- **What this does NOT decide.** `R-membership`'s real closer — the bound on the two grow-only sets —
+  is **G-3, still unbuilt**. Retiring the leaves never closed it and does not now. `slashed` and
+  `validatorsSeen` remain ADD-only with zero deletes repo-wide and are committed per-member in the
+  FROZEN era-3 leaf set, so the growth this residual names is untouched by either decision.
