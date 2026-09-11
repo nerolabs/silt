@@ -774,17 +774,48 @@ the flip; the record correction ships with this true-up) and `BBootstrapRunPreco
 A lint regenerates that list on demand, and 43 rows is 43 things a human must read forever — the
 precise cost simplicity rules 3 and 4 exist to stop paying.
 
-**⚠ AND THE LINT DOES NOT WATCH THE SURFACE WHERE THE INERT SHIPPING HAPPENED. OWED, NOT BUILT HERE.**
-`scripts/check_reachability.py` reads `scripts/reachability_lanes.txt`, whose lane set is exactly three:
-`paid-delivery`, `paid-delivery-topup`, `paid-relay-client`. **No freeze-manifest mechanism is in it.** The
-bound is deliberate and its reason is sound — the file's own header keeps the set to lanes the release
-checklist makes a public claim about, and excludes the floor-box keystone because it is inert by ratified
-owner direction — but the consequence is that the gate built after owner call F shipped inert does not
-cover the class of thing F was. Two live cases sit outside it today: `CheckConsensusParams` was inert for a
-day with the record reading BOUND, and a green lint would have said nothing. **Do not book a manifest item
-as BUILT on the strength of a green reachability run.** Closing this is a lane-record addition (one record
-per mechanism, with the five required fields), owned by a Builder at the stamp raise — not a new residual
-prefix and not this true-up's work.
+**⚠ THE LINT DID NOT WATCH THE SURFACE WHERE THE INERT SHIPPING HAPPENED. BUILT 2026-09-11 — THE
+FREEZE-MANIFEST MECHANISMS ARE IN THE LANE SET.** `scripts/check_reachability.py` read
+`scripts/reachability_lanes.txt`, whose lane set was exactly three — `paid-delivery`,
+`paid-delivery-topup`, `paid-relay-client` — with **no freeze-manifest mechanism in it**, so the gate built
+after owner call F shipped inert did not cover the class of thing F was. **The 22 items were resolved as a
+MAPPING, not a sample: SIX name a mechanism that lives in production Go** (items 1, 3, 6, 10, 19, 20), and
+all six are now lane records — nine of them, because items 3, 19 and 20 each have two independently
+droppable halves — anchored on a new posture section in `docs/release-checklist.md`. **The other sixteen
+have no symbol for a gate to hold:** 2, 4, 5, 12 and 13 are dropped or refuted, 8 is declined for the RC,
+7, 9, 16, 18, 21 and 22 are owed with nothing in the tree, and 11, 14, 15 and 17 are delivered as TESTS.
+**Every one of the nine is PRESENT in the linked `./cmd/silt`** — measured, not assumed — and the gate is
+green at 15 records. The ablation that proves it bites removes the sole production call site of
+`CheckConsensusParams`, reproducing the F failure exactly: RED, exit 1.
+
+**Two clauses of the filing above were wrong at source, and are corrected rather than quietly dropped.**
+(1) *"Two live cases sit outside it today"* named one case and then named the one that had already been
+fixed: `CheckConsensusParams` was wired on 2026-09-11 by #807 (`6eb42d2`) and is reachable. The two
+mechanisms that ARE inert today with the record reading delivered are `(*Node).RequireBondedFetchers` and
+`credit.BBootstrapRunPrecondition`, both verified at `820fd6f` with zero non-test callers — and **neither
+is a freeze-manifest item**, so neither gets a lane record here. Wiring a mechanism to make a gate green is
+a consensus-surface change; the finding is reported, not patched. (2) The header bound *"lanes the release
+checklist makes a public claim about"* was sound and is preserved: the checklist now makes that claim, one
+bullet per mechanism, so the set stayed bounded rather than becoming a sweep.
+
+**The substantiality test moved from a proxy to the compiler, because the proxy refused the truth.** The
+gate required a symbol whose body held a callback closure; measured at `820fd6f`, that refused four of the
+six manifest mechanisms the compiler will not inline at any call site (`validateD3Digests` cost 1010,
+`setD3Digests` 172, `CheckConsensusParams` 278, `genesis.Build` 421, against a budget of 80). A closure is
+a property of a client entry point handing work to a transport, not of a consensus validator. The gate now
+reads `go build -gcflags=-m=2` per lane package and requires `cannot inline`. **The same measurement found
+a live false-RED in the old gate:** `(*Chain).stateRootLeavesV5` declares a closure, is present in the
+binary, and has zero `.funcN` rows because the compiler inlined the closure into its own parent — the
+retired `.funcN` witness would have reported that live mechanism as hollowed. Gutting a body is still
+caught, and by the stronger check: a hollowed `setD3Digests` draws `can inline` and the record is REFUSED
+(driven, exit 1).
+
+**Do not book a manifest item as BUILT on the strength of a green reachability run.** That sentence is now
+in `scripts/reachability_lanes.txt`, in the gate's own docstring and in the checklist section, because
+reachability is necessary and never sufficient: it proves a symbol survived linking, not that the
+mechanism is correct or that it computes what its record claims. Item 20 is the standing example — two of
+its three arms have records, the third has no mechanism in the tree, and no green run distinguishes
+*"the third arm is owed"* from *"the item is done"*.
 
 **The production comments carrying the dead premise are CORRECTED (2026-09-11).** The filing here read
 that `core/chain/validate_v5.go`'s BG-1 note — *"The proposer mints v2, the readiness stamp is 3,

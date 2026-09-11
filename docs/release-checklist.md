@@ -140,6 +140,44 @@ signing is wired up; V1 is not cut until signing/notarization is in place.)
     seat's open branch, so it must take the paid-relay label above before the RC
     is cut. `docs/design/pod.md` §7.3's **Field status** line carried the same
     sentence and was corrected with this change.
+- [ ] **Every era-4/v5 freeze-manifest mechanism is in the shipped binary.** The manifest
+      holds 22 items (`docs/decisions.md`; the item-by-item classification is the PE
+      re-audit cited from the D1 row of [ROADMAP.md](../ROADMAP.md)). **Six of the 22 name a
+      mechanism that lives in production Go**; the other sixteen are dropped, declined, still
+      owed, or delivered as tests, and a test symbol never reaches this binary. Each of the
+      six carries a lane record in `scripts/reachability_lanes.txt`, so
+      `scripts/check_reachability.py` fails the build if the linker drops one.
+
+      **REACHABILITY IS NECESSARY AND NEVER SUFFICIENT. Do not book a manifest item as BUILT
+      on the strength of a green reachability run.** A green run proves the symbol survived
+      linking. It proves nothing about whether the mechanism is correct or whether it
+      computes what its record claims. Owner call F is the case that made this a rule: the
+      record read BOUND while `CheckConsensusParams` had zero non-test callers, and the fix
+      was one call site — which a reachability gate confirms and a correctness argument does
+      not follow from.
+  - **Item 1 — the committed revocation-log size.** `(*Chain).stateRootLeavesV5` is the only
+    production writer of the `tagRevLogSize` leaf, and it emits unconditionally on the v5
+    branch. It is linked into `./cmd/silt`.
+  - **Item 3 — the two-level v5 block hash.** `setD3Digests` writes `AnswerDigest` and
+    `SlashesDigest` on the mint path; `validateD3Digests` refuses a block whose digests
+    disagree with its body, from all three admission paths. Both are linked into
+    `./cmd/silt`. A field nothing writes is not in the format, and a field nothing checks is
+    not self-covering, so this lane holds both halves and each is its own record.
+  - **Item 6 — the genesis mint that binds the config.** `genesis.Build` takes the
+    `ConsensusParams` as a REQUIRED argument and stamps them onto height 0. It is linked into
+    `./cmd/silt`, and the daemon's seed path passes real params rather than `nil`.
+  - **Item 10 — the slashing-evidence byte ceiling.** `v5ValidateSlashes` enforces
+    `SlashesBytesCap` against the encoded size before any signature work. It is linked into
+    `./cmd/silt`.
+  - **Item 19 — the era pair an operator reads at start-up.** `printEraObservable` backs
+    `silt chain-status`; `eraStartupLines` prints the declared ceiling beside the loaded
+    chain's era on the daemon boot path. Both are linked into `./cmd/silt`.
+  - **Item 20 — the two refuse-to-start arms that are built.** `chainstore.Recover` refuses a
+    torn or block-0-missing replay; `(*Chain).CheckConsensusParams` refuses a start whose
+    argv contradicts the config its own genesis committed. Both are linked into `./cmd/silt`,
+    and both return rather than warn. The third arm — comparing the persisted `blocks[0]`
+    hash against the one this binary's `genesis.Build` produces — has no mechanism in the
+    tree, so it has no record here and no green run covers it.
 - [ ] **No compile-time default that the genesis commits has moved since the last
       release.** Changing one is a **breaking change requiring a NEW NETWORK**, not a tuning
       change: the genesis block commits the consensus config by value, so every upgrading node
