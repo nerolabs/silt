@@ -29,6 +29,8 @@ import re
 import sys
 from pathlib import Path
 
+from repo_walk import repo_files
+
 ROOT = Path(__file__).resolve().parent.parent
 
 SCAR_ID = "scar:source-gate-promises-a-runtime-property-2026-09-03"
@@ -37,6 +39,8 @@ MARKER = "SOURCE GATE:"
 COVER_RE = re.compile(r"RUNTIME GATE:\s*\S|UNGATED:\s*\S")
 
 # Directories that are frozen history or vendored — never linted.
+# On top of the nested-checkout rule `repo_files` applies always: another checkout's
+# tests are another branch's tests, and this lint has nothing true to say about them.
 SKIP_PARTS = {"archive", "vendor", ".git", "testdata"}
 
 # A read of a literal `.go` path that is not under testdata/. This is the signature of a
@@ -153,10 +157,8 @@ def preceding_comment(src, start):
 def main():
     failures = []
     checked = 0
-    for path in sorted(ROOT.rglob("*_test.go")):
+    for path in sorted(repo_files(ROOT, SKIP_PARTS, "_test.go")):
         rel = path.relative_to(ROOT)
-        if SKIP_PARTS & set(rel.parts):
-            continue
         src = path.read_text(encoding="utf-8", errors="replace")
         if not SOURCE_READ_RE.search(src):
             continue

@@ -69,12 +69,17 @@ import shlex
 import sys
 from pathlib import Path
 
+from repo_walk import repo_files
+
 ROOT = Path(__file__).resolve().parent.parent
 SCAR_ID = "scar:short-run-is-zero-execution-2026-09-10"
 
 ALLOWLIST = ROOT / "scripts" / "short_dark_tests_allowlist.txt"
 WORKFLOWS = ROOT / ".github" / "workflows"
 
+# Names pruned by the walk, on top of the nested-checkout rule `repo_files` applies
+# always: an agent worktree under `.claude/worktrees/` is a different branch's tree, and
+# judging its tests against THIS branch's workflows and allowlist is meaningless.
 SKIP_DIRS = {".git", "dist", "node_modules", "website", "testdata", "vendor"}
 
 # A written reason is a sentence, not a shrug. Same bar as check_reachability.py.
@@ -96,9 +101,7 @@ def find_short_gated_tests(root):
     testing.Short() branch; anything else is a `degrade` (smaller N, fewer attempts).
     """
     out = []
-    for path in sorted(root.rglob("*_test.go")):
-        if any(p in SKIP_DIRS for p in path.parts):
-            continue
+    for path in sorted(repo_files(root, SKIP_DIRS, "_test.go")):
         lines = path.read_text(encoding="utf-8", errors="replace").split("\n")
         spans, cur, start = [], None, 0
         for i, line in enumerate(lines):
@@ -298,9 +301,7 @@ def check_reason_companions(rows, tests, dark_keys):
     """Every Test name a reason cites must resolve, and must not itself be dark."""
     known = {(t["pkg"], t["name"]) for t in tests}
     all_names = set()
-    for path in ROOT.rglob("*_test.go"):
-        if any(p in SKIP_DIRS for p in path.parts):
-            continue
+    for path in repo_files(ROOT, SKIP_DIRS, "_test.go"):
         for m in TEST_FUNC.finditer(path.read_text(encoding="utf-8", errors="replace")):
             all_names.add(m.group(1))
     dark_names = {name for _, name in dark_keys}

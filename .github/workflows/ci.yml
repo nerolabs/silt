@@ -381,6 +381,10 @@ jobs:
       - name: Scar-lint — every cited test name must resolve to a real test, and every symbol-anchored source coordinate must point at its symbol (scar:cited-test-does-not-exist-2026-09-02, scar:cited-source-coordinate-decayed-2026-09-10)
         # External review trees are absent in CI, so this checks the repo only.
         run: python3 scripts/check_cited_tests.py
+      - name: Scar-lint — the shared repo walk must not descend into another checkout (scar:lint-walks-into-another-checkout-2026-09-11)
+        # A CI checkout has NO nested worktree, so running the lints proves nothing here.
+        # The self-test manufactures one in a temp directory and asserts both directions.
+        run: python3 scripts/repo_walk.py --self-test
       - name: Scar-lint — a source-text test gate must be labelled and must name its runtime cover (scar:source-gate-promises-a-runtime-property-2026-09-03)
         run: python3 scripts/check_source_gates.py
       - name: Scar-lint — no unresolved merge-conflict marker may reach a branch (scar:conflict-markers-shipped-in-ci-yml-2026-09-03)
