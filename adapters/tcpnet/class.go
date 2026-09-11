@@ -6,7 +6,7 @@ package tcpnet
 // for a direct conversation, RELAYED at the RELAY's prefix for the two spliced
 // paths (the socket is to the relay). The core reads (class, group) through
 // ClassOf and nothing else; the group never touches the wire, the peers file or
-// a log line. Cert: silt-reviews/research/research-outcome/R4.3b-relayed-class-
+// a log line. Cert: silt-agent-memory/researcher/reviews/research-outcome/R4.3b-relayed-class-
 // and-observed-address-keying-RESEARCH-CERTIFICATION-2026-09-04.md §6–§7.
 
 import (

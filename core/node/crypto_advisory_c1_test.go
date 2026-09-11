@@ -1,7 +1,7 @@
 package node
 
 // Crypto-specialist advisory C-1 at the NODE tier, 2026-09-03.
-// Source: /Users/andrewedmond/Claude/claude/silt-reviews/crypto-specialist/ADVISORY-R0.4b-C3-blind-RSA-epoch-binding-2026-09-03.md
+// Source: /Users/andrewedmond/.claude/silt-agent-memory/crypto-specialist/reviews/ADVISORY-R0.4b-C3-blind-RSA-epoch-binding-2026-09-03.md
 //
 // The unit-tier gate is core/blindtoken TestC1_*. This one drives the composition the
 // advisory actually traced, which is what makes C-1 more than conformance:

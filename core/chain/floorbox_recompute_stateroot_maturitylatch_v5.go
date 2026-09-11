@@ -11,7 +11,7 @@ import (
 // (the everMature maturity latch), the BOUNDARY-INDEPENDENT reproducer.
 //
 // WHY THIS CLASS EXISTS (the write-obligation ledger gap, PE ruling 2026-08-31:
-//   silt-reviews/principle-engineer/RULING-floorbox-v5-write-obligation-ledger-2026-08-31.md).
+//   silt-agent-memory/principal-engineer/reviews/RULING-floorbox-v5-write-obligation-ledger-2026-08-31.md).
 // apply() latches everMature false→true at the TOP of EVERY block where !everMature && Mature()
 // (chain.go:3303-3305), BEFORE the boundary gate (chain.go:3315). The write can land on ANY
 // height. #678 reproduced it ONLY inside class P's rotateOps (boundary-gated), so the GENERIC

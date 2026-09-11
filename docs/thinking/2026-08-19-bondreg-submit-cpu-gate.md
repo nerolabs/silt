@@ -90,5 +90,5 @@ run, so the analytic re-parameterization is decisive). **Verdict: SHELVE v2b**
 (owned-residual E5), with a floor-box drain measurement as the one owed caveat —
 SHA-256 is hardware-accelerated on cheap ARM too, so the floor box is *expected*
 above the ~128 MB/s go-line, but that is expectation, not measurement. Verdict
-reported to the PE: `silt-reviews/principle-engineer/`
+reported to the PE: `silt-agent-memory/principal-engineer/reviews/`
 `v2b-drain-measurement-VERDICT-shelve-2026-08-19.md`.

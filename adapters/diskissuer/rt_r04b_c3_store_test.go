@@ -2,7 +2,7 @@ package diskissuer
 
 // R0.4b C3 re-break — EpochStore regression gates. Inversions of the red-team probes
 // adapters/diskissuer/rt_c3b_store_test.go (RT-C3B-11 … RT-C3B-14), archived at
-// /Users/andrewedmond/Claude/claude/silt-reviews/red-team/probes/R0.4b-C3-re-break-2026-09-03/.
+// /Users/andrewedmond/.claude/silt-agent-memory/red-team/reviews/probes/R0.4b-C3-re-break-2026-09-03/.
 
 import (
 	"crypto/rand"

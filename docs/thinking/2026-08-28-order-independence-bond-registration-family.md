@@ -128,9 +128,9 @@ honest reason. The PR reports exactly which fields clear BOTH lists.
 
 Research certification: `same-root-intrablock-bondreg-contention-RESEARCH-CERTIFICATION-2026-08-28`
 (full path:
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/same-root-intrablock-bondreg-contention-RESEARCH-CERTIFICATION-2026-08-28.md`);
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/same-root-intrablock-bondreg-contention-RESEARCH-CERTIFICATION-2026-08-28.md`);
 PE ruling that routed it:
-`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-618-bond-registration-order-independence-2026-08-28.md`.
+`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-618-bond-registration-order-independence-2026-08-28.md`.
 Human-ratified. Consensus validity-rule change; certified + ratified, not re-designed here.
 
 **The finding.** `validateBondRegs` (chain.go:~1411) deduped only per-ValidatorID (`seenReg`,

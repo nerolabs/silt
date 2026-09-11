@@ -3,7 +3,7 @@
 **Date:** 2026-09-10 (the owner's call came 2026-09-09, late in the preceding session).
 **Status:** BUILT. Gates G-SLASHCAP-1..4.
 **Origin:** the pre-freeze derivation-route audit,
-`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-derivation-route-audit-pre-freeze-2026-09-09.md`,
+`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-derivation-route-audit-pre-freeze-2026-09-09.md`,
 itself commissioned by `D-C2-IDLE-WINDOW-VALUE` when the owner asked what else had been derived
 the way the delivery idle window was.
 
@@ -92,7 +92,7 @@ and is outside the narrowing exemption that makes post-freeze rule changes cheap
 
 ## POST-BUILD CORRECTION — the blind PE refuted the strong claim, and it matters more than the fix
 
-The review of this change (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-slashcap-config-route-close-CODE-2026-09-10.md`)
+The review of this change (`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-slashcap-config-route-close-CODE-2026-09-10.md`)
 returned MERGEABLE-WITH-CHANGES and, in doing so, found something larger than the defect this
 branch set out to close.
 

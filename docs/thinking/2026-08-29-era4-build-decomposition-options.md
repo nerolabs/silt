@@ -10,7 +10,7 @@ against this commit).
 
 **Ratified inputs this decomposition executes** (do not re-litigate):
 - Format veto-gate RATIFIED 2026-08-29 (`docs/decisions.md`, era-4 entry). RECERT2 cert:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-witnessable-transitions-RECERT2-2026-08-29.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era4-witnessable-transitions-RECERT2-2026-08-29.md`.
 - `BlockVersion = 5`, `versionSupported <= 5`, PREDICATE-FIRST.
 - Three new committed tags: `tagDueBucket` (TTL), `tagQualified` + `tagEpochStart` (rotation);
   `tagEpochSet` retained.

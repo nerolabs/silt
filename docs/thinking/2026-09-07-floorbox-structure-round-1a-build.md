@@ -7,11 +7,11 @@ are what the code implements. Deviations from the brief are listed in §4 with t
 Governing documents (binding, read in full before this record):
 
 - PE build brief §7 (steps 1–12; this pass is steps 1–5 + the stage-cover gate):
-  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-structure-rederivation-build-readiness-e963034-2026-09-07.md`
+  `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-structure-rederivation-build-readiness-e963034-2026-09-07.md`
 - P-table delta certification (the 24-stage table, M-1…M-5, G-D1…G-D12):
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/FLOORBOX-STRUCTURE-P-TABLE-DRIFT-DELTA-CERTIFICATION-e963034-2026-09-07.md`
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/FLOORBOX-STRUCTURE-P-TABLE-DRIFT-DELTA-CERTIFICATION-e963034-2026-09-07.md`
 - Build-plan certification (the composition's definition, `StateView`, BG-1…BG-4):
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/FLOORBOX-STRUCTURE-BUILD-PLAN-CERTIFICATION-2026-09-03.md`
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/FLOORBOX-STRUCTURE-BUILD-PLAN-CERTIFICATION-2026-09-03.md`
 - Owner call 16: MAIN-ONLY (Round 1A). Nothing from the box-entry round.
 
 Donor: `builder/floorbox-structure @ 2ca01d9`, read with `git show`; never merged or rebased
@@ -369,9 +369,9 @@ non-test caller; it folds into `R-DRIVER-ASSERTED-BOXSTATE` and closes with the 
 Date: 2026-09-08 · Seat: BUILDER · Branch: `builder/floorbox-structure-1a`, seven commits on `869399e`.
 Rulings folded in, both blind on the same commit:
 
-- PE: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-floorbox-structure-round-1a-869399e-2026-09-08.md`
+- PE: `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-floorbox-structure-round-1a-869399e-2026-09-08.md`
   (F-1, F-2 merge-blocking; F-3, F-5, F-6, F-7, F-8 record/hygiene; §3 the `R-CARRIER-PARENTPROPOSER` coupling).
-- Researcher: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/FLOORBOX-STRUCTURE-ROUND-1A-COMPOSED-DIFF-869399e-RESEARCH-CERTIFICATION-2026-09-08.md`
+- Researcher: `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/FLOORBOX-STRUCTURE-ROUND-1A-COMPOSED-DIFF-869399e-RESEARCH-CERTIFICATION-2026-09-08.md`
   (M-1A-1…M-1A-5; §3.1 G-D13; §7.2 the eight undriven mirrors; §7.3 the parity oracle).
 
 ## 11. The items, each its own commit, each with its ablation

@@ -41,7 +41,7 @@ import (
 // provably-lapsed members from the frozen denominator; a boundary-local quorum
 // re-basing; an R-gate exemption for a returning frozen member) is a
 // consensus-rule call — research-gated (build-process rule 5), consult filed at
-// silt-reviews/research/535-epoch-boundary-liveness-cliff-CONSULT.md. This test
+// silt-agent-memory/researcher/reviews/535-epoch-boundary-liveness-cliff-CONSULT.md. This test
 // pins the exact arithmetic so the ruling has a deterministic reference.
 func TestModelCheck_535_FrozenWeightBoundaryWedge(t *testing.T) {
 	const anchorBond = int64(64) << 20

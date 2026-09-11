@@ -57,7 +57,7 @@ already drive `swarm receipt`, which is v3.
 
 ## Blind PE fold-in (2026-09-07)
 
-**Ruling:** `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-B9-flat-receipt-retirement-7f2ac97-2026-09-07.md`
+**Ruling:** `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-B9-flat-receipt-retirement-7f2ac97-2026-09-07.md`
 (MERGE-AFTER: four blockers, three fixes, a text batch).
 
 **What the blind seat measured that the build missed.** (1) The retirement had no gate: a banking body restored in

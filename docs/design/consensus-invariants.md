@@ -1,6 +1,6 @@
 # silt — Consensus Invariants (the map)
 
-**Status: ADOPTED — canon reference (owner ratified 2026-08-14).** Authored from the principal-engineer seat; the research team **independently converged on the same rule** the same day (`silt-reviews/research/research-outcome/INTERSECTING-QUORUM-INVARIANT-note.md` — one invariant, the same four scars, plus a six-question checklist to apply at every quorum site). That convergence is the ratification basis. Consensus-rule changes remain research-gated (build-immutable #6); this document does not change a rule — it *names the closed set of rules the implementation must already satisfy*, so we stop discovering them one field run at a time.
+**Status: ADOPTED — canon reference (owner ratified 2026-08-14).** Authored from the principal-engineer seat; the research team **independently converged on the same rule** the same day (`silt-agent-memory/researcher/reviews/research-outcome/INTERSECTING-QUORUM-INVARIANT-note.md` — one invariant, the same four scars, plus a six-question checklist to apply at every quorum site). That convergence is the ratification basis. Consensus-rule changes remain research-gated (build-immutable #6); this document does not change a rule — it *names the closed set of rules the implementation must already satisfy*, so we stop discovering them one field run at a time.
 
 **Binding working rules (canon, 2026-08-14):**
 1. **Every consensus-touching PR states, in its body, which of I1–I5 it touches and how it preserves each.** No statement, no merge.
@@ -104,7 +104,7 @@ The set is closed and small. Everything hit so far is a corollary of I1 + I3 + I
   oracles (`core/node/modelcheck_s1s2_test.go`, mature faces in
   `core/chain/modelcheck_s1s2_mature_test.go`) are RED against a recorded lock-free revert,
   GREEN with the prepare phase. Certification:
-  `silt-reviews/research/research-outcome/432-rounds-locking-liveness-RESEARCH-CERTIFICATION-2026-08-15.md`.
+  `silt-agent-memory/researcher/reviews/research-outcome/432-rounds-locking-liveness-RESEARCH-CERTIFICATION-2026-08-15.md`.
 
 **Ruling — I4 is a *permission*, not a build mandate (owner, 2026-08-14).** The invariant is satisfied whenever nothing non-intersecting can finalize; it does **not** require silt to build a commit/final decoupling. Research has twice ruled the minimal path instead: the #397 certification found launch finality already intersecting once the ledger write landed, and the #402 certification's M0 set is the strict-anchor-majority rule alone ("no fork-choice change, no D-1 change") — with an intersecting launch finality quorum, `commit == final` satisfies I4 trivially. The supporting research rule to remember: **the finality gate enforces, it does not create** — `ErrPreFinalityReorg` stops a node reverting its *own* head, never two groups finalizing conflicting blocks; leaning on the gate to fix a non-intersecting quorum *cements* the fork. A decoupling is built only if the model-check produces a schedule that violates I4 as stated — that evidence, not this scar note, reopens the question (build-immutable #7).
 
@@ -129,7 +129,7 @@ The set is closed and small. Everything hit so far is a corollary of I1 + I3 + I
   publishes by submit-then-poll-for-finality (B7/S3 unchanged). Entries are content,
   never a competing value: locks/POL, `requireProposerPrepare`, and #402
   count-neutrality untouched. Certification:
-  `silt-reviews/research/research-outcome/441-publish-starvation-RESEARCH-CERTIFICATION-2026-08-16.md`.
+  `silt-agent-memory/researcher/reviews/research-outcome/441-publish-starvation-RESEARCH-CERTIFICATION-2026-08-16.md`.
 
 - **#451 (the VIEW-SYNCHRONIZATION face — 2026-08-16; mechanism SHIPPED same day).**
   Round-based liveness = **locking (safety) + a synchronizer (convergence)** — #432
@@ -179,7 +179,7 @@ The set is closed and small. Everything hit so far is a corollary of I1 + I3 + I
   forward at ≤ (N+2)·ChainSyncInterval + G = 430 s at N = 12.
   Deterministic homes: `core/node/modelcheck_h43_*_test.go` (G-H43-1…6; G-H43-1 was RED on
   main, the first oracle in the family with a non-uniform arming distribution). Certification:
-  `silt-reviews/research/research-outcome/CONSENSUS-LIVENESS-h43-round-ladder-desync-441-380-RESEARCH-CERTIFICATION-2026-09-07.md`.
+  `silt-agent-memory/researcher/reviews/research-outcome/CONSENSUS-LIVENESS-h43-round-ladder-desync-441-380-RESEARCH-CERTIFICATION-2026-09-07.md`.
 
 **Assert (test):** a 2-2 non-intersecting fork is **resolved by fork-choice** (loser reorgs — allowed, it was never final), never wedges; a connected network never suffers a *permanent* non-final stall (**the chain-liveness half — asserted by `TestModelCheck_I4_WedgedHeightMustRecover`, GREEN with the #432 rounds+locking mechanism**); **no legitimately submitted operation is permanently starved** (**the operation-liveness half — asserted by `TestModelCheck_441_PublishStarvedAcrossRounds` + the §6 siblings in `core/node/modelcheck_441_siblings_test.go`, all RED under the recorded fold+arming revert, GREEN with the entry mempool**); a publish link is issued only after finality.
 

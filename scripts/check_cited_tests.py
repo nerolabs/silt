@@ -7,7 +7,7 @@ SCAR (third-time rule fired; count 5 as of 2026-09-02):
   `TestPaidSerialWindowMatchesDemandWindow` as the test pinning the paid-serial
   window to the demand window. No such test has ever existed anywhere in the tree.
   A research certification then REPEATED the claim
-  (silt-reviews/research/research-outcome/R0.4b-per-epoch-key-expiry-BUILD-
+  (silt-agent-memory/researcher/reviews/research-outcome/R0.4b-per-epoch-key-expiry-BUILD-
   VERIFICATION-RESEARCH-CERTIFICATION-2026-09-02.md), so the phantom laundered
   from a comment into a certification. Both read as "this property is verified".
   Neither was. This lint fails the build any time a Test name is cited in a place
@@ -216,8 +216,8 @@ DOC_SKIP_DIRS = {"thinking", "buildlog", "reviews", "archive"}
 # External certification / ruling trees. Read-only, outside the repo. Skipped
 # silently when absent so CI stays hermetic.
 DEFAULT_EXTERNAL_ROOTS = [
-    "/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome",
-    "/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer",
+    "/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome",
+    "/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews",
 ]
 
 TEST_NAME_RE = re.compile(r"\bTest[A-Z][A-Za-z0-9_]*\b")
@@ -702,14 +702,30 @@ def collect_in_repo():
 
 
 def collect_external(roots):
-    """Yield the same shape for the read-only review trees outside the repo."""
+    """Yield the same shape for the read-only review trees outside the repo.
+
+    An absent root is skipped so CI stays hermetic — but it is skipped OUT LOUD.
+    Until 2026-09-11 this `continue` was silent, and when the review record moved
+    the two default roots stopped existing: the check went on printing OK while
+    scanning nothing. A green gate with no demonstrated red, in the lint built to
+    catch exactly that. `external_root_status()` is what main() prints so the
+    difference between "scanned and clean" and "did not run" is visible.
+    """
     for root in roots:
         base = Path(root)
         if not base.is_dir():
-            continue  # hermetic: an absent tree is simply not checked
+            continue
         for path in iter_files(base, ".md"):
             for line_no, name, cands, fam in citations_in_md(path):
                 yield str(path), line_no, name, cands, fam
+
+
+def external_root_status(roots):
+    """(present, absent) — which external roots this run actually read."""
+    present, absent = [], []
+    for root in roots:
+        (present if Path(root).is_dir() else absent).append(root)
+    return present, absent
 
 
 def external_roots(argv) -> list:
@@ -788,6 +804,7 @@ def main() -> int:
         return out
 
     roots = external_roots(argv)
+    ext_present, ext_absent = external_root_status(roots)
     in_repo = phantoms(collect_in_repo())
     ext = phantoms(collect_external(roots))
     coords_in_repo = rotten(collect_coords_in_repo(index))
@@ -843,6 +860,14 @@ def main() -> int:
         if strict_external:
             failed = True
 
+    for r in ext_absent:
+        print(f"note [{SCAR_ID}] — external root ABSENT, not scanned: {r}",
+              file=sys.stderr)
+    if not ext_present and roots:
+        print(f"note [{SCAR_ID}] — NO external review tree was scanned this run. "
+              f"In CI that is expected; locally it means the roots are wrong.",
+              file=sys.stderr)
+
     if failed:
         return 1
 
@@ -857,5 +882,96 @@ def main() -> int:
     return 0
 
 
+def self_test() -> int:
+    """DRIVE the external-tree check: forge a phantom, prove it is caught.
+
+    WHY THIS EXISTS. On 2026-09-11 the review record moved out of
+    `silt-reviews/` (scar:review-record-moved-and-every-citation-went-dark-2026-09-11)
+    and `DEFAULT_EXTERNAL_ROOTS` pointed at two directories that
+    no longer existed. `collect_external` skips an absent root, so the check would
+    have gone on printing OK forever while reading nothing — the exact failure this
+    lint family was built to catch, inside the lint itself. A repointed constant is
+    not evidence that the check still works. This is.
+
+    Three arms, and all three are needed:
+
+      RED    a forged phantom citation in an external root IS reported under
+             --strict-external, and the run exits 1.
+      GREEN  a citation of a REAL test in the same root is NOT reported. Without
+             this arm an implementation that flags everything passes the RED arm,
+             and the gate would mean nothing.
+      MUTE   an ABSENT root emits the "not scanned" note. This is the defect that
+             actually happened; "did not run" must never again read as "ran clean".
+    """
+    import subprocess
+    import tempfile
+
+    here = Path(__file__).resolve()
+    failures = []
+
+    real = sorted(defined_tests())
+    if not real:
+        print("self-test: no tests defined in this repo — cannot run the GREEN arm",
+              file=sys.stderr)
+        return 1
+    real_name = real[len(real) // 2]
+    phantom = "TestCitedTestsSelfTest_ThisNameIsNotDefinedAnywhere"
+    if phantom in set(real):
+        failures.append("the forged phantom name is actually defined — pick another")
+
+    def run(*args):
+        return subprocess.run([sys.executable, str(here), *args],
+                              capture_output=True, text=True, cwd=str(ROOT))
+
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d) / "reviews"
+        root.mkdir()
+
+        # --- arm RED --------------------------------------------------------
+        (root / "forged-RULING.md").write_text(
+            f"# forged ruling\n\nThe gate is `{phantom}` and it does not exist.\n")
+        r = run("--strict-external", f"--external-root={root}")
+        blob = r.stdout + r.stderr
+        if r.returncode == 0:
+            failures.append("RED arm: a forged phantom citation did NOT fail the check")
+        if phantom not in blob:
+            failures.append("RED arm: the phantom name was not named in the output")
+
+        # --- arm GREEN ------------------------------------------------------
+        (root / "forged-RULING.md").write_text(
+            f"# forged ruling\n\nThe gate is `{real_name}` and it is real.\n")
+        r = run("--strict-external", f"--external-root={root}")
+        blob = r.stdout + r.stderr
+        if r.returncode != 0:
+            failures.append(f"GREEN arm: a REAL test name ({real_name}) was rejected — "
+                            f"the check flags everything and means nothing")
+        if real_name in blob:
+            failures.append(f"GREEN arm: a REAL test name ({real_name}) was reported "
+                            f"as a phantom")
+
+    # --- arm MUTE -----------------------------------------------------------
+    r = run("--external-root=/definitely/not/a/directory/here")
+    blob = r.stdout + r.stderr
+    if "ABSENT, not scanned" not in blob:
+        failures.append("MUTE arm: an absent external root was skipped SILENTLY — "
+                        "'did not run' is indistinguishable from 'ran clean'")
+    if "NO external review tree was scanned" not in blob:
+        failures.append("MUTE arm: a run that scanned no external tree at all said "
+                        "nothing about it")
+
+    if failures:
+        print(f"FAIL [{SCAR_ID}] — self-test: {len(failures)} arm failure(s):",
+              file=sys.stderr)
+        for f in failures:
+            print("  " + f, file=sys.stderr)
+        return 1
+    print(f"OK [{SCAR_ID}] — self-test: the external-tree check CATCHES a forged "
+          f"phantom, ACCEPTS a real name ({real_name}), and SAYS SO when a root is "
+          f"absent.")
+    return 0
+
+
 if __name__ == "__main__":
+    if "--self-test" in sys.argv[1:]:
+        raise SystemExit(self_test())
     raise SystemExit(main())

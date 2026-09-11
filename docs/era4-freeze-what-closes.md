@@ -105,4 +105,4 @@ changes the hash itself, that is the same error in a new costume.
 What you are *not* signing away is the ability to tighten a rule, add a test, fix a runbook, or
 change a node-local file. Those stay in your hands, at ordinary cost, for era-4's whole life.
 
-[^cert]: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/ERA4-V5-FREEZE-MANIFEST-RESEARCH-CERTIFICATION-2026-09-07.md` — the 22-item manifest, its four classes, the three deadlines, and the per-item derivations. Its nine §8 owner sentences were ratified 2026-09-07 (`D-TRUE-UP-CALLS-2026-09-07` (9)).
+[^cert]: `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/ERA4-V5-FREEZE-MANIFEST-RESEARCH-CERTIFICATION-2026-09-07.md` — the 22-item manifest, its four classes, the three deadlines, and the per-item derivations. Its nine §8 owner sentences were ratified 2026-09-07 (`D-TRUE-UP-CALLS-2026-09-07` (9)).

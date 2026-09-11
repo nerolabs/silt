@@ -27,7 +27,7 @@ import (
 
 // DefaultChunkSize is the publish default: 256 KiB (D-R2.9-NODE-HALF-CALLS call 4,
 // amended 4′, ratified 2026-09-07; Economist advisory
-// silt-reviews/economist/ADVISORY-default-chunk-size-256KiB-2026-09-06.md). One chunk is
+// silt-agent-memory/economist/reviews/ADVISORY-default-chunk-size-256KiB-2026-09-06.md). One chunk is
 // one delivery credit (credit.DeliveryIncrementBytes, pinned in cmd/silt), a k = 10 stripe
 // pays a repair-bounty base of exactly 10 (the certified D-S7 threshold of 36
 // stripe-retrievals per repair; the 64 KiB former default paid 2 of an exact 2.5 — a 20 %

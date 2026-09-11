@@ -3,7 +3,7 @@
 Seat: Builder — 2026-09-02. Branch `builder/floorbox-classP-scalar-anchoring`.
 Governs: ROADMAP Boulder-1; the owner-ratified class-P fix.
 Certification (the spec, followed exactly):
-`../silt-reviews/research/research-outcome/floorbox-classP-activation-rotate-anchoring-RESEARCH-CERTIFICATION-2026-09-02.md`.
+`~/.claude/silt-agent-memory/researcher/reviews/research-outcome/floorbox-classP-activation-rotate-anchoring-RESEARCH-CERTIFICATION-2026-09-02.md`.
 
 ## The mechanism (attribute before you patch)
 

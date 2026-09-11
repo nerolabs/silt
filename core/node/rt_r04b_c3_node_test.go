@@ -2,7 +2,7 @@ package node
 
 // R0.4b C3 re-break — node-tier regression gates. Inversions of the red-team probes
 // core/node/rt_c3b_node_test.go (RT-C3B-15 … RT-C3B-17), archived at
-// /Users/andrewedmond/Claude/claude/silt-reviews/red-team/probes/R0.4b-C3-re-break-2026-09-03/.
+// /Users/andrewedmond/.claude/silt-agent-memory/red-team/reviews/probes/R0.4b-C3-re-break-2026-09-03/.
 // These run through the SHIPPED lanes — the consensus-attested pin, the real wire
 // handler — not the primitives, because that is where the probes measured the breaks.
 

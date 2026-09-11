@@ -3,7 +3,7 @@
 Date: 2026-09-01
 Status: BUILD. Ships with the code. Companion to the DESIGN note
 (`2026-09-01-floorbox-witness-soundness-fix-design.md`) and the PE ruling
-(`silt-reviews/principle-engineer/RULING-floorbox-R1.2-invariant-pins-2026-09-01.md`).
+(`silt-agent-memory/principal-engineer/reviews/RULING-floorbox-R1.2-invariant-pins-2026-09-01.md`).
 
 This note records the build choices the design under-specifies, so the increment is
 certifiable without a verbal hand-off. Everything here defers to the design and the ruling.

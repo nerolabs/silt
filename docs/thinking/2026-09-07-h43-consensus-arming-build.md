@@ -2,7 +2,7 @@
 
 **Status:** deliberation of record for the build PR. Ships in the same PR as the code.
 **Governs:** `docs/decisions.md` `D-CONSENSUS-ARMING` (owner calls 18–20, ratified 2026-09-07) on the
-certification `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/CONSENSUS-LIVENESS-h43-round-ladder-desync-441-380-RESEARCH-CERTIFICATION-2026-09-07.md`.
+certification `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/CONSENSUS-LIVENESS-h43-round-ladder-desync-441-380-RESEARCH-CERTIFICATION-2026-09-07.md`.
 **Invariants touched:** I4 (operation-liveness; the arming rule and the synchronizer). I1 is preserved by
 `slotCompare`'s round term and the lock rule, never by the arming rule (certification §4.1). I2, I3, I5
 untouched: no signature site, no set change, no block field, no fork-choice input.
@@ -91,7 +91,7 @@ twelve at round 1 within seconds — and the round-1 designee failing every atte
 block`. The height committed at 292 s (virtual), at round 3, by a node that was NOT the round-3 designee.
 
 **The ruling** (blind delta certification,
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/CONSENSUS-LIVENESS-h43-ABC-ASBUILT-workless-designee-RESEARCH-CERTIFICATION-2026-09-07.md`):
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/CONSENSUS-LIVENESS-h43-ABC-ASBUILT-workless-designee-RESEARCH-CERTIFICATION-2026-09-07.md`):
 
 - **M4 `R-H43-WORKLESS-DESIGNEE` — CERTIFIED as a fourth mechanism.** A round whose designee is live but
   holds none of the height's work is wasted like a round on a down designee, because the empty-block
@@ -138,7 +138,7 @@ constant), G-H43-11/12/13 (the certificate's cost gates), plus the re-encoded pr
 
 ## Third pass — the composed-diff re-certification
 
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/CONSENSUS-LIVENESS-h43-COMPOSED-DIFF-c2a476a-RESEARCH-CERTIFICATION-2026-09-07.md`:
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/CONSENSUS-LIVENESS-h43-COMPOSED-DIFF-c2a476a-RESEARCH-CERTIFICATION-2026-09-07.md`:
 (A)(B)(C)(D1)(D3) built as certified; the monotone takeover walk CERTIFIED (bound ≤ 11 sweeps = 330 s at
 N = 12 — the Researcher's own reset recommendation refuted on the arithmetic: a reset walk needs ≈ 45
 sweeps); I1/I2/I3/I5 CERTIFIED; the 190 s bound at f = 1 confirmed with a round-0 clause (round 0 is never
@@ -162,7 +162,7 @@ attribution in the #441 rotation oracle's docstring), G-H43-10a/11/12/13 (the co
 
 ## Fourth pass — the blind PE ruling, and one sequencing call
 
-`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-h43-consensus-arming-c2a476a-2026-09-07.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-h43-consensus-arming-c2a476a-2026-09-07.md`
 — NOT MERGEABLE at `c2a476a`, on the evidence layer: the mechanism work was traced faithful to both
 certifications and the I1 argument holds under the PE's own trace; (C), (B)'s suffix predicate and the
 entry forward were each confirmed gated by ablation.

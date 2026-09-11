@@ -18,7 +18,7 @@ import (
 // =============================================================================
 //
 // P-table delta certification §4 (CERTIFIED, classified BOUNDED):
-// /Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/FLOORBOX-STRUCTURE-P-TABLE-DRIFT-DELTA-CERTIFICATION-e963034-2026-09-07.md
+// /Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/FLOORBOX-STRUCTURE-P-TABLE-DRIFT-DELTA-CERTIFICATION-e963034-2026-09-07.md
 //
 // WHY. The node's v5 stage table was hand-copied into a certification on 2026-09-03 and had
 // drifted by 2026-09-07: main's ValidateProposal had gained validateIssuerKeys (v5-ONLY) and a

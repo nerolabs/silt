@@ -13,7 +13,7 @@ import (
 )
 
 // R0.6 — the I5 cross-height Pruned slash-forgery fix. Certification:
-// /Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/
+// /Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/
 // I5-cross-height-pruned-slash-forgery-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md
 //
 // Root cause (cert §3): VerifyEquivocation quantifies over a fact (the height two

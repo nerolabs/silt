@@ -10,7 +10,7 @@ import (
 
 // Consensus model-check — #535 fix (3): the operator-directed weak-subjectivity
 // liveness-floor escape (design: docs/thinking/2026-08-24-535-fix3-design.md;
-// certification: silt-reviews/research/research-outcome/
+// certification: silt-agent-memory/researcher/reviews/research-outcome/
 // 535-epoch-boundary-liveness-cliff-RESEARCH-CERTIFICATION-2026-08-23.md).
 //
 // The certified recovery stack for the #535 boundary wedge is (4) + (3).

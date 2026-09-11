@@ -28,7 +28,7 @@ import (
 // the amount of forwarded payload one revealed preimage authorizes.
 //
 // B = 524,288 bytes (512 KiB): the CERTIFIED re-price of 2026-09-06, owner-ratified the
-// same day (G-R212-2; silt-reviews/research/research-outcome/G-R212-2-relay-lane-reprice-
+// same day (G-R212-2; silt-agent-memory/researcher/reviews/research-outcome/G-R212-2-relay-lane-reprice-
 // RESEARCH-CERTIFICATION-2026-09-06.md §8; docs/decisions.md D-R2.9a-RUN-CALLS). The relay
 // lane's price is RelayIncrementCredit/RelayIncrementBytes credits per byte. At the
 // original 4 KiB (the 2026-08-30 floor-box derivation) the 500,000-credit starter grant

@@ -1,7 +1,7 @@
 # 2026-08-14 — #402 launch anchor gate: encode the certified strict-anchor-majority rule, and make it structural (derived, not a knob)
 
 **Context / trigger:** Building the research-certified #402 fix
-(`silt-reviews/.../fork-anchor-gate-402-RESEARCH-CERTIFICATION-2026-08-14.md`): launch
+(`silt-agent-memory/.../fork-anchor-gate-402-RESEARCH-CERTIFICATION-2026-08-14.md`): launch
 finality must require a **strict anchor majority `⌊A/2⌋+1`** (=3 for A=4), counting
 proposer-if-anchor, sybils excluded from the launch finality count. The certification
 assigns the *threshold* to research and the *encoding* to build. Paced before coding per

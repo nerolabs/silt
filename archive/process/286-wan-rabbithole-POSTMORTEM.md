@@ -4,7 +4,7 @@
 issue closed). This post-mortem exists because closing the bug is not the same as
 learning the lesson: the *way* #286 was worked violated the very build-immutables
 (#5, then #6) that were being ratified mid-thrash. Written in response to the
-principal-engineer rescue audit (`silt-reviews/principle-engineer/RESCUE-AUDIT.md`),
+principal-engineer rescue audit (`silt-agent-memory/principal-engineer/reviews/RESCUE-AUDIT.md`),
 whose one-paragraph verdict was correct: *"You don't have a broken system. You have
 a stuck loop and two public overclaims."*
 
@@ -132,4 +132,4 @@ research before spending the run.**
 
 *Refs: #286, #318/#326, #328, #331, #336, #341/#342, #343; build-immutables #5/#6
 (TENETS Part IX); `docs/network-durability.md`, `docs/build-process.md`;
-rescue audit `silt-reviews/principle-engineer/RESCUE-AUDIT.md`.*
+rescue audit `silt-agent-memory/principal-engineer/reviews/RESCUE-AUDIT.md`.*

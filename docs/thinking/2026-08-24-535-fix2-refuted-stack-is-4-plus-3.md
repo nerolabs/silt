@@ -1,7 +1,7 @@
 # #535 fix (2) refuted by the proof-first model-check — the recovery stack is (4) + (3)
 
 **Date:** 2026-08-24. **Issue:** #535. **Rests on:** the research certification
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/535-epoch-boundary-liveness-cliff-RESEARCH-CERTIFICATION-2026-08-23.md`.
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/535-epoch-boundary-liveness-cliff-RESEARCH-CERTIFICATION-2026-08-23.md`.
 
 ## What the certification asked
 

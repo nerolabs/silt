@@ -3,7 +3,7 @@
 Date: 2026-08-31
 Seat: Builder
 Base: `origin/main` = `07762e6`
-PE ruling that scoped this: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-floorbox-v5-write-obligation-ledger-2026-08-31.md`
+PE ruling that scoped this: `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-floorbox-v5-write-obligation-ledger-2026-08-31.md`
 
 ## The mechanism (attribute before the fix)
 

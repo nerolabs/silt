@@ -3,9 +3,9 @@
 Date: 2026-08-30
 Author: Builder
 Certification governing this build (AMENDED / SUPERSEDING):
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-witness-floor-box-readset-v5-AMENDED-RESEARCH-CERTIFICATION-2026-08-30.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era4-witness-floor-box-readset-v5-AMENDED-RESEARCH-CERTIFICATION-2026-08-30.md`
 PE ruling on the prior build (the fixes this rewrite lands):
-`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-lane1-partA-readset-v5-producer-2026-08-30.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-lane1-partA-readset-v5-producer-2026-08-30.md`
 
 ## Why this is a REWRITE, not a first draft
 

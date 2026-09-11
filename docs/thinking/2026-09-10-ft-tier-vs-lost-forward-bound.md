@@ -4,7 +4,7 @@
 (2026-09-09: investigate and write it up; changing a standing RC gate's SLO tier is not a
 side effect of an audit).
 **Origin:** suspect 3 of the pre-freeze derivation-route audit,
-`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-derivation-route-audit-pre-freeze-2026-09-09.md`.
+`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-derivation-route-audit-pre-freeze-2026-09-09.md`.
 
 ## The claim, verified
 

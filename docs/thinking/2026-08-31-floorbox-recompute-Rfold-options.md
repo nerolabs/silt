@@ -4,8 +4,8 @@ Date: 2026-08-31
 Author: Builder
 Scope: the R-fold primitive + the E/R hybrid recompute + the scope-gate re-anchor.
 Certs this builds on (full paths):
-- `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/floorbox-recompute-P1a-Opayload-multileaf-RESEARCH-CERTIFICATION-2026-08-31.md`
-- `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-floorbox-recompute-P1a-Opayload-multileaf-2026-08-31.md`
+- `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/floorbox-recompute-P1a-Opayload-multileaf-RESEARCH-CERTIFICATION-2026-08-31.md`
+- `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-floorbox-recompute-P1a-Opayload-multileaf-2026-08-31.md`
 
 ## The decision, up front
 

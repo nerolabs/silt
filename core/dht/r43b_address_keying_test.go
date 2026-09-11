@@ -3,7 +3,7 @@ package dht
 // R4.3b (2026-09-04) — the H5-B eclipse cap keyed on the OBSERVED contacted-at address
 // (geth / Bitcoin Core form), at the routing-table tier. RED-first gates G-1..G-8 (table
 // half) from the research certification §8:
-// silt-reviews/research/research-outcome/R4.3b-relayed-class-and-observed-address-keying-
+// silt-agent-memory/researcher/reviews/research-outcome/R4.3b-relayed-class-and-observed-address-keying-
 // RESEARCH-CERTIFICATION-2026-09-04.md. The four build conditions: C-1 one group namespace
 // per /24 across classes; C-2 the reserve bounds ALL non-DIRECT entries at K − R; C-3 DIRECT
 // is never downgraded; C-4 the class lives with the table entry. Node-tier halves live in

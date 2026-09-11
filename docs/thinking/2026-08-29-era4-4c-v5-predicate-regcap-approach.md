@@ -12,9 +12,9 @@ does NOT re-open it.
   (PREDICATE-FIRST), §7.3 (RegCap counts per-block TOTAL, fresh + renewal).
 - RegCap counting rule CERTIFIED (per-block TOTAL after `canonicalBondRegs`) and VALUE N=256
   CERTIFIED for the total rule:
-  - `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-regcap-recert-VERDICT-2026-08-29.md`
+  - `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era4-regcap-recert-VERDICT-2026-08-29.md`
     (rule + Q3 must-be-validity-not-byte-budget CERTIFIED).
-  - `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-regcap-VALUE-DERIVATION-VERDICT-2026-08-29.md`
+  - `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era4-regcap-VALUE-DERIVATION-VERDICT-2026-08-29.md`
     (N=256 CERTIFIED for the total rule; floor N≥18 at k=1; ceiling ≤16,384; I1–I5 clean).
 - `docs/decisions.md` era-4 entry + `docs/design/owned-residuals.md` RegCap entry (total-count,
   #299 re-mint gate broadened to all seven determinants).

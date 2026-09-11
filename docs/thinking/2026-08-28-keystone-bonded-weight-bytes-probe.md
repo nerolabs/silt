@@ -3,7 +3,7 @@
 - Date: 2026-08-28
 - Seat: Builder
 - Driver: blind PE ruling `RULING-603-weight-bytes-discharge-2026-08-28.md`
-  (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-603-weight-bytes-discharge-2026-08-28.md`)
+  (`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-603-weight-bytes-discharge-2026-08-28.md`)
 - Issue class: model-check/unit tier test coverage. Touches NO consensus rule — it
   READS the weight predicate and asserts its bytes are load-bearing.
 

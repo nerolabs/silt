@@ -45,7 +45,7 @@ Recorded because the input number is the denominator of the reduction claim.
 | `R-CARRIER-ATTS-PREPAREQC-wire-bound-on-env-QC-…` | 8 |
 
 All three certification paths are under
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/`.
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/`.
 
 ### 1.2 Both new prefixes die
 
@@ -105,7 +105,7 @@ to what is already there. Each retirement below names the evidence that permits 
 ### 1.6 What deliberately gets NO row
 
 The 2026-09-10 inert-mechanism sweep
-(`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/2026-09-10-inert-mechanism-sweep-core-adapters-0ed3b92.md`)
+(`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/2026-09-10-inert-mechanism-sweep-core-adapters-0ed3b92.md`)
 found 117 inert sites, 46 outside the frozen keystone. Three are cases where the record claims
 delivered. **None of the three becomes a new register row**, and the other 43 get nothing:
 
@@ -269,7 +269,7 @@ ownership — another builder holds `cmd/silt/daemon.go` this session):
 - **D1's real remaining FORMAT set is small** — manifest item 1 (`tagRevLogSize`) and item 2 (the
   digest 5 → 3 retirement), plus F's wiring and call A. A blind audit classified all 22 manifest
   items; everything else is BUILT, DROPPED, or owed at the stamp raise
-  (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-era4-freeze-manifest-final-content-audit-0ed3b92-2026-09-10.md`).
+  (`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-era4-freeze-manifest-final-content-audit-0ed3b92-2026-09-10.md`).
 - **The reachability headline is two numbers, not one:** 117 inert sites, of which **71 (61 %) are the
   floor-box / recompute keystone, inert by ratified owner direction** (`D-RECOMPUTE-FREEZE`). **46** is
   the non-frozen remainder, out of 1,784 exported declaration sites swept.

@@ -307,6 +307,19 @@ AUTOSAVE_PREFIX = "autosave:"
 # A seat's memory index. Both link directions are checked against it.
 INDEX_NAME = "MEMORY.md"
 
+# The review record — certifications, rulings, red-team findings, field-run reports —
+# moved under `<seat>/reviews/` on 2026-09-11 (owner ratified). It is NOT memory and is
+# NOT reached index-first: every one of those documents is cited by absolute path from a
+# certification, a ruling, or the ROADMAP residual register. Counting all 641 of them as
+# ORPHANs would label every autosave commit DEGRADED from that day on, and a health
+# signal that is always red is a signal nobody reads.
+#
+# The exclusion is ONE-DIRECTIONAL and deliberately so. An index entry that points INTO
+# `reviews/` and misses is still DANGLING: the index lying is a defect wherever it points.
+# Only the orphan direction is relaxed, because only the orphan direction assumes the
+# index is the way in.
+REVIEW_SUBTREE = "reviews"
+
 # Held across the commit so two seats stopping at the same instant do not race git's own
 # index.lock. Stale after this many seconds, so a killed process cannot wedge autosave.
 LOCK_STALE_SECONDS = 120
@@ -382,6 +395,8 @@ def index_integrity(store):
         for p in present:
             rel = p.relative_to(seat).as_posix()
             if rel == INDEX_NAME or rel in linked:
+                continue
+            if rel.startswith(REVIEW_SUBTREE + "/"):
                 continue
             orphans.append(f"{seat.name}/{rel}")
 
@@ -603,6 +618,33 @@ def _autosave_self_test() -> int:
         if [o for o in orphans if o.endswith("two.md")] != []:
             failures.append("a LINKED file was reported as an orphan — the check is too "
                             "eager and its DEGRADED label would mean nothing")
+        # 4b. THE REVIEW SUBTREE IS NOT MEMORY. Three arms, because the middle one is
+        #     what catches a lazy fix (a blanket "ignore anything nested" would pass
+        #     the first arm and silently stop reporting real orphans).
+        (seat / REVIEW_SUBTREE).mkdir(exist_ok=True)
+        (seat / REVIEW_SUBTREE / "RULING-x.md").write_text("a ruling, cited by path\n")
+        (seat / "notes").mkdir(exist_ok=True)
+        (seat / "notes" / "real-orphan.md").write_text("memory nobody links\n")
+        (seat / INDEX_NAME).write_text(
+            "# index\n\n- [One](one.md)\n- [Two](two.md)\n- [Gone](gone.md)\n"
+            "- [MissingReview](reviews/NOT-THERE.md)\n")
+        idx, dangling, orphans = index_integrity(store)
+        if [o for o in orphans if "RULING-x.md" in o] != []:
+            failures.append("a file under reviews/ was reported as an ORPHAN — 641 of "
+                            "them would label every autosave DEGRADED and the signal dies")
+        if [o for o in orphans if o.endswith("notes/real-orphan.md")] == []:
+            failures.append("OVER-EXCLUSION: a nested memory file OUTSIDE reviews/ stopped "
+                            "being reported as an orphan — the exclusion is too broad")
+        if [d for d in dangling if d.endswith("reviews/NOT-THERE.md")] == []:
+            failures.append("an index entry pointing INTO reviews/ at a missing file was "
+                            "not DANGLING — the exclusion must be orphan-direction only")
+        (seat / REVIEW_SUBTREE / "RULING-x.md").unlink()
+        (seat / REVIEW_SUBTREE).rmdir()
+        (seat / "notes" / "real-orphan.md").unlink()
+        (seat / "notes").rmdir()
+        (seat / INDEX_NAME).write_text(
+            "# index\n\n- [One](one.md)\n- [Two](two.md)\n- [Gone](gone.md)\n")
+
         n_before = len(subjects())
         autosave(store, "self-test/degraded", out=open(os.devnull, "w"))
         head = subjects()[0]

@@ -2,7 +2,7 @@ package credit
 
 // R2.14 — the relay-lane prepayment anchor: the LEDGER-tier RED-first gates
 // (Tester, 2026-09-04). Binding spec:
-// silt-reviews/research/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md
+// silt-agent-memory/researcher/reviews/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md
 // §2 (conservation re-derived: Δ Σ_L = settled − Σ face ≤ 0, equality iff fully
 // consumed — C-1 withdraws the 2026-09-03 "unchanged" corollary), §2.4 (the six
 // doors), §5 (guard window == keyset window is THE security property), §9 (T-1,

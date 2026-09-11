@@ -141,7 +141,7 @@ the block — and it does NOT pre-empt `D-UI-PRIVACY-FLAG`'s open question of wh
 observatory sends the token or requires `-privacy=off` on its targets.
 
 **Blind PE ruling on this record:** PROCEED-WITH-CHANGES
-(`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R2.9a-G-BB-12-design-2026-09-05.md`).
+(`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-R2.9a-G-BB-12-design-2026-09-05.md`).
 Option (E) upheld; eight changes, all built in the same PR: S1 the marker is a sibling key,
 never a zero-valued block (sixteen false facts measured); S2 the withhold is a tag-split pair
 applied to the COPY; S3 header-only token for the block; S4 the `D-BB-BUILD-TAG` scoping
@@ -150,7 +150,7 @@ no content gate grew a "withheld is also acceptable" branch; S7 the three false 
 S8 the two residuals. Plus the coupling it named: ONE composition point, `uiServer.readerView`,
 where `D-UI-PRIVACY-FLAG`'s clauses will land.
 
-**Blind PE CODE ruling** (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R2.9a-G-BB-12-code-32adf76-2026-09-05.md`,
+**Blind PE CODE ruling** (`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-R2.9a-G-BB-12-code-32adf76-2026-09-05.md`,
 MERGE-AFTER one fix; all four wire claims measured on a live tagged daemon; six ablations RED).
 Folded in: **Finding 1 (HIGH)** — a second untokened test helper made a REQUIRED anchor's
 positive control pass on the marker (`"bBootstrap"` is a substring of `"bBootstrapWithheld"`);

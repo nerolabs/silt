@@ -28,7 +28,7 @@ import (
 // nothing a band over the pledged bytes does not already give.
 //
 // PROVENANCE OF THE TWO EDGES. They are read off the published tier table in the
-// Economist's sustainability audit (silt-reviews/economist/2026-09-01-tiered-edge-
+// Economist's sustainability audit (silt-agent-memory/economist/reviews/2026-09-01-tiered-edge-
 // economy-sustainability-audit.md, the "Pony / Horse / Archival" table): the horse is
 // specified as "6-8 CPU / 4 GB / 16+ GB disk" and the archival as "24+ CPU / GPU /
 // TBs". So the pony|horse edge is the horse's stated disk floor and the horse|archival

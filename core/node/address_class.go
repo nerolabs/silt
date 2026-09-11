@@ -10,7 +10,7 @@ package node
 //     to the replier's group until it answers;
 //   - -bootstrap seeds and -persistent-peers (MarkSeed / AddStaticPeer) → ObserveStatic,
 //     exempt from every cap (operator-typed, count-bounded).
-// Cert: silt-reviews/research/research-outcome/R4.3b-relayed-class-and-observed-
+// Cert: silt-agent-memory/researcher/reviews/research-outcome/R4.3b-relayed-class-and-observed-
 // address-keying-RESEARCH-CERTIFICATION-2026-09-04.md §5, §7.
 
 import (

@@ -87,7 +87,7 @@ while (A) is available.
 ## Decision
 
 **(A)**, routed through a PE concurrence note
-(`silt-reviews/principle-engineer/maturing-topology-premise-builder-2026-08-15.md`)
+(`silt-agent-memory/principal-engineer/reviews/maturing-topology-premise-builder-2026-08-15.md`)
 because the drill parameterization was part of a reviewed ruling — the re-run stays
 blocked until the topology fix lands. The premise repro test ships now regardless (it pins
 correct core behavior and documents the trap). The principled-bounds work (PE cadence

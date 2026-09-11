@@ -51,6 +51,27 @@ brief at `docs/reviews/fresh-eyes-council-brief.md`; its findings live on in
 current C1/C2 + seams understanding — a brief is a standing target, a report is a
 dated result.
 
+#### `M0-REDTEAM-HANDOFF-183.md` (archived 2026-09-11)
+The blind red-team handoff for the 183-item M0 pass. Owner: *"we can archive it for
+now, we will build a new brief before B8."* Same call and same precedent as
+`m0-redteam-brief.md` above — a dated result, superseded before it is re-used. The
+living gate input for the external B8 pass remains `docs/reviews/m0-redteam-brief-2026-08.md`,
+named at `ROADMAP.md` row E4.
+
+#### THE EXPLICIT EXCEPTION: `archive/reviews/` DOES NOT MOVE (2026-09-11)
+On 2026-09-11 the whole review record left this repo for the agent-memory store
+(`~/.claude/silt-agent-memory/<seat>/reviews/`, owner-ratified). **These 24 files are
+the exception and stay here.** They are declared frozen history, they are already
+excluded by name from the repo lints, and the criterion that moved everything else —
+*does a reader of the silt repo need it to understand the product?* — is answered
+differently for them: they are the product's own dated record of how it was judged,
+not a seat's working file.
+
+Stated here so the next true-up does not reopen it. Note the distinction: the FILES do
+not move, but the PATH REFERENCES inside them were rewritten with everything else, so a
+pointer in a frozen document still resolves. Frozen history is not the same as a dead
+pointer.
+
 ### `process/` — stranded handoff docs
 `genesis-handoff.md` (the original inception brief; several code comments still
 cite "the HANDOFF"; its own banner flags the fragments that now contradict canon).
@@ -70,7 +91,7 @@ launch-only") — so the whole chain moved here. **What replaced it:**
 `docs/design/consensus-invariants.md` (I1–I5 — the closed invariant set, each
 scar annotated), `docs/design/consensus-model-check.md` (the deterministic gate),
 and `docs/decisions.md` D-CONSENSUS. The certifications themselves live in the
-read-only `silt-reviews/` evidence archive. Archived files: the 286-compute-layer
+read-only `silt-agent-memory/` evidence archive. Archived files: the 286-compute-layer
 pair, the 357 trio, the token-gather pair (2026-08-13), the
 honest-proposer-cross-attest pair (#397), the m0-candidate PE consult+ruling
 (2026-08-13; its still-governing directives were folded into
@@ -92,6 +113,6 @@ The archived file carries the full fold-map. Superseded by `ROADMAP.md`.
 ## The one live source outside the repo (read-only)
 
 The research memos and red-team field reports that drove this reset live **outside
-this repo**, in `silt-reviews/` — treated as a read-only evidence archive. The
+this repo**, in `silt-agent-memory/` — treated as a read-only evidence archive. The
 builder's adopted perspective from them is written into `/silt/` (here), never
-back into `silt-reviews/`.
+back into `silt-agent-memory/`.

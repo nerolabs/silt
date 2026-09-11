@@ -1,7 +1,7 @@
 # 2026-09-07 — The publish default moves to 256 KiB and manifests are framed at true length (one content-addressing break)
 
 **Context / trigger:** D-R2.9-NODE-HALF-CALLS call 4 (2026-09-06) ratified moving `pipeline.DefaultChunkSize` to
-262,144 B; the Economist's advisory (`/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-default-chunk-size-256KiB-2026-09-06.md`)
+262,144 B; the Economist's advisory (`/Users/andrewedmond/.claude/silt-agent-memory/economist/reviews/ADVISORY-default-chunk-size-256KiB-2026-09-06.md`)
 corrected the premise (the 64 KiB default paid a repair-bounty base of 2, not zero — a shard is a whole ciphertext
 chunk) and measured an unpriced cost of the move on the first production store: 87.6 % of objects are 1.4 KB
 manifests padded to the chunk size, so at 256 KiB the store grows 3.9× for no content. Call 4′ (2026-09-07)
@@ -36,7 +36,7 @@ the PR is built and reviewed, and merged only on the owner's go.
 
 ## Blind PE fold-in (2026-09-07)
 
-**Ruling:** `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-default-chunk-256k-manifest-framing-b365f10-2026-09-07.md`
+**Ruling:** `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-default-chunk-256k-manifest-framing-b365f10-2026-09-07.md`
 (MERGE-AFTER, six items; item 1 a blocker).
 
 **What the blind seat measured that the build missed:** the manifest frame is not in the root, but it IS in the

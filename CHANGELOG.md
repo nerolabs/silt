@@ -12,6 +12,9 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 - **The era observable — `silt chain-status` and `GET /api/status` now report the chain's block era, and the live attestation-carrier width is measurable for the first time** (2026-09-11, `R-CLOUD-ERA-PROBE`, freeze manifest item 19). Three investigations stalled on this absence: a Tester could not confirm whether the live nets carry any v4 block, `max_h len(blocks[h].Atts)` is a named open item on two certifications with no command producing it, and cloud row `13b-delivery-settlement` SKIPped with one sentence covering both *"era-4 is dark"* and *"the issuer's keys are off-commitment"*. Measured before the change: on a store holding a v4 block, two v5 blocks and a 3-wide carrier, `chain-status` printed output BYTE-IDENTICAL to an all-v2 chain with no attestations, and `.chain` was in full `{"height":1,"entries":1}`. Both surfaces now report the head `Version`, the per-version census with each version's first height, the two era statuses, and the max carrier width with the height attaining it. **`chain.EraState` reads `Config` nowhere** — the era override would be a `#380`-class local read, and rebuilding the latch inside `chain-status` would make the reported activation height a function of a CLI flag, so ACTIVE is instead defined from the committed blocks (activation is a MINT boundary, so "a v5 block is committed" and "era-4 activated" are the same fact reached without asking any config anything). **The predecessor this row absorbs was vacuous and the shape is guarded against explicitly:** `EraPhase` is a closed string enum with no zero value, optional heights are `*uint64` so a present `0` cannot pass for an absence (height 0 is legal — a genesis block can be v5), and a measured zero carrier is narrated rather than printed bare. Seven gates, five ablations RED first, all three phases DRIVEN by a real readiness tally rather than written by a fixture. NOT a format item: no block field, no committed leaf, no validity rule. The other half of manifest item 19 — the daemon's start-up era line — is NOT delivered here.
 - **The daemon prints its declared max block era at start-up, beside the era the chain reports** (2026-09-11, `R-CLOUD-ERA-PROBE`, freeze manifest item 19's second clause — the half #808 left owed because `cmd/silt/daemon.go` was held). **One number answers neither of cloud row `13b-delivery-settlement`'s questions.** A chain carrying no v5 block is a HEALTHY DARK network under a build that declares v5 and the WRONG BUILD under one that declares v2 — same chain, same census, opposite verdicts — so the daemon prints both from one call and they cannot be read apart. The declared number is `chain.DeclaredMaxBlockVersion`, a **compile-time constant**: `eraStartupLines(ch *chain.Chain)` takes a chain and nothing else, so no flag or config can reach it, and `const declaredIsACompileTimeConstant = DeclaredMaxBlockVersion` asserts that structurally — a const declaration accepts a constant expression and nothing else, so the package stops building if the declaration ever becomes a var or a flag read. The constant's claim about the build is **checked, not trusted**: `TestDeclaredMaxIsTheBINARYsRealCeiling` drives both ceilings that define it (`versionSupported` accepts it and rejects `+1`; `MintVersion` on a chain whose own readiness tally activated era-4 mints exactly it), so a widened decode ceiling that shipped without moving the declaration goes red. The era↔version mapping is a **TABLE, not arithmetic** (`EraNameOf`: 1→1, 2→2, 4→3, 5→4, and no era for the never-minted v3 readiness stamp) — `version-1` is right at v4/v5 and wrong at v2, which is the version every live network is minting. Nine gates, **eleven ablations RED first**, including the four-cell matrix {declared v5, declared v2} × {a dark chain, an era-4 chain} driven on chains that produce their own v5 blocks and their own readiness latch. An empty store renders a NAMED refusal to assert rather than "highest version v0", and a build the tally has locked in an era above gets one stranding warning while the tally window is still open. Both start-up markers are registered in `ObservableContract`. NOT a format item: no block field, no committed leaf, no validity rule. Manifest item 19's remaining owed piece is the release-runbook line, which `docs/era4-freeze-what-closes.md` places at the STAMP RAISE, not at the freeze. Deliberation: `docs/thinking/2026-09-11-era-declared-startup.md`.
 
+### Changed
+- **The review record moved out of the repo's orbit and into the agent-memory store, one `reviews/` subtree per seat** (2026-09-11, owner-ratified; `scar:review-record-moved-and-every-citation-went-dark-2026-09-11`). Every certification, ruling, red-team finding and field-run report now lives at `~/.claude/silt-agent-memory/<seat>/reviews/`, and **1,868 references across four repositories were rewritten in three syntactic forms** — an absolute-path grep finds only 465 of the silt repo's 855, missing 45 %. **The rewrite ships as a re-runnable script, not just its output** (`scripts/migrate_review_record_paths.py`): four live worktrees carried ~3,400 occurrences on unmerged branches, two of them held format items awaiting the owner's review, and without a tool each held branch would partially revert the rewrite in the files it touches at merge time. It is idempotent, its seat table is CLOSED over the 16 distinct path shapes measured across the three repos rather than guessed, it refuses to descend into another checkout by the `.git` MARKER, and it rewrites PATHS but never CLAIMS — a sentence asserting a fact about the old tree is reported, not mangled. **Two mechanisms would have gone quietly dark and are now DRIVEN.** `check_cited_tests.py`'s external roots pointed at directories that ceased to exist, and `collect_external` skips an absent root, so the check would have printed OK forever while reading nothing — a green gate with no demonstrated red, inside the lint built to catch exactly that; an absent root now says so, and `--self-test` manufactures an external tree to prove the check still CATCHES a forged phantom (RED), still ACCEPTS a real name (GREEN, the over-exclusion arm), and still SPEAKS UP when a root is missing (MUTE). `check_residual_register.py` hard-coded the old literal as an accepted Source format with 33 of 34 register rows depending on it, and it is corrected in the same diff. **A third mechanism the migration brief missed:** the memory store's `index_integrity()` calls any `.md` no seat index links to an ORPHAN, so the 641 moved documents would have labelled every autosave commit `DEGRADED` from that day on — a health signal that is always red is one nobody reads. The `reviews/` subtree is excluded from the ORPHAN direction ONLY; an index entry pointing into it and missing is still DANGLING. A new merge gate (`--verify`) refuses any branch that still names the retired tree, with an explicit scar-prefixed license for the lines that name it on purpose. Measured: 641 orphans → 0. Deletions were separately ratified — 1.94 GB of nested clones and run exhaust, 2,057,956 KB → 20,716 KB, with every finding, report, verdict and certification retained and the three citations it actually broke annotated in place.
+
 ### Fixed
 - **Three repo lints no longer walk into other checkouts of this repo** (`scar:lint-walks-into-another-checkout-2026-09-11`).
   `check_short_dark_tests.py`, `check_source_gates.py` and `check_conflict_markers.py` walked from the repo root with `rglob`, so
@@ -342,7 +345,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `MinBond` as `LOCAL`, and leaving a stale declaration each turn it RED; baseline green either side.
   Twelve fields report **UNPROVEN rather than safe** — no driven regime exercises them yet, and
   simplicity rule 7 forbids calling an undriven row safe.
-  **Corrected by blind review before merge** (`silt-reviews/principle-engineer/ruling-config-in-consensus-gate-05b527c.md`),
+  **Corrected by blind review before merge** (`silt-agent-memory/principal-engineer/reviews/ruling-config-in-consensus-gate-05b527c.md`),
   which broke the first version twice. `DRIVEN-SAFE` was a sentence in the table rather than a
   measurement — deleting a field's probe still reported it safe — so it now requires a probe to have
   actually run, and a field with NO probe is a hard failure. The unbound pin keyed on free text, so
@@ -720,7 +723,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ### Removed
 - **`Chain.WitnessValidateV5`, the pre-structure floor-box scaffold — the box now has exactly ONE
   door, `(*Box).Validate`.** Deleted on the blind PE's simplicity ruling
-  (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-d0-cold-auditor-3539b2a-2026-09-09.md`),
+  (`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-d0-cold-auditor-3539b2a-2026-09-09.md`),
   as a scope decision taken by the coordinator: it is OFF the ratified owner-call-2 list and is
   recorded as such rather than folded in silently. The argument is correctness, not tidiness. The
   scaffold held no head record, so it could not key its `#535` recovery posture on anything it
@@ -981,8 +984,8 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   non-vacuity, derived call cover, three-body digest, reverse cover), G-D13 per-row node-body digests (28), the nine-regime
   v4/v5 PARITY ORACLE (verdict + sentinel parity per mirrored stage), honest twins on all 26 gates, the two-sided
   pruned-carrier gate, the `m = 1` right-spine control. Blind PE ruling (a 245-case differential against the pre-change
-  node, 13 ablations): `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-floorbox-structure-round-1a-869399e-2026-09-08.md`;
-  Researcher CERTIFIED: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/FLOORBOX-STRUCTURE-ROUND-1A-COMPOSED-DIFF-869399e-RESEARCH-CERTIFICATION-2026-09-08.md`.
+  node, 13 ablations): `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-floorbox-structure-round-1a-869399e-2026-09-08.md`;
+  Researcher CERTIFIED: `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/FLOORBOX-STRUCTURE-ROUND-1A-COMPOSED-DIFF-869399e-RESEARCH-CERTIFICATION-2026-09-08.md`.
   Build record: `docs/thinking/2026-09-07-floorbox-structure-round-1a-build.md`. Round 1B (the box-entry closers) follows.
 - **Cloud field test: the R2.9 paid delivery lane is on the graded sheet (`flow_delivery_lane`, rows
   `13-delivery-lane` / `13b-delivery-settlement`).** `topology.py` arms `-accept-delivery-receipts
@@ -998,7 +1001,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   grades the wire settlement at the stamp raise with no harness change (`delivery receipt banked` + the idle
   `delivery session closed`, both `debug.log` lines — `n.logf` output never reaches journald). Substrate noise
   GAPs, never FAILs; the client call is retried before it is classified. Blind PE ruling
-  `silt-reviews/principle-engineer/RULING-cloudtest-delivery-lane-flow-34114c4-2026-09-07.md` (BLOCK on the
+  `silt-agent-memory/principal-engineer/reviews/RULING-cloudtest-delivery-lane-flow-34114c4-2026-09-07.md` (BLOCK on the
   first cut: the banner read through the 800-line journal window and every server-side marker read from the
   wrong surface) folded in full. LOCAL proof: the new e2e `TestPaidDeliveryLaneArmsInTheHarnessPosture` (the
   harness's exact objective-path argv, epoch clock DERIVED, the real CLI, the refusal named, nothing banked)
@@ -1082,7 +1085,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   copy holds the original bytes). `TestSaveLeavesNoTempAndDecodes` is a shape pin only; the fsync has no runtime
   oracle. The two e2e gates skip under `-short`, and the multi-process e2e CI job is NOT a required check — making it
   required is an admin action owed (PE re-ruling residual). Blind PE ruling:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-b8-558-chainstore-refuse-to-start-2026-09-07.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-b8-558-chainstore-refuse-to-start-2026-09-07.md`.
   Note for the owner: the rule refuses on ANY structural-verification failure at replay, not only a torn tail — a
   strictly larger surface than S3's sentence (kept, per the PE: a stale-prefix restart holding a frozen seat is a
   safety problem, #560); the reload path is now start-blocking, which matters at the Lane D stamp raise.
@@ -1187,7 +1190,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   network exists to fork).** `chain.Block.Hash` covers `entry.ManifestChunks`, so the framing alone moves the height-0
   hash from `7becf754…32ce` to `f428d0a8…0951` — a fresh node and a node with a persisted pre-4′ chain disagree at
   height 0 with no refusal and no log line (blind PE ruling
-  `silt-reviews/principle-engineer/RULING-default-chunk-256k-manifest-framing-b365f10-2026-09-07.md`, item 1,
+  `silt-agent-memory/principal-engineer/reviews/RULING-default-chunk-256k-manifest-framing-b365f10-2026-09-07.md`, item 1,
   measured; the PE recommended pinning the old frame, the owner chose the new genesis). Every development chain
   built before this commit is stale: wipe stores/chains on upgrade. `TestGenesisBlockHashIsPinned` holds the new
   hash, the root and the manifest chunk ID as literals, so from here height-0 identity moves only by an explicit,
@@ -1205,7 +1208,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   Deliberation: `docs/thinking/2026-09-07-default-chunk-256k-manifest-framing.md`.
 - **R2.9: the delivery session's unsettled remainder is a DEPOSIT released at anchor expiry, not a burn
   (D-R2.9-NODE-HALF-CALLS call 1, amended 1′; certification
-  `silt-reviews/research/research-outcome/R2.9-session-remainder-refund-and-live-anchor-cap-RESEARCH-CERTIFICATION-2026-09-06.md`).**
+  `silt-agent-memory/researcher/reviews/research-outcome/R2.9-session-remainder-refund-and-live-anchor-cap-RESEARCH-CERTIFICATION-2026-09-06.md`).**
   `CloseDeliverySession(fetcher, remaining, maxAnchorEpoch)` books ONE pending record `{durable fetcher, amount,
   releaseEpoch = maxAnchorEpoch + W + 1}` in the same ledger call that accounts the close; release rides the
   existing at-most-once-per-epoch sweep against the WATERMARK (and `ReleaseDueRefunds` from the node's session
@@ -1268,7 +1271,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   retirement. The blind PE's blocker — under settle-monotone the payer chooses the delta and a per-settlement
   skim floor ⌊value/8⌋ let a face settled in deltas ≤ 7 fund the object escrow with NOTHING while the serve-time
   skim was clawed back (net −21 at 64 MiB) — is closed as certified
-  (`silt-reviews/research/research-outcome/R2.9-settlement-skim-under-fetcher-chosen-deltas-RESEARCH-CERTIFICATION-2026-09-06.md`):
+  (`silt-agent-memory/researcher/reviews/research-outcome/R2.9-settlement-skim-under-fetcher-chosen-deltas-RESEARCH-CERTIFICATION-2026-09-06.md`):
   the skim floors on the SESSION's cumulative settled value, `⌊(prior+value)/8⌋ − ⌊prior/8⌋`, with `prior` the
   session's own counter passed to `SettleDelivery`; no remainder is stored; the ratified 1/8 does not move (the
   G-λ-7 discipline applied to the witnessed leg). Gates G-SKIM-1…6 (`TestSkimIsExactOverTheSessionNotPerSettlement`,
@@ -1301,7 +1304,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   on a graded run, `T_b` and the resident cost measured — is owed to the Tester), `TestDeliveryRemainderIsNeverRoutedToEscrow` (B-6),
   `TestPaidSerialCapLiteralsMatchTheirSources`, `TestRemainderIsAccountedOnceAtCloseNotPerSettlement` (G-λ-8-6), and the
   Invariant-A press (B-14); six ablations run RED (the blind PE ran ten). Blind PE MERGE-AFTER
-  (`silt-reviews/principle-engineer/RULING-R2.9-ledger-half-45178ff-2026-09-06.md`) folded in: the cap text
+  (`silt-agent-memory/principal-engineer/reviews/RULING-R2.9-ledger-half-45178ff-2026-09-06.md`) folded in: the cap text
   re-stated as the φ = 1 corner, the settlement godoc re-stated as settle-monotone, per-lane guard counters, the
   payout in WHOLE increments (`min(count, ⌊budget/p⌋)·p`, exact at any `p`), the text mismatches. The NODE half (session open, receipt v3 with a cumulative
   count, the idle reaper, the fetch-path integration, the e2e) is GATED on an owner call: the certification
@@ -1465,9 +1468,9 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   lever on a scale-invariant exposure), `R-BB-SIBLING-AGGREGATES`, the untokened `/api/library`
   link key (flagged, pre-existing), and the 134×-short provisional `grant/r`; the 5-second interval,
   the build tag and the three-prong reading are marked ratified. Sources:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-DONT3-READING-AND-BOND-STAMP-TUPLE-RESEARCH-CERTIFICATION-2026-09-05.md` (Q2, G-BB-28)
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R2.9a-DONT3-READING-AND-BOND-STAMP-TUPLE-RESEARCH-CERTIFICATION-2026-09-05.md` (Q2, G-BB-28)
   and
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-instrument-necessity-geometry-bound-and-tail-merging-RESEARCH-CERTIFICATION-2026-09-05.md`
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R2.9a-instrument-necessity-geometry-bound-and-tail-merging-RESEARCH-CERTIFICATION-2026-09-05.md`
   (Q1, G-BB-22, G-BB-23). PACE record: `docs/thinking/2026-09-05-r29a-residuals.md`.
 - **R2.9a — the F2 gate on the status surface did not close F2: the pooled `selfFunding` sum and an
   uncached sibling endpoint republished the withheld counter at the reader's own rate. Both are
@@ -1522,7 +1525,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `TestR29aEconomySelfIsServedFromTheStatusSnapshot` (`cmd/silt`, untagged, run in both builds), and
   a live-daemon arm in `TestEconomyEndToEndOnLiveDaemon` (`e2e`), the tier the review found it at.
   `TestEconomySelfIsReadOnlyAndLocalExact` now makes the untokened request its comment described.
-  Source: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/2026-09-05-RULING-r2.9a-status-surface-cache-stamp-and-f2-gate.md`.
+  Source: `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/2026-09-05-RULING-r2.9a-status-surface-cache-stamp-and-f2-gate.md`.
 - **R2.9a — the preserved `firstSeenTick` writer is a WALL CLOCK, not a request counter; four texts
   said the opposite and are corrected, and the residual they denied is now filed as
   `R-BB-BOND-STAMP-TUPLE`.** A blind principal-engineer review measured this on two real bonded
@@ -1965,9 +1968,9 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `signedBlock` stays era-1-gated (O3-R13 follow-on, not folded into `verifyAtt`). **Reopening
   condition (the only one):** a shipping posture in which `FinalizedHeight()` lags `Head()` — a code
   change to that function, not a config posture. Sources:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/O3-Direction-T-I5-restatement-and-divergence-RESEARCH-CERTIFICATION-2026-09-04.md`,
-  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-O3-fork-choice-weight-R-vs-T-2026-09-03.md`,
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/O3-fork-choice-weight-R-vs-T-RESEARCH-RECOMMENDATION-2026-09-03.md`;
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/O3-Direction-T-I5-restatement-and-divergence-RESEARCH-CERTIFICATION-2026-09-04.md`,
+  `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-O3-fork-choice-weight-R-vs-T-2026-09-03.md`,
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/O3-fork-choice-weight-R-vs-T-RESEARCH-RECOMMENDATION-2026-09-03.md`;
   deliberation `docs/thinking/2026-09-04-o3-direction-t-design.md`.
 - **O3-T gate hardening (test/docs-only; PE RULING-O3-direction-T-build-fa895f5 conditions 1-3).**
   `TestO3T_HeavierReadsOnlyHeightAndHeadHash` is now ALIAS-AWARE: parameters resolved from the
@@ -2072,7 +2075,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   cloudtest shadow run (ROADMAP *Decisions owed*). The `-domain` label stays for the C2 metric and
   `preferFreshDomain`; its legacy per-bucket cap remains wired (inert against an adversary).
   Research-CERTIFIED (the RELAYED class and the reserve):
-  `silt-reviews/research/research-outcome/R4.3b-relayed-class-and-observed-address-keying-RESEARCH-CERTIFICATION-2026-09-04.md`.
+  `silt-agent-memory/researcher/reviews/research-outcome/R4.3b-relayed-class-and-observed-address-keying-RESEARCH-CERTIFICATION-2026-09-04.md`.
 - **R2.13b — the publish-credit double-spend guard (`creditSpent`) is now DURABLE; an issuer
   restart can no longer re-open every held credit for a second spend (PE finding F-4, confirmed
   by reproduction 2026-09-04).** Mechanism: `creditSpent` was process memory, while a publish
@@ -2099,7 +2102,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `TestF4_UnloadedCreditStoreRefusesCreditBearingRequests`, `TestF4_AppendLandsBeforeSignBlinded`
   (`core/node`), and the cmd/silt source gate
   `TestDaemonWiresTheCreditSpentStoreBesideThePaidSerialStore`. Ruling:
-  `silt-reviews/principle-engineer/RULING-F4-creditSpent-durability-and-F3-fee-constancy-2026-09-04.md`. **PE review (`RULING-R2.13b-creditspent-build-fa9f988-2026-09-04.md`, MERGE-WITH-CONDITIONS,
+  `silt-agent-memory/principal-engineer/reviews/RULING-F4-creditSpent-durability-and-F3-fee-constancy-2026-09-04.md`. **PE review (`RULING-R2.13b-creditspent-build-fa9f988-2026-09-04.md`, MERGE-WITH-CONDITIONS,
   landed):** the three guard-state refusals (full / store / unloaded) are now WARN-logged and counted on the
   ISSUER (they collapsed to a silent `OK=false`); the file is BOUND to the publish key it was written under
   (`Server` = SHA-256 of the issuer key; a foreign file refuses the boot by name), because **the only
@@ -2120,7 +2123,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   (the earlier MG-C, briefly on a branch) was REFUTED by the bootstrap fixtures. Gates G1–G10
   (`core/chain/genesis_atts_seating_test.go`, `core/genesis/genesis_atts_test.go`): G1–G6 RED before;
   strip-all and refuse-invalid each redden their own set. Certification:
-  `silt-reviews/research/research-outcome/genesis-atts-seating-rule-RESEARCH-CERTIFICATION-2026-09-04.md`.
+  `silt-agent-memory/researcher/reviews/research-outcome/genesis-atts-seating-rule-RESEARCH-CERTIFICATION-2026-09-04.md`.
   Also recorded: O4's numbering RATIFIED as widened I5 (no I6).
 
 - **R2.14 — the relay-lane prepayment ANCHOR (the R0.7 fix; R2.9's prerequisite): the PayWord
@@ -2180,8 +2183,8 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   (the delivery lane's D3 channel, narrower yield); R-RELAY-WASH-ZERO-LOSS (collusion is a WASH —
   no v1 relay skim; owner call before R2.4); F-3 R-FEE-CONSTANCY; R-ANCHOR-REPRESENT-LINK;
   R-DARK-UNTIL-ERA4 (a v5 `IssuerKeyReg` is needed; a paid relay must be bonded). Cert:
-  `silt-reviews/research/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md`;
-  advisory: `silt-reviews/crypto-specialist/ADVISORY-R2.14-relay-prepayment-anchor-build-2026-09-04.md`;
+  `silt-agent-memory/researcher/reviews/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md`;
+  advisory: `silt-agent-memory/crypto-specialist/reviews/ADVISORY-R2.14-relay-prepayment-anchor-build-2026-09-04.md`;
   record: `docs/thinking/2026-09-04-r2.14-relay-prepayment-anchor-design.md`. `core/blindtoken/blindtoken.go`,
   `core/demand/keyset.go`, `ports/ports.go`, `core/credit/relayanchor.go`, `core/credit/relay.go`,
   `core/credit/delivery.go`, `core/relaypay/wire.go`, `core/node/relayrole.go`,
@@ -2243,7 +2246,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `TestR43b_OPENBREAK_LabelledSybilsDefeatTheDomainCap` (asserts the open residual; flips when R4.3b
   lands), `TestR43a_HelloWritesOnlyTheSendersOwnDomain` (the poisoning boundary that held); truthful
   doc comments and flag help naming the hole. Sources: the R4.2 direction certification §3;
-  `silt-reviews/red-team/RED-TEAM-R4.3b-dht-eclipse-keying-2026-09-03.md`; the four R4.3b seat
+  `silt-agent-memory/red-team/reviews/RED-TEAM-R4.3b-dht-eclipse-keying-2026-09-03.md`; the four R4.3b seat
   opinions cited in ROADMAP R4.3b.
 - **R0.7 interim — the paid relay lane pays 0 until the R2.14 prepayment anchor; RT-RELAY-3 walk
   budget enforced; relay-lane doc truth.** The break (RT-RELAY-1, behind `--accept-relay-payments`,
@@ -2267,9 +2270,9 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `TestRelayRedeemCannotExceedPaidInBudget`, `TestRelayWashLoopIsAWashNeverAGain`,
   `TestRelayFullSessionConservedSettlement`, `TestNoDoubleSettleReaperAndPump`, e2e
   `TestPaidRelaySessionEndToEnd` (balance unchanged). Cert:
-  `silt-reviews/research/research-outcome/RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`
+  `silt-agent-memory/researcher/reviews/research-outcome/RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`
   §2, §8, §9 step 1; break report
-  `silt-reviews/red-team/RED-TEAM-relay-lane-session-grant-and-byte-price-2026-09-03.md`; deliberation
+  `silt-agent-memory/red-team/reviews/RED-TEAM-relay-lane-session-grant-and-byte-price-2026-09-03.md`; deliberation
   `docs/thinking/2026-09-03-r0.7-relay-interim-design.md`. R2.14 is the fix.
 - **Gate tail — three owed gates.** (1) **R-S5-STRING-REGISTRY:** `cmd/silt/observable_contract.go`
   registers the 28 announced operator literals (S5 contracts) with their emitting file, dependant and
@@ -2327,13 +2330,13 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `TestOverCapProofDoesNotSilenceLaterProofsByTheSameCulprit` caught and closed a defect the
   F-1 fix had introduced (the once-per-culprit local latch silenced later small proofs after a
   fat one); the over-cap WARN is pinned as an S5 line (V-6):
-  `silt-reviews/research/research-outcome/R0.6-SlashesBytesCap-value-security-face-DELTA-CERTIFICATION-2026-09-03.md`.
+  `silt-agent-memory/researcher/reviews/research-outcome/R0.6-SlashesBytesCap-value-security-face-DELTA-CERTIFICATION-2026-09-03.md`.
   PE: MERGE-WITH-CONDITIONS (F-1, F-4 landed;
   F-2 the cap value is also the eviction-escape threshold — routed to the Researcher before
   the owner ratifies the number; F-5 owed:
-  `silt-reviews/principle-engineer/RULING-R0.6-i5-evidence-recompute-3131d5a-2026-09-03.md`).
+  `silt-agent-memory/principal-engineer/reviews/RULING-R0.6-i5-evidence-recompute-3131d5a-2026-09-03.md`).
   Certification:
-  `silt-reviews/research/research-outcome/I5-cross-height-pruned-slash-forgery-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`;
+  `silt-agent-memory/researcher/reviews/research-outcome/I5-cross-height-pruned-slash-forgery-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`;
   deliberation `docs/thinking/2026-09-03-r0.6-i5-evidence-recompute-design.md`.
 - **R0.4b C3 merge-gate close — the CI job that did not parse, and the C-3 hardness checks on an
   unauthenticated hot path.** Inputs: the delta certification
@@ -2508,7 +2511,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `TestR213_BenignCompactionFailureIsRecordedNotDiscarded`. Also corrects the ROADMAP FP-1
   parenthetical (the mirror crash window is not a pure under-pay, does not self-heal, and has a
   shipped gate — ruling §4). Ruling:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-ledger-durability-family-FP2-R2.13-R2.10-2026-09-03.md`
+  `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-ledger-durability-family-FP2-R2.13-R2.10-2026-09-03.md`
   §1 / §6. Deliberation: `docs/thinking/2026-09-03-r2.13-compact-orphan-design.md`.
 
 - **Three false claims corrected against the shipped tree (PE H-4, §4, §6).**
@@ -3441,7 +3444,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   committed-root gates (RED-on-main → green-after, each ablated red-then-green — every anchor is
   load-bearing) plus a reflection-pinned coverage meta-assertion over the three witness carrier structs
   (with a teeth companion). Design: `docs/thinking/2026-09-01-floorbox-witness-soundness-fix-design.md`
-  + `...-BUILD.md`; PE pins: `silt-reviews/principle-engineer/RULING-floorbox-R1.2-invariant-pins-2026-09-01.md`.
+  + `...-BUILD.md`; PE pins: `silt-agent-memory/principal-engineer/reviews/RULING-floorbox-R1.2-invariant-pins-2026-09-01.md`.
 - **v5 trustless floor box — R1.2 witness-soundness: three gate-coverage gap closures (test-only)**
   (`core/chain/floorbox_recompute_adversarialroot_gaps_v5_test.go`). Three gaps in the R1.2
   gate set are independently closed so R1.4 certification rests on a complete foundation:
@@ -3950,7 +3953,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     keystone probes (noted in-code).
   - **The accept-core recompute is ROUTED TO THE RESEARCH GATE, not guessed.** The bounded
     witnessable recompute that would decide Accept/Reject does not yet exist (PE ruling
-    `silt-reviews/principle-engineer/RULING-lane1-partA-readset-v5-producer-2026-08-30.md`,
+    `silt-agent-memory/principal-engineer/reviews/RULING-lane1-partA-readset-v5-producer-2026-08-30.md`,
     premise 1: "a DIFFERENT, bounded witnessable recompute that does not yet exist in the
     tree (Part B)"). Building it soundly is blocked on two verified obstructions: `apply()`
     iterates WHOLE committed maps (the `bondRegHeight` TTL sweep, `chain.go:3272`) the
@@ -3977,8 +3980,8 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `[]statehash.ReadEntry`: the committed-state keys the v5 witnessable recompute reads to
   trustlessly re-derive the post-state root. Now the COMPLETE 23-keyspace read-set per the
   amended cert
-  (`silt-reviews/research/research-outcome/era4-witness-floor-box-readset-v5-AMENDED-RESEARCH-CERTIFICATION-2026-08-30.md`,
-  PE ruling `silt-reviews/principle-engineer/RULING-lane1-partA-readset-v5-producer-2026-08-30.md`).
+  (`silt-agent-memory/researcher/reviews/research-outcome/era4-witness-floor-box-readset-v5-AMENDED-RESEARCH-CERTIFICATION-2026-08-30.md`,
+  PE ruling `silt-agent-memory/principal-engineer/reviews/RULING-lane1-partA-readset-v5-producer-2026-08-30.md`).
   - **The completeness gap, closed.** The prior build (`dbeccf1`, SHIP-WITH-FIXES) omitted
     the attestation-loop reads (per attester: `slashed[id]` + the qualification-set
     membership + the `validatorsSeen[id]` write-target), the maturity-latch reads
@@ -4046,7 +4049,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   Policy: **D-POD-RELAY-COEXIST** — paid relay is ADDITIVE (Option B, RATIFIED
   2026-08-30); free swarm relay is UNCHANGED and shares the same transport caps
   (`docs/thinking/2026-08-30-pod-7.3-batch3-daemon-binding-design.md`; cert
-  `silt-reviews/research/research-outcome/PoD-7.3-free-vs-paid-relay-coexistence-RESEARCH-CERTIFICATION-2026-08-30.md`).
+  `silt-agent-memory/researcher/reviews/research-outcome/PoD-7.3-free-vs-paid-relay-coexistence-RESEARCH-CERTIFICATION-2026-08-30.md`).
   - **The paid marker.** One optional `Paid uint64` field on the relay `ctrl` connect
     frame carrying the node's session handle (`omitempty`; zero = free, byte-for-byte
     today's path). A nonzero marker routes the connect to the paid splice; an old
@@ -4125,7 +4128,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   directive-trust preserved; C-3 corpus-poise caveat; C-4 always-emit; C-5 ablation suite; C-6
   genesis-pinned config; C-7 prefix-safe tags), and the v5 format freeze stays DEFERRED until built
   and model-checked. Cites the research certification, the PE cert cross-check, and the read-set
-  enumeration (all 2026-08-31, `silt-reviews/`).
+  enumeration (all 2026-08-31, `silt-agent-memory/`).
 - **Map the third-operator committed-settlement design space (DEFINITION only — the next PoD
   frontier)** (`docs/thinking/2026-08-30-third-operator-committed-settlement-options.md`,
   2026-08-30). A design-options strawman for a GATED economic mechanism: cross-operator
@@ -4180,8 +4183,8 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   model-check obligations + the surfaces needing Research certification and owner ratification
   (this is a gated v5 committed-format change). Cites the CRUX certification and the PE
   cross-check
-  (`silt-reviews/research/research-outcome/era4-v5-floorbox-bounded-recompute-CRUX-RESEARCH-CERTIFICATION-2026-08-30.md`,
-  `silt-reviews/principle-engineer/RULING-era4-v5-floorbox-recompute-crux-CROSS-CHECK-2026-08-30.md`).
+  (`silt-agent-memory/researcher/reviews/research-outcome/era4-v5-floorbox-bounded-recompute-CRUX-RESEARCH-CERTIFICATION-2026-08-30.md`,
+  `silt-agent-memory/principal-engineer/reviews/RULING-era4-v5-floorbox-recompute-crux-CROSS-CHECK-2026-08-30.md`).
 - **Record the owner-ratified lane-1 (trustless floor box, increment 3) decisions**
   (`docs/decisions.md`, 2026-08-30). Decision record only — no code, consensus, economic,
   or security content changed. Adds one dated entry under the #600 floor-box thread
@@ -4197,7 +4200,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   disposition is one local-only `-ws-checkpoint` policy flag (default cold-auditor /
   stall-loud; live-follower opt-in), closure gated on the #603 `bonded`/`epochSet` keystone
   probes. Cites the amended certification
-  (`silt-reviews/research/research-outcome/era4-witness-floor-box-readset-v5-AMENDED-RESEARCH-CERTIFICATION-2026-08-30.md`)
+  (`silt-agent-memory/researcher/reviews/research-outcome/era4-witness-floor-box-readset-v5-AMENDED-RESEARCH-CERTIFICATION-2026-08-30.md`)
   and the two #535 reconciliation docs.
 - **True-up: era-3 format FROZEN + era-4 spine BUILT, roadmap/design drift corrected**
   (`ROADMAP.md`, `docs/design/block-format-by-era.md`, `docs/decisions.md`, 2026-08-30).
@@ -4752,7 +4755,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   tally-swing fixture), and `regVersion`/`bondDomain`/`gateLockedIn`/`gateHeight` moved
   out of `orderVacuous`. Negative control `TestSameRootSameIDRenewAdmitted` stays green.
   Certification:
-  `silt-reviews/research/research-outcome/sameid-twoversion-intrablock-bondreg-contention-RESEARCH-CERTIFICATION-2026-08-28.md`.
+  `silt-agent-memory/researcher/reviews/research-outcome/sameid-twoversion-intrablock-bondreg-contention-RESEARCH-CERTIFICATION-2026-08-28.md`.
   Deliberation: `docs/thinking/2026-08-28-sameid-twoversion-canonicalize-apply.md`.
 - **CONSENSUS-RULE: reject a block carrying two bond registrations from distinct
   identities on the same root** (2026-08-28; certified + human-ratified). This is a
@@ -4775,7 +4778,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   orderings; post-fix it is rejected in both orderings; a negative control confirms
   same-ID renew/resize is still admitted. Closes residual R2 of the certification.
   Research certification: `same-root-intrablock-bondreg-contention-RESEARCH-CERTIFICATION-2026-08-28`
-  (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/same-root-intrablock-bondreg-contention-RESEARCH-CERTIFICATION-2026-08-28.md`);
+  (`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/same-root-intrablock-bondreg-contention-RESEARCH-CERTIFICATION-2026-08-28.md`);
   PE ruling `RULING-618-bond-registration-order-independence-2026-08-28`. The prior
   #618 `TestSharedRootDeniedViaValidatedBlock` was updated: the validated path now
   REJECTS the shared-root block rather than admitting it and deduping in `apply()` —
@@ -4957,7 +4960,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   consensus-rule change to genesis validity (research-gated); see
   `docs/thinking/2026-08-28-genesis-sameroot-residual.md` option (b). PE ruling
   `RULING-618-updated-sameroot-dedup-fix-2026-08-28`
-  (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-618-updated-sameroot-dedup-fix-2026-08-28.md`),
+  (`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-618-updated-sameroot-dedup-fix-2026-08-28.md`),
   residual R-G.
 - **Order-independence coverage for the mature-epoch family — the `orderVacuous` debt,
   next increment** (2026-08-28). The order-independence model-check oracle
@@ -5064,7 +5067,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   order-independence oracle reported "16/16 committedSet fields identical" while
   its fixture left `spent` and `slashed` empty, so two of the sixteen comparisons
   were `DeepEqual(∅, ∅)` — vacuous (PE ruling
-  `silt-reviews/.../RULING-keystone-spent-slashed-classification-2026-08-28.md`).
+  `silt-agent-memory/.../RULING-keystone-spent-slashed-classification-2026-08-28.md`).
   `twoOrderings` now commits two blind-signed publish-token spends and two
   committed equivocation slashes across two opposite orderings, so both fields are
   NON-EMPTY and byte-identical across order. A new fixture-side guard fails the
@@ -5099,7 +5102,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `docs/thinking/2026-08-27-coexistence-balloon.md`.
 - **λ_H arrival-rate instrumentation — the one measurement the CT-1 conditional
   theorem is owed** (2026-08-27). The C-1 lift to CERTIFIED-CONDITIONAL
-  (`silt-reviews/.../C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`)
+  (`silt-agent-memory/.../C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`)
   proves maturity precedes capture under an honest-arrival floor `λ_H > 0`
   (measured), an adversary budget `W_A` (declared), and P2 (`M_req > W_A/(2·w_min)`).
   §6 names exactly one input silt did not hold in code: the **live honest-arrival
@@ -5141,9 +5144,9 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `ErrNoQuorum: 0 qualified` with `seen=0` (RED) — so the probe rejects a
   membership-flip masquerading as a weight-flip. This is the load-bearing weight
   claim the era-3 committed-root format may now freeze on. Certified by C-7
-  (`../silt-reviews/research/research-outcome/C7-witness-based-floor-box-validation-RESEARCH-CERTIFICATION-2026-08-27.md`,
+  (`~/.claude/silt-agent-memory/researcher/reviews/research-outcome/C7-witness-based-floor-box-validation-RESEARCH-CERTIFICATION-2026-08-27.md`,
   the witness path needs per-field load-bearing state) and by the blind PE ruling's
-  fix 2 (`../silt-reviews/principle-engineer/RULING-keystone-probes-bonded-epochset-2026-08-27.md`).
+  fix 2 (`~/.claude/silt-agent-memory/principal-engineer/reviews/RULING-keystone-probes-bonded-epochset-2026-08-27.md`).
   Deliberation: `docs/thinking/2026-08-27-keystone-weight-discriminator-probe.md`.
 - **Keystone leave-one-out — `bonded` and `epochSet` MEMBERSHIP proven
   load-bearing** (2026-08-27, PE-gated on the era-3 format freeze). The
@@ -5171,7 +5174,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   floor but below ⅔ of frozen weight → `ErrNoQuorumWeight`) is still owed before
   the era-3 format freezes. Do not freeze era-3 on the weight claim until #603
   lands. Blind-PE-reviewed
-  (`../silt-reviews/principle-engineer/RULING-keystone-probes-bonded-epochset-2026-08-27.md`),
+  (`~/.claude/silt-agent-memory/principal-engineer/reviews/RULING-keystone-probes-bonded-epochset-2026-08-27.md`),
   Tester-confirmed injected RED. Deliberation:
   `docs/thinking/2026-08-27-keystone-probes-bonded-epochset.md`.
 - **The disk-backed node-store spike — a batching bbolt `MapStore`, proven
@@ -5415,7 +5418,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   compensation after its consult certifies the scope condition, (3) freezes into
   the keystone field set (live ledger behavior unchanged for now).
 - **Owner-knob guards + the relay dispute gate answered** (2026-08-26, per
-  `silt-reviews/principle-engineer/RULING-PoD-keystone-owner-knobs-2026-08-26.md`,
+  `silt-agent-memory/principal-engineer/reviews/RULING-PoD-keystone-owner-knobs-2026-08-26.md`,
   which concurs on all three knobs) — two regression locks the PE prescribed.
   `TestPaidBountyIsNotRecoverableBySupersede`: escrow skim-routing is sound
   *because* the supersede reversal floors at the remaining reserve, so a bounty
@@ -5540,9 +5543,9 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   conclusive OOM. `docs/VISION.md` marks the witness floor RATIFIED and adds the decentralized-liveness
   posture; `ROADMAP.md` re-sequences the era-3 format freeze to critical-path (witness is vacuous
   until the `Block` commits both roots). PE ruling
-  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-600-floor-box-direction-2026-08-28.md`;
+  `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-600-floor-box-direction-2026-08-28.md`;
   research note
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/600-floor-box-direction-post-coexistence-RESEARCH-NOTE-2026-08-28.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/600-floor-box-direction-post-coexistence-RESEARCH-NOTE-2026-08-28.md`.
 - **VISION + canon honesty pass — C-1 lift to a conditional theorem, C-5 operator-economics
   true-up, and C-2/C-3 register fixes** (2026-08-27). One coherent pass re-anchoring the north
   star to ratified canon. **C-1 (maturity before capture)** lifts GATED → **CERTIFIED-CONDITIONAL**
@@ -5563,8 +5566,8 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   now carries m0.md's own `C_honest ≈ D`-today and declaration-cheap-A-axis qualifiers
   (target-not-yet-live). Distinguishes factual errors (C-5 G1 — fixed) from register drift (C-1,
   C-2/C-3 — qualified); VISION stays a north star, not a status report. Certifications:
-  `silt-reviews/research/research-outcome/C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`,
-  `silt-reviews/research/research-outcome/C5-honest-operator-economics-composition-RESEARCH-CERTIFICATION-2026-08-27.md`.
+  `silt-agent-memory/researcher/reviews/research-outcome/C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`,
+  `silt-agent-memory/researcher/reviews/research-outcome/C5-honest-operator-economics-composition-RESEARCH-CERTIFICATION-2026-08-27.md`.
 - **Canon true-up recording two ratified research certifications** (2026-08-27). C-7
   (witness-based floor-box validation) is CERTIFIED sound + complete: soundness no longer
   blocks the #600 direction, and the era-3 format now carries a HARD freeze prerequisite —
@@ -5578,8 +5581,8 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `docs/decisions.md` entries; C-7 residuals added to `docs/design/owned-residuals.md` (E6)
   and the C-1 R6 doc-register residual closed (E3); the #183 red-team brief sharpened (R1 is
   the live seam, R2 and R3-safety are CLOSED). Certifications:
-  `silt-reviews/research/research-outcome/C7-witness-based-floor-box-validation-RESEARCH-CERTIFICATION-2026-08-27.md`,
-  `silt-reviews/research/research-outcome/C1-maturity-before-capture-RESEARCH-CERTIFICATION-2026-08-27.md`.
+  `silt-agent-memory/researcher/reviews/research-outcome/C7-witness-based-floor-box-validation-RESEARCH-CERTIFICATION-2026-08-27.md`,
+  `silt-agent-memory/researcher/reviews/research-outcome/C1-maturity-before-capture-RESEARCH-CERTIFICATION-2026-08-27.md`.
 
 ### Fixed
 - **#514 ROOT CAUSE — the repair-bounty flake: the premise killed BEFORE DHT
@@ -5716,7 +5719,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `RoundCatchupMet` is weight-based, sybil head-count cannot dilute convergence, so the h68
   stall is not a synchronizer-logic defect but a real-WAN wall-clock timer-skew + scale
   dimension the untimed model cannot reproduce. Feeds the research consult
-  (`silt-reviews/research/549-h68-view-synchronization-stall-CONSULT.md`); a RED here would
+  (`silt-agent-memory/researcher/reviews/549-h68-view-synchronization-stall-CONSULT.md`); a RED here would
   be the home for any logic fix.
 - **#183 red-team coverage caveats C-1 + C-2 closed — I5/I2 exhaustive oracles + disk-backed
   I2 durability** (2026-08-24) — The external red-team verdict (M0 HOLDS) noted two harness
@@ -5827,7 +5830,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   round, not the smallest of the union** (2026-08-24, research-certified) — The DEEP-run
   Phase-3 exit gate stalled at h68 for ~26 minutes (r1-congestion, no prepare-QC) after the
   drill sequence mass-restarted 8 of 12 seats. Root cause (certification
-  `silt-reviews/research/research-outcome/549-h68-view-synchronization-stall-RESEARCH-CERTIFICATION-2026-08-24.md`):
+  `silt-agent-memory/researcher/reviews/research-outcome/549-h68-view-synchronization-stall-RESEARCH-CERTIFICATION-2026-08-24.md`):
   `maybeCatchUpRound` unioned round-change senders across ALL rounds above the current one,
   checked the weight threshold on that union, then jumped to the SMALLEST such round — a round
   that may carry only a fraction of the union's weight (structurally unable to form a QC).
@@ -5877,7 +5880,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   its root is the #506 storm and stays refused (flood protection intact). This is layer (4) of the
   certified recovery stack; (2) boundary-local re-basing and (3) the weak-subjectivity liveness
   escape are the remaining layers. Cert:
-  `silt-reviews/research/research-outcome/535-epoch-boundary-liveness-cliff-RESEARCH-CERTIFICATION-2026-08-23.md`.
+  `silt-agent-memory/researcher/reviews/research-outcome/535-epoch-boundary-liveness-cliff-RESEARCH-CERTIFICATION-2026-08-23.md`.
 - **#536 cloudtest: the escape fingerprint read round-changes from the wrong channel →
   a manufactured WEDGE FAIL** (2026-08-23) — `ft_escape_progress` counted `round-change`
   from journald (`jlog_since`), but that structured `n.logf` line is written to
@@ -5904,7 +5907,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   the field arithmetic exactly (a 9-of-12 live coalition at 324 MiB refused; a 10-of-12 control
   at 388 MiB commits). This is a consensus-rule question (whether the frozen denominator should
   exclude provably-lapsed members) — research-gated, consult filed at
-  `silt-reviews/research/535-epoch-boundary-liveness-cliff-CONSULT.md`; **no unilateral fix**.
+  `silt-agent-memory/researcher/reviews/535-epoch-boundary-liveness-cliff-CONSULT.md`; **no unilateral fix**.
   Attribution: [docs/thinking/2026-08-23-535-boundary-wedge-attribution.md](docs/thinking/2026-08-23-535-boundary-wedge-attribution.md).
 - **The DEEP=1 exit-gate flow + chain-status prune visibility (ROADMAP Phase 3)**
   (2026-08-23) — `flow_deep_heights` (opt-in `DEEP=1`, `DEEP_TARGET=128` default) drives
@@ -5928,7 +5931,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   multiproof union floor saves ~6% of the total; verify CPU is 1.8 ms/answer (batch
   verification not a cost center). The 10x levers (`DefaultLabelSamples`, `BlockSize`)
   are soundness parameters -> research consult filed
-  (`silt-reviews/research/299-label-samples-answer-size-CONSULT.md`); Phase 3's
+  (`silt-agent-memory/researcher/reviews/299-label-samples-answer-size-CONSULT.md`); Phase 3's
   multiproof/batch-verify tiers are deliberately NOT built on this evidence. Deliberation:
   [docs/thinking/2026-08-23-299-answer-size-evidence.md](docs/thinking/2026-08-23-299-answer-size-evidence.md).
 
@@ -6346,7 +6349,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   deliberately untouched (Q2 certified contraindicated). The structural close against an
   adversarial re-registrant — a per-identity reg-inclusion VALIDITY rule — is #506
   (version-gated). Certification:
-  `silt-reviews/research/research-outcome/503-bond-renewal-storm-RESEARCH-CERTIFICATION-2026-08-21.md`;
+  `silt-agent-memory/researcher/reviews/research-outcome/503-bond-renewal-storm-RESEARCH-CERTIFICATION-2026-08-21.md`;
   deliberation: [docs/thinking/2026-08-21-503-q1-fix-deliberation.md](docs/thinking/2026-08-21-503-q1-fix-deliberation.md).
 - **A prepare-only equivocator is now selected for slashing — equivocation candidate-selection
   enumerates every signing role the verifier checks (#496)** (2026-08-21) — `signers()`, which feeds
@@ -7065,7 +7068,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   launch-phase fork-creation / liveness vector. A second test shows `AnchorQuorum=2` closes the same
   fork (the honest commit then holds 2 non-proposer anchors, leaving `<2` free), naming the fix
   direction `AnchorQuorum ≥ ⌈#anchors/2⌉` and its cost (launch commits need 3-of-4 anchors up). The fix
-  is a consensus-rule change, routed to research (`docs/reviews/fork-anchor-gate-402-RESEARCH-CONSULT-2026-08-14.md`);
+  is a consensus-rule change, routed to research (`~/.claude/silt-agent-memory/researcher/reviews/fork-anchor-gate-402-RESEARCH-CONSULT-2026-08-14.md`);
   tests-only here, no product change.
 
 ### Fixed
@@ -7098,7 +7101,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   now uniform and intersecting. Failing-first repros in `core/chain/fork_anchor_gate_402_test.go`
   (the 2-2 split; sybil-can't-propose; derived-ignores-config; 3-of-4 liveness); seam-7 equivocation
   test re-expressed at A=3 to keep its lone-culprit property under the majority rule. Certification:
-  `silt-reviews/.../fork-anchor-gate-402-RESEARCH-CERTIFICATION-2026-08-14.md`; deliberation:
+  `silt-agent-memory/.../fork-anchor-gate-402-RESEARCH-CERTIFICATION-2026-08-14.md`; deliberation:
   `docs/thinking/2026-08-14-402-anchor-gate-encoding-and-derived-threshold.md`. Invariants: I1 (launch
   intersection), I3 (set = membership).
 - **cloudtest flow 5: the C2 resume clincher now DRIVES a block after restoring the anchors instead
@@ -7121,7 +7124,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   block** — signing two different blocks at one height; the cross-fork scan then correctly slashed both
   honest anchors on both branches and the anchor-quorum chain died (publishes failed with validators
   4/4 reachable; restarting the anchors could not undo the committed slash). Research certification
-  (`silt-reviews/…/honest-proposer-cross-attest-RESEARCH-CERTIFICATION-2026-08-14.md`) established the
+  (`silt-agent-memory/…/honest-proposer-cross-attest-RESEARCH-CERTIFICATION-2026-08-14.md`) established the
   launch finality quorum was **already intersecting** (support-3-of-4; the double-commit was the
   bug-manufactured >f break, not a quorum-design flaw) and certified this fix set, all shipped here:
   **(Q1)** a proposal now enters the same never-sign-twice ledger as an attestation at sign time —
@@ -7448,7 +7451,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 - **Fork-choice oscillation during the anchor→bonded ramp — §1 convergent weight + §2 stable quorum (#357)** (2026-08-13) —
   The blind multi-region field run committed blocks then reorged them back to height 0; the
   local `consensus` sim passed (it only ever tested the *mature* regime). Research root-caused it
-  (`silt-reviews/research/.../357-...-RESEARCH-RESPONSE.md`) and the owner **ratified the
+  (`silt-agent-memory/researcher/reviews/.../357-...-RESEARCH-RESPONSE.md`) and the owner **ratified the
   bond-weighted BFT model (B)**. Two of the three ranked defects are fixed here (the third, the
   finality floor, is a staged follow-up):
   **§1** — during bootstrap anchors are `attesterQualified` but contribute `bonded[id]=0`, so every
@@ -8384,7 +8387,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   admission branch in `core/demand/session.go` is never taken: P3b is off in the shipped daemon with
   no enable path. The entry keeps its ratified text and carries this dated correction. Measured by the
   2026-09-10 inert-mechanism sweep
-  (`silt-reviews/principle-engineer/2026-09-10-inert-mechanism-sweep-core-adapters-0ed3b92.md`),
+  (`silt-agent-memory/principal-engineer/reviews/2026-09-10-inert-mechanism-sweep-core-adapters-0ed3b92.md`),
   confirmed by call-graph read. This is a published economic-mechanism claim (C1/C2 cost-to-wash), so
   wiring it is RESEARCH-GATED; it is tracked as ordinary lane work and gets no residual name. So a self-dealer running one bonded identity can
   still mint N perfectly valid receipts (a self-fetch *is* a real paid delivery — Douceur is
@@ -8679,7 +8682,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   built; new build/verify/research-frontier tracks filed).
 - **Research commission answers folded into the decision ledger; the two routed-to-research
   constructions now EXIST** (2026-08-06) — The follow-up research commission
-  (`silt-reviews/research/research-outcome/commission/`, eight footnoted memos) answered the
+  (`silt-agent-memory/researcher/reviews/research-outcome/commission/`, eight footnoted memos) answered the
   questions `archive/reviews/research-brief.md` had routed out. Recorded across
   `docs/decisions.md`, `docs/design/m0.md`, and `docs/TENETS.md`; no code behavior changed.
   - **D-S7 — construction DELIVERED + durability restated finite-but-renewable.** Center-less

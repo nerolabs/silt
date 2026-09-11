@@ -1,7 +1,7 @@
 # The PE ruling on the three owner knobs — guards attached, and the relay gate answered
 
 **Date:** 2026-08-26. **Ruling:**
-`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-PoD-keystone-owner-knobs-2026-08-26.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-PoD-keystone-owner-knobs-2026-08-26.md`
 (answers `PoD-keystone-owner-knobs-CONSULT-2026-08-26.md`). The PE concurs with
 the builder's read on all three knobs, verifies the load-bearing premises
 against HEAD itself, and attaches guards. **The knobs remain Andrew's calls** —

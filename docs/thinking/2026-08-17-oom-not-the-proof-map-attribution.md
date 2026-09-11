@@ -1,8 +1,8 @@
 # The MATURING OOM is not the proof map — attribution restart + flixz unblock
 
 **Date:** 2026-08-17 (eve) · **Branch:** `diag/consensus-oom-heap-profile` ·
-**Companion:** `silt-reviews/research/silt-oom-NOT-the-proof-map-FINDING-2026-08-17.md`
-(full evidence), `silt-reviews/principle-engineer/proof-oom-fix-review-PE-2026-08-17.md`
+**Companion:** `silt-agent-memory/researcher/reviews/silt-oom-NOT-the-proof-map-FINDING-2026-08-17.md`
+(full evidence), `silt-agent-memory/principal-engineer/reviews/proof-oom-fix-review-PE-2026-08-17.md`
 (PE concurrence on #464).
 
 ## What happened

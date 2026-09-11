@@ -5,7 +5,7 @@ to **build-immutable #6** ("root-cause before you patch — attribute before you
 in [`TENETS.md`](TENETS.md) Part IX, and the *sequencing* dual of #3/#4/#5 (which
 govern *what* is sound; this governs *the order in which you find the fix*). Source
 of record: the research team's process note
-`silt-reviews/research/research-outcome/build-process-root-cause-first-ADVICE.md`
+`silt-agent-memory/researcher/reviews/research-outcome/build-process-root-cause-first-ADVICE.md`
 (2026-08-12), itself distilled from the network-durability consults.
 
 ---
@@ -174,7 +174,7 @@ act — in that order, every time.
 
 ## The consensus-correctness discipline (canon, 2026-08-14)
 
-Ratified after the PE process review (`docs/reviews/builder-process-notes-PE-2026-08-14.md`)
+Ratified after the PE process review (`~/.claude/silt-agent-memory/principal-engineer/reviews/builder-process-notes-PE-2026-08-14.md`)
 and the research team's independent convergence on the same diagnosis: **#357, B2, #397,
 and #402 were one defect in four costumes** — a finality quorum that did not intersect
 over its phase's real validator set. The class is finite and closed, and it is asserted
@@ -258,7 +258,7 @@ every citation silently.
 The owner asked which team we are: the one that takes a complicated thing and makes it simple, or the
 one that takes a simple thing and makes it complicated. The measured answer for the trust plane's
 last three weeks was the second (`docs/decisions.md` `D-RECOMPUTE-FREEZE`; the note:
-`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/NOTE-to-silt-team-simplicity-and-roadmap-reorder-2026-09-08.md`).
+`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/NOTE-to-silt-team-simplicity-and-roadmap-reorder-2026-09-08.md`).
 These ten rules bind every seat from now on:
 
 1. **The B8 gate, at every design decision.** Before any seat proposes a mechanism, it names the

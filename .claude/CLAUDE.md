@@ -100,9 +100,9 @@ The Builder advises and shapes the question; the Researcher certifies; the human
 
 ## Where things go
 
-- **PE rulings** → `../silt-reviews/principle-engineer/` (this seat's own directory).
+- **PE rulings** → `~/.claude/silt-agent-memory/principal-engineer/reviews/` (this seat's own directory).
   NEVER the builder's tree (`docs/reviews/`). Always reply with the full path.
-- **Research certifications** → `../silt-reviews/research/research-outcome/`.
+- **Research certifications** → `~/.claude/silt-agent-memory/researcher/reviews/research-outcome/`.
 - **Code** → the silt repo (Builder only).
 - **Scars / run evidence** → the Tester's memory (the scar ledger), cited.
 - **Live agent memory** → `.claude/agent-memory`, a symlink to the shared external store

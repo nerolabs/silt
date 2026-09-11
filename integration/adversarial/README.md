@@ -12,7 +12,7 @@ on a laptop, in minutes — deterministically, every run:
 
 ## Why this exists
 
-The 2026-08 principal-engineer rescue audit (`silt-reviews/principle-engineer/RESCUE-AUDIT.md`,
+The 2026-08 principal-engineer rescue audit (`silt-agent-memory/principal-engineer/reviews/RESCUE-AUDIT.md`,
 P2) found these being "certified" on a flaky live GCP wire that kept failing to
 even **drive** the attack, then re-grading the miss as a passing **GAP**. That is
 backwards. *An attack you cannot schedule is not a test.*

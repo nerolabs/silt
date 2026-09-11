@@ -2,7 +2,7 @@
 
 > **✅ ANSWERED (2026-08-06).** This brief was commissioned and the research team
 > delivered — eight footnoted memos in
-> `silt-reviews/research/research-outcome/commission/` (synthesis in
+> `silt-agent-memory/researcher/reviews/research-outcome/commission/` (synthesis in
 > `00-COMMISSION-SYNTHESIS.md`). Headline: the two named walls are **lower than
 > feared** — **A1 center-less proof-of-repair EXISTS** (composable from proven parts,
 > plain-RS; unblocks D-S7 → build H7) and **A2 non-globality metric is CONSTRUCTED**.
@@ -157,4 +157,4 @@ young network is most fragile.
 **Pointers:** [`../design/m0.md`](../design/m0.md) (the systemic spec — §7 seams, §9
 decisions, §10 open problems), [`../decisions.md`](../decisions.md) (the decision
 ledger), [`../TENETS.md`](../TENETS.md) (canon). The accepted memos live in the
-read-only research archive `silt-reviews/research/research-outcome/`.
+read-only research archive `silt-agent-memory/researcher/reviews/research-outcome/`.

@@ -955,7 +955,7 @@ var tierRenderOrder = []string{node.TierPony, node.TierHorse, node.TierArchival}
 // operator can see WHERE the classification cut and check it against the table it came
 // from rather than trusting a label.
 func publishedTierBands() []tierBand {
-	const src = "Economist tier table, silt-reviews/economist/2026-09-01-tiered-edge-economy-sustainability-audit.md: horse = \"16+ GB disk\", archival = \"TBs\""
+	const src = "Economist tier table, silt-agent-memory/economist/reviews/2026-09-01-tiered-edge-economy-sustainability-audit.md: horse = \"16+ GB disk\", archival = \"TBs\""
 	return []tierBand{
 		{Class: node.TierPony, MinBytes: 1, MaxBytes: node.TierPonyMaxBytes - 1, Source: src},
 		{Class: node.TierHorse, MinBytes: node.TierPonyMaxBytes, MaxBytes: node.TierHorseMaxBytes - 1, Source: src},

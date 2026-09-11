@@ -2,7 +2,7 @@ package relaypay
 
 // R2.14 — the relay-lane prepayment anchor: the WIRE-tier RED-first gates
 // (Tester, 2026-09-04). Binding spec:
-// silt-reviews/research/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md
+// silt-agent-memory/researcher/reviews/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md
 // §5 (k_max "must be DERIVED in code: ⌈MaxChainLength / fee⌉ with a test that the
 // wire bound covers it at the shipped fee"), §8 (decode bounds, the F5 shape:
 // "len(Anchors) ≤ MaxAnchorsPerSession; each Serial ≤ blindtoken.SerialSize (32);

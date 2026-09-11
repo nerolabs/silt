@@ -166,13 +166,13 @@ close itself is the owner's call and is deliberately HELD. The current order:
 
 1. **Phase 4 opening move — ✅ DONE (2026-08-26): the PoD spec shipped
    ([design/pod.md](../docs/design/pod.md)) and research CERTIFIED it same day**
-   (`silt-reviews/research/research-outcome/PoD-neutral-lane-B3-close-RESEARCH-CERTIFICATION-2026-08-26.md`):
+   (`silt-agent-memory/researcher/reviews/research-outcome/PoD-neutral-lane-B3-close-RESEARCH-CERTIFICATION-2026-08-26.md`):
    the conservation close is sound (the only structural wash defense), with three
    folded amendments — the supersede rule over the `RecordServe` self-mint is
    load-bearing, the PoR leg is dropped in the neutral lane, and strong-form
    Camenisch–Shoup is not adoptable (quorum-TTP/VSS is the route if ever). **The
    state-root keystone consult is ALSO CERTIFIED**
-   (`silt-reviews/research/research-outcome/D-TIERING-state-root-keystone-RESEARCH-CERTIFICATION-2026-08-26.md`):
+   (`silt-agent-memory/researcher/reviews/research-outcome/D-TIERING-state-root-keystone-RESEARCH-CERTIFICATION-2026-08-26.md`):
    compact SMT over the set-valued state PLUS a separate append-only root for the
    transparency log (refined 2026-08-27 by the #597 certification), era-3 rides the #506 version-gate as
    tenant #2, rebuild-at-boot, self-checkpoint closes #559's crash-reboot case —

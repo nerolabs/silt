@@ -1,7 +1,7 @@
 # #549 Q3 — round-duration base tune: assessment and decision
 
 **Date:** 2026-08-24. **Issue:** #549 (companion Q3). **Gate:** research-certified
-direction (`silt-reviews/research/research-outcome/549-h68-view-synchronization-stall-RESEARCH-CERTIFICATION-2026-08-24.md`,
+direction (`silt-agent-memory/researcher/reviews/research-outcome/549-h68-view-synchronization-stall-RESEARCH-CERTIFICATION-2026-08-24.md`,
 Q3). **Decision: NO numeric change — the base is already the certified-optimal
 smallest value; make the derivation explicit and guard it.**
 

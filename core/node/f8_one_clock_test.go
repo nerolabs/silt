@@ -1,7 +1,7 @@
 package node
 
 // R2.10 / F8 — G-F8-5, ONE CLOCK (Tester, 2026-09-04). Binding spec:
-// silt-reviews/research/research-outcome/R2.10-F8-chain-anchored-epoch-RESEARCH-CERTIFICATION-2026-09-04.md
+// silt-agent-memory/researcher/reviews/research-outcome/R2.10-F8-chain-anchored-epoch-RESEARCH-CERTIFICATION-2026-09-04.md
 // §3.2 (the source is the node's chainEpoch() and nothing else; finalized-head
 // REFUTED twice), §3.4 (R2.14's anchors on the same source), §6 G-F8-5.
 //

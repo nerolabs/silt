@@ -8,7 +8,7 @@ import (
 
 // TestModelCheck_H43_HeterogeneousArmingMustCommitWithinFPlus1Rounds is
 // G-H43-1, decisive, per
-// silt-reviews/research/research-outcome/CONSENSUS-LIVENESS-h43-round-ladder-desync-441-380-RESEARCH-CERTIFICATION-2026-09-07.md
+// silt-agent-memory/researcher/reviews/research-outcome/CONSENSUS-LIVENESS-h43-round-ladder-desync-441-380-RESEARCH-CERTIFICATION-2026-09-07.md
 // §4.2: "matureWorld12 variant with heterogeneous arming: exactly 3 of 12
 // seats hold pending work, one heavy seat killed, staggered sweep phases,
 // timed delivery on the sim clock."

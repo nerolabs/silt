@@ -381,6 +381,20 @@ jobs:
       - name: Scar-lint — every cited test name must resolve to a real test, and every symbol-anchored source coordinate must point at its symbol (scar:cited-test-does-not-exist-2026-09-02, scar:cited-source-coordinate-decayed-2026-09-10)
         # External review trees are absent in CI, so this checks the repo only.
         run: python3 scripts/check_cited_tests.py
+      - name: Scar-lint — the external-tree citation check must still CATCH a phantom after the review record moved (scar:review-record-moved-and-every-citation-went-dark-2026-09-11)
+        # The external roots are absent in CI, and `collect_external` skips an absent
+        # root — so the step above proves nothing about that half. This one MANUFACTURES
+        # an external root in a temp dir and drives three arms: a forged phantom is
+        # caught (RED), a real test name is not (GREEN, the over-exclusion arm), and an
+        # ABSENT root says so instead of passing in silence (MUTE, the defect that
+        # actually happened on 2026-09-11).
+        run: python3 scripts/check_cited_tests.py --self-test
+      - name: Scar-lint — no reference to the retired `silt-reviews/` tree may reach a branch (scar:review-record-moved-and-every-citation-went-dark-2026-09-11)
+        # Four live worktrees carried ~3,400 occurrences on unmerged branches when the
+        # record moved. Without this gate every held branch silently reintroduces the
+        # dead paths in the files it touches. Re-run the migration to clear it:
+        #   python3 scripts/migrate_review_record_paths.py
+        run: python3 scripts/migrate_review_record_paths.py --verify
       - name: Scar-lint — the shared repo walk must not descend into another checkout (scar:lint-walks-into-another-checkout-2026-09-11)
         # A CI checkout has NO nested worktree, so running the lints proves nothing here.
         # The self-test manufactures one in a temp directory and asserts both directions.

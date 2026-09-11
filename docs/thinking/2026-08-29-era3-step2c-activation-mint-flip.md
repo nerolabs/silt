@@ -3,7 +3,7 @@
 **Date:** 2026-08-29
 **Seat:** Builder
 **Step:** 2c (FINAL) of the certified era-3 committed-state-root sequence.
-**Certification:** `silt-reviews/research/research-outcome/era3-committed-state-root-format-RESEARCH-CERTIFICATION-2026-08-28.md` (Q5 activation, Q7 mint-4).
+**Certification:** `silt-agent-memory/researcher/reviews/research-outcome/era3-committed-state-root-format-RESEARCH-CERTIFICATION-2026-08-28.md` (Q5 activation, Q7 mint-4).
 **Base:** main `5951a76` (2a schema + Hash + versionSupported<=4; 2b `validateEra3Roots` on every disk-write path).
 
 ## What 2c must do (the requirements, restated)

@@ -5,9 +5,9 @@ F2-evicted identity re-registering every ~30 s sweep, forever, with every layer
 letting it through.
 
 **Research gate honored.** The fix directions were certified before any code:
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/503-bond-renewal-storm-RESEARCH-CERTIFICATION-2026-08-21.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/503-bond-renewal-storm-RESEARCH-CERTIFICATION-2026-08-21.md`
 (answers
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/503-island-bond-renewal-storm-CONSULT.md`).
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/503-island-bond-renewal-storm-CONSULT.md`).
 
 ## The options weighed (from the consult; decided by the certification)
 

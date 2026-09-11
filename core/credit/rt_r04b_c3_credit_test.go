@@ -2,7 +2,7 @@ package credit
 
 // R0.4b C3 re-break — credit-tier regression gates. Inversions of the red-team probes
 // core/credit/rt_c3b_credit_test.go (RT-C3B-1 … RT-C3B-5), archived at
-// /Users/andrewedmond/Claude/claude/silt-reviews/red-team/probes/R0.4b-C3-re-break-2026-09-03/.
+// /Users/andrewedmond/.claude/silt-agent-memory/red-team/reviews/probes/R0.4b-C3-re-break-2026-09-03/.
 // Each keeps the probe's attack verbatim and asserts the CLOSE.
 
 import (

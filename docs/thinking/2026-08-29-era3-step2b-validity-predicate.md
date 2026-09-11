@@ -8,9 +8,9 @@ is on main (`84dcee0`). This step adds the validity predicate that reads the roo
 consensus rule is altered — this step ADDS a v4-gated rejection only.
 
 **Certs / rulings this step discharges:**
-- Format cert: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era3-committed-state-root-format-RESEARCH-CERTIFICATION-2026-08-28.md`
+- Format cert: `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era3-committed-state-root-format-RESEARCH-CERTIFICATION-2026-08-28.md`
   (Q5: era-3 is a HARD fork; the predicate is `StateRoot == recompute` AND `LogRoot == RevocationLogRoot()`).
-- 2a ruling (the binding carry-forward): `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-era3-step2a-commit-roots-schema-2026-08-29.md`
+- 2a ruling (the binding carry-forward): `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-era3-step2a-commit-roots-schema-2026-08-29.md`
   — §"What 2b MUST carry": (1) reject nil-root v4 explicitly, (2) reject root ≠ recompute,
   (3) value-encoding is load-bearing (rely on the step-1 determinism oracle for byte-identity),
   (4) do NOT route the omitempty amendment myself (carried into the composed re-cert before freeze).
@@ -67,7 +67,7 @@ carrying it is rejected.
   reject is caused by the root check, not the signature.
 
   **Corrected decision (A-bare, blind-PE ruled — `RULING-era3-reload-root-check-2026-08-29.md`,
-  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-era3-reload-root-check-2026-08-29.md`):**
+  `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-era3-reload-root-check-2026-08-29.md`):**
   `appendStructural` now calls `validateEra3Roots(&b)` directly — the SAME clone-recompute
   predicate the commit path uses — **BEFORE `c.apply(b)`**. Before-apply, not after: a
   post-apply-then-reject would leave the bad block applied to the live chain (head advanced,
@@ -230,7 +230,7 @@ correction):
 A-bare re-validates each v4 block's committed root on boot by recomputing the SMT over the whole
 committed set: O(state)/block, hence **O(depth²) over a full Reload**. This is accepted as the
 correct BRIDGE, not the end state (blind-PE ruling `RULING-era3-reload-root-check-2026-08-29.md`,
-`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-era3-reload-root-check-2026-08-29.md`, Q2):
+`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-era3-reload-root-check-2026-08-29.md`, Q2):
 
 - It does NOT trip the depth-war gate: `TestPerHeightCostLinear` lives in `sim/`, drives live
   commits, and never calls `Reload`. The cost lands on a boot-time path the gate does not measure,

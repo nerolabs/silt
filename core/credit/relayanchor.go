@@ -2,7 +2,7 @@ package credit
 
 // R2.14 — the relay-lane prepayment anchor's LEDGER half (docs/design/pod.md
 // §7.3.2 step 1; the construction is certified in
-// silt-reviews/research/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md
+// silt-agent-memory/researcher/reviews/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md
 // §2 (conservation), §2.4 (the six doors), §5 (guard window == keyset window)).
 //
 // An anchor is a blind signature under the RELAY's own per-epoch demand key,
