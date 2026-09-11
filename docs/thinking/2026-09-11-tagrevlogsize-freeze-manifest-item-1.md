@@ -2,7 +2,7 @@
 
 Deliberation for the era-4/v5 committed leaf that authenticates the revocation log's size.
 Ratified 2026-09-07 (freeze manifest §8, owner call 9). Certification:
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/ERA4-V5-FREEZE-MANIFEST-RESEARCH-CERTIFICATION-2026-09-07.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/ERA4-V5-FREEZE-MANIFEST-RESEARCH-CERTIFICATION-2026-09-07.md`
 §4.1. Build-and-hold: a FORMAT item, so it does not open a PR.
 
 ## The certified clause, quoted
