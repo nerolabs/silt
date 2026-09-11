@@ -2143,6 +2143,12 @@ object's funded figure (red-team F2's shape).
 - **(3) Scope — the node half SHIPS under G-6 pending call (1).** PR #760 merges although the G-R212-8 residual
   table reads "still blocks R2.9's node half": the lane is dark until era-4, off by default, the seam is
   isolated and the refutation disclosed. Recorded so a future reader finds the contradiction resolved here.
+  - **⚠ ONE PREMISE OF THIS CALL IS VOID AS OF 2026-09-11; THE RULING IS NOT.** *"The lane is dark until
+    era-4"* is no longer true: `-era4-activation-height` defaults to **1**, so every fresh network mints
+    era-4 from height 1 and the era gate on a chain-committed `IssuerKeyReg` is open. The lane is still dark,
+    for the two reasons that survive — `-accept-relay-payments` is default-OFF and no issuer key is
+    registered — and the scope decision stands on the other three grounds it also cited. Left as ratified;
+    the correction has to be visible as a correction.
 - **(4) `R-DEFAULT-CHUNK-BOUNTY-ZERO` — raise `pipeline.DefaultChunkSize` to 262,144 B** in its own PR before any
   economy-on flip, after the Economist confirms the census and dedup effects. **Premise corrected 2026-09-07:**
   the default pays a base of 2 (a shard is a whole ciphertext chunk), not zero — the real defect is a 20 %
@@ -2394,6 +2400,9 @@ showing the one-byte value IS committed).
 - **(1) `R-membership` (Lane B2):** retire `slashedRoot` and `validatorsSeenRoot` from the v5 committed digest
   set (D-V5-WHOLESET-ROOTS five → three) rather than cap seated identities; a hard fork at activation, free while
   era-4 is dark; not certified until the `objective()` guard (G-1, covering `MinBond` too) lands. PRE-FREEZE.
+  *(And the pricing clause "free while era-4 is dark" was separately FALSE by 2026-09-11 —
+  `-era4-activation-height` defaults to 1 — so this call was wrong on its ruling AND on the ground it
+  stood on. Neither rescues the other.)*
   - **⚠ REVERSED 2026-09-11 by the owner — `D-MEMBERSHIP-KEEP-FIVE-2026-09-11`. RETIRE NEITHER; the digest
     set freezes at FIVE; G-3 is built; G-2 is dropped.** The call above is left exactly as ratified, because
     the correction has to be visible as a correction rather than laundered into the original. It was ratified
@@ -2418,6 +2427,12 @@ showing the one-byte value IS committed).
 - **(7) `R-ANCHOR-STALL` (Lane C2):** ACCEPTED as a disclosed v1 residual — ≤ 300,000 credits per 1 GiB relay
   session; R2.14b `MsgRelayFund` is the follow-on.
 - **(8) Cloud row 13b (Lane C2):** SKIP, not GAP, while era-4 is dark, behind the era probe.
+  - **⚠ THE PREMISE IS VOID AS OF 2026-09-11 AND THE DISPOSITION MUST BE RE-TAKEN.** Era-4 is not dark:
+    `-era4-activation-height` defaults to 1 and every fresh network — every graded cloud fleet included —
+    mints era-4 from height 1, so a SKIP on the ground *"era-4 is dark"* now records an untested row as
+    excused. The era probe this call waited on is BUILT (#808, #812), so the row can read the chain's era
+    rather than assume it. Re-take the disposition on the next graded run: the row either exercises the
+    lane or GAPs, and "SKIP because the era is dark" is no longer one of the outcomes available to it.
 - **(9) The freeze manifest §8 (Lane D1), all nine sentences:** buy `tagRevLogSize` (a SAFETY leaf, since a
   witness-supplied `m` is a wrong-accept); buy (d-3) `AnswerDigest`; reserve the PoP slot; the `IssuerKeys` cap at
   COUNT 4,096 with its proposer packing budget and `(issuer, epoch)` distinctness clause; `SerialSize` 32;
@@ -4487,3 +4502,145 @@ now: af49c742d07e36c2e4f3180b699357259e135efe91907d7533c32c35d89395c8
 
 The **root does not move** (`31768fb4…7dd1`) and the manifest chunk does (`f761f80b…fcf6` →
 `b12a4f0a…e06d`): the padding is inside the manifest blob, which the root does not cover.
+
+## D-FREEZE-REAUDIT-2026-09-11 — the owed-and-format list is EMPTY; era 4 is live from height 1, which re-prices the manifest's sorting premise; manifest item 8 is restored
+
+- **Status:** ✅ RECORDED — 2026-09-11 (planner true-up against a blind PE re-audit of all 22
+  freeze-manifest items at `f826c72`). **This entry is NOT the era-4 freeze act.** Manifest item 21 —
+  the `D-ERA4-FREEZE…` entry in the era-3 entry's four-part shape — is still OWED and is the owner's to
+  write. Under `docs/TENETS.md` Part IX a freeze with no entry is not a freeze, so item 21 is D3's first
+  blocker and nothing here pre-empts it.
+- **Artifact:**
+  `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-era4-freeze-manifest-re-audit-f826c72-2026-09-11.md`.
+  It supersedes the 2026-09-10 final-content audit at `0ed3b92`.
+
+### 1. The headline — the OWED-and-FORMAT list is EMPTY
+
+All 22 items re-classified: **9 BUILT · 5 DROPPED/DECLINED · 2 PARTIAL · 6 OWED**, and **none of the six
+is on the freeze surface.** Applying the four-door test — (a) a block field / cbor key / `Hash()`
+preimage, (b) a committed fact or its canonical encoding, (c) the era activation rule, (d) which roots
+are required on which paths — no OWED or PARTIAL item satisfies any clause. Items 7, 8, 9 and 11 add no
+field, no leaf and no encoding; they only reject more, which `D-F2-EVIDENCE-RECOMPUTE` settles as outside
+the freeze surface. Items 15–18 are tests or a node-local parse guard, item 20 is a node-local start-up
+refusal, items 21–22 are documents.
+
+**D3 is therefore schedulable on FORMAT grounds today.** Three things still block it and none is a format
+item: **(1)** item 21, the freeze entry (above); **(2)** the one-pager re-check against the manifest's
+final content, which `D-PREIMAGE-BUY-2026-09-10` call 4 condition (i) requires and which is **done in
+this true-up**; **(3)** a disposition for D3's own sentence *"the readiness stamp goes 3 → 5"* — see §2.
+
+**D3 is a gate silt opens when the work is done. It is never a deadline** (`D-FREEZE-REPRICE-2026-09-10`).
+
+### 2. Era 4 is NOT dark. It is live from height 1 on the shipped default
+
+`-era4-activation-height` defaults to **1** (`cmd/silt/daemon.go`), and `(*Chain).era4Active` takes the
+config branch whenever that value is non-zero (`core/chain/chain.go`), never consulting the readiness
+tally. No e2e or cloudtest harness passes the flag, so **every freshly seeded network — every e2e daemon
+and every graded cloud fleet — mints era-4 blocks from height 1.** The default is pinned in production
+source as such: `core/chain/equivocation.go` calls `Era4ActivationHeight = 1` *"the source-pinned
+default"*, and `core/node/adversary.go` says the same. Measured, not derived: #818's own commit message
+records `TestEquivocatorSlashedOverTCP` timing out because every committed block above the genesis of a
+fresh network now carries the era-4 form.
+
+**Why this matters more than the item count.** The manifest sorts 22 items by DEADLINE, and the VALIDITY
+class's sorting rests on one sentence: *"free while era-4 is dark."* **That premise is false on `main`.**
+It arrived as a sub-clause of M1 — a flag default nobody reviewed as a format item — and it silently
+changed the deadline arithmetic for a whole class.
+
+**What it changes, and what it does not.**
+
+- **Deadline CLASSES do not move.** Items 7, 8 and 9 are still narrowing rules, still outside the four
+  doors, still owed at the stamp raise. They do not gate D3.
+- **Build ORDER does.** Three uncapped or unvalidated hash-covered surfaces are now reachable on the RC's
+  own field network, so they gate the graded run rather than a hypothetical future one.
+- **The freeze's safety argument narrows to the honest form.** Nothing has committed under era-4 because
+  there is **no live network**, not because the format is unreachable. That is the weaker of the two
+  grounds and it is the one that is true. Say it that way.
+- **Item 17 closed half-way BY ACCIDENT, and that is the tell.** `R-E2E-ERA4-FIXTURE`'s era-4 FORMAT half
+  discharged as a side effect of the flag default — the block format, `validateCarrier`,
+  `validateIssuerKeys`' era gate, the (d-3) preimage and `tagRevLogSize` are now exercised on the existing
+  fixtures with no fixture work done. When a scheduled deliverable closes without anyone building it, the
+  thing that closed it moved more than the record says. The POSTURE half (objective + bonded +
+  epoch-enabled) is still owed.
+- **The readiness tally is bypassed on the shipped posture.** `NewBondReg` still stamps
+  `BlockVersionRegGate` (3), and `era4Active` never reads the tally on the config branch. D3's sentence
+  *"the readiness stamp goes 3 → 5"* is about a mechanism the default configuration does not use; that
+  needs a disposition, not code, before the owner signs it.
+
+**Every booking that rested on the dead premise is corrected in place**, never rewritten:
+`D-TRUE-UP-CALLS-2026-09-07` (1) (already reversed on other grounds; the pricing clause annotated),
+(8) (cloud row 13b's SKIP — premise void, disposition to be re-taken on the next graded run),
+`D-R2.9-NODE-HALF-CALLS` (3) (premise void, ruling intact on its surviving grounds), `ROADMAP.md`'s D1
+delta (i) and C2 harness note, and the `R-E2E-ERA4-FIXTURE` register row. **One production comment still
+carries it and a Builder owes the correction:** `core/chain/validate_v5.go`'s BG-1 note asserts
+*"`Era4ActivationHeight` has no operator surface — so on every chain that exists,
+`ValidateProposal`/`ValidateCommit` never enter these functions."* All three clauses are false. The code
+is correct; the sentence about it is not.
+
+### 3. Manifest item 8 (`R-CARRIER-BYTES`) is RESTORED as a register row
+
+It had been deleted from the plan **twice, on two different wrong grounds.**
+
+1. It left the manifest labelled *"it served the recompute"*, which the certification's own §4.10 refutes
+   in terms: *"the box is not the binding constraint at any admissible value; the node's CPU is."*
+2. The repair then re-homed it onto `R-CARRIER-ATTS-NORMALIZE` and `R-CARRIER-ATTS-PREPAREQC` — **a
+   different field.** Item 8 is a ceiling on `Block.LastCommit`, which appears in **both** `bodyHash`
+   preimage literals (`core/chain/chain.go`). `Block.Atts` appears in **neither**; `ROADMAP.md` says so
+   itself. The certified `Atts` fix is acceptance-time normalization, and normalizing a hash-covered field
+   changes the block hash and invalidates the block, so that mechanism **cannot apply to `LastCommit` at
+   all.** They are not one defect, and the row that would carry item 8 did not exist.
+
+Verified at HEAD: `validateCarrier` (`core/chain/carrier.go`) enforces phase, `verifyAtt` over `b.Prev`
+and per-id distinctness, and has **no count cap, no byte cap and no qualification screen**; there is no
+`CarrierBytesCap` or `G-CB-1` symbol in the tree. Meanwhile **five production comments cite
+`R-CARRIER-BYTES` "in ROADMAP.md"** (`carrier.go`, `readset_v5.go`, `stateview_v5.go`,
+`floorbox_recompute_stateroot_v5.go`, `floorbox_recompute_stateroot_atts_v5.go`) and
+`ErrWitnessBudgetExceeded`'s failure text names it. Under simplicity rule 4 the thing they cite did not
+exist.
+
+**The disposition is an OWNER call, open in `ROADMAP.md`: in the RC, or explicitly declined and disclosed
+to the B8 brief (manifest item 22).** The PE's recommendation on the record is **decline-and-disclose with
+a register row saying so** — the exposure is real, unbounded and hash-covered, but the cap turns on a
+pony-class honest-maximum measurement nobody has run, and a cap set without it risks landing far below the
+honest floor, which is worse than no cap. The row exists so the item is DECIDED rather than deleted a
+third time.
+
+### 4. Three record contradictions, fixed
+
+1. **`ROADMAP.md` re-homed item 8 onto a different field.** Fixed in §3; the wrong re-homing is recorded
+   so it is not repeated.
+2. **`ROADMAP.md`'s status headline said M1 was "BUILT AND HELD … not merged".** `26b2f69` is on `main`
+   as #818, and the same file contradicted itself 40 lines down. Corrected in place with the superseded
+   sentence kept.
+3. **The #805 reachability lint covers NO freeze-manifest mechanism.** `scripts/reachability_lanes.txt`
+   holds exactly three lanes — `paid-delivery`, `paid-delivery-topup`, `paid-relay-client`. The bound is
+   deliberate and its stated reason is sound, but the gate built after owner call F shipped inert does not
+   watch the class of surface F was. **Recorded as owed, not built here.** Do not book a manifest item as
+   BUILT on the strength of a green reachability run.
+
+A fourth, found in this true-up: `ROADMAP.md`'s Lane D header still said *"the v5 digest leaves freeze at
+three"*, which `D-MEMBERSHIP-KEEP-FIVE-2026-09-11` reversed. Corrected in place.
+
+### 5. UNSETTLED — two classifications rest on runs nobody has performed
+
+Items 14 and 15 are carried as **BUILT-with-an-UNSETTLED-verdict**, not as done. The tests exist with no
+`t.Skip` and no `testing.Short` gate; no seat has run them at HEAD, and a classification reached by
+reading is not a verdict.
+
+| Question | Command |
+|---|---|
+| Do #816's six carrier model-checks pass at HEAD after the M1 re-signing? (item 14) | `taskpolicy -c background nice -n 19 go test ./core/chain/ ./core/node/ -run <each of the six names on the register row> -v` |
+| Does the h43 model-check reproduce the field mechanism or merely house it? (item 15) | `taskpolicy -c background nice -n 19 go test ./core/node/ -run TestModelCheck_H43_RoundLadderDesyncMustStillConverge -v` |
+| Does an e2e daemon actually commit era-4 blocks at height 1? (item 17's side-effect claim) | `taskpolicy -c background nice -n 19 go test ./e2e/ -run TestObjectiveColdStartCommitsGenesis -v`, then read the `head version:` line from `silt chain-status` on the store it leaves behind |
+
+Item 15 gates the RC's graded field run under `docs/build-process.md`'s consensus-correctness discipline:
+the model-check tier goes green before the field, and a field run confirms rather than discovers.
+
+### 6. The plan got SMALLER
+
+Two register rows CLOSED against merged work — the late-reveal face (closed by (d-3), #800) and the floor
+box's takedown stall (closed by `tagRevLogSize`, #819) — and one restored (`R-CARRIER-BYTES`). **Net
+34 → 33 rows, no new prefixes.** The one-pager `docs/era4-freeze-what-closes.md` was re-checked against
+the manifest's final content and corrected on three points: the activation rule is now a genesis constant
+as well as a tally, the readiness-stamp sentence carries its bypass caveat, and the page states that the
+format set is closed.
