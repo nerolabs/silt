@@ -91,7 +91,48 @@ const (
 	// refuse-to-start when the invariant is locally checkable, committed/genesis-covered state
 	// when it needs distributed agreement.
 	classConsensusCritical
+	// classNetworkIdentity: an IDENTITY PROPERTY OF THE NETWORK ITSELF. It changes NO validity
+	// verdict, and it IS genesis-covered.
+	//
+	// THE SECOND CATEGORY, AND WHY IT NEEDED ONE (owner ruling, 2026-09-11). NetworkName is the
+	// first ConsensusParams member that reaches no verdict — and "it reaches no verdict" is this
+	// table's own recorded reason for EXCLUDING Archive. Shipping it as classLocal would have
+	// said a committed field is free to differ; shipping it as classConsensusCritical would have
+	// claimed a verdict it cannot move. Either lie makes the doctrine unfalsifiable, and the next
+	// non-consensus field is then admitted by precedent rather than by argument.
+	//
+	// THE OWNER'S BINDING CONDITION: this category has a CLOSED COMPLEMENT TOO. "Otherwise 'it's
+	// an identity field' becomes the escape hatch that admits anything, and we've traded a
+	// testable doctrine for a rhetorical one." Both arms are machine-checked below, from
+	// opposite sides:
+	//
+	//   - CHANGES NO VERDICT is MEASURED, never asserted — the field must carry a perturbation
+	//     that actually ran (the probeless check), and it must diverge in ZERO regimes. Diverge
+	//     anywhere and it is classConsensusCritical; declaring it here is RED.
+	//   - IS GENESIS-COVERED is resolved BY REFLECTION against the real chain.ConsensusParams via
+	//     configMemberships.carriedAs. Not carried and it is an exclusion; declaring it here is
+	//     RED.
+	//
+	// So this category admits exactly the fields that ride in the genesis hash and move no
+	// verdict. Such a field has precisely ONE observable effect: it partitions networks and names
+	// them. That is what an identity property of the network IS, and nothing else fits through.
+	classNetworkIdentity
 )
+
+// className renders a class for a failure message. A numeric class in a diagnosis makes the
+// reader go look the constant up, and the constants are iota — renumbering them would silently
+// re-label every message.
+func className(c configClass) string {
+	switch c {
+	case classLocal:
+		return "classLocal"
+	case classConsensusCritical:
+		return "classConsensusCritical"
+	case classNetworkIdentity:
+		return "classNetworkIdentity"
+	}
+	return fmt.Sprintf("configClass(%d) — UNDECLARED, add it to className", int(c))
+}
 
 // configDecl is one field's declaration. `why` is the justification a reviewer reads; `binding`
 // is what actually enforces uniformity today (empty = NOTHING does, which is a tracked residual).
@@ -237,6 +278,19 @@ var configDecls = map[string]configDecl{
 		readIn:       []string{regimeLegacy},
 		sanctionedIn: []string{regimeLegacy},
 	},
+	"NetworkName": {
+		class: classNetworkIdentity,
+		// The contrast with Archive one row below is the whole point of the second category, so
+		// it is stated here rather than left for a reader to infer: BOTH reach no verdict. Archive
+		// is EXCLUDED for that reason — binding it would forbid the retention heterogeneity the
+		// durability design depends on. NetworkName is CARRIED for a different reason: it is what
+		// the network is called, and a name a node reads off its own flags reports a belief.
+		why: "The network's canonical text name. It reaches NO validity verdict — nothing in the validation path reads it, and this gate MEASURES that (zero divergence in all five regimes). It is genesis-covered so a node reports the network it is actually serving instead of reading its own -network-name back (the eradeclared.go vacuity). The hash is the identity; the name is a label, and (*Chain).NetworkIdentity never renders one without the other.",
+		// Every regime is listed because no regime can exercise it: the point of naming them all
+		// is that a ZERO divergence here is a measurement across the whole driven surface, not a
+		// quiet UNPROVEN in a regime that could not have read the field anyway.
+		readIn: []string{regimeLegacy, regimeTrustedOptOut, regimeObjective, regimeEpochs, regimeYoungAnchors},
+	},
 	"Archive": {
 		class:  classLocal,
 		why:    "Retention policy: whether THIS node keeps full bodies. An operator's storage choice, deliberately per-node (build-immutable #8) — it must never reach a validity verdict.",
@@ -272,8 +326,11 @@ var configDecls = map[string]configDecl{
 // table from being rewritten wholesale, and the gate asserts both are complete over chain.Config,
 // so the two cannot drift apart.
 //
-// THE COUNT FALLS OUT: 15 carried here + 2 carried by core/node's table (the residue named below)
-// = the 17 fields of chain.ConsensusParams. Nobody has to remember 17.
+// THE COUNT FALLS OUT: 16 carried here + 2 carried by core/node's table (the residue named below)
+// = the 18 fields of chain.ConsensusParams. Nobody has to remember 18 — it moved from 17 to 18 on
+// 2026-09-11 when NetworkName landed, and the only reason that number appears here at all is to
+// show it is an OUTPUT. The gate below asserts the bijection by reflection; nothing keys on the
+// arithmetic, so this sentence is a reader's aid and never the check.
 type configMembership struct {
 	// carriedAs names the chain.ConsensusParams field that binds this one, resolved by reflection.
 	carriedAs string
@@ -299,6 +356,9 @@ var configMemberships = map[string]configMembership{
 	"Era3ActivationHeight":    {carriedAs: "Era3ActivationHeight"},
 	"Era4ActivationHeight":    {carriedAs: "Era4ActivationHeight"},
 	"AllowPublisher":          {carriedAs: "AllowPublisher"},
+
+	// ---- CATEGORY (b): AN IDENTITY PROPERTY OF THE NETWORK. Carried, and it moves no verdict. ----
+	"NetworkName": {carriedAs: "NetworkName"},
 
 	// ---- THE FIVE RATIFIED EXCLUSIONS. Read them as five distinct arguments, not one policy. ----
 	"Archive": {reasonNotCarried: "RETENTION ONLY — it reaches no verdict. Whether THIS node keeps full bodies is " +
@@ -388,6 +448,12 @@ func perturbConfig(cfg Config, field string) (Config, bool) {
 		cfg.Era3ActivationHeight = 1
 	case "Era4ActivationHeight":
 		cfg.Era4ActivationHeight = 1
+	case "NetworkName":
+		// The perturbation must be a name the baseline does NOT carry. The baseline regimes leave
+		// it empty, so any non-empty string crosses. A probe that left it empty would be the dead
+		// probe blind PE F-3 caught twice — it would report zero divergence without ever having
+		// moved the field, and this category's whole complement rests on that zero being MEASURED.
+		cfg.NetworkName = "a DIFFERENT network's name"
 	case "WSCheckpoint":
 		cfg.WSCheckpoint = WSCheckpoint{Height: 1, Hash: ports.HashBytes([]byte("elsewhere"))}
 	case "LivenessRecoveryHeight":
@@ -459,6 +525,21 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 					"local knobs — one of them is unbound and the table hides which.", m.carriedAs, prev, f)
 			}
 			claimed[m.carriedAs] = f
+		}
+		// ---- CATEGORY (b)'s CLOSED COMPLEMENT, arm 2 of 2: IT MUST BE GENESIS-COVERED. ----
+		// The other arm (it must move no verdict) is measured in the runtime half below. This one
+		// is structural and resolves against the REAL ConsensusParams through carriedAs, which the
+		// case above already checked exists. A field that is not carried is an EXCLUSION with a
+		// recorded reason — category (c) — and calling it the network's identity while leaving it
+		// out of the genesis hash is the contradiction this arm refuses: a network cannot be
+		// identified by something its genesis does not commit.
+		if configDecls[f].class == classNetworkIdentity && m.carriedAs == "" {
+			t.Fatalf("%s is declared %s but is NOT carried in chain.ConsensusParams (reasonNotCarried: %q).\n"+
+				"An IDENTITY PROPERTY OF THE NETWORK must be GENESIS-COVERED — that is half of the category's\n"+
+				"closed complement (owner ruling, 2026-09-11). A field the genesis does not commit cannot identify\n"+
+				"the network: two nodes differing on it compute the SAME genesis hash and join each other happily,\n"+
+				"which is the opposite of what a name is for. Carry it, or re-declare it %s / %s with its reason.",
+				f, className(classNetworkIdentity), m.reasonNotCarried, className(classLocal), className(classConsensusCritical))
 		}
 	}
 	sort.Strings(unruled)
@@ -612,7 +693,7 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 	}
 
 	// ---- the verdict, and the three states rule 7 demands ----
-	var violations, divergingCritical, drivenSafe, unproven, unbound []string
+	var violations, divergingCritical, drivenSafe, unproven, unbound, netIdentity []string
 	for _, f := range fields {
 		d := configDecls[f]
 		r := results[f]
@@ -622,6 +703,32 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 		}
 		sort.Strings(where)
 		switch {
+		// ---- CATEGORY (b)'s CLOSED COMPLEMENT, arm 1 of 2: IT MUST MOVE NO VERDICT, MEASURED. ----
+		// This is the arm that stops "it's an identity field" from admitting anything. A field
+		// that diverges anywhere is category (a) and must be re-declared with its binding; the
+		// measurement decides, not the declaration. (Arm 2 — it must be genesis-covered — runs in
+		// the membership block above, where carriedAs is resolved against the real struct.)
+		case d.class == classNetworkIdentity && len(where) > 0:
+			violations = append(violations, fmt.Sprintf(
+				"%s is declared %s — an IDENTITY PROPERTY OF THE NETWORK, which the owner's 2026-09-11 ruling "+
+					"admits ONLY for a field that changes no validity verdict. It CHANGES THE VERDICT in regime(s) "+
+					"%v. That makes it category (a): bind it to the chain and re-declare it %s with the binding "+
+					"that makes it swarm-uniform. The second category has a closed complement precisely so this "+
+					"cannot be argued past — %s",
+				f, className(d.class), where, className(classConsensusCritical), d.why))
+		case d.class == classNetworkIdentity:
+			// A probe that never ran cannot support "measured zero". The global probeless check
+			// below catches a missing perturbation; this catches the subtler case where the field
+			// declares regimes that did not run, so nothing exercised it here either.
+			if !driven[f] {
+				violations = append(violations, fmt.Sprintf(
+					"%s is declared %s, but NO driven regime exercised it, so its zero divergence is UNTESTED "+
+						"rather than measured (simplicity rule 7). This category's complement rests on the zero "+
+						"being a measurement. Name a regime in readIn that actually runs, and give it a "+
+						"perturbation that crosses.", f, className(d.class)))
+				break
+			}
+			netIdentity = append(netIdentity, f)
 		case d.class == classLocal && len(where) > 0:
 			violations = append(violations, fmt.Sprintf(
 				"%s is declared LOCAL but CHANGES the validity verdict in regime(s) %v — %s", f, where, d.why))
@@ -661,8 +768,12 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 	sort.Strings(drivenSafe)
 	sort.Strings(unproven)
 
+	sort.Strings(netIdentity)
 	t.Logf("CONSENSUS-CRITICAL and measured diverging (%d): %v", len(divergingCritical), divergingCritical)
 	t.Logf("LOCAL and DRIVEN-SAFE (%d): %v", len(drivenSafe), drivenSafe)
+	// Category (b), reported with BOTH arms named so the line is not just a list: each of these
+	// was measured to move no verdict AND resolved against the real ConsensusParams.
+	t.Logf("NETWORK IDENTITY — genesis-covered AND measured to move no verdict (%d): %v", len(netIdentity), netIdentity)
 	// UNPROVEN is reported, never asserted safe (simplicity rule 7): a field that does not diverge
 	// in a regime that could not have exercised it is UNTESTED, not safe.
 	t.Logf("UNPROVEN — no driven regime exercises these yet, NOT a safety claim (%d): %v", len(unproven), unproven)

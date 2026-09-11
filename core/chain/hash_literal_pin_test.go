@@ -373,6 +373,9 @@ func setNonZero(v reflect.Value) bool {
 	case reflect.Bool:
 		v.SetBool(!v.Bool())
 		return true
+	case reflect.String:
+		v.SetString(v.String() + "≠") // a value the current one does not have, for ANY current value
+		return true
 	case reflect.Array:
 		if v.Len() == 0 {
 			return false

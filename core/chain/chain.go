@@ -278,6 +278,30 @@ type Config struct {
 	// New rather than minting one. TODO(ratify): the mainnet activation height is a
 	// consensus value the human sets before mainnet — no default is picked here.
 	Era4ActivationHeight uint64
+	// NetworkName is this network's CANONICAL TEXT NAME, committed into the genesis block.
+	//
+	// WHY IT IS COMMITTED AND NOT A FLAG. The owner's requirement is that a node report its
+	// network by BOTH a cryptographic identifier and a canonical text name. A name read from
+	// local config reports a BELIEF — the operator reads their own input back, which is the
+	// vacuity eradeclared.go already ruled against for the declared era. Committing it means
+	// the name a node prints came from the chain it is actually serving.
+	//
+	// IT REACHES NO VALIDITY VERDICT, and that is deliberate. Nothing in the validation path
+	// reads it, and the divergence gate MEASURES that rather than asserting it: zero
+	// divergence in all five regimes. It is the FIRST member of ConsensusParams that is not a
+	// canon-rule-8 bind, and the membership doctrine was amended with a second CLOSED category
+	// to admit it — see ConsensusParams' doc and configDecls' classNetworkIdentity.
+	//
+	// COLLISIONS ARE NOT PREVENTABLE AND ARE NOT MEANT TO BE. Two networks may pick the same
+	// name; they cannot pick the same genesis hash. THE HASH IS THE IDENTITY, THE NAME IS A
+	// LABEL — so the name is NEVER displayed without the tag. (*Chain).NetworkIdentity is the
+	// only accessor, and it always renders both; there is deliberately no accessor that
+	// returns the bare name.
+	//
+	// THE EMPTY STRING IS A MEANING, not an absence: an unnamed network. ConsensusParams
+	// carries no omitempty on any field, and NetworkIdentity narrates the zero rather than
+	// rendering a blank.
+	NetworkName string
 }
 
 // WSCheckpoint is a recent trusted (height, hash) a replica will not reorg before.

@@ -143,6 +143,9 @@ func cmdDaemon(args []string) error {
 	domain := fs.String("domain", "", "this node's failure-domain label (AS / rack / geo — e.g. \"as64500\" or \"us-east-1b\"). Two uses: DHT eclipse-resistance (H5-B, with -dht-domain-cap) AND, for a validator, it is COMMITTED in the bond so the C2 concentration metric counts ADDRESS-DIVERSE participants (A axis / D-C2) — a stake split across many keys in ONE domain cannot fake decentralization; shedding the launch anchors requires distinct domains, not just distinct keys. A WEAK signal (declared, transport-cross-checked, not proven); it prices concentration higher, it does not close the honest-whale residual. Empty = unset (independent for the C2 metric; exempt from the DHT cap — see -dht-domain-cap).")
 	bondTTL := fs.Uint64("bond-ttl", 0, "objective re-challenge cadence (M0 retest G4 / RT-2): objective standing LAPSES this many committed blocks after a validator's latest on-chain bond registration unless it renews with a fresh space-time proof — so a validator that registers once then releases its plot cannot keep voting. LEFT UNSET it defaults ON for an untrusted objective validator (derived cadence); an explicit 0 disables it (standing never expires; safe only for a trusted/demo swarm)")
 	epochBlocks := fs.Uint64("epoch-blocks", 0, "mature-phase validator-set epoch (#357 research certification, Conditions A+B): after the young→mature handoff, the finality quorum, validator qualification, and the weight quorum are read from a SNAPSHOT of the committed bonded set frozen at the last epoch boundary (a finalized block), rotated every this-many blocks — never recomputed live from the churning bond ledger, which would let two conflicting commits finalize against two different sets. The handoff itself waits for the first boundary after the maturity latch, so the anchor→bond handoff is rooted at a finalized base. CONSENSUS-CRITICAL: set it identically across the swarm (like -min-bond). LEFT UNSET it defaults ON for an untrusted objective validator (derived cadence, well under the bond TTL); an explicit 0 disables epochs (live recompute; safe only for a trusted/demo swarm)")
+	era3Activation := fs.Uint64("era3-activation-height", 1, "GENESIS CONFIG: the height at or above which era-3 (v4, the committed state root) is the required block format. Committed into the genesis block (chain.ConsensusParams cbor key 13), so a node that sets it differently computes a DIFFERENT genesis hash and cannot join — divergence is impossible to join with rather than fatal at some later block. 1 (default) starts a NEW network at the highest era from its first block, which is the ratified launch posture: there is then no readiness tally and no latch, so the boundary is a genesis constant rather than a value the network votes itself into. 0 = no pre-latch override: era-3 activates only when era-3-aware bonded WEIGHT crosses the >2/3 super-quorum over a frozen epoch, which never fires without -epoch-blocks. TO JOIN AN EXISTING CHAIN, set what its genesis commits — the refusal at start-up names the field and the two values")
+	era4Activation := fs.Uint64("era4-activation-height", 1, "GENESIS CONFIG: the height at or above which era-4 (v5, witnessable transitions) is the required block format. Committed at chain.ConsensusParams cbor key 14, same joining rule as -era3-activation-height, and it MUST be >= it (a v5 block commits a superset of the v4 leaves, so era-4 cannot activate below the era-3 boundary; a misconfigured pair is refused at start-up). 1 (default) = the ratified launch posture: every block above the genesis is era-4, so the sub-era-4 interval where a consensus attestation carries NO chain id is EMPTY. That is not only convenience — the era-4 attestation form binds the chain id, and emptying the interval below the boundary is what leaves no height at which a signature harvested from another silt network could be replayed as evidence here. 0 = no pre-latch override (the >2/3 readiness tally, needs -epoch-blocks)")
+	networkName := fs.String("network-name", "", "GENESIS CONFIG: this network's canonical text NAME, committed into the genesis block (chain.ConsensusParams cbor key 18) and reported at start-up beside the genesis hash. It reaches NO validity verdict — nothing in the block-validation path reads it. It exists so a node reports the network it is actually serving by a name read FROM THE CHAIN, instead of reading this flag back to you. THE HASH IS THE IDENTITY AND THE NAME IS A LABEL: name collisions are not preventable and are not meant to be, two networks may both choose \"silt mainnet\", and neither can choose the other's genesis hash — so the name is never displayed without the hash. Empty (default) = an unnamed network, reported as such. Changing it on a chain this node has already joined is REFUSED at start-up")
 	requireTokens := fs.Int("require-tokens", 0, "publisher privacy: require every published entry to carry a publish token blind-signed by this many validators, instead of a Publisher identity (0 = off; validators issue tokens)")
 	allowPublisher := fs.Bool("allow-publisher", false, "permit entries that carry a durable Publisher identity (records a PERMANENT Publisher→root link on the append-only chain; off by default for privacy/M0 — only for explicitly trusted deployments)")
 	blockPeers := fs.String("block-peers", "", "TEST-HARNESS / FIELD-DRILL: comma-separated peer IDs to PARTITION away from — this node drops all messages to/from them, simulating a severed link (#184 partition→heal). HEAL by restarting without the flag (the persisted chain reloads and reconciles). Empty = no partition; a real deployment never sets it")
@@ -902,6 +905,13 @@ func cmdDaemon(args []string) error {
 			}
 			fmt.Printf("chain: #535 LIVENESS RECOVERY ARMED at boundary %d — this replica will validate that one boundary against the LIVE qualified bonded set (weak-subjectivity trust: every honest operator must set the SAME height, and the operator vouches the > 1/3 weight loss is a real outage, not an attack)\n", *livenessRecoveryHeight)
 		}
+		// The era pair's layering constraint, refused HERE rather than left to chain.New's
+		// panic. New() is right to panic — an ill-formed pair would mint a v5 block below
+		// H_era3 — but a flag pair an operator typed deserves a sentence naming both values
+		// and the rule, not a stack trace. The check is the same one, one layer earlier.
+		if *era4Activation > 0 && *era3Activation > 0 && *era4Activation < *era3Activation {
+			return fmt.Errorf("-era4-activation-height %d is below -era3-activation-height %d: era 4 layers ON TOP of era 3 (a v5 block commits a SUPERSET of the v4 leaves), so era-4 can never activate first. Raise -era4-activation-height to at least %d, or lower -era3-activation-height", *era4Activation, *era3Activation, *era3Activation)
+		}
 		ch := chain.New(chain.Config{
 			MinProposerRep: *minRep, MinAttesterRep: *minRep, Quorum: *quorum,
 			ByzantineQuorum: effByz,
@@ -913,6 +923,15 @@ func cmdDaemon(args []string) error {
 			WSCheckpoint:           wsCP,
 			LivenessRecoveryHeight: *livenessRecoveryHeight,
 			Archive:                *archive,
+			// GENESIS CONFIG, all three committed into ConsensusParams. They are passed
+			// straight through with NO effective-value derivation, deliberately: an
+			// effectiveX() would make the committed value a function of whether some OTHER
+			// flag was set, and the genesis hash would then depend on a rule an operator
+			// cannot read off their own command line. The era pair defaults to 1/1 (start a
+			// new network at the highest era); New() refuses era4 < era3.
+			Era3ActivationHeight: *era3Activation,
+			Era4ActivationHeight: *era4Activation,
+			NetworkName:          *networkName,
 		}, ledger.Reputation)
 		if *allowPublisher {
 			fmt.Println("publisher: durable Publisher entries PERMITTED — publishes may record permanent linkage (trusted deployment)")
@@ -990,8 +1009,9 @@ func cmdDaemon(args []string) error {
 				if err := ch.AppendGenesis(gb); err == nil {
 					gbh := gb.Hash()
 					fmt.Printf("genesis: %s\n", gh)
-					fmt.Printf("genesis: block %s — height 0 COMMITS this network's consensus config (-quorum=%d -min-bond=%d -min-bond-floor=%d -epoch-blocks=%d -bond-label-k=%d bond-vdf-delay=%d [compiled default, no flag], %d anchor(s)). A node configured differently computes a different genesis hash and cannot join this network.\n",
-						gbh, gp.Quorum, gp.MinBond, gp.MinBondBytes, gp.EpochBlocks, gp.BondLabelSamples, gp.BondVDFDelay, len(gp.Anchors))
+					fmt.Printf("genesis: block %s — height 0 COMMITS this network's consensus config (-quorum=%d -min-bond=%d -min-bond-floor=%d -epoch-blocks=%d -bond-label-k=%d bond-vdf-delay=%d [compiled default, no flag], %d anchor(s), -era3-activation-height=%d -era4-activation-height=%d) and its name (-network-name=%q). A node configured differently computes a different genesis hash and cannot join this network.\n",
+						gbh, gp.Quorum, gp.MinBond, gp.MinBondBytes, gp.EpochBlocks, gp.BondLabelSamples, gp.BondVDFDelay, len(gp.Anchors),
+						gp.Era3ActivationHeight, gp.Era4ActivationHeight, gp.NetworkName)
 				}
 			} else {
 				fmt.Fprintln(os.Stderr, "genesis seed:", gerr)
@@ -1022,6 +1042,13 @@ func cmdDaemon(args []string) error {
 		// serve: ahead of the replay it would report an empty chain on every restart, and ahead
 		// of the seed it would report one on every fresh node.
 		for _, ln := range eraStartupLines(ch) {
+			fmt.Println(ln)
+		}
+		// WHICH NETWORK, printed beside WHICH ERA and for the same reason: both halves must
+		// describe the chain this daemon will actually serve, so both are printed after the
+		// replay and after any genesis seed. The name is read off the committed genesis, never
+		// off -network-name, and the hash always travels with it.
+		for _, ln := range networkIdentityLines(ch) {
 			fmt.Println(ln)
 		}
 		nd.EnableChain(ch, ident.Signer())
@@ -2470,4 +2497,17 @@ func faucetConfigure(l *credit.Ledger, capacity, perHour, denyFloor int64) error
 // their own input back. TestEraStartupLinesDeclareTheBUILDNotTheFlags ablates it.
 func eraStartupLines(ch *chain.Chain) []string {
 	return chain.StartupEraLines(chain.DeclaredMaxBlockVersion, ch.EraState())
+}
+
+// networkIdentityLines is the daemon's half of the network-identity pair: WHICH NETWORK this node
+// is on, by both of the identifiers the owner's requirement names — a canonical text name and the
+// cryptographic one.
+//
+// LIKE eraStartupLines, IT TAKES NO FLAG. It reads the name off the committed genesis through
+// (*Chain).NetworkIdentity, which is the only accessor there is. A function that took
+// -network-name would print the operator's own input back, and whoever was working out which
+// network a node had actually joined would be reading their own typo — the same vacuity the
+// declared-era line is built to avoid, one field along.
+func networkIdentityLines(ch *chain.Chain) []string {
+	return chain.NetworkIdentityLines(ch)
 }

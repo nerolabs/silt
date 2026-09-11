@@ -144,7 +144,7 @@ type stateRootHandoffPre struct {
 //
 // WHY (R-FOLD-LIVE-STATE-READS cert 2026-09-02, Q1/Q3). The class-A screen picked its qualification
 // branch from c.matureEpoch and its anchor eligibility from c.launchAnchor → c.handedOff(). Those
-// fields are written ONLY by apply→rotateEpoch (chain.go:3398) and adopt (chain.go:4020). The
+// fields are written ONLY by apply→rotateEpoch (chain.go:3398) and adopt (chain.go). The
 // deployment target "holds NO registry and replays NO apply()", so on a COLD box they are never set
 // and the mature-epoch branch is UNREACHABLE: every mature-epoch block is screened under the
 // pre-maturity rule. That diverges from what a full node accepts in BOTH directions, with every
