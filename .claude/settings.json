@@ -1,0 +1,43 @@
+{
+  "$comment": [
+    "TRACKED project settings. This file is in git ON PURPOSE: it is therefore present in",
+    "every `git worktree` from the moment the worktree is created, which is the only way a",
+    "guard can reach a seat running in one. `.claude/settings.local.json` is personal and",
+    "gitignored; hooks that must follow the repo belong HERE.",
+    "",
+    "scar:worktree-agent-memory-written-to-a-doomed-dir-2026-09-11 — a fresh worktree has no",
+    "`.claude/agent-memory` symlink, so a seat's memory write silently created a real local",
+    "directory that died with the worktree. The PreToolUse hook blocks that write BEFORE any",
+    "byte lands; the SessionStart hook warns the seat before it writes anything at all. Both",
+    "name `.claude/setup-agent-memory.sh`, which fixes it in one command.",
+    "",
+    "The hook is silent and exits 0 on every tool call that is not a memory write."
+  ],
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/check_agent_memory_link.py\" --hook",
+            "timeout": 10,
+            "statusMessage": "Checking agent-memory symlink"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/check_agent_memory_link.py\" --hook",
+            "timeout": 10,
+            "statusMessage": "Checking agent-memory symlink"
+          }
+        ]
+      }
+    ]
+  }
+}

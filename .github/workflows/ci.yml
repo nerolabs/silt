@@ -389,6 +389,11 @@ jobs:
         run: python3 scripts/check_residual_register.py
       - name: Scar-lint — no test may skip under -short in every merge-gating job (scar:short-run-is-zero-execution-2026-09-10)
         run: python3 scripts/check_short_dark_tests.py
+      - name: Scar-lint — no live agent memory may be tracked by git (scar:worktree-agent-memory-written-to-a-doomed-dir-2026-09-11, #636/#638)
+        # CI can ONLY see this half. The symlink half of the rule is unenforceable here
+        # (a CI checkout never has the gitignored symlink) and is enforced instead by the
+        # PreToolUse/SessionStart hooks in .claude/settings.json, which reach worktrees.
+        run: python3 scripts/check_agent_memory_link.py --ci
 
   docs-shipped:
     name: Docs ship with code
