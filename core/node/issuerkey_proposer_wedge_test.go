@@ -24,12 +24,8 @@ import (
 	"testing"
 
 	"github.com/nerolabs/silt/adapters/identity"
-	"github.com/nerolabs/silt/adapters/markstore"
-	"github.com/nerolabs/silt/adapters/memstore"
-	"github.com/nerolabs/silt/adapters/simclock"
 	"github.com/nerolabs/silt/adapters/simnet"
 	"github.com/nerolabs/silt/core/chain"
-	"github.com/nerolabs/silt/core/credit"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -46,39 +42,14 @@ import (
 // on a root mismatch. Callers must therefore SATURATE `validatorsSeen` under a
 // pre-era version (where no root predicate runs) before driving current-era
 // proposals. See `saturateValidatorsSeen`.
+//
+// EPOCHS ARE OFF HERE (EpochBlocks == 0), which is what the C2 wedge needs: the
+// wedge is about the BOND ledger, and an epoch clock would add an unrelated moving
+// part. The epoch-enabled variant of this same network — the R-E2E-ERA4-FIXTURE
+// posture — is era4EpochNet in issuerkey_epoch_posture_test.go.
 func era4AnchorNet(t *testing.T, nAnchors int) ([]*Node, []*identity.Identity, *simnet.Network, *chain.Block, chain.Config) {
 	t.Helper()
-	sched := simclock.New()
-	net := simnet.New(sched, 1, simnet.DefaultConfig())
-	net.EnableHeldDelivery()
-
-	ids := make([]*identity.Identity, nAnchors)
-	anchors := map[ports.NodeID]bool{}
-	for i := range ids {
-		ids[i] = identity.FromSeed(int64(7700 + i))
-		anchors[ids[i].NodeID()] = true
-	}
-	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g-era4")}}
-	chain.Sign(g, ids[0].Signer())
-	cfg := chain.Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true, Anchors: anchors,
-		MatureValidators: 99, Era3ActivationHeight: 3, Era4ActivationHeight: 3}
-
-	nodes := make([]*Node, nAnchors)
-	for i, id := range ids {
-		nd := New(id.NodeID(), DefaultConfig(), sched, net.Endpoint(id.NodeID()), memstore.New())
-		nd.SetLedger(credit.New(50_000, 0))
-		ch := chain.New(cfg, func(ports.NodeID) int64 { return 0 })
-		ch.SetBondVerifier(mcStubVerify)
-		if err := ch.AppendGenesis(*g); err != nil {
-			t.Fatalf("genesis: %v", err)
-		}
-		nd.EnableChain(ch, id.Signer())
-		if err := nd.SetSignMarkStore(markstore.NewMem()); err != nil {
-			t.Fatalf("sign-mark store: %v", err)
-		}
-		nodes[i] = nd
-	}
-	return nodes, ids, net, g, cfg
+	return era4EpochNet(t, nAnchors, 0)
 }
 
 // proposeOnce drives one real proposal from `proposer` over held delivery and returns
