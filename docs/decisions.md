@@ -2404,7 +2404,11 @@ showing the one-byte value IS committed).
   `-era4-activation-height` defaults to 1 — so this call was wrong on its ruling AND on the ground it
   stood on. Neither rescues the other.)*
   - **⚠ REVERSED 2026-09-11 by the owner — `D-MEMBERSHIP-KEEP-FIVE-2026-09-11`. RETIRE NEITHER; the digest
-    set freezes at FIVE; G-3 is built; G-2 is dropped.** The call above is left exactly as ratified, because
+    set freezes at FIVE; G-3 is `R-membership`'s bound and is **UNBUILT**; G-2 is dropped.** *(This summary
+    line read "G-3 is built" for a day. It was wrong and it contradicted the entry it summarises, which says
+    "G-3, still unbuilt", and the `R-membership` register row, which says the same. No witness id-list size
+    gate exists in `core/`. Corrected 2026-09-11 rather than rewritten, because a reader who stopped at this
+    line concluded `R-membership`'s closer was done.)* The call above is left exactly as ratified, because
     the correction has to be visible as a correction rather than laundered into the original. It was ratified
     on a LEAF-COUNT argument that never priced what the leaves do: the two roots are the only
     set-completeness anchor a root-only holder has, three live box paths read them, and removing the two
