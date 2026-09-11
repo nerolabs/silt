@@ -110,7 +110,7 @@ func TestRNestGate_JunkKeyProofIsAcceptedEvidence(t *testing.T) {
 	g := w.genesis()
 
 	e := junkEquivocation(g, 1)
-	if err := CheckEquivocation(&e); err != nil {
+	if err := CheckEquivocation(&e, ports.Hash{}); err != nil {
 		t.Fatalf("ROOT CAUSE GONE: CheckEquivocation now REFUSES a throwaway-key proof about "+
 			"two never-committed blocks (%v). The T1 self-armor variant (no bond, no coalition) "+
 			"is closed; R-NEST-GATE's T0 variant (two genuine committed proofs) is not — see this "+
@@ -165,7 +165,7 @@ func TestRNestGate_SelfArmorMeasurement(t *testing.T) {
 	Sign(armored, w.prop)
 	w.attestAll(armored)
 
-	if outcome, err := v5ValidateSlashes(armored); outcome != Accept || err != nil {
+	if outcome, err := v5ValidateSlashes(liveView{w.c}, armored); outcome != Accept || err != nil {
 		t.Fatalf("Q2 REGRESSED: the armored block (Slashes at %d B, %d proofs, shipped DefaultConfig, "+
 			"no misconfiguration) is no longer valid under v5ValidateSlashes: outcome=%v err=%v. Either "+
 			"the construction is stale (re-derive) or a validity rule changed — check whether it is the "+
@@ -189,7 +189,7 @@ func TestRNestGate_SelfArmorMeasurement(t *testing.T) {
 	legitB.Entries = []ports.Entry{entry(202)}
 	Sign(&legitB, realKey)
 	legit := Equivocation{Culprit: pubOf(realKey), A: legitA, B: legitB}
-	if err := CheckEquivocation(&legit); err != nil {
+	if err := CheckEquivocation(&legit, ports.Hash{}); err != nil {
 		t.Fatalf("Q3: a genuine double-sign by a real bonded key over two differing bodies at one "+
 			"height is not recognized as equivocation: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestRNestGate_SelfArmorMeasurement(t *testing.T) {
 	slashBlock := &Block{Version: 1, Height: height, Prev: prev, Entries: []ports.Entry{entry(250)}, Slashes: []Equivocation{legit}}
 	Sign(slashBlock, w.prop)
 	w.attestAll(slashBlock)
-	outcome, verr := v5ValidateSlashes(slashBlock)
+	outcome, verr := v5ValidateSlashes(liveView{w.c}, slashBlock)
 	t.Logf("Q3: v5ValidateSlashes(block carrying the legitimate proof) outcome=%v err=%v", outcome, verr)
 	if over > 0 && (outcome == Accept || !errors.Is(verr, ErrSlashesBytesCapExceeded)) {
 		t.Fatalf("Q3 INCONSISTENT: the legitimate proof measures %d B over cap by %d B, but "+

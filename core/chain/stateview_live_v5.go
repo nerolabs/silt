@@ -55,7 +55,7 @@ func (v liveView) PrunedTolerated(h uint64) (bool, Availability) {
 // parent that committed no root reads as nil, never as a zero hash.
 func (v liveView) Head() HeadRef {
 	prev, next := v.c.Head()
-	h := HeadRef{Hash: prev, NextHeight: next}
+	h := HeadRef{Hash: prev, NextHeight: next, ChainID: v.c.ChainID()}
 	n := len(v.c.blocks)
 	if n == 0 {
 		h.Empty = true

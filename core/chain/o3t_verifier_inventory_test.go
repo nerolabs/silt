@@ -88,8 +88,8 @@ type o3tVerifyRow struct {
 // the code — the cert was read at b328268; PR #720 added carrier.go since), plus the two core/node
 // sites classified 2026-09-04 (PE RULING-O3-direction-T-build-fa895f5 condition 2 + Tester gap).
 var o3tVerifyAllowlist = map[o3tVerifySite]o3tVerifyRow{
-	{"chain", "chain.go", "verifyAtt"}: {Count: 2, Classes: []o3tVerifyClass{o3tClassAttestation, o3tClassAttestation},
-		Why: "THE era-aware attestation verifier: era-1 arm (a.Round == 0 guard, bare hash) and era-2 arm (consensusSigBytes(phase, round, h)). Every attestation verify in the package routes here except signedBlock's era-1-only arm."},
+	{"chain", "chain.go", "verifyAtt"}: {Count: 3, Classes: []o3tVerifyClass{o3tClassAttestation, o3tClassAttestation, o3tClassAttestation},
+		Why: "THE era-aware attestation verifier, now THREE arms: era-1 (a.Round == 0 guard, bare hash), era-2 (consensusSigBytes(phase, round, h)) and era-4 (consensusSigBytesV5(chainID, phase, height, round, h) — owner call A). The third arm is the #558 dispatcher EXTENDED, which is the shape the pin demands: a fourth bare-hash verifier elsewhere would still be #558 again. Every attestation verify in the package routes here except signedBlock's era-1-only arm."},
 	{"chain", "equivocation.go", "signedBlock"}: {Count: 2, Classes: []o3tVerifyClass{o3tClassProposerSig, o3tClassAttestation},
 		Why: "era-1 evidence ONLY: reachable from CheckEquivocation only when both evidence blocks are < BlockVersionRounds; era-2 evidence goes through consensusSigScopes -> verifyAtt. Folding the attestation arm into verifyAtt touches the R0.6-certified slash path: follow-on O3-R13, not T."},
 	{"chain", "chain.go", "ValidateProposal"}: {Count: 1, Classes: []o3tVerifyClass{o3tClassProposerSig},
@@ -540,7 +540,7 @@ func TestO3T_Era2CertificateAcceptedByEveryEra2Verifier(t *testing.T) {
 	// 4. The slash path's era-2 branch: consensusSigScopes must see every signer's two slots.
 	for i, k := range keys {
 		pub := []byte(k.Public().(ed25519.PublicKey))
-		scopes := consensusSigScopes(pub, b, h)
+		scopes := consensusSigScopes(pub, b, c.ChainID(), h)
 		want := 2 // one prepare + one precommit, both at round 0
 		if len(scopes) != want {
 			t.Fatalf("consensusSigScopes (verifyAtt) saw %d slot(s) for signer %d, want %d: %v", len(scopes), i, want, scopes)
@@ -555,7 +555,7 @@ func TestO3T_Era2CertificateAcceptedByEveryEra2Verifier(t *testing.T) {
 
 	// 6. validateCarrier: a v5 child carrying that precommit set over b.Prev == b.Hash().
 	child := &Block{Version: BlockVersionWitnessable, Height: b.Height + 1, Prev: h, LastCommit: carrier}
-	if err := validateCarrier(child); err != nil {
+	if err := validateCarrier(child, c.ChainID()); err != nil {
 		t.Fatalf("validateCarrier (verifyAtt over b.Prev) refused the carried era-2 precommits: %v", err)
 	}
 }

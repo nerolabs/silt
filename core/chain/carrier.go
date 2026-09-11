@@ -98,10 +98,11 @@ var (
 // unqualified signer's entry is valid and simply writes nothing (applyCarrier screens it). Adding
 // a quorum check here would fork the #402 one-function-two-callers quorum stack.
 //
-// ONE FUNCTION, THREE CALLERS — and NO *Chain RECEIVER, deliberately (PE ruling
+// ONE FUNCTION, FOUR CALLERS — and NO *Chain RECEIVER, deliberately (PE ruling
 // RULING-floorbox-predicate-rederivation-structure-2026-09-03.md §3(E), §6(a), §7 merge-condition 1;
 // this is the FIRST INSTANCE of that structure). The callers are the two full-node disk-write paths
-// (ValidateProposal, appendStructural) and the trustless floor box's recompute entry
+// (ValidateProposal, appendStructural), the ONE accept composition (ValidateProposalV5) and the
+// trustless floor box's recompute entry
 // (assembleStateRootRecomputeOps). The box applies the SAME validity function the node applies, so
 // the box's class-A write-set can never be derived from a carrier the node refuses — the
 // RT-CARRIER-1 / RT-CARRIER-12 wrong-accept, closed at the root rather than by a box-side
@@ -110,7 +111,22 @@ var (
 // compiler here instead of by the AST allowlist pin (which covers fold files only, and whose glob
 // the same ruling measured as holed). Do NOT re-add a receiver, and do NOT write a box-side
 // counterpart: a second implementation is the defect shape this closes.
-func validateCarrier(b *Block) error {
+//
+// chainID is the CALLER'S OWN network identity, not a field of b (BG-2). It is still not a
+// receiver: a ports.Hash cannot reach c.slashed / c.matureEpoch, so the compiler-enforced
+// fold-file property the PE ruling installed is untouched.
+//
+// THE SIGNING HEIGHT IS DERIVED, NOT READ — the ONE site of the nine where it is. The entries
+// are the PARENT's precommits and the parent is not in scope, so the height they were signed at
+// is b.Height-1. Sound under P1 PARENT BINDING, which runs FIRST on every path that reaches
+// here (validate_v5.go's step 1, chain.go's validateStructural), so b.Height-1 == parent.Height
+// by rule rather than by convention; the b.Height <= 1 refusal below means it cannot underflow.
+// And it is a strict NARROWING: a mis-declared b.Height makes GENUINE entries fail to verify
+// and can never make a forged one pass, so the worst case is the fail-safe direction P1 already
+// rejects for. This is explicitly NOT the #397 class — #397 silently changed which slot was
+// considered signed; here every deviation is a loud refusal. Driven by
+// TestGPRE2_TheCarrierSigningHeightIsTheParents.
+func validateCarrier(b *Block, chainID ports.Hash) error {
 	if len(b.LastCommit) == 0 {
 		return nil // the empty carrier is always valid — including at height 1 and on every prior era
 	}
@@ -121,20 +137,23 @@ func validateCarrier(b *Block) error {
 	if b.Height <= 1 {
 		return fmt.Errorf("%w: height %d carries %d entries", ErrCarrierAtHeightOne, b.Height, len(b.LastCommit))
 	}
+	s := attScope{ChainID: chainID, Height: b.Height - 1}
 	seen := make(map[ports.NodeID]bool, len(b.LastCommit))
 	for i := range b.LastCommit {
 		a := b.LastCommit[i]
-		if a.Phase != PhasePrecommit {
-			return fmt.Errorf("%w: entry %d has phase %d, want PhasePrecommit (%d)",
-				ErrCarrierBadSignature, i, a.Phase, PhasePrecommit)
+		if !isCarrierPrecommit(a.Phase) {
+			return fmt.Errorf("%w: entry %d has phase %d, want PhasePrecommit (%d) or PhasePrecommitV5 (%d)",
+				ErrCarrierBadSignature, i, a.Phase, PhasePrecommit, PhasePrecommitV5)
 		}
 		// verifyAtt is the SAME era-aware arithmetic the live commit path uses
 		// (collectQuorumSigs, validateStructural) — the #558 fix's shared function, never a
-		// second bare-hash copy. At PhasePrecommit it checks
-		// consensusSigBytes(PhasePrecommit, a.Round, b.Prev).
-		if !verifyAtt(a, b.Prev) {
-			return fmt.Errorf("%w: entry %d (round %d) does not verify over parent %s",
-				ErrCarrierBadSignature, i, a.Round, b.Prev)
+		// second bare-hash copy. It dispatches the preimage form on the ENTRY'S OWN Phase, which
+		// is what makes this rule correct at the era-4 boundary: at H_era4 the child is v5 and
+		// the parent is v4, so the entries are v2-form while the container is v5. A dispatch
+		// keyed on b.Version would reject every one of them and wedge the chain permanently.
+		if !verifyAtt(a, s, b.Prev) {
+			return fmt.Errorf("%w: entry %d (round %d) does not verify over parent %s at height %d",
+				ErrCarrierBadSignature, i, a.Round, b.Prev, b.Height-1)
 		}
 		id := a.AttesterID()
 		if seen[id] {
@@ -226,11 +245,18 @@ func (c *Chain) HeadCarrier() []Attestation {
 		return nil
 	}
 	h := head.Hash()
+	// The scope is the HEAD's own — its height, this chain's id. The entries are verified
+	// exactly as validateCarrier will verify them in the child (isCarrierPrecommit + verifyAtt
+	// keyed on the entry's own Phase, at the head's height), so the filter and the validity rule
+	// cannot disagree. They MUST NOT: if they did, an honest proposer would mint a carrier its
+	// own replica refuses, and at the era-4 boundary — where the head is v4 and the child is v5
+	// — that is a permanent liveness wedge (G-PRE-1).
+	s := attScope{ChainID: c.ChainID(), Height: head.Height}
 	seen := make(map[ports.NodeID]bool, len(head.Atts))
 	out := make([]Attestation, 0, len(head.Atts))
 	for i := range head.Atts {
 		a := head.Atts[i]
-		if a.Phase != PhasePrecommit || !verifyAtt(a, h) {
+		if !isCarrierPrecommit(a.Phase) || !verifyAtt(a, s, h) {
 			continue
 		}
 		id := a.AttesterID()

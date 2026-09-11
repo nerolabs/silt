@@ -313,7 +313,7 @@ func TestReloadRejectsResignedWrongStateRootV5(t *testing.T) {
 		t.Fatalf("postApplyRoots: %v", err)
 	}
 	b.StateRoot, b.LogRoot = &state, &log
-	commitRounds(b, keys, 0)
+	commitRounds(b, keys, 0, c.ChainID())
 	if err := c.Append(*b); err != nil {
 		t.Fatalf("commit honest v5 block: %v", err)
 	}

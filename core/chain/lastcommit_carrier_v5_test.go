@@ -58,7 +58,7 @@ func mintNext4Carrier(t *testing.T, c *Chain, keys []ed25519.PrivateKey, regs ..
 	default:
 		b.Version = BlockVersionRounds
 	}
-	twoPhaseSign(b, keys)
+	twoPhaseSign(b, keys, c.ChainID())
 	return b
 }
 
@@ -150,7 +150,7 @@ func TestCarrierValidityRules(t *testing.T) {
 				t.Fatalf("populate: %v", err)
 			}
 		}
-		twoPhaseSign(b, keys)
+		twoPhaseSign(b, keys, c.ChainID())
 		return b
 	}
 
@@ -162,11 +162,11 @@ func TestCarrierValidityRules(t *testing.T) {
 		prev, next := c3.Head()
 		head := c3.Blocks(1)[0]
 		b := &Block{Height: next, Prev: prev, Entries: []ports.Entry{entry(byte(next))}}
-		b.LastCommit = []Attestation{AttestAt(&head, keys3[1], 0, PhasePrecommit)}
+		b.LastCommit = []Attestation{AttestAt(&head, keys3[1], 0, PhasePrecommit, c3.ChainID())}
 		if err := c3.PopulateEra3Roots(b); err != nil {
 			t.Fatalf("populate: %v", err)
 		}
-		twoPhaseSign(b, keys3)
+		twoPhaseSign(b, keys3, c3.ChainID())
 		if b.Version != BlockVersionStateRoot {
 			t.Fatalf("fixture must mint v4, got v%d", b.Version)
 		}
@@ -184,7 +184,7 @@ func TestCarrierValidityRules(t *testing.T) {
 		b := build(func(b *Block) {
 			// A genuine precommit at the same round over a DIFFERENT hash.
 			other := &Block{Height: 99, Entries: []ports.Entry{entry(9)}}
-			b.LastCommit[0] = AttestAt(other, keys[1], 0, PhasePrecommit)
+			b.LastCommit[0] = AttestAt(other, keys[1], 0, PhasePrecommit, c.ChainID())
 		})
 		if err := c.ValidateProposal(b); !errors.Is(err, ErrCarrierBadSignature) {
 			t.Fatalf("want ErrCarrierBadSignature, got %v", err)
@@ -204,7 +204,7 @@ func TestCarrierValidityRules(t *testing.T) {
 		if head.Hash() != prev {
 			t.Fatal("head lookup")
 		}
-		b := build(func(b *Block) { b.LastCommit[0] = AttestAt(&head, keys[0], 7, PhasePrecommit) })
+		b := build(func(b *Block) { b.LastCommit[0] = AttestAt(&head, keys[0], 7, PhasePrecommit, c.ChainID()) })
 		if err := c.ValidateProposal(b); err != nil {
 			t.Fatalf("a genuine round-7 precommit over the parent must be a valid carrier entry: %v", err)
 		}
@@ -213,11 +213,11 @@ func TestCarrierValidityRules(t *testing.T) {
 		c2, keys2 := era4AnchorChain(t, 1, 1)
 		g := c2.Blocks(0)[0]
 		b := &Block{Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
-		b.LastCommit = []Attestation{AttestAt(&g, keys2[1], 0, PhasePrecommit)}
+		b.LastCommit = []Attestation{AttestAt(&g, keys2[1], 0, PhasePrecommit, c2.ChainID())}
 		if err := c2.PopulateEra4Roots(b); err != nil {
 			t.Fatalf("populate: %v", err)
 		}
-		twoPhaseSign(b, keys2)
+		twoPhaseSign(b, keys2, c2.ChainID())
 		if err := c2.ValidateProposal(b); !errors.Is(err, ErrCarrierAtHeightOne) {
 			t.Fatalf("want ErrCarrierAtHeightOne, got %v", err)
 		}
@@ -229,7 +229,7 @@ func TestCarrierValidityRules(t *testing.T) {
 // fixtures that mint a signer's carried precommit directly.
 func carrierEntry(c *Chain, k ed25519.PrivateKey) Attestation {
 	head, _ := c.headBlock()
-	return AttestAt(&head, k, 0, PhasePrecommit)
+	return AttestAt(&head, k, 0, PhasePrecommit, c.ChainID())
 }
 
 // =============================================================================
@@ -277,7 +277,7 @@ func TestClassA_ParentProposerExclusionIsBoxOwned(t *testing.T) {
 	w := f.witnessForAtt(t, b)
 
 	// Box-owned id: the fold reproduces apply()'s exclusion and agrees with the node's root.
-	if err := f.c.recomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w, parentProposer); err != nil {
+	if err := f.c.recomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w, parentProposer, f.c.ChainID()); err != nil {
 		t.Fatalf("GATE FAILED: with the box-owned parent proposer the recompute must agree with the node's root; got %v", err)
 	}
 	// Any other id (what a fresh-key witness used to buy): the proposer self-seats and the fold
@@ -286,7 +286,7 @@ func TestClassA_ParentProposerExclusionIsBoxOwned(t *testing.T) {
 	w.AttScreens = append(w.AttScreens, f.attScreen(parentProposer))
 	w.ChangedLeaves = append(w.ChangedLeaves, f.leafWitness(t, stateRootWrite{
 		key: statehash.Key(tagValidatorsSeen, parentProposer[:]), newValue: statehash.Present}))
-	err := f.c.recomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w, ports.NodeID{})
+	err := f.c.recomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w, ports.NodeID{}, f.c.ChainID())
 	if !errors.Is(err, ErrRecomputeStateRootMismatch) {
 		t.Fatalf("GATE FAILED: an un-excluded parent proposer seats itself off its own block; the fold must diverge from the node's root by name (ErrRecomputeStateRootMismatch); got %v", err)
 	}
@@ -339,14 +339,14 @@ func TestG3_ServedVariantDeterminism(t *testing.T) {
 	fifth := key(58001)
 	varA := *h1
 	varB := *h1
-	varB.Atts = append(append([]Attestation(nil), h1.Atts...), AttestAt(h1, fifth, 0, PhasePrecommit))
+	varB.Atts = append(append([]Attestation(nil), h1.Atts...), AttestAt(h1, fifth, 0, PhasePrecommit, c.ChainID()))
 	varC := *h1
 	varC.CommitRound = 3
 	varC.PrepareQC = nil
 	varC.Atts = nil
 	for _, k := range keys {
-		varC.PrepareQC = append(varC.PrepareQC, AttestAt(h1, k, 3, PhasePrepare))
-		varC.Atts = append(varC.Atts, AttestAt(h1, k, 3, PhasePrecommit))
+		varC.PrepareQC = append(varC.PrepareQC, AttestAt(h1, k, 3, PhasePrepare, c.ChainID()))
+		varC.Atts = append(varC.Atts, AttestAt(h1, k, 3, PhasePrecommit, c.ChainID()))
 	}
 	if varA.Hash() != varB.Hash() || varA.Hash() != varC.Hash() {
 		t.Fatal("G3 premise broken: Atts / PrepareQC / CommitRound must be OUTSIDE Hash() — the variants are the same block")

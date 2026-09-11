@@ -51,7 +51,7 @@ func TestF7_SameHeightDoubleSignIsCaught(t *testing.T) {
 	a1 := f7Block(propA, 1, g.Hash(), entry(10), v, key(3))
 	b1 := f7Block(propB, 1, g.Hash(), entry(11), v, key(4)) // v signs BOTH at height 1
 
-	eqs := FindEquivocations([]Block{g, a1}, []Block{g, b1})
+	eqs := FindEquivocations([]Block{g, a1}, []Block{g, b1}, ports.Hash{})
 	found := false
 	for _, e := range eqs {
 		if e.CulpritID() == idOf(v) {
@@ -78,7 +78,7 @@ func TestF7_HonestReorgFollowerNotSlashed(t *testing.T) {
 	b1 := f7Block(propB, 1, g.Hash(), entry(11), key(4), key(6))
 	b2 := f7Block(propB, 2, b1.Hash(), entry(12), v, key(4))
 
-	eqs := FindEquivocations([]Block{g, a1}, []Block{g, b1, b2})
+	eqs := FindEquivocations([]Block{g, a1}, []Block{g, b1, b2}, ports.Hash{})
 	for _, e := range eqs {
 		if e.CulpritID() == idOf(v) {
 			t.Fatal("F7 guard: an honest cross-height reorg-follower must NOT be slashed — " +

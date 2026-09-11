@@ -73,7 +73,7 @@ func mixedEraHistory(t *testing.T) (*Chain, []Block) {
 	b2 := &Block{Version: BlockVersionRounds, Height: 2, Prev: b1.Hash(),
 		Entries: []ports.Entry{entry(22)}}
 	b2.BondRegs = append(b2.BondRegs, bondReg(keys[1], twoMiB, b1.Hash()))
-	commitRounds(b2, keys, 0)
+	commitRounds(b2, keys, 0, ports.Hash{})
 	if err := c.Append(*b2); err != nil {
 		t.Fatalf("commit era-2 block at height 2: %v", err)
 	}
@@ -249,7 +249,7 @@ func commitV4OnDisk(t *testing.T) (persisted []Block, prop ed25519.PrivateKey) {
 	}
 	b.StateRoot = &state
 	b.LogRoot = &log
-	commitRounds(b, keys, 0)
+	commitRounds(b, keys, 0, ports.Hash{})
 	if err := c.Append(*b); err != nil {
 		t.Fatalf("commit honest v4 block: %v", err)
 	}
@@ -470,7 +470,7 @@ func TestReloadRejectsV2AtEra3Boundary(t *testing.T) {
 	}
 	v2AtBoundary := &Block{Version: BlockVersionRounds, Height: next, Prev: prev,
 		Entries: []ports.Entry{entry(byte(next))}}
-	twoPhaseSign(v2AtBoundary, keys)
+	twoPhaseSign(v2AtBoundary, keys, c.ChainID())
 
 	// Assertion 1 (the RED cause pin): validateStructural ACCEPTS the block — its
 	// signatures/ancestry/quorum are valid, so the ONLY remaining reason to reject it is

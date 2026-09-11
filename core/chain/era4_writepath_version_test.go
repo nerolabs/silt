@@ -224,7 +224,7 @@ func era4BoundaryFixture(t *testing.T) (*Chain, []ed25519.PrivateKey, *Block) {
 	if bad.Version != BlockVersionStateRoot {
 		t.Fatalf("fixture: the forged boundary block must be v4, got v%d", bad.Version)
 	}
-	twoPhaseSign(bad, keys)
+	twoPhaseSign(bad, keys, c.ChainID())
 
 	// Cause pin: the block is structurally VALID. Anything that rejects it below rejects
 	// it for the era, not for a malformed forge.

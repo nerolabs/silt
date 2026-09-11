@@ -27,13 +27,13 @@ import (
 // authorship), and every key signs both phases. This is the era-2/era-3 (v2/v4) commit
 // certificate shape (mirrors archival_fixture_570_test.go's era2Block). b's roots and
 // Version must already be set — the signatures cover them.
-func twoPhaseSign(b *Block, keys []ed25519.PrivateKey) {
+func twoPhaseSign(b *Block, keys []ed25519.PrivateKey, chainID ports.Hash) {
 	Sign(b, keys[0])
 	for _, k := range keys {
-		b.PrepareQC = append(b.PrepareQC, AttestAt(b, k, 0, PhasePrepare))
+		b.PrepareQC = append(b.PrepareQC, AttestAt(b, k, 0, PhasePrepare, chainID))
 	}
 	for _, k := range keys {
-		b.Atts = append(b.Atts, AttestAt(b, k, 0, PhasePrecommit))
+		b.Atts = append(b.Atts, AttestAt(b, k, 0, PhasePrecommit, chainID))
 	}
 }
 
@@ -53,7 +53,7 @@ func mintNext(t *testing.T, c *Chain, keys []ed25519.PrivateKey, regs ...BondReg
 	} else {
 		b.Version = BlockVersionRounds
 	}
-	twoPhaseSign(b, keys)
+	twoPhaseSign(b, keys, c.ChainID())
 	return b
 }
 
@@ -133,7 +133,7 @@ func TestEra3PreLatchMintFlipAndBoundary2c(t *testing.T) {
 	// (bypassing mintNext's flip) at the current head.
 	prev, next := c.Head()
 	v2AtBoundary := &Block{Version: BlockVersionRounds, Height: next, Prev: prev, Entries: []ports.Entry{entry(byte(next))}}
-	twoPhaseSign(v2AtBoundary, keys)
+	twoPhaseSign(v2AtBoundary, keys, c.ChainID())
 	if err := c.Append(*v2AtBoundary); !errors.Is(err, ErrEra3VersionRequired) {
 		t.Fatalf("at H_era3: a v2 block must be rejected with ErrEra3VersionRequired, got %v", err)
 	}
@@ -149,7 +149,7 @@ func TestEra3PreLatchMintFlipAndBoundary2c(t *testing.T) {
 	bad := *wrong.StateRoot
 	bad[0] ^= 0xFF // corrupt the committed state root
 	wrong.StateRoot = &bad
-	twoPhaseSign(wrong, keys)
+	twoPhaseSign(wrong, keys, c.ChainID())
 	if err := c.Append(*wrong); !errors.Is(err, ErrEra3StateRootMismatch) {
 		t.Fatalf("at H_era3: a v4 block with a wrong StateRoot must be rejected (2b), got %v", err)
 	}

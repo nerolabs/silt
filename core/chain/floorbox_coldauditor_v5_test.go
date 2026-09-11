@@ -212,7 +212,7 @@ func coldAuditorFixture(t *testing.T) (structFixture, *proverSource, *Box) {
 	}
 	src := newProverSource(t, f.c)
 	parent := f.c.Blocks(rev.Height)[0]
-	box, err := NewBox(f.c, parent, BoxConfig{BudgetBytes: 1 << 22}, src)
+	box, err := NewBox(f.c, parent, BoxConfig{BudgetBytes: 1 << 22, ChainID: f.c.ChainID()}, src)
 	if err != nil {
 		t.Fatalf("NewBox: %v", err)
 	}
@@ -240,8 +240,8 @@ func forgeDivergentRoot(t *testing.T, f structFixture, honest Block) Block {
 	b.hashMemoSet = false
 	Sign(&b, f.keys[0])
 	for _, k := range f.keys {
-		b.PrepareQC = append(b.PrepareQC, AttestAt(&b, k, 0, PhasePrepare))
-		b.Atts = append(b.Atts, AttestAt(&b, k, 0, PhasePrecommit))
+		b.PrepareQC = append(b.PrepareQC, AttestAt(&b, k, 0, PhasePrepare, f.c.ChainID()))
+		b.Atts = append(b.Atts, AttestAt(&b, k, 0, PhasePrecommit, f.c.ChainID()))
 	}
 	if h, hh := b.Hash(), honest.Hash(); h == hh {
 		t.Fatal("the forged block must not hash identically to the honest one")
@@ -559,7 +559,7 @@ func TestColdAuditor_RefusesPrunedBlocks(t *testing.T) {
 	// shedPruned, not a committed entry-only block: on v5 only a block that actually SHED a proof
 	// is distinguishable from a complete one, so an entry-only Prune() would anchor this arm on an
 	// unpruned block and prove nothing.
-	if _, err := NewBox(f.c, shedPruned, BoxConfig{BudgetBytes: 1 << 22}, src); !errors.Is(err, ErrBoxParentPruned) {
+	if _, err := NewBox(f.c, shedPruned, BoxConfig{BudgetBytes: 1 << 22, ChainID: f.c.ChainID()}, src); !errors.Is(err, ErrBoxParentPruned) {
 		t.Fatalf("NewBox must refuse a pruned parent (ErrBoxParentPruned); got %v", err)
 	}
 	// The composition's own pruned leg, reached directly over the box's view, stalls rather than
@@ -720,15 +720,36 @@ func TestColdAuditor_TheKnobIsGoneFromTheTypeSystem(t *testing.T) {
 	b := f.mkBlock(t, nil)
 	assertBoxReachesTheDowngrade(t, boxOver(t, f, src), b, structWitnessFor(t, f, src, b))
 
-	// BoxConfig carries exactly the byte ceiling. Any other field is a knob.
+	// BoxConfig carries ONLY box-owned TRUST ANCHORS, each of which can make the box refuse MORE
+	// and can never make it accept where the node rejects. Any other field is a knob.
+	//
+	// The list is named rather than counted so a new field cannot ride in on an arithmetic edit;
+	// every entry states the direction argument that makes it an anchor and not a knob.
+	//
+	//	BudgetBytes  a CEILING. Lowering it stalls more blocks; raising it stalls fewer, but the
+	//	             composition still has to accept every one. Never widening.
+	//	ChainID      the NETWORK the box audits. A wrong value makes every era-4 signature fail to
+	//	             verify, so the box stalls; a right value makes it agree with the node. There is
+	//	             no value that makes an invalid block valid. It must be config because the box
+	//	             cannot derive it: the parent block does not carry the genesis hash and the
+	//	             config-bearing chain holds no blocks on the deployment target (the fold-file
+	//	             pin denies `blocks` by name for exactly that reason).
+	//
+	// What this pin exists to keep out is the RECOVERY DIRECTIVE (owner call 2): a field that could
+	// tell the box to PROCEED past an ambiguous boundary. That is the widening direction and no
+	// entry above is in it.
+	anchors := map[string]bool{"BudgetBytes": true, "ChainID": true}
 	ct := reflect.TypeOf(BoxConfig{})
-	if ct.NumField() != 1 || ct.Field(0).Name != "BudgetBytes" {
-		var names []string
-		for i := 0; i < ct.NumField(); i++ {
-			names = append(names, ct.Field(i).Name)
+	for i := 0; i < ct.NumField(); i++ {
+		if !anchors[ct.Field(i).Name] {
+			t.Fatalf("BoxConfig carries %q, which is not one of the box-owned trust anchors %v. "+
+				"Owner call 2 deleted the recovery directive: the #535 stall is unconditional. A new "+
+				"field is admissible ONLY if a wrong value makes the box refuse MORE, never accept "+
+				"more — state that argument here or delete the field.", ct.Field(i).Name, anchors)
 		}
-		t.Fatalf("BoxConfig must carry only BudgetBytes; got %v. Owner call 2 deleted the recovery "+
-			"directive: the #535 stall is unconditional, so there is nothing left to configure.", names)
+	}
+	if ct.NumField() != len(anchors) {
+		t.Fatalf("BoxConfig has %d field(s), the anchor list names %d — the list is stale", ct.NumField(), len(anchors))
 	}
 	// The box holds no boolean it could be flipped on. LiveFollower was one.
 	bt := reflect.TypeOf(Box{})
