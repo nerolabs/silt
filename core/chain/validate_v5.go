@@ -47,12 +47,13 @@ import (
 // returns v5 from height 1. Height 0 is v2, and nothing below the boundary reaches here.
 //
 // The readiness stamp IS 3 (NewBondReg stamps BlockVersionRegGate), and it decides nothing about
-// which leg runs: the tally that consumes it is evaluated inside rotateEpoch under
-// cfg.Era4ActivationHeight == 0, so the shipped default never consults it. The stamp gates the
-// LATCH route only. Identity of a
-// replica before this round and after is provable by construction, WITH M-1…M-5 (§6 of the delta
-// certification): without the legacy leg (M-1) the composition refuses a v5 block a legacy node
-// accepts; without P8b/the P5 clause (M-5) it accepts where the node rejects.
+// which leg runs: the tally that consumes it sits inside rotateEpoch behind
+// cfg.Era4ActivationHeight == 0, so a chain on the shipped default of 1 never reaches it. The
+// stamp gates the LATCH route only.
+//
+// Identity of a replica before this round and after is provable by construction, WITH M-1…M-5
+// (§6 of the delta certification): without the legacy leg (M-1) the composition refuses a v5
+// block a legacy node accepts; without P8b/the P5 clause (M-5) it accepts where the node rejects.
 //
 // R-SHARED-RULE-BLINDSPOT — HELD-IN-TENSION, AND IT GROWS HERE. Once the node's v5 path IS this
 // composition, a box-vs-node gate is structurally BLIND to a bug inside the shared body: both sides

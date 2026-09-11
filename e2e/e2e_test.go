@@ -244,8 +244,9 @@ func waitForInLog(t *testing.T, path string, re *regexp.Regexp, timeout time.Dur
 // era4Active takes its genesis-override branch whenever cfg.Era4ActivationHeight is non-zero and
 // -era4-activation-height DEFAULTS TO 1 (cmd/silt/daemon.go, assigned into chain.Config and
 // pinned by cmd/silt TestTheThreeGenesisFlagsAreDeclaredAndWired). This test passes no override,
-// so it takes that default, and the tally — consulted only at height 0 — decides nothing here.
-// Raising the readiness stamp 3 -> 5 still does not green the old assertion.
+// so it takes that default, and the tally — reached only when that CONFIGURED HEIGHT is 0, not at
+// any particular block height — is never consulted here. Raising the readiness stamp 3 -> 5 still
+// does not green the old assertion.
 //
 // RESTORING THE POSITIVE ARM — residual R-E2E-ERA4-FIXTURE (ROADMAP, Boulder-0 residuals). Two
 // legs, and only one of them retires at the stamp raise. The leg that does NOT: this fixture must
