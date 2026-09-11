@@ -268,8 +268,10 @@ func TestGEF6_TheTwoEraFloorDerivationsAgree(t *testing.T) {
 // The conjunct is SCOPED to heights where the chain requires the chain-bound era-4 form, because
 // that is where the certification's closure table (§1.3) says it closes anything. Below that
 // boundary the required form is itself chain-blind, so refusing a leg buys no closure — while
-// costing the era-1 arm of the I5 accountable-safety model check and the T1 variant of
-// R-NEST-GATE, two artifacts this certification does not price and a builder must not amend.
+// costing TestModelCheck_I5_CrossHeightPrunedExtension_Era1 (the era-1 exhaustive enumeration)
+// and the T1 variant of R-NEST-GATE, two artifacts this certification does not price and a
+// builder must not amend. TestModelCheck_I5_AccountableSafety_Exhaustive is NOT one of them: it
+// enumerates era-2 blocks only (Version: BlockVersionRounds), so a v2 floor leaves it untouched.
 //
 // THE DEFERRAL IS DRIVEN, NOT ASSUMED. If a later ruling removes the scope, this gate goes RED and
 // names what moved — which is the point. It is the complement of G-EF-5: together they say
@@ -293,8 +295,9 @@ func TestGEF8_TheDeferredSubEra4SurfaceIsStillAdmissible(t *testing.T) {
 	}
 	if err := CheckEquivocation(&era1, ports.Hash{}, eraFloorOf(0)); err != nil {
 		t.Fatalf("DEFERRED SURFACE MOVED: an era-1-form pair at a v%d floor is no longer evidence (%v). "+
-			"That is a NARROWING and therefore safe — but it reprices TestModelCheck_I5_AccountableSafety_Exhaustive's "+
-			"era-1 arm (which demands these convict) and closes R-NEST-GATE's T1 variant. Neither is priced "+
+			"That is a NARROWING and therefore safe — but it reprices "+
+			"TestModelCheck_I5_CrossHeightPrunedExtension_Era1 (which demands these convict) and closes "+
+			"R-NEST-GATE's T1 variant. Neither is priced "+
 			"by NETWORK-IDENTITY-BINDING-THREE-LAYER-RESEARCH-CERTIFICATION-2026-09-11. Route the ruling, "+
 			"then update both artifacts and this gate together", BlockVersionRounds, err)
 	}

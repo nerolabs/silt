@@ -114,8 +114,11 @@ func TestCarrierHashDriftGuard(t *testing.T) {
 	// guard on the first run: asserting "every v5 block must differ" failed the empty v5 row.)
 	//
 	// frozen says whether this era's preimage is FROZEN and must still hash to the pre-carrier
-	// bytes. v2 and v4 are frozen (#632) and always will be. v5 is NOT: era-4 is dark, and (d-3)
-	// deliberately changes its preimage to commit the heavy payloads by digest. So the v5 rows
+	// bytes. v2 and v4 are frozen (#632) and always will be. v5 is NOT: the era-4 format freeze has
+	// not been entered (ROADMAP D3), and (d-3) deliberately changes its preimage to commit the
+	// heavy payloads by digest. (The older reason given here — "era-4 is dark" — was void by
+	// 2026-09-11: -era4-activation-height defaults to 1, so era-4 is live from height 1 on every
+	// fresh network. It never carried this row; the freeze status does.) So the v5 rows
 	// assert the COMPLEMENT — they must DIFFER — which keeps them load-bearing instead of
 	// deleting them: a regression that quietly gave v5 the pre-(d-3) preimage reddens here.
 	cases := []struct {

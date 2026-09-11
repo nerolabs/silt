@@ -84,11 +84,18 @@ delta is not incidental:
    floor buys zero closure by the table's own verdict.
 2. **It reprices two artifacts this certification does not name.** `MintVersion`'s minimum is v2
    at every height on every chain, so an unscoped floor makes the **era-1 branch unreachable in
-   production**. That flips the entire era-1 arm of `TestModelCheck_I5_AccountableSafety_Exhaustive` (which
-   demands era-1 pairs CONVICT) and closes the **T1 variant of R-NEST-GATE**, whose own gate says
+   production**. That flips `TestModelCheck_I5_CrossHeightPrunedExtension_Era1` (which demands
+   era-1-form pairs CONVICT) and closes the **T1 variant of R-NEST-GATE**, whose own gate says
    in its failure text: *"do not read a RED here as the residual closed … update
    SLASHCAP-NESTED-EVIDENCE-FIXED-POINT-RESEARCH-CERTIFICATION-2026-09-10 §6.1"*. A builder does
    not amend another seat's certification to make its own tests pass.
+
+   *(Citation corrected 2026-09-11: this bullet originally named
+   `TestModelCheck_I5_AccountableSafety_Exhaustive`'s "era-1 arm". That test has no era-1 arm — it
+   enumerates era-2 blocks only (`Version: BlockVersionRounds`). Driven: with the
+   `f >= BlockVersionWitnessable` scope removed, `TestModelCheck_I5_CrossHeightPrunedExtension_Era1`
+   goes RED and `TestModelCheck_I5_AccountableSafety_Exhaustive` stays green. The reasoning is
+   unchanged; only the artifact name was wrong.)*
 3. **On the ratified route the two forms are identical.** With `Era4ActivationHeight = 1` — the
    source-pinned default (G-NET-2/G-NET-3) — every height above the genesis has floor v5, and
    `AppendGenesis` refuses a height-0 slash outright. The scope changes nothing on the RC network.

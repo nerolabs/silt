@@ -230,21 +230,35 @@ func waitForInLog(t *testing.T, path string, re *regexp.Regexp, timeout time.Dur
 // real contract of its own: the client must refuse legibly rather than buy a token
 // the bank will never honour.
 //
-// WHY THE FIXTURE CANNOT REACH v5 (G-8 convergence §1, 2026-09-03, traced at source):
-// the daemon below runs -objective=false, so chain.objective() is false, so
-// epochsEnabled() is false, so apply() never calls rotateEpoch — and the era-4
-// readiness tally lives INSIDE rotateEpoch. The tally therefore cannot latch on this
-// topology at ANY readiness stamp, on ANY binary, ever. Raising the stamp 3 -> 5 does
-// not green the old assertion. That trace is itself pinned by a test, so a future
-// stamp raise finds it: core/chain TestGateF_NonObjectiveTopologyCanNeverLatchEra4.
+// WHY THE FIXTURE REACHES NO v5 BLOCK — MEASURED, not traced. Booted on this exact argv with
+// the store kept and read afterwards, `silt chain-status` reports "no chain yet (0 blocks)"
+// (2026-09-11, still 0 after a 75 s settle). Nothing commits here at all, so there is no block
+// of any version and no committed binding for a withdrawal to resolve against — which is the
+// condition this test asserts the refusal for.
 //
-// RESTORING THE POSITIVE ARM — residual R-E2E-ERA4-FIXTURE (ROADMAP, Boulder-0
-// residuals). It comes back at the stamp-raising release, by UPGRADING THIS FIXTURE
-// to a topology the network can actually produce: objective + bonded + epochs
-// enabled, reaching the everMature latch, so the tally latches and v5 is EARNED.
-// Never by exposing Config.Era4ActivationHeight to the harness: that is the one
-// branch that skips every readiness predicate the tally embodies, so a green bought
-// with it would prove the lane works on a chain no rule ever approved.
+// THE OLDER REASON, AND WHY IT NO LONGER GOVERNS. This note used to say the era-4 READINESS
+// TALLY is what keeps the fixture below v5: -objective=false makes chain.objective() false, so
+// epochsEnabled() is false, so apply() never calls rotateEpoch, and the tally lives inside
+// rotateEpoch. That trace is still correct and still pinned by core/chain
+// TestGateF_NonObjectiveTopologyCanNeverLatchEra4. It is no longer the operative gate, because
+// era4Active takes its genesis-override branch whenever cfg.Era4ActivationHeight is non-zero and
+// -era4-activation-height DEFAULTS TO 1 (cmd/silt/daemon.go, assigned into chain.Config and
+// pinned by cmd/silt TestTheThreeGenesisFlagsAreDeclaredAndWired). This test passes no override,
+// so it takes that default, and the tally — reached only when that CONFIGURED HEIGHT is 0, not at
+// any particular block height — is never consulted here. Raising the readiness stamp 3 -> 5 still
+// does not green the old assertion.
+//
+// RESTORING THE POSITIVE ARM — residual R-E2E-ERA4-FIXTURE (ROADMAP, Boulder-0 residuals). Two
+// legs, and only one of them retires at the stamp raise. The leg that does NOT: this fixture must
+// first become a topology that COMMITS BLOCKS — objective + bonded + epochs enabled, reaching the
+// everMature latch — because on 0 blocks no era rule of any kind is exercised. The leg that DOES
+// retire there: the stamp's own value, pinned by gateFStampPin.
+//
+// The note here also warned "never by exposing Config.Era4ActivationHeight to the harness — that
+// is the one branch that skips every readiness predicate the tally embodies". The branch is not
+// the harness's to expose any more: the shipped daemon default already takes it. So the warning
+// no longer separates a bought green from an earned one, and the thing that does is whether the
+// topology commits at all.
 //
 // WHAT COVERS THE POSITIVE ARM MEANWHILE. sim TestPaidDeliveryLaneThreeCallComposition
 // drives the three shipped client calls in the order cmd/silt/swarm.go makes them —

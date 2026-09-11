@@ -382,11 +382,15 @@ def main():
                 # start preconditions: the idle window is refuse-until-set (D-R2.9 call 5;
                 # 90s here so an idle close is observable inside one flow), and a priced lane
                 # refuses to start with the faucet unlimited (R2.12, G-R212-1). The epoch clock
-                # the guard needs is DERIVED on the objective path (DerivedEpochBlocks). On a
-                # chain where era-4 is dark (every real network until the R3.4 stamp raise) the
-                # lane ARMS but no E->key binding can commit, so a client is refused at the
-                # withdrawal and nothing is spent — the flow grades that contract and flips to
-                # the positive settlement automatically once the binding commits.
+                # the guard needs is DERIVED on the objective path (DerivedEpochBlocks). The
+                # lane ARMS either way; whether an E->key binding is COMMITTED on a given sheet
+                # decides which arm row 13 grades — refused at the withdrawal with nothing spent,
+                # or banked. The flow grades both and needs no harness change to move between
+                # them. (This comment used to give the reason as "era-4 is dark ... until the
+                # R3.4 stamp raise". That is void as of 2026-09-11: this harness passes no
+                # -era4-activation-height, so every daemon takes the binary default of 1 and
+                # era-4 is live from height 1. Why a binding has not committed on a sheet is
+                # unmeasured here — do not restate a reason in its place.)
                 # The faucet bucket is 64 (not the e2e's 256): the daemon refuses to start above
                 # a DERIVED capacity cap (~327 at today's inputs, cmd/silt/daemon.go), and 256
                 # sat at 78 % of it — a moved input would have refused the boot validator and

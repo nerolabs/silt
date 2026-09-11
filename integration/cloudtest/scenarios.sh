@@ -2270,23 +2270,28 @@ EOF
 # fetches an object it published and presents a `swarm receipt` naming the boot validator
 # as the server (the R2.9 flow: pin the issuer's committed key -> withdraw one demand
 # token -> MsgDeliveryOpen -> settle a cumulative-count receipt). TWO rows, because the
-# positive settlement has NO live seam on a chain where era-4 is dark (every real network
-# until the R3.4 stamp raise: the E->key binding cannot commit, owner-ratified NO
-# activation override — ROADMAP R-E2E-ERA4-FIXTURE), and a property with no live seam is
-# stated, never faked:
+# positive settlement has had no live seam on any graded sheet so far — no E->key binding has
+# committed on one — and a property with no live seam is stated, never faked:
+#
+# The reason this comment used to give is VOID as of 2026-09-11: it said era-4 is dark on every
+# real network until the R3.4 stamp raise, with "owner-ratified NO activation override". There
+# IS an override, -era4-activation-height, and its shipped default is 1, so era-4 is live from
+# height 1 on every network this harness starts. Why no binding has committed is UNMEASURED; the
+# rows below are written so they grade either arm without a harness change (ROADMAP
+# R-E2E-ERA4-FIXTURE).
 #   13-delivery-lane        — the lane's field CONTRACT: armed (the unit's argv) and
 #                             announced (the boot banner) on the server; the client refused
 #                             at the withdrawal naming the committed-binding gate (nothing
-#                             spent, the server's debug.log carries no banked line) while
-#                             dark, or banked while live; a lane-OFF server refuses with the
+#                             spent, the server's debug.log carries no banked line) with no
+#                             binding committed, or banked with one; a lane-OFF server refuses with the
 #                             announced NOT-banked marker; the two refusals never conflated.
 #   13b-delivery-settlement — pass ONLY when the receipt actually banked on the wire (the
 #                             server's `delivery receipt banked` in debug.log; the idle
 #                             `delivery session closed` line is NOT required — at the shipped
 #                             24m window it cannot occur inside a graded flow, and the close
 #                             is asserted at the e2e tier instead, Lane C2 2026-09-09);
-#                             SKIP behind the binding probe while
-#                             the lane is dark (a skip keeps the RC gate reachable — the PE's
+#                             SKIP behind the binding probe while no
+#                             binding is committed (a skip keeps the RC gate reachable — the PE's
 #                             recommendation; OWNER RATIFICATION of skip-vs-gap is owed and
 #                             recorded in the PR; the skip text says what is untested). This
 #                             row turns green once the binding commits, with NO harness change.
@@ -2428,24 +2433,28 @@ import json;t=json.load(open('$FT_TOPO'));n=t['nodes']['$offnode'];print(n['node
     return
   fi
   if printf '%s' "$out" | grep -q "committed E->key binding"; then
-    # DARK LANE (era-4 not active on this chain): the certified refusal at the withdrawal —
+    # UNBOUND LANE (no committed E->key binding on this chain; era-4 itself IS active —
+    # the harness passes no -era4-activation-height, so every daemon takes the default of 1):
+    # the certified refusal at the withdrawal —
     # nothing withdrawn, nothing spent, and the server banked NOTHING (debug.log after the
     # baseline). The lane-off sentence must NOT appear (distinct contracts, PE 2026-09-03).
     local conflated=0
     printf '%s' "$out" | grep -q "serves no demand issuer key" && conflated=1
     if [ "$off_noise" = 1 ]; then
-      record "13-delivery-lane" gap major "DARK lane: the armed server refused as expected, but the lane-off control at ${offnode} could not be driven (transport noise after 3 attempts: $(printf '%s' "$off" | head -c 200)) — property UNTESTED"
-      record "13b-delivery-settlement" skip major "UNTESTED on this chain (see 13-delivery-lane; era-4 dark until the R3.4 stamp raise)"; return
+      record "13-delivery-lane" gap major "UNBOUND lane: the armed server refused as expected, but the lane-off control at ${offnode} could not be driven (transport noise after 3 attempts: $(printf '%s' "$off" | head -c 200)) — property UNTESTED"
+      record "13b-delivery-settlement" skip major "UNTESTED on this chain (see 13-delivery-lane; no committed E->key binding — era-4 itself is live here)"; return
     fi
     local ok=0; [ "$conflated" = 0 ] && [ -z "$sbanked" ] && [ "$off_ok" = 1 ] && ok=1
-    slo_assert "13-delivery-lane" major "DARK lane (era-4 not active): armed + announced on ${boot}; client refused at the withdrawal naming the committed E->key binding (nothing spent); server debug.log (+$(( $(ssh_node "$boot" "sudo wc -l < /var/lib/silt/debug.log 2>/dev/null" | tr -dc '0-9') - n0 )) lines since baseline) banked nothing$([ "$conflated" = 1 ] && echo '; WRONG: conflated with the lane-off sentence')$([ -n "$sbanked" ] && echo "; WRONG: server banked: $sbanked"); lane-off control at ${offnode} $([ "$off_ok" = 1 ] && echo refused-with-marker || echo "WRONG: $off")${afford:+; $afford}" "$ok" $((t1 - t0))
+    slo_assert "13-delivery-lane" major "UNBOUND lane (no committed E->key binding): armed + announced on ${boot}; client refused at the withdrawal naming the committed E->key binding (nothing spent); server debug.log (+$(( $(ssh_node "$boot" "sudo wc -l < /var/lib/silt/debug.log 2>/dev/null" | tr -dc '0-9') - n0 )) lines since baseline) banked nothing$([ "$conflated" = 1 ] && echo '; WRONG: conflated with the lane-off sentence')$([ -n "$sbanked" ] && echo "; WRONG: server banked: $sbanked"); lane-off control at ${offnode} $([ "$off_ok" = 1 ] && echo refused-with-marker || echo "WRONG: $off")${afford:+; $afford}" "$ok" $((t1 - t0))
     # THE PROBE IS A BINDING PROBE, NOT AN ERA PROBE (blind PE re-review): the client's
-    # sentence covers two causes — the issuer committed no binding (era-4 dark) OR the keys
-    # it served are off-commitment — and no era surface exists on the CLI or the status
-    # route to tell them apart (R-CLOUD-ERA-PROBE). Until the stamp raise adds one, a broken
-    # commit path on a live era-4 chain would read here as this same SKIP; the skip text
-    # names both causes so an operator reads it as "untested", never as "green".
-    record "13b-delivery-settlement" skip major "UNTESTED on this chain: the client was refused at the withdrawal because the issuer served no key that resolves against a COMMITTED E->key binding — on today's networks because era-4 is dark (no binding can commit until the R3.4 stamp raise; no activation override, owner-ratified), though the same sentence would also cover off-commitment keys (no era surface exists to tell them apart: R-CLOUD-ERA-PROBE). Row 13 is what holds today; this row grades the wire settlement once the binding commits, with no harness change." $((t1 - t0))
+    # sentence covers two causes — the issuer committed no binding at all OR the keys it
+    # served are off-commitment — and no surface on the CLI or the status route tells them
+    # apart (R-CLOUD-ERA-PROBE). A broken commit path reads here as this same SKIP; the skip
+    # text names both causes so an operator reads it as "untested", never as "green".
+    # A THIRD cause is now ruled OUT rather than carried: era-4 being inactive. This harness
+    # passes no -era4-activation-height, so every daemon takes the binary default of 1 and
+    # mints era-4 from height 1.
+    record "13b-delivery-settlement" skip major "UNTESTED on this chain: the client was refused at the withdrawal because the issuer served no key that resolves against a COMMITTED E->key binding. WHY no binding committed is not measured by this row — era-4 itself is LIVE here (this harness passes no -era4-activation-height, so every daemon takes the default of 1 and mints era-4 from height 1), so the old 'era-4 is dark' reading is void and the remaining candidates (the issuer never registered a key, or its keys are off-commitment) are not separated. Row 13 is what holds today; this row grades the wire settlement once a binding commits, with no harness change." $((t1 - t0))
     return
   fi
   if [ -z "$out" ] || printf '%s' "$out" | grep -qiE "timeout|timed out|connection refused|no route|dial|i/o|unreachable|EOF"; then
