@@ -2,9 +2,9 @@
 
 **Date:** 2026-08-18 · **Author:** builder · **Status:** DELIBERATION (no code yet — a
 design fork needs an owner/PE call first). **Basis:** PE decision note
-`principle-engineer/299-research-outcome-PE-decision-note-2026-08-18.md` ("fix the OOM by
+`principal-engineer/reviews/299-research-outcome-PE-decision-note-2026-08-18.md` ("fix the OOM by
 pruning + serve-from-WS-checkpoint — no crypto"); PE take
-`principle-engineer/299-succinct-proofs-PE-take-2026-08-18.md` §3; the exhaustive code map
+`principal-engineer/reviews/299-succinct-proofs-PE-take-2026-08-18.md` §3; the exhaustive code map
 (this session). #299-full is parked; this is the blessed, no-crypto OOM/box fix.
 
 ## The two drivers this must kill (from the wire heap profiles)
@@ -117,7 +117,7 @@ mechanism, or does it wait behind #183? (b) `safetyDepth` value/derivation. (c) 
 
 ## PE RULING (2026-08-18) — resolved, H1 green-lit
 
-`principle-engineer/rolling-horizon-oom-ruling-PE-2026-08-18.md`.
+`principal-engineer/reviews/rolling-horizon-oom-ruling-PE-2026-08-18.md`.
 - **Q1 IN-SCOPE, not a consensus-RULE change, NOT a #183 blocker.** The horizon reuses the
   *existing immutable finalized head* as the prune anchor (finality already un-reorgable:
   `chain.go:529/909/2407`), so it changes only *what a node retains/serves* — not fork-choice/
@@ -221,7 +221,7 @@ ack at H2 PR time, not a re-consult.
 
 ## PE RULING (2026-08-18) — Opt 1, and the whole soundness is ONE gate
 
-`principle-engineer/pruned-block-representation-ruling-PE-2026-08-18.md`. **Opt 1** (header +
+`principal-engineer/reviews/pruned-block-representation-ruling-PE-2026-08-18.md`. **Opt 1** (header +
 stored-hash + sigs) — minimal, no chain-format change, preserves unbounded late-reveal slashing.
 Reject Opt 3 (loses slashing for trivial memory). Opt 2 converges with #299 later. **Finding A acked**
 (drop suffix-Reconcile; keep genesis-rooted, with a pruned-*tolerance* change). Q3 stored-hash sound

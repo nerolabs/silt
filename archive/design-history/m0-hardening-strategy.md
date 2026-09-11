@@ -9,9 +9,16 @@ updated.
 **Provenance.** After the G2 fix ([m0-sybil-rebind.md](../../docs/design/m0-sybil-rebind.md), PR #166,
 commit `4ea5fd7`), a fresh **blind** research team and adversary (red) team went deep
 on the whole project. Their outputs live under `silt-agent-memory/` (out of tree):
-`research/research-outcome/` (9 cited memos + a synthesis) and
-`redteam/m0-field-test/` (a real multi-container consensus field test + a 6-persona
-blind fan-out). This doc is the builder-side synthesis of both.
+`researcher/reviews/research-outcome/` (9 cited memos + a synthesis) and
+`red-team/reviews/redteam/m0-blind-2026-08-08/` (the persona blind fan-out) and
+`tester/reviews/fieldtest/` (the multi-container consensus field test). This doc is the
+builder-side synthesis of both.
+
+> **CITATION CORRECTED 2026-09-11.** This sentence named one directory,
+> `redteam/m0-field-test/`, for two separate bodies of work (scar:review-record-moved-and-every-citation-went-dark-2026-09-11).
+> **That path never existed** — not at the new home, and not in the retired tree either
+> (checked against its final commit `dd7f588`). It is replaced above by the two directories
+> that do exist. Pre-existing, and not caused by the review-record move.
 
 ---
 

@@ -16,7 +16,7 @@ import (
 // gate: a pruned block's nil Answer fails verifyBond with ErrBadBondReg, the wrong
 // reason, and below the floor is rejected when it should be trusted) and GREEN with the
 // gate. Plan: docs/thinking/2026-08-18-slice3-q2-gate-plan.md. PE ruling:
-// principle-engineer/pruned-block-representation-ruling-PE-2026-08-18.md.
+// principal-engineer/reviews/pruned-block-representation-ruling-PE-2026-08-18.md.
 
 // q2Chain builds an objective replica with its pruned-tolerance floor pinned to `floor`
 // (the node's OWN anchor). objective() is true (MinBond>0 + a bond verifier), so

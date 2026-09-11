@@ -395,6 +395,20 @@ jobs:
         # dead paths in the files it touches. Re-run the migration to clear it:
         #   python3 scripts/migrate_review_record_paths.py
         run: python3 scripts/migrate_review_record_paths.py --verify
+      - name: Scar-lint — the retired-tree gate must still go RED, and must not rewrite a CLAIM (scar:review-record-moved-and-every-citation-went-dark-2026-09-11, scar:a-path-rewrite-falsifies-claims-2026-09-11)
+        # The step above is GREEN on this repo, and a green gate with no demonstrated
+        # red is decoration (canon simplicity rule 7). CI cannot manufacture either
+        # defect without committing it, so the self-test builds both in a temp tree:
+        #   V-1 a ROOT-LESS citation (`researcher/reviews/research-outcome/X.md`, no root at all;
+        #       this line names the old shape on purpose — scar:review-record-moved)
+        #       fails --verify. 23 of them were invisible to the token-only test, 14 in
+        #       the LIVE `docs/design/m0.md` §10 disclosure table.
+        #   V-4 a VALID store-relative pointer (`planner/MEMORY.md`) is NOT flagged —
+        #       the over-exclusion arm, so the gate cannot cry wolf.
+        #   V-2 a line carrying the history license is left alone by the REWRITE, not
+        #       only by --verify. A path rewrite must never rewrite a claim.
+        #   V-3 the rewrite is idempotent over both forms — every held branch re-runs it.
+        run: python3 scripts/migrate_review_record_paths.py --self-test
       - name: Scar-lint — the shared repo walk must not descend into another checkout (scar:lint-walks-into-another-checkout-2026-09-11)
         # A CI checkout has NO nested worktree, so running the lints proves nothing here.
         # The self-test manufactures one in a temp directory and asserts both directions.

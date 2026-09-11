@@ -99,6 +99,48 @@ SEAT_MAP = {
 # pointer: rewriting it would invent a destination. Left alone, reported by --verify.
 RETIRED = {"handoff"}
 
+# THE ROOT-LESS FORM — the class ROOT_RE cannot see.
+# ==================================================
+# A large part of the record cites the old tree with NO root at all:
+#
+#     research/research-outcome/FOO-RESEARCH-CERTIFICATION-2026-09-07.md
+#     principle-engineer/RULING-residual-register-true-up-e963034-2026-09-07.md
+#
+# Its root was never written down — it was the reader's working-directory convention,
+# one level up from this repo. ROOT_RE requires the `silt-reviews` token, so it never
+# matched these, and `--verify` (which tests only for that token) reported OK while the
+# reference went dark. 23 of them sat in this repo, 14 in the LIVE `docs/design/m0.md`
+# §10 disclosure table that the era-4 freeze reads.
+# scar:a-root-less-citation-resolved-against-one-assumed-root-2026-09-11 (PR #815, C-2).
+#
+# The rule is a CLOSED COMPLEMENT, not a pattern: flag exactly those old first components
+# that CANNOT name anything under the new root, i.e. the ones SEAT_MAP renames. Derived
+# from SEAT_MAP rather than hand-listed, so it cannot drift from it.
+#
+# `planner/`, `economist/`, `red-team/` and `crypto-specialist/` are deliberately NOT in
+# the set: they keep their names as live directories in the store, so `planner/MEMORY.md`
+# is a VALID store-relative pointer. Measured before drawing this line — 3 such live-seat
+# occurrences exist in the store today, and flagging them would be a false positive. A
+# lint that cries wolf gets disabled, so the FP rate is a correctness property here.
+#
+# A reference may name a DIRECTORY rather than a file — "their outputs live under
+# `research/research-outcome/` and `redteam/m0-field-test/`". A `.md`-only pattern
+# leaves those describing a layout that does not exist, which is the same defect one
+# level up. Measured before widening: the trailing-slash form adds 5 occurrences in this
+# repo and ZERO false positives, and 3 of the 5 are in the live `docs/design/m0.md` §10
+# table. So `rest` ends in `.md` OR in `/`.
+ROOTLESS_MAP = {
+    old: new
+    for old, new in SEAT_MAP.items()
+    if not old.endswith(".md") and new.split("/")[0] != old
+}
+ROOTLESS_RE = re.compile(
+    r"(?<![/\w.-])(?P<comp>"
+    + "|".join(re.escape(c) for c in sorted(
+        list(ROOTLESS_MAP) + list(RETIRED), key=len, reverse=True))
+    + r")/(?P<rest>[A-Za-z0-9][A-Za-z0-9._/-]*(?:\.md|/))"
+)
+
 # Not path components at all: prose ellipsis (`silt-reviews/.../FOO.md`) and a sentence
 # that ends on the tree name. The root moves, the rest is left alone, and neither is
 # worth a line in the unmapped report — reporting them would bury the real findings.
@@ -161,7 +203,35 @@ def rewrite_text(text: str):
         unmapped.append(comp)
         return new_root + rest
 
-    return ROOT_RE.sub(sub, text), n, unmapped
+    def sub_rootless(m):
+        nonlocal n
+        comp = m.group("comp")
+        if comp in RETIRED:
+            unmapped.append(comp)
+            return m.group(0)          # history, not a pointer — leave it
+        n += 1
+        return ROOTLESS_MAP[comp] + "/" + m.group("rest")
+
+    # LINE-WISE, and a line carrying the history license is left ALONE.
+    #
+    # The license means "this occurrence names the old tree ON PURPOSE" — a gate's own
+    # name in ci.yml, a docstring saying what moved. It has always suppressed --verify.
+    # It did NOT suppress the rewrite, so re-running the tool silently converted
+    #   "no reference to the retired `silt-reviews/` tree may reach a branch"
+    # into a sentence about the tree that is NOT retired. Measured on 2026-09-11: a
+    # second run falsified exactly those two licensed lines. The workflow above tells
+    # every held branch to run this before merging, so each one re-broke them.
+    #
+    # A path rewrite must never rewrite a CLAIM. The license is the one place a human
+    # has said which is which, so it binds in BOTH directions.
+    # scar:a-path-rewrite-falsifies-claims-2026-09-11
+    out = []
+    for line in text.splitlines(keepends=True):
+        if HISTORY_LICENSE in line:
+            out.append(line)
+            continue
+        out.append(ROOTLESS_RE.sub(sub_rootless, ROOT_RE.sub(sub, line)))
+    return "".join(out), n, unmapped
 
 
 def candidate_files(root: str):
@@ -209,12 +279,119 @@ def default_root() -> str:
     return os.getcwd()
 
 
+def self_test() -> int:
+    """DRIVE both halves of the gate on a manufactured tree.
+
+    WHY THIS EXISTS. `--verify` is green on this repo, and a green gate with no
+    demonstrated red is decoration (canon simplicity rule 7). CI cannot manufacture
+    either defect — a real root-less citation would have to be committed to see the
+    gate fire — so the test builds the defect itself. Two of the four arms encode
+    defects that were LIVE and shipped:
+
+      V-1  a ROOT-LESS citation must fail --verify.  Twenty-three of them sat in this
+           repo, fourteen in the `docs/design/m0.md` §10 disclosure table, and
+           --verify reported OK because it tested only for the `silt-reviews` token.
+      V-2  a line carrying the history license must be left ALONE by the REWRITE.
+           It suppressed --verify but not the rewrite, so a second run turned
+           "no reference to the retired `silt-reviews/` tree" into a sentence about
+           the tree that is not retired. A path rewrite must never rewrite a CLAIM.
+      V-3  the rewrite is idempotent — every held branch runs it before merging.
+      V-4  the OVER-EXCLUSION arm. `planner/MEMORY.md` is a live store-relative
+           pointer and must NOT be flagged. Without this arm, "flag every seat-shaped
+           path" passes V-1 and the gate cries wolf on valid references.
+    """
+    import contextlib
+    import io
+    import tempfile
+
+    fails = []
+
+    def quiet(*argv):
+        """Run main() with its output captured.
+
+        The driven arms deliberately make the tool FAIL. Letting that FAIL banner
+        reach the CI log inside a PASSING self-test is how a gate teaches its reader
+        to ignore it (scar:a-verification-can-fail-toward-alarm).
+        """
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            return main(list(argv))
+
+    def check(name, cond, detail):
+        if not cond:
+            fails.append("%s: %s" % (name, detail))
+
+    with tempfile.TemporaryDirectory() as td:
+        # V-1 — root-less citation, no `silt-reviews` token anywhere in the file.
+        p = os.path.join(td, "rootless.md")
+        with open(p, "w") as fh:
+            fh.write("see research/research-outcome/FORGED-CERTIFICATION-2026-01-01.md\n")
+        rc = quiet("--root", td, "--verify")
+        check("V-1", rc == 1,
+              "a ROOT-LESS citation did NOT fail --verify — the 23-citation class is "
+              "invisible again (exit %d)" % rc)
+
+        # V-4 — a live seat directory keeps its name in the store: NOT a stale pointer.
+        os.remove(p)
+        p4 = os.path.join(td, "live.md")
+        with open(p4, "w") as fh:
+            fh.write("see planner/MEMORY.md and economist/notes.md\n")
+        rc = quiet("--root", td, "--verify")
+        check("V-4", rc == 0,
+              "OVER-EXCLUSION: a VALID store-relative pointer (`planner/MEMORY.md`) was "
+              "flagged — the closed complement is too broad and the gate cries wolf")
+        os.remove(p4)
+
+        # V-2 — the history license binds the REWRITE, not only --verify.
+        licensed = ("# no reference to the retired `silt-reviews/` tree may reach a "
+                    "branch (%s)\n" % HISTORY_LICENSE)
+        p2 = os.path.join(td, "licensed.md")
+        with open(p2, "w") as fh:
+            fh.write(licensed)
+        quiet("--root", td)
+        after = open(p2).read()
+        check("V-2", after == licensed,
+              "a LICENSED claim line was rewritten: %r — the tool falsified a sentence "
+              "it was told names the old tree on purpose" % after.strip()[:90])
+        os.remove(p2)
+
+        # V-3 — idempotence, over both forms at once.
+        p3 = os.path.join(td, "both.md")
+        with open(p3, "w") as fh:
+            fh.write("silt-reviews/principle-engineer/A.md and research/B.md\n")
+        quiet("--root", td)
+        once = open(p3).read()
+        quiet("--root", td)
+        twice = open(p3).read()
+        check("V-3", once == twice,
+              "the rewrite is NOT idempotent: %r then %r" % (once.strip(), twice.strip()))
+        check("V-3b", "silt-reviews" not in once and "principal-engineer/reviews/A.md" in once
+              and "researcher/reviews/B.md" in once,
+              "one pass did not rewrite BOTH forms: %r" % once.strip())
+
+    if fails:
+        print("FAIL [%s] — self-test:" % SCAR, file=sys.stderr)
+        for f in fails:
+            print("  " + f, file=sys.stderr)
+        return 1
+    print("OK [%s] — self-test: --verify CATCHES a root-less citation (V-1), does NOT "
+          "flag a live store-relative one (V-4), the history license protects a claim "
+          "line from the REWRITE (V-2), and the rewrite is idempotent over both forms "
+          "(V-3)." % SCAR)
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--root", default=None, help="tree to process (default: this git repo)")
     ap.add_argument("--verify", action="store_true",
                     help="do not write; exit 1 if any un-exempt occurrence remains")
+    ap.add_argument("--self-test", action="store_true",
+                    help="drive the gate on a manufactured tree; exit 1 if an arm fails")
     args = ap.parse_args(argv)
+
+    if args.self_test:
+        return self_test()
 
     root = args.root or default_root()
     changed, occurrences, remaining, unmapped_all = 0, 0, [], {}
@@ -227,7 +404,10 @@ def main(argv=None) -> int:
                 text = fh.read()
         except (OSError, UnicodeDecodeError):
             continue
-        if "silt-reviews" not in text:
+        # A file may carry ONLY the root-less form, which has no `silt-reviews`
+        # token at all. Skipping on the token alone is exactly how the 23 stayed
+        # invisible; test BOTH forms.
+        if "silt-reviews" not in text and not ROOTLESS_RE.search(text):
             continue
 
         new, n, unmapped = rewrite_text(text)
@@ -236,9 +416,18 @@ def main(argv=None) -> int:
 
         if args.verify:
             for i, line in enumerate(text.splitlines(), 1):
-                if "silt-reviews" in line and HISTORY_LICENSE not in line:
+                if HISTORY_LICENSE in line:
+                    continue
+                if "silt-reviews" in line:
                     remaining.append("%s:%d: %s" % (
                         os.path.relpath(path, root), i, line.strip()[:140]))
+                elif ROOTLESS_RE.search(line):
+                    # Same defect, no token to grep for. Name the match so the
+                    # failure text points at the citation and not just the line.
+                    for m in ROOTLESS_RE.finditer(line):
+                        remaining.append("%s:%d: ROOT-LESS `%s` — %s" % (
+                            os.path.relpath(path, root), i, m.group(0)[:100],
+                            line.strip()[:80]))
             continue
 
         if new != text:
@@ -249,8 +438,9 @@ def main(argv=None) -> int:
 
     if args.verify:
         if remaining:
-            print("FAIL [%s] — %d occurrence(s) of the retired `silt-reviews` path remain:"
-                  % (SCAR, len(remaining)), file=sys.stderr)
+            print("FAIL [%s] — %d reference(s) to the retired review tree remain "
+                  "(rooted `silt-reviews/...` and/or ROOT-LESS `research/...`, "
+                  "`principle-engineer/...`):" % (SCAR, len(remaining)), file=sys.stderr)
             for r in remaining[:40]:
                 print("  " + r, file=sys.stderr)
             if len(remaining) > 40:
@@ -262,8 +452,9 @@ def main(argv=None) -> int:
             print("  A line that names the retired tree ON PURPOSE discloses itself by "
                   "carrying `%s` on the SAME line." % HISTORY_LICENSE, file=sys.stderr)
             return 1
-        print("OK [%s] — no reference to the retired `silt-reviews` path under %s"
-              % (SCAR, root))
+        print("OK [%s] — no reference to the retired review tree under %s, in EITHER "
+              "form: rooted `silt-reviews/...` or ROOT-LESS `%s/...`"
+              % (SCAR, root, ", ".join(sorted(ROOTLESS_MAP))))
         return 0
 
     print("rewrote %d occurrence(s) across %d file(s) under %s" % (occurrences, changed, root))

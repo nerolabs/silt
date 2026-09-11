@@ -215,10 +215,27 @@ DOC_SKIP_DIRS = {"thinking", "buildlog", "reviews", "archive"}
 
 # External certification / ruling trees. Read-only, outside the repo. Skipped
 # silently when absent so CI stays hermetic.
-DEFAULT_EXTERNAL_ROOTS = [
-    "/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome",
-    "/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews",
+#
+# DERIVED, not written down. These were two hard-coded absolute paths, and when the
+# review record moved on 2026-09-11 they were repointed by hand — a fix that NOTHING
+# checked. Measured: reverting them to the two dead `silt-reviews` paths left  (scar:review-record-moved)
+# `--self-test` at exit 0 and the plain run at exit 0, because the self-test drives the
+# mechanism through an explicit `--external-root` and never reads the shipped constant.
+# The only signal was a stderr note whose own text says "In CI that is expected".
+# scar:the-shipped-constant-was-the-ungated-thing-2026-09-11 (PR #815, C-3).
+#
+# `check_agent_memory_link.STORE` is the ONE place the store path is defined (it is the
+# same value `.claude/setup-agent-memory.sh` writes). Deriving from it means the root
+# cannot be repointed at a dead tree without moving the store itself, and the ROOTS arm
+# of `self_test()` asserts both the derivation and the `<seat>/reviews/` shape.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from check_agent_memory_link import STORE as MEMORY_STORE  # noqa: E402
+
+EXTERNAL_ROOT_RELS = [
+    "researcher/reviews/research-outcome",
+    "principal-engineer/reviews",
 ]
+DEFAULT_EXTERNAL_ROOTS = [str(MEMORY_STORE / rel) for rel in EXTERNAL_ROOT_RELS]
 
 TEST_NAME_RE = re.compile(r"\bTest[A-Z][A-Za-z0-9_]*\b")
 TEST_FUNC_RE = re.compile(r"^func\s+(Test[A-Za-z0-9_]+)\s*\(", re.MULTILINE)
@@ -902,6 +919,13 @@ def self_test() -> int:
              and the gate would mean nothing.
       MUTE   an ABSENT root emits the "not scanned" note. This is the defect that
              actually happened; "did not run" must never again read as "ran clean".
+      ROOTS  the SHIPPED `DEFAULT_EXTERNAL_ROOTS` derive from the single store
+             definition (`check_agent_memory_link.STORE`) and carry the
+             `<seat>/reviews/` shape. The three arms above drive the mechanism through
+             an explicit `--external-root` and never read the shipped constant, so
+             reverting the 2026-09-11 repoint to the two dead `silt-reviews` paths (scar:review-record-moved) left
+             all of them GREEN — measured. The fix was the ungated thing.
+             scar:the-shipped-constant-was-the-ungated-thing-2026-09-11.
     """
     import subprocess
     import tempfile
@@ -949,6 +973,41 @@ def self_test() -> int:
             failures.append(f"GREEN arm: a REAL test name ({real_name}) was reported "
                             f"as a phantom")
 
+    # --- arm ROOTS ----------------------------------------------------------
+    # The three arms above drive the MECHANISM through an explicit --external-root.
+    # None of them reads DEFAULT_EXTERNAL_ROOTS, which is the thing the 2026-09-11 fix
+    # actually changed. Ablating that fix left every arm GREEN. This arm gates the
+    # shipped value. CI has no store, so existence is checked only when the store is
+    # there — but the DERIVATION and the SHAPE are checkable everywhere, and they are
+    # what a repoint would break.
+    store = str(MEMORY_STORE)
+    for rel, full in zip(EXTERNAL_ROOT_RELS, DEFAULT_EXTERNAL_ROOTS):
+        if not full.startswith(store + os.sep):
+            failures.append(
+                f"ROOTS arm: external root {full!r} is not under the single store "
+                f"definition ({store}) — it was hard-coded away from "
+                f"check_agent_memory_link.STORE")
+        if "silt-reviews" in full:   # scar:review-record-moved — the literal is the TEST
+            failures.append(
+                f"ROOTS arm: external root {full!r} still names the RETIRED review "
+                f"tree — this is the exact 2026-09-11 defect, re-shipped")
+        parts = rel.split("/")
+        if len(parts) < 2 or parts[1] != "reviews":
+            failures.append(
+                f"ROOTS arm: external root {rel!r} is not the `<seat>/reviews/...` "
+                f"shape the review-record migration defines")
+    if os.path.isdir(store):
+        for full in DEFAULT_EXTERNAL_ROOTS:
+            if not os.path.isdir(full):
+                failures.append(
+                    f"ROOTS arm: the store exists but external root {full!r} does "
+                    f"not — the check would read NOTHING and still print OK")
+        roots_note = f"the {len(DEFAULT_EXTERNAL_ROOTS)} shipped roots EXIST under {store}"
+    else:
+        # Say what was NOT checked. 'did not run' must never read as 'ran clean'.
+        roots_note = (f"the store is ABSENT ({store}), so existence was NOT checked — "
+                      f"derivation and shape were")
+
     # --- arm MUTE -----------------------------------------------------------
     r = run("--external-root=/definitely/not/a/directory/here")
     blob = r.stdout + r.stderr
@@ -966,8 +1025,9 @@ def self_test() -> int:
             print("  " + f, file=sys.stderr)
         return 1
     print(f"OK [{SCAR_ID}] — self-test: the external-tree check CATCHES a forged "
-          f"phantom, ACCEPTS a real name ({real_name}), and SAYS SO when a root is "
-          f"absent.")
+          f"phantom, ACCEPTS a real name ({real_name}), SAYS SO when a root is "
+          f"absent, and the SHIPPED roots derive from check_agent_memory_link.STORE "
+          f"in the `<seat>/reviews/` shape — {roots_note}.")
     return 0
 
 
