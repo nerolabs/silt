@@ -1394,7 +1394,7 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   > two ordinary ~4.14 MiB reg-laden proofs; the driven construction reaches the same armored state with
   > **header-only** 687 B proofs, which is far cheaper for an attacker to build. Anything that prices the
   > attacker's cost must use the header-only route.
-  > **(iii)** The close that does exist is not (d-3): `consensusSigBytes` (`core/chain/chain.go:1076`)
+  > **(iii)** The close that does exist is not (d-3): `consensusSigBytes` (`core/chain/chain.go:1138`)
   > omits **Height** from the signature preimage — "the height rides inside the hash" — which is the
   > entire reason evidence carries full bodies (`equivocation.go:54-60` says so). Putting
   > `(height, round, phase)` in the v5 preimage makes evidence `O(1)`, ~200 bytes **[the ~200 B figure
@@ -1418,7 +1418,7 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   >
   > **⚠ WRONG A THIRD TIME, AND REPLACED BY THE OWNER — 2026-09-10
   > (`D-D3-CERT-REFUTATION-2026-09-10`).** The *"roughly 40×"* figure is refuted. `SlashesBytesCap` is
-  > enforced against `SlashesEncodedSize` (`core/chain/chain.go:2372`), which marshals the ACTUAL
+  > enforced against `SlashesEncodedSize` (`core/chain/chain.go:2571`), which marshals the ACTUAL
   > `[]Equivocation` — real encoded bytes with full `Block` bodies. (d-3) reduces the HASH PREIMAGE,
   > which that function never reads. **As specified, (d-3) shrinks the face by ZERO and is marginally
   > negative.**
@@ -2872,7 +2872,7 @@ showing the one-byte value IS committed).
 
 ### Call 1 — BUY the signature-preimage change at D1, conditional on its delta cert
 
-**BOUGHT.** `consensusSigBytes` (`core/chain/chain.go:1076`) omits **Height** from the signed
+**BOUGHT.** `consensusSigBytes` (`core/chain/chain.go:1138`) omits **Height** from the signed
 preimage; the v5 preimage carries `(height, round, phase)`, after CometBFT's `CanonicalVote`.
 Evidence then becomes `O(1)` — **~251 B DERIVED, not the ~200 B first cited; unmeasured until gate G-PRE-9** — instead of two full `Block` bodies.
 
@@ -3433,7 +3433,7 @@ false, and this repo says so in two places — verified at source:**
   `[32]byte`, so *"key 14 is present in EVERY encoded block body, zero-valued for a non-pruned
   block. It is part of the frozen bytes."*
 
-**Why that is a bright-line breach and not a bug.** `bodyHash()` (`core/chain/chain.go:902`, verified)
+**Why that is a bright-line breach and not a bug.** `bodyHash()` (`core/chain/chain.go:960`, verified)
 folds `BondRegs: b.BondRegs` into the unsigned literal with **no version branch at all**. So a
 fixed-size field on `BondReg` is emitted into every era's preimage, and **the hash of every v2 and v4
 block carrying a bond registration changes — on live history, before era-4 ever activates.** That is

@@ -64,7 +64,7 @@ func TestForgedPeerForkDoesNotQueueAPendingSlash(t *testing.T) {
 	realOtherAtt := chain.Attest(realOther, culpritSigner)
 	realOther.Atts = append(realOther.Atts, realOtherAtt)
 
-	if chain.VerifyEquivocation(&chain.Equivocation{Culprit: culpritPub, A: *ownA, B: *realOther}) {
+	if chain.VerifyEquivocation(&chain.Equivocation{Culprit: culpritPub, A: *ownA, B: *realOther}, ports.Hash{}) {
 		t.Fatal("precondition broken: two honest, different-height blocks must not verify as equivocation")
 	}
 

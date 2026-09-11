@@ -75,7 +75,7 @@ func coldBox(t *testing.T, cfg Config) *Chain {
 func coldRecompute(t *testing.T, warm *Chain, prevStateRoot, committedStateRoot ports.Hash, b Block, w StateRootWitness) error {
 	t.Helper()
 	parentProposer, _ := warm.headProposerID()
-	return coldBox(t, warm.cfg).recomputeStateRootEntriesRevocations(prevStateRoot, committedStateRoot, b, w, parentProposer)
+	return coldBox(t, warm.cfg).recomputeStateRootEntriesRevocations(prevStateRoot, committedStateRoot, b, w, parentProposer, warm.ChainID())
 }
 
 // livePreForProbe builds a stateRootHandoffPre from a chain's LIVE latch state. It exists ONLY for
@@ -539,7 +539,7 @@ func TestColdBox_D1_Direction2_LiveFollowerPreHandoffBlockAgrees(t *testing.T) {
 		t.Fatalf("GATE VACUOUS: the follower box must report handedOff()=true")
 	}
 
-	if err := recomputeViaHead(ahead, f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHeadOn(ahead, f.c.ChainID(), f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("DIRECTION-2 FALSE STALL: a follower ahead of the handoff stalled re-auditing a\n"+
 			"  PRE-handoff block. apply() screens the att loop BEFORE rotateEpoch (rotate-LAST), so the\n"+
 			"  box must screen against the COMMITTED pre-value, not its own advanced latch. Got: %v", err)

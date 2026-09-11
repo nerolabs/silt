@@ -63,10 +63,10 @@ func world12BehindSeat(t *testing.T, ahead uint64) (behind *Node, majority []*No
 		b := &chain.Block{Version: chain.BlockVersion, Height: h, Prev: prev, Entries: []ports.Entry{mkEntry(fmt.Sprintf("572-%d", h))}}
 		chain.Sign(b, ids[0].Signer())
 		for _, i := range majoritySigners {
-			b.PrepareQC = append(b.PrepareQC, chain.AttestAt(b, ids[i].Signer(), 0, chain.PhasePrepare))
+			b.PrepareQC = append(b.PrepareQC, chain.AttestAt(b, ids[i].Signer(), 0, chain.PhasePrepare, ports.Hash{}))
 		}
 		for _, i := range majoritySigners {
-			b.Atts = append(b.Atts, chain.AttestAt(b, ids[i].Signer(), 0, chain.PhasePrecommit))
+			b.Atts = append(b.Atts, chain.AttestAt(b, ids[i].Signer(), 0, chain.PhasePrecommit, ports.Hash{}))
 		}
 		for mi, nd := range majority {
 			if err := nd.chain.Append(*b); err != nil {

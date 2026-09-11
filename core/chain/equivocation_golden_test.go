@@ -72,6 +72,13 @@ type goldenAtt struct {
 	inQC  bool
 }
 
+// goldenChainID is the corpus's fixture NETWORK IDENTITY. The corpus builds blocks off any chain,
+// so it must declare one: from era 4 the consensus preimage binds the chain id, and verifyAtt
+// refuses every v5 form under the ZERO hash. The builder and every verdict call use this one value
+// — a corpus that signed under one chain id and judged under another would pin "REFUSE" for the
+// wrong reason and silently hide the era-4 cases it exists to cover.
+func goldenChainID() ports.Hash { return ports.HashBytes([]byte("golden-corpus chain id")) }
+
 func goldenBlock(version, height uint64, prev ports.Hash, e byte, proposer ed25519.PrivateKey, atts ...goldenAtt) Block {
 	b := Block{Version: version, Height: height, Prev: prev, Entries: []ports.Entry{entry(e)}}
 	Sign(&b, proposer)
@@ -80,7 +87,7 @@ func goldenBlock(version, height uint64, prev ports.Hash, e byte, proposer ed255
 		if a.phase == PhaseLegacy {
 			att = Attest(&b, a.k)
 		} else {
-			att = AttestAt(&b, a.k, a.round, a.phase)
+			att = AttestAt(&b, a.k, a.round, a.phase, goldenChainID())
 		}
 		if a.inQC {
 			b.PrepareQC = append(b.PrepareQC, att)
@@ -104,7 +111,7 @@ func buildEquivocationGoldenCorpus() []equivocationGoldenCase {
 	}
 	var cases []equivocationGoldenCase
 	add := func(name string, e Equivocation) {
-		cases = append(cases, equivocationGoldenCase{Name: name, Proof: e, Verdict: equivocationVerdict(CheckEquivocation(&e))})
+		cases = append(cases, equivocationGoldenCase{Name: name, Proof: e, Verdict: equivocationVerdict(CheckEquivocation(&e, goldenChainID()))})
 	}
 
 	// ---- era 1 ----
@@ -220,7 +227,7 @@ func TestEquivocationGoldenCorpusVerdicts(t *testing.T) {
 	accepts := 0
 	for i := range cases {
 		c := &cases[i]
-		got := equivocationVerdict(CheckEquivocation(&c.Proof))
+		got := equivocationVerdict(CheckEquivocation(&c.Proof, goldenChainID()))
 		if got != c.Verdict {
 			t.Errorf("ACCEPT SET MOVED: case %q pinned %s, CheckEquivocation now returns %s", c.Name, c.Verdict, got)
 		}
@@ -232,7 +239,7 @@ func TestEquivocationGoldenCorpusVerdicts(t *testing.T) {
 		if strings.HasSuffix(c.Name, "-ACCEPT") != (c.Verdict == verdictAccept) {
 			t.Errorf("case %q is named for one verdict and pinned with another (%s)", c.Name, c.Verdict)
 		}
-		if VerifyEquivocation(&c.Proof) != (c.Verdict == verdictAccept) {
+		if VerifyEquivocation(&c.Proof, goldenChainID()) != (c.Verdict == verdictAccept) {
 			t.Errorf("case %q: VerifyEquivocation disagrees with CheckEquivocation==nil", c.Name)
 		}
 	}
@@ -273,7 +280,7 @@ func TestEquivocationGoldenCorpusHasTeeth(t *testing.T) {
 			continue
 		}
 		c.Proof.A.Entries[0].FileSize++
-		if got := equivocationVerdict(CheckEquivocation(&c.Proof)); got == verdictAccept {
+		if got := equivocationVerdict(CheckEquivocation(&c.Proof, goldenChainID())); got == verdictAccept {
 			t.Errorf("TEETH FAILED: case %q still ACCEPTS after its body was perturbed — the verdict does not depend on the body hash", c.Name)
 		}
 		flipped++

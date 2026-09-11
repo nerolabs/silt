@@ -420,7 +420,7 @@ func callsViewMethod(body *ast.BlockStmt, method string) bool {
 // error-message tweak inside validateBondRegs and be turned off within a month; that
 // calibration is the certification's, and its cost (an inline change INSIDE a called stage is
 // unseen) is R-PTABLE-DRIFT's stated bound.
-const nodeAcceptPathDigest = "85396257ed5cac47c4a54156273f1d7a096b481451817bbcbc6f06dfb324ab8b"
+const nodeAcceptPathDigest = "7af9cc783e4921ddbac0158f99ebcd47f7219b3430b0842e99763ed2906eb279"
 
 // TestStageCover_ArmB_NodeBodyDigest is a CHANGE DETECTOR, not a cover proof.
 // Ablation (G-D3): add `&& true` to the P5 clause chain in ValidateProposal ⇒ RED.
@@ -525,9 +525,9 @@ func TestStageCover_ArmC_ReverseCover(t *testing.T) {
 var nodeBodyDigests = map[string]string{
 	"ValidateEntry":              "f6844363fb7212b625f60ca726f3d361b7b3eaca7f4af22efb33703c2f5bf3e5",
 	"RequiredQuorum":             "c3a413ba707abae6cfdd40806fe5c195a79a2c4a7e4fa2939d8ee1cb92257454",
-	"ValidateProposal":           "5fa4a475aa2da7f2495d767beb38c029d3c1cbaed62ba3adb0d2e5d5671d3d9a",
+	"ValidateProposal":           "752294cf1e8cbb2ab9c9830ac4e35f68eca9f9a2389da5f2e1e3ea322e1bc3de",
 	"attesterQualifiedAt":        "fd5de208dcecba70d1fcaf32172ef185c20b12020413ba7fff0ddd04fef3723f",
-	"collectQuorumSigs":          "9f48ce5d93ade7351cf817212e823e420c5480f542f4d9bd4c3dd732c86ecbb8",
+	"collectQuorumSigs":          "c0b0a3aa3f475f6bcd0e7621b07d0005d575a21fadcc7e3f6aa457b0d634e603",
 	"effectiveEpochSet":          "8da6023fc1b8b0e5482b8f8c275ad9d93a7db8edf304750fdd15e6bfca4d292a",
 	"epochsEnabled":              "d60a5734d37abe1722fcc7f4dc6f42a510eaa6bd04d56b0ab4975fa48ed50f18",
 	"era3Active":                 "883666c754351a281949e98123de50205e93d7114e02ea4226e56448cc8206d2",
@@ -538,18 +538,18 @@ var nodeBodyDigests = map[string]string{
 	"regGateActive":              "4d369be6273149966e31991f923749eef5d1b2162b0d865f78a10ed4a0a5ee72",
 	"requireDeMatureSuperQuorum": "0470237c9c4760af6a9059e9da5fdd526855d7dc0ad1fa658c4789bb22a001e1",
 	"requireEpochWeightQuorum":   "11ea038dd07b4b1a3bf05f9b744b6e4dbddebdf199d2617f552abcb5bb5c7982",
-	"requireProposerPrepare":     "886222aad2d479ea066e28f8a91a0b0a1698b2785d887cc16b699ee71936d0a4",
+	"requireProposerPrepare":     "bac6ab02cdbaf5dda5b8af8f68d251c9e31e1c870b4210d002dab9d64bb8313b",
 	"requireQuorumStack":         "b5553c3f61494bdd91506782f56bd25ddb778a7bf522eee10dd6af7932633138",
 	"restoresHeldStanding":       "1dd120f427f6eb4c3f93103afa61770b4bf2f03153c5bfc97596d04e1263d499",
 	"validateBondReg":            "595b695e1d665885b4de70585fe94ed4b09654ce956b6b08fe712665b80f3bf6",
 	"validateBondRegWindow":      "cceaf238101c9a751ebba1bfcb406ce01c90387d03fc62fdd8015b5e98ad7745",
 	"validateBondRegs":           "44a7b37852f162e47a7b409222f86251d846c959163659f07ac2d758fb39c08d",
-	"validateCarrier":            "fb137538622a06a27dea8039ddc0438889c94230d729cd3cae8e74ea13a7508a",
+	"validateCarrier":            "e5cf4078a9d633fca3e977457e5c40fb203c2f6b49ab634ff9c8bc83faf2fbe2",
 	"validateEra3Roots":          "a7ec421d2ea91224cec48dc7cfe34f935908fdf0bc46d8e3dcbd8addf6823b92",
 	"validateEra3Version":        "1ff98cdc43e91fb10dc080c41a0c788beb6b8ddc06a87461a7fceea55fe4dc0b",
 	"validateEra4Version":        "9a1a52aa6d4d5182afddeae6b3b3da3fb6b1b93e1a517b6b026c687afd33edac",
 	"validateIssuerKeys":         "801f04536b8794a5fca36adb65e76c58589c677da378e42da613fed6af75f324",
-	"validateSlashes":            "d974467343b1839b528ac15f77ff34531b21758395fa140e59602d6e6d28c0e0",
+	"validateSlashes":            "c432026ba5fd3dc175f3d0c5026dfe28021921706baa6d5e18ead30184730e57",
 	"validateTakedowns":          "4250eff489a8869f843815a411c1351ff9ba616c31c4c0a3a7f5d7637e1d52aa",
 	"validatorSetSize":           "393c775422214e528015d9833602d1ee7b6a58e4e5da45c2f339d604f4aae919",
 }

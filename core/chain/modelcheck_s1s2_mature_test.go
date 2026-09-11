@@ -37,7 +37,7 @@ func TestModelCheck_S2Face_MatureWeightShortPrepareQCRefused(t *testing.T) {
 		b := &Block{Version: BlockVersionRounds, Height: h, Prev: prev, Entries: []ports.Entry{entry(0xE1)}}
 		Sign(b, honest[0])
 		b.CommitRound = 0
-		b.PrepareQC = append(b.PrepareQC, AttestAt(b, honest[0], 0, PhasePrepare))
+		b.PrepareQC = append(b.PrepareQC, AttestAt(b, honest[0], 0, PhasePrepare, ports.Hash{}))
 		return b
 	}
 
@@ -45,10 +45,10 @@ func TestModelCheck_S2Face_MatureWeightShortPrepareQCRefused(t *testing.T) {
 	// proposer (20 MiB) + two honest attesters (40 MiB) = 60 MiB > ⅔·76.
 	good := mk()
 	for _, k := range honest[1:] {
-		good.PrepareQC = append(good.PrepareQC, AttestAt(good, k, 0, PhasePrepare))
-		good.Atts = append(good.Atts, AttestAt(good, k, 0, PhasePrecommit))
+		good.PrepareQC = append(good.PrepareQC, AttestAt(good, k, 0, PhasePrepare, ports.Hash{}))
+		good.Atts = append(good.Atts, AttestAt(good, k, 0, PhasePrecommit, ports.Hash{}))
 	}
-	good.Atts = append(good.Atts, AttestAt(good, honest[0], 0, PhasePrecommit))
+	good.Atts = append(good.Atts, AttestAt(good, honest[0], 0, PhasePrecommit, ports.Hash{}))
 	if err := c.ValidateCommit(good); err != nil {
 		t.Fatalf("setup: an honest-weight two-quorum v2 commit must validate in the mature epoch: %v", err)
 	}
@@ -58,12 +58,12 @@ func TestModelCheck_S2Face_MatureWeightShortPrepareQCRefused(t *testing.T) {
 	// honest weight. The weight-short POL must be refused.
 	packed := mk()
 	for _, k := range sybil {
-		packed.PrepareQC = append(packed.PrepareQC, AttestAt(packed, k, 0, PhasePrepare))
+		packed.PrepareQC = append(packed.PrepareQC, AttestAt(packed, k, 0, PhasePrepare, ports.Hash{}))
 	}
 	for _, k := range honest[1:] {
-		packed.Atts = append(packed.Atts, AttestAt(packed, k, 0, PhasePrecommit))
+		packed.Atts = append(packed.Atts, AttestAt(packed, k, 0, PhasePrecommit, ports.Hash{}))
 	}
-	packed.Atts = append(packed.Atts, AttestAt(packed, honest[0], 0, PhasePrecommit))
+	packed.Atts = append(packed.Atts, AttestAt(packed, honest[0], 0, PhasePrecommit, ports.Hash{}))
 	if err := c.ValidateCommit(packed); !errors.Is(err, ErrNoQuorumWeight) {
 		t.Fatalf("a weight-short (sybil-packed) prepare-QC must fail ErrNoQuorumWeight — the POL threshold is the commit threshold in WEIGHT (certification §4), got: %v", err)
 	}
@@ -90,10 +90,10 @@ func TestModelCheck_S1Face_MatureCrossRoundSignatureRefused(t *testing.T) {
 	b.CommitRound = 1
 	// Author self-prepare at round 0 — the CARRIED re-proposal shape: exempt,
 	// count-neutral, and required (requireProposerPrepare, round ≤ CommitRound).
-	b.PrepareQC = append(b.PrepareQC, AttestAt(b, honest[0], 0, PhasePrepare))
+	b.PrepareQC = append(b.PrepareQC, AttestAt(b, honest[0], 0, PhasePrepare, ports.Hash{}))
 	for _, k := range honest[1:] {
-		b.PrepareQC = append(b.PrepareQC, AttestAt(b, k, 1, PhasePrepare))
-		b.Atts = append(b.Atts, AttestAt(b, k, 1, PhasePrecommit))
+		b.PrepareQC = append(b.PrepareQC, AttestAt(b, k, 1, PhasePrepare, ports.Hash{}))
+		b.Atts = append(b.Atts, AttestAt(b, k, 1, PhasePrecommit, ports.Hash{}))
 	}
 	if err := c.ValidateCommit(b); err != nil {
 		t.Fatalf("setup: the round-1 certificate with the carried author prepare must validate: %v", err)
@@ -102,7 +102,7 @@ func TestModelCheck_S1Face_MatureCrossRoundSignatureRefused(t *testing.T) {
 	// Replace one counted round-1 precommit with the same signer's ROUND-0
 	// precommit (the delayed lower-round signature): the certificate must be
 	// refused — a stale-round signature never completes a mature commit.
-	b.Atts[0] = AttestAt(b, honest[1], 0, PhasePrecommit)
+	b.Atts[0] = AttestAt(b, honest[1], 0, PhasePrecommit, ports.Hash{})
 	if err := c.ValidateCommit(b); !errors.Is(err, ErrBadSignature) {
 		t.Fatalf("a round-0 precommit inside a round-1 certificate must fail ErrBadSignature (S1's delayed-quorum face, weighted), got: %v", err)
 	}

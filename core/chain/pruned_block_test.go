@@ -137,6 +137,10 @@ func TestFullBlockHashIgnoresUnsetPrunedField(t *testing.T) {
 // DEPEND ON RE-READING THE BODY OF A PRUNED BLOCK.
 func TestPrunedBlockHashDoesNotCoverCarrierOrStateRoot(t *testing.T) {
 	prop, attester := key(91001), key(91002)
+	// These blocks are built standalone, off any chain, so the fixture supplies the network
+	// identity the era-4 preimage binds. It must be the SAME value the signer and validateCarrier
+	// see; a fixture that signed under one and verified under another would prove nothing.
+	cid := ports.HashBytes([]byte("pruned-block-test chain id"))
 
 	parent := Block{Version: BlockVersionWitnessable, Height: 4, Entries: []ports.Entry{entry(1)}}
 	Sign(&parent, prop)
@@ -147,12 +151,12 @@ func TestPrunedBlockHashDoesNotCoverCarrierOrStateRoot(t *testing.T) {
 	b.Prev = parent.Hash()
 	root := ports.HashBytes([]byte("committed-state-root"))
 	b.StateRoot = &root
-	b.LastCommit = []Attestation{AttestAt(&parent, attester, 0, PhasePrecommit)}
+	b.LastCommit = []Attestation{AttestAt(&parent, attester, 0, PhasePrecommit, cid)}
 	Sign(&b, prop)
-	b.Atts = []Attestation{AttestAt(&b, attester, 0, PhasePrecommit)}
+	b.Atts = []Attestation{AttestAt(&b, attester, 0, PhasePrecommit, cid)}
 
 	fullHash := b.Hash()
-	if err := validateCarrier(&b); err != nil {
+	if err := validateCarrier(&b, cid); err != nil {
 		t.Fatalf("fixture: the honest carrier must be valid, got %v", err)
 	}
 
@@ -190,7 +194,7 @@ func TestPrunedBlockHashDoesNotCoverCarrierOrStateRoot(t *testing.T) {
 		t.Fatal("PROPERTY CHANGED: the proposer signature no longer verifies over a mutated pruned block")
 	}
 	for i, a := range forged.Atts {
-		if !verifyAtt(a, forged.Hash()) {
+		if !verifyAtt(a, attScope{ChainID: cid, Height: forged.Height}, forged.Hash()) {
 			t.Fatalf("PROPERTY CHANGED: attester signature %d no longer verifies over a mutated pruned block", i)
 		}
 	}
@@ -200,7 +204,7 @@ func TestPrunedBlockHashDoesNotCoverCarrierOrStateRoot(t *testing.T) {
 	// parent's published Atts is a genuine precommit over b.Prev and is ACCEPTED — adding is as
 	// free as dropping (RT2-CARRIER-14). An earlier version of this clause read the refusal below
 	// as "fabricating an entry needs a real key"; it does not. See TestGD11_… for both sides.
-	if err := validateCarrier(&forged); err == nil {
+	if err := validateCarrier(&forged, cid); err == nil {
 		t.Fatal("PROPERTY CHANGED: validateCarrier accepted a ZERO-signature carrier entry on a pruned block")
 	}
 }
@@ -246,7 +250,7 @@ func TestGD11_PrunedCarrierRewriteIsCaughtOnlyByTheDescendant(t *testing.T) {
 	pruned := honest[3].Prune()
 	var harvested []Attestation
 	for _, a := range parent.Atts {
-		if a.Phase == PhasePrecommit && a.AttesterID() == victim {
+		if isCarrierPrecommit(a.Phase) && a.AttesterID() == victim {
 			harvested = append(harvested, a)
 		}
 	}
@@ -273,7 +277,7 @@ func TestGD11_PrunedCarrierRewriteIsCaughtOnlyByTheDescendant(t *testing.T) {
 	}
 
 	// SIDE (i): the carrier rule ACCEPTS the harvested rewrite. No key material was used.
-	if err := validateCarrier(&rewritten); err != nil {
+	if err := validateCarrier(&rewritten, w.c.ChainID()); err != nil {
 		t.Fatalf("G-D11 (i): validateCarrier must ACCEPT a carrier harvested from the parent's real Atts — "+
 			"that is what makes adding as free as dropping; got %v", err)
 	}

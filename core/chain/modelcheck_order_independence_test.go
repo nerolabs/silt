@@ -237,27 +237,27 @@ func twoOrderings(t *testing.T) (*Chain, *Chain) {
 
 		b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(),
 			Entries: []ports.Entry{first.entry}, Slashes: []Equivocation{first.slash}}
-		commitRounds(b1, keys, 0)
+		commitRounds(b1, keys, 0, ports.Hash{})
 		if err := c.Append(*b1); err != nil {
 			t.Fatalf("height 1 (spend+slash, first): %v", err)
 		}
 
 		b2 := &Block{Version: BlockVersionRounds, Height: 2, Prev: b1.Hash(),
 			Entries: []ports.Entry{second.entry}, Slashes: []Equivocation{second.slash}}
-		commitRounds(b2, keys, 0)
+		commitRounds(b2, keys, 0, ports.Hash{})
 		if err := c.Append(*b2); err != nil {
 			t.Fatalf("height 2 (spend+slash, second): %v", err)
 		}
 
 		b3 := &Block{Version: BlockVersionRounds, Height: 3, Prev: b2.Hash(),
 			Revocations: []ports.Hash{first.entry.Root}}
-		commitRounds(b3, keys, 0)
+		commitRounds(b3, keys, 0, ports.Hash{})
 		if err := c.Append(*b3); err != nil {
 			t.Fatalf("revoke first root: %v", err)
 		}
 		b4 := &Block{Version: BlockVersionRounds, Height: 4, Prev: b3.Hash(),
 			Revocations: []ports.Hash{second.entry.Root}}
-		commitRounds(b4, keys, 0)
+		commitRounds(b4, keys, 0, ports.Hash{})
 		if err := c.Append(*b4); err != nil {
 			t.Fatalf("revoke second root: %v", err)
 		}
@@ -275,7 +275,7 @@ func twoOrderings(t *testing.T) (*Chain, *Chain) {
 			regs = []BondReg{xReg, hClaim}
 		}
 		b5 := &Block{Version: BlockVersionRounds, Height: 5, Prev: b4.Hash(), BondRegs: regs}
-		commitRounds(b5, keys, 0)
+		commitRounds(b5, keys, 0, ports.Hash{})
 		if err := c.Append(*b5); err != nil {
 			t.Fatalf("height 5 (bond regs, hClaimFirst=%v): %v", hClaimFirst, err)
 		}
@@ -353,7 +353,7 @@ func matureOrderings(t *testing.T) (*Chain, *Chain) {
 			if h == slashHeight {
 				b.Slashes = []Equivocation{slashProof(victim, g0, 201, 202)}
 			}
-			commitRounds(b, gov, 0)
+			commitRounds(b, gov, 0, ports.Hash{})
 			if err := c.Append(*b); err != nil {
 				t.Fatalf("matureOrderings height %d (slashEarly=%v): %v", h, slashEarly, err)
 			}
@@ -362,7 +362,7 @@ func matureOrderings(t *testing.T) (*Chain, *Chain) {
 		// Height 4: the epoch boundary — rotateEpoch sets matureEpoch and freezes epochSet.
 		b := &Block{Version: BlockVersionRounds, Height: 4, Prev: prev,
 			Entries: []ports.Entry{entry(44)}}
-		commitRounds(b, gov, 0)
+		commitRounds(b, gov, 0, ports.Hash{})
 		if err := c.Append(*b); err != nil {
 			t.Fatalf("matureOrderings boundary (slashEarly=%v): %v", slashEarly, err)
 		}
@@ -456,7 +456,7 @@ func gateSwingOrderings(t *testing.T) (*Chain, *Chain) {
 		// validators (liveQualifiedSet reads bonded, not validatorsSeen).
 		b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: prev,
 			Entries: []ports.Entry{entry(1)}, BondRegs: regs}
-		commitRounds(b1, []ed25519.PrivateKey{r1, r2, x}, 0) // r1 proposes
+		commitRounds(b1, []ed25519.PrivateKey{r1, r2, x}, 0, ports.Hash{}) // r1 proposes
 		if err := c.Append(*b1); err != nil {
 			t.Fatalf("gateSwingOrderings height 1 (v3First=%v): %v", v3First, err)
 		}
@@ -468,7 +468,7 @@ func gateSwingOrderings(t *testing.T) (*Chain, *Chain) {
 		// that also trips maturity hands off in one commit, chain.go).
 		b2 := &Block{Version: BlockVersionRounds, Height: 2, Prev: b1.Hash(),
 			Entries: []ports.Entry{entry(2)}}
-		commitRounds(b2, []ed25519.PrivateKey{r2, r1, x}, 0) // r2 proposes (rotated)
+		commitRounds(b2, []ed25519.PrivateKey{r2, r1, x}, 0, ports.Hash{}) // r2 proposes (rotated)
 		if err := c.Append(*b2); err != nil {
 			t.Fatalf("gateSwingOrderings boundary (v3First=%v): %v", v3First, err)
 		}
@@ -534,13 +534,13 @@ func era3SwingOrderings(t *testing.T) (*Chain, *Chain) {
 		}
 		b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: prev,
 			Entries: []ports.Entry{entry(1)}, BondRegs: regs}
-		commitRounds(b1, []ed25519.PrivateKey{r1, r2, x}, 0) // r1 proposes
+		commitRounds(b1, []ed25519.PrivateKey{r1, r2, x}, 0, ports.Hash{}) // r1 proposes
 		if err := c.Append(*b1); err != nil {
 			t.Fatalf("era3SwingOrderings height 1 (v4First=%v): %v", v4First, err)
 		}
 		b2 := &Block{Version: BlockVersionRounds, Height: 2, Prev: b1.Hash(),
 			Entries: []ports.Entry{entry(2)}}
-		commitRounds(b2, []ed25519.PrivateKey{r2, r1, x}, 0) // r2 proposes (rotated)
+		commitRounds(b2, []ed25519.PrivateKey{r2, r1, x}, 0, ports.Hash{}) // r2 proposes (rotated)
 		if err := c.Append(*b2); err != nil {
 			t.Fatalf("era3SwingOrderings boundary (v4First=%v): %v", v4First, err)
 		}
@@ -603,13 +603,13 @@ func era4SwingOrderings(t *testing.T) (*Chain, *Chain) {
 		}
 		b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: prev,
 			Entries: []ports.Entry{entry(1)}, BondRegs: regs}
-		commitRounds(b1, []ed25519.PrivateKey{r1, r2, x}, 0) // r1 proposes
+		commitRounds(b1, []ed25519.PrivateKey{r1, r2, x}, 0, ports.Hash{}) // r1 proposes
 		if err := c.Append(*b1); err != nil {
 			t.Fatalf("era4SwingOrderings height 1 (v5First=%v): %v", v5First, err)
 		}
 		b2 := &Block{Version: BlockVersionRounds, Height: 2, Prev: b1.Hash(),
 			Entries: []ports.Entry{entry(2)}}
-		commitRounds(b2, []ed25519.PrivateKey{r2, r1, x}, 0) // r2 proposes (rotated)
+		commitRounds(b2, []ed25519.PrivateKey{r2, r1, x}, 0, ports.Hash{}) // r2 proposes (rotated)
 		if err := c.Append(*b2); err != nil {
 			t.Fatalf("era4SwingOrderings boundary (v5First=%v): %v", v5First, err)
 		}
@@ -1275,13 +1275,13 @@ func TestBondedOrderFreeUnderSlashInteraction(t *testing.T) {
 		g0 := g.Hash()
 		b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g0,
 			Slashes: []Equivocation{slashProof(first, g0, 101, 102)}}
-		commitRounds(b1, keys, 0)
+		commitRounds(b1, keys, 0, ports.Hash{})
 		if err := c.Append(*b1); err != nil {
 			t.Fatalf("slash first: %v", err)
 		}
 		b2 := &Block{Version: BlockVersionRounds, Height: 2, Prev: b1.Hash(),
 			Slashes: []Equivocation{slashProof(second, g0, 103, 104)}}
-		commitRounds(b2, keys, 0)
+		commitRounds(b2, keys, 0, ports.Hash{})
 		if err := c.Append(*b2); err != nil {
 			t.Fatalf("slash second: %v", err)
 		}

@@ -229,10 +229,11 @@ func (c *Chain) recomputeStateRootEntriesRevocations(
 	b Block,
 	w StateRootWitness,
 	parentProposer ports.NodeID,
+	chainID ports.Hash,
 ) (reason error) {
 	// (1-3) Assemble the fold ops for every reproduced transition class (the write-set → FoldOp
 	// pipeline, including the scope gate). A stall here is a never-Accept.
-	ops, err := c.assembleStateRootRecomputeOps(prevStateRoot, committedStateRoot, b, w, parentProposer)
+	ops, err := c.assembleStateRootRecomputeOps(prevStateRoot, committedStateRoot, b, w, parentProposer, chainID)
 	if err != nil {
 		return err
 	}
@@ -271,6 +272,7 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	b Block,
 	w StateRootWitness,
 	parentProposer ports.NodeID,
+	chainID ports.Hash,
 ) ([]statehash.FoldOp, error) {
 	// (0) WIRING ASSERTION — LOUD, at the box entry (R-VERIFYBOND-WIRING; widened to BOTH arms
 	// 2026-09-10 by G-1, the certified precondition on freeze-manifest item 2). objective() and
@@ -320,7 +322,7 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	//
 	// The verdict is a STALL (never-Accept is unchanged): the box refuses the block, it does not
 	// judge it. box.Accept => node.Accept, never the biconditional.
-	if err := validateCarrier(&b); err != nil {
+	if err := validateCarrier(&b, chainID); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrRecomputeCarrierInvalid, err)
 	}
 

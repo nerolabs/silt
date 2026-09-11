@@ -45,7 +45,7 @@ func mintNext4(t *testing.T, c *Chain, keys []ed25519.PrivateKey, regs ...BondRe
 	default:
 		b.Version = BlockVersionRounds
 	}
-	twoPhaseSign(b, keys)
+	twoPhaseSign(b, keys, c.ChainID())
 	return b
 }
 
@@ -130,7 +130,7 @@ func TestEra4PreLatchMintFlipAndBoundary4d(t *testing.T) {
 	if err := c.PopulateEra3Roots(v4AtBoundary); err != nil { // stamps v4 + correct v4 roots
 		t.Fatalf("populate v4 roots: %v", err)
 	}
-	twoPhaseSign(v4AtBoundary, keys)
+	twoPhaseSign(v4AtBoundary, keys, c.ChainID())
 	if err := c.Append(*v4AtBoundary); !errors.Is(err, ErrEra4VersionRequired) {
 		t.Fatalf("at H_era4: a v4 block must be rejected with ErrEra4VersionRequired, got %v", err)
 	}
@@ -147,7 +147,7 @@ func TestEra4PreLatchMintFlipAndBoundary4d(t *testing.T) {
 	bad := *wrong.StateRoot
 	bad[0] ^= 0xFF // corrupt the committed v5 state root
 	wrong.StateRoot = &bad
-	twoPhaseSign(wrong, keys)
+	twoPhaseSign(wrong, keys, c.ChainID())
 	if err := c.Append(*wrong); !errors.Is(err, ErrEra3StateRootMismatch) {
 		t.Fatalf("at H_era4: a v5 block with a wrong StateRoot must be rejected (4c), got %v", err)
 	}

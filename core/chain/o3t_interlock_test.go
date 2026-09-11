@@ -560,13 +560,13 @@ func o3tEra2Block(keys []ed25519.PrivateKey, signers []ed25519.PrivateKey, h uin
 	b := &Block{Version: BlockVersionRounds, Height: h, Prev: prev, Entries: []ports.Entry{entry(tag)}}
 	Sign(b, keys[0])
 	b.CommitRound = round
-	b.PrepareQC = append(b.PrepareQC, AttestAt(b, keys[0], round, PhasePrepare))
+	b.PrepareQC = append(b.PrepareQC, AttestAt(b, keys[0], round, PhasePrepare, ports.Hash{}))
 	for _, k := range signers {
-		b.PrepareQC = append(b.PrepareQC, AttestAt(b, k, round, PhasePrepare))
+		b.PrepareQC = append(b.PrepareQC, AttestAt(b, k, round, PhasePrepare, ports.Hash{}))
 	}
-	b.Atts = append(b.Atts, AttestAt(b, keys[0], round, PhasePrecommit))
+	b.Atts = append(b.Atts, AttestAt(b, keys[0], round, PhasePrecommit, ports.Hash{}))
 	for _, k := range signers {
-		b.Atts = append(b.Atts, AttestAt(b, k, round, PhasePrecommit))
+		b.Atts = append(b.Atts, AttestAt(b, k, round, PhasePrecommit, ports.Hash{}))
 	}
 	return b
 }

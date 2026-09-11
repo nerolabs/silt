@@ -79,7 +79,7 @@ func (n *Node) proposeAndCommitTo(b *chain.Block, target ports.NodeID, done func
 			done(false, fmt.Errorf("decode prepare: %w", aerr))
 			return
 		}
-		qc := []chain.Attestation{chain.AttestAt(b, n.signer, 0, chain.PhasePrepare), prep}
+		qc := []chain.Attestation{chain.AttestAt(b, n.signer, 0, chain.PhasePrepare, n.chainID()), prep}
 		qcRaw, qerr := cbor.Marshal(prepareQCEnv{Raw: raw, Round: 0, QC: qc})
 		if qerr != nil {
 			done(false, qerr)
@@ -101,7 +101,7 @@ func (n *Node) proposeAndCommitTo(b *chain.Block, target ports.NodeID, done func
 			}
 			b.CommitRound = 0
 			b.PrepareQC = qc
-			b.Atts = []chain.Attestation{chain.AttestAt(b, n.signer, 0, chain.PhasePrecommit), pc}
+			b.Atts = []chain.Attestation{chain.AttestAt(b, n.signer, 0, chain.PhasePrecommit, n.chainID()), pc}
 			n.request(target, ports.Message{Kind: ports.MsgCommitBlock, Data: chain.Encode(b)}, func(ack ports.Message, err3 error) {
 				if err3 != nil {
 					done(false, err3)
@@ -367,7 +367,7 @@ func (n *Node) PlaceConflictingSigned() (uint64, error) {
 		// so the hashes differ and the double-sign is provable — signed at the SAME
 		// (H, round, prepare) slot this node used for W.
 		l := &chain.Block{Version: chain.BlockVersionRounds, Height: w.Height, Prev: w.Prev, Entries: []ports.Entry{advEntry("conflict")}}
-		l.PrepareQC = []chain.Attestation{chain.AttestAt(l, n.signer, slot.Round, chain.PhasePrepare)}
+		l.PrepareQC = []chain.Attestation{chain.AttestAt(l, n.signer, slot.Round, chain.PhasePrepare, n.chainID())}
 		if l.Hash() == w.Hash() {
 			return 0, fmt.Errorf("place-conflicting-signed: L did not diverge from W at h%d", w.Height)
 		}

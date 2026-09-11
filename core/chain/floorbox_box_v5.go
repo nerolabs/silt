@@ -7,6 +7,7 @@ import (
 	"reflect"
 
 	"github.com/nerolabs/silt/core/statehash"
+	"github.com/nerolabs/silt/ports"
 )
 
 // era-4 (v5) THE BOX — the trustless floor box's own state and its one door onto the ONE accept
@@ -68,6 +69,12 @@ var (
 	// floor the node does not share could accept where the node rejects. Placed at the door, not in
 	// the composition, so the composition stays the node's rule.
 	ErrPrunedBlockUnreproducible = errors.New("chain: floor box cannot reproduce the pruned-block leg (it is keyed on the reader's own trust floor) — stall")
+	// ErrBoxNoChainID is NewBox's refusal of an unset BoxConfig.ChainID. The genesis hash is the
+	// chain id the era-4 consensus preimage binds (consensusSigBytesV5); without it the box has no
+	// network identity, and a box that judged era-4 signatures against the zero hash would be
+	// auditing a network that does not exist. BG-2: the anchor is given or the box is not
+	// constructed.
+	ErrBoxNoChainID = errors.New("chain: floor box has no chain id (BoxConfig.ChainID is unset), so it cannot bind era-4 consensus signatures to a network — refused")
 )
 
 // BoxConfig is the box's OWN operator configuration — set once at construction, never per block.
@@ -76,6 +83,24 @@ type BoxConfig struct {
 	// NewBox refuses 0 (unset) and there is no value that means "unlimited". The number a
 	// deployment should use is not fixed here (the pony measurement is owed, build-plan cert §6.3).
 	BudgetBytes int
+	// ChainID is the box's NETWORK IDENTITY: the height-0 block's Hash() of the chain it audits.
+	// The era-4 consensus preimage binds it (consensusSigBytesV5), so the box needs it to verify
+	// any v5 carrier entry or quorum signature. It MUST be non-zero: NewBox refuses the zero hash
+	// and there is no value that means "any network".
+	//
+	// WHY IT IS CONFIG AND NOT DERIVED, STATED PLAINLY BECAUSE IT IS A BG-2 QUESTION. The box
+	// cannot derive it from anything it holds. The parent block does not carry the genesis hash,
+	// and `ch` is the box's CONFIG-BEARING chain, not a state source — on the deployment target it
+	// holds no blocks at all, so ch.ChainID() would be the zero hash. Reading it from `ch` is also
+	// the exact defect the fold-file pin denies by name ("blocks: applied-history chain state — a
+	// cold box never has it"). So it belongs where the box's other trust anchors already live:
+	// operator configuration, set ONCE at construction, never a parameter of Validate and never a
+	// field of the block under judgement. A driver cannot choose it per block.
+	//
+	// The owner-call-A certification §4.5 flagged this as a possible blocker and asked for it back
+	// if the box could not derive it from an anchor it already holds. It cannot. This shape is the
+	// builder's reading of "box-owned"; it is routed for confirmation, not settled here.
+	ChainID ports.Hash
 }
 
 // Box is the trustless floor box: its config-bearing chain (never a state source), its derived
@@ -114,13 +139,22 @@ func NewBox(ch *Chain, parent Block, cfg BoxConfig, src WitnessSource) (*Box, er
 	if !ed25519.Verify(ed25519.PublicKey(parent.Proposer), ph[:], parent.ProposerSig) {
 		return nil, ErrBoxParentUnsigned
 	}
-	return &Box{c: ch, head: headRefOf(parent), budget: bud, src: src}, nil
+	// BG-2: the box's NETWORK IDENTITY, taken from its OWN config (see BoxConfig.ChainID) and
+	// refused when absent rather than defaulted. A box that audited under the zero hash would be
+	// verifying era-4 signatures against a network that does not exist; that is a MISSING TRUST
+	// ANCHOR, so it is a construction refusal, not a per-block stall — the same shape as the
+	// unset budget above.
+	if cfg.ChainID == (ports.Hash{}) {
+		return nil, ErrBoxNoChainID
+	}
+	return &Box{c: ch, head: headRefOf(parent, cfg.ChainID), budget: bud, src: src}, nil
 }
 
-// headRefOf derives the box's head record from the parent block it holds — the SAME derivation
-// liveView.Head() applies to the node's own head block, so the two views cannot differ by a field.
-func headRefOf(parent Block) HeadRef {
-	h := HeadRef{Hash: parent.Hash(), NextHeight: parent.Height + 1, ProposerID: parent.ProposerID()}
+// headRefOf derives the box's head record from the parent block it holds and its own chain id —
+// the SAME derivation liveView.Head() applies to the node's own head block, so the two views
+// cannot differ by a field.
+func headRefOf(parent Block, chainID ports.Hash) HeadRef {
+	h := HeadRef{Hash: parent.Hash(), NextHeight: parent.Height + 1, ProposerID: parent.ProposerID(), ChainID: chainID}
 	if parent.StateRoot != nil {
 		sr := *parent.StateRoot
 		h.StateRoot = &sr
@@ -194,7 +228,7 @@ func (s *Box) Validate(b Block, w StateRootWitness) (FloorBoxOutcome, error) {
 	head := s.head
 	v.predicate = func(blk *Block) error {
 		// CommittedRoots has already rejected a nil blk.StateRoot and stalled on a nil head root.
-		return s.c.recomputeStateRootEntriesRevocations(*head.StateRoot, *blk.StateRoot, *blk, w, head.ProposerID)
+		return s.c.recomputeStateRootEntriesRevocations(*head.StateRoot, *blk.StateRoot, *blk, w, head.ProposerID, head.ChainID)
 	}
 	out, err := ValidateCommitV5(v, &b)
 	if out == Accept {

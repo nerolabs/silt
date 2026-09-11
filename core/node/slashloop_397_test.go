@@ -85,7 +85,7 @@ func TestPendingSlashRequeuedUntilCommitted397(t *testing.T) {
 		b.Atts = append(b.Atts, chain.Attest(b, v.Signer()))
 		return b
 	}
-	evs := chain.FindEquivocations([]chain.Block{*g, *fork("A")}, []chain.Block{*g, *fork("B")})
+	evs := chain.FindEquivocations([]chain.Block{*g, *fork("A")}, []chain.Block{*g, *fork("B")}, ports.Hash{})
 	if len(evs) == 0 {
 		t.Fatal("setup: expected an equivocation proof")
 	}
