@@ -285,12 +285,78 @@ func v5ValidateSlashes(v StateView, b *Block) (FloorBoxOutcome, error) {
 	if n := SlashesEncodedSize(b.Slashes); n > SlashesBytesCap {
 		return Reject, fmt.Errorf("%w: %d bytes (cap %d)", ErrSlashesBytesCapExceeded, n, SlashesBytesCap)
 	}
+	// THE ERA FLOOR (M2), derived from the VIEW and never handed in by a caller. This is the only
+	// site of the four on the LIVE ACCEPT path of an era-4 block, and it is the one a caller-supplied
+	// floor would break: a floor LOWERED by a driver re-admits the cross-network evidence the rule
+	// exists to refuse. Same discipline as v.Head().ChainID beside it — a verifier's own facts are
+	// read from the verifier, never accepted from the thing being judged or from its driver.
+	//
+	// The supplier is TOTAL over heights but the derivation can be INDETERMINATE: on the latch route
+	// (Era4ActivationHeight = 0) it reads the committed tagEra4LockedIn/tagEra4Height scalars, which
+	// a pruned or partial view may not witness. An unwitnessed floor must STALL, never reject and
+	// never fall through to a lower floor, so the supplier returns eraFloorRefuseAll (which can only
+	// decline) and records the stall for the loop to return. On the Era4ActivationHeight = 1 route
+	// v5EraActive short-circuits on the config and reads no Scalar at all, so P8 gains no stall site
+	// there. (Those two scalars are already in the witness read-set via P10/P11: the read-set does
+	// not move, only P8's stall surface.)
+	stalled, stallErr := Accept, error(nil)
+	floor := EraFloor(func(h uint64) uint64 {
+		f, out, err := v5EraFloorAt(v, h)
+		if out != Accept {
+			if stalled == Accept {
+				stalled, stallErr = out, err
+			}
+			return eraFloorRefuseAll
+		}
+		return f
+	})
 	for i := range b.Slashes {
-		if err := CheckEquivocation(&b.Slashes[i], v.Head().ChainID); err != nil {
+		err := CheckEquivocation(&b.Slashes[i], v.Head().ChainID, floor)
+		if stalled != Accept {
+			return stalled, stallErr // an unwitnessed floor is a STALL, not a rejection
+		}
+		if err != nil {
 			return Reject, fmt.Errorf("%w: proof %d: %w", ErrBadSlash, i, err)
 		}
 	}
 	return Accept, nil
+}
+
+// eraFloorRefuseAll is the floor an INDETERMINATE derivation yields: no block version can reach
+// it, so the gate declines. Refusing is strictly narrowing, so the fail-safe direction costs a
+// declined slash and can never manufacture one.
+const eraFloorRefuseAll = ^uint64(0)
+
+// v5EraFloorAt is the StateView mirror of (*Chain).MintVersion — the ERA FLOOR at height h, the
+// minimum block version this chain requires a proposer to stamp there. It is built from
+// v5EraActive, the SAME function P10/P11 use, so P8 rides the existing mirror rather than minting
+// a second era -> version mapping.
+//
+// NOTE THE WORD COLLISION, and do not resolve it by renaming: StateView already says "floor" for
+// the pruned-TRUST floor (PrunedTolerated). They are different quantities that share a hazard
+// direction — a trust floor RAISED by a caller makes the reader skip proof verification; an era
+// floor LOWERED by a caller re-admits cross-network evidence. Both are wrong-accept in the
+// caller-supplied direction, and both are therefore derived from the view, never passed in.
+//
+// This is the second derivation of one mapping (the other is MintVersion), which is the #397 drift
+// shape. It is forced — the accept composition is source-gated against holding a *Chain — so it is
+// BOUNDED rather than eliminated: TestGEF6_TheTwoEraFloorDerivationsAgree drives the equality.
+func v5EraFloorAt(v StateView, h uint64) (uint64, FloorBoxOutcome, error) {
+	era4, out, err := v5EraActive(v, h, tagEra4LockedIn, tagEra4Height, v.Params().Era4ActivationHeight, "era4")
+	if out != Accept {
+		return 0, out, err
+	}
+	if era4 {
+		return BlockVersionWitnessable, Accept, nil
+	}
+	era3, out, err := v5EraActive(v, h, tagEra3LockedIn, tagEra3Height, v.Params().Era3ActivationHeight, "era3")
+	if out != Accept {
+		return 0, out, err
+	}
+	if era3 {
+		return BlockVersionStateRoot, Accept, nil
+	}
+	return BlockVersionRounds, Accept, nil
 }
 
 // v5ValidateIssuerKeys is P8b — Chain.validateIssuerKeys (issuerkey.go), the stage the 2026-09-03

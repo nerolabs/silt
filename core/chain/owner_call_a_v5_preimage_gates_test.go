@@ -326,8 +326,7 @@ func TestGPRE5_DeclaredHeightMustBindTheSignature(t *testing.T) {
 // second copy of that map, which is the #397 drift shape this whole arc is paying back.
 func eraFloorAt(t *testing.T, h, era4At uint64) uint64 {
 	t.Helper()
-	c := New(Config{Quorum: 1, Era3ActivationHeight: era4At, Era4ActivationHeight: era4At}, func(ports.NodeID) int64 { return 0 })
-	return c.MintVersion(h)
+	return eraFloorOf(era4At)(h)
 }
 
 // ---------------------------------------------------------------------------
@@ -404,7 +403,7 @@ func TestGPRE6_CrossChainHonestSignaturesAreNotEvidence(t *testing.T) {
 		t.Fatal("fixture: the two networks' signatures must differ (they cover different block hashes)")
 	}
 	live := Equivocation{Culprit: pub, A: av4, B: bv4}
-	if err := CheckEquivocation(&live, cidX); err != nil {
+	if err := CheckEquivocation(&live, cidX, eraFloorOf(lateBoundary)); err != nil {
 		t.Fatalf("THE PRE-ERA-4 RESIDUAL IS CLOSED — and nothing in this branch closes it, so read this as a "+
 			"CHANGE, not a pass. Either the M2 era-floor rule landed (in which case retire this arm and assert "+
 			"the closure at h >= H_era4 instead), or the era-2 form stopped being chain-blind. Do not silence "+
@@ -415,6 +414,17 @@ func TestGPRE6_CrossChainHonestSignaturesAreNotEvidence(t *testing.T) {
 		"permanently evicted. Open, R-SLASH-CULPRIT-ADMISSIBILITY; closer = the M2 era-floor rule; on an "+
 		"RC genesis committing Era4ActivationHeight=1 no height above 0 is in this interval.", h)
 
+	// --- THE M2 CLOSURE, ON THE SAME BYTES: at or above the era-4 floor the pair is REFUSED. ---
+	//
+	// The two arms differ in exactly ONE input — the era floor — so this is the discriminating
+	// pair the residual statement above rests on. Without it, "the RC network has no reachable
+	// height for this" would be prose beside a green ablation.
+	if err := CheckEquivocation(&live, cidX, eraFloorOf(rcBoundary)); !errors.Is(err, ErrNotEquivocation) {
+		t.Fatalf("M2 VIOLATED: the SAME cross-network pair, judged on a chain whose floor at height %d is "+
+			"v%d, must be refused as below the era floor — the sub-era-4 leg binds no chain id and is "+
+			"portable between silt networks; got %v", h, BlockVersionWitnessable, err)
+	}
+
 	// --- THE SHIPPED ERA-4 FORM: the same two honest acts, refused on BOTH networks. ---
 	av5, bv5 := build(BlockVersionWitnessable, 1, propX, cidX), build(BlockVersionWitnessable, 2, propY, cidY)
 	if av5.Atts[0].Phase != PhasePrecommitV5 {
@@ -422,7 +432,7 @@ func TestGPRE6_CrossChainHonestSignaturesAreNotEvidence(t *testing.T) {
 	}
 	proof := Equivocation{Culprit: pub, A: av5, B: bv5}
 	for name, cid := range map[string]ports.Hash{"network X": cidX, "network Y": cidY} {
-		if err := CheckEquivocation(&proof, cid); !errors.Is(err, ErrNotEquivocation) {
+		if err := CheckEquivocation(&proof, cid, eraFloorOf(rcBoundary)); !errors.Is(err, ErrNotEquivocation) {
 			t.Fatalf("G-PRE-6 VIOLATED on %s: an honest validator running on two silt networks must NOT be "+
 				"slashable; got %v", name, err)
 		}
@@ -434,7 +444,7 @@ func TestGPRE6_CrossChainHonestSignaturesAreNotEvidence(t *testing.T) {
 	realA := build(BlockVersionWitnessable, 1, propX, cidX)
 	realB := build(BlockVersionWitnessable, 2, propX, cidX)
 	real := Equivocation{Culprit: pub, A: realA, B: realB}
-	if err := CheckEquivocation(&real, cidX); err != nil {
+	if err := CheckEquivocation(&real, cidX, eraFloorOf(rcBoundary)); err != nil {
 		t.Fatalf("G-PRE-6 NON-VACUITY BROKEN: a genuine era-4 double-sign on ONE network must still convict; got %v", err)
 	}
 }
@@ -471,12 +481,12 @@ func TestGPRE7_HonestExemptionsSurviveTheEra4Form(t *testing.T) {
 		a := v5(1, func(b *Block) { b.Atts = []Attestation{AttestAt(b, culprit, 0, PhasePrecommit, cid)} })
 		bb := v5(2, func(b *Block) { b.Atts = []Attestation{AttestAt(b, culprit, 1, PhasePrecommit, cid)} })
 		e := Equivocation{Culprit: pub, A: a, B: bb}
-		if err := CheckEquivocation(&e, cid); !errors.Is(err, ErrNotEquivocation) {
+		if err := CheckEquivocation(&e, cid, eraFloorOf(1)); !errors.Is(err, ErrNotEquivocation) {
 			t.Fatalf("a cross-ROUND different-hash pair is an honest lock change, not evidence; got %v", err)
 		}
 		// Non-vacuity for THIS condition alone: move only the round to match and it convicts.
 		bb2 := v5(2, func(b *Block) { b.Atts = []Attestation{AttestAt(b, culprit, 0, PhasePrecommit, cid)} })
-		if err := CheckEquivocation(&Equivocation{Culprit: pub, A: a, B: bb2}, cid); err != nil {
+		if err := CheckEquivocation(&Equivocation{Culprit: pub, A: a, B: bb2}, cid, eraFloorOf(1)); err != nil {
 			t.Fatalf("same-round arm must convict, else the refusal above is not about the round; got %v", err)
 		}
 	})
@@ -489,7 +499,7 @@ func TestGPRE7_HonestExemptionsSurviveTheEra4Form(t *testing.T) {
 		a := v5(1, func(b *Block) { Sign(b, culprit) })
 		bb := v5(2, func(b *Block) { Sign(b, culprit) })
 		e := Equivocation{Culprit: pub, A: a, B: bb}
-		if err := CheckEquivocation(&e, cid); !errors.Is(err, ErrNotEquivocation) {
+		if err := CheckEquivocation(&e, cid, eraFloorOf(1)); !errors.Is(err, ErrNotEquivocation) {
 			t.Fatalf("a bare-hash ProposerSig is authorship, not a consensus vote; got %v", err)
 		}
 		if consensusSigPreimageV5Len == 32 {
@@ -503,12 +513,12 @@ func TestGPRE7_HonestExemptionsSurviveTheEra4Form(t *testing.T) {
 		// ordinary two-phase flow, not a double-sign.
 		a := v5(1, func(b *Block) { b.PrepareQC = []Attestation{AttestAt(b, culprit, 0, PhasePrepare, cid)} })
 		bb := v5(2, func(b *Block) { b.Atts = []Attestation{AttestAt(b, culprit, 0, PhasePrecommit, cid)} })
-		if err := CheckEquivocation(&Equivocation{Culprit: pub, A: a, B: bb}, cid); !errors.Is(err, ErrNotEquivocation) {
+		if err := CheckEquivocation(&Equivocation{Culprit: pub, A: a, B: bb}, cid, eraFloorOf(1)); !errors.Is(err, ErrNotEquivocation) {
 			t.Fatalf("a prepare and a precommit are different slots; got %v", err)
 		}
 	})
 
-	t.Run("the mixed-FORM pair is a CROSS-NETWORK FALSE SLASH, not an accountability requirement", func(t *testing.T) {
+	t.Run("the mixed-FORM harvest is REFUSED at or above the era floor", func(t *testing.T) {
 		// WHAT THIS SUBTEST USED TO DEMAND, AND WHY IT WAS WRONG. It was titled "a v2-form and a
 		// v5-form signature at ONE slot DO convict" and asserted CheckEquivocation == nil, calling
 		// the refusal an ACCOUNTABILITY REGRESSION. That demand is an I5 VIOLATION stated as
@@ -522,11 +532,14 @@ func TestGPRE7_HonestExemptionsSurviveTheEra4Form(t *testing.T) {
 		// precommit off network Y and pair it with the victim's genuine era-4-form precommit on X.
 		// One honest act on each network; a conviction on X. The penalty hits the honest — #397.
 		//
-		// WHAT REPLACED THE DEMAND. Nothing in this branch changes CheckEquivocation: the closer is
-		// M2's era-floor rule, which is research-gated and lands at three call sites in one commit.
-		// The honest-node half of T-STEP-VS-FORM — that a validator cannot double-sign ACROSS the
-		// era boundary because ports.SignMark records the canonical step and is era-independent —
-		// is driven where it actually lives, in core/node:
+		// WHAT REPLACED THE DEMAND, AND WHAT REPLACED THE RECORD. The first rewrite turned the
+		// demand into a RECORD of the open face, with a trip that reddened the day it closed. M2
+		// closed it, the trip fired, and this arm is now the CLOSURE it asked for: the same
+		// harvested bytes are REFUSED at or above the era floor, and — the discriminating half —
+		// still CONVICT below it, because the sub-era-4 form is chain-blind forever there. The
+		// honest-node half of T-STEP-VS-FORM — that a validator cannot double-sign ACROSS the era
+		// boundary because ports.SignMark records the canonical step and is era-independent — is
+		// driven where it actually lives, in core/node:
 		// TestGPRE3_UpgradeMustNotReinterpretTheDurableSignMark. It never needed a slash verdict.
 		//
 		// WHAT WAS SOLD FOR IT, and it is ratified, not overlooked: the ON-NETWORK boundary
@@ -588,19 +601,30 @@ func TestGPRE7_HonestExemptionsSurviveTheEra4Form(t *testing.T) {
 			t.Fatalf("VACUOUS: both legs carry phase %d, so this is not the mixed-FORM case", harvested.Atts[0].Phase)
 		}
 
-		// (3) THE VERDICT TODAY, RECORDED — with a trip that reddens the DAY it changes. This is
-		// deliberately not a demand: it is the open face, and the arm must be retired by whoever
-		// closes it rather than quietly kept green.
-		if err := CheckEquivocation(&Equivocation{Culprit: pub, A: harvested, B: bb}, cid); err != nil {
-			t.Fatalf("THE MIXED-FORM FACE IS CLOSED, and nothing in this branch closes it — read this as a "+
-				"CHANGE, not a pass. If M2's era-floor rule landed, RETIRE this subtest and assert the closure "+
-				"at h >= H_era4 in its place; the boundary double-signer being unslashable there is the "+
-				"ratified price. Do not re-add a demand that the pair convict; got %v", err)
+		// (3) THE CLOSURE. At or above the era floor the harvested leg is below the form this
+		// chain requires at that height, so the pair is not evidence here.
+		harvest := Equivocation{Culprit: pub, A: harvested, B: bb}
+		if err := CheckEquivocation(&harvest, cid, eraFloorOf(rcBoundary)); !errors.Is(err, ErrNotEquivocation) {
+			t.Fatalf("M2 VIOLATED at height %d: a mixed-FORM pair whose sub-era-4 leg is BIT-IDENTICAL to one "+
+				"harvested from another silt network must NOT convict on a chain whose floor here is v%d. "+
+				"Convicting it is the #397 shape — the penalty hits the honest. Got %v",
+				h, BlockVersionWitnessable, err)
 		}
-		t.Logf("OPEN FACE, driven at height %d: a mixed-FORM pair whose era-2-form leg is BIT-IDENTICAL to "+
-			"one harvested from another silt network CONVICTS an honest validator. I5, the #397 shape. "+
-			"Closer = M2's era-floor rule at validateSlashes/FindEquivocations/slashEquivocators "+
-			"(research-gated); residual R-SLASH-CULPRIT-ADMISSIBILITY.", h)
+
+		// (4) THE DISCRIMINATING HALF, and without it (3) is not about the floor. BELOW the era-4
+		// floor the SAME bytes still convict, because consensusSigBytes is frozen and carries no
+		// chain id there. The two arms differ in exactly ONE input.
+		if err := CheckEquivocation(&harvest, cid, eraFloorOf(lateBoundary)); err != nil {
+			t.Fatalf("THE REFUSAL ABOVE IS NOT ABOUT THE ERA FLOOR: the same pair is also refused on a chain "+
+				"whose floor at height %d is BELOW v%d, where the sub-era-4 form is the REQUIRED form. Either "+
+				"the residual closed for some other reason — in which case say which — or this arm can no "+
+				"longer tell a floor from a constant; got %v", h, BlockVersionWitnessable, err)
+		}
+		t.Logf("M2 CLOSURE, driven at height %d: the harvested mixed-FORM pair is REFUSED on a chain whose "+
+			"floor here is v%d and CONVICTS on one whose floor is below it. The residual at h < H_era4 is "+
+			"live and bought off by Era4ActivationHeight=1, never closed (consensusSigBytes is frozen). The "+
+			"price paid at h >= H_era4 is the boundary double-signer, unslashable and ratified.",
+			h, BlockVersionWitnessable)
 	})
 }
 

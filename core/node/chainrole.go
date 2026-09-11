@@ -947,6 +947,27 @@ func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeI
 			if n.chain.IsSlashed(e.CulpritID()) {
 				continue
 			}
+			// THE DRAIN RE-CHECKS ADMISSIBILITY (M2). Detection and drain are separated in time,
+			// and on the LATCH route (Era4ActivationHeight = 0) the era floor at a FIXED height
+			// RISES when era4LockedIn latches: evidence admissible when it was queued becomes
+			// inadmissible before it is drained, and embedding it makes this node's own P8 reject
+			// its own proposal — forever. Proposer POLICY, never validity, exactly like the
+			// IsSlashed filter above and the stale-registration drop below: an attester's
+			// acceptance rule is untouched, so a mixed swarm cannot fork on it. A dropped proof
+			// costs a declined slash; an embedded one costs this node its proposer role
+			// permanently. Release the on-chain latch so a later, admissible proof for the same
+			// culprit can still be queued.
+			//
+			// VACUOUS ON THE RC ROUTE, and that is said rather than assumed: with
+			// Era4ActivationHeight = 1 the floor is a genesis constant, so MintVersion is
+			// time-invariant and admissible-at-detection implies admissible-at-drain. The guard is
+			// built anyway because the latch route is still reachable by configuration, and "it
+			// cannot happen on our genesis" is not a property of the code.
+			if err := chain.CheckEquivocation(&e, n.chainID(), n.eraFloor()); err != nil {
+				delete(n.slashQueued, e.CulpritID())
+				n.logf(ports.LogWarn, "dropping queued equivocation proof that is no longer admissible at this height", "culprit", e.CulpritID(), "height", e.A.Height, "err", err)
+				continue
+			}
 			if chain.SlashesEncodedSize([]chain.Equivocation{e}) > chain.SlashesBytesCap {
 				// Can never commit anywhere (see slashEquivocators): DROP, never embed —
 				// embedding it would doom this and every later proposal by this node.
@@ -1468,11 +1489,24 @@ func (n *Node) chainID() ports.Hash {
 	return n.chain.ChainID()
 }
 
+// eraFloor is this node's chain-derived ERA FLOOR — the minimum evidence form admissible at a
+// given height (chain.EraFloor, i.e. MintVersion). NIL when this node holds no chain, which
+// chain.CheckEquivocation treats as a REFUSAL, and that is the same safe direction chainID takes
+// with its zero hash: a node that cannot know which network it is on convicts nobody. Detection
+// must use exactly what the write path uses, or this node queues evidence its own
+// v5ValidateSlashes rejects and every later proposal it makes is invalid.
+func (n *Node) eraFloor() chain.EraFloor {
+	if n.chain == nil {
+		return nil
+	}
+	return n.chain.EraFloor()
+}
+
 func (n *Node) slashEquivocators(a, b []chain.Block) {
 	if n.ledger == nil {
 		return
 	}
-	for _, e := range chain.FindEquivocations(a, b, n.chainID()) {
+	for _, e := range chain.FindEquivocations(a, b, n.chainID(), n.eraFloor()) {
 		cid := e.CulpritID()
 		// Idempotent-once (#397 Q4-i): a live fork is re-observed by EVERY
 		// reconcile sweep until it heals, so the same double-sign is re-detected

@@ -44,7 +44,7 @@ func TestSlashesBytesCapWorstCaseCost(t *testing.T) {
 	}
 	a, b := regLaden(1, w.prop), regLaden(2, w.vals[3])
 	e := Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: *b}
-	if err := CheckEquivocation(&e, ports.Hash{}); err != nil {
+	if err := CheckEquivocation(&e, ports.Hash{}, eraFloorOf(0)); err != nil {
 		t.Fatalf("precondition: the reg-laden double-sign must be provable, got %v", err)
 	}
 	one := SlashesEncodedSize([]Equivocation{e})
