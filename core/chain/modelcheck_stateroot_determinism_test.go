@@ -93,7 +93,8 @@ func TestStateRootCoversExactlyTheCommittedSetFields(t *testing.T) {
 //
 //   - stateRootTags         — the 18 era-3 committedSet fields (a v5 root is a superset);
 //   - stateRootTagsV5       — the five era-4 maintenance-spine committedSet fields;
-//   - stateRootDigestTagsV5 — the five F1 whole-set digest roots (derived, not fields).
+//   - stateRootDigestTagsV5 — the five F1 whole-set digest roots (derived, not fields);
+//   - stateRootDerivedTagsV5 — the leaves derived from a committedLog field (revLogSize).
 //
 // Both directions are load-bearing and NEITHER is covered by the existing guards:
 //
@@ -121,7 +122,7 @@ func TestStateRootCoversExactlyTheCommittedSetFields(t *testing.T) {
 func TestStateRootV5CoversExactlyTheV5Fields(t *testing.T) {
 	// DECLARED: the union of the three v5 tag lists, built from the lists themselves.
 	declared := map[string]struct{}{}
-	for _, list := range [][]string{stateRootTags, stateRootTagsV5, stateRootDigestTagsV5} {
+	for _, list := range [][]string{stateRootTags, stateRootTagsV5, stateRootDigestTagsV5, stateRootDerivedTagsV5} {
 		for _, tag := range list {
 			declared[tag] = struct{}{}
 		}
@@ -160,7 +161,7 @@ func TestStateRootV5CoversExactlyTheV5Fields(t *testing.T) {
 
 	if len(missing) > 0 {
 		t.Errorf("the v5 state root does NOT cover declared tag(s): %v\n\n"+
-			"The tag is in stateRootTags / stateRootTagsV5 / stateRootDigestTagsV5 but "+
+			"The tag is in stateRootTags / stateRootTagsV5 / stateRootDigestTagsV5 / stateRootDerivedTagsV5 but "+
 			"stateRootLeavesV5 emits no leaf for it on a fully-populated chain — the keyspace "+
 			"is silently absent from the root a v5 block commits, so two replicas can diverge "+
 			"on it undetected. Restore the leaf loop in statehash.go.\n"+
@@ -170,7 +171,7 @@ func TestStateRootV5CoversExactlyTheV5Fields(t *testing.T) {
 	if len(extra) > 0 {
 		t.Errorf("the v5 state root covers tag(s) on NO declared list: %v\n\n"+
 			"stateRootLeavesV5 emits a leaf under a tag that is in none of stateRootTags, "+
-			"stateRootTagsV5, stateRootDigestTagsV5. Every other coverage guard iterates one of "+
+			"stateRootTagsV5, stateRootDigestTagsV5, stateRootDerivedTagsV5. Every other coverage guard iterates one of "+
 			"those LISTS, so an unlisted tag is invisible to all of them and enters the consensus "+
 			"root unreviewed. Add the tag to the list its class belongs to (a committedSet field "+
 			"to stateRootTagsV5, a derived whole-set digest to stateRootDigestTagsV5), or drop "+

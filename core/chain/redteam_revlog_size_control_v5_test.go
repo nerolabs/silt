@@ -15,8 +15,9 @@ import (
 // THIS IS A RED-TEAM-STYLE CONTROL, NOT A REGRESSION GATE. It asserts that the UNSOUND construction
 // is unsound, so nobody re-derives it a third time (P-table delta certification §3.3 and §9 item 6:
 // the certifier derived "a witness-supplied m is safe under MTH size-injectivity" once, refuted it
-// against the verifier's own code, and pre-registered this control). It ships with the P13b k ≥ 1
-// STALL (provenView.CommittedRoots) and travels with tagRevLogSize when that leaf lands.
+// against the verifier's own code, and pre-registered this control). It shipped with the P13b
+// k >= 1 STALL and TRAVELLED WITH tagRevLogSize when that leaf landed (2026-09-11): the stall is
+// now a verified extension, and this control asserts the precondition that lift rests on.
 //
 // THE CONSTRUCTION UNDER TEST: verify-not-recompute of a revocation-bearing block's LogRoot —
 // derive n := m + k, check translog.VerifyConsistency(L_p, m, b.LogRoot, n, π) and
@@ -27,8 +28,8 @@ import (
 // constraint is that newRoot folds up from oldRoot with attacker-chosen siblings — and newRoot is
 // b.LogRoot, which the attacker chooses.
 //
-// RUNTIME GATE (the composition's stall, the round-1A disposition): TestGD8_RevocationBearingBlock-
-// StallsOnTheProvenView. This control is what that stall is FOR.
+// RUNTIME GATE: TestGD8_RevocationBearingBlockVerifiesItsLogExtension — the same construction
+// driven through provenView at a COMMITTED m, with the forged-m and missing-witness arms.
 
 // rfc6962Node is the RFC 6962 interior-node hash HASH(0x01 ‖ left ‖ right), re-derived here because
 // translog does not export it; pinned below against translog.MTH over a two-element list.
@@ -41,23 +42,11 @@ func rfc6962Leaf(entry ports.Hash) ports.Hash {
 	return ports.Hash(sha256.Sum256(append([]byte{0x00}, entry[:]...)))
 }
 
-// verifyLogExtension is the verify-not-recompute construction, parameterised on WHERE m comes
-// from. It is the shape T-LOGEXT (delta certification §3.3) conditions on: sound iff m is
-// authenticated. `m` is the caller's claim of the parent log size; `leaves` are the block's derived
-// revocation leaves in order; the proofs are witness-supplied.
-func verifyLogExtension(parentRoot ports.Hash, m int, newRoot ports.Hash, leaves []ports.Hash,
-	consistency []ports.Hash, inclusion [][]ports.Hash) bool {
-	n := m + len(leaves)
-	if !translog.VerifyConsistency(parentRoot, m, newRoot, n, consistency) {
-		return false
-	}
-	for j, leaf := range leaves {
-		if !translog.VerifyInclusion(leaf, m+j, n, newRoot, inclusion[j]) {
-			return false
-		}
-	}
-	return true
-}
+// verifyLogExtension now lives in PRODUCTION (stateview_proven_v5.go), called by provenView's
+// P13b k >= 1 arm. This control used to carry its own copy, parameterised on where m comes from;
+// the copy is gone, so what follows drives the shipped verifier itself. That is the point of the
+// pre-registration: the construction the control refutes at a witness-supplied m is now literally
+// the code the box runs at a committed one.
 
 // TestGD9_WitnessSuppliedLogSizeIsUnsound_Control. The parent log has THREE entries (m_true = 3,
 // not a power of two, so the honest path exercises the general branch). The attacker claims

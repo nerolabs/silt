@@ -553,13 +553,17 @@ func TestGD7_ForgedLogRootIsRefusedOnBothViews(t *testing.T) {
 	}
 }
 
-// TestGD8_RevocationBearingBlockStallsOnTheProvenView. A revocation-bearing v5 block returns
-// IndeterminateTrustlessly with the named sentinel on provenView (k ≥ 1: the parent log size is
-// not authenticated until tagRevLogSize ships), and the node's verdict on liveView is unchanged
-// (it accepts its own certified block). Ablation (G-D8): delete the k > 0 stall ⇒ the block falls
-// to the k = 0 equality and is REJECTED (its LogRoot moved) ⇒ RED — the stall must never render as
-// a disproof, and never as an accept.
-func TestGD8_RevocationBearingBlockStallsOnTheProvenView(t *testing.T) {
+// TestGD8_RevocationBearingBlockStallsWithoutAWitness. A revocation-bearing v5 block with NO
+// witness source still returns IndeterminateTrustlessly by name: with no source there is no
+// tagRevLogSize leaf to Resolve, so the parent log size is unauthenticated and the box refuses.
+// This is the arm that used to be the WHOLE story (k >= 1 was a terminal stall until the leaf
+// landed); it is kept because it is still the correct verdict when the witness is absent, and it
+// is the negative control for the arm below.
+//
+// Ablation (G-D8): delete the k > 0 branch in CommittedRoots => the block falls to the k = 0
+// equality and is REJECTED (its LogRoot moved) => RED. The refusal must never render as a
+// disproof, and never as an accept.
+func TestGD8_RevocationBearingBlockStallsWithoutAWitness(t *testing.T) {
 	f := buildStructFixture(t)
 	committed := f.c.Blocks(1)[0].Entries[0].Root // entry(1), committed at h1
 	b := f.mkBlock(t, func(b *Block) {
@@ -570,6 +574,6 @@ func TestGD8_RevocationBearingBlockStallsOnTheProvenView(t *testing.T) {
 	pv := f.provenViewOver(t, nil)
 	out, err := pv.CommittedRoots(&b)
 	if out != IndeterminateTrustlessly || !errors.Is(err, ErrRevLogSizeUnauthenticated) {
-		t.Fatalf("G-D8 VIOLATED: a revocation-bearing block must STALL on the proven view with ErrRevLogSizeUnauthenticated; got %s / %v", out, err)
+		t.Fatalf("G-D8 VIOLATED: a revocation-bearing block with no witness source must STALL on the proven view with ErrRevLogSizeUnauthenticated; got %s / %v", out, err)
 	}
 }

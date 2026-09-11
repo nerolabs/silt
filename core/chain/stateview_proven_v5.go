@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/nerolabs/silt/core/statehash"
+	"github.com/nerolabs/silt/core/translog"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -44,17 +46,43 @@ type WitnessSource interface {
 	// first — the bounded header window the bond-registration nonce rule walks. Self-authenticating
 	// by Prev-linkage.
 	Ancestors(k int) ([]ports.Hash, bool)
+	// LogExtension returns the RFC-6962 proofs that the block's committed LogRoot is the parent's
+	// transparency log EXTENDED by exactly `leaves` — a consistency proof from (parent LogRoot, m)
+	// to (b.LogRoot, n = m+len(leaves)), plus one inclusion proof per appended leaf at index m+j of
+	// size n. ok == false means "I have no witness"; the composition stalls.
+	//
+	// m is NOT the source's to choose: the caller passes the m it Resolved from the parent's
+	// committed StateRoot (tagRevLogSize), and the leaves are DERIVED from the block, so this call
+	// only asks the source to produce paths in a tree whose shape and contents are already fixed.
+	// That is the whole point of the leaf — before it, m came from here and a source claiming m = 1
+	// could pass any right-spine extension (TestGD9_WitnessSuppliedLogSizeIsUnsound_Control).
+	LogExtension(m int, leaves []ports.Hash) (consistency []ports.Hash, inclusion [][]ports.Hash, ok bool)
 }
 
 var (
-	// ErrRevLogSizeUnauthenticated marks the P13b k ≥ 1 STALL on the proven view: a revocation-
-	// bearing block extends the revocation log, and verify-not-recompute of the new LogRoot is
-	// sound ONLY with an AUTHENTICATED parent log size m (T-LOGEXT, P-table delta certification
-	// §3.3 — a witness-supplied m is a WRONG-ACCEPT through translog.VerifyConsistency's m == 0
-	// short-circuit and its isPow2 seeding at m = 1). The closer is the tagRevLogSize committed
-	// leaf at the era-4/v5 freeze (R3.4); until then a box stalls at the first takedown after its
-	// pin. Named so the stall is attributable, never a generic "no witness".
-	ErrRevLogSizeUnauthenticated = errors.New("chain: floor-box cannot verify a revocation-bearing block's LogRoot without an authenticated parent log size (tagRevLogSize, R3.4) — stall")
+	// ErrRevLogSizeUnauthenticated marks a P13b k ≥ 1 STALL whose cause is that the box could not
+	// AUTHENTICATE the parent log size m: no witness for the tagRevLogSize leaf, a leaf that does
+	// not Resolve against the parent's committed StateRoot, or a value that is not a usable
+	// uint64. Verify-not-recompute of the new LogRoot is sound ONLY with an authenticated m
+	// (T-LOGEXT, P-table delta certification §3.3 — a witness-supplied m is a WRONG-ACCEPT through
+	// translog.VerifyConsistency's m == 0 short-circuit and its isPow2 seeding at m = 1).
+	//
+	// UNTIL tagRevLogSize LANDED this fired on EVERY revocation-bearing block, because there was
+	// no committed size to resolve; a box died permanently at the first takedown after its pin.
+	// The leaf (freeze-manifest item 1) is what turned that terminal stall into a resolvable read,
+	// so this sentinel now means "the WITNESS is missing or lying", not "the FORMAT cannot express
+	// it". Named so the stall stays attributable, never a generic "no witness".
+	ErrRevLogSizeUnauthenticated = errors.New("chain: floor-box cannot authenticate the parent revocation-log size (tagRevLogSize) against the parent's committed StateRoot — stall")
+	// ErrRevLogExtensionUnproven marks the other P13b k ≥ 1 STALL: m IS authenticated, but the
+	// supplied RFC-6962 proofs do not show the block's committed LogRoot to be the parent's log
+	// extended by exactly this block's own derived revocation entries.
+	//
+	// A STALL, NOT A REJECT, and deliberately so. The verification has one error channel and two
+	// causes — a witness that served bad paths (a gap) and a LogRoot that is genuinely wrong (a
+	// disproof) — and the box cannot tell them apart. The composition's rule is that a witness gap
+	// never renders as a disproof, so both land here. box.Accept ⇒ node.Accept is preserved; the
+	// cost is that a lying source can force a stall, which is availability, not safety.
+	ErrRevLogExtensionUnproven = errors.New("chain: floor-box could not prove the block's committed LogRoot is the parent's revocation log extended by exactly this block's derived entries — stall")
 	// ErrHeadRootAbsent marks the substituted-step STALL when the view's head carries no committed
 	// root to compare against — a v5 child of a sub-v4 parent. A stall, not a divergence: the node
 	// recomputes from its own state and is unaffected.
@@ -342,11 +370,19 @@ func (v provenView) Scalar(tag string) ([]byte, Availability) {
 // the node runs them the other way round inside validateEra3Roots. Conjunction order is free.
 //
 // P13b (P-table delta certification §3.3):
-//   - k = 0 (no revocation touches the log): require *b.LogRoot == *head.LogRoot. Zero witness,
-//     zero format change. This is the conjunct whose absence was a wrong-accept on the cheapest
-//     possible mutation (a forged b.LogRoot on any block).
-//   - k ≥ 1: STALL with ErrRevLogSizeUnauthenticated. k counts duplicates — the LOG does not dedup
-//     a revoke/un-revoke pair the way the STATE write-set does.
+//   - k = 0 (no revocation touches the log): require *b.LogRoot == *head.LogRoot. Zero witness.
+//     This is the conjunct whose absence was a wrong-accept on the cheapest possible mutation (a
+//     forged b.LogRoot on any block).
+//   - k ≥ 1: verify the LOG EXTENSION against an AUTHENTICATED parent size m, Resolved from the
+//     tagRevLogSize leaf on the parent's committed StateRoot (freeze-manifest item 1). k counts
+//     duplicates — the LOG does not dedup a revoke/un-revoke pair the way the STATE write-set
+//     does, because apply()'s two revLog.Append loops are unconditional.
+//
+// WHY m HAS TO COME FROM THE COMMITTED ROOT. Before the leaf, this arm was a terminal STALL: a
+// witness-supplied m is a WRONG-ACCEPT (translog.VerifyConsistency returns true at m == 0 without
+// reading either root, and at m == 1 its isPow2 seeding leaves the old-root accumulator vacuous,
+// so any right-spine extension passes), and m is recoverable from nothing else the box holds —
+// apply() deletes from `revoked` on an un-revocation, so |revoked| != len(revLog).
 func (v provenView) CommittedRoots(b *Block) (FloorBoxOutcome, error) {
 	if b.StateRoot == nil || b.LogRoot == nil {
 		return Reject, fmt.Errorf("%w: StateRoot=%v LogRoot=%v", ErrEra3RootMissing, b.StateRoot != nil, b.LogRoot != nil)
@@ -356,12 +392,18 @@ func (v provenView) CommittedRoots(b *Block) (FloorBoxOutcome, error) {
 		return IndeterminateTrustlessly, fmt.Errorf("%w: LogRoot", ErrHeadRootAbsent)
 	}
 	if k := len(b.Revocations) + len(b.Unrevocations); k > 0 {
-		return IndeterminateTrustlessly, fmt.Errorf("%w: %d revocation-log leaves", ErrRevLogSizeUnauthenticated, k)
+		return v.logExtends(b, k)
 	}
 	if *b.LogRoot != *v.head.LogRoot {
 		return Reject, fmt.Errorf("%w: committed %x, parent %x (revocation-free block)", ErrEra3LogRootMismatch, *b.LogRoot, *v.head.LogRoot)
 	}
 	// ---- P13a: StateRoot ----
+	return v.stateRootConjunct(b)
+}
+
+// stateRootConjunct is P13a, reached from BOTH P13b arms (the k = 0 equality and the k >= 1
+// extension) so neither arm can Accept without it.
+func (v provenView) stateRootConjunct(b *Block) (FloorBoxOutcome, error) {
 	if v.head.StateRoot == nil {
 		return IndeterminateTrustlessly, fmt.Errorf("%w: StateRoot", ErrHeadRootAbsent)
 	}
@@ -378,6 +420,94 @@ func (v provenView) CommittedRoots(b *Block) (FloorBoxOutcome, error) {
 		return IndeterminateTrustlessly, err
 	}
 	return Accept, nil
+}
+
+// logExtends is the P13b k >= 1 arm: prove *b.LogRoot is *v.head.LogRoot extended by exactly this
+// block's own derived revocation-log entries, at the parent size m the parent's committed
+// StateRoot pins. It never Accepts on its own — Accept is the whole conjunction's verdict, so a
+// proven extension falls through to P13a.
+func (v provenView) logExtends(b *Block, k int) (FloorBoxOutcome, error) {
+	raw, av := v.resolveLeaf(tagRevLogSize, nil)
+	if av != Present {
+		// ProvenAbsent lands here too, and must: C-a always-emit puts this leaf on EVERY v5 root,
+		// so a proven-absent one means the parent is not a v5 block (or the box is looking at a
+		// root it does not understand). Reading absence as "empty log" would hand the attacker
+		// m = 0, which VerifyConsistency accepts unconditionally — the exact wrong-accept the
+		// always-emit condition exists to foreclose.
+		return IndeterminateTrustlessly, fmt.Errorf("%w: %s for %d revocation-log leaves", ErrRevLogSizeUnauthenticated, av, k)
+	}
+	m, ok := decodeUint64Leaf(raw)
+	if !ok {
+		return IndeterminateTrustlessly, fmt.Errorf("%w: committed value is %d bytes, want an 8-byte uint64", ErrRevLogSizeUnauthenticated, len(raw))
+	}
+	if m > uint64(math.MaxInt32) {
+		// An int-conversion guard, not a protocol bound on log length: without it a committed size
+		// near 2^63 would wrap negative on a 32-bit int and be read as a valid tree size.
+		return IndeterminateTrustlessly, fmt.Errorf("%w: committed parent log size %d exceeds the box's usable range", ErrRevLogSizeUnauthenticated, m)
+	}
+	if v.src == nil {
+		return IndeterminateTrustlessly, fmt.Errorf("%w: no witness source", ErrRevLogExtensionUnproven)
+	}
+	leaves := revocationLogLeaves(b)
+	if len(leaves) != k {
+		return IndeterminateTrustlessly, fmt.Errorf("%w: derived %d log entries for k = %d", ErrRevLogExtensionUnproven, len(leaves), k)
+	}
+	cons, incl, ok := v.src.LogExtension(int(m), leaves)
+	if !ok {
+		return IndeterminateTrustlessly, fmt.Errorf("%w: the source has no extension proof at m = %d", ErrRevLogExtensionUnproven, m)
+	}
+	if !verifyLogExtension(*v.head.LogRoot, int(m), *b.LogRoot, leaves, cons, incl) {
+		return IndeterminateTrustlessly, fmt.Errorf("%w: parent %x at m = %d does not extend to committed %x at n = %d",
+			ErrRevLogExtensionUnproven, *v.head.LogRoot, m, *b.LogRoot, int(m)+k)
+	}
+	return v.stateRootConjunct(b)
+}
+
+// revocationLogLeaves derives the transparency-log entries a block appends, IN APPLY ORDER: every
+// revocation first, then every un-revocation, each as RevocationLeaf(op, root, b.Height). It
+// mirrors (*Chain).apply's two revLog.Append loops exactly, and it is a pure function of the
+// HASH-COVERED block — which is what makes the appended CONTENT non-forgeable with no witness for
+// it at all. Both loops there are unconditional, so a duplicate root and a revoke/un-revoke pair
+// of the same root each contribute an entry, unlike the STATE write-set which nets them.
+// TestRevocationLogLeavesMirrorsApply pins the derivation against a real apply().
+func revocationLogLeaves(b *Block) []ports.Hash {
+	out := make([]ports.Hash, 0, len(b.Revocations)+len(b.Unrevocations))
+	for _, r := range b.Revocations {
+		out = append(out, RevocationLeaf(RevOp, r, b.Height))
+	}
+	for _, r := range b.Unrevocations {
+		out = append(out, RevocationLeaf(UnrevOp, r, b.Height))
+	}
+	return out
+}
+
+// verifyLogExtension is the certified verify-not-recompute construction (T-LOGEXT, P-table delta
+// certification section 3.3): the block's LogRoot is the parent's log extended by exactly `leaves`
+// iff a consistency proof carries (parentRoot, m) to (newRoot, n = m+len(leaves)) AND each derived
+// leaf verifies at its own index m+j of size n. The consistency proof alone would bind the SHAPE
+// and not the CONTENT — it covers the appended range as opaque subtree hashes — so the per-leaf
+// inclusion legs are not belt-and-braces, they are the half that pins what was appended.
+//
+// IT IS SOUND ONLY IF m IS AUTHENTICATED, and that is not a caveat — it is the load-bearing
+// precondition. With m taken from the witness, the m = 1 arm accepts a forged newRoot built from
+// attacker-chosen siblings and the m = 0 arm accepts anything at all.
+// TestGD9_WitnessSuppliedLogSizeIsUnsound_Control drives both degeneracies against THIS function
+// and asserts the forgery passes at a claimed m and is refused at the committed one.
+func verifyLogExtension(parentRoot ports.Hash, m int, newRoot ports.Hash, leaves []ports.Hash,
+	consistency []ports.Hash, inclusion [][]ports.Hash) bool {
+	n := m + len(leaves)
+	if !translog.VerifyConsistency(parentRoot, m, newRoot, n, consistency) {
+		return false
+	}
+	if len(inclusion) != len(leaves) {
+		return false
+	}
+	for j, leaf := range leaves {
+		if !translog.VerifyInclusion(leaf, m+j, n, newRoot, inclusion[j]) {
+			return false
+		}
+	}
+	return true
 }
 
 // decodeInt64Leaf / decodeUint64Leaf mirror statehash.EncodeInt64 / EncodeUint64. A wrong-length
