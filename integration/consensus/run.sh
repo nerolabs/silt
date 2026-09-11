@@ -2,8 +2,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Field test #1 — multi-validator consensus + partition-heal, in real Docker.
 #
-# The M0 keystone under test: OBJECTIVE on-chain-bond fork-choice. Four real
+# The M0 keystone under test: OBJECTIVE, BOND-WEIGHTED COMMIT ADMISSION. Four real
 # `silt daemon -validator` processes on a flat Docker network form two groups.
+# (Corrected 2026-09-12: this line used to locate the objectivity in FORK CHOICE.
+# It is not there — `heavier` ranks on Height then head hash and reads nothing
+# else. What the on-chain bond makes objective is WHO MAY PARTICIPATE and what
+# counts toward quorum, not how two candidate heads are ordered.)
 # A network partition (the built-in test-harness -block-peers flag) severs them;
 # each group commits its OWN fork over real TCP. We assert:
 #
