@@ -575,10 +575,16 @@ forgery (#714; `SlashesBytesCap` 16 MiB); R0.7 relay-lane mint (interim #718 →
   (**OWNER**), whose first blocker is manifest item 21 — the `docs/decisions.md` freeze ENTRY, which
   does not exist and which Part IX makes constitutive.
 - **PLACED 2026-09-11, so the plan carries them somewhere:** **M3** (the FDH bindings) is STAMP-RAISE
-  and **fuses with manifest item 11** — the certified deliverable is a pairwise prefix-freeness gate
-  over the FDH domain set (`fdhDomain`, `creditDomain`, `demandDomain`, `relayAnchorDomain` in
-  `core/blindtoken/blindtoken.go`; the property holds by inspection and **no test asserts it**), and
-  that gate must land WITH any fifth domain, not after it. **M5** (JOIN/START + the `ch.Len() == 0`
+  and **fuses with manifest item 11**, whose gate is now **BUILT** — `TestFDHDomainSetIsPairwisePrefixFree`
+  (`core/blindtoken/fdh_domain_prefix_free_test.go`) derives the domain set by a `go/ast` walk of
+  `core/blindtoken`, so a fifth domain is covered the day it is declared rather than needing the gate
+  to land with it. The set is FOUR (`fdhDomain`, `creditDomain`, `demandDomain`, `relayAnchorDomain`),
+  all six pairs differ at byte index 10, and the walk is held non-vacuous by
+  `TestFDHDomainSetSourceWalkFindsTheRealDeclarations`. **The mechanism the item was written with is
+  corrected in the same change:** a prefix violation is a STRUCTURAL defect, not a live forgery, because
+  `ctr` sits between the domain and the message and changes per block — measured by
+  `TestAPrefixPairFailsToCollideOnlyBecauseTheCounterVaries`, which sees the crafted shift collide on
+  SHA-256 block 0 and fail on block 1. **M5** (JOIN/START + the `ch.Len() == 0`
   audit) stays IN the RC as the only closer for the silent singleton, per the owner's M-series trim.
   **G-3**, the witness id-list size gate, is now `R-membership`'s closer and is UNBUILT; it is not a
   format item — it adds no leaf and changes no required root — so at most STAMP-RAISE, and whether it
@@ -1047,11 +1053,14 @@ the named field defects (#535/#530/#574/#586/#277) live in
   This close is unaffected and stays post-RC; if it lands and needs committed bytes, (d-3)'s option
   beta folds a `PoPDigest` in and makes them PRUNABLE. Source: crypto-specialist advisory C-4,
   `/Users/andrewedmond/.claude/silt-agent-memory/crypto-specialist/reviews/ADVISORY-R0.4b-C3-blind-RSA-epoch-binding-2026-09-03.md`.
-- **FDH domain-separation-tag length prefix + 128-bit reduction slack — R0.4b-FDH.** The three
+- **FDH domain-separation-tag length prefix + 128-bit reduction slack — R0.4b-FDH.** The **four**
   FDH domains are not length-prefixed and `fullDomainHashD` expands to only `nLen + 8` bytes. Sound as
-  built (the three domain constants differ at byte index 10) but sound *by accident of the constants*.
+  built (all four domain constants differ at byte index 10) but sound *by accident of the constants*.
+  The count read "three" from the advisory's own 2026-09-03 wording, which predates `relayAnchorDomain`.
   The publish and credit domains are BYTE-FROZEN against chain replay, so the change was DECLINED at
-  the freeze in favour of a prefix-freeness gate (freeze manifest, 2026-09-07). Source: advisory C-8.
+  the freeze in favour of a prefix-freeness gate (freeze manifest, 2026-09-07), and that gate is BUILT
+  (`TestFDHDomainSetIsPairwisePrefixFree`). The versioned length-prefix change itself stays OPEN here.
+  Source: advisory C-8.
 - **Blinding-factor sampling: mod-reduction, not rejection sampling — R0.4b-BLIND-SAMPLING.**
   `blindtoken.randInt` reduces `(bitlen(N) + 64)` random bits mod `N`; RFC 9474 §4.2's MUST is met
   only statistically (within `2^-64` of uniform). A conformance gap, not a break; changes no committed
