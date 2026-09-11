@@ -611,6 +611,52 @@ func TestModelCheck_CarrierSeating_AgreementOverCarrierVariation(t *testing.T) {
 				t.Fatalf("the entry ROUND moved the seating: seated %s (want %s)", fmtIDs(gotR3), fmtIDs(refSeats))
 			}
 
+			// ---- the PRODUCTION producer path ----
+			//
+			// Every carrier above is hand-built. That is faithful to the VALIDITY rule, which
+			// admits any genuine precommit from any identity — but it is not what an honest
+			// proposer emits. HeadCarrier is, and a fixture that only ever feeds the transition
+			// its own hand-built input would never notice a producer that emitted a carrier the
+			// transition reads differently. So: take what the producer actually emits over this
+			// head and require the SAME oracle to predict the seating.
+			prod := w.c.HeadCarrier()
+			if len(prod) == 0 {
+				t.Fatal("HeadCarrier emitted an EMPTY carrier over a head whose stored certificate is " +
+					"non-empty — the producer path is not being exercised at all")
+			}
+			prodBlock := mintSubject(t, w, prod, 0, nil)
+			// It must satisfy the validity rule BY CONSTRUCTION (HeadCarrier's own claim).
+			if err := validateCarrier(prodBlock); err != nil {
+				t.Fatalf("HeadCarrier emitted a carrier its own validity rule REFUSES: %v", err)
+			}
+			gotProd, _ := replicaSeats(t, w.c, *prodBlock)
+			wantProd := oracleSeats(w.c, w.parentProposer, prod)
+			if !sameIDs(gotProd, wantProd) {
+				t.Fatalf("the PRODUCED carrier seats %s but the parent-post-state screen over it is %s — "+
+					"producer and transition disagree", fmtIDs(gotProd), fmtIDs(wantProd))
+			}
+			if len(gotProd) == 0 {
+				t.Fatal("the produced carrier seats NOBODY, so this arm distinguishes no reducer")
+			}
+			// The producer must EXCLUDE nothing on its own account: the parent's proposer is
+			// carried (HeadCarrier is a witness list, not a transition) and dropped by the
+			// TRANSITION. Asserting both halves keeps one from absorbing the other.
+			carriedParentProd := false
+			for i := range prod {
+				if prod[i].AttesterID() == w.parentProposer {
+					carriedParentProd = true
+				}
+			}
+			if !carriedParentProd {
+				t.Fatal("HeadCarrier dropped the parent's proposer — the exclusion is the TRANSITION's rule, " +
+					"not the producer's; moving it would make the seating depend on who built the block")
+			}
+			for _, id := range gotProd {
+				if id == w.parentProposer {
+					t.Fatalf("the parent's proposer %x was seated from the PRODUCED carrier", id[:4])
+				}
+			}
+
 			// ---- the whole subject block, through the REAL validity + root predicate ----
 			// Everything above rides cloneForDryRun+apply. This one commits through Append, so the
 			// committed-root predicate re-runs the transition and would reject a block whose
