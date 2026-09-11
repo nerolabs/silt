@@ -68,8 +68,11 @@ import (
 //
 // MEMBERSHIP IS DELIBERATE IN BOTH DIRECTIONS. Five Config fields are OUT, each for a different
 // reason, and each exclusion is load-bearing: Archive is retention only and reaches no verdict;
-// WSCheckpoint is narrowing-only and sharing it would DESTROY weak subjectivity, since it is the
-// operator's own trust anchor; MinProposerRep/MinAttesterRep cannot be usefully bound because the
+// sharing WSCheckpoint would DESTROY weak subjectivity, since it is the operator's own trust
+// anchor (this sentence read "WSCheckpoint is narrowing-only and sharing it would ..." until
+// 2026-09-11, when narrowing-only was MEASURED FALSE: setting the pin raises trustFloor() and
+// WIDENS what the node trusts unverified. The exclusion never rested on that clause);
+// MinProposerRep/MinAttesterRep cannot be usefully bound because the
 // INPUT is the local reputation view, so a shared threshold still diverges; and
 // LivenessRecoveryHeight is structurally unbindable — it is set AFTER launch, on a chain that by
 // construction cannot commit it (R-LIVENESS-RECOVERY-UNBOUND, which is a DISCLOSURE in
