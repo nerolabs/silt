@@ -21,9 +21,11 @@ import (
 //     "signed two incompatible forks" would slash honest reorg-followers — a
 //     regression of the forged-slash-griefing corner that HOLDS. FindEquivocations
 //     therefore (correctly) does NOT flag it.
-//  3. It is NEUTRALIZED by objective fork-choice (F6): the double-backer cannot
-//     make both histories stand — the heavier-bond fork wins on every replica —
-//     so the unslashed misbehavior gains nothing.
+//  3. It is NEUTRALIZED by objective consensus (F6): the double-backer cannot make
+//     both histories stand, because every replica reconciles to the SAME head —
+//     Height then head hash, computed identically everywhere, with no bond or
+//     weight term (corrected 2026-09-12; this used to say the heavier-bond fork
+//     wins) — so the unslashed misbehavior gains nothing.
 //
 // Adopting a finality gadget (Casper-FFG source/target votes) purely to enable
 // surround-slashing would be a large architectural addition for a threat F6
@@ -88,8 +90,9 @@ func TestF7_HonestReorgFollowerNotSlashed(t *testing.T) {
 }
 
 // (3) NEUTRALIZED by F6: even unslashed, a cross-height double-backer cannot make
-// both histories stand — objective fork-choice adopts the heavier-bond fork, so
-// the fork carrying its extra attestation is abandoned on reconcile.
+// both histories stand — every replica reconciles to the same head on Height then
+// head hash, with no bond or weight term (corrected 2026-09-12), so the fork
+// carrying its extra attestation is abandoned on reconcile.
 func TestF7_ObjectiveForkChoiceNeutralizesDoubleBacker(t *testing.T) {
 	prop := key(1)
 	vals := []ed25519.PrivateKey{key(2), key(3), key(4), key(5)}

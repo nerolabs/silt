@@ -19,10 +19,15 @@ import (
 // — which shares ONE ledger across all nodes and so hides the subjectivity — each
 // node here holds its OWN (empty) ledger, so the local reputation view is
 // useless. With objective mode on (Config.MinBond > 0 + a wired bond verifier +
-// genesis-seeded bonds), proposer/attester eligibility, quorum, and fork-choice
-// weight come from the on-chain bond, identical on every replica — so a
-// partitioned network still commits and, on healing, converges on the
-// heavier-bond fork. In legacy mode these nodes could not even propose (rep 0).
+// genesis-seeded bonds), proposer/attester eligibility and quorum come from the
+// on-chain bond, identical on every replica — so a partitioned network still
+// commits and, on healing, converges on ONE history.
+//
+// CORRECTED 2026-09-12: this used to add "fork-choice weight" to that list and to
+// name the winner as the heavier-bond fork. There is no fork-choice weight. Ranking
+// is Height then head hash and reads nothing else; what the bond makes objective is
+// WHO MAY PARTICIPATE, not how two heads are ordered. In legacy mode these nodes
+// could not even propose (rep 0).
 func TestObjectiveForkChoiceHealsWithSeparateLedgers(t *testing.T) {
 	const (
 		seed     = int64(7)
@@ -102,7 +107,7 @@ func TestObjectiveForkChoiceHealsWithSeparateLedgers(t *testing.T) {
 		t.Fatalf("A syncing from B: %v", err)
 	}
 	if newHeadA, _ := nodes[0].Chain().Head(); newHeadA != headB {
-		t.Fatal("F6 integration: the lighter partition must reorg onto the heavier-bond fork after healing")
+		t.Fatal("F6 integration: after healing, the partition that fell behind must converge on the longer history (fork choice ranks on Height then head hash — there is no bond term)")
 	}
 	if _, ok := nodes[0].Chain().LookupRoot(ports.HashBytes([]byte("forkA"))); ok {
 		t.Fatal("group A's abandoned entry must be gone after the reorg")

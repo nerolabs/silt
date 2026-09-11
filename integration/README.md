@@ -161,7 +161,7 @@ KEEP=1 ./integration/<name>/run.sh     # leave the topology up to poke at
 | `churn/run.sh` | repair-under-churn: kill holders, caretaker reconstructs + re-scatters, stays bit-perfect |
 | `chaos/run.sh` | crash-recovery: `SIGKILL` every holder, restart, #69 re-announce fires, cold-fetch bit-perfect (`WAVES=2` probes a seed-crash discoverability gap) |
 | `durability/run.sh` | durability under permanent loss: shrink the swarm (no replacement), caretaker re-scatters, content outlives the nodes |
-| `consensus/run.sh` | objective on-chain-bond fork-choice: partition → heal to the heavier chain |
+| `consensus/run.sh` | objective bond-weighted commit admission: a sub-quorum partition commits nothing, stalls, and catches up to the majority history on heal (**the harness's own expectations are under review — see its README**) |
 | `redteam/run.sh` | #184 accountability: equivocator slashed, forged block rejected, low-bond proposer refused |
 | `sybil/run.sh` | C2 no quiet capture: a young objective network commits with the honest anchors and refuses to advance for a bonded Sybil set without them |
 | `audit/run.sh` | a "liar" deletes data but keeps proofs → the loss is caught and repaired |

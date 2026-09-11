@@ -27,7 +27,7 @@ mkdir -p "$OUT"
 # ── suite catalog: name | tier | per-suite timeout(s) | the M0 claim it gates ──
 # tier: gate = cheap, fast, run by default; slow = opt-in via FULL=1.
 SUITES_CATALOG=(
-  "consensus|gate|300|Objective on-chain-bond fork-choice: fork under partition, reorg to the heavier chain on heal"
+  "consensus|gate|300|Objective bond-weighted commit admission: a sub-quorum partition commits nothing, stalls, and catches up to the majority history on heal"
   "bond|gate|180|Proof-of-space-time bond cost (C1): a real plot is dear to make, cheap to verify, shortcut rejected"
   "redteam|gate|300|#184 accountability: equivocator slashed, forged block rejected, low-bond proposer refused"
   "sybil|gate|600|C2 no quiet capture: a young objective network commits with the honest anchors and refuses to advance for a bonded Sybil set without them"

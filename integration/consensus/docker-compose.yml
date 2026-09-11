@@ -2,22 +2,34 @@
 #
 #   flat network 10.50.0.0/24 (all four validators can route to each other)
 #
-#     valA (10.50.0.11)  registry  ─┐   GROUP 1 (heavier): commits [g,a1,a2]
+#     valA (10.50.0.11)  registry  ─┐   GROUP 1 (TALLER): commits [g,a1,a2]
 #     valB (10.50.0.12)  attester  ─┘   — NOT partitioned; a healed C reconnects here
 #
-#     valC (10.50.0.13)  registry  ─┐   GROUP 2 (lighter): commits [g,c1]
+#     valC (10.50.0.13)  registry  ─┐   GROUP 2 (SHORTER): commits [g,c1]
 #     valD (10.50.0.14)  attester  ─┘   — carry -block-peers valA,valB → severed link
 #
 # All four share the SAME -anchors launch set, so every replica starts from an
-# identical genesis config and objective fork-choice weight is computed the same
-# way everywhere. run.sh derives each NodeID from its -id-seed up front (via
+# identical genesis config and every replica applies the same validity and
+# fork-choice rules. run.sh derives each NodeID from its -id-seed up front (via
 # `silt id`), so -anchors / -attesters / -block-peers are fillable before launch.
 #
-# The M0 keystone under test: OBJECTIVE on-chain-bond fork-choice. Under the
-# partition, the two groups each commit their OWN fork and do NOT diverge onto a
+# CORRECTED 2026-09-12. This header used to name the keystone under test as an
+# objective on-chain-bond fork choice, and to say the set converges on whichever
+# fork carries the most bond. (The retired wording is NOT quoted here: it is a
+# banned literal and quoting it would trip the gate that bans it. See
+# core/chain/o3t_canon_text_test.go for the set.) Fork choice ranks on HEIGHT
+# then head hash and reads
+# NOTHING else (core/chain heavier(); O3 Direction T, owner-ratified 2026-09-03),
+# so there is no bond or weight term for a group to win on. The claim also
+# survived here because it is a .yml comment: the repair that retired this
+# wording from run.sh and README.md, and the gate written to police it, drew
+# their file-type scope from the same list, so neither could see this file.
+#
+# The M0 keystone under test, stated in terms the rules can produce: under the
+# partition the two groups each commit their OWN fork and do NOT diverge onto a
 # shared-but-conflicting head; when C heals (restart WITHOUT -block-peers) it
-# reloads its persisted [g,c1], sees group 1's heavier fork, and REORGS onto it —
-# the whole set converges to the heavier-bonded chain.
+# reloads its persisted [g,c1] and CONVERGES on group 1's longer history. The
+# ground truth is chain-status head-hash equality, which is posture-independent.
 
 networks:
   swarm:
