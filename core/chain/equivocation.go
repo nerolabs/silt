@@ -180,12 +180,13 @@ func CheckEquivocation(e *Equivocation, chainID ports.Hash, floor EraFloor) erro
 	// every chain, since MintVersion's minimum is v2, and (ii) era-1/era-2-form pairs at era-3
 	// heights on a latch-route chain. Both are strictly narrowing and therefore safe — but they are
 	// a REPRICING of two artifacts this certification does not name and a builder must not amend:
-	// TestModelCheck_I5_AccountableSafety_Exhaustive's whole era-1 arm (which demands era-1 pairs CONVICT),
-	// and the T1 variant of R-NEST-GATE, whose own gate says "do not read a RED here as the
-	// residual closed; update SLASHCAP-NESTED-EVIDENCE-FIXED-POINT-RESEARCH-CERTIFICATION-
-	// 2026-09-10 §6.1". Deleting this clause is a one-token change and is the right change the day
-	// a ruling prices those two; until then the surplus is DEFERRED, not overlooked, and the
-	// deferred surface is DRIVEN by TestGEF8_TheDeferredSubEra4SurfaceIsStillAdmissible.
+	// TestModelCheck_I5_CrossHeightPrunedExtension_Era1, the era-1 exhaustive enumeration (v1-form
+	// blocks at a v2 floor, which it demands CONVICT), and the T1 variant of R-NEST-GATE, whose own
+	// gate says "do not read a RED here as the residual closed; update
+	// SLASHCAP-NESTED-EVIDENCE-FIXED-POINT-RESEARCH-CERTIFICATION-2026-09-10 §6.1". Deleting this
+	// clause is a one-token change and is the right change the day a ruling prices those two; until
+	// then the surplus is DEFERRED, not overlooked, and the deferred surface is DRIVEN by
+	// TestGEF8_TheDeferredSubEra4SurfaceIsStillAdmissible.
 	//
 	// On a genesis committing Era4ActivationHeight = 1 — the source-pinned default, G-NET-2/G-NET-3
 	// — the scope changes NOTHING: every height above the genesis has floor v5, and AppendGenesis

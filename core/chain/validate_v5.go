@@ -38,10 +38,18 @@ import (
 // what the commit path accepted); AppendGenesis is height 0, which has no parent to bind. Both are
 // OUTSIDE this guarantee.
 //
-// BG-1 — THIS EXTRACTION IS v5-ONLY. The node dispatches here only for
-// b.Version >= BlockVersionWitnessable; the era-1 and era-2 legs are byte-untouched. The proposer
-// mints v2, the readiness stamp is 3, Era4ActivationHeight has no operator surface — so on every
-// chain that exists, ValidateProposal/ValidateCommit never enter these functions. Identity of a
+// BG-1 — THIS EXTRACTION IS v5-ONLY, AND IT IS ON THE LIVE PATH. The node dispatches here only
+// for b.Version >= BlockVersionWitnessable; the era-1 and era-2 legs are byte-untouched. On a
+// default network ValidateProposal/ValidateCommit DO enter these functions at every height above
+// the genesis: -era4-activation-height defaults to 1 (cmd/silt/daemon.go, assigned into
+// chain.Config and pinned by cmd/silt TestTheThreeGenesisFlagsAreDeclaredAndWired), era4Active
+// takes its genesis-override branch whenever that height is non-zero, and MintVersion therefore
+// returns v5 from height 1. Height 0 is v2, and nothing below the boundary reaches here.
+//
+// The readiness stamp IS 3 (NewBondReg stamps BlockVersionRegGate), and it decides nothing about
+// which leg runs: the tally that consumes it is evaluated inside rotateEpoch under
+// cfg.Era4ActivationHeight == 0, so the shipped default never consults it. The stamp gates the
+// LATCH route only. Identity of a
 // replica before this round and after is provable by construction, WITH M-1…M-5 (§6 of the delta
 // certification): without the legacy leg (M-1) the composition refuses a v5 block a legacy node
 // accepts; without P8b/the P5 clause (M-5) it accepts where the node rejects.

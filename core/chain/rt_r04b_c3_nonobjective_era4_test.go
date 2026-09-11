@@ -20,6 +20,15 @@ package chain
 // e2e TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding: that fixture needs an
 // OBJECTIVE, bonded, epoch-enabled topology first (residual R-E2E-ERA4-FIXTURE), or
 // the paid lane stays dark no matter what the constant says.
+//
+// SCOPE — WHAT THIS TEST DOES NOT SAY. It covers the LATCH route only. The tally it drives lives
+// behind cfg.Era4ActivationHeight == 0 (chain.go), and the shipped daemon default for
+// -era4-activation-height is 1, not 0 (cmd/silt/daemon.go, pinned by cmd/silt
+// TestTheThreeGenesisFlagsAreDeclaredAndWired). On that default era4Active takes the
+// genesis-override branch and never consults the tally, so "the tally cannot latch" is NOT the
+// same claim as "era-4 is dark" — era-4 is live from height 1 on every fresh network. The gate
+// below is still load-bearing: it pins the latch route, which is the route a tally-activated
+// network would take.
 
 import (
 	"crypto/ed25519"

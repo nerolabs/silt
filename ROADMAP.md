@@ -758,14 +758,29 @@ as BUILT on the strength of a green reachability run.** Closing this is a lane-r
 per mechanism, with the five required fields), owned by a Builder at the stamp raise — not a new residual
 prefix and not this true-up's work.
 
-**One production comment carries the dead premise and a Builder owes its correction.**
-`core/chain/validate_v5.go`'s BG-1 note reads *"The proposer mints v2, the readiness stamp is 3,
+**The production comments carrying the dead premise are CORRECTED (2026-09-11).** The filing here read
+that `core/chain/validate_v5.go`'s BG-1 note — *"The proposer mints v2, the readiness stamp is 3,
 `Era4ActivationHeight` has no operator surface — so on every chain that exists,
-`ValidateProposal`/`ValidateCommit` never enter these functions."* All three clauses are false on `main`:
-`-era4-activation-height` IS an operator surface, it defaults to 1, and the v5 composition is entered on
-every fresh network from height 1. The code is correct; the sentence about it is not, and a sentence
-describing what a gate covers decays exactly like a cited test name. Filed here rather than patched because
-`core/` is held by another seat this session.
+`ValidateProposal`/`ValidateCommit` never enter these functions"* — had **all three clauses false**.
+**That count was wrong, and the correction records it:** clause 2 is TRUE at source. `NewBondReg` stamps
+`BlockVersionRegGate` = 3, so the readiness stamp IS 3. What changed is that the stamp stopped being
+load-bearing — the tally consuming it is evaluated inside `rotateEpoch` under
+`cfg.Era4ActivationHeight == 0`, so the shipped default of 1 never consults it. Clauses 1 and 3 and the
+conclusion are false: `-era4-activation-height` IS an operator surface, it defaults to 1, `MintVersion`
+returns v5 at every height above the genesis (height 0 stays v2), and the v5 composition is on the live
+path from height 1. **The sweep found eight assertion sites, not one** — `equivocation.go`,
+`m2_era_floor_gates_test.go`, `lastcommit_carrier_pins_test.go`, `rt_r04b_c3_nonobjective_era4_test.go`,
+`e2e/e2e_test.go`, `e2e/delivery_lane_harness_posture_test.go`, and the three `integration/cloudtest`
+harness files — plus four QUOTATION sites (`eradeclared.go`, `erastate.go`, `eradeclared_test.go`,
+`cmd/silt/erasurface_test.go`) that quote the phrase as a start-up string being disambiguated and are
+correct as written. **And the premise was masking a second wrong mechanism:** `e2e/e2e_test.go` explained
+`TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding`'s refusal by the readiness tally; measured on that
+exact argv with the store kept, `silt chain-status` reports *"no chain yet (0 blocks)"*, still 0 after a
+75 s settle. **That fixture commits nothing**, so this row's "closed half" claim below — that every e2e
+daemon *"mints era-4 from height 1"*, exercising the era-4 format on the existing fixtures — does NOT hold
+for the paid-lane fixtures, which mint no block of any version. The format half is **not** closed by
+accident there; that needs re-checking per fixture. A sentence describing what a gate covers decays exactly
+like a cited test name.
 
 **Two clusters get a one-line disclosure in `docs/design/m0.md` §10.1 rather than a row**, because
 both have a published claim and neither had a not-yet-wired note: **takedown transparency** (the log

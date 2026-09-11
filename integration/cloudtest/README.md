@@ -50,12 +50,14 @@ onto the existing 13-node topology with **no topology change**:
 **The R2.9 paid delivery lane** (`flow_delivery_lane`, ONE topology change: the boot validator arms
 `-accept-delivery-receipts -delivery-idle-window 24m -grant-capacity 64 -grant-per-hour 64`) grades a
 `swarm receipt` from fetch-1 on two rows. `13-delivery-lane` is the lane's field contract: armed (the unit's
-argv) and announced (the boot banner, whole-journal read); while era-4 is dark the client is refused at the
-withdrawal naming the committed E→key binding, nothing is spent and the server's `debug.log` carries no banked
-line; while live the receipt banks; a lane-off server refuses with the NOT-banked marker. `13b-delivery-settlement`
+argv) and announced (the boot banner, whole-journal read); with no committed E→key binding the client is refused
+at the withdrawal naming that binding, nothing is spent and the server's `debug.log` carries no banked line; with
+one committed the receipt banks; a lane-off server refuses with the NOT-banked marker. `13b-delivery-settlement`
 passes only on a wire-banked receipt plus the idle `delivery session closed` (both `debug.log` lines) and is a
-**skip** behind the era probe until the R3.4 stamp raise commits the binding — then it grades with no harness
-change. Server-side markers are `n.logf` lines and live in `$STORE/debug.log`, never journald.
+**skip** until a binding commits on a sheet — it then grades with no harness change. (Through 2026-09-10 this
+paragraph gave the reason as "while era-4 is dark … until the R3.4 stamp raise". That is void: the harness passes
+no `-era4-activation-height`, so every daemon takes the default of 1 and era-4 is live from height 1. Why no
+binding has committed on a sheet is unmeasured.) Server-side markers are `n.logf` lines and live in `$STORE/debug.log`, never journald.
 
 **C2-Sybil (#5) — opt-in, `SYBILS=8 ./cloudtest.sh`.** The local `integration/sybil`
 suite can only reach the **standing gate** (a laptop's fresh Sybils can't *bank*

@@ -6,11 +6,17 @@ package e2e
 // derived-epoch OBJECTIVE path, the 90s window and the CLI were unproven). This boots ONE
 // objective validator with the flags integration/cloudtest/topology.py puts on the boot
 // validator — no explicit -epoch-blocks, so the epoch clock the paid-serial guard needs
-// must be DERIVED — and drives the real `silt swarm receipt` CLI against it. On a chain
-// where era-4 is dark (this one, and every real network until the R3.4 stamp raise) the
-// client must be refused at the withdrawal naming the committed E->key binding, must NOT
-// be told the lane is off, and the server's debug.log must carry no banked line. The flag
-// literals below are the harness's; a change on either side must move both.
+// must be DERIVED — and drives the real `silt swarm receipt` CLI against it. No E->key
+// binding is committed on this fixture — the chain commits nothing at all here (see the
+// -anchors comment below) — so the client must be refused at the withdrawal naming the
+// committed E->key binding, must NOT be told the lane is off, and the server's debug.log
+// must carry no banked line. The flag literals below are the harness's; a change on either
+// side must move both.
+//
+// This test passes NO -era4-activation-height, so the daemon takes its default of 1 and era-4
+// is LIVE here from height 1 (cmd/silt/daemon.go; the wiring is pinned by cmd/silt
+// TestTheThreeGenesisFlagsAreDeclaredAndWired). The header used to say the opposite — "era-4
+// is dark ... until the R3.4 stamp raise" — and that was never the ground the refusal stood on.
 
 import (
 	"regexp"
