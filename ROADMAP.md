@@ -268,11 +268,66 @@ built and merged (PR #800, main `82fe56d`)" — A was still owed when it was wri
 one-page *what is frozen, and what can never change without a new era*, re-checked against the manifest's FINAL
 content — that re-check is DONE as of 2026-09-11** and the page is ready to read (`docs/era4-freeze-what-closes.md`).
 
-**▶ TWO NEW CALLS OPENED 2026-09-10 (the docs true-up). TWO, NOT FIVE — a call appears only when its
-evidence exists.** Both are consequences of work already merged, so neither blocks a build today; both
-must be answered before D3 signs.
+**▶▶ THE AUTHORITATIVE LIST AT THE SESSION-27 CLOSE (2026-09-11): FIVE CALLS ARE OPEN, 5 THROUGH 9.
+THE RULE-5 CAP IS FULL — nothing may be added without answering one.** The four calls carried below
+as 1-4 are kept as filed, and **all four are answered**: call 1 by `D-CFGBIND-TIER-PROMOTION-2026-09-11`
+(the promotion is accepted, not narrowed), call 3 by `D-CARRIER-BYTES-DECLINED-2026-09-11`, and calls
+2 and 4 inside the owner's four-call batch of 2026-09-11 — call 2 as **PLACEMENT, not a decision**,
+which is exactly why its residue re-opens as call 9, and call 4 by shipping RT-SFO-5 disclosed and
+routing RT-SFO-4 to the Researcher, whose verdict is call 5. **None of the five blocks a build today.
+All five are owed before D3 signs.** Do not read "five open" as regression: three of the four prior
+calls closed and two of the five below are new questions raised by their answers.
 
-1. **The genesis bind froze six compile-time DEFAULTS. Was that bought?** The bind is correct under
+5. **RT-SFO-4 — ratify the REFUTED verdict, and pick the route.** THE EVIDENCE: the Researcher
+   returned **REFUTED** on *"silt's published durability holds for every stripe configuration
+   reachable in production"*, with three independent refuting instances, two of them reachable
+   through **shipped defaults**
+   (`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/RT-SFO-4-ERASURE-SHARD-COLLAPSE-DURABILITY-RESEARCH-CERTIFICATION-2026-09-11.md`).
+   **Say the distinction in the cert's own words or this reads as a data-loss finding, which it is
+   not:** the refutation is of the PUBLISHED BOUND and of the ACCOUNTING that reads it, not of
+   recoverability — in the honest-failure model the bytes still come back. WHY IT IS THE OWNER'S:
+   ratifying a research verdict is a veto-gate act, and the verdict falsifies a **published claim**.
+   THE ROUTES, and they are not equivalent: **R-B (fix the accounting)** is free and closes five
+   defects; **R-A (a Cauchy generator)** moves the genesis hash; **a `k >= 2` floor** is a read-path
+   change. The pinned gate `core/pipeline TestRT_SFO_4_SingleDataShardStripeHasSixDistinctShards_PINNED_DEFECT`
+   banks the finding whichever route is taken.
+6. **The genesis batch — what rides the next re-mint?** THE EVIDENCE: genesis has been re-minted
+   **twice already** this train, and **there is no reserved move left to ride**. WHY IT IS A CALL:
+   a re-mint is scarce by CALENDAR, not by permanence (`D-FREEZE-REPRICE-2026-09-10`) — each one
+   costs the graded re-run set, so batching is a sequencing trade the owner makes, not a seat.
+7. **The chainless client — must `swarm add -token-quorum` work from a client that has no chain?**
+   THE EVIDENCE: PR **#828** (M3, the chain-bound token domains) is **held as a draft with its e2e
+   RED**, and all three e2e failures reduce to ONE mechanism: the requester has no chain, so a
+   chain-bound domain cannot be derived. **Two things ride on this answer:** M3's shape and
+   `R-CLIENT-HAS-NO-CHAIN`. **M5 (JOIN/START) must answer the same question for a joining daemon —
+   answer it ONCE**, because a separate answer for `joinSwarm` forks the rule.
+8. **Does the acceptance surface actually block anything?** THE EVIDENCE, two halves folded into one
+   call because answering either alone leaves the surface advisory: (i) the fixture census gates —
+   **25 of 40 fixtures go RED** if they are built; and (ii) the reachability job **`Go — every
+   claimed lane is IN the linked binary` is NOT a required status check.** Read back from the
+   ruleset at the session close, the six required contexts are `Go — vet, fmt, test`, `Website —
+   changelog + links`, `Go — race detector`, `Docs ship with code`, `Go — the bbootstrap build tag
+   (D-BB-BUILD-TAG)` and `Go — multi-process e2e (real TCP)`. The reachability lane gate can
+   therefore go RED and a PR still merges. WHY IT IS A CALL: making it required is a **process**
+   change with a real cost — it is the gate that refuses "a mechanism shipped inert", and a required
+   gate that cries wolf gets disabled.
+9. **`LockQC`'s route — and if the second closer is taken, the item is never built.** THE EVIDENCE:
+   the Researcher classified it (`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/LOCKQC-UNDER-SIGBYTES-DEADLINE-CLASSIFICATION-2026-09-11.md`):
+   the change touches a SIGNED preimage — `(*roundChangeEnv).sigBytes` — but **NOT a format
+   preimage**; `(*Block).bodyHash` is unaltered and none of the four doors moves. **Deadline class:
+   WIRE COMPATIBILITY**, so it sorts with its family at launch, and missing it costs a coordinated
+   fleet upgrade, never an era. **It is not a format item and does not come to the owner as one.**
+   What IS owed is the route: the classification names an undecided design decision (residual R-1)
+   that governs whether the item is built **at all**. This is the residue of answered call 2, which
+   was carried as placement.
+
+
+**▶ ANSWERED — the two calls opened 2026-09-10 (the docs true-up), kept as filed so each answer reads
+against its question.** Both are now decided; see the authoritative list above.
+
+1. **ANSWERED 2026-09-11 — the promotion is ACCEPTED, not narrowed** (`D-CFGBIND-TIER-PROMOTION-2026-09-11`).
+   The owner ratified the six as knowingly frozen; none is re-classed out of the bound family.
+   ORIGINAL CALL: **The genesis bind froze six compile-time DEFAULTS. Was that bought?** The bind is correct under
    canon rule 8 — a consensus quantity must be a function of the chain. But the six values that reach
    the chain are compile-time defaults, so binding them promotes six **Evolving-tier** knobs to frozen
    per-network constants, and it makes any future default change a **fleet-wide brick on upgrade**.
@@ -282,7 +337,9 @@ must be answered before D3 signs.
    moment this binds. **`DerivedBondFloor` is CLEARED and is not part of the question:** it is a
    compile-time constant with no hardware-dependent divergence. The call is whether the six are
    knowingly frozen, or whether some are re-classed OUT of the bound family before D3.
-2. **How much of the `Atts` / QC program is RC-blocking?** The certification's landing order has five
+2. **ANSWERED 2026-09-11 — carried as PLACEMENT, not decided.** The RC-blocking boundary stays open and
+   its live residue is open call 9 (`LockQC`'s route), which the classification has since sorted into the
+   WIRE-COMPATIBILITY class. ORIGINAL CALL: **How much of the `Atts` / QC program is RC-blocking?** The certification's landing order has five
    steps, and **step 2 must land at least one deployment window after step 1** (version-skew stall).
    It therefore **cannot ship in one release**, and it cannot all be RC-blocking without splitting the
    RC. Steps 0 and 1 are cheap and are the natural answer: step 0 needs nothing, and step 1 discharges
@@ -291,9 +348,8 @@ must be answered before D3 signs.
    CPU cost), `R-CARRIER-ATTS-PREPAREQC`, `R-CARRIER-ATTS-NORMALIZE`, and — explicitly **POST-RC** —
    `R-CARRIER-ATTS-BLOCKS-CEILING`.
 
-**▶ TWO MORE CALLS OPENED 2026-09-11 (the freeze-manifest re-audit); call 3 was ANSWERED the same day, so THREE ARE OPEN, under the cap of five.**
-Both are consequences of work already merged or already measured, so neither blocks a build today; both must
-be answered before D3.
+**▶ ANSWERED — the two calls opened 2026-09-11 (the freeze-manifest re-audit). BOTH are now decided;**
+call 3 the same day, call 4 in the owner's four-call batch. Kept as filed.
 
 3. **ANSWERED 2026-09-11 — DECLINED FOR THE RC, DISCLOSED TO B8, ROW KEPT** (`D-CARRIER-BYTES-DECLINED-2026-09-11`). The owner took
    the recommendation on the record. The exposure rides into the B8 engagement as manifest item 22, the register row says so, and the
@@ -316,7 +372,10 @@ be answered before D3.
    once by re-homing it onto `Block.Atts`, a field that is in neither preimage literal and whose certified fix
    cannot apply to a hash-covered field. Deleting it by re-label is neither shipping it nor declining it.
 
-4. **`R-SUBFRAME-SIZE-ORACLE`'s two LIVE pins — does the RC ship with them?** THE EVIDENCE: the red-team pass
+4. **ANSWERED 2026-09-11 — SHIP RT-SFO-5 DISCLOSED; ROUTE RT-SFO-4 TO THE RESEARCHER.** The owner took the
+   recommendation: annotate the two false doc claims WITH the measurement rather than restate the promise, and
+   send the parity-collapse half out as a durability question. **That verdict came back REFUTED and is open
+   call 5.** ORIGINAL CALL: **`R-SUBFRAME-SIZE-ORACLE`'s two LIVE pins — does the RC ship with them?** THE EVIDENCE: the red-team pass
    is encoded as ten permanent gates (#817), and **two are PINS rather than assertions because the defect is
    RED on `main`** — `core/pipeline TestRT_SFO_4_SingleDataShardStripeHasSixDistinctShards_PINNED_DEFECT` pins a
    one-data-shard stripe whose parity shards collide, and
@@ -641,6 +700,32 @@ demand→standing bright-line to R4.1 and is post-RC.
 ## Where we are now (the honest status)
 
 ### ▶ WHERE WE ARE, AND WHERE WE ARE GOING — read this first (2026-09-11 true-up)
+
+**▶▶ THE SESSION-27 CLOSE (2026-09-11). `main` = `c911127`.** Nine PRs merged in this stretch,
+verified against the merge record rather than recalled: **#824** (manifest item 8 restored as a
+register row), **#825** (*"G-3 is built"* was wrong — `R-membership`'s closer does not exist),
+**#826** (the source comments that ASSERTED "era 4 is dark" trued up), **#827** (item 8 DECLINED for
+the RC and disclosed; the bonded prepare-QC flood gets a row), **#829** (every reason string in the
+state table re-derived), **#830** (item 11 — the FDH domain set gated pairwise prefix-free),
+**#831** (the h43 round-ladder model-check now DISCRIMINATES — RED without the #772 fix, GREEN with
+it), **#832** (the reachability lint watches the freeze-manifest mechanisms) and **#833** (item 17,
+the posture half, as a two-armed gate). **#828 is NOT in that list: it is a deliberate DRAFT, held
+with its e2e RED on open call 7** (the chainless client) — all three e2e failures reduce to the one
+mechanism, a requester with no chain, so the lane is OFF rather than green.
+
+**D1's FORMAT set is CLOSED and the owed-and-format list is EMPTY.** That is the headline above, and
+nothing merged in this stretch reopened it: every one of the nine is a test, a lint, a register row
+or a documentation correction. **The three D3 blockers are unchanged and NOT ONE IS A FORMAT ITEM** —
+manifest item 21 (the freeze entry, which does not exist and is the OWNER's act to write), the
+one-pager re-check (DONE), and a disposition for D3's own sentence *"the readiness stamp goes 3 → 5"*,
+which is owed because on the shipped default the readiness tally is bypassed entirely.
+
+**NEXT SESSION IS A WHOLE-PROJECT AUDIT, planner-led** — five seats, fresh eyes, not a continuation
+of the freeze train. The reason it is scheduled now rather than after D3: B8 is an **AI** red team,
+and an AI adversary reads every stale comment in the tree. The repo clean is therefore load-bearing
+evidence, not hygiene. **B8 contracting has not moved all session, and it is the only item whose
+clock ignores our work.**
+
 
 **▶ THE HEADLINE — THE OWED-AND-FORMAT LIST IS EMPTY. D3 IS SCHEDULABLE ON FORMAT GROUNDS TODAY.**
 A blind PE re-audit of all 22 freeze-manifest items classifies them **9 BUILT · 5 DROPPED/DECLINED ·
