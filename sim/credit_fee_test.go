@@ -11,6 +11,7 @@ import (
 	"github.com/nerolabs/silt/adapters/simclock"
 	"github.com/nerolabs/silt/adapters/simnet"
 	"github.com/nerolabs/silt/core/blindtoken"
+	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/core/credit"
 	"github.com/nerolabs/silt/core/node"
 	"github.com/nerolabs/silt/ports"
@@ -48,11 +49,29 @@ func TestPrepaidCreditDecouplesFeeOverTheNetwork(t *testing.T) {
 	issuer.EnableTokenIssuer(rand.Reader, rsaKey)
 	issuerReg[issuerID] = &rsaKey.PublicKey
 
+	// M3 (2026-09-11): the PUBLISH CREDIT domain binds the chain id, so both ends need a
+	// chain — a node that cannot name its network mints and verifies no credit. One shared
+	// genesis, so the issuer and the publisher agree on which network this is.
+	sc := chain.New(chain.Config{Quorum: 1}, func(ports.NodeID) int64 { return 1 << 30 })
+	g := chain.Block{Height: 0, Entries: []ports.Entry{{
+		Root:           ports.HashBytes([]byte("credit-fee-genesis")),
+		ManifestChunks: []ports.ChunkID{ports.HashBytes([]byte("credit-fee-genesis/m"))},
+		FileSize:       100,
+	}}}
+	chain.Sign(&g, issuerIdent.Signer())
+	if gerr := sc.AppendGenesis(g); gerr != nil {
+		t.Fatalf("genesis: %v", gerr)
+	}
+	issuer.SetSigner(issuerIdent.Signer())
+	issuer.EnableChain(sc, issuerIdent.Signer())
+
 	// The publisher (its durable standing key is what must not be re-charged).
 	pubIdent := identity.FromSeed(seed*1000 + 2)
 	durable := pubIdent.NodeID()
 	publisher := node.New(durable, node.DefaultConfig(), sched, net.Endpoint(durable), memstore.New())
 	publisher.SetLedger(ledger)
+	publisher.SetSigner(pubIdent.Signer())
+	publisher.EnableChain(sc, pubIdent.Signer())
 	publisher.Bootstrap([]ports.NodeID{issuerID}, func() {})
 	sched.Run()
 

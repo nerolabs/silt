@@ -95,7 +95,7 @@ func TestC2ForwardStepDoesNotSpareTheBusiestSession(t *testing.T) {
 	fID := identity.FromSeed(7930)
 	ledger.Register(fID.NodeID())
 	obj := ports.HashBytes([]byte("c2-step"))
-	sess, err := nd.OpenDeliverySession(fID.NodeID(), demand.SignSessionOpen(fID.Signer(), nd.id, []demand.Token{mintDemandTokenUnder(t, keyE, E)}))
+	sess, err := nd.OpenDeliverySession(fID.NodeID(), demand.SignSessionOpen(fID.Signer(), nd.id, []demand.Token{mintDemandTokenUnder(t, keyE, nd.chainID(), E)}))
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}

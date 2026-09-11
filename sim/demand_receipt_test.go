@@ -74,8 +74,8 @@ func TestDemandReceiptFlowBanksWitnessedDemand(t *testing.T) {
 	impostor, _ := rsa.GenerateKey(rand.Reader, 2048)
 	serial := make([]byte, 32)
 	rand.Read(serial)
-	blinded, secret, _ := demand.Withdraw(rand.Reader, &impostor.PublicKey, 0, serial)
-	forged, ferr := demand.Unblind(&impostor.PublicKey, 0, serial, demand.SignWithdrawal(rand.Reader, impostor, blinded), secret)
+	blinded, secret, _ := demand.Withdraw(rand.Reader, &impostor.PublicKey, sc.ChainID(), 0, serial)
+	forged, ferr := demand.Unblind(&impostor.PublicKey, sc.ChainID(), 0, serial, demand.SignWithdrawal(rand.Reader, impostor, sc.ChainID(), blinded), secret)
 	if ferr != nil {
 		t.Fatalf("the impostor's own signature must unblind under its own key: %v", ferr)
 	}
