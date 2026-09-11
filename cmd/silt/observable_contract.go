@@ -75,4 +75,11 @@ var ObservableContract = []ContractedString{
 	{"era-%d (v%d): DARK", "core/chain/erastate.go", "the dark form for a caller that CAN see the tally, distinct from the offline form above", "TestEraLineDistinguishesAnUnobservableTallyFromADarkOne"},
 	{"max atts:     %d, first at height %d", "cmd/silt/chainstatus.go", "max_h len(blocks[h].Atts), the live attestation-carrier width two certifications name as unmeasured", "TestCensusMeasuresMaxAttsOnANonUniformChain"},
 	{"max atts:     0 — measured across every block", "cmd/silt/chainstatus.go", "the MEASURED zero: a bare 0 would be unreadable against a figure nobody computed", "TestChainStatusNarratesAMeasuredZeroCarrier"},
+	// The DECLARED half of the era pair (item 19's second clause). 13b reads these off the
+	// daemon's start-up log, and it needs BOTH: the declaration alone cannot say whether this
+	// chain is dark, and the observed era alone cannot say whether a dark chain is healthy. Both
+	// the declaration and the healthy-dark verdict are registered for that reason — deleting
+	// either restores the ambiguity the row closes.
+	{"chain: era support — this BUILD declares", "core/chain/eradeclared.go", "the daemon's declared max block era: 13b tells \"era-4 dark, binary fine\" from \"wrong build\" by reading it beside the observed era", "TestEraStartupLinesDeclareTheBUILDNotTheFlags"},
+	{"AHEAD — this chain has not activated", "core/chain/eradeclared.go", "the verdict that a dark chain under an era-4 build is HEALTHY — the false alarm this row exists to prevent", "TestStartupLinesSeparateAHealthyDarkChainFromAWrongBuild"},
 }

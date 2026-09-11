@@ -1017,6 +1017,13 @@ func cmdDaemon(args []string) error {
 		if err := ch.CheckConsensusParams(cfg.BondLabelSamples, cfg.BondVDFDelay); err != nil {
 			return fmt.Errorf("consensus config: REFUSING TO START — %w", err)
 		}
+		// THE ERA PAIR (freeze manifest item 19). Printed HERE — after the replay and after the
+		// genesis seed — because both halves must describe the chain this daemon will actually
+		// serve: ahead of the replay it would report an empty chain on every restart, and ahead
+		// of the seed it would report one on every fresh node.
+		for _, ln := range eraStartupLines(ch) {
+			fmt.Println(ln)
+		}
 		nd.EnableChain(ch, ident.Signer())
 		// R2.10 / F8: the ledger's consensus epoch is READ from this node's chain,
 		// never passed by a caller. Wired here, right after the chain is enabled and
@@ -2444,4 +2451,23 @@ func faucetConfigure(l *credit.Ledger, capacity, perHour, denyFloor int64) error
 	fmt.Printf("faucet: rate-limited — capacity %d grants, %d/hour accrued continuously, empty bucket = %s; worst-case guard occupancy per bucket-fill %d of %d (%.1f%%; a flow bound, not a stock bound). This value is operator-set: the rate is a security parameter with no certified interval yet; watch faucet.grantsDenied (distinct identities refused) on /api/status — grantsPending counts registrations, not denials — and re-derive on two consecutive hours of denials under honest load, never on one datapoint (R2.12, docs/thinking/2026-09-05-r2.12-faucet-rate-limit.md)\n",
 		capacity, perHour, mode, occupancy, credit.MaxPaidSerial, 100*float64(occupancy)/float64(credit.MaxPaidSerial))
 	return nil
+}
+
+// eraStartupLines is the daemon's half of the era pair (freeze manifest item 19): what block era
+// THIS BUILD declares, printed beside the era the chain it just loaded reports.
+//
+// WHY ONE NUMBER ANSWERS NEITHER QUESTION. Cloud row 13b-delivery-settlement must separate "era-4
+// is dark — the chain has not activated and the binary is fine" from "something else is wrong".
+// #808 shipped the observed half; a chain carrying no v5 block is a HEALTHY dark network under a
+// build that declares v5 and the WRONG BUILD under one that declares v2, and those are the same
+// observation. The pair is the deliverable, so the two numbers are printed together, by one call,
+// and can never be read apart.
+//
+// THE DECLARED NUMBER IS NOT A SETTING. It is chain.DeclaredMaxBlockVersion, a compile-time
+// constant checked against this build's real decode and mint ceilings — this function takes no
+// flag, reads no config and has no parameter an operator can reach. A declared era an operator
+// could type would report a belief, and whoever was debugging the dark network would be reading
+// their own input back. TestEraStartupLinesDeclareTheBUILDNotTheFlags ablates it.
+func eraStartupLines(ch *chain.Chain) []string {
+	return chain.StartupEraLines(chain.DeclaredMaxBlockVersion, ch.EraState())
 }
