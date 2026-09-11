@@ -345,6 +345,34 @@ def _git(store, *args, timeout=30):
         return 127, str(exc)
 
 
+def _exists_cased(base, target):
+    """Case-EXACT existence test for an index link, relative to `base`.
+
+    `Path.exists()` is case-INSENSITIVE on APFS (measured: `(seat / "Real.md").exists()`
+    is True when the file on disk is `real.md`), which is the volume every seat and the
+    hook actually run on. So a link differing from its file only in case read as PRESENT
+    and never dangled — while the same typo made the real file an ORPHAN, because the
+    orphan direction compares link STRINGS. One typo, two wrong answers, and the half a
+    reader trusts said clean. `os.listdir()` membership is case-exact on every volume.
+
+    Returns False on anything it cannot resolve, including a link that climbs out of the
+    seat: this is a reachability test, and unreachable is the answer in both cases.
+    """
+    cur = base
+    for part in target.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            return False
+        try:
+            if part not in os.listdir(cur):
+                return False
+        except OSError:
+            return False
+        cur = cur / part
+    return True
+
+
 def index_integrity(store):
     """Resolve every seat index's links BOTH ways. Returns (indexes, dangling, orphans).
 
@@ -385,7 +413,7 @@ def index_integrity(store):
             if not target:
                 continue
             linked.add(target)
-            if not (seat / target).exists():
+            if not _exists_cased(seat, target):
                 dangling.append(f"{seat.name}/{INDEX_NAME} -> {target}")
 
         try:
@@ -642,6 +670,33 @@ def _autosave_self_test() -> int:
         (seat / REVIEW_SUBTREE).rmdir()
         (seat / "notes" / "real-orphan.md").unlink()
         (seat / "notes").rmdir()
+        # 4c. CASE-ONLY MISMATCH. The dangling test must be case-EXACT (_exists_cased),
+        #     not Path.exists(), which resolves the wrong case on APFS — the volume the
+        #     seats and the PreToolUse/Stop hooks run on.
+        #
+        #     WHERE THIS DISCRIMINATES: on a case-INSENSITIVE volume the first arm goes
+        #     RED against the old `(seat / target).exists()` and GREEN after the fix. On a
+        #     case-SENSITIVE volume (Linux CI) the filesystem already answers correctly, so
+        #     that arm is a restatement rather than a discrimination there. Say it plainly
+        #     rather than let the CI green be read as proof. The SECOND arm is the
+        #     over-action control and is volume-independent: a fix that rejected every
+        #     nested or unusual link would pass the first arm and break every real one.
+        (seat / "cased-memory.md").write_text("cased\n")
+        (seat / INDEX_NAME).write_text(
+            "# index\n\n- [One](one.md)\n- [Two](two.md)\n- [Cased](Cased-Memory.md)\n")
+        idx, dangling, orphans = index_integrity(store)
+        if [d for d in dangling if d.endswith("Cased-Memory.md")] == []:
+            failures.append("a case-only mismatch in an index link was NOT reported "
+                            "dangling — the wrong case resolves on this volume and the "
+                            "index's lie reads as clean")
+        (seat / INDEX_NAME).write_text(
+            "# index\n\n- [One](one.md)\n- [Two](two.md)\n- [Cased](cased-memory.md)\n")
+        idx, dangling, orphans = index_integrity(store)
+        if [d for d in dangling if d.endswith("cased-memory.md")] != []:
+            failures.append("OVER-ACTION: the CORRECTLY-cased link was reported dangling "
+                            "— a case-exact test that rejects real links dangles the "
+                            "whole store and the DEGRADED label stops meaning anything")
+        (seat / "cased-memory.md").unlink()
         (seat / INDEX_NAME).write_text(
             "# index\n\n- [One](one.md)\n- [Two](two.md)\n- [Gone](gone.md)\n")
 

@@ -30,11 +30,18 @@ package node
 //	    INJECTED clock (never the admit epoch, never the chain — cert §6.2; wall time in
 //	    production, so a forward clock step reaps every live session at once —
 //	    R-SESSION-WALLCLOCK-STEP).
-//	    The idle window is REFUSE-UNTIL-SET (the S4 precedent) until T_b is measured.
+//	    The idle window is NO LONGER refuse-until-set. Owner call 4 of
+//	    D-TRUE-UP-CALLS-2026-09-07 released it on its own conditional once the liveness
+//	    bound was field-confirmed, and the SHIPPED default is 24m (cmd/silt/numeraire.go
+//	    deliveryIdleDefault; value ratified D-C2-IDLE-WINDOW-VALUE 2026-09-09). What
+//	    survives of the refusal: the daemon refuses a window below the derived floor
+//	    (bound × divisor/(divisor−1)), and a non-positive window here leaves the lane off.
 //	    The remainder budget − settled is accounted ONCE at close through the ledger's
-//	    CloseDeliverySession — under G-6 as ratified, a BURN. Whether it is instead
-//	    REFUNDED to the fetcher (cert §5.1) is an OWNER CALL; closeDeliverySession is
-//	    the one seam that changes.
+//	    CloseDeliverySession. Under G-6 as RATIFIED (D-R2.9-NODE-HALF-CALLS call 1, amended
+//	    1′) that is a REFUND, not a burn: the remainder is a DEPOSIT returned to the durable
+//	    fetcher at the LATER of the anchors' release epoch and the close. The owner call is
+//	    CLOSED. It burns only in the two named corners — the pending-refund table at its cap,
+//	    and a fetcher with no account on this ledger (R-REFUND-NEEDS-AN-ACCOUNT).
 //	C10 a hard live-session cap (deliveryMaxLiveSessions): refuse at cap, never evict.
 //
 // The v2 flat path (MsgDeliveryReceipt: token spent at REDEEM) is RETIRED (B-9): the
@@ -73,7 +80,7 @@ const (
 	errDeliveryAnchorMalformed  = deliveryError("delivery: anchor serial or signature is malformed")
 	errDeliveryFetcherMismatch  = deliveryError("delivery: sha256(Fetcher) != authenticated sender — the commitment is not the sender's")
 	errDeliverySigInvalid       = deliveryError("delivery: commitment signature invalid")
-	errDeliveryNoIssuerKey      = deliveryError("delivery: no self demand-issuer keyset (no chain commitment for key_E) — the anchor lane is dark until era-4")
+	errDeliveryNoIssuerKey      = deliveryError("delivery: no self demand-issuer keyset (no chain commitment for key_E) — the anchor lane is dark until this node commits one (era-4 is NOT the gate: -era4-activation-height defaults to 1, so v5 is live from height 1; what is missing is the committed IssuerKeyReg, which needs an objective, bonded, epoch-enabled validator)")
 	errDeliveryAnchorInvalid    = deliveryError("delivery: anchor does not verify under this server's committed key in the DEMAND domain (wrong server, wrong lane, or expired)")
 	errDeliveryAnchorSpent      = deliveryError("delivery: anchor already spent on this ledger")
 	errDeliveryGuardFull        = deliveryError("delivery: paid-serial guard full of live entries — refused, never evicted")

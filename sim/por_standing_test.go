@@ -18,7 +18,7 @@ import (
 // STANDING. A node that holds real shards and passes audit after audit — the
 // disk it would take a data-less Sybil to fake by relaying — earns audit credit
 // and balance, but its consensus Reputation stays 0 because it holds no bond.
-// Standing rests on the bond press alone (docs/design/m0-hardening-strategy.md
+// Standing rests on the bond press alone (archive/design-history/m0-hardening-strategy.md
 // §4 S2). Before H1, `+ auditsPassed*25` lifted such a node to eligibility.
 func TestPorAuditsGrantNoStandingWithoutBondOverTheWire(t *testing.T) {
 	const seed = 20260805

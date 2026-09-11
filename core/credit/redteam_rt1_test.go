@@ -8,7 +8,7 @@ import "testing"
 // the audit, and — under the old formula `+ auditsPassed*25` — reached
 // propose/attest eligibility (100 rep) with ZERO storage. The fix: PoR audits no
 // longer mint Sybil-resistant standing; standing rests on the bond alone.
-// See docs/design/m0-hardening-strategy.md §2 (Invariant A), §4 (S2), memo 03.
+// See archive/design-history/m0-hardening-strategy.md §2 (Invariant A), §4 (S2), memo 03.
 
 // RT-1: piling on PoR audit passes must NOT lift a bondless identity to standing.
 // This is the exact "4 passes = 100 rep = eligibility with zero disk" claim,
@@ -29,7 +29,7 @@ func TestRedteamRT1_AuditPassesGrantNoStandingWithoutBond(t *testing.T) {
 	}
 }
 
-// Invariant A (docs/design/m0-hardening-strategy.md §2): no POSITIVE standing
+// Invariant A (archive/design-history/m0-hardening-strategy.md §2): no POSITIVE standing
 // without a verified, identity-bound, bond-gated proof. Property form: for ANY
 // identity holding no bond, Reputation ≤ 0 regardless of how many audits it
 // passed — so the only press that GRANTS standing is the bond. A future press

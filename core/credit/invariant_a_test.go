@@ -9,7 +9,7 @@ import (
 
 // M0 hardening H3 — the Invariant-A structural guardrail.
 //
-// Invariant A (docs/design/m0-hardening-strategy.md §2): no standing without a
+// Invariant A (archive/design-history/m0-hardening-strategy.md §2): no standing without a
 // verified, identity-bound, unpredictable-challenge, deduped, bond-gated proof.
 //
 // The strategy doc's meta-pattern #1 is "we fix instances, not classes": F1 →
@@ -171,7 +171,7 @@ func TestInvariantA_EveryLedgerMethodClassified(t *testing.T) {
 			t.Fatalf("unclassified *Ledger method %q: it is a new standing press until proven otherwise. "+
 				"Classify it in standingClassification (mints/reduces/neutral); if it can RAISE Reputation, "+
 				"it MUST satisfy Invariant A — add its identity-bound/deduped/bond-gated assertions to "+
-				"TestInvariantA_TheOnlyMintingPressIsBondGated. See docs/design/m0-hardening-strategy.md §2.", name)
+				"TestInvariantA_TheOnlyMintingPressIsBondGated. See archive/design-history/m0-hardening-strategy.md §2.", name)
 		}
 	}
 	// And the reverse: keep the map honest — no stale entries for deleted methods.
