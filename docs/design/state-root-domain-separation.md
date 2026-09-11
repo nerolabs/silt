@@ -4,7 +4,7 @@
 `smt.VerifyProof` path and the audit's different-hash recommendation is declined with a certified ground;
 two latent defects on the composed fold surface were found and are closed on `main` behind gates; one
 scope invariant (SI-6) is an open owner call. Certification:
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R3.1-SMT-domain-separation-disjoint-preimage-RESEARCH-CERTIFICATION-2026-09-06.md`.
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R3.1-SMT-domain-separation-disjoint-preimage-RESEARCH-CERTIFICATION-2026-09-06.md`.
 Design record: [`docs/thinking/2026-09-01-smt-domain-separation-close-design.md`](../thinking/2026-09-01-smt-domain-separation-close-design.md).
 
 ## 1. The attack class, and what rests on it

@@ -4,7 +4,7 @@ package chain
 //
 // Source: the red-team probes core/chain/rt_c3_prune_test.go +
 // rt_c3_prune_accept_test.go, archived at
-// /Users/andrewedmond/Claude/claude/silt-reviews/red-team/probes/R0.4b-C3-re-break-2026-09-03/.
+// /Users/andrewedmond/.claude/silt-agent-memory/red-team/reviews/probes/R0.4b-C3-re-break-2026-09-03/.
 // The probes asserted the BREAK; these assert the CLOSE, on the identical fixture, so the
 // same scenario that measured the split now measures its absence.
 //

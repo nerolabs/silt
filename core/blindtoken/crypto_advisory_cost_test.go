@@ -37,7 +37,7 @@ import (
 // modexp path. Upper bound here, lower bound there. Neither is calibrated to a machine.
 //
 // Ruling that set this shape (5 ms REFUTED as a security parameter, disposition (b)):
-// /Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-ValidatePub-cost-gate-RULING-2026-09-03.md
+// /Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R0.4b-C3-ValidatePub-cost-gate-RULING-2026-09-03.md
 //
 // IT ASSERTS ON THE BEST OF N, not the worst, and that is deliberate. `go test ./...` runs
 // packages in parallel, so a wall-clock WORST case measures scheduler contention on a loaded

@@ -60,7 +60,7 @@ function collapses to the boundary predicate itself.
   `isAmbiguousRecoveryBoundary(h)`. The `RecoveryDirective` type, `hasDirective`, `BoxConfig.Recovery`
   and `Box.recovery` are deleted outright, and `WitnessValidateV5` loses its third parameter.
 - **CORRECTED after the blind PE review (B-1,
-  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-d0-cold-auditor-3539b2a-2026-09-09.md`):
+  `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-d0-cold-auditor-3539b2a-2026-09-09.md`):
   the height that decision reads is the BOX'S OWN (`head.NextHeight`), never `b.Height`.** The first
   cut deleted the knob and then handed the same authority to the block's author. Measured both ways:
   a box at height 2 with the boundary at 100 emitted the stall for a block that merely *declared*

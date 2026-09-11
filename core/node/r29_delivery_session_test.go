@@ -3,7 +3,7 @@ package node
 // R2.9 — the paid DELIVERY SESSION's node-tier RED-first gates. Binding spec: the
 // G-R212-8 certification §3.1 (C1–C10), §6 (settle-monotone, the idle reaper, receipt
 // v3), §8 (G-λ-8-1…10) —
-// silt-reviews/research/research-outcome/R2.9-G-R212-8-delivery-anchor-quantization-RESEARCH-CERTIFICATION-2026-09-06.md —
+// silt-agent-memory/researcher/reviews/research-outcome/R2.9-G-R212-8-delivery-anchor-quantization-RESEARCH-CERTIFICATION-2026-09-06.md —
 // and the 2026-09-04 build-questions certification §5 (B-7, B-8, B-9, B-13).
 // G-λ-8-1 / G-λ-8-2 live in cmd/silt (they need core/relaypay); G-λ-8-6 and G-λ-8-8 in
 // core/credit; G-λ-8-10 is OPEN (named residual): its lift (b), returning the face at

@@ -29,7 +29,7 @@ That gives silt the five seats and the coordination bridge. silt's own canon
 Before the Builder edits anything, run the two read-only seats on real silt work:
 
 - **PE seat on the next consult or diff.** It is read-only and files to
-  `silt-reviews/principle-engineer/`. Compare its ruling to what your hand-review would
+  `silt-agent-memory/principal-engineer/reviews/`. Compare its ruling to what your hand-review would
   have said. If it catches what you would have caught — and pushes where you would have
   pushed — the persona is calibrated. If not, fix it in `agent-orchestra/` and re-copy.
 - **Tester shadowing a deep run.** It runs silt's existing harness read-only and reports.

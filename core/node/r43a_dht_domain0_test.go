@@ -17,7 +17,7 @@ import (
 // bucket. No declared-label design prices an eclipse (N free labels ⇒ N domains). The close
 // is R4.3b, observed-address keying. These gates encode the red-team's findings so the
 // regression cannot return and the open residual cannot close silently.
-// Source: silt-reviews/red-team/RED-TEAM-R4.3b-dht-eclipse-keying-2026-09-03.md.
+// Source: silt-agent-memory/red-team/reviews/RED-TEAM-R4.3b-dht-eclipse-keying-2026-09-03.md.
 
 func sameBucketIDs(t *testing.T, self ports.NodeID, n int, seedBase int64) []ports.NodeID {
 	t.Helper()

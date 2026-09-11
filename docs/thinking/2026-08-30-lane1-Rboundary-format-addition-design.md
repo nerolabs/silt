@@ -523,10 +523,10 @@ the recovery boundary as the R2-coupled residual, unclosed here.
 - `core/translog/translog.go` `MTH` — the in-tree RFC-6962 tree-head reused by `dueBucketMTH`
   and by the three new keyset roots. No new primitive.
 - Priors (full paths):
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-v5-floorbox-bounded-recompute-CRUX-RESEARCH-CERTIFICATION-2026-08-30.md`
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era4-v5-floorbox-bounded-recompute-CRUX-RESEARCH-CERTIFICATION-2026-08-30.md`
   (R-crux ratified direction, R-boundary named);
-  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-era4-v5-floorbox-recompute-crux-CROSS-CHECK-2026-08-30.md`
+  `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-era4-v5-floorbox-recompute-crux-CROSS-CHECK-2026-08-30.md`
   (the structural reason a format addition is required; Correction 1: the maturity face
   iterates `validatorsSeen`; the empty-bucket completeness face);
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-witness-floor-box-readset-v5-AMENDED-RESEARCH-CERTIFICATION-2026-08-30.md`
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era4-witness-floor-box-readset-v5-AMENDED-RESEARCH-CERTIFICATION-2026-08-30.md`
   (the 23-keyspace read-set identity).

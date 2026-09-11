@@ -16,9 +16,9 @@ import (
 // PERMANENT GATES for the FLOOR-BOX STRUCTURE round 1A (main-only; owner call 16).
 //
 // Governing documents:
-//   - build brief: /Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-structure-rederivation-build-readiness-e963034-2026-09-07.md §7
-//   - P-table delta: /Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/FLOORBOX-STRUCTURE-P-TABLE-DRIFT-DELTA-CERTIFICATION-e963034-2026-09-07.md
-//   - composition:   /Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/FLOORBOX-STRUCTURE-BUILD-PLAN-CERTIFICATION-2026-09-03.md
+//   - build brief: /Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-structure-rederivation-build-readiness-e963034-2026-09-07.md §7
+//   - P-table delta: /Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/FLOORBOX-STRUCTURE-P-TABLE-DRIFT-DELTA-CERTIFICATION-e963034-2026-09-07.md
+//   - composition:   /Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/FLOORBOX-STRUCTURE-BUILD-PLAN-CERTIFICATION-2026-09-03.md
 //
 // THE DEFECT SHAPE THESE GATES EXIST FOR. The box reproduced a node predicate's TAIL without the
 // precondition a DIFFERENT validation stage had established (N1 the author screen, RT2-CARRIER-13

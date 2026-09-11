@@ -88,13 +88,13 @@ unaided. That is exactly the B8 external-adversary / self-marked-homework line.
 
 Per Andrew's direction (2026-08-17), the PE is consulted on BOTH drills before any
 build — the partition majority-side driver's severing shape included. Consult:
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/184-drill-drivability-CONSULT.md`.
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/184-drill-drivability-CONSULT.md`.
 **Nothing ships until it returns.** This deliberation doc ships in the same PR as
 the eventual fix.
 
 ## PE RULING RETURNED (2026-08-17) — build (A), both drills
 
-`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/184-drill-drivability-ruling-PE-2026-08-17.md`.
+`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/184-drill-drivability-ruling-PE-2026-08-17.md`.
 The governing line: **the harness may create the adversary's OPPORTUNITY (any
 *real* adversary capability — a partition is one: eclipse / BGP hijack / link DoS
 / just waiting for a natural WAN split); the adversary takes its OWN malicious
@@ -185,7 +185,7 @@ its harness can be built. Reported to Andrew for the proceed call.
 ## PE CONFIRMED both (2026-08-17) + oracle proven — a THIRD constraint surfaced
 
 PE confirmation
-(`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/184-drill-drivability-objective-mode-CONFIRM-PE-2026-08-17.md`):
+(`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/184-drill-drivability-objective-mode-CONFIRM-PE-2026-08-17.md`):
 both corrections CONFIRMED, the PE owns the legacy-mode-reference error. Partition =
 stall-then-catch-up (the absence of a reorg line IS the I1 safety property).
 Equivocation = `PlaceConflictingSigned` slash-on-detection ("the crime is SIGNING
@@ -228,7 +228,7 @@ sheet-wide consequences.
 
 ## PE TOPOLOGY RULING → (D) + BUILD COMPLETE (2026-08-17)
 
-`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/184-equivocation-topology-ruling-PE-2026-08-17.md`:
+`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/184-equivocation-topology-ruling-PE-2026-08-17.md`:
 **(D) — a dedicated, ephemeral equivocation network. Not (A).** Verified: a
 mid-sheet slash leaves the requirement pinned at `⌊4/2⌋+1 = 3` over the CONFIGURED
 anchors while only 3 stay live → every later commit needs all 3 unanimously (zero

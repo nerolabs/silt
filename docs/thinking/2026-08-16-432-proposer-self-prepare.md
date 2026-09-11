@@ -79,7 +79,7 @@ signatures — the accountability doing its job.
 ## Post-certification correction (research, 2026-08-16 — rule CERTIFIED as-is)
 
 Certification:
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/432-proposer-prepare-required-RESEARCH-CERTIFICATION-2026-08-16.md`.
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/432-proposer-prepare-required-RESEARCH-CERTIFICATION-2026-08-16.md`.
 **One arithmetic correction to this doc's framing (its §2):** my "zero slashable
 evidence" claim at the A=4 drill shape was imprecise — two strict-majority anchor
 sets at EVEN A must share a non-proposer attester (`2·⌊A/2⌋ > A−1`), who

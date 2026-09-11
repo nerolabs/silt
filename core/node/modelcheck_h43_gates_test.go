@@ -42,7 +42,7 @@ func recordH43QuiescentDesigneeObserved(gate string, designee ports.NodeID) {
 }
 
 // G-H43-2, G-H43-3, G-H43-4, G-H43-5 — the remaining RED-first gates from
-// silt-reviews/research/research-outcome/
+// silt-agent-memory/researcher/reviews/research-outcome/
 // CONSENSUS-LIVENESS-h43-round-ladder-desync-441-380-RESEARCH-CERTIFICATION-2026-09-07.md
 // §4.2, encoded per this session's task (G-H43-1 and G-H43-6 already live in
 // modelcheck_h43_arming_test.go on this branch).

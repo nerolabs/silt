@@ -3,7 +3,7 @@ package node
 // R2.9 — the paid DELIVERY SESSION: the node half (the ledger half is
 // core/credit/deliveryanchor.go; the wire vocabulary core/demand/session.go). The
 // certified shape, clause by clause (Researcher certification
-// silt-reviews/research/research-outcome/R2.9-G-R212-8-delivery-anchor-quantization-RESEARCH-CERTIFICATION-2026-09-06.md
+// silt-agent-memory/researcher/reviews/research-outcome/R2.9-G-R212-8-delivery-anchor-quantization-RESEARCH-CERTIFICATION-2026-09-06.md
 // §3.1; deliberation docs/thinking/2026-09-06-r2.9-node-half.md):
 //
 //	C1  one live session per (this server, durable fetcher); the fetcher is the

@@ -17,7 +17,7 @@ package node
 // durable guard BEFORE admission, and the session's budget is the ledger's own
 // Σ face of what it spent. Rivest–Shamir's authorization half, bilateral form
 // (issuer == relay). Certification:
-// silt-reviews/research/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md.
+// silt-agent-memory/researcher/reviews/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md.
 // The R0.7 interim (pays 0) is retired by it. BUILT ≠ LIVE: an anchor verifies
 // only under a v5 IssuerKeyReg, so the lane is dark until era-4 and every open is
 // refused with a named reason until then (cert §8).

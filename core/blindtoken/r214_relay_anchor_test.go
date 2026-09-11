@@ -2,12 +2,12 @@ package blindtoken
 
 // R2.14 — the relay-lane prepayment anchor: the PRIMITIVE-tier RED-first gates
 // (Tester, 2026-09-04). Binding spec:
-// silt-reviews/research/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md
+// silt-agent-memory/researcher/reviews/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md
 // §6 (one RSA key, two FDH domains — sound by BNPS one-more-inversion), §9 T-6 and
 // T-14, §5 (the domain string is a FORMAT CONSTANT the T-6 proof depends on: "pin
 // byte-exact (the TestDemandFDHInputBindsTheEpochByteExactly twin); a change is a
 // token-format version, never an edit"). Build shape:
-// silt-reviews/crypto-specialist/ADVISORY-R2.14-relay-prepayment-anchor-build-2026-09-04.md
+// silt-agent-memory/crypto-specialist/reviews/ADVISORY-R2.14-relay-prepayment-anchor-build-2026-09-04.md
 // §1.1 (domain = "silt/blindrelay/fdh/v1", message = uint64BE(issueEpoch) ‖ serial,
 // byte-identical to demandMsg) and §5 step 1 (three one-line wrappers over
 // blindD / unblindD / verifyD).

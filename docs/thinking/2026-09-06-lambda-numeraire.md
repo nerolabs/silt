@@ -4,8 +4,8 @@
 owner calls ratified at the first option on 2026-09-06: `λ` = 1 credit per `Dλ = 393,216` bytes,
 derived as `⌈3·U/(2·p)⌉` from the pinned delivery price `(U, p) = (262,144, 1)`; `RepairBountyBase =
 c·k·shardBytes/(U/p)`; a per-lane byte-remainder accumulator. Certification:
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/G-R212-7-lambda-redenomination-RESEARCH-CERTIFICATION-2026-09-06.md`. Economist advisory:
-`/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-G-R212-7-lambda-redenomination-2026-09-06.md`.
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/G-R212-7-lambda-redenomination-RESEARCH-CERTIFICATION-2026-09-06.md`. Economist advisory:
+`/Users/andrewedmond/.claude/silt-agent-memory/economist/reviews/ADVISORY-G-R212-7-lambda-redenomination-2026-09-06.md`.
 
 ## Why this shape
 
@@ -60,7 +60,7 @@ numéraire moved.
 
 ## Blind PE code ruling (MERGE-AFTER, six items) and what it corrected
 
-Ruling: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-G-R212-7-lambda-numeraire-code-2026-09-06.md`.
+Ruling: `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-G-R212-7-lambda-numeraire-code-2026-09-06.md`.
 The arithmetic held under 2,000 randomized trials and eleven of twelve certified ablations reddened a
 named gate. The misses were at the edges: the `silt sim run economy` CLI kept the production fee
 default and demonstrated the opposite of its claim (fixed: `-fee 0` = scenario default); the

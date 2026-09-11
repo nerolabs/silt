@@ -33,7 +33,7 @@
   silt's own party, so **self-graded does not count — M0 is BUILT and internally-clean,
   NOT externally certified as held.** The internal verdict is genuine pre-external
   evidence that lowers risk, not the B8 certification:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/redteam-august-23/M0-REDTEAM-VERDICT-183.md`
+  `/Users/andrewedmond/.claude/silt-agent-memory/red-team/reviews/redteam-august-23/M0-REDTEAM-VERDICT-183.md`
   (INTERNAL red-team seat — see its provenance header).
   One real bounded liveness finding (F-1, `MsgSubmitEntry` CPU gap under the opt-in
   `-require-tokens` mode) — **FIXED (PR #547)**; two harness coverage caveats (C-1
@@ -46,7 +46,7 @@
   catastrophic liveness finding a red team hits immediately, and it is not even
   adversarial. Blocks #183 for BOTH regimes; the P1 launch-liveness claim carries this
   asterisk until it lands. PE ruling 2026-08-15,
-  `silt-reviews/principle-engineer/i4-liveness-wedge-rounds-ruling-PE-2026-08-15.md`.)
+  `silt-agent-memory/principal-engineer/reviews/i4-liveness-wedge-rounds-ruling-PE-2026-08-15.md`.)
 - [x] **Launch-regime interleaved publish/drain liveness drill green** (P1 confirmed
   safety and observed-run commit-capability, not liveness under the crossed-proposer
   race — the drill closes what P1 didn't cover).
@@ -133,7 +133,7 @@ signing is wired up; V1 is not cut until signing/notarization is in place.)
     accepts `MsgRelayOpen` from any peer, so a third party could hand-write a
     client. The accurate scope is *"the shipped binary has no client,"* never
     *"the protocol is unreachable."* Source:
-    `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/2026-09-10-inert-mechanism-sweep-core-adapters-0ed3b92.md`.
+    `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/2026-09-10-inert-mechanism-sweep-core-adapters-0ed3b92.md`.
   - **OWED, not done here — one site still carries the standard sentence.**
     `cmd/silt/daemon.go`'s `-accept-relay-payments` flag help ends on *"built,
     sim-proven, never exercised on a real network"*; that file belongs to another

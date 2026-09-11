@@ -96,7 +96,7 @@ error/timeout mid-loop, abort THIS peer (partial `full` is discarded, not reconc
 
 ## 2026-08-22 — the PE ruling landed; what shipped (differs from the plan above)
 
-Ruling: `silt-reviews/principle-engineer/RULING-466-chain-serve-pagination-approach-2026-08-22.md`.
+Ruling: `silt-agent-memory/principal-engineer/reviews/RULING-466-chain-serve-pagination-approach-2026-08-22.md`.
 Three corrections to this design, all verified in code by the PE and confirmed here:
 
 1. **8 MiB was wrong twice; the shipped window is DERIVED.** The 30 s size extension

@@ -4,13 +4,13 @@ Status: SHAPING DRAFT (not canon). Ground: `origin/main` @ `0076337`.
 Author seat: Builder (advocates shipping + simplicity). A blind review judges the same
 choice; the human ratifies. Certs that settle this choice:
 - RULE shape (v5 validity cap):
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-witnessable-transitions-RECERT2-2026-08-29.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era4-witnessable-transitions-RECERT2-2026-08-29.md`.
 - Counting rule = per-block TOTAL (fresh + renewal), fresh-only REFUTED:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-regcap-recert-VERDICT-2026-08-29.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era4-regcap-recert-VERDICT-2026-08-29.md`.
 - Instrument = COUNT cap (B), not byte cap (A):
-  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-era4-regcap-instrument-A-vs-B-2026-08-29.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-era4-regcap-instrument-A-vs-B-2026-08-29.md`.
 - Value N = 256 (floor 18 at k=1, 7-determinant re-derivation gate):
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-regcap-VALUE-DERIVATION-VERDICT-2026-08-29.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era4-regcap-VALUE-DERIVATION-VERDICT-2026-08-29.md`.
 
 ## The question
 

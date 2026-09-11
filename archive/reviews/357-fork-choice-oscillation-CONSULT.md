@@ -117,7 +117,7 @@ logging, which we can build once you point us at the axis.
 ---
 
 ## Provenance
-Blind field test 2026-08-12 (`silt-reviews/fieldtest-august-12a/reports/cloud/…publish-fetch…`),
+Blind field test 2026-08-12 (`silt-agent-memory/tester/reviews/fieldtest-august-12a/reports/cloud/…publish-fetch…`),
 GCP run at `9ed88ef`, torn down (0 residual). Code refs: `core/chain/chain.go`
 (`Weight`/`blockWeight`/`heavier`/`Reconcile`/`attesterQualified`/`qualifiedCount`/`RequiredQuorum`/
 `bftThreshold`), `core/node/chainrole.go` (refuse-to-cross-attest, proposeBlock gather).

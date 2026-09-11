@@ -22,7 +22,7 @@
 # ---------------------------------------------------------------------------
 # Cited by a core/credit/delivery.go comment (on an unmerged R0.4b branch) and
 # then REPEATED by a research certification at
-#   silt-reviews/research/research-outcome/
+#   silt-agent-memory/researcher/reviews/research-outcome/
 #   R0.4b-per-epoch-key-expiry-BUILD-VERIFICATION-RESEARCH-CERTIFICATION-2026-09-02.md:126
 # as pinning the paid-serial window to the demand window (the three copies of W).
 # No `func TestPaidSerialWindowMatchesDemandWindow(` has ever existed anywhere in
@@ -123,7 +123,7 @@ TestEpochWatermark_UnguardedRedeemIsUnaffected
 # ---------------------------------------------------------------------------
 # (H) HISTORICAL — Lane C3 / R2.2 concentration gates, 2026-09-09.
 # The serve provenance pin was renamed when the Economist's re-derivation
-# (silt-reviews/economist/ADVISORY-c3-concentration-gate-thresholds-redderived-2026-09-09.md)
+# (silt-agent-memory/economist/reviews/ADVISORY-c3-concentration-gate-thresholds-redderived-2026-09-09.md)
 # showed its original diagnosis was the symptom: the honest Gini's fall with n is an
 # integer-floor artifact on the rarest tier, so the alarm is MIX-dependent, not
 # sample-size-dependent. The pin's finding is re-founded, not discharged. The old name is

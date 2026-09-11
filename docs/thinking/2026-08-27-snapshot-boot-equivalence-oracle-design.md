@@ -2,7 +2,7 @@
 
 **Context / trigger:** RED home #1 of the three load-bearing obligations in the
 state-root keystone certification
-(`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/D-TIERING-state-root-keystone-RESEARCH-CERTIFICATION-2026-08-26.md`).
+(`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/D-TIERING-state-root-keystone-RESEARCH-CERTIFICATION-2026-08-26.md`).
 The library question is closed (PR #596); this is the first oracle. The
 certification's wording is unusually strict about *how* the proof may be
 obtained:
@@ -16,7 +16,7 @@ obtained:
 **Evidence (build-immutable #7 — artifacts, not vibes):**
 
 - The 16-field enumeration and its read-sites:
-  `silt-reviews/research/D-TIERING-state-root-keystone-CONSULT-2026-08-25.md`
+  `silt-agent-memory/researcher/reviews/D-TIERING-state-root-keystone-CONSULT-2026-08-25.md`
   lines 43–72 (the table).
 - **Inspection has already missed a field twice, and the second time was in the
   certification itself.** The consult enumerates `revoked` as field #3

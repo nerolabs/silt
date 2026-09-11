@@ -2,7 +2,7 @@ package node
 
 // R2.14 — the relay-lane prepayment anchor: the NODE-tier RED-first gates
 // (Tester, 2026-09-04). Binding spec:
-// silt-reviews/research/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md
+// silt-agent-memory/researcher/reviews/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md
 // §2.2 (a refused open records nothing), §2.4 (doors (i) self keyset, (ii) the
 // guard, (iii) domain, (v) never acct(ephID), (vi) budget = Σ face never S), §5
 // (guard window == keyset window; verify cost), §8 (v1 open ⇒ errRelayNoAnchor;

@@ -3,7 +3,7 @@
 **Decision.** Move `RelayIncrementBytes` from 4,096 to 524,288 and make `MaxChainLength` and
 `MaxSessionBytes` derived from the anchor face, in one PR across the nine sites the certification
 names (§4.1). Owner-ratified 2026-09-06 ("2. ratified") on the Researcher's certified value
-(`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/G-R212-2-relay-lane-reprice-RESEARCH-CERTIFICATION-2026-09-06.md`
+(`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/G-R212-2-relay-lane-reprice-RESEARCH-CERTIFICATION-2026-09-06.md`
 §8). Recorded in `docs/decisions.md` (D-R2.9a-RUN-CALLS, the G-R212-2 paragraph).
 
 ## The problem
@@ -54,7 +54,7 @@ one power of two inside the interval.
 
 ## Blind PE code ruling (MERGE-AFTER) and what it corrected
 
-Ruling: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-G-R212-2-relay-reprice-code-2026-09-06.md`.
+Ruling: `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-G-R212-2-relay-reprice-code-2026-09-06.md`.
 The number and the derivation direction were right and pinned (re-pinning the 1 GiB cap or a
 256 KiB increment reddens). The re-scope was the defect: deriving S_max from the face collapsed
 the face into every derived constant, so (F-1) the independent face-drift detector was gone and

@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-04 · **Seat:** BUILDER (deliberation → build) · **Status:** BUILT 2026-09-04 on branch `builder/r2.9a-min-r-floor` (PR pending); §6 records the build as it landed
 
-**Binding input.** `silt-reviews/research/research-outcome/R2.9a-Bbootstrap-DELTA-contamination-privacy-floor-clock-RESEARCH-CERTIFICATION-2026-09-04.md`
+**Binding input.** `silt-agent-memory/researcher/reviews/research-outcome/R2.9a-Bbootstrap-DELTA-contamination-privacy-floor-clock-RESEARCH-CERTIFICATION-2026-09-04.md`
 — §2.1–§2.4 (the floor and its reasoning), §1.1–§1.3 (the census mixture and the refuted
 discriminator), §5 gate **G-BB-11**, §6 Tester gates **BB-15, BB-16, BB-18, BB-19**. Overriding:
 `docs/TENETS.md` Part 0, Part VI (Don't #3) and Part IX; `docs/build-process.md`;

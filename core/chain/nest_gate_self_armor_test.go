@@ -16,7 +16,7 @@ import (
 // RULING-slashcap-config-route-close-CODE-2026-09-10.md and certified (Q1, "no (cap,
 // body-bound) pair closes it") by
 // SLASHCAP-NESTED-EVIDENCE-FIXED-POINT-RESEARCH-CERTIFICATION-2026-09-10.md, both in
-// silt-reviews/. That certification's §2.2 names the standing theorem T-NEST: evidence
+// silt-agent-memory/. That certification's §2.2 names the standing theorem T-NEST: evidence
 // that embeds the object it accuses, committed inside an object of the same kind under a
 // shared size bound, has NO satisfying bound — the recursion is cut only by making the
 // carried quantity independent of the accused body's size (owner call A, routed to D1).

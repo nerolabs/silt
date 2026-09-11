@@ -118,7 +118,7 @@ and `library` route through the composition functions (source gate); the observa
 contains the `statsWithheld` branch (static gate); the flag exists on both subcommands (source
 gate); the `wash.symmetry` quotient is withheld with its operands.
 
-**Blind PE ruling on this record** (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-UI-PRIVACY-FLAG-design-2026-09-05.md`,
+**Blind PE ruling on this record** (`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-UI-PRIVACY-FLAG-design-2026-09-05.md`,
 PROCEED-WITH-CHANGES). Three of my premises were FALSE on the tree and are corrected here:
 - **S1 — the observatory did not paint a false zero; it THREW.** The `try` wrapped only the
   fetches; `r.status.stats.BytesServed` on an omitted block is a TypeError that aborts the
@@ -150,7 +150,7 @@ PROCEED-WITH-CHANGES). Three of my premises were FALSE on the tree and are corre
 - Predicate split (Q4): counters take any-route `token`; the link takes header-only
   `tokenHeader`. Rule recorded in the composition-point doc comment.
 
-**Blind PE CODE ruling** (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-UI-PRIVACY-FLAG-code-0c9e373-2026-09-05.md`,
+**Blind PE CODE ruling** (`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-UI-PRIVACY-FLAG-code-0c9e373-2026-09-05.md`,
 MERGE-AFTER; seven of eight controlled reverts RED; the wire claims measured on a live daemon
 and a live client). Folded in: **B1** the e2e F2 arm was RED at the first push (`go test -short
 ./...` skips e2e — the whole e2e suite now runs locally before a push; the arm runs its daemon

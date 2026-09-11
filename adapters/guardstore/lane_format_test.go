@@ -3,7 +3,7 @@ package guardstore
 // R-GUARD-RESTORE-LANE-UNKNOWN, the ADAPTER half: the record has to carry the lane,
 // and a file written before the record grew one has to be refused rather than
 // re-framed. PE ruling
-// /Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R2.9-deposit-at-anchor-expiry-4d4a90c-2026-09-07.md
+// /Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-R2.9-deposit-at-anchor-expiry-4d4a90c-2026-09-07.md
 // §4 (the (3, 0) measurement). The ledger half is
 // core/credit/guard_restore_lane_test.go.
 //

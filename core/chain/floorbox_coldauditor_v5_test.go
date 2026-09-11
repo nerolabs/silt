@@ -16,7 +16,7 @@ import (
 //
 // Governing: ROADMAP Lane D row D0; owner call 2 of D-TRUE-UP-CALLS-2026-09-07, ratified
 // 2026-09-07 on direction (a') of
-// /Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R-membership-unbounded-sets-and-recovery-boundary-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md
+// /Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R-membership-unbounded-sets-and-recovery-boundary-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md
 // Part 2 (conditions H-1…H-4, advisory H-5); D-RECOMPUTE-FREEZE, which cut this row's dependency
 // on the recompute spine and made it the freeze's whole floor-box gate.
 // Deliberation: docs/thinking/2026-09-09-d0-cold-auditor.md

@@ -5,7 +5,7 @@
 **Class:** OBSERVABILITY over the committed ledger. NOT a consensus-rule, validity-predicate,
 or security-parameter change. Reads; never changes what the chain accepts.
 **Certification this serves:**
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`
 
 ---
 

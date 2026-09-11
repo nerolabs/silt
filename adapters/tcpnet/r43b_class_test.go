@@ -6,7 +6,7 @@ package tcpnet
 // conns present the relay's group in ONE namespace), G-5 (DIRECT never downgraded), G-8
 // (exemption scope: loopback + link-local only; RFC1918 CLASSIFIED — the cloudtest plan
 // is 10.20.0.x, cert §6.3 trap), G-9 (no group on the wire, on disk or in a log line;
-// per-process salt). Spec: silt-reviews/research/research-outcome/R4.3b-relayed-class-
+// per-process salt). Spec: silt-agent-memory/researcher/reviews/research-outcome/R4.3b-relayed-class-
 // and-observed-address-keying-RESEARCH-CERTIFICATION-2026-09-04.md §6–§8.
 
 import (

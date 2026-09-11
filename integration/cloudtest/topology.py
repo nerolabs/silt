@@ -139,7 +139,7 @@ _INTERNAL_ONLY = {"store-3", "store-4"}  # no-external-IP main-swarm nodes (quot
 SYBILS = 0 if os.environ.get("SMOKE") == "1" else int(os.environ.get("SYBILS", "0"))
 
 # MATURING topology (re-split 2026-08-15 per the PE concurrence,
-# silt-reviews/principle-engineer/maturing-topology-resplit-concurrence-PE-2026-08-15.md):
+# silt-agent-memory/principal-engineer/reviews/maturing-topology-resplit-concurrence-PE-2026-08-15.md):
 # the base topology NEVER matures BY DESIGN, and neither did the original
 # MATURING=1 parameterization — the latch was UNREACHABLE BY CONSTRUCTION:
 # C2Metric EXCLUDES anchors (chain.go — counting the scaffolding's own bonds to

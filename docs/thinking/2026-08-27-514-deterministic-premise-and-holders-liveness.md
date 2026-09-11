@@ -4,7 +4,7 @@ Date: 2026-08-27
 Build-immutables in force: #6 root-cause-before-patch, #7 evidence-or-nothing.
 Extends: `2026-08-27-514-repair-bounty-flake-holders-view-vs-bytes.md` (PR #607).
 Ruling this answers:
-`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-PR607-514-holders-byte-confirm-2026-08-27.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-PR607-514-holders-byte-confirm-2026-08-27.md`
 
 ## Where #607 landed and why it is not enough
 

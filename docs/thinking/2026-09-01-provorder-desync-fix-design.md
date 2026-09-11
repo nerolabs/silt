@@ -2,7 +2,7 @@
 
 - Date: 2026-09-01
 - Boulder 0, follow-on to the A4 money-pump fix (`2026-09-01-a4-provisional-eviction-fix-design.md`).
-- Driver: blind red-team finding, `silt-reviews/red-team/RED-TEAM-FINDINGS-delivery-credit-provorder-2026-09-01.md`
+- Driver: blind red-team finding, `silt-agent-memory/red-team/reviews/RED-TEAM-FINDINGS-delivery-credit-provorder-2026-09-01.md`
   (RT-DELIV-1 HIGH, RT-DELIV-1b MEDIUM-HIGH, RT-DELIV-2 MEDIUM).
 
 ## The break (mechanism, with evidence)

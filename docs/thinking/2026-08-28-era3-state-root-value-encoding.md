@@ -7,10 +7,10 @@ Written BEFORE code, per PACE-BEFORE-CODE. Ships in the step-1 PR.
 
 **Inputs (read, verified against source):**
 - Research certification `era3-committed-state-root-format-RESEARCH-CERTIFICATION-2026-08-28.md`
-  (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/`) — Q2
+  (`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/`) — Q2
   CERTIFIED, Q6 flag 2, residual R2 (this doc discharges R2's encoding half).
 - PE ruling `RULING-era3-committed-state-root-format-2026-08-28.md`
-  (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/`) — Q2 highest
+  (`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/`) — Q2 highest
   severity: three super-quorum predicates SUM `bonded`/`epochSet` weights, so a
   wrong-value witness is a consensus-SAFETY attack, not a read bug.
 - Design options `docs/thinking/2026-08-28-era3-format-design-options.md`.

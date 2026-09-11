@@ -2,7 +2,7 @@ package credit
 
 // R2.9 — byte-denominated per-increment delivery settlement: the LEDGER half
 // (D-R2.9-DIRECTION, ratified 2026-09-04; build questions certified in
-// silt-reviews/research/research-outcome/R2.9-build-questions-domain-rescale-guard-RESEARCH-CERTIFICATION-2026-09-04.md
+// silt-agent-memory/researcher/reviews/research-outcome/R2.9-build-questions-domain-rescale-guard-RESEARCH-CERTIFICATION-2026-09-04.md
 // §2.5 (the settlement rule), §2.6 (what spend-at-open forces); the price pair
 // (U, p) = (DeliveryIncrementBytes, DeliveryIncrementCredit) certified and ratified
 // 2026-09-06, numeraire.go). Deliberation:
@@ -43,7 +43,7 @@ package credit
 // WHAT THIS FILE DOES NOT DECIDE. What a session is keyed on, when it closes, whether
 // it outlives one object, and what the receipt binds are the node's (core/node). The
 // G-R212-8 certification
-// (silt-reviews/research/research-outcome/R2.9-G-R212-8-delivery-anchor-quantization-RESEARCH-CERTIFICATION-2026-09-06.md
+// (silt-agent-memory/researcher/reviews/research-outcome/R2.9-G-R212-8-delivery-anchor-quantization-RESEARCH-CERTIFICATION-2026-09-06.md
 // §3) fixes the shape the node half must build: a session keyed on (server, durable
 // fetcher), one anchor, a byte ceiling DERIVED from the face, spanning objects, settled
 // INCREMENTALLY against a monotone counter (settle-once is REFUTED, §6.1): the node
@@ -99,7 +99,7 @@ func (l *Ledger) SpendDeliveryAnchors(server ports.NodeID, anchors []RelayAnchor
 // never ⌊value/8⌋ of one step — under settle-monotone the fetcher chooses the step, and a
 // per-step floor let a face settled in deltas ≤ 7 fund the escrow with NOTHING while the
 // serve-time skim was clawed back (net negative; certification
-// silt-reviews/research/research-outcome/R2.9-settlement-skim-under-fetcher-chosen-deltas-RESEARCH-CERTIFICATION-2026-09-06.md
+// silt-agent-memory/researcher/reviews/research-outcome/R2.9-settlement-skim-under-fetcher-chosen-deltas-RESEARCH-CERTIFICATION-2026-09-06.md
 // §3–4: the G-λ-7 discipline applied to the witnessed leg; no remainder is stored — it is
 // implicit in settled mod 8 and dies with the session; the ratified 1/8 does not move).
 // It returns the GROSS credits settled out of the budget (what the node subtracts from
@@ -210,7 +210,7 @@ type pendingRefund struct {
 
 // CloseDeliverySession accounts the close of one anchored delivery session
 // (D-R2.9-NODE-HALF-CALLS call 1, amended 1′; certification
-// silt-reviews/research/research-outcome/R2.9-session-remainder-refund-and-live-anchor-cap-RESEARCH-CERTIFICATION-2026-09-06.md
+// silt-agent-memory/researcher/reviews/research-outcome/R2.9-session-remainder-refund-and-live-anchor-cap-RESEARCH-CERTIFICATION-2026-09-06.md
 // §3.3, §3.6, §4.5). remaining is the budget the session never settled (Σ face −
 // settled). It is a DEPOSIT, not a burn: booked here as one pending record released to
 // the fetcher when the session's anchors leave the guard window — releaseEpoch =

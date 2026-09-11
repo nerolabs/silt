@@ -1,7 +1,7 @@
 # 2026-09-09 — Per-tier work totals: giving the edge-majority tenet a source
 
 **Context / trigger:** the Economist advisory
-`/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-c3-concentration-gate-thresholds-redderived-2026-09-09.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/economist/reviews/ADVISORY-c3-concentration-gate-thresholds-redderived-2026-09-09.md`
 withdrew both C3 concentration thresholds and named ONE build item as the thing that re-founds them
 (§3a, Builder item 1). It is not deferred by `D-WORK-VISIBILITY` (ratified 2026-09-09), precisely
 because the harness sets the counters directly, so a per-tier serve total is exactly what a harness

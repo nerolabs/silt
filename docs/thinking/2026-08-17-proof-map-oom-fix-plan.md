@@ -7,9 +7,9 @@ red team #183`. Harness OOM detection is DONE (PR #463, `scan_node_liveness`). T
 plan is the other half.
 
 **Design authority:**
-`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/silt-proof-oom-triage-PE-2026-08-17.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/silt-proof-oom-triage-PE-2026-08-17.md`
 (the spec) +
-`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/proof-oom-field-corroboration-PE-2026-08-17.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/proof-oom-field-corroboration-PE-2026-08-17.md`
 (critical-path + memory-scaling wall). This plan grounds that spec in the actual
 code and corrects one under-specification.
 

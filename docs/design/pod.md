@@ -2,7 +2,7 @@
 
 > **Status: CERTIFIED — 2026-08-26, with amendments.** Research answered all
 > of Q1–Q5
-> (`silt-reviews/research/research-outcome/PoD-neutral-lane-B3-close-RESEARCH-CERTIFICATION-2026-08-26.md`):
+> (`silt-agent-memory/researcher/reviews/research-outcome/PoD-neutral-lane-B3-close-RESEARCH-CERTIFICATION-2026-08-26.md`):
 > the conservation close is sound and is the *only structural* wash defense
 > the literature knows (sender-funded transfer, never a mint). Three
 > amendments are folded into the text below and marked **[CERT]**:
@@ -251,7 +251,7 @@ Consult `PoD-neutral-lane-B3-close-CONSULT-2026-08-26.md`; certification
 > `SplicePaid`; merged PRs #646–#650). The increment size is PINNED:
 > `RelayIncrementBytes = 524_288` (`core/relaypay/payword.go`; 4096 from 2026-08-30 to the
 > 2026-09-06 re-price, §7.3.5), so the owed measurement of §7.3.5 is discharged. Design basis: **CERTIFIED — 2026-08-30**
-> (`silt-reviews/research/research-outcome/PoD-relay-compensation-7.3-mechanism-RESEARCH-CERTIFICATION-2026-08-30.md`),
+> (`silt-agent-memory/researcher/reviews/research-outcome/PoD-relay-compensation-7.3-mechanism-RESEARCH-CERTIFICATION-2026-08-30.md`),
 > ratified basis D-POD-KNOBS knob 2 ([decisions.md](../decisions.md), lines
 > 869-907, AMENDED 2026-08-27). Deliberation:
 > [`thinking/2026-08-30-pod-7.3-relay-compensation-design.md`](../thinking/2026-08-30-pod-7.3-relay-compensation-design.md).
@@ -272,7 +272,7 @@ Consult `PoD-neutral-lane-B3-close-CONSULT-2026-08-26.md`; certification
 > (no v1 relay skim — an owner call before R2.4). **BUILT ≠ LIVE:** an anchor verifies only
 > under a v5 `IssuerKeyReg`, so the lane is DARK until era-4 activation; every open is
 > refused with a named reason until then, and `--accept-relay-payments` says so. Cert:
-> `silt-reviews/research/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md`
+> `silt-agent-memory/researcher/reviews/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md`
 > (§2 conservation, §2.4 the six doors, §6 one key two domains, §9 gates T-1…T-14);
 > deliberation
 > [`thinking/2026-09-04-r2.14-relay-prepayment-anchor-design.md`](../thinking/2026-09-04-r2.14-relay-prepayment-anchor-design.md).

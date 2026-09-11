@@ -1,6 +1,6 @@
 # silt M0 red-team — external adversary report
 
-> Independent adversary, per `redteam/m0-redteam-brief.md`. Target: the public
+> Independent adversary, per `archive/reviews/m0-redteam-brief.md`. Target: the public
 > surface only (repo `github.com/nerolabs/silt` @ `c1397e0`, built `go build
 > ./cmd/silt`, Go 1.26). Every finding below is a runnable PoC — a new
 > `*_test.go` added to the clone, **no source file modified**, repo builds clean.

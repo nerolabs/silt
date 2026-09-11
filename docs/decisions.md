@@ -6,7 +6,7 @@ derive) from any **construction** (a primitive that must still be built or resea
 This exists so decisions stop being invisible — a reader (builder, red team, researcher,
 user) can see exactly what is settled, what is deferred, and on what basis.
 
-**How these were decided.** The research package (`silt-reviews/research/research-outcome/`,
+**How these were decided.** The research package (`silt-agent-memory/researcher/reviews/research-outcome/`,
 read-only) was written specifically to answer these questions — each memo ends with a
 recommendation. So the *directions* below are **derived from the accepted research**, not
 re-opened. New research is commissioned only where a memo self-flags a wall (a primitive
@@ -272,7 +272,7 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   life `Σ_C demand·p ≤ its grant`. Stronger in form (aggregate over all receipts and objects), weaker in level
   (one token buys 50,000 units). The counting rule is CERTIFIED (`demand += settled/p`, two surfaces, v2/v3 never
   shared); the restatement of this decision's published property is ratified. Certification:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9-witnessed-demand-observable-under-sessions-RESEARCH-CERTIFICATION-2026-09-06.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R2.9-witnessed-demand-observable-under-sessions-RESEARCH-CERTIFICATION-2026-09-06.md`.
 
 ## D-C2 — "no quiet capture" is held in tension, never closed (by theorem)
 
@@ -389,9 +389,9 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
 ## D-CONSENSUS — consensus is boring and invariant-gated; the novelty budget is spent on M0
 
 - **Status:** ✅ DECIDED — 2026-08-14 (owner ratification, dialogue session).
-- **Basis:** the PE process review (`docs/reviews/builder-process-notes-PE-2026-08-14.md`)
+- **Basis:** the PE process review (`~/.claude/silt-agent-memory/principal-engineer/reviews/builder-process-notes-PE-2026-08-14.md`)
   and the research team's **independent same-day convergence** on the same diagnosis
-  (`silt-reviews/research/research-outcome/INTERSECTING-QUORUM-INVARIANT-note.md`, plus the
+  (`silt-agent-memory/researcher/reviews/research-outcome/INTERSECTING-QUORUM-INVARIANT-note.md`, plus the
   #402 certification `fork-anchor-gate-402-RESEARCH-CERTIFICATION-2026-08-14.md`): the four
   RC-blocking consensus bugs (#357, B2-handoff, #397, #402) were **one defect — a finality
   quorum that did not intersect over its phase's real validator set** — discovered one
@@ -482,7 +482,7 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
 - **Status:** ✅ DECIDED (direction) — 2026-08-25 (owner ratification). The consensus-rule
   construction (the state root) is **research-gated** and NOT decided here.
 - **Basis:** the PE design direction
-  (`silt-reviews/principle-engineer/D-TIERING-design-direction-2026-08-25.md`), verified
+  (`silt-agent-memory/principal-engineer/reviews/D-TIERING-design-direction-2026-08-25.md`), verified
   against code at `7089d27`: no state-root field in `Block` (core/chain/chain.go:295), the
   registry is unsharded (`AllEntries`), state is rebuilt by pure replay, and the WS
   checkpoint is a trust anchor only — so cheap-but-correct participation is impossible
@@ -507,7 +507,7 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
      registry.
   4. **Sequencing:** the Phase-3 deep-heights gate finishes first; the state-root research
      consult runs in parallel
-     (`silt-reviews/research/D-TIERING-state-root-keystone-CONSULT-2026-08-25.md`); mode
+     (`silt-agent-memory/researcher/reviews/D-TIERING-state-root-keystone-CONSULT-2026-08-25.md`); mode
      flags and neutral PoD are build-gated items that start after the deep gate is banked.
      #563 is scoped minimally (RED bench + bounded mitigation) and #559 folds into the
      snapshot-sync design, because snapshot sync is the structural fix for both.
@@ -560,7 +560,7 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   (research certification
   `.../research-outcome/C7-witness-based-floor-box-validation-RESEARCH-CERTIFICATION-2026-08-27.md`;
   full path
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C7-witness-based-floor-box-validation-RESEARCH-CERTIFICATION-2026-08-27.md`).
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/C7-witness-based-floor-box-validation-RESEARCH-CERTIFICATION-2026-08-27.md`).
   **Verdict:** witness-based validation of silt's set-valued validity state against the
   committed state root is sound and complete in the stateless-client sense (membership +
   non-membership proofs against the committed, quorum-attested root; the SMT's exclusion
@@ -584,9 +584,9 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   exist until the root it verifies against is a committed, attested block field, so this is a
   hard prerequisite for the witness path, not an optimization.
 - **RATIFIED 2026-08-28 — the era-3 committed state-root block format** (research certification
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era3-committed-state-root-format-RESEARCH-CERTIFICATION-2026-08-28.md`;
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era3-committed-state-root-format-RESEARCH-CERTIFICATION-2026-08-28.md`;
   PE ruling
-  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-era3-committed-state-root-format-2026-08-28.md`;
+  `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-era3-committed-state-root-format-2026-08-28.md`;
   design `docs/thinking/2026-08-28-era3-format-design-options.md`). The composed two-root
   format is **CERTIFIED-WITH-CONDITIONS** and Andrew ratified it with the mint correction. The
   ratified shape: two flat, required, attester-signed block fields — `StateRoot` (a
@@ -623,9 +623,9 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   once #603 lands.
 - **FROZEN 2026-08-29 — the era-3 committed state-root format is IMMUTABLE as of build
   `3af40bc`** (composed re-certification
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era3-committed-state-root-format-BUILT-RECERTIFICATION-2026-08-29.md`;
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era3-committed-state-root-format-BUILT-RECERTIFICATION-2026-08-29.md`;
   the design certification it re-certifies,
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era3-committed-state-root-format-RESEARCH-CERTIFICATION-2026-08-28.md`).
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era3-committed-state-root-format-RESEARCH-CERTIFICATION-2026-08-28.md`).
   The composed, BUILT two-root format — shipped by PRs #627 (step 1 root computation), #629
   (step 2a schema + v4-accept), #630 (step 2b validity predicate on every path), #631 (step 2c
   activation + mint-flip) — is **CERTIFIED FOR THE FREEZE** and **Andrew ratified the freeze on
@@ -659,11 +659,11 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   certified hold-the-tree bridge (a bounded boot-time cost, not a freeze-blocker).
 - **RATIFIED 2026-08-29 — era-4 witnessable state transitions (Option B), the format veto-gate**
   (research re-certification RECERT2
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-witnessable-transitions-RECERT2-2026-08-29.md`,
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era4-witnessable-transitions-RECERT2-2026-08-29.md`,
   **CERTIFIED-WITH-CONDITIONS**; prior passes it supersedes:
   `.../era4-witnessable-transitions-EQUIVALENCE-RESEARCH-2026-08-29.md` and
   `.../era4-witnessable-transitions-RECERT-2026-08-29.md`; PE ruling
-  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-era4-witnessable-transitions-2026-08-29.md`;
+  `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-era4-witnessable-transitions-2026-08-29.md`;
   design `docs/thinking/2026-08-29-era4-witnessable-transitions-options.md`). Andrew ratified the
   format veto-gate on 2026-08-29. **Why era-4 exists:** two `apply()` operations scan whole
   committed maps and so cannot be witness-validated by an O(payload) floor box — the TTL-expiry
@@ -750,7 +750,7 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   theorem** (research certification
   `.../research-outcome/C1-maturity-before-capture-RESEARCH-CERTIFICATION-2026-08-27.md`;
   full path
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C1-maturity-before-capture-RESEARCH-CERTIFICATION-2026-08-27.md`).
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/C1-maturity-before-capture-RESEARCH-CERTIFICATION-2026-08-27.md`).
   **Verdict: GATED — CERTIFIED-as-a-safe-parameterization, REFUTED-as-a-theorem**, confirming
   the canon (`docs/design/m0.md` §10, `owned-residuals.md` E3). The mechanism — the one-way
   `everMature` latch, plural threshold anchors, the de-maturation super-quorum — is certified
@@ -767,7 +767,7 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   CONDITIONAL THEOREM (C-1 = CERTIFIED-CONDITIONAL)** (research certification
   `.../research-outcome/C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`;
   full path
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`).
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`).
   **Verdict: CERTIFIED-CONDITIONAL — the lift succeeds, with a named boundary.** The prior
   entry's GATED "safe-parameterization, not a theorem" is replaced. "Maturity precedes
   capture" is now a **theorem (CT-1) under three hypotheses**: an honest-arrival floor **H**
@@ -792,7 +792,7 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   certification
   `.../research-outcome/C5-honest-operator-economics-composition-RESEARCH-CERTIFICATION-2026-08-27.md`;
   full path
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C5-honest-operator-economics-composition-RESEARCH-CERTIFICATION-2026-08-27.md`).
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/C5-honest-operator-economics-composition-RESEARCH-CERTIFICATION-2026-08-27.md`).
   Certifies the COMPOSITION of the honest floor-box operator's economics (relay credit +
   repair credit vs. real operating cost), not any leg in isolation. **Verdict: GATED**,
   decomposed by residual class. **CLOSED (certified intact under the composition):** the
@@ -833,11 +833,11 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
 - **RATIFIED 2026-08-28 — #600 DECIDED: the floor box is a semi-stateless witness-validating
   full validator; hold-tree is a bigger-box opt-in, never the floor default** (Andrew ratified
   the direction). Sources: PE ruling
-  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-600-floor-box-direction-2026-08-28.md`;
+  `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-600-floor-box-direction-2026-08-28.md`;
   research note
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/600-floor-box-direction-post-coexistence-RESEARCH-NOTE-2026-08-28.md`;
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/600-floor-box-direction-post-coexistence-RESEARCH-NOTE-2026-08-28.md`;
   C-7 certification
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C7-witness-based-floor-box-validation-RESEARCH-CERTIFICATION-2026-08-27.md`;
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/C7-witness-based-floor-box-validation-RESEARCH-CERTIFICATION-2026-08-27.md`;
   coexistence evidence `integration/cloudtest/coexist-20260827T212244-citev/`. This resolves
   the decentralization-posture question the earlier entries (2026-08-27) left as Andrew's call.
   The consequences, stated for the record:
@@ -907,7 +907,7 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
      mirror**. A hand-written guard mirrored the hand-written producer, both inherited the
      blind spot, and the guard stayed green over the accept-a-forgery gap. Cite the amended
      certification by full path:
-     `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-witness-floor-box-readset-v5-AMENDED-RESEARCH-CERTIFICATION-2026-08-30.md`
+     `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era4-witness-floor-box-readset-v5-AMENDED-RESEARCH-CERTIFICATION-2026-08-30.md`
      (supersedes the same-day
      `.../era4-witness-floor-box-readset-v5-RESEARCH-CERTIFICATION-2026-08-30.md` on identity
      and boundary label; that cert's REFUTE of "read-set = full O(payload) apply() touch-set"
@@ -936,9 +936,9 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
      **GATE:** certifiable CLOSURE of this residual is **gated on the #603 `bonded` /
      `epochSet` keystone probes** — do NOT mark this residual closed until those probes are
      green. Cite:
-     `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/535-recovery-boundary-disposition-RECONCILIATION-2026-08-30.md`
+     `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/535-recovery-boundary-disposition-RECONCILIATION-2026-08-30.md`
      and
-     `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RECONCILIATION-floorbox-livenessrecovery-boundary-2026-08-30.md`.
+     `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RECONCILIATION-floorbox-livenessrecovery-boundary-2026-08-30.md`.
 - **RATIFIED 2026-08-31 — the v5 floor-box recompute DIRECTION and the R-boundary POSTURE
   (HEAVY / fully-trustless).** Two owner ratifications on the lane-1 floor box: how the recompute
   closes completeness, and how far it validates.
@@ -947,7 +947,7 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
      recompute the Merkle Tree Hash, require it equals the committed digest. **NO new cryptographic
      primitive; NO `dueBucket` format change.** The direction reuses the existing committed-digest /
      recompute machinery. Cite:
-     `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-v5-floorbox-bounded-recompute-CRUX-RESEARCH-CERTIFICATION-2026-08-30.md`.
+     `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era4-v5-floorbox-bounded-recompute-CRUX-RESEARCH-CERTIFICATION-2026-08-30.md`.
   2. **R-boundary POSTURE RATIFIED HEAVY (Andrew, 2026-08-31).** The floor box reproduces **EVERY
      validity predicate** (Option B, fully-trustless). It does **NOT** merely re-derive the state
      root and trust finality for the accept decision. **Rationale (the owner's "pony" framing):**
@@ -968,9 +968,9 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
        the format addition owner-ratified (consistent with the 2026-08-30 open-ended-freeze
        sequencing above).
      - Cite the R-boundary reconciliations:
-       `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RECONCILIATION-lane1-Rboundary-root-count-2026-08-31.md`
+       `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RECONCILIATION-lane1-Rboundary-root-count-2026-08-31.md`
        and
-       `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-v5-Rboundary-Rscope-RECONCILIATION-2026-08-31.md`.
+       `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era4-v5-Rboundary-Rscope-RECONCILIATION-2026-08-31.md`.
 - **RATIFIED 2026-08-31 — the O(payload) HYBRID state-root recompute for the trustless floor
   box.** Andrew ratified the design that lets the tree-free **pony** (1 CPU / 2 GB) fully
   validate a block's committed `StateRoot` in **O(payload)**, not O(whole-state) — preserving
@@ -1001,9 +1001,9 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
      - **R3** — an execution-derived drift guard vs the real `apply()`.
      - Standing **R1** (RegCap) and **R2** (#535) carry forward.
      Cite:
-     `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/floorbox-recompute-P1a-Opayload-multileaf-RESEARCH-CERTIFICATION-2026-08-31.md`
+     `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/floorbox-recompute-P1a-Opayload-multileaf-RESEARCH-CERTIFICATION-2026-08-31.md`
      and
-     `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-floorbox-recompute-P1a-Opayload-multileaf-2026-08-31.md`.
+     `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-floorbox-recompute-P1a-Opayload-multileaf-2026-08-31.md`.
   4. **CORRECTED 2026-09-08 (`D-RECOMPUTE-FREEZE`, owner direction via the PE).** The sentence
      "O(payload), not O(whole-state)" does not describe the code as built. The digest-class
      recompute files state the honest cost themselves — *"COST — HONEST … NOT O(payload) …
@@ -1022,11 +1022,11 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   All three were held open by the two 2026-08-26 certifications as *owner scope*; the PE
   attached an engineering recommendation to each, the owner adopted them.
 - **Basis:** the certifications
-  (`silt-reviews/research/research-outcome/PoD-neutral-lane-B3-close-RESEARCH-CERTIFICATION-2026-08-26.md`,
+  (`silt-agent-memory/researcher/reviews/research-outcome/PoD-neutral-lane-B3-close-RESEARCH-CERTIFICATION-2026-08-26.md`,
   `…/D-TIERING-state-root-keystone-RESEARCH-CERTIFICATION-2026-08-26.md`), the consult
-  (`silt-reviews/principle-engineer/PoD-keystone-owner-knobs-CONSULT-2026-08-26.md`), and
+  (`silt-agent-memory/principal-engineer/reviews/PoD-keystone-owner-knobs-CONSULT-2026-08-26.md`), and
   the ruling
-  (`silt-reviews/principle-engineer/RULING-PoD-keystone-owner-knobs-2026-08-26.md`), whose
+  (`silt-agent-memory/principal-engineer/reviews/RULING-PoD-keystone-owner-knobs-2026-08-26.md`), whose
   load-bearing premises were verified against code before the recommendations were made.
 
 **1. Delivery-credit skim routes to the object's durability ESCROW (not burn).**
@@ -1117,7 +1117,7 @@ decomposition.
   surfaces for the first time: what a relay with `--accept-relay-payments` on does when a
   FREE swarm-relay connect arrives at the same listener.
 - **Basis:** the research certification
-  (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/PoD-7.3-free-vs-paid-relay-coexistence-RESEARCH-CERTIFICATION-2026-08-30.md`),
+  (`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/PoD-7.3-free-vs-paid-relay-coexistence-RESEARCH-CERTIFICATION-2026-08-30.md`),
   which certified the composed policy against the three gates it touches (economic mechanism
   / D-DEMAND-adjacent, M0 access-privacy / Don't-#3, and Don't-#1 not-forced-to-serve), and
   the builder deliberation
@@ -1169,11 +1169,11 @@ withdraw the free floor.
   whole-set wrong-accept gap. Without them a floor box validating by proof can be fed an
   incomplete set (omitted members) and cannot detect it.
 - **Basis:** the research certification
-  (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/v5-wholeset-digest-root-addition-RESEARCH-CERTIFICATION-2026-08-31.md`),
+  (`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/v5-wholeset-digest-root-addition-RESEARCH-CERTIFICATION-2026-08-31.md`),
   the PE cert cross-check
-  (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-v5-wholeset-digest-root-cert-crosscheck-2026-08-31.md`),
+  (`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-v5-wholeset-digest-root-cert-crosscheck-2026-08-31.md`),
   and the read-set enumeration
-  (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-readset-v5-quorum-wholeset-enumeration-2026-08-31.md`).
+  (`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-readset-v5-quorum-wholeset-enumeration-2026-08-31.md`).
 
 **Additive, immutable preserved.** The addition **appends to `stateRootLeavesV5` only**; the 18
 era-3 leaves are untouched, so a **v4 root stays byte-identical** (era-3 is frozen, #632). This is
@@ -1254,7 +1254,7 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   (`Σ balances + Σ escrow == grant + legitimate transfers`) holds across all three terminal
   lane states (never-redeemed, in-window-redeemed, evicted-then-redeemed); no new money pump;
   neither firewall (γ→1/N, standing) re-opened. Basis:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/A4-provisional-eviction-conservation-RESEARCH-CERTIFICATION-2026-09-01.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/A4-provisional-eviction-conservation-RESEARCH-CERTIFICATION-2026-09-01.md`.
   This cert supersedes, on the eviction axis, the prior B3 close cert
   (`PoD-neutral-lane-B3-close-RESEARCH-CERTIFICATION-2026-08-26.md`), which did not model
   bounded-map eviction.
@@ -1269,7 +1269,7 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   >8192-lane regime is unmeasured; no value may be pinned at desk). It is a **separate**
   certification unit (new receipt-lifetime rule + unlinkability interaction + new floor-box
   state bound + credit-layer eviction wiring), not folded into R0.4. Scoping cert:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4-receipt-expiry-scoping-RESEARCH-CERTIFICATION-2026-09-01.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R0.4-receipt-expiry-scoping-RESEARCH-CERTIFICATION-2026-09-01.md`.
 - **Open residual — RT-DELIV-3:** the delivery-credit `provKey` omits the server, a latent
   conservation break reachable only in the shared-ledger *sim* (not per-node prod). The
   next-session decision: fix now (add the server to `provKey`, which changes the conserved-lane
@@ -1279,7 +1279,7 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
 
 - **Status:** ✅ RATIFIED — 2026-09-01 (owner ratification). Two linked research verdicts on
   the floor-box witness-soundness spine (Boulder 1), certified together:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/floorbox-R1.3-refutation-R1.4-witness-soundness-RESEARCH-CERTIFICATION-2026-09-01.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/floorbox-R1.3-refutation-R1.4-witness-soundness-RESEARCH-CERTIFICATION-2026-09-01.md`.
 - **R1.3 — REFUTED (certs withdrawn).** The 2026-08-31 class-A / class-P / class-B directional
   certs are **WITHDRAWN**. They rested on the premise that fold-equality
   (`postRoot == StateRoot`) is a universal backstop that catches a forged witness value. That
@@ -1309,7 +1309,7 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
 
 - **Status:** ✅ RATIFIED — 2026-09-03 (owner: *"R0.6 ratified"*). Built the same day on
   `builder/r0.6-i5-evidence-recompute`. Certification:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/I5-cross-height-pruned-slash-forgery-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/I5-cross-height-pruned-slash-forgery-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`.
   Deliberation: `docs/thinking/2026-09-03-r0.6-i5-evidence-recompute-design.md`.
 - **The break (I5, LIVE on main, every era).** `VerifyEquivocation` read the height from a
   struct field but the signed message from `Hash()`, which short-circuits to the
@@ -1357,7 +1357,7 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   UNSATISFIABLE as written; see the annotation below and `D-SLASHCAP-ROUTE`.** Two interims REFUTED: a
   consensus block byte cap (collides with `RegCap`); an attester-side byte policy (collides with
   the #432 forced-value rule). Source:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.6-SlashesBytesCap-value-security-face-DELTA-CERTIFICATION-2026-09-03.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R0.6-SlashesBytesCap-value-security-face-DELTA-CERTIFICATION-2026-09-03.md`.
   **Value 16 MiB — ✅ RATIFIED by the owner 2026-09-03 ("2 ratified"), on immutable-#8 grounds, with
   the second face disclosed. The sentence ratified (Researcher Q4):** ratify 16 MiB as the memory ceiling
   knowing it is also the evidence size above which a double-signer keeps its seat with no on-chain
@@ -1367,7 +1367,7 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   > **⚠ THE RATIFIED SENTENCE ABOVE IS LEFT VERBATIM AND IS PARTLY REFUTED — 2026-09-10.** It is not
   > rewritten, because the owner ratified those words and only the owner unratifies them; this note
   > records what a research certification found and what he must now re-ratify. Certification:
-  > `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/SLASHCAP-NESTED-EVIDENCE-FIXED-POINT-RESEARCH-CERTIFICATION-2026-09-10.md`.
+  > `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/SLASHCAP-NESTED-EVIDENCE-FIXED-POINT-RESEARCH-CERTIFICATION-2026-09-10.md`.
   > **(i)** *"and only (d-3) removes"* is **FALSE**. §4.3's `Slashes′` is a recursively reduced COPY,
   > not a digest, and it leaves `Entries` and `LastCommit` — neither of which has a validity bound on a
   > peer's block — so (d-3) is a ~40× constant shrink (2 → ~80 committed proofs), not a close.
@@ -1477,7 +1477,7 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   field box with committed slashes is ever restored onto this binary, the reload truncates at
   the first invalidated block and stalls loudly rather than accept it.
 - **PE ruling:** MERGE-WITH-CONDITIONS, conditions F-1 and F-4 landed in the same PR
-  (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R0.6-i5-evidence-recompute-3131d5a-2026-09-03.md`).
+  (`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-R0.6-i5-evidence-recompute-3131d5a-2026-09-03.md`).
   Owed after: F-5 (pin `finalized > pruneFloor`, the G-2 derivation); the F-2 research
   question; a byte-tight at-ceiling fixture (the Tester: the accepted list lands 1.12 MiB
   under the cap).
@@ -1496,7 +1496,7 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
 ## D-GENESIS-ATTS-SEATING — a genesis seats only the attestations that verify over its hash; the rest are stripped, never refused
 
 - **Status:** ✅ RATIFIED — 2026-09-04 (owner: *"I ratify 1"*). Certification:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/genesis-atts-seating-rule-RESEARCH-CERTIFICATION-2026-09-04.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/genesis-atts-seating-rule-RESEARCH-CERTIFICATION-2026-09-04.md`.
 - **The rule.** In `AppendGenesis`, after the proposer-signature check and before apply, `b.Atts` becomes
   exactly the entries with `verifyAtt(a, b.Hash())`; never an error on this account; the committed
   `blocks[0].Atts` is the verified subset (so save / serve / reload are idempotent); a genesis `LastCommit`
@@ -1521,7 +1521,7 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
 ## D-R2.9-DIRECTION — byte-denominated per-increment delivery settlement; strict parity; the two measurements authorised
 
 - **Status:** ✅ RATIFIED — 2026-09-04 (owner: *"I also accept rulings on R2.9 and the future flixz.com
-  measurement"*). Brief: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9-OWNER-BRIEF-2026-09-04.md`;
+  measurement"*). Brief: `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R2.9-OWNER-BRIEF-2026-09-04.md`;
   certification: `R2.9-D-POD-KNOBS-delivery-settlement-repricing-RESEARCH-CERTIFICATION-2026-09-03.md`.
 - **The break (re-verified on main 2026-09-04):** a server strictly prefers never banking a witnessed
   receipt above B = 50,000 bytes (payoff `0.875·(B − fee)`: +58.7 M, 1,342×, at 64 MiB); suppression is one
@@ -1547,7 +1547,7 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
 ## D-FP2-SCOPE — the credit ledger stays ephemeral through the release candidate
 
 - **Status:** ✅ RATIFIED — 2026-09-04 (owner: *"scope close it is"*). Brief and certification:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/FP-2-redeem-atom-and-ledger-durability-OWNER-BRIEF-AND-CERTIFICATION-2026-09-04.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/FP-2-redeem-atom-and-ledger-durability-OWNER-BRIEF-AND-CERTIFICATION-2026-09-04.md`.
 - **The decision.** The credit ledger (balances, escrow, provisional lanes) is NOT persisted before the RC.
   This is an explicit, tested posture, not an accident: FP-2, FP-1 (`Bank.spent`) and R-F8-RESTART-REWIND stay
   open and inert, and are re-armed automatically by the first of — the **R2.4 economy-ON default flip**, any
@@ -1577,14 +1577,14 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
 
 - **Status:** ✅ RATIFIED — 2026-09-05 (owner: *"I'll take your recommendation, proceed"*).
 - **Seat reports:**
-  `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-R2.9a-bbootstrap-instrument-and-containments-2026-09-05.md`;
-  `/Users/andrewedmond/Claude/claude/silt-reviews/crypto-specialist/ADVISORY-R2.9a-Bbootstrap-observability-containment-prior-art-2026-09-05.md`;
-  `/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-R2.9a-grant-over-r-containment-and-pinning-2026-09-05.md`;
-  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R2.9a-minR-floor-3337e8b-2026-09-05.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/red-team/reviews/RED-TEAM-R2.9a-bbootstrap-instrument-and-containments-2026-09-05.md`;
+  `/Users/andrewedmond/.claude/silt-agent-memory/crypto-specialist/reviews/ADVISORY-R2.9a-Bbootstrap-observability-containment-prior-art-2026-09-05.md`;
+  `/Users/andrewedmond/.claude/silt-agent-memory/economist/reviews/ADVISORY-R2.9a-grant-over-r-containment-and-pinning-2026-09-05.md`;
+  `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-R2.9a-minR-floor-3337e8b-2026-09-05.md`.
 - **Certifications this is built on top of, both binding and neither reopened here:**
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-Bbootstrap-DELTA-contamination-privacy-floor-clock-RESEARCH-CERTIFICATION-2026-09-04.md`
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R2.9a-Bbootstrap-DELTA-contamination-privacy-floor-clock-RESEARCH-CERTIFICATION-2026-09-04.md`
   (G-BB-11, the minimum-requester floor) and
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-minR-floor-RECERT-sybil-pad-and-estimand-steerability-RESEARCH-CERTIFICATION-2026-09-05.md`
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R2.9a-minR-floor-RECERT-sybil-pad-and-estimand-steerability-RESEARCH-CERTIFICATION-2026-09-05.md`
   (G-BB-11′, the property; BB-20). The instrument's shape is certified by
   `R2.9a-Bbootstrap-instrument-sufficiency-RESEARCH-CERTIFICATION-2026-09-04.md` and is UNCHANGED —
   no bin, edge, floor value or clock design moves here.
@@ -1613,7 +1613,7 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   non-test callers.** `cmd/silt/bbootstrap.go` describes it in a comment and does not call it, so the
   half-stamped population is neither refused nor detected. The sentence above keeps its ratified text
   and carries this dated correction. Measured by the 2026-09-10 inert-mechanism sweep
-  (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/2026-09-10-inert-mechanism-sweep-core-adapters-0ed3b92.md`),
+  (`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/2026-09-10-inert-mechanism-sweep-core-adapters-0ed3b92.md`),
   confirmed here by call-graph read. Wiring it is ordinary lane work; it gets no residual name.
 - **Alternatives rejected.**
   - **A token-gated endpoint (containment #2).** REJECTED: silt's status token is a **single
@@ -1659,7 +1659,7 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
 - **CORRECTION — 2026-09-05, appended not substituted.** The bullet immediately above is **false on
   the fact**, and it is left standing so the record shows the correction rather than hiding it.
   Source: the blind principal-engineer review
-  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R2.9a-bbootstrap-build-tag-d5099fa-2026-09-05.md`
+  `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-R2.9a-bbootstrap-build-tag-d5099fa-2026-09-05.md`
   §6.2–6.3, which measured it on two real bonded validators.
   - **What the entry said:** `RecordBondChallenge`'s tick "is stamped from the bond auditor's request
     counter rather than a wall clock".
@@ -1688,7 +1688,7 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
     untouched by this correction; only the texts and the gates moved.
 - **CLOSED — 2026-09-05, G-BB-28, appended not substituted.** `R-BB-BOND-STAMP-TUPLE` is closed by
   deleting the stamp, not by re-arguing it. Certification:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-DONT3-READING-AND-BOND-STAMP-TUPLE-RESEARCH-CERTIFICATION-2026-09-05.md`
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R2.9a-DONT3-READING-AND-BOND-STAMP-TUPLE-RESEARCH-CERTIFICATION-2026-09-05.md`
   §2 (Q2), ratified under `D-DONT3-READING`.
   - **The ground:** the field had NO reader in any build configuration. `DecayStale` reads
     `lastBondTick`; `Reputation` reads neither tick; the census reads `firstFetchTick` (since the
@@ -1743,7 +1743,7 @@ reason to travel, and a header-only predicate keeps it out of URLs and logs.
 
 **Ratified 2026-09-05** by the owner: *"1 yes we can amend vision.md to include only what's
 needed and nothing leaves the node. 2 ratified."* Certification:
-`silt-reviews/research/research-outcome/R2.9a-DONT3-READING-AND-BOND-STAMP-TUPLE-RESEARCH-CERTIFICATION-2026-09-05.md`.
+`silt-agent-memory/researcher/reviews/research-outcome/R2.9a-DONT3-READING-AND-BOND-STAMP-TUPLE-RESEARCH-CERTIFICATION-2026-09-05.md`.
 
 **What was decided.** The recorded reading of `docs/TENETS.md` Part VI Don't #3 is the
 three-prong test **T-DONT3**. A record of who-fetched-what is inside the prohibition if any of:
@@ -1855,7 +1855,7 @@ here. Gates: `TestR29aEconomySelfIsServedFromTheStatusSnapshot`,
 `TestR29aF2NoUnauthenticatedResponseOnTheWholeSurfaceCarriesTheWithheldCounter`,
 `TestR29aOneCacheTwoViewsAnAnonymousReadDoesNotStripTheOperatorsView` (`cmd/silt`), and the
 live-daemon arm of `TestEconomyEndToEndOnLiveDaemon` (`e2e`). Source:
-`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/2026-09-05-RULING-r2.9a-status-surface-cache-stamp-and-f2-gate.md`.
+`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/2026-09-05-RULING-r2.9a-status-surface-cache-stamp-and-f2-gate.md`.
 
 ## D-R2.9a-RUN-CALLS — the seven `B_bootstrap` run-precondition calls, ratified 2026-09-05
 
@@ -1907,7 +1907,7 @@ consumer of a quantile level remains, so G-BB-1′ has nothing to pin; the Resea
 its disposition. The Economist's remaining asks travel with the handoff: answer G-BB-5
 (gateway vs per-viewer nodes) first, and build T-1 (the insufficient-balance refusal
 histogram) as the direct observable of the build-immutable #4 harm. Source:
-`/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-R2.9a-grant-over-r-containment-and-pinning-2026-09-05.md`.
+`/Users/andrewedmond/.claude/silt-agent-memory/economist/reviews/ADVISORY-R2.9a-grant-over-r-containment-and-pinning-2026-09-05.md`.
 
 **4. G-BB-13′ Part A: silt REFUSES `-ui <routable> -bbootstrap` at startup.** Owner:
 *"refuse at startup."* Part B (the Don't #3 veto gate on a routable histogram) is therefore
@@ -1944,7 +1944,7 @@ ratio ships; the re-aimed handoff.
 
 **Research verdict on item 1, appended 2026-09-05 — GATED; the VALUE 32 GiB is REFUTED and
 may not ship; the METHOD is CERTIFIED and G-BB-17 is lifted.**
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-grant-over-r-32GiB-structural-pin-G-BB-19-RESEARCH-CERTIFICATION-2026-09-05.md`.
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R2.9a-grant-over-r-32GiB-structural-pin-G-BB-19-RESEARCH-CERTIFICATION-2026-09-05.md`.
 The decisive artifact was `core/node/file.go`'s parity fallback (the `allData()` / whole-column
 `fetchCols(parityCols, …)` block at the time): when ANY data chunk was missing the fetcher pulled
 EVERY parity column of the whole object, so the worst-case per-server draw at `F = 1` is
@@ -2012,7 +2012,7 @@ population) or by a certified derivation that the #4 floor does not apply to a r
 The daemon now refuses to enable either priced lane with the faucet unconfigured (G-R212-1).
 
 **G-R212-2, CERTIFIED 2026-09-06 — no longer blocks era-4; a re-price is CERTIFIED and awaits the
-owner** (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/G-R212-2-relay-lane-reprice-RESEARCH-CERTIFICATION-2026-09-06.md`).
+owner** (`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/G-R212-2-relay-lane-reprice-RESEARCH-CERTIFICATION-2026-09-06.md`).
 Route (b) holds: the #4 floor does not bind the relay price, because the free splice is
 unconditional (`D-POD-RELAY-COEXIST`) and no production path can open a paid session — a
 load-bearing condition; if a free/paid differential or a forced paid path ever opens, #4
@@ -2032,7 +2032,7 @@ does not move, so `g/f` and the guard bound are unchanged and ONE-FACE is not en
 `RelayIncrementCredit = 1`, `MaxChainLength` and `MaxSessionBytes` DERIVED, `MaxAnchorsPerSession` derives
 to 1, the relay adapter's shared per-splice cap takes the same value; the nine sites move in ONE PR
 (cert §4.1). BUILT 2026-09-06; blind PE code ruling MERGE-AFTER folded in
-(`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-G-R212-2-relay-reprice-code-2026-09-06.md`):
+(`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-G-R212-2-relay-reprice-code-2026-09-06.md`):
 the derivation collapsed the face into S_max, so the face is now held by INDEPENDENT literals
 (F-1) and the runtime budget `l.fee × k` is gated by a node-tier low-fee test (F-3); the shared cap
 has its own gate (F-2). **Scope delta recorded against cert §3.4 (PE N-5):** the `Serve` refusal of a
@@ -2050,8 +2050,8 @@ certification, over re-opening ruling 3. **Owner chose route (a) on 2026-09-06 (
 recommended"*).** Consult chain opened the same day: Economist advisory on what re-denominating `λ` does
 to the D-S7 escrow auto-skim (the unwitnessed serve feeds it) → Researcher certification of the
 admissible `λ` interval strictly below `p/U` with `R-LAMBDA-DUST` disclosed → owner ratifies the value.
-Nothing is built until the value is ratified. **CERTIFIED with corrections, 2026-09-06** (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/G-R212-7-lambda-redenomination-RESEARCH-CERTIFICATION-2026-09-06.md`;
-Economist advisory `/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-G-R212-7-lambda-redenomination-2026-09-06.md`). Composed claim: re-denominating `λ` to 1 credit per `Dλ` bytes, jointly with a
+Nothing is built until the value is ratified. **CERTIFIED with corrections, 2026-09-06** (`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/G-R212-7-lambda-redenomination-RESEARCH-CERTIFICATION-2026-09-06.md`;
+Economist advisory `/Users/andrewedmond/.claude/silt-agent-memory/economist/reviews/ADVISORY-G-R212-7-lambda-redenomination-2026-09-06.md`). Composed claim: re-denominating `λ` to 1 credit per `Dλ` bytes, jointly with a
 per-lane byte-remainder accumulator and a re-denominated `RepairBountyBase`, satisfies STRICT parity, the 64 GiB
 pin, Don't #7, T-AR, D-S7 and #4 **iff `U/p < Dλ ≤ 524,288` with `U/p ≥ 186,268`** (T-NUMERAIRE: parity bounds
 `Dλ` from below; Don't #7 read against the already-ratified relay price bounds it from above). The Economist's
@@ -2065,7 +2065,7 @@ the dust regime is 100 % at the shipped 64 KiB chunk, so the accumulator is REQU
 REFUTED — the certified minimal first step is **`λ` + `RepairBountyBase` + accumulator BEFORE R2.9** (parity is
 vacuous today; four strict improvements incl. R-FLAT-FEE flipping +58.7 M → −43,601 credits). **NEW G-R212-8
 (blocks R2.9):** one token face funds 12.21 GiB and `B_floor` needs 3.66×, so an object fetch must span ≥ 4 anchor
-sessions with no face remainder burned. *[STRUCK 2026-09-07: the "≥ 4 anchor sessions" wording is the wrong estimand and would ship a vacuous gate if marked met; G-R212-8 is DISCHARGED as restated — the surviving form is the concurrency arithmetic `6 + 3 = 9 ≤ 10` gated at `cmd/silt/numeraire.go`; `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/BOULDER2-residual-closures-bounty-truncation-lambda-dust-relay-anon-refuse-self-spend-parity-estimand-RESEARCH-CERTIFICATION-2026-09-07.md` §8.4.]* Eleven gates G-λ-1…11 (cert §8.1). **Certified for ratification (cert §11,
+sessions with no face remainder burned. *[STRUCK 2026-09-07: the "≥ 4 anchor sessions" wording is the wrong estimand and would ship a vacuous gate if marked met; G-R212-8 is DISCHARGED as restated — the surviving form is the concurrency arithmetic `6 + 3 = 9 ≤ 10` gated at `cmd/silt/numeraire.go`; `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/BOULDER2-residual-closures-bounty-truncation-lambda-dust-relay-anon-refuse-self-spend-parity-estimand-RESEARCH-CERTIFICATION-2026-09-07.md` §8.4.]* Eleven gates G-λ-1…11 (cert §8.1). **Certified for ratification (cert §11,
 verbatim there): `ServeMintBytesPerCredit Dλ = 393_216` (λ = 1 credit per 384 KiB, `PF = 1.5`) derived as
 `⌈3·U/(2·p)⌉` from `DeliveryIncrementBytes U = 262_144`, `DeliveryIncrementCredit p = 1`; `RepairBountyBase =
 c·k·shardBytes/(U/p)`; `f` and `g` do not move.** FIVE OWNER CALLS OPEN (cert §8.2): `Dλ` · `(U, p)` · the bounty
@@ -2128,10 +2128,10 @@ object's funded figure (red-team F2's shape).
 
 - **Status:** ✅ RATIFIED — 2026-09-06 (owner: *"I take all recommendations, proceed"*), on the brief given
   in-session against the G-R212-8 certification
-  (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9-G-R212-8-delivery-anchor-quantization-RESEARCH-CERTIFICATION-2026-09-06.md`),
+  (`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R2.9-G-R212-8-delivery-anchor-quantization-RESEARCH-CERTIFICATION-2026-09-06.md`),
   the witnessed-demand certification (`…/R2.9-witnessed-demand-observable-under-sessions-RESEARCH-CERTIFICATION-2026-09-06.md`),
   the settlement-skim certification (`…/R2.9-settlement-skim-under-fetcher-chosen-deltas-RESEARCH-CERTIFICATION-2026-09-06.md`)
-  and the blind PE ruling `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R2.9-node-half-e3eb273-2026-09-06.md`.
+  and the blind PE ruling `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-R2.9-node-half-e3eb273-2026-09-06.md`.
 - **(1) G-6, delivery lane — REFUND, not burn.** The unsettled session remainder is REFUNDED to the session's
   durable fetcher at close, with a per-identity cap of ⌊g/f⌋ live anchors replacing the burn's role as the
   paid-serial occupancy rate limiter. The MECHANISM owes its own certification before it is built; the code
@@ -2152,7 +2152,7 @@ object's funded figure (red-team F2's shape).
   1.4 KB manifests padded to the chunk size; 3.9× store growth at 256 KiB otherwise) into the same
   content-addressing break, or defer both. Not built until that call.
 - **(1′) AMENDED 2026-09-07 (owner: *"I'll take the recommendations for both"*), on the refund certification
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9-session-remainder-refund-and-live-anchor-cap-RESEARCH-CERTIFICATION-2026-09-06.md`:
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R2.9-session-remainder-refund-and-live-anchor-cap-RESEARCH-CERTIFICATION-2026-09-06.md`:
   the PAYEE is an account that already exists on the server's ledger, never the registering lookup (M1: the anchor
   is a bearer instrument, the presenting fetcher need not be the payer, and `acct()` conjures a grant); the
   remainder is released at ANCHOR EXPIRY (`maxAnchorEpoch + W + 1`, the guard's own window), not at session close
@@ -2167,7 +2167,7 @@ object's funded figure (red-team F2's shape).
   separate open residual. **BUILT 2026-09-07** (`pipeline.DefaultChunkSize = 262,144`, `pipeline.ManifestFrameSize`; deliberation
   `docs/thinking/2026-09-07-default-chunk-256k-manifest-framing.md`); the MERGE is held for the owner's go — it changes the
   root every NEW publish of already-published bytes produces. **Blind PE fold-in 2026-09-07**
-  (`silt-reviews/principle-engineer/RULING-default-chunk-256k-manifest-framing-b365f10-2026-09-07.md`): the framing
+  (`silt-agent-memory/principal-engineer/reviews/RULING-default-chunk-256k-manifest-framing-b365f10-2026-09-07.md`): the framing
   change alone had moved the GENESIS block hash (the entry's manifest chunk IDs are inside the hashed block) — the PE
   recommended pinning the padded frame; **the OWNER RULED 2026-09-07: accept the new genesis** (`f428d0a8…0951`; no live
   network exists, every development chain is wiped on upgrade), gated on the literal in `TestGenesisBlockHashIsPinned`;
@@ -2269,7 +2269,7 @@ dereference); upgrade the observing daemon.
 ### EXTENSION, ratified 2026-09-09 — the flag governs the WIRE, not only the reader
 
 **Ratified by the owner 2026-09-09**, on the Researcher's certification
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C3-GOSSIP-DISCLOSURE-vs-D-UI-PRIVACY-FLAG-RESEARCH-CERTIFICATION-2026-09-09.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/C3-GOSSIP-DISCLOSURE-vs-D-UI-PRIVACY-FLAG-RESEARCH-CERTIFICATION-2026-09-09.md`
 (verdict GATED, certifiable only as alternative A; ratification required in every alternative).
 The sentence ratified, verbatim:
 
@@ -2332,7 +2332,7 @@ showing the one-byte value IS committed).
 ## D-CONSENSUS-ARMING — the round clock arms on a replicated condition; a relayable round certificate; the published f+1 liveness bound
 
 - **Status:** ✅ RATIFIED — 2026-09-07 (owner: *"agreed with all (ratify)"*), on the certification
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/CONSENSUS-LIVENESS-h43-round-ladder-desync-441-380-RESEARCH-CERTIFICATION-2026-09-07.md`
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/CONSENSUS-LIVENESS-h43-round-ladder-desync-441-380-RESEARCH-CERTIFICATION-2026-09-07.md`
   and the RED gate G-H43-1 (`core/node/modelcheck_h43_arming_test.go`, Tester branch
   `tester/h43-round-ladder-desync-modelcheck` @ `8b1e1ef`). ROADMAP owner calls 18, 19 and 20.
 - **The defect (attributed):** `core/node/rounds.go:306-310` arms the round clock on LOCAL mempool content, so the
@@ -2357,7 +2357,7 @@ showing the one-byte value IS committed).
     0 in a mature epoch, where the >⅔ frozen-weight rule is the bar (research certification
     `CONSENSUS-380-quorum-floor-direction-1-PREDICATE-AND-CERTIFICATION-2026-09-08.md` §1)"*. That certification
     is the ONE certification for the change (rule 9:
-    `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/CONSENSUS-380-quorum-floor-direction-1-PREDICATE-AND-CERTIFICATION-2026-09-08.md`,
+    `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/CONSENSUS-380-quorum-floor-direction-1-PREDICATE-AND-CERTIFICATION-2026-09-08.md`,
     §1 the predicate, §6 the composed diff). Head-counting the epoch set stays REFUTED (B2); the trusted opt-out (`-byzantine-quorum=false`) and legacy mode keep `cfg.Quorum`
     unchanged; `cfg.Quorum` stays the gather target on EVERY proposal path (so a uniform swarm's blocks carry the
     same attestation count as before — the change adds accepts only). Three merge conditions rode with it: Reload
@@ -2371,7 +2371,7 @@ showing the one-byte value IS committed).
 ## D-RC-SCOPE-S1 — the Release Candidate ships with the economy default-OFF; the flip is a `0.9.x` release before `1.0.0`
 
 - **Status:** ✅ RATIFIED — 2026-09-07 (owner: *"agreed with all (ratify)"*), on the Economist's scope advice
-  `/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07.md` §4 (option b) and the planner's recommendation in `ROADMAP.md` (scope call S1).
+  `/Users/andrewedmond/.claude/silt-agent-memory/economist/reviews/ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07.md` §4 (option b) and the planner's recommendation in `ROADMAP.md` (scope call S1).
 - **The decision:** the RC (`0.9.0`, the era-4/v5 stamp-raising release, format frozen, floor box never-Accept)
   ships with `-economy` DEFAULT-OFF and every paid lane BUILT, gated and dark. The external B8 pass attacks the
   frozen consensus AND the economy under `-economy` ON in the harness. The default flip (R2.4) is a `0.9.x`
@@ -2463,9 +2463,9 @@ showing the one-byte value IS committed).
 ## D-H43-WORKLESS-DESIGNEE — the restated liveness bound, the entry-forward cap, and the null proposal routed to era 5
 
 - **Status:** ✅ RATIFIED — 2026-09-07 (owner: *"1/ ratify, 2 ratify 3/ ratify. please proceed"*), on the blind delta
-  certification `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/CONSENSUS-LIVENESS-h43-ABC-ASBUILT-workless-designee-RESEARCH-CERTIFICATION-2026-09-07.md`
-  and the composed-diff re-certification `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/CONSENSUS-LIVENESS-h43-COMPOSED-DIFF-c2a476a-RESEARCH-CERTIFICATION-2026-09-07.md`,
-  with the blind PE ruling `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-h43-consensus-arming-c2a476a-2026-09-07.md`.
+  certification `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/CONSENSUS-LIVENESS-h43-ABC-ASBUILT-workless-designee-RESEARCH-CERTIFICATION-2026-09-07.md`
+  and the composed-diff re-certification `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/CONSENSUS-LIVENESS-h43-COMPOSED-DIFF-c2a476a-RESEARCH-CERTIFICATION-2026-09-07.md`,
+  with the blind PE ruling `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-h43-consensus-arming-c2a476a-2026-09-07.md`.
   ROADMAP owner calls 21, 22 and 23; built and merged as PR #772 (`builder/h43-consensus-arming`).
 - **The mechanism this amends `D-CONSENSUS-ARMING` for:** `R-H43-WORKLESS-DESIGNEE` (M4) — a round whose designee is LIVE but
   holds none of the height's pending work is wasted exactly like a round on a down designee, because the empty-block refusal
@@ -2491,7 +2491,7 @@ showing the one-byte value IS committed).
 ## D-RECOMPUTE-FREEZE — the trustless-recompute track is frozen; the ROADMAP is reordered to the simplicity spine; ten simplicity rules are standing
 
 - **Status:** ✅ DIRECTED by the owner via the PE seat, 2026-09-08 — read as direction, not a consult. The note:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/NOTE-to-silt-team-simplicity-and-roadmap-reorder-2026-09-08.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/NOTE-to-silt-team-simplicity-and-roadmap-reorder-2026-09-08.md`.
 - **The verdict the direction rests on.** The trust-plane CORE (I1–I5 consensus and the model-check, PoST bonds, blind
   tokens, the γ→1/N firewall, the economy — what existed at the 2026-08-19 audit) is ESSENTIAL complexity; nothing in
   the 08-19 KEEP ruling is reversed. The floor-box trustless changed-path recompute keystone and its apparatus (era-4/5
@@ -2709,7 +2709,7 @@ showing the one-byte value IS committed).
   against a modal or published bound where the purpose requires the worst bound the model admits;
   **F2** a quantization/flooring step between the knob and the guarantee that the derivation did not
   carry through; **F3** resting on a coupling premise no driven test ever exercised. **It RETURNED
-  2026-09-09:** `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-derivation-route-audit-pre-freeze-2026-09-09.md`.
+  2026-09-09:** `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-derivation-route-audit-pre-freeze-2026-09-09.md`.
   The exemplar failed all three faces, and the route's output — `4 × EpochBlocks × T_b` — contains a
   term (`T_b`) the guarantee does not, so **it emits a violating value for any block interval below
   17.92 s/height**; the measurement landed at 44 s, a 2.5× accident. The same route applied at an
@@ -2787,7 +2787,7 @@ showing the one-byte value IS committed).
 
 - **Status:** ✅ DECIDED — 2026-09-09 (owner: *"The SlashesBytesCap call: CLOSE THE ROUTE. Not a
   re-ratification. The value stays 16 MiB. The route goes."*), on the pre-freeze derivation-route audit
-  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-derivation-route-audit-pre-freeze-2026-09-09.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-derivation-route-audit-pre-freeze-2026-09-09.md`.
   Deliberation: [`thinking/2026-09-10-slashcap-route-close-design.md`](thinking/2026-09-10-slashcap-route-close-design.md).
 - **The value is unchanged.** `chain.SlashesBytesCap` stays 16 MiB. Nothing about the constant moved.
 - **The defect.** The cap is a consensus validity rule enforced on every validator
@@ -2867,7 +2867,7 @@ showing the one-byte value IS committed).
 
 - **Status:** ✅ FOUR OWNER CALLS DECIDED — 2026-09-10, answering the four open questions in
   `ROADMAP.md` "▶ OPEN QUESTIONS FOR THE OWNER". Basis: the nested-evidence certification
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/SLASHCAP-NESTED-EVIDENCE-FIXED-POINT-RESEARCH-CERTIFICATION-2026-09-10.md`
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/SLASHCAP-NESTED-EVIDENCE-FIXED-POINT-RESEARCH-CERTIFICATION-2026-09-10.md`
   and the driven measurement `R-NEST-GATE` (#795). Companion: `D-SLASHCAP-ROUTE`.
 
 ### Call 1 — BUY the signature-preimage change at D1, conditional on its delta cert
@@ -2904,7 +2904,7 @@ the #397 schema argument by itself — which is the leg that was always load-bea
 
 1. **The delta cert lands.** *"If it refutes, come back to me, don't route around it."* Commissioned
    2026-09-10; verdict filed to
-   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/V5-SIGNATURE-PREIMAGE-HEIGHT-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md`.
+   `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/V5-SIGNATURE-PREIMAGE-HEIGHT-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md`.
 2. **It COMPLEMENTS (d-3); it does not replace it.** (d-3) `AnswerDigest` still ships. The delta
    cert is asked to confirm (d-3) retains independent work once evidence is `O(1)`, and to say so
    plainly if it does not — the owner wants to know if he is buying two things where one would do.
@@ -3011,7 +3011,7 @@ naming what silt keeps instead.
 ## D-PREIMAGE-CERT-2026-09-10 — the preimage delta cert returns GATED; the consensus quantity rule enters the canon; `MinBond` is a defect to fix, bound to the chain
 
 - **Status:** ✅ CERT RECEIVED + ✅ ONE OWNER RULING — 2026-09-10. Certification:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/V5-SIGNATURE-PREIMAGE-HEIGHT-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/V5-SIGNATURE-PREIMAGE-HEIGHT-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md`.
   Follows `D-PREIMAGE-BUY-2026-09-10`. **Verdict: GATED — the DIRECTION is CERTIFIED, the build is
   gated on five conditions, two of which correct the change as the owner bought it.**
 - **The BUY stands.** The owner's scar argument is independent of everything the cert found and is
@@ -3411,7 +3411,7 @@ bind that costs the same as two. *"That's buy-less-and-better with a number atta
 
 - **Status:** ⛔ STOPPED AND REPORTED — 2026-09-10, per the owner's standing instruction on owner call C:
   *"If the cert refutes, come back to me, don't route around it."* Certification:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/D3-ANSWERDIGEST-TWO-LEVEL-HASH-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/D3-ANSWERDIGEST-TWO-LEVEL-HASH-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md`.
   **Verdict: GATED.** Nothing is built. Owner call D (drop manifest item 4) is sequenced after C and
   therefore also stalls.
 - **THE PURCHASE SURVIVES; THE SPECIFICATION DOES NOT.** The owner bought (d-3) for **self-covering**
@@ -3505,7 +3505,7 @@ also could not read the then-unmerged branch; that branch is now `main` @ `76bf7
 ## D-CFGBIND-CERT-2026-09-10 — the genesis-config bind is certified; membership corrects UPWARD to 17, and a live unbound consensus parameter was found OUTSIDE the gate's scope
 
 - **Status:** ✅ CERT RECEIVED, ⚠ GATED — 2026-09-10. Certification:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/GENESIS-CONFIG-FAMILY-BIND-RESEARCH-CERTIFICATION-2026-09-10.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/GENESIS-CONFIG-FAMILY-BIND-RESEARCH-CERTIFICATION-2026-09-10.md`.
   Answers owner call F (`D-FREEZE-CALLS-CDEF-2026-09-10`). **Direction CERTIFIED, mechanism
   specified, membership corrected upward, four limbs GATED.**
 
@@ -3625,7 +3625,7 @@ unaudited beyond two fields), the surviving paramless path, and the legacy-leg s
 - **Status:** ✅ BUILT, package green — 2026-09-10. Owner call C (`D-FREEZE-CALLS-CDEF-2026-09-10`)
   delivered against `D3-ANSWERDIGEST-TWO-LEVEL-HASH-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md` and
   the follow-on
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/D3-PARITY-MALFORMEDPRUNED-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md`.
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/D3-PARITY-MALFORMEDPRUNED-DELTA-RESEARCH-CERTIFICATION-2026-09-10.md`.
 - **The purchase, driven not asserted (G-D3-7).** A pruned v5 block recomputes its own hash from
   what it retains, carries no `Pruned` token, and mutating its retained body MOVES the hash. The
   same gate drives the **contrast on v2**, where the identical rewrite is invisible — so the defect
@@ -3979,7 +3979,7 @@ Calling them safe would be the decoration failure in a new place.
   RED on the benign edit (W2) and **GREEN on the fatal one** (S4 — the check lifted into a helper
   defined later in `daemon.go` and called before `Recover`: both source gates green, the binary
   serving under a divergent `-bond-label-k`, zero refusal lines). Ruling:
-  `silt-reviews/principle-engineer/RULING-owner-call-F-genesis-params-wiring-CODE-0d99aef-2026-09-10.md`.
+  `silt-agent-memory/principal-engineer/reviews/RULING-owner-call-F-genesis-params-wiring-CODE-0d99aef-2026-09-10.md`.
 - **`silt genesis` prints its hash labelled PARAMLESS.** A daemon-launched network no longer has one
   true genesis hash; the link and the manifesto root remain config-independent and are printed
   unqualified.
@@ -4063,7 +4063,7 @@ permanence.
   constraint it creates is written down here. Filed the same day owner call F's delivery merged, so
   the record and the behaviour land together.
 - **Raised by:** the blind PE review of the call-F wiring
-  (`silt-reviews/principle-engineer/RULING-owner-call-F-genesis-params-wiring-CODE-0d99aef-2026-09-10.md`),
+  (`silt-agent-memory/principal-engineer/reviews/RULING-owner-call-F-genesis-params-wiring-CODE-0d99aef-2026-09-10.md`),
   as *"the coupling the consult missed"*. It was routed to the owner rather than settled by the
   reviewer or the builder, because a tier reclassification is not a build decision.
 - **Canon:** `docs/TENETS.md` Part IX now carries the PRINCIPLE (a value bound into a frozen

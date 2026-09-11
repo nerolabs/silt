@@ -192,7 +192,7 @@ func FindEquivocations(a, b []Block) []Equivocation {
 // the candidate set cannot manufacture a false slash: VerifyEquivocation
 // remains the gate, with its honest exemptions (sequential heights, cross-round
 // lock-change under a POL, bare-hash authorship) intact.
-// Certification: silt-reviews/research/research-outcome/
+// Certification: silt-agent-memory/researcher/reviews/research-outcome/
 // 496-height1-equivocation-undetected-RESEARCH-CERTIFICATION-2026-08-21.md.
 func signers(b *Block) [][]byte {
 	out := make([][]byte, 0, 1+len(b.PrepareQC)+len(b.Atts))

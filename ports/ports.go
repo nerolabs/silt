@@ -236,7 +236,7 @@ type CreditLedger interface {
 	// session (relay-issued, blind-signed, spent once on this ledger); an unanchored
 	// session has budget 0 and pays 0. Never touches the fetcher's account and never
 	// standing (the γ→1/N firewall). Δ Σ_L = settled − Σ face ≤ 0. Certification:
-	// silt-reviews/research/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md.
+	// silt-agent-memory/researcher/reviews/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md.
 	RedeemRelayCredit(relay, fetcher NodeID, chainValue, budget int64) int64
 	// SpendRelayAnchors records k VERIFIED relay prepayment anchors as spent on this
 	// ledger, all-or-nothing, and returns their summed face (k × Fee()) — the

@@ -2,7 +2,7 @@ package credit
 
 // R2.10 / F8 — G-F8-2 (Tester, 2026-09-04): a source that FALLS lowers nothing and
 // re-admits nothing. Binding spec:
-// silt-reviews/research/research-outcome/R2.10-F8-chain-anchored-epoch-RESEARCH-CERTIFICATION-2026-09-04.md
+// silt-agent-memory/researcher/reviews/research-outcome/R2.10-F8-chain-anchored-epoch-RESEARCH-CERTIFICATION-2026-09-04.md
 // §3.3 (read the source ONCE at entry, raise the watermark by max, sweep and screen
 // against the WATERMARK) and §6 G-F8-2 (delivery arm + relay arm).
 //

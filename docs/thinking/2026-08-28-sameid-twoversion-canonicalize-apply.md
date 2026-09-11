@@ -9,7 +9,7 @@ committed `regVersion`/`bondDomain`/`bonded` (and the ownership writes) become a
 function of block content, identical across every intra-block slice order.
 
 This is the certified fix for the finding routed by #622. It is CERTIFIED
-(`silt-reviews/research/research-outcome/sameid-twoversion-intrablock-bondreg-contention-RESEARCH-CERTIFICATION-2026-08-28.md`)
+(`silt-agent-memory/researcher/reviews/research-outcome/sameid-twoversion-intrablock-bondreg-contention-RESEARCH-CERTIFICATION-2026-08-28.md`)
 and human-ratified (Andrew: canonicalize).
 
 ## The finding (what #622 routed)

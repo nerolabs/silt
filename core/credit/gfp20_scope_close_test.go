@@ -32,7 +32,7 @@ import (
 // rule (build-immutable #8); and the exclusion of the standing fields.
 //
 // Certification and the obligation table:
-// /Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/FP-2-redeem-atom-and-ledger-durability-OWNER-BRIEF-AND-CERTIFICATION-2026-09-04.md
+// /Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/FP-2-redeem-atom-and-ledger-durability-OWNER-BRIEF-AND-CERTIFICATION-2026-09-04.md
 //
 // SOURCE GATE: this test reads Go source text under core/credit and cmd/silt. It
 // checks the DECLARED store surface of credit.Ledger, the DECLARED default of the

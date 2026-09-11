@@ -81,7 +81,7 @@ before any consumer is wired — still on paper, still pre-build.
 - `docs/design/pod.md` — the PoD spec draft (status: research-gated).
 - This deliberation note.
 - The consult filed at
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/PoD-neutral-lane-B3-close-CONSULT-2026-08-26.md`
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/PoD-neutral-lane-B3-close-CONSULT-2026-08-26.md`
   (outside the repo; referenced from the spec).
 
 No code. The build items (mode flags, the receipt wiring) stay behind the

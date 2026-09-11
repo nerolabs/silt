@@ -4,7 +4,7 @@ package main
 // rt_r04b_c3_laneoff_test.go style: cmdDaemon's wiring sits inside the flag-driven
 // block with no callable seam, so these see literals and their order, nothing else,
 // and every failure says so. Binding spec:
-// silt-reviews/research/research-outcome/R2.10-F8-chain-anchored-epoch-RESEARCH-CERTIFICATION-2026-09-04.md
+// silt-agent-memory/researcher/reviews/research-outcome/R2.10-F8-chain-anchored-epoch-RESEARCH-CERTIFICATION-2026-09-04.md
 // §5 R-F8-DISABLED, §6 G-F8-3 and G-F8-6.
 
 import (

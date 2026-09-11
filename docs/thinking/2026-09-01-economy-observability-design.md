@@ -2,8 +2,8 @@
 
 **Date:** 2026-09-01 · **Seat:** Builder · **Type:** DESIGN ONLY (no code this pass) ·
 **Sources this deliverable is built on:**
-- Economist spec: `/Users/andrewedmond/Claude/claude/silt-reviews/economist/2026-09-01-economy-observability-and-roadmap-proposal.md`
-- Economist audit: `/Users/andrewedmond/Claude/claude/silt-reviews/economist/2026-09-01-tiered-edge-economy-sustainability-audit.md`
+- Economist spec: `/Users/andrewedmond/.claude/silt-agent-memory/economist/reviews/2026-09-01-economy-observability-and-roadmap-proposal.md`
+- Economist audit: `/Users/andrewedmond/.claude/silt-agent-memory/economist/reviews/2026-09-01-tiered-edge-economy-sustainability-audit.md`
 - Existing telemetry surface: `cmd/silt/ui.go` (`/api/status` durability block, `/api/fund`).
 
 **The requirement (owner, one line):** any operator sees the economy's health/solvency —

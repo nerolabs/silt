@@ -52,7 +52,7 @@ not a cost center.
    it "downward" in any meaningful sense). Recorded as available if a later
    soundness-neutral sweep wants the 90 KiB.
 2. **Route the 10× lever to research:** consult filed at
-   `/Users/andrewedmond/Claude/claude/silt-reviews/research/299-label-samples-answer-size-CONSULT.md`
+   `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/299-label-samples-answer-size-CONSULT.md`
    asking for the soundness margin of k (64 → what floor?) and the
    BlockSize/parents trade, with these measurements attached. The knee
    (#528) is fixed and field-confirmed, so this is a bandwidth/N²-scale

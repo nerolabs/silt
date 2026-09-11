@@ -111,7 +111,7 @@ The **code** fixes landed publicly tonight (PR #471, generic-framed). The **desi
 4. `CHANGELOG.md` `[Unreleased]` — what shipped recently, in the builder's words.
 5. The memory index `.../memory/MEMORY.md` — the builder's working ledger (dense, historical;
    treat as background, verify against source).
-6. `silt-reviews/principle-engineer/state-of-head-PE-2026-08-17.md` — the last PE state read.
+6. `silt-agent-memory/principal-engineer/reviews/state-of-head-PE-2026-08-17.md` — the last PE state read.
 
 ## What this doc does NOT do
 

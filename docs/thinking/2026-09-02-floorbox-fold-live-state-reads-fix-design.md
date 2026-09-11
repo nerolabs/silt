@@ -1,8 +1,8 @@
 # Floor-box fold live-state reads — Direction-A fix design (R-FOLD-LIVE-STATE-READS)
 
 Date: 2026-09-02 · Seat: Builder · Boulder 1 (floor-box witness-soundness spine)
-Binding spec: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/floorbox-R-FOLD-LIVE-STATE-READS-RESEARCH-CERTIFICATION-2026-09-02.md`
-Routed from: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R-CARRIER-REFLECTION-pin-2026-09-02.md`
+Binding spec: `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/floorbox-R-FOLD-LIVE-STATE-READS-RESEARCH-CERTIFICATION-2026-09-02.md`
+Routed from: `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-R-CARRIER-REFLECTION-pin-2026-09-02.md`
 
 Terminology: the current open era is **v4**; the code's `*V5*` identifiers name this same era.
 

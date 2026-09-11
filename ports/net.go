@@ -179,7 +179,7 @@ const (
 	// R2.9 — the paid DELIVERY session (APPENDED). A durable fetcher opens one session per
 	// server with a demand-domain anchor spent at OPEN, tops it up with fresh anchors, and
 	// settles incrementally with cumulative-count receipts (receipt v3). Certification:
-	// silt-reviews/research/research-outcome/R2.9-G-R212-8-delivery-anchor-quantization-RESEARCH-CERTIFICATION-2026-09-06.md §3.
+	// silt-agent-memory/researcher/reviews/research-outcome/R2.9-G-R212-8-delivery-anchor-quantization-RESEARCH-CERTIFICATION-2026-09-06.md §3.
 	MsgDeliveryOpen      // Data: a CBOR demand.SessionOpen — k = 1 demand-domain anchor + the durable fetcher's signature over the open commitment
 	MsgDeliveryOpenAck   // OK + Height: the session handle. OK=false + Data: the refusal reason (named, never silent)
 	MsgDeliveryFund      // Data: a CBOR demand.SessionFund — a top-up of an admitted session with a fresh anchor

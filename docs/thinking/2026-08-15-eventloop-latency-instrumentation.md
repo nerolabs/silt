@@ -36,7 +36,7 @@ Wired in the daemon at info/warn/error via the existing logger. Thresholds: slow
 ## What this does NOT do (and the open questions → PE consult)
 
 Attribution is at **handler-kind** granularity, not atom-within-handler. If `BondChallenge` dominates, that names the *handler* (VDF-eval + label-opens together); splitting VDF vs label-opens needs finer spans inside `answerBondChallenge` — a staged step, only if the coarse cut points there. Open questions (thresholds, label completeness, whether to run this under a local 12-validator load vs a field run, filing the confirmed no-rate-limit griefing seam) are in the PE consult:
-`silt-reviews/principle-engineer/builder-consult-eventloop-instrumentation-2026-08-15.md`.
+`silt-agent-memory/principal-engineer/reviews/builder-consult-eventloop-instrumentation-2026-08-15.md`.
 
 Discipline note: this is a **measurement tool, not a conclusion.** It does not name the atom until it runs under load. After correcting the attribution twice, the rule holds — no naming the residual until the evidence is on the table.
 

@@ -7,7 +7,7 @@ package dht
 // admission and deleted on Remove — never a soft cache that a distinct-sender
 // flood can evict.
 //
-// The rule (research-certified 2026-09-04, silt-reviews/research/research-outcome/
+// The rule (research-certified 2026-09-04, silt-agent-memory/researcher/reviews/research-outcome/
 // R4.3b-relayed-class-and-observed-address-keying-RESEARCH-CERTIFICATION-2026-09-04.md):
 //
 //	per-group entries per bucket  ≤ capDirect (DIRECT) | capRelay (RELAYED)

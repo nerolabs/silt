@@ -1,7 +1,7 @@
 package blindtoken
 
 // Crypto-specialist advisory gates, 2026-09-03.
-// Source: /Users/andrewedmond/Claude/claude/silt-reviews/crypto-specialist/ADVISORY-R0.4b-C3-blind-RSA-epoch-binding-2026-09-03.md
+// Source: /Users/andrewedmond/.claude/silt-agent-memory/crypto-specialist/reviews/ADVISORY-R0.4b-C3-blind-RSA-epoch-binding-2026-09-03.md
 //
 // One test per finding, each named for the finding and each driving the primitive
 // rather than a proxy. The advisory's own four degenerate moduli are reproduced

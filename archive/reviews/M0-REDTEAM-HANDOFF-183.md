@@ -14,7 +14,7 @@ Part 0 first — this handoff points at them, it does not replace them.**
 >   The stall (> ⅓ of *frozen* epoch weight offline wedges the boundary; repro
 >   `core/chain/modelcheck_535_boundary_wedge_test.go`) is research-ruled
 >   *correct* safety-first BFT (certification:
->   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/535-epoch-boundary-liveness-cliff-RESEARCH-CERTIFICATION-2026-08-23.md`);
+>   `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/535-epoch-boundary-liveness-cliff-RESEARCH-CERTIFICATION-2026-08-23.md`);
 >   the defect was non-recovery, now closed by the certified stack: **layer (4)**
 >   the R-gate restore exemption (PR #541, heals a returning member); **layer (2)**
 >   automatic boundary re-basing REFUTED by the proof-first model-check and
@@ -86,7 +86,7 @@ full text in `docs/design/m0.md` §7. Staged along the axes (`m0.md` §8):
    *Pass:* maturity is reached before any feasible capture; anchors are plural +
    threshold so none is load-bearing. **Sharpened by C-1, now CERTIFIED-CONDITIONAL
    (conditional-theorem lift, research certification 2026-08-27,
-   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`):**
+   `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`):**
    "maturity precedes capture" is now Theorem CT-1 under an honest-arrival floor (H),
    an adversary-budget cap (B), and the parameter constraint (P). The crossing reduces
    to the falsifiable inequality **`W_A < 2·w_min·M_req`** (⅔-capture-safe; half that

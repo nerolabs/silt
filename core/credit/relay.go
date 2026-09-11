@@ -39,11 +39,11 @@ package credit
 //     correct direction; cert §8).
 //
 // Certification (binding):
-// silt-reviews/research/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md;
+// silt-agent-memory/researcher/reviews/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md;
 // direction:
-// silt-reviews/research/research-outcome/RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md;
+// silt-agent-memory/researcher/reviews/research-outcome/RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md;
 // build shape:
-// silt-reviews/crypto-specialist/ADVISORY-R2.14-relay-prepayment-anchor-build-2026-09-04.md.
+// silt-agent-memory/crypto-specialist/reviews/ADVISORY-R2.14-relay-prepayment-anchor-build-2026-09-04.md.
 // Deliberation: docs/thinking/2026-09-04-r2.14-relay-prepayment-anchor-design.md.
 //
 // THE MECHANISM: a relay forwards content-blind bytes toward a fetcher and

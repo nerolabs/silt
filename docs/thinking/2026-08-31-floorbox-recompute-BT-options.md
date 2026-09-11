@@ -14,7 +14,7 @@ changed-digest write-set primitive. The box STILL never-Accepts (R-scope); it re
 everything else.
 
 Cert:
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/floorbox-Rboundary-writeset-digest-reconstruction-RESEARCH-CERTIFICATION-2026-08-31.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/floorbox-Rboundary-writeset-digest-reconstruction-RESEARCH-CERTIFICATION-2026-08-31.md`
 — B and T are **CERTIFIED-IN-DIRECTION**. B carries the R-B-displacement residual
 (displacement is a screen the delta must reproduce exactly; fold-caught, liveness-only). T
 inherits the CRUX dueBucket reconstruction.

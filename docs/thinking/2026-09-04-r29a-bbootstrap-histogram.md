@@ -3,10 +3,10 @@
 **Seat:** Builder. **Steered:** the R2.9a rebuild on `builder/r2.9a-bbootstrap-histogram`.
 
 **Input of record:**
-`silt-reviews/research/research-outcome/R2.9a-Bbootstrap-instrument-sufficiency-RESEARCH-CERTIFICATION-2026-09-04.md`
+`silt-agent-memory/researcher/reviews/research-outcome/R2.9a-Bbootstrap-instrument-sufficiency-RESEARCH-CERTIFICATION-2026-09-04.md`
 (verdict GATED; eight gates G-BB-1…G-BB-8 in §4.2, fourteen Tester gates BB-1…BB-14 in §7),
 itself routed on the blind PE ruling
-`silt-reviews/principle-engineer/RULING-R2.9a-bbootstrap-export-b142a65-2026-09-04.md`.
+`silt-agent-memory/principal-engineer/reviews/RULING-R2.9a-bbootstrap-export-b142a65-2026-09-04.md`.
 
 This is a **full replacement of the export's shape and clock**, not a patch. The previous
 build (`builder/r2.9a-bbootstrap-export`, PR #728) is superseded, not fixed.

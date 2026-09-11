@@ -3,10 +3,10 @@
 - **Date:** 2026-09-05 · **Seat:** BUILDER · **Branch:** `builder/r2.9a-residuals`
 - **Base:** `origin/main` = `2d25b79` (PR #737 merged)
 - **Inputs of record:**
-  - `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-DONT3-READING-AND-BOND-STAMP-TUPLE-RESEARCH-CERTIFICATION-2026-09-05.md`
+  - `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R2.9a-DONT3-READING-AND-BOND-STAMP-TUPLE-RESEARCH-CERTIFICATION-2026-09-05.md`
     — Q2, **G-BB-28** (delete the stamp, invert one test, pin retention). Ratified under
     `D-DONT3-READING` (`docs/decisions.md`).
-  - `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-instrument-necessity-geometry-bound-and-tail-merging-RESEARCH-CERTIFICATION-2026-09-05.md`
+  - `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R2.9a-instrument-necessity-geometry-bound-and-tail-merging-RESEARCH-CERTIFICATION-2026-09-05.md`
     — Q1, **G-BB-22** (the M0 framing is refuted), **G-BB-21** (`W` withdrawn), **G-BB-23**
     (bin count is the owner's), §2.1 (the 134× provisional).
   - The reviewer's F4 on PR #737 and the two builder flags before it: the untagged R2.9a
@@ -97,7 +97,7 @@ now says the ledger keeps that tick as `lastBondTick`.
 ## 4. Round 2 — the blind review's two blockers and two stale claims (2026-09-05)
 
 **Input of record:**
-`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R2.9a-four-residuals-2026-09-05.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-R2.9a-four-residuals-2026-09-05.md`
 — MERGE WITH TWO FIXES; every finding is a sentence that claims more than the code does.
 
 ### 4.1 Mechanisms, stated before the change

@@ -1,7 +1,7 @@
 package main
 
 // R2.10 / F8 — G-F8-6, the RUNTIME half (Tester, 2026-09-04). Binding spec:
-// silt-reviews/research/research-outcome/R2.10-F8-chain-anchored-epoch-RESEARCH-CERTIFICATION-2026-09-04.md
+// silt-agent-memory/researcher/reviews/research-outcome/R2.10-F8-chain-anchored-epoch-RESEARCH-CERTIFICATION-2026-09-04.md
 // §6 G-F8-6: "the daemon wires the ledger's source to the node's chainEpoch() ...
 // never to a constant or a clock. After boot, advancing the chain by one epoch
 // advances ledger.Epoch()."

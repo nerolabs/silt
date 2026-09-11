@@ -13,7 +13,7 @@ Checks (stdlib only; exit 1 on any FAIL):
   2. the register table parses with the five columns in order;
   3. every scanned name has a row; a row with no prose occurrence is INFO only;
   4. Bucket is one of the four literals; Closer and Source non-empty; Source names a
-     ROADMAP line anchor (L123) or a silt-reviews/ path;
+     ROADMAP line anchor (L123) or a silt-agent-memory/ path;
   5. Duplicate-of is "—" or another row's Name; Names unique after stripping ′;
   6. an UNCLEAR row must carry `since:YYYY-MM-DD` in Closer.
 """
@@ -99,8 +99,8 @@ def main():
             fails.append("%s: Bucket %r not one of %s" % (key, bucket, sorted(BUCKETS)))
         if not closer.strip() or closer.strip() == "—":
             fails.append("%s: empty Closer" % key)
-        if not (re.search(r"L\d+", source) or "silt-reviews/" in source):
-            fails.append("%s: Source %r names neither a ROADMAP line (L123) nor a silt-reviews/ path" % (key, source))
+        if not (re.search(r"L\d+", source) or "silt-agent-memory/" in source):
+            fails.append("%s: Source %r names neither a ROADMAP line (L123) nor a silt-agent-memory/ path" % (key, source))
         if dup != "—" and dup.rstrip("′") not in reg:
             fails.append("%s: Duplicate-of %r is not a register row" % (key, dup))
         if bucket == "UNCLEAR" and not re.search(r"since:\d{4}-\d{2}-\d{2}", closer):
