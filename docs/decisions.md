@@ -4646,10 +4646,16 @@ third time.
    hold. Two record clauses fell in the doing and are corrected in `ROADMAP.md`: the "two live cases"
    sentence named a case already fixed, and the two mechanisms that ARE inert today
    (`RequireBondedFetchers`, `BBootstrapRunPrecondition`) are not manifest items. The substantiality test
-   also moved from a closure proxy to the compiler's own `cannot inline` verdict, which the proxy's four
-   false refusals and one false-RED forced. **Do not book a manifest item as BUILT on the strength of a
-   green reachability run** — reachability is necessary and never sufficient, and that sentence now sits in
-   the lane file where the next reader hits it.
+   also moved from a closure proxy to the compiler's own `cannot inline` verdict, which the proxy's false
+   refusals and one false-RED forced — **SEVEN false refusals, not the four first filed**, measured by
+   running the retired rule against the nine records. **The replacement is a TRADE, not a strengthening:**
+   neither test dominates the other, and a gutted `v5ValidateSlashes` that keeps its cost above budget
+   passes the new gate green while the retired `.funcN` witness goes red on it. The two-way table is in
+   `scripts/check_reachability.py`. One more correction of record: the gate's CI job is **not** a required
+   status check, so its red is advisory at the merge boundary, and `docs/release-checklist.md` now says so
+   where it cites the gate. **Do not book a manifest item as BUILT on the strength of a green reachability
+   run** — reachability is necessary and never sufficient, and that sentence now has seven standing homes,
+   the lane file and the gate's own green-run output among them.
 
 A fourth, found in this true-up: `ROADMAP.md`'s Lane D header still said *"the v5 digest leaves freeze at
 three"*, which `D-MEMBERSHIP-KEEP-FIVE-2026-09-11` reversed. Corrected in place.

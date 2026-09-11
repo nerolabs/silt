@@ -101,8 +101,9 @@ signing is wired up; V1 is not cut until signing/notarization is in place.)
     reader hears a different promise from each, and the standard sentence above is
     only ever the middle one. Which posture a lane gets is not a judgment call:
     `scripts/check_reachability.py` builds `./cmd/silt`, reads its symbol table and
-    fails the build when a label below claims a posture the linked binary
-    contradicts. A label claiming a lane **cannot be exercised** must NAME the
+    goes RED when a label below claims a posture the linked binary contradicts. Its CI
+    job is not a required status check, so that red is advisory at the merge boundary —
+    see the freeze-manifest bullet below. A label claiming a lane **cannot be exercised** must NAME the
     client entry symbol that is missing, or the claim cannot be re-checked
     (`scar:mechanism-shipped-inert-2026-09-10`). Each lane's posture is its own
     bullet for the same reason: a shared bullet claims both postures at once and
@@ -146,7 +147,12 @@ signing is wired up; V1 is not cut until signing/notarization is in place.)
       mechanism that lives in production Go**; the other sixteen are dropped, declined, still
       owed, or delivered as tests, and a test symbol never reaches this binary. Each of the
       six carries a lane record in `scripts/reachability_lanes.txt`, so
-      `scripts/check_reachability.py` fails the build if the linker drops one.
+      `scripts/check_reachability.py` goes RED if the linker drops one. **That red does not
+      block a merge today.** The CI job `Go — every claimed lane is IN the linked binary`
+      is not among the `Protect main and staging` ruleset's six required status checks, so
+      the run is advisory: a red is visible on the PR and a human has to act on it. Making
+      it required is an owner act and is owed before the RC — until it happens, this
+      checkbox is ticked by READING the job's result, not by the merge having succeeded.
 
       **REACHABILITY IS NECESSARY AND NEVER SUFFICIENT. Do not book a manifest item as BUILT
       on the strength of a green reachability run.** A green run proves the symbol survived
@@ -170,8 +176,12 @@ signing is wired up; V1 is not cut until signing/notarization is in place.)
     `SlashesBytesCap` against the encoded size before any signature work. It is linked into
     `./cmd/silt`.
   - **Item 19 — the era pair an operator reads at start-up.** `printEraObservable` backs
-    `silt chain-status`; `eraStartupLines` prints the declared ceiling beside the loaded
-    chain's era on the daemon boot path. Both are linked into `./cmd/silt`.
+    `silt chain-status`; `chain.StartupEraLines` composes the declared ceiling beside the
+    loaded chain's era, and the daemon boot path prints it through the one-line
+    `eraStartupLines` wrapper. Both are linked into `./cmd/silt`. The lane record names the
+    reducer, not the wrapper: the wrapper's inline margin is two call charges rather than
+    body substance, so merging its two calls would refuse the record with nothing about
+    reachability changed.
   - **Item 20 — the two refuse-to-start arms that are built.** `chainstore.Recover` refuses a
     torn or block-0-missing replay; `(*Chain).CheckConsensusParams` refuses a start whose
     argv contradicts the config its own genesis committed. Both are linked into `./cmd/silt`,

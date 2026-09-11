@@ -31,13 +31,25 @@
 #   measurement rather than by preference:
 #     - "the body carries a CALLBACK CLOSURE, which surfaces as `<symbol>.funcN`".
 #       A closure is a property of a client entry point handing work to a transport.
-#       Consensus validators do not have one, and the proxy refused four of them the
-#       compiler will not inline at any call site.
+#       Consensus validators do not have one: run the retired rule against the nine
+#       freeze-manifest records below and it refuses SEVEN of them — setD3Digests,
+#       validateD3Digests, CheckConsensusParams, genesis.Build, printEraObservable,
+#       StartupEraLines and chainstore.Recover — every one a symbol the compiler will
+#       not inline at any call site.
 #     - the `.funcN` row as a PRESENT-path anti-hollowing witness. A closure can be
 #       inlined into its own parent, leaving no `.funcN` row in a binary where the
 #       parent is plainly live, so the witness reported a live mechanism as hollowed.
-#       The inline verdict does that job strictly better and on every run: gut a body
-#       and the compiler starts saying `can inline`, which refuses the record.
+#
+#   NEITHER TEST DOMINATES THE OTHER, AND THE GAP IS NAMED. The inline verdict is not
+#   strictly stronger than the `.funcN` witness. Gut `core/chain.v5ValidateSlashes` —
+#   delete the SlashesBytesCap check, the M2 era floor and the culprit walk, keep one
+#   used closure — and the compiler still says `cannot inline` at cost 263, so THIS GATE
+#   RUNS GREEN while the retired witness goes RED on the same binary. The reverse case
+#   is `stateRootLeavesV5`, live and load-bearing, which the retired witness called
+#   hollowed. Both are the same compiler event read two ways. The trade is right — the
+#   inline verdict catches the hollowing that actually happens and drops a false RED —
+#   but a green run of this gate is NOT evidence that a lane's mechanism is intact.
+#   scripts/check_reachability.py carries the full two-way table.
 #
 # AN UNREASONED ROW FAILS. `claim` and `substantial` are checked for length and for
 # null-words, and each has a mechanical companion: `label` must resolve in the
@@ -129,10 +141,20 @@ substantial: Marshals a RelayPay and hands n.request a closure that reads the au
 # lives in production Go — items 1, 3, 6, 10, 19 and 20 — and all six are below, as
 # NINE records (items 3, 19 and 20 each have two independently droppable halves).
 # The other sixteen have nothing for this gate to hold: 2, 4, 5, 12 and 13 are
-# dropped or refuted, 8 is declined for the RC, 7, 9, 16, 18, 21 and 22 are owed and
-# have no symbol in the tree, and 11, 14, 15 and 17 are delivered as TESTS — a test
-# symbol is never in ./cmd/silt, and a test that can see a symbol is itself the
-# caller keeping it alive.
+# dropped or refuted, 8 is declined for the RC, 7, 9, 16, 18, 21 and 22 are owed, and
+# 11, 14, 15 and 17 are delivered as TESTS — a test symbol is never in ./cmd/silt,
+# and a test that can see a symbol is itself the caller keeping it alive.
+#
+# ITEM 18 IS EXCLUDED ON A NARROWER GROUND THAN THE OTHER FIVE OWED ITEMS, AND THE
+# DIFFERENCE MATTERS. Items 7, 9, 16, 21 and 22 have no symbol in the tree. Item 18
+# does: `core/statehash.IngestBlockWitnesses` is the R3 witness-bound gate, the
+# compiler prices it at 478 against a budget of 80, and it is ABSENT from the linked
+# ./cmd/silt because it has zero non-test callers. What is owed is the item's
+# DELIVERABLE — a gob message-length pre-check inside it — not the function. So item
+# 18 is out of this gate because its deliverable does not exist, NOT because its
+# surface is missing, and the surface being unlinked is a separate live finding:
+# `R-INGEST-WITNESSES-INERT` in ROADMAP.md. Wiring it up is a consensus-surface
+# change and is not a thing this file may do to make a run green.
 #
 # ⚠ REACHABILITY IS NECESSARY AND NEVER SUFFICIENT. DO NOT BOOK A MANIFEST ITEM AS
 # BUILT ON THE STRENGTH OF A GREEN REACHABILITY RUN. A green run proves the symbol
@@ -184,10 +206,10 @@ claim: Manifest item 19 is the era observable, and its entire value is that an O
 substantial: Cost 721 against an inline budget of 80, `cannot inline printEraObservable`. No function literal in the body. It also sits in package main, so the linker spells it `main.printEraObservable` while this record spells the import path — the gate translates, and without that translation this record would read ABSENT from a binary that contains it.
 
 lane: freeze-era-observable
-symbol: github.com/nerolabs/silt/cmd/silt.eraStartupLines
+symbol: github.com/nerolabs/silt/core/chain.StartupEraLines
 label: the era pair an operator reads at start-up
-claim: The daemon half of item 19. A chain carrying no v5 block is a healthy dark network under an era-4 build and the WRONG BUILD under an era-2 one, and neither number discriminates alone, so the item's claim is that both print together on the boot path. This is the only caller of the reducer that composes them.
-substantial: Cost 120 against an inline budget of 80, `cannot inline eraStartupLines`. It is ONE body line and carries no closure — under the retired proxy it failed both arms while the compiler refuses to inline it, which is the clearest case in the file for measuring rather than approximating.
+claim: The daemon half of item 19. A chain carrying no v5 block is a healthy dark network under an era-4 build and the WRONG BUILD under an era-2 one, and neither number discriminates alone, so the item's claim is that both print together on the boot path. This is the reducer that composes them, and cmd/silt/daemon.go's eraStartupLines wrapper is its only production caller, so it leaves ./cmd/silt exactly when the boot path stops printing the pair.
+substantial: Cost 906 against an inline budget of 80, `cannot inline StartupEraLines` — the second-widest margin in this file. THIS RECORD USED TO NAME THE WRAPPER, cmd/silt.eraStartupLines, and that was an arithmetic accident waiting to fire: the wrapper is ONE body line whose cost of 120 is two non-inlinable call charges (Go prices a call to a non-inlinable callee at about 57), not body substance. Fold those two calls into one — pass the EraState in, or let StartupEraLines take the chain — and the wrapper drops under budget, this gate REFUSES the record, and CI goes red on a refactor that changed nothing about reachability. Naming the reducer removes the accident at no cost to the signal: deleting the boot-path call drops BOTH main.eraStartupLines and core/chain.StartupEraLines from the binary.
 
 lane: freeze-refuse-to-start
 symbol: github.com/nerolabs/silt/adapters/chainstore.Recover

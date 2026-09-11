@@ -40,21 +40,55 @@ THE ONE CAVEAT, AND WHY THIS GATE REFUSES THIN SYMBOLS
   gate depends on, so ABSENCE from the symbol table means the linker dropped the symbol.
 
   THE TWO PROXIES THIS REPLACED, AND THE MEASUREMENT THAT RETIRED EACH (2026-09-11)
-    - "body >= 8 real lines AND contains a function literal". Measured at `820fd6f`,
-      that refused four freeze-manifest mechanisms the compiler will not inline at any
-      call site: core/chain.validateD3Digests (cost 1010), setD3Digests (172),
-      (*Chain).CheckConsensusParams (278), core/genesis.Build (421) — against a budget
-      of 80. A callback closure is a property of a client entry point that hands work to
-      a transport, not of a consensus validator, and every one of these is a validator.
-      The closure test also passes symbols the compiler WILL inline: cmd/silt's
-      eraStartupLines is one body line, carries no closure, and costs 120.
+    - "body >= 8 real lines AND contains a function literal". Driven by running the
+      retired rule itself against this file's nine freeze-manifest records: it REFUSES
+      SEVEN of the nine — core/chain.setD3Digests (cost 172), validateD3Digests (1010),
+      (*Chain).CheckConsensusParams (278), core/genesis.Build (421),
+      cmd/silt.printEraObservable (721), core/chain.StartupEraLines (906) and
+      adapters/chainstore.Recover (802), each against a budget of 80, each a symbol the
+      compiler will not inline at any call site. A callback closure is a property of a
+      client entry point that hands work to a transport, not of a consensus validator.
+      THE SAME RULE ADMITS SYMBOLS THE COMPILER WILL INLINE, and its own paradigm case
+      is one: core/node.(*Node).repairStripeFetch is 88 body lines and carries a closure
+      — the exact shape the rule read as substance — while the compiler says
+      `can inline (*Node).repairStripeFetch with cost 77`. The body is one call handing
+      a large closure to fetchStripeByColumn, and the closure is priced separately
+      (repairStripeFetch.func1, cost 879). The closure taken as EVIDENCE of substance is
+      what makes the parent cheap. Four more in this tree: (*Node).columnHoldersEntry
+      (77), (*Node).auditLeaf (76), (*Node).EnableRelayAccept (42),
+      cmd/silt.(*uiServer).guard (18).
     - the `.funcN` witness on the PRESENT path. `(*Chain).stateRootLeavesV5` declares a
       closure at core/chain/statehash.go:306, is PRESENT in the linked binary, and has
       ZERO `.funcN` rows in its symbol table — the compiler inlined the closure into its
       own body (`can inline (*Chain).stateRootLeavesV5.func1`). The old witness reported
-      that live mechanism as hollowed. The anti-hollowing job it was doing is now done
-      strictly better and on every run by the inline verdict: gut a body and the
-      compiler starts saying `can inline`, which REFUSES the entry.
+      that live mechanism as hollowed.
+
+  THE BOUNDARY, IN BOTH DIRECTIONS — NEITHER TEST DOMINATES THE OTHER. The inline
+  verdict is NOT strictly stronger than the `.funcN` witness it replaced. The two rules
+  fire on different events, so each catches a hollowing the other passes:
+
+      hollowing shape                                     retired     inline verdict
+      body collapses below cost 80                        RED         RED
+      body gutted, cost stays > 80, closure folded away   RED         GREEN
+      body gutted, cost stays > 80, closure survives      GREEN       GREEN
+      live mechanism whose closure folds into its parent  RED (false) GREEN (correct)
+
+    THE INPUT THIS GATE DOES NOT CATCH, NAMED AND DRIVEN: gut core/chain.v5ValidateSlashes
+    — delete the SlashesBytesCap check, the M2 era floor and the culprit walk, keep one
+    used closure — and the compiler still prints `cannot inline v5ValidateSlashes:
+    function too complex: cost 263 exceeds budget 80`. THIS GATE REPORTS OK, EXIT 0. The
+    retired `.funcN` rule goes RED on that same binary. So a green run of this gate is
+    NOT evidence that manifest item 10's byte ceiling is still enforced.
+
+    Rows 2 and 4 are the SAME compiler event — a closure cheap enough to fold into its
+    parent — read once as a true positive and once as a false positive. That is why the
+    retired rule is not a hollowing detector: it is a closure-inlining detector that
+    correlated with hollowing by accident, and stateRootLeavesV5 is where the
+    correlation broke on a live, load-bearing symbol. The trade is still right — the
+    inline verdict catches the hollowing that actually happens (a body replaced by
+    `return nil`, driven RED), admits seven records the retired rule refused, and
+    removes a live false RED — but it is a TRADE, not a strengthening, and the next
+    reader has to know which half was given up.
 
   DO NOT WEAKEN THIS. If a lane has no substantial entry point, that is a finding about
   the lane, not a reason to point the entry at a wrapper. Widening this rule again means
@@ -508,8 +542,17 @@ def check_substantial(records, lanes_path, mod):
                 f"    An inlinable symbol can vanish from the table of a binary where the "
                 f"lane is perfectly live, so its absence proves nothing and the gate would "
                 f"report a live lane as inert.\n"
-                f"    Name the substantial entry point for this lane instead. Do NOT relax "
-                f"this: that is how this gate stops meaning anything.")
+                f"    THE REMEDY IS TO REPOINT, NOT TO DELETE. This fires on a refactor "
+                f"that made {printed} cheaper without taking the lane out of the binary "
+                f"— folding two calls into one is enough. In that case name the "
+                f"NON-INLINABLE function this one calls (the mechanism itself, not its "
+                f"wrapper) and keep the record: the reachability signal is identical "
+                f"whenever the named callee has no other production caller, and the "
+                f"margin stops being an arithmetic accident. `go build -gcflags=-m=2 "
+                f"{pkg}` prints every candidate's cost.\n"
+                f"    Deleting the record, or relaxing this rule, is how the gate stops "
+                f"meaning anything. If the lane truly has NO substantial entry point, "
+                f"that is a finding about the lane — file it, do not silence it.")
             continue
         decls[(rec["lane"], sym)] = (rel, dline)
     return decls, errors
