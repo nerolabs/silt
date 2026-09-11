@@ -11,7 +11,26 @@
     "byte lands; the SessionStart hook warns the seat before it writes anything at all. Both",
     "name `.claude/setup-agent-memory.sh`, which fixes it in one command.",
     "",
-    "The hook is silent and exits 0 on every tool call that is not a memory write."
+    "scar:agent-memory-store-ten-days-unpushed-2026-09-11 — the OTHER half of the same",
+    "exposure. The symlink rule gets memory into the shared store; nothing got the store",
+    "off this box. It sat ten days uncommitted, which is why five of the leaked files were",
+    "unrecoverable rather than merely leaked. `--autosave` commits and pushes the store on",
+    "SessionStart, Stop and SubagentStop. The seats ARE subagents, so SubagentStop is the",
+    "event that actually follows a seat's memory write. There is no timer and no minimum",
+    "interval on purpose: a floor reopens the hole at the edge (a write one minute after a",
+    "commit, then the session ends, is never banked), and an unchanged store commits",
+    "nothing and pushes nothing, so the common path costs one `git status`.",
+    "",
+    "NOT a cron job: the defect being fixed is that nothing went red for ten days. A",
+    "scheduled job that stops firing reproduces that class exactly. This runs where a seat",
+    "is already looking, so its own failure is printed into the session that depends on it.",
+    "",
+    "The hook is silent and exits 0 on every tool call that is not a memory write, and on",
+    "every stop event that finds the store unchanged. Autosave NEVER blocks: an unreachable",
+    "remote commits locally and says so. The 60s timeouts cover a slow `git push`; the",
+    "PreToolUse path does no network I/O and keeps its 10s.",
+    "",
+    "Drive it: python3 scripts/check_agent_memory_link.py --self-test"
   ],
   "hooks": {
     "PreToolUse": [
@@ -33,8 +52,32 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/check_agent_memory_link.py\" --hook",
-            "timeout": 10,
-            "statusMessage": "Checking agent-memory symlink"
+            "timeout": 60,
+            "statusMessage": "Checking agent-memory symlink + banking the store"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/check_agent_memory_link.py\" --hook",
+            "timeout": 60,
+            "statusMessage": "Banking agent memory"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/check_agent_memory_link.py\" --hook",
+            "timeout": 60,
+            "statusMessage": "Banking agent memory"
           }
         ]
       }
