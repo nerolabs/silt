@@ -4648,3 +4648,88 @@ box's takedown stall (closed by `tagRevLogSize`, #819) — and one restored (`R-
 the manifest's final content and corrected on three points: the activation rule is now a genesis constant
 as well as a tally, the readiness-stamp sentence carries its bypass caveat, and the page states that the
 format set is closed.
+
+
+## D-CARRIER-BYTES-DECLINED-2026-09-11 — manifest item 8 is DECLINED for the RC and disclosed to B8; the bonded arm of the prepare-QC flood becomes a register row
+
+Two dispositions, one shape: an exposure that is real, measured and NOT being fixed before the RC gets
+written down as accepted rather than left reading as owed. Neither changes behaviour or format.
+
+### 1. `R-CARRIER-BYTES` — DECLINED for the RC, DISCLOSED, row kept
+
+Owner call 3 of the 2026-09-11 freeze-manifest re-audit is answered, taking the PE's recommendation on
+the record. **The cap is not built before the RC. The exposure rides into the B8 engagement as manifest
+item 22, and the register row stays open** because the rule is still wanted at the stamp raise.
+
+**What is accepted, plainly.** `validateCarrier` (`core/chain/carrier.go`) enforces phase, `verifyAtt`
+over `b.Prev` and per-id distinctness, and has no count cap, no byte cap and no qualification screen —
+verified at HEAD, and there is no `CarrierBytesCap` or `G-CB-1` symbol in the tree. So a `Block.LastCommit`
+may carry any number of entries the transport frame allows (~1.3M in 132 MiB), each costing one
+`ed25519.Verify` on every replica that validates or reloads that block. The field sits in **both**
+`bodyHash` preimage literals — verified by reading them: each `unsigned` literal names `LastCommit`, and
+neither names `Atts` — so the cost is hash-covered and permanent. With `-era4-activation-height`
+defaulting to 1 the surface is reachable on the RC's own field network, not on a hypothetical later one.
+
+**Why declined rather than built.** The value turns on a pony-class honest-maximum measurement that does
+not exist. A cap set below the honest floor is a publish-path liveness wedge, which is worse than no cap —
+the same defect G-CB-1, G-QC-1 and G-ATTS-1 already name. Building it blind would trade a CPU-exhaustion
+nuisance for a stall.
+
+**What the decline does not cost.** It is a narrowing validity rule, outside the four doors, so its
+deadline is the stamp raise and it is **not** a freeze item. Declining it forecloses nothing. The reason
+this is written as *declined* and not *deferred* is that the item was **deleted twice on wrong grounds**
+(`D-FREEZE-REAUDIT-2026-09-11`), and a third disappearance was the live risk. Deleting it by re-label is
+neither shipping it nor declining it; this is the declining.
+
+**Citation hygiene.** #824 restored the row, so the six production citations of `R-CARRIER-BYTES`
+(`carrier.go`, `readset_v5.go`, `stateview_v5.go`, `floorbox_recompute_stateroot_v5.go`,
+`floorbox_recompute_stateroot_atts_v5.go`, and `ErrWitnessBudgetExceeded`'s failure text in
+`validate_v5.go`) now resolve to a destination that exists. All six were checked individually rather than
+sampled. **Two residues are recorded and deliberately NOT repaired here**, because `core/chain` source
+comments were being edited concurrently and a disclosure PR must not race them: three citations name
+*"Boulder 1 carry-list"* while the row is homed to Lane D2, and `ErrWitnessBudgetExceeded` says the
+ceiling *"is not built yet"* — a future tense that this decline falsifies, since for the RC it is not
+built at all. Both are text-only and are owed to whichever PR next touches those comments.
+
+### 2. `R-CARRIER-QC-BURST-VALUE` — the arm #823 left open becomes a row
+
+#823 closed the `ports.MsgPrepareQC` flood for an **unbonded** sender by screening the sender
+(`(*Node).handleChain`: `Objective() && !AttesterEligibleAt(from, height)`). A sender already in the
+governing set passes that screen, so the flood survives for a **bonded** validator. The per-sender rate
+budget that would bound it was deliberately not shipped: its burst constant is a security parameter, which
+is behind the research gate, so no number was guessed. That is the right call and it leaves a residual,
+which now has an owner (Tester, who takes the honest-cadence measurement), a closer (the burst value: measured, then
+certified by the Researcher, then owner-ratified — gate G-QC-6) and a lane (D1).
+
+**The failure mode, stated exactly — because the obvious statement of it is false.** The attacker does not
+replay its own bonded signature. `(*Chain).collectQuorumSigs` sets `seen[id]` at the **bottom** of its
+loop, after the qualification test, so the `if seen[id]` short-circuit fires only for ids that already
+qualified. The dedup is therefore **asymmetric**:
+
+- repeats of a **qualified** id are deduplicated before `verifyAtt` — the attacker's own bonded key buys
+  exactly ONE verify, however often it is repeated;
+- repeats of an **unqualified** id are never deduplicated — each pays a full `verifyAtt`.
+
+**The bond buys passage through the screen, not the payload.** The flood entries must be signed by an
+identity in no governing set, which costs one offline `ed25519.Sign` and no bond at all. Both halves are
+driven by `core/node` `TestQC_BurstValue_DedupIsAsymmetricAcrossQualification`, which places a
+corrupt-signature entry last and reads `ErrBadSignature` as a positive observation that the loop walked to
+it. Moving `seen[id] = true` above the qualification test reddens that gate — verified by ablation, with
+the patched file diffed against its original first.
+
+**What fires first, checked rather than assumed.** In arm order: the sender screen (passed by a bonded
+sender), `cbor.Unmarshal` (whose only ceiling is the fxamacker default `MaxArrayElements` of 131,072),
+`chain.Decode`, then `VerifyPrepareQC`. `(*Node).signAllowedAt` — the sign-mark watermark — runs **after**
+`VerifyPrepareQC`, so it does not protect: the CPU is spent before any watermark is consulted.
+
+**What it costs the attacker: one bond, and nothing else.** The refusal is a `ports.MsgPrecommitReply`
+`OK=false`, consumed only by `(*Node).gatherTwoPhase`'s precommit callback, which logs it — no ledger
+entry, no audit, no standing loss. Nothing is slashable, since a padded list is not equivocation. At the
+131,072 ceiling and the PE's measured 52.6 us/op that is ~6.89 s of one core per message for ~13.1 MiB of
+wire. `roundCertBurst = 4` (`core/node/bondaudit.go`) does not transfer as a value: one proposer
+legitimately gathers many heights per window.
+
+**No new prefix.** `R-CARRIER-QC-LEGACY-UNCAPPED`, the other name the shipped comments cite, gets
+**no row**: it is already disclosed in `docs/design/m0.md` §10.1 as face (i) of
+`R-CARRIER-QC-SCREEN-BEFORE-BUDGET`, and it has no closer, so under simplicity rule 4 it is a disclosure
+and not a row. Register net: 33 → 34.
