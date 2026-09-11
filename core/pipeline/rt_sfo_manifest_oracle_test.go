@@ -159,198 +159,202 @@ func rtManifestFrameBytes(t *testing.T, size int, mode crypto.Mode, chunkSize, f
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// RT-SFO-1 (HIGH, NEW) — a keyless encryption-mode oracle.
+// RT-SFO-1 (HIGH, NEW) — a keyless encryption-mode oracle. CLOSED 2026-09-11.
 //
-// manifest.secretsPart.Mode is sealed under the CONTENT key (core/manifest/sealed.go). A
-// caretaker holding only a care link is not supposed to read it; that is the entire purpose
-// of the two-layer seal (core/link/link.go). But pipeline.ManifestFrameSize frames a
-// single-chunk sealed manifest at len(blob)+chunk.HeaderSize, and the blob is canonical CBOR,
-// so its length is a deterministic function of what is inside it. Convergent mode carries 34
-// bytes of ChunkSecrets per data chunk where private mode carries one 34-byte FileKey.
+// THE DEFECT. manifest.secretsPart.Mode is sealed under the CONTENT key
+// (core/manifest/sealed.go). A caretaker holding only a care link is not supposed to read it;
+// that is the entire purpose of the two-layer seal (core/link/link.go). But
+// pipeline.ManifestFrameSize frames a single-chunk sealed manifest at len(blob)+chunk.HeaderSize,
+// and the blob is canonical CBOR, so its length is a deterministic function of what is inside
+// it. Convergent mode carried 34 bytes of ChunkSecrets per data chunk where private mode
+// carried one 34-byte FileKey, so the frame length published — to anyone who can dial one node
+// and fetch one chunk — a function of a field the seal exists to hide. By cmd/silt/main.go's
+// own framing (private is the default, convergent carries a loud warning) that field is the
+// publisher's own "is this secret" classification of its content.
 //
-// The frame length therefore publishes, to anyone who can dial one node and fetch one chunk,
-// a function of a field the seal exists to hide — and by cmd/silt/main.go's own framing
-// (private is the default, convergent carries a loud warning) that field is the publisher's
-// own "is this secret" classification of its content, joined to Entry.Publisher and the
-// commit height.
+// THE CLOSE. manifest.secretsPlainLen pads the secrets plaintext to a length that is a
+// function of the DATA-SHARD COUNT ALONE before it is sealed — length-hiding authenticated
+// encryption (Paterson–Ristenpart–Shrimpton, ASIACRYPT 2011), as deployed in TLS 1.3 record
+// padding, RFC 8446 §5.4. Owner-ratified on the research certification
+// "privacy-property-measured-part0-corner-entry-filesize-and-mode-oracle", 2026-09-11,
+// recorded as D-MODE-ORACLE-2026-09-11. The defect PIN that shipped in #817 is retired here
+// and replaced by the straight assertion; its teeth are kept and re-pointed.
 // ══════════════════════════════════════════════════════════════════════════════
 
-// rtSFO1MeasuredLengths is the measurement from this tree, reproduced by these gates. It is
-// byte-for-byte what the red-team pass recorded at 00082b8.
-var rtSFO1MeasuredLengths = []struct {
-	L          int
-	conv, priv int
+// rtSFO1Sizes carries both measurements: `framed`, the post-fix length both modes now share,
+// and `wasConv`/`wasPriv`, byte-for-byte what the red-team pass recorded at 00082b8. The
+// pre-fix pair is kept because a gate that no longer remembers the defect cannot say how far
+// it moved, and because TestRT_SFO_1_GateRedensWhenTheModesSeparate feeds it back in.
+var rtSFO1Sizes = []struct {
+	L                int
+	framed           int
+	wasConv, wasPriv int
 }{
-	{1, 345, 341},
-	{100, 347, 343},
-	{1024, 349, 345},
-	{65536, 353, 349},
-	{262136, 353, 349},  // the last single-frame object at the 256 KiB default
-	{262137, 421, 383},  // the first two-frame object: the delta widens, per data chunk
-	{600000, 489, 417},  //
-	{2097152, 898, 621}, // 9 chunks: 277 bytes of separation
+	{1, 353, 345, 341},
+	{100, 354, 347, 343},
+	{1024, 355, 349, 345},
+	{65536, 357, 353, 349},
+	{262136, 357, 353, 349},  // the last single-frame object at the 256 KiB default
+	{262137, 425, 421, 383},  // the first two-frame object: the delta used to widen per data chunk
+	{600000, 493, 489, 417},  //
+	{2097152, 902, 898, 621}, // 9 chunks: 277 bytes of separation, before. The pad costs 281.
 }
 
-// rtSFO1Pin is the pin predicate. It returns "" while the DEFECT IS STILL PRESENT — that is
-// the state this gate pins — and a non-empty instruction the moment the two modes stop being
-// separable at a measured size. Factored out so its teeth are themselves testable
-// (TestRT_SFO_1_PinRedensWhenTheModesConverge), the gateFStampPin pattern.
-func rtSFO1Pin(L, conv, priv, wantConv, wantPriv int) string {
+// rtSFO1ModeHidden is the gate predicate. It returns "" while the two modes are
+// INDISTINGUISHABLE by manifest frame length — the property the fix establishes — and a
+// non-empty instruction the moment they separate again. Factored out so its teeth are
+// themselves testable (TestRT_SFO_1_GateRedensWhenTheModesSeparate), the gateFStampPin
+// pattern inherited from the retired pin.
+func rtSFO1ModeHidden(L, conv, priv int) string {
 	if conv == priv {
-		return fmt.Sprintf(
-			"RT-SFO-1 PIN IS RED — THE DEFECT LOOKS FIXED, WHICH IS GOOD NEWS THAT MUST BE RECORDED, NOT SWALLOWED.\n"+
-				"  At FileSize=%d the sealed-manifest frame is now %d bytes in BOTH convergent and private mode.\n"+
-				"  It was %d vs %d at 00082b8, which is the keyless encryption-mode oracle the red-team pass\n"+
-				"  measured at 26/26 and 66/66 (RED-TEAM-R-SUBFRAME-SIZE-ORACLE-00082b8-2026-09-11, RT-SFO-1).\n"+
-				"  DO THIS, in the same commit that reddened it:\n"+
-				"    1. Confirm the convergence is a DELIBERATE FIX and not a coincidence of some other encoding\n"+
-				"       change — check that TestRT_SFO_1_ModeOracleIsAliasFreeAcrossGeometry also reddened. If it\n"+
-				"       did NOT, the modes collide at ONE size only and the oracle still works everywhere else.\n"+
-				"    2. Confirm the owner has ruled on RT-SFO-1's disposition. It was an OPEN OWNER CALL when this\n"+
-				"       pin was written (privacy is a Part-0 corner; docs/TENETS.md Part 0) and it is research-gated.\n"+
-				"    3. REPLACE this pin with the positive assertion (frame lengths are EQUAL across modes) and keep\n"+
-				"       TestRT_SFO_1_PaddedFramingAblationCollapsesBothModes as the guard on the mechanism.",
-			L, conv, wantConv, wantPriv)
+		return ""
 	}
-	if conv != wantConv || priv != wantPriv {
-		return fmt.Sprintf(
-			"RT-SFO-1 PIN IS RED — THE ORACLE STILL WORKS, BUT ITS SHAPE MOVED, SO SOMETHING RE-ENCODED THE SEAL.\n"+
-				"  At FileSize=%d the sealed-manifest frame is convergent=%d private=%d; this pin holds %d / %d\n"+
-				"  as measured at 00082b8 (RT-SFO-1). The modes are STILL separable (delta %d), so this is drift,\n"+
-				"  not a fix.\n"+
-				"  DO THIS: find what changed the sealed manifest's CBOR — manifest.Layout, manifest.secretsPart,\n"+
-				"  crypto.SealBox overhead, or pipeline.ManifestFrameSize — confirm the change was intended, confirm\n"+
-				"  it does not move core/genesis TestGenesisBlockHashIsPinned, and update these numbers here.",
-			L, conv, priv, wantConv, wantPriv, conv-priv)
-	}
-	return ""
+	return fmt.Sprintf(
+		"RT-SFO-1 IS BACK — THE SEALED-MANIFEST FRAME LENGTH PUBLISHES THE ENCRYPTION MODE AGAIN.\n"+
+			"  At FileSize=%d the manifest frames at convergent=%d private=%d (delta %d). EQUAL is the\n"+
+			"  property. Unequal is a keyless encryption-mode oracle: a peer with no keys, no care link, no\n"+
+			"  bond and no token reads Entry.ManifestChunks off the unauthenticated MsgGetChain\n"+
+			"  (core/node/chainrole.go), fetches that chunk over the unauthenticated MsgFetchChunk\n"+
+			"  (core/node/node.go), and recovers the publisher's own secret/not-secret classification of the\n"+
+			"  root — docs/threat-catalog.md F8.\n"+
+			"  IT WAS 345 vs 341 AT FileSize=1 ON 00082b8. That is the state this gate exists to prevent.\n"+
+			"  DO THIS: the close is manifest.secretsPlainLen, which pads secretsPart to a length that is a\n"+
+			"  function of the DATA-SHARD COUNT ALONE. Find what made that length mode-dependent again — a\n"+
+			"  new secretsPart field outside the pad, a wider mode name, or a target that reads m.Mode,\n"+
+			"  m.FileKey or m.ChunkSecrets. Do NOT close it by re-padding the manifest FRAME instead: once a\n"+
+			"  convergent manifest outgrows one frame, len(Entry.ManifestChunks) separates the modes\n"+
+			"  on-chain with no fetch at all. The inner box is the fix.",
+		L, conv, priv, conv-priv)
 }
 
-// TestRT_SFO_1_ModeIsRecoverableFromTheManifestFrameLength_PINNED_DEFECT pins the live
-// defect. GREEN today BY DESIGN: it asserts the oracle still works. See the idiom note above.
-func TestRT_SFO_1_ModeIsRecoverableFromTheManifestFrameLength_PINNED_DEFECT(t *testing.T) {
+// TestRT_SFO_1_ModeIsNotRecoverableFromManifestFrameLength is the gate. It replaces the
+// PINNED_DEFECT that shipped in #817.
+//
+// SEEN RED FIRST on the pre-fix tree at f826c72, which is the certification's own §9(a)
+// condition and simplicity rule 7 ("a green gate with no demonstrated red is decoration"):
+//
+//	RT-SFO-1 IS BACK — ... At FileSize=1 the manifest frames at convergent=345 private=341 (delta 4).
+func TestRT_SFO_1_ModeIsNotRecoverableFromManifestFrameLength(t *testing.T) {
 	cs := pipeline.DefaultChunkSize
 
-	// (a) THE SYMPTOM: the exact measured frame lengths, both modes, eight sizes.
-	for _, tc := range rtSFO1MeasuredLengths {
+	// (a) THE PROPERTY, at the eight sizes the red-team measured the oracle at.
+	for _, tc := range rtSFO1Sizes {
 		conv := rtManifestFrameBytes(t, tc.L, crypto.Convergent, cs, 0, erasure.Params{})
 		priv := rtManifestFrameBytes(t, tc.L, crypto.Private, cs, 0, erasure.Params{})
-		if msg := rtSFO1Pin(tc.L, conv, priv, tc.conv, tc.priv); msg != "" {
+		if msg := rtSFO1ModeHidden(tc.L, conv, priv); msg != "" {
+			t.Fatal(msg)
+		}
+		if conv != tc.framed {
+			t.Fatalf("RT-SFO-1 DRIFT — a %d-byte object now frames at %d bytes in both modes; this gate pins %d.\n"+
+				"  The two modes still agree, so this is NOT the oracle returning — it is the seal re-encoding.\n"+
+				"  Find what moved: manifest.Layout, manifest.secretsPart, manifest.secretsPlainLen,\n"+
+				"  crypto.SealBox's overhead, or pipeline.ManifestFrameSize. Confirm the change was intended,\n"+
+				"  confirm it moves core/genesis TestGenesisBlockHashIsPinned deliberately, and update these\n"+
+				"  numbers here. A frame length that drifts silently is how a padding scheme rots.",
+				tc.L, conv, tc.framed)
+		}
+	}
+
+	// (b) THE PROPERTY, densely. Eight points can be equalised by coincidence; 429 cannot —
+	// and 429 is the population the red-team classified 429/429 correctly on, so this arm is
+	// the direct refutation of that measurement.
+	for L := 1; L <= 3000; L += 7 {
+		conv := rtManifestFrameBytes(t, L, crypto.Convergent, cs, 0, erasure.Params{})
+		priv := rtManifestFrameBytes(t, L, crypto.Private, cs, 0, erasure.Params{})
+		if msg := rtSFO1ModeHidden(L, conv, priv); msg != "" {
 			t.Fatal(msg)
 		}
 	}
 
-	// (b) THE CLASSIFIER, which is the actual capability, stated at the strength it actually
-	// has. A keyless attacker fetches the victim's manifest chunk, measures its length, and
-	// looks the length up in a table it built by publishing its own dummy objects. That table
-	// is INDEXED BY FileSize, and the attacker gets the victim's FileSize for free out of the
-	// same ports.Entry that gave it ManifestChunks (RT-SFO-5). So the decision procedure is:
-	// given FileSize, the frame length decides the mode. Assert exactly that, densely.
-	//
-	// CORRECTION OF RECORD, measured here, stated by neither source document. The two findings
-	// COMPOSE, and the composition is load-bearing for the fix decision:
-	//   - Per FileSize the modes are separable: 0 collisions over 429 sizes (arm below).
-	//   - ACROSS FileSizes the length sets ALIAS: a 345-byte frame is a convergent object of
-	//     1 byte OR a private object of 1,024 bytes; a 349-byte frame is convergent@1,024 or
-	//     private@65,536. So an attacker who does NOT know FileSize cannot classify.
-	// RT-SFO-1's oracle is therefore CONDITIONED on RT-SFO-5's field. Blinding or bucketing
-	// Entry.FileSize — the RT-SFO-5 remedy — degrades this classifier as a side effect, and
-	// re-padding the manifest frame — the RT-SFO-1 remedy — does not touch RT-SFO-5. That
-	// asymmetry is a reason to sequence RT-SFO-5 first and it is not in the report or the
-	// ruling. Do NOT let this pin be read as "the mode is public unconditionally".
-	for L := 1; L <= 3000; L += 7 {
-		conv := rtManifestFrameBytes(t, L, crypto.Convergent, cs, 0, erasure.Params{})
-		priv := rtManifestFrameBytes(t, L, crypto.Private, cs, 0, erasure.Params{})
-		if conv == priv {
-			t.Fatalf("RT-SFO-1 PIN IS RED (classifier arm) — at FileSize=%d both modes now frame at %d bytes, so "+
-				"the length no longer decides the mode AT A KNOWN FileSize. That is the fix. Confirm it is deliberate, "+
-				"confirm the owner ruled (open call, Part-0 corner), then replace this pin with the positive assertion "+
-				"and keep the padded-framing ablation as the mechanism guard.", L, conv)
+	// (c) THE MECHANISM, asserted against the store, because equality at the FRAME can be
+	// bought the wrong way. The certification is explicit that re-padding the manifest frame
+	// lifts this only PARTIALLY: once a convergent manifest outgrows one frame,
+	// len(Entry.ManifestChunks) separates the modes on-chain with no fetch at all. So this arm
+	// asserts (i) the SEALED BLOB itself is mode-independent — the inner box is what was
+	// fixed, which is also what closes it for the care-link holder — and (ii) the frame is
+	// still the blob's true length plus a header, i.e. nothing above leans on frame padding.
+	blob := func(mode crypto.Mode, L int) []byte {
+		o := rtStage(t, L, mode, cs, 0, erasure.Params{})
+		b, err := pipeline.LoadBlob(context.Background(), o.store, o.entry)
+		if err != nil {
+			t.Fatalf("LoadBlob (%s, L=%d): %v", mode, L, err)
+		}
+		return b
+	}
+	for _, L := range []int{1, 1024, 262136, 262137, 600000, 2097152} {
+		bc, bp := blob(crypto.Convergent, L), blob(crypto.Private, L)
+		if len(bc) != len(bp) {
+			t.Fatalf("RT-SFO-1 IS BACK AT THE ROOT — the SEALED BLOB for a %d-byte object is %d bytes convergent "+
+				"and %d bytes private. The frames may still agree, but the BLOB length is the deeper oracle: the "+
+				"care-link holder measures it directly (manifest.OpenLayout gives it Layout.Box), and once the "+
+				"manifest spans more than one frame the chunk COUNT publishes it on-chain. Fix "+
+				"manifest.secretsPlainLen, not pipeline.ManifestFrameSize.", L, len(bc), len(bp))
 		}
 	}
-
-	// (b2) THE BOUND, pinned so the finding cannot be over-claimed later. The cross-FileSize
-	// aliases above are a REAL limit on the attack, and a limit that disappears silently is as
-	// bad as a defect that appears silently. If these two aliases stop existing, the oracle got
-	// STRONGER — it would then classify without knowing FileSize at all — and that is an
-	// escalation somebody must see.
-	aliases := 0
-	convByLen, privByLen := map[int]int{}, map[int]int{}
-	for _, tc := range rtSFO1MeasuredLengths {
-		convByLen[rtManifestFrameBytes(t, tc.L, crypto.Convergent, cs, 0, erasure.Params{})] = tc.L
-		privByLen[rtManifestFrameBytes(t, tc.L, crypto.Private, cs, 0, erasure.Params{})] = tc.L
-	}
-	for v := range convByLen {
-		if _, ok := privByLen[v]; ok {
-			aliases++
-		}
-	}
-	if aliases == 0 {
-		t.Fatalf("RT-SFO-1 ESCALATED — the convergent and private frame-length sets are now DISJOINT across the "+
-			"eight pinned FileSizes (%d aliases, pinned 2). The classifier no longer needs the victim's FileSize, so "+
-			"the oracle works against an attacker who has only the manifest bytes. This is a WORSENING, not a fix: "+
-			"re-run the red-team pass and re-open RT-SFO-1's severity with the owner.", aliases)
-	}
-	// (c) THE MECHANISM. Pinning the numbers alone would pass for the wrong reason if the
-	// cause moved. The cause is that the sealed blob's LENGTH is mode-dependent and the frame
-	// is that length plus a header. Assert that directly, against the store, so a fix that
-	// equalises the blob (padding secretsPart) and a fix that equalises the frame (padding
-	// the manifest frame) are both caught, and neither can leave (a) green by coincidence.
-	small := rtStage(t, 1024, crypto.Convergent, cs, 0, erasure.Params{})
-	blobConv, err := pipeline.LoadBlob(context.Background(), small.store, small.entry)
-	if err != nil {
-		t.Fatalf("LoadBlob (convergent): %v", err)
-	}
-	smallPriv := rtStage(t, 1024, crypto.Private, cs, 0, erasure.Params{})
-	blobPriv, err := pipeline.LoadBlob(context.Background(), smallPriv.store, smallPriv.entry)
-	if err != nil {
-		t.Fatalf("LoadBlob (private): %v", err)
-	}
-	if len(blobConv) == len(blobPriv) {
-		t.Fatalf("RT-SFO-1 PIN IS RED (mechanism arm) — the SEALED BLOB is now %d bytes in both modes. The "+
-			"length of the sealed manifest no longer depends on which branch of secretsPart is populated. That "+
-			"is the root fix, not a framing change. Confirm it, confirm the owner ruled, and replace this pin.",
-			len(blobConv))
-	}
-	if got := rtManifestFrameBytes(t, 1024, crypto.Convergent, cs, 0, erasure.Params{}); got != len(blobConv)+chunk.HeaderSize {
-		t.Fatalf("RT-SFO-1 PIN IS RED (mechanism arm) — the manifest frame is %d bytes for a %d-byte blob, not "+
-			"blob+%d. pipeline.ManifestFrameSize's true-length framing is what publishes the blob length to a "+
-			"keyless observer; if the frame is no longer the blob's length, re-read RT-SFO-1 before assuming the "+
-			"oracle is closed — a frame that is padded UP is a fix, a frame that grew for another reason is not.",
-			got, len(blobConv), chunk.HeaderSize)
+	if got, want := rtManifestFrameBytes(t, 1024, crypto.Convergent, cs, 0, erasure.Params{}),
+		len(blob(crypto.Convergent, 1024))+chunk.HeaderSize; got != want {
+		t.Fatalf("RT-SFO-1 GATE IS MEASURING THE WRONG THING — the manifest frame is %d bytes where the sealed "+
+			"blob plus a %d-byte header is %d. pipeline.ManifestFrameSize has stopped framing at true length, so "+
+			"arms (a) and (b) may be green because the FRAME is padded rather than because the BOX is. That is "+
+			"the partial fix the certification refuses; re-read its §9 before trusting this gate.",
+			got, chunk.HeaderSize, want)
 	}
 }
 
-// TestRT_SFO_1_PinRedensWhenTheModesConverge is the TEETH. It never publishes anything: it
-// feeds rtSFO1Pin the post-fix value and the drifted value and asserts the predicate speaks.
-// Without this, the pin above is a green gate with no demonstrated red — decoration under
-// simplicity rule 7 — because nothing would ever have checked that it CAN fail.
-func TestRT_SFO_1_PinRedensWhenTheModesConverge(t *testing.T) {
-	// The post-fix state: both modes frame identically. Must redden.
-	if msg := rtSFO1Pin(1, 345, 345, 345, 341); msg == "" {
-		t.Fatal("rtSFO1Pin stayed silent when convergent and private framed identically — the pin cannot detect " +
-			"the fix it exists to detect, so it is decoration (simplicity rule 7)")
-	}
-	// The drift state: still separable, but the numbers moved. Must redden.
-	if msg := rtSFO1Pin(1, 349, 341, 345, 341); msg == "" {
-		t.Fatal("rtSFO1Pin stayed silent when the measured convergent frame moved from 345 to 349 — an encoding " +
-			"change under the seal would pass unnoticed")
-	}
-	// The pinned state: must stay silent, or the gate is a permanent false alarm.
-	if msg := rtSFO1Pin(1, 345, 341, 345, 341); msg != "" {
-		t.Fatalf("rtSFO1Pin fired on the pinned state it is supposed to accept: %s", msg)
+// TestRT_SFO_1_ModeIsNotRecoverableAtAnyErasureGeometry is the geometry arm, inverted by the
+// fix. It used to pin that the convergent and private length SETS stay DISJOINT over a
+// seven-point (k,n) grid — the property that made the oracle survive an attacker who did not
+// know the publisher's -erasure setting. The pad target is the data-shard count, which is the
+// same in both modes at a given (L, k, n), so the modes now collide at every point of that
+// grid. Assert the collision pointwise, which is strictly stronger than set equality: two
+// length SETS can coincide while no individual geometry matches.
+func TestRT_SFO_1_ModeIsNotRecoverableAtAnyErasureGeometry(t *testing.T) {
+	cs := pipeline.DefaultChunkSize
+	grid := []erasure.Params{{K: 2, N: 4}, {K: 3, N: 5}, {K: 4, N: 8}, {K: 6, N: 10}, {K: 10, N: 16}, {K: 12, N: 20}, {K: 16, N: 24}}
+	for _, L := range []int{1024, 40000} {
+		for _, g := range grid {
+			conv := rtManifestFrameBytes(t, L, crypto.Convergent, cs, 0, g)
+			priv := rtManifestFrameBytes(t, L, crypto.Private, cs, 0, g)
+			if msg := rtSFO1ModeHidden(L, conv, priv); msg != "" {
+				t.Fatalf("at k=%d,n=%d: %s", g.K, g.N, msg)
+			}
+		}
 	}
 }
 
-// TestRT_SFO_1_PaddedFramingAblationCollapsesBothModes is the ABLATION, and the brief is
-// right that it is the valuable half. Restoring the pre-4′ padded framing
-// (Options.ManifestFrameBytes = ChunkSize, the field the dup-publish gate already uses) kills
-// the classifier dead. PIN THAT TOO: without this arm, a future revert to padded framing looks
-// like a regression in the pins above rather than the remedy it is, and — worse — someone
-// could "fix" RT-SFO-1 by re-padding without any test recording that re-padding is what
-// closed it. RT-SFO-5 is why that matters: re-padding the sub-frame closes the MANIFEST
-// oracle and does NOT close the length oracle, because Entry.FileSize publishes the exact
-// length anyway. Two different leaks, one framing knob.
+// TestRT_SFO_1_GateRedensWhenTheModesSeparate is the TEETH, carried over from the retired
+// pin's teeth and re-pointed at the new predicate. It publishes nothing: it feeds
+// rtSFO1ModeHidden the PRE-FIX MEASUREMENTS and asserts the gate speaks. This is the permanent
+// record of the RED, and it is the reason the gate above is evidence rather than decoration —
+// nothing else ever checks that it CAN fail.
+func TestRT_SFO_1_GateRedensWhenTheModesSeparate(t *testing.T) {
+	for _, tc := range rtSFO1Sizes {
+		if msg := rtSFO1ModeHidden(tc.L, tc.wasConv, tc.wasPriv); msg == "" {
+			t.Fatalf("rtSFO1ModeHidden stayed silent on the ORIGINAL RT-SFO-1 measurement at FileSize=%d "+
+				"(convergent=%d, private=%d, as recorded at 00082b8) — the gate cannot detect the defect it "+
+				"exists to prevent, so it is decoration (simplicity rule 7)", tc.L, tc.wasConv, tc.wasPriv)
+		}
+	}
+	// A ONE-BYTE separation. A classifier needs one bit, so a gate with any slack does not
+	// hold the property; this is the arm that refuses a "close enough" reformulation.
+	if msg := rtSFO1ModeHidden(1, 346, 345); msg == "" {
+		t.Fatal("rtSFO1ModeHidden stayed silent on a ONE-BYTE separation — one byte is more than the one bit " +
+			"the mode oracle needs, so a gate that tolerates it does not hold the property")
+	}
+	// The post-fix state: must stay silent, or the gate is a permanent false alarm.
+	if msg := rtSFO1ModeHidden(1, rtSFO1Sizes[0].framed, rtSFO1Sizes[0].framed); msg != "" {
+		t.Fatalf("rtSFO1ModeHidden fired on the state it exists to accept: %s", msg)
+	}
+}
+
+// TestRT_SFO_1_PaddedFramingAblationCollapsesBothModes is the framing ablation, kept from
+// #817 and still load-bearing for a reason that OUTLIVED the defect. It pins that padded
+// manifest framing ALSO collapses the modes — which is exactly why it must stay visible next
+// to the real fix. Someone reading the gate above could conclude that re-padding the frame is
+// an equivalent remedy. It is not: it lifts the oracle only while both modes fit one frame,
+// because len(Entry.ManifestChunks) then separates them on-chain with no fetch at all, and it
+// reinstates R-MANIFEST-PADDING's 3.9x store growth. This test records the weaker remedy as
+// weaker, in the same file as the stronger one.
 func TestRT_SFO_1_PaddedFramingAblationCollapsesBothModes(t *testing.T) {
 	cs := pipeline.DefaultChunkSize
 	for _, L := range []int{1, 1024, 262135} {
@@ -358,42 +362,14 @@ func TestRT_SFO_1_PaddedFramingAblationCollapsesBothModes(t *testing.T) {
 		priv := rtManifestFrameBytes(t, L, crypto.Private, cs, cs, erasure.Params{})
 		if conv != priv {
 			t.Fatalf("ABLATION FAILED TO ABLATE — under padded framing (ManifestFrameBytes=%d) a %d-byte object "+
-				"still frames convergent=%d private=%d. The ablation is what proves the true-length framing is the "+
-				"CAUSE of RT-SFO-1 rather than a correlate; if padding no longer collapses the modes, the oracle has "+
-				"a second source and RT-SFO-1's fix analysis is wrong. Re-run the red-team pass before proceeding.",
+				"still frames convergent=%d private=%d. Re-read RT-SFO-1's fix analysis before proceeding.",
 				cs, L, conv, priv)
 		}
 		if conv != cs {
 			t.Fatalf("ABLATION FAILED TO ABLATE — padded framing produced %d bytes, not the chunk size %d. "+
-				"Options.ManifestFrameBytes no longer pins the frame, so this ablation is not exercising the pre-4′ "+
+				"Options.ManifestFrameBytes no longer pins the frame, so this ablation is not exercising the pre-4' "+
 				"behaviour it claims to and its green result means nothing (the silt-ablation-noop-guard scar).",
 				conv, cs)
-		}
-	}
-}
-
-// TestRT_SFO_1_ModeOracleIsAliasFreeAcrossGeometry pins the survivability the red-team
-// measured: the oracle does not need the publisher's (k,n). Over a seven-point grid the
-// convergent and private length SETS stay disjoint, because the mode delta (4 B at one chunk)
-// is not a multiple of the parity step (34 B). This is the arm that says an attacker needs
-// neither -chunk-size (RT-SFO-2) nor -erasure.
-func TestRT_SFO_1_ModeOracleIsAliasFreeAcrossGeometry(t *testing.T) {
-	cs := pipeline.DefaultChunkSize
-	grid := []erasure.Params{{K: 2, N: 4}, {K: 3, N: 5}, {K: 4, N: 8}, {K: 6, N: 10}, {K: 10, N: 16}, {K: 12, N: 20}, {K: 16, N: 24}}
-	for _, L := range []int{1024, 40000} {
-		conv, priv := map[int]erasure.Params{}, map[int]erasure.Params{}
-		for _, g := range grid {
-			conv[rtManifestFrameBytes(t, L, crypto.Convergent, cs, 0, g)] = g
-			priv[rtManifestFrameBytes(t, L, crypto.Private, cs, 0, g)] = g
-		}
-		for v, gc := range conv {
-			if gp, ok := priv[v]; ok {
-				t.Fatalf("RT-SFO-1 GEOMETRY PIN IS RED at FileSize=%d — frame length %d is produced by convergent "+
-					"k=%d,n=%d AND private k=%d,n=%d. The red-team measured ALIASES=0 over this grid, which is what "+
-					"makes the oracle survive an unknown erasure geometry. An alias appearing is either a fix or a "+
-					"change to erasure.DefaultParams / the parity step; establish which, and record it.",
-					L, v, gc.K, gc.N, gp.K, gp.N)
-			}
 		}
 	}
 }
