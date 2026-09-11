@@ -1,8 +1,11 @@
 package node
 
 // Lane C2 — the DELIVERY IDLE WINDOW (`R-REAPER-FORFEIT`, ROADMAP row C2; owner call 4
-// of `D-TRUE-UP-CALLS-2026-09-07`, which keeps `-delivery-idle-window` REFUSE-UNTIL-SET
-// until Lane A's liveness bound is field-confirmed and then sets the default ABOVE it).
+// of `D-TRUE-UP-CALLS-2026-09-07`, which held `-delivery-idle-window` at REFUSE-UNTIL-SET
+// until Lane A's liveness bound was field-confirmed and then set the default ABOVE it).
+// That conditional has FIRED: the bound is confirmed, refuse-until-set is RELEASED, and
+// the shipped default is 24m (`cmd/silt/numeraire.go` deliveryIdleDefault, value ratified
+// `D-C2-IDLE-WINDOW-VALUE` 2026-09-09). What survives is the daemon's floor refusal.
 //
 // These gates pin the PROPERTY, never a number: the reaper's GUARANTEED survival — the
 // shortest gap since a real settlement at which a reap can fire — must dominate the worst

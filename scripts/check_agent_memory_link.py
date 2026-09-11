@@ -345,8 +345,8 @@ def _git(store, *args, timeout=30):
         return 127, str(exc)
 
 
-def _exists_cased(base, target):
-    """Case-EXACT existence test for an index link, relative to `base`.
+def _exists_cased(base, target, root):
+    """Case-EXACT existence test for an index link, resolved from `base`, floored at `root`.
 
     `Path.exists()` is case-INSENSITIVE on APFS (measured: `(seat / "Real.md").exists()`
     is True when the file on disk is `real.md`), which is the volume every seat and the
@@ -355,15 +355,28 @@ def _exists_cased(base, target):
     orphan direction compares link STRINGS. One typo, two wrong answers, and the half a
     reader trusts said clean. `os.listdir()` membership is case-exact on every volume.
 
-    Returns False on anything it cannot resolve, including a link that climbs out of the
-    seat: this is a reachability test, and unreachable is the answer in both cases.
+    `..` IS RESOLVED, against the store. The seat directories are not reachability
+    boundaries: the store is one repository, and a cross-seat citation is a normal,
+    live shape — `researcher/MEMORY.md:78 -> ../tester/era4-regcap-measurement-2026-08-29.md`
+    resolves to a real 4018 B file today. An earlier revision of this function returned
+    False on any `..` component and called it "unreachable"; that was measured false, and
+    it put a standing `DEGRADED: 1 dangling link(s)` on every autosave subject, which is
+    exactly the cry-wolf state that buries the next REAL dangling link. `check_memory_index.py`
+    (`resolve`, and self-test arm 4) states the same rule for the same construct; the two
+    must not disagree about the store they both read.
+
+    A link that climbs ABOVE the store root is still False: that is outside the tree this
+    check governs, and unreachable is the right answer there.
     """
     cur = base
     for part in target.split("/"):
         if part in ("", "."):
             continue
         if part == "..":
-            return False
+            if cur == root:
+                return False
+            cur = cur.parent
+            continue
         try:
             if part not in os.listdir(cur):
                 return False
@@ -413,7 +426,7 @@ def index_integrity(store):
             if not target:
                 continue
             linked.add(target)
-            if not _exists_cased(seat, target):
+            if not _exists_cased(seat, target, store):
                 dangling.append(f"{seat.name}/{INDEX_NAME} -> {target}")
 
         try:
@@ -697,6 +710,56 @@ def _autosave_self_test() -> int:
                             "— a case-exact test that rejects real links dangles the "
                             "whole store and the DEGRADED label stops meaning anything")
         (seat / "cased-memory.md").unlink()
+        # 4d. CROSS-SEAT LINKS. The over-action control that arm 4c did NOT have.
+        #
+        #     WHY IT IS HERE: 4c's over-action leg tests a same-directory, correctly-cased
+        #     link, and its comment claims it catches "a fix that rejected every nested or
+        #     unusual link". It does not. A revision of `_exists_cased` returned False on
+        #     every `..` component, calling it unreachable; 4c passed, and the real store
+        #     went from 0 dangling to 1 — `researcher/MEMORY.md -> ../tester/…md`, a link
+        #     whose target exists — which would have stamped `DEGRADED: 1 dangling link(s)`
+        #     on every autosave subject from then on. A control that does not cover the
+        #     over-action that shipped is not a control, so this one names the shape.
+        (store / "tester").mkdir()
+        (store / "tester" / "scar.md").write_text("the tester's scar\n")
+        # This file EXISTS, one level above the store. Without it the "above the store"
+        # leg below would pass on plain ABSENCE and never reach the floor it names.
+        (tmp / "outside.md").write_text("not memory this store governs\n")
+        (store / "tester" / INDEX_NAME).write_text(
+            "# index\n\n- [Its own scar](scar.md) — described.\n")
+        (seat / INDEX_NAME).write_text(
+            "# index\n\n- [One](one.md)\n- [Two](two.md)\n"
+            "- [A scar the tester owns](../tester/scar.md)\n"
+            "- [A scar the tester does not own](../tester/absent.md)\n"
+            "- [Wrong-cased seat](../Tester/scar.md)\n"
+            "- [Above the store](../../outside.md)\n")
+        idx, dangling, orphans = index_integrity(store)
+        if [d for d in dangling if d.endswith("../tester/scar.md")] != []:
+            failures.append("OVER-ACTION: a RESOLVING cross-seat link was reported "
+                            "dangling. This is the exact regression measured on the live "
+                            "store; check_memory_index.py self-test arm 4 asserts the same "
+                            "link must resolve, and two checks may not govern one store "
+                            "with contradictory rules")
+        if [d for d in dangling if d.endswith("../tester/absent.md")] == []:
+            failures.append("a cross-seat link at a MISSING file was not dangling — "
+                            "resolving `..` must not mean skipping the links that carry it")
+        if [d for d in dangling if d.endswith("../Tester/scar.md")] == []:
+            failures.append("a cross-seat link whose SEAT component is wrong-cased was not "
+                            "dangling — resolving `..` must not drop case-exactness for the "
+                            "components climbed through, only for the basename")
+        if [d for d in dangling if d.endswith("../../outside.md")] == []:
+            failures.append("a link climbing ABOVE the store root was not dangling — that "
+                            "is outside the tree this check governs. The target EXISTS on "
+                            "disk, so this leg fails on the missing floor and not on mere "
+                            "absence")
+        # The wrong-cased-seat leg carries arm 4c's volume dependency: `os.listdir`
+        # membership is case-exact everywhere, so it discriminates against a fix built on
+        # `Path.exists()`/`normpath` only on a case-INSENSITIVE volume. On Linux CI the
+        # filesystem answers correctly on its own and that leg is a restatement. The
+        # other three legs are volume-independent.
+        (store / "tester" / "scar.md").unlink()
+        (store / "tester" / INDEX_NAME).unlink()
+        (store / "tester").rmdir()
         (seat / INDEX_NAME).write_text(
             "# index\n\n- [One](one.md)\n- [Two](two.md)\n- [Gone](gone.md)\n")
 
