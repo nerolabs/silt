@@ -2,6 +2,7 @@ package chain
 
 import (
 	"crypto/ed25519"
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -136,6 +137,20 @@ func className(c configClass) string {
 
 // configDecl is one field's declaration. `why` is the justification a reviewer reads; `binding`
 // is what actually enforces uniformity today (empty = NOTHING does, which is a tracked residual).
+//
+// ⚠ THE RECORD CONTRADICTION THIS FIELD CARRIED, CORRECTED 2026-09-11. Every
+// consensus-critical row below carried `binding: ""` — "NOTHING BINDS IT" — while
+// configMemberships, IN THIS SAME FILE, declared the same fields `carriedAs` a real
+// chain.ConsensusParams member. Both cannot be true. The membership table was right: owner call
+// F landed the production bind (genesis.Build requires the params, the genesis hash covers them,
+// CheckConsensusParams is wired as a refuse-to-start after replay). So the gate was printing
+// "UNBOUND consensus-critical (3): [Anchors MinBond MinBondBytes]" about three fields that have
+// been genesis-covered since that merge.
+//
+// The two fields answer DIFFERENT questions and both are kept, because collapsing them would
+// lose the one that matters: `carriedAs` is STRUCTURAL (is it in the genesis hash — resolved by
+// reflection), `binding` is the MECHANISM (what that coverage actually enforces, and what it
+// still does not). Every binding string below now names its hole as well as its cover.
 type configDecl struct {
 	class   configClass
 	why     string
@@ -161,6 +176,18 @@ type configDecl struct {
 	sanctionedIn []string
 }
 
+// genesisBind is the mechanism that binds the whole carried family, written once because it IS
+// one mechanism — sixteen copies of the same sentence is sixteen places for it to decay. A row
+// that has MORE to say appends; a row whose bind is weaker says so instead of using this.
+//
+// The hole is named because it is real and open: a genesis minted before owner call F carries
+// nil Params, and CheckConsensusParams returns nil on it by design. That surviving paramless
+// path is what keeps R-CONSENSUS-CONFIG-UNBOUND on the register.
+const genesisBind = "genesis-covered in ConsensusParams (a divergent node computes a different genesis " +
+	"and cannot join — ErrForeignGenesis) + CheckConsensusParams refuse-to-start on restart " +
+	"(D-CFGBIND-MEMBERSHIP-RULE-2026-09-10). HOLE: a pre-bind genesis carries nil Params — " +
+	"R-CONSENSUS-CONFIG-UNBOUND stays open for it"
+
 // THE DECLARATION TABLE. Adding a chain.Config field without adding a row here FAILS this gate.
 var configDecls = map[string]configDecl{
 	"Quorum": {
@@ -177,86 +204,96 @@ var configDecls = map[string]configDecl{
 		class:   classConsensusCritical,
 		why:     "Gates Reject in three v5 validity paths: proposer qualification (validate_v5_predicates.go:246-249), bond-reg admission (validate_v5_quorum.go:222) and the qualification filter (:522). Divergent values mean two honest replicas disagree on the same block — I1.",
 		ungated: "R-CONFIG-GATE-V5-REGIME — those three v5 sites are NOT executed here (measured: validate_v5_predicates.go 0/178, validate_v5_quorum.go 0/229). The divergence this gate measures is on the era-1 path; the v5 citation is the classification's justification, not this test's evidence.",
-		binding: "", // NOTHING. R-CONSENSUS-CONFIG-UNBOUND.
+		// CORRECTED 2026-09-11: this read `binding: ""` — "NOTHING BINDS IT" — while
+		// configMemberships declared carriedAs "MinBond" in the same file. The bind landed with
+		// owner call F; the row had not moved.
+		binding: genesisBind,
 		readIn:  []string{regimeObjective},
 	},
 	"MinBondBytes": {
 		class:   classConsensusCritical,
 		why:     "The anti-release floor is a second bond-reg admission threshold (validate_v5_quorum.go:225), same class and same failure as MinBond.",
 		ungated: "R-CONFIG-GATE-V5-REGIME — as MinBond: validate_v5_quorum.go is not executed here.",
-		binding: "", // NOTHING. R-CONSENSUS-CONFIG-UNBOUND.
+		binding: genesisBind, // CORRECTED 2026-09-11, as MinBond: carriedAs "MinBondBytes".
 		readIn:  []string{regimeObjective},
 	},
 	"ByzantineQuorum": {
 		class:   classConsensusCritical,
 		why:     "Selects WHICH quorum rule is the validity bar (derived Byzantine threshold vs the Config.Quorum floor). Two replicas disagreeing here disagree about the rule itself, not just its input.",
-		binding: "",
+		binding: genesisBind,
 		readIn:  []string{regimeTrustedOptOut, regimeObjective},
 	},
 	"Anchors": {
-		class:   classConsensusCritical,
-		why:     "The launch training-wheels set: a commit in the young window needs AnchorQuorum attestations from it. Named in silt's own prose as genesis config discipline (chain.go:190).",
-		binding: "",
+		class: classConsensusCritical,
+		why:   "The launch training-wheels set: a commit in the young window needs AnchorQuorum attestations from it. Named in silt's own prose as genesis config discipline (chain.go:190).",
+		// CORRECTED 2026-09-11: carriedAs "Anchors" (as the canonical SORTED slice — see
+		// SortedAnchors, which exists because CBOR map ordering is not a hash guarantee).
+		binding: genesisBind,
 		readIn:  []string{regimeYoungAnchors},
 	},
 	"AnchorQuorum": {
 		class:   classConsensusCritical,
 		why:     "The threshold on Anchors; same rule, same failure.",
-		binding: "",
+		binding: genesisBind,
 		readIn:  []string{regimeYoungAnchors},
 	},
 	"MatureValidators": {
 		class:   classConsensusCritical,
 		why:     "The Nakamoto coefficient that sheds the training wheels. Divergence means replicas disagree about WHICH regime the chain is in, which is a fork of the validity rule.",
-		binding: "",
+		binding: genesisBind,
 		readIn:  []string{regimeYoungAnchors},
 	},
 	"OperatorMargin": {
 		class:   classConsensusCritical,
 		why:     "The M discount on the C2 concentration metric that feeds Mature(); same regime-selection failure as MatureValidators.",
-		binding: "",
+		binding: genesisBind,
 		readIn:  []string{regimeYoungAnchors},
 	},
 	"EpochBlocks": {
 		class:   classConsensusCritical,
 		why:     "The epoch cadence. silt's own comment says it verbatim: 'Consensus-critical: every validator in a swarm must run the same value (like MinBond/Anchors — genesis config discipline)' (chain.go:189-191).",
-		binding: "",
+		binding: genesisBind,
 		readIn:  []string{regimeEpochs},
 	},
 	"RegGateActivationHeight": {
 		class:   classConsensusCritical,
 		why:     "The #506 R-rule pre-latch activation override. Its own comment: 'Consensus-critical genesis config, same discipline as MinBond/Anchors' (chain.go:256-257).",
-		binding: "",
+		binding: genesisBind,
 		readIn:  []string{regimeEpochs},
 	},
 	"BondTTLBlocks": {
 		class:   classConsensusCritical,
 		why:     "Bond standing lapses on this cadence, so it decides WHO is qualified at a height — a committed-state question, not a local one.",
-		binding: "",
+		binding: genesisBind,
 		readIn:  []string{regimeEpochs},
 	},
 	"AllowPublisher": {
 		class:   classConsensusCritical,
 		why:     "Permits a durable Publisher NodeID on an entry. A replica that refuses what another accepts splits on entry validity.",
-		binding: "",
+		binding: genesisBind,
 		readIn:  []string{regimeLegacy, regimeTrustedOptOut, regimeObjective},
 	},
 	"Era3ActivationHeight": {
-		class:   classConsensusCritical,
-		why:     "The era-3 pre-latch activation override — it decides WHICH format/validity rules apply at a height. Its own comment calls it consensus-critical genesis config (chain.go:243-260). Divergence means two replicas validate the same block under different eras.",
-		binding: "partial: New() enforces Era4ActivationHeight >= Era3ActivationHeight (chain.go:1372) — a LOCAL coherence check, which canon rule 8 says cannot enforce a distributed agreement",
-		readIn:  []string{regimeEpochs},
+		class: classConsensusCritical,
+		why:   "The era-3 pre-latch activation override — it decides WHICH format/validity rules apply at a height. Its own comment calls it consensus-critical genesis config (chain.go:243-260). Divergence means two replicas validate the same block under different eras.",
+		// CORRECTED 2026-09-11. The old string named ONLY the local New() ordering check and
+		// concluded "nothing binds the VALUE across replicas" — true when written, false since
+		// owner call F, and it read as the strongest claim available while carriedAs said
+		// otherwise two hundred lines down.
+		binding: genesisBind + ". PLUS a local New() check that Era4ActivationHeight >= " +
+			"Era3ActivationHeight — canon rule 8: that binds operators, never PEERS",
+		readIn: []string{regimeEpochs},
 	},
 	"Era4ActivationHeight": {
 		class:   classConsensusCritical,
 		why:     "The era-4 (v5) pre-latch activation override, read by era4Active (chain.go:3980-3985). Same failure as Era3ActivationHeight, and it is the boundary the whole D1 freeze is about.",
-		binding: "partial: the same local New() ordering check; nothing binds the VALUE across replicas",
+		binding: genesisBind + ". PLUS the same local New() ordering check (CORRECTED 2026-09-11, as Era3ActivationHeight)",
 		readIn:  []string{regimeEpochs},
 	},
 	"BondRegHeadWindow": {
 		class:   classConsensusCritical,
 		why:     "Bounds how far back a bond registration may be anchored, which is an admission rule on committed content.",
-		binding: "",
+		binding: genesisBind,
 		readIn:  []string{regimeObjective},
 	},
 	"MinProposerRep": {
@@ -297,8 +334,27 @@ var configDecls = map[string]configDecl{
 		readIn: nil,
 	},
 	"WSCheckpoint": {
-		class:  classLocal,
-		why:    "Weak-subjectivity pin. Deliberately per-operator — it is the operator's own trust anchor, and silt is weakly subjective by design (TENETS Part 0). It narrows what THIS node accepts; it must never widen it.",
+		class: classLocal,
+		// ⚠ THE "NARROWING-ONLY" CLAUSE WAS MEASURED FALSE, 2026-09-11. This row read "It narrows
+		// what THIS node accepts; it must never widen it." Driven against the real predicate:
+		// with WSCheckpoint UNSET, trustFloor() is 0 and validateBondRegs REFUSES a
+		// heavy-proofs-shed block at height 50 (ErrPrunedAboveHorizon); with WSCheckpoint at
+		// height 100, trustFloor() is 100 and the SAME block is ACCEPTED. It widens, and the
+		// widening is the mechanism, not a bug: trustFloor() is max(RetentionHorizon(),
+		// WSCheckpoint.Height), and trusting pruned history below your own anchor is what the
+		// anchor is FOR. Cover: TestWSCheckpointWidensThePrunedTrustFloor.
+		//
+		// THE EXCLUSION STILL HOLDS, on its OTHER arm. It is exactly because setting the pin
+		// WIDENS what this node will trust unverified that the pin must be the operator's OWN —
+		// a checkpoint every operator took from the same place is not an independent anchor, it
+		// is one party's say-so wearing five signatures. That argument never needed
+		// "narrowing-only", which is why removing the false clause costs the exclusion nothing.
+		why: "Weak-subjectivity pin. Deliberately per-operator — it is the operator's own trust anchor, and silt is weakly subjective by design (TENETS Part 0). Setting it WIDENS what this node trusts without re-verification (it raises trustFloor(), the pruned-tolerance anchor), which is precisely why it must be independently chosen per operator.",
+		// readIn STAYS nil, deliberately. None of the five regimes drives a heavy-proofs-shed
+		// block, so none of them reads this field, and the gate correctly reports it UNPROVEN.
+		// Naming a regime here to move it out of UNPROVEN would be the dead-probe failure blind
+		// PE F-3 caught twice: a DRIVEN-SAFE that no driving produced. The widening above is
+		// measured by a separate driven test rather than faked here.
 		readIn: nil,
 	},
 	"LivenessRecoveryHeight": {
@@ -364,10 +420,14 @@ var configMemberships = map[string]configMembership{
 	"Archive": {reasonNotCarried: "RETENTION ONLY — it reaches no verdict. Whether THIS node keeps full bodies is " +
 		"an operator's storage choice and is deliberately per-node (build-immutable #8). Binding it would forbid " +
 		"the heterogeneity the durability design depends on."},
+	// ⚠ CORRECTED 2026-09-11: the "narrows and can never widen it, so divergence is safe" clause
+	// was MEASURED FALSE — it widens (see the configDecls row). The exclusion stands on the arm
+	// that was always doing the work, and that arm is now the whole reason.
 	"WSCheckpoint": {reasonNotCarried: "SHARING IT WOULD DESTROY WEAK SUBJECTIVITY. It is the operator's OWN trust " +
-		"anchor, and silt is weakly subjective by design (TENETS Part 0). It narrows what this node accepts and can " +
-		"never widen it, so divergence is safe — and it MUST vary per node, because a checkpoint every operator got " +
-		"from the same place is not an independent anchor at all."},
+		"anchor, and silt is weakly subjective by design (TENETS Part 0). It MUST vary per node, because a " +
+		"checkpoint every operator got from the same place is not an independent anchor at all — and since setting " +
+		"it WIDENS what this node trusts unverified (it raises the pruned-tolerance trust floor), a shared pin would " +
+		"hand one party the power to widen every node at once. Divergence here is the design, not a tolerated cost."},
 	"MinProposerRep": {reasonNotCarried: "BINDING IS INEFFECTIVE. The divergent term is the local reputation VIEW, " +
 		"not the threshold: two nodes agreeing on the number still disagree on the verdict because they are " +
 		"comparing it against different inputs. Committing it would look like a fix and change nothing. The real " +
@@ -868,5 +928,76 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 			"update this map, and when the unbound rows are gone close R-CONSENSUS-CONFIG-UNBOUND.",
 			got, wantDivergence)
 	}
-	t.Logf("UNBOUND consensus-critical (%d, R-CONSENSUS-CONFIG-UNBOUND open): %v", len(unbound), unbound)
+	// CORRECTED 2026-09-11. This line printed "UNBOUND consensus-critical (3): [Anchors MinBond
+	// MinBondBytes]" for three fields that owner call F had already genesis-covered — the gate's
+	// loudest output was its stalest claim, because `binding` is prose and nothing re-derived it.
+	//
+	// The MECHANISM is unchanged and still asserts nothing: a consensus-critical field that
+	// diverges with an EMPTY binding lands here, which is what makes a NEW unbound field visible
+	// the moment it appears. The set is now empty, so the line reports that instead of a fiction.
+	// R-CONSENSUS-CONFIG-UNBOUND stays OPEN regardless — for the surviving paramless genesis, a
+	// hole no `binding` string on any row can close.
+	if len(unbound) == 0 {
+		t.Logf("UNBOUND consensus-critical (0) — every diverging consensus-critical field names a " +
+			"binding. R-CONSENSUS-CONFIG-UNBOUND stays OPEN for the paramless-genesis hole.")
+	} else {
+		t.Logf("UNBOUND consensus-critical (%d, R-CONSENSUS-CONFIG-UNBOUND open): %v", len(unbound), unbound)
+	}
+}
+
+// TestWSCheckpointWidensThePrunedTrustFloor is the driven cover for the corrected WSCheckpoint
+// reason string, and it exists because the claim it replaces was UNVERIFIABLE prose sitting in a
+// passing gate.
+//
+// THE CLAIM THAT WAS FALSE: "It narrows what THIS node accepts; it must never widen it." Setting
+// the pin raises trustFloor() — max(RetentionHorizon(), WSCheckpoint.Height) — and validateBondRegs
+// TRUSTS a heavy-proofs-shed block strictly below that floor. So the same block flips REJECT ->
+// ACCEPT when the operator sets a checkpoint above it. That is the mechanism working as designed;
+// the record describing it was the defect.
+//
+// WHY THIS IS A SEPARATE TEST AND NOT A regimes ROW. None of the five config-divergence regimes
+// drives a proofs-shed block, so the field is honestly UNPROVEN there and its readIn stays nil.
+// Adding a regime to make the row look driven is the dead-probe failure blind PE F-3 caught twice.
+// This measures the one thing the reason string asserts, directly.
+//
+// ABLATIONS, 2026-09-11, by EXIT CODE, each diffed against the pristine file first:
+//
+//	W0 baseline ......................................... GREEN  exit 0
+//	W1 pin the checkpoint BELOW the block (100 -> 40) ... RED    exit 1  (floor assertion)
+//	W2 revert ........................................... GREEN  exit 0
+//	W3 move the block ABOVE the floor (50 -> 150) ....... RED    exit 1  (the WIDENING assertion)
+//	W4 revert ........................................... GREEN  exit 0
+//
+// W3 is the one that matters: it is the only ablation that can distinguish "the checkpoint
+// widened the floor" from "the block happened to validate". W1 alone would pass a test that
+// never exercised the widening at all.
+func TestWSCheckpointWidensThePrunedTrustFloor(t *testing.T) {
+	mk := func(cp WSCheckpoint) *Chain {
+		c := New(Config{Quorum: 1, MinBond: 1 << 20, WSCheckpoint: cp}, func(ports.NodeID) int64 { return 0 })
+		c.SetBondVerifier(objectiveVerify)
+		return c
+	}
+	const h = 50
+	b := prunedRegBlockAt(h)
+
+	unset := mk(WSCheckpoint{})
+	if got := unset.trustFloor(); got != 0 {
+		t.Fatalf("with no checkpoint and no finality the trust floor must be 0, got %d — the probe "+
+			"is not in the regime it claims to measure", got)
+	}
+	if err := unset.validateBondRegs(&b); !errors.Is(err, ErrPrunedAboveHorizon) {
+		t.Fatalf("baseline must REJECT: an unset checkpoint leaves floor 0, so a proofs-shed block "+
+			"at height %d is at/above it. got %v", h, err)
+	}
+
+	set := mk(WSCheckpoint{Height: 100, Hash: ports.HashBytes([]byte("this operator's own anchor"))})
+	if got := set.trustFloor(); got != 100 {
+		t.Fatalf("the checkpoint must raise the trust floor to 100, got %d", got)
+	}
+	if err := set.validateBondRegs(&b); err != nil {
+		t.Fatalf("SETTING the checkpoint must WIDEN: the same block is now strictly below the floor "+
+			"and its space-time re-verify is skipped. got %v\n\n"+
+			"If this now REJECTS, the widening is gone and the WSCheckpoint reason string in "+
+			"configDecls/configMemberships is wrong AGAIN, in the other direction.", err)
+	}
 }
