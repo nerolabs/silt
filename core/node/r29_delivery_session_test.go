@@ -41,17 +41,17 @@ const r29Idle = 10 * ports.Second
 
 // mintDemandTokenUnder is the issuer side of a blind DEMAND withdrawal under key for
 // issue epoch e, done directly (the burn is exercised over the wire by the e2e).
-func mintDemandTokenUnder(t *testing.T, key *rsa.PrivateKey, e uint64) demand.Token {
+func mintDemandTokenUnder(t *testing.T, key *rsa.PrivateKey, cid ports.Hash, e uint64) demand.Token {
 	t.Helper()
 	serial, err := blindtoken.NewSerial(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	blinded, secret, err := demand.Withdraw(rand.Reader, &key.PublicKey, e, serial)
+	blinded, secret, err := demand.Withdraw(rand.Reader, &key.PublicKey, cid, e, serial)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tok, err := demand.Unblind(&key.PublicKey, e, serial, demand.SignWithdrawal(rand.Reader, key, blinded), secret)
+	tok, err := demand.Unblind(&key.PublicKey, cid, e, serial, demand.SignWithdrawal(rand.Reader, key, cid, blinded), secret)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func mintDemandTokensFor(t *testing.T, server *Node, e uint64, k int) []demand.T
 	}
 	out := make([]demand.Token, 0, k)
 	for i := 0; i < k; i++ {
-		out = append(out, mintDemandTokenUnder(t, v.(*rsa.PrivateKey), e))
+		out = append(out, mintDemandTokenUnder(t, v.(*rsa.PrivateKey), server.chainID(), e))
 	}
 	return out
 }
@@ -623,14 +623,14 @@ func TestDepositReleaseEpochIsTheAnchorsRealEpoch(t *testing.T) {
 	// FUND with an anchor issued at epoch E: the session's release epoch must follow the
 	// NEWEST anchor (the raise at fund), so the value handed at close is E, not 0.
 	key0 := cachedRSAKey(t, 3)
-	s, err := nd.OpenDeliverySession(fID.NodeID(), demand.SignSessionOpen(fID.Signer(), nd.id, []demand.Token{mintDemandTokenUnder(t, key0, 0)}))
+	s, err := nd.OpenDeliverySession(fID.NodeID(), demand.SignSessionOpen(fID.Signer(), nd.id, []demand.Token{mintDemandTokenUnder(t, key0, nd.chainID(), 0)}))
 	if err != nil {
 		t.Fatalf("open at epoch %d with an epoch-0 anchor: %v", E, err)
 	}
 	if s.maxAnchorEpoch != 0 {
 		t.Fatalf("session maxAnchorEpoch %d after an epoch-0 open, want 0", s.maxAnchorEpoch)
 	}
-	if _, err := nd.FundDeliverySession(fID.NodeID(), demand.SignSessionFund(fID.Signer(), nd.id, s.handle, []demand.Token{mintDemandTokenUnder(t, keyE, E)})); err != nil {
+	if _, err := nd.FundDeliverySession(fID.NodeID(), demand.SignSessionFund(fID.Signer(), nd.id, s.handle, []demand.Token{mintDemandTokenUnder(t, keyE, nd.chainID(), E)})); err != nil {
 		t.Fatalf("fund: %v", err)
 	}
 	if s.maxAnchorEpoch != E {
@@ -641,7 +641,7 @@ func TestDepositReleaseEpochIsTheAnchorsRealEpoch(t *testing.T) {
 	// must hand E (a constant 0 at open is indistinguishable on the epoch-0 arm above).
 	gID := identity.FromSeed(7303)
 	ledger.Register(gID.NodeID())
-	s2, err := nd.OpenDeliverySession(gID.NodeID(), demand.SignSessionOpen(gID.Signer(), nd.id, []demand.Token{mintDemandTokenUnder(t, keyE, E)}))
+	s2, err := nd.OpenDeliverySession(gID.NodeID(), demand.SignSessionOpen(gID.Signer(), nd.id, []demand.Token{mintDemandTokenUnder(t, keyE, nd.chainID(), E)}))
 	if err != nil {
 		t.Fatalf("second open: %v", err)
 	}

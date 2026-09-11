@@ -122,7 +122,7 @@ func c2OpenAndSettleAt(t *testing.T, nd *Node, keyE *rsa.PrivateKey, ledger *cre
 	base := sched.Now()
 	bucket := base - base%ports.Time(g) + ports.Time(g)
 	sched.RunUntil(bucket.Add(phase))
-	s, err := nd.OpenDeliverySession(fID.NodeID(), demand.SignSessionOpen(fID.Signer(), nd.id, []demand.Token{mintDemandTokenUnder(t, keyE, epoch)}))
+	s, err := nd.OpenDeliverySession(fID.NodeID(), demand.SignSessionOpen(fID.Signer(), nd.id, []demand.Token{mintDemandTokenUnder(t, keyE, nd.chainID(), epoch)}))
 	if err != nil {
 		t.Fatalf("open (seed %d, phase %d ns): %v", seed, phase, err)
 	}
@@ -285,7 +285,7 @@ func TestC2GenuinelyIdleSessionIsReapedAsADeposit(t *testing.T) {
 	nd, keyE, _, ledger, sched := c2Server(t, c2CandidateMargin, E)
 	fID := identity.FromSeed(7900)
 	ledger.Register(fID.NodeID())
-	s, err := nd.OpenDeliverySession(fID.NodeID(), demand.SignSessionOpen(fID.Signer(), nd.id, []demand.Token{mintDemandTokenUnder(t, keyE, E)}))
+	s, err := nd.OpenDeliverySession(fID.NodeID(), demand.SignSessionOpen(fID.Signer(), nd.id, []demand.Token{mintDemandTokenUnder(t, keyE, nd.chainID(), E)}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,7 +316,7 @@ func TestC2FrozenChainDoesNotStarveTheDeliveryLane(t *testing.T) {
 	fID := identity.FromSeed(7902)
 	ledger.Register(fID.NodeID())
 	obj := ports.HashBytes([]byte("c2-frozen"))
-	s, err := nd.OpenDeliverySession(fID.NodeID(), demand.SignSessionOpen(fID.Signer(), nd.id, []demand.Token{mintDemandTokenUnder(t, keyE, E)}))
+	s, err := nd.OpenDeliverySession(fID.NodeID(), demand.SignSessionOpen(fID.Signer(), nd.id, []demand.Token{mintDemandTokenUnder(t, keyE, nd.chainID(), E)}))
 	if err != nil {
 		t.Fatalf("open on a frozen chain: %v", err)
 	}
@@ -334,7 +334,7 @@ func TestC2FrozenChainDoesNotStarveTheDeliveryLane(t *testing.T) {
 	}
 	fID2 := identity.FromSeed(7903)
 	ledger.Register(fID2.NodeID())
-	if _, err := nd.FundDeliverySession(fID.NodeID(), demand.SignSessionFund(fID.Signer(), nd.id, s.handle, []demand.Token{mintDemandTokenUnder(t, keyE, E)})); err != nil {
+	if _, err := nd.FundDeliverySession(fID.NodeID(), demand.SignSessionFund(fID.Signer(), nd.id, s.handle, []demand.Token{mintDemandTokenUnder(t, keyE, nd.chainID(), E)})); err != nil {
 		t.Fatalf("fund on a frozen chain: %v", err)
 	}
 	_, headAfter := c.Head()

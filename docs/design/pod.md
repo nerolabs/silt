@@ -260,7 +260,8 @@ Consult `PoD-neutral-lane-B3-close-CONSULT-2026-08-26.md`; certification
 > **R2.14 BUILT (2026-09-04) — the relay-lane prepayment ANCHOR; the R0.7 interim
 > (pays 0, 2026-09-03) is retired.** The chain root is now anchored to k ≤ k_max blind-signed (k_max = 6 then; 1 since the 2026-09-06 re-price)
 > prepayment credentials under the RELAY's own chain-committed per-epoch demand key
-> (a fourth FDH domain, `silt/blindrelay/fdh/v1`), bought by the fetcher's DURABLE identity
+> (a fourth FDH domain, `silt/blindrelay/fdh/v2` since M3 bound the chain id into the message,
+2026-09-11; `v1` before that), bought by the fetcher's DURABLE identity
 > through the ordinary withdrawal (a refusable `ChargePublish` on the relay's ledger — the
 > paying ledger is the settling ledger), verified under the relay's SELF keyset and spent
 > once into the ledger's bounded durable `(epoch, serial)` guard BEFORE admission, with the

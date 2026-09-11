@@ -237,7 +237,15 @@ func (k *Keyset) Prune(current uint64) {
 }
 
 // VerifyInWindow reports the issuing epoch of t, if t verifies under some held
-// (key_e, e) PAIR whose epoch is within the window at current. It tries at most W+1
+// (key_e, e) PAIR whose epoch is within the window at current, ON THE NETWORK chainID
+// NAMES.
+//
+// chainID IS THE VERIFIER'S OWN AND IS NOT NEGOTIABLE (M3, 2026-09-11). It is a required
+// parameter, read by the caller from its own chain — (*Node).chainID() — never taken from
+// the Token, which has no chain-id field and must never grow one. A token minted on
+// another network fails at every held pair, because the chain id is inside the blind-signed
+// FDH input (blindtoken.chainBoundMsg). A ZERO chain id verifies NOTHING: a node that holds
+// no chain refuses rather than joining "network zero". It tries at most W+1
 // pairs, newest first (the common case is a token from the current or previous
 // epoch, so the expected cost is one RSA verify, and the worst case is W+1 — 5 at
 // W=4, each a single sub-millisecond modexp on the floor box).
@@ -253,13 +261,13 @@ func (k *Keyset) Prune(current uint64) {
 // issued" — the rejection happens BEFORE any credit path, which is what makes the
 // close purely subtractive (nothing is minted; the anchor spend at open only ever
 // refuses).
-func (k *Keyset) VerifyInWindow(current uint64, t Token) (epoch uint64, ok bool) {
+func (k *Keyset) VerifyInWindow(chainID ports.Hash, current uint64, t Token) (epoch uint64, ok bool) {
 	if len(t.Serial) == 0 {
 		return 0, false
 	}
 	e := current
 	for {
-		if pub := k.keys[e]; pub != nil && blindtoken.VerifyDemand(pub, e, t.Serial, t.Sig) {
+		if pub := k.keys[e]; pub != nil && blindtoken.VerifyDemand(pub, chainID, e, t.Serial, t.Sig) {
 			return e, true
 		}
 		if e == 0 || current-e >= k.window {
@@ -271,7 +279,8 @@ func (k *Keyset) VerifyInWindow(current uint64, t Token) (epoch uint64, ok bool)
 
 // VerifyAnchorInWindow is VerifyInWindow's twin for RELAY PREPAYMENT ANCHORS
 // (R2.14): the same newest-first walk over the held (key_e, e) pairs, calling
-// blindtoken.VerifyRelayAnchor instead of VerifyDemand. Everything VerifyInWindow
+// blindtoken.VerifyRelayAnchor instead of VerifyDemand, and the same required,
+// verifier-supplied chainID. Everything VerifyInWindow
 // says holds here unchanged — at most one pair can match (the epoch is inside the
 // signed message), the returned issuedEpoch is a pure function of the anchor, and an
 // anchor whose issuing epoch has left the window verifies under no held key. The
@@ -282,13 +291,13 @@ func (k *Keyset) VerifyInWindow(current uint64, t Token) (epoch uint64, ok bool)
 // It also refuses a signature that verifies in the DEMAND domain: the domains are
 // distinct FDH inputs under one key (blindtoken relayAnchorDomain), so a demand token
 // offered as an anchor fails at every pair — one fee, one lane (cert T-6).
-func (k *Keyset) VerifyAnchorInWindow(current uint64, t Token) (epoch uint64, ok bool) {
+func (k *Keyset) VerifyAnchorInWindow(chainID ports.Hash, current uint64, t Token) (epoch uint64, ok bool) {
 	if len(t.Serial) == 0 {
 		return 0, false
 	}
 	e := current
 	for {
-		if pub := k.keys[e]; pub != nil && blindtoken.VerifyRelayAnchor(pub, e, t.Serial, t.Sig) {
+		if pub := k.keys[e]; pub != nil && blindtoken.VerifyRelayAnchor(pub, chainID, e, t.Serial, t.Sig) {
 			return e, true
 		}
 		if e == 0 || current-e >= k.window {

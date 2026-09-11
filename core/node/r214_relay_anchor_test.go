@@ -177,7 +177,7 @@ func (cl *anchorCluster) advanceEpochs(n int) {
 // in TestRelayAnchorsAreBoughtOnTheRelaysOwnLedger).
 func (r *anchorRelay) mintAnchor(t *testing.T, e uint64) relaypay.Anchor {
 	t.Helper()
-	return mintAnchorUnder(t, r.key, e)
+	return mintAnchorUnder(t, r.key, r.node.chainID(), e)
 }
 
 func (r *anchorRelay) mintAnchors(t *testing.T, e uint64, k int) []relaypay.Anchor {
@@ -587,7 +587,7 @@ func TestRelayAnchorDomainIsNotADemandToken(t *testing.T) {
 	r := cl.relay()
 
 	// (a) a real demand token under key_0, offered as an anchor.
-	tok := blindTokenUnderAt(t, r.key, 0)
+	tok := blindTokenUnderAt(t, r.key, r.node.chainID(), 0)
 	before := ledgerTotal(r.ledger)
 	c := freshChain(t, "t6-demand-as-anchor", 8)
 	sess, err := r.open(newEphemeral(8690), c.Root(), 8, []relaypay.Anchor{{Serial: tok.Serial, Sig: tok.Sig}})
@@ -613,12 +613,12 @@ func TestRelayAnchorDomainIsNotADemandToken(t *testing.T) {
 	if keys == nil {
 		t.Fatal("setup: the node holds no delivery-side keyset, so the refusal below would be darkness")
 	}
-	if e, ok := keys.VerifyInWindow(0, demand.Token{Serial: anchor.Serial, Sig: anchor.Sig}); ok {
+	if e, ok := keys.VerifyInWindow(r.node.chainID(), 0, demand.Token{Serial: anchor.Serial, Sig: anchor.Sig}); ok {
 		t.Fatalf("a relay ANCHOR verified as a delivery token at epoch %d — one fee would pay two lanes", e)
 	}
 	// The control: a real DELIVERY token under the same keyset does verify, so the arm
 	// above measures the domain separation and not an empty keyset.
-	if _, ok := keys.VerifyInWindow(0, blindTokenUnderAt(t, r.key, 0)); !ok {
+	if _, ok := keys.VerifyInWindow(r.node.chainID(), 0, blindTokenUnderAt(t, r.key, r.node.chainID(), 0)); !ok {
 		t.Fatal("the control delivery token does not verify under the node's own keyset — the arm above measures darkness")
 	}
 }

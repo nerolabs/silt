@@ -108,18 +108,18 @@ func TestRTC3B_EchoedEpochWithAnotherEpochsKeyIsStillADenial(t *testing.T) {
 
 	// A token honestly withdrawn for epoch 0 under the shared key.
 	serial, _ := blindtokenSerial(t)
-	blinded, secret, err := demand.Withdraw(rand.Reader, &keyA.PublicKey, 0, serial)
+	blinded, secret, err := demand.Withdraw(rand.Reader, &keyA.PublicKey, fetcher.chainID(), 0, serial)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tok, uerr := demand.Unblind(&keyA.PublicKey, 0, serial, demand.SignWithdrawal(rand.Reader, keyA, blinded), secret)
+	tok, uerr := demand.Unblind(&keyA.PublicKey, fetcher.chainID(), 0, serial, demand.SignWithdrawal(rand.Reader, keyA, fetcher.chainID(), blinded), secret)
 	if uerr != nil {
 		t.Fatal(uerr)
 	}
 
 	// The re-dating attempt: can the epoch-0 token be read as an epoch-1 token, so a
 	// guard entry swept at epoch 0's expiry leaves a still-verifying token?
-	if e, ok := ks.VerifyInWindow(1, tok); !ok || e != 0 {
+	if e, ok := ks.VerifyInWindow(fetcher.chainID(), 1, tok); !ok || e != 0 {
 		t.Fatalf("setup: the epoch-0 token must verify AT EPOCH 0 (got ok=%v e=%d)", ok, e)
 	}
 	t.Logf("RT-C3B-21 REFUTED: under ONE key committed for epochs 0 and 1, an epoch-0 token " +

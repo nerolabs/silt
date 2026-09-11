@@ -34,6 +34,12 @@ func newIssuerNode(t *testing.T, fee int64) (*Node, *credit.Ledger, *rsa.Private
 		t.Fatal(err)
 	}
 	nd.EnableTokenIssuer(rand.Reader, key)
+	// M3: the PUBLISH CREDIT domain binds the chain id, so an issuer that holds no chain
+	// verifies no credit (blindtoken.ErrZeroChainID). Give the fixture a chain — the
+	// credit lane is a real network's lane now, and a chainless one is the refusal that
+	// core/node TestChainlessNodeIssuesNoDemandToken drives on purpose.
+	nd.SetSigner(id.Signer())
+	nd.EnableChain(c3Chain(t, 1, id.Signer()), id.Signer())
 	return nd, ledger, key
 }
 
@@ -50,7 +56,7 @@ func TestRedteamF4_CreditDecouplesFeeFromPublish(t *testing.T) {
 
 	// MINT: a normal, charged token request blinded in the CREDIT domain.
 	cs, _ := blindtoken.NewSerial(rand.Reader)
-	cblind, csecret, err := blindtoken.BlindCredit(rand.Reader, pub, cs)
+	cblind, csecret, err := blindtoken.BlindCredit(rand.Reader, pub, nd.chainID(), cs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,8 +64,8 @@ func TestRedteamF4_CreditDecouplesFeeFromPublish(t *testing.T) {
 	if !mint.OK {
 		t.Fatal("mint (a charged credit request) should succeed")
 	}
-	credit := ports.PublishCredit{Serial: cs, Sig: mustUnblindCredit(t, pub, cs, mint.Data, csecret)}
-	if !blindtoken.VerifyCredit(pub, credit.Serial, credit.Sig) {
+	credit := ports.PublishCredit{Serial: cs, Sig: mustUnblindCredit(t, pub, nd.chainID(), cs, mint.Data, csecret)}
+	if !blindtoken.VerifyCredit(pub, nd.chainID(), credit.Serial, credit.Sig) {
 		t.Fatal("minted credit must verify under the credit domain")
 	}
 	if charged := start - ledger.Balance(durable); charged != fee {
@@ -104,9 +110,9 @@ func TestRedteamF4_CreditAndTokenDomainsAreDistinct(t *testing.T) {
 	pub := &key.PublicKey
 	serial, _ := blindtoken.NewSerial(rand.Reader)
 
-	cb, cs, _ := blindtoken.BlindCredit(rand.Reader, pub, serial)
-	csig := mustUnblindCredit(t, pub, serial, mustSignBlinded(t, key, cb), cs)
-	if !blindtoken.VerifyCredit(pub, serial, csig) {
+	cb, cs, _ := blindtoken.BlindCredit(rand.Reader, pub, nodeTestChain, serial)
+	csig := mustUnblindCredit(t, pub, nodeTestChain, serial, mustSignBlinded(t, key, cb), cs)
+	if !blindtoken.VerifyCredit(pub, nodeTestChain, serial, csig) {
 		t.Fatal("a credit signature must verify as a credit")
 	}
 	if blindtoken.Verify(pub, serial, csig) {
@@ -118,7 +124,7 @@ func TestRedteamF4_CreditAndTokenDomainsAreDistinct(t *testing.T) {
 	if !blindtoken.Verify(pub, serial, tsig) {
 		t.Fatal("a token signature must verify as a token")
 	}
-	if blindtoken.VerifyCredit(pub, serial, tsig) {
+	if blindtoken.VerifyCredit(pub, nodeTestChain, serial, tsig) {
 		t.Fatal("a token signature must NOT verify as a credit")
 	}
 }
@@ -174,9 +180,9 @@ func mustSerial(t *testing.T) []byte {
 
 // mustUnblindCredit / mustUnblindToken keep these tests reading as flows now that the
 // unblind step runs the RFC 9474 §4.4 Finalize verification (advisory C-1).
-func mustUnblindCredit(t *testing.T, pub *rsa.PublicKey, serial, blindSig, secret []byte) []byte {
+func mustUnblindCredit(t *testing.T, pub *rsa.PublicKey, cid ports.Hash, serial, blindSig, secret []byte) []byte {
 	t.Helper()
-	sig, err := blindtoken.UnblindCredit(pub, serial, blindSig, secret)
+	sig, err := blindtoken.UnblindCredit(pub, cid, serial, blindSig, secret)
 	if err != nil {
 		t.Fatalf("unblind credit: %v", err)
 	}

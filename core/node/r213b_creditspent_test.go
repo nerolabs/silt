@@ -95,7 +95,7 @@ func csMintCredit(t *testing.T, iss *Node, ledger *credit.Ledger, publishPub *rs
 	if err != nil {
 		t.Fatal(err)
 	}
-	blinded, secret, err := blindtoken.BlindCredit(rand.Reader, publishPub, cserial)
+	blinded, secret, err := blindtoken.BlindCredit(rand.Reader, publishPub, iss.chainID(), cserial)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func csMintCredit(t *testing.T, iss *Node, ledger *credit.Ledger, publishPub *rs
 	if !rep.OK {
 		t.Fatal("credit mint refused")
 	}
-	sig, err := blindtoken.UnblindCredit(publishPub, cserial, rep.Data, secret)
+	sig, err := blindtoken.UnblindCredit(publishPub, iss.chainID(), cserial, rep.Data, secret)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func csWithdraw(t *testing.T, iss *Node, from ports.NodeID, committedPub *rsa.Pu
 	if err != nil {
 		t.Fatal(err)
 	}
-	blinded, secret, err := demand.Withdraw(rand.Reader, committedPub, 0, serial)
+	blinded, secret, err := demand.Withdraw(rand.Reader, committedPub, iss.chainID(), 0, serial)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func csWithdraw(t *testing.T, iss *Node, from ports.NodeID, committedPub *rsa.Pu
 	if !reply.OK {
 		return demand.Token{}, false
 	}
-	tok, err := demand.Unblind(committedPub, 0, serial, reply.Data, secret)
+	tok, err := demand.Unblind(committedPub, iss.chainID(), 0, serial, reply.Data, secret)
 	if err != nil {
 		t.Fatalf("unblind: %v", err)
 	}

@@ -92,11 +92,11 @@ func (r *guardFullRig) token(t *testing.T) demand.Token {
 	if _, err := rand.Read(serial); err != nil {
 		t.Fatal(err)
 	}
-	blinded, secret, err := demand.Withdraw(rand.Reader, &r.key.PublicKey, 0, serial)
+	blinded, secret, err := demand.Withdraw(rand.Reader, &r.key.PublicKey, r.nd.chainID(), 0, serial)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tok, uerr := demand.Unblind(&r.key.PublicKey, 0, serial, demand.SignWithdrawal(rand.Reader, r.key, blinded), secret)
+	tok, uerr := demand.Unblind(&r.key.PublicKey, r.nd.chainID(), 0, serial, demand.SignWithdrawal(rand.Reader, r.key, r.nd.chainID(), blinded), secret)
 	if uerr != nil {
 		t.Fatal(uerr)
 	}

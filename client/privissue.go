@@ -46,6 +46,13 @@ import (
 // key here re-opens that channel — there is no safe way to call this with a key the
 // caller did not resolve.
 //
+// chainID IS THE CALLER'S NETWORK, AND IT IS REQUIRED (M3, 2026-09-11). The ephemeral
+// node built below holds NO chain, so it cannot read its own network — (*Node).chainID()
+// is the zero hash here — and the demand domain now binds the network into the
+// blind-signed message. The caller reads it from its durable node's chain
+// ((*Node).ChainID) and passes it in, exactly as it already passes issuerPub and epoch.
+// A zero chainID is refused rather than treated as "some network".
+//
 // issuerAddr severs one or two links depending on its form (D3):
 //   - a DIRECT "host:port" hides the fetcher's IDENTITY (the issuer authenticates only
 //     the ephemeral key) but the issuer still sees the fetcher's IP (slice 1);
@@ -57,7 +64,7 @@ import (
 // Timing-correlation (epoch-batching) is the remaining D3 hardening, deferred to the H8
 // mixnet.
 func WithdrawDemandTokenPrivately(rng io.Reader, issuerID ports.NodeID, issuerAddr string, issuerPub *rsa.PublicKey,
-	epoch uint64, credit ports.PublishCredit, timeout time.Duration) (demand.Token, ports.NodeID, error) {
+	chainID ports.Hash, epoch uint64, credit ports.PublishCredit, timeout time.Duration) (demand.Token, ports.NodeID, error) {
 	eph, err := identity.Generate(rng)
 	if err != nil {
 		return demand.Token{}, ports.NodeID{}, fmt.Errorf("ephemeral identity: %w", err)
@@ -85,7 +92,7 @@ func WithdrawDemandTokenPrivately(rng io.Reader, issuerID ports.NodeID, issuerAd
 	ch := make(chan result, 1)
 	// Node methods run on the single-threaded event loop; post the withdrawal there.
 	loop.Post("api", func() {
-		nd.AcquireDemandTokenWithCredit(rng, issuerID, issuerPub, epoch, credit, func(tok demand.Token, err error) {
+		nd.AcquireDemandTokenWithCredit(rng, issuerID, issuerPub, chainID, epoch, credit, func(tok demand.Token, err error) {
 			ch <- result{tok, err}
 		})
 	})

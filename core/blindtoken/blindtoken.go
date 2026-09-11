@@ -31,6 +31,18 @@ import (
 	"sync/atomic"
 )
 
+// fdhDomain is the FDH domain for QUORUM PUBLISH TOKENS.
+//
+// ⚠ NOT CHAIN-BOUND, AND IT IS THE ONE EXCEPTION IN THIS FILE (M3, 2026-09-11). The other
+// three domains bind the chain id into the signed message (see chainBoundMsg). This one
+// does not, because a publish token is verified inside BLOCK VALIDITY —
+// chain.ValidateEntry and v5ValidateEntry both call publishtoken.Verify — so binding it
+// changes which blocks are valid. That is a consensus-rule change, not an economic one:
+// research-gated, and out of M3's scope. The cross-network consequence stands open and
+// named: a publish token minted on network X is a free publish on network Y under a shared
+// issuer key. It is NOT in the residual register — registering it takes a ROADMAP row with an
+// owner and a closer, which this change is not scoped to write — so it is named HERE, at the
+// constant, where anyone binding the other three domains will read it.
 const fdhDomain = "silt/blindtoken/fdh/v1"
 
 // creditDomain is the FDH domain for PREPAID PUBLISH CREDITS (M0 privacy D3,
@@ -42,7 +54,11 @@ const fdhDomain = "silt/blindtoken/fdh/v1"
 // publish token WITHOUT a second per-publish fee — the ledger link the red-team
 // exploited. This is online Chaumian e-cash (Chaum 1982): the coin is a
 // blind-signed serial, double-spend is caught by the issuer's spent-set.
-const creditDomain = "silt/blindcredit/fdh/v1"
+// v2 BINDS THE CHAIN ID INTO THE SIGNED MESSAGE (M3, 2026-09-11) — see chainBoundMsg.
+// v1 is RETIRED, not extended, so a v1 (network-blind) credit signature can never verify
+// as a v2 one: the domain string is part of the FDH input, so the old signature simply
+// fails under the new domain. That is the observable half of the version bump.
+const creditDomain = "silt/blindcredit/fdh/v2"
 
 // demandDomain is the FDH domain for BLIND-WITHDRAWN RETRIEVAL TOKENS (D-DEMAND
 // P1, issue #181). A retrieval token is a blind signature under an issuer key,
@@ -78,7 +94,11 @@ const creditDomain = "silt/blindcredit/fdh/v1"
 // This adds NO field to the token and NO field to the wire: the epoch is chosen by
 // the requester, blinded into the message, and named in the request the issuer
 // already answers with an epoch. See core/demand/keyset.go.
-const demandDomain = "silt/blinddemand/fdh/v2"
+// v3 BINDS THE CHAIN ID, by exactly the move v2 made for the epoch (M3, 2026-09-11):
+// one more fixed-width field at the front of the FDH input, a retired domain rather than
+// an extended one. See chainBoundMsg for why the chain id goes in the MESSAGE and not in
+// the domain constant.
+const demandDomain = "silt/blinddemand/fdh/v3"
 
 // relayAnchorDomain is the FDH domain for RELAY-LANE PREPAYMENT ANCHORS (R2.14,
 // docs/design/pod.md §7.3.2 step 1). An anchor is a blind signature under the
@@ -102,7 +122,10 @@ const demandDomain = "silt/blinddemand/fdh/v2"
 // A FORMAT CONSTANT the T-6 proof depends on: pinned byte-exact by
 // TestRelayAnchorDomainIsPinnedByteExactly. A change is a token-format version, never
 // an edit.
-const relayAnchorDomain = "silt/blindrelay/fdh/v1"
+// v2 BINDS THE CHAIN ID (M3, 2026-09-11), the same message extension the demand domain
+// took at the same time: the layout stays byte-for-byte the demand layout
+// (chainBoundMsg over demandMsg), under the relay-anchor domain.
+const relayAnchorDomain = "silt/blindrelay/fdh/v2"
 
 // SerialSize is the length of a token's random serial.
 const SerialSize = 32
@@ -118,7 +141,61 @@ var (
 	// ErrSignFault is the verify-after-sign refusal (advisory C-2): the signature the
 	// modexp produced does not verify under the issuer's own public key.
 	ErrSignFault = errors.New("blindtoken: signature failed verify-after-sign")
+	// ErrZeroChainID is the refusal a chain-bound lane makes when it is handed the zero
+	// chain id (M3 G-3b). A zero chain id is not a chain: (*Chain).ChainID returns the
+	// zero hash when the node holds no genesis, and (*Node).chainID returns it when the
+	// node holds no chain at all. Minting or accepting a token under it would make
+	// "network zero" a real network that every chainless node on earth shares. Refusing
+	// is the same safe direction verifyAtt already takes for era-4 signatures
+	// (core/chain/chain.go, "a zero chain id is not a chain") and the same one
+	// (*Node).chainID's doc states: a node that cannot know which network it is on must
+	// not guess.
+	ErrZeroChainID = errors.New("blindtoken: zero chain id is not a chain")
 )
+
+// ChainIDSize is the width of the network identity bound into every chain-bound FDH
+// input: the genesis block hash, 32 bytes, fixed. It is deliberately the same width as
+// ports.Hash so a caller passes (*Node).chainID() straight through with no conversion
+// and no import of ports into this package.
+const ChainIDSize = 32
+
+var zeroChainID [ChainIDSize]byte
+
+// chainBoundMsg is the M3 network binding: chainID(32 B) ‖ rest.
+//
+// THE CHAIN ID GOES IN THE MESSAGE, NOT IN THE DOMAIN CONSTANT (research certification
+// 2026-09-11 §3.5, which REFUTES the per-network domain constant). Three reasons, each
+// on its own sufficient:
+//
+//  1. It is the schema silt already proved. demandDomain went v1 -> v2 by putting the
+//     epoch in the message and retiring the old domain; this is the same move with one
+//     more fixed-width field, and RFC 9578 Privacy Pass — already cited above — puts the
+//     key's identity inside the signed message for exactly this reason.
+//  2. A per-network domain cannot be pinned. relayAnchorDomain's doc calls itself "A
+//     FORMAT CONSTANT the T-6 proof depends on", pinned byte-exact by a test; a constant
+//     whose bytes vary per network is not a constant.
+//  3. fullDomainHashD writes domain ‖ ctr ‖ msg with NO length prefix on the domain
+//     (ROADMAP R0.4b-FDH). Making the domain variable-content walks toward that open
+//     residual. A fixed-width field in the message walks away from it.
+//
+// INJECTIVITY. Every chain-bound layout is fixed-width fields followed by exactly one
+// variable-length trailing field (the serial): 32 ‖ serial, or 32 ‖ 8 ‖ serial. One
+// trailing variable field is injective by construction.
+//
+// THE CHAIN ID IS A PARAMETER OF THE CALLER, NEVER A FIELD OF THE THING BEING VERIFIED
+// (certification §3.4, the hard gate). Every function below takes it as a required
+// argument so a missed call site is a COMPILE ERROR rather than a silent hole, and no
+// token, no anchor and no request on the wire carries a chain id for an attacker to set.
+// The epoch is NOT a precedent for doing otherwise: the requester names the epoch and the
+// issuer bounds it to its own clock ±1, and there is no ±1 for a chain id.
+func chainBoundMsg(chainID [ChainIDSize]byte, rest []byte) ([]byte, error) {
+	if chainID == zeroChainID {
+		return nil, ErrZeroChainID
+	}
+	m := make([]byte, ChainIDSize, ChainIDSize+len(rest))
+	copy(m, chainID[:])
+	return append(m, rest...), nil
+}
 
 var bigOne = big.NewInt(1)
 
@@ -203,8 +280,12 @@ func Blind(rng io.Reader, pub *rsa.PublicKey, serial []byte) (blinded, secret []
 // BlindCredit blinds serial as a PREPAID CREDIT (domain-separated from a publish
 // token, same key). Used at bulk mint time; the returned credit spends later for
 // a token with no per-publish fee (F4).
-func BlindCredit(rng io.Reader, pub *rsa.PublicKey, serial []byte) (blinded, secret []byte, err error) {
-	return blindD(rng, pub, serial, creditDomain)
+func BlindCredit(rng io.Reader, pub *rsa.PublicKey, chainID [ChainIDSize]byte, serial []byte) (blinded, secret []byte, err error) {
+	msg, err := chainBoundMsg(chainID, serial)
+	if err != nil {
+		return nil, nil, err
+	}
+	return blindD(rng, pub, msg, creditDomain)
 }
 
 // BlindDemand blinds serial as a RETRIEVAL TOKEN for ISSUE EPOCH epoch (D-DEMAND,
@@ -216,8 +297,12 @@ func BlindCredit(rng io.Reader, pub *rsa.PublicKey, serial []byte) (blinded, sec
 // signature verifies under the pair (key_epoch, epoch) and no other — which is what
 // makes a token's issue epoch un-re-dateable. The issuer learns only the epoch the
 // request names (its own clock ±1); it never learns the serial.
-func BlindDemand(rng io.Reader, pub *rsa.PublicKey, epoch uint64, serial []byte) (blinded, secret []byte, err error) {
-	return blindD(rng, pub, demandMsg(epoch, serial), demandDomain)
+func BlindDemand(rng io.Reader, pub *rsa.PublicKey, chainID [ChainIDSize]byte, epoch uint64, serial []byte) (blinded, secret []byte, err error) {
+	msg, err := chainBoundMsg(chainID, demandMsg(epoch, serial))
+	if err != nil {
+		return nil, nil, err
+	}
+	return blindD(rng, pub, msg, demandDomain)
 }
 
 // demandMsg is the byte-exact demand FDH input: the 8-byte big-endian issue epoch
@@ -411,15 +496,23 @@ func Unblind(pub *rsa.PublicKey, serial, blindSig, secret []byte) ([]byte, error
 }
 
 // UnblindCredit is Unblind for a PREPAID CREDIT (credit domain).
-func UnblindCredit(pub *rsa.PublicKey, serial, blindSig, secret []byte) ([]byte, error) {
-	return unblindD(pub, serial, blindSig, secret, creditDomain)
+func UnblindCredit(pub *rsa.PublicKey, chainID [ChainIDSize]byte, serial, blindSig, secret []byte) ([]byte, error) {
+	msg, err := chainBoundMsg(chainID, serial)
+	if err != nil {
+		return nil, err
+	}
+	return unblindD(pub, msg, blindSig, secret, creditDomain)
 }
 
 // UnblindDemand is Unblind for a RETRIEVAL TOKEN issued at epoch (demand domain).
 // The epoch is part of the signed message, so verifying here also proves the issuer
 // signed under key_epoch for the epoch we asked for.
-func UnblindDemand(pub *rsa.PublicKey, epoch uint64, serial, blindSig, secret []byte) ([]byte, error) {
-	return unblindD(pub, demandMsg(epoch, serial), blindSig, secret, demandDomain)
+func UnblindDemand(pub *rsa.PublicKey, chainID [ChainIDSize]byte, epoch uint64, serial, blindSig, secret []byte) ([]byte, error) {
+	msg, err := chainBoundMsg(chainID, demandMsg(epoch, serial))
+	if err != nil {
+		return nil, err
+	}
+	return unblindD(pub, msg, blindSig, secret, demandDomain)
 }
 
 // BlindRelayAnchor blinds serial as a RELAY PREPAYMENT ANCHOR for ISSUE EPOCH epoch
@@ -427,15 +520,23 @@ func UnblindDemand(pub *rsa.PublicKey, epoch uint64, serial, blindSig, secret []
 // the relay it will later pay, blindly — the relay charges the fee and signs without
 // seeing the serial, so the anchor is unlinkable to the purchase. The message layout
 // is the demand layout byte for byte (demandMsg), under the relay-anchor domain.
-func BlindRelayAnchor(rng io.Reader, pub *rsa.PublicKey, epoch uint64, serial []byte) (blinded, secret []byte, err error) {
-	return blindD(rng, pub, demandMsg(epoch, serial), relayAnchorDomain)
+func BlindRelayAnchor(rng io.Reader, pub *rsa.PublicKey, chainID [ChainIDSize]byte, epoch uint64, serial []byte) (blinded, secret []byte, err error) {
+	msg, err := chainBoundMsg(chainID, demandMsg(epoch, serial))
+	if err != nil {
+		return nil, nil, err
+	}
+	return blindD(rng, pub, msg, relayAnchorDomain)
 }
 
 // UnblindRelayAnchor is the relay-anchor twin of UnblindDemand: it unblinds the
 // issuer's reply into a signature over (epoch, serial) in the relay-anchor domain and
 // verifies it under (key_epoch, epoch) before returning (RFC 9474 §4.4 Finalize).
-func UnblindRelayAnchor(pub *rsa.PublicKey, epoch uint64, serial, blindSig, secret []byte) ([]byte, error) {
-	return unblindD(pub, demandMsg(epoch, serial), blindSig, secret, relayAnchorDomain)
+func UnblindRelayAnchor(pub *rsa.PublicKey, chainID [ChainIDSize]byte, epoch uint64, serial, blindSig, secret []byte) ([]byte, error) {
+	msg, err := chainBoundMsg(chainID, demandMsg(epoch, serial))
+	if err != nil {
+		return nil, err
+	}
+	return unblindD(pub, msg, blindSig, secret, relayAnchorDomain)
 }
 
 func unblindD(pub *rsa.PublicKey, msg, blindSig, secret []byte, domain string) ([]byte, error) {
@@ -471,8 +572,12 @@ func Verify(pub *rsa.PublicKey, serial, sig []byte) bool {
 // VerifyCredit checks that sig is a valid issuer signature on a prepaid CREDIT
 // serial (credit domain). A publish-token signature fails this check and vice
 // versa, so the two are not interchangeable even under one key.
-func VerifyCredit(pub *rsa.PublicKey, serial, sig []byte) bool {
-	return verifyD(pub, serial, sig, creditDomain)
+func VerifyCredit(pub *rsa.PublicKey, chainID [ChainIDSize]byte, serial, sig []byte) bool {
+	msg, err := chainBoundMsg(chainID, serial)
+	if err != nil {
+		return false // a zero chain id verifies nothing (ErrZeroChainID)
+	}
+	return verifyD(pub, msg, sig, creditDomain)
 }
 
 // VerifyDemand checks that sig is a valid issuer signature on a RETRIEVAL TOKEN
@@ -480,8 +585,12 @@ func VerifyCredit(pub *rsa.PublicKey, serial, sig []byte) bool {
 // this check and vice versa, so the three token kinds are not interchangeable under
 // one key — and a token signed for a DIFFERENT epoch fails too, even under the very
 // same key, which is the R0.4b (b1) coupling.
-func VerifyDemand(pub *rsa.PublicKey, epoch uint64, serial, sig []byte) bool {
-	return verifyD(pub, demandMsg(epoch, serial), sig, demandDomain)
+func VerifyDemand(pub *rsa.PublicKey, chainID [ChainIDSize]byte, epoch uint64, serial, sig []byte) bool {
+	msg, err := chainBoundMsg(chainID, demandMsg(epoch, serial))
+	if err != nil {
+		return false // a zero chain id verifies nothing (ErrZeroChainID)
+	}
+	return verifyD(pub, msg, sig, demandDomain)
 }
 
 // relayAnchorVerifyRuns counts VerifyRelayAnchor calls in this process — the
@@ -500,9 +609,13 @@ func RelayAnchorVerifyRuns() uint64 { return relayAnchorVerifyRuns.Load() }
 // signature under the same key, epoch and serial fails this check and vice versa —
 // one fee, one lane (cert §6.3) — and a signature for a different epoch fails too
 // (the R0.4b (b1) coupling, so an anchor cannot be re-dated past its guard entry).
-func VerifyRelayAnchor(pub *rsa.PublicKey, epoch uint64, serial, sig []byte) bool {
+func VerifyRelayAnchor(pub *rsa.PublicKey, chainID [ChainIDSize]byte, epoch uint64, serial, sig []byte) bool {
 	relayAnchorVerifyRuns.Add(1)
-	return verifyD(pub, demandMsg(epoch, serial), sig, relayAnchorDomain)
+	msg, err := chainBoundMsg(chainID, demandMsg(epoch, serial))
+	if err != nil {
+		return false // a zero chain id verifies nothing (ErrZeroChainID)
+	}
+	return verifyD(pub, msg, sig, relayAnchorDomain)
 }
 
 func verifyD(pub *rsa.PublicKey, msg, sig []byte, domain string) bool {

@@ -27,11 +27,11 @@ func rtKey(t *testing.T) *rsa.PrivateKey {
 
 func rtMint(t *testing.T, k *rsa.PrivateKey, epoch uint64, serial []byte) Token {
 	t.Helper()
-	blinded, secret, err := Withdraw(rand.Reader, &k.PublicKey, epoch, serial)
+	blinded, secret, err := Withdraw(rand.Reader, &k.PublicKey, testChainID, epoch, serial)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tok, uerr := Unblind(&k.PublicKey, epoch, serial, SignWithdrawal(rand.Reader, k, blinded), secret)
+	tok, uerr := Unblind(&k.PublicKey, testChainID, epoch, serial, SignWithdrawal(rand.Reader, k, testChainID, blinded), secret)
 	if uerr != nil {
 		t.Fatal(uerr)
 	}
@@ -53,7 +53,7 @@ func TestRTC3_EpochBindingHoldsUnderOneKey(t *testing.T) {
 	tok := rtMint(t, k, 4, serial)
 	for cur := uint64(4); cur <= 8; cur++ {
 		ks.Prune(cur)
-		e, ok := ks.VerifyInWindow(cur, tok)
+		e, ok := ks.VerifyInWindow(testChainID, cur, tok)
 		switch {
 		case cur-4 <= DefaultWindow && (!ok || e != 4):
 			t.Fatalf("cur=%d: in-window token must verify at epoch 4, got ok=%v e=%d", cur, ok, e)
@@ -64,7 +64,7 @@ func TestRTC3_EpochBindingHoldsUnderOneKey(t *testing.T) {
 			if e2 == 4 {
 				continue
 			}
-			if blindtoken.VerifyDemand(&k.PublicKey, e2, tok.Serial, tok.Sig) {
+			if blindtoken.VerifyDemand(&k.PublicKey, testChainID, e2, tok.Serial, tok.Sig) {
 				t.Fatalf("CROSS-EPOCH REPLAY: epoch-4 token verified at epoch %d under the same key", e2)
 			}
 		}
@@ -110,10 +110,10 @@ func TestRTC3_DegenerateKeysAreRefusedEverywhere(t *testing.T) {
 					"(serial, sig) pair, which is a universal forgery behind a valid pin")
 			}
 			// (3) And the primitives themselves refuse: never a panic, never a true.
-			if blindtoken.VerifyDemand(tc.key, 3, []byte("not-a-serial"), []byte{0x00}) {
+			if blindtoken.VerifyDemand(tc.key, testChainID, 3, []byte("not-a-serial"), []byte{0x00}) {
 				t.Fatalf("VerifyDemand accepted a forged (serial, sig) pair under a degenerate key")
 			}
-			if _, _, err := blindtoken.BlindDemand(rand.Reader, tc.key, 3, []byte("s")); err == nil {
+			if _, _, err := blindtoken.BlindDemand(rand.Reader, tc.key, testChainID, 3, []byte("s")); err == nil {
 				t.Fatalf("BlindDemand ran the modexp against a degenerate modulus")
 			}
 			if _, uerr := blindtoken.Unblind(tc.key, []byte("s"), []byte{1}, []byte{1}); uerr == nil {
@@ -126,7 +126,7 @@ func TestRTC3_DegenerateKeysAreRefusedEverywhere(t *testing.T) {
 	ks := NewKeyset(DefaultWindow)
 	ks.Put(0, &good.PublicKey)
 	serial, _ := blindtoken.NewSerial(rand.Reader)
-	if _, ok := ks.VerifyInWindow(0, rtMint(t, good, 0, serial)); !ok {
+	if _, ok := ks.VerifyInWindow(testChainID, 0, rtMint(t, good, 0, serial)); !ok {
 		t.Fatalf("a well-formed 2048-bit key no longer verifies its own token")
 	}
 }

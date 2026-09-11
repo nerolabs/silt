@@ -255,11 +255,13 @@ func (n *Node) AcquireRelayAnchors(rng io.Reader, relay ports.NodeID, k int, don
 			done(got, nil)
 			return
 		}
-		n.withdrawBlind(rng, relay, pub, cur, nil,
-			func(r io.Reader, p *rsa.PublicKey, e uint64, serial []byte) ([]byte, []byte, error) {
-				return blindtoken.BlindRelayAnchor(r, p, e, serial)
+		n.withdrawBlind(rng, relay, pub, n.chainID(), cur, nil,
+			func(r io.Reader, p *rsa.PublicKey, cid ports.Hash, e uint64, serial []byte) ([]byte, []byte, error) {
+				return blindtoken.BlindRelayAnchor(r, p, cid, e, serial)
 			},
-			blindtoken.UnblindRelayAnchor,
+			func(p *rsa.PublicKey, cid ports.Hash, e uint64, serial, blindSig, secret []byte) ([]byte, error) {
+				return blindtoken.UnblindRelayAnchor(p, cid, e, serial, blindSig, secret)
+			},
 			func(serial, sig []byte, err error) {
 				if err != nil {
 					done(got, err)

@@ -76,11 +76,11 @@ func TestFlatReceiptIsRefusedAndMovesNothing(t *testing.T) {
 	if _, err := rand.Read(serial); err != nil {
 		t.Fatal(err)
 	}
-	blinded, secret, err := demand.Withdraw(rand.Reader, &issuerPriv.PublicKey, 0, serial)
+	blinded, secret, err := demand.Withdraw(rand.Reader, &issuerPriv.PublicKey, nd.chainID(), 0, serial)
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, uerr := demand.Unblind(&issuerPriv.PublicKey, 0, serial, demand.SignWithdrawal(rand.Reader, issuerPriv, blinded), secret)
+	token, uerr := demand.Unblind(&issuerPriv.PublicKey, nd.chainID(), 0, serial, demand.SignWithdrawal(rand.Reader, issuerPriv, nd.chainID(), blinded), secret)
 	if uerr != nil {
 		t.Fatal(uerr)
 	}
@@ -91,7 +91,7 @@ func TestFlatReceiptIsRefusedAndMovesNothing(t *testing.T) {
 	// keyset verifies, and the receipt signature is a real one over the retired v2
 	// message. Without this leg the refusal below could be the payload's own
 	// malformation rather than the retirement.
-	if e, ok := ks.VerifyInWindow(0, token); !ok || e != 0 {
+	if e, ok := ks.VerifyInWindow(nd.chainID(), 0, token); !ok || e != 0 {
 		t.Fatalf("setup: the anchor inside the bundle does not verify under the committed key (epoch %d, ok %v) — the gate would be vacuous", e, ok)
 	}
 	if !ed25519.Verify(receipt.Fetcher, receipt.msg(), receipt.Sig) {

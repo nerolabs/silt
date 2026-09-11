@@ -22,7 +22,7 @@ func mintCredit(t *testing.T, issuer *blindtoken.Issuer) ports.PublishCredit {
 	t.Helper()
 	pub := issuer.Public()
 	serial, _ := blindtoken.NewSerial(rand.Reader)
-	blinded, secret, err := blindtoken.BlindCredit(rand.Reader, pub, serial)
+	blinded, secret, err := blindtoken.BlindCredit(rand.Reader, pub, d3ChainID, serial)
 	if err != nil {
 		t.Fatalf("blind credit: %v", err)
 	}
@@ -30,7 +30,7 @@ func mintCredit(t *testing.T, issuer *blindtoken.Issuer) ports.PublishCredit {
 	if err != nil {
 		t.Fatalf("issue credit: %v", err)
 	}
-	csig, uerr := blindtoken.UnblindCredit(pub, serial, sig, secret)
+	csig, uerr := blindtoken.UnblindCredit(pub, d3ChainID, serial, sig, secret)
 	if uerr != nil {
 		t.Fatalf("unblind credit: %v", uerr)
 	}
@@ -40,6 +40,17 @@ func mintCredit(t *testing.T, issuer *blindtoken.Issuer) ports.PublishCredit {
 // d3Epoch is the issue epoch the D3 tests withdraw under. A non-zero value so a
 // dropped epoch (the (b1) ablation) cannot pass by coinciding with the zero value.
 const d3Epoch = uint64(7)
+
+// d3ChainID is the network the D3 tests withdraw on — the durable parent's chain id,
+// stood in for here. It is NON-ZERO and non-uniform for the same reason d3Epoch is
+// non-zero: a dropped chain id must not pass by coinciding with the zero value, and a
+// truncated one must not pass by coinciding with a repeated byte (M3, 2026-09-11).
+var d3ChainID = ports.Hash{
+	0xc3, 0x58, 0x00, 0x9f, 0x2e, 0xb1, 0x00, 0x47,
+	0xda, 0x06, 0x8c, 0x00, 0x35, 0xf2, 0x69, 0x00,
+	0x1a, 0xe7, 0x40, 0xbd, 0x00, 0x73, 0x2c, 0x98,
+	0x00, 0x51, 0xaf, 0x0d, 0x64, 0x00, 0xe9, 0x37,
+}
 
 // mockIssuerHandler answers a MsgDemandTokenRequest: it requires+spends a valid blind
 // credit (so an unfunded ephemeral identity can pay), records the authenticated
@@ -62,7 +73,7 @@ func mockIssuerHandlerEpoch(tr *tcpnet.Transport, issuer *blindtoken.Issuer, saw
 		if msg.Kind != ports.MsgDemandTokenRequest {
 			return
 		}
-		if msg.Credit == nil || !blindtoken.VerifyCredit(pub, msg.Credit.Serial, msg.Credit.Sig) || spent[string(msg.Credit.Serial)] {
+		if msg.Credit == nil || !blindtoken.VerifyCredit(pub, d3ChainID, msg.Credit.Serial, msg.Credit.Sig) || spent[string(msg.Credit.Serial)] {
 			tr.Send(from, ports.Message{Kind: ports.MsgDemandTokenReply, RID: msg.RID, OK: false})
 			return
 		}
@@ -143,13 +154,13 @@ func TestPrivateWithdrawalUsesEphemeralIdentity(t *testing.T) {
 	tr.SetHandler(mockIssuerHandler(tr, issuer, sawFrom))
 
 	// The private withdrawal: over a fresh ephemeral identity, paying with the credit.
-	tok, ephID, err := WithdrawDemandTokenPrivately(rng, issuerID, tr.Addr(), issuerPub, d3Epoch, credit, 10*time.Second)
+	tok, ephID, err := WithdrawDemandTokenPrivately(rng, issuerID, tr.Addr(), issuerPub, d3ChainID, d3Epoch, credit, 10*time.Second)
 	if err != nil {
 		t.Fatalf("private withdrawal: %v", err)
 	}
 
 	// The token is a real, verifiable demand token.
-	if !demand.VerifyToken(issuerPub, d3Epoch, tok) {
+	if !demand.VerifyToken(issuerPub, d3ChainID, d3Epoch, tok) {
 		t.Fatal("privately-withdrawn token does not verify under the issuer key")
 	}
 	// The issuer authenticated the EPHEMERAL identity, never the issuer's own or any
@@ -190,7 +201,7 @@ func TestPrivateWithdrawalRefusedWithoutCredit(t *testing.T) {
 		if msg.Kind != ports.MsgTokenRequest {
 			return
 		}
-		if msg.Credit == nil || !blindtoken.VerifyCredit(issuerPub, msg.Credit.Serial, msg.Credit.Sig) {
+		if msg.Credit == nil || !blindtoken.VerifyCredit(issuerPub, d3ChainID, msg.Credit.Serial, msg.Credit.Sig) {
 			tr.Send(from, ports.Message{Kind: ports.MsgTokenReply, RID: msg.RID, OK: false})
 			return
 		}
@@ -200,7 +211,7 @@ func TestPrivateWithdrawalRefusedWithoutCredit(t *testing.T) {
 
 	// An INVALID credit (not signed by the issuer) → refused → the withdrawal errors.
 	bogus := ports.PublishCredit{Serial: []byte("nope"), Sig: []byte("bad")}
-	_, _, err = WithdrawDemandTokenPrivately(rng, issuerIdent.NodeID(), tr.Addr(), issuerPub, d3Epoch, bogus, 5*time.Second)
+	_, _, err = WithdrawDemandTokenPrivately(rng, issuerIdent.NodeID(), tr.Addr(), issuerPub, d3ChainID, d3Epoch, bogus, 5*time.Second)
 	if err == nil {
 		t.Fatal("a withdrawal with no valid credit must fail (an ephemeral identity has no account to charge)")
 	}
@@ -249,11 +260,11 @@ func TestPrivateWithdrawalThroughRelay(t *testing.T) {
 	// fetcher is told to reach it.
 	issuerRelayAddr := registerWithRelay(t, issuerIdent, relayIdent.NodeID(), srv.Addr(), tr)
 
-	tok, ephID, err := WithdrawDemandTokenPrivately(rng, issuerID, issuerRelayAddr, issuerPub, d3Epoch, credit, 15*time.Second)
+	tok, ephID, err := WithdrawDemandTokenPrivately(rng, issuerID, issuerRelayAddr, issuerPub, d3ChainID, d3Epoch, credit, 15*time.Second)
 	if err != nil {
 		t.Fatalf("relayed private withdrawal: %v", err)
 	}
-	if !demand.VerifyToken(issuerPub, d3Epoch, tok) {
+	if !demand.VerifyToken(issuerPub, d3ChainID, d3Epoch, tok) {
 		t.Fatal("relay-routed token does not verify")
 	}
 	// End-to-end TLS survived the relay: the issuer still authenticated the ephemeral key.

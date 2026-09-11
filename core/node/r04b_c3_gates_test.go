@@ -270,16 +270,16 @@ func TestPinFollowsTheChainAcrossAReorg(t *testing.T) {
 	forkB := c3Chain(t, 1, signer, chain.SignIssuerKeyReg(signer, 0, demand.KeyFingerprint(&keyB.PublicKey)))
 	nd.EnableChain(forkB, signer)
 
-	tokA, tokB := blindTokenUnder(t, keyA), blindTokenUnder(t, keyB)
+	tokA, tokB := blindTokenUnder(t, keyA, nd.chainID()), blindTokenUnder(t, keyB, nd.chainID())
 	ks := nd.DemandIssuerKeyset(nd.ID())
-	if _, ok := ks.VerifyInWindow(0, tokA); ok {
+	if _, ok := ks.VerifyInWindow(nd.chainID(), 0, tokA); ok {
 		t.Fatal("after the reorg the redeemer still accepts the ABANDONED fork's key_A — " +
 			"the pin outlived the commitment it was a cache of")
 	}
 	if !nd.pinDemandIssuerKey(nd.ID(), 0, &keyB.PublicKey) {
 		t.Fatal("the canonical key_B was refused")
 	}
-	if _, ok := nd.DemandIssuerKeyset(nd.ID()).VerifyInWindow(0, tokB); !ok {
+	if _, ok := nd.DemandIssuerKeyset(nd.ID()).VerifyInWindow(nd.chainID(), 0, tokB); !ok {
 		t.Fatal("pinDemandIssuerKey reported success for the canonical key_B but the " +
 			"keyset does not verify its tokens — a re-pin that changes nothing")
 	}
@@ -396,7 +396,7 @@ func TestCohortKeyIsADenialOnEveryShippedLane(t *testing.T) {
 
 	// Shape 2 — the D3 lane, key AND epoch resolved by the durable parent.
 	gotErr = nil
-	fetcher.AcquireDemandTokenWithCredit(rand.Reader, issuerIdent.NodeID(), pub, epoch,
+	fetcher.AcquireDemandTokenWithCredit(rand.Reader, issuerIdent.NodeID(), pub, fetcher.chainID(), epoch,
 		ports.PublishCredit{}, func(tk demand.Token, err error) { tok, gotErr = tk, err })
 	sched.Run()
 	if gotErr == nil {
@@ -410,19 +410,19 @@ func TestCohortKeyIsADenialOnEveryShippedLane(t *testing.T) {
 	// credit it at the epoch the withdrawal named: (b1) binds the epoch into the
 	// signed message, so the pair (key_A, 0) is the only one that verifies.
 	serial, _ := blindtoken.NewSerial(rand.Reader)
-	blinded, secret, err := demand.Withdraw(rand.Reader, pub, epoch, serial)
+	blinded, secret, err := demand.Withdraw(rand.Reader, pub, fetcher.chainID(), epoch, serial)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The reply is signed under key_B, so the RFC 9474 Finalize check against key_A
 	// (advisory C-1) refuses it at the client — one door earlier than the keyset.
-	if _, uerr := demand.Unblind(pub, epoch, serial, rawSignBlinded(t, keyB, blinded), secret); uerr == nil {
+	if _, uerr := demand.Unblind(pub, fetcher.chainID(), epoch, serial, rawSignBlinded(t, keyB, blinded), secret); uerr == nil {
 		t.Fatal("Unblind returned a token for a signature made under a DIFFERENT key")
 	}
 	crossTok := demand.Token{Serial: serial,
 		Sig: rawUnblind(t, pub, rawSignBlinded(t, keyB, blinded), secret)}
 	ks := fetcher.DemandIssuerKeyset(issuerIdent.NodeID())
-	if _, ok := ks.VerifyInWindow(0, crossTok); ok {
+	if _, ok := ks.VerifyInWindow(fetcher.chainID(), 0, crossTok); ok {
 		t.Fatal("a signature made under key_B verified in a keyset holding key_A")
 	}
 }
@@ -516,7 +516,7 @@ func TestDemandLaneOutlivesTheWindowAndARestart(t *testing.T) {
 			t.Fatalf("%s: no COMMITTED key for epoch %d — the schedule did not pre-publish", label, cur)
 		}
 		pub := ks.Key(cur)
-		blinded, secret, err := demand.Withdraw(rand.Reader, pub, cur, serial)
+		blinded, secret, err := demand.Withdraw(rand.Reader, pub, nd.chainID(), cur, serial)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -528,11 +528,11 @@ func TestDemandLaneOutlivesTheWindowAndARestart(t *testing.T) {
 		if reply.Height != cur {
 			t.Fatalf("%s: the issuer signed for epoch %d, not the %d asked for", label, reply.Height, cur)
 		}
-		tok, uerr := demand.Unblind(pub, cur, serial, reply.Data, secret)
+		tok, uerr := demand.Unblind(pub, nd.chainID(), cur, serial, reply.Data, secret)
 		if uerr != nil {
 			t.Fatalf("%s: unblind: %v", label, uerr)
 		}
-		ep, ok := ks.VerifyInWindow(cur, tok)
+		ep, ok := ks.VerifyInWindow(nd.chainID(), cur, tok)
 		if !ok {
 			t.Fatalf("%s: the keyset refused a token it had just issued at epoch %d", label, cur)
 		}

@@ -67,22 +67,28 @@ func TestOpenWithNoResolvedIssuerKeyRefuses(t *testing.T) {
 		return nd
 	}
 
+	// ARM 1 — no resolved key: refuse, by NAME, and spend nothing.
+	blind := build(false)
+	// ARM 2's server is built FIRST so the anchor can be minted on ITS network: the two
+	// arms commit different issuer-key registrations, so they mint different genesis
+	// blocks and therefore different chain ids (M3). The anchor must be a real one for the
+	// network that will accept it, or arm 2 would refuse it for the wrong reason.
+	pinned := build(true)
+
 	// One real blind-withdrawn anchor under the issuer key, used by BOTH arms.
 	serial := make([]byte, 32)
 	if _, rerr := rand.Read(serial); rerr != nil {
 		t.Fatal(rerr)
 	}
-	blinded, secret, werr := demand.Withdraw(rand.Reader, &issuerPriv.PublicKey, 0, serial)
+	cid := pinned.chainID()
+	blinded, secret, werr := demand.Withdraw(rand.Reader, &issuerPriv.PublicKey, cid, 0, serial)
 	if werr != nil {
 		t.Fatal(werr)
 	}
-	token, uerr := demand.Unblind(&issuerPriv.PublicKey, 0, serial, demand.SignWithdrawal(rand.Reader, issuerPriv, blinded), secret)
+	token, uerr := demand.Unblind(&issuerPriv.PublicKey, cid, 0, serial, demand.SignWithdrawal(rand.Reader, issuerPriv, cid, blinded), secret)
 	if uerr != nil {
 		t.Fatal(uerr)
 	}
-
-	// ARM 1 — no resolved key: refuse, by NAME, and spend nothing.
-	blind := build(false)
 	if ks := blind.DemandIssuerKeyset(serverID); ks != nil && ks.Key(0) != nil {
 		t.Fatal("setup: the unpinned arm resolved a key after all")
 	}
@@ -100,7 +106,6 @@ func TestOpenWithNoResolvedIssuerKeyRefuses(t *testing.T) {
 
 	// ARM 2 — the SAME anchor at a server whose key IS committed: it opens. Without
 	// this the arm above measures a fixture that refuses everything.
-	pinned := build(true)
 	if _, cerr := pinned.OpenDeliverySession(fetcherIdent.NodeID(),
 		demand.SignSessionOpen(fetcherIdent.Signer(), serverID, []demand.Token{token})); cerr != nil {
 		t.Fatalf("the control open failed (%v) — the refusal above measures darkness, not the rule", cerr)
