@@ -322,6 +322,52 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		// PRECOMMIT phase (#432): a verified prepare-QC for (h, r) IS the POL —
 		// lock on its value (monotone by round, persisted with the mark) and
 		// precommit it. The lock is what a round-change carries forward.
+		//
+		// THE SENDER SCREEN RUNS FIRST (R-CARRIER-ATTS-PREPAREQC step 0).
+		// VerifyPrepareQC below pays one ed25519.Verify per entry of the
+		// sender's list, and collectQuorumSigs records seen[id] only for
+		// QUALIFIED ids — so byte-identical entries are never deduplicated.
+		// One offline ed25519.Sign over a block the attacker chooses itself,
+		// replayed to the CBOR decoder's 131,072-element ceiling, buys 131,072
+		// verifies (4.19-6.89 s of one core) for 13.1 MiB of wire, from ANY
+		// peer, at line rate: ~3.8-6.3 cores at 100 Mbit/s, with no bond, no
+		// keypair farm and nothing stored. This arm had no screen, no rate gate
+		// and no length check between the decode and the verifier.
+		//
+		// The screen refuses nothing honest. An honest prepare-QC arrives from
+		// the block's own author, who has already passed this receiver's
+		// STRONGER proposerQualifiedAt test at the prepare phase (in objective
+		// mode proposerQualifiedAt implies attesterQualifiedAt branch by
+		// branch); the one exception is a forced re-proposal, where the sender
+		// is the round's designee — and the designee is drawn from
+		// EligibleProposers by construction. It is the same predicate
+		// broadcastRoundCert already applies on the SEND side, and the same
+		// screen-before-anything-expensive shape as G-H43-12's rate gate on the
+		// MsgRoundCert arm one case-label below. A refusal costs a map lookup
+		// and, unlike the MsgChallenge arm, costs the SENDER nothing: the
+		// MsgPrecommitReply OK=false is consumed only by gatherTwoPhase's
+		// gatherPrecommits callback, which logs it — no ledger, no audit, no
+		// standing (contrast credit.RecordAudit on the bond-challenge path).
+		//
+		// OBJECTIVE-GUARDED, and the guard is NOT inherited from
+		// GoverningSetCap's doc claim that "no round machinery runs" in legacy
+		// mode — that claim is false (gatherTwoPhase has no Objective() gate;
+		// see its own comment). In a trusted/demo posture attesterQualifiedAt
+		// falls through to `rep >= MinAttesterRep`, which a fresh honest peer
+		// fails, so an unguarded screen would halt the chain there. The legacy
+		// posture therefore keeps the primitive: R-CARRIER-QC-LEGACY-UNCAPPED.
+		//
+		// The per-sender rate BUDGET the certification pairs with this screen is
+		// NOT here: its burst constant is a security parameter whose derivation
+		// needs a measured honest cadence and is UNSETTLED
+		// (R-CARRIER-QC-BURST-VALUE / G-QC-6). roundCertBurst's derivation does
+		// not transfer — one proposer can gather many heights per window.
+		if n.chain.Objective() && !n.chain.AttesterEligibleAt(from, n.roundsFor().Height) {
+			n.logf(ports.LogDebug, "gather/precommit: REFUSED (sender outside the governing set)",
+				"from", from, "height", n.roundsFor().Height, "bytes", len(msg.Data))
+			n.reply(from, msg, ports.Message{Kind: ports.MsgPrecommitReply, OK: false})
+			return true
+		}
 		var env prepareQCEnv
 		if cbor.Unmarshal(msg.Data, &env) != nil {
 			n.reply(from, msg, ports.Message{Kind: ports.MsgPrecommitReply, OK: false})
@@ -1183,6 +1229,50 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 	}
 	if req := n.chain.RequiredQuorum(); req > quorum {
 		quorum = req
+	}
+	// THE PRODUCER SCREEN (R-CARRIER-ATTS-PREPAREQC step 1, G-QC-1; shared with
+	// R-CB-ATTS-UNBOUNDED's G-ATTS-1 — one screen, both closures).
+	//
+	// `attesters` is the caller's list. On the round-machinery paths
+	// (proposeAtNewView, maybeProposeBondDrain) it is already filtered by
+	// AttesterEligibleAt; on the CLIENT-PUBLISH path (ProposeEntry /
+	// ProposeRevocation, via chainhost.Host.Attesters) it is the `-attesters`
+	// flag, UNFILTERED — and every peer in it replies, because the
+	// MsgProposeBlock arm attests for anyone whose block passes ValidateProposal
+	// with no test of the REPLIER's own qualification. So the shipped honest
+	// maximum for len(env.QC) was `2 + |-attesters|`: a consensus-adjacent
+	// quantity that is a function of LOCAL CONFIG rather than of the chain
+	// (the #380 class, canon rule 8), which blocks any wire bound expressed over
+	// committed quantities. Under this screen it is `2 + |Q(h)|`, and
+	// GoverningSetCap() dominates |Q(h)| in every objective branch.
+	//
+	// It removes NOTHING an honest gather needed, and the argument is an
+	// identity rather than an estimate: the predicate, the height and the node
+	// are the SAME ones this gather's own stop condition uses. supportMet ->
+	// SupportMeetsQuorum skips every id failing attesterQualifiedAt(id,
+	// b.Height), and collectQuorumSigs applies that identical test at Append. A
+	// peer removed here could never have moved supportMet, and supportMet is the
+	// conjunct that decides completion.
+	//
+	// OBJECTIVE-GUARDED for the same reason the receive-side screen is: in a
+	// trusted/demo posture attesterQualifiedAt is `rep >= MinAttesterRep`, which
+	// an honest fresh peer fails. Note that GoverningSetCap() is 0 in that
+	// posture; this screen never reads it — it reads the predicate the cap is an
+	// upper bound OF — so the zero is not a hazard here. An objective chain with
+	// no anchors and no bonds does screen every peer away, and loses nothing:
+	// with |Q| = 0 the gather cannot satisfy supportMet today either.
+	if n.chain.Objective() {
+		screened := make([]ports.NodeID, 0, len(attesters)) // never mutate the caller's slice: chainhost.Host.Attesters is shared config
+		for _, v := range attesters {
+			if v == n.id || n.chain.AttesterEligibleAt(v, b.Height) {
+				screened = append(screened, v)
+			}
+		}
+		if len(screened) != len(attesters) {
+			n.logf(ports.LogDebug, "gather: solicitation set screened to the governing set",
+				"height", b.Height, "round", round, "asked", len(attesters), "governing", len(screened))
+		}
+		attesters = screened
 	}
 	// Never sign twice in a slot (#397, round-scoped per #432): our PREPARE
 	// enters the same never-sign-twice ledger as any attestation, durable

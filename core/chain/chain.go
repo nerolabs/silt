@@ -2184,10 +2184,22 @@ func (c *Chain) RequiredQuorum() int {
 // bootstrap 4-anchor network gets bftThreshold(4)=2, matching the "2 attestations"
 // the field logs show.
 // GoverningSetCap is a cheap UPPER bound on the number of distinct identities
-// that can pass AttesterEligible at the working height on the OBJECTIVE path
-// (every round path gates on Objective) — anchors ∪ bonded ∪ the frozen epoch
-// set, counted without dedup. Legacy mode's reputation-qualified attesters are
-// not counted (PE F-6): no round machinery runs there. A DoS bound for wire objects that
+// that can pass AttesterEligible at the working height on the OBJECTIVE path —
+// anchors ∪ bonded ∪ the frozen epoch set, counted without dedup. Legacy mode's
+// reputation-qualified attesters are not counted (PE F-6), so this returns 0
+// there and EVERY caller must guard on objective().
+//
+// The two sentences this doc used to carry — "every round path gates on
+// Objective" and "no round machinery runs there" — were FALSE, and the
+// correction is load-bearing rather than cosmetic (R-CARRIER-ATTS-PREPAREQC
+// §4.3/§9.2). (*Node).maybeAdvanceRound and (*Node).maybeCatchUpRound do gate
+// on Objective; (*Node).gatherTwoPhase does NOT, and (*Node).proposeBlock
+// stamps BlockVersionRounds unconditionally. The round-0 two-phase gather, and
+// with it the ports.MsgPrepareQC arm, therefore runs in EVERY posture — so a
+// caller that inherited the old premise would derive a 0-entry ceiling for a
+// live, non-empty legacy certificate and halt the chain.
+//
+// A DoS bound for wire objects that
 // carry one envelope per member (the h43 round certificate, G-H43-12), never a
 // quorum term: a certificate with more envelopes than this is malformed by
 // construction and is refused before any signature is examined.
