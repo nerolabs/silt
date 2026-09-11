@@ -58,7 +58,7 @@ publishes the software **runs no part of the network** — see
   never see the serial). Residual: a colluding validator set narrows the
   anonymity *set*, and this does not hide *access* patterns.
 - **A supermajority of *bonded* validator weight is assumed honest.** The
-  default untrusted posture is objective on-chain-bond fork-choice with
+  default untrusted posture is objective, bond-weighted commit admission with
   Byzantine (n−f) quorum sizing — safety holds while an adversary controls
   ≤ 1/3 of bonded weight (priced by C1's `C_honest`), with concentration
   bounded by C2. It is not unconditional BFT against an unbounded adversary
@@ -94,8 +94,9 @@ minting with no permanent center (Douceur). Instead it prices them, as a
   bond** (a space-hard, pk-bound plot with a labeling challenge × a Wesolowski VDF,
   persisted), re-challenged over the wire, plus audit history and witnessed demand.
   Forging a fraction *q* of standing costs ≈ *q*·`C_honest` — N Sybils cost N real
-  disks, N address domains, N× time. Equivocation is slashed and forks reconciled
-  by objective on-chain-bond fork-choice with Byzantine (n−f) quorum sizing.
+  disks, N address domains, N× time. Equivocation is slashed, and forks are reconciled by height then head
+  hash under objective, bond-weighted commit admission with Byzantine (n−f)
+  quorum sizing.
 - **C2 — no quiet capture.** A concentration metric (cost-to-corrupt /
   Nakamoto-coefficient over **bond-distinct operators**, computed from the committed
   bond ledger) keeps the minimum colluding operator set above a target, and gates
@@ -128,8 +129,8 @@ not a proof.
 
 ### Colluding validator quorum
 The chain commits blocks (publications and revocations) when a quorum of
-bonded validators attest. The default untrusted posture is **objective
-on-chain-bond fork-choice** with **Byzantine (n−f) quorum sizing**, so an
+bonded validators attest. The default untrusted posture is **objective, bond-weighted commit admission**
+with **Byzantine (n−f) quorum sizing**, so an
 adversary must control > 1/3 of *bonded weight* — priced by C1's `C_honest`,
 not by cheap reputation — to break quorum-intersection safety, and standing
 concentration is bounded by C2 (above). A colluding *super*-quorum could still,
@@ -223,7 +224,7 @@ by default). Design in [`network-protection.md`](network-protection.md).
 - **Not anonymous.** No onion routing, no traffic-analysis resistance.
 - **Not audited.** No independent security or cryptographic review.
 - **Not censorship-proof** against a resourceful Sybil/eclipse adversary.
-- **BFT-style safety conditional on ≤ 1/3 bonded weight** — objective on-chain-bond fork-choice with Byzantine (n−f) quorum sizing gives quorum-intersection safety *while an adversary controls ≤ 1/3 of bonded weight*. This is **not *unconditional* BFT** against an unbounded adversary (a colluding super-quorum can still commit a bad revocation — see above), and it is **not a classic reputation quorum** either (standing is priced by C1's `C_honest`, not self-reported reputation).
+- **BFT-style safety conditional on ≤ 1/3 bonded weight** — objective, bond-weighted commit admission with Byzantine (n−f) quorum sizing gives quorum-intersection safety *while an adversary controls ≤ 1/3 of bonded weight*. This is **not *unconditional* BFT** against an unbounded adversary (a colluding super-quorum can still commit a bad revocation — see above), and it is **not a classic reputation quorum** either (standing is priced by C1's `C_honest`, not self-reported reputation).
 - **Not a proof-of-space/replication system.** Proof-of-retrieval is a
   liar-catcher, not a durability guarantee.
 - **Not production-ready.** This is 0.x, experimental.

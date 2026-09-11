@@ -57,8 +57,13 @@ Shipped and merged to main since this register was last revised:
   **proof-of-space-time bond** — a space-hard identity-bound plot × a Wesolowski
   VDF, persisted across restart, bound so N Sybils cost N real disks
   (#119–#123); **standing** as the time-integral of bond + audit gating
-  consensus and revocation; **fork-choice reconciliation** so partitions heal to
-  the heavier-standing chain (#124); **equivocation** that slashes double-signers
+  consensus and revocation; **bond-weighted commit admission** so a sub-quorum
+  partition commits nothing, stalls, and catches up to the majority's history on
+  heal rather than reorging onto it (#124 shipped this described as fork-choice
+  reconciliation toward whichever fork carried more bond standing;
+  **corrected 2026-09-12** — no
+  shipped rule ranks on bond, and under the finality gate there is no droppable
+  reorg to heal WITH); **equivocation** that slashes double-signers
   (#125); a **persisted issuer key** (#126); on the launch-window training wheels
   (T2/#83) and blind publish tokens (T3/#84) already landed. Proven at unit +
   in-process sim + real-daemon e2e (including a two-validator consensus commit
