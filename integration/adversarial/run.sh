@@ -22,9 +22,21 @@
 #
 # Usage:
 #   ./run.sh                                   # default impairment (cross-region-ish)
-#   NETEM="delay 120ms 40ms distribution normal loss 2%" ./run.sh
 #   NETEM="" ./run.sh                          # clean-network control (must PASS)
 #   TESTS='TestEquivocatorSlashedOverTCP' ./run.sh   # one drill
+#
+# The scheduled arms (.github/workflows/nightly-netem.yml) — build-immutable #5
+# names jitter, latency, packet loss AND reordering, so each gets an arm:
+#   NETEM="delay 80ms 20ms distribution normal"           ./run.sh   # jitter
+#   NETEM="delay 120ms 40ms distribution normal loss 2%"  ./run.sh   # loss
+#   NETEM="delay 20ms reorder 25% 50%"                    ./run.sh   # reorder
+# `reorder` REQUIRES a delay — tc rejects it outright otherwise ("reordering not
+# possible without specifying some delay", exit 1), which this harness renders as
+# a HARNESS ERROR, never as a clean pass. A malformed reorder arm cannot go green.
+#
+# EXIT CODES (the full contract is in netem-run.sh's header): 0 pass · 3 harness
+# (impairment unappliable) · 4 setup (the drills never built) · 5 unearned (not
+# every named drill produced a result) · anything else, a real property verdict.
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 cd "$(dirname "$0")"
@@ -55,10 +67,14 @@ ROOT=$(cd ../.. && pwd)
 # netem-hardening that specific race is tracked, not faked green here.
 ADVERSARIAL='TestEquivocatorSlashedOverTCP|TestPartitionHealsToHeavierForkOverTCP|TestForgedBlockRejectedOverTCP|TestLowBondProposerRejectedOverTCP'
 SUBSTRATE='TestObjectiveConsensusCommitsOverTCP|TestBondEarnedStandingCommitsOverTCP|TestPublishCommitFetchOverTCP'
+# `noun` is the verdict line's subject, set explicitly per SUITE. It used to be
+# derived by chopping `kind` at its first space, which mangled SUITE=all into
+# "every FULL property held" — a verdict line that cannot name what it certified
+# is one edit away from a verdict line that names the wrong thing.
 case "${SUITE:-adversarial}" in
-  adversarial) : "${TESTS:=$ADVERSARIAL}"; kind="adversarial-consensus drills"; verb="DENIED its attack" ;;
-  substrate)   : "${TESTS:=$SUBSTRATE}";   kind="P0 substrate liveness";        verb="held" ;;
-  all)         : "${TESTS:=$ADVERSARIAL|$SUBSTRATE}"; kind="full P0 netem gate (substrate + adversarial)"; verb="held/denied under impairment" ;;
+  adversarial) : "${TESTS:=$ADVERSARIAL}"; kind="adversarial-consensus drills"; noun="adversarial-consensus"; verb="DENIED its attack" ;;
+  substrate)   : "${TESTS:=$SUBSTRATE}";   kind="P0 substrate liveness";        noun="P0-substrate-liveness"; verb="held" ;;
+  all)         : "${TESTS:=$ADVERSARIAL|$SUBSTRATE}"; kind="full P0 netem gate (substrate + adversarial)"; noun="P0 netem gate"; verb="held/denied" ;;
   *) echo "unknown SUITE='$SUITE' (use adversarial | substrate | all, or set TESTS=<regex>)"; exit 1 ;;
 esac
 MODCACHE="$(go env GOMODCACHE 2>/dev/null || true)"
@@ -68,8 +84,21 @@ docker build -q -t silt-adversarial . >/dev/null || { echo "FAIL: image build"; 
 
 echo "== certify ${kind} under netem [${NETEM:-CLEAN}] =="
 echo "   tests: ${TESTS}"
+# The host module cache is mounted WRITABLE, and that is load-bearing. Mounting it
+# `:ro` shadowed the container's own writable /go/pkg/mod, so any module the host
+# cache happened to be MISSING became unresolvable: `go: writing go.mod cache:
+# mkdir /go/pkg/mod/cache/...: read-only file system`, 72 of them, then
+# `FAIL github.com/nerolabs/silt/e2e [setup failed]` with ZERO tests run.
+# The perverse part is why nobody caught it: with NO host cache the mount is
+# skipped entirely and the container downloads freely (green), and with a COMPLETE
+# host cache nothing needs writing (green). It bites only on a PARTIAL cache — the
+# steady state of a CI cache keyed on a go.sum that has stopped moving. That is
+# nightly-netem's whole history: 19 red of 21 lifetime runs, and the two greens
+# were the two days a go.sum change rotated the cache key.
+# Writable means the container can FILL the gaps. It also warms the host cache,
+# which is the behaviour a local dev loop wants anyway.
 mc_mount=()
-[ -n "$MODCACHE" ] && [ -d "$MODCACHE" ] && mc_mount=(-v "$MODCACHE":/go/pkg/mod:ro)
+[ -n "$MODCACHE" ] && [ -d "$MODCACHE" ] && mc_mount=(-v "$MODCACHE":/go/pkg/mod)
 
 set +e
 docker run --rm --cap-add NET_ADMIN \
@@ -82,11 +111,39 @@ code=$?
 set -e
 
 echo ""
-if [ "$code" = 0 ]; then
-  echo "RESULT: PASS ✅  every ${kind%% *} property ${verb} under [${NETEM:-CLEAN}] — certified deterministically, off-cloud."
-else
-  echo "RESULT: FAIL ❌  a ${kind%% *} property did NOT hold under [${NETEM:-CLEAN}] (go test exit $code)."
-  echo "  Per the rescue guardrail, a property you cannot drive+verify is a RED, never a passing GAP —"
-  echo "  this is a REAL finding. Reproduce and fix it here; do NOT route around it on the cloud."
-fi
+# A verdict this harness did not EARN must not be printed. netem-run.sh separates
+# the ways a run can end (see its header for the code contract); this renders each
+# as itself. The old code had a single else-branch, so ANY non-zero exit printed
+# "a property did NOT hold" — and for thirteen consecutive nights that sentence
+# described a package that had failed to COMPILE with zero drills run. Nobody
+# triaged it, because it read as a durability finding rather than a broken build.
+case "$code" in
+  0)
+    echo "RESULT: PASS ✅  every ${noun} property ${verb} under [${NETEM:-CLEAN}] — certified deterministically, off-cloud."
+    ;;
+  4)
+    echo "RESULT: SETUP FAILED ⛔  the ${noun} drills never BUILT under [${NETEM:-CLEAN}] — ZERO drills ran."
+    echo "  This is NOT a property verdict: no ${noun} property was exercised, so none passed and"
+    echo "  none failed. Do not read a durability finding into it. Fix the build and re-run."
+    ;;
+  3)
+    echo "RESULT: HARNESS ERROR ⛔  the requested impairment [${NETEM}] could not be applied (needs --cap-add NET_ADMIN)."
+    echo "  This is NOT a property verdict — running on an unimpaired loopback would have"
+    echo "  produced a CLEAN pass wearing an adverse-network label."
+    ;;
+  5)
+    echo "RESULT: UNEARNED ⛔  the drills built and ran, but not every NAMED drill produced a result under [${NETEM:-CLEAN}]."
+    echo "  This is NOT a property verdict. A green over partial execution certifies nothing;"
+    echo "  check the 'drills: N of M' line above and the -run regex."
+    ;;
+  125 | 126 | 127)
+    echo "RESULT: HARNESS ERROR ⛔  docker could not run the container (exit $code) — no drill was reached."
+    echo "  This is NOT a property verdict."
+    ;;
+  *)
+    echo "RESULT: FAIL ❌  a ${noun} property did NOT hold under [${NETEM:-CLEAN}] (go test exit $code)."
+    echo "  Per the rescue guardrail, a property you cannot drive+verify is a RED, never a passing GAP —"
+    echo "  this is a REAL finding. Reproduce and fix it here; do NOT route around it on the cloud."
+    ;;
+esac
 exit $code
