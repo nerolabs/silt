@@ -432,6 +432,13 @@ jobs:
         # and drives all five behaviours, including the two over-action arms (commit on
         # an unchanged tree; refuse a degraded one) that a wrong fix passes.
         run: python3 scripts/check_agent_memory_link.py --self-test
+      - name: Scar-lint — a memory index must stay NAVIGABLE, not merely resolvable (scar:memory-index-compaction-destroyed-the-hooks-2026-09-11)
+        # Same reason as the step above: CI has no memory store, so --self-test IS the
+        # gate here. It MANUFACTURES stores and drives every arm, including arm 6 —
+        # an ABSENT store exits 0 — which is what makes this safe to run on a checkout
+        # that will never have one. The store-reading mode is a local command
+        # (scripts/README.md); only this half is CI's.
+        run: python3 scripts/check_memory_index.py --self-test
 
   docs-shipped:
     name: Docs ship with code

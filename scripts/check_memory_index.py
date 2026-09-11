@@ -51,12 +51,19 @@ HOW "A HOOK" IS DEFINED, AND WHY IT IS AN `OR`
 
   The `and` form the brief first suggested — text informative AND row prose present —
   was MEASURED against the real store and rejected. Treating "link text is contained in
-  the stem" as uninformative flags 140 of 699 links, 28 of them on grouped rows that are
-  perfectly navigable (`[multi-leaf recompute](floorbox-Opayload-multileaf-recompute.md)`
-  inside a `Floor-box:` group). Requiring row prose as well would redden every compacted
-  group row in the store — and a lint that cries wolf is the one that gets switched off,
-  which is the same silence this check exists to break. On the equality rule the real
-  store reports 14 thin links out of 699 (2%), all of one shape.
+  the stem" as uninformative flags 136 of 730 links, and 119 of those 136 sit on rows
+  that DO carry prose and are perfectly navigable
+  (`[multi-leaf recompute](floorbox-Opayload-multileaf-recompute.md)` inside a
+  `Floor-box:` group). Requiring row prose as well would redden every compacted group row
+  in the store — and a lint that cries wolf is the one that gets switched off, which is
+  the same silence this check exists to break. On the shipped `or` rule the same store
+  reports 5 thin links out of 730 (0.7 %), all of one shape, plus 25 INFO echoes.
+
+  THOSE FIGURES ARE A SNAPSHOT, re-driven 2026-09-12 against the live store. The store
+  is written by eight seats every session, so they drift by design and an earlier revision
+  of this paragraph had already drifted (it said 140 of 699 and 14 thin). Re-drive them
+  with `--store`, do not cite them; what does NOT drift is the RATIO, two orders of
+  magnitude between the two rules, and that is the whole argument.
 
   Stem-echoing text on a row that DOES carry prose is reported as INFO, never as a
   failure. It is waste (the target is right there in the raw markdown the seat reads;
@@ -73,7 +80,15 @@ WHY BASENAME MEMBERSHIP AND NOT `os.path.exists()`
 
 SCOPE NOTES
   - A cross-seat link needs a path (`../tester/foo.md`, not `foo.md`). Those are resolved
-    against the store, not reported dangling.
+    against the store, not reported dangling. They are live: `researcher/MEMORY.md` cites
+    `../tester/era4-regcap-measurement-2026-08-29.md` and the file is there.
+    THIS RULE IS SHARED. `scripts/check_agent_memory_link.py` `_exists_cased` reads the
+    same store and must give the same answer for the same link; the two are gated
+    separately (self-test arm 4 here, arm 4d there) and a change to either is a change to
+    both. They disagreed once, for one review cycle: a case-exactness fix there returned
+    False on every `..` component and called it "unreachable", which took the real store
+    from 0 dangling to 1 and would have written a standing `DEGRADED` into every autosave
+    subject. Reachability is the property; the seat directory is not a boundary.
   - `reviews/` is excluded from the ORPHAN direction only. Those documents are cited by
     absolute path from certifications and rulings; they are not reached index-first, and
     counting all of them would label every run red. The DANGLING direction still covers
@@ -122,19 +137,40 @@ def is_external(target):
 
 
 def resolve(seat, target):
-    """(exists, display) for one relative target, by LISTDIR MEMBERSHIP.
+    """(exists, display) for one relative target, by PER-COMPONENT LISTDIR MEMBERSHIP.
 
-    `os.path.exists()` is deliberately not used: see the docstring. The parent is
-    normalized textually (`os.path.normpath`) and never through `Path.resolve()`, which
-    on macOS can hand back the on-disk casing and reintroduce the exact hole.
+    `os.path.exists()` is deliberately not used: see the docstring. Paths are normalized
+    textually (`os.path.normpath`, for the display only) and never through
+    `Path.resolve()`, which on macOS can hand back the on-disk casing and reintroduce the
+    exact hole.
+
+    EVERY component is checked, not just the basename. A basename-only test was measured
+    against `check_agent_memory_link.py` `_exists_cased` and DISAGREED with it on
+    `../Tester/scar.md` when the directory on disk is `tester`: this side said RESOLVES,
+    because opening a wrong-cased directory succeeds on APFS, and the seat component is
+    exactly where a cross-seat link's typo goes. Closing it for the basename and leaving
+    it open for the path is the same defect at a different depth.
+
+    `..` resolves against the store, FLOORED at the store root: a link that climbs above
+    the store is outside the tree this check governs and cannot be resolved by it.
     """
     joined = os.path.normpath(os.path.join(str(seat), target))
-    parent, base = os.path.split(joined)
-    try:
-        present = os.listdir(parent or ".")
-    except OSError:
-        return False, joined
-    return base in present, joined
+    root, cur = Path(seat).parent, Path(seat)
+    for part in target.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            if cur == root:
+                return False, joined
+            cur = cur.parent
+            continue
+        try:
+            if part not in os.listdir(cur):
+                return False, joined
+        except OSError:
+            return False, joined
+        cur = cur / part
+    return True, joined
 
 
 def audit_seat(seat):
@@ -347,6 +383,20 @@ def _self_test():
                             "index — it is red on everything and its red means nothing")
 
     # 2. DANGLING, including the case-only mismatch the volume hides.
+    #
+    #    WHERE THIS DISCRIMINATES, AND WHERE IT ONLY RESTATES. The case-only leg is
+    #    VOLUME-DEPENDENT. On a case-INSENSITIVE volume (APFS — the one the seats and the
+    #    hooks run on) it goes RED against a `resolve()` built on `os.path.exists()` and
+    #    GREEN after the fix: measured, ablated script EXIT=1 with this arm's message. On
+    #    a case-SENSITIVE volume — Linux CI, which is where `--self-test` actually runs —
+    #    the filesystem already answers correctly, so the SAME ablation exits 0 and this
+    #    arm is a restatement, not a discrimination: measured by monkeypatching
+    #    `os.path.exists` to be case-exact and re-running the ablated script, EXIT=0.
+    #    Say it plainly rather than let the CI green be read as proof that a
+    #    `listdir` -> `exists()` regression would be caught there. It would not be.
+    #    The ABSENT-file leg below and every other arm are volume-independent.
+    #    `check_agent_memory_link.py` arm 4c carries the same disclosure for the same
+    #    reason.
     with tempfile.TemporaryDirectory() as tmp:
         store = build(tmp, [
             "- [Gone entirely](gone.md) — a hook, so THIN cannot be what fires.",
@@ -393,10 +443,16 @@ def _self_test():
         store = build(tmp, [
             "- [A scar the tester owns](../tester/scar.md) — described.",
             "- [A scar the tester does not own](../tester/absent.md) — described.",
+            "- [The seat name miscased](../Tester/scar.md) — described.",
+            "- [Above the store](../../outside.md) — described.",
         ], [
             ("tester/scar.md", "the tester's scar\n"),
             ("tester/" + INDEX_NAME, "# tester\n\n- [Its own scar](scar.md) — described.\n"),
         ])
+        # The climb target EXISTS, one level above the store. Without it the last leg
+        # would pass on plain ABSENCE and never reach the floor it names.
+        (Path(tmp).parent / "outside.md").write_text("not memory this store governs\n",
+                                                     encoding="utf-8")
         reps = audit_store(store)
         b = [r for r in reps if r["seat"] == "builder"][0]
         if [t for _, t in b["dangling"] if t == "../tester/scar.md"]:
@@ -405,6 +461,18 @@ def _self_test():
         if not [t for _, t in b["dangling"] if t == "../tester/absent.md"]:
             failures.append("arm 4: a cross-seat link at a MISSING file was not dangling — "
                             "handling the path form must not mean skipping it")
+        if not [t for _, t in b["dangling"] if t == "../Tester/scar.md"]:
+            failures.append("arm 4: a cross-seat link whose SEAT component is wrong-cased "
+                            "was not dangling — case-exactness must hold for every path "
+                            "component, not just the basename, or the hole this check "
+                            "closes just moves one level up. Measured: a basename-only "
+                            "test answers this link differently from "
+                            "check_agent_memory_link.py, and the two read one store")
+        if not [t for _, t in b["dangling"] if t == "../../outside.md"]:
+            failures.append("arm 4: a link climbing ABOVE the store root was not dangling "
+                            "— that is outside the tree this check governs. The target "
+                            "EXISTS on disk, so this leg fails on the missing floor and "
+                            "not on mere absence")
 
     # 5. OVER-ACTION. A clean, well-described store exits 0 and says so.
     with tempfile.TemporaryDirectory() as tmp:
