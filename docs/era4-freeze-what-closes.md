@@ -5,6 +5,17 @@ manifest. The manifest (22 items, four classes, three deadlines) is the build li
 certified elsewhere.[^cert] This page answers one question: **which doors close forever when you
 sign, and which ones only look like they close.**
 
+> **RE-CHECKED 2026-09-11 against the manifest's FINAL content**, which discharges
+> `D-PREIMAGE-BUY-2026-09-10` call 4 condition (i). Two things changed since this page was drafted and
+> both are folded in below. **(1) The manifest has stopped moving: the OWED-and-FORMAT list is EMPTY**
+> — 9 of 22 items built, 5 dropped or declined, 2 partial, 6 owed, and none of the six on the freeze
+> surface (`D-FREEZE-REAUDIT-2026-09-11`). What still blocks your signature is the freeze ENTRY itself,
+> which only you can write, not a remaining build. **(2) Era-4 is no longer dark — it is live from
+> height 1 on the shipped default**, which changes door 3 and the stamp sentence in §"What you are
+> actually signing". **D3 is a gate silt opens when the work is done. It is never a deadline**
+> (`D-FREEZE-REPRICE-2026-09-10`) — if reading this page raises a question, the answer is to hold the
+> gate, not to sign around it.
+
 ## The answer in one paragraph
 
 Freezing era-4 locks **four things about a block, and nothing else**. It locks which fields exist
@@ -30,7 +41,7 @@ So a format item that is *wrong* at the freeze is not a bug you patch. It is a f
 |---|---|---|
 | **1. The block schema** | Which fields exist on a block, their cbor keys, and which of them are inside the `Hash()` preimage that attesters sign. | A new era. A frozen binary receiving an unknown key **drops it, re-marshals a different body, computes a different hash, and rejects the block** — so an added field is not backward-invisible, it is a fork. |
 | **2. The committed leaves and their value encoding** | Which facts are folded under the committed state root, and the exact canonical bytes each value takes. | A new era. Two nodes disagreeing on an encoding disagree on the root, which is a chain split. |
-| **3. The activation rule** | How the network decides it is running era-4 — the height gate, the one-way weight tally, the boundary semantics. | A new era, and a nastier one: you would be changing the rule that decides which rules apply. |
+| **3. The activation rule** | How the network decides it is running era-4 — the height gate, the one-way weight tally, the boundary semantics. **As shipped this is a GENESIS CONSTANT, not a vote:** `-era4-activation-height` defaults to **1** and is committed at `ConsensusParams` cbor key 14, so `(*Chain).era4Active` takes the config branch and never consults the readiness tally. The tally is the `0` branch, and nothing on the launch posture selects it. | A new era, and a nastier one: you would be changing the rule that decides which rules apply. |
 | **4. The verifier posture** | Which roots are *required*, on which paths — including "no witness supplied for a key a predicate reads → never accept." | A new era. This is a format property because it decides what a valid block *is*, not merely what a node happens to check. |
 
 These four are exactly what the era-3 freeze froze, in its own words (`docs/decisions.md:620-650`).
@@ -57,7 +68,11 @@ violation. It was not; it was correct.
 So these stay open after you sign:
 
 - **Narrowing validity rules** — size caps, distinctness clauses, refusals. Cheap now (no live
-  network), expensive after launch (a coordinated fleet fork), but **never an era**.
+  network), expensive after launch (a coordinated fleet fork), but **never an era**. *Note the reason
+  they are cheap now, because it is not the reason this page first gave: it is that there is no live
+  network, NOT that era-4 is unreachable. Era-4 is live from height 1 on every fresh network today, so
+  every one of these rules is already exercised by e2e and by the graded cloud runs. That makes them
+  gate the field run — it does not make them gate your signature.*
 - **Test-tier obligations** — model-check properties, e2e fixtures, driven ablations.
 - **Docs, runbooks, observables** — including the era observable an operator uses to see whether
   the stamp raise actually took.
@@ -113,7 +128,12 @@ changes the hash itself, that is the same error in a new costume.
 2. That every value inside them was reached by a sound derivation, not by a route that happened to
    land in a safe place. *(This is why the derivation-route audit is an input to D1 rather than a
    parallel errand: a wrong value that survives the freeze is a new-era fix.)*
-3. That the readiness stamp goes 3 → 5. No release ever stamps 4.
+3. That the readiness stamp goes 3 → 5. No release ever stamps 4. **⚠ This sentence needs a
+   disposition from you before it is signed, because the mechanism it describes is not the one the
+   default configuration uses.** `NewBondReg` still stamps `BlockVersionRegGate` (3), and with
+   `-era4-activation-height` = 1 the readiness tally is bypassed entirely — era-4 activates as a
+   committed genesis constant. Either the stamp raise is still meaningful for the `0` branch and you are
+   signing it for that branch, or the sentence should say so. It is a wording call, not code.
 4. That this is the **last format touch**. After it, anything not frozen correctly is a fork.
 
 What you are *not* signing away is the ability to tighten a rule, add a test, fix a runbook, or
