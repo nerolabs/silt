@@ -58,9 +58,27 @@ The damage scales with guessability:
   data is unguessable anyway, you lose nothing by using `private` mode.
 
 Rule of thumb: convergent encryption protects data exactly as well as
-that data is *unguessable*. For anything personal, `silt add
--mode private` uses a random per-file key (index-bound nonces, no dedup,
-no confirmation surface).
+that data is *unguessable*. For anything personal, `silt add -mode private`
+uses a random per-file key with index-bound nonces and no dedup. That
+defeats the **chunk-ID** confirmation attack described above — an attacker
+who runs the recipe on a guess gets a chunk ID that is not in the network.
+
+**It does not make the object unobservable, and this section previously
+said it did.** Private mode removes the guess-and-confirm oracle. It does
+not remove the **length** fingerprint: the exact plaintext byte count is
+published on-chain in `ports.Entry.FileSize` for private-mode objects
+exactly as for convergent ones, so the worked example above — a form letter
+with one blank — remains partitioned by exact byte length, and an attacker
+who can enumerate the fill-ins can still narrow by length without ever
+touching a chunk (threat-catalog F3(a)). It also did not, until 2026-09-11,
+remove the **mode** label: any peer could recover the mode from the manifest
+chunk's frame length. That one is closed — `manifest.secretsPlainLen` pads
+the sealed secrets to a length derived from the public shard count — but
+`-mode private` was for a time itself a public statement about a root
+(threat-catalog F8).
+
+The honest scope: `-mode private` defeats confirmation-of-content. It does
+not deliver unobservability, and silt does not claim it anywhere.
 
 Real-world note: this attack is not hypothetical — it's why Dropbox-era
 "cross-user deduplication" designs were abandoned, and the literature

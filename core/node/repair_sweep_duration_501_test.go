@@ -328,19 +328,50 @@ func TestMeasure_501_SweepDurationUnderDeadHolders(t *testing.T) {
 			t.Fatal("sim gap never elapsed")
 		}
 	}
-	var tail []int64
-	for i := 0; i < 6; i++ {
+	// THE WINDOW IS 18 ROUNDS, AND THE LOUD COUNT IS HALVED — a 2026-09-11 correction,
+	// measured, not tuned. The bound used to drive SIX rounds and assert that indices 4 and 5
+	// cost <= 10s. That is not the decay claim; it is two samples of a cycle whose PHASE is set
+	// by which nodes hold which shards, and the placement key moves whenever an object's chunk
+	// IDs move. Driving the SAME pre-change tree to 18 rounds shows the re-discovery tax landing
+	// at indices 2 and 8 — so the old window closed two rounds before the second loud sweep, and
+	// its green was the sampling, not the property:
+	//
+	//	pre-change tree, 18 rounds: loud at 2, 8               (quiet runs 2, 5, 9+)
+	//	this branch,     18 rounds: loud at 0, 1, 3, 4, 9, 10  (quiet runs 1, 3, 7+)
+	//
+	// Both decay — the quiet runs double — and neither is quiet at a FIXED index. So assert the
+	// two things the comment above actually claims: the tail goes quiet and STAYS quiet, over
+	// six consecutive rounds rather than two; and the tax is strictly smaller in the second half
+	// than the first, which is the decay itself and is independent of phase.
+	const rounds = 18
+	var ms [rounds]int64
+	var loud [rounds]bool
+	for i := 0; i < rounds; i++ {
 		gap()
 		before := r.care.Stats.Timeouts
-		ms := r.sweepOnce(t)
-		t.Logf("decay-drive sweep %d (35s gap): %d ms, %d timeouts", i, ms, r.care.Stats.Timeouts-before)
-		if i >= 4 {
-			tail = append(tail, ms)
+		ms[i] = r.sweepOnce(t)
+		loud[i] = ms[i] > 10_000
+		t.Logf("decay-drive sweep %d (35s gap): %d ms, %d timeouts", i, ms[i], r.care.Stats.Timeouts-before)
+	}
+	for i := rounds - 6; i < rounds; i++ {
+		if loud[i] {
+			t.Fatalf("#501: 35s-gap sweep %d of %d still costs %d ms — the corpse cooldown is not decaying "+
+				"(pre-fix: every such sweep re-paid ~45s). The last six rounds must all be quiet.", i, rounds, ms[i])
 		}
 	}
-	for _, ms := range tail {
-		if ms > 10_000 {
-			t.Fatalf("#501: a 35s-gap sweep still costs %d ms after six rounds — the corpse cooldown is not decaying (pre-fix: every such sweep re-paid ~45s)", ms)
+	first, second := 0, 0
+	for i := 0; i < rounds/2; i++ {
+		if loud[i] {
+			first++
 		}
+		if loud[i+rounds/2] {
+			second++
+		}
+	}
+	if second >= first {
+		t.Fatalf("#501: %d loud sweeps in the first half of the drive and %d in the second — the re-discovery "+
+			"tax is not DECAYING, it is periodic. Each re-discovery is supposed to double the quiet period; a "+
+			"flat or rising loud count means the cooldown is resetting instead. This arm does not depend on "+
+			"where the cycle's phase lands, which is why it is here.", first, second)
 	}
 }

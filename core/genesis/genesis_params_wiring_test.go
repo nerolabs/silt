@@ -104,28 +104,33 @@ func TestG_CFGBIND_6_BuildCarriesAndHashCoversTheParams(t *testing.T) {
 // ABLATION: renumber ConsensusParams.Quorum from cbor key 1 to key 18 -> RED here, GREEN on
 // G-CFGBIND-6.
 func TestG_CFGBIND_6b_TheParamsCarryingGenesisHashIsPinned(t *testing.T) {
-	// THE RE-PIN OF 2026-09-11 — M1, the single genesis move. Recorded here because this gate
-	// demands the move be an explicit act, and the record belongs beside the literal.
+	// THE RE-PINS. This gate demands each move be an explicit act, so the record lives beside the
+	// literal.
 	//
-	//	was: 4a305b96db986bb73ff571e93f1059bbafd47ce618da6ce0519869e05c8b9c46
-	//	now: b862f16b0978d8f563f6ce4d79e5eb5af904c6170d797b85605163a6c3c23b57
+	//	4a305b96…9c46  ->  b862f16b…3b57   M1, 2026-09-11: ConsensusParams gained NetworkName at
+	//	                                   cbor key 18, and representativeParams gained a value for
+	//	                                   it (G-CFGBIND-6's zero-value sweep refuses a fixture that
+	//	                                   leaves a committed field at zero, so the two are one
+	//	                                   change). The paramless literal did NOT move.
+	//	b862f16b…3b57  ->  af49c742…95c8   RT-SFO-1, 2026-09-11: manifest.secretsPlainLen pads the
+	//	                                   inner secrets box, so the manifesto's manifest chunk ID
+	//	                                   moves and Entry.ManifestChunks with it. BOTH literals
+	//	                                   move here, and the paramless one moving is the tell that
+	//	                                   this is an ENTRY change and not a params change.
 	//
-	// WHAT MOVED IT: ConsensusParams gained NetworkName at cbor key 18, and representativeParams
-	// gained a value for it (the zero-value sweep in G-CFGBIND-6 refuses a fixture that leaves a
-	// committed field at zero, so the two are one change).
+	// WHY IT IS PAID ONCE PER MOVE. Block.Hash() covers Params and (*Chain).ChainID is
+	// blocks[0].Hash(), so every field added here — and every byte of every Entry — re-mints every
+	// genesis and re-runs the graded set. Era 4 is open, no live network exists, and the freeze is
+	// at the RC, so this is a second deliberate re-seed rather than a break.
 	//
-	// WHY IT IS PAID ONCE. Block.Hash() covers Params and (*Chain).ChainID is blocks[0].Hash(), so
-	// EVERY field added here re-mints every genesis and re-runs the graded set. M1 is deliberately
-	// the ONLY genesis move: owner call A's preimage, owner call F's bind, this field and the two
-	// era-activation flags land together. Deferring any of them would pay this cost twice.
-	//
-	// WHAT IT DOES NOT MOVE: the freeze read-set. No SMT tag was added or renamed, StateView.Params
-	// is class 3 ("never witnessed, never a parameter"), and no Block keyasint was added — key 18
-	// is INSIDE ConsensusParams. A genesis-hash change and a block-format change have different
-	// prices; this is the first. The paramless literal below is UNCHANGED, which is the proof.
+	// WHAT NEITHER MOVE TOUCHES: the freeze read-set. No SMT tag was added or renamed,
+	// StateView.Params is class 3 ("never witnessed, never a parameter"), and no Block keyasint was
+	// added — key 18 is INSIDE ConsensusParams, and the padding is inside a sealed blob that no
+	// block field describes. A genesis-hash change and a block-format change have different prices;
+	// both of these are the first kind.
 	const (
-		wantParamless  = "e44344eafa258c64904d88337e72ad7a904bd3c16a3058abb8d58557740272c0"
-		wantWithParams = "b862f16b0978d8f563f6ce4d79e5eb5af904c6170d797b85605163a6c3c23b57"
+		wantParamless  = "fdfb676c0476b8d798e5fb0f15ebe39447b2ba00707d47f814dc205ba92ceb58"
+		wantWithParams = "af49c742d07e36c2e4f3180b699357259e135efe91907d7533c32c35d89395c8"
 	)
 	p := representativeParams()
 	withParams, _, _, err := genesis.Build(memstore.New(), &p)

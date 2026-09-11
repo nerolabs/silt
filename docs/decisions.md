@@ -4183,6 +4183,16 @@ with the reason beside the literal).
 the two era-activation flags land together. Every one of them re-mints the genesis; deferring any
 one pays the graded re-run set twice.
 
+> **⚠ AMENDED 2026-09-11 — there is a SECOND move, and it is deliberate** (`D-MODE-ORACLE-2026-09-11`,
+> owner-ratified). `manifest.secretsPlainLen` pads the sealed secrets box to close the keyless
+> encryption-mode oracle (threat-catalog F8), which moves the manifest chunk ID and therefore the
+> genesis hash: paramless `e44344ea…72c0` → `fdfb676c…eb58`, params-carrying `b862f16b…3b57` →
+> `af49c742…95c8`. **The sentence above is left standing rather than rewritten** — a correction only
+> does its work if a reader can see that it was one. What it got right is the *price*: the graded
+> re-run set is now paid twice, knowingly, for a finding that no disclosure covered and that has a
+> settled corner. What it could not know is that the docket existed. The constraint it states still
+> binds every remaining move: **M2–M5 must not move the genesis hash again.**
+
 ### (1) `ConsensusParams.NetworkName`, cbor key 18
 
 The owner's requirement: **a node reports its network by both a cryptographic identifier and a
@@ -4355,3 +4365,125 @@ here.**
   is **G-3, still unbuilt**. Retiring the leaves never closed it and does not now. `slashed` and
   `validatorsSeen` remain ADD-only with zero deletes repo-wide and are committed per-member in the
   FROZEN era-3 leaf set, so the growth this residual names is untouched by either decision.
+
+## D-MODE-ORACLE-2026-09-11 — the keyless encryption-mode oracle is closed by padding the inner secrets box; every other remedy on the table is DECLINED
+
+- **Status:** ✅ DECIDED — 2026-09-11, owner-ratified in full on the research certification
+  `2026-09-11-privacy-property-measured-part0-corner-entry-filesize-and-mode-oracle-cert`
+  (`~/.claude/silt-agent-memory/researcher/reviews/research-outcome/`), which routed from the
+  `R-SUBFRAME-SIZE-ORACLE` red-team pass and the PE's RT-SFO-6 scope ruling.
+- **Tier:** evolving. **Not a format item** by the four-door test: no block field, no cbor key, no
+  committed leaf, no validity rule. It **moves the genesis block hash**, which is a different and
+  cheaper price, and which is accepted — era 4 is open, there is no live network, the freeze is at
+  the RC, and M1 already re-seeded once, so this is a second deliberate re-seed.
+
+### What was wrong
+
+`manifest.secretsPart.Mode` sits in the inner secrets box precisely so a care-link holder cannot
+read it. But `secretsPart` carried 34 bytes of `ChunkSecrets` **per data chunk** in convergent mode
+against one flat 34-byte `FileKey` in private mode, `crypto.SealBox` expands by a constant 16-byte
+tag, and `ManifestFrameSize` frames a single-chunk manifest at its true length — so the **frame
+length published the sealed field**. 341 B private against 345 B convergent at `FileSize = 1`,
+widening 34 B per data chunk. A peer with no keys, no care link, no bond and no token read
+`Entry.ManifestChunks` off the unauthenticated `MsgGetChain`, fetched that chunk over the
+unauthenticated `MsgFetchChunk`, and recovered the publisher's own secret/not-secret classification
+of every root on the chain. **No disclosure covered it.** It is not a size leak and not a traffic
+observation; it is a sealed field read by an unauthenticated stranger. Filed as threat-catalog **F8**.
+
+### The one remedy bought
+
+`manifest.secretsPlainLen` pads the secrets plaintext to a length that is a function of the **public
+data-shard count alone**, before sealing. The zeros go inside the AEAD, so they are authenticated,
+and `OpenFull` refuses a trailer that is not zero-filled, so one manifest still has exactly one
+sealed encoding.
+
+- **Settled corner (simplicity rule 1):** length-hiding authenticated encryption — Paterson,
+  Ristenpart, Shrimpton, *"Tag Size Does Matter"*, ASIACRYPT 2011 — deployed as TLS 1.3 record
+  padding, [RFC 8446 §5.4](https://www.rfc-editor.org/rfc/rfc8446#section-5.4). Not novel.
+- **Cost:** ≈0.013 % of object bytes. Measured: a 2 MiB private object's manifest goes 621 → 902 B.
+- **Why the inner box and not the frame:** it closes the oracle at every size **and** for the
+  care-link holder, who measures `Layout.Box` directly. Re-padding the manifest frame lifts it only
+  while both modes fit one frame; beyond that `len(Entry.ManifestChunks)` separates the modes
+  on-chain with no fetch at all.
+- **Why not remove the `Mode` field:** REFUTED as a fix. `Validate` already makes `ChunkSecrets` ⟺
+  convergent and `FileKey` ⟺ private, so `Mode` is a redundant discriminator. Removing it takes 3 of
+  the 4 delta bytes at one chunk and **zero** of the `34·(chunks−1)` that dominate at scale.
+
+### The remedies DECLINED — recorded so the next seat does not re-open them
+
+The owner ratified **this one remedy only**. Both of the following were on the table, were priced,
+and were turned down. *"We are moving genesis anyway"* is exactly the scope magnet the owner has
+warned about (`D-FREEZE-REPRICE-2026-09-10`); the boundary is recorded here rather than left to
+be rediscovered.
+
+**A ladder on `Entry.FileSize` — DECLINED.** Bucketing the published byte count would cut the
+chain-side lookup table from ≈18 bits to ~6.7. It is declined on two independent grounds:
+
+- **No settled corner.** BitTorrent publishes `length`; IPFS UnixFS publishes `filesize`. There is
+  no deployed system to point at, so under simplicity rule 1 the mechanism is **novel**, and novel
+  is a cost, not a feature, on anything outside M0.
+- **It is outside M0.** T-DONT3 does not fire: `Entry.FileSize` describes the **object**, not a
+  fetch, so it retains no access dimension, there is no access record to reach, and its purpose is
+  sizing a fetch and registry dedup. The refusal-to-surveil half of the privacy corner is untouched.
+
+  **Correction of record, from the certification:** bucketing the **value** is a **validity rule**,
+  not a format change — the Go type, the cbor map key and every encoded shape stay put. Only
+  *dropping* the field moves preimage bytes, and that is the format change. **Two quantities, two
+  prices.** Calling both "a format change" is what invites the era-cost argument the owner has
+  forbidden.
+
+**Re-padding the data frame (reverting `R-SHORT-FINAL-STRIPE`) — DECLINED, priced, not refused on
+principle.** It would close the wire-side length channel for a splicing relay — a vantage
+`Entry.FileSize` genuinely does not make redundant, because for an observer without the root the
+shard byte count is the *observable* and the chain's column is the *lookup table*. It is declined
+because it reverts a **measured 250× storage win** — 1,048 B → 262,160 B per shard on a 1 KB object
+— to close a noisy channel against a vantage the tenets already disclaim (`docs/TENETS.md:604`,
+*"what is never guaranteed is blob-layer unobservability"*). The channel's magnitude is UNSETTLED;
+its direction is not. If a future measurement makes it worth the storage, that is a fresh call.
+
+### What the disclosure now says, and what did NOT change
+
+Three published sentences were REFUTED as text and are replaced (threat-catalog F3(a), the new F8,
+and `docs/math/02-convergent-encryption.md`'s *"no confirmation surface"*). **Correcting text is not
+a mitigation and is not recorded as one.** The specific defect fixed: the old text named
+anonymity-set size as *the bound* and never said the set is routinely **one**. A bound with no floor
+reads to a user as a promise of some set. The replacement states the floor is 1, cites the
+structural bound (≈18 bits over `L ∈ [1, 262135]`; 99.3 % expected singletons at n = 1,779) rather
+than the corpus measurement, and names that measurement's population — a software repository's
+length distribution, which came in *lower* at 79.6 % because real lengths cluster.
+
+**NO TENET EDIT.** `docs/TENETS.md:600-609` (immutable #4) and `D-PRIV` survive these measurements
+intact and are, in the certification's words, *"among the few sentences in this area that are
+exactly right."* A documentation correction does not become a tenet amendment; that would be
+trading a corner to tidy a catalog.
+
+### The gates
+
+- `core/pipeline` `TestRT_SFO_1_ModeIsNotRecoverableFromManifestFrameLength` — **seen RED first** on
+  the pre-fix tree at `f826c72` (`convergent=345 private=341, delta 4`), which is the certification's
+  own §9(a) condition and simplicity rule 7.
+- `core/pipeline` `TestRT_SFO_1_ModeIsNotRecoverableAtAnyErasureGeometry`,
+  `TestRT_SFO_1_GateRedensWhenTheModesSeparate` (the teeth, which feed the predicate the pre-fix
+  measurement permanently), `TestRT_SFO_1_PaddedFramingAblationCollapsesBothModes` (which records
+  the weaker frame remedy *as* weaker).
+- `core/manifest` `TestSealedSecretsLengthIsModeIndependent` (the care-link holder's vantage),
+  `TestSecretsPlainLenBoundsEveryEncoding`, `TestSecretsPadIsNeverNegative`,
+  `TestPaddedSecretsRoundTrip`, `TestPaddedSecretsRefuseNonZeroTrailer`.
+- **Ablation run and reverted:** deriving the pad target from `len(m.ChunkSecrets)` — a *secret* —
+  instead of `len(m.Chunks)` reddens both the pipeline gate and the manifest gate at a **1-byte**
+  separation, which is why the teeth include a one-byte arm.
+- The #817 defect **pin** is retired and converted to the straight assertion, as the pin's own
+  failure text instructed. Its teeth are kept and re-pointed; the teeth now hard-code the pre-fix
+  345/341 so the RED survives the fix.
+
+### Genesis
+
+```
+was: e44344eafa258c64904d88337e72ad7a904bd3c16a3058abb8d58557740272c0   (paramless)
+now: fdfb676c0476b8d798e5fb0f15ebe39447b2ba00707d47f814dc205ba92ceb58
+was: b862f16b0978d8f563f6ce4d79e5eb5af904c6170d797b85605163a6c3c23b57   (params-carrying)
+now: af49c742d07e36c2e4f3180b699357259e135efe91907d7533c32c35d89395c8
+```
+
+The **root does not move** (`31768fb4…7dd1`) and the manifest chunk does (`f761f80b…fcf6` →
+`b12a4f0a…e06d`): the padding is inside the manifest blob, which the root does not cover.

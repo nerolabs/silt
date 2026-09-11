@@ -578,6 +578,31 @@ defaulting to 1/1.
   "it's an identity field" cannot become an escape hatch. Field count 17 → 18, still the rule's
   OUTPUT.
 
+**▶ UPDATE 2026-09-11 — A SECOND, DELIBERATE GENESIS RE-SEED, and the M-series is TRIMMED.**
+Owner-ratified in full on the mode-oracle certification (`D-MODE-ORACLE-2026-09-11`).
+
+- **The genesis hash moves again** — paramless `e44344ea…72c0` → `fdfb676c…eb58`, params-carrying
+  `b862f16b…3b57` → `af49c742…95c8`. `manifest.secretsPlainLen` pads the sealed secrets box, so the
+  manifesto's manifest chunk ID moves and `Entry.ManifestChunks` with it. The **root does not move**
+  and no `Block` cbor key, committed leaf or validity rule is touched: **not a format item** by the
+  four-door test. This pays the graded re-run set a second time, knowingly. It closes the keyless
+  encryption-mode oracle (threat-catalog **F8**), which was the one finding on that docket outside
+  every existing disclosure and the one with a settled corner (LHAE / RFC 8446 §5.4) at 0.013 % of
+  object bytes.
+- **Two remedies were DECLINED and the boundary is recorded** so it is not re-opened: a `FileSize`
+  ladder (novel under simplicity rule 1, and outside M0) and re-padding the data frame (reverts a
+  measured 250× storage win against a vantage the tenets already disclaim). *"We are moving genesis
+  anyway"* is the scope magnet, and the answer to it is in `D-MODE-ORACLE-2026-09-11`.
+- **THE M-SERIES SCOPE TRIM (owner-ratified).** **M5 (JOIN/START mode + the `ch.Len() == 0` audit)
+  STAYS IN THE RC.** It is the only thing that closes the **silent singleton**: a typo'd flag founds
+  a network of one that reports healthy, because `cmd/silt/daemon.go` mints genesis and then checks
+  the params it just minted **from the same config**. A check whose referent it produced itself
+  cannot fail. **M4 (ALPN set-and-assert on both ends + the LAN beacon tag + the DNS TXT prefix) and
+  the DNS-seed work DEFER TO POST-RC.** ALPN is a wire demux and never a boundary — it is
+  unauthenticated, cleartext in the ClientHello, and covered by no certificate under
+  `InsecureSkipVerify` + pinning — so it hardens a surface the genesis bind already partitions. The
+  single-DNS-seed eclipse surface is a real open row and is not closed by any network tagging.
+
 **Boulder 3 is the whole remaining critical path: D1 → D2 → D3.** Everything else is either done,
 post-RC, or standing work that runs beside it.
 

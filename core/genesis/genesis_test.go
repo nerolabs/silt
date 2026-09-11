@@ -44,21 +44,25 @@ func TestGenesisIsDeterministic(t *testing.T) {
 //
 //	pre-4′ (padded manifest frame)   hash 7becf754…32ce · manifest chunk 8063c7a3…4610
 //	4′     (true-length manifest)    hash f428d0a8…0951 · manifest chunk 5478750c…d107 · root fce9eeeb…20d6
-//	now    (true-length DATA frame)  hash e44344ea…72c0 · manifest chunk f761f80b…fcf6 · root 31768fb4…7dd1
+//	       (true-length DATA frame)  hash e44344ea…72c0 · manifest chunk f761f80b…fcf6 · root 31768fb4…7dd1
+//	now    (padded secrets box)      hash fdfb676c…eb58 · manifest chunk b12a4f0a…e06d · root 31768fb4…7dd1
 //
-// The ROOT moves this time and did not before, and that difference is the whole point of
-// pinning three literals rather than one: 4′ re-framed the manifest, which the root does
-// not cover, so only the entry and the block hash moved. R-SHORT-FINAL-STRIPE re-frames
-// the manifesto's own 2,042 bytes — a single-frame object — so its data and parity chunk
-// IDs move, and the root is built out of exactly those. From here the genesis hash moves
-// ONLY by an explicit, recorded decision: any drift turns this RED. ABLATION: set
+// Three literals, not one, because WHICH of them moves is the diagnosis. R-SHORT-FINAL-STRIPE
+// re-framed the manifesto's own 2,042 bytes — a single-frame object — so its data and parity
+// chunk IDs moved and the root, which is built out of exactly those, moved with them. The
+// other three moves are all inside the MANIFEST, which the root does not cover, so the root
+// stands and only the manifest chunk ID and the block hash move. The 2026-09-11 move is
+// manifest.secretsPlainLen padding the inner secrets box to close RT-SFO-1, the keyless
+// encryption-mode oracle (docs/threat-catalog.md F8): the sealed blob grew by a
+// mode-independent amount, so the frame that carries it did too. From here the genesis hash
+// moves ONLY by an explicit, recorded decision; any drift turns this RED. ABLATION: set
 // ManifestFrameBytes: 64 << 10 in genesis.Options → RED on the manifest chunk ID and on
 // the block hash, GREEN on the root.
 func TestGenesisBlockHashIsPinned(t *testing.T) {
 	const (
-		wantHash  = "e44344eafa258c64904d88337e72ad7a904bd3c16a3058abb8d58557740272c0"
+		wantHash  = "fdfb676c0476b8d798e5fb0f15ebe39447b2ba00707d47f814dc205ba92ceb58"
 		wantRoot  = "31768fb45fcf6e7fbf5568f916c790ea905d85220d20717bfe91442934867dd1"
-		wantChunk = "f761f80bdc29952ef1a25c2136a35fb34e4feaf1b6873f7e03dc8a1fce67fcf6"
+		wantChunk = "b12a4f0a24bbb6e6b5e2c625c10f7b6ccd9d46d10a2b14daffc80c76139ae06d"
 	)
 	b, h, entry, err := genesis.Build(memstore.New(), nil)
 	if err != nil {
