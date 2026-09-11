@@ -236,6 +236,26 @@ func waitForInLog(t *testing.T, path string, re *regexp.Regexp, timeout time.Dur
 // of any version and no committed binding for a withdrawal to resolve against — which is the
 // condition this test asserts the refusal for.
 //
+// AND THE REFUSAL IS NOT ATTRIBUTABLE TO THAT CONDITION — MEASURED 2026-09-11, and this is
+// the thing to know before trusting this test's NAME. `silt swarm receipt` resolves keys on
+// the EPHEMERAL node joinSwarm builds (cmd/silt/daemon.go), which never calls EnableChain —
+// the daemon's is the only EnableChain call site outside tests in cmd/. So
+// pinDemandIssuerKey returns false at its FIRST guard, `n.chain == nil`, before the
+// committed-binding check this test is named for ever runs. ABLATION: delete the commitment
+// check from pinDemandIssuerKey AND from DemandIssuerKeyset's Retain — this test and
+// TestPaidDeliveryLaneArmsInTheHarnessPosture both stay GREEN, exit 0. What this test
+// genuinely gates is therefore the OPERATOR-FACING contract — the dark-lane banner, the
+// announced "NOT banked" marker, the lane-on/lane-off refusals staying distinct, and the
+// server banking nothing — not the binding predicate.
+//
+// THE PREDICATE'S OWN GATE, both arms, is core/node
+// TestIssuerKeyBindingResolvesInTheObjectiveBondedEpochPosture: an objective + bonded +
+// epoch-enabled chain that commits the binding at a NON-ZERO epoch in a v5 block through the
+// real validateIssuerKeys, with a CHAIN-BEARING fetcher in every arm (accept / absent /
+// mismatch). It reddens under both ablations above. That is R-E2E-ERA4-FIXTURE's posture
+// half. What stays OWED is the OS-process positive arm, and it is blocked on a question
+// this brief does not decide: whether the one-shot client should carry a chain at all.
+//
 // THE OLDER REASON, AND WHY IT NO LONGER GOVERNS. This note used to say the era-4 READINESS
 // TALLY is what keeps the fixture below v5: -objective=false makes chain.objective() false, so
 // epochsEnabled() is false, so apply() never calls rotateEpoch, and the tally lives inside
@@ -248,11 +268,15 @@ func waitForInLog(t *testing.T, path string, re *regexp.Regexp, timeout time.Dur
 // any particular block height — is never consulted here. Raising the readiness stamp 3 -> 5 still
 // does not green the old assertion.
 //
-// RESTORING THE POSITIVE ARM — residual R-E2E-ERA4-FIXTURE (ROADMAP, Boulder-0 residuals). Two
-// legs, and only one of them retires at the stamp raise. The leg that does NOT: this fixture must
-// first become a topology that COMMITS BLOCKS — objective + bonded + epochs enabled, reaching the
-// everMature latch — because on 0 blocks no era rule of any kind is exercised. The leg that DOES
-// retire there: the stamp's own value, pinned by gateFStampPin.
+// RESTORING THE POSITIVE ARM — residual R-E2E-ERA4-FIXTURE (ROADMAP, Boulder-0 residuals).
+// Making this fixture commit blocks is necessary and NOT sufficient, and the second half is
+// what the 2026-09-11 measurement added: even on a topology that commits and mints v5, the
+// CLIENT still holds no chain, so the withdrawal still refuses at the nil guard. The positive
+// arm needs a chain-bearing fetcher over a real OS process, and no shipped process is one —
+// `silt client` has no chain either (cmd/silt/client.go). The D3 architecture's answer is a
+// DURABLE PARENT resolving the key and handing the pair down (Node.ResolvedDemandIssuerKey,
+// AcquireDemandTokenWithCredit), which `swarm receipt` does not use. Wiring one is a
+// production change, not a fixture change; it is an OPEN OWNER CALL and is not decided here.
 //
 // The note here also warned "never by exposing Config.Era4ActivationHeight to the harness — that
 // is the one branch that skips every readiness predicate the tally embodies". The branch is not

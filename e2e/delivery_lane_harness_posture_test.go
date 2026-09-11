@@ -14,9 +14,26 @@ package e2e
 // side must move both.
 //
 // This test passes NO -era4-activation-height, so the daemon takes its default of 1 and era-4
-// is LIVE here from height 1 (cmd/silt/daemon.go; the wiring is pinned by cmd/silt
+// is CONFIGURED here from height 1 (cmd/silt/daemon.go; the wiring is pinned by cmd/silt
 // TestTheThreeGenesisFlagsAreDeclaredAndWired). The header used to say the opposite — "era-4
 // is dark ... until the R3.4 stamp raise" — and that was never the ground the refusal stood on.
+//
+// CONFIGURED IS NOT REACHED, and that distinction is measured. A chain that never commits
+// above genesis mints nothing: on the sibling paid-lane fixture, booted on its exact argv,
+// `silt chain-status` reports "no chain yet (0 blocks)" and the daemon's own banner reports
+// "head v2 at height 0" and "era-4 (v5): DARK" (2026-09-11). The same measurement on a
+// topology that DOES commit (the TestBondEarnedStandingCommitsOverTCP argv, stores kept)
+// reports "head version: v5" and "era-4 (v5): ACTIVE — first v5 block at height 1". So the
+// activation default discharges the era-4 FORMAT only on fixtures that commit; on THIS one
+// it discharges nothing.
+//
+// THE REFUSAL BELOW IS NOT ATTRIBUTABLE TO THE BINDING. `silt swarm receipt` runs on the
+// chain-less ephemeral node joinSwarm builds, so pinDemandIssuerKey refuses at `n.chain ==
+// nil` before the commitment check. Deleting that check outright leaves this test GREEN
+// (measured 2026-09-11). The predicate's own two-armed gate is core/node
+// TestIssuerKeyBindingResolvesInTheObjectiveBondedEpochPosture; what THIS test gates is the
+// harness's flag literals and the operator-facing refusal strings, which is still worth
+// having — it is the cloud sheet's classifier.
 
 import (
 	"regexp"
