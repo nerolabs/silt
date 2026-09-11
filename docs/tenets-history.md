@@ -30,7 +30,7 @@ principle can be judged against the scar that made it.
 
 - **#3 — One signal, one job (never fuse transport with security).** Distilled
   2026-08-10 from the external network-durability-vs-space-time research opinion
-  (`silt-reviews/research/…network-durability-vs-spacetime…`) that field-testing
+  (`silt-agent-memory/researcher/reviews/…network-durability-vs-spacetime…`) that field-testing
   under adverse networks (`integration/flakynet`, #288/#289) provoked. It caught
   two real defects from one rule: the **C1 reply-latency gate** (transport RTT
   fused with the compute security signal) and the **#288 evict-on-one-miss**
@@ -201,7 +201,7 @@ principle can be judged against the scar that made it.
 - **2026-08-10** — Added **build-immutables #3 (one signal, one job — never fuse
   transport with security)** and **#4 (cheap honest participation is a security
   constraint)**, distilled from the external network-durability-vs-space-time
-  research opinion (`silt-reviews/research/…network-durability-vs-spacetime…`,
+  research opinion (`silt-agent-memory/researcher/reviews/…network-durability-vs-spacetime…`,
   2026-08-10) that field-testing under adverse networks (`integration/flakynet`,
   #288/#289) provoked. #3 generalizes the two defects that motivated the consult —
   the C1 reply-latency gate (transport fused with the compute security signal) and

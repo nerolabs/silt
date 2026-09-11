@@ -5,10 +5,10 @@ Built on `origin/main` = `d7e4df0`; rebased onto `1adca0f` (#707) before the fin
 
 **Binding inputs (read before any code was written):**
 
-- `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R-BOX-ATTESTS-scoping-CONVERGED-RESEARCH-VERDICT-2026-09-02.md`
+- `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R-BOX-ATTESTS-scoping-CONVERGED-RESEARCH-VERDICT-2026-09-02.md`
   — §2.3 the hazard, §7 the carry-list, §10 **O1** (the ratified field / validity / transition /
   order rules — binding), §11 gates G1–G9, §12 residuals.
-- `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R-BOX-ATTESTS-scoping-crosscheck-2026-09-02.md`
+- `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-R-BOX-ATTESTS-scoping-crosscheck-2026-09-02.md`
   — the oppositions and their code sites.
 - `docs/design/consensus-invariants.md` (I1–I5), `docs/build-process.md` (consensus-correctness
   discipline), and the R-ROTATE-EPOCH-LAST pin (`core/chain/rotate_epoch_last_drift_test.go`,
@@ -343,10 +343,10 @@ Two documents drove this addendum. Both are cited in full because everything bel
 to one of them:
 
 - **Red-team:**
-  `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-lastcommit-carrier-3bd13e2-2026-09-03.md`
+  `/Users/andrewedmond/.claude/silt-agent-memory/red-team/reviews/RED-TEAM-lastcommit-carrier-3bd13e2-2026-09-03.md`
   (17 runnable probes at `.../red-team/probes/lastcommit-carrier-3bd13e2/`).
 - **PE structure ruling:**
-  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-floorbox-predicate-rederivation-structure-2026-09-03.md`
+  `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-floorbox-predicate-rederivation-structure-2026-09-03.md`
 
 ### A.1 The break — finding → root cause → fix → gate
 

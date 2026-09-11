@@ -13,7 +13,7 @@ tag strings `tagDueBucket`/`tagQualified`/`tagEpochStart` at `core/chain/stateha
 **Certified inputs this build executes (do not re-litigate):**
 - Design: `docs/thinking/2026-08-29-era4-witnessable-transitions-options.md` (RATIFIED).
 - Decomposition: `docs/thinking/2026-08-29-era4-build-decomposition-options.md` (4b row).
-- Cert: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-witnessable-transitions-RECERT2-2026-08-29.md`
+- Cert: `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era4-witnessable-transitions-RECERT2-2026-08-29.md`
   (CERTIFIED-WITH-CONDITIONS; the one hard pre-build condition is the RegCap VALUE, which is a
   **4c** rule — NOT built here).
 

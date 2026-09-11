@@ -75,4 +75,20 @@ var ObservableContract = []ContractedString{
 	{"era-%d (v%d): DARK", "core/chain/erastate.go", "the dark form for a caller that CAN see the tally, distinct from the offline form above", "TestEraLineDistinguishesAnUnobservableTallyFromADarkOne"},
 	{"max atts:     %d, first at height %d", "cmd/silt/chainstatus.go", "max_h len(blocks[h].Atts), the live attestation-carrier width two certifications name as unmeasured", "TestCensusMeasuresMaxAttsOnANonUniformChain"},
 	{"max atts:     0 — measured across every block", "cmd/silt/chainstatus.go", "the MEASURED zero: a bare 0 would be unreadable against a figure nobody computed", "TestChainStatusNarratesAMeasuredZeroCarrier"},
+	// The DECLARED half of the era pair (item 19's second clause). 13b reads these off the
+	// daemon's start-up log, and it needs BOTH: the declaration alone cannot say whether this
+	// chain is dark, and the observed era alone cannot say whether a dark chain is healthy. Both
+	// the declaration and the healthy-dark verdict are registered for that reason — deleting
+	// either restores the ambiguity the row closes.
+	{"chain: era support — this BUILD declares", "core/chain/eradeclared.go", "the daemon's declared max block era: 13b tells \"era-4 dark, binary fine\" from \"wrong build\" by reading it beside the observed era", "TestEraStartupLinesDeclareTheBUILDNotTheFlags"},
+	{"AHEAD — this chain has not activated", "core/chain/eradeclared.go", "the verdict that a dark chain under an era-4 build is HEALTHY — the false alarm this row exists to prevent", "TestStartupLinesSeparateAHealthyDarkChainFromAWrongBuild"},
+
+	// WHICH NETWORK, the twin of the era pair. An operator debugging a node that joined nothing
+	// reads this line: a typo'd genesis flag founds a network of ONE that otherwise reports
+	// healthy. BOTH halves are registered because either alone restores the ambiguity — the
+	// hash without a name is unreadable at a glance, and the name without the hash is a string
+	// two networks can both choose.
+	{"network: ", "core/chain/networkidentity.go", "which network this node is on, name AND genesis hash; the singleton-founded-by-a-typo case is unreadable without it. The daemon's CALL site is gated separately, in the Asserter", "TestDaemonPrintsTheNetworkIdentityAtStartUp"},
+	{"the genesis hash is the IDENTITY and the name is a LABEL", "core/chain/networkidentity.go", "the rule that stops an operator trusting a name two networks can both choose", "TestGNAME1_TheNameNeverRendersWithoutTheTag"},
+	{"NO network identity yet", "core/chain/networkidentity.go", "a node with no genesis has no network — the narrated zero that keeps it from rendering a zero hash as a tag", "TestGNAME1_AnEmptyChainHasNoIdentity"},
 }

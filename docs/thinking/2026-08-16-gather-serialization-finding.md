@@ -39,7 +39,7 @@ B2's single-loop discipline (the gather already runs on callbacks — bounded
 concurrent asks are compatible in principle). Also in scope: skip-or-deprioritize
 known-unreachable attesters (the reachability signal exists; must not conflate with
 standing — #288/#3). Research consult filed:
-/Users/andrewedmond/Claude/claude/silt-reviews/research/456-gather-serialization-CONSULT.md
+/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/456-gather-serialization-CONSULT.md
 
 PUBLISH_RETRY_S also still assumes the old commit-wait leg (missed in #454's
 re-derivation) — folded into the same follow-up.

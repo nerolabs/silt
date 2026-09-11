@@ -77,7 +77,7 @@ const bondTick = uint64(1_788_599_138_518_548_000) + 1
 // firstFetchTick. A retained `when` that no decided function needs is SURPLUS under
 // T-DONT3 prong (a) (D-DONT3-READING, docs/decisions.md), so the write and the field
 // are deleted (G-BB-28) and residual R-BB-BOND-STAMP-TUPLE is CLOSED. Certification:
-// silt-reviews/research/research-outcome/R2.9a-DONT3-READING-AND-BOND-STAMP-TUPLE-RESEARCH-CERTIFICATION-2026-09-05.md §2.
+// silt-agent-memory/researcher/reviews/research-outcome/R2.9a-DONT3-READING-AND-BOND-STAMP-TUPLE-RESEARCH-CERTIFICATION-2026-09-05.md §2.
 //
 // WHAT A BOND CHALLENGE WRITES INSTEAD is exactly one tick, lastBondTick, and that one
 // is RETENTION, not a first-touch stamp: it moves on every passing challenge, so it is a

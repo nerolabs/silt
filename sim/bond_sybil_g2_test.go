@@ -58,7 +58,7 @@ func TestG2SharedPlotSybilEarnsNoStandingOverTheNetwork(t *testing.T) {
 			nd.EnableBond(self.Signer(), bondSize)
 		}
 		ch := chain.New(cfg, repFn)
-		if gb, _, _, gerr := genesis.Build(st); gerr == nil {
+		if gb, _, _, gerr := genesis.Build(st, nil); gerr == nil {
 			ch.AppendGenesis(gb)
 		}
 		nd.EnableChain(ch, self.Signer())

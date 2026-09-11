@@ -1,7 +1,7 @@
 # C4 — the R2.7 blocking telemetry: the six calls the advisory left open
 
 **Date:** 2026-09-08 · **Lane:** C4 (ROADMAP) · **Seat:** Builder
-**Spec:** `silt-reviews/economist/ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07` §1.0–§1.4
+**Spec:** `silt-agent-memory/economist/reviews/ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07` §1.0–§1.4
 **Built against:** `origin/main` `c849d15` (Lane C1 merged)
 
 The design was specified counter-by-counter and site-by-site, so this is not a design

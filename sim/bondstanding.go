@@ -91,7 +91,7 @@ func BondStanding(seed int64, o BondStandingOpts) (BondStandingResult, error) {
 		st := memstore.New()
 		nd := node.New(id, o.NodeCfg, sched, net.Endpoint(id), st)
 		ch := chain.New(o.Chain, repFn)
-		if gb, _, _, gerr := genesis.Build(st); gerr == nil {
+		if gb, _, _, gerr := genesis.Build(st, nil); gerr == nil {
 			ch.AppendGenesis(gb)
 		}
 		nd.EnableChain(ch, idents[i].Signer())

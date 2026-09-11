@@ -69,7 +69,7 @@ fixture-green-on-wrong-arm family (scar count 3): `.claude/agent-memory/tester/s
 Evidence: scratchpad `h43-modelcheck/run5-gates-final.log`.
 
 ### WP-A′ — consensus liveness family (Researcher, landed) — ATTRIBUTED, fix CERTIFIED
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/CONSENSUS-LIVENESS-h43-round-ladder-desync-441-380-RESEARCH-CERTIFICATION-2026-09-07.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/CONSENSUS-LIVENESS-h43-round-ladder-desync-441-380-RESEARCH-CERTIFICATION-2026-09-07.md`
 - Timer-skew smear (the #451 shape) REFUTED. **Root M1:** `core/node/rounds.go:306-310` arms the round clock on
   LOCAL mempool content, so the round number is a function of unreplicated private state (3 of 13 seats ran
   the pacemaker; 10 sat at r0 for ten minutes). M1b: the quiescent branch ZEROES `rs.Sweeps`. M2 (GATED):
@@ -84,7 +84,7 @@ Evidence: scratchpad `h43-modelcheck/run5-gates-final.log`.
 - Nine owner sentences → `ROADMAP.md` owner calls 18–20.
 
 ### WP-B — structure build readiness (PE, landed): NOT buildable as written
-`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-structure-rederivation-build-readiness-e963034-2026-09-07.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-structure-rederivation-build-readiness-e963034-2026-09-07.md`
 - The round is largely BUILT on the unmerged `builder/floorbox-structure` (`2ca01d9`, 81 files); 19 files
   conflict with main (`chain.go`, `carrier.go` add/add) — re-apply file-by-file, never rebase.
 - The composition's stage table DRIFTED: main's `ValidateProposal` runs `validateIssuerKeys` (v5-only) and P5
@@ -94,7 +94,7 @@ Evidence: scratchpad `h43-modelcheck/run5-gates-final.log`.
   the updated stage table is research-gated → WP-B′ (the delta certification, below).
 
 ### WP-C — the era-4/v5 freeze manifest (Researcher, landed): 22 items, 4 classes, 3 deadlines
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/ERA4-V5-FREEZE-MANIFEST-RESEARCH-CERTIFICATION-2026-09-07.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/ERA4-V5-FREEZE-MANIFEST-RESEARCH-CERTIFICATION-2026-09-07.md`
 - T-FREEZE-SURFACE: validity rules land in-era (the ROADMAP's "cannot land in-era" REFUTED by
   `D-F2-EVIDENCE-RECOMPUTE`'s own history), so FORMAT freezes at the freeze, VALIDITY at the stamp raise, one
   test at the flip.
@@ -107,7 +107,7 @@ Evidence: scratchpad `h43-modelcheck/run5-gates-final.log`.
   (`R-ERA4-NEEDS-MATURITY`). Nine owner sentences → owner call 9. The B8 green list is §6.
 
 ### WP-D — the residual register (PE, landed)
-`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-residual-register-true-up-e963034-2026-09-07.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-residual-register-true-up-e963034-2026-09-07.md`
 - Four UNCLEAR rows disposed (two HELD, two ACTIONABLE with a wrong home corrected); `R-REAPER-FORFEIT`
   re-bucketed ACTIONABLE; six residuals that lived only in certifications/rulings filed
   (`R-POR-SAMPLE-REGIME`, `R-OBJECT-UNCHECKED`, `R-SHARED-RULE-BLINDSPOT`, `R-R3-GOB-ALLOC-AMPLIFICATION`,
@@ -118,7 +118,7 @@ Evidence: scratchpad `h43-modelcheck/run5-gates-final.log`.
 - Lint gap named: `check_residual_register.py` scans `ROADMAP.md` only (a follow-on: scan `docs/design/`).
 
 ### WP-E — Boulder 2 telemetry, R2.2, R2.4, S1 (Economist, landed)
-`/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/economist/reviews/ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07.md`
 - R2.7: seven counters + one split, each with its increment site; **`bountyPaidToEscrowFunder` is DEGENERATE**
   (every escrow funder on a ledger is `n.id`) and is replaced; a third detector (`spendRefusersDistinct`) is the
   build-immutable-#4 floor, abort-only. No fetcher × object join anywhere (Don't #3).
@@ -129,7 +129,7 @@ Evidence: scratchpad `h43-modelcheck/run5-gates-final.log`.
   harness; the flip is a `0.9.x` release before `1.0.0`.
 
 ### WP-F — Boulder 2 residual closures (Researcher, landed)
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/BOULDER2-residual-closures-bounty-truncation-lambda-dust-relay-anon-refuse-self-spend-parity-estimand-RESEARCH-CERTIFICATION-2026-09-07.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/BOULDER2-residual-closures-bounty-truncation-lambda-dust-relay-anon-refuse-self-spend-parity-estimand-RESEARCH-CERTIFICATION-2026-09-07.md`
 - `R-BOUNTY-TRUNCATION` GATED (G-BT-1 warning arm + G-BT-2 divide-after-multiplier; the worst case is
   `-chunk-size 52412` at 50 %, not 64 KiB); `R-LAMBDA-DUST′` CLOSED (24.00 GiB escrow leg exact; D-S7 holds);
   `R-RELAY-ANON-SET` stays open and held (moved both ways); `R-REFUSE-AND-SELF-SPEND` inert on the relay lane,
@@ -140,7 +140,7 @@ Evidence: scratchpad `h43-modelcheck/run5-gates-final.log`.
   to each parent.
 
 ### WP-B′ — the stage-table delta (Researcher, landed)
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/FLOORBOX-STRUCTURE-P-TABLE-DRIFT-DELTA-CERTIFICATION-e963034-2026-09-07.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/FLOORBOX-STRUCTURE-P-TABLE-DRIFT-DELTA-CERTIFICATION-e963034-2026-09-07.md`
 - 24 stages (was 22): P8b `validateIssuerKeys`, P5's sixth clause, and **P13b the `LogRoot` conjunct** the
   2026-09-03 plan missed — a wrong-accept on the cheapest mutation. `HeadRef` gains `LogRoot`; zero format change.
 - A witness-supplied `m` is a wrong-accept (`translog.go:215,222-234`) ⇒ `tagRevLogSize` is a SAFETY leaf; the

@@ -314,7 +314,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
 			return true
 		}
-		att := chain.AttestAt(b, n.signer, env.Round, chain.PhasePrepare)
+		att := chain.AttestAt(b, n.signer, env.Round, chain.PhasePrepare, n.chainID())
 		raw, _ := attEncode(att)
 		n.logf(ports.LogDebug, "gather/prepare: PREPARED", "from", from, "height", b.Height, "round", env.Round, "bytes", len(msg.Data), "regs", len(b.BondRegs))
 		n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: true, Data: raw})
@@ -353,7 +353,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			n.reply(from, msg, ports.Message{Kind: ports.MsgPrecommitReply, OK: false})
 			return true
 		}
-		att := chain.AttestAt(b, n.signer, env.Round, chain.PhasePrecommit)
+		att := chain.AttestAt(b, n.signer, env.Round, chain.PhasePrecommit, n.chainID())
 		raw, _ := attEncode(att)
 		n.logf(ports.LogDebug, "gather/precommit: PRECOMMITTED", "from", from, "height", b.Height, "round", env.Round)
 		n.reply(from, msg, ports.Message{Kind: ports.MsgPrecommitReply, OK: true, Data: raw})
@@ -1232,7 +1232,7 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 		// Our own precommit ALWAYS — as attester it counts; as author it is
 		// count-neutral extra evidence (mark already durable: adoptLock /
 		// recordSign ran before gatherPrecommits was entered).
-		pcs := []chain.Attestation{chain.AttestAt(b, n.signer, round, chain.PhasePrecommit)}
+		pcs := []chain.Attestation{chain.AttestAt(b, n.signer, round, chain.PhasePrecommit, n.chainID())}
 		finishedPC := false
 		outstanding := 0
 		sending := true
@@ -1304,10 +1304,15 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 	// self-prepare is lifted from the carried lock QC so the fresh certificate
 	// keeps satisfying requireProposerPrepare (the author may be down — the
 	// reason the view changed).
-	atts := []chain.Attestation{chain.AttestAt(b, n.signer, round, chain.PhasePrepare)}
+	atts := []chain.Attestation{chain.AttestAt(b, n.signer, round, chain.PhasePrepare, n.chainID())}
 	if n.id != b.ProposerID() {
+		// The carried self-prepare is in the WIRE FORM of the block's own era (era 4 renames the
+		// two steps to PhasePrepareV5 / PhasePrecommitV5). Matching the canonical constant here
+		// would silently find nothing on a v5 re-proposal, drop the author's self-prepare from
+		// the fresh certificate and fail requireProposerPrepare at commit.
+		wantPrep := chain.AttPhase(b.Version, chain.PhasePrepare)
 		for _, a := range carried {
-			if a.Phase == chain.PhasePrepare && a.AttesterID() == b.ProposerID() {
+			if a.Phase == wantPrep && a.AttesterID() == b.ProposerID() {
 				atts = append(atts, a)
 				break
 			}
@@ -1450,11 +1455,24 @@ func (n *Node) broadcastCommit(b *chain.Block, validators []ports.NodeID, i int,
 // triggered by an honest validator signing sequential heights. On-chain
 // inclusion so every replica evicts in lockstep is the recorded follow-up (the
 // pendingSlashes queue); here each validator acts on what it sees.
+// chainID is this node's NETWORK IDENTITY — the genesis block's hash, which the era-4 consensus
+// preimage binds (chain.ChainID). The ZERO hash when this node holds no chain at all; that is the
+// SAFE direction in both roles, because verifyAtt refuses every era-4 signature form under a zero
+// chain id, so a chainless node convicts nobody on era-4 evidence and mints no era-4 signature a
+// peer would accept. A chainless node cannot know which network it is on, and guessing is the one
+// thing it must not do.
+func (n *Node) chainID() ports.Hash {
+	if n.chain == nil {
+		return ports.Hash{}
+	}
+	return n.chain.ChainID()
+}
+
 func (n *Node) slashEquivocators(a, b []chain.Block) {
 	if n.ledger == nil {
 		return
 	}
-	for _, e := range chain.FindEquivocations(a, b) {
+	for _, e := range chain.FindEquivocations(a, b, n.chainID()) {
 		cid := e.CulpritID()
 		// Idempotent-once (#397 Q4-i): a live fork is re-observed by EVERY
 		// reconcile sweep until it heals, so the same double-sign is re-detected
@@ -1623,7 +1641,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 				// what actually shipped. The remedy is nameable, so name it.
 				diag.lastErr = fmt.Sprintf("foreign genesis from %x: %v", p[:4], rerr)
 				n.Stats.ChainSyncForeignGenesis++
-				n.logf(ports.LogWarn, "peer is on a DIFFERENT NETWORK: its genesis is not ours, so no block from it can ever be adopted — the genesis hash commits the consensus-critical config, so check -min-bond, -quorum, -anchors, -epoch-blocks, -bond-label-k and -bond-vdf against the network you meant to join",
+				n.logf(ports.LogWarn, "peer is on a DIFFERENT NETWORK: its genesis is not ours, so no block from it can ever be adopted — the genesis hash commits the consensus-critical config, so check -min-bond, -quorum, -anchors, -epoch-blocks and -bond-label-k against the network you meant to join, and confirm both nodes run the same BUILD (the bond-VDF delay is a compiled default with no flag)",
 					"peer", p, "err", rerr)
 			} else if rerr != nil {
 				diag.lastErr = fmt.Sprintf("not adopted from %x: %v", p[:4], rerr)

@@ -48,7 +48,7 @@ its current characterization to the ruled behavior.
 
 ## Scope discipline
 
-- Consult: `/Users/andrewedmond/Claude/claude/silt-reviews/research/535-epoch-boundary-liveness-cliff-CONSULT.md`.
+- Consult: `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/535-epoch-boundary-liveness-cliff-CONSULT.md`.
 - The model-check gains this schedule now (D-CONSENSUS: confirm, never discover).
 - NO cloud re-run of the Phase 3 gate until the ruling lands and the fix is
   local-green — the wedge is schedule-deterministic.

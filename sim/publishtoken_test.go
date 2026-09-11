@@ -58,7 +58,7 @@ func TestUnlinkablePublishViaQuorumToken(t *testing.T) {
 		ledger.RecordBondChallenge(ids[i], synthRoot(ids[i]), 8<<20, true, 1) // bonded → qualified issuer/attester
 		ch := chain.New(cfg, repFn)
 		ch.RequireTokens(k, issuerPub)
-		if gb, _, _, gerr := genesis.Build(st); gerr == nil {
+		if gb, _, _, gerr := genesis.Build(st, nil); gerr == nil {
 			ch.AppendGenesis(gb)
 		}
 		nd.EnableChain(ch, idents[i].Signer())

@@ -14,10 +14,10 @@ internet — durability is the default") and the *liveness* dual of **#3** ("nev
 fuse transport with security") and **#4** ("cheap honest participation is a
 security constraint"), all in [`TENETS.md`](TENETS.md) Part IX. Source of record:
 the research team's opinion at
-`silt-reviews/research/research-outcome/network-durability-vs-spacetime-RESEARCH-OPINION.md`
+`silt-agent-memory/researcher/reviews/research-outcome/network-durability-vs-spacetime-RESEARCH-OPINION.md`
 (2026-08-10, all citations web-verified), extended by the genesis
 address-convergence follow-up at
-`silt-reviews/research/research-outcome/286-layer2-address-convergence-RESEARCH-RESPONSE.md`
+`silt-agent-memory/researcher/reviews/research-outcome/286-layer2-address-convergence-RESEARCH-RESPONSE.md`
 (2026-08-12) — the source for §1's first-contact rule, §2's never-evict tier, and §8.
 
 ---

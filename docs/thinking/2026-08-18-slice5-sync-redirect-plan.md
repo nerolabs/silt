@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-18 · **Author:** builder · **Status:** DELIBERATION (plan; no code — the
 most consensus-critical slice, PE said build carefully not to a field date). **Basis:** the PE
-ruling `principle-engineer/slice4-sync-redirect-ruling-PE-2026-08-18.md` (Opt A rejected as a
+ruling `principal-engineer/reviews/slice4-sync-redirect-ruling-PE-2026-08-18.md` (Opt A rejected as a
 C1/long-range break; safe unblock = suffix-sync from the node's OWN finalized head +
 WS-checkpoint/archive for cold nodes). Slices 1–4 landed (`a36cbd4`).
 

@@ -125,7 +125,7 @@ func cmdDaemon(args []string) error {
 	auditInterval := fs.Duration("audit", 0, "run the verify-without-fetch PoR AUDIT sweep this often over every -care'd root: challenge each shard's holders and grade their proofs against the key derived from the care link — NO ground-truth fetch — settling rent for the honest and SLASHING a liar that kept its proof tags but dropped the bytes (#232). Requires -care (supplies the root + layout key) and a -registry. 0 = off (repair-only caretaker)")
 	maxBondRegBytes := fs.Int64("max-bondreg-bytes-per-block", defaultMaxBondRegBytesPerBlock, "byte budget for bond registrations embedded in ONE block (#286 Layer 2b). A fresh multi-validator OBJECTIVE genesis otherwise piles every founding validator's ~1.5 MB space-time proof into one ~8 MB block that can't gather to quorum over a real WAN (the cert stalled at regs=5). The founding set are anchors (training wheels), so genesis commits SMALL on anchor attestations and the registrations DRAIN over the next blocks — each validator still gains real bonded weight and reaches maturity. A BYTE budget (not a count) fits one full ~1.5 MB genesis proof OR many small steady-state renewals, so an attest-only validator is never starved under a tight TTL. Default ~2 MiB stays within the size that gathers cross-region; a non-positive value is REFUSED at start-up (see below) (legacy). The structural close is a succinct proof (#299) BOUND TO CONSENSUS (2026-09-09, owner call 'close the route'): this budget is an input to the derivation of chain.SlashesBytesCap, a validity rule every validator enforces, so the daemon REFUSES to start when 2*(bondreg budget + entry budget + overhead) exceeds that cap -- past the boundary a REAL double-signer's evidence no longer fits and the equivocator keeps its seat. 0 (unbounded) is therefore refused too: an unbounded body defeats the invariant at any cap.")
 	maxEntryBytes := fs.Int64("max-entry-bytes-per-block", defaultMaxEntryBytesPerBlock, "byte budget for mempool publish ENTRIES folded into ONE block (#441) — SEPARATE from -max-bondreg-bytes-per-block by design: a single ~1.5 MB bond reg fills the whole reg cap, so a shared budget would leave the tens-of-bytes entry no room (the publish starvation one layer down), and the dual — an entry flood must never crowd out consensus-critical renewals. Each stream is guaranteed its own slice; their SUM must stay WAN-gatherable (#286 L2b). At least one entry always folds. a non-positive value is REFUSED at start-up (see below) BOUND TO CONSENSUS (2026-09-09, owner call 'close the route'): this budget is an input to the derivation of chain.SlashesBytesCap, a validity rule every validator enforces, so the daemon REFUSES to start when 2*(bondreg budget + entry budget + overhead) exceeds that cap -- past the boundary a REAL double-signer's evidence no longer fits and the equivocator keeps its seat. 0 (unbounded) is therefore refused too: an unbounded body defeats the invariant at any cap.")
-	bondLabelK := fs.Int("bond-label-k", 64, "labeling-consistency opens per bond challenge (M0 Sybil G2): each recomputes one block's label from its DRSample parents, so a prover holding arbitrary/reused/wrong-size bytes (not a real plot for its identity+size) fails. Soundness error ≤ (1-ε)^k against an ε-short prover. A per-network knob — prover and verifier must MATCH (like -bond-vdf), so set it uniformly across the swarm. Lower it only to shrink on-chain proof size, at a soundness cost. 0 = default (64)")
+	bondLabelK := fs.Int("bond-label-k", 64, "labeling-consistency opens per bond challenge (M0 Sybil G2): each recomputes one block's label from its DRSample parents, so a prover holding arbitrary/reused/wrong-size bytes (not a real plot for its identity+size) fails. Soundness error ≤ (1-ε)^k against an ε-short prover. A per-network knob — prover and verifier must MATCH (as must the compiled bond-VDF delay, which has no flag), so set it uniformly across the swarm. Lower it only to shrink on-chain proof size, at a soundness cost. 0 = default (64)")
 	bondAnswerLatency := fs.Duration("bond-answer-latency", 1500*time.Millisecond, "SOFT partial-storage timing signal on a live bond challenge (M0 C1 / owned-residual A5). A validator that deleted part of its plot must RECOMPUTE the missing blocks on demand, and past the DRSample knee that is a sequential cost that shows up as reply latency. This is NOT a standing gate (build-immutable #3: reply-latency is transport+compute, and gating security on the sum reads network jitter/loss as a cheat — #289): a valid answer earns standing however slow it arrives. Instead the node tracks the windowed-MINIMUM of each peer's reply latencies (the low quantile, which filters one-sided network noise) and raises a DISCLOSED suspicion only when that floor is SUSTAINED above this deadline — a partial-storage prover is consistently slow, an honest bad-path node only randomly slow. Set generously above the honest answer time; 0 = off. The hard structural close is tight-PoS (H-track).")
 	signedProviders := fs.Bool("signed-providers", true, "self-certifying DHT provider records (M0 H5): a node signs its 'I hold this' announcements with its identity key and re-verifies records served back on lookup, so a node holding the k-closest slots to a key cannot fabricate provider records for identities that never announced. Default ON; =false drops to the legacy unsigned path (trusted/demo swarm only)")
 	signedProviderTTL := fs.Duration("signed-provider-ttl", 30*time.Minute, "freshness window stamped on signed provider records (M0 H5): a re-served record older than this is treated as expired, so an eclipsing node can't replay an ancient claim forever")
@@ -143,6 +143,9 @@ func cmdDaemon(args []string) error {
 	domain := fs.String("domain", "", "this node's failure-domain label (AS / rack / geo — e.g. \"as64500\" or \"us-east-1b\"). Two uses: DHT eclipse-resistance (H5-B, with -dht-domain-cap) AND, for a validator, it is COMMITTED in the bond so the C2 concentration metric counts ADDRESS-DIVERSE participants (A axis / D-C2) — a stake split across many keys in ONE domain cannot fake decentralization; shedding the launch anchors requires distinct domains, not just distinct keys. A WEAK signal (declared, transport-cross-checked, not proven); it prices concentration higher, it does not close the honest-whale residual. Empty = unset (independent for the C2 metric; exempt from the DHT cap — see -dht-domain-cap).")
 	bondTTL := fs.Uint64("bond-ttl", 0, "objective re-challenge cadence (M0 retest G4 / RT-2): objective standing LAPSES this many committed blocks after a validator's latest on-chain bond registration unless it renews with a fresh space-time proof — so a validator that registers once then releases its plot cannot keep voting. LEFT UNSET it defaults ON for an untrusted objective validator (derived cadence); an explicit 0 disables it (standing never expires; safe only for a trusted/demo swarm)")
 	epochBlocks := fs.Uint64("epoch-blocks", 0, "mature-phase validator-set epoch (#357 research certification, Conditions A+B): after the young→mature handoff, the finality quorum, validator qualification, and the weight quorum are read from a SNAPSHOT of the committed bonded set frozen at the last epoch boundary (a finalized block), rotated every this-many blocks — never recomputed live from the churning bond ledger, which would let two conflicting commits finalize against two different sets. The handoff itself waits for the first boundary after the maturity latch, so the anchor→bond handoff is rooted at a finalized base. CONSENSUS-CRITICAL: set it identically across the swarm (like -min-bond). LEFT UNSET it defaults ON for an untrusted objective validator (derived cadence, well under the bond TTL); an explicit 0 disables epochs (live recompute; safe only for a trusted/demo swarm)")
+	era3Activation := fs.Uint64("era3-activation-height", 1, "GENESIS CONFIG: the height at or above which era-3 (v4, the committed state root) is the required block format. Committed into the genesis block (chain.ConsensusParams cbor key 13), so a node that sets it differently computes a DIFFERENT genesis hash and cannot join — divergence is impossible to join with rather than fatal at some later block. 1 (default) starts a NEW network at the highest era from its first block, which is the ratified launch posture: there is then no readiness tally and no latch, so the boundary is a genesis constant rather than a value the network votes itself into. 0 = no pre-latch override: era-3 activates only when era-3-aware bonded WEIGHT crosses the >2/3 super-quorum over a frozen epoch, which never fires without -epoch-blocks. TO JOIN AN EXISTING CHAIN, set what its genesis commits — the refusal at start-up names the field and the two values")
+	era4Activation := fs.Uint64("era4-activation-height", 1, "GENESIS CONFIG: the height at or above which era-4 (v5, witnessable transitions) is the required block format. Committed at chain.ConsensusParams cbor key 14, same joining rule as -era3-activation-height, and it MUST be >= it (a v5 block commits a superset of the v4 leaves, so era-4 cannot activate below the era-3 boundary; a misconfigured pair is refused at start-up). 1 (default) = the ratified launch posture: every block above the genesis is era-4, so the sub-era-4 interval where a consensus attestation carries NO chain id is EMPTY. That is not only convenience — the era-4 attestation form binds the chain id, and emptying the interval below the boundary is what leaves no height at which a signature harvested from another silt network could be replayed as evidence here. 0 = no pre-latch override (the >2/3 readiness tally, needs -epoch-blocks)")
+	networkName := fs.String("network-name", "", "GENESIS CONFIG: this network's canonical text NAME, committed into the genesis block (chain.ConsensusParams cbor key 18) and reported at start-up beside the genesis hash. It reaches NO validity verdict — nothing in the block-validation path reads it. It exists so a node reports the network it is actually serving by a name read FROM THE CHAIN, instead of reading this flag back to you. THE HASH IS THE IDENTITY AND THE NAME IS A LABEL: name collisions are not preventable and are not meant to be, two networks may both choose \"silt mainnet\", and neither can choose the other's genesis hash — so the name is never displayed without the hash. Empty (default) = an unnamed network, reported as such. Changing it on a chain this node has already joined is REFUSED at start-up")
 	requireTokens := fs.Int("require-tokens", 0, "publisher privacy: require every published entry to carry a publish token blind-signed by this many validators, instead of a Publisher identity (0 = off; validators issue tokens)")
 	allowPublisher := fs.Bool("allow-publisher", false, "permit entries that carry a durable Publisher identity (records a PERMANENT Publisher→root link on the append-only chain; off by default for privacy/M0 — only for explicitly trusted deployments)")
 	blockPeers := fs.String("block-peers", "", "TEST-HARNESS / FIELD-DRILL: comma-separated peer IDs to PARTITION away from — this node drops all messages to/from them, simulating a severed link (#184 partition→heal). HEAL by restarting without the flag (the persisted chain reloads and reconciles). Empty = no partition; a real deployment never sets it")
@@ -902,6 +905,13 @@ func cmdDaemon(args []string) error {
 			}
 			fmt.Printf("chain: #535 LIVENESS RECOVERY ARMED at boundary %d — this replica will validate that one boundary against the LIVE qualified bonded set (weak-subjectivity trust: every honest operator must set the SAME height, and the operator vouches the > 1/3 weight loss is a real outage, not an attack)\n", *livenessRecoveryHeight)
 		}
+		// The era pair's layering constraint, refused HERE rather than left to chain.New's
+		// panic. New() is right to panic — an ill-formed pair would mint a v5 block below
+		// H_era3 — but a flag pair an operator typed deserves a sentence naming both values
+		// and the rule, not a stack trace. The check is the same one, one layer earlier.
+		if *era4Activation > 0 && *era3Activation > 0 && *era4Activation < *era3Activation {
+			return fmt.Errorf("-era4-activation-height %d is below -era3-activation-height %d: era 4 layers ON TOP of era 3 (a v5 block commits a SUPERSET of the v4 leaves), so era-4 can never activate first. Raise -era4-activation-height to at least %d, or lower -era3-activation-height", *era4Activation, *era3Activation, *era3Activation)
+		}
 		ch := chain.New(chain.Config{
 			MinProposerRep: *minRep, MinAttesterRep: *minRep, Quorum: *quorum,
 			ByzantineQuorum: effByz,
@@ -913,6 +923,15 @@ func cmdDaemon(args []string) error {
 			WSCheckpoint:           wsCP,
 			LivenessRecoveryHeight: *livenessRecoveryHeight,
 			Archive:                *archive,
+			// GENESIS CONFIG, all three committed into ConsensusParams. They are passed
+			// straight through with NO effective-value derivation, deliberately: an
+			// effectiveX() would make the committed value a function of whether some OTHER
+			// flag was set, and the genesis hash would then depend on a rule an operator
+			// cannot read off their own command line. The era pair defaults to 1/1 (start a
+			// new network at the highest era); New() refuses era4 < era3.
+			Era3ActivationHeight: *era3Activation,
+			Era4ActivationHeight: *era4Activation,
+			NetworkName:          *networkName,
 		}, ledger.Reputation)
 		if *allowPublisher {
 			fmt.Println("publisher: durable Publisher entries PERMITTED — publishes may record permanent linkage (trusted deployment)")
@@ -969,14 +988,68 @@ func cmdDaemon(args []string) error {
 		// genesis file into its own store so the whole swarm always hosts
 		// it. Idempotent across restarts: genesis is deterministic and
 		// chainstore already restored it if present.
+		//
+		// OWNER CALL F, THE DELIVERY: the genesis this daemon MINTS commits this
+		// network's consensus-critical configuration (canon rule 8's second arm). The
+		// values are projected off the CHAIN's own config — ch.ConsensusParams, not the
+		// literal above — so the arm that WRITES and the arm that CHECKS read one source
+		// and cannot drift apart. The two node-side verifier knobs come from cfg because
+		// core/chain cannot import core/node.
+		//
+		// The consequence is intended and is the whole mechanism: two operators who
+		// differ on -min-bond, -quorum, -anchors, -epoch-blocks or -bond-label-k — or who
+		// run BUILDS with different compiled defaults, since the projection reads
+		// effective values and node.Config.BondVDFDelay has no flag at all — now mint
+		// DIFFERENT genesis hashes and cannot join each other's network. Divergence
+		// becomes impossible to join with, instead of fatal at validation on some later
+		// block.
 		if ch.Len() == 0 {
-			if gb, gh, _, gerr := genesis.Build(store); gerr == nil {
+			gp := ch.ConsensusParams(cfg.BondLabelSamples, cfg.BondVDFDelay)
+			if gb, gh, _, gerr := genesis.Build(store, &gp); gerr == nil {
 				if err := ch.AppendGenesis(gb); err == nil {
+					gbh := gb.Hash()
 					fmt.Printf("genesis: %s\n", gh)
+					fmt.Printf("genesis: block %s — height 0 COMMITS this network's consensus config (-quorum=%d -min-bond=%d -min-bond-floor=%d -epoch-blocks=%d -bond-label-k=%d bond-vdf-delay=%d [compiled default, no flag], %d anchor(s), -era3-activation-height=%d -era4-activation-height=%d) and its name (-network-name=%q). A node configured differently computes a different genesis hash and cannot join this network.\n",
+						gbh, gp.Quorum, gp.MinBond, gp.MinBondBytes, gp.EpochBlocks, gp.BondLabelSamples, gp.BondVDFDelay, len(gp.Anchors),
+						gp.Era3ActivationHeight, gp.Era4ActivationHeight, gp.NetworkName)
 				}
 			} else {
 				fmt.Fprintln(os.Stderr, "genesis seed:", gerr)
 			}
+		}
+		// THE REFUSE-TO-START ARM (canon rule 8's first arm, T-REFERENT). Committing the
+		// values above MANUFACTURED the referent a local assertion previously lacked, so
+		// this check is now possible AND required: it catches the one case joining cannot.
+		// An operator who edits a flag and restarts on a chain this node has ALREADY
+		// joined crosses no fork boundary — the genesis on disk is unchanged, there is no
+		// hash mismatch to detect, and the node would simply begin applying different
+		// rules to a history it already holds. Nothing else in the daemon notices.
+		//
+		// IT RUNS AFTER THE REPLAY, and the replay is the load-bearing boundary — not the
+		// genesis seed above. The check is only ever meaningful against a chain LOADED FROM
+		// DISK: on a fresh node the committed params and the local ones are both
+		// ParamsFromConfig over this same cfg in the same process, so relative to the mint
+		// the check is a tautology in either position. Placed ahead of chainstore.Recover it
+		// reads an EMPTY blocks[0], returns nil, and the daemon serves under a config its
+		// own chain contradicts — measured, with the source gates green over it. It returns
+		// rather than warns: a warning lets the node start and reach the divergent verdicts
+		// anyway.
+		if err := ch.CheckConsensusParams(cfg.BondLabelSamples, cfg.BondVDFDelay); err != nil {
+			return fmt.Errorf("consensus config: REFUSING TO START — %w", err)
+		}
+		// THE ERA PAIR (freeze manifest item 19). Printed HERE — after the replay and after the
+		// genesis seed — because both halves must describe the chain this daemon will actually
+		// serve: ahead of the replay it would report an empty chain on every restart, and ahead
+		// of the seed it would report one on every fresh node.
+		for _, ln := range eraStartupLines(ch) {
+			fmt.Println(ln)
+		}
+		// WHICH NETWORK, printed beside WHICH ERA and for the same reason: both halves must
+		// describe the chain this daemon will actually serve, so both are printed after the
+		// replay and after any genesis seed. The name is read off the committed genesis, never
+		// off -network-name, and the hash always travels with it.
+		for _, ln := range networkIdentityLines(ch) {
+			fmt.Println(ln)
 		}
 		nd.EnableChain(ch, ident.Signer())
 		// R2.10 / F8: the ledger's consensus epoch is READ from this node's chain,
@@ -2237,7 +2310,11 @@ func effectiveBondFloor(floorSet bool, explicit int64, objectivePath bool) (floo
 // coast: the paired non-proposer renewal path (node.SubmitBondRenewal) fires
 // every chain-sync sweep, so an honest validator gets many inclusion chances per
 // window and never lapses, while a coaster is pruned within this many blocks. A
-// tuning knob (Evolving), not a fixed law; a real deployment can tighten it.
+// tuning knob (Evolving), not a fixed law — BEFORE LAUNCH. Once a network's
+// genesis commits this value, tightening it and rebuilding makes every
+// upgrading node refuse to start on that chain with an unchanged argv, so it
+// is a NEW NETWORK and not a tuning change (D-CFGBIND-TIER-PROMOTION-2026-09-11,
+// driven; docs/TENETS.md Part IX).
 const DerivedBondTTL = uint64(32)
 
 // effectiveBondTTL decides the objective re-challenge TTL, mirroring
@@ -2401,4 +2478,36 @@ func faucetConfigure(l *credit.Ledger, capacity, perHour, denyFloor int64) error
 	fmt.Printf("faucet: rate-limited — capacity %d grants, %d/hour accrued continuously, empty bucket = %s; worst-case guard occupancy per bucket-fill %d of %d (%.1f%%; a flow bound, not a stock bound). This value is operator-set: the rate is a security parameter with no certified interval yet; watch faucet.grantsDenied (distinct identities refused) on /api/status — grantsPending counts registrations, not denials — and re-derive on two consecutive hours of denials under honest load, never on one datapoint (R2.12, docs/thinking/2026-09-05-r2.12-faucet-rate-limit.md)\n",
 		capacity, perHour, mode, occupancy, credit.MaxPaidSerial, 100*float64(occupancy)/float64(credit.MaxPaidSerial))
 	return nil
+}
+
+// eraStartupLines is the daemon's half of the era pair (freeze manifest item 19): what block era
+// THIS BUILD declares, printed beside the era the chain it just loaded reports.
+//
+// WHY ONE NUMBER ANSWERS NEITHER QUESTION. Cloud row 13b-delivery-settlement must separate "era-4
+// is dark — the chain has not activated and the binary is fine" from "something else is wrong".
+// #808 shipped the observed half; a chain carrying no v5 block is a HEALTHY dark network under a
+// build that declares v5 and the WRONG BUILD under one that declares v2, and those are the same
+// observation. The pair is the deliverable, so the two numbers are printed together, by one call,
+// and can never be read apart.
+//
+// THE DECLARED NUMBER IS NOT A SETTING. It is chain.DeclaredMaxBlockVersion, a compile-time
+// constant checked against this build's real decode and mint ceilings — this function takes no
+// flag, reads no config and has no parameter an operator can reach. A declared era an operator
+// could type would report a belief, and whoever was debugging the dark network would be reading
+// their own input back. TestEraStartupLinesDeclareTheBUILDNotTheFlags ablates it.
+func eraStartupLines(ch *chain.Chain) []string {
+	return chain.StartupEraLines(chain.DeclaredMaxBlockVersion, ch.EraState())
+}
+
+// networkIdentityLines is the daemon's half of the network-identity pair: WHICH NETWORK this node
+// is on, by both of the identifiers the owner's requirement names — a canonical text name and the
+// cryptographic one.
+//
+// LIKE eraStartupLines, IT TAKES NO FLAG. It reads the name off the committed genesis through
+// (*Chain).NetworkIdentity, which is the only accessor there is. A function that took
+// -network-name would print the operator's own input back, and whoever was working out which
+// network a node had actually joined would be reading their own typo — the same vacuity the
+// declared-era line is built to avoid, one field along.
+func networkIdentityLines(ch *chain.Chain) []string {
+	return chain.NetworkIdentityLines(ch)
 }

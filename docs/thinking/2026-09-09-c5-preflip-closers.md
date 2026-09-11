@@ -2,10 +2,10 @@
 
 **Context / trigger:** ROADMAP Lane C5, the two CODE closers among the pre-flip items. `R-BOUNTY-TRUNCATION`
 was GATED by the BOULDER-2 residual-closures certification
-(`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/BOULDER2-residual-closures-bounty-truncation-lambda-dust-relay-anon-refuse-self-spend-parity-estimand-RESEARCH-CERTIFICATION-2026-09-07.md`,
+(`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/BOULDER2-residual-closures-bounty-truncation-lambda-dust-relay-anon-refuse-self-spend-parity-estimand-RESEARCH-CERTIFICATION-2026-09-07.md`,
 §2.6) on two named gates, G-BT-1 and G-BT-2; the accumulator alternative is REFUTED there on build-immutable #8.
 `R-SHORT-FINAL-STRIPE` is rider item 2 of the Economist's chunk-size advisory
-(`/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-default-chunk-size-256KiB-2026-09-06.md`, §4),
+(`/Users/andrewedmond/.claude/silt-agent-memory/economist/reviews/ADVISORY-default-chunk-size-256KiB-2026-09-06.md`, §4),
 left open when 4′ folded in rider item 1 (true-length manifest framing, #765). Both land before the economy-ON
 flip: the first because the flip arms the repair wage, the second because it changes content addressing.
 

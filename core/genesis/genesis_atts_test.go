@@ -25,8 +25,8 @@ import (
 // seating rule stops being an identity transform on production — re-derive §4.4 before
 // shipping.
 func TestProductionGenesisCarriesNoAtts(t *testing.T) {
-	gb1, _, _, err1 := genesis.Build(memstore.New())
-	gb2, _, _, err2 := genesis.Build(memstore.New())
+	gb1, _, _, err1 := genesis.Build(memstore.New(), nil)
+	gb2, _, _, err2 := genesis.Build(memstore.New(), nil)
 	if err1 != nil || err2 != nil {
 		t.Fatalf("genesis.Build failed: %v / %v", err1, err2)
 	}

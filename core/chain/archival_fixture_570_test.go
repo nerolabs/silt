@@ -88,13 +88,13 @@ func era2Block(c *Chain, keys []ed25519.PrivateKey, h uint64, prev ports.Hash, m
 		mutate(b)
 	}
 	Sign(b, keys[0])
-	b.PrepareQC = append(b.PrepareQC, AttestAt(b, keys[0], 0, PhasePrepare))
+	b.PrepareQC = append(b.PrepareQC, AttestAt(b, keys[0], 0, PhasePrepare, ports.Hash{}))
 	for _, k := range keys[1:] {
-		b.PrepareQC = append(b.PrepareQC, AttestAt(b, k, 0, PhasePrepare))
+		b.PrepareQC = append(b.PrepareQC, AttestAt(b, k, 0, PhasePrepare, ports.Hash{}))
 	}
-	b.Atts = append(b.Atts, AttestAt(b, keys[0], 0, PhasePrecommit))
+	b.Atts = append(b.Atts, AttestAt(b, keys[0], 0, PhasePrecommit, ports.Hash{}))
 	for _, k := range keys[1:] {
-		b.Atts = append(b.Atts, AttestAt(b, k, 0, PhasePrecommit))
+		b.Atts = append(b.Atts, AttestAt(b, k, 0, PhasePrecommit, ports.Hash{}))
 	}
 	if err := c.Append(*b); err != nil {
 		panic(err)

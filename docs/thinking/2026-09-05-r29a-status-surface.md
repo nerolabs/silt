@@ -3,11 +3,11 @@
 - **Date:** 2026-09-05 · **Seat:** BUILDER · **Branch:** `builder/r2.9a-status-surface`
 - **Base:** `origin/main` = `4e67b5d`
 - **Inputs of record:**
-  - `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-instrument-necessity-geometry-bound-and-tail-merging-RESEARCH-CERTIFICATION-2026-09-05.md`
+  - `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R2.9a-instrument-necessity-geometry-bound-and-tail-merging-RESEARCH-CERTIFICATION-2026-09-05.md`
     — **G-BB-26** (cached fixed-interval snapshot, CERTIFIED REQUIRED) and **G-BB-24**
     (`R-BB-STAMP-BY-ANY-PATH`) are the two gates built here. Tester gates **BB-21** and
     **BB-22** are the matching pins.
-  - `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-R2.9a-bbootstrap-instrument-and-containments-2026-09-05.md`
+  - `/Users/andrewedmond/.claude/silt-agent-memory/red-team/reviews/RED-TEAM-R2.9a-bbootstrap-instrument-and-containments-2026-09-05.md`
     — finding **F2**, the object half of who-fetched-what. Owner ratified closing it.
 - **Not revisited here:** the build tag (PR #736), `q`, `W`, the population, the byte-axis
   bin count (G-BB-23, owner's), tail merging and count rounding (both REFUTED, §3.1–3.6 of
@@ -234,7 +234,7 @@ PACE done before code, per the standing rule.
 ## 5. Round 2 — the blind PE ruling, folded in (2026-09-05)
 
 **Input of record:**
-`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/2026-09-05-RULING-r2.9a-status-surface-cache-stamp-and-f2-gate.md`
+`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/2026-09-05-RULING-r2.9a-status-surface-cache-stamp-and-f2-gate.md`
 — DO NOT MERGE AS IS. Changes 1, 2 and 4 verified with six ablations RED. Change 3, "the
 per-object leak is closed", **false as shipped**. Two blockers, one ungated property.
 

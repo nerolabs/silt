@@ -2,7 +2,7 @@
 
 Status: **RATIFIED 2026-08-29 (parameters LOCKED).** Andrew ratified the format veto-gate on the
 strength of the Research RE-CERTIFICATION ROUND 2 (RECERT2, CERTIFIED-WITH-CONDITIONS,
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-witnessable-transitions-RECERT2-2026-08-29.md`).
+`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era4-witnessable-transitions-RECERT2-2026-08-29.md`).
 **Locked parameters:** `BlockVersion = 5`, `versionSupported <= 5` (PREDICATE-FIRST — widen the
 version ceiling in the SAME release as the v5 predicate); three new committed tags `tagDueBucket` +
 `tagQualified` + `tagEpochStart` (`tagEpochSet` retained); the TWO-keyspace layout (frozen
@@ -22,9 +22,9 @@ Grounded against `origin/main` @ `0984db4` (local `main` @ `2003439` was STALE a
 the merged R3/R4 witness machinery — verified before writing).
 
 Reviews folded in (read all three; they name the exact fixes):
-- PE: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-era4-witnessable-transitions-2026-08-29.md` (SHIP-WITH-FIXES).
-- Research (first pass): `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-witnessable-transitions-EQUIVALENCE-RESEARCH-2026-08-29.md` (GATED).
-- Research (RE-CERT, the current authority): `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-witnessable-transitions-RECERT-2026-08-29.md` (STILL GATED — Q2 REFUTED, R3 cap value OPEN).
+- PE: `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-era4-witnessable-transitions-2026-08-29.md` (SHIP-WITH-FIXES).
+- Research (first pass): `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era4-witnessable-transitions-EQUIVALENCE-RESEARCH-2026-08-29.md` (GATED).
+- Research (RE-CERT, the current authority): `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era4-witnessable-transitions-RECERT-2026-08-29.md` (STILL GATED — Q2 REFUTED, R3 cap value OPEN).
 
 What rev 2 changed (summary; detail in each section):
 1. **§5 E-2 boundary is CORRECTED.** The RE-CERT REFUTED the single shared `qualified`/`epochSet`
@@ -55,7 +55,7 @@ What rev 2 changed (summary; detail in each section):
 Related, do not re-litigate:
 - `docs/thinking/2026-08-29-witness-floor-box-validation-mechanism-options.md` — the floor box.
 - `docs/thinking/2026-08-29-witness-floor-box-delivery-increment3-options.md` — read-set derivation + delivery.
-- C-7 cert (`silt-reviews/research/research-outcome/C7-witness-based-floor-box-validation-RESEARCH-CERTIFICATION-2026-08-27.md`).
+- C-7 cert (`silt-agent-memory/researcher/reviews/research-outcome/C7-witness-based-floor-box-validation-RESEARCH-CERTIFICATION-2026-08-27.md`).
 - The era-3 format FREEZE (`3af40bc`, ratified 2026-08-29) — era-2/era-3 blocks stay byte-identical under their versions; era-4 does not edit them.
 
 ---

@@ -311,7 +311,7 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
 ### D6. Honest floor-box repair economics — unpaid reconstructor + unmeasured RAM (C-5)
 - **Class:** held in tension (G1 a ratified design fact, now truthfully documented) + measurement
   owed (G2). Certified 2026-08-27 (C-5, GATED — composed honest-operator economics;
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C5-honest-operator-economics-composition-RESEARCH-CERTIFICATION-2026-08-27.md`).
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/C5-honest-operator-economics-composition-RESEARCH-CERTIFICATION-2026-08-27.md`).
   The firewall and conservation halves are CERTIFIED intact under the composition; these are the
   gated halves.
 - **G1 — reconstruction is unpaid, by ratified design (held in tension, documented).** The repair
@@ -385,7 +385,7 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
 - **Class:** contract (the operator's, stated; it is E2's failure behaviour written down).
 - **Decided:** 2026-09-07, owner call 2 of `D-TRUE-UP-CALLS-2026-09-07`, on direction (a′) of the
   recovery-boundary certification
-  (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R-membership-unbounded-sets-and-recovery-boundary-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`
+  (`/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R-membership-unbounded-sets-and-recovery-boundary-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`
   §2.3). Built at Lane D row D0.
 - **What it is:** the floor box's role at an ambiguous `#535` recovery boundary is **cold
   auditor** — it stalls, unconditionally and loudly, and never trusts the proposer. The stall is
@@ -422,7 +422,7 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
   hypotheses' inputs (`λ_H`, `W_A`) — the weak-subjectivity wall.
 - **Certified 2026-08-27 — CERTIFIED-CONDITIONAL** (C-1 conditional-theorem lift, SUPERSEDES the
   prior GATED verdict;
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`).
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`).
   **Theorem CT-1:** maturity provably precedes capture under an honest-arrival floor **H**
   (`λ_H > 0`, measured, address-diverse), an adversary-budget cap **B** (`W_A`, C1 no-discount
   price), and the parameter constraint **P** (`M_req > W_A / (2·w_min)`). The arrival rate
@@ -497,9 +497,9 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
 ### E5. Consensus-frame FIFO starvation behind the inbound cap under a within-share bulk flood (v2b — sequenced, not shelved)
 - **Class:** scope (deliberately sequenced behind Phase 1.2 + a drain-rate measurement; PE-ruled
   2026-08-19). Two rulings govern:
-  `silt-reviews/principle-engineer/RULING-v2b-consensus-reserve-approach-2026-08-19.md` and
+  `silt-agent-memory/principal-engineer/reviews/RULING-v2b-consensus-reserve-approach-2026-08-19.md` and
   `RULING-v2b-drill-RED-drain-not-gate-2026-08-19.md` (full paths under
-  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/`).
+  `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/`).
 - **What it is:** an authenticated sybil cohort — every member inside its v2a per-peer share —
   fills the global `-inbound-cap` with bulk frames; because the gate releases only when the
   single loop *finishes* a message, gate-full means ≈ cap bytes of bulk already sit in the FIFO
@@ -560,7 +560,7 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
 ### E6. Witness-based floor-box validation — liveness + completeness dependencies (C-7)
 - **Class:** held in tension (both irreducible or inherited; neither a defect). Certified
   2026-08-27 (C-7, CERTIFIED with an era-3 format gate;
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C7-witness-based-floor-box-validation-RESEARCH-CERTIFICATION-2026-08-27.md`).
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/C7-witness-based-floor-box-validation-RESEARCH-CERTIFICATION-2026-08-27.md`).
   Witness-based validation itself is certified sound + complete; these are the named residuals
   the certification carries, not gaps in the scheme.
 - **Liveness depends on ≥1 reachable honest witness provider (irreducible).** A semi-stateless
@@ -601,9 +601,9 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
   rejected. Same class as `SProofMax` (`core/statehash/witness_bound.go:78`). Do not mint a new
   BlockVersion without re-deriving `RegCap` from a measured minimum valid reg byte size under the
   then-deployed determinants (RECERT2 Q2 +
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-regcap-recert-VERDICT-2026-08-29.md`,
-  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-era4-regcap-instrument-A-vs-B-2026-08-29.md`,
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-regcap-VALUE-DERIVATION-VERDICT-2026-08-29.md`).
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era4-regcap-recert-VERDICT-2026-08-29.md`,
+  `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-era4-regcap-instrument-A-vs-B-2026-08-29.md`,
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era4-regcap-VALUE-DERIVATION-VERDICT-2026-08-29.md`).
 
 ---
 

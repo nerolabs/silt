@@ -4,9 +4,9 @@
 consults:
 
 - PoD neutral lane (Q1–Q5):
-  `silt-reviews/research/research-outcome/PoD-neutral-lane-B3-close-RESEARCH-CERTIFICATION-2026-08-26.md`
+  `silt-agent-memory/researcher/reviews/research-outcome/PoD-neutral-lane-B3-close-RESEARCH-CERTIFICATION-2026-08-26.md`
 - D-TIERING state-root keystone (Q1–Q7):
-  `silt-reviews/research/research-outcome/D-TIERING-state-root-keystone-RESEARCH-CERTIFICATION-2026-08-26.md`
+  `silt-agent-memory/researcher/reviews/research-outcome/D-TIERING-state-root-keystone-RESEARCH-CERTIFICATION-2026-08-26.md`
 
 This note records what the certifications *changed* relative to the drafts, and
 the build sequencing decision. The full verdicts live in the certifications;

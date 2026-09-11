@@ -2,7 +2,7 @@
 
 Date: 2026-08-31
 Author: Builder
-Governing cert: `../../silt-reviews/research/research-outcome/floorbox-recompute-classA-classP-wholeset-RESEARCH-CERTIFICATION-2026-08-31.md`
+Governing cert: `~/.claude/silt-agent-memory/researcher/reviews/research-outcome/floorbox-recompute-classA-classP-wholeset-RESEARCH-CERTIFICATION-2026-08-31.md`
 (both CERTIFIED-in-direction; A carries R-A-legacy / R-A-membership-source; P carries
 R-P-boundary-scalars / R-P-tally-regversion / R-P-sameblock-order / R-P-recovery.)
 

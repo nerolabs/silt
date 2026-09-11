@@ -3,7 +3,7 @@ package node
 // R2.13b — creditSpent durability (F-4). RED-first gates G-CS-1 … G-CS-4.
 //
 // Binding spec: PE ruling
-// silt-reviews/principle-engineer/RULING-F4-creditSpent-durability-and-F3-fee-constancy-2026-09-04.md
+// silt-agent-memory/principal-engineer/reviews/RULING-F4-creditSpent-durability-and-F3-fee-constancy-2026-09-04.md
 // §2.1 (the reproduction), §3 (the fix shape). Deliberation:
 // docs/thinking/2026-09-04-r2.13b-creditspent-durability-design.md §4.
 //

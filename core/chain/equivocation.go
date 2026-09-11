@@ -43,7 +43,17 @@ func (e *Equivocation) CulpritID() ports.NodeID { return sha256.Sum256(e.Culprit
 //     after a lock-free view-change is honest), so neither is evidence.
 //   - Mixed eras: not evidence (conservative — the upgrade boundary must never
 //     manufacture an honest slash; refusing is the fail-safe direction).
-func VerifyEquivocation(e *Equivocation) bool { return CheckEquivocation(e) == nil }
+//
+// chainID is the VERIFIER'S OWN network identity (Chain.ChainID). From era 4 the consensus
+// preimage binds it, so a signature released on another silt network cannot verify here and
+// cannot be evidence here. That matters because the genesis moved on 2026-09-07: an operator
+// who carries one identity key across two silt networks and honestly precommits a different
+// block at the same (height, round) on each was, without this field, producing a valid
+// equivocation proof against itself on both. See consensusSigBytesV5 and
+// TestGPRE6_CrossChainHonestSignaturesAreNotEvidence.
+func VerifyEquivocation(e *Equivocation, chainID ports.Hash) bool {
+	return CheckEquivocation(e, chainID) == nil
+}
 
 // CheckEquivocation is VerifyEquivocation with the refusal named: nil iff e proves a
 // double-sign; ErrPrunedEvidence when an evidence block is pruned; ErrNotEquivocation
@@ -65,7 +75,15 @@ func VerifyEquivocation(e *Equivocation) bool { return CheckEquivocation(e) == n
 // This is the one gate for BOTH the write path (validateSlashes) and detection
 // (FindEquivocations), so an honest proposer can never queue a proof every replica
 // rejects.
-func CheckEquivocation(e *Equivocation) error {
+//
+// THE PRUNED REFUSAL AND THE BODY RECOMPUTE STAY, VERBATIM AND FOREVER. era-4 binds the height
+// inside the signed message, which makes the R0.6 cross-height forgery structurally
+// inexpressible for a v5-form signature. It does NOT make this rule redundant: era-1, era-2 and
+// era-3 signatures bind no height, committed history is never re-interpreted, and every height
+// below H_era4 exists forever. Deleting ErrPrunedEvidence or the bodyHash recompute "because
+// evidence binds its height now" would silently re-open I5 for every pre-era-4 height. Named as
+// a DON'T by the owner-call-A certification §2.3.
+func CheckEquivocation(e *Equivocation, chainID ports.Hash) error {
 	if len(e.Culprit) != ed25519.PublicKeySize {
 		return ErrNotEquivocation
 	}
@@ -84,9 +102,9 @@ func CheckEquivocation(e *Equivocation) error {
 		return ErrNotEquivocation // mixed eras: never slashable (fail-safe)
 	}
 	if av2 {
-		// Era 2: the two signatures must share (round, phase).
-		for _, sa := range consensusSigScopes(e.Culprit, &e.A, ha) {
-			for _, sb := range consensusSigScopes(e.Culprit, &e.B, hb) {
+		// Era 2 and up: the two signatures must share (round, STEP).
+		for _, sa := range consensusSigScopes(e.Culprit, &e.A, chainID, ha) {
+			for _, sb := range consensusSigScopes(e.Culprit, &e.B, chainID, hb) {
 				if sa == sb {
 					return nil
 				}
@@ -100,26 +118,53 @@ func CheckEquivocation(e *Equivocation) error {
 	return ErrNotEquivocation
 }
 
-// sigScope identifies one consensus signature's slot: the (round, phase) it
-// was released at. Height is shared by construction (checked above).
+// sigScope identifies one consensus signature's SLOT: the (round, step) it was released at.
+// Height is shared by construction (checked above).
+//
+// STEP, NOT WIRE PHASE — and this is T-STEP-VS-FORM applied to the slash rule. From era 4 the
+// same step has two wire constants (PhasePrecommit = 2, PhasePrecommitV5 = 4) because the signed
+// PREIMAGE changed, not because the slot did. The durable anti-double-sign watermark
+// (ports.SignMark) records the canonical step and is era-independent, so an honest validator
+// releases exactly one signature per (height, round, step) ACROSS the boundary. If this type
+// recorded the wire phase instead, the two halves of one mechanism would disagree about the slot
+// again — which is the #397 scar this whole change was bought on — and a validator that
+// precommitted a v4 block and a v5 block at one height would become unslashable. The golden
+// corpus case `v4-vs-v5-both-rounds-era-same-slot-ACCEPT` is the driven proof.
 type sigScope struct {
 	Round uint64
-	Phase uint8
+	Step  uint8
+}
+
+// canonicalStep maps a WIRE phase back to the canonical consensus STEP — the inverse of AttPhase
+// on the two steps it renames. Everything else (PhaseLegacy, unknown) passes through, which is
+// safe because consensusSigScopes skips PhaseLegacy and verifyAtt refuses unknown phases.
+func canonicalStep(phase uint8) uint8 {
+	switch phase {
+	case PhasePrepareV5:
+		return PhasePrepare
+	case PhasePrecommitV5:
+		return PhasePrecommit
+	default:
+		return phase
+	}
 }
 
 // consensusSigScopes collects the verified (round, phase) slots at which pub
 // released an era-2 consensus signature in b — across BOTH certificate sets
 // (PrepareQC and Atts). The bare-hash ProposerSig is authorship, not a vote,
 // and is deliberately excluded (see VerifyEquivocation).
-func consensusSigScopes(pub []byte, b *Block, h ports.Hash) []sigScope {
+func consensusSigScopes(pub []byte, b *Block, chainID ports.Hash, h ports.Hash) []sigScope {
 	var out []sigScope
+	// The scope is the EVIDENCE BLOCK's own height (CheckEquivocation has already established
+	// that e.A.Height == e.B.Height) under the verifier's own chain id.
+	s := attScope{ChainID: chainID, Height: b.Height}
 	for _, set := range [][]Attestation{b.PrepareQC, b.Atts} {
 		for _, a := range set {
 			if a.Phase == PhaseLegacy {
 				continue // a legacy-shaped sig inside an era-2 block is not a vote slot
 			}
-			if bytes.Equal(a.PubKey, pub) && verifyAtt(a, h) {
-				out = append(out, sigScope{Round: a.Round, Phase: a.Phase})
+			if bytes.Equal(a.PubKey, pub) && verifyAtt(a, s, h) {
+				out = append(out, sigScope{Round: a.Round, Step: canonicalStep(a.Phase)})
 			}
 		}
 	}
@@ -145,7 +190,7 @@ func signedBlock(pub []byte, b *Block, h ports.Hash) bool {
 // node sees a fork (e.g. reconciling to a heavier one), the two chains are the
 // evidence: anyone who backed both sides at a shared height equivocated.
 // Returns one proof per distinct culprit.
-func FindEquivocations(a, b []Block) []Equivocation {
+func FindEquivocations(a, b []Block, chainID ports.Hash) []Equivocation {
 	byHeight := make(map[uint64]*Block, len(a))
 	for i := range a {
 		byHeight[a[i].Height] = &a[i]
@@ -171,7 +216,7 @@ func FindEquivocations(a, b []Block) []Equivocation {
 				continue
 			}
 			e := Equivocation{Culprit: pub, A: *ab, B: *bb}
-			if VerifyEquivocation(&e) {
+			if VerifyEquivocation(&e, chainID) {
 				caught[id] = true
 				out = append(out, e)
 			}
@@ -192,7 +237,7 @@ func FindEquivocations(a, b []Block) []Equivocation {
 // the candidate set cannot manufacture a false slash: VerifyEquivocation
 // remains the gate, with its honest exemptions (sequential heights, cross-round
 // lock-change under a POL, bare-hash authorship) intact.
-// Certification: silt-reviews/research/research-outcome/
+// Certification: silt-agent-memory/researcher/reviews/research-outcome/
 // 496-height1-equivocation-undetected-RESEARCH-CERTIFICATION-2026-08-21.md.
 func signers(b *Block) [][]byte {
 	out := make([][]byte, 0, 1+len(b.PrepareQC)+len(b.Atts))

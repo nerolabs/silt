@@ -100,9 +100,9 @@ The Builder advises and shapes the question; the Researcher certifies; the human
 
 ## Where things go
 
-- **PE rulings** → `../silt-reviews/principle-engineer/` (this seat's own directory).
+- **PE rulings** → `~/.claude/silt-agent-memory/principal-engineer/reviews/` (this seat's own directory).
   NEVER the builder's tree (`docs/reviews/`). Always reply with the full path.
-- **Research certifications** → `../silt-reviews/research/research-outcome/`.
+- **Research certifications** → `~/.claude/silt-agent-memory/researcher/reviews/research-outcome/`.
 - **Code** → the silt repo (Builder only).
 - **Scars / run evidence** → the Tester's memory (the scar ledger), cited.
 - **Live agent memory** → `.claude/agent-memory`, a symlink to the shared external store
@@ -110,6 +110,12 @@ The Builder advises and shapes the question; the Researcher certifies; the human
   commit it, or open a PR with it. Seat DEFINITIONS (`.claude/agents/`) stay tracked; live
   memory does not. New checkout or worktree: run `.claude/setup-agent-memory.sh` once to
   establish the symlink. (History: committing live memory caused per-pull conflicts, #636/#638.)
+  **A worktree does NOT inherit the symlink.** A seat that saves memory before running that
+  script creates a real local directory, and it dies with the worktree — the write SUCCEEDS
+  and the memory is lost anyway (2026-09-11: all ten worktrees leaking, 25 files recovered,
+  five lost). `scripts/check_agent_memory_link.py` now guards this: the PreToolUse hook in
+  `.claude/settings.json` BLOCKS the first memory write into an unlinked path and names the
+  remedy, so the only cost is one command, not a lost session.
 
 ## The Tester's ground truth on silt
 

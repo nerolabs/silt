@@ -82,7 +82,7 @@ import (
 // THESE ARE FIXTURE CONSTANTS FOR NAMED SYNTHETIC DISTRIBUTIONS. They are NOT honest
 // bands and they are NOT field thresholds. Both of their original provenances were
 // withdrawn by the Economist after this file's first round measured against them:
-// /Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-c3-concentration-gate-thresholds-redderived-2026-09-09.md
+// /Users/andrewedmond/.claude/silt-agent-memory/economist/reviews/ADVISORY-c3-concentration-gate-thresholds-redderived-2026-09-09.md
 //
 // WITHDRAWN, and the sentence is struck rather than softened: "the vision-ratio band is
 // 0.058-0.121, so 0.15 clears the widest honest weighting". The 0.1209 corner is the DISK

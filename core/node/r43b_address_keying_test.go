@@ -3,7 +3,7 @@ package node
 // R4.3b (2026-09-04) — observed-address keying of the DHT eclipse cap, node tier: the
 // gates that need the walk (reply-introduced ids), the simnet NAT model (ponies behind a
 // relay) and the announce/resolve path (discoverability). Table-tier halves live in
-// core/dht/r43b_address_keying_test.go. Spec: silt-reviews/research/research-outcome/
+// core/dht/r43b_address_keying_test.go. Spec: silt-agent-memory/researcher/reviews/research-outcome/
 // R4.3b-relayed-class-and-observed-address-keying-RESEARCH-CERTIFICATION-2026-09-04.md §8
 // (G-1, G-2, G-7, G-10, G-12). The node never sees an IP: r43bOracle stands in for the
 // transport's ports.PeerClassifier.

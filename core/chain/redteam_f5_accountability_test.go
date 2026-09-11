@@ -3,7 +3,7 @@ package chain
 // RED-TEAM REGRESSION — accountability corner (censor persona), red-team F5.
 //
 // The external red-team broke accountability three ways through the on-chain
-// revocation path (redteam/M0-REDTEAM-REPORT.md Finding 5):
+// revocation path (archive/reviews/M0-REDTEAM-REPORT.md Finding 5):
 //   (A) a quorum could revoke a root it never published / that never existed —
 //       ValidateProposal did no ownership or existence check;
 //   (B) the revocation was GLOBAL and non-voluntary — the canonical registry

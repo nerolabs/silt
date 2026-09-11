@@ -3,8 +3,8 @@
 Date: 2026-08-31
 Author: Builder
 Base: `origin/main` `ad8effb`
-Certified design: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/v5-wholeset-digest-root-addition-RESEARCH-CERTIFICATION-2026-08-31.md`
-PE cross-check: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-v5-wholeset-digest-root-cert-crosscheck-2026-08-31.md`
+Certified design: `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/v5-wholeset-digest-root-addition-RESEARCH-CERTIFICATION-2026-08-31.md`
+PE cross-check: `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-v5-wholeset-digest-root-cert-crosscheck-2026-08-31.md`
 
 ## What this increment is
 

@@ -5,8 +5,8 @@
 **Step:** 2a of the ratified, certified era-3 sequence (schema + hash + versionSupported).
 Step 1 (root COMPUTATION) is on main (`72d5c4c`): `core/statehash` + `core/chain/statehash.go`
 give `StateRoot()`/`LogRoot()` and the determinism oracle.
-**Certification:** `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era3-committed-state-root-format-RESEARCH-CERTIFICATION-2026-08-28.md`
-**Ruling:** `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-era3-committed-state-root-format-2026-08-28.md`
+**Certification:** `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/era3-committed-state-root-format-RESEARCH-CERTIFICATION-2026-08-28.md`
+**Ruling:** `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-era3-committed-state-root-format-2026-08-28.md`
 
 ## Scope of 2a — exactly this, nothing more
 

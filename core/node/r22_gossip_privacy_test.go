@@ -289,6 +289,18 @@ func TestR22TheWorkStampHasExactlyOneProductionWriter(t *testing.T) {
 			case ".git", "archive", "vendor", "testdata", "website", "docs":
 				return fs.SkipDir
 			}
+			// Never descend into ANOTHER CHECKOUT of this repo. `.claude/worktrees/`
+			// holds full copies on other seats' branches, and this gate reported one
+			// of their files as the production writer's new home
+			// (scar:lint-walks-into-another-checkout-2026-09-11, PR #813 — the same
+			// class, in a Go test the Python fix did not reach). A checkout is
+			// identified by its `.git` MARKER, a directory OR a file, not by a
+			// directory name: a worktree's marker is a FILE and can live anywhere.
+			if path != root {
+				if _, err := os.Stat(filepath.Join(path, ".git")); err == nil {
+					return fs.SkipDir
+				}
+			}
 			return nil
 		}
 		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {

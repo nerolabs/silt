@@ -15,7 +15,7 @@ import (
 
 // THE PERMANENT GUARD — emission-keyed differential leaf-diff completeness (PE ruling 2026-08-31,
 // the write-obligation ledger):
-//   silt-reviews/principle-engineer/RULING-floorbox-v5-write-obligation-ledger-2026-08-31.md
+//   silt-agent-memory/principal-engineer/reviews/RULING-floorbox-v5-write-obligation-ledger-2026-08-31.md
 //
 // The whole point is to STOP catching unreproduced committed-leaf writes ONE AT A TIME. Seven were
 // caught by hand; the everMature off-boundary latch was the eighth. The existing …AgreesWithApply

@@ -626,6 +626,19 @@ frozen formats, their exact specs, and their activation heights are build state 
 they live in the [`decisions.md`](decisions.md) freeze entries, not here, because
 the *principle* is the immutable, and the individual formats accrete under it.
 
+**A value bound into a frozen consensus format leaves the Evolving tier for that
+network's lifetime.** Committing a configuration value into hash-covered state is what
+makes it a function of the chain rather than of local config — that is the point, and it
+is what the rule asks for. The cost travels with it: a quantity documented as tunable
+becomes fixed for every network that has already committed it, and changing it — including
+changing the default a build supplies when the operator sets nothing — is a **new network**,
+not a tuning change. The failure is loud and it is the safe direction: an upgraded node
+refuses to start on the existing chain rather than applying different rules to a history it
+already holds. State the promotion when the binding is made; a tier change that is
+discovered after launch was never decided. *Which* values are bound, and when each promotion
+was accepted, are build state — they live in the [`decisions.md`](decisions.md) entries, not
+here, because the *principle* is the immutable.
+
 **Build-immutables — held at the same amendment bar, but about *how we build*,
 not *what silt is*.** The corners above are **product-immutables**: change one and
 it is a different project. These are **build-immutables**: change one and the

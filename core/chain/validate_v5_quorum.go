@@ -241,12 +241,15 @@ func v5ValidateBondReg(v StateView, p Params, r BondReg, nonce uint64) error {
 // C1..C5 the two quorum stacks
 // ---------------------------------------------------------------------------
 
-// v5RequireProposerPrepare is C1 — Chain.requireProposerPrepare. Block-local: no state read.
-func v5RequireProposerPrepare(b *Block) (FloorBoxOutcome, error) {
+// v5RequireProposerPrepare is C1 — Chain.requireProposerPrepare. The only state it reads is the
+// view's OWN chain id (class 3, BG-2); the height comes from the block it is verifying over.
+func v5RequireProposerPrepare(v StateView, b *Block) (FloorBoxOutcome, error) {
 	h := b.Hash()
+	s := attScope{ChainID: v.Head().ChainID, Height: b.Height}
+	want := AttPhase(b.Version, PhasePrepare)
 	for _, a := range b.PrepareQC {
-		if a.Phase == PhasePrepare && a.Round <= b.CommitRound &&
-			bytes.Equal(a.PubKey, b.Proposer) && verifyAtt(a, h) {
+		if a.Phase == want && a.Round <= b.CommitRound &&
+			bytes.Equal(a.PubKey, b.Proposer) && verifyAtt(a, s, h) {
 			return Accept, nil
 		}
 	}
@@ -262,8 +265,13 @@ func v5RequireProposerPrepare(b *Block) (FloorBoxOutcome, error) {
 //     round <= CommitRound count-neutral);
 //   - the UNQUALIFIED DROP happens AFTER the signature check, so a forged signature from an
 //     unqualified id is FATAL, not silently ignored. Reversing these two is N5.
-func v5CollectQuorumSigs(v StateView, b *Block, sigs []Attestation, phase uint8, round uint64) (map[ports.NodeID]bool, FloorBoxOutcome, error) {
+func v5CollectQuorumSigs(v StateView, b *Block, sigs []Attestation, step uint8, round uint64) (map[ports.NodeID]bool, FloorBoxOutcome, error) {
 	h := b.Hash()
+	s := attScope{ChainID: v.Head().ChainID, Height: b.Height}
+	// EXACTLY ONE FORM, never both (G-PRE-8). A v5 quorum demands the v5 phase constant, so a
+	// heightless v2-form precommit inside a v5 block's Atts is FATAL here, not silently ignored
+	// — the carrier's dual-form acceptance is a SEATING rule and must not leak into a quorum.
+	phase := AttPhase(b.Version, step)
 	seen := make(map[ports.NodeID]bool)
 	for _, a := range sigs {
 		if len(a.PubKey) != ed25519.PublicKeySize {
@@ -277,7 +285,7 @@ func v5CollectQuorumSigs(v StateView, b *Block, sigs []Attestation, phase uint8,
 			return nil, Reject, fmt.Errorf("%w: attester %s signed (phase %d, round %d), this quorum demands (phase %d, round %d)",
 				ErrBadSignature, id, a.Phase, a.Round, phase, round)
 		}
-		if !verifyAtt(a, h) {
+		if !verifyAtt(a, s, h) {
 			return nil, Reject, fmt.Errorf("%w: attester %s", ErrBadSignature, id)
 		}
 		ok, out, err := v5AttesterQualifiedAt(v, id, b.Height)

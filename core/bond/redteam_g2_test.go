@@ -10,7 +10,7 @@ import (
 // These are the M0 red-team G2 PoCs INVERTED as regressions: the prefix-plot
 // Sybil and its enablers, which per-root dedup structurally could not catch,
 // are now DENIED by the verified labeling check. See
-// docs/design/m0-sybil-rebind.md and the researcher memo (research/G2-SYBIL-BOND-MEMO.md).
+// docs/design/m0-sybil-rebind.md and the researcher memo (silt-agent-memory/researcher/reviews/research-outcome/memos/G2-SYBIL-BOND-MEMO.md).
 
 // G2 (the break): one physical N-block plot backed N standings, because
 // plotBlock/parentIndices keyed only on (secret,i) — so blocks 0..m-1 of an

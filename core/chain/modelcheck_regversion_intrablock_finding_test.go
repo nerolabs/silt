@@ -78,7 +78,7 @@ func TestRegVersionIntraBlockOrderIndependent(t *testing.T) {
 		}
 		b := &Block{Version: BlockVersionRounds, Height: 1, Prev: prev,
 			Entries: []ports.Entry{entry(1)}, BondRegs: regs}
-		commitRounds(b, all, 0)
+		commitRounds(b, all, 0, ports.Hash{})
 		return c, c.Append(*b)
 	}
 

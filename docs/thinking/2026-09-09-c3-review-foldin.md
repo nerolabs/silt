@@ -5,11 +5,11 @@ same PR) · **Base:** `f03ab50`, the build recorded in
 `docs/thinking/2026-09-08-c3-r22-observability-build.md`
 
 **What this round answers**
-- PE (blind): `silt-reviews/principle-engineer/RULING-c3-r22-observability-f03ab50-2026-09-09.md`
+- PE (blind): `silt-agent-memory/principal-engineer/reviews/RULING-c3-r22-observability-f03ab50-2026-09-09.md`
   — MERGE-AFTER, four blockers, two simplicity items, five non-blocking findings.
-- Red-team (blind, independent): `silt-reviews/red-team/REDTEAM-c3-gossip-disclosure-f03ab50-2026-09-09.md`
+- Red-team (blind, independent): `silt-agent-memory/red-team/reviews/REDTEAM-c3-gossip-disclosure-f03ab50-2026-09-09.md`
   — F1 confirms the PE's B3 and amplifies it three ways.
-- Researcher: `silt-reviews/research/research-outcome/C3-GOSSIP-DISCLOSURE-vs-D-UI-PRIVACY-FLAG-RESEARCH-CERTIFICATION-2026-09-09.md`
+- Researcher: `silt-agent-memory/researcher/reviews/research-outcome/C3-GOSSIP-DISCLOSURE-vs-D-UI-PRIVACY-FLAG-RESEARCH-CERTIFICATION-2026-09-09.md`
   — the gossip half is **GATED**, certifiable only as alternative A, under M-1/M-2/M-3, and
   **the owner must ratify before it merges in any form**.
 

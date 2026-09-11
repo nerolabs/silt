@@ -16,7 +16,7 @@ import (
 // gate: a pruned block's nil Answer fails verifyBond with ErrBadBondReg, the wrong
 // reason, and below the floor is rejected when it should be trusted) and GREEN with the
 // gate. Plan: docs/thinking/2026-08-18-slice3-q2-gate-plan.md. PE ruling:
-// principle-engineer/pruned-block-representation-ruling-PE-2026-08-18.md.
+// principal-engineer/reviews/pruned-block-representation-ruling-PE-2026-08-18.md.
 
 // q2Chain builds an objective replica with its pruned-tolerance floor pinned to `floor`
 // (the node's OWN anchor). objective() is true (MinBond>0 + a bond verifier), so
@@ -166,18 +166,18 @@ func TestPrunedEvidenceIsRefused(t *testing.T) {
 	a, b := w.conflicting(g, w.prop, w.vals[3], []ed25519.PrivateKey{w.vals[0]}, []ed25519.PrivateKey{w.vals[0]})
 	culpritID := idOf(w.vals[0])
 
-	if !VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: *b}) {
+	if !VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: *b}, ports.Hash{}) {
 		t.Fatal("precondition: the full (unpruned) double-sign must still be provable")
 	}
 
 	// Both sides pruned: F2-EVIDENCE-RECOMPUTE means this is NO LONGER valid evidence.
 	pa, pb := a.Prune(), b.Prune()
-	if VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: pa, B: pb}) {
+	if VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: pa, B: pb}, ports.Hash{}) {
 		t.Fatal("T-4: a both-pruned pair must be REFUSED as evidence — Hash() must never trust " +
 			"the stored Pruned digest")
 	}
 	// The realistic late-reveal (one side already pruned) must ALSO be refused.
-	if VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: pb}) {
+	if VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: pb}, ports.Hash{}) {
 		t.Fatal("T-4: a mixed full/pruned pair must be REFUSED as evidence")
 	}
 

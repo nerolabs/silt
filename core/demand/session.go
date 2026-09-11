@@ -2,7 +2,7 @@ package demand
 
 // R2.9 — the paid DELIVERY SESSION's wire vocabulary and its signatures (the pure
 // half; core/node holds the session table and the handlers). Certified shape:
-// silt-reviews/research/research-outcome/R2.9-G-R212-8-delivery-anchor-quantization-RESEARCH-CERTIFICATION-2026-09-06.md
+// silt-agent-memory/researcher/reviews/research-outcome/R2.9-G-R212-8-delivery-anchor-quantization-RESEARCH-CERTIFICATION-2026-09-06.md
 // §3.1 (C1–C10), §6.3 (receipt v3); the domain ruling (no fifth FDH domain — the
 // anchor IS the demand token, spent at OPEN instead of at redeem):
 // …/R2.9-build-questions-domain-rescale-guard-RESEARCH-CERTIFICATION-2026-09-04.md §2.
@@ -258,7 +258,7 @@ func UnmarshalSessionReceipt(b []byte) (SessionReceipt, error) {
 
 // Witness records units of witnessed delivery for object from a SESSION receipt the
 // ledger settled (R2.9; certification
-// silt-reviews/research/research-outcome/R2.9-witnessed-demand-observable-under-sessions-RESEARCH-CERTIFICATION-2026-09-06.md
+// silt-agent-memory/researcher/reviews/research-outcome/R2.9-witnessed-demand-observable-under-sessions-RESEARCH-CERTIFICATION-2026-09-06.md
 // §3.3). The rule, clause by clause:
 //
 //  1. DENOMINATION: units = settled/p, where settled is SettleDelivery's first return

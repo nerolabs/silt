@@ -2,7 +2,7 @@ package credit
 
 // R-GUARD-RESTORE-LANE-UNKNOWN — the guard's per-lane live counts must survive a
 // restart. PE ruling
-// /Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R2.9-deposit-at-anchor-expiry-4d4a90c-2026-09-07.md
+// /Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-R2.9-deposit-at-anchor-expiry-4d4a90c-2026-09-07.md
 // §4 measured it: "lanes before restart (delivery, relay) = (2, 1); after restore =
 // (3, 0)" — LoadPaidSerials rebuilt every entry as laneDelivery because the durable
 // record carried no lane, so RestoredGuardEntries and LivePaidSerialsByLane both

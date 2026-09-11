@@ -1,7 +1,7 @@
 # Fix for factor (ii) of the MATURING drain wall: bond-reg head-window (A) + durable pending queue (B)
 
 **Date:** 2026-08-15
-**Follows:** `2026-08-15-maturing-wall-is-coordination-cadence-not-cpu.md` (the wall is cadence, not CPU) and the PE cadence ruling (`silt-reviews/.../maturing-cadence-ruling-PE-2026-08-15.md`).
+**Follows:** `2026-08-15-maturing-wall-is-coordination-cadence-not-cpu.md` (the wall is cadence, not CPU) and the PE cadence ruling (`silt-agent-memory/.../maturing-cadence-ruling-PE-2026-08-15.md`).
 
 ## The defect (factor ii), root-caused
 

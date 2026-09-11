@@ -14,7 +14,7 @@ import (
 // tagEverMature leaf write.
 //
 // THE GAP THIS CLOSES (PE ruling 2026-08-31, the write-obligation ledger):
-//   silt-reviews/principle-engineer/RULING-floorbox-v5-write-obligation-ledger-2026-08-31.md
+//   silt-agent-memory/principal-engineer/reviews/RULING-floorbox-v5-write-obligation-ledger-2026-08-31.md
 // apply() latches everMature false→true on ANY block where !everMature && Mature()
 // (chain.go:3303-3305), BEFORE the boundary gate. #678 reproduced it ONLY inside class P
 // (boundary-gated), so the GENERIC OFF-boundary maturity crossing (h % EpochBlocks != 0) had no

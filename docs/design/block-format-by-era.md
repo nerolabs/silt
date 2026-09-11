@@ -13,7 +13,7 @@ era-4 at **v5** (`BlockVersionWitnessable`).
 
 ## The short version
 
-There is **one** `Block` struct (`chain.go:503`). An "era" is not a different struct —
+There is **one** `Block` struct (`chain.go`). An "era" is not a different struct —
 it is a `BlockVersion` (`chain.go:260`): the rule/schema version a block is minted under,
 committed inside the block hash and checked at decode. Fields are added *additively*
 (CBOR `keyasint,omitempty`), so a block that doesn't use a newer field hashes exactly as

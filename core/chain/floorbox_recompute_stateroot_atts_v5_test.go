@@ -82,7 +82,7 @@ func (f attFixture) attBlock() Block {
 	prev, h := f.c.Head()
 	head, _ := f.c.headBlock()
 	b := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev, Entries: []ports.Entry{entry(42)}}
-	b.LastCommit = append(b.LastCommit, AttestAt(&head, f.att, 0, PhasePrecommit))
+	b.LastCommit = append(b.LastCommit, AttestAt(&head, f.att, 0, PhasePrecommit, f.c.ChainID()))
 	return b
 }
 
@@ -292,7 +292,7 @@ func TestRecomputeStateRootAttAblationLegacyMode(t *testing.T) {
 	prev, h := c.Head()
 	head, _ := c.headBlock()
 	b := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev}
-	b.LastCommit = append(b.LastCommit, AttestAt(&head, att, 0, PhasePrecommit))
+	b.LastCommit = append(b.LastCommit, AttestAt(&head, att, 0, PhasePrecommit, c.ChainID()))
 	parentProposer, _ := c.headProposerID()
 
 	// The legacy assertion lives in stateRootAttWriteSet (reached by the A dispatch). It must stall

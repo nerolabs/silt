@@ -25,8 +25,8 @@ import (
 //
 // Certified: build-plan certification §2 (the read set, classified) and the P-table delta
 // certification (M-1 Rep, M-3 HeadRef, M-4 Budget + the two-conjunct substituted step):
-// /Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/FLOORBOX-STRUCTURE-BUILD-PLAN-CERTIFICATION-2026-09-03.md
-// /Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/FLOORBOX-STRUCTURE-P-TABLE-DRIFT-DELTA-CERTIFICATION-e963034-2026-09-07.md
+// /Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/FLOORBOX-STRUCTURE-BUILD-PLAN-CERTIFICATION-2026-09-03.md
+// /Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/FLOORBOX-STRUCTURE-P-TABLE-DRIFT-DELTA-CERTIFICATION-e963034-2026-09-07.md
 //
 // THE CLASSES (build-plan cert §2.2). Every state read reachable from ValidateCommit lands in one:
 //
@@ -80,6 +80,20 @@ func (a Availability) String() string {
 type HeadRef struct {
 	// Hash is the parent's Hash() — Chain.Head()'s first return.
 	Hash ports.Hash
+	// ChainID is the view's own NETWORK IDENTITY: the height-0 block's Hash() (Chain.ChainID).
+	// It is what the era-4 consensus-signature preimage binds (consensusSigBytesV5), so that a
+	// signature made on one silt network can never be read as a vote on another.
+	//
+	// CLASS 3 AND STRICTLY SO (BG-2). A DRIVER-SUPPLIED chain id lets the caller choose which
+	// network the box believes it is on — the class-4 shape this type exists to prevent — so it
+	// is derived, like the other fields, from what the view itself holds: the node's own genesis
+	// for liveView, the box's own config-bearing chain for provenView. It is NOT a witnessed
+	// leaf: the v5 witness read-set, the digest set and the SMT tag set are untouched by it.
+	//
+	// The ZERO hash is not a chain id. verifyAtt refuses every era-4 signature form under it, so
+	// an un-populated HeadRef stalls the v5 signature checks rather than verifying them against
+	// "network zero" — the same property that makes NoWitness the zero of Availability.
+	ChainID ports.Hash
 	// NextHeight is THE HEIGHT THE NEXT BLOCK MUST CARRY (parent.Height + 1) — Chain.Head()'s
 	// second return. The +1 is derived in ONE place so the two views cannot differ by one, and
 	// the name carries the semantics so P1 is never written two ways.

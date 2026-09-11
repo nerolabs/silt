@@ -55,7 +55,7 @@ unchanged. Existing: `TestNetGet*` in `netget_retention_500_test.go`, the e2e sw
 node-death e2e.
 
 **Blind PE ruling on this record**
-(`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-parity-fetch-per-stripe-design-2026-09-06.md`,
+(`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-parity-fetch-per-stripe-design-2026-09-06.md`,
 PROCEED-WITH-CHANGES — "direction right, option wrong"). Built as **(A′), not (A)**:
 - The record rejected (B) on a false premise: `fetchCols` already walks parity columns SEQUENTIALLY,
   one lookup each, and `fetchColumn`'s per-id `missing` list was thrown away. A DEFICIT COUNTER on that
@@ -84,7 +84,7 @@ PROCEED-WITH-CHANGES — "direction right, option wrong"). Built as **(A′), no
   both, by design). Two node-wide counters added for the gates: `Stats.ParityColumnLookups`,
   `Stats.ParityShardsPulled` (withheld with the other counters under `-privacy`).
 
-**Blind PE CODE ruling** (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-parity-fetch-per-stripe-code-f443f84-2026-09-06.md`,
+**Blind PE CODE ruling** (`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-parity-fetch-per-stripe-code-f443f84-2026-09-06.md`,
 MERGE-AFTER; the walk verified as exactly (A′), all four ablations RED, whole `core/node` and e2e green on
 the PE's own runs). Folded in: **F-1** presence is now READ-AND-VERIFIED, not stat'ed — the disk store's
 `Has` is an `os.Stat` while `Get` verifies, so a bit-rotten local shard counted as present and the

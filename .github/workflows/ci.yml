@@ -381,6 +381,38 @@ jobs:
       - name: Scar-lint — every cited test name must resolve to a real test, and every symbol-anchored source coordinate must point at its symbol (scar:cited-test-does-not-exist-2026-09-02, scar:cited-source-coordinate-decayed-2026-09-10)
         # External review trees are absent in CI, so this checks the repo only.
         run: python3 scripts/check_cited_tests.py
+      - name: Scar-lint — the external-tree citation check must still CATCH a phantom after the review record moved (scar:review-record-moved-and-every-citation-went-dark-2026-09-11)
+        # The external roots are absent in CI, and `collect_external` skips an absent
+        # root — so the step above proves nothing about that half. This one MANUFACTURES
+        # an external root in a temp dir and drives three arms: a forged phantom is
+        # caught (RED), a real test name is not (GREEN, the over-exclusion arm), and an
+        # ABSENT root says so instead of passing in silence (MUTE, the defect that
+        # actually happened on 2026-09-11).
+        run: python3 scripts/check_cited_tests.py --self-test
+      - name: Scar-lint — no reference to the retired `silt-reviews/` tree may reach a branch (scar:review-record-moved-and-every-citation-went-dark-2026-09-11)
+        # Four live worktrees carried ~3,400 occurrences on unmerged branches when the
+        # record moved. Without this gate every held branch silently reintroduces the
+        # dead paths in the files it touches. Re-run the migration to clear it:
+        #   python3 scripts/migrate_review_record_paths.py
+        run: python3 scripts/migrate_review_record_paths.py --verify
+      - name: Scar-lint — the retired-tree gate must still go RED, and must not rewrite a CLAIM (scar:review-record-moved-and-every-citation-went-dark-2026-09-11, scar:a-path-rewrite-falsifies-claims-2026-09-11)
+        # The step above is GREEN on this repo, and a green gate with no demonstrated
+        # red is decoration (canon simplicity rule 7). CI cannot manufacture either
+        # defect without committing it, so the self-test builds both in a temp tree:
+        #   V-1 a ROOT-LESS citation (`researcher/reviews/research-outcome/X.md`, no root at all;
+        #       this line names the old shape on purpose — scar:review-record-moved)
+        #       fails --verify. 23 of them were invisible to the token-only test, 14 in
+        #       the LIVE `docs/design/m0.md` §10 disclosure table.
+        #   V-4 a VALID store-relative pointer (`planner/MEMORY.md`) is NOT flagged —
+        #       the over-exclusion arm, so the gate cannot cry wolf.
+        #   V-2 a line carrying the history license is left alone by the REWRITE, not
+        #       only by --verify. A path rewrite must never rewrite a claim.
+        #   V-3 the rewrite is idempotent over both forms — every held branch re-runs it.
+        run: python3 scripts/migrate_review_record_paths.py --self-test
+      - name: Scar-lint — the shared repo walk must not descend into another checkout (scar:lint-walks-into-another-checkout-2026-09-11)
+        # A CI checkout has NO nested worktree, so running the lints proves nothing here.
+        # The self-test manufactures one in a temp directory and asserts both directions.
+        run: python3 scripts/repo_walk.py --self-test
       - name: Scar-lint — a source-text test gate must be labelled and must name its runtime cover (scar:source-gate-promises-a-runtime-property-2026-09-03)
         run: python3 scripts/check_source_gates.py
       - name: Scar-lint — no unresolved merge-conflict marker may reach a branch (scar:conflict-markers-shipped-in-ci-yml-2026-09-03)
@@ -389,10 +421,24 @@ jobs:
         run: python3 scripts/check_residual_register.py
       - name: Scar-lint — no test may skip under -short in every merge-gating job (scar:short-run-is-zero-execution-2026-09-10)
         run: python3 scripts/check_short_dark_tests.py
+      - name: Scar-lint — no live agent memory may be tracked by git (scar:worktree-agent-memory-written-to-a-doomed-dir-2026-09-11, #636/#638)
+        # CI can ONLY see this half. The symlink half of the rule is unenforceable here
+        # (a CI checkout never has the gitignored symlink) and is enforced instead by the
+        # PreToolUse/SessionStart hooks in .claude/settings.json, which reach worktrees.
+        run: python3 scripts/check_agent_memory_link.py --ci
+      - name: Scar-lint — the shared agent-memory store must autosave, stay navigable and fail soft (scar:agent-memory-store-ten-days-unpushed-2026-09-11)
+        # CI has no memory store and no seats, so running autosave here would prove
+        # nothing. The self-test MANUFACTURES a store plus a bare remote in a temp dir
+        # and drives all five behaviours, including the two over-action arms (commit on
+        # an unchanged tree; refuse a degraded one) that a wrong fix passes.
+        run: python3 scripts/check_agent_memory_link.py --self-test
 
   docs-shipped:
     name: Docs ship with code
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read   # check_scheduled_workflow_proof.py resolves a run id via the API
     steps:
       - uses: actions/checkout@v4
         with:
@@ -411,3 +457,11 @@ jobs:
             exit 1
           fi
           echo "OK — docs ship with code"
+      - name: Scar-lint — a changed SCHEDULED workflow must show a verified green workflow_dispatch run (scar:scheduled-workflow-never-observed-green-2026-09-11)
+        # nightly-netem merged inside an omnibus commit, was red on its FIRST cron
+        # run, and stayed red 19 of its first 21 — it had never been watched.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/check_scheduled_workflow_proof.py

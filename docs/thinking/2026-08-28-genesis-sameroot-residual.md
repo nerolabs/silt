@@ -5,8 +5,8 @@ Seat: Builder
 Context: PR #618 shipped the certified `seenRoot` per-root distinct-ID dedup in
 `validateBondRegs`. The PE review recorded one residual (R-G) to close or record
 before the era-3 format freeze.
-PE ruling: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-618-updated-sameroot-dedup-fix-2026-08-28.md`
-Certification (parent): `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/same-root-intrablock-bondreg-contention-RESEARCH-CERTIFICATION-2026-08-28.md`
+PE ruling: `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-618-updated-sameroot-dedup-fix-2026-08-28.md`
+Certification (parent): `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/same-root-intrablock-bondreg-contention-RESEARCH-CERTIFICATION-2026-08-28.md`
 
 ## The residual in one line
 

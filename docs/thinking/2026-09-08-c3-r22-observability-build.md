@@ -6,7 +6,7 @@ same PR) · **Against:** main `97e3101`
 **Sources this build answers to**
 - `docs/thinking/2026-09-01-economy-observability-design.md` — §0 the honesty rule, §2 the
   four panels, §3 the tier table and its two named gaps, §4 how each series is computed.
-- `/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07.md`
+- `/Users/andrewedmond/.claude/silt-agent-memory/economist/reviews/ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07.md`
   §2 (the 17-row build list) and §2.1 (the correction that the design doc's own
   network-wide repair-Gini gate is vacuous).
 - `.claude/CLAUDE.md` simplicity rules 4 / 7 / 8 and `docs/TENETS.md` Part VI.
@@ -50,7 +50,7 @@ and can never invent one.
 
 Row 10 forbids a third gossip field and derives the class from the `CapTotal` peers already
 gossip. The two edges are read off the Economist's published tier table
-(`silt-reviews/economist/2026-09-01-tiered-edge-economy-sustainability-audit.md`, the
+(`silt-agent-memory/economist/reviews/2026-09-01-tiered-edge-economy-sustainability-audit.md`, the
 Pony/Horse/Archival table), not invented:
 
 | band | edge | where the number comes from |

@@ -33,7 +33,7 @@ follows the true-up session grades row 13 for real and shows row 13b as the owed
 
 ## Blind PE fold-in (2026-09-07)
 
-**Ruling:** `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-cloudtest-delivery-lane-flow-34114c4-2026-09-07.md`
+**Ruling:** `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-cloudtest-delivery-lane-flow-34114c4-2026-09-07.md`
 — **BLOCK**, eleven items, the two decisive ones measured: (1) the boot banner was read through the
 harness's 800-line journal window on the fleet's noisiest node (~27 journald lines per block, 79 % TLS
 handshake noise), so a mid-sheet position would have missed a line printed once at boot and scored FAIL;

@@ -1,7 +1,7 @@
 # Fix plan — bound inbound message memory with read backpressure (the MATURING OOM)
 
 **Date:** 2026-08-17 (night) · **Root cause:**
-`silt-reviews/principle-engineer/silt-oom-ROOT-CAUSE-unbounded-inbound-queue-2026-08-17.md`
+`silt-agent-memory/principal-engineer/reviews/silt-oom-ROOT-CAUSE-unbounded-inbound-queue-2026-08-17.md`
 · **Evidence:** run `e03f80d-heapprof` heap profiles (val-a 1020 MB RSS / 493 MB
 heap; `cbor.fillByteString` 252 MB under `tcpnet.readLoop → eventloop.run →
 node.handle`, 266 MB / 54%; 35 goroutines).

@@ -50,13 +50,13 @@ func v2Block(g *Block, keys []ed25519.PrivateKey, round uint64) *Block {
 	b := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(9)}}
 	Sign(b, keys[0])
 	b.CommitRound = round
-	b.PrepareQC = append(b.PrepareQC, AttestAt(b, keys[0], round, PhasePrepare))
+	b.PrepareQC = append(b.PrepareQC, AttestAt(b, keys[0], round, PhasePrepare, ports.Hash{}))
 	for _, k := range keys[1:] {
-		b.PrepareQC = append(b.PrepareQC, AttestAt(b, k, round, PhasePrepare))
+		b.PrepareQC = append(b.PrepareQC, AttestAt(b, k, round, PhasePrepare, ports.Hash{}))
 	}
-	b.Atts = append(b.Atts, AttestAt(b, keys[0], round, PhasePrecommit))
+	b.Atts = append(b.Atts, AttestAt(b, keys[0], round, PhasePrecommit, ports.Hash{}))
 	for _, k := range keys[1:] {
-		b.Atts = append(b.Atts, AttestAt(b, k, round, PhasePrecommit))
+		b.Atts = append(b.Atts, AttestAt(b, k, round, PhasePrecommit, ports.Hash{}))
 	}
 	return b
 }
@@ -111,7 +111,7 @@ func TestV2RefusesCrossPhaseAndCrossRound(t *testing.T) {
 	// replay — the S1 delayed-quorum shape at the validation layer). Index 1:
 	// a COUNTED attester slot (index 0 is the author's exempt self-precommit).
 	crossRound := v2Block(g, keys, 0)
-	crossRound.Atts[1] = AttestAt(crossRound, keys[1], 1, PhasePrecommit)
+	crossRound.Atts[1] = AttestAt(crossRound, keys[1], 1, PhasePrecommit, ports.Hash{})
 	if err := c.ValidateCommit(crossRound); !errors.Is(err, ErrBadSignature) {
 		t.Fatalf("a round-1 sig in a round-0 certificate must fail ErrBadSignature, got: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestV2CommitRequiresProposerPrepare(t *testing.T) {
 	// Round ≤ CommitRound. This is the dead-author view-change escape: the
 	// rule must never re-wedge what #432 unwedged.
 	carried := v2Block(g, keys, 2)
-	carried.PrepareQC[0] = AttestAt(carried, keys[0], 0, PhasePrepare)
+	carried.PrepareQC[0] = AttestAt(carried, keys[0], 0, PhasePrepare, ports.Hash{})
 	if err := c.ValidateCommit(carried); err != nil {
 		t.Fatalf("an author prepare at a LOWER round than CommitRound must satisfy the rule (the carried lock): %v", err)
 	}
@@ -158,7 +158,7 @@ func TestV2CommitRequiresProposerPrepare(t *testing.T) {
 	// An author prepare only at a HIGHER round than the commit round does not
 	// endorse this commit (nothing at ≤ CommitRound) — refused.
 	future := v2Block(g, keys, 0)
-	future.PrepareQC[0] = AttestAt(future, keys[0], 3, PhasePrepare)
+	future.PrepareQC[0] = AttestAt(future, keys[0], 3, PhasePrepare, ports.Hash{})
 	if err := c.ValidateCommit(future); !errors.Is(err, ErrProposerPrepare) {
 		t.Fatalf("an author prepare only at round > CommitRound must fail ErrProposerPrepare, got: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestV2CommitRequiresProposerPrepare(t *testing.T) {
 	// reads PrepareQC only.
 	misplaced := v2Block(g, keys, 0)
 	misplaced.PrepareQC = misplaced.PrepareQC[1:]
-	misplaced.Atts = append(misplaced.Atts, AttestAt(misplaced, keys[0], 0, PhasePrepare))
+	misplaced.Atts = append(misplaced.Atts, AttestAt(misplaced, keys[0], 0, PhasePrepare, ports.Hash{}))
 	if err := c.ValidateCommit(misplaced); !errors.Is(err, ErrProposerPrepare) {
 		t.Fatalf("an author prepare outside PrepareQC must not satisfy the rule, got: %v", err)
 	}
@@ -192,8 +192,8 @@ func TestV2ProposerSelfSigsAreCountNeutral(t *testing.T) {
 	// math must still see exactly one attester and refuse — identical to no
 	// padding at all.
 	short := v2Block(g, keys, 0)
-	short.PrepareQC = append(short.PrepareQC[:2], AttestAt(short, keys[0], 0, PhasePrepare), AttestAt(short, keys[0], 0, PhasePrepare))
-	short.Atts = append(short.Atts[:2], AttestAt(short, keys[0], 0, PhasePrecommit), AttestAt(short, keys[0], 0, PhasePrecommit))
+	short.PrepareQC = append(short.PrepareQC[:2], AttestAt(short, keys[0], 0, PhasePrepare, ports.Hash{}), AttestAt(short, keys[0], 0, PhasePrepare, ports.Hash{}))
+	short.Atts = append(short.Atts[:2], AttestAt(short, keys[0], 0, PhasePrecommit, ports.Hash{}), AttestAt(short, keys[0], 0, PhasePrecommit, ports.Hash{}))
 	padded := c.ValidateCommit(short)
 	if padded == nil {
 		t.Fatal("author self-signatures must never substitute for a missing attester (#402: size-set == membership-set)")
@@ -240,20 +240,20 @@ func TestV2EquivocationRoundScoped(t *testing.T) {
 	mk := func(tag byte, round uint64, phase uint8) Block {
 		b := Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(tag)}}
 		Sign(&b, keys[0])
-		b.Atts = append(b.Atts, AttestAt(&b, culprit, round, phase))
+		b.Atts = append(b.Atts, AttestAt(&b, culprit, round, phase, ports.Hash{}))
 		return b
 	}
 
 	samePR := &Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: mk(1, 2, PhasePrecommit), B: mk(2, 2, PhasePrecommit)}
-	if !VerifyEquivocation(samePR) {
+	if !VerifyEquivocation(samePR, ports.Hash{}) {
 		t.Fatal("two different-hash precommits at the same (h, r) must be slashable equivocation")
 	}
 	crossRound := &Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: mk(1, 2, PhasePrecommit), B: mk(2, 3, PhasePrecommit)}
-	if VerifyEquivocation(crossRound) {
+	if VerifyEquivocation(crossRound, ports.Hash{}) {
 		t.Fatal("different-hash precommits at DIFFERENT rounds are an honest lock-change, never slashable (I5 under #432)")
 	}
 	crossPhase := &Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: mk(1, 2, PhasePrepare), B: mk(2, 2, PhasePrecommit)}
-	if VerifyEquivocation(crossPhase) {
+	if VerifyEquivocation(crossPhase, ports.Hash{}) {
 		t.Fatal("a prepare and a precommit at one (h, r) are two phases of one honest flow, never slashable")
 	}
 
@@ -264,7 +264,7 @@ func TestV2EquivocationRoundScoped(t *testing.T) {
 	pb := Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(4)}}
 	Sign(&pb, culprit)
 	author := &Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: pa, B: pb}
-	if VerifyEquivocation(author) {
+	if VerifyEquivocation(author, ports.Hash{}) {
 		t.Fatal("era-2 authorship signatures alone must not be slashable (the consensus vote is the phase-scoped attestation)")
 	}
 
@@ -272,9 +272,9 @@ func TestV2EquivocationRoundScoped(t *testing.T) {
 	// self-prepares (requireProposerPrepare), and two of those at one (h, r)
 	// over different hashes ARE the slash evidence — the #345/#378 drill
 	// shape, restored in era 2 via the round-scoped prepare.
-	pa.PrepareQC = append(pa.PrepareQC, AttestAt(&pa, culprit, 0, PhasePrepare))
-	pb.PrepareQC = append(pb.PrepareQC, AttestAt(&pb, culprit, 0, PhasePrepare))
-	if !VerifyEquivocation(&Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: pa, B: pb}) {
+	pa.PrepareQC = append(pa.PrepareQC, AttestAt(&pa, culprit, 0, PhasePrepare, ports.Hash{}))
+	pb.PrepareQC = append(pb.PrepareQC, AttestAt(&pb, culprit, 0, PhasePrepare, ports.Hash{}))
+	if !VerifyEquivocation(&Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: pa, B: pb}, ports.Hash{}) {
 		t.Fatal("a double-proposer's same-(h, r) self-prepares over different hashes must be slashable (#345/#378 in era 2)")
 	}
 
@@ -282,8 +282,8 @@ func TestV2EquivocationRoundScoped(t *testing.T) {
 	// FRESH at round 1 — self-prepares at DIFFERENT rounds, never slashable.
 	pc := Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(7)}}
 	Sign(&pc, culprit)
-	pc.PrepareQC = append(pc.PrepareQC, AttestAt(&pc, culprit, 1, PhasePrepare))
-	if VerifyEquivocation(&Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: pa, B: pc}) {
+	pc.PrepareQC = append(pc.PrepareQC, AttestAt(&pc, culprit, 1, PhasePrepare, ports.Hash{}))
+	if VerifyEquivocation(&Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: pa, B: pc}, ports.Hash{}) {
 		t.Fatal("an honest cross-round re-proposal (self-prepares at different rounds) must never be slashable (I5)")
 	}
 
@@ -292,7 +292,7 @@ func TestV2EquivocationRoundScoped(t *testing.T) {
 	Sign(&v1, keys[0])
 	v1.Atts = append(v1.Atts, Attest(&v1, culprit))
 	mixed := &Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: v1, B: mk(6, 0, PhasePrecommit)}
-	if VerifyEquivocation(mixed) {
+	if VerifyEquivocation(mixed, ports.Hash{}) {
 		t.Fatal("a cross-era signature pair must never be slashable (fail-safe)")
 	}
 }

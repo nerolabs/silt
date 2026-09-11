@@ -77,7 +77,7 @@ const (
 )
 
 // The disk weighting, in TB, from the Economist's published tier table
-// (silt-reviews/economist/2026-09-01-tiered-edge-economy-sustainability-audit.md).
+// (silt-agent-memory/economist/reviews/2026-09-01-tiered-edge-economy-sustainability-audit.md).
 //
 // WHY THE DISK WEIGHTING AND NOT THE CPU WEIGHTING, given that the same advisory WITHDREW
 // the disk weighting as the model for a serve series. Both statements are right and they

@@ -5,7 +5,7 @@ it [184-equivocation] in a contained environment on every cloud test run — no
 blast radius if totally contained, but skipping it is a blind spot."
 
 **Status of the prior ruling:** the 2026-08-17 PE ruling
-(`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/184-equivocation-topology-ruling-PE-2026-08-17.md`)
+(`/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/184-equivocation-topology-ruling-PE-2026-08-17.md`)
 said (D): the destructive equivocation drill runs on its OWN ephemeral net, not
 mid-sheet, because a mid-sheet slash pins the launch quorum at `⌊4/2⌋+1=3` over
 only 3 live anchors — a zero-fault-tolerance tail that flakes the rest of the

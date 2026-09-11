@@ -91,7 +91,7 @@ const (
 // threshold is 24·PF = 36 retrievals/repair on the unwitnessed lane — which holds for HOT data;
 // cold data stays prepay-dependent (D-S7 finite horizon), the mechanism's honest
 // scope. Evolving-tier: re-tune only on field g. Cert:
-// silt-reviews/research/research-outcome/repair-bounty-coefficient-c-RESEARCH-CERTIFICATION-2026-08-19.md.
+// silt-agent-memory/researcher/reviews/research-outcome/repair-bounty-coefficient-c-RESEARCH-CERTIFICATION-2026-08-19.md.
 const (
 	RepairBountyCoeffNum = 1
 	RepairBountyCoeffDen = 1

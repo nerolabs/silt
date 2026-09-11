@@ -139,7 +139,7 @@ func (w *rtGateWorld) mintEmptyCarrier(t *testing.T, regs ...BondReg) *Block {
 	if err := w.c.PopulateEra4Roots(b); err != nil {
 		t.Fatalf("PopulateEra4Roots at height %d: %v", h, err)
 	}
-	twoPhaseSign(b, w.signers())
+	twoPhaseSign(b, w.signers(), w.c.ChainID())
 	return b
 }
 
@@ -170,7 +170,7 @@ func (w *rtGateWorld) blockWithCarrier(t *testing.T, carrier []Attestation) Bloc
 	if err := w.c.PopulateEra4Roots(b); err != nil {
 		t.Fatalf("PopulateEra4Roots at height %d: %v", h, err)
 	}
-	twoPhaseSign(b, w.signers())
+	twoPhaseSign(b, w.signers(), w.c.ChainID())
 	return *b
 }
 
@@ -188,7 +188,7 @@ func (w *rtGateWorld) genuineCarry(t *testing.T, k ed25519.PrivateKey) Attestati
 	if !ok {
 		t.Fatal("no head block")
 	}
-	return AttestAt(&head, k, 0, PhasePrecommit)
+	return AttestAt(&head, k, 0, PhasePrecommit, w.c.ChainID())
 }
 
 func (w *rtGateWorld) preValue(k []byte) []byte {
@@ -435,14 +435,14 @@ func TestRTGateCarrier1c_BoxNeverAgreesOnPhaseForeignHashOrDuplicateID(t *testin
 		w := rtGateWorldWith(t, 0, 1, 63000)
 		w.assertHonestTwinAgrees(t, w.blockWithCarrier(t, []Attestation{w.genuineCarry(t, w.victims[0])}))
 		head, _ := w.c.headBlock()
-		b := w.blockWithCarrier(t, []Attestation{AttestAt(&head, w.victims[0], 0, PhasePrepare)})
+		b := w.blockWithCarrier(t, []Attestation{AttestAt(&head, w.victims[0], 0, PhasePrepare, w.c.ChainID())})
 		w.assertBoxImpliesNode(t, "genuine PhasePrepare signature in the carrier", b)
 	})
 	t.Run("foreign-hash", func(t *testing.T) {
 		w := rtGateWorldWith(t, 0, 1, 64000)
 		w.assertHonestTwinAgrees(t, w.blockWithCarrier(t, []Attestation{w.genuineCarry(t, w.victims[0])}))
 		other := Block{Version: BlockVersionWitnessable, Height: 999, Entries: []ports.Entry{entry(99)}}
-		b := w.blockWithCarrier(t, []Attestation{AttestAt(&other, w.victims[0], 0, PhasePrecommit)})
+		b := w.blockWithCarrier(t, []Attestation{AttestAt(&other, w.victims[0], 0, PhasePrecommit, w.c.ChainID())})
 		w.assertBoxImpliesNode(t, "genuine precommit over a FOREIGN block hash", b)
 	})
 	t.Run("duplicate-ids", func(t *testing.T) {

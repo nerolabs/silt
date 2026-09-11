@@ -17,11 +17,11 @@ import (
 // from the embedded manifesto, gets the byte-identical block and link.
 // That is what lets genesis be "declared, not agreed".
 func TestGenesisIsDeterministic(t *testing.T) {
-	b1, h1, _, err := genesis.Build(memstore.New())
+	b1, h1, _, err := genesis.Build(memstore.New(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b2, h2, _, err := genesis.Build(memstore.New())
+	b2, h2, _, err := genesis.Build(memstore.New(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestGenesisBlockHashIsPinned(t *testing.T) {
 		wantRoot  = "31768fb45fcf6e7fbf5568f916c790ea905d85220d20717bfe91442934867dd1"
 		wantChunk = "f761f80bdc29952ef1a25c2136a35fb34e4feaf1b6873f7e03dc8a1fce67fcf6"
 	)
-	b, h, entry, err := genesis.Build(memstore.New())
+	b, h, entry, err := genesis.Build(memstore.New(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestGenesisBlockHashIsPinned(t *testing.T) {
 // ZERO reputation available — proving genesis bypasses the quorum gate —
 // and real blocks then build at height 1.
 func TestSeedsChainAtHeightZeroWithoutQuorum(t *testing.T) {
-	block, _, _, err := genesis.Build(memstore.New())
+	block, _, _, err := genesis.Build(memstore.New(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestSeedsChainAtHeightZeroWithoutQuorum(t *testing.T) {
 // from the seeded store using the genesis link.
 func TestGenesisFileRetrievable(t *testing.T) {
 	store := memstore.New()
-	block, h, _, err := genesis.Build(store)
+	block, h, _, err := genesis.Build(store, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

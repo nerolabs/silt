@@ -1,0 +1,18 @@
+# Proof that each SCHEDULED workflow was observed GREEN before it merged.
+#
+# A scheduled workflow is the one kind of CI that merges WITHOUT executing: the PR
+# goes green on the checks it did not change, the workflow first runs hours later on
+# a cron, and the result lands in a tab nobody opens. nightly-netem merged that way
+# and was red on its very first cron run, then 19 of its first 21.
+#
+# So: change a workflow with an `on: schedule:` trigger and you must dispatch it on
+# your branch, watch it go GREEN, and record that run here.
+# scripts/check_scheduled_workflow_proof.py resolves the run id through the GitHub
+# API and checks it is a green `workflow_dispatch` run OF THIS WORKFLOW — the row is
+# a claim, and the gate verifies the claim rather than trusting it.
+#
+# The head sha TRAILS the PR head by design: the dispatch necessarily runs before the
+# commit that records its id. It names which tree was proven.
+#
+# workflow path<TAB>run id<TAB>head sha<TAB>date<TAB>note
+.github/workflows/nightly-netem.yml	34542396732	461445019532f4ae66457777b1f6fae988c50dfe	2026-09-11	first green in the workflow lifetime; all 4 arms 7/7 drills, 0 skipped

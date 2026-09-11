@@ -2,7 +2,7 @@ package credit
 
 // The credit NUMÉRAIRE — every byte→credit conversion in the balance economy, derived
 // from ONE price pair (G-R212-7, Researcher certification 2026-09-06, owner-ratified the
-// same day: silt-reviews/research/research-outcome/G-R212-7-lambda-redenomination-
+// same day: silt-agent-memory/researcher/reviews/research-outcome/G-R212-7-lambda-redenomination-
 // RESEARCH-CERTIFICATION-2026-09-06.md §11; docs/decisions.md D-R2.9a-RUN-CALLS).
 //
 // T-NUMERAIRE: a constant is coupled iff it converts bytes into credits or is compared

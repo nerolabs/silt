@@ -34,7 +34,7 @@ func TestEquivocationProof(t *testing.T) {
 	// vals[0] attests BOTH forks; the two forks have different proposers.
 	a, b := w.conflicting(g, w.prop, w.vals[3], []ed25519.PrivateKey{w.vals[0]}, []ed25519.PrivateKey{w.vals[0]})
 
-	if !VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: *b}) {
+	if !VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: *b}, ports.Hash{}) {
 		t.Fatal("a validator signing two different blocks at the same height must be provable")
 	}
 
@@ -42,16 +42,16 @@ func TestEquivocationProof(t *testing.T) {
 	c := &Block{Version: 1, Height: 2, Prev: a.Hash(), Entries: []ports.Entry{entry(3)}}
 	Sign(c, w.prop)
 	c.Atts = []Attestation{Attest(c, w.vals[0])}
-	if VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: *c}) {
+	if VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: *c}, ports.Hash{}) {
 		t.Fatal("signing sequential heights must not count as equivocation")
 	}
 
 	// A validator who signed neither block cannot be framed.
-	if VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[1]), A: *a, B: *b}) {
+	if VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[1]), A: *a, B: *b}, ports.Hash{}) {
 		t.Fatal("a validator who did not sign both blocks must not be implicated")
 	}
 	// The same block is not a conflict with itself.
-	if VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: *a}) {
+	if VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: *a}, ports.Hash{}) {
 		t.Fatal("the same block is not equivocation")
 	}
 }
@@ -66,7 +66,7 @@ func TestFindEquivocationsAcrossForks(t *testing.T) {
 		[]ed25519.PrivateKey{w.vals[0], w.vals[1], w.vals[2]},
 		[]ed25519.PrivateKey{w.vals[0], w.vals[1]})
 
-	got := FindEquivocations([]Block{*g, *a}, []Block{*g, *b})
+	got := FindEquivocations([]Block{*g, *a}, []Block{*g, *b}, ports.Hash{})
 	caught := map[ports.NodeID]bool{}
 	for i := range got {
 		caught[got[i].CulpritID()] = true
@@ -79,7 +79,7 @@ func TestFindEquivocationsAcrossForks(t *testing.T) {
 	}
 	// Every returned proof is genuinely self-verifying.
 	for i := range got {
-		if !VerifyEquivocation(&got[i]) {
+		if !VerifyEquivocation(&got[i], ports.Hash{}) {
 			t.Fatalf("FindEquivocations returned an unverifiable proof for %s", got[i].CulpritID())
 		}
 	}
@@ -104,12 +104,12 @@ func TestFindEquivocations_PrepareOnlyCulprit(t *testing.T) {
 	wblk := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
 	Sign(wblk, w.prop)
 	wblk.PrepareQC = []Attestation{
-		AttestAt(wblk, w.vals[0], 0, PhasePrepare),
-		AttestAt(wblk, w.vals[1], 0, PhasePrepare),
+		AttestAt(wblk, w.vals[0], 0, PhasePrepare, ports.Hash{}),
+		AttestAt(wblk, w.vals[1], 0, PhasePrepare, ports.Hash{}),
 	}
 	wblk.Atts = []Attestation{
-		AttestAt(wblk, w.vals[1], 0, PhasePrecommit),
-		AttestAt(wblk, w.vals[2], 0, PhasePrecommit),
+		AttestAt(wblk, w.vals[1], 0, PhasePrecommit, ports.Hash{}),
+		AttestAt(wblk, w.vals[2], 0, PhasePrecommit, ports.Hash{}),
 	}
 
 	// Conflicting L@1: the culprit's prepare at the SAME (height, round, prepare)
@@ -117,21 +117,21 @@ func TestFindEquivocations_PrepareOnlyCulprit(t *testing.T) {
 	// adversary plants (PlaceConflictingSigned).
 	l := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(2)}}
 	Sign(l, w.vals[3])
-	l.PrepareQC = []Attestation{AttestAt(l, w.vals[0], 0, PhasePrepare)}
+	l.PrepareQC = []Attestation{AttestAt(l, w.vals[0], 0, PhasePrepare, ports.Hash{})}
 
 	// The verifier proves it — the double-sign is real and self-verifying.
-	if !VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *wblk, B: *l}) {
+	if !VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *wblk, B: *l}, ports.Hash{}) {
 		t.Fatal("VerifyEquivocation must prove a same-slot prepare double-sign")
 	}
 
 	// And the SELECTOR must therefore find it: detection is only as complete as
 	// its candidate enumeration.
-	got := FindEquivocations([]Block{*g, *wblk}, []Block{*g, *l})
+	got := FindEquivocations([]Block{*g, *wblk}, []Block{*g, *l}, ports.Hash{})
 	found := false
 	for i := range got {
 		if got[i].CulpritID() == idOf(w.vals[0]) {
 			found = true
-			if !VerifyEquivocation(&got[i]) {
+			if !VerifyEquivocation(&got[i], ports.Hash{}) {
 				t.Fatal("the returned prepare-only proof must self-verify")
 			}
 		}

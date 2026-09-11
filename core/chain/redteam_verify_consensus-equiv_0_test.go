@@ -47,7 +47,7 @@ func TestObjectiveEquivocationSlashEvicts(t *testing.T) {
 		Culprit: append([]byte(nil), equiv.Public().(ed25519.PublicKey)...),
 		A:       mkFork(10), B: mkFork(11),
 	}
-	if !VerifyEquivocation(&proof) {
+	if !VerifyEquivocation(&proof, ports.Hash{}) {
 		t.Fatal("setup: the equivocation proof should self-verify")
 	}
 
@@ -96,7 +96,7 @@ func TestForgedSlashRejected(t *testing.T) {
 		Culprit: append([]byte(nil), equiv.Public().(ed25519.PublicKey)...),
 		A:       notSigned, B: signed,
 	}
-	if VerifyEquivocation(&forged) {
+	if VerifyEquivocation(&forged, ports.Hash{}) {
 		t.Fatal("setup: a forged proof must not verify")
 	}
 

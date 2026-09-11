@@ -8,10 +8,17 @@ updated.
 
 **Provenance.** After the G2 fix ([m0-sybil-rebind.md](../../docs/design/m0-sybil-rebind.md), PR #166,
 commit `4ea5fd7`), a fresh **blind** research team and adversary (red) team went deep
-on the whole project. Their outputs live under `silt-reviews/` (out of tree):
-`research/research-outcome/` (9 cited memos + a synthesis) and
-`redteam/m0-field-test/` (a real multi-container consensus field test + a 6-persona
-blind fan-out). This doc is the builder-side synthesis of both.
+on the whole project. Their outputs live under `silt-agent-memory/` (out of tree):
+`researcher/reviews/research-outcome/` (9 cited memos + a synthesis) and
+`red-team/reviews/redteam/m0-blind-2026-08-08/` (the persona blind fan-out) and
+`tester/reviews/fieldtest/` (the multi-container consensus field test). This doc is the
+builder-side synthesis of both.
+
+> **CITATION CORRECTED 2026-09-11.** This sentence named one directory,
+> `redteam/m0-field-test/`, for two separate bodies of work (scar:review-record-moved-and-every-citation-went-dark-2026-09-11).
+> **That path never existed** — not at the new home, and not in the retired tree either
+> (checked against its final commit `dd7f588`). It is replaced above by the two directories
+> that do exist. Pre-existing, and not caused by the review-record move.
 
 ---
 
@@ -308,8 +315,8 @@ security item must also add its **Invariant B default-denies-attack test**.
 ## 8. Handoff notes for the next session
 
 - **Read order:** this doc → [m0-sybil-rebind.md](../../docs/design/m0-sybil-rebind.md) (G2 as-built) →
-  the two red-team reports under `silt-reviews/redteam/m0-field-test/` → the research
-  synthesis `silt-reviews/research/research-outcome/SILT-RESEARCH-LENS-SYNTHESIS.md`.
+  the two red-team reports under `silt-agent-memory/red-team/reviews/redteam/m0-field-test/` → the research
+  synthesis `silt-agent-memory/researcher/reviews/research-outcome/SILT-RESEARCH-LENS-SYNTHESIS.md`.
 - **The field test also flags a NON-security gap:** the §6 D2 *adversarial* consensus
   sub-suite (equivocation-slash / partition-heal / low-bond-reject / forged-block) is
   not yet run over a real wire — `M0-FIELD-TEST-REPORT.md` §11 is a step-by-step build

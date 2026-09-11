@@ -4,8 +4,8 @@ Date: 2026-08-31
 Seat: Builder
 Base: `origin/main` `8a9a505`
 Certs built to (full paths):
-- `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/floorbox-Rboundary-writeset-digest-reconstruction-RESEARCH-CERTIFICATION-2026-08-31.md`
-- `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-floorbox-recompute-P1b-SA-digest-scope-2026-08-31.md`
+- `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/floorbox-Rboundary-writeset-digest-reconstruction-RESEARCH-CERTIFICATION-2026-08-31.md`
+- `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-floorbox-recompute-P1b-SA-digest-scope-2026-08-31.md`
 
 ## The problem
 

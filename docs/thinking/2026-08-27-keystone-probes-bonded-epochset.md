@@ -22,7 +22,7 @@ Both fields gate mature/objective qualification. The flip each probe proves is c
 **membership** (which identities are admitted as qualified attesters), NOT by the
 ⅔-weight predicate `requireEpochWeightQuorum`. This attribution was corrected after the
 blind PE review verified the RED
-(`../silt-reviews/principle-engineer/RULING-keystone-probes-bonded-epochset-2026-08-27.md`):
+(`~/.claude/silt-agent-memory/principal-engineer/reviews/RULING-keystone-probes-bonded-epochset-2026-08-27.md`):
 in both worlds the verified rejection is `ErrNoQuorum` (the count floor), not
 `ErrNoQuorumWeight`. The weight predicate never fires — with the field empty its
 `total <= 0` branch short-circuits to nil (`chain.go:2452`).

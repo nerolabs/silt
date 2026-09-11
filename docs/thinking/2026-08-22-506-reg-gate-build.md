@@ -1,6 +1,6 @@
 # #506 — the version-gated reg-inclusion rate bound: what shipped, and two deviations
 
-Date: 2026-08-22. Certification: `silt-reviews/research/research-outcome/506-reg-inclusion-version-gate-RESEARCH-CERTIFICATION-2026-08-22.md`
+Date: 2026-08-22. Certification: `silt-agent-memory/researcher/reviews/research-outcome/506-reg-inclusion-version-gate-RESEARCH-CERTIFICATION-2026-08-22.md`
 (builds on the #503 cert Q3, which certified the R-rule itself).
 
 ## What shipped

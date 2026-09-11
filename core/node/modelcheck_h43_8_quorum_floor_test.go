@@ -18,7 +18,7 @@ import (
 //
 // TestModelCheck_H43_8_DivergentQuorumFloorMustNotBlockNewViewCertificate is
 // G-H43-8, per
-// silt-reviews/research/research-outcome/CONSENSUS-LIVENESS-h43-round-ladder-desync-441-380-RESEARCH-CERTIFICATION-2026-09-07.md
+// silt-agent-memory/researcher/reviews/research-outcome/CONSENSUS-LIVENESS-h43-round-ladder-desync-441-380-RESEARCH-CERTIFICATION-2026-09-07.md
 // §5.2 / the G-H43-8 row (line 304): "In a mature epoch with heterogeneous
 // local -quorum, a node with the higher floor can still assemble a new-view
 // certificate." §5.2 spells out WHY the row's own wording reads as a

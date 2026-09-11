@@ -3,7 +3,7 @@
 **From:** silt build team
 **To:** research team
 **Re:** the second external blind red-team pass
-(`silt-reviews/redteam-august-8th/findings/`, target `main @ bd22f31`, verified
+(`silt-agent-memory/red-team/reviews/redteam-august-8th/findings/`, target `main @ bd22f31`, verified
 against current `main @ f952d10`).
 
 **Why this doc exists.** The red team found **two P0 breaks + one silently-assumed-
@@ -275,7 +275,7 @@ it into this consult rather than deciding it ourselves.**
 ---
 
 ## Provenance
-- Red-team package: `silt-reviews/redteam-august-8th/findings/` — `BUILDER-REPORT.md`,
+- Red-team package: `silt-agent-memory/red-team/reviews/redteam-august-8th/findings/` — `BUILDER-REPORT.md`,
   `M0-REDTEAM-VERDICT.md`, seven `persona-*.md`, reproducing scripts under `scripts/`.
 - 7 independent blind adversaries in isolated worktrees; off-limits to `docs/reviews/`
   and verdict banners; every headline finding re-verified by the lead and, for the two

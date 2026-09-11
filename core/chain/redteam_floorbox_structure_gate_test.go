@@ -16,9 +16,9 @@ import (
 // PERMANENT GATES for the FLOOR-BOX STRUCTURE round 1A (main-only; owner call 16).
 //
 // Governing documents:
-//   - build brief: /Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-structure-rederivation-build-readiness-e963034-2026-09-07.md §7
-//   - P-table delta: /Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/FLOORBOX-STRUCTURE-P-TABLE-DRIFT-DELTA-CERTIFICATION-e963034-2026-09-07.md
-//   - composition:   /Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/FLOORBOX-STRUCTURE-BUILD-PLAN-CERTIFICATION-2026-09-03.md
+//   - build brief: /Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-structure-rederivation-build-readiness-e963034-2026-09-07.md §7
+//   - P-table delta: /Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/FLOORBOX-STRUCTURE-P-TABLE-DRIFT-DELTA-CERTIFICATION-e963034-2026-09-07.md
+//   - composition:   /Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/FLOORBOX-STRUCTURE-BUILD-PLAN-CERTIFICATION-2026-09-03.md
 //
 // THE DEFECT SHAPE THESE GATES EXIST FOR. The box reproduced a node predicate's TAIL without the
 // precondition a DIFFERENT validation stage had established (N1 the author screen, RT2-CARRIER-13
@@ -88,8 +88,8 @@ func (f structFixture) mkBlock(t *testing.T, mutate func(*Block)) Block {
 	b.StateRoot, b.LogRoot = &state, &log
 	Sign(b, f.keys[0])
 	for _, k := range f.keys {
-		b.PrepareQC = append(b.PrepareQC, AttestAt(b, k, 0, PhasePrepare))
-		b.Atts = append(b.Atts, AttestAt(b, k, 0, PhasePrecommit))
+		b.PrepareQC = append(b.PrepareQC, AttestAt(b, k, 0, PhasePrepare, f.c.ChainID()))
+		b.Atts = append(b.Atts, AttestAt(b, k, 0, PhasePrecommit, f.c.ChainID()))
 	}
 	return *b
 }
@@ -453,10 +453,10 @@ func (lf legacyFixture) mkBlock(t *testing.T) Block {
 	}
 	b.StateRoot, b.LogRoot = &state, &log
 	Sign(b, lf.prop)
-	b.PrepareQC = append(b.PrepareQC, AttestAt(b, lf.prop, 0, PhasePrepare)) // C1: the author's own prepare
+	b.PrepareQC = append(b.PrepareQC, AttestAt(b, lf.prop, 0, PhasePrepare, lf.c.ChainID())) // C1: the author's own prepare
 	for _, v := range lf.vals {
-		b.PrepareQC = append(b.PrepareQC, AttestAt(b, v, 0, PhasePrepare))
-		b.Atts = append(b.Atts, AttestAt(b, v, 0, PhasePrecommit))
+		b.PrepareQC = append(b.PrepareQC, AttestAt(b, v, 0, PhasePrepare, lf.c.ChainID()))
+		b.Atts = append(b.Atts, AttestAt(b, v, 0, PhasePrecommit, lf.c.ChainID()))
 	}
 	return *b
 }
@@ -531,8 +531,8 @@ func TestGD7_ForgedLogRootIsRefusedOnBothViews(t *testing.T) {
 	Sign(&forged, f.keys[0])
 	forged.PrepareQC, forged.Atts = nil, nil
 	for _, k := range f.keys {
-		forged.PrepareQC = append(forged.PrepareQC, AttestAt(&forged, k, 0, PhasePrepare))
-		forged.Atts = append(forged.Atts, AttestAt(&forged, k, 0, PhasePrecommit))
+		forged.PrepareQC = append(forged.PrepareQC, AttestAt(&forged, k, 0, PhasePrepare, f.c.ChainID()))
+		forged.Atts = append(forged.Atts, AttestAt(&forged, k, 0, PhasePrecommit, f.c.ChainID()))
 	}
 	if len(forged.Revocations)+len(forged.Unrevocations) != 0 {
 		t.Fatal("fixture: the forged block must be revocation-free (k = 0)")

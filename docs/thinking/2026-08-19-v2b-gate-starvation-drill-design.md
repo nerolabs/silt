@@ -1,8 +1,8 @@
 # Design — the v2b timed starvation drill (the PE-mandated RED oracle)
 
 **Date:** 2026-08-19 · **Gate:** PE ruling
-`silt-reviews/principle-engineer/RULING-v2b-consensus-reserve-approach-2026-08-19.md`
-(full path: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-v2b-consensus-reserve-approach-2026-08-19.md`):
+`silt-agent-memory/principal-engineer/reviews/RULING-v2b-consensus-reserve-approach-2026-08-19.md`
+(full path: `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-v2b-consensus-reserve-approach-2026-08-19.md`):
 the v2b consensus reserve now rests on zero field evidence, so a **timed** RED drill is the
 first — and possibly only — deliverable. If the drill cannot reach gate-level consensus
 starvation under a defensible cost model, **v2b is shelved** (not deprioritized) and the

@@ -2,7 +2,7 @@ package demand
 
 // R0.4b C3 re-break — demand/crypto-tier regression gates. Inversions of the red-team
 // probes core/demand/rt_c3b_demand_test.go (RT-C3B-6 … RT-C3B-10), archived at
-// /Users/andrewedmond/Claude/claude/silt-reviews/red-team/probes/R0.4b-C3-re-break-2026-09-03/.
+// /Users/andrewedmond/.claude/silt-agent-memory/red-team/reviews/probes/R0.4b-C3-re-break-2026-09-03/.
 
 import (
 	"crypto/ed25519"

@@ -1,7 +1,7 @@
 # Primitive-availability gaps (what silt would adopt if a trustworthy impl existed)
 
 > **Framing corrected 2026-08-08** per the research team's response
-> (`silt-reviews/.../pure-go-crypto-gaps-RESEARCH-RESPONSE.md`). The earlier version filed
+> (`silt-agent-memory/.../pure-go-crypto-gaps-RESEARCH-RESPONSE.md`). The earlier version filed
 > **four different binding constraints under one "pure-Go" label**, which wrongly invited
 > "maybe drop pure-Go" as a remedy — when dropping pure-Go would unblock almost none of these.
 > The true constraint is **primitive maturity + construction design**, not the language.

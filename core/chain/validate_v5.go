@@ -20,8 +20,8 @@ import (
 // applied to the surface that drifted (P-table delta certification M-2).
 //
 // Certified (binding):
-// /Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/FLOORBOX-STRUCTURE-BUILD-PLAN-CERTIFICATION-2026-09-03.md
-// /Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/FLOORBOX-STRUCTURE-P-TABLE-DRIFT-DELTA-CERTIFICATION-e963034-2026-09-07.md
+// /Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/FLOORBOX-STRUCTURE-BUILD-PLAN-CERTIFICATION-2026-09-03.md
+// /Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/FLOORBOX-STRUCTURE-P-TABLE-DRIFT-DELTA-CERTIFICATION-e963034-2026-09-07.md
 //
 // THE CONTRACT IS AN IMPLICATION, NOT A BICONDITIONAL:
 //
@@ -269,7 +269,7 @@ func ValidateProposalV5(v StateView, b *Block) (FloorBoxOutcome, error) {
 	if out, err := v5ValidateBondRegs(v, b); out != Accept {
 		return out, err
 	}
-	if out, err := v5ValidateSlashes(b); out != Accept {
+	if out, err := v5ValidateSlashes(v, b); out != Accept {
 		return out, err
 	}
 	if out, err := v5ValidateIssuerKeys(v, b); out != Accept {
@@ -288,7 +288,10 @@ func ValidateProposalV5(v StateView, b *Block) (FloorBoxOutcome, error) {
 	}
 
 	// ---- 6. P12 the SHARED carrier validity rule. One function, four callers. ----
-	if err := validateCarrier(b); err != nil {
+	// head was read at step 1 and P1 has already bound (b.Prev, b.Height) to it, which is the
+	// precondition the carrier's DERIVED signing height (b.Height-1) rides on. The chain id is
+	// the view's own (class 3, BG-2) — never b's author's.
+	if err := validateCarrier(b, head.ChainID); err != nil {
 		return Reject, err
 	}
 
@@ -315,7 +318,7 @@ func ValidateCommitV5(v StateView, b *Block) (FloorBoxOutcome, error) {
 		return out, err
 	}
 	// ---- 7. C1..C5 the two quorum stacks. ----
-	if out, err := v5RequireProposerPrepare(b); out != Accept {
+	if out, err := v5RequireProposerPrepare(v, b); out != Accept {
 		return out, err
 	}
 	seenPrep, out, err := v5CollectQuorumSigs(v, b, b.PrepareQC, PhasePrepare, b.CommitRound)

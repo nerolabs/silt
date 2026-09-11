@@ -14,7 +14,7 @@
 //	demand_S(C)·p ≤ Σ credits settled at S on fetcher-signed acks naming C ≤ Σ face
 //	spent into S's guard, and per fetcher Σ_C demand·p ≤ its grant (T-QUANT). The v2
 //	token-level form above stays true on its own (retiring) lane. Certification:
-//	silt-reviews/research/research-outcome/R2.9-witnessed-demand-observable-under-sessions-RESEARCH-CERTIFICATION-2026-09-06.md;
+//	silt-agent-memory/researcher/reviews/research-outcome/R2.9-witnessed-demand-observable-under-sessions-RESEARCH-CERTIFICATION-2026-09-06.md;
 //	ratification of the restatement is the owner's (D-DEMAND's doc-truth rule).
 //
 // THE RECEIPT CARRIES NO PoR PROOF (certified 2026-08-26, the PoD neutral-lane
