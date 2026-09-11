@@ -4637,11 +4637,25 @@ third time.
 2. **`ROADMAP.md`'s status headline said M1 was "BUILT AND HELD … not merged".** `26b2f69` is on `main`
    as #818, and the same file contradicted itself 40 lines down. Corrected in place with the superseded
    sentence kept.
-3. **The #805 reachability lint covers NO freeze-manifest mechanism.** `scripts/reachability_lanes.txt`
-   holds exactly three lanes — `paid-delivery`, `paid-delivery-topup`, `paid-relay-client`. The bound is
-   deliberate and its stated reason is sound, but the gate built after owner call F shipped inert does not
-   watch the class of surface F was. **Recorded as owed, not built here.** Do not book a manifest item as
-   BUILT on the strength of a green reachability run.
+3. **The #805 reachability lint covered NO freeze-manifest mechanism — CLOSED 2026-09-11.**
+   `scripts/reachability_lanes.txt` held exactly three lanes — `paid-delivery`, `paid-delivery-topup`,
+   `paid-relay-client` — so the gate built after owner call F shipped inert did not watch the class of
+   surface F was. The 22 items were resolved as a mapping: six name a mechanism in production Go (items 1,
+   3, 6, 10, 19, 20), all six carry lane records (nine records; items 3, 19 and 20 each split in two),
+   every one is PRESENT in the linked `./cmd/silt`, and the sixteen others have no symbol for a gate to
+   hold. Two record clauses fell in the doing and are corrected in `ROADMAP.md`: the "two live cases"
+   sentence named a case already fixed, and the two mechanisms that ARE inert today
+   (`RequireBondedFetchers`, `BBootstrapRunPrecondition`) are not manifest items. The substantiality test
+   also moved from a closure proxy to the compiler's own `cannot inline` verdict, which the proxy's false
+   refusals and one false-RED forced — **SEVEN false refusals, not the four first filed**, measured by
+   running the retired rule against the nine records. **The replacement is a TRADE, not a strengthening:**
+   neither test dominates the other, and a gutted `v5ValidateSlashes` that keeps its cost above budget
+   passes the new gate green while the retired `.funcN` witness goes red on it. The two-way table is in
+   `scripts/check_reachability.py`. One more correction of record: the gate's CI job is **not** a required
+   status check, so its red is advisory at the merge boundary, and `docs/release-checklist.md` now says so
+   where it cites the gate. **Do not book a manifest item as BUILT on the strength of a green reachability
+   run** — reachability is necessary and never sufficient, and that sentence now has seven standing homes,
+   the lane file and the gate's own green-run output among them.
 
 A fourth, found in this true-up: `ROADMAP.md`'s Lane D header still said *"the v5 digest leaves freeze at
 three"*, which `D-MEMBERSHIP-KEEP-FIVE-2026-09-11` reversed. Corrected in place.

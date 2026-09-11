@@ -21,20 +21,50 @@
 # WHAT `substantial` MUST BE ABLE TO SAY, AND WHY THE GATE RE-CHECKS IT
 #   Never name a one-line wrapper. adapters/relay.DialThroughPaid's whole body is
 #   `return dialThrough(...)`; the compiler inlines it into its caller and the symbol
-#   vanishes from a binary where the lane is perfectly live. Name the substantial
-#   entry point — one whose body carries a CALLBACK CLOSURE, which surfaces as
-#   `<symbol>.funcN` in the table. The gate measures the declaration and REFUSES a
-#   thin entry rather than passing it.
+#   vanishes from a binary where the lane is perfectly live. Name a symbol the
+#   COMPILER refuses to inline — and say so with the compiler's own number, which
+#   `go build -gcflags=-m=2 <pkg>` prints as `cannot inline <name>: function too
+#   complex: cost N exceeds budget 80`. The gate runs that measurement itself, per
+#   lane package, and REFUSES a record whose symbol draws `can inline` instead.
+#
+#   That verdict replaced two source-shaped proxies on 2026-09-11, each retired by a
+#   measurement rather than by preference:
+#     - "the body carries a CALLBACK CLOSURE, which surfaces as `<symbol>.funcN`".
+#       A closure is a property of a client entry point handing work to a transport.
+#       Consensus validators do not have one: run the retired rule against the nine
+#       freeze-manifest records below and it refuses SEVEN of them — setD3Digests,
+#       validateD3Digests, CheckConsensusParams, genesis.Build, printEraObservable,
+#       StartupEraLines and chainstore.Recover — every one a symbol the compiler will
+#       not inline at any call site.
+#     - the `.funcN` row as a PRESENT-path anti-hollowing witness. A closure can be
+#       inlined into its own parent, leaving no `.funcN` row in a binary where the
+#       parent is plainly live, so the witness reported a live mechanism as hollowed.
+#
+#   NEITHER TEST DOMINATES THE OTHER, AND THE GAP IS NAMED. The inline verdict is not
+#   strictly stronger than the `.funcN` witness. Gut `core/chain.v5ValidateSlashes` —
+#   delete the SlashesBytesCap check, the M2 era floor and the culprit walk, keep one
+#   used closure — and the compiler still says `cannot inline` at cost 263, so THIS GATE
+#   RUNS GREEN while the retired witness goes RED on the same binary. The reverse case
+#   is `stateRootLeavesV5`, live and load-bearing, which the retired witness called
+#   hollowed. Both are the same compiler event read two ways. The trade is right — the
+#   inline verdict catches the hollowing that actually happens and drops a false RED —
+#   but a green run of this gate is NOT evidence that a lane's mechanism is intact.
+#   scripts/check_reachability.py carries the full two-way table.
 #
 # AN UNREASONED ROW FAILS. `claim` and `substantial` are checked for length and for
 # null-words, and each has a mechanical companion: `label` must resolve in the
-# checklist, and the body measurement must agree with `substantial`. An allowlist
-# rationale is itself a claim, and it decays exactly like a cited test name.
+# checklist, and the compiler's inline verdict must agree with `substantial`. An
+# allowlist rationale is itself a claim, and it decays exactly like a cited test name.
 #
 # ADDING A LANE IS ADDING A RECORD. Keep the set bounded to lanes the release
 # checklist makes a public claim about. This is not a sweep of exported symbols: the
 # floor-box keystone is inert by ratified owner direction (D-RECOMPUTE-FREEZE) and
 # would drown the signal.
+#
+# ⚠ REACHABILITY IS NECESSARY AND NEVER SUFFICIENT. A green run proves every symbol
+# below survived linking. It proves nothing about whether any mechanism is correct,
+# or whether it computes what its record claims. DO NOT BOOK A FREEZE-MANIFEST ITEM
+# AS BUILT ON THE STRENGTH OF A GREEN REACHABILITY RUN.
 
 # ---------------------------------------------------------------------------
 # The paid delivery lane — RC-open, graded at E5. Three client entry points:
@@ -95,3 +125,100 @@ symbol: github.com/nerolabs/silt/core/node.(*Node).SubmitRelayPay
 label: the paid relay lane
 claim: Revealing preimages is what raises the relay's authorizer ceiling as bytes forward; it is the paying half of the paid relay claim, so the checklist's posture on that lane is a claim about this symbol being reachable.
 substantial: Marshals a RelayPay and hands n.request a closure that reads the authorized count off the reply and maps a refusal to a named error; the closure surfaces as SubmitRelayPay.func1.
+
+# ===========================================================================
+# THE ERA-4/V5 FREEZE-MANIFEST MECHANISMS
+#
+# Why they are in a file whose header says "lanes the release checklist makes a
+# public claim about": the checklist now makes one about them, under "Every
+# era-4/v5 freeze-manifest mechanism is in the shipped binary". They were added
+# because the gate built after owner call F shipped INERT did not watch the class
+# of surface F was. `CheckConsensusParams` sat with zero non-test callers for a day
+# while `D-CFGBIND-BUILT-2026-09-10` read "✅ BUILT … Closes R-CONSENSUS-CONFIG-UNBOUND
+# on the production path", and a green run of this gate would have said nothing.
+#
+# THE MAPPING, NOT A SAMPLE. The manifest holds 22 items. SIX name a mechanism that
+# lives in production Go — items 1, 3, 6, 10, 19 and 20 — and all six are below, as
+# NINE records (items 3, 19 and 20 each have two independently droppable halves).
+# The other sixteen have nothing for this gate to hold: 2, 4, 5, 12 and 13 are
+# dropped or refuted, 8 is declined for the RC, 7, 9, 16, 18, 21 and 22 are owed, and
+# 11, 14, 15 and 17 are delivered as TESTS — a test symbol is never in ./cmd/silt,
+# and a test that can see a symbol is itself the caller keeping it alive.
+#
+# ITEM 18 IS EXCLUDED ON A NARROWER GROUND THAN THE OTHER FIVE OWED ITEMS, AND THE
+# DIFFERENCE MATTERS. Items 7, 9, 16, 21 and 22 have no symbol in the tree. Item 18
+# does: `core/statehash.IngestBlockWitnesses` is the R3 witness-bound gate, the
+# compiler prices it at 478 against a budget of 80, and it is ABSENT from the linked
+# ./cmd/silt because it has zero non-test callers. What is owed is the item's
+# DELIVERABLE — a gob message-length pre-check inside it — not the function. So item
+# 18 is out of this gate because its deliverable does not exist, NOT because its
+# surface is missing, and the surface being unlinked is a separate live finding:
+# `R-INGEST-WITNESSES-INERT` in ROADMAP.md. Wiring it up is a consensus-surface
+# change and is not a thing this file may do to make a run green.
+#
+# ⚠ REACHABILITY IS NECESSARY AND NEVER SUFFICIENT. DO NOT BOOK A MANIFEST ITEM AS
+# BUILT ON THE STRENGTH OF A GREEN REACHABILITY RUN. A green run proves the symbol
+# survived linking. It proves nothing about whether the mechanism is correct, or
+# whether it computes what its record claims. Item 20 is the standing example: two of
+# its three arms are below, the third has no mechanism in the tree, and this file
+# cannot tell the difference between "the third arm is owed" and "the item is done".
+#
+# ADDING A MANIFEST ITEM HERE MEANS ADDING A RECORD AND A CHECKLIST BULLET. An item
+# whose mechanism is owed gets neither: there is no symbol to name, and inventing a
+# posture line for a mechanism that does not exist is the over-claim this gate
+# refuses in the other direction.
+# ===========================================================================
+
+lane: freeze-revlogsize
+symbol: github.com/nerolabs/silt/core/chain.(*Chain).stateRootLeavesV5
+label: the committed revocation-log size
+claim: Manifest item 1 is booked BUILT, and the whole of the item is that a v5 state root carries the revocation log's SIZE. A wrong or missing m is a wrong-accept, and every floor box dies permanently at the first takedown block after its pin, so the checklist's claim that item 1 is delivered is a claim about this function being in the binary.
+substantial: The compiler prices the body at cost 1236 against an inline budget of 80 and reports `cannot inline`, so an absence from the symbol table is the linker dropping it. Its own closure at statehash.go:306 IS inlinable and leaves no `.funcN` row in a binary where this function is plainly live — this record is why the gate measures the declaration instead of hunting a closure witness.
+
+lane: freeze-d3-digests
+symbol: github.com/nerolabs/silt/core/chain.setD3Digests
+label: the two-level v5 block hash
+claim: Manifest item 3 is booked BUILT on the sentence that a pruned v5 block recomputes its own hash because its retained body is self-covering. That rests on every minted v5 block actually CARRYING AnswerDigest and SlashesDigest, and this is their only production writer. A format field nothing writes is not in the format, whatever the schema says.
+substantial: Cost 172 against an inline budget of 80, `cannot inline setD3Digests`. It carries no function literal anywhere in its body, which is ordinary for a mint-path mutator and is exactly the shape the retired closure proxy refused.
+
+lane: freeze-d3-digests
+symbol: github.com/nerolabs/silt/core/chain.validateD3Digests
+label: the two-level v5 block hash
+claim: The other half of item 3's claim. Digests are self-covering only if a peer REFUSES a block whose digests disagree with its body; this is that refusal, reached from all three block-admission paths. Dropping it would leave the writer emitting fields no receiver checks, which is a weaker property than the one the manifest books.
+substantial: Cost 1010 against an inline budget of 80 — the widest margin in this file — and `cannot inline validateD3Digests`. No function literal in the body.
+
+lane: freeze-genesis-config
+symbol: github.com/nerolabs/silt/core/genesis.Build
+label: the genesis mint that binds the config
+claim: Manifest item 6 is discharged by the M1 genesis move, whose mechanism is that height 0 COMMITS this network's consensus config by value. This is the only production mint, and it takes the params as a required argument precisely so that a paramless production genesis is something a caller must ask for in writing.
+substantial: Cost 421 against an inline budget of 80, `cannot inline Build`. No function literal in the body, so the retired closure proxy would have refused the one symbol the whole genesis bind passes through.
+
+lane: freeze-slashes-cap
+symbol: github.com/nerolabs/silt/core/chain.v5ValidateSlashes
+label: the slashing-evidence byte ceiling
+claim: Manifest item 10 books the SlashesBytesCap value as BUILT. The value is a constant, and a constant is never in a symbol table; what the checklist is claiming is that something enforces it before signature work on the v5 path, which is this predicate.
+substantial: Cost 441 against an inline budget of 80, `cannot inline v5ValidateSlashes`. This one does carry a closure and does keep a `.funcN` row, which is how the retired witness looked when it happened to work.
+
+lane: freeze-era-observable
+symbol: github.com/nerolabs/silt/cmd/silt.printEraObservable
+label: the era pair an operator reads at start-up
+claim: Manifest item 19 is the era observable, and its entire value is that an OPERATOR can tell an era-4-dark chain from a wrong-build chain. A CLI half that is not in the binary delivers none of that, however complete the reducer beneath it is.
+substantial: Cost 721 against an inline budget of 80, `cannot inline printEraObservable`. No function literal in the body. It also sits in package main, so the linker spells it `main.printEraObservable` while this record spells the import path — the gate translates, and without that translation this record would read ABSENT from a binary that contains it.
+
+lane: freeze-era-observable
+symbol: github.com/nerolabs/silt/core/chain.StartupEraLines
+label: the era pair an operator reads at start-up
+claim: The daemon half of item 19. A chain carrying no v5 block is a healthy dark network under an era-4 build and the WRONG BUILD under an era-2 one, and neither number discriminates alone, so the item's claim is that both print together on the boot path. This is the reducer that composes them, and cmd/silt/daemon.go's eraStartupLines wrapper is its only production caller, so it leaves ./cmd/silt exactly when the boot path stops printing the pair.
+substantial: Cost 906 against an inline budget of 80, `cannot inline StartupEraLines` — the second-widest margin in this file. THIS RECORD USED TO NAME THE WRAPPER, cmd/silt.eraStartupLines, and that was an arithmetic accident waiting to fire: the wrapper is ONE body line whose cost of 120 is two non-inlinable call charges (Go prices a call to a non-inlinable callee at about 57), not body substance. Fold those two calls into one — pass the EraState in, or let StartupEraLines take the chain — and the wrapper drops under budget, this gate REFUSES the record, and CI goes red on a refactor that changed nothing about reachability. Naming the reducer removes the accident at no cost to the signal: deleting the boot-path call drops BOTH main.eraStartupLines and core/chain.StartupEraLines from the binary.
+
+lane: freeze-refuse-to-start
+symbol: github.com/nerolabs/silt/adapters/chainstore.Recover
+label: the two refuse-to-start arms that are built
+claim: Manifest item 20 arm (a). The checklist claims a daemon that refuses rather than serves when its on-disk chain is torn or has lost block 0; this is the function that returns that refusal, and the daemon exits 3 on it. A refusal nothing calls is a chain silently served from a damaged store.
+substantial: Cost 802 against an inline budget of 80, `cannot inline Recover`. No function literal in the body.
+
+lane: freeze-refuse-to-start
+symbol: github.com/nerolabs/silt/core/chain.(*Chain).CheckConsensusParams
+label: the two refuse-to-start arms that are built
+claim: Manifest item 20 arm (b), and the record this whole section exists because of. It catches the one divergence joining cannot — an operator who edits a flag and restarts on a chain this node ALREADY joined, where the genesis on disk is unchanged and nothing else notices. It shipped with zero non-test callers on 2026-09-10 while its decision entry read BUILT.
+substantial: Cost 278 against an inline budget of 80, `cannot inline (*Chain).CheckConsensusParams`. No function literal in the body, so the proxy that was in force when this mechanism shipped inert could not have held a record on it even if someone had written one.
