@@ -213,18 +213,18 @@ func TestGenesisSeatedCountEqualsVerifiedCount(t *testing.T) {
 	unq := key(31002)                                     // verified-but-unqualified: rep 0 < MinAttesterRep
 	w.reps[idOf(unq)] = 0
 
-	verifiedK1 := Attest(g, k1)                      // era-1 form
-	verifiedK2 := AttestAt(g, k2, 0, PhasePrecommit) // era-2 form (the A11 fixture convention)
+	verifiedK1 := Attest(g, k1)                                    // era-1 form
+	verifiedK2 := AttestAt(g, k2, 0, PhasePrecommit, ports.Hash{}) // era-2 form (the A11 fixture convention)
 	verifiedUnq := Attest(g, unq)
 	verifiedSelf := Attest(g, w.prop)
 	v := gasWithAtts(t, g, gasStub(stub1), verifiedK1, gasForeignAtt(stub2), verifiedUnq, verifiedK2, verifiedSelf)
 	for i, a := range []Attestation{verifiedK1, verifiedK2, verifiedUnq, verifiedSelf} {
-		if !verifyAtt(a, g.Hash()) {
+		if !verifyAtt(a, attScope{ChainID: g.Hash(), Height: g.Height}, g.Hash()) {
 			t.Fatalf("premise: verified att %d does not verify", i)
 		}
 	}
 	for i, a := range []Attestation{gasStub(stub1), gasForeignAtt(stub2)} {
-		if verifyAtt(a, g.Hash()) {
+		if verifyAtt(a, attScope{ChainID: g.Hash(), Height: g.Height}, g.Hash()) {
 			t.Fatalf("premise: stub %d verifies", i)
 		}
 	}
@@ -247,7 +247,7 @@ func TestGenesisSeatedCountEqualsVerifiedCount(t *testing.T) {
 		t.Errorf("committed blocks[0].Atts has %d entries, want 4 (the verified subset: k=2 + unqualified + proposer self-att); a strip-ALL rule gives 0, the unfiltered rule gives 6", len(committed))
 	}
 	for i, a := range committed {
-		if !verifyAtt(a, g.Hash()) {
+		if !verifyAtt(a, attScope{ChainID: g.Hash(), Height: g.Height}, g.Hash()) {
 			t.Errorf("committed blocks[0].Atts[%d] does NOT verify over the genesis hash — an unverified entry survived into the committed genesis", i)
 		}
 	}

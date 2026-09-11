@@ -278,7 +278,7 @@ func v5ValidateTakedowns(v StateView, b *Block) (FloorBoxOutcome, error) {
 // v5ValidateSlashes mirrors Chain.validateSlashes (block-local, no committed read): the
 // SlashesBytesCap ceiling FIRST, before any signature work, then CheckEquivocation per proof with
 // both hashes recomputed from full bodies (R0.6).
-func v5ValidateSlashes(b *Block) (FloorBoxOutcome, error) {
+func v5ValidateSlashes(v StateView, b *Block) (FloorBoxOutcome, error) {
 	if len(b.Slashes) == 0 {
 		return Accept, nil
 	}
@@ -286,7 +286,7 @@ func v5ValidateSlashes(b *Block) (FloorBoxOutcome, error) {
 		return Reject, fmt.Errorf("%w: %d bytes (cap %d)", ErrSlashesBytesCapExceeded, n, SlashesBytesCap)
 	}
 	for i := range b.Slashes {
-		if err := CheckEquivocation(&b.Slashes[i]); err != nil {
+		if err := CheckEquivocation(&b.Slashes[i], v.Head().ChainID); err != nil {
 			return Reject, fmt.Errorf("%w: proof %d: %w", ErrBadSlash, i, err)
 		}
 	}

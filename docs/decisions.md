@@ -1394,7 +1394,7 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   > two ordinary ~4.14 MiB reg-laden proofs; the driven construction reaches the same armored state with
   > **header-only** 687 B proofs, which is far cheaper for an attacker to build. Anything that prices the
   > attacker's cost must use the header-only route.
-  > **(iii)** The close that does exist is not (d-3): `consensusSigBytes` (`core/chain/chain.go:1076`)
+  > **(iii)** The close that does exist is not (d-3): `consensusSigBytes` (`core/chain/chain.go`)
   > omits **Height** from the signature preimage — "the height rides inside the hash" — which is the
   > entire reason evidence carries full bodies (`equivocation.go:54-60` says so). Putting
   > `(height, round, phase)` in the v5 preimage makes evidence `O(1)`, ~200 bytes **[the ~200 B figure
@@ -1418,7 +1418,7 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   >
   > **⚠ WRONG A THIRD TIME, AND REPLACED BY THE OWNER — 2026-09-10
   > (`D-D3-CERT-REFUTATION-2026-09-10`).** The *"roughly 40×"* figure is refuted. `SlashesBytesCap` is
-  > enforced against `SlashesEncodedSize` (`core/chain/chain.go:2372`), which marshals the ACTUAL
+  > enforced against `SlashesEncodedSize` (`core/chain/chain.go`), which marshals the ACTUAL
   > `[]Equivocation` — real encoded bytes with full `Block` bodies. (d-3) reduces the HASH PREIMAGE,
   > which that function never reads. **As specified, (d-3) shrinks the face by ZERO and is marginally
   > negative.**
@@ -2872,7 +2872,7 @@ showing the one-byte value IS committed).
 
 ### Call 1 — BUY the signature-preimage change at D1, conditional on its delta cert
 
-**BOUGHT.** `consensusSigBytes` (`core/chain/chain.go:1076`) omits **Height** from the signed
+**BOUGHT.** `consensusSigBytes` (`core/chain/chain.go`) omits **Height** from the signed
 preimage; the v5 preimage carries `(height, round, phase)`, after CometBFT's `CanonicalVote`.
 Evidence then becomes `O(1)` — **~251 B DERIVED, not the ~200 B first cited; unmeasured until gate G-PRE-9** — instead of two full `Block` bodies.
 
@@ -3433,7 +3433,7 @@ false, and this repo says so in two places — verified at source:**
   `[32]byte`, so *"key 14 is present in EVERY encoded block body, zero-valued for a non-pruned
   block. It is part of the frozen bytes."*
 
-**Why that is a bright-line breach and not a bug.** `bodyHash()` (`core/chain/chain.go:902`, verified)
+**Why that is a bright-line breach and not a bug.** `bodyHash()` (`core/chain/chain.go`, verified)
 folds `BondRegs: b.BondRegs` into the unsigned literal with **no version branch at all**. So a
 fixed-size field on `BondReg` is emitted into every era's preimage, and **the hash of every v2 and v4
 block carrying a bond registration changes — on live history, before era-4 ever activates.** That is
@@ -3445,7 +3445,7 @@ step-2a fix already proven in this repo for `StateRoot`/`LogRoot`. Mechanism, no
 ### The second refuted clause — `Slashes'` is unnecessary and harmful
 
 §4.3 reduces each embedded evidence block to *"its own era's header form"* — a recursively reduced
-COPY. **REFUTED:** `Prune()` never touches `Slashes` (`core/chain/chain.go:990-992`, verified:
+COPY. **REFUTED:** `Prune()` never touches `Slashes` (`core/chain/chain.go`, verified:
 *"Note that Prune does NOT recurse into Slashes: evidence bodies embedded in a committed block stay
 resident forever, which is why `SlashesBytesCap` bounds that slot"*), so the reduction buys nothing
 for the self-covering property — and it adds a **per-hash 16 MiB deep copy**, re-opening `#563`.
@@ -4138,3 +4138,141 @@ the tempting fix is to weaken the check. The rule below forecloses that reading 
 **The rule, and it lives in `docs/release-checklist.md`:** changing any of these compile-time defaults
 is a **breaking change requiring a new network**, because every upgrading node refuses to start on the
 existing chain.
+
+---
+
+## D-M1-GENESIS-MOVE-2026-09-11 — the network's name is committed, the era boundary gets its flags, and the membership doctrine gains a second CLOSED category
+
+- **Status:** ✅ BUILT and HELD on `builder/m1-genesis-move`, not merged — it is a FORMAT item and
+  the owner reviews those individually. `core/chain`, `core/node`, `core/genesis` and `cmd/silt`
+  green.
+- **Certification (binding, GATED on all three layers):**
+  `NETWORK-IDENTITY-BINDING-THREE-LAYER-RESEARCH-CERTIFICATION-2026-09-11.md` §2 and §4.
+- **The frame, and it governs every sentence below:** there is NO live network. Era 4 is OPEN and
+  fully malleable until the first RC. The freeze is a gate the team opens when the work is done,
+  never a deadline. Say **era 4**; the code's `V5` identifiers are its implementation.
+
+### What moved, and what did not
+
+**THE GENESIS HASH MOVES. THE FREEZE READ-SET DOES NOT.** These are different quantities with
+different prices, and conflating them is what invites the era-cost argument the owner has
+forbidden. No SMT tag was added or renamed; `StateView.Params` is class 3, *"never witnessed,
+never a parameter"*; and **no `Block` cbor key was added** — key 18 is added INSIDE
+`ConsensusParams`, which already rides at `Block.Params`. The paramless genesis pin
+`e44344ea…72c0` is **unchanged**, which is the proof.
+
+The params-carrying pin moved `4a305b96…9c46` → `b862f16b…3b57`
+(`TestG_CFGBIND_6b_TheParamsCarryingGenesisHashIsPinned`, re-pinned as an explicit recorded act
+with the reason beside the literal).
+
+**M1 is the ONLY genesis move.** Owner call A's preimage, owner call F's bind, `NetworkName` and
+the two era-activation flags land together. Every one of them re-mints the genesis; deferring any
+one pays the graded re-run set twice.
+
+### (1) `ConsensusParams.NetworkName`, cbor key 18
+
+The owner's requirement: **a node reports its network by both a cryptographic identifier and a
+canonical text name.** A flag would have been the vacuity `eradeclared.go` already ruled against —
+the operator reading their own input back. A committed name is read off the chain.
+
+**THE HASH IS THE IDENTITY; THE NAME IS A LABEL.** Collisions are not preventable and are not meant
+to be. So **the name is never displayed without the tag**, and that is structural rather than
+policy: `(*Chain).NetworkIdentity` is the only accessor, there is deliberately **no**
+`(*Chain).NetworkName`, and a render site cannot print one without the other without reaching past
+it into `ConsensusParams`. Driven by `TestGNAME1_*`, with the tag-stripped renderer, the
+config-read and the un-narrated zero each ablated RED.
+
+The certification priced this at seven sites. It is **nine**: the seven, plus `setNonZero`
+(no `reflect.String` case, so the hash-coverage gate refuses to guess and goes RED) and the report
+itself. `paramsExcluded` was the tenth candidate and correctly needed no row — the field is
+carried.
+
+### (2) `-era3-activation-height` / `-era4-activation-height`, both defaulting to 1
+
+Committed at keys 13/14 since the genesis bind, riding the refuse-to-start arm, and with **no
+flag**: `grep Era[34]ActivationHeight cmd/` returned nothing outside a test. `Diff` already emitted
+`era4-activation-height` as advice naming something an operator could not set — the same defect the
+`bond-vdf-delay` row documents in its own comment.
+
+**Default 1/1 is the ratified launch posture, and it is not convenience.** The era-4 attestation
+form binds the chain id; the era-2 form does not and is frozen forever. At every height below
+H_era4 a consensus signature carries no network and is portable between silt networks. Committing
+`Era4ActivationHeight = 1` leaves **no height above the genesis** in that interval, which is the
+precondition that makes the M2 era-floor evidence rule a TOTAL closure rather than a partial one.
+**The flag and the rule are one decision.** Three consequences, all deliberate: the era-4 readiness
+tally never runs (it is gated on `== 0`), so the boundary is a genesis constant with no latch; and
+a store whose genesis commits 0/0 refuses to start — correct, and free, because key 18 already made
+every pre-M1 store foreign.
+
+**The height-0 residual, settled.** `MintVersion(0)` is still 2 at `H = 1`. `AttestAt` has five
+honest production call sites, all in `core/node/chainrole.go`'s round path; `cmd/silt/daemon.go`
+seeds genesis via `AppendGenesis` **before** `nd.EnableChain`, so no proposer ever holds an empty
+chain and `Head()` never offers height 0. **Derived-unreachable on the daemon path**, asserted in
+`TestEra4ActivationOneEmptiesTheSubEra4Interval`, and named as live again for JOIN mode.
+
+### (3) THE MEMBERSHIP DOCTRINE — a second CLOSED category, owner-ratified 2026-09-11
+
+`NetworkName` is the first `ConsensusParams` member reaching **no validity verdict** — and "it
+reaches no verdict" is the struct's own recorded reason for **excluding** `Archive`. Shipping it
+under the old rule would have made a machine-checked doctrine unfalsifiable.
+
+**The amended rule. Three closed categories, not two plus an exception.** A `chain.Config` field is
+exactly one of:
+
+- **(a) BOUND** — it can change a validity verdict, so it is bound to the chain;
+- **(b) NETWORK IDENTITY** — it changes **no** validity verdict, and it **is** genesis-covered;
+- **(c) EXCLUDED** — with a recorded reason.
+
+**The owner's binding condition — (b) has a closed complement too.** *"Otherwise 'it's an identity
+field' becomes the escape hatch that admits anything, and we've traded a testable doctrine for a
+rhetorical one."* Both arms are machine-checked, from opposite sides:
+
+- **changes no verdict** is **MEASURED**: the field must carry a perturbation that actually ran,
+  and diverge in **zero** regimes. Diverge anywhere and it is (a) — declaring it (b) is RED.
+- **is genesis-covered** is **resolved by reflection** against the real `ConsensusParams` through
+  `carriedAs`. Not carried and it is (c) — declaring it (b) is RED.
+
+So (b) admits exactly the fields that ride in the genesis hash and move no verdict. Such a field
+has precisely **one** observable effect: it partitions networks and names them. That is what an
+identity property of the network *is*, and nothing else fits through.
+
+Ablations, each verified by exit code: an identity field declared not-carried → RED; a **diverging**
+field (`Era4ActivationHeight`) declared identity → RED; the perturbation deleted → RED; a new
+undeclared field in `chain.Config` → RED; a new undeclared field in `ConsensusParams` → RED;
+restore → GREEN.
+
+The field count moved 17 → 18. It remains the rule's **OUTPUT** — the two declaration tables are a
+reflected bijection onto the struct, and nothing keys on the arithmetic.
+
+### (4) Two gates that could not both be right
+
+The certification derived a contradiction between `G-PRE-6` and `G-PRE-7` from source and left it
+UNSETTLED pending execution. **Executed: it is real.** `AttPhase` returns the step unchanged for a
+sub-era-4 block, so `AttestAt` never reads the chain id and the era-2-form leg is **bit-identical**
+to one harvested from another silt network. `G-PRE-7`'s fourth subtest demanded CONVICT on a pair
+containing such a leg — **asserting an I5 violation as required behaviour**, under a title calling
+the refusal an "ACCOUNTABILITY REGRESSION". The widening slashes the honest; it is the #397 shape.
+
+**M1 fixes the TEST, not the rule.** The closer is M2's era-floor refusal at `validateSlashes`,
+`FindEquivocations` and `slashEquivocators` in one commit — a consensus-rule change, research-gated,
+and not a builder's to make. Subtest 4 is re-authored: it drives the chain-blindness, records the
+open face with a trip that reddens **the day M2 closes it**, and machine-checks its scope against
+`(*Chain).MintVersion` on a separately-built chain. `G-PRE-6`'s pre-era-4 arm gains the same floor
+witness and stops calling itself "the ablation" — it is a **live residual**, not a re-enacted one.
+
+**A simpler closure was considered and declined.** Removing `canonicalStep` from
+`consensusSigScopes` is strictly narrowing (the accept set only shrinks, so it can never manufacture
+a slash), needs no chain and no floor, and closes the mixed-form face at every height. It is still a
+change to block validity, so it is research-gated, and it would be a *second* mechanism competing
+with the certified era floor. **Surfaced to the planner as an option M2 should price, not taken
+here.**
+
+### Residuals
+
+- `R-SLASH-CULPRIT-ADMISSIBILITY` — unchanged and OPEN; the era-floor rule is its closer.
+- The cross-network false slash below H_era4 — **HELD IN TENSION**, bought off by a genesis
+  constant, never eliminated. The RC network has no reachable height; the defect stays expressible.
+- The height-0 `(v2,v2)` pair — OPEN, bounded, derived-unreachable on the daemon path.
+- The silent singleton (a typo'd flag founds a network of one that reports healthy) — **made more
+  legible, not closed.** JOIN/START is its fix, a later move. The display rule is what keeps a
+  committed name from making it harder to see in the meantime.

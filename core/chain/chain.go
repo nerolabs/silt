@@ -278,6 +278,30 @@ type Config struct {
 	// New rather than minting one. TODO(ratify): the mainnet activation height is a
 	// consensus value the human sets before mainnet — no default is picked here.
 	Era4ActivationHeight uint64
+	// NetworkName is this network's CANONICAL TEXT NAME, committed into the genesis block.
+	//
+	// WHY IT IS COMMITTED AND NOT A FLAG. The owner's requirement is that a node report its
+	// network by BOTH a cryptographic identifier and a canonical text name. A name read from
+	// local config reports a BELIEF — the operator reads their own input back, which is the
+	// vacuity eradeclared.go already ruled against for the declared era. Committing it means
+	// the name a node prints came from the chain it is actually serving.
+	//
+	// IT REACHES NO VALIDITY VERDICT, and that is deliberate. Nothing in the validation path
+	// reads it, and the divergence gate MEASURES that rather than asserting it: zero
+	// divergence in all five regimes. It is the FIRST member of ConsensusParams that is not a
+	// canon-rule-8 bind, and the membership doctrine was amended with a second CLOSED category
+	// to admit it — see ConsensusParams' doc and configDecls' classNetworkIdentity.
+	//
+	// COLLISIONS ARE NOT PREVENTABLE AND ARE NOT MEANT TO BE. Two networks may pick the same
+	// name; they cannot pick the same genesis hash. THE HASH IS THE IDENTITY, THE NAME IS A
+	// LABEL — so the name is NEVER displayed without the tag. (*Chain).NetworkIdentity is the
+	// only accessor, and it always renders both; there is deliberately no accessor that
+	// returns the bare name.
+	//
+	// THE EMPTY STRING IS A MEANING, not an absence: an unnamed network. ConsensusParams
+	// carries no omitempty on any field, and NetworkIdentity narrates the zero rather than
+	// rendering a blank.
+	NetworkName string
 }
 
 // WSCheckpoint is a recent trusted (height, hash) a replica will not reorg before.
@@ -494,11 +518,73 @@ const SlashesBytesCap = 16 << 20
 // Consensus signature phases (#432 two-phase gather, research-certified).
 // PhaseLegacy (0) is the era-1 bare-hash signature — what a pre-rounds
 // Attestation decodes as; never minted in era 2.
+//
+// era-4 adds PhasePrepareV5 (3) / PhasePrecommitV5 (4): the SAME two steps, signed under
+// the era-4 preimage (consensusSigBytesV5 — chain id and height added). They are WIRE
+// phases, never watermark phases: see AttPhase and T-STEP-VS-FORM below.
+//
+// THE ORDERING IS A SAFETY CONSTRAINT, NOT A STYLE CHOICE. core/node.slotCompare orders a
+// validator's durable anti-double-sign watermark by comparing the phase byte NUMERICALLY,
+// so prepare < precommit is what stops a validator taking the prepare slot AFTER the
+// precommit slot within one height. Assigning PhasePrecommitV5 below PhasePrepareV5 would
+// invert that within era 4. Pinned by TestGPRE4_PhaseConstantOrderingIsMonotone, not by
+// this comment.
 const (
-	PhaseLegacy    uint8 = 0
-	PhasePrepare   uint8 = 1
-	PhasePrecommit uint8 = 2
+	PhaseLegacy      uint8 = 0
+	PhasePrepare     uint8 = 1
+	PhasePrecommit   uint8 = 2
+	PhasePrepareV5   uint8 = 3
+	PhasePrecommitV5 uint8 = 4
 )
+
+// AttPhase maps a canonical consensus STEP (PhasePrepare / PhasePrecommit) to the WIRE phase
+// constant a block of version `version` carries. It is the ONE place the era→form mapping
+// lives, so the producer (AttestAt) and every phase-exactness check (collectQuorumSigs,
+// requireProposerPrepare and their v5 twins) cannot drift — the #558 share-the-arithmetic
+// lesson applied to the constant instead of to the preimage.
+//
+// T-STEP-VS-FORM (certification §5.4, 2026-09-10). The DURABLE watermark
+// (ports.SignMark.Phase, fsynced before any signature is released) records the STEP and is
+// never passed through here; only the attestation on the wire records the ERA-FORM. Keeping
+// the watermark's alphabet frozen at {0,1,2} is what makes SignMark's on-disk encoding
+// byte-identical across the era-4 upgrade: a mark written (H, r, PhasePrecommit=2) and read
+// back by a v5 binary probing with 3 would compare 3 > 2, NOT block, and the node would sign
+// a different block at a height it had already precommitted — a self-manufactured double-sign
+// produced by the upgrade itself (the #397 crash variant, driven RED by
+// TestGPRE3_UpgradeMustNotReinterpretTheDurableSignMark).
+//
+// PhaseLegacy and any unknown step pass through unchanged: era 1 has no v5 form.
+func AttPhase(version uint64, step uint8) uint8 {
+	if version < BlockVersionWitnessable {
+		return step
+	}
+	switch step {
+	case PhasePrepare:
+		return PhasePrepareV5
+	case PhasePrecommit:
+		return PhasePrecommitV5
+	default:
+		return step
+	}
+}
+
+// isCarrierPrecommit reports whether `phase` is a PRECOMMIT in EITHER era form.
+//
+// DUAL-FORM BY NECESSITY, capability-neutral by proof. validateCarrier verifies the PARENT's
+// precommits while holding only the CHILD, so it cannot read the parent's Version — the
+// container it can see is the wrong object to key on (T-ERA-DISPATCH). Under P1 parent
+// binding b.Prev names a unique committed parent with exactly one Version, so accepting both
+// forms admits exactly the honest set plus, at most, an off-form signature by a Byzantine
+// attester; that grants nothing, because seating is idempotent, screened by
+// attesterQualified, and counts toward NO quorum (collectQuorumSigs is fatal on a phase
+// mismatch). Residual R-CARRIER-OFFFORM-SEAT, held in tension, certification §5.3.
+//
+// ONE PREDICATE, TWO CALLERS: validateCarrier (the validity rule) and HeadCarrier (the
+// producer filter). If the two disagreed, an honest proposer would mint a carrier its own
+// replica refuses — the boundary wedge this whole change exists to close.
+func isCarrierPrecommit(phase uint8) bool {
+	return phase == PhasePrecommit || phase == PhasePrecommitV5
+}
 
 // Block is one link of the registry chain.
 type Block struct {
@@ -1079,6 +1165,10 @@ func Attest(b *Block, priv ed25519.PrivateKey) Attestation {
 // quorum at another (schedule S1); the height rides inside the hash. The
 // domain tag keeps these signatures disjoint from every other signature an
 // identity key ever makes.
+//
+// FROZEN. Every committed era-1/era-2/era-3 signature was made over these bytes, and committed
+// history is never re-interpreted, so this function and its domain constant may never change.
+// era-4 adds consensusSigBytesV5 BESIDE it; it does not edit this one.
 func consensusSigBytes(phase uint8, round uint64, h ports.Hash) []byte {
 	buf := make([]byte, 0, len(consensusSigDomain)+1+8+len(h))
 	buf = append(buf, consensusSigDomain...)
@@ -1092,23 +1182,138 @@ func consensusSigBytes(phase uint8, round uint64, h ports.Hash) []byte {
 
 const consensusSigDomain = "silt/consensus/v2\x00"
 
-// AttestAt produces a validator's era-2 phase/round-scoped consensus signature
-// for b (#432 two-phase gather).
-func AttestAt(b *Block, priv ed25519.PrivateKey, round uint64, phase uint8) Attestation {
+// consensusSigDomainV5 is the era-4 consensus-signature domain tag. The SAME LENGTH as the
+// era-2 tag, so the two layouts stay field-aligned; different BYTES, so a v5-form signature can
+// never be read as a v2 one even if the two preimages were ever to reach the same length.
+const consensusSigDomainV5 = "silt/consensus/v5\x00"
+
+// consensusSigPreimageV5Len is the exact width of every consensusSigBytesV5 output.
+// Load-bearing for the junk-leaf re-pricing, so it is MEASURED, never quoted from a derivation
+// (silt-derive-then-drive): TestGPRE9_MeasureThePreimageAndTheEvidenceMaterial prints and pins it.
+const consensusSigPreimageV5Len = len(consensusSigDomainV5) + len(ports.Hash{}) + 1 + 8 + 8 + len(ports.Hash{})
+
+// consensusSigBytesV5 is the ERA-4 signed payload — the owner-call-A layout, research-certified
+// 2026-09-10:
+//
+//	offset  0  18  "silt/consensus/v5\x00"   domain tag
+//	offset 18  32  chainID                   the genesis block's Hash() — NETWORK IDENTITY
+//	offset 50   1  phase                     PhasePrepareV5 | PhasePrecommitV5
+//	offset 51   8  height   little-endian    THE #397 FIELD — what this change buys
+//	offset 59   8  round    little-endian
+//	offset 67  32  h                         the attested block hash
+//
+// WHY HEIGHT. The era-2 preimage binds (round, phase) and lets the height ride "inside the
+// hash". That indirection is exactly what Block.Pruned severed: the accuser supplied the height
+// from OUTSIDE the signed message, so two genuine signatures at two DIFFERENT heights could be
+// re-labelled as one double-sign and evict an honest validator (I5, R0.6 — CheckEquivocation's
+// comment says the height check "is sound only because the signed message is a digest OVER the
+// declared Height"). This is the SECOND occurrence of the #397 watermark scar — the same
+// (height, round, step) schema family, the same dropped field, and the dropped field is again
+// the thing that broke (docs/build-process.md rule 6). With the height declared INSIDE the
+// message the forgery has no expression: at most one of the two signatures verifies at one
+// declared height. Driven by TestGPRE5_DeclaredHeightMustBindTheSignature.
+//
+// WHY THE CHAIN ID, AND WHY A DOMAIN TAG IS NOT ONE. consensusSigDomain separates message KINDS,
+// not NETWORKS — it is the same constant on every silt network that has ever existed, and the
+// genesis moved on 2026-09-07, so two exist. Without this field, one identity key honestly
+// precommitting at the same (h, r) on two networks yields a VALID equivocation proof on EITHER:
+// validateSlashes performs no chain-membership check and apply() evicts permanently. CometBFT's
+// CanonicalVote carries ChainID; Ethereum's compute_fork_data_root names the purpose verbatim
+// ("to avoid collisions across forks/chains"). Driven by
+// TestGPRE6_CrossChainHonestSignaturesAreNotEvidence.
+//
+// NO LENGTH PREFIX, AND THE STANDING CONSTRAINT THAT COMES WITH IT. CometBFT length-delimits its
+// sign-bytes because protobuf is variable-length and self-describing. This is a concatenation of
+// FIXED-WIDTH fields, so the map (chainID, phase, height, round, h) → bytes is injective by
+// construction and no field-boundary confusion is possible. EVERY FIELD EVER ADDED TO THIS
+// PREIMAGE MUST BE FIXED-WIDTH, or the layout needs a length prefix from that day forward.
+//
+// A ZERO chainID IS NOT A CHAIN. verifyAtt refuses the v5 forms outright under a zero chain id
+// rather than verifying under "network zero", so a forgotten or un-populated scope is a
+// refusal, never an acceptance — the same discipline that makes NoWitness the zero of
+// Availability and makes the zero Budget stall (stateview_v5.go).
+func consensusSigBytesV5(chainID ports.Hash, phase uint8, height, round uint64, h ports.Hash) []byte {
+	buf := make([]byte, 0, consensusSigPreimageV5Len)
+	buf = append(buf, consensusSigDomainV5...)
+	buf = append(buf, chainID[:]...)
+	buf = append(buf, phase)
+	var n [8]byte
+	binary.LittleEndian.PutUint64(n[:], height)
+	buf = append(buf, n[:]...)
+	binary.LittleEndian.PutUint64(n[:], round)
+	buf = append(buf, n[:]...)
+	buf = append(buf, h[:]...)
+	return buf
+}
+
+// attScope is the era-4 binding one consensus signature is verified under: WHICH NETWORK and
+// WHICH HEIGHT.
+//
+// It is a struct and not two positional arguments because ChainID and the attested block hash
+// are both ports.Hash. Across nine call sites a positional swap of two identically-typed
+// 32-byte values is a silent wrong-verdict with no compiler complaint — the #397 family. Named
+// fields make the swap impossible instead of making it a gate's job.
+//
+// Both fields are IGNORED by the era-1 and era-2 arms of verifyAtt, whose preimages do not carry
+// them. They are load-bearing only for PhasePrepareV5 / PhasePrecommitV5.
+type attScope struct {
+	// ChainID is the genesis block's Hash() — the VERIFIER'S OWN, never a field of the block
+	// under judgement and never a driver's parameter (BG-2).
+	ChainID ports.Hash
+	// Height is the height of the block being ATTESTED. It is READ from that block wherever it
+	// is in scope, and DERIVED as b.Height-1 at the one site that holds only the child
+	// (validateCarrier, which verifies over b.Prev) — sound under P1 parent binding and a strict
+	// NARROWING there, because a mis-declared height makes genuine entries fail and can never
+	// make a forged one pass.
+	Height uint64
+}
+
+// AttestAt produces a validator's phase/round-scoped consensus signature for b (#432 two-phase
+// gather), in the FORM b's own era demands.
+//
+// `step` is the CANONICAL step (PhasePrepare / PhasePrecommit); AttPhase maps it to the wire
+// phase for b.Version. A caller therefore never picks an era form, and the durable watermark it
+// records alongside this call stays on the frozen {0,1,2} alphabet (T-STEP-VS-FORM).
+//
+// THE PRODUCER KEYS ON b.Version; THE VERIFIER KEYS ON a.Phase (T-ERA-DISPATCH). The producer
+// holds the block it is signing, so that version is available and authoritative. A verifier
+// often does not — validateCarrier verifies the PARENT's precommits while holding only the child
+// — so the era must be recoverable from the object that CARRIES the signature. Keying a verifier
+// on the CONTAINING block's version is a permanent liveness wedge at exactly the first v5
+// height, driven RED by TestGPRE1_Era4BoundaryCarrierIsNotAWedge.
+//
+// chainID is ignored for a sub-v5 block. For a v5 block it must be the signer's own chain id;
+// signing under the zero hash mints a signature no verifier will accept.
+func AttestAt(b *Block, priv ed25519.PrivateKey, round uint64, step uint8, chainID ports.Hash) Attestation {
+	phase := AttPhase(b.Version, step)
+	h := b.Hash()
+	msg := consensusSigBytes(phase, round, h)
+	if phase == PhasePrepareV5 || phase == PhasePrecommitV5 {
+		msg = consensusSigBytesV5(chainID, phase, b.Height, round, h)
+	}
 	return Attestation{
 		PubKey: append([]byte(nil), priv.Public().(ed25519.PublicKey)...),
-		Sig:    ed25519.Sign(priv, consensusSigBytes(phase, round, b.Hash())),
+		Sig:    ed25519.Sign(priv, msg),
 		Round:  round,
 		Phase:  phase,
 	}
 }
 
-// verifyAtt verifies one attestation against h under its own declared era:
-// PhaseLegacy verifies the bare hash; PhasePrepare/PhasePrecommit verify the
-// era-2 payload at the attestation's declared (round, phase). The caller
-// enforces WHICH phase/round it will accept — this only answers "is the
-// signature genuine for what it claims to be".
-func verifyAtt(a Attestation, h ports.Hash) bool {
+// verifyAtt verifies one attestation against h under ITS OWN declared era — the ONE dispatcher,
+// extended, never a parallel path (#558):
+//
+//	PhaseLegacy                        the era-1 bare hash, round 0 only
+//	PhasePrepare, PhasePrecommit       the era-2 payload at the declared (round, phase)
+//	PhasePrepareV5, PhasePrecommitV5   the era-4 payload, additionally binding s.ChainID and
+//	                                   s.Height
+//
+// The caller enforces WHICH phase/round it will accept — this only answers "is the signature
+// genuine for what it claims to be".
+//
+// s is the VERIFIER'S OWN scope, never the block author's. A zero s.ChainID refuses every v5
+// form outright: an un-populated scope must be a refusal, not a verification against network
+// zero.
+func verifyAtt(a Attestation, s attScope, h ports.Hash) bool {
 	if len(a.PubKey) != ed25519.PublicKeySize {
 		return false
 	}
@@ -1117,6 +1322,11 @@ func verifyAtt(a Attestation, h ports.Hash) bool {
 		return a.Round == 0 && ed25519.Verify(ed25519.PublicKey(a.PubKey), h[:], a.Sig)
 	case PhasePrepare, PhasePrecommit:
 		return ed25519.Verify(ed25519.PublicKey(a.PubKey), consensusSigBytes(a.Phase, a.Round, h), a.Sig)
+	case PhasePrepareV5, PhasePrecommitV5:
+		if s.ChainID == (ports.Hash{}) {
+			return false // a zero chain id is not a chain
+		}
+		return ed25519.Verify(ed25519.PublicKey(a.PubKey), consensusSigBytesV5(s.ChainID, a.Phase, s.Height, a.Round, h), a.Sig)
 	default:
 		return false
 	}
@@ -2375,7 +2585,7 @@ func (c *Chain) validateSlashes(b *Block) error {
 		return fmt.Errorf("%w: %d bytes (cap %d)", ErrSlashesBytesCapExceeded, n, SlashesBytesCap)
 	}
 	for i := range b.Slashes {
-		if err := CheckEquivocation(&b.Slashes[i]); err != nil {
+		if err := CheckEquivocation(&b.Slashes[i], c.ChainID()); err != nil {
 			return fmt.Errorf("%w: proof %d: %w", ErrBadSlash, i, err)
 		}
 	}
@@ -2934,6 +3144,29 @@ func (c *Chain) Head() (ports.Hash, uint64) {
 	return last.Hash(), last.Height + 1
 }
 
+// ChainID is this chain's NETWORK IDENTITY: the height-0 block's Hash().
+//
+// It is the SAME quantity Reconcile already refuses a fork on (ErrForeignGenesis) and the
+// freeze manifest classes as "NETWORK IDENTITY, and moving it is not an era, it is a new
+// network" — this method only names it and puts it inside the era-4 signature preimage
+// (consensusSigBytesV5), so a signature made on one silt network can never be evidence on
+// another.
+//
+// The ZERO hash for a chain that holds no genesis. That is not a chain id and verifyAtt
+// refuses every v5 form under it, so a caller that forgets to bind one gets a refusal rather
+// than a verification against "network zero". Callers that need the distinction as a positive
+// fact (the floor box at construction) check for the zero explicitly.
+//
+// Derived from committed history, so every replica — live, replaying or auditing — computes the
+// identical value; blocks[0].Hash() memoizes on the stored block, so this is O(1) after first
+// call.
+func (c *Chain) ChainID() ports.Hash {
+	if len(c.blocks) == 0 {
+		return ports.Hash{}
+	}
+	return c.blocks[0].Hash()
+}
+
 // EpochBlocks returns the configured epoch length in blocks (0 = epochs disabled).
 // Read-only getter of a config value; it changes no rule. The relay lane uses it
 // to derive a sequential epoch index (head height / EpochBlocks) for #645
@@ -3095,7 +3328,7 @@ func (c *Chain) ValidateProposal(b *Block) error {
 	// The own-disk Reload path runs the identical rule in appendStructural; both disk-write
 	// paths are pinned by TestEveryDiskWritePathRunsTheEra3RootCheck
 	// (core/chain/reload_era3_boundary_test.go), which was extended to require validateCarrier.
-	if err := validateCarrier(b); err != nil {
+	if err := validateCarrier(b, c.ChainID()); err != nil {
 		return err
 	}
 	// era-3 (v4) committed-root predicate (build step 2b). A no-op for sub-v4 blocks
@@ -3269,9 +3502,11 @@ func (c *Chain) VerifyPrepareQC(b *Block, qc []Attestation, round uint64) error 
 // per-phase round rule and adds nothing to any quorum count.
 func (c *Chain) requireProposerPrepare(b *Block) error {
 	h := b.Hash()
+	s := attScope{ChainID: c.ChainID(), Height: b.Height}
+	want := AttPhase(b.Version, PhasePrepare)
 	for _, a := range b.PrepareQC {
-		if a.Phase == PhasePrepare && a.Round <= b.CommitRound &&
-			bytes.Equal(a.PubKey, b.Proposer) && verifyAtt(a, h) {
+		if a.Phase == want && a.Round <= b.CommitRound &&
+			bytes.Equal(a.PubKey, b.Proposer) && verifyAtt(a, s, h) {
 			return nil
 		}
 	}
@@ -3287,8 +3522,12 @@ func (c *Chain) requireProposerPrepare(b *Block) error {
 // toward no quorum (the proposer is counted by authorship: countAnchorSupport
 // / requireEpochWeightQuorum) and may legitimately sit at a LOWER round than
 // the certificate (a carried self-prepare — see requireProposerPrepare).
-func (c *Chain) collectQuorumSigs(b *Block, sigs []Attestation, phase uint8, round uint64) (map[ports.NodeID]bool, error) {
+func (c *Chain) collectQuorumSigs(b *Block, sigs []Attestation, step uint8, round uint64) (map[ports.NodeID]bool, error) {
 	h := b.Hash()
+	s := attScope{ChainID: c.ChainID(), Height: b.Height}
+	// The quorum demands the wire phase of THIS BLOCK'S era — exactly one form, never both
+	// (G-PRE-8). Callers pass the canonical step; AttPhase is the one era→form mapping.
+	phase := AttPhase(b.Version, step)
 	seen := make(map[ports.NodeID]bool)
 	for _, a := range sigs {
 		if len(a.PubKey) != ed25519.PublicKeySize {
@@ -3302,7 +3541,7 @@ func (c *Chain) collectQuorumSigs(b *Block, sigs []Attestation, phase uint8, rou
 			return nil, fmt.Errorf("%w: attester %s signed (phase %d, round %d), this quorum demands (phase %d, round %d)",
 				ErrBadSignature, id, a.Phase, a.Round, phase, round)
 		}
-		if !verifyAtt(a, h) {
+		if !verifyAtt(a, s, h) {
 			return nil, fmt.Errorf("%w: attester %s", ErrBadSignature, id)
 		}
 		if !c.attesterQualifiedAt(id, b.Height) {
@@ -3598,7 +3837,7 @@ func (c *Chain) appendStructural(b Block) error {
 	// refused here exactly as on the commit path; the root check below would catch a seating
 	// divergence, but it would name the root, not the cause. Pure block-local, so it runs
 	// BEFORE apply and a rejected block is never left applied.
-	if err := validateCarrier(&b); err != nil {
+	if err := validateCarrier(&b, c.ChainID()); err != nil {
 		return err
 	}
 	// era-3 (v4) committed-root re-validation on the OWN-DISK reload path (A-bare).
@@ -3670,7 +3909,7 @@ func (c *Chain) validateStructural(b *Block) error {
 		// masked by peer full-fetch until the retention prune removed the mask
 		// (the a434494-deep val-d stranding). verifyAtt is the same arithmetic
 		// the live commit path uses.
-		if !verifyAtt(a, h) {
+		if !verifyAtt(a, attScope{ChainID: c.ChainID(), Height: b.Height}, h) {
 			return fmt.Errorf("%w: attester %s", ErrBadSignature, id)
 		}
 		seen[id] = true
@@ -3782,9 +4021,17 @@ func (c *Chain) AppendGenesis(b Block) error {
 	// refused above. Gates: genesis_atts_seating_test.go G1–G10.
 	if len(b.Atts) > 0 {
 		h := b.Hash()
+		// THE GENESIS BEING APPENDED IS THE CHAIN ID — c.blocks is still empty here, so
+		// c.ChainID() would be the zero hash and every v5-form attestation would be filtered out
+		// silently rather than judged. h IS blocks[0].Hash() by construction at this line, which
+		// makes the scope self-consistent: a genesis attestation is verified against the network
+		// that genesis defines. (The production genesis is a v2 block forever — core/genesis
+		// mints chain.BlockVersion — so this arm is reached by v2 phases in practice; it is
+		// written to be correct rather than to rely on that.)
+		s := attScope{ChainID: h, Height: b.Height}
 		verified := b.Atts[:0:0]
 		for _, a := range b.Atts {
-			if verifyAtt(a, h) {
+			if verifyAtt(a, s, h) {
 				verified = append(verified, a)
 			}
 		}

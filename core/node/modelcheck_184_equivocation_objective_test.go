@@ -114,7 +114,7 @@ func TestModelCheck_184_ObjectiveEquivocationSlashedOnDetection(t *testing.T) {
 	// signs a prepare over a CONFLICTING block L at the SAME (H, round, prepare)
 	// slot it just used for W. This is the un-bypassable self-incrimination.
 	L := &chain.Block{Version: chain.BlockVersionRounds, Height: h, Prev: prev, Entries: []ports.Entry{mkEntry("adversary-fork")}}
-	L.PrepareQC = []chain.Attestation{chain.AttestAt(L, culprit.Signer(), culpritRound, chain.PhasePrepare)}
+	L.PrepareQC = []chain.Attestation{chain.AttestAt(L, culprit.Signer(), culpritRound, chain.PhasePrepare, ports.Hash{})}
 	if L.Hash() == committedW.Hash() {
 		t.Fatal("L must conflict with W (different hash) to be an equivocation")
 	}

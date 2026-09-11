@@ -38,6 +38,34 @@ import (
 // catches the one case joining cannot — an operator editing a flag and restarting on a chain it
 // has ALREADY joined. CheckConsensusParams is that arm.
 //
+// THE SECOND CATEGORY — an identity property of the network (owner ruling, 2026-09-11). The
+// membership rule used to read: every field that can change a validity verdict is BOUND TO THE
+// CHAIN, or is EXPLICITLY EXCLUDED WITH A RECORDED REASON. NetworkName fits neither arm — it
+// reaches NO verdict, and "it reaches no verdict" is this struct's own recorded reason for
+// EXCLUDING Archive. Shipping it under the old rule would have made a machine-checked doctrine
+// unfalsifiable and admitted the next non-consensus field by precedent instead of by argument.
+//
+// The rule is amended to THREE closed categories, not two plus an exception. A chain.Config field
+// is exactly one of:
+//
+//	(a) BOUND          — it can change a validity verdict, so it is bound to the chain;
+//	(b) NETWORK IDENTITY — it changes NO validity verdict, and it IS genesis-covered;
+//	(c) EXCLUDED       — with a recorded reason.
+//
+// WHY (b) IS CLOSED AND NOT AN ESCAPE HATCH — the owner's binding condition, and both of its arms
+// are machine-checked from opposite sides:
+//
+//   - "changes no validity verdict" is MEASURED, never asserted. The field must carry a
+//     perturbation that actually ran, and it must diverge in ZERO regimes. A field that diverges
+//     anywhere is (a), and declaring it (b) is RED.
+//   - "is genesis-covered" is RESOLVED BY REFLECTION against this struct. A field that is not
+//     carried is (c), and declaring it (b) is RED.
+//
+// So (b) admits exactly the fields that ride in the genesis hash and move no verdict. Such a
+// field has precisely ONE observable effect: it partitions networks and names them. That is what
+// "an identity property of the network" means, and nothing else fits through. The gate is
+// TestConsensusVerdictIsNotAFunctionOfLocalConfig; the declarations are configDecls.
+//
 // MEMBERSHIP IS DELIBERATE IN BOTH DIRECTIONS. Five Config fields are OUT, each for a different
 // reason, and each exclusion is load-bearing: Archive is retention only and reaches no verdict;
 // WSCheckpoint is narrowing-only and sharing it would DESTROY weak subjectivity, since it is the
@@ -86,6 +114,12 @@ type ConsensusParams struct {
 	// the two declaration tables are a checked bijection onto this struct).
 	BondLabelSamples int    `cbor:"16,keyasint"`
 	BondVDFDelay     uint64 `cbor:"17,keyasint"`
+	// --- the network's own identity (category (b); see THE SECOND CATEGORY above) ---
+	//
+	// NetworkName reaches NO validity verdict. It is here so a node can report the network it
+	// is serving by a name READ FROM THE CHAIN rather than from its own flags, and so that two
+	// networks that differ only by name are different networks. See Config.NetworkName.
+	NetworkName string `cbor:"18,keyasint"`
 }
 
 // SortedAnchors renders an anchor set as the canonical sorted slice this struct commits.
@@ -133,6 +167,7 @@ func ParamsFromConfig(cfg Config, bondLabelSamples int, bondVDFDelay uint64) Con
 		AllowPublisher:          cfg.AllowPublisher,
 		BondLabelSamples:        bondLabelSamples,
 		BondVDFDelay:            bondVDFDelay,
+		NetworkName:             cfg.NetworkName,
 	}
 }
 
@@ -165,6 +200,10 @@ func (p ConsensusParams) Diff(q ConsensusParams) []string {
 	// divergence here means the two nodes are running different BUILDS. Naming "-bond-vdf" here
 	// told the operator to change something that does not exist.
 	add("bond-vdf-delay (compiled default, no flag)", p.BondVDFDelay, q.BondVDFDelay)
+	// The name reaches no validity verdict, but it IS committed, so a node whose -network-name
+	// disagrees with the genesis is serving a chain it would mis-report. Naming it here is what
+	// makes that diagnosable instead of a bare hash mismatch.
+	add("-network-name", p.NetworkName, q.NetworkName)
 	return out
 }
 

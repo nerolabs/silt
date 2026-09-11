@@ -98,7 +98,7 @@ func (w *parityWorld) mint(version uint64, proposer ed25519.PrivateKey, attester
 	b := &Block{Version: version, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h + 40))}}
 	if carry && h >= 2 {
 		for _, a := range w.c.blocks[len(w.c.blocks)-1].Atts {
-			if a.Phase == PhasePrecommit {
+			if isCarrierPrecommit(a.Phase) {
 				b.LastCommit = append(b.LastCommit, a)
 			}
 		}
@@ -115,10 +115,10 @@ func (w *parityWorld) mint(version uint64, proposer ed25519.PrivateKey, attester
 	// pass changes no root — which is exactly the property era-4 was built for.
 	attach := func() {
 		b.PrepareQC, b.Atts = nil, nil
-		b.PrepareQC = append(b.PrepareQC, AttestAt(b, proposer, 0, PhasePrepare))
+		b.PrepareQC = append(b.PrepareQC, AttestAt(b, proposer, 0, PhasePrepare, w.c.ChainID()))
 		for _, k := range attesters {
-			b.PrepareQC = append(b.PrepareQC, AttestAt(b, k, 0, PhasePrepare))
-			b.Atts = append(b.Atts, AttestAt(b, k, 0, PhasePrecommit))
+			b.PrepareQC = append(b.PrepareQC, AttestAt(b, k, 0, PhasePrepare, w.c.ChainID()))
+			b.Atts = append(b.Atts, AttestAt(b, k, 0, PhasePrecommit, w.c.ChainID()))
 		}
 	}
 	setD3Digests(b)   // (d-3): an honest v5 proposer commits Answer/Slashes by digest. No-op below v5.

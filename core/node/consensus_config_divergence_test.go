@@ -242,8 +242,9 @@ func TestNodeConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 
 	// THE RESIDUE, both directions. chain.Config's gate names these two as the fields it does NOT
 	// claim; this gate must claim exactly them. Together the two tables are a bijection onto
-	// chain.ConsensusParams, which is what makes "17 fields" the RULE'S OUTPUT rather than an
-	// approved list someone has to remember.
+	// chain.ConsensusParams, which is what makes the FIELD COUNT the RULE'S OUTPUT rather than an
+	// approved list someone has to remember. It was 17 and is 18 since NetworkName landed on
+	// 2026-09-11; nothing here keys on the number, which is the point.
 	var got []string
 	for p := range claimed {
 		got = append(got, p)

@@ -45,13 +45,13 @@ func o3tEra2Chain(t *testing.T) (*chain.Chain, []*identity.Identity, *chain.Bloc
 func o3tEra2Block(ids []*identity.Identity, signers []*identity.Identity, h uint64, prev ports.Hash, name string) *chain.Block {
 	b := &chain.Block{Version: chain.BlockVersionRounds, Height: h, Prev: prev, Entries: []ports.Entry{mkEntry(name)}}
 	chain.Sign(b, ids[0].Signer())
-	b.PrepareQC = append(b.PrepareQC, chain.AttestAt(b, ids[0].Signer(), 0, chain.PhasePrepare))
+	b.PrepareQC = append(b.PrepareQC, chain.AttestAt(b, ids[0].Signer(), 0, chain.PhasePrepare, ports.Hash{}))
 	for _, s := range signers {
-		b.PrepareQC = append(b.PrepareQC, chain.AttestAt(b, s.Signer(), 0, chain.PhasePrepare))
+		b.PrepareQC = append(b.PrepareQC, chain.AttestAt(b, s.Signer(), 0, chain.PhasePrepare, ports.Hash{}))
 	}
-	b.Atts = append(b.Atts, chain.AttestAt(b, ids[0].Signer(), 0, chain.PhasePrecommit))
+	b.Atts = append(b.Atts, chain.AttestAt(b, ids[0].Signer(), 0, chain.PhasePrecommit, ports.Hash{}))
 	for _, s := range signers {
-		b.Atts = append(b.Atts, chain.AttestAt(b, s.Signer(), 0, chain.PhasePrecommit))
+		b.Atts = append(b.Atts, chain.AttestAt(b, s.Signer(), 0, chain.PhasePrecommit, ports.Hash{}))
 	}
 	return b
 }

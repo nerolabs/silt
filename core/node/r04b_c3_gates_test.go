@@ -78,7 +78,7 @@ func c3Chain(t *testing.T, era4At uint64, genesisSigner ed25519.PrivateKey, regs
 		IssuerKeys: regs,
 	}
 	chain.Sign(&g, genesisSigner)
-	g.Atts = []chain.Attestation{chain.AttestAt(&g, c3Attester, 0, chain.PhasePrecommit)}
+	g.Atts = []chain.Attestation{chain.AttestAt(&g, c3Attester, 0, chain.PhasePrecommit, g.Hash())}
 	if err := c.AppendGenesis(g); err != nil {
 		t.Fatalf("genesis: %v", err)
 	}
@@ -108,10 +108,10 @@ func c3Mint(t *testing.T, c *chain.Chain, keys []ed25519.PrivateKey, regs ...cha
 	}
 	chain.Sign(b, keys[0])
 	for _, k := range append(keys, c3Attester) {
-		b.PrepareQC = append(b.PrepareQC, chain.AttestAt(b, k, 0, chain.PhasePrepare))
+		b.PrepareQC = append(b.PrepareQC, chain.AttestAt(b, k, 0, chain.PhasePrepare, c.ChainID()))
 	}
 	for _, k := range append(keys, c3Attester) {
-		b.Atts = append(b.Atts, chain.AttestAt(b, k, 0, chain.PhasePrecommit))
+		b.Atts = append(b.Atts, chain.AttestAt(b, k, 0, chain.PhasePrecommit, c.ChainID()))
 	}
 	if err := c.Append(*b); err != nil {
 		t.Fatalf("append height %d (v%d): %v", next, b.Version, err)

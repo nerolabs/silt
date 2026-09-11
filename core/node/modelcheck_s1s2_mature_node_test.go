@@ -370,7 +370,7 @@ func TestModelCheck_S2_Mature_ForgedLockMisreportCannotForkTheHeight(t *testing.
 		NewRound:  1,
 		Sender:    append([]byte(nil), ids[byz].Signer().Public().(ed25519.PublicKey)...),
 		LockRound: 0,
-		LockQC:    []chain.Attestation{chain.AttestAt(blkY, ids[byz].Signer(), 0, chain.PhasePrepare)},
+		LockQC:    []chain.Attestation{chain.AttestAt(blkY, ids[byz].Signer(), 0, chain.PhasePrepare, ports.Hash{})},
 		LockBlock: chain.Encode(blkY),
 	}
 	forged.Sig = ed25519.Sign(ids[byz].Signer(), forged.sigBytes())

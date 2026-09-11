@@ -191,7 +191,7 @@ func richHistory(t *testing.T) (*Chain, []ed25519.PrivateKey, ports.Hash, ports.
 	b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(),
 		Entries: []ports.Entry{published}}
 	b1.BondRegs = append(b1.BondRegs, bondReg(keys[1], twoMiB, g.Hash()))
-	commitRounds(b1, keys, 0)
+	commitRounds(b1, keys, 0, ports.Hash{})
 	if err := c.Append(*b1); err != nil {
 		t.Fatalf("commit height 1: %v", err)
 	}
@@ -200,7 +200,7 @@ func richHistory(t *testing.T) (*Chain, []ed25519.PrivateKey, ports.Hash, ports.
 	// revLog.
 	b2 := &Block{Version: BlockVersionRounds, Height: 2, Prev: b1.Hash(),
 		Revocations: []ports.Hash{published.Root}}
-	commitRounds(b2, keys, 0)
+	commitRounds(b2, keys, 0, ports.Hash{})
 	if err := c.Append(*b2); err != nil {
 		t.Fatalf("commit height 2: %v", err)
 	}
@@ -209,16 +209,16 @@ func richHistory(t *testing.T) (*Chain, []ed25519.PrivateKey, ports.Hash, ports.
 }
 
 // commitRounds attaches a full era-2 two-phase certificate at the given round.
-func commitRounds(b *Block, keys []ed25519.PrivateKey, round uint64) {
+func commitRounds(b *Block, keys []ed25519.PrivateKey, round uint64, chainID ports.Hash) {
 	Sign(b, keys[0])
 	b.CommitRound = round
-	b.PrepareQC = append(b.PrepareQC, AttestAt(b, keys[0], round, PhasePrepare))
+	b.PrepareQC = append(b.PrepareQC, AttestAt(b, keys[0], round, PhasePrepare, chainID))
 	for _, k := range keys[1:] {
-		b.PrepareQC = append(b.PrepareQC, AttestAt(b, k, round, PhasePrepare))
+		b.PrepareQC = append(b.PrepareQC, AttestAt(b, k, round, PhasePrepare, chainID))
 	}
-	b.Atts = append(b.Atts, AttestAt(b, keys[0], round, PhasePrecommit))
+	b.Atts = append(b.Atts, AttestAt(b, keys[0], round, PhasePrecommit, chainID))
 	for _, k := range keys[1:] {
-		b.Atts = append(b.Atts, AttestAt(b, k, round, PhasePrecommit))
+		b.Atts = append(b.Atts, AttestAt(b, k, round, PhasePrecommit, chainID))
 	}
 }
 
@@ -355,7 +355,7 @@ func spentWorld(t *testing.T) (*Chain, []byte, func([]byte) *ports.PublishToken)
 	serial := []byte("leaveoneout-spent-serial")
 	b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(),
 		Entries: []ports.Entry{tokenEntry(7, oi.mint(serial))}}
-	commitRounds(b1, oi.keys, 0)
+	commitRounds(b1, oi.keys, 0, ports.Hash{})
 	if err := c.Append(*b1); err != nil {
 		t.Fatalf("spentWorld commit: %v", err)
 	}
@@ -394,7 +394,7 @@ func slashedWorld(t *testing.T) (*Chain, ports.NodeID) {
 	// the four-anchor quorum, which the culprit is not part of.
 	b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(),
 		Slashes: []Equivocation{slashProof(culprit, g.Hash(), 101, 102)}}
-	commitRounds(b1, keys, 0)
+	commitRounds(b1, keys, 0, ports.Hash{})
 	if err := c.Append(*b1); err != nil {
 		t.Fatalf("slashedWorld slash: %v", err)
 	}
@@ -683,7 +683,7 @@ func gateWorld(t *testing.T) *Chain {
 	b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(),
 		Entries:  []ports.Entry{entry(1)},
 		BondRegs: []BondReg{bondRegFull(x, rootX, w, g.Hash(), BlockVersionRegGate, 0)}}
-	commitRounds(b1, []ed25519.PrivateKey{r1, r2, x}, 0)
+	commitRounds(b1, []ed25519.PrivateKey{r1, r2, x}, 0, ports.Hash{})
 	if err := c.Append(*b1); err != nil {
 		t.Fatalf("gateWorld height 1: %v", err)
 	}
@@ -692,7 +692,7 @@ func gateWorld(t *testing.T) *Chain {
 	// #506 tally locks the gate (all ready). gateHeight = 2 + EpochBlocks = 4.
 	b2 := &Block{Version: BlockVersionRounds, Height: 2, Prev: b1.Hash(),
 		Entries: []ports.Entry{entry(2)}}
-	commitRounds(b2, []ed25519.PrivateKey{r2, r1, x}, 0)
+	commitRounds(b2, []ed25519.PrivateKey{r2, r1, x}, 0, ports.Hash{})
 	if err := c.Append(*b2); err != nil {
 		t.Fatalf("gateWorld boundary: %v", err)
 	}
@@ -774,12 +774,12 @@ func era3World(t *testing.T) *Chain {
 	// validatorsSeen → three distinct seen bonds → maturity latches, rotateEpoch freezes
 	// {r1,r2,x} and the era-3 tally locks (all ready v4). era3Height = 2 + EpochBlocks = 4.
 	b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
-	commitRounds(b1, []ed25519.PrivateKey{r1, r2, x}, 0)
+	commitRounds(b1, []ed25519.PrivateKey{r1, r2, x}, 0, ports.Hash{})
 	if err := c.Append(*b1); err != nil {
 		t.Fatalf("era3World height 1: %v", err)
 	}
 	b2 := &Block{Version: BlockVersionRounds, Height: 2, Prev: b1.Hash(), Entries: []ports.Entry{entry(2)}}
-	commitRounds(b2, []ed25519.PrivateKey{r2, r1, x}, 0)
+	commitRounds(b2, []ed25519.PrivateKey{r2, r1, x}, 0, ports.Hash{})
 	if err := c.Append(*b2); err != nil {
 		t.Fatalf("era3World boundary: %v", err)
 	}
@@ -848,12 +848,12 @@ func era4World(t *testing.T) *Chain {
 	// blocks are v2 — below both activation heights (era{3,4}Height = 4), so no boundary
 	// rule fires on them.
 	b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
-	commitRounds(b1, []ed25519.PrivateKey{r1, r2, x}, 0)
+	commitRounds(b1, []ed25519.PrivateKey{r1, r2, x}, 0, ports.Hash{})
 	if err := c.Append(*b1); err != nil {
 		t.Fatalf("era4World height 1: %v", err)
 	}
 	b2 := &Block{Version: BlockVersionRounds, Height: 2, Prev: b1.Hash(), Entries: []ports.Entry{entry(2)}}
-	commitRounds(b2, []ed25519.PrivateKey{r2, r1, x}, 0)
+	commitRounds(b2, []ed25519.PrivateKey{r2, r1, x}, 0, ports.Hash{})
 	if err := c.Append(*b2); err != nil {
 		t.Fatalf("era4World boundary: %v", err)
 	}
@@ -1011,7 +1011,7 @@ func regVersionWorld(t *testing.T) *Chain {
 	b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(),
 		Entries:  []ports.Entry{entry(1)},
 		BondRegs: []BondReg{bondRegFull(x, rootX, w, g.Hash(), BlockVersionRegGate, 0)}}
-	commitRounds(b1, []ed25519.PrivateKey{r1, r2, x}, 0)
+	commitRounds(b1, []ed25519.PrivateKey{r1, r2, x}, 0, ports.Hash{})
 	if err := c.Append(*b1); err != nil {
 		t.Fatalf("regVersionWorld height 1: %v", err)
 	}
@@ -1233,7 +1233,7 @@ func provenDisplaceWorld(t *testing.T) (*Chain, ports.Hash, []ed25519.PrivateKey
 	b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(),
 		Entries: []ports.Entry{entry(9)}}
 	b1.BondRegs = append(b1.BondRegs, bondReg(keys[1], twoMiB, g.Hash()))
-	commitRounds(b1, keys, 0)
+	commitRounds(b1, keys, 0, ports.Hash{})
 	if err := c.Append(*b1); err != nil {
 		t.Fatalf("provenDisplaceWorld height 1: %v", err)
 	}
@@ -1314,7 +1314,7 @@ func restoreOwnerWorld(t *testing.T) *Chain {
 	b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(),
 		Entries:  []ports.Entry{entry(1)},
 		BondRegs: []BondReg{bondRegFull(x, rootX, w, g.Hash(), BlockVersionRegGate, 0)}}
-	commitRounds(b1, []ed25519.PrivateKey{prop, x}, 0)
+	commitRounds(b1, []ed25519.PrivateKey{prop, x}, 0, ports.Hash{})
 	if err := c.Append(*b1); err != nil {
 		t.Fatalf("restoreOwnerWorld height 1: %v", err)
 	}
@@ -1322,7 +1322,7 @@ func restoreOwnerWorld(t *testing.T) *Chain {
 	// rotateEpoch(2) freezes {prop,x} into epochSet.
 	b2 := &Block{Version: BlockVersionRounds, Height: 2, Prev: b1.Hash(),
 		Entries: []ports.Entry{entry(2)}}
-	commitRounds(b2, []ed25519.PrivateKey{prop, x}, 0)
+	commitRounds(b2, []ed25519.PrivateKey{prop, x}, 0, ports.Hash{})
 	if err := c.Append(*b2); err != nil {
 		t.Fatalf("restoreOwnerWorld boundary: %v", err)
 	}

@@ -206,9 +206,9 @@ func TestG_H43_8e_GatherTargetSurvivesTheDerivedFloor(t *testing.T) {
 		x := &chain.Block{Version: chain.BlockVersion, Height: height, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("g-h43-8e-forced-X")}}
 		chain.Sign(x, signerOf[author.id].Signer())
 		qc := []chain.Attestation{
-			chain.AttestAt(x, signerOf[author.id].Signer(), 0, chain.PhasePrepare),
-			chain.AttestAt(x, signerOf[s1.id].Signer(), 0, chain.PhasePrepare),
-			chain.AttestAt(x, signerOf[s2.id].Signer(), 0, chain.PhasePrepare),
+			chain.AttestAt(x, signerOf[author.id].Signer(), 0, chain.PhasePrepare, ports.Hash{}),
+			chain.AttestAt(x, signerOf[s1.id].Signer(), 0, chain.PhasePrepare, ports.Hash{}),
+			chain.AttestAt(x, signerOf[s2.id].Signer(), 0, chain.PhasePrepare, ports.Hash{}),
 		}
 		if err := designee.chain.VerifyPrepareQC(x, qc, 0); err != nil {
 			t.Fatalf("premise: the synthetic round-0 prepare-QC for X must verify: %v", err)

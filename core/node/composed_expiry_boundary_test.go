@@ -501,10 +501,10 @@ func (f *composedFixture) commitIssuerKeyAt(t *testing.T, epoch uint64, priv *rs
 	// before gathering. An attester whose first attestation this were would move the
 	// committed root out from under the signature (the R-BOX-ATTESTS harness hazard).
 	b.PrepareQC = []chain.Attestation{
-		chain.AttestAt(b, f.aIdent.Signer(), 0, chain.PhasePrepare), // the proposer's authorship vote (#432/I5)
-		chain.AttestAt(b, f.bIdent.Signer(), 0, chain.PhasePrepare),
+		chain.AttestAt(b, f.aIdent.Signer(), 0, chain.PhasePrepare, f.chain.ChainID()), // the proposer's authorship vote (#432/I5)
+		chain.AttestAt(b, f.bIdent.Signer(), 0, chain.PhasePrepare, f.chain.ChainID()),
 	}
-	b.Atts = []chain.Attestation{chain.AttestAt(b, f.bIdent.Signer(), 0, chain.PhasePrecommit)}
+	b.Atts = []chain.Attestation{chain.AttestAt(b, f.bIdent.Signer(), 0, chain.PhasePrecommit, f.chain.ChainID())}
 	if err := f.chain.Append(*b); err != nil {
 		t.Fatalf("commit key_%d: %v", epoch, err)
 	}

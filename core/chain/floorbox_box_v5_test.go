@@ -14,14 +14,24 @@ import (
 // (HeadRef.ProposerID, class 3). Every direct test driver of the recompute goes through here, so
 // no test can hand the recompute a witness-chosen parent proposer — there is no such input.
 func recomputeViaHead(c *Chain, prevStateRoot, committedStateRoot ports.Hash, b Block, w StateRootWitness) error {
+	return recomputeViaHeadOn(c, c.ChainID(), prevStateRoot, committedStateRoot, b, w)
+}
+
+// recomputeViaHeadOn is recomputeViaHead with the box's NETWORK IDENTITY supplied explicitly, for
+// the drivers whose *Chain is COLD — it holds no blocks, so c.ChainID() is the zero hash and every
+// era-4 carrier entry would fail to verify. That is the deployment target, and it is why the
+// recompute takes the chain id as a threaded parameter (BoxConfig.ChainID → HeadRef.ChainID → here)
+// rather than reading it off the chain: the fold-file pin denies `blocks` by name for exactly this
+// reason.
+func recomputeViaHeadOn(c *Chain, chainID ports.Hash, prevStateRoot, committedStateRoot ports.Hash, b Block, w StateRootWitness) error {
 	parentProposer, _ := c.headProposerID()
-	return c.recomputeStateRootEntriesRevocations(prevStateRoot, committedStateRoot, b, w, parentProposer)
+	return c.recomputeStateRootEntriesRevocations(prevStateRoot, committedStateRoot, b, w, parentProposer, chainID)
 }
 
 // assembleOpsViaHead is recomputeViaHead for the op-assembly half (the leaf-diff guard's driver).
 func assembleOpsViaHead(c *Chain, prevStateRoot, committedStateRoot ports.Hash, b Block, w StateRootWitness) ([]statehash.FoldOp, error) {
 	parentProposer, _ := c.headProposerID()
-	return c.assembleStateRootRecomputeOps(prevStateRoot, committedStateRoot, b, w, parentProposer)
+	return c.assembleStateRootRecomputeOps(prevStateRoot, committedStateRoot, b, w, parentProposer, c.ChainID())
 }
 
 // headProposerOrZero is the box-owned parent-proposer stand-in for a direct class-A driver.
@@ -143,7 +153,7 @@ func structWitnessFor(t *testing.T, f structFixture, src *proverSource, b Block)
 func boxOver(t *testing.T, f structFixture, src WitnessSource) *Box {
 	t.Helper()
 	parent := f.c.Blocks(1)[0]
-	box, err := NewBox(f.c, parent, BoxConfig{BudgetBytes: 1 << 22}, src)
+	box, err := NewBox(f.c, parent, BoxConfig{BudgetBytes: 1 << 22, ChainID: f.c.ChainID()}, src)
 	if err != nil {
 		t.Fatalf("NewBox: %v", err)
 	}
@@ -271,7 +281,7 @@ func TestG3_ParentBindingPrecedesTheCarrierLeg(t *testing.T) {
 	forged.LastCommit = []Attestation{{PubKey: pubOf(f.keys[1]), Sig: make([]byte, ed25519.SignatureSize), Round: 0, Phase: PhasePrecommit}}
 	forged.hashMemoSet = false
 	Sign(&forged, f.keys[0])
-	if err := validateCarrier(&forged); err == nil {
+	if err := validateCarrier(&forged, ports.Hash{}); err == nil {
 		t.Fatal("fixture VACUOUS: the forged carrier must be one validateCarrier refuses")
 	}
 	if err := f.c.ValidateCommit(&forged); !errors.Is(err, ErrWrongParent) {
@@ -309,7 +319,7 @@ func TestG7_BoxBudgetCoversTheWitness(t *testing.T) {
 
 	// A ceiling that admits the frame but NOT frame + witness: the door stalls on the budget, by
 	// name, before the garbage signature is looked at.
-	tight, err := NewBox(f.c, parent, BoxConfig{BudgetBytes: frame + wb/2}, src)
+	tight, err := NewBox(f.c, parent, BoxConfig{BudgetBytes: frame + wb/2, ChainID: f.c.ChainID()}, src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +328,7 @@ func TestG7_BoxBudgetCoversTheWitness(t *testing.T) {
 		t.Fatalf("G-7 VIOLATED: frame + witness above the box's ceiling must STALL on the budget before any crypto; got %s / %v", out, err)
 	}
 	// Within the ceiling the same block fails on its garbage signature — the budget is what fired.
-	loose, err := NewBox(f.c, parent, BoxConfig{BudgetBytes: frame + wb + 1}, src)
+	loose, err := NewBox(f.c, parent, BoxConfig{BudgetBytes: frame + wb + 1, ChainID: f.c.ChainID()}, src)
 	if err != nil {
 		t.Fatal(err)
 	}

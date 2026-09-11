@@ -64,6 +64,20 @@ So these stay open after you sign:
 - **Node-local formats** — anything not committed to a block. The credit ledger's on-disk shape is
   not a consensus format and has no era deadline.
 
+**And one distinction worth holding separately, because it has been blurred more than once: the
+GENESIS HASH is not the FORMAT.** Adding a field inside `ConsensusParams` re-mints every genesis —
+`Block.Hash()` covers `Params`, and a chain's identity *is* its height-0 hash — but it adds no
+`Block` cbor key, no committed leaf and no encoding change, so **none of the four doors moves.**
+The cost is a re-mint and the graded re-run set: real calendar, paid once, and **zero permanence**
+while there is no live network. The cost of a *format* miss is an era. Say "the genesis re-mints",
+never "the format changes" — the second sentence invites the era-cost argument, and that pressure
+is exactly what turns a freeze train into a scope magnet.
+
+The practical consequence is a sequencing rule, not a deadline: **everything that moves the genesis
+hash lands in ONE move**, or the re-run set is paid once per move. That is why owner call A's
+preimage, owner call F's bind, the network name and the era-activation flags travel together
+(`D-M1-GENESIS-MOVE-2026-09-11`).
+
 ## The practical consequence for the manifest
 
 The manifest sorts its 22 items by **deadline, not by importance**:

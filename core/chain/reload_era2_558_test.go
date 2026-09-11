@@ -37,13 +37,13 @@ func TestReload_Era2AndPrunedBlocksReplay_558(t *testing.T) {
 	b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(9)}}
 	b1.BondRegs = append(b1.BondRegs, bondReg(keys[1], twoMiB, g.Hash()))
 	Sign(b1, keys[0])
-	b1.PrepareQC = append(b1.PrepareQC, AttestAt(b1, keys[0], 0, PhasePrepare))
+	b1.PrepareQC = append(b1.PrepareQC, AttestAt(b1, keys[0], 0, PhasePrepare, ports.Hash{}))
 	for _, k := range keys[1:] {
-		b1.PrepareQC = append(b1.PrepareQC, AttestAt(b1, k, 0, PhasePrepare))
+		b1.PrepareQC = append(b1.PrepareQC, AttestAt(b1, k, 0, PhasePrepare, ports.Hash{}))
 	}
-	b1.Atts = append(b1.Atts, AttestAt(b1, keys[0], 0, PhasePrecommit))
+	b1.Atts = append(b1.Atts, AttestAt(b1, keys[0], 0, PhasePrecommit, ports.Hash{}))
 	for _, k := range keys[1:] {
-		b1.Atts = append(b1.Atts, AttestAt(b1, k, 0, PhasePrecommit))
+		b1.Atts = append(b1.Atts, AttestAt(b1, k, 0, PhasePrecommit, ports.Hash{}))
 	}
 	if err := c.Append(*b1); err != nil {
 		t.Fatalf("live commit of the era-2 block: %v", err)
