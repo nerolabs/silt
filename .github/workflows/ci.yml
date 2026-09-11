@@ -398,6 +398,12 @@ jobs:
         # (a CI checkout never has the gitignored symlink) and is enforced instead by the
         # PreToolUse/SessionStart hooks in .claude/settings.json, which reach worktrees.
         run: python3 scripts/check_agent_memory_link.py --ci
+      - name: Scar-lint — the shared agent-memory store must autosave, stay navigable and fail soft (scar:agent-memory-store-ten-days-unpushed-2026-09-11)
+        # CI has no memory store and no seats, so running autosave here would prove
+        # nothing. The self-test MANUFACTURES a store plus a bare remote in a temp dir
+        # and drives all five behaviours, including the two over-action arms (commit on
+        # an unchanged tree; refuse a degraded one) that a wrong fix passes.
+        run: python3 scripts/check_agent_memory_link.py --self-test
 
   docs-shipped:
     name: Docs ship with code
