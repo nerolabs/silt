@@ -18,14 +18,19 @@ THE RULE:
       the two headers, because a bare row of `=` is legal Markdown (a setext heading
       underline) and a real conflict always carries all three
 
-  Excluded: `.git/` (packed objects and MERGE_MSG legitimately contain markers) and
-  `website/` (generated from the Markdown sources, which are themselves linted).
+  Excluded: `.git/` (packed objects and MERGE_MSG legitimately contain markers),
+  `website/` (generated from the Markdown sources, which are themselves linted), and
+  every NESTED CHECKOUT — an agent worktree or a clone dropped under the root is a
+  different branch's tree, and its markers are not this branch's problem. See
+  `repo_walk.is_other_checkout` for the rule and why it is not a path.
 
 Dependency-free (stdlib only). Run: python3 scripts/check_conflict_markers.py
 """
 import re
 import sys
 from pathlib import Path
+
+from repo_walk import repo_files
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -54,12 +59,10 @@ def main() -> int:
     scanned = 0
     failures = []  # (rel, lineno, line)
 
-    for path in sorted(ROOT.rglob("*")):
+    for path in sorted(repo_files(ROOT, SKIP_DIRS)):
         if not path.is_file() or path.is_symlink():
             continue
         rel = path.relative_to(ROOT)
-        if SKIP_DIRS & set(rel.parts):
-            continue
         lines = text_lines(path)
         if lines is None:
             continue

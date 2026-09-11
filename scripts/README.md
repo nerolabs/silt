@@ -20,6 +20,12 @@ generated page is stale.
 All of these run in the `website` job except `check_reachability.py`, which needs a Go
 toolchain and runs in its own `reachability` job.
 
+Every check that walks the tree does it through `repo_walk.repo_files`, which prunes any
+directory below the root holding a `.git` entry. That is what makes a directory a
+DIFFERENT checkout — a `.git` file for a `git worktree`, a `.git` directory for a nested
+clone — so a lint run on a machine with agent worktrees under `.claude/worktrees/` judges
+this tree only. Use it for any new check; `rglob` from the root reopens the hole.
+
 | Script | Fails the build when | Scar |
 | --- | --- | --- |
 | `check_links.py` | a relative link or asset in `website/*.html` does not resolve | — |
@@ -28,6 +34,7 @@ toolchain and runs in its own `reachability` job.
 | `check_status_headers.py` | a doc's not-built Status header contradicts a built/shipped body | `scar:status-header-vs-body-contradiction-2026-09-01` |
 | `check_cited_tests.py` | a Go comment or doc cites a `TestXxx` that has no `func TestXxx(` anywhere; **or** a doc's `path.go:NNN` no longer points at the symbol cited beside it | `scar:cited-test-does-not-exist-2026-09-02`, `scar:cited-source-coordinate-decayed-2026-09-10` |
 | `check_residual_register.py` | a residual name (`R-…`) appears in `ROADMAP.md` without a Residual-register row carrying a bucket, a closer and a source | `scar:residual-backlog-unbucketed-2026-09-06` |
+| `repo_walk.py --self-test` | the shared file walk descends into a nested checkout (an agent worktree, a nested clone), or excludes a directory of this tree that merely looks like one | `scar:lint-walks-into-another-checkout-2026-09-11` |
 | `check_source_gates.py` | a test that reads the project's own `.go` source does not say so in its failure text, or does not name its runtime cover | `scar:source-gate-promises-a-runtime-property-2026-09-03` |
 | `check_reachability.py` | a lane the release checklist makes a public claim about has no client entry point in the linked `./cmd/silt` binary, and the checklist does not say the lane **cannot be exercised** | `scar:mechanism-shipped-inert-2026-09-10` |
 
