@@ -2404,7 +2404,10 @@ showing the one-byte value IS committed).
   `-era4-activation-height` defaults to 1 — so this call was wrong on its ruling AND on the ground it
   stood on. Neither rescues the other.)*
   - **⚠ REVERSED 2026-09-11 by the owner — `D-MEMBERSHIP-KEEP-FIVE-2026-09-11`. RETIRE NEITHER; the digest
-    set freezes at FIVE; G-3 is `R-membership`'s bound and is **UNBUILT**; G-2 is dropped.** *(This summary
+    set freezes at FIVE; ~~G-3 is `R-membership`'s bound~~ and is **UNBUILT**; G-2 is dropped.**
+    *(SUPERSEDED clause, 2026-09-11: `R-membership G-3` bounds witness admission and not set growth, so
+    this residual's bound is UNNAMED — `D-MEMBERSHIP-KEEP-FIVE-2026-09-11`'s final bullet carries the
+    correction and the keep-five ruling itself is untouched.)* *(This summary
     line read "G-3 is built" for a day. It was wrong and it contradicted the entry it summarises, which says
     "G-3, still unbuilt", and the `R-membership` register row, which says the same. No witness id-list size
     gate exists in `core/`. Corrected 2026-09-11 rather than rewritten, because a reader who stopped at this
@@ -4359,7 +4362,10 @@ here.**
   strings (`"slashedRoot\x00"` 12 B + `"validatorsSeenRoot\x00"` 19 B) plus two 32-byte MTH values.
   Measured at N = 4 / 100 / 1000; at N = 1000 the two roots are 2 of 1,127 era-4 leaves.
 - **Why the original ratification was wrong.** `R-membership` exists to **bound unbounded sets**, and
-  **G-3 is the mechanism that bounds them** — the retirement is not. The retirement was assigned to a
+  ~~**G-3 is the mechanism that bounds them**~~ — the retirement is not. **Two legs, 2026-09-11: the leg
+  that survives is "the retirement is not the mechanism", which is what this bullet turns on; the leg
+  that falls is "G-3 is". `R-membership G-3` bounds witness ADMISSION, not set growth — see the final
+  bullet of this entry. The mechanism that bounds the sets is UNNAMED.** The retirement was assigned to a
   residual it does not close, and it was ratified on a **leaf-count argument that never priced what
   the leaves DO**. "Two committed leaves fewer" is a true sentence about size and says nothing about
   the completeness obligation those same two leaves discharge. It is the derive-then-drive shape
@@ -4380,8 +4386,23 @@ here.**
   also one fewer irreversible act before D3 — and per `D-FREEZE-REPRICE-2026-09-10` the freeze costs
   re-runs and calendar, never permanence, so *"or it would cost an era"* is not available as a reason
   to buy the retirement back later.
-- **What this does NOT decide.** `R-membership`'s real closer — the bound on the two grow-only sets —
-  is **G-3, still unbuilt**. Retiring the leaves never closed it and does not now. `slashed` and
+- **What this does NOT decide.** ~~`R-membership`'s real closer — the bound on the two grow-only sets —
+  is **G-3, still unbuilt**.~~ **THAT CLAUSE OVER-CLAIMS AND FALLS — corrected in place 2026-09-11, and
+  the superseded sentence is left visible because a correction only does its work if a reader can see it
+  was one.** The scope ruling
+  (`silt-agent-memory/researcher/reviews/research-outcome/2026-09-11-G3-witness-id-list-size-gate-SCOPE-RULING.md`)
+  measured it: `R-membership G-3` caps what ONE BOX accepts as a witness and bounds neither
+  `len(c.slashed)` nor `len(c.validatorsSeen)` — those are written by `(*Chain).apply`, which the gate
+  has no contact with. The PE's filed position said exactly this and is adopted. **Two legs, and only
+  one of them moves.** The keep-five ruling above is UNTOUCHED: it rests on a Tester ablation of what the
+  leaves DO, not on anything G-3 does. What falls is only the claim that G-3 discharges this residual —
+  so **`R-membership`'s closer is now UNNAMED**, and the honest record says so rather than naming a
+  substitute. (Simplicity rule 4 would make a closer-less residual a disclosure rather than a row; that
+  demotion is the owner's call and is reserved to him, so the register row stands.) The entry's own
+  heading clause *"G-3 is the bound"* falls with it, and is left standing for the same visibility reason.
+  `R-membership G-3` is KEPT and RESCOPED — post-RC, its deadline whichever of the accept flip (R1.8 /
+  #657) or the witness-transport merge lands first. Retiring the leaves never closed this residual and
+  does not now. `slashed` and
   `validatorsSeen` remain ADD-only with zero deletes repo-wide and are committed per-member in the
   FROZEN era-3 leaf set, so the growth this residual names is untouched by either decision.
 
