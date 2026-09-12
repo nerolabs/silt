@@ -195,11 +195,11 @@ func TestPayBounty_UnknownOrNonPositiveIsZero(t *testing.T) {
 
 // TestRepairBounty_RarestShardMultiplier: the bounty rises monotonically as a stripe
 // loses shards — repairing the last spare before data loss pays the most. The geometry
-// is chosen so c·k·shardBytes/(U/p) is exactly 1,000 credits with no remainder, which
+// is chosen so c·shardBytes/(U/p) is exactly 1,000 credits with no remainder, which
 // isolates the multiplier from G-BT-2's single division.
 func TestRepairBounty_RarestShardMultiplier(t *testing.T) {
-	const k, n = 4, 10 // 6 parity shards of slack
-	const shardBytes = 1_000 * DeliveryBytesPerCredit / k
+	const k, n = 4, 10                                // 6 parity shards of slack
+	const shardBytes = 1_000 * DeliveryBytesPerCredit // F1: the price is the SHARD, not k × shard
 	const base = 1_000
 	if got := RepairBountyBase(k, shardBytes); got != base {
 		t.Fatalf("fixture: RepairBountyBase(%d, %d) = %d, want an exact %d", k, shardBytes, got, base)
@@ -240,7 +240,7 @@ func TestRepairBounty_RarestShardMultiplier(t *testing.T) {
 // pays the base, and degenerate parameters yield 0.
 func TestRepairBounty_ClampAndDegenerate(t *testing.T) {
 	const k, n = 4, 10
-	const shardBytes = 1_000 * DeliveryBytesPerCredit / k
+	const shardBytes = 1_000 * DeliveryBytesPerCredit // F1: the price is the SHARD, not k × shard
 	const base = 1_000
 	maxBounty := int64(base * (n - k + 1)) // 7_000
 

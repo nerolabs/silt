@@ -3,20 +3,25 @@ package credit
 import "testing"
 
 // G-BT-2 (BOULDER2 residual-closures certification 2026-09-07 §2.6): the repair price
-// divides into credits ONCE, at the end — ⌊c·k·shardBytes·(lost+1)/(U/p)⌋ — instead of
+// divides into credits ONCE, at the end — ⌊c·shardBytes·(lost+1)/(U/p)⌋ — instead of
 // flooring the base first and multiplying a whole number after. These gates RUN the
 // claim; they do not describe it.
 //
 // Ablation that must go RED: make RepairBounty return
 // repairBountyCredits(k, shardBytes, 1) * int64(RarestShardMultiplier(k, n, reachable)).
+//
+// The geometries moved 10× on 2026-09-12 (F1, D-BOUNTY-PRICE-F1-2026-09-12): the price is
+// one SHARD of witnessed fetch, not k of them, so the shard that carries an exact 1.99996
+// credits is now 524,280 B rather than 52,428 B. Every credit figure below is unchanged,
+// which is the point — G-BT-2 is a property of the division order, not of the price basis.
 
-// TestRepairBountyDividesAfterTheMultiplier is the named discriminator. At the
-// certification's worst un-warned geometry (-chunk-size 52412 ⇒ a 52,428-byte shard,
-// exact price 1.99996 credits) a stripe three shards down pays 7, not 4: flooring first
-// threw away 3 of the 7 credits the repairer earned.
+// TestRepairBountyDividesAfterTheMultiplier is the named discriminator. At the worst
+// un-warned geometry (-chunk-size 524264 ⇒ a 524,280-byte shard, exact price 1.99996
+// credits) a stripe three shards down pays 7, not 4: flooring first threw away 3 of the
+// 7 credits the repairer earned.
 func TestRepairBountyDividesAfterTheMultiplier(t *testing.T) {
 	const k, n, reachable = 10, 16, 13 // 3 lost ⇒ a 4× multiplier
-	const shardBytes = 52_412 + 16
+	const shardBytes = 524_264 + 16
 	mult := RarestShardMultiplier(k, n, reachable)
 	if mult != 4 {
 		t.Fatalf("fixture: multiplier %d, want 4", mult)
@@ -26,7 +31,7 @@ func TestRepairBountyDividesAfterTheMultiplier(t *testing.T) {
 		t.Fatalf("fixture: the pre-G-BT-2 price was %d, want 4 (a base of 1 times a 4× multiplier)", floorFirst)
 	}
 	if got := RepairBounty(k, n, reachable, shardBytes); got != 7 {
-		t.Fatalf("RepairBounty at the 52,428-byte shard, 3 lost = %d, want 7 — the division is not last", got)
+		t.Fatalf("RepairBounty at the 524,280-byte shard, 3 lost = %d, want 7 — the division is not last", got)
 	}
 }
 
@@ -37,14 +42,14 @@ func TestRepairBountyDividesAfterTheMultiplier(t *testing.T) {
 // balance regardless, but conservation must not lean on the cap).
 func TestRepairBountyIsDominantAndNeverOverPays(t *testing.T) {
 	const k, n = 10, 16
-	for _, shardBytes := range []int64{1, 16, 20_000, 26_215, 52_428, 65_552, 262_160, 1 << 20, 1<<27 + 16} {
+	for _, shardBytes := range []int64{1, 16, 20_000, 26_215, 52_428, 65_552, 262_143, 262_144, 262_160, 524_280, 1 << 20, 1<<27 + 16} {
 		for reachable := n + 2; reachable >= 0; reachable-- {
 			mult := int64(RarestShardMultiplier(k, n, reachable))
 			got := RepairBounty(k, n, reachable, shardBytes)
 			if floorFirst := RepairBountyBase(k, shardBytes) * mult; got < floorFirst {
 				t.Fatalf("shard %d, reachable %d: RepairBounty %d < the floor-first price %d — G-BT-2 must be dominant", shardBytes, reachable, got, floorFirst)
 			}
-			if exactNum := k * shardBytes * mult * RepairBountyCoeffNum; got*DeliveryBytesPerCredit*RepairBountyCoeffDen > exactNum {
+			if exactNum := shardBytes * mult * RepairBountyCoeffNum; got*DeliveryBytesPerCredit*RepairBountyCoeffDen > exactNum {
 				t.Fatalf("shard %d, reachable %d: RepairBounty %d exceeds the exact price %d/%d — an OVER-pay", shardBytes, reachable, got, exactNum, int64(DeliveryBytesPerCredit)*RepairBountyCoeffDen)
 			}
 		}
@@ -53,12 +58,12 @@ func TestRepairBountyIsDominantAndNeverOverPays(t *testing.T) {
 
 // TestZeroSignalReadsTheUnmultipliedBase: the multiplier can lift a geometry whose base
 // is ZERO to a positive price, so the G-λ-8 zero-signal would go VACUOUS if it read the
-// paid price instead of the base. A 20,000-byte shard at k = 10 is 200,000 B — below one
-// credit of fetch — yet a stripe at the k-floor pays 5 credits for it.
+// paid price instead of the base. A 200,000-byte shard is below one credit of fetch —
+// yet a stripe at the k-floor pays 5 credits for it.
 func TestZeroSignalReadsTheUnmultipliedBase(t *testing.T) {
-	const k, n, shardBytes = 10, 16, 20_000
+	const k, n, shardBytes = 10, 16, 200_000
 	if got := RepairBountyBase(k, shardBytes); got != 0 {
-		t.Fatalf("fixture: base %d, want 0 (k·shardBytes = %d < U/p = %d)", got, k*shardBytes, int64(DeliveryBytesPerCredit))
+		t.Fatalf("fixture: base %d, want 0 (shardBytes = %d < U/p = %d)", got, int64(shardBytes), int64(DeliveryBytesPerCredit))
 	}
 	if got := RepairBounty(k, n, k, shardBytes); got != 5 {
 		t.Fatalf("the price at the k-floor = %d, want 5 — the case that makes reading the base load-bearing", got)
@@ -75,11 +80,11 @@ func TestRepairBountyTruncationIsExactIntegerArithmetic(t *testing.T) {
 		shardBytes            int64
 		wantExactE5, wantLoss int64
 	}{
-		{10, 52_412 + 16, 199_996, 500},  // the certification's 50 % silent case
-		{10, 65_536 + 16, 250_061, 200},  // the former 64 KiB default: 2 of an exact 2.5006
-		{10, 262_144 + 16, 1_000_061, 0}, // the shipped default: 10 of an exact 10.00061
-		{10, 20_000, 76_293, 1_000},      // a zero base loses the WHOLE price
-		{10, 26_199 + 16, 100_002, 0},    // one byte's worth above the zero threshold
+		{10, 524_264 + 16, 199_996, 500}, // the 50 % silent case, at the F1 basis
+		{10, 65_536 + 16, 25_006, 1_000}, // the former 64 KiB default: 0 of an exact 0.25006 — the WHOLE price
+		{10, 262_144 + 16, 100_006, 0},   // the shipped default: 1 of an exact 1.00006
+		{10, 20_000, 7_629, 1_000},       // a zero base loses the WHOLE price
+		{10, 262_128 + 16, 100_000, 0},   // exactly the zero threshold: 1 of an exact 1.00000
 		{0, 262_160, 0, 0},               // degenerate k
 	} {
 		gotE5, gotLoss := RepairBountyTruncation(c.k, c.shardBytes)

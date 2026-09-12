@@ -12,7 +12,7 @@ parity, so the padding bought nothing); `core/chunk/chunk.go` `Join` accepts fra
 and requires only that non-final frames be full relative to their own length, so a single true-length manifest
 frame round-trips unchanged; data frames must stay equal-length within a stripe (erasure), so a small FILE still
 pays the padding to the chunk size; `core/genesis/genesis.go:57` pins its own 64 KiB for reproducibility and is
-untouched; `RepairBountyBase(10, 262,144 + 16) = 10` exactly (the certified D-S7 threshold of 36 retrievals per
+untouched; `RepairBountyBase(10, 262,144 + 16) = 10` exactly (the certified D-S7 threshold of 36 retrievals per [**SUPERSEDED 2026-09-12, `D-BOUNTY-PRICE-F1-2026-09-12`: the base is 1 and the threshold 3.60 — the price is one SHARD of witnessed fetch, not k of them. This ground survives and tightens; the other three are untouched.**]
 repair), vs 2 of an exact 2.5 at 64 KiB; the PoR audit samples every block at 256 KiB (p = 1.0) and 0.76 % of them
 at the old comment's "64 MiB production minimum" (unenforced folklore — 29 holders per 1 GiB object vs 6,557).
 

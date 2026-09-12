@@ -80,45 +80,49 @@ func TestGLambda5SupersedeLeavesNoRemainder(t *testing.T) {
 	}
 }
 
-// TestGLambda6RepairBountyBaseIsPricedInTheFetchPrice: base == c·k·shardBytes/(U/p)
-// (G-λ-6): a 64 MiB production chunk at k = 10 pays 256 credits; k·shardBytes one byte
-// short of a credit pays 0. Ablation: leave the base at k·shardBytes ⇒ RED (67 million).
+// TestGLambda6RepairBountyBaseIsPricedInTheFetchPrice: base == c·shardBytes/(U/p)
+// (G-λ-6, re-based by F1 on 2026-09-12): a 64 MiB shard pays 256 credits; a shard one
+// byte short of a credit pays 0. Ablation: leave the base at shardBytes ⇒ RED (67 million).
 func TestGLambda6RepairBountyBaseIsPricedInTheFetchPrice(t *testing.T) {
-	if got := RepairBountyBase(10, 6_710_887); got != 256 { // ⌈64 MiB / 10⌉ per shard
-		t.Fatalf("64 MiB chunk, k=10: base %d, want 256 credits (k·shardBytes / 262,144)", got)
+	if got := RepairBountyBase(10, 67_108_864); got != 256 { // a 64 MiB shard
+		t.Fatalf("64 MiB shard: base %d, want 256 credits (shardBytes / 262,144)", got)
 	}
-	if got := RepairBountyBase(10, 26_214); got != 0 {
-		t.Fatalf("k·shardBytes = 262,140 < one credit of fetch: base %d, want 0", got)
+	if got := RepairBountyBase(10, 262_143); got != 0 {
+		t.Fatalf("a shard one byte short of a credit of fetch: base %d, want 0", got)
 	}
-	if got := RepairBountyBase(10, 26_215); got != 1 {
-		t.Fatalf("k·shardBytes = 262,150: base %d, want 1", got)
+	if got := RepairBountyBase(10, 262_144); got != 1 {
+		t.Fatalf("a shard of exactly one credit of fetch: base %d, want 1", got)
 	}
-	if want := int64(10) * 6_710_887 * RepairBountyCoeffNum / RepairBountyCoeffDen / DeliveryBytesPerCredit; RepairBountyBase(10, 6_710_887) != want {
-		t.Fatalf("base is not c·k·shardBytes/(U/p)")
+	if want := int64(67_108_864) * RepairBountyCoeffNum / RepairBountyCoeffDen / DeliveryBytesPerCredit; RepairBountyBase(10, 67_108_864) != want {
+		t.Fatalf("base is not c·shardBytes/(U/p)")
 	}
-	if MinBountyStripeBytes != DeliveryBytesPerCredit {
-		t.Fatalf("MinBountyStripeBytes %d != U/p %d", MinBountyStripeBytes, DeliveryBytesPerCredit)
+	if MinBountyShardBytes != DeliveryBytesPerCredit {
+		t.Fatalf("MinBountyShardBytes %d != U/p %d", MinBountyShardBytes, DeliveryBytesPerCredit)
 	}
 }
 
-// TestRepairBountyBaseAtTheFormerDefaultIsTwoNotZero — the geometry correction (Economist
-// advisory 2026-09-06): a shard is a WHOLE ciphertext chunk, so the 64 KiB FORMER default's
-// stripe is 10 × 65,552 = 655,520 B and paid a base of 2 — not the zero the G-R212-7 build
-// and its blind PE stated on a shard = chunk/k model — with a 20 % truncation (exact 2.5006
-// → 2, R-BOUNTY-TRUNCATION), which is one reason the default moved to 256 KiB (a base of
-// exactly 10; D-R2.9-NODE-HALF-CALLS 4′). The publish threshold derives from the same
-// arithmetic: ~26 KB at k = 10.
-func TestRepairBountyBaseAtTheFormerDefaultIsTwoNotZero(t *testing.T) {
+// TestFormerDefaultChunkPaysZeroAndTheThresholdIsOneShard — the F1 re-pricing seen at the
+// two geometries the record argues about (D-BOUNTY-PRICE-F1-2026-09-12). This gate shipped
+// under a name asserting the former default paid "two, not zero", on the pre-F1 stripe
+// basis; the basis moved to the ONE shard the payee moves, so the 64 KiB former default now
+// pays ZERO and the 256 KiB shipped default pays 1. The name moved with the assertion.
+//
+// The Economist's 2026-09-06 geometry correction still holds and is what makes the numbers
+// computable: a shard is a WHOLE ciphertext chunk, so the former default's shard is 65,552 B
+// and the shipped default's is 262,160 B. Only the coefficient's basis changed. The publish
+// threshold derives from the same arithmetic and rises 26,199 → 262,128 B, which IS the
+// accepted cost R-BOUNTY-ZERO-BELOW-262KB names.
+func TestFormerDefaultChunkPaysZeroAndTheThresholdIsOneShard(t *testing.T) {
 	const overhead = 16 // crypto.Overhead, duplicated: core/credit imports no cipher
-	if got := RepairBountyBase(10, 65_536+overhead); got != 2 {
-		t.Fatalf("64 KiB former default, k=10: base %d, want 2 (655,520 / 262,144 = 2.5006 truncated)", got)
+	if got := RepairBountyBase(10, 65_536+overhead); got != 0 {
+		t.Fatalf("64 KiB former default: base %d, want 0 (65,552 < 262,144 — it paid 2 on the pre-F1 stripe basis)", got)
 	}
-	if got := RepairBountyBase(10, 262_144+overhead); got != 10 {
-		t.Fatalf("256 KiB chunk, k=10: base %d, want 10", got)
+	if got := RepairBountyBase(10, 262_144+overhead); got != 1 {
+		t.Fatalf("256 KiB shipped default: base %d, want 1 (262,160 / 262,144 = 1.00006 truncated)", got)
 	}
 	min := MinBountyChunkBytesFor(10, overhead)
-	if min != 26_199 {
-		t.Fatalf("min bounty chunk at k=10: %d, want 26,199 (= ⌈262,144/10⌉ − 16)", min)
+	if min != 262_128 {
+		t.Fatalf("min bounty chunk: %d, want 262,128 (= 262,144 − 16)", min)
 	}
 	if RepairBountyBase(10, min+overhead) != 1 || RepairBountyBase(10, min-1+overhead) != 0 {
 		t.Fatalf("the threshold is not the boundary: base(min) %d, base(min−1) %d", RepairBountyBase(10, min+overhead), RepairBountyBase(10, min-1+overhead))

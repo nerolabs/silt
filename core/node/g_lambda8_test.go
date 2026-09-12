@@ -38,8 +38,8 @@ func TestGLambda8ZeroBountyBaseIsNamedNotSilent(t *testing.T) {
 	before := l.Balance(holder)
 	p := erasure.Params{K: 10, N: 16}
 	// A REAL published geometry, not a synthetic one: a 1 KB object is a single frame, so
-	// R-SHORT-FINAL-STRIPE makes its shard 1,024 + 8 + 16 bytes and k·shardBytes = 10,480,
-	// far below one credit of fetch. Even at the k-floor multiplier it pays nothing.
+	// R-SHORT-FINAL-STRIPE makes its shard 1,024 + 8 + 16 = 1,048 bytes, far below the one
+	// credit of fetch F1 prices a repair at. Even at the k-floor multiplier it pays nothing.
 	const shardBytes = 1_024 + 8 + crypto.Overhead
 	if base := credit.RepairBountyBase(p.K, shardBytes); base != 0 {
 		t.Fatalf("setup: base %d, want 0 for this geometry", base)
@@ -61,7 +61,7 @@ func TestGLambda8ZeroBountyBaseIsNamedNotSilent(t *testing.T) {
 	if err := lLift.FundEscrow(root, funder, 500_000); err != nil {
 		t.Fatal(err)
 	}
-	const liftShard = 6_553 // k·shardBytes = 65,530: a base of 0, but 7× is 1.75 credits
+	const liftShard = 65_536 // a base of 0 (0.25 credits), but 7× is 1.75 credits
 	if base := credit.RepairBountyBase(p.K, liftShard); base != 0 {
 		t.Fatalf("setup: base %d, want 0", base)
 	}
@@ -73,13 +73,13 @@ func TestGLambda8ZeroBountyBaseIsNamedNotSilent(t *testing.T) {
 	if ndLift.Stats.BountyBaseZero != 1 {
 		t.Fatalf("BountyBaseZero = %d on the LIFTED arm, want 1 — the signal must read the unmultiplied base", ndLift.Stats.BountyBaseZero)
 	}
-	// Positive control: one credit of fetch per k·shardBytes pays, and is not counted.
+	// Positive control: one credit of fetch per SHARD pays, and is not counted (F1).
 	nd2, l2 := mkJudge(t, 4)
 	l2.Register(funder)
 	if err := l2.FundEscrow(root, funder, 500_000); err != nil {
 		t.Fatal(err)
 	}
-	nd2.settleRepairVerdict(claimant, claim, p, 26_215, 8, repairproof.Decision{Release: true})
+	nd2.settleRepairVerdict(claimant, claim, p, 262_144, 8, repairproof.Decision{Release: true})
 	if l2.Balance(holder) <= 0 || nd2.Stats.BountyBaseZero != 0 {
 		t.Fatalf("positive control: paid %d, BountyBaseZero %d", l2.Balance(holder), nd2.Stats.BountyBaseZero)
 	}

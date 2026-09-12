@@ -74,47 +74,88 @@ const (
 )
 
 // RepairBountyCoeffNum/Den is the dimensionless coefficient `c` in the repair-bounty
-// price `base = c × (k × shardBytes)` (PE ruling 2026-08-19, Q3): the base is
-// RELATIVE to the erasure geometry, never an absolute constant, because k and
-// shardBytes are Evolving-tier — an absolute base would silently mis-price a repair
-// the moment those re-tune. `k × shardBytes` is the coherent FLOOR: it covers the
-// dominant repair cost (fetch k survivor shards to reconstruct one), while ongoing
-// custody is funded by the serve economy, not this one-time bounty.
+// price `base = c × shardBytes` (PE ruling 2026-08-19 Q3, RE-DERIVED 2026-09-12 —
+// D-BOUNTY-PRICE-F1-2026-09-12): the base is RELATIVE to the shard the payee moves,
+// never an absolute constant, because shardBytes is Evolving-tier and an absolute base
+// would silently mis-price a repair the moment it re-tunes.
 //
-// c = 1 is RESEARCH-CERTIFIED (2026-08-19): decode is <0.1% of the fetch cost so
-// nothing pushes it above 1; it is g-neutral (a constant scale factor cancels in
-// the cost-trend); and it is the smallest floor-honest value, so it least shortens
-// the funded horizon. Solvency is a (c, skim) PAIR — `base × m̄ × R ≤ V × skim` ⇒
-// self-funding above ~24 retrievals/repair at c=1, m̄≈3 with base and skim in the
-// SAME denomination; since G-R212-7 (2026-09-06) the base is priced in the witnessed
-// fetch price U/p and the skim in the serve-mint Dλ = 1.5·U/p, so the certified
-// threshold is 24·PF = 36 retrievals/repair on the unwitnessed lane — which holds for HOT data;
-// cold data stays prepay-dependent (D-S7 finite horizon), the mechanism's honest
-// scope. Evolving-tier: re-tune only on field g. Cert:
-// silt-agent-memory/researcher/reviews/research-outcome/repair-bounty-coefficient-c-RESEARCH-CERTIFICATION-2026-08-19.md.
+// `k` IS NOT IN THIS PRICE, and removing it is the 2026-09-12 re-pricing. The bounty is
+// paid to the NEW HOLDER of the rebuilt shard (settleRepairVerdict → PayBounty), never
+// to the reconstructor, which is unpaid by ratified design (docs/design/h7-proof-of-
+// repair.md §8b; C-5 G1 2026-08-27). The holder's marginal act is ONE shard moved
+// inbound, so the coherent basis is one shard of witnessed fetch price:
+//
+//	F1, the coherence floor:  bounty(one shard-repair, mult = 1) ≥ shardBytes/(U/p)  ⇔  c·k ≥ 1
+//	the over-pay ceiling:     the payee is not paid more than the bytes it moved      ⇔  c·k ≤ 1
+//	⇒ c·k = 1 EXACTLY — floor and ceiling coincide, so no value is chosen.
+//
+// Until 2026-09-12 the basis was `k × shardBytes`, the reconstructor's survivor fetch.
+// That is an act the price does not pay for, and the 2026-08-19 certification made
+// re-deriving `c` off the payee's own basis a CONDITION of keeping the split; the split
+// was ratified and the re-derivation was never performed. Measured on the shipped code
+// it over-paid the reconstruction 2.31×–36.0× over the admissible loss range and the
+// ratified payee's own basis 10×–60×.
+//
+// The SHAPE is load-bearing, not only the number. c·k = 1 is encoded by taking `k` OUT
+// of the byte quantity and leaving c = 1. It must NOT be encoded as Num/Den = 1/10:
+// that re-couples the price to a hard-coded k, and k is Evolving-tier — at k = 12 the
+// price would silently over-pay 20 %, measured in TestF1PriceCarriesNoK. (The record
+// also offered "1/10 adds a second integer floor before the last division"; that reason
+// is WRONG and the gate's third arm drives why — for positive integers ⌊⌊x/a⌋/b⌋ =
+// ⌊x/(a·b)⌋, so nested integer division loses nothing. The k-coupling refuses 1/10 on
+// its own.) Gates: TestF1PriceIsOneShardOfWitnessedFetch, TestF1PriceCarriesNoK.
+//
+// Solvency is a (c, skim) PAIR — `base × m̄ × R ≤ V × skim`. Re-derived at this price:
+// income per stripe-retrieval is k·shardBytes/(SkimDen·Dλ), outflow per shard-repair is
+// shardBytes/(U/p), and **shardBytes CANCELS** in the ratio, so self-funding needs
+//
+//	S/R ≥ m̄ · SkimDen·Dλ / (k · U/p) = m̄ · 3,145,728 / 2,621,440 = 1.2·m̄ EXACTLY
+//
+// — 3.60 stripe-retrievals per shard-repair at m̄ = 3, against 12·m̄ = 36.00 before. Both
+// are exact: the certification's 1.20007 and 12.0007 carry a spurious 0.006 % from pricing
+// income at a 262,144 B shard and outflow at a 262,160 B one. The cancellation is what
+// makes the threshold dimensionless, which is the same property that clears
+// build-immutable #3's steerable-estimand rule. Pinned in TestF1SolvencyBandIsExact. The prior
+// published single number 36 is WITHDRAWN as a point: `reachable` is the judge's own
+// POST-repair count, so m̄ is bracketed [1, m] and the honest band was [12.0, 36.0] and
+// is now [1.20, 3.60] (R-MULT-RACES-THE-PLACEMENT). Hot data self-funds inside the band;
+// cold data stays prepay-dependent (D-S7 finite horizon), the mechanism's honest scope.
+// Evolving-tier: re-tune only on field g. Certs, in order:
+// silt-agent-memory/researcher/reviews/research-outcome/repair-bounty-coefficient-c-RESEARCH-CERTIFICATION-2026-08-19.md,
+// .../escrow-price-repair-cost-model-RESEARCH-CERTIFICATION-2026-09-12.md,
+// .../R-HOLDER-PARTICIPATION-CONSTRAINT-structural-floor-RESEARCH-CERTIFICATION-2026-09-12.md.
 const (
 	RepairBountyCoeffNum = 1
 	RepairBountyCoeffDen = 1
 )
 
-// RepairBountyBase derives the per-object base bounty from the erasure geometry,
-// in CREDITS: c × (k × shardBytes) / (U/p) — the fetch price of the k survivor shards
-// a repair must pull, denominated in the witnessed delivery price (G-R212-7,
-// T-NUMERAIRE; before 2026-09-06 the base was implicitly 1 credit per byte, which
-// would have moved D-S7's self-funding threshold from 24 to 12.6 million retrievals
-// per shard-repair the moment λ moved — R-BOUNTY-BASE-DENOMINATION). This replaces
-// the old absolute Config.RepairBountyBase so re-tuning k/shardBytes (Evolving-tier)
-// re-prices repair automatically (PE Q3). 0 for a degenerate shard/stripe AND for a
-// geometry whose k × shardBytes is below one credit's worth of fetch (k·shardBytes <
-// DeliveryBytesPerCredit — a chunk below ~26 KB at k = 10; the 64 KiB FORMER default paid 2, the 256 KiB default pays 10);
-// the caller's base<=0 guard means "off", and the judge names a zero base loudly
-// (G-λ-8, core/node/repairclaim.go).
+// RepairBountyBase is the per-shard base bounty in CREDITS: c × shardBytes / (U/p) —
+// ONE shard of witnessed delivery price, which is the act the payee performs (F1,
+// D-BOUNTY-PRICE-F1-2026-09-12), denominated in the witnessed delivery price (G-R212-7,
+// T-NUMERAIRE; before 2026-09-06 the base was implicitly 1 credit per byte, which would
+// have moved D-S7's self-funding threshold by 12.6 million the moment λ moved —
+// R-BOUNTY-BASE-DENOMINATION). This replaces the old absolute Config.RepairBountyBase so
+// re-tuning shardBytes (Evolving-tier) re-prices repair automatically (PE Q3).
+//
+// `k` IS NOT IN THE PRICE. It is still a parameter because it names a DEGENERATE
+// geometry (k <= 0 pays nothing) and because the judge's call sites read it from the
+// erasure params they already hold; it must never re-enter the arithmetic — see
+// RepairBountyCoeffNum/Den on why, and TestF1PriceIsOneShardOfWitnessedFetch, which
+// drives the price at k = 2…64 and fails if it moves with k.
+//
+// 0 for a degenerate shard/stripe AND for any shard below one credit's worth of fetch
+// (shardBytes < DeliveryBytesPerCredit — a chunk below 262,128 B; the shipped 256 KiB
+// default pays 1, the 64 KiB former default pays 0). The caller's base<=0 guard means
+// "off", and the judge names a zero base loudly (G-λ-8, core/node/repairclaim.go). That
+// zero class WIDENED 10.008× with F1 — an accepted, disclosed cost
+// (R-BOUNTY-ZERO-BELOW-262KB); the publish-time warning is what discloses it, and
+// cmd/silt refuses to start if the shipped default ever falls into it.
 func RepairBountyBase(k int, shardBytes int64) int64 {
 	return repairBountyCredits(k, shardBytes, 1)
 }
 
 // repairBountyCredits is the ONE place a repair price is divided into credits:
-// ⌊c·k·shardBytes·mult / (U/p)⌋, with mult the rarest-shard multiplier (1 for the
+// ⌊c·shardBytes·mult / (U/p)⌋, with mult the rarest-shard multiplier (1 for the
 // base). Every price the ledger pays flows through here, so the floor is applied
 // exactly once, at the END — G-BT-2 (BOULDER2 residual-closures certification,
 // 2026-09-07, §2.6). Flooring the base FIRST and multiplying after threw away
@@ -122,26 +163,37 @@ func RepairBountyBase(k int, shardBytes int64) int64 {
 // ⌊a⌋·mult ≤ ⌊a·mult⌋ ≤ a·mult, so dividing last is never an over-pay and recovers
 // up to (n−k+1)−1 credits — most on the stripe nearest data loss, which is exactly
 // the stripe the multiplier exists to prioritise.
+//
+// `k` is read ONLY as the degenerate-geometry guard. Putting it back into the product
+// is the mis-price F1 removed, and encoding c = 1/k in the coefficient instead would
+// add a second integer floor here — the exact thing the sentence above forbids.
 func repairBountyCredits(k int, shardBytes int64, mult int) int64 {
 	if k <= 0 || shardBytes <= 0 || mult <= 0 {
 		return 0
 	}
-	return int64(k) * shardBytes * int64(mult) * RepairBountyCoeffNum / RepairBountyCoeffDen / DeliveryBytesPerCredit
+	return shardBytes * int64(mult) * RepairBountyCoeffNum / RepairBountyCoeffDen / DeliveryBytesPerCredit
 }
 
 // RepairBountyTruncation prices what the floor in repairBountyCredits COSTS the
 // repairer at one geometry, in integers — the money path does no floating point.
 // It returns the exact price scaled by 1e5 and FLOORED (never over-stated, the same
 // direction as the payment itself) and the under-pay as a fraction of the exact
-// price in tenths of one percent, rounded to nearest. At k = 10 and a 52,428-byte
-// shard (the -chunk-size 52412 geometry) that is 199,996 and 500: an exact price of
-// 1.99996 credits paid as 1, a 50.0 % wage cut. It is what the publish warning
-// (G-BT-1) says out loud; nothing disburses on it.
+// price in tenths of one percent, rounded to nearest. At a 524,280-byte shard (the
+// -chunk-size 524264 geometry) that is 199,996 and 500: an exact price of 1.99996
+// credits paid as 1, a 50.0 % wage cut. Nothing disburses on it.
+//
+// It is what the publish warning (G-BT-1) says out loud on its TRUNCATES arm — and
+// since F1 that arm is UNREACHABLE through cmd/silt bountyPriceWarning, because the
+// warning's threshold is the shipped default's own base, which is now 1, so "below the
+// threshold" means "zero". The arithmetic stays and is driven directly here: the
+// threshold is DERIVED and both U/p and the publish default are Evolving-tier, so a
+// re-tune that lifts the shipped base above 1 revives the arm. R-TRUNCATION-DISCLOSURE-
+// NARROWS records the cost of the gap in the meantime.
 func RepairBountyTruncation(k int, shardBytes int64) (exactE5, underpayTenthsPct int64) {
 	if k <= 0 || shardBytes <= 0 {
 		return 0, 0
 	}
-	num := int64(k) * shardBytes * RepairBountyCoeffNum         // the exact price's numerator
+	num := shardBytes * RepairBountyCoeffNum                    // the exact price's numerator
 	den := int64(DeliveryBytesPerCredit) * RepairBountyCoeffDen // ... over this
 	exactE5 = num * 100_000 / den
 	rem := num - repairBountyCredits(k, shardBytes, 1)*den
@@ -170,7 +222,7 @@ func RarestShardMultiplier(k, n, reachable int) int {
 }
 
 // RepairBounty is the credits one shard-repair earns: the whole price
-// c·k·shardBytes·(lost+1) divided into credits ONCE, at the end (G-BT-2). It is the
+// c·shardBytes·(lost+1) divided into credits ONCE, at the end (G-BT-2). It is the
 // only pricing entry point the judge calls; RepairBountyBase exists beside it for
 // the zero-signal, which must read the UNMULTIPLIED base so a stripe near the cliff
 // cannot mask a geometry that pays nothing on a healthy stripe (G-λ-8).
@@ -178,27 +230,36 @@ func RepairBounty(k, n, reachable int, shardBytes int64) int64 {
 	return repairBountyCredits(k, shardBytes, RarestShardMultiplier(k, n, reachable))
 }
 
-// MinBountyStripeBytes is the smallest STRIPE (k × shardBytes) that pays a non-zero
-// repair bounty: one credit of fetch. A SHARD IS A WHOLE CIPHERTEXT CHUNK — the erasure
-// stage takes k ciphertext chunks as the data shards and emits chunk-sized parity
-// (core/pipeline/pipeline.go), and the judge reads a survivor's full length
-// (core/node/repairclaim.go) — so at the former 64 KiB default the stripe was
-// 10 × 65,552 = 655,520 B and the base is 2 credits, NOT zero. (The G-R212-7 build and its
-// blind PE stated the geometry as shard = chunk/k and filed R-DEFAULT-CHUNK-BOUNTY-ZERO on
-// it; the Economist's 2026-09-06 advisory on the default chunk size caught the error.
-// What the default actually pays is a 20 % integer-truncation UNDER-pay, exact 2.5006 → 2:
-// R-BOUNTY-TRUNCATION.)
-const MinBountyStripeBytes = DeliveryBytesPerCredit
+// MinBountyShardBytes is the smallest SHARD that pays a non-zero repair bounty: one
+// credit of fetch, the bytes the payee moves. It was MinBountyStripeBytes (k × shardBytes)
+// until F1 re-derived the price off the payee's own act; the constant's VALUE is unchanged
+// and its MEANING moved from a stripe minimum to a shard minimum, which is exactly the
+// 10.008× widening of the zero class that F1 costs (R-BOUNTY-ZERO-BELOW-262KB).
+//
+// A SHARD IS A WHOLE CIPHERTEXT CHUNK — the erasure stage takes k ciphertext chunks as the
+// data shards and emits chunk-sized parity (core/pipeline/pipeline.go), and the judge reads
+// a survivor's full length (core/node/repairclaim.go) — so at the former 64 KiB default the
+// shard was 65,552 B and now pays 0, where under the stripe basis it paid 2. (The G-R212-7
+// build and its blind PE stated the geometry as shard = chunk/k and filed
+// R-DEFAULT-CHUNK-BOUNTY-ZERO on it; the Economist's 2026-09-06 advisory on the default
+// chunk size caught the error.)
+const MinBountyShardBytes = DeliveryBytesPerCredit
 
-// MinBountyChunkBytesFor is the smallest plaintext CHUNK whose stripe of k chunk-sized
-// shards (each chunk + overhead bytes of ciphertext expansion) pays a non-zero base:
-// ⌈MinBountyStripeBytes / (k·c)⌉ − overhead. The publish warning and the judge's fix text
-// derive their number from it, never type one.
+// MinBountyChunkBytesFor is the smallest plaintext CHUNK whose chunk-sized shard (the
+// chunk + overhead bytes of ciphertext expansion) pays a non-zero base:
+// ⌈MinBountyShardBytes / c⌉ − overhead. The publish warning and the judge's fix text derive
+// their number from it, never type one. At the shipped c that is 262,128 B, against 26,199 B
+// under the pre-F1 stripe basis.
+//
+// `k` is retained as the degenerate-geometry guard ONLY — the threshold does not move with
+// it, which is the same property F1 gives the price. Dropping the parameter is owed and
+// deferred: core/node/repairclaim.go is the only other caller and it is under review in
+// PR #847 (D-BOUNTY-PRICE-F1-2026-09-12 §6).
 func MinBountyChunkBytesFor(k int, overhead int64) int64 {
 	if k <= 0 {
 		return 0
 	}
-	perShard := (MinBountyStripeBytes*RepairBountyCoeffDen + int64(k)*RepairBountyCoeffNum - 1) / (int64(k) * RepairBountyCoeffNum)
+	var perShard int64 = (MinBountyShardBytes*RepairBountyCoeffDen + RepairBountyCoeffNum - 1) / RepairBountyCoeffNum
 	if perShard <= overhead {
 		return 1
 	}

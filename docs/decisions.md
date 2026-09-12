@@ -2079,7 +2079,7 @@ Researcher's first option. The certification's §11 sentence, verbatim:**
 > **RATIFIED — the serve-mint denomination `λ`, and the delivery price it derives from.**
 > `ServeMintBytesPerCredit Dλ = 393_216` — **λ = 1 credit per 384 KiB served** — derived as
 > `Dλ = ⌈3·U/(2·p)⌉` from `DeliveryIncrementBytes U = 262_144` and `DeliveryIncrementCredit p = 1`
-> (R2.9), never pinned independently. `RepairBountyBase` becomes `c·k·shardBytes/(U/p)`.
+> (R2.9), never pinned independently. `RepairBountyBase` becomes `c·k·shardBytes/(U/p)`. [**RE-DERIVED 2026-09-12, `D-BOUNTY-PRICE-F1-2026-09-12`: the denominator `U/p` stands and `k` comes OUT of the numerator — the base is `c·shardBytes/(U/p)`, the witnessed price of the one shard the payee moves. `Dλ`, `f` and `g` are untouched.**]
 > `f = 50,000` and `g = 500,000` **do not move** (ONE FACE; G-BB-30′): the pin is realized in the
 > **price**, and `λ` and the bounty base follow the price.
 >
@@ -2153,7 +2153,7 @@ object's funded figure (red-team F2's shape).
   economy-on flip, after the Economist confirms the census and dedup effects. **Premise corrected 2026-09-07:**
   the default pays a base of 2 (a shard is a whole ciphertext chunk), not zero — the real defect is a 20 %
   truncation under-pay (`R-BOUNTY-TRUNCATION`). The move stands on the Economist's other grounds (the certified
-  D-S7 threshold of 36, one chunk = one delivery credit, exhaustive PoR audits) and carries a NEW call the owner
+  D-S7 threshold of 36 [**now 3.60 — `D-BOUNTY-PRICE-F1-2026-09-12`; the ground survives, the number moved**], one chunk = one delivery credit, exhaustive PoR audits) and carries a NEW call the owner
   has not yet made: fold the manifest true-length framing (`R-MANIFEST-PADDING`: 87.6 % of the flixz store is
   1.4 KB manifests padded to the chunk size; 3.9× store growth at 256 KiB otherwise) into the same
   content-addressing break, or defer both. Not built until that call.
@@ -6515,3 +6515,240 @@ at issuance is a self-declaration.
 This was not asked for on call 7 and does not change the answer — the verdict rests on
 genesis-coverage of the chain id, not on issuer enforcement. It is filed as a register row rather
 than folded in silently.
+
+---
+
+## D-BOUNTY-PRICE-F1-2026-09-12 — the repair bounty is re-priced off the act it actually pays for: `c·k = 1` is DERIVED, not chosen, and the zero-bounty object class widens 10× as the accepted cost
+
+- **Status:** ✅ RATIFIED — 2026-09-12, on the Researcher's two certifications, and BUILT the same day.
+- **Tier:** an **economic mechanism** (D-S7 durability economy, the escrow price). **It moves no
+  consensus rule, no format door and no genesis hash** — re-verified at source, §5. The value of the
+  floor is governed by **S7** (tenet-tier); its **admissibility** is governed by **build-immutable #3**
+  (structure or statistics, never a census the adversary can join).
+- **Certifications, in order:**
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/escrow-price-repair-cost-model-RESEARCH-CERTIFICATION-2026-09-12.md`
+  (the finding and the ceiling) and
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R-HOLDER-PARTICIPATION-CONSTRAINT-structural-floor-RESEARCH-CERTIFICATION-2026-09-12.md`
+  (the floor, which lifts the gate the first one returned).
+- **Predecessor corrected:** `repair-bounty-coefficient-c-RESEARCH-CERTIFICATION-2026-08-19.md`.
+- **Scope:** `core/credit` (the price), `cmd/silt` (the operator-facing price sentence, the publish
+  warning, a new refuse-to-start), `core/pipeline` (the default chunk's bounty ground), and the
+  fixtures of four gates. Read with `D-BOUNTY-PAYS-FOR-REPAIR-2026-09-12` and
+  `D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12`: those decide **what** the payment is for and **who**
+  is paid; this one decides **what it is priced at**.
+
+### 1. The finding: the price was derived from the cost of an act it does not pay for
+
+The bounty was `c × (k × shardBytes) / (U/p)` — the fetch price of the `k` survivor shards a
+**reconstruction** pulls. The bounty is paid to the **new holder** of the rebuilt shard
+(`settleRepairVerdict` → `PayBounty(claim.Root, claim.Holder, bounty)`). The reconstructor is paid
+**zero**, by ratified design (`docs/design/h7-proof-of-repair.md` §8b; C-5 G1, 2026-08-27). So the
+mechanism priced one party's act and paid a different party.
+
+Measured at the shipped operating point, over the admissible loss range `m ∈ {3,4,5,6}` (derived:
+`RepairSlack = 2` has no flag, and `ReconstructStripe` needs `k` present), it **over-paid**:
+
+| Compared against | Over-pay |
+|---|---|
+| the reconstruction fetch the price is derived from | **2.31× – 36.0×** |
+| the **ratified payee's** own basis — one shard received and held | **10× – 60×** (`k · mult`) |
+
+It never under-paid: the under-pay corner needs `RepairSlack ≤ 0`, which no shipped flag can set.
+
+**The governing fact is a debt.** The 2026-08-19 certification offered two forks and made
+fork (b)'s obligation explicit: *"Keep the split and accept the bounty as a custody rent to the
+holder. Then it is mis-sized … and `c` should be re-derived off storage rent."* **The tree ratified
+fork (b) and never performed the re-derivation.** This entry performs it.
+
+### 2. The floor, and why the value is DERIVED rather than chosen
+
+The first certification returned its remedy GATED on `R-HOLDER-PARTICIPATION-CONSTRAINT` — *is one
+credit enough to make a node accept a shard?* That residual is **REFUTED as posed, not merely
+unmeasured**: `(*Node).handle`'s `case ports.MsgStoreChunk` refuses on exactly three grounds
+(`freeload`, the denylist, integrity) and reads **no price, no balance, no capacity and no escrow**.
+The estimand named a decision the artifact does not implement. Four independent reasons make the
+obvious measurement inadmissible anyway; the first is decisive alone — a storage opportunity cost is
+denominated in currency-per-byte-per-time and silt has **no numéraire bridge**, the funding stance
+(`TENETS.md` Part III) forbidding a fiat one and no market price existing for the other.
+
+What replaces it is a **structural floor** in the same shape as the existing byte minimums:
+
+> **F1 (the coherence floor).** *The credits a verified shard-repair pays must be at least the
+> protocol's own witnessed price of the bytes the **payee** moves in performing the paid act.*
+> The payee's marginal act is exactly one shard inbound, so `bounty(one shard-repair, mult = 1) ≥
+> shardBytes/(U/p)`, i.e. **`c·k ≥ 1`**.
+
+F1 is admissible where a census is not, on four properties: it is structural (both sides are
+compile-time constants of the same numéraire — no population, nothing to join); **dimensionless**, so
+the publisher's chunk-size and object-size choices cancel and the steerability lever #3 warns about
+is absent by construction; self-re-deriving as `k` and `U/p` re-tune; and it reuses the ratified
+basis (§8b prices *"the scarce, verifiable outcome — a fresh replica"*, i.e. bytes moved) rather than
+inventing one.
+
+**The bracket is a POINT.** The over-pay ceiling from §1 is the same relation from the other side —
+the payee is not paid more than the bytes it moved — so `c·k ≤ 1`. Floor and ceiling coincide:
+
+```
+F1:       c·k ≥ 1
+ceiling:  c·k ≤ 1
+          ---------
+          c·k = 1   exactly
+```
+
+**No value is chosen. The derivation produces it.** A zero-surplus price would normally be unsound —
+an indifferent agent may refuse — and it is licensed here by the artifact, not by optimism: §2's
+`MsgStoreChunk` has no refusal to express indifference through. **That is also the condition under
+which this entry expires** — see `R-F1-EXPIRES-ON-A-HOLDER-REFUSAL` in §7.
+
+### 3. ★ THE SHAPE IS LOAD-BEARING — `Num/Den = 1/10` is REFUTED, and one of its two stated reasons is WRONG
+
+`c·k = 1` is encoded by taking **`k` out of the byte quantity and leaving `c = 1`**. The price is now
+`⌊c · shardBytes · mult / (U/p)⌋`.
+
+Setting `RepairBountyCoeffNum/Den = 1/10` gives the right number today and is wrong as a mechanism:
+it **re-couples the price to a hard-coded `k`**, which is Evolving-tier and is the exact failure the
+coefficient's own doc says it exists to prevent. Driven in `TestF1PriceCarriesNoK`: at `k = 12` the
+`1/10` encoding pays **12** where F1 pays **10** — a **20 % silent over-pay** the moment the erasure
+geometry re-tunes.
+
+**The second reason the record carried is FALSE, and I refuse to repeat it.** The certification also
+said `1/10` *"adds a SECOND integer floor before the last division, which G-BT-2 established must not
+happen … lossless only because k divides Den."* For positive integers `⌊⌊x/a⌋/b⌋ = ⌊x/(a·b)⌋`
+**always**, so nested integer division loses nothing and the divisibility of `k` into `Den` is
+irrelevant. That arm is driven as a correction in the same gate. **The k-coupling refuses `1/10` on
+its own**, and the directive is unaffected.
+
+### 4. ★ THE ACCEPTED COST — objects under ~262 KB earn a ZERO base repair bounty
+
+Every figure re-derived at source, not copied from the certification.
+
+| | non-zero base iff | zero class | shipped base |
+|---|---|---|---|
+| before | `10 · (obj + 8 + 16) ≥ 262,144` | object ≤ **26,190 B** | 10 |
+| under F1 | `(obj + 8 + 16) ≥ 262,144` | object ≤ **262,119 B** | **1** |
+
+The class widens **262,120 / 26,191 = 10.008×**. A single-frame object is stored at its true length
+(`R-SHORT-FINAL-STRIPE`), so for a small object **the shard IS the object** and no chunk size changes
+it. Three facts bound the cost and one does not:
+
+- **The publish warning's boundary does NOT move: 262,119 fires, 262,120 is the first silent size,
+  before and after.** Only the **arm** changes, TRUNCATES → ZERO. Both the base and the warning's
+  threshold fell by the same factor, because `shippedBountyBase()` is DERIVED.
+- **The disclosure machinery already exists** and the `shortFrame` branch already said the right
+  thing: *"NO chunk size changes this — the shard IS the object; … this object's durability is
+  prepay-only (fund its escrow)."*
+- **The multiplier still rescues sub-default objects near the cliff:** a 100,000 B object pays 0 at
+  `mult = 1` and 2 at `mult = 6`. Small-object repairs are funded when the stripe is near data loss
+  and unfunded when it is healthy.
+- **What is NOT bounded, and is a SECOND cost the certifications did not name:** the TRUNCATES arm of
+  the publish warning is now **unreachable through `bountyPriceWarning`**. The rule fires iff
+  `base < shippedBountyBase()`, which is 1, so a firing publish always has `base == 0`. A publish
+  worth an exact 1.99996 credits pays 1 and is **SILENT** — a 50 % short-pay the publisher is never
+  told about. Widening the rule is refused here: it would speak on the shipped default itself, which
+  is the finding blind PE M6 closed. Filed as `R-TRUNCATION-DISCLOSURE-NARROWS`, run in the G-λ-8
+  gate, with the arm's arithmetic kept and driven directly in `core/credit`.
+
+**The solvency band moves the way C-5's G3 wants, and a third figure is corrected.** Income per
+stripe-retrieval is `k·shardBytes/(SkimDen·Dλ)`; outflow per shard-repair is `shardBytes/(U/p)`.
+**`shardBytes` CANCELS in the ratio**, so
+
+```
+S/R  ≥  m̄ · SkimDen·Dλ / (k · U/p)  =  m̄ · 3,145,728 / 2,621,440  =  1.2 · m̄   EXACTLY
+```
+
+**3.60** stripe-retrievals per shard-repair at `m̄ = 3`, against `12·m̄` = **36.00** before — a 10.0×
+widening of the band in which an object pays for its own durability. Both numbers are **exact**: the
+certifications report `1.20007·m̄` and `12.0007·m̄`, and that 0.006 % is an artifact of pricing income
+at a 262,144 B shard and outflow at a 262,160 B one. It cannot be real, because the ratio carries no
+`shardBytes` — which is the same cancellation that makes the threshold dimensionless and therefore
+clears build-immutable #3's steerable-estimand rule. Pinned as an integer relation in
+`TestF1SolvencyBandIsExact`: `10·SkimDen·Dλ = 12·k·(U/p)`.
+
+### 5. A refuse-to-start ships in the SAME commit, because the margin fell 235,945 B → 16 B
+
+`c` itself is **not** a consensus quantity, so canon rule 8 governs neither arm for it: `PayBounty` is
+classified `neutral`, `Reputation()` reads bonded bytes minus slashes, `core/genesis` does not import
+`core/credit` (re-verified at this SHA: zero matches) and `core/chain` reaches it only in
+`bond_quorum_test.go`. **γ→1/N holds, build-enforced by `core/credit/invariant_a_test.go`.** No block
+field, no cbor key, no `Hash()` preimage, no committed leaf, no activation rule. **`blocks[0].Hash()`
+does not move.**
+
+**One coupling DOES land on canon rule 8's first arm.** `shippedBountyBase()`'s own doc named it:
+*"if `DefaultChunkSize` ever dropped below `minBountyChunkBytes` this would be 0 and the whole
+warning, ZERO arm included, would go permanently silent."* That was a comment while the margin was
+**235,945 B**. F1 compresses it to **16 B** — exactly `crypto.Overhead`. Measured, both sides: `262,144 − 26,199 = 235,945` before, `262,144 − 262,128 = 16` now.
+Locally checkable over two compile-time constants ⇒ **refuse-to-start**, `checkBountyDisclosureHeadroom`,
+called unconditionally at daemon start. **A refuse-to-start owed "next PR" is a refuse-to-start that
+does not exist**, so it ships here. It is not gated on `-economy`: the publisher needs the disclosure
+whether or not this node pays bounties.
+
+**REFUSED, by name:** raising `pipeline.DefaultChunkSize` to widen the 16-byte margin. Its own doc
+says that moves the height-0 block hash, `core/genesis TestGenesisBlockHashIsPinned` holds the
+literal, and the one genesis re-mint has been paid (M1, 2026-09-11). If the margin is ever judged too
+thin the admissible move is the **price** (`U/p`), and that is a separate certification because `U/p`
+carries `GrantOverRPinBytes` and the G-λ-3 start-up refusal.
+
+**Does the 256 KiB default's justification survive?** Its four grounds were (i) one chunk = one
+delivery credit, (ii) a base of exactly 10, (iii) a PoR audit still samples every block at `p = 1.0`,
+(iv) edge participation per 1 GiB object. **Only (ii) moves**, and (i) becomes tighter: 262,144 B is
+now the exact zero-bounty cliff, to within `crypto.Overhead`.
+
+### 6. What this entry does NOT do
+
+- **It does not reopen the split.** The reconstructor stays unpaid (`R-D6-G1`, held in tension).
+  **F1 must never be read as protecting the reconstructor**; it binds the HOLDER and it is RELIEF for
+  the JUDGE, whose outflow falls 10× while its bytes do not change.
+- **It does not close the attribution half.** `R-BOUNTY-METERS-BUT-DOES-NOT-ATTRIBUTE` (D7) is
+  unchanged — `settleRepairVerdict` still pays `claim.Holder`, a field of an **unsigned** claim. F1
+  cuts that break's payoff from up to 60 credits per claim to up to 6, and closes nothing.
+- **It does not re-key the Screen-D dedup to `(root, stripe)`.** That would pay one of `m` fresh
+  replicas and starve `m − 1` holders that each performed the ratified act.
+- **It does not sweep the 14 sites carrying the false *"fetches k survivors"* sentence.** Those get
+  their own PR; two are operator-facing published claims. The sites that state the **price basis or
+  the number** are corrected here because leaving them would ship a claim this change made false.
+- **It does not drop the now-inert `k` parameter** from `RepairBountyBase` and `MinBountyChunkBytesFor`.
+  `core/node/repairclaim.go` is their other caller and is under review in PR #847. `k` is retained as
+  the degenerate-geometry guard and held out of the arithmetic by a gate rather than by a signature;
+  the parameter removal is owed with the sweep.
+- **It does not correct `core/node/node.go`'s `Config.RepairEconomy` doc**, which still states the
+  pre-F1 formula, for the same reason. The **operator-facing** sentence — the `-economy` flag help —
+  IS corrected here.
+
+### 7. Residuals
+
+**CLOSED by this entry:**
+
+- **`R-BOUNTY-PER-SHARD-VS-PER-STRIPE`** — one stripe fetch rebuilds all `m` shards and the escrow
+  was charged the full `k·shardBytes` `m` times. At `c·k = 1` the per-claim price equals the
+  per-claim marginal cost, so the `×m` term stops being a mis-pricing: `m` holders each performed one
+  unit of the paid act. **Closed by derivation, not by a count change.**
+- **`R-CHUNK-CLIFF-MARGIN-16B`** — closed by the refuse-to-start in §5, which is the closer the
+  certification asked for. The margin itself is unchanged at 16 B and is measured by the gate.
+- **`R-HOLDER-PARTICIPATION-CONSTRAINT`** — **REFUTED as posed** (§2), not deferred. File it as
+  *"does not exist"*, never as *"measure it"*. What survives is the operator's one-time, whole-node
+  `-serve-content` choice against its entire income bundle, in which `c` is one small term.
+
+**OPEN, filed here:** `R-BOUNTY-ZERO-BELOW-262KB` and `R-TRUNCATION-DISCLOSURE-NARROWS` carry
+register rows in `ROADMAP.md`. `R-F1-EXPIRES-ON-A-HOLDER-REFUSAL` is the expiry condition of §2:
+**if any future change gives the holder a price-conditioned refusal, `c·k = 1` stops being a point
+and the surplus above the floor becomes undetermined again.** Gate any such change on re-opening the
+certification. `R-JUDGE-LANE-UNPRICED`, `R-JUDGE-ESCROW-HAS-NO-INCOME-PATH` and
+`R-MULT-RACES-THE-PLACEMENT` are unchanged by this entry.
+
+### 8. ★ TWO CERTIFICATIONS THE RESEARCHER WITHDREW, recorded because both were load-bearing
+
+Both are self-corrections of `repair-bounty-coefficient-c-RESEARCH-CERTIFICATION-2026-08-19.md`, and
+neither may be quoted forward.
+
+1. **"A paramedic's survivor-fetches skim back into the object's own escrow, so repair partially
+   self-funds."** **FALSE at source.** `RecordServeToObject` is called by the node that **serves**,
+   on **its own** ledger, and `escrowFor(root)` is that server's escrow. **Ledgers are per-node.** A
+   repair fetch tops up the **survivor holders'** escrows, never the paying judge's. The log line
+   *"repair bounty release paid nothing — escrow empty on this judge"* is therefore the expected
+   steady state for a pure-paramedic judge, not an anomaly (`R-JUDGE-ESCROW-HAS-NO-INCOME-PATH`).
+2. **The published `S/R ≥ 36` is the TOP of a `[12, 36]` bracket presented as a point.** It rested on
+   *"the modal multiplier is 3"*, which assumed the judge reads the **pre**-repair state. It does
+   not: `fetchSurvivors` counts positions the judge fetched **after** placement, so `mult ∈ [1, m]`
+   and `m̄` is bracketed, unmeasured, and decided by a race between placement convergence and judge
+   scheduling (`R-MULT-RACES-THE-PLACEMENT`). Under F1 the band is `[1.20, 3.60]`. **Both are
+   brackets. Neither is a point.**

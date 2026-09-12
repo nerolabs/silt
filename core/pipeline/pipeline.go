@@ -28,14 +28,21 @@ import (
 // DefaultChunkSize is the publish default: 256 KiB (D-R2.9-NODE-HALF-CALLS call 4,
 // amended 4′, ratified 2026-09-07; Economist advisory
 // silt-agent-memory/economist/reviews/ADVISORY-default-chunk-size-256KiB-2026-09-06.md). One chunk is
-// one delivery credit (credit.DeliveryIncrementBytes, pinned in cmd/silt), a k = 10 stripe
-// pays a repair-bounty base of exactly 10 (the certified D-S7 threshold of 36
-// stripe-retrievals per repair; the 64 KiB former default paid 2 of an exact 2.5 — a 20 %
-// truncation under-pay), and 256 KiB is the largest power of two at which a PoR audit
+// one delivery credit (credit.DeliveryIncrementBytes, pinned in cmd/silt), a full-frame
+// shard of it pays a repair-bounty base of exactly 1, and 256 KiB is the largest power of two at which a PoR audit
 // still samples every block (p = 1.0; at 64 MiB p = 0.0076). The old comment's "64 MiB
 // production minimum" was unenforced folklore: it would cut edge participation per 1 GiB
 // object from 6,557 holders to 29. The manifest layer bounds the maximum at
 // manifest.MaxChunkSize.
+//
+// The bounty ground was "a k = 10 stripe pays a base of exactly 10 (the certified D-S7
+// threshold of 36 stripe-retrievals per repair)" until 2026-09-12, when F1
+// (D-BOUNTY-PRICE-F1-2026-09-12) re-based the price on the ONE shard the bounty's payee
+// moves. The ground SURVIVES and tightens: 262,144 B is now the exact zero-bounty cliff,
+// to within crypto.Overhead's 16 bytes, and the D-S7 self-funding threshold is 3.60
+// stripe-retrievals per shard-repair at m̄ = 3. The other three grounds are untouched.
+// RAISING this constant to widen that 16-byte margin is REFUSED: it moves the height-0
+// block hash (below). cmd/silt checkBountyDisclosureHeadroom refuses to start below it.
 //
 // It is a MAXIMUM frame size, not a fixed one. A frame that shares an erasure stripe with
 // another frame is padded to it, because shards within a stripe must be equal-length; a

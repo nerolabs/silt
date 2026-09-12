@@ -99,10 +99,12 @@ func TestGLambda3DaemonRefusesPricedLaneBelowThePinSourceGate(t *testing.T) {
 // term) ⇒ a 1 KB object at the default says nothing while paying zero; (b) restore the
 // pre-G-BT-1 zero-only rule ⇒ bountyPriceWarning(52_412, unknown) returns "".
 func TestGLambda8PublishWarningFiresOnlyWhenThePublishShortPaysTheRepairer(t *testing.T) {
-	// The threshold is DERIVED from the shipped default, not typed: the default pays 10.
-	// N-7 tripwire: if this ever reads 0 the whole warning goes silent, ZERO arm included.
-	if got := shippedBountyBase(); got != 10 {
-		t.Fatalf("the shipped default pays a base of %d, want 10 — the warning's threshold moved with it; re-read G-BT-1 before re-pinning", got)
+	// The threshold is DERIVED from the shipped default, not typed: the default pays 1
+	// since F1 re-based the price on the one shard the payee moves (it paid 10 before).
+	// N-7 tripwire: if this ever reads 0 the whole warning goes silent, ZERO arm included
+	// — which is now also a refuse-to-start, TestF1RefusesAPublishDefaultThatPaysNoBounty.
+	if got := shippedBountyBase(); got != 1 {
+		t.Fatalf("the shipped default pays a base of %d, want 1 — the warning's threshold moved with it; re-read G-BT-1 before re-pinning", got)
 	}
 	// SILENT, and it is the only silent case: a base at or above the default's. An UNSET
 	// -chunk-size is DefaultChunkSize (pinned by the source gate below), so the GEOMETRY
@@ -128,37 +130,52 @@ func TestGLambda8PublishWarningFiresOnlyWhenThePublishShortPaysTheRepairer(t *te
 	}
 	// CAUSE 1, the GEOMETRY. The zero arm below the derived minimum...
 	min := minBountyChunkBytes()
-	if min != 26_199 {
-		t.Fatalf("derived threshold %d, want 26,199 at k=10 with a 16-byte tag", min)
+	if min != 262_128 {
+		t.Fatalf("derived threshold %d, want 262,128 (one shard of witnessed fetch less the 16-byte tag)", min)
 	}
-	if msg := bountyPriceWarning(16_384, objectSizeUnknown); !strings.Contains(msg, "ZERO") || !strings.Contains(msg, "26199") {
+	if msg := bountyPriceWarning(16_384, objectSizeUnknown); !strings.Contains(msg, "ZERO") || !strings.Contains(msg, "262128") {
 		t.Fatalf("explicit 16 KiB chunk: no ZERO warning naming the threshold (%q)", msg)
 	}
 	if msg := bountyPriceWarning(min-1, objectSizeUnknown); !strings.Contains(msg, "ZERO") {
 		t.Fatalf("a chunk one byte below the minimum did not warn ZERO: %q", msg)
 	}
-	// ... and the truncation arm at the certification's worst un-warned case. A
-	// 52,412-byte chunk is a 52,428-byte shard: k·shardBytes = 524,280 B, an exact price
-	// of 1.99996 credits paid as 1. Every figure must be in the sentence.
-	msg := bountyPriceWarning(52_412, objectSizeUnknown)
-	for _, want := range []string{"TRUNCATES", "52412", "52428", "1.99996", "but pays 1 ", "50.0%"} {
-		if !strings.Contains(msg, want) {
-			t.Fatalf("the 52,412-byte truncation warning does not name %q: %q", want, msg)
+	if m := bountyPriceWarning(min, objectSizeUnknown); m != "" {
+		t.Fatalf("a chunk AT the derived minimum pays a base of 1 and must be silent: %q", m)
+	}
+	// ... and the 64 KiB FORMER default, which used to warn TRUNCATES at 20.0 % and now
+	// pays nothing at all: a 65,552-byte shard is a quarter of one credit of fetch.
+	if m := bountyPriceWarning(65_536, objectSizeUnknown); !strings.Contains(m, "ZERO") {
+		t.Fatalf("the former 64 KiB default (a 65,552 B shard, 0.25006 credits) did not warn ZERO: %q", m)
+	}
+	// THE TRUNCATES ARM IS UNREACHABLE THROUGH THIS FUNCTION SINCE F1, and that is run
+	// here rather than asserted in prose: the rule fires iff base < shippedBountyBase(),
+	// which is 1, so every firing publish has base 0 and takes the ZERO arm. Sweep both
+	// causes across the whole firing range.
+	for _, c := range []struct{ chunk, object int64 }{
+		{16_384, objectSizeUnknown}, {65_536, objectSizeUnknown}, {min - 1, objectSizeUnknown},
+		{int64(pipeline.DefaultChunkSize), 1_024}, {int64(pipeline.DefaultChunkSize), 100_000},
+		{int64(pipeline.DefaultChunkSize), 262_119},
+	} {
+		m := bountyPriceWarning(c.chunk, c.object)
+		if m == "" || strings.Contains(m, "TRUNCATES") || !strings.Contains(m, "ZERO") {
+			t.Fatalf("-chunk-size %d, object %d: every firing publish must take the ZERO arm at a threshold of 1, got %q", c.chunk, c.object, m)
 		}
 	}
-	if strings.Contains(msg, "ZERO") {
-		t.Fatalf("a geometry paying a base of 1 was called ZERO: %q", msg)
+	// ...AND THE COST OF THAT, run: a publish worth an exact 1.99996 credits pays 1 and is
+	// SILENT, a 50 % short-pay the publisher is never told about. R-TRUNCATION-DISCLOSURE-
+	// NARROWS. Widening the rule is refused here — it would speak on the shipped default
+	// itself, the finding blind PE M6 closed — so the gap is disclosed, not closed.
+	if m := bountyPriceWarning(524_264, objectSizeUnknown); m != "" {
+		t.Fatalf("fixture: the 50 %% truncating geometry is expected SILENT at a threshold of 1, got %q", m)
 	}
-	if m := bountyPriceWarning(min, objectSizeUnknown); !strings.Contains(m, "TRUNCATES") {
-		t.Fatalf("a chunk AT the zero minimum (base 1) did not take the truncation arm: %q", m)
-	}
-	if m := bountyPriceWarning(65_536, objectSizeUnknown); !strings.Contains(m, "TRUNCATES") || !strings.Contains(m, "20.0%") {
-		t.Fatalf("the former 64 KiB default (base 2 of an exact 2.5006) did not warn at 20.0%%: %q", m)
+	if e5, loss := credit.RepairBountyTruncation(erasure.DefaultParams.K, publishShardBytes(524_264, objectSizeUnknown)); e5 != 199_996 || loss != 500 {
+		t.Fatalf("the silent short-pay is %d/1e5 credits at %d tenths of a percent, want 199996 and 500", e5, loss)
 	}
 	// CAUSE 2, the OBJECT — the class R-SHORT-FINAL-STRIPE creates, at the SHIPPED
-	// DEFAULT chunk size, which the geometry arm can never see. 1 KB and 10 KB pay a base
-	// of ZERO; 100 KB pays 3 of an exact 3.81561, a 21.4 % cut.
-	for _, size := range []int64{1_024, 10_240, 26_190} {
+	// DEFAULT chunk size, which the geometry arm can never see. Under F1 the whole class
+	// pays a base of ZERO up to 262,119 B (26,190 B before; the 10.008× widening is the
+	// accepted cost, R-BOUNTY-ZERO-BELOW-262KB).
+	for _, size := range []int64{1_024, 10_240, 26_190, 26_191, 100_000, 262_119} {
 		m := bountyPriceWarning(int64(pipeline.DefaultChunkSize), size)
 		if !strings.Contains(m, "ZERO") || !strings.Contains(m, "NO chunk size changes this") || !strings.Contains(m, "prepay-only") {
 			t.Fatalf("a %d B object at the shipped default: want a ZERO warning naming the object cause and prepay-only durability, got %q", size, m)
@@ -167,16 +184,10 @@ func TestGLambda8PublishWarningFiresOnlyWhenThePublishShortPaysTheRepairer(t *te
 			t.Fatalf("a %d B object was told to raise -chunk-size, which cannot help it: %q", size, m)
 		}
 	}
-	if m := bountyPriceWarning(int64(pipeline.DefaultChunkSize), 100_000); !strings.Contains(m, "TRUNCATES") || !strings.Contains(m, "100024") || !strings.Contains(m, "3.81561") || !strings.Contains(m, "21.4%") {
-		t.Fatalf("a 100 KB object at the shipped default did not warn with its own figures: %q", m)
-	}
-	// The two boundaries of the object arm at the shipped default, both sides, derived:
-	// base 0 at or below 26,190 B, and below the default's 10 at or below 262,119 B.
-	if m := bountyPriceWarning(int64(pipeline.DefaultChunkSize), 26_191); strings.Contains(m, "ZERO") {
-		t.Fatalf("26,191 B is one byte above the zero band and was still called ZERO: %q", m)
-	}
-	if m := bountyPriceWarning(int64(pipeline.DefaultChunkSize), 262_119); !strings.Contains(m, "TRUNCATES") || !strings.Contains(m, "10.0%") {
-		t.Fatalf("the largest short-paying object (262,119 B, a 10.0 %% cut) did not warn: %q", m)
+	// The boundary itself did NOT move with F1 — only the arm did. 262,119 fires and
+	// 262,120 is silent, before and after; it is in the silent table above too.
+	if m := bountyPriceWarning(int64(pipeline.DefaultChunkSize), 262_120); m != "" {
+		t.Fatalf("262,120 B is the first silent size and it warned: %q", m)
 	}
 	// SOURCE GATE — labelled. Its runtime cover is the silent-side table above, which
 	// passes pipeline.DefaultChunkSize as a LITERAL and never reads the flag: the source
@@ -216,17 +227,71 @@ func TestPaidSerialCapLiteralsMatchTheirSources(t *testing.T) {
 }
 
 // TestDefaultChunkIsOneDeliveryCredit — D-R2.9-NODE-HALF-CALLS 4′: the publish default is
-// exactly the delivery increment (one chunk = one witnessed credit), and a k = 10 stripe of
-// it pays a repair-bounty base of 10 with a truncation under 0.01 %. Ablation: move either
+// exactly the delivery increment (one chunk = one witnessed credit), and a full-frame shard
+// of it pays a repair-bounty base of 1 with a truncation under 0.01 %. Ablation: move either
 // constant alone ⇒ RED.
+//
+// The base moved 10 → 1 with F1 (D-BOUNTY-PRICE-F1-2026-09-12), which re-based the price on
+// the ONE shard the payee moves. Ground (i) of the 256 KiB default — one chunk is one
+// delivery credit — is unchanged and now TIGHTER: 262,144 B is the exact zero-bounty cliff,
+// to within crypto.Overhead. That 16-byte margin is why checkBountyDisclosureHeadroom exists.
 func TestDefaultChunkIsOneDeliveryCredit(t *testing.T) {
 	if int64(pipeline.DefaultChunkSize) != credit.DeliveryBytesPerCredit {
 		t.Fatalf("pipeline.DefaultChunkSize %d != credit.DeliveryBytesPerCredit %d — one chunk must be one delivery credit", pipeline.DefaultChunkSize, credit.DeliveryBytesPerCredit)
 	}
-	if got := credit.RepairBountyBase(erasure.DefaultParams.K, int64(pipeline.DefaultChunkSize)+crypto.Overhead); got != 10 {
-		t.Fatalf("the default geometry pays a base of %d, want 10 (the certified D-S7 threshold of 36 retrievals per repair holds exactly)", got)
+	if got := credit.RepairBountyBase(erasure.DefaultParams.K, int64(pipeline.DefaultChunkSize)+crypto.Overhead); got != 1 {
+		t.Fatalf("the default geometry pays a base of %d, want 1 (F1: one shard of witnessed fetch; the D-S7 self-funding band is 3.60 stripe-retrievals per shard-repair at m̄ = 3)", got)
 	}
 	if msg := bountyPriceWarning(int64(pipeline.DefaultChunkSize), objectSizeUnknown); msg != "" {
 		t.Fatalf("the shipped default warned: %q", msg)
+	}
+}
+
+// TestF1RefusesAPublishDefaultThatPaysNoBounty drives the refuse-to-start F1 owes — canon
+// rule 8's first arm on the one coupling F1 compresses: the publish default must stay at or
+// above the chunk size that pays a non-zero base, or the publish warning's threshold falls
+// to 0 and the whole disclosure goes permanently silent.
+//
+// Both arms, plus the margin. That the DAEMON calls it is a separate source gate,
+// TestF1SourceGateDaemonRefusesTheZeroBountyDefault.
+// Ablation: make the check return nil unconditionally ⇒ RED.
+func TestF1RefusesAPublishDefaultThatPaysNoBounty(t *testing.T) {
+	min := minBountyChunkBytes()
+	if err := checkBountyDisclosureHeadroom(int64(pipeline.DefaultChunkSize), min); err != nil {
+		t.Fatalf("the SHIPPED pair must start: %v", err)
+	}
+	err := checkBountyDisclosureHeadroom(min-1, min)
+	if err == nil {
+		t.Fatal("a publish default one byte below the minimum was accepted — the ZERO warning would go permanently silent")
+	}
+	for _, want := range []string{"ZERO repair bounty", "262127", "262128", "262144", "do NOT raise the chunk default"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("the refusal does not name %q: %v", want, err)
+		}
+	}
+	// THE MARGIN, measured rather than recalled: 16 B today, against 235,945 B before F1.
+	// It is crypto.Overhead exactly, which is why the check is a refusal and not a comment.
+	if got := int64(pipeline.DefaultChunkSize) - min; got != crypto.Overhead {
+		t.Fatalf("the margin above the zero cliff is %d B, want %d (crypto.Overhead) — re-read R-CHUNK-CLIFF-MARGIN-16B", got, int64(crypto.Overhead))
+	}
+}
+
+// TestF1SourceGateDaemonRefusesTheZeroBountyDefault reads daemon.go's own text, so it can
+// see a STRING and nothing else: that the shipped daemon calls the refusal with the two
+// shipped constants. It says nothing about what the refusal decides.
+//
+// RUNTIME GATE: TestF1RefusesAPublishDefaultThatPaysNoBounty drives both arms of the
+// decision and the 16-byte margin. This gate exists because those arms are pure-function
+// cover — nothing else connects the check to the shipped binary, and a refusal nobody calls
+// is a refusal that does not exist.
+//
+// Ablation: perturb the call in daemon.go ⇒ RED.
+func TestF1SourceGateDaemonRefusesTheZeroBountyDefault(t *testing.T) {
+	src, err := os.ReadFile("daemon.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(src), "checkBountyDisclosureHeadroom(int64(pipeline.DefaultChunkSize), minBountyChunkBytes())") {
+		t.Fatal("SOURCE GATE: daemon.go no longer contains the call that refuses to start on a publish default paying a zero repair bounty — the string is gone")
 	}
 }
