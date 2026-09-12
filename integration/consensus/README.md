@@ -4,10 +4,41 @@ Field test #1. It stands up **four real `silt daemon -validator` processes** on 
 flat Docker network, drives real publishes through consensus, severs the set
 with a real network partition, and asserts the **M0 keystone claim**:
 
-> **Objective on-chain-bond fork-choice**: under a network partition, honest
-> validators do not diverge onto a shared-but-conflicting head; each side commits
-> its own fork, and when the partition heals they converge to the
-> **heavier-bonded** chain.
+> **Objective, bond-weighted commit admission**: a block commits only on an
+> intersecting super-quorum of a validator set the chain itself sizes (a strict
+> anchor majority at launch, >⅔ of the epoch's frozen on-chain bond once standing
+> is earned), so a sub-quorum partition commits nothing, stalls, and catches up to
+> the majority's history on heal rather than reorging onto it.
+
+> **⚠ CORRECTED 2026-09-12, AND THIS HARNESS HAS NOT BEEN RE-RUN.** The claim above
+> replaces the earlier wording, in which the healed set converged onto whichever
+> fork carried more bond.
+> Fork choice ranks on height then head hash and has **no bond term**
+> (`core/chain/chain.go` `heavier`), and with the finality gate on — every
+> `objective() && ByzantineQuorum` posture — `Reconcile` admits only forks
+> containing the committed head, so `dropped > 0` is structurally impossible.
+> Source: research certification
+> `README-BOND-FORKCHOICE-literal-claim-and-equivalence-RESEARCH-CERTIFICATION-2026-09-12`
+> (finding R-4).
+>
+> **PROVENANCE — THE WORDING ABOVE IS CERTIFIED BUT NOT YET RATIFIED.** It is the
+> certification's §7 sentence, and the owner has not approved it. It is used here
+> anyway because what this file said before was measurably FALSE, and holding a
+> false statement in place to wait for a ratification is the worse trade. Three
+> shipped sites now carry this replacement wording — this file, `integration/run-all.sh`
+> (suite catalog) and `integration/README.md` (suite row; the last two paraphrase
+> rather than quote). The verbatim pin that would make a re-wording fail a build
+> reads **`README.md` only** and is held with the published-claim half. **So if the
+> owner ratifies different words, these three drift and nothing goes red.** Whoever
+> ratifies should re-grep for this sentence, not just edit the front page.
+>
+> **The consequence for this document is in the "Result" section below and is not
+> cosmetic:** P2 expects a 2-anchor "lighter group" to commit at height 1, and under
+> `requiredLaunchAnchors = ⌊4/2⌋+1 = 3` a 2-anchor island cannot reach the launch
+> anchor majority and should commit **nothing**. **Routed to the Tester:**
+> `./integration/consensus/run.sh`. Predicted, NOT observed: P2 fails, or P3's reorg
+> line is absent. Nobody has run it at this commit — do not read the Result section
+> as current evidence.
 
 This is the Docker-real, real-socket counterpart of the in-process
 `e2e/partition_test.go` (`TestPartitionHealsToHeavierForkOverTCP`) — same
@@ -70,16 +101,29 @@ Isolation (shared machine): image tag `silt-consensus`, compose project
   hashes, and group 1 (which never blocked anyone) shows **no cross-partition
   reorg**. Honest sides forked; they did not diverge onto one conflicting head.
 - **P3 — heal → converge.** Recreate valC WITHOUT `-block-peers`, bootstrapped to
-  valA, on its **persisted `/data`**. It reloads `[g, c1]`, reconciles group 1's
-  heavier fork, and its `chain-status` head becomes **identical to group 1's**
-  (`a93…` at height 2) — convergence to the heavier-bonded chain, the M0 claim.
+  valA, on its **persisted `/data`**. It reloads `[g, c1]`, reconciles against group
+  1's longer history, and its `chain-status` head becomes **identical to group 1's**
+  (`a93…` at height 2). The head-hash equality is the ground truth and is
+  posture-independent; the reorg narration is supporting evidence only.
 
-## Result
+## Result — SUPERSEDED, NOT RE-RUN
 
-All four gates PASS on real Docker (Desktop, darwin/arm64), `run.sh` exits 0. The
-M0 keystone reproduces exactly over real sockets: the two groups fork under the
-partition, and on heal the lighter side reloads its persisted fork from disk and
-reorgs onto the heavier one — narrated by the real daemon as, in one run:
+**Everything below is the run record from the pre-BFT posture.** It is retained
+because it is the only field observation this harness has, and deleting it would
+hide that the harness's expectations are the ones under question. It is **not**
+evidence about the current rules, for the reason in the warning at the top: a
+2-anchor island cannot reach a 3-anchor launch majority, so P2's "lighter group
+commits at height 1" and P3's reorg line both describe behaviour the shipped rules
+forbid. A companion change also retires the daemon's reorg narration (`chain:
+reorged onto a heavier fork` -> `chain: adopted a competing fork`); once that
+lands, the literal quoted below is not a string any binary emits. The two changes
+are independent and may land in either order, so this note is written to be true
+before and after.
+
+*Historical record follows.* All four gates PASSED on real Docker (Desktop,
+darwin/arm64), `run.sh` exited 0, under the rules of that day: the two groups
+forked under the partition, and on heal the lighter side reloaded its persisted
+fork from disk and reorged — narrated by the daemon of the time as, in one run:
 
 ```
 valC on heal:
@@ -89,9 +133,11 @@ after heal — valA head: height=2 hash=88046cb2b9bbe1a8…
 after heal — valC head: height=2 hash=88046cb2b9bbe1a8…   ← identical → converged
 ```
 
-**No product deficiency found.** Objective on-chain-bond fork-choice behaves as
-claimed, and the operator-facing reorg narration fires correctly over the real
-wire (matching what the in-process `e2e/partition_test.go` asserts).
+**No product deficiency was found *at that time*, against the claim as it was then
+worded.** That finding does not carry: the claim has been corrected, and
+`e2e/partition_test.go` now asserts the opposite phenomenology — a severed minority
+that commits NOTHING and does a forward catch-up with `dropped = 0`. The absence of
+a reorg line is the safety property there, not a gap.
 
 ## Notes for the builder (harness bugs found and fixed while building)
 

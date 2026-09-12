@@ -156,50 +156,505 @@ func TestO3T_CanonI5TextMatchesCertification(t *testing.T) {
 	}
 }
 
-// TestO3T_NoWeightHeightHashOrderInDocs is gate (d) part 6: `grep -c 'weight → height → hash'`
-// over docs/ is 0. Scope: docs/ minus the frozen-history set scripts/check_cited_tests.py also
-// skips (docs/thinking/, docs/reviews/, docs/buildlog/, archive/) — dated records may quote the
-// retired order (2026-09-04-o3-direction-t-design.md quotes the grep itself).
-func TestO3T_NoWeightHeightHashOrderInDocs(t *testing.T) {
-	root := o3tRepoRoot(t)
-	var hits []string
-	n := 0
-	err := filepath.WalkDir(filepath.Join(root, "docs"), func(path string, d os.DirEntry, err error) error {
+// o3tShippedText walks the SHIPPED PROSE of the whole repository and hands back (relative path,
+// line number, line) for every line, PLUS a whitespace-flattened form of each file for the
+// soft-wrap pass. `.md`, `.sh`, `.yml` and `.yaml`, because a claim is made in a README, in a
+// harness banner and in a compose file's comment alike.
+//
+// WHY THE WHOLE TREE, not docs/. The walk under gate (d) part 6 covered `root/docs` only. The M0
+// composition claim that named a bond term in fork choice lived in `README.md`, at the repo ROOT,
+// and so did the claim-gating catalog line in `integration/run-all.sh`. A gate whose scope is a
+// subdirectory of the thing it is about cannot fire on the loudest copy of the claim.
+//
+// SKIPS, and each is a frozen-history or derived surface, never a convenience:
+//
+//	thinking/ reviews/ buildlog/ archive/   dated records; scripts/check_cited_tests.py skips the
+//	                                        same set. A record may QUOTE the retired wording.
+//	website/                                PARTLY generated, and this skip is WIDER than its
+//	                                        justification. Only `buildlog.html`, `changelog.html`
+//	                                        and `roadmap.html` have a generator (gen_buildlog.py,
+//	                                        gen_changelog.py, gen_roadmap.py). `index.html`,
+//	                                        `docs.html` and `node.html` are HAND-MAINTAINED prose
+//	                                        — `ef9d041 "correct two public overclaims"` edits
+//	                                        index.html directly — so a claim can live on silt's
+//	                                        public front page and this gate cannot see it. The
+//	                                        earlier reason given here ("GENERATED from the .md
+//	                                        sources; a hit there is a duplicate") is FALSE for
+//	                                        those three. Covering them is owed and is held with
+//	                                        the published-claim half of this work, because the
+//	                                        repair to a public claim is ratification-gated while
+//	                                        this harness half is not.
+//	CHANGELOG.md                            a dated record of what the claim USED to say. Same
+//	                                        class as buildlog/, and it is 9k lines of it.
+//	report-*.md                             cloudtest field reports; dated records of real runs.
+//	.git .claude vendor node_modules        not shipped text.
+//	this file                               it holds the banned strings as constants. INERT
+//	                                        today — a `.go` file never survives the extension
+//	                                        filter above — and kept only so that widening the
+//	                                        filter to `.go` does not make the gate match itself.
+func o3tShippedText(t *testing.T, root string) (lines []o3tLine, flat []o3tFlatFile, files int) {
+	t.Helper()
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
 			switch d.Name() {
-			case "thinking", "reviews", "buildlog", "archive":
+			case ".git", ".claude", "archive", "vendor", "node_modules", "website",
+				"thinking", "reviews", "buildlog":
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if !strings.HasSuffix(path, ".md") {
+		name := d.Name()
+		if name == "CHANGELOG.md" || name == "o3t_canon_text_test.go" ||
+			strings.HasPrefix(name, "report-") {
+			return nil
+		}
+		// EXTENSIONS. `.yml`/`.yaml` was added 2026-09-12 after a blind review measured the
+		// hole: the repair that retired this vocabulary from integration/consensus/ and the
+		// gate that was meant to police it drew their file-type scope from the SAME list, so
+		// the gate was structurally incapable of finding what the repair missed —
+		// `integration/consensus/docker-compose.yml:20` carried a banned literal and the
+		// census called the set closed at 7. Admission was MEASURED, per this gate's own bar:
+		// adding the two extensions takes the walk from 137 to 164 tracked files and the
+		// `heavier-bonded` census from 7 to 8, with ZERO new false positives.
+		if !strings.HasSuffix(path, ".md") && !strings.HasSuffix(path, ".sh") &&
+			!strings.HasSuffix(path, ".yml") && !strings.HasSuffix(path, ".yaml") {
 			return nil
 		}
 		raw, rErr := os.ReadFile(path)
 		if rErr != nil {
 			return rErr
 		}
-		n++
-		for ln, line := range strings.Split(string(raw), "\n") {
-			if strings.Contains(line, "weight → height → hash") {
-				rel, _ := filepath.Rel(root, path)
-				hits = append(hits, rel+":"+itoa(ln+1))
-			}
+		rel, _ := filepath.Rel(root, path)
+		files++
+		for i, line := range strings.Split(string(raw), "\n") {
+			lines = append(lines, o3tLine{Path: rel, N: i + 1, Text: line})
 		}
+		flat = append(flat, o3tFlatten(rel, raw))
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n < 20 {
-		t.Fatalf("SOURCE GATE: GATE VACUOUS — only %d .md files walked under docs/ (41 at 59509b1 outside the frozen set)", n)
+	// ANTI-VACUITY. A walk that silently stops finding files reports a clean tree, which is the
+	// failure this gate exists to prevent one layer down. TWO legs, and they are NOT equals —
+	// which is itself the point, because an earlier revision of this comment presented the count
+	// as an anti-vacuity floor and it is not one.
+	//
+	// LEG 1, THE COUNT, IS A TOTAL-COLLAPSE TRIPWIRE AND NOTHING FINER. A floor that cannot fire
+	// is the defect this whole audit kept finding, so its reach is stated rather than implied.
+	// Re-driven at 75c0f89 over this exact filter: 164 files, composed integration/ 101, docs/
+	// 43, repo root 6, examples/ 6, .github/ 5, deploy/ 2, scripts/ 1. At 100 it fires only if
+	// ~39 % of the walk vanishes. Drop docs/ ENTIRELY and the count is 121 — GREEN, with every
+	// ratification-gated site outside the front page gone from the walk. RAISING the floor does
+	// not repair that: any value tight enough to notice one directory goes false-RED on ordinary
+	// file churn, and a lint that cries wolf gets disabled — this gate's own admission bar. So
+	// the count is kept only for what it genuinely catches (a root that does not resolve, a
+	// WalkDir that returns early, an extension filter that admits nothing) and the binding work
+	// moves to LEG 2.
+	//
+	// LEG 2, THE ANCHORS, binds, and it carries no number at all: a named file either survives
+	// the walk or it does not, so there is no margin to drift and nothing to re-drive. One anchor
+	// per walked AREA that holds the population this gate polices, and one per admitted
+	// EXTENSION — the extension filter is exactly what was measured broken (integration/consensus/
+	// docker-compose.yml carried a banned literal that no .md/.sh walk could ever reach), so it
+	// gets a witness instead of a comment.
+	if files < 100 {
+		t.Fatalf("SOURCE GATE: GATE VACUOUS — only %d shipped .md/.sh/.yml/.yaml files walked "+
+			"(164 measured on the TRACKED tree at 75c0f89 with the extensions above; it was 137 "+
+			"for .md/.sh alone, and an earlier revision of this line said 153, which was never "+
+			"measured — re-drive the number when you change the filter, do not carry it forward).\n"+
+			"  A WORKING COPY READS HIGHER than the tracked number if it carries untracked or "+
+			"ignored .md/.sh/.yml/.yaml under a walked path — measured 164 tracked vs 168 on one "+
+			"author's disk, the extras being integration/.run-all/report.md and three marketing/ "+
+			"notes. The TRACKED number is the reference because CI walks a clean checkout; if you "+
+			"re-drive this on a laptop and get a mismatch, that is why, and `git worktree add` "+
+			"reproduces the tracked figure.\n"+
+			"  This floor is a TOTAL-COLLAPSE tripwire. It cannot see one directory leaving the "+
+			"walk — that is what the anchors below are for.", files)
 	}
+	var missing []string
+	for _, a := range o3tWalkAnchors {
+		seen := false
+		for _, l := range lines {
+			if l.Path == filepath.FromSlash(a.Rel) {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			missing = append(missing, a.Rel+"  — "+a.Why)
+		}
+	}
+	if len(missing) > 0 {
+		t.Fatalf("SOURCE GATE: GATE VACUOUS — the walk reached %d file(s) but did not reach %d "+
+			"ANCHOR(s):\n  %s\n\n"+
+			"  Each anchor stands for an area or an extension whose silent loss this gate cannot "+
+			"otherwise detect: the file count tolerates losing all of docs/ (164 -> 121, still "+
+			"above the floor). If you narrowed the skip list, the extension filter or the root, "+
+			"either restore the coverage or RETIRE the anchor deliberately and say why — do not "+
+			"delete the line to go green.", files, len(missing), strings.Join(missing, "\n  "))
+	}
+	return lines, flat, files
+}
+
+// o3tWalkAnchors are the files whose PRESENCE in o3tShippedText's walk is asserted. See LEG 2 in
+// o3tShippedText: this is the anti-vacuity leg that actually binds, because it is structural — a
+// named path is in the walk or it is not — where the file COUNT tolerates a 39 % loss.
+//
+// EACH ENTRY IS EVIDENCE-DRIVEN, not a sample. The set covers every walked AREA that holds a site
+// of the vocabulary this gate polices, plus one witness per admitted EXTENSION.
+//
+// ABLATED, one leg at a time, 2026-09-12 — and the SECOND column is the point, because it is the
+// discrimination the file count alone could never make. Each ablation removes the file from the
+// WALK (not the anchor from this list, which would prove nothing) and the gate is re-run:
+//
+//	ablation                                  files walked   count floor   anchor leg
+//	drop docs/ from the skip switch                    121   GREEN         RED  docs/threat-model.md
+//	drop the .yml/.yaml extension                      137   GREEN         RED  …/docker-compose.yml
+//	skip README.md by name                             137   GREEN         RED  README.md
+//	skip run-all.sh by name                            163   GREEN         RED  integration/run-all.sh
+//	drop integration/ from the skip switch              63   RED           (not reached)
+//
+// Read the first four rows as the finding: in every one of them the COUNT FLOOR IS GREEN and the
+// gate is red only because an anchor is missing. The second row is the exact 2026-09-12 regression
+// that this whole change exists to close — a .yml file carrying a banned literal that the walk
+// could not reach — and the floor does not notice it. The last row is honest about its own limit:
+// losing all of integration/ is a big enough collapse that the tripwire fires first, so that run
+// does not demonstrate its anchor; the run above it does, in isolation.
+var o3tWalkAnchors = []struct{ Rel, Why string }{
+	{"README.md",
+		"the repo ROOT, and the front-door site: the sweep this gate replaced walked docs/ only, " +
+			"so the claim sat in README.md for months with a gate in the tree that looked like it covered it"},
+	{"integration/run-all.sh",
+		"integration/ (101 of the 164 walked files at 75c0f89) AND the .sh extension"},
+	{"docs/threat-model.md",
+		"docs/ (43 of 164). Measured: dropping docs/ leaves the count at 121, above the floor, " +
+			"and neither original anchor was under docs/ — so the entire ratification-gated repair " +
+			"set outside the front page could leave the walk with every leg still green"},
+	{"integration/consensus/docker-compose.yml",
+		"the .yml extension, which is not decoration: this exact file carried a banned literal at " +
+			"75c0f89 that the .md/.sh-only walk was structurally incapable of reaching"},
+}
+
+type o3tLine struct {
+	Path string
+	N    int
+	Text string
+}
+
+// o3tFlatFile is one file with every run of whitespace — SPACES, TABS AND NEWLINES — collapsed to
+// a single space, plus a map from each byte of that flattened text back to its source line.
+//
+// WHY: the per-line scan is defeated by a SOFT LINE WRAP, and not hypothetically. A blind review
+// executed it: the retired claim restored verbatim with a newline between `heavier-standing` and
+// `chain` renders identically in Markdown and left every gate in this file GREEN. README and the
+// harness docs are soft-wrapped prose throughout, and the PR that retired this vocabulary re-wrapped
+// that exact paragraph, so the evasion needs no intent at all — a normal re-flow disarms the gate.
+// Flattening closes it for every wrap depth, not just a two-line one. MEASURED on the tracked tree
+// at 75c0f89: the flattened scan finds the same 4 and 8 hits as the per-line scan and ZERO extra, so
+// the closure costs no false positives.
+type o3tFlatFile struct {
+	Path string
+	Text string // whitespace-collapsed
+	Line []int  // Line[i] is the source line number of Text[i]
+}
+
+func o3tFlatten(rel string, raw []byte) o3tFlatFile {
+	f := o3tFlatFile{Path: rel}
+	var b strings.Builder
+	line, inSpace := 1, false
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		at := line
+		if c == '\n' {
+			line++
+		}
+		if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+			// A separator is emitted once per run, and only after real text, so the
+			// flattened form never opens with a space and never doubles one.
+			if !inSpace && b.Len() > 0 {
+				b.WriteByte(' ')
+				f.Line = append(f.Line, at)
+			}
+			inSpace = true
+			continue
+		}
+		inSpace = false
+		b.WriteByte(c)
+		f.Line = append(f.Line, at)
+	}
+	f.Text = b.String()
+	return f
+}
+
+// o3tRetiredForkChoiceVocabulary is the CLOSED set of phrases that assert a bond or weight term in
+// fork choice. Fork choice ranks on Height then head hash and reads nothing else (`heavier`, pinned
+// by TestO3T_HeavierReadsOnlyHeightAndHeadHash); with the finality gate on, Reconcile admits only
+// forks containing the committed head, so a sub-quorum partition commits nothing and CATCHES UP
+// rather than reorging. Both phrases below assert the opposite.
+//
+// EACH ENTRY IS MEASURED, and that is the admission bar — a lint that cries wolf gets disabled, so
+// the false-positive rate is a correctness property of this gate. Re-driven 2026-09-12 over the
+// tracked tree at 75c0f89, with this walk's extensions:
+//
+//	"heavier-bonded"  8 hits, 8 of 8 ARE the retired claim: integration/consensus/run.sh x5,
+//	                  integration/consensus/README.md x2, and integration/consensus/docker-compose.yml
+//	                  x1. Closed. It was booked as "7 hits, 7 of 7 … Closed" before a blind review
+//	                  measured it: the eighth was real, unrepaired, and sat outside the extension
+//	                  filter. A census is a CLAIM — re-drive it, never carry it forward.
+//
+// THIS SET IS THE HARNESS HALF ONLY, AND THAT SPLIT IS DELIBERATE. Every live hit of
+// "heavier-bonded" is inside integration/consensus/ — harness text, not a published claim — so
+// retiring it needs no ratification and lands here. The companion phrase "heavier-standing chain"
+// is the M0-composition family (README.md, docs/threat-catalog.md, docs/risk-register.md,
+// docs/math/08-quorum-chains.md, and silt's public website), its replacement wording is a
+// research-certified PUBLISHED CLAIM, and it is HELD for owner ratification. Adding it to this set
+// before that ratification would make this gate demand a sentence nobody has approved.
+//
+// DELIBERATELY NOT BANNED, and this is the gate's honest coverage limit. BOTH figures below were
+// RE-DRIVEN 2026-09-12 over THIS walk at 75c0f89, after a blind review measured that the two
+// censuses this gate REASONED about were wrong while the two it re-drove were exact:
+//
+//	"heavier chain"  5 hits, only 2 of which are the claim (integration/README.md:164 and
+//	                 integration/run-all.sh:30 — both repaired by text in this change). The other
+//	                 3 describe a genuinely TALLER chain in harness mechanics
+//	                 (integration/cloudtest/scenarios.sh:820,837 "DRIVE the majority to commit a
+//	                 heavier chain" and a height comparison; integration/consensus/run.sh:225
+//	                 "valA held its OWN heavier chain byte-for-byte") — true statements. Banning
+//	                 it would false-flag 3 of 5. The line above previously read "7 hits … the
+//	                 other 5 … false-flag 5 of 7"; no scope reproduces 7 (.md/.sh: 5; +.yml: 5;
+//	                 whole tree: 22). The CONCLUSION survives the correction — the majority of
+//	                 hits are true statements — but the arithmetic that justified it did not.
+//	"heavier fork"   24 hits on 23 distinct lines (one line carries it twice). NOT "mostly legacy-
+//	                 posture tests": this walk admits NO .go file at all, so none of the hits is a
+//	                 test. They are harness prose, compose files and shell —
+//	                 integration/consensus/ x14, integration/redteam/ x5, integration/adversarial/
+//	                 x2, integration/cloudtest/ x1, docs/ x2. The line above previously read "17
+//	                 hits, mostly legacy-posture tests and the daemon's own narration history": 17
+//	                 was correct for the RETIRED .md/.sh 137-file scope and went stale when the
+//	                 filter widened, and the characterisation was drawn from files this walk has
+//	                 never been able to see. THE 24 ARE NOT ALL TRUE STATEMENTS and this entry
+//	                 does not claim they are: integration/adversarial/README.md:9 says "on heal,
+//	                 the lighter side reorgs onto the heavier fork", which is the retired claim.
+//	                 Classifying all 24 was not done here and the phrase stays unbanned on the
+//	                 strength of the true uses above it, not on a measured false-positive rate.
+//	                 Named so the next reader inherits the open edge rather than a count.
+//
+// So integration/run-all.sh's catalog line and integration/README.md's suite row were repaired by
+// TEXT and are NOT covered by this gate. A future re-introduction in those exact words would not
+// fire. Said plainly rather than left for a reader to discover.
+//
+// ============================================================================================
+// WHAT THIS GATE CANNOT DO. Two evasions were EXECUTED against it by a blind reviewer, both
+// leaving every canon-text test in this file green. One is closed; the other is not closable by a lexical rule
+// and is recorded here so the next reader inherits the limit instead of an impression of
+// completeness.
+//
+//	CLOSED — SOFT LINE WRAP. The retired claim restored verbatim with a newline between
+//	  `heavier-standing` and `chain` renders identically in Markdown and defeated a per-line
+//	  match. Closed by the flattened pass (o3tFlatten): every whitespace run, newlines included,
+//	  collapses to one space before the match, so no wrap depth evades it. Driven RED in
+//	  TestO3T_SoftWrapDoesNotDisarmTheCanonTextGates.
+//
+//	NOT CLOSED — PARAPHRASE. "the chain carrying the most bonded standing" states the retired
+//	  claim and this gate is silent, because the gate matches LITERALS and a paraphrase is not one.
+//	  Widening to a semantic rule is not available to a text lint, and widening the literal set is
+//	  what the "heavier chain" measurement above already rejects: it false-flags 5 of 7. So this
+//	  gate stops a REGRESSION to the exact retired wording and stops a re-wrap of it. It does NOT
+//	  stop a rewrite of the claim in new words, and nothing in this tree does. The cover for that
+//	  is review, plus the runtime gates named on each test — not this file. Do not describe this
+//	  gate as covering "the claim"; it covers a vocabulary.
+//
+//	ALSO NOT COVERED, by construction: any file outside the extension filter (.go, .py, .tf,
+//	  .json, Makefile, Dockerfile, extensionless) and any directory in the skip list above —
+//	  including website/, where two hand-maintained pages carry the claim TODAY
+//	  (website/index.html:173 and website/docs.html:34, re-driven at this head).
+//
+//	  THE .go POPULATION IS REAL, IS ONLY PARTLY REPAIRED, AND IS NOT GATED AT ALL. An earlier
+//	  revision of this line said it "is repaired by text in this same change", which asserted
+//	  more than the tree supports; a blind review named live sites inside it. The population is
+//	  the research certification's own residual R-6. Re-driven at this head:
+//
+//	    REPAIRED by text here — core/chain/redteam_consensus_test.go:11,132;
+//	      core/chain/redteam_f7_test.go (two comment sites); sim/objective_consensus_test.go
+//	      (one comment site and one failure string); core/node/partition.go (SetBlockedPeers'
+//	      doc comment, PRODUCTION source); sim/reorg_test.go (the header, the fixture's stated
+//	      operating theory, two heal comments and two failure strings).
+//	    NOT REPAIRED, deliberately, each for its own reason —
+//	      cmd/silt/daemon.go:1299, the operator narration "chain: reorged onto a heavier fork".
+//	        integration/consensus/run.sh greps for that exact string, so editing it would fail a
+//	        Docker-gated harness OPEN that nobody has re-run at this commit. It is also still
+//	        REACHABLE: the finality gate makes dropped > 0 impossible only while
+//	        finalityQuorumActive(), and a legacy-posture chain has no gate. Residual.
+//	      cmd/silt/daemon.go:154, the -equivocate flag help, which scopes itself to "LEGACY
+//	        mode" and is therefore accurate as written.
+//	      sim/reorg_test.go's test NAME, TestPartitionHealsToHeavierFork. Its comments are
+//	        corrected; renaming it is a cited-test surface and is left as a residual rather than
+//	        bundled into a text repair.
+//
+//	  Nothing above is gated by anything. A .go regression of this vocabulary goes unnoticed.
+//
+// ============================================================================================
+var o3tRetiredForkChoiceVocabulary = []string{
+	"heavier-bonded",
+}
+
+// TestO3T_NoRetiredForkChoiceClaimInShippedText bans the retired bond/weight fork-choice vocabulary
+// across the WHOLE shipped tree.
+//
+// WHY IT EXISTS. `o3tLedgerRow47Old` below bans the claims-ledger's table row, but that check opens
+// ONE file (docs/design/claims-ledger.md) and the banned string is a full table row — it could never
+// match README.md's prose form of the same claim. The claim therefore sat in the repo's front door
+// for months with a gate in the tree that looked like it covered it. This is that gate.
+//
+// Certified replacement wording: research certification
+// README-BOND-FORKCHOICE-literal-claim-and-equivalence-RESEARCH-CERTIFICATION-2026-09-12 §4.4/§7.
+// It is a PUBLISHED CLAIM. Do not reword it to make this test pass — that re-opens the certification.
+//
+// SOURCE GATE: this reads text. RUNTIME GATE: TestO3T_HeavierReadsOnlyHeightAndHeadHash pins that
+// `heavier` reads only Height and the head Hash(); e2e/partition_test.go drives the catch-up-not-reorg
+// behaviour the replacement sentence describes.
+func TestO3T_NoRetiredForkChoiceClaimInShippedText(t *testing.T) {
+	_, flat, files := o3tShippedText(t, o3tRepoRoot(t))
+	hits := o3tBannedHits(flat, o3tRetiredForkChoiceVocabulary)
 	if len(hits) > 0 {
-		t.Fatalf("SOURCE GATE: `weight → height → hash` count over docs/ (minus frozen history) is %d, want 0:\n  %s",
-			len(hits), strings.Join(hits, "\n  "))
+		t.Fatalf("SOURCE GATE: %d line(s) across %d shipped file(s) assert a bond or weight term in fork choice, want 0:\n  %s\n\n"+
+			"  Fork choice reads Height then head hash and NOTHING else, and with the finality gate on a sub-quorum\n"+
+			"  partition commits nothing, stalls, and CATCHES UP — it does not reorg onto anything.\n"+
+			"  REMEDY: use the certified replacement sentence from README-BOND-FORKCHOICE-literal-claim-and-\n"+
+			"  equivalence-RESEARCH-CERTIFICATION-2026-09-12 §7, VERBATIM where the site states the composition\n"+
+			"  claim; where the site states a narrower property, make that property true in its own terms.\n"+
+			"  It is a PUBLISHED CLAIM: rewording it silently re-opens the certification.",
+			len(hits), files, strings.Join(hits, "\n  "))
+	}
+}
+
+// o3tBannedHits reports every banned literal in the FLATTENED text of each file, as
+// `path:line  (literal)` where line is the source line the match STARTS on. Flattened, so a soft
+// line wrap cannot hide a phrase — see o3tFlatFile.
+func o3tBannedHits(flat []o3tFlatFile, banned []string) []string {
+	var hits []string
+	for _, f := range flat {
+		for _, b := range banned {
+			for from := 0; ; {
+				k := strings.Index(f.Text[from:], b)
+				if k < 0 {
+					break
+				}
+				at := from + k
+				hits = append(hits, f.Path+":"+itoa(f.Line[at])+"  ("+b+")")
+				from = at + 1
+			}
+		}
+	}
+	return hits
+}
+
+// TestO3T_NoWeightHeightHashOrderInDocs is gate (d) part 6: the retired ranking order
+// `weight → height → hash` appears nowhere in shipped text. WIDENED 2026-09-12 from `root/docs`
+// to the whole tree (o3tShippedText) — the old scope could not see README.md — and matched over
+// the flattened text, so a wrap between `weight →` and `height` does not hide it either.
+func TestO3T_NoWeightHeightHashOrderInDocs(t *testing.T) {
+	_, flat, files := o3tShippedText(t, o3tRepoRoot(t))
+	hits := o3tBannedHits(flat, []string{"weight → height → hash"})
+	if len(hits) > 0 {
+		t.Fatalf("SOURCE GATE: `weight → height → hash` count over %d shipped file(s) is %d, want 0:\n  %s",
+			files, len(hits), strings.Join(hits, "\n  "))
+	}
+}
+
+// TestO3T_SoftWrapDoesNotDisarmTheCanonTextGates drives the CLOSED evasion, because a coverage
+// claim that is not driven is the thing this whole gate exists to distrust.
+//
+// WHICH LITERALS THE CLOSURE ACTUALLY PROTECTS. A soft wrap breaks at a SPACE, so it can only
+// split a MULTI-WORD literal. `weight → height → hash` — live in
+// TestO3T_NoWeightHeightHashOrderInDocs — is one, and so is `heavier-standing chain`, the
+// published-claim literal held for ratification. `heavier-bonded` is a single token and cannot be
+// wrap-split at all; it is driven here as the CONTROL that says so, rather than left to imply a
+// protection it does not need. Flattening is therefore load-bearing TODAY, not in anticipation.
+func TestO3T_SoftWrapDoesNotDisarmTheCanonTextGates(t *testing.T) {
+	const multi = "weight → height → hash"
+	const single = "heavier-bonded"
+	for _, tc := range []struct {
+		name, banned, body string
+		want               bool
+	}{
+		{"multi-word, same line", multi, "ranked by weight → height → hash today.\n", true},
+		{"multi-word, SOFT WRAPPED", multi, "ranked by weight →\nheight → hash today.\n", true},
+		{"multi-word, wrapped twice", multi, "ranked by weight\n→ height\n→ hash today.\n", true},
+		{"multi-word, wrapped with list indentation", multi, "- ranked by weight → height\n      → hash today.\n", true},
+		{"single token, same line", single, "converges to the heavier-bonded chain.\n", true},
+		{"single token, wrap before it", single, "converges to the\nheavier-bonded chain.\n", true},
+		{"CONTROL: the words apart, not the phrase", multi, "a weight.\n\nA height.\n\nA hash.\n", false},
+		{"CONTROL: a hyphen split is NOT a soft wrap", single, "converges to the heavier-\nbonded chain.\n", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := o3tFlatten("synthetic.md", []byte(tc.body))
+			got := len(o3tBannedHits([]o3tFlatFile{f}, []string{tc.banned})) > 0
+			if got != tc.want {
+				t.Fatalf("SOURCE GATE: banned literal %q found=%v, want %v, in:\n%q\nflattened to:\n%q\n\n"+
+					"  A per-line match is disarmed by a soft wrap and a blind review EXECUTED that evasion "+
+					"against this gate — the retired claim restored verbatim with a newline in the middle, "+
+					"every canon-text gate in this file green. The flattened pass is what closes it. If "+
+					"this arm is red the "+
+					"closure is gone and a normal re-flow of a paragraph silently re-opens the hole.",
+					tc.banned, got, tc.want, tc.body, f.Text)
+			}
+		})
+	}
+	// The line map must point at the line the phrase STARTS on, or the failure text sends a reader
+	// to the wrong place — which is how a true finding gets dismissed as noise. The phrase below
+	// starts on line 3 and finishes on line 4.
+	f := o3tFlatten("synthetic.md", []byte("one\ntwo\nranked by weight →\nheight → hash today\n"))
+	hits := o3tBannedHits([]o3tFlatFile{f}, []string{multi})
+	if len(hits) != 1 || !strings.Contains(hits[0], "synthetic.md:3") {
+		t.Fatalf("SOURCE GATE: a wrapped hit reported %v, want exactly one hit at synthetic.md:3 — the "+
+			"line the phrase STARTS on, not the line it ends on", hits)
+	}
+}
+
+// TestO3T_TheTextGatesActuallyUseTheFlattenedPass closes the gap the arm above cannot.
+//
+// WHY BOTH ARMS EXIST. TestO3T_SoftWrapDoesNotDisarmTheCanonTextGates drives o3tFlatten and
+// o3tBannedHits DIRECTLY, so it proves the helper is correct — and it stays GREEN if a future edit
+// reverts either gate body to a per-line `strings.Contains(l.Text, …)` loop and simply stops
+// CALLING the helper. Measured: reverting TestO3T_NoWeightHeightHashOrderInDocs to the per-line
+// form leaves that arm green while a soft-wrapped banned phrase planted in a real walked file goes
+// undetected. A helper nothing calls is not a closure. This arm asserts the WIRING.
+func TestO3T_TheTextGatesActuallyUseTheFlattenedPass(t *testing.T) {
+	root := o3tRepoRoot(t)
+	raw, err := os.ReadFile(filepath.Join(root, "core", "chain", "o3t_canon_text_test.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(raw)
+	for _, fn := range []string{
+		"TestO3T_NoRetiredForkChoiceClaimInShippedText",
+		"TestO3T_NoWeightHeightHashOrderInDocs",
+	} {
+		head := "func " + fn + "(t *testing.T) {"
+		i := strings.Index(src, head)
+		if i < 0 {
+			t.Fatalf("SOURCE GATE: %s is gone from this file — the text gate it names no longer exists", fn)
+		}
+		body := src[i:]
+		if j := strings.Index(body, "\n}\n"); j >= 0 {
+			body = body[:j]
+		}
+		if !strings.Contains(body, "o3tBannedHits(") {
+			t.Errorf("SOURCE GATE: %s does not obtain its hits through o3tBannedHits — the FLATTENED "+
+				"pass. A per-line match is disarmed by an ordinary soft line wrap (a blind reviewer "+
+				"executed exactly that and every canon-text gate in this file stayed green), so a gate that stops "+
+				"calling the flattened path has silently given the evasion back. Restore the call; do "+
+				"not re-implement the loop here.", fn)
+		}
+		if strings.Contains(body, "l.Text") {
+			t.Errorf("SOURCE GATE: %s iterates lines and matches on l.Text. That is the per-line form "+
+				"the soft-wrap evasion defeats. Match over the flattened text via o3tBannedHits.", fn)
+		}
 	}
 }
 

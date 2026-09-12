@@ -2,8 +2,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Field test #1 — multi-validator consensus + partition-heal, in real Docker.
 #
-# The M0 keystone under test: OBJECTIVE on-chain-bond fork-choice. Four real
+# The M0 keystone under test: OBJECTIVE, BOND-WEIGHTED COMMIT ADMISSION. Four real
 # `silt daemon -validator` processes on a flat Docker network form two groups.
+# (Corrected 2026-09-12: this line used to locate the objectivity in FORK CHOICE.
+# It is not there — `heavier` ranks on Height then head hash and reads nothing
+# else. What the on-chain bond makes objective is WHO MAY PARTICIPATE and what
+# counts toward quorum, not how two candidate heads are ordered.)
 # A network partition (the built-in test-harness -block-peers flag) severs them;
 # each group commits its OWN fork over real TCP. We assert:
 #
@@ -18,9 +22,17 @@
 #                         while severed (no cross-group reorg).
 #   (P3 heal→converge)   restart C WITHOUT -block-peers, bootstrapped to A. It
 #                         reloads its persisted [g,c1], discovers group 1's
-#                         heavier fork, and REORGS onto it (real log line), then
-#                         its `chain-status` head EQUALS group 1's. The set has
-#                         converged to the heavier-bonded chain.
+#                         longer history and CONVERGES on it, then its
+#                         `chain-status` head EQUALS group 1's.
+#
+# WHAT THIS HARNESS ASSERTS, corrected 2026-09-12. Convergence is NOT toward
+# whichever fork carries more bond: fork choice ranks on height then head hash
+# and has no bond term, and with the finality gate on Reconcile admits only forks containing
+# the committed head. The GROUND TRUTH here is and always was the chain-status
+# head-hash equality, which is posture-independent. The reorg narration is
+# supporting evidence only, and under a >2/3 commit floor it may never fire at all.
+# Whether P2's own expectation (a 2-anchor group committing at height 1) is still
+# reachable is an OPEN question routed to the Tester — see README.md.
 #
 # Every assertion keys off a REAL observed CLI flag / stdout line / chain-status
 # field — no invented strings. This is the Docker-real counterpart of
@@ -233,7 +245,7 @@ else
 fi
 
 echo ""
-echo "== P3 heal → converge to the heavier-bonded chain =="
+echo "== P3 heal → converge on one history =="
 # Record the lighter side's OWN pre-heal head so we can prove it actually moved
 # OFF its fork (not that it was already on group 1's).
 H_C_pre=$(head_hash valC); hC_pre=$(head_height valC)
@@ -264,9 +276,9 @@ echo "  after heal — valA head: height=$hAf hash=${HAf:0:16}…"
 echo "  after heal — valC head: height=$hC hash=${HC:0:16}…"
 if [ -n "$HAf" ] && [ "$HAf" = "$HC" ] && [ "${hC:-0}" = "${hAf:-0}" ]; then
   if [ "$HC" != "$H_C_pre" ]; then
-    echo "  P3 PASS: valC left its own fork (${H_C_pre:0:16}…) and converged to group 1's head (${HAf:0:16}…, height $hAf) — the heavier-bonded chain"
+    echo "  P3 PASS: valC left its own fork (${H_C_pre:0:16}…) and converged to group 1's head (${HAf:0:16}…, height $hAf)"
   else
-    echo "  P3 PASS: valC head matches group 1 (${HAf:0:16}…) — converged to the heavier-bonded chain"
+    echo "  P3 PASS: valC head matches group 1 (${HAf:0:16}…) — converged on one history"
   fi
   # HARD assertion (blind field test #2 §C): prove valC actually RELOADED its own
   # persisted fork before reconciling — otherwise a from-scratch peer catch-up (disk
@@ -289,7 +301,7 @@ fi
 
 echo ""
 if [ "$pass" = 1 ]; then
-  echo "RESULT: PASS ✅  objective fork-choice: honest validators forked under partition, converged to the heavier-bonded chain on heal (M0 keystone)"
+  echo "RESULT: PASS ✅  objective consensus: the two groups did not diverge onto a shared conflicting head, and converged on ONE history on heal (head hash equality)"
 else
   echo "RESULT: FAIL ❌  (see the failing assertion(s) above)"
 fi

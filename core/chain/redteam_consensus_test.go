@@ -8,8 +8,15 @@ import (
 )
 
 // These are the M0 red-team consensus PoCs (F6) INVERTED as regressions: each
-// asserts that objective, on-chain-bond fork-choice makes honest replicas AGREE
-// where the subjective reputation view let them diverge forever. See
+// asserts that OBJECTIVE consensus — every replica computing eligibility and
+// quorum from the same on-chain bond, rather than from a local reputation view —
+// makes honest replicas AGREE where the subjective view let them diverge forever.
+//
+// CORRECTED 2026-09-12. This block used to locate the objectivity in FORK CHOICE.
+// It is not there: `heavier` ranks on Height then head hash and reads nothing
+// else (TestO3T_HeavierReadsOnlyHeightAndHeadHash). The bond is objective, and it
+// decides who may propose and what counts toward quorum; the ranking between two
+// candidate heads has no bond or weight term at all. See
 // docs/design/m0-consensus.md §5 and docs/reviews/M0-REDTEAM-REPORT.md §6.
 
 // objectiveVerify is a stub bond verifier: it accepts a registration iff its
@@ -128,9 +135,16 @@ func TestRedteamF6_ObjectiveForkChoiceAgreesAcrossDivergentReplicas(t *testing.T
 }
 
 // F6, the heal: two replicas commit DIFFERENT forks at the same height (the
-// non-healing partition the red-team built). After exchanging chains, both end
-// on the SAME (heavier-bond) fork — regardless of their divergent rep views.
-// The lighter side reorgs; the heavier side does not budge.
+// non-healing partition the red-team built). After exchanging chains, both end on
+// the SAME fork — regardless of their divergent rep views.
+//
+// CORRECTED 2026-09-12, and this comment mattered more than most: this test is
+// cited as the unit witness for the fork-choice claim, and its own header stated
+// the retired version of that claim. Convergence here is NOT "the heavier-bond
+// fork wins and the lighter side reorgs". It is CATCH-UP, exactly as the body
+// below explains: the replica that is BEHIND adopts a peer's longer finalized
+// chain that EXTENDS its own. Fork choice reads Height then head hash; there is
+// no bond term for either side to win on.
 func TestRedteamF6_ObjectiveForkChoiceConvergesByCatchUp(t *testing.T) {
 	// Under the ratified BFT model (#357 §3, owner D-1), a committed objective block is
 	// FINAL, so honest replicas never diverge onto CONFLICTING committed forks — that would
