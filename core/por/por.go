@@ -25,6 +25,8 @@
 // This package is pure: it speaks in bytes and keys, touches no store, no
 // network, no ports. Wiring it into the manifest, the node audit loop, and
 // the credit ledger is a separate change (Gate 4a, #90).
+//
+// ADVERSARY-SHAPE: capability=SectorSecretsAlpha UNCOVERED: no capability-holding fixture exists anywhere in the tree granting a prover the sector secrets a_j. Shacham-Waters Definition 2.1 assumes the key is not known to the prover; in silt it rides the care link, and TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT pins the forgery that assumption rules out. ROADMAP row F1.
 package por
 
 import (
@@ -101,6 +103,8 @@ type Key struct {
 // the same key-construction Keygen uses, so a derived key is drawn from the
 // identical distribution as a random one. Changing this function or Keygen's
 // read pattern would change every derived key, so both are frozen.
+//
+// ADVERSARY-SHAPE: capability=LayoutKey UNCOVERED: no capability-holding fixture exists anywhere in the tree granting the prover the layout key. 'which is what keeps a prover from forging' is exactly the assumption TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT falsifies for a care-link holder. ROADMAP row F1.
 func DeriveKey(seed []byte, params Params) (*Key, error) {
 	if params.SectorsPerBlock <= 0 {
 		return nil, errors.New("por: SectorsPerBlock must be positive")
@@ -159,6 +163,8 @@ func (k *Key) Params() Params { return k.params }
 // domain-separates the PRF so tags from different chunks never collide (a
 // prover can't answer a challenge on chunk A with chunk B's stored tags).
 // The returned slice has one 32-byte tag per block; store it with the chunk.
+//
+// ADVERSARY-SHAPE: capability=CrossChunkTagSubstitution UNCOVERED: no capability-holding fixture exists anywhere in the tree granting a prover chunk B's tags and driving them at a challenge on chunk A. ROADMAP row F1.
 func (k *Key) Tags(unitID []byte, data []byte) [][]byte {
 	nb := k.params.Blocks(len(data))
 	tags := make([][]byte, nb)
@@ -250,6 +256,8 @@ type Proof struct {
 // their stored `tags` into a Proof. It needs no key — an honest holder of the
 // bytes and tags can always answer; a holder that lost bytes cannot make the
 // answer verify.
+//
+// ADVERSARY-SHAPE: capability=TagsAfterByteLoss UNCOVERED: no capability-holding fixture exists anywhere in the tree granting a holder its tags after the bytes are gone. See core/node/por.go: with the VERIFICATION key too, the answer verifies anyway. ROADMAP row F1.
 func Prove(params Params, data []byte, tags [][]byte, c Challenge) (Proof, error) {
 	if params.SectorsPerBlock <= 0 {
 		return Proof{}, errors.New("por: bad params")

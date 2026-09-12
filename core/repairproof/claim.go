@@ -13,6 +13,8 @@ package repairproof
 // against the manifest-committed ShardID) and retrievability is re-challenged
 // against Holder under an identity-bound seed. The claim only points the verifiers
 // at the work; the proofs are recomputed.
+//
+// ADVERSARY-SHAPE: capability=ClaimantChosenSurvivorSet UNCOVERED: no capability-holding fixture exists anywhere in the tree granting a claimant any influence over which survivors the judge fetches. ROADMAP row F1.
 
 import (
 	"github.com/fxamacker/cbor/v2"

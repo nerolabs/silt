@@ -61,6 +61,8 @@
 //     Elevating held REAL network content to standing (so the Sybil cost and
 //     durability funding become one mechanism) is the intended follow-up; the
 //     synthetic bond here is the cold-start.
+//
+// ADVERSARY-SHAPE: capability=SybilPlotSharing UNCOVERED: no capability-holding fixture exists anywhere in the tree that grants one operator N identities backed by LESS than N x size of real disk (dedup, compression, or a shared plot). ROADMAP row F1.
 package bond
 
 import (
@@ -270,6 +272,8 @@ type Answer struct {
 	// prover did VDFT sequential squarings over the challenge, and the probed
 	// block indices are derived from VDFY — so the prover cannot know which
 	// blocks to hold until the sequential work is done. Empty ⇒ space-only.
+	//
+	// ADVERSARY-SHAPE: capability=VDFOutputPrediction UNCOVERED: no capability-holding fixture exists anywhere in the tree that lets the prover learn the probed indices before the sequential work completes. ROADMAP row F1.
 	VDFY  []byte `cbor:",omitempty"`
 	VDFPi []byte `cbor:",omitempty"`
 	VDFT  uint64 `cbor:",omitempty"`
@@ -279,6 +283,8 @@ type Answer struct {
 	// the seed index, checks the proof, and re-derives the seed — so a prover
 	// that released the space cannot produce the seed without the Ω(n) recompute.
 	// Empty ⇒ space-only.
+	//
+	// ADVERSARY-SHAPE: capability=SeedBlockWithoutPlot UNCOVERED: no capability-holding fixture exists anywhere in the tree granting a released-space prover the seed block plus a valid inclusion proof. ROADMAP row F1.
 	SeedBlock []byte         `cbor:",omitempty"`
 	SeedProof manifest.Proof `cbor:",omitempty"`
 }
@@ -382,6 +388,8 @@ func (c *Commitment) labelOpens(effNonce uint64, k int) ([]int, []LabelOpen, boo
 // block — and re-deriving that block on demand is the Ω(n) depth-robust recompute
 // — a prover that released the space cannot cheaply produce the seed, so releasing
 // the space forfeits the answer. delay == 0 falls back to a space-only answer.
+//
+// ADVERSARY-SHAPE: capability=OnDemandPlotRecompute UNCOVERED: no capability-holding fixture exists anywhere in the tree granting a zero-resident prover a cheap recompute of an arbitrary plot block. ROADMAP row F1.
 func (c *Commitment) AnswerSpaceTime(nonce uint64, p vdf.Params, delay uint64, k int) (Answer, bool) {
 	if delay == 0 {
 		return c.Answer(nonce, k)
@@ -436,6 +444,8 @@ func VerifySpaceTime(pk []byte, root ports.Hash, size int64, nonce uint64, a Ans
 	// The VDF must be seeded from the plot block at seedIndex, proven held: a
 	// prover that released the space cannot present it (F2 fix). Recompute the
 	// seed index and check the inclusion proof before trusting the seed block.
+	//
+	// ADVERSARY-SHAPE: capability=SeedBlockInclusionProof UNCOVERED: no capability-holding fixture exists anywhere in the tree that presents a seed block it does not store with a proof this verifier accepts. ROADMAP row F1.
 	si := seedIndex(root, n, nonce)
 	if a.SeedProof.Index != si || a.SeedProof.Total != n {
 		return false
@@ -483,6 +493,8 @@ func verifyAt(pk []byte, root ports.Hash, size int64, effNonce uint64, a Answer,
 // random hit fails deterministically; k independent hits catch an ε-short prover
 // with probability ≥ 1-(1-ε)^k. Because the seed is public, the verifier does all
 // of this WITHOUT holding the plot.
+//
+// ADVERSARY-SHAPE: capability=ForeignPlotLabels UNCOVERED: no capability-holding fixture exists anywhere in the tree granting an attacker labels correctly plotted for a DIFFERENT (pk, n) to replay against this one. ROADMAP row F1.
 func verifyLabels(pk []byte, root ports.Hash, n int, effNonce uint64, a Answer, k int) bool {
 	kk := resolveK(k)
 	li := labelIndices(root, n, effNonce, kk)
@@ -561,6 +573,8 @@ func seedIndex(root ports.Hash, nBlocks int, nonce uint64) int {
 // the seed block — so the VDF cannot even be started without reading the plot
 // (F2 fix). A proof for one bond/epoch cannot be replayed for another, and a
 // zero-resident prover cannot produce the seed without the Ω(n) recompute.
+//
+// ADVERSARY-SHAPE: capability=CrossEpochProofReplay UNCOVERED: no capability-holding fixture exists anywhere in the tree that holds a valid answer for one bond/epoch and replays it against another. ROADMAP row F1.
 func challengeSeedST(root ports.Hash, nonce uint64, seedBlock []byte) []byte {
 	h := sha256.New()
 	h.Write([]byte("silt/bond/st/v2/vdfseed"))

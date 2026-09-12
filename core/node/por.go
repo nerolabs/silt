@@ -17,6 +17,8 @@
 //     exactly that) cannot make the response verify — and the auditor
 //     never fetches ground truth to find out. That is the whole point: the
 //     verify-without-fetch the toy SHA-256(nonce‖data) scheme lacked.
+//
+// ADVERSARY-SHAPE: capability=TagsWithoutBytes UNCOVERED: no capability-holding fixture exists anywhere in the tree granting a prover the tags while the bytes are gone. NOTE the claim is narrower than it reads: TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT shows a zero-byte prover holding the LAYOUT KEY passes this audit. ROADMAP row F1.
 package node
 
 import (
@@ -35,6 +37,8 @@ import (
 // a care-link holder can derive it (via DerivePorKey), so a storage node —
 // which holds chunk bytes and tags but never the layout key — cannot forge
 // a proof. Mirrors how link.go derives the layout/content keys.
+//
+// ADVERSARY-SHAPE: capability=LayoutKey UNCOVERED: no capability-holding fixture exists anywhere in the tree granting a data-less prover the layout key -- and this sentence's second half is FALSIFIED for the party that has it. TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT pins a care-link holder forging a passing proof over ZERO bytes. ROADMAP row F1.
 const porKeyDomain = "silt/por/v1"
 
 // ctOverhead is the byte cost AES-256-GCM adds to a chunk: ciphertext =
@@ -89,6 +93,8 @@ func verifyStorageProof(p ports.StorageProof, leaf ports.ChunkID) bool {
 // answer any seed" — RT-1 falsified that: a data-less identity cannot COMPUTE a
 // proof, but it can RELAY the proof of an honest holder that can. porProverSeed
 // (below) folds the challenged identity into the seed so a relayed proof fails.
+//
+// ADVERSARY-SHAPE: capability=HonestHolderAsOracle UNCOVERED: no capability-holding fixture exists anywhere in the tree granting a data-less identity a willing holder to compute under ITS seed. RELAY is genuinely denied; OUTSOURCING is not -- TestRT_POR_2_ChallengeProxyPassesAudit_PINNED_DEFECT pins it. ROADMAP row F1.
 func porChallengeSeed(nonce uint64) [32]byte {
 	var nb [8]byte
 	binary.BigEndian.PutUint64(nb[:], nonce)
@@ -254,6 +260,8 @@ func (n *Node) auditEntry(entry ports.Entry, ch link.CareHandle, done func(Audit
 		// holding one block). What keeps F4 closed is that the AUDITOR fixes the
 		// number from committed data, not that the number is large; a sub-frame
 		// object's shard is one block, which is fully sampled.
+		//
+		// ADVERSARY-SHAPE: capability=UnderReportedBlockCount UNCOVERED: no capability-holding fixture exists anywhere in the tree granting a prover a self-reported PorBlocks the auditor reads. The F4 closure rests on the auditor fixing the number from committed data; no fixture drives an adversary that tries to move it. ROADMAP row F1.
 		want := por.DefaultParams.Blocks(int(m.ChunkSize) + ctOverhead)
 		var nextLeaf func(i int)
 		nextLeaf = func(i int) {
@@ -347,6 +355,8 @@ func (n *Node) gradeAnswers(id ports.ChunkID, porKey *por.Key, base [32]byte,
 		// self-reported one — the prover cannot shrink its own sample space (F4) —
 		// and under this prover's OWN seed H(base ‖ prover) (H1), so a proof
 		// relayed from another identity fails here.
+		//
+		// ADVERSARY-SHAPE: capability=ForeignSeedProof UNCOVERED: no capability-holding fixture exists anywhere in the tree granting a prover a proof aggregated under ANOTHER identity's seed. Relay is denied here; the adjacent outsourcing hole is pinned by TestRT_POR_2_ChallengeProxyPassesAudit_PINNED_DEFECT. ROADMAP row F1.
 		passed := a.valid && blocksOK(a.blocks, want) &&
 			porKey.Verify(id[:], porChallenge(porProverSeed(base, a.prover), want, porSampleCount), a.proof)
 		if n.ledger != nil {
