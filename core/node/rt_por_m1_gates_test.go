@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 	"math/big"
 	"testing"
 	"time"
@@ -215,7 +216,62 @@ func honestShard(t *testing.T, porKey *por.Key) (id ports.ChunkID, data []byte, 
 // "not known to the prover or other parties"; here it is a published capability.
 //
 // PIN. GREEN today. It goes RED when key distribution is remediated.
+//
+// ADVERSARY-HOLDS: LayoutKey -- the forger is handed the care link's layout key
+// (forgeZeroMu(layoutKey, ...)) and holds ZERO file bytes and ZERO tags. It is the
+// capability-holding fixture ROADMAP row F1 asks for, on the storage-proof surface.
+// CAPABILITY-CONTROL: LayoutKey -- the wrongKey arm below runs the SAME forgery
+// WITHOUT the layout key and asserts it is graded Passed=0. That is what makes the
+// capability load-bearing rather than incidental.
 // ---------------------------------------------------------------------------
+
+// rtPOR1Pin returns "" while a care-link holder storing ZERO bytes still passes the
+// composed three-leg grade and is paid for it, and the instruction once it does not.
+// TEETH: TestRT_POR_PinsFireOnTheirRemediations.
+func rtPOR1Pin(fr AuditReport, minted int64) string {
+	if fr.Passed == 1 && fr.Failed == 0 && minted > 0 {
+		return ""
+	}
+	return fmt.Sprintf("RT-POR-1 PIN IS RED — a care-link holder storing ZERO bytes was graded %+v and minted %d credit; "+
+		"pinned at Passed=1, Failed=0 and a positive mint.\n"+
+		"  THE FIX CASE: Passed=0 means a zero-byte forger no longer satisfies the composed three-leg audit — the PoR key no longer\n"+
+		"  rides the care link, or the grade no longer accepts a proof the key holder can solve for. That is the remediation this pin was\n"+
+		"  waiting for. Before retiring it: re-read the certification\n"+
+		"  POR-KEY-DISTRIBUTION-BREAK-REMEDIATION-OPTIONS-75c0f89-RESEARCH-CERTIFICATION-2026-09-12.md (V1/V2/V3 and the remediation\n"+
+		"  pricing addendum), confirm WHICH option shipped, and replace this pin with the positive assertion that a prover without the\n"+
+		"  bytes fails. Check the positive control above still passes, so the fix is not simply over-rejection.\n"+
+		"  THE COUPLED CASE — READ THIS BEFORE YOU CONCLUDE THE KEY MOVED. This pin is NOT independent of RT-POR-5a. The forgery above\n"+
+		"  also rides leg 1, which is a tautology today (verifyStorageProof takes p.Root from the response), so binding leg 1 to the\n"+
+		"  AUDITED root reddens this pin without touching key distribution at all. Measured: ablating EITHER the key derivation or leg 1\n"+
+		"  reddens BOTH pins. Read RT-POR-5a in the SAME run before attributing this RED: 5a red with isolation=false is the leg-1 fix;\n"+
+		"  5a still accepting the self-rooted proof in isolation means the key distribution is what moved.\n"+
+		"  THE OTHER CASE: Passed=1 with a zero mint means the grade still accepts the forgery but the payment path changed; the audit\n"+
+		"  break is untouched and only the economics moved. Re-derive which before re-pinning — this pin is about the GRADE.",
+		fr, minted)
+}
+
+// rtPOR1V6Firewall returns "" while a forged audit pass buys no Sybil-resistant
+// STANDING, and the escalation once it does.
+//
+// THE PREDICATE IS rep > 0, NOT rep != 0, AND THE DIFFERENCE IS THE WHOLE POINT.
+// credit.Ledger.Reputation is bonded bytes MINUS four penalty counters
+// (auditsFailed, bondFails, falseRepairs, equivocations). The moment any
+// remediation makes the forger FAIL its audit — which is the success path this
+// whole file exists to produce — auditsFailed increments and the reputation goes
+// NEGATIVE (measured under both ablations: -250). A "!= 0" test therefore fires a
+// false M0 escalation exactly when the system is working. The property being
+// asserted is "a forged PASS buys no STANDING", and that is rep > 0.
+// TEETH: TestRT_POR_PinsFireOnTheirRemediations.
+func rtPOR1V6Firewall(rep int64) string {
+	if rep <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("V6 FIREWALL BREACHED — the zero-byte forger's Reputation is %d after a forged audit pass, want <= 0. "+
+		"This is NOT the pinned defect widening quietly; it is a different and worse finding: a forged PoR pass now buys "+
+		"Sybil-resistant standing, which reaches the gamma->1/N firewall and M0. credit.Reputation never reads auditsPassed — "+
+		"its only POSITIVE term is bonded bytes, and everything else it reads is a penalty counter — so a POSITIVE reputation "+
+		"here cannot have come from the forged pass unless that changed. ESCALATE before touching this file.", rep)
+}
 
 func TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT(t *testing.T) {
 	n, _ := aloneNode(t, 0)
@@ -275,21 +331,6 @@ func TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT(t *testing.T) 
 		float64(honestNs)/float64(forgeNs))
 	t.Logf("grade of the forged answer: %+v; credit minted to the forger: %d", fr, minted)
 
-	// V6 of the certification: the gamma->1/N firewall. THIS ARM IS NOT A PIN — it
-	// asserts the INTENDED rule and passes because the rule HOLDS. A forged PASS
-	// mints spendable credit but no Sybil-resistant STANDING, because
-	// credit.Reputation never reads auditsPassed. It is asserted, not merely
-	// logged, so that the pinned break below cannot silently widen from a credit
-	// mint into a standing mint without a RED.
-	if rep := led.Reputation(forger); rep != 0 {
-		t.Fatalf("V6 FIREWALL BREACHED — the zero-byte forger's Reputation is %d after a forged audit pass, want 0. "+
-			"This is NOT the pinned defect widening quietly; it is a different and worse finding: a forged PoR pass now buys "+
-			"Sybil-resistant standing, which reaches the gamma->1/N firewall and M0. credit.Reputation must read bond only. "+
-			"ESCALATE before touching this file.", rep)
-	}
-	t.Logf("V6 firewall HOLDS: forger Reputation after the forged pass = %d (bond is the only mint)",
-		led.Reputation(forger))
-
 	// --- NEGATIVE CONTROL: the SAME attack WITHOUT the care link must fail. ---
 	var wrongKey [32]byte
 	wrongKey[0] = 0x99
@@ -305,19 +346,25 @@ func TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT(t *testing.T) 
 	}
 
 	// PIN: the zero-byte forger is graded PASSED and is paid for it.
-	if fr.Passed != 1 || fr.Failed != 0 || minted <= 0 {
-		t.Fatalf("RT-POR-1 PIN IS RED — a care-link holder storing ZERO bytes was graded %+v and minted %d credit; "+
-			"pinned at Passed=1, Failed=0 and a positive mint.\n"+
-			"  THE FIX CASE: Passed=0 means a zero-byte forger no longer satisfies the composed three-leg audit — the PoR key no longer\n"+
-			"  rides the care link, or the grade no longer accepts a proof the key holder can solve for. That is the remediation this pin was\n"+
-			"  waiting for. Before retiring it: re-read the certification\n"+
-			"  POR-KEY-DISTRIBUTION-BREAK-REMEDIATION-OPTIONS-75c0f89-RESEARCH-CERTIFICATION-2026-09-12.md (V1/V2/V3 and the remediation\n"+
-			"  pricing addendum), confirm WHICH option shipped, and replace this pin with the positive assertion that a prover without the\n"+
-			"  bytes fails. Check the positive control above still passes, so the fix is not simply over-rejection.\n"+
-			"  THE OTHER CASE: Passed=1 with a zero mint means the grade still accepts the forgery but the payment path changed; the audit\n"+
-			"  break is untouched and only the economics moved. Re-derive which before re-pinning — this pin is about the GRADE.",
-			fr, minted)
+	if msg := rtPOR1Pin(fr, minted); msg != "" {
+		t.Fatal(msg)
 	}
+
+	// V6 of the certification: the gamma->1/N firewall. THIS ARM IS NOT A PIN — it
+	// asserts the INTENDED rule and passes because the rule HOLDS. A forged PASS
+	// mints spendable credit but no Sybil-resistant STANDING, because
+	// credit.Reputation never reads auditsPassed. It is asserted, not merely
+	// logged, so that the pinned break above cannot silently widen from a credit
+	// mint into a standing mint without a RED.
+	//
+	// IT RUNS AFTER THE PIN, DELIBERATELY. Ordered before it, this arm t.Fatalf'd
+	// first on every remediation, so the pin's FIX CASE guidance — the entire point
+	// of the pin — was unreachable on the success path. Keep it last.
+	if msg := rtPOR1V6Firewall(led.Reputation(forger)); msg != "" {
+		t.Fatal(msg)
+	}
+	t.Logf("V6 firewall HOLDS: forger Reputation after the forged pass = %d (its only positive term is bonded bytes; auditsPassed is never read)",
+		led.Reputation(forger))
 }
 
 // ---------------------------------------------------------------------------
@@ -335,7 +382,32 @@ func TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT(t *testing.T) 
 // the control below proves it — but OUTSOURCING is not.
 //
 // PIN. GREEN today. It goes RED when the prover identity reaches answerChallenge.
+//
+// ADVERSARY-HOLDS: HonestHolderAsOracle -- B is granted a real holder A that
+// computes a real answer under B's OWN seed on request, which is the capability the
+// defence assumes no adversary has.
+// CAPABILITY-CONTROL: HonestHolderAsOracle -- the relay-only arm below removes the
+// oracle (A answers under A's seed, B forwards it) and asserts Passed=0, and the
+// empty-reply arm asserts B alone passes nothing.
 // ---------------------------------------------------------------------------
+
+// rtPOR2Pin returns "" while a data-less identity that outsources its verbatim
+// challenge to a real holder still passes and is paid, and the instruction once it
+// does not. TEETH: TestRT_POR_PinsFireOnTheirRemediations.
+func rtPOR2Pin(r AuditReport, minted int64) string {
+	if r.Passed == 1 && r.Failed == 0 && minted > 0 {
+		return ""
+	}
+	return fmt.Sprintf("RT-POR-2 PIN IS RED — a data-less identity B that forwarded the auditor's verbatim challenge to holder A was graded %+v "+
+		"and minted %d credit; pinned at Passed=1, Failed=0 and a positive mint.\n"+
+		"  THE FIX CASE: Passed=0 means outsourcing is now denied. The expected shape is that the prover identity reaches\n"+
+		"  Node.answerChallenge — Node.handle's MsgChallenge case already has `from` in scope, and answerBondChallenge already takes it —\n"+
+		"  so A refuses to compute under a seed that is not bound to A. Confirm THAT is what landed, then replace this pin with the\n"+
+		"  positive assertion and update the m0.md S2 row, which claims outsourcing is hardened and was over-claiming while this pin was green.\n"+
+		"  Check the two controls above still hold, so the fix is not over-rejection of honest holders.\n"+
+		"  THE OTHER CASE: Passed=1 with a zero mint means the grade is unchanged and only the payment path moved. This pin is about the GRADE.",
+		r, minted)
+}
 
 func TestRT_POR_2_ChallengeProxyPassesAudit_PINNED_DEFECT(t *testing.T) {
 	auditor, _ := aloneNode(t, 0)
@@ -394,16 +466,8 @@ func TestRT_POR_2_ChallengeProxyPassesAudit_PINNED_DEFECT(t *testing.T) {
 	t.Logf("grade of B's proxied answer: %+v; credit minted to the data-less proxy: %d", r, minted)
 
 	// PIN: the data-less proxy passes its audit and is paid for it.
-	if r.Passed != 1 || r.Failed != 0 || minted <= 0 {
-		t.Fatalf("RT-POR-2 PIN IS RED — a data-less identity B that forwarded the auditor's verbatim challenge to holder A was graded %+v "+
-			"and minted %d credit; pinned at Passed=1, Failed=0 and a positive mint.\n"+
-			"  THE FIX CASE: Passed=0 means outsourcing is now denied. The expected shape is that the prover identity reaches\n"+
-			"  Node.answerChallenge — Node.handle's MsgChallenge case already has `from` in scope, and answerBondChallenge already takes it —\n"+
-			"  so A refuses to compute under a seed that is not bound to A. Confirm THAT is what landed, then replace this pin with the\n"+
-			"  positive assertion and update the m0.md S2 row, which claims outsourcing is hardened and was over-claiming while this pin was green.\n"+
-			"  Check the two controls above still hold, so the fix is not over-rejection of honest holders.\n"+
-			"  THE OTHER CASE: Passed=1 with a zero mint means the grade is unchanged and only the payment path moved. This pin is about the GRADE.",
-			r, minted)
+	if msg := rtPOR2Pin(r, minted); msg != "" {
+		t.Fatal(msg)
 	}
 }
 
@@ -422,6 +486,25 @@ func TestRT_POR_2_ChallengeProxyPassesAudit_PINNED_DEFECT(t *testing.T) {
 //
 // PIN. GREEN today. It goes RED when leg 1 binds to the audited root.
 // ---------------------------------------------------------------------------
+
+// rtPOR5aPin returns "" while a self-rooted proof built from the chunk id alone is
+// still accepted by leg 1 both in isolation and composed, and the instruction once it
+// is not. TEETH: TestRT_POR_PinsFireOnTheirRemediations.
+func rtPOR5aPin(acceptedInIsolation bool, r AuditReport) string {
+	if acceptedInIsolation && r.Passed == 1 && r.Failed == 0 {
+		return ""
+	}
+	return fmt.Sprintf("RT-POR-5a PIN IS RED — a self-rooted proof built from the chunk id alone was accepted in isolation=%v and graded %+v; "+
+		"pinned at isolation=true, Passed=1, Failed=0.\n"+
+		"  THE FIX CASE: isolation=false means verifyStorageProof now compares p.Root to the root it is auditing rather than taking it from\n"+
+		"  the response. Confirm BOTH call sites were fixed — Node.auditLeaf against the layout root and Node.challengeHolderRetrievability\n"+
+		"  against claim.Root — because fixing one leaves the other a tautology and this pin cannot tell them apart from a single RED.\n"+
+		"  The FIXTURE BROKEN arm above already asserts the honest inclusion proof still passes leg 1, so a RED here is not over-rejection.\n"+
+		"  Then replace this pin with the positive assertion that a proof naming a foreign root is refused.\n"+
+		"  THE OTHER CASE: isolation=true but Passed!=1 means leg 1 is still a tautology and a LATER leg changed. Leg 1 is what this pin holds;\n"+
+		"  re-derive which leg moved before re-pinning.",
+		acceptedInIsolation, r)
+}
 
 func TestRT_POR_5a_MerkleLegDoesNotBindToAuditedRoot_PINNED_DEFECT(t *testing.T) {
 	n, _ := aloneNode(t, 0)
@@ -458,16 +541,82 @@ func TestRT_POR_5a_MerkleLegDoesNotBindToAuditedRoot_PINNED_DEFECT(t *testing.T)
 	}
 
 	// PIN: leg 1 accepts a self-rooted proof both in isolation and composed.
-	if !acceptedInIsolation || r.Passed != 1 || r.Failed != 0 {
-		t.Fatalf("RT-POR-5a PIN IS RED — a self-rooted proof built from the chunk id alone was accepted in isolation=%v and graded %+v; "+
-			"pinned at isolation=true, Passed=1, Failed=0.\n"+
-			"  THE FIX CASE: isolation=false means verifyStorageProof now compares p.Root to the root it is auditing rather than taking it from\n"+
-			"  the response. Confirm BOTH call sites were fixed — Node.auditLeaf against the layout root and Node.challengeHolderRetrievability\n"+
-			"  against claim.Root — because fixing one leaves the other a tautology and this pin cannot tell them apart from a single RED.\n"+
-			"  The FIXTURE BROKEN arm above already asserts the honest inclusion proof still passes leg 1, so a RED here is not over-rejection.\n"+
-			"  Then replace this pin with the positive assertion that a proof naming a foreign root is refused.\n"+
-			"  THE OTHER CASE: isolation=true but Passed!=1 means leg 1 is still a tautology and a LATER leg changed. Leg 1 is what this pin holds;\n"+
-			"  re-derive which leg moved before re-pinning.",
-			acceptedInIsolation, r)
+	if msg := rtPOR5aPin(acceptedInIsolation, r); msg != "" {
+		t.Fatal(msg)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// THE TEETH. Every pin above is a pure predicate, and this test feeds each one the
+// value it is supposed to FIRE on and the value it is supposed to accept.
+//
+// Why this exists: a pin that cannot fire reports green forever and is
+// indistinguishable from a pin that is working. Ablating the product to prove a pin
+// reddens is the right evidence, but it lives in a review document and does not
+// survive a context reset. This is the same shape shipped with #817
+// (TestRT_SFO_5_PinRedensWhenFileSizeIsBlinded) and with the shipped-default lane's
+// TheStockArgvGuardHasTeeth.
+//
+// THIS TEST IS NOT A PIN. Its polarity is ordinary: it is GREEN when the pins work
+// and RED when one of them stops being able to fire. It must keep passing after the
+// pins above are retired and replaced with positive assertions — at which point
+// delete it in the same commit.
+// ---------------------------------------------------------------------------
+
+func TestRT_POR_PinsFireOnTheirRemediations(t *testing.T) {
+	pinned := AuditReport{Challenges: 1, Passed: 1}
+	// The shape every remediation produces: the forgery is graded FAILED.
+	fixed := AuditReport{Challenges: 1, Passed: 0, Failed: 1, NoTruth: 1}
+
+	// --- RT-POR-1 ---
+	if msg := rtPOR1Pin(pinned, 25000); msg != "" {
+		t.Fatalf("rtPOR1Pin fired on the state it is pinned to accept: %s", msg)
+	}
+	if rtPOR1Pin(fixed, -25000) == "" {
+		t.Fatal("rtPOR1Pin stayed silent when the zero-byte forger was graded FAILED — the pin cannot " +
+			"detect the key-distribution remediation it exists to detect (simplicity rule 7)")
+	}
+	if rtPOR1Pin(pinned, 0) == "" {
+		t.Fatal("rtPOR1Pin stayed silent on a PASS that minted nothing — the payment half of the pin is dead")
+	}
+
+	// --- RT-POR-1's V6 firewall arm. THIS IS THE REGRESSION TEST FOR THE FALSE
+	// ESCALATION. A remediation makes the forger fail, auditsFailed increments and
+	// Reputation goes NEGATIVE — measured at -250 under both ablations. The arm must
+	// stay SILENT there. An earlier draft used `rep != 0`, which fired an M0 ESCALATE
+	// on precisely the success path and suppressed the pin's own FIX CASE guidance.
+	if msg := rtPOR1V6Firewall(-250); msg != "" {
+		t.Fatalf("rtPOR1V6Firewall fired on a NEGATIVE reputation (-250), which is the forger being "+
+			"correctly PENALISED after a remediation — the firewall working, not a breach: %s", msg)
+	}
+	if msg := rtPOR1V6Firewall(0); msg != "" {
+		t.Fatalf("rtPOR1V6Firewall fired on the pinned state (rep 0): %s", msg)
+	}
+	if rtPOR1V6Firewall(250) == "" {
+		t.Fatal("rtPOR1V6Firewall stayed silent on a POSITIVE reputation — a forged pass buying " +
+			"Sybil-resistant standing would reach the gamma->1/N firewall unnoticed")
+	}
+
+	// --- RT-POR-2 ---
+	if msg := rtPOR2Pin(pinned, 25000); msg != "" {
+		t.Fatalf("rtPOR2Pin fired on the state it is pinned to accept: %s", msg)
+	}
+	if rtPOR2Pin(fixed, 0) == "" {
+		t.Fatal("rtPOR2Pin stayed silent when the outsourcing proxy was graded FAILED — the pin cannot " +
+			"detect the prover-identity remediation it exists to detect")
+	}
+
+	// --- RT-POR-5a. Both halves must be independently observable: leg 1 refusing in
+	// isolation is the real fix, a composed FAIL alone is a later leg moving. ---
+	if msg := rtPOR5aPin(true, pinned); msg != "" {
+		t.Fatalf("rtPOR5aPin fired on the state it is pinned to accept: %s", msg)
+	}
+	if rtPOR5aPin(false, pinned) == "" {
+		t.Fatal("rtPOR5aPin stayed silent when verifyStorageProof REFUSED the self-rooted proof in " +
+			"isolation — that is the leg-1 root binding landing, and the pin cannot see it")
+	}
+	if rtPOR5aPin(true, fixed) == "" {
+		t.Fatal("rtPOR5aPin stayed silent when leg 1 was still a tautology but the composed grade " +
+			"FAILED — a later leg moved and the pin cannot see it")
 	}
 }

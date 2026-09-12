@@ -67,6 +67,7 @@ package node
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/nerolabs/silt/core/repairproof"
@@ -139,6 +140,59 @@ func (c *countStore) Delete(ctx context.Context, id ports.ChunkID) error {
 //
 // PIN. GREEN today. It goes RED when either half is repaired.
 // ─────────────────────────────────────────────────────────────────────────────
+// The RT-RC-1 pin, in three independently reddenable arms. Each returns "" while the
+// pinned behaviour is present and the instruction once it is not.
+// TEETH: TestRTRC_PinsFireOnTheirRemediations.
+
+// rtRC1Amplification: a per-sender per-window bound would hold the window's total
+// within a small constant of ONE claim's cost. It does not.
+func rtRC1Amplification(claims int, one, many int64, reachedOne int) string {
+	limit := 3 * one
+	if many > limit {
+		return ""
+	}
+	return fmt.Sprintf("RT-RC-1 PIN IS RED (amplification arm) — THE DEFECT IS FIXED OR HAS MOVED: %d claims from ONE sender cost the judge %d B, "+
+		"within the %d B (3x one claim) that a per-sender per-window bound would allow. The pin asserts the UNBOUNDED behaviour, so this RED "+
+		"means a bound now exists on the path (an admission check ahead of fetchSurvivors, or a per-sender window in handleRepairClaim).\n"+
+		"  BEFORE REPLACING THIS PIN:\n"+
+		"    1. Confirm the bound is real and not an artifact of the probe failing to reach fetchSurvivors — %d distinct shards were reached for one claim.\n"+
+		"    2. D-REPAIR-RATE-LIMIT-REFUTED-2026-09-12 REFUTED the rate-budget remedy on its precondition: emitRepairClaim binds an EMPTY reply\n"+
+		"       callback, so a refused claim is invisible to its sender and lost forever (T-RETRY-IS-THE-PRECONDITION). If a rate budget landed\n"+
+		"       anyway, that refutation is now contradicted and the decision entry must be re-opened BEFORE this pin is retired.\n"+
+		"    3. Then replace this arm with the positive assertion of whatever bound shipped.",
+		claims, many, limit, reachedOne)
+}
+
+// rtRC1InRange: survivorRefs is the complement of ONE position over the stripe and
+// fetchStripeByColumn walks it to the end, so an honest in-range claim reaches n−1,
+// not the k that VerifyByRecompute consumes. This arm holds the #844 correction.
+func rtRC1InRange(reachedOne, k, nShards int) string {
+	if reachedOne == nShards-1 {
+		return ""
+	}
+	return fmt.Sprintf("RT-RC-1 PIN IS RED (mechanism arm, in-range) — one honest in-range claim reached %d distinct shards, pinned at n−1 = %d (k=%d, n=%d).\n"+
+		"  If it is now %d, the fetch has been budgeted to k and the RT-RC-1 mechanism is repaired — retire this arm and assert the budget positively.\n"+
+		"  If it is anything else, the complement-of-one-position construction in judgeRepairClaim changed. Re-derive before re-pinning: this number\n"+
+		"  is the per-claim cost the amplification arm above multiplies, and #844 corrected canon on exactly this word (it said k; it is n−1).",
+		reachedOne, nShards-1, k, nShards, k)
+}
+
+// rtRC1OutOfRange: nothing validates claim.ShardPos before the survivor loop, so a
+// position outside 0..n−1 excludes NOTHING and costs the judge one MORE fetch than an
+// honest claim.
+func rtRC1OutOfRange(outOfRangePos, reachedOOR, reachedOne, nShards int) string {
+	if reachedOOR == nShards && reachedOOR > reachedOne {
+		return ""
+	}
+	return fmt.Sprintf("RT-RC-1 PIN IS RED (mechanism arm, out-of-range) — a claim naming position %d, outside 0..%d, reached %d distinct shards; "+
+		"pinned at n = %d, which is strictly MORE than the %d an in-range claim reaches.\n"+
+		"  The pinned defect is that nothing validates claim.ShardPos before the survivor loop, so an invalid position excludes no ref and costs\n"+
+		"  the judge one MORE fetch than an honest claim before VerifyByRecompute rejects it. If this is now <= the in-range count, a position\n"+
+		"  validation landed ahead of the fetch — good — and this arm must be replaced by the positive assertion that an out-of-range position is\n"+
+		"  refused before any fetch. Re-derive before re-pinning.",
+		outOfRangePos, nShards-1, reachedOOR, nShards, reachedOne)
+}
+
 func TestRTRC1_SurvivorFetchIsUnboundedPerSenderAndIsNMinusOneWide_PINNED_DEFECT(t *testing.T) {
 	const claims = 8
 
@@ -199,29 +253,16 @@ func TestRTRC1_SurvivorFetchIsUnboundedPerSenderAndIsNMinusOneWide_PINNED_DEFECT
 	// ── PIN (a) — the amplification is UNBOUNDED per sender. ──
 	// A per-sender per-window cap would hold the window's total within a small
 	// constant of ONE claim's cost, however many claims arrive. It does not.
-	if limit := 3 * one; many <= limit {
-		t.Fatalf("RT-RC-1 PIN IS RED (amplification arm) — THE DEFECT IS FIXED OR HAS MOVED: %d claims from ONE sender cost the judge %d B, "+
-			"within the %d B (3x one claim) that a per-sender per-window bound would allow. The pin asserts the UNBOUNDED behaviour, so this RED "+
-			"means a bound now exists on the path (an admission check ahead of fetchSurvivors, or a per-sender window in handleRepairClaim).\n"+
-			"  BEFORE REPLACING THIS PIN:\n"+
-			"    1. Confirm the bound is real and not an artifact of the probe failing to reach fetchSurvivors — %d distinct shards were reached for one claim.\n"+
-			"    2. D-REPAIR-RATE-LIMIT-REFUTED-2026-09-12 REFUTED the rate-budget remedy on its precondition: emitRepairClaim binds an EMPTY reply\n"+
-			"       callback, so a refused claim is invisible to its sender and lost forever (T-RETRY-IS-THE-PRECONDITION). If a rate budget landed\n"+
-			"       anyway, that refutation is now contradicted and the decision entry must be re-opened BEFORE this pin is retired.\n"+
-			"    3. Then replace this arm with the positive assertion of whatever bound shipped.",
-			claims, many, limit, reachedOne)
+	if msg := rtRC1Amplification(claims, one, many, reachedOne); msg != "" {
+		t.Fatal(msg)
 	}
 
 	// ── PIN (b) — an in-range claim reaches n−1 shards, NOT k. ──
 	// This is the arm that holds the #844 record correction. survivorRefs is the
 	// complement of ONE position over the stripe, and fetchStripeByColumn walks it
 	// to the end; VerifyByRecompute needs only k.
-	if reachedOne != nShards-1 {
-		t.Fatalf("RT-RC-1 PIN IS RED (mechanism arm, in-range) — one honest in-range claim reached %d distinct shards, pinned at n−1 = %d (k=%d, n=%d).\n"+
-			"  If it is now %d, the fetch has been budgeted to k and the RT-RC-1 mechanism is repaired — retire this arm and assert the budget positively.\n"+
-			"  If it is anything else, the complement-of-one-position construction in judgeRepairClaim changed. Re-derive before re-pinning: this number\n"+
-			"  is the per-claim cost the amplification arm above multiplies, and #844 corrected canon on exactly this word (it said k; it is n−1).",
-			reachedOne, nShards-1, k, nShards, k)
+	if msg := rtRC1InRange(reachedOne, k, nShards); msg != "" {
+		t.Fatal(msg)
 	}
 
 	// ── PIN (c) — an OUT-OF-RANGE position is WORSE than an honest one. ──
@@ -231,14 +272,8 @@ func TestRTRC1_SurvivorFetchIsUnboundedPerSenderAndIsNMinusOneWide_PINNED_DEFECT
 	// about how many judging rounds an unjudgeable claim triggers.
 	_, reachedOOR, _, relOOR, slOOR := measure(1, outOfRangePos)
 	t.Logf("RT-RC-1 MEASURED (out-of-range pos=%d): reached %d distinct shards; bounties=%d slashes=%d", outOfRangePos, reachedOOR, relOOR, slOOR)
-	if reachedOOR != nShards || reachedOOR <= reachedOne {
-		t.Fatalf("RT-RC-1 PIN IS RED (mechanism arm, out-of-range) — a claim naming position %d, outside 0..%d, reached %d distinct shards; "+
-			"pinned at n = %d, which is strictly MORE than the %d an in-range claim reaches.\n"+
-			"  The pinned defect is that nothing validates claim.ShardPos before the survivor loop, so an invalid position excludes no ref and costs\n"+
-			"  the judge one MORE fetch than an honest claim before VerifyByRecompute rejects it. If this is now <= the in-range count, a position\n"+
-			"  validation landed ahead of the fetch — good — and this arm must be replaced by the positive assertion that an out-of-range position is\n"+
-			"  refused before any fetch. Re-derive before re-pinning.",
-			outOfRangePos, nShards-1, reachedOOR, nShards, reachedOne)
+	if msg := rtRC1OutOfRange(outOfRangePos, reachedOOR, reachedOne, nShards); msg != "" {
+		t.Fatal(msg)
 	}
 }
 
@@ -251,6 +286,27 @@ func TestRTRC1_SurvivorFetchIsUnboundedPerSenderAndIsNMinusOneWide_PINNED_DEFECT
 //
 // PIN. GREEN today. It goes RED when the dedup lands.
 // ─────────────────────────────────────────────────────────────────────────────
+// rtRC2Pin returns "" while a byte-identical replay still draws a SECOND payment of
+// the same size and a second release, and the instruction once it does not. The delta
+// is pinned against the FIRST payment so the assertion stays derived from the run's
+// own bounty price rather than a transcribed amount.
+// TEETH: TestRTRC_PinsFireOnTheirRemediations.
+func rtRC2Pin(firstPaid, secondPaid int64, firstReleases, secondReleases, pos int, rootPfx, shardPfx []byte, holder string) string {
+	if secondPaid-firstPaid == firstPaid && secondReleases == firstReleases+1 {
+		return ""
+	}
+	return fmt.Sprintf("RT-RC-2 PIN IS RED — the replay no longer pays the same again: EscrowPaid %d -> %d (delta %d, pinned at %d), "+
+		"BountiesReleased %d -> %d (pinned at %d). Claim was root=%x stripe=0 pos=%d shard=%x holder=%s.\n"+
+		"  THE FIX CASE: delta 0 and no new release means a (root, stripe, position) dedup landed — retire this pin and assert positively that a\n"+
+		"  position already paid on this judge's ledger pays 0 on every later claim. credit.Ledger.PayBounty took only (root, repairer, amount)\n"+
+		"  and settleRepairVerdict called it with no dedup of its own; name where the dedup now lives.\n"+
+		"  THE WORSE CASE: a delta LARGER than the first payment, or more than one extra release, means the replay now pays MORE than it did.\n"+
+		"  Establish which before touching this pin — the escrow drain is DIRECTED (repairproof.RepairClaim is unsigned and the payee is\n"+
+		"  claim.Holder, a field of the message), so the size of the per-replay draw is the severity.",
+		firstPaid, secondPaid, secondPaid-firstPaid, firstPaid, firstReleases, secondReleases, firstReleases+1,
+		rootPfx, pos, shardPfx, holder)
+}
+
 func TestRTRC2_ReplayedClaimPaysAgain_PINNED_DEFECT(t *testing.T) {
 	s := newRepairAdv(t, 1202)
 	s.fundEscrow(5_000_000)
@@ -281,17 +337,9 @@ func TestRTRC2_ReplayedClaimPaysAgain_PINNED_DEFECT(t *testing.T) {
 	// PIN: the replay draws a SECOND payment of the same size, and a second release.
 	// Pinning the delta against the first payment keeps this derived from the run's
 	// own bounty price rather than from a transcribed amount.
-	if secondPaid-firstPaid != firstPaid || secondReleases != firstReleases+1 {
-		t.Fatalf("RT-RC-2 PIN IS RED — the replay no longer pays the same again: EscrowPaid %d -> %d (delta %d, pinned at %d), "+
-			"BountiesReleased %d -> %d (pinned at %d). Claim was root=%x stripe=0 pos=%d shard=%x holder=%s.\n"+
-			"  THE FIX CASE: delta 0 and no new release means a (root, stripe, position) dedup landed — retire this pin and assert positively that a\n"+
-			"  position already paid on this judge's ledger pays 0 on every later claim. credit.Ledger.PayBounty took only (root, repairer, amount)\n"+
-			"  and settleRepairVerdict called it with no dedup of its own; name where the dedup now lives.\n"+
-			"  THE WORSE CASE: a delta LARGER than the first payment, or more than one extra release, means the replay now pays MORE than it did.\n"+
-			"  Establish which before touching this pin — the escrow drain is DIRECTED (repairproof.RepairClaim is unsigned and the payee is\n"+
-			"  claim.Holder, a field of the message), so the size of the per-replay draw is the severity.",
-			firstPaid, secondPaid, secondPaid-firstPaid, firstPaid, firstReleases, secondReleases, firstReleases+1,
-			s.root[:4], pos, parityID[:4], holder.ID().String()[:8])
+	if msg := rtRC2Pin(firstPaid, secondPaid, firstReleases, secondReleases, pos,
+		s.root[:4], parityID[:4], holder.ID().String()[:8]); msg != "" {
+		t.Fatal(msg)
 	}
 }
 
@@ -315,6 +363,23 @@ func TestRTRC2_ReplayedClaimPaysAgain_PINNED_DEFECT(t *testing.T) {
 //
 // PIN. GREEN today. It goes RED when a prior-loss requirement lands.
 // ─────────────────────────────────────────────────────────────────────────────
+// rtRC3Pin returns "" while a claim for a shard that was NEVER LOST still pays, once,
+// and the instruction once it does not.
+// TEETH: TestRTRC_PinsFireOnTheirRemediations.
+func rtRC3Pin(before, after int64, releases int) string {
+	if after > before && releases == 1 {
+		return ""
+	}
+	return fmt.Sprintf("RT-RC-3 PIN IS RED — a claim for a shard that was NEVER LOST no longer pays as pinned: EscrowPaid %d -> %d, BountiesReleased=%d (pinned at a positive delta and exactly 1).\n"+
+		"  THE FIX CASE: no payment and no release means the judge now requires evidence of prior loss for the claimed (root, stripe, position).\n"+
+		"  That is the repair this pin was waiting for — BUT IT CANNOT LAND ALONE. TestRedteamRepair_HonestClaimIsPaid asserts the OPPOSITE on\n"+
+		"  this same arrangement and will have gone RED in the same run. Both tests must be re-decided together, and the owner decides which\n"+
+		"  states the intended rule. The judge's two legs (correctness recompute in judgeRepairClaim, retrievability in\n"+
+		"  challengeHolderRetrievability) both pass for a live shard merely COPIED to a new holder; nothing on the path asserted prior loss.\n"+
+		"  THE OTHER CASE: more than one release, or a payment where the premise arm above did not hold, is a different defect. Re-derive first.",
+		before, after, releases)
+}
+
 func TestRTRC3_ClaimWithNoLossIsPaid_PINNED_DEFECT(t *testing.T) {
 	s := newRepairAdv(t, 1203)
 	s.fundEscrow(5_000_000)
@@ -350,14 +415,93 @@ func TestRTRC3_ClaimWithNoLossIsPaid_PINNED_DEFECT(t *testing.T) {
 		holder.ID().String()[:8], before, after, judge.Stats.BountiesReleased)
 
 	// PIN: the no-loss claim is paid, once.
-	if after <= before || judge.Stats.BountiesReleased != 1 {
-		t.Fatalf("RT-RC-3 PIN IS RED — a claim for a shard that was NEVER LOST no longer pays as pinned: EscrowPaid %d -> %d, BountiesReleased=%d (pinned at a positive delta and exactly 1).\n"+
-			"  THE FIX CASE: no payment and no release means the judge now requires evidence of prior loss for the claimed (root, stripe, position).\n"+
-			"  That is the repair this pin was waiting for — BUT IT CANNOT LAND ALONE. TestRedteamRepair_HonestClaimIsPaid asserts the OPPOSITE on\n"+
-			"  this same arrangement and will have gone RED in the same run. Both tests must be re-decided together, and the owner decides which\n"+
-			"  states the intended rule. The judge's two legs (correctness recompute in judgeRepairClaim, retrievability in\n"+
-			"  challengeHolderRetrievability) both pass for a live shard merely COPIED to a new holder; nothing on the path asserted prior loss.\n"+
-			"  THE OTHER CASE: more than one release, or a payment where the premise arm above did not hold, is a different defect. Re-derive first.",
-			before, after, judge.Stats.BountiesReleased)
+	if msg := rtRC3Pin(before, after, judge.Stats.BountiesReleased); msg != "" {
+		t.Fatal(msg)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE TEETH. Each RT-RC pin above is a pure predicate; this test feeds each one the
+// value it must FIRE on and the value it must accept.
+//
+// A pin that cannot fire reports green forever and is indistinguishable from one that
+// works. Ablating the product is the right evidence, but it lives in a review document
+// and does not survive a context reset. Same mechanism as #817's
+// TestRT_SFO_5_PinRedensWhenFileSizeIsBlinded.
+//
+// THIS TEST IS NOT A PIN. Its polarity is ordinary: GREEN when the pins can fire.
+// Delete it in the same commit that retires the pins above.
+//
+// RT-RC-1's THREE ARMS ARE EXERCISED SEPARATELY, deliberately. The reviewer's
+// ablations showed each arm is independently reddenable (a k-budget reddens the
+// in-range arm alone; a ShardPos validation reddens the out-of-range arm alone), and a
+// teeth test that only drove one arm would let the other two rot unobserved.
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestRTRC_PinsFireOnTheirRemediations(t *testing.T) {
+	// The shipped geometry RT-RC-1 measures against: k=10, n=16.
+	const k, nShards = 10, 16
+
+	// --- RT-RC-1 (a), amplification. Pinned: 8 claims cost ~8x one claim. ---
+	if msg := rtRC1Amplification(8, 1000, 8000, nShards-1); msg != "" {
+		t.Fatalf("rtRC1Amplification fired on the unbounded state it is pinned to accept: %s", msg)
+	}
+	if rtRC1Amplification(8, 1000, 1000, nShards-1) == "" {
+		t.Fatal("rtRC1Amplification stayed silent when 8 claims cost no more than ONE — a per-sender " +
+			"per-window bound landing is exactly what this arm exists to detect (simplicity rule 7)")
+	}
+	if rtRC1Amplification(8, 1000, 3000, nShards-1) == "" {
+		t.Fatal("rtRC1Amplification stayed silent at exactly the 3x boundary — the arm must fire at the " +
+			"limit a bound would allow, not only strictly inside it")
+	}
+
+	// --- RT-RC-1 (b), in-range width. Pinned at n−1. ---
+	if msg := rtRC1InRange(nShards-1, k, nShards); msg != "" {
+		t.Fatalf("rtRC1InRange fired on the pinned n−1 width: %s", msg)
+	}
+	if rtRC1InRange(k, k, nShards) == "" {
+		t.Fatal("rtRC1InRange stayed silent when the fetch reached exactly k — the survivor budget " +
+			"landing is what this arm exists to detect, and it is the number #844 corrected")
+	}
+
+	// --- RT-RC-1 (c), out-of-range. Pinned at n, strictly more than in-range. ---
+	if msg := rtRC1OutOfRange(nShards+5, nShards, nShards-1, nShards); msg != "" {
+		t.Fatalf("rtRC1OutOfRange fired on the pinned n width: %s", msg)
+	}
+	if rtRC1OutOfRange(nShards+5, 0, nShards-1, nShards) == "" {
+		t.Fatal("rtRC1OutOfRange stayed silent when an invalid position reached ZERO shards — a " +
+			"ShardPos validation ahead of the fetch is what this arm exists to detect")
+	}
+	if rtRC1OutOfRange(nShards+5, nShards-1, nShards-1, nShards) == "" {
+		t.Fatal("rtRC1OutOfRange stayed silent when the out-of-range claim cost no MORE than an honest " +
+			"one — the 'worse than honest' half of the finding would land unnoticed")
+	}
+
+	// --- RT-RC-2, replay pays again. ---
+	pfx := []byte{1, 2, 3, 4}
+	if msg := rtRC2Pin(100, 200, 1, 2, 3, pfx, pfx, "holder00"); msg != "" {
+		t.Fatalf("rtRC2Pin fired on the pinned second payment: %s", msg)
+	}
+	if rtRC2Pin(100, 100, 1, 1, 3, pfx, pfx, "holder00") == "" {
+		t.Fatal("rtRC2Pin stayed silent when the replay paid ZERO and released nothing — the " +
+			"(root, stripe, position) dedup landing is what this pin exists to detect")
+	}
+	if rtRC2Pin(100, 400, 1, 2, 3, pfx, pfx, "holder00") == "" {
+		t.Fatal("rtRC2Pin stayed silent when the replay paid MORE than the first claim — the WORSE " +
+			"case the message names would land unnoticed")
+	}
+
+	// --- RT-RC-3, a no-loss claim is paid. ---
+	if msg := rtRC3Pin(0, 5000, 1); msg != "" {
+		t.Fatalf("rtRC3Pin fired on the pinned no-loss payment: %s", msg)
+	}
+	if rtRC3Pin(0, 0, 0) == "" {
+		t.Fatal("rtRC3Pin stayed silent when the no-loss claim paid nothing — a prior-loss requirement " +
+			"landing is what this pin exists to detect, and it is the RED that must be read together " +
+			"with TestRedteamRepair_HonestClaimIsPaid")
+	}
+	if rtRC3Pin(0, 5000, 2) == "" {
+		t.Fatal("rtRC3Pin stayed silent on TWO releases — 'paid, once' is the pinned shape and a " +
+			"double release is a different defect")
 	}
 }

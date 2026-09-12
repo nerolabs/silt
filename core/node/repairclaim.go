@@ -32,7 +32,7 @@
 // standing — PayBounty is `neutral`, SlashFalseRepair is `reduces` — so the γ→1/N
 // firewall holds (the one load-bearing invariant, core/credit/invariant_a_test.go).
 //
-// ADVERSARY-SHAPE: capability=UntrustedClaimFields UNCOVERED: no capability-holding fixture exists anywhere in the tree for 'never trusting the claim on its face'. The two legs re-derive correctness and retrievability, but NOT that the position was ever lost or was not already paid -- TestRTRC3_ClaimWithNoLossIsPaid_PINNED_DEFECT and TestRTRC2_ReplayedClaimPaysAgain_PINNED_DEFECT pin both gaps. ROADMAP row F1.
+// ADVERSARY-SHAPE: capability=UntrustedClaimFields UNCOVERED: no fixture GRANTS AND CONTROLS FOR 'never trusting the claim on its face'. The two legs re-derive correctness and retrievability, but NOT that the position was ever lost or was not already paid -- TestRTRC3_ClaimWithNoLossIsPaid_PINNED_DEFECT and TestRTRC2_ReplayedClaimPaysAgain_PINNED_DEFECT drive attacker-chosen claim fields straight at the judge and pin both gaps, and neither carries a control that removes the capability, so neither is declared as cover. ROADMAP row F1.
 package node
 
 import (
@@ -55,7 +55,7 @@ import (
 // isn't a caretaker of the claimed object (no matching CareHandle → no layout key)
 // cannot judge and replies OK=false without side effects.
 //
-// ADVERSARY-SHAPE: capability=JudgeWithoutCareHandle UNCOVERED: no capability-holding fixture exists anywhere in the tree granting a non-caretaker a CareHandle or a layout key it should not have. ROADMAP row F1.
+// ADVERSARY-SHAPE: capability=JudgeWithoutCareHandle UNCOVERED: no fixture GRANTS AND CONTROLS FOR a non-caretaker a CareHandle or a layout key it should not have. ROADMAP row F1.
 func (n *Node) handleRepairClaim(from ports.NodeID, msg ports.Message) {
 	// Every deny NAMES ITS REASON in the journal (#518 capture lesson: a claim
 	// chain that dies in a silent deny leaves paid=0 unattributable — the
@@ -342,7 +342,7 @@ func (n *Node) challengeHolderRetrievability(m *manifest.Layout, ch link.CareHan
 // repairer resolves this key to reach the quorum. The domain separator keeps it
 // from ever colliding with a real chunk hash's preimage.
 //
-// ADVERSARY-SHAPE: capability=CaretakerDiscoveryWithoutCareKey UNCOVERED: no capability-holding fixture exists anywhere in the tree granting an adversary the caretaker set by walking to the root instead of the careKey rendezvous. ROADMAP row F1.
+// ADVERSARY-SHAPE: capability=CaretakerDiscoveryWithoutCareKey UNCOVERED: no fixture GRANTS AND CONTROLS FOR an adversary the caretaker set by walking to the root instead of the careKey rendezvous. ROADMAP row F1.
 func careKey(root ports.Hash) ports.Hash {
 	buf := make([]byte, 0, len(root)+len("silt/care/v1"))
 	buf = append(buf, root[:]...)

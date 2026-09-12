@@ -26,7 +26,22 @@
 // network, no ports. Wiring it into the manifest, the node audit loop, and
 // the credit ledger is a separate change (Gate 4a, #90).
 //
-// ADVERSARY-SHAPE: capability=SectorSecretsAlpha UNCOVERED: no capability-holding fixture exists anywhere in the tree granting a prover the sector secrets a_j. Shacham-Waters Definition 2.1 assumes the key is not known to the prover; in silt it rides the care link, and TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT pins the forgery that assumption rules out. ROADMAP row F1.
+// ⚠ THE DECLARATION BELOW IS NAMED FOR THE CLAIM THE GATE ACTUALLY MATCHES IN
+// THIS BLOCK, WHICH IS NOT THE ONE THE PROSE LEADS WITH. The gate binds one
+// declaration per comment block and reports the FIRST matching sentence, and this
+// block has two matches: the scheme setup line (a vocabulary false positive) and
+// 'storage-node provers, holding only chunk bytes + tags, cannot forge'. That
+// second one is a LayoutKey claim, and the fixture named below is the adversary
+// that holds it.
+//
+// WHAT IS STILL UNCOVERED HERE, and it is a DIFFERENT capability: no fixture
+// grants a prover the sector secrets a_j THEMSELVES. The forger in that fixture
+// sets every mu_j to ZERO, so the a_j terms drop out of the verification equation
+// and it never touches an alpha. A fixture for SectorSecretsAlpha drives a
+// NON-ZERO mu forged with the alphas. Shacham-Waters Definition 2.1 assumes the
+// key is not known to the prover; in silt it rides the care link.
+//
+// ADVERSARY-SHAPE: capability=LayoutKey fixture=TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT
 package por
 
 import (
@@ -104,7 +119,13 @@ type Key struct {
 // identical distribution as a random one. Changing this function or Keygen's
 // read pattern would change every derived key, so both are frozen.
 //
-// ADVERSARY-SHAPE: capability=LayoutKey UNCOVERED: no capability-holding fixture exists anywhere in the tree granting the prover the layout key. 'which is what keeps a prover from forging' is exactly the assumption TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT falsifies for a care-link holder. ROADMAP row F1.
+// ⚠ 'which is what keeps a prover from forging' holds only for a prover that is
+// NOT a care-link holder. The fixture below grants the layout key to a prover
+// holding zero bytes and it forges a passing proof; its control asserts the same
+// forgery fails without the key. One fixture covers this claim and the identical
+// one at core/node/por.go's porKeyDomain.
+//
+// ADVERSARY-SHAPE: capability=LayoutKey fixture=TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT
 func DeriveKey(seed []byte, params Params) (*Key, error) {
 	if params.SectorsPerBlock <= 0 {
 		return nil, errors.New("por: SectorsPerBlock must be positive")
@@ -164,7 +185,7 @@ func (k *Key) Params() Params { return k.params }
 // prover can't answer a challenge on chunk A with chunk B's stored tags).
 // The returned slice has one 32-byte tag per block; store it with the chunk.
 //
-// ADVERSARY-SHAPE: capability=CrossChunkTagSubstitution UNCOVERED: no capability-holding fixture exists anywhere in the tree granting a prover chunk B's tags and driving them at a challenge on chunk A. ROADMAP row F1.
+// ADVERSARY-SHAPE: capability=CrossChunkTagSubstitution UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover chunk B's tags and driving them at a challenge on chunk A. ROADMAP row F1.
 func (k *Key) Tags(unitID []byte, data []byte) [][]byte {
 	nb := k.params.Blocks(len(data))
 	tags := make([][]byte, nb)
@@ -257,7 +278,7 @@ type Proof struct {
 // bytes and tags can always answer; a holder that lost bytes cannot make the
 // answer verify.
 //
-// ADVERSARY-SHAPE: capability=TagsAfterByteLoss UNCOVERED: no capability-holding fixture exists anywhere in the tree granting a holder its tags after the bytes are gone. See core/node/por.go: with the VERIFICATION key too, the answer verifies anyway. ROADMAP row F1.
+// ADVERSARY-SHAPE: capability=TagsAfterByteLoss UNCOVERED: no fixture GRANTS AND CONTROLS FOR a holder its tags after the bytes are gone. See core/node/por.go: with the VERIFICATION key too, the answer verifies anyway. ROADMAP row F1.
 func Prove(params Params, data []byte, tags [][]byte, c Challenge) (Proof, error) {
 	if params.SectorsPerBlock <= 0 {
 		return Proof{}, errors.New("por: bad params")

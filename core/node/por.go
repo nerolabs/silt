@@ -18,7 +18,7 @@
 //     never fetches ground truth to find out. That is the whole point: the
 //     verify-without-fetch the toy SHA-256(nonce‖data) scheme lacked.
 //
-// ADVERSARY-SHAPE: capability=TagsWithoutBytes UNCOVERED: no capability-holding fixture exists anywhere in the tree granting a prover the tags while the bytes are gone. NOTE the claim is narrower than it reads: TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT shows a zero-byte prover holding the LAYOUT KEY passes this audit. ROADMAP row F1.
+// ADVERSARY-SHAPE: capability=TagsWithoutBytes UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover the tags while the bytes are gone. NOTE the claim is narrower than it reads: TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT shows a zero-byte prover holding the LAYOUT KEY passes this audit. ROADMAP row F1.
 package node
 
 import (
@@ -38,7 +38,13 @@ import (
 // which holds chunk bytes and tags but never the layout key — cannot forge
 // a proof. Mirrors how link.go derives the layout/content keys.
 //
-// ADVERSARY-SHAPE: capability=LayoutKey UNCOVERED: no capability-holding fixture exists anywhere in the tree granting a data-less prover the layout key -- and this sentence's second half is FALSIFIED for the party that has it. TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT pins a care-link holder forging a passing proof over ZERO bytes. ROADMAP row F1.
+// ⚠ THE SECOND HALF OF THE SENTENCE ABOVE IS FALSIFIED FOR THE PARTY THAT HAS
+// THE KEY. A storage node cannot forge; a CARE-LINK holder can, over zero bytes.
+// The fixture below is that adversary, and it is the capability-holding fixture
+// ROADMAP row F1 asks for: it is handed the layout key and holds no file bytes,
+// and its wrongKey control asserts the same forgery fails WITHOUT the key.
+//
+// ADVERSARY-SHAPE: capability=LayoutKey fixture=TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT
 const porKeyDomain = "silt/por/v1"
 
 // ctOverhead is the byte cost AES-256-GCM adds to a chunk: ciphertext =
@@ -94,7 +100,12 @@ func verifyStorageProof(p ports.StorageProof, leaf ports.ChunkID) bool {
 // proof, but it can RELAY the proof of an honest holder that can. porProverSeed
 // (below) folds the challenged identity into the seed so a relayed proof fails.
 //
-// ADVERSARY-SHAPE: capability=HonestHolderAsOracle UNCOVERED: no capability-holding fixture exists anywhere in the tree granting a data-less identity a willing holder to compute under ITS seed. RELAY is genuinely denied; OUTSOURCING is not -- TestRT_POR_2_ChallengeProxyPassesAudit_PINNED_DEFECT pins it. ROADMAP row F1.
+// RELAY is genuinely denied by the seed binding. OUTSOURCING is not, and the
+// fixture below is the adversary that has the capability this comment assumes
+// away: a willing holder A that computes under B's OWN seed on request. Its
+// control removes the oracle (A answers under A's seed) and asserts that fails.
+//
+// ADVERSARY-SHAPE: capability=HonestHolderAsOracle fixture=TestRT_POR_2_ChallengeProxyPassesAudit_PINNED_DEFECT
 func porChallengeSeed(nonce uint64) [32]byte {
 	var nb [8]byte
 	binary.BigEndian.PutUint64(nb[:], nonce)
@@ -261,7 +272,7 @@ func (n *Node) auditEntry(entry ports.Entry, ch link.CareHandle, done func(Audit
 		// number from committed data, not that the number is large; a sub-frame
 		// object's shard is one block, which is fully sampled.
 		//
-		// ADVERSARY-SHAPE: capability=UnderReportedBlockCount UNCOVERED: no capability-holding fixture exists anywhere in the tree granting a prover a self-reported PorBlocks the auditor reads. The F4 closure rests on the auditor fixing the number from committed data; no fixture drives an adversary that tries to move it. ROADMAP row F1.
+		// ADVERSARY-SHAPE: capability=UnderReportedBlockCount UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover a self-reported PorBlocks the auditor reads. The F4 closure rests on the auditor fixing the number from committed data; no fixture drives an adversary that tries to move it. ROADMAP row F1.
 		want := por.DefaultParams.Blocks(int(m.ChunkSize) + ctOverhead)
 		var nextLeaf func(i int)
 		nextLeaf = func(i int) {
@@ -356,7 +367,7 @@ func (n *Node) gradeAnswers(id ports.ChunkID, porKey *por.Key, base [32]byte,
 		// and under this prover's OWN seed H(base ‖ prover) (H1), so a proof
 		// relayed from another identity fails here.
 		//
-		// ADVERSARY-SHAPE: capability=ForeignSeedProof UNCOVERED: no capability-holding fixture exists anywhere in the tree granting a prover a proof aggregated under ANOTHER identity's seed. Relay is denied here; the adjacent outsourcing hole is pinned by TestRT_POR_2_ChallengeProxyPassesAudit_PINNED_DEFECT. ROADMAP row F1.
+		// ADVERSARY-SHAPE: capability=ForeignSeedProof UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover a proof aggregated under ANOTHER identity's seed. TestRT_POR_2_ChallengeProxyPassesAudit_PINNED_DEFECT DOES drive one -- its relayOnly arm is exactly a foreign-seed proof, and it is asserted to fail -- but it is NOT declared as cover here, because the only way to run that attack WITHOUT the capability is to send an empty reply, and an empty reply fails for every capability. A control that cannot discriminate cannot show the capability is load-bearing (scar-gate-passes-on-a-bystander). ROADMAP row F1.
 		passed := a.valid && blocksOK(a.blocks, want) &&
 			porKey.Verify(id[:], porChallenge(porProverSeed(base, a.prover), want, porSampleCount), a.proof)
 		if n.ledger != nil {

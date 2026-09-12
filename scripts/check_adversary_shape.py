@@ -30,10 +30,14 @@ WHAT IT COVERS, AND WHAT IT DOES NOT — read this before citing it
   capability produces a passing control and the fixture's own author sees it.
 
   It is a SOURCE GATE. It observes text, never behaviour: it can say that no fixture
-  claims to grant a capability, never that the shipped code resists one. As of
-  2026-09-12 NOTHING in the tree is declared -- all 24 in-scope claims report as
-  UNDECLARED -- so this gate currently has no runtime cover to name, and must not be
-  cited as evidence that any defence holds.
+  claims to grant a capability, never that the shipped code resists one. A `fixture=`
+  declaration is NOT evidence that a defence holds; it is evidence that an adversary
+  with the capability was built and measured. Never cite this gate for the former.
+
+  MEASURED on the commit that lands this file: 24 in-scope claims, ZERO undeclared,
+  4 carrying `fixture=`, 19 `UNCOVERED:` and 1 `NOT-A-DEFENCE:` — and it still EXITS 1,
+  because a declared-uncovered claim is a RECORD, not an exemption. These counts move
+  with the tree. Re-run the gate rather than quoting them.
 
 WHY THE COMPLEMENT IS CLOSED ON THE SIDE THAT MATTERS
 
@@ -52,8 +56,9 @@ WHY THE COMPLEMENT IS CLOSED ON THE SIDE THAT MATTERS
   artifacts (scar-source-gate-walks-gitignored-artifacts, 2026-09-12: a month-old
   gitignored artifact made local `main` RED on a SHA whose CI was 14/14 green).
   `git ls-files` reports neither. It does mean an UNSTAGED new file is invisible to
-  this gate until it is added — which is correct for a gate that judges the tree,
-  and is also why this gate cannot see the three untracked PoR evidence files.
+  this gate until it is added — which is correct for a gate that judges the tree. The
+  three PoR evidence files that were untracked when this gate was written are TRACKED
+  by the commit that lands it, so the gate now resolves the fixtures they carry.
 
 THE DECLARATION FORMAT
 
@@ -63,12 +68,22 @@ THE DECLARATION FORMAT
     ADVERSARY-SHAPE: capability=<Name> UNCOVERED: <reason, with a residual or run id>
     ADVERSARY-SHAPE: NOT-A-DEFENCE: <reason>
 
-  The third form is the honest way to spend the vocabulary's false positives. Measured
-  at b870ade: 24 matches in scope, of which about 19 are genuine defence claims. The
-  alternative -- tightening the regex once per false positive -- is the
+  The third form is the honest way to spend the vocabulary's false positives. An
+  earlier draft of this docstring estimated "about 19 of 24" matches were genuine. The
+  declaration pass that shipped with it classified 23 of the 24 as genuine and exactly
+  1 as NOT-A-DEFENCE, so that estimate was wrong and is withdrawn: the rate is whatever
+  the declarations say, and each one is reviewable line by line in a diff.
+  The alternative -- tightening the regex once per false positive -- is the
   "pattern that must be re-escaped per instance" shape row F1 exists to avoid, and it
   quietly narrows coverage every time it is used. A NOT-A-DEFENCE line is one reviewable
   line in a diff and it narrows nothing.
+
+  ONE KNOWN LIMIT, because a declaration can now hide it. A comment block gets ONE
+  declaration and the gate reports only the FIRST matching sentence in it. Four blocks
+  carry more than one claim sentence, so the second and third are recorded under a
+  capability name that may not describe them. Read the WHOLE block before trusting a
+  declaration on a long one, and where the names diverge, say so inside the block
+  (core/por/por.go's package header does).
 
   In the named fixture:
 
