@@ -327,18 +327,21 @@ func o3tShippedText(t *testing.T, root string) (lines []o3tLine, flat []o3tFlatF
 // WALK (not the anchor from this list, which would prove nothing) and the gate is re-run:
 //
 //	ablation                                  files walked   count floor   anchor leg
-//	drop docs/ from the skip switch                    121   GREEN         RED  docs/threat-model.md
-//	drop the .yml/.yaml extension                      137   GREEN         RED  …/docker-compose.yml
-//	skip README.md by name                             137   GREEN         RED  README.md
-//	skip run-all.sh by name                            163   GREEN         RED  integration/run-all.sh
-//	drop integration/ from the skip switch              63   RED           (not reached)
+//	drop docs/ from the skip switch                    130   GREEN         RED  docs/threat-model.md
+//	drop website/ from the skip switch                 170   GREEN         RED  website/index.html
+//	drop the .html extension                           164   GREEN         RED  website/index.html
+//	drop the .yml/.yaml extension                      146   GREEN         RED  …/docker-compose.yml
+//	skip every file named README.md                    146   GREEN         RED  README.md
+//	skip every file named run-all.sh                   172   GREEN         RED  integration/run-all.sh
+//	drop integration/ from the skip switch              72   RED           (not reached)
 //
-// Read the first four rows as the finding: in every one of them the COUNT FLOOR IS GREEN and the
-// gate is red only because an anchor is missing. The second row is the exact 2026-09-12 regression
-// that this whole change exists to close — a .yml file carrying a banned literal that the walk
-// could not reach — and the floor does not notice it. The last row is honest about its own limit:
-// losing all of integration/ is a big enough collapse that the tripwire fires first, so that run
-// does not demonstrate its anchor; the run above it does, in isolation.
+// Read the first SIX rows as the finding: in every one of them the COUNT FLOOR IS GREEN and the
+// gate is red only because an anchor is missing. Rows 2-4 are this change's own subject matter —
+// the website/ skip and the .html and .yml extensions — and the floor notices none of them; row 4
+// is the exact 2026-09-12 regression that started this work, a .yml file carrying a banned literal
+// the walk could not reach. The last row is honest about its own limit: losing all of integration/
+// is a collapse big enough that the tripwire fires first and returns before the anchor loop runs,
+// so that run does not demonstrate its anchor; row 6 does, in isolation.
 var o3tWalkAnchors = []struct{ Rel, Why string }{
 	{"README.md",
 		"the repo ROOT, and the front-door site: the sweep this gate replaced walked docs/ only, " +
