@@ -358,6 +358,32 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
   must be non-Sybil-gameable. **Actionable upside: silt is not blocked by a missing library — it
   could start the circuit/witness design now.**
 
+### D7. `R-BOUNTY-METERS-BUT-DOES-NOT-ATTRIBUTE` — the repair bounty is METERED, not ATTRIBUTED
+- **Class:** held in tension. Filed 2026-09-12 by `D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12`;
+  certification
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/D-BOUNTY-PAYS-FOR-REPAIR-mechanism-RESEARCH-CERTIFICATION-2026-09-12.md`.
+- **What it is:** the three authorised builds (manifest-vs-`ShardID` direction A **with its slash**,
+  the `present`-count fix in `VerifyByRecompute`, and `(root, stripe, pos)` dedup keyed on **PAID**)
+  make the bounty correctly **METERED** — a repair's worth of work is paid for once. They do **not**
+  make it **ATTRIBUTED**: nothing establishes that the payment reaches whoever did the repair.
+  `settleRepairVerdict` pays `claim.Holder`, a field of an **unsigned** claim message.
+- **NOBODY MAY WRITE THAT THIS IS SOLVED.** Any sentence reading "the bounty now pays for repair" is
+  an over-claim. Metering and attribution are two properties; only the first is in reach today.
+- **Why it cannot simply be closed:** the missing input is a **loss witness**, and a repair erases
+  its own evidence (**T-LOSS-IS-A-TRANSIENT**). The witness is gated behind
+  `R-PROBE-FALSE-NEGATIVE-RATE`, and it must be produced on a prompt that is never itself the
+  evidence (**T-WITNESS-NEEDS-A-PROMPT**).
+- **Bounded today by:** the correctness leg (the claimed position is recomputed against the
+  manifest-committed id) and the identity-bound retrievability challenge, so the payee must at least
+  **hold** the shard. The γ→1/N firewall is untouched — `PayBounty` is `neutral`, so no amount of
+  mis-attribution converts into consensus weight.
+- **Open question:** a loss witness that a claimant cannot manufacture, with a measured probe
+  false-negative rate to price it.
+- **Scope note, assumption-free:** **every object of 4 chunks or fewer — 1 MiB at the default chunk
+  size — is entirely unjudgeable.** The circulated "~4 in 10 objects" framing is **DECLINED**: the
+  honest statement is 4 of 10 **residue classes**, and it becomes a rate over objects only under a
+  publisher-steerable size distribution (build-immutable #3).
+
 ---
 
 ## E. Consensus & bootstrap (F-1 fallout)

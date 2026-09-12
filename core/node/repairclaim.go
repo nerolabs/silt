@@ -9,11 +9,16 @@
 // The judge runs the two legs the pure core/repairproof package defines, split by
 // their trust properties (design §6):
 //
-//   - CORRECTNESS (deterministic, publicly recomputable): fetch k survivor shards
-//     of the stripe — verifying each against its own manifest-committed id — and
-//     recompute the claimed position (repairproof.VerifyByRecompute). A claim whose
-//     recompute disagrees with the committed shard id is a self-attributing lie, so
-//     it is SLASHED (credit.SlashFalseRepair), not merely denied.
+//   - CORRECTNESS (deterministic, publicly recomputable): fetch the stripe's
+//     survivor shards — EVERY manifest-listed position except the one the claim
+//     names, so n−1 on a full stripe and NOT k. There is no early exit once k are
+//     in hand, and an OUT-OF-RANGE claim.ShardPos excludes nothing, so that case
+//     fetches all n — one MORE than an honest claim. Each survivor is verified
+//     against its own manifest-committed id, then the claimed position is
+//     recomputed (repairproof.VerifyByRecompute, which NEEDS k; the fetch is
+//     simply not budgeted to k). A claim whose recompute disagrees with the
+//     committed shard id is a self-attributing lie, so it is SLASHED
+//     (credit.SlashFalseRepair), not merely denied.
 //   - RETRIEVABILITY (where independent verifiers add value): challenge the named
 //     holder with an identity-bound Shacham–Waters PoR (repairproof.RepairChallengeSeed
 //     closes the relay/double-count), so a data-less relay can't collect. A
@@ -129,8 +134,19 @@ func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, claim repa
 		return
 	}
 
-	// CORRECTNESS leg — fetch k survivors, verify each against its committed id,
+	// CORRECTNESS leg — fetch the survivors, verify each against its committed id,
 	// recompute the claimed position and check it against the manifest anchor.
+	//
+	// ⚠ THE FETCH IS n−1 SHARDS ON A FULL STRIPE, NOT k. survivorRefs above is the
+	// COMPLEMENT of claim.ShardPos over this stripe's manifest-listed positions, and
+	// fetchSurvivors walks all of it — there is no early exit once k are in hand. An
+	// out-of-range claim.ShardPos excludes nothing, so it fetches all n: one MORE
+	// than an honest claim, then errors out of VerifyByRecompute into the deferral
+	// path below. VerifyByRecompute needs k; nothing budgets the FETCH to k.
+	// (Record correction 2026-09-12: the ratified entry
+	// D-REPAIR-CLAIM-GATES-PINNED-2026-09-12 and this comment both said "k
+	// survivors". Both were false in the same direction — they understated the
+	// amplification the RT-RC-1 pin exists to hold.)
 	n.fetchSurvivors(m.Root(), survivorRefs, func(survivors map[int][]byte, reachable int) {
 		correctnessOK, cerr := repairproof.VerifyByRecompute(p, survivors, realData, claim.ShardPos, claim.ShardID)
 		if cerr != nil {

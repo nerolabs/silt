@@ -5033,6 +5033,187 @@ records for the prepare-QC flood. Landing the pins buys visibility, not a repair
 `PayBounty` is classified `neutral` and `Reputation()` never reads escrow or bounty, so this is a
 durability DoS and an escrow drain, **not a mint**.
 
+### ⚠ RECORD CORRECTION — 2026-09-12, appended not substituted
+
+Two sentences of this entry are **false at source**. They are left standing above so the record shows
+the correction rather than hiding it, per the standing practice on superseded reasoning.
+
+Reached by two seats **blind to each other** — a Researcher certification and a blind
+principal-engineer verification — and re-derived at source before this correction was written.
+
+**1. The RT-RC-1 mechanism sentence understates the fetch, and it understates it in the direction
+that makes the pin look smaller than it is.**
+
+- **What the entry said:** a stream of small claims from one free identity *"buys a stream of
+  **k-survivor** stripe fetches on the judge."*
+- **What is true:** the fetch is **n−1**, not k. `judgeRepairClaim` (`core/node/repairclaim.go`)
+  builds `survivorRefs` as the **complement of one position** — every ref of the stripe whose `pos`
+  is not `claim.ShardPos` — and hands the whole slice to `fetchSurvivors`, which forwards it to
+  `fetchStripeByColumn`. That walk is `next(i+1)` to `len(refs)` with **no early exit once k shards
+  are in hand**. `storedShards` lists n refs for a full stripe (k data + n−k parity), so the count is
+  **n−1 = 15 at the shipped default k=10/n=16**, not 10.
+- **And the out-of-range case is WORSE than the honest one.** Nothing validates `claim.ShardPos`
+  before the loop, so a position outside `0..n−1` matches no ref, **excludes nothing**, and the judge
+  fetches **all n = 16** — one MORE than an honest claim — before `VerifyByRecompute` rejects it on
+  `target position … out of range`.
+- **Why the error was easy to make:** `repairproof.VerifyByRecompute` genuinely *needs* k survivors,
+  and `ErrUnrecoverable` is worded in k. The requirement is k; **the fetch is not budgeted to it.**
+  That is the whole of RT-RC-1.
+- **The same false word was in an in-code comment on the judge path** — the `CORRECTNESS leg` comment
+  in `judgeRepairClaim` and the `CORRECTNESS` bullet of `core/node/repairclaim.go`'s package header.
+  Both are corrected in the same commit as this entry. A comment that claims a tighter bound than the
+  code delivers is the live defect class this repo keeps re-learning
+  (`silt-a-claim-about-a-gate-is-itself-a-claim`).
+
+**2. The severity sentence understates the drain. It is DIRECTED, not diffuse.**
+
+- **What the entry said:** *"this is a durability DoS and an escrow drain, not a mint."*
+- **What is true, and stays true:** *not a mint.* `PayBounty` is `neutral` and `Reputation()` reads
+  neither escrow nor bounty, so **the γ→1/N firewall does still hold.** That half is not disturbed.
+- **What the entry missed:** `repairproof.RepairClaim` (`core/repairproof/claim.go`) carries **five
+  cbor fields and no signature** — the claim body is **unsigned** — and the payee is `claim.Holder`,
+  **a field in the message** rather than the transport identity the judge received it from.
+  `settleRepairVerdict` pays `n.ledger.PayBounty(claim.Root, claim.Holder, bounty)`. So the drain is
+  **DIRECTED**: the claimant names the account the escrow drains into.
+- **Do not over-read this in the other direction either.** A release still requires the correctness
+  leg to verify against the manifest-committed shard id AND the named holder to answer an
+  identity-bound Shacham–Waters challenge (`challengeHolderRetrievability`, seeded so a relayed proof
+  fails). The direction is chosen by the attacker; it is not a payment to an arbitrary account.
+
+**What the correction does NOT change.** The three pins stand exactly as ratified, the
+`PINNED_DEFECT` posture stands, the refusal of skip-until-fixed stands, and no production behaviour
+moves. **A larger number does not re-price the fix** — the remedy remains separately gated, and is
+now REFUTED on its own evidence (`D-REPAIR-RATE-LIMIT-REFUTED-2026-09-12`, below).
+
+## D-REPAIR-RATE-LIMIT-REFUTED-2026-09-12 — the RT-RC-1 remedy is REFUTED on BOTH arms: a per-sender rate budget breaks a precondition, and the check-ordering hoist cannot preserve the slash
+
+- **Status:** ✅ RATIFIED — 2026-09-12. The owner ratified a **REFUTED** research verdict. Both
+  remedies named in `D-REPAIR-CLAIM-GATES-PINNED-2026-09-12` are off the table; RT-RC-1 stays pinned.
+- **Tier:** evolving. **Nothing is built by this entry, and nothing is built by acting on it** — its
+  output is two remedies that must not be built and one theorem.
+- **Certification:**
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/RT-RC-repair-claim-rate-limit-and-check-ordering-RESEARCH-CERTIFICATION-2026-09-12.md`
+
+### Arm 1 — the rate budget fails on a PRECONDITION, not on a value
+
+The pinned entry routed the remedy as *"a per-sender rate budget's burst value is a security
+parameter and is research-gated."* That framing assumed the only open question was the number. It is
+not. **The mechanism's precondition is absent.**
+
+Every `allowWindowed` budget in silt (`core/node/bondaudit.go` — `bondSubmitBurst`,
+`roundCertBurst`) states a **healing** property: a refused request is retried, so a refusal costs
+latency, not the request. **The repair claim has no retry.** `emitRepairClaim`
+(`core/node/repairclaim.go`) sends each claim with `func(ports.Message, error) {}` — an **empty reply
+callback**, fire-and-forget. A refused claim is invisible to its sender and **lost forever**.
+
+The judge's own source already says so, in the deferral comment `judgeRepairClaim` carries for the
+transient-short-survivor case: *"Claim emission is one-shot, so a terminal deny here loses the bounty
+FOREVER."* A rate budget is a terminal deny, applied to a one-shot message, by a party with no way to
+tell the sender.
+
+> **T-RETRY-IS-THE-PRECONDITION (new standing theorem).** A rate budget is a *healing* control: it
+> converts a refusal into a delay. It may only be placed where the refused party can **observe the
+> refusal and retry**. On a one-shot, fire-and-forget message, the same control is a **silent
+> permanent drop**, and its burst value is not the open question — its precondition is missing.
+
+### ★ NO BURST VALUE EXISTS, AND IT IS FILED AS "DOES NOT EXIST", NOT AS "MEASURE IT"
+
+One **honest** paramedic legitimately emits about **2,460 claims per sweep** on a 1 GiB object. There
+is no separation between the honest cadence and an attack cadence to place a threshold in.
+
+**File this as "the value does not exist." Never as "measure it."** The estimand would be
+**publisher-chosen object size**, which an attacker steers directly, and **build-immutable #3 forbids
+resting a security parameter on a steerable estimand**. A measurement request here would produce a
+number that reads as derived and is not — the `silt-derive-then-drive` failure. `R-CARRIER-QC-BURST-VALUE`
+remains a live measurement for the prepare-QC flood because its honest cadence is bounded by the
+consensus schedule; this one is bounded by nothing.
+
+### Arm 2 — the check-ordering hoist is refuted separately, and for a DIFFERENT reason
+
+The second remedy was to hoist the `if !n.cfg.RepairEconomy` gate above the fetch, so an
+economy-disabled judge does no work. It cannot be done as stated, and the reason is not the rate
+budget's reason.
+
+**`settleRepairVerdict` runs the SLASH before the economy gate**, deliberately: `if d.Slash { … }`
+returns above `if !n.cfg.RepairEconomy { return }`, so a self-attributing false claim is punished
+whether or not this judge pays bounties. **The slash cannot be preserved across the hoist**, because
+`d.Slash` depends on the verdict, the verdict depends on the recompute, and the recompute depends on
+the fetch output. Hoisting the gate above the fetch deletes the slash for every economy-off judge —
+the **shipped default** — and the shipped default is where RT-RC-1 fires.
+
+Two refutations with two mechanisms, on one row. Neither transfers to the other.
+
+### What remains open, and what must not be written
+
+RT-RC-1 **stays pinned** and is **not routed to a remedy** by this entry. Nothing here says the
+amplification is acceptable; it says the two proposed repairs are wrong, one on a missing
+precondition and one on a lost punishment. A replacement direction is a new question, not a value.
+
+## D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12 — the bounty-for-repair MECHANISM certification returns GATED, is RATIFIED at that strength, and authorises three builds and no more
+
+- **Status:** ✅ RATIFIED — 2026-09-12, **at the strength the certification returned: GATED.** This
+  advances `D-BOUNTY-PAYS-FOR-REPAIR-2026-09-12` from intent-only to a bounded build authorisation.
+- **Tier:** economic mechanism (`D-S7`). The research gate is **discharged for the three items named
+  below and for nothing else.**
+- **Certification:**
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/D-BOUNTY-PAYS-FOR-REPAIR-mechanism-RESEARCH-CERTIFICATION-2026-09-12.md`
+
+### Authorised to build — three items, and the first carries a condition
+
+1. **Direction A — check the claimed position against the manifest.** Compare the
+   manifest-committed id for `claim.Stripe`/`claim.ShardPos` against `claim.ShardID`.
+   **★ AND IT MUST SLASH.** A **well-formed** position whose claimed id disagrees with the manifest
+   is a self-attributing lie and is already slashable through the recompute leg. If direction A
+   rejects it EARLIER but only DENIES, it **silently retires an existing punishment** — the fix would
+   make silt strictly weaker against the exact adversary the slash was built for.
+2. **The `present`-count fix in `VerifyByRecompute` ONLY.** Scoped to that function.
+3. **Node-side `(root, stripe, pos)` dedup, keyed on PAID — never on judged.** A judged-but-unpaid
+   position must remain payable: an empty escrow, a `BountyBaseZero` geometry or a deferred
+   re-judgment all reach "judged" without paying, and keying on judged would convert each into a
+   permanent loss of a legitimate bounty.
+
+### ⚠ TWO PLACEMENTS ARE REFUTED — do not build either
+
+- **Deleting the `present` pre-check in `VerifyByRecompute` is REFUTED.** It routes a
+  short-survivor condition — a transient, per this file's own deferral path — into a **bond-slash of
+  an honest paramedic**. The pre-check is what keeps "I could not check you" distinct from "you
+  lied".
+- **Touching `erasure.ReconstructStripe` is REFUTED.** It is **already correct**, and it sits on the
+  **genesis path**. There is no defect to fix and the blast radius is the format.
+
+### Still GATED — the loss witness
+
+The witness that a position was **actually lost** — the thing the whole intent turns on — remains
+behind **`R-PROBE-FALSE-NEGATIVE-RATE`**. It is not authorised.
+
+> **T-LOSS-IS-A-TRANSIENT (new standing theorem).** A repair **erases its own evidence.** By the time
+> a claim is judgeable, the position it claims to have restored is present, so the judge cannot
+> observe the loss directly — only a witness recorded *before* the repair can carry it.
+>
+> **T-WITNESS-NEEDS-A-PROMPT (new standing theorem).** A loss witness must be produced on a prompt,
+> and **the prompt must never be the evidence.** A witness a claimant can cause to exist is a witness
+> a claimant can manufacture; the prompt and the proof must be sourced separately.
+
+### ★ THE "~4 IN 10 OBJECTS" FIGURE IS DECLINED
+
+The circulated figure — that roughly 4 in 10 objects are unjudgeable — is **not adopted**, and no
+seat may cite it.
+
+- **The honest form:** unjudgeable ⟺ **4 of 10 residue classes**. It becomes a rate *over objects*
+  only under an assumption about the object-size distribution, and that distribution is
+  **publisher-chosen and therefore steerable** — the same build-immutable #3 bar that killed the
+  burst value above.
+- **The assumption-free statement, which IS adoptable:** **every object of 4 chunks or fewer — 1 MiB
+  at the default chunk size — is entirely unjudgeable.**
+
+### ★ NOBODY MAY WRITE THAT THIS IS SOLVED
+
+The mechanism makes the bounty correctly **METERED**. It leaves it **MIS-ATTRIBUTABLE**: it can be
+established that a repair's worth of work is paid for once, and not yet that it is paid to whoever
+did it. That gap is filed as **`R-BOUNTY-METERS-BUT-DOES-NOT-ATTRIBUTE`** and is **held in tension**,
+not closed. Any sentence that reads "the bounty now pays for repair" is an over-claim against this
+entry.
+
 ## D-BOND-DEFAULT-CLEARS-FLOOR-2026-09-12 — the `-bond` default is raised to clear the derived anti-release floor, and a gate asserts the shipped defaults admit a working validator
 
 - **Status:** ✅ RATIFIED — 2026-09-12, as a DIRECTION with its build owed. The value the default
@@ -5137,6 +5318,20 @@ either a control asserting the retired rule or two controls with no witness.
 **Do not resolve the contradiction by deleting a test.** Both the shipped positive control and the
 Tester's RT-RC-3 pin state rules; this ratification says which rule silt wants, and the tests are
 re-derived to match it once the mechanism is certified.
+
+### ADVANCED — 2026-09-12, same day
+
+The mechanism certification returned **GATED** and the owner ratified it at that strength:
+**`D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12`**. Read the two entries together. It authorises three
+builds, refutes two placements, declines the "~4 in 10 objects" figure, and holds the loss witness
+behind `R-PROBE-FALSE-NEGATIVE-RATE`. **"The mechanism is research-gated" above is no longer the whole
+state** — the gate is discharged for three named items and for nothing else, and the residual
+`R-BOUNTY-METERS-BUT-DOES-NOT-ATTRIBUTE` records what stays open.
+
+**One phrasing in this entry reads tighter than the code.** *"recompute the claimed position from k
+survivors"* describes what `repairproof.VerifyByRecompute` REQUIRES. It is not what the judge FETCHES
+— that is n−1 on a full stripe, and n on an out-of-range position. See the RECORD CORRECTION in
+`D-REPAIR-CLAIM-GATES-PINNED-2026-09-12`.
 
 ## D-WEBSITE-HTML-AT-DEPLOY-2026-09-12 — the three website pages are generated at deploy and stop being committed; CONDITIONAL on the Netlify build being confirmed
 
