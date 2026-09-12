@@ -239,3 +239,160 @@ func TestVerifyByRecompute_ShortFinalStripe(t *testing.T) {
 		t.Fatalf("short-stripe honest repair: ok=%v err=%v, want ok=true", ok, err)
 	}
 }
+
+// shortFinalStripe builds a SHORT final stripe under p: realData real data shards,
+// (k − realData) implicit-zero padding slots, and the full parity set. It returns
+// the n-slot picture and each slot's content id. The padding slots carry the zero
+// bytes erasure.ReconstructStripe would fill them with, which is exactly why they
+// are never STORED: storedShards emits realData + (n − k) refs for such a stripe
+// and nothing else.
+func shortFinalStripe(t *testing.T, p erasure.Params, realData, size int) (shards [][]byte, ids []ports.ChunkID) {
+	t.Helper()
+	if realData < 1 || realData >= p.K {
+		t.Fatalf("shortFinalStripe needs 1 <= realData < k, got realData=%d k=%d", realData, p.K)
+	}
+	data := make([][]byte, realData)
+	for i := range data {
+		d := make([]byte, size)
+		for j := range d {
+			d[j] = byte((i*23 + j*11 + 5) % 251)
+		}
+		data[i] = d
+	}
+	parity, err := erasure.EncodeStripe(p, data)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	shards = make([][]byte, p.N)
+	copy(shards, data)
+	for i := realData; i < p.K; i++ {
+		shards[i] = make([]byte, size)
+	}
+	copy(shards[p.K:], parity)
+	ids = make([]ports.ChunkID, p.N)
+	for i, s := range shards {
+		ids[i] = ports.HashBytes(s)
+	}
+	return shards, ids
+}
+
+// storedSurvivorsExcluding supplies exactly what a JUDGE can supply for a short
+// final stripe: every STORED position except the target. Padding positions are
+// math, not storage, so no judge can ever hand them in — which is the whole point.
+func storedSurvivorsExcluding(shards [][]byte, p erasure.Params, realData, target int) map[int][]byte {
+	out := map[int][]byte{}
+	for pos := 0; pos < p.N; pos++ {
+		if pos == target || (pos >= realData && pos < p.K) {
+			continue
+		}
+		out[pos] = shards[pos]
+	}
+	return out
+}
+
+// TestVerifyByRecompute_ShortFinalStripeJudgeableFromStoredSurvivorsAlone is the
+// gate for the `present`-count fix (D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12,
+// item 2). At the SHIPPED geometry k=10/n=16, a final stripe of 4 real data chunks
+// stores 4 + 6 = 10 shards, so a judge that excludes the claimed position can
+// supply at most 9 survivors — one short of k. Counting only supplied survivors
+// therefore made the claim STRUCTURALLY unjudgeable forever: the paramedic repairs
+// the position and no judge can ever judge it. Every object of four chunks or fewer
+// is such an object, which at the default 256 KiB chunk size is every object of at
+// most 1 MiB.
+//
+// The fix counts the implicit-zero padding slots erasure.ReconstructStripe will
+// fill, making this function's recoverability predicate exactly ReconstructStripe's
+// minus the target.
+//
+// DRIVEN RED FIRST: without the padding count this returns ErrUnrecoverable for
+// every realData in 1..4 at k=10/n=16.
+func TestVerifyByRecompute_ShortFinalStripeJudgeableFromStoredSurvivorsAlone(t *testing.T) {
+	p := erasure.DefaultParams // the SHIPPED geometry, not a convenient one
+	const size = 64
+	target := p.K // the stripe's first parity position
+
+	for realData := 1; realData < p.K; realData++ {
+		shards, ids := shortFinalStripe(t, p, realData, size)
+		surv := storedSurvivorsExcluding(shards, p, realData, target)
+
+		// Derived anti-vacuity: for realData < 2k − n + 1 the supplied set is SHORT
+		// of k, so this row is one the old predicate could never judge. Assert the
+		// arithmetic rather than trusting the loop.
+		wantSupplied := realData + (p.N - p.K) - 1
+		if len(surv) != wantSupplied {
+			t.Fatalf("realData=%d: a judge could supply %d survivors, want realData+(n−k)−1 = %d — the fixture is not modelling the stored set",
+				realData, len(surv), wantSupplied)
+		}
+		ok, err := VerifyByRecompute(p, surv, realData, target, ids[target])
+		if err != nil {
+			t.Fatalf("realData=%d (%d supplied survivors, k=%d): err = %v, want nil. A stripe a judge CAN see every stored shard of must be judgeable; "+
+				"ErrUnrecoverable here is the `present` count ignoring the %d implicit-zero padding slots that erasure.ReconstructStripe fills for free",
+				realData, len(surv), p.K, err, p.K-realData)
+		}
+		if !ok {
+			t.Fatalf("realData=%d: an honest repair of position %d did not verify", realData, target)
+		}
+	}
+	t.Logf("short-final-stripe judgeable at k=%d n=%d for every realData in 1..%d; the tightest row supplies %d survivors against k=%d",
+		p.K, p.N, p.K-1, 1+(p.N-p.K)-1, p.K)
+}
+
+// TestVerifyByRecompute_PaddingCountDoesNotDeleteTheUnrecoverableSplit is the
+// REFUTED-placement guard. The certified fix counts padding; it does NOT delete the
+// `present < k` pre-check, and deleting that pre-check is REFUTED
+// (D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12): erasure.ReconstructStripe's below-k
+// failure is a plain error, which this function maps to (false, nil), and
+// Decide(false, …) SLASHES. A genuinely short survivor fetch is a TRANSIENT — the
+// node judge defers and retries it — so routing it into (false, nil) would
+// bond-slash an HONEST paramedic.
+//
+// So: even with the padding counted, a survivor set short enough that
+// supplied + padding < k must still return ErrUnrecoverable, never (false, nil).
+func TestVerifyByRecompute_PaddingCountDoesNotDeleteTheUnrecoverableSplit(t *testing.T) {
+	p := erasure.DefaultParams
+	const size, realData = 64, 4
+	shards, ids := shortFinalStripe(t, p, realData, size)
+	target := p.K
+	padding := p.K - realData
+
+	// Hand in fewer survivors than the padding can make up: supplied + padding < k.
+	supplied := p.K - padding - 1 // 3 at k=10, realData=4
+	surv := map[int][]byte{}
+	for pos := 0; pos < p.N && len(surv) < supplied; pos++ {
+		if pos == target || (pos >= realData && pos < p.K) {
+			continue
+		}
+		surv[pos] = shards[pos]
+	}
+	if len(surv)+padding >= p.K {
+		t.Fatalf("VACUOUS: %d supplied + %d padding >= k=%d — this arm must be BELOW k or it proves nothing", len(surv), padding, p.K)
+	}
+
+	ok, err := VerifyByRecompute(p, surv, realData, target, ids[target])
+	if err != ErrUnrecoverable {
+		t.Fatalf("err = %v, want ErrUnrecoverable. The `present < k` pre-check is what keeps 'I could not check you' distinct from 'you lied': "+
+			"without it a short fetch reaches ReconstructStripe, returns (false, nil), and repairproof.Decide SLASHES an honest paramedic's bond", err)
+	}
+	if ok {
+		t.Fatal("a set below k even after padding must not verify")
+	}
+}
+
+// TestVerifyByRecompute_FullStripeSurvivorRequirementIsUnchanged pins that the
+// padding count changes NOTHING on a full stripe. realData == k leaves the range
+// [realData, k) empty, so the requirement stays the familiar k supplied survivors
+// and k−1 stays unrecoverable. A fix that widened the full-stripe case would be
+// widening the judge's acceptance on the path that carries every ordinary object.
+func TestVerifyByRecompute_FullStripeSurvivorRequirementIsUnchanged(t *testing.T) {
+	p := erasure.DefaultParams
+	shards, ids := makeStripe(t, p, 64)
+	target := p.K
+
+	if _, err := VerifyByRecompute(p, survivorsExcluding(shards, target, p.K-1), p.K, target, ids[target]); err != ErrUnrecoverable {
+		t.Fatalf("k−1 survivors on a FULL stripe: err = %v, want ErrUnrecoverable", err)
+	}
+	ok, err := VerifyByRecompute(p, survivorsExcluding(shards, target, p.K), p.K, target, ids[target])
+	if err != nil || !ok {
+		t.Fatalf("k survivors on a FULL stripe: ok=%v err=%v, want ok=true err=nil", ok, err)
+	}
+}

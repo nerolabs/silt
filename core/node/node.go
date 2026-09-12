@@ -418,6 +418,13 @@ type Stats struct {
 	BountyBaseZero     int
 	BountiesReleased   int
 	FalseRepairSlashes int
+	// BountyDuplicatePosition counts release verdicts this judge refused to pay
+	// because it had ALREADY paid a bounty for that (root, stripe, position). A
+	// replayed claim used to draw the full bounty a second time out of the same
+	// escrow, so this gauge is the drain that is no longer happening: any non-zero
+	// value is a replay the dedup caught (D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12,
+	// direction D). It counts REFUSALS, not payments — it never moves standing.
+	BountyDuplicatePosition int
 	// A4-2 (R2.7 detector A4, Economist advisory §1.2): repair bounties this judge paid
 	// to ITSELF, count and credits. claim.Holder is a field of an inbound,
 	// attacker-declared MsgRepairClaim and nothing refuses a claim naming the judge as
@@ -526,6 +533,35 @@ type Node struct {
 	// propagation) can't trigger false rebuilds. Cleared on a clean sweep.
 	// Bounded by cared roots × stripes.
 	repairConfirm map[stripeKey]int
+
+	// bountyPaid records the (root, stripe, position) coordinates this judge has
+	// already PAID a durability bounty for, so a replayed claim for the same
+	// position draws nothing a second time. credit.Ledger keys its escrow on ROOT
+	// ALONE and carries no per-position state — e.repairs is a counter, not a set —
+	// so the record has to be created here; the ports.CreditLedger signature is a
+	// published port and does not move for it
+	// (D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12, direction D).
+	//
+	// ⚠ WRITTEN ON PAID, NEVER ON JUDGED. A judged-but-unpaid position MUST stay
+	// payable: an empty escrow, a BountyBaseZero geometry and a deferred re-judgment
+	// all reach "judged" without paying, and a judged set would convert each into a
+	// permanent loss of a legitimate bounty. Worse, it is a poisoning surface —
+	// emitRepairClaim binds an EMPTY reply callback, so an attacker that claims a
+	// position first could make the honest one-shot claim for it refusable forever.
+	//
+	// ⚠ KEYED BY POSITION, NEVER BY claim.ShardID. Two positions can carry
+	// byte-identical shards (a zero-filled data chunk, or any duplicate content under
+	// convergent mode) and content addressing collapses them to ONE id, so an id key
+	// would let one payment permanently block a different, legitimate position
+	// (R-SHARDID-ALIASES-POSITION).
+	//
+	// Bounded by cared roots × stripes × n, and the cared set is operator-chosen —
+	// n.care is appended only by (*Node).Care, which takes a link.CareHandle that no
+	// message handler possesses — so an adversary cannot grow it. Ephemeral by
+	// D-FP2-SCOPE, like the credit ledger it guards: both die at restart together, so
+	// a restarted judge has neither the paid set nor a claim to re-pay from
+	// (R-DEDUP-NOT-PERSISTED, held in tension).
+	bountyPaid map[bountyPosKey]bool
 
 	// sweepEpoch counts repair ticks. A corpse whose ladder exhausted during
 	// the CURRENT tick is skipped for the tick's remainder regardless of its
@@ -1299,6 +1335,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		reachable:           make(map[ports.NodeID]ports.Time),
 		dead:                make(map[ports.NodeID]corpse),
 		repairConfirm:       make(map[stripeKey]int),
+		bountyPaid:          make(map[bountyPosKey]bool),
 		staticPeers:         make(map[ports.NodeID]bool),
 		reachProbes:         make(map[uint64]*reachProbe),
 		proofMeta:           make(map[ports.ChunkID]proofMeta),

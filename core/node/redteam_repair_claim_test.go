@@ -73,7 +73,19 @@ func newRepairAdv(t *testing.T, seed int64) *repairAdv {
 	}
 	sched.Run()
 
-	data := make([]byte, 10*(512<<10)) // exactly one k=10 stripe of 512 KiB chunks: k·shardBytes = 524,290 ≥ one credit of fetch, so the bounty base is 2, not 0 (G-R212-7 / G-λ-8; 4 KiB chunks paid 0)
+	// 512 KiB frames: k·shardBytes clears one credit of fetch, so the bounty base is 2
+	// and not 0 (G-R212-7 / G-λ-8; 4 KiB chunks paid 0).
+	//
+	// ⚠ RECORD CORRECTION, MEASURED 2026-09-12. This comment used to read "exactly one
+	// k=10 stripe", and the certification that routed the short-final-stripe fix
+	// repeated it. BOTH ARE FALSE. splitFile reserves chunk.HeaderSize bytes of every
+	// frame for its header, so 10·(512<<10) BYTES yield ELEVEN chunks, and the object
+	// is TWO stripes: stripe 0 full (realData = 10, 16 stored refs) and STRIPE 1
+	// SHORT (realData = 1, 7 stored refs). The conclusion that rested on the wrong
+	// premise still holds — every pre-existing test in this package claims STRIPE 0,
+	// so none of them ever measured a short stripe — but the fixture did not need a
+	// geometry change to grow one. finalStripeParityTarget names it.
+	data := make([]byte, 10*(512<<10))
 	for i := range data {
 		data[i] = byte(i*7 + 3)
 	}
@@ -132,10 +144,40 @@ func (s *repairAdv) deliverClaim(judge *Node, from ports.NodeID, claim repairpro
 	s.sched.Run()
 }
 
-// parityTarget names stripe 0's first parity shard: its stripe position, its
-// manifest-committed id, and its Merkle leaf index.
+// parityTarget names STRIPE 0's first parity shard: its stripe position, its
+// manifest-committed id, and its Merkle leaf index. Stripe 0 is the FULL stripe
+// (realData = k), the row with maximum survivor slack.
 func (s *repairAdv) parityTarget() (pos int, id ports.ChunkID, leafIdx int) {
 	return s.m.K, s.m.ParityIDs()[0], len(s.m.ChunkIDs())
+}
+
+// finalStripeParityTarget names the FINAL stripe's first parity shard — the SHORT
+// stripe (measured: realData = 1 of k = 10, 7 stored refs). A judge excluding the
+// claimed position can supply at most 6 survivors there, so before the `present`
+// fix that position was structurally unjudgeable FOREVER: the paramedic repairs it
+// and no judge can ever judge it. It returns the stripe index alongside the rest,
+// because unlike parityTarget it is not stripe 0.
+//
+// It derives every value from the fixture's own manifest rather than transcribing
+// the measured numbers, so a fixture whose geometry moves reports the move instead
+// of silently re-measuring stripe 0.
+func (s *repairAdv) finalStripeParityTarget() (stripe, pos int, id ports.ChunkID, leafIdx int) {
+	p := erasure.Params{K: s.m.K, N: s.m.N}
+	dataIDs, parityIDs := s.m.ChunkIDs(), s.m.ParityIDs()
+	stripe = p.Stripes(len(dataIDs)) - 1
+	pos = p.K
+	id = parityIDs[stripe*p.ParityShards()]
+	leafIdx = len(dataIDs) + stripe*p.ParityShards()
+	return stripe, pos, id, leafIdx
+}
+
+// finalStripeRealData is how many REAL data chunks the final stripe carries, read
+// off the manifest. It is what makes the short-stripe gate's anti-vacuity check a
+// derivation rather than a transcribed 1.
+func (s *repairAdv) finalStripeRealData() int {
+	p := erasure.Params{K: s.m.K, N: s.m.N}
+	n := len(s.m.ChunkIDs())
+	return n - (p.Stripes(n)-1)*p.K
 }
 
 // TestRedteamRepair_GarbageClaimIsSlashed (§11 a): a caretaker claims a repair it

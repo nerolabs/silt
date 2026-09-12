@@ -9,16 +9,19 @@
 // The judge runs the two legs the pure core/repairproof package defines, split by
 // their trust properties (design §6):
 //
-//   - CORRECTNESS (deterministic, publicly recomputable): fetch the stripe's
-//     survivor shards — EVERY manifest-listed position except the one the claim
-//     names, so n−1 on a full stripe and NOT k. There is no early exit once k are
-//     in hand, and an OUT-OF-RANGE claim.ShardPos excludes nothing, so that case
-//     fetches all n — one MORE than an honest claim. Each survivor is verified
-//     against its own manifest-committed id, then the claimed position is
-//     recomputed (repairproof.VerifyByRecompute, which NEEDS k; the fetch is
-//     simply not budgeted to k). A claim whose recompute disagrees with the
-//     committed shard id is a self-attributing lie, so it is SLASHED
-//     (credit.SlashFalseRepair), not merely denied.
+//   - CORRECTNESS (deterministic, publicly recomputable): first SCREEN the claimed
+//     position against the manifest alone, at zero network cost — a position the
+//     manifest does not list for that stripe DENIES, and a listed position whose
+//     committed id disagrees with claim.ShardID SLASHES. Only then fetch the
+//     stripe's survivor shards — EVERY manifest-listed position except the one the
+//     claim names, so n−1 on a full stripe and NOT k. There is no early exit once k
+//     are in hand. Each survivor is verified against its own manifest-committed id,
+//     then the claimed position is recomputed (repairproof.VerifyByRecompute, which
+//     NEEDS k; the fetch is simply not budgeted to k). A claim whose recompute
+//     disagrees with the committed shard id is a self-attributing lie, so it is
+//     SLASHED (credit.SlashFalseRepair), not merely denied — and the screen above
+//     reaches the SAME verdict earlier, which is why it must slash and not merely
+//     deny (D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12, direction A).
 //   - RETRIEVABILITY (where independent verifiers add value): challenge the named
 //     holder with an identity-bound Shacham–Waters PoR (repairproof.RepairChallengeSeed
 //     closes the relay/double-count), so a data-less relay can't collect. A
@@ -32,7 +35,7 @@
 // standing — PayBounty is `neutral`, SlashFalseRepair is `reduces` — so the γ→1/N
 // firewall holds (the one load-bearing invariant, core/credit/invariant_a_test.go).
 //
-// ADVERSARY-SHAPE: capability=UntrustedClaimFields UNCOVERED: no fixture GRANTS AND CONTROLS FOR 'never trusting the claim on its face'. The two legs re-derive correctness and retrievability, but NOT that the position was ever lost or was not already paid -- TestRTRC3_ClaimWithNoLossIsPaid_PINNED_DEFECT and TestRTRC2_ReplayedClaimPaysAgain_PINNED_DEFECT drive attacker-chosen claim fields straight at the judge and pin both gaps, and neither carries a control that removes the capability, so neither is declared as cover. ROADMAP row F1.
+// ADVERSARY-SHAPE: capability=UntrustedClaimFields UNCOVERED: no fixture GRANTS AND CONTROLS FOR 'never trusting the claim on its face'. NARROWED 2026-09-12: the already-paid half is CLOSED -- node-side (root, stripe, pos) dedup on PAID, asserted by TestRTRC2_ReplayedClaimForAPaidPositionDrawsNothing -- and the claimed position is now screened against the manifest before any fetch. What remains uncovered is that the position was ever LOST: TestRTRC3_ClaimWithNoLossIsPaid_PINNED_DEFECT drives attacker-chosen claim fields straight at the judge and pins that gap, its closer is GATED behind R-PROBE-FALSE-NEGATIVE-RATE, and it carries no control that removes the capability, so it is not declared as cover. ROADMAP row F1.
 package node
 
 import (
@@ -121,6 +124,8 @@ func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, claim repa
 	// count, and every OTHER position as a candidate survivor.
 	var stripeRefs, survivorRefs []shardRef
 	realData := 0
+	var targetRef shardRef
+	targetListed := false
 	for _, r := range refs {
 		if r.stripe != claim.Stripe {
 			continue
@@ -131,10 +136,53 @@ func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, claim repa
 		}
 		if r.pos != claim.ShardPos {
 			survivorRefs = append(survivorRefs, r)
+			continue
 		}
+		targetRef, targetListed = r, true
 	}
 	if len(stripeRefs) == 0 || realData == 0 {
 		deny("no such stripe in this manifest")
+		return
+	}
+
+	// POSITION SCREEN — the claimed position judged against the manifest ALONE,
+	// before a single survivor is fetched. storedShards already built a ref for the
+	// claimed position carrying its manifest-committed id; until 2026-09-12 the loop
+	// above threw that ref away and nothing ever compared it to claim.ShardID.
+	//
+	// The two outcomes are deliberately DIFFERENT, and the difference is the whole
+	// point of the screen (D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12, direction A):
+	//
+	//   - A position the manifest does not list for this stripe is STRUCTURALLY
+	//     IMPOSSIBLE — out of range, or implicit-zero padding that is never stored and
+	//     never repaired. That is malformed input, so it DENIES, matching how every
+	//     other malformed claim on this path is treated. It is also the case that
+	//     never heals: VerifyByRecompute returns a structural error for it, the
+	//     deferral path below cannot tell that from a transient short-survivor fetch,
+	//     and the claim therefore cost the judge FOUR full stripe fetches — all n, one
+	//     MORE than an honest claim, because an out-of-range position excludes no ref.
+	//     Screened here it costs zero fetches and zero deferrals.
+	//   - A WELL-FORMED position whose claimed id disagrees with the id the manifest
+	//     commits to is a SELF-ATTRIBUTING LIE, and it is already slashable today
+	//     through the recompute leg. So this screen must SLASH it, not merely deny it.
+	//     A screen that denied would land as a validation and act as a silent RETIREMENT
+	//     of an existing punishment, leaving silt strictly weaker against the exact
+	//     adversary the slash was built for. The id comparison is MORE attributable than
+	//     the recompute path, not less: it needs no survivors and cannot be confounded
+	//     by a publisher-inconsistent manifest.
+	if !targetListed {
+		// No fetch, no deferral. Named separately from "no such stripe" so the journal
+		// distinguishes a bad stripe from a bad position within a real stripe.
+		deny(fmt.Sprintf("claimed position %d is not a stored position of stripe %d (out of range, or implicit-zero padding)",
+			claim.ShardPos, claim.Stripe))
+		return
+	}
+	if targetRef.id != claim.ShardID {
+		n.logf(ports.LogWarn, "repair claim names a shard id the manifest does not commit at that position",
+			"root", claim.Root, "stripe", claim.Stripe, "pos", claim.ShardPos,
+			"claimed", claim.ShardID, "committed", targetRef.id, "claimant", from)
+		n.settleRepairVerdict(from, claim, p, 0, 0, repairproof.Decision{Release: false, Slash: true})
+		n.reply(from, msg, ports.Message{Kind: ports.MsgRepairVote, OK: false})
 		return
 	}
 
@@ -143,14 +191,25 @@ func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, claim repa
 	//
 	// ⚠ THE FETCH IS n−1 SHARDS ON A FULL STRIPE, NOT k. survivorRefs above is the
 	// COMPLEMENT of claim.ShardPos over this stripe's manifest-listed positions, and
-	// fetchSurvivors walks all of it — there is no early exit once k are in hand. An
-	// out-of-range claim.ShardPos excludes nothing, so it fetches all n: one MORE
-	// than an honest claim, then errors out of VerifyByRecompute into the deferral
-	// path below. VerifyByRecompute needs k; nothing budgets the FETCH to k.
+	// fetchSurvivors walks all of it — there is no early exit once k are in hand.
+	// VerifyByRecompute needs k; nothing budgets the FETCH to k, and no per-sender
+	// bound exists (D-REPAIR-RATE-LIMIT-REFUTED-2026-09-12 refuted the remedy on its
+	// precondition). So one honest in-range claim still costs the judge n−1 fetches.
 	// (Record correction 2026-09-12: the ratified entry
 	// D-REPAIR-CLAIM-GATES-PINNED-2026-09-12 and this comment both said "k
 	// survivors". Both were false in the same direction — they understated the
 	// amplification the RT-RC-1 pin exists to hold.)
+	//
+	// WHAT THE POSITION SCREEN ABOVE DID CLOSE: the all-n case. An out-of-range
+	// claim.ShardPos used to exclude no ref, fetch all n — one MORE than an honest
+	// claim — and then error out of VerifyByRecompute into the deferral path below,
+	// which retries a structurally impossible claim FOUR times because its predicate
+	// is `cerr != nil` and cannot tell "too few survivors" (transient) from "target
+	// out of range" (never heals). That claim now costs zero fetches and zero
+	// deferrals. Every cerr that still reaches the deferral path is a genuine
+	// short-survivor fetch, and with the short-final-stripe `present` fix in
+	// repairproof it is genuinely transient: padding now counts toward k, so no
+	// geometry is permanently unjudgeable.
 	n.fetchSurvivors(m.Root(), survivorRefs, func(survivors map[int][]byte, reachable int) {
 		correctnessOK, cerr := repairproof.VerifyByRecompute(p, survivors, realData, claim.ShardPos, claim.ShardID)
 		if cerr != nil {
@@ -200,6 +259,16 @@ func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, claim repa
 	})
 }
 
+// bountyPosKey is the coordinate a durability bounty is paid AGAINST: one shard
+// position of one stripe of one object. It is the key of Node.bountyPaid, and it
+// is deliberately NOT the shard's content id — see that field's doc for why
+// (R-SHARDID-ALIASES-POSITION).
+type bountyPosKey struct {
+	root   ports.Hash
+	stripe int
+	pos    int
+}
+
 // settleRepairVerdict applies the verdict to THIS node's local ledger: release
 // pays the holder from the object's escrow (capped by the rarest-shard multiplier),
 // a correctness lie slashes the claimant. Both are balance/standing motions on the
@@ -223,6 +292,18 @@ func (n *Node) settleRepairVerdict(claimant ports.NodeID, claim repairproof.Repa
 		// Verified but not released (retrievability shortfall past tau): name it —
 		// a silent non-release reads as a lost claim in the journal (#518).
 		n.logf(ports.LogInfo, "repair claim not released", "root", claim.Root,
+			"shard", claim.ShardID, "holder", claim.Holder)
+		return
+	}
+	// DEDUP — a (root, stripe, position) is repaired once, so the second claim for
+	// that position draws nothing. See Node.bountyPaid for why the record lives here
+	// and not in the ledger, why it is keyed on the POSITION and not on claim.ShardID,
+	// and why it is written on PAID and never on judged.
+	pos := bountyPosKey{root: claim.Root, stripe: claim.Stripe, pos: claim.ShardPos}
+	if n.bountyPaid[pos] {
+		n.Stats.BountyDuplicatePosition++
+		n.logf(ports.LogInfo, "repair bounty already paid for this position — claim draws nothing",
+			"root", claim.Root, "stripe", claim.Stripe, "pos", claim.ShardPos,
 			"shard", claim.ShardID, "holder", claim.Holder)
 		return
 	}
@@ -256,6 +337,11 @@ func (n *Node) settleRepairVerdict(claimant ports.NodeID, claim repairproof.Repa
 			return
 		}
 		if paid > 0 {
+			// Record the position ONLY here, where a payment actually happened. The
+			// paid == 0 arm above returned without recording on purpose: an empty
+			// escrow is not a payment, and the position stays claimable when the
+			// object is re-endowed.
+			n.bountyPaid[pos] = true
 			n.Stats.BountiesReleased++
 			if claim.Holder == n.id {
 				// A4-2: this judge just paid a bounty to itself. Counted where `paid`

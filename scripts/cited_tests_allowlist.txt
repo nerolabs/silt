@@ -315,3 +315,20 @@ core/chain/readset_v5.go  slashed  chain.go:3287   # declared core/chain/chain.g
 core/node/dht_diversity.go  walk  node.go:1132   # declared core/node/node.go:1917  (off by 785)
 # --- core/node/slashheadroom.go ---
 core/node/slashheadroom.go  Slashes  chain.go:518   # declared core/chain/chain.go:522  (off by 4)
+
+# ---------------------------------------------------------------------------
+# (H) HISTORICAL — the RT-RC-2 pin REDEEMED, 2026-09-12
+# (D-BOUNTY-REPAIR-BUILT-2026-09-12, ROADMAP rows F7/F8).
+# ---------------------------------------------------------------------------
+# TestRTRC2_ReplayedClaimPaysAgain_PINNED_DEFECT asserted the tree's broken
+# behaviour: a byte-identical replayed claim drew the full bounty a SECOND time.
+# The node-side (root, stripe, pos) dedup landed, the pin went RED as designed,
+# and it was replaced by the positive assertion of the rule that reddened it,
+# TestRTRC2_ReplayedClaimForAPaidPositionDrawsNothing, in the same file. No test
+# was deleted.
+#
+# The old name survives in exactly two places, both frozen records of the flip:
+# the CHANGELOG entry and the D-BOUNTY-REPAIR-BUILT-2026-09-12 ledger entry. Both
+# write it as "X -> Y", so a reader grepping the retired name finds the live one.
+# The property itself is asserted by the replacement, which exists.
+TestRTRC2_ReplayedClaimPaysAgain_PINNED_DEFECT
