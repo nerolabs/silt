@@ -56,10 +56,14 @@ var ErrUnrecoverable = errors.New("repairproof: fewer than k survivors — targe
 //
 //   - p is the stripe's (k, n) code.
 //   - survivors maps a stripe position (0..n-1, data 0..k-1 then parity k..n-1) to
-//     that shard's bytes. It must hold at least k entries, none at `target`; the
-//     bytes are trusted only as far as the caller has verified them against their
-//     own committed IDs (a survivor whose bytes don't match its ID is not a
-//     survivor — verify before calling).
+//     that shard's bytes, none at `target`; the bytes are trusted only as far as the
+//     caller has verified them against their own committed IDs (a survivor whose
+//     bytes don't match its ID is not a survivor — verify before calling). It must
+//     hold enough entries that the supplied survivors PLUS the implicit-zero padding
+//     slots [realData, k) total at least k. On a FULL stripe (realData == k) there is
+//     no padding, so that is the familiar "at least k supplied survivors". On a short
+//     final stripe the padding counts for free, exactly as it does in
+//     erasure.ReconstructStripe.
 //   - realData is how many leading data positions of the stripe are real chunks
 //     (the rest are implicit zero padding of a short final stripe); it must be
 //     1..k, exactly as core/erasure uses it.
@@ -103,6 +107,38 @@ func VerifyByRecompute(p erasure.Params, survivors map[int][]byte, realData, tar
 		}
 		shards[pos] = b
 		present++
+	}
+	// Count the implicit-zero padding slots of a SHORT FINAL STRIPE. ReconstructStripe
+	// fills every nil slot in [realData, K) with zeros and counts them as available, so
+	// a `present` count that ignores them is STRICTLY STRICTER than the authoritative
+	// recoverability predicate below it. That gap is the whole defect: storedShards
+	// emits realData + (N-K) refs for a final stripe, the judge excludes the claimed
+	// position, so at most realData + (N-K) - 1 survivors can ever be supplied. Judgeable
+	// therefore required realData >= 2K - N + 1 — 5 at the shipped k=10/n=16 — and EVERY
+	// object of four chunks or fewer was entirely unjudgeable: the paramedic repairs it
+	// and no judge can ever judge it. Counting the padding makes this predicate exactly
+	// ReconstructStripe's, minus the target: uniform slack N-K-1 for every realData.
+	//
+	// The zeros are JUDGE-DERIVED, not claimant-supplied: realData comes from the
+	// caller's own manifest layout and the claimant determines nothing about them. The
+	// target is never one of them — a target in [realData, K) is rejected above as
+	// padding, and a target below realData or at/above K is disjoint from the range.
+	// A survivor already sitting on a padding slot was counted by the loop above and is
+	// skipped here, so no slot is counted twice; ReconstructStripe still checks that such
+	// a supplied padding shard is actually zero.
+	//
+	// ⚠ DO NOT "SIMPLIFY" THIS BY DELETING THE present PRE-CHECK. ReconstructStripe's
+	// below-k failure is a plain error, which this function maps to (false, nil), and
+	// Decide(false, ...) SLASHES. The ErrUnrecoverable / (false, nil) split is what keeps
+	// "I could not check you" — a transient short-survivor fetch, which the node's judge
+	// defers and retries — distinct from "you lied". Deleting the pre-check converts a
+	// transient into a bond-slash of an honest paramedic. REFUTED placement, and so is
+	// moving this into erasure.ReconstructStripe, which is already correct and sits on
+	// the genesis path (D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12).
+	for i := realData; i < p.K; i++ {
+		if shards[i] == nil {
+			present++
+		}
 	}
 	if present < p.K {
 		return false, ErrUnrecoverable

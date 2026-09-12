@@ -5149,6 +5149,93 @@ RT-RC-1 **stays pinned** and is **not routed to a remedy** by this entry. Nothin
 amplification is acceptable; it says the two proposed repairs are wrong, one on a missing
 precondition and one on a lost punishment. A replacement direction is a new question, not a value.
 
+## D-BOUNTY-REPAIR-BUILT-2026-09-12 — the three authorised repair-judge fixes are BUILT, two RT-RC pins are redeemed, and one premise both the certification and the fixture asserted is REFUTED by measurement
+
+- **Status:** ✅ BUILT — 2026-09-12. This entry records a build under an existing ratification; it
+  ratifies nothing new. The authority is `D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12`, which
+  discharged the research gate for **three named items and nothing else**, and the build is those
+  three items.
+- **Tier:** economic mechanism (`D-S7`), node-local. No consensus rule, no format surface, no
+  published claim moves.
+
+### What shipped
+
+1. **Direction A — the position screen, in `judgeRepairClaim`, before any fetch.** `storedShards`
+   already built a ref for the claimed position carrying its manifest-committed id; the judge threw
+   that ref away and never compared it to `claim.ShardID`. It compares it now.
+   - A position the manifest does not list for the stripe — out of range, negative, or
+     implicit-zero padding — **DENIES**, with its own journal reason.
+   - A **well-formed** position whose committed id disagrees with `claim.ShardID` **SLASHES**.
+     ★ **The slash is the load-bearing half.** That claim was already slashable through the
+     recompute leg. A screen that merely denied would have landed looking like a validation while
+     silently **retiring an existing punishment**.
+2. **The `present`-count fix, in `repairproof.VerifyByRecompute` and nowhere else.** The implicit-zero
+   padding slots `[realData, k)` that `erasure.ReconstructStripe` fills for free now count toward
+   `present`. The judge's recoverability predicate becomes exactly `ReconstructStripe`'s, minus the
+   target: uniform slack `n − k − 1` for every `realData`.
+3. **Direction D — node-side dedup keyed `(root, stripe, pos)`, written on PAID.** `Node.bountyPaid`.
+   `credit.Ledger` keys its escrow on the **root alone** and carries no per-position state, so the
+   record had to be created; `ports.CreditLedger.PayBounty` does not move. A new
+   `Stats.BountyDuplicatePosition` counts the refusals, because a silent refusal reads in the journal
+   exactly like a lost claim.
+
+### ⚠ THE PREMISE THAT WAS FALSE — measured, and it changed how item 2 was tested
+
+Both `newRepairAdv`'s own comment and the certification's §3.3 state that the fixture stages
+**"exactly one full k=10 stripe, realData = 10"**. **Both are false.** `splitFile` reserves
+`chunk.HeaderSize` bytes in every frame, so `10·(512<<10)` bytes yield **ELEVEN** chunks and the
+object is **TWO** stripes:
+
+| stripe | stored refs | realData |
+|---|---|---|
+| 0 | 16 | 10 (full) |
+| 1 | **7** | **1 (short)** |
+
+**The conclusion that rested on the premise still holds** — every pre-existing repair-claim test
+claims stripe 0, so none of them ever measured a short stripe. But the fixture did **not need a
+geometry change** to grow one, and the certification's predicted *"one-line geometry change in the
+harness"* was not the cheapest route. The wired arm claims **stripe 1** of the unchanged fixture,
+where a judge can supply at most **6** survivors against `k = 10`.
+
+### The pin flips — both followed the ratified route
+
+A pin asserts current broken behaviour so that a fix **reddens** it and forces the record to be
+updated. Two did exactly that, and each was replaced by the positive assertion of the rule that
+reddened it. **No test was deleted.**
+
+| pin | disposition |
+|---|---|
+| RT-RC-1 arm (c), out-of-range | **REDEEMED.** `rtRC1OutOfRange` → `rtRC1OutOfRangeRefused`: an out-of-range position must now reach **ZERO** of the object's shards, with an honest in-range claim as the anti-vacuity witness |
+| RT-RC-1 arms (a), (b) | **STILL PINNED.** No per-sender bound exists (refuted on its precondition) and the fetch is still not budgeted to `k` |
+| RT-RC-2, replay pays again | **REDEEMED.** `TestRTRC2_ReplayedClaimPaysAgain_PINNED_DEFECT` → `TestRTRC2_ReplayedClaimForAPaidPositionDrawsNothing`; `rtRC2Pin` → `rtRC2Dedup` |
+| RT-RC-3, no-loss claim is paid | **STILL PINNED, and it must stay pinned.** Its closer is the loss witness, GATED behind `R-PROBE-FALSE-NEGATIVE-RATE`. **It did not redden**, which is the evidence that nothing gated was built |
+
+### ★ THE CONTROL LEG, AND WHY IT IS NOT RED ON THE DEFECT
+
+`TestRepairJudge_DeniedPositionStaysPayable` is green before the dedup and green after it. It goes
+RED only when the record is moved onto the **judged** path — the REFUTED placement — and that is what
+it is for: a control is definable exactly when the defence is breakable. Driven: with the record
+lifted above the `!d.Release` arm, RT-RC-2 stays **green** and the control goes **RED**, so the two
+discriminate. The attack it encodes is the poisoning one: an attacker claims a position first, the
+judge judges and denies it, and because `emitRepairClaim` binds an **empty reply callback** the
+honest one-shot claim for that position would be lost forever.
+
+### ★ WHAT MAY NOT BE WRITTEN
+
+The bounty is now correctly **METERED** and remains **MIS-ATTRIBUTABLE**. RT-RC-3 is open, the loss
+witness is GATED, and `R-BOUNTY-METERS-BUT-DOES-NOT-ATTRIBUTE` is held in tension. Any sentence
+reading *"the bounty now pays for repair"* is an over-claim against
+`D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12` and against this entry.
+
+### Surfaces checked
+
+- **Consensus rules I1–I5:** untouched. `core/repairproof` is pure; the claim path is node-local wire.
+- **Format:** untouched. `erasure.ReconstructStripe` was **not** modified — it is already correct and
+  sits on the genesis path, and touching it is REFUTED.
+- **γ→1/N firewall:** HOLDS. `PayBounty` stays `neutral`, `Reputation()` still reads neither escrow
+  nor bounty, and the new state is a node-local set plus a counter that feeds no standing.
+- **`core/credit/escrow.go`:** not edited.
+
 ## D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12 — the bounty-for-repair MECHANISM certification returns GATED, is RATIFIED at that strength, and authorises three builds and no more
 
 - **Status:** ✅ RATIFIED — 2026-09-12, **at the strength the certification returned: GATED.** This
