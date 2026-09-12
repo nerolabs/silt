@@ -5466,6 +5466,45 @@ are deleted, someone must confirm from the Netlify dashboard that the repo's bui
 that runs, and confirm one deploy produces all three pages.** Deleting first and checking after is how
 a public site goes blank.
 
+### How the remainder was actually discharged — 2026-09-12, and it is a stronger instrument
+
+**The dashboard reading was replaced, not skipped.** A dashboard is a claim about settings; the PR
+that carries this build reads the deploy itself. Opening it produces a Netlify **deploy preview** —
+`netlify.toml`'s own header comment and `CONTRIBUTING.md` both say so — and the preview is built by
+whatever build command the site actually runs, against this branch. Fetching all three pages from the
+preview URL and comparing them to locally generated output discharges **both halves at once**: that
+the repo's build command is the one that runs, and that one deploy produces all three pages. The
+preview URL is in the PR's own check data (the `netlify/…/deploy-preview` StatusContext target URL,
+readable with `gh pr view --json statusCheckRollup`), so no dashboard access is needed.
+
+**The order is the safety property.** The preview is built and read while production still serves the
+committed copies, so a missing or wrong page costs a closed PR and nothing else. Any page missing or
+different is a STOP — do not merge. That is the same reasoning as the sentence above; only the
+instrument changed.
+
+**Measured result:** recorded in the PR that carries the build, and in ROADMAP row F9.
+
+### What else had to move, and one thing that would have gone quiet
+
+**The build command named ONE of the three generators.** Until it names all three, no deploy can
+produce `roadmap.html` or `buildlog.html`, so the decision as written above was unsatisfiable — the
+extension of the build command is part of this change, not a follow-up.
+
+**The three *"Fail if … page is stale"* CI steps had to be retired in the SAME commit that untracked
+the files, and the reason is not tidiness.** Each is `git diff --quiet -- website/<page>.html`.
+Measured 2026-09-12: that command exits **0** against an untracked, gitignored file holding
+completely unrelated content, and exits 1 for a still-tracked one. Left in place they would not have
+gone red — they would have gone **VACUOUS**, three checks in a required job asserting nothing,
+forever. What they covered (a committed copy drifting from its source) cannot occur once no committed
+copy exists. What replaces them:
+
+- a CI step asserting that none of the three pages is tracked — the precondition this decision rests
+  on, driven RED by `git add -f` and GREEN untracked;
+- `scripts/check_links.py`, which reads `website/*.html` off the filesystem after the generators run.
+  It exits 1 naming nine broken links across `docs.html`, `index.html` and `node.html` if the pages
+  are absent (measured). **That is also why a failed generator is a site-wide failure and not three
+  orphan URLs:** all three hand-maintained pages link to the generated ones.
+
 ### What this decision does not change
 
 `ROADMAP.md`, `CHANGELOG.md` and `docs/buildlog/*.md` remain the single sources of truth, and the

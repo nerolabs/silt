@@ -24,12 +24,14 @@ and `[links](https://…)`).
 
 `scripts/gen_buildlog.py` renders every dated entry, newest first, into
 `website/buildlog.html`, styled to match the site — the same
-source-of-truth pipeline as the changelog and roadmap. CI regenerates it
-and fails if the published page has drifted, so it can never fall out of
-sync with these files.
+source-of-truth pipeline as the changelog and roadmap. The page is
+gitignored and produced at deploy time, so it cannot fall out of sync with
+these files: there is no committed copy to drift
+(`D-WEBSITE-HTML-AT-DEPLOY-2026-09-12`).
 
-To add an entry: drop a new dated file in this directory, run
-`python3 scripts/gen_buildlog.py`, and commit both.
+To add an entry: drop a new dated file in this directory and commit it. Run
+`python3 scripts/gen_buildlog.py` if you want to preview the page; do not
+commit its output.
 
 ## Archived, not an entry
 

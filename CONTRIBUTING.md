@@ -39,13 +39,14 @@ review. The branch is protected to enforce it.
 
 1. **Branch** off `main` (`feat/…`, `fix/…`, `chore/…`), or fork.
 2. **Open a PR.** CI runs automatically: `go vet` + `gofmt` + the full
-   test suite, a check that `website/changelog.html` is in sync with
-   `CHANGELOG.md`, and a website link check. All must pass. Netlify posts
-   a preview for site changes.
+   test suite, the three website generators, and a website link check.
+   All must pass. Netlify posts a preview for site changes.
 3. **Update the paper trail.** If you change behavior in `core/`,
    `adapters/`, or `cmd/`, add a line to the **`## [Unreleased]`** section
-   of `CHANGELOG.md` (and run `python3 scripts/gen_changelog.py` to update
-   the page), and update `docs/` where relevant. Docs ship with code.
+   of `CHANGELOG.md`, and update `docs/` where relevant. Docs ship with
+   code. `website/changelog.html`, `website/roadmap.html` and
+   `website/buildlog.html` are gitignored and generated at deploy — edit the
+   Markdown source only, never the page (`D-WEBSITE-HTML-AT-DEPLOY-2026-09-12`).
 4. **Review.** Every PR gets a maintainer review (currently
    [@nerolabs](https://github.com/nerolabs)) **and** an agent review pass —
    a principal-engineer seat for correctness/severity plus, for

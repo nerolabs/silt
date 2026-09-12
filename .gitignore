@@ -123,3 +123,15 @@ integration/cloudtest/terraform/network/*.tfstate.*
 
 # macOS Spotlight/Time Machine artifacts, created in-tree by the OS, never by the build.
 .metadata_never_index
+
+# The three GENERATED website pages. Netlify's build command produces them from
+# CHANGELOG.md, ROADMAP.md and docs/buildlog/*.md at deploy time, and CI's website
+# job produces them before the link check. They were committed until 2026-09-12 and
+# were a pure merge-conflict surface: two PRs whose Markdown edits do not overlap
+# still collided in the derived HTML — three times (#835/#836, #838, #848). The
+# Markdown sources stay the single source of truth; this removes a copy, not a source
+# (D-WEBSITE-HTML-AT-DEPLOY-2026-09-12). website/index.html, docs.html, node.html and
+# style.css are hand-maintained and stay tracked.
+website/changelog.html
+website/roadmap.html
+website/buildlog.html

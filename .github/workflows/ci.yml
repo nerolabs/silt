@@ -343,31 +343,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The three generated pages are NOT tracked (D-WEBSITE-HTML-AT-DEPLOY-2026-09-12).
+      # They are produced here, exactly as Netlify's build command produces them, and
+      # consumed by the link check below — which is what makes these three steps a gate
+      # rather than a formality: check_links.py reads website/*.html off the filesystem,
+      # and index.html, docs.html and node.html all link to these three pages, so a
+      # generator that fails or writes nothing takes the job red on a broken link.
+      # Measured 2026-09-12: with the three pages absent, check_links.py exits 1 and
+      # names nine broken links across docs.html, index.html and node.html.
       - name: Generate changelog page
         run: python3 scripts/gen_changelog.py
-      - name: Fail if changelog page is stale
-        run: |
-          if ! git diff --quiet -- website/changelog.html; then
-            echo "website/changelog.html is out of date; run scripts/gen_changelog.py and commit."
-            git --no-pager diff -- website/changelog.html
-            exit 1
-          fi
       - name: Generate roadmap page
         run: python3 scripts/gen_roadmap.py
-      - name: Fail if roadmap page is stale
-        run: |
-          if ! git diff --quiet -- website/roadmap.html; then
-            echo "website/roadmap.html is out of date; run scripts/gen_roadmap.py and commit."
-            git --no-pager diff -- website/roadmap.html
-            exit 1
-          fi
       - name: Generate build-log page
         run: python3 scripts/gen_buildlog.py
-      - name: Fail if build-log page is stale
+      # Until 2026-09-12 each generator above was followed by a `git diff --quiet` step
+      # asserting its committed page was not stale. Those three steps are retired here,
+      # and they had to be retired in the SAME commit that untracked the files: measured
+      # 2026-09-12, `git diff --quiet -- website/roadmap.html` exits 0 against an
+      # untracked, gitignored file holding completely unrelated content. The steps would
+      # not have gone red, they would have gone VACUOUS — three green checks asserting
+      # nothing, forever. What they covered (a committed copy drifting from its source)
+      # cannot occur once there is no committed copy. What replaces them is the step
+      # below, which polices the precondition that makes that true.
+      - name: Fail if a generated website page is tracked
         run: |
-          if ! git diff --quiet -- website/buildlog.html; then
-            echo "website/buildlog.html is out of date; run scripts/gen_buildlog.py and commit."
-            git --no-pager diff -- website/buildlog.html
+          tracked=$(git ls-files -- website/changelog.html website/roadmap.html website/buildlog.html)
+          if [ -n "$tracked" ]; then
+            echo "These website pages are GENERATED and must not be committed"
+            echo "(D-WEBSITE-HTML-AT-DEPLOY-2026-09-12). Committing one reopens the"
+            echo "merge-conflict class this decision closed: two PRs whose Markdown"
+            echo "edits do not overlap still collide in the derived HTML."
+            echo "$tracked"
+            echo "Remedy: git rm --cached <path>  (the .gitignore entry is already there)."
             exit 1
           fi
       - name: Check internal links resolve
