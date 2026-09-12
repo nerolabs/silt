@@ -273,8 +273,13 @@ These ten rules bind every seat from now on:
 4. **A residual must be actionable or it does not exist.** A new `R-*` row requires an owner, a
    closer, and a Boulder. Otherwise it is a sentence in `docs/design/m0.md` §10 or nothing. No new
    prefixes (`R-BB-`, `G-`, …) without an owner ratification.
-5. **Owner calls are batched and bounded.** At most five per true-up. If a true-up needs more than
-   five, the loop is deciding by escalation instead of by design — stop and simplify the question.
+5. **Owner calls are batched, and they are PRESENTED five at a time.** There is no cap on how many
+   may be open. Owner direction, 2026-09-12: *"We no longer need the 5 cap, if it leaves important
+   questions on the cutting room floor. Please remove this. Instead we will PRESENT to me 5 at a time
+   (with context, reasoning, impact, recommendation and risk) for deliberating and call making."*
+   What is bounded is the PRESENTATION, not the queue: calls go to the owner **five at a time**, and
+   each one carries its **context**, its **reasoning**, its **impact**, a **recommendation**, and the
+   **risk of that recommendation** (`docs/decisions.md` `D-OWNER-CALL-CAP-REMOVED-2026-09-12`).
 6. **No new era without a ratified reason that is not "the recompute needs it."** A block-format
    change is the most expensive edit in the system; era 5 is not pre-approved.
 7. **"A green gate with no demonstrated red is decoration" is a RULE, not an observation.** A field

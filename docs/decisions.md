@@ -5776,3 +5776,117 @@ adversary consumes, and it is priced as such.
 - **It does not weaken M0's certification requirement in any direction.** See 5.
 - **It is not a permanence argument.** The freeze still costs re-runs and calendar, never permanence
   (`D-FREEZE-REPRICE-2026-09-10`), and **no sentence here may be used to argue "or it costs an era."**
+
+## D-OWNER-CALL-CAP-REMOVED-2026-09-12 — simplicity rule 5 loses its five-per-true-up CAP and keeps its number; owner calls are now unbounded in number and BATCHED FIVE AT A TIME FOR PRESENTATION
+
+- **Status:** ✅ RATIFIED — 2026-09-12. Owner direction, given in conversation and recorded here
+  because a direction that steers the loop and lives only in a conversation is exactly the failure
+  this project spent a day cataloguing (`D-B8-AI-ADVERSARY-2026-09-12`, "why this exists as an entry
+  at all").
+- **Tier:** evolving (process). **No consensus rule, no format surface, no economic mechanism and no
+  security parameter changes here.** No code changes. The research gate, the veto gate and the
+  immutables are untouched.
+- **Scope:** `docs/build-process.md` rule 5 of *the ten simplicity rules*, and the three `ROADMAP.md`
+  sentences that asserted the cap.
+
+### 1. What the owner said, verbatim
+
+*"We no longer need the 5 cap, if it leaves important questions on the cutting room floor. Please
+remove this. Instead we will PRESENT to me 5 at a time (with context, reasoning, impact,
+recommendation and risk) for deliberating and call making."*
+
+### 2. The decision — "batched" survives, "bounded" dies
+
+**There is NO limit on how many owner calls may be open.** A call joins the authoritative list when
+its evidence exists, never when a slot frees.
+
+**What is bounded is the PRESENTATION, not the queue.** Calls are put to the owner **five at a
+time**, and each presented call carries five things: its **context**, its **reasoning**, its
+**impact**, a **recommendation**, and the **risk of that recommendation**.
+
+The old rule's bolded lead — *"Owner calls are batched and bounded"* — was half-true after this, so
+it was rewritten rather than left standing: **batched survives, bounded does not.** Leaving the lead
+alone would have left the canonical statement of the rule asserting the thing the owner removed.
+
+### 3. What was REMOVED and not replaced, stated so the omission is deliberate rather than an oversight
+
+The old rule carried a second clause: *"If a true-up needs more than five, the loop is deciding by
+escalation instead of by design — stop and simplify the question."* That diagnostic is **not**
+carried into the amended rule.
+
+It was recommended for retention as a NON-BINDING review trigger, and **the owner has not ruled on
+that recommendation.** Unratified text does not go into canon. If he later wants it, it enters as its
+own amendment with its own ratification. Until then the rule says nothing about a threshold, because
+saying something would be inventing a rule he did not give.
+
+### 4. ★ THE NUMBERING IS FROZEN — the rule was amended IN PLACE and it is still rule 5
+
+Rules 1–10 are cited by number across `docs/`, `ROADMAP.md`, `CHANGELOG.md` and `docs/thinking/`.
+`build-process.md` states the hazard in its own ten-rules preamble: **a wrong rule number still reads
+as a sensible sentence, so a renumbering breaks every citation silently.** `.claude/CLAUDE.md` says
+the same: *"Rules 1–10 are cited by number across the repo; the numbering does not move."*
+
+**Nothing was renumbered, inserted or deleted.** Rule 5 was edited where it stood. Every existing
+`simplicity rule 5` citation still resolves to the owner-call rule — it now resolves to an amended
+rule rather than a retired one, which is the point of amending in place.
+
+**A companion hazard, recorded because it nearly cost an edit.** `docs/build-process.md` contains
+**three** independently numbered lists, each with a rule 5:
+
+| List | Its rule 5 |
+|---|---|
+| "The gate — eight rules, all cheap" | Security-parameter and consensus-rule changes are research-gated, always |
+| "The consensus-correctness discipline (canon, 2026-08-14)" | The third-time rule |
+| "The ten simplicity rules (canon, owner direction 2026-09-08)" | **The owner-call rule — the one this entry amends** |
+
+Four repo sites cite "build-process rule 5" **correctly against the other two lists**
+(`D-D3-BUILT-2026-09-10`'s third-time-rule heading, and three `docs/thinking/` deliberations of
+2026-08-20 and 2026-08-23). **They are correct as written and were deliberately left untouched.**
+"Rule 5" alone is ambiguous in this repository; cite the list.
+
+### 5. ★ THE EVIDENCE BAR IS A SEPARATE GATE AND IT SURVIVES VERBATIM
+
+*"A call appears here ONLY when its evidence exists"* — owner direction 2026-09-09,
+`D-RC-POSTURE-2026-09-09` (4), in his own words: *"Don't list a call again until its evidence exists;
+a list carrying not-yet-ready items trains me to skim, so a real call gets waved through."*
+
+**That bar was never part of the cap and nothing here touches it.** It makes no numeric claim. The
+three `ROADMAP.md` preamble sentences that carry it are unchanged word for word.
+
+The two rules now do different work and the distinction is load-bearing: **the evidence bar decides
+WHETHER a call may be listed; rule 5 decides HOW MANY are put in front of the owner at once.**
+Removing the cap does not open the list to not-yet-ripe items. It removes the reason a *ripe* item
+had to wait.
+
+### 6. ★ THE ASYMMETRY — removing a shared reason does not give two items the same disposition
+
+Two items sat outside the numbered owner-call list on 2026-09-12, both because the cap was full.
+After the removal they **stop sharing a reason**, and they take opposite dispositions. Deleting the
+block preamble wholesale would have silently promoted both.
+
+- **The O-8 re-decision — STILL OFF the list, for a NEW and item-specific reason.** Its reason changes
+  from "the cap is full" to a **TRIGGER**: it returns as a numbered call **when the F6 measurement set
+  lands** (owner call, 2026-09-12; `ROADMAP.md` lane F row F6 names the three measurable pieces, none
+  of which is the owner's work). `D-O8-BASIS-CHANGED-2026-09-12` is explicitly **not a live
+  ratification to build.** **Promoting it today would claim the owner owes a decision he deliberately
+  deferred**, which is the opposite of true and is a worse error than leaving it off.
+- **The branch-cleanup working session — ADMITTED as numbered call 10.** The cap was its **only**
+  reason for sitting outside the list, and its stated prerequisite is now satisfied: the inventory
+  exists, **412 branch rows** at
+  `/Users/andrewedmond/.claude/silt-agent-memory/tester/evidence/2026-09-12-session29-audit/branch-inventory.tsv`,
+  carrying per branch merged-by-content, the PR it landed as if any, last-commit date, and whether a
+  live worktree holds it. **What it asks the owner for is SCHEDULING, not a decision** — the shape was
+  already decided in `D-BRANCH-CLEANUP-SESSION-2026-09-12`.
+
+### 7. What this entry does NOT do
+
+- **It authorises no build and no code change.** No gate, no default, no test moves.
+- **It does not add the newly-ripe owner calls to the list.** Removing the cap makes room; it does
+  not file anything. Each addition is its own act, under the evidence bar of 5.
+- **It does not rewrite the historical record.** `D-RECOMPUTE-FREEZE` (5), `D-DELEGATED-CALLS-2026-09-09`
+  and the 2026-09-10 triage deliberation all recite the cap as it stood on their own dates. They are
+  left as written, per the standing practice — visible on `D-RECOMPUTE-FREEZE` (5) itself — that **a
+  correction is visible as a correction** rather than laundered into the original.
+- **It creates no machine gate, because there never was one.** No script or lint in `scripts/` reads
+  a count of open owner calls, which is also why nothing would have caught the cap going stale. This
+  entry is the record; there is nothing to re-point.

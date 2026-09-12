@@ -307,7 +307,10 @@ trustlessly recomputes state roots.
 
 ### ▶ OPEN QUESTIONS FOR THE OWNER — the authoritative list
 
-Simplicity rule 5 caps owner calls at five per true-up. **A call appears here ONLY when its evidence
+Simplicity rule 5 sets NO cap on how many calls may be open (owner direction, 2026-09-12,
+`D-OWNER-CALL-CAP-REMOVED-2026-09-12`). What it bounds is the PRESENTATION: calls are put to the
+owner **five at a time**, each with its context, its reasoning, its impact, a recommendation, and the
+risk of that recommendation. **A call appears here ONLY when its evidence
 exists** (owner direction, 2026-09-09, `D-RC-POSTURE-2026-09-09` (4)): a list carrying not-yet-ready
 items trains the reader to skim, and then a real call gets waved through. Work whose call is not yet
 earned is tracked as ordinary lane work below, and the call re-appears when the evidence lands.
@@ -326,8 +329,10 @@ built and merged (PR #800, main `82fe56d`)" — A was still owed when it was wri
 one-page *what is frozen, and what can never change without a new era*, re-checked against the manifest's FINAL
 content — that re-check is DONE as of 2026-09-11** and the page is ready to read (`docs/era4-freeze-what-closes.md`).
 
-**▶▶ THE AUTHORITATIVE LIST AT THE SESSION-27 CLOSE (2026-09-11): FIVE CALLS ARE OPEN, 5 THROUGH 9.
-THE RULE-5 CAP IS FULL — nothing may be added without answering one.** The four calls carried below
+**▶▶ THE AUTHORITATIVE LIST AT THE SESSION-27 CLOSE (2026-09-11): FIVE CALLS WERE OPEN, 5 THROUGH 9.
+THERE IS NO CAP — the five-per-true-up bound was removed on 2026-09-12
+(`D-OWNER-CALL-CAP-REMOVED-2026-09-12`), so a call joins this list when its evidence exists, never
+when a slot frees. Call 10 was admitted that day on exactly that basis.** The four calls carried below
 as 1-4 are kept as filed, and **all four are answered**: call 1 by `D-CFGBIND-TIER-PROMOTION-2026-09-11`
 (the promotion is accepted, not narrowed), call 3 by `D-CARRIER-BYTES-DECLINED-2026-09-11`, and calls
 2 and 4 inside the owner's four-call batch of 2026-09-11 — call 2 as **PLACEMENT, not a decision**,
@@ -378,13 +383,36 @@ calls closed and two of the five below are new questions raised by their answers
    What IS owed is the route: the classification names an undecided design decision (residual R-1)
    that governs whether the item is built **at all**. This is the residue of answered call 2, which
    was carried as placement.
+10. **The branch-cleanup working session — what is owed is SCHEDULING, not a decision.** ADMITTED
+    2026-09-12, when the rule-5 cap was removed (`D-OWNER-CALL-CAP-REMOVED-2026-09-12`); the cap was
+    this item's ONLY reason for sitting outside the list. The shape is already decided
+    (`D-BRANCH-CLEANUP-SESSION-2026-09-12`) — what the owner is asked for is a slot in his calendar.
+    THE EVIDENCE: the inventory prerequisite is **SATISFIED** — **412 branch rows** at
+    `/Users/andrewedmond/.claude/silt-agent-memory/tester/evidence/2026-09-12-session29-audit/branch-inventory.tsv`,
+    carrying per branch whether it is merged-by-content, the PR it landed as if any, its last-commit
+    date, and whether a live worktree holds it. It runs as **one dedicated interactive session with
+    the owner present** — not queued behind other work, not bundled with hygiene tasks, not delegated
+    to an unattended run; **an inventory read rather than derived live** is the point of generating it
+    beforehand. Three reasons it is a session: a bulk delete is destructive and irreversible in
+    practice and was **classifier-blocked** when bundled with two benign items — **owner
+    authorization does not clear a classifier block**, and the safe half went down with the dangerous
+    half; **"merged" is not a property `git branch --merged` can be trusted for here** (silt
+    squash-merges, so ancestry lies, and a whole-diff reverse-apply is too strict — measured, it
+    rejected 6 of 8 genuinely landed branches); and a worktree is LIVE if it is **locked or holds a
+    running seat's cwd**, never by mtime. **One brief, one risk class** is the standing rule this
+    records | **OWNER** schedules; the Builder has generated the inventory
 
-**▶ OWNER-OWNED AND OPEN, BUT NOT FILED AS NUMBERED CALLS (2026-09-12). Both belong to the owner and
-neither is work a seat may schedule.** They are recorded here rather than as calls 10 and 11 because
-**the rule-5 cap is FULL at 5–9 and none of the five was answered on 2026-09-12** — verified against
-the thirteen ratifications of that day. Admitting either as a numbered call means answering one
-first, which is itself the owner's act. **Naming the tension rather than papering over it: these two
-are as real as the five above, and the cap is the only reason they sit outside the list.**
+**▶ OWNER-OWNED AND OPEN, BUT NOT FILED AS A NUMBERED CALL (2026-09-12; revised the same day when the
+rule-5 cap was removed). ONE item, and it belongs to the owner.** The cap is gone
+(`D-OWNER-CALL-CAP-REMOVED-2026-09-12`), so **"the list is full" is no longer a reason for anything**
+and no item sits here for want of a slot. **This one sits outside the list for its OWN reason, and
+that reason is a TRIGGER rather than a bound: the O-8 re-decision returns as a numbered call when the
+F6 measurement set lands** (owner call, 2026-09-12; lane F row F6 names the three measurable pieces).
+Filing it today would assert that the owner owes a decision he deliberately deferred, which is the
+opposite of true. **The item that used to share this block — the branch-cleanup working session — has
+moved UP into the numbered list as call 10**, because the cap was its only reason for being out of it
+and its inventory prerequisite is now satisfied. The two no longer share a reason, so they no longer
+share a block.
 
 - **THE O-8 RE-DECISION IS OWED, AND O-8 IS NOT SCHEDULED.** `D-O8-BASIS-CHANGED-2026-09-12` is
   explicitly ⚠ **NOT A LIVE RATIFICATION TO BUILD.** A direction was ratified conditional on its own
