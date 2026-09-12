@@ -13,6 +13,8 @@ package repairproof
 // against the manifest-committed ShardID) and retrievability is re-challenged
 // against Holder under an identity-bound seed. The claim only points the verifiers
 // at the work; the proofs are recomputed.
+//
+// ADVERSARY-SHAPE: capability=ClaimantChosenSurvivorSet UNCOVERED: no fixture GRANTS AND CONTROLS FOR a claimant any influence over which survivors the judge fetches. TestRTRC1_SurvivorFetchIsUnboundedPerSenderAndIsNMinusOneWide_PINNED_DEFECT shows the influence is REAL and negative -- an out-of-range claim.ShardPos excludes nothing and costs all n instead of n-1 -- but it carries no control that removes the influence, so it is not declared as cover. ROADMAP row F1.
 
 import (
 	"github.com/fxamacker/cbor/v2"

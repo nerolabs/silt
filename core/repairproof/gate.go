@@ -20,6 +20,8 @@ import (
 // seed and fails under the claimant's. It mirrors core/node porProverSeed for the
 // bond-audit path — the same defense H1/RT-1 gave the standing bond, inherited here
 // for the durability bounty.
+//
+// ADVERSARY-SHAPE: capability=RelayedHolderProof UNCOVERED: no fixture GRANTS AND CONTROLS FOR a claimant an honest holder's proof of an already-present replica. The seed binding does deny a REPLAY; the outsourcing variant -- asking the holder to compute under the CLAIMANT's seed -- is pinned open on the audit path by TestRT_POR_2_ChallengeProxyPassesAudit_PINNED_DEFECT and is untested here. ROADMAP row F1.
 func RepairChallengeSeed(base [32]byte, repairer ports.NodeID) [32]byte {
 	h := sha256.New()
 	h.Write([]byte("silt/repair/challenge/prover/v1"))
@@ -37,6 +39,8 @@ func RepairChallengeSeed(base [32]byte, repairer ports.NodeID) [32]byte {
 // block count and count the number sampled. It returns true iff the prover
 // demonstrably holds every sampled block — a data-less claimant, or one relaying a
 // proof built under another identity's seed, cannot make it verify.
+//
+// ADVERSARY-SHAPE: capability=DataLessClaimant UNCOVERED: no fixture GRANTS AND CONTROLS FOR a claimant a passing retrievability answer without the bytes. This leg is also not the one that fails a NO-LOSS claim: the named holder genuinely holds, and TestRTRC3_ClaimWithNoLossIsPaid_PINNED_DEFECT pins that gap. ROADMAP row F1.
 func VerifyRetrievability(porKey *por.Key, unitID []byte, repairer ports.NodeID, base [32]byte, blocks, count int, proof por.Proof) bool {
 	if porKey == nil || blocks <= 0 {
 		return false

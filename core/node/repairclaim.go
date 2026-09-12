@@ -31,6 +31,8 @@
 // property that τ honest judges independently reach release. Nothing here mints
 // standing — PayBounty is `neutral`, SlashFalseRepair is `reduces` — so the γ→1/N
 // firewall holds (the one load-bearing invariant, core/credit/invariant_a_test.go).
+//
+// ADVERSARY-SHAPE: capability=UntrustedClaimFields UNCOVERED: no fixture GRANTS AND CONTROLS FOR 'never trusting the claim on its face'. The two legs re-derive correctness and retrievability, but NOT that the position was ever lost or was not already paid -- TestRTRC3_ClaimWithNoLossIsPaid_PINNED_DEFECT and TestRTRC2_ReplayedClaimPaysAgain_PINNED_DEFECT drive attacker-chosen claim fields straight at the judge and pin both gaps, and neither carries a control that removes the capability, so neither is declared as cover. ROADMAP row F1.
 package node
 
 import (
@@ -52,6 +54,8 @@ import (
 // and replies MsgRepairVote{OK} with whether it released the bounty. A node that
 // isn't a caretaker of the claimed object (no matching CareHandle → no layout key)
 // cannot judge and replies OK=false without side effects.
+//
+// ADVERSARY-SHAPE: capability=JudgeWithoutCareHandle UNCOVERED: no fixture GRANTS AND CONTROLS FOR a non-caretaker a CareHandle or a layout key it should not have. ROADMAP row F1.
 func (n *Node) handleRepairClaim(from ports.NodeID, msg ports.Message) {
 	// Every deny NAMES ITS REASON in the journal (#518 capture lesson: a claim
 	// chain that dies in a silent deny leaves paid=0 unattributable — the
@@ -337,6 +341,8 @@ func (n *Node) challengeHolderRetrievability(m *manifest.Layout, ch link.CareHan
 // them by walking to the root. Each caretaker announces itself here (Care), and a
 // repairer resolves this key to reach the quorum. The domain separator keeps it
 // from ever colliding with a real chunk hash's preimage.
+//
+// ADVERSARY-SHAPE: capability=CaretakerDiscoveryWithoutCareKey UNCOVERED: no fixture GRANTS AND CONTROLS FOR an adversary the caretaker set by walking to the root instead of the careKey rendezvous. ROADMAP row F1.
 func careKey(root ports.Hash) ports.Hash {
 	buf := make([]byte, 0, len(root)+len("silt/care/v1"))
 	buf = append(buf, root[:]...)
@@ -368,6 +374,8 @@ func (n *Node) announceRepairQuorum(root ports.Hash) {
 // No-op unless the bounty economy is enabled (cfg.RepairEconomy) and the shard
 // carries PoR tags (porKey != nil ⇒ the holder can answer the retrievability leg);
 // a claim the holder could never satisfy is never worth emitting.
+//
+// ADVERSARY-SHAPE: NOT-A-DEFENCE: 'a claim the holder could never satisfy is never worth emitting' is an emit-side economy rule about the HONEST paramedic's own behaviour. It asserts no incapability of any adversary, and suppressing an emit an adversary would not make is not a defence.
 func (n *Node) emitRepairClaim(root ports.Hash, r shardRef, holder ports.NodeID, hasTags bool) {
 	if !n.cfg.RepairEconomy || !hasTags || holder == (ports.NodeID{}) {
 		return

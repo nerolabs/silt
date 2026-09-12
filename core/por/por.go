@@ -25,6 +25,23 @@
 // This package is pure: it speaks in bytes and keys, touches no store, no
 // network, no ports. Wiring it into the manifest, the node audit loop, and
 // the credit ledger is a separate change (Gate 4a, #90).
+//
+// ⚠ THE DECLARATION BELOW IS NAMED FOR THE CLAIM THE GATE ACTUALLY MATCHES IN
+// THIS BLOCK, WHICH IS NOT THE ONE THE PROSE LEADS WITH. The gate binds one
+// declaration per comment block and reports the FIRST matching sentence, and this
+// block has two matches: the scheme setup line (a vocabulary false positive) and
+// 'storage-node provers, holding only chunk bytes + tags, cannot forge'. That
+// second one is a LayoutKey claim, and the fixture named below is the adversary
+// that holds it.
+//
+// WHAT IS STILL UNCOVERED HERE, and it is a DIFFERENT capability: no fixture
+// grants a prover the sector secrets a_j THEMSELVES. The forger in that fixture
+// sets every mu_j to ZERO, so the a_j terms drop out of the verification equation
+// and it never touches an alpha. A fixture for SectorSecretsAlpha drives a
+// NON-ZERO mu forged with the alphas. Shacham-Waters Definition 2.1 assumes the
+// key is not known to the prover; in silt it rides the care link.
+//
+// ADVERSARY-SHAPE: capability=LayoutKey fixture=TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT
 package por
 
 import (
@@ -101,6 +118,14 @@ type Key struct {
 // the same key-construction Keygen uses, so a derived key is drawn from the
 // identical distribution as a random one. Changing this function or Keygen's
 // read pattern would change every derived key, so both are frozen.
+//
+// ⚠ 'which is what keeps a prover from forging' holds only for a prover that is
+// NOT a care-link holder. The fixture below grants the layout key to a prover
+// holding zero bytes and it forges a passing proof; its control asserts the same
+// forgery fails without the key. One fixture covers this claim and the identical
+// one at core/node/por.go's porKeyDomain.
+//
+// ADVERSARY-SHAPE: capability=LayoutKey fixture=TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT
 func DeriveKey(seed []byte, params Params) (*Key, error) {
 	if params.SectorsPerBlock <= 0 {
 		return nil, errors.New("por: SectorsPerBlock must be positive")
@@ -159,6 +184,8 @@ func (k *Key) Params() Params { return k.params }
 // domain-separates the PRF so tags from different chunks never collide (a
 // prover can't answer a challenge on chunk A with chunk B's stored tags).
 // The returned slice has one 32-byte tag per block; store it with the chunk.
+//
+// ADVERSARY-SHAPE: capability=CrossChunkTagSubstitution UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover chunk B's tags and driving them at a challenge on chunk A. ROADMAP row F1.
 func (k *Key) Tags(unitID []byte, data []byte) [][]byte {
 	nb := k.params.Blocks(len(data))
 	tags := make([][]byte, nb)
@@ -250,6 +277,8 @@ type Proof struct {
 // their stored `tags` into a Proof. It needs no key — an honest holder of the
 // bytes and tags can always answer; a holder that lost bytes cannot make the
 // answer verify.
+//
+// ADVERSARY-SHAPE: capability=TagsAfterByteLoss UNCOVERED: no fixture GRANTS AND CONTROLS FOR a holder its tags after the bytes are gone. See core/node/por.go: with the VERIFICATION key too, the answer verifies anyway. ROADMAP row F1.
 func Prove(params Params, data []byte, tags [][]byte, c Challenge) (Proof, error) {
 	if params.SectorsPerBlock <= 0 {
 		return Proof{}, errors.New("por: bad params")

@@ -184,6 +184,8 @@ func (n *Node) bondAuditOnce(now uint64) {
 	// challenges itself (each validator judges by its own ledger). PEERS
 	// still verify our bond independently over the wire, so a self-assertion
 	// buys nothing with the quorum — only real held storage does.
+	//
+	// ADVERSARY-SHAPE: capability=PeerAcceptedSelfAssertedBond UNCOVERED: no fixture GRANTS AND CONTROLS FOR an adversary a self-asserted bond that a PEER's ledger accepts. The block's defence is the second sentence -- a self-assertion buys nothing with the quorum -- and nothing witnesses it from the peer's side. ROADMAP row F1.
 	if n.bond != nil && n.bond.Size >= n.cfg.MinBondBytes {
 		n.ledger.RecordBondChallenge(n.id, n.bond.Root, n.bond.Size, true, now)
 		// Narrate our own standing every sweep so an operator can SEE the
