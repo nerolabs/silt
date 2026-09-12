@@ -4854,3 +4854,832 @@ unconditionally), R-4 (the consensus harness README asserting a PASS for pre-BFT
 R-6 (the remaining `.go` and operator-narration sites of the retired vocabulary) and R-8 (an
 order-independence test body the certification did not read) — are carried in the certification.
 This entry neither ratifies nor closes them.
+
+## D-NO-EXTERNAL-USERS-2026-09-12 — "assume silt does not exist outside of this box, FOR NOW": migration cost for published objects is ZERO, and the premise expires at launch
+
+- **Status:** ✅ RATIFIED — 2026-09-12, owner, answering directly whether objects already published
+  through flixz must stay auditable across a remediation that changes how content is addressed.
+- **Tier:** evolving, and **TIME-BOXED**. This is a premise about the world, not a relaxation of
+  silt's format discipline.
+- **Why this entry comes first:** several of the decisions below are priced under it. A reader who
+  takes one of them without this one will read a free choice as a cheap one.
+
+### What was ratified, in the owner's words
+
+> *"no — we can republish those once we get to RC. In fact, Flixz is an acceptance test on its own,
+> so relaunching the network and republishing into the network is a form of acceptance testing.
+> Assume silt does not exist outside of this box **for now**."*
+
+### What it deletes from the cost model
+
+**Migration cost for published objects is ZERO.** A remediation that orphans existing objects,
+changes a published-object layout, or invalidates existing PoR tags is **free on that axis**. Any
+argument of the form *"existing published data would break"* is **void until further notice**, and
+the options it was used to rank must be **RE-PRICED, not re-read** — a conclusion whose premise has
+died is not evidence.
+
+The concrete instance that forced the question: the PoR key-distribution remediation set priced
+option **O-4** partly on *"a per-shard block commitment in the layout — a published-object format
+change that makes every pre-existing object unauditable."* That sentence is now a **non-cost**, and
+O-1's migration burden falls the same way.
+
+It also re-frames the flixz relationship. A relaunch-and-republish is not a cost to be minimised; it
+is **an acceptance test silt wants to run**.
+
+### What it does NOT delete
+
+- **Era 2 and era 3 remain FROZEN formats.** This premise is about published objects and deployed
+  networks. It does not reach the format-freeze discipline, in either direction.
+- **The genesis re-mint budget is unchanged.** One height-0 re-mint has been paid (M1, 2026-09-11);
+  anything further still batches into ONE further move (`D-FREEZE-REPRICE-2026-09-10`).
+- **It does not make D3 cheaper to get wrong.** After the freeze, era 4 joins the frozen set.
+- **It is NOT a licence for "or it costs an era."** That pressure is withdrawn and stays withdrawn.
+
+### ★ THE EXPIRY IS HALF THE DECISION — "for now" is a deadline, not a deletion
+
+A cost deleted by a *"for now"* is **scheduled, not deleted**. This premise dies at **LAUNCH** — not
+at the era freeze, which is a different and earlier event.
+
+**Therefore: anything that leans on this premise must carry a NAMED RESIDUAL at the RC**, filed in
+the residual register, or the premise becomes the next one that died in the docs and lived on in the
+code. That failure shape has already cost this project a re-audit
+(`D-FREEZE-REAUDIT-2026-09-11` §2, where *"free while era-4 is dark"* propped up a whole deadline
+class after it had become false).
+
+**The honest classification, stated rather than papered over: the expiry can be made LOUD but not
+ENFORCED.** A test cannot know the launch date, and there is no locally-checkable predicate for
+*"a live network exists"* — under canon rule 8 (`docs/build-process.md`) a locally-checkable
+invariant becomes a refuse-to-start, while a distributed fact must be committed or genesis-covered
+state, and *"someone somewhere published an object"* is neither. So the recording discipline is:
+the premise is written **at the derivation site it licenses**, the decision is recorded here, and a
+machine gate forces an explicit decision on any change to that derivation. Two such sites already
+exist in exactly this shape and are the model — `core/pipeline/pipeline.go`'s note that the height-0
+block hash moved twice on the "no live network exists" ground, and `core/genesis`
+`TestGenesisBlockHashIsPinned`, which holds the literal so the move can only be deliberate.
+
+**The one thing that would close it** is a launch-time ratchet: a committed chain fact set at launch,
+read by a start-up refusal when a binary's derivation disagrees with the genesis it is joining. That
+is canon rule 8's second arm, it is the mechanism owner call F already used for `ConsensusParams`,
+and it is **not in scope here**. Recorded as a direction, not a requirement.
+
+## D-D3-RELABEL-2026-09-12 — D3 fetcher privacy is RE-LABELLED now and WIRED post-RC; and the reachability gate's scope extends to cover `docs/decisions.md`
+
+- **Status:** ✅ RATIFIED — 2026-09-12. Two rulings in one, because the second exists to stop the
+  first from recurring silently.
+- **Tier:** evolving for the label; the wiring touches a Part-0 corner (immutable Don't #3, access
+  privacy) and is scheduled, not traded.
+- **Nothing shipped changes here.** No code, no format surface, no consensus rule. What is ratified
+  is a booking in this ledger and the scope of a gate.
+
+### What was wrong — a booking, not a mechanism
+
+`D-DEMAND` books D3 issuance-mixing as *"◑ slices 1+2 BUILT"*. The code exists, is correct as far as it
+goes, and is proven over real TCP. **It is not on any production path.** Verified at `ed6c9e2`:
+
+- `client.WithdrawDemandTokenPrivately` (`client/privissue.go`) has exactly **three** call sites, all
+  of them inside `client/privissue_test.go`.
+- **Nothing in the tree imports `github.com/nerolabs/silt/client` at all.** The package's only two
+  files are that function and its test.
+- Production source names the **durable** identity as the funding that settles. `core/node/relayrole.go`,
+  on `FundingEphemeralBlind`: *"the funding that actually settles is the k blind-signed anchors bought
+  under the fetcher's DURABLE identity … the D3 path (a publish credit converted via
+  `WithdrawDemandTokenPrivately`) is NOT anchor-eligible."*
+
+So the ledger books a privacy property as partially built while the shipped binary funds a session
+through the identity the property exists to unlink. **This is a record defect, not a regression:** the
+unlinkability that is claimed in `D-DEMAND`'s earlier clauses — blind-signed serial, demand neutrality —
+is unaffected. What over-claims is the *slices 1+2* line.
+
+### The decision
+
+**RE-LABEL NOW. WIRE POST-RC.** `D-DEMAND`'s D3 clause is to read as built-but-inert with its production
+route named as owed, not as a delivered slice. The wiring is post-RC work and is not a freeze item:
+it adds no block field, no cbor key, no committed leaf and no validity rule.
+
+**What is still owed, so it cannot drift:** the re-label edit in `D-DEMAND` itself, and a register row
+naming the inert route with an owner and a closer. Neither is done in this entry — this entry is the
+ratification, and the edits are the act.
+
+### The second half — the reachability gate's scope extends to `docs/decisions.md`
+
+The gate built after owner call F shipped inert (`scar:mechanism-shipped-inert-2026-09-10`,
+`scripts/check_reachability.py` + `scripts/reachability_lanes.txt`) resolves each lane record's
+`label` inside **`docs/release-checklist.md` only** (`CHECKLIST = ROOT / "docs" / "release-checklist.md"`).
+That is the whole of its anchoring surface today.
+
+**`docs/decisions.md` is the one place a BUILT claim carries weight and cannot be machine-checked.**
+This ledger is where `docs/TENETS.md` Part IX says a decision lives, and `D-CFGBIND-BUILT-2026-09-10`
+read *"✅ BUILT … on the production path"* for a day while `CheckConsensusParams` had zero non-test
+callers. The same shape is what this entry's first half corrects.
+
+**RATIFIED: a lane record may anchor its `label` in `docs/decisions.md` as well as in
+`docs/release-checklist.md`.** The record's other four fields, the fully-qualified symbol form, and
+the compiler's `cannot inline` substantiality verdict are **unchanged** — this widens where a claim
+may live, and nothing else.
+
+**Two limits are ratified with it, and neither is optional.**
+
+1. **REACHABILITY IS NECESSARY AND NEVER SUFFICIENT.** A green run proves a symbol survived linking.
+   It proves nothing about whether the mechanism is correct. The gate's own two-way table records an
+   input it passes green — a gutted `core/chain.v5ValidateSlashes` still prices above the inline
+   budget — so a BUILT claim in this ledger must never be booked on a green reachability run alone.
+2. **Extending the scope is not building it.** No record is added here, and the D3 route has no
+   symbol a record could name until it has a production caller. The gate cannot hold a claim about a
+   mechanism whose production path does not exist; inventing a posture line for one is the over-claim
+   this gate refuses in the other direction.
+
+## D-REPAIR-CLAIM-GATES-PINNED-2026-09-12 — the three repair-claim gates land as `PINNED_DEFECT`; skip-until-fixed is REFUSED
+
+- **Status:** ✅ RATIFIED — 2026-09-12. The question routed was how three RED gates enter the tree.
+- **Tier:** evolving (test posture). **No production behaviour changes.**
+- **Artifacts:** the three gates, authored by the Tester at `75c0f89`, and the red-team report
+  `/Users/andrewedmond/.claude/silt-agent-memory/red-team/reviews/RED-TEAM-repair-claim-unbudgeted-amplification-and-holding-bounty-75c0f89-2026-09-12.md`.
+
+### The decision
+
+The three gates **assert current broken behaviour**, named so that a future fix REDDENS the pin and
+forces the record to be updated. They do not assert the intended rule and pass.
+
+**Skip-until-fixed was explicitly refused.** A `t.Skip` is a dark test: it costs the same lines,
+reports green, and the `-short` dark-tests gate exists because exactly that shape hid a whole tier
+from CI (`scar:short-run-is-zero-execution`). A pin is loud where a skip is silent.
+
+**The repo already has the mechanism and the precedent**, so nothing is invented here: the
+`_PINNED_DEFECT` test-name suffix plus a companion arm that reddens when the defect is fixed, shipped
+in #817 and carried today by `core/pipeline`
+`TestRT_SFO_4_SingleDataShardStripeHasSixDistinctShards_PINNED_DEFECT` and
+`TestRT_SFO_5_EntryFileSizeIsTheExactByteCount_PINNED_DEFECT`.
+
+### What the three pins hold
+
+- **RT-RC-1 — unbudgeted survivor-fetch amplification.** `handleRepairClaim` has no per-sender rate
+  limit, and the economy gate `if !n.cfg.RepairEconomy` sits inside `settleRepairVerdict`, which runs
+  only AFTER `fetchSurvivors`. So a stream of small claims from one free identity buys a stream of
+  k-survivor stripe fetches on the judge. **This one fires on the SHIPPED DEFAULT.**
+- **RT-RC-2 — a replayed claim pays again.** `credit.Ledger.PayBounty` keys on
+  `(root, repairer, amount)` with no `(root, stripe, position)` dedup, and the judge keeps no record
+  of positions already paid.
+- **RT-RC-3 — a claim with no loss pays.** Nothing on the judge's path checks that the claimed shard
+  was ever missing.
+
+### What a pin does NOT settle, and must not be read as settling
+
+A pin records the tree's behaviour. It does not ratify that behaviour as correct, and it does not
+price the fix. **The remedies are separately gated:** a per-sender rate budget's burst value is a
+security parameter and is behind the research gate, exactly as `R-CARRIER-QC-BURST-VALUE` already
+records for the prepare-QC flood. Landing the pins buys visibility, not a repair.
+
+**Severity, stated so the entry does not over-read:** the γ→1/N firewall HOLDS across all three.
+`PayBounty` is classified `neutral` and `Reputation()` never reads escrow or bounty, so this is a
+durability DoS and an escrow drain, **not a mint**.
+
+## D-BOND-DEFAULT-CLEARS-FLOOR-2026-09-12 — the `-bond` default is raised to clear the derived anti-release floor, and a gate asserts the shipped defaults admit a working validator
+
+- **Status:** ✅ RATIFIED — 2026-09-12, as a DIRECTION with its build owed. The value the default
+  moves to is not fixed by this entry.
+- **Tier:** evolving. It is a **flag default**, not a consensus rule: the floor is node-local and the
+  bond size is a per-operator choice.
+- **Why it is the owner's call and not a seat's:** changing a shipped default is the #380 class
+  (`silt-consensus-rules-are-not-local-config`) and is a fleet-brick risk in the other direction.
+
+### The defect, measured at `ed6c9e2`
+
+**`silt daemon -validator` on pure defaults refuses to start.** The arithmetic, read at source:
+
+- `-validator` alone leaves `-objective` at its default `true` and `-min-rep` at `100`, so
+  `objectivePath` is TRUE (`cmd/silt/daemon.go`).
+- On the objective path with no explicit `-min-bond-floor`, the anti-release floor **defaults on** to
+  `DerivedBondFloor = 2 × (AntiReleaseComputeWindow / 1s × bond.PlotSealThroughput)` =
+  2 × (2 × 270,000,000) = **1,080,000,000 B ≈ 1030 MiB**.
+- `-bond` defaults to `64M` = 67,108,864 B, which is below it, so the daemon returns
+  *"`-bond` … is below the anti-release floor … so this validator would earn NO standing"* and exits.
+
+**This is a defaults defect, not a security defect.** The floor is correct and is deliberately
+default-on (retest G4-residual: *"fixed but off by default" is not fixed*). What is wrong is that the
+two defaults were set in different places and never composed, so silt's own stock validator posture
+is unreachable.
+
+### The decision
+
+1. **Raise the `-bond` default so the stock untrusted-validator posture starts and earns standing.**
+   The floor does not move: it is derived from a compute window, and build-immutables #3/#4 forbid
+   sourcing it from a transport deadline.
+2. **Ship a gate asserting that the SHIPPED DEFAULTS admit a working validator** — driven from the
+   flag defaults themselves, not from literals.
+
+### ★ THE GATE MUST READ THE DEFAULT, NOT A COPY OF IT
+
+`cmd/silt` `TestAntiReleaseFloorDefaultsOnForUntrustedValidator` already contains the clause
+`if int64(64)<<20 >= got { … }`, whose comment calls 64M *"the daemon's own default … the exact
+posture the red team's PoC exercised."*
+
+**That clause hard-codes the literal.** Raise the flag default and the assertion stays GREEN while its
+sentence becomes false — it would keep proving that the floor denies 64 MiB, which after the raise is
+nobody's default. A claim about a default that does not read the default decays exactly like a cited
+test name (`silt-a-claim-about-a-gate-is-itself-a-claim`).
+
+So the build owes two things: the new gate reads the `-bond` flag's own `DefValue` and the same
+daemon arithmetic that computes `effFloor`, and the existing clause is either re-pointed at that
+source or re-stated as the historical PoC value it actually is.
+
+**What is NOT ratified: the number.** It must clear the derived floor with margin and be defensible
+as a real operator's smallest sensible plot. Picking it is build work under this direction, and if
+the chosen value turns out to be a security parameter in disguise it routes to the Researcher like
+any other — `docs/build-process.md` records that a durability knob was twice also a security
+parameter.
+
+## D-BOUNTY-PAYS-FOR-REPAIR-2026-09-12 — the durability bounty must be paid for REPAIR, not for holding; the INTENT is ratified and the MECHANISM is research-gated
+
+- **Status:** ✅ RATIFIED AS INTENT — 2026-09-12. Owner: *"we need it to be paid for with repair."*
+- **Tier:** this is an **economic mechanism**, so the ratification settles the rule silt is aiming
+  at and **does not authorise a build**. The mechanism change must be certified by the Researcher
+  before it ships (`.claude/CLAUDE.md` research gate; `D-S7` durability economy).
+- **Nothing changes in this entry.** No code, no price, no ledger motion.
+
+### What the intent settles
+
+**A durability bounty pays for a repair having happened.** A shard that was never missing was never
+repaired, so placing a live copy on a second holder and claiming for it must draw nothing from the
+object's escrow.
+
+**What is true on `main` today**, verified at source rather than inferred: the judge's two legs are
+correctness (recompute the claimed position from k survivors) and retrievability (challenge the named
+holder). **Both are true for a shard that was merely COPIED.** Nothing on the judge's path, and
+nothing upstream of it, checks that the position was ever lost. `settleRepairVerdict`
+(`core/node/repairclaim.go`) pays `n.ledger.PayBounty(claim.Root, claim.Holder, bounty)` — the
+**holder**, through a ledger parameter named `repairer`. The name and the argument disagree, and the
+argument is what pays.
+
+**This is the finding two seats reached blind to each other** — the Economist from incentive
+analysis, the red-team from attack surface. Under the coordination rules that is the strongest
+evidence available short of an external pass.
+
+### ★ WHAT THE RATIFICATION COSTS: THREE TESTS MUST BE RE-DERIVED TOGETHER
+
+The intent resolves a live contradiction of record, and resolving it breaks a validity argument that
+spans three tests. They are one unit of work, not three.
+
+- **`TestRedteamRepair_HonestClaimIsPaid`** (`core/node/redteam_repair_claim_test.go`) is the shipped
+  **positive control**. It stages a real shard with `stageShardOn` — fetch the live shard from its
+  providers, re-place a copy on a fresh holder — and asserts `BountiesReleased == 1`. **Under the
+  ratified intent, that arrangement must pay nothing.** A test named for the red team encodes the
+  defect as correct behaviour, it is green, and it has been green.
+- **`TestRedteamRepair_GarbageClaimIsSlashed`** and **`TestRedteamRepair_ComputeButDontStoreIsDenied`**
+  are the two **negative controls**. Their argument that they are not passing by rejecting everything
+  rests on the positive control above — stated in that control's own doc comment: *"Without this, the
+  deny/slash tests could be passing by rejecting everything."* **Correct the positive control and the
+  two negative controls lose their non-vacuity witness in the same commit.**
+
+**So the work is: build a positive control over a REAL loss** — a stripe position actually missing,
+then rebuilt — and re-point both negative controls at it. Re-deriving one of the three alone leaves
+either a control asserting the retired rule or two controls with no witness.
+
+**Do not resolve the contradiction by deleting a test.** Both the shipped positive control and the
+Tester's RT-RC-3 pin state rules; this ratification says which rule silt wants, and the tests are
+re-derived to match it once the mechanism is certified.
+
+## D-WEBSITE-HTML-AT-DEPLOY-2026-09-12 — the three website pages are generated at deploy and stop being committed; CONDITIONAL on the Netlify build being confirmed
+
+- **Status:** ✅ RATIFIED — 2026-09-12, **conditionally**. The condition is stated below and is
+  **partly discharged in this entry by measurement**.
+- **Tier:** evolving. Build plumbing. No product behaviour, no format surface.
+- **Scope: all three artifacts together** — `website/changelog.html`, `website/roadmap.html`,
+  `website/buildlog.html`. Doing one is worse than doing none: it leaves the same class of conflict
+  live while adding a second way the pages can be produced.
+
+### What it buys
+
+The three pages are generated from `CHANGELOG.md`, `ROADMAP.md` and `docs/buildlog/*.md`. Because
+they are also committed, **two PRs that conflict nowhere in their sources still collide in the
+generated HTML** — measured today between two otherwise-clean PRs. Every such collision is resolved
+by regenerating, never by hand-editing, which means the committed bytes carry no information a
+regeneration could not produce. They are a merge-conflict surface with no readership.
+
+### The condition, and what measuring it produced
+
+**The condition was: first measure whether Netlify BUILDS the site or serves `website/` verbatim.
+If verbatim, this is a MIGRATION, not a config flip.**
+
+Measured at `ed6c9e2`, from `netlify.toml` in this repo:
+
+```
+[build]
+  command = "python3 scripts/gen_changelog.py"
+  publish = "website"
+```
+
+**Netlify builds.** One of the three pages — `changelog.html` — is already regenerated at deploy
+time; the file's own header comment says so (*"The build step regenerates the changelog page from
+CHANGELOG.md so the published page can never drift"*). `roadmap.html` and `buildlog.html` are served
+from their committed copies because the build command does not run their generators.
+
+**So on the repo's evidence this is a config flip, not a migration:** two more commands in the build
+step, three files deleted and gitignored, and the three *"Fail if … page is stale"* steps in
+`.github/workflows/ci.yml` retired with them.
+
+**The condition is NOT fully discharged, and the remainder is named.** A Netlify site's dashboard
+build settings can override `netlify.toml`, and that surface is not readable from inside the repo. So
+what is measured is *what this repo asks for*, not *what the deploy does*. **Before the three files
+are deleted, someone must confirm from the Netlify dashboard that the repo's build command is the one
+that runs, and confirm one deploy produces all three pages.** Deleting first and checking after is how
+a public site goes blank.
+
+### What this decision does not change
+
+`ROADMAP.md`, `CHANGELOG.md` and `docs/buildlog/*.md` remain the single sources of truth, and the
+rule that the `.md` sources are edited and never the HTML is unchanged. This removes a copy, not a
+source.
+
+## D-STRUCTURAL-GATES-2026-09-12 — the two structural gates are first-class roadmap items, ahead of the individual defects they would have caught; G-2 first
+
+- **Status:** ✅ RATIFIED — 2026-09-12. Sequencing decision with the builds owed.
+- **Tier:** evolving (test/fixture posture). **No production behaviour changes.**
+- **The principle being applied:** when a class of defect has recurred, the gate that catches the
+  class outranks the next instance of it. Three instances is the standing trigger
+  (`silt-proof-vs-structure`: at the third decay of documented-discipline-plus-proof, encode
+  structure). Both gates below are past three.
+
+### G-2 — the ADVERSARY-SHAPE gate. **FIRST.**
+
+**The rule:** for every defence silt claims, a fixture must exist in which the adversary **HAS** the
+capability the defence assumes it lacks. Today the shipped shape is the opposite — every storage
+adversary in the tree holds strictly **less** than a legitimate participant, and no fixture has a
+prover that is a key holder.
+
+**It goes first because it has an already-measured failure to validate against**, which is the only
+thing that stops a new gate being vacuous on the day it lands. The storage-proof break confirmed by
+two seats blind to each other is exactly a prover that IS a key holder: over 100 sweeps the zero-byte
+attacker's ledger row is **bit-identical** to the honest holder's, and the shipped `-liar` control is
+annihilated in the same run. A gate written to that measurement can be driven RED before it is
+believed (`silt-ablation-noop-guard`). A gate written to a hypothetical cannot.
+
+**The same shape produced the rest of the session's findings** — the vacuous fixtures, the inverted
+low-bond drill, and the bystander gates — which is why it is a gate and not a fix.
+
+### G-1 — a GRADED LANE ON THE SHIPPED DEFAULT POSTURE. **SECOND.**
+
+**The rule:** at least one graded lane runs the configuration a stock operator gets, with nothing
+turned on or off to make the test convenient.
+
+**The finding it answers:** seven defects in this session exist *only because of a default*, and
+**every existing gate configures its way OUT of the posture it should be testing.** The entry
+`D-BOND-DEFAULT-CLEARS-FLOOR-2026-09-12` above is the plainest instance — `silt daemon -validator`
+on pure defaults does not start, and no tier noticed, because no tier runs pure defaults.
+
+**Why second rather than first:** it is the larger build (a lane, not an assertion) and its validating
+failures are already captured as individual defects, so the cost of it landing a week later is
+bounded. That is a sequencing judgement, not a ranking of value.
+
+### The ordering this decision creates, and what it costs
+
+**Both gates rank ahead of the individual defects they would have caught** — the amplification fix,
+the no-loss bounty, the defaults raise. Those stay filed and stay owed; they do not jump the queue.
+**The cost is real and is accepted:** known defects sit a little longer so that the mechanism which
+finds the next unknown one exists. That is the trade, stated plainly rather than presented as free.
+
+## D-BRANCH-CLEANUP-SESSION-2026-09-12 — the branch cleanup becomes a dedicated interactive session with the owner, not a queued task
+
+- **Status:** ✅ RATIFIED — 2026-09-12. A process decision.
+- **Tier:** evolving. **No code, no history rewriting authorised by this entry.**
+
+### The decision
+
+Branch cleanup runs as **one dedicated, interactive working session with the owner present**. It is
+not queued behind other work, not bundled with hygiene tasks, and not delegated to an unattended run.
+
+**An inventory is generated BEFOREHAND, so the session reads measurements rather than deriving them
+live.** Measured at `ed6c9e2` for scale: **269 remote branches, 136 local, 1 open PR (#828)**. The
+inventory owes, per branch: merged-by-content or not, the PR it landed as if any, last-commit date,
+and whether any live worktree holds it.
+
+### Why it is a session and not a task
+
+1. **A bulk delete is destructive and irreversible in practice**, and it was already
+   **classifier-blocked** when it was bundled into a brief with two benign hygiene items. Nothing in
+   that brief ran — the safe half went down with the dangerous half. **Owner authorization does not
+   clear a classifier block**; the control is independent of the content being authorised. So the
+   route has to be one the owner picks live.
+2. **"Merged" is not a property `git branch --merged` can be trusted for here.** silt squash-merges,
+   so ancestry lies: a landed branch is not an ancestor of `main`. The test has to be
+   merged-by-content, and a whole-diff reverse-apply is too strict — measured, it rejected 6 of 8
+   genuinely landed branches. An inventory that gets this wrong deletes work.
+3. **A worktree is LIVE if it is locked or holds a running seat's cwd**, never by mtime. Nine
+   worktrees are attached to this repo today, and deleting a branch out from under one is how a seat
+   loses uncommitted work.
+
+**One brief, one risk class** is the standing rule this records: a destructive operation gets its own
+brief and its own escalation, and benign work never rides with it.
+
+## D-VDF-MINIMAL-ENCODING-2026-09-12 — the VDF minimal-encoding rejection is TAKEN; it is narrowing, non-format, and changes zero honest bytes
+
+- **Status:** ✅ RATIFIED — 2026-09-12, taking the certification's recommendation.
+- **Tier:** evolving. **REFUTED as a format item on all four doors**: no block field, no cbor key, no
+  `Hash()` preimage change, no committed leaf, no era-activation rule. Its deadline is the readiness
+  stamp raise, not the freeze.
+- **Certification:**
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/VDF-GROUP-AND-BONDVDFDELAY-RESEARCH-CERTIFICATION-2026-09-12.md`,
+  finding Q1′ — CERTIFIED, and the certification calls it the load-bearing finding of the document.
+
+### The defect
+
+**`Answer.VDFY` has two different equivalence relations imposed on it by two lines four apart, and the
+prover chooses which one it exploits.**
+
+- `vdf.Verify` judges the **integer**: it decodes `proof.Y` with `big.Int.SetBytes`, which absorbs
+  leading zero bytes, and every later comparison is on the `big.Int`.
+- `bond`'s effective-nonce derivation judges the **bytes**: it hashes the raw slice taken straight off
+  the wire.
+
+Take an honest pair `(y, π)`, prepend *j* zero bytes to `VDFY`. **π is unchanged** — the challenge
+prime is computed from the minimal encoding. `vdf.Verify` still accepts. The derived nonce is
+completely different, so the prover draws a different possession challenge **at zero VDF cost**. CBOR
+round-trips the padding exactly, and the answer digest covers whatever padding is present, so the
+block hash stays consistent for the adversary. There is no length check on `VDFY` or `VDFPi` anywhere
+on the path.
+
+**What it buys the adversary, priced and bounded.** The grind converts *"a prover can shed ~0.2 % of
+its plot"* into *"~8 % at a 2⁴⁰ grind"*, and even an absurd 2⁶⁴ grind caps it near 12 %. **It is not
+an M0 break** — N identities still cost roughly 0.9 × N × real storage. It matters because ~8 % lands
+inside the band the code's own measurement calls *"~free"*, where the answer-latency signal designed
+to be its complement is also blind. Two mechanisms meant to compose go dark in the same band.
+
+**On the on-chain path there is no deadline at all** — a registration is composed offline and accepted
+against any of the last 8 head nonces — so the grinding budget is hash-rate × the wall-clock of eight
+block intervals.
+
+### Why it is taken now, and alone
+
+**It is free.** Honest provers already emit minimal encodings, so requiring minimality in `Verify` is
+**purely narrowing and changes zero honest bytes**: no re-mint, no re-run set, no fixture movement.
+The certification is explicit that it must **not** ride the next genesis move — attaching a free fix
+to a gated one delays the free fix behind the gated one.
+
+**The discipline is already one package over.** `core/blindtoken`'s canonical-representation check
+enforces range **plus** minimal byte encoding. That is the shape to copy.
+
+### What it does NOT fix, stated so the entry does not over-read
+
+This closes **one** of the two spellings defects. The ±1 coset — the VDF works in `(Z/N)*` rather than
+the quotient group, so `N − y` is a second accepted output — is a **different** defect, it **does**
+change honest bytes, and it is not taken here. *"A valid output has exactly one wire spelling"* needs
+both. The certification carries that one as `R-VDF-COSET`, open, and the property worth encoding is
+the one with a closed
+complement: for a fixed challenge, the set of accepted `VDFY` byte strings has cardinality exactly
+one.
+
+**Gate discipline:** the fix ships with a test that is **seen RED first** on the pre-fix tree, with
+the patched file diffed against its original before the run is believed.
+
+## D-BONDVDFDELAY-KEEP-1000-2026-09-12 — `BondVDFDelay` KEEPS its shipped value of 1000 and the residual is filed; the residual must name what would make 1000 WRONG
+
+- **Status:** ✅ RATIFIED — 2026-09-12. Keep 1000; file the residual.
+- **Tier:** `node.Config.BondVDFDelay` is a **security parameter that is about to be genesis-bound**
+  (it is carried in `ConsensusParams`), which is why the value is the owner's and not a seat's. The
+  decision taken here is to **not move it** — the cheapest of the available acts, and the only one
+  that needs no new number.
+- **Certification:**
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/VDF-GROUP-AND-BONDVDFDELAY-RESEARCH-CERTIFICATION-2026-09-12.md`,
+  finding Q2.4 — **GATED**.
+
+### What the certification found
+
+**The route to 1000 does not exist, and no route to ANY value exists, because the delay property has
+no consumer.**
+
+- The only stated rationale at the declaration (`core/node/node.go`, `BondVDFDelay: 1000`) is
+  *"modest; a real deployment raises it for a stronger time floor"*, elaborated in the field doc as
+  *"the modest default keeps the deterministic sim fast"* — a **test-speed** argument for a value
+  that is now genesis-bound and consensus-critical.
+- A design doc asserts that raising the delay *"widens W and lowers the required floor"*. **`W` is not
+  a function of the delay anywhere in the code.** The anti-release compute window is a bare literal
+  and the derived bond floor is `2 × (window × plot seal throughput)`. The VDF delay does not enter
+  that arithmetic at all. The causal sentence has no implementation.
+- **Nothing reads a lower bound on answer latency.** All three latency comparisons in the bond-audit
+  path are **upper** bounds. There is no *"answered too fast ⇒ precomputed"* test in the tree.
+- **The delay cancels in the one argument that looks like it should depend on it.** A released prover
+  must pebble, run the VDF, pebble again; an honest prover reads, runs the VDF, reads. The VDF term is
+  identical on both sides, so the detection margin is the pebbling cost — a function of plot size and
+  depth-robustness, not of the delay.
+
+### The decision, and why KEEP is the honest act
+
+**Keep 1000. Do not spend a genesis move on it.** `BondVDFDelay` is carried in `ConsensusParams`, so
+changing the value moves `Block.Params` and therefore the genesis block hash. Substituting one
+underived constant for another costs a re-mint and buys nothing certifiable. **A named residual beats
+a re-mint that improves nothing.**
+
+This is not a finding that 1000 is right. It is a finding that **changing it is not currently
+justifiable**, which is a different and weaker statement, and the entry says so on purpose.
+
+### ★ THE RESIDUAL MUST NAME WHAT WOULD MAKE THE VALUE WRONG
+
+A residual that says only *"this constant is underived"* is unactionable and will be re-derived from
+scratch by the next seat that reads the declaration.
+
+**`R-VDF-DELAY-INERT` is OWED a register row against the D1 derivation-route audit.** Checked at
+`ed6c9e2`: it is carried in the certification's own residual table and appears **nowhere in
+`ROADMAP.md` or the tree**, so the residual this decision rests on does not yet exist where the
+filing rule requires it. **The row must state the three conditions that would make 1000 WRONG**:
+
+1. **A consumer of the lower bound is built.** The moment any code refuses an answer for arriving too
+   fast, the delay stops being inert and 1000 must be derived from that consumer's detection target —
+   not chosen.
+2. **The design doc's coupling is implemented.** If the anti-release window is ever made a function of
+   `BondVDFDelay`, 1000 becomes load-bearing on the bond floor, and the floor's own derivation
+   (build-immutables #3/#4, compute-sourced and decoupled from any transport deadline) has to be
+   re-opened with it.
+3. **The measurement shows the honest answer cost is not what the keep assumes.** The three benchmarks
+   the certification gates on are named in it with their exact commands; **none has been run.** In
+   particular the existing VDF test modulus is far smaller than the field modulus, so any timing taken
+   on it is wrong by roughly 3×, and the shipped evaluation runs its squarings and its proving pass
+   serially, so a whole-evaluation figure double-counts.
+
+**A fourth condition is a tension rather than a falsifier, and is carried as one — `R-VDF-DELAY-VS-A5`,
+also owed a row.**
+`BondVDFDelay` is a common additive term in every honest answer, and the per-node answer-latency
+deadline is a **mutable flag** while `BondVDFDelay` is **frozen per network**. Raising the frozen side
+without raising the mutable one pushes honest nodes past the deadline and degrades an observability
+signal **one-way**. The two are linked by no code, and the margin a raise would eat is small. So the
+declaration's own advice — *"a real deployment raises it"* — is advice an operator cannot safely take
+after launch, and the comment should say so.
+
+**Recorded as a correction, not a new rule:** the tier taxonomy in
+`D-CFGBIND-TIER-PROMOTION-2026-09-11` does not cover this value. It names the build-is-the-operator
+values and says the rest are flag-supplied; `BondVDFDelay` is **neither** — `cmd/silt` declares
+`-bond-label-k` and nothing at all for the VDF delay. The release-checklist rule that decision
+creates (*changing any of these compile-time defaults is a breaking change requiring a new network*)
+therefore does not reach the one value with no operator surface. Carried in the certification as
+`R-CFGBIND-SEVENTH`; it is a doc correction and is owed to whichever PR next touches that decision.
+
+## D-UI-EFFECT-GATE-2026-09-12 — the unauthenticated GET with write side effects is fixed by gating on EFFECT rather than HTTP method, and the test that could not see it is fixed with it
+
+- **Status:** ✅ RATIFIED — 2026-09-12. Direction ratified; the build is owed.
+- **Tier:** evolving. Node-local operator surface. **Not a consensus rule and not a format item.**
+- **Reach, stated without inflation:** the UI is **off by default** (`-ui`), the guard already refuses
+  a non-local `Host` and a non-allow-listed `Origin`, and the token is still required for every
+  mutating method. What is open is a **same-origin or allow-listed cross-origin GET** that carries no
+  token and does real work — CSRF-reachable, not internet-reachable.
+
+### The defect
+
+`cmd/silt/ui.go`'s guard gates on the **HTTP method**: `isMutating` returns true for POST, PUT, PATCH
+and DELETE, and the token is demanded only for those. **The route table contains a GET that mutates.**
+
+`GET /api/fetch` falls through to `NetGetRetain` on the **main** node. That pulls missing shards into
+this node's own store bounded by its capacity pledge, mints storage proofs from the link's layout key,
+registers them under their placement keys, and **announces** — by design, so that content a node draws
+is content it then serves. Every one of those is a write. The handler is reached with no token.
+
+**The method is the wrong predicate.** It was a reasonable proxy while every mutating route was a
+POST; it stopped being one the moment a read-shaped route acquired a retain-and-announce side effect.
+
+### The decision
+
+1. **Gate on EFFECT, not on method.** The route table is the natural place for the truth: each route
+   declares whether it has side effects, and the guard demands the token from the declaration rather
+   than inferring it from the verb. A route that mutates and forgets to say so should be the case that
+   fails, not the case that passes.
+2. **Fix the test that could not see it.**
+
+### ★ WHY THE TESTS WERE GREEN — THEY CHECK DISCLOSURE, NOT SIDE EFFECTS
+
+Two families of test cover this guard and **neither can observe a write**:
+
+- `cmd/silt/ui_guard_test.go` wraps a **trivial handler that only records that it ran**. It never
+  routes a real API handler, so "reached" is the only observable. `TestReadNeedsNoToken` asserts that
+  an unauthenticated GET reaches the handler — **it asserts the defect as correct behaviour.**
+- `cmd/silt/ui_privacy_test.go` does route the real handlers through the guard, but every assertion is
+  about **which JSON keys appear in the response**. That is disclosure. A handler can withhold every
+  private field and still retain, register and announce.
+
+**So the gate to add is an effect assertion, not another status-code assertion:** drive an
+unauthenticated GET at a routed, side-effecting handler and assert the store, the registry and the
+announce path are **untouched**. Seen RED first, on the pre-fix tree.
+
+**Do not fix this by making `/api/fetch` a POST.** That moves one route across the method predicate
+and leaves the predicate wrong for the next one.
+
+## D-FORKCHOICE-RENDER-2026-09-12 — the certified fork-choice sentence is rendered as a STANDALONE sentence with its certified lead-in at every site; the wording itself is unchanged
+
+- **Status:** ✅ RATIFIED — 2026-09-12. This closes the one call
+  `D-FORKCHOICE-CLAIM-2026-09-12` explicitly left open.
+- **Tier:** published claim. **The certified bytes do not change.** Nothing here re-opens the
+  certification.
+
+### What was left open, and what is now decided
+
+`D-FORKCHOICE-CLAIM-2026-09-12` ratified the WORDING and recorded that the owner had **not** ruled on
+how `README.md` RENDERS it. The sentence is spliced into a comma list of built primitives, so its
+first word parses as a list item of its own, and a reader meets the certified sentence mid-enumeration
+rather than as a claim.
+
+**RATIFIED: the whole certified string — its lead-in clause included — is rendered as a standalone
+sentence at every site that carries it.** The string is unchanged; what changes is the block it sits
+in.
+
+### Why the rendering is worth a ratification at all: ONE PIN GENERALISES
+
+`core/chain` `TestO3T_CertifiedForkChoiceSentenceIsPresent` reads exactly one file, `README.md`, and
+matches the constant `o3tCertifiedForkChoiceSentence` over the whitespace-flattened text. It is
+scoped to one file **because one file is the only place a verbatim paste is grammatical today.**
+
+The previous entry recorded the reason the other six ratified sites do not take the sentence verbatim:
+in each of them it sits in a mechanism-NAME slot inside a comma list, where a paste is ungrammatical —
+and where a paste would create a **SECOND FACE** of a published claim, which is the failure the
+certification's one-face rule exists to prevent.
+
+**A standalone rendering removes that obstruction.** Once the sentence is its own sentence at every
+site, the presence pin can walk the ratified site set instead of one file, and the published claim has
+one machine-checked face everywhere it appears rather than in the front door only.
+
+### What is owed, and what is NOT ratified
+
+- **Owed:** the re-rendering at each site, and only then the widening of the presence pin's file set.
+  Neither is done here. **Widening the pin before the rendering lands would go red on six files by
+  construction.**
+- **NOT ratified: any edit to the sentence.** Do not re-word it to make a test go green, to fix a
+  typo, or to fit a line. `o3tCertifiedForkChoiceSentence` exists so that a silent re-wording fails a
+  build instead of shipping, and inverting the gate by editing the constant to match a page re-opens
+  the certification silently.
+- **NOT ratified: the permitted extension.** The certification names one optional appended clause
+  naming how the head is selected. Whether any site takes it is a separate call; nothing here adopts
+  it.
+- **This entry does not repeat the retired vocabulary it replaces.** The exact strings live in
+  `o3tRetiredForkChoiceVocabulary` (`core/chain/o3t_canon_text_test.go`); the ban walks `docs/`, so
+  quoting a banned phrase in order to discuss it trips the ban on the discussion.
+## D-O8-BASIS-CHANGED-2026-09-12 — O-8 was ratified as a DIRECTION conditional on its own certification; the certification returned GATED and REFUTED the number the ratification was given on. A RE-DECISION IS OWED
+
+- **Status:** ⚠ **NOT A LIVE RATIFICATION TO BUILD.** A direction was ratified on 2026-09-12,
+  explicitly conditional on certification. **The condition has returned, and it returned GATED.** The
+  basis the direction was ratified on has changed, so the ratification does not carry forward.
+  **Nobody has taken the re-decision, and this entry does not take it.**
+- **Tier:** it touches a Part-0 corner (C1 — no discount: disk is one of the three resources C1
+  prices), it moves the genesis block hash, and it is a security mechanism. Every one of those is the
+  owner's, and the mechanism half is the Researcher's to certify.
+- **Certification (governing):**
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/O8-CHUNK-ID-MERKLE-ROOT-MECHANISM-14f794f-RESEARCH-CERTIFICATION-2026-09-12.md`.
+  It governs the two earlier documents **on the subject of O-8 only**: the options certification and
+  the re-price addendum
+  (`…/POR-KEY-DISTRIBUTION-BREAK-REMEDIATION-OPTIONS-75c0f89-RESEARCH-CERTIFICATION-2026-09-12.md`
+  and `…/POR-KEY-DISTRIBUTION-BREAK-REMEDIATION-REPRICE-ADDENDUM-14f794f-2026-09-12.md`). Their other
+  verdicts are untouched.
+
+### 1. What was ratified, and on what condition
+
+O-8 is the remediation direction for the storage-proof break: **define a shard's chunk ID as a Merkle
+root over its proof-blocks**, so an audit names block indices, the prover returns those blocks with
+inclusion proofs, and the verifier checks each against a root **it holds independently**. The owner
+ratified it as a DIRECTION — *"accept recommendation"* — **conditional on this certification**, which
+was asked to certify O-8 **as a mechanism** rather than as a direction.
+
+### 2. The condition returned GATED, with five gates standing
+
+> **O-8 is sound as a direction and is NOT yet a mechanism.** The property it restores is real and
+> rests on a strictly better assumption class than the scheme it replaces — it needs **no secret**,
+> and therefore carries no set-disjointness claim, which is the exact hypothesis silt's deployment
+> negates today. **But O-8 as tabled is a sketch, not a specification, and one natural reading of its
+> own words is unsound.**
+
+The five gates, each with the evidence that lifts it:
+
+| Gate | What must be shown |
+|---|---|
+| **G-O8-A — length binding** | The block decomposition is **defined** and the commitment is **injective on the byte string**. The natural reading — "over por-blocks", which the shipped code defines as **zero-padded** — is NOT injective and collides on trailing zeros. |
+| **G-O8-B — the root comes from the AUDITOR** | The root used in verification is the one the auditor decrypts from the sealed layout, **never** read from the prover's response. |
+| **G-O8-C — the sample count** | The number of indices sampled must be derived from a stated detection target, a stated minimum cheat, and a stated **audit cadence**. The cadence is an input the certifying seat could not obtain. |
+| **G-O8-D — the call-site census** | Every non-test site that derives or checks a chunk ID from data, read in full. Three hand-rolled sites in three files were already found; the census is not a formality. |
+| **G-O8-E — the genesis precondition** | The certification records `R-GENESIS-HASH-FREEZE-SURFACE` as **open** and as a precondition on O-8. **See the correction in §5 — the record disposed that residual on 2026-09-07, and the source comment the certification read is a dead premise.** |
+
+**G-O8-B is not hypothetical, and that is the sharpest finding in the document.** The identical laxity
+exists today, four lines from where O-8 would land: `verifyStorageProof` verifies an inclusion proof
+against a root taken **from the response**, and neither call site compares that root to the audited
+one. **Leg 1 of today's audit is a tautology**, carried in the certification as
+`R-POR-MERKLE-TAUTOLOGY` and owed a register row — it appears nowhere in the tree. Repeating that
+shape one level down would make O-8 vacuous in one line.
+
+### 3. ★ THE HEADLINE NUMBER THE RATIFICATION WAS GIVEN ON IS REFUTED — BY ITS OWN AUTHOR
+
+The direction was put to the owner with the figure *"at one sampled index the unforgeable byte leg
+costs **1.6 % more wire** than the forgeable proof it replaces — that is the finding that moves the
+ranking."*
+
+**The arithmetic is right. The comparison is not, and the certification refutes it.** It compared
+wire bytes while holding **nothing else** fixed. The shipped sampling count is clamped to the block
+count, so **today's scheme samples every block: its detection against any deletion is 1.0.** O-8 at
+one index detects a deletion of a fraction ε with probability ε. The two rows are 67× apart in what
+they buy and were presented side by side as if they were not.
+
+At equal detection — O-8 sampling every block — **O-8 costs 63.5× the wire**, because at full
+sampling the response *is* the whole shard. Both figures are now on the record **with their operating
+points attached**, which is the only honest way to carry either.
+
+**The economics are therefore INVERTED relative to the ratification, and the re-decision is exactly
+that trade:** how much detection to buy per audit, at what cadence, against a scheme whose *current*
+detection is 1.0 per audit and whose *current* forgery cost is **zero bytes**. That last clause is why
+this entry does not read as "O-8 is dead": the scheme it replaces is not cheap-and-sound, it is
+cheap-and-forgeable.
+
+**What is NOT said, and the certification says it in terms:** O-8 does **not** restore
+retrievability. It gives sampled possession at the opened indices, not extractability. *"Anyone who
+reports O-8 as 'restores retrievability' has mis-stated it and I will refute the sentence."* It also
+does not say the prover held the block before the challenge, nor that it holds any other block, nor
+that it holds a distinct physical replica.
+
+### 4. Prior art — O-8 IS the Sia storage proof, and this is load-bearing
+
+**O-8 is not a novel construction.** It is Vorick & Champine, *Sia: Simple Decentralized Storage*,
+Nebulous Inc., 29 November 2014, **§5.1** — read at first hand from the paper, pages 1–8. *"Not an
+analogue, not a relative — the same construction."*
+
+This matters for three separate reasons and each is a decision input:
+
+- **Simplicity rule 1.** A settled corner deployed by a shipping system is a different cost class from
+  a novel mechanism. O-8 clears that bar; several alternatives on the same table do not.
+- **Sia's own soundness argument is an ACCRUAL argument, not a per-proof argument.** One passing proof
+  proves little; the property is built from a prover *consistently* passing. Any silt sentence that
+  claims a per-proof guarantee from O-8 is mis-citing the source.
+- **Three deviations from Sia are named, and one is silt's own.** Sia carries the Merkle root as a
+  separate field beside the file's identity; under O-8 the root **IS** the content address, one value
+  doing both jobs. That is why O-8 adds **zero format surface** — and it is exactly why **G-O8-A**
+  exists, because a content address must be injective while a proof root need not be. Sia never had to
+  care. The second deviation is that Sia draws its challenge seed from chain randomness while silt
+  draws it from a node-local counter; silt is **weaker in kind** there, and the obvious break was
+  checked and does **not** fire, so the residual is promoted rather than closed.
+
+### 5. Genesis: O-8 moves the block hash AND the manifest frames, so it must be INSIDE the batch
+
+**Confirmed by reading the chain end to end, not by re-reading a note.** O-8 changes the chunk-ID
+derivation. Every ID derived from it changes — data shards, parity shards, the object root, **and the
+manifest frames** — so the genesis entry's root and its manifest chunk list both move, and height 0's
+block hash moves with them.
+
+**A finding the earlier documents did not state: the rule must be GLOBAL.** A chunk carries no type
+discriminator, and the store contract requires every implementation to reject a chunk that fails its
+own integrity check. A rule that applies to data and parity shards but **not** to manifest frames
+cannot be expressed — the store would have to know a chunk's class from its ID alone, which it cannot.
+**The "shards only" sub-option is REFUTED by the store interface.** Both prior height-0 moves changed
+exactly one of these two derivations; **O-8 moves both at once.**
+
+**The ordering, and it is not negotiable within the decision:**
+
+1. **The genesis-freeze-surface precondition (G-O8-E) needs a RECORD FIX before it needs an answer.**
+   The certification calls `R-GENESIS-HASH-FREEZE-SURFACE` open, having read `core/genesis/genesis.go`,
+   whose comment still says *"Whether height-0 identity sits inside the era-3/4 freeze surface is
+   filed for R3.4."* **Checked against the record at `ed6c9e2`: that residual was DISPOSED on
+   2026-09-07** by the freeze-manifest certification, as CLOSED-BY-BOUND — *the height-0 hash is
+   OUTSIDE the era surface; it is NETWORK identity, not a consensus format; the migration rule at a
+   format boundary is refuse-to-start (#237, owner call 9)* — and it carries **no row in the live
+   register**. So the source comment is a **dead premise still living in the code**, and it is what
+   put this gate on the list. **Resolve the record first.** If the 2026-09-07 disposal stands, G-O8-E
+   is already discharged and O-8 is one gate lighter; if the disposal is to be re-opened, that is its
+   own decision and not a by-product of O-8. Either way this is a contradiction of record, not a
+   fresh open question, and it must not be closed by assertion in either direction.
+2. **O-8 must be IN the batched re-mint or must be abandoned. It cannot follow it.** O-8 changes the
+   derivation that every other mover's staged bytes flow through, so an O-8 that lands after a re-mint
+   forces a second one. The one re-mint has been paid (M1, 2026-09-11) and the standing rule is that
+   any further movers batch into ONE further move.
+3. **The genesis pin's literals are updated exactly once**, at the re-mint, with the move recorded in
+   the mint's own comment in the shape the two prior moves use.
+4. **It is NOT on the network-identity train.** That is a different surface and O-8 must not be
+   scheduled against it.
+
+**This is a scheduling coupling, not a permanence cost.** The price is re-runs and calendar
+(`D-FREEZE-REPRICE-2026-09-10`). **No sentence in this entry may be used to argue "or it costs an
+era."**
+
+### 6. Two fixes are PRECONDITIONS of O-8, not independent cheap wins
+
+Both have been discussed as small separable improvements. **They are not.**
+
+- **The leg-1 verifier fix** — compare the inclusion-proof root against the root the auditor holds,
+  instead of verifying against the root the response supplies (`R-POR-MERKLE-TAUTOLOGY`). This is
+  **G-O8-B / assumption A2**, and A2 is the whole of O-8's security. Ship O-8 over the current
+  verifier and O-8 is vacuous.
+- **The seed-derivation fix (B-1)** — the prover derives its challenge seed from its **own** identity
+  rather than taking the seed verbatim off the message. Today a data-less identity forwards the
+  identical challenge to a real holder and relays the answer; that lane is **unchanged** by O-8, at
+  equal cost. But O-8 changes what closing it is worth: under O-8 the response is a value **identical
+  for every prover, with no prover-bound term at all**, so the relay lane stops being inherited and
+  becomes the only thing between an audit and a pure lookup service. The certification's ruling is
+  flat: **O-8 must ship with B-1, or it must not ship.** With B-1 the cheapest outsourcing is a full
+  shard fetch per audit — a fetch-to-store ratio of 1.0; without it, a small fraction of that.
+  *Falsifier, named and owed: any RPC anywhere that returns a caller-chosen sub-range of a chunk. The
+  ordinary serve path serves whole chunks; not every adapter was read.*
+
+### 7. What this entry does and does not do
+
+- **It records that the basis changed.** The direction stands as a direction; the number it was
+  ratified on does not.
+- **It does not authorise a build.** Five gates stand, the sample count depends on an audit cadence
+  nobody has supplied, and the genesis precondition is open.
+- **A RE-DECISION IS OWED**, and it is the owner's: take O-8 at a stated detection target and pay the
+  wire, take it with a different sampling rule, or take a different option from the remediation set —
+  now re-priced under `D-NO-EXTERNAL-USERS-2026-09-12`, which deletes the migration cost that was part
+  of how the options were ranked in the first place.
+- **The premise that makes O-8 legal is time-boxed.** O-8 is free of migration cost only **before
+  launch**, not before the era freeze. A cost deleted by a *"for now"* is scheduled, not deleted, and
+  the residual that carries it — the chunk-ID derivation premise dying at launch — is classified
+  **HELD IN TENSION, not closed**: the three recording sites make the expiry explicit and loud, they
+  do not make it enforced.
+- **Nothing in the storage-proof area is booked as fixed by this entry.** The break it responds to is
+  live.
