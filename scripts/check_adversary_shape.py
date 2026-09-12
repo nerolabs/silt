@@ -34,10 +34,31 @@ WHAT IT COVERS, AND WHAT IT DOES NOT — read this before citing it
   declaration is NOT evidence that a defence holds; it is evidence that an adversary
   with the capability was built and measured. Never cite this gate for the former.
 
-  MEASURED on the commit that lands this file: 24 in-scope claims, ZERO undeclared,
-  4 carrying `fixture=`, 19 `UNCOVERED:` and 1 `NOT-A-DEFENCE:` — and it still EXITS 1,
-  because a declared-uncovered claim is a RECORD, not an exemption. These counts move
-  with the tree. Re-run the gate rather than quoting them.
+  MEASURED on the commit that adds ratchet mode: 24 in-scope claims, ZERO undeclared,
+  4 carrying `fixture=`, 19 `UNCOVERED:` and 1 `NOT-A-DEFENCE:`. All 19 are on the
+  ratchet allow-list, so the DEFAULT mode exits 0 and `--strict` exits 1 on the same
+  tree. These counts move with the tree. Re-run the gate rather than quoting them.
+
+RATCHET MODE — WHAT A GREEN RUN DOES AND DOES NOT MEAN
+
+  ▶ A GREEN RUN MEANS: no defence claim in scope is NEW to this gate, and every
+    `fixture=` resolves to a test that grants the capability and controls for it.
+  ▶ A GREEN RUN DOES NOT MEAN: the claims are covered. 19 of them are grandfathered
+    RECORDS of missing coverage. `--strict` prints every one and exits 1, which is
+    exactly what the gate did before ratchet mode existed. Nothing was deleted.
+
+  WHY THE OLD BEHAVIOUR COULD NOT BE KEPT. `CAPABILITY-CONTROL` asks that the same
+  attack FAIL without the capability. Where a defence HOLDS, it fails without every
+  capability, so the control cannot discriminate and a `fixture=` is only reachable
+  when the defence is BROKEN (`R-ADVERSARY-SHAPE-CONTROL-NEEDS-A-BROKEN-DEFENCE`).
+  The 19 therefore cannot be driven to zero by covering them, and a gate that can
+  never go green cannot be wired to CI. Ratchet mode changes the assertion from
+  "nothing is uncovered" to "nothing is NEW", which is a claim the tree can satisfy.
+
+  THE COST, STATED RATHER THAN BURIED: a grandfathered allow-list is how a backlog
+  becomes permanent. Nineteen entries that "may only shrink" have no forcing function
+  in this file. Growth and shrinkage cost the identical two edits; only review tells
+  them apart. See the RATCHET ALLOW-LIST block below for what the keying catches.
 
 WHY THE COMPLEMENT IS CLOSED ON THE SIDE THAT MATTERS
 
@@ -78,36 +99,39 @@ THE DECLARATION FORMAT
   quietly narrows coverage every time it is used. A NOT-A-DEFENCE line is one reviewable
   line in a diff and it narrows nothing.
 
-  TWO KNOWN LIMITS, because a declaration can now hide either one.
+  ONE KNOWN LIMIT, because a declaration can hide it.
 
-  ONE. A comment block gets ONE declaration and the gate reports only the FIRST
+  A comment block gets ONE declaration and the gate reports only the FIRST
   matching sentence in it. Four blocks carry more than one claim sentence, so the
   second and third are recorded under a capability name that may not describe them.
   Read the WHOLE block before trusting a declaration on a long one, and where the
   names diverge, say so inside the block (core/por/por.go's package header does).
+  This limit also bounds the ratchet key: the key digests the FIRST matching
+  sentence, so rewording one of its neighbours changes no key.
 
-  TWO. THE GRANT AND CONTROL LEGS BIND TO THE FILE, NOT TO THE NAMED FUNCTION. main()
-  stores each test name against its WHOLE file body, then reads `holds` and `ctrl`
-  with `HOLDS_RE.findall(fbody)` / `CONTROL_RE.findall(fbody)`. Any ADVERSARY-HOLDS /
-  CAPABILITY-CONTROL marker anywhere in that file satisfies the legs for EVERY test
-  in it, so `fixture=` resolves to the right FILE, never to the right FUNCTION.
-  MEASURED 2026-09-12: re-pointing a `capability=LayoutKey` declaration at
-  TestRT_POR_2_ChallengeProxyPassesAudit_PINNED_DEFECT — which does not grant
-  LayoutKey — left the gate at 19 problems, NOT CAUGHT. Both RT-POR fixtures share
-  core/node/rt_por_m1_gates_test.go, which is why it is invisible here. The claim
-  above that the control leg "is what makes lying expensive" is true across files and
-  FALSE within one: a mis-citation inside a file that already carries the markers
-  costs nothing. Read the named function, not just the gate's verdict. This matters
-  now because ROADMAP row F1 rests its CI-wiring precondition on four `fixture=`
-  declarations, all four of which the gate binds only file-wide.
+  A SECOND LIMIT WAS HERE AND IS NOW FIXED, recorded because the fix is what the
+  binding-B self-test case defends. The grant and control legs used to bind to the
+  FILE, not to the named function: main() stored each test name against its WHOLE
+  file body. MEASURED 2026-09-12: re-pointing a `capability=LayoutKey` declaration
+  at TestRT_POR_2_ChallengeProxyPassesAudit_PINNED_DEFECT — which does not grant
+  LayoutKey — left the gate at 19 problems, NOT CAUGHT, because both RT-POR
+  fixtures share core/node/rt_por_m1_gates_test.go. `marker_scopes` now binds each
+  marker to ONE test. RE-MEASURED on the same patched tree: the pre-fix gate
+  reports 19 and the post-fix gate reports 20, naming the mis-pointed fixture.
+  What survives of the old warning: a fixture that lies in BOTH markers still
+  defeats this gate, and `fixture=` is still a claim about a test, not a proof.
 
   In the named fixture:
 
     ADVERSARY-HOLDS: <Name>        -- this fixture's adversary is GRANTED <Name>
     CAPABILITY-CONTROL: <Name>     -- the same attack WITHOUT <Name> is asserted to fail
 
-Dependency-free (stdlib only). Run: python3 scripts/check_adversary_shape.py
+Dependency-free (stdlib only).
+  python3 scripts/check_adversary_shape.py              ratchet mode (the default)
+  python3 scripts/check_adversary_shape.py --strict     the full record; exits 1 today
+  python3 scripts/check_adversary_shape.py --self-test  the manufactured cases
 """
+import hashlib
 import re
 import subprocess
 import sys
@@ -192,6 +216,144 @@ DECL_RE = re.compile(
 HOLDS_RE = re.compile(r"ADVERSARY-HOLDS:\s*([A-Za-z0-9_.\-]+)")
 CONTROL_RE = re.compile(r"CAPABILITY-CONTROL:\s*([A-Za-z0-9_.\-]+)")
 FUNC_RE = re.compile(r"^func\s+(Test[A-Za-z0-9_]+)\s*\(", re.M)
+# Every TOP-LEVEL declaration, not just the test ones. It is what ends a span.
+TOPFUNC_RE = re.compile(r"^func\b", re.M)
+
+
+def marker_scopes(body):
+    """name -> (holds, ctrl) for every Test function in one file, each marker
+    bound to ONE test instead of to the whole file.
+
+    THE BINDING RULE, and it is two clauses because the tree uses two placements:
+
+      1. A marker INSIDE a top-level function's body binds to that function, and
+         only if that function is a test. A marker inside a HELPER's body binds
+         to no test and is dropped.
+      2. A marker anywhere else — a comment block between declarations, which is
+         where both RT-POR fixtures put theirs, above the test's own helpers —
+         binds FORWARD to the next test DECLARED after it.
+
+    A marker after the last test declaration in a file, and not inside a test
+    body, binds to nothing.
+
+    A body ends at the first line beginning with `}` at column 0. That is a
+    gofmt property, not a parse; every tracked Go file in this repo is gofmt'd
+    and CI enforces it. An un-gofmt'd file would over-extend a span, which
+    over-credits rather than under-credits, so the failure direction is the
+    loud one: the wrong test gets the marker and its own declaration goes RED.
+    """
+    lines = body.splitlines(keepends=True)
+    offs, acc = [], 0
+    for ln in lines:
+        offs.append(acc)
+        acc += len(ln)
+    offs.append(acc)
+
+    decls = []  # (test-name or None, start offset, end-of-body offset)
+    for i, ln in enumerate(lines):
+        if not ln.startswith("func "):
+            continue
+        m = FUNC_RE.match(ln)
+        j = i + 1
+        while j < len(lines) and not lines[j].startswith("}"):
+            j += 1
+        decls.append((m.group(1) if m else None, offs[i],
+                      offs[min(j + 1, len(lines))]))
+
+    named = [d for d in decls if d[0]]
+    out = {d[0]: (set(), set()) for d in named}
+    for rx, idx in ((HOLDS_RE, 0), (CONTROL_RE, 1)):
+        for mk in rx.finditer(body):
+            o = mk.start()
+            inside = next((d for d in decls if d[1] <= o < d[2]), None)
+            if inside is not None:
+                owner = inside[0]
+            else:
+                nxt = next((d for d in named if d[1] > o), None)
+                owner = nxt[0] if nxt else None
+            if owner:
+                out[owner][idx].add(mk.group(1))
+    return out
+
+
+def claim_key(rel, cap, sentence):
+    """The RATCHET KEY. Path, capability, and a digest of the claim sentence.
+
+    Line numbers are deliberately NOT in it: they move on every unrelated edit
+    above the block, and a ratchet that fires on an innocuous diff is a ratchet
+    somebody turns off. The digest is what makes a REWORD visible — see the
+    RATCHET section of this file's docstring for exactly what it does and does
+    not catch."""
+    return (rel, cap, hashlib.sha256(
+        " ".join(sentence.split()).encode()).hexdigest()[:12])
+
+
+# ---------------------------------------------------------------------------
+# THE RATCHET ALLOW-LIST. Ratified by the owner 2026-09-12
+# (`D-ADVERSARY-SHAPE-RATCHET-2026-09-12`).
+#
+# WHY IT EXISTS. A `fixture=` is only reachable when the defence is BROKEN — the
+# CAPABILITY-CONTROL leg asks that the same attack FAIL without the capability,
+# and where the defence holds it fails for every capability, so the control
+# cannot discriminate (`R-ADVERSARY-SHAPE-CONTROL-NEEDS-A-BROKEN-DEFENCE`).
+# The 19 `UNCOVERED:` records therefore CANNOT be driven to zero by covering
+# them, and a gate that can never go green cannot be wired to CI. Ratchet mode
+# changes what the gate asserts: not "there is no uncovered claim" but "there is
+# no claim this gate has not SEEN BEFORE".
+#
+# ⚠ READ THE 19 AS A RECORD, NEVER AS A COUNTDOWN. `R-ADVERSARY-SHAPE-CONTROL-
+# NEEDS-A-BROKEN-DEFENCE` says so in terms, and at least three of them
+# (`ForeignSeedProof`, `ClaimantChosenSurvivorSet`, `UntrustedClaimFields`) have
+# a fixture that GRANTS the capability while the defence HOLDS — they are stuck
+# for a structural reason and not for any gap in the tree.
+#
+# THE KEY IS (path, capability, digest-of-the-claim-sentence), and the digest is
+# the part that matters. STATED PLAINLY, because a grandfathered list is itself a
+# decaying claim:
+#
+#   IT CATCHES  — any reword of the FIRST matching claim sentence in the block,
+#                 any change of capability name, and any move to another file.
+#                 Each of those drops the key, so the claim is reported FRESH
+#                 (red) and the orphaned entry is reported STALE (red). Both
+#                 sides are loud; neither can shrink coverage silently.
+#   IT MISSES   — a reword of any OTHER claim sentence in the same comment block.
+#                 The gate reports only the FIRST match per block (known limit
+#                 ONE in the docstring), and four blocks carry more than one
+#                 claim sentence, so the digest covers the first of those and
+#                 not its neighbours. It also misses a change to the `UNCOVERED:`
+#                 reason text, and a move of the block within the same file:
+#                 line numbers are deliberately not in the key.
+#
+# HOW IT MAY MOVE. Removing an entry costs two edits in this file (the row and
+# RATCHET_COUNT) and the gate checks they agree. Adding one costs exactly the
+# same two edits — the ratchet does not make growth impossible, it makes growth
+# a reviewable diff that says out loud what it is doing. There is NO automatic
+# forcing function pushing this list down; the direction "may only shrink" is
+# carried by the decision entry and by review, not by the machine.
+# ---------------------------------------------------------------------------
+RATCHET = (
+    ('core/bond/bond.go', 'SybilPlotSharing', '23a5decdc9ea'),
+    ('core/bond/bond.go', 'VDFOutputPrediction', '1badfd3b7eed'),
+    ('core/bond/bond.go', 'SeedBlockWithoutPlot', 'f689249c9dcd'),
+    ('core/bond/bond.go', 'OnDemandPlotRecompute', '4526713b8ced'),
+    ('core/bond/bond.go', 'SeedBlockInclusionProof', 'f8b6c80eb0df'),
+    ('core/bond/bond.go', 'ForeignPlotLabels', 'e50876438657'),
+    ('core/bond/bond.go', 'CrossEpochProofReplay', 'fe5526229678'),
+    ('core/node/bondaudit.go', 'PeerAcceptedSelfAssertedBond', 'f95c92fcdd45'),
+    ('core/node/por.go', 'TagsWithoutBytes', 'e281e2c299e7'),
+    ('core/node/por.go', 'UnderReportedBlockCount', 'd167da6e5b2a'),
+    ('core/node/por.go', 'ForeignSeedProof', '10e0a2bd116d'),
+    ('core/node/repairclaim.go', 'UntrustedClaimFields', '1e72f903ca2a'),
+    ('core/node/repairclaim.go', 'JudgeWithoutCareHandle', '8759c679dacc'),
+    ('core/node/repairclaim.go', 'CaretakerDiscoveryWithoutCareKey', '6798ee022955'),
+    ('core/por/por.go', 'CrossChunkTagSubstitution', '14b5ce355e3d'),
+    ('core/por/por.go', 'TagsAfterByteLoss', 'f861bd27c61f'),
+    ('core/repairproof/claim.go', 'ClaimantChosenSurvivorSet', '426fa3a62ed1'),
+    ('core/repairproof/gate.go', 'RelayedHolderProof', '624c8811e63a'),
+    ('core/repairproof/gate.go', 'DataLessClaimant', '65c855794004'),
+)
+# Redundant on purpose: see "HOW IT MAY MOVE" above.
+RATCHET_COUNT = 19
 
 
 def tracked_files(root=None):
@@ -229,8 +391,9 @@ def sentences(block):
     return [s.strip() for s in re.split(r"(?<=[.;])\s+", stripped) if s.strip()]
 
 
-def main(root=None, quiet=False):
+def main(root=None, quiet=False, strict=False, allow=None):
     root = Path(root) if root else ROOT
+    allow = RATCHET if allow is None else tuple(allow)
     files = tracked_files(root)
     # Every test function in the tracked tree, name -> file. Built once; a
     # citation resolves against it (scar-cited-gate-does-not-exist, count=5).
@@ -243,10 +406,10 @@ def main(root=None, quiet=False):
             body = p.read_text(errors="replace")
         except OSError:
             continue
-        for m in FUNC_RE.finditer(body):
-            tests[m.group(1)] = (rel, body)
+        for name, (holds, ctrl) in marker_scopes(body).items():
+            tests[name] = (rel, holds, ctrl)
 
-    claims, problems = [], []
+    claims, problems, uncovered = [], [], []
     for rel in sorted(files):
         if not rel.endswith(".go") or rel.endswith("_test.go") or not in_scope(rel):
             continue
@@ -271,12 +434,13 @@ def main(root=None, quiet=False):
                 continue  # declared not a defence claim; the denial is in the diff
             cap = decl.group("cap")
             if decl.group("unc") is not None:
-                problems.append(
+                uncovered.append((
+                    claim_key(rel, cap, hit[0]),
                     f"{rel}:{lineno}: DECLARED UNCOVERED — capability={cap}. "
                     f"No fixture grants the adversary this capability.\n"
                     f"    reason: {decl.group('unc')[:200]}\n"
-                    f"    This is a RECORD, not an exemption. {GATE_NAME} stays RED until a "
-                    f"capability-holding fixture exists ({ROADMAP_ROW}, {DECISION}).")
+                    f"    This is a RECORD, not an exemption "
+                    f"({ROADMAP_ROW}, {DECISION})."))
                 continue
             fix = decl.group("fix")
             if fix not in tests:
@@ -284,9 +448,7 @@ def main(root=None, quiet=False):
                     f"{rel}:{lineno}: CITED FIXTURE DOES NOT EXIST — {fix} "
                     f"(capability={cap}). No `func {fix}(` in any tracked *_test.go.")
                 continue
-            frel, fbody = tests[fix]
-            holds = set(HOLDS_RE.findall(fbody))
-            ctrl = set(CONTROL_RE.findall(fbody))
+            frel, holds, ctrl = tests[fix]
             if cap not in holds:
                 problems.append(
                     f"{rel}:{lineno}: FIXTURE DOES NOT GRANT THE CAPABILITY — {fix} "
@@ -303,16 +465,59 @@ def main(root=None, quiet=False):
                     f"fixture cannot show the capability is load-bearing, and a bystander passes "
                     f"as a witness (scar-gate-passes-on-a-bystander, count=3, third-time fired).")
 
+    # ── THE RATCHET ────────────────────────────────────────────────────────
+    # Three buckets, and only the middle one is grandfathered.
+    held = [m for k, m in uncovered if k in allow]
+    fresh = [m for k, m in uncovered if k not in allow]
+    seen = {k for k, _ in uncovered}
+    stale = [e for e in allow if e not in seen]
+
+    ratchet_problems = list(problems)
+    for m in fresh:
+        ratchet_problems.append(
+            m + f"\n    ★ NOT ON THE RATCHET ALLOW-LIST. This claim is NEW to "
+                f"{GATE_NAME} — either newly written, or an allow-listed claim whose "
+                f"SENTENCE, CAPABILITY NAME or FILE changed, which drops its key.\n"
+                f"    The allow-list grandfathers a fixed set of {RATCHET_COUNT} "
+                f"pre-existing uncovered claims and NOTHING else. To land this you must "
+                f"edit RATCHET and RATCHET_COUNT in {Path(__file__).name} together, in a "
+                f"diff a reviewer reads. That edit GROWS the backlog and the ratified "
+                f"direction is that it may only shrink.")
+    for e in stale:
+        ratchet_problems.append(
+            f"STALE RATCHET ENTRY — {e[0]} capability={e[1]} digest={e[2]} matches "
+            f"nothing in the tree.\n"
+            f"    This is the DECAY the ratchet exists to make loud. Either the claim was "
+            f"covered or deleted (good: remove this entry and decrement RATCHET_COUNT), or "
+            f"it was REWORDED and is now reported above as a fresh claim (then move the "
+            f"entry, do not add one). An entry that quietly matched nothing would shrink "
+            f"this gate's coverage with no diff; that is why it fails instead.")
+    if allow is RATCHET and len(RATCHET) != RATCHET_COUNT:
+        ratchet_problems.append(
+            f"RATCHET_COUNT DISAGREES WITH RATCHET — declared {RATCHET_COUNT}, "
+            f"list holds {len(RATCHET)}.\n"
+            f"    The two are deliberately redundant: changing the backlog size costs TWO "
+            f"edits in one file, so neither growth nor shrinkage can happen by accident.")
+
+    failing = (problems + [m for _, m in uncovered]) if strict else ratchet_problems
+
     if quiet:
-        return 1 if problems else 0
+        return 1 if failing else 0
     print(f"{GATE_NAME}: scanned {len(files)} tracked files, "
           f"{sum(1 for r in files if in_scope(r) and r.endswith('.go') and not r.endswith('_test.go'))} "
           f"in scope; {len(claims)} defence claims found; {len(tests)} test functions resolvable.")
-    if not problems:
-        print(f"{GATE_NAME}: OK — every defence claim in scope names a capability-holding fixture.")
+    print(f"{GATE_NAME}: mode={'STRICT' if strict else 'RATCHET'}; "
+          f"{len(uncovered)} declared-uncovered ({len(held)} grandfathered, "
+          f"{len(fresh)} NOT on the allow-list), {len(stale)} stale allow-list "
+          f"entr{'y' if len(stale) == 1 else 'ies'}, {len(problems)} hard problem(s).")
+    if not failing:
+        print(f"{GATE_NAME}: OK — no NEW undeclared or uncovered defence claim, and every "
+              f"`fixture=` resolves to a test that grants the capability and controls for it.")
+        print(f"  This is NOT 'the claim is covered'. {len(held)} claims are grandfathered "
+              f"RECORDS of missing coverage; read them with --strict.")
         return 0
-    print(f"\n{GATE_NAME}: {len(problems)} problem(s).\n")
-    for p in problems:
+    print(f"\n{GATE_NAME}: {len(failing)} problem(s).\n")
+    for p in failing:
         print("  - " + p + "\n")
     print(f"  Authority: {ROADMAP_ROW}, docs/decisions.md {DECISION}.")
     return 1
@@ -345,6 +550,10 @@ def main(root=None, quiet=False):
 # refuse it as a witness. A gate that accepts a bystander is the failure shape
 # recorded three times over in this project's scar ledger.
 # ---------------------------------------------------------------------------
+# The claim sentence every manufactured case uses, spelled once so the ratchet
+# cases key on the SAME text the gate will extract from them.
+SELFTEST_CLAIM = "a prover that dropped the bytes cannot make the answer verify."
+
 CASES = [
     ("undeclared claim", 1, {
         "core/por/x.go": "// a prover that dropped the bytes cannot make the answer verify.\npackage por\n"}),
@@ -383,13 +592,73 @@ CASES = [
         "core/por/x.go": "// Blocks reports how many blocks a unit of n bytes splits into.\npackage por\n"}),
     ("claim OUTSIDE the declared scope is not read", 0, {
         "core/credit/x.go": "// a prover that dropped the bytes cannot make the answer verify.\npackage credit\n"}),
+
+    # ── THE MARKER-BINDING CASES ────────────────────────────────────────────
+    # The gate used to read `holds`/`ctrl` from the WHOLE FILE, so a `fixture=`
+    # resolved to the right FILE and never to the right FUNCTION. MEASURED
+    # 2026-09-12 on the real tree: re-pointing a `capability=LayoutKey`
+    # declaration at TestRT_POR_2 — which does not grant LayoutKey — left the
+    # gate at 19 problems, NOT CAUGHT. Case B is that miss, reduced.
+    ("binding A: a section-header marker binds FORWARD across a helper", 0, {
+        "core/por/x.go": "// a prover that dropped the bytes cannot make the answer verify.\n"
+                         "// ADVERSARY-SHAPE: capability=LayoutKey fixture=TestKeyHoldingProver\npackage por\n",
+        "core/por/x_test.go": "package por\n\n"
+                              "// ADVERSARY-HOLDS: LayoutKey\n"
+                              "// CAPABILITY-CONTROL: LayoutKey -- same attack without it must fail\n"
+                              "// ----------------------------------------------------------------\n\n"
+                              "// pin returns \"\" while the defect stands.\n"
+                              "func pin(x int) string {\n\treturn \"\"\n}\n\n"
+                              "func TestKeyHoldingProver(t *testing.T) {\n\t_ = 0\n}\n"}),
+    ("binding B: markers belong to ANOTHER test in the same file", 1, {
+        "core/por/x.go": "// a prover that dropped the bytes cannot make the answer verify.\n"
+                         "// ADVERSARY-SHAPE: capability=LayoutKey fixture=TestSomeOtherTest\npackage por\n",
+        "core/por/x_test.go": "package por\n\n"
+                              "// ADVERSARY-HOLDS: LayoutKey\n"
+                              "// CAPABILITY-CONTROL: LayoutKey -- same attack without it must fail\n"
+                              "func TestKeyHoldingProver(t *testing.T) {\n\t_ = 0\n}\n\n"
+                              "func TestSomeOtherTest(t *testing.T) {\n\t_ = 0\n}\n"}),
+
+    # ── THE RATCHET CASES ───────────────────────────────────────────────────
+    # These carry a 4th element: the allow-list this case runs against. Every
+    # case above runs against an EMPTY allow-list, which is why they are
+    # unaffected by ratchet mode — a case with no grandfathered entry behaves
+    # exactly as it did before.
+    #
+    # There is deliberately NO case for "an undeclared claim is grandfathered".
+    # It cannot be constructed: a key needs a capability NAME, an undeclared
+    # claim has none, and only a DECLARED UNCOVERED claim is ever offered to the
+    # allow-list. The hard classes — undeclared, phantom fixture, missing grant,
+    # missing control — are unconditionally RED and no entry can reach them.
+    ("ratchet: a grandfathered UNCOVERED claim passes", 0, {
+        "core/por/x.go": "// a prover that dropped the bytes cannot make the answer verify.\n"
+                         "// ADVERSARY-SHAPE: capability=LayoutKey UNCOVERED: no fixture grants it (run 2026-09-12)\npackage por\n"},
+     (claim_key("core/por/x.go", "LayoutKey", SELFTEST_CLAIM),)),
+    ("ratchet: the SAME claim REWORDED is red twice (fresh + stale)", 1, {
+        "core/por/x.go": "// a prover that released the space cannot make the answer verify.\n"
+                         "// ADVERSARY-SHAPE: capability=LayoutKey UNCOVERED: no fixture grants it (run 2026-09-12)\npackage por\n"},
+     (claim_key("core/por/x.go", "LayoutKey", SELFTEST_CLAIM),)),
+    ("ratchet: a NEW undeclared claim beside a grandfathered one", 1, {
+        "core/por/x.go": "// a prover that dropped the bytes cannot make the answer verify.\n"
+                         "// ADVERSARY-SHAPE: capability=LayoutKey UNCOVERED: no fixture grants it (run 2026-09-12)\npackage por\n",
+        "core/por/y.go": "// an attacker cannot substitute a tag from another chunk.\npackage por\n"},
+     (claim_key("core/por/x.go", "LayoutKey", SELFTEST_CLAIM),)),
+    ("ratchet: an allow-list entry matching NOTHING is STALE", 1, {
+        "core/por/x.go": "// Blocks reports how many blocks a unit of n bytes splits into.\npackage por\n"},
+     (claim_key("core/por/x.go", "LayoutKey", SELFTEST_CLAIM),)),
+    ("ratchet: --strict still reports the grandfathered claim", 1, {
+        "core/por/x.go": "// a prover that dropped the bytes cannot make the answer verify.\n"
+                         "// ADVERSARY-SHAPE: capability=LayoutKey UNCOVERED: no fixture grants it (run 2026-09-12)\npackage por\n"},
+     (claim_key("core/por/x.go", "LayoutKey", SELFTEST_CLAIM),), {"strict": True}),
 ]
 
 
 def self_test():
     import tempfile
     bad = 0
-    for name, want, files in CASES:
+    for case in CASES:
+        name, want, files = case[0], case[1], case[2]
+        allow = case[3] if len(case) > 3 else ()
+        kwargs = case[4] if len(case) > 4 else {}
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)
             subprocess.run(["git", "-C", str(td), "init", "-q"], check=True)
@@ -398,7 +667,7 @@ def self_test():
                 (td / rel).write_text(body)
             subprocess.run(["git", "-C", str(td), "add", "-A"], check=True,
                            capture_output=True)
-            got = main(root=td, quiet=True)
+            got = main(root=td, quiet=True, allow=allow, **kwargs)
             ok = got == want
             bad += 0 if ok else 1
             print(f"  [{'ok' if ok else 'FAIL'}] want exit {want}, got {got} -- {name}")
@@ -409,4 +678,4 @@ def self_test():
 if __name__ == "__main__":
     if "--self-test" in sys.argv:
         sys.exit(self_test())
-    sys.exit(main())
+    sys.exit(main(strict="--strict" in sys.argv))
