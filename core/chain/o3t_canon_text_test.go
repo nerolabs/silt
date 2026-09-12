@@ -238,29 +238,105 @@ func o3tShippedText(t *testing.T, root string) (lines []o3tLine, flat []o3tFlatF
 	if err != nil {
 		t.Fatal(err)
 	}
-	// ANTI-VACUITY, two independent legs. A walk that silently stops finding files reports a
-	// clean tree, which is the failure this gate exists to prevent one layer down.
+	// ANTI-VACUITY. A walk that silently stops finding files reports a clean tree, which is the
+	// failure this gate exists to prevent one layer down. TWO legs, and they are NOT equals —
+	// which is itself the point, because an earlier revision of this comment presented the count
+	// as an anti-vacuity floor and it is not one.
+	//
+	// LEG 1, THE COUNT, IS A TOTAL-COLLAPSE TRIPWIRE AND NOTHING FINER. A floor that cannot fire
+	// is the defect this whole audit kept finding, so its reach is stated rather than implied.
+	// Re-driven at 75c0f89 over this exact filter: 164 files, composed integration/ 101, docs/
+	// 43, repo root 6, examples/ 6, .github/ 5, deploy/ 2, scripts/ 1. At 100 it fires only if
+	// ~39 % of the walk vanishes. Drop docs/ ENTIRELY and the count is 121 — GREEN, with every
+	// ratification-gated site outside the front page gone from the walk. RAISING the floor does
+	// not repair that: any value tight enough to notice one directory goes false-RED on ordinary
+	// file churn, and a lint that cries wolf gets disabled — this gate's own admission bar. So
+	// the count is kept only for what it genuinely catches (a root that does not resolve, a
+	// WalkDir that returns early, an extension filter that admits nothing) and the binding work
+	// moves to LEG 2.
+	//
+	// LEG 2, THE ANCHORS, binds, and it carries no number at all: a named file either survives
+	// the walk or it does not, so there is no margin to drift and nothing to re-drive. One anchor
+	// per walked AREA that holds the population this gate polices, and one per admitted
+	// EXTENSION — the extension filter is exactly what was measured broken (integration/consensus/
+	// docker-compose.yml carried a banned literal that no .md/.sh walk could ever reach), so it
+	// gets a witness instead of a comment.
 	if files < 100 {
 		t.Fatalf("SOURCE GATE: GATE VACUOUS — only %d shipped .md/.sh/.yml/.yaml files walked "+
-			"(164 measured on the tracked tree at 75c0f89 with the extensions above; it was 137 "+
+			"(164 measured on the TRACKED tree at 75c0f89 with the extensions above; it was 137 "+
 			"for .md/.sh alone, and an earlier revision of this line said 153, which was never "+
-			"measured — re-drive the number when you change the filter, do not carry it forward)", files)
+			"measured — re-drive the number when you change the filter, do not carry it forward).\n"+
+			"  A WORKING COPY READS HIGHER than the tracked number if it carries untracked or "+
+			"ignored .md/.sh/.yml/.yaml under a walked path — measured 164 tracked vs 168 on one "+
+			"author's disk, the extras being integration/.run-all/report.md and three marketing/ "+
+			"notes. The TRACKED number is the reference because CI walks a clean checkout; if you "+
+			"re-drive this on a laptop and get a mismatch, that is why, and `git worktree add` "+
+			"reproduces the tracked figure.\n"+
+			"  This floor is a TOTAL-COLLAPSE tripwire. It cannot see one directory leaving the "+
+			"walk — that is what the anchors below are for.", files)
 	}
-	sawRoot := false
-	sawIntegration := false
-	for _, l := range lines {
-		if l.Path == "README.md" {
-			sawRoot = true
+	var missing []string
+	for _, a := range o3tWalkAnchors {
+		seen := false
+		for _, l := range lines {
+			if l.Path == filepath.FromSlash(a.Rel) {
+				seen = true
+				break
+			}
 		}
-		if l.Path == filepath.Join("integration", "run-all.sh") {
-			sawIntegration = true
+		if !seen {
+			missing = append(missing, a.Rel+"  — "+a.Why)
 		}
 	}
-	if !sawRoot || !sawIntegration {
-		t.Fatalf("SOURCE GATE: GATE VACUOUS — the walk did not reach README.md (%v) or integration/run-all.sh (%v). "+
-			"Those are the two files whose omission is the whole reason this walk was widened past docs/.", sawRoot, sawIntegration)
+	if len(missing) > 0 {
+		t.Fatalf("SOURCE GATE: GATE VACUOUS — the walk reached %d file(s) but did not reach %d "+
+			"ANCHOR(s):\n  %s\n\n"+
+			"  Each anchor stands for an area or an extension whose silent loss this gate cannot "+
+			"otherwise detect: the file count tolerates losing all of docs/ (164 -> 121, still "+
+			"above the floor). If you narrowed the skip list, the extension filter or the root, "+
+			"either restore the coverage or RETIRE the anchor deliberately and say why — do not "+
+			"delete the line to go green.", files, len(missing), strings.Join(missing, "\n  "))
 	}
 	return lines, flat, files
+}
+
+// o3tWalkAnchors are the files whose PRESENCE in o3tShippedText's walk is asserted. See LEG 2 in
+// o3tShippedText: this is the anti-vacuity leg that actually binds, because it is structural — a
+// named path is in the walk or it is not — where the file COUNT tolerates a 39 % loss.
+//
+// EACH ENTRY IS EVIDENCE-DRIVEN, not a sample. The set covers every walked AREA that holds a site
+// of the vocabulary this gate polices, plus one witness per admitted EXTENSION.
+//
+// ABLATED, one leg at a time, 2026-09-12 — and the SECOND column is the point, because it is the
+// discrimination the file count alone could never make. Each ablation removes the file from the
+// WALK (not the anchor from this list, which would prove nothing) and the gate is re-run:
+//
+//	ablation                                  files walked   count floor   anchor leg
+//	drop docs/ from the skip switch                    121   GREEN         RED  docs/threat-model.md
+//	drop the .yml/.yaml extension                      137   GREEN         RED  …/docker-compose.yml
+//	skip README.md by name                             137   GREEN         RED  README.md
+//	skip run-all.sh by name                            163   GREEN         RED  integration/run-all.sh
+//	drop integration/ from the skip switch              63   RED           (not reached)
+//
+// Read the first four rows as the finding: in every one of them the COUNT FLOOR IS GREEN and the
+// gate is red only because an anchor is missing. The second row is the exact 2026-09-12 regression
+// that this whole change exists to close — a .yml file carrying a banned literal that the walk
+// could not reach — and the floor does not notice it. The last row is honest about its own limit:
+// losing all of integration/ is a big enough collapse that the tripwire fires first, so that run
+// does not demonstrate its anchor; the run above it does, in isolation.
+var o3tWalkAnchors = []struct{ Rel, Why string }{
+	{"README.md",
+		"the repo ROOT, and the front-door site: the sweep this gate replaced walked docs/ only, " +
+			"so the claim sat in README.md for months with a gate in the tree that looked like it covered it"},
+	{"integration/run-all.sh",
+		"integration/ (101 of the 164 walked files at 75c0f89) AND the .sh extension"},
+	{"docs/threat-model.md",
+		"docs/ (43 of 164). Measured: dropping docs/ leaves the count at 121, above the floor, " +
+			"and neither original anchor was under docs/ — so the entire ratification-gated repair " +
+			"set outside the front page could leave the walk with every leg still green"},
+	{"integration/consensus/docker-compose.yml",
+		"the .yml extension, which is not decoration: this exact file carried a banned literal at " +
+			"75c0f89 that the .md/.sh-only walk was structurally incapable of reaching"},
 }
 
 type o3tLine struct {
@@ -338,13 +414,34 @@ func o3tFlatten(rel string, raw []byte) o3tFlatFile {
 // research-certified PUBLISHED CLAIM, and it is HELD for owner ratification. Adding it to this set
 // before that ratification would make this gate demand a sentence nobody has approved.
 //
-// DELIBERATELY NOT BANNED, and this is the gate's honest coverage limit:
+// DELIBERATELY NOT BANNED, and this is the gate's honest coverage limit. BOTH figures below were
+// RE-DRIVEN 2026-09-12 over THIS walk at 75c0f89, after a blind review measured that the two
+// censuses this gate REASONED about were wrong while the two it re-drove were exact:
 //
-//	"heavier chain"  7 hits at 75c0f89, only 2 of which are the claim. The other 5 describe a
-//	                 genuinely TALLER chain in harness mechanics (integration/cloudtest/scenarios.sh
-//	                 "DRIVE the majority to commit a heavier chain") — true statements. Banning it
-//	                 would false-flag 5 of 7.
-//	"heavier fork"   17 hits, mostly legacy-posture tests and the daemon's own narration history.
+//	"heavier chain"  5 hits, only 2 of which are the claim (integration/README.md:164 and
+//	                 integration/run-all.sh:30 — both repaired by text in this change). The other
+//	                 3 describe a genuinely TALLER chain in harness mechanics
+//	                 (integration/cloudtest/scenarios.sh:820,837 "DRIVE the majority to commit a
+//	                 heavier chain" and a height comparison; integration/consensus/run.sh:225
+//	                 "valA held its OWN heavier chain byte-for-byte") — true statements. Banning
+//	                 it would false-flag 3 of 5. The line above previously read "7 hits … the
+//	                 other 5 … false-flag 5 of 7"; no scope reproduces 7 (.md/.sh: 5; +.yml: 5;
+//	                 whole tree: 22). The CONCLUSION survives the correction — the majority of
+//	                 hits are true statements — but the arithmetic that justified it did not.
+//	"heavier fork"   24 hits on 23 distinct lines (one line carries it twice). NOT "mostly legacy-
+//	                 posture tests": this walk admits NO .go file at all, so none of the hits is a
+//	                 test. They are harness prose, compose files and shell —
+//	                 integration/consensus/ x14, integration/redteam/ x5, integration/adversarial/
+//	                 x2, integration/cloudtest/ x1, docs/ x2. The line above previously read "17
+//	                 hits, mostly legacy-posture tests and the daemon's own narration history": 17
+//	                 was correct for the RETIRED .md/.sh 137-file scope and went stale when the
+//	                 filter widened, and the characterisation was drawn from files this walk has
+//	                 never been able to see. THE 24 ARE NOT ALL TRUE STATEMENTS and this entry
+//	                 does not claim they are: integration/adversarial/README.md:9 says "on heal,
+//	                 the lighter side reorgs onto the heavier fork", which is the retired claim.
+//	                 Classifying all 24 was not done here and the phrase stays unbanned on the
+//	                 strength of the true uses above it, not on a measured false-positive rate.
+//	                 Named so the next reader inherits the open edge rather than a count.
 //
 // So integration/run-all.sh's catalog line and integration/README.md's suite row were repaired by
 // TEXT and are NOT covered by this gate. A future re-introduction in those exact words would not
@@ -373,8 +470,32 @@ func o3tFlatten(rel string, raw []byte) o3tFlatFile {
 //
 //	ALSO NOT COVERED, by construction: any file outside the extension filter (.go, .py, .tf,
 //	  .json, Makefile, Dockerfile, extensionless) and any directory in the skip list above —
-//	  including website/, where two hand-maintained pages carry the claim TODAY. The .go
-//	  population is real and is repaired by text in this same change; it is not gated.
+//	  including website/, where two hand-maintained pages carry the claim TODAY
+//	  (website/index.html:173 and website/docs.html:34, re-driven at this head).
+//
+//	  THE .go POPULATION IS REAL, IS ONLY PARTLY REPAIRED, AND IS NOT GATED AT ALL. An earlier
+//	  revision of this line said it "is repaired by text in this same change", which asserted
+//	  more than the tree supports; a blind review named live sites inside it. The population is
+//	  the research certification's own residual R-6. Re-driven at this head:
+//
+//	    REPAIRED by text here — core/chain/redteam_consensus_test.go:11,132;
+//	      core/chain/redteam_f7_test.go (two comment sites); sim/objective_consensus_test.go
+//	      (one comment site and one failure string); core/node/partition.go (SetBlockedPeers'
+//	      doc comment, PRODUCTION source); sim/reorg_test.go (the header, the fixture's stated
+//	      operating theory, two heal comments and two failure strings).
+//	    NOT REPAIRED, deliberately, each for its own reason —
+//	      cmd/silt/daemon.go:1299, the operator narration "chain: reorged onto a heavier fork".
+//	        integration/consensus/run.sh greps for that exact string, so editing it would fail a
+//	        Docker-gated harness OPEN that nobody has re-run at this commit. It is also still
+//	        REACHABLE: the finality gate makes dropped > 0 impossible only while
+//	        finalityQuorumActive(), and a legacy-posture chain has no gate. Residual.
+//	      cmd/silt/daemon.go:154, the -equivocate flag help, which scopes itself to "LEGACY
+//	        mode" and is therefore accurate as written.
+//	      sim/reorg_test.go's test NAME, TestPartitionHealsToHeavierFork. Its comments are
+//	        corrected; renaming it is a cited-test surface and is left as a residual rather than
+//	        bundled into a text repair.
+//
+//	  Nothing above is gated by anything. A .go regression of this vocabulary goes unnoticed.
 //
 // ============================================================================================
 var o3tRetiredForkChoiceVocabulary = []string{

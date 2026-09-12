@@ -17,8 +17,29 @@ import (
 // TestPartitionHealsToHeavierFork is the D2 integration test: a network splits,
 // each side commits its OWN block at the same height (a fork the old chain
 // could never resolve — "first valid block wins, no reorg"), then the partition
-// heals and the lighter side reorgs onto the heavier fork over the wire, while
-// the heavier side does not budge. Consensus reconverges on one history.
+// heals and the side holding the SHORTER history reorgs onto the LONGER one over
+// the wire, while the longer side does not budge. Consensus reconverges on one
+// history.
+//
+// CORRECTED 2026-09-12, AND THE FIXTURE'S POSTURE IS LOAD-BEARING. This header, and
+// the setup comment below, used to explain the outcome by cumulative attestation
+// WEIGHT. There is no weight term: `heavier` ranks on Height then head hash and
+// reads nothing else (TestO3T_HeavierReadsOnlyHeightAndHeadHash). Group B wins here
+// because it is TALLER (height 3 vs 2), not because it is better attested — height
+// and weight are confounded in this fixture, so the test could never have told the
+// two rules apart (research certification README-BOND-FORKCHOICE-literal-claim-and-
+// equivalence-RESEARCH-CERTIFICATION-2026-09-12, residual R-5).
+//
+// The REORG this test observes is real, and that is a property of the posture, not
+// of fork choice: the fixture is chain.DefaultConfig(), which leaves MinBond at 0,
+// so the chain is NON-OBJECTIVE and finalityQuorumActive() is false. With the
+// finality gate ON, Reconcile admits only forks CONTAINING the committed head, a
+// sub-quorum side commits nothing at all, and convergence is by CATCH-UP with
+// nothing dropped. Do not read this test as evidence about an objective chain.
+//
+// The test NAME still says "HeavierFork". It is cited from docs/test-topologies.md
+// (:22, :95), so renaming it is a cited-test surface and is left as a residual
+// rather than bundled into a text repair.
 func TestPartitionHealsToHeavierFork(t *testing.T) {
 	const (
 		seed = int64(42)
@@ -60,9 +81,10 @@ func TestPartitionHealsToHeavierFork(t *testing.T) {
 	groupA, groupB := ids[0:4], ids[4:10]
 	net.Partition(groupB...)
 
-	// Each block commits with exactly `quorum` attestations, so the heavier
-	// history is the one that made MORE progress: group A commits ONE block,
-	// group B commits TWO — cumulative weight 6 vs 3.
+	// Group A commits ONE block, group B commits TWO, so B's history is TALLER:
+	// height 3 against A's 2. That height gap is what fork choice ranks on. Each
+	// block happens to carry exactly `quorum` attestations, but the attestation
+	// count is not an input to the ranking and never was — see the header.
 	if err := propose(nodes[0], "forkA", groupA[1:4], groupA, cfg.Quorum, sched); err != nil {
 		t.Fatalf("group A commit: %v", err)
 	}
@@ -82,15 +104,15 @@ func TestPartitionHealsToHeavierFork(t *testing.T) {
 		t.Fatal("setup: the partition should have produced two DIFFERENT histories")
 	}
 
-	// Heal, and let the lighter side reconcile from a heavier-side peer.
+	// Heal, and let the SHORTER side reconcile from a peer on the taller history.
 	net.ClearPartition()
 	if err := runSync(nodes[0], ids[4], sched); err != nil {
 		t.Fatalf("A syncing from B: %v", err)
 	}
 
-	// Group A reorged onto the heavier fork B.
+	// Group A reorged onto B's taller history.
 	if newHeadA, _ := nodes[0].Chain().Head(); newHeadA != headB {
-		t.Fatal("the lighter partition must reorg onto the heavier fork after healing")
+		t.Fatal("the shorter partition must reorg onto the taller history after healing (ranking is Height then head hash — there is no weight term; this reorg is reachable only because the fixture is legacy posture)")
 	}
 	if nodes[0].Chain().Len() != 3 {
 		t.Fatalf("group A should now hold B's full 2-block history (len=%d)", nodes[0].Chain().Len())
@@ -104,12 +126,12 @@ func TestPartitionHealsToHeavierFork(t *testing.T) {
 		t.Fatal("group A's abandoned entry must be gone after the reorg")
 	}
 
-	// The heavier side must NOT switch to the lighter fork.
+	// The taller side must NOT switch to the shorter fork.
 	if err := runSync(nodes[4], ids[0], sched); err != nil {
 		t.Fatalf("B syncing from A: %v", err)
 	}
 	if headB2, _ := nodes[4].Chain().Head(); headB2 != headB {
-		t.Fatal("the heavier partition must not adopt the lighter fork")
+		t.Fatal("the taller partition must not adopt the shorter fork")
 	}
 }
 

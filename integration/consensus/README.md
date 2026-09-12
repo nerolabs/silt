@@ -21,6 +21,17 @@ with a real network partition, and asserts the **M0 keystone claim**:
 > `README-BOND-FORKCHOICE-literal-claim-and-equivalence-RESEARCH-CERTIFICATION-2026-09-12`
 > (finding R-4).
 >
+> **PROVENANCE — THE WORDING ABOVE IS CERTIFIED BUT NOT YET RATIFIED.** It is the
+> certification's §7 sentence, and the owner has not approved it. It is used here
+> anyway because what this file said before was measurably FALSE, and holding a
+> false statement in place to wait for a ratification is the worse trade. Three
+> shipped sites now carry this replacement wording — this file, `integration/run-all.sh`
+> (suite catalog) and `integration/README.md` (suite row; the last two paraphrase
+> rather than quote). The verbatim pin that would make a re-wording fail a build
+> reads **`README.md` only** and is held with the published-claim half. **So if the
+> owner ratifies different words, these three drift and nothing goes red.** Whoever
+> ratifies should re-grep for this sentence, not just edit the front page.
+>
 > **The consequence for this document is in the "Result" section below and is not
 > cosmetic:** P2 expects a 2-anchor "lighter group" to commit at height 1, and under
 > `requiredLaunchAnchors = ⌊4/2⌋+1 = 3` a 2-anchor island cannot reach the launch
