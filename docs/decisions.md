@@ -5683,3 +5683,96 @@ Both have been discussed as small separable improvements. **They are not.**
   do not make it enforced.
 - **Nothing in the storage-proof area is booked as fixed by this entry.** The break it responds to is
   live.
+
+## D-B8-AI-ADVERSARY-2026-09-12 — B8's external pass is an AI red team, not a human engagement; it stops being a scheduling constraint, and the owner's own acceptance cycles become the longest-lead item on the project
+
+- **Status:** ✅ RATIFIED — 2026-09-12. Owner: *"yes land the B8 classification."* This entry records
+  a **reclassification and its scheduling consequence**, and nothing else.
+- **Tier:** evolving (sequencing). **No consensus rule, no format surface, no economic mechanism and
+  no security parameter changes here.** B8 itself — the build-immutable in `docs/TENETS.md` Part IX,
+  and the M0 certification rule in Part 0 — is untouched.
+- **Why this exists as an entry at all.** The reclassification was owner direction given in
+  conversation, and the sequencing of the current lane already rested on it while it had no ledger
+  row. Re-derived rather than recalled: `docs/decisions.md` carries **14** entries dated 2026-09-12
+  before this one, and **not one of them records it**. `ROADMAP.md` states the gap in terms at two
+  sites — *"this reclassification is owner direction of 2026-09-12 and carries NO `docs/decisions.md`
+  entry; it is owed one."* **This is that entry.** A direction that steers the build and lives only
+  in a conversation is exactly the failure this project spent a day cataloguing.
+
+### 1. What the owner said, verbatim
+
+Session-27 close: *"For B8 — to be transparent that likely will be OpenAI/ChatGPT/Codex/Astra, not a
+human team."*
+
+2026-09-12: *"I will be testing the RC candidate myself and likely will have many cycles of fixing
+based on my own feedback. When I feel confident in the redteam assessment with Astra, the lead time
+will be minutes or hours. Don't stress about it."*
+
+### 2. The classification
+
+**B8's certifying external pass is an AI red team.** Its lead time is **minutes to hours**, not
+weeks. It is not a contracted human engagement, and there is no procurement clock to start.
+
+### 3. Consequence — B8 IS NO LONGER A SCHEDULING CONSTRAINT
+
+**Every sentence in this repository that calls B8 "the longest-lead item on the roadmap" is false as
+a statement about today, and this entry is what the corrections cite.**
+
+Three such sentences sit inside recorded 2026-09-10 rationales — the D3 roadmap row, the four-calls
+block, and the config-bind register row — and **they stay as written**. Each quotes why a decision
+was taken at the time, and the standing practice is that a correction is visible as a correction
+rather than laundered into the original. **The ordering they justify is unaffected**: the
+consensus-config bind still lands before D3, because that rests on not handing the adversary an
+artifact with a known I1 divergence, which is true whatever the engagement costs in calendar.
+
+What *is* retired is the calendar argument built on top of them: B8 no longer sits on the critical
+path by virtue of its lead time, and no work may be justified on the grounds that it is racing a
+weeks-long external booking.
+
+### 4. Consequence — the owner's own RC acceptance cycles are now the longest-lead item
+
+*"I will be testing the RC candidate myself and likely will have many cycles of fixing based on my
+own feedback."* Those cycles are **serial, human, and iterative**, and they are the only thing left
+on the path that cannot be delegated, parallelised or bought down.
+
+**The scheduling rule that follows: work which lets the owner start those cycles sooner has leverage
+nothing else on the board has.** That is the stated basis for the current sequence — the two
+structural gates of `D-STRUCTURAL-GATES-2026-09-12` and the first-clean-run work behind them (the
+shipped-default refusal of `D-BOND-DEFAULT-CLEARS-FLOOR-2026-09-12`, the docs that name defaults the
+build does not ship, and the restart error text). It is leverage on the owner's start date, not a
+claim that those items are individually severe.
+
+### 5. What does NOT change — stated plainly, because this is the part a reclassification invites
+
+- **The canon rule stands, unamended:** *the certifying adversary is EXTERNAL; the internal red-team
+  sharpens the target and never replaces it.* `docs/TENETS.md` Part 0 — M0 is held *if and only if*
+  an adversarial red-team suite **written by a party other than the author** denies all three failure
+  modes — and Part IV's **V3 — Test the adversary**: *"the proof that ships is the one an outsider
+  could not break."*
+- **Astra is external to this orchestra.** The rule is therefore **satisfied, not bypassed**. It is
+  not one of the seats, it does not read the seats' rationale, and nothing in this entry lets an
+  internal seat certify M0.
+- **"M0 held" may still not be said before B8 returns.** No RC note, roadmap line, website page or
+  decision entry may assert it earlier. The verdict is the suite's result, exactly as before.
+- **An AI adversary is not a weaker adversary.** Nothing here lowers the bar B8 has to clear; it
+  lowers only the *calendar* the engagement costs.
+
+### 6. Consequence — repo hygiene moves from cosmetic to load-bearing
+
+**An AI adversary reads the entire repository.** Every stale comment, every over-claiming sentence
+and every inert mechanism is *input* to it: a sentence claiming a defence the code does not
+implement is a map of where to look, and a gate that is green over a dead mechanism is an invitation.
+
+**That is the recorded reason the repo clean and the whole-project audit were scheduled BEFORE the
+freeze rather than after it**, ahead of items with more obvious urgency. Under a human engagement the
+ordering would have been arguable; under this one it is not. Repo cleanliness is now evidence the
+adversary consumes, and it is priced as such.
+
+### 7. What this entry does not do
+
+- **It authorises no build and no code change.** It changes no gate, no default and no test.
+- **It does not schedule B8.** Contracting is retired as a task; commissioning the pass remains the
+  owner's act at D3, unchanged.
+- **It does not weaken M0's certification requirement in any direction.** See 5.
+- **It is not a permanence argument.** The freeze still costs re-runs and calendar, never permanence
+  (`D-FREEZE-REPRICE-2026-09-10`), and **no sentence here may be used to argue "or it costs an era."**
