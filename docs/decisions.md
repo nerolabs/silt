@@ -6085,3 +6085,346 @@ block preamble wholesale would have silently promoted both.
 - **It creates no machine gate, because there never was one.** No script or lint in `scripts/` reads
   a count of open owner calls, which is also why nothing would have caught the cap going stale. This
   entry is the record; there is nothing to re-point.
+
+## D-ADVERSARY-SHAPE-RATCHET-2026-09-12 — the adversary-shape gate goes to RATCHET MODE: it reddens on a NEWLY undeclared claim, and the existing 19 are grandfathered on a list that may shrink and may never grow
+
+- **Status:** ✅ RATIFIED — 2026-09-12. The owner ratified the design; the build landed with it.
+- **Tier:** evolving (tooling). **No consensus rule, no format surface, no economic mechanism, no
+  security parameter, and no production behaviour changes here.** The gate is a source reader.
+- **Scope:** `scripts/check_adversary_shape.py`. `ROADMAP.md` row F1.
+
+### 1. Why a plain "fix them all" is impossible, which is what forces the design
+
+`R-ADVERSARY-SHAPE-CONTROL-NEEDS-A-BROKEN-DEFENCE` establishes it and this entry does not re-derive
+it: the gate accepts a `fixture=` only when the named fixture carries both `ADVERSARY-HOLDS: <cap>`
+and `CAPABILITY-CONTROL: <cap>`, and the control leg is defined as *"the same attack WITHOUT `<cap>`
+is asserted to FAIL."*
+
+**That control is only well defined when the attack SUCCEEDS with the capability — that is, when the
+defence is BROKEN.** Where the defence HOLDS, the without-capability variant fails for every
+capability, and a control that cannot discriminate is `scar-gate-passes-on-a-bystander`.
+
+**Consequence: `fixture=` is reachable ONLY for broken defences, so the countdown to zero
+`UNCOVERED` cannot be reached by covering.** At least three of the 19 — `ForeignSeedProof`,
+`ClaimantChosenSurvivorSet`, `UntrustedClaimFields` — have a fixture that GRANTS the capability while
+the defence HOLDS, and are stuck for that structural reason and not for any gap in the tree.
+
+**A gate that can never go green cannot be wired to CI.** That is the whole problem this entry
+solves, and it is why the answer is not "cover them".
+
+### 2. The decision
+
+**The gate reddens when a claim is NEW to it, not when a claim is uncovered.** Ratchet mode is the
+default. `--strict` restores the previous behaviour exactly — it prints all 19 and exits 1 — so
+nothing was deleted, only re-dispositioned.
+
+The 19 pre-existing `UNCOVERED:` records are grandfathered on an explicit allow-list, `RATCHET` in
+the gate's own source. **Four problem classes are NOT grandfatherable and stay unconditionally RED:**
+an undeclared claim, a cited fixture that does not exist, a fixture that does not grant the
+capability, and a fixture with no capability control. A list entry cannot reach any of them — an
+allow-list key requires a capability NAME, and only a declared `UNCOVERED:` claim ever has one.
+
+**MEASURED on the landing commit.** Default mode exits **0**; `--strict` exits **1** with the same
+19 records; 24 in-scope claims, 0 undeclared, 4 `fixture=`, 1 `NOT-A-DEFENCE:`.
+
+### 3. ★ THE ALLOW-LIST IS ITSELF A DECAYING CLAIM, and this is what the keying does about it
+
+A grandfathered entry whose claim text is later reworded would silently fall out of the list, stop
+being counted, and shrink this gate's coverage with no diff. That is the same shape as
+`silt-a-claim-about-a-gate-is-itself-a-claim`, and it is the failure the keying is built against.
+
+**The key is `(path, capability, digest-of-the-claim-sentence)`.** Line numbers are deliberately
+excluded: they move on every unrelated edit above the block, and a gate that fires on an innocuous
+diff is a gate somebody turns off.
+
+**Both sides are checked, which is what makes a reword loud rather than silent:**
+
+| Direction | Verdict |
+|---|---|
+| A problem matching no entry | **RED** — reported as NOT ON THE RATCHET ALLOW-LIST |
+| An entry matching no problem | **RED** — reported as a STALE RATCHET ENTRY |
+
+**DRIVEN, not asserted.** Rewording one word of `core/repairproof/gate.go`'s `DataLessClaimant`
+claim (*"a data-less claimant"* → *"a claimant with no data"*) takes the gate from exit 0 to **exit
+1 with BOTH messages** — one fresh claim and one stale entry. The change is restored; the ablation
+was diff-verified against the original both ways.
+
+**What the keying catches:** any reword of the first matching claim sentence in a block, any change
+of capability name, any move to another file.
+**What it does NOT catch, stated because a partial guard sold as a whole one is worse than none:** a
+reword of any OTHER claim sentence in the same comment block — the gate reports only the FIRST match
+per block, a limit its docstring already names, and four blocks carry more than one claim sentence;
+a change to the `UNCOVERED:` reason text; and a move of the block within the same file.
+
+### 4. How the list may move, and the accepted risk
+
+Removing an entry costs two edits in one file: the row, and `RATCHET_COUNT`. The gate checks the two
+agree and reddens when they do not (driven: setting the count to 20 against a 19-row list exits 1).
+**Adding an entry costs exactly the same two edits.**
+
+**★ THE ACCEPTED RISK, in plain terms: a grandfathered allow-list is how a backlog becomes
+permanent.** Nineteen entries that "must shrink" have **no forcing function**. Nothing in the gate
+pushes the number down, nothing expires, and growth and shrinkage are mechanically identical — only
+a human reviewer reading the diff tells them apart. The direction *may only shrink* is carried by
+this entry and by review, not by the machine. That was the trade the owner took, and it is recorded
+here rather than discovered later.
+
+The mitigation that exists: the size of the backlog is a single integer in one file, so growing it
+is a maximally visible one-line diff that says what it is doing.
+
+### 5. A known file-scope limit is fixed in the same commit
+
+The grant and control legs used to bind to the FILE, not to the named function, so a `fixture=`
+resolved to the right file and never to the right function. **MEASURED 2026-09-12: re-pointing a
+`capability=LayoutKey` declaration at `TestRT_POR_2_ChallengeProxyPassesAudit_PINNED_DEFECT`, which
+does not grant `LayoutKey`, left the gate at 19 problems, NOT CAUGHT.**
+
+`marker_scopes` now binds each marker to ONE test, by two clauses: a marker inside a top-level
+function's body binds to that function and only if it is a test; a marker anywhere else binds
+FORWARD to the next test declared. Both placements exist in the tree — the two RT-POR fixtures put
+their markers in a section header above the test's own helpers.
+
+**RE-MEASURED on the identical patched tree: the pre-fix gate reports 19, the post-fix gate reports
+20** and names the mis-pointed fixture. The reduction of that miss is a permanent self-test case
+("binding B"), independently confirmed to exit **0** under the pre-fix gate and **1** under the
+post-fix one. The self-test is 17/17.
+
+### 6. What this entry does NOT do
+
+- **It does not wire the gate to CI.** That stays a separate decision. Ratchet mode removes the
+  blocker that the gate could never go green; what remains before wiring is a judgement about a
+  source-text gate on a required check, and `ROADMAP.md` row F1 carries it.
+- **It does not make any of the 19 covered, and nobody may read a green run as coverage.** The gate
+  prints the distinction itself on every green run. **Do not describe this gate as covering "the
+  claim"; it covers a VOCABULARY.**
+- **It does not change the 19 into a work queue.** `R-ADVERSARY-SHAPE-CONTROL-NEEDS-A-BROKEN-DEFENCE`
+  says they are a RECORD and never a countdown, and that residual's own closer — whether the gate
+  gains a third accepting form — is untouched and still open.
+- **It changes no production code.** `go test -short ./...` is exit 0 with zero failures before and
+  after.
+
+## D-BOND-DEFAULT-GOAL-AMENDED-2026-09-12 — F3's goal is AMENDED: the shipped defaults cannot admit a working validator, and the achievable goal is EXACTLY ONE refusal that names an actionable remedy
+
+- **Status:** ✅ RATIFIED — 2026-09-12, as an AMENDMENT to the direction in
+  `D-BOND-DEFAULT-CLEARS-FLOOR-2026-09-12`. That entry is not withdrawn; its goal sentence is
+  replaced and the replacement is visible as a correction.
+- **Tier:** evolving. **⚠ THE `-bond` VALUE IS STILL NOT RATIFIED AND NOTHING HERE RAISES ANY
+  DEFAULT.** No code changes in this entry.
+- **Scope:** `ROADMAP.md` row F3; the goal clause of `D-BOND-DEFAULT-CLEARS-FLOOR-2026-09-12`.
+
+### 1. The goal that is being amended, quoted
+
+`D-BOND-DEFAULT-CLEARS-FLOOR-2026-09-12` decides, in its item 2: *"Ship a gate asserting that the
+SHIPPED DEFAULTS admit a working validator."* Its title says the same.
+
+**MEASURED: unachievable.** Not hard, not expensive — unachievable by any choice of default.
+
+### 2. The mechanism, read at source
+
+`silt daemon -validator` on pure defaults hits **two** refusals, in this order:
+
+1. **The bond-floor refusal — SPURIOUS, and raising `-bond` removes it.** `effFloor` defaults on for
+   the objective path, `-bond` defaults to `64M` below it, and the daemon exits. This is the defect
+   `D-BOND-DEFAULT-CLEARS-FLOOR-2026-09-12` names: two defaults set in different places and never
+   composed. Nothing about it is a security property.
+2. **The cold-start refusal — SUBSTANTIVE, and NO default can remove it.** `coldStartScaffoldOK`
+   refuses an untrusted objective validator with no cold-start scaffolding, because such a node
+   *"would treat itself as mature from genesis (no anchor co-sign), letting a young or Sybil quorum
+   self-certify and capture."* **That is the correct M0 cold-start capture defence.** Its two exits
+   are `-anchors ID,...` with `-mature-validators N`, or `-ws-checkpoint HEIGHT:HASH`.
+
+**Why no default can ever satisfy the second.** `-anchors` is a list of anchor validator IDs and
+`-ws-checkpoint` is a `HEIGHT:HASH` pin. **Both are NETWORK-SPECIFIC.** A compiled-in value for
+either would be a value for somebody else's network, which is worse than a refusal. The refusal is
+the correct behaviour and it is permanent.
+
+### 3. The amended goal
+
+> **The shipped defaults produce EXACTLY ONE refusal, and it names a remedy the operator can act
+> on.**
+
+Raising `-bond` is still the work: it removes the spurious refusal, leaving the substantive one
+standing alone and legible. What changes is what the gate may assert. It may assert the count and
+the actionability of the refusal. **It may NOT assert that the daemon starts.**
+
+### 4. ★ THE ACCEPTED RISK, in the owner's terms
+
+**Amending a goal because it proved hard is how goals get weakened.** The defence of this particular
+amendment is that the goal was not hard but false — no default satisfies it — and the evidence is a
+refusal whose two remedies are both network-specific strings. That defence does not generalise, and
+it is not a precedent for re-scoping the next goal that resists.
+
+**And the product problem is NOT fixed by this.** *"A stock operator cannot run a validator at
+all"* remains true after the amended goal is met, and it remains a real problem. This entry narrows
+what a GATE may assert; it does not narrow what silt owes an operator. Anyone citing this entry to
+close the operator-experience question is misusing it.
+
+### 5. The measured detail that a gate must not get wrong
+
+**The daemon prints `1029` MiB, not 1030.** Both the defaulted-floor notice and the refusal render
+the floor as `effFloor>>20`, and `DerivedBondFloor` = 1,080,000,000 B = **1029.968…** MiB, which the
+shift **truncates** to 1029. `ROADMAP.md` row F3 and `D-BOND-DEFAULT-CLEARS-FLOOR-2026-09-12` both
+write *"≈ 1030 MiB"*, which is the correct rounding of the byte count and **not the string the
+operator sees**. A gate or a doc that greps for "1030" finds nothing. Row F3 is corrected in place.
+
+### 6. What this entry does NOT do
+
+- **It does not raise `-bond`, or any other default.** The value remains unratified; it must clear
+  the derived floor with margin, be defensible as a real operator's smallest sensible plot, and
+  route to the Researcher if it turns out to be a security parameter in disguise.
+- **It does not move the floor.** Build-immutables #3/#4 forbid sourcing it from a transport
+  deadline, and the floor is correct and deliberately default-on.
+- **It does not weaken the cold-start refusal.** The refusal is the defence. The amended goal makes
+  it the ONLY refusal, never an absent one.
+- **It does not retire the gate requirement from `D-BOND-DEFAULT-CLEARS-FLOOR-2026-09-12`.** The
+  ★ clause there — the gate must READ the default, not a copy of it, and the census is by PATH
+  across **two** sites hard-coding `int64(64)<<20` — is untouched and still owed.
+
+## D-RTRC3-INTENT-STANDS-2026-09-12 — ROADMAP F8: RT-RC-3 states the intended rule and the shipped positive control encodes the defect as correct; the closer is a positive control over a REAL loss, and it is ONE unit of work
+
+- **Status:** ✅ RATIFIED — 2026-09-12. The contradiction is resolved in RT-RC-3's favour. The work
+  it implies is **NOT authorised to build in this entry.**
+- **Tier:** the underlying rule is an **economic mechanism** and stays inside
+  `D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12`'s gate. This entry decides which of two tests states
+  the intent; it authorises no mechanism change.
+- **Scope:** `ROADMAP.md` row F8. `core/node/rt_repairclaim_gates_test.go`,
+  `core/node/redteam_repair_claim_test.go`.
+
+### 1. The contradiction, and which side is right
+
+`TestRTRC3_ClaimWithNoLossIsPaid_PINNED_DEFECT` and `TestRedteamRepair_HonestClaimIsPaid` build the
+same arrangement with the same `stageShardOn` helper and assert the same outcome —
+`BountiesReleased == 1`. The pin calls it a DEFECT; the shipped test calls it the INTENDED rule. The
+pin's own comment says exactly one reading can be right and refuses to reconcile them by editing
+either test.
+
+**RT-RC-3 states the intended rule.** Under `D-BOUNTY-PAYS-FOR-REPAIR-2026-09-12` a durability
+bounty pays for a repair having happened, and a shard that was never missing was never repaired.
+**`TestRedteamRepair_HonestClaimIsPaid` — the SHIPPED POSITIVE CONTROL — encodes the defect as
+correct behaviour, and it has been green the whole time.** A test named for the red team is
+certifying the thing the red team found.
+
+### 2. ★ THE COST: THREE TESTS ARE ONE UNIT OF WORK, NOT THREE
+
+The positive control's non-vacuity is load-bearing for the two negative controls, and it says so in
+its own doc comment: *"Without this, the deny/slash tests could be passing by rejecting
+everything."* **Correct the positive control and `TestRedteamRepair_GarbageClaimIsSlashed` and
+`TestRedteamRepair_ComputeButDontStoreIsDenied` lose their witness in the same commit.**
+
+**THE CLOSER:** build a positive control over a **REAL loss** — a stripe position actually missing,
+then rebuilt — and **re-point BOTH negative controls at it**. Budget it as one item.
+
+**★ DO NOT RESOLVE THIS BY DELETING A TEST.** Deleting the positive control removes the
+contradiction and silently guts both negative controls; deleting the pin removes the record of a
+live defect. Neither is a resolution.
+
+### 3. The accepted risk
+
+**It sits behind a GATED input.** The loss witness is held by `R-PROBE-FALSE-NEGATIVE-RATE`: a
+repair **erases its own evidence** (`T-LOSS-IS-A-TRANSIENT`), and a witness must be produced on a
+prompt that is **never itself the evidence** (`T-WITNESS-NEEDS-A-PROMPT`). A positive control over a
+real loss needs exactly that witness.
+
+**So the risk is that the work lands asserting an intent the mechanism cannot yet deliver** — a
+fixture that stages a genuine loss and a genuine rebuild, asserting a payment rule the judge has no
+way to enforce, which would be a test that passes by arrangement rather than by mechanism. That is
+why this entry ratifies the READING and not the BUILD, and why the sequencing runs through
+`R-PROBE-FALSE-NEGATIVE-RATE` rather than around it.
+
+### 4. What this entry does NOT do
+
+- **It authorises no build.** Nothing in `core/node` changes on this entry. The three authorised
+  items on `D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12` are unchanged and this is not a fourth.
+- **It does not ratify the current behaviour as correct**, and it does not make the pin retirable. A
+  pin buys visibility, not a repair.
+- **It does not touch `R-RTRC3-PREMISE-CHECKS-A-RECORD`.** That is a different question about
+  RT-RC-3's premise guard reading a provider RECORD rather than retrievability, it is filed
+  separately at LOW severity, and its own row says not to bundle the two.
+
+## D-TOKEN-DOMAIN-CHAINLESS-CLIENT-2026-09-12 — owner call 7 is ANSWERED YES: the token domain is genesis-covered, a chainless client carries 32 bytes, and the break is `creditDomain`, not `fdhDomain`
+
+- **Status:** ✅ RATIFIED — 2026-09-12, on the Researcher's certification.
+- **Tier:** the verdict touches an **economic mechanism** and a **published claim**, and it is
+  ratified at the strength the certification returned. **It moves no consensus rule, on a stated
+  condition (§4).** No code changes in this entry.
+- **Certification:**
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/TOKEN-DOMAIN-GENESIS-COVERAGE-AND-THE-CHAINLESS-CLIENT-RESEARCH-CERTIFICATION-2026-09-12.md`
+- **Scope:** `ROADMAP.md` open owner call 7. PR **#828** (M3), held as a draft with its e2e RED.
+
+### 1. The answer
+
+**YES — `swarm add -token-quorum` must work from a client that has no chain, and it can.**
+
+**The token domain is GENESIS-COVERED.** `(*Chain).ChainID()` **is** the height-0 block's `Hash()`.
+It is written once at genesis, `Reconcile` already refuses a fork on it (`ErrForeignGenesis`), the
+freeze manifest classes it as *"NETWORK IDENTITY, and moving it is not an era, it is a new
+network"*, and it is derived from committed history so every replica computes the identical value.
+**It is time-invariant**, which is the property that makes it carriable.
+
+**So a chainless client carries 32 bytes.** It does not need a chain; it needs one hash.
+
+### 2. How the 32 bytes get there
+
+**By operator flag — the admissible default.** The daemon already prints the genesis hash at
+start-up, so the value is obtainable by the same out-of-band route as `-ws-checkpoint`.
+
+**By peer fetch — admissible ONLY with UNANIMITY.** The honest value is byte-identical at every peer
+on one network, so disagreement across peers is observable; that is what makes a fetch sound at all.
+
+**★ THE FIRST-SUCCESS FORM MUST NOT SHIP.** First-success lets a single stale or lying peer deny
+every publish, with no signal and no fallback — a 1-of-n liveness dependency strictly worse than the
+shipped `FetchCanonicalIssuersFromAny`, which at least has a documented fallback. **Unanimity-or-refuse
+is the only sound form.** If route (b) is built, the unanimity form must be driven with the
+first-success form shown RED.
+
+### 3. ★ THE BREAK IS `creditDomain`, NOT `fdhDomain`
+
+The prepaid publish credit is where a chain-bound domain actually bites: `(*Node).AcquireCredits`
+blinds under `creditDomain`, and a chain-bound `creditDomain` on a chainless client produces a real
+acquisition failure. That is the mechanism behind all three of #828's e2e failures.
+
+**`fdhDomain`, the publish-token domain, is DELIBERATELY LEFT UNBOUND.** A publish token is verified
+**inside block validity** — `v5ValidateEntry` and `(*Chain).ValidateEntry` — against a THIRD PARTY's
+key. **Binding `fdhDomain` is therefore a CONSENSUS-RULE CHANGE**, not a client change.
+
+**⚠ THE CONDITION IS LIVE AND IS PART OF THIS RATIFICATION.** The certification's "no consensus rule"
+verdict holds **only while `fdhDomain` stays unbound.** The moment it is bound, that verdict
+INVERTS and must be re-opened. **Nothing here licenses binding `fdhDomain`**; M3b stays gated.
+
+### 4. ★ WHAT THIS DOES NOT CLOSE
+
+- **`R-CLIENT-HAS-NO-CHAIN` is NOT closed on this verdict.** It is a **DIFFERENT QUANTITY on a
+  different lane**. Call 7 asks whether a chainless client can derive a token domain; that row asks
+  whether a shipped `silt` process is both chain-bearing and a paid-lane fetcher, which governs
+  `pinDemandIssuerKey` refusing at `n.chain == nil`. Answering "the client carries 32 bytes" leaves
+  the client's nil chain exactly where it was. The two were fused and are hereby separated.
+- **`R-E2E-ERA4-FIXTURE` is NOT closed either.** Its remaining posture half rides
+  `R-CLIENT-HAS-NO-CHAIN`, not call 7, and it is still blocked after this answer.
+
+### 5. The accepted risk
+
+**This rests on `T-ONE-VALUE-CANNOT-TAG`, certified the same day and never adversarially tested.**
+The theorem says a quantity the verifier holds in exactly one value and checks by equality can only
+DENY, so it carries no tagging channel — which is what makes a network-specific 32 bytes admissible
+under M0 in the first place.
+
+**THE INVERSION, stated so it is looked for rather than discovered:** if any verifier ever holds
+chain ids as a **SET** and SEARCHES it rather than comparing against one value, *"can only deny"*
+becomes a **tagging surface** — the matching element identifies the requester's network, and the
+privacy argument fails. A same-day theorem with no adversarial pass is a thin foundation for a
+published-claim-adjacent verdict, and that thinness is the risk being accepted.
+
+### 6. An UNASKED finding, filed: `R-BLIND-BIND-IS-REQUESTER-CHOSEN`
+
+`blindtoken.SignBlinded(rng, priv, blinded)` takes **only the blinded representative.** The issuer
+never sees the domain, so **the network bind is REQUESTER-CHOSEN, not issuer-enforced.** The
+requester picks which domain string it hashed under, and the signature is over whatever it hands
+across.
+
+**Where it is void: two concurrently-live networks sharing an issuer key.** A requester on network A
+can bind to network B's chain id and obtain a signature that verifies on B. A bind nobody enforces
+at issuance is a self-declaration.
+
+This was not asked for on call 7 and does not change the answer — the verdict rests on
+genesis-coverage of the chain id, not on issuer enforcement. It is filed as a register row rather
+than folded in silently.
