@@ -360,6 +360,15 @@ func (i *Issuer) Public() *rsa.PublicKey { return &i.key.PublicKey }
 // blind-signs the token — learning nothing about its serial. If the charge
 // fails (e.g. insufficient credit), no token is minted.
 //
+// THE ISSUER KNOWS NOTHING ABOUT THE NETWORK BINDING, AND THAT IS NOT A GAP (M3,
+// 2026-09-11). A blind issuer signs a blinded value; it cannot inspect the message, so it
+// cannot check which chain id the requester bound. The network refusal an issuer CAN make
+// is "do not be a signing oracle while you do not know your own network", and it is made
+// one level up, where the issuer's own chain is in scope: (*Node).answerDemandTokenRequest
+// refuses before any charge when (*Node).chainID() is zero, and demand.SignWithdrawal
+// takes the same arm. Issue itself stays lane-agnostic — it also serves the publish lane,
+// which is deliberately NOT chain-bound (see blindtoken.fdhDomain).
+//
 // THE INPUT IS CHECKED BEFORE THE CHARGE, and the order is the property (advisory C-5).
 // SignBlinded refuses a non-canonical or out-of-range representative, so without this
 // pre-check a rejected spelling would still have taken the requester's fee — a strictly

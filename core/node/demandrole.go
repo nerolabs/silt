@@ -34,6 +34,16 @@ import (
 // produce a delivery receipt (SetSigner was never called).
 var ErrNoSigner = errors.New("node: no signing identity (SetSigner) — cannot sign a delivery receipt")
 
+// ChainID is this node's NETWORK IDENTITY — the genesis block's hash — and the ZERO hash
+// when this node holds no chain (see the unexported chainID, which this exports verbatim).
+//
+// It exists for the D3 private-withdrawal path (client.WithdrawDemandTokenPrivately): the
+// chain-bound token domains take the network as a REQUIRED PARAMETER, and an EPHEMERAL
+// withdrawer holds no chain of its own, so its DURABLE parent must read its network here
+// and hand it down. A caller that receives a zero hash from this method has no network to
+// hand down and must not invent one — every bound lane refuses it (M3, 2026-09-11).
+func (n *Node) ChainID() ports.Hash { return n.chainID() }
+
 // AcquireDemandTokenWithCredit is the D3 credit-paid withdrawal: it blind-withdraws a
 // demand token from issuer for issue epoch epoch, paying the fee with a PREPAID BLIND
 // CREDIT (acquired earlier under a durable identity via AcquireCredits) instead of
@@ -43,6 +53,13 @@ var ErrNoSigner = errors.New("node: no signing identity (SetSigner) — cannot s
 // client withdraw over a throwaway identity so the issuer cannot link the withdrawal to
 // the fetcher (the blind signature already hides the serial; this severs the
 // account/identity link).
+//
+// chainID IS THE PARENT'S RESOLUTION TOO, AND FOR THE SAME REASON (M3, 2026-09-11). The
+// demand domain binds the network into the blind-signed message, and this node — an
+// EPHEMERAL identity by construction — holds no chain, so (*Node).chainID() would be the
+// zero hash here and the withdrawal would refuse outright. The durable parent reads its
+// own chain id and hands it down beside issuerPub and epoch. It stays a PARAMETER supplied
+// by a chain-holder: it is not a field of the request, and the issuer never sees it.
 //
 // issuerPub AND epoch ARE THE PARENT'S RESOLUTION, NOT THE ISSUER'S SAY-SO (R0.4b,
 // red-team break 5). An ephemeral node has no chain, so it cannot resolve key_E against
@@ -54,13 +71,13 @@ var ErrNoSigner = errors.New("node: no signing identity (SetSigner) — cannot s
 //
 // done fires once with the token or an error.
 func (n *Node) AcquireDemandTokenWithCredit(rng io.Reader, issuer ports.NodeID, issuerPub *rsa.PublicKey,
-	epoch uint64, credit ports.PublishCredit, done func(demand.Token, error)) {
+	chainID ports.Hash, epoch uint64, credit ports.PublishCredit, done func(demand.Token, error)) {
 	if issuerPub == nil {
 		done(demand.Token{}, ErrNoIssuerKey)
 		return
 	}
 	c := credit // the issuer spends this instead of charging `from` (tokenChargeFor)
-	n.withdrawDemandToken(rng, issuer, issuerPub, epoch, &c, func(t demand.Token, _ uint64, err error) {
+	n.withdrawDemandToken(rng, issuer, issuerPub, chainID, epoch, &c, func(t demand.Token, _ uint64, err error) {
 		done(t, err)
 	})
 }

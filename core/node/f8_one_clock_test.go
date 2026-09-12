@@ -179,7 +179,7 @@ func TestF8_LedgerEpochIsTheNodesChainEpochAtEveryBlock(t *testing.T) {
 		// A boundary. An anchor minted under key_e for THIS epoch verifies in-window at
 		// the keyset (VerifyAnchorInWindow starts at cur = e) and must be admitted: the
 		// ledger's clock is the same e, so it is not future-dated.
-		a := mintAnchorUnder(t, r.keys[e], e)
+		a := mintAnchorUnder(t, r.keys[e], r.node.chainID(), e)
 		sess, err := r.open(t, 9400+int64(i), fmt.Sprintf("f8-boundary-%d", e), []relaypay.Anchor{a})
 		if err != nil {
 			if strings.Contains(err.Error(), credit.ReasonAnchorFuture) {
@@ -223,7 +223,7 @@ func TestF8_LedgerFollowsItsSourceNotTheCaller(t *testing.T) {
 			"the cert §3.2 refutation's premise does not hold on this fixture; this subtest cannot discriminate", src)
 	}
 	before := ledgerTotal(r.ledger)
-	a1 := mintAnchorUnder(t, r.keys[1], 1)
+	a1 := mintAnchorUnder(t, r.keys[1], r.node.chainID(), 1)
 	sess, err := r.open(t, 9451, "f8-finalized-head", []relaypay.Anchor{a1})
 	if err == nil || sess != nil {
 		t.Fatalf("with the ledger's source at %d and the keyset at 1, an epoch-1 anchor was ADMITTED (sess=%v, err=%v). "+

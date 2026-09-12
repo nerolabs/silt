@@ -84,25 +84,41 @@ type Token struct {
 // signs it without learning the serial. It returns the blinded value to send the
 // issuer and the secret to unblind the reply.
 //
+// chainID is THE WITHDRAWER'S OWN NETWORK — (*Node).chainID(), the genesis hash — bound
+// into the same blind-signed message (M3, 2026-09-11), so a token withdrawn on network X
+// verifies nowhere else. It is a REQUIRED PARAMETER and it is NOT a field of the request:
+// the issuer never sees it (it signs a blinded value) and no attacker can name it. On an
+// honest network the withdrawer's chain id and the redeeming server's are the same genesis
+// hash, so the honest path is unchanged. The ZERO hash — a node holding no chain — is
+// refused outright (blindtoken.ErrZeroChainID): a node that cannot know its network must
+// not mint a token that every other chainless node would honour.
+//
 // The withdrawer CHOOSES epoch and binds it into the blind-signed message (R0.4b
 // (b1)). The issuer signs under key_epoch only if it holds that key and epoch is in
 // its own window, so a requester can never name an epoch that outlives the honest
 // one; naming an EARLIER epoch only shortens its own token's life. Pass the epoch
 // the withdrawer's chain-resolved keyset supplied the key for — see
 // Node.AcquireDemandTokenInWindow, the only sound acquisition path.
-func Withdraw(rng io.Reader, issuerPub *rsa.PublicKey, epoch uint64, serial []byte) (blinded, secret []byte, err error) {
-	return blindtoken.BlindDemand(rng, issuerPub, epoch, serial)
+func Withdraw(rng io.Reader, issuerPub *rsa.PublicKey, chainID ports.Hash, epoch uint64, serial []byte) (blinded, secret []byte, err error) {
+	return blindtoken.BlindDemand(rng, issuerPub, chainID, epoch, serial)
 }
 
 // SignWithdrawal is the issuer side: it blind-signs the withdrawal, learning nothing
-// about the serial. Charging or burning the fetch fee against the withdrawal is the
+// about the serial. chainID is the ISSUER'S OWN network and a REQUIRED PARAMETER; a zero
+// one is a refusal (nil), the same arm blindtoken.Issuer.Issue takes on the live issuance
+// path. The issuer cannot check WHICH network the requester bound — it signs a blinded
+// value — so the only issuer-side rule available is "do not be a signing oracle while you
+// do not know your own network", and that is the rule. Charging or burning the fetch fee against the withdrawal is the
 // caller's job (the cost-to-wash knob is P3).
 //
 // rng is the injected randomness the private-key operation blinds with (advisory C-2;
 // see blindtoken.SignBlinded). A nil return is a refusal — a non-canonical blinded
 // value, or a signature that failed verify-after-sign — and the wire already treats an
 // empty reply as "no token issued".
-func SignWithdrawal(rng io.Reader, issuerPriv *rsa.PrivateKey, blinded []byte) []byte {
+func SignWithdrawal(rng io.Reader, issuerPriv *rsa.PrivateKey, chainID ports.Hash, blinded []byte) []byte {
+	if chainID == (ports.Hash{}) {
+		return nil // the issuer does not know its network: no signature (blindtoken.ErrZeroChainID)
+	}
 	sig, err := blindtoken.SignBlinded(rng, issuerPriv, blinded)
 	if err != nil {
 		return nil
@@ -116,8 +132,8 @@ func SignWithdrawal(rng io.Reader, issuerPriv *rsa.PrivateKey, blinded []byte) [
 // dud is a legible error at withdrawal instead of a token discovered worthless at
 // redemption — which matters here beyond conformance, because an unredeemable token
 // leaves the serve's eager self-mint un-reversed (see blindtoken.Unblind).
-func Unblind(issuerPub *rsa.PublicKey, epoch uint64, serial, blindSig, secret []byte) (Token, error) {
-	sig, err := blindtoken.UnblindDemand(issuerPub, epoch, serial, blindSig, secret)
+func Unblind(issuerPub *rsa.PublicKey, chainID ports.Hash, epoch uint64, serial, blindSig, secret []byte) (Token, error) {
+	sig, err := blindtoken.UnblindDemand(issuerPub, chainID, epoch, serial, blindSig, secret)
 	if err != nil {
 		return Token{}, err
 	}
@@ -128,12 +144,12 @@ func Unblind(issuerPub *rsa.PublicKey, epoch uint64, serial, blindSig, secret []
 }
 
 // VerifyToken reports whether t carries a valid issuer signature in the demand
-// domain for ISSUE EPOCH epoch (so a publish token or credit under the same key does
+// domain for ISSUE EPOCH epoch ON THE NETWORK chainID NAMES (so a publish token or credit under the same key does
 // not pass, and neither does a demand token issued for a different epoch under this
 // very key). Redeemers use Keyset.VerifyInWindow, which is this check run over the
 // (key_e, e) pairs the window still holds.
-func VerifyToken(issuerPub *rsa.PublicKey, epoch uint64, t Token) bool {
-	return len(t.Serial) > 0 && blindtoken.VerifyDemand(issuerPub, epoch, t.Serial, t.Sig)
+func VerifyToken(issuerPub *rsa.PublicKey, chainID ports.Hash, epoch uint64, t Token) bool {
+	return len(t.Serial) > 0 && blindtoken.VerifyDemand(issuerPub, chainID, epoch, t.Serial, t.Sig)
 }
 
 // BondCheck is the P3b bonded-fetcher credential: given a fetcher's receipt-signing

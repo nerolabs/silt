@@ -40,11 +40,11 @@ func (es epochScene) withdraw(t *testing.T, epoch uint64) Token {
 	if err != nil {
 		t.Fatalf("serial: %v", err)
 	}
-	blinded, secret, err := Withdraw(rand.Reader, &priv.PublicKey, epoch, serial)
+	blinded, secret, err := Withdraw(rand.Reader, &priv.PublicKey, testChainID, epoch, serial)
 	if err != nil {
 		t.Fatalf("withdraw: %v", err)
 	}
-	tok, uerr := Unblind(&priv.PublicKey, epoch, serial, SignWithdrawal(rand.Reader, priv, blinded), secret)
+	tok, uerr := Unblind(&priv.PublicKey, testChainID, epoch, serial, SignWithdrawal(rand.Reader, priv, testChainID, blinded), secret)
 	if uerr != nil {
 		t.Fatalf("unblind: %v", uerr)
 	}
@@ -72,7 +72,7 @@ func TestKeysetAcceptsEveryEpochInWindow(t *testing.T) {
 
 	for _, e := range epochs {
 		tok := es.withdraw(t, e)
-		got, ok := ks.VerifyInWindow(current, tok)
+		got, ok := ks.VerifyInWindow(testChainID, current, tok)
 		if !ok {
 			t.Fatalf("token from epoch %d rejected at current=%d with W=%d - an in-window token must verify", e, current, W)
 		}
@@ -95,12 +95,12 @@ func TestKeysetRejectsExpiredEpoch(t *testing.T) {
 	// key, must do the rejecting - so a caller that forgets to Prune is still safe.
 	ks := es.keyset(W, stale, current)
 	tok := es.withdraw(t, stale)
-	if _, ok := ks.VerifyInWindow(current, tok); ok {
+	if _, ok := ks.VerifyInWindow(testChainID, current, tok); ok {
 		t.Fatalf("a token from epoch %d verified at current=%d with W=%d - the validity window is not enforced",
 			stale, current, W)
 	}
 	// The in-window token still verifies: expiry must not break liveness.
-	if _, ok := ks.VerifyInWindow(current, es.withdraw(t, current)); !ok {
+	if _, ok := ks.VerifyInWindow(testChainID, current, es.withdraw(t, current)); !ok {
 		t.Fatal("a current-epoch token was rejected - expiry over-reached")
 	}
 }
@@ -161,7 +161,7 @@ func TestKeysetVerifyIsBoundedByWindow(t *testing.T) {
 	}
 	// And the real call must still reject a token no held key signed.
 	other := newEpochScene(t, current)
-	if _, ok := ks.VerifyInWindow(current, other.withdraw(t, current)); ok {
+	if _, ok := ks.VerifyInWindow(testChainID, current, other.withdraw(t, current)); ok {
 		t.Fatal("a token signed by an unrelated key verified")
 	}
 }
@@ -204,12 +204,12 @@ func TestExpiredTokenVerifiesNowhereSoNothingIsConsumed(t *testing.T) {
 	ks := es.keyset(W, stale, current)
 	tok := es.withdraw(t, stale)
 
-	if e, ok := ks.VerifyInWindow(current, tok); ok {
+	if e, ok := ks.VerifyInWindow(testChainID, current, tok); ok {
 		t.Fatalf("an expired token verified at epoch %d — the anchor would be spent into the guard", e)
 	}
 	// Not "no key at all": the SAME keyset still verifies a fresh token, so the refusal
 	// above is the WINDOW and not an empty fixture (the vacuous-gate scar, 2026-09-07).
-	if e, ok := ks.VerifyInWindow(current, es.withdraw(t, current)); !ok || e != current {
+	if e, ok := ks.VerifyInWindow(testChainID, current, es.withdraw(t, current)); !ok || e != current {
 		t.Fatalf("the control token did not verify (epoch %d, ok %v) — the expiry arm above measures darkness", e, ok)
 	}
 }
@@ -226,12 +226,12 @@ func TestNoKeysetRefusesEveryAnchor(t *testing.T) {
 	es := newEpochScene(t, 0)
 	tok := es.withdraw(t, 0)
 	empty := NewKeyset(DefaultWindow)
-	if _, ok := empty.VerifyInWindow(0, tok); ok {
+	if _, ok := empty.VerifyInWindow(testChainID, 0, tok); ok {
 		t.Fatal("a keyset holding no key verified an anchor")
 	}
 	// The control: the same token under the resolved keyset verifies, so the refusal is
 	// the missing key and not a malformed token.
-	if _, ok := es.keyset(DefaultWindow, 0).VerifyInWindow(0, tok); !ok {
+	if _, ok := es.keyset(DefaultWindow, 0).VerifyInWindow(testChainID, 0, tok); !ok {
 		t.Fatal("the control token does not verify under its own keyset — the arm above measures darkness")
 	}
 }

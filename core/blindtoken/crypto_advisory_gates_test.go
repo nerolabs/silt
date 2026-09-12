@@ -55,19 +55,19 @@ func TestC1_UnblindDemandRefusesTheWrongEpochAndTheWrongKey(t *testing.T) {
 	other := testKey(t)
 	pub := &priv.PublicKey
 	serial, _ := NewSerial(rand.Reader)
-	blinded, secret, err := BlindDemand(rand.Reader, pub, 7, serial)
+	blinded, secret, err := BlindDemand(rand.Reader, pub, testChain, 7, serial)
 	if err != nil {
 		t.Fatal(err)
 	}
 	sig := mustSign(t, priv, blinded)
 
-	if _, uerr := UnblindDemand(pub, 7, serial, sig, secret); uerr != nil {
+	if _, uerr := UnblindDemand(pub, testChain, 7, serial, sig, secret); uerr != nil {
 		t.Fatalf("the honest (key, epoch) pair must finalize: %v", uerr)
 	}
-	if _, uerr := UnblindDemand(pub, 8, serial, sig, secret); uerr == nil {
+	if _, uerr := UnblindDemand(pub, testChain, 8, serial, sig, secret); uerr == nil {
 		t.Fatal("BREAK C-1: a signature made for epoch 7 finalized at epoch 8")
 	}
-	if _, uerr := UnblindDemand(&other.PublicKey, 7, serial, sig, secret); uerr == nil {
+	if _, uerr := UnblindDemand(&other.PublicKey, testChain, 7, serial, sig, secret); uerr == nil {
 		t.Fatal("BREAK C-1: a signature finalized under a key that did not make it")
 	}
 }

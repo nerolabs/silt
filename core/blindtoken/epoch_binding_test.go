@@ -28,11 +28,11 @@ import (
 // unblinded signature on serial.
 func signDemandAt(t *testing.T, k *rsa.PrivateKey, e uint64, serial []byte) []byte {
 	t.Helper()
-	blinded, secret, err := BlindDemand(rand.Reader, &k.PublicKey, e, serial)
+	blinded, secret, err := BlindDemand(rand.Reader, &k.PublicKey, testChain, e, serial)
 	if err != nil {
 		t.Fatalf("blind: %v", err)
 	}
-	sig, err := UnblindDemand(&k.PublicKey, e, serial, mustSign(t, k, blinded), secret)
+	sig, err := UnblindDemand(&k.PublicKey, testChain, e, serial, mustSign(t, k, blinded), secret)
 	if err != nil {
 		t.Fatalf("unblind: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestDemandSignatureVerifiesAtItsOwnEpoch(t *testing.T) {
 	k := testKey(t)
 	serial, _ := NewSerial(rand.Reader)
 	for _, e := range []uint64{0, 1, 4, 12345} {
-		if !VerifyDemand(&k.PublicKey, e, serial, signDemandAt(t, k, e, serial)) {
+		if !VerifyDemand(&k.PublicKey, testChain, e, serial, signDemandAt(t, k, e, serial)) {
 			t.Fatalf("a demand token withdrawn for epoch %d does not verify at that epoch", e)
 		}
 	}
@@ -61,7 +61,7 @@ func TestDemandSignatureDoesNotVerifyAtAnotherEpoch(t *testing.T) {
 	serial, _ := NewSerial(rand.Reader)
 	sig := signDemandAt(t, k, 0, serial)
 	for _, e := range []uint64{1, 2, 3, 4, 5, 100} {
-		if VerifyDemand(&k.PublicKey, e, serial, sig) {
+		if VerifyDemand(&k.PublicKey, testChain, e, serial, sig) {
 			t.Fatalf("an epoch-0 token verified at epoch %d under the SAME key — the "+
 				"issue epoch is not bound into the signed message, so a token can be "+
 				"re-dated and expiry is a no-op", e)
@@ -78,17 +78,22 @@ func TestDemandFDHInputBindsTheEpochByteExactly(t *testing.T) {
 	serial := []byte("0123456789abcdef0123456789abcdef")
 	const epoch = uint64(0x0102030405060708)
 
-	// Independent recomputation of H(domain ‖ ctr ‖ epoch(8B BE) ‖ serial), counter
-	// mode, expanded past the modulus and reduced mod N.
+	// Independent recomputation of H(domain ‖ ctr ‖ chainID(32B) ‖ epoch(8B BE) ‖ serial),
+	// counter mode, expanded past the modulus and reduced mod N.
+	//
+	// ⚠ v2 -> v3 AT M3 (2026-09-11): the chain id LEADS the message (research certification
+	// 2026-09-11 §3.5). The domain literal below is the new one, written out here rather
+	// than read from the package, so the pin still binds the code to the certification.
 	pub := &k.PublicKey
 	nLen := (pub.N.BitLen() + 7) / 8
 	var out []byte
 	for ctr := uint32(0); len(out) < nLen+8; ctr++ {
 		h := sha256.New()
-		h.Write([]byte("silt/blinddemand/fdh/v2"))
+		h.Write([]byte("silt/blinddemand/fdh/v3"))
 		var cb [4]byte
 		binary.BigEndian.PutUint32(cb[:], ctr)
 		h.Write(cb[:])
+		h.Write(testChain[:])
 		var eb [8]byte
 		binary.BigEndian.PutUint64(eb[:], epoch)
 		h.Write(eb[:])
@@ -98,8 +103,12 @@ func TestDemandFDHInputBindsTheEpochByteExactly(t *testing.T) {
 	want := new(big.Int).SetBytes(out)
 	want.Mod(want, pub.N)
 
-	if got := fullDomainHashD(pub, demandMsg(epoch, serial), demandDomain); got.Cmp(want) != 0 {
-		t.Fatal("the demand FDH input is not domain ‖ ctr ‖ epoch(8B big-endian) ‖ serial — " +
+	bound, berr := chainBoundMsg(testChain, demandMsg(epoch, serial))
+	if berr != nil {
+		t.Fatal(berr)
+	}
+	if got := fullDomainHashD(pub, bound, demandDomain); got.Cmp(want) != 0 {
+		t.Fatal("the demand FDH input is not domain ‖ ctr ‖ chainID(32B) ‖ epoch(8B big-endian) ‖ serial — " +
 			"two binaries that disagree here cannot redeem each other's tokens")
 	}
 	// And the message itself is exactly the 8-byte big-endian epoch then the serial.
@@ -119,17 +128,17 @@ func TestDemandDomainStillSeparatesFromPublishAndCredit(t *testing.T) {
 
 	pb, ps, _ := Blind(rand.Reader, &k.PublicKey, serial)
 	publishSig := mustUnblind(t, &k.PublicKey, serial, mustSign(t, k, pb), ps)
-	cb, cs, _ := BlindCredit(rand.Reader, &k.PublicKey, serial)
-	creditSig, cerr := UnblindCredit(&k.PublicKey, serial, mustSign(t, k, cb), cs)
+	cb, cs, _ := BlindCredit(rand.Reader, &k.PublicKey, testChain, serial)
+	creditSig, cerr := UnblindCredit(&k.PublicKey, testChain, serial, mustSign(t, k, cb), cs)
 	if cerr != nil {
 		t.Fatalf("unblind credit: %v", cerr)
 	}
 	demandSig := signDemandAt(t, k, 0, serial)
 
-	if VerifyDemand(&k.PublicKey, 0, serial, publishSig) || VerifyDemand(&k.PublicKey, 0, serial, creditSig) {
+	if VerifyDemand(&k.PublicKey, testChain, 0, serial, publishSig) || VerifyDemand(&k.PublicKey, testChain, 0, serial, creditSig) {
 		t.Fatal("a publish token or credit verified as a demand token")
 	}
-	if Verify(&k.PublicKey, serial, demandSig) || VerifyCredit(&k.PublicKey, serial, demandSig) {
+	if Verify(&k.PublicKey, serial, demandSig) || VerifyCredit(&k.PublicKey, testChain, serial, demandSig) {
 		t.Fatal("a demand token verified as a publish token or credit")
 	}
 }

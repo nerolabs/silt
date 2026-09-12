@@ -490,7 +490,7 @@ func TestRelayAnchorGuardWindowMatchesKeysetWindow(t *testing.T) {
 	}
 	pub := &key.PublicKey
 	serial, _ := blindtoken.NewSerial(rand.Reader)
-	blinded, secret, err := blindtoken.BlindRelayAnchor(rand.Reader, pub, 0, serial)
+	blinded, secret, err := blindtoken.BlindRelayAnchor(rand.Reader, pub, creditTestChainID, 0, serial)
 	if err != nil {
 		t.Fatalf("BlindRelayAnchor: %v", err)
 	}
@@ -498,7 +498,7 @@ func TestRelayAnchorGuardWindowMatchesKeysetWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sig, err := blindtoken.UnblindRelayAnchor(pub, 0, serial, blindSig, secret)
+	sig, err := blindtoken.UnblindRelayAnchor(pub, creditTestChainID, 0, serial, blindSig, secret)
 	if err != nil {
 		t.Fatalf("UnblindRelayAnchor: %v", err)
 	}
@@ -518,7 +518,7 @@ func TestRelayAnchorGuardWindowMatchesKeysetWindow(t *testing.T) {
 			ks.Put(e, pub)
 		}
 		ks.Prune(cur)
-		_, upstreamAccepts := ks.VerifyAnchorInWindow(cur, tok)
+		_, upstreamAccepts := ks.VerifyAnchorInWindow(creditTestChainID, cur, tok)
 		if cur == 0 && !upstreamAccepts {
 			t.Fatal("liveness: a fresh anchor does not verify at its own issue epoch through Keyset.VerifyAnchorInWindow")
 		}

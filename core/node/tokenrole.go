@@ -196,7 +196,7 @@ func (n *Node) tokenChargeFor(from ports.NodeID, credit *ports.PublishCredit) (f
 	if n.tokenIssuer == nil {
 		return nil, errNoTokenIssuer // no key to verify the credit against — fail closed
 	}
-	if len(credit.Serial) == 0 || !blindtoken.VerifyCredit(n.tokenIssuer.Public(), credit.Serial, credit.Sig) {
+	if len(credit.Serial) == 0 || !blindtoken.VerifyCredit(n.tokenIssuer.Public(), n.chainID(), credit.Serial, credit.Sig) {
 		return nil, errCreditRefused // a credit was presented but does not verify
 	}
 	if n.creditStore != nil && !n.creditLoaded {
@@ -342,7 +342,7 @@ func (n *Node) AcquireCredits(rng io.Reader, v ports.NodeID, count int,
 			done(nil, err)
 			return
 		}
-		blinded, secret, err := blindtoken.BlindCredit(rng, pub, serial)
+		blinded, secret, err := blindtoken.BlindCredit(rng, pub, n.chainID(), serial)
 		if err != nil {
 			done(nil, err)
 			return
@@ -353,7 +353,7 @@ func (n *Node) AcquireCredits(rng io.Reader, v ports.NodeID, count int,
 					// RFC 9474 §4.4 Finalize (advisory C-1): a credit that does not
 					// verify under the issuer's own key is dropped here, not carried
 					// forward as a credit that fails at spend time.
-					if sig, uerr := blindtoken.UnblindCredit(pub, serial, resp.Data, secret); uerr == nil {
+					if sig, uerr := blindtoken.UnblindCredit(pub, n.chainID(), serial, resp.Data, secret); uerr == nil {
 						credits = append(credits, ports.PublishCredit{Serial: serial, Sig: sig})
 					}
 				}

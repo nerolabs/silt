@@ -246,12 +246,12 @@ func TestR05NodePathConservation(t *testing.T) {
 	if _, err := rand.Read(serial); err != nil {
 		t.Fatalf("rand.Read serial: %v", err)
 	}
-	blinded, secret, bErr := demand.Withdraw(rand.Reader, issuerPub, 0, serial)
+	blinded, secret, bErr := demand.Withdraw(rand.Reader, issuerPub, nd.chainID(), 0, serial)
 	if bErr != nil {
 		t.Fatalf("demand.Withdraw: %v", bErr)
 	}
-	blindSig := demand.SignWithdrawal(rand.Reader, issuerPriv, blinded)
-	token, uerr := demand.Unblind(issuerPub, 0, serial, blindSig, secret)
+	blindSig := demand.SignWithdrawal(rand.Reader, issuerPriv, nd.chainID(), blinded)
+	token, uerr := demand.Unblind(issuerPub, nd.chainID(), 0, serial, blindSig, secret)
 	if uerr != nil {
 		t.Fatalf("demand.Unblind: %v", uerr)
 	}

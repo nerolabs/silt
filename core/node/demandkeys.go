@@ -326,12 +326,18 @@ func (n *Node) AcquireDemandTokenInWindow(rng io.Reader, issuer ports.NodeID, do
 		done(demand.Token{}, 0, ErrNoIssuerKey)
 		return
 	}
-	n.withdrawDemandToken(rng, issuer, pub, cur, nil, done)
+	n.withdrawDemandToken(rng, issuer, pub, n.chainID(), cur, nil, done)
 }
 
 // withdrawDemandToken is the shared fetcher half of every sound demand withdrawal:
 // blind the serial for epoch E under the CHAIN-RESOLVED key_E, name E in the
 // request, and accept the reply only if the issuer signed for that same E.
+//
+// chainID IS THE PARENT'S RESOLUTION TOO (M3, 2026-09-11). It travels with issuerPub and
+// epoch for exactly the same reason: an EPHEMERAL withdrawer holds no chain, so it cannot
+// read its own network, and a node that guesses one mints a token no server will honour.
+// The durable parent reads it from its chain and hands it down. It is never a field of the
+// request — the wire still carries only the blinded value and the epoch.
 //
 // THE REQUESTER NAMES THE EPOCH (R0.4b (b1)). E is inside the blind-signed message,
 // so an issuer that signs under any other epoch's key produces a signature this
@@ -344,10 +350,10 @@ func (n *Node) AcquireDemandTokenInWindow(rng io.Reader, issuer ports.NodeID, do
 // credit, when non-nil, pays the fee with a PREPAID BLIND CREDIT instead of charging
 // this node's account (the D3 path).
 func (n *Node) withdrawDemandToken(rng io.Reader, issuer ports.NodeID, pub *rsa.PublicKey,
-	epoch uint64, credit *ports.PublishCredit, done func(demand.Token, uint64, error)) {
-	n.withdrawBlind(rng, issuer, pub, epoch, credit, demand.Withdraw,
-		func(p *rsa.PublicKey, e uint64, serial, blindSig, secret []byte) ([]byte, error) {
-			tok, err := demand.Unblind(p, e, serial, blindSig, secret)
+	chainID ports.Hash, epoch uint64, credit *ports.PublishCredit, done func(demand.Token, uint64, error)) {
+	n.withdrawBlind(rng, issuer, pub, chainID, epoch, credit, demand.Withdraw,
+		func(p *rsa.PublicKey, cid ports.Hash, e uint64, serial, blindSig, secret []byte) ([]byte, error) {
+			tok, err := demand.Unblind(p, cid, e, serial, blindSig, secret)
 			return tok.Sig, err
 		},
 		func(serial, sig []byte, err error) {
@@ -359,6 +365,11 @@ func (n *Node) withdrawDemandToken(rng io.Reader, issuer ports.NodeID, pub *rsa.
 		})
 }
 
+// chainID is THIS NODE'S OWN NETWORK, read from its own chain and threaded into the
+// blind-signed message by both lanes (M3, 2026-09-11). It is a parameter of the
+// withdrawal, never a field of the request the issuer answers: the wire carries only the
+// blinded value and the epoch, exactly as before.
+//
 // withdrawBlind is the lane-generic withdrawal withdrawDemandToken and
 // AcquireRelayAnchors share (R2.14): the blind and unblind primitives decide the
 // FDH domain (demand token vs relay anchor); everything else — the fresh serial,
@@ -367,9 +378,9 @@ func (n *Node) withdrawDemandToken(rng io.Reader, issuer ports.NodeID, pub *rsa.
 // (it signs opaque blinded bytes). done fires once with the serial and the
 // unblinded signature, or the error.
 func (n *Node) withdrawBlind(rng io.Reader, issuer ports.NodeID, pub *rsa.PublicKey,
-	epoch uint64, credit *ports.PublishCredit,
-	blind func(io.Reader, *rsa.PublicKey, uint64, []byte) (blinded, secret []byte, err error),
-	unblind func(pub *rsa.PublicKey, epoch uint64, serial, blindSig, secret []byte) ([]byte, error),
+	chainID ports.Hash, epoch uint64, credit *ports.PublishCredit,
+	blind func(io.Reader, *rsa.PublicKey, ports.Hash, uint64, []byte) (blinded, secret []byte, err error),
+	unblind func(pub *rsa.PublicKey, chainID ports.Hash, epoch uint64, serial, blindSig, secret []byte) ([]byte, error),
 	done func(serial, sig []byte, err error)) {
 
 	serial, err := blindtoken.NewSerial(rng)
@@ -377,7 +388,7 @@ func (n *Node) withdrawBlind(rng io.Reader, issuer ports.NodeID, pub *rsa.Public
 		done(nil, nil, err)
 		return
 	}
-	blinded, secret, err := blind(rng, pub, epoch, serial)
+	blinded, secret, err := blind(rng, pub, chainID, epoch, serial)
 	if err != nil {
 		done(nil, nil, err)
 		return
@@ -404,7 +415,7 @@ func (n *Node) withdrawBlind(rng io.Reader, issuer ports.NodeID, pub *rsa.Public
 		// a dud used to charge the withdrawal fee and hand back something that only
 		// failed at the session open — and an anchor the keyset refuses never reaches
 		// the ledger, so the serve's eager self-mint is never reversed. Refuse here.
-		sig, uerr := unblind(pub, epoch, serial, resp.Data, secret)
+		sig, uerr := unblind(pub, chainID, epoch, serial, resp.Data, secret)
 		if uerr != nil {
 			done(nil, nil, uerr)
 			return
@@ -438,6 +449,17 @@ func (n *Node) withdrawBlind(rng io.Reader, issuer ports.NodeID, pub *rsa.Public
 // after a rotation is a genuinely new issuance, not a stale cache hit.
 func (n *Node) answerDemandTokenRequest(from ports.NodeID, msg ports.Message) ports.Message {
 	reply := ports.Message{Kind: ports.MsgDemandTokenReply}
+	// THE ISSUER REFUSES WITHOUT A NETWORK, BEFORE ANY CHARGE (M3 G-3b, 2026-09-11).
+	// (*Node).chainID() is the zero hash when this node holds no chain, and both bound
+	// withdrawal lanes — delivery tokens and relay anchors — arrive here, so this one arm
+	// covers both. A blind issuer cannot see which chain id the requester bound into the
+	// message; what it can refuse is to be a signing oracle at all while it does not know
+	// its own network, because a token minted under "network zero" would be honoured by
+	// every other chainless node. Same direction (*Node).chainID's doc takes for era-4
+	// signatures: a node that cannot know which network it is on must not guess.
+	if n.chainID() == (ports.Hash{}) {
+		return reply // OK=false, nothing charged, no RSA work
+	}
 	cur := n.chainEpoch()
 	e := msg.Height
 	if e > cur || cur-e > demand.DefaultWindow {

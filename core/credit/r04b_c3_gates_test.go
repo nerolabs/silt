@@ -52,11 +52,11 @@ func (s *sharedKeyScene) withdraw(t *testing.T, e uint64) demand.Token {
 	if err != nil {
 		t.Fatal(err)
 	}
-	blinded, secret, err := demand.Withdraw(rand.Reader, &s.key.PublicKey, e, serial)
+	blinded, secret, err := demand.Withdraw(rand.Reader, &s.key.PublicKey, creditTestChainID, e, serial)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tok, uerr := demand.Unblind(&s.key.PublicKey, e, serial, demand.SignWithdrawal(rand.Reader, s.key, blinded), secret)
+	tok, uerr := demand.Unblind(&s.key.PublicKey, creditTestChainID, e, serial, demand.SignWithdrawal(rand.Reader, s.key, creditTestChainID, blinded), secret)
 	if uerr != nil {
 		t.Fatal(uerr)
 	}
@@ -103,7 +103,7 @@ func TestSharedKeyRotationDoesNotReopenThePump(t *testing.T) {
 	wire := make([]demand.Token, n)
 	for i := range toks {
 		tok := s.withdraw(t, 0)
-		ep, ok := s.ks.VerifyInWindow(0, tok)
+		ep, ok := s.ks.VerifyInWindow(creditTestChainID, 0, tok)
 		if !ok || ep != 0 {
 			t.Fatalf("epoch-0 token: ok=%v epoch=%d", ok, ep)
 		}
@@ -139,7 +139,7 @@ func TestSharedKeyRotationDoesNotReopenThePump(t *testing.T) {
 	l.SetEpochSource(src)
 	var reMinted int64
 	for i, anchor := range wire {
-		ep, credited := s.ks.VerifyInWindow(cur, anchor)
+		ep, credited := s.ks.VerifyInWindow(creditTestChainID, cur, anchor)
 		if credited {
 			t.Fatalf("anchor %d withdrawn at epoch 0 still VERIFIED at epoch %d (reported "+
 				"issuedEpoch %d) under a key bound to every epoch. The issue epoch is not "+
@@ -196,7 +196,7 @@ func TestGuardHealsUnderASharedKey(t *testing.T) {
 		src.e = cur
 		for i := 0; i < perEpoch; i++ {
 			tok := s.withdraw(t, cur)
-			ep, ok := s.ks.VerifyInWindow(cur, tok)
+			ep, ok := s.ks.VerifyInWindow(creditTestChainID, cur, tok)
 			if !ok {
 				t.Fatalf("epoch %d: a token withdrawn this epoch does not verify", cur)
 			}

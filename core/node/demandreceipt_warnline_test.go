@@ -120,11 +120,11 @@ func TestBankedButUnpaidReceiptLogsTheWarnLine(t *testing.T) {
 	if _, rerr := rand.Read(serial); rerr != nil {
 		t.Fatal(rerr)
 	}
-	blinded, secret, bErr := demand.Withdraw(rand.Reader, issuerPub, 0, serial)
+	blinded, secret, bErr := demand.Withdraw(rand.Reader, issuerPub, nd.chainID(), 0, serial)
 	if bErr != nil {
 		t.Fatalf("demand.Withdraw: %v", bErr)
 	}
-	token, uerr := demand.Unblind(issuerPub, 0, serial, demand.SignWithdrawal(rand.Reader, issuerPriv, blinded), secret)
+	token, uerr := demand.Unblind(issuerPub, nd.chainID(), 0, serial, demand.SignWithdrawal(rand.Reader, issuerPriv, nd.chainID(), blinded), secret)
 	if uerr != nil {
 		t.Fatalf("demand.Unblind: %v", uerr)
 	}

@@ -69,7 +69,7 @@ func TestTokenIssueRetryIdempotent_CreditPath(t *testing.T) {
 	ledger.Register(durable)
 
 	cs, _ := blindtoken.NewSerial(rand.Reader)
-	cblind, csecret, err := blindtoken.BlindCredit(rand.Reader, pub, cs)
+	cblind, csecret, err := blindtoken.BlindCredit(rand.Reader, pub, nd.chainID(), cs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestTokenIssueRetryIdempotent_CreditPath(t *testing.T) {
 	if !mint.OK {
 		t.Fatal("credit mint should succeed")
 	}
-	credit := ports.PublishCredit{Serial: cs, Sig: mustUnblindCredit(t, pub, cs, mint.Data, csecret)}
+	credit := ports.PublishCredit{Serial: cs, Sig: mustUnblindCredit(t, pub, nd.chainID(), cs, mint.Data, csecret)}
 
 	ts, _ := blindtoken.NewSerial(rand.Reader)
 	tblind, _, err := blindtoken.Blind(rand.Reader, pub, ts)

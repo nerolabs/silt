@@ -435,7 +435,7 @@ func (n *Node) OpenRelaySession(ephID ports.NodeID, root []byte, S int, funding 
 	cur := n.chainEpoch() // the epoch the keyset was just pruned with; the ledger reads the SAME clock through its EpochSource (T-12, R2.10 / F8)
 	spend := make([]ports.RelayAnchor, 0, len(anchors))
 	for _, a := range anchors {
-		e, ok := ks.VerifyAnchorInWindow(cur, demand.Token{Serial: a.Serial, Sig: a.Sig})
+		e, ok := ks.VerifyAnchorInWindow(n.chainID(), cur, demand.Token{Serial: a.Serial, Sig: a.Sig})
 		if !ok {
 			return nil, errRelayAnchorInvalid // stop at the first failure: ≤ W+1 modexps for a garbage open
 		}

@@ -67,12 +67,12 @@ func (s scene) token(t *testing.T) Token {
 	if err != nil {
 		t.Fatalf("serial: %v", err)
 	}
-	blinded, secret, err := Withdraw(rand.Reader, s.issuerPub, 0, serial)
+	blinded, secret, err := Withdraw(rand.Reader, s.issuerPub, testChainID, 0, serial)
 	if err != nil {
 		t.Fatalf("withdraw: %v", err)
 	}
-	blindSig := SignWithdrawal(rand.Reader, s.issuerPriv, blinded)
-	tok, uerr := Unblind(s.issuerPub, 0, serial, blindSig, secret)
+	blindSig := SignWithdrawal(rand.Reader, s.issuerPriv, testChainID, blinded)
+	tok, uerr := Unblind(s.issuerPub, testChainID, 0, serial, blindSig, secret)
 	if uerr != nil {
 		t.Fatalf("unblind: %v", uerr)
 	}
@@ -92,7 +92,7 @@ func (s scene) openSession(t *testing.T, anchors ...Token) (uint64, []byte) {
 	}
 	ks := s.keys()
 	for i, a := range anchors {
-		if _, ok := ks.VerifyInWindow(0, a); !ok {
+		if _, ok := ks.VerifyInWindow(testChainID, 0, a); !ok {
 			t.Fatalf("setup: anchor %d does not verify in window", i)
 		}
 	}
@@ -131,12 +131,12 @@ func TestForgedAnchorIsRefusedAtTheOpen(t *testing.T) {
 		t.Fatalf("impostor key: %v", err)
 	}
 	serial, _ := blindtoken.NewSerial(rand.Reader)
-	blinded, secret, _ := Withdraw(rand.Reader, &impostor.PublicKey, 0, serial)
-	forged, ferr := Unblind(&impostor.PublicKey, 0, serial, SignWithdrawal(rand.Reader, impostor, blinded), secret)
+	blinded, secret, _ := Withdraw(rand.Reader, &impostor.PublicKey, testChainID, 0, serial)
+	forged, ferr := Unblind(&impostor.PublicKey, testChainID, 0, serial, SignWithdrawal(rand.Reader, impostor, testChainID, blinded), secret)
 	if ferr != nil {
 		t.Fatalf("an impostor-signed token must still UNBLIND (it is valid under the impostor's own key); got %v", ferr)
 	}
-	if _, ok := s.keys().VerifyInWindow(0, forged); ok {
+	if _, ok := s.keys().VerifyInWindow(testChainID, 0, forged); ok {
 		t.Fatal("an anchor not signed by the REAL issuer verified in the server's window — the open would spend it into the guard")
 	}
 	// And the fetcher's own signature over the open does not rescue it: the anchor is
@@ -154,17 +154,17 @@ func TestForgedAnchorIsRefusedAtTheOpen(t *testing.T) {
 func TestBlindWithdrawalIsUnlinkable(t *testing.T) {
 	s := newScene(t, "obj-C")
 	serial, _ := blindtoken.NewSerial(rand.Reader)
-	blinded, secret, err := Withdraw(rand.Reader, s.issuerPub, 0, serial)
+	blinded, secret, err := Withdraw(rand.Reader, s.issuerPub, testChainID, 0, serial)
 	if err != nil {
 		t.Fatalf("withdraw: %v", err)
 	}
 	// The token verifies under a valid signature the issuer never made on the serial
 	// directly (it signed only `blinded`).
-	tok, uerr := Unblind(s.issuerPub, 0, serial, SignWithdrawal(rand.Reader, s.issuerPriv, blinded), secret)
+	tok, uerr := Unblind(s.issuerPub, testChainID, 0, serial, SignWithdrawal(rand.Reader, s.issuerPriv, testChainID, blinded), secret)
 	if uerr != nil {
 		t.Fatalf("unblind: %v", uerr)
 	}
-	if !VerifyToken(s.issuerPub, 0, tok) {
+	if !VerifyToken(s.issuerPub, testChainID, 0, tok) {
 		t.Fatal("a blind-withdrawn token must verify under the issuer key")
 	}
 	// The issuer's signing-time view (`blinded`) must not equal or reveal the serial:

@@ -278,7 +278,7 @@ func (n *Node) verifyDeliveryAnchors(anchors []demand.Token) ([]ports.RelayAncho
 	cur := n.chainEpoch() // the epoch the keyset was pruned with; the ledger reads the same clock (R2.10 / F8)
 	spend := make([]ports.RelayAnchor, 0, len(anchors))
 	for _, a := range anchors {
-		e, ok := ks.VerifyInWindow(cur, a)
+		e, ok := ks.VerifyInWindow(n.chainID(), cur, a)
 		if !ok {
 			return nil, errDeliveryAnchorInvalid // ≤ W+1 modexps for a garbage open (T-7)
 		}
