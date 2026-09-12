@@ -17,11 +17,26 @@
 //     claim names, so n−1 on a full stripe and NOT k. There is no early exit once k
 //     are in hand. Each survivor is verified against its own manifest-committed id,
 //     then the claimed position is recomputed (repairproof.VerifyByRecompute, which
-//     NEEDS k; the fetch is simply not budgeted to k). A claim whose recompute
-//     disagrees with the committed shard id is a self-attributing lie, so it is
-//     SLASHED (credit.SlashFalseRepair), not merely denied — and the screen above
-//     reaches the SAME verdict earlier, which is why it must slash and not merely
-//     deny (D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12, direction A).
+//     NEEDS k; the fetch is simply not budgeted to k).
+//
+//     ⚠ THE SCREEN IS THE ONLY LIVE ROUTE TO THE SLASH (credit.SlashFalseRepair).
+//     This paragraph used to say a claim whose RECOMPUTE disagrees with the committed
+//     shard id is a self-attributing lie. Corrected 2026-09-12: since the screen that
+//     case has no reachable instance. Over the claimant's whole input set the screen
+//     forces claim.ShardID == the manifest-committed id, fetchSurvivors hash-verifies
+//     every survivor against its OWN committed id, and realData comes from the judge's
+//     manifest — so correctnessOK is a function of the MANIFEST ALONE. A false return
+//     from the recompute leg is a manifest-consistency failure (ReconstructStripe
+//     failing, or the recomputed target mis-hashing — publisher faults), not a
+//     claimant-attributable lie, even though repairproof.Decide still slashes it. The
+//     lie is now caught EARLIER and MORE attributably, at zero network cost, by the
+//     screen: the id comparison needs no survivors and cannot be confounded by a
+//     publisher-inconsistent manifest. That is why the screen must SLASH and not merely
+//     deny (D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12, direction A) — a screen that
+//     denied would land as a validation and silently RETIRE the punishment. The
+//     recompute leg is also unreachable by an HONEST paramedic: repairStripe hash-checks
+//     every ref of the stripe against its committed id and bails before emitRepairClaim,
+//     so a self-inconsistent stripe never produces a claim at all.
 //   - RETRIEVABILITY (where independent verifiers add value): challenge the named
 //     holder with an identity-bound Shacham–Waters PoR (repairproof.RepairChallengeSeed
 //     closes the relay/double-count), so a data-less relay can't collect. A

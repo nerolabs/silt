@@ -557,10 +557,19 @@ type Node struct {
 	//
 	// Bounded by cared roots × stripes × n, and the cared set is operator-chosen —
 	// n.care is appended only by (*Node).Care, which takes a link.CareHandle that no
-	// message handler possesses — so an adversary cannot grow it. Ephemeral by
-	// D-FP2-SCOPE, like the credit ledger it guards: both die at restart together, so
-	// a restarted judge has neither the paid set nor a claim to re-pay from
-	// (R-DEDUP-NOT-PERSISTED, held in tension).
+	// message handler possesses — so an adversary cannot grow it.
+	//
+	// ⚠ EPHEMERAL, AND THE RESTART WINDOW REOPENS BY ITSELF. This set dies at restart
+	// and so does the escrow it guards (D-FP2-SCOPE). That is NOT the same as safe.
+	// The escrow REFILLS without anyone re-endowing anything: credit.Ledger's
+	// RecordServeToObject skims into the object's escrow on EVERY serve, so ordinary
+	// delivery traffic re-funds it while this set stays empty. The window is shut for
+	// exactly as long as the escrow is empty and reopens with the FIRST skim, at which
+	// point a restarted judge pays a position it already paid for. It is inert today
+	// only because cfg.RepairEconomy is default OFF (the -economy flag), which is a
+	// weaker reason than "it cannot happen" and stops holding the day the flag flips
+	// (R-DEDUP-NOT-PERSISTED, held in tension; correction 2026-09-12 — this comment
+	// used to claim a restarted judge "denies rather than double-pays").
 	bountyPaid map[bountyPosKey]bool
 
 	// sweepEpoch counts repair ticks. A corpse whose ladder exhausted during

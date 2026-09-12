@@ -12,7 +12,10 @@ package node
 //	   judgeable. Its unit gate is core/repairproof; this file carries the wired arm.
 //	D  A (root, stripe, pos) already PAID draws nothing on a later claim. Its main
 //	   assertion is the CONVERTED RT-RC-2 gate in rt_repairclaim_gates_test.go; what
-//	   lives here is the control leg that fixes WHERE the record is written.
+//	   lives here are the TWO control legs that fix WHERE the record is written — one
+//	   for the deny arm and one for the release-that-paid-nothing arm. Two arms,
+//	   because the deny one alone leaves the realistic mis-placement uncovered
+//	   (measured in blind review, 2026-09-12).
 //
 // WHAT IS NOT HERE, deliberately: the loss witness. Nothing below asserts that the
 // claimed position was ever missing, and nothing below may be read as doing so. The
@@ -258,8 +261,17 @@ func TestRepairJudge_ShortFinalStripeIsJudgeableAndPays(t *testing.T) {
 // JUDGED.
 //
 // ⚠ THIS TEST IS NOT RED ON THE DEFECT. It is green before the dedup and green after
-// it, and it goes RED the moment someone moves the record onto the judged path. That
-// is what it is for: the defence is breakable, so the control is definable.
+// it, and it goes RED when the record is moved to the top of settleRepairVerdict.
+// That is what it is for: the defence is breakable, so the control is definable.
+//
+// ⚠ IT COVERS ONLY HALF THE PROPERTY, and measuring that is what produced the second
+// arm below. This test arranges a RETRIEVABILITY DENY, which settleRepairVerdict
+// refuses at the PRE-EXISTING `if !d.Release` return — upstream of the record site.
+// So it pins the record BELOW `!d.Release`, which was never in doubt, and NOT at
+// `paid > 0`, which is the placement the field comment argues for. Measured
+// 2026-09-12: moving the record to just after the dedup check leaves this test, and
+// the whole package, green. TestRepairJudge_ReleaseThatPaidNothingStaysPayable is
+// the arm that reddens there.
 //
 // The arrangement is the poisoning attack. An attacker claims position P naming a
 // holder that does not hold it. The judge judges the claim, denies on retrievability,
@@ -306,4 +318,87 @@ func TestRepairJudge_DeniedPositionStaysPayable(t *testing.T) {
 		t.Fatalf("the honest claim was counted as a duplicate: BountyDuplicatePosition=%d, want 0", judge.Stats.BountyDuplicatePosition)
 	}
 	t.Logf("D control: a position judged-and-DENIED stayed payable; the honest claim that followed paid %d", s.ledger.EscrowPaid(s.root))
+}
+
+// TestRepairJudge_ReleaseThatPaidNothingStaysPayable is the SECOND control leg for
+// the dedup record, and it is the one that pins the record at `paid > 0` rather than
+// merely downstream of `!d.Release`.
+//
+// ⚠ THE CONTROL ABOVE DOES NOT COVER THIS. TestRepairJudge_DeniedPositionStaysPayable
+// arranges a RETRIEVABILITY DENY, which settleRepairVerdict refuses at the
+// PRE-EXISTING `if !d.Release` return — upstream of the record site, and never in
+// doubt. Measured 2026-09-12 (blind review of this PR): moving the record from the
+// `paid > 0` arm up to just after the dedup check leaves the ENTIRE core/node package
+// green, that control included. The realistic mis-placement had no gate. This arm is
+// the one that reddens.
+//
+// The arrangement is the case Node.bountyPaid's own doc argues for and the one D-S7
+// says happens to every object nobody re-endows: an EMPTY escrow. The claim is honest
+// end to end — real position, manifest-committed id, a holder that really holds the
+// bytes — so both legs verify and the verdict RELEASES. It pays nothing, because the
+// reserve is empty. A release that paid nothing is not a payment, so the position must
+// still be claimable once the object is re-endowed; a judged-set would convert the
+// funded horizon running out into a PERMANENT loss of a legitimate bounty.
+//
+// The FUNDED arm is the anti-vacuity witness. The identical arrangement against a
+// funded escrow pays on the FIRST claim, so the unfunded arm provably reaches
+// PayBounty and is refused THERE, rather than dying earlier at a deny — which is
+// exactly the confusion that made the control above half-vacuous.
+func TestRepairJudge_ReleaseThatPaidNothingStaysPayable(t *testing.T) {
+	// Anti-vacuity witness: same seed, same position, same holder, escrow FUNDED.
+	{
+		w := newRepairAdv(t, 1907)
+		w.fundEscrow(5_000_000)
+		judge := w.careJudge()
+		pos, parityID, leafIdx := w.parityTarget()
+		holder := w.nodes[9]
+		w.stageShardOn(judge, holder, parityID, pos, leafIdx)
+		w.deliverClaim(judge, w.nodes[3].ID(), repairClaimFor(w.root, 0, pos, parityID, holder.ID()))
+		if judge.Stats.BountiesReleased != 1 {
+			t.Fatalf("VACUOUS: the witness arrangement did not pay against a FUNDED escrow (BountiesReleased=%d, EscrowPaid=%d). "+
+				"Without it, a non-payment in the unfunded arm below would not prove the EMPTY ESCROW was the reason — it could be dying at a deny",
+				judge.Stats.BountiesReleased, w.ledger.EscrowPaid(w.root))
+		}
+	}
+
+	s := newRepairAdv(t, 1907)
+	judge := s.careJudge() // NOTE: no fundEscrow — the object's durability reserve is empty.
+	pos, parityID, leafIdx := s.parityTarget()
+	holder := s.nodes[9]
+	holderBalance := s.ledger.Balance(holder.ID())
+	s.stageShardOn(judge, holder, parityID, pos, leafIdx)
+
+	if bal := s.ledger.EscrowBalance(s.root); bal != 0 {
+		t.Fatalf("PREMISE BROKEN: the escrow holds %d credits before the first claim — this arm needs an EMPTY one, and the serve auto-skim has evidently funded it", bal)
+	}
+	s.deliverClaim(judge, s.nodes[3].ID(), repairClaimFor(s.root, 0, pos, parityID, holder.ID()))
+
+	if judge.Stats.BountiesReleased != 0 || s.ledger.EscrowPaid(s.root) != 0 {
+		t.Fatalf("PREMISE BROKEN: the first claim PAID (BountiesReleased=%d, EscrowPaid=%d) — this control needs a RELEASED-but-UNPAID first claim",
+			judge.Stats.BountiesReleased, s.ledger.EscrowPaid(s.root))
+	}
+	if judge.Stats.FalseRepairSlashes != 0 {
+		t.Fatalf("PREMISE BROKEN: the honest first claim was slashed (%d) — it must clear both legs and reach the release arm", judge.Stats.FalseRepairSlashes)
+	}
+
+	// Re-endow the object and re-claim the SAME (root, stripe, position).
+	s.fundEscrow(5_000_000)
+	s.deliverClaim(judge, s.nodes[3].ID(), repairClaimFor(s.root, 0, pos, parityID, holder.ID()))
+
+	if judge.Stats.BountiesReleased != 1 {
+		t.Fatalf("a position whose earlier RELEASE paid nothing out of an empty escrow was refused after the object was re-endowed: BountiesReleased=%d, want 1. "+
+			"The (root, stripe, pos) record must be written where the payment happens (paid > 0), never on the release verdict — a funded horizon running out would otherwise "+
+			"destroy the bounty for that position permanently", judge.Stats.BountiesReleased)
+	}
+	if paid := s.ledger.EscrowPaid(s.root); paid <= 0 {
+		t.Fatalf("EscrowPaid = %d, want > 0", paid)
+	}
+	if got := s.ledger.Balance(holder.ID()); got <= holderBalance {
+		t.Fatalf("holder balance did not rise: %d <= %d", got, holderBalance)
+	}
+	if judge.Stats.BountyDuplicatePosition != 0 {
+		t.Fatalf("the re-endowed claim was counted as a DUPLICATE: BountyDuplicatePosition=%d, want 0 — the record was written on a release that paid nothing",
+			judge.Stats.BountyDuplicatePosition)
+	}
+	t.Logf("D control 2: a release that paid nothing out of an EMPTY escrow left the position payable; after re-endowment it paid %d", s.ledger.EscrowPaid(s.root))
 }
