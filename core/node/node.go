@@ -122,8 +122,9 @@ type Config struct {
 	// RepairEconomy is the S7 repair-bounty PARTICIPATION switch (PE ruling
 	// 2026-08-19, Q1): opt-in, DEFAULT OFF. When on, a verified repair pays the
 	// new holder of the rebuilt shard out of the object's own escrow, priced by
-	// credit.RepairBounty(k, n, reachable, shardBytes) = ⌊c·k·shardBytes·(lost+1)/(U/p)⌋
-	// credits — the witnessed fetch price of the survivors (G-R212-7) scaled by the
+	// credit.RepairBounty(k, n, reachable, shardBytes) — the witnessed delivery price
+	// of the repair's byte basis (G-R212-7; the basis itself is derived at
+	// credit.RepairBountyCoeffNum/Den and is not restated here) scaled by the
 	// rarest-shard multiplier, with the single division LAST (G-BT-2)
 	// — a protocol price, never an operator-set amount (an operator-set base is a
 	// lottery, not a price, and undefines S7's equilibrium). Off: repair still
@@ -413,8 +414,9 @@ type Stats struct {
 	ParityColumnLookups int
 	ParityShardsPulled  int
 	// BountyBaseZero (G-λ-8, G-R212-7): repair releases whose bounty base was ZERO for
-	// the object's geometry (k·shardBytes below one credit of fetch) — a bounty silently
-	// OFF, named loudly here and in the journal instead.
+	// the object's geometry — below one credit of fetch, on whichever byte quantity
+	// credit.RepairBountyBase prices — a bounty silently OFF, named loudly here and in
+	// the journal instead.
 	BountyBaseZero     int
 	BountiesReleased   int
 	FalseRepairSlashes int

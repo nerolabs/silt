@@ -73,8 +73,16 @@ func newRepairAdv(t *testing.T, seed int64) *repairAdv {
 	}
 	sched.Run()
 
-	// 512 KiB frames: k·shardBytes clears one credit of fetch, so the bounty base is 2
-	// and not 0 (G-R212-7 / G-λ-8; 4 KiB chunks paid 0).
+	// 512 KiB frames: the shard clears one credit of fetch, so the bounty base is
+	// NON-ZERO (G-R212-7 / G-λ-8; 4 KiB chunks paid 0).
+	//
+	// ⚠ NUMBER CORRECTION, MEASURED 2026-09-12. This line used to assert "the bounty
+	// base is 2", which is wrong for the fixture it describes by a factor of k. Every
+	// chunk of this object is a 524,304-byte shard (measured off the stores this helper
+	// populates), and credit.RepairBountyBase(10, 524304) is 20 on the pre-F1 basis; 2
+	// is what it prices at AFTER the F1 re-pricing (D-BOUNTY-PRICE-F1-2026-09-12). No
+	// assertion in this file reads the base, so the property the fixture actually needs
+	// — non-zero — replaces the number rather than tracking the re-price.
 	//
 	// ⚠ RECORD CORRECTION, MEASURED 2026-09-12. This comment used to read "exactly one
 	// k=10 stripe", and the certification that routed the short-final-stripe fix
