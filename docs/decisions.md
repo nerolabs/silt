@@ -6801,13 +6801,14 @@ Every number below was re-measured here before it was written down.
    `R-TRUNCATION-DISCLOSURE-NARROWS` is **re-filed at the measured cost with that reason withdrawn**.
    **The rule is NOT widened**: the real cost of an OR-clause is the rule's CLOSED COMPLEMENT, and
    taking the widening is an owner decision, not a defect fix.
-5. **STALE PRE-F1 FORMULA COMMENTS.** Seven production comments still state `c·k·shardBytes`.
-   `cmd/silt/ui.go` is corrected here. The other six are in `core/node/{repairclaim.go,node.go}`,
-   which PR #847 had open at review time — a deferred sweep must not fight it — so they are rostered
-   as **`R-PREF1-PRICE-COMMENTS-IN-CORE-NODE`**. #847 merged at 2026-09-12 19:31Z (`317a4c3`) and all
-   six survive it unchanged (re-counted at source after the rebase), so the sweep is unblocked and its
-   closer is the next branch. The `repairclaim.go` site is the worst of them: it describes the division the
-   judge actually executes.
+5. **STALE PRE-F1 FORMULA COMMENTS.** Seven production comments stated `c·k·shardBytes`.
+   `cmd/silt/ui.go` is corrected here. The other six were in `core/node/{repairclaim.go,node.go}`,
+   which PR #847 had open at review time — a deferred sweep must not fight it — so they were deferred
+   to their own branch. **They are CLOSED: PR #850 (`6ffdff4`, merged 2026-09-12 21:13Z) swept all
+   six, and each now names `credit.RepairBountyCoeffNum`/`Den` or `credit.RepairBountyBase` rather
+   than re-deriving the formula, so a further re-price cannot falsify them.** A closed residual is
+   removed from the plan rather than filed in it, so no register row is carried here. The
+   `repairclaim.go` site was the worst of them: it describes the division the judge actually executes.
 6. **TWO CODE-CITED RESIDUALS WITH NO REGISTER ROW.** `R-MULT-RACES-THE-PLACEMENT` is open and now
    carries one. `R-CHUNK-CLIFF-MARGIN-16B` is **closed** by §5 of this entry, and a closed residual is
    removed from the plan rather than filed in it, so its one code citation is re-pointed at the
