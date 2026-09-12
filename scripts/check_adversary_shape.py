@@ -78,12 +78,28 @@ THE DECLARATION FORMAT
   quietly narrows coverage every time it is used. A NOT-A-DEFENCE line is one reviewable
   line in a diff and it narrows nothing.
 
-  ONE KNOWN LIMIT, because a declaration can now hide it. A comment block gets ONE
-  declaration and the gate reports only the FIRST matching sentence in it. Four blocks
-  carry more than one claim sentence, so the second and third are recorded under a
-  capability name that may not describe them. Read the WHOLE block before trusting a
-  declaration on a long one, and where the names diverge, say so inside the block
-  (core/por/por.go's package header does).
+  TWO KNOWN LIMITS, because a declaration can now hide either one.
+
+  ONE. A comment block gets ONE declaration and the gate reports only the FIRST
+  matching sentence in it. Four blocks carry more than one claim sentence, so the
+  second and third are recorded under a capability name that may not describe them.
+  Read the WHOLE block before trusting a declaration on a long one, and where the
+  names diverge, say so inside the block (core/por/por.go's package header does).
+
+  TWO. THE GRANT AND CONTROL LEGS BIND TO THE FILE, NOT TO THE NAMED FUNCTION. main()
+  stores each test name against its WHOLE file body, then reads `holds` and `ctrl`
+  with `HOLDS_RE.findall(fbody)` / `CONTROL_RE.findall(fbody)`. Any ADVERSARY-HOLDS /
+  CAPABILITY-CONTROL marker anywhere in that file satisfies the legs for EVERY test
+  in it, so `fixture=` resolves to the right FILE, never to the right FUNCTION.
+  MEASURED 2026-09-12: re-pointing a `capability=LayoutKey` declaration at
+  TestRT_POR_2_ChallengeProxyPassesAudit_PINNED_DEFECT — which does not grant
+  LayoutKey — left the gate at 19 problems, NOT CAUGHT. Both RT-POR fixtures share
+  core/node/rt_por_m1_gates_test.go, which is why it is invisible here. The claim
+  above that the control leg "is what makes lying expensive" is true across files and
+  FALSE within one: a mis-citation inside a file that already carries the markers
+  costs nothing. Read the named function, not just the gate's verdict. This matters
+  now because ROADMAP row F1 rests its CI-wiring precondition on four `fixture=`
+  declarations, all four of which the gate binds only file-wide.
 
   In the named fixture:
 
@@ -159,11 +175,14 @@ def is_claim(sentence):
 
 
 # Three declaration forms, and exactly three. The third exists because the
-# vocabulary has a measured ~79% precision on the real tree (19 genuine claims
-# of 24 matches at b870ade), and the honest way to spend the other 21% is an
-# explicit, diff-visible denial — NOT a per-instance tightening of the regex,
-# which is the "pattern that must be re-escaped per instance" shape row F1
-# tells this gate to avoid.
+# vocabulary has false positives. MEASURED ON THE TREE THIS COMMIT SHIPS: 24
+# matches, of which the declaration pass classified 23 as genuine and exactly 1
+# as NOT-A-DEFENCE. An earlier draft of this comment said "~79% precision (19
+# genuine of 24)"; that estimate was wrong and is withdrawn — the docstring says
+# so and this line used to contradict it. The rate is whatever the declarations
+# say. The honest way to spend a false positive is an explicit, diff-visible
+# denial — NOT a per-instance tightening of the regex, which is the "pattern
+# that must be re-escaped per instance" shape row F1 tells this gate to avoid.
 DECL_RE = re.compile(
     r"ADVERSARY-SHAPE:\s*(?:"
     r"capability=(?P<cap>[A-Za-z0-9_.\-]+)\s+"
