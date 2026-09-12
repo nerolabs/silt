@@ -91,4 +91,8 @@ at the build-from-source instructions on purpose.
 SemVer). `scripts/gen_changelog.py` renders it into
 `website/changelog.html` at build time, published at
 [silthq.com/changelog](https://silthq.com/changelog.html). To update:
-edit `CHANGELOG.md`, run the script locally to preview, commit both.
+edit `CHANGELOG.md` and commit it. **Do not commit the page** —
+`website/changelog.html` is gitignored and produced by Netlify's build
+command, along with `website/roadmap.html` and `website/buildlog.html`
+(`D-WEBSITE-HTML-AT-DEPLOY-2026-09-12`). Run the generator locally if you
+want to preview; the output stays out of the commit.

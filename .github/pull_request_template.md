@@ -16,7 +16,7 @@
 - [ ] States which of **I1–I5** this touches and how each is preserved (and answers the 6-question quorum checklist in the code comment at any quorum site). Invariants touched (or "none — not consensus-touching"):
 
 ## Paper trail
-- [ ] Added a line to `CHANGELOG.md` `[Unreleased]` (and ran `scripts/gen_changelog.py`) — or N/A
+- [ ] Added a line to `CHANGELOG.md` `[Unreleased]` — or N/A (the website page is generated at deploy; do not commit `website/changelog.html`)
 - [ ] Updated `docs/` where relevant — or N/A
 
 ## Safety / abuse considerations

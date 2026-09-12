@@ -5466,6 +5466,78 @@ are deleted, someone must confirm from the Netlify dashboard that the repo's bui
 that runs, and confirm one deploy produces all three pages.** Deleting first and checking after is how
 a public site goes blank.
 
+### How the remainder was actually discharged — 2026-09-12, and it is a stronger instrument
+
+**The dashboard reading was replaced, not skipped.** A dashboard is a claim about settings; the PR
+that carries this build reads the deploy itself. Opening it produces a Netlify **deploy preview** —
+`netlify.toml`'s own header comment and `CONTRIBUTING.md` both say so — and the preview is built by
+whatever build command the site actually runs, against this branch. Fetching all three pages from the
+preview URL and comparing them to locally generated output discharges **both halves at once**: that
+the repo's build command is the one that runs, and that one deploy produces all three pages. The
+preview URL is in the PR's own check data (the `netlify/…/deploy-preview` StatusContext target URL,
+readable with `gh pr view --json statusCheckRollup`), so no dashboard access is needed.
+
+**The order is the safety property.** The preview is built and read while production still serves the
+committed copies, so a missing or wrong page costs a closed PR and nothing else. Any page missing or
+different is a STOP — do not merge. That is the same reasoning as the sentence above; only the
+instrument changed.
+
+**MEASURED RESULT — THE CONDITION IS DISCHARGED, 2026-09-12.** Read from PR #849's own deploy
+preview, `https://deploy-preview-849--kaleidoscopic-pegasus-e9fec4.netlify.app`, taken from the
+`netlify/kaleidoscopic-pegasus-e9fec4/deploy-preview` StatusContext (`state: SUCCESS`):
+
+| page | HTTP | vs locally generated |
+| --- | --- | --- |
+| `changelog.html` | 200 | rendered text **identical**, 1 040 483 chars both sides |
+| `roadmap.html` | 200 | rendered text **identical**, 297 844 chars both sides |
+| `buildlog.html` | 200 | rendered text **identical**, 27 195 chars both sides |
+
+The comparison is on rendered text, not raw bytes, and the reason is measured rather than assumed:
+Netlify's edge rewrites every page it serves — pretty URLs (`href="node.html"` → `href='/node'`),
+attribute reordering and quote style, plus an injected deploy-tracking `<div>`. **The control is
+`website/index.html`, a committed page this change does not touch: it shows the SAME rewrites and is
+likewise text-identical.** So the differences are the CDN's, not the generator's.
+
+**Both halves are settled, and the second one decisively.**
+
+- *One deploy produces all three*: all four pages carry the same
+  `data-netlify-deploy-id="6aa5b58af44f2a00086118be"`.
+- *The repo's build command is the one that runs*: on that branch `roadmap.html` and `buildlog.html`
+  **exist nowhere in the repository**. Nothing but the extended build command in `netlify.toml` could
+  have produced them, and a dashboard override of the build command would have served 404s. It
+  served 200s with this branch's content — the preview pages carry sentences that exist only in this
+  branch's `ROADMAP.md` and `CHANGELOG.md`. `netlify.toml`'s headers are applied on the preview too
+  (`X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`), which is
+  corroborating rather than load-bearing.
+- The pretty URLs the site navigates by — `/roadmap`, `/changelog`, `/buildlog` — all return 200.
+
+**What remains unproven, stated rather than implied:** this is a *deploy-preview* context. A Netlify
+site can in principle configure production and preview contexts differently, and the production
+context was not separately read. The evidence that the repo's `netlify.toml` governs production is
+the same evidence the entry above rests on — the live site's headers and apex redirect match it, and
+production is current — so this is a narrowing of the residual, not its elimination.
+
+### What else had to move, and one thing that would have gone quiet
+
+**The build command named ONE of the three generators.** Until it names all three, no deploy can
+produce `roadmap.html` or `buildlog.html`, so the decision as written above was unsatisfiable — the
+extension of the build command is part of this change, not a follow-up.
+
+**The three *"Fail if … page is stale"* CI steps had to be retired in the SAME commit that untracked
+the files, and the reason is not tidiness.** Each is `git diff --quiet -- website/<page>.html`.
+Measured 2026-09-12: that command exits **0** against an untracked, gitignored file holding
+completely unrelated content, and exits 1 for a still-tracked one. Left in place they would not have
+gone red — they would have gone **VACUOUS**, three checks in a required job asserting nothing,
+forever. What they covered (a committed copy drifting from its source) cannot occur once no committed
+copy exists. What replaces them:
+
+- a CI step asserting that none of the three pages is tracked — the precondition this decision rests
+  on, driven RED by `git add -f` and GREEN untracked;
+- `scripts/check_links.py`, which reads `website/*.html` off the filesystem after the generators run.
+  It exits 1 naming nine broken links across `docs.html`, `index.html` and `node.html` if the pages
+  are absent (measured). **That is also why a failed generator is a site-wide failure and not three
+  orphan URLs:** all three hand-maintained pages link to the generated ones.
+
 ### What this decision does not change
 
 `ROADMAP.md`, `CHANGELOG.md` and `docs/buildlog/*.md` remain the single sources of truth, and the

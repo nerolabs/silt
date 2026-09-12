@@ -5,11 +5,19 @@
 #                       or staging.silthq.com if you add the CNAME)
 #   pull request      → deploy preview (a unique URL, posted on the PR)
 #
-# The build step regenerates the changelog page from CHANGELOG.md so the
-# published page can never drift from the source of truth.
+# The build step GENERATES the three derived pages — changelog.html,
+# roadmap.html and buildlog.html — from their Markdown sources. Those three
+# files are gitignored and exist nowhere in the repo: this build is the only
+# thing that produces them, so the published pages cannot drift from the
+# sources, and two PRs whose Markdown edits do not overlap can no longer
+# collide in a committed derivative (D-WEBSITE-HTML-AT-DEPLOY-2026-09-12).
+#
+# If any generator fails the deploy fails, which is the behaviour we want:
+# index.html, docs.html and node.html all link to these pages, so a partial
+# build would break site navigation, not merely orphan three URLs.
 
 [build]
-  command = "python3 scripts/gen_changelog.py"
+  command = "python3 scripts/gen_changelog.py && python3 scripts/gen_roadmap.py && python3 scripts/gen_buildlog.py"
   publish = "website"
 
 [build.environment]

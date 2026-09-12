@@ -12,8 +12,11 @@ with no install step, so the same command works locally and in CI.
 | `gen_buildlog.py` | `website/buildlog.html` | `docs/buildlog/` |
 | `release_notes.py` | release notes text | `CHANGELOG.md` |
 
-Edit the markdown, re-run the generator, commit both. CI fails the build if a
-generated page is stale.
+Edit the markdown and commit **only the markdown**. The three website pages are
+gitignored and generated at deploy by Netlify's build command; CI's `website` job
+runs the same three generators before the link check
+(`D-WEBSITE-HTML-AT-DEPLOY-2026-09-12`). Running a generator locally to preview is
+fine — its output is ignored by git. `release_notes.py` writes no file.
 
 ## Checks — wired into `.github/workflows/ci.yml`
 
