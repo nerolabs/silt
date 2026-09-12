@@ -37,6 +37,7 @@
 //     recompute leg is also unreachable by an HONEST paramedic: repairStripe hash-checks
 //     every ref of the stripe against its committed id and bails before emitRepairClaim,
 //     so a self-inconsistent stripe never produces a claim at all.
+//
 //   - RETRIEVABILITY (where independent verifiers add value): challenge the named
 //     holder with an identity-bound Shacham–Waters PoR (repairproof.RepairChallengeSeed
 //     closes the relay/double-count), so a data-less relay can't collect. A
