@@ -253,9 +253,12 @@ func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, claim repa
 			return
 		}
 
-		// shardBytes for the relative bounty price (base = c·k·shardBytes): every
-		// shard in a stripe is equal-length, so any survivor's length is the shard
-		// size (PE Q3 — the base scales with the erasure geometry, not a constant).
+		// shardBytes for the relative bounty price: every shard in a stripe is
+		// equal-length, so any survivor's length is the shard size (PE Q3 — the base
+		// scales with the erasure geometry, not a constant). The price FORMULA is
+		// credit.RepairBountyBase's and is deliberately not restated in this package:
+		// it moved at G-R212-7 and again at F1 (D-BOUNTY-PRICE-F1-2026-09-12), and
+		// every restatement here went stale both times.
 		shardBytes := int64(0)
 		for _, s := range survivors {
 			shardBytes = int64(len(s))
@@ -325,8 +328,9 @@ func (n *Node) settleRepairVerdict(claimant ports.NodeID, claim repairproof.Repa
 	}
 	{
 		// Protocol price, relative to the erasure geometry (PE Q1/Q3): a repair is
-		// worth c·k·shardBytes scaled by the rarest-shard multiplier, and
-		// credit.RepairBounty divides that whole product into credits once.
+		// worth the byte basis credit.RepairBountyCoeffNum/Den derives, scaled by the
+		// rarest-shard multiplier, and credit.RepairBounty divides that whole product
+		// into credits once.
 		base := credit.RepairBountyBase(p.K, shardBytes)
 		if base == 0 {
 			// G-λ-8 (G-R212-7): the geometry is below one credit of fetch, so the bounty
@@ -340,8 +344,9 @@ func (n *Node) settleRepairVerdict(claimant ports.NodeID, claim repairproof.Repa
 				"k", p.K, "shardBytes", shardBytes, "bytesPerCredit", int64(credit.DeliveryBytesPerCredit),
 				"fix", "publish with -chunk-size >= "+fmt.Sprint(credit.MinBountyChunkBytesFor(p.K, crypto.Overhead)))
 		}
-		// The whole price in ONE division: ⌊c·k·shardBytes·(lost+1)/(U/p)⌋, not
-		// ⌊c·k·shardBytes/(U/p)⌋·(lost+1) (G-BT-2). Flooring before the multiplier threw
+		// The whole price in ONE division, at the END: ⌊basis·(lost+1)/(U/p)⌋, not
+		// ⌊basis/(U/p)⌋·(lost+1) (G-BT-2), with `basis` the per-repair byte quantity
+		// credit.RepairBountyCoeffNum/Den derives. Flooring before the multiplier threw
 		// away up to (n−k+1)−1 credits of the repairer's wage on every rare-stripe repair.
 		bounty := credit.RepairBounty(p.K, p.N, reachable, shardBytes)
 		paid := n.ledger.PayBounty(claim.Root, claim.Holder, bounty)
