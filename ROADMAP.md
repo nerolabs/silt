@@ -88,9 +88,10 @@ gates go FIRST, ahead of the individual defects they would have caught.**
    docs naming defaults that are not the shipped ones, and the restart error text. **The reason it
    has leverage nothing else has: the owner's own acceptance cycles are now the longest-lead item on
    the project**, so work that lets him start sooner buys calendar directly. *That reclassification
-   is owner direction of 2026-09-12 and carries NO `docs/decisions.md` entry yet; it is owed one.
-   Only the `-bond` default half is ratified (`D-BOND-DEFAULT-CLEARS-FLOOR-2026-09-12`); F4 and F5
-   are ordinary lane work, which needs no call.*
+   is RATIFIED and in the ledger: `D-B8-AI-ADVERSARY-2026-09-12` (owner: "yes land the B8
+   classification"). It no longer sits in conversation only. The `-bond` default half is ratified
+   separately (`D-BOND-DEFAULT-CLEARS-FLOOR-2026-09-12`); F4 and F5 are ordinary lane work, which
+   needs no call.*
 3. **In parallel, needing no owner input:** the O-8 measurement set (row F6) and the repair-claim
    rate-limit certification (row F7). Neither waits on 1 or 2.
 4. **Then:** the owner's acceptance cycles · D3 the freeze · Astra / B8, the external pass (E4) ·
@@ -662,10 +663,10 @@ not to be re-opened: `RegCap` 256, the `IssuerKeys` cap 4,096, `SProofMax`, `Def
 The external pass is an **AI** red team (already recorded in the session-27 close below), so the
 engagement is **minutes to hours, not weeks**, and it is **not** the longest-lead item on the
 project. **The longest-lead item is the owner's own acceptance cycles**, which is why the first-run
-clean-up (Lane F rows F3–F5) now has leverage nothing else has. *Provenance, stated so it is not
-mistaken for a ratification: this reclassification is owner direction of 2026-09-12 and carries NO
-`docs/decisions.md` entry; it is owed one.* Three further sites state the old reason inside a
-recorded 2026-09-10 rationale — the D3 row, the four-calls block and the
+clean-up (Lane F rows F3–F5) now has leverage nothing else has. *Provenance: this reclassification is
+RATIFIED in the ledger as **`D-B8-AI-ADVERSARY-2026-09-12`** — it is no longer owner direction living
+only in a conversation, and that entry is what every correction here cites.* Three further sites
+state the old reason inside a recorded 2026-09-10 rationale — the D3 row, the four-calls block and the
 `R-CONSENSUS-CONFIG-UNBOUND` register row. **Those are left as written**, because each is a quotation
 of why a decision was taken at the time, and the standing practice is that a correction is visible as
 a correction rather than laundered into the original. The ORDERING they justify — the `MinBond` bind
@@ -890,8 +891,13 @@ which is owed because on the shipped default the readiness tally is bypassed ent
 **NEXT SESSION IS A WHOLE-PROJECT AUDIT, planner-led** — five seats, fresh eyes, not a continuation
 of the freeze train. The reason it is scheduled now rather than after D3: B8 is an **AI** red team,
 and an AI adversary reads every stale comment in the tree. The repo clean is therefore load-bearing
-evidence, not hygiene. **B8 contracting has not moved all session, and it is the only item whose
-clock ignores our work.**
+evidence, not hygiene. **⚠ CORRECTED 2026-09-12 — the sentence that stood here, *"B8 contracting has
+not moved all session, and it is the only item whose clock ignores our work"*, is FALSE.**
+`D-B8-AI-ADVERSARY-2026-09-12` **retires contracting as a task outright**: there is no procurement
+clock to start, so nothing about B8 can fail to move. Commissioning the pass is unchanged — it stays
+the owner's act at D3. **No item's clock now ignores our work**; the longest-lead item is the owner's
+own acceptance cycles, which our work shortens directly. The audit's reason is the one stated above —
+an AI adversary reads the tree — and it does not need a lead-time argument.
 
 
 **▶ THE HEADLINE — THE OWED-AND-FORMAT LIST IS EMPTY. D3 IS SCHEDULABLE ON FORMAT GROUNDS TODAY.**
