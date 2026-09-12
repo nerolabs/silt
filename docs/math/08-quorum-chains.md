@@ -88,8 +88,14 @@ reorganizations: the first valid block at a height wins, and
 simultaneous proposals race (one gets `ErrWrongParent` and retries on
 the new head). (This describes the base/legacy chain: the objective
 fork-choice path since H4 now sizes quorums to a Byzantine supermajority
-(n−f) and reconciles competing forks to the heavier-standing chain, so
-the "no reorg" caveat applies to that legacy path, not the hardened one.) A colluding quorum of high-reputation validators could
+(n−f). **Corrected 2026-09-12:** the hardened path does NOT reconcile
+competing forks to whichever carries more bond standing — ranking is
+height then head hash with no bond term, and the finality gate admits only forks
+containing the committed head. So the "no reorg" caveat does not invert
+on the hardened path; it holds there for a STRONGER reason. A sub-quorum
+partition commits nothing at all, stalls, and catches up to the
+majority's history on heal. What the legacy path lacks is the quorum
+sizing, not a reorg it would otherwise perform.) A colluding quorum of high-reputation validators could
 write bad entries — the design bets that entities who spent months
 earning bond-backed reputations have more to lose than to gain, the
 same wager proof-of-stake makes with capital. What the chain buys over

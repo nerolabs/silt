@@ -170,20 +170,20 @@ func TestO3T_CanonI5TextMatchesCertification(t *testing.T) {
 //
 //	thinking/ reviews/ buildlog/ archive/   dated records; scripts/check_cited_tests.py skips the
 //	                                        same set. A record may QUOTE the retired wording.
-//	website/                                PARTLY generated, and this skip is WIDER than its
-//	                                        justification. Only `buildlog.html`, `changelog.html`
-//	                                        and `roadmap.html` have a generator (gen_buildlog.py,
-//	                                        gen_changelog.py, gen_roadmap.py). `index.html`,
-//	                                        `docs.html` and `node.html` are HAND-MAINTAINED prose
-//	                                        — `ef9d041 "correct two public overclaims"` edits
-//	                                        index.html directly — so a claim can live on silt's
-//	                                        public front page and this gate cannot see it. The
-//	                                        earlier reason given here ("GENERATED from the .md
-//	                                        sources; a hit there is a duplicate") is FALSE for
-//	                                        those three. Covering them is owed and is held with
-//	                                        the published-claim half of this work, because the
-//	                                        repair to a public claim is ratification-gated while
-//	                                        this harness half is not.
+//	buildlog.html                           the ONLY generated pages, skipped BY NAME rather than
+//	changelog.html                          by directory (gen_buildlog.py, gen_changelog.py,
+//	roadmap.html                            gen_roadmap.py). A hit in one of these IS a duplicate
+//	                                        of a hit the walk already has in the .md source.
+//
+//	                                        The blanket `website/` DIRECTORY skip that used to sit
+//	                                        here was wider than its own justification, which read
+//	                                        "GENERATED from the .md sources". That is FALSE for
+//	                                        `index.html`, `docs.html` and `node.html`: no
+//	                                        generator writes them, and `git log` shows
+//	                                        `ef9d041 "correct two public overclaims"` editing
+//	                                        index.html by hand. Two of the three carried a retired
+//	                                        claim on silt's public pages, behind a skip that said
+//	                                        they could not. They are now WALKED.
 //	CHANGELOG.md                            a dated record of what the claim USED to say. Same
 //	                                        class as buildlog/, and it is 9k lines of it.
 //	report-*.md                             cloudtest field reports; dated records of real runs.
@@ -200,7 +200,7 @@ func o3tShippedText(t *testing.T, root string) (lines []o3tLine, flat []o3tFlatF
 		}
 		if d.IsDir() {
 			switch d.Name() {
-			case ".git", ".claude", "archive", "vendor", "node_modules", "website",
+			case ".git", ".claude", "archive", "vendor", "node_modules",
 				"thinking", "reviews", "buildlog":
 				return filepath.SkipDir
 			}
@@ -211,7 +211,19 @@ func o3tShippedText(t *testing.T, root string) (lines []o3tLine, flat []o3tFlatF
 			strings.HasPrefix(name, "report-") {
 			return nil
 		}
-		// EXTENSIONS. `.yml`/`.yaml` was added 2026-09-12 after a blind review measured the
+		// The three GENERATED website pages, by name. Everything else under website/ is
+		// hand-maintained prose and is walked — see the skip table above.
+		if name == "buildlog.html" || name == "changelog.html" || name == "roadmap.html" {
+			return nil
+		}
+		// EXTENSIONS. `.html` was added 2026-09-12 in the same move that replaced the blanket
+		// `website/` skip with a by-name skip of the three generated pages: silt's public
+		// front page and docs page each carried a retired claim, and no gate could see them.
+		// Admission MEASURED: the walk goes 164 -> 173 tracked files, admitting six product UI
+		// pages under cmd/silt/ui/ and the three hand-maintained website pages, with ZERO new
+		// false positives for any banned literal.
+		//
+		// `.yml`/`.yaml` was added the same day after a blind review measured the
 		// hole: the repair that retired this vocabulary from integration/consensus/ and the
 		// gate that was meant to police it drew their file-type scope from the SAME list, so
 		// the gate was structurally incapable of finding what the repair missed —
@@ -220,7 +232,8 @@ func o3tShippedText(t *testing.T, root string) (lines []o3tLine, flat []o3tFlatF
 		// adding the two extensions takes the walk from 137 to 164 tracked files and the
 		// `heavier-bonded` census from 7 to 8, with ZERO new false positives.
 		if !strings.HasSuffix(path, ".md") && !strings.HasSuffix(path, ".sh") &&
-			!strings.HasSuffix(path, ".yml") && !strings.HasSuffix(path, ".yaml") {
+			!strings.HasSuffix(path, ".yml") && !strings.HasSuffix(path, ".yaml") &&
+			!strings.HasSuffix(path, ".html") {
 			return nil
 		}
 		raw, rErr := os.ReadFile(path)
@@ -245,10 +258,11 @@ func o3tShippedText(t *testing.T, root string) (lines []o3tLine, flat []o3tFlatF
 	//
 	// LEG 1, THE COUNT, IS A TOTAL-COLLAPSE TRIPWIRE AND NOTHING FINER. A floor that cannot fire
 	// is the defect this whole audit kept finding, so its reach is stated rather than implied.
-	// Re-driven at 75c0f89 over this exact filter: 164 files, composed integration/ 101, docs/
-	// 43, repo root 6, examples/ 6, .github/ 5, deploy/ 2, scripts/ 1. At 100 it fires only if
-	// ~39 % of the walk vanishes. Drop docs/ ENTIRELY and the count is 121 — GREEN, with every
-	// ratification-gated site outside the front page gone from the walk. RAISING the floor does
+	// Re-driven at 75c0f89 over this exact filter: 173 files, composed integration/ 101, docs/
+	// 43, repo root 6, cmd/ 6, examples/ 6, .github/ 5, website/ 3, deploy/ 2, scripts/ 1. At
+	// 100 it fires only if ~42 % of the walk vanishes. Drop docs/ ENTIRELY and the count is
+	// 130 — GREEN, with every ratification-gated site outside the front page gone from the
+	// walk. RAISING the floor does
 	// not repair that: any value tight enough to notice one directory goes false-RED on ordinary
 	// file churn, and a lint that cries wolf gets disabled — this gate's own admission bar. So
 	// the count is kept only for what it genuinely catches (a root that does not resolve, a
@@ -262,16 +276,17 @@ func o3tShippedText(t *testing.T, root string) (lines []o3tLine, flat []o3tFlatF
 	// docker-compose.yml carried a banned literal that no .md/.sh walk could ever reach), so it
 	// gets a witness instead of a comment.
 	if files < 100 {
-		t.Fatalf("SOURCE GATE: GATE VACUOUS — only %d shipped .md/.sh/.yml/.yaml files walked "+
-			"(164 measured on the TRACKED tree at 75c0f89 with the extensions above; it was 137 "+
-			"for .md/.sh alone, and an earlier revision of this line said 153, which was never "+
-			"measured — re-drive the number when you change the filter, do not carry it forward).\n"+
+		t.Fatalf("SOURCE GATE: GATE VACUOUS — only %d shipped .md/.sh/.yml/.yaml/.html files "+
+			"walked (173 measured on the TRACKED tree at 75c0f89 with the extensions above; 164 "+
+			"without .html, 137 for .md/.sh alone, and an earlier revision of this line said 153, "+
+			"which was never measured — re-drive the number when you change the filter, never carry "+
+			"it forward).\n"+
 			"  A WORKING COPY READS HIGHER than the tracked number if it carries untracked or "+
-			"ignored .md/.sh/.yml/.yaml under a walked path — measured 164 tracked vs 168 on one "+
-			"author's disk, the extras being integration/.run-all/report.md and three marketing/ "+
-			"notes. The TRACKED number is the reference because CI walks a clean checkout; if you "+
-			"re-drive this on a laptop and get a mismatch, that is why, and `git worktree add` "+
-			"reproduces the tracked figure.\n"+
+			"ignored .md/.sh/.yml/.yaml/.html under a walked path — re-driven 173 tracked vs 179 on "+
+			"one author's disk, the six extras being integration/.run-all/report.md, "+
+			"integration/cloudtest/report.html and four marketing/ notes. The TRACKED number is the "+
+			"reference because CI walks a clean checkout; if you re-drive this on a laptop and get a "+
+			"mismatch, that is why, and `git worktree add` reproduces the tracked figure.\n"+
 			"  This floor is a TOTAL-COLLAPSE tripwire. It cannot see one directory leaving the "+
 			"walk — that is what the anchors below are for.", files)
 	}
@@ -312,31 +327,40 @@ func o3tShippedText(t *testing.T, root string) (lines []o3tLine, flat []o3tFlatF
 // WALK (not the anchor from this list, which would prove nothing) and the gate is re-run:
 //
 //	ablation                                  files walked   count floor   anchor leg
-//	drop docs/ from the skip switch                    121   GREEN         RED  docs/threat-model.md
-//	drop the .yml/.yaml extension                      137   GREEN         RED  …/docker-compose.yml
-//	skip README.md by name                             137   GREEN         RED  README.md
-//	skip run-all.sh by name                            163   GREEN         RED  integration/run-all.sh
-//	drop integration/ from the skip switch              63   RED           (not reached)
+//	drop docs/ from the skip switch                    130   GREEN         RED  docs/threat-model.md
+//	drop website/ from the skip switch                 170   GREEN         RED  website/index.html
+//	drop the .html extension                           164   GREEN         RED  website/index.html
+//	drop the .yml/.yaml extension                      146   GREEN         RED  …/docker-compose.yml
+//	skip every file named README.md                    146   GREEN         RED  README.md
+//	skip every file named run-all.sh                   172   GREEN         RED  integration/run-all.sh
+//	drop integration/ from the skip switch              72   RED           (not reached)
 //
-// Read the first four rows as the finding: in every one of them the COUNT FLOOR IS GREEN and the
-// gate is red only because an anchor is missing. The second row is the exact 2026-09-12 regression
-// that this whole change exists to close — a .yml file carrying a banned literal that the walk
-// could not reach — and the floor does not notice it. The last row is honest about its own limit:
-// losing all of integration/ is a big enough collapse that the tripwire fires first, so that run
-// does not demonstrate its anchor; the run above it does, in isolation.
+// Read the first SIX rows as the finding: in every one of them the COUNT FLOOR IS GREEN and the
+// gate is red only because an anchor is missing. Rows 2-4 are this change's own subject matter —
+// the website/ skip and the .html and .yml extensions — and the floor notices none of them; row 4
+// is the exact 2026-09-12 regression that started this work, a .yml file carrying a banned literal
+// the walk could not reach. The last row is honest about its own limit: losing all of integration/
+// is a collapse big enough that the tripwire fires first and returns before the anchor loop runs,
+// so that run does not demonstrate its anchor; row 6 does, in isolation.
 var o3tWalkAnchors = []struct{ Rel, Why string }{
 	{"README.md",
 		"the repo ROOT, and the front-door site: the sweep this gate replaced walked docs/ only, " +
 			"so the claim sat in README.md for months with a gate in the tree that looked like it covered it"},
 	{"integration/run-all.sh",
-		"integration/ (101 of the 164 walked files at 75c0f89) AND the .sh extension"},
+		"integration/ (101 of the 173 walked files at 75c0f89) AND the .sh extension"},
 	{"docs/threat-model.md",
-		"docs/ (43 of 164). Measured: dropping docs/ leaves the count at 121, above the floor, " +
+		"docs/ (43 of 173). Measured: dropping docs/ leaves the count at 130, above the floor, " +
 			"and neither original anchor was under docs/ — so the entire ratification-gated repair " +
 			"set outside the front page could leave the walk with every leg still green"},
 	{"integration/consensus/docker-compose.yml",
 		"the .yml extension, which is not decoration: this exact file carried a banned literal at " +
 			"75c0f89 that the .md/.sh-only walk was structurally incapable of reaching"},
+	{"website/index.html",
+		"the .html extension AND the website/ directory, both admitted by this change. Until " +
+			"2026-09-12 website/ was skipped wholesale on a reason that was FALSE for three of " +
+			"its six pages, and this file carried the retired claim on silt's public front page " +
+			"while every gate in the tree stayed green. If the blanket skip ever comes back, this " +
+			"anchor is what says so"},
 }
 
 type o3tLine struct {
@@ -406,20 +430,53 @@ func o3tFlatten(rel string, raw []byte) o3tFlatFile {
 //	                  measured it: the eighth was real, unrepaired, and sat outside the extension
 //	                  filter. A census is a CLAIM — re-drive it, never carry it forward.
 //
-// THIS SET IS THE HARNESS HALF ONLY, AND THAT SPLIT IS DELIBERATE. Every live hit of
-// "heavier-bonded" is inside integration/consensus/ — harness text, not a published claim — so
-// retiring it needs no ratification and lands here. The companion phrase "heavier-standing chain"
-// is the M0-composition family (README.md, docs/threat-catalog.md, docs/risk-register.md,
-// docs/math/08-quorum-chains.md, and silt's public website), its replacement wording is a
-// research-certified PUBLISHED CLAIM, and it is HELD for owner ratification. Adding it to this set
-// before that ratification would make this gate demand a sentence nobody has approved.
+//	"heavier-standing chain"  4 hits, 4 of 4 ARE the retired claim (README.md,
+//	                          docs/threat-catalog.md, docs/risk-register.md,
+//	                          docs/math/08-quorum-chains.md). Closed. THIS ENTRY IS
+//	                          RATIFICATION-GATED: its replacement is a research-certified
+//	                          PUBLISHED CLAIM (see TestO3T_CertifiedForkChoiceSentenceIsPresent
+//	                          below), so this line and that test land together or not at all.
+//	                          The companion "heavier-bonded" entry is harness text and needed
+//	                          no ratification; it landed separately, ahead of this.
+//
+//	"on-chain-bond fork-choice"  13 hits AT BASE (75c0f89) IN THIS WALK, 13 of 13 ARE the retired
+//	                          claim. Found by CENSUS while severing this work — NOT by the gate,
+//	                          because it is a different phrase from the two above. It locates the
+//	                          objectivity in the RANKING; the bond decides who may participate
+//	                          and what counts toward quorum, never how two candidate heads are
+//	                          ordered. Ratification-gated, so this entry lands here.
+//
+//	                          NAME THE TREE. This entry previously read "7 hits when this was
+//	                          measured … One hit was harness text (run.sh:5) … the remaining six
+//	                          are docs/threat-model.md x4 and silt's public index.html and
+//	                          docs.html". Every part of that was wrong, and re-driving it is the
+//	                          only reason we know:
+//	                            - 7 is the count on the HARNESS-HALF tree, not at base. At base
+//	                              in this walk it is 13; in the harness half's narrower walk
+//	                              (no website/, no .html) it is 11. A census with no tree named
+//	                              is not re-drivable, so all three are given.
+//	                            - the 1 + 6 split is wrong for EVERY tree. SIX hits at base were
+//	                              harness text, not one: integration/README.md:164,
+//	                              integration/run-all.sh:30, integration/consensus/README.md:7
+//	                              and :92, integration/consensus/docker-compose.yml:16, and
+//	                              integration/consensus/run.sh:5.
+//	                            - it OMITTED README.md:43 — the front-door site, the loudest
+//	                              one, and the reason TestO3T_CertifiedForkChoiceSentenceIsPresent
+//	                              exists. 1 + 6 = 7 balanced only because the harness count was
+//	                              collapsed to one and the README was dropped.
+//	                          The seven live at the harness half's head, all repaired HERE:
+//	                          README.md:43, website/index.html:173, website/docs.html:34, and
+//	                          docs/threat-model.md x4. Re-driven at this head: 0 remain.
 //
 // DELIBERATELY NOT BANNED, and this is the gate's honest coverage limit. BOTH figures below were
-// RE-DRIVEN 2026-09-12 over THIS walk at 75c0f89, after a blind review measured that the two
-// censuses this gate REASONED about were wrong while the two it re-drove were exact:
+// RE-DRIVEN 2026-09-12 over THIS walk (173 files) at 75c0f89, after a blind review measured that
+// the two censuses this gate REASONED about were wrong while the two it re-drove were exact.
+// Both counts are also driven over the harness half's narrower 164-file walk and are IDENTICAL
+// there, so neither figure depends on which of the two scopes you stand in:
 //
 //	"heavier chain"  5 hits, only 2 of which are the claim (integration/README.md:164 and
-//	                 integration/run-all.sh:30 — both repaired by text in this change). The other
+//	                 integration/run-all.sh:30 — both repaired by text in the harness half). The
+//	                 other
 //	                 3 describe a genuinely TALLER chain in harness mechanics
 //	                 (integration/cloudtest/scenarios.sh:820,837 "DRIVE the majority to commit a
 //	                 heavier chain" and a height comparison; integration/consensus/run.sh:225
@@ -469,9 +526,10 @@ func o3tFlatten(rel string, raw []byte) o3tFlatFile {
 //	  gate as covering "the claim"; it covers a vocabulary.
 //
 //	ALSO NOT COVERED, by construction: any file outside the extension filter (.go, .py, .tf,
-//	  .json, Makefile, Dockerfile, extensionless) and any directory in the skip list above —
-//	  including website/, where two hand-maintained pages carry the claim TODAY
-//	  (website/index.html:173 and website/docs.html:34, re-driven at this head).
+//	  .json, Makefile, Dockerfile, extensionless) and any directory in the skip list above.
+//	  website/ was in that sentence until 2026-09-12; its three hand-maintained pages are now
+//	  WALKED, and the two that carried the claim (website/index.html, website/docs.html) are
+//	  repaired here. Re-driven at this head: 0 hits of any banned literal tree-wide.
 //
 //	  THE .go POPULATION IS REAL, IS ONLY PARTLY REPAIRED, AND IS NOT GATED AT ALL. An earlier
 //	  revision of this line said it "is repaired by text in this same change", which asserted
@@ -500,6 +558,8 @@ func o3tFlatten(rel string, raw []byte) o3tFlatFile {
 // ============================================================================================
 var o3tRetiredForkChoiceVocabulary = []string{
 	"heavier-bonded",
+	"heavier-standing chain",
+	"on-chain-bond fork-choice",
 }
 
 // TestO3T_NoRetiredForkChoiceClaimInShippedText bans the retired bond/weight fork-choice vocabulary
@@ -613,6 +673,46 @@ func TestO3T_SoftWrapDoesNotDisarmTheCanonTextGates(t *testing.T) {
 	if len(hits) != 1 || !strings.Contains(hits[0], "synthetic.md:3") {
 		t.Fatalf("SOURCE GATE: a wrapped hit reported %v, want exactly one hit at synthetic.md:3 — the "+
 			"line the phrase STARTS on, not the line it ends on", hits)
+	}
+}
+
+// o3tCertifiedForkChoiceSentence is the M0 composition claim's fork-choice clause, VERBATIM from
+// research certification README-BOND-FORKCHOICE-literal-claim-and-equivalence-RESEARCH-
+// CERTIFICATION-2026-09-12 §7 (the certification carries it at :214).
+//
+// DO NOT RE-WORD IT to make a test pass, to fix a typo, or to fit a line. It is a PUBLISHED CLAIM;
+// changing the words re-opens the certification, and this constant exists precisely so that a
+// silent re-wording fails a build instead of shipping.
+const o3tCertifiedForkChoiceSentence = "objective, bond-weighted commit admission — a block " +
+	"commits only on an intersecting super-quorum of a validator set the chain itself sizes " +
+	"(a strict anchor majority at launch, >⅔ of the epoch's frozen on-chain bond once standing " +
+	"is earned), so a sub-quorum partition commits nothing, stalls, and catches up to the " +
+	"majority's history on heal rather than reorging onto it"
+
+// TestO3T_CertifiedForkChoiceSentenceIsPresent is the half the ban set does not have.
+//
+// WHY. A ban asserts only a NEGATIVE: the retired wording is gone. Delete the replacement sentence
+// outright and every banning gate in this file stays green, because nothing in the tree required it
+// to be there. The claims-ledger gate next door asserts BOTH directions — old row absent AND new
+// row present verbatim — and this is the same discipline applied to the front door.
+//
+// Matched over the FLATTENED text, so the sentence may be soft-wrapped in README.md however the
+// prose needs it; what is pinned is the words and their order, not the line breaks.
+func TestO3T_CertifiedForkChoiceSentenceIsPresent(t *testing.T) {
+	root := o3tRepoRoot(t)
+	raw, err := os.ReadFile(filepath.Join(root, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := o3tFlatten("README.md", raw)
+	want := strings.Join(strings.Fields(o3tCertifiedForkChoiceSentence), " ")
+	if !strings.Contains(f.Text, want) {
+		t.Fatalf("SOURCE GATE: README.md does not carry the certified fork-choice sentence verbatim:\n\n  %s\n\n"+
+			"  It is a PUBLISHED CLAIM from research certification README-BOND-FORKCHOICE-literal-claim-\n"+
+			"  and-equivalence-RESEARCH-CERTIFICATION-2026-09-12 §7. Restore it word for word. Do NOT edit\n"+
+			"  o3tCertifiedForkChoiceSentence to match the README — that inverts the gate and re-opens the\n"+
+			"  certification silently, which is the exact failure this test exists to make impossible.\n"+
+			"  Line breaks are free: the match runs over the whitespace-flattened file.", want)
 	}
 }
 

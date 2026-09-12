@@ -40,8 +40,13 @@ costs ≈ *q* × the real resource an honest provider pays: disk × address-dive
 silently concentrate past the capture threshold). The parts that make each axis
 real are built and internally hardened (Gate 4): a verify-without-fetch
 proof-of-retrieval, an identity-bound proof-of-**space-time** bond over a proven
-depth-robust graph, objective on-chain-bond fork-choice so partitions heal to the
-heavier-standing chain, publisher-unlinkable publishing (ephemeral identity +
+depth-robust graph, objective, bond-weighted commit admission — a block
+commits only on an intersecting super-quorum of a validator set the
+chain itself sizes (a strict anchor majority at launch, >⅔ of the
+epoch's frozen on-chain bond once standing is earned), so a sub-quorum
+partition commits nothing, stalls, and catches up to the majority's
+history on heal rather than reorging onto it,
+publisher-unlinkable publishing (ephemeral identity +
 prepaid blind-signed credits), and per-operator, existence-checked, reversible
 takedowns — covered at the unit, in-process-simulation, and real-daemon end-to-end
 tiers. What they are **not** yet: **externally re-verified.** A primitive failing a

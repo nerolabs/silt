@@ -4768,3 +4768,89 @@ legitimately gathers many heights per window.
 **no row**: it is already disclosed in `docs/design/m0.md` §10.1 as face (i) of
 `R-CARRIER-QC-SCREEN-BEFORE-BUDGET`, and it has no closer, so under simplicity rule 4 it is a disclosure
 and not a row. Register net: 33 → 34.
+
+## D-FORKCHOICE-CLAIM-2026-09-12 — the published fork-choice claim is corrected; the PROPERTY was sound and the DOCUMENTATION was false
+
+- **Status:** ✅ RATIFIED — 2026-09-12. The owner took the FULL scope on offer rather than a
+  narrower first pass. Certification:
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/README-BOND-FORKCHOICE-literal-claim-and-equivalence-RESEARCH-CERTIFICATION-2026-09-12.md`.
+  **Nothing shipped changes: no consensus rule, no format surface, no economic mechanism, no
+  security parameter.** What is ratified is published WORDING, plus the gate that holds it.
+
+### What was refuted — the description, not the mechanism
+
+silt's front door described fork choice as ranked by on-chain bond, and said a partition healed
+onto whichever fork carried the greater bond standing. Both clauses are false about the shipped
+code, and have been since O3 Direction T (owner-ratified 2026-09-03):
+
+- `core/chain`'s `heavier` reads `Height`, then the head hash, and nothing else. There is no bond
+  term and no weight term anywhere in ranking. Pinned by `TestO3T_HeavierReadsOnlyHeightAndHeadHash`.
+- With the finality gate engaged, `Reconcile` admits only forks that contain the committed head, so
+  there is no dropped-block reorg for a partition to heal WITH. A minority below quorum commits no
+  block at all; it stalls, then re-syncs onto the majority chain once the partition lifts.
+
+**The certification found the PROPERTY SOUND.** Height-then-head-hash selection, composed with the
+finality gate, delivers the convergence the old sentence was reaching for — and on a stronger
+footing than a bond-ranked rule would. **No consensus defect was found and none is fixed here.**
+What failed review was the sentence. That distinction is the point of this entry: a reader who
+takes this as a repair to consensus has read it wrong.
+
+### The certified replacement, and where it is verbatim
+
+§7 of the certification carries the replacement sentence; §6 gives each of its clauses a source
+coordinate. It is a PUBLISHED CLAIM, so it ships VERBATIM at the one site that states the M0
+composition — the enumerated list in `README.md` — and `TestO3T_CertifiedForkChoiceSentenceIsPresent`
+pins that it is PRESENT. **Do not reword it to make a test go green; that re-opens the certification.**
+
+The presence pin supplies the half a ban set structurally cannot.
+`TestO3T_NoRetiredForkChoiceClaimInShippedText` asserts only a negative — the retired vocabulary is
+gone — and stays green if the replacement is deleted outright. Both directions now hold, as they
+already did for the claims-ledger row.
+
+### The scope ratified — six sites, and a seventh that travels with them
+
+Ratified: `README.md`, `docs/threat-catalog.md`, `docs/risk-register.md`,
+`docs/math/08-quorum-chains.md`, `website/index.html`, `website/docs.html`.
+`docs/threat-model.md` carried four live instances of the same vocabulary and moves with them,
+making seven files.
+
+**Only `README.md` takes the sentence verbatim.** The other six state a NARROWER property in their
+own voice and were each made true in their own terms: a mechanism NAME inside a comma list at the
+two website pages and at all four `docs/threat-model.md` sites; a dated correction notice in the
+math doc and the risk register; a claim-plus-tier statement in the threat catalog. A verbatim paste
+is ungrammatical in the six mechanism-name slots, and at every one of the six it would have created
+a SECOND FACE of a published claim — the failure mode the certification's one-face rule exists to
+prevent.
+
+Measured after the repair, over the gate's own flattened walk of 173 tracked files: **zero live
+instances of all three retired literals, tree-wide.** At `75c0f89` they stood at 8, 4 and 13 live
+sites respectively. The exact strings live in `o3tRetiredForkChoiceVocabulary`
+(`core/chain/o3t_canon_text_test.go`) and this entry deliberately does not repeat them: the gate
+walks `docs/`, so quoting a banned phrase in order to correct it trips the ban on the correction
+itself. The harness share of those counts landed separately in #838, needing no ratification.
+
+### What this entry does NOT ratify
+
+The owner ratified the WORDING. He did not rule on how `README.md` RENDERS it: the sentence is
+spliced into a comma list such that its first word parses as a list item of its own, and the seat
+harness re-renders it as a blockquote with a capitalised lead-in, a colon for the em-dash and a
+trailing period. That is an open owner call and is deliberately left alone here, because changing
+the rendering means touching the certified bytes.
+
+### The residual the certification named, carried forward
+
+**R-1: the whole argument rests on `FinalizedHeight()` returning `len(c.blocks)-1` — finalized
+height IS head height — and nothing guards it.** No test asserts that coupling *as the premise of
+fork-choice soundness*. If a future I4 change decouples them (a Gasper-shaped finality that lags the
+head), the admitted set stops being a chain and becomes a tree, height selection can genuinely
+under-select against standing, and **this certification is void with no gate going red.** The lift
+the certification names is a source or model gate that fails if `FinalizedHeight` stops being the
+head, citing this certification as its reason.
+
+R-1 is DISCLOSED here and deliberately not filed as a register row: it has no owner and no closer
+yet, and under simplicity rule 4 that makes it a disclosure. The certification's other open
+residuals — R-2 and R-3 (a `core/chain` comment that over-claims by one word, and states the gate
+unconditionally), R-4 (the consensus harness README asserting a PASS for pre-BFT phenomenology),
+R-6 (the remaining `.go` and operator-narration sites of the retired vocabulary) and R-8 (an
+order-independence test body the certification did not read) — are carried in the certification.
+This entry neither ratifies nor closes them.

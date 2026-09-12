@@ -25,8 +25,20 @@ A few structural through-lines, stated once:
   hardened (the M0 trust-plane mechanism): an identity-bound proof-of-**space-time** bond over a proven
   depth-robust graph (axis D), a proof-of-retrieval that verifies possession
   **without fetching**, signed provider records + failure-domain diversity against
-  key-surround (axis A), and equivocation slashing with forks reconciling to the
-  heavier-standing chain — proven at unit + sim + real-daemon e2e. The internal
+  key-surround (axis A), and equivocation slashing with objective, bond-weighted
+  COMMIT ADMISSION — a block commits only on an intersecting super-quorum of a
+  validator set the chain itself sizes, so a sub-quorum partition commits nothing,
+  stalls, and catches up to the majority's history on heal rather than reorging
+  onto it. **Corrected 2026-09-12** (research certification `README-BOND-FORKCHOICE-
+  literal-claim-and-equivalence-…`): the earlier wording said forks reconcile to
+  whichever chain carries more bond standing, which no shipped rule does —
+  `heavier()` reads Height then head hash and has no bond term. The TIER claim moves with it: the corrected
+  property is driven at **unit** (`TestRedteamF6_ObjectiveForkChoiceConvergesByCatchUp`,
+  `TestModelCheck_357_NoReorgOfFinalizedLaunchBlock`) and at **real-daemon e2e**
+  (`TestPartitionHealsToHeavierForkOverTCP`, `TestObjectiveConsensusCommitsOverTCP`).
+  **Not** at sim: `sim/reorg_test.go` and `sim/objective_consensus_test.go` drive a
+  REORG, which is a gate-off posture, so the sim tier does not witness this property.
+  The internal
   hardening pass is complete; **external re-verification against the systemic C1/C2
   claim is the remaining bar.** A hard proof-of-work on *minting* stays deferred;
   we say so loudly.
