@@ -34,8 +34,10 @@ const (
 )
 
 // DeliveryBytesPerCredit is U/p: the bytes one credit buys on the witnessed lane. It is
-// the denominator of the repair-bounty base (RepairBountyBase) — the fetch price a
-// repair is worth — and the floor Dλ must sit strictly above.
+// the denominator of the repair-bounty base (RepairBountyBase) — the witnessed price of
+// the ONE shard the bounty's payee moves, since F1 (D-BOUNTY-PRICE-F1-2026-09-12); it was
+// read as the price of a k-survivor fetch the payee never performs — and the floor Dλ must
+// sit strictly above.
 const DeliveryBytesPerCredit = DeliveryIncrementBytes / DeliveryIncrementCredit
 
 // ServeMintBytesPerCredit is Dλ: the unwitnessed serve mints ONE credit per Dλ bytes

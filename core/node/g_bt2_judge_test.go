@@ -15,9 +15,12 @@ import (
 // divided ONCE, at the end. The credit-tier gates prove the arithmetic; this one proves
 // the judge calls it, on the shard length it measured from a survivor.
 //
-// The geometry is the certification's worst un-warned case — -chunk-size 52412 ⇒ a
-// 52,428-byte shard, an exact 1.99996 credits — on a stripe three shards down. The
-// repairer is owed 7; the pre-G-BT-2 build paid 4.
+// The geometry is the worst un-warned case — -chunk-size 524264 ⇒ a 524,280-byte shard,
+// an exact 1.99996 credits — on a stripe three shards down. The repairer is owed 7; the
+// pre-G-BT-2 build paid 4. (The chunk size moved 52412 → 524264 with F1,
+// D-BOUNTY-PRICE-F1-2026-09-12: the price is one SHARD of witnessed fetch, not k of them,
+// so the shard carrying an exact 1.99996 credits is 10× larger. Every credit figure below
+// is unchanged — G-BT-2 is a property of the division ORDER, not of the price basis.)
 //
 // Ablation that must go RED: settle with
 // credit.RepairBountyBase(p.K, shardBytes) * int64(credit.RarestShardMultiplier(p.K, p.N, reachable)).
@@ -34,8 +37,8 @@ func TestJudgePaysTheUndividedRepairPrice(t *testing.T) {
 		t.Fatalf("fund escrow: %v", err)
 	}
 
-	const shardBytes = 52_412 + 16 // one whole ciphertext chunk at -chunk-size 52412
-	const reachable = 13           // 3 of 16 lost ⇒ a 4× multiplier
+	const shardBytes = 524_264 + 16 // one whole ciphertext chunk at -chunk-size 524264
+	const reachable = 13            // 3 of 16 lost ⇒ a 4× multiplier
 	p := erasure.Params{K: 10, N: 16}
 	floorFirst := credit.RepairBountyBase(p.K, shardBytes) * int64(credit.RarestShardMultiplier(p.K, p.N, reachable))
 	if floorFirst != 4 {

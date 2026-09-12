@@ -42,18 +42,20 @@ func fileSizeOrUnknown(f *os.File) int64 {
 	return fi.Size()
 }
 
-// warnBountyPrice names, at publish time, a publish whose stripe SHORT-PAYS the repair
-// bounty. The base is an integer floor of the witnessed fetch price, so k × shardBytes
-// below one credit of fetch rounds to nothing (G-λ-8, G-R212-7) and k × shardBytes just
-// above it rounds away up to half the repairer's wage (R-BOUNTY-TRUNCATION, G-BT-1).
+// warnBountyPrice names, at publish time, a publish whose SHARD short-pays the repair
+// bounty. The base is an integer floor of the witnessed fetch price of the one shard the
+// payee moves (F1, 2026-09-12), so a shard below one credit of fetch rounds to nothing
+// (G-λ-8, G-R212-7) and a shard just above it rounds away up to half the repairer's wage
+// (R-BOUNTY-TRUNCATION, G-BT-1).
 //
 // TWO things can put a publish there, and both are named because a publisher can act on
 // neither once the object is stored. (1) A chunk size the operator chose. (2) The OBJECT:
 // since R-SHORT-FINAL-STRIPE a single-frame object is stored at its true length, so ITS
 // shard is its own bytes and no chunk size changes that — at the shipped default every
-// object of 26,190 B or less pays a base of ZERO. Case (2) is created by this same
-// change, so leaving it silent would ship a warning that misses the class it invented
-// (blind PE B-3, 2026-09-09).
+// object of 262,119 B or less pays a base of ZERO (26,190 B before F1; the class widened
+// 10.008×, R-BOUNTY-ZERO-BELOW-262KB). Case (2) is created by this same change, so leaving
+// it silent would ship a warning that misses the class it invented (blind PE B-3,
+// 2026-09-09).
 //
 // The daemon has no publish geometry at start-up to refuse on, and the judge that names a
 // zero at settlement is a caretaker the publisher neither runs nor sees, so this is the
@@ -71,17 +73,49 @@ func minBountyChunkBytes() int64 {
 
 // shippedBountyBase is the repair-bounty base the SHIPPED publish default pays on a
 // full-frame object: the warning's threshold, DERIVED from the two shipped constants and
-// never typed. It is 10 today (a 262,160-byte shard, exact 10.00061), which is what makes
-// the rule below have a closed complement — warn iff this publish pays a smaller base
-// than the shipped default's — so a default publish of a full-frame object is silent by
-// construction rather than by a hand-kept number.
+// never typed. It is 1 today (a 262,160-byte shard, exact 1.00006 — it was 10 before F1
+// re-based the price on the one shard the payee moves), which is what makes the rule below
+// have a closed complement — warn iff this publish pays a smaller base than the shipped
+// default's — so a default publish of a full-frame object is silent by construction rather
+// than by a hand-kept number.
 //
 // The coupling to watch: if DefaultChunkSize ever dropped below minBountyChunkBytes this
-// would be 0 and the whole warning, ZERO arm included, would go permanently silent. The
-// tripwire is in the gate, which asserts this is 10 and says to re-read G-BT-1 on any
-// move of the default (blind PE N-7).
+// would be 0 and the whole warning, ZERO arm included, would go permanently silent. That
+// was a comment until 2026-09-12; F1 compressed the margin from 235,945 B to 16 B, so it is
+// now an assertion — checkBountyDisclosureHeadroom, a refuse-to-start (canon rule 8, first
+// arm: locally checkable ⇒ refuse to start). The gate also asserts this reads 1 and says to
+// re-read G-BT-1 on any move of the default (blind PE N-7).
 func shippedBountyBase() int64 {
 	return credit.RepairBountyBase(erasure.DefaultParams.K, int64(pipeline.DefaultChunkSize)+crypto.Overhead)
+}
+
+// checkBountyDisclosureHeadroom refuses a build whose publish default pays a ZERO repair
+// bounty. It is canon rule 8's first arm: the relation is pure local arithmetic over two
+// compile-time constants, so it is checkable at start-up and never needs distributed
+// agreement (`c` is not a consensus quantity — PayBounty is classified `neutral` and the
+// γ→1/N firewall is build-enforced in core/credit/invariant_a_test.go).
+//
+// WHAT IT PROTECTS, precisely. bountyPriceWarning's rule is "warn iff this publish's base
+// is below the shipped default's". If the shipped default itself paid 0, every publish
+// would be at or above the threshold and the warning — ZERO arm included — would go
+// permanently silent, which is the one way a publisher can never learn that its object's
+// repairs pay nothing. The margin used to be 235,945 B and nobody could plausibly cross it;
+// since F1 it is 16 B (crypto.Overhead), and the two constants either side are Evolving-tier.
+//
+// It is deliberately NOT gated on -economy: the disclosure is what the publisher needs
+// whether or not THIS node pays bounties, and the publish path runs in `silt add` with no
+// economy flag at all. Raising pipeline.DefaultChunkSize to widen the margin is REFUSED —
+// it moves blocks[0].Hash() (see that constant's own doc, and core/genesis
+// TestGenesisBlockHashIsPinned). The admissible move is the PRICE, which is a separate
+// certification because U/p carries GrantOverRPinBytes and the G-λ-3 refusal.
+//
+// Driven both ways by TestF1RefusesAPublishDefaultThatPaysNoBounty.
+func checkBountyDisclosureHeadroom(defaultChunk, minChunk int64) error {
+	if defaultChunk >= minChunk {
+		return nil
+	}
+	return fmt.Errorf("the publish default pays a ZERO repair bounty: pipeline.DefaultChunkSize is %d B but a non-zero base needs at least %d B (one shard of witnessed fetch, %d B, less the %d-byte tag — F1, D-BOUNTY-PRICE-F1-2026-09-12). At a zero shipped base the publish warning's threshold is 0, so every publish reads as at-or-above it and the ZERO warning never fires again — a publisher would have no way to learn its object's repairs pay nothing. Re-derive the delivery price (credit.DeliveryBytesPerCredit); do NOT raise the chunk default, which moves the height-0 block hash",
+		defaultChunk, minChunk, int64(credit.DeliveryBytesPerCredit), int64(crypto.Overhead))
 }
 
 // publishShardBytes is the ciphertext shard a repair of this publish will actually pull:
@@ -109,9 +143,40 @@ func publishShardBytes(chunkBytes, objectBytes int64) int64 {
 // overstated it (blind PE R-1, 2026-09-09). An unset flag IS DefaultChunkSize, so the
 // GEOMETRY cause can never fire without one; the OBJECT cause can, and is meant to.
 // Measured at the shipped default with no flag set: 1,024 B fires (ZERO), 100,000 B fires
-// (TRUNCATES 21.4 %), 262,119 B fires (TRUNCATES 10.0 %), and 262,120 B is the first
-// silent size. So a default publish is silent for a FULL-FRAME object and speaks for a
-// short-framed one — every object of 262,119 B or less warns.
+// (ZERO), 262,119 B fires (ZERO), and 262,120 B is the first silent size. So a default
+// publish is silent for a FULL-FRAME object and speaks for a short-framed one — every
+// object of 262,119 B or less warns.
+//
+// THE BOUNDARY DID NOT MOVE WITH F1 (2026-09-12); THE ARM DID. 262,119/262,120 is the same
+// pair before and after, because both the base and the threshold fell by the same factor.
+// What changed is that the sizes below it used to warn TRUNCATES and now warn ZERO — they
+// pay nothing rather than paying short. That IS the accepted cost of the re-pricing
+// (R-BOUNTY-ZERO-BELOW-262KB), and the shortFrame fix text below already said the right
+// thing for it.
+//
+// AND THE TRUNCATES ARM IS NOW UNREACHABLE THROUGH THIS FUNCTION, disclosed rather than
+// deleted. The rule fires iff base < shippedBountyBase(), which is 1, so a firing publish
+// has base == 0 and always takes the ZERO arm.
+//
+// THE COST IS MEASURED, and it is larger than the anecdote first filed for it. The maximum
+// SILENT repair-wage short-pay rises 5.5×, from 9.09 % pre-F1 (base ≥ 10 ⇒ loss ≤ 1/11) to
+// 50.0 % (base ≥ 1 ⇒ loss ≤ 1/2), and it is reachable at ordinary operator choices, not
+// only at the 524,264 corner: -chunk-size 393216 (384 KiB) goes 0.00 % → 33.3 %, 327,680
+// goes 4.00 % → 20.0 %, 524,264 goes 5.00 % → 50.0 %. Pre-F1 the warning covered exactly
+// the large-loss region; post-F1 that whole region is silent.
+//
+// THE RULE IS NOT WIDENED HERE, AND THE REASON IS THE CLOSED COMPLEMENT. The earlier
+// record gave a different reason — that a loss-fraction clause "would speak on the shipped
+// default itself, the finding blind PE M6 closed" — and THE SHIPPED CODE REFUTES IT:
+// credit.RepairBountyTruncation returns 0 tenths of a percent at both 262,144 B (the
+// default) and 262,128 B (the minimum chunk), against 200 / 333 / 500 at the rows above,
+// so an OR of `lossTenths >= 10` (1 %) is silent on both. What such a clause really costs
+// is this rule's one structural property: "warn iff base < shippedBountyBase()" has a
+// CLOSED COMPLEMENT — silent in exactly one case, and that case is stated — and an
+// OR-clause breaks it. Taking the widening is therefore a DECISION, not a defect fix, and
+// it is filed with its measured cost as R-TRUNCATION-DISCLOSURE-NARROWS. The arm's arithmetic stays and is
+// driven directly in core/credit TestRepairBountyTruncationIsExactIntegerArithmetic; the
+// threshold is DERIVED, so a re-tune of U/p or the publish default revives the arm.
 //
 // That is a deliberate TRADE against the earlier "don't warn on every default publish"
 // finding (blind PE M6), not a way of satisfying it: after R-SHORT-FINAL-STRIPE the object
@@ -134,12 +199,12 @@ func bountyPriceWarning(chunkBytes, objectBytes int64) string {
 		fix = "NO chunk size changes this — the shard IS the object; under a repair economy this object's durability is prepay-only (fund its escrow), because its serves are also too small to skim a credit"
 	}
 	if base == 0 {
-		return fmt.Sprintf("warning: this publish pays a ZERO repair bounty: %s, and a k=%d stripe of those is %d B — below one credit of fetch (%d B), so under a repair economy (-economy) a repair of it pays NOTHING (G-λ-8); %s",
-			cause, k, int64(k)*shardBytes, int64(credit.DeliveryBytesPerCredit), fix)
+		return fmt.Sprintf("warning: this publish pays a ZERO repair bounty: %s, which is below one credit of fetch (%d B), so under a repair economy (-economy) a repair of it pays NOTHING (G-λ-8); %s",
+			cause, int64(credit.DeliveryBytesPerCredit), fix)
 	}
 	exactE5, lossTenths := credit.RepairBountyTruncation(k, shardBytes)
-	return fmt.Sprintf("warning: this publish TRUNCATES the repair bounty: %s, and a k=%d stripe of those is worth %s credits but pays %d — a repair of this object short-pays the repairer by %s%% of the price (R-BOUNTY-TRUNCATION, G-BT-1); %s",
-		cause, k, creditsE5(exactE5), base, tenthsPct(lossTenths), fix)
+	return fmt.Sprintf("warning: this publish TRUNCATES the repair bounty: %s, worth %s credits but paying %d — a repair of this object short-pays the repairer by %s%% of the price (R-BOUNTY-TRUNCATION, G-BT-1); %s",
+		cause, creditsE5(exactE5), base, tenthsPct(lossTenths), fix)
 }
 
 // creditsE5 renders a price that credit.RepairBountyTruncation floored at 1e-5 credits:

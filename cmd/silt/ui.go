@@ -1079,8 +1079,10 @@ func withheldDurability(di *durabilityInfo) *durabilityInfo {
 type durabilityInfo struct {
 	BountyOn bool `json:"bountyOn"`
 	// BountyBaseZero counts repair releases whose bounty base was ZERO for the object's
-	// geometry (k·shardBytes below one credit of fetch, G-R212-7 / G-λ-8) — a bounty
-	// silently OFF, surfaced where the -economy operator looks. A node-wide count that
+	// geometry (shardBytes below one credit of fetch, G-R212-7 / G-λ-8; it was
+	// k·shardBytes until the F1 re-pricing, D-BOUNTY-PRICE-F1-2026-09-12, which is why
+	// the zero class widened 10.008×) — a bounty silently OFF, surfaced where the
+	// -economy operator looks. A node-wide count that
 	// names no root; withheld with the counters under the privacy clause.
 	BountyBaseZero int `json:"bountyBaseZero"`
 	// Balance is a POINTER so the privacy clause can omit it: an int64 with omitempty

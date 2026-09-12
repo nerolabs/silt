@@ -51,6 +51,7 @@ import (
 	"github.com/nerolabs/silt/core/genesis"
 	"github.com/nerolabs/silt/core/link"
 	"github.com/nerolabs/silt/core/node"
+	"github.com/nerolabs/silt/core/pipeline"
 	"github.com/nerolabs/silt/core/relaypay"
 	"github.com/nerolabs/silt/ports"
 )
@@ -167,7 +168,7 @@ func cmdDaemon(args []string) error {
 	memLimit := fs.String("mem-limit", "", "soft heap ceiling (e.g. 1500M, 85% of box RAM) — the Go GC reclaims aggressively as the heap approaches it, so a large-but-bounded working set can't grow into a kernel OOM-kill on a small box. Sets runtime/debug.SetMemoryLimit; equivalent to the GOMEMLIMIT env var (this flag wins if both are set). Empty = no soft limit (default). Not a hard cap: if the LIVE set genuinely exceeds it the GC thrashes rather than crashes — raise the limit or the box.")
 	inboundCap := fs.String("inbound-cap", "256M", "bound the in-flight INBOUND message working set: bytes read off the wire but not yet processed on the single loop. A fast/adversarial sender that outruns the loop otherwise piles decoded messages onto an unbounded queue and OOMs the node (a resource-exhaustion DoS). At the cap the reader stops draining that socket → TCP flow-control pushes back on the sender (alive > crashed). A single legal-but-oversized frame is still admitted alone; no single peer may hold more than 1/4 of the budget. 0 = unbounded (legacy). SIZING pulls in two directions: the cap bounds the OOM working set (bigger cap = more RAM headroom needed) AND it bounds worst-case message latency — a full budget means ~cap/drain-rate of queued work ahead of every newly admitted frame, consensus frames included (a saturated 256M draining at 2 MiB/s is ~128s of delay). Size to satisfy both at your expected-worst drain rate; the default assumes a healthy drain (docs/design/owned-residuals.md E5 records the trade and the sequenced hardening).")
 	carePublished := fs.Bool("care-published", true, "the daemon repairs content published through its own UI, so your own content stays alive as nodes churn (its manifest counts toward this node's pledge); =false to opt out")
-	economy := fs.Bool("economy", false, "OPT IN to the S7 durability repair economy (default OFF — the economy is built and running in shadow; payout is opt-in until the delivery price lands, ROADMAP R2.4): when on, a verified repair PAYS the new holder of a rebuilt shard from the object's own escrow, priced by the protocol formula c·(k·shardBytes)/(U/p) credits — the witnessed fetch price of the k survivor shards, G-R212-7 — × the rarest-shard multiplier (a geometry below one credit of fetch, e.g. 64 KiB chunks, pays ZERO and is counted in stats.BountyBaseZero) — a network-wide price, never an operator-set amount. Off, the serve auto-skim still fills escrows but no bounty disburses (the half-open state /api/status reports as bountyOn:false). Standing is never affected either way (Invariant A: credits fund durability, never consensus weight). The economy-ON config is what the confirming field runs + the #183 red team exercise")
+	economy := fs.Bool("economy", false, "OPT IN to the S7 durability repair economy (default OFF — the economy is built and running in shadow; payout is opt-in until the delivery price lands, ROADMAP R2.4): when on, a verified repair PAYS the new holder of a rebuilt shard from the object's own escrow, priced by the protocol formula c·shardBytes/(U/p) credits — the witnessed fetch price of the ONE shard that holder moves, which is the act the bounty pays for (F1, D-BOUNTY-PRICE-F1-2026-09-12; until 2026-09-12 the price was c·(k·shardBytes)/(U/p), the fetch cost of a reconstruction that on the remote-placement path the payee does not perform, and it over-paid the holder's own basis 10–60×; on the self-hold path, where the paramedic keeps the shard it rebuilt and IS the payee (selfHoldEligible), the new price under-pays it by a factor of k — R-F1-FLOOR-FAILS-ON-SELF-HOLD) — × the rarest-shard multiplier (a shard below one credit of fetch, which now means any object under ~262 KB, pays ZERO and is counted in stats.BountyBaseZero) — a network-wide price, never an operator-set amount. Off, the serve auto-skim still fills escrows but no bounty disburses (the half-open state /api/status reports as bountyOn:false). Standing is never affected either way (Invariant A: credits fund durability, never consensus weight). The economy-ON config is what the confirming field runs + the #183 red team exercise")
 	fs.Parse(args)
 
 	// Soft heap ceiling (flixz OOM mitigation): the field cohort OOM-crash-loops
@@ -353,6 +354,16 @@ func cmdDaemon(args []string) error {
 	// cmd/silt TestG_SLASHCAP_3_ShippedFlagDefaultsAndTheRefusalText drives this
 	// refusal. Owner call 2026-09-09 ("CLOSE THE ROUTE"); the #380 class.
 	if err := node.CheckSlashEvidenceHeadroom(cfg); err != nil {
+		return fmt.Errorf("refusing to start: %w", err)
+	}
+	// SOURCE GATE, canon rule 8 first arm: the publish default must stay at or above the
+	// chunk size that pays a non-zero repair bounty, or the publish warning's threshold
+	// falls to 0 and the whole disclosure — ZERO arm included — goes permanently silent.
+	// Pure local arithmetic over two compile-time constants, so it is a refusal, not
+	// committed state. F1 (D-BOUNTY-PRICE-F1-2026-09-12) cut the margin from 235,945 B to
+	// 16 B, which is what turned this from a comment into an assertion. Not gated on
+	// -economy: the publisher needs the disclosure whether or not this node pays bounties.
+	if err := checkBountyDisclosureHeadroom(int64(pipeline.DefaultChunkSize), minBountyChunkBytes()); err != nil {
 		return fmt.Errorf("refusing to start: %w", err)
 	}
 	cfg.BondMaxAnswerLatency = ports.Duration(*bondAnswerLatency) // C1 recompute deterrent (BREAK 1 / A5); soft, generous
