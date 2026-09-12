@@ -6803,9 +6803,10 @@ Every number below was re-measured here before it was written down.
    taking the widening is an owner decision, not a defect fix.
 5. **STALE PRE-F1 FORMULA COMMENTS.** Seven production comments still state `c·k·shardBytes`.
    `cmd/silt/ui.go` is corrected here. The other six are in `core/node/{repairclaim.go,node.go}`,
-   which PR #847 has open — a deferred sweep must not fight it — so they are rostered as
-   **`R-PREF1-PRICE-COMMENTS-IN-CORE-NODE`**, closer: one comment-only sweep on the first branch cut
-   after #847 merges. The `repairclaim.go` site is the worst of them: it describes the division the
+   which PR #847 had open at review time — a deferred sweep must not fight it — so they are rostered
+   as **`R-PREF1-PRICE-COMMENTS-IN-CORE-NODE`**. #847 merged at 2026-09-12 19:31Z (`317a4c3`) and all
+   six survive it unchanged (re-counted at source after the rebase), so the sweep is unblocked and its
+   closer is the next branch. The `repairclaim.go` site is the worst of them: it describes the division the
    judge actually executes.
 6. **TWO CODE-CITED RESIDUALS WITH NO REGISTER ROW.** `R-MULT-RACES-THE-PLACEMENT` is open and now
    carries one. `R-CHUNK-CLIFF-MARGIN-16B` is **closed** by §5 of this entry, and a closed residual is
