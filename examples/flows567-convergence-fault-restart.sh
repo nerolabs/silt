@@ -22,7 +22,10 @@ set -uo pipefail
 REPO="${SILT_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 cd "$REPO" || exit 1
 [ -d cmd/silt ] || { echo "not a silt repo: $REPO (set SILT_REPO=/path/to/silt)"; exit 1; }
-[ -x ./silt ] || { echo "building silt…"; go build -o silt ./cmd/silt || exit 1; }
+# Always rebuild. A `[ -x ./silt ]` guard reuses whatever binary is lying in the repo
+# root, so a stale one silently exercises source you are not looking at (it can even
+# mint a different genesis hash). Go’s build cache makes a no-op rebuild cheap.
+echo "building silt…"; go build -o silt ./cmd/silt || exit 1
 SILT=./silt
 W="$(pwd)/_examples_flows567"; rm -rf "$W"; mkdir -p "$W"
 

@@ -379,9 +379,14 @@ def main():
                 # R2.9 paid DELIVERY lane, armed on the boot validator only (it is the token
                 # issuer, -validator implies the role): the flow_delivery_lane grade drives
                 # `swarm receipt` against it. The three companion flags are the daemon's own
-                # start preconditions: the idle window is refuse-until-set (D-R2.9 call 5;
-                # 90s here so an idle close is observable inside one flow), and a priced lane
-                # refuses to start with the faucet unlimited (R2.12, G-R212-1). The epoch clock
+                # start preconditions. The idle window is NO LONGER refuse-until-set — owner
+                # call 4 of D-TRUE-UP-CALLS-2026-09-07 released it and the flag ships a 24m
+                # default; what survives is the daemon's refusal BELOW the derived floor
+                # (deliveryIdleBound x divisor/(divisor-1) = 430s x 4/3 ~ 573s). This comment
+                # used to say "90s here so an idle close is observable inside one flow": that
+                # value is not in the launch line below (it passes 24m) and a daemon started
+                # at 90s would now REFUSE. A priced lane still refuses to start with the
+                # faucet unlimited (R2.12, G-R212-1). The epoch clock
                 # the guard needs is DERIVED on the objective path (DerivedEpochBlocks). The
                 # lane ARMS either way; whether an E->key binding is COMMITTED on a given sheet
                 # decides which arm row 13 grades — refused at the withdrawal with nothing spent,

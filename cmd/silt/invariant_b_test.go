@@ -8,7 +8,7 @@ import (
 
 // M0 hardening H3 — the Invariant-B structural guardrail.
 //
-// Invariant B (docs/design/m0-hardening-strategy.md §2): a security mechanism is
+// Invariant B (archive/design-history/m0-hardening-strategy.md §2): a security mechanism is
 // not "shipped" until its SAFE configuration is the DEFAULT for the untrusted
 // (open-M0) posture. Enforcement: for EVERY security mechanism, a test that
 // builds the DEFAULT config an untrusted validator gets and asserts that default

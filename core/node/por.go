@@ -103,7 +103,7 @@ func porChallengeSeed(nonce uint64) [32]byte {
 // stops the trivial one-proof-to-N-Sybils relay; the deeper "colluding holder
 // recomputes a fresh proof per Sybil" residual is why PoR grants no STANDING at
 // all (see credit.Reputation) — plain PoR over shared content is not Sybil-
-// resistant (docs/design/m0-hardening-strategy.md §4 S2).
+// resistant (archive/design-history/m0-hardening-strategy.md §4 S2).
 func porProverSeed(base [32]byte, prover ports.NodeID) [32]byte {
 	h := sha256.New()
 	h.Write([]byte("silt/por/challenge/prover/v2"))
