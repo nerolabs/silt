@@ -105,7 +105,18 @@ var foldInputCoverageTable = map[string]map[string]r12Disposition{
 	},
 	// ---- class S: the whole-set digest pre-set carrier ----
 	"StateRootDigestWitness": {
-		"Tag":    {"already-anchored", "derived-key: the touched-digest tag set is derived from the payload; a witness for a non-derived tag is ignored"},
+		"Tag": {"already-anchored", "derived-key: the touched-digest tag set is derived from the payload; a witness for a non-derived tag is ignored"},
+		// ⚠ THE ROW BELOW IS FALSIFIED. It is true ONLY for a tag whose digestFoldOp is actually
+		// emitted. anchoredPreSet (floorbox_recompute_stateroot_slash_v5.go) computes no nodeSetMTH,
+		// Resolves nothing, and takes no prevStateRoot; the anchoring is a SIDE EFFECT of a later
+		// digestFoldOp, and FoldChangedPaths verifies only the ops it is handed. Four reads emit no
+		// such op — class B slashedRoot (never), class B bonded/qualifiedRoot (when membership is
+		// unchanged, which the forgery itself arranges), class P qualifiedRoot, class A
+		// validatorsSeenRoot (when post == pre). For those, "a short or padded id-list stalls" is
+		// FALSE: it is consumed as attacker data.
+		// The row is left standing, not rewritten, so the correction reads as ONE correction.
+		// EVIDENCE: rt_anchor_preset_gates_test.go, RT-ANCHOR-0..6 (PINNED_DEFECT) + the census at
+		// its head. Re-derive both before restoring this row to the truth.
 		"PreIDs": {"already-anchored", "completeness-anchored: nodeSetMTH(PreIDs) must equal the committed pre-digest, which is itself the FoldOp OldValue verified against prevStateRoot; a short or padded id-list stalls"},
 		"Proof":  {"already-anchored", "the digest leaf inclusion proof, routed as the FoldOp OldValue and verified against prevStateRoot (R-anchor-prevroot)"},
 	},
