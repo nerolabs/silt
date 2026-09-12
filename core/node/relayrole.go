@@ -19,8 +19,11 @@ package node
 // (issuer == relay). Certification:
 // silt-agent-memory/researcher/reviews/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md.
 // The R0.7 interim (pays 0) is retired by it. BUILT ≠ LIVE: an anchor verifies
-// only under a v5 IssuerKeyReg, so the lane is dark until era-4 and every open is
-// refused with a named reason until then (cert §8).
+// only under a CHAIN-COMMITTED IssuerKeyReg, so the lane is dark until this node
+// commits one and every open is refused with a named reason until then (cert §8).
+// Era-4 is NOT that gate: -era4-activation-height defaults to 1, so v5 is live from
+// height 1 on every fresh network. The posture that is actually missing is objective
+// + bonded + epoch-enabled (core/node/issuerkey_epoch_posture_test.go).
 //
 // TWO M0 GUARDS (bright-line, non-negotiable — immutable Don't-#3):
 //
@@ -102,7 +105,7 @@ const (
 	errRelayAnchorMalformed = relayError("relay: prepayment anchor serial or signature is malformed")
 	errRelayFetcherMismatch = relayError("relay: sha256(Fetcher) != authenticated sender — the session-open commitment is not the sender's")
 	errRelayOpenSigInvalid  = relayError("relay: session-open commitment signature invalid (M binds relayID, root, S, k and every serial)")
-	errRelayNoIssuerKey     = relayError("relay: no self demand-issuer keyset (no chain commitment for key_E, or keys not scheduled) — the anchor lane is dark until era-4")
+	errRelayNoIssuerKey     = relayError("relay: no self demand-issuer keyset (no chain commitment for key_E, or keys not scheduled) — the anchor lane is dark until this node commits one (era-4 is NOT the gate: -era4-activation-height defaults to 1, so v5 is live from height 1; what is missing is the committed IssuerKeyReg, which needs an objective, bonded, epoch-enabled validator)")
 	errRelayAnchorInvalid   = relayError("relay: prepayment anchor does not verify under this relay's committed key (wrong relay, wrong lane, or expired)")
 	errRelayAnchorSpent     = relayError("relay: prepayment anchor already spent on this ledger")
 	errRelayGuardFull       = relayError("relay: anchor guard full of live entries — refused, never evicted")

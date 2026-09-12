@@ -229,7 +229,13 @@ fi
 # UNCHANGED from its pre-gossip [g,a1,a2] — no silent merge/rewrite of its history.
 H_A_pre="$H1"; hA_pre="$h1"
 H_A_now=$(head_hash valA); hA_now=$(head_height valA)
-if dc logs valA 2>&1 | grep -q 'reorged onto a heavier fork'; then
+# The narration changed with the daemon line (see CHANGELOG, 2026-09-12): the
+# pattern tracks the new string. This is a STRING-PARITY update only — the
+# assertion is unchanged. NOTE the standing caveat this arm now carries: with the
+# finality gate on, `dropped > 0` is structurally impossible, so this negative can
+# no longer go red for the reason it was written. Repairing that is the fork-choice
+# claim PR, not this one.
+if dc logs valA 2>&1 | grep -q 'adopted a competing fork'; then
   fail "P2 valA reorged while still partitioned — it must never adopt group 2's fork"
 elif [ "$H_A_now" != "$H_A_pre" ] || [ "${hA_now:-0}" != "${hA_pre:-0}" ]; then
   fail "P2 valA's committed head changed under partition (was h=$hA_pre ${H_A_pre:0:16}…, now h=$hA_now ${H_A_now:0:16}…) — silent cross-partition merge/rewrite"
@@ -252,9 +258,9 @@ dc_heal up -d valC >/dev/null 2>&1 || fail "heal restart of valC failed"
 # both land on the SAME head. GROUND TRUTH is the chain-status head hash — the
 # reorg log line is supporting evidence, reported if it fired but not required,
 # because the real-socket catch-up path may narrate "caught up" instead.
-await_log valC 'chain: (reorged onto a heavier fork|caught up [0-9]+ block)' 90 \
+await_log valC 'chain: (adopted a competing fork|caught up [0-9]+ block)' 90 \
   || fail "P3 valC never reconciled a peer chain after heal (no reorg or catch-up line)"
-REORG_LINE=$(dc logs valC 2>&1 | grep -oE 'chain: reorged onto a heavier fork \(dropped [0-9]+ block\(s\), new head height [0-9]+\)' | tail -1)
+REORG_LINE=$(dc logs valC 2>&1 | grep -oE 'chain: adopted a competing fork, DROPPING [0-9]+ committed block\(s\)[^\n]*' | tail -1)
 CATCHUP_LINE=$(dc logs valC 2>&1 | grep -oE 'chain: caught up [0-9]+ block\(s\) from peers' | tail -1)
 RESTORE_LINE=$(dc logs valC 2>&1 | grep -oE 'chain: restored [0-9]+ block\(s\) from disk' | tail -1)
 echo "  valC on heal: reload=[${RESTORE_LINE:-<none>}] reorg=[${REORG_LINE:-<none>}] catchup=[${CATCHUP_LINE:-<none>}]"

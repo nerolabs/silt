@@ -868,7 +868,7 @@ const bondUnit = 64 << 10
 // coded content proves POSSESSION of the bytes, not a DISTINCT physical
 // replica: a data-less identity can RELAY a real holder's aggregated
 // response and pass, because the proof is a pure function of (chunkID,
-// challenge, data) — not bound to the prover (see docs/design/
+// challenge, data) — not bound to the prover (see archive/design-history/
 // m0-hardening-strategy.md §4 S2, research memo 03). So a "+25 per pass"
 // mint let a disk-less Sybil farm reach propose/attest eligibility with
 // ZERO storage. Audits now fund only the BALANCE economy (RecordAudit
@@ -878,7 +878,7 @@ const bondUnit = 64 << 10
 // consensus rests on the bond alone. Self-reported serving (servedBytes)
 // is likewise not here: it funds the balance economy, not standing.
 //
-// Invariant A (docs/design/m0-hardening-strategy.md §2): no standing
+// Invariant A (archive/design-history/m0-hardening-strategy.md §2): no standing
 // without a verified, identity-bound, deduped, bond-gated proof. Only the
 // bond press satisfies it; the audit press is therefore denied a grant.
 func (l *Ledger) Reputation(n ports.NodeID) int64 {

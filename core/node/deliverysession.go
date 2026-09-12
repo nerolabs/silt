@@ -30,11 +30,18 @@ package node
 //	    INJECTED clock (never the admit epoch, never the chain — cert §6.2; wall time in
 //	    production, so a forward clock step reaps every live session at once —
 //	    R-SESSION-WALLCLOCK-STEP).
-//	    The idle window is REFUSE-UNTIL-SET (the S4 precedent) until T_b is measured.
+//	    The idle window is NO LONGER refuse-until-set. Owner call 4 of
+//	    D-TRUE-UP-CALLS-2026-09-07 released it on its own conditional once the liveness
+//	    bound was field-confirmed, and the SHIPPED default is 24m (cmd/silt/numeraire.go
+//	    deliveryIdleDefault; value ratified D-C2-IDLE-WINDOW-VALUE 2026-09-09). What
+//	    survives of the refusal: the daemon refuses a window below the derived floor
+//	    (bound × divisor/(divisor−1)), and a non-positive window here leaves the lane off.
 //	    The remainder budget − settled is accounted ONCE at close through the ledger's
-//	    CloseDeliverySession — under G-6 as ratified, a BURN. Whether it is instead
-//	    REFUNDED to the fetcher (cert §5.1) is an OWNER CALL; closeDeliverySession is
-//	    the one seam that changes.
+//	    CloseDeliverySession. Under G-6 as RATIFIED (D-R2.9-NODE-HALF-CALLS call 1, amended
+//	    1′) that is a REFUND, not a burn: the remainder is a DEPOSIT returned to the durable
+//	    fetcher at the LATER of the anchors' release epoch and the close. The owner call is
+//	    CLOSED. It burns only in the two named corners — the pending-refund table at its cap,
+//	    and a fetcher with no account on this ledger (R-REFUND-NEEDS-AN-ACCOUNT).
 //	C10 a hard live-session cap (deliveryMaxLiveSessions): refuse at cap, never evict.
 //
 // The v2 flat path (MsgDeliveryReceipt: token spent at REDEEM) is RETIRED (B-9): the
@@ -59,13 +66,18 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
+// errDeliveryIdleUnset was deleted from the block below on 2026-09-12. It announced
+// "delivery: idle window unset — refuse-until-set" to an operator and had ZERO references
+// anywhere in the tree (measured, whole tree): an unreferenced package-level const does not
+// fail to build, which is how a retired premise outlived every caller that could say it.
+// Owner call 4 of D-TRUE-UP-CALLS-2026-09-07 released refuse-until-set and the flag ships a
+// 24m default, so there was nothing to re-word it to.
 type deliveryError string
 
 func (e deliveryError) Error() string { return string(e) }
 
 const (
 	errDeliveryAcceptDisabled   = deliveryError("delivery: paid sessions not accepted (the delivery-receipt lane is off)")
-	errDeliveryIdleUnset        = deliveryError("delivery: idle window unset — refuse-until-set (a liveness choice: how long an idle session holds one of the node's session slots and how long the fetcher's deposit stays locked past its anchor's expiry; no forfeiture — the remainder is a deposit)")
 	errDeliverySessionCap       = deliveryError("delivery: live session table at capacity (per-node cap; refuse, never evict)")
 	errDeliverySessionExists    = deliveryError("delivery: this fetcher already holds a live session here — fund it (MsgDeliveryFund) instead of opening another (one session per fetcher)")
 	errDeliveryNoAnchor         = deliveryError("delivery: session open carries no anchor (an unanchored session funds nothing)")
@@ -73,7 +85,7 @@ const (
 	errDeliveryAnchorMalformed  = deliveryError("delivery: anchor serial or signature is malformed")
 	errDeliveryFetcherMismatch  = deliveryError("delivery: sha256(Fetcher) != authenticated sender — the commitment is not the sender's")
 	errDeliverySigInvalid       = deliveryError("delivery: commitment signature invalid")
-	errDeliveryNoIssuerKey      = deliveryError("delivery: no self demand-issuer keyset (no chain commitment for key_E) — the anchor lane is dark until era-4")
+	errDeliveryNoIssuerKey      = deliveryError("delivery: no self demand-issuer keyset (no chain commitment for key_E) — the anchor lane is dark until this node commits one (era-4 is NOT the gate: -era4-activation-height defaults to 1, so v5 is live from height 1; what is missing is the committed IssuerKeyReg, which needs an objective, bonded, epoch-enabled validator)")
 	errDeliveryAnchorInvalid    = deliveryError("delivery: anchor does not verify under this server's committed key in the DEMAND domain (wrong server, wrong lane, or expired)")
 	errDeliveryAnchorSpent      = deliveryError("delivery: anchor already spent on this ledger")
 	errDeliveryGuardFull        = deliveryError("delivery: paid-serial guard full of live entries — refused, never evicted")
@@ -139,8 +151,12 @@ type deliveryCloser interface {
 type refundReleaser interface{ ReleaseDueRefunds() }
 
 // EnableDeliverySessions opts this node into paid delivery sessions with the given
-// idle window (C9). A non-positive window is REFUSED at the daemon (refuse-until-set);
-// here it leaves the lane off so a misuse cannot admit a session the reaper would
+// idle window (C9). The daemon refuses any window below the derived floor
+// (deliveryIdleFloor = bound × divisor/(divisor−1)); a non-positive window is one such
+// window, so it is refused there too. The label for that refusal is NOT
+// "refuse-until-set" — that premise was released by owner call 4 of
+// D-TRUE-UP-CALLS-2026-09-07 and the flag now ships a 24m default. Here a non-positive
+// window leaves the lane off so a misuse cannot admit a session the reaper would
 // never close. The reaper is LAZY — it sweeps on every open, fund and settle (the
 // relay lane's sweepRelaySeen shape, and the cap check sweeps first) — plus
 // SweepDeliverySessions for a periodic caller (the daemon), so a silent server still

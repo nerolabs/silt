@@ -163,7 +163,8 @@ tolerance, restart survival, per-hash takedown, cross-NAT via the relay, and the
    differently, the check `gap`s. Fix: SSH to the node, read the real log line (see
    Debugging), update the regex, `./cloudtest.sh run` again. The patterns to expect
    are drawn from the e2e tests (`e2e/*.go`) — e.g. `chain: committed block N`,
-   `slashed equivocator`, `reorged onto a heavier fork`.
+   `slashed equivocator`, `adopted a competing fork` (the reorg narration; it was
+   `reorged onto a heavier fork` before 2026-09-12).
 
 Neither should require re-architecting anything — they're phrasing/number tuning.
 

@@ -91,4 +91,14 @@ var ObservableContract = []ContractedString{
 	{"network: ", "core/chain/networkidentity.go", "which network this node is on, name AND genesis hash; the singleton-founded-by-a-typo case is unreadable without it. The daemon's CALL site is gated separately, in the Asserter", "TestDaemonPrintsTheNetworkIdentityAtStartUp"},
 	{"the genesis hash is the IDENTITY and the name is a LABEL", "core/chain/networkidentity.go", "the rule that stops an operator trusting a name two networks can both choose", "TestGNAME1_TheNameNeverRendersWithoutTheTag"},
 	{"NO network identity yet", "core/chain/networkidentity.go", "a node with no genesis has no network — the narrated zero that keeps it from rendering a zero hash as a tag", "TestGNAME1_AnEmptyChainHasNoIdentity"},
+
+	// THE REORG NARRATION. Registered on 2026-09-12, when the line was renamed from
+	// `chain: reorged onto a heavier fork` to the one below and three harness sites had to
+	// be repaired BY HAND. Nothing fired: the old literal was never an entry, and no
+	// registered marker is a substring of it (checked over the whole registry), so the
+	// rename was exactly the shape `scar-observable-log-contract` exists to stop and the
+	// registry could not see it. Asserter is "" on purpose — the three readers live in
+	// `integration/consensus/run.sh`, a Docker tier that appears nowhere in `ci.yml`, so
+	// there is no runtime gate to name and claiming one would be worse than none.
+	{"chain: adopted a competing fork", "cmd/silt/daemon.go", "integration/consensus/run.sh reads it three ways — the P2 negative grep (:226), the P3 await alternation (:249) and the reporting extractor (:251) — and integration/cloudtest/HANDOFF.md names it for the operator. A rename breaks all four silently: the negative grep at :226 goes GREEN on a string no binary emits", ""},
 }

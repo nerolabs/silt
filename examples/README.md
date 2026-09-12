@@ -1,7 +1,7 @@
 # silt examples — runnable operator playbooks
 
 Self-contained scripts that stand up a real silt swarm on loopback and walk the
-core operator flows end to end. Each one builds the binary if needed, prints a
+core operator flows end to end. Each one rebuilds the binary from source, prints a
 clear `PASS`/`FAIL`, and **kills only the daemons it started** (tracked PIDs, no
 blanket `pkill` — safe to run on a box already running silt). Scratch lives
 under `<repo>/_examples_*` and is git-ignored; delete it anytime.
@@ -13,7 +13,7 @@ from the docs walks them on one box. The GCP multi-machine field test lives in
 ## Run them
 
 ```sh
-go build -o silt ./cmd/silt        # or let each script build it
+go build -o silt ./cmd/silt        # optional — each script rebuilds it anyway
 ./examples/flow2-publish-fetch.sh
 ./examples/flow4-earned-standing.sh
 ./examples/flows567-convergence-fault-restart.sh
