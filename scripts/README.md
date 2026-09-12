@@ -47,6 +47,48 @@ for c in links claims tenet_qualifiers status_headers cited_tests source_gates r
 done
 ```
 
+## Checks NOT yet wired into CI
+
+| Script | Fails when | Scar |
+| --- | --- | --- |
+| `check_memory_index.py` | a seat's `MEMORY.md` has a dangling link, an orphaned memory file, or a link with no descriptive hook | `scar:memory-index-compaction-destroyed-the-hooks-2026-09-11` |
+
+`check_memory_index.py` is **not referenced by `.github/workflows/ci.yml` yet**, so nothing
+runs it automatically. Saying otherwise here would be the same class of decay the repo's
+other lints exist to catch. Wiring it is one line in the `website` job, next to
+`check_agent_memory_link.py --self-test`; the store-reading mode is a local command, because
+CI has no memory store and the script exits 0 with a `SKIP` line when the store is absent.
+
+### `check_memory_index.py` — is the index still navigable?
+
+Catches *a compaction that keeps every link and destroys every description*. The audit that
+existed for a compaction asserted reachability in two directions — index → file and
+file → index — which checks **link targets only**. Rewriting every row from
+
+```
+- [Mode oracle CLOSED by padding the secrets box](mode-oracle-secrets-padding.md) — #821; a BOX hides content, never LENGTH.
+```
+
+to `- [mode-oracle-secrets-padding](mode-oracle-secrets-padding.md)` leaves both directions
+green and the index unusable: a seat gets 150 filenames and no reason to open any of them.
+That green held through a near-loss of 28 entries.
+
+A link is **THIN** only when its text says nothing the filename does not **and** its row
+carries no prose. Either one alone is a hook, because a compacted group row
+(`- **Topic:** [a](a.md) · [b](b.md)`) is navigable and a lint that reddens those is a lint
+somebody switches off. Measured on the real store: 14 thin links out of 699.
+
+Targets resolve by **basename membership in `os.listdir()`**, never `os.path.exists()`. The
+store is on a case-insensitive volume, so `apb-foo.md` silently resolves to `APB-foo.md`
+locally and dangles anywhere else — and a naive audit then reports the real file as an
+orphan while counting the phantom as linked.
+
+```sh
+python3 scripts/check_memory_index.py               # audit the live store, read-only
+python3 scripts/check_memory_index.py --store DIR   # audit another store
+python3 scripts/check_memory_index.py --self-test   # what CI can run: no store needed
+```
+
 ### `check_cited_tests.py` — the cited-test and cited-coordinate lint
 
 Catches *a green check that does not verify the property it claims*: a comment or
