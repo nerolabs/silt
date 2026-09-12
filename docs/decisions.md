@@ -5482,7 +5482,40 @@ committed copies, so a missing or wrong page costs a closed PR and nothing else.
 different is a STOP — do not merge. That is the same reasoning as the sentence above; only the
 instrument changed.
 
-**Measured result:** recorded in the PR that carries the build, and in ROADMAP row F9.
+**MEASURED RESULT — THE CONDITION IS DISCHARGED, 2026-09-12.** Read from PR #849's own deploy
+preview, `https://deploy-preview-849--kaleidoscopic-pegasus-e9fec4.netlify.app`, taken from the
+`netlify/kaleidoscopic-pegasus-e9fec4/deploy-preview` StatusContext (`state: SUCCESS`):
+
+| page | HTTP | vs locally generated |
+| --- | --- | --- |
+| `changelog.html` | 200 | rendered text **identical**, 1 040 483 chars both sides |
+| `roadmap.html` | 200 | rendered text **identical**, 297 844 chars both sides |
+| `buildlog.html` | 200 | rendered text **identical**, 27 195 chars both sides |
+
+The comparison is on rendered text, not raw bytes, and the reason is measured rather than assumed:
+Netlify's edge rewrites every page it serves — pretty URLs (`href="node.html"` → `href='/node'`),
+attribute reordering and quote style, plus an injected deploy-tracking `<div>`. **The control is
+`website/index.html`, a committed page this change does not touch: it shows the SAME rewrites and is
+likewise text-identical.** So the differences are the CDN's, not the generator's.
+
+**Both halves are settled, and the second one decisively.**
+
+- *One deploy produces all three*: all four pages carry the same
+  `data-netlify-deploy-id="6aa5b58af44f2a00086118be"`.
+- *The repo's build command is the one that runs*: on that branch `roadmap.html` and `buildlog.html`
+  **exist nowhere in the repository**. Nothing but the extended build command in `netlify.toml` could
+  have produced them, and a dashboard override of the build command would have served 404s. It
+  served 200s with this branch's content — the preview pages carry sentences that exist only in this
+  branch's `ROADMAP.md` and `CHANGELOG.md`. `netlify.toml`'s headers are applied on the preview too
+  (`X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`), which is
+  corroborating rather than load-bearing.
+- The pretty URLs the site navigates by — `/roadmap`, `/changelog`, `/buildlog` — all return 200.
+
+**What remains unproven, stated rather than implied:** this is a *deploy-preview* context. A Netlify
+site can in principle configure production and preview contexts differently, and the production
+context was not separately read. The evidence that the repo's `netlify.toml` governs production is
+the same evidence the entry above rests on — the live site's headers and apex redirect match it, and
+production is current — so this is a narrowing of the residual, not its elimination.
 
 ### What else had to move, and one thing that would have gone quiet
 
