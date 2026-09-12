@@ -65,6 +65,25 @@ func TestF1PriceCarriesNoK(t *testing.T) {
 			t.Fatalf("base at k=%d is %d, want %d — the price moved with k; F1 is c·k = 1 and k is Evolving-tier", k, got, want)
 		}
 	}
+	// 1b. Neither does the PUBLISH THRESHOLD derived from the same price.
+	//     MinBountyChunkBytesFor keeps `k` as the degenerate-geometry guard only, and
+	//     until 2026-09-12 nothing ran that: every assertion on it was taken at the
+	//     shipped k = 10, so a k-coupled formula that merely COINCIDES there passed the
+	//     whole repo (blind PE F-3, measured — green on ./core/credit AND ./cmd/silt).
+	//     The consequence is the exact failure cmd/silt checkBountyDisclosureHeadroom
+	//     exists to refuse: such a formula reads 218,438 B at k = 12, so a 250,000 B
+	//     publish default would START while paying a zero base and silencing the whole
+	//     publish warning. The overheads are literals because core/credit is a numéraire
+	//     leaf and must not import core/crypto; the property asserted is k-freedom, which
+	//     does not depend on the overhead's value, so it is swept too (16 = crypto.Overhead).
+	for _, overhead := range []int64{0, 1, 16, 4096} {
+		wantMin := MinBountyChunkBytesFor(10, overhead)
+		for k := 1; k <= 64; k++ {
+			if got := MinBountyChunkBytesFor(k, overhead); got != wantMin {
+				t.Fatalf("MinBountyChunkBytesFor(k=%d, overhead=%d) is %d, want %d — the publish threshold moved with k; k is the degenerate guard ONLY, and a threshold that falls with k lets a zero-bounty default start", k, overhead, got, wantMin)
+			}
+		}
+	}
 	// 2. The refused encoding, computed: c = 1/10 with k back in the product.
 	coupled := func(k int, s int64, mult int) int64 {
 		return int64(k) * s * int64(mult) * 1 / 10 / DeliveryBytesPerCredit
@@ -97,21 +116,33 @@ func TestF1PriceCarriesNoK(t *testing.T) {
 // real — the ratio has no shardBytes in it.
 //
 // Stated as integers so nothing here is a float comparison: 10·SkimDen·Dλ = 12·k·(U/p).
+//
+// THE OUTFLOW LEG IS READ FROM THE SHIPPED PRICE, never restated. The first version of
+// this gate asserted `10·SkimDen·Dλ == 12·k·(U/p)` — four constants this change does not
+// touch — so it passed identically on main and under EVERY price ablation, including `k`
+// put back in the product, while its docstring claimed the F1 threshold (blind PE F-2,
+// proven vacuous by ablation). With `k` restored the true threshold is 12·m̄ and the old
+// form still read green. It now calls repairBountyCredits, so the relation it prints is
+// the relation the ledger would pay.
 func TestF1SolvencyBandIsExact(t *testing.T) {
 	const k = 10
-	if got, want := int64(10)*SkimDen*ServeMintBytesPerCredit, int64(12)*k*DeliveryBytesPerCredit; got != want {
-		t.Fatalf("the D-S7 threshold is not exactly 1.2·m̄ under F1: 10·SkimDen·Dλ = %d, 12·k·(U/p) = %d", got, want)
-	}
-	// And it is dimensionless: the same relation holds at any shard size, because the ratio
-	// carries none. Driven rather than asserted — this is the property that clears
-	// build-immutable #3's steerable-estimand rule (the publisher's choices cancel).
-	// Cross-multiplied, so no division rounds: outflow/income = (s · SkimDen·Dλ)/(U/p · k · s),
-	// and 10× that must equal 12 for every s.
-	for _, shardBytes := range []int64{1_048, 65_552, 262_160, 6_710_887} {
-		lhs := 10 * shardBytes * SkimDen * ServeMintBytesPerCredit // 10 · outflowNum · incomeDen
-		rhs := 12 * DeliveryBytesPerCredit * int64(k) * shardBytes // 12 · outflowDen · incomeNum
+	// Shards are exact multiples of U/p, so the single floor in repairBountyCredits takes
+	// nothing and the cross-multiplied relation below is integer-exact. The sweep is the
+	// DIMENSIONLESS claim — the publisher's shardBytes cancels — which is the property that
+	// clears build-immutable #3's steerable-estimand rule.
+	for _, units := range []int64{1, 4, 25, 4_096} {
+		shardBytes := int64(DeliveryBytesPerCredit) * units
+		// outflow per shard-repair, in credits, AS SHIPPED. income per stripe-retrieval is
+		// k·shardBytes/(SkimDen·Dλ) credits. Self-funding needs
+		// S/R ≥ m̄ · outflow/income = m̄ · outflow·SkimDen·Dλ / (k·shardBytes),
+		// and under F1 that coefficient is exactly 1.2 — cross-multiplied by 10 so no
+		// division rounds.
+		outflow := repairBountyCredits(k, shardBytes, 1)
+		lhs := 10 * outflow * SkimDen * ServeMintBytesPerCredit
+		rhs := 12 * int64(k) * shardBytes
 		if lhs != rhs {
-			t.Fatalf("shard %d: 10·(S/R per m̄) is %d/%d, want 12 — the threshold moved with shardBytes", shardBytes, lhs, rhs/12)
+			t.Fatalf("shard %d B: 10·(S/R per m̄) from the SHIPPED price is %d/%d, want 12 — the D-S7 self-funding threshold is not 1.2·m̄ at this price (outflow read %d credits)",
+				shardBytes, lhs, rhs/12, outflow)
 		}
 	}
 }

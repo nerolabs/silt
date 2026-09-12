@@ -156,11 +156,25 @@ func publishShardBytes(chunkBytes, objectBytes int64) int64 {
 //
 // AND THE TRUNCATES ARM IS NOW UNREACHABLE THROUGH THIS FUNCTION, disclosed rather than
 // deleted. The rule fires iff base < shippedBountyBase(), which is 1, so a firing publish
-// has base == 0 and always takes the ZERO arm. The consequence is a real disclosure gap:
-// a publish that pays 1 credit on an exact 1.99996 (-chunk-size 524264) short-pays the
-// repairer 50 % and is SILENT. The rule is not widened here — warning on every truncation
-// would speak on the shipped default itself, which is the finding blind PE M6 closed — so
-// the gap is filed as R-TRUNCATION-DISCLOSURE-NARROWS. The arm's arithmetic stays and is
+// has base == 0 and always takes the ZERO arm.
+//
+// THE COST IS MEASURED, and it is larger than the anecdote first filed for it. The maximum
+// SILENT repair-wage short-pay rises 5.5×, from 9.09 % pre-F1 (base ≥ 10 ⇒ loss ≤ 1/11) to
+// 50.0 % (base ≥ 1 ⇒ loss ≤ 1/2), and it is reachable at ordinary operator choices, not
+// only at the 524,264 corner: -chunk-size 393216 (384 KiB) goes 0.00 % → 33.3 %, 327,680
+// goes 4.00 % → 20.0 %, 524,264 goes 5.00 % → 50.0 %. Pre-F1 the warning covered exactly
+// the large-loss region; post-F1 that whole region is silent.
+//
+// THE RULE IS NOT WIDENED HERE, AND THE REASON IS THE CLOSED COMPLEMENT. The earlier
+// record gave a different reason — that a loss-fraction clause "would speak on the shipped
+// default itself, the finding blind PE M6 closed" — and THE SHIPPED CODE REFUTES IT:
+// credit.RepairBountyTruncation returns 0 tenths of a percent at both 262,144 B (the
+// default) and 262,128 B (the minimum chunk), against 200 / 333 / 500 at the rows above,
+// so an OR of `lossTenths >= 10` (1 %) is silent on both. What such a clause really costs
+// is this rule's one structural property: "warn iff base < shippedBountyBase()" has a
+// CLOSED COMPLEMENT — silent in exactly one case, and that case is stated — and an
+// OR-clause breaks it. Taking the widening is therefore a DECISION, not a defect fix, and
+// it is filed with its measured cost as R-TRUNCATION-DISCLOSURE-NARROWS. The arm's arithmetic stays and is
 // driven directly in core/credit TestRepairBountyTruncationIsExactIntegerArithmetic; the
 // threshold is DERIVED, so a re-tune of U/p or the publish default revives the arm.
 //

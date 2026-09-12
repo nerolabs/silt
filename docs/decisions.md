@@ -6595,7 +6595,13 @@ ceiling:  c·k ≤ 1
           c·k = 1   exactly
 ```
 
-**No value is chosen. The derivation produces it.** A zero-surplus price would normally be unsound —
+**No value is chosen. The derivation produces it.** ★ **AND THAT IS TRUE OF THE BASE ONLY — the
+qualifier travels with the sentence.** The disbursed price is `base × RarestShardMultiplier`, and the
+multiplier runs to `n − k + 1`: measured against the bytes the payee itself moved, **7× at the shipped
+`k = 10, n = 16` and 33× at `k = 1, n = 33`**. F1 makes it strictly better (the same path reached 70×
+at the default before), and the multiplier is separately ratified and unchanged here — but *"no value
+is chosen"* is a claim about the base, and it must not be published unqualified (blind PE, 2026-09-12,
+the coupling the consult did not name). A zero-surplus price would normally be unsound —
 an indifferent agent may refuse — and it is licensed here by the artifact, not by optimism: §2's
 `MsgStoreChunk` has no refusal to express indifference through. **That is also the condition under
 which this entry expires** — see `R-F1-EXPIRES-ON-A-HOLDER-REFUSAL` in §7.
@@ -6752,3 +6758,62 @@ neither may be quoted forward.
    and `m̄` is bracketed, unmeasured, and decided by a race between placement convergence and judge
    scheduling (`R-MULT-RACES-THE-PLACEMENT`). Under F1 the band is `[1.20, 3.60]`. **Both are
    brackets. Neither is a point.**
+
+### 9. ★ BLIND-REVIEW FOLD-IN (2026-09-12, PR #848 at `7dc7462`) — six fixes, and the one that matters is a false sentence in shipped code
+
+The blind PE returned **MERGEABLE-WITH-FIXES**. It re-derived the arithmetic independently and
+confirmed it, swept `k ∈ [1,64] × n ∈ [k,k+32] × reachable ∈ [0,n+2]` and found `k` genuinely absent
+from the base, built `cmd/silt` with a halved chunk default and reproduced the refusal text, and
+confirmed the γ→1/N firewall and `blocks[0].Hash()` untouched. What follows is what it found wrong.
+Every number below was re-measured here before it was written down.
+
+1. **★ THE DERIVATION'S PREMISE WAS FALSE AGAINST THIS REPO'S OWN CODE.** `escrow.go` said the bounty
+   goes to the new holder *"never to the reconstructor, which is unpaid by ratified design."*
+   `core/node/repair.go` says the opposite in its own words: with the economy on, the paramedic
+   **KEEPS the shard it rebuilt and becomes the payee** whenever `selfHoldEligible` passes, and that
+   path is tried BEFORE remote placement. **On it the payee moved `k` survivor shards inbound and F1
+   pays it for ONE — F1's own floor is violated by a factor of `k`, 10× at the shipped geometry.**
+   The certification this entry cites had already found it. The comment is corrected;
+   **the PRICE IS NOT CHANGED**, because a two-rate price, a self-hold exclusion and an accepted
+   under-pay are each an economic-mechanism change under the D-S7 research gate, and a code comment
+   must not settle one by assertion. Filed as **`R-F1-FLOOR-FAILS-ON-SELF-HOLD`** with a register row,
+   coupled to the metered-but-not-attributed residual (`docs/design/owned-residuals.md` D7). It is
+   inert on `main` today **only because `-economy` defaults OFF** — a FLAG DEFAULT, which is a weaker
+   reason than "by design" and is written that way at every site.
+2. **A VACUOUS GATE.** `TestF1SolvencyBandIsExact` asserted four constants this change does not
+   touch, so it passed under **every** price ablation — including `k` restored to the product, where
+   the true threshold is `12·m̄` rather than `1.2·m̄` — while its docstring claimed the F1 threshold.
+   It now derives the outflow leg **through `repairBountyCredits`**, and is driven RED under that
+   ablation before being believed.
+3. **A MEASURED HOLE IN THE REFUSE-TO-START.** Nothing gated the `k`-freedom of
+   `MinBountyChunkBytesFor`: every assertion on it was taken at the shipped `k = 10`, so a `k`-coupled
+   formula that merely coincides there passed the whole repo. Re-measured here: such a formula reads
+   **218,438 B at `k = 12`**, so a 250,000 B publish default would **start while paying a zero base**
+   — exactly the failure `checkBountyDisclosureHeadroom` exists to stop. `TestF1PriceCarriesNoK` now
+   sweeps the threshold over `k ∈ [1,64]` at four overheads, and goes RED under that ablation.
+4. **THE DISCLOSURE RESIDUAL WAS UNDERSTATED AND ITS REASON WAS REFUTED BY THE SHIPPED CODE.** The
+   unreachability of the TRUNCATES arm is confirmed. The cost is not the 1.99996 anecdote: the maximum
+   **silent** repair-wage short-pay rises **5.5×, from 9.09 % to 50.0 %**, and is reachable at an
+   ordinary operator choice — `-chunk-size 393216` goes **0.00 % → 33.3 %**. And the stated reason for
+   declining to widen the warning ("it would speak on the shipped default") is false:
+   `RepairBountyTruncation` returns **0 tenths of a percent at both 262,144 B and 262,128 B**, against
+   200 / 333 / 500 at the loud cases, so a `lossTenths >= 10` clause is silent on the default.
+   `R-TRUNCATION-DISCLOSURE-NARROWS` is **re-filed at the measured cost with that reason withdrawn**.
+   **The rule is NOT widened**: the real cost of an OR-clause is the rule's CLOSED COMPLEMENT, and
+   taking the widening is an owner decision, not a defect fix.
+5. **STALE PRE-F1 FORMULA COMMENTS.** Seven production comments still state `c·k·shardBytes`.
+   `cmd/silt/ui.go` is corrected here. The other six are in `core/node/{repairclaim.go,node.go}`,
+   which PR #847 has open — a deferred sweep must not fight it — so they are rostered as
+   **`R-PREF1-PRICE-COMMENTS-IN-CORE-NODE`**, closer: one comment-only sweep on the first branch cut
+   after #847 merges. The `repairclaim.go` site is the worst of them: it describes the division the
+   judge actually executes.
+6. **TWO CODE-CITED RESIDUALS WITH NO REGISTER ROW.** `R-MULT-RACES-THE-PLACEMENT` is open and now
+   carries one. `R-CHUNK-CLIFF-MARGIN-16B` is **closed** by §5 of this entry, and a closed residual is
+   removed from the plan rather than filed in it, so its one code citation is re-pointed at the
+   closer instead. `check_residual_register.py` scans `ROADMAP.md` only and cannot see either — the
+   structural gap stands and is not closed here.
+
+**AND THE COUPLING THE CONSULT DID NOT NAME:** *"a floor equal to its own ceiling, so the price is
+DETERMINED"* holds **for the BASE only** — see §2. Every site about to publish that sentence carries
+the multiplier's qualifier: this entry, `CHANGELOG.md`, `core/credit/escrow.go`, the thinking doc and
+the generated website.

@@ -272,7 +272,7 @@ func TestF1RefusesAPublishDefaultThatPaysNoBounty(t *testing.T) {
 	// THE MARGIN, measured rather than recalled: 16 B today, against 235,945 B before F1.
 	// It is crypto.Overhead exactly, which is why the check is a refusal and not a comment.
 	if got := int64(pipeline.DefaultChunkSize) - min; got != crypto.Overhead {
-		t.Fatalf("the margin above the zero cliff is %d B, want %d (crypto.Overhead) — re-read R-CHUNK-CLIFF-MARGIN-16B", got, int64(crypto.Overhead))
+		t.Fatalf("the margin above the zero cliff is %d B, want %d (crypto.Overhead) — re-read D-BOUNTY-PRICE-F1-2026-09-12 §5 and §7, which CLOSED R-CHUNK-CLIFF-MARGIN-16B with this refusal — the residual carries no register row because it is closed, and a closed residual is removed from the plan, not filed in it", got, int64(crypto.Overhead))
 	}
 }
 

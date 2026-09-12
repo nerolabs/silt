@@ -80,8 +80,8 @@ const (
 // would silently mis-price a repair the moment it re-tunes.
 //
 // `k` IS NOT IN THIS PRICE, and removing it is the 2026-09-12 re-pricing. The bounty is
-// paid to the NEW HOLDER of the rebuilt shard (settleRepairVerdict → PayBounty), never
-// to the reconstructor, which is unpaid by ratified design (docs/design/h7-proof-of-
+// paid to the NEW HOLDER of the rebuilt shard (settleRepairVerdict → PayBounty); the
+// reconstruction as such earns nothing by ratified design (docs/design/h7-proof-of-
 // repair.md §8b; C-5 G1 2026-08-27). The holder's marginal act is ONE shard moved
 // inbound, so the coherent basis is one shard of witnessed fetch price:
 //
@@ -89,8 +89,40 @@ const (
 //	the over-pay ceiling:     the payee is not paid more than the bytes it moved      ⇔  c·k ≤ 1
 //	⇒ c·k = 1 EXACTLY — floor and ceiling coincide, so no value is chosen.
 //
+// THAT DETERMINACY IS THE BASE'S, and nothing above it. The disbursed price is
+// base × RarestShardMultiplier, which runs to n−k+1: measured against the bytes the payee
+// itself moved, 7× at the shipped k = 10, n = 16 and 33× at k = 1, n = 33. F1 makes it
+// strictly better — the same path reached 70× at the default before — but the multiplier
+// is separately ratified and unchanged here, so "no value is chosen" must never be
+// published without this qualifier (blind PE, 2026-09-12).
+//
+// ★ THE HOLDER IS NOT ALWAYS A DIFFERENT NODE, AND F1 DOES NOT HOLD WHERE IT IS NOT.
+// The paramedic KEEPS the shard it rebuilt and names ITSELF the payee whenever
+// core/node (*Node).selfHoldEligible passes — the repair economy on, its own failure
+// domain non-zero, and that domain unused by this stripe — and that path is tried BEFORE
+// remote placement (core/node/repair.go, the (a-domain-fresh) block, PE ruling
+// 2026-08-19, which created it specifically to fund reconstruction). `-domain` is a
+// shipped flag and is set in integration/sybil/docker-compose.yml and
+// integration/awstest/topology.py, so this is not a hypothetical path. On it the payee
+// moved k survivor shards inbound to rebuild and this price pays it for ONE, so F1's own
+// floor fails there by a factor of k — 10× at the shipped geometry, the mis-price F1
+// exists to remove with the sign reversed. How often it is taken is a deployment
+// property (~((D−1)/D)^(16−m) over D distinct domains) with no instrument, so it is not
+// rare by construction.
+//
+// It is FILED, NOT SETTLED HERE: R-F1-FLOOR-FAILS-ON-SELF-HOLD, coupled to
+// R-BOUNTY-METERS-BUT-DOES-NOT-ATTRIBUTE, which is why the meters cannot tell the two
+// payees apart today. The price is deliberately NOT changed for it — a two-rate price, a
+// self-hold exclusion and an accepted under-pay are all economic-mechanism changes under
+// the research gate (D-S7 escrow/skim/bounty), and a code comment must not settle one by
+// assertion. Nothing disburses on main today because `-economy` defaults OFF. That is a
+// WEAKER reason than "by ratified design" and is written as such on purpose: the gap is
+// held inert by a FLAG DEFAULT, not by a proof, and flipping that flag is a supported
+// operator action.
+//
 // Until 2026-09-12 the basis was `k × shardBytes`, the reconstructor's survivor fetch.
-// That is an act the price does not pay for, and the 2026-08-19 certification made
+// That is an act the price does not pay for on the remote-placement path, and the
+// 2026-08-19 certification made
 // re-deriving `c` off the payee's own basis a CONDITION of keeping the split; the split
 // was ratified and the re-derivation was never performed. Measured on the shipped code
 // it over-paid the reconstruction 2.31×–36.0× over the admissible loss range and the
