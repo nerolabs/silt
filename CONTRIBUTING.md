@@ -9,8 +9,8 @@ gets in.
 
 - **The infrastructure is not the content.** Keep it that way: core code
   must never be able to read, identify, or attach meaning to what the
-  network carries. See [GOVERNANCE.md](GOVERNANCE.md) and
-  [docs/aslan-boundary.md](docs/aslan-boundary.md).
+  network carries. See [GOVERNANCE.md](GOVERNANCE.md) and immutable #6 in
+  [docs/TENETS.md](docs/TENETS.md).
 - **Core stays pure.** Packages under `core/` and `ports/` import no
   adapters and no effects (`os`, `net`, `time`, ambient randomness) —
   enforced by `go test ./internal/depcheck`. Effects live in `adapters/`
@@ -38,36 +38,31 @@ Nothing reaches `main` or a release without a pull request, green CI, and
 review. The branch is protected to enforce it.
 
 1. **Branch** off `main` (`feat/…`, `fix/…`, `chore/…`), or fork.
-2. **Open a PR.** CI runs automatically: `go vet` + `gofmt` + the full
-   test suite, the three website generators, and a website link check.
-   All must pass. Netlify posts a preview for site changes.
-3. **Update the paper trail.** If you change behavior in `core/`,
-   `adapters/`, or `cmd/`, add a line to the **`## [Unreleased]`** section
-   of `CHANGELOG.md`, and update `docs/` where relevant. Docs ship with
-   code. `website/changelog.html`, `website/roadmap.html` and
-   `website/buildlog.html` are gitignored and generated at deploy — edit the
-   Markdown source only, never the page (`D-WEBSITE-HTML-AT-DEPLOY-2026-09-12`).
+2. **Open a PR.** CI runs automatically: `go vet`, `gofmt`, the full test
+   suite with its coverage floor, a race-detector build, the multi-process
+   e2e suite, the cross-NAT integration jobs, and the repo lints under
+   `scripts/`. All must pass.
+3. **Keep the canon true.** If you change behaviour, make sure
+   [docs/TENETS.md](docs/TENETS.md) and [docs/VISION.md](docs/VISION.md) still
+   describe what the system does. They are the only two documents that govern
+   this project; there are no others.
 4. **Review.** Every PR gets a maintainer review (currently
-   [@nerolabs](https://github.com/nerolabs)) **and** an agent review pass —
-   a principal-engineer seat for correctness/severity plus, for
-   security-touching changes, a red-team seat that judges the artifact blind.
-   Address the findings.
+   [@nerolabs](https://github.com/nerolabs)). Address the findings.
 5. **Merge.** Squash-merge once approved and green. Delete the branch.
 
 ## Commits & PRs
 
 - Small, focused PRs review faster than large ones.
 - Write commit messages that explain *why*, not just *what*.
-- The PR template asks what changed, how you tested it, whether docs and
-  the changelog were updated, and any safety/abuse implications — fill it
-  in honestly.
+- The PR template asks what changed, how you tested it, which tiers you
+  covered, and any safety or abuse implications — fill it in honestly.
 
 ## Safety
 
 Silt is designed to be governable without silt itself becoming a surveillance
 tool — access-privacy is pursued to the anonymity trilemma's metadata-layer
-limit, not claimed as an absolute (see
-[docs/safety-denylist.md](docs/safety-denylist.md)). If a change touches
+limit, not claimed as an absolute (immutable #4 in
+[docs/TENETS.md](docs/TENETS.md)). If a change touches
 storage, serving, the chain, or the takedown path, call out the
 safety implications in your PR. To report a security vulnerability,
 **do not open a public issue** — a private disclosure path will be

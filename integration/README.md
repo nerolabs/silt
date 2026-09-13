@@ -56,12 +56,10 @@ broken, however green it looks.
 
 Prototype and iterate locally; **certify on GCP.**
 
-> **Extending or auditing these tests?** Read
-> [`FIELD-TEST-STATUS.md`](FIELD-TEST-STATUS.md) first — the honest current state of
-> every suite: genuine PASS vs reported FINDING vs stated gap, the scoping caveats
-> (e.g. `sybil` #5 falls back to the standing gate on a laptop; `chaos` WAVE 2 is an
-> unpinned observation; `demand` #6 has no seam yet), and what has actually been
-> *run* vs only *dry-validated*.
+> **Extending or auditing these tests?** Read each suite's own `README.md` first.
+> A suite states what it really proves and where it is scoped: a genuine PASS, a
+> reported FINDING, or a stated gap. Do not read a green as more than the suite
+> claims.
 
 ---
 
@@ -108,10 +106,10 @@ result is a durable, shareable artifact. Use today's date (`YYYY-MM-DD`).
 
 **GCP** — after `./integration/cloudtest/cloudtest.sh`, file the same shape from
 `integration/cloudtest/report.md` + `results.jsonl`:
-- **`silt_cloud_fieldtest_<date>.md`** (roll-up across the flows + the #184 drills), and
+- **`silt_cloud_fieldtest_<date>.md`** (roll-up across the flows + the adversarial drills), and
 - **`silt_cloud_fieldtest_<flow>_<date>.md`** per flow (with the real over-the-wire evidence).
 
-Report **honestly**: a FINDING (a deliberately-reproduced open defect, e.g. `upgrade` = #237)
+Report **honestly**: a FINDING (a deliberately-reproduced open defect, e.g. `upgrade`)
 is not a failure; a real FAIL is. Quote real evidence, never invent a passing string. If a
 capability has no live seam yet, say so — a surfaced gap is a valid result.
 
@@ -162,10 +160,10 @@ KEEP=1 ./integration/<name>/run.sh     # leave the topology up to poke at
 | `chaos/run.sh` | crash-recovery: `SIGKILL` every holder, restart, #69 re-announce fires, cold-fetch bit-perfect (`WAVES=2` probes a seed-crash discoverability gap) |
 | `durability/run.sh` | durability under permanent loss: shrink the swarm (no replacement), caretaker re-scatters, content outlives the nodes |
 | `consensus/run.sh` | objective bond-weighted commit admission: a sub-quorum partition commits nothing, stalls, and catches up to the majority history on heal (**the harness's own expectations are under review — see its README**) |
-| `redteam/run.sh` | #184 accountability: equivocator slashed, forged block rejected, low-bond proposer refused |
+| `redteam/run.sh` | accountability: equivocator slashed, forged block rejected, low-bond proposer refused |
 | `sybil/run.sh` | C2 no quiet capture: a young objective network commits with the honest anchors and refuses to advance for a bonded Sybil set without them |
 | `audit/run.sh` | a "liar" deletes data but keeps proofs → the loss is caught and repaired |
-| `bond/run.sh` | proof-of-space-time bond cost (C1 no-discount): real plots seal expensive + verify cheap (plot-residency cost gate), one plot cannot back N identities (root-owner dedup), under-bonded proposals rejected. (Reputation *proportionality* — `reputation ∝ bond` — is not yet asserted; ROADMAP #7.) |
+| `bond/run.sh` | proof-of-space-time bond cost (C1 no-discount): real plots seal expensive + verify cheap (plot-residency cost gate), one plot cannot back N identities (root-owner dedup), under-bonded proposals rejected. (Reputation *proportionality* — `reputation ∝ bond` — is not yet asserted.) |
 | `economy/run.sh` | blind-signed, publisher-unlinkable credits **over the wire**; per-byte earning / freeloader-broke via the in-process economy sim (no daemon credit seam yet — see the suite's FINDING 2) |
 | `takedown/run.sh` | per-operator, existence-checked, reversible takedown |
 | `privacy/run.sh` | publisher unlinkability: the default chain refuses a durable file→publisher link (refuse-to-surveil), the private path works, `-token-quorum` authorizes without identity |
@@ -195,7 +193,7 @@ storage nodes, a registry, a relay, a fetcher, a NAT gateway + NATed nodes, and
 an adversary — provisioned by Terraform (VPC, public + NAT subnets, firewall,
 **SPOT** instances), each node booting its full `silt` argv from
 `topology.py`-computed static IPs/NodeIDs. It runs the 9 acceptance flows + the
-#184 drills over the real wire, writes `report.md` + `report.html`, and tears
+adversarial drills over the real wire, writes `report.md` + `report.html`, and tears
 everything down.
 
 **Prereqs (once):**
@@ -223,8 +221,7 @@ cp config.env.example config.env       # set PROJECT_ID (+ optional knobs)
 - **Always** verify teardown: `gcloud compute instances list --filter labels.cloudtest:*`
   must be empty afterward.
 
-See `integration/cloudtest/README.md` for the full topology, knobs, and the
-`HANDOFF.md` first-run guide.
+See `integration/cloudtest/README.md` for the topology, the knobs and the runbook.
 
 ---
 
@@ -250,6 +247,5 @@ node-abstraction (`exec-on-node` + `assert-on-log`, already the shape of both
 either substrate, and add the GCP scenarios that only real hardware can answer —
 **scale-out** repair-under-churn (50+ nodes), a **real firewall partition** for
 consensus, **`tc` link shaping** for fetch-under-load, and long-haul **soak**.
-The still-live parity/hardening items now live in ROADMAP.md's **Residual backlog**
-("Field-test harness residuals"); the retired per-substrate backlog is archived at
-`archive/FIELD-TEST-ROADMAP-2026-09-01.md`.
+The still-live parity and hardening items for this harness are tracked outside this
+file.

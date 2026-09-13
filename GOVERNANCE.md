@@ -1,17 +1,14 @@
 # Governance
 
 Silt is infrastructure owned by none and run by its participants. This
-document states the stance that shapes the architecture; the details of
-safety and policy live in [docs/safety-denylist.md](docs/safety-denylist.md)
-and the [fresh-eyes council](archive/reviews/fresh-eyes-council.md) (archived; a
-new council is planned — see [`docs/reviews/fresh-eyes-council-brief.md`](docs/reviews/fresh-eyes-council-brief.md)).
+document states the stance that shapes the architecture.
 
 Silt is **use-agnostic**: it takes zero position on what the network is
 used for. It is neutral, content-blind storage — the code cannot know or
 attach meaning to what it carries. Any application built *on top* of Silt
 (named "Aslan" — a resolver that maps human meaning to opaque roots) is a
-separate product in a separate codebase; Silt ships none of it. See
-[docs/aslan-boundary.md](docs/aslan-boundary.md).
+separate product in a separate codebase; Silt ships none of it. The boundary is
+immutable #6 in [docs/TENETS.md](docs/TENETS.md): core resolves hashes, never names.
 
 ## The project publishes software. It does not run the network.
 
@@ -50,7 +47,7 @@ in particular:
 
 ## Updates are operator-autonomous and security-gated
 
-The software **never silently auto-updates** (R4). An operator chooses if
+The software **never silently auto-updates**. An operator chooses if
 and when to upgrade; the project pushes nothing to a running node. The one
 concession is *security-gated*: a release that fixes a security-critical
 flaw is labeled as such so operators can prioritize it — but the decision,

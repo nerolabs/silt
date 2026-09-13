@@ -1,5 +1,4 @@
 # Lane postures — the posture source for scripts/check_reachability.py
-# scar:mechanism-shipped-inert-2026-09-10
 
 THIS FILE IS GATE INPUT, NOT NARRATION. `scripts/check_reachability.py` reads it:
 for every record in `scripts/reachability_lanes.txt`, it finds that record's `label`
@@ -8,10 +7,8 @@ substring here, reads the enclosing bullet, and asks whether that bullet says th
 bidirectional — a bullet claiming `cannot be exercised` for a symbol the linker DID keep
 goes RED, and an absent symbol without such a bullet goes RED too.
 
-These blocks were carried verbatim out of `docs/release-checklist.md` when the written
-record was deleted. They moved rather than died because a machine reads them: four of the
-fifteen lane records are excused ONLY by the prose below. Every `label` value in
-`reachability_lanes.txt` must occur EXACTLY ONCE in this file.
+Four of the fifteen lane records are excused ONLY by the prose below. Every `label`
+value in `reachability_lanes.txt` must occur EXACTLY ONCE in this file.
 
 ## Lane postures
 
@@ -19,7 +16,7 @@ fifteen lane records are excused ONLY by the prose below. Every `label` value in
     been exercised on a real network.** `OpenDeliverySessionRemote` and
     `SubmitDeliverySettle` are both linked into `./cmd/silt`, so an operator could
     open and settle a delivery session tomorrow; none ever has, which is why every
-    C2 number is sim-driven. It is graded at E5 after the stamp raise.
+    C2 number is sim-driven. 
   - **Open at the RC: the delivery top-up — it cannot be exercised, and the
     missing client entry point is `FundDeliverySessionRemote`.** Raising a live
     session's budget after admission has no client half in the shipped binary:
@@ -40,21 +37,18 @@ fifteen lane records are excused ONLY by the prose below. Every `label` value in
     over-correcting here is the same failure with the sign flipped:** the server
     accepts `MsgRelayOpen` from any peer, so a third party could hand-write a
     client. The accurate scope is *"the shipped binary has no client,"* never
-    *"the protocol is unreachable."* Source:
-    `/Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/2026-09-10-inert-mechanism-sweep-core-adapters-0ed3b92.md`.
-  - **OWED, not done here — one site still carries the standard sentence.**
-    `cmd/silt/daemon.go`'s `-accept-relay-payments` flag help ends on *"built,
-    sim-proven, never exercised on a real network"*; that file belongs to another
-    seat's open branch, so it must take the paid-relay label above before the RC
-    is cut. `docs/design/pod.md` §7.3's **Field status** line carried the same
+    *"the protocol is unreachable."*
+  - **OWED — one site still carries the looser sentence.** `cmd/silt/daemon.go`'s
+    `-accept-relay-payments` flag help ends on *"built, sim-proven, never exercised
+    on a real network"*; it must take the paid-relay label above before the RC is cut.
 
 ## Freeze-manifest mechanisms in the shipped binary
 
   - **Item 1 — the committed revocation-log size.** `(*Chain).stateRootLeavesV5` is the only
     production writer of the `tagRevLogSize` leaf, and it emits unconditionally on the v5
     branch. It is linked into `./cmd/silt`.
-  - **Item 3 — the two-level v5 block hash.** `setD3Digests` writes `AnswerDigest` and
-    `SlashesDigest` on the mint path; `validateD3Digests` refuses a block whose digests
+  - **Item 3 — the two-level v5 block hash.** `setBlockDigests` writes `AnswerDigest` and
+    `SlashesDigest` on the mint path; `validateBlockDigests` refuses a block whose digests
     disagree with its body, from all three admission paths. Both are linked into
     `./cmd/silt`. A field nothing writes is not in the format, and a field nothing checks is
     not self-covering, so this lane holds both halves and each is its own record.
