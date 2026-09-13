@@ -286,7 +286,7 @@ func (k *Keyset) VerifyInWindow(chainID ports.Hash, current uint64, t Token) (ep
 //
 // It also refuses a signature that verifies in the DEMAND domain: the domains are
 // distinct FDH inputs under one key (blindtoken relayAnchorDomain), so a demand token
-// offered as an anchor fails at every pair — one fee, one lane (cert T-6).
+// offered as an anchor fails at every pair — one fee, one lane.
 func (k *Keyset) VerifyAnchorInWindow(chainID ports.Hash, current uint64, t Token) (epoch uint64, ok bool) {
 	if len(t.Serial) == 0 {
 		return 0, false

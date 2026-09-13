@@ -1,7 +1,6 @@
 package demand
 
-// M3 — the network binding at the KEYSET tier (research certification 2026-09-11 §3,
-// G-3a / G-3b, and the §3.4 hard gate: the chain id is a PARAMETER, never a field).
+// The network binding at the KEYSET tier. The chain id is a PARAMETER, never a field.
 //
 // The blindtoken tier proves the FDH input carries the chain id. This tier proves the
 // thing a redeemer actually calls — Keyset.VerifyInWindow and VerifyAnchorInWindow, the
@@ -90,7 +89,7 @@ func m3Keyset(t *testing.T, key *rsa.PrivateKey, epochs ...uint64) *Keyset {
 	return ks
 }
 
-// TestKeysetRefusesATokenFromAnotherNetwork is G-3a at the redeemer. The issuer key is the
+// TestKeysetRefusesATokenFromAnotherNetwork at the redeemer. The issuer key is the
 // SAME on both networks — that is the whole premise — and the keyset holds it for every
 // epoch in the window, so the refusal cannot come from a missing key.
 //
@@ -158,7 +157,7 @@ func TestKeysetRefusesEveryHeldPairNotJustTheCurrentOne(t *testing.T) {
 	}
 }
 
-// TestZeroChainIDRefusesAtTheRedeemerAndTheIssuer is G-3b at this tier. A node holding no
+// TestZeroChainIDRefusesAtTheRedeemerAndTheIssuer at this tier: a node holding no
 // chain reports the zero hash, and every chainless node reports the same one: accepting it
 // would make "network zero" a shared network.
 func TestZeroChainIDRefusesAtTheRedeemerAndTheIssuer(t *testing.T) {

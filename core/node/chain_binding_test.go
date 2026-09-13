@@ -1,7 +1,6 @@
 package node
 
-// M3 — the network binding where the node actually uses it (research certification
-// 2026-09-11 §3, G-3a / G-3b / G-3d).
+// The network binding where the node actually uses it.
 //
 // THE RULE THIS TIER ENFORCES: the chain id a token is minted under and the chain id a
 // verifier checks under are BOTH read from a chain, never from the token and never from
@@ -51,7 +50,7 @@ var nodeTestChain = ports.Hash{
 	0x48, 0xcf, 0x21, 0x00, 0x93, 0x7a, 0x0e, 0xd5,
 }
 
-// TestChainlessNodeIssuesNoDemandToken is G-3b on the live issuance path. A node with no
+// TestChainlessNodeIssuesNoDemandToken on the live issuance path: a node with no
 // chain reports the zero chain id, every chainless node reports the same one, and a token
 // minted under it would be honoured by all of them — so the issuer refuses before it
 // charges anything.
@@ -95,7 +94,7 @@ func TestChainlessNodeIssuesNoDemandToken(t *testing.T) {
 	}
 }
 
-// TestDeliveryAnchorFromAnotherNetworkIsRefused is G-3a and G-3d at the session open: the
+// TestDeliveryAnchorFromAnotherNetworkIsRefused at the session open: the
 // cross-network token dies at the ANCHOR, before any session signature is evaluated, which
 // is the inheritance argument the certification makes for the leaf domains
 // (sessionOpenDomain, sessionFundDomain, receiptDomainV3 stay chain-blind on purpose).
@@ -145,7 +144,7 @@ func TestDeliveryAnchorFromAnotherNetworkIsRefused(t *testing.T) {
 	}
 }
 
-// TestChainlessNodeVerifiesNoDeliveryAnchor is the verifier half of G-3b, driven against a
+// TestChainlessNodeVerifiesNoDeliveryAnchor is the verifier half, driven against a
 // node that holds no chain — the state Layer 2's JOIN mode makes real on every join.
 func TestChainlessNodeVerifiesNoDeliveryAnchor(t *testing.T) {
 	issuerPriv := m3IssuerKey(t)

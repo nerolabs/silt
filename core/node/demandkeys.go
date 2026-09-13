@@ -445,7 +445,7 @@ func (n *Node) withdrawBlind(rng io.Reader, issuer ports.NodeID, pub *rsa.Public
 // rotation is a genuinely new issuance, not a stale cache hit.
 func (n *Node) answerDemandTokenRequest(from ports.NodeID, msg ports.Message) ports.Message {
 	reply := ports.Message{Kind: ports.MsgDemandTokenReply}
-	// THE ISSUER REFUSES WITHOUT A NETWORK, BEFORE ANY CHARGE (M3 G-3b, 2026-09-11).
+	// THE ISSUER REFUSES WITHOUT A NETWORK, BEFORE ANY CHARGE.
 	// (*Node).chainID() is the zero hash when this node holds no chain, and both bound
 	// withdrawal lanes — delivery tokens and relay anchors — arrive here, so this one arm
 	// covers both. A blind issuer cannot see which chain id the requester bound into the

@@ -1,10 +1,11 @@
 package credit
 
-// M3 — the network the credit lane's fixtures mint on (research certification 2026-09-11
-// §3). core/credit does not verify token signatures itself: it spends serials into guards.
-// What it needs from M3 is a chain id to hand the demand primitives its fixtures call, and
+// The network the credit lane's fixtures mint on.
+//
+// core/credit does not verify token signatures itself: it spends serials into guards.
+// What it needs is a chain id to hand the demand primitives its fixtures call, and
 // the guarantee that the ledger's arithmetic is indifferent to which network minted the
-// token — the refusal happens upstream, at demand.Keyset (see core/demand's M3 gates) and
+// token — the refusal happens upstream, at demand.Keyset (see core/demand's gates) and
 // at the node's verifyDeliveryAnchors / OpenRelaySession.
 
 import "github.com/nerolabs/silt/ports"

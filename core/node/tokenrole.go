@@ -94,7 +94,7 @@ var (
 	errCreditRefused = errors.New("node: attached publish credit is invalid or already spent")
 
 	// ErrDemandEpochMismatch refuses a demand-token reply signed for an epoch
-	// the withdrawal did not name ((b1)). The issue epoch is inside the
+	// the withdrawal did not name. The issue epoch is inside the
 	// blind-signed message, so such a signature unblinds to nothing redeemable
 	// — failing here makes an issuer's attempt to hand a cohort a different
 	// key a DENIAL the fetcher sees, not a tagged token it discovers is

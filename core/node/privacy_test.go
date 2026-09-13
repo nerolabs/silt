@@ -33,7 +33,7 @@ func newIssuerNode(t *testing.T, fee int64) (*Node, *credit.Ledger, *rsa.Private
 		t.Fatal(err)
 	}
 	nd.EnableTokenIssuer(rand.Reader, key)
-	// M3: the PUBLISH CREDIT domain binds the chain id, so an issuer that holds no chain
+	// The PUBLISH CREDIT domain binds the chain id, so an issuer that holds no chain
 	// verifies no credit (blindtoken.ErrZeroChainID). Give the fixture a chain — the
 	// credit lane is a real network's lane now, and a chainless one is the refusal that
 	// core/node TestChainlessNodeIssuesNoDemandToken drives on purpose.

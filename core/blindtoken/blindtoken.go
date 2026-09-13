@@ -38,7 +38,7 @@ import (
 // does not, because a publish token is verified inside BLOCK VALIDITY —
 // chain.ValidateEntry and v5ValidateEntry both call publishtoken.Verify — so binding it
 // changes which blocks are valid. That is a consensus-rule change, not an economic one:
-// research-gated, and out of M3's scope. The cross-network consequence stands open and
+// research-gated, and out of scope here. The cross-network consequence stands open and
 // named: a publish token minted on network X is a free publish on network Y under a shared
 // issuer key. It is NOT in the residual register — registering it takes a ROADMAP row with an
 // owner and a closer, which this change is not scoped to write — so it is named HERE, at the
@@ -141,7 +141,7 @@ var (
 	// modexp produced does not verify under the issuer's own public key.
 	ErrSignFault = errors.New("blindtoken: signature failed verify-after-sign")
 	// ErrZeroChainID is the refusal a chain-bound lane makes when it is handed the zero
-	// chain id (M3 G-3b). A zero chain id is not a chain: (*Chain).ChainID returns the
+	// chain id. A zero chain id is not a chain: (*Chain).ChainID returns the
 	// zero hash when the node holds no genesis, and (*Node).chainID returns it when the
 	// node holds no chain at all. Minting or accepting a token under it would make
 	// "network zero" a real network that every chainless node on earth shares. Refusing
@@ -160,9 +160,9 @@ const ChainIDSize = 32
 
 var zeroChainID [ChainIDSize]byte
 
-// chainBoundMsg is the M3 network binding: chainID(32 B) ‖ rest.
+// chainBoundMsg is the network binding: chainID(32 B) ‖ rest.
 //
-// THE CHAIN ID GOES IN THE MESSAGE, NOT IN THE DOMAIN CONSTANT (research certification
+// THE CHAIN ID GOES IN THE MESSAGE, NOT IN THE DOMAIN CONSTANT
 // 2026-09-11 §3.5, which REFUTES the per-network domain constant). Three reasons, each
 // on its own sufficient:
 //

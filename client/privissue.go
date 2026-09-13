@@ -45,7 +45,7 @@ import (
 // verified you" fingerprints the cohort. Passing an unresolved key here re-opens that
 // channel — there is no safe way to call this with a key the caller did not resolve.
 //
-// chainID IS THE CALLER'S NETWORK, AND IT IS REQUIRED (M3, 2026-09-11). The ephemeral
+// chainID IS THE CALLER'S NETWORK, AND IT IS REQUIRED. The ephemeral
 // node built below holds NO chain, so it cannot read its own network — (*Node).chainID()
 // is the zero hash here — and the demand domain now binds the network into the
 // blind-signed message. The caller reads it from its durable node's chain

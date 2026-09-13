@@ -1,9 +1,8 @@
 package blindtoken
 
-// M3 — THE NETWORK BINDING GATES (research certification 2026-09-11 §3, Layer 3,
-// G-3a..G-3c).
+// THE NETWORK BINDING GATES.
 //
-// THE DEFECT THESE DRIVE. Before M3 the chain-bound lanes signed a message that named no
+// THE DEFECT THESE DRIVE. The chain-bound lanes used to sign a message that named no
 // network: the credit domain signed `serial`, the demand and relay-anchor domains signed
 // `epoch ‖ serial`. Under a shared issuer key a token minted on network A therefore
 // verified on network B. This is EIP-155's unlearned lesson.
@@ -25,7 +24,7 @@ import (
 
 // testChain is the chain id the pre-existing lane tests mint and verify under. It is the
 // honest-path value: one network, mint and verify agree, and everything that passed before
-// M3 still passes. It is deliberately NOT all-ones, all-zeroes or a repeated byte — a
+// the binding still passes. It is deliberately NOT all-ones, all-zeroes or a repeated byte — a
 // uniform fixture hides a copy that takes only the first byte, or only the last.
 var testChain = [ChainIDSize]byte{
 	0x9c, 0x21, 0x00, 0x4e, 0xff, 0x03, 0x77, 0xa1,
@@ -105,7 +104,7 @@ func verifyUnder(pub *rsa.PublicKey, chainID [ChainIDSize]byte, lane string, epo
 	return false
 }
 
-// TestTokenMintedOnOneNetworkFailsOnAnother is G-3a's core: the cross-network replay, in
+// TestTokenMintedOnOneNetworkFailsOnAnother is the cross-network replay, in
 // BOTH directions, on all three chain-bound lanes, under ONE shared issuer key.
 //
 // RED BEFORE THE FIX: with the chain id absent from the FDH input every cross arm below
@@ -137,7 +136,7 @@ func TestTokenMintedOnOneNetworkFailsOnAnother(t *testing.T) {
 	}
 }
 
-// TestZeroChainIDRefusesAtEveryBoundEntryPoint is G-3b. A zero chain id means "this node
+// TestZeroChainIDRefusesAtEveryBoundEntryPoint. A zero chain id means "this node
 // holds no chain", and every chainless node holds the same zero — so accepting it would
 // make "network zero" a real, shared network. Every bound entry point refuses.
 //
@@ -220,8 +219,8 @@ func TestZeroChainIDRefusalIsNotJustABadSignature(t *testing.T) {
 	}
 }
 
-// TestRetiredDomainVersionsAreRefused is the observability half of the version bump
-// (G-3c). The three bound domains moved v1->v2, v2->v3 and v1->v2, and an OLD signature
+// TestRetiredDomainVersionsAreRefused is the observability half of the version bump.
+// The three bound domains moved v1->v2, v2->v3 and v1->v2, and an OLD signature
 // must be REFUSED rather than silently re-interpreted under the new layout.
 //
 // The legacy domains and the legacy message layouts are written out LITERALLY here. They
@@ -286,7 +285,7 @@ func TestRetiredDomainVersionsAreRefused(t *testing.T) {
 	}
 }
 
-// TestChainBoundFDHInputIsPinnedByteExactly re-pins the bound layouts (G-3c). The expected
+// TestChainBoundFDHInputIsPinnedByteExactly re-pins the bound layouts. The expected
 // bytes are assembled here from first principles — chain id, then the epoch where the lane
 // has one, then the serial — never by calling the function that builds them.
 func TestChainBoundFDHInputIsPinnedByteExactly(t *testing.T) {
@@ -324,9 +323,9 @@ func TestChainBoundFDHInputIsPinnedByteExactly(t *testing.T) {
 	}
 }
 
-// TestBoundDomainsAreDistinctUnderOneChain keeps the pre-M3 lane separation honest: adding
+// TestBoundDomainsAreDistinctUnderOneChain keeps the lane separation honest: adding
 // a common prefix to three messages must not collapse the three domains into one. One fee,
-// one lane (cert T-6) is a property M3 must not spend.
+// one lane is a property the chain binding must not spend.
 func TestBoundDomainsAreDistinctUnderOneChain(t *testing.T) {
 	priv := testKey(t)
 	pub := &priv.PublicKey

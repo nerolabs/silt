@@ -49,7 +49,7 @@ func TestPrepaidCreditDecouplesFeeOverTheNetwork(t *testing.T) {
 	issuer.EnableTokenIssuer(rand.Reader, rsaKey)
 	issuerReg[issuerID] = &rsaKey.PublicKey
 
-	// M3 (2026-09-11): the PUBLISH CREDIT domain binds the chain id, so both ends need a
+	// The PUBLISH CREDIT domain binds the chain id, so both ends need a
 	// chain — a node that cannot name its network mints and verifies no credit. One shared
 	// genesis, so the issuer and the publisher agree on which network this is.
 	sc := chain.New(chain.Config{Quorum: 1}, func(ports.NodeID) int64 { return 1 << 30 })

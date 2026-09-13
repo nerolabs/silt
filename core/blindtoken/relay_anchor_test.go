@@ -26,8 +26,8 @@ import (
 // INDEPENDENTLY of the implementation so the pin is against the certification,
 // not against whatever the code happens to say.
 //
-// ⚠ v1 -> v2 AT M3 (2026-09-11): the anchor message now leads with the 32-byte chain id
-// (research certification 2026-09-11 §3.5). The domain is retired rather than extended,
+// ⚠ v1 -> v2: the anchor message now leads with the 32-byte chain id.
+// The domain is retired rather than extended,
 // which is what makes the old version OBSERVABLE — a v1 anchor cannot verify as a v2 one.
 // The pin moves with the certified constant; it is not an edit of convenience.
 const relayAnchorDomainLiteral = "silt/blindrelay/fdh/v2"
@@ -35,7 +35,7 @@ const relayAnchorDomainLiteral = "silt/blindrelay/fdh/v2"
 // independentRelayFDH recomputes H(domain ‖ ctr ‖ chainID(32B) ‖ epoch(8B BE) ‖ serial)
 // in counter mode, expanded past the modulus and reduced mod N — the exact
 // TestDemandFDHInputBindsTheEpochByteExactly recomputation, under the relay domain, with
-// the M3 chain id leading the message.
+// the chain id leading the message.
 func independentRelayFDH(pub *rsa.PublicKey, chainID [ChainIDSize]byte, epoch uint64, serial []byte) *big.Int {
 	nLen := (pub.N.BitLen() + 7) / 8
 	var out []byte

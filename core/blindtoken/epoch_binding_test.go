@@ -80,7 +80,7 @@ func TestDemandFDHInputBindsTheEpochByteExactly(t *testing.T) {
 	// Independent recomputation of H(domain ‖ ctr ‖ chainID(32B) ‖ epoch(8B BE) ‖ serial),
 	// counter mode, expanded past the modulus and reduced mod N.
 	//
-	// ⚠ v2 -> v3 AT M3 (2026-09-11): the chain id LEADS the message (research certification
+	// ⚠ v2 -> v3: the chain id LEADS the message
 	// 2026-09-11 §3.5). The domain literal below is the new one, written out here rather
 	// than read from the package, so the pin still binds the code to the certification.
 	pub := &k.PublicKey

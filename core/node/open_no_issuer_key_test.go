@@ -69,7 +69,7 @@ func TestOpenWithNoResolvedIssuerKeyRefuses(t *testing.T) {
 	blind := build(false)
 	// ARM 2's server is built FIRST so the anchor can be minted on ITS network: the two
 	// arms commit different issuer-key registrations, so they mint different genesis
-	// blocks and therefore different chain ids (M3). The anchor must be a real one for the
+	// blocks and therefore different chain ids. The anchor must be a real one for the
 	// network that will accept it, or arm 2 would refuse it for the wrong reason.
 	pinned := build(true)
 
