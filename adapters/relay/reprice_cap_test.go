@@ -9,11 +9,11 @@ import (
 	"github.com/nerolabs/silt/core/relaypay"
 )
 
-// TestRelayServeHoldsOneCapAtTheProtocolCeiling is the G-R212-2 adapter gate (blind PE
-// F-2, 2026-09-06): the per-splice cap defaults to the protocol session ceiling, Serve
-// refuses a lower explicit cap (a COHERENCE refusal — a lower cap would burn the bytes a
-// fetcher paid for past it, T-RELAY-GRAN), and accepts the ceiling itself. Ablation
-// "default back to 1 GiB / delete the Serve refusal" reddens here.
+// TestRelayServeHoldsOneCapAtTheProtocolCeiling is the adapter gate: the per-splice cap
+// defaults to the protocol session ceiling, Serve refuses a lower explicit cap (a
+// COHERENCE refusal — a lower cap would burn the bytes a fetcher paid for past it),
+// and accepts the ceiling itself. Ablation "default back to 1 GiB /
+// delete the Serve refusal" reddens here.
 func TestRelayServeHoldsOneCapAtTheProtocolCeiling(t *testing.T) {
 	if got := (Config{}).withDefaults().MaxSessionBytes; got != relaypay.MaxSessionBytes {
 		t.Fatalf("default MaxSessionBytes = %d, want the protocol ceiling %d", got, relaypay.MaxSessionBytes)
@@ -30,12 +30,12 @@ func TestRelayServeHoldsOneCapAtTheProtocolCeiling(t *testing.T) {
 	srv.Close()
 }
 
-// TestRelayFreeAndPaidSplicesReadTheSameCap is the D-POD-RELAY-COEXIST seam: the free
-// splice and the paid pump are capped by the SAME config field, so no free/paid
-// differential can exist in this adapter. SOURCE GATE: the two call sites name
-// s.cfg.MaxSessionBytes. RUNTIME GATE: TestRelayServeHoldsOneCapAtTheProtocolCeiling
-// covers the field's value; the differential itself has no runtime observable short of
-// pushing 24.4 GiB through each path.
+// TestRelayFreeAndPaidSplicesReadTheSameCap is the seam: the free splice and the paid
+// pump are capped by the SAME config field, so no free/paid differential can exist in
+// this adapter. SOURCE GATE: the two call sites name s.cfg.MaxSessionBytes.
+// RUNTIME GATE: TestRelayServeHoldsOneCapAtTheProtocolCeiling covers the field's value; the
+// differential itself has no runtime observable short of pushing 24.4 GiB through each
+// path.
 func TestRelayFreeAndPaidSplicesReadTheSameCap(t *testing.T) {
 	server, err := os.ReadFile("server.go")
 	if err != nil {
@@ -46,9 +46,9 @@ func TestRelayFreeAndPaidSplicesReadTheSameCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(server), "io.LimitReader(src, s.cfg.MaxSessionBytes)") {
-		t.Fatal("SOURCE GATE: the free splice no longer caps on s.cfg.MaxSessionBytes — a free/paid differential is possible (D-POD-RELAY-COEXIST)")
+		t.Fatal("SOURCE GATE: the free splice no longer caps on s.cfg.MaxSessionBytes — a free/paid differential is possible ")
 	}
 	if !strings.Contains(string(paid), "paidSession(a, b, auth, s.cfg.MaxSessionBytes)") {
-		t.Fatal("SOURCE GATE: the paid pump no longer caps on s.cfg.MaxSessionBytes — a free/paid differential is possible (D-POD-RELAY-COEXIST)")
+		t.Fatal("SOURCE GATE: the paid pump no longer caps on s.cfg.MaxSessionBytes — a free/paid differential is possible ")
 	}
 }

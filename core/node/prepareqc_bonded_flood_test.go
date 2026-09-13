@@ -1,9 +1,9 @@
 package node
 
-// R-CARRIER-QC-BURST-VALUE — the residual #823 left open, DRIVEN.
+// The residual left open, DRIVEN.
 //
-// #823 closed the UNBONDED arm of the MsgPrepareQC flood with a sender screen
-// ((*Node).handleChain, ports.MsgPrepareQC: Objective() &&
+// closed the UNBONDED arm of the MsgPrepareQC flood with a sender screen
+// ((*Node).handleChain, ports.MsgPrepareQC: Objective &&
 // !AttesterEligibleAt(from, height)). A BONDED sender passes that screen by
 // construction, so the flood survives for anyone already in the governing set.
 // The per-sender rate budget that would bound it is NOT shipped: its burst
@@ -18,11 +18,11 @@ package node
 // fires only for ids that already qualified. That makes the behaviour
 // ASYMMETRIC, and the asymmetry is the whole residual:
 //
-//   - repeats of a QUALIFIED id are deduplicated BEFORE verifyAtt — the
-//     attacker's own bonded key buys exactly ONE verify, however often it is
-//     repeated;
-//   - repeats of an UNQUALIFIED id are NOT deduplicated — each one pays a full
-//     verifyAtt.
+// - repeats of a QUALIFIED id are deduplicated BEFORE verifyAtt — the
+// attacker's own bonded key buys exactly ONE verify, however often it is
+// repeated;
+// - repeats of an UNQUALIFIED id are NOT deduplicated — each one pays a full
+// verifyAtt.
 //
 // So the bond does not supply the payload; it supplies PASSAGE through the
 // sender screen. The flood entries must be signed by an identity that is NOT in
@@ -62,7 +62,7 @@ func floodCorrupt(a chain.Attestation) chain.Attestation {
 }
 
 // TestQC_BurstValue_DedupIsAsymmetricAcrossQualification drives the mechanism
-// R-CARRIER-QC-BURST-VALUE discloses.
+// the disclosure names.
 func TestQC_BurstValue_DedupIsAsymmetricAcrossQualification(t *testing.T) {
 	nodes, ids, _, g, _ := tier2AnchorNet(t, 4)
 	author := ids[0]
@@ -90,10 +90,10 @@ func TestQC_BurstValue_DedupIsAsymmetricAcrossQualification(t *testing.T) {
 	qual := chain.AttestAt(b, ids[1].Signer(), 0, chain.PhasePrepare, cid)
 	err1 := nodes[0].chain.VerifyPrepareQC(b, []chain.Attestation{self, qual, qual, floodCorrupt(qual)}, 0)
 	if errors.Is(err1, chain.ErrBadSignature) {
-		t.Fatalf("R-CARRIER-QC-BURST-VALUE HAS CHANGED SHAPE: a repeated QUALIFIED id reached the "+
+		t.Fatalf("HAS CHANGED SHAPE: a repeated QUALIFIED id reached the "+
 			"corrupt entry, so seen[id] no longer short-circuits before verifyAtt. The residual's "+
 			"disclosed mechanism says the attacker's own bonded key buys exactly ONE verify; that is "+
-			"now false and the ROADMAP row must be re-derived. err=%v", err1)
+			"now false and the the roadmap row must be re-derived. err=%v", err1)
 	}
 	if err1 == nil {
 		t.Fatalf("premise: a QC carrying one qualified attester must not reach quorum, got nil")
@@ -113,7 +113,7 @@ func TestQC_BurstValue_DedupIsAsymmetricAcrossQualification(t *testing.T) {
 	unqual := chain.AttestAt(b, outsider.Signer(), 0, chain.PhasePrepare, cid)
 	err2 := nodes[0].chain.VerifyPrepareQC(b, []chain.Attestation{self, unqual, unqual, floodCorrupt(unqual)}, 0)
 	if !errors.Is(err2, chain.ErrBadSignature) {
-		t.Fatalf("R-CARRIER-QC-BURST-VALUE IS CLOSED OR HAS MOVED: a repeated UNQUALIFIED id did NOT "+
+		t.Fatalf("IS CLOSED OR HAS MOVED: a repeated UNQUALIFIED id did NOT "+
 			"reach the corrupt entry, so something now bounds or deduplicates the list before "+
 			"verifyAtt. If a cap or a dedup shipped, close the register row rather than leaving it "+
 			"open. err=%v", err2)
@@ -121,7 +121,7 @@ func TestQC_BurstValue_DedupIsAsymmetricAcrossQualification(t *testing.T) {
 }
 
 // TestQC_BurstValue_TheSenderScreenAdmitsAQualifiedFlooder records the other
-// half of the residual: what #823's screen does and does not do.
+// half of the residual: what the screen does and does not do.
 //
 // (*Chain).AttesterEligibleAt is the exact predicate the ports.MsgPrepareQC arm
 // screens on. It is a property of the SENDER, not of the list the sender
@@ -135,7 +135,7 @@ func TestQC_BurstValue_TheSenderScreenAdmitsAQualifiedFlooder(t *testing.T) {
 	h := n.roundsFor().Height
 
 	if !n.chain.AttesterEligibleAt(ids[1].NodeID(), h) {
-		t.Fatalf("premise: an anchor must be eligible at height %d — the screen #823 added is "+
+		t.Fatalf("premise: an anchor must be eligible at height %d — the screen added is "+
 			"what this residual reports a bonded sender passing", h)
 	}
 
@@ -144,7 +144,7 @@ func TestQC_BurstValue_TheSenderScreenAdmitsAQualifiedFlooder(t *testing.T) {
 		t.Fatalf("generate outsider: %v", err)
 	}
 	if n.chain.Objective() && n.chain.AttesterEligibleAt(outsider.NodeID(), h) {
-		t.Fatal("R-CARRIER-QC-BURST-VALUE's boundary has moved: an unbonded identity is now eligible, " +
-			"so #823's sender screen no longer separates the closed arm from the open one")
+		t.Fatal("'s boundary has moved: an unbonded identity is now eligible, " +
+			"so 's sender screen no longer separates the closed arm from the open one")
 	}
 }

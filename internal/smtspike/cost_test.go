@@ -48,8 +48,8 @@ func buildTrieWithStore(tb testing.TB, n int) (*smt.SMT, *countingStore) {
 }
 
 // costScales are the registry sizes the keystone must survive. byRoot is the
-// "∀ content ever" term (cert §Q3 table), so the top of the sweep is the one
-// that decides rebuild-vs-persist (Q6).
+// "∀ content ever" term table, so the top of the sweep is the one that
+// decides rebuild-vs-persist (Q6).
 var costScales = []int{1_000, 10_000, 100_000, 1_000_000}
 
 // TestFloorBoxProfile is the build-immutable #8 measurement: produce, proof,
@@ -58,7 +58,7 @@ var costScales = []int{1_000, 10_000, 100_000, 1_000_000}
 //
 // Heavy by design — run it explicitly:
 //
-//	SILT_SMT_PROFILE=1 go test ./internal/smtspike/ -run TestFloorBoxProfile -v -timeout 60m
+//	SILT_SMT_PROFILE=1 go test./internal/smtspike/ -run TestFloorBoxProfile -v -timeout 60m
 //
 // Report the numbers from the 1 vCPU / 2 GB floor box, never from a dev laptop:
 // a laptop number is the shape, not the gate.
@@ -174,10 +174,10 @@ func BenchmarkBuild(b *testing.B) {
 	}
 }
 
-// BenchmarkApplyBlock measures the hot-path cost the cert's Q4 constrains:
+// BenchmarkApplyBlock measures the hot-path cost the Q4 constrains:
 // applying one block's changed keys to an existing tree of size n. The claim
 // under test is O(changed · log n) — cost must track `changed`, and grow only
-// logarithmically in n. A result that tracks n is the #555 scar returning.
+// logarithmically in n. A result that tracks n is the defect returning.
 func BenchmarkApplyBlock(b *testing.B) {
 	const changed = 100
 	for _, n := range []int{1_000, 10_000, 100_000} {
@@ -201,7 +201,7 @@ func BenchmarkApplyBlock(b *testing.B) {
 }
 
 // BenchmarkProveVerify separates the light-path costs. Proofs are produced
-// only on the pruned/sharded/light path (cert Q4), so these gate that path,
+// only on the pruned/sharded/light path, so these gate that path,
 // not the full-node hot path.
 func BenchmarkProveVerify(b *testing.B) {
 	for _, n := range []int{1_000, 10_000, 100_000} {

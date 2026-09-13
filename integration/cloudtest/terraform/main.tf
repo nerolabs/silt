@@ -10,13 +10,13 @@ locals {
   # The equivocation island: a contained consensus universe (own anchors, own
   # genesis; nothing in the main swarm names it). NO external IP → zero
   # IN_USE_ADDRESSES quota (the real constraint); egress for the GCS binary pull
-  # goes through Cloud NAT below. Design: docs/thinking/2026-08-20-equivocation-island-design.md.
+  # goes through Cloud NAT below. Design:.
   island_nodes = { for k, v in var.nodes : k => v if v.role == "island" }
   # Main-swarm nodes with NO external IP (the ECONOMY killable stores): full
   # swarm members on the public subnet — dialable on internal IPs like every
   # node (the swarm advertises internal IPs) — but zero IN_USE_ADDRESSES quota.
   # Egress (GCS binary pull) via the same Cloud NAT as the island; reached over
-  # IAP like everything else. docs/thinking/2026-08-20-economy-premise-killable-pool.md.
+  # IAP like everything else..
   noip_nodes = { for k, v in var.nodes : k => v if v.role != "island" && v.internal_only }
   labels     = { cloudtest = var.run_id }
 }

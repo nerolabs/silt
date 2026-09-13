@@ -1,6 +1,21 @@
+# Run artifacts. Evidence for the run that produced them, never repository content.
+report.md
+report.html
+report-*.md
+results.jsonl
+results-*.jsonl
+rss-*.jsonl
+console-*.log
+flow-evidence-*.log
+publish-diag-*.log
 failed-nodes-*.log
+*-console-*.log
+archive/
+
+# Local build + topology outputs
 silt-linux-local
-.silt-local
 silt-linux-amd64
+.silt-local
 nodes.local.json
 topology.local.json
+topology.json

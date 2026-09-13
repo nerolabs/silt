@@ -11,35 +11,34 @@ import (
 )
 
 // R3 EXECUTION-DERIVED completeness guard — the load-bearing defense for the v5 witness
-// read-set producer (lane-1 Part A, AMENDED cert
-// era4-witness-floor-box-readset-v5-AMENDED-RESEARCH-CERTIFICATION-2026-08-30, residual R3;
-// PE ruling RULING-lane1-partA-readset-v5-producer-2026-08-30, fixes 4 + 5).
+// read-set producer (lane-1 Part A, the amended rule
+// era4-witness-floor-box-readset-v5-AMENDED-, residual R3).
 //
 // WHY THIS REPLACES THE PRIOR GUARD. The prior guard was a SECOND HAND-WRITTEN enumeration
-// (recomputeWitnessReadsV5) checked against the producer. Both inherited the prior cert's
+// (recomputeWitnessReadsV5) checked against the producer. Both inherited the prior the
 // blind spot (validatorsSeen, everMature, the scalars), so set-equality was GREEN over a
-// real accept-a-forgery gap. The amended cert makes an EXECUTION-DERIVED guard MANDATORY: the
+// real accept-a-forgery gap. The amended the research makes an EXECUTION-DERIVED guard MANDATORY: the
 // "expected" read-set must be derived from the RECORDED leaf-touch of the REAL v5 recompute,
 // not from a mirror of the producer. A guard that compares the producer to a hand-written
-// table certifies nothing.
+// table proves nothing.
 //
-// THE GROUND TRUTH. The real v5 recompute is postApplyRoots(b) → cloneForDryRun() → apply(b)
-// → StateRootForVersion(5) → stateRootLeavesV5 (era3validity.go:145, statehash.go:182). This
+// THE GROUND TRUTH. The real v5 recompute is postApplyRoots(b) → cloneForDryRun → apply(b) →
+// StateRootForVersion(5) → stateRootLeavesV5 (era3validity.go, statehash.go). This
 // guard derives the recompute's read-set from that computation by TWO execution-derived
 // sources, NEITHER hand-written:
 //
-//   - THE WRITE-DIFF (Category 1 — write-target reads): the committed leaves whose value
-//     CHANGES between the pre-apply and post-apply stateRootLeavesV5. Every write-target is
-//     read (a map write needs the pre-state to compute the post-value; a monotonic scalar
-//     gates on its pre-state). This captures exactly the prior build's dropped leaves
-//     (validatorsSeen / everMature / the scalars are all write-targets).
-//   - THE LEAF-SENSITIVITY PERTURBATION (Category 2 — pure gate reads): for each committed
-//     leaf present pre-apply, perturb its value on a fresh clone and re-run the REAL
-//     postApplyRoots; a leaf whose perturbation CHANGES the output root is one the recompute
-//     READS (a floor box must witness it, else it cannot detect a forged value there). This
-//     catches the pure gate reads a write-diff misses (a slashed[id] gate on a non-slashed
-//     id, the boundary regVersion reads for unchanged frozen members, bonded/bondDomain
-//     maturity inputs).
+// - THE WRITE-DIFF (Category 1 — write-target reads): the committed leaves whose value
+// CHANGES between the pre-apply and post-apply stateRootLeavesV5. Every write-target is
+// read (a map write needs the pre-state to compute the post-value; a monotonic scalar
+// gates on its pre-state). This captures exactly the prior build's dropped leaves
+// (validatorsSeen / everMature / the scalars are all write-targets).
+// - THE LEAF-SENSITIVITY PERTURBATION (Category 2 — pure gate reads): for each committed
+// leaf present pre-apply, perturb its value on a fresh clone and re-run the REAL
+// postApplyRoots; a leaf whose perturbation CHANGES the output root is one the recompute
+// READS (a floor box must witness it, else it cannot detect a forged value there). This
+// catches the pure gate reads a write-diff misses (a slashed[id] gate on a non-slashed
+// id, the boundary regVersion reads for unchanged frozen members, bonded/bondDomain
+// maturity inputs).
 //
 // THE ASSERTION. The producer's read-set must COVER (⊇) the union of the two ground-truth
 // sources. Over-witnessing is sound (a little extra witness bandwidth, never a wrong-accept);
@@ -49,8 +48,8 @@ import (
 //
 // THE ABLATION (the "inject the defect and watch it go red" discipline). The guard reddens on
 // the exact defects that escaped the prior build: a dropped attestation-loop read (the
-// validatorsSeen omission), a dropped slash-path qualified read, and the certified
-// boundedness ablation.
+// validatorsSeen omission), a dropped slash-path qualified read, and the boundedness
+// ablation.
 
 // keySet is the sorted set of leaf keys (tag||rawKey) in a read-set. The guard compares
 // KEYS: which committed leaves the box must witness. The kind (present/absent) and value are
@@ -105,7 +104,7 @@ func digestRootLeafKeys() map[string]struct{} {
 // isDigestRootLeaf reports whether leaf key k is one of the STILL-INERT F1 whole-set
 // digest-root leaves (the two, NOT epochSetRoot / validatorsSeenRoot / bondedRoot). Those leaves
 // are DERIVED output commitments
-// over a whole keyspace's member set (statehash.go:262-266) that NO recompute reads yet (the
+// over a whole keyspace's member set (statehash.go) that NO recompute reads yet (the
 // F1 STOP boundary still holds for them). They are the leaf-set analogue of the recomputed
 // state root: perturbing any member of a keyspace flips that keyspace's digest root, and the
 // digest root is itself a changed (written) leaf every membership-mutating block. Neither
@@ -192,11 +191,11 @@ func groundTruthReadSet(t *testing.T, c *Chain, b Block) map[string]struct{} {
 	// L's own key. A CROSS-LEAF difference (some OTHER leaf changed) ⟹ the recompute READ L and
 	// used it to compute another leaf's post-value. That is a genuine read the box must witness.
 	//
-	// L's own key is EXCLUDED from the comparison because the perturbed value persists into the
-	// post-state for a leaf apply() does not overwrite — that self-persistence is NOT a read
-	// (the recompute never consulted L to produce anything). L's own write-target status (its
-	// post-value depending on its pre-value) is already captured by Source 1 (the write-diff).
-	// So perturbation isolates the PURE gate reads Source 1 misses.
+	// L's own key is EXCLUDED from the comparison because the perturbed value persists into
+	// the post-state for a leaf apply does not overwrite — that self-persistence is NOT a
+	// read (the recompute never consulted L to produce anything). L's own write-target
+	// status (its post-value depending on its pre-value) is already captured by Source 1
+	// (the write-diff). So perturbation isolates the PURE gate reads Source 1 misses.
 	refPost := c.cloneForDryRun()
 	refPost.apply(b)
 	refLeaves := leafKeySet(refPost)
@@ -212,15 +211,15 @@ func groundTruthReadSet(t *testing.T, c *Chain, b Block) map[string]struct{} {
 		}
 	}
 
-	// --- Source 3: the VALIDITY-READ perturbation (the apply()-blind reads). ---
-	// The read-set a floor box needs is validity ∪ apply-recompute (AMENDED cert). Sources 1
-	// and 2 are BOTH apply()-shaped, so they are structurally blind to a leaf read ONLY in the
-	// VALIDITY predicate and never in apply(): spent[serial] (the double-spend gate,
-	// chain.go:2617) and revoked[root] (the un-revocation gate, chain.go:2643). Perturbing
+	// --- Source 3: the VALIDITY-READ perturbation (the apply-blind reads). ---
+	// The read-set a floor box needs is validity ∪ apply-recompute (the amended rule). Sources 1
+	// and 2 are BOTH apply-shaped, so they are structurally blind to a leaf read ONLY in the
+	// VALIDITY predicate and never in apply: spent[serial] (the double-spend gate,
+	// chain.go) and revoked[root] (the un-revocation gate, chain.go). Perturbing
 	// either changes NO apply-recompute leaf, so Sources 1/2 never list them — dropping them
 	// from the producer stayed GREEN (the "a read no guard catches" failure this guard exists
-	// to kill). Source 3 closes that: for each committed leaf L, perturb it on a fresh clone and
-	// re-run the REAL validity read-predicates; if the accept/reject VERDICT flips, the
+	// to kill). Source 3 closes that: for each committed leaf L, perturb it on a fresh clone
+	// and re-run the REAL validity read-predicates; if the accept/reject VERDICT flips, the
 	// predicate READ L, so the box must witness it.
 	//
 	// This drives the production predicates that perform the reads — validateTakedowns (reads
@@ -408,12 +407,12 @@ func splitLeafKey(key []byte) (tag string, raw []byte, ok bool) {
 }
 
 // v5ReadSetCorpusBlock labels one corpus block with the class it exercises, so a test can
-// assert the corpus actually covered each certified class (the vacuity guard).
+// assert the corpus actually covered each class (the vacuity guard).
 type v5ReadSetCorpusBlock struct {
 	block Block
 	label string
-	// class: the certified transition class this block exercises. The vacuity guard requires
-	// the corpus to cover every one, INCLUDING the amended cert's additions: attested (the
+	// class: the transition class this block exercises. The vacuity guard requires the
+	// corpus to cover every one, INCLUDING the amended rule's additions: attested (the
 	// atts-loop / validatorsSeen path), maturity-latch (everMature false→true), and a
 	// standalone slash at a non-boundary height.
 	class string
@@ -424,7 +423,7 @@ type v5ReadSetCorpusBlock struct {
 // the execution-derived ground truth are computed against the state a floor box holds BEFORE
 // applying each block.
 //
-// The corpus MUST cover (amended cert R3 + PE Q4): ordinary, ttl-empty (the era-4 win),
+// The corpus MUST cover (the amended rule): ordinary, ttl-empty (the era-4 win),
 // ttl-occupied, renew-move, boundary, ATTESTED (populated b.LastCommit carrier → validatorsSeen write),
 // MATURITY-LATCH (everMature false→true), and a standalone SLASH at a non-boundary height.
 //
@@ -484,13 +483,12 @@ func buildV5ReadSetCorpus(t *testing.T) ([]v5ReadSetCorpusBlock, *Chain) {
 	Sign(b2, a)
 	record(b2, "h2 displacement+regs", "ordinary")
 
-	// h3: ATTESTED block — bb + cc (qualified, neither is the PARENT's proposer) are carried, so
-	// the carrier fold writes validatorsSeen[bb]/[cc] (applyCarrier, carrier.go). The maturity latch READ path also fires here
-	// (everMature is false pre-apply, so Mature()→C2Metric ranges validatorsSeen), but the
-	// latch does NOT yet transition — it transitions at h4 (see below). Covers the attested
-	// class (the validatorsSeen write path).
+	// h3: ATTESTED block — bb + cc (qualified, neither is the PARENT's proposer) are carried, so the carrier fold writes
+	// validatorsSeen[bb]/[cc] (applyCarrier, carrier.go). The maturity latch READ path also fires here (everMature is false
+	// pre-apply, so Mature→C2Metric ranges validatorsSeen), but the latch does NOT yet transition — it transitions at h4
+	// (see below). Covers the attested class (the validatorsSeen write path).
 	prev = b2.Hash()
-	// v5 (BlockVersionWitnessable) + a LastCommit CARRIER: since R-BOX-ATTESTS O1 the
+	// v5 (BlockVersionWitnessable) + a LastCommit CARRIER: since the carrier re-point the
 	// validatorsSeen write is fed by the hash-covered carrier over b.Prev, not b.Atts, and it
 	// fires only for a v5 block. Modelling the v5 read-set with a v1 block carrying Atts would
 	// model a path the v5 transition no longer has.
@@ -523,7 +521,7 @@ func buildV5ReadSetCorpus(t *testing.T) ([]v5ReadSetCorpusBlock, *Chain) {
 
 	// h6: STANDALONE SLASH at a NON-boundary height (h6 % 4 != 0). Slash cc: slashed[cc]
 	// write, bonded[cc] delete, qualified[cc] maintain — the slash read path, unmasked by a
-	// boundary. This is the amended cert's required standalone-slash class.
+	// boundary. This is the amended rule's required standalone-slash class.
 	prev = b5.Hash()
 	b6 := &Block{Version: 1, Height: 6, Prev: prev, Entries: []ports.Entry{entry(6)},
 		Slashes: []Equivocation{slashProof(cc, prev, 0x41, 0x42)}}
@@ -532,7 +530,7 @@ func buildV5ReadSetCorpus(t *testing.T) ([]v5ReadSetCorpusBlock, *Chain) {
 
 	// h7: TTL-FIRING with an OCCUPIED bucket. bb/cc/dd reg'd at h2, due 2+4+1=7. cc was
 	// slashed at h6 (removed from bondRegHeight), so dueBucket[7] carries bb + dd at h7 — the
-	// occupied-member expiry path at the CURRENT height (heights are contiguous, chain.go:2490,
+	// occupied-member expiry path at the CURRENT height (heights are contiguous, chain.go,
 	// so only dueBucket[b.Height] can fire — the era-4 single-leaf accelerator is exact).
 	prev = b6.Hash()
 	b7 := &Block{Version: 1, Height: 7, Prev: prev, Entries: []ports.Entry{entry(7)}}
@@ -611,8 +609,8 @@ func TestWitnessReadSetV5ExecutionDerivedGuard(t *testing.T) {
 		}
 		classesSeen[cb.class] = true
 
-		// NON-VACUITY of the class-specific transitions (the session-7 scar: a class label the
-		// block does not actually exercise makes the guard vacuous for it). Assert the
+		// NON-VACUITY of the class-specific transitions (the: a class label the block
+		// does not actually exercise makes the guard vacuous for it). Assert the
 		// load-bearing transitions genuinely fire, from ground truth:
 		switch cb.class {
 		case "maturity-latch":
@@ -656,8 +654,8 @@ func TestWitnessReadSetV5ExecutionDerivedGuard(t *testing.T) {
 		snap.apply(*pending)
 	}
 
-	// Vacuity guard (the session-7 scar): the corpus must have covered every certified class,
-	// INCLUDING the amended cert's additions attested / maturity-latch / slash.
+	// Vacuity guard: the corpus must have covered every class, INCLUDING the
+	// amended the additions attested / maturity-latch / slash.
 	for _, class := range []string{"ordinary", "ttl-empty", "ttl-occupied", "renew-move",
 		"boundary", "attested", "maturity-latch", "slash"} {
 		if !classesSeen[class] {
@@ -668,8 +666,8 @@ func TestWitnessReadSetV5ExecutionDerivedGuard(t *testing.T) {
 
 // TestWitnessReadSetV5ValidityReadsCovered extends the execution-derived guard to the VALIDITY
 // corpus: the producer's read-set must COVER (⊇) the ground-truth read-set (write-diff ∪
-// apply-perturbation ∪ VALIDITY-read perturbation) for a block that fires the apply()-blind
-// validity reads — spent[serial] (chain.go:2617) and revoked[root] (chain.go:2643). This is the
+// apply-perturbation ∪ VALIDITY-read perturbation) for a block that fires the apply-blind
+// validity reads — spent[serial] (chain.go) and revoked[root] (chain.go). This is the
 // coverage half of the fix: it proves the producer STILL emits spent/revoked completely, checked
 // against execution-derived ground truth on the blocks that actually read them (the maintenance
 // corpus cannot — it has no token quorum and no revoke). The definitive drop check
@@ -758,7 +756,7 @@ func TestGroundTruthPerturbationCovers(t *testing.T) {
 				t.Fatalf("[%s] perturbLeaf cannot perturb keyspace %q — that leaf escapes the perturbation ground truth", cb.label, tag)
 			}
 		}
-		// All FIVE digest-root leaves are always-emit (C-4): each must be present in the leaf
+		// All FIVE digest-root leaves are always-emit: each must be present in the leaf
 		// set, so the exemption above names live leaves, not phantom ones.
 		for k := range allDigestRootLeafKeys() {
 			if !digestSeen[k] {
@@ -821,7 +819,8 @@ func TestWitnessReadSetV5DriftGuardAblation(t *testing.T) {
 	}
 
 	// --- Ablation 1: re-inject the validatorsSeen omission (drop the attestation-loop reads
-	// = every validatorsSeen key) from the attested block's producer output. ---
+	// = every validatorsSeen key from the attested block's producer output.
+	// ---
 	t.Run("drop-attestation-loop-reads-reddens", func(t *testing.T) {
 		// Pre-ablation: the guard is GREEN (producer covers ground truth).
 		if miss := coverageMisses(attested, attestedBlk, identityRS); len(miss) > 0 {
@@ -883,13 +882,13 @@ func containsTag(pretty []string, tag string) bool {
 // weight-quorum read the trustless recompute performs — a DIFFERENT and legitimate cost class from
 // the banned O(registry) bondRegHeight apply-sweep this boundedness test targets. Two such classes
 // exist:
-//   - the increment-1 O(frozen-set) read: the epochSet per-member weight leaves + the epochSetRoot
-//     completeness leaf (requireEpochWeightQuorum recompute, floorbox_recompute_v5.go) — RegCap-
-//     bounded (cert R1);
-//   - the increment-3 O(bonded) read: the bonded per-member weight leaves + the bondedRoot
-//     completeness leaf (requireDeMatureSuperQuorum recompute,
-//     floorbox_recompute_dematureQuorum_v5.go) — the whole-bonded R-membership budget path (box-fits
-//     per the disk-backed-store measurement).
+// - the increment-1 O(frozen-set) read: the epochSet per-member weight leaves + the epochSetRoot
+// completeness leaf (requireEpochWeightQuorum recompute, floorbox_recompute_v5.go) — RegCap-
+// bounded (the research);
+// - the increment-3 O(bonded) read: the bonded per-member weight leaves + the bondedRoot
+// completeness leaf (requireDeMatureSuperQuorum recompute,
+// floorbox_recompute_dematureQuorum_v5.go) — the whole-bonded R-membership budget path (box-fits
+// per the disk-backed-store measurement).
 //
 // Both scale with a committed weight SET the box must witness to fold a super-quorum, not with the
 // banned bondRegHeight scan (a DIFFERENT tag the test still catches). The test excludes these so it
@@ -900,7 +899,7 @@ func frozenSetWeightTag(e statehash.ReadEntry) bool {
 	return ok && (tag == tagEpochSet || tag == tagEpochSetRoot || tag == tagBonded || tag == tagBondedRoot)
 }
 
-// sizeExcludingFrozenSet is the read-set size minus the cert-blessed whole-set weight reads.
+// sizeExcludingFrozenSet is the read-set size minus the research-blessed whole-set weight reads.
 func sizeExcludingFrozenSet(rs []statehash.ReadEntry) int {
 	n := 0
 	for _, e := range rs {
@@ -912,20 +911,20 @@ func sizeExcludingFrozenSet(rs []statehash.ReadEntry) int {
 }
 
 // TestWitnessReadSetV5BoundedNotRegistrySized is the O(payload) boundedness property (amended
-// cert §"Per-class read-set"): an ordinary block's and a TTL-EMPTY block's read-set size must
+// the per-class read-set): an ordinary block's and a TTL-EMPTY block's read-set size must
 // NOT scale with the registry via the banned O(registry) bondRegHeight apply-sweep — the era-4
 // win the producer must deliver (the TTL completeness collapses to ONE dueBucket[h]
 // non-membership leaf, never a bondRegHeight scan). This is the direct counter-proof to the
-// certified sharpest hazard AND the over-emission guard: a producer that instrumented apply()'s
-// TTL sweep would emit O(registry) keys here and the two sizes would DIVERGE.
+// sharpest hazard AND the over-emission guard: a producer that instrumented apply's TTL sweep
+// would emit O(registry) keys here and the two sizes would DIVERGE.
 //
 // SCOPED to the bondRegHeight hazard (increment 1 refinement): the mature-block read-set now
-// ALSO carries the cert-blessed O(frozen-set) weight-quorum read (epochSet + epochSetRoot — the
+// ALSO carries the research-blessed O(frozen-set) weight-quorum read (epochSet + epochSetRoot — the
 // requireEpochWeightQuorum recompute reads the whole frozen set every mature block, RegCap-
-// bounded, box-fits — cert R1). That is a legitimate, separately-bounded class, NOT the banned
+// bounded, box-fits — the research). That is a legitimate, separately-bounded class, NOT the banned
 // bondRegHeight scan. This fixture matures at genesis (MatureValidators=0), so the frozen set is
 // populated; the test excludes the frozen-set reads (sizeExcludingFrozenSet) so it still catches
-// a bondRegHeight scan — a different tag — while accommodating the cert-blessed frozen-set read.
+// a bondRegHeight scan — a different tag — while accommodating the research-blessed frozen-set read.
 // The dedicated bondRegHeight-scan ablation (TestWitnessReadSetV5BoundednessAblation) proves the
 // teeth are intact.
 func TestWitnessReadSetV5BoundedNotRegistrySized(t *testing.T) {
@@ -970,14 +969,14 @@ func TestWitnessReadSetV5BoundedNotRegistrySized(t *testing.T) {
 	rsSmall := small.WitnessReadSetV5(probeSmall)
 	rsLarge := large.WitnessReadSetV5(probeLarge)
 
-	// Compare read-set size EXCLUDING the cert-blessed frozen-set weight reads (epochSet /
+	// Compare read-set size EXCLUDING the research-blessed frozen-set weight reads (epochSet /
 	// epochSetRoot). What remains must NOT scale with the registry — a bondRegHeight apply-sweep
 	// (a DIFFERENT tag) would make it diverge.
 	nSmall := sizeExcludingFrozenSet(rsSmall)
 	nLarge := sizeExcludingFrozenSet(rsLarge)
 	if nSmall != nLarge {
 		t.Fatalf("TTL-EMPTY read-set (excluding the cert-blessed frozen-set weight reads) SCALED WITH THE REGISTRY: "+
-			"|small(reg=%d)|=%d, |large(reg=%d)|=%d — the producer is reading O(registry) keys (the certified "+
+			"|small(reg=%d)|=%d, |large(reg=%d)|=%d — the producer is reading O(registry) keys (the "+
 			"sharpest hazard: it instrumented apply()'s bondRegHeight scan instead of the bounded dueBucket[h] "+
 			"non-membership leaf)",
 			len(small.bondRegHeight), nSmall, len(large.bondRegHeight), nLarge)
@@ -986,17 +985,16 @@ func TestWitnessReadSetV5BoundedNotRegistrySized(t *testing.T) {
 
 // TestWitnessReadSetV5BoundednessAblation proves the boundedness test is not decoration: an
 // injected O(registry) bondRegHeight scan makes the read-set scale with the registry, and the
-// equal-size assertion reddens. This is the certified boundedness ablation (the sharpest
-// hazard: instrumenting apply()'s scan defeats era-4).
+// equal-size assertion reddens. This is the boundedness ablation (the sharpest hazard:
+// instrumenting apply's scan defeats era-4).
 //
-// THE ASSERTION IS ON sizeExcludingFrozenSet, NOT raw len (PE ruling
-// RULING-floorbox-recompute-increment3-dematureQuorum-2026-08-31, fix 1). Since increment 1,
-// the RAW read-set already scales with the registry via the LEGITIMATE cert-blessed frozen-set
-// per-member weight reads (epochSet/bonded + their roots), so a raw-len comparison diverges even
-// with the injected scan NEUTERED — the test would stay GREEN without its defect (decoration).
-// Excluding the frozen-set reads (the same exclusion TestWitnessReadSetV5BoundedNotRegistrySized
-// uses via frozenSetWeightTag) isolates the O(payload) part, so the injected bondRegHeight scan —
-// a DIFFERENT tag, not excluded — is the ONLY thing that can make the excluded sizes diverge. The
+// THE ASSERTION IS ON sizeExcludingFrozenSet, NOT raw len. Since increment 1, the RAW read-set
+// already scales with the registry via the LEGITIMATE sanctioned frozen-set per-member weight
+// reads (epochSet/bonded + their roots), so a raw-len comparison diverges even with the injected
+// scan NEUTERED — the test would stay GREEN without its defect (decoration). Excluding the
+// frozen-set reads (the same exclusion TestWitnessReadSetV5BoundedNotRegistrySized uses via
+// frozenSetWeightTag) isolates the O(payload) part, so the injected bondRegHeight scan — a
+// DIFFERENT tag, not excluded — is the ONLY thing that can make the excluded sizes diverge. The
 // red→green now depends on the defect: neuter the scan and the excluded sizes tie (GREEN);
 // restore it and they diverge (RED).
 func TestWitnessReadSetV5BoundednessAblation(t *testing.T) {
@@ -1023,8 +1021,9 @@ func TestWitnessReadSetV5BoundednessAblation(t *testing.T) {
 	small, probeSmall := build(3)
 	large, probeLarge := build(300)
 
-	// The INJECTED DEFECT: a producer that scans the whole bondRegHeight map (apply()'s TTL
-	// sweep shape) instead of the single dueBucket[h] leaf. Emit one read per registry id.
+	// The INJECTED DEFECT: a producer that scans the whole bondRegHeight map (apply's
+	// TTL sweep shape) instead of the single dueBucket[h] leaf. Emit one read per
+	// registry id.
 	ablatedProducer := func(c *Chain, b Block) []statehash.ReadEntry {
 		rs := c.WitnessReadSetV5(b)
 		acc := newReadSetAcc()
@@ -1040,7 +1039,7 @@ func TestWitnessReadSetV5BoundednessAblation(t *testing.T) {
 	rsSmall := ablatedProducer(small, probeSmall)
 	rsLarge := ablatedProducer(large, probeLarge)
 
-	// Assert on the read-set size EXCLUDING the cert-blessed frozen-set weight reads (the same
+	// Assert on the read-set size EXCLUDING the research-blessed frozen-set weight reads (the same
 	// exclusion BoundedNotRegistrySized uses), NOT raw len. The raw len already scales with the
 	// registry via the legitimate frozen-set reads, so a raw comparison is decoration (green even
 	// with the injected scan neutered). Excluding those isolates the O(payload) part, so the
@@ -1057,8 +1056,8 @@ func TestWitnessReadSetV5BoundednessAblation(t *testing.T) {
 // --- The validity-read corpus + the definitive all-23-keyspaces completeness proof. ---
 
 // buildV5ValidityReadCorpus builds a corpus that genuinely EXERCISES the two committed leaves
-// read ONLY in the validity predicate (never in apply()): spent[serial] (the double-spend gate,
-// chain.go:2617) and revoked[root] (the un-revocation gate, chain.go:2643). The maintenance
+// read ONLY in the validity predicate (never in apply): spent[serial] (the double-spend gate,
+// chain.go) and revoked[root] (the un-revocation gate, chain.go). The maintenance
 // corpus (buildV5ReadSetCorpus) runs tokenQuorum=0 and no revoke, so it cannot fire either read
 // — Source 3 needs a token-quorum world with a spend and a revoke→unrevoke to have a verdict to
 // flip. This corpus is ADDITIVE (it does not touch the maintenance corpus's boundedness/vacuity
@@ -1158,7 +1157,7 @@ func allV5GuardCorpora(t *testing.T) []v5GuardCorpus {
 // and validity corpora, and assert the execution-derived guard goes RED for EVERY one. A
 // keyspace reddens if some corpus block has a ground-truth read of it the ablated producer no
 // longer covers. All 24 must redden — including spent and revoked, which the prior guard was
-// blind to (Sources 1/2 are apply()-shaped; Source 3, the validity-read perturbation, catches
+// blind to (Sources 1/2 are apply-shaped; Source 3, the validity-read perturbation, catches
 // them). A keyspace that stays GREEN on drop is a read no guard catches — the exact defect this
 // guard exists to kill.
 func TestWitnessReadSetV5AllKeyspacesRedOnDrop(t *testing.T) {
@@ -1237,9 +1236,9 @@ func TestBondedRootReadReddensOnDrop(t *testing.T) {
 
 // TestInertDigestRootsAwaitRecompute is the SKIP-GUARDED PLACEHOLDER ablation for the two
 // still-INERT whole-set digest roots (qualified / slashed). It encodes the
-// "remove-the-exclusion-when-you-recompute" obligation in CODE, not just prose (the PE's
-// request): for each still-inert root, the test SKIPS with the exact instruction a future
-// increment must follow when it reproduces that keyspace's weighted predicate.
+// "remove-the-exclusion-when-you-recompute" obligation in CODE, not just prose: for each
+// still-inert root, the test SKIPS with the exact instruction a future increment must
+// follow when it reproduces that keyspace's weighted predicate.
 //
 // The obligation each skip carries: when increment N reproduces the predicate that folds
 // keyspace K, it MUST (1) remove K's root from inertDigestRootTags so isDigestRootLeaf no longer

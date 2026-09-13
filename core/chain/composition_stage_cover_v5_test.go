@@ -13,40 +13,36 @@ import (
 	"testing"
 )
 
-// =============================================================================
-// THE STAGE-COVER GATE — the composition covers every node validity stage (R-PTABLE-DRIFT teeth)
+// ============================================================================= THE STAGE-COVER
+// GATE — the composition covers every node validity stage (teeth)
 // =============================================================================
 //
-// P-table delta certification §4 (CERTIFIED, classified BOUNDED):
-// /Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/FLOORBOX-STRUCTURE-P-TABLE-DRIFT-DELTA-CERTIFICATION-e963034-2026-09-07.md
-//
-// WHY. The node's v5 stage table was hand-copied into a certification on 2026-09-03 and had
-// drifted by 2026-09-07: main's ValidateProposal had gained validateIssuerKeys (v5-ONLY) and a
-// sixth P5 clause, and the composition built from the table had neither — a validity rule the
-// node enforces today, silently dropped from the path that replaces it. This gate DERIVES the
-// node's stage list from ValidateProposal / ValidateCommit / requireQuorumStack by AST walk and
+// WHY. A hand-copied v5 stage table drifts: ValidateProposal gained validateIssuerKeys
+// (v5-ONLY) and a sixth P5 clause, and a composition built from a stale copy had neither — a validity rule the node
+// enforces today, silently dropped from the path that replaces it. This gate DERIVES the node's
+// stage list from ValidateProposal / ValidateCommit / requireQuorumStack by AST walk and
 // asserts the nodeStages table (validate_v5.go) and the composition cover it.
 //
 // THE HONEST BOUND. Four arms, and they are NOT a completeness proof:
-//   - arm A DERIVES cover for the stages that are error-returning CALLS (14 of 24);
-//   - arm B is a CHANGE DETECTOR (a body digest) over the three functions whose INLINE predicates
-//     and stage ORDER the composition mirrors by hand (P1–P5, Q1–Q2 live there);
-//   - arm C is the reverse cover (no invented stage in the composition);
-//   - arm D is the fixture's non-vacuity, and it runs FIRST: a v2 fixture makes A–C vacuous.
+// - arm A DERIVES cover for the stages that are error-returning CALLS (14 of 24);
+// - arm B is a CHANGE DETECTOR (a body digest) over the three functions whose INLINE predicates
+// And stage ORDER the composition mirrors by hand (P1–P5, Q1–Q2 live there);
+// - arm C is the reverse cover (no invented stage in the composition);
+// - arm D is the fixture's non-vacuity, and it runs FIRST: a v2 fixture makes A–C vacuous.
 //
 // Neither arm sees an inline predicate change INSIDE a called stage (a new clause inside
 // validateBondRegs). The composition MIRRORS those bodies over StateView rather than calling them
 // (they are *Chain methods), so the mirrored bodies are inside the bound too. That is
-// R-PTABLE-DRIFT: BOUNDED, not closed.
+// BOUNDED, not closed.
 //
-// SOURCE GATE — all of A, B, C read the project's own .go source (parsed comment-free: a
+// SOURCE GATE — all of A, B, C read the project's own.go source (parsed comment-free: a
 // `c.<x>` in prose is not a call). They see names, order and text, never behaviour.
-// RUNTIME GATE: TestGD5_IssuerKeysOnlyBlockParity and TestGD6_LegacyRepLegOracle
-// (redteam_floorbox_structure_gate_test.go) drive the stages the drift actually hit.
+// RUNTIME GATE: TestIssuerKeysOnlyBlockParity and TestLegacyRepLegOracle
+// (floorbox_structure_gate_test.go) drive the stages the drift actually hit.
 
-// nodeStageFiles are the files the node's stage list is derived over (certification §4 arm A
-// step 1). A stage that moves to another file must be added here, or arm A reddens on the
-// missing FuncDecl — that is the intended failure.
+// nodeStageFiles are the files the node's stage list is derived over arm A step 1. A stage
+// that moves to another file must be added here, or arm A reddens on the missing FuncDecl —
+// that is the intended failure.
 var nodeStageFiles = []string{"chain.go", "era3validity.go", "issuerkey.go", "carrier.go"}
 
 // compositionFiles are the files the composition's calls are derived over. The composition index
@@ -67,29 +63,29 @@ func compositionIndex(t *testing.T) funcIndex {
 // entry names the node function it mirrors ("" for a utility with no node analogue), and arm C
 // asserts the named node function EXISTS in the node files — so a renamed node helper reddens.
 var compositionHelpers = []struct{ helper, node, why string }{
-	{"ValidateProposalV5", "ValidateProposal", "the proposal entry, called by ValidateCommitV5 (M-2)"},
+	{"ValidateProposalV5", "ValidateProposal", "the proposal entry, called by ValidateCommitV5 "},
 	{"v5VersionPartition", "", "step 0: the L1 version partition (box-owned scope; node: no-op)"},
-	{"v5CheckBudget", "", "step 0b: the BG-3 frame budget (box-owned; node: unlimited)"},
+	{"v5CheckBudget", "", "step 0b: the frame budget (box-owned; node: unlimited)"},
 	{"stall", "", "the named-read stall constructor"},
 	{"v5ScalarBool", "", "committed scalar decoder"},
 	{"v5ScalarUint64", "", "committed scalar decoder"},
 	{"v5HandedOff", "handedOff", "the young→mature handoff, read from committed latch scalars"},
 	{"v5MatureEpochRegime", "epochsEnabled", "the (epochsEnabled && matureEpoch) regime selector"},
-	{"v5EffectiveEpochSet", "effectiveEpochSet", "the #535 substitution rule, IN the composition"},
+	{"v5EffectiveEpochSet", "effectiveEpochSet", "the substitution rule, IN the composition"},
 	{"v5AttesterQualifiedAt", "attesterQualifiedAt", "the attester filter, both modes"},
 	{"v5ValidateEntry", "ValidateEntry", "the per-entry rule inside the P9 loop"},
 	{"v5EraActive", "era3Active", "era3Active / era4Active"},
-	{"v5EraFloorAt", "MintVersion", "the ERA FLOOR at a height — MintVersion over a StateView (M2). It is not an invented stage: P8 refuses evidence below the floor on the node too, and both derivations are driven equal by TestGEF6_TheTwoEraFloorDerivationsAgree"},
+	{"v5EraFloorAt", "MintVersion", "the ERA FLOOR at a height — MintVersion over a StateView (M2). It is not an invented stage: P8 refuses evidence below the floor on the node too, and both derivations are driven equal by TestTheTwoEraFloorDerivationsAgree"},
 	{"v5RecentBondRegNonces", "recentBondRegNonces", "the bounded header-window nonces"},
-	{"v5RegGateActive", "regGateActive", "the #506 gate activation"},
-	{"v5RestoresHeldStanding", "restoresHeldStanding", "the #506 R-interval exemption"},
+	{"v5RegGateActive", "regGateActive", "the gate activation"},
+	{"v5RestoresHeldStanding", "restoresHeldStanding", "the  R-interval exemption"},
 	{"v5ValidatorSetSize", "validatorSetSize", "N for the Byzantine threshold"},
-	{"v5RequiredQuorum", "RequiredQuorum", "Q1's count floor by regime (#380 M-380-3: the row Q1 carries Node \"\" because RequiredQuorum returns int, not error, so arm A cannot derive it; this row is what makes G-D13 pin its body)"},
+	{"v5RequiredQuorum", "RequiredQuorum", "Q1's count floor by regime (the row Q1 carries Node \"\" because RequiredQuorum returns int, not error, so arm A cannot derive it; this row is what makes pin its body)"},
 	{"v5MatureNow", "matureNow", "the objective maturity metric"},
 }
 
 // ---------------------------------------------------------------------------
-// the shared AST machinery
+// The shared AST machinery
 // ---------------------------------------------------------------------------
 
 type funcIndex struct {
@@ -134,7 +130,7 @@ func lastResultIsError(fd *ast.FuncDecl) bool {
 }
 
 // calledStages returns, in source order, the names of the error-returning package-level
-// functions called in body as `c.<name>(...)` or bare `<name>(...)`, with duplicates kept.
+// functions called in body as `c.<name>(.)` or bare `<name>(.)`, with duplicates kept.
 func (idx funcIndex) calledStages(body *ast.BlockStmt) []string {
 	type hit struct {
 		name string
@@ -231,17 +227,17 @@ func requireV5Fixture(t *testing.T) {
 	if len(committed) == 0 || committed[len(committed)-1].Version != BlockVersionWitnessable {
 		t.Fatalf("SOURCE GATE: arm D — the fixture did not commit a v%d block; arms A–C would be vacuous", BlockVersionWitnessable)
 	}
-	assertHonestTwinAccepts(t, f.c, f.mkBlock(t, nil)) // arm D is the honest twin (NG-2)
+	assertHonestTwinAccepts(t, f.c, f.mkBlock(t, nil)) // arm D is the honest twin
 }
 
 // ---------------------------------------------------------------------------
-// arm A — CALL COVER, derived, ordered, transitive (G-D2)
+// arm A — CALL COVER, derived, ordered, transitive
 // ---------------------------------------------------------------------------
 
 // TestStageCover_ArmA_DerivedCallCover derives the node's stage list and asserts nodeStages equals
 // it — element for element, including order — then asserts the composition carries every row.
-// Ablation (G-D2): delete one stage call from the composition ⇒ RED.
-// RUNTIME GATE: TestGD5_IssuerKeysOnlyBlockParity (the stage the drift dropped, driven).
+// Ablation: delete one stage call from the composition ⇒ RED.
+// RUNTIME GATE: TestIssuerKeysOnlyBlockParity (the stage the drift dropped, driven).
 func TestStageCover_ArmA_DerivedCallCover(t *testing.T) {
 	requireV5Fixture(t)
 	node := parseIndex(t, nodeStageFiles)
@@ -269,7 +265,7 @@ func TestStageCover_ArmA_DerivedCallCover(t *testing.T) {
 	if !equalStrings(derivedP, tableP) {
 		t.Fatalf("SOURCE GATE: arm A — the node's ValidateProposal stage list (derived) differs from nodeStages (declared).\n"+
 			"  derived:  %v\n  declared: %v\n"+
-			"  The node's accept path changed. Re-derive the P-table (certification §1), update the composition in\n"+
+			"  The node's accept path changed. Re-derive the P-table (research §1), update the composition in\n"+
 			"  validate_v5.go, then update nodeStages in the SAME commit.", derivedP, tableP)
 	}
 
@@ -381,7 +377,7 @@ func TestStageCover_ArmA_DerivedCallCover(t *testing.T) {
 		t.Fatal("SOURCE GATE: arm A — ValidateProposalV5 does not call v.CommittedRoots(b): the substituted step is not wired")
 	}
 	if len(nodeStages) != 24 {
-		t.Fatalf("SOURCE GATE: arm A — nodeStages has %d rows; the certification's table has 24", len(nodeStages))
+		t.Fatalf("SOURCE GATE: arm A — nodeStages has %d rows; the rule table has 24", len(nodeStages))
 	}
 }
 
@@ -412,20 +408,20 @@ func callsViewMethod(body *ast.BlockStmt, method string) bool {
 }
 
 // ---------------------------------------------------------------------------
-// arm B — BODY DIGEST, change detection over exactly three functions (G-D3)
+// arm B — BODY DIGEST, change detection over exactly three functions
 // ---------------------------------------------------------------------------
 
 // nodeAcceptPathDigest pins the comment-free bodies of ValidateProposal, ValidateCommit and
 // requireQuorumStack — the three functions whose INLINE predicates (P1–P5, Q1–Q2) and stage
 // ORDER the composition mirrors by hand. Widening it to the closure would redden on an
 // error-message tweak inside validateBondRegs and be turned off within a month; that
-// calibration is the certification's, and its cost (an inline change INSIDE a called stage is
-// unseen) is R-PTABLE-DRIFT's stated bound.
-const nodeAcceptPathDigest = "7af9cc783e4921ddbac0158f99ebcd47f7219b3430b0842e99763ed2906eb279"
+// calibration is the, and its cost (an inline change INSIDE a called stage is unseen) is the
+// stated bound.
+const nodeAcceptPathDigest = "068cb9bfbca60ab45fc41a25427ef3b47326c343e3ebfce285175e8d4b5a318d"
 
 // TestStageCover_ArmB_NodeBodyDigest is a CHANGE DETECTOR, not a cover proof.
-// Ablation (G-D3): add `&& true` to the P5 clause chain in ValidateProposal ⇒ RED.
-// RUNTIME GATE: TestGD5_IssuerKeysOnlyBlockParity (the P5 clause, driven).
+// Ablation: add `&& true` to the P5 clause chain in ValidateProposal ⇒ RED.
+// RUNTIME GATE: TestIssuerKeysOnlyBlockParity (the P5 clause, driven).
 func TestStageCover_ArmB_NodeBodyDigest(t *testing.T) {
 	requireV5Fixture(t)
 	node := parseIndex(t, nodeStageFiles)
@@ -460,13 +456,13 @@ func nodeBodyDigest(t *testing.T, idx funcIndex, names ...string) string {
 }
 
 // ---------------------------------------------------------------------------
-// arm C — REVERSE COVER (G-D4)
+// arm C — REVERSE COVER
 // ---------------------------------------------------------------------------
 
 // TestStageCover_ArmC_ReverseCover: every error-returning call the composition makes, transitively
 // from ValidateCommitV5, is a stage mirror in nodeStages, a listed helper mirror of a node function
-// that exists, or the proposal entry. Ablation (G-D4): add an invented stage call ⇒ RED.
-// RUNTIME GATE: TestGD6_LegacyRepLegOracle (an invented stage that refuses would break parity).
+// that exists, or the proposal entry. Ablation: add an invented stage call ⇒ RED.
+// RUNTIME GATE: TestLegacyRepLegOracle (an invented stage that refuses would break parity).
 func TestStageCover_ArmC_ReverseCover(t *testing.T) {
 	requireV5Fixture(t)
 	node := parseIndex(t, nodeStageFiles)
@@ -499,14 +495,13 @@ func TestStageCover_ArmC_ReverseCover(t *testing.T) {
 		if _, ok := admitted[name]; !ok {
 			t.Fatalf("SOURCE GATE: arm C — the composition calls %s, which is neither a stage mirror in nodeStages nor a listed "+
 				"helper (compositionHelpers). An INVENTED stage would make the box refuse where the node accepts — legal by the "+
-				"implication, but it is not the node's rule and it is not in the certified table. Name it or remove it.", name)
+				"implication, but it is not the node's rule and it is not in the table. Name it or remove it.", name)
 		}
 	}
 }
 
 // ---------------------------------------------------------------------------
-// G-D13 — PER-ROW NODE-BODY DIGESTS (M-1A-5; research certification
-// FLOORBOX-STRUCTURE-ROUND-1A-COMPOSED-DIFF-869399e §3.1, option (2))
+// PER-ROW NODE-BODY DIGESTS (§3.1, option (2))
 // ---------------------------------------------------------------------------
 
 // nodeBodyDigests pins the sha256 of the comment-free body of EVERY node function that nodeStages
@@ -518,15 +513,15 @@ func TestStageCover_ArmC_ReverseCover(t *testing.T) {
 // block that the composition does NOT carry until its mirror is re-derived. The correct action on
 // a red is: re-derive the named mirror against the new body line by line, then update the digest
 // in the SAME commit. Updating the digest alone is the era-keyed consensus-rule split this gate
-// exists to catch (R-PTABLE-DRIFT, re-scoped 2026-09-08 to "~34 bodies covered by nothing").
+// exists to catch (re-scoped 2026-09-08 to "~34 bodies covered by nothing").
 //
 // The table lives here, beside arm B's digest, not in the production nodeStages table: a
-// production table carries no test pins, and the attribution the certification asked for is
+// production table carries no test pins, and the attribution the research asked for is
 // preserved because the gate names the rows.
 var nodeBodyDigests = map[string]string{
 	"ValidateEntry":              "f6844363fb7212b625f60ca726f3d361b7b3eaca7f4af22efb33703c2f5bf3e5",
 	"RequiredQuorum":             "c3a413ba707abae6cfdd40806fe5c195a79a2c4a7e4fa2939d8ee1cb92257454",
-	"ValidateProposal":           "752294cf1e8cbb2ab9c9830ac4e35f68eca9f9a2389da5f2e1e3ea322e1bc3de",
+	"ValidateProposal":           "400257e0ad3495b1318d1ceeaf72abbee033ec7bad42c646b0b6fa25b51053a2",
 	"attesterQualifiedAt":        "fd5de208dcecba70d1fcaf32172ef185c20b12020413ba7fff0ddd04fef3723f",
 	"collectQuorumSigs":          "c0b0a3aa3f475f6bcd0e7621b07d0005d575a21fadcc7e3f6aa457b0d634e603",
 	"effectiveEpochSet":          "8da6023fc1b8b0e5482b8f8c275ad9d93a7db8edf304750fdd15e6bfca4d292a",
@@ -556,13 +551,13 @@ var nodeBodyDigests = map[string]string{
 	"validatorSetSize":           "393c775422214e528015d9833602d1ee7b6a58e4e5da45c2f339d604f4aae919",
 }
 
-// TestGD13_PerRowNodeBodyDigests: every node function named by a nodeStages row (transitively) or
+// TestPerRowNodeBodyDigests: every node function named by a nodeStages row (transitively) or
 // by a compositionHelpers entry has a pinned digest, the digest matches, and there are at least 24
-// of them (so nobody empties the table). Ablation (G-D13): add `&& true` to a clause inside
+// of them (so nobody empties the table). Ablation: add `&& true` to a clause inside
 // validateBondRegs ⇒ RED naming P7 / v5ValidateBondRegs.
 // SOURCE GATE: a body digest is a CHANGE DETECTOR, not a cover proof. RUNTIME GATE:
-// TestM1A3_V4V5ParityOracle (the v4 bodies against the v5 mirrors across the regimes).
-func TestGD13_PerRowNodeBodyDigests(t *testing.T) {
+// TestV4V5ParityOracle (the v4 bodies against the v5 mirrors across the regimes).
+func TestPerRowNodeBodyDigests(t *testing.T) {
 	requireV5Fixture(t)
 	node := parseIndex(t, nodeStageFiles)
 
@@ -598,7 +593,7 @@ func TestGD13_PerRowNodeBodyDigests(t *testing.T) {
 	}
 	sort.Strings(names)
 	if len(names) < 24 {
-		t.Fatalf("SOURCE GATE: G-D13 VACUOUS — only %d mirrored node functions derived from nodeStages + compositionHelpers (floor 24)", len(names))
+		t.Fatalf("SOURCE GATE: VACUOUS — only %d mirrored node functions derived from nodeStages + compositionHelpers (floor 24)", len(names))
 	}
 	var problems []string
 	for _, n := range names {
@@ -618,10 +613,10 @@ func TestGD13_PerRowNodeBodyDigests(t *testing.T) {
 	}
 	if len(problems) > 0 {
 		sort.Strings(problems)
-		t.Fatalf("SOURCE GATE: G-D13 — a node body the composition MIRRORS changed (or is unpinned):\n%s\n\n"+
-			"  Re-derive the named mirror(s) against the new body line by line (P-table delta certification §1;\n"+
-			"  composed-diff certification §3.1), then update nodeBodyDigests in the SAME commit. Updating the\n"+
+		t.Fatalf("SOURCE GATE: — a node body the composition MIRRORS changed (or is unpinned):\n%s\n\n"+
+			"  Re-derive the named mirror(s) against the new body line by line (P-table delta research §1;\n"+
+			"  composed-diff research §3.1), then update nodeBodyDigests in the SAME commit. Updating the\n"+
 			"  digest alone splits the v5 accept path from the v2/v4 path — the era-keyed consensus-rule split\n"+
-			"  R-PTABLE-DRIFT names.", strings.Join(problems, "\n"))
+			"  names.", strings.Join(problems, "\n"))
 	}
 }

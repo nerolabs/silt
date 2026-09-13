@@ -9,31 +9,31 @@
 # loss) and does a fetch stay bit-perfect?
 #
 # Why kill-WITHOUT-replace (and not `docker rm -f` + `--scale` back up):
-#   docker recycles a freed container IP to the NEXT container it starts. Replace
-#   a dead holder and the fresh EMPTY holder tends to inherit the dead one's IP —
-#   but with a brand-new identity. A caretaker dialing old-NodeID@that-IP then
-#   hits an impostor (TLS pin mismatch), a Docker artifact real infrastructure
-#   does not produce (a terminated VM's IP is not handed to a stranger seconds
-#   later). It drowns the sweep in failed dials and masquerades as "content lost".
-#   So the LOCAL form shrinks the swarm — permanent loss with NO IP recycling —
-#   which isolates the real mechanic: reconstruct-from-parity + re-scatter onto
-#   survivors. True membership ROTATION (fresh VMs = genuinely fresh IPs) is the
-#   GCP field test's job — integration/cloudtest, the gold-standard judge.
+#  docker recycles a freed container IP to the NEXT container it starts. Replace
+#  a dead holder and the fresh EMPTY holder tends to inherit the dead one's IP —
+#  but with a brand-new identity. A caretaker dialing old-NodeID@that-IP then
+#  hits an impostor (TLS pin mismatch), a Docker artifact real infrastructure
+#  does not produce (a terminated VM's IP is not handed to a stranger seconds
+#  later). It drowns the sweep in failed dials and masquerades as "content lost".
+#  So the LOCAL form shrinks the swarm — permanent loss with NO IP recycling —
+#  which isolates the real mechanic: reconstruct-from-parity + re-scatter onto
+#  survivors. True membership ROTATION (fresh VMs = genuinely fresh IPs) is the
+#  GCP field test's job — integration/cloudtest, the gold-standard judge.
 #
 # What it does:
-#   1. seed/registry + N holders + a caretaker; publish at REPLICATION copies
-#   2. baseline: fetch bit-perfect
-#   3. LOSS: kill one running holder PERMANENTLY each cycle (its shards gone for
-#      good), do NOT replace it — the swarm shrinks. After each kill, block until
-#      the caretaker completes a FRESH sweep, then read TWO separate oracles:
-#        • DURABILITY (authoritative): "repair below k" fires only when a stripe
-#          cannot be reconstructed from even k shards — genuine content loss.
-#        • RETRIEVAL (the user outcome): a fresh client fetch, handed every
-#          survivor as a direct peer (warm discovery), retried a few times.
-#      A fetch flaking while below-k has NOT fired is discovery noise, recorded
-#      but non-fatal — the shrink continues (durability is not breached).
-#   4. keep going until the pool reaches MIN_SURVIVORS, then a final confirmation
-#      fetch. PASS = below-k never fired AND the end-to-end fetch is bit-perfect.
+#  1. seed/registry + N holders + a caretaker; publish at REPLICATION copies
+#  2. baseline: fetch bit-perfect
+#  3. LOSS: kill one running holder PERMANENTLY each cycle (its shards gone for
+#  good), do NOT replace it — the swarm shrinks. After each kill, block until
+#  the caretaker completes a FRESH sweep, then read TWO separate oracles:
+#  • DURABILITY (authoritative): "repair below k" fires only when a stripe
+#  cannot be reconstructed from even k shards — genuine content loss.
+#  • RETRIEVAL (the user outcome): a fresh client fetch, handed every
+#  survivor as a direct peer (warm discovery), retried a few times.
+#  A fetch flaking while below-k has NOT fired is discovery noise, recorded
+#  but non-fatal — the shrink continues (durability is not breached).
+#  4. keep going until the pool reaches MIN_SURVIVORS, then a final confirmation
+#  fetch. PASS = below-k never fired AND the end-to-end fetch is bit-perfect.
 #
 # REPLICATION defaults to 1 so each departure genuinely strands columns and the
 # caretaker MUST reconstruct from parity (k=10 of n=16) to keep the stripe whole.
@@ -44,11 +44,11 @@
 # the FINDING, reported with the exact retrieval floor, never hidden.
 #
 # Usage:
-#   ./run.sh                              # 16 holders → shrink to 6 (10 permanent deaths)
-#   MIN_SURVIVORS=11 ./run.sh             # stay above the small-swarm retrieval floor → clean PASS
-#   REPLICATION=3 ./run.sh                # shipped-default margin (survives more before repair is forced)
-#   HOLDERS=24 MIN_SURVIVORS=12 SWEEP_WAIT_TICKS=40 ./run.sh   # ~200s/cycle repair window
-#   KEEP=1 ./run.sh
+# ./run.sh # 16 holders → shrink to 6 (10 permanent deaths)
+#  MIN_SURVIVORS=11 ./run.sh # stay above the small-swarm retrieval floor → clean PASS
+#  REPLICATION=3 ./run.sh # shipped-default margin (survives more before repair is forced)
+#  HOLDERS=24 MIN_SURVIVORS=12 SWEEP_WAIT_TICKS=40 ./run.sh # ~200s/cycle repair window
+#  KEEP=1 ./run.sh
 # exit 0 = PASS (content outlived + still retrievable) / a reproduced FINDING; non-zero = FAIL
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
@@ -78,7 +78,7 @@ care_reachable() { # last "repair sweep complete … shards=M reachable=N" -> "N
     | grep -oE 'shards=[0-9]+ reachable=[0-9]+' | sed -E 's/shards=([0-9]+) reachable=([0-9]+)/\2\/\1/' | tr -d ' \r\n'
 }
 care_repairs() { docker exec "$CARE_CID" sh -c 'grep -c "stripe repaired" /data/debug.log 2>/dev/null || true' 2>/dev/null | tr -d ' \r\n'; }
-care_sweeps() { # how many sweeps the caretaker has completed (each is one #235 line)
+care_sweeps() { # how many sweeps the caretaker has completed (each is one line)
   [ -n "$CARE_CID" ] || { echo 0; return; }
   docker exec "$CARE_CID" sh -c 'grep -c "repair sweep complete" /data/debug.log 2>/dev/null || true' 2>/dev/null | tr -d ' \r\n'
 }
@@ -213,10 +213,10 @@ for c in $(seq 1 "$TO_KILL"); do
     echo "  each a ~2s i/o timeout), so a single sweep can no longer finish inside the window — a dial-storm."
     echo "  The SAME dial-storm drowns a fresh client's fetch (verified: a warm get returned 0 bytes here)."
     echo "  Root cause: the repair sweep's DHT provider WALK (and the fetch's) re-dial dead holders that the"
-    echo "  deadUntil negative cache does not gate on the walk path (same class as #251 / the #43 retrieval"
+    echo "  deadUntil negative cache does not gate on the walk path (the same class as the retrieval"
     echo "  floor). Heavily amplified by the SMALL swarm — a few dead holders are a large fraction of every"
     echo "  shard's provider set; at real scale they are a tiny fraction, so the CLOUD test judges the true"
-    echo "  finite-but-renewable envelope. Filed as product issue #277. EXPECT=pass to hard-fail."
+    echo "  finite-but-renewable envelope. EXPECT=pass to hard-fail."
     docker logs "$CARE_CID" 2>&1 | grep -iE 'repair sweep complete|stripe repaired|dial failed' | tail -6 | sed 's/^/    /'
     [ "${EXPECT:-}" = pass ] && exit 1 || exit 0
   fi
@@ -282,9 +282,9 @@ fi
 echo "  • RETRIEVAL (a user gets it): a fresh client's fetch stayed bit-perfect down to $retrieval_floor survivors,"
 echo "    then failed at smaller sizes — even handed every survivor as a direct peer. The shards are reachable"
 echo "    to the long-lived caretaker, yet a fresh client cannot DISCOVER enough of the re-scattered shards to"
-echo "    assemble the file as the swarm shrinks/churns. This is the #43 retrieval surface under permanent loss:"
+echo "    assemble the file as the swarm shrinks/churns. This is the retrieval surface under permanent loss:"
 echo "    durable is not the same as retrievable. The bytes outlived the nodes; the lookup did not. That IS the"
-echo "    finding — real evidence of the boundary, not a faked green. (Cross-ref: the retrieval field test; the"
-echo "    cloud test's larger swarms are where the healthy-retrieval envelope is certified — integration/cloudtest.)"
+echo "    finding — real evidence of the boundary, not a faked green. (The"
+echo "    cloud test's larger swarms are where the healthy-retrieval envelope is measured — integration/cloudtest.)"
 docker logs "$CARE_CID" 2>&1 | grep -iE 'repair sweep|stripe repaired|below k' | tail -8 | sed 's/^/    /'
 [ "${EXPECT:-}" = pass ] && exit 1 || exit 0

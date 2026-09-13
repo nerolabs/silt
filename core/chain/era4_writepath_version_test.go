@@ -16,20 +16,20 @@ import (
 // validateEra4Version comment cites.
 //
 // The comment claims validateEra4Version "runs on the SAME write paths as
-// validateEra3Version ... so 'every disk-write path enforces the era boundary' is uniform
+// validateEra3Version. so 'every disk-write path enforces the era boundary' is uniform
 // across era-3 AND era-4". This file is that claim, tested. It has three legs, because no
 // single one covers the property:
 //
-//  1. STRUCTURAL — every Chain method that writes a block to the live committed history
-//     (discovered by scanning for c.apply, not a hand list) runs the era-4 rule. This is
-//     the leg that catches a FUTURE write path (fast-sync, import) written years from now.
-//  2. SCANNER COMPLETENESS — the structural scan reads chain.go, so it is only total if
-//     chain.go is where the live-receiver applies are. Pinned here, so moving a write path
-//     into another file cannot silently escape leg 1.
-//  3. BEHAVIORAL — each real entry point is DRIVEN with a signature-valid sub-v5 block at
-//     the era-4 boundary and must reject it with ErrEra4VersionRequired, leaving nothing
-//     applied. Leg 1 proves a validator is CALLED; leg 3 proves the call actually rejects
-//     and rejects for the era reason, not a signature failure.
+// 1. STRUCTURAL — every Chain method that writes a block to the live committed history
+// (discovered by scanning for c.apply, not a hand list) runs the era-4 rule. This is
+// the leg that catches a FUTURE write path (fast-sync, import) written years from now.
+// 2. SCANNER COMPLETENESS — the structural scan reads chain.go, so it is only total if
+// chain.go is where the live-receiver applies are. Pinned here, so moving a write path
+// into another file cannot silently escape leg 1.
+// 3. BEHAVIORAL — each real entry point is DRIVEN with a signature-valid sub-v5 block at
+// The era-4 boundary and must reject it with ErrEra4VersionRequired, leaving nothing
+// applied. Leg 1 proves a validator is CALLED; leg 3 proves the call actually rejects
+// and rejects for the era reason, not a signature failure.
 //
 // Overlap with TestEveryDiskWritePathRunsTheEra3RootCheck is deliberate and partial: that
 // guard's rule list already includes validateEra4Version, which gives leg 1 for free but
@@ -97,11 +97,12 @@ func TestEveryDiskWritePathRunsTheEra4VersionCheck(t *testing.T) {
 	})
 
 	t.Run("structural/scanner-covers-the-whole-package", func(t *testing.T) {
-		// Leg 1 scans chain.go only. That is total only while chain.go holds every apply on
-		// a LIVE chain. The one apply outside it is postApplyRoots' `scratch.apply` — a
-		// throwaway clone, not a disk write. Any OTHER receiver calling .apply in a non-test
-		// file is either a new write path (which must move into leg 1's scan) or a new clone
-		// (which must be named here), and either way is a reviewed change, not a default.
+		// Leg 1 scans chain.go only. That is total only while chain.go holds every
+		// apply on a LIVE chain. The one apply outside it is postApplyRoots'
+		// `scratch.apply` — a throwaway clone, not a disk write. Any OTHER receiver
+		// calling.apply in a non-test file is either a new write path (which must move
+		// into leg 1's scan) or a new clone (which must be named here), and either way
+		// is a reviewed change, not a default.
 		cloneReceivers := map[string]bool{"scratch": true}
 		for file, src := range packageSources(t) {
 			if file == "chain.go" {
@@ -236,7 +237,7 @@ func era4BoundaryFixture(t *testing.T) (*Chain, []ed25519.PrivateKey, *Block) {
 	return c, keys, bad
 }
 
-// packageSources returns every non-test .go file in this package, keyed by base name.
+// packageSources returns every non-test.go file in this package, keyed by base name.
 func packageSources(t *testing.T) map[string]string {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)

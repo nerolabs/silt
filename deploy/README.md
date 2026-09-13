@@ -20,9 +20,8 @@ Read this before using it, because the distinction matters:
   domains; this box is torn down or becomes one unremarkable peer
   among them.
 
-The full reasoning is in
-[docs/design/cross-network.md](../docs/design/cross-network.md)
-("Neutrality: the dev node vs. the project").
+The reasoning is the no-permanent-center immutable: nothing the project runs may
+become load-bearing.
 
 ## What's here
 

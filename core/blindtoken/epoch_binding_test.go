@@ -1,12 +1,11 @@
 package blindtoken
 
-// R0.4b (b1) — the ISSUE EPOCH is inside the blind-signed message.
+// (b1) — the ISSUE EPOCH is inside the blind-signed message.
 //
-// These are the primitive-level gates for the fix the red-team reconciliation verdict
-// certified (2026-09-02, §2.4): a demand signature must verify under exactly the pair
-// (key_E, E). Everything above this file — the keyset window, the credit layer's
-// expiry guard, the whole "evicted ⇒ expired ⇒ un-redeemable" coupling — is only as
-// true as these three properties.
+// These are the primitive-level gates for the fix verdict verifies: a demand
+// signature must verify under exactly the pair (key_E, E). Everything above this file
+// — the keyset window, the credit layer's expiry guard, the whole "evicted ⇒ expired
+// ⇒ un-redeemable" coupling — is only as true as these three properties.
 //
 // ABLATION (drop the epoch from the FDH input, i.e. make demandMsg return the serial):
 // TestDemandSignatureDoesNotVerifyAtAnotherEpoch and
@@ -55,7 +54,7 @@ func TestDemandSignatureVerifiesAtItsOwnEpoch(t *testing.T) {
 // which nothing forbids and an ordinary restart causes — a token from epoch E must
 // not verify at any other epoch. Without it, issuedEpoch(token) is a function of the
 // verifier's keyset rather than of the token, guard entries expire while tokens do
-// not, and the cross-server double-redeem pump re-opens (red-team probes G and I).
+// not, and the cross-server double-redeem pump re-opens.
 func TestDemandSignatureDoesNotVerifyAtAnotherEpoch(t *testing.T) {
 	k := testKey(t)
 	serial, _ := NewSerial(rand.Reader)

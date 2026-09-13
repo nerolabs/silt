@@ -7,7 +7,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// The #535 cold-auditor recovery-boundary POLICY UNIT (floorbox_v5.go), as D0 leaves it: the stall
+// The cold-auditor recovery-boundary POLICY UNIT (floorbox_v5.go), as D0 leaves it: the stall
 // at an ambiguous recovery boundary is UNCONDITIONAL — no directive, no live-follower opt-in, no
 // fall-through — and the predicate it keys on is the STRICTER of the two forms that used to exist
 // (H-1), so an honest box is not stalled at a height the full node's recovery branch would never
@@ -21,7 +21,7 @@ import (
 // pinned here is the rule the door consults.
 //
 // EACH proof case is ABLATED — the defect it claims to catch is injected and watched to flip the
-// outcome (simplicity rule 7). With the knob deleted, the only ablation available is the CONFIG:
+// outcome. With the knob deleted, the only ablation available is the CONFIG:
 // the same height is driven with and without LivenessRecoveryHeight pointing at it, and with and
 // without an epoch cadence that divides it.
 
@@ -97,13 +97,13 @@ func TestRecoveryBoundaryDecision_NonBoundaryHeightNotAmbiguous(t *testing.T) {
 // both sites was the rejected direction, because it stalls at heights that are not boundaries.
 //
 // ABLATION: each of the FOUR conditions dropped in turn flips at least one row — verified, one
-// condition at a time, not assumed. Four, not five —
-// the table has five rows plus a legacy arm because condition 3, epochsEnabled(), is
-// `EpochBlocks > 0 && objective()` and is exercised from BOTH sides: the "epochs disabled" row
-// falsifies the cadence half, the legacy-fixture arm falsifies the objective half. The predicate
-// carried a fifth conjunct, `EpochBlocks != 0`, until D0's re-review measured it dead (implied by
-// epochsEnabled(), which is evaluated first and short-circuits); it is deleted, so no row here is
-// asserting against a condition no input can falsify.
+// condition at a time, not assumed. Four, not five — the table has five rows plus a legacy arm
+// because condition 3, epochsEnabled, is `EpochBlocks > 0 && objective` and is exercised from
+// BOTH sides: the "epochs disabled" row falsifies the cadence half, the legacy-fixture arm
+// falsifies the objective half. The predicate carried a fifth conjunct, `EpochBlocks != 0`, until
+// D0's re-review measured it dead (implied by epochsEnabled, which is evaluated first and
+// short-circuits); it is deleted, so no row here is asserting against a condition no input can
+// falsify.
 func TestIsAmbiguousRecoveryBoundary_IsTheStricterForm(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -136,7 +136,7 @@ func TestIsAmbiguousRecoveryBoundary_IsTheStricterForm(t *testing.T) {
 		})
 	}
 
-	// The legacy fence rides on the same predicate: epochsEnabled() is EpochBlocks > 0 AND objective().
+	// The legacy fence rides on the same predicate: epochsEnabled is EpochBlocks > 0 AND objective.
 	lf := buildLegacyFixture(t)
 	lf.c.cfg.EpochBlocks, lf.c.cfg.LivenessRecoveryHeight = 4, 8
 	if lf.c.isAmbiguousRecoveryBoundary(8) {
@@ -149,8 +149,8 @@ func TestIsAmbiguousRecoveryBoundary_IsTheStricterForm(t *testing.T) {
 // (ErrNotWitnessableVersion) and an above-era block is Reject (ErrAboveCurrentEraVersion) — both
 // positive disproofs, distinct from a stall, and neither needs the recompute.
 //
-// ABLATION: a v5 block is NOT rejected on the version partition; it reaches the R1.8 downgrade.
-// That is the honest twin, and it runs first.
+// ABLATION: a v5 block is NOT rejected on the version partition; it reaches the downgrade. That
+// is the honest twin, and it runs first.
 func TestFloorBox_SubV5BlockRejectedAtTheDoor(t *testing.T) {
 	f := buildStructFixture(t)
 	src := newProverSource(t, f.c)

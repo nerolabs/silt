@@ -5,9 +5,7 @@ package node
 // funded reserve, lifetime skim/pay, and whether bounties actually DISBURSE were
 // invisible (credit.G/Horizon computed only for a local repair decision, never
 // surfaced). These accessors make it observable — the prerequisite for watching g
-// once the economy is switched on. Deliberation:
-// docs/thinking/2026-08-19-phase2-economy-on-deliberation.md.
-
+// once the economy is switched on.
 import (
 	"testing"
 
@@ -80,7 +78,7 @@ func TestDurabilityTelemetrySurfacesTheHalfOpenEconomy(t *testing.T) {
 	}
 }
 
-// TestRepairEconomyDefaultsOff is the PE merge-gate guard (2026-08-19): the
+// TestRepairEconomyDefaultsOff is the merge-gate guard: the
 // participation switch must default OFF, so enabling the economy is an operator's
 // deliberate opt-in (R2/R4 — never silently start an economy under existing nodes).
 func TestRepairEconomyDefaultsOff(t *testing.T) {
@@ -145,7 +143,7 @@ func TestDurabilityTelemetryNoLedgerIsSafe(t *testing.T) {
 	net := simnet.New(sched, 5, simnet.DefaultConfig())
 	id := identity.FromSeed(9701)
 	nd := New(id.NodeID(), DefaultConfig(), sched, net.Endpoint(id.NodeID()), memstore.New())
-	// no SetLedger
+	// No SetLedger
 	if nd.CreditBalance() != 0 || nd.CaredDurability() != nil {
 		t.Fatal("no-ledger node must report zero balance / nil durability, not panic")
 	}

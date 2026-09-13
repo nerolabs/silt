@@ -270,7 +270,7 @@ func TestFoldSeedEncodingMatchesLibrary(t *testing.T) {
 //
 // Each fixture pins a SPECIFIC structural case byte-exact. The ablation helpers below break the
 // fold's handling of that case and assert the fold goes RED — a green check with no demonstrated
-// red is a comment that compiles (the session-7 scar).
+// red is a comment that compiles.
 
 // foldCase runs the fold for a pre-state + sets/dels and returns (got, want).
 func foldCase(t *testing.T, pre, sets map[string][]byte, dels map[string]bool) (ports.Hash, ports.Hash) {
@@ -602,18 +602,18 @@ func TestFoldAblationSeedRootMismatch(t *testing.T) {
 //
 // THE MECHANISM — a delete-sibling's AUTHENTICITY rides its DIGEST, not its preimage content.
 // FoldChangedPaths seeds each DeleteSiblings entry into the node store keyed under its digest
-// (fold.go:135, seed[string(sib.Digest)] = sib.Preimage). The library resolves an off-path sibling
-// by the digest the on-path parent inner node references (smt.go:298, resolveLazy(*sib)), and
+// (fold.go, seed[string(sib.Digest)] = sib.Preimage). The library resolves an off-path sibling
+// by the digest the on-path parent inner node references (smt.go, resolveLazy(*sib)), and
 // parseTrieNode stamps the RESOLVED node with `digest: <the lookup key>` and `persisted: true`
-// (smt.go:575-599). On Commit, digestNode returns that CACHED digest for a persisted leaf/inner
-// WITHOUT re-hashing the preimage (trie_spec.go:80-104). So:
-//   - Corrupting a sibling's PREIMAGE while keeping its digest key is a near-silent no-op: the
-//     cached digest still propagates. (Measured: only ~13% of deletes stall on preimage corruption,
-//     and only where the library must re-encode the node — the extension-absorb branch.)
-//   - Corrupting a sibling's DIGEST un-seeds the honest referenced node: the on-path parent still
-//     references the TRUE sidenode digest (proof-anchored, VerifyProof'd against prevStateRoot), which
-//     is now absent from the store, so the library cannot resolve it → the fold DIVERGES or errors.
-//     (Measured: ~96% of deletes stall.)
+// (smt.go). On Commit, digestNode returns that CACHED digest for a persisted leaf/inner
+// WITHOUT re-hashing the preimage (trie_spec.go). So:
+// - Corrupting a sibling's PREIMAGE while keeping its digest key is a near-silent no-op: the
+// cached digest still propagates. (Measured: only ~13% of deletes stall on preimage corruption,
+// and only where the library must re-encode the node — the extension-absorb branch.)
+// - Corrupting a sibling's DIGEST un-seeds the honest referenced node: the on-path parent still
+// references the TRUE sidenode digest (proof-anchored, VerifyProof'd against prevStateRoot), which
+// is now absent from the store, so the library cannot resolve it → the fold DIVERGES or errors.
+// (Measured: ~96% of deletes stall.)
 //
 // The load-bearing authenticity boundary is therefore the sibling DIGEST, which is pinned to the
 // verified proof's SideNodes. This ablation corrupts that digest and requires the REAL fold path to

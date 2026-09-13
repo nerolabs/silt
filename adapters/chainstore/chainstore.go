@@ -29,20 +29,19 @@ func Load(path string) ([]chain.Block, error) {
 	return chain.DecodeBlocks(raw)
 }
 
-// Save writes the full chain DURABLY and atomically (#558 / Lane B8, scope
-// call S3): the bytes go to a temp file in the same directory, are fsync'd,
-// the temp file is closed, renamed over path, and the directory is fsync'd so
-// the rename itself is durable — the markstore pattern (the #183 C-2 work).
-// Before this the temp file was written without a sync: a SIGKILL could not
-// tear the renamed file (rename is atomic), but a power loss between the
-// write and the rename's durability could leave chain.cbor truncated on
-// disk. (The field's #558 event, run a434494-deep, was NOT a torn write —
-// the file was intact and an era-2 replay bug rejected it; see
-// core/chain/reload_era2_558_test.go. This is the hardening the repro doc
-// asked for; the refuse-to-start rule in Recover is what would have turned
-// that event into a loud stop instead of a silent restart from genesis.)
-// Chains of registry entries are small (that's the design); rewriting whole
-// is simpler than appending safely.
+// Save writes the full chain DURABLY and atomically: the bytes go to a temp
+// file in the same directory, are fsync'd, the temp file is closed, renamed
+// over path, and the directory is fsync'd so the rename itself is durable —
+// the markstore pattern (the work). Before this the temp file was written
+// without a sync: a SIGKILL could not tear the renamed file (rename is
+// atomic), but a power loss between the write and the rename's durability
+// could leave chain.cbor truncated on disk. (The field's event, the field
+// run, was NOT a torn write — the file was intact and an era-2 replay bug
+// rejected it; see core/chain/reload_era2_test.go. This is the hardening the
+// repro doc asked for; the refuse-to-start rule in Recover is what would have
+// turned that event into a loud stop instead of a silent restart from
+// genesis.) Chains of registry entries are small (that's the design);
+// rewriting whole is simpler than appending safely.
 func Save(path string, blocks []chain.Block) error {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, ".chain-*")
@@ -103,21 +102,20 @@ func rejectedName(path string, now int64) string {
 
 func (e *LossError) Unwrap() error { return e.Cause }
 
-// Recover is the daemon's boot-time replay with the #558 refuse-to-start
-// rule (Lane B8, scope call S3, ratified 2026-09-07): a replay that would
-// discard finalized history — a torn chain.cbor, or a block that fails
-// structural verification — is a LossError and the caller must NOT start,
-// unless acceptLoss is set (the operator's explicit acknowledgement that the
-// suffix will be re-synced from peers, which is impossible below the swarm's
-// prune horizon without a fresh -ws-checkpoint, #559). With acceptLoss the
-// valid prefix is kept, the loss is reported through the returned LossError
-// with a nil refusal, and — because the daemon's first save would otherwise
-// OVERWRITE the file (PE ruling, B8 blocker 1) — the original chain.cbor is
-// first MOVED, untouched, to chain.cbor.rejected-<unix>: a rejected file may
-// be byte-perfect and merely unreadable by THIS binary (a version-unsupported
-// block after a downgrade; the #572 no-verifier guard), so the operator's
-// acceptance must never destroy it. A missing file is an empty history, never
-// a loss.
+// Recover is the daemon's boot-time replay with the refuse-to-start rule
+// (this lane, scope call S3): a replay that would discard finalized history —
+// a torn chain.cbor, or a block that fails structural verification — is a
+// LossError and the caller must NOT start, unless acceptLoss is set (the
+// operator's explicit acknowledgement that the suffix will be re-synced from
+// peers, which is impossible below the swarm's prune horizon without a fresh
+// -ws-checkpoint). With acceptLoss the valid prefix is kept, the loss is
+// reported through the returned LossError with a nil refusal, and — because
+// the daemon's first save would otherwise OVERWRITE the file — the original
+// chain.cbor is first MOVED, untouched, to chain.cbor.rejected-<unix>: a
+// rejected file may be byte-perfect and merely unreadable by THIS binary (a
+// version-unsupported block after a downgrade; the no-verifier guard), so the
+// operator's acceptance must never destroy it. A missing file is an empty
+// history, never a loss.
 func Recover(path string, c *chain.Chain, acceptLoss bool) (restored int, loss *LossError, refused error) {
 	n, err := Replay(path, c)
 	if err == nil {

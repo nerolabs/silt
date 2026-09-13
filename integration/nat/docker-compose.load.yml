@@ -7,11 +7,11 @@
 # content forced to live only on nodeA (relay -capacity=1) so every fetched
 # byte must cross the relay.
 #
-#   lanA (internal) ──[natA: MASQUERADE]──┐
-#     └─ nodeA (NATed, publisher)          │
-#                                          ├─ public ── relay (+ registry)
-#   lanB (internal) ──[natB: MASQUERADE]──┘
-#     └─ nodeB (NATed, fetcher under load)
+#  lanA (internal) ──[natA: MASQUERADE]──┐
+#  └─ nodeA (NATed, publisher) │
+#  ├─ public ── relay (+ registry)
+#  lanB (internal) ──[natB: MASQUERADE]──┘
+#  └─ nodeB (NATed, fetcher under load)
 #
 # loadtest.sh brings this up, publishes from A, bandwidth-caps the relay's
 # public interface with `tc qdisc` (NET_ADMIN), then fires N concurrent

@@ -77,34 +77,34 @@ func showEra(s EraStatus) string {
 		s.Version, s.Phase, s.LockedIn, h(s.ActivationHeight), h(s.FirstHeight))
 }
 
-// TestEraStateDrivesEveryPhaseFromCommittedState is GATE G-EP-1 and GATE G-EP-4 together
-// (cold chain). It is the answer to the defect this row absorbs.
+// TestEraStateDrivesEveryPhaseFromCommittedState is the gate and the gate together (cold
+// chain). It is the answer to the defect this row absorbs.
 //
-// R-CARRIER-ROLLOUT-SIGNAL's code half was vacuous because its gate took its guard condition from
-// its own subject and returned before asserting anything. The transposition of that defect into an
-// observable is a phase that is only ever one value, so that "the era is dark" and "the field was
-// never populated" render identically. This gate closes it by DRIVING all three phases on one real
-// chain and asserting they are pairwise distinct — no phase is read off a constant, and none is
-// asserted from a fixture-written field.
+// The code half was vacuous because its gate took its guard condition from its own subject and
+// returned before asserting anything. The transposition of that defect into an observable is a
+// phase that is only ever one value, so that "the era is dark" and "the field was never populated"
+// render identically. This gate closes it by DRIVING all three phases on one real chain and
+// asserting they are pairwise distinct — no phase is read off a constant, and none is asserted
+// from a fixture-written field.
 //
 // The three phases are driven on two chains, split by the ONE input that decides the tally:
 //
-//	dark    — a fleet stamped 3, which is what every SHIPPED binary stamps today (NewBondReg
-//	          hard-codes BlockVersionRegGate). This is the live networks' actual state, and the
-//	          state cloud row 13b has been unable to name.
+//	dark — a fleet stamped 3, which is what every SHIPPED binary stamps today (NewBondReg
+//	 hard-codes BlockVersionRegGate). This is the live networks' actual state, and the
+//	 state cloud row 13b has been unable to name.
 //	pending — a fleet stamped 5: the tally locks in and names H_era4 while no v5 block exists yet
-//	          (the one epoch of notice, which a block-only view cannot see at all)
-//	active  — once the first v5 block commits
+//	 (the one epoch of notice, which a block-only view cannot see at all)
+//	active — once the first v5 block commits
 func TestEraStateDrivesEveryPhaseFromCommittedState(t *testing.T) {
 	// --- DARK, driven on the SHIPPED stamp. ---
 	dark, _, _ := eraProbeChain(t, BlockVersionRegGate)
 	st := dark.EraState()
 	if st.Era4.Phase != EraDark {
-		t.Fatalf("G-EP-1 RED: a fleet stamped %d must report era-4 %q, got %q",
+		t.Fatalf("RED: a fleet stamped %d must report era-4 %q, got %q",
 			BlockVersionRegGate, EraDark, st.Era4.Phase)
 	}
 	if st.Era4.LockedIn || st.Era4.ActivationHeight != nil || st.Era4.FirstHeight != nil {
-		t.Fatalf("G-EP-1 RED: dark must carry NO heights (lockedIn %v, activation %v, first %v). "+
+		t.Fatalf("RED: dark must carry NO heights (lockedIn %v, activation %v, first %v). "+
 			"A present zero here is unreadable against a real height 0.",
 			st.Era4.LockedIn, st.Era4.ActivationHeight, st.Era4.FirstHeight)
 	}
@@ -117,18 +117,18 @@ func TestEraStateDrivesEveryPhaseFromCommittedState(t *testing.T) {
 		t.Fatal("FIXTURE: the readiness tally did not lock era-4 in — the rest of this gate would be vacuous")
 	}
 	if st.Era4.Phase != EraPending {
-		t.Fatalf("G-EP-1 RED: locked in with no v5 block committed must report %q, got %q. "+
+		t.Fatalf("RED: locked in with no v5 block committed must report %q, got %q. "+
 			"Rendering this window as %q is the defect: it is the state an operator watching a "+
 			"stamp raise land most needs to see.", EraPending, st.Era4.Phase, EraDark)
 	}
 	if st.Era4.ActivationHeight == nil {
-		t.Fatal("G-EP-1 RED: pending must name its activation height")
+		t.Fatal("RED: pending must name its activation height")
 	}
 	if got := *st.Era4.ActivationHeight; got != c.era4Height {
-		t.Fatalf("G-EP-1 RED: reported activation height %d != the chain's H_era4 %d", got, c.era4Height)
+		t.Fatalf("RED: reported activation height %d != the chain's H_era4 %d", got, c.era4Height)
 	}
 	if st.Era4.FirstHeight != nil {
-		t.Fatalf("G-EP-1 RED: no v5 block is committed, so firstHeight must be ABSENT, got %d", *st.Era4.FirstHeight)
+		t.Fatalf("RED: no v5 block is committed, so firstHeight must be ABSENT, got %d", *st.Era4.FirstHeight)
 	}
 	pendingAt := *st.Era4.ActivationHeight
 
@@ -138,46 +138,46 @@ func TestEraStateDrivesEveryPhaseFromCommittedState(t *testing.T) {
 	}
 	st = c.EraState()
 	if st.Era4.Phase != EraActive {
-		t.Fatalf("G-EP-1 RED: a committed v5 block must report %q, got %q", EraActive, st.Era4.Phase)
+		t.Fatalf("RED: a committed v5 block must report %q, got %q", EraActive, st.Era4.Phase)
 	}
 	if st.Era4.FirstHeight == nil {
-		t.Fatal("G-EP-1 RED: active must name the first v5 height")
+		t.Fatal("RED: active must name the first v5 height")
 	}
 	if got := *st.Era4.FirstHeight; got != pendingAt {
-		t.Fatalf("G-EP-1 RED: the first v5 block landed at height %d but the tally named %d. "+
+		t.Fatalf("RED: the first v5 block landed at height %d but the tally named %d. "+
 			"Activation is a MINT boundary, so these are the same fact reached two ways; a "+
 			"difference means one of the two readings is wrong.", got, pendingAt)
 	}
 	if st.Census.HeadVersion != BlockVersionWitnessable {
-		t.Fatalf("G-EP-1 RED: head version must be v5, got v%d", st.Census.HeadVersion)
+		t.Fatalf("RED: head version must be v5, got v%d", st.Census.HeadVersion)
 	}
 
-	// --- G-EP-4: the three phases this chain produced are pairwise distinct and non-empty, and
-	// the closed set has no member that no driven arm reached. A phase set where two members
-	// render alike would make the observable answer nothing.
+	// --- the three phases this chain produced are pairwise distinct and non-empty, and
+	// The closed set has no member that no driven arm reached. A phase set where two
+	// members render alike would make the observable answer nothing.
 	seen := map[EraPhase]bool{EraDark: true, EraPending: true, EraActive: true}
 	if len(seen) != len(EraPhases) {
-		t.Fatalf("G-EP-4 RED: %d phases driven, %d in the closed set EraPhases — an undriven phase "+
+		t.Fatalf("RED: %d phases driven, %d in the closed set EraPhases — an undriven phase "+
 			"is a row that has never been shown to render differently from its neighbours",
 			len(seen), len(EraPhases))
 	}
 	for _, p := range EraPhases {
 		if p == "" {
-			t.Fatal("G-EP-4 RED: a phase is the empty string, which is the Go zero value — " +
+			t.Fatal("RED: a phase is the empty string, which is the Go zero value — " +
 				"a never-populated field would be indistinguishable from it")
 		}
 		if !seen[p] {
-			t.Fatalf("G-EP-4 RED: phase %q is in the closed set but no arm of this gate drove it", p)
+			t.Fatalf("RED: phase %q is in the closed set but no arm of this gate drove it", p)
 		}
 	}
 }
 
-// TestEraStateIgnoresDivergentLocalConfig is GATE G-EP-2 (cold chain), the ABLATION that gives the
+// TestEraStateIgnoresDivergentLocalConfig is the gate (cold chain), the ABLATION that gives the
 // "committed state, not local config" claim teeth.
 //
 // The era activation state has two routes: the genesis override (Era3ActivationHeight /
 // Era4ActivationHeight) and the readiness-tally latch. Reading the override off the local Config
-// would be the #380 class — a consensus quantity answered from what an operator typed. EraState
+// would be the class — a consensus quantity answered from what an operator typed. EraState
 // reads Config NOWHERE, so this ablation is total rather than targeted: mutate every era-related
 // Config field on an ALREADY-LATCHED chain, with the committed blocks untouched, and the reported
 // era state must not move by one field.
@@ -201,19 +201,19 @@ func TestEraStateIgnoresDivergentLocalConfig(t *testing.T) {
 	after := c.EraState()
 
 	if !sameEra(before.Era3, after.Era3) || !sameEra(before.Era4, after.Era4) {
-		t.Fatalf("G-EP-2 RED: the reported era state MOVED when local config changed, on identical "+
-			"committed blocks. That is the #380 class — the surface would answer \"what did this "+
+		t.Fatalf("RED: the reported era state MOVED when local config changed, on identical "+
+			"committed blocks. That is the class — the surface would answer \"what did this "+
 			"operator type\", not \"what does the chain say\".\n  era3 %s\n    -> %s\n  era4 %s\n    -> %s",
 			showEra(before.Era3), showEra(after.Era3), showEra(before.Era4), showEra(after.Era4))
 	}
 	if *after.Era4.ActivationHeight == 999999 {
-		t.Fatal("G-EP-2 RED: the reported H_era4 is the LOCAL config value verbatim")
+		t.Fatal("RED: the reported H_era4 is the LOCAL config value verbatim")
 	}
 }
 
-// TestCensusMeasuresMaxAttsOnANonUniformChain is GATE G-EP-3 (cold chain). max_h len(blocks[h].Atts)
-// is the live attestation-carrier width, a figure two certification items name as unmeasured and
-// which no shipped command produced before this row.
+// TestCensusMeasuresMaxAttsOnANonUniformChain is the gate (cold chain). max_h len(blocks[h].Atts) is
+// the live attestation-carrier width, a figure two research items name as unmeasured and which no
+// shipped command produced before this row.
 //
 // THE DISTRIBUTION IS NON-UNIFORM AND THE MAXIMUM IS IN THE INTERIOR, deliberately. On a uniform
 // chain every wrong reducer looks right: "the head's width", "the first block's width" and "the
@@ -237,16 +237,16 @@ func TestCensusMeasuresMaxAttsOnANonUniformChain(t *testing.T) {
 
 	got := c.EraState().Census
 	if got.MaxAtts != 4 {
-		t.Fatalf("G-EP-3 RED: max atts is %d, want 4. The widths committed were %v across heights "+
+		t.Fatalf("RED: max atts is %d, want 4. The widths committed were %v across heights "+
 			"1..%d; a reducer that took the head (%d), the first (%d) or a count of blocks would "+
 			"differ from the maximum, which is why this chain is non-uniform.",
 			got.MaxAtts, widths, len(widths), widths[len(widths)-1], widths[0])
 	}
 	if got.MaxAttsHeight != 3 {
-		t.Fatalf("G-EP-3 RED: the widest block is height 3, reported %d", got.MaxAttsHeight)
+		t.Fatalf("RED: the widest block is height 3, reported %d", got.MaxAttsHeight)
 	}
 	if !got.AttsMeasured {
-		t.Fatal("G-EP-3 RED: attsMeasured must be true on a walked chain — it is what separates " +
+		t.Fatal("RED: attsMeasured must be true on a walked chain — it is what separates " +
 			"a measured zero from a figure that was never computed")
 	}
 	t.Logf("MEASURED live carrier width on a driven four-validator chain: max_h len(blocks[h].Atts) "+
@@ -257,16 +257,16 @@ func TestCensusMeasuresMaxAttsOnANonUniformChain(t *testing.T) {
 	// carries no attestation, and that must not render as "never computed".
 	empty := CensusOf(c.Blocks(0)[:1])
 	if empty.MaxAtts != 0 || !empty.AttsMeasured {
-		t.Fatalf("G-EP-3 RED: a genesis-only chain must report a MEASURED zero (maxAtts %d, measured %v)",
+		t.Fatalf("RED: a genesis-only chain must report a MEASURED zero (maxAtts %d, measured %v)",
 			empty.MaxAtts, empty.AttsMeasured)
 	}
 	if none := CensusOf(nil); none.AttsMeasured || !none.Empty() {
-		t.Fatalf("G-EP-3 RED: no blocks at all must report NOT measured and Empty (measured %v, empty %v). "+
+		t.Fatalf("RED: no blocks at all must report NOT measured and Empty (measured %v, empty %v). "+
 			"This is the absent-versus-zero distinction the row exists to make.", none.AttsMeasured, none.Empty())
 	}
 }
 
-// TestEraLineDistinguishesAnUnobservableTallyFromADarkOne is GATE G-EP-5's core-tier half.
+// TestEraLineDistinguishesAnUnobservableTallyFromADarkOne is the gate's core-tier half.
 //
 // The offline `silt chain-status` path holds a []Block and no Chain, so the readiness-tally latch
 // is genuinely out of its reach. Printing "lockedIn: false" there would be a lie dressed as a zero
@@ -276,17 +276,17 @@ func TestEraLineDistinguishesAnUnobservableTallyFromADarkOne(t *testing.T) {
 	dark := EraStatus{Version: BlockVersionWitnessable, Phase: EraDark}
 	withTally, withoutTally := dark.EraLine(true), dark.EraLine(false)
 	if withTally == withoutTally {
-		t.Fatalf("G-EP-5 RED: a caller that CAN see the tally and one that CANNOT render the same "+
+		t.Fatalf("RED: a caller that CAN see the tally and one that CANNOT render the same "+
 			"line %q. The second would be asserting a fact it has no access to.", withTally)
 	}
 	if !strings.Contains(withTally, "DARK") {
-		t.Fatalf("G-EP-5 RED: a tally-visible dark era must say DARK, got %q", withTally)
+		t.Fatalf("RED: a tally-visible dark era must say DARK, got %q", withTally)
 	}
 	if strings.Contains(withoutTally, "DARK") {
-		t.Fatalf("G-EP-5 RED: an offline caller must NOT claim DARK — it cannot see the tally. Got %q", withoutTally)
+		t.Fatalf("RED: an offline caller must NOT claim DARK — it cannot see the tally. Got %q", withoutTally)
 	}
 	if !strings.Contains(withoutTally, "/api/status") {
-		t.Fatalf("G-EP-5 RED: the offline line must name where the tally IS observable, got %q", withoutTally)
+		t.Fatalf("RED: the offline line must name where the tally IS observable, got %q", withoutTally)
 	}
 	// Every line, in every phase, on both callers, is non-empty and names its era. An empty
 	// render is the vacuity: it would look the same whether the state was computed or forgotten.
@@ -299,7 +299,7 @@ func TestEraLineDistinguishesAnUnobservableTallyFromADarkOne(t *testing.T) {
 		for _, visible := range []bool{true, false} {
 			line := s.EraLine(visible)
 			if line == "" || !strings.Contains(line, "era-4 (v5)") {
-				t.Fatalf("G-EP-5 RED: phase %q visible=%v rendered %q", s.Phase, visible, line)
+				t.Fatalf("RED: phase %q visible=%v rendered %q", s.Phase, visible, line)
 			}
 		}
 	}

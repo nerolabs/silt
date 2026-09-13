@@ -69,7 +69,7 @@ func TestProviderWalkSkipsCooledPeer(t *testing.T) {
 	}
 }
 
-// TestProviderDiversitySweepSkipsCooledPeer is the #277 regression the 2026-08-12
+// TestProviderDiversitySweepSkipsCooledPeer is the regression the 2026-08-12
 // blind field test surfaced: TestProviderWalkSkipsCooledPeer above sets
 // DHTDomainCap = 0, which isolates AWAY the diversity-sweep second leg of
 // resolveProviders — the exact leg the daemon and client always run
@@ -77,7 +77,7 @@ func TestProviderWalkSkipsCooledPeer(t *testing.T) {
 // false confidence: it proved the base walk is gated and never exercised the
 // sweep. Here we turn the sweep ON and prove the negative cache is honored there
 // too — a cooled corpse must not eat a full RequestTimeout dial on every resolve
-// (the churn dial-storm, #277).
+// (the churn dial-storm).
 func TestProviderDiversitySweepSkipsCooledPeer(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.DHTDomainCap = 2 // ENGAGE the diversity sweep — exactly what daemon.go/client.go do
@@ -94,12 +94,12 @@ func TestProviderDiversitySweepSkipsCooledPeer(t *testing.T) {
 		t.Fatal("resolveProviders never completed")
 	}
 	if *deadDials != 0 {
-		t.Fatalf("#277: a cooled peer must be skipped by the diversity sweep too, "+
+		t.Fatalf("a cooled peer must be skipped by the diversity sweep too, "+
 			"but sweepProviders re-dialed the corpse: got %d dials, want 0", *deadDials)
 	}
 }
 
-// TestInboundMessageClearsDeadCache guards the recovery half of the #277 sweep gate:
+// TestInboundMessageClearsDeadCache guards the recovery half of the sweep gate:
 // once every resolve leg skips a negative-cached peer, a peer that RECOVERS (restart +
 // reprovide, #69; or a NATed peer now reachable via the relay) must be un-gated the
 // moment we hear from it — otherwise the sweep/walk keep skipping a peer that is
@@ -112,7 +112,7 @@ func TestInboundMessageClearsDeadCache(t *testing.T) {
 	searcher.dead[deadID] = corpse{until: searcher.clock.Now().Add(searcher.cfg.HolderCooldown)}
 	searcher.handle(deadID, ports.Message{Kind: ports.MsgHasChunk, ChunkID: ports.ChunkID{0x1}})
 	if _, still := searcher.dead[deadID]; still {
-		t.Fatal("a recovered peer we heard from must be removed from deadUntil (#69/#277)")
+		t.Fatal("a recovered peer we heard from must be removed from deadUntil (#69/)")
 	}
 
 	// Control: an ephemeral sender does NOT clear the cache (it is not routed to and
@@ -149,7 +149,7 @@ func TestProviderWalkWithoutCooldownDialsDeadPeer(t *testing.T) {
 // TestProbeShardSkipsCooledHolder covers the repair-probe half of the same fix:
 // the dispersion audit's HasChunk probe skips a negative-cached holder when a
 // live holder for the shard still exists (the anyLive guard, mirroring the fetch
-// path #226/#69), so a repair sweep isn't stalled re-dialing dead provider
+// path), so a repair sweep isn't stalled re-dialing dead provider
 // records shard-by-shard.
 func TestProbeShardSkipsCooledHolder(t *testing.T) {
 	cfg := DefaultConfig()

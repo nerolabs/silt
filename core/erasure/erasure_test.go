@@ -96,7 +96,8 @@ func TestImplicitZeroShardsCountAsAvailable(t *testing.T) {
 	}
 	shards := make([][]byte, p.N)
 	shards[p.K] = parity[0] // only one parity shard survives...
-	// ...data shard 0 lost, positions 1..3 implicit zeros, parity 1 lost.
+	// data shard 0 lost, positions 1.3 implicit zeros, parity 1
+	// lost.
 	if err := ReconstructStripe(p, shards, 1); err != nil {
 		t.Fatal(err)
 	}

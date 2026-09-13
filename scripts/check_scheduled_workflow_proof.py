@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 """A changed SCHEDULED workflow must show a green workflow_dispatch run.
 
-  scar:scheduled-workflow-never-observed-green-2026-09-11
-
-SCAR. `nightly-netem` landed inside a seven-item omnibus commit and was RED on its
-very first scheduled run, the night after it merged. It stayed red for 19 of its
-21 lifetime runs. Nobody had ever watched it run. A scheduled workflow is the one
+WHY. A scheduled workflow is the one
 kind of CI that merges WITHOUT executing: the PR that adds it goes green on the
 checks it did not change, the workflow first executes hours later on a cron, and
-its result lands in a tab no reviewer opens.
+its result lands in a tab nobody opens.
 
 THE RULE. If a PR adds or changes a workflow with an `on: schedule:` trigger, it
 must record a `workflow_dispatch` run of that workflow that CONCLUDED SUCCESS, and
@@ -18,7 +14,7 @@ this gate verifies that claim against the GitHub API rather than trusting the ro
   <workflow path>\t<run id>\t<head sha>\t<YYYY-MM-DD>\t<note>
 
 WHY THE ROW IS NOT ENOUGH. A pasted run URL is itself a claim, and a claim about a
-gate decays exactly like a cited test name — the repo has a scar for that too. So
+gate decays exactly like a cited test name — the same decay hits a cited test name. So
 the run id is resolved through the API and four things are checked: the run exists,
 it belongs to THIS workflow file, its event was `workflow_dispatch`, and its
 conclusion was `success`. A row naming a red run, a run of a different workflow, or
@@ -34,7 +30,7 @@ editing), never in CI.
 THE PROOF SHA IS EXPECTED TO TRAIL HEAD. The dispatch necessarily runs BEFORE the
 commit that records its id, so the proof's head sha is an ancestor of the PR head,
 not equal to it. It is recorded and checked against the API so the row names WHICH
-tree was proven — a reviewer can then see for themselves whether later commits
+tree was proven — a reader can then see for themselves whether later commits
 moved the workflow again.
 """
 import json
@@ -64,7 +60,7 @@ def has_schedule_trigger(text):
 
     Deliberately crude and deliberately OVER-inclusive: a `schedule:` key at any
     indentation counts. Over-inclusion costs one extra proof row; under-inclusion
-    is the whole scar.
+    is the whole point.
     """
     return re.search(r"^\s*schedule:\s*$", text, re.M) is not None
 
@@ -152,7 +148,7 @@ def main():
         if before.get(wf, {}).get("run_id") == row["run_id"]:
             failures.append(
                 f"{wf} changed but its proof row still names run {row['run_id']} — the run that\n"
-                f"    certified the PREVIOUS version. Dispatch the CHANGED workflow and record that run."
+                f"    proves the PREVIOUS version. Dispatch the CHANGED workflow and record that run."
             )
             continue
         if offline:

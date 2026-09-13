@@ -10,46 +10,44 @@ import (
 // era-4 (v5) trustless floor-box RECOMPUTE — Path-1 state-root recompute, sub-increment P1-e,
 // CLASS P (epoch rotation → epochSet + boundary scalars) — the FIFTH and LAST Path-1 class.
 //
-// CERTIFIED-IN-DIRECTION (2026-08-31):
-//   research: floorbox-recompute-classA-classP-wholeset-RESEARCH-CERTIFICATION-2026-08-31.md
-//     (P CERTIFIED-in-direction as a WHOLE-SET reconstruction; carries R-P-boundary-scalars,
-//      R-P-tally-regversion, R-P-sameblock-order, R-P-recovery. All FOLD-CAUGHT, never wrong-accept.)
-// Box STILL never-Accepts (R-scope). This reproduces validateEra3Roots' StateRoot equality
-// root-only for a v5 block at an epoch boundary (rotateEpoch fires). It stalls loud otherwise.
+// A WHOLE-SET reconstruction for classes A and P. All FOLD-CAUGHT, never
+// wrong-accept.) Box STILL never-Accepts (R-scope). This reproduces validateEra3Roots'
+// StateRoot equality root-only for a v5 block at an epoch boundary (rotateEpoch fires). It
+// stalls loud otherwise.
 //
-// WHY P WRITES FAR MORE THAN epochSet (R-P-boundary-scalars). rotateEpoch (chain.go:3393-3500)
+// WHY P WRITES FAR MORE THAN epochSet. rotateEpoch (chain.go)
 // writes, in order:
-//   - epochStart = h                       scalar — ALWAYS (every boundary). Measured: the sole
-//                                           change at a steady-state boundary.
-//   - early-return if !everMature           — a pre-latch boundary writes ONLY epochStart.
-//   - matureEpoch = true                    scalar — once, at the first mature rotation.
-//   - epochSet = clone(qualified_POST)      per-member epochSet leaves (ADD new, DELETE removed) +
-//     [normal] / liveQualifiedSet() [#535]  the epochSetRoot whole-set digest.
-//   - THREE activation tallies over the frozen set, each reading regVersion[id] per member,
-//     3*ready > 2*total, each gated on own-cfg *ActivationHeight == 0, each writing a lock-in bool +
-//     height scalar: gateLockedIn/gateHeight (#506, regVersion>=3), era3LockedIn/era3Height (>=4),
-//     era4LockedIn/era4Height (>=5).
+// - epochStart = h scalar — ALWAYS (every boundary). Measured: the sole
+// change at a steady-state boundary.
+// - early-return if !everMature — a pre-latch boundary writes ONLY epochStart.
+// - matureEpoch = true scalar — once, at the first mature rotation.
+// - epochSet = clone(qualified_POST) per-member epochSet leaves (ADD new, DELETE removed) +
+// [normal] / liveQualifiedSet [] the epochSetRoot whole-set digest.
+// - THREE activation tallies over the frozen set, each reading regVersion[id] per member,
+// 3*ready > 2*total, each gated on own-cfg *ActivationHeight == 0, each writing a lock-in bool +
+// height scalar: gateLockedIn/gateHeight, era3LockedIn/era3Height (>=4),
+// era4LockedIn/era4Height (>=5).
 //
-// THE FREEZE SOURCE IS THE POST-APPLY qualified SET (R-P-sameblock-order). Measured: a boundary
+// THE FREEZE SOURCE IS THE POST-APPLY qualified SET. Measured: a boundary
 // block that ALSO carries a bond reg freezes the just-bonded validator into epochSet. rotate runs
-// LAST (chain.go:3315), after this block's B/S/T qualified maintenance. So the box:
-//   1. anchors the pre-qualified id-set against prevStateRoot (qualifiedRoot pre-digest, C-1);
-//   2. applies the SAME block's S/B/T qualified deltas to it FIRST (threaded from the entry);
-//   3. freezes epochSet = clone(post-qualified) — reconstructs epochSetRoot as nodeSetMTH(post-set)
-//      and the per-member epochSet leaf ADD/DELETEs against the prior epochSet;
-//   4. runs the three tallies over the post-qualified set using per-member regVersion WITNESSES and
-//      own-cfg thresholds/activation guards (R-P-tally-regversion) → reconstructs the lock-in scalars;
-//   5. reconstructs epochStart + matureEpoch scalars.
+// LAST (chain.go), after this block's B/S/T qualified maintenance. So the box:
+// 1. anchors the pre-qualified id-set against prevStateRoot (qualifiedRoot pre-digest);
+// 2. applies the SAME block's S/B/T qualified deltas to it FIRST (threaded from the entry);
+// 3. freezes epochSet = clone(post-qualified) — reconstructs epochSetRoot as nodeSetMTH(post-set)
+// And the per-member epochSet leaf ADD/DELETEs against the prior epochSet;
+// 4. runs the three tallies over the post-qualified set using per-member regVersion WITNESSES and
+// own-cfg thresholds/activation guards → reconstructs the lock-in scalars;
+// 5. reconstructs epochStart + matureEpoch scalars.
 // Freezing the PRE-delta set is the I3 stale-capture divergence (fold-caught: wrong epochSetRoot ⇒
-// post-root != StateRoot ⇒ stall). The #535 recovery boundary re-bases from the box's OWN
-// LivenessRecoveryHeight config (C-2, R-P-recovery), never a witness.
+// post-root != StateRoot ⇒ stall). The recovery boundary re-bases from the box's OWN
+// LivenessRecoveryHeight config, never a witness.
 //
 // SELECTION IS TOTAL — NO ORDERING HAZARD. The freeze is clone(qualified) — a set COPY, no cap, no
 // top-N, no tie-break, no sort. Every qualified member is frozen; the committed epochSet leaves are
 // per-member (order-free) and epochSetRoot sorts canonically. Byte-exact, reproducible.
 //
 // COST — HONEST. O(|qualified|) freeze + tallies + O(|prior epochSet|) removals = O(registry). Rides
-// R-membership (OPEN, load-bearing for the #657 accept-flip).
+// R-membership (OPEN, load-bearing for the accept-flip).
 
 // StateRootRotateScalar carries one committed scalar leaf's pre-state value + its inclusion proof
 // against prevStateRoot. The box computes the post-value itself (own-cfg + the reconstructed frozen
@@ -89,7 +87,7 @@ type StateRootRotateMember struct {
 	// (empty for an ADD/overwrite; present only in PriorEpochSet entries that leave the set).
 	EpochSetDeleteSiblings []statehash.FoldSibling
 
-	// R1.2 WITNESS-SOUNDNESS ANCHORS (per-member proofs against prevStateRoot, BUILD notes D3/D4). The
+	// WITNESS-SOUNDNESS ANCHORS (per-member proofs against prevStateRoot, BUILD notes D3/D4). The
 	// freeze writes EncodeInt64(Weight) into the epochSet||id leaf and the tally reads Weight/RegVersion;
 	// a forged Weight moves only the membership-only epochSet digest's per-member leaf (the ForgedFrozenWeight
 	// attack), and a forged RegVersion/RegVersionKnown flips a lock-in tally (the ForgedRegVersion attacks).
@@ -102,10 +100,11 @@ type StateRootRotateMember struct {
 	QualifiedProof statehash.Witness
 	// RegVersionProof anchors RegVersion/RegVersionKnown for a STEADY-STATE member: present-proof of
 	// regVersion||id → EncodeUint8(RegVersion) (RegVersionKnown=true) OR non-membership proof
-	// (RegVersionKnown=false), against prevStateRoot. For an id whose regVersion||id this block MUTATED
-	// (bonded in-block), the box cross-checks RegVersion against the class-B regVerWrites[id] value
-	// (fold-anchored, = apply()'s post-write tally input) and RegVersionProof is NOT read — the DIRECTION
-	// B in-block cross-check (classP-anchoring cert 2026-09-02 P-r2), built in anchorRotateMember.
+	// (RegVersionKnown=false), against prevStateRoot. For an id whose regVersion||id this block
+	// MUTATED (bonded in-block), the box cross-checks RegVersion against the class-B regVerWrites[id]
+	// value (fold-anchored, = apply's post-write tally input) and RegVersionProof is NOT read — the
+	// DIRECTION B in-block cross-check, built in
+	// anchorRotateMember.
 	RegVersionProof statehash.Witness
 }
 
@@ -145,22 +144,22 @@ type StateRootRotateWitness struct {
 }
 
 // reconstructPostQualified rebuilds the POST-apply qualified id-set the class-P freeze copies. It
-// replays this block's qualified-mutating classes in apply() ORDER (bond regs → TTL sweep → slashes,
-// chain.go:3228-3290) on the anchored pre-qualified set — the same order apply() runs, so a
+// replays this block's qualified-mutating classes in apply ORDER (bond regs → TTL sweep → slashes,
+// chain.go) on the anchored pre-qualified set — the same order apply runs, so a
 // pathological compound block (e.g. an id that bonds then is slashed in ONE block) reconstructs
 // byte-identically. A wrong order/set diverges epochSetRoot ⇒ fold-caught ⇒ stall.
 //
 // The pre-qualified anchor is the qualifiedRoot digest witness (verified against prevStateRoot). B's
 // full post-qualified set (from bondRegOpsWithQual) is authoritative for B's touched ids; T deletes
-// the expired set; S deletes the slashed culprits — matching qualifiedMaintain at each apply() site.
+// the expired set; S deletes the slashed culprits — matching qualifiedMaintain at each apply site.
 func (c *Chain) reconstructPostQualified(prevStateRoot ports.Hash, b Block, w StateRootWitness) (map[ports.NodeID]struct{}, error) {
 	post, _, _, err := c.reconstructPostQualifiedWithWrites(prevStateRoot, b, w)
 	return post, err
 }
 
 // reconstructPostQualifiedWithWrites is reconstructPostQualified that ALSO returns the per-id
-// qualified leaf writes class B derived this block (R1.2 class-P Weight anchor, BUILD note D4). For
-// an id bonded/resized in THIS block the pre-state qualified||id leaf is stale/absent, so the
+// qualified leaf writes class B derived this block (class-P Weight anchor, BUILD note D4). For an
+// id bonded/resized in THIS block the pre-state qualified||id leaf is stale/absent, so the
 // steady-state qualified-leaf anchor is wrong; the box cross-checks the frozen Weight against the
 // B-derived qualWrites[id] (itself anchored by the class-B fold) instead. qualWrites is nil for a
 // non-bond-reg boundary.
@@ -177,8 +176,8 @@ func (c *Chain) reconstructPostQualifiedWithWrites(prevStateRoot ports.Hash, b B
 	var qualWrites map[ports.NodeID][]byte
 	var regVerWrites map[ports.NodeID]uint8
 
-	// (1) Bond regs (apply() FIRST): B computes the whole post-qualified set from the same pre-qualified
-	// anchor. Adopt it wholesale as the qualified set post-B.
+	// (1) Bond regs (apply FIRST): B computes the whole post-qualified set from the same
+	// pre-qualified anchor. Adopt it wholesale as the qualified set post-B.
 	if len(b.BondRegs) > 0 {
 		_, _, bPostQual, bQualWrites, bRegVerWrites, bErr := c.bondRegOpsWithQualWrites(prevStateRoot, b, w)
 		if bErr != nil {
@@ -188,13 +187,15 @@ func (c *Chain) reconstructPostQualifiedWithWrites(prevStateRoot ports.Hash, b B
 		qualWrites = bQualWrites
 		regVerWrites = bRegVerWrites
 	}
-	// (2) TTL sweep (apply() SECOND): each expired id leaves qualified.
+	// (2) TTL sweep (apply SECOND): each expired id leaves
+	// qualified.
 	if w.TTLSweep != nil {
 		for _, id := range w.TTLSweep.Members {
 			delete(post, id)
 		}
 	}
-	// (3) Slashes (apply() THIRD): each slashed culprit leaves qualified (slashed ⇒ never qualified).
+	// (3) Slashes (apply THIRD): each slashed culprit leaves qualified (slashed ⇒ never
+	// qualified).
 	for i := range b.Slashes {
 		delete(post, b.Slashes[i].CulpritID())
 	}
@@ -202,7 +203,7 @@ func (c *Chain) reconstructPostQualifiedWithWrites(prevStateRoot ports.Hash, b B
 }
 
 // hasCarrierSigners reports whether the block carries a LastCommit attestation carrier — the only
-// class-A dispatch condition since R-BOX-ATTESTS O1 (2026-09-03) re-pointed the seating source from
+// class-A dispatch condition since the carrier re-point moved the seating source from
 // the block's own uncovered Atts to the hash-covered carrier. The PARENT-proposer exclusion is
 // applied INSIDE attOps (it needs the anchored parent-proposer witness, which this predicate does
 // not have); a carrier holding only the parent's proposer therefore dispatches class A and emits
@@ -214,13 +215,13 @@ func hasCarrierSigners(b Block) bool { return len(b.LastCommit) > 0 }
 // Every op carries its own pre-state proof from the rotate witness (verified against prevStateRoot
 // by the fold), so P is self-contained — it does NOT ride the entry's ChangedLeaves match path.
 // postQualified is the entry-threaded POST-apply qualified id-set (pre-qualified + same-block S/B/T
-// deltas); the freeze source (R-P-sameblock-order).
+// deltas); the freeze source.
 //
-// R-P-recovery: at the #535 recovery boundary the freeze source is liveQualifiedSet() (a
-// bonded/slashed/MinBond re-scan), which the box CANNOT reconstruct from the qualified accelerator
-// alone. The recovery re-base is a ratified trust-the-directive carve-out (C-2); the box does not
-// reproduce it from committed state, so it STALLS at a recovery boundary (never wrong-accepts — the
-// safety-first behavior the operator directive assumes).
+// At the recovery boundary the freeze source is liveQualifiedSet (a bonded/slashed/MinBond
+// re-scan), which the box CANNOT reconstruct from the qualified accelerator alone. The recovery
+// re-base is a trust-the-directive carve-out; the box does not reproduce it from
+// committed state, so it STALLS at a recovery boundary (never wrong-accepts — the safety-first
+// behavior the operator directive assumes).
 func (c *Chain) rotateOps(
 	prevStateRoot ports.Hash,
 	b Block,
@@ -234,27 +235,27 @@ func (c *Chain) rotateOps(
 	if rw == nil {
 		return nil, fmt.Errorf("%w: epoch boundary but no rotate witness", ErrRecomputeStateRootDigest)
 	}
-	// R-P-recovery: the box cannot reconstruct liveQualifiedSet() from the qualified digest alone.
+	// The box cannot reconstruct liveQualifiedSet from the qualified digest alone.
 	// Stall at a recovery boundary (never wrong-accept).
 	//
-	// H-1 (D0, certification §2.1/§2.2): ONE predicate, and it is the STRICTER form. This site used
-	// to test LivenessRecoveryHeight alone while isAmbiguousRecoveryBoundary also required
-	// epochsEnabled, EpochBlocks != 0 and h % EpochBlocks == 0. The two agreed only because rotateOps
-	// is reached only on an epoch boundary — two copies of one consensus-adjacent predicate agreeing
-	// by reachability is a drift hazard, so the copy is gone. Taking the LOOSER form at both sites
+	// H-1 (D0/§2.2): ONE predicate, and it is the STRICTER form. This site used to test
+	// LivenessRecoveryHeight alone while isAmbiguousRecoveryBoundary also required epochsEnabled,
+	// EpochBlocks != 0 and h % EpochBlocks == 0. The two agreed only because rotateOps is reached
+	// only on an epoch boundary — two copies of one consensus-adjacent predicate agreeing by
+	// reachability is a drift hazard, so the copy is gone. Taking the LOOSER form at both sites
 	// was the rejected direction: it would newly stall at non-boundary heights, a real liveness
 	// regression bought for nothing.
 	if c.isAmbiguousRecoveryBoundary(b.Height) {
-		return nil, fmt.Errorf("%w: height %d is the #535 recovery boundary (liveQualifiedSet re-base is a trust-the-directive carve-out, not reconstructed)",
+		return nil, fmt.Errorf("%w: height %d is the liveness recovery boundary (liveQualifiedSet re-base is a trust-the-directive carve-out, not reconstructed)",
 			ErrRecomputeStateRootScopeStall, b.Height)
 	}
 
-	// THE MATURITY LATCH READ (class M owns the WRITE). apply() latches everMature BEFORE rotateEpoch
-	// (chain.go:3303-3316): post_everMature = pre_everMature || matureNow(thisBlock). rotate's
+	// THE MATURITY LATCH READ (class M owns the WRITE). apply latches everMature BEFORE rotateEpoch
+	// (chain.go): post_everMature = pre_everMature || matureNow(thisBlock). rotate's
 	// early-return + freeze read the POST-latch value. The box computes that value ONCE in the entry
-	// (class M, floorbox_recompute_stateroot_maturitylatch_v5.go, the SINGLE owner of the tagEverMature
-	// leaf write) and threads it here as everMature — so P gates the freeze on it WITHOUT re-deriving or
-	// re-emitting the leaf (no double-emit at a boundary-coincident crossing).
+	// (class M, floorbox_recompute_stateroot_maturitylatch_v5.go, the SINGLE owner of the
+	// tagEverMature leaf write) and threads it here as everMature — so P gates the freeze on it
+	// WITHOUT re-deriving or re-emitting the leaf (no double-emit at a boundary-coincident crossing).
 
 	var ops []statehash.FoldOp
 
@@ -271,7 +272,7 @@ func (c *Chain) rotateOps(
 
 	// matureEpoch = true. Fold iff the pre-value was false (monotonic one-way latch).
 	//
-	// DIRECTION A (class-P classP-anchoring cert 2026-09-02, P-s2): a monotonic scalar whose emit the
+	// PRE-STATE ANCHOR (class-P, P-s2): a monotonic scalar whose emit the
 	// box may SUPPRESS must have its pre-state value Resolved against prevStateRoot UNCONDITIONALLY,
 	// before the emit decision. scalarFoldOp folds (and so fold-verifies OldValue) ONLY on emit; a
 	// forged matureEpoch.OldValue=true suppresses the emit and is never fold-checked, so the box would
@@ -290,10 +291,10 @@ func (c *Chain) rotateOps(
 	regVersionByID := make(map[ports.NodeID]uint8, len(rw.Members))
 	for i := range rw.Members {
 		m := rw.Members[i]
-		// R1.2: ANCHOR the frozen Weight and RegVersion against prevStateRoot BEFORE they enter the
-		// tally / epochSet-leaf freeze (BUILD notes D3/D4). This anchors the INPUTS to the activation
-		// quorum; the tally arithmetic (3*ready>2*total) in rotateTallyOps is UNTOUCHED (PE constraint 2,
-		// the #402 non-fork rule).
+		// ANCHOR the frozen Weight and RegVersion against prevStateRoot BEFORE they enter the
+		// tally / epochSet-leaf freeze (BUILD notes D3/D4). This anchors the INPUTS to the
+		// activation quorum; the tally arithmetic (3*ready>2*total) in rotateTallyOps is
+		// UNTOUCHED.
 		if err := c.anchorRotateMember(prevStateRoot, m, qualWrites, regVerWrites); err != nil {
 			return nil, err
 		}
@@ -330,7 +331,7 @@ func (c *Chain) rotateOps(
 
 	// The three activation tallies over the frozen set (own-cfg thresholds + activation guards). Each
 	// folds a lock-in bool + height scalar iff it flips this boundary. regVersion is a per-member
-	// WITNESS (R-P-tally-regversion); the thresholds (3/4/5) and *ActivationHeight guards are own-cfg.
+	// WITNESS; the thresholds (3/4/5) and *ActivationHeight guards are own-cfg.
 	tallyOps, tallyErr := c.rotateTallyOps(prevStateRoot, b, rw, frozen, regVersionByID, weightByID)
 	if tallyErr != nil {
 		return nil, tallyErr
@@ -341,19 +342,19 @@ func (c *Chain) rotateOps(
 }
 
 // anchorRotateMember re-anchors a frozen member's untrusted Weight and RegVersion against
-// prevStateRoot (R1.2, BUILD notes D3/D4), so a forged value cannot enter the epochSet-leaf freeze or
-// the activation tally. It touches NO tally arithmetic (PE constraint 2 / #402 non-fork).
+// prevStateRoot (BUILD notes D3/D4), so a forged value cannot enter the epochSet-leaf freeze or the
+// activation tally. It touches NO tally arithmetic.
 //
 // Weight: a member whose qualified||id leaf this block MUTATED (present in qualWrites) is cross-checked
 // against the class-B-derived write (anchored by the class-B fold); a steady-state member's Weight is
 // required to be the committed qualified||id value under prevStateRoot (present-proof at EncodeInt64(Weight)).
 //
-// RegVersion (DIRECTION B, classP-anchoring cert 2026-09-02 P-r2): a member whose regVersion||id leaf
+// RegVersion (DIRECTION B, the class-P anchoring rule 2026-09-02 P-r2): a member whose regVersion||id leaf
 // this block MUTATED (bonded in-block, present in regVerWrites) is cross-checked against the class-B
-// POST-write regVersion — the value apply()'s rotate tally reads (chain.go:3444), fold-anchored by the
+// POST-write regVersion — the value apply's rotate tally reads (chain.go), fold-anchored by the
 // class-B changed leaf — and RegVersionProof is NOT read. Without this the fresh in-block bond has no
 // pre-state regVersion leaf, so its honest witness would set RegVersionKnown=false → the tally counts
-// it as 0 → the box UNDER-counts ready weight and false-stalls where apply() finalizes. A steady-state
+// it as 0 → the box UNDER-counts ready weight and false-stalls where apply finalizes. A steady-state
 // member's RegVersion is matched to the PRE-state committed regVersion||id leaf — present-proof at
 // EncodeUint8(RegVersion) when RegVersionKnown, non-membership proof otherwise. A forged
 // RegVersion/RegVersionKnown that claims a value it cannot prove (pre-state) or that mismatches the
@@ -449,21 +450,21 @@ func rotateEpochSetLeafOps(
 	return ops, nil
 }
 
-// rotateTallyOps reproduces rotateEpoch's three activation tallies (chain.go:3440-3499). For each
+// rotateTallyOps reproduces rotateEpoch's three activation tallies (chain.go). For each
 // tally it sums the frozen-set weight (total) and the ready weight (regVersion >= threshold), locks
 // in iff `!locked && Config.*ActivationHeight == 0 && EpochBlocks > 0 && total > 0 && 3*ready >
 // 2*total`, and folds the lock-in bool + height scalar. It folds a scalar only when the box's
 // post-value differs from the witnessed pre-value.
 //
-// DIRECTION A (classP-anchoring cert 2026-09-02, P-s3/s5/s7 + P-s4/s6/s8): the three lock-in bools
+// PRE-STATE ANCHOR (class-P, P-s3/s5/s7 + P-s4/s6/s8): the three lock-in bools
 // (GateLockedIn/Era3LockedIn/Era4LockedIn.OldValue) are read RAW as BRANCH predicates below to
 // decide whether to run each tally, AND their emit is suppressible. A forged OldValue=true skips
 // the tally, so no lock-in op is emitted and the forged OldValue is never fold-checked — the box
 // wrong-accepts a lock-free root. Anchor each bool's committed pre-value against prevStateRoot
 // UNCONDITIONALLY, BEFORE the branch read, so the predicate is trusted. The height scalars ride the
-// bool (cert §1b): suppressing the bool suppresses the pair, so anchoring the bool closes them, and
+// bool: suppressing the bool suppresses the pair, so anchoring the bool closes them, and
 // they keep their emit-time fold anchor. The tally ARITHMETIC (3*ready>2*total, the 3/4/5 levels,
-// the *ActivationHeight guards) is byte-for-byte UNTOUCHED (#402 non-fork / PE constraint 2) — this
+// the *ActivationHeight guards) is byte-for-byte UNTOUCHED — this
 // anchors the INPUT bool, never the threshold.
 func (c *Chain) rotateTallyOps(
 	prevStateRoot ports.Hash,
@@ -473,7 +474,7 @@ func (c *Chain) rotateTallyOps(
 	regVersionByID map[ports.NodeID]uint8,
 	weightByID map[ports.NodeID]int64,
 ) ([]statehash.FoldOp, error) {
-	// DIRECTION A: anchor the three lock-in branch-predicate bools before any branch read.
+	// PRE-STATE ANCHOR: anchor the three lock-in branch-predicate bools before any branch read.
 	for _, la := range []struct {
 		tag string
 		wit StateRootRotateScalar
@@ -486,16 +487,16 @@ func (c *Chain) rotateTallyOps(
 			return nil, err
 		}
 	}
-	// The tally ARITHMETIC is factored out so the #402 non-fork arithmetic pins can exercise it in
-	// isolation (without a prevStateRoot). The anchor above is the only Direction-A addition on the
-	// production path; the arithmetic below is byte-for-byte the certified quorum rule.
+	// The tally ARITHMETIC is factored out so the non-fork arithmetic pins can exercise it in
+	// isolation (without a prevStateRoot). The anchor above is the only Direction-A addition on
+	// the production path; the arithmetic below is byte-for-byte the quorum rule.
 	return c.rotateTallyArithmeticOps(b, rw, frozen, regVersionByID, weightByID), nil
 }
 
 // rotateTallyArithmeticOps is the pure tally ARITHMETIC of the three activation lock-ins, split out of
-// rotateTallyOps so the anchor (Direction A) is not on this path. It reads no prevStateRoot: the
+// rotateTallyOps so the anchor (pre-state anchor) is not on this path. It reads no prevStateRoot: the
 // caller (rotateTallyOps) has already anchored the lock-in branch predicates. It reproduces
-// rotateEpoch's quorum (chain.go:3440-3499) byte-for-byte (#402 non-fork / PE constraint 2): sum the
+// rotateEpoch's quorum (chain.go) byte-for-byte: sum the
 // frozen-set weight (total) and the ready weight (regVersion >= threshold), lock in iff `!locked &&
 // Config.*ActivationHeight == 0 && EpochBlocks > 0 && total > 0 && 3*ready > 2*total`, folding the
 // lock-in bool + height scalar only when the box's post-value differs from the witnessed pre-value.
@@ -523,7 +524,7 @@ func (c *Chain) rotateTallyArithmeticOps(
 			ops = append(ops, op)
 		}
 	}
-	// #506 gate tally (regVersion >= BlockVersionRegGate == 3).
+	// gate tally (regVersion >= BlockVersionRegGate == 3).
 	if !decodeBoolLeaf(rw.GateLockedIn.OldValue) && c.cfg.RegGateActivationHeight == 0 && c.cfg.EpochBlocks > 0 {
 		total, ready := tally(BlockVersionRegGate)
 		if total > 0 && 3*ready > 2*total {
@@ -567,21 +568,21 @@ func scalarFoldOp(tag string, wit StateRootRotateScalar, newValue []byte) (state
 }
 
 // anchorRotateScalar is the DIRECTION-A pre-state anchor for a SUPPRESSIBLE monotonic scalar
-// (classP-anchoring cert 2026-09-02, §2 Direction A). A scalar whose emit the box may SKIP (its
+// A scalar whose emit the box may SKIP (its
 // post-value can equal the witnessed pre-value) must have its pre-state OldValue Resolved against
 // prevStateRoot UNCONDITIONALLY — before, and independently of, the emit/branch decision. Without
 // this, scalarFoldOp fold-verifies OldValue ONLY on emit, so a forged OldValue that suppresses the
 // emit (or gates a branch) is never checked and the box wrong-accepts a root that omits the change.
 //
-// Every scalar leaf is committed unconditionally (statehash.go:196-253; EncodeBool(false)=[]byte{0}
+// Every scalar leaf is committed unconditionally (statehash.go; EncodeBool(false)=[]byte{0}
 // is non-empty), so a committed scalar leaf is ALWAYS present pre-state. The anchor therefore
 // requires IsProvenPresent: a forged OldValue mismatches the committed leaf ⇒ VerifyProof fails ⇒
-// NoWitness (witness.go:216) ⇒ stall. This is STALL-ADDING ONLY — NoWitness never yields an Accept
-// (the C-7 banned move stays unrepresentable at the primitive).
+// NoWitness (witness.go) ⇒ stall. This is STALL-ADDING ONLY — NoWitness never yields an Accept
+// (the banned move stays unrepresentable at the primitive).
 func anchorRotateScalar(prevStateRoot ports.Hash, tag string, wit StateRootRotateScalar) error {
 	key := statehash.Key(tag, nil)
 	if !statehash.Resolve(prevStateRoot, key, wit.OldValue, wit.Proof).IsProvenPresent() {
-		return fmt.Errorf("%w: suppressible scalar %q OldValue not proven present against prevStateRoot (Direction A anchor)",
+		return fmt.Errorf("%w: suppressible scalar %q OldValue not proven present against prevStateRoot (pre-state anchor)",
 			ErrRecomputeStateRootDigest, tag)
 	}
 	return nil

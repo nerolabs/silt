@@ -1,6 +1,6 @@
 package node
 
-// R-E2E-ERA4-FIXTURE, the POSTURE half (freeze manifest item 17).
+//The POSTURE half (freeze manifest item 17).
 //
 // WHAT WAS OWED, AND WHY. The item's FORMAT half discharged as a side effect of the
 // -era4-activation-height default; the POSTURE half — objective + bonded +
@@ -8,20 +8,20 @@ package node
 // resolved against a chain in that posture. Read one at a time, which is the only way
 // to see it, because each fixture is missing a DIFFERENT leg:
 //
-//   - demandkeys_test.go newIssuerKeyFixture, sim demandbinding_test.go
-//     issuerKeyGenesis and e2e relay_paid_test.go anchorChainFor all build
-//     chain.Config{Quorum: 1} — no MinBond, no ByzantineQuorum, no EpochBlocks — and
-//     place the IssuerKeyReg in GENESIS. So the binding goes through
-//     validateGenesisIssuerKeys, NOT validateIssuerKeys; they are different functions
-//     with different rules, and the normal door's epoch window never runs. With
-//     cfg.EpochBlocks == 0, blockEpoch and chainEpoch are identically 0, so every
-//     registration and every pin lives at epoch 0.
-//   - r04b_c3_gates_test.go c3Chain DOES set EpochBlocks (8) and mints v5 past
-//     genesis, but it is "in legacy mode so block production stays plain" — its own
-//     words. cfg.MinBond is 0 and no bond verifier is wired, so chain.objective() is
-//     false, chain.epochsEnabled() (EpochBlocks > 0 AND objective()) is false, and
-//     validateIssuerKeys' bonded clause is INERT by its own terms
-//     ("c.cfg.MinBond > 0 && c.bonded[...] <= 0" — issuerkey.go).
+// - demandkeys_test.go newIssuerKeyFixture, sim demandbinding_test.go
+// issuerKeyGenesis and e2e relay_paid_test.go anchorChainFor all build
+// chain.Config{Quorum: 1} — no MinBond, no ByzantineQuorum, no EpochBlocks — and
+// place the IssuerKeyReg in GENESIS. So the binding goes through
+// validateGenesisIssuerKeys, NOT validateIssuerKeys; they are different functions
+// with different rules, and the normal door's epoch window never runs. With
+// cfg.EpochBlocks == 0, blockEpoch and chainEpoch are identically 0, so every
+// registration and every pin lives at epoch 0.
+// - credit_lane_gates_test.go c3Chain DOES set EpochBlocks (8) and mints v5 past
+// genesis, but it is "in legacy mode so block production stays plain" — its own
+// words. cfg.MinBond is 0 and no bond verifier is wired, so chain.objective is
+// false, chain.epochsEnabled (EpochBlocks > 0 AND objective) is false, and
+// validateIssuerKeys' bonded clause is INERT by its own terms ("c.cfg.MinBond >
+// 0 && c.bonded[...] <= 0" — issuerkey.go).
 //
 // So the bonded clause has never gated a pin that later succeeded, and no positive pin
 // has ever resolved a binding committed at a non-zero epoch on an objective chain.
@@ -35,9 +35,9 @@ package node
 // AND IT DRIVES BOTH ARMS ON THAT ONE FIXTURE. A green refusal with no demonstrated
 // accept is decoration, so the discrimination is what is asserted:
 //
-//	ACCEPT   — the committed binding matches the served key   -> pinned == 1
-//	REFUSE-A — ABSENT: an issuer that committed no binding    -> pinned == 0
-//	REFUSE-M — MISMATCH: a served key off the commitment      -> pinned == 0
+//	ACCEPT — the committed binding matches the served key -> pinned == 1
+//	REFUSE-A — ABSENT: an issuer that committed no binding -> pinned == 0
+//	REFUSE-M — MISMATCH: a served key off the commitment -> pinned == 0
 //
 // In EVERY arm the resolving fetcher HAS A CHAIN, asserted explicitly. That is the
 // point of the gate. On the OS-process e2e fixtures the refusal is NOT attributable:
@@ -225,8 +225,8 @@ func pinFrom(t *testing.T, fetcher *Node, net *simnet.Network, issuer ports.Node
 	return pinned, perr
 }
 
-// TestIssuerKeyBindingResolvesInTheObjectiveBondedEpochPosture is the R-E2E-ERA4-FIXTURE
-// posture gate. See the file header for what it closes and what it measured.
+// TestIssuerKeyBindingResolvesInTheObjectiveBondedEpochPosture is the posture gate. See
+// the file header for what it closes and what it measured.
 func TestIssuerKeyBindingResolvesInTheObjectiveBondedEpochPosture(t *testing.T) {
 	const epochBlocks = 4
 	nodes, ids, net, _, _ := era4EpochNet(t, 4, epochBlocks)

@@ -9,39 +9,37 @@ import (
 )
 
 // =============================================================================
-// THE COLD-BOX TIER (R-COLD-BOX-HARNESS)
+// THE COLD-BOX TIER
 // =============================================================================
 //
-// Research cert: floorbox-R-FOLD-LIVE-STATE-READS-RESEARCH-CERTIFICATION-2026-09-02.md
-// (§"What lifts the gate" items 2 and 3).
+// // WHY THIS TIER EXISTS. Every recompute gate in this package runs the recompute ON THE CHAIN THAT
+// APPLIED THE HISTORY — the fixtures build `c`, `c.apply(.)` the blocks, and then call
+// `recomputeViaHead(c,.)`. The 29 `cloneForDryRun` clones copy `matureEpoch` by value
+// (era3validity.go). So every existing gate ran against a box whose live latch fields happened to
+// match the committed pre-state. The test tier SHARED THE PRODUCER'S BLIND SPOT.
 //
-// WHY THIS TIER EXISTS. Every recompute gate in this package runs the recompute ON THE CHAIN THAT
-// APPLIED THE HISTORY — the fixtures build `c`, `c.apply(...)` the blocks, and then call
-// `recomputeViaHead(c, ...)`. The 29 `cloneForDryRun()` clones copy `matureEpoch`
-// by value (era3validity.go). So every existing gate ran against a box whose live latch fields
-// happened to match the committed pre-state. The test tier SHARED THE PRODUCER'S BLIND SPOT.
-//
-// The deployment target does not look like that. It "holds NO registry and replays NO apply()"
+// The deployment target does not look like that. It "holds NO registry and replays NO apply"
 // (floorbox_recompute_stateroot_v5.go). Its `matureEpoch` / `everMature` are NEVER written — the
 // only production writers are apply→rotateEpoch and adopt. That made the class-A mature-epoch branch
 // UNREACHABLE on the real target and screened every mature-epoch block under the pre-maturity rule:
 // a wrong-accept of a mid-epoch joiner against an attacker's root, and a false stall on an honest
 // block, with every witness proof passing.
 //
-// Third occurrence of this shape in the floor-box spine (R1.3 fold-caught premise, class-P
-// suppression, now live-state reads). The Tester's third-time rule: encode it as a permanent TIER,
-// not a one-off test. `coldBox` is that tier — a box built by `New(cfg)` + `SetBondVerifier` that has
-// NEVER applied a block, holds no registry, and is fed ONLY (prevStateRoot, committedStateRoot, b, w).
-// Any gate re-run through `coldRecompute` is a gate that cannot be passing by live-state coincidence.
+// Third occurrence of this shape in the floor-box spine (fold-caught premise, class-P suppression, now
+// live-state reads). The third time: encode it as a permanent TIER, not a one-off test. `coldBox`
+// is that tier — a box built by `New(cfg)` + `SetBondVerifier` that has NEVER applied a block, holds
+// no registry, and is fed ONLY (prevStateRoot, committedStateRoot, b, w). Any gate re-run through
+// `coldRecompute` is a gate that cannot be passing by live-state coincidence.
 
-// coldBox returns a FRESH box: New(cfg) + the wired bond verifier, with NO apply(), NO adopt(), NO
+// coldBox returns a FRESH box: New(cfg) + the wired bond verifier, with NO apply, NO adopt, NO
 // registry, and every live accelerator field at its zero value. It asserts that state so a future
 // refactor that gives `New` a warm start cannot silently re-mask the tier.
 func coldBox(t *testing.T, cfg Config) *Chain {
 	t.Helper()
-	// rep() is the LEGACY qualification source; a cold box must never reach it (the class-A screen
-	// asserts objective mode). Return a value that WOULD qualify, so if the legacy branch is ever
-	// reached the test fails by producing a wrong write-set, not by a coincidental zero.
+	// rep is the LEGACY qualification source; a cold box must never reach it (the class-A
+	// screen asserts objective mode). Return a value that WOULD qualify, so if the legacy
+	// branch is ever reached the test fails by producing a wrong write-set, not by a
+	// coincidental zero.
 	c := New(cfg, func(ports.NodeID) int64 { return 1 << 30 })
 	c.SetBondVerifier(objectiveVerify)
 
@@ -69,7 +67,7 @@ func coldBox(t *testing.T, cfg Config) *Chain {
 // trustless contract: the verdict must be a function of (prevStateRoot, committedStateRoot, b, w,
 // own-cfg) and NOTHING else. Any gate that passes warm but not cold was passing on live state.
 //
-// `warm` supplies ONLY two box-owned inputs: its cfg (C-6) and its head's proposer id — the
+// `warm` supplies ONLY two box-owned inputs: its cfg and its head's proposer id — the
 // stand-in for the box's own HeadRef.ProposerID (the parent block a real box holds). Nothing else
 // of the warm chain reaches the cold box.
 func coldRecompute(t *testing.T, warm *Chain, prevStateRoot, committedStateRoot ports.Hash, b Block, w StateRootWitness) error {
@@ -124,10 +122,10 @@ func coldCases() []coldCase {
 			},
 		},
 		{
-			// Class M + P: the ON-boundary handoff block — the crossing AND the first mature rotation.
-			// This is the case the cert singles out: apply() screens THIS block's atts under the PRE
-			// value (rotate-LAST), and a box reading a post-handoff live field would screen them under
-			// the post value.
+			// Class M + P: the ON-boundary handoff block — the crossing AND the first mature
+			// rotation. This is the case the research singles out: apply screens THIS block's
+			// atts under the PRE value (rotate-LAST), and a box reading a post-handoff live
+			// field would screen them under the post value.
 			name: "classM+P/on-boundary-handoff",
 			build: func(t *testing.T) (*Chain, ports.Hash, ports.Hash, Block, StateRootWitness) {
 				f := buildHandoffFixture(t)
@@ -157,7 +155,7 @@ func TestColdBox_ExistingGatesAgreeCold(t *testing.T) {
 			if err := coldRecompute(t, warm, prevRoot, committed, b, w); err != nil {
 				t.Fatalf("COLD-BOX RED: the recompute AGREES warm but STALLS on a cold box: %v\n"+
 					"  A cold box is the deployment target (no apply(), no registry). A verdict that differs\n"+
-					"  warm-vs-cold means the recompute read live box state, not the certified inputs.", err)
+					"  warm-vs-cold means the recompute read live box state, not the inputs.", err)
 			}
 		})
 	}
@@ -174,11 +172,11 @@ func TestColdBox_ExistingAdversarialGatesStallCold(t *testing.T) {
 			tampered[0] ^= 0xff
 			err := coldRecompute(t, warm, prevRoot, tampered, b, w)
 			if err == nil {
-				t.Fatalf("COLD-BOX WRONG-ACCEPT: a tampered committed StateRoot was accepted cold")
+				t.Fatalf("COLD-BOX WRON: a tampered committed StateRoot was accepted cold")
 			}
 			if !errors.Is(err, ErrRecomputeStateRootMismatch) && !errors.Is(err, ErrRecomputeStateRootMaturity) &&
 				!errors.Is(err, ErrRecomputeStateRootFold) && !errors.Is(err, ErrRecomputeStateRootDigest) {
-				t.Fatalf("COLD-BOX: expected a recompute stall for a tampered root, got %v", err)
+				t.Fatalf("COL: expected a recompute stall for a tampered root, got %v", err)
 			}
 		})
 	}
@@ -188,10 +186,10 @@ func TestColdBox_ExistingAdversarialGatesStallCold(t *testing.T) {
 // PART 2 — the D1 divergence class, DRIVEN on a cold box
 // =============================================================================
 //
-// D1 (cert Q1) is the set of attesters the two branches disagree about:
-//   {bonded ≥ MinBond ∧ ∉ epochSet} ∪ {∈ epochSet ∧ bonded < MinBond} ∪ {cfg anchor ∧ ∉ epochSet}
+// D1 is the set of attesters the two branches disagree about:
+// {bonded ≥ MinBond ∧ ∉ epochSet} ∪ {∈ epochSet ∧ bonded < MinBond} ∪ {cfg anchor ∧ ∉ epochSet}
 // The canonical member is the I3 mid-epoch joiner: it "banks mid-epoch, gains zero weight until the
-// next finalized boundary" (consensus-invariants.md I3). apply() (chain.go attesterQualifiedAt)
+// next finalized boundary" (consensus-invariants.md I3). apply (chain.go attesterQualifiedAt)
 // EXCLUDES it under the mature-epoch rule; the pre-maturity rule INCLUDES it.
 
 // midEpochJoiner is the D1 fixture: a mature-from-genesis chain (matureEpoch latched at the genesis
@@ -266,7 +264,7 @@ func buildMidEpochJoiner(t *testing.T) attScenario {
 		preValue: preValue, b: b, zID: zID}
 }
 
-// buildHandoffWindow builds the #357 Condition-B WINDOW: everMature is LATCHED but matureEpoch is
+// buildHandoffWindow builds the Condition-B WINDOW: everMature is LATCHED but matureEpoch is
 // NOT yet — the deterministic ≤ EpochBlocks stretch between the maturity crossing and the first
 // mature rotation that sheds the anchors (chain.go handedOff / launchAnchor). It is the regime where
 // the two class-A branches disagree in the OTHER direction: epochSet is still EMPTY, so the
@@ -280,10 +278,10 @@ func buildHandoffWindow(t *testing.T) attScenario {
 	t.Helper()
 	f := buildOffBoundaryMaturityFixture(t)
 	crossing := f.crossingBlock()
-	// R-BOX-ATTESTS O1: the carrier fold excludes the PARENT's proposer. The crossing block IS the
-	// window block's parent, so it must be proposed by someone OTHER than Z (= f.proposer) or Z
-	// could never be carried into a seat and this gate would be VACUOUS. Re-sign it as att1; the
-	// carrier it already holds is over ITS parent and is unaffected by its own proposer.
+	// The carrier fold excludes the PARENT's proposer. The crossing block IS the window
+	// block's parent, so it must be proposed by someone OTHER than Z (= f.proposer) or Z
+	// could never be carried into a seat and this gate would be VACUOUS. Re-sign it as att1;
+	// the carrier it already holds is over ITS parent and is unaffected by its own proposer.
 	Sign(&crossing, f.att1)
 	f.c.apply(crossing) // the off-boundary maturity crossing: everMature false→true, NO rotation
 
@@ -312,9 +310,10 @@ func buildHandoffWindow(t *testing.T) attScenario {
 		return nil
 	}
 
-	// The D1 member: the original proposer. It is bonded ≥ MinBond, NOT in epochSet (empty), and NOT
-	// in validatorsSeen (apply() skips a block's own proposer's attestation, so it was never seated).
-	// The next block is proposed by att1 so the proposer becomes an ordinary non-proposer attester.
+	// The D1 member: the original proposer. It is bonded ≥ MinBond, NOT in epochSet (empty), and
+	// NOT in validatorsSeen (apply skips a block's own proposer's attestation, so it was never
+	// seated). The next block is proposed by att1 so the proposer becomes an ordinary non-proposer
+	// attester.
 	zID := ports.HashBytes(pubOf(f.proposer))
 	if f.c.bonded[zID] < cfg.MinBond {
 		t.Fatalf("window fixture VACUOUS: Z must be bonded >= MinBond")
@@ -377,7 +376,7 @@ func (f attScenario) witness(t *testing.T, seatZ bool) StateRootWitness {
 	return w
 }
 
-// appliedSeats reports whether the ORACLE (real apply()) seats Z in validatorsSeen for this block.
+// appliedSeats reports whether the ORACLE (real apply) seats Z in validatorsSeen for this block.
 func (f attScenario) appliedSeats(t *testing.T) bool {
 	t.Helper()
 	clone := f.c.cloneForDryRun()
@@ -385,7 +384,7 @@ func (f attScenario) appliedSeats(t *testing.T) bool {
 	return clone.validatorsSeen[f.zID]
 }
 
-// honestRoot is the root a full node commits: apply() screens Z under the mature-epoch rule and
+// honestRoot is the root a full node commits: apply screens Z under the mature-epoch rule and
 // SKIPS it (Z ∉ epochSet), so validatorsSeen is untouched.
 func (f attScenario) honestRoot(t *testing.T) ports.Hash {
 	t.Helper()
@@ -401,14 +400,14 @@ func (f attScenario) honestRoot(t *testing.T) ports.Hash {
 // --- D1 GATE 1 (SAFETY): the adversarial mid-epoch-joiner attestation must STALL cold. ---
 //
 // The attack needs NO forgery. The attacker commits a root that includes validatorsSeen[Z] — a root
-// full nodes REJECT (validateEra3Roots' dry-run apply() omits Z ⇒ root mismatch). A cold box that
-// screened Z under the pre-maturity rule would prove `bonded[Z] ≥ MinBond` against prevStateRoot —
-// a TRUE committed fact — emit the ADD, fold, and match the attacker's root: WRONG-ACCEPT, with
-// every Resolve passing. The spurious validatorsSeen member is then the class-M poisoning entry that
+// full nodes REJECT (validateEra3Roots' dry-run apply omits Z ⇒ root mismatch). A cold box that
+// screened Z under the pre-maturity rule would prove `bonded[Z] ≥ MinBond` against prevStateRoot — a
+// TRUE committed fact — emit the ADD, fold, and match the attacker's root: WRONG-ACCEPT, with every
+// Resolve passing. The spurious validatorsSeen member is then the class-M poisoning entry that
 // mis-sizes recomputeMatureNow's C2Metric.
 //
-// RED BEFORE THE FIX: at e7a8aa4 this returns nil (wrong-accept).
-func TestColdBox_D1_MidEpochJoinerAdversarialRootStalls(t *testing.T) {
+// RED BEFORE THE FIX: this returns nil (wrong-accept).
+func TestColdBoxMidEpochJoinerAdversarialRootStalls(t *testing.T) {
 	f := buildMidEpochJoiner(t)
 	if f.appliedSeats(t) {
 		t.Fatalf("ORACLE BROKEN: apply() seated a mid-epoch joiner — I3 says it banks mid-epoch and gains zero weight until the next finalized boundary")
@@ -429,12 +428,12 @@ func TestColdBox_D1_MidEpochJoinerAdversarialRootStalls(t *testing.T) {
 
 // --- D1 GATE 2 (LIVENESS): the same attestation in an HONEST block must AGREE cold. ---
 //
-// An unqualified attestation is legal — apply() ignores it, never rejects the block. The honest
+// An unqualified attestation is legal — apply ignores it, never rejects the block. The honest
 // committed root omits Z. A cold box on the pre-maturity branch EMITS Z ⇒ mismatch ⇒ false stall on
 // an honest block. Under the flip that is Reject-where-the-network-Accepts: the fork-vs-halt hazard.
 //
-// RED BEFORE THE FIX: at e7a8aa4 this stalls with ErrRecomputeStateRootMismatch.
-func TestColdBox_D1_MidEpochJoinerHonestBlockAgrees(t *testing.T) {
+// RED BEFORE THE FIX: this stalls with ErrRecomputeStateRootMismatch.
+func TestColdBoxMidEpochJoinerHonestBlockAgrees(t *testing.T) {
 	f := buildMidEpochJoiner(t)
 	if err := coldRecompute(t, f.c, f.prevRoot, f.honestRoot(t), f.b, f.witness(t, false)); err != nil {
 		t.Fatalf("COLD-BOX FALSE STALL (D1 liveness): the box stalled on an HONEST block carrying a\n"+
@@ -451,12 +450,12 @@ func TestColdBox_D1_MidEpochJoinerHonestBlockAgrees(t *testing.T) {
 // witness-driven instead of state-driven. The leaf is a bool, so each polarity is a DISTINCT forge
 // and each needs a fixture whose HONEST pre-value is the opposite:
 //
-//   - forged-false: the mid-epoch-joiner fixture commits matureEpoch=true. Forging false flips the
-//     box onto the pre-maturity branch, which would seat the mid-epoch joiner Z.
-//   - forged-true: the handoff fixture commits matureEpoch=false (the boundary block IS the first
-//     mature rotation, and rotate-LAST means the att loop still screens under the PRE value).
-//     Forging true flips the box onto the frozen-epochSet branch.
-func TestColdBox_D1_ForgedMatureEpochOldValueStalls(t *testing.T) {
+// - forged-false: the mid-epoch-joiner fixture commits matureEpoch=true. Forging false flips the
+// box onto the pre-maturity branch, which would seat the mid-epoch joiner Z.
+// - forged-true: the handoff fixture commits matureEpoch=false (the boundary block IS the first
+// mature rotation, and rotate-LAST means the att loop still screens under the PRE value.
+// Forging true flips the box onto the frozen-epochSet branch.
+func TestColdBoxForgedMatureEpochOldValueStalls(t *testing.T) {
 	t.Run("forged-false/honest-pre-is-true", func(t *testing.T) {
 		f := buildMidEpochJoiner(t)
 		w := f.witness(t, false)
@@ -499,7 +498,7 @@ func TestColdBox_D1_ForgedMatureEpochOldValueStalls(t *testing.T) {
 func assertForgedMatureEpochStalls(t *testing.T, err error, forged bool) {
 	t.Helper()
 	if err == nil {
-		t.Fatalf("COLD-BOX WRONG-ACCEPT: a forged MatureEpoch.OldValue=%v was not stalled.\n"+
+		t.Fatalf("COLD-BOX WRON: a forged MatureEpoch.OldValue=%v was not stalled.\n"+
 			"  The Direction-A anchor must Resolve it PRESENT against prevStateRoot UNCONDITIONALLY,\n"+
 			"  before the class-A branch decision — a branch predicate the fold never verifies on its own.", forged)
 	}
@@ -512,11 +511,11 @@ func assertForgedMatureEpochStalls(t *testing.T, err error, forged bool) {
 // --- D1 GATE 4 (DIRECTION 2): a LIVE FOLLOWER re-auditing a PRE-handoff block must AGREE. ---
 //
 // The mirror of the cold case. A follower that already adopted past the handoff has matureEpoch=true
-// while the block under audit predates it: apply() screened that block's atts under the bonded rule,
+// while the block under audit predates it: apply screened that block's atts under the bonded rule,
 // the box on its live field would screen them under the (then-empty) epochSet and OMIT the
 // validatorsSeen write ⇒ mismatch. Anchoring on the committed pre-value fixes both directions at
 // once, so this drives a WARM box that is AHEAD of the block, not a cold one.
-func TestColdBox_D1_Direction2_LiveFollowerPreHandoffBlockAgrees(t *testing.T) {
+func TestColdBoxLiveFollowerPreHandoffBlockAgrees(t *testing.T) {
 	f := buildHandoffFixture(t)
 	b := f.handoffBoundaryBlock()
 	committed := f.committedRoot(t, b)
@@ -529,9 +528,9 @@ func TestColdBox_D1_Direction2_LiveFollowerPreHandoffBlockAgrees(t *testing.T) {
 		t.Fatalf("GATE VACUOUS: the handoff fixture's pre-state already has matureEpoch=true")
 	}
 
-	// The auditor: a box that has ALREADY adopted past the handoff. Simulate the adopt() effect
-	// directly (adopt copies everMature/matureEpoch) — this is the ONLY place a test may set these
-	// fields, and it is set to the WRONG value for this block on purpose.
+	// The auditor: a box that has ALREADY adopted past the handoff. Simulate the adopt effect
+	// directly (adopt copies everMature/matureEpoch) — this is the ONLY place a test may set
+	// these fields, and it is set to the WRONG value for this block on purpose.
 	ahead := coldBox(t, f.c.cfg)
 	ahead.everMature = true
 	ahead.matureEpoch = true
@@ -546,14 +545,14 @@ func TestColdBox_D1_Direction2_LiveFollowerPreHandoffBlockAgrees(t *testing.T) {
 	}
 }
 
-// --- The wiring assertion (R-VERIFYBOND-WIRING): an unwired box stalls LOUD at the entry. ---
+// --- The wiring assertion: an unwired box stalls LOUD at the entry. ---
 //
-// The #572 replay shape: objective()/epochsEnabled() depend on the INJECTED verifyBond. An unwired
-// box silently takes the legacy branch everywhere and fails later as an opaque fold mismatch. The
+// The replay shape: objective/epochsEnabled depend on the INJECTED verifyBond. An unwired box
+// silently takes the legacy branch everywhere and fails later as an opaque fold mismatch. The
 // entry names the cause instead.
 func TestColdBox_UnwiredBondVerifierStallsAtEntry(t *testing.T) {
 	f := buildMidEpochJoiner(t)
-	unwired := New(f.cfg, func(ports.NodeID) int64 { return 0 }) // NO SetBondVerifier — the #572 shape
+	unwired := New(f.cfg, func(ports.NodeID) int64 { return 0 }) // NO SetBondVerifier — the shape
 	err := recomputeViaHead(unwired, f.prevRoot, f.honestRoot(t), f.b, f.witness(t, false))
 	if !errors.Is(err, ErrRecomputeBoxWiring) {
 		t.Fatalf("expected the LOUD entry wiring stall (ErrRecomputeBoxWiring), got %v", err)
@@ -564,7 +563,7 @@ func TestColdBox_UnwiredBondVerifierStallsAtEntry(t *testing.T) {
 //
 // The invariant is emergent from rotateEpoch (it early-returns unless everMature) and pinned live by
 // TestMatureEpochImpliesEverMature_InvariantPin. A witnessed pre-state that violates it is not one
-// any honest apply() can commit, so the box refuses to screen against it. Stall-adding only.
+// any honest apply can commit, so the box refuses to screen against it. Stall-adding only.
 func TestColdBox_MatureEpochWithoutEverMaturePreStateStalls(t *testing.T) {
 	f := buildMidEpochJoiner(t)
 	w := f.witness(t, false)

@@ -12,8 +12,8 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// THE CONFIG-IN-CONSENSUS GATE — canon rule 8 (docs/build-process.md, owner ruling 2026-09-10):
-// a consensus quantity must be a function of the CHAIN, never of local config.
+// THE CONFIG-IN-CONSENSUS GATE: a consensus quantity
+// must be a function of the CHAIN, never of local config.
 //
 // THE INVARIANT: two honest replicas whose local Config differs in exactly ONE field must reach
 // the SAME validity verdict on the SAME block. A field that can move the verdict is a
@@ -21,37 +21,36 @@ import (
 //
 // WHY A RUNTIME GATE AND NOT A SOURCE LINT. The property is a runtime verdict; only executing
 // ValidateCommit against two differently-configured replicas can observe it. A source-text gate
-// would promise a property it cannot see — the scar scripts/check_source_gates.py exists to stop.
-// Deliberation: docs/thinking/2026-09-10-config-in-consensus-lint-design.md.
+// would promise a property it cannot see — what scripts/check_source_gates.py exists to stop.
 //
 // THE THREE INSTANCES THIS GENERALISES (it checks the PRINCIPLE, not these three):
-//   - #380      RequiredQuorum() read cfg.Quorum on the objective path      → fixed, and is this
-//               gate's ABLATION: restore it and Quorum diverges again (2 → 3 fields).
-//   - SlashesBytesCap  an invariant derived from two proposer-side flag defaults → D-SLASHCAP-ROUTE.
-//   - MinBond   a validity threshold that is a bare flag                     → R-CONSENSUS-CONFIG-UNBOUND.
+// - RequiredQuorum read cfg.Quorum on the objective path → fixed, and is this
+// gate's ABLATION: restore it and Quorum diverges again (2 → 3 fields).
+// - SlashesBytesCap an invariant derived from two proposer-side flag defaults →
+// - MinBond a validity threshold that is a bare flag →.
 //
 // THE CLOSED COMPLEMENT. Every chain.Config field is reached by REFLECTION and must carry a
 // declaration below. There is no third state and no field can be silently absent, so a NEW
 // Config field fails this gate until someone decides which class it is. That is the point:
-// silt's prose already names a "consensus-critical genesis config" class (chain.go:190, :253)
+// silt's prose already names a "consensus-critical genesis config" class (chain.go,:253)
 // but nothing enumerated it, so membership was a human remembering to write the sentence.
 //
-// THE ABLATION BATTERY, RUN 2026-09-10 BEFORE THIS GATE WAS TRUSTED (docs/build-process.md; the
-// four vacuous-gate scars of sessions 19-20). Verified by EXIT CODE, not by reading output — the
-// first run of this battery reported four false GREENs because it executed from the wrong
-// directory and the package path never resolved.
+// THE ABLATION BATTERY, RUN BEFORE THIS GATE WAS TRUSTED; four vacuous gates
+// of sessions 19-20. Verified by EXIT CODE, not by reading output — the first run of this
+// battery reported four false GREENs because it executed from the wrong directory and the
+// package path never resolved.
 //
-//	A0 baseline .................................................. GREEN
-//	A1 restore the #380 defect (RequiredQuorum returns cfg.Quorum) . RED
-//	A2 add an undeclared chain.Config field ....................... RED
-//	A3 re-declare MinBond as classLocal (the defect class itself) .. RED
-//	A4 leave a stale declaration for a removed field ............... RED
-//	A5 restore everything ......................................... GREEN
-//	A6 DELETE a field's perturbation entirely ..................... RED  (added after review)
-//	A7 weaken the era probe to a dead value (H=2 at height 1) ..... RED  (added after review)
-//	A8 restore everything ......................................... GREEN
-//	A9 strip an UNGATED marker off a v5-citing declaration ........ RED  (owner merge condition)
-//	A10 restore everything ........................................ GREEN
+//	A0 baseline.................................................. GREEN
+//	A1 restore the defect (RequiredQuorum returns cfg.Quorum). RED
+//	A2 add an undeclared chain.Config field....................... RED
+//	A3 re-declare MinBond as classLocal (the defect class itself)... RED
+//	A4 leave a stale declaration for a removed field............... RED
+//	A5 restore everything......................................... GREEN
+//	A6 DELETE a field's perturbation entirely..................... RED (added after review)
+//	A7 weaken the era probe to a dead value (H=2 at height 1)..... RED (added after review)
+//	A8 restore everything......................................... GREEN
+//	A9 strip an UNGATED marker off a v5-citing declaration........ RED (owner merge condition)
+//	A10 restore everything........................................ GREEN
 //
 // A6 and A7 exist because a BLIND review broke the first version of this gate with exactly those
 // two moves, and the first fix for A6 was itself insufficient — it stayed GREEN until the
@@ -62,20 +61,20 @@ import (
 // rule. With the defect restored it diverges in all five regimes including objective, and the
 // sanctionedIn pin fails.
 //
-// ⚠ THE SCOPE OF THAT CLAIM, CORRECTED BY BLIND REVIEW (F-1). This fixture validates a
-// Version: 1 block (redteam_consensus_test.go:61), and ValidateCommit dispatches to the v5
-// composition only at Version >= 5 (chain.go:3020). Measured statement coverage under THIS test
+// ⚠ THE SCOPE OF THAT CLAIM, CORRECTED BY BLIND REVIEW. This fixture validates a
+// Version: 1 block (consensus_adversary_test.go), and ValidateCommit dispatches to the v5
+// composition only at Version >= 5 (chain.go). Measured statement coverage under THIS test
 // alone: validate_v5_predicates.go 0/178, validate_v5_quorum.go 0/229, validate_v5.go 0/53,
 // stateview_live_v5.go 0/64. So A1 pins the ERA-1 twin, RequiredQuorum. Restoring the same defect
-// in v5RequiredQuorum (validate_v5_quorum.go:350) ALONE leaves this gate GREEN.
+// in v5RequiredQuorum (validate_v5_quorum.go) ALONE leaves this gate GREEN.
 //
-// The v5 twin is not unguarded — TestM1A3_V4V5ParityOracle covers it — but this gate does not
-// cover it, and the declaration table below justifies its three most important rows by citing
+// The v5 twin is not unguarded — TestV4V5ParityOracle covers it — but this gate does not cover
+// it, and the declaration table below justifies its three most important rows by citing
 // validate_v5_* files that never execute here. Those citations are the CORRECT justification for
 // the classification; they are NOT evidence produced by this test. A v5 regime that REPLACES the
-// era-1 one is the named residual: R-CONFIG-GATE-V5-REGIME.
+// era-1 one is the named residual.
 //
-// WHAT THIS GATE DELIBERATELY DOES NOT CLAIM (simplicity rule 7). A field that does not diverge
+// WHAT THIS GATE DELIBERATELY DOES NOT CLAIM. A field that does not diverge
 // in a regime that could never have exercised it has NOT been shown safe — it has been shown
 // UNTESTED. So a LOCAL declaration reports DRIVEN-SAFE only when a regime that actually reads it
 // ran; otherwise UNPROVEN. Calling all the quiet fields "safe" would be the decoration failure in
@@ -95,7 +94,7 @@ const (
 	// classNetworkIdentity: an IDENTITY PROPERTY OF THE NETWORK ITSELF. It changes NO validity
 	// verdict, and it IS genesis-covered.
 	//
-	// THE SECOND CATEGORY, AND WHY IT NEEDED ONE (owner ruling, 2026-09-11). NetworkName is the
+	// THE SECOND CATEGORY, AND WHY IT NEEDED ONE. NetworkName is the
 	// first ConsensusParams member that reaches no verdict — and "it reaches no verdict" is this
 	// table's own recorded reason for EXCLUDING Archive. Shipping it as classLocal would have
 	// said a committed field is free to differ; shipping it as classConsensusCritical would have
@@ -107,12 +106,12 @@ const (
 	// testable doctrine for a rhetorical one." Both arms are machine-checked below, from
 	// opposite sides:
 	//
-	//   - CHANGES NO VERDICT is MEASURED, never asserted — the field must carry a perturbation
-	//     that actually ran (the probeless check), and it must diverge in ZERO regimes. Diverge
-	//     anywhere and it is classConsensusCritical; declaring it here is RED.
-	//   - IS GENESIS-COVERED is resolved BY REFLECTION against the real chain.ConsensusParams via
-	//     configMemberships.carriedAs. Not carried and it is an exclusion; declaring it here is
-	//     RED.
+	// - CHANGES NO VERDICT is MEASURED, never asserted — the field must carry a perturbation
+	// That actually ran (the probeless check), and it must diverge in ZERO regimes.
+	// Diverge anywhere and it is classConsensusCritical; declaring it here is RED.
+	// - IS GENESIS-COVERED is resolved BY REFLECTION against the real chain.ConsensusParams via
+	// configMemberships.carriedAs. Not carried and it is an exclusion; declaring it here is
+	// RED.
 	//
 	// So this category admits exactly the fields that ride in the genesis hash and move no
 	// verdict. Such a field has precisely ONE observable effect: it partitions networks and names
@@ -135,17 +134,16 @@ func className(c configClass) string {
 	return fmt.Sprintf("configClass(%d) — UNDECLARED, add it to className", int(c))
 }
 
-// configDecl is one field's declaration. `why` is the justification a reviewer reads; `binding`
+// configDecl is one field's declaration. `why` is the justification a reader needs; `binding`
 // is what actually enforces uniformity today (empty = NOTHING does, which is a tracked residual).
 //
-// ⚠ THE RECORD CONTRADICTION THIS FIELD CARRIED, CORRECTED 2026-09-11. Every
-// consensus-critical row below carried `binding: ""` — "NOTHING BINDS IT" — while
-// configMemberships, IN THIS SAME FILE, declared the same fields `carriedAs` a real
-// chain.ConsensusParams member. Both cannot be true. The membership table was right: owner call
-// F landed the production bind (genesis.Build requires the params, the genesis hash covers them,
-// CheckConsensusParams is wired as a refuse-to-start after replay). So the gate was printing
-// "UNBOUND consensus-critical (3): [Anchors MinBond MinBondBytes]" about three fields that have
-// been genesis-covered since that merge.
+// ⚠ THE RECORD CONTRADICTION THIS FIELD CARRIED, CORRECTED 2026-09-11. Every consensus-critical
+// row below carried `binding: ""` — "NOTHING BINDS IT" — while configMemberships, IN THIS SAME
+// FILE, declared the same fields `carriedAs` a real chain.ConsensusParams member. Both cannot be
+// true. The membership table was right: landed the production bind (genesis.Build requires the
+// params, the genesis hash covers them, CheckConsensusParams is wired as a refuse-to-start after
+// replay). So the gate was printing "UNBOUND consensus-critical (3): [Anchors MinBond
+// MinBondBytes]" about three fields that have been genesis-covered since that merge.
 //
 // The two fields answer DIFFERENT questions and both are kept, because collapsing them would
 // lose the one that matters: `carriedAs` is STRUCTURAL (is it in the genesis hash — resolved by
@@ -169,9 +167,9 @@ type configDecl struct {
 
 	// sanctionedIn names the regimes where divergence is CORRECT and intended. Config.Quorum
 	// IS the count floor on the legacy and trusted-opt-out legs — that is the design. It is
-	// NOT a validity term on the objective path, and divergence there is the #380 defect.
+	// NOT a validity term on the objective path, and divergence there is the defect.
 	// A consensus-critical field that diverges OUTSIDE this set is a RED assertion, which is
-	// what pins the #380 fix: the ablation (return c.cfg.Quorum unconditionally from
+	// what pins the fix: the ablation (return c.cfg.Quorum unconditionally from
 	// RequiredQuorum) makes Quorum diverge in all five regimes and this gate FAILS.
 	sanctionedIn []string
 }
@@ -180,40 +178,40 @@ type configDecl struct {
 // one mechanism — sixteen copies of the same sentence is sixteen places for it to decay. A row
 // that has MORE to say appends; a row whose bind is weaker says so instead of using this.
 //
-// The hole is named because it is real and open: a genesis minted before owner call F carries
-// nil Params, and CheckConsensusParams returns nil on it by design. That surviving paramless
-// path is what keeps R-CONSENSUS-CONFIG-UNBOUND on the register.
+// The hole is named because it is real and open: a genesis minted before carries nil Params,
+// and CheckConsensusParams returns nil on it by design. That surviving paramless path is what
+// keeps the config-divergence hole open.
 const genesisBind = "genesis-covered in ConsensusParams (a divergent node computes a different genesis " +
 	"and cannot join — ErrForeignGenesis) + CheckConsensusParams refuse-to-start on restart " +
-	"(D-CFGBIND-MEMBERSHIP-RULE-2026-09-10). HOLE: a pre-bind genesis carries nil Params — " +
-	"R-CONSENSUS-CONFIG-UNBOUND stays open for it"
+	". HOLE: a pre-bind genesis carries nil Params — " +
+	"stays open for it"
 
 // THE DECLARATION TABLE. Adding a chain.Config field without adding a row here FAILS this gate.
 var configDecls = map[string]configDecl{
 	"Quorum": {
 		class:   classConsensusCritical,
-		why:     "#380: on the objective path this is NOT a validity term — RequiredQuorum defers to the chain-derived bftThreshold(N). It survives as the proposer-side GATHER target only. On the legacy/opt-out leg it IS the count floor, and that leg is a trusted deployment.",
-		binding: "chain-derived: RequiredQuorum()/v5RequiredQuorum() ignore it on the objective path (D-CONSENSUS-ARMING (20), G-380-B)",
-		ungated: "R-CONFIG-GATE-V5-REGIME — v5RequiredQuorum is NOT executed here; the era-1 twin RequiredQuorum is. Restoring the #380 defect in the v5 twin alone leaves this gate green. Runtime cover for the v5 twin: TestM1A3_V4V5ParityOracle.",
+		why:     "on the objective path this is NOT a validity term — RequiredQuorum defers to the chain-derived bftThreshold(N). It survives as the proposer-side GATHER target only. On the legacy/opt-out leg it IS the count floor, and that leg is a trusted deployment.",
+		binding: "chain-derived: RequiredQuorum/v5RequiredQuorum ignore it on the objective path ",
+		ungated: "v5RequiredQuorum is NOT executed here; the era-1 twin RequiredQuorum is. Restoring the defect in the v5 twin alone leaves this gate green. Runtime cover for the v5 twin: TestV4V5ParityOracle.",
 		readIn:  []string{regimeLegacy, regimeTrustedOptOut, regimeObjective},
-		// The #380 PIN. Legacy and trusted-opt-out are trusted deployments where the local
+		// The PIN. Legacy and trusted-opt-out are trusted deployments where the local
 		// count floor is the intended rule; the objective path must be chain-derived.
 		sanctionedIn: []string{regimeLegacy, regimeTrustedOptOut},
 	},
 	"MinBond": {
 		class:   classConsensusCritical,
 		why:     "Gates Reject in three v5 validity paths: proposer qualification (validate_v5_predicates.go:246-249), bond-reg admission (validate_v5_quorum.go:222) and the qualification filter (:522). Divergent values mean two honest replicas disagree on the same block — I1.",
-		ungated: "R-CONFIG-GATE-V5-REGIME — those three v5 sites are NOT executed here (measured: validate_v5_predicates.go 0/178, validate_v5_quorum.go 0/229). The divergence this gate measures is on the era-1 path; the v5 citation is the classification's justification, not this test's evidence.",
+		ungated: "those three v5 sites are NOT executed here (measured: validate_v5_predicates.go 0/178, validate_v5_quorum.go 0/229). The divergence this gate measures is on the era-1 path; the v5 citation is the classification's justification, not this test's evidence.",
 		// CORRECTED 2026-09-11: this read `binding: ""` — "NOTHING BINDS IT" — while
-		// configMemberships declared carriedAs "MinBond" in the same file. The bind landed with
-		// owner call F; the row had not moved.
+		// configMemberships declared carriedAs "MinBond" in the same file. The bind
+		// landed with; the row had not moved.
 		binding: genesisBind,
 		readIn:  []string{regimeObjective},
 	},
 	"MinBondBytes": {
 		class:   classConsensusCritical,
 		why:     "The anti-release floor is a second bond-reg admission threshold (validate_v5_quorum.go:225), same class and same failure as MinBond.",
-		ungated: "R-CONFIG-GATE-V5-REGIME — as MinBond: validate_v5_quorum.go is not executed here.",
+		ungated: "as MinBond: validate_v5_quorum.go is not executed here.",
 		binding: genesisBind, // CORRECTED 2026-09-11, as MinBond: carriedAs "MinBondBytes".
 		readIn:  []string{regimeObjective},
 	},
@@ -257,7 +255,7 @@ var configDecls = map[string]configDecl{
 	},
 	"RegGateActivationHeight": {
 		class:   classConsensusCritical,
-		why:     "The #506 R-rule pre-latch activation override. Its own comment: 'Consensus-critical genesis config, same discipline as MinBond/Anchors' (chain.go:256-257).",
+		why:     "The  R-rule pre-latch activation override. Its own comment: 'Consensus-critical genesis config, same discipline as MinBond/Anchors' (chain.go:256-257).",
 		binding: genesisBind,
 		readIn:  []string{regimeEpochs},
 	},
@@ -276,10 +274,10 @@ var configDecls = map[string]configDecl{
 	"Era3ActivationHeight": {
 		class: classConsensusCritical,
 		why:   "The era-3 pre-latch activation override — it decides WHICH format/validity rules apply at a height. Its own comment calls it consensus-critical genesis config (chain.go:243-260). Divergence means two replicas validate the same block under different eras.",
-		// CORRECTED 2026-09-11. The old string named ONLY the local New() ordering check and
-		// concluded "nothing binds the VALUE across replicas" — true when written, false since
-		// owner call F, and it read as the strongest claim available while carriedAs said
-		// otherwise two hundred lines down.
+		// CORRECTED 2026-09-11. The old string named ONLY the local New ordering
+		// check and concluded "nothing binds the VALUE across replicas" — true
+		// when written, false since, and it read as the strongest claim
+		// available while carriedAs said otherwise two hundred lines down.
 		binding: genesisBind + ". PLUS a local New() check that Era4ActivationHeight >= " +
 			"Era3ActivationHeight — canon rule 8: that binds operators, never PEERS",
 		readIn: []string{regimeEpochs},
@@ -298,11 +296,12 @@ var configDecls = map[string]configDecl{
 	},
 	"MinProposerRep": {
 		class: classConsensusCritical,
-		// Blind PE F-3 re-classified this, and the gate then PROVED the re-classification: with a
-		// probe that actually crosses the >= boundary (1_000_001, not 1_000_000) it diverges. It
-		// is NOT a safe local knob — in legacy mode it decides proposer qualification, so two
-		// replicas with different values reach different verdicts. That divergence is the known
-		// local-audit subjectivity objective mode exists to remove (red-team F6).
+		// A review re-classified this, and the gate then PROVED the re-classification:
+		// with a probe that actually crosses the >= boundary (1_000_001, not 1_000_000) it
+		// diverges. It is NOT a safe local knob — in legacy mode it decides proposer
+		// qualification, so two replicas with different values reach different verdicts.
+		// That divergence is the known local-audit subjectivity objective mode exists to
+		// remove.
 		why:          "Legacy proposer qualification against the LOCAL reputation view. Divergence here is the subjectivity objective mode removes, not a safe local knob.",
 		binding:      "chain-derived in objective mode: MinBond > 0 replaces the reputation gate with committed bond (D2 / red-team F6). Nothing binds it on the legacy leg, which is a trusted deployment.",
 		readIn:       []string{regimeLegacy},
@@ -335,14 +334,14 @@ var configDecls = map[string]configDecl{
 	},
 	"WSCheckpoint": {
 		class: classLocal,
-		// ⚠ THE "NARROWING-ONLY" CLAUSE WAS MEASURED FALSE, 2026-09-11. This row read "It narrows
-		// what THIS node accepts; it must never widen it." Driven against the real predicate:
-		// with WSCheckpoint UNSET, trustFloor() is 0 and validateBondRegs REFUSES a
-		// heavy-proofs-shed block at height 50 (ErrPrunedAboveHorizon); with WSCheckpoint at
-		// height 100, trustFloor() is 100 and the SAME block is ACCEPTED. It widens, and the
-		// widening is the mechanism, not a bug: trustFloor() is max(RetentionHorizon(),
-		// WSCheckpoint.Height), and trusting pruned history below your own anchor is what the
-		// anchor is FOR. Cover: TestWSCheckpointWidensThePrunedTrustFloor.
+		// ⚠ THE "NARROWING-ONLY" CLAUSE WAS MEASURED FALSE, 2026-09-11. This row read "It
+		// narrows what THIS node accepts; it must never widen it." Driven against the real
+		// predicate: with WSCheckpoint UNSET, trustFloor is 0 and validateBondRegs REFUSES
+		// a heavy-proofs-shed block at height 50 (ErrPrunedAboveHorizon); with WSCheckpoint
+		// at height 100, trustFloor is 100 and the SAME block is ACCEPTED. It widens, and
+		// the widening is the mechanism, not a bug: trustFloor is max(RetentionHorizon,
+		// WSCheckpoint.Height), and trusting pruned history below your own anchor is what
+		// the anchor is FOR. Cover: TestWSCheckpointWidensThePrunedTrustFloor.
 		//
 		// THE EXCLUSION STILL HOLDS, on its OTHER arm. It is exactly because setting the pin
 		// WIDENS what this node will trust unverified that the pin must be the operator's OWN —
@@ -353,27 +352,27 @@ var configDecls = map[string]configDecl{
 		// readIn STAYS nil, deliberately. None of the five regimes drives a heavy-proofs-shed
 		// block, so none of them reads this field, and the gate correctly reports it UNPROVEN.
 		// Naming a regime here to move it out of UNPROVEN would be the dead-probe failure blind
-		// PE F-3 caught twice: a DRIVEN-SAFE that no driving produced. The widening above is
+		// Caught twice: a DRIVEN-SAFE that no driving produced. The widening above is
 		// measured by a separate driven test rather than faked here.
 		readIn: nil,
 	},
 	"LivenessRecoveryHeight": {
 		class: classConsensusCritical,
-		// Blind PE F-5: chain.go:236-237 calls this "consensus-coordination config" in as many
-		// words. Declaring it classLocal re-adopted inside a declaration table exactly the
-		// reading a prior PE ruling rejected.
-		why:     "The #535 recovery directive re-bases one epoch boundary against the LIVE qualified set. Every honest operator must set the SAME height or replicas validate that boundary differently.",
+		// chain.go calls this "consensus-coordination config" in
+		// as many words. Declaring it classLocal re-adopted inside a declaration table
+		// exactly the reading a prior.
+		why:     "The recovery directive re-bases one epoch boundary against the LIVE qualified set. Every honest operator must set the SAME height or replicas validate that boundary differently.",
 		binding: "partial and LOCAL ONLY: cmd/silt refuses a non-boundary height and announces loudly when armed. Canon rule 8: a local assertion cannot enforce a distributed agreement, so nothing binds the VALUE across replicas.",
 		readIn:  nil,
 	},
 }
 
-// THE MEMBERSHIP RULE, chain.Config half (owner, 2026-09-10): every field that can change a
+// THE MEMBERSHIP RULE, chain.Config half: every field that can change a
 // validity verdict is BOUND TO THE CHAIN, or is EXPLICITLY EXCLUDED WITH A RECORDED REASON.
 //
-// The owner rejected both "five fields" and "17 fields" as the thing to ratify. The RULE is
-// ratified and the field count is its OUTPUT — so this table names, per field, the
-// ConsensusParams field that binds it, or the reason it is not bound. G-CFGBIND-1 resolves every
+// Neither "five fields" nor "17 fields" is the thing to settle. The RULE is
+// declared and the field count is its OUTPUT — so this table names, per field, the
+// ConsensusParams field that binds it, or the reason it is not bound. The gate resolves every
 // carriedAs against the REAL struct by reflection, which is what stops it decaying into prose: a
 // sentence describing what a gate checks decays exactly like a cited test name.
 //
@@ -390,7 +389,7 @@ var configDecls = map[string]configDecl{
 type configMembership struct {
 	// carriedAs names the chain.ConsensusParams field that binds this one, resolved by reflection.
 	carriedAs string
-	// reasonNotCarried is the recorded reason it is not. These five ARE the owner's ratified
+	// reasonNotCarried is the recorded reason it is not. These five ARE the declared
 	// exclusions, and each is a DIFFERENT reason — that is why they are five strings and not one
 	// "excluded" boolean.
 	reasonNotCarried string
@@ -416,7 +415,7 @@ var configMemberships = map[string]configMembership{
 	// ---- CATEGORY (b): AN IDENTITY PROPERTY OF THE NETWORK. Carried, and it moves no verdict. ----
 	"NetworkName": {carriedAs: "NetworkName"},
 
-	// ---- THE FIVE RATIFIED EXCLUSIONS. Read them as five distinct arguments, not one policy. ----
+	// ---- THE FIVE EXCLUSIONS. Read them as five distinct arguments, not one policy. ----
 	"Archive": {reasonNotCarried: "RETENTION ONLY — it reaches no verdict. Whether THIS node keeps full bodies is " +
 		"an operator's storage choice and is deliberately per-node (build-immutable #8). Binding it would forbid " +
 		"the heterogeneity the durability design depends on."},
@@ -436,7 +435,7 @@ var configMemberships = map[string]configMembership{
 	"LivenessRecoveryHeight": {reasonNotCarried: "STRUCTURALLY UNBINDABLE. It is set AFTER launch, on a chain that " +
 		"by construction cannot commit it — genesis is already written by the time an operator knows the outage " +
 		"happened. This is not a decision deferred; it is a shape the mechanism cannot hold " +
-		"(R-LIVENESS-RECOVERY-UNBOUND, open and honestly so)."},
+		"(open and honestly so)."},
 }
 
 // theTwoNodeSideParams is the residue: the chain.ConsensusParams fields this table does NOT claim,
@@ -448,11 +447,11 @@ var theTwoNodeSideParams = []string{"BondLabelSamples", "BondVDFDelay"}
 
 // The driven regimes. A LOCAL field is DRIVEN-SAFE only if a regime naming it actually ran.
 const (
-	// regimeLegacy is the TRUE legacy path: MinBond == 0, so objective() is false and
-	// qualification is reputation-gated. NOTE the trap this gate fell into first: a config with
-	// MinBond > 0 and a wired verifier is OBJECTIVE even with ByzantineQuorum off — that is the
-	// trusted opt-out leg (c), not legacy — so the reputation fields were reporting DRIVEN-SAFE
-	// from a regime that never read them.
+	// regimeLegacy is the TRUE legacy path: MinBond == 0, so objective is false and
+	// qualification is reputation-gated. NOTE the trap this gate fell into first: a config
+	// with MinBond > 0 and a wired verifier is OBJECTIVE even with ByzantineQuorum off —
+	// that is the trusted opt-out leg (c), not legacy — so the reputation fields were
+	// reporting DRIVEN-SAFE from a regime that never read them.
 	regimeLegacy        = "legacy"         // MinBond == 0: reputation-gated qualification
 	regimeTrustedOptOut = "trusted-optout" // objective, ByzantineQuorum off (leg (c))
 	regimeObjective     = "objective"      // objective, ByzantineQuorum on
@@ -468,7 +467,7 @@ func perturbConfig(cfg Config, field string) (Config, bool) {
 	case "MinProposerRep":
 		// Must EXCEED the fixture's reputation (1_000_000), not equal it: the gate reads
 		// `rep >= MinProposerRep`, so landing ON the boundary cannot reject and the probe is
-		// dead. Blind PE F-3 — both DRIVEN-SAFE rows were green for exactly this reason.
+		// dead — both DRIVEN-SAFE rows were green for exactly this reason.
 		cfg.MinProposerRep = 1_000_001
 	case "MinAttesterRep":
 		cfg.MinAttesterRep = 1_000_001
@@ -504,14 +503,14 @@ func perturbConfig(cfg Config, field string) (Config, bool) {
 		cfg.RegGateActivationHeight = 1
 	case "Era3ActivationHeight":
 		// The fixture block is height 1, and activation is `h >= H`. H = 2 is dead by one
-		// height; H = 1 actually moves the era. Blind PE F-4.
+		// height; H = 1 actually moves the era.
 		cfg.Era3ActivationHeight = 1
 	case "Era4ActivationHeight":
 		cfg.Era4ActivationHeight = 1
 	case "NetworkName":
 		// The perturbation must be a name the baseline does NOT carry. The baseline regimes leave
 		// it empty, so any non-empty string crosses. A probe that left it empty would be the dead
-		// probe blind PE F-3 caught twice — it would report zero divergence without ever having
+		// probe caught twice — it would report zero divergence without ever having
 		// moved the field, and this category's whole complement rests on that zero being MEASURED.
 		cfg.NetworkName = "a DIFFERENT network's name"
 	case "WSCheckpoint":
@@ -553,8 +552,8 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 	}
 
 	// ---- THE MEMBERSHIP RULE: bound to the chain, or excluded with a recorded reason ----
-	// This is the owner's rule made machine-checkable. It runs over EVERY chain.Config field, not
-	// only the consensus-critical ones, because all five ratified exclusions were adjudicated
+	// This is the rule made machine-checkable. It runs over EVERY chain.Config field, not
+	// only the consensus-critical ones, because all five exclusions were adjudicated
 	// individually and two of them (Archive, WSCheckpoint) are classLocal. A local classification
 	// is not by itself a recorded reason for leaving a field out of the committed set.
 	params := reflect.TypeOf(ConsensusParams{})
@@ -573,8 +572,7 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 		case m.carriedAs == "" && m.reasonNotCarried == "":
 			unruled = append(unruled, f)
 		case m.carriedAs != "":
-			// THE STRUCTURAL BIND. A pin on prose is not a pin (blind PE F-4 broke the earlier
-			// binding pin for exactly this reason: it keyed on free text). Resolve the named field
+			// THE STRUCTURAL BIND. A pin on prose is not a pin. Resolve the named field
 			// against the REAL struct, so removing or renaming it turns this gate red.
 			if _, ok := params.FieldByName(m.carriedAs); !ok {
 				t.Fatalf("%s declares carriedAs=%q, but chain.ConsensusParams has NO such field. Either the bind was "+
@@ -596,7 +594,7 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 		if configDecls[f].class == classNetworkIdentity && m.carriedAs == "" {
 			t.Fatalf("%s is declared %s but is NOT carried in chain.ConsensusParams (reasonNotCarried: %q).\n"+
 				"An IDENTITY PROPERTY OF THE NETWORK must be GENESIS-COVERED — that is half of the category's\n"+
-				"closed complement (owner ruling, 2026-09-11). A field the genesis does not commit cannot identify\n"+
+				"closed complement (owner decision, 2026-09-11). A field the genesis does not commit cannot identify\n"+
 				"the network: two nodes differing on it compute the SAME genesis hash and join each other happily,\n"+
 				"which is the opposite of what a name is for. Carry it, or re-declare it %s / %s with its reason.",
 				f, className(classNetworkIdentity), m.reasonNotCarried, className(classLocal), className(classConsensusCritical))
@@ -604,14 +602,14 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 	}
 	sort.Strings(unruled)
 	if len(unruled) > 0 {
-		t.Fatalf("%d chain.Config field(s) have NO membership ruling: %v\n"+
+		t.Fatalf("%d chain.Config field(s) have NO membership decision: %v\n"+
 			"THE MEMBERSHIP RULE (owner, 2026-09-10): every field that can change a validity verdict is BOUND TO THE\n"+
 			"CHAIN, or is EXPLICITLY EXCLUDED WITH A RECORDED REASON. The owner rejected both \"five fields\" and\n"+
-			"\"17 fields\" as the thing to ratify — the RULE is what is ratified, and the count is its OUTPUT.\n"+
+			"\"17 fields\" as the thing to ratify — the RULE is what is settled, and the count is its OUTPUT.\n"+
 			"Add a configMemberships row naming the ConsensusParams field that binds it, or the reason it is not bound.",
 			len(unruled), unruled)
 	}
-	// And no ruling may survive its field.
+	// And no exclusion may survive its field.
 	for name := range configMemberships {
 		if _, ok := ct.FieldByName(name); !ok {
 			t.Fatalf("configMemberships rules on %q, which is no longer a chain.Config field — remove the row", name)
@@ -675,8 +673,9 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 		return c
 	}
 
-	// The anchor set must include the PROPOSER: the young-network rule is anchor-only proposal
-	// (#402), so a non-anchor proposer makes the baseline REJECT and the whole regime vacuous.
+	// The anchor set must include the PROPOSER: the young-network rule is anchor-only
+	// proposal, so a non-anchor proposer makes the baseline REJECT and the whole regime
+	// vacuous.
 	anchorSet := map[ports.NodeID]bool{
 		ports.HashBytes(prop.Public().(ed25519.PublicKey)): true,
 	}
@@ -688,7 +687,7 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 		name string
 		cfg  Config
 	}{
-		{regimeLegacy, Config{Quorum: 3}}, // MinBond 0 => objective() false => reputation-gated
+		{regimeLegacy, Config{Quorum: 3}}, // MinBond 0 => objective false => reputation-gated
 		{regimeTrustedOptOut, Config{Quorum: 3, MinBond: 1 << 20}},
 		{regimeObjective, Config{Quorum: 3, MinBond: 1 << 20, ByzantineQuorum: true}},
 		{regimeEpochs, Config{Quorum: 3, MinBond: 1 << 20, ByzantineQuorum: true, EpochBlocks: 4, BondTTLBlocks: 64}},
@@ -714,11 +713,11 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 
 	// Divergence is tracked PER REGIME. Lumping regimes together loses the fact that matters:
 	// Config.Quorum diverging on the LEGACY leg is the sanctioned trusted-deployment behaviour,
-	// while diverging on the OBJECTIVE leg is the #380 defect. Same field, opposite verdicts.
+	// while diverging on the OBJECTIVE leg is the defect. Same field, opposite verdicts.
 	type result struct {
 		divergedIn map[string]bool
 		// probedIn records regimes where a perturbation was ACTUALLY APPLIED to this field.
-		// Blind PE F-2: the earlier version set `driven` from the regime LIST, so it reduced to
+		// The earlier version set `driven` from the regime LIST, so it reduced to
 		// len(readIn) > 0 — deleting a field's perturbation entirely still reported DRIVEN-SAFE.
 		// "The regime ran" is not "the field was exercised."
 		probedIn map[string]bool
@@ -770,7 +769,7 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 		// the membership block above, where carriedAs is resolved against the real struct.)
 		case d.class == classNetworkIdentity && len(where) > 0:
 			violations = append(violations, fmt.Sprintf(
-				"%s is declared %s — an IDENTITY PROPERTY OF THE NETWORK, which the owner's 2026-09-11 ruling "+
+				"%s is declared %s — an IDENTITY PROPERTY OF THE NETWORK, which the project 2026-09-11 decision "+
 					"admits ONLY for a field that changes no validity verdict. It CHANGES THE VERDICT in regime(s) "+
 					"%v. That makes it category (a): bind it to the chain and re-declare it %s with the binding "+
 					"that makes it swarm-uniform. The second category has a closed complement precisely so this "+
@@ -783,7 +782,7 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 			if !driven[f] {
 				violations = append(violations, fmt.Sprintf(
 					"%s is declared %s, but NO driven regime exercised it, so its zero divergence is UNTESTED "+
-						"rather than measured (simplicity rule 7). This category's complement rests on the zero "+
+						"rather than measured. This category's complement rests on the zero "+
 						"being a measurement. Name a regime in readIn that actually runs, and give it a "+
 						"perturbation that crosses.", f, className(d.class)))
 				break
@@ -795,7 +794,7 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 		case d.class == classConsensusCritical && len(where) > 0:
 			bind := d.binding
 			if bind == "" {
-				bind = "NOTHING BINDS IT — R-CONSENSUS-CONFIG-UNBOUND"
+				bind = "NOTHING BINDS IT — "
 				unbound = append(unbound, f)
 			}
 			// A field whose binding is supposed to cover a regime must NOT diverge there.
@@ -834,7 +833,7 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 	// Category (b), reported with BOTH arms named so the line is not just a list: each of these
 	// was measured to move no verdict AND resolved against the real ConsensusParams.
 	t.Logf("NETWORK IDENTITY — genesis-covered AND measured to move no verdict (%d): %v", len(netIdentity), netIdentity)
-	// UNPROVEN is reported, never asserted safe (simplicity rule 7): a field that does not diverge
+	// UNPROVEN is reported, never asserted safe: a field that does not diverge
 	// in a regime that could not have exercised it is UNTESTED, not safe.
 	t.Logf("UNPROVEN — no driven regime exercises these yet, NOT a safety claim (%d): %v", len(unproven), unproven)
 
@@ -848,7 +847,7 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 	// EVERY v5 CITATION MUST NAME ITS COVER. scripts/check_source_gates.py's rule, applied to this
 	// gate's own declaration table: a justification that cites code this test does not execute is
 	// a structural claim, and it must say so or name the test that does observe it. Without this,
-	// a future reader sees `validate_v5_quorum.go:222` in a passing gate's table and reasonably
+	// a future reader sees `validate_v5_quorum.go` in a passing gate's table and reasonably
 	// concludes the gate exercised it.
 	for _, f := range fields {
 		d := configDecls[f]
@@ -879,11 +878,11 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 		t.Fatalf("%d chain.Config field(s) have NO perturbation in perturbConfig: %v\n"+
 			"This gate cannot observe them at all, so it must not imply anything about them.\n"+
 			"Add a probe that CROSSES the threshold the field is read against — a nudge that\n"+
-			"lands on a >= boundary is a dead probe wearing a live one's clothes (blind PE F-3).",
+			"lands on a >= boundary is a dead probe wearing a live one's clothes (a review F-3).",
 			len(probeless), probeless)
 	}
 
-	// THE DIVERGENCE-MAP PIN. Blind PE F-4 broke the earlier pin: it keyed on `binding == ""`,
+	// THE DIVERGENCE-MAP PIN. A review broke the earlier pin: it keyed on `binding == ""`,
 	// free text, so a field carrying non-empty prose that ITSELF admitted nothing binds it slipped
 	// through — and both era-activation fields did exactly that while diverging in all five
 	// regimes. A pin on prose is not a pin.
@@ -893,8 +892,8 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 	// landing and removing one — fails here and forces a decision. Nothing about it can be
 	// satisfied by editing a comment.
 	//
-	// WHAT TURNS THE UNBOUND ROWS INTO A HARD FAILURE: when R-CONSENSUS-CONFIG-UNBOUND closes
-	// (the genesis-config family bound to committed or genesis-covered state, canon rule 8),
+	// WHAT TURNS THE UNBOUND ROWS INTO A HARD FAILURE: when this gate closes (the
+	// genesis-config family bound to committed or genesis-covered state, canon rule 8),
 	// those rows leave this map and the residual closes with them.
 	got := map[string][]string{}
 	for _, f := range fields {
@@ -913,7 +912,7 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 		"MinProposerRep": {regimeLegacy},
 		"MinAttesterRep": {regimeLegacy},
 		"Quorum":         {regimeLegacy, regimeTrustedOptOut},
-		// UNBOUND — R-CONSENSUS-CONFIG-UNBOUND. Nothing makes these swarm-uniform.
+		// UNBOUND. Nothing makes these swarm-uniform.
 		"Anchors":              {regimeYoungAnchors},
 		"MinBond":              {regimeEpochs, regimeObjective, regimeTrustedOptOut},
 		"MinBondBytes":         {regimeEpochs, regimeObjective, regimeTrustedOptOut},
@@ -922,26 +921,27 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, wantDivergence) {
 		t.Fatalf("the CONFIG DIVERGENCE MAP changed.\n  got:  %v\n  want: %v\n"+
-			"A field that newly moves a validity verdict is a new instance of the #380 class:\n"+
+			"A field that newly moves a validity verdict is a new instance of the class:\n"+
 			"bind it to the CHAIN (canon rule 8, docs/build-process.md) and route it as a\n"+
 			"consensus-rule change. A field that STOPPED diverging means its binding landed —\n"+
-			"update this map, and when the unbound rows are gone close R-CONSENSUS-CONFIG-UNBOUND.",
+			"update this map, and when the unbound rows are gone close.",
 			got, wantDivergence)
 	}
-	// CORRECTED 2026-09-11. This line printed "UNBOUND consensus-critical (3): [Anchors MinBond
-	// MinBondBytes]" for three fields that owner call F had already genesis-covered — the gate's
-	// loudest output was its stalest claim, because `binding` is prose and nothing re-derived it.
+	// CORRECTED 2026-09-11. This line printed "UNBOUND consensus-critical (3): [Anchors
+	// MinBond MinBondBytes]" for three fields that had already genesis-covered — the gate's
+	// loudest output was its stalest claim, because `binding` is prose and nothing re-derived
+	// it.
 	//
 	// The MECHANISM is unchanged and still asserts nothing: a consensus-critical field that
 	// diverges with an EMPTY binding lands here, which is what makes a NEW unbound field visible
 	// the moment it appears. The set is now empty, so the line reports that instead of a fiction.
-	// R-CONSENSUS-CONFIG-UNBOUND stays OPEN regardless — for the surviving paramless genesis, a
+	// The hole stays OPEN regardless — for the surviving paramless genesis, a
 	// hole no `binding` string on any row can close.
 	if len(unbound) == 0 {
 		t.Logf("UNBOUND consensus-critical (0) — every diverging consensus-critical field names a " +
-			"binding. R-CONSENSUS-CONFIG-UNBOUND stays OPEN for the paramless-genesis hole.")
+			"binding.  stays OPEN for the paramless-genesis hole.")
 	} else {
-		t.Logf("UNBOUND consensus-critical (%d, R-CONSENSUS-CONFIG-UNBOUND open): %v", len(unbound), unbound)
+		t.Logf("UNBOUND consensus-critical (%d, open): %v", len(unbound), unbound)
 	}
 }
 
@@ -950,23 +950,23 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 // passing gate.
 //
 // THE CLAIM THAT WAS FALSE: "It narrows what THIS node accepts; it must never widen it." Setting
-// the pin raises trustFloor() — max(RetentionHorizon(), WSCheckpoint.Height) — and validateBondRegs
+// the pin raises trustFloor — max(RetentionHorizon, WSCheckpoint.Height) — and validateBondRegs
 // TRUSTS a heavy-proofs-shed block strictly below that floor. So the same block flips REJECT ->
 // ACCEPT when the operator sets a checkpoint above it. That is the mechanism working as designed;
 // the record describing it was the defect.
 //
 // WHY THIS IS A SEPARATE TEST AND NOT A regimes ROW. None of the five config-divergence regimes
 // drives a proofs-shed block, so the field is honestly UNPROVEN there and its readIn stays nil.
-// Adding a regime to make the row look driven is the dead-probe failure blind PE F-3 caught twice.
+// Adding a regime to make the row look driven is the dead-probe failure caught twice.
 // This measures the one thing the reason string asserts, directly.
 //
 // ABLATIONS, 2026-09-11, by EXIT CODE, each diffed against the pristine file first:
 //
-//	W0 baseline ......................................... GREEN  exit 0
-//	W1 pin the checkpoint BELOW the block (100 -> 40) ... RED    exit 1  (floor assertion)
-//	W2 revert ........................................... GREEN  exit 0
-//	W3 move the block ABOVE the floor (50 -> 150) ....... RED    exit 1  (the WIDENING assertion)
-//	W4 revert ........................................... GREEN  exit 0
+//	W0 baseline......................................... GREEN exit 0
+//	W1 pin the checkpoint BELOW the block (100 -> 40)... RED exit 1 (floor assertion)
+//	W2 revert........................................... GREEN exit 0
+//	W3 move the block ABOVE the floor (50 -> 150)....... RED exit 1 (the WIDENING assertion)
+//	W4 revert........................................... GREEN exit 0
 //
 // W3 is the one that matters: it is the only ablation that can distinguish "the checkpoint
 // widened the floor" from "the block happened to validate". W1 alone would pass a test that

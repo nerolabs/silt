@@ -6,21 +6,21 @@ import (
 	"github.com/nerolabs/silt/core/chain"
 )
 
-// TestDerivedGatherTargetTracksTheByzantineBar pins the delegated owner call of
-// 2026-09-08: on the untrusted objective path an unset -quorum DERIVES to the same
-// Byzantine bar the commit already demands, instead of the shipped literal 3.
+// TestDerivedGatherTargetTracksTheByzantineBar pins the delegatedof 2026-09-08: on
+// the untrusted objective path an unset -quorum DERIVES to the same Byzantine bar
+// the commit already demands, instead of the shipped literal 3.
 //
-// The defect it closes, measured by the blind PE on the #380 review: at a four-anchor
-// launch the literal asks for all three peers, so the swarm tolerates f = 0 — while the
-// project publishes its liveness bound (D-CONSENSUS-ARMING (19), amended (21)) at f = 1.
-// The field topology already overrode it to 2, which is how the published number and the
-// shipped default came apart without anyone tripping over it.
+// The defect it closes, measured: at a four-anchor launch
+// the literal asks for all three peers, so the swarm tolerates f = 0 — while the project
+// publishes its liveness bound (19), amended (21) at f = 1. The field topology already
+// overrode it to 2, which is how the published number and the shipped default came apart
+// without anyone tripping over it.
 //
-// This can only ever LOWER the ask. gatherTwoPhase gathers
-// max(caller floor, ConfigQuorum(), RequiredQuorum()), so the derived Byzantine bar sits
-// underneath whatever this returns, and -quorum is not a validity term on this path
-// (#380). ABLATION: return `explicit, false` from the objective branch of
-// effectiveQuorum and the four-anchor arm goes RED at 3.
+// This can only ever LOWER the ask. gatherTwoPhase gathers max(caller floor,
+// ConfigQuorum, RequiredQuorum), so the derived Byzantine bar sits underneath whatever
+// this returns, and -quorum is not a validity term on this path. ABLATION: return
+// `explicit, false` from the objective branch of effectiveQuorum and the four-anchor arm
+// goes RED at 3.
 func TestDerivedGatherTargetTracksTheByzantineBar(t *testing.T) {
 	const shipped = 3
 
@@ -39,14 +39,15 @@ func TestDerivedGatherTargetTracksTheByzantineBar(t *testing.T) {
 		t.Fatalf("explicit -quorum 3 at four anchors: got %d (defaulted=%v), want 3 and no derivation", got, defaulted)
 	}
 
-	// THE REGIME THE FIRST CUT GOT WRONG (blind PE, ruling on 91e7eb2). With
+	// THE REGIME THE FIRST CUT GOT WRONG. With
 	// -byzantine-quorum=false, RequiredQuorum returns cfg.Quorum VERBATIM — the local
-	// floor IS the validity bar there, so deriving it downward makes the node ACCEPT a
-	// 2-attestation block it previously refused, on three accept-side predicates. It is
-	// also the exact boundary #380's ratification drew: the trusted opt-out and legacy
-	// mode keep cfg.Quorum unchanged. The regime is live in-tree (integration/sybil's
-	// compose file runs it, safe only incidentally because it also passes -quorum).
-	// ABLATION: drop `|| !byzantineSizing` from the guard and this arm goes RED.
+	// floor IS the validity bar there, so deriving it downward makes the node ACCEPT
+	// a 2-attestation block it previously refused, on three accept-side predicates.
+	// It is also the exact boundary the decision drew: the trusted opt-out and
+	// legacy mode keep cfg.Quorum unchanged. The regime is live in-tree
+	// (integration/sybil's compose file runs it, safe only incidentally because it
+	// also passes -quorum). ABLATION: drop `|| !byzantineSizing` from the guard and
+	// this arm goes RED.
 	if got, defaulted := effectiveQuorum(false, shipped, true, false /*byzantineSizing*/, 4); defaulted || got != shipped {
 		t.Fatalf("objective with Byzantine sizing OFF: got %d (defaulted=%v), want the literal untouched — there RequiredQuorum returns cfg.Quorum verbatim, so deriving it downward LOWERS a validity bar and the node accepts blocks it used to refuse", got, defaulted)
 	}

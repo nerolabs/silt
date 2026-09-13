@@ -12,10 +12,10 @@ import (
 // retrieval is a whole *column* — the shard at one position across every
 // stripe — not an individual chunk. A column's shards are placed on the
 // nodes closest to colKey(root, j) and register there as providers, so:
-//   - one host holds one shard of each stripe (anti-affinity, structural
-//     rather than heuristic — one host loss costs a stripe one shard),
-//   - a reader finds the whole column in a single provider lookup instead
-//     of one per chunk (S lookups collapse to 1 per column).
+// - one host holds one shard of each stripe (anti-affinity, structural
+// rather than heuristic — one host loss costs a stripe one shard,
+// - a reader finds the whole column in a single provider lookup instead
+// of one per chunk (S lookups collapse to 1 per column).
 // Manifest chunks and uncoded files have no stripes, so they keep the
 // per-chunk key (the chunk's own id); noColumn marks that case.
 
@@ -36,7 +36,7 @@ func colKey(root ports.Hash, j int) ports.Hash {
 
 // columnAt maps a Merkle leaf index (data leaves in file order, then
 // parity in stripe order — see manifest.Leaves) to the shard's column:
-// its position 0..n-1 within a stripe. Data leaf i is at column i%k;
+// its position 0.n-1 within a stripe. Data leaf i is at column i%k;
 // parity leaf p at column k + p%(n-k). Returns noColumn when uncoded
 // (k==0), which has no stripes. Works from the raw dimensions so both
 // the full manifest (publish) and the content-free layout (audit/repair)

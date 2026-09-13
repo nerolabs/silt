@@ -2,10 +2,8 @@
 
 > **Status: north star.** This is a picture of silt when it is *done* — what it is, what it
 > feels like to use and to run, and the one bet it is making. It is the **destination** the
-> [tenets](TENETS.md) define and the [roadmap](../ROADMAP.md) walks toward. It is deliberately
-> **not** a status report: where today's build differs from this picture, the canon is the
-> honest record — *what M0 asserts* lives in [`design/m0.md`](design/m0.md), *what is decided*
-> in [`decisions.md`](decisions.md), *where we are on the path* in [`../ROADMAP.md`](../ROADMAP.md).
+> [tenets](TENETS.md) define. It is deliberately **not** a status report: where today's
+> build differs from this picture, the code and its tests are the honest record.
 > This document exists so the vision survives the day-to-day, and so every increment can be
 > checked against where it is going.
 
@@ -50,8 +48,8 @@ to the anonymity trilemma's real limit.
 adversarial input first, then fast — *bounded-then-fast*, never OOM. A validator does not
 hold the whole registry to do its job: it validates by **proof**, checking each block's
 state transition against witnesses supplied by the tier above, so the honest-validator
-floor stays a floor as the network grows to all-content-ever. This is the **ratified**
-posture (#600): the floor box is a *semi-stateless witness-validating full validator* —
+floor stays a floor as the network grows to all-content-ever. This is the settled
+posture: the floor box is a *semi-stateless witness-validating full validator* —
 same security as a tree-holding node, narrower self-sufficiency. Its liveness rests on a
 **load-bearing but decentralized** dependency: at least one reachable honest witness
 provider from an **open, multi-provider** tier (any archival or pruning node may serve
@@ -113,9 +111,9 @@ This multiplicative interlock is the **target**, not yet the operative guarantee
 consensus standing is gated by the bond axis alone (`C_honest ≈ D`); served demand (B) is an
 unbuilt track, and address-diversity (A) is enforced at the DHT layer but does not yet enter
 the standing number — and where it does bind, the operator/domain split is *self-declared*,
-so a rational splitter evades it for the cost of a declaration, not a subnet
-([`design/m0.md`](design/m0.md) §3, §10). The other axes are designed and staged, not fully
-wired. Read this paragraph as the destination the composition is built toward.
+so a rational splitter evades it for the cost of a declaration, not a subnet. The other
+axes are designed and staged, not fully wired. Read this paragraph as the destination
+the composition is built toward.
 
 The finished system holds all three corners because the corners **co-mature**. Privacy is
 architectural from day one. Accountability is content-level and reactive from day one. And
@@ -132,8 +130,7 @@ twice the shed threshold's worth of minimum bonds (**`W_A < 2·w_min·M_req`**).
 an unconditional theorem: the honest-arrival floor and the adversary budget cannot be
 verified from genesis on chain data alone (the weak-subjectivity wall every proof-of-stake
 system lives behind), and the one-way latch bounds the downside of a lost bet to a
-socially-recoverable re-centralization, never a permanent center. See
-[`design/m0.md`](design/m0.md) §10.
+socially-recoverable re-centralization, never a permanent center.
 
 ---
 
@@ -146,8 +143,7 @@ never signs twice at a height, and that memory survives restart. The validator s
 only at finalized boundaries. Commit and final are distinct, so a young network can make
 optimistic progress at a low quorum without a non-intersecting quorum ever finalizing a fork.
 Fork-choice is a deterministic total order, and every safety violation is attributable — an
-honest node is never slashed. These five invariants are a closed, published set (see
-[`design/consensus-invariants.md`](design/consensus-invariants.md)), asserted under
+honest node is never slashed. These five invariants are a closed, published set, asserted under
 adversarial scheduling on a laptop before any expensive run, because the perimeter of BFT
 correctness is finite and known. silt walks it deliberately, having walked several of its
 doorways the hard way.
@@ -161,7 +157,7 @@ under a **state root**: a history-independent sparse Merkle tree over the set-va
 plus a separate append-only root for the transparency log — two kinds of committed data,
 each under a root whose structure matches it. Because the root is committed, a validator on
 the floor box does not need the tree: it checks each transition against witnesses, and the
-tree lives a tier above. This is the **ratified** floor-box posture (#600), not an
+tree lives a tier above. This is the settled floor-box posture, not an
 aspiration — witness-serving is an **open, un-permissioned** responsibility of the tiers
 above, so the floor box's liveness dependency on them stays decentralized, never a
 single-provider choke. A fresh node cold-syncs from a recent weak-subjectivity checkpoint —
@@ -192,8 +188,7 @@ noisy signals are minimum-filtered to their floor rather than trusted on one sam
 never rests on a wall-clock number an adversary's own path can move: latency proves proximity,
 never diligence. A single measurement never serves two masters. These are not silt's
 inventions; they are the settled answers of RFC 6298, Kademlia, the BBR/NTP lineage, and the
-mature proof-of-storage cohort, imported deliberately (see
-[`network-durability.md`](network-durability.md)).
+mature proof-of-storage cohort, imported deliberately.
 
 ---
 
@@ -208,6 +203,6 @@ can check — not a victory the builder declares. Everything in this document is
 making that outside answer *yes*, on a box a hobbyist can afford, on the internet as it
 actually is.
 
-That is the north star. Every phase, every certification, every oracle, every measured number
+That is the north star. Every phase, every oracle, every measured number
 is a step toward the finished system described here — and the way to know a step is real is
 that it moves an outsider's checkable answer, not the builder's confidence.

@@ -19,12 +19,12 @@ package e2e
 //	(a) FORWARD INTEGRITY — the fetcher reconstructs the exact object the origin holds.
 //	(b) LIVE PAY-GATE — the relay stops forwarding when reveals stop (bounded stiff).
 //	(c) CONSERVED SETTLE + firewall — the operator BALANCE rose by exactly
-//	    min(count × increment, Σ face) of the anchors the fetcher's DURABLE identity
-//	    bought from the relay (R2.14), the ledger total moved by settled − Σ face ≤ 0
-//	    (the unconsumed remainder is burned, never re-minted), and Reputation()
-//	    (standing) is UNCHANGED (Invariant-A).
+//	 min(count × increment, Σ face) of the anchors the fetcher's DURABLE identity
+//	 bought from the relay, the ledger total moved by settled − Σ face ≤ 0
+//	 (the unconsumed remainder is burned, never re-minted), and Reputation
+//	 (standing) is UNCHANGED (Invariant-A).
 //	(d) FREE RELAY STILL WORKS with payments on — a non-paying peer reaches the origin
-//	    through free relay under the same caps (the Option-B witness, D-POD-RELAY-COEXIST).
+//	 through free relay under the same caps (the Option-B witness).
 //	(e) M0 LOG AUDIT — the settlement log line carries no cross-session-correlating field.
 
 import (
@@ -140,8 +140,8 @@ func TestPaidRelaySessionEndToEnd(t *testing.T) {
 	fNode := node.New(fID.NodeID(), node.DefaultConfig(), walltime.New(fLoop), fTr, memstore.New())
 	rNode := node.New(rID.NodeID(), node.DefaultConfig(), walltime.New(rLoop), rTr, memstore.New())
 
-	// The relay's chain-committed demand key_0 (R2.14: the anchor lane's precondition
-	// — the same v5 IssuerKeyReg the delivery lane needs). The durable fetcher holds
+	// The relay's chain-committed demand key_0 (the anchor lane's precondition —
+	// the same v5 IssuerKeyReg the delivery lane needs). The durable fetcher holds
 	// its own replica of the same genesis and pins the relay's key against it.
 	relayKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -172,10 +172,9 @@ func TestPaidRelaySessionEndToEnd(t *testing.T) {
 	fTr.AddPeer(rID.NodeID(), rTr.Addr())
 	rTr.AddPeer(fID.NodeID(), fTr.Addr())
 
-	// The ledger is LOOP-ONLY (no mutex): every read is marshaled onto the relay
-	// node's loop and returned over a cap-1 reply channel — the production seam's
-	// single-thread discipline (Tester finding; a test-only fix, the Ledger stays
-	// mutex-free).
+	// The ledger is LOOP-ONLY (no mutex): every read is marshaled onto the
+	// relay node's loop and returned over a cap-1 reply channel — the
+	// production seam's single-thread discipline.
 	readBalance := func(id ports.NodeID) int64 {
 		ch := make(chan int64, 1)
 		rLoop.Post("check-balance", func() { ch <- ledger.Balance(id) })
@@ -401,12 +400,12 @@ func TestPaidRelaySessionEndToEnd(t *testing.T) {
 	pipe.Close()
 
 	// ---- (c) CONSERVED SETTLE + firewall. Wait for the S5 settlement line, then
-	// assert the balance rose by exactly min(count × increment, Σ face) over the
-	// pre-session baseline — the anchor-funded payout R2.14 restores (the R0.7
-	// interim's wantCredit = 0 is retired; cert
-	// R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md
-	// §9 build-checked) — and the ledger TOTAL moved by settled − k·fee ≤ 0 across
-	// purchase → open → pay → settle: the unconsumed face is burned, never re-minted.
+	// assert the balance rose by exactly min(count × increment, Σ face) over
+	// the pre-session baseline — the anchor-funded payout the gate restores (the
+	// interim's wantCredit = 0 is retired.
+	// build-checked) — and the
+	// ledger TOTAL moved by settled − k·fee ≤ 0 across purchase → open → pay →
+	// settle: the unconsumed face is burned, never re-minted.
 	wantCredit := min(int64(S)*relaypay.RelayIncrementCredit, k*fee)
 
 	deadline := time.Now().Add(5 * time.Second)
@@ -456,8 +455,8 @@ func TestPaidRelaySessionEndToEnd(t *testing.T) {
 	}
 
 	// ---- (d) FREE RELAY STILL WORKS with payments on (the Option-B witness). A
-	// second connector reaches the origin through FREE relay (no paid marker), under
-	// the same caps, while --accept-relay-payments is on.
+	// Second connector reaches the origin through FREE relay (no paid marker),
+	// under the same caps, while --accept-relay-payments is on.
 	certFree, _ := identity.FromSeed(9199).Certificate()
 	freePipe, err := relay.DialThrough(certFree, identity.FromSeed(9102).NodeID(), relaySrv.Addr(), identity.FromSeed(9103).NodeID())
 	if err != nil {

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Byzantine red-team field test (#184 validator accountability), fully
+# Byzantine red-team field test (validator accountability), fully
 # automated on one host in real containers over real TCP. It proves an honest
 # silt validator holds three concrete, wire-reachable accountability properties
-# against the repo's own RED-TEAM harness flags:
+# against the repo's own ADVERSARY harness flags:
 #
-#   1. EQUIVOCATION  — a double-signing validator is CAUGHT and SLASHED.
-#   2. FORGED BLOCK  — a block with a forged proposer sig is REJECTED pre-attest.
-#   3. LOW-BOND      — an under-bonded proposer's block is REFUSED.
+#  1. EQUIVOCATION — a double-signing validator is CAUGHT and SLASHED.
+#  2. FORGED BLOCK — a block with a forged proposer sig is REJECTED pre-attest.
+#  3. LOW-BOND — an under-bonded proposer's block is REFUSED.
 #
 # Plus a POSITIVE CONTROL: two honest validators still commit a normal block,
 # so a rejection is a real defence, not a dead/quorum-broken swarm.
@@ -15,8 +15,8 @@
 # cmd/silt/daemon.go and the in-process analogs e2e/equivocation_test.go +
 # e2e/proposal_reject_test.go) — no invented strings.
 #
-# Usage:  ./run.sh          # build, run all scenarios, tear down; exit 0 = PASS
-#         KEEP=1 ./run.sh   # leave the topology up afterward to poke at
+# Usage:./run.sh # build, run all scenarios, tear down; exit 0 = PASS
+#  KEEP=1 ./run.sh # leave the topology up afterward to poke at
 set -uo pipefail
 cd "$(dirname "$0")"
 ROOT=$(cd ../.. && pwd)
@@ -116,7 +116,7 @@ echo "########## SCENARIO 2 & 3 — FORGED BLOCK and LOW-BOND proposals rejected
 # A fresh honest target H3; the forger and low-bond proposer each send ONE
 # crafted proposal and report whether H3 refused. The daemon prints
 # 'adversary: <label> proposal correctly REJECTED by <id>' on refusal (and
-# 'UNEXPECTEDLY ACCEPTED ... (DEFECT)' if H3 wrongly attested).
+# 'UNEXPECTEDLY ACCEPTED... (DEFECT)' if H3 wrongly attested).
 dc --profile propose up -d h3
 wait_log h3 'peer: [0-9a-f]{64}' 20 || fail "h3 never came up"
 echo "  letting H3 accrue standing (12s)…"
@@ -146,7 +146,7 @@ h3_stable_height() { local a b i; a=$(h3_height); for i in $(seq 1 6); do sleep 
 H3_PRE=$(h3_height); echo "  H3 pre-proposal committed head height: ${H3_PRE:-<none>}"
 dc --profile propose up -d goodprop
 
-# POSITIVE CONTROL (audit #303): before crediting H3's REJECTIONS below, prove H3
+# POSITIVE CONTROL (audit): before crediting H3's REJECTIONS below, prove H3
 # ACCEPTS a well-formed, properly-bonded proposal — otherwise a target that refuses
 # EVERY proposal (chain role wedged, head mismatch, …) would make both reject tests
 # false-pass ('reject the good one too' looks identical to 'reject the bad one').

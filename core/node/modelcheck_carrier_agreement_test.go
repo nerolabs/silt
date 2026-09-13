@@ -16,7 +16,7 @@ import (
 
 // =============================================================================
 // Consensus model-check — CARRIER SEATING AGREEMENT AT THE NODE TIER
-// (R-CARRIER-MODELCHECK, freeze-manifest item 14; tier 2)
+// (freeze-manifest item 14; tier 2)
 // =============================================================================
 //
 // Tier 1 (core/chain/modelcheck_carrier_seating_test.go) proves the seating REDUCER over
@@ -40,13 +40,13 @@ import (
 // the agreement arm is capable of failing.
 //
 // EPOCH CONFIGURATION, STATED (the mask-3 discipline of lastcommit_carrier_node_test.go):
-// EpochBlocks = 0, so epochsEnabled() is false and attesterQualifiedAt screens
-// bonded >= MinBond || launchAnchor. MatureValidators = 99, so the network never matures and
+// EpochBlocks = 0, so epochsEnabled is false and attesterQualifiedAt screens bonded >=
+// MinBond || launchAnchor. MatureValidators = 99, so the network never matures and
 // launchAnchor stays live for the whole run. Both are asserted, not merely commented.
 //
 // BUILT AGAINST origin/main a28a5b5, and it edits nothing: a FORMAT branch holds
 // core/node/chainrole.go and core/node/rounds.go. This file calls proposeBlock and reads
-// Chain().Regime() — symbols, not coordinates. If that branch changes the gather's
+// Chain.Regime — symbols, not coordinates. If that branch changes the gather's
 // first-to-quorum prefix, the CARRIER MEMBERSHIP below moves and the agreement property does
 // not: replicas must still agree on whatever prefix the proposer actually carried.
 

@@ -11,7 +11,7 @@ import (
 //
 // Go's runtime.MemStats.HeapAlloc counts only the Go heap. bbolt is mmap'd, so
 // the pages it touches live in the OS page cache OUTSIDE the Go heap — invisible
-// to HeapAlloc and precisely the residency the PE flagged as the reason to
+// to HeapAlloc and precisely the residency that is the reason to
 // prefer bbolt (kernel-evictable) over an LSM's server-sized heap caches.
 // Measuring heap alone would compare the two backends on the wrong axis.
 //

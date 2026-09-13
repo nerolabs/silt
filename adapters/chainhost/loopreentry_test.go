@@ -2,16 +2,15 @@ package chainhost
 
 // The Care/NetGet loop-reentry deadlock (2026-08-19, the flixz concurrent-publish
 // 502): core maintenance paths (Care, NetGet, repairRoot, Audit, claim-verify)
-// call ports.Registry.Lookup synchronously. When such a path runs ON the node's
-// event loop (the UI's auto-caretake, apiFetch, the repair/audit sweeps) and the
-// registry is chainhost, Lookup marshals BACK onto the same loop and blocks in a
-// select waiting for a task the wedged loop can never run — a reentrant
-// post-and-wait self-deadlock that stalls the node's single thread for the whole
-// chainhost Timeout, starving every queued message behind it (the three observed
-// 502 faces). The fix: a node that carries a chain replica answers these lookups
-// from its own committed chain (the very read chainhost would have performed),
-// so no loop-context lookup ever round-trips through the adapter.
-// Mechanism record: docs/thinking/2026-08-19-publish-502-attribution-care-self-deadlock.md
+// call ports.Registry.Lookup synchronously. When such a path runs ON the node's event loop
+// (the UI's auto-caretake, apiFetch, the repair/audit sweeps) and the registry is
+// chainhost, Lookup marshals BACK onto the same loop and blocks in a select waiting for a
+// task the wedged loop can never run — a reentrant post-and-wait self-deadlock that stalls
+// the node's single thread for the whole chainhost Timeout, starving every queued message
+// behind it (the three observed 502 faces). The fix: a node that carries a chain replica
+// answers these lookups from its own committed chain (the very read chainhost would have
+// performed), so no loop-context lookup ever round-trips through the adapter. Mechanism
+// record:
 
 import (
 	"crypto/rand"
@@ -55,7 +54,7 @@ func validatorOnLoop(t *testing.T) (*node.Node, *Host, *eventloop.Loop) {
 }
 
 // TestCareOnLoopDoesNotDeadlock reproduces ui.go's auto-caretake seam
-// (s.onLoop(func(){ nd.Care(s.reg, ch) })): Care invoked ON the loop with a
+// (s.onLoop(func{ nd.Care(s.reg, ch) })): Care invoked ON the loop with a
 // chainhost registry must complete without wedging the loop for the chainhost
 // timeout. RED before the chain-first lookup (elapsed ≈ Timeout), GREEN after
 // (elapsed ≈ 0).
@@ -80,8 +79,8 @@ func TestCareOnLoopDoesNotDeadlock(t *testing.T) {
 }
 
 // TestNetGetOnLoopDoesNotDeadlock reproduces ui.go's apiFetch seam
-// (loop.Post("api-fetch", func(){ nd.NetGet(s.reg, …) })): the registry lookup
-// at the head of NetGet must not wedge the loop. The root is unknown, so NetGet
+// (loop.Post("api-fetch", func{ nd.NetGet(s.reg, …) })): the registry lookup at
+// the head of NetGet must not wedge the loop. The root is unknown, so NetGet
 // reports not-found — but promptly, not after a deadlocked chainhost Timeout.
 func TestNetGetOnLoopDoesNotDeadlock(t *testing.T) {
 	nd, host, loop := validatorOnLoop(t)

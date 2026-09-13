@@ -10,42 +10,37 @@ import (
 	"testing"
 )
 
-// =============================================================================
-// THE FOLD-FILE LIVE-STATE ALLOWLIST PIN (R-FOLD-LIVE-STATE-READS recurrence teeth)
+// ============================================================================= THE
+// FOLD-FILE LIVE-STATE ALLOWLIST PIN (recurrence teeth)
 // =============================================================================
 //
-// Research cert: floorbox-R-FOLD-LIVE-STATE-READS-RESEARCH-CERTIFICATION-2026-09-02.md §Q3 last
-// section. PE ruling: RULING-R-CARRIER-REFLECTION-pin-2026-09-02.md §"The coupling the consult
-// missed" item 1.
-//
-// WHAT IT PINS. The recompute's contract is "Accept iff the recomputed post-root equals b.StateRoot
-// (== what a full node would accept)". That makes the verdict a function of
-// (prevStateRoot, committedStateRoot, b, w, own-cfg) and NOTHING else. Every witness-carried value
-// is reflection-pinned by the R1.2 coverage table. A `c.<liveState>` read escapes that pin BY
-// CONSTRUCTION — it is not a carrier field, so no reflection walk sees it. That is exactly how
-// `c.matureEpoch` decided the class-A screen's branch for four sub-increments without any coverage
-// test noticing.
+// // WHAT IT PINS. The recompute's contract is "Accept iff the recomputed post-root equals b.StateRoot
+// (== what a full node would accept)". That makes the verdict a function of (prevStateRoot,
+// committedStateRoot, b, w, own-cfg) and NOTHING else. Every witness-carried value is
+// reflection-pinned by the coverage table. A `c.<liveState>` read escapes that pin BY CONSTRUCTION
+// — it is not a carrier field, so no reflection walk sees it. That is exactly how `c.matureEpoch`
+// decided the class-A screen's branch for four sub-increments without any coverage test noticing.
 //
 // HOW. Parse every non-test fold file and flag any `c.<selector>` whose Sel is not allowlisted.
 //
-// THE ALLOWLIST IS DELIBERATELY NARROW (the cert CORRECTS the ruling's proposal here — the ruling's
+// THE ALLOWLIST IS DELIBERATELY NARROW (the research CORRECTS decision's proposal here — decision's
 // list included `matureEpoch` and `launchAnchor`, which would have PINNED THE DEFECT IN PLACE):
 //
-//	cfg / epochsEnabled / objective / operatorMargin   — own-cfg (C-6) + the injected verifier
-//	launchAnchorGiven                                  — the shared predicate, handoff SUPPLIED
-//	<methods declared on Chain in the fold files>      — self-dispatch
+//	cfg / epochsEnabled / objective / operatorMargin — own-cfg + the injected verifier
+//	launchAnchorGiven — the shared predicate, handoff SUPPLIED
+//	<methods declared on Chain in the fold files> — self-dispatch
 //
 // EXPLICITLY OUTSIDE IT, and asserted so: matureEpoch, everMature, launchAnchor, handedOff, plus
 // every committed map (bonded / slashed / epochSet / validatorsSeen / qualified / bondDomain) and
-// the legacy rep(). Those are the box's own applied-history view — which a box that replays no
-// apply() does not have.
+// the legacy rep. Those are the box's own applied-history view — which a box that replays no
+// apply does not have.
 
 // foldLiveStateAllowed is the allowlist of `c.<sel>` names a fold file may read, beyond the
 // self-dispatch methods the walk derives. Each entry states WHY it cannot make the verdict depend on
 // applied history.
 var foldLiveStateAllowed = map[string]string{
 	"cfg":            "own-cfg (C-6): genesis/operator configuration the box is trusted to hold",
-	"objective":      "cfg.MinBond>0 && verifyBond!=nil — own-cfg + the INJECTED verifier, asserted at the box entry on BOTH arms since G-1 (ErrRecomputeBoxWiring; driven by TestColdBox_G1_WiredVerifierWithZeroMinBondStallsAtEntry)",
+	"objective":      "cfg.MinBond>0 && verifyBond!=nil — own-cfg + the INJECTED verifier, asserted at the box entry on BOTH arms since (ErrRecomputeBoxWiring; driven by TestColdBoxWiredVerifierWithZeroMinBondStallsAtEntry)",
 	"epochsEnabled":  "cfg.EpochBlocks>0 && objective() — own-cfg + the injected verifier",
 	"operatorMargin": "cfg.OperatorMargin accessor — own-cfg",
 	"launchAnchorGiven": "the SHARED launch-anchor predicate with the handoff bool SUPPLIED by the caller " +
@@ -75,17 +70,17 @@ var foldLiveStateDenied = map[string]string{
 // foldLiveStateSiteAllowed is the narrow, SITE-SCOPED exception list: selector → the enclosing
 // functions where that read is permitted, each with the reason. It exists for exactly one selector.
 //
-// `verifyBond` is the injected-wiring read the cert requires be asserted LOUDLY at the box entry
-// (R-VERIFYBOND-WIRING, Q4 row 3: the #572 replay shape — objective()/epochsEnabled() silently take
-// the legacy branch on an unwired box). Asserting it there is the fix; BRANCHING on it anywhere else
-// in a fold file is the defect. Since G-1 the ENTRY asserts objective() rather than verifyBond
-// directly (both arms, not one), so the entry's scope is listed under `objective` and one site
-// still reads verifyBond itself:
-//   - assembleStateRootRecomputeOps: the recompute entry's loud objective() assertion (ErrRecomputeBoxWiring);
-//   - (*Box).view (floorbox_box_v5.go): THREADS the verifier into provenView as its class-3
-//     VerifyBond capability. NewBox already refused a chain whose verifier is unwired (objective()
-//     requires verifyBond != nil, ErrBoxLegacyMode), so the value is asserted non-nil at
-//     construction and view() only carries it; the composition calls it through StateView.
+// `verifyBond` is the injected-wiring read the research requires be asserted LOUDLY at the box entry
+// (Q4 row 3: the replay shape — objective/epochsEnabled silently take the legacy branch on an
+// unwired box). Asserting it there is the fix; BRANCHING on it anywhere else in a fold file is the
+// defect. Since the ENTRY asserts objective rather than verifyBond directly (both arms, not
+// one), so the entry's scope is listed under `objective` and one site still reads verifyBond
+// itself:
+// - assembleStateRootRecomputeOps: the recompute entry's loud objective assertion (ErrRecomputeBoxWiring);
+// - (*Box).view (floorbox_box_v5.go): THREADS the verifier into provenView as its class-3
+// VerifyBond capability. NewBox already refused a chain whose verifier is unwired (objective
+// requires verifyBond != nil, ErrBoxLegacyMode), so the value is asserted non-nil at
+// construction and view only carries it; the composition calls it through StateView.
 //
 // Every listed site must still perform its read (the stale-site check below), so a deleted entry
 // assertion reddens rather than silently going missing.
@@ -95,27 +90,27 @@ var foldLiveStateSiteAllowed = map[string]map[string]string{
 	},
 }
 
-// WHERE THE ENTRY-ASSERTION-STILL-EXISTS PROPERTY LIVES NOW (G-1, 2026-09-10) — read this before
-// concluding a gate was weakened. The recompute entry used to read `verifyBond` directly, so this
-// map could carry a site scope for it and the stale-site check below doubled as "the assertion did
-// not go missing". G-1 widened the entry to assert objective() — BOTH arms, since the narrower read
-// let a box with a WIRED verifier and cfg.MinBond == 0 past the entry and into a legacy/objective
-// divergence. `objective` is BLANKET-allowed here (fold files may read it), and this file correctly
-// refuses to let one name be both blanket-allowed and site-scoped, because that scope is vacuous.
+// WHERE THE ENTRY-ASSERTION-STILL-EXISTS PROPERTY LIVES NOW — read this before concluding a gate
+// was weakened. The recompute entry used to read `verifyBond` directly, so this map could carry a
+// site scope for it and the stale-site check below doubled as "the assertion did not go missing".
+// widened the entry to assert objective — BOTH arms, since the narrower read let a box with a
+// WIRED verifier and cfg.MinBond == 0 past the entry and into a legacy/objective divergence.
+// `objective` is BLANKET-allowed here (fold files may read it), and this file correctly refuses to
+// let one name be both blanket-allowed and site-scoped, because that scope is vacuous.
 //
 // So the property MOVED to a stronger owner rather than being dropped: it is now held by
-// TestColdBox_G1_WiredVerifierWithZeroMinBondStallsAtEntry, which DRIVES the box and was proven
+// TestColdBoxWiredVerifierWithZeroMinBondStallsAtEntry, which DRIVES the box and was proven
 // red-first. Delete the entry assertion and that test fails — a runtime observation, where this map
 // could only ever observe a read site. That is a net strengthening, and it is stated here so the
 // next reader does not restore a vacuous scope to "fix" an absence.
 
-// foldFileGlob is the set of non-test floor-box files the pin covers. Widened 2026-09-03
-// (R-AST-PIN-GLOB): the earlier `floorbox_recompute_*_v5.go` missed `floorbox_recompute_v5.go`
-// and four others — the files three of five box defeats lived in — so an AST gate failed by
-// scope. Widened AGAIN 2026-09-08 (NG-4 tail, floor-box structure round 1A step 11):
-// `floorbox_*_v5.go` still missed `floorbox_v5.go` — the file the pre-structure door lives in.
-// Every non-test `floorbox_*.go` is now in, and TestNG4_FoldFileGlobCoversEveryFloorboxFile
-// asserts the glob and the directory listing agree.
+// foldFileGlob is the set of non-test floor-box files the pin covers. Widened 2026-09-03: the
+// earlier `floorbox_recompute_*_v5.go` missed `floorbox_recompute_v5.go` and four others — the
+// files three of five box defeats lived in — so an AST gate failed by scope. Widened AGAIN
+// 2026-09-08 (tail, floor-box structure round 1A step 11): `floorbox_*_v5.go` still missed
+// `floorbox_v5.go` — the file the pre-structure door lives in. Every non-test `floorbox_*.go`
+// is now in, and TestFoldFileGlobCoversEveryFloorboxFile asserts the glob and the
+// directory listing agree.
 const foldFileGlob = "floorbox_*.go"
 
 // foldFileFloor is the vacuity floor: the number of non-test floorbox_*.go files measured when the
@@ -129,8 +124,8 @@ func TestFoldFilesReadNoLiveBoxState(t *testing.T) {
 	for name, why := range foldLiveStateDenied {
 		if _, bad := foldLiveStateAllowed[name]; bad {
 			t.Fatalf("PIN CORRUPTED: %q is on the BLANKET allowlist but it is a DENIED live-state read (%s).\n"+
-				"  Allowlisting it would pin the R-FOLD-LIVE-STATE-READS defect in place — the exact\n"+
-				"  correction the research cert made to the PE ruling's proposed allowlist.", name, why)
+				"  Allowlisting it would pin the defect in place — the exact\n"+
+				"  correction the research cert made to the review's proposed allowlist.", name, why)
 		}
 	}
 	for name, sites := range foldLiveStateSiteAllowed {
@@ -205,14 +200,14 @@ func TestFoldFilesReadNoLiveBoxState(t *testing.T) {
 				"  (in "+enclosing+")  — "+why)
 		}
 	}
-	// A site-scoped allowance whose read has DISAPPEARED means the entry assertion was deleted or
-	// moved. That is the R-VERIFYBOND-WIRING gate going silently missing, so it reddens too.
+	// A site-scoped allowance whose read has DISAPPEARED means the entry assertion was deleted
+	// or moved. That is the gate going silently missing, so it reddens too.
 	for name, sites := range foldLiveStateSiteAllowed {
 		for site := range sites {
 			if siteHits[name][site] == 0 {
 				t.Fatalf("SITE ALLOWANCE STALE: %s is scoped to %s but no such read exists any more.\n"+
 					"  If the entry assertion moved, move the scope with it; if it was deleted, the\n"+
-					"  R-VERIFYBOND-WIRING gate is gone and must be restored.", name, site)
+					"  gate is gone and must be restored.", name, site)
 			}
 		}
 	}
@@ -222,8 +217,8 @@ func TestFoldFilesReadNoLiveBoxState(t *testing.T) {
 			"  The recompute's verdict must be a function of (prevStateRoot, committedStateRoot, b, w,\n"+
 			"  own-cfg) ONLY. A box-own field is not one of those: the deployment target holds no\n"+
 			"  registry and replays no apply(), so its accelerator fields are never written and a read\n"+
-			"  of one silently screens under the wrong rule (R-FOLD-LIVE-STATE-READS, 2026-09-02).\n"+
-			"  Anchor the value: Resolve the committed leaf against prevStateRoot (Direction A) and\n"+
+			"  of one silently screens under the wrong rule (2026-09-02).\n"+
+			"  Anchor the value: Resolve the committed leaf against prevStateRoot (pre-state anchor) and\n"+
 			"  thread it in, as handoffPreState does for everMature/matureEpoch. Do NOT add the name to\n"+
 			"  foldLiveStateAllowed.", len(violations), strings.Join(violations, "\n"))
 	}
@@ -231,7 +226,7 @@ func TestFoldFilesReadNoLiveBoxState(t *testing.T) {
 
 // TestLaunchAnchorGivenReadsNoLiveState walks the ONE allowlisted predicate that lives OUTSIDE the
 // fold files (chain.go). Allowlisting it by name would otherwise be a hole: a future edit could make
-// its body read c.handedOff() and the fold-file walk would never see it.
+// its body read c.handedOff and the fold-file walk would never see it.
 func TestLaunchAnchorGivenReadsNoLiveState(t *testing.T) {
 	fset := token.NewFileSet()
 	af, err := parser.ParseFile(fset, "chain.go", nil, 0)
@@ -257,7 +252,7 @@ func TestLaunchAnchorGivenReadsNoLiveState(t *testing.T) {
 		if ident, ok := sel.X.(*ast.Ident); ok && ident.Name == "c" && sel.Sel.Name != "cfg" {
 			t.Fatalf("launchAnchorGiven reads c.%s at %s — it is allowlisted for the fold files ONLY "+
 				"because it reads own-cfg (Anchors) and takes the handoff predicate as a PARAMETER. "+
-				"A live-state read here re-opens R-FOLD-LIVE-STATE-READS through the allowlisted door.",
+				"A live-state read here re-opens through the allowlisted door.",
 				sel.Sel.Name, fset.Position(sel.Pos()))
 		}
 		return true
@@ -265,12 +260,11 @@ func TestLaunchAnchorGivenReadsNoLiveState(t *testing.T) {
 }
 
 // TestFoldLiveStatePinHasTeeth proves the walk bites. It runs the SAME classifier
-// (foldPinIndex.liveReads) over a synthetic fold file that re-injects the exact defect in every
-// shape the pin must see — a `c.matureEpoch` branch selector on a *Chain method, a `s.c.epochSet`
-// read through a RECEIVER-FIELD ALIAS on a box-owned struct (PE ruling F-1, 2026-09-08: the
-// matcher keyed on the identifier `c`, so a Box method reading s.c.<map> was invisible), a `ch.<map>`
-// read through a *Chain PARAMETER, and a read through a local `x := s.c` — and asserts each is
-// flagged. Without this, a walk that silently matched nothing would look green forever — the
+// (foldPinIndex.liveReads) over a synthetic fold file that re-injects the exact defect in every shape
+// the pin must see — a `c.matureEpoch` branch selector on a *Chain method, a `s.c.epochSet` read
+// through a RECEIVER-FIELD ALIAS on a box-owned struct thod reading s.c.<map> was invisible, a
+// `ch.<map>` read through a *Chain PARAMETER, and a read through a local `x:= s.c` — and asserts each
+// is flagged. Without this, a walk that silently matched nothing would look green forever — the
 // decoration-green trap.
 func TestFoldLiveStatePinHasTeeth(t *testing.T) {
 	const injected = `package chain
@@ -383,7 +377,7 @@ type liveRead struct {
 // liveReads walks every FuncDecl in af and returns each `<chain>.<sel>` where <chain> is an
 // expression that reaches a *Chain: the receiver of a *Chain method; a parameter typed *Chain or
 // Chain; `recv.<field>` where recv is the receiver of a method on a fold-file struct and <field> is
-// one of that struct's *Chain fields; or a local defined as `x := <one of the above>`. The name
+// one of that struct's *Chain fields; or a local defined as `x:= <one of the above>`. The name
 // matters nowhere — the TYPE reachability does. A read through a shape this walk does not resolve
 // (a chain returned from a call, a chain stored in a map) is outside the pin; keep the shapes here
 // in step with what the fold files actually write.
@@ -436,7 +430,8 @@ func (idx foldPinIndex) liveReads(af *ast.File) []liveRead {
 			}
 			return "", false
 		}
-		// Locals defined from a chain-reaching expression become roots (x := s.c).
+		// Locals defined from a chain-reaching expression become roots (x:=
+		// s.c).
 		ast.Inspect(fd.Body, func(n ast.Node) bool {
 			as, ok := n.(*ast.AssignStmt)
 			if !ok || as.Tok != token.DEFINE || len(as.Lhs) != len(as.Rhs) {
@@ -487,15 +482,15 @@ func itoa(n int) string {
 	return string(b[i:])
 }
 
-// TestNG4_FoldFileGlobCoversEveryFloorboxFile (NG-4 tail, step 11). MEASURED twice on the donor
-// branch and once here: a `floorbox_recompute_*_v5.go` glob covered 10 of 15 files and missed
-// floorbox_recompute_v5.go (where F1, G-I and N1 live); `floorbox_*_v5.go` covered 12 of 13 and
-// missed floorbox_v5.go (the pre-structure door). The gate built to be a defect family's recurrence
-// teeth did not read the file the family lives in. This asserts the glob matches EVERY non-test
-// floorbox_*.go in the package and that the floor equals the count.
-// SOURCE GATE: a directory listing compared with a glob. RUNTIME GATE: TestFoldFilesReadNoLiveBoxState
-// (the pin itself, over the widened set). Ablation (NG-4): revert the glob to floorbox_*_v5.go ⇒ RED.
-func TestNG4_FoldFileGlobCoversEveryFloorboxFile(t *testing.T) {
+// TestFoldFileGlobCoversEveryFloorboxFile (tail, step 11). MEASURED twice on the donor branch and
+// once here: a `floorbox_recompute_*_v5.go` glob covered 10 of 15 files and missed
+// floorbox_recompute_v5.go (where F1 and N1 live); `floorbox_*_v5.go` covered 12 of 13 and missed
+// floorbox_v5.go (the pre-structure door). The gate built to be a defect family's recurrence teeth did
+// not read the file the family lives in. This asserts the glob matches EVERY non-test floorbox_*.go in
+// the package and that the floor equals the count. SOURCE GATE: a directory listing compared with a
+// glob. RUNTIME GATE: TestFoldFilesReadNoLiveBoxState (the pin itself, over the widened set).
+// Ablation: revert the glob to floorbox_*_v5.go ⇒ RED.
+func TestFoldFileGlobCoversEveryFloorboxFile(t *testing.T) {
 	all, err := filepath.Glob("floorbox_*.go")
 	if err != nil {
 		t.Fatal(err)
@@ -519,11 +514,11 @@ func TestNG4_FoldFileGlobCoversEveryFloorboxFile(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(covered)
 	if strings.Join(want, ",") != strings.Join(covered, ",") {
-		t.Fatalf("SOURCE GATE: NG-4 — foldFileGlob %q covers %d of %d non-test floorbox_*.go files.\n  covered: %v\n  all:     %v",
+		t.Fatalf("SOURCE GATE: — foldFileGlob %q covers %d of %d non-test floorbox_*.go files.\n covered: %v\n all:     %v",
 			foldFileGlob, len(covered), len(want), covered, want)
 	}
 	if len(want) != foldFileFloor {
-		t.Fatalf("SOURCE GATE: NG-4 — %d non-test floorbox_*.go files, foldFileFloor is %d; move the floor with the file set in the same commit",
+		t.Fatalf("SOURCE GATE: — %d non-test floorbox_*.go files, foldFileFloor is %d; move the floor with the file set in the same commit",
 			len(want), foldFileFloor)
 	}
 }

@@ -11,24 +11,24 @@ import (
 )
 
 // era-4 (v5) THE BOX — the trustless floor box's own state and its one door onto the ONE accept
-// composition (floor-box structure round 1A, main-only; owner call 16).
+// composition (floor-box structure round 1A, main-only16).
 //
 // WHAT IS BOX-OWNED, AND WHY IT IS A TYPE. Four of the box-entry round's defeats (N2, N3, N6, N7)
-// were a driver-supplied FIELD that removed a check; RT2-CARRIER-13/13b/13c was a recompute entry
+// were a driver-supplied FIELD that removed a check was a recompute entry
 // with no position of its own, so the carrier was verified over whatever b.Prev the block's author
-// chose; R-CARRIER-PARENTPROPOSER was the one class-A input read from the witness, anchored by
-// "some key signed b.Prev", which a fresh keypair satisfies. Every one of those inputs is now a
-// field of this struct, DERIVED at construction from things the box holds — its own config, its
-// own parent block — and none is a parameter of Validate:
+// chose; this gate was the one class-A input read from the witness, anchored by "some key signed
+// b.Prev", which a fresh keypair satisfies. Every one of those inputs is now a field of this
+// struct, DERIVED at construction from things the box holds — its own config, its own parent block
+// — and none is a parameter of Validate:
 //
-//	head    HeadRef      derived from the PARENT BLOCK the box holds (BG-2: the view takes a block,
-//	                     never a bare hash); P1 binds b.Prev / b.Height to it before anything else
-//	                     reads the block, and the class-A fold takes the parent proposer from it.
-//	budget  Budget       derived from BoxConfig.BudgetBytes; NewBox REFUSES an unset ceiling and
-//	                     there is no way to express ∞ (BG-3, M-4).
-//	src     WitnessSource the delivery seam; nil is a legal, never-Accepting box.
+//	head HeadRef derived from the PARENT BLOCK the box holds (the view takes a block,
+//	 never a bare hash); P1 binds b.Prev / b.Height to it before anything else
+//	 reads the block, and the class-A fold takes the parent proposer from it.
+//	budget Budget derived from BoxConfig.BudgetBytes; NewBox REFUSES an unset ceiling and
+//	 there is no way to express ∞.
+//	src WitnessSource the delivery seam; nil is a legal, never-Accepting box.
 //
-// WHAT WAS DELETED AT D0 (owner call 2, D-TRUE-UP-CALLS-2026-09-07): BoxConfig.Recovery and the
+// WHAT WAS DELETED AT D0: BoxConfig.Recovery and the
 // RecoveryDirective it carried. A recovery directive was a knob the recompute cannot honour, and a
 // box that could be TOLD to proceed past an ambiguous boundary is not a cold auditor. The stall is
 // unconditional now, so there is nothing left to configure.
@@ -43,62 +43,64 @@ import (
 // COMPOSITION. ValidateCommitV5 over provenView DOES return Accept for an honest block with
 // genuine witnesses (TestBoxDoor_HonestBlockReachesTheDowngrade drives it there); the one-line
 // downgrade in Validate — Accept ⇒ IndeterminateTrustlessly / ErrRecomputeGated — is the ONLY
-// thing between the door and Accept, because flipping the box to Accept is R1.8, a consensus-rule
-// change (I1), owner-ratified and research-gated, and not this round. One line, so the flip is one
-// line to remove and reviewed on its own. Belt: a nil source stalls at the first class-2 read.
-// What keeps the composition from being a SECOND door around this downgrade is that StateView is
-// SEALED (stateview_v5.go): only liveView and provenView can drive ValidateCommitV5.
+// thing between the door and Accept, because flipping the box to Accept is, a consensus-rule
+// change (I1)and research-gated, and not this round. One line, so the flip is one line to remove
+// and reviewed on its own. Belt: a nil source stalls at the first class-2 read. What keeps the
+// composition from being a SECOND door around this downgrade is that StateView is SEALED
+// (stateview_v5.go): only liveView and provenView can drive ValidateCommitV5.
 
 var (
-	// ErrBoxLegacyMode is NewBox's refusal of a chain in the LEGACY (non-objective) regime, or one
-	// whose bond verifier is not wired (#572 — objective() is MinBond > 0 AND verifyBond != nil).
-	// A legacy box cannot reproduce any qualification predicate from committed state: rep(id) is
-	// not a leaf. This is the S2 mode fence, at the box entry (P-table delta certification §2.2
-	// row 0a: box-owned, node no-op), belt and braces with provenView.Rep answering NoWitness.
+	// ErrBoxLegacyMode is NewBox's refusal of a chain in the LEGACY (non-objective) regime, or
+	// one whose bond verifier is not wired. A legacy box cannot reproduce any qualification
+	// predicate from committed state: rep(id) is not a leaf. This is the S2 mode fence, at the
+	// box entry (P-table row 0a: box-owned, node no-op), belt and braces with provenView.Rep
+	// answering NoWitness.
 	ErrBoxLegacyMode = errors.New("chain: floor box requires the OBJECTIVE regime (MinBond > 0 and a wired bond verifier); legacy rep(id) is not a committed leaf — refused")
 	// ErrBoxParentUnsigned is NewBox's refusal of a parent block whose proposer signature does not
 	// verify over its own hash. The head record is derived from the parent; a parent that is not
 	// even self-consistent cannot anchor anything.
 	ErrBoxParentUnsigned = errors.New("chain: floor box parent block's proposer signature does not verify over its hash — refused")
-	// ErrBoxParentPruned is NewBox's refusal of a PRUNED parent: its Hash() is a stored token, not
-	// a content digest (chain.go Hash()), so a head record derived from it would bind b.Prev to a
-	// hash the parent's body no longer reproduces.
+	// ErrBoxParentPruned is NewBox's refusal of a PRUNED parent: its Hash is a stored token,
+	// not a content digest (chain.go Hash), so a head record derived from it would bind b.Prev
+	// to a hash the parent's body no longer reproduces.
 	ErrBoxParentPruned = errors.New("chain: floor box parent block is pruned; its hash is a linkage token, not a commitment — refused")
 	// ErrPrunedBlockUnreproducible is the door's STALL on a payload-pruned block. validateBondRegs'
 	// pruned leg is keyed on the READER's own trust floor (Q2); a box deriving that verdict from a
 	// floor the node does not share could accept where the node rejects. Placed at the door, not in
 	// the composition, so the composition stays the node's rule.
 	ErrPrunedBlockUnreproducible = errors.New("chain: floor box cannot reproduce the pruned-block leg (it is keyed on the reader's own trust floor) — stall")
-	// ErrBoxNoChainID is NewBox's refusal of an unset BoxConfig.ChainID. The genesis hash is the
-	// chain id the era-4 consensus preimage binds (consensusSigBytesV5); without it the box has no
-	// network identity, and a box that judged era-4 signatures against the zero hash would be
-	// auditing a network that does not exist. BG-2: the anchor is given or the box is not
+	// ErrBoxNoChainID is NewBox's refusal of an unset BoxConfig.ChainID. The genesis hash is
+	// the chain id the era-4 consensus preimage binds (consensusSigBytesV5); without it the box
+	// has no network identity, and a box that judged era-4 signatures against the zero hash
+	// would be auditing a network that does not exist. the anchor is given or the box is not
 	// constructed.
 	ErrBoxNoChainID = errors.New("chain: floor box has no chain id (BoxConfig.ChainID is unset), so it cannot bind era-4 consensus signatures to a network — refused")
 )
 
 // BoxConfig is the box's OWN operator configuration — set once at construction, never per block.
 type BoxConfig struct {
-	// BudgetBytes is the BG-3 ceiling over frame + witness bytes for one block. It MUST be positive:
-	// NewBox refuses 0 (unset) and there is no value that means "unlimited". The number a
-	// deployment should use is not fixed here (the pony measurement is owed, build-plan cert §6.3).
+	// BudgetBytes is the ceiling over frame + witness bytes for one block. It MUST be
+	// positive: NewBox refuses 0 (unset) and there is no value that means "unlimited". The
+	// number a deployment should use is not fixed here (the pony measurement is owed,
+	// build-plan).
 	BudgetBytes int
-	// ChainID is the box's NETWORK IDENTITY: the height-0 block's Hash() of the chain it audits.
-	// The era-4 consensus preimage binds it (consensusSigBytesV5), so the box needs it to verify
-	// any v5 carrier entry or quorum signature. It MUST be non-zero: NewBox refuses the zero hash
-	// and there is no value that means "any network".
+	// ChainID is the box's NETWORK IDENTITY: the height-0 block's Hash of the chain it audits.
+	// The era-4 consensus preimage binds it (consensusSigBytesV5), so the box needs it to
+	// verify any v5 carrier entry or quorum signature. It MUST be non-zero: NewBox refuses the
+	// zero hash and there is no value that means "any network".
 	//
-	// WHY IT IS CONFIG AND NOT DERIVED, STATED PLAINLY BECAUSE IT IS A BG-2 QUESTION. The box
-	// cannot derive it from anything it holds. The parent block does not carry the genesis hash,
-	// and `ch` is the box's CONFIG-BEARING chain, not a state source — on the deployment target it
-	// holds no blocks at all, so ch.ChainID() would be the zero hash. Reading it from `ch` is also
-	// the exact defect the fold-file pin denies by name ("blocks: applied-history chain state — a
-	// cold box never has it"). So it belongs where the box's other trust anchors already live:
-	// operator configuration, set ONCE at construction, never a parameter of Validate and never a
-	// field of the block under judgement. A driver cannot choose it per block.
+	// WHY IT IS CONFIG AND NOT DERIVED, STATED PLAINLY BECAUSE IT IS A QUESTION. The box
+	// cannot derive it from anything it holds. The parent block does not carry the genesis
+	// hash, and `ch` is the box's CONFIG-BEARING chain, not a state source — on the deployment
+	// target it holds no blocks at all, so ch.ChainID would be the zero hash. Reading it from
+	// `ch` is also the exact defect the fold-file pin denies by name ("blocks: applied-history
+	// chain state — a cold box never has it"). So it belongs where the box's other trust
+	// anchors already live: operator configuration, set ONCE at construction, never a parameter
+	// of Validate and never a field of the block under judgement. A driver cannot choose it per
+	// block.
 	//
-	// The owner-call-A certification §4.5 flagged this as a possible blocker and asked for it back
-	// if the box could not derive it from an anchor it already holds. It cannot. This shape is the
+	// A review flagged this as a possible blocker and asked for it back if the box
+	// could not derive it from an anchor it already holds. It cannot. This shape is the
 	// builder's reading of "box-owned"; it is routed for confirmation, not settled here.
 	ChainID ports.Hash
 }
@@ -124,11 +126,11 @@ func NewBox(ch *Chain, parent Block, cfg BoxConfig, src WitnessSource) (*Box, er
 	if err != nil {
 		return nil, fmt.Errorf("%w (BoxConfig.BudgetBytes is unset)", err)
 	}
-	// KEEP, RE-KEYED (d-3 delta certification site 9: "widening if dropped — DO NOT"). The box
-	// refuses a parent whose heavy proofs are gone. (d-3) retires `Pruned` for v5, so IsPruned()
-	// would silently stop detecting a shed v5 parent and this refusal would go dead exactly where
-	// it is still needed. HeavyProofsShed() is the bond-possession signal; IsPruned() is the
-	// identity one, and only the identity fact changed.
+	// KEEP, RE-KEYED (d-3 research site 9: "widening if dropped — DO NOT"). The box
+	// refuses a parent whose heavy proofs are gone. retires `Pruned` for v5, so IsPruned
+	// would silently stop detecting a shed v5 parent and this refusal would go dead
+	// exactly where it is still needed. HeavyProofsShed is the bond-possession signal;
+	// IsPruned is the identity one, and only the identity fact changed.
 	if parent.HeavyProofsShed() {
 		return nil, ErrBoxParentPruned
 	}
@@ -139,11 +141,11 @@ func NewBox(ch *Chain, parent Block, cfg BoxConfig, src WitnessSource) (*Box, er
 	if !ed25519.Verify(ed25519.PublicKey(parent.Proposer), ph[:], parent.ProposerSig) {
 		return nil, ErrBoxParentUnsigned
 	}
-	// BG-2: the box's NETWORK IDENTITY, taken from its OWN config (see BoxConfig.ChainID) and
-	// refused when absent rather than defaulted. A box that audited under the zero hash would be
-	// verifying era-4 signatures against a network that does not exist; that is a MISSING TRUST
-	// ANCHOR, so it is a construction refusal, not a per-block stall — the same shape as the
-	// unset budget above.
+	// The box's NETWORK IDENTITY, taken from its OWN config (see BoxConfig.ChainID) and
+	// refused when absent rather than defaulted. A box that audited under the zero hash would
+	// be verifying era-4 signatures against a network that does not exist; that is a MISSING
+	// TRUST ANCHOR, so it is a construction refusal, not a per-block stall — the same shape
+	// as the unset budget above.
 	if cfg.ChainID == (ports.Hash{}) {
 		return nil, ErrBoxNoChainID
 	}
@@ -151,7 +153,7 @@ func NewBox(ch *Chain, parent Block, cfg BoxConfig, src WitnessSource) (*Box, er
 }
 
 // headRefOf derives the box's head record from the parent block it holds and its own chain id —
-// the SAME derivation liveView.Head() applies to the node's own head block, so the two views
+// the SAME derivation liveView.Head applies to the node's own head block, so the two views
 // cannot differ by a field.
 func headRefOf(parent Block, chainID ports.Hash) HeadRef {
 	h := HeadRef{Hash: parent.Hash(), NextHeight: parent.Height + 1, ProposerID: parent.ProposerID(), ChainID: chainID}
@@ -183,20 +185,20 @@ func (s *Box) view() provenView {
 }
 
 // Validate is THE DOOR: the ONE accept composition (ValidateCommitV5) over the box's proven view,
-// with the P13a predicate wired to the certified witness recompute. Order, load-bearing:
+// with the P13a predicate wired to the witness recompute. Order, load-bearing:
 //
-//  1. the byte budget over FRAME + WITNESS, before any crypto and before any read (BG-3);
-//  2. the #535 recovery decision, over the box's OWN head height (cold auditor: an UNCONDITIONAL
-//     loud stall — no directive, no opt-in, no fall-through, and no field of the block);
-//  3. a pruned block stalls (ErrPrunedBlockUnreproducible);
-//  4. ValidateCommitV5: P1 binds (b.Prev, b.Height) to the box's OWN head FIRST — so the carrier
-//     leg (P12) and the class-A fold (P13a) run over a parent the box chose, not the author;
-//  5. the R1.8 downgrade: Accept ⇒ IndeterminateTrustlessly / ErrRecomputeGated.
+// 1. the byte budget over FRAME + WITNESS, before any crypto and before any read;
+// 2. the recovery decision, over the box's OWN head height (cold auditor: an UNCONDITIONAL
+// loud stall — no directive, no opt-in, no fall-through, and no field of the block;
+// 3. a pruned block stalls (ErrPrunedBlockUnreproducible);
+// 4. ValidateCommitV5: P1 binds (b.Prev, b.Height) to the box's OWN head FIRST — so the carrier
+// leg (P12) and the class-A fold (P13a) run over a parent the box chose, not the author;
+// 5. the downgrade: Accept ⇒ IndeterminateTrustlessly / ErrRecomputeGated.
 func (s *Box) Validate(b Block, w StateRootWitness) (FloorBoxOutcome, error) {
 	if err := s.budget.Check(len(Encode(&b))+witnessBytes(w), "frame+witness"); err != nil {
 		return IndeterminateTrustlessly, err
 	}
-	// B-1. The height this reads is the BOX'S OWN — head.NextHeight, derived from the parent block
+	// The height this reads is the BOX'S OWN — head.NextHeight, derived from the parent block
 	// the box holds — and never b.Height, which is the block author's self-declared field.
 	//
 	// It was b.Height, and that made the "unconditional" stall a proposer's choice in both
@@ -218,9 +220,10 @@ func (s *Box) Validate(b Block, w StateRootWitness) (FloorBoxOutcome, error) {
 	if proceed, reason := s.c.recoveryBoundaryDecision(s.head.NextHeight); !proceed {
 		return IndeterminateTrustlessly, reason
 	}
-	// KEEP, RE-KEYED (site 10, same certification). The explicit warning there: if this stall
-	// silently goes dead for v5, D0's ablation becomes vacuous — a green gate with no demonstrated
-	// red, simplicity rule 7. Re-keyed to bond possession for the same reason as site 9.
+	// KEEP, RE-KEYED (site 10, same research). The explicit warning there: if this stall
+	// silently goes dead for v5, D0's ablation becomes vacuous — a green gate with no
+	// demonstrated red. Re-keyed to bond possession for the same reason as
+	// site 9.
 	if b.HeavyProofsShed() {
 		return IndeterminateTrustlessly, ErrPrunedBlockUnreproducible
 	}
@@ -232,14 +235,14 @@ func (s *Box) Validate(b Block, w StateRootWitness) (FloorBoxOutcome, error) {
 	}
 	out, err := ValidateCommitV5(v, &b)
 	if out == Accept {
-		return IndeterminateTrustlessly, ErrRecomputeGated // R1.8 — the flip is not this round
+		return IndeterminateTrustlessly, ErrRecomputeGated // the flip is not this round
 	}
 	return out, err
 }
 
 // witnessBytes measures a witness bundle STRUCTURALLY — every byte slice, hash, id and scalar
 // reachable through the carrier's exported fields, with statehash.Witness reporting its own proof
-// bytes — so the budget charges the quantity BG-3 bounds (2.67 GiB of AttScreens at N = 2^20 for
+// bytes — so the budget charges the quantity the gate bounds (2.67 GiB of AttScreens at N = 2^20 for
 // one no-op block) without re-encoding it. O(witness), allocation-free, and it cannot drift from
 // the carrier types: a new field is measured the moment it is added.
 func witnessBytes(w StateRootWitness) int { return measureBytes(reflect.ValueOf(w)) }

@@ -2,7 +2,7 @@ package chain
 
 // MEASUREMENT TEST — era-4 (v5) floor-box whole-set BONDED witness size
 //
-// Gate-4 unfiled-measurement scar closure (2026-08-31).
+// Closes an unfiled measurement.
 //
 // The "~106MB" estimate for the whole-bonded witness at 1M members was cited
 // once but never filed, so it cannot ground the R-membership / pony-2GB budget.
@@ -12,9 +12,9 @@ package chain
 // whole-set digest (a bond-reg or slash block) must receive a
 // StateRootDigestWitness for `bonded`. That witness has two parts:
 //
-//   PreIDs  []ports.NodeID   — the complete pre-state member list: N × 32 bytes.
-//   Proof   statehash.Witness — one SMT inclusion proof for the digest leaf:
-//                              len(SideNodes) × 32 bytes + small fixed overhead.
+// PreIDs []ports.NodeID — the complete pre-state member list: N × 32 bytes.
+// Proof statehash.Witness — one SMT inclusion proof for the digest leaf:
+// len(SideNodes) × 32 bytes + small fixed overhead.
 //
 // The box builds the whole-set SMT (over the bonded keyspace leaves only: N
 // bonded||id leaves + one bondedRoot digest leaf) and proves the bondedRoot
@@ -29,7 +29,7 @@ package chain
 //
 // REPRODUCE COMMAND (from repo root, worktree or main checkout):
 //
-//	go test ./core/chain/ -run TestMeasureFloorBoxWholeSetWitnessSize -v -count=1 -timeout=600s
+//	go test./core/chain/ -run TestMeasureFloorBoxWholeSetWitnessSize -v -count=1 -timeout=600s
 //
 // N=1M is the load-bearing data point for the pony-2GB budget verdict.
 // Use -short to skip this test during routine CI (N=1M takes ~3s; the structural
@@ -61,12 +61,12 @@ type wholeSetWitnessRow struct {
 // for one touched bondedRoot leaf. It runs at N = 10k, 100k, and 1M.
 //
 // For each N it reports:
-//   - idListBytes: N × 32 (PreIDs flat bytes, the dominating term)
-//   - proofBytes: marshaled gob bytes for the SMT inclusion proof (O(log N × 32))
-//   - totalBytes: idListBytes + proofBytes (the wire transfer size)
-//   - cumulAllocMB: cumulative heap bytes allocated during SMT build (includes
-//     GC-collected intermediates — this is NOT the peak live heap)
-//   - liveHeapDeltaMB: HeapInuse delta after GC (approximates live heap growth)
+// - idListBytes: N × 32 (PreIDs flat bytes, the dominating term)
+// - proofBytes: marshaled gob bytes for the SMT inclusion proof (O(log N × 32))
+// - totalBytes: idListBytes + proofBytes (the wire transfer size)
+// - cumulAllocMB: cumulative heap bytes allocated during SMT build (includes
+// GC-collected intermediates — this is NOT the peak live heap
+// - liveHeapDeltaMB: HeapInuse delta after GC (approximates live heap growth)
 func TestMeasureFloorBoxWholeSetWitnessSize(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping large-N witness measurement in short mode; use -run TestMeasureWholeSetWitnessProofStructure for the fast structural check")
@@ -121,7 +121,7 @@ func TestMeasureFloorBoxWholeSetWitnessSize(t *testing.T) {
 			t.Logf("NOTE: the SMT build for N=1M costs %.0f MB cumulative heap (%.0f MB live); this is the",
 				r.cumulAllocMB, r.liveHeapDeltaMB)
 			t.Logf("      provider-side cost (the prover that HOLDS the committed set), not the box-side cost.")
-			t.Logf("      A coexistence test vs a ~1GB flixz-sized daemon is owed (see MEMORY.md session-7 note).")
+			t.Logf("      A coexistence test against a ~1GB daemon is still owed.")
 		}
 	}
 }
@@ -249,9 +249,9 @@ func log2fApprox(n int) float64 {
 
 // TestMeasureWholeSetWitnessProofStructure is a FAST structural check (N=100,
 // no -short guard) that the measurement method is faithful:
-//   - the real proof issued by statehash.NewProver has a nonzero sidenode count,
-//   - Resolve verifies it (the proof is a real membership proof, not a dummy), and
-//   - the proxy marshal returns a finite nonzero byte count.
+// - the real proof issued by statehash.NewProver has a nonzero sidenode count,
+// - Resolve verifies it (the proof is a real membership proof, not a dummy), and
+// - the proxy marshal returns a finite nonzero byte count.
 //
 // This always runs in CI so the regression coverage is always-on.
 func TestMeasureWholeSetWitnessProofStructure(t *testing.T) {

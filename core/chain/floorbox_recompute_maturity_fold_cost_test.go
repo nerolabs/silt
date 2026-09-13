@@ -2,42 +2,42 @@ package chain
 
 // MEASUREMENT TEST — class-M maturity recompute fold cost as a function of |validatorsSeen|
 //
-// Mandate: set the witness-fit cap VALUE for the ratified Option-A validatorsSeen bound,
-// and inform the R-membership flip precondition. Measure-first; pin NO value at desk.
+// Mandate: set the witness-fit cap VALUE for the Option-A validatorsSeen bound, and
+// inform the R-membership flip precondition. Measure-first; pin NO value at desk.
 //
 // WHAT IS MEASURED:
-//   recomputeMatureNow (floorbox_recompute_maturity_v5.go) folds the WHOLE validatorsSeen
-//   set on every mature block: ~3 SMT inclusion/exclusion-proof verifies per member
-//   (bonded / slashed / bondDomain). The cost scales with |validatorsSeen| on a FULL v5
-//   committed StateRoot — the full 18 era-3 leaves plus the v5 maintenance-spine
-//   (qualified, dueBucket, epochStart, era4 activation scalars, and the five F1 digest
-//   roots) are all present, so proof depths reflect a real production SMT.
+// recomputeMatureNow (floorbox_recompute_maturity_v5.go) folds the WHOLE validatorsSeen
+// set on every mature block: ~3 SMT inclusion/exclusion-proof verifies per member
+// (bonded / slashed / bondDomain). The cost scales with |validatorsSeen| on a FULL v5
+// committed StateRoot — the full 18 era-3 leaves plus the v5 maintenance-spine
+// (qualified, dueBucket, epochStart, era4 activation scalars, and the five F1 digest
+// roots) are all present, so proof depths reflect a real production SMT.
 //
 // ANCHORS: N ∈ {10_000, 100_000, 1_000_000}.
-//   N=10k   — low anchor for slope.
-//   N=100k  — economist's lower bound for honest-distinct-validator count over network life.
-//   N=1M    — economist's upper bound; the load-bearing budget point.
+// N=10k — low anchor for slope.
+// N=100k — economist's lower bound for honest-distinct-validator count over network life.
+// N=1M — economist's upper bound; the load-bearing budget point.
 //
 // TWO PHASES, SEPARATELY MEASURED:
-//   Setup (provider-side):  build the full v5 committed SMT + issue N×3+1 proofs.
-//                           This runs on the witness-provider node, NOT the floor box.
-//   Fold  (box-side):       recomputeMatureNow() against the committed root.
-//                           This is what the floor box pays on every mature block.
+// Setup (provider-side): build the full v5 committed SMT + issue N×3+1 proofs.
+// This runs on the witness-provider node, NOT the floor box.
+// Fold (box-side): recomputeMatureNow against the committed root.
+// This is what the floor box pays on every mature block.
 //
 // CONCURRENT REPAIR PRESSURE:
-//   R2.5 measured ~1024 MiB resident per repair. On a 2 GB pony the fold shares the box
-//   with ~1 GB of concurrently live repair data. We simulate this by allocating and HOLDING
-//   a 1 GiB sink before the fold run and releasing it after, so the GC sees the real
-//   working-set competition. A real concurrent repair is too expensive to stand up in this
-//   seat; the simulation is documented as such.
+// measured ~1024 MiB resident per repair. On a 2 GB pony the fold shares the box
+// with ~1 GB of concurrently live repair data. We simulate this by allocating and HOLDING
+// a 1 GiB sink before the fold run and releasing it after, so the GC sees the real
+// working-set competition. A real concurrent repair is too expensive to stand up in this
+// seat; the simulation is documented as such.
 //
 // REPRODUCE COMMAND (from repo root):
 //
-//   go test ./core/chain/ -run TestMeasureRecomputeMatureNowFoldCost -v -count=1 -timeout=600s
+// go test./core/chain/ -run TestMeasureRecomputeMatureNowFoldCost -v -count=1 -timeout=600s
 //
 // To include N=1M (skipped under -short):
 //
-//   go test ./core/chain/ -run TestMeasureRecomputeMatureNowFoldCost -v -count=1 -timeout=600s
+// go test./core/chain/ -run TestMeasureRecomputeMatureNowFoldCost -v -count=1 -timeout=600s
 //
 // (N=1M is NOT skipped here — see -short guard in the body.)
 
@@ -80,7 +80,7 @@ type foldCostRow struct {
 // The fixture injects N members directly into a Chain's committed maps (white-box, same
 // package) rather than running full consensus, so the measurement covers what matters —
 // the SMT proof depth and the fold arithmetic — without paying block-application overhead.
-// The resulting Chain.stateRootLeavesV5() output is a real full v5 leaf set (all 18 era-3
+// The resulting Chain.stateRootLeavesV5 output is a real full v5 leaf set (all 18 era-3
 // fields plus all v5 extras), so proof depths match production.
 //
 // N=1M runs unless -short is set. All three sizes run by default because the slope from
@@ -144,7 +144,7 @@ func TestMeasureRecomputeMatureNowFoldCost(t *testing.T) {
 	const ponyBlockCadenceMin = 10.0 // minutes; ~10 min mature-block cadence
 	const foldBudgetFraction = 0.10  // fold must be < 10% of the block cadence
 	const foldBudgetMs = ponyBlockCadenceMin * 60.0 * 1000.0 * foldBudgetFraction
-	const repairRSSMiB = 1024.0                          // R2.5: ~1024 MiB per concurrent repair
+	const repairRSSMiB = 1024.0                          // ~1024 MiB per concurrent repair
 	const ponyRSSMiB = 2048.0                            // pony budget: 2 GiB
 	const headroomForFoldMiB = ponyRSSMiB - repairRSSMiB // ~1 GiB
 
@@ -214,10 +214,11 @@ func measureFoldCost(t *testing.T, N int) foldCostRow {
 	}
 
 	// Inject into the committed maps. Every member:
-	//   - validatorsSeen: present (the fold's universe)
-	//   - bonded: minBond (eligible, above the threshold)
-	//   - bondDomain: distinct non-zero domain (one domain per member — worst-case for
-	//     zeroDomainWeights growth; no aggregation, so the groups slice is N-long)
+	// - validatorsSeen: present (the fold's universe)
+	// - bonded: minBond (eligible, above the threshold)
+	// - bondDomain: distinct non-zero domain (one domain per member — worst-case for
+	// zeroDomainWeights growth; no aggregation, so the groups slice is
+	// N-long
 	//
 	// Domain 0 (unset) is also exercised by assigning domain i+1 — every domain is
 	// distinct, so nakamotoCoefficient folds the full groups slice. This is the
@@ -231,8 +232,9 @@ func measureFoldCost(t *testing.T, N int) foldCostRow {
 	// This exercises the absent-slashed branch (the common real case).
 
 	// --- 2. BUILD THE FULL V5 COMMITTED SMT (provider-side, measured as setup). ---
-	// stateRootLeavesV5() emits ALL leaves: the 18 era-3 fields + v5 maintenance spine +
-	// F1 digest roots. The SMT depth reflects all leaves, not just the bonded sub-tree.
+	// stateRootLeavesV5 emits ALL leaves: the 18 era-3 fields + v5 maintenance spine
+	// + F1 digest roots. The SMT depth reflects all leaves, not just the bonded
+	// sub-tree.
 	var ms0, ms1 runtime.MemStats
 	runtime.GC()
 	runtime.ReadMemStats(&ms0)
@@ -329,7 +331,7 @@ func measureFoldCost(t *testing.T, N int) foldCostRow {
 
 	// --- 4. FOLD WITH SIMULATED ~1 GiB CONCURRENT REPAIR PRESSURE. ---
 	// Allocate and HOLD 1 GiB before the fold, then release. This simulates the heap
-	// competition R2.5 creates (~1024 MiB resident per repair). A real concurrent repair
+	// competition the gate creates (~1024 MiB resident per repair). A real concurrent repair
 	// is too expensive to stand up here.
 	pressureSink := allocAndHold1GiB()
 	runtime.GC() // force GC to run with the sink live, establishing the competing footprint
@@ -371,8 +373,8 @@ func measureFoldCost(t *testing.T, N int) foldCostRow {
 
 // allocAndHold1GiB allocates a 1 GiB byte slice and returns it. The caller must hold the
 // returned value alive (via runtime.KeepAlive) through the timed section to ensure the GC
-// keeps the memory resident, simulating the ~1024 MiB repair-resident footprint from R2.5.
-// The slice is intentionally written to (one byte per page) so the OS actually commits the
+// keeps the memory resident, simulating the ~1024 MiB repair-resident footprint from. The
+// slice is intentionally written to (one byte per page) so the OS actually commits the
 // physical pages — a zero-length allocation would be elided.
 func allocAndHold1GiB() []byte {
 	const sizeBytes = 1024 * 1024 * 1024 // 1 GiB
@@ -386,10 +388,10 @@ func allocAndHold1GiB() []byte {
 
 // TestMeasureRecomputeMatureNowFoldCost_Structural is a FAST structural check (N=200,
 // no -short guard) that always runs in CI:
-//   - the full v5 SMT builds without error at a small N,
-//   - the fold reaches a verdict (no stall),
-//   - the per-member proof has non-zero depth (not a degenerate trie),
-//   - the fold verdict equals full-node matureNow() (equivalence, not just no-crash).
+// - the full v5 SMT builds without error at a small N,
+// - the fold reaches a verdict (no stall),
+// - the per-member proof has non-zero depth (not a degenerate trie),
+// - the fold verdict equals full-node matureNow (equivalence, not just no-crash).
 //
 // This replaces the large-N -short guard with an always-on fast gate.
 func TestMeasureRecomputeMatureNowFoldCost_Structural(t *testing.T) {
@@ -467,11 +469,11 @@ func TestMeasureRecomputeMatureNowFoldCost_Structural(t *testing.T) {
 	_ = fmt.Sprintf // silence "imported and not used" if fmt is unused
 }
 
-// TestMeasureRecomputeMatureNowFoldCostN500k is a single-point measurement at N=500k,
+// TestMeasureRecomputeMatureNowFoldCostN is a single-point measurement at N=500k,
 // run as a spot check to bound the extrapolation from N=10k and N=100k toward N=1M.
 // It is separated from TestMeasureRecomputeMatureNowFoldCost so it can run with its own
 // timeout without blocking the CI fast path.
-func TestMeasureRecomputeMatureNowFoldCostN500k(t *testing.T) {
+func TestMeasureRecomputeMatureNowFoldCostN(t *testing.T) {
 	if testing.Short() {
 		t.Skip("N=500k spot-check skipped under -short")
 	}
@@ -502,11 +504,11 @@ func TestMeasureRecomputeMatureNowFoldCostN500k(t *testing.T) {
 // map (held alive by the caller across the timed fold), so its foldLiveHeap reads ≈0 — the resident
 // cost lives in setupLiveHeap (the map), which the fold does not re-allocate. The peak the pony
 // actually pays is that resident map. This re-measurement captures it directly:
-//   - residentPeakMiB: HeapInuse with the whole Members map materialized (what the box must hold
-//     for the resident-map recomputeMatureNow) — the resident witness peak.
-//   - streamPeakMiB:   HeapInuse sampled at mid-fold of recomputeMatureNowStreaming, where each
-//     member's proof is issued on demand from the prover and dropped after the fold consumes it —
-//     the O(depth) streaming witness peak.
+// - residentPeakMiB: HeapInuse with the whole Members map materialized (what the box must hold
+// For the resident-map recomputeMatureNow — the resident witness peak.
+// - streamPeakMiB: HeapInuse sampled at mid-fold of recomputeMatureNowStreaming, where each
+// member's proof is issued on demand from the prover and dropped after the fold consumes it —
+// the O(depth) streaming witness peak.
 // Both fold verdicts are asserted equal (equivalence under measurement).
 
 type streamCostRow struct {
@@ -522,7 +524,7 @@ type streamCostRow struct {
 // TestMeasureRecomputeMatureNowStreamingWin measures resident-map vs streaming peak witness RSS and
 // fold time at N ∈ {1e4, 1e5, 5e5, 1e6}. N=5e5 and N=1e6 are skipped under -short.
 //
-//	go test ./core/chain/ -run TestMeasureRecomputeMatureNowStreamingWin -v -count=1 -timeout=1800s
+//	go test./core/chain/ -run TestMeasureRecomputeMatureNowStreamingWin -v -count=1 -timeout=1800s
 func TestMeasureRecomputeMatureNowStreamingWin(t *testing.T) {
 	// Pure MEASUREMENT, same contract as TestMeasureRecomputeMatureNowFoldCost: no
 	// assertions here. The O(depth) streaming-witness accounting gate is
@@ -609,12 +611,12 @@ func TestMeasureRecomputeMatureNowStreamingWin_Structural(t *testing.T) {
 
 // measureStreamingWin builds the full v5 committed SMT at N members, then measures the BOX-SIDE
 // witness cost of each fold path (net of the provider-side prover, which a floor box never holds):
-//   - residentWitnessMiB: the whole Members map the resident-map recomputeMatureNow requires, measured
-//     as HeapInuse WITH the map minus HeapInuse without it (the prover baseline subtracted out).
-//   - streamWitnessKiB: the id-list plus ONE in-flight member's three proofs — what the streaming box
-//     holds at peak. Measured analytically from the proof sidenode depth (depth×32 B ×3 proofs) plus
-//     the id-list (32 B/id). This is O(depth) in the member term; the id-list is the only O(N) box
-//     term and it is small (32 B/id).
+// - residentWitnessMiB: the whole Members map the resident-map recomputeMatureNow requires, measured
+// as HeapInuse WITH the map minus HeapInuse without it (the prover baseline subtracted out).
+// - streamWitnessKiB: the id-list plus ONE in-flight member's three proofs — what the streaming box
+// holds at peak. Measured analytically from the proof sidenode depth (depth×32 B ×3 proofs) plus
+// the id-list (32 B/id). This is O(depth) in the member term; the id-list is the only O(N) box
+// term and it is small (32 B/id).
 //
 // The streaming provider issues each member's proofs on demand from the prover and drops them after
 // the fold consumes them, so the streaming FOLD never holds all N members resident. Both fold verdicts

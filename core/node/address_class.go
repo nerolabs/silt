@@ -1,17 +1,16 @@
 package node
 
-// R4.3b — the node's half of observed-address keying. The DHT's eclipse cap reads
-// the transport's ports.PeerClassifier (an opaque salted (class, group) per peer
-// it conversed with); the declared -domain label stays what it was for the C2
+// The node's half of observed-address keying. The DHT's eclipse cap reads the
+// transport's ports.PeerClassifier (an opaque salted (class, group) per peer it
+// conversed with); the declared -domain label stays what it was for the C2
 // concentration metric and preferFreshDomain, and keeps its (inert-against-an-
 // adversary) legacy admission rule. Three admission paths feed the table:
-//   - a message from `from` on a live conversation → Observe (classified by the transport);
-//   - every id in a FindNodeReply → ObserveIntroduced(id, replier): UNVERIFIED, charged
-//     to the replier's group until it answers;
-//   - -bootstrap seeds and -persistent-peers (MarkSeed / AddStaticPeer) → ObserveStatic,
-//     exempt from every cap (operator-typed, count-bounded).
-// Cert: silt-agent-memory/researcher/reviews/research-outcome/R4.3b-relayed-class-and-observed-
-// address-keying-RESEARCH-CERTIFICATION-2026-09-04.md §5, §7.
+// - a message from `from` on a live conversation → Observe (classified by the transport);
+// - every id in a FindNodeReply → ObserveIntroduced(id, replier): UNVERIFIED, charged
+// to the replier's group until it answers;
+// - -bootstrap seeds and -persistent-peers (MarkSeed / AddStaticPeer) → ObserveStatic,
+// exempt from every cap (operator-typed, count-bounded).
+// Cert: address-keying-, §7.
 
 import (
 	"github.com/nerolabs/silt/core/dht"
@@ -38,7 +37,7 @@ func (n *Node) SetPeerClassifier(cl ports.PeerClassifier) {
 
 // SetAddressDiversity configures the observed-address cap on this node's table
 // (-dht-address-cap=off|shadow|on, default shadow). The reserve is a security
-// parameter: the table clamps it to ≥ K/2 (cert §4).
+// parameter: the table clamps it to ≥ K/2.
 func (n *Node) SetAddressDiversity(mode dht.AddressMode, capDirect, capRelay, reserve int) {
 	n.addrCap = addressCapConfig{set: true, mode: mode, capDirect: capDirect, capRelay: capRelay, reserve: reserve}
 	n.table.SetAddressDiversity(n.classifier, capDirect, capRelay, reserve, mode)

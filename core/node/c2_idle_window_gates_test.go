@@ -1,38 +1,37 @@
 package node
 
-// Lane C2 — the DELIVERY IDLE WINDOW (`R-REAPER-FORFEIT`, ROADMAP row C2; owner call 4
-// of `D-TRUE-UP-CALLS-2026-09-07`, which held `-delivery-idle-window` at REFUSE-UNTIL-SET
-// until Lane A's liveness bound was field-confirmed and then set the default ABOVE it).
-// That conditional has FIRED: the bound is confirmed, refuse-until-set is RELEASED, and
-// the shipped default is 24m (`cmd/silt/numeraire.go` deliveryIdleDefault, value ratified
-// `D-C2-IDLE-WINDOW-VALUE` 2026-09-09). What survives is the daemon's floor refusal.
+// THE DELIVERY IDLE WINDOW. `-delivery-idle-window` was held at REFUSE-UNTIL-SET until the
+// liveness bound was field-confirmed, then defaulted ABOVE it. That conditional has FIRED: the
+// bound is confirmed, refuse-until-set is RELEASED, and the shipped default is 24m
+// (`cmd/silt/numeraire.go` deliveryIdleDefault, value settled `` 2026-09-09). What survives is the
+// daemon's floor refusal.
 //
 // These gates pin the PROPERTY, never a number: the reaper's GUARANTEED survival — the
 // shortest gap since a real settlement at which a reap can fire — must dominate the worst
 // stall the published liveness model admits. The number itself is bound to the shipped
-// flag default by the cmd/silt half (c2_idle_window_default_test.go, RED until a Builder
+// flag default by the cmd/silt half (c2_idle_window_default_test.go, RED until a
 // sets it).
 //
 // EVERY input is named and sourced:
 //
-//	c2BoundGoverning       430 s  docs/decisions.md D-H43-WORKLESS-DESIGNEE (21): a LOST
-//	                              entry forward is bounded by the re-keyed takeover at
-//	                              ≤ (N+2)·ChainSyncInterval + G = 14·30 + 10 at N = 12.
-//	c2BoundModal           190 s  D-CONSENSUS-ARMING (19): ≤ f′+1 rounds at f = 1, N = 12
-//	                              = (2+3)·30 + 30 + 10; the arithmetic is in the tree at
-//	                              integration/cloudtest/scenarios.sh:512.
-//	c2BoundHarnessHardCap  380 s  the cloudtest 6-fault-tolerance hard cap = 2× the tier
-//	                              (scenarios.sh:526-527), for sweep-phase/timeout noise.
-//	c2FieldStallObserved  1040 s  the ONE stall the field produced: run c450985-deep,
-//	                              block 43 committed 17 min 20 s after block 42. That is
-//	                              the DEFECT the A1 fix closed, not a bound — it is
-//	                              carried as the margin datum, never as the estimand.
-//	deliveryStampDivisor       4  core/node/deliverysession.go — the reaper's stamp
-//	                              coarsening, pinned by TestC2StampDivisorIsFour.
+//	c2BoundGoverning 430 s (21): a LOST
+//	 entry forward is bounded by the re-keyed takeover at
+//	 ≤ (N+2)·ChainSyncInterval + G = 14·30 + 10 at N = 12.
+//	c2BoundModal 190 s (19): ≤ f′+1 rounds at f = 1, N = 12
+//	 = (2+3)·30 + 30 + 10; the arithmetic is in the tree at
+//	 integration/cloudtest/scenarios.sh:512.
+//	c2BoundHarnessHardCap 380 s the cloudtest 6-fault-tolerance hard cap = 2× the tier
+//	 (scenarios.sh:526-527), for sweep-phase/timeout noise.
+//	c2FieldStallObserved 1040 s the ONE stall the field produced: the field run,
+//	 block 43 committed 17 min 20 s after block 42. That is
+//	 the DEFECT the A1 fix closed, not a bound — it is
+//	 carried as the margin datum, never as the estimand.
+//	deliveryStampDivisor 4 core/node/deliverysession.go — the reaper's stamp
+//	 coarsening, pinned by TestC2StampDivisorIsFour.
 //
-// The field confirmation the ratified sentence waits on: integration/cloudtest/
-// report-97e3101-deep.md, row `6-fault-tolerance` ("within the computed 190s down-designee
-// escape bound") and row `10a-stall-drill` ("within the computed 430s bound").
+// The field confirmation the sentence waits on: integration/cloudtest/ report-the field
+// run.md, row `6-fault-tolerance` ("within the computed 190s down-designee escape bound")
+// and row `10a-stall-drill` ("within the computed 430s bound").
 
 import (
 	"crypto/ed25519"
@@ -61,10 +60,10 @@ const (
 	// TestC2DerivedEpochBlocksIsEight); core/node cannot import package main.
 	c2EpochBlocks = 8
 	// c2MeasuredTbMillis is the MEASURED block interval, in milliseconds:
-	// integration/cloudtest/report-97e3101-deep.md row 12-deep-heights, h93 → h130
+	// the field report, row 12-deep-heights, h93 → h130
 	// (37 heights) in 1697 s = 45.865 s/height. A measurement on a 4-validator GCP
-	// cohort, not a constant of the protocol — every figure derived from it is a figure
-	// about that cohort.
+	// cohort, not a constant of the protocol — every figure derived from it is a
+	// figure about that cohort.
 	c2MeasuredTbMillis = 45865
 
 	// The two candidate defaults the derivation lands on. Both are DURATIONS, because
@@ -72,9 +71,9 @@ const (
 	// (ChainSyncInterval), not in blocks: an epoch-denominated default would drift with
 	// T_b while the bound it must dominate would not.
 	c2CandidateTight = 600 * ports.Second // 10m — the smallest round duration whose
-	//                                        guaranteed survival (450 s) clears 430 s.
+	// guaranteed survival (450 s) clears 430 s.
 	c2CandidateMargin = 1440 * ports.Second // 24m — clears 430 s at 2.51× and also
-	//                                         dominates the 1040 s observed field stall.
+	// dominates the 1040 s observed field stall.
 )
 
 // c2GuaranteedSurvival is the shortest gap since a REAL settlement at which the reaper can
@@ -146,9 +145,9 @@ func c2AliveAfter(nd *Node, sched *simclock.Scheduler, handle uint64, settledAt 
 }
 
 // ---------------------------------------------------------------------------
-// G-C2-1 — the stamp divisor is 4. The whole derivation's 3/4 factor rides on it, and
-// it lives in a package cmd/silt cannot import, so it is pinned here and cited there.
-// ABLATION: change deliveryStampDivisor to 2 or 8 ⇒ RED here AND the cmd/silt floor moves.
+// The stamp divisor is 4. The whole derivation's 3/4 factor rides on it, and it lives in a
+// package cmd/silt cannot import, so it is pinned here and cited there. ABLATION: change
+// deliveryStampDivisor to 2 or 8 ⇒ RED here AND the cmd/silt floor moves.
 func TestC2StampDivisorIsFour(t *testing.T) {
 	if deliveryStampDivisor != 4 {
 		t.Fatalf("deliveryStampDivisor = %d, want 4 — cmd/silt's c2StampDivisor literal and the derived idle floor both move with it", deliveryStampDivisor)
@@ -156,11 +155,11 @@ func TestC2StampDivisorIsFour(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// G-C2-2 — GUARANTEED SURVIVAL IS 3/4 OF THE CONFIGURED WINDOW, driven at every stamp
-// phase. This is the correction the ROADMAP's starting arithmetic does not carry: sizing
-// the window AT the bound leaves a quarter of it unavailable, so a window of exactly D
-// reaps a session that has been gapped only 0.75·D.
-// ABLATION: return `idle` from c2GuaranteedSurvival (drop the coarsening term) ⇒ RED.
+// GUARANTEED SURVIVAL IS 3/4 OF THE CONFIGURED WINDOW, driven at every stamp phase. This
+// is the correction the starting arithmetic does not carry: sizing the window AT the
+// bound leaves a quarter of it unavailable, so a window of exactly D reaps a session
+// that has been gapped only 0.75·D. ABLATION: return `idle` from c2GuaranteedSurvival
+// (drop the coarsening term) ⇒ RED.
 func TestC2GuaranteedSurvivalIsThreeQuartersOfTheWindow(t *testing.T) {
 	const idle = 1000 * ports.Second
 	const E = 1
@@ -187,7 +186,7 @@ func TestC2GuaranteedSurvivalIsThreeQuartersOfTheWindow(t *testing.T) {
 			t.Fatalf("phase %d ns: never reaped within %v", phase, idle)
 		}
 		elapsed := ports.Duration(reapedAt - settledAt)
-		t.Logf("G-C2-2 phase=%6ds  window=%ds  reaped %ds after the REAL settlement (%.1f%% of the window)",
+		t.Logf("phase=%6ds window=%ds reaped %ds after the REAL settlement (%.1f%% of the window)",
 			phase/ports.Second, idle/ports.Second, elapsed/ports.Second, 100*float64(elapsed)/float64(idle))
 		if elapsed < worst {
 			worst = elapsed
@@ -198,17 +197,16 @@ func TestC2GuaranteedSurvivalIsThreeQuartersOfTheWindow(t *testing.T) {
 		t.Fatalf("measured guaranteed survival %v, derived %v (idle − idle/%d) — the derivation's 3/4 factor does not hold on the shipped reaper",
 			worst, want, deliveryStampDivisor)
 	}
-	t.Logf("G-C2-2 RESULT: guaranteed survival = %ds of a configured %ds window = %.3f×",
+	t.Logf("RESULT: guaranteed survival = %ds of a configured %ds window = %.3f×",
 		worst/ports.Second, idle/ports.Second, float64(worst)/float64(idle))
 }
 
 // ---------------------------------------------------------------------------
-// G-C2-3 — THE PROPERTY. A session that settled once and is then gapped by the WORST stall
-// the published model admits must SURVIVE, at every stamp phase — and a window sized naively
-// AT the bound must NOT. The stall is DRIVEN, not mocked: the chain is frozen for the whole
-// gap while the node's wall clock advances.
-// ABLATION: size the window at c2BoundGoverning (the "naive" arm below) ⇒ the survive
-// assertion is RED, which is exactly why the arm is here.
+// THE PROPERTY. A session that settled once and is then gapped by the WORST stall the
+// published model admits must SURVIVE, at every stamp phase — and a window sized naively AT
+// the bound must NOT. The stall is DRIVEN, not mocked: the chain is frozen for the whole gap
+// while the node's wall clock advances. ABLATION: size the window at c2BoundGoverning (the
+// "naive" arm below) ⇒ the survive assertion is RED, which is exactly why the arm is here.
 func TestC2SessionSurvivesTheWorstAdmittedStall(t *testing.T) {
 	const E = 1
 	for _, tc := range []struct {
@@ -241,16 +239,16 @@ func TestC2SessionSurvivesTheWorstAdmittedStall(t *testing.T) {
 			if headBefore != headAfter {
 				t.Fatalf("the chain advanced during the stall arm (%d → %d) — the gap was not a stall", headBefore, headAfter)
 			}
-			t.Logf("G-C2-3 %-46s window=%5ds guaranteed=%5ds gap=%5ds → alive=%v (chain frozen at head %d)",
+			t.Logf("%-46s window=%5ds guaranteed=%5ds gap=%5ds → alive=%v (chain frozen at head %d)",
 				tc.name, tc.idle/ports.Second, c2GuaranteedSurvival(tc.idle)/ports.Second, tc.gap/ports.Second, tc.expect, headAfter)
 		})
 	}
 }
 
 // ---------------------------------------------------------------------------
-// G-C2-4 — THE ENDPOINTS. At each candidate default, one step either side of the reap
-// threshold at the WORST stamp phase. A gate that only asserts "survives 430 s" is
-// satisfied by a window of a year; these two rows are what make the threshold a threshold.
+// THE ENDPOINTS. At each candidate default, one step either side of the reap threshold at
+// the WORST stamp phase. A gate that only asserts "survives 430 s" is satisfied by a
+// window of a year; these two rows are what make the threshold a threshold.
 func TestC2ReapThresholdEndpoints(t *testing.T) {
 	const E = 1
 	for _, idle := range []ports.Duration{c2CandidateTight, c2CandidateMargin} {
@@ -274,15 +272,15 @@ func TestC2ReapThresholdEndpoints(t *testing.T) {
 		if c2AliveAfter(nd, sched, h4, t4, want+ports.Second) {
 			t.Fatalf("window %v: still alive a second past the guaranteed survival %v", idle, want)
 		}
-		t.Logf("G-C2-4 window=%5ds worst stamp phase: ALIVE at gap %v and at %v; REAPED at gap %v and at %v",
+		t.Logf("window=%5ds worst stamp phase: ALIVE at gap %v and at %v; REAPED at gap %v and at %v",
 			idle/ports.Second, want-ports.Second, want, want+1, want+ports.Second)
 	}
 }
 
 // ---------------------------------------------------------------------------
-// G-C2-5 — the window is not merely long: a GENUINELY idle session is reaped, and its
-// remainder is booked ONCE as a DEPOSIT, never burned (B-13 / D-R2.9-NODE-HALF-CALLS 1′).
-// ABLATION: drop the `now-s.lastSettle >= idle` reap ⇒ RED.
+// The window is not merely long: a GENUINELY idle session is reaped, and its
+// remainder is booked ONCE as a DEPOSIT, never burned (B-13 / 1′). ABLATION: drop the
+// `now-s.lastSettle >= idle` reap ⇒ RED.
 func TestC2GenuinelyIdleSessionIsReapedAsADeposit(t *testing.T) {
 	const E = 1
 	nd, keyE, _, ledger, sched := c2Server(t, c2CandidateMargin, E)
@@ -305,13 +303,13 @@ func TestC2GenuinelyIdleSessionIsReapedAsADeposit(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// G-C2-6 — THE PREMISE CORRECTION, driven. `R-SESSION-WALLCLOCK-STEP` (docs/design/m0.md
-// §10) states that "a chain stall … reaps every live session". Measured here: it does not.
-// With the chain FROZEN for longer than any admitted stall, the delivery lane still admits
-// a session, settles receipts and takes a top-up, and a session that keeps settling is
-// never reaped. What a stall reaps is a session idle for some OTHER reason; the stall is
-// not the cause. The bound therefore acts as a conservative envelope on how long an honest
-// fetcher may be gapped, not as a mechanism the reaper is racing.
+// THE PREMISE CORRECTION, driven. The residual claimed that "a chain stall …
+// reaps every live session". Measured here: it does not. With the chain FROZEN for longer
+// than any admitted stall, the delivery lane still admits a session, settles receipts and
+// takes a top-up, and a session that keeps settling is never reaped. What a stall reaps is
+// a session idle for some OTHER reason; the stall is not the cause. The bound therefore
+// acts as a conservative envelope on how long an honest fetcher may be gapped, not as a
+// mechanism the reaper is racing.
 func TestC2FrozenChainDoesNotStarveTheDeliveryLane(t *testing.T) {
 	const E = 1
 	nd, keyE, c, ledger, sched := c2Server(t, c2CandidateTight, E)
@@ -344,15 +342,15 @@ func TestC2FrozenChainDoesNotStarveTheDeliveryLane(t *testing.T) {
 	if headBefore != headAfter {
 		t.Fatalf("the chain advanced (%d → %d) — this arm did not run against a stall", headBefore, headAfter)
 	}
-	t.Logf("G-C2-6 RESULT: chain frozen at head %d for %ds — open OK, %d settlements OK, fund OK, session ALIVE. "+
-		"The m0.md §10 sentence 'a chain stall reaps every live session' does not hold for a session with bytes in flight.",
+	t.Logf("RESULT: chain frozen at head %d for %ds — open OK, %d settlements OK, fund OK, session ALIVE. "+
+		"The claim 'a chain stall reaps every live session' does not hold for a session with bytes in flight.",
 		headAfter, c2FieldStallObserved/ports.Second, count)
 }
 
 // ---------------------------------------------------------------------------
-// G-C2-7 — THE RELAY LANE'S OWED MEASUREMENT (ROADMAP row C2: "the relay lane keeps the
-// burn and its settle-inside-one-epoch measurement is owed before -accept-relay-payments
-// is enabled"). Driven, not argued.
+// THE RELAY LANE'S OWED MEASUREMENT row C2: "the relay lane keeps the burn and its
+// settle-inside-one-epoch measurement is owed before -accept-relay-payments is
+// enabled". Driven, not argued.
 //
 // The relay lane settles ONCE AT CLOSE (relaytransport.go SettleRelaySession, design §5)
 // and its stale-session reaper is EPOCH-keyed, not wall-keyed: sweepRelaySeen drops a
@@ -394,9 +392,9 @@ func TestC2RelaySessionReapedByTheEpochSweepSettlesZero(t *testing.T) {
 		t.Fatalf("the session was reaped one epoch after admission — the retention window is shorter than relayRetentionEpochs claims")
 	}
 	// Epoch 2: the reap is LAZY. sweepRelaySeen has exactly ONE production call site —
-	// inside OpenRelaySession (relayrole.go:366) — and there is no periodic caller: the
+	// inside OpenRelaySession (relayrole.go) — and there is no periodic caller: the
 	// relay lane has no SweepDeliverySessions twin, and the daemon tickers only the
-	// DELIVERY sweep (daemon.go:1160). So on a quiet relay the epoch passes and NOTHING
+	// DELIVERY sweep (daemon.go). So on a quiet relay the epoch passes and NOTHING
 	// fires. Drive that first, then drive the real trigger: another open.
 	epoch = 2
 	if _, ok := nd.RelaySessionForTest(handle); !ok {
@@ -415,22 +413,22 @@ func TestC2RelaySessionReapedByTheEpochSweepSettlesZero(t *testing.T) {
 	// never hand-typed: what sustained relay throughput must a single session hold to
 	// settle a whole anchor face before the epoch reap drops it unsettled?
 	//
-	//   relaypay.MaxSessionBytes           the bytes ONE face funds (S_max × increment bytes)
-	//   c2EpochBlocks = 8                  cmd/silt DerivedEpochBlocks, pinned by
-	//                                      cmd/silt TestC2DerivedEpochBlocksIsEight
-	//   c2MeasuredTbMillis = 45865         report-97e3101-deep.md row 12-deep-heights:
-	//                                      h93 → h130 (37 heights) in 1697 s
+	// relaypay.MaxSessionBytes the bytes ONE face funds (S_max × increment bytes)
+	// c2EpochBlocks = 8 cmd/silt DerivedEpochBlocks, pinned by
+	// cmd/silt TestC2DerivedEpochBlocksIsEight
+	// c2MeasuredTbMillis = 45865 the field report, row 12-deep-heights:
+	// h93 → h130 (37 heights) in 1697 s
 	//
 	// Lifetime in blocks: admitted at block b in [8E, 8E+7], reaped when the head reaches
 	// 8(E+2). WORST = 9 blocks (admitted at the last block of E), BEST = 16 blocks.
 	worstS := float64(9*c2MeasuredTbMillis) / 1000
 	bestS := float64(16*c2MeasuredTbMillis) / 1000
-	t.Logf("G-C2-7 RESULT: a relay session admitted at epoch E survives E and E+1 and is reaped UNSETTLED at E+2. "+
+	t.Logf("RESULT: a relay session admitted at epoch E survives E and E+1 and is reaped UNSETTLED at E+2. "+
 		"It forwarded %d increments and was paid 0 — the reap deletes the handle, so 100%% of the earned credit is forfeit "+
 		"(the fetcher's face was already spent at open). The reap is LAZY: its only production "+
 		"caller is OpenRelaySession, so on a quiet relay it does not fire at all — the relay lane "+
 		"has no periodic sweep, unlike the delivery lane's SweepDeliverySessions ticker.", S)
-	t.Logf("G-C2-7 SETTLE-INSIDE-ONE-EPOCH (the owed measurement): lifetime = 9 blocks (worst: admitted at the last block "+
+	t.Logf("SETTLE-INSIDE-ONE-EPOCH (the owed measurement): lifetime = 9 blocks (worst: admitted at the last block "+
 		"of E) to 16 blocks (best), = %.0f s to %.0f s at the measured T_b = %.3f s/height. One face funds %d B (%.3f GiB), "+
 		"so settling a WHOLE face inside the lifetime needs %.1f Mbit/s sustained (worst) / %.1f Mbit/s (best) on ONE session. "+
 		"At a 100 Mbit/s edge uplink a session forwards %.2f GiB of the face's %.2f GiB before the reap — and because the "+

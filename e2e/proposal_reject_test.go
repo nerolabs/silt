@@ -8,7 +8,7 @@ import (
 	"github.com/nerolabs/silt/adapters/identity"
 )
 
-// The two ValidateProposal defences of #184, proven over the REAL WIRE: an honest
+// The two ValidateProposal defences of, proven over the REAL WIRE: an honest
 // validator, on receiving a proposal, refuses to attest it if the proposer signature
 // is forged (forged-block→reject) or the proposer lacks a qualifying bond
 // (low-bond→reject). Both are single-message exchanges — the honest node replies

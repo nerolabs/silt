@@ -22,17 +22,17 @@ func sortMembersByWeightDesc(ids []ports.NodeID, weights map[ports.NodeID]int64)
 
 // Tests for the trustless floor-box RECOMPUTE increment 1 (floorbox_recompute_v5.go): the
 // root-only reproduction of requireEpochWeightQuorum (Σ epochSet weight super-quorum), proving
-// the C-1 weight-composition pattern.
+// the weight-composition pattern.
 //
-// The three HARD ABLATIONS (C-5, red-before-green), each injected and watched to flip the
+// The three HARD ABLATIONS (red-before-green), each injected and watched to flip the
 // verdict, so a green here is not decoration:
-//   - FORGED WEIGHT (C-1): a witness with the right members but a forged per-member weight ⇒
-//     the recompute STALLS (the inclusion proof fails against the committed root). Proves C-1
-//     closed the forgeable-tally hole.
-//   - OMITTED MEMBER: a witness missing a frozen member ⇒ the reconstructed MTH ≠ the committed
-//     epochSetRoot ⇒ STALL. Proves set-completeness.
-//   - GENESIS-CONFIG-FROM-WITNESS (C-6): the recompute reads no threshold from the witness — a
-//     shifted witness-carried threshold cannot move the verdict, because own config governs.
+// - FORGED WEIGHT: a witness with the right members but a forged per-member weight ⇒
+// The recompute STALLS (the inclusion proof fails against the committed root). Proves C-1
+// closed the forgeable-tally hole.
+// - OMITTED MEMBER: a witness missing a frozen member ⇒ the reconstructed MTH ≠ the committed
+// epochSetRoot ⇒ STALL. Proves set-completeness.
+// - GENESIS-CONFIG: the recompute reads no threshold from the witness — a
+// shifted witness-carried threshold cannot move the verdict, because own config governs.
 //
 // The recompute NEVER flips the box to Accept (the STOP boundary); it reproduces ONE
 // predicate.
@@ -141,14 +141,14 @@ func (f *recomputeFixture) resnapshot(t *testing.T) {
 	f.prover, f.root = prover, prover.Root()
 }
 
-// TestN1_SlashedButFrozenAuthorFlipsTheVerdict is the N1 gate (floor-box structure round 1A,
+// TestSlashedButFrozenAuthorFlipsTheVerdict is the N1 gate (floor-box structure round 1A,
 // step 7). The node's weight tally credits the proposer with NO screen because proposerQualifiedAt
 // (P4) refused a slashed author before the tally ran. A standalone reproduction of the tally has
 // no P4 in front of it: with the author slashed AFTER the epoch froze — so its weight is still in
 // the frozen set — the tally alone says MET while the node refuses the block. The recompute must
 // screen the author on the anchored slashed[proposer] leaf and refuse BY NAME; a missing proof
 // must stall, never credit. Ablation (N1): delete the (1b) author screen ⇒ met = true ⇒ RED.
-func TestN1_SlashedButFrozenAuthorFlipsTheVerdict(t *testing.T) {
+func TestSlashedButFrozenAuthorFlipsTheVerdict(t *testing.T) {
 	f := buildRecomputeFixture(t)
 	// A coalition where the AUTHOR's weight is decisive: {6, 5} of 27 with the author's 8 is
 	// 19 > 18 (met); without it 11 (not met).
@@ -168,8 +168,8 @@ func TestN1_SlashedButFrozenAuthorFlipsTheVerdict(t *testing.T) {
 		t.Fatalf("control: the unslashed author is credited (met=%v, %v)", met, reason)
 	}
 
-	// Slash the author in the COMMITTED state after the freeze (apply()'s slash effect: slashed
-	// set, bond removed, qualified maintained — the frozen epochSet is untouched).
+	// Slash the author in the COMMITTED state after the freeze (apply's slash effect:
+	// slashed set, bond removed, qualified maintained — the frozen epochSet is untouched).
 	f.c.slashed[f.proposer] = true
 	delete(f.c.bonded, f.proposer)
 	f.c.qualifiedMaintain(f.proposer)
@@ -250,7 +250,7 @@ func TestRecomputeEpochWeightQuorum_MatchesFullNode(t *testing.T) {
 	})
 }
 
-// TestRecomputeEpochWeightQuorum_ForgedWeightRejects is HARD ABLATION 1 (C-1): a witness with
+// TestRecomputeEpochWeightQuorum_ForgedWeightRejects is HARD ABLATION 1: a witness with
 // the RIGHT members but a FORGED per-member weight makes the recompute STALL — the forged
 // weight's inclusion proof does not verify against the committed root. Proves C-1 closed the
 // forgeable-tally hole: membership completeness alone (the digest) would have accepted it.
@@ -349,18 +349,18 @@ func TestRecomputeEpochWeightQuorum_InjectedMemberRejects(t *testing.T) {
 	}
 }
 
-// TestRecomputeEpochWeightQuorum_GenesisConfigFromOwnConfig is HARD ABLATION 3 (C-6): the
+// TestRecomputeEpochWeightQuorum_GenesisConfigFromOwnConfig is HARD ABLATION 3: the
 // recompute's verdict depends ONLY on the committed weights (own StateRoot) and the fixed ⅔
 // consensus constant — never on a per-deployment config knob an attacker could shift. The test
 // proves this by running the SAME witness against boxes with WIDELY DIFFERENT own MinBond
-// configs (the C-6 genesis-config surface) and asserting the verdict is INVARIANT.
+// configs (the genesis-config surface) and asserting the verdict is INVARIANT.
 //
 // TEETH (why the coalition is chosen to sit near the ⅔ knee): the coalition is the proposer +
 // enough attesters that it JUST clears (or JUST misses) ⅔ of the FULL frozen weight. A
 // config-sensitive fold that screened members by own MinBond would, at a high own MinBond, DROP
 // members and SHRINK the denominator — flipping a JUST-missing coalition to JUST-clearing (or
 // vice-versa). So a recompute that (wrongly) read MinBond into the fold would make these boxes
-// DIVERGE. They do not: own config does not enter the fold, proving C-6. (This is the exact
+// DIVERGE. They do not: own config does not enter the fold, proving. (This is the exact
 // ablation that must go red if a config-sensitive screen is injected — verified in the builder
 // report by injecting an own-MinBond screen and watching the boxes diverge.)
 func TestRecomputeEpochWeightQuorum_GenesisConfigFromOwnConfig(t *testing.T) {
@@ -454,11 +454,9 @@ func TestRecomputeEpochWeightQuorum_MissingMemberWeightWitnessStalls(t *testing.
 	}
 }
 
-// THE STOP-BOUNDARY GUARD FOR THIS INCREMENT MOVED (D0). It was TestRecomputeEpochWeightQuorum_NeverFlipsWitnessValidateAccept
-// here: a call to Chain.WitnessValidateV5 asserting the box had not been flipped to Accept. That
-// scaffold is deleted, and the guard it stood for is now held ONCE, at the only place a flip can
-// happen — the R1.8 downgrade in (*Box).Validate — driven on real, node-accepted blocks of every
-// v5 class by TestColdAuditor_NeverAcceptsAnyV5BlockClass. The old form could not have caught a
-// flip in this increment anyway: it passed Block{Version: 5, Height: 3} with no roots and no
-// signatures, and the scaffold short-circuited before reading anything. Four copies of one guard,
-// none of which reached the code it guarded.
+// THE STOP-BOUNDARY GUARD FOR THIS INCREMENT MOVED. It was
+// here: a call to Chain.WitnessValidateV5 asserting the box had not been flipped to Accept. That scaffold is deleted, and the
+// guard it stood for is now held ONCE, at the only place a flip can happen — the downgrade in (*Box).Validate — driven on
+// real, node-accepted blocks of every v5 class by TestColdAuditor_NeverAcceptsAnyV5BlockClass. The old form could not have
+// caught a flip in this increment anyway: it passed Block{Version: 5, Height: 3} with no roots and no signatures, and the
+// scaffold short-circuited before reading anything. Four copies of one guard, none of which reached the code it guarded.

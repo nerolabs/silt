@@ -1,12 +1,11 @@
 package node
 
-// Blocker 4 of the blind PE ruling on B-9 (2026-09-07): on the session lane the
-// paid-serial guard can fill with LIVE entries ONLY at open and fund (spendDeliveryAnchors
-// is called from nowhere else; Ledger.SettleDelivery has no guard-full path). So the
-// operator's signal for "serve rate above the bound the cap was derived against" must be
-// emitted THERE, and the settle-path WARN must fire only for refusals that passed the
-// owner, commitment and signature checks — a pre-auth refusal is one unauthenticated
-// message per WARN line with no rate limit on logf.
+// Blocker 4 ofentries ONLY at open and fund (spendDeliveryAnchors is called from nowhere
+// else; Ledger.SettleDelivery has no guard-full path). So the operator's signal for "serve
+// rate above the bound the cap was derived against" must be emitted THERE, and the
+// settle-path WARN must fire only for refusals that passed the project, commitment and
+// signature checks — a pre-auth refusal is one unauthenticated message per WARN line with
+// no rate limit on logf.
 //
 // The guard-full condition is induced with a ledger double that refuses every spend with
 // ReasonGuardFull: filling a real guard takes 65,536 live entries and would make this a
@@ -167,9 +166,9 @@ func TestGuardFullOpenLogsTheWarnMarker(t *testing.T) {
 	}
 }
 
-// TestPreAuthSettleRefusalIsNotAWarn: a settle that fails BEFORE the owner/commitment/
-// signature checks — reachable by any peer — must not produce the WARN marker, and an
-// ordinary admission refusal at open must not either.
+// TestPreAuthSettleRefusalIsNotAWarn: a settle that fails BEFORE the
+// project/commitment/ signature checks — reachable by any peer — must not produce the
+// WARN marker, and an ordinary admission refusal at open must not either.
 func TestPreAuthSettleRefusalIsNotAWarn(t *testing.T) {
 	r := newGuardFullRig(t)
 	stranger := identity.FromSeed(9413)
@@ -178,7 +177,7 @@ func TestPreAuthSettleRefusalIsNotAWarn(t *testing.T) {
 	// (a) Unknown handle from an unauthenticated peer.
 	r.nd.handle(stranger.NodeID(), ports.Message{Kind: ports.MsgDeliverySettle, Ephemeral: true,
 		Data: wireBlob(t, demand.AckSession(stranger.Signer(), 777, []byte("no such commitment"), r.obj, r.server.NodeID(), 1))})
-	// (b) Another fetcher's live session (not the owner).
+	// (b) Another fetcher's live session (not the project).
 	sess, oerr := r.nd.OpenDeliverySession(fid, demand.SignSessionOpen(r.fetcher.Signer(), r.server.NodeID(), []demand.Token{r.token(t)}))
 	if oerr != nil {
 		t.Fatalf("setup: open: %v", oerr)

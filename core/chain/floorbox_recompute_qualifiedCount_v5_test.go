@@ -14,18 +14,18 @@ import (
 // the count-quorum floor), replicating increments 1-3's C-1 pattern over the WHOLE bonded map and
 // consuming the `slashed`-over-bonded quorum-stack whole-set read.
 //
-// The HARD ABLATIONS (C-5, red-before-green), each injected and watched to flip the verdict, so a
+// The HARD ABLATIONS (red-before-green), each injected and watched to flip the verdict, so a
 // green here is not decoration:
-//   - FORGED BONDED WEIGHT (C-1): a witness with the right members but a forged per-member bonded
-//     weight ⇒ STALL (its inclusion proof fails against the committed root).
-//   - FORGED / DROPPED SLASHED BIT (C-1): a witness claiming a committed-slashed member is unslashed
-//     (dropping the slash to inflate N), or claiming an unslashed member is slashed (injecting a
-//     slash to deflate N) ⇒ STALL (its slashed proof does not verify in that direction).
-//   - OMITTED / INJECTED MEMBER: a witness missing/padding a bonded member ⇒ MTH mismatch ⇒ STALL
-//     (set-completeness against bondedRoot).
-//   - CONFIG-FROM-WITNESS MinBond (C-6, failing-first): a count that read the MinBond eligibility
-//     screen from the WITNESS instead of own config would let an attacker inflate N with cheap bonds.
-//     The correct own-config count is INVARIANT; the negative control demonstrates the shift.
+// - FORGED BONDED WEIGHT: a witness with the right members but a forged per-member bonded
+// weight ⇒ STALL (its inclusion proof fails against the committed root).
+// - FORGED / DROPPED SLASHED BIT: a witness claiming a committed-slashed member is unslashed
+// (dropping the slash to inflate N), or claiming an unslashed member is slashed (injecting a
+// slash to deflate N) ⇒ STALL (its slashed proof does not verify in that direction).
+// - OMITTED / INJECTED MEMBER: a witness missing/padding a bonded member ⇒ MTH mismatch ⇒ STALL
+// (set-completeness against bondedRoot).
+// - CONFIG-FROM-WITNESS MinBond (failing-first): a count that read the MinBond eligibility
+// screen from the WITNESS instead of own config would let an attacker inflate N with cheap bonds.
+// The correct own-config count is INVARIANT; the negative control demonstrates the shift.
 //
 // The recompute NEVER flips the box to Accept (the STOP boundary); it reproduces ONE
 // predicate.
@@ -176,7 +176,7 @@ func mixedQCBonds() []qcBond {
 }
 
 // TestRecomputeQualifiedCount_MatchesFullNode is the equivalence anchor: over the SAME committed
-// state, the trustless recompute's N equals the full node's qualifiedCount() — with the count
+// state, the trustless recompute's N equals the full node's qualifiedCount — with the count
 // spanning the >= MinBond screen AND the slashed screen.
 func TestRecomputeQualifiedCount_MatchesFullNode(t *testing.T) {
 	const minBond = int64(1) << 20
@@ -196,7 +196,7 @@ func TestRecomputeQualifiedCount_MatchesFullNode(t *testing.T) {
 	}
 }
 
-// TestRecomputeQualifiedCount_ForgedBondedWeightRejects is HARD ABLATION 1 (C-1): a witness with the
+// TestRecomputeQualifiedCount_ForgedBondedWeightRejects is HARD ABLATION 1: a witness with the
 // RIGHT members but a FORGED per-member bonded weight makes the recompute STALL — the forged weight's
 // inclusion proof does not verify against the committed root.
 //
@@ -227,7 +227,7 @@ func TestRecomputeQualifiedCount_ForgedBondedWeightRejects(t *testing.T) {
 	}
 }
 
-// TestRecomputeQualifiedCount_DroppedSlashRejects is HARD ABLATION 2a (C-1): a witness claiming a
+// TestRecomputeQualifiedCount_DroppedSlashRejects is HARD ABLATION 2a: a witness claiming a
 // COMMITTED-SLASHED member is UNSLASHED — the inflation attack (it would wrongly count the slashed
 // member, N=4). The claimed-unslashed member needs a NON-INCLUSION proof, but slashed[id] IS
 // committed present, so a non-inclusion proof cannot exist / verify ⇒ STALL.
@@ -257,7 +257,7 @@ func TestRecomputeQualifiedCount_DroppedSlashRejects(t *testing.T) {
 	}
 }
 
-// TestRecomputeQualifiedCount_InjectedSlashRejects is HARD ABLATION 2b (C-1): a witness claiming an
+// TestRecomputeQualifiedCount_InjectedSlashRejects is HARD ABLATION 2b: a witness claiming an
 // UNSLASHED member is SLASHED — the deflation attack (it would wrongly screen a counted member,
 // N=2). The claimed-slashed member needs an INCLUSION proof of Present, but slashed[id] is committed
 // ABSENT, so an inclusion proof cannot exist / verify ⇒ STALL.
@@ -345,9 +345,9 @@ func TestRecomputeQualifiedCount_InjectedMemberRejects(t *testing.T) {
 // could carry a lax MinBond in the witness would inflate N by admitting the sub-MinBond member. The
 // real count is INVARIANT to any witness-carried MinBond.
 //
-// RED-BEFORE-GREEN (evidence, reported in the PR): the negative control
+// RED-BEFORE-GREEN: the negative control
 // (recomputeQualifiedCountMinBondFromWitness) with a lax MinBond of 1 counts the sub-MinBond member
-// too (N=4); the production own-config fold does not (N=3). That divergence is the C-6 teeth — a
+// too (N=4); the production own-config fold does not (N=3). That divergence is the teeth — a
 // MinBond-from-witness regression would inflate the production N to match the lax witness.
 func TestRecomputeQualifiedCount_MinBondFromConfig(t *testing.T) {
 	const minBond = int64(1) << 20
@@ -365,7 +365,7 @@ func TestRecomputeQualifiedCount_MinBondFromConfig(t *testing.T) {
 
 	// NEGATIVE CONTROL (the RED): a MinBond-from-witness count reads a LAX MinBond of 1 (a stand-in
 	// for a witness-carried screen), so the sub-MinBond member key(74) (weight minBond/2 >= 1) is
-	// wrongly counted ⇒ N=4. The production own-config fold does not; the divergence is the C-6 teeth.
+	// wrongly counted ⇒ N=4. The production own-config fold does not; the divergence is the teeth.
 	nInj := recomputeQualifiedCountMinBondFromWitness(f.c, f.root, w, 1)
 	if nInj != 4 {
 		t.Fatalf("negative-control precondition: a lax witnessed MinBond=1 must count the sub-MinBond member (N=4); got %d", nInj)
@@ -454,11 +454,10 @@ func TestRecomputeQualifiedCount_MissingMemberWitnessStalls(t *testing.T) {
 	}
 }
 
-// THE STOP-BOUNDARY GUARD FOR THIS INCREMENT MOVED (D0). It was TestRecomputeQualifiedCount_NeverFlipsWitnessValidateAccept
-// here: a call to Chain.WitnessValidateV5 asserting the box had not been flipped to Accept. That
-// scaffold is deleted, and the guard it stood for is now held ONCE, at the only place a flip can
-// happen — the R1.8 downgrade in (*Box).Validate — driven on real, node-accepted blocks of every
-// v5 class by TestColdAuditor_NeverAcceptsAnyV5BlockClass. The old form could not have caught a
-// flip in this increment anyway: it passed Block{Version: 5, Height: 3} with no roots and no
-// signatures, and the scaffold short-circuited before reading anything. Four copies of one guard,
-// none of which reached the code it guarded.
+// THE STOP-BOUNDARY GUARD FOR THIS INCREMENT MOVED. It was
+// here: a call to Chain.WitnessValidateV5 asserting the box had not been flipped to Accept. That scaffold is deleted, and
+// the guard it stood for is now held ONCE, at the only place a flip can happen — the downgrade in (*Box).Validate — driven
+// on real, node-accepted blocks of every v5 class by TestColdAuditor_NeverAcceptsAnyV5BlockClass. The old form could not
+// have caught a flip in this increment anyway: it passed Block{Version: 5, Height: 3} with no roots and no signatures, and
+// the scaffold short-circuited before reading anything. Four copies of one guard, none of which reached the code it
+// guarded.

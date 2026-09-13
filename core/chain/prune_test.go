@@ -10,13 +10,10 @@ import (
 // BondReg.Answer from finalized blocks strictly below the prune floor, keeping header +
 // consensus sigs (slice 2), bounding resident/durable/served heavy payload to a recent
 // window. Nothing in production calls it yet — the enablement waits on the safe sync
-// redirect (PE ruling slice4-sync-redirect-2026-08-18, Opt C). These tests bank the shed
-// logic + the degenerate-BondTTL guard. Plan:
-// docs/thinking/2026-08-18-slice4-prune-blocked-on-sync-redirect.md.
-
+// redirect. These tests bank the shed logic + the degenerate-BondTTL guard.
 // TestPruneFloorAt pins the pure prune-floor arithmetic: retain max(2·BondTTL,
-// headWindow+margin) below the finalized head, epoch-aligned; 0 when BondTTL is degenerate
-// or there isn't a full retain window yet. Always <= RetentionHorizon() (retain >= 2·BondTTL).
+// headWindow+margin) below the finalized head, epoch-aligned; 0 when BondTTL is degenerate or
+// there isn't a full retain window yet. Always <= RetentionHorizon (retain >= 2·BondTTL).
 func TestPruneFloorAt(t *testing.T) {
 	const m = pruneGuardMargin
 	cases := []struct {
@@ -106,8 +103,8 @@ func TestPruneBelowHorizon_ShedsBelowRetainsAbove(t *testing.T) {
 }
 
 // TestPruneBelowHorizon_DegenerateBondTTL: with BondTTLBlocks 0 the prune floor is 0 even
-// under finality, so nothing is shed — the degenerate-config guard (PE Q4). RED-neutral
-// (stub also sheds nothing), but load-bearing against the real shed over-pruning to the tip.
+// under finality, so nothing is shed — the degenerate-config guard. RED-neutral (stub also
+// sheds nothing), but load-bearing against the real shed over-pruning to the tip.
 func TestPruneBelowHorizon_DegenerateBondTTL(t *testing.T) {
 	a1, a2 := key(9200), key(9201)
 	anchors := map[ports.NodeID]bool{idOf(a1): true, idOf(a2): true}
@@ -142,7 +139,7 @@ func TestPruneBelowHorizon_DegenerateBondTTL(t *testing.T) {
 }
 
 // TestPruneBelowHorizon_PreservesLinkageAndReloads: after pruning, the chain still hash-links
-// and replays through Reload (Block.Prune preserves Hash(); validateStructural verifies sigs
+// and replays through Reload (Block.Prune preserves Hash; validateStructural verifies sigs
 // against the stored hash and never re-verifies bonds — slice 3 one-site finding).
 func TestPruneBelowHorizon_PreservesLinkageAndReloads(t *testing.T) {
 	c, _ := anchorChainWithRegs(t, 9, map[uint64]bool{1: true, 2: true, 3: true})
@@ -179,10 +176,10 @@ func TestPruneBelowHorizon_Idempotent(t *testing.T) {
 	}
 }
 
-// TestArchiveTierRetainsEverything is the D-TIERING archival tier (`-archive`,
+// TestArchiveTierRetainsEverything is the archival tier (`-archive`,
 // Config.Archive): the same chain that a pruning node sheds below its floor is
 // retained to genesis by an archival one, so an archive can serve the deep
-// history a pruning swarm has already dropped (the ErrNeedCheckpoint / #559
+// history a pruning swarm has already dropped (the ErrNeedCheckpoint /
 // true-loss case). Two nodes, identical inputs, one flag apart.
 func TestArchiveTierRetainsEverything(t *testing.T) {
 	regs := map[uint64]bool{1: true, 2: true, 3: true, 6: true}

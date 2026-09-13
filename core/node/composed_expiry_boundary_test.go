@@ -1,6 +1,6 @@
 package node
 
-// R0.4b-8 — the COMPOSED expiry boundary, the gap the per-layer triple leaves open.
+// The COMPOSED expiry boundary, the gap the per-layer triple leaves open.
 //
 // WHAT THE EXISTING GATES DO AND DO NOT COVER. `TestSerialGuard_EvictThenReRedeem
 // MintsZero` and `_EvictionPumpIsNotSelfFinancing` run entirely at epoch 0: they are
@@ -21,8 +21,8 @@ package node
 // E + W. The same token is then presented again — and must be refused UPSTREAM, at the
 // demand window, before any credit path.
 //
-// B-9 (2026-09-07) MOVED WHERE THE PUMP CLOSES. Deliveries are SESSIONS, and a session
-// anchor verifies under the server's OWN committed key only (`verifyDeliveryAnchors`:
+// MOVED WHERE THE PUMP CLOSES. Deliveries are SESSIONS, and a session anchor
+// verifies under the server's OWN committed key only (`verifyDeliveryAnchors`:
 // `n.DemandIssuerKeyset(n.id)`, the own-key rule). So the cross-server pump — A's token
 // re-presented at B, whose spent set is empty — is closed STRUCTURALLY, whatever the
 // window says: B refuses an A-issued anchor fresh or expired, with the same reason. The
@@ -30,29 +30,29 @@ package node
 // itself: A's own expired token, whose serial the shared guard has swept, must be
 // refused at A's keyset before any credit path. B here is a fully operational server —
 // it holds its OWN committed issuer key and A's pinned key — so its refusal is the
-// own-key rule and never darkness (blind PE on 7f2ac97 measured the earlier B arms
+// own-key rule and never darkness (an earlier measurement of the B arms
 // satisfied by "no self keyset"; that is what this fixture closes).
 //
-// ABLATIONS (all re-run 2026-09-07 after the B-9 re-home, results recorded per gate):
-//   (i)   the demand-layer window in `core/demand/keyset.go` (a no-op `Prune` plus an
-//         unbounded `VerifyInWindow` scan) → the first gate RED on "A refused the expired
-//         anchor DOWNSTREAM of the window (… token-backdated)": the shared guard's epoch
-//         watermark catches the backdated spend, so the arm reads the refusal REASON to
-//         tell the window from the guard;
-//   (ii)  the own-key rule (`n.DemandIssuerKeyset(n.id)` → `(n.demandIssuer)`) →
-//         `TestComposedSessions_ForeignIssuersFreshAnchorIsRefused` RED on "server B
-//         banked a FRESH A-issued anchor". The B arms inside gates 1 and 3 stay GREEN
-//         under (ii) — with A's keys resolved, B's window refuses the EXPIRED foreign
-//         token too — so those arms are defence in depth; the fresh-anchor gate is the
-//         one that holds the rule;
-//   (iii) the epoch dropped from the demand FDH input (core/blindtoken demandMsg) → the
-//         re-dating gate RED on "server A re-dated its own epoch-0 token".
+// ABLATIONS (all re-run 2026-09-07 after the re-home, results recorded per gate):
+// (i) the demand-layer window in `core/demand/keyset.go` (a no-op `Prune` plus an
+// unbounded `VerifyInWindow` scan) → the first gate RED on "A refused the expired
+// anchor DOWNSTREAM of the window (… token-backdated)": the shared guard's epoch
+// watermark catches the backdated spend, so the arm reads the refusal REASON to
+// tell the window from the guard;
+// (ii) the own-key rule (`n.DemandIssuerKeyset(n.id)` → `(n.demandIssuer)`) →
+// `TestComposedSessions_ForeignIssuersFreshAnchorIsRefused` RED on "server B
+// banked a FRESH A-issued anchor". The B arms inside gates 1 and 3 stay GREEN
+// under (ii) — with A's keys resolved, B's window refuses the EXPIRED foreign
+// token too — so those arms are defence in depth; the fresh-anchor gate is the
+// one that holds the rule;
+// (iii) the epoch dropped from the demand FDH input (core/blindtoken demandMsg) → the
+// re-dating gate RED on "server A re-dated its own epoch-0 token".
 //
-// `TestComposedExpiryBoundary_EvictionIsClosedAtBothLayers` then drives the red-team's
-// eviction pump across the boundary with the demand window BYPASSED, and shows the
-// credit layer refuses anyway — defence in depth, via the R0.4b-5 epoch watermark. Its
-// own teeth are in `core/credit` (`TestEpochWatermark_*`), where the watermark can be
-// isolated from the caller's current epoch.
+// `TestComposedExpiryBoundary_EvictionIsClosedAtBothLayers` then drives the eviction
+// pump across the boundary with the demand window BYPASSED, and shows the credit layer
+// refuses anyway — defence in depth, via the epoch watermark. Its own teeth are in
+// `core/credit` (`TestEpochWatermark_*`), where the watermark can be isolated from the
+// caller's current epoch.
 
 import (
 	"crypto/rand"
@@ -143,11 +143,11 @@ func newComposedFixture(t *testing.T) *composedFixture {
 		nd.SetLedger(ledger) // ONE ledger — the shared paidSerial guard set
 		nd.EnableChain(c, id.Signer())
 		nd.EnableDemandBank(aIdent.NodeID())         // both RESOLVE A's keys (B's pinned foreign keyset is the pump's premise)
-		nd.EnableDeliverySessions(10 * ports.Second) // B-9: deliveries are sessions; each server accepts only its OWN anchors
+		nd.EnableDeliverySessions(10 * ports.Second) // deliveries are sessions; each server accepts only its OWN anchors
 		return nd
 	}
 	a, b := mk(aIdent), mk(bIdent)
-	ledger.SetEpochSource(f8EpochFunc(a.chainEpoch)) // R2.10 / F8: a and b share c, so one clock
+	ledger.SetEpochSource(f8EpochFunc(a.chainEpoch)) // a and b share c, so one clock
 	a.SetDemandIssuerKey(rand.Reader, 0, issuerPriv)
 	b.SetDemandIssuerKey(rand.Reader, 0, bIssuerPriv)
 	if ks := b.DemandIssuerKeyset(bIdent.NodeID()); ks == nil || ks.Key(0) == nil {
@@ -188,7 +188,7 @@ func (f *composedFixture) sum() int64 {
 	for _, r := range f.roots {
 		total += f.ledger.EscrowBalance(r)
 	}
-	// B-9: the session's unsettled remainder is a pending DEPOSIT (released at anchor
+	// the session's unsettled remainder is a pending DEPOSIT (released at anchor
 	// expiry), so it is part of the conserved total.
 	total += f.ledger.DeliverySettlementStats().PendingRefundCredits
 	return total
@@ -247,7 +247,7 @@ func (f *composedFixture) mintTokenAt(t *testing.T, epoch uint64, priv *rsa.Priv
 	return tok
 }
 
-// present presents token at `server` as a SESSION anchor (B-9: the flat receipt is
+// present presents token at `server` as a SESSION anchor (the flat receipt is
 // retired) and reports whether the server banked the delivery.
 func (f *composedFixture) present(t *testing.T, server *Node, token demand.Token) bool {
 	t.Helper()
@@ -271,7 +271,7 @@ func (f *composedFixture) openRefusal(t *testing.T, server *Node, token demand.T
 }
 
 // TestComposedSessions_ForeignIssuersFreshAnchorIsRefused is the gate on the own-key rule
-// itself — the seam that, under sessions, closes the cross-server pump (blind PE fix 6,
+// itself — the seam that, under sessions, closes the cross-server pump (fix 6,
 // 2026-09-07: changing `n.DemandIssuerKeyset(n.id)` to `(n.demandIssuer)` left every
 // package green). B has A's key_0 PINNED (its resolved foreign issuer) and its own key; a
 // FRESH, in-window A-issued anchor must be refused at B naming the own-key rule, move
@@ -304,7 +304,7 @@ func TestComposedSessions_ForeignIssuersFreshAnchorIsRefused(t *testing.T) {
 	}
 }
 
-// TestComposedExpiryBoundary_EvictedSerialIsRefusedUpstream is the R0.4b-8 gate.
+// TestComposedExpiryBoundary_EvictedSerialIsRefusedUpstream is the gate.
 func TestComposedExpiryBoundary_EvictedSerialIsRefusedUpstream(t *testing.T) {
 	f := newComposedFixture(t)
 	if f.a.chainEpoch() != 0 {
@@ -335,14 +335,14 @@ func TestComposedExpiryBoundary_EvictedSerialIsRefusedUpstream(t *testing.T) {
 
 	// (b) Every honest redeemer REJECTS it upstream. At B — which holds A's pinned key_0,
 	// its own key, and an EMPTY spent set, the cross-server pump's whole premise — the
-	// refusal is the own-key rule (B-9), before the window is consulted.
+	// refusal is the own-key rule, before the window is consulted.
 	if berr := f.openRefusal(t, f.b, token); berr == nil || !errors.Is(berr, errDeliveryAnchorInvalid) || f.present(t, f.b, token) {
 		t.Fatalf("the pump: server B banked (or refused for the wrong reason: %v) a token whose issuing epoch has left the window", berr)
 	}
 	// THE WINDOW ARM, at the ISSUER itself: A's keyset has pruned key_0, so the expired
 	// anchor fails at open — the demand window, upstream of any credit path — while the
 	// shared guard has already swept its serial (that is "forgotten ⇒ un-redeemable").
-	// The REASON is read: the shared guard's epoch watermark (R0.4b-5) would refuse the
+	// The REASON is read: the shared guard's epoch watermark would refuse the
 	// backdated spend downstream even with the window gone, so "not banked" alone cannot
 	// tell the window from the guard. ABLATION (i) → RED on the reason line.
 	aerr := f.openRefusal(t, f.a, token)
@@ -370,23 +370,23 @@ func TestComposedExpiryBoundary_EvictedSerialIsRefusedUpstream(t *testing.T) {
 // real constant surfaces as a loud failure, not a silent pass.
 const composedMaxPaidSerial = 65_536
 
-// TestComposedExpiryBoundary_EvictionIsClosedAtBothLayers drives the red-team's
-// eviction pump across the epoch boundary at the NODE layer, with the demand-layer
-// window bypassed (the credit layer called directly with the true issuing epoch,
-// which is what "the redeemer did not enforce the window" reduces to), and requires
-// the second payout to be refused anyway.
+// TestComposedExpiryBoundary_EvictionIsClosedAtBothLayers drives the eviction pump
+// across the epoch boundary at the NODE layer, with the demand-layer window
+// bypassed (the credit layer called directly with the true issuing epoch, which is
+// what "the redeemer did not enforce the window" reduces to), and requires the
+// second payout to be refused anyway.
 //
 // TWO ORDERING FACTS make this test what it is, both verified against the code:
 //
-//  1. `RedeemDeliveryCredit` tests membership in `paidSerial` BEFORE calling
-//     `reservePaidSerial`, which is what sweeps. So an expired serial is never
-//     forgotten on its own next redeem; some other redeem must sweep first.
-//  2. `reservePaidSerial` returns early while the set is under the cap and sweeps
-//     ONLY when it is full. So expiry evicts nothing until the guard set fills.
+// 1. `RedeemDeliveryCredit` tests membership in `paidSerial` BEFORE calling
+// `reservePaidSerial`, which is what sweeps. So an expired serial is never
+// forgotten on its own next redeem; some other redeem must sweep first.
+// 2. `reservePaidSerial` returns early while the set is under the cap and sweeps
+// ONLY when it is full. So expiry evicts nothing until the guard set fills.
 //
 // Together: the credit layer forgets a serial only under cap pressure, which is
-// exactly the red-team's eviction-pump setup, and this test reproduces it one epoch
-// window later.
+// exactly the eviction-pump setup, and this test reproduces it one epoch window
+// later.
 //
 // WHAT MAKES IT NON-VACUOUS. Two steps assert the machinery actually engaged before
 // the final refusal is read: the cap must REFUSE a fresh live serial while everything
@@ -416,11 +416,11 @@ func TestComposedExpiryBoundary_EvictionIsClosedAtBothLayers(t *testing.T) {
 	// Set up the eviction. The fill uses a server, fetcher and escrow root OUTSIDE the
 	// tracked set, so it does not disturb the conservation measurement.
 	//
-	//  (i)   fill the guard set to the cap at the ISSUING epoch, so every entry —
-	//        including the target — expires together;
-	//  (ii)  advance past the window;
-	//  (iii) one redeem at the new epoch finds the set full, sweeps, and drops the
-	//        whole expired generation, the target with it.
+	// (i) fill the guard set to the cap at the ISSUING epoch, so every entry —
+	// including the target — expires together;
+	// (ii) advance past the window;
+	// (iii) one redeem at the new epoch finds the set full, sweeps, and drops the
+	// whole expired generation, the target with it.
 	filler := identity.FromSeed(6104).NodeID()
 	fillFetcher := identity.FromSeed(6105).NodeID()
 	fillRoot := ports.HashBytes([]byte("composed-fill-root"))
@@ -450,7 +450,7 @@ func TestComposedExpiryBoundary_EvictionIsClosedAtBothLayers(t *testing.T) {
 	swept := f.sum()
 
 	// THE GATE: on the live ledger the evicted serial is refused anyway. The epoch
-	// watermark (R0.4b-5) has moved past issuedEpoch + W, so a backdated redeem cannot
+	// watermark has moved past issuedEpoch + W, so a backdated redeem cannot
 	// collect a second payout even with the demand window bypassed.
 	if got := nodePaidOnLane(f.ledger, f.b.id, f.fetcher.NodeID(), f.object,
 		token.Serial, 0); got != 0 {
@@ -462,7 +462,7 @@ func TestComposedExpiryBoundary_EvictionIsClosedAtBothLayers(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// GATE G/I — the composed boundary under a RE-REGISTERED key (red-team break 1).
+// GATE G/I — the composed boundary under a RE-REGISTERED key.
 // ---------------------------------------------------------------------------
 
 // commitIssuerKeyAt commits a registration binding priv's fingerprint to epoch for
@@ -496,12 +496,13 @@ func (f *composedFixture) commitIssuerKeyAt(t *testing.T, epoch uint64, priv *rs
 		t.Fatalf("era-4 roots for the key registration at epoch %d: %v", epoch, err)
 	}
 	chain.Sign(b, f.aIdent.Signer())
-	// B attests, as it has on every advance block, so it is ALREADY in validatorsSeen
-	// — which matters because that set is inside the v5 root the proposer populated
-	// before gathering. An attester whose first attestation this were would move the
-	// committed root out from under the signature (the R-BOX-ATTESTS harness hazard).
+	// B attests, as it has on every advance block, so it is ALREADY in
+	// validatorsSeen — which matters because that set is inside the v5 root the
+	// proposer populated before gathering. An attester whose first attestation
+	// this were would move the committed root out from under the signature (the
+	// harness hazard).
 	b.PrepareQC = []chain.Attestation{
-		chain.AttestAt(b, f.aIdent.Signer(), 0, chain.PhasePrepare, f.chain.ChainID()), // the proposer's authorship vote (#432/I5)
+		chain.AttestAt(b, f.aIdent.Signer(), 0, chain.PhasePrepare, f.chain.ChainID()), // the proposer's authorship vote
 		chain.AttestAt(b, f.bIdent.Signer(), 0, chain.PhasePrepare, f.chain.ChainID()),
 	}
 	b.Atts = []chain.Attestation{chain.AttestAt(b, f.bIdent.Signer(), 0, chain.PhasePrecommit, f.chain.ChainID())}
@@ -514,7 +515,7 @@ func (f *composedFixture) commitIssuerKeyAt(t *testing.T, epoch uint64, priv *rs
 }
 
 // TestComposedBoundary_SameFingerprintAtTwoEpochsDoesNotRedateTokens is GATE G/I —
-// the composed boundary gate (R0.4b-8) driven through the RE-REGISTRATION the
+// the composed boundary gate driven through the RE-REGISTRATION the
 // red-team found, at the node layer, on one shared ledger and one epoch clock.
 //
 // THE ATTACK. Withdraw at epoch 0. Pay on server A. Restart: the SAME persisted key
@@ -529,7 +530,7 @@ func (f *composedFixture) commitIssuerKeyAt(t *testing.T, epoch uint64, priv *rs
 // refutation is driven too: a FRESH same-fingerprint registration at 2W+1, after the
 // epoch-0 commitment has been pruned out of the band, must not revive it either.
 //
-// UNDER SESSIONS (B-9) the re-dating pump is a SAME-SERVER pump: A itself holds key_3 and
+// UNDER SESSIONS the re-dating pump is a SAME-SERVER pump: A itself holds key_3 and
 // has pruned key_0, and A's spent set (the shared guard) has swept the epoch-0 serial. So
 // the arm that measures the epoch binding is A re-presented with its own epoch-0 token;
 // the B arm measures the own-key rule (B refuses the foreign anchor whatever its epoch).
@@ -603,13 +604,14 @@ func TestComposedBoundary_SameFingerprintAtTwoEpochsDoesNotRedateTokens(t *testi
 	// this — and it must still not revive the token.
 	f.advanceEpochs(t, int(demand.DefaultWindow))
 	cur := f.a.chainEpoch()
-	// The prune is PAYLOAD-DRIVEN (red-team re-break F1, 2026-09-03): a block carrying no
-	// registrations writes nothing in the issuerKeyCommit keyspace, not even a delete, so
-	// the epoch-0 commitment leaves the band on the next REGISTRATION-carrying block
+	// The prune is PAYLOAD-DRIVEN, 2026-09-03: a block carrying no registrations
+	// writes nothing in the issuerKeyCommit keyspace, not even a delete, so the
+	// epoch-0 commitment leaves the band on the next REGISTRATION-carrying block
 	// rather than on the next epoch turn. That is the whole point of the change — a
 	// height-driven delete is a committed write the floor box's O(payload) fold cannot
 	// reproduce and its scope gate cannot see. The §2.3 refutation is unaffected: the
-	// same fresh registration that prunes epoch 0 is the one that would revive the token.
+	// same fresh registration that prunes epoch 0 is the one that would revive the
+	// token.
 	f.commitIssuerKeyAt(t, cur, f.issuerPriv)
 	if _, still := f.chain.IssuerKeyCommitment(f.aIdent.NodeID(), 0); still {
 		t.Fatal("setup: the epoch-0 commitment should have been pruned out of the band by " +

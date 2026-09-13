@@ -9,7 +9,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// The era-3 StateRoot determinism oracle — research cert residual R2, the
+// The era-3 StateRoot determinism oracle — research residual R2, the
 // freeze condition owed at the model-check tier BEFORE the root becomes a signed
 // block field. It proves: the per-field canonical value encoding is deterministic,
 // so two honest nodes with the same logical committedSet produce byte-identical
@@ -17,8 +17,8 @@ import (
 // field changes the root, so a value-encoding defect surfaces here as a root
 // mismatch, never as a consensus split in the field.
 //
-// STOP boundary (step 1): these tests exercise StateRoot() only. No Block field, no
-// Hash() change, no validity predicate — the root is computed and proven
+// STOP boundary (step 1): these tests exercise StateRoot only. No Block field, no
+// Hash change, no validity predicate — the root is computed and proven
 // deterministic, not yet committed or validated against.
 
 // TestStateRootCoversExactlyTheCommittedSetFields is the coverage guard: the field
@@ -91,33 +91,33 @@ func TestStateRootCoversExactlyTheCommittedSetFields(t *testing.T) {
 // stateRootLeavesV5 emits — on a fully-populated chain, over the exact leaves the v5 root
 // is computed from — must be EXACTLY the union of the three declared v5 tag lists:
 //
-//   - stateRootTags         — the 18 era-3 committedSet fields (a v5 root is a superset);
-//   - stateRootTagsV5       — the five era-4 maintenance-spine committedSet fields;
-//   - stateRootDigestTagsV5 — the five F1 whole-set digest roots (derived, not fields);
-//   - stateRootDerivedTagsV5 — the leaves derived from a committedLog field (revLogSize).
+// - stateRootTags — the 18 era-3 committedSet fields (a v5 root is a superset);
+// - stateRootTagsV5 — the five era-4 maintenance-spine committedSet fields;
+// - stateRootDigestTagsV5 — the five F1 whole-set digest roots (derived, not fields);
+// - stateRootDerivedTagsV5 — the leaves derived from a committedLog field (revLogSize).
 //
 // Both directions are load-bearing and NEITHER is covered by the existing guards:
 //
-//   - MISSING (declared, not emitted): TestStateRootV5EmitsALeafForEveryV5Field and
-//     TestStateRootV5EmitsEveryDigestRoot each cover ONE list, and the era-3 emit guard
-//     runs against stateRootLeaves. Nothing checks the era-3 leaves ON THE V5 PATH, so a
-//     v5-only regression dropping an era-3 leaf loop from stateRootLeavesV5 stays green.
-//   - EXTRA (emitted, not declared): nothing covers this at all. A leaf added to
-//     stateRootLeavesV5 under a tag on no list is invisible to every list-driven guard —
-//     the classification binding, both emit guards, and the leaf-diff coverage
-//     meta-assertion all iterate a LIST — so it enters the consensus root unreviewed, and
-//     no witness or recompute knows it is there.
+// - MISSING (declared, not emitted): TestStateRootV5EmitsALeafForEveryV5Field and
+// TestStateRootV5EmitsEveryDigestRoot each cover ONE list, and the era-3 emit guard
+// runs against stateRootLeaves. Nothing checks the era-3 leaves ON THE V5 PATH, so a
+// v5-only regression dropping an era-3 leaf loop from stateRootLeavesV5 stays green.
+// - EXTRA (emitted, not declared): nothing covers this at all. A leaf added to
+// stateRootLeavesV5 under a tag on no list is invisible to every list-driven guard —
+// the classification binding, both emit guards, and the leaf-diff coverage
+// meta-assertion all iterate a LIST — so it enters the consensus root unreviewed, and
+// no witness or recompute knows it is there.
 //
 // Both sides are derived by construction: the emitted side from the live marshaller (a
 // leaf key is tag\x00||rawKey, so the tag is the key up to the first NUL), the declared
 // side from the tag lists themselves. Neither is a hand copy, so neither can drift.
 //
 // The final assertion ties the enumerated leaves to the ROOT: the SMT over
-// stateRootLeavesV5() must equal StateRootForVersion(v5), so "covered" means covered by
+// stateRootLeavesV5 must equal StateRootForVersion(v5), so "covered" means covered by
 // the root a v5 block commits, not merely present in a slice some other code path built.
 //
-// RED (demonstrated, 2026-09-02): drop `add(tagEpochStart, ...)` from stateRootLeavesV5
-// and this test names epochStart MISSING; add an unlisted `add("shadow\x00", ...)` leaf
+// RED (demonstrated, 2026-09-02): drop `add(tagEpochStart,.)` from stateRootLeavesV5
+// and this test names epochStart MISSING; add an unlisted `add("shadow\x00",.)` leaf
 // and it names shadow EXTRA.
 func TestStateRootV5CoversExactlyTheV5Fields(t *testing.T) {
 	// DECLARED: the union of the three v5 tag lists, built from the lists themselves.
@@ -198,18 +198,20 @@ func TestStateRootV5CoversExactlyTheV5Fields(t *testing.T) {
 	}
 }
 
-// TestStateRootEmitsALeafForEveryCommittedField is the EMIT guard — the closure of
-// the coverage-guard gap the tag-list check leaves open. TestStateRootCoversExactly-
-// TheCommittedSetFields compares the static stateRootTags LIST to the classification;
-// it stays GREEN if a leaf LOOP is dropped from stateRootLeaves() while its tag remains
+// TestStateRootEmitsALeafForEveryCommittedField is the EMIT guard — the closure of the
+// coverage-guard gap the tag-list check leaves open. TestStateRootCoversExactlyTheCommittedSetFields
+//
+//	compares the static stateRootTags LIST to the classification;
+//
+// It stays GREEN if a leaf LOOP is dropped from stateRootLeaves while its tag remains
 // in the list. A dropped Class-A loop (e.g. `spent`) then vanishes from the root with
 // the whole suite green — a field silently absent from the state root, the exact
 // completeness defect the root exists to prevent.
 //
 // This guard closes that hole by execution: it populates every committedSet field (the
-// fixture sets exactly one entry per field) and asserts stateRootLeaves() actually
-// EMITS at least one leaf tagged with each field. A dropped leaf loop of ANY class —
-// Class A included — produces no leaf for that tag and turns this guard RED.
+// fixture sets exactly one entry per field) and asserts stateRootLeaves actually EMITS
+// at least one leaf tagged with each field. A dropped leaf loop of ANY class — Class A
+// included — produces no leaf for that tag and turns this guard RED.
 //
 // A leaf key is `fieldName\x00 || rawKey`, so a leaf belongs to field F iff its key has
 // the prefix `F\x00`. Matching by that prefix ties the emitted leaves back to the field
@@ -280,11 +282,10 @@ func TestStateRootV5EmitsALeafForEveryV5Field(t *testing.T) {
 }
 
 // TestEra3RootByteIdenticalWithV5KeyspacesPresent is the hazard-1 gate: with the era-4
-// maintenance-spine maps FULLY POPULATED, the era-3 (v4) root — StateRoot(), and
+// maintenance-spine maps FULLY POPULATED, the era-3 (v4) root — StateRoot, and
 // StateRootForVersion(v4) — must be byte-identical to the root over a chain with those
 // maps EMPTY. The v5 keyspaces must not leak into the v4 root, or the era-3
-// byte-identical freeze (ratified 2026-08-29) breaks and every deployed v4 node
-// diverges.
+// byte-identical freeze breaks and every deployed v4 node diverges.
 //
 // RED (the ablation, demonstrated in the 4b report): route the era-3 path through the
 // v5 marshaller (emit the v5 leaves into the v4 root) and this test goes red — the two
@@ -303,7 +304,7 @@ func TestEra3RootByteIdenticalWithV5KeyspacesPresent(t *testing.T) {
 	// marshaller — INCLUDING under a fresh unregistered tag — would appear
 	// identically in withV5 and withoutV5 and CANCEL, leaving this freeze guard
 	// green on a real leak. Zeroing them here makes any such leak diverge the two
-	// v4 roots, so the guard reddens (the hazard-1 / era-3 FREEZE, #632).
+	// v4 roots, so the guard reddens (the hazard-1 / era-3 FREEZE).
 	withoutV5.era4LockedIn = false
 	withoutV5.era4Height = 0
 
@@ -321,7 +322,8 @@ func TestEra3RootByteIdenticalWithV5KeyspacesPresent(t *testing.T) {
 			"the v5 leaves leaked into the v4 root, breaking the era-3 freeze (hazard-1)", a, b)
 	}
 
-	// StateRootForVersion(v4) must agree with StateRoot() and be v5-invariant too.
+	// StateRootForVersion(v4) must agree with StateRoot and be v5-invariant
+	// too.
 	av4, err := withV5.StateRootForVersion(BlockVersionStateRoot)
 	if err != nil {
 		t.Fatalf("StateRootForVersion(v4, withV5): %v", err)
@@ -427,7 +429,7 @@ func TestStateRootIsNodeIndependent(t *testing.T) {
 // presence) is bound into the root for each Class-B field — a true-presence /
 // wrong-value witness is impossible because it would reconstruct a different root.
 // The three super-quorum-summed weights (bonded, epochSet) are the load-bearing
-// cases (PE Q2); the identity and scalar fields are covered too.
+// cases; the identity and scalar fields are covered too.
 func TestStateRootChangesOnPerturbedValue(t *testing.T) {
 	base := func() *Chain {
 		c := &Chain{}

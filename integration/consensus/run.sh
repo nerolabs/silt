@@ -11,19 +11,19 @@
 # A network partition (the built-in test-harness -block-peers flag) severs them;
 # each group commits its OWN fork over real TCP. We assert:
 #
-#   (P0 negative control) an UNBONDED / no-earned-standing publish is REFUSED
-#                         (no commit) — the write path is earned, not a stamp.
-#   (P1 convergence)      before the partition, group 1's two validators agree
-#                         on the same chain head (identical `silt chain-status`).
-#   (P2 partition)        the partition is in effect (⚠ PARTITION log on C,D) and
-#                         the two groups commit DIFFERENT heads — heavier group 1
-#                         = [g,a1,a2] (height 2), lighter group 2 = [g,c1]
-#                         (height 1). They do NOT converge onto a shared head
-#                         while severed (no cross-group reorg).
-#   (P3 heal→converge)   restart C WITHOUT -block-peers, bootstrapped to A. It
-#                         reloads its persisted [g,c1], discovers group 1's
-#                         longer history and CONVERGES on it, then its
-#                         `chain-status` head EQUALS group 1's.
+#  (P0 negative control) an UNBONDED / no-earned-standing publish is REFUSED
+#  (no commit) — the write path is earned, not a stamp.
+#  (P1 convergence) before the partition, group 1's two validators agree
+#  on the same chain head (identical `silt chain-status`).
+#  (P2 partition) the partition is in effect (⚠ PARTITION log on C,D) and
+#  the two groups commit DIFFERENT heads — heavier group 1
+#  = [g,a1,a2] (height 2), lighter group 2 = [g,c1]
+#  (height 1). They do NOT converge onto a shared head
+#  while severed (no cross-group reorg).
+#  (P3 heal→converge) restart C WITHOUT -block-peers, bootstrapped to A. It
+#  reloads its persisted [g,c1], discovers group 1's
+#  longer history and CONVERGES on it, then its
+#  `chain-status` head EQUALS group 1's.
 #
 # WHAT THIS HARNESS ASSERTS, corrected 2026-09-12. Convergence is NOT toward
 # whichever fork carries more bond: fork choice ranks on height then head hash
@@ -32,14 +32,14 @@
 # head-hash equality, which is posture-independent. The reorg narration is
 # supporting evidence only, and under a >2/3 commit floor it may never fire at all.
 # Whether P2's own expectation (a 2-anchor group committing at height 1) is still
-# reachable is an OPEN question routed to the Tester — see README.md.
+# reachable is an OPEN question routed to the research — see README.md.
 #
 # Every assertion keys off a REAL observed CLI flag / stdout line / chain-status
 # field — no invented strings. This is the Docker-real counterpart of
 # e2e/partition_test.go (in-process), over real sockets and kernel networking.
 #
-# Usage:  ./run.sh          # build, test, tear down; exit 0 = PASS
-#         KEEP=1 ./run.sh   # leave the topology up afterward to poke at
+# Usage:./run.sh # build, test, tear down; exit 0 = PASS
+#  KEEP=1 ./run.sh # leave the topology up afterward to poke at
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 cd "$(dirname "$0")"
@@ -112,7 +112,7 @@ NEG_OUT=$(docker run --rm silt-consensus \
       -registry "$(sed -En "s/.*serving ([^ ]+).*/\1/p" /data/neg.log | head -1)" >/tmp/neg_add.out 2>&1 || true
     echo "---neg-add---"; cat /tmp/neg_add.out
     echo "---neg-commits---"; grep -c "committed block" /data/neg.log || true' 2>&1)
-# POSITIVE CONTROL (audit #303): "0 committed blocks" is only a REFUSAL if the
+# POSITIVE CONTROL (audit): "0 committed blocks" is only a REFUSAL if the
 # write path actually ran. If the registry never bound, or the publish never
 # reached the registry (a dead/broken swarm), that ALSO shows 0 commits and would
 # false-pass as "correctly refused". Require both: the registry bound, AND the
@@ -217,7 +217,7 @@ if [ -n "$H1" ] && [ -n "$H2" ] && [ "$H1" != "$H2" ] && [ "${h1:-0}" -gt "${h2:
 else
   fail "P2 groups did not fork as expected (H1=$H1 h1=$h1 | H2=$H2 h2=$h2)"
 fi
-# NB (audit #303 consensus [low] not-cynical): valA's fork [g,a1,a2] is HEAVIER
+# NB (the audit consensus [low] not-cynical): valA's fork [g,a1,a2] is HEAVIER
 # (height 2) than group 2's [g,c1] (height 1), so even if valA fully received and
 # validated group 2's gossip it would CORRECTLY never reorg onto the lighter side.
 # A bare "did not reorg" grep therefore passes vacuously — it does NOT prove valA
@@ -229,12 +229,9 @@ fi
 # UNCHANGED from its pre-gossip [g,a1,a2] — no silent merge/rewrite of its history.
 H_A_pre="$H1"; hA_pre="$h1"
 H_A_now=$(head_hash valA); hA_now=$(head_height valA)
-# The narration changed with the daemon line (see CHANGELOG, 2026-09-12): the
-# pattern tracks the new string. This is a STRING-PARITY update only — the
-# assertion is unchanged. NOTE the standing caveat this arm now carries: with the
-# finality gate on, `dropped > 0` is structurally impossible, so this negative can
-# no longer go red for the reason it was written. Repairing that is the fork-choice
-# claim PR, not this one.
+# The pattern tracks the daemon's current narration string. Standing caveat: with
+# the finality gate on, `dropped > 0` is structurally impossible, so this negative
+# can no longer go red for the reason it was written.
 if dc logs valA 2>&1 | grep -q 'adopted a competing fork'; then
   fail "P2 valA reorged while still partitioned — it must never adopt group 2's fork"
 elif [ "$H_A_now" != "$H_A_pre" ] || [ "${hA_now:-0}" != "${hA_pre:-0}" ]; then

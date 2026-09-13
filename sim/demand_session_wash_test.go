@@ -1,16 +1,15 @@
 package sim
 
-// R2.9 — the v3 twin of the retired v2 cost-to-wash sim (the certification
-// R2.9-witnessed-demand-observable-under-sessions-2026-09-06 §4.3 parity, owed alongside
-// G-DEM-1…8). On the session lane the washer — one operator running the server AND a
+// The v3 twin of the retired v2 cost-to-wash sim (the §4.3 parity, owed alongside
+// …8). On the session lane the washer — one operator running the server AND a
 // bonded fetcher — cannot prove or disprove demand authenticity any more than before;
 // what the mechanism guarantees is PARITY: every unit of witnessed demand it registers
 // is one settled increment (one credit gross), the same registered unit at the same
 // price an honest fetcher pays, and the face it bought is consumed by exactly those
 // units. Cost-to-wash per claimed unit is therefore p, never less (rule (a)'s 1/⌈B/U⌉
 // discount is what this pins shut); the LEVEL (a full delivery claim of B bytes costs
-// ⌈B/U⌉ credits, 195× less than the flat fee at 64 MiB) is R-DEMAND-PRICE-LEVEL, set by
-// U/p and P3b, not by the counter. And nothing here moves standing.
+// ⌈B/U⌉ credits, 195× less than the flat fee at 64 MiB) is, set by U/p and P3b, not by
+// the counter. And nothing here moves standing.
 //
 // ABLATION that must redden it: count one unit per receipt (`b.increments[object]++`) —
 // the washer then registers N units for N/… credits.
@@ -35,8 +34,8 @@ func TestSessionDemandWashPaysThePricePerIncrement(t *testing.T) {
 	}
 }
 
-// TestWashPayerPaysTheSkimAtEveryGranularity is G-SKIM-4's name for the same property; it
-// runs the three arms above.
+// TestWashPayerPaysTheSkimAtEveryGranularity is the name for the same property; it runs
+// the three arms above.
 func TestWashPayerPaysTheSkimAtEveryGranularity(t *testing.T) {
 	for _, step := range []uint64{7, 1} {
 		t.Run(fmt.Sprintf("step-%d", step), func(t *testing.T) { sessionWashAtStep(t, step) })
@@ -100,7 +99,7 @@ func sessionWashAtStep(t *testing.T, washStep uint64) {
 
 	// Wash N units of demand on a self-dealt object (a self-fetch IS a real paid delivery —
 	// no receipt can tell otherwise) at the payer's chosen GRANULARITY: the skim below must
-	// hold at every step size, not only at the divisor's (G-SKIM-4; the per-settlement
+	// hold at every step size, not only at the divisor's (the per-settlement
 	// floor passed at 8 by coincidence and paid zero skim at 7 and at 1).
 	const N = uint64(40)
 	var settledSum int64

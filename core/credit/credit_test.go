@@ -19,7 +19,7 @@ func TestEarnAndSpend(t *testing.T) {
 	if l.CanPublish(server) {
 		t.Fatal("zero-grant node should not afford the fee")
 	}
-	const served = 250 * ServeMintBytesPerCredit // 250 credits' worth of bytes (G-R212-7: one credit per Dλ bytes)
+	const served = 250 * ServeMintBytesPerCredit // 250 credits' worth of bytes (one credit per Dλ bytes)
 	l.RecordServe(server, requester, ports.HashBytes([]byte("c")), served)
 	if got := l.Balance(server); got != 250 {
 		t.Fatalf("balance %d, want 250 (Dλ bytes = 1 credit)", got)

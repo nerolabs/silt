@@ -2,8 +2,7 @@
 // storage bonds over the network, so consensus standing is continuously
 // backed by real held storage rather than self-reported serving. This is the
 // live half of the mechanism whose primitive (core/bond) and ledger
-// (credit.RecordBondChallenge / DecayStale) landed in T1a. Design:
-// docs/design/bond-audit.md.
+// (credit.RecordBondChallenge / DecayStale) landed in T1a.
 package node
 
 import (
@@ -15,11 +14,11 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// plotPubKey is the validator ed25519 public key the plot seed H(pk, n) binds to
-// (M0 Sybil G2). It is PUBLIC by design: the verifier recomputes labels from it,
-// so the plot can no longer be sealed from a private secret. Identity binding is
-// now a CHECKED property of the plot (a plot for pk_A fails recomputation under
-// pk_B), not the un-grief-ability of a private seed — see docs/design/m0-sybil-rebind.md.
+// plotPubKey is the validator ed25519 public key the plot seed H(pk, n) binds to. It is
+// PUBLIC by design: the verifier recomputes labels from it, so the plot can no longer be
+// sealed from a private secret. Identity binding is now a CHECKED property of the plot
+// (a plot for pk_A fails recomputation under pk_B), not the un-grief-ability of a
+// private seed.
 func plotPubKey(signer ed25519.PrivateKey) []byte {
 	return append([]byte(nil), signer.Public().(ed25519.PublicKey)...)
 }
@@ -40,7 +39,7 @@ type bondInfo struct {
 // recompute on EVERY challenge is CONSISTENTLY slow, so its minimum stays
 // elevated. (Because the minimum ignores the high samples, a retried/jittered
 // reply never poisons the estimate — the min subsumes Karn's-algorithm filtering
-// for this signal.) full() gates on a warm window so one or two early samples
+// for this signal.) full gates on a warm window so one or two early samples
 // can't raise a false suspicion.
 const latWindowSize = 8
 
@@ -156,13 +155,13 @@ func (n *Node) ReleaseBond() {
 func (n *Node) bondAuditTick() {
 	// THE +1 SERVES NO READER TODAY. It dates from the bond ledger's first commit,
 	// where it kept the tick off 0 so RecordBondChallenge's `firstSeenTick == 0`
-	// unset guard would fire exactly once. That field and guard are deleted
-	// (G-BB-28, 2026-09-05). Nothing treats a zero tick specially now: lastBondTick's
-	// only reader is DecayStale, whose sole test is `now - lastBondTick > maxAge`, and
-	// bondedBytes > 0 is set only on the line that also sets lastBondTick, so a bonded
-	// account never carries an unset tick. The +1 stays because moving the stored tick
-	// touches retention (and TestR29aBondAuditStampsAWallClockNanosecondNotACounter
-	// pins the exact value); it is not load-bearing. AuditBondsOnce carries the same +1.
+	// unset guard would fire exactly once. That field and guard are deleted. Nothing
+	// treats a zero tick specially now: lastBondTick's only reader is DecayStale,
+	// whose sole test is `now - lastBondTick > maxAge`, and bondedBytes > 0 is set
+	// only on the line that also sets lastBondTick, so a bonded account never carries
+	// an unset tick. The +1 stays because moving the stored tick touches retention
+	// (and TestBondAuditStampsAWallClockNanosecondNotACounter pins the exact value);
+	// it is not load-bearing. AuditBondsOnce carries the same +1.
 	now := uint64(n.clock.Now()) + 1
 	n.bondAuditOnce(now)
 	// Standing must be SUSTAINED: retire any bond not re-proven within
@@ -185,7 +184,7 @@ func (n *Node) bondAuditOnce(now uint64) {
 	// still verify our bond independently over the wire, so a self-assertion
 	// buys nothing with the quorum — only real held storage does.
 	//
-	// ADVERSARY-SHAPE: capability=PeerAcceptedSelfAssertedBond UNCOVERED: no fixture GRANTS AND CONTROLS FOR an adversary a self-asserted bond that a PEER's ledger accepts. The block's defence is the second sentence -- a self-assertion buys nothing with the quorum -- and nothing witnesses it from the peer's side. ROADMAP row F1.
+	// ADVERSARY-SHAPE: capability=PeerAcceptedSelfAssertedBond UNCOVERED: no fixture GRANTS AND CONTROLS FOR an adversary a self-asserted bond that a PEER's ledger accepts. The block's defence is the second sentence -- a self-assertion buys nothing with the quorum -- and nothing witnesses it from the peer's side.
 	if n.bond != nil && n.bond.Size >= n.cfg.MinBondBytes {
 		n.ledger.RecordBondChallenge(n.id, n.bond.Root, n.bond.Size, true, now)
 		// Narrate our own standing every sweep so an operator can SEE the
@@ -234,7 +233,7 @@ func (n *Node) bondAuditOnce(now uint64) {
 				// identity/size cannot pass), and the space+labeling proof (VerifySpaceTime,
 				// G2). A single slow reply is NOT in this conjunction — build-immutable #3:
 				// reply-latency is transport+compute, and gating security on the sum is
-				// unsound on the open internet (it read network jitter/loss as a cheat, #289).
+				// unsound on the open internet (it read network jitter/loss as a cheat).
 				ok := info.size >= n.cfg.MinBondBytes && derr == nil &&
 					sha256.Sum256(ans.PK) == id &&
 					bond.VerifySpaceTime(ans.PK, info.root, info.size, nonce, ans, vdf.Default(), n.cfg.BondVDFDelay, n.cfg.BondLabelSamples)
@@ -280,7 +279,7 @@ func (n *Node) bondAuditOnce(now uint64) {
 // block we no longer hold, yields an empty reply — which the challenger scores
 // as a failure.
 // challengerRate tracks one challenger's bond-challenge eval budget in the
-// current window (#424). The same shape budgets bond-reg SUBMITS per sender
+// current window. The same shape budgets bond-reg SUBMITS per sender
 // (allowBondSubmit — the Phase 1.2 CPU gate).
 type challengerRate struct {
 	windowStart ports.Time
@@ -292,26 +291,26 @@ type challengerRate struct {
 // up to one VerifySpaceTime (~ms of single-loop CPU — measured in
 // core/bond/verifycost_bench_test.go), and nothing else bounds the rate, so an
 // authenticated flooder holds the loop at a permanent duty cycle for free (the
-// #424 CPU-DoS, one message kind over). Honest cadence is ONE submit per sweep
+// CPU-DoS, one message kind over). Honest cadence is ONE submit per sweep
 // (SubmitBondRenewal fires only while BondRenewalDue, once per
 // ChainSyncInterval), plus transport retries; 8 clears that with wide headroom.
 // Per-sender (not global) so a flooder cannot starve honest submitters.
 const bondSubmitBurst = 8
 
 // roundCertBurst caps the MsgRoundCert messages ONE sender may have examined
-// per ChainSyncInterval window (h43, G-H43-12 — `R-H43-CERT-UNBUDGETED-VERIFY`,
-// the #424 remote-CPU class, third recurrence). An honest assembler sends at
+// per ChainSyncInterval window (the round-certificate budget —
+// the remote-CPU class, third recurrence). An honest assembler sends at
 // most ONE certificate per round it assembles, rounds are ≥ 2 sweeps apart,
 // and a receiver skips a round it already holds — so 4 per window is generous
 // for the honest path and bounds a flooder at four bounded verifications.
 const roundCertBurst = 4
 
 // entrySubmitBurst caps the MsgSubmitEntry messages ONE sender may have
-// examined per ChainSyncInterval window (#183 red-team F-1). Under
+// examined per ChainSyncInterval window. Under
 // -require-tokens, ValidateEntry runs an RSA verify per token signature, and
 // nothing else bounds the arrival rate — so an authenticated flooder rides
 // per-message crypto onto the single consensus loop for a few fabricated
-// bytes, exactly the sibling #424 CPU-DoS that hardened MsgSubmitBondReg. This
+// bytes, exactly the sibling CPU-DoS that hardened MsgSubmitBondReg. This
 // is the same cheap FRONT gate: a refusal costs a map lookup. Honest cadence is
 // a client submit-then-poll per published object; 32 clears a modest
 // batch-publish with headroom, and a refused honest submit heals by the client
@@ -363,7 +362,7 @@ func (n *Node) allowBondSubmit(from ports.NodeID) bool {
 	return n.allowWindowed(n.bondSubmitRate, from, bondSubmitBurst)
 }
 
-// allowRoundCert is allowBondSubmit's twin for MsgRoundCert (G-H43-12): the
+// allowRoundCert is allowBondSubmit's twin for MsgRoundCert: the
 // cheap gate in FRONT of the certificate's envelope verification.
 func (n *Node) allowRoundCert(from ports.NodeID) bool {
 	return n.allowWindowed(n.roundCertRate, from, roundCertBurst)
@@ -402,7 +401,7 @@ const (
 	// to ONE challenger per BondAuditInterval window. Answering forces a fresh
 	// sequential VDF-eval — the unpredictable nonce is exactly what cannot be
 	// precomputed — all on the node's single goroutine, so an unbounded
-	// challenger is a remote CPU-DoS (#424, red-team seam #7). Honest cadence is
+	// challenger is a remote CPU-DoS. Honest cadence is
 	// one challenge per peer per BondAuditInterval, plus a few transport retries
 	// of the same nonce; this cap clears that with wide headroom and denies the
 	// flood. Per-challenger (not global) so a flooder cannot starve honest
@@ -414,7 +413,7 @@ const (
 )
 
 // allowBondChallenge reports whether a bond challenge from `from` may be
-// answered now, charging one unit against its per-window budget (#424). It is
+// answered now, charging one unit against its per-window budget. It is
 // the cheap gate in front of the expensive AnswerSpaceTime eval — a refusal
 // costs nothing, so a flooder gains no amplification.
 func (n *Node) allowBondChallenge(from ports.NodeID) bool {
@@ -448,7 +447,7 @@ func (n *Node) answerBondChallenge(from ports.NodeID, msg ports.Message) ports.M
 		return reply
 	}
 	if !n.allowBondChallenge(from) {
-		return reply // #424: per-challenger rate-limited — refuse WITHOUT the VDF-eval
+		return reply // per-challenger rate-limited — refuse WITHOUT the VDF-eval
 	}
 	ans, ok := n.bond.AnswerSpaceTime(msg.Nonce, vdf.Default(), n.cfg.BondVDFDelay, n.cfg.BondLabelSamples)
 	if !ok {
@@ -460,7 +459,7 @@ func (n *Node) answerBondChallenge(from ports.NodeID, msg ports.Message) ports.M
 	return reply
 }
 
-// issuerKeySubmitBurst (R2.11) caps the MsgSubmitIssuerKeyReg messages ONE sender may have
+// issuerKeySubmitBurst caps the MsgSubmitIssuerKeyReg messages ONE sender may have
 // examined per sync window. DERIVED from the honest cadence, not copied from
 // bondSubmitBurst (which was sized for ONE renewal per sweep): an issuer pre-publishes its
 // whole band, W+1 = 5 registrations per sweep while any is uncommitted, and the bond path
@@ -471,7 +470,7 @@ func (n *Node) answerBondChallenge(from ports.NodeID, msg ports.Message) ports.M
 const issuerKeySubmitBurst = 32
 
 // allowIssuerKeySubmit reports whether a MsgSubmitIssuerKeyReg from `from` may be examined
-// this window (R2.11). Same shape as allowBondSubmit, its own map and burst.
+// this window. Same shape as allowBondSubmit, its own map and burst.
 func (n *Node) allowIssuerKeySubmit(from ports.NodeID) bool {
 	now := n.clock.Now()
 	window := n.cfg.ChainSyncInterval

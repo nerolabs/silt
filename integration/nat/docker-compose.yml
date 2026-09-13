@@ -1,10 +1,10 @@
 # A real multi-NAT "internet" on one host, in containers:
 #
-#   lanA (internal) ──[natA: MASQUERADE]──┐
-#     └─ nodeA (NATed, un-dialable)        │
-#                                          ├─ public ── relay (+ registry)
-#   lanB (internal) ──[natB: MASQUERADE]──┘
-#     └─ nodeB (NATed, un-dialable)
+#  lanA (internal) ──[natA: MASQUERADE]──┐
+#  └─ nodeA (NATed, un-dialable) │
+#  ├─ public ── relay (+ registry)
+#  lanB (internal) ──[natB: MASQUERADE]──┘
+#  └─ nodeB (NATed, un-dialable)
 #
 # nodeA and nodeB sit on separate internal LANs with no route to each other,
 # each behind its own NAT. The only way they meet is through the relay on the

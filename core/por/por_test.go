@@ -249,7 +249,7 @@ func TestDefaultParamsRealisticChunk(t *testing.T) {
 	if !key.Verify(unitID, c, proof) {
 		t.Fatal("honest DefaultParams proof failed to verify")
 	}
-	// and tamper the ragged tail block.
+	// And tamper the ragged tail block.
 	bad := append([]byte(nil), data...)
 	bad[len(bad)-1] ^= 0x01
 	full, _ := NewChallenge(rand.Reader, len(tags), len(tags))

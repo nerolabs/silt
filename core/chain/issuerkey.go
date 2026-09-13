@@ -1,9 +1,9 @@
 package chain
 
-// R0.4b — the CONSENSUS-ATTESTED per-epoch demand-issuer key binding (E ↦ key_E).
+// The CONSENSUS-ATTESTED per-epoch demand-issuer key binding (E ↦ key_E).
 //
-// WHY THIS IS IN CONSENSUS STATE AT ALL. The R0.4b expiry construction gives the
-// demand token a validity window by putting the issuance epoch in the ISSUER KEY
+// WHY THIS IS IN CONSENSUS STATE AT ALL. The expiry construction gives the demand
+// token a validity window by putting the issuance epoch in the ISSUER KEY
 // (core/demand/keyset.go). That buys expiry with no new token field — but it
 // manufactures a linkability lever the field already knows: an issuer that serves a
 // DISTINCT key_E to a small cohort turns "which key verified you" into a
@@ -11,13 +11,13 @@ package chain
 // mode; silt inherits it exactly.
 //
 // The lighter mitigation — "the redeemer pins the keyset it fetched and refuses a
-// rotation it cannot cross-check" — is REFUTED as sufficient (research certification
-// 2026-09-02, Verdict 2). Cross-check against WHAT? Pinning the key you fetched
-// first detects a change over time for ONE redeemer, never a key that DIFFERS across
-// redeemers; and an issuer willing to equivocate keys will equivocate its published
-// key LIST too, serving list A to cohort A and list B to cohort B. There is no
-// consensus anchor forcing one list. So soundness REQUIRES the redeemer to resolve
-// key_E against state every honest node agrees on. That is this file.
+// rotation it cannot cross-check" — is REFUTED as sufficient. Cross-check against
+// WHAT? Pinning the key you fetched first detects a change over time for ONE
+// redeemer, never a key that DIFFERS across redeemers; and an issuer willing to
+// equivocate keys will equivocate its published key LIST too, serving list A to
+// cohort A and list B to cohort B. There is no consensus anchor forcing one list. So
+// soundness REQUIRES the redeemer to resolve key_E against state every honest node
+// agrees on. That is this file.
 //
 // WHAT IS COMMITTED: (epoch, issuer) ↦ sha256(blindtoken.MarshalPub(key_E)), the
 // 32-byte key fingerprint. A redeemer holds a fetched key_E only if its fingerprint
@@ -27,7 +27,7 @@ package chain
 // APPEND-ONLY IS THE ANTI-EQUIVOCATION PROPERTY — and only that. A commitment for
 // (epoch, issuer) is written ONCE and never overwritten (first-write-wins, the same
 // dedup discipline bondRootOwner ships). An issuer that could rewrite key_E after
-// seeing who redeems under it would have the equivocation channel back. apply()
+// seeing who redeems under it would have the equivocation channel back. apply
 // therefore SKIPS a duplicate rather than replacing it, and a duplicate is not a
 // validity error — a racing re-submission must not be able to wedge block production.
 //
@@ -64,9 +64,9 @@ package chain
 //
 // v5-ONLY (era-3 is FROZEN). The leaf is emitted only by stateRootLeavesV5 and a
 // registration is valid only in a v5 block, so a v4 block's committed root stays
-// byte-identical to era-3 (immutable F / #632). Without the version gate a v4 block
+// byte-identical to era-3 (immutable F /). Without the version gate a v4 block
 // could write committed state the era-3 leaf set does not cover — a silent
-// divergence. See docs/thinking/2026-09-02-r0.4b-per-epoch-key-expiry-design.md §5.
+// divergence. See
 
 import (
 	"crypto/ed25519"
@@ -111,7 +111,8 @@ var (
 // Additive on the wire: a block with no registrations omits the field entirely and
 // hashes exactly as before.
 type IssuerKeyReg struct {
-	// Pub is the issuer's ed25519 IDENTITY public key. IssuerID() = sha256(Pub).
+	// Pub is the issuer's ed25519 IDENTITY public key. IssuerID =
+	// sha256(Pub).
 	Pub []byte `cbor:"1,keyasint"`
 	// Epoch is the epoch this key signs demand withdrawals for.
 	Epoch uint64 `cbor:"2,keyasint"`
@@ -170,7 +171,7 @@ func VerifyIssuerKeyReg(r IssuerKeyReg) bool {
 // are coupled by the design doc and by TestIssuerKeyPrePublishMatchesDemandWindow.
 const issuerKeyPrePublish = uint64(4)
 
-// IssuerKeyPrePublish exports the window READ-ONLY for core/node's R2.11 arrival gate, which
+// IssuerKeyPrePublish exports the window READ-ONLY for core/node's arrival gate, which
 // evaluates the same clause validateIssuerKeys will apply so a stale or too-far-ahead
 // peer-submitted registration never occupies a queue slot.
 const IssuerKeyPrePublish = issuerKeyPrePublish
@@ -231,11 +232,11 @@ func (c *Chain) validateIssuerKeys(b *Block) error {
 
 // validateGenesisIssuerKeys is the genesis door for key registrations. AppendGenesis
 // skips validateIssuerKeys (there is no prior history to derive an epoch from), and
-// apply() writes whatever it is handed, so the door is checked here explicitly.
+// apply writes whatever it is handed, so the door is checked here explicitly.
 //
-// Unlike Revocations and Slashes — both REJECTED at genesis because apply() would
-// act on them unverified against ANOTHER identity (immutable #5 / retest G1) — a key
-// registration is SELF-AUTHORIZING: IssuerID() is derived from Pub, and the signature
+// Unlike Revocations and Slashes — both REJECTED at genesis because apply would act
+// on them unverified against ANOTHER identity (immutable #5 / retest G1) — a key
+// registration is SELF-AUTHORIZING: IssuerID is derived from Pub, and the signature
 // must verify under that same Pub, so a genesis registration can only ever bind the
 // registrant's OWN key. It cannot touch a third party. So it is admitted, but only
 // under the same three rules the normal path enforces: a v5 block, a verifying
@@ -268,16 +269,16 @@ func (c *Chain) validateGenesisIssuerKeys(b *Block) error {
 // cannot re-point key_E after the fact. A duplicate is skipped silently — it is not
 // an error, so a racing re-submission cannot wedge block production.
 //
-// PAYLOAD-DRIVEN, NOT HEIGHT-DRIVEN (red-team re-break F1, 2026-09-03). A block that
-// carries NO registrations writes NOTHING in this keyspace — it does not even prune.
-// This is a consensus rule, not an optimization: the floor box's O(payload) recompute
-// derives its write-set from the block PAYLOAD and its scope gate stalls on
-// len(b.IssuerKeys) > 0, so any committed write this keyspace makes on an empty
-// payload is a write the box can neither fold nor name. It measured as a two-way
-// consensus SPLIT at every epoch turn: the box AGREED with a forged root the full
-// node rejects, and read an HONEST zero-registration block as a forged root
-// (rt_r04b_c3_split_test.go). Keeping the prune here — inside the len>0 branch — is
-// what makes the box's premise TRUE rather than merely asserted.
+// PAYLOAD-DRIVEN, NOT HEIGHT-DRIVEN, 2026-09-03. A block that carries NO
+// registrations writes NOTHING in this keyspace — it does not even prune. This is a
+// consensus rule, not an optimization: the floor box's O(payload) recompute derives
+// its write-set from the block PAYLOAD and its scope gate stalls on len(b.IssuerKeys)
+// > 0, so any committed write this keyspace makes on an empty payload is a write the
+// box can neither fold nor name. It measured as a two-way consensus SPLIT at every
+// epoch turn: the box AGREED with a forged root the full node rejects, and read an
+// HONEST zero-registration block as a forged root (two_tier_agreement_test.go).
+// Keeping the prune here — inside the len>0 branch — is what makes the box's premise
+// TRUE rather than merely asserted.
 func (c *Chain) applyIssuerKeys(b Block) {
 	if len(b.IssuerKeys) == 0 {
 		return
@@ -359,7 +360,7 @@ func (c *Chain) IssuerKeyRegAdmissible(issuer ports.NodeID) bool {
 }
 
 // cloneIssuerKeyCommit deep-copies the committed binding so a dry-run apply mutates
-// the copy, never the live chain (the #558 drift class).
+// the copy, never the live chain (the drift class).
 func cloneIssuerKeyCommit(m map[uint64]map[ports.NodeID]ports.Hash) map[uint64]map[ports.NodeID]ports.Hash {
 	if m == nil {
 		return nil // preserve nil-vs-empty so the clone is DeepEqual to its source

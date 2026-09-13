@@ -25,7 +25,7 @@ func reservePort(t *testing.T) string {
 
 var reReBootstrap = regexp.MustCompile(`re-bootstrapped: recovered from an empty routing table \((\d+) table entries\)`)
 
-// #281 over real TCP: silt's Kademlia join is ONE-SHOT, so a node that starts
+// over real TCP: silt's Kademlia join is ONE-SHOT, so a node that starts
 // before its bootstrap target is listening lands with an EMPTY routing table and,
 // without a retry, stays isolated forever. Here B joins through A's address while A
 // is DOWN (comes up with 0 table entries), then A starts and B re-bootstraps on its

@@ -14,9 +14,8 @@ import (
 // P13b k >= 1 — the LOG-EXTENSION arm the tagRevLogSize leaf unlocks. C-c.
 // =============================================================================
 //
-// Certification: ERA4-V5-FREEZE-MANIFEST-RESEARCH-CERTIFICATION-2026-09-07.md section 4.1
-// condition C-c, and the P-table delta certification section 3.3 (T-LOGEXT).
-// Deliberation: docs/thinking/2026-09-11-tagrevlogsize-freeze-manifest-item-1.md
+// section 4.1 condition C-c, and the P-table
+// research section 3.3 (T-LOGEXT). Deliberation:
 //
 // WHAT CHANGED. Until the leaf landed, provenView.CommittedRoots refused EVERY revocation-bearing
 // block by name and that refusal was TERMINAL — a box that cannot validate block H never obtains a
@@ -24,14 +23,14 @@ import (
 // mechanism (Don't #2). The leaf turns the refusal into a resolvable read, and this file drives
 // both arms: the block that now passes P13b, and the four ways it still must not.
 //
-// C-c AND ITS POSITIVE CONTROL. The certification is explicit that a generic "wrong number" arm
-// proves nothing: the branch that actually breaks is the DEGENERATE m = 1 right-spine extension,
-// where VerifyConsistency's isPow2 seeding leaves the old-root accumulator vacuous. So the forged
-// arm here IS that construction, embedded in a block — the same forgery
-// TestGD9_WitnessSuppliedLogSizeIsUnsound_Control drives at the unit tier, driven through the
+// C-c AND ITS POSITIVE CONTROL. The research is explicit that a generic "wrong number" arm proves
+// nothing: the branch that actually breaks is the DEGENERATE m = 1 right-spine extension, where
+// VerifyConsistency's isPow2 seeding leaves the old-root accumulator vacuous. So the forged arm
+// here IS that construction, embedded in a block — the same forgery
+// TestWitnessSuppliedLogSizeIsUnsound_Control drives at the unit tier, driven through the
 // composition at a COMMITTED m.
 //
-// THE ABLATION, RUN (2026-09-11). Take the source's tagRevLogSize value WITHOUT Resolving it
+// THE ABLATION, RUN. Take the source's tagRevLogSize value WITHOUT Resolving it
 // against the parent's committed StateRoot — i.e. put m back where it was before the leaf — and
 // TestLogExtensionRefusesTheDegenerateForgery goes GREEN-into-P13a: the forged LogRoot passes P13b
 // and the block reaches the recompute. That is the wrong-accept, reproduced, and the Resolve is
@@ -96,9 +95,9 @@ func (s *forgingSource) LogExtension(m int, leaves []ports.Hash) ([]ports.Hash, 
 }
 
 // TestRevocationLogLeavesMirrorsApply pins the box's payload-derived log entries against a REAL
-// apply(). The derivation is the one thing in the extension proof that no witness covers — the box
-// computes the appended content itself from the hash-covered block — so if it drifts from apply()
-// by one entry, one order, or one op byte, the box verifies an extension the node never made.
+// apply. The derivation is the one thing in the extension proof that no witness covers — the box
+// computes the appended content itself from the hash-covered block — so if it drifts from apply by
+// one entry, one order, or one op byte, the box verifies an extension the node never made.
 //
 // It drives the three shapes the STATE write-set nets away but the LOG does not: a duplicate root,
 // a revoke and un-revoke of the same root in one block, and both lists non-empty at once.
@@ -125,17 +124,18 @@ func TestRevocationLogLeavesMirrorsApply(t *testing.T) {
 		t.Fatalf("the derivation dropped entries: %d derived, k = %d (the LOG does not dedup)", len(derived), want)
 	}
 
-	// GROUND TRUTH: a real apply(), through the node's own accept path.
+	// GROUND TRUTH: a real apply, through the node's own accept
+	// path.
 	if err := f.c.Append(b4); err != nil {
 		t.Fatalf("h4 must commit (the node's own oracle runs first): %v", err)
 	}
 	if got, want := f.c.revLog.Size(), m+len(derived); got != want {
 		t.Fatalf("apply() appended %d log entries, the derivation says %d", got-m, len(derived))
 	}
-	// Rebuild the post-log from the PARENT's entries plus the derived ones and require the same MTH
-	// apply() produced. This binds order and content, not just count.
-	// The parent's own entries, recovered by replaying the two committed takedown blocks through
-	// the same derivation — so the replay is itself a second use of the function under test.
+	// Rebuild the post-log from the PARENT's entries plus the derived ones and require the same
+	// MTH apply produced. This binds order and content, not just count. The parent's own
+	// entries, recovered by replaying the two committed takedown blocks through the same
+	// derivation — so the replay is itself a second use of the function under test.
 	rebuilt := translog.New()
 	for _, blk := range []Block{f.c.Blocks(2)[0], f.c.Blocks(3)[0]} {
 		for _, lf := range revocationLogLeaves(&blk) {
@@ -157,14 +157,14 @@ func TestRevocationLogLeavesMirrorsApply(t *testing.T) {
 	}
 }
 
-// TestGD8_RevocationBearingBlockVerifiesItsLogExtension is the ACCEPT arm: with a witness source,
+// TestRevocationBearingBlockVerifiesItsLogExtension is the ACCEPT arm: with a witness source,
 // a revocation-bearing block now passes P13b and falls through to P13a, which stalls only because
 // no recompute predicate is wired on this view. Before the leaf this block was refused by name at
 // P13b and never reached P13a at all.
 //
 // ErrRecomputeGated is the marker that P13b PASSED: it is raised inside stateRootConjunct, which
 // the k >= 1 arm reaches only after verifying the extension.
-func TestGD8_RevocationBearingBlockVerifiesItsLogExtension(t *testing.T) {
+func TestRevocationBearingBlockVerifiesItsLogExtension(t *testing.T) {
 	f, b := revLogExtensionFixture(t)
 	assertHonestTwinAccepts(t, f.c, b)
 	pv := f.provenViewOver(t, newProverSource(t, f.c))
@@ -176,11 +176,11 @@ func TestGD8_RevocationBearingBlockVerifiesItsLogExtension(t *testing.T) {
 	}
 }
 
-// TestLogExtensionRefusesTheDegenerateForgery is condition C-c with its certified positive
-// control. The attacker publishes b.LogRoot = node(L_p, leafHash(leaf)) — a two-element tree whose
-// left child happens to be the parent's three-entry MTH — claims m = 1, and supplies the
-// one-element proofs that make BOTH legs of verifyLogExtension pass at that m. That forgery is not
-// hypothetical: TestGD9_WitnessSuppliedLogSizeIsUnsound_Control asserts it passes.
+// TestLogExtensionRefusesTheDegenerateForgery is condition C-c with its positive control. The
+// attacker publishes b.LogRoot = node(L_p, leafHash(leaf)) — a two-element tree whose left child
+// happens to be the parent's three-entry MTH — claims m = 1, and supplies the one-element proofs
+// that make BOTH legs of verifyLogExtension pass at that m. That forgery is not hypothetical:
+// TestWitnessSuppliedLogSizeIsUnsound_Control asserts it passes.
 //
 // The box refuses it at AUTHENTICATION, not at verification, and the assertion is on the sentinel
 // for exactly that reason: ErrRevLogSizeUnauthenticated means the forged size never Resolved
@@ -218,7 +218,7 @@ func TestLogExtensionRefusesTheDegenerateForgery(t *testing.T) {
 	pv := f.provenViewOver(t, src)
 	out, err := pv.CommittedRoots(&forged)
 	if out != IndeterminateTrustlessly || !errors.Is(err, ErrRevLogSizeUnauthenticated) {
-		t.Fatalf("WRONG-ACCEPT: the degenerate m = 1 forgery must be refused at AUTHENTICATION with "+
+		t.Fatalf("WRON: the degenerate m = 1 forgery must be refused at AUTHENTICATION with "+
 			"ErrRevLogSizeUnauthenticated; got %s / %v", out, err)
 	}
 
@@ -230,7 +230,7 @@ func TestLogExtensionRefusesTheDegenerateForgery(t *testing.T) {
 	}
 }
 
-// TestLogExtensionRefusesTheZeroSizeClaim is the OTHER degeneracy the certification names:
+// TestLogExtensionRefusesTheZeroSizeClaim is the OTHER degeneracy the research names:
 // VerifyConsistency at m == 0 returns true without reading either root, so an attacker who could
 // make the box believe the parent log is empty gets the consistency leg for free.
 //

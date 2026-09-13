@@ -6,8 +6,8 @@ import (
 	"github.com/nerolabs/silt/core/chain"
 )
 
-// The SlashesBytesCap CONFIG route-close (owner call 2026-09-09: "CLOSE THE ROUTE. Not a
-// re-ratification. The value stays 16 MiB. The route goes.").
+// The SlashesBytesCap CONFIG route-close: "CLOSE THE ROUTE. Not a re-decision. The
+// value stays 16 MiB. The route goes.".
 //
 // WHAT THIS ENFORCES, STATED EXACTLY. A NECESSARY condition on the CONFIGURABLE terms of
 // the honest-block size — nothing more. It is NOT sufficient, and the derivation is NOT
@@ -19,7 +19,7 @@ import (
 //
 //	SlashesBytesCap >= 2 * (honest block) + overhead
 //
-// and "honest block" was derived from the DEFAULT VALUES of two flags — -max-bondreg-
+// And "honest block" was derived from the DEFAULT VALUES of two flags — -max-bondreg-
 // bytes-per-block and -max-entry-bytes-per-block — that are PROPOSER-SIDE ONLY. Every
 // non-test read is core/node/chainrole.go (foldPendingBondRegs) and core/node/entrypool.go
 // (foldPendingEntries); no validator checks a peer's budgets, and the shipped help
@@ -29,15 +29,15 @@ import (
 // cap before CheckEquivocation ever runs, and the equivocator KEEPS ITS SEAT: slashing
 // defeated by making the evidence too big. Accountability is a Part-0 corner.
 //
-// This is the #380 class, which silt paid for once already in the same week: #380 was
-// RequiredQuorum() returning the LOCAL cfg.Quorum in the mature regime, producing an I1
+// This is the class, which silt paid for once already in the same week: was
+// RequiredQuorum returning the LOCAL cfg.Quorum in the mature regime, producing an I1
 // divergence. Here it is SlashesBytesCap's invariant resting on local cfg budgets. THE
 // RULE THE CLASS TEACHES: a consensus quantity must be a function of the CHAIN, never of
 // local config. Where a consensus rule is nonetheless derived from a configurable bound,
 // the configuration must be REFUSED when it violates the derivation — which is what this
 // file does.
 //
-// Timing (owner, 2026-09-09): this is a VALIDITY rule (freeze manifest item 10), so its
+// Timing: this is a VALIDITY rule (freeze manifest item 10), so its
 // deadline is the STAMP RAISE, not the freeze. It is not deferrable past that, because
 // RAISING a cap later is a WIDENING rule change and therefore outside the narrowing
 // exemption that makes post-freeze rule changes cheap — it is a coordinated fleet fork.
@@ -50,12 +50,12 @@ import (
 // paragraph on chain.SlashesBytesCap.
 
 // THE FIXED POINT — why a start-up check cannot close the accountability face (measured by
-// the blind PE, 2026-09-10, on signature-valid fixtures at the SHIPPED defaults).
+// measured on signature-valid fixtures at the SHIPPED defaults).
 //
-// chain.Equivocation carries two FULL chain.Blocks (equivocation.go:26-27), and a Block
-// carries its own Slashes field (chain.go:518), bounded only by the cap being defended. So
+// chain.Equivocation carries two FULL chain.Blocks (equivocation.go), and a Block
+// carries its own Slashes field (chain.go), bounded only by the cap being defended. So
 //
-//	cap >= 2*(body) + overhead   with   body includes Slashes <= cap
+//	cap >= 2*(body) + overhead with body includes Slashes <= cap
 //
 // has NO positive solution. It is a fixed point, not a tuning error. Concretely, with no
 // coalition and no misconfiguration: a block committing two ordinary 4.14 MiB proofs is
@@ -79,7 +79,7 @@ import (
 //
 // IT STANDS IN FOR A QUANTITY THAT SCALES WITH THE VALIDATOR SET, and that is a disclosed
 // limit of this predicate rather than a hidden one. Era-2 evidence REQUIRES the culprit's
-// signature inside PrepareQC/Atts and v5 adds a hash-folded LastCommit, which the blind PE
+// signature inside PrepareQC/Atts and v5 adds a hash-folded LastCommit, which the measurement
 // measured at 639 B per validator per evidence pair. At the previous 64 KiB the gate blessed
 // a configuration whose legitimate proof went over cap at N >= 205. 1 MiB covers N ~ 1600 on
 // that measurement and still admits ~6.9 MiB of registrations against a 2 MiB default, so it
@@ -98,7 +98,7 @@ func maxHonestBondRegBytes(entryBudget int64) int64 {
 // CheckSlashEvidenceHeadroom refuses a configuration whose per-block packing budgets would
 // let a legitimate equivocation proof exceed chain.SlashesBytesCap. Call it before New on
 // any path that accepts operator configuration; cmd/silt refuses to start on a non-nil
-// return. Driven by G-SLASHCAP-1.
+// return. Driven by.
 func CheckSlashEvidenceHeadroom(cfg Config) error {
 	regs, entries := cfg.MaxBondRegBytesPerBlock, cfg.MaxEntryBytesPerBlock
 
@@ -141,7 +141,7 @@ func CheckSlashEvidenceHeadroom(cfg Config) error {
 // advisoryRegCeiling is the "lower -max-bondreg-bytes-per-block to at most N" figure. When the
 // entry budget alone already exhausts the headroom the reg ceiling is non-positive, and telling
 // an operator to lower a budget to a negative number is not an actionable instruction — so it
-// clamps at zero and the caller points at the entry budget instead (PE ruling S-6).
+// clamps at zero and the caller points at the entry budget instead.
 func advisoryRegCeiling(entryBudget int64) (ceiling int64, regsCanFix bool) {
 	c := maxHonestBondRegBytes(entryBudget)
 	if c <= 0 {

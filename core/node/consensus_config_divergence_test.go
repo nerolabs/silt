@@ -12,12 +12,11 @@ import (
 	"github.com/nerolabs/silt/core/vdf"
 )
 
-// THE CONFIG-IN-CONSENSUS GATE, node.Config HALF — closes R-CONFIG-GATE-NODE-SCOPE.
+// THE CONFIG-IN-CONSENSUS GATE, node.Config HALF.
 //
-// THE MEMBERSHIP RULE (owner, 2026-09-10): every field that can change a validity verdict is
-// BOUND TO THE CHAIN, or is EXPLICITLY EXCLUDED WITH A RECORDED REASON. The owner rejected both
-// "five fields" and "17 fields" as the thing to ratify: the rule is ratified and the field count
-// is its OUTPUT.
+// THE MEMBERSHIP RULE: every field that can change a validity verdict is BOUND TO THE CHAIN, or
+// is EXPLICITLY EXCLUDED WITH A RECORDED REASON. Neither "five fields" nor "17 fields" is the
+// thing to settle: the rule is what binds, and the field count is its OUTPUT.
 //
 // WHY THIS FILE EXISTS. chain.Config's gate (core/chain/consensus_config_divergence_test.go)
 // closes its complement over chain.Config ALONE. That is the WRONG SET, and the cost was
@@ -32,7 +31,7 @@ import (
 //	carry a declaration. There is no third state, so a NEW field fails this gate until someone
 //	decides its class. This is what would have caught BondLabelSamples the day it was added.
 //
-//	THE DRIVEN PROBE (runtime). Simplicity rule 7: a green gate with no demonstrated red is
+//	THE DRIVEN PROBE (runtime). A green gate with no demonstrated red is
 //	decoration, and a field called "safe" must be a DRIVEN probe. So the fields that reach the
 //	real bond verifier are perturbed against a REAL sealed plot and a REAL space-time answer, and
 //	the measured divergence map is pinned. A declaration that contradicts the measurement fails.
@@ -48,14 +47,14 @@ import (
 // a patch that silently fails to apply reports GREEN and is indistinguishable from a passing
 // ablation):
 //
-//	N0 baseline ................................................................ GREEN
-//	N1 add an undeclared verdict-reaching field to node.Config ................. RED   (owner's binding condition)
-//	N2 leave a stale declaration for a field node.Config no longer has ......... RED
-//	N3 re-declare BondLabelSamples as nodeClassLocal (the defect class itself) .. RED
-//	N4 point a carriedAs at a chain.ConsensusParams field that does not exist ... RED
-//	N5 delete BondLabelSamples from chain.ConsensusParams ...................... RED
-//	N6 drop k from the verifier so BondLabelSamples stops diverging ............ RED
-//	N7 restore everything ..................................................... GREEN
+//	N0 baseline................................................................ GREEN
+//	N1 add an undeclared verdict-reaching field to node.Config................. RED (owner's binding condition)
+//	N2 leave a stale declaration for a field node.Config no longer has......... RED
+//	N3 re-declare BondLabelSamples as nodeClassLocal (the defect class itself)... RED
+//	N4 point a carriedAs at a chain.ConsensusParams field that does not exist... RED
+//	N5 delete BondLabelSamples from chain.ConsensusParams...................... RED
+//	N6 drop k from the verifier so BondLabelSamples stops diverging............ RED
+//	N7 restore everything..................................................... GREEN
 
 type nodeConfigClass int
 
@@ -68,7 +67,7 @@ const (
 )
 
 // nodeConfigDecl is one field's declaration. A consensus-critical row must set EXACTLY ONE of
-// carriedAs / reasonNotCarried — that pair IS the owner's rule, made machine-checkable.
+// carriedAs / reasonNotCarried — that pair IS the project rule, made machine-checkable.
 type nodeConfigDecl struct {
 	class nodeConfigClass
 	why   string
@@ -118,12 +117,12 @@ var nodeConfigDecls = map[string]nodeConfigDecl{
 	"MaxBondRegBytesPerBlock": {
 		class: nodeClassConsensusCritical,
 		why: "Proposer-side byte budget. Validity is unchanged by it (a block with N regs is valid), so mixed " +
-			"caps across proposers are safe — but D-SLASHCAP-ROUTE found the second face: raised past a bound it " +
+			"caps across proposers are safe — but found the second face: raised past a bound it " +
 			"makes this validator's OWN equivocation unprovable, because the evidence pair exceeds SlashesBytesCap.",
 		reasonNotCarried: "BOUND BY CANON RULE 8's FIRST ARM INSTEAD, which is the correct arm here: the invariant is a " +
 			"relationship between two LOCAL flags and a consensus constant, so it IS locally checkable and a " +
 			"refuse-to-start has a referent without needing committed state. node.CheckSlashEvidenceHeadroom is " +
-			"that check, wired in cmd/silt/daemon.go and pinned by G-SLASHCAP-3/4. Carrying it into the genesis " +
+			"that check, wired in cmd/silt/daemon.go and pinned by. Carrying it into the genesis " +
 			"would ALSO forbid honest operators from differing on a proposer-side budget that validity ignores.",
 	},
 	"MaxEntryBytesPerBlock": {
@@ -140,11 +139,11 @@ var nodeConfigDecls = map[string]nodeConfigDecl{
 	"RequestRetries":              {class: nodeClassLocal, why: "How many times a timed-out RPC is re-sent. Liveness under jitter, not validity."},
 	"RequestBackoff":              {class: nodeClassLocal, why: "Base backoff between RPC retries; same class as RequestRetries."},
 	"HolderDialTimeout":           {class: nodeClassLocal, why: "Tighter deadline on speculative holder-fetch dials; a fetch-path cost knob."},
-	"RequestSizeFloorBytesPerSec": {class: nodeClassLocal, why: "Extends a transport deadline for a large payload (#286). It changes WHETHER a message arrives in time, never whether an arrived block is valid."},
+	"RequestSizeFloorBytesPerSec": {class: nodeClassLocal, why: "Extends a transport deadline for a large payload. It changes WHETHER a message arrives in time, never whether an arrived block is valid."},
 	"Replication":                 {class: nodeClassLocal, why: "How many nodes receive each chunk. Placement policy; durability, not validity."},
 	"RepairInterval":              {class: nodeClassLocal, why: "Caretaker sweep cadence."},
 	"RepairSlack":                 {class: nodeClassLocal, why: "Missing-shard tolerance before repair fires."},
-	"RepairEconomy":               {class: nodeClassLocal, why: "S7 repair-bounty PARTICIPATION switch, opt-in by design (PE ruling 2026-08-19 Q1). Credit is per-node-local accounting; the bounty AMOUNT is protocol-priced and is not this flag."},
+	"RepairEconomy":               {class: nodeClassLocal, why: "S7 repair-bounty PARTICIPATION switch, opt-in by design (a review 2026-08-19 Q1). Credit is per-node-local accounting; the bounty AMOUNT is protocol-priced and is not this flag."},
 	"RepairQuorumTau":             {class: nodeClassLocal, why: "This judge's own retrievability-confirmation count. Correctness is single-verifier-sufficient; tau gates only the retrievability leg, per judge."},
 	"Domain":                      {class: nodeClassLocal, why: "The operator's failure-domain label. Per-node BY DEFINITION — a shared value would defeat the diversity it exists to create."},
 	"HotThreshold":                {class: nodeClassLocal, why: "Demand-responsive dispersion trigger; a caching policy."},
@@ -154,11 +153,11 @@ var nodeConfigDecls = map[string]nodeConfigDecl{
 	"ReachabilityTimeout":         {class: nodeClassLocal, why: "Bounds a NAT dial-back check; a transport deadline."},
 	"FetchAttempts":               {class: nodeClassLocal, why: "Chunk-fetch provider re-sweeps under transient failure."},
 	"FetchBackoff":                {class: nodeClassLocal, why: "Base delay between fetch re-sweeps."},
-	"HolderCooldown":              {class: nodeClassLocal, why: "Negative cache on holders that timed out (#226)."},
+	"HolderCooldown":              {class: nodeClassLocal, why: "Negative cache on holders that timed out."},
 	"BondAuditInterval":           {class: nodeClassLocal, why: "How often THIS node challenges peers' bonds. It drives the LOCAL reputation view, which the objective path deliberately does not read (D2 / red-team F6)."},
 	"BondMaxAge":                  {class: nodeClassLocal, why: "Local decay of un-re-proven standing in the reputation view. The ON-CHAIN lapse is chain.Config.BondTTLBlocks, which IS carried."},
 	"ChainSyncInterval":           {class: nodeClassLocal, why: "Reconcile cadence. It changes WHEN this node catches up, never WHAT it accepts."},
-	"BootstrapRetryInterval":      {class: nodeClassLocal, why: "Kademlia re-join cadence for an isolated node (#281)."},
+	"BootstrapRetryInterval":      {class: nodeClassLocal, why: "Kademlia re-join cadence for an isolated node."},
 	"BootstrapWellConnected":      {class: nodeClassLocal, why: "Routing-table size at which a node stops refreshing buckets."},
 	"BondMaxAnswerLatency":        {class: nodeClassLocal, why: "Reply deadline on a LIVE bond challenge (C1 BREAK 1 enforcement leg). It is wall-clock and SOFT by nature, so it gates the local reputation view; it is not a chain validity term, and making it one would make validity fastest-evaluator-sensitive."},
 	"RequireSignedProviders":      {class: nodeClassLocal, why: "NARROWING ONLY (M0 H5): this node accepts fewer provider records. A narrowing DHT policy cannot make a block valid that another node rejects."},
@@ -172,8 +171,8 @@ var nodeConfigDecls = map[string]nodeConfigDecl{
 // package importing the other's test fixtures.
 var theTwoNodeSideParams = []string{"BondLabelSamples", "BondVDFDelay"}
 
-// G-CFGBIND-9 — THE MEMBERSHIP RULE OVER node.Config: bound to the chain, or excluded with a
-// recorded reason. Closes R-CONFIG-GATE-NODE-SCOPE.
+// THE MEMBERSHIP RULE OVER node.Config: bound to the chain, or excluded with a recorded
+// reason. Closes.
 func TestNodeConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 	// ---- the closed complement: every node.Config field must be declared ----
 	ct := reflect.TypeOf(Config{})
@@ -311,7 +310,7 @@ func TestNodeConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 		}
 	}
 
-	// ---- the verdict, and the three states simplicity rule 7 demands ----
+	// ---- the verdict, and the three states honesty demands ----
 	var violations, drivenSafe, unproven []string
 	for _, f := range fields {
 		d := nodeConfigDecls[f]
@@ -338,7 +337,7 @@ func TestNodeConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 			"or re-declare it with the reason it is excluded.", len(violations), violations)
 	}
 	t.Logf("LOCAL and DRIVEN-SAFE (%d): %v", len(drivenSafe), drivenSafe)
-	// UNPROVEN is REPORTED, never asserted safe (simplicity rule 7). Most of node.Config is
+	// UNPROVEN is REPORTED, never asserted safe. Most of node.Config is
 	// transport/DHT/repair policy the bond verifier never reads, so no probe here can move it.
 	// "Did not diverge in a regime that could not have exercised it" is UNTESTED, not safe.
 	t.Logf("UNPROVEN — the bond-verifier probe cannot exercise these; NOT a safety claim (%d): %v", len(unproven), unproven)

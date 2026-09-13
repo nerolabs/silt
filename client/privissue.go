@@ -1,7 +1,7 @@
 // Package client holds fetcher-side helpers that compose the node with real transport
 // for privacy operations a long-lived daemon does not perform directly.
 //
-// D3 issuance-mixing (#179) — slice 1, the ephemeral-identity withdrawal. The token
+// D3 issuance-mixing — slice 1, the ephemeral-identity withdrawal. The token
 // issuer authenticates whoever dials it via the end-to-end TLS handshake, so a demand
 // withdrawal made over a fetcher's durable identity LINKS that withdrawal to the
 // fetcher — the blind signature hides only the token serial, not the network identity.
@@ -36,23 +36,22 @@ import (
 // durable identity (Node.AcquireCredits).
 //
 // THE CALLER RESOLVES (issuerPub, epoch) AGAINST ITS CHAIN — it does not accept
-// whatever key the issuer serves (R0.4b, red-team break 5). The ephemeral node has no
-// chain, so it cannot check a key against the committed E ↦ key_E binding itself; the
-// DURABLE parent does that with Node.ResolvedDemandIssuerKey and passes the pair down.
-// That is what keeps a per-cohort key a DENIAL rather than an accepted, tagged token:
-// the epoch is inside the blind-signed message, so an issuer signing under any other
-// key produces a reply this withdrawal refuses (ErrDemandEpochMismatch) instead of a
-// token whose "which key verified you" fingerprints the cohort. Passing an unresolved
-// key here re-opens that channel — there is no safe way to call this with a key the
-// caller did not resolve.
+// whatever key the issuer serves. The ephemeral node has no chain, so it cannot check
+// a key against the committed E ↦ key_E binding itself; the DURABLE parent does that
+// with Node.ResolvedDemandIssuerKey and passes the pair down. That is what keeps a
+// per-cohort key a DENIAL rather than an accepted, tagged token: the epoch is inside
+// the blind-signed message, so an issuer signing under any other key produces a reply
+// this withdrawal refuses (ErrDemandEpochMismatch) instead of a token whose "which key
+// verified you" fingerprints the cohort. Passing an unresolved key here re-opens that
+// channel — there is no safe way to call this with a key the caller did not resolve.
 //
 // issuerAddr severs one or two links depending on its form (D3):
-//   - a DIRECT "host:port" hides the fetcher's IDENTITY (the issuer authenticates only
-//     the ephemeral key) but the issuer still sees the fetcher's IP (slice 1);
-//   - a RELAY-form "relay:R@host:port" (the issuer's advertised relay address) ALSO
-//     hides the fetcher's IP: the ephemeral transport dials the issuer THROUGH the relay,
-//     so the issuer's inbound connection is from the relay, not the fetcher (slice 2).
-//     The end-to-end TLS still authenticates the ephemeral key across the relay pipe.
+// - a DIRECT "host:port" hides the fetcher's IDENTITY (the issuer authenticates only
+// The ephemeral key but the issuer still sees the fetcher's IP (slice 1);
+// - a RELAY-form "relay:R@host:port" (the issuer's advertised relay address) ALSO
+// hides the fetcher's IP: the ephemeral transport dials the issuer THROUGH the relay,
+// so the issuer's inbound connection is from the relay, not the fetcher (slice 2).
+// The end-to-end TLS still authenticates the ephemeral key across the relay pipe.
 //
 // Timing-correlation (epoch-batching) is the remaining D3 hardening, deferred to the H8
 // mixnet.

@@ -13,17 +13,17 @@ import (
 // the root-only reproduction of matureNow (the maturity-latch metric via C2Metric), replicating
 // increment 1's C-1 pattern AND shipping the mandatory C-6 config-from-witness ablation TEETH.
 //
-// The four HARD ABLATIONS (C-5, red-before-green), each injected and watched to flip the verdict,
+// The four HARD ABLATIONS (red-before-green), each injected and watched to flip the verdict,
 // so a green here is not decoration:
-//   - FORGED BONDED WEIGHT (C-1): a witness with the right members but a forged per-member bonded
-//     weight ⇒ STALL (its inclusion proof fails against the committed root).
-//   - FORGED BONDDOMAIN (C-1): a witness with a forged per-member domain ⇒ STALL.
-//   - OMITTED / INJECTED MEMBER: a witness missing/padding a validatorsSeen member ⇒ MTH mismatch
-//     ⇒ STALL (set-completeness).
-//   - CONFIG-FROM-WITNESS (C-6, THE TEETH): a fold that read MinBond/OperatorMargin/MatureValidators
-//     from the WITNESS instead of own config would make two boxes with different own config DIVERGE
-//     on the same witness. The correct own-config fold is INVARIANT. This is the C-6 teeth increment
-//     1 could not exercise (its predicate read no genesis knob).
+// - FORGED BONDED WEIGHT: a witness with the right members but a forged per-member bonded
+// weight ⇒ STALL (its inclusion proof fails against the committed root).
+// - FORGED BONDDOMAIN: a witness with a forged per-member domain ⇒ STALL.
+// - OMITTED / INJECTED MEMBER: a witness missing/padding a validatorsSeen member ⇒ MTH mismatch
+// ⇒ STALL (set-completeness).
+// - CONFIG-FROM-WITNESS (THE TEETH): a fold that read MinBond/OperatorMargin/MatureValidators
+// from the WITNESS instead of own config would make two boxes with different own config DIVERGE
+// on the same witness. The correct own-config fold is INVARIANT. This is the teeth increment
+// 1 could not exercise (its predicate read no genesis knob).
 //
 // The recompute NEVER flips the box to Accept (the STOP boundary); it reproduces ONE
 // predicate.
@@ -50,7 +50,7 @@ type maturityBond struct {
 // objective v5 chain, so validatorsSeen is populated and C2Metric has a non-trivial fold, then
 // snapshots the committed v5 StateRoot and a Prover over its v5 leaves. Two anchors bootstrap the
 // young network (they attest but are skipped by C2Metric via the own-Anchors screen). matureValidators
-// and operatorMargin are the box's own config knobs the recompute reads (C-6).
+// and operatorMargin are the box's own config knobs the recompute reads.
 func buildMaturityFixture(t *testing.T, matureValidators, operatorMargin int, bonds []maturityBond) maturityFixture {
 	t.Helper()
 	return buildMaturityFixtureSlashing(t, matureValidators, operatorMargin, bonds, nil)
@@ -64,7 +64,7 @@ func buildMaturityFixture(t *testing.T, matureValidators, operatorMargin int, bo
 // lets a fixture exercise C2Metric's slashed-SKIP fold path with a REAL committed slashed member —
 // one the recompute must witness, verify (inclusion), and skip, so it does not count toward the
 // coefficient. Slashing leaves the member's bonded/bondDomain leaves intact; only the slashed screen
-// changes its treatment, matching C2Metric (chain.go:2306).
+// changes its treatment, matching C2Metric (chain.go).
 func buildMaturityFixtureSlashing(t *testing.T, matureValidators, operatorMargin int, bonds []maturityBond, slash []ed25519.PrivateKey) maturityFixture {
 	t.Helper()
 	const minBond = int64(1) << 20
@@ -261,10 +261,10 @@ func TestRecomputeMatureNow_MatchesFullNode(t *testing.T) {
 }
 
 // TestRecomputeMatureNow_MatchesFullNode_SlashedMember is the equivalence anchor for the
-// SLASHED-SKIP fold path (PE ruling gap 1): a fixture seats a REAL committed slashed non-anchor
-// member, so C2Metric actually skips it. The recompute must witness that member (inclusion proof of
-// its slashed bit), skip it in the fold, and land on the SAME verdict as the full node's matureNow —
-// proving the slashed-skip equivalence by test, not by inspection.
+// SLASHED-SKIP fold path: a fixture seats a REAL committed slashed non-anchor member, so C2Metric
+// actually skips it. The recompute must witness that member (inclusion proof of its slashed bit),
+// skip it in the fold, and land on the SAME verdict as the full node's matureNow — proving the
+// slashed-skip equivalence by test, not by inspection.
 //
 // TEETH at the knee: 6 members are seated with weights 8,6,5,4,4,4 (M each); one of the 4M members
 // is slashed. The full node folds only the five UNslashed bonds (8,6,5,4,4; total 27M) → Nakamoto
@@ -317,14 +317,14 @@ func TestRecomputeMatureNow_MatchesFullNode_SlashedMember(t *testing.T) {
 	})
 }
 
-// TestRecomputeMatureNow_ForgedSlashedRejects is HARD ABLATION (PE ruling gap 1, C-1): a prover
-// cannot flip a member's committed slashed bit to shrink or pad the folded tally. It forges a
-// committed-NOT-slashed member's witnessed Slashed to true while KEEPING its NON-inclusion proof —
-// the proof proves the member ABSENT from the slashed set, so Resolve against the claimed-present
-// value cannot yield ProvenPresent ⇒ the slashed(present) branch fails ⇒ stall.
+// TestRecomputeMatureNow_ForgedSlashedRejects is HARD ABLATION: a prover cannot flip a member's
+// committed slashed bit to shrink or pad the folded tally. It forges a committed-NOT-slashed
+// member's witnessed Slashed to true while KEEPING its NON-inclusion proof — the proof proves the
+// member ABSENT from the slashed set, so Resolve against the claimed-present value cannot yield
+// ProvenPresent ⇒ the slashed(present) branch fails ⇒ stall.
 //
-// RED-BEFORE-GREEN (evidence, reported in the PR): I confirmed this ablation is a genuine negative
-// control by injecting the defect into production — dropping the `mw.Slashed && !IsProvenPresent()`
+// RED-BEFORE-GREEN: I confirmed this ablation is a genuine negative
+// control by injecting the defect into production — dropping the `mw.Slashed && !IsProvenPresent`
 // guard so a claimed-present-but-absent slashed bit is accepted. With the guard removed this test
 // goes RED (the forged slashed member is folded as skipped → coefficient shifts → the assertion that
 // the recompute STALLS fails). With the production guard in place it is GREEN. See PR notes.
@@ -360,11 +360,11 @@ func TestRecomputeMatureNow_ForgedSlashedRejects(t *testing.T) {
 }
 
 // TestRecomputeMatureNow_MatchesFullNode_UnsetDomain is the equivalence anchor for the UNSET-DOMAIN
-// (zeroDomainWeights) fold path (PE ruling gap 2): a fixture where several members declare domain 0
-// (unset). Each unset-domain bond forms its OWN address-diversity group (never aggregated), so the
-// recompute's zeroDomainWeights branch (floorbox_recompute_maturity_v5.go:255) must reproduce
-// C2Metric's handling (chain.go:2315). The verdict must equal matureNow for the mixed set/unset
-// domain case — the common real chain, asserted by test not inspection.
+// (zeroDomainWeights) fold path: a fixture where several members declare domain 0 (unset). Each
+// unset-domain bond forms its OWN address-diversity group (never aggregated), so the recompute's
+// zeroDomainWeights branch (floorbox_recompute_maturity_v5.go) must reproduce C2Metric's
+// handling (chain.go). The verdict must equal matureNow for the mixed set/unset domain case —
+// the common real chain, asserted by test not inspection.
 func TestRecomputeMatureNow_MatchesFullNode_UnsetDomain(t *testing.T) {
 	t.Run("mature: low bar cleared with unset-domain members (matches full node)", func(t *testing.T) {
 		f := buildMaturityFixture(t, 2, 1, mixedDomainBonds())
@@ -397,7 +397,7 @@ func TestRecomputeMatureNow_MatchesFullNode_UnsetDomain(t *testing.T) {
 	})
 }
 
-// TestRecomputeMatureNow_ForgedBondedWeightRejects is HARD ABLATION 1 (C-1): a witness with the
+// TestRecomputeMatureNow_ForgedBondedWeightRejects is HARD ABLATION 1: a witness with the
 // RIGHT members but a FORGED per-member bonded weight makes the recompute STALL — the forged
 // weight's inclusion proof does not verify against the committed root.
 //
@@ -428,7 +428,7 @@ func TestRecomputeMatureNow_ForgedBondedWeightRejects(t *testing.T) {
 	}
 }
 
-// TestRecomputeMatureNow_ForgedDomainRejects is HARD ABLATION 2 (C-1): a witness with a FORGED
+// TestRecomputeMatureNow_ForgedDomainRejects is HARD ABLATION 2: a witness with a FORGED
 // per-member bondDomain makes the recompute STALL — the forged domain's inclusion proof does not
 // verify against the committed root. The domain drives the address-diverse coefficient
 // (NakamotoDomains), so a forged domain could otherwise fake decentralization.
@@ -541,8 +541,8 @@ func TestRecomputeMatureNow_ConfigFromOwnConfig(t *testing.T) {
 		t.Fatalf("neither box should stall; rMature=%v rImmature=%v", rMature, rImmature)
 	}
 
-	// C-6: the OWN-config fold makes the boxes DIVERGE on the same witness (own MatureValidators
-	// governs). If they AGREED, the fold read the threshold from the witness — the C-6 violation.
+	// the OWN-config fold makes the boxes DIVERGE on the same witness (own MatureValidators
+	// governs). If they AGREED, the fold read the threshold from the witness — the violation.
 	if metMature == metImmature {
 		t.Fatalf("C-6 VIOLATION: boxes with different own MatureValidators (2 vs 3) AGREED on the same "+
 			"witness (both %v) — the fold read the threshold from the witness, not own config", metMature)
@@ -577,7 +577,7 @@ func TestRecomputeMatureNow_ConfigFromOwnConfig(t *testing.T) {
 // buildBoxWithConfig makes an objective v5 box with the given own MatureValidators/OperatorMargin
 // and no committed state of its own — it only holds a root a witness is verified against. It uses
 // the SAME anchors (key(1)/key(2)) and MinBond as buildMaturityFixture, so the ONLY config knob that
-// differs from the fixture box is MatureValidators — isolating the C-6 teeth to the threshold (a box
+// differs from the fixture box is MatureValidators — isolating the teeth to the threshold (a box
 // without the fixture's anchors would fold the anchor members and skew the coefficient, confounding
 // the teeth). Used to verify one witness against boxes with a different own threshold.
 func buildBoxWithConfig(t *testing.T, matureValidators, operatorMargin int) *Chain {
@@ -590,11 +590,11 @@ func buildBoxWithConfig(t *testing.T, matureValidators, operatorMargin int) *Cha
 	return c
 }
 
-// recomputeMatureNowConfigFromWitness is the NEGATIVE-CONTROL injected variant for the C-6 ablation:
+// recomputeMatureNowConfigFromWitness is the NEGATIVE-CONTROL injected variant for the ablation:
 // it reproduces recomputeMatureNow's set-completeness + per-member verification EXACTLY, but reads
 // the maturity threshold (and margin / MinBond screen) from the WITNESS-carried parameters instead
 // of own config. It exists ONLY in the test to demonstrate that a config-from-witness fold makes
-// boxes with different own config AGREE (the C-6 bug), which the real own-config fold does not.
+// boxes with different own config AGREE (the bug), which the real own-config fold does not.
 // TEST-ONLY; it touches no production path.
 func recomputeMatureNowConfigFromWitness(c *Chain, root ports.Hash, w SeenSetWitness, wMatureValidators, wOperatorMargin int, wMinBond int64) bool {
 	// Set-completeness (same as production).
@@ -693,11 +693,10 @@ func TestRecomputeMatureNow_MissingMemberWitnessStalls(t *testing.T) {
 	}
 }
 
-// THE STOP-BOUNDARY GUARD FOR THIS INCREMENT MOVED (D0). It was TestRecomputeMatureNow_NeverFlipsWitnessValidateAccept
-// here: a call to Chain.WitnessValidateV5 asserting the box had not been flipped to Accept. That
-// scaffold is deleted, and the guard it stood for is now held ONCE, at the only place a flip can
-// happen — the R1.8 downgrade in (*Box).Validate — driven on real, node-accepted blocks of every
-// v5 class by TestColdAuditor_NeverAcceptsAnyV5BlockClass. The old form could not have caught a
-// flip in this increment anyway: it passed Block{Version: 5, Height: 3} with no roots and no
-// signatures, and the scaffold short-circuited before reading anything. Four copies of one guard,
-// none of which reached the code it guarded.
+// THE STOP-BOUNDARY GUARD FOR THIS INCREMENT MOVED. It was
+// here: a call to Chain.WitnessValidateV5 asserting the box had not been flipped to Accept. That scaffold is deleted,
+// and the guard it stood for is now held ONCE, at the only place a flip can happen — the downgrade in (*Box).Validate
+// — driven on real, node-accepted blocks of every v5 class by TestColdAuditor_NeverAcceptsAnyV5BlockClass. The old
+// form could not have caught a flip in this increment anyway: it passed Block{Version: 5, Height: 3} with no roots and
+// no signatures, and the scaffold short-circuited before reading anything. Four copies of one guard, none of which
+// reached the code it guarded.

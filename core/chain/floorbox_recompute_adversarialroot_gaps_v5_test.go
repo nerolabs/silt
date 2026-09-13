@@ -1,32 +1,32 @@
 package chain
 
-// era-4 (v5) floor-box BOULDER-1 gate-coverage gap closures — R1.2 witness-soundness.
+// era-4 (v5) floor-box gate-coverage gap closures — witness-soundness.
 //
-// TESTER SEAT — 2026-09-01.
-// Closes three coverage gaps flagged by the PE against the R1.2 gate set:
+// Closes three coverage gaps in the adversarial-root cover.
+// against the gate set:
 //
-//   GAP 1 — TestAdversarialRoot_ClassA_ForgedSlashed_StillBonded
-//     The existing ForgedSlashed fixture slashes the culprit and also removes it from bonded
-//     (chain.go:3288). A forged Slashed=false screen thus has BondedPresent=true paired with an
-//     honest BondedProof that proves bonded||id ABSENT — so the BondedProof (not the SlashedProof)
-//     is what stalls the box. The Slashed anchor is NOT independently load-bearing in that fixture.
-//     This variant keeps the culprit in bonded AFTER slashing (synthetic state — impossible on a
-//     real chain) so that BondedPresent=true AND BondedProof proves PRESENT. In this variant, the
-//     ONLY thing that can catch a forged Slashed=false is the Slashed absent-proof. Ablation is
-//     confirmed by the companion test TestAdversarialRoot_ClassA_ForgedSlashed_BondedProofCatchesFirst.
+// GAP 1 — TestAdversarialRoot_ClassA_ForgedSlashed_StillBonded
+// The existing ForgedSlashed fixture slashes the culprit and also removes it from bonded
+// (chain.go). A forged Slashed=false screen thus has BondedPresent=true paired with an
+// honest BondedProof that proves bonded||id ABSENT — so the BondedProof (not the SlashedProof)
+// is what stalls the box. The Slashed anchor is NOT independently load-bearing in that fixture.
+// This variant keeps the culprit in bonded AFTER slashing (synthetic state — impossible on a
+// real chain) so that BondedPresent=true AND BondedProof proves PRESENT. In this variant, the
+// ONLY thing that can catch a forged Slashed=false is the Slashed absent-proof. Ablation is
+// confirmed by the companion test TestAdversarialRoot_ClassA_ForgedSlashed_BondedProofCatchesFirst.
 //
-//   GAP 2 — TestMatureEpochImpliesEverMature_InvariantPin
-//     The PE-flagged class-M non-constructibility rests on the invariant matureEpoch => everMature,
-//     which is emergent from rotateEpoch's early-return at chain.go:3395-3398. A future edit that
-//     sets matureEpoch on a non-latched chain re-opens class-M inheritance. This test pins the
-//     invariant: sweeps real apply() paths and asserts matureEpoch => everMature at each step;
-//     then demonstrates teeth by perturbing the assumption (injecting matureEpoch=true with
-//     everMature=false) and confirming the pin detects the violation.
+// GAP 2 — TestMatureEpochImpliesEverMature_InvariantPin
+// The review-flagged class-M non-constructibility rests on the invariant matureEpoch => everMature,
+// which is emergent from rotateEpoch's early-return at chain.go. A future edit that
+// sets matureEpoch on a non-latched chain re-opens class-M inheritance. This test pins the
+// invariant: sweeps real apply paths and asserts matureEpoch => everMature at each step;
+// then demonstrates teeth by perturbing the assumption (injecting matureEpoch=true with
+// everMature=false) and confirming the pin detects the violation.
 //
-//   GAP 3 — TestAdversarialRoot_ClassB_ForgedPreBondRegHeight
-//     preBondRegHeight is fold-caught (a forged OldValue causes a root mismatch) but has no
-//     dedicated adversarial-root point gate. This adds one in the same shape as the other class-B
-//     gates: forge preBondRegHeight, assert stall; confirm the fold-catch is the mechanism.
+// GAP 3 — TestAdversarialRoot_ClassB_ForgedPreBondRegHeight
+// preBondRegHeight is fold-caught (a forged OldValue causes a root mismatch) but has no
+// dedicated adversarial-root point gate. This adds one in the same shape as the other class-B
+// gates: forge preBondRegHeight, assert stall; confirm the fold-catch is the mechanism.
 
 import (
 	"testing"
@@ -43,22 +43,23 @@ import (
 // independently load-bearing.
 //
 // In the EXISTING fixture (TestAdversarialRoot_ClassA_ForgedSlashed) the culprit is removed
-// from bonded when slashed (chain.go:3288). The forged screen has BondedPresent=true, but the
+// from bonded when slashed (chain.go). The forged screen has BondedPresent=true, but the
 // BondedProof proves bonded||id ABSENT — so attesterQualifiedFromScreen stalls at the
-// BondedPresent check (atts_v5.go:207), NOT at the Slashed check (atts_v5.go:169). The Slashed
+// BondedPresent check (atts_v5.go), NOT at the Slashed check (atts_v5.go). The Slashed
 // anchor is never independently exercised against a real wrong-accept.
 //
-// THIS variant keeps the culprit in bonded post-slash (synthetic state — chain.go:3288 normally
+// THIS variant keeps the culprit in bonded post-slash (synthetic state — chain.go normally
 // removes it, but we inject it manually so BondedProof proves PRESENT). Now:
-//   - BondedPresent=true, BondedSize=era4MinBond, BondedProof proves PRESENT — would qualify
-//     via the pre-maturity path (BondedPresent && BondedSize >= MinBond).
-//   - The ONLY thing that stalls the forge is the Slashed absent-proof (atts_v5.go:169).
+// - BondedPresent=true, BondedSize=era4MinBond, BondedProof proves PRESENT — would qualify
+// via the pre-maturity path (BondedPresent && BondedSize >= MinBond).
+// - The ONLY thing that stalls the forge is the Slashed absent-proof (atts_v5.go).
 //
-// Gate is GREEN on R1.2 (stalls at Slashed anchor). With Slashed anchor ablated (comment out
+// Gate is GREEN on (stalls at Slashed anchor). With Slashed anchor ablated (comment out
 // lines 169-170 of atts_v5.go), this gate would produce a wrong-accept (nil).
 func TestAdversarialRoot_ClassA_ForgedSlashed_StillBonded(t *testing.T) {
-	// EpochBlocks=0: no epochs -> epochsEnabled()=false -> pre-maturity A-qualification path.
-	// MatureValidators=0: everMature=true post-genesis -> latchedMaturityWitness works.
+	// EpochBlocks=0: no epochs -> epochsEnabled=false -> pre-maturity A-qualification
+	// path. MatureValidators=0: everMature=true post-genesis -> latchedMaturityWitness
+	// works.
 	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
 		EpochBlocks: 0, MatureValidators: 0, BondTTLBlocks: 0}
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
@@ -80,7 +81,7 @@ func TestAdversarialRoot_ClassA_ForgedSlashed_StillBonded(t *testing.T) {
 		t.Fatalf("fixture: everMature must be true post-genesis (MatureValidators=0)")
 	}
 
-	// Slash culprit at h=1. chain.go:3288 removes culprit from bonded.
+	// Slash culprit at h=1. chain.go removes culprit from bonded.
 	prev1, h1 := c.Head()
 	bSlash := Block{Version: BlockVersionWitnessable, Height: h1, Prev: prev1,
 		Slashes: []Equivocation{slashProof(culprit, prev1, 0x51, 0x52)}}
@@ -97,8 +98,8 @@ func TestAdversarialRoot_ClassA_ForgedSlashed_StillBonded(t *testing.T) {
 	// SYNTHETIC RE-INSERTION: put culprit back into bonded at era4MinBond. This is the state
 	// a real chain CANNOT reach (slash always removes from bonded), but which tests the Slashed
 	// anchor in isolation. In this state:
-	//   - slashed[culpritID] = true  (present, proven by SlashedProof)
-	//   - bonded[culpritID]  = era4MinBond (present, proven by BondedProof)
+	// - slashed[culpritID] = true (present, proven by SlashedProof)
+	// - bonded[culpritID] = era4MinBond (present, proven by BondedProof)
 	// A forged Slashed=false screen with BondedPresent=true and BondedSize=era4MinBond would
 	// qualify via the pre-maturity path IF the Slashed anchor is bypassed.
 	c.bonded[culpritID] = era4MinBond
@@ -135,7 +136,7 @@ func TestAdversarialRoot_ClassA_ForgedSlashed_StillBonded(t *testing.T) {
 
 	// Test block: culprit attests at h=2. Honest committed root: culprit is slashed so not seated.
 	// Compute honestCommitted from a clone that does NOT have the synthetic bonded re-insertion
-	// (the actual honest chain state has culprit removed from bonded by chain.go:3288).
+	// (the actual honest chain state has culprit removed from bonded by chain.go).
 	honestClone := c.cloneForDryRun()
 	delete(honestClone.bonded, culpritID) // restore real post-slash state (no bonded entry)
 	prev2, h2 := c.Head()
@@ -186,7 +187,7 @@ func TestAdversarialRoot_ClassA_ForgedSlashed_StillBonded(t *testing.T) {
 	// FORGED SCREEN: Slashed=false (forge), BondedPresent=true, BondedSize=era4MinBond.
 	// BondedProof proves PRESENT (unlike the existing fixture where it proves ABSENT).
 	// SlashedProof is an honest PRESENCE proof — cannot forge an absence proof because
-	// culprit IS slashed. The forge fails IsProvenAbsent at atts_v5.go:169.
+	// culprit IS slashed. The forge fails IsProvenAbsent at atts_v5.go.
 	forgedScreen := StateRootAttScreen{
 		Attester:      culpritID,
 		Slashed:       false, // FORGED: culprit IS slashed
@@ -208,8 +209,8 @@ func TestAdversarialRoot_ClassA_ForgedSlashed_StillBonded(t *testing.T) {
 	forgedW.DigestPreSets = []StateRootDigestWitness{{Tag: tagValidatorsSeenRoot, PreIDs: preSeenIDs, Proof: seenRootWit}}
 	forgedW.Maturity = latchedMaturityWitness(t, prover, preValue)
 
-	// R1.2: box MUST STALL. Forged Slashed=false requires absent-proof of slashed||culprit,
-	// but culprit IS in slashed (presence proven) -> IsProvenAbsent fails at atts_v5.go:169.
+	// box MUST STALL. Forged Slashed=false requires absent-proof of slashed||culprit, but
+	// culprit IS in slashed (presence proven) -> IsProvenAbsent fails at atts_v5.go.
 	err = recomputeViaHead(c, prevRoot, forgedRoot, bTest, forgedW)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedSlashed_StillBonded): box WRONG-ACCEPTED a forged Slashed=false "+
@@ -227,8 +228,8 @@ func TestAdversarialRoot_ClassA_ForgedSlashed_StillBonded(t *testing.T) {
 
 // TestAdversarialRoot_ClassA_ForgedSlashed_BondedProofCatchesFirst is the companion
 // ablation-probe for GAP 1. It confirms that in the EXISTING fixture (culprit NOT in bonded
-// post-slash), the BondedProof (ABSENT) catches the forge at atts_v5.go:207, NOT the Slashed
-// anchor at atts_v5.go:169. This demonstrates why the StillBonded variant was needed.
+// post-slash), the BondedProof (ABSENT) catches the forge at atts_v5.go, NOT the Slashed
+// anchor at atts_v5.go. This demonstrates why the StillBonded variant was needed.
 func TestAdversarialRoot_ClassA_ForgedSlashed_BondedProofCatchesFirst(t *testing.T) {
 	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
 		EpochBlocks: 0, MatureValidators: 0, BondTTLBlocks: 0}
@@ -290,8 +291,8 @@ func TestAdversarialRoot_ClassA_ForgedSlashed_BondedProofCatchesFirst(t *testing
 	// the BondedPresent check at lines 201-213). So the Slashed anchor fires first in BOTH
 	// the original and StillBonded fixtures. The DISTINCTION is what happens if ONLY the
 	// Slashed anchor (lines 169-170) is ablated:
-	//   - Original fixture: forge still caught by BondedPresent check (BondedProof ABSENT).
-	//   - StillBonded fixture: forge produces wrong-accept (BondedProof PRESENT -> qualifies).
+	// - Original fixture: forge still caught by BondedPresent check (BondedProof ABSENT).
+	// - StillBonded fixture: forge produces wrong-accept (BondedProof PRESENT -> qualifies).
 	// This confirms the StillBonded variant is needed to show the Slashed anchor is
 	// independently load-bearing (ablating it alone causes a wrong-accept in StillBonded,
 	// but NOT in the original fixture where BondedProof acts as a backup catch).
@@ -312,21 +313,21 @@ func TestAdversarialRoot_ClassA_ForgedSlashed_BondedProofCatchesFirst(t *testing
 // Pins the invariant matureEpoch(state) => everMature(state).
 //
 // The invariant is currently enforced EMERGENTLY by rotateEpoch's early-return at
-// chain.go:3395-3398: the function sets matureEpoch=true only when everMature is already true.
+// chain.go: the function sets matureEpoch=true only when everMature is already true.
 // Nothing in the type system or a named invariant check prevents a future edit from setting
 // matureEpoch before everMature is latched.
 //
 // Why the invariant matters: class-M (maturitylatch_v5.go) reads the committed SeenSet ONLY
 // when matureEpoch is false (pre-handoff); once matureEpoch=true the SeenSet is already
 // committed by definition. If matureEpoch could be true while everMature=false, a spurious
-// SeenSet could be committed before the latch — re-opening the class-M inheritance the R1.2
-// fix closes.
+// SeenSet could be committed before the latch — re-opening the class-M inheritance the fix
+// closes.
 //
 // Structure:
-//  1. apply sweep: real chain through genesis, maturity latch, epoch boundary. Assert invariant
-//     at each step.
-//  2. teeth: inject matureEpoch=true with everMature=false and confirm the invariant-check
-//     predicate detects it.
+// 1. apply sweep: real chain through genesis, maturity latch, epoch boundary. Assert invariant
+// At each step.
+// 2. teeth: inject matureEpoch=true with everMature=false and confirm the invariant-check
+// predicate detects it.
 func TestMatureEpochImpliesEverMature_InvariantPin(t *testing.T) {
 	// checkInv asserts the invariant on a chain at a named step.
 	checkInv := func(c *Chain, step string) {
@@ -335,7 +336,7 @@ func TestMatureEpochImpliesEverMature_InvariantPin(t *testing.T) {
 			t.Fatalf("INVARIANT VIOLATED at step %q: matureEpoch=true AND everMature=false.\n"+
 				"  rotateEpoch (chain.go:3395-3398) must never set matureEpoch=true unless everMature\n"+
 				"  is already true. A future edit that drops the everMature guard re-opens class-M\n"+
-				"  inheritance (maturitylatch_v5.go — PE ruling Q2).", step)
+				"  inheritance (maturitylatch_v5.go — a review Q2).", step)
 		}
 	}
 
@@ -361,7 +362,8 @@ func TestMatureEpochImpliesEverMature_InvariantPin(t *testing.T) {
 			t.Fatalf("sweep: both must be false pre-latch (MatureValidators=1, no atts yet)")
 		}
 
-		// h=1: att attests -> seats into validatorsSeen -> Mature() trips -> everMature latches.
+		// h=1: att attests -> seats into validatorsSeen -> Mature trips -> everMature
+		// latches.
 		prev, h := c.Head()
 		b1 := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev}
 		b1.LastCommit = append(b1.LastCommit, carrierEntry(c, att))
@@ -421,8 +423,9 @@ func TestMatureEpochImpliesEverMature_InvariantPin(t *testing.T) {
 		}
 	})
 
-	// Teeth: inject matureEpoch=true with everMature=false and confirm the invariant predicate
-	// detects it. This proves the pin would redden if apply() produced such a state.
+	// Teeth: inject matureEpoch=true with everMature=false and confirm the invariant
+	// predicate detects it. This proves the pin would redden if apply produced such a
+	// state.
 	t.Run("teeth-violation-detected", func(t *testing.T) {
 		cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
 			EpochBlocks: 2, MatureValidators: 1, BondTTLBlocks: 0}
@@ -462,7 +465,7 @@ func TestMatureEpochImpliesEverMature_InvariantPin(t *testing.T) {
 // Dedicated adversarial-root point gate for preBondRegHeight (class-B old-bucket source).
 //
 // preBondRegHeight[id] is read from ChangedLeaves[i].OldValue for bondRegHeight||id keys
-// (bondreg_v5.go:405-411). A wrong OldValue causes the box to compute the wrong old due-bucket
+// (bondreg_v5.go). A wrong OldValue causes the box to compute the wrong old due-bucket
 // to DELETE, which produces the wrong committed root. The fold then sees postRoot != StateRoot
 // and stalls (ErrRecomputeStateRootMismatch).
 //
@@ -499,19 +502,19 @@ func TestAdversarialRoot_ClassB_ForgedPreBondRegHeight(t *testing.T) {
 	newDue := h + f.c.cfg.BondTTLBlocks + 1
 	w := f.bondWitness(t, renewBlock, uniqueU64(oldDue, newDue))
 
-	// Baseline: honest witness must agree with apply().
+	// Baseline: honest witness must agree with apply.
 	if err := recomputeViaHead(f.c, f.prevRoot, honestCommitted, renewBlock, w); err != nil {
 		t.Fatalf("honest renew witness must AGREE with apply(): %v", err)
 	}
 
 	// FORGE: replace the OldValue of the bondRegHeight||prop changed-leaf from the true
-	// pre-state height (0) to fakeOldHeight (5). bondreg_v5.go:405-411 extracts preBondRegHeight
+	// pre-state height (0) to fakeOldHeight (5). bondreg_v5.go extracts preBondRegHeight
 	// from this OldValue. With fakeOldHeight=5:
-	//   - box computes fakeOldDue = 5 + 64 + 1 = 70
-	//   - box emits DELETE on bucket 70 (absent pre-state -> OldValue=nil in the fold op)
-	//   - box does NOT emit DELETE on bucket 65 (the honest old bucket)
-	//   - fold produces root with bucket 65 still at its pre-state value (prop still in it)
-	//   - this mismatches honestCommitted (which has bucket 65 emptied) -> stall
+	// - box computes fakeOldDue = 5 + 64 + 1 = 70
+	// - box emits DELETE on bucket 70 (absent pre-state -> OldValue=nil in the fold op)
+	// - box does NOT emit DELETE on bucket 65 (the honest old bucket)
+	// - fold produces root with bucket 65 still at its pre-state value (prop still in it)
+	// - this mismatches honestCommitted (which has bucket 65 emptied) -> stall
 	fakeOldHeight := uint64(5)
 	brhKey := statehash.Key(tagBondRegHeight, pid[:])
 

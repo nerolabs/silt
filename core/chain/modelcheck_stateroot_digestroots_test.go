@@ -8,17 +8,17 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// F1 of the ratified v5 five-root format addition — the five whole-set DIGEST-root
-// leaves (bondedRoot, epochSetRoot, qualifiedRoot, slashedRoot, validatorsSeenRoot).
+// F1 of the v5 five-root format addition — the five whole-set DIGEST-root leaves
+// (bondedRoot, epochSetRoot, qualifiedRoot, slashedRoot, validatorsSeenRoot).
 //
 // This increment COMMITS the five membership MTH roots and nothing more: they are INERT
 // until F3 wires the root-only recompute that reads them. These tests are the four
-// certified F1 ablations, each red-before-green:
-//   1. v4 byte-identical (the immutable #632 proof) — a v4/era-3 root is UNCHANGED by
-//      the addition.
-//   2. each digest root is load-bearing — perturb a keyspace member and its root moves.
-//   3. empty keyspace commits the empty-MTH constant (C-4 always-emit).
-//   4. the coverage guard forces the five tags — dropping one reddens the emit guard.
+// verifies F1 ablations, each red-before-green:
+// 1. v4 byte-identical (the immutable proof) — a v4/era-3 root is UNCHANGED by
+// The addition.
+// 2. each digest root is load-bearing — perturb a keyspace member and its root moves.
+// 3. empty keyspace commits the empty-MTH constant (always-emit).
+// 4. the coverage guard forces the five tags — dropping one reddens the emit guard.
 //
 // STOP boundary (F1): no test here asserts a validity predicate reads a digest root.
 // That is F3.
@@ -46,13 +46,13 @@ func statehashKeyForTag(tag string) []byte {
 // --- Ablation 1: v4 byte-identical (the load-bearing immutable proof) -----------------
 
 // TestDigestRootsDoNotChangeV4Root proves the five F1 digest-root leaves cannot perturb a
-// v4/era-3 committed root: the era-3 marshaller (stateRootLeaves) and StateRoot() /
+// v4/era-3 committed root: the era-3 marshaller (stateRootLeaves) and StateRoot /
 // StateRootForVersion(v4) emit exactly the era-3 leaves, none of the five digest roots.
 // With all five keyspaces fully populated, the v4 root must equal the v4 root over a
 // chain where those keyspaces are empty — the digest roots live in the v5 path only, so
-// they never touch the frozen era-3 leaf set (#632).
+// they never touch the frozen era-3 leaf set.
 //
-// RED: emit any of the five digest-root leaves from stateRootLeaves() (the era-3
+// RED: emit any of the five digest-root leaves from stateRootLeaves (the era-3
 // marshaller) and this test goes red — the populated chain's digest root diverges the v4
 // root from the empty-keyspace baseline.
 func TestDigestRootsDoNotChangeV4Root(t *testing.T) {
@@ -69,7 +69,7 @@ func TestDigestRootsDoNotChangeV4Root(t *testing.T) {
 		for _, lf := range populated.stateRootLeaves() {
 			if bytes.Equal(lf.Key, key) {
 				t.Fatalf("digest-root tag %q leaked into the ERA-3 leaf set — it must be "+
-					"v5-only, or a v4 block's root diverges from the frozen era-3 format (#632)", tag)
+					"v5-only, or a v4 block's root diverges from the frozen era-3 format ", tag)
 			}
 		}
 	}
@@ -96,7 +96,7 @@ func TestDigestRootsDoNotChangeV4Root(t *testing.T) {
 // TestV4RootByteIdenticalBeforeAndAfterDigestRoots is the direct before/after immutable
 // proof the F1 task calls out: compute a v4 root over the current (post-addition) era-3
 // marshaller and assert it equals the pinned era-3 root the format froze at. The pinned
-// value is the era-3 root over the standard fixture; it is computed from stateRootLeaves()
+// value is the era-3 root over the standard fixture; it is computed from stateRootLeaves
 // only, so if the addition had touched the era-3 path this constant would no longer
 // reproduce. Recomputing the SAME leaves yields the SAME root — the addition is provably
 // additive to v5 alone.
@@ -104,9 +104,9 @@ func TestV4RootByteIdenticalBeforeAndAfterDigestRoots(t *testing.T) {
 	c := &Chain{}
 	populateCommitted(c)
 
-	// The v4 root is a pure function of the 18 era-3 leaves. The five digest roots and the
-	// v5-only per-member leaves are absent from stateRootLeaves(), so StateRoot() over the
-	// fixture is unchanged by F1. We assert internal consistency: StateRoot(),
+	// The v4 root is a pure function of the 18 era-3 leaves. The five digest roots and
+	// the v5-only per-member leaves are absent from stateRootLeaves, so StateRoot over
+	// the fixture is unchanged by F1. We assert internal consistency: StateRoot,
 	// StateRootForVersion(v4), and a fresh recompute all agree, and the v5 root DIFFERS
 	// (the digest roots ARE committed there).
 	a, err := c.StateRoot()
@@ -197,7 +197,7 @@ func TestDigestRootChangesOnMembershipChange(t *testing.T) {
 // qualified WEIGHT (without changing membership) must leave the digest root UNCHANGED —
 // the weight is committed by the per-member leaf, not the digest. (If a build folded
 // weights into the digest, the F3 recompute's digest-vs-per-member-proof composition
-// would double-count and the cert's C-1 boundary would blur.) The per-member VALUE
+// would double-count and the C-1 boundary would blur.) The per-member VALUE
 // binding is proven separately by TestStateRootChangesOnPerturbedValue.
 func TestDigestRootBindsMembershipNotWeight(t *testing.T) {
 	id := ports.NodeID{9}
@@ -224,7 +224,7 @@ func TestDigestRootBindsMembershipNotWeight(t *testing.T) {
 	}
 }
 
-// --- Ablation 3: empty keyspace commits the empty-MTH constant (C-4) -------------------
+// --- Ablation 3: empty keyspace commits the empty-MTH constant -------------------
 
 // TestDigestRootEmptyKeyspaceIsEmptyMTH proves C-4 always-emit: each of the five digest
 // roots is COMMITTED even when its keyspace is empty, and its value is exactly
@@ -264,7 +264,7 @@ func TestDigestRootEmptyKeyspaceIsEmptyMTH(t *testing.T) {
 // root — the exact defect the digest roots exist to prevent. Matched by the tag\x00 key
 // prefix so renaming a tag cannot mask a drop.
 //
-// RED: delete any of the five `add(tag..., nodeSetMTH...)` lines from stateRootLeavesV5
+// RED: delete any of the five `add(tag., nodeSetMTH.)` lines from stateRootLeavesV5
 // and this guard reports the missing tag.
 func TestStateRootV5EmitsEveryDigestRoot(t *testing.T) {
 	c := &Chain{}
@@ -293,7 +293,7 @@ func TestStateRootV5EmitsEveryDigestRoot(t *testing.T) {
 	}
 }
 
-// TestDigestRootTagsArePrefixSafe is the C-7 collision guard: each of the five digest-root
+// TestDigestRootTagsArePrefixSafe is the collision guard: each of the five digest-root
 // scalar keys (tag||"") must NOT equal any per-member leaf key (perMemberTag||rawKey) on a
 // populated chain, and must be distinct from each other. The delimiter-free Key = tag||raw
 // layout makes a bad name (`bonded\x00` reused as a scalar) collide catastrophically with

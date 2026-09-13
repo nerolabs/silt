@@ -1,6 +1,5 @@
 // Package erasure wraps github.com/klauspost/reedsolomon with silt's
-// stripe conventions. See docs/math/03-reed-solomon.md for why this
-// works.
+// stripe conventions. See for why this works.
 //
 // Geometry (confirmed at M1 review): a stripe is k consecutive
 // ciphertext chunks of one file. Reed-Solomon extends each stripe with

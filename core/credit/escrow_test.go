@@ -78,7 +78,7 @@ func TestRecordServeToObject_AutoSkim(t *testing.T) {
 	root := objRoot("obj-A")
 
 	const bytes = 10 * mintUnit
-	wantSkim := objSkim(bytes) // 10 units → 10 credits skimmed, 70 net (G-R212-7 two-floor split)
+	wantSkim := objSkim(bytes) // 10 units → 10 credits skimmed, 70 net (two-floor split)
 	skim := l.RecordServeToObject(server, requester, root, id(9), bytes)
 
 	if skim != wantSkim || wantSkim != 10 {
@@ -196,7 +196,7 @@ func TestPayBounty_UnknownOrNonPositiveIsZero(t *testing.T) {
 // TestRepairBounty_RarestShardMultiplier: the bounty rises monotonically as a stripe
 // loses shards — repairing the last spare before data loss pays the most. The geometry
 // is chosen so c·shardBytes/(U/p) is exactly 1,000 credits with no remainder, which
-// isolates the multiplier from G-BT-2's single division.
+// isolates the multiplier from the single division.
 func TestRepairBounty_RarestShardMultiplier(t *testing.T) {
 	const k, n = 4, 10                                // 6 parity shards of slack
 	const shardBytes = 1_000 * DeliveryBytesPerCredit // F1: the price is the SHARD, not k × shard

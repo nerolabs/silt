@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 # scenarios.sh — the field-test flows, one function each, mapping directly onto
-# the acceptance brief (docs/reviews/m0-acceptance-brief.md flows 1–9) plus the
-# #184 adversarial consensus drills. Each records a pass/gap/fail via slo_assert.
+# the acceptance brief flows 1–9) plus the
+#  adversarial consensus drills. Each records a pass/gap/fail via slo_assert.
 #
 # Sourced by cloudtest.sh AFTER lib.sh and AFTER the network is up. All node
 # interaction is over `ssh_node` (IAP). Field networks are noisy, so every check
 # asserts a THRESHOLD/behaviour, never an exact count or timing.
 set -uo pipefail
 
-# ── PRINCIPLED windows (PE cadence ruling 2026-08-15 §4: replace arbitrary
+# ── PRINCIPLED windows (replace arbitrary
 # wall-clocks with bounds COMPUTED from the path — and a miss INSIDE a computed
 # window is a FINDING, never a re-grade). The per-leg worst case is derived from
 # the deployed flags: -request-timeout 8s × (1 + 3 -request-retries) + backoff
 # (250ms doubling: 0.25+0.5+1) ≈ 34s/leg. The fresh-publisher path is ~5
 # sequential legs (join/bootstrap → canonical-issuer ranking fetch → parallel
-# token gather (#388) → scatter+confirm → register): 4×34 ≈ 136s; the COMMIT
-# WAIT leg is escape-aware under the #451 synchronizer durations (submit-then-
+# token gather → scatter+confirm → register): 4×34 ≈ 136s; the COMMIT
+# WAIT leg is escape-aware under the synchronizer durations (submit-then-
 # poll rides the designee rotation, and a contested height may pay the 2-round
 # escape: the 2-round synchronizer escape FLOOR is dur(0)+dur(1) = 5 sweeps ×
 # 30s ChainSyncInterval = 150s + one ~34s gather leg = 184s — see the H_ESCAPE_S
@@ -23,19 +23,19 @@ set -uo pipefail
 # for the relay hop on the cross-NAT flow is absorbed by the same allowance.
 #
 # PUBLISH BOUND RE-DERIVED DOWNWARD (2026-08-27, owed Phase-3 gate clause):
-# 360 → 300s. Evidence: fe2376a-deep flow 12-deep-heights measured ~48s/height
-# steady cadence (results-fe2376a-deep.jsonl:29; (h132−h78)/2615s = 48.4s/height,
+# 360 → 300s. Evidence: the field run flow 12-deep-heights measured ~48s/height
+# steady cadence (results-the field run.jsonl:29; (h132−h78)/2615s = 48.4s/height,
 # was ~390s at the depth-war start). The 220s commit-wait leg was a synchronizer
 # ROUND bound counted in fixed 30s sweeps, NOT a wall-clock cadence quantity, so
 # it does NOT tighten with the cheap cadence — the escape FLOOR (184s) stays; the
 # 60s shed is the historical escape-rounding cushion (220→184) plus stale
 # slow-height straddle padding the cheap cadence retires. 300s keeps the full
 # 150s escape window inside the bound and is 6.25× the measured 48s cadence /
-# 1.76× the 170s per-height worst case at e2fab4b — retry headroom for transient
+# 1.76× the 170s per-height worst case — retry headroom for transient
 # WAN churn, above the escape floor. Derivation:
-# docs/thinking/2026-08-27-publish-bound-rederivation.md. (240 was the pre-#453
-# figure — its commit-wait leg assumed one flat 64s drain cycle; run 82bcd2b-39478's
-# only non-#345/#350 GAP was a publish missing exactly that stale window, so the
+# . (240 was the pre-
+# figure — its commit-wait leg assumed one flat 64s drain cycle; run the field run's
+# only non- GAP was a publish missing exactly that stale window, so the
 # re-derivation stays comfortably above 240.)
 # Fetch is ~3 legs (discovery → manifest → parallel chunk fetches) ≈ 102s → 120.
 : "${COMMIT_SLO_S:=90}"
@@ -51,7 +51,7 @@ print(','.join(n['nodeid']+'@'+n['ip']+':%d'%p for n in t['nodes'].values() if n
 }
 ft_regref() { # the deterministic pinned registry ref (boot validator NodeID@https://ip:port)
   # Built by topology.py from the known NodeID + internal ip. We do NOT scrape the
-  # daemon's `registry: chain-backed, serving ...` banner: the old regex could not
+  # daemon's `registry: chain-backed, serving...` banner: the old regex could not
   # match it (REGREF came back empty → every `swarm add` hit a usage error), and the
   # banner prints the bound 0.0.0.0 address, which a publisher cannot dial.
   python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta']['regref'])"
@@ -109,9 +109,9 @@ ft_reachable_peers() { # ft_reachable_peers NODE
 # reachability shortfall (< TOKEN_QUORUM peers reachable — an egress/preemption
 # problem, e.g. a SPOT-reclaimed validator), so a caller can record a GAP ("couldn't
 # confirm") rather than a property FAIL. Cleared to 0 on entry.
-# client_preflight FLOW SEVERITY NODE... — #574 (run 027c354-deep): a dead client
+# client_preflight FLOW SEVERITY NODE... — (the field run): a dead client
 # node burned each dependent flow's full 360s publish window (since re-derived to 300s
-# — see #609) before the plumbing
+# — see) before the plumbing
 # flag fired, and three sheet rows went red on ONE unreachable node. One cheap ssh
 # round-trip per client node first (bounded by SSH_NODE_TIMEOUT, default 90s);
 # silence ⇒ record a GAP naming the plumbing cause and return 1 so the flow exits
@@ -121,7 +121,7 @@ client_preflight() { # client_preflight FLOW SEVERITY NODE... -> 0 all reachable
   local cn
   for cn in "$@"; do
     if [ -z "$(ssh_node "$cn" "echo ok" 2>/dev/null | tr -d '[:space:]')" ]; then
-      record "$flow" gap "$sev" "client node $cn UNREACHABLE at preflight (ssh round-trip returned nothing) — plumbing (#574), flow UNTESTED; check nodes.json / VM state before attributing anything downstream"
+      record "$flow" gap "$sev" "client node $cn UNREACHABLE at preflight (ssh round-trip returned nothing) — plumbing, flow UNTESTED; check nodes.json / VM state before attributing anything downstream"
       return 1
     fi
   done
@@ -131,10 +131,10 @@ client_preflight() { # client_preflight FLOW SEVERITY NODE... -> 0 all reachable
 ft_publish() { # ft_publish NODE SIZE_BYTES
   FT_PUBLISH_GAP=0
   # Cross-subshell handoff (#7 evidence): ft_publish runs inside `res="$(…)"`, so
-  # variables set here NEVER reach the caller's scope. Files do. .ft_publish_gap
-  # carries the honest gap-vs-fail signal to publish_verdict; .ft_publish_lasterr
+  # variables set here NEVER reach the caller's scope. Files do..ft_publish_gap
+  # carries the honest gap-vs-fail signal to publish_verdict;.ft_publish_lasterr
   # carries the last captured silt error into the recorded verdict detail (it used
-  # to go to the console only, which is not persisted — run beb3628-95860's
+  # to go to the console only, which is not persisted — run the field run's
   # 9-cross-nat FAIL left no clue which leg died).
   printf 0 > "$FT_DIR/.ft_publish_gap"; : > "$FT_DIR/.ft_publish_lasterr"
   local node="$1" size="${2:-1048576}" out link lasterr="" any_output=0
@@ -151,7 +151,7 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
     [ -n "$link" ] && { printf '%s %s\n' "$link" "$sha"; return 0; }
     lasterr="$(printf '%s' "$out" | grep -iE 'could not gather|not enough|no canonical|token|refus|unreachable|timed? ?out' | head -2 | tr '\n' ';')"
     # The allow-list above was built for the KNOWN failure modes and silently
-    # dropped a new class (run a56ac10-42834: '#441 insufficient valid
+    # dropped a new class (run the field run: ' insufficient valid
     # attestations: 2 prepares of 2 gathered' matched nothing → the diagnostic
     # printed '<none captured>' and the decisive error had to be re-captured
     # live before teardown). Fall back to the raw tail: an UNRECOGNIZED error
@@ -171,10 +171,10 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
   # canonical issuer set / gather a token — even with validators reachable — is a
   # publish-token *discovery* problem over WAN (worse after mid-run node churn), not a
   # break of the property a SETUP publish is a precondition for (durability, crash
-  # recovery). The publisher re-warm (#351) reduces it but a churned WAN can still
+  # recovery). The publisher re-warm reduces it but a churned WAN can still
   # exceed the window. Flag it as a GAP so publish_verdict records the DEPENDENT flow
   # as UNTESTED, not FAILED; the publish-reliability issue itself stays visible in this
-  # diagnostic and in #351. (A genuine no-quorum terminal outcome still fails fast via
+  # diagnostic and in. (A genuine no-quorum terminal outcome still fails fast via
   # /publish-status, so this does not mask a real refusal.)
   printf '%s' "$lasterr" | grep -qiE 'no canonical issuer|could not gather|not enough|issuer set|token' && { FT_PUBLISH_GAP=1; printf 1 > "$FT_DIR/.ft_publish_gap"; }
   # …or if the fetch publish subsystem was already found degraded this run (warm
@@ -190,11 +190,11 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
   # not a property failure). A reachability shortfall makes it doubly clear.
   if [ "$any_output" = 0 ]; then
     lasterr="EMPTY RESPONSE from $node — ssh_node returned NOTHING across the whole window: the node is UNREACHABLE or the node MAP is wrong (check nodes.json zones/ips), NOT a publish failure. reachable-peers=${reach:-?}"
-    # >&2 is LOAD-BEARING (#574, run 027c354-deep): ft_publish runs inside
+    # >&2 is LOAD-BEARING (the field run): ft_publish runs inside
     # res="$(…)", so a stdout echo here CORRUPTS res — the caller's [ -z "$res" ]
     # publish-leg gate sees non-empty text, link parses to "", and the flow
     # proceeds to grade its fetch leg as a real FAIL on what is plumbing
-    # (9-cross-nat "publish landed ()" + durability-turnover "not a silt:v1:
+    # (9-cross-nat "publish landed " + durability-turnover "not a silt:v1:
     # link" were exactly this). Diagnostics from this function go to stderr,
     # only "link sha" ever goes to stdout.
     echo "    ⚠ PLUMBING: $lasterr" >&2
@@ -223,11 +223,11 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
 # NOTE the scope bug this closes: ft_publish is called as `res="$(ft_publish …)"`,
 # i.e. in a command-substitution SUBSHELL, so any FT_PUBLISH_GAP it sets is lost and
 # never reaches this parent scope. ft_publish therefore ALSO writes the signal to
-# $FT_DIR/.ft_publish_gap (files cross the subshell boundary; run beb3628-95860's
+# $FT_DIR/.ft_publish_gap (files cross the subshell boundary; run the field run's
 # 9-cross-nat graded FAIL with the per-call gap signal silently dropped). We still
 # honor FETCH_PUBLISH_DEGRADED (wait_publisher_warm sets it in the PARENT): it is 1
 # whenever the publisher re-warm could not land a throwaway publish this run — a
-# dependent flow's publish failure is then a discovery/setup problem (#351), not a
+# dependent flow's publish failure is then a discovery/setup problem, not a
 # break of the property that publish is a precondition for. The last captured silt
 # error (.ft_publish_lasterr) is folded into the verdict so the report names the
 # mechanism, not just "no link".
@@ -236,20 +236,20 @@ publish_verdict() { # publish_verdict FLOW SEVERITY "detail"
   gap="$(cat "$FT_DIR/.ft_publish_gap" 2>/dev/null || echo 0)"
   lasterr="$(cat "$FT_DIR/.ft_publish_lasterr" 2>/dev/null || true)"
   if [ "$gap" = 1 ] || [ "${FT_PUBLISH_GAP:-0}" = 1 ] || [ "${FETCH_PUBLISH_DEGRADED:-0}" = 1 ]; then
-    record "$1" gap "$2" "$3 — the publish could not be gathered (egress/preemption, or issuer-set discovery not landing over WAN, #351)${lasterr:+; last publish error: ${lasterr}}; property UNTESTED, not failed"
+    record "$1" gap "$2" "$3 — the publish could not be gathered (egress/preemption, or issuer-set discovery not landing over WAN)${lasterr:+; last publish error: ${lasterr}}; property UNTESTED, not failed"
   else
     record "$1" fail "$2" "$3${lasterr:+ (last publish error: ${lasterr})}"
   fi
 }
 
-# ── committed-height helpers (audit #303) ──────────────────────────────────────
+# ── committed-height helpers (audit) ──────────────────────────────────────
 # A stale 'chain: committed block N' already in the journal must NOT satisfy a
 # "the publish committed" gate — capture the height BEFORE the action and require
 # a STRICTLY HIGHER one after, so only a genuinely NEW commit counts.
 # ft_head_from_journal — the max HEAD height a journal excerpt proves: the
 # `chain: committed block N` banner (printed only when THIS node commits — its own
 # proposal or a commit broadcast it applied) OR the `chain: saved N block(s) [...]
-# head=H:` line (printed on EVERY save, including catch-up). Run 2633a11-deep's
+# head=H:` line (printed on EVERY save, including catch-up). Run the field run's
 # 6-fault-tolerance GAP was a harness artifact of reading the banner alone: with a
 # dead validator ahead of the boot node in the proposer's sequential commit
 # broadcast, chain-sync catch-up delivered every post-kill block to val-a ~4 s after
@@ -283,22 +283,22 @@ ft_wait_new_block() { # ft_wait_new_block NODE H0 TIMEOUT_S -> 0 if a block > H0
 epoch_to_iso() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%S 2>/dev/null; }
 
 # ft_escape_progress SINCE_EPOCH SURVIVOR... — a progress fingerprint of the
-# down-designee escape (#509): total round-change lines + the max committed
+# down-designee escape: total round-change lines + the max committed
 # height across the surviving validators SINCE the kill. Two EQUAL fingerprints
-# a stall window apart are the wedge signature (PE §4: a miss inside a principled
-# bound); an advancing fingerprint is the #451 ladder alive — slow is not stuck.
+# a stall window apart are the wedge signature (the cadence rule: a miss inside a principled
+# bound); an advancing fingerprint is the ladder alive — slow is not stuck.
 #
-# TWO SOURCES, TWO CHANNELS (#536, the run 45da13c-17686 mis-attribution):
-#   - `chain: committed block` is a fmt.Printf BANNER → stdout → journald, so the
-#     height reads from jlog_since (time-scoped, #525).
-#   - `round-change` is a structured n.logf line → $STORE/debug.log ONLY, NEVER
-#     journald (cmd/silt/daemon.go openLog). Counting it from jlog_since read
-#     rc=0 on EVERY sample regardless of ladder activity, so a live ladder (114
-#     round-change lines in the captured debug.log at h64 r1→r5) fingerprinted as
-#     FROZEN → a manufactured WEDGE FAIL. Read it from debug.log (dlog),
-#     time-scoped by the ISO timestamp column ≥ the kill instant.
+# TWO SOURCES, TWO CHANNELS (the run the field run mis-attribution):
+#  - `chain: committed block` is a fmt.Printf BANNER → stdout → journald, so the
+#  height reads from jlog_since (time-scoped).
+#  - `round-change` is a structured n.logf line → $STORE/debug.log ONLY, NEVER
+#  journald (cmd/silt/daemon.go openLog). Counting it from jlog_since read
+#  rc=0 on EVERY sample regardless of ladder activity, so a live ladder (114
+#  round-change lines in the captured debug.log at h64 r1→r5) fingerprinted as
+#  FROZEN → a manufactured WEDGE FAIL. Read it from debug.log (dlog),
+#  time-scoped by the ISO timestamp column ≥ the kill instant.
 #
-# UNKNOWN, never zero (the #525 lesson, extended to the empty-read case): a
+# UNKNOWN, never zero (the lesson, extended to the empty-read case): a
 # source that could NOT be read (ssh returned nothing) yields `?`, never 0 — two
 # unreadable samples must not compare EQUAL and manufacture a wedge. The caller's
 # WEDGE-FAIL branch requires a fingerprint with no `?`.
@@ -333,7 +333,7 @@ ft_escape_progress() {
 }
 
 # ── Flow 1: build & first run ──────────────────────────────────────────────────
-# LOCAL_PROOF: LOCAL=1 SMOKE=1 ./integration/cloudtest/cloudtest.sh  (this flow runs verbatim on the docker backend)
+# LOCAL_PROOF: LOCAL=1 SMOKE=1 ./integration/cloudtest/cloudtest.sh (this flow runs verbatim on the docker backend)
 flow_first_run() {
   local n ok=1 bad=""
   for n in $(node_names); do
@@ -352,12 +352,12 @@ flow_publish_fetch() {
   t0="$(date +%s)"
   local boot; boot="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta']['boot'])")"
   flow_evidence_nodes fetch-1 "$boot" store-2 store-1   # publisher, boot validator, fetch side
-  local h0; h0="$(ft_commit_height "$boot")"   # audit #303: baseline BEFORE the publish
+  local h0; h0="$(ft_commit_height "$boot")"   # baseline BEFORE the publish
   res="$(ft_publish fetch-1 1048576 || true)"
   if [ -z "$res" ]; then publish_verdict "2-publish-fetch" blocker "publish never produced a silt: link within ${PUBLISH_RETRY_S}s"; return; fi
   link="${res%% *}"; sha="${res##* }"
   # committed on the boot validator? Require a NEW block (> h0), so a stale
-  # pre-publish 'committed block' line can't satisfy the gate (audit #303).
+  # pre-publish 'committed block' line can't satisfy the gate (audit).
   if ft_wait_new_block "$boot" "$h0" "$COMMIT_SLO_S"; then :; else
     slo_assert "2-publish-fetch" major "publish did not commit a NEW block (head stayed at $h0) within ${COMMIT_SLO_S}s (link=$link)" 0; return; fi
   # fetch from a DIFFERENT node than the publisher and compare hashes. store-2 in
@@ -372,7 +372,7 @@ flow_publish_fetch() {
 }
 
 # ── Flow 3: care link — repair/audit without decrypting ─────────────────────────
-# LOCAL_PROOF: go test ./e2e -run TestRepairBountyPaysOnTheWire -count=1  (captures the siltcare: link from a real publish)
+# LOCAL_PROOF: go test ./e2e -run TestRepairBountyPaysOnTheWire -count=1 (captures the siltcare: link from a real publish)
 flow_care_link() {
   flow_evidence_nodes fetch-1
   # The publish emits a siltcare: link; a -care node repairs it and cannot read it.
@@ -393,13 +393,13 @@ flow_become_validator() {
   local n ok=1 bad=""
   for n in val-b val-c val-d; do
     node_exists "$n" || continue
-    # audit #303: assert the node's OWN earned standing — 'chain: committed block'
+    # the audit: assert the node's OWN earned standing — 'chain: committed block'
     # is satisfiable by any OBSERVER, so it proved nothing about THIS node. The
     # daemon self-narrates 'standing self=<own id> reputation=N' every bond-audit
     # sweep once its bond qualifies (core/node/bondaudit.go), a genuinely per-node
     # signal that it earned standing on the objective path. That line is a
     # STRUCTURED n.logf → it lands in the on-disk debug.log, NOT journald, so it
-    # must be read with waitfor_dlog (the #310 version used waitfor/journald and
+    # must be read with waitfor_dlog (the version used waitfor/journald and
     # could never match — SMOKE flagged it).
     local nid; nid="$(node_field "$n" nodeid)"
     if [ "${#nid}" -eq 64 ] && waitfor_dlog "$n" "standing self=$nid reputation=[1-9]" 90 >/dev/null; then :; else ok=0; bad="$bad $n"; fi
@@ -408,7 +408,7 @@ flow_become_validator() {
 }
 
 # ── Flow 5: multi-validator convergence ─────────────────────────────────────────
-# LOCAL_PROOF: go test ./e2e -run TestObjectiveColdStartCommitsGenesis -count=1  (+ the I1-I5 model-check tier)
+# LOCAL_PROOF: go test ./e2e -run TestObjectiveColdStartCommitsGenesis -count=1 (+ the I1-I5 model-check tier)
 flow_convergence() {
   local n vals="" maxh=0
   for n in val-a val-b val-c val-d; do node_exists "$n" && vals="$vals $n"; done
@@ -421,10 +421,10 @@ flow_convergence() {
   # already uses.
   chain_head() { ssh_node "$1" "/usr/local/bin/silt chain-status -store /var/lib/silt 2>&1" \
     | awk '/head height:/{h=$3} /head hash:/{hh=$3} END{print (h==""?0:h), hh}'; }
-  # Grade convergence with a bounded WAIT (the #549 Q4 lesson, applied to flow 5):
+  # Grade convergence with a bounded WAIT (the Q4 lesson, applied to flow 5):
   # the immediately-preceding 6-fault-tolerance drill STOPS/restarts val-d, so a
   # single point-in-time sample can catch the network mid-catch-up and read a
-  # SPURIOUS lag (the eb510a7-deep run: val-a=33 but val-d=27, 6 behind, right
+  # SPURIOUS lag (the the field run run: val-a=33 but val-d=27, 6 behind, right
   # after the drill restarted it). Poll until the validators converge — (a) every
   # validator within 2 of the tip AND (b) every tip-height validator shares the
   # head HASH (a same-height/different-hash pair is a live FORK, exactly the gap
@@ -486,46 +486,46 @@ flow_convergence() {
 }
 
 # ── Flow 6: fault tolerance — kill one validator, quorum still commits ──────────
-# LOCAL_PROOF: SUITE=substrate ./integration/adversarial/run.sh  (commit with a validator down, under netem)
+# LOCAL_PROOF: SUITE=substrate ./integration/adversarial/run.sh (commit with a validator down, under netem)
 flow_fault_tolerance() {
   require_nodes "6-fault-tolerance" major val-d || return
   local boot; boot="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta']['boot'])")"
   # A fault-tolerance failure lives in the PUBLISHER (fetch-1) and the SURVIVING
   # validators, not val-d (deliberately down) — require_nodes stashed only val-d.
-  # Override so the capture attributes a real gap (run 4faaee8-22913's flow-6 gap
+  # Override so the capture attributes a real gap (run the field run's flow-6 gap
   # had only the down node's journal). shellcheck disable=SC2086
   local survivors; survivors="$(python3 -c "import json;print(' '.join(n for n,v in json.load(open('$NODES_JSON')).items() if v['role']=='validator' and n!='val-d'))")"
   # shellcheck disable=SC2086
   flow_evidence_nodes fetch-1 $survivors
-  local h0; h0="$(ft_commit_height "$boot")"   # audit #303: baseline BEFORE stopping val-d + publishing
-  local killt0; killt0="$(date +%s)"   # scopes the escape-fingerprint reads to the escape under test (#525)
+  local h0; h0="$(ft_commit_height "$boot")"   # baseline BEFORE stopping val-d + publishing
+  local killt0; killt0="$(date +%s)"   # scopes the escape-fingerprint reads to the escape under test
   svc val-d stop || true
   sleep 5
-  # h43 / D-CONSENSUS-ARMING (2026-09-07, owner call 19; G-H43-7): the two tiers are
+  # The two tiers are
   # COMPUTED FROM f — the number of DOWN seats — never from the seat count. The
-  # certified bound (CONSENSUS-LIVENESS-h43 certification §6.3): after GST, with f
+  # bound: after GST, with f
   # seats down, a height commits within f+1 rounds, because designatedProposer
   # steps the rotation one seat per round so at most f consecutive rounds land on
   # a down designee. Wall-clock: Σ_{r=0}^{f} sweepsForRound(r)·ChainSyncInterval +
   # skew + G, with sweepsForRound(r) = 2 + r(r+1)/2, ChainSyncInterval = 30 s, skew
-  # < 30 s (#549 Q3), G ≈ 10 s (#555 measured 12-seat WAN gather). This flow stops
+  # < 30 s (Q3), G ≈ 10 s (measured 12-seat WAN gather). This flow stops
   # ONE validator, so f = 1: (2+3)·30 + 30 + 10 = 190 s expected (PASS); the hard
   # cap is 2× = 380 s (sweep-phase + request-timeout noise). Against the measured
-  # T_b = 44 s/height (report-c450985-deep.md) that is 4.3 × / 8.6 × block-times.
+  # T_b = 44 s/height (the field report) that is 4.3 × / 8.6 × block-times.
   #
-  # STRUCK: the 260/575 base tiers and the #525 "one extra escape rung per 4
+  # STRUCK: the 260/575 base tiers and the "one extra escape rung per 4
   # rotation seats" policy (650/1445 at N=12). Both priced the DEFECT, not the
   # mechanism — they modelled one node climbing a private ladder to r=5, which is
-  # exactly what run c450985-deep's h43 did for 996 s (22.6 × T_b) while the
-  # certification refuted the seat-count rung scaling outright: rounds burned
+  # exactly what the field run did for 996 s (22.6 × T_b) while the
+  # research refuted the seat-count rung scaling outright: rounds burned
   # scale with f, not with N. A cap derived from the defect can never fail on it.
-  # The frozen-vs-advancing fingerprint discrimination below (#509/#536) stands.
+  # The frozen-vs-advancing fingerprint discrimination below stands.
   local ftdown=${FT_DOWN_SEATS:-1} ftr ftsum=0
   for (( ftr=0; ftr<=ftdown; ftr++ )); do ftsum=$(( ftsum + (2 + ftr*(ftr+1)/2) * 30 )); done
   : "${FT_DOWN_COMMIT_S:=$(( ftsum + 30 + 10 ))}"
   : "${FT_DOWN_HARD_S:=$(( 2 * (ftsum + 30 + 10) ))}"
   local ftrcap=$(( ftdown + 1 ))
-  echo "    6-fault-tolerance: f=${ftdown} down seat(s) — tiers computed ${FT_DOWN_COMMIT_S}s expected / ${FT_DOWN_HARD_S}s hard cap (≤ f+1 rounds, D-CONSENSUS-ARMING; the #525 seat-count rungs are struck)"
+  echo "    6-fault-tolerance: f=${ftdown} down seat(s) — tiers computed ${FT_DOWN_COMMIT_S}s expected / ${FT_DOWN_HARD_S}s hard cap (≤ f+1 rounds)"
   local res ok=0 fp0="" fp1=""
   res="$(ft_publish fetch-1 262144 || true)"
   if [ -n "$res" ]; then
@@ -534,7 +534,7 @@ flow_fault_tolerance() {
     if [ "$ok" != 1 ]; then
       # shellcheck disable=SC2086
       fp0="$(ft_escape_progress "$killt0" $survivors)"
-      echo "    6-fault-tolerance: no commit in ${FT_DOWN_COMMIT_S}s (escape fingerprint: ${fp0}) — extending to the computed r≤${ftrcap} cap ${FT_DOWN_HARD_S}s (#509)"
+      echo "    6-fault-tolerance: no commit in ${FT_DOWN_COMMIT_S}s (escape fingerprint: ${fp0}) — extending to the computed r≤${ftrcap} cap ${FT_DOWN_HARD_S}s"
       if ft_wait_new_block "$boot" "$h0" "$(( FT_DOWN_HARD_S - FT_DOWN_COMMIT_S ))"; then
         ok=2
       else
@@ -546,30 +546,30 @@ flow_fault_tolerance() {
   if [ "$ok" = 1 ]; then
     slo_assert "6-fault-tolerance" major "publish still committed with one validator (val-d) down (within the computed ${FT_DOWN_COMMIT_S}s down-designee escape bound)" 1
   elif [ "$ok" = 2 ]; then
-    slo_assert "6-fault-tolerance" major "publish committed with val-d down BEYOND the expected ${FT_DOWN_COMMIT_S}s but inside the computed r≤${ftrcap} hard cap (${FT_DOWN_HARD_S}s) — a slow escape that started under load, mechanism healthy (#509; escape fingerprint at first bound: ${fp0})" 1
+    slo_assert "6-fault-tolerance" major "publish committed with val-d down BEYOND the expected ${FT_DOWN_COMMIT_S}s but inside the computed r≤${ftrcap} hard cap (${FT_DOWN_HARD_S}s) — a slow escape that started under load, mechanism healthy (escape fingerprint at first bound: ${fp0})" 1
   elif [ -z "$res" ]; then
-    # G-H43-7 HONESTY RULE (h43 certification §6.2; #536's lesson on the res-empty
+    # HONESTY RULE (the res-empty
     # path): the two-tier wait above runs ONLY inside `if [ -n "$res" ]`, so when the
     # publish never returned a link NEITHER tier was entered — fp0/fp1 are EMPTY
     # strings, and the old record manufactured "ladder advancing but uncommitted —
     # OUT OF MODEL" from `grep -q '?'` over two empty strings, then printed a cap it
-    # never measured (run c450985-deep: "(fingerprint → n/a: …)" with the 1445 s cap
+    # never measured (the field run: "(fingerprint → n/a: …)" with the 1445 s cap
     # named as if timed). Say exactly what was observed and nothing more.
     record "6-fault-tolerance" gap major "publish never returned a link within PUBLISH_RETRY_S=${PUBLISH_RETRY_S}s with val-d down — the ${FT_DOWN_COMMIT_S}s/${FT_DOWN_HARD_S}s escape tiers were NOT entered and NO cap was measured (fingerprint not read); read the captured client error (publish-diag / .ft_publish_lasterr) and the survivor journals (validators run -log debug: the 'new-view proposal not committed' line names the failing designee) before attributing (#7)"
   elif [ -n "$fp1" ] && [ "$fp1" = "$fp0" ] && [ "${fp0#*\?}" = "$fp0" ]; then
-    # WEDGE only on a READABLE, frozen fingerprint (#536): fp must contain no `?`
+    # WEDGE only on a READABLE, frozen fingerprint: fp must contain no `?`
     # (an UNKNOWN source is not evidence of a frozen ladder). A frozen READABLE
     # fingerprint with round-changes present but stuck IS the wedge; rc advancing
     # would have made fp1 != fp0 and routed to the OUT-OF-MODEL gap below.
-    record "6-fault-tolerance" fail major "WEDGE SIGNATURE: no commit AND a frozen, readable escape fingerprint (${fp0}) across the ${FT_DOWN_COMMIT_S}s→${FT_DOWN_HARD_S}s extension with val-d down — the round ladder is NOT advancing; attribute from the captured survivor journals (#509 upgraded this from an unattributable GAP)"
+    record "6-fault-tolerance" fail major "WEDGE SIGNATURE: no commit AND a frozen, readable escape fingerprint (${fp0}) across the ${FT_DOWN_COMMIT_S}s→${FT_DOWN_HARD_S}s extension with val-d down — the round ladder is NOT advancing; attribute from the captured survivor journals"
   else
-    record "6-fault-tolerance" gap major "no new commit within the computed ${FT_DOWN_HARD_S}s (≤ f+1 rounds, f=${ftdown}) hard cap with val-d down (fingerprint ${fp0} → ${fp1:-n/a}$(printf '%s' "${fp0}${fp1}" | grep -q '?' && echo '; a fingerprint source was UNREADABLE — cannot claim a frozen ladder (#536)' || echo ': ladder advancing but uncommitted — OUT OF MODEL')) — read the captured client error (publish-diag / .ft_publish_lasterr) and survivor journals before attributing (#509/#7)"
+    record "6-fault-tolerance" gap major "no new commit within the computed ${FT_DOWN_HARD_S}s (≤ f+1 rounds, f=${ftdown}) hard cap with val-d down (fingerprint ${fp0} → ${fp1:-n/a}$(printf '%s' "${fp0}${fp1}" | grep -q '?' && echo '; a fingerprint source was UNREADABLE — cannot claim a frozen ladder' || echo ': ladder advancing but uncommitted — OUT OF MODEL')) — read the captured client error (publish-diag / .ft_publish_lasterr) and survivor journals before attributing"
   fi
   svc val-d start || true
 }
 
 # ── Flow 7: restart survival — standing + issued tokens + stored content ────────
-# LOCAL_PROOF: RESTART=1 ./integration/nat/run.sh  (persisted-store reload + re-announce)
+# LOCAL_PROOF: RESTART=1 ./integration/nat/run.sh (persisted-store reload + re-announce)
 flow_restart_survival() {
   flow_evidence_nodes val-b store-1 store-2
   local t0 t1 ok=0
@@ -578,7 +578,7 @@ flow_restart_survival() {
   # standing must come back WITHOUT redoing the bond (fast reload), and quickly.
   # SCOPED to post-restart logs (t0 captured above): the 'bond: reloaded …' line
   # is emitted on EVERY boot, so an unscoped waitfor could match a prior boot's
-  # line even if THIS restart hung/failed to reload standing (audit #303
+  # line even if THIS restart hung/failed to reload standing (the audit
   # restart-standing stale-gap). --since @t0 admits only the post-restart boot.
   if waitfor_since val-b '(reload|restored|persisted).*(bond|standing)|standing.*(reload|restored)|bond.*loaded' "$t0" "$RESTART_SLO_S" >/dev/null; then ok=1; fi
   t1="$(date +%s)"
@@ -597,7 +597,7 @@ flow_restart_survival() {
     if [ -z "$rlink" ]; then local rres; rres="$(ft_publish fetch-1 262144 || true)"; rlink="${rres%% *}"; rsha="${rres##* }"; fi
     if [ -z "$rlink" ]; then publish_verdict "7-restart-content" major "no link (reuse+self-publish both failed) — restart-content UNTESTED"; return; fi
     # Wait for the post-restart re-announce CONDITION, not a magic sleep
-    # (2026-08-21, run 577f0f1-27476 false FAIL): the old `sleep 8` raced the
+    # (2026-08-21, run the field run false FAIL): the old `sleep 8` raced the
     # restarted node's recovery — the same sheet MEASURED 228s to re-announce
     # under load (vs 37s on a fresh fleet) — and the one-shot fetch discarded
     # the client's stderr, leaving got=<none> unattributable. Mirror
@@ -616,7 +616,7 @@ flow_restart_survival() {
     got="$(ssh_node store-1 "sha256sum /tmp/ft_r.bin 2>/dev/null | cut -d' ' -f1" 2>/dev/null || true)"
     [ -n "$rsha" ] && [ "$got" = "$rsha" ] && ok2=1
     if [ "$ok2" != 1 ] && printf '%s' "$rgeterr" | grep -qiE 'root not in registry|no such entry'; then
-      record "7-restart-content" gap major "fetch found the root ABSENT from the registry — the publish premise broke upstream (#441-family), restart-content UNTESTED not failed (client: $(printf '%s' "$rgeterr" | tr '\n' ';' | head -c 200))"
+      record "7-restart-content" gap major "fetch found the root ABSENT from the registry — the publish premise broke upstream, restart-content UNTESTED not failed (client: $(printf '%s' "$rgeterr" | tr '\n' ';' | head -c 200))"
     else
       slo_assert "7-restart-content" major "content still fetchable BIT-PERFECT after a storage-node restart$([ "$ok2" = 1 ] || echo " (want=${rsha:-?} got=${got:-<none>}; client: $(printf '%s' "$rgeterr" | tr '\n' ';' | head -c 300))")" "$ok2"
     fi
@@ -640,7 +640,7 @@ flow_takedown() {
   if [ ${#root} -ne 64 ]; then record "8-takedown" gap minor "could not decode a 64-hex root from $link (got '${root:0:16}…')"; return; fi
   ssh_node store-1 "echo '$root' | sudo tee /var/lib/silt/deny.txt >/dev/null" >/dev/null 2>&1
   relaunch_with store-1 "-denylist /var/lib/silt/deny.txt"; sleep 8
-  # DENIAL leg (fixed — audit-#303 class, wrong-surface probe): the old probe ran
+  # DENIAL leg (fixed — audit- class, wrong-surface probe): the old probe ran
   # `swarm get` ON store-1 and grepped its output for a refusal. But `swarm get` is a
   # SHORT-LIVED CLIENT node ("join, do the thing, leave" — cmd/silt/swarm.go): it
   # never consults the store-1 daemon's denylist, walks the DHT, and happily fetches
@@ -667,14 +667,14 @@ flow_takedown() {
 }
 
 # ── Flow 9: cross-NAT — a natted node moves a file via the relay ────────────────
-# LOCAL_PROOF: ./integration/nat/run.sh  (EMULATED NAT; the real-middlebox cone/symmetric decision is the owned cloud residue)
+# LOCAL_PROOF: ./integration/nat/run.sh (EMULATED NAT; the real-middlebox cone/symmetric decision is the owned cloud residue)
 flow_cross_nat() {
   require_nodes "9-cross-nat" major nat-1 nat-2 || return
   client_preflight "9-cross-nat" major nat-1 nat-2 || return
   flow_evidence_nodes nat-1 nat-2 relay   # a cross-NAT failure lives on either NAT node OR the relay
   local res
   res="$(ft_publish nat-1 262144 || true)"    # nat-1 is un-dialable → must use the relay
-  # Attribute the LEG (#7): run beb3628-95860 recorded a bare "did not exchange a
+  # Attribute the LEG (#7): run the field run recorded a bare "did not exchange a
   # file" FAIL that left publish-vs-fetch unknowable after teardown.
   if [ -z "$res" ]; then
     publish_verdict "9-cross-nat" major "natted nodes did not exchange a file via the relay — the PUBLISH leg (nat-1 → relay → validators) never landed a link"
@@ -689,10 +689,10 @@ flow_cross_nat() {
   fi
 }
 
-# ── #184 adversarial: equivocation → slash (certified on a DEDICATED net) ────────
+# ── adversarial: equivocation → slash ────────
 # LOCAL_PROOF: go test ./e2e -run TestEquivocatorSlashedOverTCP -count=1
 adv_equivocation() {
-  # PE ruling 2026-08-17 (184-equivocation-topology-ruling): equivocation is the ONE
+  # ): equivocation is the ONE
   # irreversible drill — a proven double-sign is a PERMANENT eviction (F2), correctly.
   # Running it mid-sheet would leave the requirement pinned at ⌊4/2⌋+1=3 over the
   # CONFIGURED anchors while only 3 stay live → every later commit needs all 3
@@ -706,32 +706,32 @@ adv_equivocation() {
   # be COMMITTED onto a target under a 3-of-4 BFT floor; the crime is SIGNING two
   # conflicting blocks at one height) and an honest anchor slashes it unaided on the
   # reconcile path — run under adverse conditions by integration/adversarial (netem).
-  # The in-process merge gate is core/node/modelcheck_184_equivocation_objective_test.go.
+  # The in-process merge gate is core/node/modelcheck_equivocation_objective_test.go.
   #
   # 2026-08-20 (owner directive): the drill now runs on EVERY sheet — but in the
   # fully-contained equivocation ISLAND (flow_equivocation_island below), a separate
-  # consensus universe. That honors the PE ruling (its slash taxes only the island's
+  # consensus universe. That honors
   # fault tolerance, never the main sheet's) AND closes the skip-is-a-blind-spot gap.
   # This row stays a SKIP so the island's PASS/FAIL is the one graded verdict, not
   # two rows for one property.
-  record "184-equivocation" skip blocker "runs on the contained equivocation ISLAND every sheet (flow_equivocation_island — a separate consensus universe; its slash never taxes main-sheet fault tolerance, PE 2026-08-17). This row is the historical pointer; the island row is the graded verdict."
+  record "184-equivocation" skip blocker "runs on the contained equivocation ISLAND every sheet (flow_equivocation_island — a separate consensus universe; its slash never taxes main-sheet fault tolerance). The island row carries the graded verdict."
 }
 
-# ── #184 equivocation ISLAND: the destructive drill, contained, on EVERY sheet ───
+# ── equivocation ISLAND: the destructive drill, contained, on EVERY sheet ───
 # A separate 4-anchor consensus universe (topology role "island"; own genesis, own
 # -anchors naming only each other; no external IP on GCP → zero quota, Cloud NAT
 # egress). One island anchor is relaunched as a Byzantine equivocator; an honest
 # island anchor slashes the double-sign on the reconcile path. Fully contained:
 # nothing in the main swarm names the island, so the permanent eviction (F2) consumes
-# only the ISLAND's fault tolerance — the exact zero-FT-tail the PE 2026-08-17 ruling
+# only the ISLAND's fault tolerance — the exact zero-FT-taildecision
 # forbade on the shared sheet, here made structurally impossible. Design:
-# docs/thinking/2026-08-20-equivocation-island-design.md.
+# .
 # LOCAL_PROOF: LOCAL=1 ./cloudtest.sh (the island is 4 containers; the flow runs verbatim) + go test ./e2e -run TestEquivocatorSlashedOverTCP
 flow_equivocation_island() {
   require_nodes "184-equivocation-island" blocker island-a island-b island-c island-d || return
   # 1) The island must reach a baseline commit (its own chain is live + independent)
-  #    before the equivocator has any on-chain prepare to fork — else the drill is
-  #    UNTESTED (premise unmet), not a failed slash.
+  #  before the equivocator has any on-chain prepare to fork — else the drill is
+  #  UNTESTED (premise unmet), not a failed slash.
   # island-b is the BAKED-IN objective equivocator (topology.py — the green e2e
   # shape; a LOCAL run proved a mid-drill relaunch leaves it re-warming past the
   # window). island-a is an honest anchor that detects + slashes. No relaunch,
@@ -740,8 +740,8 @@ flow_equivocation_island() {
   local byzid; byzid="$(node_field "$byz" nodeid)"
   flow_evidence_nodes island-a island-b island-c island-d
   # 1) The island's independent chain must commit a baseline (the equivocator
-  #    participates honestly first, so a commit means it has prepared a height to
-  #    fork). Undriven ⇒ UNTESTED, not a failed slash.
+  #  participates honestly first, so a commit means it has prepared a height to
+  #  fork). Undriven ⇒ UNTESTED, not a failed slash.
   if ! waitfor "$isl_boot" 'chain: committed block [1-9]' 180 >/dev/null; then
     record "184-equivocation-island" gap blocker "the island never committed a baseline block within 180s — its independent consensus never warmed, so the equivocator has no on-chain prepare to fork (UNTESTED not failed; attribute from the island journals)"
     return
@@ -751,7 +751,7 @@ flow_equivocation_island() {
     record "184-equivocation-island" gap blocker "the equivocator never served its conflicting block within 180s — drill did not drive (UNTESTED; attribute from $byz's journal)"; return
   fi
   # 3) An HONEST island anchor slashes the double-sign on the reconcile path — the
-  #    accountability property on the wire. Assert the product's own slash line (#7).
+  #  accountability property on the wire. Assert the product's own slash line (#7).
   local slashline; slashline="$(waitfor "$honest" "chain: slashed equivocator ${byzid}" 120 || true)"
   if [ -n "$slashline" ]; then
     slo_assert "184-equivocation-island" blocker "accountability FIRED on the wire: a contained island anchor double-signed and an honest anchor SLASHED it (${slashline##*chain: }) — proven equivocation → permanent eviction (F2), zero blast radius to the main sheet (separate consensus universe)" 1
@@ -760,7 +760,7 @@ flow_equivocation_island() {
   fi
 }
 
-# ── #184 adversarial: partition → heal (BFT: stall-then-catch-up) ────────────────
+# ── adversarial: partition → heal (BFT: stall-then-catch-up) ────────────────
 # LOCAL_PROOF: go test ./e2e -run TestPartitionHealsToHeavierForkOverTCP -count=1
 adv_partition() {
   require_nodes "184-partition" major val-a val-b val-c val-d fetch-1 || return
@@ -781,8 +781,8 @@ adv_partition() {
   # HOLDS the committed chain — not only the anchors: any reachable chain-holder lets
   # val-c SYNC the majority's blocks (adopt-via-Reconcile, which logs "reconciled", not
   # "committed block N") and stay current, so the "minority" never falls behind. Runs
-  # 1ebd487-73707 (base: val-c synced h14→h16 THROUGH the bonded `adversary` node) and
-  # 1ebd487-7457 (MATURING: h25→h37 through adversary + 4 maturers + 4 sybils) proved
+  # the field run (base: val-c synced h14→h16 THROUGH the bonded `adversary` node) and
+  # the field run (MATURING: h25→h37 through adversary + 4 maturers + 4 sybils) proved
   # this: an anchors-only sever misses the other validator-role chain-holders. So block
   # val-c from ALL validator-role peers (validator / adversary / maturer / sybil),
   # BOTH directions (-block-peers drops traffic to AND from them). A single isolated
@@ -791,7 +791,7 @@ adv_partition() {
   # violation model B forbids). This is why on heal val-c CATCHES UP (a forward sync,
   # dropped=0), it does NOT "reorg": a dropped-block reorg would require val-c to have
   # committed a conflicting fork, which it correctly cannot — the ABSENCE of a reorg
-  # line IS the safety property (PE ruling 2026-08-17).
+  # line IS the safety property).
   local blockids; blockids="$(python3 -c "
 import json
 t=json.load(open('$FT_TOPO'))
@@ -849,7 +849,7 @@ print(','.join(n['nodeid'] for name,n in t['nodes'].items()
   # LIVE head with a matching hash (both advance, so compare val-c to val-a live —
   # they align at the tip once val-c catches up).
   # Heal window sized to the CATCH-UP, not a magic constant (#5): the sever fix works
-  # (run 76f654d-33422: val-c genuinely STALLED at h31 while the majority reached h38),
+  # (run the field run: val-c genuinely STALLED at h31 while the majority reached h38),
   # but a 7-block cross-region catch-up sync ran past 120s and GAPped ("did not
   # reconverge in 120s"). 300s matches the drill's other resume windows (10b's clincher)
   # and rides out a multi-block WAN catch-up while a real reconverge break still GAPs.
@@ -857,7 +857,7 @@ print(','.join(n['nodeid'] for name,n in t['nodes'].items()
   # Snapshot the majority's head AT HEAL START as a FIXED reconverge target. val-a
   # keeps advancing while val-c catches up, so requiring val-c == val-a's LIVE head
   # false-GAPs whenever both advance at similar rates — val-c sits perpetually one
-  # block behind a moving tip (run 6a38d7b-42691: val-c h34 vs live val-a h35, a
+  # block behind a moving tip (run the field run: val-c h34 vs live val-a h35, a
   # healthy lag, not a break). Reaching the heal-time head PROVES reconvergence:
   # a < ⅓ island committed nothing of its own during the partition (guarded above),
   # so val-c can only advance by SYNCING the majority chain, and Reconcile validates
@@ -883,7 +883,7 @@ print(','.join(n['nodeid'] for name,n in t['nodes'].items()
   fi
 }
 
-# ── #184 adversarial: forged-block + low-bond proposals rejected ────────────────
+# ── adversarial: forged-block + low-bond proposals rejected ────────────────
 # LOCAL_PROOF: go test ./e2e -run 'TestForgedBlockRejectedOverTCP|TestLowBondProposerRejectedOverTCP' -count=1
 adv_proposal_reject() {
   require_nodes "184-forged-block" major adversary || return
@@ -891,7 +891,7 @@ adv_proposal_reject() {
   if [ ${#ida} -ne 64 ]; then
     record "184-forged-block" gap major "could not resolve val-a NodeID from nodes.json (ida='${ida:0:12}…') — proposals not delivered, not a property failure"; return
   fi
-  # audit #303: grep the line the PRODUCT actually emits — the adversary daemon prints
+  # the audit: grep the line the PRODUCT actually emits — the adversary daemon prints
   # 'adversary: <label> proposal correctly REJECTED by <targetID>' when the honest target
   # refuses it (cmd/silt/daemon.go badPropose), same as the local integration/redteam
   # harness. The old assertions greped val-a for 'ErrBadSignature'/'ErrLowReputation',
@@ -906,18 +906,18 @@ adv_proposal_reject() {
   # PASS this drill was written for. But once its bond commits it becomes a QUALIFIED
   # proposer, and val-a CORRECTLY accepts its well-formed block: that "UNEXPECTEDLY
   # ACCEPTED" is right product behavior, not a defect, so it must NOT be a FAIL. The
-  # outcome therefore flips on the adversary's standing race between runs (#350). Score
+  # outcome therefore flips on the adversary's standing race between runs. Score
   # it honestly: a logged reject is a PASS; a logged accept is a GAP (this node is
   # qualified — a genuine under-bond REJECTION test needs a dedicated sub-min-bond
-  # identity, #350); silence is a GAP (not driven). low-bond rejection is certified
-  # in-process (#204) either way.
+  # identity); silence is a GAP (not driven). low-bond rejection is verifies
+  # in-process either way.
   relaunch_with adversary "-lowbond-propose ${ida}"
   if waitfor adversary "lowbond-propose proposal correctly REJECTED by ${ida}" 90 >/dev/null; then
     slo_assert "184-low-bond" major "under-bonded proposer rejected (adversary logged 'correctly REJECTED by val-a')" 1
   elif waitfor adversary "lowbond-propose proposal UNEXPECTEDLY ACCEPTED by ${ida}" 5 >/dev/null; then
-    record "184-low-bond" gap major "adversary holds a qualifying 64M bond and was CORRECTLY accepted as a proposer — an under-bond REJECTION test needs a dedicated sub-min-bond identity (#350); the property is certified in-process (#204)"
+    record "184-low-bond" gap major "adversary holds a qualifying 64M bond and was CORRECTLY accepted as a proposer — an under-bond REJECTION test needs a dedicated sub-min-bond identity; the property is covered by the in-process tests"
   else
-    record "184-low-bond" gap major "no reject/accept line from the adversary within 90s — low-bond not driven this run (#350)"
+    record "184-low-bond" gap major "no reject/accept line from the adversary within 90s — low-bond not driven this run"
   fi
   restore_argv adversary
 }
@@ -952,11 +952,11 @@ flow_publisher_unlinkability() {
 
 # A failed publish's decisive evidence lives on the VALIDATORS — the accept→commit
 # window (was the chain committing? did the entry sit in a mempool? which height
-# carried it late?) — not only on the client side. Run 82bcd2b-39478's
+# carried it late?) — not only on the client side. Run the field run's
 # durability-turnover GAP captured only store/fetch journals, so the root was
 # unpinnable after teardown (#7: capture the evidence first, then look). Callers
 # recording a verdict after a failed ft_publish extend the capture set with the
-# validator cohort before record().
+# validator cohort before record.
 ft_add_validator_evidence() {
   local n vals=""
   for n in val-a val-b val-c val-d; do node_exists "$n" && vals="$vals $n"; done
@@ -977,8 +977,8 @@ flow_durability_turnover() {
   # A failed SETUP publish means durability is UNTESTED (we have no content to lose),
   # not that durability broke — this flow tests survival of a permanent node loss, not
   # the publish path (2-publish-fetch is the publish canary). So GAP unconditionally on
-  # a missing link, independent of the FT_PUBLISH_GAP/degraded signals (#351).
-  if [ -z "$res" ]; then ft_add_validator_evidence; record "durability-turnover" gap major "setup publish did not land a link — durability UNTESTED this run, not a durability failure (read .ft_publish_lasterr to decompose: 'accepted but not committed' = the accept→commit path — commit latency vs the client poll window, #441-family; token/issuer-set errors = discovery #351. The validator journals for the publish window are captured with this verdict)"; return; fi
+  # a missing link, independent of the FT_PUBLISH_GAP/degraded signals.
+  if [ -z "$res" ]; then ft_add_validator_evidence; record "durability-turnover" gap major "setup publish did not land a link — durability UNTESTED this run, not a durability failure (read .ft_publish_lasterr to decompose: 'accepted but not committed' = the accept→commit path — commit latency vs the client poll window; token/issuer-set errors = discovery. The validator journals for the publish window are captured with this verdict)"; return; fi
   link="${res%% *}"; sha="${res##* }"
   svc store-1 stop || true    # permanent departure (left down for the fetch)
   sleep 12
@@ -986,12 +986,12 @@ flow_durability_turnover() {
   geterr="$(ssh_node store-2 "rm -f /tmp/ft_dur.bin; /usr/local/bin/silt swarm get '$link' -o /tmp/ft_dur.bin -peers '$PEERS' -registry '$REGREF' 2>&1 >/dev/null | tail -3" 2>/dev/null || true)"
   got="$(ssh_node store-2 "sha256sum /tmp/ft_dur.bin 2>/dev/null | cut -d' ' -f1" 2>/dev/null || true)"
   [ "$got" = "$sha" ] && ok=1
-  # Premise classifier (roadmap 2a): "root not in registry" means the setup publish
-  # was ACCEPTED but its entry never became resolvable (#441-family accept→commit) —
+  # Premise classifier: "root not in registry" means the setup publish
+  # was ACCEPTED but its entry never became resolvable (accept→commit) —
   # durability of committed content is then UNTESTED, not failed. Any other failure
   # (hash mismatch, partial bytes, timeout with the entry present) is a real FAIL.
   if [ "$ok" != 1 ] && printf '%s' "$geterr" | grep -qiE 'root not in registry|no such entry'; then
-    record "durability-turnover" gap major "fetch found the root ABSENT from the registry — the setup publish premise broke upstream (#441-family accept→commit), durability of committed content UNTESTED not failed (client: $(printf '%s' "$geterr" | tr '\n' ';' | head -c 200))"
+    record "durability-turnover" gap major "fetch found the root ABSENT from the registry — the setup publish premise broke upstream (accept→commit), durability of committed content UNTESTED not failed (client: $(printf '%s' "$geterr" | tr '\n' ';' | head -c 200))"
   else
     slo_assert "durability-turnover" major "content survived a PERMANENT storage-node departure — fetched bit-perfect from a survivor$([ "$ok" = 1 ] || echo " (want=$sha got=${got:-<none>}; client: $(printf '%s' "$geterr" | tr '\n' ';' | head -c 200))")" "$ok"
   fi
@@ -1003,7 +1003,7 @@ flow_durability_turnover() {
 flow_chaos_crash() {
   require_nodes "chaos-crash" major store-1 store-2 || return
   # Capture the REGISTRY (val-a) + validator journals alongside store-1/store-2 on any
-  # chaos FAIL: run 1ebd487-7457 FAILed chaos-fetch with "root not in registry" but the
+  # chaos FAIL: run the field run FAILed chaos-fetch with "root not in registry" but the
   # capture held only the store journals, so the REGISTRY's own view of the root was
   # unattributable after teardown (#7 capture-first). ft_add_validator_evidence appends
   # val-a..d (val-a serves the registry) to this flow's evidence set.
@@ -1011,20 +1011,20 @@ flow_chaos_crash() {
   local link="${FT_LAST_LINK:-}" wantsha="${FT_LAST_SHA:-}"
   if [ -z "$link" ]; then local res; res="$(ft_publish fetch-1 262144 || true)"; link="${res%% *}"; wantsha="${res##* }"; fi
   # As with durability-turnover: a failed SETUP publish means crash-recovery is UNTESTED
-  # (no content to crash-and-recover), not broken — GAP unconditionally (#351).
-  if [ -z "$link" ]; then ft_add_validator_evidence; record "chaos-crash" gap major "setup publish did not land a link — crash-recovery UNTESTED this run, not a failure (read .ft_publish_lasterr to decompose: 'accepted but not committed' = accept→commit #441-family; token/issuer errors = discovery #351. Validator journals captured with this verdict)"; return; fi
+  # (no content to crash-and-recover), not broken — GAP unconditionally.
+  if [ -z "$link" ]; then ft_add_validator_evidence; record "chaos-crash" gap major "setup publish did not land a link — crash-recovery UNTESTED this run, not a failure (read .ft_publish_lasterr to decompose: 'accepted but not committed' = accept→commit; token/issuer errors = discovery. Validator journals captured with this verdict)"; return; fi
   # SIGKILL the silt process (abrupt death, not a graceful stop). systemd
   # (Restart=on-failure) brings it back, reloading the persisted store.
   # Capture t0 BEFORE the kill: flow_restart_survival already restarted store-2
   # earlier and emitted 're-announced N held chunks' on that prior boot — an
   # unscoped waitfor could match that stale line and false-pass a broken reprovide
-  # (audit #303 chaos-reprovide stale-gap). --since @t0 admits only the post-crash
+  # (the audit chaos-reprovide stale-gap). --since @t0 admits only the post-crash
   # boot's re-announce.
   local t0; t0="$(date +%s)"
   ssh_node store-2 "sudo pkill -9 -f '/usr/local/bin/silt' || true" >/dev/null 2>&1
   ssh_node store-2 "sudo systemctl start silt.service" >/dev/null 2>&1 || true   # idempotent nudge
   # Wait for the CONDITION on a generous, evidence-sized deadline — never a magic
-  # constant (build-immutable #5). Run 4faaee8-22913 attributed the old 90s FAIL:
+  # constant (build-immutable #5). Run the field run attributed the old 90s FAIL:
   # re-announce completes but its latency is ~LINEAR in held-chunk count (that run,
   # store-2's own journal: 24 chunks → 19s early, 132 chunks → 102s late; ≈1.3
   # announces/s over WAN), so a fixed 90s under-provisions a store that has
@@ -1035,27 +1035,27 @@ flow_chaos_crash() {
   reann_line="$(waitfor_since store-2 're-announced [0-9]+ held chunks' "$t0" 300 || true)"
   if [ -n "$reann_line" ]; then reann=1; reann_s=$(( $(date +%s) - t0 )); fi
   if [ "$reann" = 1 ]; then
-    slo_assert "chaos-reprovide" major "SIGKILLed storage node re-announced its held chunks (#69) after a hard crash (${reann_s}s to re-announce; latency scales with held-chunk count, #402/M1)" 1
+    slo_assert "chaos-reprovide" major "SIGKILLed storage node re-announced its held chunks after a hard crash (${reann_s}s to re-announce; latency scales with held-chunk count)" 1
   else
     # 300s with no re-announce is now a REAL gap (well past the measured linear
     # envelope) — the path survives an abrupt kill locally (integration/nat
-    # RESTART=1, green post-#393). store-2's captured journal attributes it.
+    # RESTART=1, green post-). store-2's captured journal attributes it.
     slo_assert "chaos-reprovide" major "no post-crash 're-announced N held chunks' on store-2 within 300s of the SIGKILL — past the measured re-announce envelope; attribute from store-2's captured journal (#69)" 0
   fi
   local got ok=0 geterr=""
   # SHA-compare, not echo-OK (§D): crash-recovery must return the REAL bytes, not just
   # a zero exit on a possibly-truncated fetch. Keep the client's stderr — run
-  # a56ac10-42834's chaos-fetch FAIL was UNATTRIBUTABLE because this line sent it
+  # the field run's chaos-fetch FAIL was UNATTRIBUTABLE because this line sent it
   # to /dev/null (got=<none> with the deciding error discarded).
   geterr="$(ssh_node store-1 "rm -f /tmp/ft_ch.bin; /usr/local/bin/silt swarm get '$link' -o /tmp/ft_ch.bin -peers '$PEERS' -registry '$REGREF' 2>&1 >/dev/null | tail -3" 2>/dev/null || true)"
   got="$(ssh_node store-1 "sha256sum /tmp/ft_ch.bin 2>/dev/null | cut -d' ' -f1" 2>/dev/null || true)"
   [ -n "$wantsha" ] && [ "$got" = "$wantsha" ] && ok=1
-  # Premise classifier (roadmap 2a — Run B's two FAILs were this): "root not in
-  # registry" = the publish premise broke upstream (#441-family accept→commit), so
+  # Premise classifier: "root not in
+  # registry" = the publish premise broke upstream (accept→commit), so
   # crash-recovery of committed content is UNTESTED — GAP. A hash mismatch or a
   # timeout with the entry resolvable stays a real FAIL.
   if [ "$ok" != 1 ] && printf '%s' "$geterr" | grep -qiE 'root not in registry|no such entry'; then
-    record "chaos-fetch" gap major "fetch found the root ABSENT from the registry — the publish premise broke upstream (#441-family accept→commit), crash-recovery UNTESTED not failed (client: $(printf '%s' "$geterr" | tr '\n' ';' | head -c 200))"
+    record "chaos-fetch" gap major "fetch found the root ABSENT from the registry — the publish premise broke upstream (accept→commit), crash-recovery UNTESTED not failed (client: $(printf '%s' "$geterr" | tr '\n' ';' | head -c 200))"
   else
     slo_assert "chaos-fetch" major "content fetchable BIT-PERFECT after a hard-crash (SIGKILL) + restart of a storage node$([ "$ok" = 1 ] || echo " (want=${wantsha:-?} got=${got:-<none>}; client: $(printf '%s' "$geterr" | tr '\n' ';' | head -c 300))")" "$ok"
   fi
@@ -1083,25 +1083,25 @@ flow_web_ui_guard() {
 # The LOCAL integration/sybil suite can only reach the STANDING gate — on a laptop a
 # fresh Sybil set can't bank bonds (a young network's bond-registration needs
 # anchor-proposed blocks; chicken-and-egg). On CLOUD, over the warm period the
-# ANCHORS' committed blocks bank the Sybils' BondRegs, so this certifies the PURE
+# ANCHORS' committed blocks bank the Sybils' BondRegs, so this verifies the PURE
 # gate: with the anchors gone, a self-majority of bonded Sybils all sharing ONE
 # -domain still cannot advance the chain (ErrAnchorRequired) — because the C2
 # concentration metric refuses to count a single-domain split as the address-diverse
 # decentralization that sheds the launch anchors. The clincher: restore the anchors
 # and the chain RESUMES — proving it was the missing anchors, not dead Sybils.
 # Opt-in (needs the cohort): SYBILS=8 ./cloudtest.sh.
-# LOCAL_PROOF: go test ./e2e -run TestAnchorStopHaltsBondedNonAnchors -count=1  (built 2026-08-20 as this flow's local twin)
+# LOCAL_PROOF: go test ./e2e -run TestAnchorStopHaltsBondedNonAnchors -count=1 (built 2026-08-20 as this flow's local twin)
 flow_c2_no_capture() {
   if ! node_exists sybil-1; then
     record "5-sybil-no-capture" skip major "no Sybil cohort in this topology — opt in with SYBILS=8 ./cloudtest.sh to certify the PURE anchor gate on cloud (the local integration/sybil suite reaches only the standing gate)"
     return
   fi
-  # Mutually exclusive with the MATURING topology: this flow certifies the
+  # Mutually exclusive with the MATURING topology: this flow verifies the
   # ANCHOR gate on a network that never sheds; under MATURING=1 the anchors shed
   # by design, so the premise (ErrAnchorRequired without anchors) does not exist
   # — the post-shed capture property is flow 10's B2 capture drill instead.
   if [ "$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta'].get('maturing',0))")" = "1" ]; then
-    record "5-sybil-no-capture" skip major "MATURING=1 topology sheds the anchors by design — the anchor-gate premise doesn't exist here; the post-shed capture property is certified by 10-maturing-handoff's B2 drills (run without MATURING for flow 5)"
+    record "5-sybil-no-capture" skip major "MATURING=1 topology sheds the anchors by design — the anchor-gate premise doesn't exist here; the post-shed capture property is covered by 10-maturing-handoff's drills (run without MATURING for flow 5)"
     return
   fi
   local n_syb sybils anchors_nodes
@@ -1110,7 +1110,7 @@ flow_c2_no_capture() {
   anchors_nodes="$(python3 -c "import json;print(' '.join(n for n,v in json.load(open('$NODES_JSON')).items() if v['role']=='validator'))")"
   # This flow never calls require_nodes, so stash its evidence set explicitly: a
   # non-green verdict here (e.g. the resume clincher not firing) needs the anchors'
-  # AND sybil-1's journals to attribute — run beb3628-95860's resume gap had none.
+  # AND sybil-1's journals to attribute — run the field run's resume gap had none.
   # shellcheck disable=SC2086
   flow_evidence_nodes sybil-1 $anchors_nodes
 
@@ -1119,16 +1119,16 @@ flow_c2_no_capture() {
     | grep -oE 'head height:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | tail -1; }
 
   # 0) precondition: the Sybils must have SYNCED the anchor-committed chain (their
-  #    bonds banked). head height 0 ⇒ never synced ⇒ capture premise not set up →
-  #    honest GAP (property UNTESTED), never a fake pass.
+  #  bonds banked). head height 0 ⇒ never synced ⇒ capture premise not set up →
+  #  honest GAP (property UNTESTED), never a fake pass.
   local h0; h0="$(syb_height sybil-1)"; h0="${h0:-0}"
   if [ "$h0" -lt 1 ] 2>/dev/null; then
     record "5-sybil-no-capture" gap major "sybil-1 never synced a committed chain (head height 0) — the anchors had not yet banked the Sybil bonds; capture precondition unmet, property UNTESTED"; return
   fi
 
   # 1) anchors UP: an anchor logs the C2 metric with the wheels ENGAGED, and (≥8
-  #    equal single-domain bonds) the atomization note — real evidence the metric
-  #    SEES the cohort and refuses to count it as decentralization. Observational.
+  #  equal single-domain bonds) the atomization note — real evidence the metric
+  #  SEES the cohort and refuses to count it as decentralization. Observational.
   local wheels atom
   wheels="$(waitfor val-a 'wheels engaged|C2: nakamoto' 60 || true)"
   [ -n "$wheels" ] && echo "    C2 metric (anchors up): ${wheels##*silt}"
@@ -1136,7 +1136,7 @@ flow_c2_no_capture() {
   [ -n "$atom" ] && echo "    atomization note tripped: ${atom##*silt}"
 
   # THE ANCHORED CEILING — the TRUE committed tip, read from the ANCHORS (which lead)
-  # BEFORE stopping them, NOT from a Sybil's local head. This is the #338/C2 false-
+  # BEFORE stopping them, NOT from a Sybil's local head. This is the false-
   # positive fix: under load a Sybil can lag many blocks behind the committed tip, so
   # reading the ceiling off sybil-1 (as this flow used to) let its benign CATCH-UP —
   # syncing the anchors' already-committed blocks after the anchors stop — read as a
@@ -1158,15 +1158,15 @@ flow_c2_no_capture() {
   echo "    anchored ceiling (true committed tip, from the anchors): h${ceiling} (sybil-1 local head h${h0}$([ "$h0" -lt "$ceiling" ] 2>/dev/null && echo ' — sybil-1 is LAGGING; its catch-up is NOT a capture'))"
 
   # 1b) PRE-EXISTING DIVERGENCE guard: if a Sybil's head is ABOVE the anchored
-  #     ceiling BEFORE we stop any anchor, EITHER the Sybil is on a different
-  #     fork (the 4faaee8-22913 event — a real #402-class finding) OR it merely
-  #     SYNCED a fresh commit the ceiling-read anchors hadn't landed at read
-  #     time (benign broadcast skew on ONE chain — run 6fbcf2e-18553, where the
-  #     "fork" was hash-identical: sybil h43 624c3c… == val-b/d h43). Heights
-  #     cannot tell the two apart; HASHES can (consensus-discipline rule 7:
-  #     never presume the mechanism). Compare the sybil's hash AT THE SHARED
-  #     HEIGHT with an anchor's: same ⇒ skew (re-read the ceiling and proceed);
-  #     different ⇒ a real divergent fork (GAP + the finding).
+  #  ceiling BEFORE we stop any anchor, EITHER the Sybil is on a different
+  #  fork (a real finding) OR it merely
+  #  SYNCED a fresh commit the ceiling-read anchors hadn't landed at read
+  #  time (benign broadcast skew on ONE chain, where the
+  #  "fork" was hash-identical: the sybil's head hash == the anchors'). Heights
+  #  cannot tell the two apart; HASHES can (consensus-discipline rule 7:
+  #  never presume the mechanism). Compare the sybil's hash AT THE SHARED
+  #  HEIGHT with an anchor's: same ⇒ skew (re-read the ceiling and proceed);
+  #  different ⇒ a real divergent fork (GAP + the finding).
   local maxsyb=0 sh msyb=""
   for s in $sybils; do sh="$(syb_height "$s")"; sh="${sh:-0}"; if [ "$sh" -gt "$maxsyb" ] 2>/dev/null; then maxsyb="$sh"; msyb="$s"; fi; done
   if [ "$maxsyb" -gt "$ceiling" ] 2>/dev/null; then
@@ -1180,7 +1180,7 @@ flow_c2_no_capture() {
       # cannot be concluded from a hash we could not read — consensus-discipline
       # rule 7: an oracle that can't read its premise FLAGS, it never presumes the
       # mechanism. A sybil merely ahead of the readable ceiling is far more likely
-      # benign skew/lag than a divergent fork (run 6a38d7b-42691's false positive).
+      # benign skew/lag than a divergent fork (run the field run's false positive).
       record "5-sybil-no-capture" gap major "PRE-EXISTING DIVERGENCE UNVERIFIABLE: sybil ${msyb} h${maxsyb} > readable anchor ceiling h${ceiling}, but the hash at h${ceiling} was unreadable ($([ -z "$syb_at" ] && printf 'sybil')$([ -z "$syb_at" ] && [ -z "$anchor_at" ] && printf '+')$([ -z "$anchor_at" ] && printf 'anchor'); sybil=${syb_at:-unreadable} anchor=${anchor_at:-unreadable}) — cannot diff, so fork-vs-skew is UNKNOWN, NOT asserted as a fork; journals captured for attribution (#7)"
       return
     elif [ "$syb_at" = "$anchor_at" ]; then
@@ -1192,32 +1192,32 @@ flow_c2_no_capture() {
       done
     else
       # BOTH hashes readable AND DIFFERENT at the shared height ⇒ a genuine divergent
-      # fork (the #402 class). This is the only branch that may assert a fork.
-      record "5-sybil-no-capture" gap major "PRE-EXISTING DIVERGENT FORK: sybil ${msyb} at h${maxsyb} does NOT share the anchor chain's hash at h${ceiling} (sybil=${syb_at} anchor=${anchor_at}, both readable and DIFFERENT) — a real fork finding (#402 class), not skew; journals captured"
+      # fork (the class). This is the only branch that may assert a fork.
+      record "5-sybil-no-capture" gap major "PRE-EXISTING DIVERGENT FORK: sybil ${msyb} at h${maxsyb} does NOT share the anchor chain's hash at h${ceiling} (sybil=${syb_at} anchor=${anchor_at}, both readable and DIFFERENT) — a real fork finding, not skew; journals captured"
       return
     fi
   fi
 
   # 2) THE CAPTURE ATTEMPT — stop every anchor; only the bonded Sybil self-majority
-  #    remains. Give it time to try to advance on its own. Capture t0 BEFORE the
-  #    stop so the fresh-commit outcome check (step 3) can be SCOPED to post-stop
-  #    journald lines only — an unscoped grep matched stale pre-stop 'committed
-  #    block' lines and mis-fired CAPTURE (#402 detector false-positive, #303 class).
+  #  remains. Give it time to try to advance on its own. Capture t0 BEFORE the
+  #  stop so the fresh-commit outcome check (step 3) can be SCOPED to post-stop
+  #  journald lines only — an unscoped grep matched stale pre-stop 'committed
+  #  block' lines and mis-fired CAPTURE (detector false-positive class).
   local stop_t0; stop_t0="$(date +%s)"
   echo "    stopping all anchors ($anchors_nodes) — the Sybil cohort attempts to advance…"
   for a in $anchors_nodes; do svc "$a" stop >/dev/null 2>&1 || true; done
   sleep 90
 
   # 3) OUTCOME (immutable #2 — outcome first, log corroborates): the chain must NOT
-  #    advance past the anchored CEILING (a +1 tolerance for a block already in
-  #    flight when the anchors dropped). A real capture ALSO leaves a fresh Sybil
-  #    'committed block' log (a proposal/broadcast) — a catch-up SyncChain logs
-  #    'chain reconciled', never 'committed block', so requiring the fresh-commit log
-  #    is a second, independent guard against the catch-up false positive.
+  #  advance past the anchored CEILING (a +1 tolerance for a block already in
+  #  flight when the anchors dropped). A real capture ALSO leaves a fresh Sybil
+  #  'committed block' log (a proposal/broadcast) — a catch-up SyncChain logs
+  #  'chain reconciled', never 'committed block', so requiring the fresh-commit log
+  #  is a second, independent guard against the catch-up false positive.
   local h1; h1="$(syb_height sybil-1)"; h1="${h1:-$h0}"
   local s hs; for s in $sybils; do hs="$(syb_height "$s")"; hs="${hs:-0}"; [ "$hs" -gt "$h1" ] 2>/dev/null && h1="$hs"; done
   local no_advance=0; [ "$h1" -le "$((ceiling + 1))" ] 2>/dev/null && no_advance=1
-  # Fresh-commit guard SCOPED to post-stop (#402/#303): a 'committed block' line
+  # Fresh-commit guard SCOPED to post-stop: a 'committed block' line
   # from BEFORE the anchors were stopped is not a capture — only a block a Sybil
   # committed AFTER the anchors left is. --since @stop_t0 admits only those.
   local fresh_commit=0
@@ -1230,17 +1230,17 @@ flow_c2_no_capture() {
   done
 
   # 4) THE CLINCHER — restore the anchors and DRIVE a block; the chain must
-  #    commit it and the Sybil must sync it, proving the halt was the missing
-  #    anchors and not merely dead Sybils. DRIVE, don't wait (B6): the chain is
-  #    reactive — every due renewal was drained into blocks before the stop,
-  #    and the frozen height mints no new ones (renewal-due is HEIGHT-based) —
-  #    so a restored network is legitimately QUIESCENT, and waiting for a
-  #    spontaneous block mis-grades healthy idleness as a liveness gap. Three
-  #    runs GAPed exactly this way; the captured journals (run 9b2198e-67673)
-  #    show the restored anchors fully healthy — bootstrapped, standing back,
-  #    bond challenges passing — with simply nothing to propose. (The pre-#397
-  #    drain over-proposed own renewals, an accidental heartbeat that masked
-  #    this.) Same drive-then-verify pattern as flow 10's B2 drills.
+  #  commit it and the Sybil must sync it, proving the halt was the missing
+  #  anchors and not merely dead Sybils. DRIVE, don't wait (B6): the chain is
+  #  reactive — every due renewal was drained into blocks before the stop,
+  #  and the frozen height mints no new ones (renewal-due is HEIGHT-based) —
+  #  so a restored network is legitimately QUIESCENT, and waiting for a
+  #  spontaneous block mis-grades healthy idleness as a liveness gap. Three
+  #  runs GAPed exactly this way; the captured journals (run the field run)
+  #  show the restored anchors fully healthy — bootstrapped, standing back,
+  #  bond challenges passing — with simply nothing to propose. (The pre-
+  #  drain over-proposed own renewals, an accidental heartbeat that masked
+  #  this.) Same drive-then-verify pattern as flow 10's B2 drills.
   echo "    restoring anchors — driving a block; the chain must commit it and the Sybil must sync it…"
   for a in $anchors_nodes; do svc "$a" start >/dev/null 2>&1 || true; done
   local resumed=0 h2 t0; t0="$(date +%s)"
@@ -1293,30 +1293,29 @@ flow_c2_no_capture() {
 # 'checkpoint: H:HASH' obtained from a peer; it must catch up AND the latch must
 # hold — anchors never re-arm). Outcome-first throughout (immutable #2): heights and
 # commits grade; log lines corroborate.
-# LATCH_S is COMPUTED (PE §4), not arbitrary: the latch trips once TWO maturer
+# LATCH_S is COMPUTED, not arbitrary: the latch trips once TWO maturer
 # bonds commit (bar 2 = min(NakamotoOperators, NakamotoDomains) over the
 # non-anchor set; C2Metric excludes anchors). The reg queue is FIFO-by-arrival
-# since #448 (the ID-sort seed-luck is gone), so the bound is ~2 maturer
+# since (the ID-sort seed-luck is gone), so the bound is ~2 maturer
 # reg-blocks + interleaved renewal/first-timer traffic — a 5-reg-block
-# allowance × the worst-case per-height bound under the #451 synchronizer
+# allowance × the worst-case per-height bound under the synchronizer
 # durations (H_ESCAPE_S = 220s: dur(0)+dur(1) sweeps + a gather leg) ≈ 1100.
 # The drain begins at network start, well before this flow runs (waitfor
-# matches the C2 line, which repeats on every commit); runs ce15a80/e2fab4b
-# latched at h15/h16 in well under half this. Per the PE rule: with the
-# premise fixed, a latch that misses even THIS window is a FAIL — a finding —
-# never a re-grade.
+# matches the drain line, which repeats on every commit); observed runs
+# latched at h15/h16 in well under half this. With the premise fixed, a latch
+# that misses even THIS window is a FAIL — a finding — never a re-grade.
 : "${LATCH_S:=1100}"
 # HANDOFF_BLOCKS_S: the drive must cross the next epoch boundary + 1 from
 # wherever the latch left the head — ≤ 9 blocks × the per-height worst-case
-# escape bound. Run e2fab4b-9589 FAILed the old 600s window while genuinely
+# escape bound. Run the field run FAILed the old 600s window while genuinely
 # crossing (h40→51 at the measured 80–170s/height steady cadence): 600 assumed
-# the pre-#451 64s worst-case block. A miss inside THIS bound is a real stall.
-# COMPUTED INSIDE the flow since #525: the per-height bound is topology-aware
-# (220s at the 4-seat base → 9×220=1980; run 94ef1e8-36901 missed h57 by ONE
+# the pre- 64s worst-case block. A miss inside THIS bound is a real stall.
+# COMPUTED INSIDE the flow since: the per-height bound is topology-aware
+# (220s at the 4-seat base → 9×220=1980; run the field run missed h57 by ONE
 # block at the N=4 figure on a 12-seat rotation while the latch itself tripped
 # — the drive was in-mechanism, the bound wasn't). An env HANDOFF_BLOCKS_S
 # still overrides.
-# LOCAL_PROOF: n/a — real-daemon latch/handoff is the named residual (in-process: sim TestTrainingWheelsShedThroughTheNodeLoop + the core/node modelcheck mature fixtures); e2e twin tracked in docs/thinking/2026-08-20-harness-local-first.md
+# LOCAL_PROOF: n/a — real-daemon latch/handoff is the named residual (in-process: sim TestTrainingWheelsShedThroughTheNodeLoop + the core/node modelcheck mature fixtures); e2e twin tracked
 flow_maturing_handoff() {
   local maturing
   maturing="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta'].get('maturing',0))")"
@@ -1367,14 +1366,14 @@ flow_maturing_handoff() {
   }
 
   # 1) THE LATCH: the daemon's own C2 status line must flip to the one-way F-1
-  #    latch wording. With the maturer cohort deployed the premise is REACHABLE,
-  #    so missing the COMPUTED window is a FAIL — a finding (PE §4: a miss inside
-  #    a principled bound is never re-graded), not the old premise GAP.
+  #  latch wording. With the maturer cohort deployed the premise is REACHABLE,
+  #  so missing the COMPUTED window is a FAIL — a finding (the cadence rule: a miss inside
+  #  a principled bound is never re-graded), not the old premise GAP.
   local wheels
   wheels="$(waitfor val-a 'wheels shed permanently' "$LATCH_S" || true)"
   if [ -z "$wheels" ]; then
     # FAIL vs GAP hinges on whether the maturer premise actually HELD: a latch
-    # miss with every maturer alive is a real drain/maturity FINDING (PE §4 —
+    # miss with every maturer alive is a real drain/maturity FINDING (the cadence rule —
     # never re-grade a miss inside a computed bound); a miss with maturers down
     # is preemption/substrate-shaped, so the property is UNTESTED (the same
     # rule require_live encodes).
@@ -1385,11 +1384,11 @@ flow_maturing_handoff() {
     if [ -n "$mdown" ]; then
       record "10-maturing-handoff" gap major "the everMature latch did not trip within the computed ${LATCH_S}s bound AND maturer node(s) were down (down:$mdown) — premise degraded by substrate/preemption, property UNTESTED not failed"
     else
-      record "10-maturing-handoff" fail major "the everMature latch did not trip within the COMPUTED ${LATCH_S}s bound with the full maturer cohort live ($n_mat maturers; bound = 9 reg-blocks × 64s worst-case + submit leg) — a real drain/maturity FINDING (PE cadence ruling §4), not a window artifact; read the drain curve in the evidence journals"
+      record "10-maturing-handoff" fail major "the everMature latch did not trip within the COMPUTED ${LATCH_S}s bound with the full maturer cohort live ($n_mat maturers; bound = 9 reg-blocks × 64s worst-case + submit leg) — a real drain/maturity FINDING, not a window artifact; read the drain curve in the evidence journals"
     fi
     return
   fi
-  # PE note 2 (the bound is '2 MATURER regs', not '2 of any 12'): record the
+  # ): record the
   # DRAIN CURVE so the computed bound is checked against the real drain order
   # (ID-sorted packing makes order seed-luck). val-a's per-commit C2 line
   # carries it: 'of N MiB bonded across P' — a 64 MiB jump is a maturer
@@ -1403,22 +1402,21 @@ flow_maturing_handoff() {
     | sed 's/^/      /' | tail -24
 
   # 2) THE HANDOFF: the shed applies at the first epoch boundary (height % 8 == 0)
-  #    at-or-after the latch. Drive commits across the next boundary + 1 so the
-  #    frozen mature snapshot demonstrably GOVERNS, then assert the post-shed
-  #    commit: chain advances with NO anchor-required refusal after the latch.
-  # h43 NOTE (2026-09-07): the #525 seat-count rung policy below is REFUTED by the
-  # h43 certification §6.2 (rounds burned scale with f, the number of DOWN seats,
-  # never with N) and is struck from flow 6 (owner call 19). This flow's per-height
-  # figure is left as priced until the h43 fix is field-confirmed on a graded run;
-  # re-pricing it under the certified ≤ f+1-round formula is the owed follow-up.
-  # Per-height worst case, TOPOLOGY-AWARE (#525, same policy as flow 6): the
+  #  at-or-after the latch. Drive commits across the next boundary + 1 so the
+  #  frozen mature snapshot demonstrably GOVERNS, then assert the post-shed
+  #  commit: chain advances with NO anchor-required refusal after the latch.
+  # NOTE: the seat-count rung policy below is REFUTED — rounds burned scale with f,
+  # the number of DOWN seats, never with N — and is struck from flow 6. This flow's
+  # per-height figure is left as priced until the fix is field-confirmed on a graded run;
+  # re-pricing it under the ≤ f+1-round formula is the owed follow-up.
+  # Per-height worst case, TOPOLOGY-AWARE (same policy as flow 6): the
   # base 220s prices the 2-round escape on the 4-seat rotation; this sheet's
   # rotation spans every bonded seat (anchors + maturers + sybils), so add one
-  # escape rung per 4 extra seats, each priced by the #451 arithmetic
-  # (dur(r) = 2 + r(r+1)/2 sweeps × 30s). N=4 → 220 (9×220 = the certified
+  # escape rung per 4 extra seats, each priced by the arithmetic
+  # (dur(r) = 2 + r(r+1)/2 sweeps × 30s). N=4 → 220 (9×220 = the
   # 1980); N=12 → 610. The drive exits EARLY if the ceiling freezes for one
   # full per-height bound — a stalled height inside the computed window is the
-  # finding itself (PE §4), so a real wedge never burns the whole window.
+  # finding itself, so a real wedge never burns the whole window.
   local mh_seats mh_extra mh_height_s=220 mhr
   mh_seats=$(( $(printf '%s\n' $anchors_nodes | grep -c .) + n_mat + n_syb ))
   mh_extra=$(( mh_seats > 4 ? (mh_seats - 4 + 3) / 4 : 0 ))
@@ -1443,7 +1441,7 @@ flow_maturing_handoff() {
   local anchor_refusal=0
   jlog val-a 400 | grep -qE 'immature network requires anchor|requires anchor attestations' && anchor_refusal=1
   # Capture the ceiling ONCE for both the verdict and its message: run
-  # e2fab4b-9589 printed a success-shaped FAIL because the message re-read
+  # the field run printed a success-shaped FAIL because the message re-read
   # mh_ceiling at print time (h51, past target) while the drive loop had
   # timed out below it — a verdict and its evidence must read the same state.
   local h_end; h_end="$(mh_ceiling)"
@@ -1458,10 +1456,10 @@ flow_maturing_handoff() {
   # the premise fix), so the full-drain target is n_mat + n_syb, NOT 4 + n_syb
   # (the old target of 12 was unreachable: max Participants here is 8).
   #
-  # SEATED_S is a COMPUTED bound (PE §4, the LATCH_S arithmetic): the un-seated
+  # SEATED_S is a COMPUTED bound: the un-seated
   # tail is at worst the whole (n_mat+n_syb)-member cohort, one first-time
   # reg-block each at the 64s worst-case cadence. Bounded wait, never "eventual
-  # completion" — run 09fbe60-84613 had 6 of 8 seated ~18 min in, so the tail is
+  # completion" — run the field run had 6 of 8 seated ~18 min in, so the tail is
   # real and a one-shot read here converts a live drain into a premise GAP.
   local seated=0 parts
   if [ -n "$sybils" ]; then
@@ -1489,10 +1487,10 @@ flow_maturing_handoff() {
   fi
 
   # 3) 10a — THE STALL DRILL: the cohort DECLINES to attest (stopped = the
-  #    strongest decline; nothing slashable either way). Under head counting this
-  #    epoch needs bftThreshold(4+n_syb) attestations and the mature phase is
-  #    born unable to commit; under the weight rule the honest coalition carries
-  #    ~all the weight and MUST keep committing.
+  #  strongest decline; nothing slashable either way). Under head counting this
+  #  epoch needs bftThreshold(4+n_syb) attestations and the mature phase is
+  #  born unable to commit; under the weight rule the honest coalition carries
+  #  ~all the weight and MUST keep committing.
   if [ -z "$sybils" ]; then
     record "10a-stall-drill" skip major "no cohort in this topology (SYBILS=0) — the B2 stall drill needs the cheap members seated in the epoch; run MATURING=1 SYBILS=8"
   elif [ "$seated" != 1 ]; then
@@ -1500,7 +1498,7 @@ flow_maturing_handoff() {
   else
     echo "    stall drill: stopping the $n_syb-member cohort (declining to attest)…"
     local s; for s in $sybils; do svc "$s" stop >/dev/null 2>&1 || true; done
-    # STALL_S is COMPUTED (PE §4) under the #451 synchronizer durations: the
+    # STALL_S is COMPUTED under the synchronizer durations: the
     # staggered-takeover ladder ((3+n_syb)×30s) for downed designees + the
     # 2-round escape bound (220s — see H_ESCAPE_S derivation). Any honest
     # ceiling advance (a drain commit counts) refutes the stall.
@@ -1515,10 +1513,10 @@ flow_maturing_handoff() {
   fi
 
   # 4) 10b — THE CAPTURE DRILL: only the cheap cohort remains. It must NOT advance
-  #    the chain (its ~n_syb MiB is nowhere near >⅔ of the frozen weight). Ceiling
-  #    read from the HONEST validators BEFORE stopping them (#383 lesson: a lagging
-  #    cohort's catch-up must never read as an advance), and a real capture also
-  #    needs a FRESH cohort 'committed block' log.
+  #  the chain (its ~n_syb MiB is nowhere near >⅔ of the frozen weight). Ceiling
+  #  read from the HONEST validators BEFORE stopping them (lesson: a lagging
+  #  cohort's catch-up must never read as an advance), and a real capture also
+  #  needs a FRESH cohort 'committed block' log.
   if [ -z "$sybils" ] || [ "$seated" != 1 ]; then
     record "10b-capture-drill" skip major "no seated cohort (see 10a) — the B2 capture drill premise is the cheap members alone attempting a commit"
   else
@@ -1555,9 +1553,9 @@ flow_maturing_handoff() {
   fi
 
   # 5) 10c — WS COLD-SYNC: restart val-b pinned to a checkpoint published by a
-  #    peer (the daemon's own 'checkpoint: H:HASH' line — the F-1 out-of-band
-  #    pin). It must catch back up to the honest ceiling AND come back with the
-  #    latch still shed — a restart must never re-arm the anchors.
+  #  peer (the daemon's own 'checkpoint: H:HASH' line — the F-1 out-of-band
+  #  pin). It must catch back up to the honest ceiling AND come back with the
+  #  latch still shed — a restart must never re-arm the anchors.
   local cp
   cp="$(jlog val-a 600 | grep -oE 'checkpoint: [0-9]+:[0-9a-f]+' | tail -1 | sed 's/checkpoint: //')"
   if [ -z "$cp" ]; then
@@ -1579,20 +1577,20 @@ flow_maturing_handoff() {
   restore_argv val-b
 }
 
-# The Phase 3 exit-gate flow (ROADMAP: "a deep green sheet (h ≥ 128) with the
+# The Phase 3 exit-gate flow "a deep green sheet (h ≥ 128) with the
 # prune field-exercised at production parameters" — also the deferred Phase 1.4
 # deep run). Opt-in DEEP=1, registered after the maturing drills so the drive
 # continues from the matured, full-rotation chain. Three rows:
-#   12-deep-heights  — the honest ceiling reaches DEEP_TARGET (default 128)
-#                      inside a wall bound, with the #525 freeze early-exit so
-#                      a wedge grades immediately and never burns the window.
-#   12b-deep-prune   — the retention prune ENGAGED on every validator, read
-#                      from real persisted state (`chain-status` pruned count;
-#                      at fast-TTL 32 the horizon is ≈ h−64 epoch-floored), with
-#                      on-disk chain.cbor bytes carried as evidence.
-#   12c-deep-converge — the flow-5 convergence probe on the PRUNED chain: the
-#                      slice-5 suffix-sync-around-the-gap property at depth, on
-#                      the #528 suffix-append path.
+#  12-deep-heights — the honest ceiling reaches DEEP_TARGET (default 128)
+#  inside a wall bound, with the freeze early-exit so
+#  a wedge grades immediately and never burns the window.
+#  12b-deep-prune — the retention prune ENGAGED on every validator, read
+#  from real persisted state (`chain-status` pruned count;
+#  at fast-TTL 32 the horizon is ≈ h−64 epoch-floored), with
+#  on-disk chain.cbor bytes carried as evidence.
+#  12c-deep-converge — the flow-5 convergence probe on the PRUNED chain: the
+#  slice-5 suffix-sync-around-the-gap property at depth, on
+#  the suffix-append path.
 # LOCAL_PROOF: go test ./core/node -run 'TestSuffixSync_|TestSuffixAppend_' -count=1 && go test ./cmd/silt -run TestChainStatusReportsPrunedBlocks -count=1 — the prune/suffix-sync/catch-up integrations the rows grade are locally green; the wall-clock-at-depth leg is the cloud's job (no local analogue — a laptop cannot accrue 128 wire heights)
 flow_deep_heights() {
   if [ "${DEEP:-0}" != 1 ]; then
@@ -1638,7 +1636,7 @@ flow_deep_heights() {
     return 1
   }
 
-  # Per-height worst case: the SAME topology-aware #451/#525 arithmetic flow 10
+  # Per-height worst case: the SAME topology-aware arithmetic flow 10
   # derives (base 220s prices the 2-round escape on 4 seats; one escape rung per
   # 4 extra seats, dur(r) = 2 + r(r+1)/2 sweeps × 30s → 610s at 12 seats). The
   # freeze early-exit makes this the real grading bound; DEEP_WALL_S only caps
@@ -1670,11 +1668,11 @@ flow_deep_heights() {
     [ "$cok" = 1 ]
   }
 
-  # Q4 STABILIZATION BARRIER (#549 research certification, 2026-08-24): the
+  # Q4 STABILIZATION BARRIER (research, 2026-08-24): the
   # maturing drills (10a/10b/10c) mass-restart 8 of 12 seats immediately before
   # this flow, so grading the deep drive AT ONCE measures post-restart CHURN,
   # not steady state — the field's h68 stall was the view-synchronizer
-  # re-converging after that mass restart, not a depth defect (the #549
+  # re-converging after that mass restart, not a depth defect (the
   # catch-up-target fix addresses the convergence; this barrier stops the
   # harness from grading before GST). Require the network to reach steady state
   # — all validators converged on ONE head AND one fresh commit under normal
@@ -1685,7 +1683,7 @@ flow_deep_heights() {
   : "${STABILIZE_S:=$(( 2 * dh_height_s ))}"
   local sb_t0 sb_ok=0
   sb_t0="$(date +%s)"
-  echo "    deep drive: #549 Q4 stabilization barrier — waiting for post-drill steady state (converged head + one clean commit) before grading, bound ${STABILIZE_S}s…"
+  echo "    deep drive: stabilization barrier — waiting for post-drill steady state (converged head + one clean commit) before grading, bound ${STABILIZE_S}s…"
   while [ $(( $(date +%s) - sb_t0 )) -lt "$STABILIZE_S" ]; do
     if dh_converged; then
       # Converged on one head; require one CLEAN commit under normal conditions
@@ -1697,7 +1695,7 @@ flow_deep_heights() {
     sleep 5
   done
   if [ "$sb_ok" != 1 ]; then
-    record "12-deep-heights" gap major "post-drill steady state NOT reached within ${STABILIZE_S}s (#549 Q4 barrier): the network did not both converge on one head AND land a clean commit after the maturing drills mass-restarted 8/12 seats — the deep drive is UNTESTED (degraded premise / post-restart convergence), NOT a depth FAIL. If this recurs after the #549 catch-up fix, attribute from the validator journals (round-change smear) before re-running."
+    record "12-deep-heights" gap major "post-drill steady state NOT reached within ${STABILIZE_S}s: the network did not both converge on one head AND land a clean commit after the maturing drills mass-restarted 8/12 seats — the deep drive is UNTESTED (degraded premise / post-restart convergence), NOT a depth FAIL. If this recurs, attribute from the validator journals (round-change smear) before re-running."
     return
   fi
   echo "    deep drive: stabilized in $(( $(date +%s) - sb_t0 ))s (converged head + clean commit) — grading from a steady-state network"
@@ -1796,14 +1794,14 @@ wait_network_warm() {
   return 1
 }
 
-# wait_publisher_warm warms a NON-VALIDATOR publisher's token path (#344). The
+# wait_publisher_warm warms a NON-VALIDATOR publisher's token path. The
 # chain warm above publishes from the boot VALIDATOR, which already holds the
 # issuer keys and is itself on the canonical issuer set — so it commits genesis
 # without proving a fetcher can publish. A fresh non-validator (the fetch nodes the
 # graded flows publish from) must first DISCOVER the canonical issuer set
 # (MsgGetCanonicalIssuers) and the validators' issuer keys before it can gather a
 # publish-token signature, and that discovery LAGS genesis on a seconds-old chain:
-# on the #286 re-cert, flow_publish_fetch false-FAILed ("no canonical issuer set
+# on the re-cert, flow_publish_fetch false-FAILed ("no canonical issuer set
 # from peers") while the identical publish from the same node succeeded minutes
 # later. So after the chain warms, warm the first fetch publisher too — a throwaway
 # publish retried until it lands — so the graded publish flows start from a
@@ -1816,19 +1814,19 @@ wait_network_warm() {
 # (issuer-set discovery not landing over a churned WAN), a dependent flow's publish
 # failure is scored a GAP (untested), not a FAIL — even when the CLI captured no error
 # text (the lasterr grep alone misses that case). The publish-reliability issue stays
-# visible via the WARN line and #351.
+# visible via the WARN line and.
 : "${FETCH_PUBLISH_DEGRADED:=0}"
-# Computed, not arbitrary (PE §4): the fresh-publisher warm IS the ~5-leg path the
+# Computed, not arbitrary: the fresh-publisher warm IS the ~5-leg path the
 # publish bound describes (join → issuer-set discovery → parallel token gather →
 # scatter → register/commit), so its window is the same computed ≈240s — the old
 # 180s sat BELOW the bound and declared the subsystem degraded before the path's
-# own retry budget had run out (run 8ae8326-34086's warm WARN at 180s).
+# own retry budget had run out (run the field run's warm WARN at 180s).
 : "${PUBLISHER_WARMUP_S:=240}"
 wait_publisher_warm() { # wait_publisher_warm NODE
   local node="$1" t0 deadline out link
   node_exists "$node" || return 0
   t0="$(date +%s)"; deadline=$(( t0 + PUBLISHER_WARMUP_S ))
-  echo "  warming publisher $node (≤${PUBLISHER_WARMUP_S}s): a fresh non-validator must discover the canonical issuer set + issuer keys before it can gather a publish token (#344)…"
+  echo "  warming publisher $node (≤${PUBLISHER_WARMUP_S}s): a fresh non-validator must discover the canonical issuer set + issuer keys before it can gather a publish token…"
   while [ "$(date +%s)" -lt "$deadline" ]; do
     out="$(ssh_node "$node" "head -c 4096 </dev/urandom >/tmp/ft_pwarm.bin; /usr/local/bin/silt swarm add /tmp/ft_pwarm.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 65536 2>&1 || true")"
     link="$(printf '%s' "$out" | grep -oE 'silt:v1:\S+' | head -1)"
@@ -1836,35 +1834,34 @@ wait_publisher_warm() { # wait_publisher_warm NODE
     sleep 6
   done
   FETCH_PUBLISH_DEGRADED=1
-  # NEVER discard the failing attempt's client output (run a56ac10-42834: forty
-  # failed warms left ZERO recorded errors; the decisive '#441 insufficient valid
+  # NEVER discard the failing attempt's client output (run the field run: forty
+  # failed warms left ZERO recorded errors; the decisive ' insufficient valid
   # attestations' line had to be re-captured live before teardown). The last
   # attempt's tail IS the attribution — print it and persist it past teardown.
   {
-    echo "    WARN: publisher $node did not warm within ${PUBLISHER_WARMUP_S}s — publish subsystem degraded; dependent publishes this run report GAP (untested), not FAIL (#351/#441)"
+    echo "    WARN: publisher $node did not warm within ${PUBLISHER_WARMUP_S}s — publish subsystem degraded; dependent publishes this run report GAP (untested), not FAIL"
     printf '%s\n' "$out" | grep -vE '^[[:space:]]*$' | tail -3 | sed 's/^/      last attempt: /'
   } | tee -a "$FT_DIR/publish-diag-${RUN_ID:-local}.log"
   return 1
 }
 
-# ── SOAK (PE #432 gate): launch-regime interleaved publish/drain liveness ────────
-# The wedge needed only one crossed publish-vs-drain proposer race; #338 serializes
-# drain-vs-drain only, so the two streams are UNCOORDINATED in production and the PE
-# ruled P1's clean pass incomplete without holding them open against each other
-# (i4-liveness-wedge-rounds-ruling §Gate). SOAK shape, not a scheduled race: both
+# ── SOAK: launch-regime interleaved publish/drain liveness ────────
+# The wedge needed only one crossed publish-vs-drain proposer race serializes
+# drain-vs-drain only, so the two streams are UNCOORDINATED in production. A clean
+# pass that never holds them open against each other is incomplete. SOAK shape, not a scheduled race: both
 # streams run for a computed window and the schedule lands where it lands, many
 # times. LAUNCH-topology only (MATURING=0 keeps the launch regime permanent; in a
 # MATURING topology the latch ends the regime mid-soak and the mature steady state
-# is #441's separately-graded question). Design: docs/thinking/2026-08-16-launch-
+# is's separately-graded question). Design:
 # soak-drill-design.md. Opt-in: SOAK=1.
 #
-# The per-height escape bound H_ESCAPE_S is COMPUTED (PE §4) under the #451
+# The per-height escape bound H_ESCAPE_S is COMPUTED under the
 # synchronizer's INCREASING round durations (core/node/rounds.go sweepsForRound:
 # dur(r) = 2 + r(r+1)/2 sweeps × the 30s ChainSyncInterval): a 2-round allowance
 # costs dur(0)+dur(1) = 2+3 = 5 sweeps = 150s, plus one ~34s computed gather leg
-# ≈ 184 → 220 (run e2fab4b-9589 measured 80–170s/height at steady state). A
+# ≈ 184 → 220 (run the field run measured 80–170s/height at steady state). A
 # height older than that with the network live is the WEDGE SIGNATURE and a FAIL
-# (PE §4 — a miss inside a principled bound is a finding), never a window
+# , never a window
 # artifact. Escape FREQUENCY at steady state (~half of heights reach r1) is an
 # M1 cadence question, tracked separately — the bound covers the mechanism.
 # ── economy (#11): the S7 repair bounty pays a VERIFIED RECONSTRUCTION on the wire ──
@@ -1875,7 +1872,7 @@ wait_publisher_warm() { # wait_publisher_warm NODE
 # the caretaker rebuilt and the bounty DREW THE RESERVE DOWN (paid > 0). Opt-in
 # (ECONOMY=1). Moderate chunk (256 KiB) so reconstruction fits the box (§0.1: a
 # 64 MiB stripe holds ~1 GiB and OOMs a 2 GB node). Design:
-# docs/thinking/2026-08-19-cloudtest-economy-scenario-design.md.
+# .
 # LOCAL_PROOF: go test ./e2e -run TestRepairBountyPaysOnTheWire -count=1 (prepay→bounty legs; the skim leg's in-process proof is sim TestServeAutoSkimFundsObjectEscrow)
 flow_economy_repair() {
   [ "${ECONOMY:-0}" = 1 ] || { record "11-economy-repair" skip minor "opt-in (ECONOMY=1): the S7 repair-bounty-on-the-wire grade"; return; }
@@ -1883,32 +1880,32 @@ flow_economy_repair() {
   client_preflight "11-economy-repair" major fetch-1 store-2 || return
   # The killable-pool premise: topology.py adds store-3/store-4 when the fleet is
   # brought UP with ECONOMY=1. Grading with ECONOMY=1 on a fleet provisioned
-  # without it re-creates the proven-unsatisfiable premise (run 577f0f1-45838:
+  # without it re-creates the proven-unsatisfiable premise (run the field run:
   # every column on a reserved/consensus node, 0 killable — deterministic), so
   # refuse loudly instead of GAPing 300s later on selection.
   if ! node_exists store-3 || ! node_exists store-4; then
-    record "11-economy-repair" gap major "ECONOMY=1 but the fleet lacks the dedicated killable stores (store-3/store-4) — it was brought up WITHOUT ECONOMY=1. Re-provision with ECONOMY=1 so topology.py adds them (docs/thinking/2026-08-20-economy-premise-killable-pool.md); economy UNTESTED this run"
+    record "11-economy-repair" gap major "ECONOMY=1 but the fleet lacks the dedicated killable stores (store-3/store-4) — it was brought up WITHOUT ECONOMY=1. Re-provision with ECONOMY=1 so topology.py adds them; economy UNTESTED this run"
     return
   fi
   local care="store-2"   # paramedic candidate: a storage node, NEVER an anchor/validator,
                          # so killing shard-holders can never touch consensus.
 
   # 1) Publish an erasure-coded object; capture BOTH the silt: link and the siltcare:.
-  # RETRY the publish (run 2323b09-20931 GAPped here): a chain-backed registry publish
+  # RETRY the publish (run the field run GAPped here): a chain-backed registry publish
   # IS a consensus commit, and on quorum-2 across 3 regions a single attempt can time
   # out (context deadline) when its entry's commit lands slower than the client window,
-  # especially late in the sheet under load (#441-family). Ride it out with retries —
+  # especially late in the sheet under load. Ride it out with retries —
   # the same tolerance ft_publish has (PUBLISH_RETRY_S) — instead of GAPping on one
   # slow-commit window; only GAP after the whole budget is spent.
   local out link carelink attempt=0 econ_any_output=0
-  # IDEMPOTENT RETRY (2026-08-20, attributed on run 9b5d3f4-30907): generate the
+  # IDEMPOTENT RETRY (2026-08-20, attributed on run the field run): generate the
   # payload ONCE, before the loop — NOT per attempt. A chain-backed publish that
-  # times out at the client's fixed 10s registry-POST deadline (#441 accept→commit
+  # times out at the client's fixed 10s registry-POST deadline (accept→commit
   # latency under SYBILS=8 load) still COMMITS the entry server-side; a retry of the
   # SAME root then finds it committed and returns fast. The old per-attempt
   # `head -c … </dev/urandom` minted a NEW root every retry, so a slow-but-eventual
   # commit could never be picked up — every attempt raced the 10s deadline from
-  # scratch and the whole 360s budget (since re-derived to 300s — see #609) GAPed. This
+  # scratch and the whole 360s budget (since re-derived to 300s — see) GAPed. This
   # mirrors ft_publish, which has
   # always generated its source once. (The 10s client deadline itself is a
   # build-immutable #5 magic-constant limitation in adapters/httpregistry — a
@@ -1947,9 +1944,9 @@ flow_economy_repair() {
     if [ "$econ_any_output" = 0 ]; then
       record "11-economy-repair" gap major "setup publish got EMPTY RESPONSES from fetch-1 for the whole ${ECONOMY_PUBLISH_RETRY_S:-300}s window — fetch-1 UNREACHABLE or the node MAP is wrong (check nodes.json), a PLUMBING failure NOT a product/latency issue; economy UNTESTED"; return
     fi
-    record "11-economy-repair" gap major "setup publish landed no link+carelink after ${ECONOMY_PUBLISH_RETRY_S:-300}s of retries — economy UNTESTED this run, not a failure (registry publish-commit latency #441-family; $(printf '%s' "$out" | tr '\n' ';' | head -c 160))"; return
+    record "11-economy-repair" gap major "setup publish landed no link+carelink after ${ECONOMY_PUBLISH_RETRY_S:-300}s of retries — economy UNTESTED this run, not a failure (registry publish-commit latency; $(printf '%s' "$out" | tr '\n' ';' | head -c 160))"; return
   fi
-  # Verbosity honesty (2026-08-20, run 577f0f1-11364): echo the link + the full
+  # Verbosity honesty (2026-08-20, run the field run): echo the link + the full
   # publish-client output + the full holders map to the console. The old flow
   # discarded all three — diagnosing placement then required PERTURBING re-adds
   # (a dedup `swarm add` re-runs placement and pollutes the map it probes), and
@@ -1960,18 +1957,18 @@ flow_economy_repair() {
   printf '%s\n' "$out" | sed 's/^/      publish| /'
 
   # 2) Make TWO caretakers with the economy ON + a local UI (fund/status). Two is
-  #    structural, not redundancy (proven by the local wire proof,
-  #    e2e/economy_repair_test.go): the paramedic never judges its own claim
-  #    (repairclaim.go emitRepairClaim skips itself and the holder), credit is
-  #    per-node-local, so `paid` materializes on the OTHER caretaker's ledger —
-  #    the judge's. The judge is the relay node: a full daemon that is NOT in the
-  #    killable role set, so arming it costs zero killable shard-holders.
-  #    -registry is REQUIRED: -care without one now refuses to start (it used to
-  #    silently never caretake — the shape this scenario shipped in run 2323b09).
+  #  structural, not redundancy (proven by the local wire proof,
+  #  e2e/economy_repair_test.go): the paramedic never judges its own claim
+  #  (repairclaim.go emitRepairClaim skips itself and the holder), credit is
+  #  per-node-local, so `paid` materializes on the OTHER caretaker's ledger —
+  #  the judge's. The judge is the relay node: a full daemon that is NOT in the
+  #  killable role set, so arming it costs zero killable shard-holders.
+  #  -registry is REQUIRED: -care without one now refuses to start (it used to
+  #  silently never caretake — the shape this scenario shipped in run 2323b09).
   local judge="relay"
   econ_restore() { restore_argv "$care"; restore_argv "$judge"; return 0; }
   # -repair-interval 2s mirrors the GREEN local proof EXACTLY (e2e arms 2s and
-  # pays within 180s; run 577f0f1-31924 ran the 60s default and its caretakers
+  # pays within 180s; run the field run ran the 60s default and its caretakers
   # never completed a sweep inside the window). Local-proof parity: the wire run
   # confirms the proven configuration, it does not test a new cadence (#7).
   relaunch_with "$care"  "-care $carelink -economy -registry $REGREF -repair-interval 2s -ui=127.0.0.1:8098"
@@ -1979,9 +1976,9 @@ flow_economy_repair() {
   sleep 20   # restart + re-bootstrap + warm the manifest + arm the repair sweeps
 
   # 3) Fund the object's reserve on BOTH caretakers, each from its own grant
-  #    balance (Slice 3): which one ends up the judge is timing, and PayBounty
-  #    draws from the payer's OWN escrow. The amount must fit the 500k starter
-  #    grant — FundEscrow refuses more (the prior 2000000 could never fund).
+  #  balance (Slice 3): which one ends up the judge is timing, and PayBounty
+  #  draws from the payer's OWN escrow. The amount must fit the 500k starter
+  #  grant — FundEscrow refuses more (the prior 2000000 could never fund).
   local cnode tok fund_code
   for cnode in "$care" "$judge"; do
     tok="$(ssh_node "$cnode" "sudo cat /var/lib/silt/ui-token" 2>/dev/null | tr -dc 'a-f0-9')"
@@ -1995,27 +1992,27 @@ flow_economy_repair() {
   printf '%s\n' "$holders_out" | sed 's/^/      holders| /'   # full map, verbatim (see the verbosity note above)
 
   # 3b) THE SKIM LEG on the wire (11b): S7's full sentence is prepay → SKIM →
-  #     bounty, and until now the skim (serving revenue auto-funding the object's
-  #     reserve) had no wire grade anywhere — sim-only. The skim lands on the
-  #     SERVING holder's per-node ledger, and the UI surfaces escrows only for
-  #     CARED roots — so observe it on the CARE node itself: it already holds
-  #     columns, already runs a UI, and is never killed. DELTA assert, not
-  #     from-zero: baseline = the 400000 prepay just confirmed above; `funded`
-  #     has exactly two writers (FundEscrow and the serve auto-skim) and nothing
-  #     else prepays mid-window, so any growth is pure skim. Redesigned
-  #     2026-08-20 after run 577f0f1-45838, where the old shape relaunched a
-  #     shard-holder as a THIRD caretaker and (a) raced the restart's
-  #     re-announce (37s measured, 15s slept) and lazy proofMeta reload — the
-  #     observer served 0 chunks, skim untestable; (b) armed an UNFUNDED judge
-  #     candidate PayBounty could draw ~0 from (a false negative waiting for
-  #     the cloud run); (c) consumed a scarce killable holder. No relaunch →
-  #     none of the three. A fetch needs k of the coded columns (10 of 16
-  #     here), so a multi-column holder is hit near-certainly (missing all 4 of
-  #     a 4-column holder ≈ 0.8%); the fetch re-drives every poll so a lazy
-  #     proofMeta reload self-heals inside the window. From-zero purity stays
-  #     the sim tier's job (TestServeAutoSkimFundsObjectEscrow); the wire grade
-  #     is the serve→object-escrow ROUTING on a real network.
-  # BOTH UI-armed nodes are observers (2026-08-20, run 577f0f1-25304): placement
+  #  bounty, and until now the skim (serving revenue auto-funding the object's
+  #  reserve) had no wire grade anywhere — sim-only. The skim lands on the
+  #  SERVING holder's per-node ledger, and the UI surfaces escrows only for
+  #  CARED roots — so observe it on the CARE node itself: it already holds
+  #  columns, already runs a UI, and is never killed. DELTA assert, not
+  #  from-zero: baseline = the 400000 prepay just confirmed above; `funded`
+  #  has exactly two writers (FundEscrow and the serve auto-skim) and nothing
+  #  else prepays mid-window, so any growth is pure skim. Redesigned
+  #  2026-08-20 after run the field run, where the old shape relaunched a
+  #  shard-holder as a THIRD caretaker and (a) raced the restart's
+  #  re-announce (37s measured, 15s slept) and lazy proofMeta reload — the
+  #  observer served 0 chunks, skim untestable; (b) armed an UNFUNDED judge
+  #  candidate PayBounty could draw ~0 from (a false negative waiting for
+  #  the cloud run); (c) consumed a scarce killable holder. No relaunch →
+  #  none of the three. A fetch needs k of the coded columns (10 of 16
+  #  here), so a multi-column holder is hit near-certainly (missing all 4 of
+  #  a 4-column holder ≈ 0.8%); the fetch re-drives every poll so a lazy
+  #  proofMeta reload self-heals inside the window. From-zero purity stays
+  #  the sim tier's job (TestServeAutoSkimFundsObjectEscrow); the wire grade
+  #  is the serve→object-escrow ROUTING on a real network.
+  # BOTH UI-armed nodes are observers (2026-08-20, run the field run): placement
   # owes the care node nothing — that run store-2 held ZERO columns while relay
   # (the judge, equally UI-armed, equally prepaid) held data column 6 and was
   # certainly serving. Skim lands on whichever armed node actually serves, so
@@ -2068,8 +2065,8 @@ flow_economy_repair() {
       record "11b-economy-skim" gap major "no skim grew EITHER armed observer's reserve above its prepay baseline (repair-window reads + 90s driven fetches; $care ${sk_base_c}→${sk_seen_c}, $judge ${sk_base_j}→${sk_seen_j}) — attribute from their journals (serve accounting / proofMeta root routing) before re-running (#7)"
     fi
   }
-  # ORDER (owner call A, 2026-08-20): REPAIR FIRST on a NEVER-FETCHED object,
-  # skim second. Run 577f0f1-31924 proved the legs interfere the other way
+  # ORDER): REPAIR FIRST on a NEVER-FETCHED object,
+  # skim second. Run the field run proved the legs interfere the other way
   # round: the skim window's driven fetches bumped demand and lease/fan-out
   # replicated the hot chunks BEFORE the kill, so the repair sweep found 29/29
   # shards reachable with three holders dead — the cache layer healed the
@@ -2080,9 +2077,9 @@ flow_economy_repair() {
   # BALANCE, never `funded` — so these baselines stay valid across the repair.
 
   # 4) Resolve holders per column and KILL every holder of 3 columns whose holders
-  #    are ALL killable (storage/fetcher, and NOT the caretakers) — so consensus
-  #    is never touched. 3 lost shards/stripe > RepairSlack(2) ⇒
-  #    every stripe must reconstruct, and 3 ≤ n−k(6) ⇒ still recoverable.
+  #  are ALL killable (storage/fetcher, and NOT the caretakers) — so consensus
+  #  is never touched. 3 lost shards/stripe > RepairSlack(2) ⇒
+  #  every stripe must reconstruct, and 3 ≤ n−k(6) ⇒ still recoverable.
   # Build a killable NodeID→name map: every content-holding node EXCEPT the 4
   # anchors (role "validator") and the caretaker. In launch phase (the economy run
   # is MATURING=0) ONLY the anchors finalize — maturers and sybils are non-anchor
@@ -2090,10 +2087,10 @@ flow_economy_repair() {
   # maturer, and sybil nodes are all safe to stop. (This is why the flow runs before
   # the maturing drill and restarts every node it stops.) Anchors are never touched.
   # The killable-pool PREMISE (proven unsatisfiable without them on LOCAL run
-  # 577f0f1-45838): ECONOMY=1 adds the dedicated store-3/store-4 exactly so this
+  # the field run): ECONOMY=1 adds the dedicated store-3/store-4 exactly so this
   # set is non-empty after the care/judge reservations — with the skim observer
   # redesigned away (3b), store-1 is killable again too. The ADVERSARY is
-  # killable as well (added after run 577f0f1-11364, where placement gave it
+  # killable as well (added after run the field run, where placement gave it
   # 3-4 columns while the fresh stores got zero): it is a non-anchor full
   # daemon whose loss cannot touch launch-phase consensus, its drills are
   # stateless request/response, and step 7 restarts every stopped node — the
@@ -2139,9 +2136,9 @@ EOF
   for n in $uniq_stop; do svc "$n" stop || true; done
 
   # 5) Wait (bounded) for a reconstruction + payout: poll BOTH caretakers'
-  #    /api/status — the paramedic emits the claim, the OTHER one judges and
-  #    pays on its own ledger, and which is which is timing.
-  # WINDOW SIZING (#497 attribution, run f58d599-17479, docs/thinking/
+  #  /api/status — the paramedic emits the claim, the OTHER one judges and
+  #  pays on its own ledger, and which is which is timing.
+  # WINDOW SIZING (attribution, run the field run
   # 2026-08-21-497-records-vs-bytes-attribution.md): `-repair-interval 2s` bounds
   # only the idle gap BETWEEN sweeps; a sweep's DURATION under dead holders is
   # probe/lookup-timeout dominated and measured at ~3-4 MINUTES (kill 08:00:50 →
@@ -2154,10 +2151,10 @@ EOF
   # (ECONOMY_REPAIR_GRACE_S, default 300s) when the journals show the cycle in
   # flight at expiry — but NOT when both caretakers' latest post-kill sweeps
   # report full reachability with zero repair activity (the loop believes
-  # nothing is missing; waiting longer cannot pay — the #497 includeLocal
+  # nothing is missing; waiting longer cannot pay — the includeLocal
   # premise-defeat shape, GAP immediately with that evidence in the detail).
-  # (2026-08-20, run 577f0f1-25304): this line used to be
-  #   `local t0; t0="$(date +%s)" paid=0 repairs=0 body ptok pv rv`
+  # (2026-08-20, run the field run): this line used to be
+  #  `local t0; t0="$(date +%s)" paid=0 repairs=0 body ptok pv rv`
   # — everything after the first assignment parses as an env-prefixed COMMAND
   # named `body` (command not found), so paid/repairs were never set and set -u
   # aborted the whole run at their first use, skipping econ_restore and the
@@ -2203,7 +2200,7 @@ EOF
       fi
       econ_grace_used=1
       econ_window=$(( econ_window + ${ECONOMY_REPAIR_GRACE_S:-300} ))
-      echo "    economy: window expired with the repair cycle IN FLIGHT (care: ${prog_c:-no post-kill sweep completed yet}; judge: ${prog_j:-no post-kill sweep completed yet}) — extending once by ${ECONOMY_REPAIR_GRACE_S:-300}s (#497 timing-budget fix)"
+      echo "    economy: window expired with the repair cycle IN FLIGHT (care: ${prog_c:-no post-kill sweep completed yet}; judge: ${prog_j:-no post-kill sweep completed yet}) — extending once by ${ECONOMY_REPAIR_GRACE_S:-300}s"
     fi
     for cnode in "$care" "$judge"; do
       ptok="$(ssh_node "$cnode" "sudo cat /var/lib/silt/ui-token" 2>/dev/null | tr -dc 'a-f0-9')"
@@ -2220,25 +2217,25 @@ EOF
   done
 
   # 6) Verdict: a bounty paid a verified reconstruction on the wire (the exit gate).
-  #    Either way the detail carries the post-kill journal evidence, so a GAP
-  #    arrives pre-attributed (#7). The step-6c holder restart stays below: with
-  #    the grade recorded, restarting can no longer falsify an in-flight repair.
+  #  Either way the detail carries the post-kill journal evidence, so a GAP
+  #  arrives pre-attributed (#7). The step-6c holder restart stays below: with
+  #  the grade recorded, restarting can no longer falsify an in-flight repair.
   prog_c="$(econ_repair_progress "$care")"
   prog_j="$(econ_repair_progress "$judge")"
   ft_add_validator_evidence
   if [ "${paid:-0}" -gt 0 ] 2>/dev/null; then
     slo_assert "11-economy-repair" major "the S7 repair economy CLOSED on the wire: killed 3 columns' holders → the caretaker RECONSTRUCTED from parity → a verified-repair bounty drew the object's reserve down (paid=$paid credits over $repairs repair(s)) — durability paid for itself on a real network, standing untouched (Invariant A). Post-kill cycle: $care ${prog_c:-none}; $judge ${prog_j:-none}" 1
   elif econ_cycle_hopeless "$prog_c" && econ_cycle_hopeless "$prog_j"; then
-    record "11-economy-repair" gap major "PREMISE DEFEATED, not a timing miss: after the kill both caretakers' latest sweeps report FULL reachability with zero repair activity ($care $prog_c; $judge $prog_j) — the dead shards are still counted reachable (the #497 records-vs-bytes / includeLocal shape), so no repair can ever fire; attribute the reachability source before re-running (#7)"
+    record "11-economy-repair" gap major "PREMISE DEFEATED, not a timing miss: after the kill both caretakers' latest sweeps report FULL reachability with zero repair activity ($care $prog_c; $judge $prog_j) — the dead shards are still counted reachable (the records-vs-bytes / includeLocal shape), so no repair can ever fire; attribute the reachability source before re-running"
   else
     record "11-economy-repair" gap major "3 columns killed but no bounty drew the reserve within ${econ_window}s (paid=$paid repairs=$repairs; post-kill cycle: $care ${prog_c:-no completed sweep}; $judge ${prog_j:-no completed sweep}) — the loop did not finish reconstruct+judge+pay in the window; attribute from $care's AND $judge's journals (claim / judge legs) before re-running (#7)"
   fi
 
   # 6b) The g-instrumentation row (11c, observational — S5): S7 says the funded
-  #     HORIZON is finite-but-renewable and `g` is the one number to instrument.
-  #     Record the payer-side reserve/horizon/cost-per-repair so every graded run
-  #     extends the time series — a measured row, never a pass/fail (a single run
-  #     cannot grade a trend).
+  #  HORIZON is finite-but-renewable and `g` is the one number to instrument.
+  #  Record the payer-side reserve/horizon/cost-per-repair so every graded run
+  #  extends the time series — a measured row, never a pass/fail (a single run
+  #  cannot grade a trend).
   if [ "${paid:-0}" -gt 0 ] 2>/dev/null; then
     local hz rs
     hz="$(printf '%s' "$body" | grep -oE '"horizonSec":-?[0-9]+' | grep -oE '\-?[0-9]+' | tail -1)"
@@ -2249,58 +2246,55 @@ EOF
   fi
 
   # 6c) Restart the stopped holders BEFORE the skim window: the repair grade is
-  #     recorded, so their return changes nothing there — and the fetch driver
-  #     (fetch-1) may itself be in the kill set (it was in run 577f0f1-31924).
+  #  recorded, so their return changes nothing there — and the fetch driver
+  #  (fetch-1) may itself be in the kill set (it was in run the field run).
   for n in $uniq_stop; do svc "$n" start || true; done
   sleep 10   # let the restarted daemons come up before driving fetches through them
 
   # 6d) THE SKIM WINDOW (11b), after the repair so its fetch traffic can no
-  #     longer heal the object out of the repair premise (the order-A rule
-  #     above). Reconstruction reads during the repair may have skimmed
-  #     already (sk_poll rode along); otherwise sk_window drives fetches until
-  #     an armed observer's reserve grows above its prepay baseline.
+  #  longer heal the object out of the repair premise (the order-A rule
+  #  above). Reconstruction reads during the repair may have skimmed
+  #  already (sk_poll rode along); otherwise sk_window drives fetches until
+  #  an armed observer's reserve grows above its prepay baseline.
   sk_window
 
   # 7) Restore: revert all armed caretakers' argv (holders already restarted, 6c).
   econ_restore
 }
 
-# ── Flow 13: the R2.9 paid DELIVERY lane on the wire ────────────────────────────────
+# ── Flow 13: the paid DELIVERY lane on the wire ────────────────────────────────
 # The boot validator arms -accept-delivery-receipts (topology.py). A client on fetch-1
 # fetches an object it published and presents a `swarm receipt` naming the boot validator
-# as the server (the R2.9 flow: pin the issuer's committed key -> withdraw one demand
+# as the server (the flow: pin the issuer's committed key -> withdraw one demand
 # token -> MsgDeliveryOpen -> settle a cumulative-count receipt). TWO rows, because the
 # positive settlement has had no live seam on any graded sheet so far — no E->key binding has
 # committed on one — and a property with no live seam is stated, never faked:
 #
-# The reason this comment used to give is VOID as of 2026-09-11: it said era-4 is dark on every
-# real network until the R3.4 stamp raise, with "owner-ratified NO activation override". There
-# IS an override, -era4-activation-height, and its shipped default is 1, so era-4 is live from
-# height 1 on every network this harness starts. Why no binding has committed is UNMEASURED; the
-# rows below are written so they grade either arm without a harness change (ROADMAP
-# R-E2E-ERA4-FIXTURE).
-#   13-delivery-lane        — the lane's field CONTRACT: armed (the unit's argv) and
-#                             announced (the boot banner) on the server; the client refused
-#                             at the withdrawal naming the committed-binding gate (nothing
-#                             spent, the server's debug.log carries no banked line) with no
-#                             binding committed, or banked with one; a lane-OFF server refuses with the
-#                             announced NOT-banked marker; the two refusals never conflated.
-#   13b-delivery-settlement — pass ONLY when the receipt actually banked on the wire (the
-#                             server's `delivery receipt banked` in debug.log; the idle
-#                             `delivery session closed` line is NOT required — at the shipped
-#                             24m window it cannot occur inside a graded flow, and the close
-#                             is asserted at the e2e tier instead, Lane C2 2026-09-09);
-#                             SKIP behind the binding probe while no
-#                             binding is committed (a skip keeps the RC gate reachable — the PE's
-#                             recommendation; OWNER RATIFICATION of skip-vs-gap is owed and
-#                             recorded in the PR; the skip text says what is untested). This
-#                             row turns green once the binding commits, with NO harness change.
-# SURFACES (blind PE 2026-09-07, items 1–2): the boot banner is a fmt.Printf -> journald,
+# Era-4 is live from height 1 on every network this harness starts: -era4-activation-height
+# has a shipped default of 1, and this harness passes no override. Why no binding has
+# committed is UNMEASURED, so the rows below grade either arm without a harness change
+#  13-delivery-lane — the lane's field CONTRACT: armed (the unit's argv) and
+#  announced (the boot banner) on the server; the client refused
+#  at the withdrawal naming the committed-binding gate (nothing
+#  spent, the server's debug.log carries no banked line) with no
+#  binding committed, or banked with one; a lane-OFF server refuses with the
+#  announced NOT-banked marker; the two refusals never conflated.
+#  13b-delivery-settlement — pass ONLY when the receipt actually banked on the wire (the
+#  server's `delivery receipt banked` in debug.log; the idle
+#  `delivery session closed` line is NOT required — at the shipped
+#  24m window it cannot occur inside a graded flow, and the close
+#  is asserted at the e2e tier instead, this lane 2026-09-09);
+#  SKIP behind the binding probe while no
+#  binding is committed (a skip keeps the RC gate reachable — the
+#  recommendation; OWNER RATIFICATION of skip-vs-gap is owed and
+#  recorded in the PR; the skip text says what is untested). This
+#  row turns green once the binding commits, with NO harness change.
+# SURFACES, items 1–2): the boot banner is a fmt.Printf -> journald,
 # read over the WHOLE unit journal (never the 800-line window — the boot validator emits
 # ~27 journald lines per block, 79 % TLS-handshake noise from the registry listener);
 # every server-side settlement marker is an n.logf -> $STORE/debug.log line and is read
 # THERE, scoped to lines written after the flow's baseline (never journald: it never
-# arrives there — the #310 scar).
+# arrives there).
 # Substrate noise (a node the sheet killed, an ssh/dial timeout) GAPs, never FAILs
 # (lib.sh require_live discipline); the client call is retried before it is classified.
 # LOCAL_PROOF: go test ./e2e -run 'TestPaidDeliveryLaneArmsInTheHarnessPosture|TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding|TestDeliveryReceiptRefusedWhenLaneOff|TestPaidDeliverySessionEndToEnd' -count=1
@@ -2327,7 +2321,7 @@ import json;t=json.load(open('$FT_TOPO'));n=t['nodes']['$offnode'];print(n['node
   # systemctl shim implements no `show`, which the first cut read and scored 0 — caught
   # by the LOCAL drive, not the fleet). Every read here is a substrate read: it is
   # retried, and a read that never ANSWERS (empty ssh) GAPs — only an answered read that
-  # says "no flag" or "no banner" is the property failing (blind PE re-review item 3).
+  # says "no flag" or "no banner" is the property failing.
   local rd_try cmdline=""
   for rd_try in 1 2 3; do
     cmdline="$(ssh_node "$boot" "pgrep -af '^/usr/local/bin/silt daemon' | head -1" || true)"
@@ -2357,7 +2351,7 @@ import json;t=json.load(open('$FT_TOPO'));n=t['nodes']['$offnode'];print(n['node
   # (2) Content to deliver: publish from fetch-1, fetch it back on fetch-1 with the boot
   # validator as the bootstrap peer. NOTE the harness cannot attribute WHICH holder served
   # the bytes (NetGet pulls from DHT holders); the receipt's server is the fetcher's own
-  # claim, which is exactly the R2.9 shape (the ack carries no possession proof by design).
+  # claim, which is exactly the shape (the ack carries no possession proof by design).
   local res link sha root
   res="$(ft_publish fetch-1 1048576 || true)"
   if [ -z "$res" ]; then publish_verdict "13-delivery-lane" major "publish never produced a silt: link within ${PUBLISH_RETRY_S}s"; record "13b-delivery-settlement" skip major "no object to deliver"; return; fi
@@ -2378,7 +2372,7 @@ import json;t=json.load(open('$FT_TOPO'));n=t['nodes']['$offnode'];print(n['node
   local n0; n0="$(ssh_node "$boot" "sudo wc -l < /var/lib/silt/debug.log 2>/dev/null" | tr -dc '0-9')"; n0="${n0:-0}"
   if [ "$n0" = 0 ]; then
     # The server-side surface must be READABLE, or "banked nothing" would be satisfied by
-    # darkness (the vacuity the blind PE measured on the journald read).
+    # darkness (the vacuity the a review measured on the journald read).
     record "13-delivery-lane" gap major "the boot validator's debug.log is empty or unreadable — the server-side assertions would be vacuous; property UNTESTED"
     record "13b-delivery-settlement" skip major "server surface unreadable (see 13-delivery-lane)"; return
   fi
@@ -2409,7 +2403,7 @@ import json;t=json.load(open('$FT_TOPO'));n=t['nodes']['$offnode'];print(n['node
     # LIVE LANE (the binding committed: post stamp raise). The server's own marker must
     # agree: banked now, read from debug.log after the baseline.
     #
-    # The idle CLOSE is no longer part of this verdict (Lane C2, 2026-09-09). The shipped
+    # The idle CLOSE is no longer part of this verdict (this lane, 2026-09-09). The shipped
     # -delivery-idle-window is 24m by derivation, not the 90s this harness used to set, so
     # an idle close cannot occur inside a graded flow at all — requiring it would fail the
     # row for the window being correctly sized. It is still READ when it happens (a stale
@@ -2426,18 +2420,18 @@ import json;t=json.load(open('$FT_TOPO'));n=t['nodes']['$offnode'];print(n['node
     [ "$off_noise" = 1 ] || slo_assert "13-delivery-lane" major "LIVE lane: client banked (${out##*: }); server debug.log banked=$([ -n "$sbanked" ] && echo yes || echo NO) closed=$([ -n "$closed" ] && echo yes || echo NO); lane-off control at ${offnode} $([ "$off_ok" = 1 ] && echo refused-with-marker || echo "WRONG: $off")" "$ok" $((t1 - t0))
     # The row grades ONE thing: the banked line. The M0 log audit still runs, but only
     # when a close line exists — on empty input the grep is vacuously true, and an absent
-    # line must not read as a passed audit (blind PE non-blocking finding 2).
+    # line must not read as a passed audit.
     local sok=0; [ -n "$sbanked" ] && sok=1
     if [ -n "$closed" ] && printf '%s' "$closed" | grep -qE "object=|fetcher="; then sok=0; fi
-    slo_assert "13b-delivery-settlement" major "R2.9 settlement ON THE WIRE: ${sbanked:-no banked line}; close: ${closed:-not observable at the shipped 24m idle window (graded at the e2e tier)}${afford:+; $afford}" "$sok" $((t1 - t0))
+    slo_assert "13b-delivery-settlement" major "settlement ON THE WIRE: ${sbanked:-no banked line}; close: ${closed:-not observable at the shipped 24m idle window (graded at the e2e tier)}${afford:+; $afford}" "$sok" $((t1 - t0))
     return
   fi
   if printf '%s' "$out" | grep -q "committed E->key binding"; then
     # UNBOUND LANE (no committed E->key binding on this chain; era-4 itself IS active —
     # the harness passes no -era4-activation-height, so every daemon takes the default of 1):
-    # the certified refusal at the withdrawal —
+    # the refusal at the withdrawal —
     # nothing withdrawn, nothing spent, and the server banked NOTHING (debug.log after the
-    # baseline). The lane-off sentence must NOT appear (distinct contracts, PE 2026-09-03).
+    # baseline). The lane-off sentence must NOT appear (distinct contracts).
     local conflated=0
     printf '%s' "$out" | grep -q "serves no demand issuer key" && conflated=1
     if [ "$off_noise" = 1 ]; then
@@ -2446,10 +2440,10 @@ import json;t=json.load(open('$FT_TOPO'));n=t['nodes']['$offnode'];print(n['node
     fi
     local ok=0; [ "$conflated" = 0 ] && [ -z "$sbanked" ] && [ "$off_ok" = 1 ] && ok=1
     slo_assert "13-delivery-lane" major "UNBOUND lane (no committed E->key binding): armed + announced on ${boot}; client refused at the withdrawal naming the committed E->key binding (nothing spent); server debug.log (+$(( $(ssh_node "$boot" "sudo wc -l < /var/lib/silt/debug.log 2>/dev/null" | tr -dc '0-9') - n0 )) lines since baseline) banked nothing$([ "$conflated" = 1 ] && echo '; WRONG: conflated with the lane-off sentence')$([ -n "$sbanked" ] && echo "; WRONG: server banked: $sbanked"); lane-off control at ${offnode} $([ "$off_ok" = 1 ] && echo refused-with-marker || echo "WRONG: $off")${afford:+; $afford}" "$ok" $((t1 - t0))
-    # THE PROBE IS A BINDING PROBE, NOT AN ERA PROBE (blind PE re-review): the client's
+    # THE PROBE IS A BINDING PROBE, NOT AN ERA PROBE: the client's
     # sentence covers two causes — the issuer committed no binding at all OR the keys it
     # served are off-commitment — and no surface on the CLI or the status route tells them
-    # apart (R-CLOUD-ERA-PROBE). A broken commit path reads here as this same SKIP; the skip
+    # apart. A broken commit path reads here as this same SKIP; the skip
     # text names both causes so an operator reads it as "untested", never as "green".
     # A THIRD cause is now ruled OUT rather than carried: era-4 being inactive. This harness
     # passes no -era4-activation-height, so every daemon takes the binary default of 1 and
@@ -2525,18 +2519,18 @@ flow_soak_publish_drain() {
     jlog "$v" 400 | grep -qE 'validator slashed for equivocation' && slashes=$(( slashes + 1 ))
   done
   if [ "$wedged" = 1 ] || [ "$maxgap" -gt "$H_ESCAPE_S" ]; then
-    record "soak-publish-drain" fail major "WEDGE SIGNATURE under the publish/drain soak: a height went ${maxgap}s (> the computed ${H_ESCAPE_S}s escape bound) without a commit with the network live (h${h0}→h${last_h}, ${pub_ok}/${pubs} publishes landed) — the #432 escape did not clear the interleaved race; last client output: $(printf '%s' "$lastout" | tail -1 | head -c 200)"
+    record "soak-publish-drain" fail major "WEDGE SIGNATURE under the publish/drain soak: a height went ${maxgap}s (> the computed ${H_ESCAPE_S}s escape bound) without a commit with the network live (h${h0}→h${last_h}, ${pub_ok}/${pubs} publishes landed) — the escape bound did not clear the interleaved race; last client output: $(printf '%s' "$lastout" | tail -1 | head -c 200)"
   elif [ "$heights" -lt "$SOAK_HEIGHTS" ] && [ "$heights" -lt $(( SOAK_HEIGHTS / 2 )) ]; then
     record "soak-publish-drain" gap major "soak under-ran: only ${heights} of ${SOAK_HEIGHTS} heights committed within the ${wall}s wall (max inter-commit gap ${maxgap}s ≤ bound) — cadence, not a wedge; property PARTIALLY tested"
   elif [ "$pub_ok" -eq 0 ]; then
-    record "soak-publish-drain" fail major "the chain advanced ${heights} heights under the soak but ZERO of ${pubs} publishes landed — launch-regime publish starvation (the #441 shape in the launch regime); last client output: $(printf '%s' "$lastout" | tail -1 | head -c 200)"
+    record "soak-publish-drain" fail major "the chain advanced ${heights} heights under the soak but ZERO of ${pubs} publishes landed — launch-regime publish starvation; last client output: $(printf '%s' "$lastout" | tail -1 | head -c 200)"
   else
-    slo_assert "soak-publish-drain" major "launch-regime publish/drain SOAK: ${heights} heights committed under continuously interleaved publish (${pub_ok}/${pubs} landed) + natural renewal drain, max inter-commit gap ${maxgap}s ≤ the computed ${H_ESCAPE_S}s escape bound, ${slashes} honest-slash lines (want 0) — the #432 escape clears the production-reachable race the PE gate names" \
+    slo_assert "soak-publish-drain" major "launch-regime publish/drain SOAK: ${heights} heights committed under continuously interleaved publish (${pub_ok}/${pubs} landed) + natural renewal drain, max inter-commit gap ${maxgap}s ≤ the computed ${H_ESCAPE_S}s escape bound, ${slashes} honest-slash lines (want 0) — the escape bound clears the production-reachable race" \
       "$([ "$slashes" -eq 0 ] && echo 1 || echo 0)"
   fi
 }
 
-# shuffle_seeded SEED ITEM...  — deterministic Fisher-Yates over the args, keyed by
+# shuffle_seeded SEED ITEM... — deterministic Fisher-Yates over the args, keyed by
 # SEED (same seed ⇒ same order, always replayable — the determinism discipline: a
 # random test you cannot reproduce is worse than a fixed one). Python because bash
 # has no seeded shuffle; the seed is hashed to an int so any string works.
@@ -2556,7 +2550,7 @@ run_all_scenarios() {
   echo "  peers=$PEERS"
   echo "  registry=$REGREF"
   wait_network_warm
-  wait_publisher_warm fetch-1   # #344: non-validator issuer-set/issuer-key discovery lags genesis
+  wait_publisher_warm fetch-1   # non-validator issuer-set/issuer-key discovery lags genesis
 
   # RANDOMIZED flow order (2026-08-20, owner directive: "random as possible") —
   # runs the order-independent, RECOVERABLE flows in a seeded-shuffled order so no
@@ -2585,7 +2579,7 @@ run_all_scenarios() {
   else
     echo "  ⇒ FIXED flow order (RANDOMIZE=0)"
   fi
-  # Re-warm the publisher before the batch (#351): restart/partition drills drop a
+  # Re-warm the publisher before the batch: restart/partition drills drop a
   # validator from the discoverable issuer set until it re-syncs; a bounded re-warm
   # keeps publish-dependent flows from racing that discovery. In random order any
   # flow may need it, so warm once before the whole batch. Bounded + non-fatal.

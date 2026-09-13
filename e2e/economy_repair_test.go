@@ -4,20 +4,19 @@ package e2e
 // that must be green before the billable ECONOMY=1 cloud run confirms it
 // (build-immutable #7; the cloudtest preflight runs this as RUN_LOCAL_PROOF):
 //
-//   publish erasure-coded → `swarm holders` → kill 3 columns' holders →
-//   a caretaker RECONSTRUCTS from parity → a caretaker-JUDGE verifies both legs
-//   and the bounty PAYS the new holder from the object's escrow (paid > 0) →
-//   the file still fetches bit-perfect.
+// publish erasure-coded → `swarm holders` → kill 3 columns' holders →
+// a caretaker RECONSTRUCTS from parity → a caretaker-JUDGE verifies both legs
+// and the bounty PAYS the new holder from the object's escrow (paid > 0) →
+// the file still fetches bit-perfect.
 //
 // The pieces pass alone (e2e/economy_test.go: flags+fund+telemetry;
 // e2e/holders_test.go: placement observability; sim/repair_bounty_test.go:
 // claim/judge/payout under the scheduler); THIS test is the composition on real
 // daemons over real TCP. Two caretakers are structural, not decoration: the
 // paramedic never judges its own claim (repairclaim.go — emitRepairClaim skips
-// itself and the holder), credit is per-node-local, so `paid` materializes on
-// the OTHER caretaker's ledger — the judge's — and only if that judge's own
-// escrow was funded. Design: docs/thinking/2026-08-20-economy-local-loop-design.md.
-
+// itself and the holder), credit is per-node-local, so `paid` materializes on the
+// OTHER caretaker's ledger — the judge's — and only if that judge's own escrow was
+// funded.
 import (
 	"bytes"
 	"fmt"
@@ -48,7 +47,7 @@ var reCaretaking = regexp.MustCompile(`caretaking ([0-9a-f]{64})`)
 var reColumnHolders = regexp.MustCompile(`^column (\d+): (\S+)$`)
 
 // sameHolderMap reports whether two byte-confirmed holder views (col → NodeID-hex
-// set) are identical — the convergence predicate for #514's STABILIZE step.
+// set) are identical — the convergence predicate for the STABILIZE step.
 func sameHolderMap(a, b map[int][]string) bool {
 	if len(a) != len(b) {
 		return false
@@ -121,7 +120,7 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	}
 
 	// resolveHolders runs `swarm holders` for a link and parses the byte-confirmed
-	// (MsgHasChunk, #514) per-column holder view: col → NodeID-hex list. This is the
+	// (MsgHasChunk) per-column holder view: col → NodeID-hex list. This is the
 	// SAME view the caretaker repairs on (probeShard also byte-confirms), so a listed
 	// holder provably holds one of the column's shards. A column absent has none.
 	resolveHolders := func(link string) map[int][]string {
@@ -254,7 +253,7 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 			break
 		}
 		if try == maxPublishTries-1 {
-			t.Fatalf("premise setup (#514): placement stayed too concentrated across %d publishes — "+
+			t.Fatalf("premise setup: placement stayed too concentrated across %d publishes — "+
 				"no over-slack-but-recoverable kill set (all columns cluster onto 2-3 nodes):\n%v",
 				maxPublishTries, pv)
 		}
@@ -288,7 +287,7 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	// alone is NOT enough: at the 2s sweep cadence the last 80 lines are all
 	// sweep chatter, and the one-shot claim-chain events (pending confirmation,
 	// stripe repaired, no-eligible-judge, bounty released) scroll out — a CI
-	// failure of the #518 judge-starvation mode was unattributable from the
+	// failure of the judge-starvation mode was unattributable from the
 	// tail. So dump the tail PLUS every claim-chain line from the whole file.
 	debugTail := func(c caretaker) string {
 		b, err := os.ReadFile(filepath.Join(c.store, "debug.log"))
@@ -307,10 +306,10 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 				chain = append(chain, ln)
 			}
 		}
-		// Keep the last 30 chain lines: sweep-complete narration is emitted every
-		// ~2s, so on a long run the early ones scroll past usefulness, and the dial
-		// spam otherwise buries the sweep/repair story in the raw tail (#514: a
-		// premise-vs-caretaker divergence was unattributable from the tail alone).
+		// Keep the last 30 chain lines: sweep-complete narration is emitted
+		// every ~2s, so on a long run the early ones scroll past usefulness,
+		// and the dial spam otherwise buries the sweep/repair story in the
+		// raw tail.
 		if len(chain) > 30 {
 			chain = chain[len(chain)-30:]
 		}
@@ -351,29 +350,30 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	// resolveColHolders reads the byte-confirmed holders view for the cared link.
 	resolveColHolders := func() map[int][]string { return resolveHolders(link) }
 
-	// The deterministic premise (#514, superseding the pure-filter #607). The kill
-	// only proves the economy loop if a CARETAKER actually observes a stripe over
-	// RepairSlack (2) and repairs. The real root cause — pinned by the caretaker's
-	// own sweep trace (docs/thinking/2026-08-27-514-deterministic-premise-and-
-	// holders-liveness.md) — is that the test used to kill BEFORE DHT convergence
-	// completed. The object carries publish-time lost-ack extra copies (#497:
+	// The deterministic premise. The kill only proves the economy loop if
+	// a CARETAKER actually observes a stripe over RepairSlack (2) and
+	// repairs. The real root cause — pinned by the caretaker's own sweep
+	// trace holders-liveness.md — is that the test used to kill BEFORE
+	// DHT convergence completed. The object carries publish-time lost-ack
+	// extra copies
 	// -replication 1 does NOT mean one holder — a lost ack mints a silent extra
-	// copy) whose provider records converge a sweep or two AFTER the kill. So the
-	// caretaker's first post-kill sweep saw the loss over slack, but reachable then
-	// climbed as the hidden copies surfaced, the loss healed within slack, and the
-	// #517 two-sweep confirmation gate reset — the ~20% flake. #607's selector
-	// byte-confirm could not see the hidden copies either, so it did not close it.
+	// copy whose provider records converge a sweep or two AFTER the kill. So the
+	// caretaker's first post-kill sweep saw the loss over slack, but reachable
+	// then climbed as the hidden copies surfaced, the loss healed within slack,
+	// and the two-sweep confirmation gate reset — the ~20% flake. the selector
+	// byte-confirm could not see the hidden copies either, so it did not close
+	// it.
 	//
 	// The robust close, three steps, all harness/observability:
-	//   1. STABILIZE: wait until the byte-confirmed holders view stops changing
-	//      across reads — convergence is complete and every real byte-holder
-	//      (including the lost-ack copies) is now listed.
-	//   2. KILL ALL: kill every byte-holder of the target columns. With a stable
-	//      view no hidden copy survives; re-read once and kill any straggler.
-	//   3. CONFIRM: wait for a caretaker's OWN sweep to narrate a stripe over slack,
-	//      over a window covering the cold manifest heal AND the two-sweep gate.
-	//      Because the columns are now genuinely byte-gone, the loss does not heal,
-	//      so both sweeps agree and the gate fires — deterministically.
+	// 1. STABILIZE: wait until the byte-confirmed holders view stops changing
+	// across reads — convergence is complete and every real byte-holder
+	// (including the lost-ack copies) is now listed.
+	// 2. KILL ALL: kill every byte-holder of the target columns. With a stable
+	// view no hidden copy survives; re-read once and kill any straggler.
+	// 3. CONFIRM: wait for a caretaker's OWN sweep to narrate a stripe over slack,
+	// over a window covering the cold manifest heal AND the two-sweep gate.
+	// Because the columns are now genuinely byte-gone, the loss does not heal,
+	// so both sweeps agree and the gate fires — deterministically.
 	const slack = 2 // RepairSlack default
 
 	killed := map[string]bool{}
@@ -416,7 +416,7 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 		holders = next
 	}
 	if !stable {
-		t.Fatalf("premise setup (#514): the byte-confirmed holders view never stabilized within 60s — "+
+		t.Fatalf("premise setup: the byte-confirmed holders view never stabilized within 60s — "+
 			"DHT convergence did not settle, so a kill cannot be proven complete:\n%v", holders)
 	}
 	if len(holders) < econColumns-econParity {
@@ -442,7 +442,7 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	}
 	sort.Ints(candidates)
 	if len(candidates) < 3 {
-		t.Fatalf("premise setup (#514): only %d columns have all-killable byte-holders after convergence "+
+		t.Fatalf("premise setup: only %d columns have all-killable byte-holders after convergence "+
 			"(placement concentrated onto the validator/caretakers):\n%v", len(candidates), holders)
 	}
 	// columnsLost counts columns whose EVERY byte-holder is in the kill set of nodes.
@@ -484,7 +484,7 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 		}
 	}
 	if len(targets) < 3 || bestLost > econParity {
-		t.Fatalf("premise setup (#514): no 3-column combination loses between 3 and %d columns — "+
+		t.Fatalf("premise setup: no 3-column combination loses between 3 and %d columns — "+
 			"placement too concentrated (killing 3 columns' holders would drop a stripe below k):\n%v", econParity, holders)
 	}
 	t.Logf("target columns %v chosen: killing their holders loses %d columns (slack 2 < %d ≤ n−k %d)",
@@ -519,7 +519,7 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 		}
 	}
 	if stillHeld > 0 {
-		t.Fatalf("premise setup (#514): %d of %d target columns still have a killable holder after 3 kill passes — "+
+		t.Fatalf("premise setup: %d of %d target columns still have a killable holder after 3 kill passes — "+
 			"copies keep converging (harness bug):\n%v", stillHeld, len(targets), holders)
 	}
 	// A straggler kill can cascade (a killed node may hold a non-target column too),
@@ -527,7 +527,7 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	// no bounty can ever pay. If a cascade over-killed, fail as a harness bug rather
 	// than time out on a destroyed object.
 	if lost := columnsLost(killed); lost > econParity {
-		t.Fatalf("premise setup (#514): kill cascaded to %d lost columns (> n−k %d) — a stripe is below k and "+
+		t.Fatalf("premise setup: kill cascaded to %d lost columns (> n−k %d) — a stripe is below k and "+
 			"unrecoverable, no bounty can pay. A straggler kill hit a multi-column node:\n%v", lost, econParity, holders)
 	}
 
@@ -593,7 +593,7 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 		}
 		// A surfaced holder may sit on a multi-column node — re-check the n−k bound.
 		if lost := columnsLost(killed); lost > econParity {
-			t.Fatalf("premise setup (#514): re-killing a surfaced holder cascaded to %d lost columns (> n−k %d) — "+
+			t.Fatalf("premise setup: re-killing a surfaced holder cascaded to %d lost columns (> n−k %d) — "+
 				"stripe below k, unrecoverable:\n%v", lost, econParity, holders)
 		}
 		if surfaced == 0 {
@@ -601,7 +601,7 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 		}
 	}
 	if !premiseEstablished {
-		t.Fatalf("premise unestablishable (#514): the byte-confirmed view proved %d target columns byte-gone and re-killed "+
+		t.Fatalf("premise unestablishable: the byte-confirmed view proved %d target columns byte-gone and re-killed "+
 			"every surfaced copy across %d rounds, yet no caretaker's own sweep saw a stripe over slack (%d) — the caretaker "+
 			"cannot observe a loss the selector proved (byte-confirm or corpse-gating regression).\nC1:\n%s\nC2:\n%s",
 			len(targets), confirmRounds, slack, debugTail(caretakers[0]), debugTail(caretakers[1]))
@@ -615,15 +615,16 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	// premise defeat. Poll both caretakers — the paramedic emits the claim, the
 	// OTHER one judges and pays on its own ledger.
 	//
-	// The pay window must cover the MEASURED repair cycle, not an optimistic
-	// guess. History: the unbounded sweep under dead holders ran ~3-4 min
-	// (#501), the old 180s budget sat inside that band (5 identical ~181.8s CI
-	// failures on 2026-08-21), and PR #511 widened the window to the certified
-	// 600s premise pending the mechanism fix. #501 is now FIXED (sweep-scoped
-	// corpse gating + decaying cooldown bound the sweep to ≤1 discovery ladder
-	// per corpse per tick): the whole test measures well under this locally, so
-	// 180s holds with margin — and this deadline is the #501 regression signal: a
-	// failure here means the sweep bound broke, not calibration.
+	// The pay window must cover the MEASURED repair cycle, not an
+	// optimistic guess. History: the unbounded sweep under dead holders
+	// ran ~3-4 min, the old 180s budget sat inside that band (5 identical
+	// ~181.8s CI failures on 2026-08-21), and PR widened the window to
+	// the 600s premise pending the mechanism fix. is now FIXED
+	// (sweep-scoped corpse gating + decaying cooldown bound the sweep to
+	// ≤1 discovery ladder per corpse per tick): the whole test measures
+	// well under this locally, so 180s holds with margin — and this
+	// deadline is the regression signal: a failure here means the sweep
+	// bound broke, not calibration.
 	var paid, funded, repairs int64
 	deadline := time.Now().Add(180 * time.Second)
 	for paid == 0 && time.Now().Before(deadline) {

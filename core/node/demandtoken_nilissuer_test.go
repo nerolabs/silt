@@ -5,7 +5,7 @@ package node
 // MECHANISM. `answerDemandTokenRequest` gates on the DEMAND issuer for the current
 // epoch (`n.demandIssuers[cur]`), not on the PUBLISH issuer. When the request carries
 // a prepaid publish credit, the handler routes it to `tokenChargeFor`, which verified
-// the credit against `n.tokenIssuer.Public()`. `(*blindtoken.Issuer).Public` reads
+// the credit against `n.tokenIssuer.Public`. `(*blindtoken.Issuer).Public` reads
 // `i.key` unconditionally, so a nil `n.tokenIssuer` was a nil dereference: one crafted
 // `MsgDemandTokenRequest` from any peer crashed a node that runs the demand lane
 // without a publish issuer. The shipped daemon happens to enable both, in that order;

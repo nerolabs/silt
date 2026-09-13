@@ -10,18 +10,18 @@ import (
 )
 
 // boltStore is a disk-backed kvstore.MapStore for the floor-box measurement of
-// the SMT node store (PE ruling keystone-node-store, Q1). It is a SPIKE, not
-// the product store: the product NodeStore lands with the keystone build behind
-// ports.NodeStore, once this measurement picks the backend.
+// the SMT node store. It is a SPIKE, not the product store: the product
+// NodeStore lands with the keystone build behind ports.NodeStore, once this
+// measurement picks the backend.
 //
-// THE LOAD-BEARING DESIGN POINT — write batching. The SMT calls Set() once per
-// dirty node during Commit(); a naive adapter that opened one bbolt write
+// THE LOAD-BEARING DESIGN POINT — write batching. The SMT calls Set once per
+// dirty node during Commit; a naive adapter that opened one bbolt write
 // transaction per Set would fsync per node, turning a 100-changed-key block into
-// hundreds of fsyncs and making the measurement meaningless. Instead Set()
-// buffers into a pending map and Flush() commits the whole block in ONE bbolt
-// transaction (one fsync). That mirrors how the real integration must work: one
-// store flush per committed block. Get() checks the pending buffer first so a
-// node written earlier in the same block is visible before the flush.
+// hundreds of fsyncs and making the measurement meaningless. Instead Set buffers
+// into a pending map and Flush commits the whole block in ONE bbolt transaction
+// (one fsync). That mirrors how the real integration must work: one store flush
+// per committed block. Get checks the pending buffer first so a node written
+// earlier in the same block is visible before the flush.
 type boltStore struct {
 	db      *bolt.DB
 	pending map[string][]byte // nil value = tombstone

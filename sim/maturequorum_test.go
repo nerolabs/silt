@@ -13,7 +13,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// B2 at the WIRE tier (research certification 2026-08-13): the mature-phase
+// B2 at the WIRE tier: the mature-phase
 // weight-counted quorum exercised through the real gather — live nodes, real
 // MsgProposeBlock round-trips over simnet, the proposer's SupportMeetsQuorum
 // loop deciding when the coalition it holds would commit.
@@ -23,7 +23,7 @@ import (
 // admission is unfiltered). Under the head-counted quorum this exact network
 // was born unable to commit honestly (needs bftThreshold(13)=8 attesters; the
 // honest side has 3) while the cohort alone COULD commit (9 heads) — the
-// certified stall/capture pair, here driven end-to-end.
+// stall/capture pair, here driven end-to-end.
 func TestMatureEpochWeightQuorumOverWire(t *testing.T) {
 	const (
 		seed       = int64(11)
@@ -74,17 +74,17 @@ func TestMatureEpochWeightQuorumOverWire(t *testing.T) {
 		if err := ch.AppendGenesis(*g); err != nil {
 			t.Fatalf("node %d: genesis: %v", i, err)
 		}
-		// #380 direction (1), regime (b) (owner call 20, D-CONSENSUS-ARMING (20);
-		// research certification CONSENSUS-380-quorum-floor-direction-1 §1): in
-		// a mature epoch RequiredQuorum() is 0 — there is NO count floor, local
-		// or derived; the Byzantine bar is the > 2/3 frozen-WEIGHT rule alone,
-		// which this test's two drills below exercise over the wire. Before
-		// direction (1) this asserted the opposite (== cfg.Quorum): the local
-		// Config.Quorum was a validity term, and a node with a raised -quorum
-		// refused what the swarm committed. cfg.Quorum survives only as the
-		// proposer-side gather target passed to ProposeEntry below.
+		// direction (1), regime (b) 20 (20) §1: in a mature epoch
+		// RequiredQuorum is 0 — there is NO count floor, local or
+		// derived; the Byzantine bar is the > 2/3 frozen-WEIGHT rule
+		// alone, which this test's two drills below exercise over the
+		// wire. Before direction (1) this asserted the opposite (==
+		// cfg.Quorum): the local Config.Quorum was a validity term,
+		// and a node with a raised -quorum refused what the swarm
+		// committed. cfg.Quorum survives only as the proposer-side
+		// gather target passed to ProposeEntry below.
 		if n := ch.RequiredQuorum(); n != 0 {
-			t.Fatalf("node %d: mature-epoch RequiredQuorum = %d, want 0 (no count floor; the bar is weight — #380 regime (b))", i, n)
+			t.Fatalf("node %d: mature-epoch RequiredQuorum = %d, want 0 (no count floor; the bar is weight —  regime (b))", i, n)
 		}
 		nd.EnableChain(ch, idents[i].Signer())
 		nodes[i] = nd

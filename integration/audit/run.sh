@@ -7,31 +7,31 @@
 # challenge, loses standing, and durability survives.
 #
 # This harness drives the REAL daemon over TCP and gates the LITERAL claim — the
-# gap this test used to only assert-around is now CLOSED (#232 wired -liar +
+# gap this test used to only assert-around is now CLOSED (wired -liar +
 # -audit into cmd/silt), so the audit catch + slash is exercised over the wire:
 #
-#   1. Publish an erasure-coded file (-replication 2) so shards scatter across
-#      four honest holders (1,2,3,5) plus one PoR liar (holder4, -liar).
-#   2. A caretaker (-care <careLink> -audit 15s, -log info) runs both its repair
-#      loop AND the verify-without-fetch PoR audit sweep.
-#   3. POSITIVE CONTROL: before any damage, the caretaker reports NO repair and
-#      the file is retrievable from the intact swarm.
-#   4. GATED, #232: the -audit sweep CHALLENGES every shard's holders and grades
-#      their proofs against the key derived from the care link — NO ground-truth
-#      fetch. The honest holders PASS; the liar (which advertises + answers but
-#      proves over data it dropped) FAILS and is slashed. Assert passed≥1 AND
-#      FAILED≥1 — the "caught without fetch + standing slash" claim, over the wire.
-#   5. THE ATTACK / OUTCOME: on top of the liar, `rm` an honest holder's shard
-#      files while it keeps running. Gated on the OUTCOME (immutable: test the
-#      outcome, not the mechanism) — the file must stay bit-perfect retrievable.
-#      The caretaker's detect/repair/re-replicate activity is printed as
-#      observability (placement decides which shards truly go missing, so the
-#      exact counts vary; a wedged repair loop is still visible).
-#   6. Regression gate: assert -liar and -audit still exist, so the #232
-#      assertions above can't be silently skipped by a future build.
+#  1. Publish an erasure-coded file (-replication 2) so shards scatter across
+#  four honest holders (1,2,3,5) plus one PoR liar (holder4, -liar).
+#  2. A caretaker (-care <careLink> -audit 15s, -log info) runs both its repair
+#  loop AND the verify-without-fetch PoR audit sweep.
+#  3. POSITIVE CONTROL: before any damage, the caretaker reports NO repair and
+#  the file is retrievable from the intact swarm.
+#  4. GATED: the -audit sweep CHALLENGES every shard's holders and grades
+#  their proofs against the key derived from the care link — NO ground-truth
+#  fetch. The honest holders PASS; the liar (which advertises + answers but
+#  proves over data it dropped) FAILS and is slashed. Assert passed≥1 AND
+#  FAILED≥1 — the "caught without fetch + standing slash" claim, over the wire.
+#  5. THE ATTACK / OUTCOME: on top of the liar, `rm` an honest holder's shard
+#  files while it keeps running. Gated on the OUTCOME (immutable: test the
+#  outcome, not the mechanism) — the file must stay bit-perfect retrievable.
+#  The caretaker's detect/repair/re-replicate activity is printed as
+#  observability (placement decides which shards truly go missing, so the
+#  exact counts vary; a wedged repair loop is still visible).
+#  6. Regression gate: assert -liar and -audit still exist, so the
+#  assertions above can't be silently skipped by a future build.
 #
-# Usage:  ./run.sh          # build, test, tear down; exit 0 = PASS
-#         KEEP=1 ./run.sh   # leave the topology up afterward to poke at
+# Usage:./run.sh # build, test, tear down; exit 0 = PASS
+#  KEEP=1 ./run.sh # leave the topology up afterward to poke at
 set -uo pipefail
 cd "$(dirname "$0")"
 ROOT=$(cd ../.. && pwd)
@@ -112,7 +112,7 @@ done
 # Wait a FULL repair sweep (~1.5×60s RepairInterval), not just long enough for the
 # warm-start manifest fetch to land. The positive control below asserts the
 # caretaker did NOT repair an intact file — but the first repairTick only fires at
-# RepairInterval (60s) after Care() starts (core/node/repair.go:46). An 8s wait
+# RepairInterval (60s) after Care starts (core/node/repair.go:46). An 8s wait
 # asserts "no repair" before ANY sweep has run, so a broken product that wrongly
 # "repairs" an intact stripe would still show 0 and the control would false-pass.
 # Waiting a full sweep means the 0 is a real observation of at least one completed
@@ -129,7 +129,7 @@ dc exec -T holder1 sh -c "silt swarm get '$LINK' -o /tmp/pre.bin -peers '$PEERS'
 PRE=$(grep -oE '^[a-f0-9]{64}' /tmp/audit_pre.txt | tail -1)
 [ "$PRE" = "$WANT" ] && echo "  intact file retrievable: yes (bit-perfect)" || { echo "FAIL: intact file not retrievable"; cat /tmp/audit_pre.txt; pass=0; }
 
-echo "== PoR AUDIT (#232): the caretaker's -audit sweep verifies proofs WITHOUT fetching =="
+echo "== PoR AUDIT: the caretaker's -audit sweep verifies proofs WITHOUT fetching =="
 # holder4 is a -liar: it advertises as a provider and answers MsgChallenge, but
 # proves over data it dropped, so the auditor's verify (no ground-truth fetch)
 # REJECTS it and slashes it — while the honest holders PASS. This is the literal
@@ -191,12 +191,10 @@ echo "  want $WANT"
 echo "  got  ${POST:-<none>}"
 [ "$POST" = "$WANT" ] || { echo "FAIL: file not bit-perfect after loss+repair"; cat /tmp/audit_post.txt; pass=0; }
 
-echo "== regression gate (#232): the PoR-audit / liar path IS wire-reachable =="
-# This USED to assert the gap (no -liar / no audit trigger, so the "caught without
-# fetch + standing slash" claim was sim-only). #232 wired both flags, so the gap
-# is closed and the slash is asserted directly above. Guard it: if a future build
-# drops the flags, fail loudly so the audit assertions above aren't silently
-# skipped.
+echo "== regression gate: the PoR-audit / liar path IS wire-reachable =="
+# Both flags exist, so the slash is asserted directly above. Guard that: if a
+# future build drops the flags, fail loudly so the audit assertions above are not
+# silently skipped.
 # Plain `docker run` on the image (not `dc run seed`, whose static IP 10.60.0.10
 # collides with the already-running seed and would fail to start → empty help).
 help=$(docker run --rm --entrypoint silt silt-audit daemon -h 2>&1 || true)
@@ -206,7 +204,7 @@ if echo "$help" | grep -qE '^\s*-liar\b' && echo "$help" | grep -qE '^\s*-audit\
   echo "  asserted above (not just the detect-via-probe + repair half)."
 else
   echo "FAIL: -liar and/or -audit flag missing — the PoR-audit assertions above could"
-  echo "      not have exercised the real audit path. Re-wire the seam (#232)."; pass=0
+  echo "      not have exercised the real audit path. Re-wire the seam."; pass=0
 fi
 
 echo

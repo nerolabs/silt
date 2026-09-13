@@ -1,7 +1,7 @@
 #!/bin/sh
 # Apply kernel network impairment to this container's primary interface, then run
-# the real command. $NETEM is a raw `tc qdisc ... netem` argument string, e.g.
-#   NETEM="delay 80ms 20ms distribution normal loss 3%"
+# the real command. $NETEM is a raw `tc qdisc... netem` argument string, e.g.
+#  NETEM="delay 80ms 20ms distribution normal loss 3%"
 # Empty $NETEM = no impairment (a clean-network control run). We find the default-
 # route interface rather than hard-coding eth0 (Docker names vary), and never fail
 # the container if tc is unavailable — a missing NET_ADMIN degrades to a clean run,

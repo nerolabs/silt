@@ -14,10 +14,10 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Integration proof for M0 hardening H2 / red-team RT-2 (release-and-coast),
-// over the REAL wire. A bond TTL that decays un-renewed standing is only safe if
-// an honest validator can renew WITHOUT proposing — otherwise defaulting it on is
-// a liveness trap (an attest-only validator would lapse and drop the quorum's
+// Integration proof for (release-and-coast), over the REAL
+// wire. A bond TTL that decays un-renewed standing is only safe if an honest
+// validator can renew WITHOUT proposing — otherwise defaulting it on is a
+// liveness trap (an attest-only validator would lapse and drop the quorum's
 // weight; strategy doc §3). This drives the automatic non-proposer renewal path:
 // each round every validator SUBMITS a fresh bond proof (MsgSubmitBondReg) to its
 // peers, and the single proposer folds the queued peer renewals into its block —
@@ -81,8 +81,9 @@ func TestObjectiveBondRenewalSustainsAttestOnlyValidator(t *testing.T) {
 	sched.Run()
 
 	proposer := nodes[0] // the ONLY node that ever proposes
-	// The attest-only validators: indices 1..N-1. nodes[1] is the one we assert
-	// sustains standing; nodes[N-1] is the "released plot" control (stops renewing).
+	// The attest-only validators: indices 1.N-1. nodes[1] is the one we assert
+	// sustains standing; nodes[N-1] is the "released plot" control (stops
+	// renewing).
 	attestOnly := ids[1:]
 	releasedIdx := N - 1
 
@@ -105,12 +106,12 @@ func TestObjectiveBondRenewalSustainsAttestOnlyValidator(t *testing.T) {
 	// The attest-only validator that kept renewing must still hold full standing,
 	// though it NEVER proposed — the renewal reached the chain via a peer's block.
 	if got := ch.BondedSize(attestOnly[0]); got != bondSize {
-		t.Fatalf("RT-2 liveness regression: an attest-only validator that kept renewing lost standing: got %d, want %d — the non-proposer renewal path is not sustaining it", got, bondSize)
+		t.Fatalf("liveness regression: an attest-only validator that kept renewing lost standing: got %d, want %d — the non-proposer renewal path is not sustaining it", got, bondSize)
 	}
 	// The released validator (stopped renewing after round 0) must be pruned — the
 	// release-and-coast attack denied by the default TTL.
 	if got := ch.BondedSize(ids[releasedIdx]); got != 0 {
-		t.Fatalf("RT-2 regression: a validator that released its plot kept %d standing after %d rounds with TTL %d — release-and-coast survived", got, rounds, ttl)
+		t.Fatalf("regression: a validator that released its plot kept %d standing after %d rounds with TTL %d — release-and-coast survived", got, rounds, ttl)
 	}
 	// The proposer itself renews as it proposes, so it never lapses (sanity).
 	if got := ch.BondedSize(ids[0]); got != bondSize {

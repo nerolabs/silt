@@ -7,11 +7,11 @@ import (
 	"github.com/nerolabs/silt/core/bond"
 )
 
-// Build-immutable #3/#4 (docs/TENETS.md): the anti-release floor is sized against
-// a COMPUTE window (re-seal time × plot throughput), DECOUPLED from any transport
-// timeout — so raising -request-timeout for durability (#288) never moves it and
-// never prices out small validators. Lock the derivation in: the floor must equal
-// the compute-window arithmetic exactly, proving it is not sourced from a network
+// Build-immutable #3/#4: the anti-release floor is sized against a COMPUTE window
+// (re-seal time × plot throughput), DECOUPLED from any transport timeout — so
+// raising -request-timeout for durability never moves it and never prices out
+// small validators. Lock the derivation in: the floor must equal the
+// compute-window arithmetic exactly, proving it is not sourced from a network
 // deadline. If someone re-couples it to RequestTimeout, this fails.
 func TestAntiReleaseFloorIsComputeSourcedNotTransport(t *testing.T) {
 	wantSecs := int64(AntiReleaseComputeWindow / time.Second)
@@ -26,7 +26,7 @@ func TestAntiReleaseFloorIsComputeSourcedNotTransport(t *testing.T) {
 }
 
 // Retest G4-RESIDUAL INVERTED as a regression: the anti-release floor must be ON
-// BY DEFAULT for an untrusted (objective) validator. #163 shipped the mechanism
+// BY DEFAULT for an untrusted (objective) validator. shipped the mechanism
 // but defaulted both knobs to 0, so a stock/doc-following open M0 validator still
 // admitted a sub-floor, releasable bond to full objective standing —
 // "fixed but off by default" is not fixed.

@@ -11,19 +11,19 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// These tests pin the recursion/re-entrancy audit (#467, PE flixz Finding 2 audit
-// extension): a continuation chain that can complete SYNCHRONOUSLY must post its
-// next step through the event loop, never recurse on the caller's stack. The #471
-// trampoline bounded the DHT walk terminal; these cover the sibling chains the
-// audit found still recursing inline when their fast paths complete synchronously:
+// These tests pin the recursion/re-entrancy audit: a continuation chain that can
+// complete SYNCHRONOUSLY must post its next step through the event loop, never
+// recurse on the caller's stack. The trampoline bounded the DHT walk terminal;
+// these cover the sibling chains the audit found still recursing inline when their
+// fast paths complete synchronously:
 //
-//   - repairStripes' healthy-stripe walk (O(stripes) deep per sweep)
-//   - FetchChunk's already-held fast path (fetchAll/fetchColumn chains, O(ids))
-//   - fetchFrom's no-provider exit (same chains, fresh unsettled roots)
-//   - request's synchronous send-failure (every request-crossing chain)
-//   - repairTick's root walk over synchronously-skipped (denied) roots
+// - repairStripes' healthy-stripe walk (O(stripes) deep per sweep)
+// - FetchChunk's already-held fast path (fetchAll/fetchColumn chains, O(ids))
+// - fetchFrom's no-provider exit (same chains, fresh unsettled roots)
+// - request's synchronous send-failure (every request-crossing chain)
+// - repairTick's root walk over synchronously-skipped (denied) roots
 //
-// Each asserts the #471 contract: completion is DEFERRED — the done callback must
+// Each asserts the contract: completion is DEFERRED — the done callback must
 // not have fired when the entry call returns, and must fire once the loop drains.
 
 // syntheticLayout builds a layout of `stripes` erasure stripes with distinct
@@ -45,7 +45,7 @@ func syntheticLayout(stripes int, p erasure.Params) *manifest.Layout {
 
 // TestRepairStripesTrampolinesHealthyStripeWalk: a caretaker sweeping a large
 // HEALTHY file (every stripe within slack — the common case, every sweep) walked
-// all stripes by inline recursion: next() called repairStripes(stripe+1) on the
+// all stripes by inline recursion: next called repairStripes(stripe+1) on the
 // same stack, O(stripes) frames deep, all in one loop task. The stripe advance
 // must be posted through the loop instead.
 func TestRepairStripesTrampolinesHealthyStripeWalk(t *testing.T) {
@@ -63,7 +63,7 @@ func TestRepairStripesTrampolinesHealthyStripeWalk(t *testing.T) {
 
 	if done {
 		t.Fatal("repairStripes walked every healthy stripe INLINE on the caller's stack — " +
-			"O(stripes) recursion depth in one loop task (the #467 disease on the stripe axis)")
+			"O(stripes) recursion depth in one loop task (the disease on the stripe axis)")
 	}
 	sched.Run()
 	if !done {
@@ -98,9 +98,8 @@ func TestFetchChunkHeldFastPathTrampolines(t *testing.T) {
 }
 
 // TestFetchFromNoProvidersTrampolines: fetchFrom with an empty provider set
-// reported failure inline — the fresh-root condition (#467: providers not yet
-// settled), where a per-column chain recursed O(ids) deep through back-to-back
-// empty sweeps.
+// reported failure inline — the fresh-root condition, where a per-column chain
+// recursed O(ids) deep through back-to-back empty sweeps.
 func TestFetchFromNoProvidersTrampolines(t *testing.T) {
 	n, sched := aloneNode(t, 0)
 	var id ports.ChunkID

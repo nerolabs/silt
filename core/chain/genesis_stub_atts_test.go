@@ -7,15 +7,14 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// MG-C / R-CARRIER-GENESIS-DISPOSAL (delta cert
-// LASTCOMMIT-CARRIER-26977a4-DELTA-CERTIFICATION-2026-09-03 §6; ROADMAP).
+// Genesis carrier disposal.
 //
 // Only the HASH-COVERED half is gated here: a genesis carrying a LastCommit carrier is
 // authored, signed content and is REFUSED (ErrGenesisLastCommit). The UNSIGNED slot
-// (Atts, outside the Hash() preimage — see hash_literal_pin_test.go) is deliberately NOT
-// gated here: its rule — seat only VERIFIED attestations, strip the rest — is
-// D-GENESIS-ATTS-SEATING (ratified 2026-09-04) and lives in genesis_atts_seating_test.go
-// (G1–G10). Production genesis carries none; anchors seat at height >= 1.
+// (Atts, outside the Hash preimage — see hash_literal_pin_test.go) is deliberately NOT
+// gated here: its rule — seat only VERIFIED attestations, strip the rest — lives in
+// genesis_atts_seating_test.go. Production genesis carries none; anchors
+// seat at height >= 1.
 
 // stubAttFor is the attacker's stub: the REAL public key of a QUALIFIED validator that
 // signs nothing else in the test, with a 64-zero-byte signature nobody produced. A
@@ -50,20 +49,19 @@ func assertGenesisStripped(t *testing.T, c *Chain, victim ports.NodeID, path str
 		t.Fatalf("%s: no genesis committed", path)
 	}
 	if n := len(c.blocks[0].Atts); n != 0 {
-		t.Errorf("%s: committed genesis carries %d Atts — the unsigned stub was NOT STRIPPED before apply (MG-C: strip, do not refuse, do not keep)", path, n)
+		t.Errorf("%s: committed genesis carries %d Atts — the unsigned stub was NOT STRIPPED before apply (M: strip, do not refuse, do not keep)", path, n)
 	}
 	if c.validatorsSeen[victim] {
 		t.Errorf("%s: validatorsSeen was PRE-SEATED from an unsigned stub attestation — the maturity metric counted a signature nobody made", path)
 	}
 }
 
-// the strip-not-fatal probe — gate (a): the direct AppendGenesis path.
+// The strip-not-fatal probe — gate (a): the direct AppendGenesis path.
 //
-// 2026-09-04: the three Atts-STRIP gates that lived here were WITHDRAWN with the strip
-// itself — stripping genesis Atts broke fixtures that seed a verified genesis att. The
-// seat-only-verified rule is RATIFIED and BUILT; the probes returned as G1–G10 in
-// genesis_atts_seating_test.go. Only the LastCommit
-// refusal (the hash-covered half, still ratified) remains here.
+// Stripping genesis Atts outright breaks fixtures that seed a verified genesis att, so
+// the seat-only-verified rule is what shipped; its gates live in
+// genesis_atts_seating_test.go. Only the LastCommit refusal — the hash-covered half —
+// remains here.
 
 func TestGenesisLastCommitIsRefused(t *testing.T) {
 	f, ok := reflect.TypeOf(Block{}).FieldByName("LastCommit")
@@ -94,6 +92,6 @@ func TestGenesisLastCommitIsRefused(t *testing.T) {
 	}
 }
 
-// the reload-survives probe — gate (c): the own-disk path. Persist
-// (EncodeBlocks, the bytes chainstore writes) a genesis that acquired a stub, reload it
-// into a fresh chain: no error, and the stub is stripped on the way in.
+// The reload-survives probe — gate (c): the own-disk path. Persist (EncodeBlocks, the
+// bytes chainstore writes) a genesis that acquired a stub, reload it into a fresh
+// chain: no error, and the stub is stripped on the way in.

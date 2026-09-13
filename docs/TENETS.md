@@ -11,14 +11,8 @@
 > like as an *outcome* — what each principle *represents* — abstracted away from
 > any mechanism, ship-status, or product state. The build looks *up* to the
 > tenets for guidance; the tenets never look *down* at the build, and they do not
-> change when the product ships. Mechanism, current state, and the dated history
-> of how these tenets were reached live in the companions: the mission spec in
-> [`design/m0.md`](design/m0.md), the decisions in [`decisions.md`](decisions.md),
-> the networking discipline in [`network-durability.md`](network-durability.md),
-> the build discipline in [`build-process.md`](build-process.md), the update
-> mechanism in [`network-protection.md`](network-protection.md), the order of work
-> in [`ROADMAP.md`](../ROADMAP.md), and the amendment log in
-> [`tenets-history.md`](tenets-history.md).
+> change when the product ships. Mechanism and current state live in the code and
+> its tests, not here.
 >
 > **The finished picture these tenets define lives in [`VISION.md`](VISION.md)** —
 > silt as it *is* when done, told through the people it serves. The tenets are the
@@ -99,8 +93,8 @@ global takedown (accountability), and **Sybil-farm standing *at a discount*
 (Sybil-resistance)**. The Sybil mode is a *systemic* property of the composed
 system, not a property of any single primitive. "Did we hold M0?" therefore has
 a yes/no answer an outsider can check — not a victory declared by the builder.
-The precise composition claim, its inequalities, and the suite that certifies it
-are specified in [`design/m0.md`](design/m0.md).
+The precise composition claim, its inequalities, and the suite that drives it
+are specified by the code.
 
 **A release candidate has these attributes.** The abstract bar a finished,
 shippable silt must meet:
@@ -152,8 +146,7 @@ never dissolve:
   *cost-to-wash*, never proven wash-free.
 
 The mechanism of the interlock, and which axes are wired at any moment, live in
-[`design/m0.md`](design/m0.md); those are build state, and build state does not
-belong in a tenet.
+the build; those are build state, and build state does not belong in a tenet.
 
 M0 is the one mechanism deliberately pulled into first-release scope by
 definition — it *is* the mission, so it must ship **specified and adversarially
@@ -305,7 +298,7 @@ own nor can read is **paid by the demand that content serves**. The *design goal
 is one ledger: the served, sustained real content a node holds would be both what
 earns its repair reward *and* what backs its consensus standing (M0). Whether
 that fusion is safe to make turns on a real sealing problem, owned in
-[`design/m0.md`](design/m0.md); until it is solved, durability budget and Sybil
+the build; until it is solved, durability budget and Sybil
 budget stay two separate ledgers, and treating them as fused would re-open the
 exact Sybil break the separation exists to prevent.
 
@@ -318,7 +311,7 @@ standing stays work-backed and coin-free. A repair is paid only when its
 **correctness** and an identity-bound **retrievability** both verify, checked by
 a quorum with no coordinator, and an attributable false claim slashes the bond —
 a composition of proven primitives, no new invention required for the base case.
-The construction lives in [`decisions.md`](decisions.md) (D-S7).
+The construction lives in the code.
 
 **Durability is finite-but-renewable, not "perpetual."** Perpetual cold-data
 solvency is an endowment identity **priced in the network's own credit unit**,
@@ -353,8 +346,8 @@ that must fail for them: forgery, tamper, equivocation, freeload, Sybil,
 censorship. Security is validated by denial, not assertion. For M0's novel
 mechanisms this is the *primary* proof: the red-team suite is the deliverable,
 and the M0 verdict is exactly its result (Part 0). The suite that *certifies* M0
-must be written by an **external** party (audit / bounty / independent red-team,
-per B8) — we may write our own attacks to develop against, but the proof that
+must be written by an **external** party (audit / bounty / independent red-team)
+— we may write our own attacks to develop against, but the proof that
 ships is the one an outsider could not break.
 
 **V4 — Evidence, not vibes.** A change clears the success bar (Part III) with
@@ -395,7 +388,7 @@ graduated enforcement, and the maintainers set the tier. The gate of last resort
 single key may declare it**: the signing threshold *is* the safety property.
 Enforcement is recallable and clocked on observation of a signed advisory, never
 on manipulable system time. The mechanism (criticality tiers, thresholds, the
-version-floor advisory) lives in [`network-protection.md`](network-protection.md).
+version-floor advisory) lives in the code.
 
 ---
 
@@ -596,7 +589,7 @@ reviewed consensus.**
      concentration can restore a standing dependency on the anchors.
      The honest cost of "no permanent center" is a bounded, socially-recoverable
      re-centralization residual (the honest whale) — owned in
-     [`design/m0.md`](design/m0.md), not a privileged party.
+     the build, not a privileged party.
   4. **Access is unsurveilled — silt refuses to surveil, and pursues
      access-privacy to the trilemma's limit** (Don't #3). silt builds *no*
      mechanism to log or link who-fetched-what, and pushes access-privacy as far
@@ -623,7 +616,7 @@ hard fork — the same deliberate, reviewed bar as the corners above. An
 un-upgraded node **stalls** at the era boundary rather than accept a format it
 cannot validate; that stall is the correct safety-first behavior. The specific
 frozen formats, their exact specs, and their activation heights are build state —
-they live in the [`decisions.md`](decisions.md) freeze entries, not here, because
+they are build state, not canon, because
 the *principle* is the immutable, and the individual formats accrete under it.
 
 **A value bound into a frozen consensus format leaves the Evolving tier for that
@@ -636,15 +629,14 @@ not a tuning change. The failure is loud and it is the safe direction: an upgrad
 refuses to start on the existing chain rather than applying different rules to a history it
 already holds. State the promotion when the binding is made; a tier change that is
 discovered after launch was never decided. *Which* values are bound, and when each promotion
-was accepted, are build state — they live in the [`decisions.md`](decisions.md) entries, not
-here, because the *principle* is the immutable.
+was accepted, are build state — they do not live here, because the *principle* is the immutable.
 
 **Build-immutables — held at the same amendment bar, but about *how we build*,
 not *what silt is*.** The corners above are **product-immutables**: change one and
 it is a different project. These are **build-immutables**: change one and the
 project silently rots as it grows. They are distinct in kind but equal in
 standing. Each was distilled from a real, paid-for loss; the incidents are
-recorded in [`tenets-history.md`](tenets-history.md).
+recorded in this project's history.
 
   1. **Three-tier Definition of Done** (V1/V2) — no major component is "done"
      until it is proven at unit + integration/sim + e2e; a skipped tier is stated
@@ -663,7 +655,7 @@ recorded in [`tenets-history.md`](tenets-history.md).
      A timing signal may ship as a **soft, disclosed** deterrent, but a **hard**
      security gate must be structural, and an unbuilt structure is an **owned,
      named residual**, not a wall-clock stopgap. The owned residuals are written
-     down — **consult [`design/owned-residuals.md`](design/owned-residuals.md).**
+     down where the mechanism they bound lives.
   4. **Cheap honest participation is a security constraint, not a marketing
      feature.** No defense may raise the floor of honest participation. A
      mechanism that prices out the small operator — scaling a min-bond off a
@@ -683,8 +675,8 @@ recorded in [`tenets-history.md`](tenets-history.md).
      proofs > FEC > QUIC). This is the *liveness* dual of #3: #3 forbids gating
      **security** on an optimistic network; this forbids gating **liveness** on
      one. The settled prior art is written down — **consult
-     [`network-durability.md`](network-durability.md) BEFORE inventing any
-     timeout / retry / eviction / large-payload scheme.**
+     the settled prior art BEFORE inventing any timeout, retry, eviction or
+     large-payload scheme.**
   6. **Root-cause before you patch — attribute before you ship.** No knob moves
      before a log, trace, or test **names the mechanism** of the failure. Before
      writing a fix, write the one-paragraph mechanism: *the failure is X
@@ -698,7 +690,7 @@ recorded in [`tenets-history.md`](tenets-history.md).
      **confirms** an already-understood, locally-reproduced fix; it never
      **discovers** a cause or **tests** a guess. This is the *sequencing* dual of
      #3 and #5. The discipline is written down — **consult
-     [`build-process.md`](build-process.md) BEFORE reaching for a knob.**
+     the mechanism BEFORE reaching for a knob.**
   7. **Evidence or nothing — no forward step on a hypothesis; when you lack the
      evidence, your job is to GATHER it, not to guess.** Every action that spends
      time, money, or commits a claim — a fix, a cloud run, a "let me try", a
@@ -765,13 +757,12 @@ demand-attestation ratio, the audit/decay windows), the **edge-reward ratios**
 that keep T-AR true, and — under build-immutables #4 and #8 — the
 **honest-validator hardware floor** and the onboarding budgets it implies. These
 are *held in tension* and re-tuned as the network grows — **not closed.** The
-concrete current values live in [`decisions.md`](decisions.md) and
-[`design/m0.md`](design/m0.md).
+concrete current values live in the code.
 
 > **The principle-not-mechanism rule, and its one exception.** A tenet gates a
 > release as a *principle*, never as a *mechanism* — "reward tracks value" is
 > canon, but *which* economic mechanism satisfies it, and *when*, is a roadmap
-> call (see [`ROADMAP.md`](../ROADMAP.md)). The **single deliberate exception** is
+> call. The **single deliberate exception** is
 > M0: the trilemma resolution — token-less, work-backed, unlinkable reputation —
 > is not a feature that satisfies a principle, it *is* the reason silt exists, so
 > its real (not placeholder) mechanism is pulled into first-release scope by
@@ -779,5 +770,5 @@ concrete current values live in [`decisions.md`](decisions.md) and
 
 ---
 
-*The dated amendment log and the product war-stories that motivated each build
-principle live in [`tenets-history.md`](tenets-history.md).*
+*Each build principle was distilled from a real, paid-for loss. The losses are in
+this project's history.*

@@ -4,11 +4,11 @@ import (
 	"testing"
 )
 
-// M2 of the PoR key-distribution certification (§8): the shipped §3.2 scheme's
+// M2 of the PoR key-distribution research: the shipped §3.2 scheme's
 // prover/verifier/tagger cost at the deployment regime — s = 128 sectors per
 // block, n = 67 blocks (a 256 KiB frame + 16 B GCM tag), sample = 67 (p = 1.0).
 //
-// This measures the BASELINE only. The §3.3 pairing spike the certification
+// This measures the BASELINE only. The §3.3 pairing spike the research
 // wants compared against does not exist and is not built here.
 
 const benchShardBytes = (256 << 10) + 16

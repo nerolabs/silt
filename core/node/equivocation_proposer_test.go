@@ -17,19 +17,19 @@ import (
 // signature like any other, and signing a competitor afterwards is exactly the
 // double-sign the slash rule treats as proven malice.
 //
-// Field evidence (cloud run b88245d-3496, 2026-08-14, flow 5-convergence FAIL):
-// val-a and val-b both proposed an empty renewal block at height 6 (their
-// genesis-aligned bond-renewal clocks made both eligible, and the drain
+// Field evidence (cloud run the field run, 2026-08-14, flow 5-convergence
+// FAIL): val-a and val-b both proposed an empty renewal block at height 6
+// (their genesis-aligned bond-renewal clocks made both eligible, and the drain
 // designated-proposer fallback let both take over after 3 idle sweeps). Each
 // then ATTESTED the other's competing block-6 — the attest guard consults only
 // n.attested, which proposeBlock never writes — so each honestly signed two
-// different blocks at height 6. The cross-fork scan then correctly slashed
-// BOTH anchors on both branches ("chain: slashed equivocator … double-signed
-// at height 6", repeating every sweep), and with 2 of 4 anchors slashed under
-// anchor-quorum the chain wedged permanently at height 6 (2-2 fork,
-// 98e587… vs d2e3307…). This test reproduces the signing half of that event
-// deterministically: propose at height 1, then receive a competitor at height
-// 1 — the attest reply must be a refusal.
+// different blocks at height 6. The cross-fork scan then correctly slashed BOTH
+// anchors on both branches ("chain: slashed equivocator … double-signed at
+// height 6", repeating every sweep), and with 2 of 4 anchors slashed under
+// anchor-quorum the chain wedged permanently at height 6 (2-2 fork, 98e587… vs
+// d2e3307…). This test reproduces the signing half of that event
+// deterministically: propose at height 1, then receive a competitor at height 1
+// — the attest reply must be a refusal.
 func TestProposerRefusesToAttestCompetingBlock(t *testing.T) {
 	sched := simclock.New()
 	net := simnet.New(sched, 1, simnet.DefaultConfig())
@@ -56,10 +56,10 @@ func TestProposerRefusesToAttestCompetingBlock(t *testing.T) {
 	ledger.RecordBondChallenge(rival.NodeID(), ports.HashBytes([]byte{2}), 64<<20, true, 1)
 
 	// 1) The target proposes its own block at height 1. The gather is sent to an
-	//    attester that never replies — the proposal will not commit, but the
-	//    target has SIGNED it, and a signature at a height is final whether or
-	//    not the block lands (that finality is what makes a double-sign proof
-	//    evidence of malice rather than accident).
+	// attester that never replies — the proposal will not commit, but the
+	// target has SIGNED it, and a signature at a height is final whether or
+	// not the block lands (that finality is what makes a double-sign proof
+	// evidence of malice rather than accident).
 	deadID := identity.FromSeed(9).NodeID()
 	_ = net.Endpoint(deadID) // exists on the net, never replies
 	own := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("own")}}

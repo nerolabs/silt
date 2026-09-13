@@ -1,19 +1,19 @@
 # Long-horizon DURABILITY under PERMANENT holder loss, on one flat network.
 #
-#   seed ── registry + bootstrap (holds no content: -capacity 1)
-#     ├─ holder×N ── real disk stores; killed PERMANENTLY over time, NOT replaced
-#     │              (the swarm SHRINKS — no `--scale` re-create, so Docker never
-#     │              recycles a freed IP to a fresh identity; see run.sh header)
-#     ├─ caretaker ── holds the care link, reconstructs lost columns from parity
-#     │              and RE-SCATTERS them onto the survivors
-#     └─ client ── one persistent box; run.sh execs ephemeral `silt swarm add|get`
-#                  inside it (fresh ephemeral identity per invocation)
+#  seed ── registry + bootstrap (holds no content: -capacity 1)
+#  ├─ holder×N ── real disk stores; killed PERMANENTLY over time, NOT replaced
+#  │ (the swarm SHRINKS — no `--scale` re-create, so Docker never
+#  │ recycles a freed IP to a fresh identity; see run.sh header)
+#  ├─ caretaker ── holds the care link, reconstructs lost columns from parity
+#  │ and RE-SCATTERS them onto the survivors
+#  └─ client ── one persistent box; run.sh execs ephemeral `silt swarm add|get`
+#  inside it (fresh ephemeral identity per invocation)
 #
 # The outcome under test is the core durability promise: does content OUTLIVE the
 # nodes that held it? As holders leave for good and are NEVER replaced, the pool
 # concentrates onto fewer survivors — does the caretaker keep every stripe
 # reconstructable (re-scatter faster than loss) so a fetch stays bit-perfect?
-# run.sh reads the caretaker's "repair sweep complete reachable=N" (#235) to watch
+# run.sh reads the caretaker's "repair sweep complete reachable=N" to watch
 # redundancy heal after each departure, not merely hope it did.
 #
 # role.sh self-advertises each container's IP (a wildcard bind isn't dialable).

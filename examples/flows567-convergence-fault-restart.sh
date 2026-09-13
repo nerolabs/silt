@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# Flows 5, 6, 7 — the three-validator field test (roadmap #52), as a runnable
+# Flows 5, 6, 7 — the three-validator field test, as a runnable
 # operator playbook.
-#   5 Convergence      : every replica agrees on the committed history.
-#   6 Fault tolerance  : kill one validator, a survivor quorum still commits.
-#   7 Restart survival : a validator reloads its bond with NO re-plot, standing
-#                        returns, and its chain CATCHES UP; a storage node
-#                        re-announces and still serves its content.
+#  5 Convergence: every replica agrees on the committed history.
+#  6 Fault tolerance: kill one validator, a survivor quorum still commits.
+#  7 Restart survival: a validator reloads its bond with NO re-plot, standing
+#  returns, and its chain CATCHES UP; a storage node
+#  re-announces and still serves its content.
 #
 # It uses `silt id` to learn each validator's NodeID before launch (so the
 # `-attesters <ID>` wiring is fillable up front) and `silt chain-status` to
 # confirm convergence by head hash — no throwaway probe daemons, no hashing
 # chain.cbor by hand.
 #
-#   ./examples/flows567-convergence-fault-restart.sh          # from the repo
-#   SILT_REPO=/path/to/silt examples/flows567-...sh           # from anywhere
+# ./examples/flows567-convergence-fault-restart.sh # from the repo
+#  SILT_REPO=/path/to/silt examples/flows567-...sh # from anywhere
 # Binds loopback ports 7100-7103; run one example at a time.
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail

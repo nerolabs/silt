@@ -1,11 +1,12 @@
 package node
 
 // The "delivery receipt paid NO credit" WARN line is an ANNOUNCED OBSERVABLE
-// CONTRACT (S5), and until now nothing asserted it (Tester finding, 2026-09-03: a
-// repo-wide grep for the event string and for serial_guard_refusals in *_test.go
-// returned nothing). This is the SECOND instance of the observable-log-contract scar
-// — the first cost an e2e failure when `freeload: ON` was reworded — so the line is
-// gated here at the unit tier: the exact event string, the level, and both fields.
+// CONTRACT (S5), and until now nothing asserted it (the research finding,
+// 2026-09-03: a repo-wide grep for the event string and for serial_guard_refusals in
+// *_test.go returned nothing). This is the SECOND instance of the
+// observable-log contract — the first instance cost an e2e failure when `freeload: ON`
+// was reworded — so the line is gated here at the unit tier: the exact event string,
+// the level, and both fields.
 //
 // What the line is for: a receipt the bank ACCEPTED can still settle nothing (the
 // paid-serial guard full of live serials, a serial already paid on this ledger, a
@@ -19,7 +20,8 @@ package node
 // operator-actionable guard-full condition cannot arise at settle on the session lane —
 // it arises at open/fund and has its own marker, "delivery anchor refused: guard full"
 // (TestGuardFullOpenLogsTheWarnMarker). Pre-authentication refusals (no session, not the
-// owner, bad signature) must NOT produce this line: TestPreAuthSettleRefusalIsNotAWarn.
+// project, bad signature) must NOT produce this line:
+// TestPreAuthSettleRefusalIsNotAWarn.
 
 import (
 	"crypto/rand"
@@ -81,15 +83,16 @@ func TestBankedButUnpaidReceiptLogsTheWarnLine(t *testing.T) {
 	serverID := serverIdent.NodeID()
 	nd := New(serverID, DefaultConfig(), sched, simNet.Endpoint(serverID), memstore.New())
 
-	// B-9: the flat receipt is retired; the non-paying path on the SESSION lane is a
+	// the flat receipt is retired; the non-paying path on the SESSION lane is a
 	// refused settlement (here: a cumulative count the budget cannot fund).
 	ledger := credit.New(50_000, 0)
 	nd.SetLedger(ledger)
 	nd.SetSigner(serverIdent.Signer())
 
-	// R0.4b: the bank verifies against a keyset whose key_E resolved against the
-	// CONSENSUS-ATTESTED binding, so the fixture commits it at genesis (epochs off, so
-	// the consensus epoch is 0 throughout). Same shape as TestR05NodePathConservation.
+	// The bank verifies against a keyset whose key_E resolved against the
+	// CONSENSUS-ATTESTED binding, so the fixture commits it at genesis (epochs off,
+	// so the consensus epoch is 0 throughout). Same shape as
+	// TestNodePathConservation.
 	c := chain.New(chain.Config{Quorum: 1}, func(ports.NodeID) int64 { return 1 << 30 })
 	g := chain.Block{
 		Version: chain.BlockVersionWitnessable,

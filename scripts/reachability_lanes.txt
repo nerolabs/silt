@@ -1,5 +1,4 @@
 # Lane -> client entry symbol, for scripts/check_reachability.py
-# scar:mechanism-shipped-inert-2026-09-10
 #
 # One record per blank-line-separated block. Five REQUIRED fields, all non-empty:
 #
@@ -10,10 +9,10 @@
 #                A bare identifier is refused. A bare identifier is what the grep
 #                sweep keyed on, and it is why an inert method hid behind a live
 #                namesake (demand.Commit) and never showed up in the count.
-#   label        a substring that occurs EXACTLY ONCE in docs/release-checklist.md,
+#   label        a substring that occurs EXACTLY ONCE in scripts/reachability_postures.md,
 #                inside the lane's posture line. The gate reads the enclosing bullet
 #                or paragraph and asks whether it says the lane CANNOT BE EXERCISED.
-#   claim        the public claim in the release checklist this lane backs. This is
+#   claim        the public claim the posture file records for this lane. This is
 #                why the lane is in a BOUNDED gate at all.
 #   substantial  why this symbol cannot be inlined away, so that its ABSENCE from the
 #                symbol table is proof and not noise.
@@ -32,8 +31,8 @@
 #     - "the body carries a CALLBACK CLOSURE, which surfaces as `<symbol>.funcN`".
 #       A closure is a property of a client entry point handing work to a transport.
 #       Consensus validators do not have one: run the retired rule against the nine
-#       freeze-manifest records below and it refuses SEVEN of them — setD3Digests,
-#       validateD3Digests, CheckConsensusParams, genesis.Build, printEraObservable,
+#       freeze-manifest records below and it refuses SEVEN of them — setBlockDigests,
+#       validateBlockDigests, CheckConsensusParams, genesis.Build, printEraObservable,
 #       StartupEraLines and chainstore.Recover — every one a symbol the compiler will
 #       not inline at any call site.
 #     - the `.funcN` row as a PRESENT-path anti-hollowing witness. A closure can be
@@ -58,7 +57,7 @@
 #
 # ADDING A LANE IS ADDING A RECORD. Keep the set bounded to lanes the release
 # checklist makes a public claim about. This is not a sweep of exported symbols: the
-# floor-box keystone is inert by ratified owner direction (D-RECOMPUTE-FREEZE) and
+# floor-box keystone is inert by deliberate direction and
 # would drown the signal.
 #
 # ⚠ REACHABILITY IS NECESSARY AND NEVER SUFFICIENT. A green run proves every symbol
@@ -132,9 +131,9 @@ substantial: Marshals a RelayPay and hands n.request a closure that reads the au
 # Why they are in a file whose header says "lanes the release checklist makes a
 # public claim about": the checklist now makes one about them, under "Every
 # era-4/v5 freeze-manifest mechanism is in the shipped binary". They were added
-# because the gate built after owner call F shipped INERT did not watch the class
+# because the gate built afterwards shipped INERT and did not watch the class
 # of surface F was. `CheckConsensusParams` sat with zero non-test callers for a day
-# while `D-CFGBIND-BUILT-2026-09-10` read "✅ BUILT … Closes R-CONSENSUS-CONFIG-UNBOUND
+# while the record read "BUILT … closes the config-divergence hole
 # on the production path", and a green run of this gate would have said nothing.
 #
 # THE MAPPING, NOT A SAMPLE. The manifest holds 22 items. SIX name a mechanism that
@@ -153,7 +152,7 @@ substantial: Marshals a RelayPay and hands n.request a closure that reads the au
 # DELIVERABLE — a gob message-length pre-check inside it — not the function. So item
 # 18 is out of this gate because its deliverable does not exist, NOT because its
 # surface is missing, and the surface being unlinked is a separate live finding:
-# `R-INGEST-WITNESSES-INERT` in ROADMAP.md. Wiring it up is a consensus-surface
+# The witness-ingest lane is inert. Wiring it up is a consensus-surface
 # change and is not a thing this file may do to make a run green.
 #
 # ⚠ REACHABILITY IS NECESSARY AND NEVER SUFFICIENT. DO NOT BOOK A MANIFEST ITEM AS
@@ -176,16 +175,16 @@ claim: Manifest item 1 is booked BUILT, and the whole of the item is that a v5 s
 substantial: The compiler prices the body at cost 1236 against an inline budget of 80 and reports `cannot inline`, so an absence from the symbol table is the linker dropping it. Its own closure at statehash.go:306 IS inlinable and leaves no `.funcN` row in a binary where this function is plainly live — this record is why the gate measures the declaration instead of hunting a closure witness.
 
 lane: freeze-d3-digests
-symbol: github.com/nerolabs/silt/core/chain.setD3Digests
+symbol: github.com/nerolabs/silt/core/chain.setBlockDigests
 label: the two-level v5 block hash
 claim: Manifest item 3 is booked BUILT on the sentence that a pruned v5 block recomputes its own hash because its retained body is self-covering. That rests on every minted v5 block actually CARRYING AnswerDigest and SlashesDigest, and this is their only production writer. A format field nothing writes is not in the format, whatever the schema says.
-substantial: Cost 172 against an inline budget of 80, `cannot inline setD3Digests`. It carries no function literal anywhere in its body, which is ordinary for a mint-path mutator and is exactly the shape the retired closure proxy refused.
+substantial: Cost 172 against an inline budget of 80, `cannot inline setBlockDigests`. It carries no function literal anywhere in its body, which is ordinary for a mint-path mutator and is exactly the shape the retired closure proxy refused.
 
 lane: freeze-d3-digests
-symbol: github.com/nerolabs/silt/core/chain.validateD3Digests
+symbol: github.com/nerolabs/silt/core/chain.validateBlockDigests
 label: the two-level v5 block hash
 claim: The other half of item 3's claim. Digests are self-covering only if a peer REFUSES a block whose digests disagree with its body; this is that refusal, reached from all three block-admission paths. Dropping it would leave the writer emitting fields no receiver checks, which is a weaker property than the one the manifest books.
-substantial: Cost 1010 against an inline budget of 80 — the widest margin in this file — and `cannot inline validateD3Digests`. No function literal in the body.
+substantial: Cost 1010 against an inline budget of 80 — the widest margin in this file — and `cannot inline validateBlockDigests`. No function literal in the body.
 
 lane: freeze-genesis-config
 symbol: github.com/nerolabs/silt/core/genesis.Build

@@ -8,21 +8,20 @@ import (
 	"github.com/pokt-network/smt/kvstore"
 )
 
-// pebbleStore is the LSM candidate the PE ruling asked to measure alongside
-// bbolt (RULING keystone-node-store Q1: "measure bbolt AND one tuned LSM in one
-// floor-box run … pebble with a minimal cache/memtable"). Same spike status as
-// boltStore: test-only, importable by nothing, deleted once the measurement
-// picks a backend.
+// pebbleStore is the LSM candidatesure bbolt AND one tuned LSM in one floor-box
+// run … pebble with a minimal cache/memtable". Same spike status as boltStore:
+// test-only, importable by nothing, deleted once the measurement picks a
+// backend.
 //
 // TUNED FOR THE FLOOR BOX, deliberately. Pebble's defaults size its cache and
 // memtables for a server; on a 2 GB box shared with a daemon those defaults are
-// the OOM shape #596 disqualified. So the cache and memtable are pinned SMALL
+// the OOM shape disqualified. So the cache and memtable are pinned SMALL
 // here — the measurement's job is to find out whether pebble's write-throughput
 // advantage survives being squeezed into the floor box's memory, which is the
 // only configuration that could ship.
 //
-// Same batching contract as boltStore: Set() buffers into a pebble.Batch,
-// Flush() commits it once per block (one sync), Get() reads the batch first so
+// Same batching contract as boltStore: Set buffers into a pebble.Batch, Flush
+// commits it once per block (one sync), Get reads the batch first so
 // read-your-writes holds within a block.
 type pebbleStore struct {
 	db      *pebble.DB

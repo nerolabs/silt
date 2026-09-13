@@ -11,19 +11,17 @@ import (
 )
 
 // era-3 build step 2b — the v4 validity predicate model-check tier. These oracles prove
-// the four properties the 2a ruling's "What 2b MUST carry" requires, and NO more:
+// the four properties the 2adecision's "What 2b MUST carry" requires, and NO more:
 //
-//  1. a CORRECT v4 block (roots = post-apply recompute) is ACCEPTED;
-//  2. a v4 block with a WRONG StateRoot or LogRoot is REJECTED (named errors);
-//  3. a v4 block with a NIL StateRoot or LogRoot is REJECTED explicitly (ErrEra3RootMissing);
-//  4. a v2/v3 block is UNAFFECTED — the predicate does not fire (era-gating).
+// 1. a CORRECT v4 block (roots = post-apply recompute) is ACCEPTED;
+// 2. a v4 block with a WRONG StateRoot or LogRoot is REJECTED (named errors);
+// 3. a v4 block with a NIL StateRoot or LogRoot is REJECTED explicitly (ErrEra3RootMissing);
+// 4. a v2/v3 block is UNAFFECTED — the predicate does not fire (era-gating).
 //
 // Plus the dry-run clone drift guard (postApplyRoots must not silently forget a
 // committed field). Each test names the RED that keeps its green honest. STOP boundary
 // (2b): the predicate ADDS a v4-gated rejection only; nothing mints v4 (2c) here — the
-// v4 blocks are built by the test, never by a propose path. Deliberation:
-// docs/thinking/2026-08-29-era3-step2b-validity-predicate.md.
-
+// v4 blocks are built by the test, never by a propose path.
 // era3ValidityChain builds an objective launch-phase chain whose proposer (prop) is a
 // bonded launch anchor, so a block it proposes passes ValidateProposal's era-2 checks
 // and reaches the era-3 predicate. It commits one real block first so the committed
@@ -179,8 +177,8 @@ func TestEra3WrongLogRootRejected(t *testing.T) {
 }
 
 // TestEra3NilStateRootRejected — a v4 block with a nil StateRoot is rejected explicitly
-// with ErrEra3RootMissing (the 2a-omitempty carry-forward, ruling MUST 1). RED: rely on
-// the equality check alone — the nil would still reject, but not with the named
+// with ErrEra3RootMissing (the 2a-omitempty carry-forward, decision MUST 1). RED: rely
+// on the equality check alone — the nil would still reject, but not with the named
 // missing-root error, and not before the recompute; this test pins the explicit reject.
 func TestEra3NilStateRootRejected(t *testing.T) {
 	c, prop := era3ValidityChain(t)
@@ -255,19 +253,20 @@ func TestEra3PredicateRidesThroughValidateCommit(t *testing.T) {
 
 // TestDryRunCloneCopiesEveryAppliedField is the drift guard for postApplyRoots'
 // cloneForDryRun. A committed/log/observable field the clone forgets would make the
-// dry-run apply diverge and the recompute silently wrong — the #558 class. Reflection
-// makes the guard total: it asserts that cloneForDryRun copies every field the
-// classification calls history-derived (committedSet | committedLog | observable) to a
-// value equal to the source, and that the clone is a DISTINCT object per reference field
-// (so apply() on the clone cannot mutate the live chain).
+// dry-run apply diverge and the recompute silently wrong — the class. Reflection makes
+// the guard total: it asserts that cloneForDryRun copies every field the classification
+// calls history-derived (committedSet | committedLog | observable) to a value equal to
+// the source, and that the clone is a DISTINCT object per reference field (so apply on
+// the clone cannot mutate the live chain).
 //
 // RED: drop any map copy in cloneForDryRun (e.g. `s.bonded = c.bonded` by reference, or
 // omit a field entirely) and either the equality or the distinctness assertion fails.
 func TestDryRunCloneCopiesEveryAppliedField(t *testing.T) {
 	src := &Chain{}
 	populateCommitted(src)
-	// populateCommitted leaves cfg/rep unset; give the clone a config so apply()'s
-	// callees behave, though this test only inspects the copied history-derived fields.
+	// populateCommitted leaves cfg/rep unset; give the clone a config so apply's
+	// callees behave, though this test only inspects the copied history-derived
+	// fields.
 	src.cfg = DefaultConfig()
 
 	clone := src.cloneForDryRun()
@@ -281,9 +280,10 @@ func TestDryRunCloneCopiesEveryAppliedField(t *testing.T) {
 			t.Errorf("field %q: clone value %v != source %v — cloneForDryRun did not copy it", name, cv, sv)
 			continue
 		}
-		// Distinctness for reference types: mutating the clone must not touch the source.
-		// A non-empty map/slice with a shared backing array is the bug — apply() on the
-		// clone would mutate live state. (A nil/empty ref has no backing to share.)
+		// Distinctness for reference types: mutating the clone must not touch the
+		// source. A non-empty map/slice with a shared backing array is the bug —
+		// apply on the clone would mutate live state. (A nil/empty ref has no
+		// backing to share.)
 		rv := reflect.ValueOf(sv)
 		switch rv.Kind() {
 		case reflect.Map, reflect.Slice, reflect.Ptr:

@@ -15,12 +15,11 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Token issuance must be IDEMPOTENT under transport retries (research
-// certification 2026-08-13, A2): a lost REPLY makes the requester re-present
-// the SAME blinded serial (requestAttempt re-sends msg.Data verbatim), and the
-// issuer must answer with the SAME signature while charging the fee ONCE.
-// Signing is deterministic RSA-FDH, so the dedup changes no cryptography —
-// only the charge/spend accounting.
+// Token issuance must be IDEMPOTENT under transport retries: a lost REPLY
+// makes the requester re-present the SAME blinded serial (requestAttempt
+// re-sends msg.Data verbatim), and the issuer must answer with the SAME
+// signature while charging the fee ONCE. Signing is deterministic RSA-FDH, so
+// the dedup changes no cryptography — only the charge/spend accounting.
 
 // Legacy fee path: a re-presented blinded serial returns the identical
 // signature and the durable identity is charged exactly once.

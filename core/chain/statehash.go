@@ -10,7 +10,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// era-3 committed state root — build step 1 (certified sequence, choice 5 step 2).
+// era-3 committed state root — build step 1.
 //
 // This file marshals the 18 committedSet fields of Chain into field-tagged,
 // canonically-encoded SMT leaves and computes the StateRoot. It lives in package
@@ -19,19 +19,18 @@ import (
 // core/statehash, which carries no dependency on chain.
 //
 // STOP boundary (step 1): this computes a root. It does NOT add a Block field,
-// change Hash(), add a validity predicate, or touch BlockVersion/versionSupported.
-// Those re-trigger certification and are later steps.
+// change Hash, add a validity predicate, or touch BlockVersion/versionSupported.
+// Those re-trigger research and are later steps.
 //
-// The per-field-class value encoding is pinned in
-// docs/thinking/2026-08-28-era3-state-root-value-encoding.md and certified by
-// era3-committed-state-root-format-RESEARCH-CERTIFICATION-2026-08-28.md (Q2/Q3/Q6).
-// The field tags are exactly the 18 committedSet field names classified in
-// modelcheck_state_completeness_test.go:81-96. revLog (committedLog -> its own
+// The per-field-class value encoding is pinned and by
+// era3-committed-state-root-format- (Q2/Q3/Q6). The field tags are exactly the 18
+// committedSet field names classified in
+// modelcheck_state_completeness_test.go. revLog (committedLog -> its own
 // LogRoot) and epochStart (observable -> no root) are deliberately excluded.
 
 // State-root field tags. Each is a committedSet field name followed by a single
 // NUL, making the tag || rawKey concatenation injective across all fields and the
-// scalar reserved keys (research cert Q3). The set is EXACTLY the 18 committedSet
+// scalar reserved keys. The set is EXACTLY the 18 committedSet
 // fields — a field added to Chain fails the completeness guard until classified,
 // and a committedSet field added here without a tag fails stateRootLeaves' coverage
 // assertion (both are enforced, not asserted by inspection).
@@ -58,14 +57,15 @@ const (
 	tagEra3LockedIn = "era3LockedIn\x00"
 	tagEra3Height   = "era3Height\x00"
 
-	// era-4 (v5) field tags — reserved in 4a, COMMITTED in 4b as V5-ONLY leaves. The
-	// maintenance maps they tag (qualified, the due-bucket index) and the frozen
-	// epochStart scalar are emitted by stateRootLeavesV5, which appends them to the
-	// era-3 leaf set. They are gated on the era: StateRoot() (the era-3 entry) still
-	// emits exactly the 18 era-3 leaves, so a v4 block's committed root stays
-	// byte-identical to era-3 (hazard-1). Only the v5 root computation
-	// (postApplyRoots on a v5 block) includes these leaves. The on-wire byte layout
-	// (tag || rawKey) was fixed in 4a so 4b cannot silently pick a colliding prefix.
+	// era-4 (v5) field tags — reserved in 4a, COMMITTED in 4b as V5-ONLY leaves.
+	// The maintenance maps they tag (qualified, the due-bucket index) and the
+	// frozen epochStart scalar are emitted by stateRootLeavesV5, which appends
+	// them to the era-3 leaf set. They are gated on the era: StateRoot (the era-3
+	// entry) still emits exactly the 18 era-3 leaves, so a v4 block's committed
+	// root stays byte-identical to era-3 (hazard-1). Only the v5 root computation
+	// (postApplyRoots on a v5 block) includes these leaves. The on-wire byte
+	// layout (tag || rawKey) was fixed in 4a so 4b cannot silently pick a
+	// colliding prefix.
 	tagDueBucket  = "dueBucket\x00"
 	tagQualified  = "qualified\x00"
 	tagEpochStart = "epochStart\x00"
@@ -73,26 +73,26 @@ const (
 	// era-4 (v5) activation-scalar tags — the era-4 witnessable-transitions activation
 	// state (era4LockedIn/era4Height), committed as V5-ONLY scalar leaves in 4d. era-3
 	// committed its activation scalars in the era-3 leaf set (every v4 block); era-4
-	// cannot — that would edit the frozen era-3 leaf set (immutable #632). Emitted only by
+	// cannot — that would edit the frozen era-3 leaf set (immutable). Emitted only by
 	// stateRootLeavesV5, so a v4 block's root stays byte-identical to era-3. Before
 	// activation these scalars are zero on the v4 blocks that don't commit them; era4Active
 	// first fires at a v5 height, which DOES commit them. Same pattern as epochStart.
 	tagEra4LockedIn = "era4LockedIn\x00"
 	tagEra4Height   = "era4Height\x00"
 
-	// era-4 (v5) whole-set DIGEST-root tags — F1 of the ratified five-root format
-	// addition. Each is a SINGLE scalar leaf whose VALUE is the RFC-6962 MTH over the
-	// CANONICAL sorted id-list of that keyspace's member set (membership-only; weights
-	// stay in the per-member leaves). They exist so a root-only floor box can prove SET
-	// COMPLETENESS of a whole-set fold: an SMT lets a root-only holder prove inclusion of
-	// members it was given but nothing about members withheld, so a withholding prover
-	// hands a short read-set whose every inclusion proof still verifies. The MTH over the
-	// full id-list closes that gap — one missing id yields a different tree, hence a
-	// different root, hence a stall. Certified 2026-08-31 (v5-wholeset-digest-root cert);
+	// era-4 (v5) whole-set DIGEST-root tags — F1 of the five-root format addition.
+	// Each is a SINGLE scalar leaf whose VALUE is the RFC-6962 MTH over the CANONICAL
+	// sorted id-list of that keyspace's member set (membership-only; weights stay in
+	// the per-member leaves). They exist so a root-only floor box can prove SET
+	// COMPLETENESS of a whole-set fold: an SMT lets a root-only holder prove inclusion
+	// of members it was given but nothing about members withheld, so a withholding
+	// prover hands a short read-set whose every inclusion proof still verifies. The
+	// MTH over the full id-list closes that gap — one missing id yields a different
+	// tree, hence a different root, hence a stall. Certified 2026-08-31
 	// same closure dueBucketMTH already ships.
 	//
 	// INERT in F1: nothing READS these roots — no validity predicate, no recompute. F3
-	// wires the root-only recompute that consumes them (with the C-1 per-member value
+	// wires the root-only recompute that consumes them (with the per-member value
 	// proofs and C-6 genesis config). F1 only COMMITS the bytes, exactly as era-4 4a
 	// committed its schema before 4b consumed it.
 	//
@@ -104,68 +104,68 @@ const (
 	// one has `R` (0x52), so they diverge before either tag ends. Each root is a scalar
 	// leaf at tag||"" (empty raw key), and per-member raw keys are non-empty 32-byte
 	// NodeIDs, so no scalar-vs-member collision either. v5-ONLY: emitted by
-	// stateRootLeavesV5 only, so a v4 block's root stays byte-identical to era-3 (#632).
+	// stateRootLeavesV5 only, so a v4 block's root stays byte-identical to era-3.
 	tagBondedRoot         = "bondedRoot\x00"
 	tagEpochSetRoot       = "epochSetRoot\x00"
 	tagQualifiedRoot      = "qualifiedRoot\x00"
 	tagSlashedRoot        = "slashedRoot\x00"
 	tagValidatorsSeenRoot = "validatorsSeenRoot\x00"
 
-	// R0.4b per-epoch demand-issuer key binding (era-4 / v5 only). One VALUE-CARRYING
+	// per-epoch demand-issuer key binding (era-4 / v5 only). One VALUE-CARRYING
 	// leaf per (epoch, issuer): rawKey = uint64BE(epoch) || issuerNodeID (40 bytes),
 	// value = the 32-byte sha256 fingerprint of that epoch's RSA blind-signing public
 	// key. The tag is \x00-terminated so tag||rawKey stays injective against every
-	// other field (research cert Q3), and `issuerKeyCommit\x00` cannot collide with any
+	// other field, and `issuerKeyCommit\x00` cannot collide with any
 	// existing tag — no other tag shares the `issuerKey` prefix.
 	//
-	// PER-MEMBER, NOT AN MTH SCALAR (deliberate, see
-	// docs/thinking/2026-09-02-r0.4b-per-epoch-key-expiry-design.md §5). The F1
-	// whole-set digest roots exist so a root-only box can prove SET COMPLETENESS of a
-	// whole-set fold; nothing folds this keyspace. A redeemer resolves ONE (epoch,
-	// issuer) leaf, which a per-member inclusion proof answers directly and a digest
-	// scalar would not. If a root-only recompute ever folds this keyspace it needs its
-	// own digest root added to stateRootDigestTagsV5 first.
+	// PER-MEMBER, NOT AN MTH SCALAR (deliberate). The F1 whole-set digest roots
+	// exist so a root-only box can prove SET COMPLETENESS of a whole-set fold;
+	// nothing folds this keyspace. A redeemer resolves ONE (epoch, issuer) leaf,
+	// which a per-member inclusion proof answers directly and a digest scalar would
+	// not. If a root-only recompute ever folds this keyspace it needs its own
+	// digest root added to stateRootDigestTagsV5 first.
 	//
 	// v5-ONLY: emitted by stateRootLeavesV5 only, so a v4 block's root stays
-	// byte-identical to the frozen era-3 leaf set (#632), and a v4 block carrying a
+	// byte-identical to the frozen era-3 leaf set, and a v4 block carrying a
 	// registration is REJECTED (validateIssuerKeys) so no committed state can escape
 	// its own committed root.
 	tagIssuerKey = "issuerKeyCommit\x00"
 
-	// revLogSize (era-4 / v5 only) — freeze-manifest item 1, the SAFETY leaf. ONE scalar
-	// leaf whose value is EncodeUint64 of the revocation log's size AFTER this block's own
-	// appends. Certified 2026-09-07 (freeze manifest §4.1), ratified the same day (§8, owner
-	// call 9).
+	// revLogSize (era-4 / v5 only) — freeze-manifest item 1, the SAFETY leaf. ONE
+	// scalar leaf whose value is EncodeUint64 of the revocation log's size AFTER this
+	// block's own appends. Certified 2026-09-07 (freeze manifest §4.1), settled the
+	// same day.
 	//
-	// WHY IT IS COMMITTED AT ALL. The floor box verifies a revocation-bearing block's LogRoot
-	// verify-not-recompute: an RFC-6962 consistency proof from the parent's log root at size m
-	// to the block's LogRoot at size m+k. Every OTHER fact the box needs rides the box-owned
-	// head record, because each is self-checking against a block whose Hash() the box verifies
-	// against its pin. m is not: it is a field of no block and a value of no committed root,
-	// and it is NOT recoverable from committed state — apply() DELETES from `revoked` on an
-	// un-revocation (chain.go apply), so |revoked| ≠ len(revLog), and revLog is deliberately
-	// outside the SMT (it is history-dependent, so it stays an ordered CT root, #597).
+	// WHY IT IS COMMITTED AT ALL. The floor box verifies a revocation-bearing block's
+	// LogRoot verify-not-recompute: an RFC-6962 consistency proof from the parent's log
+	// root at size m to the block's LogRoot at size m+k. Every OTHER fact the box needs
+	// rides the box-owned head record, because each is self-checking against a block whose
+	// Hash the box verifies against its pin. m is not: it is a field of no block and a
+	// value of no committed root, and it is NOT recoverable from committed state — apply
+	// DELETES from `revoked` on an un-revocation (chain.go apply), so |revoked| ≠
+	// len(revLog), and revLog is deliberately outside the SMT (it is history-dependent, so
+	// it stays an ordered CT root).
 	//
 	// AND A WRONG m IS A WRONG-ACCEPT, NOT A STALL. translog.VerifyConsistency returns true at
 	// m == 0 without reading either root, and at m == 1 the isPow2 seeding leaves the
 	// accumulator equal to oldRoot for the whole loop, so an adversary who chooses m claims
 	// m = 1 and presents ANY right-spine extension of the parent's log root as valid. That
 	// asymmetry — a wrong parentStateRoot STALLS, a wrong m ACCEPTS — is why m cannot be seeded
-	// from the checkpoint like parentStateRoot. TestGD9_WitnessSuppliedLogSizeIsUnsound_Control
+	// from the checkpoint like parentStateRoot. TestWitnessSuppliedLogSizeIsUnsound_Control
 	// drives the forgery and asserts it passes; this leaf is what refuses it.
 	//
 	// C-a ALWAYS-EMIT: emitted on EVERY v5 root, including an empty log (EncodeUint64(0)). No
-	// absent-vs-empty shortcut, for the same reason the five digest roots pay C-4 — a box
+	// absent-vs-empty shortcut, for the same reason the five digest roots pay — a box
 	// reading absence could not tell "empty log" from "no witness".
 	// C-b POST-APPLY: the value is len(revLog) AFTER this block's appends, which is what
 	// postApplyRoots computes (clone → apply → StateRootForVersion). The box validating H
 	// resolves it against H−1's committed StateRoot and gets exactly the m its proof needs.
-	// C-7 PREFIX-SAFE: `revLogSize\x00` diverges from `revoked\x00` at byte 3 (`L` 0x4C vs `o`
+	// PREFIX-SAFE: `revLogSize\x00` diverges from `revoked\x00` at byte 3 (`L` 0x4C vs `o`
 	// 0x6F), before either tag's NUL, and no other tag shares the `rev` prefix. It is a scalar
 	// leaf at tag||"" and every per-member raw key is non-empty, so no scalar-vs-member
 	// collision either.
 	// v5-ONLY: emitted by stateRootLeavesV5 alone, so a v4 block's root stays byte-identical to
-	// the frozen era-3 leaf set (#632) and no live-history block hash moves.
+	// the frozen era-3 leaf set and no live-history block hash moves.
 	tagRevLogSize = "revLogSize\x00"
 )
 
@@ -191,18 +191,18 @@ var stateRootDigestTagsV5 = []string{
 
 // stateRootTagsV5 is the era-4 (v5) committedSet field names committed ONLY under the
 // v5 state root — the maintenance-spine fields the v5 marshaller adds on top of the 18
-// era-3 fields, plus the R0.4b per-epoch issuer-key commitment. It is pinned from BOTH
-// sides so it cannot drift:
+// era-3 fields, plus the per-epoch issuer-key commitment. It is pinned from BOTH sides
+// so it cannot drift:
 //
-//   - to the live field CLASSIFICATION, by TestStateRootCoversExactlyTheCommittedSetFields
-//     (a committedSet field missing from stateRootTags AND this list is reported);
-//   - to the live MARSHALLER, by TestStateRootV5CoversExactlyTheV5Fields (the tags
-//     stateRootLeavesV5 actually emits are exactly this list plus stateRootTags plus
-//     stateRootDigestTagsV5 — no missing leaf, and no unlisted tag in the v5 root).
+// - to the live field CLASSIFICATION, by TestStateRootCoversExactlyTheCommittedSetFields
+// (a committedSet field missing from stateRootTags AND this list is reported);
+// - to the live MARSHALLER, by TestStateRootV5CoversExactlyTheV5Fields (the tags
+// stateRootLeavesV5 actually emits are exactly this list plus stateRootTags plus
+// stateRootDigestTagsV5 — no missing leaf, and no unlisted tag in the v5 root.
 //
 // Both pins bind to a FULLY-POPULATED chain, so a field listed here must be populated by
 // the test fixture's populateCommitted or the marshaller emits no leaf for it and the
-// second pin reddens. That is the coupling the rebase onto #709 surfaced.
+// second pin reddens. That is the coupling the rebase onto surfaced.
 //
 // These are NOT in stateRootTags (the era-3 set), which keeps the v4 root byte-identical
 // to era-3.
@@ -314,10 +314,10 @@ func (c *Chain) stateRootLeavesV5() []statehash.Leaf {
 	}
 
 	// dueBucket: one leaf per occupied due-height, key = uint64BE(height), value =
-	// RFC-6962 MTH over the CANONICAL (sorted-ascending / dedup / unpadded) id list.
-	// The canonical order makes the committed value independent of map iteration order
-	// and forecloses MTH malleability (design §4b; RECERT2 canonical-list pin). Empty
-	// buckets never occur — dueBucketRemove deletes a bucket once its last id leaves.
+	// RFC-6962 MTH over the CANONICAL (sorted-ascending / dedup / unpadded) id
+	// list. The canonical order makes the committed value independent of map
+	// iteration order and forecloses MTH malleability (design §4b). Empty buckets
+	// never occur — dueBucketRemove deletes a bucket once its last id leaves.
 	for h, ids := range c.dueBucket {
 		var key [8]byte
 		binary.BigEndian.PutUint64(key[:], h)
@@ -332,17 +332,18 @@ func (c *Chain) stateRootLeavesV5() []statehash.Leaf {
 	// EncodeUint64(0), never an absent leaf. This is the value that makes the parent tree size
 	// m non-forgeable for the box's LogRoot consistency proof; see tagRevLogSize.
 	//
-	// The nil check is the same tolerance every keyspace above already has: a zero-value Chain
-	// has a nil revLog exactly as it has nil maps, and both mean EMPTY. New() always installs a
-	// log and adopt/cloneForDryRun copy a non-nil one, so a nil revLog is unreachable for a
-	// chain with any history — this cannot silently commit 0 for a populated log.
+	// The nil check is the same tolerance every keyspace above already has: a zero-value
+	// Chain has a nil revLog exactly as it has nil maps, and both mean EMPTY. New always
+	// installs a log and adopt/cloneForDryRun copy a non-nil one, so a nil revLog is
+	// unreachable for a chain with any history — this cannot silently commit 0 for a
+	// populated log.
 	revLogSize := 0
 	if c.revLog != nil {
 		revLogSize = c.revLog.Size()
 	}
 	add(tagRevLogSize, nil, statehash.EncodeUint64(uint64(revLogSize)))
 
-	// issuerKeyCommit (R0.4b): one value-carrying leaf per (epoch, issuer), key =
+	// issuerKeyCommit: one value-carrying leaf per (epoch, issuer), key =
 	// uint64BE(epoch) || issuerNodeID, value = the 32-byte key fingerprint. Order-free
 	// (one leaf per member), so the committed root is independent of Go map iteration
 	// order — the same property the bonded/epochSet/qualified per-member leaves have.
@@ -401,8 +402,8 @@ func nodeSetMTHFromBool(m map[ports.NodeID]bool) []byte {
 // nodeSetMTH commits a NodeID set as the RFC-6962 MTH over the CANONICAL id list: sorted
 // ascending by raw NodeID bytes, unpadded (a set is already unique). The canonical order
 // is what makes "recompute to this root" uniquely identify the set — two encodings of the
-// same set cannot hash to different roots (the malleability seam RECERT2 closes). An empty
-// set yields translog.MTH(nil), the fixed empty-MTH constant (C-4 always-emit: an empty
+// same set cannot hash to different roots (the malleability seam closes). An empty set
+// yields translog.MTH(nil), the fixed empty-MTH constant (always-emit: an empty
 // keyspace is committed, not skipped). translog.MTH is the one audited RFC-6962
 // implementation, reused rather than re-derived. This is the same closure dueBucketMTH
 // ships, factored so the five F1 digest roots and the due-bucket index share one canonical
@@ -423,8 +424,8 @@ func nodeSetMTH(ids []ports.NodeID) []byte {
 // CANONICAL id list: sorted ascending by raw NodeID bytes, deduplicated (a set is
 // already unique), unpadded. The canonical order is what makes "recompute to this
 // bucket root" uniquely identify the set — two encodings of the same set cannot hash
-// to different roots (the malleability seam RECERT2 closes). The leaf entries are the
-// raw 32-byte NodeIDs; translog.MTH is the one audited RFC-6962 implementation, reused
+// to different roots (the malleability seam closes). The leaf entries are the raw
+// 32-byte NodeIDs; translog.MTH is the one audited RFC-6962 implementation, reused
 // here rather than re-derived.
 func dueBucketMTH(ids map[ports.NodeID]struct{}) []byte {
 	set := make([]ports.NodeID, 0, len(ids))
@@ -448,7 +449,7 @@ func (c *Chain) StateRootForVersion(version uint64) (ports.Hash, error) {
 
 // LogRoot is the era-3 transparency-log root: the existing RFC-6962 MTH over
 // revLog. It is REUSED, not reimplemented — revLog is history-dependent, so it
-// stays an ordered CT root and never becomes an SMT leaf (#597). Exposed here
+// stays an ordered CT root and never becomes an SMT leaf. Exposed here
 // alongside StateRoot so the two-root shape reads from one place; RevocationLogRoot
 // remains the canonical accessor.
 func (c *Chain) LogRoot() ports.Hash { return c.RevocationLogRoot() }

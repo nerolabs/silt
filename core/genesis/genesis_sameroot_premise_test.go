@@ -7,14 +7,12 @@ import (
 	"github.com/nerolabs/silt/core/genesis"
 )
 
-// The other half of the named-premise guard for residual R-G (PE ruling
-// RULING-618-updated-sameroot-dedup-fix-2026-08-28; deliberation
-// docs/thinking/2026-08-28-genesis-sameroot-residual.md). Its sibling is
-// TestGenesisSameRootApplyIsOrderDependent in core/chain (white-box, on
-// bondRootOwner). That test could not live here — genesis imports chain, so a
-// chain test importing genesis is an import cycle.
+// The other half of the named-premise guard for residual R-G; deliberation.
+// Its sibling is TestGenesisSameRootApplyIsOrderDependent in core/chain
+// (white-box, on bondRootOwner). That test could not live here — genesis
+// imports chain, so a chain test importing genesis is an import cycle.
 //
-// The residual: genesis apply() is order-dependent for two distinct-ID unproven
+// The residual: genesis apply is order-dependent for two distinct-ID unproven
 // same-root bond regs, and AppendGenesis does NOT run the seenRoot dedup. It is
 // safe TODAY only because the production genesis is a byte-identical shared
 // constant that carries NO BondRegs. This test pins BOTH of those facts on the
@@ -23,7 +21,7 @@ import (
 
 // TestProductionGenesisCarriesNoBondRegs pins the actual thing that keeps R-G
 // unreachable: the production genesis is byte-identical across nodes and carries
-// NO BondRegs, so the un-guarded order-dependent apply() path is never exercised
+// NO BondRegs, so the un-guarded order-dependent apply path is never exercised
 // in production.
 //
 // Teeth: if a future change lets the production genesis carry BondRegs (a
@@ -45,19 +43,19 @@ func TestProductionGenesisCarriesNoBondRegs(t *testing.T) {
 			"hashes (%x vs %x) — genesis is no longer the byte-identical shared constant. "+
 			"Residual R-G's safety rests on this identity; a per-node genesis makes the "+
 			"un-guarded genesis apply() order-dependence reachable. Route option (b) of "+
-			"docs/thinking/2026-08-28-genesis-sameroot-residual.md before this ships.",
+			"the design notes before this ships.",
 			gb1.Hash(), gb2.Hash())
 	}
 
-	// No BondRegs: the order-dependent apply() path is not exercised by the real
-	// genesis at all (genesis.go builds Entries only).
+	// No BondRegs: the order-dependent apply path is not exercised by the
+	// real genesis at all (genesis.go builds Entries only).
 	if len(gb1.BondRegs) != 0 {
 		t.Fatalf("PREMISE CHANGED: the production genesis now carries %d BondReg(s). "+
 			"The un-guarded genesis apply() order-dependence (see core/chain "+
 			"TestGenesisSameRootApplyIsOrderDependent) is now REACHABLE in production, "+
 			"because AppendGenesis does NOT dedup same-root distinct-ID regs. Re-assess "+
 			"reachability and route option (b) of "+
-			"docs/thinking/2026-08-28-genesis-sameroot-residual.md before shipping a "+
+			"the design notes before shipping a "+
 			"BondReg-carrying genesis.", len(gb1.BondRegs))
 	}
 	t.Logf("premise pinned: production genesis is byte-identical (%x) and carries 0 BondRegs",

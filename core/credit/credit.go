@@ -1,22 +1,22 @@
 // Package credit is the v1 ledger. It runs TWO economies that earlier
 // versions conflated — and the conflation was the wash-serving hole:
 //
-//   - BALANCES (RecordServe → 1 credit per ServeMintBytesPerCredit = 393,216 bytes
-//     served, numeraire.go, minus a publish
-//     fee). Still self-reported and DELIBERATELY GAMEABLE: two colluding
-//     nodes can ping-pong a chunk to mint credit and nothing here
-//     notices. That is fine — balances fund the anti-spam publish fee and
-//     drive the observatory's who-earns/who-freeloads metrics. They are
-//     NOT a security boundary and never gate consensus.
+// - BALANCES (RecordServe → 1 credit per ServeMintBytesPerCredit = 393,216 bytes
+// served, numeraire.go, minus a publish fee. Still self-reported and
+// DELIBERATELY GAMEABLE: two colluding nodes can ping-pong a chunk to
+// mint credit and nothing here notices. That is fine — balances fund
+// the anti-spam publish fee and drive the observatory's
+// who-earns/who-freeloads metrics. They are NOT a security boundary
+// and never gate consensus.
 //
-//   - STANDING (Reputation → the number the chain gates writes on). This
-//     is NO LONGER self-reported. It is built only on evidence a Sybil
-//     cannot fabricate: challenged, identity-bound held storage
-//     (RecordBondChallenge, backed by core/bond) and passed storage
-//     audits (core/node/por.go). Wash-serving moves balances but buys
-//     ZERO standing — which is what closes the reputation→quorum-capture
-//     path (threat-catalog D1/D3): standing now costs real disk, not
-//     chatter. See Reputation and RecordBondChallenge.
+// - STANDING (Reputation → the number the chain gates writes on). This
+// is NO LONGER self-reported. It is built only on evidence a Sybil
+// cannot fabricate: challenged, identity-bound held storage
+// (RecordBondChallenge, backed by core/bond) and passed storage
+// audits (core/node/por.go). Wash-serving moves balances but buys
+// ZERO standing — which is what closes the reputation→quorum-capture
+// path (threat-catalog D1/D3): standing now costs real disk, not
+// chatter. See Reputation and RecordBondChallenge.
 package credit
 
 import (
@@ -29,29 +29,28 @@ type account struct {
 	balance      int64
 	servedBytes  int64
 	fetchedBytes int64
-	// serveRemainder (G-R212-7): bytes served on the PLAIN path (RecordServe, no lane)
+	// serveRemainder: bytes served on the PLAIN path (RecordServe, no lane)
 	// still below the next Dλ mint boundary; carried so N bytes in M calls mint ⌊N/Dλ⌋
-	// independent of M (G-λ-4). Always < ServeMintBytesPerCredit.
+	// independent of M. Always < ServeMintBytesPerCredit.
 	serveRemainder int64
-	// grantPending (R2.12): this identity has NOT yet received the starter grant. Set at
-	// Register when a faucet is configured; cleared by Grant when the bucket admits (or the
-	// owner grant). ON THE ACCOUNT, not in a side set — a side pending-set would be a
-	// grow-only map (the validatorsSeen trap); the account already exists, so this costs
-	// one bool and no new unbounded state.
+	// grantPending: this identity has NOT yet received the starter grant. Set at
+	// Register when a faucet is configured; cleared by Grant when the bucket admits (or
+	// the project grant). ON THE ACCOUNT, not in a side set — a side pending-set would
+	// be a grow-only map (the validatorsSeen trap); the account already exists, so this
+	// costs one bool and no new unbounded state.
 	grantPending bool
-	// grantAdvanced (R2.12): this pending identity has already received the deny FLOOR as
-	// an ADVANCE on its grant. It stays pending; when a token later admits it, it is topped
-	// up to the full grant (grant − floor), never granted twice (Researcher certification
-	// R2.12-faucet-rate-tier-and-grant-ratio-composition §4.4–4.5, G-R212-3: a floor that
-	// SETTLED the grant made the build-immutable #4 failure permanent).
+	// grantAdvanced: this pending identity has already received the deny FLOOR as an
+	// ADVANCE on its grant. It stays pending; when a token later admits it, it is topped
+	// up to the full grant (grant − floor), never granted twice: a floor that SETTLED
+	// the grant would make the build-immutable #4 failure permanent.
 	grantAdvanced int64 // the amount advanced (0 = none); the top-up is grant − this, never grant − the current floor
-	// grantDenied (R2.12): this identity has been REFUSED at a spend gate at least once. Set
+	// grantDenied: this identity has been REFUSED at a spend gate at least once. Set
 	// on the first plain denial (empty bucket, no floor) and never cleared, so
 	// grantsDenied below counts DISTINCT identities that met an empty bucket — the
-	// Economist's grantsDeniedDistinctTotal — rather than registrations (every pure read
+	// grantsDeniedDistinctTotal — rather than registrations (every pure read
 	// registers) or retries.
 	grantDenied bool
-	// spendRefused (R2.7 §1.3, the build-immutable #4 affordability floor): this
+	// spendRefused (the build-immutable #4 affordability floor): this
 	// identity has been refused at a SPEND GATE for insufficient credit at least once.
 	// Set on the first refusal and never cleared, so spendRefusersDistinct below counts
 	// DISTINCT identities rather than retries. ONE BOOL ON THE ACCOUNT, never a side
@@ -76,24 +75,23 @@ type account struct {
 	// (the coin-age anti-pattern), and the only sound form is a continuous
 	// bond-anchored VDF (M1+). lastBondTick drives the retention decay.
 	//
-	// THE BOND PATH WRITES NO FIRST-TOUCH STAMP. Until 2026-09-05 RecordBondChallenge
-	// also wrote a firstSeenTick: the wall-clock nanosecond of the first challenge an
-	// identity answered. Nothing read it in any build. DecayStale reads lastBondTick,
-	// Reputation reads neither, and the census reads firstFetchTick. A retained `when`
-	// that no decided function needs is SURPLUS under T-DONT3 prong (a)
-	// (D-DONT3-READING, docs/decisions.md), so the write and the field are deleted
-	// (G-BB-28; residual R-BB-BOND-STAMP-TUPLE CLOSED). Gate:
-	// TestR29aBondChallengeStampsNoFirstTouch.
+	// THE BOND PATH WRITES NO FIRST-TOUCH STAMP. Until 2026-09-05
+	// RecordBondChallenge also wrote a firstSeenTick: the wall-clock nanosecond of
+	// the first challenge an identity answered. Nothing read it in any build.
+	// DecayStale reads lastBondTick, Reputation reads neither, and the census reads
+	// firstFetchTick. A retained `when` that no decided function needs is SURPLUS
+	// surplus, so the write and the field are deleted. Gate:
+	// TestBondChallengeStampsNoFirstTouch.
 	//
 	// lastBondTick is the ONE tick a bond challenge writes, and it is a WALL-CLOCK
-	// NANOSECOND: core/node/bondaudit.go passes uint64(n.clock.Now())+1 over the
-	// daemon's adapters/walltime clock. The unit is load-bearing. DecayStale subtracts
-	// it from a `now` off the same clock and compares the difference against
-	// BondMaxAge = 300 * ports.Second (core/node/node.go); a counter here would never
-	// exceed that age and would silently disable retention. Gate:
-	// TestR29aRetentionReadsLastBondTickInNanoseconds.
+	// NANOSECOND: core/node/bondaudit.go passes uint64(n.clock.Now)+1 over the
+	// daemon's adapters/walltime clock. The unit is load-bearing. DecayStale
+	// subtracts it from a `now` off the same clock and compares the difference
+	// against BondMaxAge = 300 * ports.Second (core/node/node.go); a counter here
+	// would never exceed that age and would silently disable retention. Gate:
+	// TestRetentionReadsLastBondTickInNanoseconds.
 	//
-	// firstFetchTick is the account's FIRST-FETCH stamp (R2.9a; bbootstrap.go),
+	// firstFetchTick is the account's FIRST-FETCH stamp (bbootstrap.go),
 	// written from the injected observability clock at the one place fetchedBytes is
 	// written. It is read for OBSERVABILITY ONLY — the B_bootstrap histogram's age
 	// axis — and by NO standing calculation: it is not an acquisition-age gate, and
@@ -102,16 +100,16 @@ type account struct {
 	//
 	// IN A DEFAULT BUILD NOTHING WRITES IT AT ALL. recordFetched calls
 	// stampFirstFetch, which is a no-op declared in bbootstrap_off.go unless the
-	// binary was built with the `bbootstrap` tag AND the operator passed -bbootstrap
-	// (D-BB-BUILD-TAG, docs/decisions.md). So a default silt node stamps nothing on
-	// the SERVE path: no fetcher is given a first-fetch time by having fetched.
+	// binary was built with the `bbootstrap` tag AND the operator passed
+	// -bbootstrap. So a default silt node stamps nothing on the SERVE path: no
+	// fetcher is given a first-fetch time by having fetched.
 	//
-	// IT IS STAMPED ON THE FETCH PATH, NOT IN Register (G-BB-24,
-	// R-BB-STAMP-BY-ANY-PATH). Register is reached through acct() by every ledger
-	// path — bond audit, PoR grading, bounty payment, false-repair slash — so a stamp
-	// there recorded first touch by ANY path and over-stated the age of every
-	// identity that is also a DHT participant. recordFetched is the one place
-	// fetchedBytes is written, so it is the one place a first-FETCH stamp belongs.
+	// IT IS STAMPED ON THE FETCH PATH, NOT IN Register. Register is reached
+	// through acct by every ledger path — bond audit, PoR grading, bounty
+	// payment, false-repair slash — so a stamp there recorded first touch by
+	// ANY path and over-stated the age of every identity that is also a DHT
+	// participant. recordFetched is the one place fetchedBytes is written, so
+	// it is the one place a first-FETCH stamp belongs.
 	bondedBytes    int64
 	bondFails      int
 	firstFetchTick uint64 // first FETCH; read by the B_bootstrap export ONLY, never by a standing calc
@@ -142,46 +140,47 @@ type account struct {
 type Ledger struct {
 	fee   int64
 	grant int64
-	// R2.12 — the faucet rate limit. nil = UNCONFIGURED: every first touch is granted at
-	// Register, byte-for-byte the pre-R2.12 behaviour (sims, fixtures, a daemon that has not
-	// set the flags). Configured, Register hands out a ZERO balance and the grant is applied
-	// at the first SPEND — CanPublish, ChargePublish, FundEscrow — iff the bucket admits;
-	// otherwise the identity stays grant-pending and is retried at its next spend. Only the
-	// spend path is metered: a repairer paid a bounty, a bond-challenged peer, a PoR prover
-	// and a fetcher credited fetched bytes never needed a balance, so metering them would
-	// drain the bucket with no attacker (the bond-audit sweep alone touches every bonded
-	// peer every 60 s — PE ruling S1) and would put an anti-Sybil limiter on the path that
-	// pays for durability work (economist §3.2).
+	// The faucet rate limit. nil = UNCONFIGURED: every first touch is granted at
+	// Register, byte-for-byte the pre-faucet behaviour (sims, fixtures, a daemon that
+	// has not set the flags). Configured, Register hands out a ZERO balance and the
+	// grant is applied at the first SPEND — CanPublish, ChargePublish, FundEscrow —
+	// iff the bucket admits; otherwise the identity stays grant-pending and is retried
+	// at its next spend. Only the spend path is metered: a repairer paid a bounty, a
+	// bond-challenged peer, a PoR prover and a fetcher credited fetched bytes never
+	// needed a balance, so metering them would drain the bucket with no attacker (the
+	// bond-audit sweep alone touches every bonded peer every 60 s —) and would put an
+	// anti-Sybil limiter on the path that pays for durability work (economist §3.2).
 	faucet *faucet
 	// faucetDenyFloor: what an identity receives when the bucket is EMPTY. 0 = deny (it
-	// receives nothing and stays pending); > 0 = an ADVANCE of this much — the PE recommends
-	// exactly one fee — while it STAYS pending and is topped up to the full grant when a
-	// token later admits it. Never a settlement: the Researcher measured that clearing the
-	// pending flag on a floor grant capped a degraded identity below the #4 cliff forever
-	// (G-R212-3). The remaining owner's call is deny vs floor-as-advance; both are built.
+	// receives nothing and stays pending); > 0 = an ADVANCE of this much — exactly one
+	// fee — while it STAYS pending and is topped up to the full
+	// grant when a token later admits it. Never a settlement: clearing the pending flag
+	// on a floor grant caps a degraded identity below
+	// the #4 cliff forever. The remaining owner's call is deny vs floor-as-advance; both
+	// are built.
 	faucetDenyFloor int64
-	grantsIssued    int64 // full starter grants completed (through the bucket, or the owner); a topped-up advance counts once, here
+	grantsIssued    int64 // full starter grants completed (through the bucket, or the project); a topped-up advance counts once, here
 	grantsDegraded  int64 // floor ADVANCES applied on an empty bucket (the identity stays pending)
 	grantsDenied    int64 // DISTINCT identities refused at a spend gate at least once (never retries, never registrations)
 	grantsPending   int64 // accounts currently grant-pending — REGISTRATIONS awaiting a spend, most of which never spend; not a denial count
-	// The affordability floor (R2.7 §1.3, Economist advisory §1.3). Every other counter
-	// in this ledger measures a flow that HAPPENED; these two measure the flow that was
-	// REFUSED at the affordability floor, which is the failure R2.7 is most likely to
-	// miss — an economy that reads solvent because nobody could afford to transact.
-	// THREE refusal decisions are counted, one per spend gate (blind PE ruling
-	// RULING-c4-r27-blocking-telemetry-93deb56-2026-09-08 B2; Economist as-built §4(d)):
-	// ChargePublish and FundEscrow count at their own refusal branch, and CanPublish —
-	// which is a PREDICATE and must not count, because the sim calls it for display
-	// (sim/economy.go) and a counter that moves when a dashboard reads it is worse than a
-	// missing one — is counted at the one place that turns a false into a refusal,
-	// registry.Gated.Publish, through the exported NoteSpendRefused below. Miss any one
-	// and the floor under-reads, which matters because ROADMAP C6 makes any rise in
-	// spendRefusersDistinct a HARD canary abort.
+	// The affordability floor. Every other counter in this ledger
+	// measures a flow that HAPPENED; these two measure the flow that was REFUSED
+	// at the affordability floor, which is the failure this gate is most likely
+	// to miss — an economy that reads solvent because nobody could afford to
+	// transact. THREE refusal decisions are counted, one per spend gate:
+	// ChargePublish and FundEscrow count at their own
+	// refusal branch, and CanPublish — which is a PREDICATE and must not count,
+	// because the sim calls it for display (sim/economy.go) and a counter that
+	// moves when a dashboard reads it is worse than a missing one — is counted
+	// at the one place that turns a false into a refusal,
+	// registry.Gated.Publish, through the exported NoteSpendRefused below. Miss
+	// any one and the floor under-reads, which matters because C6 makes any rise
+	// in spendRefusersDistinct a HARD canary abort.
 	//
 	// HONEST LIMIT, and it bounds the use: an adversary can inflate this at will by
 	// presenting underfunded identities. It is safe as a FLOOR DETECTOR ONLY — a
 	// non-zero value proves honest demand is being refused somewhere and can abort a
-	// canary; a zero value certifies NOTHING and must never be read as "the lane is
+	// canary; a zero value proves NOTHING and must never be read as "the lane is
 	// affordable".
 	spendRefusedInsufficientCredit int64 // every refusal, retries included
 	spendRefusersDistinct          int64 // identities refused at least once
@@ -215,32 +214,33 @@ type Ledger struct {
 	// each live lane's current position for that O(1) tombstone. Dead tombstones
 	// are dropped by an amortized-O(1) compaction (delivery.go), which keeps the
 	// slice bounded even on the redeem-heavy path where the eviction loop never
-	// runs (RT-DELIV-1/1b/2 fix).
+	// runs.
 	//
-	// provHead is the FIFO front CURSOR: a logical index into provOrder marking
-	// the oldest slot not yet dropped by eviction. Eviction advances provHead and
-	// nils the dropped slot rather than re-slicing (provOrder[1:]), which would
-	// shift every survivor's absolute position and silently invalidate provIndex
-	// (the RT-DELIV-3-adjacent desync fuzz found at seed 0xdeadbeef0002 step
+	// provHead is the FIFO front CURSOR: a logical index into provOrder
+	// marking the oldest slot not yet dropped by eviction. Eviction advances
+	// provHead and nils the dropped slot rather than re-slicing
+	// (provOrder[1:]), which would shift every survivor's absolute position
+	// and silently invalidate provIndex the desync fuzz found at seed
+	// 0xdeadbeef0002 step
 	// 13154). With the cursor, provIndex holds absolute positions that a
 	// front-drop never touches, so eviction stays amortized O(1) and never
 	// rewrites a survivor's index. Compaction rebuilds the slice and resets
 	// provHead to 0.
-	// R2.9 delivery-settlement telemetry (deliveryanchor.go): sessions settled, the
+	// Delivery-settlement telemetry (deliveryanchor.go): sessions settled, the
 	// credits they paid out of their anchor budgets, and the unsettled remainder's three
 	// destinations at CLOSE (deposit released / pending / genuinely burned) — the numbers
-	// the Economist watches for the anchor-quantization residual.
+	// that expose the anchor-quantization residual.
 	// Node-wide aggregates, never joined to an identity axis (Don't #3).
 	deliverySettlements    int64
 	deliverySessionsClosed int64
 	deliverySettledCredits int64
 	deliveryBurnedCredits  int64
-	// R2.9 refund-at-anchor-expiry (D-R2.9-NODE-HALF-CALLS 1′; deliveryanchor.go): the
-	// bounded pending-refund table and its counters. remainder = refunded + pending + burned.
+	// Refund at anchor expiry (deliveryanchor.go): the bounded pending-refund table
+	// and its counters. remainder = refunded + pending + burned.
 	pendingRefunds                 []pendingRefund
 	deliveryRefundedCredits        int64
 	deliveryPendingCredits         int64
-	deliveryRefundsBurnedNoAccount int64 // releases whose fetcher had no account here (M1: never acct())
+	deliveryRefundsBurnedNoAccount int64 // releases whose fetcher had no account here (M1: never acct)
 	deliveryRefundsBurnedAtCap     int64 // remainders burned because the pending table was at the guard cap
 	deliveryRestartOrphans         int64 // guard entries restored from disk with no session state (their remainders are gone)
 	deliverySettledIncrements      int64
@@ -250,7 +250,7 @@ type Ledger struct {
 	provIndex   map[provKey]int
 	provHead    int
 
-	// paidSerial is the R0.4b CROSS-SERVER double-redeem guard. It records every
+	// paidSerial is the CROSS-SERVER double-redeem guard. It records every
 	// demand-token SERIAL that has already had a completed, paid delivery redeem on
 	// this ledger, together with the server that collected it and the token's ISSUING
 	// EPOCH. An anchor funds ONLY the first session opened on it; any later open of the
@@ -259,7 +259,7 @@ type Ledger struct {
 	// mint (K−1)·fee.
 	//
 	// THE EPOCH IS WHAT MAKES THE BOUND SAFE. A bounded guard must forget entries, and
-	// forgetting a STILL-REDEEMABLE serial re-opens the pump — the red-team showed the
+	// forgetting a STILL-REDEEMABLE serial re-opens the pump — the
 	// FIFO version is self-financing, because each flood serial used to evict a victim
 	// is itself a paid delivery the colluding operator collects. So eviction here is
 	// EXPIRY-ONLY: an entry is dropped only once its issuing epoch has left the
@@ -281,111 +281,112 @@ type Ledger struct {
 	paidSerial map[string]paidSerialEntry
 
 	// paidStore is the DURABLE half of the guard, and guardLoaded says whether this
-	// ledger has read it yet (R0.4b re-break F2, 2026-09-03). Without it a restart is
-	// an eviction of EVERY entry, in-window or not — the one eviction mode the design
-	// forbids, and the one every node performs. The ledger appends to the store BEFORE
-	// it PAYS — the supersede's reversal of the serve's self-mint runs first, which is
-	// safe because that reversal is purely subtractive (see delivery.go's ordering
-	// invariant) — and it refuses every guarded redeem while a store is attached but
-	// unloaded. Nil store = the pre-existing in-memory-only behaviour (the sim and
-	// most tests), which is sound exactly as long as the ledger it guards is equally
-	// ephemeral — see the delivery.go call site.
+	// ledger has read it yet (re-break F2, 2026-09-03). Without it a restart is an
+	// eviction of EVERY entry, in-window or not — the one eviction mode the design
+	// forbids, and the one every node performs. The ledger appends to the store
+	// BEFORE it PAYS — the supersede's reversal of the serve's self-mint runs
+	// first, which is safe because that reversal is purely subtractive (see
+	// delivery.go's ordering invariant) — and it refuses every guarded redeem while
+	// a store is attached but unloaded. Nil store = the pre-existing in-memory-only
+	// behaviour (the sim and most tests), which is sound exactly as long as the
+	// ledger it guards is equally ephemeral — see the delivery.go call site.
 	paidStore   ports.PaidSerialStore
 	guardLoaded bool
 
-	// epochSrc is the ONE clock this ledger reads its consensus epoch from (R2.10 /
-	// F8, rule R-F8-SOURCE, research-certified 2026-09-04). It is injected once
-	// (SetEpochSource) and read at the ENTRY of every guarded redeem and anchor spend
-	// (advanceEpoch); no port method takes an epoch any more. In production it is
-	// the node's chainEpoch() — the same function that prunes the demand keyset,
-	// drives the receipt bank and verifies relay anchors — so the guard's expiry
-	// predicate and the keyset's validity window are two predicates on ONE clock,
-	// which is the coupling condition "evicted ⇒ expired ⇒ un-redeemable" rests on.
-	// Nil reads as 0, the value a chain-less node produces; that keeps every
-	// in-process fixture that never sets a source at today's epoch-0 behaviour.
-	// The finalized-head epoch is REFUTED as a source (permanently 0 without BFT
-	// finality; one epoch behind the keyset at every boundary block, which refuses
-	// honest relay anchors as ReasonAnchorFuture once per epoch).
+	// epochSrc is the ONE clock this ledger reads its consensus epoch from.
+	// It is injected once (SetEpochSource) and read at
+	// the ENTRY of every guarded redeem and anchor spend (advanceEpoch); no
+	// port method takes an epoch any more. In production it is the node's
+	// chainEpoch — the same function that prunes the demand keyset, drives
+	// the receipt bank and verifies relay anchors — so the guard's expiry
+	// predicate and the keyset's validity window are two predicates on ONE
+	// clock, which is the coupling condition "evicted ⇒ expired ⇒
+	// un-redeemable" rests on. Nil reads as 0, the value a chain-less node
+	// produces; that keeps every in-process fixture that never sets a
+	// source at today's epoch-0 behaviour. The finalized-head epoch is
+	// REFUTED as a source (permanently 0 without BFT finality; one epoch
+	// behind the keyset at every boundary block, which refuses honest relay
+	// anchors as ReasonAnchorFuture once per epoch).
 	epochSrc ports.EpochSource
 
-	// bb is the R2.9a B_bootstrap instrument's whole ledger-side state, and it is an
-	// EMPTY STRUCT in a default build. The instrument compiles only under the
-	// `bbootstrap` build tag (D-BB-BUILD-TAG, docs/decisions.md): untagged,
-	// bbootstrap_off.go declares `type bbootstrapState struct{}`, this field costs
-	// zero bytes, and there is no observability clock, no monotone source and no
-	// injection point anywhere in the binary. Tagged, bbootstrap.go declares the two
-	// injected time sources and their origins, and SetObservabilityClock fills them —
-	// but only when the operator passed -bbootstrap, so recording is gated on the flag
-	// too. Nil/absent is the safe state at every layer.
+	// bb is the B_bootstrap instrument's whole ledger-side state, and it is
+	// an EMPTY STRUCT in a default build. The instrument compiles only under the
+	// `bbootstrap` build tag: untagged, bbootstrap_off.go declares `type
+	// bbootstrapState struct{}`, this field costs zero bytes, and there is no
+	// observability clock, no monotone source and no injection point anywhere in
+	// the binary. Tagged, bbootstrap.go declares the two injected time sources and
+	// their origins, and SetObservabilityClock fills them — but only when the
+	// operator passed -bbootstrap, so recording is gated on the flag too.
+	// Nil/absent is the safe state at every layer.
 	//
 	// It is ONE field rather than four because a build tag cannot split a struct: the
 	// fields have to live in a type that has a tagged and an untagged declaration.
 	bb bbootstrapState
 
-	// epochWatermark is the HIGHEST epoch this ledger has ever READ from its source:
-	// epochWatermark = max(epochWatermark, epochSrc.Epoch()), taken once at the entry
-	// of every guarded redeem and anchor spend, BEFORE the sweep and before every
-	// screen (R-F8-LATCH). The sweep floor and every admission screen (ReasonBackdated,
-	// ReasonAnchorFuture, the cap reserve) run against the watermark, never against
-	// the raw source value.
+	// epochWatermark is the HIGHEST epoch this ledger has ever READ from its
+	// source: epochWatermark = max(epochWatermark, epochSrc.Epoch), taken once at
+	// the entry of every guarded redeem and anchor spend, BEFORE the sweep and
+	// before every screen. The sweep floor and every admission screen
+	// (ReasonBackdated, ReasonAnchorFuture, the cap reserve) run against the
+	// watermark, never against the raw source value.
 	//
-	// WHY A LATCH WHEN THE SOURCE CANNOT FALL. After O3 Direction T the node's
-	// chainEpoch() is non-decreasing inside one process lifetime under every shipping
+	// WHY A LATCH WHEN THE SOURCE CANNOT FALL. With the weight term retired the node's
+	// chainEpoch is non-decreasing inside one process lifetime under every shipping
 	// posture (`heavier` is height-first; `adopt` only swaps in a taller-or-equal
-	// fork), so in production the max() never selects the old value. The latch stays
+	// fork), so in production the max never selects the old value. The latch stays
 	// for two other reasons: (1) it is the PORT CONTRACT — EpochSource is an
 	// interface, and the ledger cannot verify a mock or an embedder's source is
 	// monotone, so it must not depend on it (TestEpochWatermark_IsMonotone and the
-	// F8 falling-source gates pin exactly this); (2) it is the value FP-2 must persist
-	// at the restore boundary. It is NOT a reorg defence; there is no in-process
-	// reorg that lowers the head.
+	// F8 falling-source gates pin exactly this); (2) it is the value FP-2 must
+	// persist at the restore boundary. It is NOT a reorg defence; there is no
+	// in-process reorg that lowers the head.
 	//
-	// AN HONEST-SKEW CORRECTNESS DEVICE, NOT A BYZANTINE DEFENCE (research
-	// certification 2026-09-03, item 5). Against a source that lags and then catches
-	// up the watermark can only widen what is refused, so the worst case is an
-	// UNDER-pay of one server's conserved leg — never an over-pay, never a mint. The
-	// former "one call at 2^62 poisons the ledger" exposure (F8) is closed by
-	// construction, not by a clamp: no port input moves this clock, only the
-	// injected source, and the production source is a pure read of the node's own
-	// committed chain.
+	// AN HONEST-SKEW CORRECTNESS DEVICE, NOT A BYZANTINE DEFENCE. Against a
+	// source that lags and then catches up the watermark can only widen what is
+	// refused, so the worst case is an UNDER-pay of one server's conserved leg —
+	// never an over-pay, never a mint. The former "one call at 2^62 poisons the
+	// ledger" exposure is closed by construction, not by a clamp: no port
+	// input moves this clock, only the injected source, and the production source
+	// is a pure read of the node's own committed chain.
 	//
-	// OPEN-INERT, routed to FP-2 as R-F8-RESTART-REWIND: the guard file is durable
-	// but the watermark is not, so a node that sweeps at epoch 10, compacts, and
-	// restarts on a chain rewound to epoch ≤ 9 has forgotten a serial its keyset
-	// still verifies. Self-pay on a private ledger today; real once balances are
-	// transferable. Close (R-F8-RESTORE): persist the watermark in the same atom as
-	// paidSerial, restore it, then raise to max(restored, epochSrc.Epoch()). The
-	// faucet rate limiter must NOT be keyed on this watermark (R2.12).
+	// OPEN-INERT, a restart rewind: the guard file is
+	// durable but the watermark is not, so a node that sweeps at epoch 10,
+	// compacts, and restarts on a chain rewound to epoch ≤ 9 has forgotten a
+	// serial its keyset still verifies. Self-pay on a private ledger today;
+	// real once balances are transferable. Close: persist the watermark in the
+	// same atom as paidSerial, restore it, then raise to max(restored,
+	// epochSrc.Epoch). The faucet rate limiter must NOT be keyed on this
+	// watermark.
 	epochWatermark uint64
 
 	// sweptEpoch is the last epoch at which sweepExpiredSerials actually ran, and
-	// guardFullRefusals counts the redeems refused because the guard set was full of
-	// still-live serials. Both are OBSERVABILITY-AND-COST bookkeeping for the R0.4b
+	// guardFullRefusals counts the redeems refused because the guard set was full
+	// of still-live serials. Both are OBSERVABILITY-AN bookkeeping for the
 	// guard, not part of any accounting rule.
 	//
-	// SWEEP AT MOST ONCE PER EPOCH (red-team RT-E, measured 1.32 ms per refused redeem
-	// at a full live cap): the sweep is a full scan of the guard map, and it was run
-	// on EVERY reserve call once the map reached the cap — so a full cap turned each
-	// refused receipt into a 65,536-entry scan, an amplifier a griefer gets for free.
-	// Nothing can expire twice within one epoch, so one sweep per epoch is exactly as
-	// effective and amortizes to O(1). Purely a cost fix: the set of entries swept is
-	// identical.
+	// SWEEP AT MOST ONCE PER EPOCH E, measured 1.32 ms per refused redeem at a full
+	// live cap: the sweep is a full scan of the guard map, and it was run on EVERY
+	// reserve call once the map reached the cap — so a full cap turned each refused
+	// receipt into a 65,536-entry scan, an amplifier a griefer gets for free.
+	// Nothing can expire twice within one epoch, so one sweep per epoch is exactly
+	// as effective and amortizes to O(1). Purely a cost fix: the set of entries
+	// swept is identical.
 	sweptEpoch                uint64
 	guardFullRefusals         int64
-	guardFullRefusalsDelivery int64 // the per-lane split of guardFullRefusals (2026-09-04 cert §4.4)
+	guardFullRefusalsDelivery int64 // the per-lane split of guardFullRefusals
 	guardFullRefusalsRelay    int64
-	// Serve-mint telemetry (G-R212-7, numeraire.go ServeMintStats).
+	// Serve-mint telemetry (numeraire.go ServeMintStats).
 	serveBytes           int64
 	serveMintCredits     int64
 	serveSkimCredits     int64
 	serveMintZero        int64
 	serveReversedCredits int64 // net + skim reversed by supersede or eviction (telemetry, gross-of-reversal counters above)
-	// A2 supersede-suppression telemetry (R2.7 blocking telemetry, Economist advisory
-	// ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07 §1.1).
-	// Node-wide int64 aggregates with NO identity axis and no object axis: this is
-	// deliberately not a (fetcher × object) join, which is the access record Don't #3
-	// forbids. Together with the live lanes they satisfy an exact conservation identity
-	// (ServeMintStats, numeraire.go), and that identity is the unit test.
+	// A2 supersede-suppression telemetry (blocking telemetry). Node-wide
+	// int64 aggregates with NO identity axis and no object axis: this is
+	// deliberately not a (fetcher × object) join, which is the access record
+	// Don't #3 forbids. Together with the live lanes they satisfy an exact
+	// conservation identity (ServeMintStats, numeraire.go), and that
+	// identity is the unit test.
 	//
 	// serveBytesObjectAware is the WITNESSABLE DENOMINATOR: bytes that entered a
 	// provisional lane and could therefore be acknowledged by a delivery receipt. Bytes
@@ -401,9 +402,9 @@ type Ledger struct {
 	// cap FIFO-confiscated the accumulator (delivery.go laneFor). A direct T-AR wage
 	// measurement; nothing else on main sees it.
 	serveBytesLaneEvicted int64
-	// A4-3 (R2.7 detector A4, Economist advisory §1.2): repair bounties this ledger paid
-	// to a repairer that had ALREADY FETCHED bytes from this node at payment time — the
-	// round-trip shape of the escrow wash. Read off account state that already exists
+	// detector A4: repair bounties this ledger paid to a repairer that had
+	// ALREADY FETCHED bytes from this node at payment time — the round-trip
+	// shape of the escrow wash. Read off account state that already exists
 	// (fetchedBytes); adds no map and no identity×object join (Don't #3).
 	//
 	// HONEST LIMIT, and it bounds the use: a repairer may legitimately have fetched
@@ -415,7 +416,7 @@ type Ledger struct {
 	bountyToPriorFetcherCredits  int64
 	sweeps                       int64
 	// compactFailures / lastCompactErr record a durable-store Compact that returned an
-	// error at the sweep (R2.13). Observability, never a refusal: see
+	// error at the sweep. Observability, never a refusal: see
 	// sweepExpiredSerials for the two-class rule.
 	compactFailures int64
 	lastCompactErr  error
@@ -443,34 +444,33 @@ func New(fee, grant int64) *Ledger {
 		provisional: make(map[provKey]*provisionalServe),
 		provIndex:   make(map[provKey]int),
 		paidSerial:  make(map[string]paidSerialEntry),
-		// Left at 1,000 / 25,000 by owner call 5 of G-R212-7 (2026-09-06), with the
-		// disclosure that one passed audit is now worth ~375 MiB of gross unwitnessed
-		// serving at Dλ = 393,216 (R-AUDIT-REWARD-DOMINATES): the audit lane is the
-		// cheapest credit source. Re-denominate together with λ if that inverts an incentive.
+		// Left at 1,000 / 25,000 by of, with the disclosure that one passed audit
+		// is now worth ~375 MiB of gross unwitnessed serving at Dλ = 393,216: the
+		// audit lane is the cheapest credit source. Re-denominate together with λ
+		// if that inverts an incentive.
 		AuditReward: 1_000,
 		AuditSlash:  25_000,
 	}
 }
 
-// SetEpochSource injects the ONE clock this ledger reads its consensus epoch from
-// (R2.10 / F8, R-F8-SOURCE). Call it once, before any guarded redeem or anchor
-// spend; the daemon wires the node's chain epoch right after the chain is enabled.
-// A ledger with no source reads epoch 0 — a chain-less node's value — so nothing
-// here refuses: the epochs-disabled brick is refused at start-up in cmd/silt
-// (R-F8-DISABLED), and core stays permissive for in-process fixtures.
+// SetEpochSource injects the ONE clock this ledger reads its consensus epoch from.
+// Call it once, before any guarded redeem or anchor spend; the
+// daemon wires the node's chain epoch right after the chain is enabled. A ledger
+// with no source reads epoch 0 — a chain-less node's value — so nothing here
+// refuses: the epochs-disabled brick is refused at start-up in cmd/silt, and core
+// stays permissive for in-process fixtures.
 func (l *Ledger) SetEpochSource(src ports.EpochSource) { l.epochSrc = src }
 
 // Epoch is the consensus epoch the NEXT guarded redeem or anchor spend will run
-// against: max(epochWatermark, source), the latched read (R-F8-LATCH). It reads the
+// against: max(epochWatermark, source), the latched read. It reads the
 // source without moving the watermark — a pure observer for tests and operators; the
 // watermark advances only at the guarded entry points (advanceEpoch).
 //
-// CONCURRENCY (PE ruling RULING-R2.10-F8-build-178ff3b F5): the production source reads
-// the chain's block slice without a lock, which is safe only because every production
-// caller — the guarded redeem, the anchor spend, the status snapshot — runs on the node's
-// event loop, the chain's single writer. An off-loop caller of Epoch() (or of any guarded
-// method) would race the chain; there is none today, and adding one needs a lock, not a
-// second clock.
+// CONCURRENCY: the production source reads the chain's block slice without a lock, which
+// is safe only because every production caller — the guarded redeem, the anchor spend,
+// the status snapshot — runs on the node's event loop, the chain's single writer. An
+// off-loop caller of Epoch (or of any guarded method) would race the chain; there is none
+// today, and adding one needs a lock, not a second clock.
 func (l *Ledger) Epoch() uint64 {
 	if l.epochSrc == nil {
 		return l.epochWatermark
@@ -481,7 +481,7 @@ func (l *Ledger) Epoch() uint64 {
 	return l.epochWatermark
 }
 
-// advanceEpoch is the ONE read of the source per guarded operation (R-F8-LATCH):
+// advanceEpoch is the ONE read of the source per guarded operation:
 // called at the entry of spendAnchors (both anchored lanes) and of
 // CloseDeliverySession, before the sweep and before every screen. It raises the
 // watermark by max and, on a band advance, runs the expiry sweep against the
@@ -492,8 +492,7 @@ func (l *Ledger) advanceEpoch() {
 	}
 	if cur := l.epochSrc.Epoch(); cur > l.epochWatermark {
 		l.epochWatermark = cur
-		// SWEEP ON THE BAND ADVANCE, NOT ONLY AT THE CAP (crypto-specialist advisory
-		// C-7, 2026-09-03). The cap-only trigger meant that on any node below 65,536
+		// SWEEP ON THE BAND ADVANCE, NOT ONLY AT THE CAP. A cap-only trigger means that on any node below 65,536
 		// live serials — which is every node most of the time — expired guard entries
 		// were retained ON DISK indefinitely, far past the W-epoch window that is their
 		// whole justification. Soundness was never affected (refuse-not-evict is the
@@ -511,38 +510,38 @@ func (l *Ledger) advanceEpoch() {
 // Register creates the node's account and applies the starting grant.
 // Registering twice is a no-op (no double grants).
 //
-// IT DOES NOT STAMP (G-BB-24). It used to: this is first touch on this ledger and the
-// only place an account is constructed, which made the stamp structural — but "first
+// IT DOES NOT STAMP. It used to: this is first touch on this ledger and the only
+// place an account is constructed, which made the stamp structural — but "first
 // touch" is not "first fetch", and every non-fetch path (bond audit, PoR grading,
-// bounty payment, false-repair slash) reaches here through acct(). The R2.9a stamp
-// now lives at recordFetched, the one place fetchedBytes is written, which is a
-// narrower structural claim and the correct one.
+// bounty payment, false-repair slash) reaches here through acct. The stamp now lives
+// at recordFetched, the one place fetchedBytes is written, which is a narrower
+// structural claim and the correct one.
 //
 // So Register carries no instrument call at all, in EITHER build. The one call a build
 // tag could not remove moved with the stamp: recordFetched calls stampFirstFetch, which
 // is an empty body in a default build (bbootstrap_off.go) and, under the `bbootstrap`
-// tag, still writes nothing until -bbootstrap injects a clock (D-BB-BUILD-TAG).
-// Register is byte-for-byte its pre-R2.9a self.
+// tag, still writes nothing until -bbootstrap injects a clock.
+// Register is byte-for-byte its pre-instrument self.
 func (l *Ledger) Register(n ports.NodeID) {
 	if _, ok := l.accounts[n]; ok {
 		return
 	}
 	if l.faucet == nil {
-		l.accounts[n] = &account{balance: l.grant} // unconfigured: the pre-R2.12 faucet, at first touch
+		l.accounts[n] = &account{balance: l.grant} // unconfigured: the unmetered faucet, at first touch
 	} else {
-		l.accounts[n] = &account{grantPending: true} // R2.12: zero until the first ADMITTED spend
+		l.accounts[n] = &account{grantPending: true} // zero until the first ADMITTED spend
 		l.grantsPending++
 	}
 	l.order = append(l.order, n)
 }
 
-// SetFaucet configures the R2.12 rate limit: a bucket of `capacity` grants accruing
-// `refill` per `intervalNanos` on the injected monotonic source, and the empty-bucket
-// behaviour `denyFloor` (0 = deny; > 0 = grant that much instead, once). A non-positive
-// capacity, refill or interval, or a nil source, leaves the ledger UNCONFIGURED — the
-// caller that owns the operator's flags refuses those; this method never builds a bucket
-// that cannot refill. Call it before the first account exists: accounts registered
-// unconfigured already hold their grant and are not re-metered.
+// SetFaucet configures the rate limit: a bucket of `capacity` grants accruing `refill`
+// per `intervalNanos` on the injected monotonic source, and the empty-bucket behaviour
+// `denyFloor` (0 = deny; > 0 = grant that much instead, once). A non-positive capacity,
+// refill or interval, or a nil source, leaves the ledger UNCONFIGURED — the caller that
+// owns the operator's flags refuses those; this method never builds a bucket that cannot
+// refill. Call it before the first account exists: accounts registered unconfigured
+// already hold their grant and are not re-metered.
 func (l *Ledger) SetFaucet(capacity, refill, intervalNanos, denyFloor int64, now ports.MonotonicNanos) {
 	l.faucet = newFaucet(capacity, refill, intervalNanos, now)
 	if denyFloor < 0 {
@@ -553,9 +552,9 @@ func (l *Ledger) SetFaucet(capacity, refill, intervalNanos, denyFloor int64, now
 
 // GrantOwner applies the starter grant to the node's OWN identity, UNMETERED and once. It
 // is exactly one identity per node; a node that denied itself could not publish or fund
-// its own escrow, and Balance(n.id) would read 0 until the first publish (PE ruling S7,
-// economist §3.3). Idempotent: a second call, or a call on an already-granted account,
-// does nothing. On an unconfigured ledger it is a plain Register.
+// its own escrow, and Balance(n.id) would read 0 until the first publish.3. Idempotent: a
+// second call, or a call on an already-granted account, does nothing. On an unconfigured
+// ledger it is a plain Register.
 func (l *Ledger) GrantOwner(n ports.NodeID) {
 	l.Register(n)
 	l.completeGrant(l.accounts[n])
@@ -574,11 +573,11 @@ func (l *Ledger) completeGrant(a *account) {
 	l.grantsIssued++
 }
 
-// applyGrant is the R2.12 admission step, called from the three SPEND gates and nowhere else.
-// It applies the starter grant iff the account is pending and the bucket admits; on an
-// empty bucket it applies the deny floor (if any) instead; a plain denial leaves the
-// account pending for a retry at its next spend. A no-op for a non-pending account, so a
-// spend by an identity that already holds its grant costs no token.
+// applyGrant is the admission step, called from the three SPEND gates and nowhere else. It
+// applies the starter grant iff the account is pending and the bucket admits; on an empty
+// bucket it applies the deny floor (if any) instead; a plain denial leaves the account
+// pending for a retry at its next spend. A no-op for a non-pending account, so a spend by an
+// identity that already holds its grant costs no token.
 func (l *Ledger) applyGrant(a *account) {
 	if !a.grantPending {
 		return
@@ -587,7 +586,7 @@ func (l *Ledger) applyGrant(a *account) {
 		l.completeGrant(a)
 		return
 	}
-	// Empty bucket. With a floor, ADVANCE it once and stay pending (G-R212-3): the
+	// Empty bucket. With a floor, ADVANCE it once and stay pending: the
 	// identity can publish or buy anchors now and is topped up to the full grant when a
 	// token later admits it. Without a floor, a plain denial: nothing changes, retry later.
 	if l.faucetDenyFloor > 0 && a.grantAdvanced == 0 {
@@ -602,12 +601,12 @@ func (l *Ledger) applyGrant(a *account) {
 	}
 }
 
-// FaucetStats is the R2.12 telemetry (economist §2.5 / §4.2), node-local and
-// observability-only. Configured reports whether a bucket exists at all; the counters are
-// zero and meaningless when it does not. GrantsIssued counts identities FUNDED through the
-// faucet (and the owner) — it is NOT the honest arrival rate the R2.9a census measures
-// (that population is fetchers, at recordFetched; this one is spenders, at the spend
-// gates) and must not be positioned as one (PE S8a, economist §4.3).
+// FaucetStats is the telemetry (economist §2.5 / §4.2), node-local and observability-only.
+// Configured reports whether a bucket exists at all; the counters are zero and meaningless
+// when it does not. GrantsIssued counts identities FUNDED through the faucet (and the
+// project) — it is NOT the honest arrival rate the census measures (that population is
+// fetchers, at recordFetched; this one is spenders, at the spend gates) and must not be
+// positioned as one.
 type FaucetStats struct {
 	Configured     bool
 	Capacity       int64
@@ -619,27 +618,27 @@ type FaucetStats struct {
 	GrantsDegraded int64
 	GrantsDenied   int64 // distinct identities refused at a spend gate at least once — the one counter that moves on a denial
 	GrantsPending  int64 // accounts registered and awaiting a spend; NOT denials (every pure read registers)
-	// The affordability floor (R2.7 §1.3). UNLIKE every other field here these two are
+	// The affordability floor. UNLIKE every other field here these two are
 	// NOT faucet counters and are meaningful whether or not a bucket is configured: they
 	// count refusals at the spend gates for want of CREDIT, not for want of a token. So
 	// FaucetStats reports them on both branches; a configured-false block still carries
 	// them, because dropping a real refusal count would be a silent loss (Don't #4).
 	//
 	// FLOOR DETECTOR ONLY: non-zero proves honest demand is being refused somewhere;
-	// zero certifies nothing. An adversary inflates it at will with underfunded ids.
+	// zero proves nothing. An adversary inflates it at will with underfunded ids.
 	SpendRefusedInsufficientCredit int64
 	SpendRefusersDistinct          int64
 }
 
 // Grant is the starter grant this ledger applies. Read-only; the start-up assertion in
-// cmd/silt reads it from HERE, never from a duplicated literal (PE code ruling BLK-3).
+// cmd/silt reads it from HERE, never from a duplicated literal.
 func (l *Ledger) Grant() int64 { return l.grant }
 
 // NoteSpendRefused records one refusal at a spend gate whose REFUSAL DECISION is made by
-// a caller rather than here (R2.7 §1.3; PE ruling B2). The only such gate is CanPublish,
-// a predicate: registry.Gated.Publish turns its false into ports.ErrInsufficientCredit
-// and calls this. It is exported for that one caller and reached through an optional
-// interface, so ports.CreditLedger stays the consensus-relevant surface.
+// a caller rather than here. The only such gate is CanPublish, a predicate:
+// registry.Gated.Publish turns its false into ports.ErrInsufficientCredit and calls
+// this. It is exported for that one caller and reached through an optional interface, so
+// ports.CreditLedger stays the consensus-relevant surface.
 //
 // It does NOT decide, refuse, or move credit — it records a refusal the caller already
 // made. It is NOT free of side effects on an unknown identity: acct registers, and on a
@@ -668,10 +667,10 @@ func (l *Ledger) FaucetStats() FaucetStats {
 	}
 }
 
-// noteSpendRefused records one refusal at a spend gate for insufficient credit
-// (R2.7 §1.3). Every refusal moves the total; the first refusal by an identity also
-// moves the distinct count, through ONE BOOL on the account — never a side set, which
-// would be a grow-only map. Nothing here refuses, decides, or moves credit.
+// noteSpendRefused records one refusal at a spend gate for insufficient credit. Every
+// refusal moves the total; the first refusal by an identity also moves the distinct
+// count, through ONE BOOL on the account — never a side set, which would be a
+// grow-only map. Nothing here refuses, decides, or moves credit.
 func (l *Ledger) noteSpendRefused(a *account) {
 	l.spendRefusedInsufficientCredit++
 	if !a.spendRefused {
@@ -691,13 +690,13 @@ func (l *Ledger) RecordServe(server, requester ports.NodeID, _ ports.ChunkID, by
 	}
 	s := l.acct(server)
 	// One credit per Dλ bytes served (numeraire.go), floored over the account's byte
-	// remainder so chunking cannot change the mint (G-λ-4). The remainder is safe on
+	// remainder so chunking cannot change the mint. The remainder is safe on
 	// the account here: this path has no lane and no witnessed supersede.
 	s.serveRemainder += bytes
 	mint := s.serveRemainder / ServeMintBytesPerCredit
 	s.serveRemainder %= ServeMintBytesPerCredit
 	s.balance += mint
-	s.servedBytes += bytes // the byte observables stay BYTES (G-λ-9): the census estimand
+	s.servedBytes += bytes // the byte observables stay BYTES: the census estimand
 	l.recordFetched(requester, bytes)
 	l.noteServeMint(bytes, mint, 0)
 }
@@ -714,15 +713,14 @@ func (l *Ledger) noteServeMint(bytes, mint, skim int64) {
 
 // recordFetched credits bytes to n's FETCHED total. It is the ONE write path for
 // account.fetchedBytes — RecordServe above and RecordServeToObject (escrow.go) are its
-// only callers — which is what makes the R2.9a age stamp below "written if and only if
-// this identity is in the census" structural, rather than a guarded assignment at N
-// call sites.
+// only callers — which is what makes the age stamp below "written if and only if this
+// identity is in the census" structural, rather than a guarded assignment at N call
+// sites.
 //
 // IT IS UNTAGGED, AND THE STAMP IT CALLS IS NOT. Crediting fetched bytes is ordinary
-// ledger accounting and predates R2.9a; it must compile in every build. The `when` is
-// the instrument: stampFirstFetch has an empty untagged twin in bbootstrap_off.go, so a
-// default silt binary walks this path and writes no first-fetch time at all
-// (D-BB-BUILD-TAG, docs/decisions.md).
+// ledger accounting and predates; it must compile in every build. The `when` is the
+// instrument: stampFirstFetch has an empty untagged twin in bbootstrap_off.go, so a
+// default silt binary walks this path and writes no first-fetch time at all.
 func (l *Ledger) recordFetched(n ports.NodeID, bytes int64) {
 	a := l.acct(n)
 	a.fetchedBytes += bytes
@@ -753,16 +751,16 @@ func (l *Ledger) Audits(n ports.NodeID) (passed, failed int) {
 // standing — the large, unforgeable term Reputation is built on; failing
 // zeroes it (a bond you cannot answer buys nothing). tick is a monotonic
 // time reading, not a request counter: every caller in the daemon passes
-// uint64(clock.Now())+1 (core/node/bondaudit.go), and the daemon's node
+// uint64(clock.Now)+1 (core/node/bondaudit.go), and the daemon's node
 // clock is adapters/walltime, so in production this tick IS
-// time.Now().UnixNano()+1. DecayStale reads it to retire standing that
-// stops being re-proven, and it compares it against a `now` from the same
+// time.Now.UnixNano+1. DecayStale reads it to retire standing that stops
+// being re-proven, and it compares it against a `now` from the same
 // clock, which is why the unit has to be time and not a count.
 //
 // THE UNIT MATTERS, and calling it a counter here is where that got lost: an
 // earlier version of this comment said "request counter", four other texts
 // inherited it, and a bond-path first-seen stamp was defended on that ground
-// until 2026-09-05. That stamp is deleted (G-BB-28; see the account struct):
+// on that ground. That stamp is deleted (see the account struct):
 // a bond challenge writes lastBondTick and nothing else, and lastBondTick stays
 // nanoseconds because DecayStale compares it against BondMaxAge. cf. por.go's
 // n.rid, which IS a counter — they are not the same thing.
@@ -821,7 +819,7 @@ func (l *Ledger) SlashEquivocation(id ports.NodeID) {
 // large but FINITE. The magnitude is a tuning parameter (Evolving, per the
 // tenets): it must exceed the standing a typical attester earns and make a false
 // claim strictly -EV against the bounty it targets (bounty-relative calibration
-// is an open item, docs/design/h7-proof-of-repair.md §12).
+// is an open item).
 const falseRepairSlash = 1_000_000
 
 // SlashFalseRepair records a PROVEN false repair claim against a caretaker
@@ -858,29 +856,28 @@ const bondUnit = 64 << 10
 // chain consults (M12). It is built ONLY on evidence a node cannot
 // fabricate, and — critically — it is minted by exactly ONE press:
 //
-//   - challenged, identity-bound held storage (bondedBytes, core/bond) —
-//     the Sybil cost: N identities need N real bonds on real disk. This is
-//     the ONLY term that GRANTS standing; minus
-//   - failed audits and failed bond challenges, which bite hard.
+// - challenged, identity-bound held storage (bondedBytes, core/bond) —
+// The Sybil cost: N identities need N real bonds on real disk. This is
+// the ONLY term that GRANTS standing; minus
+// - failed audits and failed bond challenges, which bite hard.
 //
-// PoR audits (por.go) DO NOT grant Sybil-resistant standing (M0 hardening
-// H1 / red-team RT-1). Plain proof-of-retrievability over shared, erasure-
-// coded content proves POSSESSION of the bytes, not a DISTINCT physical
-// replica: a data-less identity can RELAY a real holder's aggregated
-// response and pass, because the proof is a pure function of (chunkID,
-// challenge, data) — not bound to the prover (see archive/design-history/
-// m0-hardening-strategy.md §4 S2, research memo 03). So a "+25 per pass"
-// mint let a disk-less Sybil farm reach propose/attest eligibility with
-// ZERO storage. Audits now fund only the BALANCE economy (RecordAudit
-// credits balance) and act as a NEGATIVE integrity signal here — a failed
-// audit on shards you CLAIMED to hold subtracts standing (it can never be
-// Sybil-amplified, since it only ever reduces). Standing that gates
-// consensus rests on the bond alone. Self-reported serving (servedBytes)
-// is likewise not here: it funds the balance economy, not standing.
+// PoR audits (por.go) DO NOT grant Sybil-resistant standing.
+// Plain proof-of-retrievability over shared, erasure-coded content
+// proves POSSESSION of the bytes, not a DISTINCT physical replica: a
+// data-less identity can RELAY a real holder's aggregated response and
+// pass, because the proof is a pure function of (chunkID, challenge, data)
+// — not bound to the prover. So a "+25 per pass" mint let a disk-less Sybil farm reach
+// propose/attest eligibility with ZERO storage. Audits now fund only the
+// BALANCE economy (RecordAudit credits balance) and act as a NEGATIVE
+// integrity signal here — a failed audit on shards you CLAIMED to hold
+// subtracts standing (it can never be Sybil-amplified, since it only ever
+// reduces). Standing that gates consensus rests on the bond alone.
+// Self-reported serving (servedBytes) is likewise not here: it funds the
+// balance economy, not standing.
 //
-// Invariant A (archive/design-history/m0-hardening-strategy.md §2): no standing
-// without a verified, identity-bound, deduped, bond-gated proof. Only the
-// bond press satisfies it; the audit press is therefore denied a grant.
+// Invariant A §2: no standing without a verified, identity-bound, deduped,
+// bond-gated proof. Only the bond press satisfies it; the audit press is
+// therefore denied a grant.
 func (l *Ledger) Reputation(n ports.NodeID) int64 {
 	a := l.acct(n)
 	return a.bondedBytes/bondUnit -
@@ -892,7 +889,7 @@ func (l *Ledger) Reputation(n ports.NodeID) int64 {
 
 func (l *Ledger) Balance(n ports.NodeID) int64 { return l.acct(n).balance }
 
-// CanPublish is a SPEND GATE: under R2.12 it first attempts the pending grant, because the
+// CanPublish is a SPEND GATE: it first attempts the pending grant, because the
 // publish flow asks it before ChargePublish and a pending identity would otherwise be
 // refused before it could ever be funded.
 func (l *Ledger) CanPublish(n ports.NodeID) bool {
@@ -917,7 +914,7 @@ func (l *Ledger) RepairsDone(n ports.NodeID) int64 { return l.acct(n).repairsDon
 // revenue). Pure observability; never a standing input. Reading moves nothing.
 func (l *Ledger) BountyEarned(n ports.NodeID) int64 { return l.acct(n).bountyEarned }
 
-// ChargePublish is a SPEND GATE (R2.12): the pending grant is attempted first. Demand-token
+// ChargePublish is a SPEND GATE: the pending grant is attempted first. Demand-token
 // withdrawal (core/node/tokenrole.go) and relay-anchor purchase (relayrole.go) both land here.
 func (l *Ledger) ChargePublish(n ports.NodeID) error {
 	a := l.acct(n)
@@ -925,7 +922,7 @@ func (l *Ledger) ChargePublish(n ports.NodeID) error {
 		l.applyGrant(a)
 	}
 	if a.balance < l.fee {
-		l.noteSpendRefused(a) // R2.7 §1.3: the affordability floor, counted at both spend gates
+		l.noteSpendRefused(a) // the affordability floor, counted at both spend gates
 		return ports.ErrInsufficientCredit
 	}
 	a.balance -= l.fee
@@ -969,15 +966,14 @@ func Gini(values []int64) float64 {
 	return float64(weighted) / (float64(n) * float64(sum))
 }
 
-// WorkSample reads the two node-wide work counters the capacity gossip carries for
-// node n — served bytes and repairs done SINCE THIS PROCESS STARTED, because the ledger is
-// ephemeral through the RC (D-FP2-SCOPE) — WITHOUT REGISTERING an
-// account. That is the whole reason it exists beside ServedBytes/RepairsDone: those
-// go through acct(), which calls Register, which CREATES an account (and, on an
-// R2.12 faucet-configured ledger, increments grantsPending). The gossip stamp runs
-// on every outbound message, so a read that registers would mint an account —
-// and move faucet accounting — as a side effect of sending a FindNode. A reader
-// must not write.
+// WorkSample reads the two node-wide work counters the capacity gossip carries for node n
+// — served bytes and repairs done SINCE THIS PROCESS STARTED, because the ledger is
+// ephemeral through the RC — WITHOUT REGISTERING an account. That is the whole reason it
+// exists beside ServedBytes/RepairsDone: those go through acct, which calls Register,
+// which CREATES an account (and, on a faucet-configured ledger, increments
+// grantsPending). The gossip stamp runs on every outbound message, so a read that
+// registers would mint an account — and move faucet accounting — as a side effect of
+// sending a FindNode. A reader must not write.
 //
 // ok is false when n has no account: "this node has done no work yet" and "this node
 // is unknown to my ledger" are different facts, and only the caller can decide which

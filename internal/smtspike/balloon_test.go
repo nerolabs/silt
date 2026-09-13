@@ -8,13 +8,13 @@ import (
 )
 
 // The coexistence balloon: the instrument that makes the floor-box RSS number
-// mean something. The store profile (docs/thinking/2026-08-27-disk-backed-
-// mapstore-options.md) recorded bbolt at 1M keys as heap 305 MB / RSS 1328 MB,
-// but on an OTHERWISE-IDLE box — so the kernel never reclaimed the clean mmap'd
-// page cache, and 1328 MB over-counts the coexistence risk by exactly its
-// evictable portion. The decisive #600 question is whether that cache SHEDS
-// toward the ~305 MB unevictable heap floor under a real daemon's memory
-// pressure, or the box OOMs. This balloon supplies the missing pressure.
+// mean something. An earlier store profile recorded bbolt at 1M
+// keys as heap 305 MB / RSS 1328 MB, but on an OTHERWISE-IDLE box — so the
+// kernel never reclaimed the clean mmap'd page cache, and 1328 MB over-counts
+// the coexistence risk by exactly its evictable portion. The decisive question
+// is whether that cache SHEDS toward the ~305 MB unevictable heap floor under a
+// real daemon's memory pressure, or the box OOMs. This balloon supplies the
+// missing pressure.
 //
 // The physics: on a NO-SWAP box, anonymous memory cannot be paged out. So a
 // resident anonymous buffer genuinely competes for physical RAM against bbolt's
@@ -23,7 +23,7 @@ import (
 // via demand paging), so it would create no pressure — a fake balloon, a false
 // measurement, a wrong backend call. inflateBalloon defeats that by writing
 // every page and PROVING it did (touched-page count + checksum, cross-platform;
-// the residentMB() jump, Linux only).
+// the residentMB jump, Linux only).
 
 // heldBalloon keeps a live reference to the ballooned buffer for the entire test
 // process lifetime, so the GC can never reclaim it and its pages stay resident.
@@ -35,7 +35,7 @@ var heldBalloon []byte
 // every page to fault it fully resident, and pins it via heldBalloon so GC never
 // frees it. It returns the number of pages it touched and a checksum over one
 // touched byte per page — the cross-platform proof the pages were really written
-// (works on a macOS dev box that has no /proc for residentMB() to read).
+// (works on a macOS dev box that has no /proc for residentMB to read).
 //
 // mb <= 0 is a no-op returning (0, 0): SILT_COEXIST_BALLOON_MB unset/0 leaves the
 // profile byte-for-byte as it was.
@@ -83,14 +83,14 @@ func balloonMB(t *testing.T) int {
 // so the mechanism is verified on every run, not only during the billable
 // profile.
 //
-//   - Cross-platform (incl. macOS dev box): inflateBalloon must touch exactly one
-//     page per stride and produce a non-zero checksum — proof the pages were
-//     allocated AND written, without which the balloon is a no-op that creates no
-//     pressure.
-//   - Linux (the floor box): residentMB() must JUMP by ~balloon size when the
-//     balloon is inflated, proving the touched pages are actually resident and not
-//     merely reserved. This is the load-bearing assertion; it silently no-ops off
-//     Linux where /proc is absent.
+// - Cross-platform (incl. macOS dev box): inflateBalloon must touch exactly one
+// page per stride and produce a non-zero checksum — proof the pages were
+// allocated AND written, without which the balloon is a no-op that creates no
+// pressure.
+// - Linux (the floor box): residentMB must JUMP by ~balloon size when the
+// balloon is inflated, proving the touched pages are actually resident and not
+// merely reserved. This is the load-bearing assertion; it silently no-ops off
+// Linux where /proc is absent.
 func TestBalloonResident(t *testing.T) {
 	// Keep the unit-test balloon small so it runs anywhere without stressing the
 	// dev box; the physics is identical at 1060 MB.

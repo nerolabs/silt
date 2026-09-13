@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# integration/run-all.sh — the clone-and-run field-test experience.
+# integration/run-all .sh — the clone-and-run field-test experience.
 #
 # Runs the local Docker suites one at a time (each assumes exclusive use of its
 # topology), captures each one's real RESULT + duration, and writes a shareable
@@ -7,10 +7,10 @@
 # that ran is PASS or a deliberately-reproduced FINDING; any FAIL exits 1.
 #
 # Usage:
-#   ./integration/run-all.sh                 # the fast gate set (default)
-#   FULL=1 ./integration/run-all.sh          # + the slow suites (soak, upgrade)
-#   SUITES="consensus bond nat" ./integration/run-all.sh   # an explicit subset
-#   SOAK_DURATION=120 ./integration/run-all.sh FULL=1
+# ./integration/run-all .sh # the fast gate set (default)
+#  FULL=1 ./integration/run-all .sh # + the slow suites (soak, upgrade)
+#  SUITES="consensus bond nat"./integration/run-all .sh # an explicit subset
+#  SOAK_DURATION=120 ./integration/run-all .sh FULL=1
 #
 # Each suite still stands alone (./integration/<name>/run.sh); this only
 # orchestrates them and rolls up the result. See integration/README.md.
@@ -29,7 +29,7 @@ mkdir -p "$OUT"
 SUITES_CATALOG=(
   "consensus|gate|300|Objective bond-weighted commit admission: a sub-quorum partition commits nothing, stalls, and catches up to the majority history on heal"
   "bond|gate|180|Proof-of-space-time bond cost (C1): a real plot is dear to make, cheap to verify, shortcut rejected"
-  "redteam|gate|300|#184 accountability: equivocator slashed, forged block rejected, low-bond proposer refused"
+  "redteam|gate|300|accountability: equivocator slashed, forged block rejected, low-bond proposer refused"
   "sybil|gate|600|C2 no quiet capture: a young objective network commits with the honest anchors and refuses to advance for a bonded Sybil set without them"
   "takedown|gate|180|Per-operator, existence-checked, reversible takedown"
   "privacy|gate|360|Publisher unlinkability: the default chain refuses a durable file→publisher link (refuse-to-surveil), the private path works, token-quorum authorizes without identity"
@@ -42,7 +42,7 @@ SUITES_CATALOG=(
   "soak|slow|700|Sustained load + gentle churn: bit-perfect throughout, no crash-loop, bounded memory"
   "durability|slow|1800|Durability under permanent loss: shrink the swarm, caretaker reconstructs+re-scatters, content outlives the nodes (surfaces the durability↔retrievability boundary)"
   "retrieval|slow|900|Retrieval/discoverability at scale + identity churn: cold-fetch success-rate floor (reproduces #43)"
-  "upgrade|slow|180|Rolling binary upgrade on a persisted store (reproduces the #237 format-migration FINDING)"
+  "upgrade|slow|180|Rolling binary upgrade on a persisted store (reproduces the format-migration FINDING)"
 )
 
 # Resolve the list of suites to run.
@@ -164,7 +164,7 @@ done
   echo "**$pass pass · $finding finding · $fail fail · $timeout timeout · $skip skip** — per-suite logs in \`$(basename "$OUT")/\`."
   echo
   echo "Status legend: **PASS** = green gate · **FINDING** = a deliberately-reproduced open"
-  echo "defect (e.g. \`upgrade\` reproduces #237) · **FAIL** = a real regression to investigate ·"
+  echo "defect (e.g. \`upgrade\`) · **FAIL** = a real regression to investigate ·"
   echo "**TIMEOUT** = the per-suite cap was hit (slow/loaded host, not a product regression — re-run"
   echo "the suite standalone, or raise its cap)."
 } >>"$REPORT"

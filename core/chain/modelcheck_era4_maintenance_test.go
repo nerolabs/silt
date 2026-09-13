@@ -10,16 +10,15 @@ import (
 
 // Consensus model-check — era-4 (v5) step 4b: the MAINTENANCE SPINE drift guards.
 //
-// The certified design (docs/thinking/2026-08-29-era4-witnessable-transitions-options.md,
-// RECERT2 era4-witnessable-transitions-RECERT2-2026-08-29.md) makes two build-time
-// obligations load-bearing, each ablated RED before it is trusted (the session-7 rule:
-// a green check with no demonstrated red is a comment that compiles):
+// The design era4-witnessable-transitions--2026-08-29.md makes two build-time
+// obligations load-bearing, each ablated RED before it is trusted (the rule: a green
+// check with no demonstrated red is a comment that compiles):
 //
-//   1. qualified == filter(bonded, slashed, MinBond) after EVERY block — the E-2
-//      maintenance invariant. The guard ablates PER SITE; dropping the 3007
-//      displacement hook (delete(qualified, owner)) MUST redden specifically (RECERT2 R1).
-//   2. bucket-membership(id) ⟺ (bondRegHeight[id] + ttl + 1 == D AND bonded[id] present)
-//      — the T-3 dual-source invariant. Drops on a missed renew old-bucket delete.
+// 1. qualified == filter(bonded, slashed, MinBond) after EVERY block — the E-2
+// maintenance invariant. The guard ablates PER SITE; dropping the 3007
+// displacement hook (delete(qualified, owner)) MUST redden specifically.
+// 2. bucket-membership(id) ⟺ (bondRegHeight[id] + ttl + 1 == D AND bonded[id] present)
+// — the dual-source invariant. Drops on a missed renew old-bucket delete.
 //
 // Plus the byte-identical post-apply StateRoot replay vs an era-3-shape recompute, and
 // the rotate-LAST stale-capture ordering ablation.
@@ -44,7 +43,7 @@ func recomputeQualified(c *Chain) map[ports.NodeID]int64 {
 	return out
 }
 
-// recomputeDueBucket is the RECOMPUTE side of the T-3 dual-source invariant. The
+// recomputeDueBucket is the RECOMPUTE side of the dual-source invariant. The
 // AUTHORITY the era-4 TTL sweep still iterates is bondRegHeight (era-4 kept the era-3
 // sweep over bondRegHeight and merely ADDED the bucket delete alongside it), so the
 // bucket must mirror bondRegHeight, NOT bonded. This matters at a displacement: era-3
@@ -131,11 +130,11 @@ func era4Corpus(t *testing.T, check func(t *testing.T, c *Chain, label string)) 
 	Sign(b3, a)
 	apply(b3, "h3 slash+fresh")
 
-	// h5, h6: let a's ORIGINAL genesis registration lapse — a renewed at h2, so its due
-	// height is 2+4+1 = 7. b renewed at h2 (due 7). honest reg'd at h1 (due 6). fresh
-	// reg'd at h3 (due 8). Drive to h6 so honest's bond (due 6) TTL-expires at h6 (site
-	// 3026 delete + due-bucket delete). h6-1 = 5 > regH(1)+... the sweep fires when
-	// height-regH > ttl, i.e. 6-1=5 > 4.
+	// h5, h6: let a's ORIGINAL genesis registration lapse — a renewed at h2, so
+	// its due height is 2+4+1 = 7. b renewed at h2 (due 7). honest reg'd at h1
+	// (due 6). fresh reg'd at h3 (due 8). Drive to h6 so honest's bond (due 6)
+	// TTL-expires at h6 (site 3026 delete + due-bucket delete). h6-1 = 5 >
+	// regH(1)+. the sweep fires when height-regH > ttl, i.e. 6-1=5 > 4.
 	for h := uint64(4); h <= 6; h++ {
 		prev = c.blocks[len(c.blocks)-1].Hash()
 		bh := &Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h))}}
@@ -152,10 +151,10 @@ func era4Corpus(t *testing.T, check func(t *testing.T, c *Chain, label string)) 
 // with the recompute.
 //
 // RED (per-site ablation, demonstrated in the 4b report): drop the maintenance at any
-// of the five sites and this reddens. RECERT2 R1 requires it to redden on the 3007
-// displacement hook SPECIFICALLY — because 3007 deletes the displaced `owner` (a
-// DIFFERENT key from the `id` written at 3013), a mirror that only follows 3013 leaves
-// a stale qualified entry for the displaced owner.
+// of the five sites and this reddens. requires it to redden on the 3007 displacement
+// hook SPECIFICALLY — because 3007 deletes the displaced `owner` (a DIFFERENT key from
+// the `id` written at 3013), a mirror that only follows 3013 leaves a stale qualified
+// entry for the displaced owner.
 func TestQualifiedMaintenanceDriftGuard(t *testing.T) {
 	var sawDisplacement bool
 	era4Corpus(t, func(t *testing.T, c *Chain, label string) {
@@ -172,7 +171,7 @@ func TestQualifiedMaintenanceDriftGuard(t *testing.T) {
 	}
 }
 
-// TestDueBucketDualSourceDriftGuard is the T-3 dual-source invariant:
+// TestDueBucketDualSourceDriftGuard is the dual-source invariant:
 // bucket-membership(id) ⟺ (bondRegHeight[id]+ttl+1 == D AND bonded[id] present),
 // after every block, over the same corpus (TTL enabled). era-4 keeps BOTH bondRegHeight
 // and the due-bucket; a drift between them is a divergence era-3 (one source) cannot
@@ -240,19 +239,19 @@ func TestV5PostApplyRootByteIdenticalAcrossOrderings(t *testing.T) {
 	}
 }
 
-// TestBoundaryCopyStaleCaptureOrderingAblation is the rotate-LAST stale-capture
-// ordering ablation (the sharpest). The boundary freeze (epochSet := qualified) runs
-// LAST, AFTER this block's bonds/TTL/slashes have maintained qualified. If a boundary
-// block ALSO slashes a member, the frozen epochSet must EXCLUDE the slashed member —
-// which holds only because the slash maintenance (site 3037) ran BEFORE the rotate-LAST
-// copy. Freezing from a PRE-maintenance snapshot of qualified would re-admit the slashed
+// TestBoundaryCopyStaleCaptureOrderingAblation is the rotate-LAST stale-capture ordering
+// ablation (the sharpest). The boundary freeze (epochSet:= qualified) runs LAST, AFTER
+// this block's bonds/TTL/slashes have maintained qualified. If a boundary block ALSO
+// slashes a member, the frozen epochSet must EXCLUDE the slashed member — which holds
+// only because the slash maintenance (site 3037) ran BEFORE the rotate-LAST copy.
+// Freezing from a PRE-maintenance snapshot of qualified would re-admit the slashed
 // member — an I3 mid-epoch-churn divergence.
 //
 // This asserts the correct ordering (frozen set excludes the slashed member); the report
 // shows the RED when the boundary copy is sourced from a stale (pre-maintenance) set.
 func TestBoundaryCopyStaleCaptureOrderingAblation(t *testing.T) {
 	a, b, cc := key(86001), key(86002), key(86003)
-	// MatureValidators=0 hands maturity off at the genesis boundary (the #535 test's
+	// MatureValidators=0 hands maturity off at the genesis boundary (the test's
 	// pattern), so rotateEpoch freezes a real set from the first boundary — the fixture
 	// does not have to drive the full maturity latch.
 	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
@@ -298,12 +297,12 @@ func TestBoundaryCopyStaleCaptureOrderingAblation(t *testing.T) {
 	}
 }
 
-// TestQ5RecoveryBranchAgreement is the Q5 coupling (RECERT2): at the #535 recovery
-// boundary, the materialized qualified and the recomputed liveQualifiedSet() are the
-// two producers of the recovery set and MUST agree (both are filter(bonded, slashed,
-// MinBond)). era-4 freezes the recovery boundary from liveQualifiedSet() explicitly, so
-// the frozen set re-bases against the live set the operator recovered to — never the
-// stale accelerator. This asserts the two producers agree over the maintenance corpus.
+// TestQ5RecoveryBranchAgreement is the Q5 coupling: at the recovery boundary, the
+// materialized qualified and the recomputed liveQualifiedSet are the two producers of
+// the recovery set and MUST agree (both are filter(bonded, slashed, MinBond)). era-4
+// freezes the recovery boundary from liveQualifiedSet explicitly, so the frozen set
+// re-bases against the live set the operator recovered to — never the stale
+// accelerator. This asserts the two producers agree over the maintenance corpus.
 //
 // RED (demonstrated in the 4b report): inject a qualified drift, hit the recovery
 // boundary, and the two producers disagree.
@@ -317,14 +316,14 @@ func TestQ5RecoveryBranchAgreement(t *testing.T) {
 	})
 }
 
-// TestEra3ReplayByteIdenticalOverCorpus is the byte-identical post-apply StateRoot
-// replay vs an era-3-shape recompute (RECERT2 owed obligation), over a corpus covering
-// renew-reset, ttl==0, and slash-before-due. It asserts the era-4 maintenance spine does
-// NOT perturb the era-3 (v4) committed root: after every block, the v4 root over the
-// era-4-maintained chain equals the v4 root over a chain whose new keyspaces are cleared.
-// Because the v4 marshaller (StateRoot / StateRootForVersion(v4)) ignores the new maps
-// by construction (hazard-1 v5-gating), this holds block-by-block over ANY history — the
-// spine is inert on the era-3 root.
+// TestEra3ReplayByteIdenticalOverCorpus is the byte-identical post-apply StateRoot replay
+// vs an era-3-shape recompute owed obligation, over a corpus covering renew-reset,
+// ttl==0, and slash-before-due. It asserts the era-4 maintenance spine does NOT perturb
+// the era-3 (v4) committed root: after every block, the v4 root over the era-4-maintained
+// chain equals the v4 root over a chain whose new keyspaces are cleared. Because the v4
+// marshaller (StateRoot / StateRootForVersion(v4)) ignores the new maps by construction
+// (hazard-1 v5-gating), this holds block-by-block over ANY history — the spine is inert
+// on the era-3 root.
 //
 // RED (the hazard-1 ablation, demonstrated in the 4b report): route the v4 path through
 // the v5 marshaller and this reddens on the first block that populates a new keyspace.
@@ -398,8 +397,8 @@ func TestEra3ReplayByteIdenticalOverCorpus(t *testing.T) {
 // TestCloneDueBucketDeepCopiesInnerMaps closes the gap the generic clone guard
 // (TestDryRunCloneCopiesEveryAppliedField) leaves: it checks only TOP-LEVEL map
 // distinctness, so a dueBucket whose OUTER map is fresh but whose INNER id-sets alias
-// the source would pass it — yet a dry-run apply() that inserts/removes a bucket id
-// would write THROUGH the shared inner map into live state (the #558 class, one level
+// the source would pass it — yet a dry-run apply that inserts/removes a bucket id
+// would write THROUGH the shared inner map into live state (the class, one level
 // deeper). This asserts each inner bucket is a distinct object.
 func TestCloneDueBucketDeepCopiesInnerMaps(t *testing.T) {
 	src := &Chain{}

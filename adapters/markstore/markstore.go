@@ -1,5 +1,5 @@
 // Package markstore persists a validator's monotonic last-signed watermark
-// (ports.SignMark) — the crash-safe half of the never-sign-twice rule (#397).
+// (ports.SignMark) — the crash-safe half of the never-sign-twice rule.
 // The mark is fsync'd to disk BEFORE the matching signature is released to the
 // wire (the Tendermint priv_validator_state pattern, B8): a crash between the
 // two leaves an unused mark, which is safe; the reverse order would let a
@@ -23,15 +23,15 @@ type Disk struct{ path string }
 
 func New(path string) *Disk { return &Disk{path: path} }
 
-// Round/Phase are additive (#432 rounds): a mark persisted before rounds loads
-// as {round:0, phase:0} — the legacy era-1 mark — exactly the schema-migration
-// rule the certification pins.
+// Round/Phase are additive: a mark persisted before rounds loads as {round:0,
+// phase:0} — the legacy era-1 mark — exactly the schema-migration rule the
+// research pins.
 type diskMark struct {
 	Height uint64 `json:"height"`
 	Round  uint64 `json:"round,omitempty"`
 	Phase  uint8  `json:"phase,omitempty"`
 	Hash   string `json:"hash"`
-	LockQC []byte `json:"lock_qc,omitempty"` // base64 by encoding/json; the #432 lock
+	LockQC []byte `json:"lock_qc,omitempty"` // base64 by encoding/json; the lock
 }
 
 func (d *Disk) Load() (ports.SignMark, bool, error) {

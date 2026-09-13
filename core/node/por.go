@@ -1,24 +1,24 @@
 // Real proof-of-retrieval: storage that can be spot-checked WITHOUT the
 // auditor fetching the bytes.
 //
-// The pieces (see docs/math/05-proof-of-retrieval.md and core/por):
+// The pieces and core/por:
 //
-//   - Every chunk is distributed WITH its Merkle inclusion proof, so a
-//     host can always show "this chunk is leaf i of root R" — binding
-//     what it claims to store to a root the whole network agrees on.
-//   - Every data/parity shard also travels with its per-block PoR
-//     authenticators (core/por Tags), computed by the publisher under a
-//     key derived from the file's LAYOUT key. A challenge names a seed and
-//     a sample count; the prover aggregates the sampled blocks of its
-//     stored bytes + tags into one compact response.
-//   - The auditor derives the SAME por key from its care-link
-//     (CareHandle.LayoutKey) and verifies the response touching NO data.
-//     A prover that kept the tags but dropped the bytes (our liar nodes do
-//     exactly that) cannot make the response verify — and the auditor
-//     never fetches ground truth to find out. That is the whole point: the
-//     verify-without-fetch the toy SHA-256(nonce‖data) scheme lacked.
+// - Every chunk is distributed WITH its Merkle inclusion proof, so a
+// host can always show "this chunk is leaf i of root R" — binding
+// what it claims to store to a root the whole network agrees on.
+// - Every data/parity shard also travels with its per-block PoR
+// authenticators (core/por Tags), computed by the publisher under a
+// key derived from the file's LAYOUT key. A challenge names a seed and
+// a sample count; the prover aggregates the sampled blocks of its
+// stored bytes + tags into one compact response.
+// - The auditor derives the SAME por key from its care-link
+// (CareHandle.LayoutKey) and verifies the response touching NO data.
+// A prover that kept the tags but dropped the bytes (our liar nodes do
+// exactly that) cannot make the response verify — and the auditor
+// never fetches ground truth to find out. That is the whole point: the
+// verify-without-fetch the toy SHA-256(nonce‖data) scheme lacked.
 //
-// ADVERSARY-SHAPE: capability=TagsWithoutBytes UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover the tags while the bytes are gone. NOTE the claim is narrower than it reads: TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT shows a zero-byte prover holding the LAYOUT KEY passes this audit. ROADMAP row F1.
+// ADVERSARY-SHAPE: capability=TagsWithoutBytes UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover the tags while the bytes are gone. NOTE the claim is narrower than it reads: TestCareLinkHolderForgesWithZeroBytes_PINNED_DEFECT shows a zero-byte prover holding the LAYOUT KEY passes this audit.
 package node
 
 import (
@@ -41,10 +41,10 @@ import (
 // ⚠ THE SECOND HALF OF THE SENTENCE ABOVE IS FALSIFIED FOR THE PARTY THAT HAS
 // THE KEY. A storage node cannot forge; a CARE-LINK holder can, over zero bytes.
 // The fixture below is that adversary, and it is the capability-holding fixture
-// ROADMAP row F1 asks for: it is handed the layout key and holds no file bytes,
-// and its wrongKey control asserts the same forgery fails WITHOUT the key.
+// row F1 asks for: it is handed the layout key and holds no file bytes, and its
+// wrongKey control asserts the same forgery fails WITHOUT the key.
 //
-// ADVERSARY-SHAPE: capability=LayoutKey fixture=TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT
+// ADVERSARY-SHAPE: capability=LayoutKey fixture=TestCareLinkHolderForgesWithZeroBytes_PINNED_DEFECT
 const porKeyDomain = "silt/por/v1"
 
 // ctOverhead is the byte cost AES-256-GCM adds to a chunk: ciphertext =
@@ -96,7 +96,7 @@ func verifyStorageProof(p ports.StorageProof, leaf ports.ChunkID) bool {
 
 // porChallengeSeed turns the auditor's monotonic request counter into a per-
 // sweep BASE seed. The old comment claimed "a prover lacking the bytes cannot
-// answer any seed" — RT-1 falsified that: a data-less identity cannot COMPUTE a
+// answer any seed" — falsified that: a data-less identity cannot COMPUTE a
 // proof, but it can RELAY the proof of an honest holder that can. porProverSeed
 // (below) folds the challenged identity into the seed so a relayed proof fails.
 //
@@ -105,7 +105,7 @@ func verifyStorageProof(p ports.StorageProof, leaf ports.ChunkID) bool {
 // away: a willing holder A that computes under B's OWN seed on request. Its
 // control removes the oracle (A answers under A's seed) and asserts that fails.
 //
-// ADVERSARY-SHAPE: capability=HonestHolderAsOracle fixture=TestRT_POR_2_ChallengeProxyPassesAudit_PINNED_DEFECT
+// ADVERSARY-SHAPE: capability=HonestHolderAsOracle fixture=TestChallengeProxyPassesAudit_PINNED_DEFECT
 func porChallengeSeed(nonce uint64) [32]byte {
 	var nb [8]byte
 	binary.BigEndian.PutUint64(nb[:], nonce)
@@ -113,14 +113,14 @@ func porChallengeSeed(nonce uint64) [32]byte {
 }
 
 // porProverSeed binds a challenge to the identity being challenged (M0 hardening
-// H1 / red-team RT-1, Invariant A): the seed a prover answers is H(base ‖
-// proverID), so its coefficients are prover-specific. A data-less identity B
-// that relays honest holder A's aggregated (μ, σ) — computed under A's seed —
-// fails B's verify, since B is graded under H(base ‖ B) ≠ H(base ‖ A). This
-// stops the trivial one-proof-to-N-Sybils relay; the deeper "colluding holder
-// recomputes a fresh proof per Sybil" residual is why PoR grants no STANDING at
-// all (see credit.Reputation) — plain PoR over shared content is not Sybil-
-// resistant (archive/design-history/m0-hardening-strategy.md §4 S2).
+// H1 /, Invariant A): the seed a prover answers is H(base ‖ proverID), so its
+// coefficients are prover-specific. A data-less identity B that relays honest
+// holder A's aggregated (μ, σ) — computed under A's seed — fails B's verify,
+// since B is graded under H(base ‖ B) ≠ H(base ‖ A). This stops the trivial
+// one-proof-to-N-Sybils relay; the deeper "colluding holder recomputes a fresh
+// proof per Sybil" residual is why PoR grants no STANDING at all (see
+// credit.Reputation) — plain PoR over shared content is not Sybil- resistant §4
+// S2.
 func porProverSeed(base [32]byte, prover ports.NodeID) [32]byte {
 	h := sha256.New()
 	h.Write([]byte("silt/por/challenge/prover/v2"))
@@ -241,7 +241,7 @@ func (n *Node) Audit(reg ports.Registry, ch link.CareHandle, done func(AuditRepo
 	})
 }
 
-// auditEntry is Audit past the (async, #473) registry resolution.
+// auditEntry is Audit past the (async) registry resolution.
 func (n *Node) auditEntry(entry ports.Entry, ch link.CareHandle, done func(AuditReport)) {
 	var report AuditReport
 	n.fetchAll(entry.ManifestChunks, func(missing []ports.ChunkID) {
@@ -258,21 +258,24 @@ func (n *Node) auditEntry(entry ports.Entry, ch link.CareHandle, done func(Audit
 		leaves := m.Leaves()
 		root := m.Root()
 		dataN := len(m.Chunks)
-		// EVERY stored shard of one object is the SAME size, and that size is
-		// COMMITTED: chunk.Split zero-pads a frame that shares a stripe, erasure
-		// pads short stripes, and a single-frame object is framed at its true
-		// length (R-SHORT-FINAL-STRIPE) — in all three cases m.ChunkSize is the
-		// frame that was used, so on the wire there is no short tail WITHIN an
-		// object. The auditor therefore demands the same block count for every
-		// leaf — m.ChunkSize+GCM ciphertext bytes — and a prover cannot shrink
-		// the challenge by under-reporting its block count (red-team F4: the old
-		// tail-leniency branch accepted any 1..wantFull for the last leaf, which
-		// is actually full-size, letting a liar report PorBlocks=1 and pass while
-		// holding one block). What keeps F4 closed is that the AUDITOR fixes the
-		// number from committed data, not that the number is large; a sub-frame
-		// object's shard is one block, which is fully sampled.
+		// EVERY stored shard of one object is the SAME size, and that
+		// size is COMMITTED: chunk.Split zero-pads a frame that shares
+		// a stripe, erasure pads short stripes, and a single-frame
+		// object is framed at its true length — in all three cases
+		// m.ChunkSize is the frame that was used, so on the wire there
+		// is no short tail WITHIN an object. The auditor therefore
+		// demands the same block count for every leaf —
+		// m.ChunkSize+GCM ciphertext bytes — and a prover cannot
+		// shrink the challenge by under-reporting its block count: the
+		// old tail-leniency branch accepted any
+		// 1.wantFull for the last leaf, which is actually full-size,
+		// letting a liar report PorBlocks=1 and pass while holding one
+		// block. What keeps F4 closed is that the AUDITOR fixes the
+		// number from committed data, not that the number is large; a
+		// sub-frame object's shard is one block, which is fully
+		// sampled.
 		//
-		// ADVERSARY-SHAPE: capability=UnderReportedBlockCount UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover a self-reported PorBlocks the auditor reads. The F4 closure rests on the auditor fixing the number from committed data; no fixture drives an adversary that tries to move it. ROADMAP row F1.
+		// ADVERSARY-SHAPE: capability=UnderReportedBlockCount UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover a self-reported PorBlocks the auditor reads. The F4 closure rests on the auditor fixing the number from committed data; no fixture drives an adversary that tries to move it.
 		want := por.DefaultParams.Blocks(int(m.ChunkSize) + ctOverhead)
 		var nextLeaf func(i int)
 		nextLeaf = func(i int) {
@@ -292,14 +295,12 @@ func (n *Node) auditEntry(entry ports.Entry, ch link.CareHandle, done func(Audit
 	})
 }
 
-// blocksOK cross-checks a prover's reported block count against the count the
-// auditor RECOMPUTED for the shard — exactly, for every leaf (red-team F4).
-// Every stored shard of one object is the same size and that size is committed
-// in m.ChunkSize, so the count is the same want for all of its leaves
-// (TestAuditorAndHonestProverAgreeOnEveryShardLength drives both regimes). Letting any leaf report 1..wantFull let a
-// liar advertise PorBlocks=1 and be challenged on block 0 alone, passing while
-// holding a sliver of the shard. The auditor, not the prover, fixes the sample
-// space.
+// blocksOK cross-checks a prover's reported block count against the count the auditor RECOMPUTED for the shard —
+// exactly, for every leaf. Every stored shard of one object is the same size and that size is committed in
+// m.ChunkSize, so the count is the same want for all of its leaves
+// (TestAuditorAndHonestProverAgreeOnEveryShardLength drives both regimes). Letting any leaf report 1.wantFull let a
+// liar advertise PorBlocks=1 and be challenged on block 0 alone, passing while holding a sliver of the shard. The
+// auditor, not the prover, fixes the sample space.
 func blocksOK(reported, want int) bool {
 	return reported >= 1 && reported == want
 }
@@ -367,7 +368,7 @@ func (n *Node) gradeAnswers(id ports.ChunkID, porKey *por.Key, base [32]byte,
 		// and under this prover's OWN seed H(base ‖ prover) (H1), so a proof
 		// relayed from another identity fails here.
 		//
-		// ADVERSARY-SHAPE: capability=ForeignSeedProof UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover a proof aggregated under ANOTHER identity's seed. TestRT_POR_2_ChallengeProxyPassesAudit_PINNED_DEFECT DOES drive one -- its relayOnly arm is exactly a foreign-seed proof, and it is asserted to fail -- but it is NOT declared as cover here, because the only way to run that attack WITHOUT the capability is to send an empty reply, and an empty reply fails for every capability. A control that cannot discriminate cannot show the capability is load-bearing (scar-gate-passes-on-a-bystander). ROADMAP row F1.
+		// ADVERSARY-SHAPE: capability=ForeignSeedProof UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover a proof aggregated under ANOTHER identity's seed. TestChallengeProxyPassesAudit_PINNED_DEFECT DOES drive one -- its relayOnly arm is exactly a foreign-seed proof, and it is asserted to fail -- but it is NOT declared as cover here, because the only way to run that attack WITHOUT the capability is to send an empty reply, and an empty reply fails for every capability. A control that cannot discriminate cannot show the capability is load-bearing.
 		passed := a.valid && blocksOK(a.blocks, want) &&
 			porKey.Verify(id[:], porChallenge(porProverSeed(base, a.prover), want, porSampleCount), a.proof)
 		if n.ledger != nil {

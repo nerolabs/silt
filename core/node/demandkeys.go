@@ -1,13 +1,13 @@
-// R0.4b per-epoch demand-issuer key distribution: serve, fetch, CROSS-CHECK, pin.
+// per-epoch demand-issuer key distribution: serve, fetch, CROSS-CHECK, pin.
 //
-// WHY THIS IS A SEPARATE LANE FROM MsgGetIssuerKey. The routing and the R0.4b
-// certification both name MsgGetIssuerKey / answerIssuerKey / peerIssuerKeys as the
-// key path to make epoch-plural. Verified against source, that identification is
-// wrong and following it literally would be a CONSENSUS BREAK: MsgGetIssuerKey
-// serves the PUBLISH-token issuer key (tokenrole.go), IssuerKeyOf is wired as the
-// chain's issuerKey lookup (chain.RequireTokens), and publishtoken.Verify re-verifies
-// COMMITTED publish tokens against it on every replay. Rotating that key per epoch
-// would make historical committed publish tokens fail verification on replay.
+// WHY THIS IS A SEPARATE LANE FROM MsgGetIssuerKey. The routing and the research both
+// name MsgGetIssuerKey / answerIssuerKey / peerIssuerKeys as the key path to make
+// epoch-plural. Verified against source, that identification is wrong and following
+// it literally would be a CONSENSUS BREAK: MsgGetIssuerKey serves the PUBLISH-token
+// issuer key (tokenrole.go), IssuerKeyOf is wired as the chain's issuerKey lookup
+// (chain.RequireTokens), and publishtoken.Verify re-verifies COMMITTED publish tokens
+// against it on every replay. Rotating that key per epoch would make historical
+// committed publish tokens fail verification on replay.
 //
 // Demand withdrawal reuses that same key today only because RSA-FDH signing is
 // domain-agnostic — answerTokenRequest cannot tell a demand blind from a publish
@@ -15,17 +15,15 @@
 // the REQUESTER built. So the per-epoch keyset is a SEPARATE demand-lane keyset and
 // the issuer must be TOLD which lane it is signing for. This file is that lane; the
 // publish-token lane is untouched. See
-// docs/thinking/2026-09-02-r0.4b-per-epoch-key-expiry-design.md §7.
 //
-// THE CROSS-CHECK IS THE POINT (research certification 2026-09-02, Verdict 2). A
-// fetched key is NEVER held on the peer's say-so. It is held only if its fingerprint
-// equals the CONSENSUS-ATTESTED commitment for (issuer, epoch)
-// (chain.IssuerKeyCommitment). Without that, per-epoch keys are WORSE for privacy
-// than no epoch at all: a Byzantine issuer serves a distinct key_E to a small cohort
-// and "which key verified you" becomes a fingerprint. Pinning a peer-served keyset
-// does not close it — an issuer that equivocates keys equivocates its published list
-// too. pinDemandIssuerKey is the single choke point; every path that would hold a
-// key goes through it.
+// THE CROSS-CHECK IS THE POINT. A fetched key is NEVER held on the peer's say-so. It
+// is held only if its fingerprint equals the CONSENSUS-ATTESTED commitment for
+// (issuer, epoch) (chain.IssuerKeyCommitment). Without that, per-epoch keys are
+// WORSE for privacy than no epoch at all: a Byzantine issuer serves a distinct key_E
+// to a small cohort and "which key verified you" becomes a fingerprint. Pinning a
+// peer-served keyset does not close it — an issuer that equivocates keys equivocates
+// its published list too. pinDemandIssuerKey is the single choke point; every path
+// that would hold a key goes through it.
 package node
 
 import (
@@ -45,16 +43,16 @@ type epochKeyDER struct {
 	DER   []byte `cbor:"2,keyasint"` // blindtoken.MarshalPub of key_Epoch
 }
 
-// demandKeysetWire is the served window {key_E : current−W <= E <= current}.
+// demandKeysetWire is the served window {key_E: current−W <= E <= current}.
 type demandKeysetWire struct {
 	Keys []epochKeyDER `cbor:"1,keyasint"`
 }
 
 // chainEpoch is the CONSENSUS epoch index at this node's head: head_height /
 // EpochBlocks. Deterministic and Byzantine-agreed — never wall-clock, which is what
-// the R0.4 certification's Q1 requires and what makes the validity window carry no
-// skew channel. With no chain or epochs disabled it is 0, which degenerates the
-// window to "epoch 0 only" without breaking anything.
+// the requires and what makes the validity window carry no skew channel. With no
+// chain or epochs disabled it is 0, which degenerates the window to "epoch 0 only"
+// without breaking anything.
 func (n *Node) chainEpoch() uint64 {
 	if n.chain == nil {
 		return 0
@@ -76,16 +74,14 @@ func (n *Node) chainEpoch() uint64 {
 // is what lets it honour a withdrawal that NAMES an in-window past epoch — the
 // epoch-boundary race, where the requester's view of the consensus clock trails the
 // issuer's by one. It is also why a token withdrawn under an older key is not
-// stranded on rotation (crypto advisory §3, residual R5).
+// stranded on rotation.
 //
-// ROTATION IS SCHEDULED, NOT OPS POLICY (R0.4b C3 close). The lane can only issue
+// ROTATION IS SCHEDULED, NOT OPS POLICY (C3 close). The lane can only issue
 // for an epoch whose key is both held here and committed on-chain, so a one-shot
 // install kills the lane W+1 epochs after boot while the fee-charging paths keep
-// running (red-team probe B, 2026-09-02). cmd/silt/daemon.go drives the schedule off
-// the commit stream, pre-publishing key_E for the whole [cur, cur+W] band; this
-// method is the per-epoch step it calls.
-// rng is the randomness the private-key operation blinds with (advisory C-2); see
-// EnableTokenIssuer.
+// running, 2026-09-02. cmd/silt/daemon.go drives the schedule off the commit stream,
+// pre-publishing key_E for the whole [cur, cur+W] band; this method is the per-epoch
+// step it calls. rng is the randomness the private-key operation blinds with; see EnableTokenIssuer.
 func (n *Node) SetDemandIssuerKey(rng io.Reader, epoch uint64, priv *rsa.PrivateKey) {
 	if priv == nil {
 		return
@@ -180,15 +176,15 @@ func (n *Node) answerDemandIssuerKeys() ports.Message {
 // commitment for (issuer, epoch) EXISTS and MATCHES its fingerprint.
 //
 // Both refusals are load-bearing:
-//   - MISMATCH is a targeted (per-cohort) key — the fingerprinting attack itself.
-//   - ABSENT is a key the issuer never committed. Accepting it would let an issuer
-//     bypass the binding entirely by simply never registering, which would make the
-//     whole commitment optional and therefore worthless.
+// - MISMATCH is a targeted (per-cohort) key — the fingerprinting attack itself.
+// - ABSENT is a key the issuer never committed. Accepting it would let an issuer
+// bypass the binding entirely by simply never registering, which would make the
+// whole commitment optional and therefore worthless.
 //
 // With no chain there is nothing consensus-attested to resolve against, so this
 // refuses. That is deliberate: a redeemer with no chain has no anti-fingerprinting
-// anchor, and the certification is explicit that shipping the construction WITHOUT
-// the anchor is unsafe.
+// anchor, and the research is explicit that shipping the construction WITHOUT the
+// anchor is unsafe.
 func (n *Node) pinDemandIssuerKey(issuer ports.NodeID, epoch uint64, pub *rsa.PublicKey) bool {
 	if pub == nil || n.chain == nil {
 		return false
@@ -202,15 +198,15 @@ func (n *Node) pinDemandIssuerKey(issuer ports.NodeID, epoch uint64, pub *rsa.Pu
 		ks = demand.NewKeyset(demand.DefaultWindow)
 		n.peerDemandKeys[issuer] = ks
 	}
-	// THE PIN FOLLOWS THE CHAIN (red-team break 4, 2026-09-02). Append-only belongs to
-	// the CHAIN's binding (applyIssuerKeys is first-write-wins); the pin is only a
-	// CACHE of it. The earlier rule — "once key_E is pinned it is never replaced" —
-	// left a redeemer that reorged onto a fork committing a DIFFERENT key_E verifying
-	// against the abandoned fork's key and refusing the canonical one for W+1 epochs,
-	// while reporting the re-pin as a success. Any key that reaches this line has
-	// already matched the CURRENT commitment above, so writing it is exactly
-	// "hold what the chain says": a held key is replaced only by the committed one,
-	// never by a peer's say-so.
+	// THE PIN FOLLOWS THE CHAIN. Append-only belongs to the CHAIN's binding
+	// (applyIssuerKeys is first-write-wins); the pin is only a CACHE of it. The
+	// earlier rule — "once key_E is pinned it is never replaced" — left a redeemer
+	// that reorged onto a fork committing a DIFFERENT key_E verifying against the
+	// abandoned fork's key and refusing the canonical one for W+1 epochs, while
+	// reporting the re-pin as a success. Any key that reaches this line has already
+	// matched the CURRENT commitment above, so writing it is exactly "hold what the
+	// chain says": a held key is replaced only by the committed one, never by a
+	// peer's say-so.
 	ks.Put(epoch, pub)
 	return true
 }
@@ -234,12 +230,12 @@ func (n *Node) DemandIssuerKeyset(issuer ports.NodeID) *demand.Keyset {
 	if ks == nil {
 		return nil
 	}
-	// Re-validate every held key against the CURRENT chain on every read. The pin is a
-	// cache of the committed binding, and a reorg (or any adopt that re-points the
-	// commitment for an epoch) must not leave a stale key verifying tokens
-	// (red-team break 4). Cost is at most W+1 sha256 over a 2048-bit modulus per read
-	// — negligible next to the RSA verify the read exists to perform. With no chain
-	// there is nothing to resolve against, so nothing may be held.
+	// Re-validate every held key against the CURRENT chain on every read. The pin
+	// is a cache of the committed binding, and a reorg (or any adopt that re-points
+	// the commitment for an epoch) must not leave a stale key verifying tokens.
+	// Cost is at most W+1 sha256 over a 2048-bit modulus per read — negligible next
+	// to the RSA verify the read exists to perform. With no chain there is nothing
+	// to resolve against, so nothing may be held.
 	ks.Retain(func(e uint64, pub *rsa.PublicKey) bool {
 		if n.chain == nil {
 			return false
@@ -302,10 +298,10 @@ func (n *Node) FetchDemandIssuerKeys(issuer ports.NodeID, done func(pinned int, 
 	})
 }
 
-// AcquireDemandTokenInWindow is the fetcher side of a per-epoch blind withdrawal
-// (R0.4b): it blinds a fresh serial for the CURRENT consensus epoch under that
-// epoch's key, names the epoch in the request, and refuses a reply signed for any
-// other. It is the withdrawal `swarm receipt` runs.
+// AcquireDemandTokenInWindow is the fetcher side of a per-epoch blind withdrawal:
+// it blinds a fresh serial for the CURRENT consensus epoch under that epoch's
+// key, names the epoch in the request, and refuses a reply signed for any other.
+// It is the withdrawal `swarm receipt` runs.
 //
 // The key it blinds against comes from the PINNED keyset — a key that resolved
 // against the committed E -> key_E binding — so a fetcher never withdraws under a
@@ -333,11 +329,11 @@ func (n *Node) AcquireDemandTokenInWindow(rng io.Reader, issuer ports.NodeID, do
 // blind the serial for epoch E under the CHAIN-RESOLVED key_E, name E in the
 // request, and accept the reply only if the issuer signed for that same E.
 //
-// THE REQUESTER NAMES THE EPOCH (R0.4b (b1)). E is inside the blind-signed message,
-// so an issuer that signs under any other epoch's key produces a signature this
-// withdrawal cannot unblind into anything redeemable — a DENIAL, never a silently
-// re-dated token. Refusing on resp.Height != E turns that into a loud, immediate
-// failure instead of a token discovered worthless at redemption. It also closes the
+// THE REQUESTER NAMES THE EPOCH ((b1)). E is inside the blind-signed message, so an
+// issuer that signs under any other epoch's key produces a signature this withdrawal
+// cannot unblind into anything redeemable — a DENIAL, never a silently re-dated
+// token. Refusing on resp.Height != E turns that into a loud, immediate failure
+// instead of a token discovered worthless at redemption. It also closes the
 // epoch-boundary race in the honest direction: an issuer one epoch ahead still holds
 // key_E and signs for the E we asked for.
 //
@@ -360,7 +356,7 @@ func (n *Node) withdrawDemandToken(rng io.Reader, issuer ports.NodeID, pub *rsa.
 }
 
 // withdrawBlind is the lane-generic withdrawal withdrawDemandToken and
-// AcquireRelayAnchors share (R2.14): the blind and unblind primitives decide the
+// AcquireRelayAnchors share: the blind and unblind primitives decide the
 // FDH domain (demand token vs relay anchor); everything else — the fresh serial,
 // the epoch named in the request, the refusal of a reply signed for any other
 // epoch, the verify-after-unblind — is identical, and the issuer side is untouched
@@ -399,7 +395,7 @@ func (n *Node) withdrawBlind(rng io.Reader, issuer ports.NodeID, pub *rsa.Public
 			done(nil, nil, ErrDemandEpochMismatch)
 			return
 		}
-		// RFC 9474 §4.4 Finalize (advisory C-1): verify the unblinded signature under
+		// RFC 9474 §4.4 Finalize: verify the unblinded signature under
 		// key_epoch BEFORE handing the caller a token. A malicious issuer that returns
 		// a dud used to charge the withdrawal fee and hand back something that only
 		// failed at the session open — and an anchor the keyset refuses never reaches
@@ -417,25 +413,25 @@ func (n *Node) withdrawBlind(rng io.Reader, issuer ports.NodeID, pub *rsa.Public
 // epoch THE REQUEST NAMES (msg.Height) and echoes that epoch in the reply, so the
 // withdrawer knows which key_E its token was signed under.
 //
-// THE THREE ADMISSION RULES, all load-bearing (R0.4b (b1)):
-//   - E <= cur. Signing for a FUTURE epoch would hand out a token that outlives the
-//     honest window (it expires at E+W), so it is refused even though the issuer
-//     already holds the pre-published key.
-//   - cur − E <= W. Below that the token is born expired; the requester gains
-//     nothing and the redeemer would reject it anyway.
-//   - key_E is held. The window's PRIVATE keys are retained (SetDemandIssuerKey), so
-//     an in-window past epoch is signable — which is exactly what lets a requester
-//     whose consensus clock trails by one epoch still buy a usable token instead of
-//     burning a fee on the boundary race.
+// THE THREE ADMISSION RULES, all load-bearing ((b1)):
+// - E <= cur. Signing for a FUTURE epoch would hand out a token that outlives the
+// honest window (it expires at E+W), so it is refused even though the issuer
+// already holds the pre-published key.
+// - cur − E <= W. Below that the token is born expired; the requester gains
+// nothing and the redeemer would reject it anyway.
+// - key_E is held. The window's PRIVATE keys are retained (SetDemandIssuerKey), so
+// An in-window past epoch is signable — which is exactly what lets a requester
+// whose consensus clock trails by one epoch still buy a usable token instead of
+// burning a fee on the boundary race.
 //
 // A requester that names an earlier E only shortens its OWN token's life, so there
 // is nothing to gain by lying and nothing to police beyond the window.
 //
 // It reuses answerTokenRequest's fee/credit settlement and its retry-dedup
-// discipline verbatim (research certification 2026-08-13, A2: a lost reply makes the
-// requester re-present the same blinded serial, and without dedup the issuer charges
-// twice). The dedup key is namespaced by the SIGNED epoch so a re-presented blind
-// after a rotation is a genuinely new issuance, not a stale cache hit.
+// discipline verbatim (research 2026-08-13, A2: a lost reply makes the requester
+// re-present the same blinded serial, and without dedup the issuer charges twice).
+// The dedup key is namespaced by the SIGNED epoch so a re-presented blind after a
+// rotation is a genuinely new issuance, not a stale cache hit.
 func (n *Node) answerDemandTokenRequest(from ports.NodeID, msg ports.Message) ports.Message {
 	reply := ports.Message{Kind: ports.MsgDemandTokenReply}
 	cur := n.chainEpoch()
@@ -457,7 +453,7 @@ func (n *Node) answerDemandTokenRequest(from ports.NodeID, msg ports.Message) po
 	}
 	charge, err := n.tokenChargeFor(from, msg.Credit)
 	if err != nil {
-		n.logCreditGuardRefusal(err) // R2.13b F1
+		n.logCreditGuardRefusal(err) // F1
 		return reply                 // no publish issuer to verify an attached credit, or the credit is invalid/spent
 	}
 	blindSig, err := iss.Issue(charge, msg.Data)

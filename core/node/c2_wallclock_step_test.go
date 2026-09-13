@@ -1,14 +1,14 @@
 package node
 
-// Lane C2 — the half of `R-SESSION-WALLCLOCK-STEP` that SURVIVES the premise correction.
+// The half of the residual that SURVIVES the premise correction.
 //
-// The residual as written in docs/design/m0.md §10 made two claims: that a forward
-// wall-clock STEP reaps every live session, and that a CHAIN STALL does the same. The
-// second is refuted by measurement (TestC2FrozenChainDoesNotStarveTheDeliveryLane: with
-// the chain frozen for longer than any admitted stall the lane still admits, settles and
-// funds, because nothing in the settle path reads the chain). The first is not refuted,
-// and it is the reason the disclosure stays. It had never been driven either, so it is
-// driven here: a claim about what a mechanism does to live sessions is a MEASUREMENT.
+// The residual as written made two claims: that a forward wall-clock STEP reaps every
+// live session, and that a CHAIN STALL does the same. The second is refuted by
+// measurement (TestC2FrozenChainDoesNotStarveTheDeliveryLane: with the chain frozen for
+// longer than any admitted stall the lane still admits, settles and funds, because
+// nothing in the settle path reads the chain). The first is not refuted, and it is the
+// reason the disclosure stays. It had never been driven either, so it is driven here: a
+// claim about what a mechanism does to live sessions is a MEASUREMENT.
 
 import (
 	"testing"
@@ -21,8 +21,8 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// G-C2-16 — a forward wall-clock step reaps EVERY live session at once, at any stamp
-// phase, however recently each one settled; and the step is the cause, since the same
+// A forward wall-clock step reaps EVERY live session at once, at any stamp phase,
+// however recently each one settled; and the step is the cause, since the same
 // sessions live through a step one nanosecond short of the guaranteed survival.
 // ABLATION: key the reaper on anything but the injected clock (e.g. never advance
 // n.deliveryIdle's comparison) ⇒ the reaped arm goes RED.
@@ -79,15 +79,15 @@ func TestC2ForwardWallClockStepReapsEveryLiveSession(t *testing.T) {
 				t.Fatalf("%d of 3 sessions alive after a forward step of %v on a %v window (guaranteed survival %v), want %d",
 					live, tc.step, idle, c2GuaranteedSurvival(idle), want)
 			}
-			t.Logf("G-C2-16 step=%-12v window=%v guaranteed=%v → %d of 3 live", tc.step, idle, c2GuaranteedSurvival(idle), live)
+			t.Logf("step=%-12v window=%v guaranteed=%v → %d of 3 live", tc.step, idle, c2GuaranteedSurvival(idle), live)
 		})
 	}
 }
 
-// G-C2-17 — the step reaps a session that settled ONE SECOND before it. This is the
-// sentence the disclosure actually rests on: a jump does not spare the busiest session,
-// so the exposure is real, and it is a LATENCY loss (the remainder is booked as a
-// deposit returned at anchor expiry), never a byte loss.
+// The step reaps a session that settled ONE SECOND before it. This is the sentence the
+// disclosure actually rests on: a jump does not spare the busiest session, so the
+// exposure is real, and it is a LATENCY loss (the remainder is booked as a deposit
+// returned at anchor expiry), never a byte loss.
 func TestC2ForwardStepDoesNotSpareTheBusiestSession(t *testing.T) {
 	const E = 1
 	const idle = c2CandidateMargin
@@ -122,20 +122,20 @@ func TestC2ForwardStepDoesNotSpareTheBusiestSession(t *testing.T) {
 	sched.RunUntil(sched.Now().Add(idle))
 	nd.sweepDeliverySessions(sched.Now())
 	if _, ok := nd.DeliverySessionForTest(sess.handle); ok {
-		t.Fatal("the session survived a forward step of the whole window one second after settling — R-SESSION-WALLCLOCK-STEP's surviving claim does not hold on the shipped reaper")
+		t.Fatal("the session survived a forward step of the whole window one second after settling — 's surviving claim does not hold on the shipped reaper")
 	}
 	st := ledger.DeliverySettlementStats()
 	if st.BurnedCredits != 0 || st.PendingRefundCredits <= 0 {
 		t.Fatalf("after the step: pending %d / burned %d — the step must cost LATENCY (a deposit returned at anchor expiry), never bytes",
 			st.PendingRefundCredits, st.BurnedCredits)
 	}
-	t.Logf("G-C2-17 RESULT: a session that settled 1 s before a %v forward step is reaped; %d credits booked as a DEPOSIT, %d burned", idle, st.PendingRefundCredits, st.BurnedCredits)
+	t.Logf("RESULT: a session that settled 1 s before a %v forward step is reaped; %d credits booked as a DEPOSIT, %d burned", idle, st.PendingRefundCredits, st.BurnedCredits)
 }
 
-// G-C2-18 (core half) — DeliveryIdleWindow reports the window the REAPER runs on, not a
+// (core half) — DeliveryIdleWindow reports the window the REAPER runs on, not a
 // remembered input. The daemon announces this value, so it is the tie between the window
 // the floor check judged and the window actually installed: cmd/silt reads it back out
-// (`installedIdle := time.Duration(nd.DeliveryIdleWindow())`) and prints it, and e2e
+// (`installedIdle:= time.Duration(nd.DeliveryIdleWindow)`) and prints it, and e2e
 // TestDeliveryIdleWindowDefaultBootsThePaidLane asserts the printed figure.
 //
 // Three polarities: off reports zero, an install reports itself, and the number reported
@@ -169,14 +169,14 @@ func TestC2DeliveryIdleWindowReportsWhatTheReaperRunsOn(t *testing.T) {
 	}
 }
 
-// G-C2-20 — the twin of cmd/silt's deliveryIdleFieldStall pin. The 1040 s margin datum
-// lives as a literal in both packages (cmd/silt cannot import core/node's test constants
-// and core/node cannot import package main), so each side pins its own copy to the
-// evidence and names the other. Zeroing either is RED here or there.
+// The twin of cmd/silt's deliveryIdleFieldStall pin. The 1040 s margin datum lives as a
+// literal in both packages (cmd/silt cannot import core/node's test constants and
+// core/node cannot import package main), so each side pins its own copy to the evidence
+// and names the other. Zeroing either is RED here or there.
 func TestC2FieldStallDatumMatchesTheEvidence(t *testing.T) {
 	if c2FieldStallObserved != 1040*ports.Second {
 		t.Fatalf("c2FieldStallObserved = %v, want 1040 s = 17m20s — block 43 committed 17 min 20 s after block 42 on run c450985-deep "+
-			"(evidence: integration/cloudtest/h43-stall-evidence-c450985-deep/README.md). cmd/silt's deliveryIdleFieldStall is the same figure and is pinned there",
+			"(evidence: integration/cloudtest/-stall-evidence-c450985-deep/README.md). cmd/silt's deliveryIdleFieldStall is the same figure and is pinned there",
 			c2FieldStallObserved)
 	}
 	// The datum's job, driven rather than asserted: the tight candidate is reaped by a gap

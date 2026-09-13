@@ -13,13 +13,13 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// TestEquivocateAtLiveTipSlashesOnAdvancedChain345 is the #345 regression guard:
+// TestEquivocateAtLiveTipSlashesOnAdvancedChain is the regression guard:
 // Node.Equivocate must double-sign at the CURRENT uncommitted tip, not a hardcoded
 // height 1. On a chain that has already committed past height 1 — a warmed
 // field-test network — a height-1 double-sign is STALE: an honest target refuses to
 // attest a proposal that is not at head+1, so proposeAndCommitTo fails, the forks
 // are never placed, and the culprit is never slashed. That is exactly what the GCP
-// #286 re-cert saw (the adversary set -equivocate but never logged "equivocation
+// the re-check saw (the adversary set -equivocate but never logged "equivocation
 // complete", and no slash fired within the window).
 //
 // This test advances the chain past height 1, runs the REAL Equivocate path, and
@@ -27,7 +27,7 @@ import (
 // heavier fork, and recorded on-chain as an eviction. With the old hardcoded
 // height-1 code the placement fails on the advanced chain, so Equivocate returns an
 // error and this test fails — the guard the drill lacked.
-func TestEquivocateAtLiveTipSlashesOnAdvancedChain345(t *testing.T) {
+func TestEquivocateAtLiveTipSlashesOnAdvancedChain(t *testing.T) {
 	const bondSize = int64(2) << 20
 	sched := simclock.New()
 	net := simnet.New(sched, 5, simnet.DefaultConfig())
@@ -104,6 +104,6 @@ func TestEquivocateAtLiveTipSlashesOnAdvancedChain345(t *testing.T) {
 		t.Fatal("A should commit a block carrying the on-chain slash")
 	}
 	if !a.Chain().IsSlashed(idC.NodeID()) || a.Chain().BondedSize(idC.NodeID()) != 0 {
-		t.Fatal("#345: a live-tip equivocator must be detected and evicted from the objective set")
+		t.Fatal("a live-tip equivocator must be detected and evicted from the objective set")
 	}
 }

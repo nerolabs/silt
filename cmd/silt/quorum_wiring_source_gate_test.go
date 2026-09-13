@@ -10,7 +10,7 @@ import (
 // the function. It reads daemon.go as TEXT, so it can only ever see a string and its
 // position — it observes no behaviour at all and must not be read as if it did.
 //
-// Why it exists: the blind PE ablated the entire call site out of daemon.go and the whole
+// Why it exists: an ablation removed the entire call site from daemon.go and the whole
 // cmd/silt package stayed GREEN, because the behavioural gate
 // (TestDerivedGatherTargetTracksTheByzantineBar) exercises the pure function and never
 // observes how it is wired. A wrong-argument or deleted-call defect is invisible to it —
@@ -23,12 +23,12 @@ import (
 // WHAT THIS PAIR DOES NOT HOLD, stated because a second review found both by ablation
 // rather than by reading the comment. A source gate on a call STRING sees neither the
 // ORDER of the call relative to its consumer nor the VALUE its arguments carry:
-//   - move the whole derivation block below `chain.New` and every gate stays green while
-//     the config reads the underived literal — and the console still prints "derived to N".
-//     That is not hypothetical: the bond verifier in this same file carries the #572 scar
-//     for exactly that shape, sixty lines away.
-//   - shadow `effByz` just for this call and the original validity-lowering blocker
-//     re-opens with both gates green.
+// - move the whole derivation block below `chain.New` and every gate stays green while
+// The config reads the underived literal — and the console still prints "derived to N".
+// That is not hypothetical: the bond verifier in this same file carries the same defect for
+// exactly that shape, sixty lines away.
+// - shadow `effByz` just for this call and the original validity-lowering blocker
+// re-opens with both gates green.
 //
 // So this file asserts the structural facts that close the shapes seen so far: the
 // derivation precedes its consumer, and no other binding of `effByz` exists in the file.
@@ -77,15 +77,15 @@ func TestDerivedQuorumIsWiredWithBothPreconditions(t *testing.T) {
 		t.Fatal("SOURCE GATE: cannot find the chain.New(chain.Config{...}) consumer in daemon.go, so the ordering below cannot be checked at all")
 	}
 	if i > consumer {
-		t.Fatal("SOURCE GATE: the -quorum derivation sits AFTER chain.New(chain.Config{...}) in daemon.go. The config then snapshots the UNDERIVED literal while the derivation still runs and still prints 'gather target derived to N' — the #572 shape, in this same file")
+		t.Fatal("SOURCE GATE: the -quorum derivation sits AFTER chain.New(chain.Config{...}) in daemon.go. The config then snapshots the UNDERIVED literal while the derivation still runs and still prints 'gather target derived to N' — the shape, in this same file")
 	}
 
-	// VALUE. Exactly one effByz in the file, so the call cannot be handed a shadowed one.
-	// A shadow re-opens the validity-lowering blocker with every behavioural gate green.
-	// A bare `effByz := …` in a narrower scope keeps the call string byte-identical, keeps
-	// the outer binding used by chain.Config, and compiles — so neither the string arm nor
-	// the constructor count above sees it. It is the shape that re-opens the blocker most
-	// quietly, which is why it gets its own assertion.
+	// VALUE. Exactly one effByz in the file, so the call cannot be handed a shadowed
+	// one. A shadow re-opens the validity-lowering blocker with every behavioural gate
+	// green. A bare `effByz:= …` in a narrower scope keeps the call string
+	// byte-identical, keeps the outer binding used by chain.Config, and compiles — so
+	// neither the string arm nor the constructor count above sees it. It is the shape
+	// that re-opens the blocker most quietly, which is why it gets its own assertion.
 	if strings.Contains(s, "effByz :=") {
 		t.Fatal("SOURCE GATE: daemon.go contains a bare `effByz :=` binding. A shadow in a narrower scope hands the -quorum derivation a Byzantine-sizing value that is not the one the daemon computed, re-opening the validity-lowering regime (-byzantine-quorum=false) with every behavioural gate green")
 	}

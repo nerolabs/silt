@@ -91,7 +91,7 @@ resource "aws_route_table_association" "nat" {
 }
 
 # ── Security group: swarm/relay/registry from anywhere (real field net) + all
-#    intra-VPC (cross-AZ) + egress for SSM/S3/internet ─────────────────────────────
+#  intra-VPC (cross-AZ) + egress for SSM/S3/internet ─────────────────────────────
 resource "aws_security_group" "silt" {
   name_prefix = "${local.name}-"
   vpc_id      = aws_vpc.silt.id

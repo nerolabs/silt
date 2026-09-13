@@ -5,8 +5,8 @@
 // hole-punch approach (#27) is validated against real conntrack before it is
 // wired into the transport.
 //
-//	probe coord   :9000                 # rendezvous: pairs two peers, swaps their observed addrs
-//	probe peer    <coord> <lport> <name>  # binds lport (SO_REUSEPORT), learns its mapped addr, punches
+//	probe coord:9000 # rendezvous: pairs two peers, swaps their observed addrs
+//	probe peer <coord> <lport> <name> # binds lport (SO_REUSEPORT), learns its mapped addr, punches
 //
 // A peer prints "DIRECT-OK <peer>" on a successful direct connection, or
 // "DIRECT-FAIL" if the punch didn't establish within the deadline.
@@ -116,10 +116,10 @@ func peer(coordAddr, lport, name string) {
 	}
 	fmt.Fprintf(os.Stderr, "peer %s: punching toward %s from :%s\n", name, peerAddr, lport)
 
-	// Pure TCP simultaneous-open: BOTH sides connect() to each other from the
-	// reused local port; the crossing SYNs establish one connection per side.
-	// No separate listener (binding a connecting socket to a listener's port
-	// fails). Retry to keep firing SYNs until they cross.
+	// Pure TCP simultaneous-open: BOTH sides connect to each other from
+	// the reused local port; the crossing SYNs establish one connection
+	// per side. No separate listener (binding a connecting socket to a
+	// listener's port fails). Retry to keep firing SYNs until they cross.
 	got := make(chan net.Conn, 4)
 	go func() {
 		for i := 0; i < 30; i++ {

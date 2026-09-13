@@ -6,17 +6,16 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Factor (ii) of the MATURING drain-cadence wall (instrumented run 7134711-18163;
-// docs/thinking/2026-08-15-maturing-wall-is-coordination-cadence-not-cpu.md): a bond
-// registration is signed over BondRegNonce(prev) — bound to ONE specific head — and
-// ValidateBondReg / validateBondRegs accept it ONLY against the CURRENT head. So the
-// instant the head advances (a heartbeat/other block commits), a reg in flight goes
-// STALE and is refused; the submitter must resign over the new head and race the
+// Factor (ii) of the MATURING drain-cadence wall (instrumented run the field run): a
+// bond registration is signed over BondRegNonce(prev) — bound to ONE specific head —
+// and ValidateBondReg / validateBondRegs accept it ONLY against the CURRENT head. So
+// the instant the head advances (a heartbeat/other block commits), a reg in flight
+// goes STALE and is refused; the submitter must resign over the new head and race the
 // moving head again. Over a real WAN — where a proposer proposes on head-advance
 // BEFORE the WAN-delayed resubmission arrives — this starves the drain: blocks commit
-// empty below the #286 byte cap, and maturity never reaches bar-2 in the window
-// (observed ~1 reg/105 s, ~3× slower than the byte cap alone dictates). It never
-// showed in single-host sims because there is no propagation delay there.
+// empty below the byte cap, and maturity never reaches bar-2 in the window (observed
+// ~1 reg/105 s, ~3× slower than the byte cap alone dictates). It never showed in
+// single-host sims because there is no propagation delay there.
 //
 // FAILING-FIRST: this encodes the DESIRED post-fix behavior — a reg only a FEW heads
 // stale still validates and commits (fix A: accept BondRegNonce over the last K
@@ -117,7 +116,7 @@ func TestBondRegRejectedBeyondHeadWindow_factorII(t *testing.T) {
 	}
 }
 
-// The AHEAD-skew face of the K-head window (run 09fbe60-84613: 54 submit
+// The AHEAD-skew face of the K-head window (a field run recorded 54 submit
 // refusals, every one "signature", spread over ≥7 validators — 37× 64 MiB
 // maturer regs, 17× 1 MiB sybil regs): a renewal is signed over the
 // SUBMITTER's head, but a receiver accepts only nonces of its OWN last-K

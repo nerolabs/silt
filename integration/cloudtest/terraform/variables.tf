@@ -66,7 +66,7 @@ variable "nodes" {
     ip     = string
     zone   = string
     region = string # the region of `zone`; selects the per-region public subnet
-    argv   = string # the full `silt ...` command line, or "NATGW"
+    argv   = string # the full `silt...` command line, or "NATGW"
     # Main-swarm node with NO external IP (egress via Cloud NAT, reached over
     # IAP): zero IN_USE_ADDRESSES quota. Used by the ECONOMY killable stores —
     # ECONOMY=1 SYBILS=8 saturates every region's default 8-IP quota.
@@ -93,7 +93,7 @@ variable "core_on_demand" {
 variable "all_on_demand" {
   type        = bool
   default     = false
-  description = "Run EVERY node as STANDARD (non-preemptible). For a CERTIFICATION run: core_on_demand only protects validator+registry, but a cert also needs storage (holds published content), relay (NAT), and adversary (#184) to survive — a mid-run SPOT preemption of store-1 fails publish and cascades into a false FAIL of nearly every flow. e2-small on-demand is ~cents/hr for the whole fleet; overrides core_on_demand when set."
+  description = "Run EVERY node as STANDARD (non-preemptible). For a graded run: core_on_demand only protects validator+registry, but a graded run also needs storage (holds published content), relay (NAT), and adversary to survive — a mid-run SPOT preemption of store-1 fails publish and cascades into a false FAIL of nearly every flow. e2-small on-demand is ~cents/hr for the whole fleet; overrides core_on_demand when set."
 }
 
 variable "persistent_network" {

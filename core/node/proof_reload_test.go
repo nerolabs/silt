@@ -19,7 +19,7 @@ import (
 // StartProofReload instead defers the scan onto the event loop in bounded batches
 // (clock.AfterFunc), so daemon startup proceeds — the listeners bind — while the
 // resident proofMeta index matures lazily in the background. The full proofs page
-// on demand (#464), so serving does not wait for the scan. Every proofMeta write
+// on demand, so serving does not wait for the scan. Every proofMeta write
 // stays on the loop, preserving its single-threaded invariant.
 //
 // The test asserts the three properties that distinguish the async reload from the

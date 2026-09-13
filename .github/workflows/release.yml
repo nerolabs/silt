@@ -1,10 +1,10 @@
 name: Release
 
 # Dormant until you push a version tag. Cutting a release is then one
-# command:  git tag v0.1.0 && git push origin v0.1.0
+# command: git tag v0.1.0 && git push origin v0.1.0
 # This builds the cross-platform binaries and publishes a GitHub Release
-# with notes pulled from CHANGELOG.md — which is what makes the site's
-# download links resolve to real files.
+# with generated notes — which is what makes the site's download links resolve
+# to real files.
 on:
   push:
     tags: ["v*"]
@@ -26,7 +26,7 @@ jobs:
       - name: Build binaries (mac/windows/linux)
         run: ./build.sh "${GITHUB_REF_NAME}"
       # THE COMPILED PRIVACY DEFAULT IS ASSERTED ON THE ARTIFACT, not on the source
-      # (D-UI-PRIVACY-FLAG; blind PE ruling RULING-UI-PRIVACY-FLAG-design-2026-09-05 S4).
+      # ).
       # A released binary run with no -privacy flag must withhold the node-wide serve
       # counters from an unauthenticated reader. This is what makes shipping the wrong
       # default a FAILED RELEASE rather than a shipped one.
@@ -50,11 +50,10 @@ jobs:
               print("::error::released binary's privacy default is wrong:", "; ".join(bad)); print(json.dumps(d, indent=1)[:2000]); sys.exit(1)
           print("OK — released binary withholds serve counters by default")
           PY
-      - name: Extract release notes
-        run: python3 scripts/release_notes.py "${GITHUB_REF_NAME}" > RELEASE_NOTES.md
+      # Release notes come from the tag's own commit range; the action generates them.
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          body_path: RELEASE_NOTES.md
+          generate_release_notes: true
           files: dist/*
           fail_on_unmatched_files: true

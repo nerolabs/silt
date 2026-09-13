@@ -1,6 +1,6 @@
 // Takedown enforcement on a node. A node no-ops on a denied root: it
 // won't accept its chunks, serve them, prove them, announce them, or
-// repair the file. See docs/safety-denylist.md.
+// repair the file. See.
 //
 // Governance note baked into the shape of this code: there is NO
 // built-in list and NO privileged authority. A node's denials come only
@@ -20,12 +20,12 @@ import (
 func (n *Node) SetDenylist(d *denylist.Set) { n.denylist = d }
 
 // SetHonorChainRevocations subscribes (or unsubscribes) this operator to the
-// chain's on-chain takedown records. It defaults to OFF (red-team F5): a node
-// that follows the chain does not thereby inherit every quorum-committed
-// revocation — honoring is a per-operator choice, "proportional to who trusts
-// you" (TENETS §9), never a global switch. An operator that wants to enforce
-// on-chain takedowns opts in with this. The operator-local denylist
-// (SetDenylist) is always honored regardless.
+// chain's on-chain takedown records. It defaults to OFF: a node that follows
+// the chain does not thereby inherit every quorum-committed revocation —
+// honoring is a per-operator choice, "proportional to who trusts you" (TENETS
+// §9), never a global switch. An operator that wants to enforce on-chain
+// takedowns opts in with this. The operator-local denylist (SetDenylist) is
+// always honored regardless.
 func (n *Node) SetHonorChainRevocations(honor bool) { n.honorChainRevocations = honor }
 
 // isDenied is the node's effective takedown check: the operator's local list

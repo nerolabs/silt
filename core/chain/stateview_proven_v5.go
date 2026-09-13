@@ -19,12 +19,12 @@ import (
 // failure of the READ (Availability = NoWitness ⇒ the composition stalls), never a divergence of
 // the VERDICT. There is no second implementation of the transition for a root-only client.
 //
-// R-VIEW-FAITHFULNESS (OPEN, and this round's named red-team target). The view CONCENTRATES the
+// OPEN, and this round's named adversarial target. The view CONCENTRATES the
 // defect class into these accessors instead of spreading it over eleven reproduced predicates; it
 // does not remove it. The shape to hunt is an accessor that answers "absent" where it should
-// answer "I have no witness" — e.g. `value == nil` vs bytes.Equal(nil, ...) on an empty slice.
-// Every accessor here therefore routes through resolveLeaf, which has exactly one place to get
-// that wrong. M-1 and M-3 widened the surface (Rep, HeadRef.LogRoot, Empty).
+// answer "I have no witness" — e.g. `value == nil` vs bytes.Equal(nil,.) on an empty slice. Every
+// accessor here therefore routes through resolveLeaf, which has exactly one place to get that
+// wrong. widened the surface (Rep, HeadRef.LogRoot, Empty).
 
 // WitnessSource is the witness-DELIVERY seam. It is what a witness server (or, in a gate, a prover
 // over a full node's own committed leaves) implements.
@@ -55,16 +55,16 @@ type WitnessSource interface {
 	// committed StateRoot (tagRevLogSize), and the leaves are DERIVED from the block, so this call
 	// only asks the source to produce paths in a tree whose shape and contents are already fixed.
 	// That is the whole point of the leaf — before it, m came from here and a source claiming m = 1
-	// could pass any right-spine extension (TestGD9_WitnessSuppliedLogSizeIsUnsound_Control).
+	// could pass any right-spine extension (TestWitnessSuppliedLogSizeIsUnsound_Control).
 	LogExtension(m int, leaves []ports.Hash) (consistency []ports.Hash, inclusion [][]ports.Hash, ok bool)
 }
 
 var (
-	// ErrRevLogSizeUnauthenticated marks a P13b k ≥ 1 STALL whose cause is that the box could not
-	// AUTHENTICATE the parent log size m: no witness for the tagRevLogSize leaf, a leaf that does
-	// not Resolve against the parent's committed StateRoot, or a value that is not a usable
-	// uint64. Verify-not-recompute of the new LogRoot is sound ONLY with an authenticated m
-	// (T-LOGEXT, P-table delta certification §3.3 — a witness-supplied m is a WRONG-ACCEPT through
+	// ErrRevLogSizeUnauthenticated marks a P13b k ≥ 1 STALL whose cause is that the box could
+	// not AUTHENTICATE the parent log size m: no witness for the tagRevLogSize leaf, a leaf
+	// that does not Resolve against the parent's committed StateRoot, or a value that is not a
+	// usable uint64. Verify-not-recompute of the new LogRoot is sound ONLY with an
+	// authenticated m (T-LOGEXT, P-table — a witness-supplied m is a WRONG-ACCEPT through
 	// translog.VerifyConsistency's m == 0 short-circuit and its isPow2 seeding at m = 1).
 	//
 	// UNTIL tagRevLogSize LANDED this fired on EVERY revocation-bearing block, because there was
@@ -97,7 +97,7 @@ type provenView struct {
 	budget     Budget
 	head       HeadRef
 	src        WitnessSource
-	// predicate is the box's half of P13a — the certified O(payload) witness recompute of the
+	// predicate is the box's half of P13a — the O(payload) witness recompute of the
 	// StateRoot. nil = not wired: P13a stalls with ErrRecomputeGated.
 	predicate func(b *Block) error
 }
@@ -116,7 +116,7 @@ func (v provenView) VerifyBond(pub []byte, root ports.Hash, size int64, nonce ui
 }
 
 // WitnessBudget returns the box's own budget. A provenView constructed with the zero Budget
-// stalls at step 0b (M-4): there is no way to hand a box ∞ by omission.
+// stalls at step 0b: there is no way to hand a box ∞ by omission.
 func (v provenView) WitnessBudget() Budget { return v.budget }
 func (v provenView) Head() HeadRef         { return v.head }
 
@@ -127,7 +127,7 @@ func (v provenView) Head() HeadRef         { return v.head }
 func (v provenView) PrunedTolerated(uint64) (bool, Availability) { return false, NoWitness }
 
 // Rep is the LEGACY reputation view, which is not a committed leaf: the box has no witness for
-// it and the composition stalls on the legacy branch (M-1). This is the S2 mode fence expressed as
+// it and the composition stalls on the legacy branch. This is the S2 mode fence expressed as
 // a read, belt and braces with the fence at the box entry.
 func (v provenView) Rep(ports.NodeID) (int64, Availability) { return 0, NoWitness }
 
@@ -365,24 +365,24 @@ func (v provenView) Scalar(tag string) ([]byte, Availability) {
 // CommittedRoots is the box's half of the ONE substituted step: P13a ∧ P13b over the parent's
 // committed roots the box OWNS (HeadRef), never over anything the block or a driver supplies.
 //
-// Order inside the conjunction: nil-reject (the node's era3validity.go:121 rule, verbatim), then
+// Order inside the conjunction: nil-reject (the node's era3validity.go rule, verbatim), then
 // P13b, then P13a. P13b precedes P13a on this view only because it is O(1) and needs no witness;
 // the node runs them the other way round inside validateEra3Roots. Conjunction order is free.
 //
-// P13b (P-table delta certification §3.3):
-//   - k = 0 (no revocation touches the log): require *b.LogRoot == *head.LogRoot. Zero witness.
-//     This is the conjunct whose absence was a wrong-accept on the cheapest possible mutation (a
-//     forged b.LogRoot on any block).
-//   - k ≥ 1: verify the LOG EXTENSION against an AUTHENTICATED parent size m, Resolved from the
-//     tagRevLogSize leaf on the parent's committed StateRoot (freeze-manifest item 1). k counts
-//     duplicates — the LOG does not dedup a revoke/un-revoke pair the way the STATE write-set
-//     does, because apply()'s two revLog.Append loops are unconditional.
+// P13b (P-table):
+// - k = 0 (no revocation touches the log): require *b.LogRoot == *head.LogRoot. Zero witness.
+// This is the conjunct whose absence was a wrong-accept on the cheapest possible mutation (a
+// forged b.LogRoot on any block).
+// - k ≥ 1: verify the LOG EXTENSION against an AUTHENTICATED parent size m, Resolved from the
+// tagRevLogSize leaf on the parent's committed StateRoot (freeze-manifest item 1). k counts
+// duplicates — the LOG does not dedup a revoke/un-revoke pair the way the STATE write-set
+// does, because apply's two revLog.Append loops are unconditional.
 //
 // WHY m HAS TO COME FROM THE COMMITTED ROOT. Before the leaf, this arm was a terminal STALL: a
 // witness-supplied m is a WRONG-ACCEPT (translog.VerifyConsistency returns true at m == 0 without
 // reading either root, and at m == 1 its isPow2 seeding leaves the old-root accumulator vacuous,
 // so any right-spine extension passes), and m is recoverable from nothing else the box holds —
-// apply() deletes from `revoked` on an un-revocation, so |revoked| != len(revLog).
+// apply deletes from `revoked` on an un-revocation, so |revoked| != len(revLog).
 func (v provenView) CommittedRoots(b *Block) (FloorBoxOutcome, error) {
 	if b.StateRoot == nil || b.LogRoot == nil {
 		return Reject, fmt.Errorf("%w: StateRoot=%v LogRoot=%v", ErrEra3RootMissing, b.StateRoot != nil, b.LogRoot != nil)
@@ -469,7 +469,7 @@ func (v provenView) logExtends(b *Block, k int) (FloorBoxOutcome, error) {
 // HASH-COVERED block — which is what makes the appended CONTENT non-forgeable with no witness for
 // it at all. Both loops there are unconditional, so a duplicate root and a revoke/un-revoke pair
 // of the same root each contribute an entry, unlike the STATE write-set which nets them.
-// TestRevocationLogLeavesMirrorsApply pins the derivation against a real apply().
+// TestRevocationLogLeavesMirrorsApply pins the derivation against a real apply.
 func revocationLogLeaves(b *Block) []ports.Hash {
 	out := make([]ports.Hash, 0, len(b.Revocations)+len(b.Unrevocations))
 	for _, r := range b.Revocations {
@@ -481,17 +481,17 @@ func revocationLogLeaves(b *Block) []ports.Hash {
 	return out
 }
 
-// verifyLogExtension is the certified verify-not-recompute construction (T-LOGEXT, P-table delta
-// certification section 3.3): the block's LogRoot is the parent's log extended by exactly `leaves`
-// iff a consistency proof carries (parentRoot, m) to (newRoot, n = m+len(leaves)) AND each derived
-// leaf verifies at its own index m+j of size n. The consistency proof alone would bind the SHAPE
-// and not the CONTENT — it covers the appended range as opaque subtree hashes — so the per-leaf
-// inclusion legs are not belt-and-braces, they are the half that pins what was appended.
+// verifyLogExtension is the verify-not-recompute construction (T-LOGEXT, P-table research section
+// 3.3): the block's LogRoot is the parent's log extended by exactly `leaves` iff a consistency
+// proof carries (parentRoot, m) to (newRoot, n = m+len(leaves)) AND each derived leaf verifies at
+// its own index m+j of size n. The consistency proof alone would bind the SHAPE and not the
+// CONTENT — it covers the appended range as opaque subtree hashes — so the per-leaf inclusion legs
+// are not belt-and-braces, they are the half that pins what was appended.
 //
 // IT IS SOUND ONLY IF m IS AUTHENTICATED, and that is not a caveat — it is the load-bearing
 // precondition. With m taken from the witness, the m = 1 arm accepts a forged newRoot built from
 // attacker-chosen siblings and the m = 0 arm accepts anything at all.
-// TestGD9_WitnessSuppliedLogSizeIsUnsound_Control drives both degeneracies against THIS function
+// TestWitnessSuppliedLogSizeIsUnsound_Control drives both degeneracies against THIS function
 // and asserts the forgery passes at a claimed m and is refused at the committed one.
 func verifyLogExtension(parentRoot ports.Hash, m int, newRoot ports.Hash, leaves []ports.Hash,
 	consistency []ports.Hash, inclusion [][]ports.Hash) bool {

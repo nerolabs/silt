@@ -203,7 +203,7 @@ func TestKillDropsInFlight(t *testing.T) {
 	got := 0
 	b.SetHandler(func(ports.NodeID, ports.Message) { got++ })
 	n.Endpoint(id(1)).Send(id(2), ports.Message{}) // in flight...
-	n.Kill(id(2))                                  // ...dies before delivery
+	n.Kill(id(2))                                  //...dies before delivery
 	s.Run()
 	if got != 0 {
 		t.Fatal("dead node received a message")

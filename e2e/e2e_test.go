@@ -9,7 +9,7 @@
 //
 // The test builds the binary once (TestMain) and is guarded by
 // -short so `go test -short` skips the process-spawning cost; CI runs
-// the full form.
+// The full form.
 package e2e
 
 import (
@@ -32,9 +32,9 @@ import (
 var siltBin string
 
 func TestMain(m *testing.M) {
-	// Build once for the whole package. -short still builds (cheap when
-	// cached) but the tests themselves skip, so `go test -short ./e2e`
-	// is fast and never spawns a process.
+	// Build once for the whole package. -short still builds (cheap
+	// when cached) but the tests themselves skip, so `go test
+	// -short./e2e` is fast and never spawns a process.
 	dir, err := os.MkdirTemp("", "silt-e2e-bin")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "e2e: tempdir:", err)
@@ -157,7 +157,7 @@ func TestFreeloadRoleSeparation(t *testing.T) {
 	d.waitFor(t, rePeer, 20*time.Second)     // and it still runs as a routing peer
 }
 
-// TestServeContentFlagIsTheFreeloadInverse (D-TIERING §4): the positive spelling
+// TestServeContentFlagIsTheFreeloadInverse: the positive spelling
 // of the content axis reaches the same state as the legacy negative one. A tier
 // profile composes as `-serve-content=false` without the operator having to think
 // in double negatives, and the announced line keeps the legacy `freeload: ON`
@@ -219,14 +219,14 @@ func waitForInLog(t *testing.T, path string, re *regexp.Regexp, timeout time.Dur
 }
 
 // TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding is the e2e tier for the
-// PoD neutral lane (docs/design/pod.md §7.1, certified 2026-08-26).
+// PoD neutral lane, verifies 2026-08-26.
 //
-// NAME HISTORY: this test was TestDeliveryReceiptBankedOverTCP, and it asserted the
-// POSITIVE arm — a receipt banked over a real socket, settling positive credit. From
-// R0.4b C3 onward a withdrawal is only sound against a key that resolves to a
+// This test asserted the POSITIVE arm — a receipt banked over a real socket,
+// settling positive credit. From
+// C3 onward a withdrawal is only sound against a key that resolves to a
 // COMMITTED E->key_E binding, and a binding needs an era-4/v5 chain. This fixture
 // cannot produce one, so the positive arm cannot pass here and this test now asserts
-// the CERTIFIED REFUSAL instead — which is the honest e2e observable today, and a
+// the REFUSAL instead — which is the honest e2e observable today, and a
 // real contract of its own: the client must refuse legibly rather than buy a token
 // the bank will never honour.
 //
@@ -252,29 +252,28 @@ func waitForInLog(t *testing.T, path string, re *regexp.Regexp, timeout time.Dur
 // TestIssuerKeyBindingResolvesInTheObjectiveBondedEpochPosture: an objective + bonded +
 // epoch-enabled chain that commits the binding at a NON-ZERO epoch in a v5 block through the
 // real validateIssuerKeys, with a CHAIN-BEARING fetcher in every arm (accept / absent /
-// mismatch). It reddens under both ablations above. That is R-E2E-ERA4-FIXTURE's posture
-// half. What stays OWED is the OS-process positive arm, and it is blocked on a question
-// this brief does not decide: whether the one-shot client should carry a chain at all.
+// mismatch). It reddens under both ablations above. That is the posture half. What stays
+// OWED is the OS-process positive arm, and it is blocked on a question this brief does not
+// decide: whether the one-shot client should carry a chain at all.
 //
 // THE OLDER REASON, AND WHY IT NO LONGER GOVERNS. This note used to say the era-4 READINESS
-// TALLY is what keeps the fixture below v5: -objective=false makes chain.objective() false, so
-// epochsEnabled() is false, so apply() never calls rotateEpoch, and the tally lives inside
+// TALLY is what keeps the fixture below v5: -objective=false makes chain.objective false, so
+// epochsEnabled is false, so apply never calls rotateEpoch, and the tally lives inside
 // rotateEpoch. That trace is still correct and still pinned by core/chain
-// TestGateF_NonObjectiveTopologyCanNeverLatchEra4. It is no longer the operative gate, because
+// TestNonObjectiveTopologyCanNeverLatchEra4. It is no longer the operative gate, because
 // era4Active takes its genesis-override branch whenever cfg.Era4ActivationHeight is non-zero and
 // -era4-activation-height DEFAULTS TO 1 (cmd/silt/daemon.go, assigned into chain.Config and
-// pinned by cmd/silt TestTheThreeGenesisFlagsAreDeclaredAndWired). This test passes no override,
+// pinned by cmd/silt TestTheThreeGenesisFlagsAreDeclaredAndWired. This test passes no override,
 // so it takes that default, and the tally — reached only when that CONFIGURED HEIGHT is 0, not at
 // any particular block height — is never consulted here. Raising the readiness stamp 3 -> 5 still
 // does not green the old assertion.
 //
-// RESTORING THE POSITIVE ARM — residual R-E2E-ERA4-FIXTURE (ROADMAP, Boulder-0 residuals).
-// Making this fixture commit blocks is necessary and NOT sufficient, and the second half is
-// what the 2026-09-11 measurement added: even on a topology that commits and mints v5, the
-// CLIENT still holds no chain, so the withdrawal still refuses at the nil guard. The positive
-// arm needs a chain-bearing fetcher over a real OS process, and no shipped process is one —
-// `silt client` has no chain either (cmd/silt/client.go). The D3 architecture's answer is a
-// DURABLE PARENT resolving the key and handing the pair down (Node.ResolvedDemandIssuerKey,
+// RESTORING THE POSITIVE ARM. Making this fixture commit blocks is necessary and NOT
+// sufficient, and the second half is what the measurement added: even on a topology that commits and mints v5, the CLIENT
+// still holds no chain, so the withdrawal still refuses at the nil guard. The positive arm
+// needs a chain-bearing fetcher over a real OS process, and no shipped process is one — `silt
+// client` has no chain either (cmd/silt/client.go). The D3 architecture's answer is a DURABLE
+// PARENT resolving the key and handing the pair down (Node.ResolvedDemandIssuerKey,
 // AcquireDemandTokenWithCredit), which `swarm receipt` does not use. Wiring one is a
 // production change, not a fixture change; it is an OPEN OWNER CALL and is not decided here.
 //
@@ -287,10 +286,10 @@ func waitForInLog(t *testing.T, path string, re *regexp.Regexp, timeout time.Dur
 // WHAT COVERS THE POSITIVE ARM MEANWHILE. sim TestPaidDeliveryLaneThreeCallComposition
 // drives the three shipped client calls in the order cmd/silt/swarm.go makes them —
 // FetchDemandIssuerKeys -> AcquireDemandTokenInWindow -> OpenDeliverySessionRemote /
-// SubmitDeliverySettle (B-9: the flat SubmitDeliveryReceipt is deleted) — on an
+// SubmitDeliverySettle (the flat SubmitDeliveryReceipt is deleted) — on an
 // in-process v5 chain with a real committed binding, through the real wire handlers,
 // TWICE, asserting positive settled credit both times. core/node
-// TestRTC3_RestartDoesNotRePayTheSameWireReceipt covers the same positive settlement
+// TestRestartDoesNotRePayTheSameWireReceipt covers the same positive settlement
 // plus the replay and durable-restart refusals this test never asserted. What is
 // genuinely uncovered until the fixture upgrade is real tcpnet framing and OS-process
 // boot on the paid lane, and that is recorded as coverage debt, not as closed.
@@ -301,8 +300,8 @@ func TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding(t *testing.T) {
 	a := startDaemon(t, "receipt-banker",
 		"-listen", "127.0.0.1:0", "-store", t.TempDir(),
 		"-serve-registry", "127.0.0.1:0", "-validator",
-		"-accept-delivery-receipts", "-delivery-idle-window", "10m", "-epoch-blocks", "8", // R2.10 / F8: a paid lane needs an epoch clock
-		"-grant-capacity", "256", "-grant-per-hour", "256", // R2.12 / G-R212-1: and a configured faucet
+		"-accept-delivery-receipts", "-delivery-idle-window", "10m", "-epoch-blocks", "8", // a paid lane needs an epoch clock
+		"-grant-capacity", "256", "-grant-per-hour", "256", // and a configured faucet
 		"-objective=false", "-min-rep", "100", "-quorum", "1",
 		"-bond", "8M", "-min-bond-floor", "0",
 		"-capacity", "1G", "-mdns=false", "-id-seed", "4801")
@@ -311,7 +310,7 @@ func TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding(t *testing.T) {
 	// (1) THE BANNER ANNOUNCES THE LANE IS DARK. The operator contract: a daemon that
 	// arms the lane on a chain that cannot commit a binding must SAY the binding is
 	// what it is waiting for, or "ACCEPTING" followed by silence forever is the only
-	// signal it gives (PE ruling §8). S5 — this string is a contract.
+	// signal it gives. S5 — this string is a contract.
 	a.waitFor(t, regexp.MustCompile(
 		`key_E is resolved against the committed E→key binding \(needs an era-4/v5 chain\)`),
 		20*time.Second)
@@ -383,7 +382,7 @@ func TestDeliveryReceiptRefusedWhenLaneOff(t *testing.T) {
 	}
 }
 
-// TestArchiveTierAnnouncesRetention (D-TIERING §3): an archival node announces
+// TestArchiveTierAnnouncesRetention: an archival node announces
 // the tier it is running, so an operator can see from the log that this box is
 // carrying O(all history) heavy payload deliberately — not by accident.
 func TestArchiveTierAnnouncesRetention(t *testing.T) {
@@ -424,18 +423,18 @@ func runClientAllowErr(t *testing.T, args ...string) (string, error) {
 }
 
 // TestDefaultsRefuseRubberStampCommit is the OUTCOME test for the safe consensus
-// defaults. Use case: an operator runs a LONE validator with DEFAULT flags (no
+// defaults. Use case: an operator runs a LONE validator with DEFAULT flags no
 // -quorum / -min-rep override, so the untrusted objective path) and no cold-start
-// scaffolding. Outcome required (seam-2, red-team 2026-08-08): the daemon must
-// REFUSE TO START — a lone untrusted objective validator with no anchor launch set
-// and no weak-subjectivity checkpoint would latch everMature at genesis and run
-// with no anchor co-sign, so a young/Sybil quorum could self-certify and capture.
+// scaffolding. Outcome required, the adversary: the daemon must REFUSE TO START —
+// a lone untrusted objective validator with no anchor launch set and no
+// weak-subjectivity checkpoint would latch everMature at genesis and run with no
+// anchor co-sign, so a young/Sybil quorum could self-certify and capture.
 // Refuse-to-start is strictly stronger than the old "starts but refuses to
 // rubber-stamp": a node that will not run cannot rubber-stamp anything.
-// (TestPublishCommitFetchOverTCP is the positive control — with the explicit
+// TestPublishCommitFetchOverTCP is the positive control — with the explicit
 // -quorum 0 trusted-deployment setting the same publish commits;
 // TestBondEarnedStandingCommitsOverTCP shows the earned-standing objective path
-// with an anchor launch set.)
+// with an anchor launch set.
 func TestDefaultsRefuseRubberStampCommit(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e spawns processes; skipped under -short")
@@ -537,13 +536,13 @@ func TestBondEarnedStandingCommitsOverTCP(t *testing.T) {
 	_ = b
 }
 
-// TestChainRevocationCommitsOverTCP is the e2e tier for the accountability fix
-// (red-team F5): a validator proposes an on-chain takedown of a published root,
-// and it COMMITS through a real quorum over real TCP. The per-operator honoring
-// (a subscribing node denies it, a non-subscribing node does not) is proven at
-// the integration tier (sim/revocation_test.go); this proves the daemon can
-// actually drive a quorum revocation end to end — the runtime capability that
-// tier could not exercise.
+// TestChainRevocationCommitsOverTCP is the e2e tier for the accountability fix:
+// a validator proposes an on-chain takedown of a published root, and it COMMITS
+// through a real quorum over real TCP. The per-operator honoring (a subscribing
+// node denies it, a non-subscribing node does not) is proven at the integration
+// tier (sim/revocation_test.go); this proves the daemon can actually drive a
+// quorum revocation end to end — the runtime capability that tier could not
+// exercise.
 func TestChainRevocationCommitsOverTCP(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e spawns processes; skipped under -short")

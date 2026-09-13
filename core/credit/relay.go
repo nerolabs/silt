@@ -1,50 +1,42 @@
 package credit
 
-// PoD relay lane — the relay/gateway bandwidth-compensation settlement
-// (docs/design/pod.md §7.3). It is the sibling of the delivery session lane
-// (deliveryanchor.go); both spend anchors into the one guard in delivery.go.
+// PoD relay lane — the relay/gateway bandwidth-compensation settlement. It
+// is the sibling of the delivery session lane (deliveryanchor.go); both
+// spend anchors into the one guard in delivery.go.
 //
-// STATUS — R2.14 BUILT (2026-09-04), the relay-lane prepayment ANCHOR. The
-// R0.7 interim (pays 0, 2026-09-03) is retired by it. The certified facts:
+// STATUS — BUILT, the relay-lane prepayment ANCHOR. The interim (pays 0,
+// 2026-09-03) is retired by it. The facts:
 //
-//  1. Settlement runs on the RELAY's own ledger (core/node/relaytransport.go
-//     SettleRelaySession), and the fetcher it forwards for is, by M0 mandate, a
-//     FRESH EPHEMERAL identity this ledger has never seen. So settlement debits
-//     NOBODY at settle time: the payment was made at ISSUANCE, when the
-//     fetcher's DURABLE identity bought k anchors from this relay through the
-//     ordinary blind withdrawal (ChargePublish on THIS ledger, refusable), and
-//     the relay verified and spent them at session open (SpendRelayAnchors,
-//     relayanchor.go). budget is the ledger's own Σ face of those spent
-//     anchors, never a fetcher-declared number and never S × increment.
-//  2. Settlement pays min(chainValue, budget) to acct(relay) — the relay is
-//     registered on its own ledger, so acct() is safe HERE only — and touches
-//     no other account. acct(ephID) is never called: on this ledger it would
-//     Register the ephemeral with the faucet grant, the phantom balance the
-//     RT-RELAY-1 mint was drawn from.
-//  3. The unconsumed remainder budget − paid is BURNED (R-ANCHOR-STALL ≡
-//     R-ANCHOR-GRANULARITY, cert §7: ≤ one face = 50,000 credits per 24.4 GiB
-//     session since the 2026-09-06 re-price, 300,000 per 1 GiB before it; the
-//     relay gains nothing from a stall; an owner-accepted v1 residual; the
-//     certified follow-on is a MsgRelayFund top-up with FRESH anchors — "present
-//     k, spend lazily" is REFUTED on guard (ii)).
-//  4. Conservation per session on this ledger: Δ Σ_L = settled − Σ face ≤ 0,
-//     equality iff fully consumed (INV-RELAY-CONS; cert C-1 withdrew the older
-//     "unchanged" corollary). Collusion (the operator buys anchors from itself
-//     and settles them back) is a WASH at full consumption, not a strict loss —
-//     there is no relay skim in v1 (R-RELAY-WASH-ZERO-LOSS, an owner call
-//     before R2.4).
-//  5. BUILT ≠ LIVE. An anchor verifies only under a chain-committed per-epoch
-//     key (a v5 IssuerKeyReg), so the lane is DARK until era-4 activation; until
-//     then every open is refused with a named reason and nothing is paid (the
-//     correct direction; cert §8).
+// 1. Settlement runs on the RELAY's own ledger (core/node/relaytransport.go
+// SettleRelaySession, and the fetcher it forwards for is, by M0 mandate, a
+// FRESH EPHEMERAL identity this ledger has never seen. So settlement debits
+// NOBODY at settle time: the payment was made at ISSUANCE, when the
+// fetcher's DURABLE identity bought k anchors from this relay through the
+// ordinary blind withdrawal (ChargePublish on THIS ledger, refusable), and
+// the relay verified and spent them at session open (SpendRelayAnchors,
+// relayanchor.go). budget is the ledger's own Σ face of those spent
+// anchors, never a fetcher-declared number and never S × increment.
+// 2. Settlement pays min(chainValue, budget) to acct(relay) — the relay is
+// registered on its own ledger, so acct is safe HERE only — and touches
+// no other account. acct(ephID) is never called: on this ledger it would
+// Register the ephemeral with the faucet grant, the phantom balance the
+// phantom mint was drawn from.
+// 3. The unconsumed remainder budget − paid is BURNED (≤ one face = 50,000 credits per 24.4 GiB
+// session since the 2026-09-06 re-price, 300,000 per 1 GiB before it; the
+// relay gains nothing from a stall; an owner-accepted v1 residual; the
+// follow-on is a MsgRelayFund top-up with FRESH anchors — "present k,
+// spend lazily" is REFUTED on guard (ii).
+// 4. Conservation per session on this ledger: Δ Σ_L = settled − Σ face ≤ 0,
+// equality iff fully consumed (withdrew the older
+// "unchanged" corollary). Collusion (the operator buys anchors from itself
+// and settles them back) is a WASH at full consumption, not a strict loss —
+// there is no relay skim in v1 (an
+// before).
+// 5. BUILT ≠ LIVE. An anchor verifies only under a chain-committed per-epoch
+// key (a v5 IssuerKeyReg), so the lane is DARK until era-4 activation; until
+// then every open is refused with a named reason and nothing is paid (the
+// correct direction).
 //
-// Certification (binding):
-// silt-agent-memory/researcher/reviews/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md;
-// direction:
-// silt-agent-memory/researcher/reviews/research-outcome/RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md;
-// build shape:
-// silt-agent-memory/crypto-specialist/reviews/ADVISORY-R2.14-relay-prepayment-anchor-build-2026-09-04.md.
-// Deliberation: docs/thinking/2026-09-04-r2.14-relay-prepayment-anchor-design.md.
 //
 // THE MECHANISM: a relay forwards content-blind bytes toward a fetcher and
 // cannot sign a completed-delivery receipt (it never holds a verifiable
@@ -60,21 +52,21 @@ package credit
 // touches is read by Reputation — asserted structurally by the Invariant-A
 // guard (invariant_a_test.go classifies RedeemRelayCredit and SpendRelayAnchors
 // `neutral`) and the direct firewall test (relay_test.go
-// TestRelayCreditNeverTouchesStanding, whose paid > 0 precondition R2.14
-// restores). A PayWord chain is fundable with zero object bytes by certified
-// design (it pays for forwarding, which is unprovable), so relay credit buying
-// even one unit of standing would convert funded chains into consensus weight —
-// the γ→1/N hole.
+// TestRelayCreditNeverTouchesStanding, whose paid > 0 precondition
+// restores). A PayWord chain is fundable with zero object bytes by design (it
+// pays for forwarding, which is unprovable), so relay credit buying even one
+// unit of standing would convert funded chains into consensus weight — the
+// γ→1/N hole.
 //
 // NO RELAY SKIM in v1 (design §6): the conserved transfer now exists to skim
-// from; whether to is the owner's call before R2.4.
+// from; whether to is the project call before.
 //
-// THE RELAY LANE KEEPS THE BURN (R2.9 refund certification §5.1: its counterparty is
-// an ephemeral with no account, so a refund would be the RT-RELAY-1 phantom). One
-// call-graph coupling to know: SpendRelayAnchors' epoch advance runs the shared
-// once-per-epoch sweep, which also releases the DELIVERY lane's due deposits into
-// existing balances (deliveryanchor.go releaseDueRefunds). Balance-only, single-writer
-// event loop; the rule the relay lane inherits is nothing, the sweep it shares is one.
+// THE RELAY LANE KEEPS THE BURN (refund: its counterparty is an ephemeral with no
+// account, so a refund would be the phantom). One call-graph coupling to know:
+// SpendRelayAnchors' epoch advance runs the shared once-per-epoch sweep, which also
+// releases the DELIVERY lane's due deposits into existing balances (deliveryanchor.go
+// releaseDueRefunds). Balance-only, single-writer event loop; the rule the relay lane
+// inherits is nothing, the sweep it shares is one.
 
 import "github.com/nerolabs/silt/ports"
 
@@ -86,18 +78,19 @@ import "github.com/nerolabs/silt/ports"
 // burned (STATUS point 3). An unanchored session has budget 0 and pays 0
 // without touching any account.
 //
-// Gates: TestRelayLaneConservesTotalSupplyOnOnePerNodeLedger (T-2),
-// TestRelaySettlementRefusesUnanchoredSession (T-1),
-// TestRelaySettlementNeverLeavesAnAccountNegative (T-5), TestSelfRelayPaysNothing,
+// Gates: TestRelayLaneConservesTotalSupplyOnOnePerNodeLedger,
+// TestRelaySettlementRefusesUnanchoredSession,
+// TestRelaySettlementNeverLeavesAnAccountNegative, TestSelfRelayPaysNothing,
 // TestRelayCreditNeverTouchesStanding.
 func (l *Ledger) RedeemRelayCredit(relay, fetcher ports.NodeID, chainValue, budget int64) int64 {
 	if relay == fetcher {
 		return 0 // self-relay earns nothing (the cheapest gaming, blocked)
 	}
 	if budget <= 0 || chainValue <= 0 {
-		// Nothing was spent into this session, or nothing was forwarded. Do not
-		// touch either account: acct() would Register the fetcher's fresh
-		// ephemeral with the faucet grant (the RT-RELAY-1 phantom).
+		// Nothing was spent into this session, or nothing was
+		// forwarded. Do not touch either account: acct would Register
+		// the fetcher's fresh ephemeral with the faucet grant (the
+		// phantom).
 		return 0
 	}
 	paid := min(chainValue, budget)

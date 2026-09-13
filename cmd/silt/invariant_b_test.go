@@ -6,50 +6,41 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// M0 hardening H3 — the Invariant-B structural guardrail.
+// The Invariant-B structural guardrail.
 //
-// Invariant B (archive/design-history/m0-hardening-strategy.md §2): a security mechanism is
-// not "shipped" until its SAFE configuration is the DEFAULT for the untrusted
-// (open-M0) posture. Enforcement: for EVERY security mechanism, a test that
-// builds the DEFAULT config an untrusted validator gets and asserts that default
+// Invariant B: a security mechanism is not "shipped" until its SAFE configuration is the
+// DEFAULT for the untrusted (open-M0) posture. Enforcement: for EVERY security mechanism, a
+// test that builds the DEFAULT config an untrusted validator gets and asserts that default
 // DENIES the attack.
 //
-// This is the guardrail for meta-pattern #2 — "fixed but off by default." F6
-// (objective mode) → F4 (credits) → G4-residual (floor) → RT-2 (bond-TTL) were
-// four re-instances of ONE class: a mechanism shipped correct but inert, so a
-// doc-following open validator stayed exploitable until a red team noticed. This
-// file enumerates the standing surfaces (§4 S1–S3) and asserts each one's SAFE
-// value is what an operator who passes no flags actually gets.
+// This is the guardrail for "fixed but off by default": objective mode, credits, the
+// bond floor and bond-TTL were four instances of ONE class — a mechanism shipped
+// correct but inert, so an open validator following the docs stayed exploitable. This
+// file enumerates the standing surfaces S1-S7 and asserts each one's SAFE value is
+// what an operator who passes no flags actually gets.
 //
-// Coverage map (§4):
-//   S1 anti-release floor  → enforced-by-default, asserted here (via effectiveBondFloor)
-//   S2 PoR-audit standing  → denied STRUCTURALLY (grants no standing at all — Invariant A,
-//                            core/credit/invariant_a_test.go); no default to flip, nothing to test here
-//   S3 bond-TTL (RT-2)     → enforced-by-default (H2), asserted here (via effectiveBondTTL);
-//                            the release-and-coast prune behavior itself is proven over the
-//                            wire in sim TestObjectiveBondRenewalSustainsAttestOnlyValidator
-//   S4 Byzantine quorum    → enforced-by-default (H4), asserted here (via effectiveByzantineQuorum);
-//                            the quorum-intersection safety itself is proven in
-//                            core/chain TestBFTQuorumIntersectionAboveFaultBound
-//   S5 client eclipse cap  → enforced-by-default in the SHIPPED CLIENT (BREAK 2), asserted here
-//                            (via clientNodeConfig): the desktop client resolves/announces
-//                            provider records over a domain-spread, signed set so a ~$4 /24
-//                            key-surround can't censor a root at the routing layer for a user
-//                            who opted into no takedown. The daemon and swarm fetcher already
-//                            defaulted these on; the client path had shipped them off.
-//   S6 cold-start scaffold → REFUSE-BY-DEFAULT (seam-2), asserted here (via coldStartScaffoldOK):
-//                            an untrusted objective validator with no anchor launch set and no
-//                            weak-subjectivity checkpoint would latch everMature at genesis and
-//                            run with no anchor co-sign — a young/Sybil quorum could self-certify
-//                            mature and capture. No sound synthesizable anchor set exists
-//                            (weak-subjectivity irreducibility), so the safe default is to refuse
-//                            to start (like -min-bond<=0), not warn.
-//   S7 publish signer-set → CANONICAL-BY-DEFAULT (seam-4/R-3), asserted here (via rankByCanonical):
-//                            `swarm add -token-quorum` picks its publish-token signers by a
-//                            network-canonical ledger ordering (heaviest bond first), the SAME for
-//                            every publisher, not an arbitrary subset of -peers — so the signer
-//                            subset can't collapse the publisher anonymity set. Deterministic:
-//                            input peer order does not change the selection.
+// Coverage map: S1 anti-release floor → enforced-by-default, asserted here (via
+// effectiveBondFloor) S2 PoR-audit standing → denied STRUCTURALLY (grants no standing at all —
+// Invariant A, core/credit/invariant_a_test.go); no default to flip, nothing to test here S3
+// bond-TTL → enforced-by-default, asserted here (via effectiveBondTTL); the
+// release-and-coast prune behaviour itself is proven over the wire in sim
+// TestObjectiveBondRenewalSustainsAttestOnlyValidator S4 Byzantine quorum → enforced-by-default
+// asserted here (via effectiveByzantineQuorum); the quorum-intersection safety itself is
+// proven in core/chain TestBFTQuorumIntersectionAboveFaultBound S5 client eclipse cap →
+// enforced-by-default in the SHIPPED CLIENT, asserted here (via clientNodeConfig):
+// the desktop client resolves/announces provider records over a domain-spread, signed set so a
+// ~$4 /24 key-surround can't censor a root at the routing layer for a user who opted into no
+// takedown. The daemon and swarm fetcher already defaulted these on; the client path had
+// shipped them off. S6 cold-start scaffold → REFUSE-BY-DEFAULT, asserted here (via
+// coldStartScaffoldOK): an untrusted objective validator with no anchor launch set and no
+// weak-subjectivity checkpoint would latch everMature at genesis and run with no anchor co-sign
+// — a young/Sybil quorum could self-certify mature and capture. No sound synthesizable anchor
+// set exists (weak-subjectivity irreducibility), so the safe default is to refuse to start
+// (like -min-bond<=0), not warn. S7 publish signer-set → CANONICAL-BY-DEFAULT, asserted
+// here (via rankByCanonical): `swarm add -token-quorum` picks its publish-token signers by a
+// network-canonical ledger ordering (heaviest bond first), the SAME for every publisher, not an
+// arbitrary subset of -peers — so the signer subset can't collapse the publisher anonymity set.
+// Deterministic: input peer order does not change the selection.
 
 // TestInvariantB_S1_AntiReleaseFloorOnByDefault asserts the untrusted-validator
 // DEFAULT (no -min-bond-floor passed, objective path) imposes the anti-release
@@ -70,9 +61,9 @@ func TestInvariantB_S1_AntiReleaseFloorOnByDefault(t *testing.T) {
 	}
 }
 
-// TestInvariantB_S3_BondTTLPrunesReleasedBondByDefault closes the RT-2 gap — the
-// live "release-and-coast" break the blind red team found over our own G2 merge:
-// a validator registers a bond once, releases the plot, and votes forever off one
+// TestInvariantB_S3_BondTTLPrunesReleasedBondByDefault closes the gap — the live
+// "release-and-coast" break the red team found over our own G2 merge: a
+// validator registers a bond once, releases the plot, and votes forever off one
 // proof. The decay mechanism (chain.Config.BondTTLBlocks) existed but shipped OFF
 // by default. H2 made it SAFE-BY-DEFAULT on the objective path, unblocked by the
 // non-proposer renewal path (node.SubmitBondRenewal) that lets an attest-only
@@ -148,7 +139,7 @@ func TestByzantineQuorumDefaultsOnForUntrustedValidator(t *testing.T) {
 // client (clientNodeConfig) defaults the H5-B eclipse-resistance defenses ON — the
 // DHT failure-domain cap and signed provider records — so a routing-layer censor
 // (a ~$4 /24 key-surround) cannot make a root undiscoverable for a user who opted
-// into no takedown. This is the red-team BREAK 2 (2026-08-08) surface: the daemon
+// into no takedown. This is the red-team BREAK 2 surface: the daemon
 // and swarm fetcher already defaulted these on; the client had shipped them off,
 // re-instancing the "fixed but off by default" meta-pattern this file guards.
 func TestInvariantB_S5_ClientEclipseDefenseOnByDefault(t *testing.T) {
@@ -163,7 +154,7 @@ func TestInvariantB_S5_ClientEclipseDefenseOnByDefault(t *testing.T) {
 
 // TestInvariantB_S6_ColdStartScaffoldRefusedByDefault asserts that an untrusted
 // objective validator (the M0 default path) with NO cold-start scaffolding is
-// REFUSED, not run — closing the red-team seam-2 (2026-08-08) hole where a stock
+// REFUSED, not run — closing the red-team hole where a stock
 // validator latches everMature at genesis and imposes no anchor co-sign, letting a
 // young or Sybil quorum self-certify mature and capture. Either the anchor launch
 // set (anchors + mature-validators>0) or a weak-subjectivity checkpoint satisfies
@@ -173,7 +164,7 @@ func TestInvariantB_S5_ClientEclipseDefenseOnByDefault(t *testing.T) {
 func TestInvariantB_S6_ColdStartScaffoldRefusedByDefault(t *testing.T) {
 	// Stock untrusted objective defaults: no anchors, mature-validators=0, no checkpoint → REFUSE.
 	if coldStartScaffoldOK(true /*useObjective*/, 0 /*anchors*/, 0 /*matureValidators*/, "" /*wsCheckpoint*/) {
-		t.Fatal("Invariant B (S6/seam-2) violated: an untrusted objective validator with no cold-start scaffolding must be refused (it would latch everMature at genesis with no anchor gate)")
+		t.Fatal("Invariant B violated: an untrusted objective validator with no cold-start scaffolding must be refused (it would latch everMature at genesis with no anchor gate)")
 	}
 	// Anchor launch set (anchors + mature-validators>0) satisfies it.
 	if !coldStartScaffoldOK(true, 2, 2, "") {
@@ -183,15 +174,15 @@ func TestInvariantB_S6_ColdStartScaffoldRefusedByDefault(t *testing.T) {
 	if coldStartScaffoldOK(true, 2, 0, "") {
 		t.Fatal("anchors without mature-validators>0 must NOT satisfy cold-start (the anchor gate never engages)")
 	}
-	// A SINGLE anchor does NOT satisfy it (MinObjectiveAnchors, delegated owner call
-	// 2026-09-08). At A = 1 every consensus gate on the launch path is self-satisfied:
-	// bftThreshold(1) = 0 so the sole anchor commits on its own signature with zero
-	// attestations, requiredLaunchAnchors is 1 and countAnchorSupport credits the proposer
-	// itself, and finalityQuorumActive is true at 0 >= 0 so those blocks are final. The
+	// A SINGLE anchor does NOT satisfy it (MinObjectiveAnchors, delegated). At A = 1
+	// every consensus gate on the launch path is self-satisfied: bftThreshold(1) = 0 so
+	// the sole anchor commits on its own signature with zero attestations,
+	// requiredLaunchAnchors is 1 and countAnchorSupport credits the proposer itself,
+	// and finalityQuorumActive is true at 0 >= 0 so those blocks are final. The
 	// scaffold's whole job is to refuse a posture where the gates are decoration.
 	// ABLATION: restore `anchorCount > 0` in coldStartScaffoldOK and this arm goes RED.
 	if coldStartScaffoldOK(true, 1, 2, "") {
-		t.Fatal("a SINGLE-anchor objective launch must be refused: bftThreshold(1)=0, the #402 anchor majority is self-satisfied by the proposer, and finalityQuorumActive is true — the sole anchor commits alone with zero attestations and those blocks read as final")
+		t.Fatal("a SINGLE-anchor objective launch must be refused: bftThreshold(1)=0, the anchor majority is self-satisfied by the proposer, and finalityQuorumActive is true — the sole anchor commits alone with zero attestations and those blocks read as final")
 	}
 	// A weak-subjectivity checkpoint (the join path) satisfies it.
 	if !coldStartScaffoldOK(true, 0, 0, "100:deadbeef") {
@@ -204,8 +195,8 @@ func TestInvariantB_S6_ColdStartScaffoldRefusedByDefault(t *testing.T) {
 }
 
 // TestInvariantB_S7_PublishSignerSetIsCanonical asserts the publish-token signer
-// selection is CANONICAL-by-default (seam-4 / R-3): `swarm add -token-quorum` ranks
-// its signers by the network-canonical ledger ordering (heaviest bond first), the
+// selection is CANONICAL-by-default / R-3: `swarm add -token-quorum` ranks its
+// signers by the network-canonical ledger ordering (heaviest bond first), the
 // SAME for every publisher, so the signer subset stops being a per-publisher
 // quasi-identifier. The key property is determinism: the same reachable set +
 // canonical ordering yields the same selection regardless of the publisher's own

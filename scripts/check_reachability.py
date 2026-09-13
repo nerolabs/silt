@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """Reachability gate: is the lane's mechanism actually IN THE SHIPPED BINARY?
 
-  scar:mechanism-shipped-inert-2026-09-10
-
-SCAR (count 6 in one month). Six mechanisms were present in source, described in the
-record as delivered and enforcing, and had ZERO non-test callers — so the linker
+WHY. Six mechanisms in one month were present in source, described as delivered and
+enforcing, and had ZERO non-test callers — so the linker
 dropped every one of them out of `./cmd/silt`:
 
   core/chain.(*Chain).CheckConsensusParams        a refuse-to-start that never ran
@@ -23,7 +21,7 @@ The linked binary has no such hole. Dead-code elimination is total: a symbol eit
 survived linking or it did not, and `go tool nm` reports the fully qualified name, so
 `core/node.(*Node).Commit` and `core/demand.(*Set).Commit` are different rows. No call
 graph has to be reasoned about. This is the same instrument .github/workflows/ci.yml
-already points at the DEFAULT binary to prove B_bootstrap is absent (D-BB-BUILD-TAG);
+already points at the DEFAULT binary to prove B_bootstrap is absent;
 this gate is the other direction — presence — and it is data-driven.
 
 THE ONE CAVEAT, AND WHY THIS GATE REFUSES THIN SYMBOLS
@@ -100,7 +98,7 @@ WHAT AN ENTRY ASSERTS (scripts/reachability_lanes.txt)
       the label says THIS SYMBOL is unreachable  ==  the symbol is absent
 
   The label's claim is the PAIR: the phrase "cannot be exercised" AND the symbol's own
-  name, both inside the lane's posture line in docs/release-checklist.md. So:
+  name, both inside the lane's posture line in scripts/reachability_postures.md. So:
     ABSENT + label says so, naming it   -> pass  (an honest lane).
     ABSENT + any other label            -> FAIL  (the over-claim this gate exists for).
     PRESENT + no such claim about it    -> pass.
@@ -117,15 +115,15 @@ WHAT AN ENTRY ASSERTS (scripts/reachability_lanes.txt)
   postures at once (AMBIGUOUS) states no posture, and fails either way.
 
 EVERY ENTRY CARRIES A WRITTEN REASON, AND EVERY REASON HAS A MECHANICAL COMPANION
-  scar:allowlist-rationale-is-itself-a-claim — an unreasoned row is not a row. Each
+  An unreasoned row is not a row. Each
   entry must carry `claim` (the public claim in the release checklist this lane backs)
   and `substantial` (why this symbol is not a thin wrapper). Neither is decoration:
   `claim` is checked by resolving `label` in the checklist, and `substantial` is checked
   against the compiler's inline verdict. A record missing either field FAILS.
 
-SCOPE — deliberately small. This gate covers LANES THE RELEASE CHECKLIST MAKES A PUBLIC
+SCOPE — deliberately small. This gate covers LANES THE POSTURE FILE MAKES A PUBLIC
 CLAIM ABOUT. It is not a sweep of exported symbols: the floor-box keystone is inert by
-ratified owner direction (D-RECOMPUTE-FREEZE) and would drown the signal. Adding a lane
+deliberate direction and would drown the signal. Adding a lane
 is adding a record.
 
 REACHABILITY IS NECESSARY AND NEVER SUFFICIENT. A green run proves a symbol survived
@@ -147,10 +145,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-SCAR_ID = "scar:mechanism-shipped-inert-2026-09-10"
 
 LANES_FILE = ROOT / "scripts" / "reachability_lanes.txt"
-CHECKLIST = ROOT / "docs" / "release-checklist.md"
+CHECKLIST = ROOT / "scripts" / "reachability_postures.md"
 MAIN_PKG = "./cmd/silt"
 
 REQUIRED_FIELDS = ("lane", "symbol", "label", "claim", "substantial")
@@ -344,7 +341,7 @@ def build_binary(out_path):
     cmd, env = go_cmd(["build", "-o", str(out_path), MAIN_PKG])
     r = subprocess.run(cmd, cwd=ROOT, env=env, capture_output=True, text=True)
     if r.returncode != 0:
-        print(f"FAIL [{SCAR_ID}] — `{' '.join(cmd)}` failed:\n{r.stderr}", file=sys.stderr)
+        print(f"FAIL — `{' '.join(cmd)}` failed:\n{r.stderr}", file=sys.stderr)
         return False
     return True
 
@@ -353,7 +350,7 @@ def symbol_table(binary):
     r = subprocess.run(["go", "tool", "nm", str(binary)], cwd=ROOT,
                        capture_output=True, text=True)
     if r.returncode != 0:
-        print(f"FAIL [{SCAR_ID}] — `go tool nm` failed:\n{r.stderr}", file=sys.stderr)
+        print(f"FAIL — `go tool nm` failed:\n{r.stderr}", file=sys.stderr)
         return None
     names = set()
     for line in r.stdout.splitlines():
@@ -450,7 +447,7 @@ def parse_lanes(path):
 # --------------------------------------------------------------------------- report
 
 def report(errors, checked):
-    print(f"FAIL [{SCAR_ID}] — a lane's mechanism is not where the record says it is.\n\n"
+    print(f"FAIL — a lane's mechanism is not where the record says it is.\n\n"
           "  A mechanism with no non-test caller is DROPPED BY THE LINKER. It is not in\n"
           "  the shipped binary, so no operator can exercise it, however complete the\n"
           "  source looks. Six shipped inert this month.\n", file=sys.stderr)
@@ -667,7 +664,7 @@ def main():
     if args.binary:
         binary = Path(args.binary)
         if not binary.exists():
-            print(f"FAIL [{SCAR_ID}] — --binary {binary} does not exist", file=sys.stderr)
+            print(f"FAIL — --binary {binary} does not exist", file=sys.stderr)
             return 1
     else:
         tmpdir = tempfile.mkdtemp(prefix="silt-reach-")
@@ -688,7 +685,7 @@ def main():
         report(errors, len(records))
         return 1
 
-    print(f"OK [{SCAR_ID}] — {len(records)} lane entr(ies) checked against the linked "
+    print(f"OK — {len(records)} lane entr(ies) checked against the linked "
           f"{MAIN_PKG} binary, each a symbol the compiler refuses to inline: "
           f"{present} present, "
           f'{excused} absent and labelled "{CANNOT_PHRASE}" in {checklist_path.name}.\n'

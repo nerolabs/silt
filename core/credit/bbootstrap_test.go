@@ -2,11 +2,9 @@
 
 package credit
 
-// R2.9a — the B_bootstrap histogram's gates. Each test names the Tester gate from
-// RESEARCH CERTIFICATION R2.9a-Bbootstrap-instrument-sufficiency (2026-09-04) §7 that it
-// encodes, and each carries the ablation that proves it can go RED.
+// The B_bootstrap histogram's gates. Each carries the ablation that proves it can go RED.
 //
-// BB-12 (core/credit imports NO randomness source at all) is NOT re-encoded here: it is
+// The no-randomness rule (core/credit imports NO randomness source at all) is NOT re-encoded here: it is
 // already the whole point of internal/depcheck's TestCoreImportsNoAdaptersAndNoEffects,
 // which walks every non-test file under core/ and fails on crypto/rand, math/rand and
 // math/rand/v2. Duplicating it here would be a second, weaker copy of a stronger gate.
@@ -21,14 +19,14 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// bbClock is BOTH time sources the instrument reads (G-BB-2 and G-BB-4), in one double,
+// bbClock is BOTH time sources the instrument reads, in one double,
 // because the property under test is the RELATIONSHIP between them.
 //
-//   - `now` is the wall clock the age axis rides. A test moves it by hand, forwards and
-//     backwards, because in production it is adapters/walltime and can be stepped.
-//   - `monotonic()` is the independent source nothing can step. It is DERIVED as
-//     `now − stepped`, so it tracks the wall clock exactly for as long as the wall clock
-//     is honest, and stays put across a step.
+// - `now` is the wall clock the age axis rides. A test moves it by hand, forwards and
+// backwards, because in production it is adapters/walltime and can be stepped.
+// - `monotonic` is the independent source nothing can step. It is DERIVED as
+// `now − stepped`, so it tracks the wall clock exactly for as long as the wall clock
+// is honest, and stays put across a step.
 //
 // So a test moves honest elapsed time by assigning `now`, and models an NTP step by
 // calling `step`, which moves only the wall reading. AfterFunc is never used by the
@@ -88,14 +86,14 @@ func sumCells(h BBootstrapHistogram) int64 {
 	return n
 }
 
-// --- BB-1: the dead-clock oracle -------------------------------------------------
+// --- the dead-clock oracle -------------------------------------------------
 
-// TestR29aDeadClockPublishesNoAgeCells is BB-1. A ledger with NO clock injected must
-// publish an explicit clock-source field and NO age-conditioned cells — never an
-// all-zero age column a reader could mistake for a genuinely young population. The
-// census itself still publishes, so "the instrument is off" and "nobody fetched" stay
-// different objects.
-func TestR29aDeadClockPublishesNoAgeCells(t *testing.T) {
+// TestDeadClockPublishesNoAgeCells is. A ledger with NO clock injected must publish
+// an explicit clock-source field and NO age-conditioned cells — never an all-zero age
+// column a reader could mistake for a genuinely young population. The census itself
+// still publishes, so "the instrument is off" and "nobody fetched" stay different
+// objects.
+func TestDeadClockPublishesNoAgeCells(t *testing.T) {
 	l := New(50_000, 0)
 	srv := id(1)
 	for i := 0; i < 5; i++ {
@@ -110,7 +108,7 @@ func TestR29aDeadClockPublishesNoAgeCells(t *testing.T) {
 		t.Fatalf("ageAxisLive = true with no clock injected")
 	}
 	if h.Cells != nil {
-		t.Fatalf("cells published with no clock injected: an all-zero age column is indistinguishable from a young population, which is exactly the failure BB-1 exists to stop")
+		t.Fatalf("cells published with no clock injected: an all-zero age column is indistinguishable from a young population, which is exactly the failure exists to stop")
 	}
 	if h.Requesters != 5 {
 		t.Fatalf("requesters = %d, want 5 — the census must still publish so 'disabled' and 'empty' stay distinguishable", h.Requesters)
@@ -122,19 +120,19 @@ func TestR29aDeadClockPublishesNoAgeCells(t *testing.T) {
 		t.Fatalf("uptimeNanos = %d with no clock, want 0", h.UptimeNanos)
 	}
 
-	// The precondition check must call this run VOID (BB-14's first conjunct).
+	// The precondition check must call this run VOID (the first conjunct).
 	if bad := BBootstrapRunPrecondition(h, h, bbHour); len(bad) == 0 {
 		t.Fatalf("BBootstrapRunPrecondition accepted a dead-clock snapshot")
 	}
 }
 
-// --- BB-2: age-axis liveness, and the boundary side ------------------------------
+// --- age-axis liveness, and the boundary side ------------------------------
 
-// TestR29aAgeAxisLivenessAndBoundaries is BB-2. With an injected clock advanced by T, an
-// account registered at t = 0 lands in the bucket containing T; and every edge is driven
-// exactly, at the edge and one nanosecond below it, so the documented half-open
-// [lo, hi) convention is pinned rather than assumed.
-func TestR29aAgeAxisLivenessAndBoundaries(t *testing.T) {
+// TestAgeAxisLivenessAndBoundaries is. With an injected clock advanced by T, an account
+// registered at t = 0 lands in the bucket containing T; and every edge is driven
+// exactly, at the edge and one nanosecond below it, so the documented half-open [lo, hi
+// convention is pinned rather than assumed.
+func TestAgeAxisLivenessAndBoundaries(t *testing.T) {
 	// Liveness first: one account, the clock advanced by a known T.
 	for _, tc := range []struct {
 		name string
@@ -194,14 +192,13 @@ func nonZero(row [BBootstrapByteBins]int64) map[int]int64 {
 	return out
 }
 
-// --- BB-3: census completeness ---------------------------------------------------
+// --- census completeness ---------------------------------------------------
 
-// TestR29aCensusIsCompleteAndUncapped is BB-3. Every requester with fetched bytes is
-// counted exactly once: the sum over all cells equals `aged`, which equals `requesters`,
-// with no cap and no truncation anywhere. R is pushed well past the 4,096 row cap the
-// refuted shape carried, because that cap is precisely what this gate must never permit
-// back in.
-func TestR29aCensusIsCompleteAndUncapped(t *testing.T) {
+// TestCensusIsCompleteAndUncapped is. Every requester with fetched bytes is counted
+// exactly once: the sum over all cells equals `aged`, which equals `requesters`, with no
+// cap and no truncation anywhere. R is pushed well past the 4,096 row cap the refuted
+// shape carried, because that cap is precisely what this gate must never permit back in.
+func TestCensusIsCompleteAndUncapped(t *testing.T) {
 	const R = 10_000 // 2.4× the retired MaxRequesterFetchRows
 	clk := &bbClock{now: 1}
 	l := New(50_000, 0)
@@ -228,9 +225,9 @@ func TestR29aCensusIsCompleteAndUncapped(t *testing.T) {
 	}
 }
 
-// --- BB-4: the selection-bias oracle ---------------------------------------------
+// --- the selection-bias oracle ---------------------------------------------
 
-// TestR29aYoungCellsAreExactUnderASkewedPopulation is BB-4 — the refutation of top-k,
+// TestYoungCellsAreExactUnderASkewedPopulation is the refutation of top-k,
 // encoded. The population is built so that the YOUNG identities fetch little and the OLD
 // identities fetch a lot, which is the real shape and is exactly the shape a
 // retain-top-k-by-bytes rule destroys: it removes, from every age cell, the identities
@@ -239,7 +236,7 @@ func TestR29aCensusIsCompleteAndUncapped(t *testing.T) {
 //
 // ABLATION (run 2026-09-04, restored): capping the scan at the 4,096 largest fetchers
 // takes the young count from 8,000 to 0 and this test RED.
-func TestR29aYoungCellsAreExactUnderASkewedPopulation(t *testing.T) {
+func TestYoungCellsAreExactUnderASkewedPopulation(t *testing.T) {
 	const young, old = 8_000, 2_000
 	clk := &bbClock{now: 1}
 	l := New(50_000, 0)
@@ -274,19 +271,18 @@ func TestR29aYoungCellsAreExactUnderASkewedPopulation(t *testing.T) {
 	}
 }
 
-// --- BB-6: cost on the loop ------------------------------------------------------
+// --- cost on the loop ------------------------------------------------------
 
-// TestR29aSnapshotCostDoesNotGrowInR is BB-6. The number to beat is the PE's measured
-// 124 ms / 114 MiB at R = 500,000 for the row export (RULING-R2.9a-bbootstrap-export-
-// b142a65-2026-09-04 §5.1), on the event loop, per unauthenticated GET.
+// TestSnapshotCostDoesNotGrowInR beats the measured 124 ms / 114 MiB at R = 500,000
+// for the row export, on the event loop, per unauthenticated GET.
 //
 // WHAT IS ASSERTED, and what is deliberately not. The assertion is ALLOCATION, not wall
 // time: allocations are deterministic and hardware-independent, while a wall-clock
 // ceiling calibrated on a dev box has already reddened this repo's CI once on slower
-// hardware (the R0.4b C3 ValidatePub budget). So the gate is "one allocation, of a fixed
+// hardware (the ValidatePub budget). So the gate is "one allocation, of a fixed
 // size, whatever R is" — which is the property that made the row export unsafe — and the
 // elapsed time is MEASURED and logged rather than turned into a flaky ceiling.
-func TestR29aSnapshotCostDoesNotGrowInR(t *testing.T) {
+func TestSnapshotCostDoesNotGrowInR(t *testing.T) {
 	measure := func(R int) (allocs float64, bytesPerRun uint64) {
 		clk := &bbClock{now: 1}
 		l := New(50_000, 0)
@@ -316,12 +312,12 @@ func TestR29aSnapshotCostDoesNotGrowInR(t *testing.T) {
 	if cellBytes > 16<<10 {
 		t.Fatalf("the fixed cell array is %d bytes, above the 16 KiB ceiling this instrument is allowed on the floor box", cellBytes)
 	}
-	t.Logf("BB-6: %.0f alloc/snapshot at R=1,000 and R=100,000; fixed cell array %d bytes (the row export measured 114 MiB at R=500,000)", small, cellBytes)
+	t.Logf("%.0f alloc/snapshot at R=1,000 and R=100,000; fixed cell array %d bytes (the row export measured 114 MiB at R=500,000)", small, cellBytes)
 }
 
-// --- BB-9: the censoring invariant, and G-BB-4 ------------------------------------
+// --- the censoring invariant ------------------------------------
 
-// TestR29aOccupiedAgeBucketsNeverExceedUptime is BB-9 / G-BB-4: the highest OCCUPIED age
+// TestOccupiedAgeBucketsNeverExceedUptime pins that the highest OCCUPIED age
 // bucket's edge must not exceed the censoring bound.
 //
 // THE GATE'S TEETH COME FROM THE BOUND BEING INDEPENDENT of the ages. Against the wall
@@ -331,7 +327,7 @@ func TestR29aSnapshotCostDoesNotGrowInR(t *testing.T) {
 // production path: arm 2 below steps nothing but the wall clock, through the real API,
 // and the assertion goes true. The foreign-tick arm is kept because it is a different
 // hazard (a stamp in the wrong UNIT, not a clock that moved) and it still has teeth.
-func TestR29aOccupiedAgeBucketsNeverExceedUptime(t *testing.T) {
+func TestOccupiedAgeBucketsNeverExceedUptime(t *testing.T) {
 	// The ledger is injected at a wall-clock-magnitude instant, which is what a real
 	// daemon does, and runs for three hours.
 	const boot = 10 * bbDay
@@ -373,19 +369,19 @@ func TestR29aOccupiedAgeBucketsNeverExceedUptime(t *testing.T) {
 	// wall-clock ledger makes the identity look ten days old on a three-hour-old
 	// process. The assertion must fire.
 	//
-	// THE CONCRETE WRITER THIS MODELLED IS NOW OUT OF REACH (G-BB-24, then G-BB-28): the
-	// bond auditor's tick lives in account.lastBondTick (retention only) and the census
-	// reads account.firstFetchTick, so RecordBondChallenge cannot touch the age axis at
-	// all.
+	// THE CONCRETE WRITER THIS MODELLED IS NOW OUT OF REACH (then): the bond
+	// auditor's tick lives in account.lastBondTick (retention only) and the census
+	// reads account.firstFetchTick, so RecordBondChallenge cannot touch the age axis
+	// at all.
 	//
 	// AND IT WAS NEVER A DIFFERENT UNIT — corrected 2026-09-05. The auditor passes
-	// uint64(n.clock.Now())+1 and the daemon hands node.New and bbootstrapInject the
-	// SAME walltime clock, so in production the two agree. The realistic divergence is a
-	// stamp written before this ledger's observability clock was injected, or carried
-	// across a restart: out of range, same unit. The arm stays, with the extreme value,
-	// because the assertion must fire for ANY stamp older than the process and a tick of
-	// 1 is the cheapest such value — a gate that only ever fired on a writer since
-	// re-pointed is a gate that has stopped being tested.
+	// uint64(n.clock.Now)+1 and the daemon hands node.New and bbootstrapInject the
+	// SAME walltime clock, so in production the two agree. The realistic divergence
+	// is a stamp written before this ledger's observability clock was injected, or
+	// carried across a restart: out of range, same unit. The arm stays, with the
+	// extreme value, because the assertion must fire for ANY stamp older than the
+	// process and a tick of 1 is the cheapest such value — a gate that only ever
+	// fired on a writer since re-pointed is a gate that has stopped being tested.
 	l.accounts[reqID(0)].firstFetchTick = 1
 	h = l.bBootstrapSnapshot()
 	if h.ClockSuspect {
@@ -399,14 +395,14 @@ func TestR29aOccupiedAgeBucketsNeverExceedUptime(t *testing.T) {
 	}
 }
 
-// --- BB-10: the restart is visible ------------------------------------------------
+// --- the restart is visible ------------------------------------------------
 
-// TestR29aRestartIsVisibleNotSilent is BB-10. Accounts are in-memory and nothing evicts
-// them, so a restart destroys the whole census — permanently, not pending FP-2. That
-// makes uptime the hard right-censoring bound on the age axis, and this pins that the
-// reset is OBSERVABLE: a fresh ledger reports zero requesters, zero uptime and an empty
-// grid, so a reader can never mistake a post-restart snapshot for a quiet network.
-func TestR29aRestartIsVisibleNotSilent(t *testing.T) {
+// TestRestartIsVisibleNotSilent is. Accounts are in-memory and nothing evicts them, so
+// a restart destroys the whole census — permanently, not pending FP-2. That makes
+// uptime the hard right-censoring bound on the age axis, and this pins that the reset
+// is OBSERVABLE: a fresh ledger reports zero requesters, zero uptime and an empty grid,
+// so a reader can never mistake a post-restart snapshot for a quiet network.
+func TestRestartIsVisibleNotSilent(t *testing.T) {
 	clk := &bbClock{now: 1}
 	l := New(50_000, 0)
 	l.SetObservabilityClock(clk, clk.monotonic)
@@ -435,14 +431,14 @@ func TestR29aRestartIsVisibleNotSilent(t *testing.T) {
 	}
 }
 
-// --- BB-11: Invariant A, the write-on-read defect stays closed --------------------
+// --- Invariant A, the write-on-read defect stays closed --------------------
 
-// TestR29aBBootstrapSnapshotWritesNothing is BB-11. The refuted shape's sibling defect
-// was a reader that MINTED: FetchedBytes goes through acct() → Register and therefore
-// creates an account and hands out a 500,000 grant for any id it is passed. The snapshot
-// must iterate l.order and index l.accounts directly. This deep-compares the entire
-// account map, the order slice and the balances across a snapshot.
-func TestR29aBBootstrapSnapshotWritesNothing(t *testing.T) {
+// TestBBootstrapSnapshotWritesNothing is. The refuted shape's sibling defect was a
+// reader that MINTED: FetchedBytes goes through acct → Register and therefore creates an
+// account and hands out a 500,000 grant for any id it is passed. The snapshot must
+// iterate l.order and index l.accounts directly. This deep-compares the entire account
+// map, the order slice and the balances across a snapshot.
+func TestBBootstrapSnapshotWritesNothing(t *testing.T) {
 	clk := &bbClock{now: 500}
 	l := New(50_000, 500_000)
 	l.SetObservabilityClock(clk, clk.monotonic)
@@ -472,14 +468,14 @@ func TestR29aBBootstrapSnapshotWritesNothing(t *testing.T) {
 	}
 }
 
-// --- BB-13: clock-step robustness -------------------------------------------------
+// --- clock-step robustness -------------------------------------------------
 
-// TestR29aBackwardClockStepClampsAndSaysSo is BB-13 / G-BB-4. adapters/walltime returns
-// time.Now().UnixNano(), which DISCARDS Go's monotonic reading, so an NTP step is a real
-// hazard and a boot-time step lands at the start of the observation window. A backwards
-// step must not underflow, must not wrap a bucket, and must not silently reshape ages —
-// it is absorbed by clamping at zero AND reported.
-func TestR29aBackwardClockStepClampsAndSaysSo(t *testing.T) {
+// TestBackwardClockStepClampsAndSaysSo is. adapters/walltime returns time.Now.UnixNano,
+// which DISCARDS Go's monotonic reading, so an NTP step is a real hazard and a
+// boot-time step lands at the start of the observation window. A backwards step must
+// not underflow, must not wrap a bucket, and must not silently reshape ages — it is
+// absorbed by clamping at zero AND reported.
+func TestBackwardClockStepClampsAndSaysSo(t *testing.T) {
 	// ARM 1 — the step lands AFTER the ledger start but BEFORE the stamp, so uptime
 	// stays positive and only the AGE goes negative. This is the arm that isolates the
 	// age clamp: without it the age is silently reshaped into bucket 0 with nothing
@@ -497,7 +493,7 @@ func TestR29aBackwardClockStepClampsAndSaysSo(t *testing.T) {
 		if h.UptimeNanos != bbHour {
 			t.Fatalf("arm 1: uptimeNanos = %d, want %d — uptime is still positive here, so only the AGE can report the step", h.UptimeNanos, bbHour)
 		}
-		// THE SPLIT (RE-CERT 2026-09-05 §5.1), pinned by its discriminator. Only the
+		// THE SPLIT (a re-check 2026-09-05 §5.1), pinned by its discriminator. Only the
 		// AGE went negative, so this is the CENSUS arm: AgeClampedToZero fires and the
 		// instrument arm ClockStepBack — which compares the clock against the ledger's
 		// own start and reads no account — must stay DOWN. If they moved together the
@@ -506,7 +502,7 @@ func TestR29aBackwardClockStepClampsAndSaysSo(t *testing.T) {
 			t.Fatalf("arm 1: ageClampedToZero not reported when only the AGE went negative — the age was silently reshaped into bucket 0")
 		}
 		if h.ClockStepBack {
-			t.Fatalf("arm 1: the INSTRUMENT arm clockStepBack fired on a per-account clamp. The two arms are fused again, so a census-derived bit survives the minimum-requester floor (G-BB-11′)")
+			t.Fatalf("arm 1: the INSTRUMENT arm clockStepBack fired on a per-account clamp. The two arms are fused again, so a census-derived bit survives the minimum-requester floor ")
 		}
 		if h.Aged != 1 || h.Cells[0][bbootstrapByteBin(1<<20)] != 1 {
 			t.Fatalf("arm 1: the stepped identity did not clamp into age bucket 0: aged = %d, row 0 = %v", h.Aged, nonZero(h.Cells[0]))
@@ -523,7 +519,7 @@ func TestR29aBackwardClockStepClampsAndSaysSo(t *testing.T) {
 
 	h := l.bBootstrapSnapshot()
 	if !h.ClockStepBack {
-		t.Fatalf("clockStepBack not reported after a backwards step past the LEDGER START — a silent reshaping is exactly what BB-13 forbids")
+		t.Fatalf("clockStepBack not reported after a backwards step past the LEDGER START — a silent reshaping is exactly what forbids")
 	}
 	if !h.AgeClampedToZero {
 		t.Fatalf("ageClampedToZero not reported after a backwards step that also passed the stamp — the census arm must still fire when both do")
@@ -550,10 +546,10 @@ func TestR29aBackwardClockStepClampsAndSaysSo(t *testing.T) {
 	}
 }
 
-// TestR29aWallClockStepIsDetectedNotAbsorbed is BB-13's substance and the regression for
-// the defect the blind review measured in the reviewed build: BOTH published uptimes came
-// off the same wall clock, so a step moved every age AND the bound they were checked
-// against by the same amount and cancelled. Measured then: an 8-day forward step put a
+// TestWallClockStepIsDetectedNotAbsorbed is the substance and the regression for the
+// defect measured in an earlier build: BOTH published uptimes came off
+// the same wall clock, so a step moved every age AND the bound they were checked against
+// by the same amount and cancelled. Measured then: an 8-day forward step put a
 // 30-second-old identity in the ">7 days" bucket on a 60-second-old process, raised no
 // flag, and let the run precondition accept a 7-day window. A 2 h 50 m backward step
 // reshaped every bucket and raised no flag either, because ClockStepBack only fires when
@@ -562,18 +558,19 @@ func TestR29aBackwardClockStepClampsAndSaysSo(t *testing.T) {
 // The three arms below are the three states the artifact must be able to tell apart: a
 // clean run, a forward step and a backward step. They are driven ONLY through the wall
 // clock — nothing writes a private field, and nothing reaches past the public API.
-func TestR29aWallClockStepIsDetectedNotAbsorbed(t *testing.T) {
-	// The PE's fixture, exactly: a 30-second-old identity on a 60-second-old process.
+func TestWallClockStepIsDetectedNotAbsorbed(t *testing.T) {
+	// The fixture, exactly: a 30-second-old identity on a 60-second-old process.
 	const boot = 10 * bbDay
 	const week = 7 * bbDay
 	build := func() (*Ledger, *bbClock) {
 		clk := &bbClock{now: ports.Time(boot)}
 		l := New(50_000, 0)
 		l.SetObservabilityClock(clk, clk.monotonic)
-		// TWO identities, in two different age buckets. One is the PE's 30-second-old
-		// fixture; the other arrives at the injection instant and is 60 s old at the
-		// snapshot. Two occupied buckets are what keep the CLEAN arm out of the
-		// degeneracy refusal, so the arm tests the clock and nothing else.
+		// TWO identities, in two different age buckets. One is the
+		// 30-second-old fixture; the other arrives at the injection instant and
+		// is 60 s old at the snapshot. Two occupied buckets are what keep the
+		// CLEAN arm out of the degeneracy refusal, so the arm tests the clock
+		// and nothing else.
 		fetched(l, id(1), reqID(1), 1<<10)  // age 60 s at the snapshot → bucket 2
 		clk.now = ports.Time(boot + 30*1e9) // 30 s in, the second identity arrives
 		fetched(l, id(1), reqID(0), 1<<20)  // age 30 s at the snapshot → bucket 1
@@ -607,7 +604,7 @@ func TestR29aWallClockStepIsDetectedNotAbsorbed(t *testing.T) {
 		t.Fatalf("the forward step did not reshape the age axis, so this arm is not testing what it claims: row 7 = %v", nonZero(fwd.Cells[BBootstrapAgeBuckets-1]))
 	}
 	if !fwd.ClockSuspect {
-		t.Fatalf("clockSuspect NOT set after an 8-day forward step: wall uptime %d, monotone uptime %d, skew %d — the step was absorbed silently, which is exactly what BB-13 forbids", fwd.UptimeNanos, fwd.MonotonicUptimeNanos, fwd.ClockSkewNanos)
+		t.Fatalf("clockSuspect NOT set after an 8-day forward step: wall uptime %d, monotone uptime %d, skew %d — the step was absorbed silently, which is exactly what forbids", fwd.UptimeNanos, fwd.MonotonicUptimeNanos, fwd.ClockSkewNanos)
 	}
 	if fwd.ClockSkewNanos != 8*bbDay {
 		t.Fatalf("clockSkewNanos = %d after an 8-day forward step, want %d — the artifact must carry the SIZE of the step, not just a bit", fwd.ClockSkewNanos, 8*bbDay)
@@ -640,7 +637,7 @@ func TestR29aWallClockStepIsDetectedNotAbsorbed(t *testing.T) {
 		t.Fatalf("the backward step did not reshape the age axis, so this arm is not testing what it claims: occupied edge %d before and after", back.MaxOccupiedAgeEdgeNanos)
 	}
 	if !back.ClockSuspect {
-		t.Fatalf("clockSuspect NOT set after a 2 h 50 m backward step: wall uptime %d, monotone uptime %d, skew %d — a step smaller than the ages it moves is exactly the silent reshaping BB-13 forbids", back.UptimeNanos, back.MonotonicUptimeNanos, back.ClockSkewNanos)
+		t.Fatalf("clockSuspect NOT set after a 2 h 50 m backward step: wall uptime %d, monotone uptime %d, skew %d — a step smaller than the ages it moves is exactly the silent reshaping forbids", back.UptimeNanos, back.MonotonicUptimeNanos, back.ClockSkewNanos)
 	}
 	if back.ClockSkewNanos != -(2*bbHour + 50*bbMinute) {
 		t.Fatalf("clockSkewNanos = %d after a 2 h 50 m backward step, want %d", back.ClockSkewNanos, -(2*bbHour + 50*bbMinute))
@@ -683,14 +680,14 @@ func bbReasonContains(reasons []string, sub string) bool {
 	return false
 }
 
-// --- BB-14: the handoff precondition, one command --------------------------------
+// --- the handoff precondition, one command --------------------------------
 
-// TestR29aRunPreconditionAcceptsOnlyAValidRun is BB-14, made executable BEFORE the
-// deployment window instead of discovered after it. W is a REQUIRED ARGUMENT and this
-// test passes several: no value of W is pinned anywhere, because G-BB-1 makes pinning W
-// the owner's call and a pure fetcher has no income on the serving ledger, so "before it
-// has income" does not define a window at all (R-FETCHER-INCOME).
-func TestR29aRunPreconditionAcceptsOnlyAValidRun(t *testing.T) {
+// TestRunPreconditionAcceptsOnlyAValidRun is, made executable BEFORE the deployment
+// window instead of discovered after it. W is a REQUIRED ARGUMENT and this test passes
+// several: no value of W is pinned anywhere, because pinning W is a deployment choice
+// and a pure fetcher has no income on the serving ledger, so "before it has income"
+// does not define a window at all.
+func TestRunPreconditionAcceptsOnlyAValidRun(t *testing.T) {
 	build := func(uptime int64, arrivals []int64) BBootstrapHistogram {
 		clk := &bbClock{now: 1}
 		l := New(50_000, 0)
@@ -764,14 +761,14 @@ func TestR29aRunPreconditionAcceptsOnlyAValidRun(t *testing.T) {
 
 // --- the byte axis ----------------------------------------------------------------
 
-// TestR29aByteBinMatchesTheClosedForm pins the integer bin function against the float
+// TestByteBinMatchesTheClosedForm pins the integer bin function against the float
 // reference it implements, k = floor(log2(b)). The instrument's bins are computed with
 // bits.Len64 — no math package, because core stays deterministic — so the float reference
-// lives here in the test, where it is allowed. It also pins the RATIFIED resolution:
-// exactly one bin per doubling (G-BB-23, owner 2026-09-05, D-R2.9a-RUN-CALLS item 5). A
-// finer axis re-opens the singleton-cell exposure the Red-team's F4 measured; a coarser
-// one would need its own ratification. Either direction fails here by name.
-func TestR29aByteBinMatchesTheClosedForm(t *testing.T) {
+// lives here in the test, where it is allowed. It also pins the shipped resolution:
+// exactly one bin per doubling. A finer axis re-opens the singleton-cell exposure
+// measured; a coarser one would need its own derivation. Either direction fails here by
+// name.
+func TestByteBinMatchesTheClosedForm(t *testing.T) {
 	if got := bbootstrapByteBin(0); got != -1 {
 		t.Fatalf("bin(0) = %d, want -1 — an account with no fetched bytes is not a requester", got)
 	}
@@ -779,7 +776,7 @@ func TestR29aByteBinMatchesTheClosedForm(t *testing.T) {
 		t.Fatalf("bin(-5) = %d, want -1", got)
 	}
 	if BBootstrapBinsPerOctave != 1 {
-		t.Fatalf("BBootstrapBinsPerOctave = %d, want 1 — the owner ratified ONE bin per doubling (G-BB-23); the bin count is the only privacy lever on this grid and does not move without a recorded ratification", BBootstrapBinsPerOctave)
+		t.Fatalf("BBootstrapBinsPerOctave = %d, want 1 — the project settled ONE bin per doubling; the bin count is the only privacy lever on this grid and does not move without a recorded decision", BBootstrapBinsPerOctave)
 	}
 	// EXHAUSTIVE over the first 100,000 byte counts. Powers of two are exact in a float,
 	// so floor(log2(b)) is never ambiguous at a boundary, and an exhaustive sweep beats
@@ -809,20 +806,20 @@ func TestR29aByteBinMatchesTheClosedForm(t *testing.T) {
 	if got := bbootstrapByteBin(int64(1) << 62); got != BBootstrapByteBins-1 {
 		t.Fatalf("bin(2^62) = %d, want %d — the top bin is open-topped and must SATURATE, never drop a requester", got, BBootstrapByteBins-1)
 	}
-	// And the counter layout is exactly the ratified size.
+	// And the counter layout is exactly the declared size.
 	if n := BBootstrapAgeBuckets * BBootstrapByteBins; n != 328 {
 		t.Fatalf("counter count = %d, want 328 (8 age buckets × 41 log2 byte bins)", n)
 	}
 	if BBootstrapByteBinRule != "bin k covers [2^k, 2^(k+1)) bytes; k = floor(log2(bytes)); bin 40 is open-topped" {
-		t.Fatalf("ByteBinRule on the wire does not state the ratified axis: %q", BBootstrapByteBinRule)
+		t.Fatalf("ByteBinRule on the wire does not state the settled axis: %q", BBootstrapByteBinRule)
 	}
 }
 
-// TestR29aUnstampedRequestersAreCountedNotAged pins the one honest gap: an account that
+// TestUnstampedRequestersAreCountedNotAged pins the one honest gap: an account that
 // registered BEFORE the clock was injected carries no first-touch stamp. It is reported
 // as `unstamped` rather than dumped into age bucket 0, which would make an old identity
-// look brand new — the silent age reshaping G-BB-4 forbids.
-func TestR29aUnstampedRequestersAreCountedNotAged(t *testing.T) {
+// look brand new — the silent age reshaping the censoring bound forbids.
+func TestUnstampedRequestersAreCountedNotAged(t *testing.T) {
 	l := New(50_000, 0)
 	srv := id(1)
 	fetched(l, srv, reqID(0), 1<<20) // registered with NO clock: unstamped
@@ -849,10 +846,10 @@ func TestR29aUnstampedRequestersAreCountedNotAged(t *testing.T) {
 	}
 }
 
-// TestR29aFirstFetchIsStampedOnceAtTheFirstFetch pins the stamp's placement. The
+// TestFirstFetchIsStampedOnceAtTheFirstFetch pins the stamp's placement. The
 // estimand's window opens at the identity's FIRST FETCH from this ledger, so the stamp
 // belongs at the one place fetchedBytes is written and must not move on later traffic.
-func TestR29aFirstFetchIsStampedOnceAtTheFirstFetch(t *testing.T) {
+func TestFirstFetchIsStampedOnceAtTheFirstFetch(t *testing.T) {
 	clk := &bbClock{now: 1_000}
 	l := New(50_000, 0)
 	l.SetObservabilityClock(clk, clk.monotonic)
@@ -876,15 +873,14 @@ func TestR29aFirstFetchIsStampedOnceAtTheFirstFetch(t *testing.T) {
 	}
 }
 
-// TestR29aTopBinSaturatesThroughTheSnapshot drives a saturating account through the REAL
+// TestTopBinSaturatesThroughTheSnapshot drives a saturating account through the REAL
 // snapshot path, not the bin function alone. The clamp inside bbootstrapByteBin is the
 // only guard between a cumulative fetched-byte total of 2^41 (2 TiB) or more and an
 // out-of-range write at Cells[bucket][bin]++, which would panic inside the /api/status
-// handler on the node's event loop. Under G-BB-5's gateway reading one identity carries
-// a whole node's fetched bytes, so 2 TiB is inside reach on a real deployment. Blind PE
-// ruling RULING-R2.9a-bin-count-d644b8b-2026-09-05 S4: removing the clamp failed no test
-// end-to-end; this is that test.
-func TestR29aTopBinSaturatesThroughTheSnapshot(t *testing.T) {
+// handler on the node's event loop. Under the gateway reading one identity carries a
+// whole node's fetched bytes, so 2 TiB is inside reach on a real deployment. Blind;
+// this is that test.
+func TestTopBinSaturatesThroughTheSnapshot(t *testing.T) {
 	clk := &bbClock{now: 1_000}
 	l := New(50_000, 0)
 	l.SetObservabilityClock(clk, clk.monotonic)

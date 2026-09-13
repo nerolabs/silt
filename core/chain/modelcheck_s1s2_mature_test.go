@@ -7,10 +7,10 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Consensus model-check — the #432 S1/S2 faces in the MATURE (weight-quorum)
-// regime, at the validation layer (certification §5.4/§5.5: "over BOTH the
-// launch count-quorum and the mature weight-quorum"; §4: "the POL threshold IS
-// the commit threshold in both regimes").
+// Consensus model-check — the S1/S2 faces in the MATURE (weight-quorum)
+// regime, at the validation layer /§5.5: "over BOTH the launch count-quorum
+// and the mature weight-quorum"; §4: "the POL threshold IS the commit
+// threshold in both regimes".
 //
 // The full adversarial S1/S2 delivery schedules run at tier 2 over the launch
 // regime (core/node/modelcheck_s1s2_test.go) — the locking code paths are
@@ -20,8 +20,7 @@ import (
 // precommit no matter its head count (S2's forged/packed lock, in weight), and
 // a cross-round signature can never complete a certificate (S1's delayed
 // quorum, in weight). The DYNAMIC node-level mature schedules (a live epoch
-// network under held delivery) are a named residual — see
-// docs/thinking/2026-08-16-432-s1-s2-oracles.md — not a silent gap.
+// network under held delivery) are a disclosed gap, not a silent one.
 
 // TestModelCheck_S2Face_MatureWeightShortPrepareQCRefused: in a mature epoch,
 // a prepare-QC packed with the head-count-rich, weight-poor sybil cohort must
@@ -65,7 +64,7 @@ func TestModelCheck_S2Face_MatureWeightShortPrepareQCRefused(t *testing.T) {
 	}
 	packed.Atts = append(packed.Atts, AttestAt(packed, honest[0], 0, PhasePrecommit, ports.Hash{}))
 	if err := c.ValidateCommit(packed); !errors.Is(err, ErrNoQuorumWeight) {
-		t.Fatalf("a weight-short (sybil-packed) prepare-QC must fail ErrNoQuorumWeight — the POL threshold is the commit threshold in WEIGHT (certification §4), got: %v", err)
+		t.Fatalf("a weight-short (sybil-packed) prepare-QC must fail ErrNoQuorumWeight — the POL threshold is the commit threshold in WEIGHT (research §4), got: %v", err)
 	}
 
 	// And the same weight-short set can never verify as a round-change lock

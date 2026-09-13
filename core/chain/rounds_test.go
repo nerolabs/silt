@@ -8,17 +8,16 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Era-2 (#432 rounds) chain-layer rules, per the research certification:
-// a v2 commit carries TWO quorums at the same (Height, CommitRound) — the
-// prepare-QC and the precommit certificate — each at the full commit
-// threshold; signatures at the wrong phase or round are refused (that refusal
-// is what excludes the S1 delayed-quorum and S2 replay shapes at the
-// validation layer); the round is NOT part of block identity (re-proposal
-// across rounds preserves the hash); and equivocation is scoped to the same
-// (height, round, phase).
+// Era-2 chain-layer rules, per the research: a v2 commit carries TWO quorums
+// at the same (Height, CommitRound) — the prepare-QC and the precommit
+// certificate — each at the full commit threshold; signatures at the wrong
+// phase or round are refused (that refusal is what excludes the S1
+// delayed-quorum and S2 replay shapes at the validation layer); the round is
+// NOT part of block identity (re-proposal across rounds preserves the hash);
+// and equivocation is scoped to the same (height, round, phase).
 
 // roundsWorld builds a 4-anchor objective launch chain (the field shape:
-// strict anchor majority 3-of-4, #402) with an era-1 genesis, plus the anchor
+// strict anchor majority 3-of-4) with an era-1 genesis, plus the anchor
 // keys. Genesis stays v1 — a v2 block extends a v1 history (the upgrade path).
 func roundsWorld(t *testing.T) (*Chain, []ed25519.PrivateKey, *Block) {
 	t.Helper()
@@ -68,7 +67,7 @@ func TestV2CommitRequiresBothQuorums(t *testing.T) {
 	if err := c.ValidateCommit(v2Block(g, keys, 0)); err != nil {
 		t.Fatalf("full v2 certificate must validate: %v", err)
 	}
-	// So does one at a NON-ZERO round — the whole point of #432 is that a
+	// So does one at a NON-ZERO round — the whole point of is that a
 	// later round can commit.
 	if err := c.ValidateCommit(v2Block(g, keys, 3)); err != nil {
 		t.Fatalf("v2 certificate at round 3 must validate: %v", err)
@@ -84,11 +83,11 @@ func TestV2CommitRequiresBothQuorums(t *testing.T) {
 		t.Fatalf("v2 commit without a prepare-QC must be refused, got: %v", err)
 	}
 
-	// A prepare-QC below the commit threshold ⇒ refused (POL threshold IS the
-	// commit threshold — certification §4). One counted (non-author) signature
-	// trips the count quorum first (the stack refuses at its first unmet
-	// layer); the author's self-prepare stays — it satisfies
-	// requireProposerPrepare but counts toward nothing.
+	// A prepare-QC below the commit threshold ⇒ refused (POL threshold IS
+	// the commit threshold —). One counted (non-author) signature trips the
+	// count quorum first (the stack refuses at its first unmet layer); the
+	// author's self-prepare stays — it satisfies requireProposerPrepare but
+	// counts toward nothing.
 	thinPrep := v2Block(g, keys, 0)
 	thinPrep.PrepareQC = thinPrep.PrepareQC[:2]
 	if err := c.ValidateCommit(thinPrep); !errors.Is(err, ErrNoQuorum) {
@@ -148,7 +147,7 @@ func TestV2CommitRequiresProposerPrepare(t *testing.T) {
 	// round-0 prepare rides in the fresh QC (hash excludes the round; the
 	// author is exempt from round-exactness) and satisfies the rule at
 	// Round ≤ CommitRound. This is the dead-author view-change escape: the
-	// rule must never re-wedge what #432 unwedged.
+	// rule must never re-wedge what unwedged.
 	carried := v2Block(g, keys, 2)
 	carried.PrepareQC[0] = AttestAt(carried, keys[0], 0, PhasePrepare, ports.Hash{})
 	if err := c.ValidateCommit(carried); err != nil {
@@ -173,11 +172,10 @@ func TestV2CommitRequiresProposerPrepare(t *testing.T) {
 	}
 }
 
-// The proposer's self-signatures are COUNT-NEUTRAL (#402 arithmetic
-// preserved): the proposer is counted by authorship exactly once
-// (countAnchorSupport / the weight quorum), and its certificate signatures
-// add nothing — self-signatures can never substitute for a missing attester,
-// no matter how many are stapled on.
+// The proposer's self-signatures are COUNT-NEUTRAL: the proposer is counted
+// by authorship exactly once (countAnchorSupport / the weight quorum), and
+// its certificate signatures add nothing — self-signatures can never
+// substitute for a missing attester, no matter how many are stapled on.
 func TestV2ProposerSelfSigsAreCountNeutral(t *testing.T) {
 	c, keys, g := roundsWorld(t)
 
@@ -196,7 +194,7 @@ func TestV2ProposerSelfSigsAreCountNeutral(t *testing.T) {
 	short.Atts = append(short.Atts[:2], AttestAt(short, keys[0], 0, PhasePrecommit, ports.Hash{}), AttestAt(short, keys[0], 0, PhasePrecommit, ports.Hash{}))
 	padded := c.ValidateCommit(short)
 	if padded == nil {
-		t.Fatal("author self-signatures must never substitute for a missing attester (#402: size-set == membership-set)")
+		t.Fatal("author self-signatures must never substitute for a missing attester (size-set == membership-set)")
 	}
 	bare := v2Block(g, keys, 0)
 	bare.PrepareQC = bare.PrepareQC[:2]
@@ -250,7 +248,7 @@ func TestV2EquivocationRoundScoped(t *testing.T) {
 	}
 	crossRound := &Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: mk(1, 2, PhasePrecommit), B: mk(2, 3, PhasePrecommit)}
 	if VerifyEquivocation(crossRound, ports.Hash{}, eraFloorOf(0)) {
-		t.Fatal("different-hash precommits at DIFFERENT rounds are an honest lock-change, never slashable (I5 under #432)")
+		t.Fatal("different-hash precommits at DIFFERENT rounds are an honest lock-change, never slashable (I5 under)")
 	}
 	crossPhase := &Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: mk(1, 2, PhasePrepare), B: mk(2, 2, PhasePrecommit)}
 	if VerifyEquivocation(crossPhase, ports.Hash{}, eraFloorOf(0)) {
@@ -270,12 +268,12 @@ func TestV2EquivocationRoundScoped(t *testing.T) {
 
 	// But a COMMITTED double-proposal always carries the author's required
 	// self-prepares (requireProposerPrepare), and two of those at one (h, r)
-	// over different hashes ARE the slash evidence — the #345/#378 drill
+	// over different hashes ARE the slash evidence — the drill
 	// shape, restored in era 2 via the round-scoped prepare.
 	pa.PrepareQC = append(pa.PrepareQC, AttestAt(&pa, culprit, 0, PhasePrepare, ports.Hash{}))
 	pb.PrepareQC = append(pb.PrepareQC, AttestAt(&pb, culprit, 0, PhasePrepare, ports.Hash{}))
 	if !VerifyEquivocation(&Equivocation{Culprit: culprit.Public().(ed25519.PublicKey), A: pa, B: pb}, ports.Hash{}, eraFloorOf(0)) {
-		t.Fatal("a double-proposer's same-(h, r) self-prepares over different hashes must be slashable (#345/#378 in era 2)")
+		t.Fatal("a double-proposer's same-(h, r) self-prepares over different hashes must be slashable (in era 2)")
 	}
 
 	// The I5 mirror: an honest proposer whose round-0 value died re-proposes

@@ -13,10 +13,10 @@ import (
 
 // RED home #3 — the era boundary Reload oracle, shipped AHEAD of era-3.
 //
-// The state-root certification's Q5(ii) is explicit about sequencing and about
-// the shape of the mistake to avoid:
+// The state-root(ii) is explicit about sequencing and about the shape of the
+// mistake to avoid:
 //
-//	The #558 scar applies verbatim: extend the shared era-aware verification
+//	The same defect applies verbatim: extend the shared era-aware verification
 //	paths (the `verifyAtt` pattern) — never fork a parallel era-3 path — and
 //	ship the era-2→era-3 replay/Reload test AHEAD of the change … the boundary
 //	chain must Reload and replay cleanly, and a torn/missing tree must trigger
@@ -27,16 +27,16 @@ import (
 // placeholder — is pin the two properties era-3 will need, in a form that
 // extends by one block when era-3 arrives:
 //
-//  1. A history spanning an era boundary replays through the SHARED dispatcher.
-//     `verifyAtt` (chain.go:643) is one switch on Phase; a forked parallel path
-//     is precisely what breaks a mixed-era history, which is what every real
-//     chain will be at an activation boundary.
+// 1. A history spanning an era boundary replays through the SHARED dispatcher.
+// `verifyAtt` (chain.go) is one switch on Phase; a forked parallel path
+// is precisely what breaks a mixed-era history, which is what every real
+// chain will be at an activation boundary.
 //
-//  2. A block from a FUTURE era — the exact situation era-3 activation creates
-//     for every node that has not upgraded — must fail LOUDLY and report how
-//     much was restored. #558's damage was never the rejection; it was the
-//     SILENT fallback that followed it, which discarded finalized history while
-//     reporting health.
+// 2. A block from a FUTURE era — the exact situation era-3 activation creates
+// For every node that has not upgraded — must fail LOUDLY and report how
+// much was restored. the damage was never the rejection; it was the SILENT
+// fallback that followed it, which discarded finalized history while
+// reporting health.
 //
 // When era-3 lands, extend `mixedEraHistory` with an era-3 block. If someone
 // forked a parallel verification path instead of extending `verifyAtt`, test 1
@@ -44,7 +44,7 @@ import (
 
 // futurePhase is an attestation phase this binary does not know — the stand-in
 // for era-3 arriving at an era-2 node. verifyAtt's `default: return false`
-// (chain.go:652) is what must reject it.
+// (chain.go) is what must reject it.
 const futurePhase uint8 = 99
 
 // mixedEraHistory commits a chain that spans an era boundary: an era-1 genesis
@@ -107,12 +107,12 @@ func TestEraBoundaryHistoryReplaysThroughSharedPath(t *testing.T) {
 		t.Fatalf("Reload of an era-spanning history failed at block %d: %v\n"+
 			"Every chain is mixed-era at an activation boundary. A verification "+
 			"path that handles one era but not a history containing both is the "+
-			"#558 defect: extend the shared verifyAtt dispatcher (chain.go:643), "+
+			"defect: extend the shared verifyAtt dispatcher (chain.go:643), "+
 			"never fork a parallel path.", n, err)
 	}
 	if n != len(persisted) {
 		t.Fatalf("Reload restored %d of %d blocks with no error — a partial "+
-			"restore reported as success is the silent-truncation half of #558",
+			"restore reported as success is the silent-truncation half of ",
 			n, len(persisted))
 	}
 	if _, h := fresh.Head(); h != uint64(len(persisted)) {
@@ -121,10 +121,10 @@ func TestEraBoundaryHistoryReplaysThroughSharedPath(t *testing.T) {
 }
 
 // TestFutureEraBlockFailsLoudlyAndNeverFallsBackToGenesis is obligation 2, and
-// the one that carries the #558 lesson forward.
+// the one that carries the lesson forward.
 //
 // At era-3 activation, every un-upgraded node meets a block it cannot verify.
-// That rejection is CORRECT. What must never happen is the #558 sequence:
+// That rejection is CORRECT. What must never happen is the sequence:
 // replay fails → the node silently starts from genesis → finalized history is
 // discarded while the node reports itself healthy, stranding it once peers
 // prune below the horizon.
@@ -170,7 +170,7 @@ func TestFutureEraBlockFailsLoudlyAndNeverFallsBackToGenesis(t *testing.T) {
 			"is wrong.", n)
 	}
 
-	// The #558 assertion proper: the node is NOT silently sitting at genesis
+	// The assertion proper: the node is NOT silently sitting at genesis
 	// believing itself healthy. The error is the signal the caller must act on.
 	if _, h := fresh.Head(); h != 2 {
 		t.Errorf("after a failed Reload the replica's head is %d; want 2 — the "+
@@ -268,7 +268,7 @@ func commitV4OnDisk(t *testing.T) (persisted []Block, prop ed25519.PrivateKey) {
 }
 
 // TestReloadRejectsResignedWrongStateRootV4 is the A-bare regression. It is the hole the
-// blind PE ruled: appendStructural (the own-disk Reload path) verifies the proposer and
+// the asymmetry is deliberate: appendStructural (the own-disk Reload path) verifies the proposer and
 // attester SIGNATURES — which cover the block Hash, roots included — but a signature over
 // a root proves only that the signer committed to THAT byte string, never that the root
 // equals the post-apply state. A v4 block with a WRONG StateRoot that is re-signed with
@@ -304,7 +304,7 @@ func TestReloadRejectsResignedWrongStateRootV4(t *testing.T) {
 		t.Errorf("Reload restored %d blocks before rejecting the tampered v4 block; want %d "+
 			"(everything up to but not including the tampered block)", n, len(persisted)-1)
 	}
-	// #558 half: the replica sits at the honest prefix head, not silently at genesis.
+	// half: the replica sits at the honest prefix head, not silently at genesis.
 	if _, h := fresh.Head(); h != uint64(len(persisted)-1) {
 		t.Errorf("after the rejected Reload the replica head is %d; want %d (the honest "+
 			"restored prefix)", h, len(persisted)-1)
@@ -312,16 +312,16 @@ func TestReloadRejectsResignedWrongStateRootV4(t *testing.T) {
 }
 
 // TestReloadWrongStateRootIsCaughtByTheRootCheckNotTheSignature is the ablation that
-// keeps the green above honest (the session-7 leave-one-out lesson: a green check with
-// no demonstrated correct-cause red is decoration). It proves TWO things:
+// keeps the green above honest (the leave-one-out lesson: a green check with no
+// demonstrated correct-cause red is decoration). It proves TWO things:
 //
-//  1. The tampered block's PROPOSER SIGNATURE is VALID — validateStructural accepts it,
-//     so the block is NOT rejected for a signature/ancestry/quorum reason. The only
-//     remaining reason to reject it is the root check.
-//  2. The SAME tampered history, Reloaded WITHOUT the root check, would be ACCEPTED —
-//     demonstrated by the positive control (an honest, untampered v4 history Reloads
-//     cleanly), so the rejection above is caused by the wrong root, not by the block
-//     being malformed for an unrelated reason.
+// 1. The tampered block's PROPOSER SIGNATURE is VALID — validateStructural accepts it,
+// So the block is NOT rejected for a signature/ancestry/quorum reason. The only
+// remaining reason to reject it is the root check.
+// 2. The SAME tampered history, Reloaded WITHOUT the root check, would be ACCEPTED —
+// demonstrated by the positive control (an honest, untampered v4 history Reloads
+// cleanly), so the rejection above is caused by the wrong root, not by the block
+// being malformed for an unrelated reason.
 func TestReloadWrongStateRootIsCaughtByTheRootCheckNotTheSignature(t *testing.T) {
 	persisted, prop := commitV4OnDisk(t)
 
@@ -440,22 +440,23 @@ func reloadCfg() Config {
 	}
 }
 
-// TestReloadRejectsV2AtEra3Boundary is the step-2c defense-in-depth symmetry regression.
-// It is the version-boundary sibling of TestReloadRejectsResignedWrongStateRootV4: the 2b
-// root check was duplicated onto the own-disk Reload path (appendStructural), but the 2c
+// TestReloadRejectsV2AtEra3Boundary is the step-2c defense-in-depth symmetry regression. It
+// is the version-boundary sibling of TestReloadRejectsResignedWrongStateRootV4: the 2b root
+// check was duplicated onto the own-disk Reload path (appendStructural), but the 2c
 // VERSION-boundary rule (ErrEra3VersionRequired — a v2 block at/above H_era3 is invalid)
 // lived ONLY on the commit path (ValidateProposal/ValidateCommit). appendStructural did not
 // run it, so a v2 block at/above H_era3 fed to Reload would be persisted unvalidated. This
 // is not exploitable today (a valid quorum-signed v2 block cannot commit at/above H_era3),
 // but a future unguarded disk-write path (fast-sync/import) is where the asymmetry could
-// turn into a hole. The blind PE ruled the asymmetry (RULING-era3-step2c...-2026-08-29).
+// turn into a hole. The asymmetry is deliberate.
 //
 // The forged block is SIGNATURE-VALID (a full two-phase certificate), so the ONLY reason to
 // reject it is the version rule. Before the fix appendStructural ACCEPTS it (RED); after,
 // it rejects with ErrEra3VersionRequired (GREEN) — NOT a signature error and NOT a panic.
 // The ablation subtest below pins that cause.
 func TestReloadRejectsV2AtEra3Boundary(t *testing.T) {
-	// Genesis-declared boundary at height 3: heights 1..2 are era-2, height >= 3 is era-3.
+	// Genesis-declared boundary at height 3: heights 1.2 are era-2, height >= 3 is
+	// era-3.
 	c, keys := era3AnchorChain(t, 3)
 	mustAppend(t, c, mintNext(t, c, keys)) // height 1, v2
 	mustAppend(t, c, mintNext(t, c, keys)) // height 2, v2
@@ -544,9 +545,9 @@ func TestReloadV2BoundaryRuleDoesNotOverReject(t *testing.T) {
 // Why BOTH, not just the root check (the 2c hardening): a v2 block carries NO roots, so the
 // root check is era-gated OFF for it (validateEra3Roots returns nil for sub-v4). A future
 // disk-write path that ran ONLY the root check would satisfy the old guard while persisting
-// a v2 block at/above H_era3 — the exact defense-in-depth asymmetry the blind PE ruled
-// (RULING-era3-step2c...-2026-08-29). Requiring the version rule too makes "every disk-write
-// path enforces the era-3 rules" UNIFORM across root AND version.
+// a v2 block at/above H_era3 — the exact defense-in-depth asymmetry described above.
+// Requiring the version rule too makes "every disk-write path enforces the era-3 rules"
+// UNIFORM across root AND version.
 //
 // Enforcement mechanism (structural, rot-proof): each era-3 rule is centralized in ONE named
 // validator — validateEra3Roots and validateEra3Version — both checked BEFORE apply so a
@@ -555,17 +556,17 @@ func TestReloadV2BoundaryRuleDoesNotOverReject(t *testing.T) {
 // (appendStructural) calls both directly. The guard reads chain.go's source and asserts,
 // for each of the two rules independently:
 //
-//   - every method's body CALLS that rule's validator (directly, or via a validator that
-//     does — ValidateCommit/ValidateProposal for the commit family), OR is on the explicit
-//     genesis allowlist (AppendGenesis: a v1 genesis is declared-not-agreed, below any era-3
-//     boundary and carrying no committed root by construction).
+// - every method's body CALLS that rule's validator (directly, or via a validator that
+// does — ValidateCommit/ValidateProposal for the commit family, OR is on the explicit
+// genesis allowlist (AppendGenesis: a v1 genesis is declared-not-agreed, below any era-3
+// boundary and carrying no committed root by construction).
 //
-// A new `func (c *Chain) FastSync(b Block) { ...; c.apply(b); ... }` that forgets EITHER
-// rule trips this guard: it calls c.apply but does not call that rule's validator and is not
+// A new `func (c *Chain) FastSync(b Block) {.; c.apply(b);. }` that forgets EITHER rule
+// trips this guard: it calls c.apply but does not call that rule's validator and is not
 // allowlisted. That is the future hole this closes.
 //
 // Coverage is decided by callsFn, which matches a real CALL — the validator name followed
-// by `(` in the method body AFTER comments are stripped — not a bare symbol mention. The
+// by “ in the method body AFTER comments are stripped — not a bare symbol mention. The
 // earlier strings.Contains(body, name) form was defeatable two ways: a method with
 // `// validateEra3Roots intentionally skipped` plus a bare `c.apply(b)` scored "guarded"
 // while running no check (comment text matched), and any non-call mention of the symbol
@@ -582,18 +583,18 @@ func TestEveryDiskWritePathRunsTheEra3RootCheck(t *testing.T) {
 	// rule if its body names that rule's validator, OR names a validator known to run it
 	// (the commit family funnels through ValidateProposal, which calls BOTH).
 	//
-	//   - validateEra3Roots:   the committed-root check (2b).
-	//   - validateEra3Version: the version-boundary rule (2c) — the addition this guard now
-	//                          requires, so a path enforcing only the root check REDs.
-	//   - validateEra4Version: the era-4 (v5) version-boundary rule (4d) — enforced on the
-	//                          SAME paths as the era-3 version rule, so it is pinned on every
-	//                          disk-write path too. A path enforcing only the era-3 rules REDs.
-	//                          (The v5 committed-root check reuses validateEra3Roots, which
-	//                          recomputes via StateRootForVersion(b.Version) — already covered.)
-	//   - validateCarrier:     the era-4 (v5) LastCommit carrier validity rule (R-BOX-ATTESTS
-	//                          O1). The carrier is a TRANSITION input (it writes validatorsSeen),
-	//                          so a disk-write path that skips it can persist a block whose
-	//                          seating rule was never checked. Enforced on the SAME paths.
+	// - validateEra3Roots: the committed-root check (2b).
+	// - validateEra3Version: the version-boundary rule (2c) — the addition this guard now
+	// requires, so a path enforcing only the root check REDs.
+	// - validateEra4Version: the era-4 (v5) version-boundary rule (4d) — enforced on the
+	// SAME paths as the era-3 version rule, so it is pinned on every
+	// disk-write path too. A path enforcing only the era-3 rules REDs.
+	// (The v5 committed-root check reuses validateEra3Roots, which
+	// recomputes via StateRootForVersion(b.Version) — already covered.)
+	// - validateCarrier: the era-4 (v5) LastCommit carrier validity rule. The carrier
+	// is a TRANSITION input (it writes validatorsSeen),
+	// so a disk-write path that skips it can persist a block whose
+	// seating rule was never checked. Enforced on the SAME paths.
 	era3Rules := []string{"validateEra3Roots", "validateEra3Version", "validateEra4Version", "validateCarrier"}
 	// Validators that themselves run BOTH era-3 rules (transitive coverage). ValidateProposal
 	// calls both; ValidateCommit calls ValidateProposal — so a method calling either is
@@ -739,9 +740,9 @@ func stripComments(src string) string {
 func TestGuardMatchesCallsNotCommentText(t *testing.T) {
 	const fn = "validateEra3Roots"
 
-	// commentOnly is the Tester's defeat verbatim: the validator name appears ONLY in a
-	// comment, the block is applied bare. A strings.Contains(body, fn) grep scores this
-	// "guarded"; it is not.
+	// commentOnly is the defeat verbatim: the validator name appears ONLY in a
+	// comment, the block is applied bare. A strings.Contains(body, fn) grep scores
+	// this "guarded"; it is not.
 	commentOnly := "{\n\t// validateEra3Roots intentionally skipped here\n\tc.apply(b)\n}"
 	if callsFn(commentOnly, fn) {
 		t.Errorf("callsFn scored a comment-only mention as a call — the guard is still "+
@@ -757,14 +758,15 @@ func TestGuardMatchesCallsNotCommentText(t *testing.T) {
 			"remove /* */ comments too")
 	}
 
-	// realCall is a genuinely guarded path: a real validateEra3Roots(...) call. It must count.
+	// realCall is a genuinely guarded path: a real validateEra3Roots(.) call. It
+	// must count.
 	realCall := "{\n\tif err := c.validateEra3Roots(&b); err != nil {\n\t\treturn err\n\t}\n\tc.apply(b)\n}"
 	if !callsFn(realCall, fn) {
 		t.Errorf("callsFn missed a REAL %s(...) call — the fix broke the guard's true-positive "+
 			"path; genuinely guarded methods would now be flagged as holes", fn)
 	}
 
-	// spacedCall exercises the whitespace tolerance between name and `(`.
+	// spacedCall exercises the whitespace tolerance between name and ``.
 	spacedCall := "{\n\tc.validateEra3Roots (&b)\n\tc.apply(b)\n}"
 	if !callsFn(spacedCall, fn) {
 		t.Errorf("callsFn missed a call with whitespace before `(` — %q should still count", fn+" (")
@@ -808,7 +810,7 @@ func methodsCallingApply(t *testing.T, src string) []string {
 	return out
 }
 
-// chainMethodNames returns every `func (c *Chain) Name(` method name in src.
+// chainMethodNames returns every `func (c *Chain) Name` method name in src.
 func chainMethodNames(src string) []string {
 	const marker = "func (c *Chain) "
 	var names []string
@@ -833,9 +835,9 @@ func chainMethodNames(src string) []string {
 	return names
 }
 
-// methodBody returns the source text of `func (c *Chain) name(...) { ... }` by brace
-// matching from the method's opening brace. Used to scope the c.apply / validator scans to
-// one method.
+// methodBody returns the source text of `func (c *Chain) name(.) {. }` by brace matching
+// from the method's opening brace. Used to scope the c.apply / validator scans to one
+// method.
 func methodBody(t *testing.T, src, name string) string {
 	t.Helper()
 	marker := "func (c *Chain) " + name + "("

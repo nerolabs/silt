@@ -10,24 +10,24 @@
 # daemons) and asserts on real `chain-status` / `committed block` / rejection
 # lines — never a string the harness echoes.
 #
-#   P0 (positive control — the gate is REAL policy, not a broken publish):
-#       on a chain run with -allow-publisher=true (a trusted deployment), an
-#       -allow-publisher publish COMMITS. So a Publisher-bearing entry *can*
-#       commit — which means a refusal on the default chain below is a deliberate
-#       policy gate, with the chain's AllowPublisher the only variable.
-#   P1 (the private path works): on the DEFAULT chain, a normal unlinkable
-#       publish COMMITS and fetches back bit-perfect. Privacy is not bought with a
-#       broken product.
-#   P2 (refuse-to-surveil): on the SAME default chain, an -allow-publisher publish
-#       is REFUSED — the validator logs chain: ErrPublisherEntry ("carries a
-#       durable Publisher") and NO new block commits. The would-be surveiller
-#       cannot make the network record the link, even asking for it directly.
-#   P3 (authorized yet unlinkable): a -token-quorum publish gathers a BLIND
-#       validator credential and COMMITS carrying no Publisher — proof of
-#       authorization without identity (the F1 fix), not merely "no link".
+#  P0 (positive control — the gate is REAL policy, not a broken publish):
+#  on a chain run with -allow-publisher=true (a trusted deployment), an
+#  -allow-publisher publish COMMITS. So a Publisher-bearing entry *can*
+#  commit — which means a refusal on the default chain below is a deliberate
+#  policy gate, with the chain's AllowPublisher the only variable.
+#  P1 (the private path works): on the DEFAULT chain, a normal unlinkable
+#  publish COMMITS and fetches back bit-perfect. Privacy is not bought with a
+#  broken product.
+#  P2 (refuse-to-surveil): on the SAME default chain, an -allow-publisher publish
+#  is REFUSED — the validator logs chain: ErrPublisherEntry ("carries a
+#  durable Publisher") and NO new block commits. The would-be surveiller
+#  cannot make the network record the link, even asking for it directly.
+#  P3 (authorized yet unlinkable): a -token-quorum publish gathers a BLIND
+#  validator credential and COMMITS carrying no Publisher — proof of
+#  authorization without identity (the F1 fix), not merely "no link".
 #
-# Usage:  ./run.sh          # build, test, tear down; exit 0 = PASS
-#         KEEP=1 ./run.sh   # leave the last topology up to poke at
+# Usage:./run.sh # build, test, tear down; exit 0 = PASS
+#  KEEP=1 ./run.sh # leave the last topology up to poke at
 # exit 0 = PASS; non-zero = FAIL (a real privacy regression)
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
@@ -188,10 +188,10 @@ c3_after=$(commit_count dc valA)
 # blind credential (a silt:v1 link with NO Publisher identity) has exercised the
 # blind-signing path; only gathering the canonical signer quorum is deferred to the
 # cloud. So we split the two failure modes a soft NOTE used to merge:
-#   • NO blind credential minted  → the blind-token path itself is broken → hard FAIL
-#     (this is the regression the previous NOTE would have hidden behind a PASS).
-#   • credential minted, no commit → cloud-scoped quorum, reported as a real measured
-#     number (not a fake green, not a fatal — P1/P2 already prove unlinkability).
+#  • NO blind credential minted → the blind-token path itself is broken → hard FAIL
+#  (this is the regression the previous NOTE would have hidden behind a PASS).
+#  • credential minted, no commit → cloud-scoped quorum, reported as a real measured
+#  number (not a fake green, not a fatal — P1/P2 already prove unlinkability).
 if [ -z "$LINK3" ]; then
   fail "P3: -token-quorum publish produced NO blind credential (link empty) — the blind-signed publish path is broken, not merely cloud-scoped"
 elif echo "$LINK3" | grep -qiE 'publisher|pub:'; then

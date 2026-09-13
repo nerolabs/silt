@@ -10,10 +10,10 @@ import (
 	"github.com/nerolabs/silt/core/credit"
 )
 
-// Unit coverage for the anti-release bond floor (M0 Sybil, red-team F1/F2): a
-// bond below Config.MinBondBytes earns NO standing, because it is small enough
-// to release and re-plot inside the challenge window — so a valid answer proves
-// nothing about SUSTAINED possession. A bond at/above the floor earns standing.
+// Unit coverage for the anti-release bond floor (M0 Sybil/F2): a bond below
+// Config.MinBondBytes earns NO standing, because it is small enough to release
+// and re-plot inside the challenge window — so a valid answer proves nothing
+// about SUSTAINED possession. A bond at/above the floor earns standing.
 func TestBondAntiReleaseFloorGatesStanding(t *testing.T) {
 	sched := simclock.New()
 	net := simnet.New(sched, 1, simnet.DefaultConfig())

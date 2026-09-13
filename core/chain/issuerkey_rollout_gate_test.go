@@ -1,9 +1,9 @@
 package chain
 
-// GATE F — the R0.4b ROLLOUT RULE (red-team break 6; merge condition M9).
+// GATE F — the ROLLOUT RULE.
 //
 // THE HAZARD. IssuerKeys is cbor key 17 inside the hashed `unsigned` struct. A
-// pre-R0.4b decoder ignores the unknown key (fxamacker's default) and then hashes the
+// earlier decoder ignores the unknown key (fxamacker's default) and then hashes the
 // body WITHOUT it, so the proposer's and attesters' signatures — made over the real
 // hash — fail on every old node: a reg-carrying block is rejected as ErrBadSignature.
 // The standard additive-field hazard.
@@ -46,7 +46,7 @@ func TestReadinessStampImpliesIssuerKeyCoverage(t *testing.T) {
 	without.hashMemoSet = false
 	if with.Hash() == without.Hash() {
 		t.Fatalf("Block.Hash does not cover IssuerKeys. A binary stamping readiness %d "+
-			"would sign a hash that omits committed content: every pre-R0.4b node rejects "+
+			"would sign a hash that omits committed content: every earlier node rejects "+
 			"the block as ErrBadSignature, and any node that accepted it would commit "+
 			"state its own root does not bind.", stamp)
 	}
@@ -65,44 +65,44 @@ func TestReadinessStampImpliesIssuerKeyCoverage(t *testing.T) {
 			"different v5 root from one that has it — a fork among 5-ready nodes.", stamp)
 	}
 
-	// (c) The stamp itself, a HARD TRIPWIRE (red-team re-break F9, 2026-09-03). This
-	// clause used to be a t.Logf, which `go test` without -v suppresses: a one-line
-	// constant change could raise the stamp with a fully green tree, which is exactly
-	// the "cannot happen silently" property the gate claimed to provide and did not.
-	// It is now a failure. Raising the stamp is a deliberate act, so raising it is a
-	// deliberate EDIT HERE — and the edit is where a human re-reads (a) and (b) and
-	// confirms the release carrying the raise also carries cbor key 17 in the hashed
-	// block, validateIssuerKeys, and the issuerKeyCommit leaf.
+	// (c) The stamp itself, a HARD TRIPWIRE, 2026-09-03. This clause used to be a
+	// t.Logf, which `go test` without -v suppresses: a one-line constant change
+	// could raise the stamp with a fully green tree, which is exactly the "cannot
+	// happen silently" property the gate claimed to provide and did not. It is now
+	// a failure. Raising the stamp is a deliberate act, so raising it is a
+	// deliberate EDIT HERE — and the edit is where a human re-reads (a) and (b)
+	// and confirms the release carrying the raise also carries cbor key 17 in the
+	// hashed block, validateIssuerKeys, and the issuerKeyCommit leaf.
 	//
-	// ALSO READ, at the same edit: TestGateF_NonObjectiveTopologyCanNeverLatchEra4.
-	// Raising the stamp does NOT by itself light up any topology — a -objective=false
-	// chain never evaluates the tally at all, so the paid delivery lane (and the e2e
-	// fixture that drives it) stays dark until the FIXTURE becomes objective, bonded
-	// and epoch-enabled. That is residual R-E2E-ERA4-FIXTURE, and it is a
-	// prerequisite of the stamp-raising release, not a consequence of it.
+	// ALSO READ, at the same edit: TestNonObjectiveTopologyCanNeverLatchEra4.
+	// Raising the stamp does NOT by itself light up any topology — a
+	// -objective=false chain never evaluates the tally at all, so the paid
+	// delivery lane (and the e2e fixture that drives it) stays dark until the
+	// FIXTURE becomes objective, bonded and epoch-enabled. That is residual, and
+	// it is a prerequisite of the stamp-raising release, not a consequence of it.
 	if msg := gateFStampPin(stamp); msg != "" {
 		t.Fatal(msg)
 	}
 }
 
 // gateFStampPin is clause (c)'s predicate, factored out so its TEETH are themselves
-// testable: TestGateF_StampRaiseIsAHardFailure asserts that a raised stamp produces a
-// non-empty message, which is the property "the raise cannot happen silently" — the property
-// the t.Logf version claimed and did not have (red-team re-break F9).
+// testable: TestStampRaiseIsAHardFailure asserts that a raised stamp produces a non-empty
+// message, which is the property "the raise cannot happen silently" — the property the
+// t.Logf version claimed and did not have.
 func gateFStampPin(stamp uint8) string {
 	if stamp == BlockVersionRegGate {
 		return ""
 	}
 	return fmt.Sprintf("NewBondReg stamps readiness %d, but this gate is pinned to %d. "+
-		"Raising the mint stamp turns the R0.4b rollout rule LIVE: every node that accepts a "+
+		"Raising the mint stamp turns the rollout rule LIVE: every node that accepts a "+
 		"v%d block must carry cbor key 17 inside the hashed block, validateIssuerKeys, and "+
 		"the issuerKeyCommit leaf (asserted above). Confirm the release carries all three, "+
 		"then update this pin in the same commit.", stamp, BlockVersionRegGate, stamp)
 }
 
-// TestGateF_ConfigActivationRouteCarriesTheSameCoverage closes the OTHER half of the F9
+// TestConfigActivationRouteCarriesTheSameCoverage closes the OTHER half of the F9
 // finding: the readiness TALLY is not the only route to v5. Config.Era4ActivationHeight
-// activates era-4 "with no readiness signalling at all" (chain.go:265), so a network can mint
+// activates era-4 "with no readiness signalling at all" (chain.go), so a network can mint
 // v5 blocks — and therefore key registrations — while every NewBondReg still stamps 3 and the
 // tally clause of the rollout rule never fires.
 //
@@ -111,7 +111,7 @@ func gateFStampPin(stamp uint8) string {
 // a real minted block: the hash covers the registrations, and the post-apply committed root
 // carries the issuerKeyCommit leaf. If a future edit ever makes the leaf conditional on the
 // tally, this reddens where the stamp pin cannot.
-func TestGateF_ConfigActivationRouteCarriesTheSameCoverage(t *testing.T) {
+func TestConfigActivationRouteCarriesTheSameCoverage(t *testing.T) {
 	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
 		EpochBlocks: 2, MatureValidators: 0, BondTTLBlocks: 4096, Era4ActivationHeight: 1}
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })

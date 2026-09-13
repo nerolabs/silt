@@ -1,9 +1,7 @@
 package credit
 
-// R2.14 — the relay-lane prepayment anchor's LEDGER half (docs/design/pod.md
-// §7.3.2 step 1; the construction is certified in
-// silt-agent-memory/researcher/reviews/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md
-// §2 (conservation), §2.4 (the six doors), §5 (guard window == keyset window)).
+// The relay-lane prepayment anchor's LEDGER half step 1; the construction is verifies §2 (conservation), §2.4 (the six doors), §5
+// (guard window == keyset window).
 //
 // An anchor is a blind signature under the RELAY's own per-epoch demand key,
 // bought by the fetcher's DURABLE identity through the ordinary withdrawal path
@@ -13,38 +11,38 @@ package credit
 // the (issue epoch, serial) pair, and the ledger's whole job is to make that pair
 // fund exactly one session:
 //
-//   - SPENT ONCE. The pair goes into the paidSerial guard — the SAME map, cap,
-//     expiry sweep and durable store the delivery lane's R0.4b guard uses. Sharing
-//     the map (rather than a third in-memory twin) is what makes "restart is not
-//     an eviction" and "refuse at cap, never evict a live entry" hold here for
-//     free (advisory §1.4; the creditSpent lesson, R2.13b). One consequence, in
-//     the safe direction: a serial a fetcher chose to blind in BOTH domains (two
-//     withdrawals, two fees, one 32-byte random serial — which no honest client
-//     does) can fund one lane only. An under-pay, never a mint.
-//   - ALL OR NOTHING. Every anchor in the batch is checked before any is
-//     recorded, so a refused open records nothing and the fetcher does not lose
-//     anchor 1 because anchor 2 was spent (cert §2.2, T-10). The one exception is
-//     the accepted under-pay direction: a durable store that fails MID-append
-//     leaves the earlier anchors recorded and the open refused — burned with no
-//     session, never paid twice.
-//   - EXPIRES WITH THE KEY. The guard is swept on the same window the demand
-//     keyset prunes with (paidSerialWindow == demand.DefaultWindow), driven by the
-//     same consensus epoch the node pruned its keyset with, so "the keyset still
-//     verifies the anchor" and "the guard still remembers it" are one predicate
-//     (cert §5, T-12; the TestGuardLifetimeMatchesDemandKeysetLifetime twin is
-//     TestRelayAnchorGuardWindowMatchesKeysetWindow).
-//   - FACE = FEE. The issuer signs opaque blinded bytes and cannot see the
-//     domain, so it charged l.fee for this anchor exactly as for a demand token;
-//     face is an identity with the burn, not a chosen value (cert §2.1). Fee
-//     constancy over an anchor's W+1-epoch life is the unstated assumption of
-//     BOTH lanes (cert F-3); inert on a per-node ledger, an FP-2 / R2.10
-//     precondition.
+// - SPENT ONCE. The pair goes into the paidSerial guard — the SAME map, cap,
+// expiry sweep and durable store the delivery lane's guard uses. Sharing
+// the map (rather than a third in-memory twin) is what makes "restart is not
+// an eviction" and "refuse at cap, never evict a live entry" hold here for
+// free (the creditSpent lesson). One consequence, in
+// the safe direction: a serial a fetcher chose to blind in BOTH domains (two
+// withdrawals, two fees, one 32-byte random serial — which no honest client
+// does) can fund one lane only. An under-pay, never a mint.
+// - ALL OR NOTHING. Every anchor in the batch is checked before any is
+// recorded, so a refused open records nothing and the fetcher does not lose
+// anchor 1 because anchor 2 was spent. The one exception is the
+// accepted under-pay direction: a durable store that fails MID-append
+// leaves the earlier anchors recorded and the open refused — burned with no
+// session, never paid twice.
+// - EXPIRES WITH THE KEY. The guard is swept on the same window the demand
+// keyset prunes with (paidSerialWindow == demand.DefaultWindow), driven by the
+// same consensus epoch the node pruned its keyset with, so "the keyset still
+// verifies the anchor" and "the guard still remembers it" are one predicate;
+// the TestGuardLifetimeMatchesDemandKeysetLifetime twin is
+// TestRelayAnchorGuardWindowMatchesKeysetWindow.
+// - FACE = FEE. The issuer signs opaque blinded bytes and cannot see the
+// domain, so it charged l.fee for this anchor exactly as for a demand token;
+// face is an identity with the burn, not a chosen value. Fee
+// constancy over an anchor's W+1-epoch life is the unstated assumption of
+// BOTH lanes; inert on a per-node ledger, an FP-2 /
+// precondition.
 //
 // Conservation on this ledger, per session: issuance −k·fee, open 0, pay 0,
 // settle +min(count, k·fee). Δ Σ_L = settled − Σ face ≤ 0, equality iff the
-// session consumed its anchors exactly (cert C-1). Never standing: nothing here
-// touches a field Reputation reads (invariant_a_test.go classifies
-// SpendRelayAnchors neutral and presses it against an anchored session).
+// session consumed its anchors exactly. Never standing: nothing here touches a
+// field Reputation reads (invariant_a_test.go classifies SpendRelayAnchors
+// neutral and presses it against an anchored session).
 
 import "github.com/nerolabs/silt/ports"
 
@@ -56,9 +54,9 @@ type RelayAnchor = ports.RelayAnchor
 // relayAnchorSerialSize is the one serial length an honest withdrawal produces
 // (blindtoken.SerialSize). The serial is attacker-chosen bytes that become a map
 // key, so its length is bounded HERE as well as at the wire decode (the F5
-// amplifier shape; cert §8), and pinned to the exact width so the guard key is
-// injective. Duplicated rather than imported: core/credit carries no production
-// dependency on core/blindtoken.
+// amplifier shape), and pinned to the exact width so the guard key is injective.
+// Duplicated rather than imported: core/credit carries no production dependency
+// on core/blindtoken.
 const relayAnchorSerialSize = 32
 
 // The relay-anchor refusal reasons (observability only, like the Reason* set in
@@ -77,22 +75,21 @@ const (
 	ReasonAnchorFuture = "anchor-future-dated"
 )
 
-// SpendRelayAnchors is the ledger half of a relay session open (R2.14). See the
+// SpendRelayAnchors is the ledger half of a relay session open. See the
 // package note above for what it guarantees. It returns the summed face of the
 // anchors it recorded — the session budget — or 0 and the named reason it recorded
 // nothing.
 //
-// The epoch is the ledger's OWN (R2.10 / F8): it reads its injected EpochSource
-// once at entry and advances the monotone watermark, and BOTH anchored lanes enter
-// through this one function (R0.4b-5), so they share one clock on one guard. In production that source is the node's chainEpoch(), the value the
-// relay's self keyset was pruned with in the same event-loop turn, so an anchor
-// that verified in-window upstream is never above the ledger's clock here.
+// The epoch is the ledger's OWN: it reads its injected EpochSource once at entry and advances the monotone watermark, and
+// BOTH anchored lanes enter through this one function, so they share one clock on one guard. In production that source is the node's
+// chainEpoch, the value the relay's self keyset was pruned with in the same event-loop turn, so an anchor that verified in-window
+// upstream is never above the ledger's clock here.
 func (l *Ledger) SpendRelayAnchors(anchors []RelayAnchor) (face int64, reason string) {
 	return l.spendAnchors(ports.NodeID{}, anchors, laneRelay)
 }
 
-// spendAnchors is the one guard spend both anchored lanes share (R2.14 relay,
-// R2.9 delivery — deliveryanchor.go): verify-none, guard-check all, reserve k,
+// spendAnchors is the one guard spend both anchored lanes share (relay
+// delivery — deliveryanchor.go): verify-none, guard-check all, reserve k,
 // durable-append all, record all, return k × l.fee. server is recorded on the guard
 // entry for observability only (the delivery lane names the session's server; the
 // relay lane records none — its budget settles to the relay itself).
@@ -100,7 +97,7 @@ func (l *Ledger) spendAnchors(server ports.NodeID, anchors []RelayAnchor, lane g
 	if len(anchors) == 0 {
 		return 0, ReasonNoAnchor
 	}
-	l.advanceEpoch() // read the source once; the band advance sweeps (advisory C-7)
+	l.advanceEpoch() // read the source once; the band advance sweeps
 	if l.paidStore != nil && !l.guardLoaded {
 		return 0, ReasonGuardUnloaded // a ledger that does not know what it accepted must not accept
 	}
@@ -130,8 +127,8 @@ func (l *Ledger) spendAnchors(server ports.NodeID, anchors []RelayAnchor, lane g
 		}
 		inBatch[key] = struct{}{}
 	}
-	// Reserve k slots. The guard REFUSES at a cap full of still-live entries, never
-	// evicts one (G-A2 — the self-financing eviction pump, closed by R0.4b, must
+	// Reserve k slots. The guard REFUSES at a cap full of still-live entries,
+	// never evicts one (— the self-financing eviction pump, closed by, must
 	// not re-open on either anchored lane).
 	if !l.reservePaidSerials(l.epochWatermark, len(anchors)) {
 		l.guardFullRefusals++
@@ -142,10 +139,10 @@ func (l *Ledger) spendAnchors(server ports.NodeID, anchors []RelayAnchor, lane g
 		}
 		return 0, ReasonGuardFull
 	}
-	// RECORD DURABLY BEFORE THE SESSION IS ADMITTED (red-team re-break F2): the
-	// caller admits only on a non-empty face, so a crash after this returns leaves
-	// a guard entry for a session that never forwarded — an under-pay — and never a
-	// session whose anchors a restart would re-open for a second spend.
+	// RECORD DURABLY BEFORE THE SESSION IS ADMITTED: the caller admits only on a
+	// non-empty face, so a crash after this returns leaves a guard entry for a
+	// session that never forwarded — an under-pay — and never a session whose
+	// anchors a restart would re-open for a second spend.
 	for _, a := range anchors {
 		if err := l.addPaidSerial(a.Serial, server, a.Epoch, lane); err != nil {
 			return 0, ReasonGuardStore

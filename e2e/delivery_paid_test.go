@@ -1,18 +1,18 @@
 package e2e
 
-// R2.9 — the paid DELIVERY SESSION, end to end over real TCP (in-process loops, the
+// The paid DELIVERY SESSION, end to end over real TCP (in-process loops, the
 // TestPaidRelaySessionEndToEnd shape): a durable fetcher pins the server's chain-
-// committed key, buys ONE demand token over the wire (the real blind withdrawal,
-// charged by ChargePublish on the SERVER's ledger), opens a session with it
-// (MsgDeliveryOpen: the token spent into the guard at OPEN), settles a cumulative-count
-// receipt for an object (MsgDeliverySettle, receipt v3), and the session is closed on
-// idleness with its remainder accounted once. Asserts: (a) the settlement pays exactly
-// count·p − skim into the server's balance; (b) the ledger total moves by settled − face
-// over withdrawal → open → settle (≤ 0; the remainder is burned under G-6 as ratified);
-// (c) the Invariant-A firewall (Reputation unmoved); (d) the S5 markers "delivery
-// receipt banked" and "delivery session closed" are emitted; (e) the close line carries
-// no identity and no object (the M0 log audit). Gate G-R212-8 §8 e2e; B-11's line is
-// the daemon's (TestAffordabilityLineIsAnnounced).
+// committed key, buys ONE demand token over the wire (the real blind withdrawal, charged
+// by ChargePublish on the SERVER's ledger), opens a session with it (MsgDeliveryOpen:
+// the token spent into the guard at OPEN), settles a cumulative-count receipt for an
+// object (MsgDeliverySettle, receipt v3), and the session is closed on idleness with its
+// remainder accounted once. Asserts: (a) the settlement pays exactly count·p − skim into
+// the server's balance; (b) the ledger total moves by settled − face over withdrawal →
+// open → settle (≤ 0; the remainder is burned under as settled); (c) the Invariant-A
+// firewall (Reputation unmoved); (d) the S5 markers "delivery receipt banked" and
+// "delivery session closed" are emitted; (e) the close line carries no identity and no
+// object (the M0 log audit). the gate §8 e2e; B-11's line is the daemon's
+// (TestAffordabilityLineIsAnnounced).
 
 import (
 	"crypto/rand"
@@ -235,8 +235,8 @@ func TestPaidDeliverySessionEndToEnd(t *testing.T) {
 	}
 
 	// ---- Idle close: after the window, the sweep closes the session and accounts the
-	// remainder ONCE (burned under G-6 as ratified). The daemon drives this sweep on a
-	// ticker; here it is posted onto the server's loop after the window elapsed.
+	// remainder ONCE (burned under as settled). The daemon drives this sweep on
+	// a ticker; here it is posted onto the server's loop after the window elapsed.
 	time.Sleep(time.Duration(idle) + 500*time.Millisecond)
 	sLoop.Post("sweep", sNode.SweepDeliverySessions)
 	deadline := time.Now().Add(5 * time.Second)
@@ -266,10 +266,10 @@ func TestPaidDeliverySessionEndToEnd(t *testing.T) {
 }
 
 // TestDeliveryIdleWindowFloorIsEnforcedAtStartUp — the runtime half of the idle-window
-// floor. Refuse-until-set is RELEASED (Lane C2, owner call 4 of D-TRUE-UP-CALLS-2026-09-07:
-// the default ships now that the bound is field-confirmed), so what the daemon enforces is
-// no longer "set it" but "set it high enough": a window below deliveryIdleFloor reaps an
-// honest fetcher gapped by a stall the liveness model admits, and is refused.
+// floor. Refuse-until-set is RELEASED (this lane of: the default ships now that the bound
+// is field-confirmed), so what the daemon enforces is no longer "set it" but "set it high
+// enough": a window below deliveryIdleFloor reaps an honest fetcher gapped by a stall the
+// liveness model admits, and is refused.
 //
 // Both polarities, at the endpoints of the floor rather than at a token value: one second
 // UNDER the derived floor refuses, and the shipped DEFAULT (no flag at all) boots and
@@ -328,7 +328,8 @@ func TestDeliveryIdleWindowFloorIsEnforcedAtStartUp(t *testing.T) {
 // TestDeliveryIdleWindowDefaultBootsThePaidLane — the OTHER polarity of the gate above,
 // and the runtime arm the cmd/silt source pin cannot reach: a daemon that arms the paid
 // delivery lane and sets NO -delivery-idle-window boots, announces the lane, and echoes
-// the shipped default on its affordability line. Before Lane C2 this exact argv refused.
+// the shipped default on its affordability line. Before this lane this exact argv
+// refused.
 //
 // It asserts the ANNOUNCED window, not just the absence of a refusal, because that is the
 // only surface an operator reads to learn what window it got.

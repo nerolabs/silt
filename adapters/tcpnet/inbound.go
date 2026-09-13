@@ -13,7 +13,7 @@ import (
 // fast sender's messages pile up faster than the loop drains them, the decoded
 // payloads accumulate, and the node OOM-crash-loops. This is a resource-exhaustion
 // DoS on a remote-controlled input path — a security floor (build-immutables #4/#5,
-// personas #13/#14; the memory twin of the #424 CPU-flood), not an efficiency knob.
+// personas #13/#14; the memory twin of the CPU-flood), not an efficiency knob.
 //
 // The reader (per-connection goroutine) acquires this budget BEFORE reading a
 // frame's body and releases it when the LOOP finishes handling that message. When
@@ -22,17 +22,17 @@ import (
 // throughput limit (alive > crashed). The loop only ever RELEASES (never acquires),
 // so it always drains and wakes readers — no deadlock.
 //
-// v2a — PER-PEER FAIRNESS (PE ruling 2026-08-17): beyond the global budget, each
+// v2a — PER-PEER FAIRNESS: beyond the global budget, each
 // peer is confined to a SHARE (perPeerFrac of the cap), so one flooding peer (or a
 // single sybil) can't monopolize the budget and starve everyone else — it fills its
 // own share, blocks, and TCP pushes back on IT while other peers proceed.
 //
-// v2b PENDING before #183: a consensus-kind RESERVE so that even when a SYBIL COHORT
+// v2b PENDING before: a consensus-kind RESERVE so that even when a SYBIL COHORT
 // collectively fills the general budget, consensus-critical frames (prepare/precommit/
 // round-change/commit) from honest validators still have room. Per-peer fairness
 // bounds a single flooder; the reserve is what a many-peer flood still can't touch.
-// Design: docs/thinking/2026-08-17-inbound-backpressure-fix-plan.md (needs
-// decode-then-classify with a bounded speculative-decode slot for small frames).
+// Design: (needs decode-then-classify with a bounded speculative-decode slot for small
+// frames).
 type inboundGate struct {
 	mu      sync.Mutex
 	cond    *sync.Cond

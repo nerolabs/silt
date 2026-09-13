@@ -1,8 +1,7 @@
 // Network capacity awareness (M9): every node continuously estimates
 // how big the network is and how much storage it holds, from purely
-// local knowledge — the density of its own DHT neighborhood (see
-// docs/math/06-counting-the-crowd.md) times the average pledge its
-// peers gossip on every message.
+// local knowledge — the density of its own DHT neighborhood times
+// the average pledge its peers gossip on every message.
 package node
 
 import (

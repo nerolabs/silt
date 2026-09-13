@@ -131,10 +131,10 @@ func TestReplayStillDetectsCorruption(t *testing.T) {
 	}
 }
 
-// TestSaveLeavesNoTempAndDecodes pins the atomic-replace SHAPE (#558 / B8): a
-// Save leaves exactly chain.cbor (no temp file) and it decodes. It is a shape
-// pin, NOT a gate on the fsync — the pre-PR tmp+rename Save satisfies it too
-// (PE ruling, B8); durability under a real power loss has no runtime oracle.
+// TestSaveLeavesNoTempAndDecodes pins the atomic-replace SHAPE: a Save leaves
+// exactly chain.cbor (no temp file) and it decodes. It is a shape pin, NOT a
+// gate on the fsync — the pre-PR tmp+rename Save satisfies it too; durability
+// under a real power loss has no runtime oracle.
 func TestSaveLeavesNoTempAndDecodes(t *testing.T) {
 	fullRep := map[ports.NodeID]int64{}
 	for i := int64(1); i <= 5; i++ {
@@ -163,12 +163,12 @@ func TestSaveLeavesNoTempAndDecodes(t *testing.T) {
 	}
 }
 
-// TestRecoverRefusesATornTail is the #558 gate (Lane B8, scope call S3): a
+// TestRecoverRefusesATornTail is the gate (this lane, scope call S3): a
 // chain.cbor whose tail is torn (the file truncated mid-array, the shape a
 // power loss or OOM-kill leaves) must REFUSE to start — Recover returns a
 // LossError with no prefix — unless the operator accepts the loss explicitly.
 // Before this rule the daemon printed the failure and started from genesis,
-// silently discarding finalized history (run a434494-deep, h83, 87 MiB).
+// silently discarding finalized history (the field run, h83, 87 MiB).
 func TestRecoverRefusesATornTail(t *testing.T) {
 	fullRep := map[ports.NodeID]int64{}
 	for i := int64(1); i <= 5; i++ {
@@ -191,7 +191,7 @@ func TestRecoverRefusesATornTail(t *testing.T) {
 	fresh := chain.New(chain.DefaultConfig(), func(ports.NodeID) int64 { return 0 })
 	n, loss, refused := Recover(path, fresh, false)
 	if refused == nil {
-		t.Fatalf("#558: a torn chain.cbor must REFUSE to start; Recover returned restored=%d loss=%v refused=nil", n, loss)
+		t.Fatalf("a torn chain.cbor must REFUSE to start; Recover returned restored=%d loss=%v refused=nil", n, loss)
 	}
 	var le *LossError
 	if !errors.As(refused, &le) || le.Restored != 0 {
@@ -239,7 +239,7 @@ func TestRecoverRefusesACorruptSuffixKeepsPrefixOnlyWhenAccepted(t *testing.T) {
 	}
 }
 
-// TestRecoverAcceptedLossPreservesTheOriginal is the PE ruling's blocker 1 (B8):
+// TestRecoverAcceptedLossPreservesTheOriginal is:
 // -accept-chain-loss must never destroy the file it rejects — a rejected
 // chain.cbor may be byte-perfect and merely unreadable by THIS binary. With
 // acceptance, the original is moved untouched to chain.cbor.rejected-<unix>,

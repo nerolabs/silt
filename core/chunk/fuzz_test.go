@@ -15,8 +15,8 @@ import (
 func FuzzJoin(f *testing.F) {
 	f.Add([]byte{}, []byte{})
 	f.Add(make([]byte, MinChunkSize), make([]byte, MinChunkSize))
-	// A header that over-claims its payload: length = 0xffff... with a
-	// tiny frame. Must error, not read past the frame.
+	// A header that over-claims its payload: length = 0xffff. with
+	// a tiny frame. Must error, not read past the frame.
 	over := append([]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}, 0x01)
 	f.Add(over, []byte{})
 

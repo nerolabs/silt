@@ -1,11 +1,11 @@
 // Package discovery finds peers the way Bitcoin does, in layers:
 //
-//  1. explicit seeds — the -bootstrap flag, peer strings you were told;
-//  2. DNS seeds — TXT records under a well-known domain, each one a
-//     peer string, so joining the network needs only a domain name;
-//  3. peer exchange — tcpnet envelopes already gossip contacts; this
-//     package persists the learned address book to disk so a restarted
-//     daemon rejoins warm, without any flags at all.
+// 1. explicit seeds — the -bootstrap flag, peer strings you were told;
+// 2. DNS seeds — TXT records under a well-known domain, each one a
+// peer string, so joining the network needs only a domain name;
+// 3. peer exchange — tcpnet envelopes already gossip contacts; this
+// package persists the learned address book to disk so a restarted
+// daemon rejoins warm, without any flags at all.
 //
 // A peer string is self-authenticating: "ID@host:port", where the TLS
 // handshake must present a key hashing to ID (see adapters/identity).

@@ -12,7 +12,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// TestEquivocateRetriesUncommittedLeg378 guards the SECOND #378 wedge (the one the
+// TestEquivocateRetriesUncommittedLeg guards the SECOND wedge (the one the
 // first resumable-placement fix exposed under WAN delay): a target ATTESTS a fork
 // block but cannot yet COMMIT it, because its OWN attestation is not yet qualified
 // from its local view. The honest propose handler attests on the PROPOSER's
@@ -24,7 +24,7 @@ import (
 // This stages it deterministically with reputation (no delay needed): honestYZ can
 // attest Y (the proposer is qualified) but cannot commit it (its own reputation is
 // below the attester bar) until it is bumped — exactly the wire warm-up, frozen.
-func TestEquivocateRetriesUncommittedLeg378(t *testing.T) {
+func TestEquivocateRetriesUncommittedLeg(t *testing.T) {
 	sched := simclock.New()
 	net := simnet.New(sched, 13, simnet.DefaultConfig())
 	ledger := credit.New(50_000, 0)
@@ -85,7 +85,7 @@ func TestEquivocateRetriesUncommittedLeg378(t *testing.T) {
 	c.Equivocate(idA.NodeID(), idB.NodeID(), func(e error) { err2, done2 = e, true })
 	sched.Run()
 	if !done2 || err2 != nil {
-		t.Fatalf("#378: once honestYZ can commit, the retry must resume and complete: %v", err2)
+		t.Fatalf("once honestYZ can commit, the retry must resume and complete: %v", err2)
 	}
 	if _, ok := b.Chain().LookupRoot(advEntry("Y").Root); !ok {
 		t.Fatal("Y must be committed on honestYZ after it qualified")

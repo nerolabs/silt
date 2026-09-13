@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
 # Flow 4 — Become a validator, EARN standing, commit a publish through consensus.
-# Reproduces docs/user-seam.md Role 4.
+# Reproduces Role 4.
 #
 # PASS if:
-#   (negative) a lone validator with no bonded attester is REFUSED — proving the
-#              path is EARNED standing, not a rubber-stamp; then
-#   (positive) two mutually-auditing validators accrue standing (rep > min-rep),
-#              a publish commits on both, the fetch is bit-perfect, and the bond
-#              plot + chain persist.
+#  (negative) a lone validator with no bonded attester is REFUSED — proving the
+#  path is EARNED standing, not a rubber-stamp; then
+#  (positive) two mutually-auditing validators accrue standing (rep > min-rep),
+#  a publish commits on both, the fetch is bit-perfect, and the bond
+#  plot + chain persist.
 #
 # `silt id` learns each peer's NodeID before launch, so `-attesters <ID>` is
 # fillable up front (no throwaway probe daemon needed).
 #
-#   ./examples/flow4-earned-standing.sh        (or SILT_REPO=/path/to/silt …)
+# ./examples/flow4-earned-standing.sh (or SILT_REPO=/path/to/silt …)
 # Binds loopback ports 7100-7102; run one example at a time.
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail

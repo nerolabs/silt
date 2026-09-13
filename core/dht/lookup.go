@@ -3,9 +3,9 @@ package dht
 import "github.com/nerolabs/silt/ports"
 
 // Lookup is the iterative Kademlia lookup as a pure state machine. The
-// caller (core/node) owns all I/O: it asks NextQueries() who to contact,
-// reports answers with OnReply/OnFailure, and reads Result() when Done.
-// No network, no clock, no goroutines — a for-loop over a fake topology
+// caller (core/node) owns all I/O: it asks NextQueries who to contact,
+// reports answers with OnReply/OnFailure, and reads Result when Done. No
+// network, no clock, no goroutines — a for-loop over a fake topology
 // tests it exhaustively.
 //
 // The algorithm: keep a candidate list sorted by XOR distance to the
@@ -13,7 +13,7 @@ import "github.com/nerolabs/silt/ports"
 // most alpha in flight), merging every reply's "closer nodes" into the
 // list. Stop when the k closest candidates have all been queried and
 // nothing is in flight. Each round at least halves the distance to the
-// target (see docs/math/04-kademlia.md), so this takes O(log N) rounds.
+// target, so this takes O(log N) rounds.
 type Lookup struct {
 	target   ports.Hash
 	k, alpha int

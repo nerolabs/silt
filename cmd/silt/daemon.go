@@ -56,14 +56,12 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// cmdDaemon runs a long-lived swarm node: real TCP listener, real disk
-// store, wall clock. One daemon per swarm also hosts the registry
-// (-serve-registry) — the v1 "single honest instance", now reachable
-// over HTTP so separate processes (and machines) can share it.
-// The shipped per-block packing budgets. NAMED, not inline, so the flag default and the
-// start-up headroom gate that validates it read ONE value: changing the default here moves
-// what cmd/silt TestG_SLASHCAP_3_ShippedFlagDefaultsAndTheRefusalText asserts, instead of leaving a test that restates a literal
-// and stays green while the shipped binary refuses to start (PE ruling B-4, ablation A5).
+// cmdDaemon runs a long-lived swarm node: real TCP listener, real disk store, wall clock. One daemon per swarm also hosts the
+// registry (-serve-registry) — the v1 "single honest instance", now reachable over HTTP so separate processes (and machines) can
+// share it. The shipped per-block packing budgets. NAMED, not inline, so the flag default and the start-up headroom gate that
+// validates it read ONE value: changing the default here moves what cmd/silt
+// TestShippedSlashCapFlagDefaultsAndTheRefusalText asserts, instead of leaving a test that restates a literal and stays
+// green while the shipped binary refuses to start.
 const (
 	defaultMaxBondRegBytesPerBlock = 2 << 20
 	defaultMaxEntryBytesPerBlock   = 64 << 10
@@ -74,7 +72,7 @@ func cmdDaemon(args []string) error {
 	listen := fs.String("listen", "127.0.0.1:0", "TCP listen address for swarm traffic")
 	storeDir := fs.String("store", ".silt-daemon", "chunk store directory")
 	bootstrap := fs.String("bootstrap", "", "comma-separated peer list: ID@HOST:PORT")
-	persistentPeers := fs.String("persistent-peers", "", "comma-separated ID@HOST:PORT of a STATIC consensus/anchor peer set — address-configured up front and NEVER evicted by churn (Tendermint persistent_peers). At genesis there is no chain, so a proposer cannot DISCOVER its attesters' addresses (silt's routing table holds bare NodeIDs; addresses live in the transport layer, learned only from inbound frames/gossip) — configure the validator set here so proposer-initiated quorum can form on a fresh multi-region net (#286 Layer 2; docs/network-durability.md §8). These are AddPeer'd at boot AND exempt from reachability eviction (§2)")
+	persistentPeers := fs.String("persistent-peers", "", "comma-separated ID@HOST:PORT of a STATIC consensus/anchor peer set — address-configured up front and NEVER evicted by churn (Tendermint persistent_peers). At genesis there is no chain, so a proposer cannot DISCOVER its attesters' addresses (silt's routing table holds bare NodeIDs; addresses live in the transport layer, learned only from inbound frames/gossip) — configure the validator set here so proposer-initiated quorum can form on a fresh multi-region net (Layer 2; docs/network-durability.md §8). These are AddPeer'd at boot AND exempt from reachability eviction (§2)")
 	registryURL := fs.String("registry", "", "registry ref: ID@https://host:port (key-pinned — copy the daemon's 'registry:' line verbatim; a bare http:// or unkeyed https:// is refused)")
 	serveRegistry := fs.String("serve-registry", "", "host the registry at this address (persisted in the store dir)")
 	idSeed := fs.Int64("id-seed", 0, "derive the identity from a seed (default: persistent keyfile) — for scripted demos")
@@ -82,11 +80,11 @@ func cmdDaemon(args []string) error {
 	repairInterval := fs.Duration("repair-interval", 60*time.Second, "how often a caretaker sweeps each -care'd root for lost shards (probe → reconstruct past the slack). A liveness cadence, not a security parameter — the repair-bounty legs stay structural at any setting. Lower it on a small/local swarm so repair (and the e2e proof) fires in seconds")
 	capacity := fs.String("capacity", "5G", "storage pledge, e.g. 2G, 500M (matches the client's default so the node contributes measurable, countable storage; \"\" = unlimited but doesn't count toward network storage)")
 	freeload := fs.Bool("freeload", false, "role separation (#47): serve the registry/relay/routing role but REFUSE to store or serve content — for public-infrastructure operators who run a rendezvous registry without being conscripted into hosting arbitrary content. The node still carries DHT routing; it just holds and serves no chunks")
-	serveContent := fs.Bool("serve-content", true, "D-TIERING capability axis: hold and serve content shards (the edge tier's core contribution, bounded by -capacity). ON by default — this is what an ordinary node does. The explicit form exists so a tier profile composes positively (`-serve-content -archive=false -validator=false` is the transient edge box) rather than as a double negative. `-serve-content=false` is the same refusal as -freeload; passing both with opposite senses is refused rather than silently resolved")
-	acceptReceipts := fs.Bool("accept-delivery-receipts", false, "PoD neutral lane (docs/design/pod.md, certified 2026-08-26): BANK delivery receipts from fetchers this node served, and settle the conserved delivery credit — the fetcher's retrieval fee less the durability skim, which routes to the delivered object's repair escrow. Requires the token-issuer role (implied by -validator), because a receipt is verified against the issuer key that signed its retrieval token; the bilateral issuer==server shape is what the certification's per-node settlement answer covers. Delivery credit is BALANCE ONLY and can never become consensus standing (the γ→1/N firewall) — a receipt is mintable with zero object bytes by design, and conservation, not possession, is what makes forging it unprofitable. Off by default")
-	deliveryIdle := fs.Duration("delivery-idle-window", deliveryIdleDefault, "R2.9 paid delivery sessions (G-R212-8 certification 2026-09-06): close a session idle for this long since its LAST settlement, measured on this node's injected clock (wall time in production; a forward clock STEP reaps every live session at once — R-SESSION-WALLCLOCK-STEP; a chain stall does NOT, the settle path reads no chain), and book its unsettled face remainder ONCE as a DEPOSIT returned to the fetcher when the anchor leaves the guard window (D-R2.9-NODE-HALF-CALLS 1′; nothing is burned). The window is a LIVENESS choice and the default is DERIVED, not chosen: the stamp is coarsened to window/4, so a window guarantees only 3/4 of itself since a real settlement, and 24m is the value whose guarantee (18m) dominates both the 430 s worst stall the liveness model admits (D-H43-WORKLESS-DESIGNEE (21)) and the 1040 s stall the field produced. The 430 s figure is a CONSERVATIVE ENVELOPE adopted because owner call 4 instructs a window above the bound, not a mechanism the reaper is racing — the chain-stall path it was originally sized on is refuted (R-SESSION-WALLCLOCK-STEP). Below the derived floor the daemon refuses. A session is one durable fetcher's prepayment at this server (one demand-domain anchor = 50,000 credits = 12.21 GiB of delivery), spans objects, settles incrementally on cumulative-count receipts, and is topped up with fresh anchors")
-	acceptRelayPayments := fs.Bool("accept-relay-payments", false, "PoD relay lane (docs/design/pod.md §7.3): ACCEPT sender-funded PayWord payment chains for forwarding content-blind bytes as a relay/gateway, ANCHORED (R2.14, 2026-09-04) to prepayment credentials this node blind-signs under its own per-epoch demand key and sells for the retrieval fee — a fetcher's durable identity buys k ≤ k_max anchors (k_max = 1 since the 2026-09-06 re-price; one anchor funds a whole 24.4 GiB session) here, a fresh ephemeral spends them at session open, and settlement pays min(paid increments, Σ face) into this node's operator BALANCE, burning the unconsumed remainder (settled ≤ Σ face, on this ledger). BUILT, NOT LIVE: an anchor verifies only under a chain-committed key (an era-4/v5 IssuerKeyReg — this node must be a bonded validator with the demand-key schedule, which this flag now turns on), so until this node COMMITS that key every session open is REFUSED with a named reason and nothing is paid. Era-4 activation is not the blocker it once was: -era4-activation-height defaults to 1, so v5 is live from height 1 and the missing piece is the commitment, not the era. What holds throughout: a fetcher commits a chain root once under a FRESH EPHEMERAL identity (M0 guard (i): the credential is blind, so the burn cannot be linked to the session) and reveals one preimage per forwarded increment; this node verifies each with one SHA-256 under a per-session walk budget; a fresh identity and chain are required PER SESSION (M0 guard (ii)); nothing here ever touches standing (the γ→1/N firewall). UNFIT FOR THE EDGE TIER, and off by default at EVERY tier (D-RC-POSTURE-2026-09-09 (1)): settlement is all-or-nothing at session CLOSE, and sweepRelaySeen drops a session at admitEpoch+2 UNSETTLED, so an over-running session forfeits 100 % of the credit it earned while the fetcher's face was already spent at open (driven: 8 increments forwarded, paid 0). A session lives 9-16 blocks = 413-734 s at the measured T_b, so clearing one 24.41 GiB face inside it needs 286-508 Mbit/s SUSTAINED on a single session; at a 100 Mbit/s uplink a session moves 4.81 of 24.41 GiB and is paid NOTHING. Enable this only if your uplink clears that ratio -- a pony or horse that turns it on is doing the work and collecting zero. The all-or-nothing settlement is tracked as design debt (a periodic relay sweep, or incremental settlement); until it lands this lane is horse-and-above by construction. Built, sim-proven, never exercised on a real network")
-	archive := fs.Bool("archive", false, "D-TIERING ARCHIVAL tier: retain every block's heavy space-time bond proof to genesis instead of shedding it below the rolling retention horizon, so this node can serve the deep history a pruning swarm has already dropped (what a node stranded past the prune horizon needs — #559's true-loss residual, ErrNeedCheckpoint). RETENTION ONLY, never validity: an archival node validates by exactly the same rules as a pruning one, so the tiers cannot fork against each other. Costs O(all history) resident payload — build-immutable #8 forbids it on the 1 vCPU / 2 GB box, which is the whole reason the tier model exists. Off by default")
+	serveContent := fs.Bool("serve-content", true, "hold and serve content shards (the edge tier's core contribution, bounded by -capacity). ON by default — this is what an ordinary node does. The explicit form exists so a tier profile composes positively (`-serve-content -archive=false -validator=false` is the transient edge box) rather than as a double negative. `-serve-content=false` is the same refusal as -freeload; passing both with opposite senses is refused rather than silently resolved")
+	acceptReceipts := fs.Bool("accept-delivery-receipts", false, "PoD neutral lane: BANK delivery receipts from fetchers this node served, and settle the conserved delivery credit — the fetcher's retrieval fee less the durability skim, which routes to the delivered object's repair escrow. Requires the token-issuer role (implied by -validator), because a receipt is verified against the issuer key that signed its retrieval token; the bilateral issuer==server shape is what the research's per-node settlement answer covers. Delivery credit is BALANCE ONLY and can never become consensus standing (the γ→1/N firewall) — a receipt is mintable with zero object bytes by design, and conservation, not possession, is what makes forging it unprofitable. Off by default")
+	deliveryIdle := fs.Duration("delivery-idle-window", deliveryIdleDefault, "Paid delivery sessions: close a session idle for this long since its LAST settlement, measured on this node's injected clock (wall time in production; a forward clock STEP reaps every live session at once — ; a chain stall does NOT, the settle path reads no chain), and book its unsettled face remainder ONCE as a DEPOSIT returned to the fetcher when the anchor leaves the guard window (1′; nothing is burned). The window is a LIVENESS choice and the default is DERIVED, not chosen: the stamp is coarsened to window/4, so a window guarantees only 3/4 of itself since a real settlement, and 24m is the value whose guarantee (18m) dominates both the 430 s worst stall the liveness model admits ((21)) and the 1040 s stall the field produced. The 430 s figure is a CONSERVATIVE ENVELOPE adopted because a project decision instructs a window above the bound, not a mechanism the reaper is racing — the chain-stall path it was originally sized on is refuted. Below the derived floor the daemon refuses. A session is one durable fetcher's prepayment at this server (one demand-domain anchor = 50,000 credits = 12.21 GiB of delivery), spans objects, settles incrementally on cumulative-count receipts, and is topped up with fresh anchors")
+	acceptRelayPayments := fs.Bool("accept-relay-payments", false, "PoD relay lane: ACCEPT sender-funded PayWord payment chains for forwarding content-blind bytes as a relay/gateway, ANCHORED (2026-09-04) to prepayment credentials this node blind-signs under its own per-epoch demand key and sells for the retrieval fee — a fetcher's durable identity buys k ≤ k_max anchors (k_max = 1 since the 2026-09-06 re-price; one anchor funds a whole 24.4 GiB session) here, a fresh ephemeral spends them at session open, and settlement pays min(paid increments, Σ face) into this node's operator BALANCE, burning the unconsumed remainder (settled ≤ Σ face, on this ledger). BUILT, NOT LIVE: an anchor verifies only under a chain-committed key (an era-4/v5 IssuerKeyReg — this node must be a bonded validator with the demand-key schedule, which this flag now turns on), so until this node COMMITS that key every session open is REFUSED with a named reason and nothing is paid. Era-4 activation is not the blocker it once was: -era4-activation-height defaults to 1, so v5 is live from height 1 and the missing piece is the commitment, not the era. What holds throughout: a fetcher commits a chain root once under a FRESH EPHEMERAL identity (M0 guard (i): the credential is blind, so the burn cannot be linked to the session) and reveals one preimage per forwarded increment; this node verifies each with one SHA-256 under a per-session walk budget; a fresh identity and chain are required PER SESSION (M0 guard (ii)); nothing here ever touches standing (the γ→1/N firewall). UNFIT FOR THE EDGE TIER, and off by default at EVERY tier ((1)): settlement is all-or-nothing at session CLOSE, and sweepRelaySeen drops a session at admitEpoch+2 UNSETTLED, so an over-running session forfeits 100 % of the credit it earned while the fetcher's face was already spent at open (driven: 8 increments forwarded, paid 0). A session lives 9-16 blocks = 413-734 s at the measured T_b, so clearing one 24.41 GiB face inside it needs 286-508 Mbit/s SUSTAINED on a single session; at a 100 Mbit/s uplink a session moves 4.81 of 24.41 GiB and is paid NOTHING. Enable this only if your uplink clears that ratio -- a pony or horse that turns it on is doing the work and collecting zero. The all-or-nothing settlement is tracked as design debt (a periodic relay sweep, or incremental settlement); until it lands this lane is horse-and-above by construction. Built, sim-proven, never exercised on a real network")
+	archive := fs.Bool("archive", false, "ARCHIVAL tier: retain every block's heavy space-time bond proof to genesis instead of shedding it below the rolling retention horizon, so this node can serve the deep history a pruning swarm has already dropped (what a node stranded past the prune horizon needs — 's true-loss residual, ErrNeedCheckpoint). RETENTION ONLY, never validity: an archival node validates by exactly the same rules as a pruning one, so the tiers cannot fork against each other. Costs O(all history) resident payload — build-immutable #8 forbids it on the 1 vCPU / 2 GB box, which is the whole reason the tier model exists. Off by default")
 	registryOnly := fs.Bool("registry-only", false, "the LEANEST public-registry role (#47): serve a file-backed registry over HTTPS and construct NO storage node at all — no DHT, chunk store, chain, or caretaker. Unlike -freeload (a full routing node that refuses to host content), this builds nothing but the registry server, so a public-infrastructure operator runs a rendezvous registry at minimal cost. Needs -serve-registry <addr>")
 	// Empty default is deliberate: no built-in seed domain (neutral infra,
 	// community-run) — see the discovery package doc (#27 Part A).
@@ -97,20 +95,20 @@ func cmdDaemon(args []string) error {
 	revokeRoot := fs.String("revoke", "", "as a validator, propose an on-chain takedown of this root hash once standing is earned and the root is committed (M0 F5: quorum-gated, existence-checked; honored only by nodes that -honor-chain-revocations)")
 	validator := fs.Bool("validator", false, "keep a chain replica and take part in consensus")
 	uiAddr := fs.String("ui", "", "serve the web UI at this address (e.g. 127.0.0.1:8081)")
-	grantCapacity := fs.Int64("grant-capacity", 0, "R2.12 faucet rate limit — bucket capacity in starter grants. 0 (default) = the faucet is UNLIMITED, exactly as before R2.12. Set together with -grant-per-hour: a fresh identity's 500,000 starter grant is then applied at its first SPEND (publish, token purchase, escrow funding) only if the bucket admits; otherwise it stays grant-pending and is retried at its next spend (never permanently denied). Metered per node, on the node's own monotonic clock — never on the chain epoch. A soft, disclosed deterrent on the RATE of fresh grants (dN/dt), not a bound on the total: a patient farm recovers every deferred grant. Start-up refuses a capacity whose worst-case guard occupancy exceeds a quarter of the paid-serial cap")
-	grantPerHour := fs.Int64("grant-per-hour", 0, "R2.12 faucet rate limit — sustained refill, in starter grants per hour, accrued continuously. 0 (default) = unlimited. The rate is a SECURITY PARAMETER bounded by build-immutable #4 on both sides (Researcher certification R2.12-faucet-rate-tier-and-grant-ratio-composition-2026-09-05 §1.5): no value is recommended here, and a shipped default requires a research-certified admissible interval and an owner ratification; until then an operator who sets it owns the posture, and the start-up line prints what the value implies")
-	grantDenyFloor := fs.Int64("grant-deny-floor", grantDenyFloorOneFee, "R2.12 — what an identity receives when the faucet bucket is EMPTY: -1 (default) = an ADVANCE of ONE publish fee (owner-ratified 2026-09-06: the honest onboarding floor stays structurally non-zero while a farm's per-identity yield is cut tenfold); 0 = nothing, it stays grant-pending and retries at its next spend (deny); N > 0 = an advance of N credits. An advance is never a settlement — the identity stays grant-pending and is topped up to the full grant when a token later admits it; a settled floor would cap an honest identity below the affordability cliff forever. Only meaningful with -grant-capacity/-grant-per-hour set")
-	privacyFlag := fs.String("privacy", privacyModeName(privacyDefaultWithheld), "on|off (D-UI-PRIVACY-FLAG). on: node-wide serve counters (stats, durability.balance, /api/economy/self revenue) and library link keys are withheld from readers that do not present the API token; the operator's own tokened reads are unchanged. off: publish them to any reader the guard admits — the node is then labelled as publishing PRE-RELEASE information on every response and on the dashboard. Any other value refuses to start")
+	grantCapacity := fs.Int64("grant-capacity", 0, "Faucet rate limit — bucket capacity in starter grants. 0 (default) = the faucet is UNLIMITED, exactly as before the faucet. Set together with -grant-per-hour: a fresh identity's 500,000 starter grant is then applied at its first SPEND (publish, token purchase, escrow funding) only if the bucket admits; otherwise it stays grant-pending and is retried at its next spend (never permanently denied). Metered per node, on the node's own monotonic clock — never on the chain epoch. A soft, disclosed deterrent on the RATE of fresh grants (dN/dt), not a bound on the total: a patient farm recovers every deferred grant. Start-up refuses a capacity whose worst-case guard occupancy exceeds a quarter of the paid-serial cap")
+	grantPerHour := fs.Int64("grant-per-hour", 0, "Faucet rate limit — sustained refill, in starter grants per hour, accrued continuously. 0 (default) = unlimited. The rate is a SECURITY PARAMETER bounded by build-immutable #4 on both sides: no value is recommended here, and a shipped default requires a research-verified admissible interval and an owner decision; until then an operator who sets it owns the posture, and the start-up line prints what the value implies")
+	grantDenyFloor := fs.Int64("grant-deny-floor", grantDenyFloorOneFee, "What an identity receives when the faucet bucket is EMPTY: -1 (default) = an ADVANCE of ONE publish fee (settled 2026-09-06: the honest onboarding floor stays structurally non-zero while a farm's per-identity yield is cut tenfold); 0 = nothing, it stays grant-pending and retries at its next spend (deny); N > 0 = an advance of N credits. An advance is never a settlement — the identity stays grant-pending and is topped up to the full grant when a token later admits it; a settled floor would cap an honest identity below the affordability cliff forever. Only meaningful with -grant-capacity/-grant-per-hour set")
+	privacyFlag := fs.String("privacy", privacyModeName(privacyDefaultWithheld), "on|off. on: node-wide serve counters (stats, durability.balance, /api/economy/self revenue) and library link keys are withheld from readers that do not present the API token; the operator's own tokened reads are unchanged. off: publish them to any reader the guard admits — the node is then labelled as publishing PRE-RELEASE information on every response and on the dashboard. Any other value refuses to start")
 	debugAddr := fs.String("debug-addr", "", "serve Go pprof (heap/goroutine/profile) at this address (e.g. 127.0.0.1:6060) — diagnostic only, off by default. Used to attribute the MATURING consensus-node memory footprint (`go tool pprof http://addr/debug/pprof/heap`). Also dumps a heap profile to <store>/heap-<pid>.pprof on SIGUSR1 for cloud nodes without a reachable port.")
 	attesters := fs.String("attesters", "", "comma-separated validator IDs to gather attestations from")
 	anchorList := fs.String("anchors", "", "launch-window training wheels (AT LEAST TWO on an objective launch — one anchor commits alone with zero attestations and those blocks read as final, so the daemon refuses it): comma-separated anchor validator IDs whose sign-off an immature-network commit also requires (empty = no training wheels)")
-	anchorQuorum := fs.Int("anchor-quorum", 0, "LEGACY (non-objective) only: anchor attestations an immature-network commit needs (0 = off). In OBJECTIVE mode this is IGNORED — the launch gate is a DERIVED strict anchor majority ⌊A/2⌋+1 (#402), so config cannot disable quorum intersection")
+	anchorQuorum := fs.Int("anchor-quorum", 0, "LEGACY (non-objective) only: anchor attestations an immature-network commit needs (0 = off). In OBJECTIVE mode this is IGNORED — the launch gate is a DERIVED strict anchor majority ⌊A/2⌋+1, so config cannot disable quorum intersection")
 	matureValidators := fs.Int("mature-validators", 0, "required NAKAMOTO COEFFICIENT (M0 H4): the anchor requirement sheds only once this many bond-DISTINCT operators are needed to reach ⅓ of the bonded weight — cost-to-corrupt, not a head-count, so one operator with many keys can't trip the wheels off (0 = never require anchors)")
-	lambdaHFloor := fs.Float64("lambda-h-floor", 0, "honest-arrival floor λ_H (CT-1 conditional theorem, research cert C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27): the minimum operator/domain-distinct bonded-arrival RATE (distinct arrivals per block-height, measured over -lambda-h-window) the launch was certified against. Below this floor — while the network is still YOUNG (pre-maturity latch) — the deployment has LEFT the theorem's hypothesis H (T_mature→∞, maturity-precedes-capture no longer proven) and a LOUD λ_H FLOOR-EXIT marker is surfaced to the log. OBSERVABILITY ONLY: it changes no validity predicate, no consensus rule, no security parameter — it reads the committed C2 metric and narrates. 0 = disabled (default; existing deployments and sims unaffected). Set it to the floor you certified your adversary budget W_A / shed threshold M_req against (P2: M_req > W_A/(2·w_min))")
+	lambdaHFloor := fs.Float64("lambda-h-floor", 0, "honest-arrival floor λ_H (the maturity-before-capture conditional theorem): the minimum operator/domain-distinct bonded-arrival RATE (distinct arrivals per block-height, measured over -lambda-h-window) the launch was verified against. Below this floor — while the network is still YOUNG (pre-maturity latch) — the deployment has LEFT the theorem's hypothesis H (T_mature→∞, maturity-precedes-capture no longer proven) and a LOUD λ_H FLOOR-EXIT marker is surfaced to the log. OBSERVABILITY ONLY: it changes no validity predicate, no consensus rule, no security parameter — it reads the committed C2 metric and narrates. 0 = disabled (default; existing deployments and sims unaffected). Set it to the floor you verified your adversary budget W_A / shed threshold M_req against (P2: M_req > W_A/(2·w_min))")
 	lambdaHWindow := fs.Uint64("lambda-h-window", 20, "trailing window (block-heights) the honest-arrival rate λ_H is averaged over for the -lambda-h-floor alarm. λ_H = Δ(min-Nakamoto-coefficient)/Δheight over this many committed heights — the realized net operator/domain-distinct arrival rate. Widen it to smooth per-block churn (TTL lapses can transiently drop the coefficient), narrow it to react faster. Observability only")
-	operatorMargin := fs.Int("operator-margin", 1, "operator margin M (M0 C2 / D-C2): the maturity shed discounts the bond-distinct Nakamoto coefficient by M (⌊k̂/M⌋) — since on-chain data carries no operator label, one operator may split a stake across ~M keys, so a splitter must clear mature-validators×M distinct bonds to shed the wheels. LEFT UNSET it defaults to a conservative M>1 for an untrusted objective swarm (safe-by-default, like -min-bond-floor); an explicit 1 = no split margin (single-operator/trusted). M stays a heuristic — unverifiable on-chain (#182)")
-	quorum := fs.Int("quorum", 3, "proposer-side GATHER TARGET (DERIVED when unset on an untrusted objective launch: the Byzantine bar over the launch set, e.g. 2 at four anchors — the shipped 3 asked every peer to attest and tolerated f=0): the attestations (excluding the proposer) this node collects before committing a block it proposes. In objective mode with -byzantine-quorum (the untrusted default) it is NOT a validity floor — ValidateCommit demands the DERIVED Byzantine bar (bftThreshold over the validator set; the >⅔ frozen-weight rule in a mature epoch) and the gather rises to at least that (#380, D-CONSENSUS-ARMING (20)); with -byzantine-quorum=false or in legacy mode it is also the commit floor. Lower only for a trusted/one-box swarm")
-	byzantineQuorum := fs.Bool("byzantine-quorum", false, "size the commit quorum at the Byzantine threshold (M0 H4): the support set becomes a supermajority n−f of the qualified bonded set, so two quorums always share an honest validator (safety as the set grows). LEFT UNSET it defaults ON for an untrusted objective validator; an explicit =false opts out (trusted swarm). With it on, the local -quorum is no longer a validity term (#380): the bar is the derived one, which may sit BELOW -quorum (3 → 2 at four anchors; 0 in a mature epoch, where weight is the bar), and -quorum stays the proposer-side gather target")
+	operatorMargin := fs.Int("operator-margin", 1, "operator margin M (M0 C2 / D-C2): the maturity shed discounts the bond-distinct Nakamoto coefficient by M (⌊k̂/M⌋) — since on-chain data carries no operator label, one operator may split a stake across ~M keys, so a splitter must clear mature-validators×M distinct bonds to shed the wheels. LEFT UNSET it defaults to a conservative M>1 for an untrusted objective swarm (safe-by-default, like -min-bond-floor); an explicit 1 = no split margin (single-operator/trusted). M stays a heuristic — unverifiable on-chain")
+	quorum := fs.Int("quorum", 3, "proposer-side GATHER TARGET (DERIVED when unset on an untrusted objective launch: the Byzantine bar over the launch set, e.g. 2 at four anchors — the shipped 3 asked every peer to attest and tolerated f=0): the attestations (excluding the proposer) this node collects before committing a block it proposes. In objective mode with -byzantine-quorum (the untrusted default) it is NOT a validity floor — ValidateCommit demands the DERIVED Byzantine bar (bftThreshold over the validator set; the >⅔ frozen-weight rule in a mature epoch) and the gather rises to at least that ((20)); with -byzantine-quorum=false or in legacy mode it is also the commit floor. Lower only for a trusted/one-box swarm")
+	byzantineQuorum := fs.Bool("byzantine-quorum", false, "size the commit quorum at the Byzantine threshold (M0 H4): the support set becomes a supermajority n−f of the qualified bonded set, so two quorums always share an honest validator (safety as the set grows). LEFT UNSET it defaults ON for an untrusted objective validator; an explicit =false opts out (trusted swarm). With it on, the local -quorum is no longer a validity term: the bar is the derived one, which may sit BELOW -quorum (3 → 2 at four anchors; 0 in a mature epoch, where weight is the bar), and -quorum stays the proposer-side gather target")
 	objective := fs.Bool("objective", true, "DEFAULT-ON for an untrusted validator: consensus by OBJECTIVE on-chain bond (F6), so eligibility and quorum are a function of verifiable on-chain bond registrations — identical on every replica — and honest replicas can't diverge under a partition (the M0 consensus denial). Bootstrap a multi-validator quorum with -anchors (the launch set); validators register their real bonds live as they propose. Auto-off for a trusted swarm (-min-rep 0). Pass -objective=false to run the legacy subjective path, which does NOT hold the M0 denial under an adversarial partition")
 	minBond := fs.String("min-bond", "1M", "objective mode: the minimum bonded size a validator must prove on-chain to qualify (its -bond must clear this)")
 	minRep := fs.Int64("min-rep", 100, "reputation a proposer/attester must have EARNED (bonds+audits) to write — safe default; 0 = trusted deployment (self-commit, unsafe on an open network)")
@@ -118,46 +116,46 @@ func cmdDaemon(args []string) error {
 	minBondFloor := fs.String("min-bond-floor", "0", "anti-release floor (M0 F1/F2): a bond smaller than this earns NO standing, because it could be released and re-sealed just-in-time. Size it against the anti-release COMPUTE window (re-seal time × plot throughput) — NOT the transport -request-timeout: at ~270 MB/s and a ~2s compute window that is ~540 MiB, so a real open deployment sets e.g. 1G. Build-immutable #3/#4: raising -request-timeout for durability must NOT move this floor. 0 = off (safe only for a trusted/demo swarm)")
 	bondAudit := fs.Duration("bond-audit", 60*time.Second, "how often a validator challenges its peers' bonds and refreshes its own standing")
 	loopBudget := fs.Bool("loop-budget", false, "emit the per-window event-loop goroutine-budget decomposition at INFO instead of DEBUG — for a load/diagnostic run that needs the per-handler CPU breakdown without the full -log debug firehose (which, logged synchronously on the loop, would itself skew the measurement). Slow-task, queue-wait, and hang lines are always-on regardless.")
-	bootstrapRetry := fs.Duration("bootstrap-retry", 15*time.Second, "how often an ISOLATED node (empty routing table) re-runs the Kademlia join against its -bootstrap seeds. silt's join is otherwise one-shot, so a node that started before its bootstrap target was listening would stay stranded forever (#281). 0 disables (single-shot join only)")
+	bootstrapRetry := fs.Duration("bootstrap-retry", 15*time.Second, "how often an ISOLATED node (empty routing table) re-runs the Kademlia join against its -bootstrap seeds. silt's join is otherwise one-shot, so a node that started before its bootstrap target was listening would stay stranded forever. 0 disables (single-shot join only)")
 	requestTimeout := fs.Duration("request-timeout", 5*time.Second, "per-ATTEMPT deadline for a DHT/consensus RPC. Exceeding it fails THAT attempt; -request-retries then re-sends with backoff before the peer is given up. Keep it comfortably above the real one-way+reply time on your worst expected path")
 	requestRetries := fs.Int("request-retries", 3, "how many times a timed-out RPC is re-sent (exponential backoff from -request-backoff) before the peer is evicted from the routing table and negative-cached. On a jittery/lossy internet path a single slow or dropped packet must NOT tear a good peer out of the mesh — that keeps the routing table sparse and consensus from ever committing (durability under adverse networks). 0 = evict on the first miss (fast/trusted LAN only)")
 	requestBackoff := fs.Duration("request-backoff", 250*time.Millisecond, "base delay between RPC retries; doubles each attempt (250ms → 500ms → 1s …). A decaying retry rides out an unknown-duration impairment instead of guessing one big timeout")
-	holderDialTimeout := fs.Duration("holder-dial-timeout", 2*time.Second, "tighter per-attempt deadline for speculative holder-fetch dials (chunk fetch / has-chunk), which are NOT retried: stored content lives on arbitrary holders that are often gone under churn, so a fetch from a dead holder must fail fast (the fetch loop retries at a higher level and skips known-dead holders). Kept below -request-timeout so a generous consensus timeout doesn't deepen the dead-holder dial-storm (#277)")
-	auditInterval := fs.Duration("audit", 0, "run the verify-without-fetch PoR AUDIT sweep this often over every -care'd root: challenge each shard's holders and grade their proofs against the key derived from the care link — NO ground-truth fetch — settling rent for the honest and SLASHING a liar that kept its proof tags but dropped the bytes (#232). Requires -care (supplies the root + layout key) and a -registry. 0 = off (repair-only caretaker)")
-	maxBondRegBytes := fs.Int64("max-bondreg-bytes-per-block", defaultMaxBondRegBytesPerBlock, "byte budget for bond registrations embedded in ONE block (#286 Layer 2b). A fresh multi-validator OBJECTIVE genesis otherwise piles every founding validator's ~1.5 MB space-time proof into one ~8 MB block that can't gather to quorum over a real WAN (the cert stalled at regs=5). The founding set are anchors (training wheels), so genesis commits SMALL on anchor attestations and the registrations DRAIN over the next blocks — each validator still gains real bonded weight and reaches maturity. A BYTE budget (not a count) fits one full ~1.5 MB genesis proof OR many small steady-state renewals, so an attest-only validator is never starved under a tight TTL. Default ~2 MiB stays within the size that gathers cross-region; a non-positive value is REFUSED at start-up (see below) (legacy). The structural close is a succinct proof (#299) BOUND TO CONSENSUS (2026-09-09, owner call 'close the route'): this budget is an input to the derivation of chain.SlashesBytesCap, a validity rule every validator enforces, so the daemon REFUSES to start when 2*(bondreg budget + entry budget + overhead) exceeds that cap -- past the boundary a REAL double-signer's evidence no longer fits and the equivocator keeps its seat. 0 (unbounded) is therefore refused too: an unbounded body defeats the invariant at any cap.")
-	maxEntryBytes := fs.Int64("max-entry-bytes-per-block", defaultMaxEntryBytesPerBlock, "byte budget for mempool publish ENTRIES folded into ONE block (#441) — SEPARATE from -max-bondreg-bytes-per-block by design: a single ~1.5 MB bond reg fills the whole reg cap, so a shared budget would leave the tens-of-bytes entry no room (the publish starvation one layer down), and the dual — an entry flood must never crowd out consensus-critical renewals. Each stream is guaranteed its own slice; their SUM must stay WAN-gatherable (#286 L2b). At least one entry always folds. a non-positive value is REFUSED at start-up (see below) BOUND TO CONSENSUS (2026-09-09, owner call 'close the route'): this budget is an input to the derivation of chain.SlashesBytesCap, a validity rule every validator enforces, so the daemon REFUSES to start when 2*(bondreg budget + entry budget + overhead) exceeds that cap -- past the boundary a REAL double-signer's evidence no longer fits and the equivocator keeps its seat. 0 (unbounded) is therefore refused too: an unbounded body defeats the invariant at any cap.")
+	holderDialTimeout := fs.Duration("holder-dial-timeout", 2*time.Second, "tighter per-attempt deadline for speculative holder-fetch dials (chunk fetch / has-chunk), which are NOT retried: stored content lives on arbitrary holders that are often gone under churn, so a fetch from a dead holder must fail fast (the fetch loop retries at a higher level and skips known-dead holders). Kept below -request-timeout so a generous consensus timeout doesn't deepen the dead-holder dial-storm")
+	auditInterval := fs.Duration("audit", 0, "run the verify-without-fetch PoR AUDIT sweep this often over every -care'd root: challenge each shard's holders and grade their proofs against the key derived from the care link — NO ground-truth fetch — settling rent for the honest and SLASHING a liar that kept its proof tags but dropped the bytes. Requires -care (supplies the root + layout key) and a -registry. 0 = off (repair-only caretaker)")
+	maxBondRegBytes := fs.Int64("max-bondreg-bytes-per-block", defaultMaxBondRegBytesPerBlock, "byte budget for bond registrations embedded in ONE block. A fresh multi-validator OBJECTIVE genesis otherwise piles every founding validator's ~1.5 MB space-time proof into one ~8 MB block that can't gather to quorum over a real WAN (the cert stalled at regs=5). The founding set are anchors (training wheels), so genesis commits SMALL on anchor attestations and the registrations DRAIN over the next blocks — each validator still gains real bonded weight and reaches maturity. A BYTE budget (not a count) fits one full ~1.5 MB genesis proof OR many small steady-state renewals, so an attest-only validator is never starved under a tight TTL. Default ~2 MiB stays within the size that gathers cross-region; a non-positive value is REFUSED at start-up (see below) (legacy). The structural close is a succinct proof  BOUND TO CONSENSUS: this budget is an input to the derivation of chain.SlashesBytesCap, a validity rule every validator enforces, so the daemon REFUSES to start when 2*(bondreg budget + entry budget + overhead) exceeds that cap -- past the boundary a REAL double-signer's evidence no longer fits and the equivocator keeps its seat. 0 (unbounded) is therefore refused too: an unbounded body defeats the invariant at any cap.")
+	maxEntryBytes := fs.Int64("max-entry-bytes-per-block", defaultMaxEntryBytesPerBlock, "byte budget for mempool publish ENTRIES folded into ONE block — SEPARATE from -max-bondreg-bytes-per-block by design: a single ~1.5 MB bond reg fills the whole reg cap, so a shared budget would leave the tens-of-bytes entry no room (the publish starvation one layer down), and the dual — an entry flood must never crowd out consensus-critical renewals. Each stream is guaranteed its own slice; their SUM must stay WAN-gatherable (L2b). At least one entry always folds. a non-positive value is REFUSED at start-up (see below) BOUND TO CONSENSUS: this budget is an input to the derivation of chain.SlashesBytesCap, a validity rule every validator enforces, so the daemon REFUSES to start when 2*(bondreg budget + entry budget + overhead) exceeds that cap -- past the boundary a REAL double-signer's evidence no longer fits and the equivocator keeps its seat. 0 (unbounded) is therefore refused too: an unbounded body defeats the invariant at any cap.")
 	bondLabelK := fs.Int("bond-label-k", 64, "labeling-consistency opens per bond challenge (M0 Sybil G2): each recomputes one block's label from its DRSample parents, so a prover holding arbitrary/reused/wrong-size bytes (not a real plot for its identity+size) fails. Soundness error ≤ (1-ε)^k against an ε-short prover. A per-network knob — prover and verifier must MATCH (as must the compiled bond-VDF delay, which has no flag), so set it uniformly across the swarm. Lower it only to shrink on-chain proof size, at a soundness cost. 0 = default (64)")
-	bondAnswerLatency := fs.Duration("bond-answer-latency", 1500*time.Millisecond, "SOFT partial-storage timing signal on a live bond challenge (M0 C1 / owned-residual A5). A validator that deleted part of its plot must RECOMPUTE the missing blocks on demand, and past the DRSample knee that is a sequential cost that shows up as reply latency. This is NOT a standing gate (build-immutable #3: reply-latency is transport+compute, and gating security on the sum reads network jitter/loss as a cheat — #289): a valid answer earns standing however slow it arrives. Instead the node tracks the windowed-MINIMUM of each peer's reply latencies (the low quantile, which filters one-sided network noise) and raises a DISCLOSED suspicion only when that floor is SUSTAINED above this deadline — a partial-storage prover is consistently slow, an honest bad-path node only randomly slow. Set generously above the honest answer time; 0 = off. The hard structural close is tight-PoS (H-track).")
+	bondAnswerLatency := fs.Duration("bond-answer-latency", 1500*time.Millisecond, "SOFT partial-storage timing signal on a live bond challenge. A validator that deleted part of its plot must RECOMPUTE the missing blocks on demand, and past the DRSample knee that is a sequential cost that shows up as reply latency. This is NOT a standing gate (build-immutable #3: reply-latency is transport+compute, and gating security on the sum reads network jitter/loss as a cheat —): a valid answer earns standing however slow it arrives. Instead the node tracks the windowed-MINIMUM of each peer's reply latencies (the low quantile, which filters one-sided network noise) and raises a DISCLOSED suspicion only when that floor is SUSTAINED above this deadline — a partial-storage prover is consistently slow, an honest bad-path node only randomly slow. Set generously above the honest answer time; 0 = off. The hard structural close is tight-PoS (H-track).")
 	signedProviders := fs.Bool("signed-providers", true, "self-certifying DHT provider records (M0 H5): a node signs its 'I hold this' announcements with its identity key and re-verifies records served back on lookup, so a node holding the k-closest slots to a key cannot fabricate provider records for identities that never announced. Default ON; =false drops to the legacy unsigned path (trusted/demo swarm only)")
 	signedProviderTTL := fs.Duration("signed-provider-ttl", 30*time.Minute, "freshness window stamped on signed provider records (M0 H5): a re-served record older than this is treated as expired, so an eclipsing node can't replay an ancient claim forever")
-	dhtDomainCap := fs.Int("dht-domain-cap", 2, "failure-domain diversity cap for DHT eclipse resistance (M0 H5-B): at most this many peers sharing one -domain are kept per routing bucket, and provider records are announced to / resolved from a domain-spread set — so an adversary owning the NodeIDs closest to a key but sitting in one domain (a ~$4 /24 key-surround) can't suppress discovery. Only bites when peers set distinct -domain labels; an UNDECLARED peer is exempt (a known hole: a free label cannot price an eclipse; R4.3b keys the cap on the OBSERVED address instead — in SHADOW mode by default, see -dht-address-cap). 0 = off (no diversity constraint)")
-	dhtAddressCap := fs.String("dht-address-cap", defaultAddressCapMode, "R4.3b DHT eclipse cap keyed on the OBSERVED contacted-at address (the geth / Bitcoin Core form; ROADMAP R4.3b): per routing bucket at most -dht-domain-cap peers whose completed TLS conversation came from ONE IPv4 /24 (-dht-address-width) or IPv6 /32; a peer reached through a relay is keyed on the RELAY's /24 as class RELAYED (at most -dht-relay-cap per relay per bucket); ALL non-direct entries (relayed, reply-learned-but-never-contacted, unclassified) are bounded at K minus -dht-address-reserve; a reply-learned id is charged to the replier's /24 until it answers; loopback / link-local exempt, RFC1918 and CGNAT classified; -bootstrap seeds and -persistent-peers exempt; at most 10 entries per /24 across the table. Groups are salted per process — never persisted, gossiped, committed or logged. off = no rule; shadow (default) = evaluate the rule and COUNT every would-be refusal on /api/status (addressCap.wouldRefuse over the R∈{4,6,8}×cap_relay∈{2,4} grid, relayFanIn, groupCensus) while refusing NOTHING; on = refuse. Enabling on is an owner call after a shadow run. This prices the endhost adversary in /24s; an AS-level adversary holding many prefixes (Erebus) is NOT priced by it")
-	// R2.9a: -bbootstrap exists ONLY in a binary built with `-tags bbootstrap`
-	// (D-BB-BUILD-TAG, 2026-09-05). In a default build registerBBootstrapFlag declares
-	// no flag at all and this reader is permanently false, so the daemon rejects
+	dhtDomainCap := fs.Int("dht-domain-cap", 2, "failure-domain diversity cap for DHT eclipse resistance: at most this many peers sharing one -domain are kept per routing bucket, and provider records are announced to / resolved from a domain-spread set — so an adversary owning the NodeIDs closest to a key but sitting in one domain (a ~$4 /24 key-surround) can't suppress discovery. Only bites when peers set distinct -domain labels; an UNDECLARED peer is exempt (a known hole: a free label cannot price an eclipse;  keys the cap on the OBSERVED address instead — in SHADOW mode by default, see -dht-address-cap). 0 = off (no diversity constraint)")
+	dhtAddressCap := fs.String("dht-address-cap", defaultAddressCapMode, "DHT eclipse cap keyed on the OBSERVED contacted-at address (the geth / Bitcoin Core form): per routing bucket at most -dht-domain-cap peers whose completed TLS conversation came from ONE IPv4 /24 (-dht-address-width) or IPv6 /32; a peer reached through a relay is keyed on the RELAY's /24 as class RELAYED (at most -dht-relay-cap per relay per bucket); ALL non-direct entries (relayed, reply-learned-but-never-contacted, unclassified) are bounded at K minus -dht-address-reserve; a reply-learned id is charged to the replier's /24 until it answers; loopback / link-local exempt, RFC1918 and CGNAT classified; -bootstrap seeds and -persistent-peers exempt; at most 10 entries per /24 across the table. Groups are salted per process — never persisted, gossiped, committed or logged. off = no rule; shadow (default) = evaluate the rule and COUNT every would-be refusal on /api/status (addressCap.wouldRefuse over the R∈{4,6,8}×cap_relay∈{2,4} grid, relayFanIn, groupCensus) while refusing NOTHING; on = refuse. Enabling on is a deliberate act after a shadow run. This prices the endhost adversary in /24s; an AS-level adversary holding many prefixes (Erebus) is NOT priced by it")
+	// -bbootstrap exists ONLY in a binary built with `-tags bbootstrap`.
+	// In a default build registerBBootstrapFlag declares no flag at all
+	// and this reader is permanently false, so the daemon rejects
 	// -bbootstrap the way it rejects any unknown flag. The full help text lives with
-	// the flag, in cmd/silt/bbootstrap.go.
+	// The flag, in cmd/silt/bbootstrap.go.
 	bbootstrapOn := registerBBootstrapFlag(fs)
 	dhtAddressWidth := fs.Int("dht-address-width", 24, "IPv4 prefix width (bits) the -dht-address-cap groups by; 24 = /24. IPv6 is fixed at /32 (an IPv6 /64 is free). A width narrower than the allocation unit hands the adversary free groups")
-	dhtRelayCap := fs.Int("dht-relay-cap", 2, "cap_relay for -dht-address-cap: at most this many RELAYED peers per relay /24 per routing bucket (shadow hypothesis 2; raising it above -dht-domain-cap lowers a self-run-relay adversary's cost by one /24 per step and is the owner's priced trade after the shadow run)")
-	dhtAddressReserve := fs.Int("dht-address-reserve", 4, "R, the DIRECT reserve per routing bucket for -dht-address-cap — a SECURITY parameter (Evolving tier): non-direct entries are bounded at K − R, so owning a bucket costs ⌈R / -dht-domain-cap⌉ paid /24s plus K − R free slots. Must be ≥ K/2 (refused otherwise: below it honest relays hand the adversary a bucket majority for free). Shadow hypothesis 4; the printed floor at startup is what the owner ratifies")
+	dhtRelayCap := fs.Int("dht-relay-cap", 2, "cap_relay for -dht-address-cap: at most this many RELAYED peers per relay /24 per routing bucket (shadow hypothesis 2; raising it above -dht-domain-cap lowers a self-run-relay adversary's cost by one /24 per step and is the project's priced trade after the shadow run)")
+	dhtAddressReserve := fs.Int("dht-address-reserve", 4, "R, the DIRECT reserve per routing bucket for -dht-address-cap — a SECURITY parameter (Evolving tier): non-direct entries are bounded at K − R, so owning a bucket costs ⌈R / -dht-domain-cap⌉ paid /24s plus K − R free slots. Must be ≥ K/2 (refused otherwise: below it honest relays hand the adversary a bucket majority for free). Shadow hypothesis 4; the printed floor at startup is the value in force")
 	domain := fs.String("domain", "", "this node's failure-domain label (AS / rack / geo — e.g. \"as64500\" or \"us-east-1b\"). Two uses: DHT eclipse-resistance (H5-B, with -dht-domain-cap) AND, for a validator, it is COMMITTED in the bond so the C2 concentration metric counts ADDRESS-DIVERSE participants (A axis / D-C2) — a stake split across many keys in ONE domain cannot fake decentralization; shedding the launch anchors requires distinct domains, not just distinct keys. A WEAK signal (declared, transport-cross-checked, not proven); it prices concentration higher, it does not close the honest-whale residual. Empty = unset (independent for the C2 metric; exempt from the DHT cap — see -dht-domain-cap).")
-	bondTTL := fs.Uint64("bond-ttl", 0, "objective re-challenge cadence (M0 retest G4 / RT-2): objective standing LAPSES this many committed blocks after a validator's latest on-chain bond registration unless it renews with a fresh space-time proof — so a validator that registers once then releases its plot cannot keep voting. LEFT UNSET it defaults ON for an untrusted objective validator (derived cadence); an explicit 0 disables it (standing never expires; safe only for a trusted/demo swarm)")
-	epochBlocks := fs.Uint64("epoch-blocks", 0, "mature-phase validator-set epoch (#357 research certification, Conditions A+B): after the young→mature handoff, the finality quorum, validator qualification, and the weight quorum are read from a SNAPSHOT of the committed bonded set frozen at the last epoch boundary (a finalized block), rotated every this-many blocks — never recomputed live from the churning bond ledger, which would let two conflicting commits finalize against two different sets. The handoff itself waits for the first boundary after the maturity latch, so the anchor→bond handoff is rooted at a finalized base. CONSENSUS-CRITICAL: set it identically across the swarm (like -min-bond). LEFT UNSET it defaults ON for an untrusted objective validator (derived cadence, well under the bond TTL); an explicit 0 disables epochs (live recompute; safe only for a trusted/demo swarm)")
-	era3Activation := fs.Uint64("era3-activation-height", 1, "GENESIS CONFIG: the height at or above which era-3 (v4, the committed state root) is the required block format. Committed into the genesis block (chain.ConsensusParams cbor key 13), so a node that sets it differently computes a DIFFERENT genesis hash and cannot join — divergence is impossible to join with rather than fatal at some later block. 1 (default) starts a NEW network at the highest era from its first block, which is the ratified launch posture: there is then no readiness tally and no latch, so the boundary is a genesis constant rather than a value the network votes itself into. 0 = no pre-latch override: era-3 activates only when era-3-aware bonded WEIGHT crosses the >2/3 super-quorum over a frozen epoch, which never fires without -epoch-blocks. TO JOIN AN EXISTING CHAIN, set what its genesis commits — the refusal at start-up names the field and the two values")
-	era4Activation := fs.Uint64("era4-activation-height", 1, "GENESIS CONFIG: the height at or above which era-4 (v5, witnessable transitions) is the required block format. Committed at chain.ConsensusParams cbor key 14, same joining rule as -era3-activation-height, and it MUST be >= it (a v5 block commits a superset of the v4 leaves, so era-4 cannot activate below the era-3 boundary; a misconfigured pair is refused at start-up). 1 (default) = the ratified launch posture: every block above the genesis is era-4, so the sub-era-4 interval where a consensus attestation carries NO chain id is EMPTY. That is not only convenience — the era-4 attestation form binds the chain id, and emptying the interval below the boundary is what leaves no height at which a signature harvested from another silt network could be replayed as evidence here. 0 = no pre-latch override (the >2/3 readiness tally, needs -epoch-blocks)")
+	bondTTL := fs.Uint64("bond-ttl", 0, "objective re-challenge cadence: objective standing LAPSES this many committed blocks after a validator's latest on-chain bond registration unless it renews with a fresh space-time proof — so a validator that registers once then releases its plot cannot keep voting. LEFT UNSET it defaults ON for an untrusted objective validator (derived cadence); an explicit 0 disables it (standing never expires; safe only for a trusted/demo swarm)")
+	epochBlocks := fs.Uint64("epoch-blocks", 0, "mature-phase validator-set epoch: after the young→mature handoff, the finality quorum, validator qualification, and the weight quorum are read from a SNAPSHOT of the committed bonded set frozen at the last epoch boundary (a finalized block), rotated every this-many blocks — never recomputed live from the churning bond ledger, which would let two conflicting commits finalize against two different sets. The handoff itself waits for the first boundary after the maturity latch, so the anchor→bond handoff is rooted at a finalized base. CONSENSUS-CRITICAL: set it identically across the swarm (like -min-bond). LEFT UNSET it defaults ON for an untrusted objective validator (derived cadence, well under the bond TTL); an explicit 0 disables epochs (live recompute; safe only for a trusted/demo swarm)")
+	era3Activation := fs.Uint64("era3-activation-height", 1, "GENESIS CONFIG: the height at or above which era-3 (v4, the committed state root) is the required block format. Committed into the genesis block (chain.ConsensusParams cbor key 13), so a node that sets it differently computes a DIFFERENT genesis hash and cannot join — divergence is impossible to join with rather than fatal at some later block. 1 (default) starts a NEW network at the highest era from its first block, which is the settled launch posture: there is then no readiness tally and no latch, so the boundary is a genesis constant rather than a value the network votes itself into. 0 = no pre-latch override: era-3 activates only when era-3-aware bonded WEIGHT crosses the >2/3 super-quorum over a frozen epoch, which never fires without -epoch-blocks. TO JOIN AN EXISTING CHAIN, set what its genesis commits — the refusal at start-up names the field and the two values")
+	era4Activation := fs.Uint64("era4-activation-height", 1, "GENESIS CONFIG: the height at or above which era-4 (v5, witnessable transitions) is the required block format. Committed at chain.ConsensusParams cbor key 14, same joining rule as -era3-activation-height, and it MUST be >= it (a v5 block commits a superset of the v4 leaves, so era-4 cannot activate below the era-3 boundary; a misconfigured pair is refused at start-up). 1 (default) = the settled launch posture: every block above the genesis is era-4, so the sub-era-4 interval where a consensus attestation carries NO chain id is EMPTY. That is not only convenience — the era-4 attestation form binds the chain id, and emptying the interval below the boundary is what leaves no height at which a signature harvested from another silt network could be replayed as evidence here. 0 = no pre-latch override (the >2/3 readiness tally, needs -epoch-blocks)")
 	networkName := fs.String("network-name", "", "GENESIS CONFIG: this network's canonical text NAME, committed into the genesis block (chain.ConsensusParams cbor key 18) and reported at start-up beside the genesis hash. It reaches NO validity verdict — nothing in the block-validation path reads it. It exists so a node reports the network it is actually serving by a name read FROM THE CHAIN, instead of reading this flag back to you. THE HASH IS THE IDENTITY AND THE NAME IS A LABEL: name collisions are not preventable and are not meant to be, two networks may both choose \"silt mainnet\", and neither can choose the other's genesis hash — so the name is never displayed without the hash. Empty (default) = an unnamed network, reported as such. Changing it on a chain this node has already joined is REFUSED at start-up")
 	requireTokens := fs.Int("require-tokens", 0, "publisher privacy: require every published entry to carry a publish token blind-signed by this many validators, instead of a Publisher identity (0 = off; validators issue tokens)")
 	allowPublisher := fs.Bool("allow-publisher", false, "permit entries that carry a durable Publisher identity (records a PERMANENT Publisher→root link on the append-only chain; off by default for privacy/M0 — only for explicitly trusted deployments)")
-	blockPeers := fs.String("block-peers", "", "TEST-HARNESS / FIELD-DRILL: comma-separated peer IDs to PARTITION away from — this node drops all messages to/from them, simulating a severed link (#184 partition→heal). HEAL by restarting without the flag (the persisted chain reloads and reconciles). Empty = no partition; a real deployment never sets it")
-	forgeBlock := fs.String("forge-block", "", "RED-TEAM / TEST-HARNESS ONLY: propose a block with a FORGED (corrupted) proposer signature to this peer ID, to prove an honest validator rejects it before attesting (#184 forged-block→reject). Never honest")
-	lowbondPropose := fs.String("lowbond-propose", "", "RED-TEAM / TEST-HARNESS ONLY: as an under-bonded validator, propose a well-formed block to this peer ID, to prove an honest validator refuses a proposer without a qualifying bond (#184 low-bond→reject). Never honest")
-	equivocate := fs.String("equivocate", "", "RED-TEAM / TEST-HARNESS ONLY: run this validator as a Byzantine EQUIVOCATOR (#184, proving accountability over the real wire). OBJECTIVE mode (3-of-4): the value is a trigger; this validator participates honestly then SERVES a conflicting signed block at a height it prepared, so an honest peer slashes the double-sign on sync (slash-on-detection — a fork can't be committed under a BFT quorum). LEGACY mode: given \"idX,idYZ\" it commit-places block X on idX and a heavier fork (Y,Z) on idYZ. NEVER use on a real network; a correct node refuses to equivocate")
-	liar := fs.Bool("liar", false, "RED-TEAM / TEST-HARNESS ONLY: run this storage node as a PoR LIAR — it keeps its storage-proof tags but silently drops the shard bytes (\"keep the receipt, ditch the goods\"). It still answers a MsgChallenge, but with a proof that fails the auditor's verify-without-fetch check, so an -audit auditor CATCHES it and slashes its standing (#232). Never honest")
-	goodPropose := fs.String("goodpropose", "", "TEST-HARNESS ONLY: POSITIVE CONTROL for -forge-block/-lowbond-propose. As a properly-bonded proposer, send a WELL-FORMED block to this peer ID and prove the honest target ACCEPTS it — so a target that refuses EVERY proposal (a broken/wedged node) cannot make the forged/low-bond REJECT tests false-pass ('reject the good one too' would otherwise look identical to 'reject the bad one', audit #303). Retries until its bond earns standing. Logs 'goodpropose proposal ACCEPTED by <id>' on accept, 'goodpropose proposal UNEXPECTEDLY REJECTED by <id>' after giving up")
+	blockPeers := fs.String("block-peers", "", "TEST-HARNESS / FIEL: comma-separated peer IDs to PARTITION away from — this node drops all messages to/from them, simulating a severed link (partition→heal). HEAL by restarting without the flag (the persisted chain reloads and reconciles). Empty = no partition; a real deployment never sets it")
+	forgeBlock := fs.String("forge-block", "", "ADVERSARY / TEST-HARNESS ONLY: propose a block with a FORGED (corrupted) proposer signature to this peer ID, to prove an honest validator rejects it before attesting (forged-block→reject). Never honest")
+	lowbondPropose := fs.String("lowbond-propose", "", "ADVERSARY / TEST-HARNESS ONLY: as an under-bonded validator, propose a well-formed block to this peer ID, to prove an honest validator refuses a proposer without a qualifying bond (low-bond→reject). Never honest")
+	equivocate := fs.String("equivocate", "", "ADVERSARY / TEST-HARNESS ONLY: run this validator as a Byzantine EQUIVOCATOR (proving accountability over the real wire). OBJECTIVE mode (3-of-4): the value is a trigger; this validator participates honestly then SERVES a conflicting signed block at a height it prepared, so an honest peer slashes the double-sign on sync (slash-on-detection — a fork can't be committed under a BFT quorum). LEGACY mode: given \"idX,idYZ\" it commit-places block X on idX and a heavier fork (Y,Z) on idYZ. NEVER use on a real network; a correct node refuses to equivocate")
+	liar := fs.Bool("liar", false, "ADVERSARY / TEST-HARNESS ONLY: run this storage node as a PoR LIAR — it keeps its storage-proof tags but silently drops the shard bytes (\"keep the receipt, ditch the goods\"). It still answers a MsgChallenge, but with a proof that fails the auditor's verify-without-fetch check, so an -audit auditor CATCHES it and slashes its standing. Never honest")
+	goodPropose := fs.String("goodpropose", "", "TEST-HARNESS ONLY: POSITIVE CONTROL for -forge-block/-lowbond-propose. As a properly-bonded proposer, send a WELL-FORMED block to this peer ID and prove the honest target ACCEPTS it — so a target that refuses EVERY proposal (a broken/wedged node) cannot make the forged/low-bond REJECT tests false-pass ('reject the good one too' would otherwise look identical to 'reject the bad one', audit). Retries until its bond earns standing. Logs 'goodpropose proposal ACCEPTED by <id>' on accept, 'goodpropose proposal UNEXPECTEDLY REJECTED by <id>' after giving up")
 	wsCheckpoint := fs.String("ws-checkpoint", "", "weak-subjectivity checkpoint HEIGHT:HASH (M0 F-1): a recent trusted committed block this node REFUSES to reorg at or before, regardless of fork weight — the long-range-attack defense that makes the objective maturity latch safe for a fresh/long-offline node. Obtain it out-of-band (the daemon prints `checkpoint: HEIGHT:HASH` for its committed head; cross-check several independent nodes). It must be recent — within ~the bond-TTL window. Empty = genesis-trusting (safe only at launch, on a trusted swarm, or before the network matures)")
-	acceptChainLoss := fs.Bool("accept-chain-loss", false, "#558 (Lane B8): START even if replaying chain.cbor would DISCARD finalized history — a torn file (power loss / OOM-kill mid-write, now prevented by the fsync'd atomic write) or a block that fails structural verification. Default OFF: the daemon REFUSES TO START and names the loss, because a validator that silently restarts from genesis (or a stale prefix) re-enters consensus holding its frozen-epoch seat with a history it does not have, and below the swarm's prune horizon the suffix can never be re-synced without a fresh -ws-checkpoint (#559). Set it ONLY after reading the refusal: the node keeps the longest valid prefix and re-syncs the rest from peers")
-	livenessRecoveryHeight := fs.Uint64("liveness-recovery-height", 0, "#535 OPERATOR-DIRECTED liveness-floor recovery (weak-subjectivity trust class, like -ws-checkpoint): an epoch-boundary height at which mature-epoch validation re-bases the finality quorum and validator qualification against the LIVE qualified bonded set instead of the frozen epoch snapshot — for ONE boundary only, after which the normal rotation governs. Use it ONLY when members holding > 1/3 of the frozen epoch's weight have genuinely left (bonds lapsed, not returning) and the chain is stalled at an epoch boundary (chain-status names the state): that loss is outside the BFT liveness model, so the stall is deliberate safety and recovery REQUIRES a human judgment the protocol cannot make. CONFIRM OUT-OF-BAND that the loss is a real outage — not a partition or an attack (a wrongly-invoked recovery can fork; that risk is the accepted weak-subjectivity residual) — and COORDINATE: every honest operator must set the SAME height, or replicas diverge. Must be a multiple of the epoch cadence (-epoch-blocks). 0 = off (default): a bled boundary stalls, which is the certified-correct behavior. A FLOOR BOX (a root-only witness-validating client) does NOT follow this recovery at all: at that boundary it is a COLD AUDITOR — it stalls unconditionally, and the stall is TERMINAL, because it would need a verified state root for H+1 and its only source is the height it just declined to reproduce. A floor box recovers ONLY by an operator supplying a fresh -ws-checkpoint H+1:HASH, on which it discards its derived state and cold-starts; if that pin cannot be reached the box treats it as a CRITICAL AND IRRECOVERABLE FAILURE and does not degrade to indeterminate-and-keep-going (D0; docs/design/owned-residuals.md E2a)")
+	acceptChainLoss := fs.Bool("accept-chain-loss", false, "START even if replaying chain.cbor would DISCARD finalized history — a torn file (power loss / OOM-kill mid-write, now prevented by the fsync'd atomic write) or a block that fails structural verification. Default OFF: the daemon REFUSES TO START and names the loss, because a validator that silently restarts from genesis (or a stale prefix) re-enters consensus holding its frozen-epoch seat with a history it does not have, and below the swarm's prune horizon the suffix can never be re-synced without a fresh -ws-checkpoint. Set it ONLY after reading the refusal: the node keeps the longest valid prefix and re-syncs the rest from peers")
+	livenessRecoveryHeight := fs.Uint64("liveness-recovery-height", 0, "OPERATOR-DIRECTED liveness-floor recovery (weak-subjectivity trust class, like -ws-checkpoint): an epoch-boundary height at which mature-epoch validation re-bases the finality quorum and validator qualification against the LIVE qualified bonded set instead of the frozen epoch snapshot — for ONE boundary only, after which the normal rotation governs. Use it ONLY when members holding > 1/3 of the frozen epoch's weight have genuinely left (bonds lapsed, not returning) and the chain is stalled at an epoch boundary (chain-status names the state): that loss is outside the BFT liveness model, so the stall is deliberate safety and recovery REQUIRES a human judgment the protocol cannot make. CONFIRM OUT-OF-BAND that the loss is a real outage — not a partition or an attack (a wrongly-invoked recovery can fork; that risk is the accepted weak-subjectivity residual) — and COORDINATE: every honest operator must set the SAME height, or replicas diverge. Must be a multiple of the epoch cadence (-epoch-blocks). 0 = off (default): a bled boundary stalls, which is the verified-correct behavior. A FLOOR BOX (a root-only witness-validating client) does NOT follow this recovery at all: at that boundary it is a COLD AUDITOR — it stalls unconditionally, and the stall is TERMINAL, because it would need a verified state root for H+1 and its only source is the height it just declined to reproduce. A floor box recovers ONLY by an operator supplying a fresh -ws-checkpoint H+1:HASH, on which it discards its derived state and cold-starts; if that pin cannot be reached the box treats it as a CRITICAL AND IRRECOVERABLE FAILURE and does not degrade to indeterminate-and-keep-going (D0; the design notes E2a)")
 	debug := fs.Bool("debug", false, "shorthand for -log debug (the full firehose)")
 	logLevel := fs.String("log", "", "write events at or above this level to <store>/debug.log (error|warn|info|debug); info narrates the normal path (placements, commits, repairs) to validate behavior in the field without the debug firehose")
 	relayServe := fs.String("relay", "", "offer relay service at this address (e.g. 0.0.0.0:4002): content-blind ciphertext forwarding for NATed peers, capped; pointless unless this node is publicly reachable")
@@ -166,9 +164,9 @@ func cmdDaemon(args []string) error {
 	cacheSize := fs.String("cache", "", "in-RAM read cache for hot chunks, e.g. 512M (default off) — a cache hit skips the disk read and the per-read hash re-verify")
 	proofCacheSize := fs.String("proof-cache", "64M", "resident RAM budget for HOT storage proofs; the rest live on disk and page in only to serve/audit, so proof RAM is O(hot) not O(held) (0 = unbounded, legacy)")
 	memLimit := fs.String("mem-limit", "", "soft heap ceiling (e.g. 1500M, 85% of box RAM) — the Go GC reclaims aggressively as the heap approaches it, so a large-but-bounded working set can't grow into a kernel OOM-kill on a small box. Sets runtime/debug.SetMemoryLimit; equivalent to the GOMEMLIMIT env var (this flag wins if both are set). Empty = no soft limit (default). Not a hard cap: if the LIVE set genuinely exceeds it the GC thrashes rather than crashes — raise the limit or the box.")
-	inboundCap := fs.String("inbound-cap", "256M", "bound the in-flight INBOUND message working set: bytes read off the wire but not yet processed on the single loop. A fast/adversarial sender that outruns the loop otherwise piles decoded messages onto an unbounded queue and OOMs the node (a resource-exhaustion DoS). At the cap the reader stops draining that socket → TCP flow-control pushes back on the sender (alive > crashed). A single legal-but-oversized frame is still admitted alone; no single peer may hold more than 1/4 of the budget. 0 = unbounded (legacy). SIZING pulls in two directions: the cap bounds the OOM working set (bigger cap = more RAM headroom needed) AND it bounds worst-case message latency — a full budget means ~cap/drain-rate of queued work ahead of every newly admitted frame, consensus frames included (a saturated 256M draining at 2 MiB/s is ~128s of delay). Size to satisfy both at your expected-worst drain rate; the default assumes a healthy drain (docs/design/owned-residuals.md E5 records the trade and the sequenced hardening).")
+	inboundCap := fs.String("inbound-cap", "256M", "bound the in-flight INBOUND message working set: bytes read off the wire but not yet processed on the single loop. A fast/adversarial sender that outruns the loop otherwise piles decoded messages onto an unbounded queue and OOMs the node (a resource-exhaustion DoS). At the cap the reader stops draining that socket → TCP flow-control pushes back on the sender (alive > crashed). A single legal-but-oversized frame is still admitted alone; no single peer may hold more than 1/4 of the budget. 0 = unbounded (legacy). SIZING pulls in two directions: the cap bounds the OOM working set (bigger cap = more RAM headroom needed) AND it bounds worst-case message latency — a full budget means ~cap/drain-rate of queued work ahead of every newly admitted frame, consensus frames included (a saturated 256M draining at 2 MiB/s is ~128s of delay). Size to satisfy both at your expected-worst drain rate; the default assumes a healthy drain (the design notes E5 records the trade and the sequenced hardening).")
 	carePublished := fs.Bool("care-published", true, "the daemon repairs content published through its own UI, so your own content stays alive as nodes churn (its manifest counts toward this node's pledge); =false to opt out")
-	economy := fs.Bool("economy", false, "OPT IN to the S7 durability repair economy (default OFF — the economy is built and running in shadow; payout is opt-in until the delivery price lands, ROADMAP R2.4): when on, a verified repair PAYS the new holder of a rebuilt shard from the object's own escrow, priced by the protocol formula c·shardBytes/(U/p) credits — the witnessed fetch price of the ONE shard that holder moves, which is the act the bounty pays for (F1, D-BOUNTY-PRICE-F1-2026-09-12; until 2026-09-12 the price was c·(k·shardBytes)/(U/p), the fetch cost of a reconstruction that on the remote-placement path the payee does not perform, and it over-paid the holder's own basis 10–60×; on the self-hold path, where the paramedic keeps the shard it rebuilt and IS the payee (selfHoldEligible), the new price under-pays it by a factor of k — R-F1-FLOOR-FAILS-ON-SELF-HOLD) — × the rarest-shard multiplier (a shard below one credit of fetch, which now means any object under ~262 KB, pays ZERO and is counted in stats.BountyBaseZero) — a network-wide price, never an operator-set amount. Off, the serve auto-skim still fills escrows but no bounty disburses (the half-open state /api/status reports as bountyOn:false). Standing is never affected either way (Invariant A: credits fund durability, never consensus weight). The economy-ON config is what the confirming field runs + the #183 red team exercise")
+	economy := fs.Bool("economy", false, "OPT IN to the S7 durability repair economy (default OFF — the economy is built and running in shadow; payout is opt-in until the delivery price lands, the roadmap): when on, a verified repair PAYS the new holder of a rebuilt shard from the object's own escrow, priced by the protocol formula c·shardBytes/(U/p) credits — the witnessed fetch price of the ONE shard that holder moves, which is the act the bounty pays for (F1, ; until 2026-09-12 the price was c·(k·shardBytes)/(U/p), the fetch cost of a reconstruction that on the remote-placement path the payee does not perform, and it over-paid the holder's own basis 10–60×; on the self-hold path, where the paramedic keeps the shard it rebuilt and IS the payee (selfHoldEligible), the new price under-pays it by a factor of k —) — × the rarest-shard multiplier (a shard below one credit of fetch, which now means any object under ~262 KB, pays ZERO and is counted in stats.BountyBaseZero) — a network-wide price, never an operator-set amount. Off, the serve auto-skim still fills escrows but no bounty disburses (the half-open state /api/status reports as bountyOn:false). Standing is never affected either way (Invariant A: credits fund durability, never consensus weight). The economy-ON config is what the confirming field runs + the red team exercise")
 	fs.Parse(args)
 
 	// Soft heap ceiling (flixz OOM mitigation): the field cohort OOM-crash-loops
@@ -191,7 +189,7 @@ func cmdDaemon(args []string) error {
 	// Heap-profiling seam (diagnostic-only; off unless -debug-addr is set). This
 	// is how we attribute the MATURING consensus-node memory footprint that OOMs
 	// the field cohort — the daemon had no heap profile, which is why the wrong
-	// structure got blamed (silt-oom-NOT-the-proof-map-FINDING-2026-08-17). Edge
+	// structure got blamed (silt-oom-NOT-the-proof-map-FINDI-08-17). Edge
 	// concern, cmd-only: net/http/pprof registers on http.DefaultServeMux.
 	if *debugAddr != "" {
 		go func() {
@@ -320,11 +318,10 @@ func cmdDaemon(args []string) error {
 		fmt.Printf("pledge: %d / %d bytes used\n", used, total)
 	}
 	// -privacy is parsed HERE, before the node config, because it now governs the wire as
-	// well as the HTTP surface (R2.2 / research certification C3-GOSSIP-DISCLOSURE-vs-
-	// D-UI-PRIVACY-FLAG-2026-09-09, condition M-1). It is parsed whether or not a UI is
-	// served: the help text promises a bad value refuses to start, and a refusal that
-	// depended on -ui being set would let `silt daemon -privacy=bogus` boot (blind PE code
-	// ruling RULING-UI-PRIVACY-FLAG-code-0c9e373-2026-09-05 B3).
+	// well as the HTTP surface. It is parsed whether or not
+	// a UI is served: the help text promises a bad value refuses to start, and a
+	// refusal that depended on -ui being set would let `silt daemon -privacy=bogus`
+	// boot.
 	privacyOn, err := parsePrivacyFlag(*privacyFlag)
 	if err != nil {
 		return err
@@ -346,13 +343,14 @@ func cmdDaemon(args []string) error {
 	cfg.BondLabelSamples = *bondLabelK
 	cfg.MaxBondRegBytesPerBlock = *maxBondRegBytes
 	cfg.MaxEntryBytesPerBlock = *maxEntryBytes
-	// SOURCE GATE: the two budgets above are PROPOSER-SIDE ONLY, and chain.SlashesBytesCap
-	// — a consensus validity rule every validator enforces — was derived from their
-	// DEFAULTS. Refuse a configuration that breaks that derivation, because past the
-	// boundary a real double-signer's evidence exceeds the cap and the equivocator keeps
-	// its seat. Runtime cover: core/node G-SLASHCAP-1 drives the boundary both ways;
-	// cmd/silt TestG_SLASHCAP_3_ShippedFlagDefaultsAndTheRefusalText drives this
-	// refusal. Owner call 2026-09-09 ("CLOSE THE ROUTE"); the #380 class.
+	// SOURCE GATE: the two budgets above are PROPOSER-SIDE ONLY, and
+	// chain.SlashesBytesCap — a consensus validity rule every validator enforces — was
+	// derived from their DEFAULTS. Refuse a configuration that breaks that derivation,
+	// because past the boundary a real double-signer's evidence exceeds the cap and the
+	// equivocator keeps its seat. Runtime cover: core/node this gate drives the
+	// boundary both ways; cmd/silt
+	// TestShippedSlashCapFlagDefaultsAndTheRefusalText drives this refusal. Owner
+	// The route is closed.
 	if err := node.CheckSlashEvidenceHeadroom(cfg); err != nil {
 		return fmt.Errorf("refusing to start: %w", err)
 	}
@@ -360,7 +358,7 @@ func cmdDaemon(args []string) error {
 	// chunk size that pays a non-zero repair bounty, or the publish warning's threshold
 	// falls to 0 and the whole disclosure — ZERO arm included — goes permanently silent.
 	// Pure local arithmetic over two compile-time constants, so it is a refusal, not
-	// committed state. F1 (D-BOUNTY-PRICE-F1-2026-09-12) cut the margin from 235,945 B to
+	// committed state. F1 cut the margin from 235,945 B to
 	// 16 B, which is what turned this from a comment into an assertion. Not gated on
 	// -economy: the publisher needs the disclosure whether or not this node pays bounties.
 	if err := checkBountyDisclosureHeadroom(int64(pipeline.DefaultChunkSize), minBountyChunkBytes()); err != nil {
@@ -381,7 +379,7 @@ func cmdDaemon(args []string) error {
 	// retest G4-residual). Shipping the mechanism but defaulting it OFF left a
 	// doc-following open validator admitting a sub-floor, releasable bond to full
 	// standing — "fixed but off by default" is not fixed. So it gets the same
-	// treatment -objective already has: auto-on for an untrusted swarm (-min-rep
+	// treatment -objective already has: auto-on for an untrusted swarm -min-rep
 	// > 0), and an operator can still opt out EXPLICITLY with -min-bond-floor 0
 	// (a trusted/demo swarm, where objective mode is off anyway).
 	//
@@ -420,7 +418,7 @@ func cmdDaemon(args []string) error {
 	if defaulted {
 		fmt.Printf("bond: anti-release floor defaulted to %d MiB for this untrusted (objective) swarm — a smaller plot could be released and re-sealed within the anti-release compute window (%s × plot throughput; independent of -request-timeout). Override with -min-bond-floor (0 disables; safe only for a trusted/demo swarm).\n", effFloor>>20, AntiReleaseComputeWindow)
 	}
-	// The bond TTL gets the same safe-by-default treatment as the floor (H2 / RT-2):
+	// The bond TTL gets the same safe-by-default treatment as the floor (H2 /):
 	// left OFF it admitted release-and-coast — a validator registers a bond once,
 	// releases the plot, and keeps voting forever off a single one-time proof. On
 	// the objective path it now decays un-renewed standing by default; the paired
@@ -439,24 +437,24 @@ func cmdDaemon(args []string) error {
 	if byzDefaulted {
 		fmt.Println("consensus: Byzantine quorum sizing defaulted ON for this untrusted (objective) swarm — a commit needs a supermajority of the qualified bonded set so two quorums always share an honest validator. Override with -byzantine-quorum=false (safe only for a trusted swarm).")
 	}
-	// The C2 operator margin M gets the same safe-by-default treatment (D-C2 / red-team
-	// blind-2026-08-08): shipping the split-defense mechanism but defaulting M=1 left an
-	// untrusted objective swarm with ZERO margin against one operator splitting real stake
-	// across NodeIDs to fake decentralization — the Invariant-B footgun ("safe config is
-	// the default"). It only ever RAISES the bar to shed the training wheels (a splitter
-	// must clear mature-validators×M distinct bonds), so an auto-armed M>1 never weakens an
-	// existing config. M stays an honest heuristic (on-chain data carries no operator label,
-	// #182); this defaults it to a conservative value, tunable per deployment.
+	// The C2 operator margin M gets the same safe-by-default treatment: shipping the
+	// split-defense mechanism but defaulting M=1 left an untrusted objective swarm
+	// with ZERO margin against one operator splitting real stake across NodeIDs to
+	// fake decentralization — the Invariant-B footgun ("safe config is the default").
+	// It only ever RAISES the bar to shed the training wheels (a splitter must clear
+	// mature-validators×M distinct bonds), so an auto-armed M>1 never weakens an
+	// existing config. M stays an honest heuristic (on-chain data carries no operator
+	// label); this defaults it to a conservative value, tunable per deployment.
 	effMargin, marginDefaulted := effectiveOperatorMargin(marginSet, *operatorMargin, objectivePath)
 	if marginDefaulted {
 		fmt.Printf("consensus: operator-margin defaulted to %d for this untrusted (objective) swarm — the C2 maturity shed discounts the bond-distinct Nakamoto coefficient by M, so one operator splitting real stake across ~M NodeIDs cannot fake the decentralization that sheds the launch anchors. Override with -operator-margin (1 = no split margin; safe only for a trusted/single-operator swarm).\n", effMargin)
 	}
-	// The mature-phase epoch gets the same safe-by-default treatment (#357
-	// Conditions A+B): without it the post-handoff finality quorum is recomputed
-	// live from the churning bond ledger, which forfeits the quorum-intersection
-	// safety that makes a §3 super-quorum final. Consensus-critical — every
-	// validator in the swarm must run the same value, which the shared default
-	// provides; an explicit 0 opts a trusted/demo swarm out.
+	// The mature-phase epoch gets the same safe-by-default treatment: without
+	// it the post-handoff finality quorum is recomputed live from the
+	// churning bond ledger, which forfeits the quorum-intersection safety
+	// that makes a §3 super-quorum final. Consensus-critical — every
+	// validator in the swarm must run the same value, which the shared
+	// default provides; an explicit 0 opts a trusted/demo swarm out.
 	effEpoch, epochDefaulted := effectiveEpochBlocks(epochSet, *epochBlocks, objectivePath)
 	if epochDefaulted {
 		fmt.Printf("consensus: epoch-blocks defaulted to %d for this untrusted (objective) swarm — after the young→mature handoff the finality quorum and validator set are frozen per epoch (rotated at finalized boundary blocks), so churning bonds cannot let two conflicting commits finalize against two different sets. Override with -epoch-blocks, identically across the swarm (0 disables; safe only for a trusted/demo swarm).\n", effEpoch)
@@ -472,16 +470,16 @@ func cmdDaemon(args []string) error {
 	clk := walltime.New(loop)
 	nd := node.New(id, cfg, clk, tr, store)
 	nd.SetSigner(ident.Signer()) // sign self-certifying provider records (H5), not just chain blocks
-	// R4.3b: the DHT eclipse cap reads the transport's observed (class, group) per
-	// peer — never the declared -domain label. Shadow by default: counted, never
-	// applied. The reserve is refused below K/2 (the table would clamp it; the flag
-	// is refused so the operator sees it).
+	// The DHT eclipse cap reads the transport's observed (class, group) per peer
+	// — never the declared -domain label. Shadow by default: counted, never
+	// applied. The reserve is refused below K/2 (the table would clamp it; the
+	// flag is refused so the operator sees it).
 	addrMode, err := parseAddressCapMode(*dhtAddressCap)
 	if err != nil {
 		return err
 	}
 	if *dhtAddressReserve < (cfg.K+1)/2 || *dhtAddressReserve > cfg.K {
-		return fmt.Errorf("-dht-address-reserve %d must be in [K/2, K] = [%d, %d] (research-certified floor; below K/2 the adversary owns a bucket majority for free via honest relays)", *dhtAddressReserve, (cfg.K+1)/2, cfg.K)
+		return fmt.Errorf("-dht-address-reserve %d must be in [K/2, K] = [%d, %d] (research-verified floor; below K/2 the adversary owns a bucket majority for free via honest relays)", *dhtAddressReserve, (cfg.K+1)/2, cfg.K)
 	}
 	tr.SetAddressWidth(*dhtAddressWidth, 32)
 	nd.SetPeerClassifier(tr)
@@ -508,11 +506,11 @@ func cmdDaemon(args []string) error {
 		nd.SetBlockedPeers(blocked)
 		fmt.Printf("⚠ PARTITION: -block-peers set — dropping all traffic to/from %d peer(s) (test-harness / field-drill, never a real deployment)\n", len(blocked))
 	}
-	// The content-serving axis has two spellings: the positive -serve-content
-	// (D-TIERING's composable form) and the older negative -freeload. They must
-	// agree — an operator who passes both with opposite senses stated two
-	// different intents, so refuse loudly rather than pick one (S3: no silent
-	// resolution of a contradictory config).
+	// The content-serving axis has two spellings: the positive
+	// -serve-content 's composable form and the older negative -freeload.
+	// They must agree — an operator who passes both with opposite senses
+	// stated two different intents, so refuse loudly rather than pick one
+	// (S3: no silent resolution of a contradictory config).
 	serveContentSet := false
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "serve-content" {
@@ -525,11 +523,11 @@ func cmdDaemon(args []string) error {
 	}
 	if refusesContent {
 		nd.SetFreeload(true)
-		// Both spellings on one line, on purpose: `freeload: ON` is a STABLE
-		// marker the e2e harness (and any operator tooling) greps for, so the
-		// D-TIERING rename must not silently break it — an announced line is an
-		// observable contract (S5). The new positive-axis name leads because that
-		// is how the tier profile is now composed.
+		// Both spellings on one line, on purpose: `freeload: ON` is a
+		// STABLE marker the e2e harness (and any operator tooling) greps
+		// for, so the rename must not silently break it — an announced line
+		// is an observable contract (S5). The new positive-axis name leads
+		// because that is how the tier profile is now composed.
 		fmt.Println("serve-content: OFF (freeload: ON) — this node refuses to store or serve content (registry/relay/routing only, #47)")
 	}
 	if *archive {
@@ -537,7 +535,8 @@ func cmdDaemon(args []string) error {
 	}
 
 	// -log/-debug: dlog adds the daemon's own milestones (discovery,
-	// bootstrap) to the same artifact the node and transport narrate to.
+	// bootstrap to the same artifact the node and transport narrate
+	// to.
 	level, logOn, err := resolveLogLevel(*logLevel, *debug, *validator)
 	if err != nil {
 		return err
@@ -605,8 +604,8 @@ func cmdDaemon(args []string) error {
 		ports.LogIf(obs, ports.LogError, "recovered panic on node thread", "panic", r)
 	}
 
-	// Single-goroutine latency instrumentation (Andrew's timing-for-evidence
-	// idea, 2026-08-15). The event loop is the one serialization point, so
+	// Single-goroutine latency instrumentation: timing as evidence.
+	// The event loop is the one serialization point, so
 	// timing each task names the handler that eats the node's thread — or, via
 	// the watchdog, one that HANGS it, with a stack dump of where it is stuck.
 	// This is the observability that a starved MATURING field run lacked (the
@@ -623,7 +622,7 @@ func cmdDaemon(args []string) error {
 	loop.OnHang = func(label string, d time.Duration, stack []byte) {
 		ports.LogIf(obs, ports.LogError, "eventloop task HANG — node thread stuck", "kind", label, "seconds", int64(d/time.Second), "stack", string(stack))
 	}
-	// Queue-wait is the causal signal (PE 2026-08-15): a task can execute fast yet
+	// Queue-wait is the causal signal: a task can execute fast yet
 	// blow a downstream deadline purely by WAITING behind a saturated thread. 2s is
 	// well under the 8s request-timeout, so a token blind-sign that waited this long
 	// is on its way to timing out — logged always-on (it only fires on pathology).
@@ -662,12 +661,12 @@ func cmdDaemon(args []string) error {
 		// PoD §7.3 Batch 3: bind the paid relay pump to the live node. With
 		// --accept-relay-payments on, install the in-process seam so a paid connect
 		// (a connect frame carrying a session handle) resolves to the node-owned
-		// authorizer and runs the pay-as-you-go splice, settling at close. The seam is
-		// additive (D-POD-RELAY-COEXIST, Option B): free swarm relay is unchanged and
-		// shares the same caps; only a handle-marked connect takes the paid path, and
-		// an unresolved handle is REFUSED, never downgraded to free. Without this
-		// binding a paid-marked connect is refused (nil resolver), so free relay works
-		// with or without payments.
+		// authorizer and runs the pay-as-you-go splice, settling at close. The
+		// seam is additive, Option B: free swarm relay is unchanged and shares
+		// the same caps; only a handle-marked connect takes the paid path, and
+		// an unresolved handle is REFUSED, never downgraded to free. Without
+		// this binding a paid-marked connect is refused (nil resolver), so free
+		// relay works with or without payments.
 		if *acceptRelayPayments {
 			rs.SetPaidResolver(func(fetcher ports.NodeID, handle uint64) (relay.Authorizer, bool) {
 				return nd.ResolveRelayAuthorizer(fetcher, handle)
@@ -705,62 +704,62 @@ func cmdDaemon(args []string) error {
 	// Assigned in the validator block once the chain exists; a no-op on a
 	// chain-less daemon so the chain-gated call sites below never nil-panic.
 	saveChain := func(string) {}
-	ledger := credit.New(relaypay.ShippedAnchorFace, 500_000) // the ONE fee constant: publish fee == relay anchor face (R2.14 k_max derives from it); starter grant so a fresh publisher can pay token fees
-	// R2.12 — the faucet rate limit, configured only when BOTH flags are set (no shipped
-	// default: the number nobody can derive is refused-until-set, not invented — PE ruling
-	// S4; the Researcher certified refuse-until-set as sufficient to defer the ratification,
-	// G-R212-1). The bucket keys on Go's monotonic reading via time.Since, never the chain
-	// epoch. The start-up assertion ties the four constants the guard's cliff depends on.
+	ledger := credit.New(relaypay.ShippedAnchorFace, 500_000) // the ONE fee constant: publish fee == relay anchor face (k_max derives from it); starter grant so a fresh publisher can pay token fees
+	// The faucet rate limit, configured only when BOTH flags are set. There is no shipped
+	// default: a number nobody can derive is refused-until-set, not invented. The bucket
+	// keys on Go's monotonic reading via time.Since, never the
+	// chain epoch. The start-up assertion ties the four constants the guard's cliff
+	// depends on.
 	if err := faucetConfigure(ledger, *grantCapacity, *grantPerHour, *grantDenyFloor); err != nil {
 		return err
 	}
-	// G-R212-1's second half, structural rather than a default: a PRICED lane may not be
-	// enabled with the faucet unconfigured. The two lanes a fetcher pays on today are the
-	// delivery-receipt lane (-accept-delivery-receipts; a fetcher buys demand tokens through
-	// ChargePublish) and the relay's pay-as-you-go splice (-accept-relay-payments; anchors
-	// bought through ChargePublish); priced delivery (R2.9) adds its own flag here. The
-	// sequencing rule "R2.12 lands before priced delivery" is thereby enforced by the daemon,
-	// not remembered by an operator.
+	// The second half, structural rather than a default: a PRICED lane may not be enabled
+	// with the faucet unconfigured. The two lanes a fetcher pays on today are the
+	// delivery-receipt lane (-accept-delivery-receipts; a fetcher buys demand tokens
+	// through ChargePublish) and the relay's pay-as-you-go splice (-accept-relay-payments;
+	// anchors bought through ChargePublish); priced delivery adds its own flag here. The
+	// sequencing rule — the faucet lands before priced delivery — is thereby enforced by
+	// the daemon, not remembered by an operator.
 	if (*acceptRelayPayments || *acceptReceipts) && !ledger.FaucetStats().Configured {
-		return fmt.Errorf("-accept-delivery-receipts / -accept-relay-payments refused: a priced lane may not be enabled with the faucet unlimited — set -grant-capacity and -grant-per-hour (R2.12, G-R212-1); every fetcher that pays on this ledger first receives a starter grant, and an unbounded grant rate under a priced lane is the guard-fill and subsidy surface the rate limit exists to bound")
+		return fmt.Errorf("-accept-delivery-receipts / -accept-relay-payments refused: a priced lane may not be enabled with the faucet unlimited — set -grant-capacity and -grant-per-hour; every fetcher that pays on this ledger first receives a starter grant, and an unbounded grant rate under a priced lane is the guard-fill and subsidy surface the rate limit exists to bound")
 	}
-	// G-λ-3 (G-R212-7): a priced lane may not open unless one starter grant still buys the
-	// ratified 64 GiB across the SUM of the prices a NAT'd fetcher pays at once (delivery +
-	// relay). The pin is read from the ledger's grant and the two price constants, never
+	// A priced lane may not open unless one starter grant still buys the full 64 GiB
+	// across the SUM of the prices a NAT'd fetcher pays at once (delivery + relay). The
+	// pin is read from the ledger's grant and the two price constants, never
 	// transcribed; the -dht-address-reserve refusal shape.
 	if *acceptReceipts {
-		// R2.9 (C9), Lane C2: the idle window now SHIPS a derived default
+		// The idle window SHIPS a derived default
 		// (deliveryIdleDefault) and the floor is what makes an operator override safe.
 		// The floor is not an engineering minimum any more: it is the smallest window
 		// whose GUARANTEED survival (window − window/4, the stamp coarsening) clears the
 		// worst stall the liveness model admits, so a hand-set window that would reap an
 		// honest fetcher gapped by a stall is refused rather than accepted quietly.
 		if *deliveryIdle < deliveryIdleFloor {
-			return fmt.Errorf("-accept-delivery-receipts: refusing to start — set -delivery-idle-window to at least %s (R2.9 paid delivery sessions close on idleness measured from the last settlement; the stamp is coarsened to window/%d, so %s only guarantees %s of survival against the %s worst stall the liveness model admits — D-H43-WORKLESS-DESIGNEE (21); the shipped default is %s; the remainder is a deposit, nothing is forfeited; got %s)",
+			return fmt.Errorf("-accept-delivery-receipts: refusing to start — set -delivery-idle-window to at least %s (paid delivery sessions close on idleness measured from the last settlement; the stamp is coarsened to window/%d, so %s only guarantees %s of survival against the %s worst stall the liveness model admits; the shipped default is %s; the remainder is a deposit, nothing is forfeited; got %s)",
 				deliveryIdleFloor, deliveryIdleStampDivisor, *deliveryIdle, *deliveryIdle-*deliveryIdle/deliveryIdleStampDivisor, deliveryIdleBound, deliveryIdleDefault, *deliveryIdle)
 		}
-		// G-λ-8-2: the grant/r pin in WHOLE FACES — a face is indivisible and spent at one
+		// The grant/r pin in WHOLE FACES — a face is indivisible and spent at one
 		// server, so ⌈B_pin/D_max⌉ + ⌈B_pin/relayBytesPerAnchor⌉ must fit in ⌊g/f⌋.
 		if need, have, ok := grantFundsThePinInWholeFaces(ledger.Grant(), ledger.Fee(), relaypay.RelayIncrementBytes/relaypay.RelayIncrementCredit); !ok {
-			return fmt.Errorf("-accept-delivery-receipts: refusing to start — the 64 GiB grant/r pin needs %d whole anchor faces across delivery + relay but one grant (%d credits) holds only %d faces of %d; re-derive the prices or the face before enabling the lane (G-λ-8-2, G-R212-8)", need, ledger.Grant(), have, ledger.Fee())
+			return fmt.Errorf("-accept-delivery-receipts: refusing to start — the 64 GiB grant/r pin needs %d whole anchor faces across delivery + relay but one grant (%d credits) holds only %d faces of %d; re-derive the prices or the face before enabling the lane", need, ledger.Grant(), have, ledger.Fee())
 		}
 	}
 	if *acceptRelayPayments || *acceptReceipts {
 		if got := grantOverSummedPriceBytes(ledger.Grant(), credit.DeliveryBytesPerCredit, relaypay.RelayIncrementBytes/relaypay.RelayIncrementCredit); got < credit.GrantOverRPinBytes {
-			return fmt.Errorf("priced lane refused: one starter grant (%d credits) buys %d bytes across the summed delivery (%d B/credit) + relay (%d B/credit) prices, below the ratified grant/r pin of %d bytes (64 GiB) — re-derive the prices before enabling a priced lane (G-λ-3, G-R212-7)",
+			return fmt.Errorf("priced lane refused: one starter grant (%d credits) buys %d bytes across the summed delivery (%d B/credit) + relay (%d B/credit) prices, below the settled grant/r pin of %d bytes (64 GiB) — re-derive the prices before enabling a priced lane",
 				ledger.Grant(), got, int64(credit.DeliveryBytesPerCredit), int64(relaypay.RelayIncrementBytes/relaypay.RelayIncrementCredit), credit.GrantOverRPinBytes)
 		}
 	}
-	// The node's OWN account is granted unmetered, before any other account exists: a node
-	// that denied itself could not publish or fund its own escrow (PE ruling S7).
+	// The node's OWN account is granted unmetered, before any other account exists: a
+	// node that denied itself could not publish or fund its own escrow.
 	ledger.GrantOwner(id)
-	// R2.9a (G-BB-2): the B_bootstrap age axis rides the SAME injected clock every node
-	// gets — core may not touch the wall clock (internal/depcheck), and the consensus
-	// epoch is refuted for this purpose because it is identically 0 on a non-validator,
-	// which is exactly the machine that will run this instrument.
+	// The B_bootstrap age axis rides the SAME injected clock every node gets — core
+	// may not touch the wall clock (internal/depcheck), and the consensus epoch is
+	// refuted for this purpose because it is identically 0 on a non-validator, which
+	// is exactly the machine that will run this instrument.
 	//
 	// INJECTED ONLY WHEN -bbootstrap IS SET, and only in a binary built with
-	// `-tags bbootstrap` (D-BB-BUILD-TAG, 2026-09-05). This call used to be
+	// `-tags bbootstrap`. This call used to be
 	// UNCONDITIONAL, and the comment it replaces said so deliberately: injecting always
 	// meant flipping -bbootstrap on at the next restart yielded an already-stamped
 	// population. THAT PROPERTY IS DELIBERATELY GONE — a tagged operator now restarts
@@ -773,31 +772,30 @@ func cmdDaemon(args []string) error {
 	// after the first account exists; the source gate in bbootstrap_status_test.go
 	// anchors that order.
 	bbootstrapInject(ledger, clk, bbootstrapOn())
-	// R0.4b re-break F2: the cross-server double-redeem guard is DURABLE, and it is
+	// The cross-server double-redeem guard is DURABLE, and it is
 	// restored HERE — before the node exists, so before any receipt can be accepted. A
 	// restart used to evict every guarded token, in-window or not, and the identical
 	// wire receipt paid a second time. A store that cannot be opened or read is a
 	// refuse-to-start, the same rule the sign-mark store keeps: starting with an empty
 	// guard IS the eviction this closes.
 	//
-	// GATED ON THE LANE (PE ruling H-3, 2026-09-03). The refuse-to-start is correct for
-	// a node that BANKS receipts: starting with an empty guard is the eviction. It is
-	// wrong for every other node, and it used to run unconditionally — so a corrupt
-	// paidserials.log bricked a pure storage node that has no delivery lane and could
-	// never have written the file. That is the F7 blast-radius lesson, which this same
-	// change applied to demandkeys.cbor and did not apply to the file it adds. The
-	// asymmetry with F7 is deliberate and is the whole point: inside the lane the guard
-	// is load-bearing and a failure MUST stop the daemon; outside the lane nothing can
-	// read or write it, so opening it at all is the defect.
+	// GATED ON THE LANE. The refuse-to-start is correct for a node that BANKS
+	// receipts: starting with an empty guard is the eviction. It is wrong for every
+	// other node, and it used to run unconditionally — so a corrupt paidserials.log
+	// bricked a pure storage node that has no delivery lane and could never have
+	// written the file. That is the F7 blast-radius lesson, which this same change
+	// applied to demandkeys.cbor and did not apply to the file it adds. The
+	// asymmetry with F7 is deliberate and is the whole point: inside the lane the
+	// guard is load-bearing and a failure MUST stop the daemon; outside the lane
+	// nothing can read or write it, so opening it at all is the defect.
 	//
-	// R2.14: the relay lane's anchor guard SHARES this store (one (epoch, serial)
+	// The relay lane's anchor guard SHARES this store (one (epoch, serial)
 	// guard, two lanes — core/credit/relayanchor.go), so a relay that accepts
-	// payments needs it loaded for the same reason: a restart must not re-open a
-	// spent anchor for a second session.
+	// payments needs it loaded for the same reason: a restart must not re-open
+	// a spent anchor for a second session.
 	//
-	// R2.10 / F8 (R-F8-DISABLED, research-certified 2026-09-04): both paid lanes need
-	// an EPOCH CLOCK. The (epoch, serial) guard expires entries by consensus epoch,
-	// so with effective EpochBlocks == 0 (an explicit -epoch-blocks 0, or the legacy
+	// Both paid lanes need an EPOCH CLOCK. The (epoch, serial) guard expires entries by consensus epoch,
+	// so with effective EpochBlocks == 0 an explicit -epoch-blocks 0, or the legacy
 	// -objective=false posture with the flag unset) nothing ever expires and both
 	// lanes brick at the guard cap — a LIVENESS precondition, not a security
 	// parameter. Refused here, in cmd/silt only; core/credit and core/node stay
@@ -814,11 +812,12 @@ func cmdDaemon(args []string) error {
 			if lerr := ledger.LoadPaidSerials(); lerr != nil {
 				return fmt.Errorf("delivery-credit guard store: %w\n%s", lerr, remedyPaidSerials)
 			}
-			// R2.9 (G-6R-9): sessions and deposits are ephemeral; the guard is durable. Every
-			// restored entry is an anchor whose session (and any deposit) did not survive, so
-			// the count is the operator's upper bound on deposits lost to this restart.
+			// sessions and deposits are ephemeral; the guard is durable. Every
+			// restored entry is an anchor whose session (and any deposit) did not
+			// survive, so the count is the operator's upper bound on deposits lost
+			// to this restart.
 			if n := ledger.DeliverySettlementStats().RestoredGuardEntries; n > 0 {
-				fmt.Printf("delivery deposits: %d paid-serial guard entries restored with no session state — any delivery deposit pending at shutdown is lost (upper bound; both lanes; R-DELIVERY-SESSION-EPHEMERAL)\n", n)
+				fmt.Printf("delivery deposits: %d paid-serial guard entries restored with no session state — any delivery deposit pending at shutdown is lost (upper bound; both lanes;)\n", n)
 			}
 		}
 	}
@@ -837,10 +836,10 @@ func cmdDaemon(args []string) error {
 		}
 		if len(anchorSet) > 0 {
 			// In OBJECTIVE mode the launch requirement is DERIVED — a strict anchor
-			// majority ⌊A/2⌋+1 (#402), NOT the -anchor-quorum knob, so config can't
+			// majority ⌊A/2⌋+1, NOT the -anchor-quorum knob, so config can't
 			// disable intersection. -anchor-quorum still applies in legacy (non-objective)
 			// mode. Report the derived majority so the operator sees the real rule.
-			fmt.Printf("training wheels: %d anchor(s), strict majority %d required (objective; derived #402), shed at %d independent validators\n",
+			fmt.Printf("training wheels: %d anchor(s), strict majority %d required (objective; derived), shed at %d independent validators\n",
 				len(anchorSet), len(anchorSet)/2+1, *matureValidators)
 		}
 		// Objective fork-choice is the DEFAULT for an untrusted validator (the M0
@@ -850,15 +849,15 @@ func cmdDaemon(args []string) error {
 		useObjective := *objective && *minRep > 0
 		// The proposer-side GATHER TARGET gets the same safe-by-default treatment as the
 		// bond floor, the TTL, the Byzantine sizing and the operator margin — except this
-		// one derives DOWNWARD. Since #380 the shipped literal 3 is no longer a validity
+		// one derives DOWNWARD. Since the shipped literal 3 is no longer a validity
 		// term on the objective path, but it is still a floor on the gather, so a
 		// four-anchor launch asked for all three peers and tolerated f = 0 while the
 		// project publishes its liveness bound at f = 1. Assigned through the pointer so
 		// every consumer (the chain config, the registry line, the revocation proposer)
 		// reads ONE value — a second copy is how the gather target went path-dependent
-		// once already (#380, the PE's C1 finding).
+		// once already.
 		if q, quorumDefaulted := effectiveQuorum(quorumSet, *quorum, useObjective, effByz, len(anchorSet)); quorumDefaulted {
-			fmt.Printf("consensus: gather target derived to %d for this untrusted (objective) launch of %d anchor(s) — the shipped default %d would have asked every peer to attest, tolerating NO fault while the published liveness bound is stated at f=1 (#380). It never sits below the derived Byzantine bar the commit already demands; set -quorum explicitly to override\n",
+			fmt.Printf("consensus: gather target derived to %d for this untrusted (objective) launch of %d anchor(s) — the shipped default %d would have asked every peer to attest, tolerating NO fault while the published liveness bound is stated at f=1. It never sits below the derived Byzantine bar the commit already demands; set -quorum explicitly to override\n",
 				q, len(anchorSet), *quorum)
 			*quorum = q
 		}
@@ -869,14 +868,16 @@ func cmdDaemon(args []string) error {
 				return fmt.Errorf("objective consensus needs a positive -min-bond: %q", *minBond)
 			}
 			minBondBytes = mb
-			// Cold-start safe-default (red-team seam-2, 2026-08-08). A stock untrusted
-			// objective validator with no scaffolding treats itself as MATURE from
-			// genesis — Mature() returns true when MatureValidators<=0, so everMature
-			// latches on the first block and the anchor co-sign the young regime needs
-			// never engages: a young or Sybil quorum can self-certify mature and
-			// capture. There is no sound *synthesizable* anchor set (weak-subjectivity
-			// irreducibility — you cannot bootstrap trust in the validator set from the
-			// validator set), so the safe default is to REFUSE, not warn (mirroring the
+			// Cold-start safe-default. A stock untrusted objective
+			// validator with no scaffolding treats itself as MATURE from
+			// genesis — Mature returns true when MatureValidators<=0, so
+			// everMature latches on the first block and the anchor co-sign
+			// the young regime needs never engages: a young or Sybil
+			// quorum can self-certify mature and capture. There is no
+			// sound *synthesizable* anchor set (weak-subjectivity
+			// irreducibility — you cannot bootstrap trust in the validator
+			// set from the validator set), so the safe default is to
+			// REFUSE, not warn mirroring the
 			// -min-bond hard failure above). Two legitimate paths satisfy it: LAUNCH a
 			// fresh network with the anchor training-wheels set, or JOIN an already-
 			// mature one with a weak-subjectivity checkpoint. Asserted safe-by-default
@@ -906,20 +907,21 @@ func cmdDaemon(args []string) error {
 			wsCP = chain.WSCheckpoint{Height: h, Hash: hash}
 			fmt.Printf("chain: weak-subjectivity checkpoint pinned at %d:%s — a reorg at or before it is refused (F-1)\n", h, hash)
 		}
-		// The #535 recovery directive is consensus-coordination config: refuse a
+		// The recovery directive is consensus-coordination config: refuse a
 		// value that can never fire (a non-boundary height) instead of silently
 		// arming nothing, and announce loudly when it IS armed — an operator
 		// must know this replica will re-base one boundary against the live set.
 		if *livenessRecoveryHeight > 0 {
 			if effEpoch == 0 || *livenessRecoveryHeight%effEpoch != 0 {
-				return fmt.Errorf("-liveness-recovery-height %d is not an epoch boundary (epoch cadence %d): the #535 recovery re-bases at a finalized boundary only", *livenessRecoveryHeight, effEpoch)
+				return fmt.Errorf("-liveness-recovery-height %d is not an epoch boundary (epoch cadence %d): the liveness recovery re-bases at a finalized boundary only", *livenessRecoveryHeight, effEpoch)
 			}
-			fmt.Printf("chain: #535 LIVENESS RECOVERY ARMED at boundary %d — this replica will validate that one boundary against the LIVE qualified bonded set (weak-subjectivity trust: every honest operator must set the SAME height, and the operator vouches the > 1/3 weight loss is a real outage, not an attack)\n", *livenessRecoveryHeight)
+			fmt.Printf("chain: LIVENESS RECOVERY ARMED at boundary %d — this replica will validate that one boundary against the LIVE qualified bonded set (weak-subjectivity trust: every honest operator must set the SAME height, and the operator vouches the > 1/3 weight loss is a real outage, not an attack)\n", *livenessRecoveryHeight)
 		}
-		// The era pair's layering constraint, refused HERE rather than left to chain.New's
-		// panic. New() is right to panic — an ill-formed pair would mint a v5 block below
-		// H_era3 — but a flag pair an operator typed deserves a sentence naming both values
-		// and the rule, not a stack trace. The check is the same one, one layer earlier.
+		// The era pair's layering constraint, refused HERE rather than left to
+		// chain.New's panic. New is right to panic — an ill-formed pair would mint a
+		// v5 block below H_era3 — but a flag pair an operator typed deserves a
+		// sentence naming both values and the rule, not a stack trace. The check is
+		// the same one, one layer earlier.
 		if *era4Activation > 0 && *era3Activation > 0 && *era4Activation < *era3Activation {
 			return fmt.Errorf("-era4-activation-height %d is below -era3-activation-height %d: era 4 layers ON TOP of era 3 (a v5 block commits a SUPERSET of the v4 leaves), so era-4 can never activate first. Raise -era4-activation-height to at least %d, or lower -era3-activation-height", *era4Activation, *era3Activation, *era3Activation)
 		}
@@ -934,12 +936,13 @@ func cmdDaemon(args []string) error {
 			WSCheckpoint:           wsCP,
 			LivenessRecoveryHeight: *livenessRecoveryHeight,
 			Archive:                *archive,
-			// GENESIS CONFIG, all three committed into ConsensusParams. They are passed
-			// straight through with NO effective-value derivation, deliberately: an
-			// effectiveX() would make the committed value a function of whether some OTHER
-			// flag was set, and the genesis hash would then depend on a rule an operator
-			// cannot read off their own command line. The era pair defaults to 1/1 (start a
-			// new network at the highest era); New() refuses era4 < era3.
+			// GENESIS CONFIG, all three committed into ConsensusParams. They are
+			// passed straight through with NO effective-value derivation,
+			// deliberately: an effectiveX would make the committed value a
+			// function of whether some OTHER flag was set, and the genesis hash
+			// would then depend on a rule an operator cannot read off their own
+			// command line. The era pair defaults to 1/1 (start a new network at
+			// the highest era); New refuses era4 < era3.
 			Era3ActivationHeight: *era3Activation,
 			Era4ActivationHeight: *era4Activation,
 			NetworkName:          *networkName,
@@ -948,48 +951,53 @@ func cmdDaemon(args []string) error {
 			fmt.Println("publisher: durable Publisher entries PERMITTED — publishes may record permanent linkage (trusted deployment)")
 		}
 		chainPath = filepath.Join(*storeDir, "chain.cbor")
-		// #572 ROOT CAUSE FIX — wire the bond verifier BEFORE the replay.
-		// objective() is MinBond>0 AND verifyBond!=nil; EnableObjectiveChain
-		// used to wire it ~80 lines below, so every restore replayed under the
-		// LEGACY rep-gated qualification (empty boot ledger ⇒ validatorsSeen
-		// rebuilt EMPTY ⇒ the everMature latch silently lost ⇒ the restored
-		// validator demanded launch-rule anchors for mature commits, forever —
-		// the 474718e-deep/8a52aba-deep wedge, proven by the save/restore
-		// regime pairs). Reload now also REFUSES an objective-config replay
-		// with no verifier, so this ordering can never regress silently.
+		// ROOT CAUSE FIX — wire the bond verifier BEFORE the replay.
+		// objective is MinBond>0 AND verifyBond!=nil;
+		// EnableObjectiveChain used to wire it ~80 lines below, so
+		// every restore replayed under the LEGACY rep-gated
+		// qualification (empty boot ledger ⇒ validatorsSeen rebuilt
+		// EMPTY ⇒ the everMature latch silently lost ⇒ the restored
+		// validator demanded launch-rule anchors for mature commits,
+		// forever — the field wedge, proven by
+		// the save/restore regime pairs). Reload now also REFUSES an
+		// objective-config replay with no verifier, so this ordering
+		// can never regress silently.
 		ch.SetBondVerifier(node.SpaceTimeBondVerifier(cfg.BondVDFDelay, cfg.BondLabelSamples))
-		// #558 / Lane B8 (scope call S3, ratified 2026-09-07): a replay that would
-		// discard finalized history REFUSES TO START unless the operator accepts
-		// the loss with -accept-chain-loss. Before this the daemon printed the
-		// failure and continued on the valid prefix — from genesis when nothing
-		// decoded — and re-entered consensus holding its frozen-epoch seat with
-		// a history it did not have (the a434494-deep shape: an intact file an
-		// era-2 replay bug rejected, restarted at genesis, #559/#560). The
-		// replay is therefore a START-BLOCKING surface: a rejected file may be
-		// byte-perfect and merely unreadable by THIS binary, so acceptance
-		// PRESERVES it as chain.cbor.rejected-<unix> before anything is saved.
+		// / this lane (scope call S3): a replay that would discard
+		// finalized history REFUSES TO START unless the operator
+		// accepts the loss with -accept-chain-loss. Before this the
+		// daemon printed the failure and continued on the valid prefix
+		// — from genesis when nothing decoded — and re-entered
+		// consensus holding its frozen-epoch seat with a history it
+		// did not have (the field run shape: an intact file an era-2
+		// replay bug rejected, restarted at genesis). The replay is
+		// therefore a START-BLOCKING surface: a rejected file may be
+		// byte-perfect and merely unreadable by THIS binary, so
+		// acceptance PRESERVES it as chain.cbor.rejected-<unix> before
+		// anything is saved.
 		n, loss, refused := chainstore.Recover(chainPath, ch, *acceptChainLoss)
 		if refused != nil {
-			fmt.Fprintf(os.Stderr, "chain replay: REFUSING TO START — %v. %s is UNTOUCHED. Inspect it (silt chain-status -store, or run the binary that wrote it); a %d-block valid prefix would be kept and the suffix re-synced from peers, which is IMPOSSIBLE below the swarm's prune horizon without a fresh -ws-checkpoint (#558/#559). If the loss is understood, restart with -accept-chain-loss: the original is preserved as %s.rejected-<unix>, never overwritten.\n", refused, chainPath, n, chainPath)
+			fmt.Fprintf(os.Stderr, "chain replay: REFUSING TO START — %v. %s is UNTOUCHED. Inspect it (silt chain-status -store, or run the binary that wrote it); a %d-block valid prefix would be kept and the suffix re-synced from peers, which is IMPOSSIBLE below the swarm's prune horizon without a fresh -ws-checkpoint. If the loss is understood, restart with -accept-chain-loss: the original is preserved as %s.rejected-<unix>, never overwritten.\n", refused, chainPath, n, chainPath)
 			if lg != nil {
-				// The loudest event in the daemon's life must reach debug.log: the
-				// sink is unbuffered, so it is the LOG call — not Close — that
-				// lands it there (PE re-ruling R-1); LogError survives -log error.
+				// The loudest event in the daemon's life must reach debug.log:
+				// the sink is unbuffered, so it is the LOG call — not Close —
+				// that lands it there; LogError survives -log error.
 				lg.Log(ports.LogError, "chain replay REFUSED — daemon exiting 3", "path", chainPath, "restored", n, "err", refused.Error())
 				lg.Close()
 			}
 			os.Exit(3)
 		}
 		if loss != nil {
-			// The operator accepted the loss: still NEVER quiet (#558).
-			fmt.Fprintf(os.Stderr, "chain replay: FAILED at block %d: %v — -accept-chain-loss set: the original %s is PRESERVED untouched as %s; continuing with the %d-block valid prefix; the suffix must re-sync from peers, which is IMPOSSIBLE below the swarm's prune horizon without a fresh -ws-checkpoint (#558/#559)\n", n, loss.Cause, chainPath, loss.Preserved, n)
+			// The operator accepted the loss: still NEVER quiet.
+			fmt.Fprintf(os.Stderr, "chain replay: FAILED at block %d: %v — -accept-chain-loss set: the original %s is PRESERVED untouched as %s; continuing with the %d-block valid prefix; the suffix must re-sync from peers, which is IMPOSSIBLE below the swarm's prune horizon without a fresh -ws-checkpoint \n", n, loss.Cause, chainPath, loss.Preserved, n)
 		} else if n > 0 {
-			// The regime line is LOAD-BEARING diagnostics (#572): 474718e-deep's
+			// The regime line is LOAD-BEARING diagnostics: the field run's
 			// val-d restored 32 blocks whose live application had latched
-			// everMature — and the restored replica demanded launch-rule anchors
-			// forever. Chain-level replay is proven pure (write-site audit + the
-			// field-shape oracle), so the next divergence must name which map
-			// failed to rebuild — this line does that at every restore.
+			// everMature — and the restored replica demanded launch-rule
+			// anchors forever. Chain-level replay is proven pure
+			// (write-site audit + the field-shape oracle), so the next
+			// divergence must name which map failed to rebuild — this line
+			// does that at every restore.
 			r := ch.Regime()
 			fmt.Printf("chain: restored %d block(s) from disk (everMature=%v matureEpoch=%v seen=%d bonded=%d epochStart=%d epochSet=%d)\n",
 				n, r.EverMature, r.MatureEpoch, r.ValidatorsSeen, r.Bonded, r.EpochStart, r.EpochSetSize)
@@ -1063,13 +1071,13 @@ func cmdDaemon(args []string) error {
 			fmt.Println(ln)
 		}
 		nd.EnableChain(ch, ident.Signer())
-		// R2.10 / F8: the ledger's consensus epoch is READ from this node's chain,
+		// The ledger's consensus epoch is READ from this node's chain,
 		// never passed by a caller. Wired here, right after the chain is enabled and
 		// before any lane can accept a receipt or a relay open; wired ONCE (the
 		// source gate counts it). The seam is wireLedgerEpochSource in ledger_epoch.go.
 		wireLedgerEpochSource(ledger, nd)
 		// saveChain (assigned below, declared at daemon scope) persists the replica AND prints the regime snapshot + head it
-		// went down with (#572 premise-(a)/(c) discriminator): paired with the
+		// went down with: paired with the
 		// restore-time regime line, the next under-latch names its layer in one
 		// diff — last-save regime ≠ restore regime ⇒ store/replay; equal-but-
 		// wedged ⇒ downstream of restore; head hash pins the content itself.
@@ -1083,7 +1091,7 @@ func cmdDaemon(args []string) error {
 			fmt.Printf("chain: saved %d block(s) [%s] head=%d:%s (everMature=%v matureEpoch=%v seen=%d bonded=%d epochStart=%d epochSet=%d)\n",
 				next, why, next-1, head, r.EverMature, r.MatureEpoch, r.ValidatorsSeen, r.Bonded, r.EpochStart, r.EpochSetSize)
 		}
-		// Durable never-sign-twice watermark (#397 Q1b): the mark is fsync'd
+		// Durable never-sign-twice watermark: the mark is fsync'd
 		// BEFORE any consensus signature is released, so a crash/restart cannot
 		// make this validator contradict a signature it already shipped — which
 		// would be a permanent honest self-slash (F2). A load failure is
@@ -1127,7 +1135,7 @@ func cmdDaemon(args []string) error {
 		// carry one — no Publisher identity on-chain. The issuer key PERSISTS
 		// (#93 / §3d): a restart reuses it, so outstanding tokens stay verifiable
 		// and peers' cached issuer keys don't go stale.
-		// R0.4b demand-key rotation state: the epoch the band was last built for,
+		// Demand-key rotation state: the epoch the band was last built for,
 		// and the (off-loop) rotation step. Both stay nil/zero unless
 		// -accept-delivery-receipts wires the demand lane.
 		var rotateDemandKeys func(cur uint64)
@@ -1136,15 +1144,17 @@ func cmdDaemon(args []string) error {
 			return fmt.Errorf("token issuer store: %w", ierr)
 		} else if issuerKey, kerr := is.LoadOrCreate(rand.Reader); kerr == nil {
 			nd.EnableTokenIssuer(rand.Reader, issuerKey)
-			// R2.13b (PE F-4): the credit-spent guard is DURABLE, in a SECOND
-			// guardstore file beside paidserials.log. The publish key above persists,
-			// so a credit it signed stays valid across every restart; a guard that
-			// lived in process memory re-opened every held credit for a second spend
-			// per restart. Opened wherever the publish issuer runs (the only role
-			// that can write it — the H-3 lane-gating rule), attached, then LOADED
-			// before the node serves anything. A load error is refuse-to-start:
-			// silently starting with an empty guard IS the eviction. Never the
-			// paid-serial file: its Compact keeps only the ledger's live set.
+			// The credit-spent guard is DURABLE, in a SECOND
+			// guardstore file beside paidserials.log. The publish key above
+			// persists, so a credit it signed stays valid across every
+			// restart; a guard that lived in process memory re-opened every
+			// held credit for a second spend per restart. Opened wherever
+			// the publish issuer runs (the only role that can write it — the
+			// H-3 lane-gating rule), attached, then LOADED before the node
+			// serves anything. A load error is refuse-to-start: silently
+			// starting with an empty guard IS the eviction. Never the
+			// paid-serial file: its Compact keeps only the ledger's live
+			// set.
 			if cs, cerr := guardstore.Open(filepath.Join(*storeDir, "creditspent.log")); cerr != nil {
 				return fmt.Errorf("publish-credit guard store: %w\n%s", cerr, remedyCreditSpent)
 			} else {
@@ -1153,53 +1163,55 @@ func cmdDaemon(args []string) error {
 					return fmt.Errorf("publish-credit guard store: %w\n%s", lerr, remedyCreditSpent)
 				}
 			}
-			// R2.14 (advisory finding E): the per-epoch demand-key schedule runs under
+			// The per-epoch demand-key schedule runs under
 			// EITHER lane. A relay accepting payments blind-signs its prepayment anchors
 			// under the same key_E (a fourth FDH domain, one key); without the schedule
 			// it could issue nothing and would refuse every open. Only the BANK
 			// (EnableDemandBank) stays receipt-lane-specific.
 			if *acceptReceipts || *acceptRelayPayments {
 				// PoD neutral lane: bank receipts against the key that signed
-				// their tokens. issuer == server here — the bilateral shape the
-				// certification's Q5 settlement answer covers (per-node
-				// bookkeeping suffices; committed balances are only needed for a
-				// credit a THIRD operator must honor).
+				// their tokens. issuer == server here — the bilateral shape
+				// settlement answer covers (per-node bookkeeping suffices;
+				// committed balances are only needed for a credit a THIRD
+				// operator must honor).
 				//
-				// R0.4b C3 close: the demand issuer key is PER-EPOCH, SCHEDULED
+				// The demand issuer key is PER-EPOCH, SCHEDULED
 				// here, and is NEVER the publish key. Two rules, both load-bearing:
 				//
-				//   - THE PUBLISH KEY NEVER ENTERS THE DEMAND KEYSET. It cannot be
-				//     rotated (committed publish tokens re-verify against it on
-				//     replay), so installing it as key_{boot} gave the demand lane a
-				//     life of exactly W+1 epochs — after which the bank rejected
-				//     every token while the fee-charging paths kept charging. With
-				//     the lanes separated, a demand blind bought on the publish lane
-				//     is simply not a demand token, and every shipped withdrawal
-				//     path now runs on the pinned demand lane.
-				//   - ROTATION IS SCHEDULED, NOT OPS POLICY. The band [cur, cur+W]
-				//     is pre-published so key_E is committed before epoch E opens,
-				//     and [cur−W, cur] is retained so an in-window past epoch is
-				//     still signable (the epoch-boundary race). Keygen and the disk
-				//     write run OFF the node loop; only the installs are posted back.
+				// - THE PUBLISH KEY NEVER ENTERS THE DEMAND KEYSET. It cannot be
+				// rotated (committed publish tokens re-verify against it on
+				// replay), so installing it as key_{boot} gave the demand lane a
+				// life of exactly W+1 epochs — after which the bank rejected
+				// every token while the fee-charging paths kept charging. With
+				// the lanes separated, a demand blind bought on the publish lane
+				// is simply not a demand token, and every shipped withdrawal
+				// path now runs on the pinned demand lane.
+				// - ROTATION IS SCHEDULED, NOT OPS POLICY. The band [cur, cur+W]
+				// is pre-published so key_E is committed before epoch E opens,
+				// and [cur−W, cur] is retained so an in-window past epoch is
+				// still signable (the epoch-boundary race). Keygen and the disk
+				// write run OFF the node loop; only the installs are posted back.
 				//
-				// Until the commitment for an epoch is on-chain, the bank verifies
-				// nothing — refusing an unanchored key is the certified behavior, not
-				// a bug (without the binding, per-epoch keys are worse for privacy
-				// than no epoch at all).
+				// Until the commitment for an epoch is on-chain, the bank
+				// verifies nothing — refusing an unanchored key is the
+				// behavior, not a bug (without the binding, per-epoch keys are
+				// worse for privacy than no epoch at all).
 				des, derr := diskissuer.OpenEpochs(filepath.Join(*storeDir, "issuer"))
 				if derr != nil {
 					return fmt.Errorf("demand issuer key store: %w", derr)
 				}
-				// DEGRADE TO LANE-OFF, NEVER TO DAEMON-DEAD (red-team re-break F7).
-				// A corrupt or unreadable demand key file used to come straight out of
-				// runDaemon, so one bad byte in demandkeys.cbor stopped chain participation,
-				// storage and serving too — a blast radius wildly out of proportion to an
-				// OPTIONAL receipt lane. The file is NEVER rewritten or regenerated on this
-				// path: quietly minting new keys over already-committed fingerprints is the
-				// UNRECOVERABLE failure (F6), so the store is left exactly as found for an
-				// operator to restore. The refusal is loud, on stdout, at boot.
-				// Build the issuer-key hardness primorial off the node loop, once, so
-				// the first key pin does not pay ~40 ms on the loop (advisory C-3).
+				// DEGRADE TO LANE-OFF, NEVER TO DAEMON-DEAD. A corrupt or
+				// unreadable demand key file used to come straight out of
+				// runDaemon, so one bad byte in demandkeys.cbor stopped chain
+				// participation, storage and serving too — a blast radius wildly
+				// out of proportion to an OPTIONAL receipt lane. The file is
+				// NEVER rewritten or regenerated on this path: quietly minting
+				// new keys over already-committed fingerprints is the
+				// UNRECOVERABLE failure (F6), so the store is left exactly as
+				// found for an operator to restore. The refusal is loud, on
+				// stdout, at boot. Build the issuer-key hardness primorial off
+				// the node loop, once, so the first key pin does not pay ~40 ms
+				// on the loop.
 				blindtoken.PrewarmValidatePub()
 				_, lerr := des.Load()
 				switch {
@@ -1215,17 +1227,18 @@ func cmdDaemon(args []string) error {
 						fmt.Printf("delivery receipts: LANE OFF — the boot key rotation failed: %v\n", kerr)
 						break
 					}
-					// ARM THE EPOCH SCHEDULER — ONLY NOW, below the boot install's one
-					// failure exit (PE ruling H-2, 2026-09-03). This assignment used to sit
-					// ABOVE the install, so a failed boot rotation printed "LANE OFF" and
-					// `break`ed out with rotateDemandKeys still non-nil: the OnCommit hook
-					// kept rotating from the next epoch turn, and the node went on holding
-					// demand keys, STAGING IssuerKeyReg commitments into consensus, serving
-					// MsgGetDemandIssuerKeys and blind-signing withdrawals — charging the
-					// withdrawal fee — while demandBank stayed nil and denied every receipt
-					// those tokens bought. That is the "a fee burned for a token the system
-					// will never honour" failure this scheduler exists to close, resurrected
-					// on the degrade path.
+					// ARM THE EPOCH SCHEDULER — ONLY NOW, below the boot install's
+					// one failure exit. This assignment used to sit ABOVE the
+					// install, so a failed boot rotation printed "LANE OFF" and
+					// `break`ed out with rotateDemandKeys still non-nil: the
+					// OnCommit hook kept rotating from the next epoch turn, and
+					// the node went on holding demand keys, STAGING IssuerKeyReg
+					// commitments into consensus, serving MsgGetDemandIssuerKeys
+					// and blind-signing withdrawals — charging the withdrawal fee
+					// — while demandBank stayed nil and denied every receipt those
+					// tokens bought. That is the "a fee burned for a token the
+					// system will never honour" failure this scheduler exists to
+					// close, resurrected on the degrade path.
 					//
 					// The fix is the ORDER, not a compensating `rotateDemandKeys = nil` on
 					// the failure branch: with the only assignment below the only failure
@@ -1258,19 +1271,21 @@ func cmdDaemon(args []string) error {
 					}
 					if *acceptReceipts {
 						nd.EnableDemandBank(nd.ID())
-						// R2.9: the paid delivery session lane rides the same flag (it IS the
-						// priced receipt lane, re-timed: the token is spent at session OPEN). The
-						// reaper sweeps lazily on activity and here on a wall-clock ticker at
-						// idle/2 so a silent server still closes idle sessions.
+						// The paid delivery session lane rides the same flag (it IS
+						// the priced receipt lane, re-timed: the token is spent at
+						// session OPEN). The reaper sweeps lazily on activity and here
+						// on a wall-clock ticker at idle/2 so a silent server still
+						// closes idle sessions.
 						nd.EnableDeliverySessions(ports.Duration(*deliveryIdle))
 						// Every consumer below reads the window BACK OUT of the reaper
-						// (nd.DeliveryIdleWindow()), never the flag a second time. The
+						// (nd.DeliveryIdleWindow), never the flag a second time. The
 						// floor check above and this install are two reads of one
 						// variable and only the check is gated, so an install that
 						// diverges from the checked value would otherwise be silent:
-						// reading back makes the daemon ANNOUNCE what it installed, and
-						// e2e TestDeliveryIdleWindowDefaultBootsThePaidLane asserts the
-						// announced window. G-C2-18 pins the identifier at both sites.
+						// reading back makes the daemon ANNOUNCE what it installed,
+						// and e2e TestDeliveryIdleWindowDefaultBootsThePaidLane
+						// asserts the announced window. this gate pins the identifier
+						// at both sites.
 						installedIdle := time.Duration(nd.DeliveryIdleWindow())
 						go func() {
 							t := time.NewTicker(deliverySweepInterval(installedIdle))
@@ -1287,7 +1302,7 @@ func cmdDaemon(args []string) error {
 				}
 			}
 			if *acceptRelayPayments {
-				// PoD relay lane (§7.3; R2.14 anchor certified 2026-09-04): accept
+				// PoD relay lane (§7.3): accept
 				// sender-funded PayWord chains for forwarding content-blind bytes,
 				// each anchored to prepayment credentials this node signed under its
 				// own committed key_E and spent once at open. Settlement pays
@@ -1306,14 +1321,15 @@ func cmdDaemon(args []string) error {
 		nd.OnSlash(func(culprit ports.NodeID, height uint64) {
 			fmt.Printf("chain: slashed equivocator %s (double-signed at height %d)\n", culprit, height)
 		})
-		// The narration names what the shipped rules can actually produce. Fork choice
-		// ranks on HEIGHT then head hash and has NO weight or bond term (heavier(),
-		// core/chain/chain.go; O3 Direction T, owner-ratified 2026-09-03), so "heavier
-		// fork" was vocabulary from a retired mechanism. And with the finality gate on
-		// (every objective() && ByzantineQuorum posture) Reconcile admits only forks that
-		// CONTAIN the committed head, so dropped > 0 is structurally impossible — this
-		// callback can only fire in a gate-OFF posture. Source: research certification
-		// README-BOND-FORKCHOICE-literal-claim-and-equivalence-…-2026-09-12, finding R-6.
+		// The narration names what the shipped rules can actually
+		// produce. Fork choice ranks on HEIGHT then head hash and has
+		// NO weight or bond term (heavier, core/chain/chain.go — the weight
+		// term is retired), so "heavier fork" was vocabulary from a
+		// retired mechanism. And with the finality gate on (every
+		// objective && ByzantineQuorum posture) Reconcile admits only
+		// forks that CONTAIN the committed head, so dropped > 0 is
+		// structurally impossible — this callback can only fire in a
+		// gate-OFF posture. Source:, finding R-6.
 		nd.OnReorg(func(dropped int, newHeight uint64) {
 			fmt.Printf("chain: adopted a competing fork, DROPPING %d committed block(s) (new head height %d). "+
 				"Fork choice ranks on HEIGHT then head hash — there is no bond or weight term. "+
@@ -1326,19 +1342,20 @@ func cmdDaemon(args []string) error {
 		// floor exit. Ephemeral observer state — the chain stays a pure reader.
 		lambdaH := newLambdaHTracker(*lambdaHWindow)
 		nd.OnCommit(func(b chain.Block) {
-			// R0.4b: advance the per-epoch demand key schedule when the consensus
-			// epoch turns. Generating RSA keys and writing them to disk would block
-			// the single loop for hundreds of milliseconds, so the work runs in a
-			// goroutine and posts the installs back.
+			// advance the per-epoch demand key schedule when the consensus
+			// epoch turns. Generating RSA keys and writing them to disk
+			// would block the single loop for hundreds of milliseconds, so
+			// the work runs in a goroutine and posts the installs back.
 			//
-			// Bumping demandEpoch here, on the loop, before the goroutine starts
-			// prevents a DUPLICATE rotation for the SAME epoch. It does NOT serialize
-			// rotations: a band is ~5 RSA keygens ~1s and an epoch is 8 blocks, so
-			// turns for DIFFERENT epochs routinely overlap and complete out of order.
-			// That is the case that used to lose keys (red-team F6), and the store —
-			// not this comment — is what makes it safe: EpochStore serializes the whole
-			// load-generate-save cycle and its prune's upper edge is monotone, so no
-			// turn can shrink another turn's pre-publication. See
+			// Bumping demandEpoch here, on the loop, before the goroutine
+			// starts prevents a DUPLICATE rotation for the SAME epoch. It does
+			// NOT serialize rotations: a band is ~5 RSA keygens ~1s and an
+			// epoch is 8 blocks, so turns for DIFFERENT epochs routinely
+			// overlap and complete out of order. That is the case that used to
+			// lose keys, and the store — not this comment — is what makes it
+			// safe: EpochStore serializes the whole load-generate-save cycle
+			// and its prune's upper edge is monotone, so no turn can shrink
+			// another turn's pre-publication. See
 			// adapters/diskissuer/epochkeys.go.
 			if rotateDemandKeys != nil {
 				if cur := nd.DemandEpoch(); cur > demandEpoch {
@@ -1346,9 +1363,10 @@ func cmdDaemon(args []string) error {
 					go rotateDemandKeys(cur)
 				}
 			}
-			// bond-regs is the DRAIN CURVE's per-block resolution: without it a
-			// journal cannot say which committed blocks banked which registrations
-			// (run 09fbe60-84613 read entries=0 as "empty" while regs were landing).
+			// bond-regs is the DRAIN CURVE's per-block resolution: without
+			// it a journal cannot say which committed blocks banked which
+			// registrations (run the field run read entries=0 as "empty"
+			// while regs were landing).
 			fmt.Printf("chain: committed block %d (%d entries, %d bond-regs, %d attestations)\n",
 				b.Height, len(b.Entries), len(b.BondRegs), len(b.Atts))
 			// C2 — no-quiet-capture concentration, from the COMMITTED bond ledger
@@ -1357,17 +1375,17 @@ func cmdDaemon(args []string) error {
 			if ch.Objective() {
 				m := ch.C2Metric()
 				// In objective mode the launch gate is DERIVED (strict anchor majority
-				// ⌊A/2⌋+1, #402) and cannot be disabled by config — so this line is true
+				// ⌊A/2⌋+1) and cannot be disabled by config — so this line is true
 				// whenever the network is objective and young, not contingent on a flag.
 				wheels := "engaged (young network — strict anchor majority still required)"
 				if ch.EverMature() {
-					// One-way latch (F-1): once shed, the anchors never re-arm.
+					// One-way latch: once shed, the anchors never re-arm.
 					wheels = "shed permanently (network matured — F-1 one-way latch)"
 					if !ch.Mature() {
 						wheels = "shed permanently (matured; live decentralization has since dropped — real-bond super-quorum in force, anchors NOT re-armed)"
 					}
 				}
-				// R4.2 "measure / publish": the A-axis numbers were computed but never printed.
+				// Measure and publish: the A-axis numbers were computed but never printed.
 				fmt.Printf("  C2: nakamoto %d bonds → %d operators (margin ×%d) → %d domains of %d distinct | cost-to-corrupt %d MiB of %d MiB bonded across %d | concentration HHI %.2f Gini %.2f top %.0f%% uniformity %.0f%% | wheels %s\n",
 					m.NakamotoBonds, m.NakamotoOperators, m.Margin, m.NakamotoDomains, m.DistinctDomains,
 					m.CostToCorruptBytes>>20, m.TotalBondedBytes>>20, m.Participants,
@@ -1380,26 +1398,27 @@ func cmdDaemon(args []string) error {
 				if m.TopShare >= 1.0/3 {
 					fmt.Printf("  ⚠ CONCENTRATION ALARM: one bond holds %.0f%% of bonded weight (≥ the ⅓ capture fraction) — real standing is concentrating; this is the honest-whale residual C2 measures but cannot close on-chain. Act out-of-band.\n", m.TopShare*100)
 				}
-				// Atomization note (seam-5): the whale alarm above reads TopShare, which an
+				// Atomization note: the whale alarm above reads TopShare, which an
 				// equal-bond SPLIT (one operator, many identical min-bonds) drives to its
 				// most-decentralized value — invisible to it. When the weight signals look
 				// clean (no whale) but the distribution is many bonds at implausibly uniform
 				// weight, surface the "many atoms" fingerprint so the operator verifies real
-				// independence out-of-band. Necessary-not-sufficient (#182): a size-varying
+				// independence out-of-band. Necessary-not-sufficient: a size-varying
 				// splitter evades it, and healthy decentralization is also uniform.
 				if m.TopShare < 1.0/3 && m.Participants >= 8 && m.WeightUniformity >= 0.9 {
-					fmt.Printf("  ⓘ atomization note: %d bonds at near-identical weight (uniformity %.0f%%) read as maximally decentralized on HHI/Gini/top-share, but an equal-bond SPLIT (one operator across many keys) produces exactly this fingerprint. The weight signals can't tell it from real decentralization (#182) — verify independent operators via out-of-band address/timing diversity.\n", m.Participants, m.WeightUniformity*100)
+					fmt.Printf("  ⓘ atomization note: %d bonds at near-identical weight (uniformity %.0f%%) read as maximally decentralized on HHI/Gini/top-share, but an equal-bond SPLIT (one operator across many keys) produces exactly this fingerprint. The weight signals can't tell it from real decentralization — verify independent operators via out-of-band address/timing diversity.\n", m.Participants, m.WeightUniformity*100)
 				}
 				// Export the committed head as a copy-pasteable weak-subjectivity
-				// checkpoint (F-1): a fresh/long-offline node pins one via -ws-checkpoint
+				// checkpoint: a fresh/long-offline node pins one via -ws-checkpoint
 				// to refuse a long-range reorg. Publish it / cross-check across nodes.
 				fmt.Printf("  checkpoint: %d:%s\n", b.Height, b.Hash())
-				// λ_H — the honest-arrival RATE the CT-1 conditional theorem is owed
-				// (research cert C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27,
-				// §6). A(t) is the SAME operator/domain-distinct distinctness the shed gates
-				// on (MatureCoefficient); λ_H = ΔA/Δheight over the trailing window is the
-				// realized net arrival rate. RECORD it; it parameterizes the certification,
-				// not the code (reads the committed metric, changes no rule).
+				// λ_H — the honest-arrival RATE the maturity-before-capture
+				// conditional theorem needs (§6). A(t) is the SAME
+				// operator/domain-distinct distinctness the shed gates on
+				// (MatureCoefficient); λ_H = ΔA/Δheight over the trailing window
+				// is the realized net arrival rate. RECORD it; it parameterizes
+				// the theorem, not the code (reads the committed metric, changes
+				// no rule).
 				a := ch.MatureCoefficient()
 				lambdaH.observe(b.Height, a)
 				if lambdaH.ready() {
@@ -1408,15 +1427,17 @@ func cmdDaemon(args []string) error {
 				} else {
 					fmt.Printf("  λ_H: window filling (A=%d) — arrival rate reported once ≥2 heights are trailed\n", a)
 				}
-				// Floor-exit alarm (§6/§271): the launch was certified against an honest-
-				// arrival floor. If the measured λ_H falls below it WHILE THE NETWORK IS
-				// STILL YOUNG (pre-maturity latch), the deployment has left hypothesis H —
-				// T_mature→∞, maturity-precedes-capture no longer holds — and the operator
-				// must NOT treat CT-1 as holding. After the one-way latch (EverMature) the
-				// floor is moot (P4: post-maturity concentration cannot re-arm anchors), so
-				// the alarm is gated on !EverMature(); the λ_H LINE above always prints.
+				// Floor-exit alarm: the launch was against an honest- arrival
+				// floor. If the measured λ_H falls below it WHILE THE NETWORK
+				// IS STILL YOUNG (pre-maturity latch), the deployment has left
+				// hypothesis H — T_mature→∞, maturity-precedes-capture no
+				// longer holds — and the operator must NOT treat CT-1 as
+				// holding. After the one-way latch (EverMature) the floor is
+				// moot (P4: post-maturity concentration cannot re-arm
+				// anchors), so the alarm is gated on !EverMature; the λ_H LINE
+				// above always prints.
 				if !ch.EverMature() && lambdaH.belowFloor(*lambdaHFloor) {
-					fmt.Printf("  ⚠ λ_H FLOOR-EXIT: honest-arrival rate %.3f/height is BELOW the certified floor %.3f/height while the network is still young — the launch has LEFT the CT-1 hypothesis (T_mature→∞; maturity-precedes-capture is no longer proven). Do NOT treat the maturity race as certified. Investigate stalled/reversed honest bonded arrivals out-of-band.\n",
+					fmt.Printf("  ⚠ λ_H FLOO: honest-arrival rate %.3f/height is BELOW the declared floor %.3f/height while the network is still young — the launch has LEFT the CT-1 hypothesis (T_mature→∞; maturity-precedes-capture is no longer proven). Do NOT treat the maturity race as verified. Investigate stalled/reversed honest bonded arrivals out-of-band.\n",
 						lambdaH.rate(), *lambdaHFloor)
 				}
 			}
@@ -1443,9 +1464,9 @@ func cmdDaemon(args []string) error {
 	}
 
 	// -care with no registry would silently never caretake (the care loop below
-	// requires reg != nil to resolve the entry): a caretaker that looks healthy
-	// and repairs nothing is the #235 silent-skip shape, so refuse to start
-	// instead — the operator meant to caretake and the config can't.
+	// requires reg != nil to resolve the entry: a caretaker that looks
+	// healthy and repairs nothing is the silent-skip shape, so refuse to
+	// start instead — the operator meant to caretake and the config can't.
 	if *care != "" && *serveRegistry == "" && *registryURL == "" {
 		return fmt.Errorf("-care needs a registry to resolve the cared entry: add -registry ID@https://host:port (or -serve-registry)")
 	}
@@ -1502,15 +1523,16 @@ func cmdDaemon(args []string) error {
 	fmt.Printf("store: %s\n", *storeDir)
 
 	if *uiAddr != "" {
-		// R2.9a, G-BB-13′ Part A (owner-ratified 2026-09-05): a tagged daemon with
+		// A tagged daemon with
 		// -bbootstrap set refuses to start unless -ui is a loopback bind. Checked
 		// before the token is minted and before anything is bound, so a refused
 		// combination leaves nothing behind. A no-op in a default build.
 		if err := bbootstrapRefuseRoutableBind(*uiAddr, bbootstrapOn()); err != nil {
 			return err
 		}
-		// And G-BB-12′'s second refusal: the block is served to whoever presents the
-		// token, so the token file must be owner-only. Also a no-op in a default build.
+		// And the second refusal: the block is served to whoever presents the
+		// token, so the token file must be owner-only. Also a no-op in a default
+		// build.
 		if err := bbootstrapRefuseInsecureTokenFile(*storeDir, bbootstrapOn()); err != nil {
 			return err
 		}
@@ -1533,9 +1555,9 @@ func cmdDaemon(args []string) error {
 			addressCap: addressCapConfig{Mode: addrMode.String(), Width: *dhtAddressWidth,
 				CapDirect: *dhtDomainCap, CapRelay: *dhtRelayCap, Reserve: *dhtAddressReserve},
 		}
-		// R2.9a: installs the status renderer only when -bbootstrap is set, and only in
-		// a tagged build. A no-op otherwise, so ui.statusExtra stays nil and there is no
-		// path from /api/status to the ledger's census (D-BB-BUILD-TAG).
+		// installs the status renderer only when -bbootstrap is set, and only in a
+		// tagged build. A no-op otherwise, so ui.statusExtra stays nil and there
+		// is no path from /api/status to the ledger's census.
 		bbootstrapWireUI(ui, bbootstrapOn())
 		bound, err := ui.serve(*uiAddr)
 		if err != nil {
@@ -1576,14 +1598,14 @@ func cmdDaemon(args []string) error {
 		}
 		addSeeds(ps, "-bootstrap")
 		for _, p := range ps {
-			nd.MarkSeed(p.ID) // operator-typed: exempt from the R4.3b address cap (cert C-2)
+			nd.MarkSeed(p.ID) // operator-typed: exempt from the address cap)
 		}
 	}
-	// The static consensus/anchor tier (#286 Layer 2): configure the validator set's
-	// addresses up front so a proposer can INITIATE the gather at genesis, and mark
-	// each never-evicted so a transient WAN miss doesn't tear it out of the mesh
-	// (docs/network-durability.md §8/§2). addSeeds already AddPeer's the address +
-	// seeds the Kademlia join; AddStaticPeer adds the eviction exemption.
+	// The static consensus/anchor tier: configure the validator set's addresses
+	// up front so a proposer can INITIATE the gather at genesis, and mark each
+	// never-evicted so a transient WAN miss doesn't tear it out of the mesh /§2.
+	// addSeeds already AddPeer's the address + seeds the Kademlia join;
+	// AddStaticPeer adds the eviction exemption.
 	if *persistentPeers != "" {
 		ps, err := discovery.ParseList(*persistentPeers)
 		if err != nil {
@@ -1667,7 +1689,7 @@ func cmdDaemon(args []string) error {
 	// actually reach us at.
 	//
 	// result, when non-nil, is told ONCE how the first registration went (nil =
-	// registered; err = refused) — the de-herd path re-picks on a refusal (R4.3b).
+	// registered; err = refused) — the de-herd path re-picks on a refusal.
 	leanOnRelay := func(viaID ports.NodeID, viaAddr string, result func(error)) {
 		report := func(err error) {
 			if result != nil {
@@ -1714,13 +1736,13 @@ func cmdDaemon(args []string) error {
 	}
 	nd.SetLedger(nd0ledger)
 	if *liar {
-		nd.SetLiar(true) // RED-TEAM (#232): keep the proof tags, drop the bytes
-		fmt.Println("RED-TEAM: running as a PoR LIAR (keeps proof tags, drops shard bytes) — never honest")
+		nd.SetLiar(true) // ADVERSARY HARNESS: keep the proof tags, drop the bytes
+		fmt.Println("ADVERSARY: running as a PoR LIAR (keeps proof tags, drops shard bytes) — never honest")
 	}
 	loop.Post("bootstrap", func() {
 		// Self-heal if the join races a not-yet-listening bootstrap target: while
 		// the table stays empty, re-run the Kademlia join against the seeds so the
-		// node recovers on its own instead of staying isolated (#281).
+		// node recovers on its own instead of staying isolated.
 		nd.StartBootstrapRetry(func(size int) {
 			fmt.Printf("re-bootstrapped: recovered from an empty routing table (%d table entries)\n", size)
 			dlog("re-bootstrapped from empty table", "table", size)
@@ -1745,7 +1767,7 @@ func cmdDaemon(args []string) error {
 						// become) known. Adopt the first that shows up.
 						fmt.Println("reachability: no peer could dial back — this node looks NATed; watching the swarm for a gossiped relay (-relay-via RELAYID@HOST:PORT skips the wait)")
 						dlog("natted, watching for gossiped relay")
-						// De-herd (R4.3b): pick among the gossiped relays per node
+						// De-herd: pick among the gossiped relays per node
 						// (min over H(self ‖ relayID), so a swarm spreads across its
 						// relays instead of every NATed pony adopting the lowest-ID
 						// relay for life), fail over past a relay that refuses
@@ -1805,9 +1827,9 @@ func cmdDaemon(args []string) error {
 					fmt.Printf("chain: caught up %d block(s) from peers\n", added)
 					saveChain("catch-up")
 				})
-				// -forge-block / -lowbond-propose: RED-TEAM / TEST HARNESS — send ONE crafted
+				// -forge-block / -lowbond-propose: ADVERSARY / TEST HARNESS — send ONE crafted
 				// proposal to a peer and report whether the honest validator refused it, proving
-				// the two ValidateProposal defences (#184 forged-block→reject, low-bond→reject)
+				// the two ValidateProposal defences
 				// over the real wire. Retry only until the target is reachable. NEVER honest.
 				badPropose := func(targetStr string, forge bool, label string) {
 					if targetStr == "" {
@@ -1838,11 +1860,12 @@ func cmdDaemon(args []string) error {
 				badPropose(*forgeBlock, true, "forge-block")
 				badPropose(*lowbondPropose, false, "lowbond-propose")
 				// -goodpropose: TEST HARNESS — the POSITIVE CONTROL for the two rejections.
-				// A well-formed, properly-bonded proposal the honest target must ACCEPT, so a
-				// reject-everything target can't false-pass the forged/low-bond REJECT tests
-				// (#303). Unlike badPropose, RETRY ON REJECTION too: this proposer earns
-				// standing over the first few bond audits, so early rejections are expected
-				// until its bond qualifies — accept the first OK:true; give up after ~40 tries.
+				// A well-formed, properly-bonded proposal the honest target must
+				// ACCEPT, so a reject-everything target can't false-pass the
+				// forged/low-bond REJECT tests. Unlike badPropose, RETRY ON
+				// REJECTION too: this proposer earns standing over the first few
+				// bond audits, so early rejections are expected until its bond
+				// qualifies — accept the first OK:true; give up after ~40 tries.
 				if *goodPropose != "" {
 					if gid, gerr := ports.ParseHash(strings.TrimSpace(*goodPropose)); gerr != nil {
 						fmt.Fprintf(os.Stderr, "-goodpropose: %v\n", gerr)
@@ -1867,15 +1890,15 @@ func cmdDaemon(args []string) error {
 						clk.AfterFunc(2*ports.Second, gtry)
 					}
 				}
-				// -equivocate: RED-TEAM / TEST HARNESS — drive a deliberate double-sign so
-				// honest replicas catch and slash it over the real wire (#184). Retry on the
+				// -equivocate: ADVERSARY / TEST HARNESS — drive a deliberate double-sign so
+				// honest replicas catch and slash it over the real wire. Retry on the
 				// loop-safe clock until this node has earned standing with both peers (early
 				// attempts are refused). NEVER honest; a correct node refuses to equivocate.
 				if *equivocate != "" && nd.Chain() != nil && nd.Chain().Objective() {
 					// OBJECTIVE mode (3-of-4): a fork can NEVER be committed onto a
 					// target (quorum-short; a minority fork is an I1 violation), so the
 					// legacy commit-based placement cannot drive here. The faithful route
-					// is slash-on-DETECTION (PE ruling 2026-08-17): this validator
+					// is slash-on-DETECTION: this validator
 					// participates honestly (its prepare lands on-chain), then SERVES a
 					// conflicting signed block at that height; an honest peer fetches it on
 					// sync and slashes the double-sign unaided. Peer IDs are irrelevant
@@ -1913,7 +1936,7 @@ func cmdDaemon(args []string) error {
 									// Narrate every refused attempt: a silent retry loop that can
 									// wedge (e.g. a PARTIAL placement — X committed on idX, then the
 									// fork synced back so later attempts build on a head idYZ refuses)
-									// is undiagnosable from the outside (#345 family).
+									// is undiagnosable from the outside.
 									fmt.Println("adversary: equivocation attempt refused:", err)
 									clk.AfterFunc(1*ports.Second, tryEquiv) // not qualified with peers yet; retry
 									return
@@ -1935,7 +1958,7 @@ func cmdDaemon(args []string) error {
 						// Tell the operator what -revoke is doing: it does NOT act
 						// immediately — it polls until the root is committed on-chain and
 						// this validator has standing to gather a quorum. Without this a
-						// bogus/uncommitted root leaves the daemon silently inert (#235).
+						// bogus/uncommitted root leaves the daemon silently inert.
 						fmt.Printf("revoke: target %s — waiting until it is committed on-chain and this validator has standing to gather a takedown quorum\n", root)
 						sawCommitted := false
 						var tryRevoke func()
@@ -2003,16 +2026,15 @@ func cmdDaemon(args []string) error {
 	return nil
 }
 
-// resolveLogLevel turns the -log/-debug flags into (level, on): -log
-// wins when set, -debug is shorthand for the debug firehose. A VALIDATOR
-// with neither flag defaults to info — the M0 trust plane (standing accrual,
-// commits, catch-up, caretaker sweeps) is exactly what an operator must be
-// able to see, so it narrates the normal path by default rather than staying
-// silent until someone knows to ask (acceptance F7). A non-validator with
-// resolveContentServing settles the D-TIERING content-serving axis from its two
-// spellings: the positive -serve-content (the composable tier form) and the older
-// negative -freeload. It reports whether the node REFUSES to store or serve
-// content.
+// resolveLogLevel turns the -log/-debug flags into (level, on): -log wins when
+// set, -debug is shorthand for the debug firehose. A VALIDATOR with neither flag
+// defaults to info — the M0 trust plane (standing accrual, commits, catch-up,
+// caretaker sweeps) is exactly what an operator must be able to see, so it
+// narrates the normal path by default rather than staying silent until someone
+// knows to ask (acceptance F7). A non-validator with resolveContentServing
+// settles the content-serving axis from its two spellings: the positive
+// -serve-content (the composable tier form) and the older negative -freeload. It
+// reports whether the node REFUSES to store or serve content.
 //
 // The two must agree. An operator who passes -freeload together with an EXPLICIT
 // -serve-content=true stated two contradictory intents, and silently picking one
@@ -2160,7 +2182,7 @@ func joinSwarm(peers string, replication int) (*ephemeral, func(fn func(done fun
 	nd.SetSigner(ident.Signer()) // sign self-certifying provider records (H5)
 	nd.SetEphemeral(true)        // a publish/fetch client that keeps nothing — peers must not route to it (#43)
 	if os.Getenv("SILT_SWARM_DEBUG") != "" {
-		// Per-attempt narration to stderr (#497): a swarm add/get client is
+		// Per-attempt narration to stderr: a swarm add/get client is
 		// otherwise silent about placement attempts, so a delivered-but-unacked
 		// store (a silent extra copy on the receiver) is invisible from the
 		// client side. Opt-in via env — the CLI's normal output stays one line.
@@ -2200,15 +2222,15 @@ func (e *ephemeral) close() {
 
 // AntiReleaseComputeWindow is the COMPUTE budget the anti-release floor is sized
 // against: the time a released prover would need to re-seal its plot just-in-time
-// to answer a challenge. Build-immutable #3/#4 (docs/TENETS.md): this is a
+// to answer a challenge. Build-immutable #3/#4: this is a
 // *compute* window, deliberately DECOUPLED from the transport -request-timeout
-// and the -bond-answer-latency reply gate. It is NOT the network reply deadline —
-// so raising -request-timeout for durability (adverse-network hardening, #288)
-// does not widen it, and the anti-release floor never balloons with a network
-// timeout (that would price out small validators — immutable #4). Enforcement of
-// the window is a floor large enough that a re-seal is a multi-second sequential
+// And the -bond-answer-latency reply gate. It is NOT the network reply deadline —
+// so raising -request-timeout for durability (adverse-network hardening) does not
+// widen it, and the anti-release floor never balloons with a network timeout
+// (that would price out small validators — immutable #4). Enforcement of the
+// window is a floor large enough that a re-seal is a multi-second sequential
 // cost, caught by the bond-audit statistics over history — not a single hard
-// wall-clock reply deadline (immutable #3; #289).
+// wall-clock reply deadline (immutable #3).
 const AntiReleaseComputeWindow = 2 * time.Second
 
 // DerivedBondFloor is the anti-release floor an untrusted (objective) validator
@@ -2219,14 +2241,14 @@ const AntiReleaseComputeWindow = 2 * time.Second
 const DerivedBondFloor = int64(2) * (int64(AntiReleaseComputeWindow/time.Second) * bond.PlotSealThroughput)
 
 // MinObjectiveAnchors is the smallest launch set an untrusted objective validator may
-// start from (owner call, delegated 2026-09-08; blind PE finding on the #380 review).
+// start from.
 //
 // At A = 1 no count gate holds anything. bftThreshold(1) = 0, so the sole anchor commits
 // on its own signature with zero attestations; requiredLaunchAnchors is ⌊1/2⌋+1 = 1 and
-// countAnchorSupport credits the proposer itself, so the #402 anchor gate is
+// countAnchorSupport credits the proposer itself, so the anchor gate is
 // self-satisfied; and finalityQuorumActive is true (0 >= 0), so those zero-attestation
 // blocks are treated as final. What actually holds at A = 1 is f = 0 plus the fact that
-// one qualified proposer never signs twice at a height (#397) — a property of there being
+// one qualified proposer never signs twice at a height — a property of there being
 // nobody else, not a quorum. Two anchors is the smallest set where the launch gate is a
 // gate: the majority is 2, so a commit needs the other anchor's signature.
 //
@@ -2235,14 +2257,14 @@ const DerivedBondFloor = int64(2) * (int64(AntiReleaseComputeWindow/time.Second)
 const MinObjectiveAnchors = 2
 
 // coldStartScaffoldOK reports whether an untrusted objective validator has the
-// cold-start scaffolding it needs to be safe from genesis (red-team seam-2 /
-// Invariant B S6). Either satisfies it: the anchor LAUNCH set (anchors +
-// mature-validators>0), which imposes the anchor co-sign until the network
-// measurably decentralizes; or a weak-subjectivity CHECKPOINT, which is how a
-// node safely JOINS an already-mature network without re-supplying the launch
-// set. With neither, a stock validator latches everMature at genesis and runs
-// with no cold-start gate — the seam-2 hole. Off the untrusted objective path
-// (trusted/legacy) there is nothing to gate.
+// cold-start scaffolding it needs to be safe from genesis. Either satisfies
+// it: the anchor LAUNCH set (anchors + mature-validators>0), which imposes the
+// anchor co-sign until the network measurably decentralizes; or a
+// weak-subjectivity CHECKPOINT, which is how a node safely JOINS an
+// already-mature network without re-supplying the launch set. With neither, a
+// stock validator latches everMature at genesis and runs with no cold-start
+// gate. Off the untrusted objective path (trusted/legacy)
+// there is nothing to gate.
 func coldStartScaffoldOK(useObjective bool, anchorCount, matureValidators int, wsCheckpoint string) bool {
 	if !useObjective {
 		return true
@@ -2256,8 +2278,7 @@ func coldStartScaffoldOK(useObjective bool, anchorCount, matureValidators int, w
 // TTL, Byzantine and operator-margin derivations: an explicit -quorum always wins, and
 // the untrusted objective path DERIVES one when the operator sets none.
 //
-// Why a derived default at all (owner call, delegated 2026-09-08; blind PE finding on
-// the #380 review). The shipped literal is 3. Since #380 (D-CONSENSUS-ARMING (20))
+// Why a derived default at all. The shipped literal is 3, and
 // -quorum is no longer a validity term on the objective path — ValidateCommit reads the
 // DERIVED bar — but it is still a FLOOR on the gather, so at a four-anchor launch the
 // literal asks for all three peers and the swarm tolerates f = 0. The published liveness
@@ -2270,10 +2291,10 @@ func coldStartScaffoldOK(useObjective bool, anchorCount, matureValidators int, w
 // validity reads a DERIVED bar; with -byzantine-quorum=false the local floor is itself the
 // validity term and lowering it would widen what the node accepts.
 //
-// It can only ever LOWER the ask, never raise it: gatherTwoPhase gathers
-// max(caller floor, ConfigQuorum(), RequiredQuorum()), so the derived Byzantine bar is a
-// floor underneath this whatever the operator sets. Safety is untouched — it is not a
-// validity term here — and a trusted or one-box swarm still sets -quorum explicitly.
+// It can only ever LOWER the ask, never raise it: gatherTwoPhase gathers max(caller
+// floor, ConfigQuorum, RequiredQuorum), so the derived Byzantine bar is a floor
+// underneath this whatever the operator sets. Safety is untouched — it is not a validity
+// term here — and a trusted or one-box swarm still sets -quorum explicitly.
 //
 // Sized over the LAUNCH SET (the anchors), which is what validatorSetSize itself uses
 // while the network is young; once the network hands off, RequiredQuorum re-sizes over
@@ -2284,11 +2305,11 @@ func effectiveQuorum(quorumSet bool, explicit int, objectivePath, byzantineSizin
 	}
 	// byzantineSizing is NOT optional here, and its absence was a real defect caught in
 	// review. With -byzantine-quorum=false, RequiredQuorum returns cfg.Quorum VERBATIM
-	// (chain.go leg (c)) — the local floor IS the validity bar in that regime, so deriving
-	// it downward would make the node ACCEPT a block it previously refused. That is exactly
-	// the boundary #380's ratification drew: "the trusted opt-out (-byzantine-quorum=false)
-	// and legacy mode keep cfg.Quorum unchanged" (D-CONSENSUS-ARMING (20), as amended).
-	// The derivation is sound ONLY where the bar is derived elsewhere.
+	// (chain.go leg (c)) — the local floor IS the validity bar in that regime, so
+	// deriving it downward would make the node ACCEPT a block it previously refused.
+	// That is exactly where the boundary sits: the trusted opt-out
+	// (-byzantine-quorum=false) and legacy mode keep cfg.Quorum unchanged. The
+	// derivation is sound ONLY where the bar is derived elsewhere.
 	if !objectivePath || !byzantineSizing {
 		return explicit, false
 	}
@@ -2325,19 +2346,18 @@ func effectiveBondFloor(floorSet bool, explicit int64, objectivePath bool) (floo
 // DerivedBondTTL is the objective re-challenge cadence an untrusted (objective)
 // validator gets when the operator sets none: standing lapses this many committed
 // blocks after a validator's latest on-chain bond registration unless it renews
-// with a fresh space-time proof (M0 hardening H2 / red-team RT-2). Shipping the
-// TTL mechanism but defaulting it OFF left release-and-coast live — a validator
-// registers a bond once, releases the plot, and votes forever off one proof — so
-// like -objective and -min-bond-floor it is now SAFE-BY-DEFAULT on the objective
-// path. The value trades liveness margin against how long a released bond can
-// coast: the paired non-proposer renewal path (node.SubmitBondRenewal) fires
-// every chain-sync sweep, so an honest validator gets many inclusion chances per
-// window and never lapses, while a coaster is pruned within this many blocks. A
-// tuning knob (Evolving), not a fixed law — BEFORE LAUNCH. Once a network's
-// genesis commits this value, tightening it and rebuilding makes every
-// upgrading node refuse to start on that chain with an unchanged argv, so it
-// is a NEW NETWORK and not a tuning change (D-CFGBIND-TIER-PROMOTION-2026-09-11,
-// driven; docs/TENETS.md Part IX).
+// with a fresh space-time proof. Shipping the TTL mechanism
+// but defaulting it OFF left release-and-coast live — a validator registers a
+// bond once, releases the plot, and votes forever off one proof — so like
+// -objective and -min-bond-floor it is now SAFE-BY-DEFAULT on the objective path.
+// The value trades liveness margin against how long a released bond can coast:
+// the paired non-proposer renewal path (node.SubmitBondRenewal) fires every
+// chain-sync sweep, so an honest validator gets many inclusion chances per window
+// and never lapses, while a coaster is pruned within this many blocks. A tuning
+// knob (Evolving), not a fixed law — BEFORE LAUNCH. Once a network's genesis
+// commits this value, tightening it and rebuilding makes every upgrading node
+// refuse to start on that chain with an unchanged argv, so it is a NEW NETWORK
+// and not a tuning change, driven Part IX.
 const DerivedBondTTL = uint64(32)
 
 // effectiveBondTTL decides the objective re-challenge TTL, mirroring
@@ -2355,16 +2375,16 @@ func effectiveBondTTL(ttlSet bool, explicit uint64, objectivePath bool) (ttl uin
 }
 
 // DerivedEpochBlocks is the mature-phase validator-set epoch an untrusted
-// (objective) validator gets when the operator sets none (#357 research
-// certification, Condition A). The cadence trades two bounded windows: a bond
-// that joins/renews/TTL-lapses mid-epoch integrates only at the next rotation
-// (so a lapsed bond's vote can outlive its TTL by at most one epoch), against
-// how often the finality set moves at all. 8 keeps that slop ≤ ¼ of
-// DerivedBondTTL (32) — comfortably inside the TTL's own renewal margin — while
-// still freezing the set across the multi-block window a WAN commit gathers in.
-// Rotation itself is free (a map snapshot at an already-final boundary block).
-// A tuning knob (Evolving), not a fixed law — but CONSENSUS-CRITICAL: it must
-// match across the swarm, which the shared default provides.
+// (objective) validator gets when the operator sets none. The cadence trades
+// two bounded windows: a bond that joins/renews/TTL-lapses mid-epoch integrates
+// only at the next rotation (so a lapsed bond's vote can outlive its TTL by at
+// most one epoch), against how often the finality set moves at all. 8 keeps
+// that slop ≤ ¼ of DerivedBondTTL (32) — comfortably inside the TTL's own
+// renewal margin — while still freezing the set across the multi-block window a
+// WAN commit gathers in. Rotation itself is free (a map snapshot at an
+// already-final boundary block). A tuning knob (Evolving), not a fixed law —
+// but CONSENSUS-CRITICAL: it must match across the swarm, which the shared
+// default provides.
 const DerivedEpochBlocks = uint64(8)
 
 // effectiveEpochBlocks decides the mature-phase epoch cadence, mirroring the
@@ -2382,17 +2402,17 @@ func effectiveEpochBlocks(epochSet bool, explicit uint64, objectivePath bool) (b
 }
 
 // effectiveByzantineQuorum decides Byzantine quorum sizing (H4), mirroring the
-// floor/TTL derivations: an explicit -byzantine-quorum always wins (including
-// =false, the trusted opt-out), otherwise the untrusted objective path turns it on
-// and every other posture leaves it off. Why default-on is safe (#380 direction (1),
-// D-CONSENSUS-ARMING (20)): with it on, the validity bar is the DERIVED, replica-
-// identical Byzantine rule (bftThreshold(N); the >⅔ frozen-weight rule in a mature
-// epoch) and the local -quorum is not a validity term at all — so every untrusted
-// replica computes the same rule and a -quorum skew cannot strand a node (#338). It
-// is NOT a strict raise: with -quorum above bftThreshold(N) the validity bar goes
-// DOWN (3 → 2 at four anchors; 0 in a mature epoch), while the proposer-side gather
-// target stays at max(-quorum, derived). The trade is intersection-by-derivation over
-// an operator's local floor, which never contributed intersection.
+// floor/TTL derivations: an explicit -byzantine-quorum always wins (including =false,
+// the trusted opt-out), otherwise the untrusted objective path turns it on and every
+// other posture leaves it off. Why default-on is safe: with it on, the validity bar
+// is the DERIVED, replica- identical Byzantine rule (bftThreshold(N); the >⅔
+// frozen-weight rule in a mature epoch) and the local -quorum is not a validity term
+// at all — so every untrusted replica computes the same rule and a -quorum skew
+// cannot strand a node. It is NOT a strict raise: with -quorum above bftThreshold(N)
+// the validity bar goes DOWN (3 → 2 at four anchors; 0 in a mature epoch), while the
+// proposer-side gather target stays at max(-quorum, derived). The trade is
+// intersection-by-derivation over an operator's local floor, which never contributed
+// intersection.
 func effectiveByzantineQuorum(byzSet, explicit, objectivePath bool) (on, defaulted bool) {
 	if byzSet {
 		return explicit, false
@@ -2407,10 +2427,10 @@ func effectiveByzantineQuorum(byzSet, explicit, objectivePath bool) (on, default
 // validator gets when the operator sets none. M discounts the bond-distinct Nakamoto
 // coefficient to ⌊k̂/M⌋, so a single operator splitting real stake across ~M NodeIDs
 // cannot fake the decentralization that sheds the launch anchors — a splitter must
-// clear mature-validators×M distinct bonds. Shipping the mechanism but defaulting
-// M=1 (no margin) was the Invariant-B footgun the blind red-team flagged. The value is
-// a conservative heuristic (Evolving) — M stays fundamentally unverifiable on-chain
-// (#182), so this is margin, not proof; a real deployment can raise it.
+// clear mature-validators×M distinct bonds. Shipping the mechanism but defaulting M=1
+// (no margin) was a footgun. The value is a
+// conservative heuristic (Evolving) — M stays fundamentally unverifiable on-chain, so
+// this is margin, not proof; a real deployment can raise it.
 const DerivedOperatorMargin = 2
 
 // effectiveOperatorMargin decides the C2 operator margin, mirroring the floor/TTL/
@@ -2429,40 +2449,35 @@ func effectiveOperatorMargin(marginSet bool, explicit int, objectivePath bool) (
 	return explicit, false
 }
 
-// faucetConfigure wires R2.12 from the three operator flags. Both rate flags must be set
+// faucetConfigure wires the faucet from the three operator flags. Both rate flags must be set
 // together or neither; a half-configuration, a negative value, or a capacity whose
 // worst-case guard occupancy `capacity × (grant/fee) × (W+1)` exceeds a quarter of the
-// paid-serial cap refuses to start (economist advisory
-// ADVISORY-R2.12-faucet-rate-limit-defaults-2026-09-05 §2.3: the assertion ties the faucet's
-// burst, the grant, the fee and the guard cap — four constants in three packages re-tuned
-// by three different processes — so raising any one past the guard's cliff refuses to start
+// paid-serial cap refuses to start (the assertion ties the faucet's
+// burst, the grant, the fee and the guard cap — four constants in three packages re-tuned by
+// three different processes — so raising any one past the guard's cliff refuses to start
 // instead of silently opening a hole). IT IS A COHERENCE GATE, NOT A SECURITY BOUND: it
 // bounds the FLOW of fresh entitlement per bucket-fill, never the STOCK — balances never
 // expire and accounts are never deleted, so the accumulated entitlement is bounded only by
-// the ledger's ephemerality (Researcher certification
-// R2.12-faucet-rate-tier-and-grant-ratio-composition-2026-09-05 §3.3, G-R212-4). With both
-// flags at 0 the ledger stays UNCONFIGURED and behaves exactly as before R2.12; there is NO
-// shipped default, because the rate is a security parameter bounded by build-immutable #4
-// on both sides and its value may be set only by an owner ratification against a
-// research-certified admissible interval (same certification §1.5, G-R212-1). The
-// assumption the Economist's derivation rests on is printed beside the operator's values
-// so whoever reads one line knows what would move them.
+// the ledger's ephemerality. With both flags at 0 the ledger stays UNCONFIGURED and behaves
+// exactly as before; there is NO shipped default, because the rate is a security parameter
+// bounded by build-immutable #4 on both sides, so it is set deliberately against an
+// admissible interval. The assumption the derivation rests on is printed beside the
+// operator's values so whoever reads one line knows what would move them.
 // grantDenyFloorOneFee is the -grant-deny-floor default: the sentinel resolves to ONE
-// publish fee read from the ledger (never a duplicated literal, PE BLK-3). Owner-ratified
-// 2026-09-06 ("advance"): an empty bucket advances one fee; 0 opts into deny.
+// publish fee read from the ledger, never a duplicated literal. An empty bucket advances
+// one fee; 0 opts into deny.
 const grantDenyFloorOneFee = -1
 
-// faucetConfigure applies the R2.12 faucet flags to the ledger (the doc above the constants).
+// faucetConfigure applies the faucet flags to the ledger (the doc above the constants).
 //
-// R2.9 (D-R2.9-NODE-HALF-CALLS 1′, 2026-09-07): under the delivery lane's DEPOSIT (the
-// unsettled remainder is released at ANCHOR EXPIRY, never at close) the (grant/fee) term
-// below is the exact CONCURRENCY of anchors one identity can hold live at once — the
-// assertion survives verbatim and becomes tight (refund certification §4.5, §6.3). What
-// weakens is the STOCK reading: under the burn a fixed stock filled the guard ONCE; under
-// the deposit the same stock can fill it every window (R-STOCK-RENEWABLE-OCCUPANCY, bounded
-// by Σ credits ever granted / f per window) — the honest price of a renewable honest budget.
+// Under the delivery lane's DEPOSIT (the unsettled remainder is released at ANCHOR EXPIRY,
+// never at close) the (grant/fee) term below is the exact CONCURRENCY of anchors one
+// identity can hold live at once — the assertion survives verbatim and becomes tight
+// (refund, §6.3). What weakens is the STOCK reading: under the burn a fixed stock filled the
+// guard ONCE; under the deposit the same stock can fill it every window (bounded by Σ
+// credits ever granted / f per window) — the honest price of a renewable honest budget.
 func faucetConfigure(l *credit.Ledger, capacity, perHour, denyFloor int64) error {
-	grant, fee := l.Grant(), l.Fee() // from the LEDGER, never a duplicated literal (PE BLK-3)
+	grant, fee := l.Grant(), l.Fee() // from the LEDGER, never a duplicated literal
 	if capacity == 0 && perHour == 0 {
 		if denyFloor != grantDenyFloorOneFee && denyFloor != 0 {
 			return fmt.Errorf("-grant-deny-floor %d refused: it has no effect without -grant-capacity and -grant-per-hour", denyFloor)
@@ -2481,10 +2496,9 @@ func faucetConfigure(l *credit.Ledger, capacity, perHour, denyFloor int64) error
 	if denyFloor > grant {
 		return fmt.Errorf("-grant-deny-floor %d refused: the floor cannot exceed the %d starter grant it degrades", denyFloor, grant)
 	}
-	// Overflow guard before the multiply: a capacity above the whole guard cap can never
-	// pass the quarter-cap assertion below, so refuse it here rather than let
-	// capacity × (grant/fee) × (W+1) wrap int64 into a small positive number (the PE
-	// measured 3.69e17 and 1e18 accepted).
+	// Overflow guard before the multiply: a capacity above the whole guard cap can
+	// never pass the quarter-cap assertion below, so refuse it here rather than let
+	// capacity × (grant/fee) × (W+1) wrap int64 into a small positive number.
 	if capacity > int64(credit.MaxPaidSerial) {
 		return fmt.Errorf("-grant-capacity %d refused: above the paid-serial guard cap itself (%d); no rate makes that admissible", capacity, credit.MaxPaidSerial)
 	}
@@ -2498,7 +2512,7 @@ func faucetConfigure(l *credit.Ledger, capacity, perHour, denyFloor int64) error
 	if denyFloor > 0 {
 		mode = fmt.Sprintf("advance %d credits now, top up to the full grant when a token accrues", denyFloor)
 	}
-	fmt.Printf("faucet: rate-limited — capacity %d grants, %d/hour accrued continuously, empty bucket = %s; worst-case guard occupancy per bucket-fill %d of %d (%.1f%%; a flow bound, not a stock bound). This value is operator-set: the rate is a security parameter with no certified interval yet; watch faucet.grantsDenied (distinct identities refused) on /api/status — grantsPending counts registrations, not denials — and re-derive on two consecutive hours of denials under honest load, never on one datapoint (R2.12, docs/thinking/2026-09-05-r2.12-faucet-rate-limit.md)\n",
+	fmt.Printf("faucet: rate-limited — capacity %d grants, %d/hour accrued continuously, empty bucket = %s; worst-case guard occupancy per bucket-fill %d of %d (%.1f%%; a flow bound, not a stock bound). This value is operator-set: the rate is a security parameter with no verified interval yet; watch faucet.grantsDenied (distinct identities refused) on /api/status — grantsPending counts registrations, not denials — and re-derive on two consecutive hours of denials under honest load, never on one datapoint\n",
 		capacity, perHour, mode, occupancy, credit.MaxPaidSerial, 100*float64(occupancy)/float64(credit.MaxPaidSerial))
 	return nil
 }
@@ -2508,7 +2522,7 @@ func faucetConfigure(l *credit.Ledger, capacity, perHour, denyFloor int64) error
 //
 // WHY ONE NUMBER ANSWERS NEITHER QUESTION. Cloud row 13b-delivery-settlement must separate "era-4
 // is dark — the chain has not activated and the binary is fine" from "something else is wrong".
-// #808 shipped the observed half; a chain carrying no v5 block is a HEALTHY dark network under a
+// shipped the observed half; a chain carrying no v5 block is a HEALTHY dark network under a
 // build that declares v5 and the WRONG BUILD under one that declares v2, and those are the same
 // observation. The pair is the deliverable, so the two numbers are printed together, by one call,
 // and can never be read apart.
@@ -2523,7 +2537,7 @@ func eraStartupLines(ch *chain.Chain) []string {
 }
 
 // networkIdentityLines is the daemon's half of the network-identity pair: WHICH NETWORK this node
-// is on, by both of the identifiers the owner's requirement names — a canonical text name and the
+// is on, by both identifiers — a canonical text name and the
 // cryptographic one.
 //
 // LIKE eraStartupLines, IT TAKES NO FLAG. It reads the name off the committed genesis through

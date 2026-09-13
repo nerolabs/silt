@@ -6,8 +6,8 @@
 # On cone NAT the punch lands and BOTH daemons log a direct connection; on
 # symmetric NAT it can't and they stay on the relay.
 #
-#   ./holepunch.sh                   # cone — expect the punch to land
-#   NAT_MODE=symmetric ./holepunch.sh  # expect NO punch (relay stays)
+# ./holepunch.sh # cone — expect the punch to land
+#  NAT_MODE=symmetric ./holepunch.sh # expect NO punch (relay stays)
 set -uo pipefail
 cd "$(dirname "$0")"
 ROOT=$(cd ../.. && pwd)

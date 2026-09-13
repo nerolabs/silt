@@ -6,7 +6,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// P0-1 (#277 dead-peer envelope): the provider store must age out a departed
+// P0-1: the provider store must age out a departed
 // holder's record — filter it on read (Live), reclaim it (Evict), and prune a
 // confirmed-dead holder from keys where a live alternative exists (RemoveIfNotSole)
 // WITHOUT orphaning a sole holder's content. These are the failing-first regressions

@@ -91,16 +91,16 @@ func TestFindEquivocationsAcrossForks(t *testing.T) {
 	}
 }
 
-// The #496 seam (research-certified 2026-08-21): candidate SELECTION must
-// enumerate every signing role the VERIFIER checks. An era-2 equivocator whose
-// signature in the canonical block sits ONLY in PrepareQC (it is neither the
-// proposer nor a precommit-attester) was invisible to FindEquivocations —
-// signers() read proposer+Atts only — while VerifyEquivocation, which scans
-// PrepareQC too, would happily have proven the double-sign. Field shape: the
-// objective-mode island equivocator at the genesis child (height 1), where the
-// culprit is reliably prepare-only, went unslashed for a whole drill window
-// (run 1642465-57233) while the identical act at height 2 was always caught.
-// Born RED before the signers() widening; GREEN after (V5).
+// The seam: candidate SELECTION must enumerate every signing role the VERIFIER
+// checks. An era-2 equivocator whose signature in the canonical block sits
+// ONLY in PrepareQC (it is neither the proposer nor a precommit-attester) was
+// invisible to FindEquivocations — signers read proposer+Atts only — while
+// VerifyEquivocation, which scans PrepareQC too, would happily have proven the
+// double-sign. Field shape: the objective-mode island equivocator at the
+// genesis child (height 1), where the culprit is reliably prepare-only, went
+// unslashed for a whole drill window (run the field run) while the identical
+// act at height 2 was always caught. Born RED before the signers widening;
+// GREEN after (V5).
 func TestFindEquivocations_PrepareOnlyCulprit(t *testing.T) {
 	w := newWorld(DefaultConfig())
 	g := w.genesis()
@@ -143,7 +143,7 @@ func TestFindEquivocations_PrepareOnlyCulprit(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("#496: a prepare-only equivocator must be selected by FindEquivocations — a culprit the verifier can convict must never be skipped by the candidate enumeration")
+		t.Fatal("a prepare-only equivocator must be selected by FindEquivocations — a culprit the verifier can convict must never be skipped by the candidate enumeration")
 	}
 	// And no honest participant is implicated by the widened selection.
 	for i := range got {

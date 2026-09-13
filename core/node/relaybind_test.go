@@ -8,21 +8,21 @@ package node
 // block on a reply. This file drives them from off-loop goroutines against a node
 // backed by a REAL running event loop (walltime), under -race, to prove:
 //
-//   - the resolver resolves an owned handle to its live session and REFUSES an unknown
-//     handle or a non-owner (the ephID-ownership check, certified residual #2);
-//   - the crossing is -race clean (the map is read on the loop, the caller blocks off
-//     it) — this is the design-flagged concurrency seam.
+// - the resolver resolves an owned handle to its live session and REFUSES an unknown
+// handle or a non-owner (the ephID-ownership check, residual #2);
+// - the crossing is -race clean (the map is read on the loop, the caller blocks off
+// It — this is the design-flagged concurrency seam.
 //
 // A walltime clock is used (not simclock) because the marshal-onto-loop-and-block
 // pattern needs the loop to run concurrently with the blocked caller; simclock's
 // scheduler is single-goroutine and would deadlock the pattern. Production uses
 // walltime, so this is the faithful tier for the seam.
 //
-// R2.14 (2026-09-04): TestNoDoubleSettleReaperAndPump is RE-SPECIFIED back to a
-// PAYING first settle (min(count, Σ face) > 0, the anchored session) — the recorded
-// goalpost move that retires the R0.7 interim's "pays 0". Its LOAD-BEARING property
-// (single-settle-at-close: a second settle of the same handle is always a no-op)
-// is unchanged and still asserted.
+// TestNoDoubleSettleReaperAndPump is RE-SPECIFIED back to a PAYING first settle
+// (min(count, Σ face) > 0, the anchored session) — the recorded goalpost move that
+// retires the interim's "pays 0". Its LOAD-BEARING property
+// (single-settle-at-close: a second settle of the same handle is always a no-op) is
+// unchanged and still asserted.
 
 import (
 	"crypto/ed25519"
@@ -52,7 +52,7 @@ func newLoopNode(t *testing.T, idSeed int64) *Node {
 	// the node's CLOCK is walltime so AfterFunc(0) fires on the real running loop.
 	net := simnet.New(simclock.New(), 1, simnet.DefaultConfig())
 	n := New(ident.NodeID(), DefaultConfig(), walltime.New(loop), net.Endpoint(ident.NodeID()), memstore.New())
-	// R2.14: a committed demand key_0 + a ledger, so an anchored open is admissible.
+	// A committed demand key_0 + a ledger, so an anchored open is admissible.
 	n.SetLedger(credit.New(50_000, 0))
 	commitSelfDemandKey(t, n, ident, cachedRSAKey(t, int(idSeed%4)))
 	return n
@@ -60,10 +60,10 @@ func newLoopNode(t *testing.T, idSeed int64) *Node {
 
 // openSessionOnLoop opens a relay session and inserts it into the table ON the loop
 // (via the resolver's own marshaling primitive), returning the handle. This mirrors
-// handleRelayOpen's loop-side insert without needing the full wire. R2.14: the
-// session is anchored; the ephemeral is derived from ephSeed (its NodeID is what
-// the caller resolves by) and the anchor is minted OFF the loop, statelessly, so
-// concurrent callers race only through the loop-marshaled open itself.
+// handleRelayOpen's loop-side insert without needing the full wire. the session is
+// anchored; the ephemeral is derived from ephSeed (its NodeID is what the caller
+// resolves by) and the anchor is minted OFF the loop, statelessly, so concurrent
+// callers race only through the loop-marshaled open itself.
 func openSessionOnLoop(t *testing.T, n *Node, ephSeed int64, root []byte, S int) uint64 {
 	t.Helper()
 	e := newEphemeral(ephSeed)
@@ -95,8 +95,8 @@ func openSessionOnLoop(t *testing.T, n *Node, ephSeed int64, root []byte, S int)
 
 // TestResolveRelayAuthorizerOwnershipOffLoop pins the resolver seam: from an OFF-loop
 // goroutine, an owned handle resolves to its live session; an unknown handle and a
-// non-owner are both REFUSED (certified residual #2, the ephID-ownership check). Runs
-// under -race to cover the accept-goroutine ↔ loop crossing.
+// non-owner are both REFUSED. Runs under -race to cover the accept-goroutine ↔ loop
+// crossing.
 func TestResolveRelayAuthorizerOwnershipOffLoop(t *testing.T) {
 	n := newLoopNode(t, 8801)
 	n.EnableRelayAccept()
@@ -128,11 +128,11 @@ func TestResolveRelayAuthorizerOwnershipOffLoop(t *testing.T) {
 // second) finds it absent and pays 0 — single-settle. This test settles once (the
 // pump-completion path), then settles the SAME handle again (the reaper path), and
 // asserts the second settle is a no-op: it pays 0 and the operator balance does not
-// move (twice, or at all — see the R0.7 interim note below).
+// move (twice, or at all — see the interim note below).
 //
-// R2.14 (2026-09-04): the first settle PAYS again — min(count, Σ face) against an
-// anchored session (the R0.7 interim's pay-0 re-specification is retired). The
-// second settle of the same handle must pay 0 and move nothing.
+// The first settle PAYS again — min(count, Σ face) against an anchored session
+// (the interim's pay-0 re-specification is retired). The second settle of the
+// same handle must pay 0 and move nothing.
 //
 // Ablation: remove the `delete(n.relaySessions, handle)` from SettleRelaySession →
 // a SECOND settle finds the session and pays again (observable in the balance), and
@@ -158,7 +158,7 @@ func TestNoDoubleSettleReaperAndPump(t *testing.T) {
 	balBefore := ledger.Balance(relay.id)
 	first := relay.SettleRelaySession(handle) // pump-completion settle
 	if want := int64(S) * relaypay.RelayIncrementCredit; first != want {
-		t.Fatalf("first settle paid %d for an anchored session with %d paid increments, want min(count, face) = %d (R2.14: the paid > 0 precondition is restored)", first, S, want)
+		t.Fatalf("first settle paid %d for an anchored session with %d paid increments, want min(count, face) = %d (the paid > 0 precondition is restored)", first, S, want)
 	}
 	balAfterFirst := ledger.Balance(relay.id)
 	if balAfterFirst != balBefore+first {

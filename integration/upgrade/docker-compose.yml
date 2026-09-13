@@ -1,11 +1,11 @@
 # Rolling-upgrade / on-disk-format-stability topology (field test #11).
 #
-#            ┌──────────── swarm 10.130.0.0/24 ────────────┐
-#            │                                              │
-#   seed 10.130.0.10  ──(registry+relay+validator, /data on seed-data)
-#     │                                                     │
-#   holderA 10.130.0.11 ─(EC holder, publishes; /data on holderA-data)
-#   holderB 10.130.0.12 ─(EC holder;             /data on holderB-data)
+#  ┌──────────── swarm 10.130.0.0/24 ────────────┐
+#  │ │
+#  seed 10.130.0.10 ──(registry+relay+validator, /data on seed-data)
+#  │ │
+#  holderA 10.130.0.11 ─(EC holder, publishes; /data on holderA-data)
+#  holderB 10.130.0.12 ─(EC holder; /data on holderB-data)
 #
 # All three /data live on NAMED VOLUMES so they survive a container recreate —
 # the recreate (with a different SILT_VERSION) IS the binary upgrade. run.sh

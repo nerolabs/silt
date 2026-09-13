@@ -4,15 +4,15 @@
 #
 # A longer-duration, sustained-load run over MANY real daemons, built to catch
 # LEAKS and slow DRIFT that a single-shot test never sees. It:
-#   • stands up a seed/registry + a pool of holders (+ a caretaker) on a flat net
-#   • publishes M multi-MB files, recording each link + its sha256
-#   • for DURATION seconds, keeps continuous fetch traffic: an ephemeral client
-#     repeatedly fetches random published links and asserts EACH is bit-perfect
-#   • optionally does GENTLE, within-margin churn (kill ONE holder, then RESTART
-#     it on its persisted store) so redundancy recovers and NO erasure column is
-#     ever stranded — the soak measures steady-state, not catastrophic loss
-#   • samples `docker stats` memory + per-store object counts at start/mid/end
-#     and REPORTS the deltas, flagging any monotonic unbounded growth (a leak)
+#  • stands up a seed/registry + a pool of holders (+ a caretaker) on a flat net
+#  • publishes M multi-MB files, recording each link + its sha256
+#  • for DURATION seconds, keeps continuous fetch traffic: an ephemeral client
+#  repeatedly fetches random published links and asserts EACH is bit-perfect
+#  • optionally does GENTLE, within-margin churn (kill ONE holder, then RESTART
+#  it on its persisted store) so redundancy recovers and NO erasure column is
+#  ever stranded — the soak measures steady-state, not catastrophic loss
+#  • samples `docker stats` memory + per-store object counts at start/mid/end
+#  and REPORTS the deltas, flagging any monotonic unbounded growth (a leak)
 #
 # Durability model it respects: content is 3x replicated + k=10/n=16 erasure.
 # Killing one of a dozen+ holders never strands a column, and the killed holder
@@ -21,11 +21,11 @@
 # memory growth is a real product finding — reported, not worked around.
 #
 # Usage:
-#   ./run.sh                       # ~6 min soak, gentle churn, then tear down
-#   DURATION=1800 ./run.sh         # 30-minute soak
-#   CHURN=0 ./run.sh               # no churn — pure steady-state fetch load
-#   KEEP=1 ./run.sh                # leave the topology up to poke at
-#   FILE_BYTES=8000000 FILES=16 ./run.sh
+# ./run.sh # ~6 min soak, gentle churn, then tear down
+#  DURATION=1800 ./run.sh # 30-minute soak
+#  CHURN=0 ./run.sh # no churn — pure steady-state fetch load
+#  KEEP=1 ./run.sh # leave the topology up to poke at
+#  FILE_BYTES=8000000 FILES=16 ./run.sh
 # exit 0 = PASS (clean bill of health), non-zero = FAIL / finding
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
@@ -125,7 +125,7 @@ docker build -q -t silt-soak . >/dev/null || { echo "FAIL: docker build"; exit 1
 
 echo "== phase 1: seed + registry =="
 dc up -d seed
-# The seed binds a wildcard (0.0.0.0 / [::]) so its own `peer:` / `registry:`
+# The seed binds a wildcard (0.0.0.0 / [:]) so its own `peer:` / `registry:`
 # log lines print the wildcard, NOT a dialable host. We take the NodeID from
 # the log and pin it to the seed's known static container IP (10.120.0.10),
 # which is exactly what -advertise stamps on the wire.
@@ -319,9 +319,9 @@ echo   "────────────────────────
 
 # ── assertions ───────────────────────────────────────────────────────────────
 # Two verdict tiers, honestly separated (immutable #4 / the blind-test asks):
-#   hard_fail (exit 1) — a real regression: retrieval systematically drifted.
-#   finding  (exit 0) — reproduced anomalies to inspect (an isolated churn-window
-#                       miss, a self-recovered crash-restart, a leak-suspect trend).
+#  hard_fail (exit 1) — a real regression: retrieval systematically drifted.
+#  finding (exit 0) — reproduced anomalies to inspect (an isolated churn-window
+#  miss, a self-recovered crash-restart, a leak-suspect trend).
 hard_fail=0; finding=0; notes=""
 if [ "$FAIL" = 1 ]; then   # a BASELINE miss (broken before soak) is already fatal above
   hard_fail=1

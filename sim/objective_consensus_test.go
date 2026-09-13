@@ -15,10 +15,10 @@ import (
 )
 
 // Integration proof for M0 consensus F6 (objective fork-choice). This is the
-// red-team's non-healing-partition scenario, INVERTED: unlike sim/reorg_test.go
-// — which shares ONE ledger across all nodes and so hides the subjectivity — each
-// node here holds its OWN (empty) ledger, so the local reputation view is
-// useless. With objective mode on (Config.MinBond > 0 + a wired bond verifier +
+// non-healing-partition scenario, INVERTED: unlike sim/reorg_test.go — which
+// shares ONE ledger across all nodes and so hides the subjectivity — each node
+// here holds its OWN (empty) ledger, so the local reputation view is useless.
+// With objective mode on (Config.MinBond > 0 + a wired bond verifier +
 // genesis-seeded bonds), proposer/attester eligibility and quorum come from the
 // on-chain bond, identical on every replica — so a partitioned network still
 // commits and, on healing, converges on ONE history.

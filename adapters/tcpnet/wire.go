@@ -60,7 +60,7 @@ type wireMsg struct {
 	// per-publish fee link is severed. Without this on the wire, an ephemeral or
 	// credit-paying withdrawal only worked in the in-process sim.
 	Credit *wireCredit `cbor:"28,keyasint,omitempty"`
-	// Work gossip (R2.2 rows 8-9), riding beside the capacity pledge at 13/14.
+	// Work gossip, riding beside the capacity pledge at 13/14.
 	// omitempty, so a node that has served nothing and repaired nothing adds no
 	// bytes; an old peer decoding a new frame ignores keys it does not know
 	// (cbor.Unmarshal into a struct skips unknown keys), so this is additive.

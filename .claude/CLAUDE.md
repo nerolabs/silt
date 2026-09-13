@@ -1,161 +1,53 @@
-# Orchestra coordination — silt
+# silt
 
-The seats in `.claude/agents/` operate the orchestra way (below) while building the silt
-way (silt's own canon). This file is the bridge. It loads every session in the silt repo.
+## The canon
 
-## The project constitution — silt's canon is the law here
+Two documents govern this project. There are no others.
 
-The seats build under silt's existing rules. They are not overridden by anything here:
+- `docs/VISION.md` — what silt is for.
+- `docs/TENETS.md` — what it must never trade away.
 
-- **The mission (immutable):** `docs/TENETS.md` Part 0 — M0, the privacy × accountability ×
-  Sybil trilemma. Everything defers to it.
-- **The three tiers:** `docs/TENETS.md` Part IX — immutable / tenet / evolving. Know which
-  tier a decision lives in before you make it. Immutables are never traded by an agent.
-- **The bright lines:** `docs/TENETS.md` Part VI — the don'ts.
-- **Decisions + roadmap:** `docs/decisions.md`, `ROADMAP.md` — the ledger and the order.
-- **Build discipline:** `docs/build-process.md` — #6 root-cause-before-you-patch,
-  #7 evidence-or-nothing, the consensus-correctness discipline (model-check before
-  field; a field run confirms, never discovers), and **the ten simplicity rules**.
-- **Consensus invariants:** `docs/design/consensus-invariants.md` (I1–I5), the closed set.
+`integration/rc/RC-PROPOSED.md` is a proposed release-candidate list. It is a proposal, not
+canon, and it is expected to be cut apart.
 
-## Coordination rules — the orchestra way (reusable methodology)
+## The build
 
-1. **Structural tension.** Each seat is the uncompromising advocate for one value
-   (Builder: shipping/simplicity · PE: correctness/severity · Researcher: soundness ·
-   Tester: does-it-work-under-stress · Planner: vision/sequencing · Crypto-specialist:
-   prior-art fidelity, how real distributed-crypto systems actually work · Red-team: the
-   assumption that the system can be broken · Economist: economic sustainability, that
-   incentives keep the edge tiers (pony/horse) profitably doing most of the work). Push back
-   when another seat's proposal costs your value. Never win by attrition; never cave to keep
-   the peace. Unresolved tension is surfaced by the Planner, not papered over.
-2. **Adversarial seats judge blind.** The PRINCIPAL-ENGINEER, the RED-TEAM, and any reviewer
-   get the artifact + the question — NOT the builder's rationale or the researcher's
-   reasoning. Pass the code and the criteria; withhold the "here's why it's fine." This binds
-   the RED-TEAM hardest: being told why it's safe is how an attacker talks itself out of the
-   real attack.
-2a. **Specialist boundaries — advise/find, do not certify.** The CRYPTO-SPECIALIST and the
-   ECONOMIST *advise* (prior-art depth, incentive/solvency analysis, exploratory spikes); the
-   RESEARCHER holds the binding CERTIFIED/GATED/REFUTED verdict. The ECONOMIST *specifies* the
-   telemetry it needs and *consumes* it; the BUILDER builds the instrumentation and
-   dashboards. The RED-TEAM *finds* concrete attacks but does NOT certify that M0 holds —
-   silt's B8 requires the certifying adversary to be EXTERNAL; the internal red-team sharpens
-   the target, never replaces it. A confirmed break is handed to the TESTER to encode as a
-   permanent regression gate.
-3. **Verify before you assert.** A seat relying on another's claim for a load-bearing
-   decision verifies it against the source itself — read the code, confirm the `file:line`.
-4. **Evidence or nothing.** Name the specific artifact (a failing test, a log line, a
-   measured number) that justifies any step. "I think / probably / let me just try" is the
-   signal to go get evidence, not to act.
-5. **Ground truth is external to the agents.** Correctness is decided by silt's real
-   deterministic tiers (below), a blind external review, or the human — never by agents
-   agreeing with each other.
-6. **Scars survive pruning.** The Tester owns scar-counting and the third-time rule; a
-   lesson is encoded as a gate/test before context is cleared.
+Build the vision. Honor the tenets. Decide for yourself. Say when the release candidate is
+ready to review.
 
-## Simplicity rules — POINTER (they are silt canon, not harness content)
+## Code carries no process
 
-**The ten simplicity rules live in [`docs/build-process.md`](../docs/build-process.md), section
-"The ten simplicity rules".** That is their canonical and only home; do not copy them back here.
-They are standing owner direction (2026-09-08, via the PE seat), ratified in `docs/decisions.md`
-`D-RECOMPUTE-FREEZE` (5), and they bind every seat.
+Comments describe the product: what the code does, why this approach, what an invariant
+means, and citations to external papers or specifications.
 
-They moved out of this file on 2026-09-10. Canon that lives in the harness travels with the
-harness — a session run without the usual configuration silently unloads it, which is how several
-of the ten came to be breached with nobody reading them. This file is a MERGE POINT for orchestra
-coordination rules plus silt *deployment* content; the simplicity rules are neither. **Rules 1–10
-are cited by number across the repo; the numbering does not move.**
+Comments never describe the decision process. No task identifiers, no lane or milestone
+names, no session or pull-request numbers, no references to rulings, reviews, or
+certifications. If a comment would only make sense to someone who read a document that no
+longer exists, delete it.
 
-## Load discipline — this box is shared (standing rule, owner, 2026-09-08)
+The same rule binds identifiers, test names, and file names.
 
-The Mac that runs the seats is Andrew's working machine. Every seat, every session:
+## Load discipline
 
-- **Every heavy command is throttled:** `taskpolicy -c background nice -n 19 go test …` (the same
-  prefix for `go build`, `go vet`, `go run`, long scripts). On macOS `nice` alone does not throttle;
-  the background QoS class does (measured: 90 % → 14 % CPU on a running test). A PreToolUse hook
-  blocks an un-throttled heavy `go` command; `GOFLAGS=-p=1` and `GOMAXPROCS=2` are set in the
-  session env. Use `-short` locally; the full suites are CI's job unless a ruling names one.
-- **Up to three heavy jobs at a time** (raised from one, owner, 2026-09-10). The old cap was
-  compensating for Spotlight indexing the Go build cache, which was eating the disk and CPU the
-  cap was protecting; that directory is now hidden from Spotlight, so the box carries three. A PE
-  or Researcher that runs ablations counts as heavy. Read-only reviewers do not count against the
-  three. Check `uptime` before spawning, and stay at one if the load average is already high.
-  **This raises the concurrency number only — every heavy command is still throttled per the rule
-  above.** The throttle rests on its own measurement and is not relaxed by this change.
-- **Retro-fit anything already running:** `taskpolicy -b -p PID`.
-- Cloud-run orchestrators launch under the same prefix (inside the detached `nohup`).
+This machine is shared with its owner's other work, and memory is the binding constraint,
+not CPU.
 
-## Research gate — what a seat may NOT decide alone (silt-specific)
+- Every heavy command runs throttled: `taskpolicy -c background nice -n 19 go test …`, and
+  the same prefix for `go build`, `go vet`, `go run`, and long scripts. On macOS `nice`
+  alone does not throttle; the background QoS class does.
+- `GOFLAGS=-p=1` and `GOMAXPROCS=2` are set in the session environment. Use `-short`
+  locally; full suites are CI's job.
+- Three heavy jobs at a time, maximum. Check load and swap headroom before starting one.
+- Never leave a background process running. Sweep for the product binary at the end of a
+  session, not just for test runners.
 
-Route to the Researcher for certification; do not build or assert on these:
+## Ground truth
 
-- **Consensus-rule changes** (anything touching I1–I5, the block/validity rules,
-  fork-choice, epochs, slashing).
-- **Published-claim changes** (M0 / C1 / C2, the Sybil composition).
-- **Economic-mechanism changes** (D-S7 durability economy, D-DEMAND, escrow / skim /
-  bounty, the γ→1/N firewall).
-- **Security parameters** a proof depends on (recall `build-process.md` — a durability knob
-  was twice also a security parameter).
+Correctness is a command result, in this order: unit → consensus model-check →
+integration → end-to-end under network impairment → field.
 
-The Builder advises and shapes the question; the Researcher certifies; the human ratifies.
+Capture evidence before teardown. A failure that cannot be reproduced gets instrumented,
+not retried. A field run confirms a fix; it never discovers an invariant.
 
-## Where things go
-
-- **PE rulings** → `~/.claude/silt-agent-memory/principal-engineer/reviews/` (this seat's own directory).
-  NEVER the builder's tree (`docs/reviews/`). Always reply with the full path.
-- **Research certifications** → `~/.claude/silt-agent-memory/researcher/reviews/research-outcome/`.
-- **Code** → the silt repo (Builder only).
-- **Scars / run evidence** → the Tester's memory (the scar ledger), cited.
-- **Live agent memory** → `.claude/agent-memory`, a symlink to the shared external store
-  `~/.claude/silt-agent-memory`. It is gitignored and lives OUTSIDE git. NEVER `git add` it,
-  commit it, or open a PR with it. Seat DEFINITIONS (`.claude/agents/`) stay tracked; live
-  memory does not. New checkout or worktree: run `.claude/setup-agent-memory.sh` once to
-  establish the symlink. (History: committing live memory caused per-pull conflicts, #636/#638.)
-  **A worktree does NOT inherit the symlink.** A seat that saves memory before running that
-  script creates a real local directory, and it dies with the worktree — the write SUCCEEDS
-  and the memory is lost anyway (2026-09-11: all ten worktrees leaking, 25 files recovered,
-  five lost). `scripts/check_agent_memory_link.py` now guards this: the PreToolUse hook in
-  `.claude/settings.json` BLOCKS the first memory write into an unlinked path and names the
-  remedy, so the only cost is one command, not a lost session.
-
-## The Tester's ground truth on silt
-
-Correctness is a command result on silt's real tiers, in order:
-`unit → consensus model-check → integration/sim → e2e/netem (integration/nat, flakynet) →
-field (integration/cloudtest deep runs)`. Capture evidence FIRST (crash journals, logs)
-before teardown — a non-reproducible failure is instrumented, not re-tried. A field run
-confirms a fix; it never discovers a consensus invariant.
-
-## Escalation to the human
-
-- **Veto gate (STOP, get ratification):** any trade touching an immutable / M0, a scope
-  change, or ratifying a research verdict.
-- **Checkpoint (report + confirm direction):** material progress — a phase gate met, a
-  milestone banked.
-- Status to the human at least every two hours, and immediately on a veto-gate escalation.
-
-## Rollout safety (while the orchestra is unproven on silt)
-
-- **Read-only first.** Run the PE and Tester seats (read-only; the PE files to its own dir,
-  the Tester only observes) before the Builder edits anything.
-- **The human stays on every immutable-trade.** The orchestra augments silt's working
-  process; it does not replace it, and it never decides an immutable.
-- **Off the critical path first.** A full loop runs on a small, non-RC task before anything
-  that matters.
-
-## Source of truth — do not fork the seats
-
-- The orchestra project (`../agent-orchestra/`) is the SOURCE OF TRUTH for the seat
-  personas and the coordination rules. What lives here in `silt/.claude/` is a deployed
-  SNAPSHOT.
-- **Seat definitions (`.claude/agents/*.md`) are pure copies from the orchestra source.** To
-  change a seat, iterate in the orchestra sandbox, prove the change there, then re-copy into
-  `silt/.claude/agents/`. **Never edit the seats in `silt/.claude/` directly** — that forks
-  the two sets and the snapshot silently drifts from the source.
-- **`.claude/CLAUDE.md` is a MERGE POINT, not a copy.** It carries the orchestra's
-  coordination rules + roster PLUS silt-specific deployment content (the memory block, the
-  silt constitution mapping, tester ground truth, rollout safety). Updates ADD the orchestra
-  deltas and preserve silt's local content.
-- The full deploy runbook (prerequisites, rollout steps) lives at
-  `../agent-orchestra/deploy/silt/DEPLOY.md`, not here.
-- When the design stabilizes and moves to the Claude Agent SDK, the personas port verbatim
-  and this copy step goes away (see `../agent-orchestra/SDK-MIGRATION.md`).
+A demonstration that could not be driven is a failure, not a pass. "Skipped," "gap," and
+"not run" are all failures.

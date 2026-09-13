@@ -1,8 +1,8 @@
 # Flaky-network durability harness: 4 objective validators on ONE flat network,
 # every link degraded by `tc netem` (latency + jitter + loss), matching the GCP
 # CONSENSUS params that fail there but pass on a clean localhost:
-#   -objective, -quorum 2, Byzantine-quorum default ON, -mature-validators 4,
-#   all-attest (each validator attests the other three), -anchors = all four.
+#  -objective, -quorum 2, Byzantine-quorum default ON, -mature-validators 4,
+#  all-attest (each validator attests the other three), -anchors = all four.
 # The question under test: does silt bootstrap consensus and commit under adverse
 # network conditions? Clean local runs always do; GCP (flaky) mostly does not — so
 # this reproduces the adversity locally and deterministically.

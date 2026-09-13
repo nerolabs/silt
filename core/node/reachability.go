@@ -47,7 +47,7 @@ type reachProbe struct {
 // "NATed," which only costs us a relay we might not have needed — never a
 // false claim of reachability that would leave us undialable.
 func (n *Node) CheckReachability(helpers []ports.NodeID, done func(reachable bool)) {
-	// record the verdict for Reachability() before handing it on.
+	// record the verdict for Reachability before handing it on.
 	settle := func(reachable bool) {
 		if reachable {
 			n.reach = ReachPublic

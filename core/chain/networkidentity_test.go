@@ -8,20 +8,20 @@ import (
 )
 
 // =============================================================================
-// G-NAME-1 — THE NAME IS NEVER DISPLAYED WITHOUT THE TAG.
+// THE NAME IS NEVER DISPLAYED WITHOUT THE TAG.
 // =============================================================================
 //
-// The certification made this a GATE rather than a policy sentence (G-2c) for a reason silt has
-// now watched decay four times in one month: a rule that lives only in prose is not a rule. The
-// composition it guards is real — a committed NAME makes the silent-singleton failure WORSE,
-// because a network of one founded by a typo'd flag now reports a confident operator-chosen name.
-// The tag travelling with it is the only thing that makes that legible to its operator.
+// The research made this a GATE rather than a policy sentence for a reason silt has now watched
+// decay four times in one month: a rule that lives only in prose is not a rule. The composition
+// it guards is real — a committed NAME makes the silent-singleton failure WORSE, because a
+// network of one founded by a typo'd flag now reports a confident operator-chosen name. The tag
+// travelling with it is the only thing that makes that legible to its operator.
 //
 // EACH CONDITION IS DRIVEN ONE AT A TIME, and every arm carries its own ablation in-process.
 
-// G-NAME-1a — over the whole (name, tag) space, including the two shapes that break naive
-// renderers: the EMPTY name, and a name that is itself hash-shaped.
-func TestGNAME1_TheNameNeverRendersWithoutTheTag(t *testing.T) {
+// over the whole (name, tag) space, including the two shapes that break naive renderers:
+// the EMPTY name, and a name that is itself hash-shaped.
+func TestTheNameNeverRendersWithoutTheTag(t *testing.T) {
 	ids := []ports.Hash{
 		ports.HashBytes([]byte("network X genesis")),
 		ports.HashBytes([]byte("network Y genesis")),
@@ -40,18 +40,19 @@ func TestGNAME1_TheNameNeverRendersWithoutTheTag(t *testing.T) {
 			// THE RULE. The FULL hash is what a reader can act on, so it is what is asserted —
 			// asserting the short tag alone would pass on a renderer that printed only a prefix.
 			if !strings.Contains(got, id.String()) {
-				t.Fatalf("G-NAME-1 VIOLATED: NetworkIdentityOf(%q, %s) = %q — it does NOT carry the genesis "+
+				t.Fatalf("VIOLATED: NetworkIdentityOf(%q, %s) = %q — it does NOT carry the genesis "+
 					"hash. The hash is the IDENTITY and the name is a LABEL; a name shown without its tag "+
 					"invites an operator to trust a string two networks can both choose", name, id, got)
 			}
-			// AND THE NAME MUST SURVIVE, or the rule would be satisfied by printing the tag alone
-			// and the owner's requirement (report BOTH) would be half-met by a gate that says so.
+			// AND THE NAME MUST SURVIVE, or the rule would be satisfied by printing the
+			// tag alone and the project requirement (report BOTH) would be half-met by a
+			// gate that says so.
 			want := name
 			if strings.TrimSpace(name) == "" && name == "" {
 				want = unnamedNetwork
 			}
 			if !strings.Contains(got, want) {
-				t.Fatalf("G-NAME-1 VACUOUS THE OTHER WAY: NetworkIdentityOf(%q, %s) = %q dropped the NAME. "+
+				t.Fatalf("VACUOUS THE OTHER WAY: NetworkIdentityOf(%q, %s) = %q dropped the NAME. "+
 					"The requirement is BOTH identifiers, so a tag-only rendering fails it too", name, id, got)
 			}
 		}
@@ -84,14 +85,14 @@ func TestGNAME1_TheNameNeverRendersWithoutTheTag(t *testing.T) {
 		t.Fatalf("THE ABLATION IS VACUOUS: only %d of %d names were actually ablated; the rest were "+
 			"excluded as tag-impersonating. An ablation that skips its own cases proves nothing", ablated, len(names))
 	}
-	t.Logf("G-NAME-1 ablation RED as required on %d/%d names: a name-only rendering carries no genesis "+
+	t.Logf("ablation RED as required on %d/%d names: a name-only rendering carries no genesis "+
 		"hash, so the assertion above discriminates", ablated, len(names))
 }
 
-// G-NAME-1b — the ZERO is narrated. An empty name must not render as a blank, because a blank
-// where a name belongs is indistinguishable from a rendering bug (the anti-vacuity bar: absent and
-// zero must be structurally distinguishable).
-func TestGNAME1_TheEmptyNameIsNarratedNotBlank(t *testing.T) {
+// The ZERO is narrated. An empty name must not render as a blank, because a blank where a name
+// belongs is indistinguishable from a rendering bug (the anti-vacuity bar: absent and zero must be
+// structurally distinguishable).
+func TestTheEmptyNameIsNarratedNotBlank(t *testing.T) {
 	id := ports.HashBytes([]byte("some genesis"))
 	got := NetworkIdentityOf("", id)
 	if !strings.Contains(got, unnamedNetwork) {
@@ -105,10 +106,10 @@ func TestGNAME1_TheEmptyNameIsNarratedNotBlank(t *testing.T) {
 	}
 }
 
-// G-NAME-1c — the name is read off the GENESIS, not off local config. This is the anti-vacuity
-// argument the whole field rests on: an operator reading their own -network-name back learns
-// nothing about the network they are on.
-func TestGNAME1_TheNameIsReadFromTheChainNotTheConfig(t *testing.T) {
+// The name is read off the GENESIS, not off local config. This is the anti-vacuity argument
+// the whole field rests on: an operator reading their own -network-name back learns nothing
+// about the network they are on.
+func TestTheNameIsReadFromTheChainNotTheConfig(t *testing.T) {
 	const committed, local = "the network this chain actually is", "what this operator typed"
 	if committed == local {
 		t.Fatal("VACUOUS: the two names are equal, so 'read from the chain' is indistinguishable from " +
@@ -137,10 +138,10 @@ func TestGNAME1_TheNameIsReadFromTheChainNotTheConfig(t *testing.T) {
 	}
 }
 
-// G-NAME-1d — an EMPTY chain reports NO identity rather than a zero-hash one. A chain with no
-// genesis genuinely has no network; rendering the zero hash would be a measurement-shaped
+// An EMPTY chain reports NO identity rather than a zero-hash one. A chain with no genesis
+// genuinely has no network; rendering the zero hash would be a measurement-shaped
 // non-measurement, the same failure StartupEraLines refuses for an unloaded chain.
-func TestGNAME1_AnEmptyChainHasNoIdentity(t *testing.T) {
+func TestAnEmptyChainHasNoIdentity(t *testing.T) {
 	c := New(Config{Quorum: 1}, func(ports.NodeID) int64 { return 0 })
 	if c.Len() != 0 {
 		t.Fatalf("VACUOUS: the fixture chain is not empty (%d blocks)", c.Len())
@@ -170,10 +171,10 @@ func TestGNAME1_AnEmptyChainHasNoIdentity(t *testing.T) {
 	}
 }
 
-// G-NAME-2 — THE NAME MOVES THE GENESIS HASH, so two networks differing only by name are
-// different networks. Without this the label would be decoration: nodes would agree on the genesis
-// and merely disagree about what to call it.
-func TestGNAME2_TheNameMovesTheGenesisHash(t *testing.T) {
+// THE NAME MOVES THE GENESIS HASH, so two networks differing only by name are different networks.
+// Without this the label would be decoration: nodes would agree on the genesis and merely disagree
+// about what to call it.
+func TestTheNameMovesTheGenesisHash(t *testing.T) {
 	mk := func(name string) ports.Hash {
 		p := ParamsFromConfig(Config{Quorum: 3, MinBond: 1 << 20, NetworkName: name}, 64, 100)
 		b := Block{Version: BlockVersionRounds, Height: 0, Entries: []ports.Entry{entry(1)}, Params: &p}
@@ -181,7 +182,7 @@ func TestGNAME2_TheNameMovesTheGenesisHash(t *testing.T) {
 	}
 	a, b := mk("silt mainnet"), mk("silt testnet")
 	if a == b {
-		t.Fatal("G-NAME-2 VIOLATED: two networks differing ONLY by name computed the SAME genesis hash, so " +
+		t.Fatal("VIOLATED: two networks differing ONLY by name computed the SAME genesis hash, so " +
 			"the name is hash-covered decoration and ErrForeignGenesis would let them join each other")
 	}
 	// NON-VACUITY: the SAME name must reproduce the SAME hash, or the assertion above is satisfied

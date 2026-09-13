@@ -11,35 +11,35 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// THE WIRING PIN — owner call F. core/genesis had NO pin at all, and that is exactly how the
-// defect this closes shipped: chain.ConsensusParams declared 17 fields at cbor key 20, five
-// G-CFGBIND gates went green over it, and NOTHING populated it on any production path. Every one
-// of those five gates hand-constructed `chain.Block{... Params: &p}` in its own fixture.
+// THE WIRING PIN. core/genesis had NO pin at all, and that is exactly how the defect this
+// closes shipped: chain.ConsensusParams declared 17 fields at cbor key 20, five gates went
+// green over it, and NOTHING populated it on any production path. Every one of those five
+// gates hand-constructed `chain.Block{… Params: &p}` in its own fixture.
 //
 // A GATE THAT CONSTRUCTS THE EXACT STATE WHOSE PRODUCTION ABSENCE IS THE DEFECT CANNOT DETECT
 // THAT DEFECT. So these gates never build a Block literal. They call genesis.Build — the function
 // the daemon calls — and read what comes back.
 //
-// The instructive contrast is inside the SAME commit that shipped the inert half: (d-3) was wired
-// end to end (setD3Digests -> PopulateEra4Roots -> the two chainrole call sites) while the
+// The instructive contrast is inside the SAME commit that shipped the inert half: was wired end
+// to end (setBlockDigests -> PopulateEra4Roots -> the two chainrole call sites) while the
 // genesis-config bind was not, and no gate distinguished the live half from the dead one.
 //
-// G-CFGBIND-6 is the runtime half (below). The wiring on the DAEMON path — that Build is called
+// This gate is the runtime half (below). The wiring on the DAEMON path — that Build is called
 // with real params rather than nil, and that CheckConsensusParams has its production caller — is
-// a source claim and lives with the source it reads: G-CFGBIND-7/8 in cmd/silt.
+// a source claim and lives with the source it reads: in cmd/silt.
 
-// G-CFGBIND-6 — genesis.Build CARRIES the params it is given, and the genesis HASH COVERS them.
+// genesis.Build CARRIES the params it is given, and the genesis HASH COVERS them.
 //
 // The three assertions are deliberately separate claims:
 //
 //	(a) Build carries params through to Block.Params at all;
 //	(b) the block hash MOVES with the params, so a divergently-configured node computes a
-//	    different height-0 identity and Reconcile refuses it — the whole mechanism;
+//	 different height-0 identity and Reconcile refuses it — the whole mechanism;
 //	(c) the params round-trip by VALUE, so the committed content is the config, not a stub.
 //
 // (a) alone is what a reader-only pin would check, and it would stay green if Params were carried
 // into a field the hash preimage does not fold in. (b) is the one that would go red on that.
-func TestG_CFGBIND_6_BuildCarriesAndHashCoversTheParams(t *testing.T) {
+func TestGenesisBuildCarriesAndHashCoversTheParams(t *testing.T) {
 	p := representativeParams()
 
 	withParams, _, _, err := genesis.Build(memstore.New(), &p)
@@ -87,8 +87,8 @@ func TestG_CFGBIND_6_BuildCarriesAndHashCoversTheParams(t *testing.T) {
 	}
 }
 
-// G-CFGBIND-6b — THE PARAMS-CARRYING GENESIS HASH IS PINNED, one literal per claim, the same
-// discipline TestGenesisBlockHashIsPinned uses for the manifesto's geometry.
+// THE PARAMS-CARRYING GENESIS HASH IS PINNED, one literal per claim, the same discipline
+// TestGenesisBlockHashIsPinned uses for the manifesto's geometry.
 //
 // WHAT IT ADDS OVER 6(b). 6(b) says the hash MOVES with the params. It cannot say the ENCODING is
 // stable, because it compares two hashes computed by the same binary. A cbor key renumbering, a
@@ -101,27 +101,27 @@ func TestG_CFGBIND_6_BuildCarriesAndHashCoversTheParams(t *testing.T) {
 // POINTER with omitempty, so nil omits cbor key 20 entirely and a pre-bind genesis is byte-
 // identical to one written before the field existed.
 //
-// ABLATION: renumber ConsensusParams.Quorum from cbor key 1 to key 18 -> RED here, GREEN on
-// G-CFGBIND-6.
-func TestG_CFGBIND_6b_TheParamsCarryingGenesisHashIsPinned(t *testing.T) {
+// ABLATION: renumber ConsensusParams.Quorum from cbor key 1 to key 18 -> RED here, GREEN
+// on.
+func TestTheParamsCarryingGenesisHashIsPinned(t *testing.T) {
 	// THE RE-PINS. This gate demands each move be an explicit act, so the record lives beside the
 	// literal.
 	//
-	//	4a305b96…9c46  ->  b862f16b…3b57   M1, 2026-09-11: ConsensusParams gained NetworkName at
-	//	                                   cbor key 18, and representativeParams gained a value for
-	//	                                   it (G-CFGBIND-6's zero-value sweep refuses a fixture that
-	//	                                   leaves a committed field at zero, so the two are one
-	//	                                   change). The paramless literal did NOT move.
-	//	b862f16b…3b57  ->  af49c742…95c8   RT-SFO-1, 2026-09-11: manifest.secretsPlainLen pads the
-	//	                                   inner secrets box, so the manifesto's manifest chunk ID
-	//	                                   moves and Entry.ManifestChunks with it. BOTH literals
-	//	                                   move here, and the paramless one moving is the tell that
-	//	                                   this is an ENTRY change and not a params change.
+	//	4a305b96…9c46 -> b862f16b…3b57 M1, 2026-09-11: ConsensusParams gained NetworkName at
+	//	 cbor key 18, and representativeParams gained a value for
+	//	 it (the zero-value sweep refuses a fixture that
+	//	 leaves a committed field at zero, so the two are one
+	//	 change). The paramless literal did NOT move.
+	//	b862f16b…3b57 -> af49c742…95c8, 2026-09-11: manifest.secretsPlainLen pads the
+	//	 inner secrets box, so the manifesto's manifest chunk ID
+	//	 moves and Entry.ManifestChunks with it. BOTH literals
+	//	 move here, and the paramless one moving is the tell that
+	//	 this is an ENTRY change and not a params change.
 	//
-	// WHY IT IS PAID ONCE PER MOVE. Block.Hash() covers Params and (*Chain).ChainID is
-	// blocks[0].Hash(), so every field added here — and every byte of every Entry — re-mints every
-	// genesis and re-runs the graded set. Era 4 is open, no live network exists, and the freeze is
-	// at the RC, so this is a second deliberate re-seed rather than a break.
+	// WHY IT IS PAID ONCE PER MOVE. Block.Hash covers Params and (*Chain).ChainID is
+	// blocks[0].Hash, so every field added here — and every byte of every Entry — re-mints
+	// every genesis and re-runs the graded set. Era 4 is open, no live network exists, and the
+	// freeze is at the RC, so this is a second deliberate re-seed rather than a break.
 	//
 	// WHAT NEITHER MOVE TOUCHES: the freeze read-set. No SMT tag was added or renamed,
 	// StateView.Params is class 3 ("never witnessed, never a parameter"), and no Block keyasint was
@@ -155,8 +155,8 @@ func TestG_CFGBIND_6b_TheParamsCarryingGenesisHashIsPinned(t *testing.T) {
 	}
 }
 
-// representativeParams is the fixture: EVERY field distinguishably non-zero, checked by
-// G-CFGBIND-6. The values are not a real network's — they exist to make each field observable.
+// representativeParams is the fixture: EVERY field distinguishably non-zero, checked by. The
+// values are not a real network's — they exist to make each field observable.
 func representativeParams() chain.ConsensusParams {
 	return chain.ConsensusParams{
 		Quorum:                  3,

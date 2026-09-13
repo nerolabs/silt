@@ -1,9 +1,9 @@
 # A real swarm on one flat Docker network, built to be CHURNED:
 #
-#   seed ── registry + bootstrap (holds no content: -capacity 1)
-#     │
-#     ├─ holder×N ── real disk stores; these get killed in waves
-#     └─ caretaker ── holds the care link, runs the repair loop (-log info)
+#  seed ── registry + bootstrap (holds no content: -capacity 1)
+#  │
+#  ├─ holder×N ── real disk stores; these get killed in waves
+#  └─ caretaker ── holds the care link, runs the repair loop (-log info)
 #
 # Unlike integration/nat there is NO NAT here — every node is directly
 # dialable. The thing under test is not traversal but DURABILITY: kill enough

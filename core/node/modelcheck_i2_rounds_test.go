@@ -16,22 +16,22 @@ import (
 )
 
 // Consensus model-check — I2 extended per-(height, ROUND, phase) across
-// restart (#432; certification §5.3): the never-sign-twice guarantee is now
+// restart: the never-sign-twice guarantee is now
 // SLOT-scoped, and both halves must survive a crash:
 //
-//   REFUSE: a validator that signed a block at (h, r, prepare), restarted,
-//   must still refuse a competitor at the SAME slot — the #397 guarantee,
-//   round-scoped.
+// REFUSE: a validator that signed a block at (h, r, prepare), restarted,
+// must still refuse a competitor at the SAME slot — the guarantee,
+// round-scoped.
 //
-//   ESCAPE: the same competitor at a HIGHER round, justified by a valid
-//   new-view certificate, must be PREPARED — the #432 liveness escape must
-//   also survive restart, or a crash re-wedges the height the rounds unwedged.
+// ESCAPE: the same competitor at a HIGHER round, justified by a valid
+// new-view certificate, must be PREPARED — the liveness escape must
+// also survive restart, or a crash re-wedges the height the rounds unwedged.
 //
-//   RE-PRESENT: a validator that LOCKED (adopted a prepare-QC) and crashed
-//   must re-hydrate the lock from its persisted mark and carry it in its next
-//   round-change — the certification's "a restarted validator re-presents the
-//   same lock it held before the crash, never a blank one" (§5.3). A lost
-//   lock is exactly how a delayed lower-round quorum gets orphaned (S1).
+// RE-PRESENT: a validator that LOCKED (adopted a prepare-QC) and crashed
+// must re-hydrate the lock from its persisted mark and carry it in its next
+// round-change — the "a restarted validator re-presents the
+// same lock it held before the crash, never a blank one". A lost
+// lock is exactly how a delayed lower-round quorum gets orphaned (S1).
 
 // i2RoundsWorld: 4 anchors over held delivery with EXPOSED mark stores (so a
 // "restart" can reload the same store), full sync-seed wiring.
@@ -115,7 +115,7 @@ func TestModelCheck_I2_RoundScopedRestart(t *testing.T) {
 		drainHeld(t, net, fifo)
 
 		// Crash + restart a1 (fresh Node, same endpoint); persist selects the
-		// real store or a blank one (the pre-#397 crash-wipe control).
+		// real store or a blank one (the earlier crash-wipe control).
 		restartMark := marks[1]
 		if !persist {
 			restartMark = markstore.NewMem()
@@ -159,10 +159,10 @@ func TestModelCheck_I2_RoundScopedRestart(t *testing.T) {
 
 	refused, prepared := run(true)
 	if !refused {
-		t.Fatal("I2 VIOLATION — a restarted validator prepared a competitor at the SAME (h, r, prepare) slot it signed before the crash; the round-scoped mark must survive restart (#397 Q1b per #432)")
+		t.Fatal("I2 VIOLATION — a restarted validator prepared a competitor at the SAME (h, r, prepare) slot it signed before the crash; the round-scoped mark must survive restart (1b per)")
 	}
 	if !prepared {
-		t.Fatal("I4 VIOLATION — a restarted validator refused the HIGHER-round proposal carried by a valid new-view certificate; a crash must not re-wedge the height the rounds unwedged (#432)")
+		t.Fatal("I4 VIOLATION — a restarted validator refused the HIGHER-round proposal carried by a valid new-view certificate; a crash must not re-wedge the height the rounds unwedged ")
 	}
 	// Control: with the mark wiped, the same-slot competitor is prepared —
 	// proving REFUSE above is the persisted mark's work, not something else.

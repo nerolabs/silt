@@ -62,16 +62,17 @@ type Network struct {
 	relay    ports.NodeID
 	hasRelay bool
 	Stats    Stats
-	// classes is the R4.3b class oracle (class.go): what a direct delivery from
-	// id presents to the receiving endpoint.
+	// classes is the class oracle (class.go): what a direct delivery from id
+	// presents to the receiving endpoint.
 	classes map[ports.NodeID]simClass
 
 	// Held-delivery (model-check) mode. When held is true, Send parks each
-	// message's delivery closure in heldQ instead of scheduling it on the clock,
-	// and the driver fires them in an order IT chooses via Pending()/Deliver().
-	// This is what lets the consensus model-check enumerate adversarial delivery
-	// interleavings deterministically over the REAL node loop. Off by default, so
-	// every existing sim/e2e path (random latency + sched.Run) is untouched.
+	// message's delivery closure in heldQ instead of scheduling it on the
+	// clock, and the driver fires them in an order IT chooses via
+	// Pending/Deliver. This is what lets the consensus model-check enumerate
+	// adversarial delivery interleavings deterministically over the REAL node
+	// loop. Off by default, so every existing sim/e2e path (random latency +
+	// sched.Run) is untouched.
 	held    bool
 	heldSeq int
 	heldQ   []heldMsg
@@ -184,7 +185,7 @@ func (e *Endpoint) Send(to ports.NodeID, msg ports.Message) error {
 			n.holes[[2]ports.NodeID{to, e.id}] = true
 		}
 		n.Stats.Delivered++
-		dst.observe(e.id, relayed) // R4.3b: the class the receiving transport would record
+		dst.observe(e.id, relayed) // the class the receiving transport would record
 		dst.handler(e.id, msg)
 	}
 	if n.held {
@@ -201,7 +202,7 @@ func (e *Endpoint) Send(to ports.NodeID, msg ports.Message) error {
 
 // EnableHeldDelivery switches the network into model-check mode: Send parks each
 // message instead of scheduling it on the clock, and the driver fires parked
-// messages in a chosen order via Pending()/Deliver(). Test/model-check only — it
+// messages in a chosen order via Pending/Deliver. Test/model-check only — it
 // must be set before any Send, and it composes with Kill/Partition/Restart (a
 // parked message re-checks dead/partition at Deliver time, exactly as timed
 // delivery does).
@@ -209,7 +210,7 @@ func (n *Network) EnableHeldDelivery() { n.held = true }
 
 // DisableHeldDelivery returns the network to timed delivery: the hand-off for a
 // model-check that BUILDS its world deterministically under held delivery and
-// then lets it RUN under the clock (the #560 timed oracle). Requires a
+// then lets it RUN under the clock (the timed oracle). Requires a
 // quiescent queue — a parked message would otherwise be stranded, delivered by
 // neither mode.
 func (n *Network) DisableHeldDelivery() {
@@ -295,7 +296,7 @@ func (n *Network) Alive(id ports.NodeID) bool {
 }
 
 // --- NAT model (#27): the deterministic mirror of the Docker harness, so
-// the relay and hole-punch paths get fast, CI-native coverage too. A real
+// The relay and hole-punch paths get fast, CI-native coverage too. A real
 // home router lets a node dial out (and holds the reverse mapping open so
 // replies get back in) but drops unsolicited inbound — so two NATed nodes
 // can't dial each other cold; they meet through the relay, or hole-punch. ---

@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# cloudtest.sh — one-command GCP field test for silt (roadmap #52).
+# cloudtest.sh — one-command GCP field test for silt.
 #
-#   ./cloudtest.sh setup      interactive: ask for project + walk through gcloud auth → write config.env
-#   ./cloudtest.sh            build → topology → apply → run flows → report → DESTROY
-#   ./cloudtest.sh up         bring the network up and leave it (implies KEEP_UP)
-#   ./cloudtest.sh run        run the scenarios against an already-up network
-#   ./cloudtest.sh report     regenerate the report from results.jsonl
-#   ./cloudtest.sh down       terraform destroy
-#   ./cloudtest.sh nuke       last-resort: delete every resource labelled cloudtest=<run>
-#   ./cloudtest.sh net-up     create the PERSISTENT network (then launch runs with PERSIST_NET=1)
-#   ./cloudtest.sh net-down   destroy the persistent network
+# ./cloudtest.sh setup interactive: ask for project + walk through gcloud auth → write config.env
+# ./cloudtest.sh build → topology → apply → run flows → report → DESTROY
+# ./cloudtest.sh up bring the network up and leave it (implies KEEP_UP)
+# ./cloudtest.sh run run the scenarios against an already-up network
+# ./cloudtest.sh report regenerate the report from results.jsonl
+# ./cloudtest.sh down terraform destroy
+# ./cloudtest.sh nuke last-resort: delete every resource labelled cloudtest=<run>
+# ./cloudtest.sh net-up create the PERSISTENT network (then launch runs with PERSIST_NET=1)
+# ./cloudtest.sh net-down destroy the persistent network
 #
 # Teardown is guaranteed: the default lifecycle destroys on EXIT (even on error),
 # every VM self-destructs after TTL_MINUTES, and `nuke` cleans up by label if
@@ -56,7 +56,7 @@ fi
 # LOCAL=1 — run the SAME harness against docker containers on this machine ($0,
 # no GCP, no config.env). The graded drive logic (severs, kill selection,
 # relaunch/restore, verdicts) executes here first, so harness defects die before
-# a billable run (docs/thinking/2026-08-20-harness-local-first.md). What LOCAL
+# a billable run). What LOCAL
 # cannot cover stays the cloud's job: real WAN latency, real NAT (natgw/nat-*
 # are excluded — 9-cross-nat SKIPs; integration/nat owns that locally), scale.
 if [ "${LOCAL:-0}" = 1 ]; then
@@ -68,7 +68,7 @@ if [ "${LOCAL:-0}" = 1 ]; then
   export FT_TOPO="${FT_TOPO:-$FT_DIR/topology.local.json}"
 else
 [ -f config.env ] || { echo "no config.env — run './cloudtest.sh setup' (interactive), or copy config.env.example and fill it in"; exit 1; }
-# The caller's env must WIN over config.env (§F footgun): `. ./config.env` runs AFTER the
+# The caller's env must WIN over config.env (§F footgun): `../config.env` runs AFTER the
 # environment is inherited, so a config.env `export REGION=…` silently CLOBBERS a
 # command-line `REGION=us-west1 ./cloudtest.sh` — a confusing dead end that cost a wasted
 # apply+teardown to diagnose. Snapshot the caller's REGION before sourcing and restore it.
@@ -125,8 +125,8 @@ preflight_quota() {
   echo "==> preflight: external-IP (IN_USE_ADDRESSES) quota per region"
   # Count the PUBLIC nodes exactly as terraform does (main.tf `public_nodes`):
   # natted/natgw egress via Cloud NAT, the equivocation ISLAND is
-  # no-external-IP by design (#494), and internal_only nodes (the ECONOMY
-  # killable stores, #495) carry no address — all zero IN_USE_ADDRESSES.
+  # no-external-IP by design, and internal_only nodes (the ECONOMY
+  # killable stores) carry no address — all zero IN_USE_ADDRESSES.
   # internal_only lives only in the tfvars gen_topology writes, so prefer it
   # over topology.json. This counter once lagged terraform's predicate (it
   # skipped only natted/natgw) and refused an ECONOMY run as "needs 13 of 8"
@@ -196,7 +196,7 @@ apply() {
   printf '%s\n' "$RUN_ID" > "$FT_DIR/.last_run_id"
   tf init -input=false >/dev/null
   # Persistent-network mode (harness-hardening c): PERSIST_NET=1 reuses the
-  # long-lived VPC owned by terraform/network (create once: ./cloudtest.sh net-up)
+  # long-lived VPC owned by terraform/network (create once:./cloudtest.sh net-up)
   # instead of building/destroying a per-run one (~minutes/run). Record the mode
   # so a fresh-shell destroy evaluates the same config it applied with.
   printf '%s' "${PERSIST_NET:-0}" > "$FT_DIR/.persist_net"
@@ -216,7 +216,7 @@ apply() {
     -var "all_on_demand=${ALL_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && echo false || echo true)}"
   tf output -json nodes > "${NODES_JSON:-$FT_DIR/nodes.json}"
   # Terraform's node output carries instance_name/zone/ips/role but NOT the silt
-  # NodeID — yet scenarios.sh reads node_field <n> nodeid (the #184 drills derive
+  # NodeID — yet scenarios.sh reads node_field <n> nodeid (the drills derive
   # peer IDs from it). topology.json HAS the deterministic nodeid per node, so merge
   # it in here. Without this every 184-* flow crashed with KeyError: 'nodeid' and
   # the adversarial consensus drills never ran on GCP (blind cloud finding #1).
@@ -293,9 +293,9 @@ wait_ready() {
 
 run_scenarios() {
   echo "==> running scenarios"
-  # NO truncation here (#525): `run` is the documented RE-DRIVE entry
-  # (FLOWS=… ./cloudtest.sh run), and truncating clobbered every previously
-  # graded verdict — run 94ef1e8-36901's re-drive reduced the sheet from 14
+  # NO truncation here: `run` is the documented RE-DRIVE entry
+  # (FLOWS=…./cloudtest.sh run), and truncating clobbered every previously
+  # graded verdict — run the field run's re-drive reduced the sheet from 14
   # rows to 3, and the archived results hold only the re-drive pass (the
   # first-pass verdicts survive only in the console log). The sheet is cleared
   # where a NEW sheet begins: the `all` paths (before spending money) and `up`
@@ -308,7 +308,7 @@ run_scenarios() {
   # Persist the console (#7): ft_publish diagnostics and per-flow narration used to
   # die with the terminal, leaving a FAIL verdict with no trail after teardown. The
   # tee'd copy lands next to the run's report. (The pipeline subshell is fine: flows
-  # append to results.jsonl / evidence logs by path, and report() reads files.)
+  # append to results.jsonl / evidence logs by path, and report reads files.)
   # RSS/memory telemetry (Phase 1.3): sample each node's cgroup memory across the run
   # into a committed rss-<RUN_ID>.jsonl, so the MATURING OOM "return-to-2GB" headline
   # carries a measured envelope, not just the absence of a crash (build-immutable #7).
@@ -322,26 +322,20 @@ run_scenarios() {
 
 report() {
   echo "==> report"; RUN_ID="$RUN_ID" ./gen_report.sh
-  # Archive per run: results.jsonl/report.md are OVERWRITTEN by the next run, which
-  # erased the pass/fail history needed to tell a regression from a never-passed
-  # flow (this session had to reconstruct run c815091's verdicts from memory).
+  # Archive per run: results.jsonl and report.md are OVERWRITTEN by the next run, so
+  # a per-RUN_ID copy is what survives to tell a regression from a never-passed flow.
+  # These are run artifacts, not repository content: they stay gitignored.
   mkdir -p "$FT_DIR/archive"
   cp -f "$FT_DIR/results.jsonl" "$FT_DIR/archive/results-$RUN_ID.jsonl" 2>/dev/null || true
   cp -f "$FT_DIR/report.md"     "$FT_DIR/archive/report-$RUN_ID.md"     2>/dev/null || true
-  # Also emit a TOP-LEVEL per-RUN_ID report + results (same convention as
-  # console-$RUN_ID.log). archive/ is git-ignored, so committing a run's grade as
-  # EVIDENCE meant force-committing the MUTABLE report.md — which the next run
-  # overwrites, the exact cause of the fresh-eyes audit's "committed report.md is a
-  # stale pre-fix run". A per-RUN_ID top-level copy is the file to force-commit, and
-  # it can never be clobbered by a later run.
   cp -f "$FT_DIR/report.md"     "$FT_DIR/report-$RUN_ID.md"     2>/dev/null || true
   cp -f "$FT_DIR/results.jsonl" "$FT_DIR/results-$RUN_ID.jsonl" 2>/dev/null || true
-  echo "    archived → report-$RUN_ID.md + results-$RUN_ID.jsonl (top-level, force-commit these as the run's grade) + archive/ copies (evidence: flow-evidence-$RUN_ID.log, console-$RUN_ID.log)"
+  echo "    archived → report-$RUN_ID.md + results-$RUN_ID.jsonl + archive/ copies (evidence: flow-evidence-$RUN_ID.log, console-$RUN_ID.log)"
 }
 
 teardown() {
   # TEARDOWN=0 is the re-drive alias of KEEP_UP: leave the fleet standing so a
-  # fix can redeploy + re-run a flow subset (FLOWS="…" ./cloudtest.sh run) in ~1
+  # fix can redeploy + re-run a flow subset (FLOWS="…"./cloudtest.sh run) in ~1
   # minute instead of a ~10-minute provision cycle. Convergence aid only — the
   # exit-gate/RC artifact stays one clean uninterrupted sheet.
   [ "${TEARDOWN:-1}" = 0 ] && { echo "==> TEARDOWN=0 — fleet left standing for re-drive (FLOWS=… ./cloudtest.sh run | ./cloudtest.sh down)"; return; }
@@ -405,7 +399,7 @@ nuke() {
   fi
 }
 
-# ── LOCAL=1 backend: docker provisioning (see docs/thinking/2026-08-20-harness-local-first.md) ──
+# ── LOCAL=1 backend: docker provisioning) ──
 LOCAL_IMG="silt-cloudtest-local"
 local_prefix() { printf 'silt-ft-%s' "$RUN_ID"; }
 
@@ -493,19 +487,19 @@ nuke_local() { # remove EVERY local cloudtest container/network regardless of ru
 
 # ── build-immutable #6 pre-flight gate ───────────────────────────────────────
 # An expensive multi-region run CONFIRMS an already-understood, locally-reproduced
-# fix, or certifies liveness/timing at scale — the one thing a real WAN uniquely
+# fix, or verifies liveness/timing at scale — the one thing a real WAN uniquely
 # proves. It NEVER discovers a cause or tests a guess: that is what the laptop
 # harnesses are for (integration/adversarial netem · integration/flakynet ·
-# go test ./e2e). The #286 rabbit-hole was five billable runs spent DISCOVERING
-# causes that were reproducible for free (docs/reviews/286-wan-rabbithole-POSTMORTEM.md).
+# go test ./e2e). The rabbit-hole was five billable runs spent DISCOVERING
+# causes that were reproducible for free).
 # So a billable `up`/`all` is refused unless the operator has WRITTEN DOWN, per
-# build-immutable #6 (docs/build-process.md):
-#   RUN_MECHANISM — the one-paragraph mechanism ("X because Y; fixed by Z"), OR the
-#                   sanctioned purpose ("liveness/timing at scale — R1 gate #360"),
-#                   OR a path/issue reference to it.
-#   RUN_REPRO     — the local reproduction that already reproduces/confirms it
-#                   (e.g. "go test ./e2e -run Equivocator", "integration/adversarial/run.sh",
-#                   or "n/a — liveness-only; attacks certified off-cloud, #360").
+# build-immutable #6):
+#  RUN_MECHANISM — the one-paragraph mechanism ("X because Y; fixed by Z"), OR the
+#  sanctioned purpose ("liveness/timing at scale — R1 gate"),
+#  OR a path/issue reference to it.
+#  RUN_REPRO — the local reproduction that already reproduces/confirms it
+#  (e.g. "go test ./e2e -run Equivocator", "integration/adversarial/run.sh",
+#  or "n/a — liveness-only; attacks off-cloud").
 # There is deliberately NO silent bypass — stating intent before spending money is
 # the whole point of the gate.
 preflight_gate() {
@@ -564,7 +558,7 @@ if [ "${LOCAL:-0}" = 1 ]; then
       provision_local; wait_ready; run_scenarios; report
       ;;
     up)   check_prereqs_local; build_binary_local; gen_topology
-          # A fresh network is a NEW sheet: clear it HERE, not in `run` (#525 —
+          # A fresh network is a NEW sheet: clear it HERE, not in `run` (—
           # `run` is the re-drive entry and must append, never clobber).
           : > "$FT_DIR/results.jsonl"
           printf '# run=%s (LOCAL) — no scenarios have completed yet\n' "$RUN_ID" > "$FT_DIR/report.md"
@@ -593,7 +587,7 @@ case "${1:-all}" in
     apply; wait_ready; run_scenarios; report
     ;;
   up)     preflight_gate; check_prereqs; build_binary; gen_topology
-          # A fresh network is a NEW sheet: clear it HERE, not in `run` (#525 —
+          # A fresh network is a NEW sheet: clear it HERE, not in `run` (—
           # `run` is the re-drive entry and must append, never clobber).
           : > "$FT_DIR/results.jsonl"
           printf '# run=%s — no scenarios have completed yet (network came up? see failed-nodes-%s.log)\n' "$RUN_ID" "$RUN_ID" > "$FT_DIR/report.md"

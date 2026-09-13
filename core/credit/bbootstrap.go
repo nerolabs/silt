@@ -2,10 +2,10 @@
 
 package credit
 
-// THE INSTRUMENT COMPILES ONLY UNDER THE `bbootstrap` BUILD TAG (D-BB-BUILD-TAG,
-// ratified 2026-09-05). A default `go build` produces a binary with no histogram type,
-// no census reader, no age stamping and no -bbootstrap flag — bbootstrap_off.go is the
-// whole of what a default build keeps (an empty struct and an empty method).
+// THE INSTRUMENT COMPILES ONLY UNDER THE `bbootstrap` BUILD TAG. A default `go build`
+// produces a binary with no histogram type, no census reader, no age stamping and no
+// -bbootstrap flag — bbootstrap_off.go is the whole of what a default build keeps (an
+// empty struct and an empty method.
 //
 // WHY A TAG AND NOT A BETTER RUNTIME GATE. TENETS Part VI Don't #3 is a claim about what
 // silt BUILDS — "silt builds no mechanism to observe or link who-fetches-what… The
@@ -17,7 +17,7 @@ package credit
 // resolved the analogous question by REMOVING the `personal` namespace from the
 // network-facing surface rather than authenticating it better (ADVISORY 2026-09-05).
 //
-// THE BREAK IS RECORDING SURPLUS, NOT RECORDING (G-BB-29, D-DONT3-READING). An earlier
+// THE BREAK IS RECORDING SURPLUS, NOT RECORDING. An earlier
 // form of this comment read as "recording per se is the break". That rule is REFUTED by
 // silt's own default build: core/credit/delivery.go keeps provKey{server, requester,
 // root} on every object-aware serve, with no flag and no tag, because the D-S7
@@ -26,21 +26,21 @@ package credit
 // prong (c), PURPOSE: the age axis exists to relate a fetcher to bytes over time. The
 // tag's OUTCOME is unchanged; only the generalised reason behind it was wrong.
 //
-// R2.9a — the B_bootstrap instrument: a full-census 2-D COUNT HISTOGRAM over
+// The B_bootstrap instrument: a full-census 2-D COUNT HISTOGRAM over
 // (identity age × log2 fetched bytes).
 //
-// WHY IT EXISTS. `D-R2.9-DIRECTION` sentence 4 makes one measurement a precondition
-// of pinning the affordability ratio `grant/r`: on real traffic, how many bytes does a
-// fresh honest identity fetch from ONE serving ledger while it is young. cloudtest
-// measures its own synthetic fetch plan and therefore cannot produce it, so the series
-// has to come off a deployment carrying real users.
+// WHY IT EXISTS. `` sentence 4 makes one measurement a precondition of pinning the
+// affordability ratio `grant/r`: on real traffic, how many bytes does a fresh honest
+// identity fetch from ONE serving ledger while it is young. cloudtest measures its own
+// synthetic fetch plan and therefore cannot produce it, so the series has to come off
+// a deployment carrying real users.
 //
 // WHAT IT IS NOT. Instrumentation only. Nothing here moves credit, escrow or standing,
 // and no conservation rule reads it (Invariant A: the two methods below are classified
 // `neutral` in invariant_a_test.go and a test proves the snapshot writes nothing).
 //
 // THE SHAPE, and why it is a histogram rather than rows
-// (RESEARCH CERTIFICATION R2.9a-Bbootstrap-instrument-sufficiency, 2026-09-04, §5.2).
+
 // The first build exported per-requester rows capped at the top 4,096 BY BYTES. That
 // retention rule selects on the response variable of the very regression the series
 // exists to fit: it removes, from every age cell, exactly the identities below the
@@ -54,29 +54,29 @@ package credit
 // COUNTS ONLY — a per-cell byte SUM is forbidden. A cell sum with count 1 is that
 // identity's exact byte total in disguise; a count at bin granularity is not. The
 // residual is named and disclosed rather than closed: a count-1 cell still says "one
-// identity of this age bucket had bytes in this bin" (R-BB-SINGLETON-CELL, open,
-// bounded). Suppressing low-count cells would destroy exactly the tail the fit reads,
-// so the certification rules NO suppression.
+// identity of this age bucket had bytes in this bin" (open, bounded). Suppressing
+// low-count cells would destroy exactly the tail the fit reads, so the design
+// rules NO suppression.
 //
-// THE CLOCK IS INJECTED (G-BB-2). The age axis rides the `ports.Clock` the node already
+// THE CLOCK IS INJECTED. The age axis rides the `ports.Clock` the node already
 // carries, stamped once per account at first touch (Register). The consensus epoch is
 // REFUTED for this purpose: it is identically 0 on a non-validator, which is exactly the
 // machine that will run this, so an epoch-aged export would publish a constant. A ledger
 // with no clock injected publishes NO age-conditioned cells at all — never an all-zero
 // age column that a reader could mistake for a genuinely young population.
 //
-// TWO CLOCKS, AND WHY (G-BB-4 / BB-13). The injected ports.Clock is a WALL clock in
-// production: adapters/walltime returns time.Now().UnixNano(), which discards Go's
-// monotonic reading. Uptime and every age are both differences taken from ONE reading of
-// it, so a step in that clock moves both minuends and CANCELS out of any comparison
-// between them. The first build asserted "largest occupied age edge <= uptime" against
-// that wall uptime and called it unviolatable by construction; measured, an 8-day forward
-// step put a 30-second-old identity in the ">7 days" bucket, reported 8 days of uptime,
-// raised no flag, and made the run precondition accept a 60-second-old process for a
-// 7-day window. That is the silent age reshaping BB-13 forbids, and it is why a SECOND,
-// INDEPENDENT source is injected alongside the clock: ports.MonotonicNanos, which nothing
-// can step. The divergence between them IS the step. It is published as a number
-// (ClockSkewNanos) as well as a flag, so an analyst can judge it against their own W.
+// TWO CLOCKS, AND WHY. The injected ports.Clock is a WALL clock in production:
+// adapters/walltime returns time.Now.UnixNano, which discards Go's monotonic reading.
+// Uptime and every age are both differences taken from ONE reading of it, so a step in
+// that clock moves both minuends and CANCELS out of any comparison between them. The
+// first build asserted "largest occupied age edge <= uptime" against that wall uptime and
+// called it unviolatable by construction; measured, an 8-day forward step put a
+// 30-second-old identity in the ">7 days" bucket, reported 8 days of uptime, raised no
+// flag, and made the run precondition accept a 60-second-old process for a 7-day window.
+// That is the silent age reshaping the clock-step rule forbids, and it is why a SECOND, INDEPENDENT
+// source is injected alongside the clock: ports.MonotonicNanos, which nothing can step.
+// The divergence between them IS the step. It is published as a number (ClockSkewNanos)
+// as well as a flag, so an analyst can judge it against their own W.
 
 import (
 	"fmt"
@@ -93,49 +93,50 @@ const (
 	// doubling over 2^0 … 2^40 (1 byte … 1 TiB), top bin open.
 	BBootstrapByteBins = 41
 	// BBootstrapBinsPerOctave is the byte-axis resolution: ONE bin per doubling
-	// (plain log2), which resolves B to 2×. It was 4 (quarter-log2, 19%) until the
-	// owner ratified 1 on 2026-09-05 (G-BB-23; docs/decisions.md D-R2.9a-RUN-CALLS
-	// item 5). Two facts decided it, and both are recorded so the value is not re-
-	// litigated from the payload argument that chose 4:
+	// (plain log2), which resolves B to 2×. It was 4 (quarter-log2, 19%) until
+	// the value is 1. Two facts decided
+	// it, and both are recorded so the value is not re- litigated from the
+	// payload argument that chose 4:
 	//
-	// THE BIN COUNT IS THE ONLY PRIVACY LEVER ON THIS GRID. A cell with count 1
-	// publishes one identity's age bracket and its cumulative bytes to the bin's
-	// width. The Red-team's F4 measured that at the census sizes this instrument is
-	// for (tens to a few hundred requesters) 35–86% of occupied cells are singletons,
-	// and that the ABSOLUTE count of individually pinned identities is roughly
-	// constant in the census size — the heaviest and lightest fetchers sit alone in
-	// sparse tail bins however large R grows. The floor (G-BB-11′) gates the census
-	// total, never a cell; merging and rounding are large-census tools and were
-	// REFUTED as closers at this scale (necessity certification 2026-09-05 §3.3).
-	// The exposed count scales with the number of sparse tail bins, i.e. with this
-	// constant, so 4 → 1 cuts the axis 164 → 41. The pinned-identity count falls by
-	// LESS than that, and by an amount that depends on R (blind PE ruling
-	// RULING-R2.9a-bin-count-d644b8b-2026-09-05, measured on a reconstruction of F4's
-	// population): about 1.4× at the census floor R = 10, 2× at R = 25, and 4× only at
-	// R ≳ 1,000. The analytic limit is model-free — as R falls toward the floor nearly
-	// every identity is alone on EITHER axis, so the factor → 1. The floor (G-BB-11′)
-	// and this constant are therefore weakest in the SAME band, R = 10–25, which is
-	// exactly the band the floor permits publication in. R-BB-SINGLETON-CELL is
-	// reduced, not closed, and least reduced where it is worst.
+	// THE BIN COUNT IS THE ONLY PRIVACY LEVER ON THIS GRID. A cell with count
+	// 1 publishes one identity's age bracket and its cumulative bytes to the
+	// bin's width. The F4 measured that at the census sizes this instrument
+	// is for (tens to a few hundred requesters) 35–86% of occupied cells are
+	// singletons, and that the ABSOLUTE count of individually pinned
+	// identities is roughly constant in the census size — the heaviest and
+	// lightest fetchers sit alone in sparse tail bins however large R grows.
+	// The floor gates the census total, never a cell; merging and rounding
+	// are large-census tools and were REFUTED as closers at this scale
+	// The exposed count scales
+	// with the number of sparse tail bins, i.e. with this constant, so 4 → 1
+	// cuts the axis 164 →
+	// 41. The pinned-identity count falls by LESS than that, and by an amount
+	// That depends on R: about 1.4× at the census floor R = 10, 2× at R = 25,
+	// and 4× only at R ≳ 1,000. The analytic limit is model-free — as R falls
+	// toward the floor nearly every identity is alone on EITHER axis, so the
+	// factor → 1. The floor and this constant are therefore weakest in the
+	// SAME band, R = 10–25, which is exactly the band the floor permits
+	// publication in. this gate is reduced, not closed, and least reduced
+	// where it is worst.
 	//
-	// THE PRECISION SIDE LOST ITS CONSUMER. The 19% residual mattered when the census
-	// was to pin grant/r, and both directions of that residual land on immutables
-	// (build-immutable #4 from below — a cliff, zero usable bytes below one chunk;
-	// Don't #7 / T-AR / build-immutable #8 from above — a metered unpaid subsidy;
-	// NOT M0's Sybil corner, G-BB-22). Under the ratified run re-scope grant/r is
+	// THE PRECISION SIDE LOST ITS CONSUMER. The 19% residual mattered when the
+	// census was to pin grant/r, and both directions of that residual land on
+	// immutables (build-immutable #4 from below — a cliff, zero usable bytes below
+	// one chunk; Don't #7 / T-AR / build-immutable #8 from above — a metered unpaid
+	// subsidy; NOT M0's Sybil corner). Under the run re-scope grant/r is
 	// pinned STRUCTURALLY from object geometry (32 GiB) and the census is re-aimed
-	// at the honest arrival rate and at falsifying that number, for which 2× ("between
-	// 4 and 8 GiB" rather than "between 4.0 and 4.75 GiB") is ample.
+	// at the honest arrival rate and at falsifying that number, for which 2×
+	// ("between 4 and 8 GiB" rather than "between 4.0 and 4.75 GiB") is ample.
 	BBootstrapBinsPerOctave = 1
 )
 
 // bbAgeEdgeNanos are the LOWER edges of the age buckets, in nanoseconds. Bucket i
-// covers [bbAgeEdgeNanos[i], bbAgeEdgeNanos[i+1]) — half-open, low-closed — and the
+// covers [bbAgeEdgeNanos[i], bbAgeEdgeNanos[i+1] — half-open, low-closed — and the
 // last bucket is open-topped. Bucket 0 is age EXACTLY zero (a same-tick fetch), which
 // a sim clock produces routinely and a wall clock essentially never does; keeping it
 // separate is what stops "brand new" and "arrived in the last minute" from fusing.
 //
-// G-BB-1 (the owner pins W and q before the RUN) MAY REQUIRE ADDING AN EDGE. The
+// Pinning W and q before the RUN MAY REQUIRE ADDING AN EDGE. The
 // reading rule is "the cell containing W", which is exact only when W lands ON an edge;
 // off an edge it is bracketed by the bucket. These edges are chosen to bracket the
 // plausible candidates (a viewing session, an hour, a day, a week) and NO reading rule
@@ -161,25 +162,24 @@ var bbAgeEdgeNanos = [BBootstrapAgeBuckets]int64{
 //
 // It is deliberately on the strict side. A long run that accumulates a minute of ordinary
 // NTP slew is flagged even though a minute is negligible against a W of days, and that
-// costs a re-run. The other error — a step reshaping the young cells with nobody
-// noticing — costs a wrong grant/r, and a wrong grant/r lands on an immutable in
-// either direction: build-immutable #4 from below, Don't #7 / T-AR / build-immutable
-// #8 from above (not M0's Sybil corner, which is about standing and which a balance
-// grant cannot touch — G-BB-22). The asymmetry decides the direction. ClockSkewNanos
-// carries the raw number either way, so an operator who disagrees with this threshold
-// can read past it.
+// costs a re-run. The other error — a step reshaping the young cells with nobody noticing
+// — costs a wrong grant/r, and a wrong grant/r lands on an immutable in either direction:
+// build-immutable #4 from below, Don't #7 / T-AR / build-immutable #8 from above (not
+// M0's Sybil corner, which is about standing and which a balance grant cannot touch). The
+// asymmetry decides the direction. ClockSkewNanos carries the raw number either way, so
+// an operator who disagrees with this threshold can read past it.
 const bbClockSkewToleranceNanos = int64(60 * 1e9)
 
-// THE MINIMUM-REQUESTER FLOOR (G-BB-11), and why it is a WHOLE-BLOCK rule rather than
+// THE MINIMUM-REQUESTER FLOOR, and why it is a WHOLE-BLOCK rule rather than
 // the per-cell suppression this instrument REFUSES.
 //
 // Two different objects, and a reader must not fuse them:
 //
-//   - A LOW-COUNT CELL is never suppressed. Suppression there eats exactly the tail the
-//     quantile fit reads, and the bias is not correctable after the fact. That ruling
-//     stands (see the COUNTS ONLY note above).
-//   - THE WHOLE BLOCK is suppressed when the census is not a POPULATION. Below the floor
-//     there is no tail to eat, because there is nothing to fit.
+// - A LOW-COUNT CELL is never suppressed. Suppression there eats exactly the tail the
+// quantile fit reads, and the bias is not correctable after the fact. That
+// stands (see the COUNTS ONLY note above).
+// - THE WHOLE BLOCK is suppressed when the census is not a POPULATION. Below the floor
+// There is no tail to eat, because there is nothing to fit.
 //
 // WHAT THE FLOOR ACTUALLY CLOSES, stated exactly, because the obvious reading is wrong.
 // The leak is not that a cell count identifies someone. `stats.bytesServed`
@@ -191,11 +191,9 @@ const bbClockSkewToleranceNanos = int64(60 * 1e9)
 // So suppressing cells while still publishing `requesters` would close NOTHING, and the
 // floor covers every census count, not just the grid.
 //
-// AND WHAT IT IS NOT — a correction, because the first version of this comment implied
-// the opposite and the implication is false (RE-CERTIFICATION 2026-09-05 §2.2, §2.5).
-// THE FLOOR BOUNDS THE PUBLISHED CENSUS **COUNT**. IT DOES NOT BOUND THE ANONYMITY
+// AND WHAT IT IS NOT. THE FLOOR BOUNDS THE PUBLISHED CENSUS **COUNT**. IT DOES NOT BOUND THE ANONYMITY
 // **SET**. The census population is the set of identities that fetched, and an identity
-// is a keypair (adapters/identity/identity.go:64-67 — "generating a keypair is
+// is a keypair (adapters/identity/identity.go — "generating a keypair is
 // joining"); the serve path has no admission control beyond freeload and chunkDenied,
 // and Register mints an account for any unseen id. So an observer that can FETCH lifts
 // the floor for R_min − 1 keypairs and one chunk each — nine identities and about
@@ -209,71 +207,68 @@ const bbClockSkewToleranceNanos = int64(60 * 1e9)
 // CANNOT fetch: a monitoring network filtered from the swarm port, a passive scraper
 // that runs no silt node, an accidental exposure during a genuinely idle period. It is
 // NOT a privacy mitigation against a capable adversary, and the Don't #3 question is not
-// answered by it. Residuals: R-BB-CENSUS-SYBIL-PAD and R-BB-ANONYMITY-SET-SIZE, both
-// open, neither closable at this instrument.
+// answered by it. Residuals:, both open, neither closable at this instrument.
 //
 // WHAT IT DOES NOT CLOSE. A polled series of cell deltas yields single-identity bin
 // trajectories at ANY R: one identity crossing a bin edge between two polls shows up as
 // -1 at one bin and +1 at another. The floor closes ATTRIBUTION (whose trajectory it is)
-// only against a reader that cannot pad the census; against a fetching reader it closes
-// neither attribution nor extraction. That residual is R-BB-DELTA-TRAJECTORY, open. It
-// is NOT claimed closed here.
+// Only against a reader that cannot pad the census; against a fetching reader it closes
+// neither attribution nor extraction. That residual is, open. It is NOT claimed closed
+// here.
 //
-// THE OBSERVATION RATE IS BOUNDED BY THE PUBLISHER, NOT BY THE READER (G-BB-26). An
-// earlier version of this paragraph said the residual was "bounded by the poll rate".
-// That was wrong as written and is corrected here: the poll rate is the READER's own
-// choice, and there is no rate limiter anywhere on the UI server. The bound is real only
-// because the UI server serves ONE snapshot recomputed at most once per a fixed
-// interval T and the cached copy in between (cmd/silt/ui.go, statusSnapshotInterval), so
-// an observer gets at most floor(uptime/T) distinct blocks however fast it asks and
-// every crossing inside one interval is unresolvable. THE BOUND COVERS EXACTLY THE TWO
-// ENDPOINTS SERVED OFF THAT SNAPSHOT, GET /api/status (this block, durability.balance,
-// stats.BytesServed) and GET /api/economy/self (revenue.*, the escrow sums). As first
-// written this paragraph said "/api/status now serves a snapshot", which was true of
-// the block and false of the sibling aggregates it names: /api/economy/self recomputed
-// per request, and a blind PE review extracted the escrow step from it at 330 ms. It
-// now reads the same snapshot. T is a SECURITY PARAMETER: it is derived, published on
-// the wire beside the axis constants so an analyst can price this residual, and
-// ratified by the owner (D-STATUS-SNAPSHOT-INTERVAL, with its appended correction).
+// THE OBSERVATION RATE IS BOUNDED BY THE PUBLISHER, NOT BY THE READER. An earlier
+// version of this paragraph said the residual was "bounded by the poll rate". That was
+// wrong as written and is corrected here: the poll rate is the READER's own choice, and
+// there is no rate limiter anywhere on the UI server. The bound is real only because the
+// UI server serves ONE snapshot recomputed at most once per a fixed interval T and the
+// cached copy in between (cmd/silt/ui.go, statusSnapshotInterval), so an observer gets
+// at most floor(uptime/T) distinct blocks however fast it asks and every crossing inside
+// one interval is unresolvable. THE BOUND COVERS EXACTLY THE TWO ENDPOINTS SERVED OFF
+// THAT SNAPSHOT, GET /api/status (this block, durability.balance, stats.BytesServed) and
+// GET /api/economy/self (revenue.*, the escrow sums). As first written this paragraph
+// said "/api/status now serves a snapshot", which was true of the block and false of the
+// sibling aggregates it names: /api/economy/self recomputed per request, and a. It now
+// reads the same snapshot. T is a SECURITY PARAMETER: it is derived, published on the
+// wire beside the axis constants so an analyst can price this residual.
 //
-// THE RULE THE FLOOR ENFORCES IS A PROPERTY, NOT A FIELD LIST (G-BB-11′). Partition
+// THE RULE THE FLOOR ENFORCES IS A PROPERTY, NOT A FIELD LIST. Partition
 // every published field of the block:
 //
-//   - INSTRUMENT: the value is a function of the injected clock sources, their injection
-//     instants and the compiled axis constants ALONE.
-//   - CENSUS: the value depends on the contents of l.accounts or l.order.
+// - INSTRUMENT: the value is a function of the injected clock sources, their injection
+// instants and the compiled axis constants ALONE.
+// - CENSUS: the value depends on the contents of l.accounts or l.order.
 //
 // Below R_min the published block MUST be a function of the instrument fields alone,
 // with exactly ONE named exemption: Suppressed itself, whose information content is
 // precisely "the census is below R_min" — a published upper bound of R_min − 1 on the
-// anonymity set (R-BB-SUPPRESSED-IS-A-DISCLOSURE). It cannot be withheld without fusing
+// anonymity set. It cannot be withheld without fusing
 // "below the floor" with "no clock injected", which is the absent-vs-empty distinction
-// this file enforces everywhere else, so it is disclosed in the owner's brief rather
+// this file enforces everywhere else, so it is disclosed rather
 // than hidden.
 //
-// WHY A PROPERTY. A list failed three times in one pull request: the certification's
-// three fields missed two, the build's five missed two more (AgeExceedsUptime, and one
-// of ClockStepBack's two arms), and a source gate reading two literal paths claimed a
-// whole-tree property a reviewer ablated past. The form was the defect. So
-// WithMinRequesterFloor CONSTRUCTS the suppressed block out of the instrument class
-// rather than CLEARING a list of census fields: a field nobody has foreseen takes its
-// zero value, which is a compile-time constant and therefore trivially a function of the
-// instrument alone. The default flips from PUBLISHED to WITHHELD. BB-20
-// (cmd/silt/r29a_bb20_equivalence_test.go) runs the property at the wire.
+// WHY A PROPERTY. A list failed three times in one change: the three fields missed
+// two, the build's five missed two more (AgeExceedsUptime, and one of ClockStepBack's
+// two arms), and a source gate reading two literal paths claimed a whole-tree property a
+// was ablated past. The form was the defect. So WithMinRequesterFloor CONSTRUCTS
+// the suppressed block out of the instrument class rather than CLEARING a list of census
+// fields: a field nobody has foreseen takes its zero value, which is a compile-time
+// constant and therefore trivially a function of the instrument alone. The default flips
+// from PUBLISHED to WITHHELD. cmd/silt/census_floor_equivalence_test.go runs the
+// property at the wire.
 const (
-	// bbDerivedQuantileFloorPercent is NOT q. q is the owner's and is UNPINNED
-	// (G-BB-1). This is the LOWER EDGE OF THE RANGE OVER WHICH THE DERIVATION BELOW IS
-	// CERTIFIED: q >= 0.90. At any q at or above this edge the floor is strictly
-	// dominated by the fit's own sample requirement and therefore costs the fit nothing.
-	// AT q BELOW THIS EDGE THE DERIVATION MUST BE RE-RUN — that is why the rule is
-	// encoded here and not just its answer.
+	// bbDerivedQuantileFloorPercent is NOT q. q is a deployment choice and is UNPINNED. This
+	// is the LOWER EDGE OF THE RANGE OVER WHICH THE DERIVATION BELOW HOLDS: q
+	// >= 0.90. At any q at or above this edge the floor is strictly dominated by the
+	// fit's own sample requirement and therefore costs the fit nothing. AT q BELOW
+	// THIS EDGE THE DERIVATION MUST BE RE-RUN — that is why the rule is encoded here
+	// and not just its answer.
 	bbDerivedQuantileFloorPercent = 90
 
 	// bbQuantileObservationFloor is the RULE, evaluated: estimating a q-quantile needs at
 	// least ceil(1/(1-q)) observations IN THE READ CELL. Written as an integer ceiling
 	// over percent so it re-derives if the edge above moves:
 	//
-	//	ceil(100 / (100 - q%))   =   (100 + (100-q%) - 1) / (100 - q%)
+	//	ceil(100 / (100 - q%)) = (100 + (100-q%) - 1) / (100 - q%)
 	//
 	// At q = 0.90 that is (100 + 10 - 1) / 10 = 10.
 	bbQuantileObservationFloor = (100 + (100 - bbDerivedQuantileFloorPercent) - 1) /
@@ -286,11 +281,11 @@ const (
 	BBootstrapMinRequesters = bbQuantileObservationFloor
 )
 
-// A compile-time guard, not a comment: the certified floor is R_min >= 10 whatever the
-// derivation above yields. If someone lowers bbDerivedQuantileFloorPercent far enough to
-// drive the derived floor under 10, this conversion of a negative constant to uint fails
-// to build, which is the only way to make "do not pin R_min below the certified floor"
-// structural rather than a promise.
+// A compile-time guard, not a comment: the floor is R_min >= 10 whatever the derivation
+// above yields. If someone lowers bbDerivedQuantileFloorPercent far enough to drive the
+// derived floor under 10, this conversion of a negative constant to uint fails to build,
+// which is the only way to make "do not pin R_min below the floor" structural rather
+// than a promise.
 const _ = uint(BBootstrapMinRequesters - 10)
 
 // BBootstrapHistogram is the whole published object. It carries no per-identity datum
@@ -300,16 +295,16 @@ type BBootstrapHistogram struct {
 	// ClockSource is the age axis's self-report (H-1): "injected" when a ports.Clock
 	// was wired, "none" when it was not. A reader must never have to infer it.
 	ClockSource string
-	// AgeAxisLive is false exactly when ClockSource == "none". When it is false Cells
-	// is nil — the instrument REFUSES to publish age-conditioned cells rather than
-	// publish an all-zero age column indistinguishable from a young population
-	// (G-BB-2). "Disabled" and "empty" are different objects on the wire.
+	// AgeAxisLive is false exactly when ClockSource == "none". When it is false
+	// Cells is nil — the instrument REFUSES to publish age-conditioned cells
+	// rather than publish an all-zero age column indistinguishable from a young
+	// population. "Disabled" and "empty" are different objects on the wire.
 	//
 	// Cells is ALSO nil when Suppressed is true, with the age axis live. The two cases
 	// are told apart by AgeAxisLive and Suppressed, which is why both are published.
 	AgeAxisLive bool
 
-	// Suppressed is the minimum-requester floor (G-BB-11′), applied. TRUE means the
+	// Suppressed is the minimum-requester floor, applied. TRUE means the
 	// census held fewer than BBootstrapMinRequesters requesters and the block is a
 	// function of the INSTRUMENT fields alone: the clock self-reports, the uptimes, the
 	// skew and the axis description, plus this bit. Every CENSUS-class field is
@@ -318,7 +313,7 @@ type BBootstrapHistogram struct {
 	//
 	// This bit is the ONE named exemption to that rule, and it is itself a disclosure:
 	// its information content is exactly "the census is below R_min", a published upper
-	// bound of R_min − 1 on the anonymity set (R-BB-SUPPRESSED-IS-A-DISCLOSURE). It
+	// bound of R_min − 1 on the anonymity set. It
 	// cannot be withheld, because a reader that sees no cells must be able to tell
 	// "below the floor" from "no clock injected".
 	//
@@ -328,10 +323,11 @@ type BBootstrapHistogram struct {
 	Suppressed bool
 
 	// Requesters is the TRUE total: every account with fetchedBytes > 0. No cap, no
-	// truncation — this is a census. Aged + Unstamped == Requesters holds WHENEVER THE
-	// AGE AXIS IS LIVE, and only then: with no clock injected a requester is counted
-	// here and placed in neither counter, so the honest reading of a dead-clock payload
-	// is Requesters > 0 with Aged == Unstamped == 0 (BB-1 pins exactly 5 / 0 / 0).
+	// truncation — this is a census. Aged + Unstamped == Requesters holds WHENEVER
+	// THE AGE AXIS IS LIVE, and only then: with no clock injected a requester is
+	// counted here and placed in neither counter, so the honest reading of a
+	// dead-clock payload is Requesters > 0 with Aged == Unstamped == 0 (pins exactly
+	// 5 / 0 / 0).
 	Requesters int
 	// Aged is how many of those requesters were placed into a cell. Sum(Cells) == Aged.
 	Aged int
@@ -353,9 +349,9 @@ type BBootstrapHistogram struct {
 	// MonotonicUptimeNanos is elapsed time on the source NOTHING CAN STEP. It is the
 	// real CENSORING BOUND: no identity can have been known to this ledger for longer
 	// than the process has been running, whatever the wall clock says, so no window W
-	// larger than the longest clean monotone uptime is measurable at all, ever (accounts
-	// are in-memory and a restart destroys every one — R-BB-CENSORED-WINDOW). Zero when
-	// no monotone source is injected.
+	// larger than the longest clean monotone uptime is measurable at all, ever
+	// (accounts are in-memory and a restart destroys every one). Zero when no
+	// monotone source is injected.
 	MonotonicUptimeNanos int64
 	// ClockSkewNanos is the wall clock's elapsed time minus MonotonicUptimeNanos: how far
 	// the wall clock has diverged from real elapsed time since injection. It is taken
@@ -381,16 +377,16 @@ type BBootstrapHistogram struct {
 	// compares two clock readings and touches no account, so it fires on an empty
 	// ledger and survives suppression.
 	//
-	// IT WAS SPLIT (RE-CERTIFICATION 2026-09-05 §5.1). The reviewed build fused this
-	// with the per-account clamp below under one name, and that second arm is CENSUS
+	// IT IS SPLIT DELIBERATELY. Fusing it with the per-account clamp below under one
+	// name puts a second arm in the same flag, and that second arm is CENSUS
 	// class — it can only fire if an account exists — so the fused flag was a census
 	// bit published below the floor. The split keeps the operator's whole signal and
-	// puts each arm in its own class, which is what the property (G-BB-11′) asks for.
+	// puts each arm in its own class, which is what the property asks for.
 	//
 	// IT IS NOT THE CLOCK-STEP DETECTOR, and must not be read as one: it fires only when
 	// a step is large enough to cross zero. A backward step SMALLER than the accounts'
 	// ages — measured, 2 h 50 m against 3-hour-old identities — reshapes every bucket
-	// and never trips it. ClockSuspect is the detector (R-BB-WALLCLOCK-STEP).
+	// and never trips it. ClockSuspect is the detector.
 	ClockStepBack bool
 	// AgeClampedToZero is ClockStepBack's other arm: the injected clock read EARLIER
 	// than some account's first-touch stamp, so that account's age was clamped to zero
@@ -400,14 +396,15 @@ type BBootstrapHistogram struct {
 	// the raw signed ClockSkewNanos, which report the same corruption and are
 	// census-free.
 	AgeClampedToZero bool
-	// AgeExceedsUptime is the G-BB-4 censoring assertion, evaluated at snapshot time:
-	// MaxOccupiedAgeEdgeNanos must be <= CensoringBoundNanos(). With a monotone source
-	// injected the two sides come from INDEPENDENT clocks, so this fires on the
-	// production path — a forward wall-clock step ages identities past a bound that did
-	// not move. With NO monotone source it degenerates into a comparison of the wall
-	// clock against itself, invariant under every step, and can then only catch a stamp
-	// written from a foreign tick source. That degeneracy is why
-	// BBootstrapRunPrecondition refuses a run with no monotone source at all.
+	// AgeExceedsUptime is the censoring assertion, evaluated at snapshot time:
+	// MaxOccupiedAgeEdgeNanos must be <= CensoringBoundNanos. With a monotone
+	// source injected the two sides come from INDEPENDENT clocks, so this fires
+	// on the production path — a forward wall-clock step ages identities past a
+	// bound that did not move. With NO monotone source it degenerates into a
+	// comparison of the wall clock against itself, invariant under every step,
+	// and can then only catch a stamp written from a foreign tick source. That
+	// degeneracy is why BBootstrapRunPrecondition refuses a run with no monotone
+	// source at all.
 	//
 	// CENSUS class, and this is the field the reviewed build got wrong: it is a
 	// THRESHOLD ON MaxOccupiedAgeEdgeNanos, the very field the floor withholds, so at a
@@ -436,7 +433,7 @@ type BBootstrapHistogram struct {
 //
 // The fallback is stated rather than hidden: with no monotone source this returns a
 // quantity derived from the same clock the ages are, which is exactly the self-comparison
-// F-1 named, so the run precondition refuses that configuration.
+// named, so the run precondition refuses that configuration.
 func (h BBootstrapHistogram) CensoringBoundNanos() int64 {
 	if h.MonotonicSource == "injected" {
 		return h.MonotonicUptimeNanos
@@ -444,7 +441,7 @@ func (h BBootstrapHistogram) CensoringBoundNanos() int64 {
 	return h.UptimeNanos
 }
 
-// WithMinRequesterFloor applies the minimum-requester floor (G-BB-11′) and returns the
+// WithMinRequesterFloor applies the minimum-requester floor and returns the
 // PUBLISHABLE histogram. At or above BBootstrapMinRequesters it returns the receiver
 // unchanged. Below it, it returns a block that is A FUNCTION OF THE INSTRUMENT FIELDS
 // ALONE plus the Suppressed bit.
@@ -452,7 +449,7 @@ func (h BBootstrapHistogram) CensoringBoundNanos() int64 {
 // IT CONSTRUCTS RATHER THAN CLEARS, AND THAT IS THE WHOLE POINT. The reviewed build
 // zeroed a list of five census fields and left everything else standing; two
 // census-derived fields were not on the list and rode out below the floor. Three
-// independent enumerations in one pull request each missed a field, so the FORM was
+// independent enumerations in one change each missed a field, so the FORM was
 // refuted: a list cannot cover a field nobody has foreseen. Here the suppressed block is
 // built from the instrument class and every other field — including one added tomorrow
 // by someone who never read this comment — takes its ZERO VALUE, which is a compile-time
@@ -508,11 +505,11 @@ func (h BBootstrapHistogram) WithMinRequesterFloor() BBootstrapHistogram {
 }
 
 // BBootstrapPublish is THE ONLY ROUTE the B_bootstrap histogram takes out of this
-// package, and it applies the minimum-requester floor (G-BB-11′) on the way.
+// package, and it applies the minimum-requester floor on the way.
 //
-// M-2, CLOSED BY THE TYPE SYSTEM RATHER THAN BY A NAME GATE. The reviewed build kept the
+// CLOSED BY THE TYPE SYSTEM RATHER THAN BY A NAME GATE. The reviewed build kept the
 // raw snapshot exported and pinned "nothing outside core/credit calls it" with a test
-// that read two hard-coded file paths. A reviewer ablated past it in five lines by adding
+// that read two hard-coded file paths. It was ablated past in five lines by adding
 // a second unfloored export to a third file: build clean, gate green. Walking the whole
 // tree instead of two literals would not have closed it either, because the consuming
 // seam is DUCK-TYPED — core/node asserts an anonymous interface on the METHOD NAME — so a
@@ -523,20 +520,20 @@ func (h BBootstrapHistogram) WithMinRequesterFloor() BBootstrapHistogram {
 //
 // THE EXACT SCOPE OF THAT CLAIM, because an overstated gate is the defect this replaces:
 //
-//   - CLOSED by the compiler: no *unfloored BBootstrapHistogram* can leave core/credit.
-//     A duck-typed impostor can satisfy core/node's interface, but it can only supply its
-//     own data; it cannot reach this ledger's raw census.
-//   - CLOSED by a source gate over this WHOLE PACKAGE, not by a literal path list:
-//     TestR29aBBootstrapHasOneExportedRoute parses every non-test file in core/credit and
-//     requires that the only exported functions returning a BBootstrapHistogram are this
-//     one and WithMinRequesterFloor (which can only ever floor). That gate checks exactly
-//     the package it names.
-//   - NOT CLOSED, and stated rather than implied: this is a rule about the HISTOGRAM
-//     OBJECT, not about census data in general. FetchedBytes and ServedBytes are exported
-//     per-identity readers that predate this instrument and are unaffected. A future
-//     exported method returning census-derived SCALARS of some other type would not be
-//     caught by the type system, and would be caught by BB-20 only once it reached
-//     /api/status. Residual: R-BB-EXPORT-SCALAR-BYPASS, open, bounded by review.
+// - CLOSED by the compiler: no *unfloored BBootstrapHistogram* can leave core/credit.
+// A duck-typed impostor can satisfy core/node's interface, but it can only supply its
+// own data; it cannot reach this ledger's raw census.
+// - CLOSED by a source gate over this WHOLE PACKAGE, not by a literal path list:
+// TestBBootstrapHasOneExportedRoute parses every non-test file in core/credit and
+// requires that the only exported functions returning a BBootstrapHistogram are this
+// one and WithMinRequesterFloor (which can only ever floor). That gate checks exactly
+// the package it names.
+// - NOT CLOSED, and stated rather than implied: this is a rule about the HISTOGRAM
+// OBJECT, not about census data in general. FetchedBytes and ServedBytes are exported
+// per-identity readers that predate this instrument and are unaffected. A future
+// exported method returning census-derived SCALARS of some other type would not be
+// caught by the type system, and would be caught by the equivalence gate only once it reached
+// /api/status. Residual:, open, bounded by review.
 //
 // Loop-owned, like every other ledger read.
 func (l *Ledger) BBootstrapPublish() BBootstrapHistogram {
@@ -546,18 +543,17 @@ func (l *Ledger) BBootstrapPublish() BBootstrapHistogram {
 // BBootstrapByteBinRule is the byte axis, stated exactly. Published verbatim.
 const BBootstrapByteBinRule = "bin k covers [2^k, 2^(k+1)) bytes; k = floor(log2(bytes)); bin 40 is open-topped"
 
-// BBootstrapRunPrecondition is the handoff gate (BB-14), executable BEFORE the
+// BBootstrapRunPrecondition is the handoff gate, executable BEFORE the
 // deployment window instead of discovered after it: it takes two snapshots taken at
 // different instants and returns the reasons the run would be VOID. An empty slice
 // means the run is valid for that window.
 //
 // windowNanos is W, THE ESTIMAND'S OBSERVATION WINDOW, and it is a required argument
-// with no default on purpose. W is UNPINNED (G-BB-1: the owner pins W and q before the
-// run, advised by the Economist) and a pure fetcher has no income on the serving ledger,
-// so "before it has income" does not define a window at all (R-FETCHER-INCOME). Pinning
-// a W here would invent the estimand. No reading rule is hard-coded either: the analyst
-// reads the cell containing W, and this function only says whether such a cell can be
-// read honestly.
+// with no default on purpose. W is UNPINNED — W and q are pinned before the run —
+// and a pure fetcher has no income on the serving ledger, so
+// "before it has income" does not define a window at all. Pinning a W here would invent
+// the estimand. No reading rule is hard-coded either: the analyst reads the cell
+// containing W, and this function only says whether such a cell can be read honestly.
 func BBootstrapRunPrecondition(prev, cur BBootstrapHistogram, windowNanos int64) []string {
 	var bad []string
 	if !cur.AgeAxisLive || cur.ClockSource != "injected" {
@@ -571,21 +567,22 @@ func BBootstrapRunPrecondition(prev, cur BBootstrapHistogram, windowNanos int64)
 		// Without a second, independent source, uptime is a wall-clock quantity
 		// cross-checked against itself: a step moves every age and the bound it is
 		// compared against by the SAME amount and cancels. Every clock arm below is
-		// then decorative, so this one refuses the whole configuration (F-1).
+		// then decorative, so this one refuses the whole configuration.
 		bad = append(bad, "no monotone source: uptime is a wall-clock quantity cross-checked against itself, so a clock step would reshape every age invisibly")
 	}
 	if cur.CensoringBoundNanos() < windowNanos {
-		// The age axis is right-censored at the MONOTONE uptime, permanently
-		// (R-BB-CENSORED-WINDOW). Reading the wall clock here is what let a 60-second-old
-		// process be accepted for a 7-day window after an 8-day forward step.
+		// The age axis is right-censored at the MONOTONE uptime,
+		// permanently. Reading the wall clock here is what let a
+		// 60-second-old process be accepted for a 7-day window after an
+		// 8-day forward step.
 		bad = append(bad, "uptime below W: the window asked for is longer than this process has actually been alive on a clock nothing can step, so its cell cannot be read")
 	}
 	if cur.Suppressed {
-		// The minimum-requester floor (G-BB-11) withheld every census count, so there
+		// The minimum-requester floor withheld every census count, so there
 		// is nothing to read. This is not a defect: below R_min there are too few
 		// observations to estimate a q-quantile at any q >= 0.9 anyway, so a run that
 		// reports this was void on the fit's own terms before it was void on privacy's.
-		bad = append(bad, fmt.Sprintf("census below the minimum-requester floor of %d: every census count was withheld (G-BB-11) and no quantile is estimable from this few observations", BBootstrapMinRequesters))
+		bad = append(bad, fmt.Sprintf("census below the minimum-requester floor of %d: every census count was withheld and no quantile is estimable from this few observations", BBootstrapMinRequesters))
 	} else if cur.Requesters == 0 {
 		bad = append(bad, "no requesters: the census is empty")
 	}
@@ -605,15 +602,16 @@ func BBootstrapRunPrecondition(prev, cur BBootstrapHistogram, windowNanos int64)
 		bad = append(bad, "unstamped requesters present: accounts predate the clock injection and carry no age")
 	}
 	if cur.Cells != nil && cur.Aged > 0 {
-		// DEGENERACY IS "ONE BUCKET", not "bucket 0". The certified check was written
-		// against the epoch clock, where every age really was 0 and bucket 0 was the
-		// whole population. Under an injected wall clock bucket 0 is an age of EXACTLY
-		// 0 ns, which that clock essentially never produces, so a bucket-0 test cannot
-		// fire on the machine that will run this and the one case it would catch (a
-		// frozen clock) is already caught above. The live degeneracy is a census with no
-		// VARIATION on the age axis — everything piled in the top bucket after a long
-		// uptime, or everything in bucket 1 on a short one — because the estimand is a
-		// quantile CONDITIONED on age and one occupied bucket conditions on nothing.
+		// DEGENERACY IS "ONE BUCKET", not "bucket 0". The check was written
+		// against the epoch clock, where every age really was 0 and bucket 0 was
+		// the whole population. Under an injected wall clock bucket 0 is an age of
+		// EXACTLY 0 ns, which that clock essentially never produces, so a bucket-0
+		// test cannot fire on the machine that will run this and the one case it
+		// would catch (a frozen clock) is already caught above. The live
+		// degeneracy is a census with no VARIATION on the age axis — everything
+		// piled in the top bucket after a long uptime, or everything in bucket 1
+		// on a short one — because the estimand is a quantile CONDITIONED on age
+		// and one occupied bucket conditions on nothing.
 		occupied := 0
 		for b := 0; b < BBootstrapAgeBuckets; b++ {
 			for _, n := range cur.Cells[b] {
@@ -647,7 +645,7 @@ func bbSkewDirection(skew int64) string {
 // `struct{}` — zero bytes, no clock, no origin, nothing to inject into.
 //
 // EVERY FIELD HERE IS NIL/ZERO UNTIL -bbootstrap IS PASSED. Injection is gated on the
-// flag (cmd/silt/bbootstrap.go), which is the second half of D-BB-BUILD-TAG.
+// flag (cmd/silt/bbootstrap.go), which is the second half of
 type bbootstrapState struct {
 	// obsClock is the injected ports.Clock the age axis reads. It is an OBSERVABILITY
 	// clock and nothing else reads it: no accounting rule, no screen, no standing
@@ -659,35 +657,36 @@ type bbootstrapState struct {
 	obsClock      ports.Clock
 	obsStartNanos int64
 
-	// obsMono is the SECOND, independent time source the same setter injects, and it is
-	// the whole of the clock-step defence. obsClock is a wall clock (adapters/walltime
-	// returns time.Now().UnixNano(), which discards Go's monotonic reading), so uptime
-	// and every age are two differences of ONE stepped reading and a step cancels out of
-	// any comparison between them. obsMono is stepped by nothing, so the divergence
-	// between the two IS the step, published as ClockSkewNanos. Both origins are stamped
-	// inside one call so the offset between them is structural rather than a
-	// call-ordering hope. Nil is the safe state: the snapshot reports MonotonicSource
-	// "none" and BBootstrapRunPrecondition REFUSES the run.
+	// obsMono is the SECOND, independent time source the same setter injects, and it
+	// is the whole of the clock-step defence. obsClock is a wall clock
+	// (adapters/walltime returns time.Now.UnixNano, which discards Go's monotonic
+	// reading), so uptime and every age are two differences of ONE stepped reading
+	// and a step cancels out of any comparison between them. obsMono is stepped by
+	// nothing, so the divergence between the two IS the step, published as
+	// ClockSkewNanos. Both origins are stamped inside one call so the offset between
+	// them is structural rather than a call-ordering hope. Nil is the safe state: the
+	// snapshot reports MonotonicSource "none" and BBootstrapRunPrecondition REFUSES
+	// the run.
 	obsMono          ports.MonotonicNanos
 	obsMonoStartNano int64
 }
 
-// SetObservabilityClock injects the TWO time sources the B_bootstrap instrument reads
-// (R2.9a, G-BB-2 and G-BB-4). It follows SetEpochSource: call it once, at construction,
-// before any account exists; the daemon wires the same ports.Clock it hands every node,
-// and a sim passes adapters/simclock and stays deterministic. core may not touch the wall
-// clock (internal/depcheck), which is why this is a setter and not a package default.
+// SetObservabilityClock injects the TWO time sources the B_bootstrap instrument reads. It
+// follows SetEpochSource: call it once, at construction, before any account exists; the
+// daemon wires the same ports.Clock it hands every node, and a sim passes
+// adapters/simclock and stays deterministic. core may not touch the wall clock
+// (internal/depcheck), which is why this is a setter and not a package default.
 //
-// THE DAEMON CALLS IT ONLY WHEN -bbootstrap IS SET (D-BB-BUILD-TAG, 2026-09-05), and this
+// THE DAEMON CALLS IT ONLY WHEN -bbootstrap IS SET, and this
 // method is only compiled at all under the `bbootstrap` build tag. Not calling it is what
 // makes "a default node records no first-touch time" true rather than merely unpublished.
 //
-//   - c is the AGE clock. Every age and the published UptimeNanos come off it. In
-//     production it is a wall clock and it can be stepped.
-//   - mono is an INDEPENDENT elapsed-nanosecond source that cannot be stepped
-//     (ports.MonotonicNanos; in cmd/silt a closure over time.Since, which uses Go's
-//     monotonic reading). Nothing is measured on it. Its only job is to make a step in c
-//     VISIBLE, as a divergence between two quantities that should track.
+// - c is the AGE clock. Every age and the published UptimeNanos come off it. In
+// production it is a wall clock and it can be stepped.
+// - mono is an INDEPENDENT elapsed-nanosecond source that cannot be stepped
+// (ports.MonotonicNanos; in cmd/silt a closure over time.Since, which uses Go's
+// monotonic reading). Nothing is measured on it. Its only job is to make a step in c
+// VISIBLE, as a divergence between two quantities that should track.
 //
 // ONE CALL, TWO ORIGINS, ON PURPOSE. Both start instants are stamped here, in the same
 // call, so the offset between them is fixed at zero by construction. Two setters would
@@ -741,18 +740,18 @@ func (l *Ledger) obsNowNanos() int64 {
 // follows the bond auditor's convention (core/node/bondaudit.go): tick 0 means UNSET,
 // so the first tick is never 0.
 //
-// THE STAMP MOVED OFF Register (G-BB-24, R-BB-STAMP-BY-ANY-PATH). Register is reached
-// through acct() by every ledger path, including bond audit (core/node/bondaudit.go),
-// PoR grading (core/node/por.go), bounty payment (escrow.go PayBounty) and the
-// false-repair slash — so the age axis recorded first ledger touch by ANY path and
-// over-stated the age of every identity that is also a DHT participant, without bound
-// above by the ledger's uptime. The axis is specified as time since first FETCH (see
-// the header), and recordFetched is where a fetch is recorded.
+// THE STAMP MOVED OFF Register. Register is reached through acct by every ledger
+// path, including bond audit (core/node/bondaudit.go), PoR grading
+// (core/node/por.go), bounty payment (escrow.go PayBounty) and the false-repair slash
+// — so the age axis recorded first ledger touch by ANY path and over-stated the age
+// of every identity that is also a DHT participant, without bound above by the
+// ledger's uptime. The axis is specified as time since first FETCH (see the header),
+// and recordFetched is where a fetch is recorded.
 //
 // IT NEVER TOUCHES account.lastBondTick, the one tick a bond challenge writes. That
 // field is RETENTION (DecayStale), a last-proof reading in wall-clock nanoseconds, and
 // it records a different event on a different path. The bond path's own first-seen
-// stamp is gone (G-BB-28, 2026-09-05): nothing read it, and a `when` no decided
+// stamp is gone: nothing read it, and a `when` no decided
 // function needs is surplus under T-DONT3 prong (a). So an identity now carries at
 // most ONE first-touch time, this one, and only in a tagged build with the flag on.
 //
@@ -797,10 +796,10 @@ func bbootstrapAgeBucket(ageNanos int64) int {
 // slice, no sort, no hash, no allocation per requester — the only allocation is the one
 // fixed 2,624-byte cell array (8 × 41 × 8), and only when the age axis is live.
 //
-// IT WRITES NOTHING (Invariant A / BB-11). It indexes l.accounts directly and must never
-// call FetchedBytes or any other l.acct() reader: acct() goes through Register and
-// therefore CREATES an account and hands out a 500,000 grant for any id it is passed. A
-// reader that mints is not a reader. TestR29aBBootstrapSnapshotWritesNothing pins it.
+// IT WRITES NOTHING (Invariant A /). It indexes l.accounts directly and must never call
+// FetchedBytes or any other l.acct reader: acct goes through Register and therefore
+// CREATES an account and hands out a 500,000 grant for any id it is passed. A reader
+// that mints is not a reader. TestBBootstrapSnapshotWritesNothing pins it.
 //
 // IT IS UNEXPORTED. This is the RAW census, and the minimum-requester floor is the rule
 // that the raw census does not leave this package. BBootstrapPublish is the exported
@@ -832,7 +831,7 @@ func (l *Ledger) bBootstrapSnapshot() BBootstrapHistogram {
 			out.ClockStepBack = true // the clock read earlier than the ledger's own start
 		}
 	}
-	// The cross-check (G-BB-4). Both uptimes are measured from the SAME injection
+	// The cross-check. Both uptimes are measured from the SAME injection
 	// instant, so on a clean run they agree to within the two reads and the skew is
 	// nanoseconds. A step in the wall clock moves one and not the other, and the
 	// difference is the step — in a signed quantity, so the two directions stay
@@ -882,10 +881,10 @@ func (l *Ledger) bBootstrapSnapshot() BBootstrapHistogram {
 	}
 	if maxOccupied >= 0 {
 		out.MaxOccupiedAgeEdgeNanos = bbAgeEdgeNanos[maxOccupied]
-		// G-BB-4: the censoring assertion, against the bound the wall clock cannot
-		// move. An occupied bucket above it means either a stamp from a foreign tick
-		// source or a FORWARD wall-clock step, which ages identities past a process
-		// that has not been alive that long.
+		// The censoring assertion, against the bound the wall clock cannot
+		// move. An occupied bucket above it means either a stamp from a
+		// foreign tick source or a FORWARD wall-clock step, which ages
+		// identities past a process that has not been alive that long.
 		out.AgeExceedsUptime = out.MaxOccupiedAgeEdgeNanos > out.CensoringBoundNanos()
 	}
 	return out

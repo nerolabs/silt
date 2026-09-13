@@ -57,8 +57,9 @@ func TestBoltStoreRootMatchesInMemory(t *testing.T) {
 		}
 	}
 
-	// Len() is the NODE count (~2.24 nodes/key, PR #596), not the key count.
-	// The disk store must agree with the reference store on it.
+	// Len is the NODE count (~2.24 nodes/key, PR), not the key
+	// count. The disk store must agree with the reference store on
+	// it.
 	if bs.Len() != memStore.Len() {
 		t.Errorf("disk store Len()=%d, reference store Len()=%d — node counts must match",
 			bs.Len(), memStore.Len())

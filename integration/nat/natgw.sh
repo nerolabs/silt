@@ -28,12 +28,12 @@ sysctl -w net.netfilter.nf_conntrack_tcp_loose=1 2>/dev/null || true
 #
 # NAT_MODE selects how the external port is chosen — the property that decides
 # whether hole-punching (#27) can work:
-#   cone (default): preserve/reuse the source port → the same internal (ip,port)
-#     maps to a stable external port across destinations (endpoint-independent),
-#     so a peer can reuse the mapping the relay observed → PUNCHABLE.
-#   symmetric: --random-fully picks a fresh external port per connection, so the
-#     mapping is per-destination → the observed endpoint is useless for a punch
-#     → the peers must FALL BACK to the relay.
+#  cone (default): preserve/reuse the source port → the same internal (ip,port)
+#  maps to a stable external port across destinations (endpoint-independent),
+#  so a peer can reuse the mapping the relay observed → PUNCHABLE.
+#  symmetric: --random-fully picks a fresh external port per connection, so the
+#  mapping is per-destination → the observed endpoint is useless for a punch
+#  → the peers must FALL BACK to the relay.
 MODE="${NAT_MODE:-cone}"
 OPTS=""
 [ "$MODE" = "symmetric" ] && OPTS="--random-fully"

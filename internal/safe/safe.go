@@ -22,8 +22,10 @@ import "fmt"
 // entry point without threading recovery through every branch:
 //
 //	func Decode(b []byte) (out *T, err error) {
-//	    defer safe.Recover("pkg: decode", &err)
-//	    ...
+//	 defer safe.Recover("pkg: decode", &err)
+//
+// ...
+//
 //	}
 //
 // On a normal return recover reports nil and errp is left untouched, so a
@@ -39,10 +41,12 @@ func Recover(what string, errp *error) {
 // runtime and killing the process. It reports the panic through report so
 // the dropped connection is observable, never silent (tenets S3/V4).
 //
-//	go func() {
-//	    defer safe.Guard(func(r any) { t.logf(...) })
-//	    ...
-//	}()
+//	go func {
+//	 defer safe.Guard(func(r any) { t.logf(...) })
+//
+// ...
+//
+//	}
 func Guard(report func(r any)) {
 	if r := recover(); r != nil {
 		report(r)

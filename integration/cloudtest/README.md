@@ -1,191 +1,152 @@
-# silt GCP field test (`#52`)
+# silt cloud field test — runbook
 
-Spin up a **real, multi-machine silt network** on Google Cloud in a realistic
-topology, run a full acceptance pass over the real wire, generate a **shareable
-report**, and tear the whole thing down — one command, cost-bounded.
+Drives the full field test on real GCP machines across three regions: build →
+apply → run scenarios → report → destroy. Every `apply` brings up billable VMs, so
+the spend discipline below is part of the harness, not advice around it.
 
-This is the automated form of roadmap **#52** (the multi-machine field test) and
-the **RC gate**: a thorough green pass here is required to advance a release
-candidate. It is also meant to be run by **outside developers** who want to see
-silt operate end-to-end and produce a report of the outcome — it runs against
-*their own* GCP project from a clean clone, needs nothing from the authors, and
-hands back `report.md` + `report.html`.
+Work from this directory.
 
-> **What this adds over `integration/nat/`** (the local Docker harness): real
-> separate machines (independent clocks, real crashes/restarts), real
-> inter-region internet latency, and real scale — the things a single-host
-> loopback cannot model. The Docker harness still owns fast NAT-matrix testing;
-> this complements it, it does not replace it.
+## Ground rules
 
-## What it exercises
+1. **Confirm before every `apply`.** Never run `./cloudtest.sh up` or `all` without
+   an explicit go from whoever owns the project. Each brings up real VMs.
+2. **Always tear down, and verify it.** The default lifecycle destroys on exit; you
+   still check. After any run
+   `gcloud compute instances list --filter labels.cloudtest:*` must be empty. If it
+   is not, `./cloudtest.sh nuke`.
+3. **Cheap first.** Validate with no spend, then a 4-node SMOKE run (pennies), then
+   the full 13-node run only once SMOKE is green.
+4. **Iterate without re-paying.** Bring the network up once with `KEEP_UP=1`, then
+   re-run scenarios for free with `./cloudtest.sh run` while you fix log patterns or
+   quorum sizing. Tear down when done.
+5. **Nothing fails silently.** Every unmet SLO lands in `results.jsonl` and the
+   report as `gap` or `fail`. A `gap` means "could not confirm", not "broken" —
+   investigate it, never paper over it.
 
-A ~13-node topology across three regions:
+## Prerequisites (once, no spend)
 
-| role | count | what it proves |
-|------|-------|----------------|
-| validators (`val-a..d`) | 4 | earned objective standing, multi-validator convergence, f=1 fault tolerance, Byzantine safety |
-| storage (`store-1/2`) | 2 | content scatter, serve, per-operator takedown, restart survival |
-| registry | 1 | `-registry-only` role comes up and serves |
-| relay | 1 | NAT fallback / hole-punch rendezvous |
-| fetcher | 1 | publish → fetch bit-perfect from a different node |
-| natgw + natted | 3 | real NAT (cone/symmetric) → cross-NAT file movement via the relay |
-| adversary | 1 | the `#184` drills: equivocation→slash, forged/low-bond→reject |
-
-Scenarios map 1:1 onto the acceptance brief (`docs/reviews/m0-acceptance-brief.md`,
-flows 1–9) plus the `#184` adversarial consensus-safety cases. Each records a
-`pass` / `gap` / `fail` verdict with a severity and elapsed time.
-
-**Cloud variants of the local field-test series** (`integration/{privacy,durability,
-chaos,client,sybil}`) run the same properties over real VMs / real regions, mapped
-onto the existing 13-node topology with **no topology change**:
-
-| cloud flow | mirrors | asserts |
-|---|---|---|
-| `flow_publisher_unlinkability` | `privacy` (#3) | a durable-`Publisher` publish is REFUSED by the default chain (refuse-to-surveil) |
-| `flow_durability_turnover` | `durability` (#2) | content survives a **permanent** storage-node departure — fetched bit-perfect from a survivor |
-| `flow_chaos_crash` | `chaos` (#7) | a **SIGKILL**ed storage node re-announces its chunks (#69) and content stays fetchable |
-| `flow_web_ui_guard` | `client` (#4) | the web-UI guard holds on a real VM (no-token→401, DNS-rebinding→403, read→200) |
-| `flow_c2_no_capture` | `sybil` (#5) | **opt-in** (`SYBILS=8`): a bonded non-anchor Sybil cohort cannot advance the chain with the anchors down, and it resumes when they return |
-
-**The R2.9 paid delivery lane** (`flow_delivery_lane`, ONE topology change: the boot validator arms
-`-accept-delivery-receipts -delivery-idle-window 24m -grant-capacity 64 -grant-per-hour 64`) grades a
-`swarm receipt` from fetch-1 on two rows. `13-delivery-lane` is the lane's field contract: armed (the unit's
-argv) and announced (the boot banner, whole-journal read); with no committed E→key binding the client is refused
-at the withdrawal naming that binding, nothing is spent and the server's `debug.log` carries no banked line; with
-one committed the receipt banks; a lane-off server refuses with the NOT-banked marker. `13b-delivery-settlement`
-passes only on a wire-banked receipt plus the idle `delivery session closed` (both `debug.log` lines) and is a
-**skip** until a binding commits on a sheet — it then grades with no harness change. (Through 2026-09-10 this
-paragraph gave the reason as "while era-4 is dark … until the R3.4 stamp raise". That is void: the harness passes
-no `-era4-activation-height`, so every daemon takes the default of 1 and era-4 is live from height 1. Why no
-binding has committed on a sheet is unmeasured.) Server-side markers are `n.logf` lines and live in `$STORE/debug.log`, never journald.
-
-**C2-Sybil (#5) — opt-in, `SYBILS=8 ./cloudtest.sh`.** The local `integration/sybil`
-suite can only reach the **standing gate** (a laptop's fresh Sybils can't *bank*
-bonds — a young network's bond-registration needs anchor-proposed blocks). The
-cloud opt-in adds a cohort of **non-anchor Sybil validator VMs** (a `sybil`
-`topology.py` role: `-validator -objective`, equal `-bond`, one shared
-`-domain sybilnet`, referencing the real anchor set they do **not** control). Over
-the warm period the anchors' blocks *bank* the Sybil `BondReg`s, so the flow
-certifies the **pure `ErrAnchorRequired` gate**: stop every anchor → a
-self-majority of bonded Sybils **cannot** advance the chain (the C2 concentration
-metric discounts a single-domain split, so they never reach the bond-distinct
-maturity that sheds the anchors); restore the anchors → the chain **resumes**
-(proving it was the anchors that were required, not that the Sybils were dead).
-≥8 equal single-domain bonds also trip the **atomization note**. The Sybils run on
-**SPOT** (cheap); absent the cohort (`SYBILS` unset) the flow records an honest
-`skip`. `SYBILS=8 ./cloudtest.sh` adds the 8-VM cohort (21 nodes total) — **off by
-default** so the standard run stays 13 nodes.
-
-## How it works (deterministic, self-configuring)
-
-`silt id -id-seed N` is deterministic and the internal IPs are static, so
-**every peer / anchor / attester / relay reference is computed before any VM
-exists** (`topology.py`). Each node boots with its complete `silt` argv baked
-into instance metadata — no discovery wait, no post-apply reconfiguration.
-
-```
-topology.py    seeds → NodeIDs → static IPs → the full `silt` argv per node
-terraform/     VPC, public + NAT subnets, firewall, SPOT instances, budget alarm
-provision/     startup scripts: pull the binary from GCS, run the argv under systemd
-lib.sh         SSH-over-IAP, log-wait, SLO assertions, result recording
-scenarios.sh   the 9 flows + 3 #184 drills + 4 field-test-series cloud variants
-gen_report.sh  results.jsonl → report.md + report.html
-cloudtest.sh   the orchestrator: build → apply → run → report → destroy
-```
-
-## Prerequisites
-
-- A **GCP project with billing enabled**, and `gcloud auth login` done.
-- Enable the APIs once: `gcloud services enable compute.googleapis.com iap.googleapis.com storage.googleapis.com` (+ `cloudbilling.googleapis.com` if you set a budget).
-- Your account needs `roles/compute.admin`, `roles/iap.tunnelResourceAccessor`, and `roles/storage.admin` on the project (project **Owner** covers all of it).
+- `gcloud auth login`, against a billing-enabled project.
+- APIs enabled:
+  `gcloud services enable compute.googleapis.com iap.googleapis.com storage.googleapis.com`
+  (add `cloudbilling.googleapis.com` only for the budget alarm).
+- The account holds `roles/compute.admin`, `roles/iap.tunnelResourceAccessor` and
+  `roles/storage.admin` (project Owner covers all three).
 - Local tools: `terraform`, `gcloud`, `go`, `python3`, `curl`.
+- `cp config.env.example config.env`, then set `PROJECT_ID`. Leave the rest at
+  defaults for a first run.
 
-## Run it
+## Phase 1 — validate with no spend
+
+Creates nothing in the cloud:
 
 ```bash
 cd integration/cloudtest
-cp config.env.example config.env      # set PROJECT_ID (+ optional knobs)
-./cloudtest.sh                        # build → apply → run → report → DESTROY
+
+# a) the deterministic topology generator (builds a throwaway local silt binary)
+( cd ../.. && go build -o integration/cloudtest/.silt-local ./cmd/silt )
+SILT_BIN="$PWD/.silt-local" SMOKE=1 python3 topology.py    # prints "4 nodes, 2 validators"
+python3 -c "import json; t=json.load(open('topology.json')); print(t['nodes']['val-a']['argv'])"
+
+# b) terraform validates the config (no apply)
+terraform -chdir=terraform init -input=false
+SILT_BIN="$PWD/.silt-local" SMOKE=1 python3 topology.py     # regenerate tfvars for validate
+terraform -chdir=terraform validate
 ```
 
-At the end you get `report.md` and `report.html`. That HTML file is the artifact
-to share / attach to an RC checklist or a GitHub issue.
+If `terraform validate` errors, fix the HCL before spending anything — usually a
+provider field renamed across `google` provider majors, or `google_billing_budget`
+needing its vars unset (it is guarded by `count`; `BUDGET_AMOUNT_USD=0` disables
+it). If `topology.py` errors, the local silt build failed; fix that first.
 
-**Memory envelope (Phase 1.3).** Every run samples each node's cgroup memory
-(`systemctl … MemoryCurrent`) every `MEM_SAMPLE_INTERVAL` seconds (default 30)
-into `rss-<RUN_ID>.jsonl`, and records an `infra-node-memory` finding with the
-per-node **peak / final** RSS — the measured envelope behind any "return-to-2GB"
-memory claim (build-immutable #7: a headline needs a citable number, not just the
-absence of a crash that `infra-node-liveness` already checks). The series is
-git-ignored by default (like the console/flow logs); **force-commit the specific
-`rss-<RUN_ID>.jsonl` for any run you cite as evidence** (`git add -f`), same
-convention as the tracked console logs. Disable with `MEM_SAMPLE=0`. This is a
-coarse envelope, not a profiler — for attribution pull an on-demand heap profile
-(`DEBUG_PROFILE=1` at launch, then `./cloudtest.sh heap <node>`).
+## Phase 2 — the SMOKE run (~4 nodes, a few cents)
 
-Other lifecycles:
+Validates the whole cloud path — apply, binary pull, systemd boot, IAP SSH,
+publish → commit → fetch — at minimum cost. The NAT, adversary and fourth-validator
+scenarios skip cleanly; they are not in the smoke topology.
 
 ```bash
-SMOKE=1 ./cloudtest.sh   # cheapest 4-node run — validate the plumbing for pennies first
-./cloudtest.sh up        # bring the network up and leave it (debugging / iterate on scenarios)
-./cloudtest.sh run       # re-run the scenarios against an up network (no new spend)
-./cloudtest.sh down      # terraform destroy
-./cloudtest.sh nuke      # last resort: delete everything labelled cloudtest=<run>
+SMOKE=1 KEEP_UP=1 ./cloudtest.sh up     # watch for: all nodes ready
+./cloudtest.sh run                      # scenarios + report.md / report.html
 ```
 
-**First time? Follow `HANDOFF.md`** — a step-by-step shakedown runbook (no-spend
-validate → SMOKE → full run → confirm teardown) that a fresh session can drive with
-you. `SMOKE=1` trims to 4 nodes so you validate apply/provision/SSH/publish before
-paying for the full topology; scenarios that need absent nodes skip cleanly.
+For every `gap` or `fail`, use the debugging playbook, fix `scenarios.sh` (usually a
+log pattern) or `topology.py` (quorum), then `./cloudtest.sh run` again. Changing
+scenarios needs no re-apply; changing `topology.py` does — `./cloudtest.sh down`,
+then `SMOKE=1 KEEP_UP=1 ./cloudtest.sh up`.
 
-## Cost model — three independent guards
+When SMOKE is green, tear down and confirm:
 
-The default lifecycle **destroys on exit, even on error or Ctrl-C** (`trap … EXIT`).
-On top of that:
+```bash
+./cloudtest.sh down
+gcloud compute instances list --project "$PROJECT_ID" --filter "labels.cloudtest:*"   # must be EMPTY
+```
 
-1. **SPOT/preemptible instances** — cheapest tier; GCP may reclaim them, and they
-   never survive 24h.
-2. **Per-VM self-destruct** — every VM runs `shutdown -h +TTL_MINUTES` at boot, so
-   even a crashed orchestrator cannot leave a VM running past the TTL (default 3h).
-3. **Optional budget alarm** — set `BUDGET_AMOUNT_USD` + `BILLING_ACCOUNT` for a
-   GCP billing-budget backstop.
+## Phase 3 — the full run (13 nodes, 3 regions)
 
-If Terraform state is ever lost, `./cloudtest.sh nuke` deletes every resource by
-its `cloudtest=<run_id>` label. A full run on `e2-small` nodes for ~30 minutes is
-a few dollars; `faithful` bond mode (bigger disks, longer plot time) costs more.
+Only after SMOKE is green, and only on an explicit go:
 
-## FAST vs FAITHFUL bonds (read this before trusting a green)
+```bash
+./cloudtest.sh                                       # build → apply → run → report → DESTROY
+KEEP_UP=1 ./cloudtest.sh up && ./cloudtest.sh run    # or iterate; then ./cloudtest.sh down
+```
 
-`BOND_MODE` controls what "earned standing" costs in the test:
+The full run exercises multi-validator convergence, f=1 fault tolerance, restart
+survival, per-hash takedown, cross-NAT via the relay, and the adversarial drills
+(equivocation → slash, partition → heal, forged and low-bond proposals → reject).
 
-- **`fast`** (default) — demo-sized bonds (`-bond 64M`, floor 0). Proves the
-  **mechanism**: the objective consensus path, convergence, restart survival,
-  NAT traversal, and the adversarial drills all run over real machines and real
-  latency. It does **not** prove the C1 economic *magnitude*.
-- **`faithful`** — real plotted bonds (`-bond 2G`, `-min-bond-floor 1G`). Bonds
-  cost real disk + plot time, so standing is economically faithful. Use bigger
-  `MACHINE_TYPE` + `BOOT_DISK_GB`. Slower and pricier; this is the mode for an
-  economics-faithful RC gate.
+## The two tuning points to expect
 
-A `fast` green means "the system works over the real wire"; a `faithful` green
-additionally means "standing cost real resources". Don't conflate them.
+1. **Quorum versus Byzantine-quorum sizing** (`6-fault-tolerance`).
+   `-byzantine-quorum` defaults ON for objective validators and can raise the
+   effective commit threshold above the `-quorum` floor. The scenario records the
+   *observed* behaviour as a `gap` rather than a false pass. If it gaps: read val-a's
+   journal around the publish while val-d is down, see which threshold it actually
+   needed, and pin `quorum` in `topology.py` (the `quorum = max(1, n_val - 2)` line)
+   — or add a validator. Then re-apply.
+2. **Log patterns** (`waitfor` in `scenarios.sh`). Each check greps the daemon's
+   `-log info` output for a phrase. If the live build phrases it differently, the
+   check gaps. SSH to the node, read the real line, update the pattern, run again.
+   The patterns come from the e2e tests (`e2e/*.go`) — `chain: committed block N`,
+   `slashed equivocator`, `adopted a competing fork`.
 
-## Operational notes
+Neither needs re-architecting anything. They are phrasing and number tuning.
 
-This harness has RUN for real on GCP: the RC run `585c82a-58990` graded
-28 pass / 0 gap / 0 fail / 2 skip-by-design (#532, `eb57d50`), on the deep-run
-lineage `fe2376a`-deep (30P/1G/0F). `topology.py` generates the real, deterministic
-argv for every node (proven against `silt id`), all shell is syntax-checked, and the
-cloud path — `terraform apply`, the SSH/journald log matching, and the quorum
-arithmetic — is exercised by those graded runs. Two tuning points were resolved on
-first contact and are noted here so a future operator knows where they live:
+## Debugging playbook
 
-- **Quorum sizing for fault tolerance** — `-quorum` vs. the default-on
-  `-byzantine-quorum` interplay for the validator count. The `6-fault-tolerance`
-  scenario records the *observed* threshold as a `gap` (not a hard fail); the RC run
-  pinned the number.
-- **Log-match patterns** — `waitfor` regexes in `scenarios.sh` are matched
-  against the daemon's `-log info` output; if a phrasing differs on the live
-  build, the check reports `gap`, not a false `pass`.
+Every node is reachable over IAP without an external IP:
 
-Nothing here fails *silently*: an un-met SLO is always recorded in the report.
+```bash
+# instance names/zones for this run:
+terraform -chdir=terraform output -json nodes | python3 -m json.tool
+
+# SSH to a node:
+gcloud compute ssh silt-ft-val-a-<run> --zone us-central1-a --tunnel-through-iap
+
+# on the node:
+sudo systemctl status silt.service
+sudo journalctl -u silt.service --no-pager -n 200      # the daemon's own log
+sudo journalctl -t silt-startup --no-pager             # startup script: binary pull, unit write
+cat /etc/systemd/system/silt.service                   # the exact argv it is running
+```
+
+| symptom | likely cause | fix |
+|---|---|---|
+| node never `active`, `silt-startup` shows curl 403 | VM cannot read the GCS bucket | confirm `storage.objectViewer` is bound (Terraform does this) and the service-account scope; re-apply |
+| binary pull OK but silt exits | bad argv or flag mismatch against the live build | read `journalctl -u silt`; compare the unit's argv against `silt daemon -h`; fix `topology.py` |
+| SSH hangs or permission denied | IAP not enabled, or role missing | enable `iap.googleapis.com`; grant `roles/iap.tunnelResourceAccessor`; the firewall rule allows 35.235.240.0/20 |
+| `apply` fails on SPOT capacity or quota | region or zone out of preemptible capacity | change a zone in `topology.py`, or `MACHINE_TYPE`; re-apply |
+| publish never returns a `silt:` link | validators have not earned standing yet, or the token issuer is cold | it retries for `PUBLISH_RETRY_S`; raise it, or check validator journals for standing |
+| cross-NAT fails | natgw route/firewall, or the relay is unreachable | check the natgw instance's `journalctl -t natgw-startup`; confirm the relay node is up |
+
+## A run is done when
+
+- The SMOKE run is green: publish → commit → fetch, bit-perfect, over real machines.
+- Every flow in the full run is `pass` or an understood `gap`, and `report.html` is
+  generated.
+- Teardown is confirmed empty for this run's label.
+- Any `topology.py` or `scenarios.sh` fixes are on a branch and in a pull request.
+  `main` is ruleset-protected; never push to it directly.
+
+Run artifacts (`report.md`, `report.html`, `results.jsonl`, console and evidence
+logs) are written here and are gitignored. They are evidence for the run that
+produced them, not repository content — keep what you need outside the tree.

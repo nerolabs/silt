@@ -16,33 +16,32 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// The node-level MATURE-epoch fixture — the #435 certification's named residual
-// (1): the S1/S2 merge-gate oracles ran the round machinery over the real node
-// loop only in the LAUNCH regime, and the mature-regime faces were pinned at
-// chain level (core/chain/modelcheck_s1s2_mature_test.go) because no node-level
-// world reached a governed mature epoch. This fixture builds one, entirely over
-// held delivery: 4 launch anchors drain 4 bonded, distinct-domain maturers
-// on-chain, the everMature latch trips (F-1), commits cross the epoch boundary,
-// and the frozen mature snapshot GOVERNS — the anchors are shed, the >⅔-weight
-// quorum is live, and the dynamic S1/S2 schedules then run against it.
+// The node-level MATURE-epoch fixture — the named residual (1): the S1/S2
+// merge-gate oracles ran the round machinery over the real node loop only in
+// the LAUNCH regime, and the mature-regime faces were pinned at chain level
+// (core/chain/modelcheck_s1s2_mature_test.go) because no node-level world
+// reached a governed mature epoch. This fixture builds one, entirely over held
+// delivery: 4 launch anchors drain 4 bonded, distinct-domain maturers on-chain,
+// the everMature latch trips, commits cross the epoch boundary, and the
+// frozen mature snapshot GOVERNS — the anchors are shed, the >⅔-weight quorum
+// is live, and the dynamic S1/S2 schedules then run against it.
 //
-// The premise is verified FIRST (the #303 verify-the-setup discipline, which
-// caught four false-green oracles in the #406 build): the fixture test asserts
+// The premise is verified FIRST (the verify-the-setup discipline, which
+// caught four false-green oracles in the build): the fixture test asserts
 // the latch on every replica, the anchors' post-shed ineligibility, a NEGATIVE
 // control (an anchors-only proposal must be refused in the governed epoch), and
 // a maturer commit at the weight quorum — before any schedule leans on it.
 //
 // This world is also the deterministic home for the OPEN mature-regime anomaly
-// from run 09fbe60-84613 (docs/thinking/2026-08-16-latch-tripped-record-
-// correction-and-drain-obs.md): r0 failed at EVERY steady-state height h42–h46,
-// each commit arriving only via an r1 new-view. A schedule that reproduces that
-// contention belongs here.
+// from run the field run correction-and-drain-obs.md: r0 failed at EVERY
+// steady-state height h42–h46, each commit arriving only via an r1 new-view. A
+// schedule that reproduces that contention belongs here.
 
-// matureWorld builds the governed-mature-epoch world: nodes[0..3] are the
-// launch anchors (no bonds — pure training wheels), nodes[4..7] the bonded
-// 64 MiB distinct-domain maturers (the field re-split shape, #429). Returns the
-// world with the chain already inside the FIRST GOVERNED MATURE EPOCH: head at
-// h9 next (boundary h8 frozen the maturer snapshot), latch tripped everywhere.
+// matureWorld builds the governed-mature-epoch world: nodes[0.3] are the
+// launch anchors (no bonds — pure training wheels), nodes[4.7] the bonded 64
+// MiB distinct-domain maturers (the field re-split shape). Returns the world
+// with the chain already inside the FIRST GOVERNED MATURE EPOCH: head at h9
+// next (boundary h8 frozen the maturer snapshot), latch tripped everywhere.
 func matureWorld(t *testing.T) (nodes []*Node, ids []*identity.Identity, net *simnet.Network, refill func()) {
 	t.Helper()
 	const nAnchors, nMaturers = 4, 4
@@ -167,7 +166,7 @@ func TestMatureWorldPremise(t *testing.T) {
 	}
 
 	// 1) The one-way latch tripped on EVERY replica (anchors and maturers — it
-	//    is a pure function of the committed blocks they all share).
+	// is a pure function of the committed blocks they all share.
 	for i, nd := range nodes {
 		if !nd.chain.EverMature() {
 			t.Fatalf("premise: node %d has not latched everMature (head-committed maturity must be replica-independent)", i)
@@ -175,7 +174,8 @@ func TestMatureWorldPremise(t *testing.T) {
 	}
 
 	// 2) The governed epoch's eligible proposers are EXACTLY the four maturers —
-	//    the unbonded anchors are shed (T1: scaffolding retires itself).
+	// The unbonded anchors are shed (T1: scaffolding retires
+	// itself).
 	elig := nodes[0].chain.EligibleProposers()
 	if len(elig) != 4 {
 		t.Fatalf("premise: want the 4 bonded maturers eligible post-shed, got %d: %v", len(elig), elig)
@@ -191,8 +191,8 @@ func TestMatureWorldPremise(t *testing.T) {
 	}
 
 	// 3) NEGATIVE control (non-vacuity): an anchors-only proposal in the
-	//    governed epoch must FAIL — the anchors hold no weight in the frozen
-	//    snapshot, so their coalition can never reach the >⅔-weight quorum.
+	// governed epoch must FAIL — the anchors hold no weight in the frozen
+	// snapshot, so their coalition can never reach the >⅔-weight quorum.
 	prev, h := nodes[0].chain.Head()
 	bad := &chain.Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{mkEntry("anchors-alone")}}
 	var badDone bool
@@ -204,7 +204,7 @@ func TestMatureWorldPremise(t *testing.T) {
 	}
 
 	// 4) POSITIVE: a maturer proposal gathering two maturer peers (3 of 4 equal
-	//    weights = 192 of 256 MiB > ⅔) commits at the weight quorum.
+	// weights = 192 of 256 MiB > ⅔ commits at the weight quorum.
 	prev, h = nodes[4].chain.Head()
 	good := &chain.Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{mkEntry("mature-commit")}}
 	var goodDone bool
@@ -225,7 +225,7 @@ func TestMatureWorldPremise(t *testing.T) {
 // TestModelCheck_S1_Mature_DelayedWeightQuorumIsCarriedForward is schedule S1
 // in the GOVERNED MATURE regime over the real node loop — the dynamic face of
 // the chain-level mature S1 (core/chain/modelcheck_s1s2_mature_test.go), and
-// the certification residual this fixture exists to close: X gathers a real
+// the research residual this fixture exists to close: X gathers a real
 // >⅔-WEIGHT commit quorum at round 0 among the maturers, the final precommit
 // reply is held, everyone round-changes — the lock rule must carry X into
 // round 1 and the height must commit X there, nothing else, no honest slash.

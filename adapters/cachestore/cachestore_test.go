@@ -67,7 +67,8 @@ func TestLRUEviction(t *testing.T) {
 	cache.Get(ctx, a.ID) // touch a -> [a b]
 	cache.Get(ctx, c.ID) // admit c, evict LRU (b) -> [c a]
 
-	// a is still resident -> hit; b was evicted -> miss (re-read from inner).
+	// A is still resident -> hit; b was evicted -> miss (re-read from
+	// inner).
 	h0, m0, _ := cache.Stats()
 	if _, err := cache.Get(ctx, a.ID); err != nil {
 		t.Fatal(err)

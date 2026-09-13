@@ -13,13 +13,12 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// M0 hardening H1 / red-team RT-1, integration tier over the real audit wire:
-// PoR audits prove POSSESSION of shards but must grant NO Sybil-resistant
-// STANDING. A node that holds real shards and passes audit after audit — the
-// disk it would take a data-less Sybil to fake by relaying — earns audit credit
-// and balance, but its consensus Reputation stays 0 because it holds no bond.
-// Standing rests on the bond press alone (archive/design-history/m0-hardening-strategy.md
-// §4 S2). Before H1, `+ auditsPassed*25` lifted such a node to eligibility.
+// Integration tier over the real audit wire: PoR audits prove
+// POSSESSION of shards but must grant NO Sybil-resistant STANDING. A node that holds real
+// shards and passes audit after audit — the disk it would take a data-less Sybil to fake
+// by relaying — earns audit credit and balance, but its consensus Reputation stays 0
+// because it holds no bond. Standing rests on the bond press alone §4 S2. Before H1, `+
+// auditsPassed*25` lifted such a node to eligibility.
 func TestPorAuditsGrantNoStandingWithoutBondOverTheWire(t *testing.T) {
 	const seed = 20260805
 	cl := NewCluster(seed, 12, simnet.DefaultConfig(), func() node.Config {
@@ -64,7 +63,8 @@ func TestPorAuditsGrantNoStandingWithoutBondOverTheWire(t *testing.T) {
 		}
 	}
 
-	// Some honest holder must have passed audits (the press fired)...
+	// Some honest holder must have passed audits (the press
+	// fired).
 	var passer ports.NodeID
 	for _, nd := range cl.Nodes {
 		if nd.ID() == auditor.ID() {
@@ -78,9 +78,10 @@ func TestPorAuditsGrantNoStandingWithoutBondOverTheWire(t *testing.T) {
 	if passer == (ports.NodeID{}) {
 		t.Fatal("setup: no honest holder passed a PoR audit — the press never fired")
 	}
-	// ...yet its consensus standing is ZERO: PoR passes mint no standing (RT-1).
+	// yet its consensus standing is ZERO: PoR passes mint no
+	// standing.
 	if got := ledger.Reputation(passer); got > 0 {
-		t.Fatalf("RT-1 regression: a holder that passed PoR audits but holds NO bond has standing %d > 0 over the wire — a data-less relay farm would earn consensus weight", got)
+		t.Fatalf("regression: a holder that passed PoR audits but holds NO bond has standing %d > 0 over the wire — a data-less relay farm would earn consensus weight", got)
 	}
 
 	// Positive control: the bond press DOES grant standing on the same ledger.

@@ -20,61 +20,61 @@ import (
 //
 // The three gates, in the order they run at ingest (all PRE-parse / PRE-verify):
 //
-//  1. Per-proof byte cap (S_proof_max = 16 KiB). Reject any single witness whose
-//     ENCODED size exceeds the cap BEFORE it is unmarshaled. This must be a byte
-//     cap, not a side-node COUNT cap: the pokt library bounds a proof's side-node
-//     count (proofs.go:57, 256 for SHA-256) but leaves NonMembershipLeafData
-//     UNBOUNDED upward (proofs.go:62-75 checks only a minimum). A count cap "ships
-//     and lies" — a single legal-shaped proof with a 100 MiB leaf-data blob passes
-//     the library's validateBasic and is then parsed+hashed. The byte cap closes
-//     that field. (Research cert, fact 2 + Q2.)
+// 1. Per-proof byte cap (S_proof_max = 16 KiB). Reject any single witness whose
+// ENCODED size exceeds the cap BEFORE it is unmarshaled. This must be a byte
+// cap, not a side-node COUNT cap: the pokt library bounds a proof's side-node
+// count (proofs.go, 256 for SHA-256) but leaves NonMembershipLeafData
+// UNBOUNDED upward (proofs.go checks only a minimum). A count cap "ships
+// and lies" — a single legal-shaped proof with a 100 MiB leaf-data blob passes
+// the library's validateBasic and is then parsed+hashed. The byte cap closes
+// that field.
 //
-//  2. Per-block byte ceiling (C_block). At ingest, before verifying ANY proof,
-//     reject a witness bundle whose TOTAL encoded bytes exceed the per-block
-//     ceiling. C_block is DERIVED per block, not a flat constant:
+// 2. Per-block byte ceiling (C_block). At ingest, before verifying ANY proof,
+// reject a witness bundle whose TOTAL encoded bytes exceed the per-block
+// ceiling. C_block is DERIVED per block, not a flat constant:
 //
-//     C_block = len(expected read-set) · S_proof_max
+// C_block = len(expected read-set) · S_proof_max
 //
-//     The read-set is the exact set of committed-set keys this block's transitions
-//     read (the shape gate below pins the bundle to exactly that set), so the
-//     honest witness bundle is exactly len(read-set) proofs, each ≤ S_proof_max.
-//     C_block is therefore the tight, exact ceiling the certification's
-//     "expected_witness_bytes(this_block)" form collapses to once the shape gate
-//     holds (cert Q2, §104). It needs no per-block transition cap — a transition
-//     cap would be a consensus-rule change (cert Q3) and is the wrong lever.
+// The read-set is the exact set of committed-set keys this block's transitions
+// read (the shape gate below pins the bundle to exactly that set), so the
+// honest witness bundle is exactly len(read-set) proofs, each ≤ S_proof_max.
+// C_block is therefore the tight, exact ceiling the
+// "expected_witness_bytes(this_block)" form collapses to once the shape gate
+// holds. It needs no per-block transition cap — a transition cap would be a
+// consensus-rule change and is the wrong lever.
 //
-//  3. Shape gate. The bundle must carry a proof for EXACTLY the block's read-set —
-//     no key the block does not read, no duplicate proof for a key, no padding
-//     entry, and no missing proof for a read key. This is a STRUCTURAL rejection
-//     (keys only), cheaper than any crypto check, and it defeats the unread-key
-//     padding vector by construction (RULING §"What the menu missed", cert §54).
+// 3. Shape gate. The bundle must carry a proof for EXACTLY the block's read-set —
+// No key the block does not read, no duplicate proof for a key, no padding
+// entry, and no missing proof for a read key. This is a STRUCTURAL rejection
+// (keys only), cheaper than any crypto check, and it defeats the unread-key
+// padding vector by construction.
 //
-// SCOPE (R3): the pre-verify byte caps + shape gate, wired so every rejection maps
-// to NoWitness. It does NOT build D-2 on-demand delivery, the A-serve slow-loris
-// read deadline (a TIME attack the byte ceiling does not close — cert R-loris), or
+// SCOPE of this file: the pre-verify byte caps + shape gate, wired so every rejection
+// maps to NoWitness. It does NOT build on-demand delivery, the serve-side slow-loris
+// read deadline (a TIME attack the byte ceiling does not close), or
 // a fetch fan-out cap. Those are increment 3. This layer assumes the witness bundle
 // is already in hand (in-block carry or a completed fetch) and gates it.
 //
 // Certified by:
-//   - witness-floor-box-dos-bound-RESEARCH-CERTIFICATION-2026-08-29 (the byte-cap
-//     mechanism, S_proof_max = 16 KiB, the C_block derivation, the shape gate; the
-//     security parameters ratified by Andrew).
-//   - RULING-witness-floor-box-mechanism-2026-08-29 (R3: aggregate per-block byte
-//     ceiling checked at ingest BEFORE verify; the shape gate as the stronger cut;
-//     every rejection → R4 NoWitness).
-//   - C-7 §104 (the one banned move: no/over-budget witness → accept is forbidden).
+// - witness-floor-box-dos-bound- (the byte-cap
+// mechanism, S_proof_max = 16 KiB, the C_block derivation, the shape gate; the
+// security parameters settled by the project owner.
+// - (R3: aggregate per-block byte
+// ceiling checked at ingest BEFORE verify; the shape gate as the stronger cut;
+// every rejection → R4 NoWitness.
+// - C-7 §104 (the one banned move: no/over-budget witness → accept is forbidden).
 
 const (
-	// SProofMax is the per-proof envelope byte cap: the maximum ENCODED size of a
-	// single supplied witness, enforced BEFORE the proof is unmarshaled or verified.
-	// 16 KiB, a RATIFIED security parameter (research cert Q2; Andrew ratified).
+	// SProofMax is the per-proof envelope byte cap: the maximum ENCODED size
+	// of a single supplied witness, enforced BEFORE the proof is unmarshaled
+	// or verified. 16 KiB, a settled security parameter.
 	//
-	// Derivation (cert Q2): an honest proof's bytes are side-nodes (≤ 256 × 32 =
+	// Derivation: an honest proof's bytes are side-nodes (≤ 256 × 32 =
 	// 8,192 B, library-capped) + NonMembershipLeafData (honest ≤ ~65 B, capped at a
 	// generous 256 B) + SiblingData (≤ ~256 B) + gob framing (≤ ~256 B) ≈ 9 KiB,
 	// rounded to 16 KiB for headroom. The cap MUST be bytes, not a side-node count:
 	// the library leaves NonMembershipLeafData unbounded upward, so a count cap does
-	// not bound a single proof's bytes (cert fact 2). This closes that field.
+	// not bound a single proof's bytes. This closes that field.
 	SProofMax = 16 * 1024
 )
 
@@ -133,9 +133,10 @@ type RawWitness struct {
 	// and rejects the whole bundle.
 	Key []byte
 
-	// Encoded is the gob-marshaled SparseMerkleProof bytes (proof.Marshal()). Its
-	// length is what the byte caps measure — the pre-parse cap is len(Encoded), so
-	// an oversized blob is dropped before Unmarshal ever allocates its fields.
+	// Encoded is the gob-marshaled SparseMerkleProof bytes (proof.Marshal). Its
+	// length is what the byte caps measure — the pre-parse cap is len(Encoded),
+	// so an oversized blob is dropped before Unmarshal ever allocates its
+	// fields.
 	Encoded []byte
 }
 
@@ -196,9 +197,9 @@ func allNoWitness(readSet []ReadEntry, reason string) IngestResult {
 //
 // This is NOT a flat constant: it scales with the block's actual read-set, so a
 // small block gets a tight ceiling and a large block gets a proportionally larger
-// one — no size lottery that would starve a legal high-demand block (cert Q2, the
-// #441 starvation shape one layer down). It requires no per-block transition cap
-// (cert Q3): the block's own read-set bounds its honest witness.
+// one — no size lottery that would starve a legal high-demand block, the
+// starvation shape one layer down. It requires no per-block transition cap: the
+// block's own read-set bounds its honest witness.
 func CBlock(readSet []ReadEntry) int {
 	return len(readSet) * SProofMax
 }
@@ -212,14 +213,14 @@ func CBlock(readSet []ReadEntry) int {
 //
 // Order is load-bearing (all gates run BEFORE any VerifyProof):
 //
-//  1. Per-proof byte cap: any RawWitness with len(Encoded) > SProofMax rejects the
-//     WHOLE bundle pre-parse. (A single oversized blob is an attack on the box; the
-//     block's witness is not trustworthy, so the box stalls on all its keys.)
-//  2. Per-block byte ceiling: total encoded bytes > CBlock(readSet) rejects the
-//     whole bundle pre-verify.
-//  3. Shape gate: the bundle's key SET must equal the read-set's key set exactly —
-//     no extra key, no duplicate, no missing key. Any mismatch rejects the whole
-//     bundle pre-verify.
+// 1. Per-proof byte cap: any RawWitness with len(Encoded) > SProofMax rejects the
+// WHOLE bundle pre-parse. (A single oversized blob is an attack on the box; the
+// block's witness is not trustworthy, so the box stalls on all its keys.)
+// 2. Per-block byte ceiling: total encoded bytes > CBlock(readSet) rejects the
+// whole bundle pre-verify.
+// 3. Shape gate: the bundle's key SET must equal the read-set's key set exactly —
+// No extra key, no duplicate, no missing key. Any mismatch rejects the whole
+// bundle pre-verify.
 //
 // Only when all three pass does it unmarshal each proof and call Resolve. A proof
 // that fails to unmarshal or fails to verify maps that ONE key to NoWitness (the

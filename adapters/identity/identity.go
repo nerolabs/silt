@@ -4,14 +4,14 @@
 // the presented public key and comparing it to the NodeID you meant to
 // talk to — the identity IS the key. Consequences worth savoring:
 //
-//   - No accounts, no certificate authority, no enrollment. Generating
-//     a keypair is joining.
-//   - Peer addresses ("ID@host:port") are self-authenticating: if the
-//     TLS handshake's key doesn't hash to the ID you dialed, you are
-//     talking to an impostor and the connection dies.
-//   - Reputation (audit history, serving record) attaches to the key.
-//     Shedding a bad reputation means shedding the identity — and
-//     starting from zero trust again.
+// - No accounts, no certificate authority, no enrollment. Generating
+// A keypair is joining.
+// - Peer addresses ("ID@host:port") are self-authenticating: if the
+// TLS handshake's key doesn't hash to the ID you dialed, you are
+// talking to an impostor and the connection dies.
+// - Reputation (audit history, serving record) attaches to the key.
+// Shedding a bad reputation means shedding the identity — and
+// starting from zero trust again.
 package identity
 
 import (

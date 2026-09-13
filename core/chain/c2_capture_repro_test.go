@@ -18,10 +18,10 @@ import (
 // refused (ErrAnchorRequired). If that holds, the Sybils CANNOT capture.
 //
 // This test builds that exact committed bonded state directly and asks the two
-// load-bearing questions: (1) does the network report Mature()? (2) can a
+// load-bearing questions: (1) does the network report Mature? (2) can a
 // no-anchor Sybil quorum satisfy the commit gate? A capture requires maturity
-// (anchors shed) — so if Mature() is FALSE, the anchor gate must hold and the
-// field FAIL is NOT a C2 break in the metric; if Mature() is TRUE, the
+// (anchors shed) — so if Mature is FALSE, the anchor gate must hold and the
+// field FAIL is NOT a C2 break in the metric; if Mature is TRUE, the
 // single-domain discount failed and it IS.
 func TestC2SingleDomainSybilsDoNotMature(t *testing.T) {
 	const bond = int64(64) << 20

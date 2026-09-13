@@ -1,4 +1,4 @@
-// White-box tests for the frame-size cap (#104): they reference the
+// White-box tests for the frame-size cap: they reference the
 // unexported maxFrame, so they live in package tcpnet rather than the
 // external test package the rest of the suite uses.
 package tcpnet
@@ -26,7 +26,7 @@ func newTransport(t *testing.T, seed int64) (*Transport, *eventloop.Loop) {
 
 // A frame carrying a minimum-production-sized chunk (64 MiB) must round-trip
 // over the real TLS transport. The old 32 MiB cap dropped every such frame,
-// so the swarm could only move sim-sized (64 KiB) chunks (#104).
+// so the swarm could only move sim-sized (64 KiB) chunks.
 func TestMinProductionChunkFrameRoundTrips(t *testing.T) {
 	trA, loopA := newTransport(t, 300)
 	defer func() { trA.Close(); loopA.Stop() }()

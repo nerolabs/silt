@@ -6,14 +6,14 @@ import (
 	"github.com/nerolabs/silt/core/vdf"
 )
 
-// BenchmarkAnswerSpaceTimeFieldConfig measures the absolute cost of answering ONE
-// bond challenge at the FIELD config — BondVDFDelay=1000 squarings, BondLabelSamples=64
+// BenchmarkAnswerSpaceTimeFieldConfig measures the absolute cost of answering ONE bond
+// challenge at the FIELD config — BondVDFDelay=1000 squarings, BondLabelSamples=64
 // (core/node/node.go DefaultConfig) — on this machine's single core. This is the
-// per-VDF-eval cost the #424/throughput analysis needs (PE 2026-08-15 §d): under
-// honest 12-validator operation each node answers ~one challenge per peer per
-// audit window (~11 evals / 30s window), so per-eval-cost × evals-per-window vs the
-// 30s window is the actual single-goroutine saturation condition. Sizes bracket the
-// field (sybils 1 MiB, anchors 64 MiB).
+// per-VDF-eval cost the/throughput analysis needs: under honest 12-validator
+// operation each node answers ~one challenge per peer per audit window (~11 evals / 30s
+// window), so per-eval-cost × evals-per-window vs the 30s window is the actual
+// single-goroutine saturation condition. Sizes bracket the field (sybils 1 MiB, anchors
+// 64 MiB).
 func BenchmarkAnswerSpaceTimeFieldConfig(b *testing.B) {
 	const fieldDelay = 1000 // BondVDFDelay default
 	const fieldK = 64       // BondLabelSamples default

@@ -1,4 +1,4 @@
-# Deterministic adversarial-consensus certification image: the Go toolchain to
+# Deterministic adversarial-consensus research image: the Go toolchain to
 # build+run the e2e drivers, plus iproute2 so the harness can impair the
 # container's loopback with `tc netem`. The silt source is MOUNTED at run time
 # (read-only) rather than copied in, so the cert always runs against the working

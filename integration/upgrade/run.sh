@@ -8,24 +8,24 @@
 # real erasure-coded file (and the validator commits a chain), then the SAME
 # daemons are recreated on V2 against the SAME stores. We assert:
 #
-#   (control)  the file is bit-perfect on V1 BEFORE the upgrade — so a
-#              post-upgrade pass is a meaningful comparison, not a tautology.
-#   (reload)   on V2, each daemon reloads its persisted state — the REAL lines:
-#              "reloaded storage proofs count=N", "re-announced N held chunks",
-#              "bootstrapped", and the chain's "chain: restored N block(s)" /
-#              "chain replay:" outcome (whatever the product actually does).
-#   (content)  the file fetches BIT-PERFECT (SHA-256 equal) on V2, off the
-#              unchanged stores.
-#   (chain)    if a block was committed on V1, its head is inspected on V2.
+#  (control) the file is bit-perfect on V1 BEFORE the upgrade — so a
+#  post-upgrade pass is a meaningful comparison, not a tautology.
+#  (reload) on V2, each daemon reloads its persisted state — the REAL lines:
+#  "reloaded storage proofs count=N", "re-announced N held chunks",
+#  "bootstrapped", and the chain's "chain: restored N block(s)" /
+#  "chain replay:" outcome (whatever the product actually does).
+#  (content) the file fetches BIT-PERFECT (SHA-256 equal) on V2, off the
+#  unchanged stores.
+#  (chain) if a block was committed on V1, its head is inspected on V2.
 #
 # ROLLING=1 upgrades the holders ONE AT A TIME, fetching after each swap to show
 # availability never drops. Every assertion keys off a REAL observed CLI line /
 # stdout field / on-disk fact — no invented strings.
 #
-# Usage:  ./run.sh              # whole-swarm upgrade V1→V2; exit 0 = PASS
-#         ROLLING=1 ./run.sh    # rolling upgrade, one holder at a time
-#         KEEP=1 ./run.sh       # leave the topology up afterward to poke at
-#         V1_REF=<gitref> ./run.sh   # override the OLD version (default v0.1.1)
+# Usage:./run.sh # whole-swarm upgrade V1→V2; exit 0 = PASS
+#  ROLLING=1 ./run.sh # rolling upgrade, one holder at a time
+#  KEEP=1 ./run.sh # leave the topology up afterward to poke at
+#  V1_REF=<gitref>./run.sh # override the OLD version (default v0.1.1)
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 cd "$(dirname "$0")"
@@ -142,7 +142,7 @@ echo "  want sha: $WANT"
 # proofs are for. So we drive `swarm get` FROM the holder that holds the file:
 # a bit-perfect result proves the store reloaded and the shards are addressable;
 # a decode failure with the shards still on disk proves they've been stranded.
-fetch_on() { # binver service outlabel  →  echoes the sha (or empty), writes /tmp/get_<label>.txt
+fetch_on() { # binver service outlabel → echoes the sha (or empty), writes /tmp/get_<label>.txt
   local ver=$1 svc=$2 label=$3
   dcs exec -T "$svc" sh -c "silt-$ver swarm get '$LINK' -o /data/out_$label.bin -peers '$ALLPEERS' -registry '$REG' && sha256sum /data/out_$label.bin | cut -d' ' -f1" >/tmp/get_$label.txt 2>&1
   grep -oE '^[a-f0-9]{64}' /tmp/get_$label.txt | tail -1
@@ -162,7 +162,7 @@ CHUNKS_A_PRE=$(dcs exec -T holderA sh -c 'find /data/objects -type f 2>/dev/null
 PROOFS_A_PRE=$(dcs exec -T holderA sh -c 'ls /data/proofs 2>/dev/null | wc -l || echo 0' | tr -d ' \r\n')
 CHAIN_PRE=$(dcs exec -T seed sh -c 'test -f /data/chain.cbor && wc -c </data/chain.cbor || echo 0' | tr -d ' \r\n')
 echo "  V1 on-disk: holderA objects=$CHUNKS_A_PRE proofs=$PROOFS_A_PRE ; seed chain.cbor bytes=$CHAIN_PRE"
-# POSITIVE CONTROL (audit #303): V1 runs -validator -quorum=0 specifically to commit
+# POSITIVE CONTROL (audit): V1 runs -validator -quorum=0 specifically to commit
 # a persisted chain to reload. If chain.cbor is empty, V1's commit path is broken
 # and the chain-RELOAD property is never exercised — treating that as "nothing to
 # reload → chain-OK" would false-pass a real regression. Require a real V1 chain.
@@ -223,17 +223,17 @@ CONTENT_OK=0
 [ -n "$GOTV2" ] && [ "$WANT" = "$GOTV2" ] && CONTENT_OK=1
 
 # ── observe the REAL reload evidence so the FINDING attribution can be gated on
-#    it, not asserted (audit #303 upgrade [high] confound + [med] mechanism). The
-#    default EXPECT=finding path used to print "root cause: V1 predates #69"
-#    whenever CONTENT_OK!=1, with nothing verifying the strand is actually the
-#    #69/#98 format boundary. So a HEAD reload regression, a post-upgrade
-#    mesh-bootstrap confound, or a silent chain-commit failure ALL went green
-#    misattributed to ancient V1. Two facts distinguish the real #69 finding
-#    from a confound: (a) V1 wrote NO persisted proofs (PROOFS_A_PRE==0), and
-#    (b) V2 emitted NO "reloaded storage proofs" line (nothing to reload). If V2
-#    DID reload proofs (RELOADED_A>0) but content still fails, that is a
-#    mesh/decode confound — NOT the format boundary — and must not be dressed up
-#    as the #69 finding.
+#  it, not asserted (the audit upgrade [high] confound + [med] mechanism). The
+#  default EXPECT=finding path used to print "root cause: V1 predates #69"
+#  whenever CONTENT_OK!=1, with nothing verifying the strand is actually the
+#  #69/#98 format boundary. So a HEAD reload regression, a post-upgrade
+#  mesh-bootstrap confound, or a silent chain-commit failure ALL went green
+#  misattributed to ancient V1. Two facts distinguish the real #69 finding
+#  from a confound: (a) V1 wrote NO persisted proofs (PROOFS_A_PRE==0), and
+#  (b) V2 emitted NO "reloaded storage proofs" line (nothing to reload). If V2
+#  DID reload proofs (RELOADED_A>0) but content still fails, that is a
+#  mesh/decode confound — NOT the format boundary — and must not be dressed up
+#  as the #69 finding.
 RELOADED_A=$(dcs exec -T holderA sh -c 'grep -c "reloaded storage proofs" /data/debug.log 2>/dev/null || echo 0' | tr -d ' \r\n')
 [ -z "$RELOADED_A" ] && RELOADED_A=0
 echo "  holderA V2 'reloaded storage proofs' lines: $RELOADED_A (V1 proofs on disk pre-upgrade: $PROOFS_A_PRE)"
@@ -291,8 +291,8 @@ fi
 # persisted proofs (PROOFS_A_PRE>0) or V2 DID reload them (RELOADED_A>0) yet the
 # self-fetch still failed — then it is a HEAD reload regression or a
 # mesh/decode confound, NOT the ancient-V1 format break. Do NOT misattribute it
-# to #69; surface it as a harness-inconclusive FAIL so a blind reviewer is not
-# pointed at the wrong layer (audit #303 upgrade [high] confound + [med] mechanism).
+# to #69; surface it as a harness-inconclusive FAIL so a a review is not
+# pointed at the wrong layer (the audit upgrade [high] confound + [med] mechanism).
 if [ "$CONTENT_OK" != 1 ] && { [ "${PROOFS_A_PRE:-0}" -gt 0 ] 2>/dev/null || [ "${RELOADED_A:-0}" -gt 0 ] 2>/dev/null; }; then
   echo "RESULT: FAIL ❌  content stranded but NOT the #69 format boundary — this is a reload/mesh confound, not a faithful finding:"
   echo "  • V1 persisted proofs=$PROOFS_A_PRE ; V2 'reloaded storage proofs' lines=$RELOADED_A ; self-fetch still failed"

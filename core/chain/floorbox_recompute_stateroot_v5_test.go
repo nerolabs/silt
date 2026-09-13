@@ -11,15 +11,15 @@ import (
 
 // Tests for the O(payload) HYBRID P1-a state-root recompute (floorbox_recompute_stateroot_v5.go).
 //
-// The recompute is CERTIFIED (2026-08-31) as the sound O(payload) spine for classes E + R: derive
+// The recompute is the sound O(payload) spine for classes E + R: derive
 // the write-set from the payload, witness each changed leaf against prevStateRoot, fold the
 // changed paths, require the computed root == b.StateRoot. It NEVER Accepts (STOP boundary); it
 // reproduces validateEra3Roots' StateRoot equality root-only and stalls otherwise.
 //
 // R3 (the execution-derived drift guard, MANDATORY): the box's derived write-set + fold is checked
-// against the REAL apply() + StateRootForVersion(5) — the oracle a full node uses — and ablated RED
+// against the REAL apply + StateRootForVersion(5) — the oracle a full node uses — and ablated RED
 // on an omitted / injected / mis-valued write. A hand-written mirror shares the producer's blind
-// spot (the session-7 scar), so the ground truth is real execution.
+// spot, so the ground truth is real execution.
 
 // stateRootFixture is a v5 chain at some committed pre-state, plus prevStateRoot and a Prover over
 // its v5 leaf set (the any-of-N provider that holds the committed set). The box holds prevStateRoot.
@@ -152,8 +152,7 @@ func latchedMaturityWitness(t *testing.T, prover *statehash.Prover, preValue fun
 // handoffScalarWit builds the pre-state scalar witness for one committed handoff latch leaf
 // (tagEverMature / tagMatureEpoch). BOTH now travel on the class-M carrier: handoffPreState anchors
 // them against prevStateRoot before any class dispatches, and the class-A screen reads the anchored
-// pre-matureEpoch as its branch selector instead of the box's live c.matureEpoch
-// (R-FOLD-LIVE-STATE-READS cert 2026-09-02).
+// pre-matureEpoch as its branch selector instead of the box's live c.matureEpoch.
 func handoffScalarWit(t *testing.T, prover *statehash.Prover, preValue func([]byte) []byte, tag string) StateRootRotateScalar {
 	t.Helper()
 	key := statehash.Key(tag, nil)
@@ -175,7 +174,7 @@ func (f stateRootFixture) preValue(key []byte) []byte {
 	return nil
 }
 
-// applyAndCommittedRoot applies b to a CLONE of the fixture chain (real apply()) and returns the
+// applyAndCommittedRoot applies b to a CLONE of the fixture chain (real apply) and returns the
 // committed v5 StateRoot the full node computes — the R3 oracle.
 func (f stateRootFixture) applyAndCommittedRoot(t *testing.T, b Block) ports.Hash {
 	t.Helper()
@@ -206,7 +205,7 @@ func (f stateRootFixture) nextERBlock() Block {
 }
 
 // TestRecomputeStateRootAgreesWithApply is the R3 ground-truth check: the O(payload) recompute
-// AGREES (returns nil) with the committed StateRoot the REAL apply() + StateRootForVersion(5)
+// AGREES (returns nil) with the committed StateRoot the REAL apply + StateRootForVersion(5)
 // produces, over an E/R block that exercises add / token-spent / revoke / un-revoke (a delete).
 func TestRecomputeStateRootAgreesWithApply(t *testing.T) {
 	f := buildStateRootFixture(t)
@@ -242,7 +241,7 @@ func TestRecomputeStateRootAblationOmittedWrite(t *testing.T) {
 
 	// The HONEST committed root includes only b's E/R writes. Build a FORGED committed root that
 	// ALSO adds an unrelated byRoot leaf the block does not carry — the classic "un-named X" the
-	// cert names. The box's fold (over the payload-derived set) computes the honest root, which
+	// the research names. The box's fold (over the payload-derived set) computes the honest root, which
 	// differs from this forged one ⇒ mismatch.
 	clone := f.c.cloneForDryRun()
 	clone.apply(b)

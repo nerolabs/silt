@@ -19,7 +19,7 @@ ROLE="${role}"
 ARGV='${argv}'
 
 # ── Download the silt binary from S3 using the instance profile (aws-cli preinstalled
-#    on Amazon Linux 2023; the role grants s3:GetObject on the run's bucket) ─────────
+#  on Amazon Linux 2023; the role grants s3:GetObject on the run's bucket) ─────────
 mkdir -p /var/lib/silt /etc/silt
 for _ in $(seq 1 30); do
   if aws s3 cp "${s3_uri}" /usr/local/bin/silt --quiet; then break; fi
@@ -54,13 +54,13 @@ UNIT
 systemctl daemon-reload
 
 # ── Cold-start ordering ─────────────────────────────────────────────────────────
-# #281 is FIXED IN-PRODUCT (Node.StartBootstrapRetry, -bootstrap-retry=15s default), so
+# this gate is FIXED IN-PRODUCT (Node.StartBootstrapRetry, -bootstrap-retry=15s default), so
 # this TCP-wait is NOT required for correctness — it models the seed-first ordering a
 # real deployment uses. Set SKIP_BOOTSTRAP_WAIT=1 (via a future flow) to exercise the
 # empty-routing-table self-heal over the wire (parity with the GCP harness hook).
 BOOTSTRAP_REF="$(printf '%s\n' "$${ARGV}" | grep -oE -- '-bootstrap [^ ]+' | head -1 | awk '{print $2}' || true)"
 if [ "$${SKIP_BOOTSTRAP_WAIT:-0}" = 1 ]; then
-  echo "silt-startup: $${NODE} SKIP_BOOTSTRAP_WAIT=1 — relying on in-product -bootstrap-retry self-heal (#281)"
+  echo "silt-startup: $${NODE} SKIP_BOOTSTRAP_WAIT=1 — relying on in-product -bootstrap-retry self-heal"
   BOOTSTRAP_REF=""
 fi
 if [ -n "$${BOOTSTRAP_REF}" ]; then

@@ -132,7 +132,7 @@ func ServeTLS(addr string, ident *identity.Identity, reg ports.Registry) (boundA
 // durable-Publisher / double-spend / dup) surface at once — but commits ASYNC: the handler
 // replies 202 and the client polls PublishStatus until the entry commits OR the gather
 // reaches a terminal failure. This removes the flat 10s-client / 30s-server deadlines that
-// guillotined a ~1.5 MB genesis gather (#286 Layer 1) WITHOUT holding a connection open for
+// guillotined a ~1.5 MB genesis gather WITHOUT holding a connection open for
 // the whole gather (no slowloris, #48). PublishStatus is what lets the client fast-fail on a
 // no-quorum round — so a publish-retry-until-standing caller retries promptly — instead of
 // polling out the full budget. A registry that commits instantly (fileregistry) implements
@@ -154,26 +154,29 @@ type publishStatusJSON struct {
 // production never mutates them.
 var (
 	publishPollInterval = 1 * time.Second
-	// Accept→commit budget, re-derived 2026-08-17 for the #451 synchronizer round
-	// durations (the prior 180 s was genesis-era and sat BELOW the in-spec
-	// per-height worst case): one escape-round height is bounded by H_ESCAPE =
-	// 220 s (integration/cloudtest/scenarios.sh derivation), plus one re-submit
-	// cadence of drop-recovery headroom — 360 s, converging with the harness's
-	// PUBLISH_RETRY_S bound (same derivation, one number). A client window below
-	// the chain's own in-spec height cost manufactures failure verdicts for
-	// healthy commits (run 82bcd2b-39478's durability-turnover GAP; the
-	// discrimination oracles in core/node/modelcheck_441_publish_bound_test.go).
-	// M1 note: this bound shrinks by shrinking the round durations (batching,
-	// #299) — never by the client under-reporting them.
+	// Accept→commit budget, re-derived 2026-08-17 for the synchronizer
+	// round durations (the prior 180 s was genesis-era and sat BELOW the
+	// in-spec per-height worst case): one escape-round height is bounded
+	// by H_ESCAPE = 220 s (integration/cloudtest/scenarios.sh
+	// derivation), plus one re-submit cadence of drop-recovery headroom —
+	// 360 s, converging with the harness's PUBLISH_RETRY_S bound (same
+	// derivation, one number). A client window below the chain's own
+	// in-spec height cost manufactures failure verdicts for healthy
+	// commits (run the field run's durability-turnover GAP; the
+	// discrimination oracles in
+	// core/node/modelcheck_publish_bound_test.go). M1 note: this bound
+	// shrinks by shrinking the round durations (batching) — never by the
+	// client under-reporting them.
 	publishPollTimeout = 360 * time.Second
-	// How often the poll loop RE-SUBMITS the same entry while pending. The #441
-	// certified design puts drop-recovery on the client's retry loop — but the
-	// submit broadcast is fire-and-forget (core/node/entrypool.go), so a lost
-	// burst strands the entry in the accepting validator's mempool until the
-	// designee rotation reaches it (~|eligible| heights ≈ tens of minutes in the
-	// field — measured by the rotation-wait oracle). Re-submitting is a
-	// mempool-dedup no-op on the happy path and the recovery lever on the lossy
-	// one, so it must fire INSIDE the poll window, not once per outer attempt.
+	// How often the poll loop RE-SUBMITS the same entry while pending. The
+	// design puts drop-recovery on the client's retry loop — but the
+	// submit broadcast is fire-and-forget (core/node/entrypool.go), so a
+	// lost burst strands the entry in the accepting validator's mempool
+	// until the designee rotation reaches it (~|eligible| heights ≈ tens
+	// of minutes in the field — measured by the rotation-wait oracle).
+	// Re-submitting is a mempool-dedup no-op on the happy path and the
+	// recovery lever on the lossy one, so it must fire INSIDE the poll
+	// window, not once per outer attempt.
 	publishResubmitEvery = 30 * time.Second
 )
 
@@ -272,15 +275,16 @@ func serve(addr string, reg ports.Registry, tlsCfg *tls.Config) (boundAddr strin
 		json.NewEncoder(w).Encode(st)
 	})
 
-	// GET /all is DELIBERATELY NOT SERVED on the public mux (red-team blind-2026-08-08
-	// F-3). It serialized the whole registry O(N) with no pagination, an unbounded
-	// per-request cost that an interim work-pricing bounded only per-SOURCE — a
-	// distributed dump (one request per source IP) no per-IP counter can touch. It is
-	// used only by an operator's OWN CLI/UI, which reads the registry IN-PROCESS (the
-	// daemon's local chainhost/fileregistry), never over this wire. Removing it deletes
-	// the amplification and the distributed variant outright. A client asking for /all
-	// over HTTP now gets 404 by design; the operator UI degrades gracefully. If a public
-	// bulk-read is ever wanted, add it back paginated (cursor + hard page cap) + priced.
+	// GET /all is DELIBERATELY NOT SERVED on the public mux. It serialized the whole
+	// registry O(N) with no pagination, an unbounded per-request cost that an interim
+	// work-pricing bounded only per-SOURCE — a distributed dump (one request per
+	// source IP) no per-IP counter can touch. It is used only by an operator's OWN
+	// CLI/UI, which reads the registry IN-PROCESS (the daemon's local
+	// chainhost/fileregistry), never over this wire. Removing it deletes the
+	// amplification and the distributed variant outright. A client asking for /all
+	// over HTTP now gets 404 by design; the operator UI degrades gracefully. If a
+	// public bulk-read is ever wanted, add it back paginated (cursor + hard page cap)
+	// + priced.
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -346,7 +350,7 @@ func (c *Client) Publish(ctx context.Context, e ports.Entry) error {
 	case http.StatusOK:
 		return nil
 	case http.StatusAccepted:
-		// Async accept (#286 Layer 1): the commit gather runs on the server; poll
+		// Async accept: the commit gather runs on the server; poll
 		// /publish-status until it resolves — committed, or a terminal no-quorum failure —
 		// or the budget elapses. Each poll is a fast, fresh request (no held connection → no
 		// flat 10s guillotine on the commit, no slowloris). Publish still BLOCKS the caller
@@ -417,13 +421,14 @@ func mustRead(r io.Reader) []byte {
 }
 
 const (
-	// getRetries / getRetryBackoff: a bounded, exponential-backoff retry for the client's
-	// idempotent GET reads. This is the one client path NOT behind the consensus layer's
-	// retry, so a single dropped packet used to fail a swarm-get / root resolution outright
-	// — the durable-WAN discipline is to ride out transient loss, not decide on one sample
-	// (immutable #5; docs/network-durability.md §1 "modest initial + retry", §2). GET only:
-	// the request has no body, so it is safely reissued. POST /publish is NOT retried here
-	// (it has side effects; its commit durability comes from the async 202 + poll instead).
+	// getRetries / getRetryBackoff: a bounded, exponential-backoff retry for the
+	// client's idempotent GET reads. This is the one client path NOT behind the
+	// consensus layer's retry, so a single dropped packet used to fail a swarm-get /
+	// root resolution outright — the durable-WAN discipline is to ride out transient
+	// loss, not decide on one sample (immutable #5 "modest initial + retry", §2). GET
+	// only: the request has no body, so it is safely reissued. POST /publish is NOT
+	// retried here (it has side effects; its commit durability comes from the async 202
+	// + poll instead).
 	getRetries      = 2 // 3 attempts total
 	getRetryBackoff = 200 * time.Millisecond
 )
@@ -457,7 +462,7 @@ func (c *Client) doGetRetry(req *http.Request) (*http.Response, error) {
 	}
 }
 
-// LookupAsync is the ports.AsyncRegistry capability (#473): the blocking HTTP
+// LookupAsync is the ports.AsyncRegistry capability: the blocking HTTP
 // round-trip runs on its own goroutine so a core event loop that needs a
 // registry read never holds its single thread for a network RTT. done is
 // called from that goroutine; the caller marshals back onto its loop.
@@ -520,10 +525,10 @@ func (c *Client) publishStatus(ctx context.Context, root ports.Hash) (committed 
 	return st.State == "committed", st.Error, nil
 }
 
-// ErrAllNotServed is returned by a remote client's All(): a registry no longer
-// serves a bulk /all dump on its public mux (F-3). A caller should degrade (list
-// nothing / use /lookup), not treat it as a hard error. An operator listing its OWN
-// registry reads it in-process, not through this client, so is unaffected.
+// ErrAllNotServed is returned by a remote client's All: a registry no longer serves
+// a bulk /all dump on its public mux. A caller should degrade (list nothing /
+// use /lookup), not treat it as a hard error. An operator listing its OWN registry
+// reads it in-process, not through this client, so is unaffected.
 var ErrAllNotServed = errors.New("httpregistry: /all is not served on the public registry mux (use per-root lookup)")
 
 func (c *Client) All(ctx context.Context) ([]ports.Entry, error) {

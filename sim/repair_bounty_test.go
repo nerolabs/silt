@@ -44,7 +44,7 @@ func TestRepairBountyPaysHolderWithoutMovingStanding(t *testing.T) {
 	caretakers := cl.Nodes[1:4] // one will repair, the others judge
 	eras := erasure.DefaultParams
 
-	data := make([]byte, 32<<20) // 128 chunks of 256 KiB = the original 12.8 stripes at a chunk whose shard geometry reaches one credit of fetch (G-R212-7: 4 KiB chunks now pay a zero bounty)
+	data := make([]byte, 32<<20) // 128 chunks of 256 KiB = the original 12.8 stripes at a chunk whose shard geometry reaches one credit of fetch (4 KiB chunks now pay a zero bounty)
 	cl.rng.Read(data)
 	h, err := pipeline.Add(bgCtx, publisher.Store(), cl.Registry, bytes.NewReader(data),
 		pipeline.Options{ChunkSize: 256 << 10, Mode: crypto.Convergent, Erasure: eras})
@@ -65,13 +65,13 @@ func TestRepairBountyPaysHolderWithoutMovingStanding(t *testing.T) {
 	}
 
 	// Prepay a durability reserve for the object. Sized to OUTLAST the churn
-	// storm: the #518 fix (rebuilt shards prefer non-judge holders) means every
+	// storm: the fix (rebuilt shards prefer non-judge holders) means every
 	// judge now receives and settles claims that previously starved, and the
 	// placement shift also moves who serves (the auto-skim source), so the
 	// measured storm draw is ~112 claims × 2 judges × ~80k ≈ 18M: on THIS
 	// rig's one-shared-ledger wiring both judges' releases draw the same
 	// escrow (production per-node ledgers each pay once, by design), and
-	// pre-#518 the starvation hid half that draw. A 5M prepay sat knife-edge
+	// earlier the starvation hid half that draw. A 5M prepay sat knife-edge
 	// at exhaustion and made the positive-runway assertion below flap on
 	// placement luck. Exhausted-at-zero is a legitimate, separately-honest
 	// state; THIS test asserts the funded-horizon instrument reads a positive

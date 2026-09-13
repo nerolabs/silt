@@ -11,25 +11,24 @@ import (
 // era-4 (v5) trustless floor-box RECOMPUTE — Path-1 state-root recompute, sub-increment P1-c,
 // CLASS T (TTL sweep) — the SECOND delta-derivable changed-whole-set-digest class.
 //
-// CERTIFIED-IN-DIRECTION (2026-08-31):
-//   research: floorbox-Rboundary-writeset-digest-reconstruction-RESEARCH-CERTIFICATION-2026-08-31.md
-//     (T CERTIFIED-in-direction, inherits the CRUX dueBucket reconstruction)
+// research: floorbox-Rboundary-writeset-digest-reconstruction-
+// (T: inherits the CRUX dueBucket reconstruction)
 // Box STILL never-Accepts (R-scope). This reproduces validateEra3Roots' StateRoot equality
 // root-only for a v5 block whose committed-state effect is entries/revocations (E/R) PLUS a
 // firing TTL sweep (T). It stalls loud on every other class.
 //
-// WHY T NEEDS THE DIGEST PRIMITIVE. The sweep (chain.go:3271-3281) expires every id whose bond
+// WHY T NEEDS THE DIGEST PRIMITIVE. The sweep (chain.go) expires every id whose bond
 // clock ran out this block. The EXPIRED SET is exactly the members of dueBucket[b.Height]: an id
 // registered at regH has due-height regH+ttl+1, and it expires at h iff h-regH > ttl, i.e.
 // regH+ttl+1 == h. So the whole bucket keyed at b.Height empties this block — the O(1)/O(bucket)
 // accelerator witness, NOT a whole bondRegHeight scan (the whole point of era-4). Each expired id
 // deletes FIVE per-member leaves and, across the set, changes TWO whole-set digest scalars:
-//   - delete(bonded,id)        → deletes bonded||id     + changes bondedRoot
-//   - delete(bondRegHeight,id) → deletes bondRegHeight||id
-//   - delete(regVersion,id)    → deletes regVersion||id
-//   - qualifiedMaintain(id)    → deletes qualified||id IF it was qualified + changes qualifiedRoot
-//   - the bucket itself        → deletes dueBucket||b.Height (its LAST member leaves)
-// bondDomain||id is NOT deleted (apply keeps it — chain.go:3275-3277 deletes bonded/bondRegHeight/
+// - delete(bonded,id) → deletes bonded||id + changes bondedRoot
+// - delete(bondRegHeight,id) → deletes bondRegHeight||id
+// - delete(regVersion,id) → deletes regVersion||id
+// - qualifiedMaintain(id) → deletes qualified||id IF it was qualified + changes qualifiedRoot
+// - the bucket itself → deletes dueBucket||b.Height (its LAST member leaves)
+// bondDomain||id is NOT deleted (apply keeps it — chain.go deletes bonded/bondRegHeight/
 // regVersion only). The two touched whole-set digests (bondedRoot, qualifiedRoot) are reconstructed
 // by the same changed-digest primitive class S ships (stateRootSlashDigestOps): witness the pre-set
 // id-list against prevStateRoot, apply the payload/accelerator-derived DELETE delta, fold the
@@ -47,7 +46,7 @@ import (
 // COST — HONEST (R-cost-wholeset, R-membership). NOT O(payload). Reconstructing bondedRoot/
 // qualifiedRoot needs the WHOLE post-set id-list (MTH is a whole-list fold, no incremental update),
 // so class T is O(payload) + O(|bonded|) + O(|qualified|) + O(|bucket|) ≈ O(registry) per touched
-// digest. It rides directly on R-membership (OPEN, load-bearing for the #657 accept-flip).
+// digest. It rides directly on R-membership (OPEN, load-bearing for the accept-flip).
 
 // StateRootTTLWitness carries the TTL-sweep delta source: the members of dueBucket[b.Height] (the
 // EXPIRED set) plus the inclusion proof of that bucket's committed MTH leaf against prevStateRoot,
@@ -70,11 +69,11 @@ type StateRootTTLWitness struct {
 }
 
 // stateRootTTLWriteSet derives the class-T per-member committed-leaf DELETE write-set for block b,
-// reproducing apply()'s sweep loop (chain.go:3271-3281) LEAF EFFECT for the expired set:
-//   - bonded||id         DELETE — always (an expired bond is evicted)
-//   - bondRegHeight||id  DELETE — always
-//   - regVersion||id     DELETE — always
-//   - qualified||id      DELETE — IFF the id was qualified pre-state (from the anchored pre-set, C-1)
+// reproducing apply's sweep loop (chain.go) LEAF EFFECT for the expired set:
+// - bonded||id DELETE — always (an expired bond is evicted)
+// - bondRegHeight||id DELETE — always
+// - regVersion||id DELETE — always
+// - qualified||id DELETE — IFF the id was qualified pre-state (from the anchored pre-set)
 //
 // bondDomain||id is NOT deleted (apply keeps it). The dueBucket||h leaf DELETE is NOT emitted here —
 // it is the bucket FoldOp stateRootTTLDigestOps builds (carrying its own proof + delete siblings),
@@ -98,14 +97,14 @@ func stateRootTTLWriteSet(expired []ports.NodeID, height uint64, preQualified ma
 }
 
 // stateRootTTLDigestOps reconstructs the TWO touched whole-set digest scalars (bondedRoot,
-// qualifiedRoot) as FoldOps via the certified changed-digest primitive, AND the dueBucket bucket
-// DELETE FoldOp. It first anchors the expired set against the committed dueBucket MTH (the CRUX
+// qualifiedRoot) as FoldOps via the changed-digest primitive, AND the dueBucket bucket DELETE
+// FoldOp. It first anchors the expired set against the committed dueBucket MTH (the CRUX
 // completeness closure), then applies the DELETE delta to the anchored pre-bonded / pre-qualified
 // sets and folds each post-digest.
 //
 // It returns the digest+bucket FoldOps plus the pre-bonded / pre-qualified membership sets and the
 // verified expired id-set the per-member write-set consumes — so the per-member delta and the
-// digest delta agree on the pre-state by construction, and neither trusts a witness scalar (C-1).
+// digest delta agree on the pre-state by construction, and neither trusts a witness scalar.
 //
 // A missing/short/padded expired set stalls (dueBucketMTH(Members) != committed bucket MTH, caught
 // by the bucket FoldOp's OldValue verify). A touched digest with no supplied pre-set witness stalls.

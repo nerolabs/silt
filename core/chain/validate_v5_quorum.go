@@ -9,7 +9,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// era-4 (v5) composition — P7 (bond registrations) and C1..C5 (the two quorum stacks), the
+// era-4 (v5) composition — P7 (bond registrations) and C1.C5 (the two quorum stacks), the
 // mirrors of the node's validateBondRegs / requireProposerPrepare / collectQuorumSigs /
 // requireQuorumStack and the helpers they read. Same three-valued discipline as
 // validate_v5_predicates.go; every mirror names the node function and was re-derived against it.
@@ -19,8 +19,8 @@ import (
 // ---------------------------------------------------------------------------
 
 // v5ValidateBondRegs mirrors Chain.validateBondRegs: the legacy early return (a legacy chain
-// ignores BondRegs entirely — M-1), the Q2 pruned-tolerance gate keyed on the reader's OWN trust
-// floor, the v5 RegCap, the #506 R-rule past the gate, the unconditional per-root dedup, and the
+// ignores BondRegs entirely —), the Q2 pruned-tolerance gate keyed on the reader's OWN trust
+// floor, the v5 RegCap, the R-rule past the gate, the unconditional per-root dedup, and the
 // nonce-window per-registration check. The pruned leg is the NODE's rule (v.PrunedTolerated); a box
 // stalls on a pruned block at its entry before the composition runs, and stalls here too if it ever
 // reached this leg — the view answers NoWitness, never a floor (H-4).
@@ -29,12 +29,12 @@ func v5ValidateBondRegs(v StateView, b *Block) (FloorBoxOutcome, error) {
 		return Accept, nil
 	}
 	p := v.Params()
-	// BOND POSSESSION, not identity. This refusal exists because a block whose space-time proofs
-	// are gone cannot have them re-verified — it is nothing to do with whether the block can
-	// recompute its own hash. (d-3) retires `Pruned` for v5, so IsPruned() no longer detects a v5
-	// block that shed its proofs; HeavyProofsShed() does. Using IsPruned() here after (d-3) would
-	// be the disqualifying widening the delta cert named: "identity != bond possession, trustFloor
-	// stays". Gate: the P7 pruned arm of the v4/v5 parity oracle.
+	// BOND POSSESSION, not identity. This refusal exists because a block whose space-time
+	// proofs are gone cannot have them re-verified — it is nothing to do with whether the
+	// block can recompute its own hash. retires `Pruned` for v5, so IsPruned no longer
+	// detects a v5 block that shed its proofs; HeavyProofsShed does. Using IsPruned here
+	// after would be the disqualifying widening an earlier review named: "identity != bond
+	// possession, trustFloor stays". Gate: the P7 pruned arm of the v4/v5 parity oracle.
 	if b.HeavyProofsShed() {
 		tolerated, av := v.PrunedTolerated(b.Height)
 		if av != Present {
@@ -52,7 +52,7 @@ func v5ValidateBondRegs(v StateView, b *Block) (FloorBoxOutcome, error) {
 		}
 		return Accept, nil
 	}
-	// era-4 RegCap validity rule (4c). v5-gated on the node; the composition is v5-only (BG-1),
+	// era-4 RegCap validity rule (4c). v5-gated on the node; the composition is v5-only,
 	// and the version gate is kept verbatim so the mirror reads as the node does.
 	if b.Version >= BlockVersionWitnessable {
 		if n := len(canonicalBondRegs(b.BondRegs)); n > RegCap {
@@ -71,9 +71,10 @@ func v5ValidateBondRegs(v StateView, b *Block) (FloorBoxOutcome, error) {
 	if gate {
 		seenReg = make(map[ports.NodeID]bool, len(b.BondRegs))
 	}
-	// PER-ROOT DEDUP is UNCONDITIONAL (not gate-gated): apply() resolves a same-root collision by
-	// intra-block slice order, so two honest replicas applying the identical block in a different
-	// BondReg order would commit different state. It dedups on (root x DISTINCT id) only.
+	// PER-ROOT DEDUP is UNCONDITIONAL (not gate-gated): apply resolves a same-root collision
+	// by intra-block slice order, so two honest replicas applying the identical block in a
+	// different BondReg order would commit different state. It dedups on (root x DISTINCT id)
+	// only.
 	seenRoot := make(map[ports.Hash]ports.NodeID, len(b.BondRegs))
 	for _, r := range b.BondRegs {
 		id := r.ValidatorID()
@@ -169,7 +170,7 @@ func v5RegGateActive(v StateView, h uint64) (bool, FloorBoxOutcome, error) {
 	return h > at, Accept, nil
 }
 
-// v5RestoresHeldStanding mirrors Chain.restoresHeldStanding: the #506 R-interval exemption for a
+// v5RestoresHeldStanding mirrors Chain.restoresHeldStanding: the R-interval exemption for a
 // LAPSED frozen-epoch member re-proving a root it already owns.
 func v5RestoresHeldStanding(v StateView, id ports.NodeID, root ports.Hash) (bool, FloorBoxOutcome, error) {
 	mature, out, err := v5MatureEpochRegime(v)
@@ -238,11 +239,11 @@ func v5ValidateBondReg(v StateView, p Params, r BondReg, nonce uint64) error {
 }
 
 // ---------------------------------------------------------------------------
-// C1..C5 the two quorum stacks
+// C1.C5 the two quorum stacks
 // ---------------------------------------------------------------------------
 
 // v5RequireProposerPrepare is C1 — Chain.requireProposerPrepare. The only state it reads is the
-// view's OWN chain id (class 3, BG-2); the height comes from the block it is verifying over.
+// view's OWN chain id (class 3); the height comes from the block it is verifying over.
 func v5RequireProposerPrepare(v StateView, b *Block) (FloorBoxOutcome, error) {
 	h := b.Hash()
 	s := attScope{ChainID: v.Head().ChainID, Height: b.Height}
@@ -260,15 +261,15 @@ func v5RequireProposerPrepare(v StateView, b *Block) (FloorBoxOutcome, error) {
 // composition calls it; it never takes a pre-built `seen` as a parameter. Two placements inside
 // are load-bearing and are preserved exactly:
 //
-//   - the AUTHOR SKIP happens BEFORE the phase/round exactness check, so a proposer's own
-//     round-mismatched signature is not fatal (that is what makes requireProposerPrepare's
-//     round <= CommitRound count-neutral);
-//   - the UNQUALIFIED DROP happens AFTER the signature check, so a forged signature from an
-//     unqualified id is FATAL, not silently ignored. Reversing these two is N5.
+// - the AUTHOR SKIP happens BEFORE the phase/round exactness check, so a proposer's own
+// round-mismatched signature is not fatal (that is what makes requireProposerPrepare's
+// round <= CommitRound count-neutral);
+// - the UNQUALIFIED DROP happens AFTER the signature check, so a forged signature from an
+// unqualified id is FATAL, not silently ignored. Reversing these two is N5.
 func v5CollectQuorumSigs(v StateView, b *Block, sigs []Attestation, step uint8, round uint64) (map[ports.NodeID]bool, FloorBoxOutcome, error) {
 	h := b.Hash()
 	s := attScope{ChainID: v.Head().ChainID, Height: b.Height}
-	// EXACTLY ONE FORM, never both (G-PRE-8). A v5 quorum demands the v5 phase constant, so a
+	// EXACTLY ONE FORM, never both. A v5 quorum demands the v5 phase constant, so a
 	// heightless v2-form precommit inside a v5 block's Atts is FATAL here, not silently ignored
 	// — the carrier's dual-form acceptance is a SEATING rule and must not leak into a quorum.
 	phase := AttPhase(b.Version, step)
@@ -301,7 +302,7 @@ func v5CollectQuorumSigs(v StateView, b *Block, sigs []Attestation, step uint8, 
 }
 
 // v5RequireQuorumStack is C3/C5 — Chain.requireQuorumStack: the four phase-independent
-// requirements Q1..Q4, IN ORDER.
+// requirements Q1.Q4, IN ORDER.
 func v5RequireQuorumStack(v StateView, b *Block, seen map[ports.NodeID]bool) (FloorBoxOutcome, error) {
 	// Q1 count quorum.
 	req, out, err := v5RequiredQuorum(v)
@@ -334,7 +335,8 @@ func v5RequireQuorumStack(v StateView, b *Block, seen map[ports.NodeID]bool) (Fl
 			}
 		}
 	}
-	// Q4 de-maturation super-quorum: everMature && objective && !matureNow().
+	// Q4 de-maturation super-quorum: everMature && objective &&
+	// !matureNow.
 	if v.Objective() {
 		everMature, out, err := v5ScalarBool(v, tagEverMature, "everMature")
 		if out != Accept {
@@ -355,12 +357,11 @@ func v5RequireQuorumStack(v StateView, b *Block, seen map[ports.NodeID]bool) (Fl
 	return Accept, nil
 }
 
-// v5RequiredQuorum mirrors Chain.RequiredQuorum EXACTLY, regime by regime (#380 direction (1),
-// research certification CONSENSUS-380-quorum-floor-direction-1-PREDICATE-AND-CERTIFICATION
-// §3): (c)/(d) the config's Quorum; (b) mature epoch: 0, the >2/3 frozen-WEIGHT rule is the bar;
-// (a) bftThreshold(N). Params.Quorum is a threshold input on the legacy / opt-out leg ONLY.
-// Pinned by G-D13 through the compositionHelpers row; driven by the parity oracle's mature
-// regimes (the whale world, where the node accepts a zero-attestation commit).
+// v5RequiredQuorum mirrors Chain.RequiredQuorum EXACTLY, regime by regime: (c)/(d) the config's
+// Quorum; (b) mature epoch: 0, the >2/3 frozen-WEIGHT rule is the bar; (a) bftThreshold(N).
+// Params.Quorum is a threshold input on the legacy / opt-out leg ONLY. Pinned by through
+// the compositionHelpers row; driven by the parity oracle's mature regimes (the whale world,
+// where the node accepts a zero-attestation commit).
 func v5RequiredQuorum(v StateView) (int, FloorBoxOutcome, error) {
 	p := v.Params()
 	if !p.ByzantineQuorum || !v.Objective() {
@@ -444,9 +445,9 @@ func v5CountAnchorSupport(v StateView, proposer ports.NodeID, seen map[ports.Nod
 	return n
 }
 
-// v5RequireEpochWeightQuorum is Q3 — Chain.requireEpochWeightQuorum. Its tail is
-// `support := set[proposer] + sum(set[seen])` with NO author screen, and that is CORRECT: P4
-// already refused a slashed or non-member proposer. The screen belongs to the PATH, not to this
+// v5RequireEpochWeightQuorum is Q3 — Chain.requireEpochWeightQuorum. Its tail is `support:=
+// set[proposer] + sum(set[seen])` with NO author screen, and that is CORRECT: P4 already
+// refused a slashed or non-member proposer. The screen belongs to the PATH, not to this
 // function — reproducing this tally without P4 is N1.
 func v5RequireEpochWeightQuorum(v StateView, proposer ports.NodeID, seen map[ports.NodeID]bool, h uint64) (FloorBoxOutcome, error) {
 	set, out, err := v5EffectiveEpochSet(v, h)
@@ -496,10 +497,10 @@ func v5RequireDeMatureSuperQuorum(v StateView, b *Block, seen map[ports.NodeID]b
 	return Accept, nil
 }
 
-// v5MatureNow mirrors Chain.matureNow's OBJECTIVE branch — MatureCoefficient() =
+// v5MatureNow mirrors Chain.matureNow's OBJECTIVE branch — MatureCoefficient =
 // min(NakamotoOperators, NakamotoDomains) over the committed ledger (C2Metric), restricted to
 // validatorsSeen, non-anchor, non-slashed, bonded ≥ MinBond. The legacy branch is unreachable
-// from the accept path: Q4 is gated on objective() and only Q4 reads matureNow.
+// from the accept path: Q4 is gated on objective and only Q4 reads matureNow.
 func v5MatureNow(v StateView) (bool, FloorBoxOutcome, error) {
 	p := v.Params()
 	seenSet, av := v.ValidatorsSeen()
@@ -555,10 +556,10 @@ func v5MatureNow(v StateView) (bool, FloorBoxOutcome, error) {
 	if margin < 1 {
 		margin = 1
 	}
-	// ONE body for the coefficient arithmetic (M-1A-1): nakamotoCoefficient is the receiverless
+	// ONE body for the coefficient arithmetic: nakamotoCoefficient is the receiverless
 	// fold the box's maturity recompute already uses (floorbox_recompute_maturity_v5.go), pinned
 	// byte-for-byte to C2Metric. A third inline copy here was the drift surface the round exists
-	// to close; TestM1A1_V5MatureNowEqualsNodeMatureNow reddens on a divergent coefficient.
+	// to close; TestV5MatureNowEqualsNodeMatureNow reddens on a divergent coefficient.
 	bondsK := nakamotoCoefficient(sizes, total)
 	groups := make([]int64, 0, len(domainWeight)+len(zeroDomainWeights))
 	for _, w := range domainWeight {

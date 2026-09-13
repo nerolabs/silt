@@ -2,10 +2,10 @@
 // to a published Merkle root and back.
 //
 //	Add: split → encrypt per chunk → hash → store → manifest → store
-//	     manifest as chunks → publish root
+//	 manifest as chunks → publish root
 //	Get: lookup root → fetch+verify manifest chunks → parse → verify the
-//	     chunk list against the root → fetch+verify data chunks → decrypt
-//	     → join → size check
+//	 chunk list against the root → fetch+verify data chunks → decrypt
+//	 → join → size check
 //
 // Everything speaks through ports; the pipeline neither knows nor cares
 // whether the store is a map, a directory, or (later) a swarm of peers.
@@ -25,24 +25,21 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// DefaultChunkSize is the publish default: 256 KiB (D-R2.9-NODE-HALF-CALLS call 4,
-// amended 4′, ratified 2026-09-07; Economist advisory
-// silt-agent-memory/economist/reviews/ADVISORY-default-chunk-size-256KiB-2026-09-06.md). One chunk is
-// one delivery credit (credit.DeliveryIncrementBytes, pinned in cmd/silt), a full-frame
-// shard of it pays a repair-bounty base of exactly 1, and 256 KiB is the largest power of two at which a PoR audit
-// still samples every block (p = 1.0; at 64 MiB p = 0.0076). The old comment's "64 MiB
-// production minimum" was unenforced folklore: it would cut edge participation per 1 GiB
-// object from 6,557 holders to 29. The manifest layer bounds the maximum at
+// DefaultChunkSize is the publish default: 256 KiB call 4, amended 4′. One chunk is one delivery credit
+// (credit.DeliveryIncrementBytes, pinned in cmd/silt), a full-frame shard of it pays a repair-bounty base of
+// exactly 1, and 256 KiB is the largest power of two at which a PoR audit still samples every block (p = 1.0; at
+// 64 MiB p = 0.0076). The old comment's "64 MiB production minimum" was unenforced folklore: it would cut edge
+// participation per 1 GiB object from 6,557 holders to 29. The manifest layer bounds the maximum at
 // manifest.MaxChunkSize.
 //
-// The bounty ground was "a k = 10 stripe pays a base of exactly 10 (the certified D-S7
-// threshold of 36 stripe-retrievals per repair)" until 2026-09-12, when F1
-// (D-BOUNTY-PRICE-F1-2026-09-12) re-based the price on the ONE shard the bounty's payee
-// moves. The ground SURVIVES and tightens: 262,144 B is now the exact zero-bounty cliff,
-// to within crypto.Overhead's 16 bytes, and the D-S7 self-funding threshold is 3.60
-// stripe-retrievals per shard-repair at m̄ = 3. The other three grounds are untouched.
-// RAISING this constant to widen that 16-byte margin is REFUSED: it moves the height-0
-// block hash (below). cmd/silt checkBountyDisclosureHeadroom refuses to start below it.
+// The bounty ground was "a k = 10 stripe pays a base of exactly 10 (the D-S7 threshold
+// of 36 stripe-retrievals per repair)" until 2026-09-12, when F1 re-based the price on
+// the ONE shard the bounty's payee moves. The ground SURVIVES and tightens: 262,144 B is
+// now the exact zero-bounty cliff, to within crypto.Overhead's 16 bytes, and the D-S7
+// self-funding threshold is 3.60 stripe-retrievals per shard-repair at m̄ = 3. The other
+// three grounds are untouched. RAISING this constant to widen that 16-byte margin is
+// REFUSED: it moves the height-0 block hash (below). cmd/silt
+// checkBountyDisclosureHeadroom refuses to start below it.
 //
 // It is a MAXIMUM frame size, not a fixed one. A frame that shares an erasure stripe with
 // another frame is padded to it, because shards within a stripe must be equal-length; a
@@ -55,7 +52,7 @@ import (
 // dedup does not span the boundary); core/genesis keeps its own 64 KiB chunk, and both of
 // its frame derivations follow this file, so the height-0 block hash — which covers the
 // entry's manifest chunk IDs — MOVED with 4′ (the manifest frame) and again with
-// R-SHORT-FINAL-STRIPE (the data frame: the 2,042-byte manifesto is a single-frame
+// again with the data frame (the 2,042-byte manifesto is a single-frame
 // object). Both moves are owner-accepted on the same ground — no live network exists —
 // and core/genesis TestGenesisBlockHashIsPinned holds the literal, so it moves only by an
 // explicit, recorded decision.
@@ -78,12 +75,12 @@ type Options struct {
 	// carries the token instead of a publisher.
 	Token *ports.PublishToken
 	// ManifestFrameBytes fixes the frame size the sealed manifest is split at. 0 (the
-	// default) DERIVES it — ManifestFrameSize(len(blob), ChunkSize): one true-length frame
-	// when the manifest fits in one chunk. A non-zero value pins it: the pre-4′ padded
-	// framing is ManifestFrameBytes == ChunkSize (the dup-publish gate reproduces it that
-	// way). The frame reaches the genesis block — entry.ManifestChunks is inside what
-	// chain.Block.Hash covers — so changing the derivation moves height-0 identity (blind
-	// PE on 4′, 2026-09-07; the owner accepted that move, core/genesis holds the literal).
+	// default) DERIVES it — ManifestFrameSize(len(blob), ChunkSize): one true-length
+	// frame when the manifest fits in one chunk. A non-zero value pins it: the pre-4′
+	// padded framing is ManifestFrameBytes == ChunkSize (the dup-publish gate
+	// reproduces it that way). The frame reaches the genesis block —
+	// entry.ManifestChunks is inside what chain.Block.Hash covers — so changing the
+	// derivation moves height-0 identity.
 	ManifestFrameBytes int
 }
 
@@ -134,7 +131,7 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 	// The frame size the file was ACTUALLY split at, read off the artifact rather than
 	// re-decided: splitFile emits equal-length frames, so frame 0's length is the
 	// geometry. It equals opts.ChunkSize except for a single-frame object, which
-	// splitFile frames at its true length (R-SHORT-FINAL-STRIPE). Every later consumer
+	// splitFile frames at its true length. Every later consumer
 	// of the geometry — the erasure stripe, the PoR auditor's expected block count
 	// (core/node/por.go), the repair judge's — reads this field, so the short frame
 	// stays a fully committed, auditor-fixed geometry rather than a special case.
@@ -262,8 +259,10 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 // passing the placement count and error Distribute reported:
 //
 //	nd.Distribute(entry, m, false, porKey, func(placed int, derr error) {
-//	    n, err := pipeline.RegisterAfterDistribute(ctx, reg, entry, placed, derr)
-//	    ...
+//	 n, err:= pipeline.RegisterAfterDistribute(ctx, reg, entry, placed, derr)
+//
+// ...
+//
 //	})
 //
 // On a failed scatter (derr != nil) the registry is left untouched and the
@@ -361,7 +360,7 @@ func DataFrameSize(objectBytes, chunkSize int) int {
 		// no chunk and no shard and Stage keeps the asked-for geometry. Returning
 		// HeaderSize here described a 8-byte frame that is never written, and cmd/silt
 		// priced a repair of it — `silt add` on an empty file warned about a 24-byte
-		// shard that does not exist (blind PE, 2026-09-09).
+		// shard that does not exist.
 		return chunkSize
 	}
 	if fs := objectBytes + chunk.HeaderSize; fs < chunkSize {
@@ -372,11 +371,10 @@ func DataFrameSize(objectBytes, chunkSize int) int {
 
 // splitFile frames the file's own bytes. It is chunk.Split with ONE exception: an object
 // whose entire content fits in a single frame is framed at its TRUE length instead of
-// being padded up to chunkSize (R-SHORT-FINAL-STRIPE, Economist advisory 2026-09-06 §4
-// rider 2). Such a frame is ALONE in its erasure stripe, so nothing forces it to full
-// length — equal-length shards are a within-stripe constraint — and the six parity shards
-// are computed at that same true length. A 1 KB object at the 256 KiB default stored
-// 7 × 262,160 = 1,835,120 B of mostly zeros; it now stores 7 × 1,048 B.
+// being padded up to chunkSize. Such a frame is ALONE in its erasure stripe, so nothing
+// forces it to full length — equal-length shards are a within-stripe constraint — and the
+// six parity shards are computed at that same true length. A 1 KB object at the 256 KiB
+// default stored 7 × 262,160 = 1,835,120 B of mostly zeros; it now stores 7 × 1,048 B.
 //
 // Every OTHER object is byte-identical to before: two or more frames share a stripe with
 // each other, so the tail stays padded and chunk.Split does the whole job. The frame size
@@ -411,9 +409,9 @@ func splitFile(r io.Reader, chunkSize int) ([][]byte, error) {
 // at: the blob's own length plus the frame header when it fits in one chunk, else the
 // data chunk size. Manifests carry no parity, so padding them to the data chunk size
 // bought nothing — on the first production store 87.6 % of objects were 1.4 KB manifests
-// padded to 65,536 B (R-MANIFEST-PADDING, Economist advisory 2026-09-06); at a 256 KiB
-// default that store would have grown 3.9× for no content. chunk.Join accepts frames of
-// any size ≥ chunk.MinChunkSize, so a true-length single frame round-trips unchanged.
+// padded to 65,536 B; at a 256 KiB default that store would have grown 3.9× for no
+// content. chunk.Join accepts frames of any size ≥ chunk.MinChunkSize, so a true-length
+// single frame round-trips unchanged.
 func ManifestFrameSize(blobLen, chunkSize int) int {
 	if fs := blobLen + chunk.HeaderSize; fs < chunkSize {
 		return fs

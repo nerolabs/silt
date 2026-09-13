@@ -32,17 +32,15 @@ REGISTRY_PORT = int(os.environ.get("REGISTRY_PORT", "8443"))
 BOND_MODE = os.environ.get("BOND_MODE", "fast")
 # LOG_LEVEL: daemon -log level for every node. Default "info" (the "block committed" line
 # is enough to certify genesis). Set "debug" to also capture the propose→gather→attest
-# path (#327) and the handshake attribution (#332: concurrent count + elapsed) — the signal
-# that root-causes a #286 stall if one recurs (docs/network-durability.md §8).
+# path and the handshake attribution (concurrent count + elapsed) — the signal
+# that root-causes a stall if one recurs).
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "info")
-# VALIDATOR_LOG_LEVEL: the -log level for VALIDATORS only. Default "debug" (h43 /
-# D-CONSENSUS-ARMING, owner call 19, 2026-09-07): the lines that attribute a consensus
-# stall — "new-view proposal not committed", "gather/prepare: REFUSED", the gather
-# start — are LogDebug, and run c450985-deep's h43 (17 min, one validator down) ran at
-# info, so the decisive line was suppressed and the designee's failure could only be
-# INFERRED (certification §3.1, M2 GATED). A graded run is a confirmation, and a
-# confirmation that cannot name the failing seat is not one. Non-validators keep
-# LOG_LEVEL. Set VALIDATOR_LOG_LEVEL=info to fall back.
+# VALIDATOR_LOG_LEVEL: the -log level for VALIDATORS only. Default "debug": the lines
+# that attribute a consensus stall — "new-view proposal not committed",
+# "gather/prepare: REFUSED", the gather start — are LogDebug. A run at info suppresses
+# the decisive line, and the designee's failure can then only be INFERRED. A graded run
+# is a confirmation, and a confirmation that cannot name the failing seat is not one.
+# Non-validators keep LOG_LEVEL. Set VALIDATOR_LOG_LEVEL=info to fall back.
 VALIDATOR_LOG_LEVEL = os.environ.get("VALIDATOR_LOG_LEVEL", "debug")
 # LOOP_BUDGET=1 adds -loop-budget so every node emits its per-window event-loop
 # goroutine-budget decomposition at INFO — names the handler that eats the single
@@ -52,9 +50,9 @@ VALIDATOR_LOG_LEVEL = os.environ.get("VALIDATOR_LOG_LEVEL", "debug")
 LOOP_BUDGET = " -loop-budget" if os.environ.get("LOOP_BUDGET", "") not in ("", "0") else ""
 # DEBUG_PROFILE=1 adds -debug-addr 127.0.0.1:<DEBUG_PORT> to every node so the
 # harness can pull a heap/goroutine profile (curl localhost / kill -USR1) to
-# ATTRIBUTE the MATURING consensus-node OOM — the proof-map fix (#464) was NOT it
-# (the crash-looping nodes hold ~no chunks: silt-oom-NOT-the-proof-map-FINDING-2026-08-17).
-# Off by default (adds no surface to a normal cert run). Capture: ./cloudtest.sh heap <node>.
+# ATTRIBUTE the MATURING consensus-node OOM — the proof-map fix was NOT it
+# (the crash-looping nodes hold ~no chunks: silt-oom-NOT-the-proof-map-FINDI-08-17).
+# Off by default (adds no surface to a normal cert run). Capture:./cloudtest.sh heap <node>.
 DEBUG_PORT = int(os.environ.get("DEBUG_PORT", "6060"))
 DEBUG_ADDR = f" -debug-addr 127.0.0.1:{DEBUG_PORT}" if os.environ.get("DEBUG_PROFILE", "") not in ("", "0") else ""
 # MEM_LIMIT sets -mem-limit on every node — the GOMEMLIMIT OOM mitigation
@@ -62,8 +60,8 @@ DEBUG_ADDR = f" -debug-addr 127.0.0.1:{DEBUG_PORT}" if os.environ.get("DEBUG_PRO
 # 2 GB fleet: the a9cfc06 heap profiles proved backpressure + GOMEMLIMIT are
 # COMPLEMENTARY (backpressure bounds the live set; the limit caps the ~2.2× GC
 # amplification over it), yet the deep runs since were launched without it
-# (console-a434494-deep.log has no -mem-limit) and a434494's val-d kernel-OOM'd
-# during cold-sync churn (#563). Defaulted so the proven mitigation cannot be
+# (console-the field run.log has no -mem-limit) and a434494's val-d kernel-OOM'd
+# during cold-sync churn. Defaulted so the proven mitigation cannot be
 # dropped again; override for bigger boxes (e.g. 3000M on e2-medium), MEM_LIMIT=0
 # to disable for an attribution run.
 MEM_LIMIT = f" -mem-limit {os.environ.get('MEM_LIMIT', '1500M')}" if os.environ.get("MEM_LIMIT", "1500M") not in ("", "0") else ""
@@ -84,7 +82,7 @@ STORE = "/var/lib/silt"
 # IPs are STATIC and must sit in the subnet the role belongs to (public vs nat).
 # Zones are spread across regions on purpose, to exercise REAL inter-node latency.
 NODES = [
-    # name        role         seed  ip            zone
+    # name role seed ip zone
     ("val-a",     "validator", 6001, "10.20.0.11", PRIMARY_ZONE),
     ("val-b",     "validator", 6002, "10.20.0.12", "us-east1-b"),
     ("val-c",     "validator", 6003, "10.20.0.13", "europe-west1-b"),
@@ -114,13 +112,13 @@ if os.environ.get("SMOKE") == "1":
 # machinery (store-2 caretaker, relay judge, store-1 skim observer), validators
 # are never killable, and the publisher self-holds nothing — so at SYBILS=0 the
 # "3 columns with all-killable holders" premise is UNSATISFIABLE BY CONSTRUCTION
-# (proven on LOCAL run 577f0f1-45838: 16 columns, all on reserved/consensus
+# (proven on LOCAL run the field run: 16 columns, all on reserved/consensus
 # nodes, 0 killable — deterministic, every seed). ECONOMY=1 adds two dedicated
 # killable stores. TWO, not one: 16 columns over ~9 eligible holders ≈ 1.8 per
 # holder — one store expects ~2 killable columns against a need of 3. They get
 # NO external IP on GCP (internal_only → island pattern: Cloud NAT egress, IAP
 # reach) because ECONOMY=1 SYBILS=8 already saturates every region's default
-# 8-IP quota. Deliberation: docs/thinking/2026-08-20-economy-premise-killable-pool.md.
+# 8-IP quota. Deliberation:.
 ECONOMY = 0 if os.environ.get("SMOKE") == "1" else int(os.environ.get("ECONOMY", "0"))
 if ECONOMY:
     NODES.append(("store-3", "storage", 6103, "10.20.0.23", PRIMARY_ZONE))
@@ -134,26 +132,24 @@ _INTERNAL_ONLY = {"store-3", "store-4"}  # no-external-IP main-swarm nodes (quot
 # reach the bond-DISTINCT maturity threshold to shed the anchors — the capture is
 # refused (ErrAnchorRequired), and ≥8 equal single-domain bonds trip the bond-
 # atomization note. This is the property the LOCAL sybil suite can only scope down
-# to the standing gate; the cloud is where the PURE anchor gate is certified.
+# to the standing gate; the cloud is where the PURE anchor gate is verifies.
 # Off by default (0 extra VMs). `SYBILS=8 ./cloudtest.sh` opts in. Never in SMOKE.
 SYBILS = 0 if os.environ.get("SMOKE") == "1" else int(os.environ.get("SYBILS", "0"))
 
-# MATURING topology (re-split 2026-08-15 per the PE concurrence,
-# silt-agent-memory/principal-engineer/reviews/maturing-topology-resplit-concurrence-PE-2026-08-15.md):
-# the base topology NEVER matures BY DESIGN, and neither did the original
+# MATURING topology.
+# The base topology NEVER matures BY DESIGN, and neither did the original
 # MATURING=1 parameterization — the latch was UNREACHABLE BY CONSTRUCTION:
 # C2Metric EXCLUDES anchors (chain.go — counting the scaffolding's own bonds to
-# shed the scaffolding would be circular, immutable #3), all 4 validators here
+# shed the scaffolding would be circular), all 4 validators here
 # ARE the anchors, and the only non-anchor cohort (8 single-domain Sybils)
-# aggregates to NakamotoDomains=1 < bar 2 — the certified C2 discount doing its
-# job. Pinned by core/chain/maturing_topology_premise_test.go; deliberation in
-# docs/thinking/2026-08-15-maturing-latch-premise-unreachable.md.
+# aggregates to NakamotoDomains=1 < bar 2 — the C2 discount doing its
+# job. Pinned by core/chain/maturing_topology_premise_test.go.
 #
 # `MATURING=1 SYBILS=8 ./cloudtest.sh` therefore re-splits the 8 cohort slots:
 # 4 HONEST MATURERS (non-anchor validators, full 64M bond, NO -domain — unset
 # domains count as independent address-diversity groups) + 4 single-domain
 # MinBond Sybils. The maturers are what the maturity metric is designed to see
-# (the I3 oracle's certified shape, modelcheck_i3_test.go matureWeightedEpoch,
+# (the I3 oracle's shape, modelcheck_i3_test.go matureWeightedEpoch,
 # now on the wire): at full drain the non-anchor set is 4×64M distinct +
 # 4×1M one-domain → NakamotoOperators=2, NakamotoDomains=2 → min=2 ≥ bar 2
 # (margin 1, uniform across every consensus role) → the everMature latch trips,
@@ -164,7 +160,7 @@ SYBILS = 0 if os.environ.get("SMOKE") == "1" else int(os.environ.get("SYBILS", "
 # maturers stopped too — must be refused for lack of frozen-weight
 # super-majority), and the weak-subjectivity cold-sync.
 #
-# WHAT THIS FIELD-PROVES, AND WHAT IT DOES NOT (PE note 1 — disclose, don't
+# WHAT THIS FIELD-PROVES, AND WHAT IT DOES NOT
 # inflate): it field-confirms the handoff MECHANISM — the real shed on the
 # wire, post-shed commits via the bonded set, the weight-quorum SHAPE, WS
 # cold-sync. It does NOT field-test the ⅓-weight STALL BOUNDARY: the 4×1M
@@ -172,7 +168,7 @@ SYBILS = 0 if os.environ.get("SMOKE") == "1" else int(os.environ.get("SYBILS", "
 # drills confirm shape, not boundary. The boundary stays the deterministic
 # tier's job (the I3 oracle) + the red team. MATURING=0 topologies (the P1
 # launch gate, 5-sybil-no-capture at 8 sybils) are UNTOUCHED by this re-split
-# (PE note 3). Mutually exclusive with flow 5 (the anchor-gate capture premise
+# ). Mutually exclusive with flow 5 (the anchor-gate capture premise
 # assumes a network that never sheds).
 MATURING = 0 if os.environ.get("SMOKE") == "1" else int(os.environ.get("MATURING", "0"))
 # Place the Sybil cohort in the SECONDARY regions' IP HEADROOM, never the primary.
@@ -191,7 +187,7 @@ else:
 # MATURING re-split: the first 4 cohort slots become HONEST MATURERS (the
 # non-anchor distinct-operator cohort the maturity metric gates on — see the
 # MATURING comment above); the rest stay single-domain Sybils. MATURING=0 keeps
-# all slots as Sybils, byte-identical to the P1 launch topology (PE note 3).
+# all slots as Sybils, byte-identical to the P1 launch topology).
 _N_MATURERS = 4 if MATURING else 0
 for _i in range(SYBILS):
     _z = _syb_slots[_i] if _i < len(_syb_slots) else _syb_slots[_i % len(_syb_slots)]
@@ -201,10 +197,10 @@ for _i in range(SYBILS):
         NODES.append((f"sybil-{_i+1-_N_MATURERS}", "sybil", 6601 + _i, f"10.20.0.{61+_i}", _z))
 
 # ── The equivocation island (owner directive 2026-08-20; design:
-# docs/thinking/2026-08-20-equivocation-island-design.md). The ONE destructive
+# ). The ONE destructive
 # drill (a proven double-sign is a PERMANENT eviction, F2) runs on EVERY sheet,
 # but in a fully-contained SEPARATE consensus universe so its slash never taxes
-# the main sheet's fault tolerance (the PE 2026-08-17 zero-FT-tail objection).
+# the main sheet's fault tolerance zero-FT-tail objection).
 # Four objective validators anchored ONLY to each other (own genesis, own
 # -persistent-peers); no main-swarm node names them and they name no main-swarm
 # node — consensus containment. On GCP they get NO external IP (Cloud NAT egress),
@@ -243,10 +239,10 @@ def main():
     # GCP subnets are REGIONAL, so a node in us-east1 cannot attach to a
     # us-central1 subnet. Give each region its own /24 and remap every non-NAT
     # node's static IP into its region's network — the host octet (which encodes
-    # role: .11-.14 validators, .21 storage, …) is preserved, so addressing stays
+    # role:.11-.14 validators,.21 storage, …) is preserved, so addressing stays
     # legible and deterministic. Cross-region internal IPs remain reachable over
     # the (global) VPC. The single NAT subnet stays in the default region.
-    #   default region → 10.20.0.0/24 ; others → 10.21/.22/… (.30 is the NAT subnet)
+    #  default region → 10.20.0.0/24; others → 10.21/.22/… (.30 is the NAT subnet)
     def region_of(zone):
         return zone.rsplit("-", 1)[0]
     pub_regions = sorted({region_of(n["zone"]) for n in nodes.values() if n["role"] != "natted"})
@@ -297,10 +293,10 @@ def main():
     island_boot = island[0] if island else None
     maturers = [name for name, n in nodes.items() if n["role"] == "maturer"]
     n_mat = len(maturers)
-    # syb_quorum retained for the meta/report only. NOTE (#338 cloud GAP root cause):
+    # syb_quorum retained for the meta/report only. NOTE (cloud GAP root cause):
     # the Sybil role must run the SAME -quorum FLOOR as the rest of the swarm, NOT a
     # self-majority. -quorum WAS a hard floor on ValidateCommit (max(Quorum,
-    # bftThreshold)) until #380 direction (1) made the objective-mode bar derived and
+    # bftThreshold)) until direction (1) made the objective-mode bar derived and
     # -quorum a proposer-side gather target only; keep the uniform value regardless (it
     # is the gather target). Under the old rule a Sybil set to n_syb//2+1 (=5 at SYBILS=8) re-validated the
     # anchors' honestly-committed blocks (2 attestations) under ITS floor of 5, rejects
@@ -309,7 +305,7 @@ def main():
     # "self-majority capture" is sized by bftThreshold over the Sybils' committed bond,
     # not a config knob, so a uniform floor both lets the Sybils SYNC and makes their
     # capture attempt reach the real ANCHOR gate (ErrAnchorRequired) rather than dying
-    # on a quorum count. See #380 (the objective-mode quorum-floor footgun).
+    # on a quorum count. See (the objective-mode quorum-floor footgun).
     syb_quorum = (n_syb // 2 + 1) if n_syb else 0   # reporting only; the Sybil daemon uses the uniform `quorum`
     # Size quorum for f=1 crash tolerance: after one validator is down, the
     # proposer + `quorum` attesters must still be reachable. quorum = n_val - 2
@@ -346,12 +342,12 @@ def main():
     margin_flag = " -operator-margin 1" if MATURING else ""
     syb_bond = min_bond if MATURING else bond
 
-    # -request-timeout 8s: a belt for the multi-region cert run (#286). The product now
+    # -request-timeout 8s: a belt for the multi-region cert run. The product now
     # extends a request's transport deadline in proportion to the OUTBOUND payload (a
     # validator's one-time ~1.5 MB bond-registration/genesis block gets WAN headroom
     # automatically), but a generous base leaves margin on a truly bad transcontinental
     # path. Uniform across all roles so a config mismatch can't perturb objective quorum
-    # math on a fresh network. holder-fetch keeps its own tighter deadline (#277).
+    # math on a fresh network. holder-fetch keeps its own tighter deadline.
     common = f"-listen 0.0.0.0:{SWARM_PORT} -store {STORE} -mdns=false -log {LOG_LEVEL} -request-timeout 8s{LOOP_BUDGET}{DIAG}"
     # Validators log at VALIDATOR_LOG_LEVEL (debug by default — see the constant above).
     common_validator = common.replace(f"-log {LOG_LEVEL}", f"-log {VALIDATOR_LOG_LEVEL}", 1)
@@ -361,7 +357,7 @@ def main():
         role, ip = n["role"], n["ip"]
         if role == "validator":
             attesters = ",".join(nodes[v]["nodeid"] for v in validators if v != name)
-            # #286 Layer 2 (docs/network-durability.md §8): at genesis there is no chain,
+            #  Layer 2): at genesis there is no chain,
             # so a proposer cannot DISCOVER its attesters' addresses — and hub-and-spoke
             # bootstrap (one seed) never converges a full mesh because silt's routing table
             # holds bare NodeIDs. Configure every validator with the WHOLE validator set as
@@ -376,35 +372,35 @@ def main():
                  f"-bond {bond} -bond-audit 30s -capacity 5G")
             if name == boot:
                 a += f" -serve-registry 0.0.0.0:{REGISTRY_PORT}"   # boot validator issues tokens
-                # R2.9 paid DELIVERY lane, armed on the boot validator only (it is the token
+                #  paid DELIVERY lane, armed on the boot validator only (it is the token
                 # issuer, -validator implies the role): the flow_delivery_lane grade drives
                 # `swarm receipt` against it. The three companion flags are the daemon's own
                 # start preconditions. The idle window is NO LONGER refuse-until-set — owner
-                # call 4 of D-TRUE-UP-CALLS-2026-09-07 released it and the flag ships a 24m
+                # call 4 of released it and the flag ships a 24m
                 # default; what survives is the daemon's refusal BELOW the derived floor
                 # (deliveryIdleBound x divisor/(divisor-1) = 430s x 4/3 ~ 573s). This comment
                 # used to say "90s here so an idle close is observable inside one flow": that
                 # value is not in the launch line below (it passes 24m) and a daemon started
                 # at 90s would now REFUSE. A priced lane still refuses to start with the
-                # faucet unlimited (R2.12, G-R212-1). The epoch clock
+                # faucet unlimited. The epoch clock
                 # the guard needs is DERIVED on the objective path (DerivedEpochBlocks). The
                 # lane ARMS either way; whether an E->key binding is COMMITTED on a given sheet
                 # decides which arm row 13 grades — refused at the withdrawal with nothing spent,
                 # or banked. The flow grades both and needs no harness change to move between
-                # them. (This comment used to give the reason as "era-4 is dark ... until the
-                # R3.4 stamp raise". That is void as of 2026-09-11: this harness passes no
+                # them. (This comment used to give the reason as "era-4 is dark... until the
+                #  stamp raise". That is void as of 2026-09-11: this harness passes no
                 # -era4-activation-height, so every daemon takes the binary default of 1 and
                 # era-4 is live from height 1. Why a binding has not committed on a sheet is
                 # unmeasured here — do not restate a reason in its place.)
                 # The faucet bucket is 64 (not the e2e's 256): the daemon refuses to start above
                 # a DERIVED capacity cap (~327 at today's inputs, cmd/silt/daemon.go), and 256
                 # sat at 78 % of it — a moved input would have refused the boot validator and
-                # lost the whole sheet (blind PE 2026-09-07 item 6). 64 covers every identity a
+                # lost the whole sheet item 6). 64 covers every identity a
                 # sheet registers on it with 5x margin below the cap. The other side of that
-                # trade (blind PE re-review): 64/hour is the boot validator's publish-mint
+                # trade: 64/hour is the boot validator's publish-mint
                 # headroom once the lane is LIVE (17 ft_publish sites x retries); safe today by
                 # the faucet's one-fee advance floor — re-measure at the stamp raise.
-                # Lane C2: the idle window is the SHIPPED default (24m), not the 90s this
+                # this lane: the idle window is the SHIPPED default (24m), not the 90s this
                 # harness ran on every graded sheet until 2026-09-09. 90s guarantees only
                 # 67.5s of survival since a real settlement (the stamp is coarsened to
                 # window/4), which is under even the 190s down-designee escape bound this
@@ -427,7 +423,7 @@ def main():
             # un-dialable (no -advertise): must reach the swarm THROUGH the relay
             return f"daemon -id-seed {n['seed']} {common} -bootstrap {bootstrap} -relay-via {relay_ref} -capacity 2G"
         if role == "adversary":
-            # honest by default; #184 scenarios relaunch it with -equivocate/-forge-block/etc.
+            # honest by default scenarios relaunch it with -equivocate/-forge-block/etc.
             # Same maturity/attester baseline as the honest validators so its only
             # difference is the injected red-team flag — otherwise the mismatched
             # config can perturb objective quorum math on a fresh network.
@@ -466,7 +462,7 @@ def main():
             # attestations the chain refuses to advance (ErrAnchorRequired). ≥8 equal
             # single-domain bonds also trip the atomization note.
             #
-            # -persistent-peers over the REAL validator set (#338): a sybil's
+            # -persistent-peers over the REAL validator set: a sybil's
             # -attesters are only other sybils — none of whom hold the committed
             # chain — so without a configured, dialable path to the validators the
             # cohort can neither sync the chain nor submit its bond registrations,

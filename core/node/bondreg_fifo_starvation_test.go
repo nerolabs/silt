@@ -10,16 +10,15 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// The confirm-run 54003f7-91159 drain-pace repro (docs/thinking/2026-08-16-441-
-// confirm-run-latch-late.md): the 3rd maturer's FIRST-TIME registration sat in
-// the designees' queues for 22 minutes while lower-ID renewals banked every
-// block — because the reg fold sorts `fresh` by validator ID and the ~2 MiB
-// budget admits one plot-sized reg per block, ID order is a strict PRIORITY:
-// the highest-ID first-timer loses to ANY lower-ID renewal, every block, for
-// as long as renewal traffic flows. This is the exact starvation class the
-// #441 certification closed for entries with FIFO (Addition 2: no fees ⇒ no
-// priority order that can defer indefinitely) — still live on the reg side
-// (#429 had named it: "ID-sorted packing makes order seed-luck").
+// The confirm-run the field run drain-pace repro confirm-run-latch-late.md: the
+// 3rd maturer's FIRST-TIME registration sat in the designees' queues for 22
+// minutes while lower-ID renewals banked every block — because the reg fold
+// sorts `fresh` by validator ID and the ~2 MiB budget admits one plot-sized reg
+// per block, ID order is a strict PRIORITY: the highest-ID first-timer loses to
+// ANY lower-ID renewal, every block, for as long as renewal traffic flows. This
+// is the exact starvation class the research closed for entries with FIFO
+// (Addition 2: no fees ⇒ no priority order that can defer indefinitely) — still
+// live on the reg side.
 //
 // FAILING-FIRST: RED under today's ID-sorted fold — the low-ID renewal wins
 // every block and the high-ID first-timer never banks within the budget.
@@ -80,5 +79,5 @@ func TestBondRegFIFONoIDSortStarvation(t *testing.T) {
 		}
 	}
 	_ = g
-	t.Fatalf("ID-SORT STARVATION: the high-ID FIRST-TIME reg never banked across %d blocks while the lower-ID renewal stream won every one-reg budget slot — the reg fold needs FIFO-by-arrival (the #441 Addition-2 rule, reg side)", blocks)
+	t.Fatalf("ID-SORT STARVATION: the high-ID FIRST-TIME reg never banked across %d blocks while the lower-ID renewal stream won every one-reg budget slot — the reg fold needs FIFO-by-arrival (the  Addition-2 rule, reg side)", blocks)
 }

@@ -2,13 +2,12 @@ package main
 
 import "testing"
 
-// D-TIERING capability axes at the daemon surface (docs/decisions.md D-TIERING §4,
-// the near-term build-gated mode flags). The content-serving axis has two
-// spellings — the positive `-serve-content` and the older negative `-freeload` —
-// and the whole point of the positive form is that a tier profile composes
-// without double negatives. These pin that the two spellings agree, that the
-// legacy flag is untouched, and that a contradictory pair fails loudly instead of
-// silently picking one (S3).
+// capability axes at the daemon surface §4, the near-term build-gated mode flags.
+// The content-serving axis has two spellings — the positive `-serve-content` and
+// the older negative `-freeload` — and the whole point of the positive form is
+// that a tier profile composes without double negatives. These pin that the two
+// spellings agree, that the legacy flag is untouched, and that a contradictory
+// pair fails loudly instead of silently picking one (S3).
 func TestResolveContentServing(t *testing.T) {
 	cases := []struct {
 		name            string

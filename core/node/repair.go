@@ -60,7 +60,7 @@ func (n *Node) Care(reg ports.Registry, ch link.CareHandle) {
 }
 
 // reconcileWorkingSet drops a crashed repair's orphaned survivor fetches at
-// boot (#502). A repairing caretaker (or judging caretaker-judge) pulls up to
+// boot. A repairing caretaker (or judging caretaker-judge) pulls up to
 // k×stripes survivor chunks and drops them only in the post-reconstruction
 // cleanup continuation — a restart in that window kills the chain, and the
 // pulls otherwise sit in the store forever: record-less bytes counting against
@@ -69,9 +69,9 @@ func (n *Node) Care(reg ports.Registry, ch link.CareHandle) {
 // The rule: a LEAF of this cared root, present in the store, with no proof in
 // the PERSISTED backing, is an orphan. Every legitimate leaf holding carries a
 // persisted proof (MsgStoreChunk refuses proof-less coded shards; the repair
-// self-hold and NetGetRetain mint one; plain NetGet drops its working set —
-// #500, which this rule depends on). Manifest chunks are exempt — caretakers
-// hold them bare by design (the warm start above). n.proofs (durable truth) is
+// self-hold and NetGetRetain mint one; plain NetGet drops its working set,
+// which this rule depends on). Manifest chunks are exempt — caretakers hold
+// them bare by design (the warm start above). n.proofs (durable truth) is
 // consulted, never proofMeta, which is rebuilt lazily at boot and would race.
 // Runs from Care's warm-start continuation: at boot nothing is in flight, so
 // the rule has no false positives.
@@ -133,7 +133,7 @@ func (n *Node) AnnounceHeld(done func(int)) {
 
 // StartReprovide begins a self-rescheduling re-announce of all held content so a
 // holder's provider records never lapse. Records carry a ProviderRecordTTL freshness
-// lease and GetProviders serves ONLY Live() records; AnnounceHeld runs once, at
+// lease and GetProviders serves ONLY Live records; AnnounceHeld runs once, at
 // startup, and nothing else refreshes a general holder's records (repair re-plants
 // only for -care'd roots). So without this a node holding content past the TTL goes
 // silently undiscoverable ~TTL after boot — every GetProviders returns empty and its
@@ -187,7 +187,7 @@ func (n *Node) announceAll(ids []ports.ChunkID, done func()) {
 				}
 				// Don't re-announce to a cooled-dead target: planting a record on a
 				// holder we just failed to reach only eats another full RequestTimeout
-				// (the #277 announce leak — the last ungated provider-record consumer;
+				// (the announce leak — the last ungated provider-record consumer;
 				// resolve/repair/walk are already gated). A dead announce target can't
 				// store the record anyway, so skipping loses nothing.
 				if n.corpseGated(targets[j], n.clock.Now()) {
@@ -226,14 +226,14 @@ func (n *Node) announceTargets(key ports.Hash, closest []ports.NodeID) []ports.N
 // itself. Rescheduling only after the sweep finishes means sweeps never
 // overlap, however long probing takes.
 func (n *Node) repairTick() {
-	// New tick, new corpse epoch (#501): a peer whose retry ladder exhausts
+	// New tick, new corpse epoch: a peer whose retry ladder exhausts
 	// anywhere in THIS tick is skipped by every gated leg for the tick's
 	// remainder, so one sweep pays at most one discovery ladder per corpse
 	// however long the sweep runs relative to the cooldown.
 	n.sweepEpoch++
 	// Age out lapsed provider records once per sweep so a departed holder's stale
 	// record is reclaimed (not just filtered on read) even for keys never fetched
-	// again — the memory half of the #277 lifecycle. Cheap: O(records) per interval.
+	// again — the memory half of the lifecycle. Cheap: O(records) per interval.
 	n.provs.Evict(int64(n.clock.Now()))
 	handles := append([]link.CareHandle(nil), n.care...)
 	var nextRoot func(i int)
@@ -242,7 +242,7 @@ func (n *Node) repairTick() {
 			n.clock.AfterFunc(n.cfg.RepairInterval, n.repairTick)
 			return
 		}
-		// The root advance posts through the loop (#467 audit): a root that
+		// The root advance posts through the loop: a root that
 		// completes synchronously (denied, or a failed registry lookup) would
 		// otherwise chain the whole cared set inline in one loop task.
 		n.repairRoot(handles[i], func() { n.clock.AfterFunc(0, func() { nextRoot(i + 1) }) })
@@ -251,13 +251,13 @@ func (n *Node) repairTick() {
 }
 
 // msBetween is a sweep-narration helper: the span from a to b in whole
-// milliseconds of sim/wall time (#501 phase attribution).
+// milliseconds of sim/wall time.
 func msBetween(a, b ports.Time) int64 {
 	return int64(b-a) / int64(ports.Millisecond)
 }
 
 // shardRef locates one stored shard of a file: which stripe, which
-// position within it (0..k-1 data, k..n-1 parity), and which Merkle
+// position within it (0.k-1 data, k.n-1 parity), and which Merkle
 // leaf it is (for re-attaching storage proofs on redistribution).
 type shardRef struct {
 	id      ports.ChunkID
@@ -273,7 +273,7 @@ func (n *Node) repairRoot(ch link.CareHandle, done func()) {
 	}
 	n.lookupEntryAsync(n.reg, ch.Root, func(entry ports.Entry, ok bool, err error) {
 		if err != nil || !ok {
-			// Observability (#235): a silent skip here hid a caretaker that could
+			// Observability: a silent skip here hid a caretaker that could
 			// not even resolve the entry — indistinguishable from a healthy sweep.
 			n.logf(ports.LogInfo, "repair sweep skipped: registry lookup failed", "root", ch.Root, "err", err)
 			done()
@@ -284,7 +284,7 @@ func (n *Node) repairRoot(ch link.CareHandle, done func()) {
 }
 
 // repairRootEntry continues repairRoot once the registry entry is resolved
-// (asynchronously — #473: the lookup must not hold the loop on a chainless
+// (asynchronously: the lookup must not hold the loop on a chainless
 // caretaker pointed at a network registry).
 func (n *Node) repairRootEntry(entry ports.Entry, ch link.CareHandle, done func()) {
 	// (Re)acquire the manifest each sweep: mostly local cache hits, but
@@ -292,7 +292,7 @@ func (n *Node) repairRootEntry(entry ports.Entry, ch link.CareHandle, done func(
 	// than sitting out the crisis.
 	n.fetchAll(entry.ManifestChunks, func(missing []ports.ChunkID) {
 		if len(missing) > 0 {
-			// Observability (#235): this silent return is the churn stall — a
+			// Observability: this silent return is the churn stall — a
 			// caretaker that never reassembles the manifest never reaches the
 			// probe/repair stage, and before this log it did so invisibly (the
 			// sweep produced no output, indistinguishable from all-healthy).
@@ -320,7 +320,7 @@ func (n *Node) repairRootWithLayout(entry ports.Entry, ch link.CareHandle, done 
 	p := erasure.Params{K: m.K, N: m.N}
 	refs := storedShards(m, p)
 
-	// Phase clocks (#501): sweep DURATION under dead holders is the unbounded
+	// Phase clocks: sweep DURATION under dead holders is the unbounded
 	// quantity — `-repair-interval` bounds only the idle gap — so every completed
 	// sweep names where its time went (manifest-heal / probe / repair), making a
 	// minutes-long sweep self-attributing in any run's journal.
@@ -350,7 +350,7 @@ func (n *Node) repairRootWithLayout(entry ports.Entry, ch link.CareHandle, done 
 					reach++
 				}
 			}
-			// Observability (#235): a completed sweep now says what it saw, so a
+			// Observability: a completed sweep now says what it saw, so a
 			// healthy sweep is distinguishable from one that silently did nothing.
 			// The "shards=… reachable=…" pair is parsed adjacently by the harness
 			// (integration/durability/run.sh care_reachable); new fields append after.
@@ -464,7 +464,7 @@ func (n *Node) probeShard(id ports.ChunkID, key ports.Hash, includeLocal bool, d
 	n.resolveProviders(key, func(provs []ports.NodeID) {
 		// Skip holders we recently failed to reach. A stale record to a dead
 		// node otherwise costs a full RequestTimeout here, every column, every
-		// sweep — the same dial-storm the fetch path fixed (#226). Unfixed on
+		// sweep — the same dial-storm the fetch path fixed. Unfixed on
 		// the probe path it stalls a repair sweep so badly it never completes,
 		// so the caretaker never registers the loss and never repairs (the churn
 		// field-test stall). Guarded by anyLive so we never skip the only
@@ -509,7 +509,7 @@ func (n *Node) probeShard(id ports.ChunkID, key ports.Hash, includeLocal bool, d
 						if d := n.domainOf(pr); d != 0 {
 							domains[d] = true
 						}
-						// Debug narration (#514): name WHO confirmed each shard, so a
+						// Debug narration: name WHO confirmed each shard, so a
 						// "reachable" verdict is attributable to a specific holder — a
 						// probe-vs-holders-view divergence (real bytes on a node one
 						// walk found and another didn't) is diagnosable from the
@@ -531,7 +531,7 @@ func (n *Node) probeShard(id ports.ChunkID, key ports.Hash, includeLocal bool, d
 func (n *Node) repairStripes(m *manifest.Layout, p erasure.Params, refs []shardRef,
 	reachable map[ports.ChunkID]bool, shardDoms map[ports.ChunkID]map[uint64]bool, stripe int, porKey *por.Key, done func()) {
 
-	// Group refs by stripe ONCE (#467 audit): the per-stripe walk below used to
+	// Group refs by stripe ONCE: the per-stripe walk below used to
 	// rescan the whole refs slice every stripe — O(stripes × refs) work per sweep,
 	// all of it monopolizing the loop on a large healthy file.
 	numStripes := p.Stripes(len(m.Chunks))
@@ -582,27 +582,28 @@ func (n *Node) repairStripesFrom(m *manifest.Layout, p erasure.Params, byStripe 
 		}
 	}
 
-	// Post the stripe advance through the loop (#467 audit): a HEALTHY stripe —
-	// the common case, every sweep — continues synchronously, so an inline next()
-	// walked every stripe of a large file O(stripes) deep on one stack, in one
-	// loop task. One tick per stripe bounds depth to O(1) and keeps the loop live.
+	// Post the stripe advance through the loop: a HEALTHY stripe — the common
+	// case, every sweep — continues synchronously, so an inline next walked
+	// every stripe of a large file O(stripes) deep on one stack, in one loop
+	// task. One tick per stripe bounds depth to O(1) and keeps the loop live.
 	next := func() {
 		n.clock.AfterFunc(0, func() { n.repairStripesFrom(m, p, byStripe, reachable, shardDoms, stripe+1, porKey, done) })
 	}
 	if missing > n.cfg.RepairSlack || len(disperseShards) > 0 {
-		// Confirmation gate (#517, network-durability §3: never trust one
-		// sample). A probe verdict is a walk over provider records — a noisy
-		// signal, and maximally noisy on a caretaker's FIRST sweep after
-		// arming, when the publish's records may not have converged to its
-		// fresh vantage: the captured #514 run's first sweep read 3 shards as
-		// missing that were never lost, "repaired" them, and placed the
-		// rebuilds at replication N — false copies nobody paid to place. So a
-		// repair (or dispersion re-spread) fires only when the over-slack
-		// observation PERSISTS across two consecutive sweeps; a clean sweep
-		// resets. Costs one repair interval of latency on a true loss. The
-		// counter stays ≥2 while the condition persists, so a repair that
-		// fails (below k) retries every sweep without re-confirming what the
-		// failed attempt just verified.
+		// Confirmation gate (network-durability §3: never trust one
+		// sample). A probe verdict is a walk over provider records — a
+		// noisy signal, and maximally noisy on a caretaker's FIRST
+		// sweep after arming, when the publish's records may not have
+		// converged to its fresh vantage: the captured run's first
+		// sweep read 3 shards as missing that were never lost,
+		// "repaired" them, and placed the rebuilds at replication N —
+		// false copies nobody paid to place. So a repair (or
+		// dispersion re-spread) fires only when the over-slack
+		// observation PERSISTS across two consecutive sweeps; a clean
+		// sweep resets. Costs one repair interval of latency on a true
+		// loss. The counter stays ≥2 while the condition persists, so
+		// a repair that fails (below k) retries every sweep without
+		// re-confirming what the failed attempt just verified.
 		key := stripeKey{root: m.Root(), stripe: stripe}
 		n.repairConfirm[key]++
 		if n.repairConfirm[key] < 2 {
@@ -632,21 +633,20 @@ func (n *Node) repairStripesFrom(m *manifest.Layout, p erasure.Params, byStripe 
 	next()
 }
 
-// repairStripe fetches whatever shards of the stripe it can get —
-// deliberately trying ALL of them, since the probe map may be stale by
-// the time we act — reconstructs the rest, verifies every rebuilt shard
-// against the manifest's hashes, and re-distributes the missing ones to
-// fresh nodes. The caretaker keeps nothing afterward — it's a
-// paramedic, not a hoarder. A failed attempt (below k fetchable) is
-// counted and simply retried on the next sweep.
-// selfHoldEligible reports whether the paramedic may KEEP a shard it rebuilt
-// rather than push it to a remote holder — the (a-domain-fresh) gate (PE ruling
-// 2026-08-19). Two conditions, both required: the repair economy is ON (off ⇒ the
-// exact prior remote-placement behavior), AND this node's own failure domain is
-// not already holding a shard of the stripe (usedDomains, seeded from the
-// survivors). The second is the S2-safety invariant: self-hold ONLY when it cannot
-// reduce failure-domain diversity. Domain 0 (unset/unknown) is never eligible — an
-// unplaced node can't prove its domain is fresh, so it stays on the remote path.
+// repairStripe fetches whatever shards of the stripe it can get — deliberately
+// trying ALL of them, since the probe map may be stale by the time we act —
+// reconstructs the rest, verifies every rebuilt shard against the manifest's
+// hashes, and re-distributes the missing ones to fresh nodes. The caretaker keeps
+// nothing afterward — it's a paramedic, not a hoarder. A failed attempt (below k
+// fetchable) is counted and simply retried on the next sweep. selfHoldEligible
+// reports whether the paramedic may KEEP a shard it rebuilt rather than push it to
+// a remote holder — the (a-domain-fresh) gate. Two conditions, both required: the
+// repair economy is ON (off ⇒ the exact prior remote-placement behavior), AND this
+// node's own failure domain is not already holding a shard of the stripe
+// (usedDomains, seeded from the survivors). The second is the S2-safety invariant:
+// self-hold ONLY when it cannot reduce failure-domain diversity. Domain 0
+// (unset/unknown) is never eligible — an unplaced node can't prove its domain is
+// fresh, so it stays on the remote path.
 func (n *Node) selfHoldEligible(usedDomains map[uint64]int) bool {
 	if !n.cfg.RepairEconomy {
 		return false
@@ -659,7 +659,7 @@ func (n *Node) repairStripe(m *manifest.Layout, p erasure.Params, stripeRefs []s
 	// One cached Merkle tree for the whole stripe repair: place/spread below build
 	// a proof per shard, and the standalone manifest.Prove is O(n) per call, so this
 	// was O(shards·n) on the loop. The tree makes each proof O(log n) and gives the
-	// root without a second O(n) MerkleRoot recompute (#340).
+	// root without a second O(n) MerkleRoot recompute.
 	tree := manifest.BuildTree(m.Leaves())
 	root := tree.Root()
 	realData := 0
@@ -680,7 +680,7 @@ func (n *Node) repairStripe(m *manifest.Layout, p erasure.Params, stripeRefs []s
 		}
 	}
 	// The caretaker-judge quorum for this root: rebuilt shards PREFER holders
-	// outside it (#518). A claim excludes both the paramedic and the named
+	// outside it. A claim excludes both the paramedic and the named
 	// holder from judging, so with two caretakers a rebuilt shard placed on
 	// the OTHER one leaves zero eligible judges — the claim dies silently and
 	// the bounty starves (captured: all four of a repair's claims naming the
@@ -745,18 +745,19 @@ func (n *Node) repairStripeFetch(m *manifest.Layout, p erasure.Params, stripeRef
 				toPlace = append(toPlace, r)
 			}
 		}
-		// Re-seed each rebuilt shard onto its COLUMN — the nodes closest to
-		// colKey(root, pos) — so it rejoins the hosts its column-siblings
-		// already live on. Within-column anti-affinity is then structural.
-		// Steer the rebuilt columns into failure domains the surviving
-		// columns aren't already using (usedDomains, seeded from the
-		// survivors), so repair rebuilds spread rather than converging onto
-		// a few hosts as churn shrinks the network. (r.pos is the shard's
-		// column: 0..k-1 data, k..n-1 parity.)
-		// Dispersion audit: after rebuilding, place ONE extra copy of each
-		// over-exposed column (those living in only the crowded domain) on a
-		// domain the stripe isn't already using. The pinned column stays put;
-		// this just adds diversity, so next sweep sees it spread across ≥2
+		// Re-seed each rebuilt shard onto its COLUMN — the nodes
+		// closest to colKey(root, pos) — so it rejoins the hosts its
+		// column-siblings already live on. Within-column anti-affinity
+		// is then structural. Steer the rebuilt columns into failure
+		// domains the surviving columns aren't already using
+		// (usedDomains, seeded from the survivors), so repair rebuilds
+		// spread rather than converging onto a few hosts as churn
+		// shrinks the network. (r.pos is the shard's column: 0.k-1
+		// data, k.n-1 parity.) Dispersion audit: after rebuilding,
+		// place ONE extra copy of each over-exposed column (those
+		// living in only the crowded domain) on a domain the stripe
+		// isn't already using. The pinned column stays put; this just
+		// adds diversity, so next sweep sees it spread across ≥2
 		// domains and stops flagging it.
 		var toSpread []shardRef
 		for _, r := range stripeRefs {
@@ -809,13 +810,14 @@ func (n *Node) repairStripeFetch(m *manifest.Layout, p erasure.Params, stripeRef
 			n.IterativeFindNode(colKey(root, r.pos), func(closest []ports.NodeID) {
 				candidates := preferNonJudges(n.preferFreshDomain(closest, usedDomains), judges)
 				want := n.cfg.Replication
-				// (a-domain-fresh) — PE ruling 2026-08-19. With the economy on, the
-				// paramedic KEEPS the shard it rebuilt (becoming the payee) IFF its
-				// own failure domain is unused by this stripe: it funds the node that
-				// bore the reconstruction (bandwidth + the ~640MiB-1GiB RAM peak)
-				// WITHOUT reducing failure-domain diversity — self-hold only when it
-				// cannot. Economy off, or domain already used, falls straight through
-				// to the remote placement exactly as before.
+				// Domain-fresh self-hold. With the economy on, the paramedic KEEPS
+				// the shard it rebuilt (becoming the payee) IFF its own
+				// failure domain is unused by this stripe: it funds the node
+				// that bore the reconstruction (bandwidth + the ~640MiB-1GiB
+				// RAM peak) WITHOUT reducing failure-domain diversity —
+				// self-hold only when it cannot. Economy off, or domain
+				// already used, falls straight through to the remote placement
+				// exactly as before.
 				if n.selfHoldEligible(usedDomains) &&
 					n.hostShardLocally(r.id, shards[r.pos], proof) {
 					holder = n.id
@@ -853,7 +855,7 @@ func (n *Node) repairStripeFetch(m *manifest.Layout, p erasure.Params, stripeRef
 }
 
 // preferNonJudges stably reorders placement candidates so nodes OUTSIDE the
-// caretaker-judge quorum come first (#518): a repair claim excludes both the
+// caretaker-judge quorum come first: a repair claim excludes both the
 // paramedic and the named holder from judging, so a rebuilt shard placed on
 // the only other judge leaves the claim with nobody to judge it. Stable, so
 // the domain-diversity preference order is preserved within each class; a
@@ -875,7 +877,7 @@ func preferNonJudges(candidates []ports.NodeID, judges map[ports.NodeID]bool) []
 	return append(out, deferred...)
 }
 
-// stripeKey names one erasure stripe of one cared root — the unit the #517
+// stripeKey names one erasure stripe of one cared root — the unit the
 // repair-confirmation gate counts observations over.
 type stripeKey struct {
 	root   ports.Hash

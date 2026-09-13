@@ -1,34 +1,33 @@
 package depcheck
 
-// R3.1 V2 — the SMT second-preimage / domain-separation scope gate (verification half).
+// V2 — the SMT second-preimage / domain-separation scope gate (verification half).
 //
-// Binding spec: docs/thinking/2026-09-01-smt-domain-separation-close-design.md, Part 2 (the
-// three scope invariants) and Part 3 "V2". The Researcher certifies the disjoint-preimage
-// ARGUMENT separately (core/statehash's V1 pins the math the argument rests on); this gate pins
-// the SOURCE CONDITIONS the argument needs to keep holding as the code evolves:
+// The research
+// verifies the disjoint-preimage ARGUMENT separately (core/statehash's V1 pins the math the
+// argument rests on); this gate pins the SOURCE CONDITIONS the argument needs to keep holding
+// as the code evolves:
 //
-//   - SI-1 (non-sum): exactly one smt.NewTrieSpec construction site in non-test code, and it is
-//     (sha256.New(), false).
-//   - SI-2 (default value hasher): zero WithValueHasher references in non-test code.
-//   - SI-3 (no closest proof): zero references to ProveClosest, VerifyClosestProof,
-//     SparseMerkleClosestProof, nilPathHasher, or newNilPathHasher in non-test code — the
-//     unaudited path the Thesis Defense audit's Issue #3 was about.
+// - SI-1 (non-sum): exactly one smt.NewTrieSpec construction site in non-test code, and it is
+// (sha256.New, false).
+// - SI-2 (default value hasher): zero WithValueHasher references in non-test code.
+// - SI-3 (no closest proof): zero references to ProveClosest, VerifyClosestProof,
+// SparseMerkleClosestProof, nilPathHasher, or newNilPathHasher in non-test code — the
+// unaudited path the Thesis Defense audit's Issue #3 was about.
 //
-// THE INVENTORY IS DERIVED, NOT HAND-WRITTEN (scar-inventory-gate-is-a-hand-list, 2026-09-03):
+// THE INVENTORY IS DERIVED, NOT HAND-WRITTEN, 2026-09-03:
 // this walks core/, cmd/, adapters/, internal/ from the repo root by filepath.WalkDir, the same
 // method TestCoreImportsNoAdaptersAndNoEffects and TestGatedRegistryFencedOffFromProduction
 // above already use, and parses each file's AST rather than grepping raw text — a doc comment
 // that MENTIONS one of these symbols (to explain why silt does not use it) must not trip the
-// gate, and a method call through an arbitrary receiver (trie.ProveClosest(...), not just
-// smt.ProveClosest(...)) must.
+// gate, and a method call through an arbitrary receiver (trie.ProveClosest(.), not just
+// smt.ProveClosest(.)) must.
 //
 // This file uses go/parser.ParseFile (like the tests above), not os.ReadFile of a literal path,
 // so scripts/check_source_gates.py's SOURCE GATE / RUNTIME GATE marker discipline (which fires
-// on os.ReadFile("....go")) does not mechanically apply here — the existing depcheck tests in
-// this package follow the same unmarked AST-walk convention. RUNTIME GATE: none; UNGATED: the
-// disjoint-preimage argument itself (Researcher-certified separately, core/statehash V1 pins its
-// math). This gate is structural: it can see call sites and literal argument shapes, not runtime
-// behaviour.
+// on os.ReadFile(".go")) does not mechanically apply here — the existing depcheck tests in this
+// package follow the same unmarked AST-walk convention. RUNTIME GATE: none; UNGATED: the
+// disjoint-preimage argument itself. This gate is structural: it can see call sites and literal
+// argument shapes, not runtime behaviour.
 
 import (
 	"go/ast"
@@ -48,14 +47,14 @@ type smtSite struct {
 	src  string // the call/selector rendered back to source, for a readable failure
 }
 
-// walkSMTSites parses every non-test .go file under core/, cmd/, adapters/, internal/ (repo
+// walkSMTSites parses every non-test.go file under core/, cmd/, adapters/, internal/ (repo
 // root, derived by filepath.WalkDir — never a hand-written file list) and returns:
 //
-//   - trieSpecCalls: every smt.NewTrieSpec(...) call site, with its two argument strings.
-//   - valueHasherSites: every WithValueHasher reference (call or plain selector/ident).
-//   - closestProofSites: every ProveClosest / VerifyClosestProof / SparseMerkleClosestProof /
-//     nilPathHasher / newNilPathHasher reference (call, selector, or plain identifier — a
-//     locally re-implemented helper under one of these names is caught too, not just an import).
+// - trieSpecCalls: every smt.NewTrieSpec(...) call site, with its two argument strings.
+// - valueHasherSites: every WithValueHasher reference (call or plain selector/ident).
+// - closestProofSites: every ProveClosest / VerifyClosestProof / SparseMerkleClosestProof /
+// nilPathHasher / newNilPathHasher reference (call, selector, or plain identifier — a
+// locally re-implemented helper under one of these names is caught too, not just an import).
 func walkSMTSites(t *testing.T) (trieSpecCalls []smtSite, trieSpecArgs [][2]string, valueHasherSites, closestProofSites []smtSite) {
 	t.Helper()
 	repoRoot, err := filepath.Abs(filepath.Join("..", ".."))
@@ -152,7 +151,7 @@ func walkSMTSites(t *testing.T) (trieSpecCalls []smtSite, trieSpecArgs [][2]stri
 }
 
 // dedupeSites collapses sites that were recorded twice for the same file:line (the CallExpr and
-// SelectorExpr cases above can both match a call like x.ProveClosest(...) — once as the call,
+// SelectorExpr cases above can both match a call like x.ProveClosest(.) — once as the call,
 // once as its Fun selector). Keyed on file:line:src.
 func dedupeSites(sites []smtSite) []smtSite {
 	seen := map[string]bool{}
@@ -192,7 +191,7 @@ func itoa(n int) string {
 
 // TestSI1SoleNonSumTrieSpecConstruction pins SI-1: exactly one smt.NewTrieSpec construction site
 // in non-test code across core/, cmd/, adapters/, internal/, and it constructs the non-sum
-// SHA-256 spec (sha256.New(), false) — the spec statehash.Root's trie (smt.NewSparseMerkleTrie)
+// SHA-256 spec (sha256.New, false) — the spec statehash.Root's trie (smt.NewSparseMerkleTrie)
 // implicitly matches. A second construction site, or a different argument pair, is exactly the
 // drift the domain-separation argument (core/statehash V1) does not cover: the argument is about
 // silt's FIXED-WIDTH, non-sum leaf encoding specifically.

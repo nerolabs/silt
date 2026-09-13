@@ -169,7 +169,7 @@ func TestTokenGatherLossyPathChargesExactlyK(t *testing.T) {
 			sched := simclock.New()
 			net := simnet.New(sched, seed, cfg)
 			ncfg := node.DefaultConfig()
-			ncfg.RequestRetries = 6 // ride out the loss (docs/network-durability.md §2)
+			ncfg.RequestRetries = 6 // ride out the loss)
 			ids := make([]ports.NodeID, V)
 			nodes := make([]*node.Node, V)
 			for i := 0; i < V; i++ {

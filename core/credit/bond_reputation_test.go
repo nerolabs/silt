@@ -2,7 +2,7 @@ package credit
 
 import "testing"
 
-// attesterBar mirrors chain.DefaultConfig().MinAttesterRep — the standing a
+// attesterBar mirrors chain.DefaultConfig.MinAttesterRep — the standing a
 // node needs to help commit a block. These tests assert the OUTCOME (can a
 // node clear the bar and vote, or not), never the exact reputation number,
 // so retuning the disk↔standing curve doesn't rot them.
@@ -119,15 +119,15 @@ func TestStandingMustBeSustainedToKeepVoting(t *testing.T) {
 	}
 }
 
-// TestRootOwnerFeedsOnlyTheDedup is the PE-prescribed guard on the bond-root
-// retention decision (RULING-PoD-keystone-owner-knobs-2026-08-26, knob 3): the
-// D-TIERING keystone may drop a LAPSED bond root's owner record from committed
-// state to keep the snapshot bounded, and that is safe only while `rootOwner`
-// feeds the F1 dedup and nothing else. In particular no SLASH path may consult
-// it — slashing is identity-based, and the anti-griefing guarantee comes from
-// per-identity plot sealing (pinned separately by
-// core/bond TestRedteamG2_PlotBoundToClaimedIdentity: a plot sealed for one
-// identity cannot be answered by another), never from keeping the map forever.
+// TestRootOwnerFeedsOnlyTheDedup is the guard on the bond-root
+// retention decision, knob 3: the keystone may drop a LAPSED bond root's owner
+// record from committed state to keep the snapshot bounded, and that is safe
+// only while `rootOwner` feeds the F1 dedup and nothing else. In particular no
+// SLASH path may consult it — slashing is identity-based, and the
+// anti-griefing guarantee comes from per-identity plot sealing (pinned
+// separately by core/bond TestPlotBoundToClaimedIdentity: a plot sealed for
+// one identity cannot be answered by another), never from keeping the map
+// forever.
 //
 // If a future mechanism starts reading rootOwner for lifetime provenance, this
 // test is where that assumption must surface — lifetime provenance lives in the

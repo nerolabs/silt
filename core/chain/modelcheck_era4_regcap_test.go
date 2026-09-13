@@ -13,19 +13,19 @@ import (
 // other modelcheck_* validity oracles and is enforced through ValidateProposal (the path
 // every replica runs on receipt).
 //
-// The certified rule (era4-regcap-recert-VERDICT / era4-regcap-VALUE-DERIVATION-VERDICT,
-// both 2026-08-29): a v5 block is INVALID if len(canonicalBondRegs(b.BondRegs)) > RegCap,
+// The rule (era4-regcap-recert-VERDICT / era4-regcap-VALUE-DERIVATION-VERDICT, both
+// 2026-08-29): a v5 block is INVALID if len(canonicalBondRegs(b.BondRegs)) > RegCap,
 // counting fresh AND renewal alike, after the same-id fold. N = RegCap = 256.
 //
-// These oracles prove EXACTLY the certified properties, each with its RED named:
+// These oracles prove EXACTLY the properties, each with its RED named:
 //
-//   A. > RegCap ALL-FRESH regs → REJECT.
-//   B. > RegCap ALL-RENEWAL regs → REJECT (the flipped ablation: the REFUTED fresh-only
-//      rule wrongly ACCEPTED an all-renewal over-cap block).
-//   C. > RegCap MIXED (fresh + renewal) → REJECT.
-//   D. the count is AFTER canonicalBondRegs: a same-id renew/resize pair counts as ONE.
-//   E. I4 liveness: a block exactly AT the ceiling (RegCap, any mix) ACCEPTS.
-//   F. v4 is UNAFFECTED: a v4 block with > RegCap regs is NOT rejected by RegCap (v5-only).
+// A. > RegCap ALL-FRESH regs → REJECT.
+// B. > RegCap ALL-RENEWAL regs → REJECT (the flipped ablation: the REFUTED fresh-only
+// rule wrongly ACCEPTED an all-renewal over-cap block).
+// C. > RegCap MIXED (fresh + renewal) → REJECT.
+// D. the count is AFTER canonicalBondRegs: a same-id renew/resize pair counts as ONE.
+// E. I4 liveness: a block exactly AT the ceiling (RegCap, any mix) ACCEPTS.
+// F. v4 is UNAFFECTED: a v4 block with > RegCap regs is NOT rejected by RegCap (v5-only).
 //
 // The RED for A/B/C/E-ablation is: delete the `b.Version >= BlockVersionWitnessable` RegCap
 // gate in validateBondRegs and the over-cap block ACCEPTS (or, for E, set RegCap = 255 and
@@ -34,7 +34,7 @@ import (
 // era4RegCapChain builds an objective launch-phase chain whose proposer is a bonded launch
 // anchor (so its proposed block clears ValidateProposal's era-2 proposer checks and reaches
 // the RegCap gate + the v5 root predicate). The regGate stays INACTIVE (no EpochBlocks, no
-// RegGateActivationHeight), so the #506 per-identity R-interval never fires — a renewal in a
+// RegGateActivationHeight), so the per-identity R-interval never fires — a renewal in a
 // later block is admitted, which is exactly what lets these oracles exercise the renewal
 // term the total-count rule must bound. `renewIDs` are pre-registered in genesis (their
 // bondRegHeight is set to 0), so re-registering them in a later block is a genuine RENEWAL
@@ -95,7 +95,7 @@ func buildV5WithRegs(t *testing.T, c *Chain, prop ed25519.PrivateKey, regs []ed2
 	for _, r := range regs {
 		b.BondRegs = append(b.BondRegs, bondReg(r, twoMiB, prev))
 	}
-	setD3Digests(b) // (d-3): an honest v5 proposer commits Answer/Slashes by digest before signing
+	setBlockDigests(b) // an honest v5 proposer commits Answer/Slashes by digest before signing
 	state, log, err := c.postApplyRoots(*b)
 	if err != nil {
 		t.Fatalf("postApplyRoots: %v", err)
@@ -107,11 +107,11 @@ func buildV5WithRegs(t *testing.T, c *Chain, prop ed25519.PrivateKey, regs []ed2
 }
 
 // TestRegCapAllFreshOverCapRejected — gate A. A v5 block with 257 all-FRESH regs (one over the
-// ratified ceiling of 256) is rejected with ErrRegCapExceeded. The over-cap size is the LITERAL
-// 257, NOT RegCap+1: pinning the literal makes this test catch a too-HIGH cap mistake as well as
-// a missing gate. RED (gate ablation): remove the RegCap gate in validateBondRegs → this
-// over-cap block ACCEPTS. RED (value ablation): inject `const RegCap = 257` → the 257-reg block
-// is now AT the (wrong) ceiling and wrongly ACCEPTS.
+// ceiling of 256) is rejected with ErrRegCapExceeded. The over-cap size is the LITERAL 257, NOT
+// RegCap+1: pinning the literal makes this test catch a too-HIGH cap mistake as well as a
+// missing gate. RED (gate ablation): remove the RegCap gate in validateBondRegs → this over-cap
+// block ACCEPTS. RED (value ablation): inject `const RegCap = 257` → the 257-reg block is now AT
+// the (wrong) ceiling and wrongly ACCEPTS.
 func TestRegCapAllFreshOverCapRejected(t *testing.T) {
 	const overCap = 257 // 256 + 1; pinned as a literal, not derived from RegCap
 	c, prop := era4RegCapChain(t, nil)
@@ -127,13 +127,13 @@ func TestRegCapAllFreshOverCapRejected(t *testing.T) {
 	}
 }
 
-// TestRegCapAllRenewalOverCapRejected — gate B, the FLIPPED ablation. A v5 block with
-// 257 all-RENEWAL regs (every id pre-registered in genesis, so bondRegHeight[id] is
-// set) is rejected. The REFUTED fresh-only rule would have EXEMPTED all of these and
-// wrongly accepted the block; the certified total-count rule rejects it. The over-cap size
-// is the LITERAL 257, NOT RegCap+1, so this test also catches a too-HIGH cap. RED (gate
-// ablation): remove the RegCap gate → this over-cap all-renewal block ACCEPTS. RED (value
-// ablation): inject `const RegCap = 257` → the 257-reg block wrongly ACCEPTS.
+// TestRegCapAllRenewalOverCapRejected — gate B, the FLIPPED ablation. A v5 block with 257
+// all-RENEWAL regs (every id pre-registered in genesis, so bondRegHeight[id] is set) is
+// rejected. The REFUTED fresh-only rule would have EXEMPTED all of these and wrongly
+// accepted the block; the total-count rule rejects it. The over-cap size is the LITERAL
+// 257, NOT RegCap+1, so this test also catches a too-HIGH cap. RED (gate ablation): remove
+// the RegCap gate → this over-cap all-renewal block ACCEPTS. RED (value ablation): inject
+// `const RegCap = 257` → the 257-reg block wrongly ACCEPTS.
 func TestRegCapAllRenewalOverCapRejected(t *testing.T) {
 	const overCap = 257               // 256 + 1; pinned as a literal, not derived from RegCap
 	renew := regKeys(420000, overCap) // 257 ids, all pre-registered in genesis below
@@ -181,8 +181,8 @@ func TestRegCapMixedOverCapRejected(t *testing.T) {
 	}
 }
 
-// TestRegCapCountedAfterCanonicalFold — gate D. The count is len(canonicalBondRegs(...)),
-// NOT len(b.BondRegs). A block that lists RegCap distinct ids PLUS one same-id renew/resize
+// TestRegCapCountedAfterCanonicalFold — gate D. The count is len(canonicalBondRegs(.)), NOT
+// len(b.BondRegs). A block that lists RegCap distinct ids PLUS one same-id renew/resize
 // duplicate (so len(b.BondRegs) == RegCap+1 but the canonical fold yields RegCap) must
 // ACCEPT — the duplicate folds to one. RED: count len(b.BondRegs) instead of the canonical
 // fold → this block wrongly REJECTS.
@@ -211,7 +211,7 @@ func TestRegCapCountedAfterCanonicalFold(t *testing.T) {
 	if canon := len(canonicalBondRegs(b.BondRegs)); canon != RegCap {
 		t.Fatalf("fixture: canonical count = %d, want %d (the same-id pair must fold)", canon, RegCap)
 	}
-	setD3Digests(b) // (d-3): honest v5 proposer commits the digests before signing
+	setBlockDigests(b) // honest v5 proposer commits the digests before signing
 	state, log, err := c.postApplyRoots(*b)
 	if err != nil {
 		t.Fatalf("postApplyRoots: %v", err)
@@ -227,11 +227,11 @@ func TestRegCapCountedAfterCanonicalFold(t *testing.T) {
 
 // TestRegCapAtCeilingAccepted — gate E, the I4 liveness edge. A v5 block with EXACTLY 256
 // regs (a fresh+renewal mix) ACCEPTS — the predicate must not reject an honest at-ceiling
-// block. The fixture pins the LITERAL 256 (the ratified consensus value N), NOT the RegCap
-// constant: a value-pinning test must fail when the cap is set wrong. RED (value ablation):
-// inject `const RegCap = 255` and this exactly-256 block wrongly REJECTS.
+// block. The fixture pins the LITERAL 256 (the consensus value N), NOT the RegCap constant:
+// a value-pinning test must fail when the cap is set wrong. RED (value ablation): inject
+// `const RegCap = 255` and this exactly-256 block wrongly REJECTS.
 func TestRegCapAtCeilingAccepted(t *testing.T) {
-	const atCeiling = 256 // the ratified N; pinned as a literal, not derived from RegCap
+	const atCeiling = 256 // the N; pinned as a literal, not derived from RegCap
 	const nRenew = 100
 	renew := regKeys(450000, nRenew)
 	c, prop := era4RegCapChain(t, renew)
@@ -254,7 +254,7 @@ func TestRegCapAtCeilingAccepted(t *testing.T) {
 // TestRegCapDoesNotAffectV4 — gate F. RegCap is v5-ONLY. A v4 block carrying > RegCap regs
 // is NOT rejected by the RegCap rule (it must fail, if at all, for era-3 reasons, never
 // ErrRegCapExceeded). This proves the v5 gate keeps era-3 (v4) validity byte- and
-// behaviour-identical — the frozen era-3 format (#632) is untouched. RED: drop the
+// behaviour-identical — the frozen era-3 format is untouched. RED: drop the
 // `b.Version >= BlockVersionWitnessable` gate → the v4 block is wrongly rejected with
 // ErrRegCapExceeded.
 func TestRegCapDoesNotAffectV4(t *testing.T) {
@@ -270,7 +270,7 @@ func TestRegCapDoesNotAffectV4(t *testing.T) {
 	for _, r := range fresh {
 		b.BondRegs = append(b.BondRegs, bondReg(r, twoMiB, prev))
 	}
-	setD3Digests(b) // (d-3): honest v5 proposer commits the digests before signing
+	setBlockDigests(b) // honest v5 proposer commits the digests before signing
 	state, log, err := c.postApplyRoots(*b)
 	if err != nil {
 		t.Fatalf("postApplyRoots: %v", err)

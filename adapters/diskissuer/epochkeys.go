@@ -1,6 +1,6 @@
 package diskissuer
 
-// R0.4b C3 close — persistence for the PER-EPOCH demand-issuer keys.
+// C3 close — persistence for the PER-EPOCH demand-issuer keys.
 //
 // WHY A SECOND STORE. The publish-token issuer key (Store, above) is ONE key that
 // must never change: peers cache its public half and the chain re-verifies committed
@@ -11,20 +11,19 @@ package diskissuer
 // never enter the demand keyset, or a demand blind bought on the publish lane is a
 // token no bank will ever honour.
 //
-// THE SHAPE (Builder's call; see docs/thinking/2026-09-02-r0.4b-c3-close-design.md §3).
-// ONE file holding a CBOR map epoch → PKCS#1 DER, rewritten atomically (temp +
-// rename) whenever the band changes. Rejected alternatives:
+// THE SHAPE. ONE file holding a CBOR map epoch → PKCS#1 DER, rewritten
+// atomically (temp + rename) whenever the band changes. Rejected alternatives:
 //
-//   - One file per epoch. Containment is marginally better (a corrupt file loses one
-//     epoch, not the band) but it costs a filename codec, a directory scan, and a
-//     per-file "is this corrupt or absent" decision at every load. The band is at
-//     most 2W+1 ≈ 9 keys ≈ 11 KB; there is nothing to gain by paging it.
-//   - Deriving key_E deterministically from one persisted seed. Tempting — a
-//     one-secret store with no pruning — but REFUTED: crypto/rsa.GenerateKey is
-//     explicitly not stable across Go versions, so a toolchain upgrade would silently
-//     regenerate different keys for epochs whose fingerprints are ALREADY COMMITTED,
-//     and the commitment is append-only, so the lane would be dead for W epochs with
-//     no way to re-register. A liveness cliff bought for a few KB.
+// - One file per epoch. Containment is marginally better (a corrupt file loses one
+// epoch, not the band but it costs a filename codec, a directory scan, and a
+// per-file "is this corrupt or absent" decision at every load. The band is at
+// most 2W+1 ≈ 9 keys ≈ 11 KB; there is nothing to gain by paging it.
+// - Deriving key_E deterministically from one persisted seed. Tempting — a
+// One-secret store with no pruning — but REFUTED: crypto/rsa.GenerateKey is
+// explicitly not stable across Go versions, so a toolchain upgrade would silently
+// regenerate different keys for epochs whose fingerprints are ALREADY COMMITTED,
+// and the commitment is append-only, so the lane would be dead for W epochs with
+// no way to re-register. A liveness cliff bought for a few KB.
 //
 // A corrupt file is a hard error, never a silent regeneration — the same rule the
 // publish key store keeps, and for a stronger reason here: quietly minting new keys
@@ -45,17 +44,17 @@ import (
 // EpochStore persists a validator's per-epoch demand-issuer keys at
 // dir/demandkeys.cbor.
 //
-// SERIALIZED (red-team re-break F6, 2026-09-03). The daemon launches every epoch turn
-// as a bare `go rotateDemandKeys(cur)`, and EnsureBand is a read-modify-write over ONE
-// file. Two turns that overlap — an RSA band is ~5 keygens ~ 1 s and an epoch is 8
-// blocks — both Load, both generate, and the later Save CLOBBERS the earlier: a LOST
-// UPDATE of a key whose fingerprint the earlier goroutine already staged for on-chain
-// commitment. applyIssuerKeys is first-write-wins, so once that fingerprint commits the
-// regenerated key can NEVER be registered and the lane is dead for that epoch forever,
-// with nothing to detect it (EnsureBand cannot see the commitment). The race detector
-// never catches it — each goroutine's Load builds its own map, so the corruption is a
-// file-level lost update, not a memory race (measured: -race -count=5 reports nothing).
-// This mutex is the fix; it makes the whole load-generate-save cycle atomic.
+// SERIALIZED, 2026-09-03. The daemon launches every epoch turn as a bare `go
+// rotateDemandKeys(cur)`, and EnsureBand is a read-modify-write over ONE file. Two
+// turns that overlap — an RSA band is ~5 keygens ~ 1 s and an epoch is 8 blocks — both
+// Load, both generate, and the later Save CLOBBERS the earlier: a LOST UPDATE of a key
+// whose fingerprint the earlier goroutine already staged for on-chain commitment.
+// applyIssuerKeys is first-write-wins, so once that fingerprint commits the regenerated
+// key can NEVER be registered and the lane is dead for that epoch forever, with nothing
+// to detect it (EnsureBand cannot see the commitment). The race detector never catches
+// it — each goroutine's Load builds its own map, so the corruption is a file-level lost
+// update, not a memory race (measured: -race -count=5 reports nothing). This mutex is
+// the fix; it makes the whole load-generate-save cycle atomic.
 type EpochStore struct {
 	mu   sync.Mutex
 	path string
@@ -166,13 +165,13 @@ func (s *EpochStore) save(keys map[uint64]*rsa.PrivateKey) error {
 //
 // The two lower bounds differ on purpose:
 //
-//   - keepFrom is cur − W: the issuer must still hold the PRIVATE key for an
-//     in-window past epoch, because a requester whose consensus clock trails by an
-//     epoch names that epoch and the issuer signs for it. That is what makes the
-//     epoch-boundary race a served request instead of a burnt fee.
-//   - genFrom is cur: a fresh node generates only forward. Generating the past band
-//     too would cost W extra RSA keygens at boot for keys nothing was ever issued
-//     under.
+// - keepFrom is cur − W: the issuer must still hold the PRIVATE key for an
+// In-window past epoch, because a requester whose consensus clock trails by an
+// epoch names that epoch and the issuer signs for it. That is what makes the
+// epoch-boundary race a served request instead of a burnt fee.
+// - genFrom is cur: a fresh node generates only forward. Generating the past band
+// too would cost W extra RSA keygens at boot for keys nothing was ever issued
+// under.
 //
 // genTo is cur + W: the key schedule is PRE-PUBLISHED to the end of the
 // pre-publication window the chain accepts, so a token withdrawn at any epoch
@@ -190,17 +189,17 @@ func (s *EpochStore) ensureBand(rng io.Reader, keepFrom, genFrom, genTo uint64) 
 	if err != nil {
 		return nil, err
 	}
-	// THE UPPER PRUNE EDGE IS MONOTONE, NOT THE CALLER'S (red-team F6, 2026-09-03).
+	// THE UPPER PRUNE EDGE IS MONOTONE, NOT THE CALLER'S, 2026-09-03.
 	//
 	// Pruning on `e > genTo` alone is a permanent liveness cliff. genTo is cur+w, and
 	// the daemon launches every epoch turn as a bare `go rotateDemandKeys(cur)`, so
 	// turns complete out of order. A turn for an EARLIER cur then deletes the
-	// pre-published keys a LATER turn already generated AND handed to install(), which
-	// stages their fingerprints on chain via Node.SetDemandIssuerKey. applyIssuerKeys is
-	// first-write-wins, so once a staged fingerprint commits, the key regenerated in its
-	// place can NEVER be registered: the demand lane is dead for that epoch, for that
-	// issuer, forever, and nothing detects it. Measured with no concurrency at all —
-	// RotateWindow(11) to completion, then RotateWindow(10), loses epoch 15.
+	// pre-published keys a LATER turn already generated AND handed to install, which
+	// stages their fingerprints on chain via Node.SetDemandIssuerKey. applyIssuerKeys
+	// is first-write-wins, so once a staged fingerprint commits, the key regenerated
+	// in its place can NEVER be registered: the demand lane is dead for that epoch,
+	// for that issuer, forever, and nothing detects it. Measured with no concurrency
+	// at all — RotateWindow(11) to completion, then RotateWindow(10), loses epoch 15.
 	//
 	// So the retained band's upper edge is max(genTo, highest epoch already on disk). It
 	// only ever grows, so no rotation can shrink another's pre-publication. It stays

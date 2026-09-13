@@ -14,15 +14,11 @@ import (
 // D0 — THE COLD AUDITOR. The driven never-Accept suite.
 // =============================================================================
 //
-// Governing: ROADMAP Lane D row D0; owner call 2 of D-TRUE-UP-CALLS-2026-09-07, ratified
-// 2026-09-07 on direction (a') of
-// /Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R-membership-unbounded-sets-and-recovery-boundary-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md
-// Part 2 (conditions H-1…H-4, advisory H-5); D-RECOMPUTE-FREEZE, which cut this row's dependency
-// on the recompute spine and made it the freeze's whole floor-box gate.
-// Deliberation: docs/thinking/2026-09-09-d0-cold-auditor.md
+// this lane row D0 of on direction (a') of Part 2 (conditions H-1…H-5), which cut this row's dependency on the recompute
+// spine and made it the freeze's whole floor-box gate. Deliberation:
 //
 // WHY THIS FILE EXISTS. D0 is five subtractions and a claim: "the floor box is a cold auditor —
-// it stalls, and it never Accepts." Simplicity rule 7 says a green gate with no demonstrated red is
+// it stalls, and it never Accepts." A green gate with no demonstrated red is
 // decoration, and a row whose deliverable is a deletion is exactly where that rule bites: nothing
 // is easier to ship than a safety property nobody drove a block at. So every v5 block class is
 // driven THROUGH THE DOOR here, twice — once with the honest committed root and once with a
@@ -30,7 +26,7 @@ import (
 //
 // THE ATTACK EACH ARM RUNS. Build a block of the class that the NODE ITSELF accepts (the oracle
 // runs first, so no arm can pass on a block that was never valid), then commit a StateRoot that is
-// NOT the one that payload produces, and re-sign and re-certify it so the forgery is invisible on
+// NOT the one that payload produces, and re-sign and re-check it so the forgery is invisible on
 // the block's face — a fully valid-looking v5 block that lies only about the post-state. The
 // attacker owns the payload, the root, the proposer signature and the whole quorum. The box owns
 // its parent block and its own config, and that is what it stalls on.
@@ -49,19 +45,19 @@ import (
 // WHAT THIS SUITE THEREFORE DOES NOT COVER, recorded so nobody reads it as covering it: because four
 // classes never receive a complete witness, the composition is never exercised PAST the class-S
 // digest reconstruction for bond regs, slashes or the carrier. Whether the recompute would
-// mis-accept a forged root for those classes is not tested here. D-RECOMPUTE-FREEZE scopes that to
-// the frozen adversarial-root ladder (floorbox_recompute_adversarialroot_v5_test.go), which drives
-// it per field across classes P/A/B/M and is green.
+// mis-accept a forged root for those classes is not tested here. scopes that to the frozen
+// adversarial-root ladder (floorbox_recompute_adversarialroot_v5_test.go), which drives it per field
+// across classes P/A/B/M and is green.
 //
 // WHAT THIS FILE IS NOT. It does not forge WITNESSES. That is the recompute's adversarial-root
 // ladder (floorbox_recompute_adversarialroot_v5_test.go — driven per field across classes P/A/B/M
-// with its own completeness meta-test), which D-RECOMPUTE-FREEZE froze. Re-deriving it at the door
-// would buy no property and would grow the keystone the freeze exists to stop growing.
+// with its own completeness meta-test), which froze. Re-deriving it at the door would buy no
+// property and would grow the keystone the freeze exists to stop growing.
 //
-// NON-VACUITY (NG-2). This file is in twinGateFiles, so every Test* here calls
+// NON-VACUITY. This file is in twinGateFiles, so every Test* here calls
 // assertBoxReachesTheDowngrade directly: the fixture's honest block must run the WHOLE composition
-// through the box to the R1.8 downgrade. A box that stalled on everything would satisfy
-// "never Accept" trivially, and that is the failure mode the twin catches.
+// through the box to the downgrade. A box that stalled on everything would satisfy "never Accept"
+// trivially, and that is the failure mode the twin catches.
 
 // coldAuditorClass is one v5 block class: the payload that makes a block a member of it, the
 // Block field it drives (which the coverage meta-test reflects over), and the refusal the door is
@@ -91,7 +87,7 @@ func coldAuditorClasses() []coldAuditorClass {
 			wantSentry: ErrRecomputeGated,
 		},
 		{
-			// Since tagRevLogSize landed (2026-09-11) these two classes no longer stall at P13b:
+			// Since tagRevLogSize landed these two classes no longer stall at P13b:
 			// the parent log size Resolves from the parent's committed StateRoot, the extension
 			// verifies, and the block reaches the SAME far end as the entries class — accepted by
 			// the composition and downgraded at the door. They are now the second and third arms
@@ -152,10 +148,10 @@ var coldAuditorUndriven = map[string]string{
 	// list exists to prevent. It said "P1 binds it to the box's OWN head before any other read",
 	// which is measurably false — the budget check, the recovery decision and the pruned refusal all
 	// run BEFORE P1 — and the door read b.Height for the recovery decision under cover of that
-	// sentence (B-1). A meta-test whose excuses are prose is only as good as the prose: an excuse
+	// sentence. A meta-test whose excuses are prose is only as good as the prose: an excuse
 	// must name the gate that actually covers the field, not the gate a reader would assume.
 	"Height": "position, not a payload class, and it is read in TWO places with two different rules. " +
-		"Inside the composition P1 binds it to the box's own head (TestG3_ParentBindingPrecedesTheCarrierLeg). " +
+		"Inside the composition P1 binds it to the box's own head (TestParentBindingPrecedesTheCarrierLeg). " +
 		"BEFORE the composition the door reads three things — budget, recovery boundary, pruned — and none " +
 		"of them may key on it: the recovery decision keys on head.NextHeight, driven both directions by " +
 		"TestColdAuditor_TheBoundaryPostureIsThePositionOfTheBoxNotTheClaimOfTheBlock",
@@ -163,13 +159,13 @@ var coldAuditorUndriven = map[string]string{
 	"Proposer":    "identity, not a payload class; NewBox refuses a parent whose proposer signature does not verify, and the proposer screens run in the composition",
 	"ProposerSig": "the signature over the class payloads above; every arm here re-signs after forging, so it is exercised by all of them",
 	"Version":     "the class SELECTOR, not a class: TestFloorBox_SubV5BlockRejectedAtTheDoor drives every sub-v5 version, and an above-era version, to Reject through the door",
-	// (d-3). SlashesDigest is a COMMITMENT, not a state-transition payload: the box recomputes a
+	// SlashesDigest is a COMMITMENT, not a state-transition payload: the box recomputes a
 	// state root, and no leaf changes because a digest is present. Its soundness is a VALIDITY
-	// question — does the digest equal its content — and that is a different gate from this door.
-	// The excuse names the gate that actually covers it, per this list's own rule:
+	// question — does the digest equal its content — and that is a different gate from this
+	// door. The excuse names the gate that actually covers it, per this list's own rule:
 	"SlashesDigest": "not a payload class — it commits Slashes rather than transitioning state, so no committed leaf moves for it. " +
-		"Its real risk is digest/content divergence, DRIVEN by G-D3-3/4/5 (TestGD3_345_SlashesDigestConsistency): " +
-		"slashes with no digest, a forged digest, and a digest of nothing are each refused by validateD3Digests, " +
+		"Its real risk is digest/content divergence, DRIVEN by (TestSlashesDigestConsistency): " +
+		"slashes with no digest, a forged digest, and a digest of nothing are each refused by validateBlockDigests, " +
 		"which runs on every disk-write path beside validateEra3Version/validateEra4Version. The Slashes class ABOVE " +
 		"still drives the payload itself through the door to slashedRoot",
 	// The genesis-config bind. Params is GENESIS-ONLY by rule, and this suite drives block classes
@@ -177,9 +173,9 @@ var coldAuditorUndriven = map[string]string{
 	// and the rule that makes it unreachable is itself driven, which is what this list demands of
 	// an excuse:
 	"Params": "genesis-only by validity rule — validateParamsPlacement refuses Params on any block above height 0, " +
-		"DRIVEN by G-CFGBIND-3 (TestGCFGBIND3_ParamsOnlyOnGenesis) on the node path and mirrored into the composition " +
+		"DRIVEN by (TestParamsOnlyOnGenesis) on the node path and mirrored into the composition " +
 		"at ValidateProposalV5. This suite drives classes at h>0, where a Params-carrying block is refused before any " +
-		"class question arises. Its coverage as a COMMITMENT is G-CFGBIND-2, which asserts every carried field moves " +
+		"class question arises. Its coverage as a COMMITMENT is, which asserts every carried field moves " +
 		"the genesis hash",
 	"CommitRound": "excluded from Hash — a certificate slot a replica may hold differently, not committed state",
 	"PrepareQC":   "excluded from Hash; the quorum stacks C1..C5 read it, and every arm here carries a real one",
@@ -201,8 +197,8 @@ var stateViewClass3 = map[string]string{
 	"Params":          "the view's own consensus configuration; class 3 by definition",
 	"Objective":       "the view's own mode; a node-local fact, not a committed leaf",
 	"VerifyBond":      "the view's own injected capability, not a read at all",
-	"WitnessBudget":   "the box's own BG-3 ceiling; NewBox refuses an unset one and ∞ is not expressible",
-	"Head":            "the view's own position (M-3), derived from the parent block the box holds",
+	"WitnessBudget":   "the box's own ceiling; NewBox refuses an unset one and ∞ is not expressible",
+	"Head":            "the view's own position, derived from the parent block the box holds",
 	"CommittedRoots":  "a VERDICT (FloorBoxOutcome, error), not a read — three-valued in its own vocabulary",
 	"sealedStateView": "the unexported seal; no results, no reads",
 }
@@ -227,7 +223,7 @@ func coldAuditorFixture(t *testing.T) (structFixture, *proverSource, *Box) {
 }
 
 // forgeDivergentRoot is the attack: replace the block's committed StateRoot with one it does NOT
-// produce, then re-sign and re-certify so the lie is invisible on the block's face. The forged
+// produce, then re-sign and re-check so the lie is invisible on the block's face. The forged
 // block carries a genuine proposer signature over the forged root and a genuine quorum's prepare
 // and precommit certificates over it — the attacker controls every one of those, and the point of
 // the state-root commitment is that controlling them is not enough.
@@ -258,19 +254,19 @@ func forgeDivergentRoot(t *testing.T, f structFixture, honest Block) Block {
 
 // TestColdAuditor_NeverAcceptsAnyV5BlockClass is D0's suite. For every v5 block class: the node's
 // own oracle first, then the honest-rooted block through the door (verdict never Accept, refusal
-// named), then the same block with a DIVERGENT committed root, re-signed and re-certified (verdict
+// named), then the same block with a DIVERGENT committed root, re-signed and re-check (verdict
 // never Accept).
 //
-// ABLATION (the whole table): delete the R1.8 downgrade in (*Box).Validate — `if out == Accept {
-// return IndeterminateTrustlessly, ErrRecomputeGated }` — and the entries arm returns ACCEPT ⇒ RED.
+// ABLATION (the whole table): delete the downgrade in (*Box).Validate — `if out == Accept { return
+// IndeterminateTrustlessly, ErrRecomputeGated }` — and the entries arm returns ACCEPT ⇒ RED.
 // Per-class ablations, each of which reddens exactly one arm by changing the name it lands on:
 // remove the `len(b.IssuerKeys) > 0` clause from stateRootScopeGate (issuerkeys); remove the digest
-// pre-set requirement from the class-S/B/A digest reconstruction (bondregs, slashes, carrier);
-// drop the countDelta derivation in assembleStateRootRecomputeOps so the committed log size folds
-// as 0 (revocations, unrevocations).
+// pre-set requirement from the class-S/B/A digest reconstruction (bondregs, slashes, carrier); drop
+// the countDelta derivation in assembleStateRootRecomputeOps so the committed log size folds as 0
+// (revocations, unrevocations).
 func TestColdAuditor_NeverAcceptsAnyV5BlockClass(t *testing.T) {
-	// NG-2: the door can reach the far end. Everything below is a refusal, and a door that stalls
-	// on everything would pass every one of them for the wrong reason.
+	// The door can reach the far end. Everything below is a refusal, and a door that stalls on
+	// everything would pass every one of them for the wrong reason.
 	tf := buildStructFixture(t)
 	tsrc := newProverSource(t, tf.c)
 	honestTwin := tf.mkBlock(t, nil)
@@ -293,7 +289,8 @@ func TestColdAuditor_NeverAcceptsAnyV5BlockClass(t *testing.T) {
 			assertNeverAccept(t, cls.name+"/honest-root", out, err)
 			assertRefusalNamed(t, cls, out, err)
 
-			// The attack: a divergent committed root, re-signed and re-certified.
+			// The attack: a divergent committed root, re-signed and
+			// re-check.
 			forged := forgeDivergentRoot(t, f, honest)
 			fout, ferr := box.Validate(forged, structWitnessFor(t, f, src, forged))
 			assertNeverAccept(t, cls.name+"/divergent-root", fout, ferr)
@@ -306,7 +303,7 @@ func assertNeverAccept(t *testing.T, label string, out FloorBoxOutcome, err erro
 	t.Helper()
 	if out == Accept {
 		t.Fatalf("SAFETY VIOLATION (%s): the cold auditor returned ACCEPT (reason %v). The box never "+
-			"Accepts until R1.8 flips it, which is a consensus-rule change (I1), owner-ratified and "+
+			"Accepts until flips it, which is a consensus-rule change (I1), settled and "+
 			"research-gated — and this row is not it.", label, err)
 	}
 	if err == nil {
@@ -329,7 +326,7 @@ func assertRefusalNamed(t *testing.T, cls coldAuditorClass, out FloorBoxOutcome,
 
 // TestColdAuditor_ClassCoverageIsComplete is the completeness meta-test. It reflects over Block's
 // exported fields and requires each to be either driven by a class in coldAuditorClasses or listed
-// in coldAuditorUndriven with a reason. An un-driven "safe" row is what simplicity rule 7 forbids,
+// in coldAuditorUndriven with a reason. An un-driven "safe" row is what a green gate with no demonstrated red forbids,
 // and a hand-written list of classes is how a suite quietly stops covering the type it is about.
 //
 // ABLATION: add an exported field to Block and drive nothing ⇒ RED naming the field; delete a class
@@ -394,15 +391,15 @@ func TestColdAuditor_ClassCoverageIsComplete(t *testing.T) {
 }
 
 // TestColdAuditor_StallsUnconditionallyAtARecoveryBoundary is D0's first deliverable at THE DOOR.
-// At an ambiguous #535 recovery boundary the box stalls loudly, and there is nothing a caller can
+// At an ambiguous recovery boundary the box stalls loudly, and there is nothing a caller can
 // supply to change that: BoxConfig carries no directive, the box holds no flag, and Validate takes
 // no per-block authorization. The three paths (a') removed are gone from the type system, so what
 // is left to drive is that the stall fires at the boundary and does not fire away from it.
 //
-// The stall is TERMINAL, not per-block (certification §2.1): the box needs a verified parent state
+// The stall is TERMINAL, not per-block: the box needs a verified parent state
 // root for H+1 and its only source is H's committed StateRoot, the quantity it just declined to
 // reproduce. Recovery is the operator's -ws-checkpoint re-anchor at H+1, and an unreachable pin is
-// a critical and irrecoverable failure (§2.3 clause 3).
+// a critical and irrecoverable failure.
 //
 // ABLATION: restore any escape past recoveryBoundaryDecision — e.g. `return true, nil` — ⇒ the
 // boundary block reaches the recompute and this arm reports another reason ⇒ RED.
@@ -439,19 +436,19 @@ func TestColdAuditor_StallsUnconditionallyAtARecoveryBoundary(t *testing.T) {
 	}
 }
 
-// TestColdAuditor_TheBoundaryPostureIsThePositionOfTheBoxNotTheClaimOfTheBlock is B-1's gate,
+// TestColdAuditor_TheBoundaryPostureIsThePositionOfTheBoxNotTheClaimOfTheBlock is the gate's gate,
 // driven in BOTH directions. The cold auditor's boundary posture is a fact about WHERE THE BOX IS.
 // It must not be a fact about what a block says it is, because the two failures are not symmetric
 // and neither is benign:
 //
-//   - FALSE POSITIVE. The stall's own text tells the operator the condition is terminal until they
-//     re-anchor, and owned-residuals.md E2a clause 3 makes an unreachable pin a CRITICAL AND
-//     IRRECOVERABLE FAILURE. If a declared height could invoke it, any unauthenticated peer could
-//     invoke that contract on a box ninety-eight blocks early with one integer.
-//   - FALSE NEGATIVE. A box AT the boundary handed a block declaring some other height used to
-//     answer Reject/ErrWrongParent — the reason it gives ordinary stale traffic — so the terminal
-//     name the operator needs was emitted for one block and never again, and a proposer that never
-//     sent a boundary-height block suppressed it entirely.
+// - FALSE POSITIVE. The stall's own text tells the operator the condition is terminal until they
+// re-anchor, and owned-residuals.md E2a clause 3 makes an unreachable pin a CRITICAL AND
+// IRRECOVERABLE FAILURE. If a declared height could invoke it, any unauthenticated peer could
+// invoke that contract on a box ninety-eight blocks early with one integer.
+// - FALSE NEGATIVE. A box AT the boundary handed a block declaring some other height used to
+// answer Reject/ErrWrongParent — the reason it gives ordinary stale traffic — so the terminal
+// name the operator needs was emitted for one block and never again, and a proposer that never
+// sent a boundary-height block suppressed it entirely.
 //
 // The fixture that shipped first could not see either, because it set LivenessRecoveryHeight to the
 // block's height where the block already sat at head.NextHeight: the two quantities coincided, so no
@@ -520,24 +517,24 @@ func TestColdAuditor_TheBoundaryPostureIsThePositionOfTheBoxNotTheClaimOfTheBloc
 }
 
 // TestColdAuditor_RefusesPrunedBlocks is H-3, at every box surface. On PRE-v5 a pruned block's
-// Hash() short-circuits to a stored token bound to NO struct field — StateRoot included (§2.4) — so
-// a pin on it binds nothing. (d-3) retires that token for v5: a shed v5 block recomputes its own
-// hash, so the refusal here is no longer about IDENTITY at all. It survives on BOND POSSESSION —
-// the proofs are gone and cannot be re-verified — which is why both sites key on
-// HeavyProofsShed(). Dropping either is a widening the (d-3) delta cert refused by name (sites
-// 9 and 10, "KEEP, re-keyed").
+// Hash short-circuits to a stored token bound to NO struct field — StateRoot included — so a pin
+// on it binds nothing. retires that token for v5: a shed v5 block recomputes its own hash, so
+// the refusal here is no longer about IDENTITY at all. It survives on BOND POSSESSION — the
+// proofs are gone and cannot be re-verified — which is why both sites key on HeavyProofsShed.
+// Dropping either is a widening refused by name (sites 9 and 10, "KEEP,
+// re-keyed").
 //
 // The pre-v5 statement still holds where it applies: a pin on a pre-v5 pruned token binds nothing and a floor over it would make the reader skip proof verification entirely
 // (§2.5, chain.go's pruned leg). The box refuses rather than taking a trust floor from its caller.
 //
-// ABLATION: delete the b.HeavyProofsShed() stall from (*Box).Validate ⇒ the door arm lands on
-// another reason ⇒ RED; delete the parent.HeavyProofsShed() refusal from NewBox ⇒ the construction
+// ABLATION: delete the b.HeavyProofsShed stall from (*Box).Validate ⇒ the door arm lands on
+// another reason ⇒ RED; delete the parent.HeavyProofsShed refusal from NewBox ⇒ the construction
 // arm ⇒ RED.
 //
-// THOSE TARGETS ARE NAMED AS THEY NOW STAND, 2026-09-10. They used to say IsPruned(), and after
-// (d-3) re-keyed both sites to bond possession an IsPruned() ablation would have edited nothing —
-// a no-op patch that reports GREEN and reads exactly like a passing ablation. That failure was hit
-// for real this session and is recorded at d3digests_test.go's ablation block. An ablation
+// THOSE TARGETS ARE NAMED AS THEY NOW STAND, 2026-09-10. They used to say IsPruned, and after
+// re-keyed both sites to bond possession an IsPruned ablation would have edited nothing — a no-op
+// patch that reports GREEN and reads exactly like a passing ablation. That failure was hit for
+// real, and is recorded at blockdigests_test.go's ablation block. An ablation
 // instruction that names a line no longer in the source is worse than none.
 func TestColdAuditor_RefusesPrunedBlocks(t *testing.T) {
 	f := buildStructFixture(t)
@@ -547,11 +544,11 @@ func TestColdAuditor_RefusesPrunedBlocks(t *testing.T) {
 	box := boxOver(t, f, src)
 	assertBoxReachesTheDowngrade(t, box, b, w)
 
-	// The block must actually HAVE something to shed. (d-3) retires `Pruned` for v5, so a v5 block
-	// with no bond registrations has nothing to prune and Prune() is a legitimate no-op on it —
-	// pruning an entry-only block would leave this arm asserting against an unpruned block and the
-	// ablation would be vacuous, which the (d-3) delta certification named as the risk on this
-	// exact site (site 10, simplicity rule 7). Shed a real proof instead.
+	// The block must actually HAVE something to shed. retires `Pruned` for v5, so a v5 block
+	// with no bond registrations has nothing to prune and Prune is a legitimate no-op on it
+	// — pruning an entry-only block would leave this arm asserting against an unpruned block
+	// and the ablation would be vacuous, which the delta review named as the risk on this
+	// exact site (site 10, the demonstrated-red rule). Shed a real proof instead.
 	shed := f.mkBlock(t, func(nb *Block) {
 		nb.BondRegs = []BondReg{bondReg(f.keys[0], twoMiB, nb.Prev)}
 	})
@@ -563,10 +560,10 @@ func TestColdAuditor_RefusesPrunedBlocks(t *testing.T) {
 	if out != IndeterminateTrustlessly || !errors.Is(err, ErrPrunedBlockUnreproducible) {
 		t.Fatalf("the door must refuse a block whose proofs are shed (ErrPrunedBlockUnreproducible); got %s / %v", out, err)
 	}
-	// The pruned re-anchor case (§2.4): a pruned PARENT cannot anchor a head record either.
-	// shedPruned, not a committed entry-only block: on v5 only a block that actually SHED a proof
-	// is distinguishable from a complete one, so an entry-only Prune() would anchor this arm on an
-	// unpruned block and prove nothing.
+	// The pruned re-anchor case: a pruned PARENT cannot anchor a head record either.
+	// shedPruned, not a committed entry-only block: on v5 only a block that actually SHED a
+	// proof is distinguishable from a complete one, so an entry-only Prune would anchor this
+	// arm on an unpruned block and prove nothing.
 	if _, err := NewBox(f.c, shedPruned, BoxConfig{BudgetBytes: 1 << 22, ChainID: f.c.ChainID()}, src); !errors.Is(err, ErrBoxParentPruned) {
 		t.Fatalf("NewBox must refuse a pruned parent (ErrBoxParentPruned); got %v", err)
 	}
@@ -588,7 +585,7 @@ func TestColdAuditor_RefusesPrunedBlocks(t *testing.T) {
 	}
 }
 
-// TestColdAuditor_NoTrustFloorOnTheContractSurface is H-4 as the certification restates it after
+// TestColdAuditor_NoTrustFloorOnTheContractSurface is H-4 as the research restates it after
 // REFUTING its own first draft: trustFloor does not appear in the box's composition signature at
 // all, and a test asserts the composition takes no *Chain receiver and no floor argument.
 //
@@ -600,48 +597,48 @@ func TestColdAuditor_RefusesPrunedBlocks(t *testing.T) {
 //
 // WHAT EACH CLAUSE ACTUALLY CHECKS, stated exactly, because the first version of this comment
 // promised more than the code delivered. It claimed "any method or parameter whose NAME carries
-// 'floor' ⇒ RED", and the blind PE disproved it in one arm: adding `Anchor() uint64` AND
-// `TrustFloor() (uint64, Availability)` to StateView, implemented on both views, left the whole
+// 'floor' ⇒ RED", and it was disproved in one arm: adding `Anchor uint64` AND
+// `TrustFloor (uint64, Availability)` to StateView, implemented on both views, left the whole
 // suite GREEN. A gate that matches on spelling is not a gate — an adversary of this property is a
 // future contributor picking a different word, which is the easiest possible evasion.
 //
-//   - Clause (1) is a SHAPE check on the composition's signature: no *Chain parameter, no bare
-//     uint64 parameter. This is H-4's literal text.
+// - Clause (1) is a SHA on the composition's signature: no *Chain parameter, no bare
+// uint64 parameter. This is H-4's literal text.
 //
-//   - Clause (2) is a SHAPE check on the view, and it is a PARTITION of the surface rather than a
-//     pattern match: every StateView method either appears on the written class-3 allow-list below,
-//     or its result list ENDS IN Availability. Nothing else is expressible. That is what makes it
-//     exact — not the observation that no method returns a lone scalar today, which was the earlier
-//     claim here and was a fact about the surface mistaken for a property of the rule.
+// - Clause (2) is a SHA on the view, and it is a PARTITION of the surface rather than a
+// pattern match: every StateView method either appears on the written class-3 allow-list below,
+// or its result list ENDS IN Availability. Nothing else is expressible. That is what makes it
+// exact — not the observation that no method returns a lone scalar today, which was the earlier
+// claim here and was a fact about the surface mistaken for a property of the rule.
 //
-//     Its first two forms were both escapable and both were escaped, by the blind PE, in one arm
-//     each. Form one matched on the NAME containing "floor": `Anchor() uint64` walked past it. Form
-//     two matched the SHAPE `NumOut()==1 && Kind()==Uint64`: `AnchorInt() int64` and
-//     `AnchorErr() (uint64, error)` walked past THAT, with the sole consumer rewired to read the
-//     scalar, and the suite stayed green. A rule with an open complement has unbounded
-//     re-spellings; a rule with a closed one has none.
+// Its first two forms were both escapable and both were escaped in one arm
+// each. Form one matched on the NAME containing "floor": `Anchor uint64` walked past it. Form
+// two matched the SHAPE `NumOut==1 && Kind==Uint64`: `AnchorInt int64` and `AnchorErr
+// (uint64, error)` walked past THAT, with the sole consumer rewired to read the scalar, and
+// the suite stayed green. A rule with an open complement has unbounded re-spellings; a rule
+// with a closed one has none.
 //
-//     A three-valued `TrustFloor() (uint64, Availability)` is PERMITTED, deliberately and not by
-//     oversight. A view that must answer Availability can say NoWitness, and a floor the box can
-//     decline to answer is not the wrong-accept vector §2.5 refutes — the vector is a floor the box
-//     is handed or invents. What that costs is stated in clause (3).
+// A three-valued `TrustFloor (uint64, Availability)` is PERMITTED, deliberately and not by
+// oversight. A view that must answer Availability can say NoWitness, and a floor the box can
+// decline to answer is not the wrong-accept vector §2.5 refutes — the vector is a floor the box
+// is handed or invents. What that costs is stated in clause (3).
 //
-//   - Clause (3) is the REAL GATE, and it is a VALUE check: provenView must answer
-//     (false, NoWitness). Forcing it to (true, Present) is RED. That is the one that proves the box
-//     cannot be handed, or invent, a floor — and it pins ONE NAMED METHOD, PrunedTolerated. So a
-//     future three-valued scalar added under clause (2) would carry no value pin of its own until
-//     someone adds one. That is the residual, and it is why clause (2) is a partition: the allow-list
-//     forces a new class-3 method to be a reviewed line rather than a quiet addition.
+// - Clause (3) is the REAL GATE, and it is a VALUE check: provenView must answer
+// (false, NoWitness). Forcing it to (true, Present) is RED. That is the one that proves the box
+// cannot be handed, or invent, a floor — and it pins ONE NAMED METHOD, PrunedTolerated. So a
+// future three-valued scalar added under clause (2) would carry no value pin of its own until
+// someone adds one. That is the residual, and it is why clause (2) is a partition: the allow-list
+// forces a new class-3 method to be a reviewed line rather than a quiet addition.
 //
-// ABLATION: force provenView.PrunedTolerated to (true, Present) ⇒ RED on clause (3); add
-// `Anchor() uint64`, `AnchorInt() int64` or `AnchorErr() (uint64, error)` to StateView ⇒ RED on
-// clause (2); give ValidateCommitV5 a uint64 parameter ⇒ RED on clause (1).
-// SOURCE GATE: clauses (1) and (2) only — they read the StateView TYPE and the ValidateCommitV5
-// FUNC VALUE by reflection, so they see result and parameter TYPES and arity, and nothing about
-// behaviour or intent. Clause (3) is a runtime call, not a source read.
-// RUNTIME GATE: clause (3) above; TestColdAuditor_RefusesPrunedBlocks, which drives an actual
-// pruned block through the composition over the box's view and watches it not Accept; and the
-// node-side pruned tests (prune_test.go), which keep liveView's answer equal to the node's own rule.
+// ABLATION: force provenView.PrunedTolerated to (true, Present) ⇒ RED on clause (3); add `Anchor
+// uint64`, `AnchorInt int64` or `AnchorErr (uint64, error)` to StateView ⇒ RED on clause (2); give
+// ValidateCommitV5 a uint64 parameter ⇒ RED on clause (1). SOURCE GATE: clauses (1) and (2) only —
+// they read the StateView TYPE and the ValidateCommitV5 FUNC VALUE by reflection, so they see result
+// and parameter TYPES and arity, and nothing about behaviour or intent. Clause (3) is a runtime
+// call, not a source read. RUNTIME GATE: clause (3) above; TestColdAuditor_RefusesPrunedBlocks,
+// which drives an actual pruned block through the composition over the box's view and watches it not
+// Accept; and the node-side pruned tests (prune_test.go), which keep liveView's answer equal to the
+// node's own rule.
 func TestColdAuditor_NoTrustFloorOnTheContractSurface(t *testing.T) {
 	f := buildStructFixture(t)
 	src := newProverSource(t, f.c)
@@ -718,7 +715,7 @@ func TestColdAuditor_NoTrustFloorOnTheContractSurface(t *testing.T) {
 	}
 }
 
-// TestColdAuditor_TheKnobIsGoneFromTheTypeSystem pins the two deletions owner call 2 names, so a
+// TestColdAuditor_TheKnobIsGoneFromTheTypeSystem pins the two deletions names, so a
 // re-introduction is a reviewed event rather than a quiet one. RecoveryDirective.Heights and
 // LiveFollower were knobs the recompute cannot honour: a box that can be TOLD to proceed past an
 // ambiguous boundary is not a cold auditor, and a box that carries the flag is one flip from not
@@ -744,24 +741,24 @@ func TestColdAuditor_TheKnobIsGoneFromTheTypeSystem(t *testing.T) {
 	// The list is named rather than counted so a new field cannot ride in on an arithmetic edit;
 	// every entry states the direction argument that makes it an anchor and not a knob.
 	//
-	//	BudgetBytes  a CEILING. Lowering it stalls more blocks; raising it stalls fewer, but the
-	//	             composition still has to accept every one. Never widening.
-	//	ChainID      the NETWORK the box audits. A wrong value makes every era-4 signature fail to
-	//	             verify, so the box stalls; a right value makes it agree with the node. There is
-	//	             no value that makes an invalid block valid. It must be config because the box
-	//	             cannot derive it: the parent block does not carry the genesis hash and the
-	//	             config-bearing chain holds no blocks on the deployment target (the fold-file
-	//	             pin denies `blocks` by name for exactly that reason).
+	//	BudgetBytes a CEILING. Lowering it stalls more blocks; raising it stalls fewer, but the
+	//	 composition still has to accept every one. Never widening.
+	//	ChainID the NETWORK the box audits. A wrong value makes every era-4 signature fail to
+	//	 verify, so the box stalls; a right value makes it agree with the node. There is
+	//	 no value that makes an invalid block valid. It must be config because the box
+	//	 cannot derive it: the parent block does not carry the genesis hash and the
+	//	 config-bearing chain holds no blocks on the deployment target (the fold-file
+	//	 pin denies `blocks` by name for exactly that reason).
 	//
-	// What this pin exists to keep out is the RECOVERY DIRECTIVE (owner call 2): a field that could
-	// tell the box to PROCEED past an ambiguous boundary. That is the widening direction and no
-	// entry above is in it.
+	// What this pin exists to keep out is the RECOVERY DIRECTIVE: a field that could tell the
+	// box to PROCEED past an ambiguous boundary. That is the widening direction and no entry
+	// above is in it.
 	anchors := map[string]bool{"BudgetBytes": true, "ChainID": true}
 	ct := reflect.TypeOf(BoxConfig{})
 	for i := 0; i < ct.NumField(); i++ {
 		if !anchors[ct.Field(i).Name] {
 			t.Fatalf("BoxConfig carries %q, which is not one of the box-owned trust anchors %v. "+
-				"Owner call 2 deleted the recovery directive: the #535 stall is unconditional. A new "+
+				"A project decision deleted the recovery directive: the stall is unconditional. A new "+
 				"field is admissible ONLY if a wrong value makes the box refuse MORE, never accept "+
 				"more — state that argument here or delete the field.", ct.Field(i).Name, anchors)
 		}

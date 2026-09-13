@@ -1,19 +1,17 @@
 package erasure
 
-// §0.1 — the repair-path memory footprint at PRODUCTION chunk size (research cert
-// 2026-08-19, RULING-repair-payee-fork §0.1 gate). Reconstructing one lost shard
-// materializes the whole stripe in RAM: the node repair path holds ~k survivor
-// shards (each = one chunk) plus the rebuilt slots as [][]byte
-// (ReconstructStripe, erasure.go). At the 64 KiB SIM chunk size that is ~640 KiB
-// and invisible; at the 64 MiB PRODUCTION minimum it is ~640 MiB–1 GiB — on a node
-// whose entire budget is ~2 GB (build-immutable #8). This is measured LOCALLY,
-// for $0, because it is a single-node property: build-immutables #6/#7 say
-// reproduce locally before spending a cloud run, and a cloud run cannot see this
-// anyway (the harness publishes at 64 KiB, hiding the spike ~1000×). If the
+// §0.1 — the repair-path memory footprint at PRODUCTION chunk size (research
+// 2026-08-19 gate). Reconstructing one lost shard materializes the whole stripe in
+// RAM: the node repair path holds ~k survivor shards (each = one chunk) plus the
+// rebuilt slots as [][]byte (ReconstructStripe, erasure.go). At the 64 KiB SIM chunk
+// size that is ~640 KiB and invisible; at the 64 MiB PRODUCTION minimum it is ~640
+// MiB–1 GiB — on a node whose entire budget is ~2 GB (build-immutable #8). This is
+// measured LOCALLY, for $0, because it is a single-node property: build-immutables
+// #6/#7 say reproduce locally before spending a cloud run, and a cloud run cannot
+// see this anyway (the harness publishes at 64 KiB, hiding the spike ~1000×). If the
 // production footprint doesn't fit the floor box, the mitigation is streaming /
-// column-wise decode or a smaller hot-path chunk — a mechanism change, not a
-// tuning knob. Plan: docs/thinking/2026-08-19-cloudtest-harness-improvement-plan.md.
-
+// column-wise decode or a smaller hot-path chunk — a mechanism change, not a tuning
+// knob.
 import (
 	"math/rand"
 	"runtime"
@@ -94,7 +92,7 @@ func TestReconstructMemoryFootprint_SimVsProd(t *testing.T) {
 // BenchmarkReconstructStripe_ProdChunk reports B/op — the allocation footprint of
 // one production-chunk-size reconstruction — for the §0.1 record. Run with:
 //
-//	go test ./core/erasure -run x -bench ReconstructStripe_ProdChunk -benchmem -benchtime 3x
+//	go test./core/erasure -run x -bench ReconstructStripe_ProdChunk -benchmem -benchtime 3x
 func BenchmarkReconstructStripe_ProdChunk(b *testing.B) {
 	rng := rand.New(rand.NewSource(1))
 	p := DefaultParams

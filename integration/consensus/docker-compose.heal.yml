@@ -3,7 +3,7 @@
 # ("HEAL by restarting without the flag — the persisted chain reloads and
 # reconciles"). run.sh applies this with:
 #
-#   docker compose -f docker-compose.yml -f docker-compose.heal.yml up -d valC
+#  docker compose -f docker-compose.yml -f docker-compose.heal.yml up -d valC
 #
 # Everything else (the store volume, IP, network) is inherited from the base
 # file; only valC's command changes: the partition flag is gone and it now

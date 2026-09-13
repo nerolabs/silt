@@ -31,18 +31,18 @@ type Equivocation struct {
 func (e *Equivocation) CulpritID() ports.NodeID { return sha256.Sum256(e.Culprit) }
 
 // VerifyEquivocation reports whether e is valid, self-verifying proof of a
-// double-sign — no external state needed. Era-gated (#432 rounds):
+// double-sign — no external state needed. Era-gated:
 //
-//   - Both blocks era 1: the legacy rule — the culprit signed two different
-//     blocks at one HEIGHT (proposer or attester signature alike).
-//   - Both blocks era 2: the culprit released two consensus signatures at the
-//     same (HEIGHT, ROUND, PHASE) over different hashes. A cross-round
-//     different-hash signature is HONEST (a lock-change under a POL — the
-//     certification's I5 requirement), and a bare-hash ProposerSig is
-//     authorship, not a consensus vote (re-proposing fresh at a higher round
-//     after a lock-free view-change is honest), so neither is evidence.
-//   - Mixed eras: not evidence (conservative — the upgrade boundary must never
-//     manufacture an honest slash; refusing is the fail-safe direction).
+// - Both blocks era 1: the legacy rule — the culprit signed two different
+// blocks at one HEIGHT (proposer or attester signature alike).
+// - Both blocks era 2: the culprit released two consensus signatures at the
+// Same (HEIGHT, ROUND, PHASE) over different hashes. A cross-round
+// different-hash signature is HONEST (a lock-change under a POL — the
+// requirement), and a bare-hash ProposerSig is authorship, not a
+// consensus vote (re-proposing fresh at a higher round after a lock-free
+// view-change is honest), so neither is evidence.
+// - Mixed eras: not evidence (conservative — the upgrade boundary must never
+// manufacture an honest slash; refusing is the fail-safe direction.
 //
 // chainID is the VERIFIER'S OWN network identity (Chain.ChainID). From era 4 the consensus
 // preimage binds it, so a signature released on another silt network cannot verify here and
@@ -50,7 +50,7 @@ func (e *Equivocation) CulpritID() ports.NodeID { return sha256.Sum256(e.Culprit
 // who carries one identity key across two silt networks and honestly precommits a different
 // block at the same (height, round) on each was, without this field, producing a valid
 // equivocation proof against itself on both. See consensusSigBytesV5 and
-// TestGPRE6_CrossChainHonestSignaturesAreNotEvidence.
+// TestCrossChainHonestSignaturesAreNotEvidence.
 //
 // floor is the VERIFIER'S OWN era floor (M2) — see EraFloor and CheckEquivocation.
 func VerifyEquivocation(e *Equivocation, chainID ports.Hash, floor EraFloor) bool {
@@ -87,51 +87,49 @@ func VerifyEquivocation(e *Equivocation, chainID ports.Hash, floor EraFloor) boo
 // surface: ValidateCommitV5/ValidateProposalV5 take exactly (StateView, *Block) and no bare
 // uint64, pinned by TestColdAuditor_NoTrustFloorOnTheContractSurface.
 //
-// Certification: NETWORK-IDENTITY-BINDING-THREE-LAYER-RESEARCH-CERTIFICATION-2026-09-11 §1.5c
-// (conditions C-1, C-2, C-3), Layer 1 GATED -> G-1b.
+// (conditions), Layer 1
+// GATED ->.
 type EraFloor func(height uint64) uint64
 
 // CheckEquivocation is VerifyEquivocation with the refusal named: nil iff e proves a
 // double-sign; ErrPrunedEvidence when an evidence block is pruned; ErrNotEquivocation
 // for the honest exemptions.
 //
-// R0.6 (F2-EVIDENCE-RECOMPUTE, certification I5-cross-height-pruned-slash-forgery-
-// FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03 §5): the two block hashes are ALWAYS
-// recomputed from the bodies (bodyHash) — never read from Block.Pruned and never from
-// the hashMemo cache — and a pruned block is refused outright. The height check below
-// is sound only because the signed message is a digest OVER the declared Height; for
-// a non-pruned body those are the same source. Reading Pruned severed them: two GENUINE
-// signatures by an honest validator at two DIFFERENT heights, re-labelled with one
-// fictitious height and carrying another block's real hash in Pruned, verified as a
-// double-sign and evicted the honest validator through Append (I5 broken, era 1 and 2).
-// Refusing pruned evidence is strictly narrowing — it can never manufacture a slash —
-// and it is the rule this type's doc comment has always stated ("recomputes their
-// hashes"). The cost (a double-sign whose evidence was already payload-pruned is
-// unslashable) is R-LATE-REVEAL, owned in docs/decisions.md D-F2-EVIDENCE-RECOMPUTE.
-// This is the one gate for EVERY path that decides admissibility, so an honest proposer can
-// never queue a proof every replica rejects. There are FOUR, and they are classified by PATH,
-// not by name — two of them are called validateSlashes:
+// (F2-EVIDENCE-RECOMPUTE-cross-height-pruned-slash-forgery- FIX-DIRECTION-): the two block
+// hashes are ALWAYS recomputed from the bodies (bodyHash) — never read from Block.Pruned and
+// never from the hashMemo cache — and a pruned block is refused outright. The height check
+// below is sound only because the signed message is a digest OVER the declared Height; for a
+// non-pruned body those are the same source. Reading Pruned severed them: two GENUINE
+// signatures by an honest validator at two DIFFERENT heights, re-labelled with one fictitious
+// height and carrying another block's real hash in Pruned, verified as a double-sign and
+// evicted the honest validator through Append (I5 broken, era 1 and 2). Refusing pruned
+// evidence is strictly narrowing — it can never manufacture a slash — and it is the rule this
+// type's doc comment has always stated ("recomputes their hashes"). The cost (a double-sign
+// whose evidence was already payload-pruned is unslashable) is, owned This is the one gate
+// for EVERY path that decides admissibility, so an honest proposer can never queue a proof
+// every replica rejects. There are FOUR, and they are classified by PATH, not by name — two
+// of them are called validateSlashes:
 //
-//   - v5ValidateSlashes (P8 of the one accept composition) — the LIVE ACCEPT path of an era-4
-//     block: ValidateProposal, ValidateCommit, Append, Reconcile, and (*Box).Validate;
-//   - (*Chain).validateSlashes — the own-disk RELOAD path (appendStructural -> validateStructural)
-//     for an era-4 block, and the live accept path for an era-1/2/3 one;
-//   - FindEquivocations — detection/selection;
-//   - (*Node).slashEquivocators — the on-chain queue.
+// - v5ValidateSlashes (P8 of the one accept composition) — the LIVE ACCEPT path of an era-4
+// block: ValidateProposal, ValidateCommit, Append, Reconcile, and (*Box).Validate;
+// - (*Chain).validateSlashes — the own-disk RELOAD path (appendStructural -> validateStructural)
+// For an era-4 block, and the live accept path for an era-1/2/3 one;
+// - FindEquivocations — detection/selection;
+// - (*Node).slashEquivocators — the on-chain queue.
 //
 // A rule that lands at some of them and not others is worse than one that lands at none: accept
 // live and refuse on reload is ONE OPERATOR DIVERGING FROM ITSELF across a restart.
 //
 // THE PRUNED REFUSAL AND THE BODY RECOMPUTE STAY, VERBATIM AND FOREVER. era-4 binds the height
-// inside the signed message, which makes the R0.6 cross-height forgery structurally
-// inexpressible for a v5-form signature. It does NOT make this rule redundant: era-1, era-2 and
-// era-3 signatures bind no height, committed history is never re-interpreted, and every height
-// below H_era4 exists forever. Deleting ErrPrunedEvidence or the bodyHash recompute "because
-// evidence binds its height now" would silently re-open I5 for every pre-era-4 height. Named as
-// a DON'T by the owner-call-A certification §2.3.
+// inside the signed message, which makes the cross-height forgery structurally inexpressible
+// for a v5-form signature. It does NOT make this rule redundant: era-1, era-2 and era-3
+// signatures bind no height, committed history is never re-interpreted, and every height below
+// H_era4 exists forever. Deleting ErrPrunedEvidence or the bodyHash recompute "because evidence
+// binds its height now" would silently re-open I5 for every pre-era-4 height. Named as a DON'T
+// by the project-call-A
 func CheckEquivocation(e *Equivocation, chainID ports.Hash, floor EraFloor) error {
 	if floor == nil {
-		// C-3: an ABSENT supplier REFUSES. uint64(0) is a valid-looking floor meaning "no floor"
+		// an ABSENT supplier REFUSES. uint64(0) is a valid-looking floor meaning "no floor"
 		// — today's fail-open — and it is what a caller gets for free, on an exported function
 		// with an out-of-package caller (core/node). A node that holds no chain computes no
 		// floor and must convict nobody, the same direction (*Node).chainID already takes with
@@ -152,43 +150,45 @@ func CheckEquivocation(e *Equivocation, chainID ports.Hash, floor EraFloor) erro
 	// own height is not evidence here: a sub-era-4 attestation binds no chain id (consensusSigBytes
 	// is FROZEN and reads no scope), so a leg harvested from another silt network is bit-identical
 	// to one released here, and pairing it with the victim's own honest signature convicted the
-	// honest — I5, the #397 shape. Evaluated at e.A.Height, which the check above has just
+	// honest — I5, the shape. Evaluated at e.A.Height, which the check above has just
 	// established equals e.B.Height.
 	//
 	// STRICTLY NARROWING, and that is the whole safety argument: this is a CONJUNCT on the accept
 	// condition, so it can only decline a slash and can never manufacture one. It is the identical
 	// argument form the pruned refusal above carries.
 	//
-	// WHAT IT COSTS, ratified and not overlooked: a validator that double-signs ACROSS an era
-	// boundary (one leg in the old form, one in the new) becomes unslashable. It cannot finalize
-	// either way — validateEra4Version refuses a sub-era-4 block at every height at or above the
-	// boundary on every disk-write path — and on a genesis committing Era4ActivationHeight = 1
-	// there is no such boundary to stand on. Certification §1.9 G-1d, owner-ratified.
+	// WHAT IT COSTS, settled and not overlooked: a validator that double-signs ACROSS
+	// an era boundary (one leg in the old form, one in the new) becomes unslashable.
+	// It cannot finalize either way — validateEra4Version refuses a sub-era-4 block at
+	// every height at or above the boundary on every disk-write path — and on a
+	// genesis committing Era4ActivationHeight = 1 there is no such boundary to stand
+	// on.
 	//
-	// THE SCOPE — `f >= BlockVersionWitnessable` — IS THE CERTIFICATION'S OWN CLOSURE TABLE (§1.3),
-	// AND WHAT IT DEFERS IS NAMED HERE RATHER THAN LEFT SILENT.
+	// THE SCOPE — `f >= BlockVersionWitnessable` — IS A CLOSURE TABLE, AND WHAT IT DEFERS IS
+	// NAMED HERE RATHER THAN LEFT SILENT.
 	//
 	// The rule closes the cross-network face at exactly the heights where the chain requires the
-	// CHAIN-BOUND form. §1.3's three rows: (v2,v5) at h >= H_era4 CLOSED; (v2,v2) at h >= H_era4
+	// CHAIN-BOUND form. Three rows: (v2,v5) at h >= H_era4 CLOSED; (v2,v2) at h >= H_era4
 	// CLOSED; (v2,v2) at h < H_era4 "NOT CLOSED — floor 2 or 4". The third row is not closed by a
 	// floor of 2 or 4 and cannot be: below the era-4 boundary the REQUIRED form is itself
 	// chain-blind (consensusSigBytes reads no scope and is frozen forever), so an attacker simply
 	// harvests a leg of the required form. Refusing a leg below a v2/v4 floor therefore buys ZERO
 	// closure by the table's own verdict.
 	//
-	// An unscoped comparison would additionally refuse (i) every era-1-form pair at every height on
-	// every chain, since MintVersion's minimum is v2, and (ii) era-1/era-2-form pairs at era-3
-	// heights on a latch-route chain. Both are strictly narrowing and therefore safe — but they are
-	// a REPRICING of two artifacts this certification does not name and a builder must not amend:
-	// TestModelCheck_I5_CrossHeightPrunedExtension_Era1, the era-1 exhaustive enumeration (v1-form
-	// blocks at a v2 floor, which it demands CONVICT), and the T1 variant of R-NEST-GATE, whose own
-	// gate says "do not read a RED here as the residual closed; update
-	// SLASHCAP-NESTED-EVIDENCE-FIXED-POINT-RESEARCH-CERTIFICATION-2026-09-10 §6.1". Deleting this
-	// clause is a one-token change and is the right change the day a ruling prices those two; until
-	// then the surplus is DEFERRED, not overlooked, and the deferred surface is DRIVEN by
-	// TestGEF8_TheDeferredSubEra4SurfaceIsStillAdmissible.
+	// An unscoped comparison would additionally refuse (i) every era-1-form pair at every
+	// height on every chain, since MintVersion's minimum is v2, and (ii) era-1/era-2-form
+	// pairs at era-3 heights on a latch-route chain. Both are strictly narrowing and
+	// therefore safe — but they are a REPRICING of two artifacts this research does not
+	// name and a builder must not amend:
+	// TestModelCheck_I5_CrossHeightPrunedExtension_Era1, the era-1 exhaustive enumeration
+	// (v1-form blocks at a v2 floor, which it demands CONVICT), and the T1 variant of,
+	// whose own gate says "do not read a RED here as the residual closed; update
+	// Deleting this clause is a one-token change
+	// and is the right change the day adecision prices those two; until then the surplus
+	// is DEFERRED, not overlooked, and the deferred surface is DRIVEN by
+	// TestTheDeferredSubEra4SurfaceIsStillAdmissible.
 	//
-	// On a genesis committing Era4ActivationHeight = 1 — the source-pinned default, G-NET-2/G-NET-3
+	// On a genesis committing Era4ActivationHeight = 1 — the source-pinned default
 	// — the scope changes NOTHING: every height above the genesis has floor v5, and AppendGenesis
 	// refuses a height-0 slash outright. The two forms of this rule are identical on the RC network.
 	if f := floor(e.A.Height); f >= BlockVersionWitnessable && (e.A.Version < f || e.B.Version < f) {
@@ -228,7 +228,7 @@ func CheckEquivocation(e *Equivocation, chainID ports.Hash, floor EraFloor) erro
 // (ports.SignMark) records the canonical step and is era-independent, so an honest validator
 // releases exactly one signature per (height, round, step) ACROSS the boundary. If this type
 // recorded the wire phase instead, the two halves of one mechanism would disagree about the slot
-// again — which is the #397 scar this whole change was bought on — and a validator that
+// again — which is the defect this whole change was bought on — and a validator that
 // precommitted a v4 block and a v5 block at one height would become unslashable. The golden
 // corpus case `v4-vs-v5-both-rounds-era-same-slot-ACCEPT` is the driven proof.
 type sigScope struct {
@@ -304,13 +304,13 @@ func FindEquivocations(a, b []Block, chainID ports.Hash, floor EraFloor) []Equiv
 	caught := make(map[ports.NodeID]bool)
 	for i := range b {
 		bb := &b[i]
-		// Candidate selection uses the SAME body-recomputed hash as CheckEquivocation
-		// (R0.6 G-6): a Pruned digest or a stale memo must not decide which pairs are
-		// even candidates. Cost: two body hashes per block of b that has a same-height
-		// partner in a — so CALLERS must pass only the heights that can actually
-		// diverge (the served suffix), never a shared genesis-rooted prefix
-		// (core/node/chainrole.go, the detection call site; PE ruling F-3 measured
-		// 228 ms/sweep at n=600 when the whole chain was passed).
+		// Candidate selection uses the SAME body-recomputed hash as
+		// CheckEquivocation: a Pruned digest or a stale memo must not
+		// decide which pairs are even candidates. Cost: two body hashes
+		// per block of b that has a same-height partner in a — so CALLERS
+		// must pass only the heights that can actually diverge (the
+		// served suffix), never a shared genesis-rooted prefix
+		// (core/node/chainrole.go, the detection call site).
 		ab, ok := byHeight[bb.Height]
 		if !ok || ab.bodyHash() == bb.bodyHash() {
 			continue // no block at this height on the other side, or the same block
@@ -334,16 +334,15 @@ func FindEquivocations(a, b []Block, chainID ports.Hash, floor EraFloor) []Equiv
 // equivocation verifier checks: proposer, PrepareQC (prepare), and Atts
 // (precommit). Candidate SELECTION must match VERIFICATION coverage — this set
 // feeds FindEquivocations, and a culprit omitted here is never even tested by
-// VerifyEquivocation. The #496 seam (research-certified 2026-08-21): this
-// function read proposer+Atts only, so an era-2 equivocator whose signature in
-// the canonical block sat ONLY in PrepareQC — the objective-mode island
-// adversary at the genesis child, where the culprit is reliably prepare-only —
-// was unslashable even though the verifier would have convicted it. Widening
-// the candidate set cannot manufacture a false slash: VerifyEquivocation
-// remains the gate, with its honest exemptions (sequential heights, cross-round
-// lock-change under a POL, bare-hash authorship) intact.
-// Certification: silt-agent-memory/researcher/reviews/research-outcome/
-// 496-height1-equivocation-undetected-RESEARCH-CERTIFICATION-2026-08-21.md.
+// VerifyEquivocation. The seam: this function read proposer+Atts only, so an
+// era-2 equivocator whose signature in the canonical block sat ONLY in
+// PrepareQC — the objective-mode island adversary at the genesis child, where
+// the culprit is reliably prepare-only — was unslashable even though the
+// verifier would have convicted it. Widening the candidate set cannot
+// manufacture a false slash: VerifyEquivocation remains the gate, with its
+// honest exemptions (sequential heights, cross-round lock-change under a POL,
+// bare-hash authorship) intact.
+// 496-height1-equivocation-undetected-
 func signers(b *Block) [][]byte {
 	out := make([][]byte, 0, 1+len(b.PrepareQC)+len(b.Atts))
 	if len(b.Proposer) == ed25519.PublicKeySize {

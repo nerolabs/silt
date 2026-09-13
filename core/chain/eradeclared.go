@@ -6,7 +6,7 @@ package chain
 //
 // WHY BOTH NUMBERS, AND WHY ONE OF THEM ANSWERS NOTHING. Cloud row 13b-delivery-settlement SKIPs
 // with a sentence that covers two different worlds — "era-4 is dark" and "the issuer's keys are
-// off-commitment" — and #808 gave the first half of the discrimination: what era the chain has
+// off-commitment" — and gave the first half of the discrimination: what era the chain has
 // reached. That half alone is still ambiguous. A chain carrying no v5 block is a HEALTHY DARK
 // NETWORK under a build that declares v5, and the WRONG BUILD under one that declares v2. Same
 // chain, same observation, opposite verdicts. The declared number is the other half, and the pair
@@ -21,12 +21,12 @@ package chain
 // (versionSupported and MintVersion) rather than trusted, in TestDeclaredMaxIsTheBINARYsRealCeiling.
 //
 // THE ANTI-VACUITY DISCIPLINE IS THE SAME ONE erastate.go STATES, for the same reason: this row
-// absorbs R-CARRIER-ROLLOUT-SIGNAL, whose code half was vacuous because a gate took its guard
-// condition from its own subject and returned before asserting anything. Transposed into an
-// observable the shape is a render that is always the same render. Hence: EraRelation is a closed
-// string enum with NO zero value; every member is driven from a real chain and asserted pairwise
-// distinct (TestEveryEraRelationIsDrivenAndDistinct); and a chain with no blocks is NOT rendered as
-// "highest version v0" but as a named refusal to assert.
+// absorbs, whose code half was vacuous because a gate took its guard condition from its own subject
+// and returned before asserting anything. Transposed into an observable the shape is a render that
+// is always the same render. Hence: EraRelation is a closed string enum with NO zero value; every
+// member is driven from a real chain and asserted pairwise distinct
+// (TestEveryEraRelationIsDrivenAndDistinct); and a chain with no blocks is NOT rendered as "highest
+// version v0" but as a named refusal to assert.
 
 import "fmt"
 
@@ -82,11 +82,11 @@ func DeclaredRelation(declaredMax uint64, census VersionCensus) EraRelation {
 // EraNameOf maps a block version to its rule-era number.
 //
 // THE MAPPING IS A TABLE, NOT ARITHMETIC, and the difference is load-bearing: era-1 mints v1, era-2
-// mints v2, era-3 mints v4 and era-4 mints v5. v3 (BlockVersionRegGate) is skipped — it is the #506
+// mints v2, era-3 mints v4 and era-4 mints v5. v3 (BlockVersionRegGate) is skipped — it is the
 // readiness STAMP and no block is ever minted with it, which is why the sequence jumps. Deriving
 // the era with version-1 happens to be right above v3 and wrong below it, so a chain of v2 blocks
 // would be announced as "era-1" and every operator reading the line would be off by one against the
-// CHANGELOG, which calls those chains era-2.
+// the change log, which calls those chains era-2.
 //
 // ok is false for a version that names no era, so a caller prints the version alone rather than
 // inventing a name.

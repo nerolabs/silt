@@ -12,10 +12,10 @@
 // unknown order (here Z_N^* for an RSA modulus N whose factorisation nobody
 // knows):
 //
-//	eval:    y = x^(2^T) mod N          — T sequential squarings (the delay)
-//	prove:   ℓ = HashToPrime(N,x,y,T)
-//	         π = x^(⌊2^T / ℓ⌋) mod N     — computed in T steps, no huge exponent
-//	verify:  r = 2^T mod ℓ;  check  π^ℓ · x^r ≡ y (mod N)
+//	eval: y = x^(2^T) mod N — T sequential squarings (the delay)
+//	prove: ℓ = HashToPrime(N,x,y,T)
+//	 π = x^(⌊2^T / ℓ⌋) mod N — computed in T steps, no huge exponent
+//	verify: r = 2^T mod ℓ; check π^ℓ · x^r ≡ y (mod N)
 //
 // Sequentiality rests on the belief that computing x^(2^T) needs T squarings
 // when the group order is unknown (you cannot reduce the exponent 2^T without
@@ -145,7 +145,7 @@ func Eval(p Params, seed []byte, T uint64) (Proof, error) {
 // recurrence, so it never materialises the T-bit exponent 2^T. It runs in T
 // group multiplications:
 //
-//	r₀ = 1;  for i in 1..T:  b = ⌊2·r/ℓ⌋ ∈ {0,1};  r = 2·r mod ℓ;  π = π²·x^b
+//	r₀ = 1; for i in 1..T: b = ⌊2·r/ℓ⌋ ∈ {0,1}; r = 2·r mod ℓ; π = π²·x^b
 func prove(N, x, y *big.Int, T uint64) *big.Int {
 	ell := hashToPrime(N, x, y, T)
 	pi := big.NewInt(1)

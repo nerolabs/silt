@@ -1,27 +1,24 @@
 package statehash
 
-// R3.1 V1 — the SMT second-preimage / domain-separation scope gate (verification half).
+// V1 — the SMT second-preimage / domain-separation scope gate (verification half).
 //
-// Binding spec: docs/thinking/2026-09-01-smt-domain-separation-close-design.md, Part 3 "V1".
-// The Researcher certifies the disjoint-preimage ARGUMENT separately; this file pins the
-// two facts the argument RESTS ON, against OBSERVABLE digests (never the library's
-// unexported leafNodePrefix/innerNodePrefix vars):
+// The research verifies the disjoint-preimage ARGUMENT
+// separately; this file pins the two facts the argument RESTS ON, against OBSERVABLE digests
+// (never the library's unexported leafNodePrefix/innerNodePrefix vars):
 //
-//  1. TestDomainSeparationLeafInnerPrefixBytesDiffer — the leaf preimage's first byte and the
-//     inner preimage's first byte differ, reconstructed exactly as fold.go does
-//     (foldLeafPreimage / foldInnerPreimage — the byte-exact replica TestFoldSeedEncodingMatch
-//     esLibrary already pins against the real library).
-//  2. TestDomainSeparationTypeSwapChangesDigest — a type-swap (the same 64-byte body under the
-//     OTHER node type's prefix) produces a digest that is NOT the real library-committed root
-//     for either a genuine single-leaf trie or a genuine two-leaf (one inner node) trie. This is
-//     the operational form of "a 65-byte string valid as a leaf preimage is not accepted as an
-//     inner node, and vice versa."
+// 1. TestDomainSeparationLeafInnerPrefixBytesDiffer — the leaf preimage's first byte and the
+// inner preimage's first byte differ, reconstructed exactly as fold.go does
+// (foldLeafPreimage / foldInnerPreimage — the byte-exact replica TestFoldSeedEncodingMatch
+// esLibrary already pins against the real library).
+// 2. TestDomainSeparationTypeSwapChangesDigest — a type-swap (the same 64-byte body under the
+// OTHER node type's prefix produces a digest that is NOT the real library-committed root for
+// either a genuine single-leaf trie or a genuine two-leaf (one inner node) trie. This is the
+// operational form of "a 65-byte string valid as a leaf preimage is not accepted as an inner
+// node, and vice versa."
 //
 // MANDATORY ABLATION (recorded, not just asserted here): with foldInnerPrefix temporarily set
-// equal to foldLeafPrefix, both tests below go RED. See
-// core/statehash/../../.claude/agent-memory/tester/r3.1-smt-domain-separation-gates-2026-09-04.md
-// for the verbatim captured failure — a green check with no demonstrated red is decoration
-// (the session-7 scar).
+// equal to foldLeafPrefix, both tests below go RED. See core/statehash/././ for the verbatim
+// captured failure — a green check with no demonstrated red is decoration.
 //
 // RUNTIME GATE: none — this is a pure-math assertion about SHA256 preimage disjointness, not an
 // I/O or consensus-path behaviour. UNGATED: N/A (this test file itself IS the gate; nothing else
@@ -72,14 +69,14 @@ func TestDomainSeparationLeafInnerPrefixBytesDiffer(t *testing.T) {
 // 64-byte body, re-hashed under the OTHER type's prefix, never equals the real committed root
 // that body's genuine type produced. Concretely:
 //
-//   - A genuine single-leaf trie's root IS the leaf digest SHA256(0x00‖path‖valueHash). Re-hash
-//     the SAME path/valueHash body under the inner prefix (0x01‖path‖valueHash) and assert the
-//     result is NOT that leaf digest — an attacker holding this leaf's (path, valueHash) cannot
-//     present it as a colliding inner-node preimage.
-//   - A genuine two-leaf trie (leaves diverging at path bit 0) has an inner root
-//     SHA256(0x01‖leftDigest‖rightDigest). Re-hash the SAME leftDigest/rightDigest body under the
-//     leaf prefix (0x00‖leftDigest‖rightDigest) and assert the result is NOT that inner root — an
-//     attacker holding the two child digests cannot present them as a colliding leaf preimage.
+// - A genuine single-leaf trie's root IS the leaf digest SHA256(0x00‖path‖valueHash). Re-hash
+// The SAME path/valueHash body under the inner prefix (0x01‖path‖valueHash) and assert the
+// result is NOT that leaf digest — an attacker holding this leaf's (path, valueHash) cannot
+// present it as a colliding inner-node preimage.
+// - A genuine two-leaf trie (leaves diverging at path bit 0) has an inner root
+// SHA256(0x01‖leftDigest‖rightDigest). Re-hash the SAME leftDigest/rightDigest body under the
+// leaf prefix (0x00‖leftDigest‖rightDigest) and assert the result is NOT that inner root — an
+// attacker holding the two child digests cannot present them as a colliding leaf preimage.
 //
 // This is the "shortened proof" / type-confusion attack this file exists to foreclose: it fails
 // because the swapped digest differs from the honest root, for library-genuine inputs, not just

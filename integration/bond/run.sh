@@ -7,20 +7,20 @@
 # over time; a shortcut (undersized / no plot) earns NOTHING. This harness turns
 # that claim into NUMBERS on real Docker:
 #
-#   MEASURE   real plot-generation wall time + on-disk plot bytes for a given
-#             -bond, and the live bond-challenge/verify cadence (from real
-#             debug.log timestamps).
-#   POSITIVE  a correctly-bonded validator earns standing and its peer VERIFIES
-#             the bond over the wire (`bond challenge … passed=true`).
-#   NEGATIVE  a shortcut is rejected:
-#               (1) a bond below -min-bond-floor earns NO standing — the daemon
-#                   fails closed at startup with the real refusal string;
-#               (2) an UNDER-BONDED validator's proposal is REFUSED by an honest
-#                   peer before it will attest (-lowbond-propose over the wire).
+#  MEASURE real plot-generation wall time + on-disk plot bytes for a given
+#  -bond, and the live bond-challenge/verify cadence (from real
+#  debug.log timestamps).
+#  POSITIVE a correctly-bonded validator earns standing and its peer VERIFIES
+#  the bond over the wire (`bond challenge … passed=true`).
+#  NEGATIVE a shortcut is rejected:
+#  (1) a bond below -min-bond-floor earns NO standing — the daemon
+#  fails closed at startup with the real refusal string;
+#  (2) an UNDER-BONDED validator's proposal is REFUSED by an honest
+#  peer before it will attest (-lowbond-propose over the wire).
 #
-# Usage:  ./run.sh                 build, run all phases, tear down; exit 0 = PASS
-#         BOND_SIZE=128M ./run.sh  bigger bond (longer plot, more disk — the point)
-#         KEEP=1 ./run.sh          leave the positive-phase topology up to poke at
+# Usage:./run.sh build, run all phases, tear down; exit 0 = PASS
+#  BOND_SIZE=128M ./run.sh bigger bond (longer plot, more disk — the point)
+#  KEEP=1 ./run.sh leave the positive-phase topology up to poke at
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 cd "$(dirname "$0")"
@@ -80,7 +80,7 @@ t0=$(date +%s.%N)
 dc up -d honest peer >/dev/null 2>&1 || { echo "FAIL: compose up"; exit 1; }
 
 # Wall-clock plot-generation time: from `up` to honest's `bond: sealed a … bond`
-# line on stdout (the daemon prints it the instant Seal() returns).
+# line on stdout (the daemon prints it the instant Seal returns).
 sealed=0
 for _ in $(seq 1 600); do
   if dc logs honest 2>&1 | grep -q "bond: sealed a .* storage bond"; then sealed=1; break; fi
@@ -155,7 +155,7 @@ echo "$HON_STANDING"  | grep -qE "reputation=[1-9]" || { echo "FAIL(pos): honest
 # ─── PHASE 2 — NEGATIVE: an under-bonded proposer is REFUSED over the wire ───
 echo ""
 echo "########## PHASE 2 — NEGATIVE: under-bonded proposal REFUSED by honest ##########"
-# POSITIVE CONTROL FIRST (audit #303 bond PHASE 2 confound): the low-bond verdict
+# POSITIVE CONTROL FIRST (the audit bond PHASE 2 confound): the low-bond verdict
 # below fires 'correctly REJECTED' for ANY OK:false — wrong-parent, decode, or an
 # honest that rejects EVERY proposal (chain role wedged, head mismatch). So a
 # reject-all honest would make the negative control pass on a product where the
@@ -194,7 +194,7 @@ dc --profile adversary up -d adversary >/dev/null 2>&1
 # the target in the window — the adversary joins last with just honest as bootstrap
 # and can race the connect), NOT that an honest node accepted a bad block. Gate on
 # DELIVERY: undeliverable ⇒ harness gap, never a property FAIL. (The blind field
-# test hit exactly this false FAIL; redteam SCENARIO 3 covers the same refusal.)
+# integration/redteam covers the same refusal.)
 armed=0
 for _ in $(seq 1 40); do dc logs adversary 2>&1 | grep -q "ADVERSARY: -lowbond-propose set" && { armed=1; break; }; sleep 1; done
 # Delivery semantics (core/node/adversary.go:95): ProposeBadBlock emits a verdict
@@ -221,7 +221,7 @@ elif echo "$ADV_VERDICT" | grep -q "UNEXPECTEDLY ACCEPTED"; then
 else
   echo "  NEGATIVE-2: GAP — the adversary could not DELIVER a proposal to honest within 150s"
   echo "    (armed=$armed, undeliverable ⟺ no verdict). The low-bond refusal is UNTESTED here, not failed,"
-  echo "    and per immutable #4 is surfaced as a FINDING (not a green PASS). redteam SCENARIO 3 hard-gates"
+  echo "    surfaced as a FINDING, not a green PASS. integration/redteam hard-gates"
   echo "    the identical refusal over Docker."
   gap2=1
 fi
@@ -234,7 +234,7 @@ echo "########## PHASE 3 — C1 no-discount: one plot cannot back N identities #
 # cheap to verify over the wire, but the no-DISCOUNT property itself is the
 # credit-ledger root-owner dedup (core/credit/credit.go: a second identity
 # re-advertising the SAME root earns bondedBytes=0 — "one plot, one standing").
-# That mechanism is a deterministic ledger rule, and #234 keeps it UNIT-scoped
+# That mechanism is a deterministic ledger rule, and keeps it UNIT-scoped
 # (per the issue's "state it's unit-covered" option): driving it over the wire
 # would need a red-team seam for a node to claim a root it does not own, which
 # earns nothing precisely because it cannot answer challenges without the plot.
@@ -256,15 +256,15 @@ echo "  on-disk plot         : ${PLOT_BYTES:-?} bytes (${PLOT_HUMAN:-?})"
 echo "  peer verify verdict  : ${PEER_VERDICT:-<none>}"
 echo "  honest standing      : ${HON_STANDING:-<none>}"
 if [ "$pass" = 1 ] && [ "$gap2" = 1 ]; then
-  # Undeliverable low-bond leg: honest (immutable #4) — surface it as a FINDING, not a
+  # Undeliverable low-bond leg — surface it as a FINDING, not a
   # green PASS, so a reject test that never delivered can't masquerade as fully green.
-  # exit 0 (a harness-coverage gap, not a regression); redteam SCENARIO 3 hard-gates it.
-  echo "  RESULT: FINDING ⚠  C1 positive controls held (real plot expensive to make, cheap to verify),"
-  echo "  but the PHASE 2 low-bond negative control was UNDELIVERABLE this run (the adversary could not"
+  # exit 0 (a harness-coverage gap, not a regression); integration/redteam hard-gates it.
+  echo "  RESULT: FINDING ⚠  the positive controls held (real plot expensive to make, cheap to verify),"
+  echo "  but the low-bond negative control was UNDELIVERABLE this run (the adversary could not"
   echo "  reach honest, so its refusal was not exercised HERE). Not a regression and not a green pass —"
-  echo "  the identical refusal is hard-gated by the redteam suite (SCENARIO 3)."
+  echo "  the identical refusal is hard-gated by integration/redteam."
 elif [ "$pass" = 1 ]; then
-  echo "  RESULT: PASS ✅  real plot is expensive to make, cheap to verify, and a shortcut is rejected (C1)"
+  echo "  RESULT: PASS ✅  real plot is expensive to make, cheap to verify, and a shortcut is rejected"
 else
   echo "  RESULT: FAIL ❌"
 fi

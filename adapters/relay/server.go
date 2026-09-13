@@ -39,7 +39,7 @@ func (c Config) withDefaults() Config {
 	}
 	if c.MaxSessionBytes == 0 {
 		// The protocol session ceiling: exactly what a full-length paid chain
-		// authorizes (T-RELAY-GRAN), shared by free and paid splices.
+		// authorizes, shared by free and paid splices.
 		c.MaxSessionBytes = relaypay.MaxSessionBytes
 	}
 	return c
@@ -130,12 +130,12 @@ type pendingSplice struct {
 
 // Serve starts a relay listener at addr with ident's TLS certificate.
 func Serve(addr string, ident *identity.Identity, cfg Config, lg ports.Logger) (*Server, error) {
-	// Coherence refusal (G-R212-2 cert §4.1 item 6): a per-splice cap below the protocol
-	// session ceiling would BURN what a fetcher paid for past the cap (T-RELAY-GRAN), and
-	// capping only one of free/paid would be the free/paid differential
-	// D-POD-RELAY-COEXIST refuses. One cap, never below the ceiling.
+	// Coherence refusal: a per-splice cap below the protocol session ceiling would
+	// BURN what a fetcher paid for past the cap, and capping only one
+	// of free/paid would be the free/paid differential refuses. One cap, never below
+	// the ceiling.
 	if cfg.MaxSessionBytes != 0 && cfg.MaxSessionBytes < relaypay.MaxSessionBytes {
-		return nil, fmt.Errorf("relay: MaxSessionBytes %d refused: below the protocol session ceiling relaypay.MaxSessionBytes = %d (a paid session would burn the bytes a fetcher paid for past the cap; T-RELAY-GRAN)", cfg.MaxSessionBytes, int64(relaypay.MaxSessionBytes))
+		return nil, fmt.Errorf("relay: MaxSessionBytes %d refused: below the protocol session ceiling relaypay.MaxSessionBytes = %d (a paid session would burn the bytes a fetcher paid for past the cap)", cfg.MaxSessionBytes, int64(relaypay.MaxSessionBytes))
 	}
 	cert, err := ident.Certificate()
 	if err != nil {
@@ -371,13 +371,14 @@ func (s *Server) accept(from ports.NodeID, conn *tls.Conn, fr ctrl) {
 		conn.Close()
 		return
 	}
-	// PAID rendezvous (PoD §7.3 Batch 3): a connect that carried a nonzero handle is
-	// the byte-stream leg of a paid session. Resolve the node-owned authorizer for
-	// (fetcher, handle) BEFORE splicing. A paid connect that does not resolve to a
-	// live, fetcher-OWNED session is REFUSED here — never downgraded to the free
-	// splice (a free downgrade would hand a non-payer an unfunded, uncapped forward:
-	// the D-POD-RELAY-COEXIST correctness condition / certified residual #2). The
-	// resolver is nil on a relay that does not accept payments, which also refuses.
+	// PAID rendezvous (PoD §7.3 Batch 3): a connect that carried a nonzero
+	// handle is the byte-stream leg of a paid session. Resolve the node-owned
+	// authorizer for (fetcher, handle) BEFORE splicing. A paid connect that
+	// does not resolve to a live, fetcher-OWNED session is REFUSED here —
+	// never downgraded to the free splice (a free downgrade would hand a
+	// non-payer an unfunded, uncapped forward: the correctness condition /
+	// residual #2). The resolver is nil on a relay that does not accept
+	// payments, which also refuses.
 	if p.paid != 0 {
 		var (
 			auth Authorizer

@@ -2,7 +2,7 @@ package demand
 
 // The optimistic fair-exchange floor (P2), ON THE ANCHORED SESSION LANE.
 //
-// C1 (2026-09-08) retired Bank.Redeem / DeliveryReceipt / Ack, so each property below
+// C1 retired Bank.Redeem / DeliveryReceipt / Ack, so each property below
 // is asserted through the surface that survived: a serial is spent at session OPEN (the
 // credit ledger's shared paid-serial guard), and a delivery is acknowledged by a
 // session-domain SessionReceipt.
@@ -13,14 +13,14 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// TestAbortLeavesAnchorReusable (was TestAbortLeavesTokenReusable) is the fetcher-side
+// TestAbortLeavesAnchorReusable is the fetcher-side
 // floor: an aborted exchange never consumes the fetcher's token. The fetcher commits
 // and the server then vanishes — delivering nothing, opening nothing — so the anchor
 // was never spent into any guard, and the SAME token opens a real session at another
 // server.
 //
 // What moved with the lane: on the flat path the serial was spent at REDEEM, so "the
-// abort did not burn it" was a statement about the bank. Under R2.9 the anchor is spent
+// abort did not burn it" was a statement about the bank. Under the anchor is spent
 // at OPEN, which makes the statement stronger and simpler — a server that never opened a
 // session cannot have spent anything. The ledger half (the same anchor spends exactly
 // once, and only where a session was opened) is core/credit

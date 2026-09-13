@@ -35,7 +35,7 @@ const (
 	// "64 MiB minimum" was unenforced folklore). It is the single
 	// source of truth for how big a chunk may be: the transport frame cap
 	// (adapters/tcpnet maxFrame) derives from it plus envelope overhead, so
-	// the wire can always carry a chunk the manifest layer accepts (#104).
+	// the wire can always carry a chunk the manifest layer accepts.
 	MaxChunkSize = 128 << 20
 
 	// MaxChunks bounds the declared data-chunk count (and, independently,
@@ -73,9 +73,9 @@ type Manifest struct {
 	// ManifestKey is reserved for v2 manifest encryption.
 	ManifestKey []byte `cbor:"10,keyasint,omitempty"`
 	// Parity lists parity shard IDs in stripe order: stripe j owns
-	// Parity[j*(N-K) : (j+1)*(N-K)]. A short final stripe is padded with
-	// implicit zero shards during encoding (see core/erasure), so every
-	// stripe has exactly N-K parity entries.
+	// Parity[j*(N-K): (j+1)*(N-K)]. A short final stripe is padded
+	// with implicit zero shards during encoding (see core/erasure),
+	// so every stripe has exactly N-K parity entries.
 	Parity [][]byte `cbor:"11,keyasint,omitempty"`
 }
 

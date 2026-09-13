@@ -1,15 +1,15 @@
 // Package translog is an append-only Merkle transparency log — an RFC 6962
 // (Certificate Transparency) accumulator, adopted not invented (B8). It is the
-// M0-honest core of pluralistic takedown (D-TAKEDOWN / H9, issue #180): every
-// honored revocation is entered into the log, and the log offers two proofs that
-// make a takedown AUDITABLE and NON-SILENT:
+// M0-honest core of pluralistic takedown / H9, issue: every honored revocation
+// is entered into the log, and the log offers two proofs that make a takedown
+// AUDITABLE and NON-SILENT:
 //
-//   - INCLUSION — "revocation R is entry i of the log at size N" (a Merkle audit
-//     path), so anyone can prove a specific takedown was recorded; and
-//   - CONSISTENCY — "the log at size M is a prefix of the log at size N" (nothing
-//     was removed or altered, only appended), so an operator cannot quietly rewrite
-//     history — a silently-dropped or back-dated revocation breaks the consistency
-//     proof.
+// - INCLUSION — "revocation R is entry i of the log at size N" (a Merkle audit
+// path, so anyone can prove a specific takedown was recorded; and
+// - CONSISTENCY — "the log at size M is a prefix of the log at size N" (nothing
+// was removed or altered, only appended, so an operator cannot quietly rewrite
+// history — a silently-dropped or back-dated revocation breaks the consistency
+// proof.
 //
 // This is a plain binary-Merkle accumulator with 0x00/0x01 domain separation
 // (leaf vs interior), independent of any ZK / PIR machinery: the ZK non-globality
@@ -65,14 +65,14 @@ func (l *Log) Root() ports.Hash { return mth(l.entries) }
 
 // MTH is the RFC-6962 Merkle Tree Head over an ORDERED entry list, exposed so other
 // committed structures can reuse the one audited MTH implementation instead of
-// re-deriving it. era-4 (T-3) commits a due-height bucket as the MTH over the
+// re-deriving it. era-4 commits a due-height bucket as the MTH over the
 // CANONICAL (sorted-ascending / dedup / unpadded) id list — the caller is responsible
 // for canonicalising the list; MTH is a pure function of the ordered input. Identical
 // to Log.Root over the same entries.
 func MTH(entries []ports.Hash) ports.Hash { return mth(entries) }
 
 // RootAt is the Merkle Tree Head over the first `size` entries (the historical root
-// a consistency proof is checked against). size must be 0..Size().
+// a consistency proof is checked against). size must be 0.Size.
 func (l *Log) RootAt(size int) (ports.Hash, error) {
 	if size < 0 || size > len(l.entries) {
 		return ports.Hash{}, ErrRange

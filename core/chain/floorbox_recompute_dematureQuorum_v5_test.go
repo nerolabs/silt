@@ -9,26 +9,26 @@ import (
 )
 
 // Tests for the trustless floor-box RECOMPUTE increment 3 (floorbox_recompute_dematureQuorum_v5.go):
-// the root-only reproduction of requireDeMatureSuperQuorum (the F-1 de-mature super-quorum over the
+// the root-only reproduction of requireDeMatureSuperQuorum (the de-mature super-quorum over the
 // WHOLE bonded map), replicating increments 1/2's C-1 pattern AND gating on the reproduced maturity
 // state (increment 2's recomputeMatureNow).
 //
-// The HARD ABLATIONS (C-5, red-before-green), each injected and watched to flip the verdict, so a
+// The HARD ABLATIONS (red-before-green), each injected and watched to flip the verdict, so a
 // green here is not decoration:
-//   - FORGED BONDED WEIGHT (C-1): a witness with the right members but a forged per-member bonded
-//     weight ⇒ STALL (its inclusion proof fails against the committed root).
-//   - OMITTED / INJECTED MEMBER: a witness missing/padding a bonded member ⇒ MTH mismatch ⇒ STALL
-//     (set-completeness against bondedRoot).
-//   - CONFIG-FROM-WITNESS THRESHOLD (C-6, failing-first): a fold that read the ⅔ threshold (or the
-//     coalition `need`) from the WITNESS instead of the fixed consensus constant would let an
-//     attacker shift the bar. The correct fixed-constant fold is INVARIANT to any witness-carried
-//     threshold; the negative control demonstrates the shift the real fold forecloses.
+// - FORGED BONDED WEIGHT: a witness with the right members but a forged per-member bonded
+// weight ⇒ STALL (its inclusion proof fails against the committed root).
+// - OMITTED / INJECTED MEMBER: a witness missing/padding a bonded member ⇒ MTH mismatch ⇒ STALL
+// (set-completeness against bondedRoot).
+// - CONFIG-FROM-WITNESS THRESHOLD (failing-first): a fold that read the ⅔ threshold (or the
+// coalition `need` from the WITNESS instead of the fixed consensus constant would let an
+// attacker shift the bar. The correct fixed-constant fold is INVARIANT to any witness-carried
+// threshold; the negative control demonstrates the shift the real fold forecloses.
 //
 // The recompute NEVER flips the box to Accept (the STOP boundary); it reproduces ONE
 // predicate.
 
 // dematureFixture is an objective v5 chain that has MATURED (everMature latched) but whose live
-// decentralization is BELOW the bar (matureNow() == false), so requireDeMatureSuperQuorum binds. It
+// decentralization is BELOW the bar (matureNow == false), so requireDeMatureSuperQuorum binds. It
 // carries the committed StateRoot, a Prover over its v5 leaves, and the seated (whole-bonded)
 // members. The maturity gate is reproduced from the SAME committed state via increment 2's
 // SeenSetWitness.
@@ -40,7 +40,7 @@ type dematureFixture struct {
 }
 
 // buildDematureFixture seats the given bonds as attesters on an objective v5 chain (so they enter
-// both bonded and validatorsSeen), sets a HIGH MatureValidators bar so matureNow() is false, latches
+// both bonded and validatorsSeen), sets a HIGH MatureValidators bar so matureNow is false, latches
 // everMature (white-box, same package) so the chain is in the de-mature window, then snapshots the
 // committed v5 StateRoot and a Prover over its v5 leaves. A floor box holds root; the Prover stands
 // in for the any-of-N witness provider.
@@ -52,10 +52,10 @@ func buildDematureFixture(t *testing.T, matureValidators int, bonds []maturityBo
 	const operatorMargin = 1
 	base := buildMaturityFixture(t, matureValidators, operatorMargin, bonds)
 
-	// Latch everMature (the chain has matured at some past height; live decentralization has since
-	// dropped below the high bar). matureNow() must be false at the high bar, so the de-mature gate
-	// binds. Set it white-box (same package), then re-snapshot the root/prover so the committed
-	// everMature scalar leaf reflects the latch.
+	// Latch everMature (the chain has matured at some past height; live decentralization has
+	// since dropped below the high bar). matureNow must be false at the high bar, so the
+	// de-mature gate binds. Set it white-box (same package), then re-snapshot the root/prover so
+	// the committed everMature scalar leaf reflects the latch.
 	base.c.everMature = true
 	if base.c.matureNow() {
 		t.Fatalf("fixture precondition: matureNow() must be FALSE at the high bar (got true) so the de-mature gate binds")
@@ -166,12 +166,12 @@ func (f dematureFixture) bondedWitnessFor(t *testing.T) BondedSetWitness {
 
 // fullNodeDeMatureVerdict returns the verdict the full node's ValidateCommit de-mature gate produces
 // at this state for the given coalition: true (met) when requireDeMatureSuperQuorum passes (or the
-// gate does not bind because matureNow()), false when it would reject.
+// gate does not bind because matureNow), false when it would reject.
 func (f dematureFixture) fullNodeDeMatureVerdict(proposer ports.NodeID, seen map[ports.NodeID]bool) bool {
 	if !f.c.everMature || !f.c.objective() || f.c.matureNow() {
 		return true // gate does not bind — the full node does not run the predicate
 	}
-	// Reproduce requireDeMatureSuperQuorum's fold as the test's own reference (chain.go:2949-2963):
+	// Reproduce requireDeMatureSuperQuorum's fold as the test's own reference (chain.go):
 	// the whole-bonded total and the proposer+seen coalition weight, against the ⌈2·total/3⌉ bar.
 	var total, committed int64
 	for _, w := range f.c.bonded {
@@ -205,9 +205,9 @@ func diverseBondsBig() []maturityBond {
 // committed de-mature state, the trustless recompute's verdict equals the full node's de-mature
 // gate — for BOTH a coalition that MEETS the ⅔ super-quorum and one that MISSES it.
 func TestRecomputeDeMatureSuperQuorum_MatchesFullNode(t *testing.T) {
-	// A high MatureValidators bar (6 > 5 members) keeps matureNow() false, so the gate binds. Total
-	// non-anchor bonded weight is 30M; the two anchors add 2M (1M each) → total 32M. need = ⌈2·32/3⌉
-	// = ⌈21.33⌉ = 22M (in MiB units, computed on raw bytes).
+	// A high MatureValidators bar (6 > 5 members) keeps matureNow false, so the gate binds. Total
+	// non-anchor bonded weight is 30M; the two anchors add 2M (1M each) → total 32M. need =
+	// ⌈2·32/3⌉ = ⌈21.33⌉ = 22M (in MiB units, computed on raw bytes).
 	t.Run("coalition MEETS the super-quorum (matches full node)", func(t *testing.T) {
 		f := buildDematureFixture(t, 6, diverseBondsBig())
 		seenW := f.seenWitnessFor(t)
@@ -258,10 +258,10 @@ func TestRecomputeDeMatureSuperQuorum_MatchesFullNode(t *testing.T) {
 // requireDeMatureSuperQuorum, so the recompute must return met=true regardless of the coalition —
 // a no-op that matches the full node's skip.
 func TestRecomputeDeMatureSuperQuorum_MatureIsNoOp(t *testing.T) {
-	// A LOW MatureValidators bar (2 <= coefficient) makes matureNow() TRUE, so the de-mature gate
+	// A LOW MatureValidators bar (2 <= coefficient) makes matureNow TRUE, so the de-mature gate
 	// does not bind. Build the maturity fixture directly (everMature not required — the gate check
-	// short-circuits on mature first) and confirm the recompute returns met=true even for a coalition
-	// that would MISS the super-quorum if it ran.
+	// short-circuits on mature first) and confirm the recompute returns met=true even for a
+	// coalition that would MISS the super-quorum if it ran.
 	base := buildMaturityFixture(t, 2, 1, diverseBondsBig())
 	if !base.c.matureNow() {
 		t.Fatal("fixture precondition: matureNow() must be TRUE at the low bar")
@@ -281,7 +281,7 @@ func TestRecomputeDeMatureSuperQuorum_MatureIsNoOp(t *testing.T) {
 	}
 }
 
-// TestRecomputeDeMatureSuperQuorum_ForgedBondedWeightRejects is HARD ABLATION 1 (C-1): a witness with
+// TestRecomputeDeMatureSuperQuorum_ForgedBondedWeightRejects is HARD ABLATION 1: a witness with
 // the RIGHT members but a FORGED per-member bonded weight makes the recompute STALL — the forged
 // weight's inclusion proof does not verify against the committed root.
 //
@@ -382,9 +382,9 @@ func TestRecomputeDeMatureSuperQuorum_InjectedMemberRejects(t *testing.T) {
 // fold REJECTS: an attacker who could carry a lax threshold (e.g. ⅓) in the witness would flip a
 // missing coalition to met. The real fold is INVARIANT to the witness-carried threshold.
 //
-// RED-BEFORE-GREEN (evidence, reported in the PR): the negative control
+// RED-BEFORE-GREEN: the negative control
 // (recomputeDeMatureThresholdFromWitness with a lax numerator/denominator) ACCEPTS the 6M-of-32M
-// coalition; the production fold REJECTS it. That divergence is the C-6 teeth — a config-from-witness
+// coalition; the production fold REJECTS it. That divergence is the teeth — a config-from-witness
 // regression would flip the production verdict to match the lax witness.
 func TestRecomputeDeMatureSuperQuorum_ThresholdFromConstant(t *testing.T) {
 	f := buildDematureFixture(t, 6, diverseBondsBig())
@@ -408,7 +408,7 @@ func TestRecomputeDeMatureSuperQuorum_ThresholdFromConstant(t *testing.T) {
 	// NEGATIVE CONTROL (the RED): a config-from-witness fold reads a LAX ⅓ threshold from the witness,
 	// so the same 6M coalition (6M > ⌈32/3⌉ = 11M? no — 6M < 11M) — use a laxer ⅕ bar to force the
 	// flip: need = ⌈32/5⌉ = 7M, still > 6M. Use a ⅛ bar: need = ⌈32/8⌉ = 4M ≤ 6M ⇒ the witnessed lax
-	// threshold ACCEPTS. The production fixed-⅔ fold does not; the divergence is the C-6 teeth.
+	// threshold ACCEPTS. The production fixed-⅔ fold does not; the divergence is the teeth.
 	metInj := recomputeDeMatureThresholdFromWitness(f.c, f.root, proposer, seen, bondedW, 1, 8)
 	if !metInj {
 		t.Fatal("negative-control precondition: a lax ⅛ witnessed threshold must ACCEPT the 6M coalition (else the control is not reading the threshold from the witness)")
@@ -516,11 +516,9 @@ func TestRecomputeDeMatureSuperQuorum_MissingMemberWeightStalls(t *testing.T) {
 	}
 }
 
-// THE STOP-BOUNDARY GUARD FOR THIS INCREMENT MOVED (D0). It was TestRecomputeDeMatureSuperQuorum_NeverFlipsWitnessValidateAccept
-// here: a call to Chain.WitnessValidateV5 asserting the box had not been flipped to Accept. That
-// scaffold is deleted, and the guard it stood for is now held ONCE, at the only place a flip can
-// happen — the R1.8 downgrade in (*Box).Validate — driven on real, node-accepted blocks of every
-// v5 class by TestColdAuditor_NeverAcceptsAnyV5BlockClass. The old form could not have caught a
-// flip in this increment anyway: it passed Block{Version: 5, Height: 3} with no roots and no
-// signatures, and the scaffold short-circuited before reading anything. Four copies of one guard,
-// none of which reached the code it guarded.
+// THE STOP-BOUNDARY GUARD FOR THIS INCREMENT MOVED. It was
+// here: a call to Chain.WitnessValidateV5 asserting the box had not been flipped to Accept. That scaffold is deleted, and the
+// guard it stood for is now held ONCE, at the only place a flip can happen — the downgrade in (*Box).Validate — driven on real,
+// node-accepted blocks of every v5 class by TestColdAuditor_NeverAcceptsAnyV5BlockClass. The old form could not have caught a
+// flip in this increment anyway: it passed Block{Version: 5, Height: 3} with no roots and no signatures, and the scaffold
+// short-circuited before reading anything. Four copies of one guard, none of which reached the code it guarded.

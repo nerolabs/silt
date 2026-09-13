@@ -1,39 +1,38 @@
-// Package demand is the blind demand receipt (D-DEMAND, issue #181): the
-// interlock between the Sybil corner (standing should track WITNESSED demand, not
-// self-declared popularity) and privacy (who-fetches-what stays unlinkable). It
-// covers blind-withdraw → anchored session open → signed delivery-ack → witness,
-// and it delivers exactly one provable property:
+// Package demand is the blind demand receipt, issue: the interlock between the
+// Sybil corner (standing should track WITNESSED demand, not self-declared
+// popularity) and privacy (who-fetches-what stays unlinkable). It covers
+// blind-withdraw → anchored session open → signed delivery-ack → witness, and it
+// delivers exactly one provable property:
 //
 //	UNFORGEABILITY AT THE TOKEN LEVEL: a server cannot bank more receipts for an
 //	object C than there were issued tokens spent on a fetcher-signed delivery ack
 //	of C. #receipts(C) ≤ #issued-tokens-spent-on-a-signed-C-delivery-ack.
 //
-//	R2.9 (2026-09-06) — ON THE ANCHORED SESSION LANE (session.go) that property is
+//	ON THE ANCHORED SESSION LANE (session.go) that property is
 //	restated at the CREDIT level, P-SESSION: one token (face f) is spent at session
 //	OPEN and funds up to ⌊f/p⌋ acknowledged increments, so
 //	demand_S(C)·p ≤ Σ credits settled at S on fetcher-signed acks naming C ≤ Σ face
 //	spent into S's guard, and per fetcher Σ_C demand·p ≤ its grant (T-QUANT). The v2
-//	token-level form above stays true on its own (retiring) lane. Certification:
-//	silt-agent-memory/researcher/reviews/research-outcome/R2.9-witnessed-demand-observable-under-sessions-RESEARCH-CERTIFICATION-2026-09-06.md;
-//	ratification of the restatement is the owner's (D-DEMAND's doc-truth rule).
+//	token-level form above stays true on its own (retiring) lane.
 //
-// THE RECEIPT CARRIES NO PoR PROOF (certified 2026-08-26, the PoD neutral-lane
-// certification, Q2). The earlier P0 shape bound a Shacham–Waters proof over the
-// delivered bytes, but its per-object key seed was public, so the proof was
-// forgeable with zero object bytes (owned residual B3) — a forgeable binding
-// deters no collusion, and it cost a 128-sample prove+verify per delivery on the
-// hobbyist floor box (build-immutable #8). The certified neutral-lane receipt is
+//	decision of the restatement is the project 's doc-truth rule).
+//
+// THE RECEIPT CARRIES NO PoR PROOF. The earlier P0 shape bound a Shacham–Waters
+// proof over the delivered bytes, but its per-object key seed was public, so the
+// proof was forgeable with zero object bytes (owned residual B3) — a forgeable
+// binding deters no collusion, and it cost a 128-sample prove+verify per delivery
+// on the hobbyist floor box (build-immutable #8). The neutral-lane receipt is
 // token + fetcher signature + the (serial‖object‖server) binding: an honest
 // fetcher signs only after the fetch path re-verified the bytes against the
 // content address (tenet B3), and a colluding pair gains nothing a proof would
-// deny (conservation makes forgery strictly loss-making — see the certification).
-// A possession binding re-enters only where loss-deterrence stops covering
+// deny (conservation makes forgery strictly loss-making — see the research). A
+// possession binding re-enters only where loss-deterrence stops covering
 // (receipt→standing, relay), as a content-committed recompute floor — not here.
 //
 // What it deliberately does NOT prove (a Douceur limit, not an engineering gap, per
 // the decision's doc-truth rule): **demand AUTHENTICITY.** A server can run its own
 // fetcher, pay itself, fetch its own content, and mint perfectly valid receipts — a
-// self-fetch IS a real paid correct delivery, and no cryptographic receipt certifies
+// self-fetch IS a real paid correct delivery, and no cryptographic receipt verifies
 // the counterparty was economically independent. Authenticity is re-priced, never
 // proven, by cost-to-wash (fee-burn + bonded-fetcher credential — P3). Any claim
 // that a receipt proves organic third-party demand is false.
@@ -42,7 +41,7 @@
 // OBSERVABLE (Bank.WitnessedIncrements) that is NOT wired to consensus standing — so even a
 // forged or self-dealt receipt buys ZERO standing. That is what keeps the γ→1/N
 // shared-content sealing firewall intact (fusing demand into standing is gated on
-// the open sealing problem, m0.md §10 / #182). Whether/how witnessed demand ever
+// the open sealing problem, the mission spec). Whether/how witnessed demand ever
 // feeds standing is a separate, gated decision this package does not make.
 //
 // BLIND WITHDRAWAL IS BUILT (P1): the retrieval token is withdrawn under an issuer
@@ -50,7 +49,7 @@
 // domain), so the issuer signs it without learning the serial — the redeemed token
 // is cryptographically unlinkable to its withdrawal. But FETCHER-UNLINKABILITY is
 // only NOMINAL until D3 issuance-mixing closes the IP/timing channel (shared with
-// H8/#179): the blind signature hides the serial, not the network identity of the
+// H8/): the blind signature hides the serial, not the network identity of the
 // withdrawer. COST-TO-WASH (P3) is priced by two levers: the fee-burn (P3a, a sim
 // property — each wash burns a real retrieval fee) and the BONDED-FETCHER CREDENTIAL
 // (P3b, built here — Bank.RequireBondedFetcher: demand counts distinct bonded
@@ -84,11 +83,11 @@ type Token struct {
 // signs it without learning the serial. It returns the blinded value to send the
 // issuer and the secret to unblind the reply.
 //
-// The withdrawer CHOOSES epoch and binds it into the blind-signed message (R0.4b
-// (b1)). The issuer signs under key_epoch only if it holds that key and epoch is in
-// its own window, so a requester can never name an epoch that outlives the honest
-// one; naming an EARLIER epoch only shortens its own token's life. Pass the epoch
-// the withdrawer's chain-resolved keyset supplied the key for — see
+// The withdrawer CHOOSES epoch and binds it into the blind-signed message ((b1)).
+// The issuer signs under key_epoch only if it holds that key and epoch is in its
+// own window, so a requester can never name an epoch that outlives the honest one;
+// naming an EARLIER epoch only shortens its own token's life. Pass the epoch the
+// withdrawer's chain-resolved keyset supplied the key for — see
 // Node.AcquireDemandTokenInWindow, the only sound acquisition path.
 func Withdraw(rng io.Reader, issuerPub *rsa.PublicKey, epoch uint64, serial []byte) (blinded, secret []byte, err error) {
 	return blindtoken.BlindDemand(rng, issuerPub, epoch, serial)
@@ -98,7 +97,7 @@ func Withdraw(rng io.Reader, issuerPub *rsa.PublicKey, epoch uint64, serial []by
 // about the serial. Charging or burning the fetch fee against the withdrawal is the
 // caller's job (the cost-to-wash knob is P3).
 //
-// rng is the injected randomness the private-key operation blinds with (advisory C-2;
+// rng is the injected randomness the private-key operation blinds with (
 // see blindtoken.SignBlinded). A nil return is a refusal — a non-canonical blinded
 // value, or a signature that failed verify-after-sign — and the wire already treats an
 // empty reply as "no token issued".
@@ -112,7 +111,7 @@ func SignWithdrawal(rng io.Reader, issuerPriv *rsa.PrivateKey, blinded []byte) [
 
 // Unblind turns the issuer's blind signature into the unlinkable Token on the plain
 // serial, using the secret from Withdraw, and VERIFIES it under (key_epoch, epoch)
-// before returning (RFC 9474 §4.4 Finalize; advisory C-1). An issuer that returns a
+// before returning (RFC 9474 §4.4 Finalize). An issuer that returns a
 // dud is a legible error at withdrawal instead of a token discovered worthless at
 // redemption — which matters here beyond conformance, because an unredeemable token
 // leaves the serve's eager self-mint un-reversed (see blindtoken.Unblind).
@@ -138,10 +137,10 @@ func VerifyToken(issuerPub *rsa.PublicKey, epoch uint64, t Token) bool {
 
 // BondCheck is the P3b bonded-fetcher credential: given a fetcher's receipt-signing
 // key, it reports whether that key belongs to a scarce, bond-distinct identity and
-// returns an opaque distinctness key (the "slot") for it. The bank counts demand
-// PER DISTINCT SLOT, so N receipts from ONE bonded fetcher raise demand by 1 — this
+// returns an opaque distinctness key (the "slot") for it. The bank counts demand PER
+// DISTINCT SLOT, so N receipts from ONE bonded fetcher raise demand by 1 — this
 // re-prices wash to "one bonded fetcher identity per unit of fake demand" (the
-// D-DEMAND decision's second cost-to-wash lever, alongside the fee-burn). Backed in
+// decision's second cost-to-wash lever, alongside the fee-burn). Backed in
 // production by the COMMITTED on-chain bond ledger (chain.BondedSize via the node's
 // RequireBondedFetchers) — the same Sybil-priced, deduped supply C2 measures — so
 // faking U units of demand costs U real storage bonds. Nil ⇒ the gate is off and the
@@ -161,25 +160,25 @@ type BondCheck func(fetcherPubKey []byte) (slot string, ok bool)
 // credential. Both are OBSERVABLES — never read by consensus standing.
 //
 // THE DOUBLE-SPEND GUARD IS NOT HERE (B-9 / C1, 2026-09-08). On the v2 flat lane the
-// token was spent at REDEEM, so the bank carried its own spent set. Under R2.9 the
+// token was spent at REDEEM, so the bank carried its own spent set. Under the
 // anchor is spent at session OPEN, into the credit ledger's shared paid-serial guard
 // (core/credit, SpendDeliveryAnchors) — one guard, one clock, both anchored lanes.
 // The bank's spent set retired with the flat lane; its bounded / expiry-swept /
 // keyed-by-token properties are pinned on the guard that survived
 // (core/credit/delivery_serial_guard_test.go).
 //
-// EVERY MAP HERE IS BOUNDED (build-immutable #8; red-team re-break F5, 2026-09-03).
-// They were not: the observables had no cap, no sweep and no eviction path of any
-// kind. increments and credited are capped by object count, and at the cap each
-// REFUSES rather than evicting — forgetting a live entry is the refuted FIFO design,
-// and an under-count of a neutral observable is the safe error.
+// EVERY MAP HERE IS BOUNDED (build-immutable #8, 2026-09-03). They were not: the
+// observables had no cap, no sweep and no eviction path of any kind. increments and
+// credited are capped by object count, and at the cap each REFUSES rather than
+// evicting — forgetting a live entry is the refuted FIFO design, and an under-count
+// of a neutral observable is the safe error.
 type Bank struct {
 	// bonded, when set (RequireBondedFetcher / P3b), gates a settlement on the fetcher
 	// showing a bond-distinct credential and counts DISTINCT bonded fetchers per object
 	// via credited[object][slot].
 	bonded   BondCheck
 	credited map[ports.Hash]map[string]bool
-	// increments (R2.9, the v3 surface): witnessed increments of DeliveryIncrementBytes
+	// increments (the v3 surface): witnessed increments of DeliveryIncrementBytes
 	// per object, settled on session receipts. Bounded by maxDemandObjects.
 	increments map[ports.Hash]int64
 }

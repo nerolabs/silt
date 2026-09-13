@@ -15,14 +15,14 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Integration/sim tier for the M0 accountability fix (red-team F5). The unit and
-// node-white-box tests prove the chain rules and the isDenied logic; this drives
-// the OUTCOMES through the full node loop: a bonded quorum commits an on-chain
-// revocation over the wire, and then — the load-bearing F5 property — the
-// takedown is honored PER OPERATOR, never globally. A subscribing operator denies
-// the root; an operator that follows the very same chain but did not subscribe
-// does not. And a quorum cannot revoke a root the chain never committed.
-func TestF5RevocationIsPerOperatorAndExistenceCheckedOverTheLoop(t *testing.T) {
+// Integration/sim tier for the M0 accountability fix. The unit and node-white-box
+// tests prove the chain rules and the isDenied logic; this drives the OUTCOMES
+// through the full node loop: a bonded quorum commits an on-chain revocation over
+// the wire, and then — the load-bearing F5 property — the takedown is honored PER
+// OPERATOR, never globally. A subscribing operator denies the root; an operator
+// that follows the very same chain but did not subscribe does not. And a quorum
+// cannot revoke a root the chain never committed.
+func TestRevocationIsPerOperatorAndExistenceCheckedOverTheLoop(t *testing.T) {
 	const (
 		seed     = int64(13)
 		V        = 4
@@ -72,14 +72,15 @@ func TestF5RevocationIsPerOperatorAndExistenceCheckedOverTheLoop(t *testing.T) {
 	if err := proposeRevocation(vals[0], []ports.Hash{root}, ids[1:], ids, cfg.Quorum, sched); err != nil {
 		t.Fatalf("a bonded quorum should be able to revoke a committed root: %v", err)
 	}
-	// Every replica now carries the revocation on its chain...
+	// Every replica now carries the revocation on its chain.
 	for i, nd := range vals {
 		if !nd.Chain().Revoked(root) {
 			t.Fatalf("replica %d should carry the committed revocation on-chain", i)
 		}
 	}
 
-	// ...but honoring is PER OPERATOR. Two nodes on the identical chain:
+	// But honoring is PER OPERATOR. Two nodes on the identical
+	// chain:
 	sub, unsub := vals[1], vals[2]
 	sub.SetHonorChainRevocations(true) // this operator subscribed
 	// unsub keeps the default (off)

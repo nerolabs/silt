@@ -1,14 +1,13 @@
 package main
 
-// Boulder 2, R2.1 economy observability slice 6a — the four local-exact SELF
+// The economy-observability SELF
 // panels served by GET /api/economy/self, extending the /api/status durability
 // block. These tests drive a real node+loop+ledger through the same handler the
-// daemon serves and assert each panel's contract:
-//   Panel 1 my-solvency: per-object horizon + cliff flag.
-//   Panel 2 am-I-profitable: revenue split (serve vs bounty) + operator-cost margin.
-//   Panel 3 is-durability-self-funding: pooled skim-in vs bounty-out.
-//   Panel 4 wash self-check: serve/fetch symmetry SHAPE, "suspected" never "detected".
-// Deliberation: docs/thinking/2026-09-01-economy-observability-design.md (§2, §5-6a).
+// daemon serves and assert each panel's contract: Panel 1 my-solvency: per-object
+// horizon + cliff flag. Panel 2 am-I-profitable: revenue split (serve vs bounty) +
+// operator-cost margin. Panel 3 is-durability-self-funding: pooled skim-in vs
+// bounty-out. Panel 4 wash self-check: serve/fetch symmetry SHAPE, "suspected" never
+// "detected". Deliberation: (§2, §5-6a).
 
 import (
 	"context"
@@ -73,9 +72,9 @@ func getEconomySelf(t *testing.T, h http.Handler, query string) economySelf {
 	}
 	r := httptest.NewRequest("GET", url, nil)
 	// The OPERATOR's read. Panel 1 (my-solvency) is per-object and therefore
-	// token-gated (red-team F2: delta skimIn x 8 is the exact byte count served of a
-	// NAMED root), and the operator's own browser already attaches this header to every
-	// same-origin /api/ call. TestR29aF2EconomySelfWithholdsPerObjectDetailWithoutAToken
+	// token-gated: delta skimIn x 8 is the exact byte count served of a NAMED root,
+	// and the operator's own browser already attaches this header to every
+	// same-origin /api/ call. TestEconomySelfWithholdsPerObjectDetailWithoutAToken
 	// covers the untokened read.
 	r.Header.Set("Authorization", "Bearer tok")
 	w := httptest.NewRecorder()
@@ -126,7 +125,7 @@ func TestEconomySelfMarginAndRevenueSplit(t *testing.T) {
 	// earn a repair bounty of 500 on an escrow funded by `other`.
 	led.Register(other)
 	s.onLoop(func() {
-		led.RecordServeToObject(self, other, root, ports.ChunkID{0x1}, 125*econMintUnit) // 125 units → 875 net, 125 skim (G-R212-7)
+		led.RecordServeToObject(self, other, root, ports.ChunkID{0x1}, 125*econMintUnit) // 125 units → 875 net, 125 skim
 	})
 	// Fund the escrow from `other` and pay `self` a repair bounty.
 	if err := driveFund(s, led, root, other, 5_000); err != nil {
@@ -335,7 +334,7 @@ func TestEconomySelfSolvencyCliff(t *testing.T) {
 func driveFund(s *uiServer, led *credit.Ledger, root ports.Hash, funder ports.NodeID, amount int64) error {
 	var err error
 	s.onLoop(func() {
-		led.RecordServe(funder, ports.NodeID{0xFF}, ports.ChunkID{0xFF}, amount*credit.ServeMintBytesPerCredit) // faucet: Dλ bytes per credit (G-R212-7)
+		led.RecordServe(funder, ports.NodeID{0xFF}, ports.ChunkID{0xFF}, amount*credit.ServeMintBytesPerCredit) // faucet: Dλ bytes per credit
 		err = led.FundEscrow(root, funder, amount)
 	})
 	return err

@@ -5,9 +5,9 @@ package node
 // (the delivery session lane, deliverysession.go): MsgRelayOpen (open a paid session), MsgRelayPay (a
 // preimage reveal), and their acks. Settlement is LOCAL at close — no wire message
 // (design §1, §5): the relay redeems its highest held preimage via
-// credit.RedeemRelayCredit, bounded by the anchors spent at open (R2.14).
+// credit.RedeemRelayCredit, bounded by the anchors spent at open.
 //
-// The two M0 guards and the #644 S-clamp fire on the LIVE path because
+// The two M0 guards and the S-clamp fire on the LIVE path because
 // handleRelayOpen routes through OpenRelaySession — the SAME tested entry the
 // Batch-1 guards live in. The wire path does not bypass them (design §6; the
 // live-path guard-reuse test asserts it).
@@ -23,10 +23,10 @@ import (
 )
 
 // handleRelayOpen is the relay side of MsgRelayOpen: decode the fetcher's chain
-// commitment, run it through OpenRelaySession (M0 guards + #644 clamp), and on
-// success store the live session under a fresh handle returned in the ack's Height.
-// A refusal is an OK=false ack carrying the reason in Data — never a silent drop
-// (the delivery lane's deny() shape).
+// commitment, run it through OpenRelaySession (M0 guards + clamp), and on success
+// store the live session under a fresh handle returned in the ack's Height. A
+// refusal is an OK=false ack carrying the reason in Data — never a silent drop (the
+// delivery lane's deny shape).
 func (n *Node) handleRelayOpen(from ports.NodeID, msg ports.Message) {
 	deny := func(reason string) {
 		n.reply(from, msg, ports.Message{Kind: ports.MsgRelayOpenAck, OK: false, Data: []byte(reason)})
@@ -59,7 +59,7 @@ func (n *Node) handleRelayOpen(from ports.NodeID, msg ports.Message) {
 
 // handleRelayPay is the relay side of MsgRelayPay: look up the live session by
 // handle, verify the revealed preimage (the carried-S Verifier, bounded to at most
-// S hashes — the #644 clamp), and on success raise the paid pump's byte ceiling.
+// S hashes — the clamp), and on success raise the paid pump's byte ceiling.
 // The ack's Height carries the authorized increment count so the fetcher can
 // confirm progress. A session that does not exist or a preimage that does not
 // verify is an OK=false ack.
@@ -93,7 +93,7 @@ func (n *Node) handleRelayPay(from ports.NodeID, msg ports.Message) {
 // table (design §5: single settlement at close). It presents the highest held
 // preimage ONCE — count × RelayIncrementCredit — to credit.RedeemRelayCredit
 // against the session's anchor budget, which pays min(count, budget) into the
-// relay's balance and burns the remainder (R2.14; core/credit/relay.go STATUS).
+// relay's balance and burns the remainder (core/credit/relay.go STATUS).
 // The session is removed and the pump closed first, so the single-settle property
 // (TestNoDoubleSettleReaperAndPump) holds whatever the ledger pays. Returns the
 // credit paid to the relay (0 if the session is unknown or the ledger is unset).
@@ -113,10 +113,10 @@ func (n *Node) SettleRelaySession(handle uint64) int64 {
 	}
 	chainValue := int64(sess.Count()) * relaypay.RelayIncrementCredit
 	paid := n.ledger.RedeemRelayCredit(n.id, sess.ephID, chainValue, sess.budget)
-	// M0 audit (design §6, session-6 observable-log-contract discipline): log only
-	// per-session, non-durable values. No ephemeral or durable identity, no chain
-	// root — a relay operator's log must not carry a cross-session-stable field the
-	// settlement could be correlated on.
+	// M0 audit (design §6 observable-log-contract discipline): log only
+	// per-session, non-durable values. No ephemeral or durable identity, no
+	// chain root — a relay operator's log must not carry a cross-session-stable
+	// field the settlement could be correlated on.
 	n.logf(ports.LogInfo, "relay session settled", "increments", sess.Count(), "credit", paid, "reason", "anchored")
 	return paid
 }
@@ -128,14 +128,13 @@ func (n *Node) RelaySessionForTest(handle uint64) (*RelaySession, bool) {
 	return s, ok
 }
 
-// ResolveRelayAuthorizer is the node's half of the adapter/node seam (PoD §7.3
-// Batch 3, design §3). The relay Server calls it from its accept goroutine to resolve
-// a paid connect's handle to the node-owned authorizer, checking that `fetcher` (the
+// ResolveRelayAuthorizer is the node's half of the adapter/node seam (PoD §7.3 Batch
+// 3, design §3). The relay Server calls it from its accept goroutine to resolve a
+// paid connect's handle to the node-owned authorizer, checking that `fetcher` (the
 // authenticated connector) OWNS the handle — the SAME ephID-ownership check
 // handleRelayPay enforces (relaytransport.go: sess.ephID != from → deny). It returns
 // ok=false when no live session exists for the handle or the fetcher does not own it;
-// the Server then REFUSES the connect, never downgrading to free (certified residual
-// #2).
+// the Server then REFUSES the connect, never downgrading to free.
 //
 // CONCURRENCY SEAM (design §3, flagged): relaySessions is touched only from the
 // serialized event-loop path (node.go). This method is called OFF that loop (the
@@ -183,7 +182,7 @@ func (n *Node) SettleRelaySessionForHandle(handle uint64, forwarded int64) {
 // identity: its signer's public key is the Fetcher field and hashes to the NodeID
 // the transport authenticates. The anchors were bought earlier by the fetcher's
 // DURABLE identity (AcquireRelayAnchors) and handed to this ephemeral; they are
-// bearer credentials, so any fresh ephemeral may spend them (cert §2.1 deviation 1).
+// bearer credentials, so any fresh ephemeral may spend them deviation 1.
 func (n *Node) OpenRelaySessionRemote(relay ports.NodeID, root []byte, S int, funding FundingSource,
 	anchors []relaypay.Anchor, done func(handle uint64, err error)) {
 	if n.signer == nil {
@@ -212,21 +211,20 @@ func (n *Node) OpenRelaySessionRemote(relay ports.NodeID, root []byte, S int, fu
 }
 
 // AcquireRelayAnchors buys k relay prepayment anchors from relay under THIS node's
-// DURABLE identity (R2.14; docs/design/pod.md §7.3.2 step 1). Each is a blind
-// withdrawal in the relay-anchor domain (blindtoken.BlindRelayAnchor) under the
-// relay's chain-committed key for the current epoch — the same wire and the same
-// issuer path as a demand token (MsgDemandTokenRequest → answerDemandTokenRequest →
-// ChargePublish on the RELAY's ledger), so no issuer-side code changed: the issuer
-// signs opaque blinded bytes and charges the fee, without seeing the serial or the
-// domain. The burn lands on the ledger that will settle, refusably (INV-RELAY-CONS
-// (iii)).
+// DURABLE identity. Each is a blind withdrawal in the relay-anchor domain
+// (blindtoken.BlindRelayAnchor) under the relay's chain-committed key for the
+// current epoch — the same wire and the same issuer path as a demand token
+// (MsgDemandTokenRequest → answerDemandTokenRequest → ChargePublish on the RELAY's
+// ledger), so no issuer-side code changed: the issuer signs opaque blinded bytes
+// and charges the fee, without seeing the serial or the domain. The burn lands on
+// the ledger that will settle, refusably ((iii)).
 //
 // The key is the PINNED one (DemandIssuerKeyset(relay) → Key(cur)): a fetcher never
 // withdraws under a key the chain does not commit, so a targeting relay gets a
-// denial, not a fingerprint (the delivery lane's rule, R0.4b). The D3 private
-// purchase path (an ephemeral paying with a publish credit) is NOT used for anchors:
-// F-4 (creditSpent durability) is closed by R2.13b; making D3 credits anchor-eligible
-// is the Researcher's C-4 re-certification, not a consequence — cert C-4.
+// denial, not a fingerprint (the delivery lane's rule). The private purchase path (an
+// ephemeral paying with a publish credit) is NOT used for anchors: creditSpent durability
+// is closed elsewhere, and making those credits anchor-eligible is a separate decision,
+// not a consequence of this one.
 //
 // Sequential, one withdrawal at a time. done fires once with the anchors bought;
 // on an error it fires with the anchors bought BEFORE the failure and the error, so

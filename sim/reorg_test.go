@@ -24,22 +24,21 @@ import (
 // CORRECTED 2026-09-12, AND THE FIXTURE'S POSTURE IS LOAD-BEARING. This header, and
 // the setup comment below, used to explain the outcome by cumulative attestation
 // WEIGHT. There is no weight term: `heavier` ranks on Height then head hash and
-// reads nothing else (TestO3T_HeavierReadsOnlyHeightAndHeadHash). Group B wins here
+// reads nothing else (TestHeavierReadsOnlyHeightAndHeadHash). Group B wins here
 // because it is TALLER (height 3 vs 2), not because it is better attested — height
 // and weight are confounded in this fixture, so the test could never have told the
-// two rules apart (research certification README-BOND-FORKCHOICE-literal-claim-and-
-// equivalence-RESEARCH-CERTIFICATION-2026-09-12, residual R-5).
+// two rules apart.
 //
 // The REORG this test observes is real, and that is a property of the posture, not
-// of fork choice: the fixture is chain.DefaultConfig(), which leaves MinBond at 0,
-// so the chain is NON-OBJECTIVE and finalityQuorumActive() is false. With the
+// of fork choice: the fixture is chain.DefaultConfig, which leaves MinBond at 0,
+// so the chain is NON-OBJECTIVE and finalityQuorumActive is false. With the
 // finality gate ON, Reconcile admits only forks CONTAINING the committed head, a
 // sub-quorum side commits nothing at all, and convergence is by CATCH-UP with
 // nothing dropped. Do not read this test as evidence about an objective chain.
 //
-// The test NAME still says "HeavierFork". It is cited from docs/test-topologies.md
-// (:22, :95), so renaming it is a cited-test surface and is left as a residual
-// rather than bundled into a text repair.
+// The test NAME still says "HeavierFork". It is cited from (:22,:95), so renaming
+// it is a cited-test surface and is left as a residual rather than bundled into a
+// text repair.
 func TestPartitionHealsToHeavierFork(t *testing.T) {
 	const (
 		seed = int64(42)

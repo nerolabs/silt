@@ -1,13 +1,11 @@
 package tcpnet
 
-// R4.3b — the transport is the ONLY place an IP exists. On a completed handshake
-// (readLoop, and the dialer's adopt) observeConn records the socket's remote
-// address as an opaque, per-process-salted group: DIRECT at the peer's own prefix
-// for a direct conversation, RELAYED at the RELAY's prefix for the two spliced
-// paths (the socket is to the relay). The core reads (class, group) through
-// ClassOf and nothing else; the group never touches the wire, the peers file or
-// a log line. Cert: silt-agent-memory/researcher/reviews/research-outcome/R4.3b-relayed-class-
-// and-observed-address-keying-RESEARCH-CERTIFICATION-2026-09-04.md §6–§7.
+// The transport is the ONLY place an IP exists. On a completed handshake (readLoop, and the
+// dialer's adopt) observeConn records the socket's remote address as an opaque,
+// per-process-salted group: DIRECT at the peer's own prefix for a direct conversation, RELAYED
+// at the RELAY's prefix for the two spliced paths (the socket is to the relay). The core reads
+// (class, group) through ClassOf and nothing else; the group never touches the wire, the peers
+// file or a log line. Cert: and-observed-address-keying-–§7.
 
 import (
 	"crypto/sha256"
@@ -45,8 +43,8 @@ func (t *Transport) SetAddressWidth(v4, v6 int) {
 // addrGroup keys an IP to its salted group: v4 by v4Width bits, v6 by v6Width.
 // exempt=true (and group 0) for loopback, link-local and unspecified ONLY —
 // RFC1918 and CGNAT are CLASSIFIED (the cloudtest plan is 10.20.0.x; a private-
-// range exemption would make the shadow run measure nothing, cert §6.3). The
-// family is folded into the hash so a v4 /24 and a v6 /32 never collide.
+// range exemption would make the shadow run measure nothing). The family is
+// folded into the hash so a v4 /24 and a v6 /32 never collide.
 func addrGroup(salt [16]byte, ip net.IP, v4Width, v6Width int) (group uint64, exempt bool) {
 	if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
 		return 0, true
@@ -86,7 +84,7 @@ func remoteIP(a net.Addr) net.IP {
 // observeConn records a completed conversation with id over a socket whose
 // remote is `remote`. viaRelay=false ⇒ ClassDirect at remote's group (the peer's
 // own address); viaRelay=true ⇒ ClassRelayed at remote's group (the RELAY's
-// address). C-3: a DIRECT classification is never downgraded by a later relayed
+// address).: a DIRECT classification is never downgraded by a later relayed
 // conversation; a later DIRECT conversation at another prefix re-keys it. The map
 // is bounded by live conns (dropConn deletes the entry).
 func (t *Transport) observeConn(id ports.NodeID, remote net.Addr, viaRelay bool) {

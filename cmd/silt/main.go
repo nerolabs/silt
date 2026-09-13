@@ -151,9 +151,9 @@ func cmdAdd(args []string) error {
 		return err
 	}
 
-	// Price the publish before it is staged: the shard a repair will pull is the object's
-	// own bytes when it fits in one frame, so the SIZE is part of the price (blind PE B-3).
-	// A file that cannot be stat'd prices the geometry alone.
+	// Price the publish before it is staged: the shard a repair will pull is the
+	// object's own bytes when it fits in one frame, so the SIZE is part of the price. A
+	// file that cannot be stat'd prices the geometry alone.
 	warnBountyPrice(*chunkSize, fileSizeOrUnknown(f), os.Stderr)
 	h, err := pipeline.Add(context.Background(), store, reg, f, pipeline.Options{
 		ChunkSize: *chunkSize,
@@ -210,7 +210,7 @@ func cmdGet(args []string) error {
 // cmdInfo prints the stripe map of a stored file — which shard IDs make
 // up each stripe and how many of them can be lost. It exists to make the
 // erasure math tangible: pick shards from the printout, delete their
-// files from .silt/objects, watch get shrug it off.
+// files from.silt/objects, watch get shrug it off.
 func cmdInfo(args []string) error {
 	fs := flag.NewFlagSet("info", flag.ExitOnError)
 	storeDir := fs.String("store", ".silt", "store directory")

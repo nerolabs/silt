@@ -9,26 +9,26 @@ import (
 // Premise repro for the MATURING=1 SYBILS=8 field drill (10-maturing-handoff):
 // the everMature latch is UNREACHABLE in that topology as parameterized, even
 // with a perfect bond-reg drain — so the "latch never tripped in 420s" GAP
-// (runs 9c3777d-73949, 7134711-18163) would recur on any re-run regardless of
-// the #427 drain fix.
+// (runs the field run, the field run) would recur on any re-run regardless of
+// the drain fix.
 //
 // The topology (integration/cloudtest/topology.py, MATURING=1): 4 validators
 // which are ALL launch anchors (-anchors lists every validator), bar
 // -mature-validators 2 at -operator-margin 1, plus 8 non-anchor Sybils bonding
-// the MINIMUM (1 MiB) and all declaring ONE shared -domain sybilnet. The
+// The MINIMUM (1 MiB) and all declaring ONE shared -domain sybilnet. The
 // topology comment expects the latch to trip on "the coefficient the 4
 // distinct-operator validators actually reach (2)". That model is wrong twice:
 //
-//  1. C2Metric EXCLUDES anchors (chain.go: `if c.cfg.Anchors[id] { continue }`)
-//     — correctly, because the shed measures decentralization AWAY from the
-//     scaffolding; counting the anchors' own bonds to shed the anchors would
-//     be circular. So the 4 validators' 64 MiB bonds never enter the metric.
-//  2. The only non-anchor cohort is the single-domain Sybil set, which the A
-//     axis aggregates into ONE group → NakamotoDomains = 1 < 2, and
-//     matureNow gates on min(NakamotoOperators, NakamotoDomains). That is the
-//     C2 discount WORKING (TestC2SingleDomainSybilsDoNotMature pins it as the
-//     defense) — the drill asks the metric to be tripped by exactly the cohort
-//     the metric exists to refuse.
+// 1. C2Metric EXCLUDES anchors (chain.go: `if c.cfg.Anchors[id] { continue }`)
+// — correctly, because the shed measures decentralization AWAY from the
+// scaffolding; counting the anchors' own bonds to shed the anchors would
+// be circular. So the 4 validators' 64 MiB bonds never enter the metric.
+// 2. The only non-anchor cohort is the single-domain Sybil set, which the A
+// axis aggregates into ONE group → NakamotoDomains = 1 < 2, and
+// matureNow gates on min(NakamotoOperators, NakamotoDomains). That is the
+// C2 discount WORKING (TestC2SingleDomainSybilsDoNotMature pins it as the
+// defense) — the drill asks the metric to be tripped by exactly the cohort
+// the metric exists to refuse.
 //
 // (A third, independent blocker in the live topology: validatorsSeen fills
 // only from ATTESTERS of committed blocks, and pre-shed the anchors gather
@@ -39,8 +39,8 @@ import (
 // The intended maturation shape — honest NON-anchor validators with DISTINCT
 // domains who ATTEST committed blocks — is the I3 oracle's setup
 // (modelcheck_i3_test.go matureWeightedEpoch); the field topology has no such
-// cohort. Fixing the drill is a harness/topology change (route via PE — the
-// drill parameterization was a reviewed ruling), not a core change: the core
+// cohort. Fixing the drill is a harness/topology change (the
+// drill parameterization was a revieweddecision), not a core change: the core
 // behavior this test pins is CORRECT.
 func TestMaturingFieldTopologyLatchUnreachable(t *testing.T) {
 	const anchorBond = int64(64) << 20 // -bond 64M
@@ -88,10 +88,10 @@ func TestMaturingFieldTopologyLatchUnreachable(t *testing.T) {
 		t.Errorf("8 same-domain Sybils must yield NakamotoDomains=1, got %d", m.NakamotoDomains)
 	}
 	// The drill's load-bearing premise: with EVERY bond banked and EVERY
-	// participant seen, the bar-2 latch still cannot trip. If this ever flips to
-	// Mature()=true, either the topology gained an honest non-anchor cohort (fix
-	// this test's setup to match) or the C2 discount regressed (a real break —
-	// see TestC2SingleDomainSybilsDoNotMature).
+	// participant seen, the bar-2 latch still cannot trip. If this ever flips
+	// to Mature=true, either the topology gained an honest non-anchor cohort
+	// (fix this test's setup to match) or the C2 discount regressed (a real
+	// break — see TestC2SingleDomainSybilsDoNotMature).
 	if c.Mature() {
 		t.Fatalf("MATURING topology premise: Mature()=true at full drain — the single-domain "+
 			"discount or the anchor exclusion regressed; C2: %+v", m)
@@ -100,14 +100,14 @@ func TestMaturingFieldTopologyLatchUnreachable(t *testing.T) {
 		"the drill needs an honest non-anchor distinct-domain attesting cohort (the I3 oracle shape)")
 }
 
-// The re-split's reachability half (PE concurrence 2026-08-15): with the 8 cohort
-// slots split into 4 honest maturers (full 64M bond, UNSET domain — each an
-// independent address-diversity group) + 4 single-domain MinBond Sybils, the
-// bar-2 latch IS reachable at full drain — min(NakamotoOperators,
-// NakamotoDomains) = 2 — while the Sybil cohort alone still cannot mature it
-// (their 4 MiB single group is nowhere near the ⅓ threshold). This is the
-// deterministic RED/GREEN home for the 10-maturing-handoff drill premise: the
-// field run confirms on the wire what this asserts on a laptop.
+// The re-split's reachability half: with the 8 cohort slots split into 4 honest
+// maturers (full 64M bond, UNSET domain — each an independent address-diversity
+// group) + 4 single-domain MinBond Sybils, the bar-2 latch IS reachable at full
+// drain — min(NakamotoOperators, NakamotoDomains) = 2 — while the Sybil cohort
+// alone still cannot mature it (their 4 MiB single group is nowhere near the ⅓
+// threshold). This is the deterministic RED/GREEN home for the
+// 10-maturing-handoff drill premise: the field run confirms on the wire what this
+// asserts on a laptop.
 func TestMaturingResplitTopologyLatchReachable(t *testing.T) {
 	const maturerBond = int64(64) << 20 // -bond 64M, no -domain
 	const sybilBond = int64(1) << 20    // MinBond, all -domain sybilnet

@@ -1,6 +1,6 @@
 package chain
 
-// R0.4b — the write path of the consensus-attested E -> key_E binding.
+// The write path of the consensus-attested E -> key_E binding.
 //
 // Every test here drives a rule whose absence re-opens a concrete channel:
 // self-verification (forge someone else's binding), the era gate (write committed

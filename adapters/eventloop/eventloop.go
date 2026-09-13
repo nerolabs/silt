@@ -6,16 +6,16 @@
 // sockets this loop does.
 //
 // Because it is the ONE serialization point, it is also the one place to
-// measure where the node's single thread actually goes. Andrew's idea
-// (2026-08-15): rather than reconstruct a suspected hot path in a synthetic
-// harness, TIME THE REAL TASKS HERE and let the evidence name the function
-// that eats the thread — or, worst case, hangs it. This is legitimate in the
-// adapter layer (real wall-clock is fine here); the deterministic core stays
-// free of ambient time. Every task carries a label (inbound deliveries by
-// message kind), so the per-label latency IS a goroutine-budget decomposition:
-// which handler dominates, and a watchdog that names a task still in-flight
-// past a deadline (a hang), with a stack dump of exactly where it is stuck.
-// All instrumentation is optional — the zero value is off.
+// measure where the node's single thread actually goes. the project owner's idea: rather
+// than reconstruct a suspected hot path in a synthetic harness, TIME THE REAL
+// TASKS HERE and let the evidence name the function that eats the thread — or,
+// worst case, hangs it. This is legitimate in the adapter layer (real
+// wall-clock is fine here); the deterministic core stays free of ambient time.
+// Every task carries a label (inbound deliveries by message kind), so the
+// per-label latency IS a goroutine-budget decomposition: which handler
+// dominates, and a watchdog that names a task still in-flight past a deadline
+// (a hang), with a stack dump of exactly where it is stuck. All
+// instrumentation is optional — the zero value is off.
 package eventloop
 
 import (
@@ -53,7 +53,7 @@ type Loop struct {
 	// (tenets S3/V4). Set-once before Run, so no lock is needed.
 	OnPanic func(r any)
 
-	// ── Instrumentation (Andrew's timing-for-evidence idea). Set before Run;
+	// ── Instrumentation (timing as evidence). Set before Run;
 	// zero value = off. Timing uses Now (real wall-clock — adapter layer only). ──
 
 	// Now returns the real time; defaults to time.Now when nil.
@@ -74,7 +74,7 @@ type Loop struct {
 	// deadline purely by waiting behind a backlog (the token blind-sign is fast;
 	// it times out at 8s because VDF-evals/drain/sync ran ahead of it). Execution
 	// time alone can show every task green while the loop is pinned; queue-wait is
-	// what ties saturation to the timeout (PE 2026-08-15).
+	// what ties saturation to the timeout.
 	QueueWaitThreshold time.Duration
 	OnQueueWait        func(label string, wait time.Duration)
 	// SummaryEvery, if > 0, emits a per-label snapshot via OnSummary every
@@ -86,8 +86,8 @@ type Loop struct {
 
 	// watchdog / accumulator state
 	stats map[string]labelStat // guarded by mu; updated on the loop goroutine
-	// in-flight task, published for the watchdog goroutine via atomics so the
-	// loop never holds mu while running a task.
+	// In-flight task, published for the watchdog goroutine via atomics so
+	// the loop never holds mu while running a task.
 	curStart atomic.Int64  // task start UnixNano; 0 = idle
 	curSeq   atomic.Uint64 // bumped per task, so a hang is reported once
 	curLabel atomic.Pointer[string]

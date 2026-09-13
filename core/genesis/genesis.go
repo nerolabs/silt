@@ -60,17 +60,19 @@ func ID() ports.NodeID {
 // ground that no live network exists to fork:
 //
 //	4′ 2026-09-07, the true-length MANIFEST frame:
-//	  hash 7becf754…32ce → f428d0a8…0951, root unchanged.
-//	R-SHORT-FINAL-STRIPE, the true-length DATA frame (the 2,042-byte
-//	  manifesto is a single-frame object):
-//	  hash f428d0a8…0951 → e44344ea…72c0, and the ROOT moves with it.
+//	 hash 7becf754…32ce → f428d0a8…0951, root unchanged.
+//
+// The true-length DATA frame (the 2,042-byte
+//
+//	manifesto is a single-frame object):
+//	hash f428d0a8…0951 → e44344ea…72c0, and the ROOT moves with it.
 //
 // TestGenesisBlockHashIsPinned holds all three current literals, so from
 // here they move only by an explicit, recorded decision. Whether height-0
-// identity sits inside the era-3/4 freeze surface is filed for R3.4
-// (R-GENESIS-HASH-FREEZE-SURFACE). ManifestFrameBytes: 64 << 10 still
-// reproduces the pre-4′ MANIFEST framing; the pre-short-stripe data
-// framing has no knob, because nothing but archaeology wants it.
+// identity sits inside the era-3/4 freeze surface is filed for.
+// ManifestFrameBytes: 64 << 10 still reproduces the pre-4′ MANIFEST
+// framing; the pre-short-stripe data framing has no knob, because nothing
+// but archaeology wants it.
 func Options() pipeline.Options {
 	return pipeline.Options{
 		ChunkSize: 64 << 10,
@@ -86,15 +88,14 @@ func Options() pipeline.Options {
 // process is deterministic, every node gets the identical block and
 // link, and ends up holding the manifesto's chunks.
 //
-// params IS THE CONSENSUS-CRITICAL CONFIG THIS NETWORK COMMITS AT HEIGHT 0
-// (owner call F). Height-0 identity is no longer a function of the manifesto
-// alone: a network minted with a different -min-bond, -quorum, -anchors,
+// params IS THE CONSENSUS-CRITICAL CONFIG THIS NETWORK COMMITS AT HEIGHT 0.
+// Height-0 identity is no longer a function of the manifesto alone: a
+// network minted with a different -min-bond, -quorum, -anchors,
 // -epoch-blocks or -bond-label-k — or a different compiled bond-VDF delay, which has
-// no flag — has a DIFFERENT genesis hash, so a
-// divergently-configured node cannot join it at all — Reconcile refuses the fork
-// with chain.ErrForeignGenesis before any validity question arises. That is
-// canon rule 8's second arm (docs/build-process.md): a consensus quantity must
-// be a function of the CHAIN.
+// No flag — has a DIFFERENT genesis hash, so a divergently-configured node
+// cannot join it at all — Reconcile refuses the fork with
+// chain.ErrForeignGenesis before any validity question arises. That is canon
+// rule 8's second arm: a consensus quantity must be a function of the CHAIN.
 //
 // THE PARAMETER IS REQUIRED, NOT OPTIONAL, AND THAT IS THE POINT. The schema for
 // chain.ConsensusParams shipped while NOTHING populated it: genesis was minted as
@@ -108,7 +109,7 @@ func Options() pipeline.Options {
 // before Params existed, which is what keeps the committed fixture hashes and the
 // deterministic sim where they are. Every nil call site in this repo is a test or
 // a sim; the daemon passes real params, pinned by
-// TestG_CFGBIND_7_TheGenesisWiringIsOnTheProductionPath_Source.
+// TestTheGenesisWiringIsOnTheProductionPath_Source.
 func Build(store ports.ChunkStore, params *chain.ConsensusParams) (chain.Block, link.Handle, ports.Entry, error) {
 	reg := registry.New() // throwaway: the entry goes in the block, not a registry
 	h, err := pipeline.Add(context.Background(), store, reg, bytes.NewReader(Manifesto), Options())

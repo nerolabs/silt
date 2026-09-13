@@ -66,16 +66,16 @@ func TestTrainingWheelsShedThroughTheNodeLoop(t *testing.T) {
 	prop := nodes[0]
 	all := ids
 
-	// OUTCOME 1: young network — an anchorless coalition is refused. Post-#402 the
+	// OUTCOME 1: young network — an anchorless coalition is refused. Post- the
 	// proposer's GATHER enforces the launch anchor requirement (SupportMeetsQuorum
 	// shares requiredLaunchAnchors/countAnchorSupport with ValidateCommit), so a
 	// no-anchor attester set can't even ASSEMBLE a committable coalition — it fails at
 	// the gather (ErrNoQuorum) rather than gathering to count-quorum and then
-	// self-rejecting at Append (ErrAnchorRequired, the pre-#402 path). Either way the
+	// self-rejecting at Append (ErrAnchorRequired, the earlier path). Either way the
 	// launch window can't be captured by a Sybil quorum, and refusing at the gather is
 	// the tighter behavior (no doomed block is ever built). Uses throwaway independents
 	// ids[4]/ids[5] as attesters AND a throwaway PROPOSER (nodes[3]): a signature at a
-	// height is final for proposer and attester alike (#397), so this failed attempt at
+	// height is final for proposer and attester alike, so this failed attempt at
 	// height 1 spends its signers' height-1 signatures. nodes[0] must stay unspent to
 	// propose the real height-1 commit below; ids[3] only ever attests at height 2, so
 	// its height-1 signature is expendable here.

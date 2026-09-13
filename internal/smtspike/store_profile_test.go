@@ -12,8 +12,7 @@ import (
 	"github.com/pokt-network/smt"
 )
 
-// RED home for the PE-ordered node-store measurement (RULING keystone-node-store
-// Q1): the disk-backed store must be measured on the 1 vCPU / 2 GB floor box —
+// RED home for the node-store measurement: the disk-backed store must be measured on the 1 vCPU / 2 GB floor box —
 // boot rebuild, hot-path apply, resident memory, and on-disk size — before the
 // dependency is committed. This harness is that measurement; it runs a real
 // disk store rather than the in-memory reference so the numbers reflect the
@@ -21,10 +20,10 @@ import (
 //
 // Heavy and disk-bound — run explicitly:
 //
-//	SILT_STORE_PROFILE=1 go test ./internal/smtspike/ -run TestStoreProfile -v -timeout 60m
+//	SILT_STORE_PROFILE=1 go test./internal/smtspike/ -run TestStoreProfile -v -timeout 60m
 //
 // Report from the floor box, never a laptop: the whole point is the box that
-// OOM-killed the in-memory backend (PR #596). A laptop number is the shape.
+// OOM-killed the in-memory backend. A laptop number is the shape.
 func TestStoreProfile(t *testing.T) {
 	if os.Getenv("SILT_STORE_PROFILE") == "" {
 		t.Skip("set SILT_STORE_PROFILE=1 to run the disk-store floor-box profile")
@@ -45,9 +44,9 @@ func TestStoreProfile(t *testing.T) {
 	// The coexistence balloon (SILT_COEXIST_BALLOON_MB): held resident for the
 	// WHOLE scale loop so every rssMB row below is RSS-UNDER-PRESSURE, directly
 	// comparable to the prior no-pressure table. On a no-swap floor box the
-	// balloon competes for physical RAM against bbolt's page cache — the read is
-	// whether rssMB sheds toward the ~305 MB heap floor (coexistence holds) or the
-	// box OOMs. See docs/thinking/2026-08-27-coexistence-balloon.md.
+	// balloon competes for physical RAM against bbolt's page cache — the read
+	// is whether rssMB sheds toward the ~305 MB heap floor (coexistence holds)
+	// or the box OOMs. See.
 	bMB := balloonMB(t)
 	pressure := "no-pressure"
 	if bMB > 0 {
@@ -55,7 +54,7 @@ func TestStoreProfile(t *testing.T) {
 		touched, checksum := inflateBalloon(bMB)
 		runtime.GC()
 		rssPost := residentMB()
-		pressure = "UNDER-PRESSURE"
+		pressure = "UNDE"
 		t.Logf("BALLOON: %d MiB held resident, touched %d pages, checksum=%d, "+
 			"residentMB %.1f -> %.1f (delta %.1f) — rssMB rows below are under this pressure",
 			bMB, touched, checksum, rssPre, rssPost, rssPost-rssPre)

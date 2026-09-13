@@ -100,7 +100,7 @@ func (p *Providers) Evict(now int64) int {
 // forever" into "gone" for replicated content. Where the dead holder is the SOLE
 // provider of a key, its record is KEPT: orphaning that key would make its content
 // undiscoverable (a transiently-unreachable sole holder must stay re-probeable
-// until it recovers and re-announces, #69/#226); the deadUntil cooldown still
+// until it recovers and re-announces, #69/); the deadUntil cooldown still
 // rate-limits the re-dial in that degenerate case.
 func (p *Providers) RemoveIfNotSole(provider ports.NodeID) int {
 	removed := 0

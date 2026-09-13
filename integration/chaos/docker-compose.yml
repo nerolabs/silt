@@ -1,8 +1,8 @@
 # Chaos / crash-recovery, on one flat network.
 #
-#   seed ── registry + bootstrap
-#   holder×N ── real disk stores
-#   client ── one persistent box run.sh execs ephemeral swarm add/get on
+#  seed ── registry + bootstrap
+#  holder×N ── real disk stores
+#  client ── one persistent box run.sh execs ephemeral swarm add/get on
 #
 # The outcome under test: does the system SURVIVE HARD CRASHES? Unlike durability
 # (permanent loss: containers removed for good) this KILLS daemons with SIGKILL —

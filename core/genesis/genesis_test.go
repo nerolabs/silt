@@ -38,26 +38,25 @@ func TestGenesisIsDeterministic(t *testing.T) {
 
 // TestGenesisBlockHashIsPinned holds height-0 IDENTITY across binaries, which
 // TestGenesisIsDeterministic cannot see (it compares two builds in one process). The
-// literals are the values R-SHORT-FINAL-STRIPE produces, the SECOND accepted genesis move
+// literals are the values the current pipeline produces, the SECOND accepted genesis move
 // in this window and on the same ground as the first: no live network exists and every
 // development chain is wiped on upgrade.
 //
-//	pre-4′ (padded manifest frame)   hash 7becf754…32ce · manifest chunk 8063c7a3…4610
-//	4′     (true-length manifest)    hash f428d0a8…0951 · manifest chunk 5478750c…d107 · root fce9eeeb…20d6
-//	       (true-length DATA frame)  hash e44344ea…72c0 · manifest chunk f761f80b…fcf6 · root 31768fb4…7dd1
-//	now    (padded secrets box)      hash fdfb676c…eb58 · manifest chunk b12a4f0a…e06d · root 31768fb4…7dd1
+//	pre-4′ (padded manifest frame) hash 7becf754…32ce · manifest chunk 8063c7a3…4610
+//	4′ (true-length manifest) hash f428d0a8…0951 · manifest chunk 5478750c…d107 · root fce9eeeb…20d6
+//	 (true-length DATA frame) hash e44344ea…72c0 · manifest chunk f761f80b…fcf6 · root 31768fb4…7dd1
+//	now (padded secrets box) hash fdfb676c…eb58 · manifest chunk b12a4f0a…e06d · root 31768fb4…7dd1
 //
-// Three literals, not one, because WHICH of them moves is the diagnosis. R-SHORT-FINAL-STRIPE
-// re-framed the manifesto's own 2,042 bytes — a single-frame object — so its data and parity
+// Three literals, not one, because WHICH of them moves is the diagnosis. The sub-frame
+// change re-framed the manifesto's own 2,042 bytes — a single-frame object — so its data and parity
 // chunk IDs moved and the root, which is built out of exactly those, moved with them. The
 // other three moves are all inside the MANIFEST, which the root does not cover, so the root
 // stands and only the manifest chunk ID and the block hash move. The 2026-09-11 move is
-// manifest.secretsPlainLen padding the inner secrets box to close RT-SFO-1, the keyless
-// encryption-mode oracle (docs/threat-catalog.md F8): the sealed blob grew by a
-// mode-independent amount, so the frame that carries it did too. From here the genesis hash
-// moves ONLY by an explicit, recorded decision; any drift turns this RED. ABLATION: set
-// ManifestFrameBytes: 64 << 10 in genesis.Options → RED on the manifest chunk ID and on
-// the block hash, GREEN on the root.
+// manifest.secretsPlainLen padding the inner secrets box to close, the keyless
+// encryption-mode oracle F8: the sealed blob grew by a mode-independent amount, so the frame
+// that carries it did too. From here the genesis hash moves ONLY by an explicit, recorded
+// decision; any drift turns this RED. ABLATION: set ManifestFrameBytes: 64 << 10 in
+// genesis.Options → RED on the manifest chunk ID and on the block hash, GREEN on the root.
 func TestGenesisBlockHashIsPinned(t *testing.T) {
 	const (
 		wantHash  = "fdfb676c0476b8d798e5fb0f15ebe39447b2ba00707d47f814dc205ba92ceb58"

@@ -11,7 +11,7 @@ import (
 // EVERY ACCESSOR RETURNS Present. A full node holds the whole state, so there is no read it
 // cannot see. That fact is a DIAGNOSTIC, never a premise: the dispatch in chain.go maps
 // IndeterminateTrustlessly to a refusal on the node, so a bug in THIS adapter costs a refusal,
-// never an acceptance. G-5 (TestG5_LiveViewNeverAnswersNoWitness) pins the diagnostic directly.
+// never an acceptance. (TestLiveViewNeverAnswersNoWitness) pins the diagnostic directly.
 //
 // It is a value type wrapping *Chain, constructed at the dispatch site. It holds no state of its
 // own and mutates nothing.
@@ -31,14 +31,14 @@ func (v liveView) Objective() bool { return v.c.objective() }
 
 func (v liveView) VerifyBond(pub []byte, root ports.Hash, size int64, nonce uint64, answer []byte) bool {
 	if v.c.verifyBond == nil {
-		return false // unreachable behind Objective(), which requires a wired verifier (#572)
+		return false // unreachable behind Objective, which requires a wired verifier
 	}
 	return v.c.verifyBond(pub, root, size, nonce, answer)
 }
 
 // WitnessBudget is UNLIMITED on a node: it holds the state, so it pays no witness amplification
-// and a BG-3 ceiling here would be a new node-side validity rule. This is the ONLY view that
-// returns UnlimitedBudget() (M-4, G-D10).
+// and a ceiling here would be a new node-side validity rule. This is the ONLY view that returns
+// UnlimitedBudget.
 func (v liveView) WitnessBudget() Budget { return UnlimitedBudget() }
 
 // PrunedTolerated is the node's OWN Q2 pruned-tolerance rule, verbatim: a payload-pruned block is
@@ -50,7 +50,7 @@ func (v liveView) PrunedTolerated(h uint64) (bool, Availability) {
 
 // ---- class 3: position ----
 
-// Head reproduces Chain.Head() exactly — (zero, 0) on an empty chain, else (last.Hash(),
+// Head reproduces Chain.Head exactly — (zero, 0) on an empty chain, else (last.Hash,
 // last.Height + 1) — and adds the parent's proposer and its committed roots by pointer, so a
 // parent that committed no root reads as nil, never as a zero hash.
 func (v liveView) Head() HeadRef {
@@ -74,7 +74,7 @@ func (v liveView) Head() HeadRef {
 	return h
 }
 
-// Ancestors is the header window recentBondRegNonces walks, expressed as hashes: Head().Hash then
+// Ancestors is the header window recentBondRegNonces walks, expressed as hashes: Head.Hash then
 // its Prev-linked predecessors, ending at genesis or at a parent this chain does not hold.
 func (v liveView) Ancestors(k int) ([]ports.Hash, Availability) {
 	if k <= 0 {
@@ -93,12 +93,12 @@ func (v liveView) Ancestors(k int) ([]ports.Hash, Availability) {
 	return out, Present
 }
 
-// ---- LEGACY (M-1) ----
+// ---- LEGACY ----
 
-// Rep is the node's local reputation view — the operand of the !objective() branch of
+// Rep is the node's local reputation view — the operand of the !objective branch of
 // proposerQualifiedAt (MinProposerRep) and attesterQualifiedAt (MinAttesterRep). Always Present
 // on a node: legacy mode is an operator-reachable production regime (cmd/silt/daemon.go
-// useObjective := *objective && *minRep > 0), and the composition must take that branch
+// useObjective:= *objective && *minRep > 0), and the composition must take that branch
 // faithfully or it refuses a v5 block the node accepts today.
 func (v liveView) Rep(id ports.NodeID) (int64, Availability) { return v.c.rep(id), Present }
 

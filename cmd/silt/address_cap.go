@@ -1,9 +1,9 @@
 package main
 
-// R4.3b — the daemon surface of observed-address keying: the -dht-address-cap
-// mode parse (default SHADOW: count, never refuse, until the owner enables `on`
-// against the measured series A/B/E — cert §6.3) and the de-herd relay selection
-// (a precondition of `on`: today every NATed pony adopted the lowest-ID relay).
+// The daemon surface of observed-address keying: the -dht-address-cap mode
+// parse (default SHADOW: count, never refuse, until the project enables `on`
+// against the measured series A/B/E —) and the de-herd relay selection (a
+// precondition of `on`: today every NATed pony adopted the lowest-ID relay).
 
 import (
 	"crypto/sha256"

@@ -8,7 +8,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// #357 research-certification Conditions A + B — the mature-phase epoch machinery.
+// research- A + B — the mature-phase epoch machinery.
 //
 // The §3 finality gate makes a super-quorum-committed block irreversible, but
 // finality is quorum-INTERSECTION safety: two super-quorums are only guaranteed to
@@ -44,17 +44,15 @@ func TestEpochQuorumFrozenAcrossMidEpochJoin(t *testing.T) {
 		t.Fatalf("append genesis: %v", err)
 	}
 
-	// The genesis boundary (height 0) snapshots the founding set of 4. The
-	// Byzantine bar in a mature epoch is the >⅔ frozen-WEIGHT super-majority
-	// (B2, research certification 2026-08-13) — RequiredQuorum returns 0 (#380
-	// direction (1), regime (b): no count floor at all; the local Config.Quorum
-	// is a proposer-side gather target, not a validity term), and the weight
-	// rule carries the escalation.
+	// The genesis boundary (height 0) snapshots the founding set of 4.
+	// The Byzantine bar in a mature epoch is the >⅔ frozen-WEIGHT
+	// super-majority (B2, research 2026-08-13) — RequiredQuorum returns
+	// 0, and the weight rule carries the escalation.
 	if n := c.validatorSetSize(); n != 4 {
 		t.Fatalf("epoch snapshot at genesis: validatorSetSize = %d, want 4", n)
 	}
 	if rq := c.RequiredQuorum(); rq != 0 {
-		t.Fatalf("RequiredQuorum in a mature epoch is 0 (#380 regime (b)): got %d (the Byzantine bar is weight-counted, never a local count floor)", rq)
+		t.Fatalf("RequiredQuorum in a mature epoch is 0 (regime (b)): got %d (the Byzantine bar is weight-counted, never a local count floor)", rq)
 	}
 
 	// Block 1 (mid-epoch): a NEW validator registers a bond. Condition A: the join
@@ -89,8 +87,9 @@ func TestEpochQuorumFrozenAcrossMidEpochJoin(t *testing.T) {
 		t.Fatal("Condition A: a mid-epoch joiner must not be proposer-qualified until the next rotation")
 	}
 
-	// Blocks 2..4: plain commits up to the boundary. The boundary block itself
-	// still validates under the OLD epoch's quorum; rotation applies on commit.
+	// Blocks 2.4: plain commits up to the boundary. The boundary block
+	// itself still validates under the OLD epoch's quorum; rotation applies
+	// on commit.
 	for h := uint64(2); h <= 4; h++ {
 		prev, _ = c.Head()
 		b := &Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h))}}
@@ -233,8 +232,8 @@ func TestEpochTTLExpiryIntegratesAtRotation(t *testing.T) {
 		t.Fatalf("append genesis: %v", err)
 	}
 
-	// Blocks 1..3: prop/v1/v2 renew every block; v3 never does, so its TTL (2)
-	// lapses at height 3 — mid-epoch.
+	// Blocks 1.3: prop/v1/v2 renew every block; v3 never does, so its TTL
+	// (2) lapses at height 3 — mid-epoch.
 	for h := uint64(1); h <= 3; h++ {
 		prev, _ := c.Head()
 		b := &Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h))},
@@ -296,7 +295,7 @@ func TestSlashDisqualifiesMidEpochWithFrozenN(t *testing.T) {
 		t.Fatalf("append genesis: %v", err)
 	}
 	if n, rq := c.validatorSetSize(), c.RequiredQuorum(); n != 5 || rq != 0 {
-		t.Fatalf("setup: founding epoch set N=%d (want 5), RequiredQuorum=%d (want 0 — #380 regime (b): no count floor in a mature epoch; the Byzantine bar is weight-counted, B2)", n, rq)
+		t.Fatalf("setup: founding epoch set N=%d (want 5), RequiredQuorum=%d (want 0 —  regime (b): no count floor in a mature epoch; the Byzantine bar is weight-counted, B2)", n, rq)
 	}
 
 	// v4 provably double-signs (two different blocks at the same height); block 1
@@ -344,13 +343,13 @@ func TestSlashDisqualifiesMidEpochWithFrozenN(t *testing.T) {
 	}
 }
 
-// TestDrainWindowOrderingConvergence is the certification's repro-ladder step 2:
-// independent per-validator registration-commit ordering across the drain window.
-// A lagging replica catches up to a fork that EXTENDS its committed prefix
-// (convergence), while a conflicting drain ordering — even a heavier, longer one —
-// is refused without dropping committed height (no reorg below a super-quorum-
-// committed block; D-1 prefers the stall). Weight stays strictly monotone as the
-// drain commits, so fork-choice never decides on the degenerate zero-weight tie.
+// TestDrainWindowOrderingConvergence is the repro-ladder step 2: independent
+// per-validator registration-commit ordering across the drain window. A lagging
+// replica catches up to a fork that EXTENDS its committed prefix (convergence),
+// while a conflicting drain ordering — even a heavier, longer one — is refused
+// without dropping committed height (no reorg below a super-quorum- committed
+// block; D-1 prefers the stall). Weight stays strictly monotone as the drain
+// commits, so fork-choice never decides on the degenerate zero-weight tie.
 func TestDrainWindowOrderingConvergence(t *testing.T) {
 	a1, a2, a3, a4 := key(61), key(62), key(63), key(64)
 	v1, v2, v3 := key(65), key(66), key(67)
@@ -395,7 +394,7 @@ func TestDrainWindowOrderingConvergence(t *testing.T) {
 		}
 		chainX = append(chainX, *b)
 		// (The strictly-monotone drain-weight check that stood here was deleted with the
-		// fork-choice weight term — O3 Direction T, 2026-09-03. The drain-convergence
+		// fork-choice weight term. The drain-convergence
 		// property below is the part this test guards and it stands.)
 	}
 

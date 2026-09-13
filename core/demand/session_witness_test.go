@@ -1,9 +1,8 @@
 package demand
 
-// G-DEM-1, G-DEM-5 (bank half), G-DEM-6, G-DEM-7 — the witnessed-demand observable under
-// R2.9 sessions (certification R2.9-witnessed-demand-observable-under-sessions-2026-09-06
-// §7). Ablations that must redden: `b.increments[object]++` (G-DEM-1 batched arm); write
-// a SECOND map[Hash]int64 on Bank (G-DEM-6); a map[Hash]map[NodeID]… field (G-DEM-7).
+//(bank half), — the witnessed-demand observable under sessions. Ablations
+//that must redden: `b.increments[object]++` (batched arm); write a SECOND
+//map[Hash]int64 on Bank; a map[Hash]map[NodeID]… field.
 
 import (
 	"crypto/ed25519"
@@ -57,7 +56,7 @@ func TestBondedDistinctCountIsItsOwnSurface(t *testing.T) {
 	}
 }
 
-// TestTheBankHoldsExactlyOnePerObjectCount is G-DEM-6 after C1. The v2 counter it used
+// TestTheBankHoldsExactlyOnePerObjectCount is the gate after C1. The v2 counter it used
 // to be measured against (demand[], one unit per redeemed token, up to 50,000x the v3
 // unit) is DELETED, so the property is now structural: the bank may hold exactly ONE
 // per-object count, and a second one — of any denomination — cannot reappear without
@@ -98,7 +97,7 @@ func TestWitnessedDemandCarriesNoIdentityAxis(t *testing.T) {
 			continue
 		}
 		if e := f.Type.Elem(); e.Kind() == reflect.Map && e.Key() == nodeT {
-			t.Fatalf("Bank.%s is object × identity — the Don't #3 defect (G-λ-8-7 one layer down)", f.Name)
+			t.Fatalf("Bank.%s is object × identity — the Don't #3 defect (one layer down)", f.Name)
 		}
 	}
 }

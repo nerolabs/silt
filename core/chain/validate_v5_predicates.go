@@ -15,13 +15,11 @@ import (
 // Every function here returns (FloorBoxOutcome, error) with the SAME three-valued discipline as
 // the composition: Accept means "this step passed", Reject is a positive disproof, and
 // IndeterminateTrustlessly means the VIEW could not see a read — never a default, never a
-// fall-through. The one shape to watch for in review is a `_, av := ...` that ignores av: that is
-// how a stall silently becomes an "absent", and it is the class R-VIEW-FAITHFULNESS names as this
-// round's red-team target.
+// fall-through. The one shape to watch for in review is a `_, av:=.` that ignores av: that is how
+// a stall silently becomes an "absent", and it is this round's named adversarial target.
 //
-// EVERY MIRROR NAMES THE NODE FUNCTION IT MIRRORS, and was re-derived against that body on main at
-// 5239625 — never copied from the donor branch, whose P4/P5/P7/P8 had all drifted (build record
-// docs/thinking/2026-09-07-floorbox-structure-round-1a-build.md §2 step 4).
+// EVERY MIRROR NAMES THE NODE FUNCTION IT MIRRORS, and was re-derived against that body on main —
+// never copied from the donor branch, whose P4/P5/P7/P8 had all drifted (build record step 4).
 
 // ---------------------------------------------------------------------------
 // scalars and regime predicates
@@ -90,23 +88,23 @@ func v5LaunchAnchorRule(anchors map[ports.NodeID]bool, id ports.NodeID, handedOf
 	return len(anchors) > 0 && anchors[id] && !handedOff
 }
 
-// v5EffectiveEpochSet is the #535 substitution rule, and it lives HERE — in the composition —
-// rather than behind a view method taking h. Its inputs are own cfg plus two whole-set reads, so
-// a view method would permit a SECOND implementation of the substitution: the #402 trap, and the
-// exact seam cert gate G-A was filed on.
+// v5EffectiveEpochSet is the substitution rule, and it lives HERE — in the composition — rather
+// than behind a view method taking h. Its inputs are own cfg plus two whole-set reads, so a view
+// method would permit a SECOND implementation of the substitution: the trap, and the exact seam
+// the gate was filed on.
 //
 // It mirrors Chain.effectiveEpochSet exactly: the frozen snapshot everywhere except the one
 // operator-directed recovery boundary, where the governing set is the LIVE qualified set. The
-// live arm reads Qualified() — the era-4 committed accelerator — rather than re-filtering
-// Bonded(), because filter(bonded, slashed, MinBond) == qualified IS the era-4 maintenance claim
-// and re-deriving it here would be the second copy.
+// live arm reads Qualified — the era-4 committed accelerator — rather than re-filtering Bonded,
+// because filter(bonded, slashed, MinBond) == qualified IS the era-4 maintenance claim and
+// re-deriving it here would be the second copy.
 func v5EffectiveEpochSet(v StateView, h uint64) (map[ports.NodeID]int64, FloorBoxOutcome, error) {
 	p := v.Params()
 	if p.LivenessRecoveryHeight != 0 && h == p.LivenessRecoveryHeight &&
 		v5EpochsEnabled(v) && h%p.EpochBlocks == 0 {
 		q, av := v.Qualified()
 		if av != Present {
-			return nil, IndeterminateTrustlessly, stall("qualified (whole set, #535 recovery re-base)")
+			return nil, IndeterminateTrustlessly, stall("qualified (whole set, liveness-recovery re-base)")
 		}
 		return q, Accept, nil
 	}
@@ -123,7 +121,7 @@ func v5EffectiveEpochSet(v StateView, h uint64) (map[ports.NodeID]int64, FloorBo
 
 // v5AttesterQualifiedAt mirrors Chain.attesterQualifiedAt, BOTH branches: slashed first (the ONE
 // live mid-epoch disqualification), then objective (frozen set in a mature epoch, else
-// bonded ≥ MinBond or launch anchor), else the LEGACY rep ≥ MinAttesterRep (M-1).
+// bonded ≥ MinBond or launch anchor), else the LEGACY rep ≥ MinAttesterRep.
 func v5AttesterQualifiedAt(v StateView, id ports.NodeID, h uint64) (bool, FloorBoxOutcome, error) {
 	slashed, av := v.Slashed(id)
 	if av == NoWitness {
@@ -165,7 +163,7 @@ func v5AttesterQualifiedAt(v StateView, id ports.NodeID, h uint64) (bool, FloorB
 	return v5LaunchAnchorRule(v.Params().Anchors, id, ho), Accept, nil
 }
 
-// v5RequireProposerQualified is P4 — Chain.proposerQualifiedAt — with the #572 ATTRIBUTION
+// v5RequireProposerQualified is P4 — Chain.proposerQualifiedAt — with the ATTRIBUTION
 // BRANCHES (P4a) preserved verbatim. Those branches are an observable contract: "bonded 1048576,
 // needs 1048576" — equal-but-failing — sent a live debug down a false trail for a week because
 // the rendering did not name the ACTUAL disqualifying branch. The node evaluates the predicate
@@ -187,7 +185,7 @@ func v5RequireProposerQualified(v StateView, b *Block) (FloorBoxOutcome, error) 
 		return sz, Accept, nil
 	}
 
-	// ---- LEGACY (M-1): !slashed && rep >= MinProposerRep, rendered the node's way. ----
+	// ---- LEGACY: !slashed && rep >= MinProposerRep, rendered the node's way. ----
 	if !v.Objective() {
 		rep, av := v.Rep(id)
 		if av != Present {
@@ -226,7 +224,7 @@ func v5RequireProposerQualified(v StateView, b *Block) (FloorBoxOutcome, error) 
 	if out != Accept {
 		return out, err
 	}
-	// LAUNCH WINDOW — ANCHOR-ONLY PROPOSING (#402 encoding B).
+	// LAUNCH WINDOW — ANCHOR-ONLY PROPOSING.
 	if len(p.Anchors) > 0 && !ho {
 		if v5LaunchAnchorRule(p.Anchors, id, ho) {
 			return Accept, nil
@@ -235,7 +233,7 @@ func v5RequireProposerQualified(v StateView, b *Block) (FloorBoxOutcome, error) 
 		if out != Accept {
 			return out, err
 		}
-		return Reject, fmt.Errorf("%w: proposer %s is not a launch anchor (young network proposes anchor-only, #402; bonded %d)",
+		return Reject, fmt.Errorf("%w: proposer %s is not a launch anchor (young network proposes anchor-only; bonded %d)",
 			ErrLowReputation, id, sz)
 	}
 	sz, out, err := bondedOf()
@@ -277,7 +275,7 @@ func v5ValidateTakedowns(v StateView, b *Block) (FloorBoxOutcome, error) {
 
 // v5ValidateSlashes mirrors Chain.validateSlashes (block-local, no committed read): the
 // SlashesBytesCap ceiling FIRST, before any signature work, then CheckEquivocation per proof with
-// both hashes recomputed from full bodies (R0.6).
+// both hashes recomputed from full bodies.
 func v5ValidateSlashes(v StateView, b *Block) (FloorBoxOutcome, error) {
 	if len(b.Slashes) == 0 {
 		return Accept, nil
@@ -286,10 +284,11 @@ func v5ValidateSlashes(v StateView, b *Block) (FloorBoxOutcome, error) {
 		return Reject, fmt.Errorf("%w: %d bytes (cap %d)", ErrSlashesBytesCapExceeded, n, SlashesBytesCap)
 	}
 	// THE ERA FLOOR (M2), derived from the VIEW and never handed in by a caller. This is the only
-	// site of the four on the LIVE ACCEPT path of an era-4 block, and it is the one a caller-supplied
-	// floor would break: a floor LOWERED by a driver re-admits the cross-network evidence the rule
-	// exists to refuse. Same discipline as v.Head().ChainID beside it — a verifier's own facts are
-	// read from the verifier, never accepted from the thing being judged or from its driver.
+	// site of the four on the LIVE ACCEPT path of an era-4 block, and it is the one a
+	// caller-supplied floor would break: a floor LOWERED by a driver re-admits the cross-network
+	// evidence the rule exists to refuse. Same discipline as v.Head.ChainID beside it — a
+	// verifier's own facts are read from the verifier, never accepted from the thing being judged
+	// or from its driver.
 	//
 	// The supplier is TOTAL over heights but the derivation can be INDETERMINATE: on the latch route
 	// (Era4ActivationHeight = 0) it reads the committed tagEra4LockedIn/tagEra4Height scalars, which
@@ -338,9 +337,9 @@ const eraFloorRefuseAll = ^uint64(0)
 // floor LOWERED by a caller re-admits cross-network evidence. Both are wrong-accept in the
 // caller-supplied direction, and both are therefore derived from the view, never passed in.
 //
-// This is the second derivation of one mapping (the other is MintVersion), which is the #397 drift
+// This is the second derivation of one mapping (the other is MintVersion), which is the drift
 // shape. It is forced — the accept composition is source-gated against holding a *Chain — so it is
-// BOUNDED rather than eliminated: TestGEF6_TheTwoEraFloorDerivationsAgree drives the equality.
+// BOUNDED rather than eliminated: TestTheTwoEraFloorDerivationsAgree drives the equality.
 func v5EraFloorAt(v StateView, h uint64) (uint64, FloorBoxOutcome, error) {
 	era4, out, err := v5EraActive(v, h, tagEra4LockedIn, tagEra4Height, v.Params().Era4ActivationHeight, "era4")
 	if out != Accept {
@@ -360,7 +359,7 @@ func v5EraFloorAt(v StateView, h uint64) (uint64, FloorBoxOutcome, error) {
 }
 
 // v5ValidateIssuerKeys is P8b — Chain.validateIssuerKeys (issuerkey.go), the stage the 2026-09-03
-// table never enumerated (M-5). Every clause is a REJECT, never a silent drop. Reads own cfg
+// table never enumerated. Every clause is a REJECT, never a silent drop. Reads own cfg
 // (EpochBlocks via blockEpoch, MinBond) and the committed bonded leaf of each issuer.
 func v5ValidateIssuerKeys(v StateView, b *Block) (FloorBoxOutcome, error) {
 	if len(b.IssuerKeys) == 0 {
@@ -444,7 +443,7 @@ func v5ValidateEntry(v StateView, p Params, e ports.Entry) (FloorBoxOutcome, err
 		if e.Token == nil {
 			return Reject, fmt.Errorf("%w: entry %s", ErrTokenRequired, e.Root)
 		}
-		// The cheap replay reject BEFORE the RSA work (#183 red-team F-1) — its PLACEMENT is the
+		// The cheap replay reject BEFORE the RSA work — its PLACEMENT is the
 		// rule: a harvested valid token paired with a novel Root would otherwise run all N modexps
 		// before a spent-check caught the replay.
 		spent, av := v.Spent(e.Token.Serial)

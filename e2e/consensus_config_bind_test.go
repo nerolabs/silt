@@ -1,13 +1,13 @@
 package e2e
 
-// Owner call F, THE RUNTIME COVER — the genesis-config bind, driven in REAL PROCESSES.
+// A project decision, THE RUNTIME COVER — the genesis-config bind, driven in REAL PROCESSES.
 //
 // WHY THIS FILE EXISTS AND WHY IT IS NOT IN cmd/silt. Both halves of the bind are
 // properties of a DAEMON START, not of a library call: (1) the genesis a daemon MINTS
 // commits this network's consensus config, so height-0 identity moves with the flags;
 // (2) a daemon that RESTARTS on a chain it has already joined, with a consensus flag
 // edited, REFUSES to start. The cmd/silt gates for both are source-text gates — they
-// read daemon.go as a string — and a blind review measured the exact failure that shape
+// read daemon.go as a string — and the exact failure that shape
 // invites: the check lifted into a helper defined later in daemon.go and called BEFORE
 // chainstore.Recover left every source gate GREEN while the mechanism was completely
 // dead (the chain is empty before the replay, and CheckConsensusParams returns nil on an
@@ -47,9 +47,9 @@ func cfgBindArgs(store, seed string, extra ...string) []string {
 
 var reGenesisBlock = regexp.MustCompile(`genesis: block ([0-9a-f]{64}) — height 0 COMMITS this network's consensus config \(([^)]*)\)`)
 
-// G-CFGBIND-10 — THE MINT: height-0 identity is a function of the consensus config.
+// THE MINT: height-0 identity is a function of the consensus config.
 //
-// This is the runtime cover for the source gate G-CFGBIND-7. The pre-bind shape
+// This is the runtime cover for the source the gate. The pre-bind shape
 // (`genesis.Build(store, nil)`) compiles, prints the same line, and is silent — what it
 // cannot do is produce two DIFFERENT hashes for two different configs. Two daemons that
 // differ only in -bond-label-k must mint different genesis blocks; the same config must
@@ -85,12 +85,12 @@ func TestGenesisHashMovesWithTheConsensusConfig(t *testing.T) {
 	}
 }
 
-// G-CFGBIND-11 — THE REFUSAL: a daemon restarting on a chain it has already joined, with
-// a consensus flag edited, EXITS instead of applying different rules to that history.
+// THE REFUSAL: a daemon restarting on a chain it has already joined, with a consensus
+// flag edited, EXITS instead of applying different rules to that history.
 //
-// This is the runtime cover for the source gate G-CFGBIND-8, and it is the arm the blind
-// review measured DEAD behind green source gates. It is also why the order in daemon.go
-// is load-bearing: the check reads blocks[0], so it is meaningful only against a chain
+// This is the runtime cover for the source the gate, and it is the arm the measurement
+// measured DEAD behind green source gates. It is also why the order in daemon.go is
+// load-bearing: the check reads blocks[0], so it is meaningful only against a chain
 // LOADED FROM DISK — it must run after chainstore.Recover. Placed before the replay it
 // passes on an empty chain and this test times out waiting for a refusal that never
 // comes.

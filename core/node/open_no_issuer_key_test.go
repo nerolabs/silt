@@ -3,17 +3,15 @@ package node
 // A server that could not resolve key_E against the COMMITTED binding refuses the
 // open — it does not open an unguarded session.
 //
-// C1 re-home (2026-09-08). The v2 twin was core/demand TestRedeemWithNoKeysetRefuses:
-// "a bank with no resolved keyset accepts nothing". Bank.Redeem is retired, and the
-// surviving decision point is verifyDeliveryAnchors, which is where a server decides
+// Bank.Redeem is retired, and the surviving decision point is verifyDeliveryAnchors, which is where a server decides
 // whether to spend an anchor into the shared guard. The safe default is refuse, not
 // accept: a redeemer with nothing consensus-attested to resolve key_E against has no
-// anti-fingerprinting anchor, and the R0.4b certification is explicit that running
-// without one is unsafe.
+// anti-fingerprinting anchor, and the research is explicit that running without one
+// is unsafe.
 //
 // NOT DARKNESS. The refusal arm and the acceptance arm are the SAME node with the SAME
 // anchor; only the committed key differs. Without the control arm this would be a
-// fixture that refuses everything (the vacuous-gate scar, blind PE 2026-09-07).
+// fixture that refuses everything, which would be a vacuous gate.
 //
 // ABLATION (run RED 2026-09-08): make verifyDeliveryAnchors fall through on a nil
 // keyset → "the open was ACCEPTED with no resolved issuer key".

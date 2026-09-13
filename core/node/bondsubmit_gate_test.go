@@ -1,16 +1,15 @@
 package node
 
-// Phase 1.2 — the MsgSubmitBondReg CPU gate (the #424 shape, one message kind
-// over). The submit path had NO per-sender bound: every well-formed, self-signed
-// reg forces up to one VerifySpaceTime (~ms of single-loop CPU, measured in
+// Phase 1.2 — the MsgSubmitBondReg CPU gate (the shape, one message kind over).
+// The submit path had NO per-sender bound: every well-formed, self-signed reg
+// forces up to one VerifySpaceTime (~ms of single-loop CPU, measured in
 // core/bond/verifycost_bench_test.go), so one authenticated identity holding a
 // pipe keeps the loop at a permanent duty cycle for free — and a third party
 // replaying a captured VALID reg re-pays full verify per message (queue dedup
 // sits after the verify). The gate: a per-sender window budget charged BEFORE
 // decode (refusal = a map lookup, zero amplification), plus a sender-binding
 // check (a submit is always the sender's OWN renewal — SubmitBondRenewal
-// self-submits) refusing third-party relays before any crypto.
-// Deliberation: docs/thinking/2026-08-19-bondreg-submit-cpu-gate.md
+// self-submits) refusing third-party relays before any crypto. Deliberation:
 
 import (
 	"testing"
@@ -116,6 +115,6 @@ func TestBondSubmitRefusesThirdPartyRelay(t *testing.T) {
 	// The owner submitting the SAME reg itself passes the binding and verifies.
 	nd.handleChain(victim.NodeID(), ports.Message{Kind: ports.MsgSubmitBondReg, Data: raw})
 	if *verifies != 1 {
-		t.Fatalf("the owner's own submit did not reach validation (verifies=%d)", *verifies)
+		t.Fatalf("the project own submit did not reach validation (verifies=%d)", *verifies)
 	}
 }

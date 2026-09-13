@@ -9,8 +9,7 @@ import (
 )
 
 // THE QUORUM-STACK WHOLE-SET ENUMERATION — the ROOT-CAUSE fix for the hand-enumeration
-// misses (R-boundary, docs/thinking/2026-08-31-Rboundary-mechanical-wholeset-enumeration
-// -options.md).
+// misses at the quorum boundary.
 //
 // THE BLIND SPOT. The merged execution-derived read-set guard (readset_v5_drift_test.go)
 // derives ground truth from apply(b) and a validity source that runs validateTakedowns +
@@ -281,8 +280,8 @@ func wholeSetKeyspaces(t *testing.T) map[string]bool {
 // applyChannelWholeSetKeyspaces runs the untouched-member perturbation oracle over the
 // APPLY channel: perturb an untouched member on a fresh clone, run the REAL apply(b), and
 // compare the post-apply v5 state root to the unperturbed post-apply root (via the leaf
-// set). A cross-member difference means apply()'s recompute folded the untouched member
-// into some committed leaf — a whole-set read in apply (the boundary freeze over the whole
+// set). A cross-member difference means apply's recompute folded the untouched member into
+// some committed leaf — a whole-set read in apply (the boundary freeze over the whole
 // qualified/epochSet, the maturity coefficient over the whole validatorsSeen). This is the
 // channel the merged guard's Source 1 write-diff already covers; the oracle re-derives it
 // so the FULL contract apply ∪ ValidateCommit is enumerated in one place.
@@ -319,9 +318,9 @@ func applyChannelWholeSetKeyspaces(t *testing.T) map[string]bool {
 	return flagged
 }
 
-// crossMemberLeafDiffers reports whether two post-apply leaf sets differ on ANY key that
-// is NOT of the perturbed keyspace `tag` and is NOT a digest-root leaf — a difference in some
-// OTHER leaf caused by the untouched perturbation, i.e. apply() read the perturbed keyspace
+// crossMemberLeafDiffers reports whether two post-apply leaf sets differ on ANY key that is
+// NOT of the perturbed keyspace `tag` and is NOT a digest-root leaf — a difference in some
+// OTHER leaf caused by the untouched perturbation, i.e. apply read the perturbed keyspace
 // whole-set to compute another leaf. Differences WITHIN `tag` are excluded: the perturbed
 // member persisting into the post-state is self-persistence, not a read (mirrors
 // readset_v5_drift_test.go's crossLeafDiffers self-exclusion, one keyspace up).
@@ -360,22 +359,22 @@ func crossMemberLeafDiffers(ref, got map[string]string, tag string) bool {
 // whole-set reads — the blind spot this increment closes. It derives, by the untouched-
 // member perturbation oracle over the quorum stack (collectQuorumSigs + requireQuorumStack),
 // the exhaustive set of committed keyspaces the stack reads as a whole set. It asserts the
-// derived set is EXACTLY the certified quorum-stack whole-map folds, and reports any
-// keyspace the ≥4 list omits (the mechanical finding).
+// derived set is EXACTLY the quorum-stack whole-map folds, and reports any keyspace the ≥4
+// list omits (the mechanical finding).
 //
 // FINDING (derived, not hand-listed): the quorum stack whole-set reads are
 // {bonded, epochSet, slashed, validatorsSeen}.
-//   - bonded — requireDeMatureSuperQuorum sums the whole map (total, chain.go:2949) and
-//     qualifiedCount counts it (chain.go:1481).
-//   - epochSet — requireEpochWeightQuorum sums effectiveEpochSet = whole epochSet (total,
-//     chain.go:2851) and validatorSetSize reads len(epochSet) (chain.go:1561).
-//   - slashed — qualifiedCount folds !slashed[id] over the whole bonded domain
-//     (chain.go:1482), so an untouched slash drops N (RequiredQuorum threshold).
-//   - validatorsSeen — the de-mature gate `!c.matureNow()` (chain.go:2827) folds
-//     MatureCoefficient → C2Metric over the WHOLE validatorsSeen map (objective mode,
-//     readset_v5.go:413), so an untouched validatorsSeen member can flip matureNow() and
-//     turn the de-mature bar on/off. This is the read hand-enumeration keeps missing: it
-//     lives behind a GATE (matureNow), not a direct sum.
+// - bonded — requireDeMatureSuperQuorum sums the whole map (total, chain.go) and
+// qualifiedCount counts it (chain.go).
+// - epochSet — requireEpochWeightQuorum sums effectiveEpochSet = whole epochSet (total,
+// chain.go and validatorSetSize reads len(epochSet) (chain.go).
+// - slashed — qualifiedCount folds !slashed[id] over the whole bonded domain
+// (chain.go), so an untouched slash drops N (RequiredQuorum threshold).
+// - validatorsSeen — the de-mature gate `!c.matureNow` (chain.go) folds
+// MatureCoefficient → C2Metric over the WHOLE validatorsSeen map (objective mode,
+// readset_v5.go), so an untouched validatorsSeen member can flip matureNow and
+// turn the de-mature bar on/off. This is the read hand-enumeration keeps missing: it
+// lives behind a GATE (matureNow), not a direct sum.
 //
 // `slashed` is the keyspace the ≥4 list {qualified, epochSet, validatorsSeen, bonded}
 // OMITS. `qualified` is NOT a quorum-stack fold — it is an APPLY-channel whole-set read
@@ -526,12 +525,12 @@ func TestFullContractWholeSetKeyspaces(t *testing.T) {
 // producer's read-set keys: a key the producer does NOT emit is a key the box cannot check.
 // A forged UNTOUCHED member is, by construction, not in the producer's per-key read-set
 // (the producer walks the payload, and the payload does not name it). So:
-//   - PRE-extension ground truth (apply ∪ validity): the forged untouched member changes NO
-//     apply leaf and NO validity verdict → the pre-extension ground truth does not list it →
-//     the producer's omission is GREEN. The box accepts the forgery.
-//   - EXTENDED ground truth (+ quorum stack): the forged untouched member FLIPS the quorum
-//     verdict → the extended ground truth lists a whole-set read the producer's per-key set
-//     does not cover → RED. The box's blindness is caught.
+// - PRE-extension ground truth (apply ∪ validity): the forged untouched member changes NO
+// apply leaf and NO validity verdict → the pre-extension ground truth does not list it →
+// the producer's omission is GREEN. The box accepts the forgery.
+// - EXTENDED ground truth (+ quorum stack): the forged untouched member FLIPS the quorum
+// verdict → the extended ground truth lists a whole-set read the producer's per-key set
+// does not cover → RED. The box's blindness is caught.
 
 // extendedGroundTruthWholeSetReads is the EXTENDED ground-truth source (the blind-spot
 // closure): the set of WHOLE-MAP completeness reads block b requires under the FULL contract
@@ -588,11 +587,11 @@ func completenessLeafKey(tag string) string {
 //
 //	(1) the PRE-extension guard (apply ∪ validity ground truth) is GREEN — blind;
 //	(2) the EXTENDED guard (+ quorum-stack whole-set source) is RED — the per-key producer
-//	    does not cover the whole-map completeness read the fold requires;
+//	 does not cover the whole-map completeness read the fold requires;
 //	(3) POSITIVE CONTROL: augmenting the producer with the completeness leaf turns the
-//	    extended guard GREEN — proving the RED is caused by the missing whole-map read, not
-//	    a hardcoded false (the "inject the defect and watch it go red, then green on fix"
-//	    discipline; a green check with no demonstrated red-then-green is decoration).
+//	 extended guard GREEN — proving the RED is caused by the missing whole-map read, not
+//	 a hardcoded false (the "inject the defect and watch it go red, then green on fix"
+//	 discipline; a green check with no demonstrated red-then-green is decoration).
 func TestQuorumWholeSetBlindSpotClosed(t *testing.T) {
 	type ablation struct {
 		tag   string

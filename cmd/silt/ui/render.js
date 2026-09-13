@@ -3,7 +3,7 @@
 // strings; they touch no DOM, so a Go test can run them under node against a fixture
 // (cmd/silt/ui_privacy_test.go) and prove the pages never throw on a withheld document.
 //
-// WHY THIS FILE EXISTS (D-UI-PRIVACY-FLAG, blind PE ruling S1). A node running -privacy=on
+// WHY THIS FILE EXISTS. A node running -privacy=on
 // serves an UNAUTHENTICATED reader a status document with NO `stats` block and with
 // `countersWithheld: true`. Before this file both pages did `s.stats.BytesServed || 0`
 // inline; on such a document that expression is not a false zero, it is a TypeError that
@@ -47,7 +47,7 @@
     };
   }
 
-  // prereleaseBanner is the human surface of the -privacy=off posture (PE ruling S8): a
+  // prereleaseBanner is the human surface of the -privacy=off posture: a
   // node publishing its node-wide serve counters to any reader says so on its own pages.
   function prereleaseBanner(s) {
     if (s && s.privacy && s.privacy.mode === "off") {
@@ -76,12 +76,12 @@
 
   // LINK_WITHHELD_HINT: the library page's recovery text. The link is a permanent
   // decryption capability, so it is served only to a tab whose token arrived in the
-  // Authorization header (D-UI-PRIVACY-FLAG, the header-only predicate).
+  // Authorization header (the header-only predicate).
   const LINK_WITHHELD_HINT = "link withheld — this node runs -privacy=on; open the UI from the URL the daemon printed (it carries your token), or run it with -privacy=off";
 
   // libraryGetCell renders the action cell of one library row. Never emits a get button
   // whose data-link is undefined: on a document with linksWithheld the row has no link,
-  // and the old markup sent /api/fetch?link=undefined (blind PE code ruling B2, measured).
+  // and the old markup sent /api/fetch?link=undefined.
   function libraryGetCell(row, doc) {
     if (doc && doc.linksWithheld) {
       return '<span class="dim" title="' + LINK_WITHHELD_HINT + '">link withheld</span>';
@@ -92,7 +92,7 @@
     return '<button class="get" data-link="' + row.link + '">get</button>';
   }
 
-  // ---- the economy panels (Boulder 2, R2.2 rows 14-17) --------------------------------
+  // ---- the economy panels ----------------------------------------------------------
   //
   // Same contract as everything above: PURE, DOM-free, and never a bare dereference of a
   // block a withheld document does not carry. They also carry the four honesty rules the
@@ -222,7 +222,7 @@
         (gini.epoch ? " · " + gini.epoch : "") };
   }
 
-  // The PER-TIER work cells (Economist advisory §3a). Same honesty rules as gossipCell and,
+  // The PER-TIER work cells. Same honesty rules as gossipCell and,
   // where they overlap, THE SAME CODE: edgeShareCell delegates every not-a-number case to
   // gossipCell and only re-formats the number, so the withhold / floor / absent / unknown
   // branches cannot drift between two panels that must agree.
@@ -231,7 +231,7 @@
   // numerator while other tiers keep the denominator positive, so its share computes to a
   // perfectly well-formed 0.0 — "this tier does none of the work" when the truth is "no
   // peer of this tier told me anything". On the shipped -privacy default that is every
-  // tier, every time (D-WORK-VISIBILITY), so this is the NORMAL rendering in production and
+  // tier, every time, so this is the NORMAL rendering in production and
   // not an edge case.
   function tierShareCell(share) {
     if (!share) return { text: "—", title: "this figure is absent on the wire, which is not a zero" };

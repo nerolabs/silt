@@ -11,37 +11,36 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Consensus model-check — the #432 MERGE-GATE oracles: schedules S1 and S2 from
-// the research certification (432-rounds-locking-liveness, 2026-08-15 §2/§5.4),
-// driven over the REAL node loop via held delivery.
+// Consensus model-check — the MERGE-GATE oracles: schedules S1 and S2 from the
+// research (432-rounds-locking-liveness, 2026-08-15 §2/§5.4), driven over the
+// REAL node loop via held delivery.
 //
-//   S1 (delayed lower-round quorum, crash-fault only): X gathers a REAL commit
-//   quorum at round 0, but the final precommit reply is delayed so only the
-//   proposer could ever complete it; everyone else round-changes. The lock rule
-//   must carry X forward — the new round must re-commit X, never a fresh value,
-//   or the delayed quorum completing later forks the height.
+// S1 (delayed lower-round quorum, crash-fault only): X gathers a REAL commit
+// quorum at round 0, but the final precommit reply is delayed so only the
+// proposer could ever complete it; everyone else round-changes. The lock rule
+// must carry X forward — the new round must re-commit X, never a fresh value,
+// or the delayed quorum completing later forks the height.
 //
-//   S2 (equivocate-then-misreport, one Byzantine anchor — silt's f=1 budget):
-//   the Byzantine anchor helps X to a real round-0 quorum AND sends a
-//   round-change reporting a lock on its own value Y, presenting a forged
-//   "prepare-QC" (its own signature). No prepare-QC for Y can exist (a QC is a
-//   quorum, certification §4), so the misreport must die at verification and X
-//   must still be carried forward.
+// S2 (equivocate-then-misreport, one Byzantine anchor — silt's f=1 budget):
+// the Byzantine anchor helps X to a real round-0 quorum AND sends a
+// round-change reporting a lock on its own value Y, presenting a forged
+// "prepare-QC" (its own signature). No prepare-QC for Y can exist (a QC is a
+// quorum), so the misreport must die at verification and X
+// must still be carried forward.
 //
-// THE ORACLE PROPERTY (both schedules, the certification's merge gate): after
-// the dust settles, every replica that committed the contested height committed
-// the SAME block — the proposed X — the height DID commit (liveness), and no
-// honest validator was slashed (I5).
+// THE ORACLE PROPERTY (both schedules, the merge gate): after the dust settles,
+// every replica that committed the contested height committed the SAME block —
+// the proposed X — the height DID commit (liveness), and no honest validator
+// was slashed (I5).
 //
-// FAILING-FIRST (controlled revert, the pattern of the I5/#397 oracle): the
+// FAILING-FIRST (controlled revert, the pattern of the oracle): the
 // lock machinery is not test-toggleable, so the RED is proven by a recorded
 // controlled revert — disabling (i) the lock carriage in maybeAdvanceRound and
 // (ii) the defensive lock rule in the prepare handler makes the view-change
 // LOCK-FREE: the new round then commits a FRESH drain block while the delayed
 // round-0 quorum completes X at the proposer → conflicting commits at one
 // height on different replicas (I1 broken by the liveness escape). The revert
-// diff and RED output are recorded in the commit message and in
-// docs/thinking/2026-08-16-432-s1-s2-oracles.md.
+// diff and RED output are recorded in the commit message and.
 
 // s1s2World: tier2AnchorNet plus the wiring the round machinery needs — every
 // node can reach every other (chainSyncSeed → syncTargets, used by both the
@@ -123,12 +122,12 @@ func sweepRounds(t *testing.T, net *simnet.Network, hold func(simnet.HeldMsg) bo
 }
 
 // assertSingleCommit is the shared oracle assertion: every replica committed
-// the contested height (liveness — the #432 wedge is the counterexample), all
+// the contested height (liveness — the wedge is the counterexample), all
 // committed the SAME hash (I1 across round boundaries), that hash is want, and
 // no honest validator was slashed (I5) — honestSlashed is read after the final
 // cross-sync sweeps that would fire any equivocation scan.
 //
-// ANTI-VACUITY (the #303 discipline): the committed block must record
+// ANTI-VACUITY (the discipline): the committed block must record
 // CommitRound == 1 — proof the VIEW-CHANGE path did the committing. If the
 // sweeps had silently done nothing and the released round-0 reply had simply
 // completed the original gather, the height would commit at round 0 and this

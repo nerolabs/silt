@@ -7,22 +7,21 @@ package node
 //
 // The four properties pinned here:
 //
-//  3. FULL SESSION SETTLEMENT: open → pay N → settle redeems exactly
-//     min(N × increment, Σ face) via the verifier's monotonic count (R2.14: the
-//     session is anchored; the R0.7 interim's pay-0 re-specification is retired).
+// 3. FULL SESSION SETTLEMENT: open → pay N → settle redeems exactly
+// min(N × increment, Σ face) via the verifier's monotonic count (the
+// session is anchored; the interim's pay-0 re-specification is retired).
 //
-//  4. M0 ON THE LIVE PATH: the settlement log line carries NO durable or
-//     cross-session-stable field (design §6 residual). Asserted against a
-//     capturing logger.
+// 4. M0 ON THE LIVE PATH: the settlement log line carries NO durable or
+// cross-session-stable field (design §6 residual). Asserted against a
+// capturing logger.
 //
-//  5. LIVE-PATH GUARD REUSE: the Batch-1 M0 guards and the #644 S-clamp FIRE when
-//     driven through MsgRelayOpen — the wire path does not bypass them.
+// 5. LIVE-PATH GUARD REUSE: the Batch-1 M0 guards and the S-clamp FIRE when
+// driven through MsgRelayOpen — the wire path does not bypass them.
 //
-// R2.14 (2026-09-04): TestRelayFullSessionConservedSettlement is RE-SPECIFIED
-// back to a paying settle — a PRESCRIBED goalpost move, recorded here, not silent
-// (the R0.7 interim, 2026-09-03, had re-specified it to "pays 0"). See
-// core/node/r214_relay_anchor_test.go for the anchor gates and
-// docs/thinking/2026-09-04-r2.14-relay-prepayment-anchor-design.md.
+// TestRelayFullSessionConservedSettlement is RE-SPECIFIED back to a paying settle
+// — a PRESCRIBED goalpost move, recorded here, not silent (the interim,
+// 2026-09-03, had re-specified it to "pays 0"). See
+// core/node/relay_anchor_test.go for the anchor gates.
 
 import (
 	"bytes"
@@ -59,7 +58,7 @@ func (c *capturingLogger) Log(_ ports.LogLevel, event string, kv ...any) {
 
 // relayPairForTest wires a fetcher node and a relay node over one sim transport,
 // with the relay accepting PayWord chains, holding a ledger for settlement, and —
-// R2.14 — holding a chain-committed demand key_0 so anchors it signs verify under
+// holding a chain-committed demand key_0 so anchors it signs verify under
 // its own keyset. The fetcher node IS the session ephemeral (its signer commits
 // the open; sha256(pub) == its NodeID). No balance is pre-funded anywhere: the
 // only money that ever reaches this ledger is what an anchor purchase burns.
@@ -94,8 +93,8 @@ func relayPairForTest(t *testing.T, relayLog ports.Logger) (fetcher, relay *Node
 // TestRelayFullSessionConservedSettlement: a full live session over the wire —
 // anchored with one credential — settles for exactly min(count × increment, face)
 // into the relay's balance, moves no other account, never registers the ephemeral,
-// and a second settle is a no-op. (Under the R0.7 interim this pinned "pays 0";
-// R2.14 retires that.)
+// and a second settle is a no-op. (Under the interim this pinned "pays 0"
+// retires that.)
 func TestRelayFullSessionConservedSettlement(t *testing.T) {
 	const S = 6
 	fetcher, relay, ledger, sched := relayPairForTest(t, nil)
@@ -163,7 +162,7 @@ func TestRelayFullSessionConservedSettlement(t *testing.T) {
 // and values contain neither the fetcher's ephemeral NodeID, the relay's NodeID,
 // nor the chain root — only per-session, non-correlatable values.
 //
-// The line also carries `reason=anchored` (R2.14; the R0.7 interim's `no-anchor`
+// The line also carries `reason=anchored` (the interim's `no-anchor`
 // retired — the recorded S5 goalpost move, cmd/silt/observable_contract.go), so
 // the kv count below is 6, not 4. The reason is a constant string, not a
 // per-session value, so it adds no correlatable field; the forbidden-value scan
@@ -222,7 +221,7 @@ func TestRelaySettlementLogCarriesNoDurableField(t *testing.T) {
 }
 
 // TestRelayWireGuardsFireOnLivePath is failing-first test (5): the Batch-1 M0
-// guards and the #644 S-clamp FIRE when driven through MsgRelayOpen. The wire path
+// guards and the S-clamp FIRE when driven through MsgRelayOpen. The wire path
 // routes through OpenRelaySession, so a durable-funded open, a reused ephemeral
 // identity, and an oversized S are all REFUSED over the wire (OK=false), not
 // bypassed.
@@ -241,13 +240,13 @@ func TestRelayWireGuardsFireOnLivePath(t *testing.T) {
 		t.Fatalf("guard (i) bypassed on the wire: a durable-funded open was accepted (done=%v err=%v)", done, derr)
 	}
 
-	// #644 clamp: an oversized S must be refused over the wire.
+	// clamp: an oversized S must be refused over the wire.
 	done = false
 	var serr error
 	fetcher.OpenRelaySessionRemote(relay.id, chain.Root(), relaypay.MaxChainLength+1, FundingEphemeralBlind, anchors, func(_ uint64, e error) { serr, done = e, true })
 	sched.Run()
 	if !done || serr == nil {
-		t.Fatalf("#644 clamp bypassed on the wire: an oversized S=%d open was accepted", relaypay.MaxChainLength+1)
+		t.Fatalf("clamp bypassed on the wire: an oversized S=%d open was accepted", relaypay.MaxChainLength+1)
 	}
 
 	// A valid open succeeds — establishing the fetcher's ephemeral identity as seen.
@@ -294,21 +293,21 @@ func binaryPutUint64(b []byte, v uint64) {
 	}
 }
 
-// TestRelayOpenFloodStaysBounded is the Batch-2 leak-fix test (PE ruling
-// 2026-08-30), RE-SPECIFIED for R2.14 (recorded goalpost move): admission is now
-// PRICED at ≥ one anchor face per session, so a flood of free fresh-identity opens
-// cannot fill the table at all. Three bounds hold it:
+// TestRelayOpenFloodStaysBounded is the Batch-2 leak-fix test, RE-SPECIFIED for
+// (recorded goalpost move): admission is now PRICED at ≥ one anchor face per
+// session, so a flood of free fresh-identity opens cannot fill the table at all.
+// Three bounds hold it:
 //
-//  0. PRICED ADMISSION (R2.14; RT-RELAY-3's "sessions are free" half, closed): N
-//     unanchored wire opens are ALL refused — the table stays EMPTY.
-//     (Ablation: admit an open with no anchors → the table grows and this reddens.)
-//  1. HARD CAP: with the table at relayMaxLiveSessions live sessions, a further
-//     ANCHORED open is refused (errRelaySessionCap) BEFORE its anchor is spent —
-//     the same anchor then opens once a slot frees. (Ablation: remove the cap
-//     check → the table exceeds the cap.)
-//  2. EPOCH SWEEP: after an epoch advance past the retention window, stale
-//     unsettled sessions are reaped. (Ablation: remove the session loop in
-//     sweepRelaySeen → the pre-advance sessions survive.)
+// 0. PRICED ADMISSION (the "sessions are free" half, closed): N
+// unanchored wire opens are ALL refused — the table stays EMPTY.
+// (Ablation: admit an open with no anchors → the table grows and this reddens.)
+// 1. HARD CAP: with the table at relayMaxLiveSessions live sessions, a further
+// ANCHORED open is refused (errRelaySessionCap) BEFORE its anchor is spent —
+// the same anchor then opens once a slot frees. (Ablation: remove the cap
+// check → the table exceeds the cap.)
+// 2. EPOCH SWEEP: after an epoch advance past the retention window, stale
+// unsettled sessions are reaped. (Ablation: remove the session loop in
+// sweepRelaySeen → the pre-advance sessions survive.)
 //
 // The table is filled to the cap by DIRECT insertion (relaySessions is package
 // state) rather than 4,096 anchored wire opens: at ~2 ms of RSA per anchored open
@@ -329,7 +328,7 @@ func TestRelayOpenFloodStaysBounded(t *testing.T) {
 		relay.handleRelayOpen(from, msg)
 	}
 	if got := relay.relayLiveSessionCountForTest(); got != 0 {
-		t.Fatalf("session table holds %d sessions after %d UNANCHORED wire opens, want 0 — admission is free again (R2.14 regression)", got, N)
+		t.Fatalf("session table holds %d sessions after %d UNANCHORED wire opens, want 0 — admission is free again (regression)", got, N)
 	}
 
 	// (1) HARD CAP: fill the table to the cap, then one anchored open is refused.

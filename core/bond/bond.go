@@ -7,10 +7,10 @@
 // never charged (threat-catalog B1/D3).
 //
 // PROOF OF SPACE — the plot is a VERIFIED graph-labeling proof-of-space (M0
-// Sybil design turn G2, docs/design/m0-sybil-rebind.md). The plot is sealed
-// from a PUBLIC, identity- and size-bound seed
+// Sybil design turn G2). The plot is sealed from a PUBLIC, identity- and
+// size-bound seed
 //
-//	seed = H("silt/bond/plot/v3" ‖ pk ‖ n)          // pk = validator ed25519 key, n = NumBlocks(size)
+//	seed = H("silt/bond/plot/v3" ‖ pk ‖ n) // pk = validator ed25519 key, n = NumBlocks(size)
 //
 // folded into BOTH the block labels (plotBlock) and the DRSample parent draws
 // (parentIndices). Because the seed folds in n, a PREFIX of an n-block plot is
@@ -52,17 +52,17 @@
 // fetch, no VDF re-run.
 //
 // HONESTLY LABELED — what this does and does not prove:
-//   - It delivers VERIFIED SPACE-hardness over a proven depth-robust graph and
-//     binds the TIME half to possession; the tight ε→k constant through indegree-4
-//     DRSample, and the re-plot-≫-epoch floor, are the external red-team's target
-//     (design §8, immutable B8: self-marked homework is not adversarial proof).
-//   - No replication proof and no zero-knowledge: it proves "this identity holds a
-//     distinct blob of this size," not "this is a unique replica of user data."
-//     Elevating held REAL network content to standing (so the Sybil cost and
-//     durability funding become one mechanism) is the intended follow-up; the
-//     synthetic bond here is the cold-start.
+// - It delivers VERIFIED SPACE-hardness over a proven depth-robust graph and
+// binds the TIME half to possession; the tight ε→k constant through indegree-4
+// DRSample, and the re-plot-≫-epoch floor, are the external the target
+// (design §8, immutable B8: self-marked homework is not adversarial proof).
+// - No replication proof and no zero-knowledge: it proves "this identity holds a
+// distinct blob of this size," not "this is a unique replica of user data."
+// Elevating held REAL network content to standing (so the Sybil cost and
+// durability funding become one mechanism) is the intended follow-up; the
+// synthetic bond here is the cold-start.
 //
-// ADVERSARY-SHAPE: capability=SybilPlotSharing UNCOVERED: no fixture GRANTS AND CONTROLS FOR one operator N identities backed by LESS than N x size of real disk (dedup, compression, or a shared plot). ROADMAP row F1.
+// ADVERSARY-SHAPE: capability=SybilPlotSharing UNCOVERED: no fixture GRANTS AND CONTROLS FOR one operator N identities backed by LESS than N x size of real disk (dedup, compression, or a shared plot).
 package bond
 
 import (
@@ -141,9 +141,9 @@ func NumBlocks(size int64) int {
 
 // Commitment is a sealed, identity-bound bond held on disk by its owner.
 // Root is public (published once, cheap to gossip); blocks/leaves are the
-// cost the owner carries to keep answering. pk and seed are the public,
-// size-bound identity seed the plot was labeled from, retained so the owner
-// can build labeling opens and stamp its key on answers.
+// cost the project carries to keep answering. pk and seed are the public,
+// size-bound identity seed the plot was labeled from, retained so the
+// project can build labeling opens and stamp its key on answers.
 type Commitment struct {
 	Size   int64
 	Root   ports.Hash
@@ -154,7 +154,7 @@ type Commitment struct {
 	// tree is the leaves' Merkle tree, precomputed once so each inclusion proof
 	// an answer builds is O(log n) instead of O(n): a challenge draws O(k) proofs
 	// and a large plot has up to ~16k leaves, so recomputing subtree hashes per
-	// proof (the standalone manifest.Prove) dominated the consensus loop (#340).
+	// proof (the standalone manifest.Prove) dominated the consensus loop.
 	tree *manifest.Tree
 }
 
@@ -177,9 +177,9 @@ func plotSeedN(pk []byte, n int) []byte {
 // the PUBLIC seed H(pk, n) (see the package doc: the seed binds the plot to its
 // owner AND its size, and makes each identity's plot distinct and verifiable).
 // Blocks are generated in order because each depends on earlier ones (see
-// plotBlock), so this is the deliberately non-trivial "plotting" step; the owner
-// then STORES the result to answer challenges cheaply. Same (pk, size) ⇒ same
-// plot, so an owner can regenerate.
+// plotBlock), so this is the deliberately non-trivial "plotting" step; the
+// project then STORES the result to answer challenges cheaply. Same (pk, size) ⇒
+// same plot, so an owner can regenerate.
 func Seal(pk []byte, size int64) *Commitment {
 	n := NumBlocks(size)
 	seed := plotSeedN(pk, n)
@@ -194,8 +194,9 @@ func Seal(pk []byte, size int64) *Commitment {
 	return &Commitment{Size: size, Root: tree.Root(), pk: append([]byte(nil), pk...), seed: seed, blocks: blocks, leaves: leaves, tree: tree}
 }
 
-// Blocks exposes the plot blocks so the owner can persist them (ports.
-// PlotStore) and reload on restart instead of re-plotting (#93).
+// Blocks exposes the plot blocks so the project can persist them
+// (ports. PlotStore) and reload on restart instead of re-plotting
+// (#93).
 func (c *Commitment) Blocks() [][]byte { return c.blocks }
 
 // ReleaseBlocks drops the resident plot bytes, keeping only the commitment
@@ -236,7 +237,7 @@ func Reconstruct(pk []byte, size int64, blocks [][]byte) (*Commitment, error) {
 // LabelOpen is one labeling-consistency open (design §6): the challenged node's
 // block, its immediate predecessor's block, and its DRSample parents' blocks,
 // each with a Merkle inclusion proof against the committed root, so the verifier
-// can recompute plotBlock(seed, v, {Pred, Parents...}) from the opened BYTES and
+// can recompute plotBlock(seed, v, {Pred, Parents.}) from the opened BYTES and
 // check it equals Node. Pred/PredProof are omitted for the genesis node (v==0),
 // which has no predecessor and no parents.
 type LabelOpen struct {
@@ -273,7 +274,7 @@ type Answer struct {
 	// block indices are derived from VDFY — so the prover cannot know which
 	// blocks to hold until the sequential work is done. Empty ⇒ space-only.
 	//
-	// ADVERSARY-SHAPE: capability=VDFOutputPrediction UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover that learns the probed indices before the sequential work completes. ROADMAP row F1.
+	// ADVERSARY-SHAPE: capability=VDFOutputPrediction UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover that learns the probed indices before the sequential work completes.
 	VDFY  []byte `cbor:",omitempty"`
 	VDFPi []byte `cbor:",omitempty"`
 	VDFT  uint64 `cbor:",omitempty"`
@@ -284,14 +285,14 @@ type Answer struct {
 	// that released the space cannot produce the seed without the Ω(n) recompute.
 	// Empty ⇒ space-only.
 	//
-	// ADVERSARY-SHAPE: capability=SeedBlockWithoutPlot UNCOVERED: no fixture GRANTS AND CONTROLS FOR a released-space prover the seed block plus a valid inclusion proof. ROADMAP row F1.
+	// ADVERSARY-SHAPE: capability=SeedBlockWithoutPlot UNCOVERED: no fixture GRANTS AND CONTROLS FOR a released-space prover the seed block plus a valid inclusion proof.
 	SeedBlock []byte         `cbor:",omitempty"`
 	SeedProof manifest.Proof `cbor:",omitempty"`
 }
 
 // Answer builds the space-only response for nonce from held blocks, including k
-// labeling opens. It returns false if the owner no longer holds a probed block
-// (i.e. it cannot prove the bond it committed to).
+// labeling opens. It returns false if the project no longer holds a probed
+// block (i.e. it cannot prove the bond it committed to).
 func (c *Commitment) Answer(nonce uint64, k int) (Answer, bool) {
 	return c.answer(nonce, k)
 }
@@ -339,8 +340,8 @@ func (c *Commitment) answer(effNonce uint64, k int) (Answer, bool) {
 
 // labelOpens builds the k labeling-consistency opens for the effective nonce:
 // for each challenged node v it opens v, its predecessor v-1 (unless v==0), and
-// its DRSample parents, each with a Merkle proof. It returns false if the owner
-// no longer holds a required block (a released plot).
+// its DRSample parents, each with a Merkle proof. It returns false if the
+// project no longer holds a required block (a released plot).
 func (c *Commitment) labelOpens(effNonce uint64, k int) ([]int, []LabelOpen, bool) {
 	n := len(c.leaves)
 	li := labelIndices(c.Root, n, effNonce, k)
@@ -389,7 +390,7 @@ func (c *Commitment) labelOpens(effNonce uint64, k int) ([]int, []LabelOpen, boo
 // — a prover that released the space cannot cheaply produce the seed, so releasing
 // the space forfeits the answer. delay == 0 falls back to a space-only answer.
 //
-// ADVERSARY-SHAPE: capability=OnDemandPlotRecompute UNCOVERED: no fixture GRANTS AND CONTROLS FOR a zero-resident prover a cheap recompute of an arbitrary plot block. ROADMAP row F1.
+// ADVERSARY-SHAPE: capability=OnDemandPlotRecompute UNCOVERED: no fixture GRANTS AND CONTROLS FOR a zero-resident prover a cheap recompute of an arbitrary plot block.
 func (c *Commitment) AnswerSpaceTime(nonce uint64, p vdf.Params, delay uint64, k int) (Answer, bool) {
 	if delay == 0 {
 		return c.Answer(nonce, k)
@@ -445,7 +446,7 @@ func VerifySpaceTime(pk []byte, root ports.Hash, size int64, nonce uint64, a Ans
 	// prover that released the space cannot present it (F2 fix). Recompute the
 	// seed index and check the inclusion proof before trusting the seed block.
 	//
-	// ADVERSARY-SHAPE: capability=SeedBlockInclusionProof UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover that presents a seed block it does not store with a proof this verifier accepts. ROADMAP row F1.
+	// ADVERSARY-SHAPE: capability=SeedBlockInclusionProof UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover that presents a seed block it does not store with a proof this verifier accepts.
 	si := seedIndex(root, n, nonce)
 	if a.SeedProof.Index != si || a.SeedProof.Total != n {
 		return false
@@ -494,7 +495,7 @@ func verifyAt(pk []byte, root ports.Hash, size int64, effNonce uint64, a Answer,
 // with probability ≥ 1-(1-ε)^k. Because the seed is public, the verifier does all
 // of this WITHOUT holding the plot.
 //
-// ADVERSARY-SHAPE: capability=ForeignPlotLabels UNCOVERED: no fixture GRANTS AND CONTROLS FOR an attacker labels correctly plotted for a DIFFERENT (pk, n) to replay against this one. ROADMAP row F1.
+// ADVERSARY-SHAPE: capability=ForeignPlotLabels UNCOVERED: no fixture GRANTS AND CONTROLS FOR an attacker labels correctly plotted for a DIFFERENT (pk, n) to replay against this one.
 func verifyLabels(pk []byte, root ports.Hash, n int, effNonce uint64, a Answer, k int) bool {
 	kk := resolveK(k)
 	li := labelIndices(root, n, effNonce, kk)
@@ -574,7 +575,7 @@ func seedIndex(root ports.Hash, nBlocks int, nonce uint64) int {
 // (F2 fix). A proof for one bond/epoch cannot be replayed for another, and a
 // zero-resident prover cannot produce the seed without the Ω(n) recompute.
 //
-// ADVERSARY-SHAPE: capability=CrossEpochProofReplay UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover that holds a valid answer for one bond/epoch and replays it against another. ROADMAP row F1.
+// ADVERSARY-SHAPE: capability=CrossEpochProofReplay UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover that holds a valid answer for one bond/epoch and replays it against another.
 func challengeSeedST(root ports.Hash, nonce uint64, seedBlock []byte) []byte {
 	h := sha256.New()
 	h.Write([]byte("silt/bond/st/v2/vdfseed"))
@@ -632,10 +633,10 @@ func labelIndices(root ports.Hash, nBlocks int, nonce uint64, k int) []int {
 
 const (
 	// plotDomain is v3 with the PUBLIC identity- and size-bound seed and the
-	// verified labeling check (M0 Sybil fix G2, docs/design/m0-sybil-rebind.md).
-	// It also namespaces the seed H(plotDomain ‖ pk ‖ n). A v1/v2 plot on disk
-	// re-plots rather than reloading (the disk format version guards this)
-	// because its blocks are the old labeling the red-team broke.
+	// verified labeling check (M0 Sybil fix G2). It also namespaces the seed
+	// H(plotDomain ‖ pk ‖ n). A v1/v2 plot on disk re-plots rather than
+	// reloading (the disk format version guards this) because its blocks are
+	// the old labeling the red-team broke.
 	plotDomain = "silt/bond/plot/v3"
 	// plotParents is how many DRSample long-range parents each block depends on,
 	// on top of its immediate predecessor. DRSample with a chain already yields a
@@ -647,7 +648,7 @@ const (
 // plotBlock is the identity-bound, byte-binding, depth-robust block generator for
 // a Seal pass: it resolves block i's predecessor and DRSample parents from the
 // blocks array, then labels via labelBlock. blocks must already hold the finalized
-// bytes of blocks 0..i-1.
+// bytes of blocks 0.i-1.
 func plotBlock(seed []byte, i, n int, blocks [][]byte) []byte {
 	var pred []byte
 	if i > 0 {
@@ -694,13 +695,13 @@ func labelBlock(seed []byte, i int, pred []byte, parents [][]byte) []byte {
 	return block
 }
 
-// parentIndices derives plotParents long-range dependency indices in [0, i)
-// for block i using DRSample (Alwen–Blocki–Harsha, "Practical Graphs for
-// Optimal Side-Channel Resistant Proofs of Work", CCS'17): each parent's
-// distance from i is drawn log-uniformly — pick a bucket g in [1, ⌊log2 i⌋],
-// then an offset uniformly in (2^(g-1), 2^g] — so short and long edges are both
-// well represented, which is what makes the graph provably depth-robust (unlike
-// the old flat-uniform choice). Deterministic from (seed, i, n); returns nil for
+// parentIndices derives plotParents long-range dependency indices in [0, i for
+// block i using DRSample (Alwen–Blocki–Harsha, "Practical Graphs for Optimal
+// Side-Channel Resistant Proofs of Work", CCS'17): each parent's distance from i
+// is drawn log-uniformly — pick a bucket g in [1, ⌊log2 i⌋], then an offset
+// uniformly in 2^(g-1), 2^g] — so short and long edges are both well
+// represented, which is what makes the graph provably depth-robust (unlike the
+// old flat-uniform choice). Deterministic from (seed, i, n); returns nil for
 // block 0. n is folded in (on top of the seed, which is H(pk, n)) so the draw is
 // size-bound: a prefix of an n-plot is not a valid smaller plot. Repeats are
 // harmless.
@@ -726,9 +727,9 @@ func parentIndices(seed []byte, i, n int) []int {
 
 // drSampleParent returns an earlier block index for block i using the DRSample
 // distance distribution. r1 picks the bucket (a power-of-two distance band);
-// r2 picks the offset within it. The result is always in [0, i).
+// r2 picks the offset within it. The result is always in [0, i.
 func drSampleParent(i int, r1, r2 uint64) int {
-	// bucket g ∈ [1, floor(log2(i))]; distance ∈ (2^(g-1), 2^g], clamped to < i.
+	// bucket g ∈ [1, floor(log2(i))]; distance ∈ 2^(g-1), 2^g], clamped to < i.
 	maxg := 0
 	for (1 << (maxg + 1)) <= i {
 		maxg++

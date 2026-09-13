@@ -19,7 +19,7 @@ import (
 // complete`, and `TestEquivocatorSlashedOverTCP` timed out after 121 s. It failed on the M1
 // branch and passed on `origin/main` — that discriminator is the attribution.
 //
-// WHY THE EXISTING NODE-TIER GATE COULD NOT SEE IT. TestModelCheck_184_PlaceConflictingSignedSlashedOverSync
+// WHY THE EXISTING NODE-TIER GATE COULD NOT SEE IT. TestModelCheck_PlaceConflictingSignedSlashedOverSync
 // drives the same primitive, but its fixture hard-codes `Version: chain.BlockVersionRounds` on the
 // block it commits, so production's `MintVersion` never chooses the era and the v5 form is never
 // reached. A fixture that pins the quantity whose production value IS the defect is blind to it.
@@ -107,8 +107,9 @@ func TestPlaceConflictingSignedIsEra4Aware(t *testing.T) {
 			"replica can act on.", err)
 	}
 
-	// The chain id is load-bearing from era 4: the same pair under ANOTHER network's id must not
-	// convict, or the evidence would be portable across silt networks (the owner-call-A break).
+	// The chain id is load-bearing from era 4: the same pair under ANOTHER network's id must
+	// not convict, or the evidence would be portable across silt networks (the project-call-A
+	// break).
 	if err := chain.CheckEquivocation(&e, ports.HashBytes([]byte("some other silt network")), byz.chain.EraFloor()); err == nil {
 		t.Fatal("the v5-form pair convicted under a FOREIGN chain id — the era-4 preimage binds the " +
 			"network, so evidence minted here must be inert elsewhere")

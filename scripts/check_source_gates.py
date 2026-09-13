@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
 """Test-lint: a SOURCE-TEXT gate must say so, and must name its runtime cover.
 
-SCAR (count=3, third-time rule fired 2026-09-03 — scar-verifies-x-must-name-the-axes):
-  cmd/silt/rt_r04b_c3_laneoff_test.go TestDaemonDegradesTheDemandLaneInsteadOfDying
-  greps daemon.go for the string "LANE OFF" and for the ABSENCE of one exact return
-  statement. Its t.Fatal text promises a RUNTIME property — "a corrupt demand key file
-  must stop the RECEIPT LANE, not chain participation, storage and serving". The Tester
-  reintroduced that exact regression with a DIFFERENT early return: the gate stayed
-  GREEN and `go vet` stayed clean. A green source gate had been reading as evidence of a
-  behaviour it cannot observe. Two earlier occurrences of the same shape (a gate that
-  does not measure the axis its own text names) are recorded in the scar.
+WHY. A test that greps the project's own source can see STRINGS and ORDER and nothing
+else. When its failure text promises a RUNTIME property, a green reads as evidence of a
+behaviour the gate cannot observe — and the same regression reintroduced through a
+different code path leaves it green.
 
 THE RULE this lint enforces, on any test that reads a non-testdata `.go` file:
 
@@ -20,8 +15,7 @@ THE RULE this lint enforces, on any test that reads a non-testdata `.go` file:
      body: either `RUNTIME GATE: <name>` (the test that observes the behaviour) or
      `UNGATED: <residual>` (an explicit statement that the behaviour is unobserved).
 
-internal/depcheck is the precedent: it is honest about being structural. The cmd/silt
-gates borrowed the style without the disclaimer. This lint closes that gap mechanically.
+internal/depcheck is the precedent: it is honest about being structural.
 
 Dependency-free (stdlib only). Run: python3 scripts/check_source_gates.py
 """
@@ -33,7 +27,6 @@ from repo_walk import repo_files
 
 ROOT = Path(__file__).resolve().parent.parent
 
-SCAR_ID = "scar:source-gate-promises-a-runtime-property-2026-09-03"
 
 MARKER = "SOURCE GATE:"
 COVER_RE = re.compile(r"RUNTIME GATE:\s*\S|UNGATED:\s*\S")
@@ -191,7 +184,7 @@ def main():
 
     if failures:
         print(
-            f"FAIL [{SCAR_ID}] — a source-text gate reads as a runtime gate.\n\n"
+            f"FAIL — a source-text gate reads as a runtime gate.\n\n"
             "  A test that asserts on the project's own .go source can only see STRINGS\n"
             "  and ORDER. Its failure text must say so, and it must name the runtime\n"
             "  gate that covers the behaviour (or declare the behaviour UNGATED).\n",
@@ -209,7 +202,7 @@ def main():
         return 1
 
     print(
-        f"OK [{SCAR_ID}] — {checked} source-text gate(s); each is labelled "
+        f"OK — {checked} source-text gate(s); each is labelled "
         f'"{MARKER}" and names its runtime cover.'
     )
     return 0

@@ -12,11 +12,10 @@ import (
 // Tests for the P1-e class-P epoch-rotation state-root recompute
 // (floorbox_recompute_stateroot_rotate_v5.go).
 //
-// CERTIFIED-IN-DIRECTION (2026-08-31):
-//   research: floorbox-recompute-classA-classP-wholeset-RESEARCH-CERTIFICATION-2026-08-31.md
+// research: floorbox-recompute-classA-classP-wholeset-
 //
 // R3 (execution-derived drift guard, MANDATORY): the box's rotate reconstruction is checked against
-// the REAL apply() + StateRootForVersion(5), ablated RED on a stale (pre-delta) freeze, a flipped
+// the REAL apply + StateRootForVersion(5), ablated RED on a stale (pre-delta) freeze, a flipped
 // regVersion tally, a short qualified-set witness, and a missing rotate scalar. Each ablation drives
 // the REAL recomputeStateRootEntriesRevocations.
 
@@ -188,7 +187,7 @@ func (f rotateFixture) rotateMemberPost(t *testing.T, id ports.NodeID, weight in
 		EpochSetProof:    esProof,
 		EpochSetOldValue: esOld,
 	}
-	// R1.2 anchors: the qualified||id weight proof (steady-state Weight anchor) and the regVersion||id
+	// anchors: the qualified||id weight proof (steady-state Weight anchor) and the regVersion||id
 	// proof (present when RegVersionKnown, else a non-membership proof). A fresh in-block bond has no
 	// pre-state qualified||id leaf, so QualifiedProof is a non-membership proof there and the box
 	// cross-checks Weight against the class-B write instead; likewise the box cross-checks RegVersion
@@ -199,7 +198,7 @@ func (f rotateFixture) rotateMemberPost(t *testing.T, id ports.NodeID, weight in
 }
 
 // witnessForBoundary builds the full witness for a boundary block. It reconstructs the POST-apply
-// qualified set (via a real apply() clone) to know the frozen members, then witnesses each.
+// qualified set (via a real apply clone) to know the frozen members, then witnesses each.
 func (f rotateFixture) witnessForBoundary(t *testing.T, b Block) StateRootWitness {
 	t.Helper()
 	var w StateRootWitness
@@ -216,7 +215,8 @@ func (f rotateFixture) witnessForBoundary(t *testing.T, b Block) StateRootWitnes
 		f.addBondRegWitness(t, b, &w)
 	}
 
-	// The POST-apply qualified set + weights (the freeze source), from a real apply() clone.
+	// The POST-apply qualified set + weights (the freeze source), from a real apply
+	// clone.
 	clone := f.c.cloneForDryRun()
 	clone.apply(b)
 
@@ -344,7 +344,7 @@ func (f rotateFixture) applyAndCommittedRoot(t *testing.T, b Block) ports.Hash {
 	return sr
 }
 
-// --- Ablation 0: the P recompute AGREES with real apply() over a steady-state boundary. ---
+// --- Ablation 0: the P recompute AGREES with real apply over a steady-state boundary. ---
 func TestRecomputeStateRootRotateAgreesWithApply(t *testing.T) {
 	f := buildRotateFixture(t)
 	b := f.boundaryBlock(nil)
@@ -357,7 +357,7 @@ func TestRecomputeStateRootRotateAgreesWithApply(t *testing.T) {
 }
 
 // --- Ablation 0b: a boundary that ALSO carries a bond reg (membership change at the freeze) — the
-// frozen epochSet must include the just-bonded validator (R-P-sameblock-order). ---
+// frozen epochSet must include the just-bonded validator. ---
 func TestRecomputeStateRootRotateWithBondRegAgreesWithApply(t *testing.T) {
 	f := buildRotateFixture(t)
 	nv := key(55055)
@@ -417,8 +417,8 @@ func TestRecomputeStateRootRotateEpochSetRootByteExact(t *testing.T) {
 }
 
 // --- Ablation 1: STALE FREEZE — freeze the PRE-delta qualified set (drop the just-bonded validator
-// from the frozen member witness). The box's reconstructed post-qualified INCLUDES it, so the member
-// set mismatches ⇒ stall (R-P-sameblock-order). ---
+// from the frozen member witness. The box's reconstructed post-qualified INCLUDES it, so the member
+// set mismatches ⇒ stall. ---
 func TestRecomputeStateRootRotateAblationStaleFreeze(t *testing.T) {
 	f := buildRotateFixture(t)
 	nv := key(55056)
@@ -498,9 +498,9 @@ func TestRecomputeStateRootRotateAblationForgedFreezeWeight(t *testing.T) {
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a forged freeze weight must stall, got nil")
 	}
-	// R1.2: the forged Weight fails the qualified||id present-anchor against prevStateRoot (the honest
+	// The forged Weight fails the qualified||id present-anchor against prevStateRoot (the honest
 	// QualifiedProof proves the true weight), so the class-P member anchor stalls
-	// (ErrRecomputeStateRootDigest) — a stronger, earlier catch than the pre-R1.2 fold/mismatch.
+	// (ErrRecomputeStateRootDigest) — a stronger, earlier catch than the earlier fold/mismatch.
 	if !errors.Is(err, ErrRecomputeStateRootDigest) && !errors.Is(err, ErrRecomputeStateRootMismatch) && !errors.Is(err, ErrRecomputeStateRootFold) {
 		t.Fatalf("ABLATION FAILED: expected an anchor/mismatch/fold stall for a forged freeze weight, got %v", err)
 	}
@@ -511,7 +511,7 @@ func TestRecomputeStateRootRotateAblationForgedFreezeWeight(t *testing.T) {
 // at genesis. At the h=2 boundary a regVersion-5 validator carrying dominant weight crosses the
 // 3*ready > 2*total tally ⇒ era4LockedIn flips true. Forging that validator's regVersion DOWN to 4 in
 // the rotate witness makes the box's tally NOT lock in ⇒ wrong era4LockedIn scalar ⇒ mismatch. This
-// proves the per-member regVersion witness is load-bearing for the tally (R-P-tally-regversion). ---
+// proves the per-member regVersion witness is load-bearing for the tally. ---
 func TestRecomputeStateRootRotateAblationLiveTallyForgedRegVersion(t *testing.T) {
 	cfg := Config{Quorum: 1, MinBond: era4MinBond, MinBondBytes: era4MinBond, ByzantineQuorum: true,
 		EpochBlocks: 2, MatureValidators: 0, BondTTLBlocks: 0}
@@ -535,7 +535,7 @@ func TestRecomputeStateRootRotateAblationLiveTallyForgedRegVersion(t *testing.T)
 	Sign(&b1, prop)
 	c.apply(b1)
 
-	// Sanity: at the h=2 boundary apply() locks era4.
+	// Sanity: at the h=2 boundary apply locks era4.
 	prev, h := c.Head()
 	rb := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev, Entries: []ports.Entry{entry(99)}}
 	Sign(&rb, prop)
@@ -578,10 +578,11 @@ func TestRecomputeStateRootRotateAblationLiveTallyForgedRegVersion(t *testing.T)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a forged (lowered) regVersion on a live tally must stall, got nil")
 	}
-	// R1.2: the forged RegVersion=4 fails the regVersion||id present-anchor against prevStateRoot (the
+	// The forged RegVersion=4 fails the regVersion||id present-anchor against prevStateRoot (the
 	// honest RegVersionProof proves the true value 5), so the class-P member anchor stalls
-	// (ErrRecomputeStateRootDigest) BEFORE the tally runs — a stronger, earlier catch than the pre-R1.2
-	// mismatch (which relied on the box computing a wrong lock-in). Either is a valid never-Accept stall.
+	// (ErrRecomputeStateRootDigest) BEFORE the tally runs — a stronger, earlier catch than the
+	// earlier mismatch (which relied on the box computing a wrong lock-in). Either is a valid
+	// never-Accept stall.
 	if !errors.Is(err, ErrRecomputeStateRootDigest) && !errors.Is(err, ErrRecomputeStateRootMismatch) {
 		t.Fatalf("ABLATION FAILED: expected an anchor or mismatch stall (box fails to lock era4), got %v", err)
 	}
@@ -618,7 +619,7 @@ func TestRecomputeStateRootRotateAblationMissingScalar(t *testing.T) {
 	}
 }
 
-// --- Ablation 5: #535 recovery boundary — the box cannot reconstruct liveQualifiedSet(); it STALLS. ---
+// --- Ablation 5: recovery boundary — the box cannot reconstruct liveQualifiedSet; it STALLS. ---
 func TestRecomputeStateRootRotateAblationRecoveryStalls(t *testing.T) {
 	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
 		EpochBlocks: 2, MatureValidators: 0, BondTTLBlocks: 64, LivenessRecoveryHeight: 2}
@@ -644,24 +645,24 @@ func TestRecomputeStateRootRotateAblationRecoveryStalls(t *testing.T) {
 	// rotateOps must stall at the recovery boundary regardless of witness.
 	_, err := c.rotateOps(ports.Hash{}, rb, StateRootWitness{Rotate: &StateRootRotateWitness{}}, map[ports.NodeID]struct{}{}, nil, nil, true)
 	if !errors.Is(err, ErrRecomputeStateRootScopeStall) {
-		t.Fatalf("ABLATION FAILED: the #535 recovery boundary must stall, got %v", err)
+		t.Fatalf("ABLATION FAILED: the recovery boundary must stall, got %v", err)
 	}
 }
 
 // ============================================================================================
 // THE YOUNG→MATURE HANDOFF BOUNDARY (the Path-1 completeness gap this file closes).
 //
-// apply() latches everMature (class M) BEFORE rotateEpoch (chain.go:3303-3316), so on the ONE
-// boundary that flips everMature false→true — the young→mature handoff — real apply() freezes the
-// epochSet but the box (pre-fix) took the !everMature early-return and froze NOTHING → root mismatch
-// → STALL. Every OTHER class-P test uses MatureValidators=0 (mature-from-genesis), so everMature is
-// latched at h=0 and this path is unexercised. These tests seat the network YOUNG at genesis and
-// mature it AT the boundary (the latch flips false→true at the boundary height).
+// apply latches everMature (class M) BEFORE rotateEpoch (chain.go), so on the ONE boundary
+// that flips everMature false→true — the young→mature handoff — real apply freezes the epochSet but
+// the box (pre-fix) took the !everMature early-return and froze NOTHING → root mismatch → STALL.
+// Every OTHER class-P test uses MatureValidators=0 (mature-from-genesis), so everMature is latched
+// at h=0 and this path is unexercised. These tests seat the network YOUNG at genesis and mature it
+// AT the boundary (the latch flips false→true at the boundary height).
 // ============================================================================================
 
 // handoffFixture builds a v5 chain that is YOUNG at genesis (validatorsSeen empty ⇒ coefficient 0 <
 // MatureValidators) and matures AT the h=2 boundary: the boundary block carries non-proposer atts that
-// seat two qualified validators into validatorsSeen, crossing MatureValidators=2. apply() seats them,
+// seat two qualified validators into validatorsSeen, crossing MatureValidators=2. apply seats them,
 // then the latch (class M) flips everMature false→true, then rotateEpoch freezes — all in the boundary
 // block. The box must reproduce the M-write + the freeze from the pre-state + witnesses.
 type handoffFixture struct {
@@ -952,7 +953,7 @@ func (f handoffFixture) committedRoot(t *testing.T, b Block) ports.Hash {
 	return sr
 }
 
-// --- Handoff POSITIVE: the box AGREES with real apply() over the young→mature handoff boundary. The
+// --- Handoff POSITIVE: the box AGREES with real apply over the young→mature handoff boundary. The
 // boundary block seats the attesters, the latch flips everMature false→true, and the freeze fires —
 // the box must reproduce the M-write + the freeze. This MUST fail against the pre-fix code (verified
 // by the ablation below, which forces the pre-everMature read). ---
@@ -960,7 +961,8 @@ func TestRecomputeStateRootRotateHandoffAgreesWithApply(t *testing.T) {
 	f := buildHandoffFixture(t)
 	b := f.handoffBoundaryBlock()
 
-	// Precondition: the boundary block IS the handoff — apply() flips everMature false→true here.
+	// Precondition: the boundary block IS the handoff — apply flips everMature false→true
+	// here.
 	applied := f.c.cloneForDryRun()
 	applied.apply(b)
 	if !applied.everMature {
@@ -978,18 +980,19 @@ func TestRecomputeStateRootRotateHandoffAgreesWithApply(t *testing.T) {
 	}
 }
 
-// --- DIRECTION A MatureEpoch SUPPRESS gate (classP-anchoring cert 2026-09-02, P-s2). The handoff
-// boundary is the first mature rotation: apply() flips matureEpoch false→true. A forged
+// --- pre-state anchor MatureEpoch SUPPRESS gate. The handoff
+// boundary is the first mature rotation: apply flips matureEpoch false→true. A forged
 // MatureEpoch.OldValue=true makes scalarFoldOp suppress the emit (post==pre), so the matureEpoch
 // write is omitted and never fold-checked. The attacker commits a root that OMITS the matureEpoch
-// write. Direction A (rotateOps → anchorRotateScalar(tagMatureEpoch)) Resolves the committed
+// write. the pre-state anchor (rotateOps → anchorRotateScalar(tagMatureEpoch)) Resolves the committed
 // pre-value (false) present against prevStateRoot BEFORE the emit decision; a forged =true fails
 // IsProvenPresent ⇒ STALL. This gate forges the suppression and asserts the box STALLS. ---
 func TestRecomputeStateRootRotateMatureEpochOldValueSuppressionStalls(t *testing.T) {
 	f := buildHandoffFixture(t)
 	b := f.handoffBoundaryBlock()
 
-	// Baseline: the honest witness (MatureEpoch.OldValue=false, the real flip) AGREES with apply().
+	// Baseline: the honest witness (MatureEpoch.OldValue=false, the real flip) AGREES with
+	// apply.
 	committed := f.committedRoot(t, b)
 	w := f.witnessForHandoff(t, b)
 	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
@@ -1015,10 +1018,10 @@ func TestRecomputeStateRootRotateMatureEpochOldValueSuppressionStalls(t *testing
 
 	if rerr := recomputeViaHead(f.c, f.prevRoot, forgedRoot, b, fw); rerr == nil {
 		t.Fatalf("ANCHOR REGRESSED: box WRONG-ACCEPTS a forged MatureEpoch.OldValue=true suppression.\n"+
-			"  Direction A (anchorRotateScalar(tagMatureEpoch)) must STALL a forged pre-latch value.\n"+
+			"  the pre-state anchor (anchorRotateScalar(tagMatureEpoch)) must STALL a forged pre-latch value.\n"+
 			"  forgedRoot=%x honest=%x", forgedRoot, committed)
 	} else {
-		t.Logf("ANCHOR HOLDS (Direction A): a forged MatureEpoch.OldValue=true STALLS (%v) — the matureEpoch "+
+		t.Logf("ANCHOR HOLDS (pre-state anchor): a forged MatureEpoch.OldValue=true STALLS (%v) — the matureEpoch "+
 			"pre-state anchor catches the latch suppression.", rerr)
 	}
 }

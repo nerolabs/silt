@@ -1,21 +1,21 @@
-// Package guardstore persists the R0.4b cross-server double-redeem guard
+// Package guardstore persists the cross-server double-redeem guard
 // (ports.PaidSerialStore) so a process restart is not an eviction of every guarded
 // token.
 //
-// THE HAZARD IT CLOSES. The guard's certified coupling condition is "evicted ⇒
-// expired ⇒ un-redeemable". Both serial guards were process memory with no persistence
-// and no restore, so a restart forgot every entry — in-window or not — and the
-// identical MsgDeliveryReceipt was banked and PAID a second time (red-team re-break
-// F2, 2026-09-03, measured at the node tier through the real wire handler). Today that
-// is masked on the shipped daemon because balances reset at the same restart; it is a
-// live mint the moment the ledger gains persistence or moves to shared settlement,
-// which is exactly the topology the guard exists for.
+// THE HAZARD IT CLOSES. The guard's coupling condition is "evicted ⇒ expired ⇒
+// un-redeemable". Both serial guards were process memory with no persistence and no
+// restore, so a restart forgot every entry — in-window or not — and the identical
+// MsgDeliveryReceipt was banked and PAID a second time, 2026-09-03, measured at the
+// node tier through the real wire handler. Today that is masked on the shipped daemon
+// because balances reset at the same restart; it is a live mint the moment the ledger
+// gains persistence or moves to shared settlement, which is exactly the topology the
+// guard exists for.
 //
 // THE SHAPE: an APPEND-ONLY LOG of fixed-width records, fsync'd per append, replaced
 // atomically on compaction (temp → fsync file → rename → fsync dir, the shape
 // adapters/markstore and adapters/diskissuer both use), with the new append handle
 // opened on the temp file BEFORE the rename so a failed open can never orphan the
-// handle (R2.13, see Compact).
+// handle (see Compact).
 //
 // Why not a whole-file rewrite per entry, like the epoch key store? The key store
 // writes a ~9-key band a few times an hour; this store writes one record per PAID
@@ -43,7 +43,7 @@ import (
 // server's NodeID, the token's issue epoch (big-endian — the same epoch wire form the
 // FDH message and the issuerKeyCommit leaf use), and the LANE byte.
 //
-// THE LANE BYTE (R-GUARD-RESTORE-LANE-UNKNOWN, 2026-09-08). The guard holds two
+// THE LANE BYTE. The guard holds two
 // populations on one map — delivery anchors and relay anchors — and the record used to
 // carry neither, so LoadPaidSerials rebuilt every restored entry as delivery and the
 // per-lane counts conflated them after every restart (measured: lanes (2, 1) before,
@@ -83,7 +83,7 @@ var ErrCorrupt = errors.New("guardstore: paid-serial store is corrupt")
 // the live path. It is STICKY until the process restarts: every later Append and
 // Compact fails with it, so the ledger refuses the payout (ReasonGuardStore) instead
 // of paying against a guard entry a restart would never see. Loud beats silent here:
-// the silent form of this state is R-COMPACT-ORPHAN, an over-pay.
+// the silent form of this state is, an over-pay.
 var ErrStoreBroken = errors.New("guardstore: paid-serial store is broken (append handle no longer trusted; restart to recover)")
 
 // ErrLegacyFormat marks a store written by a build from before the record carried its
@@ -98,15 +98,14 @@ var ErrStoreBroken = errors.New("guardstore: paid-serial store is broken (append
 //
 // IT NAMES NO REMEDY, AND THAT IS DELIBERATE. This adapter is opened on TWO files whose
 // remedies are OPPOSITE (cmd/silt/daemon.go). On paidserials.log the credit ledger is
-// ephemeral through the RC (D-FP2-SCOPE), so the file guards payouts whose credits reset
-// at the same restart and removing it costs nothing. On creditspent.log the publish
-// issuer key PERSISTS, so a credit it signed stays spendable: clearing that guard alone
-// re-opens every held credit for a second spend (the F-4 pump,
-// core/node/r213b_creditspent_test.go), and the ratified rule is to rotate the publish
-// key AND clear the log together (R-CREDITSPENT-UNBOUNDED, owner call 6,
-// D-TRUE-UP-CALLS-2026-09-07). One remedy in this sentinel would be wrong on one of the
-// two files, so the sentinel states the CONDITION and the caller attaches the remedy for
-// the file it opened (cmd/silt remedyPaidSerials / remedyCreditSpent, gated by
+// ephemeral through the RC, so the file guards payouts whose credits reset at the same
+// restart and removing it costs nothing. On creditspent.log the publish issuer key
+// PERSISTS, so a credit it signed stays spendable: clearing that guard alone re-opens
+// every held credit for a second spend (the pump, core/node/creditspent_test.go),
+// and the rule is to rotate the publish key AND clear the log together. One remedy in
+// this sentinel would be wrong on one of the two files, so the sentinel states the
+// CONDITION and the caller attaches the remedy for the file it opened (cmd/silt
+// remedyPaidSerials / remedyCreditSpent, gated by
 // TestGuardStoreRemedyTextIsSafePerStore).
 //
 // A 0-byte pre-bump file is NOT refused: prepareHeader upgrades it in place, because no
@@ -117,18 +116,18 @@ var ErrLegacyFormat = errors.New("guardstore: this store predates the lane byte 
 
 // openAppend is the OS hook used to open the append handle, both in Open and on the
 // temp file inside Compact. Indirected ONLY so a test can force that open to fail
-// without faking the filesystem — the R-COMPACT-ORPHAN defect (PE ruling
-// RULING-ledger-durability-family-FP2-R2.13-R2.10-2026-09-03.md §1, gate G-CO-1).
-// Production behaviour is unchanged: this is os.OpenFile and nothing else calls it.
+// without faking the filesystem — the defect. Production behaviour is unchanged:
+// this is os.OpenFile and nothing else calls it.
 var openAppend = os.OpenFile
 
 // Disk is the append-only file store.
 type Disk struct {
 	path string
 	f    *os.File
-	// broken is the sticky backstop (ruling §1: "keep as backstop, not as the fix").
-	// Set only by Compact, only for a failure AFTER the rename — see the comment
-	// there for what can still fail — and checked first by Append and Compact.
+	// broken is the sticky backstop (decision §1: "keep as backstop, not as the
+	// fix"). Set only by Compact, only for a failure AFTER the rename — see the
+	// comment there for what can still fail — and checked first by Append and
+	// Compact.
 	broken error
 }
 
@@ -210,7 +209,7 @@ func header() []byte {
 }
 
 // realign truncates the file back to its last COMPLETE record boundary and fsyncs,
-// before any append handle exists (research certification 2026-09-03, gate G-3).
+// before any append handle exists.
 //
 // WHY IT IS NOT OPTIONAL. Load drops a trailing partial record, which is sound only
 // while the partial record STAYS the tail. O_APPEND sets the write offset to the
@@ -332,29 +331,28 @@ func (d *Disk) Append(p ports.PaidSerial) error {
 // The directory sync is what makes the RENAME durable; without it a power cut can
 // leave the directory entry pointing at the old file while the new bytes are on disk.
 //
-// WHY THE NEW HANDLE IS OPENED BEFORE THE RENAME (R2.13, R-COMPACT-ORPHAN; PE ruling
-// RULING-ledger-durability-family-FP2-R2.13-R2.10-2026-09-03.md §1). The previous
-// shape renamed first and re-opened the append handle on d.path afterwards. If that
-// re-open failed, Compact returned the error but d.f still pointed at the inode the
-// rename had just unlinked; write AND fsync through that handle succeed (POSIX keeps an
-// open unlinked inode alive), so every later Append returned nil for a record no Load
-// could ever see — an over-pay, once per epoch since compaction moved onto the band
-// advance. rename(2) moves the directory entry, not the inode: a handle opened on the
-// temp file stays valid across the rename and then refers to the live path. So the
+// WHY THE NEW HANDLE IS OPENED BEFORE THE RENAME. The
+// previous shape renamed first and re-opened the append handle on d.path afterwards. If
+// that re-open failed, Compact returned the error but d.f still pointed at the inode
+// the rename had just unlinked; write AND fsync through that handle succeed (POSIX
+// keeps an open unlinked inode alive), so every later Append returned nil for a record
+// no Load could ever see — an over-pay, once per epoch since compaction moved onto the
+// band advance. rename(2) moves the directory entry, not the inode: a handle opened on
+// the temp file stays valid across the rename and then refers to the live path. So the
 // only fallible open now happens BEFORE any state changes, and a failure there leaves
 // the store exactly as it was (d.f valid, the log a superset of live — benign, it only
 // ever over-refuses). After the rename nothing fallible remains between it and the
 // handle swap.
 //
-// THE BACKSTOP (PE ruling RULING-R2.13-compact-orphan-11396f1 finding 1). It is keyed on
-// the ONE signal that means "the append handle no longer reaches the live path": after
-// the swap, the handle's inode must be the inode at d.path (os.SameFile). If it is not,
-// the store is marked broken (ErrStoreBroken, sticky until restart) and every later
-// Append fails loudly — never nil for a record Load cannot see. Closing the RETIRED
-// handle failing is NOT a broken store (that inode is already unlinked; its fate is
-// irrelevant to the live handle), so it is ignored: marking it broken would refuse
-// every payout on a healthy store until restart — the fail-closed-on-benign move the
-// ledger-durability ruling §1 refused at the sweep, relocated.
+// THE BACKSTOP. It is keyed on the ONE signal that means "the append handle no longer
+// reaches the live path": after the swap, the handle's inode must be the inode at d.path
+// (os.SameFile). If it is not, the store is marked broken (ErrStoreBroken, sticky until
+// restart) and every later Append fails loudly — never nil for a record Load cannot see.
+// Closing the RETIRED handle failing is NOT a broken store (that inode is already
+// unlinked; its fate is irrelevant to the live handle), so it is ignored: marking it
+// broken would refuse every payout on a healthy store until restart — the
+// fail-closed-on-benign move the ledger-durabilitydecision §1 refused at the sweep,
+// relocated.
 func (d *Disk) Compact(live []ports.PaidSerial) error {
 	if d.broken != nil {
 		return d.broken

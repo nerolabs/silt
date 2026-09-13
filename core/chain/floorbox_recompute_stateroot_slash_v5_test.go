@@ -12,16 +12,14 @@ import (
 // Tests for the P1-b class-S changed-whole-set-digest state-root recompute
 // (floorbox_recompute_stateroot_slash_v5.go).
 //
-// CERTIFIED-IN-DIRECTION (2026-08-31):
-//   research: floorbox-Rboundary-writeset-digest-reconstruction-RESEARCH-CERTIFICATION-2026-08-31.md
-//   PE ruling: RULING-floorbox-recompute-P1b-SA-digest-scope-2026-08-31.md
+// research: floorbox-Rboundary-writeset-digest-reconstruction-
+//
 //
 // R3 (execution-derived drift guard, MANDATORY): the box's derived S write-set + digest
-// reconstruction is checked against the REAL apply() + StateRootForVersion(5) — the oracle a full
+// reconstruction is checked against the REAL apply + StateRootForVersion(5) — the oracle a full
 // node uses — and ablated RED on a forged per-member screen value, a mis-derived delta, a wrong
 // culprit, an omitted digest reconstruction, and the circular prevStateRoot/StateRoot anchor swap.
-// A hand-written mirror shares the producer's blind spot (the session-7 scar), so the ground truth
-// is real execution.
+// A hand-written mirror shares the producer's blind spot, so the ground truth is real execution.
 
 // slashFixture is a v5 chain whose pre-state has a bonded+qualified culprit ready to slash, plus
 // prevStateRoot and a Prover over its v5 leaf set. The box holds prevStateRoot.
@@ -202,8 +200,8 @@ func (f slashFixture) preValue(key []byte) []byte {
 	return nil
 }
 
-// applyAndCommittedRoot applies b to a CLONE (real apply()) and returns the committed v5 StateRoot
-// — the R3 oracle.
+// applyAndCommittedRoot applies b to a CLONE (real apply) and returns the committed v5 StateRoot —
+// the R3 oracle.
 func (f slashFixture) applyAndCommittedRoot(t *testing.T, b Block) ports.Hash {
 	t.Helper()
 	clone := f.c.cloneForDryRun()
@@ -234,7 +232,7 @@ func putUint64BE(b []byte, v uint64) {
 	b[7] = byte(v)
 }
 
-// --- Ablation 1: the S recompute AGREES with real apply() over a slash-of-a-qualified-culprit. ---
+// --- Ablation 1: the S recompute AGREES with real apply over a slash-of-a-qualified-culprit. ---
 func TestRecomputeStateRootSlashAgreesWithApply(t *testing.T) {
 	f := buildSlashFixture(t)
 	b := f.slashBlock()
@@ -251,7 +249,7 @@ func TestRecomputeStateRootSlashDigestsAreByteExact(t *testing.T) {
 	f := buildSlashFixture(t)
 	b := f.slashBlock()
 
-	// Real post-state via apply().
+	// Real post-state via apply.
 	clone := f.c.cloneForDryRun()
 	clone.apply(b)
 
@@ -278,7 +276,7 @@ func TestRecomputeStateRootSlashDigestsAreByteExact(t *testing.T) {
 
 // --- Ablation 2: forged per-member screen value — claim the culprit was NOT qualified pre-state
 // (drop it from the qualified pre-set). The box then does NOT delete it from post-qualified ⇒ wrong
-// qualifiedRoot ⇒ post-root != StateRoot ⇒ stall. (C-1: the delta is derived from the anchored
+// qualifiedRoot ⇒ post-root != StateRoot ⇒ stall. (the delta is derived from the anchored
 // pre-set, and a forged pre-set fails the fold's pre-digest anchor OR diverges the post-root.)
 func TestRecomputeStateRootSlashAblationForgedQualifiedScreen(t *testing.T) {
 	f := buildSlashFixture(t)
@@ -306,20 +304,21 @@ func TestRecomputeStateRootSlashAblationForgedQualifiedScreen(t *testing.T) {
 }
 
 // --- Ablation 3: mis-derived delta — the slash does NOT delete bonded. This ablation drives the
-// REAL recomputeStateRootEntriesRevocations path (session-7 scar: a hand-built root comparison that
-// never touches the production fold is DECORATION — it stays green even if the box's bonded delete
-// regresses). We forge a committed StateRoot that reflects the BUGGY post-state (culprit STILL
-// bonded post-slash) and hand the box an HONEST witness. The box derives the CORRECT S delta (it
-// DELETES the culprit from post-bonded, stateroot_slash_v5.go:176), folds the honest bondedRoot, and
-// that must MISMATCH the buggy committed root ⇒ ErrRecomputeStateRootMismatch. This proves the box's
-// bonded delete is load-bearing: were the box to skip the delete (the regression this guards), its
-// recompute would MATCH the buggy committed root and wrongly return nil.
+// REAL recomputeStateRootEntriesRevocations path: a hand-built root comparison that never touches
+// the production fold is DECORATION — it stays green even if the box's bonded delete regresses. We
+// forge a committed StateRoot that reflects the BUGGY post-state (culprit STILL bonded post-slash)
+// and hand the box an HONEST witness. The box derives the CORRECT S delta (it DELETES the culprit
+// from post-bonded, stateroot_slash_v5.go), folds the honest bondedRoot, and that must MISMATCH
+// the buggy committed root ⇒ ErrRecomputeStateRootMismatch. This proves the box's bonded delete is
+// load-bearing: were the box to skip the delete (the regression this guards), its recompute would
+// MATCH the buggy committed root and wrongly return nil.
 func TestRecomputeStateRootSlashAblationBondedNotDeleted(t *testing.T) {
 	f := buildSlashFixture(t)
 	b := f.slashBlock()
 	cid := ports.HashBytes(pubOf(f.culprit))
 
-	// The honest committed root: apply() deletes the culprit from bonded.
+	// The honest committed root: apply deletes the culprit from
+	// bonded.
 	honestClone := f.c.cloneForDryRun()
 	honestClone.apply(b)
 	honestBonded := nodeSetMTHFromInt64(honestClone.bonded)
@@ -413,7 +412,7 @@ func TestRecomputeStateRootSlashAblationOmittedDigest(t *testing.T) {
 }
 
 // --- Ablation 6: the pre-set anchored against StateRoot instead of prevStateRoot (the circular
-// bug). We prove the digest leaves against the POST-state root (committed StateRoot) and hand those
+// bug. We prove the digest leaves against the POST-state root (committed StateRoot) and hand those
 // proofs to the box, which verifies OldValue against prevStateRoot ⇒ the proof fails ⇒ stall. This
 // proves the anchor is prevStateRoot, not StateRoot.
 func TestRecomputeStateRootSlashAblationCircularAnchor(t *testing.T) {

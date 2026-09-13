@@ -1,21 +1,21 @@
 package credit
 
 // REGRESSION GATE for the provOrder unbounded-growth / desync break found by
-// red-team 2026-09-01 (RT-DELIV-1). Drop this into core/credit/ as
-// delivery_provorder_test.go. It reddens on commit 9d50437 and must go green
-// once RedeemDeliveryCredit removes the redeemed key from provOrder (and the
-// in-window reversal keeps the two structures in sync).
+// the adversary. Drop this into core/credit/ as delivery_provorder_test.go.
+// It reddens on commit 9d50437 and must go green once RedeemDeliveryCredit
+// removes the redeemed key from provOrder (and the in-window reversal keeps
+// the two structures in sync).
 //
 // Three assertions, each an independent facet of the break:
-//   (1) BOUND: after N serve+redeem cycles the provOrder slice is bounded by
-//       the same cap that bounds the map (build-immutable #8). RED at 9d50437:
-//       provOrder == N (no ceiling).
-//   (2) SYNC: len(provOrder) never exceeds len(provisional) by more than the
-//       cap — the two structures track. RED at 9d50437: they diverge without
-//       bound.
-//   (3) NO-DUP: a redeem-then-reserve of the same key does not leave a stale
-//       duplicate in provOrder that later reverses a LIVE re-served lane before
-//       any redeem. RED at 9d50437: duplicate present, live lane destroyed.
+// (1) BOUND: after N serve+redeem cycles the provOrder slice is bounded by
+// the same cap that bounds the map (build-immutable #8). RED:
+// provOrder == N (no ceiling).
+// (2) SYNC: len(provOrder) never exceeds len(provisional) by more than the
+// cap — the two structures track. RED: they diverge without
+// bound.
+// (3) NO-DUP: a redeem-then-reserve of the same key does not leave a stale
+// duplicate in provOrder that later reverses a LIVE re-served lane before
+// any redeem. RED: duplicate present, live lane destroyed.
 
 import (
 	"testing"

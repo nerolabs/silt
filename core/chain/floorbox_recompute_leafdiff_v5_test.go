@@ -13,9 +13,8 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// THE PERMANENT GUARD — emission-keyed differential leaf-diff completeness (PE ruling 2026-08-31,
-// the write-obligation ledger):
-//   silt-agent-memory/principal-engineer/reviews/RULING-floorbox-v5-write-obligation-ledger-2026-08-31.md
+// THE PERMANENT GUARD — emission-keyed differential leaf-diff completeness:
+//
 //
 // The whole point is to STOP catching unreproduced committed-leaf writes ONE AT A TIME. Seven were
 // caught by hand; the everMature off-boundary latch was the eighth. The existing …AgreesWithApply
@@ -25,10 +24,10 @@ import (
 //
 // THE PROPERTY (for every v5 block a generator can produce):
 //
-//	{ committed-leaf DIFF a real apply() produces }  ==  { keys the recompute FOLDS }
+//	{ committed-leaf DIFF a real apply produces } == { keys the recompute FOLDS }
 //
-// Not "every tag has a fold op somewhere," but "for THIS block, every leaf apply() actually changed
-// is a leaf the recompute actually folded." The diff is computed from the LIVE marshaller
+// Not "every tag has a fold op somewhere," but "for THIS block, every leaf apply actually changed is
+// a leaf the recompute actually folded." The diff is computed from the LIVE marshaller
 // (stateRootLeavesV5), so a FUTURE committed leaf tag is caught with ZERO guard edits: an added tag
 // shows up in the pre/post diff automatically, and if its write has no reproducer the diff-minus-fold
 // set is non-empty on the first generated block that writes it, reddening the guard by NAME.
@@ -38,8 +37,8 @@ import (
 // demonstrated by TestLeafDiffGuardAblationClassMRemoved below, which assembles the recompute ops
 // with class M forced off and confirms the diff-minus-fold set is exactly {everMature}.
 
-// committedLeafDiff returns the set of leaf KEYS whose committed value a real apply() of b changes:
-// keys added, deleted, or value-changed between the PRE-apply and POST-apply stateRootLeavesV5(). It
+// committedLeafDiff returns the set of leaf KEYS whose committed value a real apply of b changes:
+// keys added, deleted, or value-changed between the PRE-apply and POST-apply stateRootLeavesV5. It
 // is the authoritative ground truth — the LIVE committed marshaller, not a hand list.
 func committedLeafDiff(pre, post *Chain) map[string]struct{} {
 	preMap := leafValueMap(pre.stateRootLeavesV5())
@@ -98,10 +97,10 @@ func sortedKeyTags(keys map[string]struct{}) []string {
 	return out
 }
 
-// assertLeafDiffEqualsFold is the guard assertion: the committed-leaf diff a real apply() produces
-// must equal the key-set the recompute folds. A key apply() changed but the recompute did NOT fold ⇒
-// an UNREPRODUCED write (the everMature class of bug) ⇒ FAIL naming the tag. A key the recompute folds
-// but apply() did NOT change ⇒ an OVER-emission (latent double-write) ⇒ also FAIL.
+// assertLeafDiffEqualsFold is the guard assertion: the committed-leaf diff a real apply produces must
+// equal the key-set the recompute folds. A key apply changed but the recompute did NOT fold ⇒ an
+// UNREPRODUCED write (the everMature class of bug) ⇒ FAIL naming the tag. A key the recompute folds
+// but apply did NOT change ⇒ an OVER-emission (latent double-write) ⇒ also FAIL.
 func assertLeafDiffEqualsFold(t testingFataler, diff, folded map[string]struct{}) {
 	if h, ok := t.(interface{ Helper() }); ok {
 		h.Helper()
@@ -166,7 +165,7 @@ func generateLeafDiffScenarios(t *testing.T) []leafDiffScenario {
 		out = append(out, leafDiffScenario{"off-boundary-maturity-crossing", f.c, f.prevRoot, b, f.witnessForCrossing(t, b)})
 	}
 
-	// (2) ON-boundary maturity crossing (the #678 case) — regression lock.
+	// (2) ON-boundary maturity crossing (the case) — regression lock.
 	{
 		f := buildHandoffFixture(t)
 		b := f.handoffBoundaryBlock()
@@ -187,16 +186,16 @@ func generateLeafDiffScenarios(t *testing.T) []leafDiffScenario {
 		out = append(out, leafDiffScenario{"steady-state-boundary", f.c, f.prevRoot, b, f.witnessForBoundary(t, b)})
 	}
 
-	// (5) Class S — slash of a bonded+qualified culprit. Exercises slashed(+Root), bonded(+Root),
-	// qualified(+Root) diffs. Reuses the certified P1-b slash fixture + witness.
+	// (5) Class S — slash of a bonded+qualified culprit. Exercises slashed(+Root),
+	// bonded(+Root), qualified(+Root) diffs. Reuses the P1-b slash fixture + witness.
 	{
 		f := buildSlashFixture(t)
 		b := f.slashBlock()
 		out = append(out, leafDiffScenario{"class-S-slash", f.c, f.prevRoot, b, f.witnessForSlash(t, b)})
 	}
 
-	// (6) Class T — a firing TTL sweep. Exercises dueBucket, bondRegHeight, regVersion, bonded(+Root),
-	// qualified(+Root) diffs. Reuses the certified P1-c TTL fixture + witness.
+	// (6) Class T — a firing TTL sweep. Exercises dueBucket, bondRegHeight, regVersion,
+	// bonded(+Root), qualified(+Root) diffs. Reuses the P1-c TTL fixture + witness.
 	{
 		f := buildTTLFixture(t)
 		b := f.sweepBlock()
@@ -260,8 +259,8 @@ func v5EmittedLeafTags(t *testing.T) map[string]struct{} {
 // committed root — it is only out of reach of THIS guard, because the recompute stalls on the
 // block class that writes it.
 //
-// The two were one function until the R0.4b rebase onto #707, and that was a real defect: the
-// new root-coverage pin inherited the leaf-diff guard's exclusion list and reported
+// The two were one function until the rebase onto, and that was a real defect: the new
+// root-coverage pin inherited the leaf-diff guard's exclusion list and reported
 // issuerKeyCommit as NOT COMMITTED when the marshaller emits it on every v5 block. Keep them
 // separate. A FUTURE committed-leaf tag shows up in both automatically (populateCommitted must
 // set its backing field, or the adopt guard reddens), which grows the coverage bar the
@@ -289,7 +288,7 @@ func v5EmittableLeafTags(t *testing.T) map[string]struct{} {
 // the class in scope, that test reddens and forces the tag out of this set and into a
 // real scenario.
 var leafDiffOutOfScopeTags = map[string]string{
-	"issuerKeyCommit": "R0.4b per-epoch demand-issuer key binding. Written only by a block " +
+	"issuerKeyCommit": "per-epoch demand-issuer key binding. Written only by a block " +
 		"carrying IssuerKeys, a transition class the O(payload) recompute does not reproduce; " +
 		"stateRootScopeGate stalls on it (ErrRecomputeStateRootScopeStall). The keyspace is INERT " +
 		"to consensus — no validity predicate, quorum, fork-choice rule, or recompute reads it — " +
@@ -298,12 +297,12 @@ var leafDiffOutOfScopeTags = map[string]string{
 
 // TestLeafDiff_IssuerKeyCommitIsPayloadOnly earns the WORD "ONLY" in the exemption above.
 //
-// The exemption was FALSE when it was written (red-team re-break F1, 2026-09-03):
-// applyIssuerKeys pruned the keyspace by BLOCK HEIGHT on every apply, so a block carrying no
-// registrations deleted committed issuerKeyCommit leaves at every epoch turn — writes the
-// scope gate waved through and the fold never reproduced, measured as a two-way box/full-node
-// split. Stalling on the payload predicate is only sound if the payload predicate is EXACT, so
-// the "only" clause needs its own gate, not just a stall gate for the positive case.
+// The exemption was FALSE when it was written, 2026-09-03: applyIssuerKeys pruned the keyspace
+// by BLOCK HEIGHT on every apply, so a block carrying no registrations deleted committed
+// issuerKeyCommit leaves at every epoch turn — writes the scope gate waved through and the
+// fold never reproduced, measured as a two-way box/full-node split. Stalling on the payload
+// predicate is only sound if the payload predicate is EXACT, so the "only" clause needs its
+// own gate, not just a stall gate for the positive case.
 //
 // It sweeps a run of registration-free blocks ACROSS several epoch turns over a pre-state that
 // holds committed issuer keys, and requires that not one of them changes an issuerKeyCommit
@@ -378,7 +377,7 @@ func TestLeafDiffOutOfScopeTagsActuallyStall(t *testing.T) {
 }
 
 // TestLeafDiffGuardCompleteness is the permanent emission-keyed guard: for every generated block, the
-// committed-leaf diff a real apply() produces equals the key-set the recompute folds. It runs the
+// committed-leaf diff a real apply produces equals the key-set the recompute folds. It runs the
 // reachability schedule — INCLUDING the off-boundary maturity crossing the …AgreesWithApply fixtures
 // hid. GREEN with the class-M fix in; the ablation below demonstrates the RED.
 func TestLeafDiffGuardCompleteness(t *testing.T) {
@@ -458,11 +457,11 @@ func TestLeafDiffGuardAblationClassMRemoved(t *testing.T) {
 	assertLeafDiffEqualsFold(t, diff, foldedChangeKeys(ops))
 }
 
-// TestLeafDiffGuardCoversEveryEmittableTag is the SELF-CHECKING coverage meta-assertion (PE ledger
-// ruling acceptance bar: E/R/S/B/T/A/P all driven through the diff assertion, and the generator's OWN
-// blind spot closed permanently). It asserts the UNION of committed-leaf tags the guard's scenarios
-// actually exercise (as a real apply() diff) EQUALS the FULL tag set the live marshaller can emit
-// (v5EmittableLeafTags, derived from populateCommitted — not a hand list).
+// TestLeafDiffGuardCoversEveryEmittableTag is the SELF-CHECKING coverage meta-assertion (
+// ledgerdecision acceptance bar: E/R/S/B/T/A/P all driven through the diff assertion, and the
+// generator's OWN blind spot closed permanently). It asserts the UNION of committed-leaf tags the
+// guard's scenarios actually exercise (as a real apply diff) EQUALS the FULL tag set the live
+// marshaller can emit (v5EmittableLeafTags, derived from populateCommitted — not a hand list).
 //
 // WHY THIS CLOSES THE GENERATOR BLIND SPOT: the diff-minus-fold guard reddens on a dropped emission
 // ONLY for a tag some scenario produces a block for. Before this change the generator drove 16 of 28
@@ -478,7 +477,7 @@ func TestLeafDiffGuardCoversEveryEmittableTag(t *testing.T) {
 	assertTagSetsEqual(t, want, got)
 }
 
-// exercisedLeafDiffTags returns the UNION of committed-leaf field tags that appear in the real apply()
+// exercisedLeafDiffTags returns the UNION of committed-leaf field tags that appear in the real apply
 // diff of every scenario — the set the guard actually exercises. Keyed on the live stateRootLeavesV5
 // marshaller (committedLeafDiff), so it tracks the real emission, not a hand list.
 func exercisedLeafDiffTags(t *testing.T, scenarios []leafDiffScenario) map[string]struct{} {
@@ -537,7 +536,7 @@ func sortedSet(m map[string]struct{}) []string {
 // TestLeafDiffCoverageMetaHasTeeth proves the coverage meta-assertion is not decoration: DROP one
 // scenario (the class-S slash) and the emittable-vs-exercised comparison MUST report the tags that
 // scenario uniquely covered as uncovered. A meta-assertion with no demonstrated red is a comment that
-// compiles (the session-7 rule). With the full set wired it passes (asserted in
+// compiles (the rule). With the full set wired it passes (asserted in
 // TestLeafDiffGuardCoversEveryEmittableTag).
 func TestLeafDiffCoverageMetaHasTeeth(t *testing.T) {
 	full := generateLeafDiffScenarios(t)
@@ -584,8 +583,8 @@ func TestLeafDiffCoverageMetaHasTeeth(t *testing.T) {
 	}
 }
 
-// dropLeafScenario is one class-scoped dropped-emission ablation: a fixture block whose real apply()
-// diff includes dropTag, with an honest witness. The REAL recompute ops are assembled, the ops carrying
+// dropLeafScenario is one class-scoped dropped-emission ablation: a fixture block whose real apply diff
+// includes dropTag, with an honest witness. The REAL recompute ops are assembled, the ops carrying
 // dropTag are removed (modelling a dropped emission of that class's leaf), and the PRODUCTION
 // assertLeafDiffEqualsFold is driven — it MUST redden naming dropTag.
 type dropLeafScenario struct {
@@ -603,8 +602,8 @@ type dropLeafScenario struct {
 // and confirm it AGREES with the diff (GREEN, the assertion does NOT fatal); then DROP the class's
 // representative tag from the folded set and confirm assertLeafDiffEqualsFold reddens naming exactly
 // that tag. This reaches the naming assertion directly for S/B/T — the path the AGREE-first completeness
-// pre-check would short-circuit on a full break (the Tester's anomaly). Red-before-green, same style as
-// the class-M ablation above.
+// pre-check would short-circuit on a full break. Red-before-green, same style as the class-M ablation
+// above.
 func TestLeafDiffNamingPathPerClassSBT(t *testing.T) {
 	for _, tc := range perClassDropScenarios(t) {
 		t.Run(tc.name, func(t *testing.T) {
@@ -616,7 +615,8 @@ func TestLeafDiffNamingPathPerClassSBT(t *testing.T) {
 			}
 			diff := committedLeafDiff(tc.pre, post)
 
-			// The dropped tag must genuinely be in the apply() diff (else the ablation is vacuous).
+			// The dropped tag must genuinely be in the apply diff (else the ablation is
+			// vacuous).
 			if !diffHasTag(diff, tc.dropTag) {
 				t.Fatalf("ablation vacuous: tag %q not in the apply() diff for scenario %s", tc.dropTag, tc.name)
 			}

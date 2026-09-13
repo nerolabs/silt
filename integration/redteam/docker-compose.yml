@@ -1,13 +1,13 @@
-# Byzantine red-team on a flat Docker net (#184 validator accountability).
+# Byzantine red-team on a flat Docker net (validator accountability).
 #
 # One honest bonded quorum + three concrete, wire-reachable adversaries. Every
 # daemon is a REAL silt process talking over REAL TCP on one bridge network —
 # no in-process sim, no simulated flags. The adversarial behaviors are the
-# repo's own RED-TEAM / TEST-HARNESS flags (`silt daemon -h`):
+# repo's own ADVERSARY / TEST-HARNESS flags (`silt daemon -h`):
 #
-#   -equivocate "idX,idYZ"   double-sign at height 1 (honest replicas slash it)
-#   -forge-block <peerID>    proposal with a FORGED proposer sig (honest rejects)
-#   -lowbond-propose <peerID> under-bonded proposer (honest refuses to attest)
+#  -equivocate "idX,idYZ" double-sign at height 1 (honest replicas slash it)
+#  -forge-block <peerID> proposal with a FORGED proposer sig (honest rejects)
+#  -lowbond-propose <peerID> under-bonded proposer (honest refuses to attest)
 #
 # The honest validators use the earned-bonded-standing recipe the e2e tests and
 # examples/flow4 prove commits over TCP: legacy subjective consensus
@@ -91,14 +91,14 @@ services:
   # ── Scenario 1: EQUIVOCATOR ──────────────────────────────────────────────
   # Mirrors e2e/equivocation_test.go EXACTLY, decoupled from the positive
   # control so the topologies don't cross-contaminate:
-  #   equiv-a  (adversary, bootstrap ANCHOR): -attesters "idX,idYZ",
-  #            -equivocate "idX,idYZ". Once it has earned standing with BOTH, it
-  #            double-signs — block X onto equiv-x, heavier fork (Y,Z) onto equiv-yz.
-  #   equiv-x  (honest DETECTOR): holds A's block X, -attesters idYZ so it SYNCS
-  #            the heavier Y,Z fork from equiv-yz, reconciles, catches A signing
-  #            two blocks at height 1, and SLASHES A.
-  #   equiv-yz (honest recipient of the heavier fork): NO -attesters, so it never
-  #            syncs the X-fork and stays a clean recipient of Y,Z.
+  #  equiv-a (adversary, bootstrap ANCHOR): -attesters "idX,idYZ",
+  #  -equivocate "idX,idYZ". Once it has earned standing with BOTH, it
+  #  double-signs — block X onto equiv-x, heavier fork (Y,Z) onto equiv-yz.
+  #  equiv-x (honest DETECTOR): holds A's block X, -attesters idYZ so it SYNCS
+  #  the heavier Y,Z fork from equiv-yz, reconciles, catches A signing
+  #  two blocks at height 1, and SLASHES A.
+  #  equiv-yz (honest recipient of the heavier fork): NO -attesters, so it never
+  #  syncs the X-fork and stays a clean recipient of Y,Z.
   # equiv-a is the anchor both honest nodes bootstrap off, so A directly
   # exchanges bond challenges with both and earns standing with each.
   equiv-a:
@@ -179,8 +179,8 @@ services:
   # H3 is a fresh honest target (its own store). The forger and the low-bond
   # proposer each send ONE crafted proposal to H3 and report whether H3 refused
   # it. Mirrors e2e/proposal_reject_test.go:
-  #   forger:  -forge-block idH3       (corrupted proposer signature)
-  #   lowbond: -bond 128K -lowbond-propose idH3  (under-bonded proposer)
+  #  forger: -forge-block idH3 (corrupted proposer signature)
+  #  lowbond: -bond 128K -lowbond-propose idH3 (under-bonded proposer)
   h3:
     <<: *honest
     profiles: [propose]
@@ -259,7 +259,7 @@ services:
       rt:
         ipv4_address: 10.110.0.33
 
-  # goodprop is the POSITIVE CONTROL (audit #303): a properly 8M-bonded proposer —
+  # goodprop is the POSITIVE CONTROL (audit): a properly 8M-bonded proposer —
   # identical to `forger` but with a WELL-FORMED proposal — whose block H3 MUST
   # accept once its bond earns standing. Gating SCENARIO 2 & 3 on this proves H3
   # attests a valid bonded block, so its REJECTION of the forged/under-bonded ones

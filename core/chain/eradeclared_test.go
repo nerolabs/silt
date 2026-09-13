@@ -7,7 +7,7 @@ import (
 )
 
 // THE DECLARED-ERA GATES (freeze manifest item 19, second clause: "the daemon prints its declared
-// max block era at start-up"). The first clause — the era a chain OBSERVES — shipped in #808 and is
+// max block era at start-up"). The first clause — the era a chain OBSERVES — shipped in and is
 // gated in erastate_test.go. These gates cover the other number and, above all, the PAIR.
 //
 // WHY THE PAIR IS THE DELIVERABLE. Cloud row 13b-delivery-settlement must separate "era-4 is dark"
@@ -17,14 +17,14 @@ import (
 // and the two are the same observed chain. So every gate below asserts a DIFFERENCE between two
 // renders, never the mere presence of a line.
 //
-// declaredIsACompileTimeConstant is the structural half of GATE G-DE-2, and it asserts at COMPILE
+// declaredIsACompileTimeConstant is the structural half of the gate, and it asserts at COMPILE
 // time, which is the only place this particular claim can be asserted without qualification: a
 // const declaration accepts a constant expression and nothing else. If DeclaredMaxBlockVersion ever
 // becomes a var, a field, a flag or a function call, this package stops building. A runtime
 // assertion could not tell those apart from a constant that happens to hold the same value today.
 const declaredIsACompileTimeConstant = DeclaredMaxBlockVersion
 
-// TestDeclaredMaxIsTheBINARYsRealCeiling is GATE G-DE-1.
+// TestDeclaredMaxIsTheBINARYsRealCeiling is the gate.
 //
 // The declaration is a CLAIM ABOUT THIS BUILD, and a claim is worth exactly what checks it. A
 // constant that merely reads 5 would keep reading 5 after someone widened versionSupported to 6 —
@@ -34,13 +34,14 @@ const declaredIsACompileTimeConstant = DeclaredMaxBlockVersion
 // on a chain whose own readiness tally activated era-4).
 func TestDeclaredMaxIsTheBINARYsRealCeiling(t *testing.T) {
 	// --- The DECODE ceiling. Both sides of it, because only the pair locates a ceiling: the
-	// first alone is satisfied by any supported version, the second by any unsupported one.
+	// First alone is satisfied by any supported version, the second by any unsupported
+	// one.
 	if !versionSupported(DeclaredMaxBlockVersion) {
-		t.Fatalf("G-DE-1 RED: this build DECLARES v%d but versionSupported rejects it — the daemon "+
+		t.Fatalf("RED: this build DECLARES v%d but versionSupported rejects it — the daemon "+
 			"would announce an era it cannot decode", DeclaredMaxBlockVersion)
 	}
 	if versionSupported(DeclaredMaxBlockVersion + 1) {
-		t.Fatalf("G-DE-1 RED: versionSupported accepts v%d, above the declared maximum v%d. The "+
+		t.Fatalf("RED: versionSupported accepts v%d, above the declared maximum v%d. The "+
 			"declaration is STALE: someone widened the decode ceiling without moving it, so the "+
 			"start-up line now understates what this binary is.",
 			DeclaredMaxBlockVersion+1, DeclaredMaxBlockVersion)
@@ -58,12 +59,12 @@ func TestDeclaredMaxIsTheBINARYsRealCeiling(t *testing.T) {
 	}
 	_, next := c.Head()
 	if got := c.MintVersion(next); got != DeclaredMaxBlockVersion {
-		t.Fatalf("G-DE-1 RED: on an era-4-activated chain the proposer mints v%d, but this build "+
+		t.Fatalf("RED: on an era-4-activated chain the proposer mints v%d, but this build "+
 			"declares v%d. The two must be the same number.", got, DeclaredMaxBlockVersion)
 	}
 }
 
-// TestStartupLinesSeparateAHealthyDarkChainFromAWrongBuild is GATE G-DE-2, the gate this half of
+// TestStartupLinesSeparateAHealthyDarkChainFromAWrongBuild is the gate, the gate this half of
 // item 19 exists for. It drives the four-cell matrix that 13b needs: {declared v5, declared v2} ×
 // {a dark era-2 chain, an era-4 chain}.
 //
@@ -111,65 +112,65 @@ func TestStartupLinesSeparateAHealthyDarkChainFromAWrongBuild(t *testing.T) {
 	// (1) THE SAME CHAIN UNDER TWO BUILDS MUST DIFFER. If it does not, the start-up line answers
 	// neither of 13b's two questions and this row has shipped its predecessor's defect again.
 	if darkUnderV5 == darkUnderV2 {
-		t.Fatal("G-DE-2 RED: on one dark chain, an era-4 build and an era-2 build print the SAME " +
+		t.Fatal("RED: on one dark chain, an era-4 build and an era-2 build print the SAME " +
 			"start-up lines. \"era-4 is dark\" and \"the operator is running the wrong build\" are " +
 			"then indistinguishable — which is precisely the sentence cloud row 13b already has.")
 	}
 	if liveUnderV5 == liveUnderV2 {
-		t.Fatal("G-DE-2 RED: on one era-4 chain, an era-4 build and an era-2 build print the SAME " +
+		t.Fatal("RED: on one era-4 chain, an era-4 build and an era-2 build print the SAME " +
 			"start-up lines")
 	}
 	// (2) THE SAME BUILD ON TWO CHAINS MUST DIFFER. The declared number alone is not an answer
 	// either: a line that ignores the chain would satisfy (1) and still say nothing about 13b.
 	if darkUnderV5 == liveUnderV5 {
-		t.Fatal("G-DE-2 RED: one build prints the same start-up lines on a DARK chain and on an " +
+		t.Fatal("RED: one build prints the same start-up lines on a DARK chain and on an " +
 			"ERA-4 chain — the observed half of the pair is not being read")
 	}
 
 	// (3) The verdicts, by name. A dark chain under the shipped build is HEALTHY and must say so;
 	// an era-4 chain under an era-2 build is the WRONG BINARY and must say that.
 	if got := DeclaredRelation(DeclaredMaxBlockVersion, darkState.Census); got != EraRelationAhead {
-		t.Fatalf("G-DE-2 RED: declared v%d over a dark chain must be %q, got %q",
+		t.Fatalf("RED: declared v%d over a dark chain must be %q, got %q",
 			DeclaredMaxBlockVersion, EraRelationAhead, got)
 	}
 	if got := DeclaredRelation(DeclaredMaxBlockVersion, liveState.Census); got != EraRelationAt {
-		t.Fatalf("G-DE-2 RED: declared v%d over an era-4 chain must be %q, got %q",
+		t.Fatalf("RED: declared v%d over an era-4 chain must be %q, got %q",
 			DeclaredMaxBlockVersion, EraRelationAt, got)
 	}
 	if got := DeclaredRelation(BlockVersionRounds, liveState.Census); got != EraRelationBehind {
-		t.Fatalf("G-DE-2 RED: declared v%d over a chain carrying v%d must be %q, got %q",
+		t.Fatalf("RED: declared v%d over a chain carrying v%d must be %q, got %q",
 			BlockVersionRounds, BlockVersionWitnessable, EraRelationBehind, got)
 	}
 	// The era-2 build on the era-2 chain is AT, not a defect: nothing committed there indicates
 	// a higher era. Asserting it pins that "wrong build" is reserved for what is OBSERVED, and is
 	// not printed over a build merely because it is old.
 	if got := DeclaredRelation(BlockVersionRounds, darkState.Census); got != EraRelationAt {
-		t.Fatalf("G-DE-2 RED: declared v%d over an era-2 chain must be %q, got %q",
+		t.Fatalf("RED: declared v%d over an era-2 chain must be %q, got %q",
 			BlockVersionRounds, EraRelationAt, got)
 	}
 	for _, want := range []string{"HEALTHY", "era-4", "v5"} {
 		if !strings.Contains(darkUnderV5, want) {
-			t.Errorf("G-DE-2 RED: the healthy-dark verdict must contain %q; whole render:\n%s", want, darkUnderV5)
+			t.Errorf("RED: the healthy-dark verdict must contain %q; whole render:\n%s", want, darkUnderV5)
 		}
 	}
 	for _, want := range []string{"WRONG BUILD", "CANNOT validate"} {
 		if !strings.Contains(liveUnderV2, want) {
-			t.Errorf("G-DE-2 RED: the behind verdict must contain %q; whole render:\n%s", want, liveUnderV2)
+			t.Errorf("RED: the behind verdict must contain %q; whole render:\n%s", want, liveUnderV2)
 		}
 	}
 	// The dark chain under the shipped build must NOT be reported as a defect of the binary. This
 	// is the false alarm the row is meant to prevent, stated as an assertion rather than as prose.
 	if strings.Contains(darkUnderV5, "WRONG BUILD") {
-		t.Errorf("G-DE-2 RED: a healthy dark chain was reported as a wrong build:\n%s", darkUnderV5)
+		t.Errorf("RED: a healthy dark chain was reported as a wrong build:\n%s", darkUnderV5)
 	}
 }
 
-// TestStartupLinesDoNotMoveWithLocalConfig is GATE G-DE-3, the ABLATION behind "the declared era is
-// a property of the BUILD".
+// TestStartupLinesDoNotMoveWithLocalConfig is the gate, the ABLATION behind "the declared era is a
+// property of the BUILD".
 //
 // A declared era an operator can type answers nothing: it would report what someone believes rather
 // than what the binary is, and an operator debugging a dark network would be reading their own
-// input back. EraState already ignores Config (G-EP-2); this extends the same ablation over the
+// input back. EraState already ignores Config; this extends the same ablation over the
 // DECLARED half and over the whole rendered text, so a Config read introduced anywhere in the new
 // render — not only in the accessor — turns it red.
 func TestStartupLinesDoNotMoveWithLocalConfig(t *testing.T) {
@@ -184,16 +185,16 @@ func TestStartupLinesDoNotMoveWithLocalConfig(t *testing.T) {
 	after := text(StartupEraLines(DeclaredMaxBlockVersion, c.EraState()))
 
 	if before != after {
-		t.Fatalf("G-DE-3 RED: the start-up render MOVED when local config changed, on identical "+
+		t.Fatalf("RED: the start-up render MOVED when local config changed, on identical "+
 			"committed blocks. The line would then answer \"what did this operator type\".\nBEFORE:\n%s\nAFTER:\n%s",
 			before, after)
 	}
 	if strings.Contains(after, "999999") || strings.Contains(after, "4096") {
-		t.Fatalf("G-DE-3 RED: a local config value appears verbatim in the render:\n%s", after)
+		t.Fatalf("RED: a local config value appears verbatim in the render:\n%s", after)
 	}
 }
 
-// TestStartupLinesRefuseToAssertAnUnobservedChain is GATE G-DE-4.
+// TestStartupLinesRefuseToAssertAnUnobservedChain is the gate.
 //
 // A daemon whose store is empty has a real chain object and NO blocks — the state every fresh node
 // is in for the instant before genesis is seeded. Printing "highest version v0" there would be the
@@ -212,24 +213,24 @@ func TestStartupLinesRefuseToAssertAnUnobservedChain(t *testing.T) {
 	t.Logf("empty chain:\n%s", out)
 
 	if got := DeclaredRelation(DeclaredMaxBlockVersion, st.Census); got != EraRelationUnobserved {
-		t.Fatalf("G-DE-4 RED: with no blocks the relation must be %q, got %q — the surface claimed "+
+		t.Fatalf("RED: with no blocks the relation must be %q, got %q — the surface claimed "+
 			"a comparison it had nothing to compare against", EraRelationUnobserved, got)
 	}
 	// The declaration itself is still printed: it is a fact about the build, true with or without
 	// a chain. What must be absent is any verdict ABOUT a chain.
 	if !strings.Contains(out, "era-4") {
-		t.Fatalf("G-DE-4 RED: the declaration is a property of the build and must print even with "+
+		t.Fatalf("RED: the declaration is a property of the build and must print even with "+
 			"no chain:\n%s", out)
 	}
 	for _, forbidden := range []string{"AHEAD", "WRONG BUILD", "highest version v0", "at height 0"} {
 		if strings.Contains(out, forbidden) {
-			t.Fatalf("G-DE-4 RED: an unobserved chain rendered %q — a verdict with no evidence "+
+			t.Fatalf("RED: an unobserved chain rendered %q — a verdict with no evidence "+
 				"under it:\n%s", forbidden, out)
 		}
 	}
 }
 
-// TestEveryEraRelationIsDrivenAndDistinct is GATE G-DE-5 (simplicity rule 7: a row called "safe" in
+// TestEveryEraRelationIsDrivenAndDistinct is the gate (a row called "safe" in
 // any coverage table must be a DRIVEN probe, not an assumption).
 //
 // The closed set EraRelations is enumerated here rather than hand-listed, so adding a member
@@ -261,21 +262,21 @@ func TestEveryEraRelationIsDrivenAndDistinct(t *testing.T) {
 
 	for _, r := range EraRelations {
 		if r == "" {
-			t.Fatal("G-DE-5 RED: a relation is the empty string — the Go zero value, which a " +
+			t.Fatal("RED: a relation is the empty string — the Go zero value, which a " +
 				"never-populated field would be indistinguishable from")
 		}
 		if _, ok := drove[r]; !ok {
-			t.Fatalf("G-DE-5 RED: relation %q is in the closed set EraRelations but no arm of this "+
+			t.Fatalf("RED: relation %q is in the closed set EraRelations but no arm of this "+
 				"gate produced it from a real chain. An un-driven state is decoration.", r)
 		}
 	}
 	if len(drove) != len(EraRelations) {
-		t.Fatalf("G-DE-5 RED: %d relations driven, %d in the closed set", len(drove), len(EraRelations))
+		t.Fatalf("RED: %d relations driven, %d in the closed set", len(drove), len(EraRelations))
 	}
 	for a, ta := range drove {
 		for b, tb := range drove {
 			if a != b && ta == tb {
-				t.Fatalf("G-DE-5 RED: relations %q and %q render IDENTICALLY:\n%s", a, b, ta)
+				t.Fatalf("RED: relations %q and %q render IDENTICALLY:\n%s", a, b, ta)
 			}
 		}
 	}
@@ -286,7 +287,7 @@ func TestEveryEraRelationIsDrivenAndDistinct(t *testing.T) {
 // the artifact that actually ships.
 func text(lines []string) string { return strings.Join(lines, "\n") }
 
-// TestStartupLinesWarnTheBuildTheTallyIsAboutToStrand is GATE G-DE-6.
+// TestStartupLinesWarnTheBuildTheTallyIsAboutToStrand is the gate.
 //
 // A build can be at or ahead of every COMMITTED block and still be about to be left behind: the
 // readiness tally locks an era in one epoch BEFORE its first block, and that window is the only
@@ -312,7 +313,7 @@ func TestStartupLinesWarnTheBuildTheTallyIsAboutToStrand(t *testing.T) {
 	t.Logf("pending chain, era-2 build:\n%s\n\npending chain, era-4 build:\n%s", stranded, shipped)
 
 	if !strings.Contains(stranded, "STALLS") {
-		t.Fatalf("G-DE-6 RED: the tally has locked in v%d and this build declares v%d, so it will "+
+		t.Fatalf("RED: the tally has locked in v%d and this build declares v%d, so it will "+
 			"reject the first block of the new era — and the start-up render said nothing:\n%s",
 			BlockVersionWitnessable, BlockVersionRounds, stranded)
 	}
@@ -320,7 +321,7 @@ func TestStartupLinesWarnTheBuildTheTallyIsAboutToStrand(t *testing.T) {
 	// warning that fires on every build is noise, and noise is how an operator learns to skip
 	// the line the row exists to make them read.
 	if strings.Contains(shipped, "STALLS") {
-		t.Fatalf("G-DE-6 RED: the shipped build declares v%d and the tally locked in v%d — it is not "+
+		t.Fatalf("RED: the shipped build declares v%d and the tally locked in v%d — it is not "+
 			"stranded, but the render warned anyway:\n%s",
 			DeclaredMaxBlockVersion, BlockVersionWitnessable, shipped)
 	}

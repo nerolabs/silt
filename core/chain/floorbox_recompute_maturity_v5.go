@@ -13,11 +13,11 @@ import (
 // era-4 (v5) trustless floor-box RECOMPUTE — lane-1 Part B core, increment 2.
 //
 // This file reproduces a SECOND validity predicate — the MATURITY LATCH metric matureNow
-// (chain.go:2178) via C2Metric (chain.go:2300-2382) — trustlessly, from the committed
+// (chain.go) via C2Metric (chain.go) — trustlessly, from the committed
 // StateRoot + witnesses ALONE. It replicates increment 1's structure
 // (floorbox_recompute_v5.go, recomputeEpochWeightQuorum) and, crucially, it is the FIRST
-// predicate whose fold READS GENESIS CONFIG, so it is where the C-6 obligation finally has
-// TEETH (see the C-6 note below and the ablation in the test).
+// predicate whose fold READS GENESIS CONFIG, so it is where the obligation finally has
+// TEETH (see the note below and the ablation in the test).
 //
 // It is ADDITIVE: it calls no full-node accept path, mutates nothing, and changes NO
 // consensus/validity rule. A full node still computes matureNow from its own in-memory
@@ -26,46 +26,46 @@ import (
 // floorbox_v5.go and floorbox_recompute_v5.go already hold.
 //
 // THE PREDICATE. matureNow gates the de-mature super-quorum: a mature-and-objective chain
-// whose live decentralization has since dropped below the bar (everMature && objective() &&
-// !matureNow(), chain.go:2827) must commit under a real-bond super-majority instead of the
-// retired anchor net. matureNow (objective branch) is MatureCoefficient() >= MatureValidators,
+// whose live decentralization has since dropped below the bar (everMature && objective &&
+// !matureNow, chain.go) must commit under a real-bond super-majority instead of the
+// retired anchor net. matureNow (objective branch) is MatureCoefficient >= MatureValidators,
 // where MatureCoefficient = min(NakamotoOperators, NakamotoDomains) from C2Metric — the
 // operator-and-domain-distinct bonded-distinctness count over the COMMITTED ledger.
 //
 // C2Metric is a WHOLE-SET fold over validatorsSeen. For every member id it reads:
-//   - membership of validatorsSeen (set-completeness, the F1 validatorsSeenRoot digest);
-//   - c.cfg.Anchors[id]  — OWN genesis config (skip anchors) — C-6;
-//   - c.slashed[id]      — committed keyspace (skip slashed) — C-1;
-//   - c.bonded[id]       — committed per-member weight — C-1;
-//   - c.bondDomain[id]   — committed per-member declared domain (absent = domain 0) — C-1;
-//   - c.cfg.MinBond      — OWN genesis config (eligibility screen sz >= MinBond) — C-6;
-//   - c.cfg.OperatorMargin (operatorMargin) — OWN genesis config (coefficient divisor) — C-6;
-//   - c.cfg.MatureValidators — OWN genesis config (the threshold) — C-6.
+// - membership of validatorsSeen (set-completeness, the F1 validatorsSeenRoot digest);
+// - c.cfg.Anchors[id] — OWN genesis config (skip anchors);
+// - c.slashed[id] — committed keyspace (skip slashed);
+// - c.bonded[id] — committed per-member weight;
+// - c.bondDomain[id] — committed per-member declared domain (absent = domain 0);
+// - c.cfg.MinBond — OWN genesis config (eligibility screen sz >= MinBond);
+// - c.cfg.OperatorMargin (operatorMargin) — OWN genesis config (coefficient divisor);
+// - c.cfg.MatureValidators — OWN genesis config (the threshold).
 //
 // THE THREE-PART PROOF (recomputeMatureNow):
-//  1. SET-COMPLETENESS: reconstruct nodeSetMTH(witnessedIDs); require it equals the committed
-//     validatorsSeenRoot leaf (proven present against the StateRoot). One omitted (or injected)
-//     member ⇒ a different MTH ⇒ mismatch ⇒ stall. This is the F1 validatorsSeenRoot digest
-//     FINALLY READ (F1 committed it inert; this increment consumes it for validatorsSeen).
-//  2. PER-MEMBER VALUES (C-1): for EVERY id in the reconstructed set, Resolve its slashed[id]
-//     membership, bonded[id] weight, and bondDomain[id] domain against the committed StateRoot.
-//     A forged weight/domain/slashed-bit fails smt.VerifyProof ⇒ NoWitness ⇒ stall. The digest
-//     gave membership; the inclusion proofs give the values.
-//  3. GENESIS CONFIG (C-6): MinBond, Anchors, OperatorMargin, MatureValidators are read from the
-//     box's OWN cfg (c.cfg.*), NEVER from any witness. This predicate is the FIRST whose fold
-//     reads genesis knobs; each is threshold-shifting if an attacker controls it (a lower MinBond
-//     admits cheap members, a lower margin inflates the coefficient, a lower MatureValidators
-//     lowers the bar). Reading own config forecloses every such shift — the C-6 teeth increment 1
-//     could not exercise.
+// 1. SET-COMPLETENESS: reconstruct nodeSetMTH(witnessedIDs); require it equals the committed
+// validatorsSeenRoot leaf (proven present against the StateRoot). One omitted (or injected)
+// member ⇒ a different MTH ⇒ mismatch ⇒ stall. This is the F1 validatorsSeenRoot digest
+// FINALLY READ (F1 committed it inert; this increment consumes it for validatorsSeen).
+// 2. PER-MEMBER VALUES: for EVERY id in the reconstructed set, Resolve its slashed[id]
+// membership, bonded[id] weight, and bondDomain[id] domain against the committed StateRoot.
+// A forged weight/domain/slashed-bit fails smt.VerifyProof ⇒ NoWitness ⇒ stall. The digest
+// gave membership; the inclusion proofs give the values.
+// 3. GENESIS CONFIG: MinBond, Anchors, OperatorMargin, MatureValidators are read from the
+// box's OWN cfg (c.cfg.*), NEVER from any witness. This predicate is the FIRST whose fold
+// reads genesis knobs; each is threshold-shifting if an attacker controls it (a lower MinBond
+// admits cheap members, a lower margin inflates the coefficient, a lower MatureValidators
+// lowers the bar). Reading own config forecloses every such shift — the teeth increment 1
+// could not exercise.
 //
-// Then the fold + threshold, byte-for-byte the full node's (chain.go:2300-2382, 2207-2214,
+// Then the fold + threshold, byte-for-byte the full node's (chain.go, 2207-2214,
 // 2194): min(NakamotoOperators, NakamotoDomains) >= MatureValidators.
 //
-// STOP BOUNDARY (this increment). It reproduces ONE predicate. It does NOT flip #657
-// the box to Accept — that is the final increment, only after ALL predicates are
-// reproduced. The box STILL never-Accepts. It reproduces the OBJECTIVE branch of matureNow
-// (objective() = MinBond>0 && verifyBond!=nil, true for any untrusted deployment); the
-// non-objective launch branch is the trusted-anchor phase, out of scope.
+// STOP BOUNDARY (this increment). It reproduces ONE predicate. It does NOT flip the box to
+// Accept — that is the final increment, only after ALL predicates are reproduced. The box
+// STILL never-Accepts. It reproduces the OBJECTIVE branch of matureNow (objective =
+// MinBond>0 && verifyBond!=nil, true for any untrusted deployment); the non-objective
+// launch branch is the trusted-anchor phase, out of scope.
 
 var (
 	// ErrRecomputeSeenSetIncomplete marks a stall where the witnessed id-list does not reconstruct
@@ -81,7 +81,7 @@ var (
 
 	// ErrRecomputeMemberStateUnproven marks a stall where a per-member committed value leaf
 	// (bonded weight, bondDomain, or slashed membership) could not be proven present/absent against
-	// the committed StateRoot (no/failed/forged witness). This is the C-1 closure: a forged member
+	// the committed StateRoot (no/failed/forged witness). This is the closure: a forged member
 	// value cannot verify, so it stalls the fold rather than letting a forgeable coefficient through.
 	ErrRecomputeMemberStateUnproven = errors.New("chain: floor-box maturity recompute — a per-member committed value leaf (bonded/bondDomain/slashed) not proven against the committed StateRoot (C-1: forged or missing)")
 )
@@ -92,7 +92,7 @@ var (
 // leaf value the committed root does not commit, so its proof fails and the member is unproven.
 type MemberStateWitness struct {
 	// Bonded is the claimed committed bonded[id] weight. Verified by Resolving the bonded[id]
-	// leaf (encoded EncodeInt64(Bonded)) against the committed root — a forged weight fails (C-1).
+	// leaf (encoded EncodeInt64(Bonded)) against the committed root — a forged weight fails.
 	Bonded int64
 
 	// BondedProof is the SMT inclusion proof of Key(tagBonded, id) → EncodeInt64(Bonded).
@@ -111,7 +111,7 @@ type MemberStateWitness struct {
 
 	// DomainProof is the SMT proof of the bondDomain[id] leaf — inclusion when DomainPresent,
 	// non-inclusion otherwise. A forged domain (claimed present with the wrong value, or claimed
-	// absent while committed) fails to verify ⇒ stall (C-1).
+	// absent while committed) fails to verify ⇒ stall.
 	DomainProof statehash.Witness
 
 	// Slashed reports whether the member is claimed to be in the committed slashed set. When true,
@@ -121,7 +121,7 @@ type MemberStateWitness struct {
 
 	// SlashedProof is the SMT proof of the slashed[id] membership — inclusion when Slashed,
 	// non-inclusion otherwise. A prover cannot silently drop a slashed member (that would shrink
-	// the tally): the recompute verifies the slashed bit for every member either way (C-1).
+	// the tally): the recompute verifies the slashed bit for every member either way.
 	SlashedProof statehash.Witness
 }
 
@@ -159,10 +159,10 @@ type SeenSetWitness struct {
 //
 // SOUNDNESS: this changes ONLY how the per-member proof bytes are held in memory. WHAT is verified is
 // byte-identical to SeenSetWitness — the same committedStateRoot anchor, the same completeness MTH
-// over the FULL id-list (line-level identical, IDs stays whole; R-M-STREAM-COMPLETENESS), the same
-// per-member predicate, the same own-config screens. It is the certified soundness-neutral memory
-// refactor (Candidate 1, research cert 2026-09-02; PE Option 1). It is an in-memory Go type; nothing
-// here is serialized, so it is NOT a wire/format change (no v5 leaf, no committed object touched).
+// over the FULL id-list (line-level identical, IDs stays whole), the same per-member predicate, the
+// same own-config screens. It is the soundness-neutral memory refactor (Candidate 1, research
+// Option 1). It is an in-memory Go type; nothing here is serialized, so it is NOT a
+// wire/format change (no v5 leaf, no committed object touched).
 type SeenSetStreamWitness struct {
 	// IDs is the COMPLETE validatorsSeen id-list — identical role to SeenSetWitness.IDs. It stays
 	// resident whole: the completeness MTH nodeSetMTH(IDs) must see the full list (a short list yields
@@ -182,16 +182,16 @@ type SeenSetStreamWitness struct {
 	Member func(ports.NodeID) (MemberStateWitness, bool)
 }
 
-// recomputeMatureNow reproduces matureNow (the maturity-latch metric, chain.go:2178) TRUSTLESSLY,
+// recomputeMatureNow reproduces matureNow (the maturity-latch metric, chain.go) TRUSTLESSLY,
 // from the committed StateRoot + the witness alone, for the OBJECTIVE phase. It returns (mature,
-// nil) where mature == matureNow()'s verdict a full node would produce, or (false, reason) when
-// the box cannot verify the witness and must stall — NEVER folding an unverified set/value.
+// nil) where mature == matureNow's verdict a full node would produce, or (false, reason) when the
+// box cannot verify the witness and must stall — NEVER folding an unverified set/value.
 //
-// It reads MinBond / Anchors / OperatorMargin / MatureValidators from the box's OWN cfg (C-6),
+// It reads MinBond / Anchors / OperatorMargin / MatureValidators from the box's OWN cfg,
 // never the witness. This is the first predicate whose fold reads genesis config, so the C-6
 // obligation has TEETH here (the config-from-witness ablation).
 //
-// This does NOT flip the box to Accept (the STOP boundary is the R1.8 downgrade in (*Box).Validate): it reproduces ONE predicate.
+// This does NOT flip the box to Accept (the STOP boundary is the downgrade in (*Box).Validate): it reproduces ONE predicate.
 //
 // This is the RESIDENT-MAP adapter over the streaming core: it wraps w.Members in a pull provider and
 // delegates to recomputeMatureNowStreaming, so the fold logic lives in ONE place and the resident and
@@ -213,7 +213,7 @@ func (c *Chain) recomputeMatureNow(committedStateRoot ports.Hash, w SeenSetWitne
 // pulls each member's proof witness on demand (w.Member) and lets that member's proof heap be freed
 // before the next member is verified. Resident witness is O(depth), not O(N·depth).
 //
-// SOUNDNESS-NEUTRAL by construction (certified 2026-09-02): every Resolve still verifies against the
+// SOUNDNESS-NEUTRAL by construction: every Resolve still verifies against the
 // same committedStateRoot; the completeness MTH still consumes the FULL id-list (line-identical); the
 // fold accumulates the same order-independent scalars. Freeing a member's proof heap after its Resolve
 // returns cannot change any verdict (VerifyProof is a pure function of (proof, root, key, value)).
@@ -222,9 +222,9 @@ func (c *Chain) recomputeMatureNowStreaming(committedStateRoot ports.Hash, w See
 	// StateRoot, then require the reconstructed MTH over the witnessed id-list equals it. One omitted
 	// (or injected) member yields a different MTH ⇒ mismatch ⇒ stall.
 	//
-	// R-M-STREAM-COMPLETENESS: this consumes the FULL w.IDs — streaming frees per-member PROOF heaps,
-	// NEVER the id-list. A short/truncated id-list yields a different MTH and stalls here, identically
-	// to the resident form. (RED ablation: floorbox_recompute_maturity_streaming_v5_test.go.)
+	// This consumes the FULL w.IDs — streaming frees per-member PROOF heaps, NEVER the id-list. A
+	// short/truncated id-list yields a different MTH and stalls here, identically to the resident
+	// form. (RED ablation: floorbox_recompute_maturity_streaming_v5_test.go.)
 	rootKey := statehash.Key(tagValidatorsSeenRoot, nil)
 	rootRes := statehash.Resolve(committedStateRoot, rootKey, w.SeenRootValue, w.SeenRootWitness)
 	if !rootRes.IsProvenPresent() {
@@ -236,12 +236,12 @@ func (c *Chain) recomputeMatureNowStreaming(committedStateRoot ports.Hash, w See
 			ErrRecomputeSeenSetIncomplete, reconstructed, w.SeenRootValue)
 	}
 
-	// (2) PER-MEMBER VALUES (C-1) + (3) OWN CONFIG (C-6) + (4) THE FOLD, byte-for-byte C2Metric
-	// (chain.go:2300-2382). For every member of the completeness-verified set, PULL its witness, verify
+	// (2) PER-MEMBER VALUES + (3) OWN CONFIG + (4) THE FOLD, byte-for-byte C2Metric
+	// (chain.go). For every member of the completeness-verified set, PULL its witness, verify
 	// its slashed/bonded/bondDomain leaves against the committed root, then fold exactly as C2Metric:
 	// skip own-Anchors and slashed members; a bond >= own MinBond joins `sizes` and its domain
 	// aggregates (non-zero domain) or forms its own group (unset). Own config governs the screen,
-	// the margin, and the threshold — never the witness (C-6). The pulled `mw` (and its proof heaps) is
+	// the margin, and the threshold — never the witness. The pulled `mw` (and its proof heaps) is
 	// scoped to this iteration: it is freed before the next member is pulled.
 	// A nil provider cannot deliver any member's witness, so no member can be verified. The safe
 	// default is to stall (never-Accept), exactly as a resident witness with no Members map would.
@@ -261,7 +261,7 @@ func (c *Chain) recomputeMatureNowStreaming(committedStateRoot ports.Hash, w See
 			return false, fmt.Errorf("%w: id %x has no member state witness", ErrRecomputeMemberStateUnproven, id[:])
 		}
 
-		// C-1: slashed membership. Present ⇒ inclusion proof of (slashed[id] → Present); absent ⇒
+		// slashed membership. Present ⇒ inclusion proof of (slashed[id] → Present); absent ⇒
 		// non-inclusion proof. Either must verify against the committed root, else stall.
 		slashedKey := statehash.Key(tagSlashed, id[:])
 		var slashedVal []byte
@@ -276,14 +276,14 @@ func (c *Chain) recomputeMatureNowStreaming(committedStateRoot ports.Hash, w See
 			return false, fmt.Errorf("%w: id %x slashed(absent)", ErrRecomputeMemberStateUnproven, id[:])
 		}
 
-		// C-6: own-config Anchor screen + committed slashed screen. C2Metric skips both BEFORE
+		// own-config Anchor screen + committed slashed screen. C2Metric skips both BEFORE
 		// reading the bond. Anchors is OWN genesis config (never the witness); slashed is the
 		// committed bit just verified.
 		if c.cfg.Anchors[id] || mw.Slashed {
 			continue
 		}
 
-		// C-1: bonded weight. Inclusion proof of (bonded[id] → EncodeInt64(Bonded)). A forged
+		// bonded weight. Inclusion proof of (bonded[id] → EncodeInt64(Bonded)). A forged
 		// weight fails ⇒ stall. A member with no committed bond (weight would be 0) still needs a
 		// proof; the honest producer emits every member's bonded leaf, so a genuine member always
 		// resolves present. (A member of validatorsSeen without a bonded leaf cannot occur: seating
@@ -294,7 +294,7 @@ func (c *Chain) recomputeMatureNowStreaming(committedStateRoot ports.Hash, w See
 			return false, fmt.Errorf("%w: id %x bonded %d", ErrRecomputeMemberStateUnproven, id[:], mw.Bonded)
 		}
 
-		// C-1: bondDomain. Present ⇒ inclusion proof of (bondDomain[id] → EncodeUint64(Domain));
+		// bondDomain. Present ⇒ inclusion proof of (bondDomain[id] → EncodeUint64(Domain));
 		// absent ⇒ non-inclusion proof (unset domain). Either must verify, else stall.
 		domainKey := statehash.Key(tagBondDomain, id[:])
 		var domainVal []byte
@@ -309,8 +309,8 @@ func (c *Chain) recomputeMatureNowStreaming(committedStateRoot ports.Hash, w See
 			return false, fmt.Errorf("%w: id %x domain(absent)", ErrRecomputeMemberStateUnproven, id[:])
 		}
 
-		// The eligibility screen: own MinBond (C-6). Below it, the member is not counted — exactly
-		// C2Metric's `if sz := c.bonded[id]; sz >= c.cfg.MinBond`.
+		// The eligibility screen: own MinBond. Below it, the member is not counted —
+		// exactly C2Metric's `if sz:= c.bonded[id]; sz >= c.cfg.MinBond`.
 		if mw.Bonded < minBond {
 			continue
 		}
@@ -325,8 +325,8 @@ func (c *Chain) recomputeMatureNowStreaming(committedStateRoot ports.Hash, w See
 
 	// (5) THE COEFFICIENT + THRESHOLD, byte-for-byte C2Metric + MatureCoefficient + matureNow.
 	//
-	// C-6: OperatorMargin and MatureValidators are read from own cfg. operatorMargin() resolves an
-	// unset/zero margin to 1, exactly as the full node does (chain.go:2388-2393).
+	// OperatorMargin and MatureValidators are read from own cfg. operatorMargin resolves
+	// an unset/zero margin to 1, exactly as the full node does (chain.go).
 	if total == 0 {
 		// Degenerate: no qualifying bonded weight. MatureCoefficient = min over empty = 0
 		// (NakamotoOperators/NakamotoDomains default to their group counts, which are 0), so
@@ -353,7 +353,7 @@ func (c *Chain) recomputeMatureNowStreaming(committedStateRoot ports.Hash, w See
 
 // nakamotoCoefficient is the fewest of the given (bond-or-group) weights whose combined value
 // EXCEEDS the Byzantine fraction (⌊total/3⌋) of total — the raw cost-to-corrupt coefficient,
-// byte-for-byte the C2Metric fold (chain.go:2323-2334, 2348-2357). weights need not be sorted;
+// byte-for-byte the C2Metric fold (chain.go, 2348-2357). weights need not be sorted;
 // this sorts a copy descending, so the caller's slice is untouched. total > 0 is required
 // (the caller guards total == 0). An empty weights yields 0 (len(weights)).
 func nakamotoCoefficient(weights []int64, total int64) int {

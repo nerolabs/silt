@@ -1,7 +1,7 @@
 package credit
 
 // THE CROSS-LAYER WINDOW PIN — the gate core/credit's own comment cited for weeks
-// while it did not exist (Tester finding, 2026-09-02: repo-wide grep for
+// while it did not exist (the research finding, 2026-09-02: repo-wide grep for
 // TestPaidSerialWindowMatchesDemandWindow found only the comment claiming it).
 //
 // W is written down THREE times: demand.DefaultWindow (the demand keyset's validity

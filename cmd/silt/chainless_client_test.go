@@ -107,17 +107,17 @@ func TestSwarmAddChainIDReachesTheClientNode(t *testing.T) {
 // TestDeclareNetworkIdentityIsBehaviouralAndOnTheLoop is the arm the source gate below CANNOT be:
 // it proves the install RUNS, with the right guard, on the node's own goroutine.
 //
-// It exists because a blind review drove ablation A9 — leave swarmAdd's call in place and make its
+// It exists because ablation A9 was driven — leave swarmAdd's call in place and make its
 // guard impossible — and the entire cmd/silt suite stayed GREEN. swarmAdd builds its client node
 // internally and hands it to nobody, so a guard inside swarmAdd is reachable by no test. Moving
 // the guard into declareNetworkIdentity is what makes A9's class of defect observable, and these
 // are the four arms that observe it.
 //
 // ABLATIONS, one per arm:
-//   - guard impossible (`if !declared || declared`) → arm 1 RED (nothing installs)
-//   - guard dropped (always install) → arm 2 RED (ErrNetworkIdentityZero surfaces)
-//   - guard reads the HASH (`if id != zero`) instead of `declared` → arm 3 RED
-//   - install written off-loop (call nd.SetNetworkIdentity directly, not through run) → arm 4 RED
+// - guard impossible (`if !declared || declared`) → arm 1 RED (nothing installs)
+// - guard dropped (always install) → arm 2 RED (ErrNetworkIdentityZero surfaces)
+// - guard reads the HASH (`if id != zero`) instead of `declared` → arm 3 RED
+// - install written off-loop (call nd.SetNetworkIdentity directly, not through run) → arm 4 RED
 func TestDeclareNetworkIdentityIsBehaviouralAndOnTheLoop(t *testing.T) {
 	want := ports.HashBytes([]byte("a declared network"))
 
@@ -159,7 +159,7 @@ func TestDeclareNetworkIdentityIsBehaviouralAndOnTheLoop(t *testing.T) {
 
 	// Arm 4: the write is POSTED, not made from the calling goroutine. joinSwarm returns after
 	// Bootstrap, so the loop is already live when swarmAdd declares; an off-loop write races the
-	// first handler that reads the field (#828).
+	// first handler that reads the field.
 	t.Run("the write is posted onto the loop", func(t *testing.T) {
 		nd, loop := testClientNode(t, 9614)
 		posts := 0
@@ -180,7 +180,7 @@ func TestDeclareNetworkIdentityIsBehaviouralAndOnTheLoop(t *testing.T) {
 	})
 }
 
-// loopRun builds joinSwarm's `run` shape over a test loop: post fn, wait for its done().
+// loopRun builds joinSwarm's `run` shape over a test loop: post fn, wait for its done.
 func loopRun(loop *eventloop.Loop) func(fn func(done func())) error {
 	return func(fn func(done func())) error {
 		ch := make(chan struct{})
@@ -194,7 +194,7 @@ func loopRun(loop *eventloop.Loop) func(fn func(done func())) error {
 	}
 }
 
-// TestPublishTokenFailureNamesTheCreditCause is D-TD-3. acquirePublishToken's stage 2 used to bind
+// TestPublishTokenFailureNamesTheCreditCause is acquirePublishToken's stage 2 used to bind
 // AcquireCredits' error to `_`, so every credit-lane refusal surfaced as a bare "could not gather
 // enough publish-token signatures": acquireToken SKIPS an issuer with no credit rather than
 // reporting one, so the real cause never reached the operator. It must now be named.
@@ -217,8 +217,8 @@ func TestPublishTokenFailureNamesTheCreditCause(t *testing.T) {
 
 	var gotErr error
 	done := make(chan struct{})
-	// Node state is the loop's, so the whole acquisition runs ON the loop — the same way
-	// swarmAdd's run(...) drives it.
+	// Node state is the loop's, so the whole acquisition runs ON the loop — the
+	// same way swarmAdd's run(.) drives it.
 	loop.Post("test", func() {
 		acquirePublishToken(nd, []ports.NodeID{unreachable}, 1, func(tok *ports.PublishToken, err error) {
 			gotErr = err
@@ -285,8 +285,8 @@ func testClientNode(t *testing.T, seed int64) (*node.Node, *eventloop.Loop) {
 // declareNetworkIdentity, AND that call is handed the two values parseDeclaredChainID bound in the
 // same body — not a literal, and not a discarded result. That is all.
 //
-// WHAT IT DOES NOT PROVE, MEASURED: that the call RUNS. A blind review drove ablation A9 — leave
-// the call written in swarmAdd and make its guard impossible — and the whole cmd/silt suite stayed
+// WHAT IT DOES NOT PROVE, MEASURED: that the call RUNS. Ablation A9 was driven — leave the
+// call written in swarmAdd and make its guard impossible — and the whole cmd/silt suite stayed
 // GREEN. An `ast.Inspect` collecting SelectorExpr names sees a call regardless of reachability, so
 // no gate of this shape can close that. The earlier failure message here claimed to catch exactly
 // that defect ("the -chain-id flag parses and is then dropped"); it did not, and it no longer says
@@ -313,17 +313,17 @@ func testClientNode(t *testing.T, seed int64) (*node.Node, *eventloop.Loop) {
 //
 // What is left un-gated is therefore ONE thing, narrower and louder: swarmAdd's unconditional call
 // being made unreachable (wrapped in a dead branch, or the function returning before it). That
-// residual is why this gate still exists, and it is filed as R-CHAINID-INSTALL-SOURCE-GATED.
+// residual is why this gate still exists, and it is filed as.
 //
 // WHY A SOURCE GATE AT ALL: swarmAdd builds its client node internally and exposes it to no
-// caller, and no production reader of RequesterChainID exists anywhere in the tree until #828
-// lands, so there is no observable at any tier — including e2e — for "swarmAdd reached its
-// install". The gate retires the day the credit lane reads the value: a token publish against a
+// caller, and no production reader of RequesterChainID exists anywhere in the tree until lands,
+// so there is no observable at any tier — including e2e — for "swarmAdd reached its install".
+// The gate retires the day the credit lane reads the value: a token publish against a
 // token-requiring network, with and without -chain-id, dominates it.
 //
 // RUNTIME GATE: TestDeclareNetworkIdentityIsBehaviouralAndOnTheLoop covers the guard and the
 // posted write; TestSwarmAddChainIDReachesTheClientNode covers parse-then-install end to end.
-// UNGATED: that swarmAdd's call is REACHED at run time (R-CHAINID-INSTALL-SOURCE-GATED).
+// UNGATED: that swarmAdd's call is REACHED at run time.
 //
 // Those two annotations are the shape scripts/check_source_gates.py reads. MEASURED, and it is a
 // finding rather than a formality: that lint recognises a source gate by `os.ReadFile("x.go")`
@@ -351,10 +351,11 @@ func TestSwarmAddCallsDeclareNetworkIdentity(t *testing.T) {
 	if body == nil {
 		t.Fatal("SOURCE GATE: VACUOUS — swarm.go declares no func swarmAdd, so this gate read nothing")
 	}
-	// Collect BOTH call shapes: `x.Method(...)` and the bare `f(...)` that declareNetworkIdentity
-	// is. Collecting only SelectorExpr would make this gate silently blind to its own target. The
-	// install CallExpr itself is KEPT, not just its name, because a call by the right name can be
-	// handed the wrong arguments (ablation B-ARG — see the argument arms below).
+	// Collect BOTH call shapes: `x.Method(.)` and the bare `f(.)` that
+	// declareNetworkIdentity is. Collecting only SelectorExpr would make this gate silently
+	// blind to its own target. The install CallExpr itself is KEPT, not just its name,
+	// because a call by the right name can be handed the wrong arguments (ablation B-ARG —
+	// see the argument arms below).
 	calls := map[string]bool{}
 	var install *ast.CallExpr
 	// The identifiers parseDeclaredChainID binds IN THIS BODY. They are read from the assignment
@@ -400,7 +401,7 @@ func TestSwarmAddCallsDeclareNetworkIdentity(t *testing.T) {
 			"the parsed values, never that it RUNS — a call inside a dead branch passes it (measured, " +
 			"blind-review ablation A9). " +
 			"The guard itself is gated behaviourally by TestDeclareNetworkIdentityIsBehaviouralAndOnTheLoop. " +
-			"D-TOKEN-DOMAIN-CHAINLESS-CLIENT-2026-09-12, route (a); residual R-CHAINID-INSTALL-SOURCE-GATED.")
+			", route (a); residual.")
 	}
 	// Anchor 2: the walk reaches real calls. swarmAdd's own token block calls
 	// FetchCanonicalIssuersFromAny, so if this is absent the walk is looking at the wrong tree.
@@ -421,12 +422,13 @@ func TestSwarmAddCallsDeclareNetworkIdentity(t *testing.T) {
 		t.Fatal("SOURCE GATE: the only declareNetworkIdentity in swarmAdd is a method call on some " +
 			"receiver, not the package-level function this gate reads — the argument arms cannot bind")
 	}
-	// THE ARGUMENT ARMS. Ablation B-ARG is the reason they exist: `declaredChainID, _, err :=
-	// parseDeclaredChainID(...)` plus a literal `false` at the call left the whole cmd/silt package
-	// GREEN while the operator's declared identity was silently dropped. `_` is refused here
-	// because discarding the result is the first half of that ablation, and a literal is refused
-	// because passing one is the second half. Go parses `false` and `nil` as identifiers, so the
-	// NAME comparison catches them; a composite literal is not an *ast.Ident at all.
+	// THE ARGUMENT ARMS. Ablation B-ARG is the reason they exist: `declaredChainID, _, err:=
+	// parseDeclaredChainID(.)` plus a literal `false` at the call left the whole cmd/silt
+	// package GREEN while the operator's declared identity was silently dropped. `_` is
+	// refused here because discarding the result is the first half of that ablation, and a
+	// literal is refused because passing one is the second half. Go parses `false` and `nil`
+	// as identifiers, so the NAME comparison catches them; a composite literal is not an
+	// *ast.Ident at all.
 	//
 	// exprName quotes what the walk found. The blank `_` and the literals `false`/`nil` are all
 	// *ast.Ident, so the NAME is the text worth printing; anything else is named by its node type.
@@ -462,7 +464,7 @@ func TestSwarmAddCallsDeclareNetworkIdentity(t *testing.T) {
 				"parseDeclaredChainID bound in this same body (got %s). A call by the right NAME can "+
 				"still be handed the wrong VALUES: blind-review ablation B-ARG passed a literal false "+
 				"here and the whole cmd/silt package stayed GREEN while the operator's declared "+
-				"network identity was dropped. Residual R-CHAINID-INSTALL-SOURCE-GATED.",
+				"network identity was dropped. Residual.",
 				3+i, wantName, exprName(install.Args[2+i]))
 		}
 	}

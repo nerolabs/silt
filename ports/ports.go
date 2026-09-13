@@ -182,7 +182,7 @@ type Registry interface {
 	All(ctx context.Context) ([]Entry, error)
 }
 
-// AsyncRegistry is an OPTIONAL Registry capability (#473): a lookup that runs
+// AsyncRegistry is an OPTIONAL Registry capability: a lookup that runs
 // off the caller's thread and calls done from an arbitrary goroutine. A
 // network-backed registry (httpregistry) implements it so a chainless node's
 // event loop never blocks an HTTP round-trip inside a core sweep; in-memory
@@ -193,24 +193,23 @@ type AsyncRegistry interface {
 }
 
 // EpochSource is the ONE clock a credit ledger reads its consensus epoch from
-// (R2.10 / F8, rule R-F8-SOURCE, research-certified 2026-09-04): injected once
-// at construction, never passed per call. The production source is the node's
-// chain epoch — the same function that prunes the demand keyset, drives the
-// receipt bank and verifies relay anchors, so the guard's expiry predicate and
-// the keyset's validity window are two predicates on one clock. A nil source
-// reads as 0, the value a chain-less node produces. The finalized-head epoch, a
-// wall clock and any caller-supplied value are not admissible sources (the
-// certification refutes each).
+// (rule): injected once at construction, never passed per call. The
+// production source is the node's chain epoch — the same function that prunes
+// the demand keyset, drives the receipt bank and verifies relay anchors, so the
+// guard's expiry predicate and the keyset's validity window are two predicates
+// on one clock. A nil source reads as 0, the value a chain-less node produces.
+// The finalized-head epoch, a wall clock and any caller-supplied value are not
+// admissible sources (the research refutes each).
 type EpochSource interface{ Epoch() uint64 }
 
 // MonotonicNanos returns nanoseconds elapsed on a source that CANNOT be stepped by an
 // operator, an NTP correction or a container clock — Go's monotonic reading, which
-// `time.Since` uses and which `time.Time.UnixNano()` discards. It is a func rather than
+// `time.Since` uses and which `time.Time.UnixNano` discards. It is a func rather than
 // an interface because there is exactly one method and the adapter is a closure over a
 // process-start instant (`cmd/silt`); core and ports may not import `time`
 // (internal/depcheck), so the reading has to arrive injected.
 //
-// The ONE thing it is for (R2.9a): a quantity INDEPENDENT of the ports.Clock, so that a
+// The ONE thing it is for: a quantity INDEPENDENT of the ports.Clock, so that a
 // step in the wall clock shows up as a divergence between the two instead of cancelling
 // out of a comparison taken twice from the same reading. The origin is whatever instant
 // the consumer first calls it at; only differences are meaningful.
@@ -230,26 +229,24 @@ type CreditLedger interface {
 	// escrow, so popular data self-funds its own repair. Returns the credits
 	// skimmed. Standing is untouched — serving funds the balance economy only.
 	RecordServeToObject(server, requester NodeID, root Hash, id ChunkID, bytes int64) int64
-	// RedeemRelayCredit settles a PayWord relay chain at session close (PoD §7.3).
-	// R2.14 (2026-09-04): pays min(chainValue, budget) into the RELAY's balance only,
-	// where budget is the Σ face of the anchors SpendRelayAnchors recorded for this
-	// session (relay-issued, blind-signed, spent once on this ledger); an unanchored
-	// session has budget 0 and pays 0. Never touches the fetcher's account and never
-	// standing (the γ→1/N firewall). Δ Σ_L = settled − Σ face ≤ 0. Certification:
-	// silt-agent-memory/researcher/reviews/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md.
+	// RedeemRelayCredit settles a PayWord relay chain at session close (PoD §7.3). pays min(chainValue, budget) into the RELAY's
+	// balance only, where budget is the Σ face of the anchors SpendRelayAnchors recorded for this session (relay-issued,
+	// blind-signed, spent once on this ledger); an unanchored session has budget 0 and pays 0. Never touches the fetcher's account
+	// and never standing (the γ→1/N firewall). Δ Σ_L = settled − Σ face ≤ 0.
 	RedeemRelayCredit(relay, fetcher NodeID, chainValue, budget int64) int64
-	// SpendRelayAnchors records k VERIFIED relay prepayment anchors as spent on this
-	// ledger, all-or-nothing, and returns their summed face (k × Fee()) — the
-	// session budget RedeemRelayCredit may settle up to (R2.14, INV-RELAY-CONS:
-	// settled ≤ Σ face of spent anchors). The caller (core/node OpenRelaySession)
-	// verified each anchor under the relay's OWN committed key before calling; the
-	// ledger verifies nothing and guards everything: an anchor already spent, a
-	// batch that would overfill the bounded (epoch, serial) guard, an attached but
-	// unloaded durable store, or a store that cannot append all refuse with the
-	// named reason and record NOTHING (a refused open must not burn anchor 1
-	// because anchor 2 was spent). The guard's expiry window equals the relay
-	// keyset's because both read the same clock: the ledger's EpochSource is the
-	// node's chain epoch, the value the keyset was pruned with (R2.10 / F8).
+	// SpendRelayAnchors records k VERIFIED relay prepayment anchors as spent
+	// on this ledger, all-or-nothing, and returns their summed face (k × Fee)
+	// — the session budget RedeemRelayCredit may settle up to (settled ≤ Σ
+	// face of spent anchors). The caller (core/node OpenRelaySession) verified
+	// each anchor under the relay's OWN committed key before calling; the
+	// ledger verifies nothing and guards everything: an anchor already spent,
+	// a batch that would overfill the bounded (epoch, serial) guard, an
+	// attached but unloaded durable store, or a store that cannot append all
+	// refuse with the named reason and record NOTHING (a refused open must not
+	// burn anchor 1 because anchor 2 was spent). The guard's expiry window
+	// equals the relay keyset's because both read the same clock: the ledger's
+	// EpochSource is the node's chain epoch, the value the keyset was pruned
+	// with.
 	SpendRelayAnchors(anchors []RelayAnchor) (face int64, reason string)
 	// RecordAudit settles a storage challenge: a passed audit earns the
 	// prover a reward, a failed one costs a slash.
@@ -304,16 +301,16 @@ type CreditLedger interface {
 }
 
 // DurabilitySnapshot is object root's durability accounting at one instant — the
-// observable state the finite-but-renewable contract is measured against (D-S7).
+// observable state the finite-but-renewable contract is measured against.
 // It is pure data; the economic instruments that read it (cost-per-repair, funded
 // horizon, and instrument g — the credit-cost trend that decides whether "perpetual"
 // is earned) live in core/credit and take snapshots taken over time.
 type DurabilitySnapshot struct {
 	Balance int64 // credits available now to pay repair bounties (the reserve)
 	Funded  int64 // lifetime credits deposited: prepay + serve auto-skim (= FundedPrepay + FundedSkim)
-	// The two legs of Funded (R2.7 detector A4-1). The wash loop's recoverable money is
-	// the SKIM, not the prepay, so "escrow recovered by self-repair" has no denominator
-	// without this split. A reversal claws back FundedSkim only.
+	// The two legs of Funded (detector). The wash loop's recoverable money is
+	// the SKIM, not the prepay, so "escrow recovered by self-repair" has no
+	// denominator without this split. A reversal claws back FundedSkim only.
 	FundedPrepay int64 // deposited by an operator through FundEscrow
 	FundedSkim   int64 // routed in by the serve auto-skim
 	Paid         int64 // lifetime bounties paid out of the reserve
@@ -324,20 +321,18 @@ type DurabilitySnapshot struct {
 // round, phase and block hash of the most recent consensus signature this
 // identity released — committed or not. A signature is FINAL for that identity
 // *within its (height, round, phase)*: signing a different block there is the
-// double-sign the slash rule treats as proven malice (#397, round-scoped per
-// the #432 certification — Tendermint's persisted priv_validator_state, whose
-// schema is (height, round, step); the height-only form wedged a contested
-// height permanently, #432). Round 0 / Phase 0 is the legacy era-1 mark (a
-// bare-hash signature); marks persisted before rounds load as that.
+// double-sign the slash rule treats as proven malice (round-scoped per the
+// research — Tendermint's persisted priv_validator_state, whose schema is
+// (height, round, step); the height-only form wedged a contested height
+// permanently). Round 0 / Phase 0 is the legacy era-1 mark (a bare-hash
+// signature); marks persisted before rounds load as that.
 type SignMark struct {
 	Height uint64
 	Round  uint64
 	Phase  uint8 // chain.PhaseLegacy / PhasePrepare / PhasePrecommit
 	Hash   Hash
-	// LockQC is the CBOR-encoded prepare-QC justifying a precommit-phase mark
-	// (#432: the validator's LOCK, persisted with the mark so a restarted
-	// validator can re-present it in a round-change — certification §5.3).
-	// Empty for prepare/legacy marks.
+	// LockQC is the CBOR-encoded prepare-QC justifying a precommit-phase
+	// mark. Empty for prepare/legacy marks.
 	LockQC []byte
 }
 
@@ -346,33 +341,33 @@ type SignMark struct {
 // released to the wire, so a crash between the two leaves an unused mark
 // (safe — the node refuses to re-sign that height with different content),
 // never a wire signature without a mark (which a restart would let the node
-// contradict, manufacturing an honest double-sign — the #397 crash variant).
+// contradict, manufacturing an honest double-sign — the crash variant).
 type SignMarkStore interface {
 	Load() (SignMark, bool, error) // ok=false: no mark persisted yet
 	Save(SignMark) error
 }
 
-// PaidSerial is one entry of the R0.4b cross-server double-redeem guard: a demand
-// token that has already funded one conserved delivery payout on a ledger, the server
-// that collected it, and the token's ISSUE EPOCH — the expiry key eviction is allowed
-// to act on. (Epoch, Serial) identifies the TOKEN; the serial alone does not, because
+// PaidSerial is one entry of the cross-server double-redeem guard: a demand token
+// that has already funded one conserved delivery payout on a ledger, the server that
+// collected it, and the token's ISSUE EPOCH — the expiry key eviction is allowed to
+// act on. (Epoch, Serial) identifies the TOKEN; the serial alone does not, because
 // the withdrawer picks both.
 type PaidSerial struct {
 	Serial []byte
 	Server NodeID
 	Epoch  uint64
 	// Relay marks the population the entry belongs to: true = a relay prepayment
-	// anchor (R2.14), false = a delivery anchor. OBSERVABILITY ONLY — no accounting
+	// anchor, false = a delivery anchor. OBSERVABILITY ONLY — no accounting
 	// rule reads it; the guard treats both populations identically. It is persisted
 	// because a restart otherwise rebuilds every entry as delivery and the per-lane
-	// live counts conflate the two populations (R-GUARD-RESTORE-LANE-UNKNOWN). A bool
+	// live counts conflate the two populations. A bool
 	// and not a lane code: there are exactly two populations, so there is no byte
 	// value a store can hand back that this cannot interpret.
 	Relay bool
 }
 
 // RelayAnchor is one relay prepayment anchor as the ledger guards it: the (issue
-// epoch, serial) pair the anchor's blind signature was made over (R2.14). The
+// epoch, serial) pair the anchor's blind signature was made over. The
 // signature itself never reaches the ledger — the node verified it under the relay's
 // committed key_E; the ledger records the token as spent so it can fund exactly one
 // session, and expires the record with the same window the keyset expires the key.
@@ -387,9 +382,8 @@ type RelayAnchor struct {
 // un-redeemable": an entry may be forgotten only once no key can verify the token it
 // guards. Process memory breaks that outright — a restart forgets EVERY entry,
 // in-window or not, and the identical wire receipt pays a second time (measured,
-// red-team re-break F2, 2026-09-03). Persisting the guard is what makes the eviction
-// set and the expired set the same set across the one eviction event every node
-// performs.
+// 2026-09-03). Persisting the guard is what makes the eviction set and the expired
+// set the same set across the one eviction event every node performs.
 //
 // DURABILITY IS ORDERED, like SignMarkStore's. Append MUST make the entry durable
 // (fsync) BEFORE it returns: the ledger appends before it PAYS, so a crash between the
@@ -410,7 +404,7 @@ type PaidSerialStore interface {
 	// Compact atomically replaces the whole store with live, dropping the entries an
 	// expiry sweep removed. Atomic: a crash mid-compact leaves the previous contents.
 	//
-	// THE HANDLE CLAUSE (R2.13, R-COMPACT-ORPHAN). After a Compact that returns an
+	// THE HANDLE CLAUSE. After a Compact that returns an
 	// error, the store MUST either remain appendable with Append still
 	// durable-and-reachable (the log is then a superset of live, which only ever
 	// over-refuses), or MUST fail every subsequent Append. It MUST NOT return nil

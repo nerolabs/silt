@@ -1,11 +1,11 @@
 package credit
 
-// The PoD neutral-lane ledger tests (docs/design/pod.md §3–§4, certified
-// 2026-08-26). Four properties, each load-bearing for the certified B3 close:
-// the §7.1 firewall (a heavy deliverer's standing never moves), conservation
-// (credit = fee − skim, a transfer never a mint), the supersede rule (a
-// witnessed receipt replaces the serve self-record, never stacks on it), and
-// the wash bound (a colluding pair's loop is a strict loss of the skim).
+// The PoD neutral-lane ledger tests –§4, verifies 2026-08-26. Four
+// properties, each load-bearing for the B3 close: the §7.1 firewall (a heavy
+// deliverer's standing never moves), conservation (credit = fee − skim, a
+// transfer never a mint), the supersede rule (a witnessed receipt replaces
+// the serve self-record, never stacks on it), and the wash bound (a colluding
+// pair's loop is a strict loss of the skim).
 
 import (
 	"testing"
@@ -13,12 +13,11 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// TestDeliveryCreditNeverTouchesStanding is the certified spec's §7.1 firewall
-// test, verbatim: a big deliverer's Reputation() is unchanged across the
-// reward. This is the direct guard on the γ→1/N firewall — a receipt is
-// mintable with zero object bytes by certified design, so delivery credit
-// buying even one unit of standing would convert forged receipts into
-// consensus weight.
+// TestDeliveryCreditNeverTouchesStanding is the spec's §7.1 firewall test,
+// verbatim: a big deliverer's Reputation is unchanged across the reward. This
+// is the direct guard on the γ→1/N firewall — a receipt is mintable with zero
+// object bytes by design, so delivery credit buying even one unit of standing
+// would convert forged receipts into consensus weight.
 func TestDeliveryCreditNeverTouchesStanding(t *testing.T) {
 	l := New(50_000, 0)
 	server, fetcher := id(1), id(2)
@@ -70,12 +69,12 @@ func TestSelfDeliveryPaysNothing(t *testing.T) {
 	}
 }
 
-// TestWitnessedReceiptSupersedesServeSelfRecord is the certification's
-// load-bearing Q1b correction: the serve path self-records 1 credit/byte as it
-// serves; a witnessed receipt for the same delivery must REPLACE that
-// self-credit, not stack on it. After serve + redeem, the server's balance is
-// exactly the conserved credit — as if the self-record never happened — and the
-// escrow holds exactly the fee-skim (the serve-skim was reversed too).
+// TestWitnessedReceiptSupersedesServeSelfRecord is the load-bearing Q1b
+// correction: the serve path self-records 1 credit/byte as it serves; a
+// witnessed receipt for the same delivery must REPLACE that self-credit, not
+// stack on it. After serve + redeem, the server's balance is exactly the
+// conserved credit — as if the self-record never happened — and the escrow
+// holds exactly the fee-skim (the serve-skim was reversed too).
 func TestWitnessedReceiptSupersedesServeSelfRecord(t *testing.T) {
 	const fee = 50_000
 	l := New(fee, 0)
@@ -108,11 +107,11 @@ func TestWitnessedReceiptSupersedesServeSelfRecord(t *testing.T) {
 	}
 }
 
-// TestWashLoopIsAStrictLoss pins the certified anti-wash bound end-to-end in
-// the ledger: a colluding pair (one operator, two identities, one ledger view)
-// that pays the withdrawal fee, self-serves, and redeems its own receipt ends
-// the loop worse off by exactly the fee-skim — wash is strictly loss-making,
-// per loop, forever. This is the economic half of the B3 close.
+// TestWashLoopIsAStrictLoss pins the anti-wash bound end-to-end in the ledger:
+// a colluding pair (one operator, two identities, one ledger view) that pays
+// the withdrawal fee, self-serves, and redeems its own receipt ends the loop
+// worse off by exactly the fee-skim — wash is strictly loss-making, per loop,
+// forever. This is the economic half of the B3 close.
 func TestWashLoopIsAStrictLoss(t *testing.T) {
 	const fee = 50_000
 	l := New(fee, fee*10) // both identities granted working capital
@@ -158,14 +157,13 @@ func TestUnwitnessedServeKeepsSelfRecord(t *testing.T) {
 	}
 }
 
-// TestPaidBountyIsNotRecoverableBySupersede is the PE-prescribed guard on the
-// ESCROW skim-routing decision (RULING-PoD-keystone-owner-knobs-2026-08-26,
-// knob 1). Escrow-routing is safe *because* the supersede reversal is floored at
-// what the reserve still holds: credits already paid out as a repair bounty are
-// real durability work and can never be clawed back. If that floor ever
-// regressed, escrow would start minting recoverable balance — and burn would
-// become the correct routing instead. This test is why the floor cannot regress
-// silently (build-immutable #2).
+// TestPaidBountyIsNotRecoverableBySupersede is the guard on the
+// ESCROW skim-routing decision, knob 1. Escrow-routing is safe *because* the
+// supersede reversal is floored at what the reserve still holds: credits already
+// paid out as a repair bounty are real durability work and can never be clawed
+// back. If that floor ever regressed, escrow would start minting recoverable
+// balance — and burn would become the correct routing instead. This test is why
+// the floor cannot regress silently (build-immutable #2).
 func TestPaidBountyIsNotRecoverableBySupersede(t *testing.T) {
 	const fee = 50_000
 	l := New(fee, 0)
@@ -205,7 +203,7 @@ func TestPaidBountyIsNotRecoverableBySupersede(t *testing.T) {
 }
 
 // TestPaidBountyIsNotRecoverableByEviction is the sibling guard on the NEW
-// eviction-reversal site (A4 fix, Boulder 0). The eviction reversal shares the
+// eviction-reversal site. The eviction reversal shares the
 // same floored-skim logic as redeem, so the same invariant must hold there: a
 // repair bounty paid out between serve and EVICTION is real durability work and
 // can never be clawed back. If the eviction reversal ever dropped the floor,

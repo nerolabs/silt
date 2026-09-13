@@ -11,7 +11,7 @@ import (
 // disk-backed store would actually have to hold.
 //
 // It keeps no per-key bookkeeping of its own, so it does not inflate the heap
-// measurement it sits inside. setCount vs Len() exposes rewrite churn: on a
+// measurement it sits inside. setCount vs Len exposes rewrite churn: on a
 // fresh build the two track each other, and a large gap would mean the trie is
 // rewriting nodes it already wrote.
 //

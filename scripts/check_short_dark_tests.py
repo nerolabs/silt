@@ -1,24 +1,13 @@
 #!/usr/bin/env python3
 """A green check that contains ZERO EXECUTION.
 
-  scar:short-run-is-zero-execution-2026-09-10
-
-SCAR, COUNT 2. A test that calls `t.Skip` under `testing.Short()` runs nowhere if every
-merge-gating invocation of its package passes `-short`. `go test` reports the skip as a
-pass, the job goes green, and the artifact ships with a check mark standing for nothing:
+A test that calls `t.Skip` under `testing.Short()` runs nowhere if every merge-gating
+invocation of its package passes `-short`. `go test` reports the skip as a pass, the job
+goes green, and the artifact ships with a check mark standing for nothing:
 
     --- SKIP: TestSlashesBytesCapWorstCaseCost
-    --- SKIP: TestReconcileMemoryBounded_563
+    --- SKIP: TestReconcileMemoryBounded
     PASS   SHORT_EXIT=0
-
-  Instance 1 was a SEAT choosing `-short` for a local run — human error, correctable by
-  telling the human. It recorded the owed gate in the same breath: *"CI must fail any
-  artifact whose only suite evidence is a `-short` run, or print the skipped-tier count."*
-  Nobody encoded it.
-
-  Instance 2 is `.github/workflows/ci.yml` ITSELF passing `-short` on every invocation
-  but two. That is not human error. It is permanent, it recurs on every push, and it is
-  why instance 1's owed gate is now this file.
 
 THE PREDICATE, AND WHY THE OBVIOUS ONE IS WRONG
   The naive predicate — "is this test's NAME mentioned in a workflow?" — reports 51 dark
@@ -37,14 +26,11 @@ THE PREDICATE, AND WHY THE OBVIOUS ONE IS WRONG
 WHY "MERGE-GATING" AND NOT "ANY WORKFLOW"
   `release.yml` runs `go test ./...` with NO `-short`, so a predicate over all workflows
   reports zero dark tests and this whole file is decoration. But release.yml triggers on
-  a version TAG. It cannot gate a pull request, and it runs after the decision to ship
-  has already been made. A workflow is merge-gating here iff its `on:` block carries a
-  `pull_request` trigger or a `push` restricted to branches. That is `ci.yml` alone
-  today; `fuzz.yml` and `nightly-netem.yml` are schedule/dispatch.
+  a version TAG. It cannot gate a pull request, and it runs after the decision to ship.
 
 WHAT THIS GATE DOES *NOT* CATCH, STATED PLAINLY
   A test that DEGRADES under `-short` instead of skipping — smaller N, fewer attempts —
-  still executes and still asserts, so it is not this scar and is not reported. Three
+  still executes and still asserts, so it is not this shape and is not reported. Three
   tests in this repo do that (adapters/diskissuer, core/credit, sim). The evasion is
   real: converting a `t.Skip` into a smaller fixture will silence this gate. It is also
   a legitimate fix, because the result actually runs. Reviewers, not this script, judge
@@ -52,8 +38,8 @@ WHAT THIS GATE DOES *NOT* CATCH, STATED PLAINLY
 
 THE ALLOWLIST (scripts/short_dark_tests_allowlist.txt)
   A dark test is permitted only with a WRITTEN REASON. An unreasoned row FAILS — an
-  allowlist rationale is itself a claim (scar:allowlist-rationale-is-itself-a-claim).
-  Two mechanical companions keep the reasons from rotting:
+  allowlist rationale is itself a claim. Two mechanical companions keep the reasons from
+  rotting:
 
     - Any `Test...` name inside a reason must RESOLVE to a real test that is itself not
       dark. "The always-on gate is TestFooStructural" is a claim about another test; if
@@ -72,7 +58,6 @@ from pathlib import Path
 from repo_walk import repo_files
 
 ROOT = Path(__file__).resolve().parent.parent
-SCAR_ID = "scar:short-run-is-zero-execution-2026-09-10"
 
 ALLOWLIST = ROOT / "scripts" / "short_dark_tests_allowlist.txt"
 WORKFLOWS = ROOT / ".github" / "workflows"
@@ -327,7 +312,7 @@ def check_reason_companions(rows, tests, dark_keys):
 # -------------------------------------------------------------------------- report
 
 def report(errors, dark_count):
-    print(f"FAIL [{SCAR_ID}] — a test executes in no merge-gating CI job.\n\n"
+    print(f"FAIL — a test executes in no merge-gating CI job.\n\n"
           "  A `t.Skip` under `testing.Short()` is reported by `go test` as a PASS. If\n"
           "  every merge-gating invocation of the package passes `-short`, the check\n"
           "  mark on the artifact stands for zero execution of that test.\n",
@@ -357,7 +342,7 @@ def main():
         invocations += go_test_invocations(text)
 
     if not gating:
-        print(f"FAIL [{SCAR_ID}] — no merge-gating workflow found under {wf_dir}. "
+        print(f"FAIL — no merge-gating workflow found under {wf_dir}. "
               f"Every test is dark and this gate cannot say anything useful.", file=sys.stderr)
         return 1
 
@@ -397,7 +382,7 @@ def main():
         return 1
 
     degraded = sum(1 for t in tests if t["kind"] == "degrade")
-    print(f"OK [{SCAR_ID}] — {len(tests)} test(s) branch on -short across "
+    print(f"OK — {len(tests)} test(s) branch on -short across "
           f"{', '.join(gating)}: {len(tests) - len(dark) - degraded} run unshortened in a "
           f"merge-gating job, {degraded} degrade rather than skip, {len(dark)} are dark "
           f"and each carries a written reason.")

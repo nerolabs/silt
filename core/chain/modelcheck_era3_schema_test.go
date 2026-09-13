@@ -9,22 +9,21 @@ import (
 )
 
 // era-3 build step 2a — the schema/Hash/versionSupported model-check tier. These
-// oracles prove the four properties the certification requires of 2a and NO more:
+// oracles prove the four properties the research requires of 2a and NO more:
 //
-//  1. era-2 byte-identity: a v2 block hashes to the same bytes after the two root
-//     fields are added (committed history is never re-interpreted, chain.go:260-268).
-//  2. era-3 roots are attester-signed: a tampered StateRoot/LogRoot changes Hash(),
-//     so a signature over the real hash no longer verifies.
-//  3. v4 decodes and is accepted; a version beyond the ceiling is refused loudly with
-//     ErrBlockVersion (the hard-fork failure mode preserved). era-4 4c widened the ceiling
-//     to v5, so the refused boundary is now v6+.
-//  4. population wiring: a v4 block constructed with the step-1 accessors carries
-//     StateRoot == c.StateRoot() and LogRoot == c.LogRoot().
+// 1. era-2 byte-identity: a v2 block hashes to the same bytes after the two root
+// fields are added (committed history is never re-interpreted, chain.go).
+// 2. era-3 roots are attester-signed: a tampered StateRoot/LogRoot changes Hash,
+// So a signature over the real hash no longer verifies.
+// 3. v4 decodes and is accepted; a version beyond the ceiling is refused loudly with
+// ErrBlockVersion (the hard-fork failure mode preserved). era-4 4c widened the ceiling
+// to v5, so the refused boundary is now v6+.
+// 4. population wiring: a v4 block constructed with the step-1 accessors carries
+// StateRoot == c.StateRoot and LogRoot == c.LogRoot.
 //
 // STOP boundary (2a): these exercise the SCHEMA and HASH only. No validity predicate
 // rejects on a root mismatch (2b); nothing flips minting to v4 (2c). The design and
-// the load-bearing omitempty compat decision are in
-// docs/thinking/2026-08-29-era3-step2a-commit-roots-schema.md.
+// the load-bearing omitempty compat decision are.
 
 // TestEra2BlockHashesByteIdenticalAfter2a is the compat oracle: a v2 block that never
 // sets the era-3 roots must hash EXACTLY as it did before 2a. The roots are omitempty
@@ -82,7 +81,7 @@ func TestEra2GoldenHashUnchanged(t *testing.T) {
 
 // TestEra3RootsAreAttesterSigned proves the roots are inside the signed Hash body: a v4
 // block with a tampered StateRoot or LogRoot has a DIFFERENT hash, so a signature over
-// the real hash fails. RED: remove StateRoot/LogRoot from the Hash() unsigned body and
+// the real hash fails. RED: remove StateRoot/LogRoot from the Hash unsigned body and
 // tampering no longer changes the hash — both sub-assertions fail.
 func TestEra3RootsAreAttesterSigned(t *testing.T) {
 	b := era3FixtureV4Block()
@@ -149,7 +148,7 @@ func TestV4DecodesAndIsAccepted(t *testing.T) {
 }
 
 // TestV4CarriesStepOneRoots proves the population wiring: a v4 block constructed from a
-// chain's committed state carries exactly that chain's StateRoot() and LogRoot(). RED:
+// chain's committed state carries exactly that chain's StateRoot and LogRoot. RED:
 // leave the fields unset in the constructor and they are zero — the equality fails.
 func TestV4CarriesStepOneRoots(t *testing.T) {
 	c := New(DefaultConfig(), func(ports.NodeID) int64 { return 0 })
@@ -183,10 +182,10 @@ func TestV4CarriesStepOneRoots(t *testing.T) {
 }
 
 // era3PinnedV2Hash is the hash of era3DeterministicV2Block, captured from the PRE-2a
-// schema (origin/main 72d5c4c, a v2 block with no era-3 fields). After 2a the same block
-// — roots nil, omitempty-omitted — must hash to this EXACT value. A mismatch means the
-// additive change perturbed the era-2 unsigned body. Verified equal to the pre-2a value
-// by computing the same block's hash in a worktree at origin/main (see the deliberation).
+// schema. After 2a the same block — roots nil, omitempty-omitted — must hash to this
+// EXACT value. A mismatch means the additive change perturbed the era-2 unsigned body.
+// Verified equal to the pre-2a value by computing the same block's hash in a worktree at
+// origin/main (see the deliberation).
 var era3PinnedV2Hash = ports.Hash{
 	0x02, 0x25, 0xf1, 0x9d, 0x6f, 0x30, 0x35, 0xee,
 	0xfd, 0x37, 0xf1, 0x1d, 0x2e, 0x9a, 0xbe, 0x61,

@@ -1,12 +1,11 @@
 package sim
 
-// TestDemandBondedFetcherCapsWash is D-DEMAND P3b at the sim tier, on the SESSION lane
-// (B-9 retired the flat receipt): with the bonded-fetcher credential ON, witnessed demand
+// TestDemandBondedFetcherCapsWash is P3b at the sim tier, on the SESSION lane (B-9
+// retired the flat receipt): with the bonded-fetcher credential ON, witnessed demand
 // counts DISTINCT bonded fetchers per object on its own surface (DistinctBondedFetchers),
-// while the increment surface counts what was settled — two surfaces, never one field
-// (certification R2.9-witnessed-demand-observable-under-sessions-2026-09-06 §3.3). One
-// bonded identity settling N times is ONE distinct fetcher; an unbonded fetcher's equally
-// valid deliveries are PAID (G-DEM-4: settlement is never gated on the observable) but
+// while the increment surface counts what was settled — two surfaces, never one field.
+// One bonded identity settling N times is ONE distinct fetcher; an unbonded fetcher's
+// equally valid deliveries are PAID (settlement is never gated on the observable) but
 // contribute to neither surface; a second genuinely distinct bonded identity adds one.
 
 import (
@@ -80,7 +79,7 @@ func TestDemandBondedFetcherCapsWash(t *testing.T) {
 	uh, um := open(unbonded)
 	before := ledger.Balance(server.ID())
 	if settled, err := settleSession(t, cl, unbonded, server, uh, um, object, 1); err != nil || settled != 1 {
-		t.Fatalf("the unbonded fetcher's settlement was refused (%d, %v) — P3b gates the OBSERVABLE, never the payment (G-DEM-4)", settled, err)
+		t.Fatalf("the unbonded fetcher's settlement was refused (%d, %v) — P3b gates the OBSERVABLE, never the payment ", settled, err)
 	}
 	if ledger.Balance(server.ID()) != before+1 {
 		t.Fatal("the unbonded fetcher's settlement did not pay the server")

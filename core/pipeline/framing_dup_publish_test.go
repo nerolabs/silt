@@ -1,6 +1,6 @@
 package pipeline_test
 
-// The SECOND break class of the 4′ framing change, named and gated (blind PE, 2026-09-07).
+// The SECOND break class of the 4′ framing change, named and gated.
 // The manifest frame is not in the root — manifest.Root covers data + parity IDs only — so
 // true-length framing changes entry.ManifestChunks under an UNCHANGED root. registry.Publish
 // answers ErrDupPublish for exactly that shape: same root, different entry. A re-publish of

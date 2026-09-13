@@ -36,9 +36,9 @@ func setField(c *Chain, name string, v any) {
 }
 
 // snapshotCarried is everything a state snapshot must carry: set-valued state,
-// the ordered log (the full entry list, per the #597 certification), and
-// observables. Note this is the same set adopt() owes — a snapshot and a reorg
-// swap face the identical completeness question.
+// the ordered log (the full entry list, per the research), and observables.
+// Note this is the same set adopt owes — a snapshot and a reorg swap face the
+// identical completeness question.
 func snapshotCarried() []string {
 	var out []string
 	for _, k := range []stateKind{committedSet, committedLog, observable} {
@@ -61,12 +61,12 @@ func fieldsOfKind(k stateKind) []string {
 }
 
 // deepCopyValue returns an independent copy of a map or slice value, so a replica
-// that mutates its carried state (a mutating probe's apply()) cannot write through
-// a shared reference into src or into a sibling replica. Non-map/slice values (the
+// that mutates its carried state (a mutating probe's apply) cannot write through a
+// shared reference into src or into a sibling replica. Non-map/slice values (the
 // scalars everMature/matureEpoch/epochStart) are returned as-is — they are value
 // types, so a copy is automatic on assignment. Maps are copied one level deep,
 // which is sufficient here: every committed map's VALUE is a scalar or an array
-// (NodeID/Hash/Entry), none of which apply() mutates in place.
+// (NodeID/Hash/Entry), none of which apply mutates in place.
 func deepCopyValue(v any) any {
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
@@ -93,10 +93,10 @@ func deepCopyValue(v any) any {
 // field copied EXCEPT those named in omit, and no block history at all.
 //
 // Carried maps/slices are DEEP-COPIED (deepCopyValue): a snapshot replica is
-// handed to mutating probes that call apply(), which writes into these maps. If
-// the replica shared src's map header, that apply() would corrupt src and every
-// sibling replica built from it — the leave-one-out loop ablates one field at a
-// time off the SAME src, so a mutating probe on the k-th ablation would poison the
+// handed to mutating probes that call apply, which writes into these maps. If the
+// replica shared src's map header, that apply would corrupt src and every sibling
+// replica built from it — the leave-one-out loop ablates one field at a time off
+// the SAME src, so a mutating probe on the k-th ablation would poison the
 // (k+1)-th. That aliasing silently masked bondRootProven's flip (the F1 probe on
 // the bondRootOwner ablation displaced src's shared bonded/owner maps before
 // bondRootProven was ever ablated). Deep-copying makes each replica own its state.
@@ -111,11 +111,12 @@ func snapshotBoot(src *Chain, omit ...string) *Chain {
 	}
 	for _, name := range snapshotCarried() {
 		if skip[name] {
-			// Model the omission faithfully: a snapshot that failed to CARRY a
-			// field leaves the booted node with an initialised-but-empty one,
-			// not a nil one. Leaving it nil would make apply() panic, and a
-			// panic masks the finding — the point is to see what the node
-			// wrongly ACCEPTS, not that it crashes.
+			// Model the omission faithfully: a snapshot that failed to
+			// CARRY a field leaves the booted node with an
+			// initialised-but-empty one, not a nil one. Leaving it nil
+			// would make apply panic, and a panic masks the finding — the
+			// point is to see what the node wrongly ACCEPTS, not that it
+			// crashes.
 			f := reflect.ValueOf(dst).Elem().FieldByName(name)
 			if f.Kind() == reflect.Map {
 				setField(dst, name, reflect.MakeMap(f.Type()).Interface())
@@ -132,11 +133,11 @@ func snapshotBoot(src *Chain, omit ...string) *Chain {
 type probe struct {
 	name   string
 	detect []string // committed fields whose omission this probe should expose
-	// mutates marks a probe that APPLIES a block. Some rules (the F1 bond-root
-	// dedup) live in apply(), not in a validate predicate, so a verdict-only
-	// probe is structurally blind to them. Such probes run against throwaway
-	// replicas and are skipped by the replay-vs-snapshot comparison, which must
-	// not mutate the replayed chain.
+	// mutates marks a probe that APPLIES a block. Some rules (the F1
+	// bond-root dedup) live in apply, not in a validate predicate, so a
+	// verdict-only probe is structurally blind to them. Such probes run
+	// against throwaway replicas and are skipped by the replay-vs-snapshot
+	// comparison, which must not mutate the replayed chain.
 	mutates bool
 	ask     func(c *Chain) string
 }
@@ -146,10 +147,9 @@ type probe struct {
 // probes (bonded, epochSet) cannot: bonded is only read for a verdict where
 // qualification consults the live bonded map (a non-epoch objective regime), while
 // epochSet's frozen-set membership only governs a MATURE epoch — the two regimes are
-// mutually exclusive, so each gets its own world (see the deliberation
-// docs/thinking/2026-08-27-keystone-probes-bonded-epochset.md). Keeping the world
-// beside the probes lets one leave-one-out loop ablate each field on the world where
-// it is actually load-bearing.
+// mutually exclusive, so each gets its own world (see the deliberation). Keeping the
+// world beside the probes lets one leave-one-out loop ablate each field on the world
+// where it is actually load-bearing.
 type worldGroup struct {
 	name   string
 	build  func(t *testing.T) *Chain
@@ -157,7 +157,7 @@ type worldGroup struct {
 }
 
 // askSafely runs a probe and converts a panic into a verdict. A replica missing
-// a committed map does not politely disagree — apply() writes to a nil map and
+// a committed map does not politely disagree — apply writes to a nil map and
 // crashes. That is still divergence, and the loudest kind, so it is captured
 // rather than allowed to take the suite down.
 func askSafely(p probe, c *Chain) (out string) {
@@ -229,13 +229,14 @@ func probes(revokedRoot ports.Hash, keys []ed25519.PrivateKey, prev ports.Hash) 
 			detect: []string{"byRoot"},
 			ask:    func(c *Chain) string { return verdict(c.ValidateEntry(entry(9))) },
 		},
-		// NOTE: the former "revoking an unknown root must be rejected" probe was REMOVED
-		// (2026-08-28, docs/thinking/2026-08-28-keystone-shadowedprobes-discharge.md). Its
-		// verdict (validateTakedowns on a never-published root) does not depend on the carried
-		// byRoot set at all — an isolated ablation of byRoot showed no flip — so its byRoot
-		// detect tag was mis-declared decoration. byRoot is soundly and independently covered
-		// by "dup-publish must be rejected" above (a republish rejected ONLY because byRoot
-		// carries the height-1 root). Removing the mis-tagged probe loses no field coverage.
+		// NOTE: the former "revoking an unknown root must be rejected" probe was
+		// REMOVED. Its verdict (validateTakedowns on a never-published root) does
+		// not depend on the carried byRoot set at all — an isolated ablation of
+		// byRoot showed no flip — so its byRoot detect tag was mis-declared
+		// decoration. byRoot is soundly and independently covered by "dup-publish
+		// must be rejected" above (a republish rejected ONLY because byRoot
+		// carries the height-1 root). Removing the mis-tagged probe loses no field
+		// coverage.
 		{
 			name:   "un-revoking a root that was revoked must be ACCEPTED",
 			detect: []string{"revoked"},
@@ -245,27 +246,27 @@ func probes(revokedRoot ports.Hash, keys []ed25519.PrivateKey, prev ports.Hash) 
 		},
 		// NOTE: the two bond-root displacement probes ("a second identity cannot take an
 		// already-owned bond root" → bondRootOwner, and "a proven bond-root owner cannot be
-		// displaced" → bondRootProven) were REMOVED from this launch world (2026-08-28,
-		// docs/thinking/2026-08-28-keystone-shadowedprobes-discharge.md). In richHistory the two
-		// fields are COUPLED: both probes ask via c.bonded[claimant] where dropping EITHER field
-		// admits the challenger, so the leave-one-out loop's first-flipping probe shadows the
-		// second — decoration the neuter meta-guard flags. Each field now has its OWN
-		// sole-discriminator world (provenDisplaceWorld for bondRootProven, restoreOwnerWorld for
-		// bondRootOwner), where dropping it ALONE flips a verdict the other field does not control.
+		// displaced" → bondRootProven) were REMOVED from this launch world. In
+		// richHistory the two fields are COUPLED: both probes ask via c.bonded[claimant]
+		// where dropping EITHER field admits the challenger, so the leave-one-out loop's
+		// first-flipping probe shadows the second — decoration the neuter meta-guard flags.
+		// Each field now has its OWN sole-discriminator world (provenDisplaceWorld for
+		// bondRootProven, restoreOwnerWorld for bondRootOwner), where dropping it ALONE flips
+		// a verdict the other field does not control.
 	}
 }
 
-// weightWorld is a MATURE-EPOCH world (no anchors, epochs on, MatureValidators
-// unset so Mature() holds and everMature latches at genesis → rotateEpoch freezes
-// epochSet immediately). Four equal 2 MiB bonds are frozen into epochSet. It returns
-// the replay-booted chain plus a block the FULL frozen set ACCEPTS (proposer keys[0]
+// weightWorld is a MATURE-EPOCH world (no anchors, epochs on, MatureValidators unset
+// so Mature holds and everMature latches at genesis → rotateEpoch freezes epochSet
+// immediately). Four equal 2 MiB bonds are frozen into epochSet. It returns the
+// replay-booted chain plus a block the FULL frozen set ACCEPTS (proposer keys[0]
 // + two attesters, well clear of any count or weight floor).
 //
 // The flip on omission is carried by FROZEN-SET MEMBERSHIP, not the ⅔-weight
 // predicate. Omitting epochSet restores an EMPTY frozen set, so the PROPOSER fails
 // effectiveEpochSet membership in proposerQualifiedAt — the node's first gate
 // (ValidateProposal, before the quorum stack) — and the block is rejected. Before
-// #380 direction (1) the same membership loss surfaced one stage later: the
+// direction (1) the same membership loss surfaced one stage later: the
 // attesters failed attesterQualifiedAt, seen collapsed to 0, and the COUNT floor
 // (Config.Quorum) rejected with ErrNoQuorum. In a mature epoch that floor is now 0
 // (regime (b)), and the weight predicate requireEpochWeightQuorum never fires — with
@@ -273,7 +274,7 @@ func probes(revokedRoot ports.Hash, keys []ed25519.PrivateKey, prev ports.Hash) 
 // ALONE no longer discriminates; the probe asks admissionVerdict (proposer gate, then
 // the quorum stack, the node's order), and membership is still the sole
 // discriminator. This probe proves epochSet MEMBERSHIP is load-bearing; the
-// per-member WEIGHT bytes are a separate claim, owed as its own probe (issue #603,
+// per-member WEIGHT bytes are a separate claim, owed as its own probe (issue,
 // the era-3 format-freeze gate).
 func weightWorld(t *testing.T) (*Chain, *Block) {
 	t.Helper()
@@ -312,7 +313,7 @@ func weightWorld(t *testing.T) (*Chain, *Block) {
 // quorum is carried by bonded non-proposers. Omitting bonded disqualifies the
 // proposer (and drops the attesters from seen), so the same block is REJECTED — the
 // bonded flip. This changes which identities are ADMITTED as qualified, not how any
-// weight/count is summed (the #402 seam is untouched). Since #380 direction (1) the
+// weight/count is summed (the seam is untouched). Since direction (1) the
 // count floor here is bftThreshold(qualifiedCount) with no Config.Quorum term, and it
 // collapses to 0 together with the set, so the quorum stack alone no longer flips;
 // the probe asks admissionVerdict (the proposer gate first, the node's order).
@@ -344,7 +345,7 @@ func bondedWorld(t *testing.T) (*Chain, *Block) {
 // spentWorld is a token-required launch/objective world with ONE serial already
 // spent (a committed token entry). It returns the replay-booted chain plus the
 // serial that is now spent. The probe re-submits that serial on a FRESH root:
-// ValidateEntry rejects it (ErrTokenSpent, chain.go:2229). A snapshot that lost
+// ValidateEntry rejects it (ErrTokenSpent, chain.go). A snapshot that lost
 // `spent` no longer sees the serial as used, re-verifies the still-valid token,
 // and ACCEPTS the replay — the double-spend the spent set exists to prevent.
 func spentWorld(t *testing.T) (*Chain, []byte, func([]byte) *ports.PublishToken) {
@@ -365,7 +366,7 @@ func spentWorld(t *testing.T) (*Chain, []byte, func([]byte) *ports.PublishToken)
 // slashedWorld is an anchor launch world with ONE anchor slashed by a committed
 // equivocation proof. It returns the replay-booted chain plus the slashed anchor
 // ID. The probe asks attesterQualified(culprit): a slashed identity is refused
-// (chain.go:1026) BEFORE the launchAnchor fallthrough. A snapshot that lost
+// (chain.go) BEFORE the launchAnchor fallthrough. A snapshot that lost
 // `slashed` re-admits the anchor via launchAnchor — the flip depends on `slashed`
 // alone, not bonded (the anchor never carried a bond). The culprit is the FIFTH
 // key, not one of the four whose quorum commits the slash block, so slashing it
@@ -447,7 +448,7 @@ func quorumVerdict(c *Chain, b *Block) string {
 
 // admissionVerdict is quorumVerdict preceded by the node's proposer gate
 // (proposerQualifiedAt, the first check of ValidateProposal, chain.go) — the order the
-// node actually runs. The two MEMBERSHIP probes need it: since #380 direction (1) the
+// node actually runs. The two MEMBERSHIP probes need it: since direction (1) the
 // count floor is derived (0 in a mature epoch; bftThreshold(N) elsewhere, which is 0
 // when the set is emptied), so an emptied membership set no longer trips the quorum
 // stack on its own — the disqualified PROPOSER is where the loss surfaces first.
@@ -464,7 +465,7 @@ func admissionVerdict(c *Chain, b *Block) string {
 // snapshotBoot) is the ONLY variable.
 func weightProbes(epochSetBlock, bondedBlock *Block) ([]probe, []probe) {
 	epochSetProbe := probe{
-		name:   "a mature-epoch commit by frozen members must be accepted; a snapshot that lost epochSet empties frozen membership and rejects it (the proposer fails proposerQualifiedAt; the count floor is 0 since #380)",
+		name:   "a mature-epoch commit by frozen members must be accepted; a snapshot that lost epochSet empties frozen membership and rejects it (the proposer fails proposerQualifiedAt; the count floor is 0 since)",
 		detect: []string{"epochSet"},
 		ask:    func(c *Chain) string { return admissionVerdict(c, epochSetBlock) },
 	}
@@ -477,19 +478,18 @@ func weightProbes(epochSetBlock, bondedBlock *Block) ([]probe, []probe) {
 }
 
 // ---------------------------------------------------------------------------
-// The latch / gate / domain tranche (2026-08-28). Six committed fields whose
-// leave-one-out flip lives outside the qualification+quorum count path the
-// bonded/epochSet probes drive. Each world bakes the exact regime state a
-// snapshot would carry (via setField on the built chain, so snapshotBoot
-// deep-copies it into the replica) and each probe drives the ONE predicate the
-// ablated field feeds. See docs/thinking/2026-08-28-keystone-leaveoneout-latch-
+// The latch / gate / domain tranche. Six committed fields whose leave-one-out
+// flip lives outside the qualification+quorum count path the bonded/epochSet
+// probes drive. Each world bakes the exact regime state a snapshot would carry
+// (via setField on the built chain, so snapshotBoot deep-copies it into the
+// replica) and each probe drives the ONE predicate the ablated field feeds. See
 // gate-domain.md for the per-field mechanism and the STOP-boundary analysis.
 // ---------------------------------------------------------------------------
 
 // regVerdict validates a bond-registration block against a snapshot-booted node
-// via validateBondRegs — the #506 R-rule path (chain.go:1497). A history-less
+// via validateBondRegs — the R-rule path (chain.go). A history-less
 // replica CAN drive it: recentBondRegNonces returns BondRegNonce(prev) as its
-// first window nonce regardless of block history (chain.go:1385-1386 appends
+// first window nonce regardless of block history (chain.go appends
 // before the blockByHash break), so a reg signed against prev validates. This is
 // the ValidateCommit-free entry point the gate fields feed, mirroring how the
 // set-valued probes call ValidateEntry directly.
@@ -525,11 +525,11 @@ func era4VersionVerdict(c *Chain, b *Block) string {
 // epochsEnabled) — the de-maturation super-quorum is the ONLY regime gate. The
 // ramp latches everMature while decentralized (6 equal bonds, MatureValidators=2);
 // the built chain's LIVE bonded is then set to a whale-dominated split so
-// matureNow() is false. The probed block is a minnow coalition that clears the
-// count floor (bftThreshold(6)=4 attesters) but holds far below ⅔ of live bonded
-// weight. Full snapshot → requireDeMatureSuperQuorum rejects (ErrDeMatureQuorum);
-// an everMature-dropped snapshot skips the bar (chain.go:2471) and accepts. The
-// flip changes whether the de-mature bar APPLIES, never how weight is summed.
+// matureNow is false. The probed block is a minnow coalition that clears the count
+// floor (bftThreshold(6)=4 attesters) but holds far below ⅔ of live bonded weight.
+// Full snapshot → requireDeMatureSuperQuorum rejects (ErrDeMatureQuorum); an
+// everMature-dropped snapshot skips the bar (chain.go) and accepts. The flip
+// changes whether the de-mature bar APPLIES, never how weight is summed.
 func deMatureWorld(t *testing.T) (*Chain, *Block) {
 	t.Helper()
 	whale := key(40000)
@@ -573,8 +573,9 @@ func deMatureWorld(t *testing.T) (*Chain, *Block) {
 		t.Fatalf("deMatureWorld: everMature did not latch (coeff=%d)", c.MatureCoefficient())
 	}
 
-	// Realize the de-maturation regime: live decentralization has since dropped —
-	// the whale concentrated real bond and minnows shrank. matureNow() now false.
+	// Realize the de-maturation regime: live decentralization has since
+	// dropped — the whale concentrated real bond and minnows shrank. matureNow
+	// now false.
 	liveBonded := map[ports.NodeID]int64{idOf(whale): 100 << 20}
 	for _, m := range minnows {
 		liveBonded[idOf(m)] = 1 << 20
@@ -606,7 +607,7 @@ func everMatureProbe(b *Block) probe {
 // the frozen epochSet still weights the silent whales. The probed block is
 // proposer+one attester: below ⅔ of frozen epoch weight but clearing the count
 // floor. Full snapshot (matureEpoch true) → requireEpochWeightQuorum rejects
-// (ErrNoQuorumWeight, chain.go:2457). A matureEpoch-dropped snapshot skips the
+// (ErrNoQuorumWeight, chain.go). A matureEpoch-dropped snapshot skips the
 // weight quorum AND qualification leaves the frozen-set branch → the count floor
 // (now bftThreshold(2)=1) is cleared → accept. The flip changes whether the
 // mature-epoch weight rule APPLIES, never how the ⅔ is summed.
@@ -654,7 +655,7 @@ func matureEpochProbe(b *Block) probe {
 	}
 }
 
-// gateWorld (gateLockedIn, gateHeight). Latches maturity and LOCKS the #506 gate at
+// gateWorld (gateLockedIn, gateHeight). Latches maturity and LOCKS the gate at
 // a boundary: three ready members (regVersion ≥ BlockVersionRegGate) freeze into
 // epochSet, the rotateEpoch tally clears the ⅔-ready super-quorum, so gateLockedIn
 // is set and gateHeight = boundary + EpochBlocks. Member x carries a recent
@@ -689,7 +690,7 @@ func gateWorld(t *testing.T) *Chain {
 	}
 	// Height 2: the epoch boundary. r2 proposes so r1 joins validatorsSeen → three
 	// distinct seen bonds → maturity latches, rotateEpoch freezes {r1,r2,x} and the
-	// #506 tally locks the gate (all ready). gateHeight = 2 + EpochBlocks = 4.
+	// tally locks the gate (all ready). gateHeight = 2 + EpochBlocks = 4.
 	b2 := &Block{Version: BlockVersionRounds, Height: 2, Prev: b1.Hash(),
 		Entries: []ports.Entry{entry(2)}}
 	commitRounds(b2, []ed25519.PrivateKey{r2, r1, x}, 0, ports.Hash{})
@@ -707,7 +708,7 @@ func gateWorld(t *testing.T) *Chain {
 // reg at any height within 10 of block 1 is "too soon" ONLY where the gate is active.
 //
 // bondRegHeight is DELIBERATELY not probed here. In gateWorld the gate is armed by
-// gateLockedIn (chain.go:3030, the chain-derived lock-in path), so the within-R
+// gateLockedIn (chain.go, the chain-derived lock-in path), so the within-R
 // past-gateHeight block is a verdict flip for BOTH gateLockedIn and bondRegHeight —
 // they share the block, and the leave-one-out loop breaks on the first probe that
 // flips. lockedInProbe runs first and shadows a bondRegHeightProbe here, so such a
@@ -790,11 +791,11 @@ func era3World(t *testing.T) *Chain {
 }
 
 // era3Probes builds the two version-boundary probes on era3World, straddling era3Height.
-//   - era3LockedIn: a v2 block AT/ABOVE era3Height. Full → reject (v4 required); a snapshot
-//     that lost era3LockedIn (→ false) makes era3Active false → the v2 block is accepted.
-//   - era3Height: a v2 block BELOW era3Height. Full → accept; a snapshot that lost era3Height
-//     (→ 0) makes era3Active = era3LockedIn && h>=0 fire at every height → the v2 block is
-//     rejected. The flip runs the OPPOSITE way, so the two fields are each a sole discriminator.
+// - era3LockedIn: a v2 block AT/ABOVE era3Height. Full → reject (v4 required); a snapshot
+// That lost era3LockedIn (→ false) makes era3Active false → the v2 block is accepted.
+// - era3Height: a v2 block BELOW era3Height. Full → accept; a snapshot that lost era3Height
+// (→ 0) makes era3Active = era3LockedIn && h>=0 fire at every height → the v2 block is
+// rejected. The flip runs the OPPOSITE way, so the two fields are each a sole discriminator.
 func era3Probes(c *Chain) (probe, probe) {
 	eh := c.era3Height
 	v2At := func(h uint64) *Block {
@@ -873,11 +874,11 @@ func era4World(t *testing.T) *Chain {
 // The probed block is v4 (BlockVersionStateRoot), which satisfies era-3's boundary rule at
 // every height, so ONLY era-4's rule can flip the verdict — that is what isolates the two
 // era-4 fields as sole discriminators.
-//   - era4LockedIn: a v4 block AT/ABOVE era4Height. Full → reject (v5 required); a snapshot
-//     that lost era4LockedIn (→ false) makes era4Active false → the v4 block is accepted.
-//   - era4Height: a v4 block BELOW era4Height. Full → accept; a snapshot that lost era4Height
-//     (→ 0) makes era4Active = era4LockedIn && h>=0 fire at every height → the v4 block is
-//     rejected. The flip runs the OPPOSITE way, so the two fields are each a sole discriminator.
+// - era4LockedIn: a v4 block AT/ABOVE era4Height. Full → reject (v5 required); a snapshot
+// That lost era4LockedIn (→ false) makes era4Active false → the v4 block is accepted.
+// - era4Height: a v4 block BELOW era4Height. Full → accept; a snapshot that lost era4Height
+// (→ 0) makes era4Active = era4LockedIn && h>=0 fire at every height → the v4 block is
+// rejected. The flip runs the OPPOSITE way, so the two fields are each a sole discriminator.
 func era4Probes(c *Chain) (probe, probe) {
 	eh := c.era4Height
 	v4At := func(h uint64) *Block {
@@ -901,21 +902,21 @@ func era4Probes(c *Chain) (probe, probe) {
 }
 
 // bondRegHeightWorld (bondRegHeight) — the SOLE-DISCRIMINATOR world for bondRegHeight.
-// The #506 gate is armed by genesis config (RegGateActivationHeight, chain.go:3027),
+// The gate is armed by genesis config (RegGateActivationHeight, chain.go),
 // NOT by the maturity lock-in (gateLockedIn). That is what makes bondRegHeight the only
 // committed field whose omission flips this world's probe: gateLockedIn is unset and
 // gateHeight is 0, so ablating either does nothing (regGateActive takes the
-// RegGateActivationHeight branch, chain.go:3028). No epochs, no anchors, no frozen set —
+// RegGateActivationHeight branch, chain.go). No epochs, no anchors, no frozen set —
 // a minimal trusted-fleet launch chain (the exact deployment mode
-// RegGateActivationHeight exists for, chain.go:201). This is per-world genesis config on
+// RegGateActivationHeight exists for, chain.go). This is per-world genesis config on
 // a throwaway chain selecting the regime; the R-rule itself is untouched (STOP boundary).
 //
-// x re-registers its own root at height 1 → bondRegHeight[x]=1. R=10 (BondTTLBlocks=40).
-// The probed block is a within-R re-reg for x PAST the activation boundary. Full →
-// bondRegHeight[x]=1, (h-1) < R, epochs disabled so restoresHeldStanding is false → the
-// R-rule fires → ErrRegGate. A snapshot that lost bondRegHeight reads regH,ok=false → the
-// rule never fires → the reg falls to validateBondRegWindow, which accepts → a reg-flood
-// identity admitted. See docs/thinking/2026-08-28-keystone-bondregheight-sole-discriminator.md.
+// x re-registers its own root at height 1 → bondRegHeight[x]=1. R=10 (BondTTLBlocks=40). The
+// probed block is a within-R re-reg for x PAST the activation boundary. Full →
+// bondRegHeight[x]=1, (h-1) < R, epochs disabled so restoresHeldStanding is false → the R-rule
+// fires → ErrRegGate. A snapshot that lost bondRegHeight reads regH,ok=false → the rule never
+// fires → the reg falls to validateBondRegWindow, which accepts → a reg-flood identity
+// admitted. See.
 func bondRegHeightWorld(t *testing.T) *Chain {
 	t.Helper()
 	const w = int64(2) << 20
@@ -936,7 +937,7 @@ func bondRegHeightWorld(t *testing.T) *Chain {
 		t.Fatalf("bondRegHeightWorld genesis: %v", err)
 	}
 	// Height 1: x re-registers its OWN root → bondRegHeight[x]=1. Height 1 ≤ boundary,
-	// so this reg is old-rules valid (the gate is strictly-greater-than, chain.go:3028).
+	// so this reg is old-rules valid (the gate is strictly-greater-than, chain.go).
 	// Era-1 (legacy) block: this world exercises the version-independent R-rule path
 	// (validateBondRegs), not the round certificate.
 	rootX := ports.HashBytes(pubOf(x))
@@ -959,31 +960,31 @@ func bondRegHeightWorld(t *testing.T) *Chain {
 	return c
 }
 
-// bondRegHeightProbe drives the #506 R-rule against a within-R re-reg PAST the genesis
+// bondRegHeightProbe drives the R-rule against a within-R re-reg PAST the genesis
 // activation boundary. In bondRegHeightWorld this is the SOLE committed-field
 // discriminator: gateLockedIn is unset and gateHeight is 0, so the flip is carried by
-// bondRegHeight alone (chain.go:1497 reads regH,ok := c.bondRegHeight[id]). Its RED is
-// the real #506 ErrRegGate rejection, not a panic — a lost bondRegHeight makes the rule
-// silently skip and admit a reg-flood identity, a C1/#503 storm the field prevents.
+// bondRegHeight alone (chain.go reads regH,ok:= c.bondRegHeight[id]). Its RED is
+// the real ErrRegGate rejection, not a panic — a lost bondRegHeight makes the rule
+// silently skip and admit a reg-flood identity, a C1/ storm the field prevents.
 func bondRegHeightProbe(c *Chain) probe {
 	x := key(72002)
 	rootX := ports.HashBytes(pubOf(x))
 	// A within-R re-reg PAST the activation boundary (height 3 > RegGateActivationHeight=2;
 	// 3-1=2 < R=10). Full → ErrRegGate; bondRegHeight-dropped → accept. regVerdict calls
-	// validateBondRegs directly (chain.go:1497), which reads b.Height only — the block
+	// validateBondRegs directly (chain.go), which reads b.Height only — the block
 	// version is irrelevant on this path (mirrors the set-valued ValidateEntry probes).
 	past := &Block{Version: 1, Height: 3, Prev: ports.Hash{},
 		BondRegs: []BondReg{bondRegFull(x, rootX, twoMiB, ports.Hash{}, BlockVersionRegGate, 0)}}
 	return probe{
 		name: "a within-R re-registration past the genesis activation boundary must be rejected on " +
-			"the last-reg height; a snapshot that lost bondRegHeight cannot fire the #506 R-rule (ErrRegGate → accept)",
+			"the last-reg height; a snapshot that lost bondRegHeight cannot fire the  R-rule (ErrRegGate → accept)",
 		detect: []string{"bondRegHeight"},
 		ask:    func(c *Chain) string { return regVerdict(c, past) },
 	}
 }
 
 // regVersionWorld (regVersion). regVersion is read at exactly ONE verdict-relevant
-// site: rotateEpoch's #506 lock-in tally (chain.go:3007). It feeds no Validate path,
+// site: rotateEpoch's lock-in tally (chain.go). It feeds no Validate path,
 // so its leave-one-out flip must let rotateEpoch RUN on the snapshot replica. The
 // world stops ONE block short of the boundary: everMature not yet latched, gate not
 // yet locked, three ready members carrying regVersion. The probe applies the
@@ -1025,9 +1026,9 @@ func regVersionWorld(t *testing.T) *Chain {
 func regVersionProbe() probe {
 	r1, r2, x := key(71001), key(71002), key(71003)
 	rootX := ports.HashBytes(pubOf(x))
-	// The boundary block at height 2: r2 proposes, r1+x attest, so apply() sees the
-	// third distinct attester (r1) → the maturity latch trips and rotateEpoch(2) runs
-	// the #506 tally over the frozen set's regVersion. gateHeight would be 2+2=4.
+	// The boundary block at height 2: r2 proposes, r1+x attest, so apply sees the
+	// third distinct attester (r1) → the maturity latch trips and rotateEpoch(2)
+	// runs the tally over the frozen set's regVersion. gateHeight would be 2+2=4.
 	boundary := func() Block {
 		b := &Block{Version: BlockVersionRounds, Height: 2, Prev: ports.Hash{},
 			Entries: []ports.Entry{entry(2)}}
@@ -1039,11 +1040,11 @@ func regVersionProbe() probe {
 	reg := &Block{Version: BlockVersionRounds, Height: 5, Prev: ports.Hash{},
 		BondRegs: []BondReg{bondRegFull(x, rootX, twoMiB, ports.Hash{}, BlockVersionRegGate, 0)}}
 	return probe{
-		name: "regVersion carries the #506 readiness super-quorum: applying the boundary must " +
+		name: "regVersion carries the readiness super-quorum: applying the boundary must " +
 			"lock the gate so a within-R reg is rejected; a snapshot that lost regVersion tallies " +
 			"zero ready weight, never locks, and accepts the reg (ErrRegGate → accept)",
 		detect:  []string{"regVersion"},
-		mutates: true, // it apply()s the boundary block; runs against throwaway replicas
+		mutates: true, // it applys the boundary block; runs against throwaway replicas
 		ask: func(c *Chain) string {
 			c.apply(boundary())
 			return regVerdict(c, reg)
@@ -1051,16 +1052,16 @@ func regVersionProbe() probe {
 	}
 }
 
-// domainWorld (bondDomain). bondDomain is NOT metric-only: it feeds matureNow()
-// through the A-axis Nakamoto coefficient (C2Metric → MatureCoefficient), and
-// matureNow() gates the maturity LATCH (chain.go:2893) and thereby the launch-anchor
-// shed. The world latches nothing yet (everMature false), holds four anchors plus six
-// equal real bonds, and its built bondDomain merges every real bond into ONE declared
-// domain — so with domains carried, matureNow() is FALSE (one address-diverse group),
-// but with bondDomain DROPPED the bonds count as independent groups and matureNow()
-// rises TRUE. The probe applies a block (a mutating probe): full stays immature so the
-// anchors keep eligibility and an anchor-only commit is ACCEPTED; a bondDomain-dropped
-// replica matures, latches everMature, sheds the anchors, and REJECTS the same commit.
+// domainWorld (bondDomain). bondDomain is NOT metric-only: it feeds matureNow through
+// the A-axis Nakamoto coefficient (C2Metric → MatureCoefficient), and matureNow gates
+// the maturity LATCH (chain.go) and thereby the launch-anchor shed. The world
+// latches nothing yet (everMature false), holds four anchors plus six equal real
+// bonds, and its built bondDomain merges every real bond into ONE declared domain — so
+// with domains carried, matureNow is FALSE (one address-diverse group), but with
+// bondDomain DROPPED the bonds count as independent groups and matureNow rises TRUE.
+// The probe applies a block (a mutating probe): full stays immature so the anchors
+// keep eligibility and an anchor-only commit is ACCEPTED; a bondDomain-dropped replica
+// matures, latches everMature, sheds the anchors, and REJECTS the same commit.
 func domainWorld(t *testing.T) (*Chain, *Block, Block) {
 	t.Helper()
 	anchorKeys := make([]ed25519.PrivateKey, 4)
@@ -1102,7 +1103,8 @@ func domainWorld(t *testing.T) (*Chain, *Block, Block) {
 	Sign(pb, anchorKeys[0])
 	pb.Atts = []Attestation{Attest(pb, anchorKeys[1]), Attest(pb, anchorKeys[2])}
 
-	// The apply-block that re-evaluates Mature() (a trivial committed block).
+	// The apply-block that re-evaluates Mature (a trivial committed
+	// block).
 	trigger := Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(5)}}
 	return c, pb, trigger
 }
@@ -1113,7 +1115,7 @@ func domainProbe(anchorBlock *Block, trigger Block) probe {
 			"network stays immature and an anchor-only commit is accepted; a snapshot that lost " +
 			"bondDomain counts the bonds as independent, matures, sheds the anchors, and rejects it",
 		detect:  []string{"bondDomain"},
-		mutates: true, // it apply()s the trigger block; runs against throwaway replicas
+		mutates: true, // it applys the trigger block; runs against throwaway replicas
 		ask: func(c *Chain) string {
 			c.apply(trigger)
 			return quorumVerdict(c, anchorBlock)
@@ -1122,15 +1124,15 @@ func domainProbe(anchorBlock *Block, trigger Block) probe {
 }
 
 // validatorsSeenWorld (validatorsSeen). validatorsSeen is NOT legacy-only: in the
-// OBJECTIVE regime C2Metric enumerates it (chain.go:1978) to build the participating
+// OBJECTIVE regime C2Metric enumerates it (chain.go) to build the participating
 // bonded set the Nakamoto coefficient is computed over, and MatureCoefficient →
-// matureNow() (the objective branch, chain.go:1867) gates the maturity LATCH
-// (chain.go:2893) and thereby the launch-anchor shed. It is the SAME verdict path
+// matureNow (the objective branch, chain.go) gates the maturity LATCH
+// (chain.go) and thereby the launch-anchor shed. It is the SAME verdict path
 // bondDomain rides in domainWorld. The world holds four anchors plus six equal real
 // bonds each in a DISTINCT declared domain, all SEEN, everMature not yet latched. With
 // validatorsSeen carried, C2Metric counts six bonds across six domains → NakamotoDomains
-// = NakamotoBonds = 3 (6 MiB > the 4 MiB ⅓-threshold at the third) → MatureCoefficient
-// = 3 ≥ MatureValidators = 2 → matureNow TRUE. With validatorsSeen DROPPED (empty), the
+// = NakamotoBonds = 3 (6 MiB > the 4 MiB ⅓-threshold at the third) → MatureCoefficient =
+// 3 ≥ MatureValidators = 2 → matureNow TRUE. With validatorsSeen DROPPED (empty), the
 // C2Metric loop iterates zero times → total == 0 → coefficient 0 → matureNow FALSE. The
 // probe applies a block (mutating): full matures, latches everMature, sheds the anchors,
 // and REJECTS an anchor-only commit; a validatorsSeen-dropped replica stays immature so
@@ -1186,7 +1188,8 @@ func validatorsSeenWorld(t *testing.T) (*Chain, *Block, Block) {
 	Sign(pb, anchorKeys[0])
 	pb.Atts = []Attestation{Attest(pb, anchorKeys[1]), Attest(pb, anchorKeys[2])}
 
-	// The apply-block that re-evaluates Mature() (a trivial committed block).
+	// The apply-block that re-evaluates Mature (a trivial committed
+	// block).
 	trigger := Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(5)}}
 	return c, pb, trigger
 }
@@ -1198,7 +1201,7 @@ func validatorsSeenProbe(anchorBlock *Block, trigger Block) probe {
 			"anchor-only commit; a snapshot that lost validatorsSeen enumerates zero participants, " +
 			"stays immature, keeps the anchors, and accepts it (ErrNoQuorum → accept)",
 		detect:  []string{"validatorsSeen"},
-		mutates: true, // it apply()s the trigger block; runs against throwaway replicas
+		mutates: true, // it applys the trigger block; runs against throwaway replicas
 		ask: func(c *Chain) string {
 			c.apply(trigger)
 			return quorumVerdict(c, anchorBlock)
@@ -1207,19 +1210,19 @@ func validatorsSeenProbe(anchorBlock *Block, trigger Block) probe {
 }
 
 // provenDisplaceWorld (bondRootProven) — the SOLE-DISCRIMINATOR world for bondRootProven,
-// discharging the shadowedProbes debt entry per RULING-bondregheight-probe-neuter-guard-
-// 2026-08-28 Q4. A PROVEN owner (keys[1], its height-1 reg went through validateBondRegs so
-// proven := b.Height>0 sets bondRootProven[root]=true) holds `root`. The probe then applies a
-// PROVEN challenger (keys[2]) registering the SAME root. This isolates bondRootProven from
-// bondRootOwner: bondRootOwner is carried on BOTH the full and ablated replicas, so the flip is
-// carried by bondRootProven ALONE.
+// discharging the shadowedProbes debt entry per 2026-08-28 Q4. A PROVEN owner (keys[1], its
+// height-1 reg went through validateBondRegs so proven:= b.Height>0 sets
+// bondRootProven[root]=true) holds `root`. The probe then applies a PROVEN challenger (keys[2])
+// registering the SAME root. This isolates bondRootProven from bondRootOwner: bondRootOwner is
+// carried on BOTH the full and ablated replicas, so the flip is carried by bondRootProven
+// ALONE.
 //
-// Full snapshot: the displacement guard (chain.go:2845) is !(proven && !bondRootProven[root]) =
+// Full snapshot: the displacement guard (chain.go) is !(proven && !bondRootProven[root]) =
 // !(true && !true) = true → continue → the challenger earns nothing (proven-vs-proven, F1 holds).
 // bondRootProven-dropped snapshot: !(true && !false) = false → the guard does NOT continue →
-// delete(bonded, owner) strips the true owner and the challenger is credited. The verdict flips
-// on bondRootProven alone. This is the "proof beats declaration" G3 rule (chain.go:2840) OBSERVED,
-// not modified (STOP boundary). See docs/thinking/2026-08-28-keystone-shadowedprobes-discharge.md.
+// delete(bonded, owner) strips the true owner and the challenger is credited. The verdict flips on
+// bondRootProven alone. This is the "proof beats declaration" G3 rule (chain.go) OBSERVED,
+// not modified (STOP boundary). See.
 //
 // It returns the replay-booted chain, the owned root, the challenger keys, and the prev hash the
 // challenger reg is bound to.
@@ -1228,7 +1231,8 @@ func provenDisplaceWorld(t *testing.T) (*Chain, ports.Hash, []ed25519.PrivateKey
 	c, keys, g := roundsWorld(t)
 
 	// Height 1: keys[1] proves its OWN root (bondReg derives Root from the public key). Because
-	// b.Height>0, apply() sets bondRootProven[root]=true — a PROVEN owner, not a genesis declarant.
+	// b.Height>0, apply sets bondRootProven[root]=true — a PROVEN owner, not a genesis
+	// declarant.
 	ownedRoot := ports.HashBytes(keys[1].Public().(ed25519.PublicKey))
 	b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(),
 		Entries: []ports.Entry{entry(9)}}
@@ -1254,7 +1258,7 @@ func provenDisplaceProbe(ownedRoot ports.Hash, keys []ed25519.PrivateKey, prev p
 	return probe{
 		name:    "a proven bond-root owner cannot be displaced by a later proven claim (owner-held world)",
 		detect:  []string{"bondRootProven"},
-		mutates: true, // it apply()s a challenger block; runs against throwaway replicas
+		mutates: true, // it applys a challenger block; runs against throwaway replicas
 		ask: func(c *Chain) string {
 			challenger := idOf(keys[2])
 			b := Block{Version: BlockVersionRounds, Height: 2, Prev: prev}
@@ -1269,16 +1273,16 @@ func provenDisplaceProbe(ownedRoot ports.Hash, keys []ed25519.PrivateKey, prev p
 }
 
 // restoreOwnerWorld (bondRootOwner) — the SOLE-DISCRIMINATOR world for bondRootOwner, discharging
-// the shadowedProbes debt entry per RULING-bondregheight-probe-neuter-guard-2026-08-28 Q4. It
-// exploits the coupling ASYMMETRY the PE named: bondRootOwner feeds TWO predicates — displacement
-// (chain.go:2839) AND restoresHeldStanding (chain.go:3054, the #506 R-rule exemption) — while
-// bondRootProven feeds only displacement. This world drives restoresHeldStanding, which reads
-// bondRootOwner and NEVER bondRootProven, so bondRootProven cannot shadow the flip.
+// the shadowedProbes debt entry per Q4. It exploits the coupling ASYMMETRY named here:
+// bondRootOwner feeds TWO predicates — displacement (chain.go) AND restoresHeldStanding
+// (chain.go, the R-rule exemption) — while bondRootProven feeds only displacement. This
+// world drives restoresHeldStanding, which reads bondRootOwner and NEVER bondRootProven, so
+// bondRootProven cannot shadow the flip.
 //
-// The #506 R-rule (chain.go:1497) fires iff regGateActive(h) && (h-regH < R) &&
-// !restoresHeldStanding(id, root). restoresHeldStanding (chain.go:3050) returns true iff a mature
+// The R-rule (chain.go) fires iff regGateActive(h) && (h-regH < R) &&
+// !restoresHeldStanding(id, root). restoresHeldStanding (chain.go) returns true iff a mature
 // epoch AND bondRootOwner[root]==id AND bonded[id]<MinBond (LAPSED) AND id in epochSet. The gate is
-// armed by RegGateActivationHeight (per-world genesis config, chain.go:3027), NOT the latch — so
+// armed by RegGateActivationHeight (per-world genesis config, chain.go), NOT the latch — so
 // gateLockedIn is unset and gateHeight is 0, and dropping either does nothing to regGateActive.
 //
 // x freezes into epochSet at genesis, re-registers its OWN root at height 1 (bondRegHeight[x]=1),
@@ -1291,11 +1295,11 @@ func restoreOwnerWorld(t *testing.T) *Chain {
 	t.Helper()
 	const w = int64(2) << 20
 	prop, x := key(73001), key(73002)
-	// Two members so epochs freeze a set; RegGateActivationHeight arms the gate independent of the
-	// latch. MatureValidators is UNSET so Mature() holds trivially (chain.go:1813) and everMature
-	// latches at genesis — the same construction matureEpochWorld uses — so rotateEpoch at the
-	// height-2 boundary freezes {prop,x} into epochSet (rotateEpoch only freezes once everMature,
-	// chain.go:2985). EpochBlocks=2 puts that boundary at height 2.
+	// Two members so epochs freeze a set; RegGateActivationHeight arms the gate independent of
+	// the latch. MatureValidators is UNSET so Mature holds trivially (chain.go) and
+	// everMature latches at genesis — the same construction matureEpochWorld uses — so
+	// rotateEpoch at the height-2 boundary freezes {prop,x} into epochSet (rotateEpoch only
+	// freezes once everMature, chain.go). EpochBlocks=2 puts that boundary at height 2.
 	cfg := Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true,
 		EpochBlocks: 2, BondTTLBlocks: 40, RegGateActivationHeight: 1}
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
@@ -1348,9 +1352,9 @@ func restoreOwnerWorld(t *testing.T) *Chain {
 
 // restoreOwnerProbe drives a within-R re-registration for x on its OWN root past the genesis
 // activation boundary in a mature epoch. It is the SOLE discriminator for bondRootOwner: the
-// R-rule exemption restoresHeldStanding reads bondRootOwner (chain.go:3054) and NOT
+// R-rule exemption restoresHeldStanding reads bondRootOwner (chain.go) and NOT
 // bondRootProven, so dropping bondRootOwner flips accept→ErrRegGate while dropping bondRootProven
-// does nothing. Its RED is the real #506 ErrRegGate rejection, not a panic. It detects ONLY
+// does nothing. Its RED is the real ErrRegGate rejection, not a panic. It detects ONLY
 // bondRootOwner (bondRegHeight, which the R-rule also reads, has its own world; keeping detect
 // narrow keeps this probe's unique credit to bondRootOwner).
 func restoreOwnerProbe(c *Chain) probe {
@@ -1363,14 +1367,14 @@ func restoreOwnerProbe(c *Chain) probe {
 		BondRegs: []BondReg{bondRegFull(x, rootX, twoMiB, ports.Hash{}, BlockVersionRegGate, 0)}}
 	return probe{
 		name: "a lapsed frozen-epoch member re-proving its OWN root within R must be EXEMPTED from the " +
-			"#506 gate; a snapshot that lost bondRootOwner cannot match restoresHeldStanding and " +
+			"gate; a snapshot that lost bondRootOwner cannot match restoresHeldStanding and " +
 			"wrongly rejects the restore (accept → ErrRegGate)",
 		detect: []string{"bondRootOwner"},
 		ask:    func(c *Chain) string { return regVerdict(c, past) },
 	}
 }
 
-// weightBytesWorld is the era-3 freeze gate (#603): a mature epoch whose FROZEN
+// weightBytesWorld is the era-3 freeze gate: a mature epoch whose FROZEN
 // per-member weights are UNEQUAL, and a block whose support coalition clears the
 // COUNT floor but whose verdict is carried by the ⅔-WEIGHT predicate. It is the
 // discriminator the membership probes cannot reach.
@@ -1381,15 +1385,15 @@ func restoreOwnerProbe(c *Chain) probe {
 // hold 1 MiB each. total = 12 MiB, support = proposer+attester = 10 MiB, so
 // 3·10 > 2·12 — the ⅔-weight predicate PASSES on the true weights (ACCEPT). Quorum=1,
 // seen={keys[1]} clears the count floor honestly (RequiredQuorum returns Quorum in a
-// mature epoch, chain.go:1204 — the weight rule carries the Byzantine bar), so the
+// mature epoch, chain.go — the weight rule carries the Byzantine bar), so the
 // verdict is carried by requireEpochWeightQuorum, not the count floor.
 //
 // The ablation is NOT map-omission (that empties membership → the count-floor flip the
 // membership probes already own). It FLATTENS the weight bytes to a constant, membership
 // intact: support/total collapses to |coalition|/|members| = 2/4 = ½ for ANY constant, so
 // 3·support ≤ 2·total → ErrNoQuorumWeight. A validator that lost the true per-member
-// weights and knew only membership cannot reproduce the ⅔ verdict — the weight bytes
-// proven load-bearing. See docs/thinking/2026-08-27-keystone-weight-discriminator-probe.md.
+// weights and knew only membership cannot reproduce the ⅔ verdict — the weight bytes proven
+// load-bearing. See.
 func weightBytesWorld(t *testing.T) (*Chain, *Block) {
 	t.Helper()
 	keys := make([]ed25519.PrivateKey, 4)
@@ -1435,15 +1439,15 @@ func flattenWeights(src map[ports.NodeID]int64, k int64) map[ports.NodeID]int64 
 	return out
 }
 
-// TestEpochWeightBytesAreLoadBearing is the era-3 freeze gate (#603): the committed
-// per-member WEIGHT bytes of epochSet — not merely its membership — must flip a finality
-// verdict. The membership probes (#604) prove omission empties frozen membership and
-// rejects via the COUNT floor (ErrNoQuorum); they would still pass if epochSet stored
-// membership with all weights set to a constant (blind PE ruling, "Coupling", L104). This
-// probe closes that: with membership held fixed and the weights flattened to a constant,
-// the verdict must flip via the WEIGHT predicate (ErrNoQuorumWeight). A validator that
-// committed the true weights accepts; one that lost them (flattened) rejects a block the
-// network finalized — the weight bytes are load-bearing in the committed root.
+// TestEpochWeightBytesAreLoadBearing is the era-3 freeze gate: the committed per-member
+// WEIGHT bytes of epochSet — not merely its membership — must flip a finality verdict.
+// The membership probes prove omission empties frozen membership and rejects via the
+// COUNT floor (ErrNoQuorum); they would still pass if epochSet stored membership with all
+// weights set to a constant. This probe closes that: with membership held fixed and the
+// weights flattened to a constant, the verdict must flip via the WEIGHT predicate
+// (ErrNoQuorumWeight). A validator that committed the true weights accepts; one that lost
+// them (flattened) rejects a block the network finalized — the weight bytes are
+// load-bearing in the committed root.
 func TestEpochWeightBytesAreLoadBearing(t *testing.T) {
 	c, b := weightBytesWorld(t)
 
@@ -1479,37 +1483,36 @@ func TestEpochWeightBytesAreLoadBearing(t *testing.T) {
 		ErrNoQuorumWeight, len(seen))
 }
 
-// bondedWeightBytesWorld is the era-3 freeze gate's SIBLING for `bonded` (blind PE
-// ruling RULING-603-weight-bytes-discharge-2026-08-28): a DE-MATURED objective world
-// whose LIVE per-member `bonded` weights are UNEQUAL, and a block whose support
-// coalition clears the COUNT floor but whose verdict is carried by the ⅔-of-live-bonded
-// WEIGHT predicate (requireDeMatureSuperQuorum, chain.go:2591). It is the discriminator
-// the everMature path-entry probe (deMatureWorld) cannot reach — that probe flips on the
-// everMature BOOL (whether the bar APPLIES), never on how the ⅔ is summed.
+// bondedWeightBytesWorld is the era-3 freeze gate's SIBLING for `bonded`: a DE-MATURED
+// objective world whose LIVE per-member `bonded` weights are UNEQUAL, and a block whose
+// support coalition clears the COUNT floor but whose verdict is carried by the
+// ⅔-of-live-bonded WEIGHT predicate (requireDeMatureSuperQuorum, chain.go). It is
+// the discriminator the everMature path-entry probe (deMatureWorld) cannot reach — that
+// probe flips on the everMature BOOL (whether the bar APPLIES), never on how the ⅔ is
+// summed.
 //
-// The regime: everMature LATCHES (ramp of four equal bonds, MatureValidators=2), then
-// live `bonded` is reset to UNEQUAL weights and one SHARED declared domain is realized so
-// MatureCoefficient() (=NakamotoDomains=1) drops below MatureValidators → !matureNow(), so
-// the de-mature super-quorum is the gate. Epochs DISABLED and NO anchors, so
+// The regime: everMature LATCHES (ramp of four equal bonds, MatureValidators=2), then live
+// `bonded` is reset to UNEQUAL weights and one SHARED declared domain is realized so
+// MatureCoefficient (=NakamotoDomains=1) drops below MatureValidators → !matureNow, so the
+// de-mature super-quorum is the gate. Epochs DISABLED and NO anchors, so
 // requireEpochWeightQuorum never fires and launchAnchor is false — qualification reads
-// bonded[id] >= MinBond directly (attesterQualifiedAt, chain.go:1059).
+// bonded[id] >= MinBond directly (attesterQualifiedAt, chain.go).
 //
-// WHY THE DOMAIN AXIS, not weight concentration, holds !matureNow(): matureNow() itself
-// reads bonded weights, so flattening the weights would re-inflate the coefficient and flip
-// the path-entry gate — coupling the weight-bytes ablation with the gate. A shared domain
+// WHY THE DOMAIN AXIS, not weight concentration, holds !matureNow: matureNow itself reads
+// bonded weights, so flattening the weights would re-inflate the coefficient and flip the
+// path-entry gate — coupling the weight-bytes ablation with the gate. A shared domain
 // collapses NakamotoDomains to 1 for ANY weight distribution (flat or unequal), so the gate
 // is invariant under the flatten and the ONLY discriminator left is the ⅔-weight rule.
 //
 // THE ONE SEAM THAT DIFFERS FROM weightBytesWorld — the count floor. In a mature EPOCH
-// RequiredQuorum() returns 0 (#380 regime (b); it was the bare Quorum before direction
-// (1)), so a small heavy coalition can be a weight-majority but a HEAD-minority — which is
-// what lets the flatten flip. In the de-mature NON-epoch objective regime with
-// ByzantineQuorum, RequiredQuorum() is bftThreshold(qualifiedCount) (regime (a)), forcing
-// the coalition to ~⅔ of HEADS — and a head-⅔ coalition ALSO clears a FLATTENED weight-⅔,
-// so the count floor would mask the weight rule. Fix (the analogue of the mature-epoch
-// bypass): ByzantineQuorum=false (regime (c)), so RequiredQuorum()=Quorum=1. The de-mature
-// branch (chain.go:2471) fires regardless of
-// ByzantineQuorum — it depends only on everMature && objective() && !matureNow() — so the
+// RequiredQuorum returns 0, so a small heavy coalition can be a weight-majority but a
+// HEAD-minority — which is what lets the flatten flip. In the de-mature NON-epoch
+// objective regime with ByzantineQuorum, RequiredQuorum is bftThreshold(qualifiedCount)
+// (regime (a)), forcing the coalition to ~⅔ of HEADS — and a head-⅔ coalition ALSO clears
+// a FLATTENED weight-⅔, so the count floor would mask the weight rule. Fix (the analogue
+// of the mature-epoch bypass): ByzantineQuorum=false (regime (c)), so
+// RequiredQuorum=Quorum=1. The de-mature branch (chain.go) fires regardless of
+// ByzantineQuorum — it depends only on everMature && objective && !matureNow — so the
 // weight rule under test is untouched. A proposer + one attester (5+5 MiB of 12 MiB) is a
 // weight-majority, head-minority coalition.
 //
@@ -1518,7 +1521,7 @@ func TestEpochWeightBytesAreLoadBearing(t *testing.T) {
 // Flatten to a constant k: total=4k, coalition=2k, need=⌈8k/3⌉ → 2k<3k → ErrDeMatureQuorum.
 // The ablation is NOT map-omission (that empties membership → the count-floor ErrNoQuorum
 // the everMature/membership probes own). It FLATTENS the weight bytes, membership intact.
-// See docs/thinking/2026-08-28-keystone-bonded-weight-bytes-probe.md.
+// See.
 func bondedWeightBytesWorld(t *testing.T) (*Chain, *Block) {
 	t.Helper()
 	keys := make([]ed25519.PrivateKey, 4)
@@ -1575,18 +1578,19 @@ func bondedWeightBytesWorld(t *testing.T) (*Chain, *Block) {
 	}
 	setField(c, "bonded", liveBonded)
 
-	// Hold !matureNow() INDEPENDENT of the weight flatten via the domain axis. matureNow()
-	// reads bonded weights (matureNow → MatureCoefficient → C2Metric), so a naive weight
-	// flatten to N equal bonds would re-inflate the coefficient to ⌊N/3⌋+1 and flip
-	// matureNow() TRUE — coupling the weight-bytes ablation with the path-entry gate and
-	// masking the weight rule. Collapse the coefficient through NakamotoDomains instead:
-	// one SHARED declared domain aggregates all bonds into ONE address-diversity group
-	// (C2Metric, chain.go:1985), so NakamotoDomains=1 → MatureCoefficient()=1 <
-	// MatureValidators=2 for ANY weight distribution, flat or unequal. bondDomain is a
-	// committed field carried identically by both the full and flattened replicas, so the
-	// ONLY variable between them is the bonded WEIGHT bytes. (The ramp above latched with
-	// default UNSET domains → distinct groups → coeff high enough to mature; the shared
-	// domain is realized only now, as part of the de-maturation regime.)
+	// Hold !matureNow INDEPENDENT of the weight flatten via the domain axis. matureNow
+	// reads bonded weights (matureNow → MatureCoefficient → C2Metric), so a naive
+	// weight flatten to N equal bonds would re-inflate the coefficient to ⌊N/3⌋+1 and
+	// flip matureNow TRUE — coupling the weight-bytes ablation with the path-entry gate
+	// and masking the weight rule. Collapse the coefficient through NakamotoDomains
+	// instead: one SHARED declared domain aggregates all bonds into ONE
+	// address-diversity group (C2Metric, chain.go), so NakamotoDomains=1 →
+	// MatureCoefficient=1 < MatureValidators=2 for ANY weight distribution, flat or
+	// unequal. bondDomain is a committed field carried identically by both the full and
+	// flattened replicas, so the ONLY variable between them is the bonded WEIGHT bytes.
+	// (The ramp above latched with default UNSET domains → distinct groups → coeff high
+	// enough to mature; the shared domain is realized only now, as part of the
+	// de-maturation regime.)
 	domain := map[ports.NodeID]uint64{}
 	for _, k := range keys {
 		domain[idOf(k)] = 0x99 // one shared domain → NakamotoDomains capped at 1
@@ -1606,16 +1610,15 @@ func bondedWeightBytesWorld(t *testing.T) (*Chain, *Block) {
 	return c, b
 }
 
-// TestBondedWeightBytesAreLoadBearing is the era-3 freeze gate's SIBLING for `bonded`
-// (blind PE ruling RULING-603-weight-bytes-discharge-2026-08-28): the committed
-// per-member WEIGHT bytes of live `bonded` — not merely its membership — must flip a
-// de-maturation verdict through requireDeMatureSuperQuorum. The everMature/membership
-// probes prove omission empties the bonded map and rejects via the COUNT floor
-// (ErrNoQuorum) or skips the bar entirely; they would still pass if `bonded` stored
-// membership with all weights set to a constant. This probe closes that: membership held
-// fixed and the weights flattened, the verdict must flip via the WEIGHT predicate
-// (ErrDeMatureQuorum). A validator that committed the true weights accepts; one that lost
-// them (flattened) rejects a block the network finalized — the weight bytes are
+// TestBondedWeightBytesAreLoadBearing is the era-3 freeze gate's SIBLING for `bonded`:
+// the committed per-member WEIGHT bytes of live `bonded` — not merely its membership —
+// must flip a de-maturation verdict through requireDeMatureSuperQuorum. The
+// everMature/membership probes prove omission empties the bonded map and rejects via the
+// COUNT floor (ErrNoQuorum) or skips the bar entirely; they would still pass if `bonded`
+// stored membership with all weights set to a constant. This probe closes that:
+// membership held fixed and the weights flattened, the verdict must flip via the WEIGHT
+// predicate (ErrDeMatureQuorum). A validator that committed the true weights accepts; one
+// that lost them (flattened) rejects a block the network finalized — the weight bytes are
 // load-bearing in the committed root.
 func TestBondedWeightBytesAreLoadBearing(t *testing.T) {
 	c, b := bondedWeightBytesWorld(t)
@@ -1726,9 +1729,10 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	spentC, spentSerial, spentMint := spentWorld(t)
 	slashedC, slashedCulprit := slashedWorld(t)
 
-	// The latch/gate/domain tranche. The mutating probes (regVersion/bondDomain apply
-	// a block) are skipped by check() — leave-one-out covers them; the read-only
-	// everMature/matureEpoch/gate probes must answer identically on either boot.
+	// The latch/gate/domain tranche. The mutating probes (regVersion/bondDomain
+	// apply a block) are skipped by check — leave-one-out covers them; the
+	// read-only everMature/matureEpoch/gate probes must answer identically on
+	// either boot.
 	deMatureC, deMatureBlock := deMatureWorld(t)
 	matureEpochC, matureEpochBlock := matureEpochWorld(t)
 	gateC := gateWorld(t)
@@ -1743,7 +1747,7 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	provenC, provenRoot, provenKeys, provenPrev := provenDisplaceWorld(t)
 	restoreC := restoreOwnerWorld(t)
 
-	// The era-4 (v5) committed-root worlds (2026-08-30). With the FULL set carried, both
+	// The era-4 (v5) committed-root worlds. With the FULL set carried, both
 	// the replayed and the snapshot replica recompute the v5 root WITH the field, so both
 	// reject the forged block — the equivalence this half asserts.
 	qualifiedC := v5RootWorld(t)
@@ -1787,16 +1791,16 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// The era-4 (v5) committed-root tranche (2026-08-30). Two committed fields —
+// The era-4 (v5) committed-root tranche. Two committed fields —
 // `qualified` (the live qualified-set keyspace) and `dueBucket` (the TTL
 // due-height index) — whose leave-one-out flip lives in the v5 committed-ROOT
-// predicate (validateEra3Roots → StateRootForVersion(5), era3validity.go:114/152).
+// predicate (validateEra3Roots → StateRootForVersion(5), era3validity.go/152).
 // Deferred by probeUncovered to 4c/4d because in 4b no v5 verdict read them; 4c
-// (#640) and 4d (#641) landed the predicate, so the probes are now buildable.
+// and 4d landed the predicate, so the probes are now buildable.
 //
 // THE MECHANISM (the flip is a wrong-ACCEPT, not a panic). An honest full node
 // commits a v5 block whose StateRoot is the SMT over the COMPLETE post-apply
-// committed set, qualified/dueBucket leaves included (statehash.go:190/199). An
+// committed set, qualified/dueBucket leaves included (statehash.go/199). An
 // attacker forges a v5 block whose StateRoot was computed over a set that OMITS
 // the field. An honest validator recomputes WITH the field present → the roots
 // disagree → ErrEra3StateRootMismatch → reject. A snapshot-booted validator that
@@ -1807,8 +1811,7 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 //
 // STOP boundary: this is ORACLE/TEST coverage only. It ADDS no validity predicate,
 // changes no committed format, touches no consensus rule — it drives the EXISTING
-// 4c predicate (validateEra3Roots) against a forged block. Deliberation:
-// docs/thinking/2026-08-30-keystone-era4-loo-qualified-duebucket.md.
+// 4c predicate (validateEra3Roots) against a forged block.
 // ---------------------------------------------------------------------------
 
 // v5RootWorld builds a minimal era-4 chain whose committed set populates BOTH
@@ -1844,13 +1847,13 @@ func v5RootWorld(t *testing.T) *Chain {
 	if len(c.dueBucket) == 0 {
 		t.Fatalf("v5RootWorld: want dueBucket populated (TTL on), got empty — the field the probe ablates")
 	}
-	// R0.4b: populate the per-epoch issuer-key binding so its leaves move the v5
-	// root and issuerKeyRootProbe is not vacuous. Set DIRECTLY rather than via a
+	// populate the per-epoch issuer-key binding so its leaves move the v5 root and
+	// issuerKeyRootProbe is not vacuous. Set DIRECTLY rather than via a
 	// registration block: this world runs epochless (EpochBlocks == 0, so every
-	// height is epoch 0) and its genesis is v1, while a registration is v5-only. The
-	// probe asks whether the committed ROOT depends on this field, not how the field
-	// was written — the write path (signature, era gate, backdating, first-write-wins,
-	// pruning) is driven separately in issuerkey_test.go.
+	// height is epoch 0) and its genesis is v1, while a registration is v5-only.
+	// The probe asks whether the committed ROOT depends on this field, not how the
+	// field was written — the write path (signature, era gate, backdating,
+	// first-write-wins, pruning) is driven separately in issuerkey_test.go.
 	c.issuerKeyCommit = map[uint64]map[ports.NodeID]ports.Hash{
 		0: {ports.HashBytes([]byte("v5RootWorld-issuer")): ports.Hash{0x5A}},
 	}
@@ -1866,14 +1869,14 @@ func v5RootWorld(t *testing.T) *Chain {
 // predicate runs (postApplyRoots → StateRootForVersion(5)) on a copy of the chain
 // with `omit` emptied, guaranteeing byte-identity with what the ablated snapshot
 // recomputes. The block carries NO bond regs / slashes and sits at a low height,
-// so apply() does not re-touch qualified/dueBucket (no reg, no TTL sweep at
-// height 1 with TTL=40, no epoch boundary) — the field's absence is the ONLY
-// variable between accept and reject.
+// so apply does not re-touch qualified/dueBucket (no reg, no TTL sweep at height
+// 1 with TTL=40, no epoch boundary) — the field's absence is the ONLY variable
+// between accept and reject.
 func forgedV5Block(t *testing.T, c *Chain, omit string) *Block {
 	t.Helper()
-	// The trivial v5 probe block: an entry-only block one height past genesis. No
-	// regs/slashes, so apply() runs no qualified/dueBucket maintenance; TTL=40 so
-	// height-1 sweeps nothing; epochs off so no boundary freeze.
+	// The trivial v5 probe block: an entry-only block one height past genesis.
+	// No regs/slashes, so apply runs no qualified/dueBucket maintenance;
+	// TTL=40 so height-1 sweeps nothing; epochs off so no boundary freeze.
 	fieldless := snapshotBoot(c, omit) // a copy of c with `omit` emptied (deep-copied)
 	probe := Block{Version: BlockVersionWitnessable, Height: 1, Prev: ports.Hash{},
 		Entries: []ports.Entry{entry(1)}}
@@ -1932,7 +1935,7 @@ func dueBucketRootProbe(t *testing.T, c *Chain) probe {
 	}
 }
 
-// issuerKeyRootProbe is the sibling for `issuerKeyCommit` (R0.4b): the forged v5
+// issuerKeyRootProbe is the sibling for `issuerKeyCommit`: the forged v5
 // block's StateRoot omits the per-epoch issuer-key binding leaves. A full snapshot
 // recomputes WITH them -> mismatch -> reject; a snapshot that lost the binding
 // recomputes the field-less root and ACCEPTS it.
@@ -1960,42 +1963,42 @@ func issuerKeyRootProbe(t *testing.T, c *Chain) probe {
 // Each entry says what a probe would have to construct — these are honest gaps,
 // not fields believed irrelevant.
 var probeUncovered = map[string]string{
-	// EMPTY (2026-08-28): every committed field now has a leave-one-out probe with a
-	// demonstrated ablation RED. The last two closed this tranche (see docs/thinking/
-	// 2026-08-28-keystone-leaveoneout-bondregheight-validatorsseen.md):
-	//   - bondRegHeight: gateWorld (#623) is a gate-active world where x carries
-	//     bondRegHeight[x]=1; a within-R re-reg past gateHeight is ErrRegGate-rejected
-	//     with the field and accepted without it (the #506 R-rule, chain.go:1497). The
-	//     prior "no gate-active world" reason was stale.
-	//   - validatorsSeen: NOT legacy-only — C2Metric enumerates it in the objective
-	//     regime (chain.go:1978) → MatureCoefficient → matureNow → the maturity latch →
-	//     the anchor shed (validatorsSeenWorld/validatorsSeenProbe). The prior
-	//     "legacy mode only" reason was wrong.
+	// EMPTY: every committed field now has a leave-one-out probe with a
+	// demonstrated ablation RED. The last two closed this tranche
+	// 2026-08-28-keystone-leaveoneout-bondregheight-validatorsseen.md:
+	// - bondRegHeight: gateWorld is a gate-active world where x carries
+	// bondRegHeight[x]=1; a within-R re-reg past gateHeight is ErrRegGate-rejected
+	// with the field and accepted without it (the R-rule, chain.go). The
+	// prior "no gate-active world" reason was stale.
+	// - validatorsSeen: NOT legacy-only — C2Metric enumerates it in the objective
+	// regime (chain.go) → MatureCoefficient → matureNow → the maturity latch →
+	// the anchor shed (validatorsSeenWorld/validatorsSeenProbe). The prior
+	// "legacy mode only" reason was wrong.
 	// If a NEW committed field is added, add its probe (in some world) or record here
 	// what a probe would have to construct — never leave it silent.
 	//
-	// era-4 (v5) maintenance spine. `qualified` and `dueBucket` are now PROBED
-	// (2026-08-30): the v5 committed-root predicate landed in 4c (#640) / 4d (#641),
-	// so a snapshot leave-one-out CAN flip a real validity verdict — qualifiedRootProbe
-	// and dueBucketRootProbe (v5RootWorld) drive validateEra3Roots against a v5 block
-	// whose forged StateRoot omits the field's leaves: a full snapshot rejects it
-	// (ErrEra3StateRootMismatch), a field-dropped snapshot wrongly accepts it. The prior
-	// "no v5 verdict in 4b" deferral is discharged. `epochStart` stays below.
+	// era-4 (v5) maintenance spine. `qualified` and `dueBucket` are now PROBED: the
+	// v5 committed-root predicate landed in 4c / 4d, so a snapshot leave-one-out CAN
+	// flip a real validity verdict — qualifiedRootProbe and dueBucketRootProbe
+	// (v5RootWorld) drive validateEra3Roots against a v5 block whose forged StateRoot
+	// omits the field's leaves: a full snapshot rejects it
+	// (ErrEra3StateRootMismatch), a field-dropped snapshot wrongly accepts it. The
+	// prior "no v5 verdict in 4b" deferral is discharged. `epochStart` stays below.
 	"epochStart": "era-4 O-1 (4b). CERTIFIED narrowly: no quorum/validity predicate reads it " +
 		"(its only reader is Regime()), so by construction NO snapshot omission can flip a " +
 		"validity verdict — that is WHY it is safe to commit. Its commitment (not its necessity " +
 		"for a verdict) is exercised by the v5 marshaller tests. This entry is permanent, not a " +
 		"shrinking debt: a validity probe cannot exist for a field no predicate reads.",
 
-	// R1.6 — the class-M poisoning / validatorsSeenRoot path, enumerated by STAGE (A1/A2/A3) so the
-	// poisoning-path coverage is named, not silent. These are cross-reference entries, NOT committed-field
-	// omission debt: their keys are stage labels (never field names), so the field-omission guard above
-	// never matches them. Each names the DRIVEN gate in
-	// floorbox_recompute_adversarialroot_v5_test.go that closes it. The poisoning is traced end-to-end in
-	// PE ruling Q2 (RULING-floorbox-R1.2-invariant-pins-2026-09-01.md, 8 steps).
+	// The class-M poisoning / validatorsSeenRoot path, enumerated by STAGE (A1/A2/A3) so the
+	// poisoning-path coverage is named, not silent. These are cross-reference entries, NOT
+	// committed-field omission debt: their keys are stage labels (never field names), so the
+	// field-omission guard above never matches them. Each names the DRIVEN gate in
+	// floorbox_recompute_adversarialroot_v5_test.go that closes it. The poisoning is traced
+	// end-to-end in.
 	"A1-spurious-validatorsSeen-add": "STAGE A1 (class-A screen source). An UNANCHORED class-A screen " +
 		"(Slashed/InEpochSet/BondedSize/BondedPresent) that flips qualification emits a spurious " +
-		"validatorsSeen||id ADD. CLOSED by the R1.2 screen Resolve anchors; driven by " +
+		"validatorsSeen||id ADD. CLOSED by the screen Resolve anchors; driven by " +
 		"TestAdversarialRoot_ClassA_ForgedInEpochSet and _ForgedSlashed (a forged screen cannot prove " +
 		"the qualification predicate against prevStateRoot ⇒ stall at source).",
 	"A2-inflated-validatorsSeenRoot": "STAGE A2 (committed digest). The spurious A1 ADD inflates the " +
@@ -2006,7 +2009,7 @@ var probeUncovered = map[string]string{
 		"recomputeMatureNow(committedStateRoot) reconstructs the SAME inflated set and can latch " +
 		"everMature early. CLOSED at source by A1: TestAdversarialRoot_ClassM_PoisonedBySpuriousAtt drives " +
 		"the poison through the full entry and asserts the class-A anchor STALLS before the spurious ADD " +
-		"can inflate the seen-set class-M inherits. This is the PE Q2 REQUIRED cross-class pin.",
+		"can inflate the seen-set class-M inherits. This is a review Q2 REQUIRED cross-class pin.",
 }
 
 // TestLeaveOneOutProvesEachFieldLoadBearing is the sharp half. For every
@@ -2056,7 +2059,7 @@ func TestLeaveOneOutProvesEachFieldLoadBearing(t *testing.T) {
 // FACTORY, called fresh by both the oracle and the neuter meta-guard: the guard
 // mutates a probe in a returned copy, so each call must yield independent probes.
 //
-// The latch/gate/domain tranche (2026-08-28): each field's leave-one-out flip lives
+// The latch/gate/domain tranche: each field's leave-one-out flip lives
 // outside the count path, so each gets the world where it is load-bearing. bondRegHeight
 // has its OWN sole-discriminator world (bondRegHeightWorld) — see gateProbes for why it
 // cannot share the gate-lock world without becoming decoration.
@@ -2090,7 +2093,7 @@ func buildLeaveOneOutWorlds(t *testing.T) []worldGroup {
 	provenC, provenRoot, provenKeys, provenPrev := provenDisplaceWorld(t)
 	restoreC := restoreOwnerWorld(t)
 
-	// The era-4 (v5) committed-root worlds (2026-08-30): qualified and dueBucket each flip
+	// The era-4 (v5) committed-root worlds: qualified and dueBucket each flip
 	// the v5 committed-root predicate (validateEra3Roots) on a forged block whose StateRoot
 	// omits the field's leaves. Both share v5RootWorld (the forged block differs per field),
 	// so each gets its own build closure over an independent chain to keep the probes' state
@@ -2186,7 +2189,7 @@ func leaveOneOutFlipped(t *testing.T, worlds []worldGroup, logf func(string, ...
 // the leave-one-out loop (which breaks on the FIRST flipping probe) lets an earlier probe
 // catch a later probe's field, leaving the later probe proving nothing — neuter it and the
 // oracle stays green. This has bitten twice: bondRootProven aliasing (documented near this
-// file's top, ..._test.go:90-102) and bondRegHeightProbe shadowed by lockedInProbe in
+// file's top,._test.go) and bondRegHeightProbe shadowed by lockedInProbe in
 // gateWorld (fixed here by giving bondRegHeight its own sole-discriminator world).
 //
 // The guard: EVERY probe must be the SOLE catcher for at least one committed field. For
@@ -2210,21 +2213,20 @@ func leaveOneOutFlipped(t *testing.T, worlds []worldGroup, logf func(string, ...
 // only shrink. Removing a probe from this map without making it a sole discriminator RED-flags
 // this test, so the debt cannot be quietly abandoned either.
 var shadowedProbes = map[string]string{
-	// EMPTY (2026-08-28): all three prior debt entries are DISCHARGED as in-scope fixture work
-	// per RULING-bondregheight-probe-neuter-guard-2026-08-28 Q4 (see
-	// docs/thinking/2026-08-28-keystone-shadowedprobes-discharge.md):
-	//   - "revoking an unknown root must be rejected": REMOVED. Its verdict did not depend on the
-	//     carried byRoot set (mis-tagged decoration); byRoot stays covered by "dup-publish".
-	//   - "a second identity cannot take an already-owned bond root" (bondRootOwner): the launch
-	//     probe was decoration (owner/proven coupled in richHistory). bondRootOwner now has its
-	//     OWN sole-discriminator world (restoreOwnerWorld), driving restoresHeldStanding
-	//     (chain.go:3054) — a predicate bondRootProven never reads.
-	//   - "a proven bond-root owner cannot be displaced by a later proven claim" (bondRootProven):
-	//     the launch probe was decoration. bondRootProven now has its OWN sole-discriminator world
-	//     (provenDisplaceWorld), where dropping it ALONE flips the displacement verdict while
-	//     bondRootOwner is held constant.
-	// If a NEW probe lands shadowed, TestNeuteringAnyProbeBreaksCompleteness FAILS naming it
-	// unless it is added here with a routing note. The list must only SHRINK.
+	// EMPTY: all three prior debt entries are DISCHARGED as in-scope fixture
+	// work per Q4:
+	// - "revoking an unknown root must be rejected": REMOVED. Its verdict did not depend on the
+	// carried byRoot set (mis-tagged decoration); byRoot stays covered by "dup-publish".
+	// - "a second identity cannot take an already-owned bond root" (bondRootOwner): the launch
+	// probe was decoration (owner/proven coupled in richHistory). bondRootOwner now has its
+	// OWN sole-discriminator world (restoreOwnerWorld), driving restoresHeldStanding
+	// (chain.go) — a predicate bondRootProven never reads.
+	// - "a proven bond-root owner cannot be displaced by a later proven claim" (bondRootProven):
+	// The launch probe was decoration. bondRootProven now has its OWN sole-discriminator
+	// world (provenDisplaceWorld), where dropping it ALONE flips the displacement verdict
+	// while bondRootOwner is held constant. If a NEW probe lands shadowed,
+	// TestNeuteringAnyProbeBreaksCompleteness FAILS naming it unless it is added here with
+	// a routing note. The list must only SHRINK.
 }
 
 func TestNeuteringAnyProbeBreaksCompleteness(t *testing.T) {

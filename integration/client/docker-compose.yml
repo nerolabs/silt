@@ -1,13 +1,13 @@
 # The client / web-UI path, on one flat network.
 #
-#   ui  (10.80.0.2) ── the operator's node: storage + its own chain-backed
-#                      registry + the web UI (-ui 0.0.0.0:8081). This is what a
-#                      real user runs and clicks. run.sh drives its HTTP API
-#                      exactly as a browser would (curl from INSIDE this
-#                      container, so the guard sees a local Host).
-#   holder×N (…)    ── plain storage nodes bootstrapped to ui, so a UI publish
-#                      really scatters across the swarm and a UI fetch really
-#                      pulls it back over the wire (not a local-store shortcut).
+#  ui (10.80.0.2) ── the operator's node: storage + its own chain-backed
+#  registry + the web UI (-ui 0.0.0.0:8081). This is what a
+#  real user runs and clicks. run.sh drives its HTTP API
+#  exactly as a browser would (curl from INSIDE this
+#  container, so the guard sees a local Host).
+#  holder×N (…) ── plain storage nodes bootstrapped to ui, so a UI publish
+#  really scatters across the swarm and a UI fetch really
+#  pulls it back over the wire (not a local-store shortcut).
 #
 # role.sh self-advertises each container's routable IP (a wildcard bind isn't
 # dialable on a flat Docker network).
