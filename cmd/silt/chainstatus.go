@@ -20,6 +20,14 @@ import (
 //     means they agree byte-for-byte on the committed history.
 //   - RESTART CATCH-UP: the head height advances after a restarted validator
 //     rejoins, instead of staying stuck at its pre-restart height.
+//
+// EVERY COUNTER HERE IS READ BY A FIELD GATE, SO ITS PREDICATE IS PART OF ITS
+// CONTRACT. integration/cloudtest/scenarios.sh scrapes these lines and asserts on
+// the numbers; a seat editing this file is editing an assertion in a graded run it
+// cannot see. State which predicate each number counts, and when a format era
+// retires a field, ask of every counter here whether it still measures the thing
+// its label claims — the `pruned:` line below is the worked example of getting that
+// wrong, and it cost a graded row.
 func cmdChainStatus(args []string) error {
 	fs := flag.NewFlagSet("chain-status", flag.ExitOnError)
 	storeDir := fs.String("store", ".silt-daemon", "store directory holding chain.cbor (matches `silt daemon -store`)")
@@ -38,23 +46,57 @@ func cmdChainStatus(args []string) error {
 	}
 	head := blocks[len(blocks)-1]
 	headHash := head.Hash()
-	entries, pruned := 0, 0
+	entries, shed, declared := 0, 0, 0
 	for i := range blocks {
 		entries += len(blocks[i].Entries)
+		// TWO FACTS, TWO COUNTERS (build-immutable #3). `HeavyProofsShed()` is BOND
+		// POSSESSION — "this block committed space-time proofs it no longer carries" —
+		// and it is the one that answers "did the retention prune engage". `IsPruned()`
+		// is IDENTITY — "this block's hash is declared, not recomputable". Before (d-3)
+		// one field meant both; (d-3) retired `Pruned` for v5 and split the signal, so
+		// on a v5 chain IsPruned() is FALSE FOR EVERY BLOCK, pruned or not.
+		if blocks[i].HeavyProofsShed() {
+			shed++
+		}
 		if blocks[i].IsPruned() {
-			pruned++
+			declared++
 		}
 	}
 	fmt.Printf("  head height:  %d\n", head.Height)
 	fmt.Printf("  head hash:    %s\n", headHash)
 	fmt.Printf("  blocks:       %d (incl. genesis)\n", len(blocks))
 	fmt.Printf("  entries:      %d committed\n", entries)
-	// The retention prune sheds the heavy bond proofs of blocks below the
-	// rolling horizon while keeping headers + consensus sigs, so on-disk and
-	// resident chain weight stays bounded to a recent finalized window. A
-	// nonzero count here is how an operator (or the field harness) confirms
-	// the prune is engaged from real persisted state, not a log line.
-	fmt.Printf("  pruned:       %d blocks payload-stripped below the retention horizon\n", pruned)
+	// The retention prune sheds the heavy bond proofs of blocks below the rolling
+	// horizon while keeping headers + consensus sigs, so on-disk and resident chain
+	// weight stays bounded to a recent finalized window. A nonzero count here is how
+	// an operator (or the field harness) confirms the prune is engaged from real
+	// persisted state, not a log line.
+	//
+	// THE PREDICATE IS THE CONTRACT, NOT THE LABEL — DO NOT RE-KEY THIS TO IsPruned().
+	// This line shipped counting IsPruned() and the graded run `869ad9a-deep` failed
+	// row 12b-deep-prune with a uniform zero across all four validators on a chain of
+	// 1 x v2 + 137 x v5. Nothing was wrong with the prune: (d-3) retired `Pruned` for
+	// v5, so the counter was structurally zero and the assertion `pruned: N >= 1` could
+	// never pass, whatever the node did. (d-3) re-keyed the consensus readers
+	// (validate_v5_quorum, the floor-box door and NewBox, Prune's own idempotence) to
+	// HeavyProofsShed(); this reader was the one site the sweep missed, and the comment
+	// that used to sit here — promising a nonzero count while naming no predicate — is
+	// what let it be missed. An observable that a format era can silently zero is a
+	// defect one layer up from the thing it was built to observe.
+	//
+	// The label and its spacing are a SCRAPE SURFACE: integration/cloudtest/scenarios.sh
+	// reads `pruned:[[:space:]]*[0-9]+` off this output and takes the LAST match. No
+	// other line here may contain that shape. Gate:
+	// TestChainStatusPrunedCountIsSoundOnAV5Chain pins the number and the shape.
+	fmt.Printf("  pruned:       %d blocks have shed their heavy bond proofs below the retention horizon\n", shed)
+	// The identity half, reported separately BECAUSE it is a different question, and
+	// narrated because a bare 0 is exactly the trap above. IsPruned() is a strict subset
+	// of HeavyProofsShed() (which returns true immediately when IsPruned() does), so this
+	// never exceeds the line above. It is still worth an operator's attention: a block
+	// whose body cannot reproduce its hash is refused as equivocation evidence
+	// (ErrPrunedEvidence) and is the R-CARRIER-PRUNED-HASH surface, so "how much of my
+	// replica is in that state" is a real diagnostic — it is just not "did the prune run".
+	fmt.Printf("  of those:     %d declare a pre-v5 non-recomputable identity (the retired `Pruned` token); 0 is EXPECTED on a v5 chain and does NOT mean nothing was shed — a v5 block sheds its proofs and still recomputes its own hash\n", declared)
 	printEraObservable(blocks)
 	// #535 diagnosis (S5 — never silently fail): when the NEXT height to commit
 	// is an epoch boundary, a head that is not advancing may be the epoch-
