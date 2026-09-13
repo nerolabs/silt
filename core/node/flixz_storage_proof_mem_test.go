@@ -25,10 +25,10 @@ import (
 // report). After: resident = tiny proofMeta (~80-100 B/chunk, O(N) but small)
 // + a bounded proofcache (≤ budget, paged from disk) → O(hot).
 //
-//	SILT_FLIXZ_DIAG=1 SILT_FLIXZ_N=200000 go test./core/node/ -run Flixz -v
+//	SILT_FLIXZ_DIAG=1 SILT_FLIXZ_N=200000 go test ./core/node/ -run Flixz -v
 //
 // This proves the MECHANISM at scale; flixz should still confirm on their exact
-// catalog with `silt daemon -debug-addr` + `go tool pprof./heap` (the finding
+// catalog with `silt daemon -debug-addr` + `go tool pprof ./heap` (the finding
 // note is explicit that inference != measurement).
 func TestFlixzStorageProofMemoryIsOHot(t *testing.T) {
 	if os.Getenv("SILT_FLIXZ_DIAG") != "1" {

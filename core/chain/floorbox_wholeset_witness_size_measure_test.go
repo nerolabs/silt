@@ -29,7 +29,7 @@ package chain
 //
 // REPRODUCE COMMAND (from repo root, worktree or main checkout):
 //
-//	go test./core/chain/ -run TestMeasureFloorBoxWholeSetWitnessSize -v -count=1 -timeout=600s
+//	go test ./core/chain/ -run TestMeasureFloorBoxWholeSetWitnessSize -v -count=1 -timeout=600s
 //
 // N=1M is the load-bearing data point for the pony-2GB budget verdict.
 // Use -short to skip this test during routine CI (N=1M takes ~3s; the structural

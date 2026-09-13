@@ -1,8 +1,7 @@
 package node
 
-// C3 re-break — node-tier regression gates. Inversions of the red-team probes
-// core/node/rt_c3b_node_test.go, archived at These run through the
-// SHIPPED lanes — the consensus-attested pin, the real wire handler — not the primitives, because that
+// Node-tier regression gates. Each keeps an attack verbatim and asserts the CLOSE.
+// These run through the SHIPPED lanes — the consensus-attested pin, the real wire handler — not the primitives, because that
 // is where the probes measured the breaks.
 
 import (

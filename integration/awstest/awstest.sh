@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # awstest.sh — one-command AWS field test for silt (the fallback substrate; mirrors
 # integration/cloudtest/cloudtest.sh on AWS). Runs the SAME flows by SOURCING
-# ../cloudtest/scenarios.sh +../cloudtest/gen_report.sh — only the substrate differs.
+# ../cloudtest/scenarios.sh + ../cloudtest/gen_report.sh — only the substrate differs.
 #
 # ./awstest.sh setup interactive: pick AWS profile/region → write config.env
 # ./awstest.sh build → topology → apply → run flows → report → DESTROY

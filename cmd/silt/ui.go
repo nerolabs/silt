@@ -877,10 +877,9 @@ type privacyInfo struct {
 // is no beta/release flip in code: a default that a human must remember to flip at release
 // is a default that will one day ship wrong, and the guarantee sentence — "this data
 // is not exposed in production without the explicit -privacy=off flag" — is honoured
-// literally by having no flip. The flixz beta nodes run -privacy=off and are labelled. (The
-// owner's other sentence, "default ON through the BETA", is the one this does not honour;
-// the change to that default is flagged for an explicit
-// note.).github/workflows/release.yml asserts this default on the built artifact.
+// literally by having no flip. Beta nodes that want the counters published run
+// -privacy=off and are labelled as such. .github/workflows/release.yml asserts this
+// default on the built artifact.
 const privacyDefaultWithheld = true
 
 func privacyModeName(withheld bool) string {

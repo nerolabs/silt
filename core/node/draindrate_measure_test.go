@@ -11,7 +11,7 @@ package node
 // a guess. Records into's E5 rider.
 //
 // Run explicitly:
-// go test./core/node -run TestMeasure_StoreChunkDrainRate -v -count=1
+// go test ./core/node -run TestMeasure_StoreChunkDrainRate -v -count=1
 // Skipped in the normal suite (it is a benchmark-shaped measurement, timing-
 // sensitive, and asserts only a sanity floor).
 

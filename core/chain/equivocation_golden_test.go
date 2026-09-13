@@ -27,7 +27,7 @@ import (
 //
 // Regenerate ONLY with an intentional accept-set change, then diff the verdicts:
 //
-//	go test./core/chain/ -run EquivocationGolden -update-equivocation-golden
+//	go test ./core/chain/ -run EquivocationGolden -update-equivocation-golden
 var updateEquivocationGolden = flag.Bool("update-equivocation-golden", false,
 	"rewrite testdata/equivocation_golden.cbor from the deterministic builder (an ACCEPT-SET change; never routine)")
 

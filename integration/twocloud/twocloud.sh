@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # twocloud.sh — SKELETON orchestrator for the split GCP+AWS field test. It composes the
-# GCP (cloudtest) and AWS (awstest) harnesses and runs the SAME../cloudtest/scenarios.sh
+# GCP (cloudtest) and AWS (awstest) harnesses and runs the SAME ../cloudtest/scenarios.sh
 # against the combined fleet, dispatched per-node by the unified lib.sh router.
 #
 # STATUS: SCAFFOLD. The phase structure, the split, the shared-scenario wiring, and the

@@ -33,11 +33,11 @@ package chain
 //
 // REPRODUCE COMMAND (from repo root):
 //
-// go test./core/chain/ -run TestMeasureRecomputeMatureNowFoldCost -v -count=1 -timeout=600s
+// go test ./core/chain/ -run TestMeasureRecomputeMatureNowFoldCost -v -count=1 -timeout=600s
 //
 // To include N=1M (skipped under -short):
 //
-// go test./core/chain/ -run TestMeasureRecomputeMatureNowFoldCost -v -count=1 -timeout=600s
+// go test ./core/chain/ -run TestMeasureRecomputeMatureNowFoldCost -v -count=1 -timeout=600s
 //
 // (N=1M is NOT skipped here — see -short guard in the body.)
 
@@ -524,7 +524,7 @@ type streamCostRow struct {
 // TestMeasureRecomputeMatureNowStreamingWin measures resident-map vs streaming peak witness RSS and
 // fold time at N ∈ {1e4, 1e5, 5e5, 1e6}. N=5e5 and N=1e6 are skipped under -short.
 //
-//	go test./core/chain/ -run TestMeasureRecomputeMatureNowStreamingWin -v -count=1 -timeout=1800s
+//	go test ./core/chain/ -run TestMeasureRecomputeMatureNowStreamingWin -v -count=1 -timeout=1800s
 func TestMeasureRecomputeMatureNowStreamingWin(t *testing.T) {
 	// Pure MEASUREMENT, same contract as TestMeasureRecomputeMatureNowFoldCost: no
 	// assertions here. The O(depth) streaming-witness accounting gate is
