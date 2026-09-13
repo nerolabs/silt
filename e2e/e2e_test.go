@@ -34,7 +34,7 @@ var siltBin string
 func TestMain(m *testing.M) {
 	// Build once for the whole package. -short still builds (cheap
 	// when cached) but the tests themselves skip, so `go test
-	// -short./e2e` is fast and never spawns a process.
+	// -short ./e2e` is fast and never spawns a process.
 	dir, err := os.MkdirTemp("", "silt-e2e-bin")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "e2e: tempdir:", err)

@@ -52,9 +52,9 @@ import (
 // WHY THIS IS A REPORTING TEST, NOT A HARD GATE (and does not leave CI red): the own Q2
 // finding is that no admissible (cap, body-bound) pair closes this — a validity-rule
 // change here would need to be either the route (C) (put (height,round,phase) in the v5
-// consensus-signature preimage so evidence is O(1), a FORMAT change gated to D1/the
-// freeze per.claude/CLAUDE.md's research gate) or something equally
-// consensus-rule-shaped, neither of which the research may build. So
+// consensus-signature preimage so evidence is O(1), a FORMAT change gated to the
+// era freeze) or something equally consensus-rule-shaped, neither of which is built
+// here. So
 // TestRNestGate_SelfArmorMeasurement asserts the STRUCTURAL facts that make the break
 // reachable (hard: Q1 acceptance, Q2 validity) and only REPORTS the byte comparison in
 // Q3/Q4 via t.Logf — asserting "the legitimate proof must fit under cap" would redden
@@ -64,7 +64,7 @@ import (
 // existing measurement-harness convention, core/chain/slashes_cap_cost_test.go)
 // because building the near-cap Slashes field takes real wall time; run it by name:
 //
-//	go test./core/chain/ -run TestRNestGate_SelfArmorMeasurement -v -count=1
+//	go test ./core/chain/ -run TestRNestGate_SelfArmorMeasurement -v -count=1
 //
 // WHAT WOULD TURN THIS INTO A REAL GATE: once route (C) or an equivalent fixed-size
 // evidence format ships, D1 manifest item per, change the t.Logf calls below for the

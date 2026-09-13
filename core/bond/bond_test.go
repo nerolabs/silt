@@ -131,7 +131,7 @@ func pk(b byte) []byte { h := ports.HashBytes([]byte{b}); return h[:] }
 
 // BenchmarkSeal reports the plot (and therefore re-plot) cost per bond size —
 // the constant behind the F2 tuning claim "re-plot ≫ one epoch." Run with `go
-// test./core/bond -run x -bench Seal -benchmem`. Byte-binding over the
+// test ./core/bond -run x -bench Seal -benchmem`. Byte-binding over the
 // depth-robust graph makes each block hash its parents' full bytes, so plotting
 // is deliberately more expensive than the old leaves-only labeling; that expense
 // is the Sybil cost and the anti-release floor.

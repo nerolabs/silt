@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # lib.sh (AWS) — the substrate layer for the AWS field test. Provides the SAME helper
-# interface the shared../cloudtest/scenarios.sh depends on (ssh_node/jlog/dlog/svc/
+# interface the shared ../cloudtest/scenarios.sh depends on (ssh_node/jlog/dlog/svc/
 # waitfor/slo_assert/record/…), so those flows run UNCHANGED. Only the substrate-
 # specific bits differ from the GCP lib.sh: remote exec is `aws ssm` (keyless, reaches
 # natted nodes via the NAT gateway), not `gcloud ssh --tunnel-through-iap`.
@@ -82,7 +82,7 @@ restore_argv() { # restore_argv NAME — reset ExecStart to the baked argv (/etc
   ssh_node "$name" 'sudo sed -i "s#^ExecStart=.*#ExecStart=/usr/local/bin/silt $(cat /etc/silt/argv)#" /etc/systemd/system/silt.service && sudo systemctl daemon-reload && sudo systemctl restart silt.service'
 }
 
-# ── result recording (feeds../cloudtest/gen_report.sh) — SUBSTRATE-AGNOSTIC ─────
+# ── result recording (feeds ../cloudtest/gen_report.sh) — SUBSTRATE-AGNOSTIC ─────
 _json_str() { python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$1"; }
 record() { # record FLOW VERDICT SEVERITY DETAIL [ELAPSED_S]
   local flow="$1" verdict="$2" sev="$3" detail="$4" elapsed="${5:-}"

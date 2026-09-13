@@ -92,7 +92,7 @@ func TestReconstructMemoryFootprint_SimVsProd(t *testing.T) {
 // BenchmarkReconstructStripe_ProdChunk reports B/op — the allocation footprint of
 // one production-chunk-size reconstruction — for the §0.1 record. Run with:
 //
-//	go test./core/erasure -run x -bench ReconstructStripe_ProdChunk -benchmem -benchtime 3x
+//	go test ./core/erasure -run x -bench ReconstructStripe_ProdChunk -benchmem -benchtime 3x
 func BenchmarkReconstructStripe_ProdChunk(b *testing.B) {
 	rng := rand.New(rand.NewSource(1))
 	p := DefaultParams

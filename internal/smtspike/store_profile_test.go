@@ -20,7 +20,7 @@ import (
 //
 // Heavy and disk-bound — run explicitly:
 //
-//	SILT_STORE_PROFILE=1 go test./internal/smtspike/ -run TestStoreProfile -v -timeout 60m
+//	SILT_STORE_PROFILE=1 go test ./internal/smtspike/ -run TestStoreProfile -v -timeout 60m
 //
 // Report from the floor box, never a laptop: the whole point is the box that
 // OOM-killed the in-memory backend. A laptop number is the shape.

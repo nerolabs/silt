@@ -1,8 +1,7 @@
 package main
 
-// C3 re-break — F7 regression gate (blast radius). Inversion of the red-team
-// probe adapters/diskissuer/rt_c3b_store_test.go, at the tier the finding is actually
-// about: the DAEMON, not the store.
+// Blast-radius regression gate, at the tier the defect is actually about: the
+// DAEMON, not the store.
 //
 // The finding: `Load` treats a corrupt file as a hard error (correct — see
 // TestCorruptStoreErrorsAndIsNeverRewritten) and runDaemon returned it straight

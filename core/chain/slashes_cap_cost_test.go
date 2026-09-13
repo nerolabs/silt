@@ -19,7 +19,7 @@ import (
 // -cross-height-pruned-slash-forgery-FIX-DIRECTION-. Skipped under -short; run it by
 // name:
 //
-//	go test./core/chain/ -run TestSlashesBytesCapWorstCaseCost -v -count=1
+//	go test ./core/chain/ -run TestSlashesBytesCapWorstCaseCost -v -count=1
 func TestSlashesBytesCapWorstCaseCost(t *testing.T) {
 	if testing.Short() {
 		t.Skip("measurement harness; run by name")

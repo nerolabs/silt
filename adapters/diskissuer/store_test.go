@@ -1,7 +1,6 @@
 package diskissuer
 
-// C3 re-break — EpochStore regression gates. Inversions of the red-team probes
-// adapters/diskissuer/rt_c3b_store_test.go, archived at
+// EpochStore regression gates. Each keeps an attack verbatim and asserts the CLOSE.
 
 import (
 	"crypto/rand"

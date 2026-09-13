@@ -274,7 +274,7 @@ type Message struct {
 	// They ride the same messages as the capacity pledge so a node can
 	// compute the serve-work and repair-work Gini over its local peer sample
 	// without an aggregator. EXACTLY TWO FIELDS, and the tier class is NOT a third:
-	// it is derived from CapTotal with published bands (core/node/tiers.go), because
+	// it is derived from CapTotal with published bands (core/node/economysample.go), because
 	// all three are self-reported and a self-declared label buys nothing but surface.
 	//
 	// SELF-REPORTED, like the capacity pledge beside them: advisory sampling, never a

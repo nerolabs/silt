@@ -1,8 +1,6 @@
 package credit
 
-// C3 re-break — credit-tier regression gates. Inversions of the red-team probes
-// core/credit/rt_c3b_credit_test.go, archived at Each keeps the probe's
-// attack verbatim and asserts the CLOSE.
+// Credit-tier regression gates. Each keeps an attack verbatim and asserts the CLOSE.
 
 import (
 	"errors"
