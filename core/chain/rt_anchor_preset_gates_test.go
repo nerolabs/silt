@@ -102,6 +102,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/nerolabs/silt/core/statehash"
@@ -120,9 +121,20 @@ func rtAnchorPin(defect string, stall error, forged, honest ports.Hash, conseque
 	if stall == nil {
 		return ""
 	}
+	// ports.Hash is [32]byte with a VALUE-receiver String(), and fmt routes %x through Stringer — so
+	// %x on the VALUE hex-encodes the 64-char hex string AGAIN and prints 128 chars. Every root in
+	// this file is sliced. Gated by TestRTAnchor_PinTextPrintsA64CharRootAndNeverTheZeroHash.
+	forgedLine := fmt.Sprintf("  forged (the root the box derived from the forged witness) = %x\n", forged[:])
+	if forged == (ports.Hash{}) {
+		// rtAnchorForgedFold returns the ZERO Hash when op assembly or the fold REFUSED the forged
+		// witness, so no root was ever derived. Printing it labels 32 zero bytes as the adversary's
+		// root, which is the one line a future engineer would most reasonably trust.
+		forgedLine = "  forged = UNAVAILABLE — the box refused the forged witness at op assembly or at the fold,\n" +
+			"           so it never derived a root. The stall above IS the whole observation.\n"
+	}
 	return fmt.Sprintf(
 		"%s PIN IS RED — the box now REJECTS the forged witness measured against ITS OWN fold root: %v\n"+
-			"  forged (the root the box derived from the forged witness) = %x\n"+
+			"%s"+
 			"  honest (what real apply() yields)                          = %x\n"+
 			"  The pinned defect was: %s\n"+
 			"  READ THIS BEFORE RE-PINNING. This pin asserts CURRENT BROKEN BEHAVIOUR (PINNED_DEFECT,\n"+
@@ -130,11 +142,25 @@ func rtAnchorPin(defect string, stall error, forged, honest ports.Hash, conseque
 			"  anchoredPreSet (floorbox_recompute_stateroot_slash_v5.go) doing what provenView.members\n"+
 			"  (stateview_proven_v5.go) already does — Resolve the digest leaf against prevStateRoot and\n"+
 			"  refuse unless nodeSetMTH(PreIDs) equals it. If that landed: retire this pin, replace it with\n"+
-			"  the straight assertion that the forgery stalls, KEEP the teeth, and correct the PreIDs row of\n"+
-			"  foldInputCoverageTable (floorbox_recompute_carrier_reflection_v5_test.go), which this finding\n"+
-			"  falsified. If it did NOT land, something else changed the fold-op emission and the census at\n"+
-			"  the head of this file must be re-derived before anyone re-pins.",
-		defect, stall, forged, honest, consequence)
+			"  the straight assertion that the forgery stalls, KEEP the teeth, and restore the PreIDs row of\n"+
+			"  foldInputCoverageTable (floorbox_recompute_carrier_reflection_v5_test.go) from FIX-OPEN to\n"+
+			"  already-anchored with the anchor the remedy actually installs. If it did NOT land, something\n"+
+			"  else changed the fold-op emission and the census at the head of this file must be re-derived\n"+
+			"  before anyone re-pins.\n"+
+			"  BLAST RADIUS — THE REMEDY REDDENS NINE TESTS, NOT SEVEN (measured by a blind PE under a\n"+
+			"  simulated remedy, 2026-09-13). Besides RT-ANCHOR-0..6, two SHIPPED ablations in this package\n"+
+			"  redden, both BENIGNLY and both for the same reason: the refusal moves EARLIER, into\n"+
+			"  anchoredPreSet, so the stall CLASS becomes ErrRecomputeStateRootDigest.\n"+
+			"    - TestRecomputeStateRootSlashAblationForgedQualifiedScreen: its fixture drops the culprit\n"+
+			"      from the qualified pre-set, so the remedy's predicate GENUINELY fires. It accepts only\n"+
+			"      Fold|Mismatch. Widen the accepted class to include Digest.\n"+
+			"    - TestRecomputeStateRootSlashAblationCircularAnchor: its id-lists are HONEST and only the\n"+
+			"      proof anchor is circular, so the remedy's Resolve against prevStateRoot fails inside\n"+
+			"      anchoredPreSet rather than in FoldChangedPaths. It asserts Fold exactly. Widen it to\n"+
+			"      include Digest.\n"+
+			"  Both still STALL; neither is a safety regression. Widen the accepted class — do not revert\n"+
+			"  the remedy and do not delete either ablation.",
+		defect, stall, forgedLine, honest[:], consequence)
 }
 
 // rtAnchorMechanismPin is the MECHANISM predicate: it asserts the CAUSE is still present, namely
@@ -163,8 +189,10 @@ func rtAnchorA0Pin(err error, gotMTH, committed []byte) string {
 		return fmt.Sprintf(
 			"RT-ANCHOR-0 PIN IS RED — anchoredPreSet now REJECTS a forged pre-set: %v\n"+
 				"  This is the expected outcome of the research-gated remedy (make anchoredPreSet do what\n"+
-				"  provenView.members does). Retire this pin, keep its teeth, and correct the PreIDs row of\n"+
-				"  foldInputCoverageTable — that row claims completeness-anchoring THIS PIN FALSIFIED.", err)
+				"  provenView.members does). Retire this pin, keep its teeth, and restore the PreIDs row of\n"+
+				"  foldInputCoverageTable — this finding is why that row is classified FIX-OPEN today.\n"+
+				"  The remedy's full BLAST RADIUS is nine tests, not seven; rtAnchorPin's FIX CASE above\n"+
+				"  names the two shipped ablations that also redden and the class widening they need.", err)
 	}
 	if bytes.Equal(gotMTH, committed) {
 		return fmt.Sprintf(
@@ -179,8 +207,11 @@ func rtAnchorA0Pin(err error, gotMTH, committed []byte) string {
 func rtAnchorTagName(tag string) string { return string(bytes.TrimRight([]byte(tag), "\x00")) }
 
 // rtAnchorIsRecomputeStall reports whether err is one of the box's OWN recompute refusals, rather
-// than some new failure shape. The A4b control asserts this, not merely non-nil: a panic-turned-error,
-// a nil-deref, or a blanket refusal would satisfy "it stalled" while meaning something quite different.
+// than some new failure SHAPE. The A4b control asserts this, not merely non-nil: a panic turned into
+// an error, or a nil-deref, would satisfy "it stalled" while meaning something quite different.
+//
+// It does NOT separate a correct refusal from an over-rejecting one: a box that refuses every pre-set
+// with ErrRecomputeStateRootDigest passes this predicate, measured. See the A4b docstring.
 func rtAnchorIsRecomputeStall(err error) bool {
 	return errors.Is(err, ErrRecomputeStateRootDigest) ||
 		errors.Is(err, ErrRecomputeStateRootFold) ||
@@ -195,7 +226,18 @@ func rtAnchorIsRecomputeStall(err error) bool {
 // An assembly error is returned rather than fataled: after the remedy lands, refusing at assembly is
 // one of the shapes the fix can take, and it must reach the pin as a RED rather than as a bare
 // t.Fatal with no instruction attached.
-func rtAnchorForgedFold(c *Chain, prevRoot ports.Hash, b Block, w StateRootWitness) (ports.Hash, []statehash.FoldOp, error) {
+//
+// IT ASSEMBLES TWICE, ON PURPOSE. assembleStateRootRecomputeOps takes committedStateRoot, and ONE
+// class reads it: maturityLatchOps → recomputeMatureNow. The malicious proposer's committed root is
+// not known until its own fold produces it, so pass 1 assembles under prevRoot only to LEARN that
+// root, and pass 2 re-assembles under it — which is the committedStateRoot recomputeViaHead is then
+// handed. Assembling once under prevRoot leaves the op list produced under a different committed
+// root than the verification pass consumes; today the two agree (the pins are green, and a
+// divergence would surface as a terminal mismatch), but the fixtures are one everMature flip away
+// from a red that has nothing to do with anchoring and pin text that sends the reader hunting for a
+// remedy that never landed. A divergence is fataled HERE, named as a fixture fact.
+func rtAnchorForgedFold(t *testing.T, c *Chain, prevRoot ports.Hash, b Block, w StateRootWitness) (ports.Hash, []statehash.FoldOp, error) {
+	t.Helper()
 	ops, err := assembleOpsViaHead(c, prevRoot, prevRoot, b, w)
 	if err != nil {
 		return ports.Hash{}, nil, fmt.Errorf("op assembly refused the forged witness: %w", err)
@@ -204,7 +246,23 @@ func rtAnchorForgedFold(c *Chain, prevRoot ports.Hash, b Block, w StateRootWitne
 	if err != nil {
 		return ports.Hash{}, ops, fmt.Errorf("the fold refused the forged witness: %w", err)
 	}
-	return r, ops, nil
+	ops2, err := assembleOpsViaHead(c, prevRoot, r, b, w)
+	if err != nil {
+		return ports.Hash{}, ops, fmt.Errorf("op assembly refused the forged witness under its own fold root: %w", err)
+	}
+	r2, err := statehash.FoldChangedPaths(prevRoot, ops2)
+	if err != nil {
+		return ports.Hash{}, ops2, fmt.Errorf("the fold refused the forged witness under its own fold root: %w", err)
+	}
+	if r2 != r {
+		t.Fatalf("FIXTURE DIVERGENCE, NOT AN ANCHORING CHANGE — assembling the forged op list under prevRoot "+
+			"yields root %x, and re-assembling it under THAT root yields %x. Some class now reads\n"+
+			"  committedStateRoot in a way that changes the op list (maturityLatchOps is the only such reader\n"+
+			"  today, and it returns early when the everMature latch is already set). Do NOT read this as the\n"+
+			"  anchoring remedy landing: fix the fixture (or iterate to a fixpoint) first, then re-read the pins.",
+			r[:], r2[:])
+	}
+	return r2, ops2, nil
 }
 
 // rtAnchorSetPreIDs overwrites one tag's pre-set id-list in a witness. It fatals when the tag is
@@ -275,11 +333,11 @@ func TestRTAnchor_A1_ForgedSlashedPreSetErasesABondReg_PINNED_DEFECT(t *testing.
 	w := f.bondWitness(t, b, []uint64{newDue})
 	rtAnchorSetPreIDs(t, &w, tagSlashedRoot, []ports.NodeID{freshID}) // THE FORGERY: claim the registrant is slashed
 
-	forged, ops, foldErr := rtAnchorForgedFold(f.c, f.prevRoot, b, w)
+	forged, ops, foldErr := rtAnchorForgedFold(t, f.c, f.prevRoot, b, w)
 	stall := foldErr
 	if stall == nil {
 		if forged == honest {
-			t.Fatalf("VACUOUS: the forged root equals the honest root %x — the forgery changed nothing", honest)
+			t.Fatalf("VACUOUS: the forged root equals the honest root %x — the forgery changed nothing", honest[:])
 		}
 		stall = recomputeViaHead(f.c, f.prevRoot, forged, b, w)
 	}
@@ -298,7 +356,7 @@ func TestRTAnchor_A1_ForgedSlashedPreSetErasesABondReg_PINNED_DEFECT(t *testing.
 		t.Fatalf("RT-ANCHOR-1 MECHANISM ARM IS RED — the forged root %x is no longer identical to prevStateRoot %x. "+
 			"The pinned consequence is TOTAL erasure: a BondReg-carrying block folding to zero net state change. "+
 			"A partial erasure is a different finding; re-derive stateRootBondRegWriteSet's screen before re-pinning.",
-			forged, f.prevRoot)
+			forged[:], f.prevRoot[:])
 	}
 }
 
@@ -321,11 +379,11 @@ func TestRTAnchor_A2_AllThreeClassBPreSetsUnverified_PINNED_DEFECT(t *testing.T)
 	rtAnchorSetPreIDs(t, &w, tagBondedRoot, []ports.NodeID{ports.HashBytes([]byte("garbage-bonded"))})
 	rtAnchorSetPreIDs(t, &w, tagQualifiedRoot, nil)
 
-	forged, ops, foldErr := rtAnchorForgedFold(f.c, f.prevRoot, b, w)
+	forged, ops, foldErr := rtAnchorForgedFold(t, f.c, f.prevRoot, b, w)
 	stall := foldErr
 	if stall == nil {
 		if forged == honest {
-			t.Fatalf("VACUOUS: forged root == honest root %x", honest)
+			t.Fatalf("VACUOUS: forged root == honest root %x", honest[:])
 		}
 		stall = recomputeViaHead(f.c, f.prevRoot, forged, b, w)
 	}
@@ -384,11 +442,11 @@ func TestRTAnchor_A3_ForgedQualifiedPreSetKeepsUnderBondedStanding_PINNED_DEFECT
 	}
 	rtAnchorSetPreIDs(t, &w, tagQualifiedRoot, kept)
 
-	forged, ops, foldErr := rtAnchorForgedFold(f.c, f.prevRoot, b, w)
+	forged, ops, foldErr := rtAnchorForgedFold(t, f.c, f.prevRoot, b, w)
 	stall := foldErr
 	if stall == nil {
 		if forged == honest {
-			t.Fatalf("VACUOUS: forged root == honest root %x", honest)
+			t.Fatalf("VACUOUS: forged root == honest root %x", honest[:])
 		}
 		stall = recomputeViaHead(f.c, f.prevRoot, forged, b, w)
 	}
@@ -442,11 +500,11 @@ func TestRTAnchor_A4_ForgedFreezeSourceEvictsAQualifiedValidator_PINNED_DEFECT(t
 		ID: victim, EpochSetOldValue: f.preValue(esKey), EpochSetProof: wit, EpochSetDeleteSiblings: sibs,
 	})
 
-	forged, ops, foldErr := rtAnchorForgedFold(f.c, f.prevRoot, b, w)
+	forged, ops, foldErr := rtAnchorForgedFold(t, f.c, f.prevRoot, b, w)
 	stall := foldErr
 	if stall == nil {
 		if forged == honest {
-			t.Fatalf("VACUOUS: forged root == honest root %x", honest)
+			t.Fatalf("VACUOUS: forged root == honest root %x", honest[:])
 		}
 		stall = recomputeViaHead(f.c, f.prevRoot, forged, b, w)
 	}
@@ -485,11 +543,28 @@ func rtAnchorPickVictim(t *testing.T, f rotateFixture) ports.NodeID {
 // every shipped PreIDs ablation uses — and asserts it stalls. It must stay GREEN before AND after
 // the remedy lands.
 //
-// It does two jobs. It proves the A0..A6 pins are not simply rejecting everything: the same box, the
-// same forgery, a different oracle, a different outcome — so the pins' greens are about the ORACLE,
-// not about a broken fixture. And a remedy that OVER-REJECTS shows up here, because an over-rejecting
-// box still has to stall for the RIGHT REASON: this control asserts a digest/fold/mismatch stall, not
-// merely a non-nil error.
+// WHAT IT PROVES, and this is its whole value: the A0..A6 pins are not simply rejecting everything.
+// The same box, the same forgery, a different oracle, a different outcome — so the pins' greens are
+// about the ORACLE, not about a broken fixture.
+//
+// WHAT IT DOES NOT PROVE — MEASURED, not argued. An earlier draft of this docstring claimed "a remedy
+// that OVER-REJECTS shows up here". That is FALSE, and it was driven: under a maximally
+// over-rejecting box — anchoredPreSet refusing EVERY pre-set, honest or forged, with
+// ErrRecomputeStateRootDigest — all seven pins went RED and this control stayed GREEN (blind PE,
+// 2026-09-13). Two structural reasons, either one sufficient. rtAnchorIsRecomputeStall ACCEPTS
+// ErrRecomputeStateRootDigest, which is precisely the class the natural remedy refuses with. And
+// this test runs only a FORGED witness, so it has no honest-path arm: "stall harder" is
+// indistinguishable from "stall correctly".
+//
+// WHAT DOES DETECT OVER-REJECTION: the package's honest-path recomputes, the …AgreesWithApply family
+// — TestRecomputeStateRootSlashAgreesWithApply, TestRecomputeStateRootRotateAgreesWithApply,
+// TestRecomputeStateRootAttAgreesWithApply and their siblings. Those feed an HONEST witness and
+// require the box to agree with apply(), so a box that refuses everything fails them all. Those, not
+// this, are the arm a remedy must keep green.
+//
+// What this control does bound is narrower and still worth having: the stall against the honest root
+// stays inside {digest, fold, mismatch}, so a NEW failure shape — a panic turned into an error, a
+// nil-deref — surfaces here rather than reading as "it stalled, good".
 func TestRTAnchor_A4b_SameForgeryAgainstHonestRootStalls(t *testing.T) {
 	f := buildRotateFixture(t)
 	b := f.boundaryBlock(nil)
@@ -514,12 +589,13 @@ func TestRTAnchor_A4b_SameForgeryAgainstHonestRootStalls(t *testing.T) {
 	if err == nil {
 		t.Fatalf("CONTROL FAILED — the same forgery measured against the HONEST root %x did NOT stall. The box now "+
 			"certifies an honest root from a forged witness, which is strictly worse than the pinned finding and is "+
-			"NOT what RT-ANCHOR-4 pins. Escalate before touching any pin above.", honest)
+			"NOT what RT-ANCHOR-4 pins. Escalate before touching any pin above.", honest[:])
 	}
 	if !rtAnchorIsRecomputeStall(err) {
 		t.Fatalf("CONTROL FAILED — the stall against the honest root is not a digest/fold/mismatch refusal: %v. A "+
-			"remedy that rejects for a NEW reason (a panic, a nil-deref, a blanket refusal) would read as 'fixed' "+
-			"everywhere else in this file; this arm is where over-rejection surfaces.", err)
+			"remedy that rejects with a NEW SHAPE (a panic turned into an error, a nil-deref) would read as "+
+			"'fixed' everywhere else in this file. NOTE, measured: a blanket refusal carrying "+
+			"ErrRecomputeStateRootDigest does NOT trip this arm — see this test's docstring for what does.", err)
 	}
 	t.Logf("CONTROL ok — against the HONEST root the identical forgery stalls: %v", err)
 }
@@ -545,11 +621,11 @@ func TestRTAnchor_A5_ForgedSeenPreSetSuppressesTheDigest_PINNED_DEFECT(t *testin
 	}
 	rtAnchorSetPreIDs(t, &w, tagValidatorsSeenRoot, sortIDs(inject))
 
-	forged, ops, foldErr := rtAnchorForgedFold(f.c, f.prevRoot, b, w)
+	forged, ops, foldErr := rtAnchorForgedFold(t, f.c, f.prevRoot, b, w)
 	stall := foldErr
 	if stall == nil {
 		if forged == honest {
-			t.Fatalf("VACUOUS: forged root == honest root %x — the digest did not move honestly either", honest)
+			t.Fatalf("VACUOUS: forged root == honest root %x — the digest did not move honestly either", honest[:])
 		}
 		stall = recomputeViaHead(f.c, f.prevRoot, forged, b, w)
 	}
@@ -589,7 +665,7 @@ func TestRTAnchor_A6_EmptySlashedPreSetReSeatsAnEquivocator_PINNED_DEFECT(t *tes
 	f.prevRoot = pr.Root()
 	sr, err := f.c.StateRootForVersion(BlockVersionWitnessable)
 	if err != nil || sr != f.prevRoot {
-		t.Fatalf("fixture: pre-root mismatch after the slash: %v %x %x", err, sr, f.prevRoot)
+		t.Fatalf("fixture: pre-root mismatch after the slash: %v %x %x", err, sr[:], f.prevRoot[:])
 	}
 
 	// The slashed equivocator re-registers its OWN root.
@@ -637,11 +713,11 @@ func TestRTAnchor_A6_EmptySlashedPreSetReSeatsAnEquivocator_PINNED_DEFECT(t *tes
 			"actually constructed and a green result would assert nothing")
 	}
 
-	forged, ops, foldErr := rtAnchorForgedFold(f.c, f.prevRoot, b, w)
+	forged, ops, foldErr := rtAnchorForgedFold(t, f.c, f.prevRoot, b, w)
 	stall := foldErr
 	if stall == nil {
 		if forged == honest {
-			t.Fatalf("VACUOUS: forged root == honest root %x", honest)
+			t.Fatalf("VACUOUS: forged root == honest root %x", honest[:])
 		}
 		stall = recomputeViaHead(f.c, f.prevRoot, forged, b, w)
 	}
@@ -677,6 +753,59 @@ func TestRTAnchor_PinRedensWhenTheBoxRejects(t *testing.T) {
 	}
 	if msg := rtAnchorPin("RT-ANCHOR-X", nil, a, bb, "c"); msg != "" {
 		t.Fatalf("rtAnchorPin fired on the pinned state it is supposed to accept: %s", msg)
+	}
+}
+
+// TestRTAnchor_PinTextPrintsA64CharRootAndNeverTheZeroHash gates the pin's own FAILURE TEXT, which
+// is the only thing a future engineer reads on the day a pin fires. Two defects, both observed live
+// in this file's output before this gate existed (blind PE, 2026-09-13):
+//
+//  1. ports.Hash is [32]byte with a VALUE-receiver String(), and fmt applies Stringer for %x. So %x
+//     on the VALUE hex-encodes the 64-char hex string a SECOND time and prints 128 chars. The run
+//     that found it printed a "root" of 3030303030… — the hex of the ASCII text "000…". go vet does
+//     not flag this: %x is a legal verb for a Stringer. This test is the only thing standing between
+//     that slip and the next one.
+//  2. rtAnchorForgedFold returns the ZERO Hash when op assembly or the fold REFUSED, and the pin
+//     labelled those 32 zero bytes "the root the box derived from the forged witness".
+func TestRTAnchor_PinTextPrintsA64CharRootAndNeverTheZeroHash(t *testing.T) {
+	forged, honest := ports.HashBytes([]byte("forged")), ports.HashBytes([]byte("honest"))
+	msg := rtAnchorPin("RT-ANCHOR-X", ErrRecomputeStateRootDigest, forged, honest, "the consequence")
+
+	for _, tc := range []struct {
+		name string
+		h    ports.Hash
+	}{{"forged", forged}, {"honest", honest}} {
+		sliced := fmt.Sprintf("%x", tc.h[:])
+		if len(sliced) != 64 {
+			t.Fatalf("TEETH SETUP: a sliced ports.Hash must render 64 hex chars, got %d", len(sliced))
+		}
+		doubled := fmt.Sprintf("%x", tc.h) // the Stringer route: 128 chars
+		if len(doubled) != 128 {
+			t.Fatalf("TEETH SETUP: %%x on a ports.Hash VALUE should double-encode to 128 chars, got %d — "+
+				"ports.Hash lost its value-receiver String() and this whole gate is now about nothing", len(doubled))
+		}
+		if strings.Contains(msg, doubled) {
+			t.Fatalf("the %s root is DOUBLE-ENCODED in the pin text (128 hex chars, via the value-receiver "+
+				"String()). Print h[:], not h.\n  msg=%s", tc.name, msg)
+		}
+		if !strings.Contains(msg, sliced) {
+			t.Fatalf("the %s root does not appear in the pin text as 64 hex chars.\n  want=%s\n  msg=%s",
+				tc.name, sliced, msg)
+		}
+	}
+
+	// The refusal path: rtAnchorForgedFold derived no root, so none may be labelled as one.
+	zeroMsg := rtAnchorPin("RT-ANCHOR-X", ErrRecomputeStateRootDigest, ports.Hash{}, honest, "c")
+	if strings.Contains(zeroMsg, "the root the box derived from the forged witness") {
+		t.Fatalf("the pin labelled the ZERO hash as the adversary's derived root. rtAnchorForgedFold returns "+
+			"ports.Hash{} when op assembly or the fold REFUSED — there is no root to print, and a reader who "+
+			"trusts that line chases a root that never existed.\n  msg=%s", zeroMsg)
+	}
+	if !strings.Contains(zeroMsg, "UNAVAILABLE") {
+		t.Fatalf("the refusal path must SAY the box refused before deriving a root, not silently omit it.\n  msg=%s", zeroMsg)
+	}
+	if strings.Contains(zeroMsg, strings.Repeat("00", 32)) {
+		t.Fatalf("the pin text still contains 32 zero bytes rendered as a root.\n  msg=%s", zeroMsg)
 	}
 }
 
