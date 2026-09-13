@@ -27,7 +27,7 @@ func (n *Node) EnableChain(ch *chain.Chain, priv ed25519.PrivateKey) {
 // Chain exposes the local replica (dashboards, tests).
 func (n *Node) Chain() *chain.Chain { return n.chain }
 
-// SetSignMarkStore wires the durable never-sign-twice watermark (#397 Q1b) and
+// SetSignMarkStore wires the durable never-sign-twice watermark and
 // loads any persisted mark, so a restarted validator refuses to contradict a
 // signature it released on a previous boot (the crash variant of the honest
 // double-sign — without this, a crash between signing and committing wipes the
@@ -48,13 +48,13 @@ func (n *Node) SetSignMarkStore(s ports.SignMarkStore) error {
 
 // signAllowedAt reports whether releasing a consensus signature over block
 // (height, hash) at (round, phase) is consistent with the never-sign-twice
-// watermark. #432 rounds: the slot is (height, round, phase), ordered
+// watermark. rounds: the slot is (height, round, phase), ordered
 // lexicographically — anything strictly above the mark's slot is fine,
 // re-signing the SAME block in the same slot is idempotent, and any OTHER
 // signature at or below the mark is the double-sign an honest validator must
-// refuse (#397, round-scoped per the certification: a different-hash signature
-// at a HIGHER round is honest — that is the liveness escape — while at the
-// same (h, r, phase) it is equivocation). The lexicographic order matches an
+// refuse (round-scoped: a different-hash signature at
+// a HIGHER round is honest — that is the liveness escape — while at the same
+// (h, r, phase) it is equivocation). The lexicographic order matches an
 // honest validator's real signing order: prepare < precommit within a round,
 // rounds ascend within a height, heights ascend.
 func (n *Node) signAllowedAt(height, round uint64, phase uint8, h ports.Hash) bool {
@@ -105,12 +105,12 @@ func (n *Node) recordSign(height, round uint64, phase uint8, h ports.Hash) bool 
 	return n.recordSignLock(height, round, phase, h, nil)
 }
 
-// recordSignLock is recordSign carrying the #432 lock: for a precommit-phase
-// mark, lockQC is the CBOR prepare-QC envelope justifying it, persisted WITH
-// the mark so a restarted validator re-presents its lock in a round-change
-// (certification §5.3). Preserves any existing LockQC when advancing within
-// the same height without a new lock (a prepare mark after a precommit cannot
-// occur within a height by slot order; a NEW height naturally clears it).
+// recordSignLock is recordSign carrying the lock: for a precommit-phase mark,
+// lockQC is the CBOR prepare-QC envelope justifying it, persisted WITH the
+// mark so a restarted validator re-presents its lock in a round-change.
+// Preserves any existing LockQC when advancing within the same height without
+// a new lock (a prepare mark after a precommit cannot occur within a height
+// by slot order; a NEW height naturally clears it).
 func (n *Node) recordSignLock(height, round uint64, phase uint8, h ports.Hash, lockQC []byte) bool {
 	if n.signMarkSet && slotCompare(height, round, phase, n.signMark) == 0 && h == n.signMark.Hash {
 		return true // idempotent re-sign of the same block in the same slot
@@ -149,7 +149,7 @@ const canonicalIssuerCap = 32
 // ORDERING (validators ranked by committed bond, top first) so a chainless
 // publisher can select its publish-token signers by a ledger-derived ranking that
 // is the SAME for every publisher — the signer subset then stops being a
-// per-publisher quasi-identifier (R-3 / seam-4). Encoded as concatenated 32-byte
+// per-publisher quasi-identifier. Encoded as concatenated 32-byte
 // NodeIDs. OK=false if this node holds no chain.
 func (n *Node) answerCanonicalIssuers() ports.Message {
 	if n.chain == nil {
@@ -167,7 +167,7 @@ func (n *Node) answerCanonicalIssuers() ports.Message {
 // canonical issuer ordering (ranked by committed bond). A chainless publisher uses
 // it to pick its publish-token signers by a network-canonical ranking instead of an
 // arbitrary subset of its own peer list, closing the signer-subset deanonymization
-// channel (R-3, seam-4). done fires with the ids (heaviest bond first) or an error.
+// channel. done fires with the ids (heaviest bond first) or an error.
 func (n *Node) FetchCanonicalIssuers(v ports.NodeID, done func([]ports.NodeID, error)) {
 	n.request(v, ports.Message{Kind: ports.MsgGetCanonicalIssuers}, func(resp ports.Message, err error) {
 		const idLen = len(ports.Hash{})
@@ -189,7 +189,7 @@ func (n *Node) FetchCanonicalIssuers(v ports.NodeID, done func([]ports.NodeID, e
 }
 
 // FetchCanonicalIssuersFromAny asks EVERY validator concurrently and returns the
-// first success (or the last error once all have failed). This closes the #351
+// first success (or the last error once all have failed). This closes the
 // canonical-set half: a chainless publisher used to ask only vs[0], so a SINGLE
 // un-synced or transiently-unreachable validator — e.g. one that just restarted
 // mid-run — dropped the publisher into the -peers fallback, which NARROWS the
@@ -201,7 +201,7 @@ func (n *Node) FetchCanonicalIssuers(v ports.NodeID, done func([]ports.NodeID, e
 // sequential try-each-in-order collapsed to one round-trip time. (The
 // token-ACQUISITION-after-restart path — reaching enough signers for the
 // token-quorum when one is down — is a separate, privacy-sensitive residual,
-// tracked under #351, not addressed here.)
+// tracked under, not addressed here.)
 func (n *Node) FetchCanonicalIssuersFromAny(vs []ports.NodeID, done func([]ports.NodeID, error)) {
 	if len(vs) == 0 {
 		done(nil, errNoCanonicalIssuers)
@@ -245,7 +245,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 	}
 	switch msg.Kind {
 	case ports.MsgProposeBlock:
-		// PREPARE phase (#432 two-phase gather). Attest only what we would
+		// PREPARE phase. Attest only what we would
 		// accept: same rules, our reputation view. The envelope carries the
 		// round and (for round > 0) the new-view certificate; a bare legacy
 		// block payload is treated as (round 0, no certificate).
@@ -266,19 +266,19 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		}
 		rs := n.roundsFor()
 		if b.Height == rs.Height {
-			rs.Armed = true // h43 (A): a verified proposal for the working height arms the round clock
+			rs.Armed = true // a verified proposal for the working height arms the round clock
 			// A round > 0 needs its new-view certificate, and the certificate
 			// FORCES the proposer's value: re-propose the highest carried lock
 			// or (only if none was carried) fresh. A proposer that ignores the
 			// forced value is refused — that refusal is what carries a
-			// potentially-committed value forward (certification §4).
+			// potentially-committed value forward.
 			forced, nerr := n.newViewFor(b.Height, env.Round, env.NewView)
 			if nerr != nil {
 				n.logf(ports.LogDebug, "gather/prepare: REFUSED (new-view certificate)", "from", from, "height", b.Height, "round", env.Round, "reason", nerr)
 				n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
 				return true
 			}
-			// #451 synchronizer ingredient (b), second face: a VALID new-view
+			// synchronizer ingredient (b), second face: a VALID new-view
 			// certificate for a round above ours is quorum-grade proof the
 			// network is there — jump before attesting, so our round state
 			// (and our subsequent round-changes) track the frontier instead
@@ -287,7 +287,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 				n.advanceToRound(rs, env.Round, "new-view")
 			}
 			if forced != nil && forced.Hash != b.Hash() {
-				n.logf(ports.LogInfo, "gather/prepare: REFUSED — proposal ignores the new-view's carried lock (#432 safety)", "from", from, "height", b.Height, "round", env.Round)
+				n.logf(ports.LogInfo, "gather/prepare: REFUSED — proposal ignores the new-view's carried lock (safety)", "from", from, "height", b.Height, "round", env.Round)
 				n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
 				return true
 			}
@@ -296,13 +296,13 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			// does not carry a lock at least as high, refuse — our own lock is
 			// evidence of a possibly-committed value the certificate missed.
 			if rs.Lock != nil && rs.Lock.Hash != b.Hash() && (forced == nil || forced.Round < rs.Lock.Round) {
-				n.logf(ports.LogInfo, "gather/prepare: REFUSED — locked on a different value the new-view does not supersede (#432)", "from", from, "height", b.Height, "round", env.Round, "lock_round", rs.Lock.Round)
+				n.logf(ports.LogInfo, "gather/prepare: REFUSED — locked on a different value the new-view does not supersede ", "from", from, "height", b.Height, "round", env.Round, "lock_round", rs.Lock.Round)
 				n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
 				return true
 			}
 		}
 		// Never equivocate within a slot: the mark is (height, round, phase)-
-		// scoped (#397 round-scoped per #432) and made durable BEFORE the
+		// scoped and made durable BEFORE the
 		// prepare leaves. A different block at a HIGHER round is honest — the
 		// liveness escape; at the SAME (h, r, prepare) it is refused.
 		if !n.signAllowedAt(b.Height, env.Round, chain.PhasePrepare, b.Hash()) {
@@ -319,11 +319,11 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		n.logf(ports.LogDebug, "gather/prepare: PREPARED", "from", from, "height", b.Height, "round", env.Round, "bytes", len(msg.Data), "regs", len(b.BondRegs))
 		n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: true, Data: raw})
 	case ports.MsgPrepareQC:
-		// PRECOMMIT phase (#432): a verified prepare-QC for (h, r) IS the POL —
+		// PRECOMMIT phase: a verified prepare-QC for (h, r) IS the POL —
 		// lock on its value (monotone by round, persisted with the mark) and
 		// precommit it. The lock is what a round-change carries forward.
 		//
-		// THE SENDER SCREEN RUNS FIRST (R-CARRIER-ATTS-PREPAREQC step 0).
+		// THE SENDER SCREEN RUNS FIRST.
 		// VerifyPrepareQC below pays one ed25519.Verify per entry of the
 		// sender's list, and collectQuorumSigs records seen[id] only for
 		// QUALIFIED ids — so byte-identical entries are never deduplicated.
@@ -334,34 +334,37 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		// keypair farm and nothing stored. This arm had no screen, no rate gate
 		// and no length check between the decode and the verifier.
 		//
-		// The screen refuses nothing honest. An honest prepare-QC arrives from
-		// the block's own author, who has already passed this receiver's
-		// STRONGER proposerQualifiedAt test at the prepare phase (in objective
-		// mode proposerQualifiedAt implies attesterQualifiedAt branch by
-		// branch); the one exception is a forced re-proposal, where the sender
-		// is the round's designee — and the designee is drawn from
-		// EligibleProposers by construction. It is the same predicate
-		// broadcastRoundCert already applies on the SEND side, and the same
-		// screen-before-anything-expensive shape as G-H43-12's rate gate on the
-		// MsgRoundCert arm one case-label below. A refusal costs a map lookup
-		// and, unlike the MsgChallenge arm, costs the SENDER nothing: the
-		// MsgPrecommitReply OK=false is consumed only by gatherTwoPhase's
-		// gatherPrecommits callback, which logs it — no ledger, no audit, no
-		// standing (contrast credit.RecordAudit on the bond-challenge path).
+		// The screen refuses nothing honest. An honest prepare-QC arrives
+		// from the block's own author, who has already passed this
+		// receiver's STRONGER proposerQualifiedAt test at the prepare
+		// phase (in objective mode proposerQualifiedAt implies
+		// attesterQualifiedAt branch by branch); the one exception is a
+		// forced re-proposal, where the sender is the round's designee —
+		// and the designee is drawn from EligibleProposers by
+		// construction. It is the same predicate broadcastRoundCert
+		// already applies on the SEND side, and the same
+		// screen-before-anything-expensive shape as the rate gate on the
+		// MsgRoundCert arm one case-label below. A refusal costs a map
+		// lookup and, unlike the MsgChallenge arm, costs the SENDER
+		// nothing: the MsgPrecommitReply OK=false is consumed only by
+		// gatherTwoPhase's gatherPrecommits callback, which logs it — no
+		// ledger, no audit, no standing (contrast credit.RecordAudit on
+		// the bond-challenge path).
 		//
 		// OBJECTIVE-GUARDED, and the guard is NOT inherited from
-		// GoverningSetCap's doc claim that "no round machinery runs" in legacy
-		// mode — that claim is false (gatherTwoPhase has no Objective() gate;
-		// see its own comment). In a trusted/demo posture attesterQualifiedAt
-		// falls through to `rep >= MinAttesterRep`, which a fresh honest peer
-		// fails, so an unguarded screen would halt the chain there. The legacy
-		// posture therefore keeps the primitive: R-CARRIER-QC-LEGACY-UNCAPPED.
+		// GoverningSetCap's doc claim that "no round machinery runs"
+		// in legacy mode — that claim is false (gatherTwoPhase has no
+		// Objective gate; see its own comment). In a trusted/demo
+		// posture attesterQualifiedAt falls through to `rep >=
+		// MinAttesterRep`, which a fresh honest peer fails, so an
+		// unguarded screen would halt the chain there. The legacy
+		// posture therefore keeps the primitive.
 		//
-		// The per-sender rate BUDGET the certification pairs with this screen is
-		// NOT here: its burst constant is a security parameter whose derivation
-		// needs a measured honest cadence and is UNSETTLED
-		// (R-CARRIER-QC-BURST-VALUE / G-QC-6). roundCertBurst's derivation does
-		// not transfer — one proposer can gather many heights per window.
+		// The per-sender rate BUDGET that pairs with this
+		// screen is NOT here: its burst constant is a security parameter
+		// whose derivation needs a measured honest cadence and is
+		// UNSETTLED. roundCertBurst's derivation does not transfer — one
+		// proposer can gather many heights per window.
 		if n.chain.Objective() && !n.chain.AttesterEligibleAt(from, n.roundsFor().Height) {
 			n.logf(ports.LogDebug, "gather/precommit: REFUSED (sender outside the governing set)",
 				"from", from, "height", n.roundsFor().Height, "bytes", len(msg.Data))
@@ -390,7 +393,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		}
 		rs := n.roundsFor()
 		if b.Height == rs.Height {
-			rs.Armed = true // h43 (A): a verified prepare-QC for the working height arms the round clock
+			rs.Armed = true // a verified prepare-QC for the working height arms the round clock
 			if !n.adoptLock(rs, b, env.Round, env.QC, env.Raw) {
 				n.reply(from, msg, ports.Message{Kind: ports.MsgPrecommitReply, OK: false})
 				return true
@@ -404,7 +407,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		n.logf(ports.LogDebug, "gather/precommit: PRECOMMITTED", "from", from, "height", b.Height, "round", env.Round)
 		n.reply(from, msg, ports.Message{Kind: ports.MsgPrecommitReply, OK: true, Data: raw})
 	case ports.MsgRoundChange:
-		// View-change vote (#432): verify, record, ack; recordRoundChange fires
+		// View-change vote: verify, record, ack; recordRoundChange fires
 		// the new-view proposal if we are the designated proposer for the new
 		// round and the quorum is now met.
 		var rc roundChangeEnv
@@ -425,23 +428,24 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			n.reply(from, msg, ports.Message{Kind: ports.MsgRoundChangeAck, OK: false})
 			return true
 		}
-		n.logf(ports.LogInfo, "round-change: recorded (#432 view-change)", "from", rc.senderID(), "height", rc.Height, "round", rc.NewRound, "carries_lock", len(rc.LockQC) > 0)
+		n.logf(ports.LogInfo, "round-change: recorded (view-change)", "from", rc.senderID(), "height", rc.Height, "round", rc.NewRound, "carries_lock", len(rc.LockQC) > 0)
 		n.recordRoundChange(rs, rc.NewRound, rc.senderID(), msg.Data)
-		// #451 synchronizer ingredient (b): if the recorded round-changes above
+		// synchronizer ingredient (b): if the recorded round-changes above
 		// our round now prove an honest member ahead (f+1 / >⅓ weight), jump —
 		// responsive catch-up at message speed (PBFT), never waiting out the
 		// full local timeout while the frontier moves on.
 		n.maybeCatchUpRound(rs)
 		n.reply(from, msg, ports.Message{Kind: ports.MsgRoundChangeAck, OK: true})
 	case ports.MsgRoundCert:
-		// The transferable round certificate (h43, D-CONSENSUS-ARMING (B)):
-		// validated by exactly the rule an attester applies to a
-		// proposal-carried certificate, then recorded envelope by envelope —
-		// which arms this node, advances the declared rounds, enters the
-		// round if above ours and fires the designee's proposal if that is us.
-		// G-H43-12: the per-sender window budget runs FIRST (the #424 shape) —
-		// a refusal costs a map lookup; acceptRoundCert then bounds the
-		// envelope count and skips a round already held BEFORE any signature.
+		// The transferable round certificate: validated by
+		// exactly the rule an attester applies to a proposal-carried
+		// certificate, then recorded envelope by envelope — which arms
+		// this node, advances the declared rounds, enters the round if
+		// above ours and fires the designee's proposal if that is us.
+		// the per-sender window budget runs FIRST (the shape) — a
+		// refusal costs a map lookup; acceptRoundCert then bounds the
+		// envelope count and skips a round already held BEFORE any
+		// signature.
 		if !n.allowRoundCert(from) {
 			n.logf(ports.LogInfo, "round-cert: REFUSED (rate)", "from", from, "budget", roundCertBurst)
 			n.reply(from, msg, ports.Message{Kind: ports.MsgRoundCertAck, OK: false})
@@ -458,7 +462,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			n.reply(from, msg, ports.Message{Kind: ports.MsgRoundCertAck, OK: false})
 			return true
 		}
-		n.logf(ports.LogInfo, "round-cert: recorded (h43 transferable certificate)", "from", from, "height", env.Height, "round", env.Round, "envelopes", len(env.Raws), "our_round", rs.Round)
+		n.logf(ports.LogInfo, "round-cert: recorded (transferable certificate)", "from", from, "height", env.Height, "round", env.Round, "envelopes", len(env.Raws), "our_round", rs.Round)
 		n.maybeCatchUpRound(rs)
 		n.reply(from, msg, ports.Message{Kind: ports.MsgRoundCertAck, OK: true})
 	case ports.MsgCommitBlock:
@@ -475,7 +479,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		n.reply(from, msg, ports.Message{Kind: ports.MsgCommitAck, OK: ok})
 	case ports.MsgGetChain:
 		blocks := n.chain.Blocks(msg.Height)
-		// RED-TEAM / TEST-HARNESS: an objective-mode equivocator serves its crafted
+		// ADVERSARY / TEST-HARNESS: an objective-mode equivocator serves its crafted
 		// LOSING fork instead of its real chain (adversary.go PlaceConflictingSigned),
 		// so a peer fetches the conflicting signed block and slashes the double-sign
 		// on detection. The fork is invalid (a lone prepare, quorum-short) so no
@@ -484,14 +488,14 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		if n.equivServedFork != nil {
 			blocks = n.equivServedFork
 		}
-		// Serve a byte-bounded WINDOW, not the whole suffix (#466): marshaling a
+		// Serve a byte-bounded WINDOW, not the whole suffix: marshaling a
 		// bond-reg-laden chain into one buffer was the measured 144 MB serve-side
 		// OOM driver. The requester loops windows (fetchFull); Reconcile validates
 		// the reassembled linkage, so a windowed fetch cannot corrupt the chain.
 		n.reply(from, msg, ports.Message{Kind: ports.MsgChainReply, OK: true,
 			Data: chain.EncodeBlocksUpTo(blocks, n.maxChainReplyBytes())})
 	case ports.MsgGetChainHead:
-		// Cheap head probe (#382): answer "what is your head?" with (height, hash) so
+		// Cheap head probe: answer "what is your head?" with (height, hash) so
 		// a peer whose head matches ours can SKIP the full-chain fetch + re-validate.
 		// A block hash commits its entire ancestry, so an identical head hash proves
 		// an identical committed history — nothing to catch up, reorg, or slash.
@@ -500,9 +504,9 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		if n.chain.Len() > 0 {
 			h = next - 1
 		}
-		// RED-TEAM / TEST-HARNESS: an objective-mode equivocator advertises its
+		// ADVERSARY / TEST-HARNESS: an objective-mode equivocator advertises its
 		// crafted fork's head so a peer whose head matches the honest chain does
-		// NOT skip the fetch on the #382 head probe — it fetches, sees the
+		// NOT skip the fetch on the head probe — it fetches, sees the
 		// conflicting signed block, and slashes. Without this the probe short-
 		// circuits the double-sign (the fork's L@H hashes differently than W@H).
 		if fork := n.equivServedFork; fork != nil {
@@ -520,12 +524,12 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		// self-verifying (bound to the submitter's own key), so accepting a peer's
 		// reg grants standing to the PEER, never to us.
 		if n.chain != nil && n.chain.Objective() {
-			// NEVER refuse silently (B5 / #432): a dropped submit is indistinguishable
+			// NEVER refuse silently (B5 /): a dropped submit is indistinguishable
 			// from a discovery failure to the submitter AND to a field investigator —
 			// the wedge's cohort-regs-never-drain symptom was mis-attributed across
 			// three runs partly because this branch ate every refusal without a line.
 			//
-			// The CPU gate runs FIRST (Phase 1.2, the #424 shape): every well-formed
+			// The CPU gate runs FIRST (Phase 1.2, the shape): every well-formed
 			// self-signed reg forces up to one VerifySpaceTime (~ms on the single
 			// loop, core/bond/verifycost_bench_test.go), so submits are budgeted per
 			// sender per sweep window BEFORE decode — a refusal costs a map lookup,
@@ -533,7 +537,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			if !n.allowBondSubmit(from) {
 				n.logf(ports.LogInfo, "bond-reg submit REFUSED (rate)", "from", from, "budget", bondSubmitBurst)
 			} else if n.chain.IsSlashed(from) {
-				// #503 Q1(a): an F2-evicted identity can never re-earn standing
+				// Q1(a): an F2-evicted identity can never re-earn standing
 				// (apply skips it), yet its reg still validated, folded, and
 				// COMMITTED as a fresh ~1.5 MB block every sweep — the bond-renewal
 				// storm. Refuse at arrival, before decode: the sender-binding rule
@@ -550,33 +554,36 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 				// per message (queue dedup sits after the verify).
 				n.logf(ports.LogInfo, "bond-reg submit REFUSED (relay)", "from", from, "validator", vid)
 			} else if verr := n.chain.ValidateBondRegErr(reg); verr != nil {
-				// A "signature" refusal here is usually TEMPORAL, not forgery: the reg
-				// is signed over the submitter's head, and this replica accepts only
-				// nonces of its own last-K COMMITTED heads — a reg signed over a head
-				// we haven't committed yet (WAN skew: submitter ahead) fails every
-				// window nonce and heals on the submitter's next-sweep resubmit (run
-				// 09fbe60-84613: 54 refusals, all "signature", all self-healed). Log
-				// our next height so a field read can correlate refusal with skew.
+				// A "signature" refusal here is usually TEMPORAL, not forgery:
+				// the reg is signed over the submitter's head, and this
+				// replica accepts only nonces of its own last-K COMMITTED
+				// heads — a reg signed over a head we haven't committed yet
+				// (WAN skew: submitter ahead) fails every window nonce and
+				// heals on the submitter's next-sweep resubmit (run the field
+				// run: 54 refusals, all "signature", all self-healed). Log our
+				// next height so a field read can correlate refusal with skew.
 				_, next := n.chain.Head()
 				n.logf(ports.LogInfo, "bond-reg submit REFUSED", "from", from, "validator", reg.ValidatorID(), "size", reg.Size, "next_height", next, "err", verr)
 			} else {
 				n.queuePendingBondReg(reg)
-				n.maybeProposeAtRound() // h43 (D): a designee that already holds its round certificate proposes now
+				n.maybeProposeAtRound() // a designee that already holds its round certificate proposes now
 			}
 		}
 		n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitBondRegAck, OK: true})
 	case ports.MsgSubmitIssuerKeyReg:
-		// R2.11: a peer submitted its per-epoch demand-issuer key registration for us to
-		// fold when we next propose — the non-proposer path for the keyspace R0.4b
-		// committed (residual R0.4b-11: an attest-only validator's key was never
-		// committed). Same gate order as MsgSubmitBondReg, every refusal LOGGED (B5/#432):
-		// rate before decode; slashed sender; decode pinned to ONE reg; SENDER-BINDING
-		// (issuer == from, so a relayed reg is refused before the verify); signature; the
-		// epoch window validateIssuerKeys will apply, against OUR head; already committed
-		// (append-only); and the BONDED clause — the one that bounds DISTINCT senders,
-		// since a fresh keypair is a fresh budget. Inside Objective() only, as the bond
-		// gate is: objective ⇔ MinBond > 0 with a verifier, which is what makes the
-		// bonded bound real (R2.11 design ruling S2).
+		// A peer submitted its per-epoch demand-issuer key registration for
+		// us to fold when we next propose — the non-proposer path for the
+		// keyspace committed (an attest-only validator's key was
+		// otherwise never committed). Same gate order as
+		// MsgSubmitBondReg, every refusal LOGGED (B5/): rate before decode;
+		// slashed sender; decode pinned to ONE reg; SENDER-BINDING (issuer ==
+		// from, so a relayed reg is refused before the verify); signature;
+		// the epoch window validateIssuerKeys will apply, against OUR head;
+		// already committed (append-only); and the BONDED clause — the one
+		// that bounds DISTINCT senders, since a fresh keypair is a fresh
+		// budget. Inside Objective only, as the bond gate is: objective ⇔
+		// MinBond > 0 with a verifier, which is what makes the bonded bound
+		// real.
 		if n.chain != nil && n.chain.Objective() {
 			if !n.allowIssuerKeySubmit(from) {
 				n.logf(ports.LogInfo, "issuer-key submit REFUSED (rate)", "from", from, "budget", issuerKeySubmitBurst)
@@ -603,17 +610,18 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		}
 		n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitIssuerKeyRegAck, OK: true})
 	case ports.MsgSubmitEntry:
-		// #441: a publisher submitted an entry for this node's next block to
-		// carry — entries are MEMPOOL CONTENT, never a second proposal stream.
-		// Validate on arrival against the current head and refuse invalid ones
-		// SYNCHRONOUSLY with the reason (certification §2.2: the client learns
-		// immediately, an invalid-entry flood never reaches the designee's
-		// fold, and nothing is dropped silently — B5).
+		// A publisher submitted an entry for this node's next block to
+		// carry — entries are MEMPOOL CONTENT, never a second proposal
+		// stream. Validate on arrival against the current head and
+		// refuse invalid ones SYNCHRONOUSLY with the reason: the
+		// client learns immediately, an invalid-entry flood never
+		// reaches the designee's fold, and nothing is dropped silently
+		// — B5.
 		if n.chain == nil {
 			n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitEntryAck, OK: false, Data: []byte("no chain")})
 			return true
 		}
-		// CPU gate FIRST (#183 red-team F-1, the #424/allowBondSubmit shape):
+		// CPU gate FIRST:
 		// under -require-tokens, ValidateEntry runs an RSA verify per token
 		// signature, so an un-budgeted flood rides per-message crypto onto the
 		// single loop. Charge one unit before decode; a refusal is a map lookup,
@@ -631,7 +639,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		} else {
 			n.queuePendingEntry(e)
 			n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitEntryAck, OK: true})
-			n.maybeProposeAtRound() // h43 (D): a designee that already holds its round certificate proposes now
+			n.maybeProposeAtRound() // a designee that already holds its round certificate proposes now
 		}
 	default:
 		return false
@@ -668,7 +676,7 @@ func (n *Node) OnSlash(fn func(culprit ports.NodeID, height uint64)) { n.onSlash
 // local replica — adopts a heavier competing fork that DROPS previously-committed
 // blocks (not a plain catch-up extension). `dropped` is how many committed blocks
 // the reorg replaced; newHeight is the height of the new head. A significant,
-// operator-visible consensus event (and how #184's partition→heal is observed): a
+// operator-visible consensus event (and how the partition→heal is observed): a
 // partitioned validator, on heal, reorgs its lighter fork onto the heavier one.
 func (n *Node) OnReorg(fn func(dropped int, newHeight uint64)) { n.onReorg = fn }
 
@@ -699,17 +707,17 @@ func (n *Node) pruneOnCommit() {
 	}
 }
 
-// reconstructFork prepends this node's OWN verified prefix below the served start height
-// to a peer-served run of blocks, so the reused genesis-rooted Reconcile sees a full chain
+// reconstructFork prepends this node's OWN verified prefix below the served start height to
+// a peer-served run of blocks, so the reused genesis-rooted Reconcile sees a full chain
 // (slice 5, M1). It keys off what the peer ACTUALLY served (served[0].Height), not what we
-// requested: a peer honoring our suffix request serves [Fh, peerHead] (start Fh ⇒ we
-// prepend [0, Fh)), a peer that serves the whole chain — an old peer, or an adversary
-// serving a genesis-rooted fork — serves start 0 (we use it as-is). Either way our own
-// prefix is authoritative (the peer supplies nothing below the served start we anchor on),
-// and our own pruned prefix (below our trustFloor) is accepted by the slice-3 Q2 gate
-// during replay, while Reconcile's pinned override (tmp.trustFloorOverride = c.trustFloor())
-// keeps that floor OUR own, never the fork's. A peer that diverges below the anchor is
-// caught by Reconcile (ErrWrongParent / the finality gate).
+// requested: a peer honoring our suffix request serves [Fh, peerHead] (start Fh ⇒ we prepend
+// [0, Fh), a peer that serves the whole chain — an old peer, or an adversary serving a
+// genesis-rooted fork — serves start 0 (we use it as-is). Either way our own prefix is
+// authoritative (the peer supplies nothing below the served start we anchor on), and our own
+// pruned prefix (below our trustFloor) is accepted by the slice-3 Q2 gate during replay,
+// while Reconcile's pinned override (tmp.trustFloorOverride = c.trustFloor) keeps that floor
+// OUR own, never the fork's. A peer that diverges below the anchor is caught by Reconcile
+// (ErrWrongParent / the finality gate).
 func (n *Node) reconstructFork(served []chain.Block) ([]chain.Block, error) {
 	start := served[0].Height
 	if start == 0 {
@@ -726,7 +734,7 @@ func (n *Node) reconstructFork(served []chain.Block) ([]chain.Block, error) {
 }
 
 // appendExtension adopts a served window iff it provably EXTENDS this node's
-// exact committed head, through the normal Append commit path (#528). The
+// exact committed head, through the normal Append commit path. The
 // proof is the hash chain: the served block at our next height carrying
 // Prev == our head hash commits, transitively, to our entire validated
 // history — so re-validating that history (the slow path's genesis replay)
@@ -746,12 +754,12 @@ func (n *Node) reconstructFork(served []chain.Block) ([]chain.Block, error) {
 // already appended (counted in appended) are fully validated committed
 // state and are kept.
 //
-// MUST only be called when BFT finality is active on the local chain: that
-// is what makes "extension" the only adoptable shape (Reconcile's gate
-// refuses any fork not containing our committed head) and makes adoption
-// without a heavier() comparison sound (every appended block re-proves a
-// super-quorum commit and is strictly taller by construction, which is exactly
-// what heavier — height → head-hash — would select).
+// MUST only be called when BFT finality is active on the local chain: that is
+// what makes "extension" the only adoptable shape (Reconcile's gate refuses
+// any fork not containing our committed head) and makes adoption without a
+// heavier comparison sound (every appended block re-proves a super-quorum
+// commit and is strictly taller by construction, which is exactly what heavier
+// — height → head-hash — would select).
 func (n *Node) appendExtension(window []chain.Block) (appended int, ext bool, err error) {
 	head, next := n.chain.Head()
 	i := 0
@@ -776,9 +784,9 @@ var ErrNoChain = errors.New("node: validator role not enabled")
 // ErrNeedCheckpoint signals that this node is behind by more than the weak-subjectivity
 // window (safetyDepth ≈ 2·BondTTL): the peer has pruned the heavy bond proofs across the
 // gap, so this node cannot re-verify the intervening history and MUST NOT trust it from a
-// peer (the C1/long-range guard — slice 5, PE ruling). Cold sync in a weakly-subjective
-// system needs an out-of-band anchor: obtain a recent -ws-checkpoint (socially), or sync
-// from an archive node that retains full history. Surfaced (not silently swallowed) so an
+// peer (the C1/long-range guard — slice 5). Cold sync in a weakly-subjective system needs
+// an out-of-band anchor: obtain a recent -ws-checkpoint (socially), or sync from an
+// archive node that retains full history. Surfaced (not silently swallowed) so an
 // operator sees the remedy rather than an unexplained failure-to-catch-up (S5/I4).
 var ErrNeedCheckpoint = errors.New("node: behind the weak-subjectivity window and the peer has pruned the gap — obtain a recent -ws-checkpoint out-of-band or sync from an archive node")
 
@@ -805,7 +813,7 @@ func (n *Node) ProposeEntry(e ports.Entry, attesters, broadcast []ports.NodeID, 
 // or committing. The async publish path (chainhost.Host.PublishAsync) calls this to return
 // those refusals to the HTTP client immediately, then runs the slow commit gather in the
 // background (so the ~1.5MB genesis gather no longer blocks the handler under a flat 10s
-// deadline — #286 Layer 1). A lean single-entry candidate block suffices: the entry-level
+// deadline — Layer 1). A lean single-entry candidate block suffices: the entry-level
 // refusals and proposer eligibility do not depend on the bond-registration the real
 // proposeBlock also attaches (a bad bond-reg surfaces async, as the proposer's own concern).
 func (n *Node) ValidateEntryProposal(e ports.Entry) error {
@@ -831,7 +839,7 @@ func (n *Node) ValidateEntryProposal(e ports.Entry) error {
 			return fmt.Errorf("validate-entry: era-3 root population: %w", err)
 		}
 	}
-	// Watermark-exempt (#397): this signed candidate exists only for the local
+	// Watermark-exempt: this signed candidate exists only for the local
 	// pre-check and is NEVER released to the wire — a signature no peer can
 	// hold is not equivocation evidence. Only released signatures (proposeBlock
 	// gather, attest replies) consult and advance the sign mark.
@@ -862,12 +870,12 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 }
 
 // viewAt is a caller-supplied (round, new-view certificate) for a proposal —
-// the designee's certificate from recordRoundChange (h43, D-CONSENSUS-ARMING
-// (C)). When supplied it is used VERBATIM: proposeBlockAt no longer re-derives
-// the round from rs.Round, which on run c450985-deep made the (43, r1)
-// designee — holding a quorum-grade r1 certificate with rs.Round == 3 —
-// assemble Changes[3] instead, fail "new-view certificate not ready" four
-// times in 20 ms, and never reach the wire (M2; G-H43-2).
+// the designee's certificate from recordRoundChange. When supplied
+// it is used VERBATIM: proposeBlockAt no longer re-derives the round from
+// rs.Round, which on the field run made the (43, r1) designee — holding a
+// quorum-grade r1 certificate with rs.Round == 3 — assemble Changes[3]
+// instead, fail "new-view certificate not ready" four times in 20 ms, and
+// never reach the wire (M2).
 type viewAt struct {
 	Round   uint64
 	NewView [][]byte
@@ -877,44 +885,44 @@ type viewAt struct {
 // derive from the round state, exactly as before).
 func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeID, quorum int, view *viewAt, done func(error)) {
 	// `quorum` is the caller's floor only; the gather target is raised to
-	// max(caller's floor, Config.Quorum, RequiredQuorum()) inside gatherTwoPhase,
-	// the one choke point every proposal path shares (#380; G-380-A).
+	// max(caller's floor, Config.Quorum, RequiredQuorum) inside
+	// gatherTwoPhase, the one choke point every proposal path shares.
 	// Objective fork-choice (F6): a proposer attaches its own live bond
 	// registration, so proposing IS registering — an anchor bootstrapping the
 	// network records its real bond in its first block, and every validator
-	// renews as it proposes. No-op in legacy mode (BondRegs are ignored) and when
-	// the node holds no bond.
+	// renews as it proposes. No-op in legacy mode (BondRegs are ignored) and
+	// when the node holds no bond.
 	//
 	// ONLY when a (re)registration is actually due (BondRenewalDue): not yet in the
 	// objective set, or past the TTL renewal point. Re-embedding the full space-time
 	// proof in EVERY proposal bought nothing (the latest registration already stands)
 	// and on a real cross-region network bloated every block past what attestation
-	// could carry in time — WEDGING the chain right after the first bond (#313).
+	// could carry in time — WEDGING the chain right after the first bond.
 	if n.chain.Objective() && n.bond != nil && !n.chain.IsSlashed(n.id) && n.chain.BondRenewalDue(n.id) {
-		// The IsSlashed gate (#503 Q1(c) belt): an evicted id's BondRenewalDue is
+		// The IsSlashed gate: an evicted id's BondRenewalDue is
 		// true forever (bonded[id] deleted), and self-embedding a reg the apply
 		// path will discard only bloats the block (~1.5 MB) for nothing.
 		if reg, ok := n.RegisterBondReg(b.Prev); ok {
 			b.BondRegs = append(b.BondRegs, reg)
 		}
 	}
-	// Fold in peer-submitted renewals (H2 / RT-2): an attest-only validator can't
+	// Fold in peer-submitted renewals (H2 /): an attest-only validator can't
 	// propose, so it SUBMITS its fresh BondReg (MsgSubmitBondReg) and whoever
-	// proposes next records it — renewing that validator's TTL clock without it
-	// ever proposing. Include only regs still valid for THIS head (ValidateBondReg),
-	// so one stale or forged submission can't poison the block. FIFO BY ARRIVAL —
-	// never sorted by validator ID: with the byte budget admitting ~one plot-sized
-	// reg per block, ID order is a strict PRIORITY that starves the highest-ID
-	// submitter for as long as lower-ID traffic flows (confirm run 54003f7-91159:
-	// the 3rd maturer's first-time reg sat queued for 22 minutes while lower-ID
-	// renewals won every slot — the same starvation class the #441 certification
-	// closed for entries with FIFO, Addition 2). Arrival order is deterministic
-	// for THIS proposer's block, which is all block-byte determinism requires —
-	// the single (h, r) designee builds it.
+	// proposes next records it — renewing that validator's TTL clock without
+	// it ever proposing. Include only regs still valid for THIS head
+	// (ValidateBondReg), so one stale or forged submission can't poison the
+	// block. FIFO BY ARRIVAL — never sorted by validator ID: with the byte
+	// budget admitting ~one plot-sized reg per block, ID order is a strict
+	// PRIORITY that starves the highest-ID submitter for as long as lower-ID
+	// traffic flows confirm run the field run: the 3rd maturer's first-time
+	// reg sat queued for 22 minutes while lower-ID renewals won every slot —
+	// the same starvation class FIFO closed for entries. Arrival order is deterministic for THIS proposer's
+	// block, which is all block-byte determinism requires — the single (h, r)
+	// designee builds it.
 	if n.chain.Objective() && len(n.pendingBondRegs) > 0 {
 		fresh := n.pendingBondRegs[:0:0]
 		for _, pr := range n.pendingBondRegs {
-			// The IsSlashed re-check (#503 Q1(a)) covers the race the arrival
+			// The IsSlashed re-check covers the race the arrival
 			// gate cannot: a reg queued while its owner's slash was still in
 			// flight. Dropping it here is proposer POLICY, not validity — an
 			// attester still accepts a block carrying such a reg, so a
@@ -923,10 +931,10 @@ func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeI
 				fresh = append(fresh, pr)
 			}
 		}
-		// #286 Layer 2b: cap the total BYTES of bond registrations embedded per block. A
+		// Layer 2b: cap the total BYTES of bond registrations embedded per block. A
 		// fresh multi-validator genesis where every founding validator submits its ~1.5 MB
 		// space-time proof otherwise piles into one ~8 MB block the quorum gather can't move
-		// + re-verify over a WAN (the cert stalled at regs=5 / 7.9 MB). The founding set are
+		// + re-verify over a WAN (the research stalled at regs=5 / 7.9 MB). The founding set are
 		// anchors, so genesis commits SMALL on the anchor bootstrap while the deferred
 		// registrations drain over the next blocks. A BYTE budget (not a count) is the right
 		// lever: at genesis a full ~1.5 MB proof means ~1 reg/block, but small steady-state
@@ -965,28 +973,26 @@ func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeI
 		}
 		n.pendingBondRegs = kept
 	}
-	// #441: fold mempool ENTRIES into this block too — the certified fix's core.
-	// Entries are content the single (h, r) designee carries (FIFO, re-validated,
-	// under the SEPARATE entry byte budget), so a publish never has to win a
-	// proposal race it structurally lost: whichever proposal commits this height
-	// — drain sweep, new-view re-proposal, or a direct ProposeEntry — carries the
-	// queued entries with it.
+	// fold mempool ENTRIES into this block too — the fix's core. Entries
+	// are content the single (h, r) designee carries (FIFO, re-validated,
+	// under the SEPARATE entry byte budget), so a publish never has to win
+	// a proposal race it structurally lost: whichever proposal commits
+	// this height — drain sweep, new-view re-proposal, or a direct
+	// ProposeEntry — carries the queued entries with it.
 	n.foldPendingEntries(b)
-	// Record any equivocations we detected on-chain, so every replica evicts the
-	// culprit from the objective set in lockstep (F2). Drop only records the
-	// chain already confirms (IsSlashed); everything else RIDES THIS BLOCK AND
-	// STAYS QUEUED until a commit confirms it (#397 Q4-ii — the queue was
-	// previously zeroed after one attempt, so a slash whose carrier proposal
-	// failed to gather quorum was silently dropped and the culprit's on-chain
-	// eviction could be lost).
-	// R0.6: pack under chain.SlashesBytesCap — the per-block encoded-BYTE ceiling
-	// every replica enforces (validateSlashes). Evidence is now always a FULL body
-	// pair, so a backlog of fat proofs can exceed one block; a proposal over the cap
-	// would be rejected by every replica while the queue requeued it forever (the
-	// doomed-proposal loop). So: embed in arrival order, always at least one, skip
-	// what would overflow (a later, smaller proof may still fit), and KEEP the rest
-	// queued — the drain proceeds at the cap rate with seniority preserved, the same
-	// shape as the bond-reg byte budget above.
+	// Record any equivocations we detected on-chain, so every replica evicts
+	// the culprit from the objective set in lockstep (F2). Drop only records
+	// the chain already confirms (IsSlashed); everything else RIDES THIS
+	// BLOCK AND STAYS QUEUED until a commit confirms it. pack under
+	// chain.SlashesBytesCap — the per-block encoded-BYTE ceiling every
+	// replica enforces (validateSlashes). Evidence is now always a FULL body
+	// pair, so a backlog of fat proofs can exceed one block; a proposal over
+	// the cap would be rejected by every replica while the queue requeued it
+	// forever (the doomed-proposal loop). So: embed in arrival order, always
+	// at least one, skip what would overflow (a later, smaller proof may
+	// still fit), and KEEP the rest queued — the drain proceeds at the cap
+	// rate with seniority preserved, the same shape as the bond-reg byte
+	// budget above.
 	if len(n.pendingSlashes) > 0 {
 		var still []chain.Equivocation
 		for _, e := range n.pendingSlashes {
@@ -1030,13 +1036,14 @@ func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeI
 		}
 		n.pendingSlashes = still
 	}
-	// R0.4b: fold this node's staged per-epoch demand-issuer key commitments in.
-	// v5-ONLY — the era-3 leaf set does not commit this keyspace, so a v4 block
-	// carrying one is REJECTED (chain.validateIssuerKeys); staging them below the
-	// era-4 boundary would make our own proposal invalid. Registrations RIDE AND STAY
-	// QUEUED until the chain confirms the commitment, the same #397-Q4-ii discipline
-	// pendingSlashes uses: a commitment whose carrier proposal failed to gather quorum
-	// must not be silently lost, or the issuer's keys stay unresolvable forever.
+	// fold this node's staged per-epoch demand-issuer key commitments in. v5-ONLY —
+	// the era-3 leaf set does not commit this keyspace, so a v4 block carrying one
+	// is REJECTED (chain.validateIssuerKeys); staging them below the era-4 boundary
+	// would make our own proposal invalid. Registrations RIDE AND STAY QUEUED until
+	// the chain confirms the commitment, the same discipline
+	// pendingSlashes uses: a commitment whose carrier proposal failed to gather
+	// quorum must not be silently lost, or the issuer's keys stay unresolvable
+	// forever.
 	if len(n.pendingIssuerKeys) > 0 && n.chain.MintVersion(b.Height) >= chain.BlockVersionWitnessable {
 		var still []chain.IssuerKeyReg
 		blockEpoch := n.chain.BlockEpoch(b.Height)
@@ -1044,19 +1051,20 @@ func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeI
 			if _, committed := n.chain.IssuerKeyCommitment(r.IssuerID(), r.Epoch); committed {
 				continue // already bound; append-only, never re-submit
 			}
-			// STALE REGISTRATION → DROP IT (red-team break 2, 2026-09-02).
-			// validateIssuerKeys REJECTS a backdated registration — that rule is
-			// correct, since committing key_E after epoch E has run is the
-			// equivocation move. But a staged reg that missed its own epoch (the
-			// node was not the designee inside its boot epoch, or it booted before
-			// the era-4 flip, or it restarted late in an epoch) used to RIDE AND STAY
-			// QUEUED, so every later proposal failed this node's OWN local pre-check
-			// with ErrIssuerKeyEpoch — a permanent, restart-only proposer mute. Drop
-			// it here instead and let the rotation schedule re-stage a registration
-			// for an epoch that is still registrable. Proposer POLICY, never
-			// validity: an attester's acceptance rule is untouched, so a mixed swarm
-			// cannot fork on it (the same shape as the IsSlashed filter on pending
-			// bond regs).
+			// STALE REGISTRATION → DROP IT. validateIssuerKeys REJECTS a
+			// backdated registration — that rule is correct, since
+			// committing key_E after epoch E has run is the equivocation
+			// move. But a staged reg that missed its own epoch (the node was
+			// not the designee inside its boot epoch, or it booted before
+			// the era-4 flip, or it restarted late in an epoch) used to RIDE
+			// AND STAY QUEUED, so every later proposal failed this node's
+			// OWN local pre-check with ErrIssuerKeyEpoch — a permanent,
+			// restart-only proposer mute. Drop it here instead and let the
+			// rotation schedule re-stage a registration for an epoch that is
+			// still registrable. Proposer POLICY, never validity: an
+			// attester's acceptance rule is untouched, so a mixed swarm
+			// cannot fork on it (the same shape as the IsSlashed filter on
+			// pending bond regs).
 			if r.Epoch < blockEpoch {
 				continue
 			}
@@ -1077,13 +1085,13 @@ func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeI
 		}
 		n.pendingIssuerKeys = still
 	}
-	// R2.11: fold PEER-submitted registrations, after our own, under the same v5 era
-	// gate. A peer reg RIDES AND STAYS QUEUED until the chain confirms its commitment
-	// (the carrier proposal may fail quorum), then drops; one that is no longer
-	// in-window, is slashed (#503 Q1(a), the arrival gate's race), or is no longer
-	// admissible is DROPPED — never deferred (design ruling S2(b): the defer above is for
-	// our OWN C2 self-wedge; a peer resubmits next sweep, and deferral would be unbounded
-	// retention). Proposer POLICY only: an attester's acceptance rule is untouched.
+	// fold PEER-submitted registrations, after our own, under the same v5 era gate. A
+	// peer reg RIDES AND STAYS QUEUED until the chain confirms its commitment (the
+	// carrier proposal may fail quorum), then drops; one that is no longer in-window,
+	// is slashed, or is no longer admissible is DROPPED — never deferred (the
+	// defer above is for our OWN self-wedge; a peer resubmits
+	// next sweep, and deferral would be unbounded retention). Proposer POLICY only: an
+	// attester's acceptance rule is untouched.
 	if len(n.pendingPeerIssuerKeys) > 0 && n.chain.MintVersion(b.Height) >= chain.BlockVersionWitnessable {
 		blockEpoch := n.chain.BlockEpoch(b.Height)
 		kept := n.pendingPeerIssuerKeys[:0:0]
@@ -1103,36 +1111,37 @@ func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeI
 	// Mint-flip (era-3 build step 2c, extended for era-4 step 4d): at/above the era-4
 	// activation boundary the chain mints v5 with populated committed roots (the era-3
 	// leaves PLUS the maintenance-spine keyspaces); at/above the era-3 boundary, v4; below
-	// both, v2 (the #432 two-phase-certificate era). The chain owns the activation state,
+	// both, v2 (the two-phase-certificate era). The chain owns the activation state,
 	// so ask it — MintVersion(height) is a pure function of committed history, identical on
 	// every honest proposer at this head (I5). PopulateEra{3,4}Roots runs AFTER all
 	// apply-affecting content (BondRegs, entries, slashes) is folded in above, so the roots
 	// cover the block as it will actually commit (post-apply state). era-4 is checked first
 	// (MintVersion returns v5 only where v4 also holds, H_era4 >= H_era3). Below both
 	// boundaries the path is byte-for-byte the old v2 behavior.
-	// G-H43-13 (`R-H43-PROPOSE-SPIN`): the empty-block rule is ValidateProposal's, but
+	// The empty-block rule is ValidateProposal's, but
 	// checking it here — after every fold, BEFORE the era root population (the floor-box
 	// SMT path) and the signature — makes a workless attempt cost nothing; the as-built
 	// first cut paid PopulateEra4Roots + Sign ~40 times in one round on a designee whose
 	// forward had not landed. Same predicate as chain.go "chain: empty block".
 	if len(b.Entries) == 0 && len(b.Revocations) == 0 && len(b.Unrevocations) == 0 && len(b.BondRegs) == 0 && len(b.Slashes) == 0 && len(b.IssuerKeys) == 0 {
-		done(fmt.Errorf("propose: nothing to carry (empty block; h43 — waiting for forwarded or submitted work)"))
+		done(fmt.Errorf("propose: nothing to carry (empty block — waiting for forwarded or submitted work)"))
 		return
 	}
 	if mv := n.chain.MintVersion(b.Height); mv >= chain.BlockVersionWitnessable {
-		// era-4 (v5) ATTESTATION CARRIER (R-BOX-ATTESTS, owner call O1, ratified 2026-09-03).
-		// Attach the PARENT's precommits BEFORE populating the roots: the carrier is folded into
-		// Hash() and it is the v5 validatorsSeen transition input, so the roots must cover it and
-		// the Sign below must sign it. That IS the fix — the proposer holds these bytes before it
-		// gathers, so the root it signs is the root the block commits, and a certificate that
-		// would seat a new attester no longer makes its own block invalid.
+		// era-4 (v5) ATTESTATION CARRIER. Attach the PARENT's
+		// precommits BEFORE populating the roots: the carrier is folded into Hash
+		// and it is the v5 validatorsSeen transition input, so the roots must cover
+		// it and the Sign below must sign it. That IS the fix — the proposer holds
+		// these bytes before it gathers, so the root it signs is the root the block
+		// commits, and a certificate that would seat a new attester no longer makes
+		// its own block invalid.
 		//
 		// THE DISCRETION IS UNENFORCEABLE: "carry everything you hold" cannot be a validity rule,
 		// because no replica can know what this proposer held. It is DOWNWARD-ONLY — signatures are
 		// genuine and unforgeable, so a proposer can DELAY a seating by omitting a signer but can
 		// never FORGE one, and an under-carrying proposer harms only its own fork.
 		//
-		// WHAT THIS ACTUALLY CARRIES, precisely (R-CARRIER-PREFIX-ONLY): the PARENT'S STORED
+		// WHAT THIS ACTUALLY CARRIES, precisely: the PARENT'S STORED
 		// CERTIFICATE, which is the FIRST-TO-QUORUM PREFIX, not "everything this node holds".
 		// finishPC snapshots pcs when the predicate holds and discards every later reply
 		// (see the gather loop below). So this is honest-maximal for a proposer that did NOT itself
@@ -1151,7 +1160,7 @@ func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeI
 			return
 		}
 	} else {
-		b.Version = chain.BlockVersionRounds // era 2: minted blocks carry two-phase certificates (#432)
+		b.Version = chain.BlockVersionRounds // era 2: minted blocks carry two-phase certificates
 	}
 	chain.Sign(b, n.signer)
 	if err := n.chain.ValidateProposal(b); err != nil {
@@ -1159,8 +1168,8 @@ func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeI
 		return
 	}
 	// The round this proposal runs at, with its new-view certificate for any
-	// round > 0: the caller's certificate when supplied (the designee's, h43
-	// (C)), else this node's round state (assembled by recordRoundChange; a
+	// round > 0: the caller's certificate when supplied (the designee's),
+	// else this node's round state (assembled by recordRoundChange; a
 	// proposer cannot invent a round — attesters verify the certificate).
 	rs := n.roundsFor()
 	round := uint64(0)
@@ -1184,14 +1193,14 @@ func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeI
 			done(fmt.Errorf("propose height %d round %d: new-view certificate not ready: %w", b.Height, round, err))
 			return
 		} else if forced != nil && forced.Hash != b.Hash() {
-			done(fmt.Errorf("propose height %d round %d: the new-view carries a lock for a different value — re-propose that (#432)", b.Height, round))
+			done(fmt.Errorf("propose height %d round %d: the new-view carries a lock for a different value — re-propose that ", b.Height, round))
 			return
 		}
 	}
 	n.gatherTwoPhase(b, attesters, broadcast, quorum, round, newView, nil, done)
 }
 
-// gatherTwoPhase runs the #432 two-phase gather for b at (b.Height, round):
+// gatherTwoPhase runs the two-phase gather for b at (b.Height, round):
 // prepare quorum → prepare-QC → lock (durable) → precommit quorum → commit +
 // broadcast. b may be this node's own freshly-signed proposal OR a FORCED
 // re-proposal from a new-view certificate — a re-proposed block keeps its
@@ -1207,44 +1216,45 @@ func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeI
 // round-exactness rule).
 func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeID, quorum int, round uint64, newView [][]byte, carried []chain.Attestation, done func(error)) {
 	// THE GATHER TARGET, raised HERE and nowhere else: max(caller's floor,
-	// Config.Quorum, RequiredQuorum()) on EVERY proposal path — the ratified
-	// "Quorum stays a proposer-side gather target" (#380, D-CONSENSUS-ARMING
-	// (20)). Four paths reach this function: client publish (chainhost →
-	// ProposeEntry → proposeBlockAt, passing the operator's -quorum), the
-	// bond-reg drain (maybeProposeBondDrain → proposeBlock, 0), the new-view
-	// FRESH leg (proposeAtNewView → proposeBlockAt, 0) and the new-view FORCED
-	// leg (proposeAtNewView → here directly, 0 — the re-proposal of a locked
+	// Config.Quorum, RequiredQuorum) on EVERY proposal path — Quorum stays a
+	// proposer-side gather target. Four paths reach
+	// this function: client publish (chainhost → ProposeEntry →
+	// proposeBlockAt, passing the operator's -quorum), the bond-reg drain
+	// (maybeProposeBondDrain → proposeBlock, 0), the new-view FRESH leg
+	// (proposeAtNewView → proposeBlockAt, 0) and the new-view FORCED leg
+	// (proposeAtNewView → here directly, 0 — the re-proposal of a locked
 	// value, the path a view change exists for). Before direction (1) the
-	// 0-passers picked Config.Quorum up through RequiredQuorum()'s max; with the
-	// local floor out of the validity rule the raise must live at the choke point
-	// all four share, or the target is path-dependent and an un-upgraded
+	// 0-passers picked Config.Quorum up through RequiredQuorum's max; with
+	// the local floor out of the validity rule the raise must live at the
+	// choke point all four share, or the target is path-dependent and an
+	// un-upgraded
 	// -quorum 3 peer (old rule: max(3, bft) = 3) refuses a 2-attestation block —
-	// the #338 strand via version skew (PE ruling on d0067fd C1; research
-	// certification §6.12 G-380-A, the forced leg). RequiredQuorum(): what
-	// ValidateCommit will demand — under-gathering would just fail our own
-	// Append; redundant for validity (supportMet enforces it) but it keeps the
-	// NO-QUORUM error and the gather logs truthful.
+	// The strand via version skew, the forced leg.
+	// RequiredQuorum: what ValidateCommit will demand —
+	// under-gathering would just fail our own Append; redundant for
+	// validity (supportMet enforces it) but it keeps the NO-QUORUM
+	// error and the gather logs truthful.
 	if q := n.chain.ConfigQuorum(); q > quorum {
 		quorum = q
 	}
 	if req := n.chain.RequiredQuorum(); req > quorum {
 		quorum = req
 	}
-	// THE PRODUCER SCREEN (R-CARRIER-ATTS-PREPAREQC step 1, G-QC-1; shared with
-	// R-CB-ATTS-UNBOUNDED's G-ATTS-1 — one screen, both closures).
+	// THE PRODUCER SCREEN (step 1): one screen, both closures.
 	//
 	// `attesters` is the caller's list. On the round-machinery paths
 	// (proposeAtNewView, maybeProposeBondDrain) it is already filtered by
 	// AttesterEligibleAt; on the CLIENT-PUBLISH path (ProposeEntry /
 	// ProposeRevocation, via chainhost.Host.Attesters) it is the `-attesters`
 	// flag, UNFILTERED — and every peer in it replies, because the
-	// MsgProposeBlock arm attests for anyone whose block passes ValidateProposal
-	// with no test of the REPLIER's own qualification. So the shipped honest
-	// maximum for len(env.QC) was `2 + |-attesters|`: a consensus-adjacent
-	// quantity that is a function of LOCAL CONFIG rather than of the chain
-	// (the #380 class, canon rule 8), which blocks any wire bound expressed over
-	// committed quantities. Under this screen it is `2 + |Q(h)|`, and
-	// GoverningSetCap() dominates |Q(h)| in every objective branch.
+	// MsgProposeBlock arm attests for anyone whose block passes
+	// ValidateProposal with no test of the REPLIER's own qualification. So
+	// the shipped honest maximum for len(env.QC) was `2 + |-attesters|`: a
+	// consensus-adjacent quantity that is a function of LOCAL CONFIG rather
+	// than of the chain (the class, canon rule 8), which blocks any wire
+	// bound expressed over committed quantities. Under this screen it is `2 +
+	// |Q(h)|`, and GoverningSetCap dominates |Q(h)| in every objective
+	// branch.
 	//
 	// It removes NOTHING an honest gather needed, and the argument is an
 	// identity rather than an estimate: the predicate, the height and the node
@@ -1255,12 +1265,13 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 	// conjunct that decides completion.
 	//
 	// OBJECTIVE-GUARDED for the same reason the receive-side screen is: in a
-	// trusted/demo posture attesterQualifiedAt is `rep >= MinAttesterRep`, which
-	// an honest fresh peer fails. Note that GoverningSetCap() is 0 in that
-	// posture; this screen never reads it — it reads the predicate the cap is an
-	// upper bound OF — so the zero is not a hazard here. An objective chain with
-	// no anchors and no bonds does screen every peer away, and loses nothing:
-	// with |Q| = 0 the gather cannot satisfy supportMet today either.
+	// trusted/demo posture attesterQualifiedAt is `rep >= MinAttesterRep`,
+	// which an honest fresh peer fails. Note that GoverningSetCap is 0 in
+	// that posture; this screen never reads it — it reads the predicate the
+	// cap is an upper bound OF — so the zero is not a hazard here. An
+	// objective chain with no anchors and no bonds does screen every peer
+	// away, and loses nothing: with |Q| = 0 the gather cannot satisfy
+	// supportMet today either.
 	if n.chain.Objective() {
 		screened := make([]ports.NodeID, 0, len(attesters)) // never mutate the caller's slice: chainhost.Host.Attesters is shared config
 		for _, v := range attesters {
@@ -1274,17 +1285,17 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 		}
 		attesters = screened
 	}
-	// Never sign twice in a slot (#397, round-scoped per #432): our PREPARE
-	// enters the same never-sign-twice ledger as any attestation, durable
-	// BEFORE anything is released — whether or not it ever commits. A
-	// different block at a HIGHER round stays signable: that is the #432
+	// Never sign twice in a slot: our PREPARE enters the same
+	// never-sign-twice ledger as any attestation, durable BEFORE
+	// anything is released — whether or not it ever commits. A
+	// different block at a HIGHER round stays signable: that is the
 	// liveness escape the height-only mark lacked.
 	if !n.signAllowedAt(b.Height, round, chain.PhasePrepare, b.Hash()) {
-		done(fmt.Errorf("propose height %d round %d: already signed a different block in this slot (never-sign-twice, #397/#432)", b.Height, round))
+		done(fmt.Errorf("propose height %d round %d: already signed a different block in this slot (never-sign-twice,)", b.Height, round))
 		return
 	}
 	if !n.recordSign(b.Height, round, chain.PhasePrepare, b.Hash()) {
-		done(fmt.Errorf("propose height %d: sign-mark could not be persisted — refusing to sign (#397 Q1b)", b.Height))
+		done(fmt.Errorf("propose height %d: sign-mark could not be persisted — refusing to sign (Q1b)", b.Height))
 		return
 	}
 	raw := chain.Encode(b)
@@ -1295,10 +1306,10 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 	}
 	n.logf(ports.LogDebug, "gather: starting (two-phase)", "height", b.Height, "round", round, "bytes", len(raw), "regs", len(b.BondRegs), "quorum", quorum, "attesters", len(attesters))
 
-	// supportMet: would this coalition commit? The count floor is the caller's
-	// `quorum`; the chain adds the regime gates (anchor majority / mature >⅔
-	// weight) directly — identical for BOTH phases (POL threshold = commit
-	// threshold, certification §4).
+	// supportMet: would this coalition commit? The count floor is the
+	// caller's `quorum`; the chain adds the regime gates (anchor majority /
+	// mature >⅔ weight) directly — identical for BOTH phases (POL threshold
+	// = commit threshold).
 	supportMet := func(atts []chain.Attestation) bool {
 		ids := make([]ports.NodeID, 0, len(atts))
 		for _, a := range atts {
@@ -1308,10 +1319,10 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 		// new-view re-proposal) — mirrors ValidateCommit exactly.
 		return n.chain.SupportMeetsQuorum(b.ProposerID(), ids, b.Height)
 	}
-	// counted: the caller's `quorum` floor is a NON-AUTHOR attestation count
-	// (the proposer is counted by authorship, never by signature — the #402
-	// arithmetic), so the author's own required self-signatures in the
-	// certificate must not satisfy it. Mirrors collectQuorumSigs's
+	// counted: the caller's `quorum` floor is a NON-AUTHOR attestation
+	// count (the proposer is counted by authorship, never by signature —
+	// the arithmetic), so the author's own required self-signatures in
+	// the certificate must not satisfy it. Mirrors collectQuorumSigs's
 	// proposer-skip exactly.
 	counted := func(atts []chain.Attestation) int {
 		nc := 0
@@ -1323,17 +1334,17 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 		return nc
 	}
 
-	// PHASE 2 (precommit): runs once the prepare-QC is assembled and locked.
-	// #456 (research-certified): the collection is CONCURRENT — the prepare-QC
-	// is broadcast to every attester at once and replies are collected until
-	// the quorum predicate holds. Gather latency = the slowest NEEDED (live)
-	// replier; an unreachable member's transport timeout fires off the
-	// critical path (the sequential ask-chain paid every dead peer's full
-	// retry budget before asking the next — ~34s each in the field, the 10a
-	// stall's mechanism). Safe because no certified property is
-	// order-sensitive: there is ONE gatherer per proposal, the QC is carried
-	// in the block (never re-derived), and the stop predicate below is the
-	// SAME arithmetic ValidateCommit demands.
+	// PHASE 2 (precommit): runs once the prepare-QC is assembled and
+	// locked. the collection is CONCURRENT — the prepare-QC is
+	// broadcast to every attester at once and replies are collected
+	// until the quorum predicate holds. Gather latency = the slowest
+	// NEEDED (live) replier; an unreachable member's transport timeout
+	// fires off the critical path (the sequential ask-chain paid every
+	// dead peer's full retry budget before asking the next — ~34s each
+	// in the field, the 10a stall's mechanism). Safe because no
+	// property is order-sensitive: there is ONE gatherer per proposal,
+	// the QC is carried in the block (never re-derived), and the stop
+	// predicate below is the SAME arithmetic ValidateCommit demands.
 	gatherPrecommits := func(qc []chain.Attestation) {
 		qcRaw, err := cbor.Marshal(prepareQCEnv{Raw: raw, Round: round, QC: qc})
 		if err != nil {
@@ -1438,15 +1449,15 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 		}
 		if counted(atts) >= quorum && supportMet(atts) {
 			finishedPrep = true
-			// COPY at capture (#456): late replies must never mutate the QC.
+			// COPY at capture: late replies must never mutate the QC.
 			qc := append([]chain.Attestation(nil), atts...)
 			if b.Height == n.roundsFor().Height {
 				if !n.adoptLock(n.roundsFor(), b, round, qc, raw) {
-					done(fmt.Errorf("propose height %d: lock could not be persisted — refusing to precommit (#432)", b.Height))
+					done(fmt.Errorf("propose height %d: lock could not be persisted — refusing to precommit ", b.Height))
 					return
 				}
 			} else if !n.recordSign(b.Height, round, chain.PhasePrecommit, b.Hash()) {
-				done(fmt.Errorf("propose height %d: sign-mark could not be persisted (#397 Q1b)", b.Height))
+				done(fmt.Errorf("propose height %d: sign-mark could not be persisted (Q1b)", b.Height))
 				return
 			}
 			n.logf(ports.LogDebug, "gather: prepare-QC assembled — LOCKED", "height", b.Height, "round", round, "prepares", len(qc))
@@ -1494,7 +1505,7 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 	finishPrep()
 }
 
-// proposeAtNewView is the view-change proposal path (#432): fired by
+// proposeAtNewView is the view-change proposal path: fired by
 // recordRoundChange when this node is the designated proposer for (height,
 // round) and the round-change quorum is assembled. Re-proposes the FORCED
 // value (the certificate's highest carried lock — keeping its ORIGINAL author,
@@ -1522,7 +1533,7 @@ func (n *Node) proposeAtNewView(rs *heightRounds, round uint64, newView [][]byte
 			n.logf(ports.LogDebug, "new-view proposal not committed", "height", rs.Height, "round", round, "err", err)
 		}
 	}
-	n.logf(ports.LogInfo, "new-view proposal (#432 view-change)", "height", rs.Height, "round", round, "forced", forced != nil)
+	n.logf(ports.LogInfo, "new-view proposal (view-change)", "height", rs.Height, "round", round, "forced", forced != nil)
 	if forced != nil {
 		lb, err := chain.Decode(forced.Block)
 		if err != nil {
@@ -1537,7 +1548,7 @@ func (n *Node) proposeAtNewView(rs *heightRounds, round uint64, newView [][]byte
 		fin(nil)
 		return false
 	}
-	// h43 (C): the fresh proposal runs at the CERTIFICATE's round with the
+	// The fresh proposal runs at the CERTIFICATE's round with the
 	// certificate we were handed — never at a round re-derived from local
 	// state (the forced leg above already passed them through).
 	n.proposeBlockAt(&chain.Block{Version: chain.BlockVersionRounds, Height: height, Prev: prevHead}, attesters, peers, 0, &viewAt{Round: round, NewView: newView}, fin)
@@ -1559,8 +1570,8 @@ func (n *Node) broadcastCommit(b *chain.Block, validators []ports.NodeID, i int,
 
 // slashEquivocators finds validators who signed a different block at the same
 // height across two competing histories and slashes each in the local ledger —
-// a proven double-sign costs standing (D2). Called on DETECTION (every fetched
-// peer chain vs the local one, seam-7), not only on adoption, so a double-sign
+// a proven double-sign costs standing. Called on DETECTION (every fetched
+// peer chain vs the local one), not only on adoption, so a double-sign
 // onto a losing fork is caught too. The evidence is self-verifying
 // (chain.VerifyEquivocation, inside FindEquivocations), so this cannot be
 // triggered by an honest validator signing sequential heights. On-chain
@@ -1598,26 +1609,26 @@ func (n *Node) slashEquivocators(a, b []chain.Block) {
 	}
 	for _, e := range chain.FindEquivocations(a, b, n.chainID(), n.eraFloor()) {
 		cid := e.CulpritID()
-		// Idempotent-once (#397 Q4-i): a live fork is re-observed by EVERY
-		// reconcile sweep until it heals, so the same double-sign is re-detected
-		// over and over — the field wedge re-slashed and re-logged both culprits
-		// every ~2s indefinitely. The local penalty, warn line, and callback
-		// fire once per culprit; the ON-CHAIN record has its own lifecycle
-		// (pendingSlashes requeues until a commit confirms it).
-		// Queue the proof for on-chain recording so the OBJECTIVE set evicts the
-		// culprit in lockstep on every replica (F2), not just this local ledger.
-		// The on-chain latch (slashQueued) is SEPARATE from the local one below
-		// (Researcher V-1): a culprit whose first proof could not be queued must still
-		// get a later one queued.
+		// Idempotent-once: a live fork is re-observed by EVERY reconcile sweep
+		// until it heals, so the same double-sign is re-detected over and over —
+		// the field wedge re-slashed and re-logged both culprits every ~2s
+		// indefinitely. The local penalty, warn line, and callback fire once per
+		// culprit; the ON-CHAIN record has its own lifecycle (pendingSlashes
+		// requeues until a commit confirms it). Queue the proof for on-chain
+		// recording so the OBJECTIVE set evicts the culprit in lockstep on every
+		// replica (F2), not just this local ledger. The on-chain latch
+		// (slashQueued) is SEPARATE from the local one below: a culprit whose
+		// first proof could not be queued must still get a later one queued.
 		//
-		// R0.6: a proof that ALONE exceeds chain.SlashesBytesCap can never commit on any
-		// replica, so it is never queued — queuing it would make every proposal by this
-		// node invalid for good (the local pre-check fails forever; the only removal is
-		// IsSlashed, which never flips). The local ledger penalty below still applies.
-		// Reachable by one Byzantine validator that signs a fat garbage block at a height
-		// it also honestly attested and serves it as a peer (PE ruling F-1), so it is
-		// logged by name, once per culprit; the culprit keeps its on-chain seat
-		// (R-BIG-EVIDENCE-UNSLASHABLE — the cap's second face, see SlashesBytesCap).
+		// A proof that ALONE exceeds chain.SlashesBytesCap can never commit
+		// on any replica, so it is never queued — queuing it would make
+		// every proposal by this node invalid for good (the local pre-check
+		// fails forever; the only removal is IsSlashed, which never flips).
+		// The local ledger penalty below still applies. Reachable by one
+		// Byzantine validator that signs a fat garbage block at a height it
+		// also honestly attested and serves it as a peer, so it is logged by
+		// name, once per culprit; the culprit keeps its on-chain seat —
+		// the cap's second face, see SlashesBytesCap.
 		if n.chain != nil && !n.chain.IsSlashed(cid) && !n.slashQueued[cid] {
 			if sz := chain.SlashesEncodedSize([]chain.Equivocation{e}); sz > chain.SlashesBytesCap {
 				if !n.slashOverCapLogged[cid] {
@@ -1643,7 +1654,7 @@ func (n *Node) slashEquivocators(a, b []chain.Block) {
 
 // SyncChain reconciles the local replica against peers — how a latecomer or a
 // restarted daemon catches up AND how a partitioned validator heals a fork
-// (D2). For each peer it first sends a CHEAP HEAD PROBE (#382): if the peer's
+// (D2). For each peer it first sends a CHEAP HEAD PROBE: if the peer's
 // head hash equals ours we are provably on the identical committed history (a
 // block hash commits its whole ancestry), so there is nothing to catch up,
 // reorg, or slash — we skip the peer entirely. Only on a head DIFFERENCE (peer
@@ -1658,7 +1669,7 @@ func (n *Node) slashEquivocators(a, b []chain.Block) {
 //
 // The head probe is what makes steady-state sync cheap: without it every sweep
 // re-fetched and re-validated every peer's ENTIRE chain — O(chain × peers) bytes
-// and CPU per sweep even when the whole network already agreed (#382 M1 cost). It
+// and CPU per sweep even when the whole network already agreed. It
 // is trust-NEUTRAL: the full fetch + Reconcile + equivocation scan is unchanged
 // and runs on every real difference; the probe only elides work when the peer's
 // head is byte-identical to ours. (A genuine genesis-to-head block DIFF within
@@ -1669,12 +1680,13 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 		return
 	}
 	added := 0
-	// Per-sweep diagnostic (#572): every failure branch of this walk logs at
-	// debug or not at all, which left the 027c354-deep val-c catch-up stall
-	// (100+ min of no-progress sweeps, info-level field capture) structurally
-	// unattributable. When a sweep ends with ZERO adopted blocks while a probe
-	// showed a peer ahead (or every probe failed), ONE warn line names what
-	// each branch did — so the next field occurrence carries its mechanism.
+	// Per-sweep diagnostic: every failure branch of this walk logs at debug
+	// or not at all, which left the field run val-c catch-up stall
+	// (100+ min of no-progress sweeps, info-level field capture)
+	// structurally unattributable. When a sweep ends with ZERO adopted
+	// blocks while a probe showed a peer ahead (or every probe failed), ONE
+	// warn line names what each branch did — so the next field occurrence
+	// carries its mechanism.
 	diag := struct {
 		probeFails, headMatches, windows, suffixAppends, reconciles int
 		maxPeerHead                                                 uint64
@@ -1684,11 +1696,11 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 	var ask func(i int)
 	// fetchFull runs the full-chain fetch + slash + Reconcile against peer p, then
 	// advances to the next peer. Used whenever the head probe shows a difference or
-	// cannot be answered. WINDOWED (#466): the peer serves byte-bounded windows
+	// cannot be answered. WINDOWED: the peer serves byte-bounded windows
 	// (EncodeBlocksUpTo), and this loop re-requests from each window's last decoded
 	// height until it holds the peer's whole suffix — each raw reply buffer is
 	// decoded and released per iteration, so the only accumulation is the decoded
-	// []Block itself (the requester-retention axis, #299's, unchanged). peerHead
+	// []Block itself (the requester-retention axis, the, unchanged). peerHead
 	// (when known, from the head probe) ends the loop without a final empty-window
 	// round-trip; against a pre-window server that returns the whole suffix in one
 	// over-full reply the same loop accepts it and terminates on the next request
@@ -1716,7 +1728,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 			}
 			before := n.chain.Len()
 			old := n.chain.Blocks(0) // snapshot to catch cross-fork double-signs
-			// Slash on DETECTION, not on adoption (seam-7). Scan the reconstructed
+			// Slash on DETECTION, not on adoption. Scan the reconstructed
 			// fork against our LOCAL one for cross-fork double-signs BEFORE the
 			// heavier test and regardless of whether we adopt: a validator that
 			// signed a block at a height we hold AND a conflicting block at that
@@ -1727,12 +1739,14 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 			// — where forks can exist; below it, finality forbids a fork, so a
 			// sub-finalized double-sign is either already-slashed at commit or a
 			// >f attack out of the safety model.
-			// R0.6 (PE ruling F-3): candidate selection body-hashes both sides, and
-			// reconstructFork is genesis-rooted, so scanning `full` would re-hash our
-			// own verified prefix twice per sweep (the #555 class, measured 43 µs →
-			// 228 ms at n=600). The prefix below the served start is OUR OWN blocks on
-			// both sides (identical, never a candidate), so scan only the heights the
-			// peer actually served: a cross-fork double-sign can exist only there.
+			// candidate selection body-hashes both sides, and
+			// reconstructFork is genesis-rooted, so scanning `full` would
+			// re-hash our own verified prefix twice per sweep (the class,
+			// measured 43 µs → 228 ms at n=600). The prefix below the
+			// served start is OUR OWN blocks on both sides (identical,
+			// never a candidate), so scan only the heights the peer
+			// actually served: a cross-fork double-sign can exist only
+			// there.
 			cmp := old
 			if start := served[0].Height; start > 0 && uint64(len(old)) >= start {
 				cmp = old[start:]
@@ -1760,9 +1774,9 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 				// genesis hash commits the consensus-critical config (chain.ConsensusParams), the
 				// overwhelmingly likely cause is that THIS node is configured for a different
 				// network — a divergent -min-bond, -quorum, -bond-label-k, era height or anchor set.
-				// At LogDebug the operator saw a node that never synced and said nothing, which the
-				// genesis-config certification named as the gap between "detected at handshake" and
-				// what actually shipped. The remedy is nameable, so name it.
+				// At LogDebug the operator saw a node that never synced and said nothing: the gap
+				// between "detected at handshake" and what actually shipped. The remedy is
+				// nameable, so name it.
 				diag.lastErr = fmt.Sprintf("foreign genesis from %x: %v", p[:4], rerr)
 				n.Stats.ChainSyncForeignGenesis++
 				n.logf(ports.LogWarn, "peer is on a DIFFERENT NETWORK: its genesis is not ours, so no block from it can ever be adopted — the genesis hash commits the consensus-critical config, so check -min-bond, -quorum, -anchors, -epoch-blocks and -bond-label-k against the network you meant to join, and confirm both nodes run the same BUILD (the bond-VDF delay is a compiled default with no flag)",
@@ -1780,7 +1794,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 					if err != nil || !resp.OK {
 						// Mid-loop failure: the partial suffix is DISCARDED, never
 						// reconciled — sync fails closed for this peer this sweep and
-						// the next sweep retries (#466).
+						// the next sweep retries.
 						diag.lastErr = fmt.Sprintf("window@%d from %x: %v (ok=%v)", h, p[:4], err, resp.OK)
 						if len(served) > 0 {
 							n.logf(ports.LogDebug, "windowed chain fetch aborted mid-loop", "peer", p, "at-height", h, "err", err)
@@ -1802,21 +1816,23 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 					n.Stats.ChainSyncWindows++
 					diag.windows++
 					last := window[len(window)-1].Height
-					// #528 fast path — a window that provably EXTENDS our exact committed
-					// head is adopted through the normal Append commit path, validating
-					// ONLY the new blocks. The slow tail below re-validates the WHOLE
-					// reconstructed fork from genesis (~1s per 1.5 MB reg block, ON the
-					// event loop), which is O(height) per catch-up: at h≈56 under MATURING
-					// reg weight one reconcile outlasted the round durations, starved the
-					// sweeps, and wedged the chain (the field-measured knee). Gated on
-					// finality being ACTIVE: Reconcile's finality gate then refuses any
-					// fork that does not contain our committed head, so an extension is
-					// the only adoptable shape — and each appended block re-proves a
-					// super-quorum commit inside Append (strictly greater height), so
-					// adoption here is exactly the outcome heavier() would force. Gated on
-					// len(served)==0 so a window run is judged in ONE mode, never spliced
-					// across fast and slow handling; loop occupancy per callback is
-					// bounded by the window byte budget, and control returns to the loop
+					// fast path — a window that provably EXTENDS our exact
+					// committed head is adopted through the normal Append commit
+					// path, validating ONLY the new blocks. The slow tail below
+					// re-validates the WHOLE reconstructed fork from genesis (~1s
+					// per 1.5 MB reg block, ON the event loop), which is O(height)
+					// per catch-up: at h≈56 under MATURING reg weight one
+					// reconcile outlasted the round durations, starved the sweeps,
+					// and wedged the chain (the field-measured knee). Gated on
+					// finality being ACTIVE: Reconcile's finality gate then
+					// refuses any fork that does not contain our committed head,
+					// so an extension is the only adoptable shape — and each
+					// appended block re-proves a super-quorum commit inside Append
+					// (strictly greater height), so adoption here is exactly the
+					// outcome heavier would force. Gated on len(served)==0 so a
+					// window run is judged in ONE mode, never spliced across fast
+					// and slow handling; loop occupancy per callback is bounded by
+					// the window byte budget, and control returns to the loop
 					// between windows.
 					if finActive && len(served) == 0 {
 						if k, ext, aerr := n.appendExtension(window); ext {
@@ -1871,13 +1887,14 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 	}
 	ask = func(i int) {
 		if i >= len(peers) {
-			// #572: a no-progress sweep while demonstrably behind (a probe showed
-			// a peer ahead), or blind (every probe failed), is the exact state the
-			// 027c354-deep val-c stall sat in silently for 100+ minutes. Name the
-			// branch at WARN so the field capture carries the mechanism.
+			// A no-progress sweep while demonstrably behind (a probe
+			// showed a peer ahead), or blind (every probe failed), is the
+			// exact state the field run val-c stall sat in silently
+			// for 100+ minutes. Name the branch at WARN so the field
+			// capture carries the mechanism.
 			if added == 0 && (diag.peerAhead || (diag.probeFails > 0 && diag.headMatches == 0)) {
 				_, ourNext := n.chain.Head()
-				n.logf(ports.LogWarn, "chain sync sweep made NO progress while behind (#572)",
+				n.logf(ports.LogWarn, "chain sync sweep made NO progress while behind",
 					"our-next", ourNext, "max-peer-head", diag.maxPeerHead,
 					"peers", len(peers), "probe-fails", diag.probeFails,
 					"head-matches", diag.headMatches, "windows", diag.windows,
@@ -1899,7 +1916,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 				ourHead, ourNext := n.chain.Head()
 				peerHeadHeight, peerHeadKnown := uint64(0), false
 				if err == nil && resp.Kind == ports.MsgChainHeadReply && resp.OK {
-					// The probe's height also serves the windowed fetch (#466): it
+					// The probe's height also serves the windowed fetch: it
 					// ends the window loop without a final empty-window round-trip.
 					peerHeadHeight, peerHeadKnown = resp.Height, true
 					if peerHeadHeight > diag.maxPeerHead {
@@ -1963,48 +1980,51 @@ func (n *Node) chainSyncTick() {
 				n.chainSyncOnCatchUp(added)
 			}
 			// Drain pending bond registrations AFTER the reconcile settles, so the
-			// proposal builds on the freshest head this sweep can know (#338).
+			// proposal builds on the freshest head this sweep can know.
 			n.maybeProposeBondDrain()
 		})
-		// Renew objective standing without proposing (H2 / RT-2): submit a fresh
-		// bond proof to the same validator set we reconcile against, so an
-		// attest-only validator sustains its TTL-bound standing. No-op off the
-		// objective path or with no bond.
+		// Renew objective standing without proposing (H2 /): submit a
+		// fresh bond proof to the same validator set we reconcile against,
+		// so an attest-only validator sustains its TTL-bound standing.
+		// No-op off the objective path or with no bond.
 		n.SubmitBondRenewal(peers)
-		n.prunePeerIssuerKeys() // R2.11 (F3): collect dead peer slots on every sweep that has peers, proposer or not
-		// R2.11: likewise submit our staged, still-uncommitted demand-issuer key
-		// registrations to the same validator set, so an attest-only validator's key is
-		// committed by whoever proposes next. Retried every sweep until committed.
+		n.prunePeerIssuerKeys() // collect dead peer slots on every sweep that has peers, proposer or not
+		// likewise submit our staged, still-uncommitted demand-issuer key
+		// registrations to the same validator set, so an attest-only validator's
+		// key is committed by whoever proposes next. Retried every sweep until
+		// committed.
 		n.SubmitIssuerKeyRegs(peers)
 	}
-	// #432: count non-progress sweeps and fire a round-change when the working
-	// height is stuck with pending work (the deterministic, quorum-observable
-	// view-change trigger). ON THE TICK, not in the SyncChain callback (#561):
-	// the escape needs only local state (pending work + the sweep count), and
-	// the callback fires only after the sequential peer walk completes — dead
-	// peers stretch that walk by their full retry budgets, which in the field
-	// held the first round-change to ~8min against a 430s bound (a434494-deep
-	// 10a). Tick cadence is also the #549 Q3 premise: the cross-node skew bound
-	// (< ChainSyncInterval) assumes the escape runs once per interval. The
-	// DRAIN stays in the callback — proposing wants the freshest head (#338),
-	// and once the escape fires, the new-view proposal path is message-driven
-	// at the designee (recordRoundChange), independent of any walk.
+	// count non-progress sweeps and fire a round-change when the working
+	// height is stuck with pending work (the deterministic,
+	// quorum-observable view-change trigger). ON THE TICK, not in the
+	// SyncChain callback: the escape needs only local state (pending
+	// work + the sweep count), and the callback fires only after the
+	// sequential peer walk completes — dead peers stretch that walk by
+	// their full retry budgets, which in the field held the first
+	// round-change to ~8min against a 430s bound (the field run 10a).
+	// Tick cadence is also the Q3 premise: the cross-node skew bound (<
+	// ChainSyncInterval) assumes the escape runs once per interval. The
+	// DRAIN stays in the callback — proposing wants the freshest head,
+	// and once the escape fires, the new-view proposal path is
+	// message-driven at the designee (recordRoundChange), independent of
+	// any walk.
 	n.maybeAdvanceRound()
 	n.clock.AfterFunc(n.cfg.ChainSyncInterval, n.chainSyncTick)
 }
 
-// maybeProposeBondDrain is the #338 REACTIVE drain: a proposer-eligible
+// maybeProposeBondDrain is the REACTIVE drain: a proposer-eligible
 // validator holding peer-submitted bond registrations (or whose own
 // registration is due) proposes a BondRegs-only block, so a young objective
 // network drains its deferred founding bonds WITHOUT depending on unrelated
 // publish traffic. Before this, pending registrations were only ever folded
 // into publish/revocation proposals — on an idle young network nothing
-// proposed, the #336-deferred regs sat forever, no validator (anchors
+// proposed, the deferred regs sat forever, no validator (anchors
 // included) earned committed standing, and maturity was unreachable (the
 // `nakamoto 0 bonds` local state; the "anchors hadn't banked the Sybil bonds"
 // field GAP). Reactive, not eager (B6): it fires only when pending state
 // exists and quiesces when the queue is empty and every bond is current; the
-// per-block registration byte budget (#286 L2b) applies inside proposeBlock as
+// per-block registration byte budget applies inside proposeBlock as
 // on any other proposal. Racing drains from two eligible proposers converge
 // like racing publishes (fork-choice; under §3 finality a quorum commit is
 // final), and the loser's peers simply resubmit.
@@ -2012,23 +2032,23 @@ func (n *Node) maybeProposeBondDrain() {
 	if n.chain == nil || !n.chain.Objective() || n.signer == nil || n.bondDrainInFlight {
 		return
 	}
-	// The IsSlashed gate (#503 Q1(c) belt): an evicted node's BondRenewalDue
+	// The IsSlashed gate: an evicted node's BondRenewalDue
 	// reads true forever, and without the gate own-due kept arming drain sweeps
 	// for a registration the chain will never honor. (In practice an evicted
 	// node also fails ProposerEligible below — this keeps the quiescence rule
 	// (B6) honest on its own terms.)
 	ownDue := n.bond != nil && !n.chain.IsSlashed(n.id) && n.chain.BondRenewalDue(n.id)
-	// #441: pending mempool ENTRIES are designee work exactly like pending regs —
-	// the designee's block carries them (foldPendingEntries), so an entry-only
-	// queue must fire this sweep too, or a publish on an idle chain would wait
-	// for unrelated renewal traffic to move it. B6 quiescence holds when truly
-	// idle: no regs, no entries, no own renewal due.
-	// R2.11: a FOLDABLE issuer-key registration (own or peer; v5 at the next height,
-	// in-window, uncommitted, admissible) is designee work too — an idle objective chain
-	// would otherwise never carry it, and since epoch = height/EpochBlocks the reg would
-	// never even expire (the #338 failure, one keyspace over). Keyed on FOLDABLE, never on
-	// queue length: a queue whose contents all drop at fold would arm a proposal with no
-	// content, which fails the proposer's own empty-block check and spins on the sign slot.
+	// pending mempool ENTRIES are designee work exactly like pending regs — the
+	// designee's block carries them (foldPendingEntries), so an entry-only queue must
+	// fire this sweep too, or a publish on an idle chain would wait for unrelated
+	// renewal traffic to move it. B6 quiescence holds when truly idle: no regs, no
+	// entries, no own renewal due. a FOLDABLE issuer-key registration (own or peer; v5
+	// at the next height, in-window, uncommitted, admissible) is designee work too — an
+	// idle objective chain would otherwise never carry it, and since epoch =
+	// height/EpochBlocks the reg would never even expire (the failure, one keyspace
+	// over). Keyed on FOLDABLE, never on queue length: a queue whose contents all drop
+	// at fold would arm a proposal with no content, which fails the proposer's own
+	// empty-block check and spins on the sign slot.
 	issuerKeysDue := n.issuerKeysFoldable()
 	if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && !ownDue && !issuerKeysDue {
 		n.drainWaitSweeps = 0
@@ -2038,21 +2058,22 @@ func (n *Node) maybeProposeBondDrain() {
 		return // not our block to make (a young non-anchor waits for an anchor to drain it)
 	}
 	prevHead, height := n.chain.Head()
-	// NEVER sign twice at one height (Tendermint locking): if we already signed
-	// a block at this height — attested OR proposed — a drain proposal here
-	// would be a second signature on a different block, which a peer's
-	// cross-fork scan reads as equivocation. #432: the check is SLOT-scoped —
-	// a fresh proposal needs the (height, current round, prepare) slot to sit
-	// strictly above the mark; a marked slot at this height no longer blocks
-	// the height forever, because maybeAdvanceRound moves the round and the
-	// next round's slot is signable (the liveness escape).
+	// NEVER sign twice at one height (Tendermint locking): if we already
+	// signed a block at this height — attested OR proposed — a drain
+	// proposal here would be a second signature on a different block, which
+	// a peer's cross-fork scan reads as equivocation. the check is
+	// SLOT-scoped — a fresh proposal needs the (height, current round,
+	// prepare) slot to sit strictly above the mark; a marked slot at this
+	// height no longer blocks the height forever, because maybeAdvanceRound
+	// moves the round and the next round's slot is signable (the liveness
+	// escape).
 	if rs := n.roundsFor(); n.signMarkSet && slotCompare(height, rs.Round, chain.PhasePrepare, n.signMark) <= 0 {
-		// NEVER refuse silently when work is being blocked (B5 / #432): pending
+		// NEVER refuse silently when work is being blocked (B5 /): pending
 		// regs + a blocked slot, sweep after sweep, is the wedge signature —
 		// the one line that would have named the field stall on the first run.
 		// maybeAdvanceRound (same sweep cadence) is what unblocks it.
 		if len(n.pendingBondRegs) > 0 || len(n.pendingEntries) > 0 || issuerKeysDue {
-			n.logf(ports.LogInfo, "bond-reg drain blocked at own sign slot — awaiting round advance (#432)",
+			n.logf(ports.LogInfo, "bond-reg drain blocked at own sign slot — awaiting round advance ",
 				"height", height, "round", rs.Round, "mark_height", n.signMark.Height, "mark_round", n.signMark.Round, "pending", len(n.pendingBondRegs), "pending_entries", len(n.pendingEntries), "issuer_keys_due", issuerKeysDue)
 		}
 		return
@@ -2062,22 +2083,22 @@ func (n *Node) maybeProposeBondDrain() {
 	// makes an honest drain race structurally impossible, rather than merely
 	// unlikely.
 	//
-	// Two #397 (research-certified) race-closures on top of the designated rule:
+	// Two race-closures on top of the designated rule:
 	//
-	//  · SUBMIT-DON'T-PROPOSE (Q2b-2): our OWN renewal being due is never by
-	//    itself a reason for a NON-designated proposer to propose —
-	//    SubmitBondRenewal already broadcast the fresh reg on this same sweep
-	//    (chainSyncTick), so it sits in every eligible proposer's pending queue
-	//    and the DESIGNATED one drains it. This removes the field wedge's
-	//    driver: genesis-aligned renewal clocks made two anchors both propose
-	//    the same height (b88245d-3496).
+	// · SUBMIT-DON'T-PROPOSE (Q2b-2): our OWN renewal being due is never by
+	// itself a reason for a NON-designated proposer to propose —
+	// SubmitBondRenewal already broadcast the fresh reg on this same sweep
+	// (chainSyncTick), so it sits in every eligible proposer's pending queue
+	// and the DESIGNATED one drains it. This removes the field wedge's
+	// driver: genesis-aligned renewal clocks made two anchors both propose
+	// the same height (the field run).
 	//
-	//  · STAGGERED TAKEOVER (Q2b-1): if the designated proposer hasn't drained
-	//    after 3 idle sweeps, eligible proposers take over ONE PER SWEEP in
-	//    rank order (rank distance from the designated), instead of all rushing
-	//    at once — a dual-proposer race can then only arise if a takeover
-	//    proposer is itself silent for a full sweep, and the never-sign-twice
-	//    watermark still bounds that residue.
+	// · STAGGERED TAKEOVER (Q2b-1): if the designated proposer hasn't drained
+	// after 3 idle sweeps, eligible proposers take over ONE PER SWEEP in
+	// rank order (rank distance from the designated), instead of all rushing
+	// at once — a dual-proposer race can then only arise if a takeover
+	// proposer is itself silent for a full sweep, and the never-sign-twice
+	// watermark still bounds that residue.
 	dist := 0
 	if props := n.chain.EligibleProposers(); len(props) > 0 {
 		self := -1
@@ -2088,14 +2109,15 @@ func (n *Node) maybeProposeBondDrain() {
 			}
 		}
 		if self >= 0 {
-			// h43 (D3, certified): rank distance is measured from the ROUND's
-			// designee, props[(height+round) mod N] — the seat the round
-			// actually blames — not from the height's. Before this the walk
-			// was height-keyed, so at a round > 0 whose designee held no work
-			// the escape was a rank walk from the wrong seat (bounded at
-			// (N+2)·ChainSyncInterval, the certified backstop, but not at the
-			// published ≤ f+1 rounds). The accumulated wait is NOT reset on
-			// round entry (see advanceToRound): the walk stays monotone.
+			// Rank distance is measured from the
+			// ROUND's designee, props[(height+round) mod N] — the seat the
+			// round actually blames — not from the height's. Before this
+			// the walk was height-keyed, so at a round > 0 whose designee
+			// held no work the escape was a rank walk from the wrong seat
+			// (bounded at (N+2)·ChainSyncInterval, the backstop, but not
+			// at the published ≤ f+1 rounds). The accumulated wait is NOT
+			// reset on round entry (see advanceToRound): the walk stays
+			// monotone.
 			rs := n.roundsFor()
 			d := int((height + rs.Round) % uint64(len(props)))
 			dist = (self - d + len(props)) % len(props)
@@ -2103,15 +2125,14 @@ func (n *Node) maybeProposeBondDrain() {
 	}
 	if dist > 0 {
 		if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && !issuerKeysDue {
-			// Own renewal only, and we are not the designated proposer: submit,
-			// never propose (Q2b-2). The reg reaches the chain via the
-			// designated proposer's queue; nothing to take over for. Pending
-			// ENTRIES count as takeover-worthy work (#441): a silent designee
-			// must not strand the mempool. So does a FOLDABLE issuer-key
-			// registration (R2.11): the designation is height-keyed and the head is
-			// what a dead designee stalls, so without this term a foldable key on an
-			// idle chain waited forever — the exact condition R0.4b-11 names (PE code
-			// ruling F2, measured: 20 sweeps, head unmoved).
+			// Own renewal only, and we are not the designated proposer:
+			// submit, never propose (Q2b-2). The reg reaches the chain via
+			// the designated proposer's queue; nothing to take over for.
+			// Pending ENTRIES count as takeover-worthy work: a silent
+			// designee must not strand the mempool. So does a FOLDABLE
+			// issuer-key registration: the designation is height-keyed and
+			// the head is what a dead designee stalls, so without this term
+			// a foldable key on an idle chain waited forever.
 			n.drainWaitSweeps = 0
 			return
 		}
@@ -2155,14 +2176,13 @@ func (n *Node) maybeProposeBondDrain() {
 // explicit seed, the CONFIGURED static consensus tier (-persistent-peers), plus
 // every peer we've learned a storage bond from (a bond is what a validator
 // advertises), minus ourselves. The static tier is included because it IS the
-// consensus set by definition (#338 finding 2 / network-durability §8,
-// configure-not-discover): a validator whose attester seed holds no
+// consensus set by definition: a validator whose attester seed holds no
 // chain-carrying peer (the cloud sybil cohort — its -attesters are only other
 // sybils) and whose bond gossip hasn't warmed yet otherwise has NO path to the
 // committed chain — it can neither catch up nor submit its bond registration,
 // which is exactly the "sybil never synced a committed chain (head 0)" field
-// GAP. The rest is learned lazily from gossip, so the set fills in as the
-// swarm comes into view — a node restarted with only a -bootstrap peer still
+// GAP. The rest is learned lazily from gossip, so the set fills in as the swarm
+// comes into view — a node restarted with only a -bootstrap peer still
 // discovers the rest and catches up.
 func (n *Node) syncTargets() []ports.NodeID {
 	set := make(map[ports.NodeID]bool, len(n.chainSyncSeed)+len(n.staticPeers)+len(n.peerBonds))
@@ -2188,11 +2208,11 @@ func (n *Node) syncTargets() []ports.NodeID {
 	// Deterministic order (B2): this list drives gather ask-order, round-change
 	// broadcast order, and — in the model-check — the entire schedule. Returning
 	// raw map-iteration order made every gather's QC composition a per-call
-	// dice-roll (caught by the #451 fixture flaking 2-in-10 under -count=10:
+	// dice-roll (caught by the fixture flaking 2-in-10 under -count=10:
 	// the sybil author's prepare-QC landed on order-lucky subsets). ID-sort is
 	// safe here: ask ORDER is not an inclusion-fairness surface (any assembled
-	// quorum is valid) — unlike the reg/entry queues, which are FIFO by #448/
-	// #441 Addition 2. EligibleProposers sorts for the same reason.
+	// quorum is valid) — unlike the reg/entry queues, which are FIFO.
+	// EligibleProposers sorts for the same reason.
 	sort.Slice(out, func(i, j int) bool { return bytes.Compare(out[i][:], out[j][:]) < 0 })
 	return out
 }
@@ -2228,10 +2248,10 @@ func bondRegDecode(raw []byte) (chain.BondReg, error) {
 	return b.BondRegs[0], nil
 }
 
-// issuerKeyRegEncode / issuerKeyRegDecode (R2.11) ride the same block-CBOR wrapper. The
+// issuerKeyRegEncode / issuerKeyRegDecode ride the same block-CBOR wrapper. The
 // decoder pins the payload to exactly ONE registration BEFORE any verify: the per-sender
 // budget bounds messages, so an unbounded list would let one budget unit buy N ed25519
-// verifies on the consensus loop (design ruling S4; 8,192 regs pack into ~1.1 MB).
+// verifies on the consensus loop (8,192 regs pack into ~1.1 MB).
 func issuerKeyRegEncode(r chain.IssuerKeyReg) []byte {
 	b := chain.Block{Version: chain.BlockVersion, IssuerKeys: []chain.IssuerKeyReg{r}}
 	return chain.Encode(&b)
@@ -2249,8 +2269,8 @@ func issuerKeyRegDecode(raw []byte) (chain.IssuerKeyReg, error) {
 // outside the window the next block's epoch will accept. The fold prunes too, but a bonded
 // receiver that is never proposer-eligible would otherwise accumulate one dead slot per
 // issuer per epoch turn until maxMempool and then refuse honest arrivals — the own queue's
-// exact hazard (demandkeys.go, build-immutable #8), one node over (PE code ruling F3).
-// Called on every sync tick and before every enqueue.
+// exact hazard (demandkeys.go, build-immutable #8), one node over. Called on every sync
+// tick and before every enqueue.
 func (n *Node) prunePeerIssuerKeys() {
 	if n.chain == nil || len(n.pendingPeerIssuerKeys) == 0 {
 		return
@@ -2327,7 +2347,7 @@ func (n *Node) issuerKeysFoldable() bool {
 	return false
 }
 
-// SubmitIssuerKeyRegs (R2.11) sends each of this node's staged, still-uncommitted, in-window
+// SubmitIssuerKeyRegs sends each of this node's staged, still-uncommitted, in-window
 // demand-issuer key registrations to peers, so a validator that never wins a proposal slot
 // still gets its key committed by whoever proposes next. At most W+1 registrations per
 // sweep (the pre-published band); a receiver that refuses on epoch skew is healed by the

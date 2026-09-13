@@ -5,22 +5,22 @@
 # Proves the safety model behind `silt sim run takedown` + core/denylist over
 # the real wire: a takedown is PER-OPERATOR, EXISTENCE-CHECKED, and REVERSIBLE.
 #
-#   1. Two independent operators (opA, opB) each publish the SAME convergent
-#      file → the SAME root. Both serve it (baseline). A control file is
-#      published too, to distinguish a real PASS from a global wipe.
-#   2. opA loads an operator-local `-denylist` naming that root → it PURGES the
-#      held chunks and REFUSES to serve it, while opB (never denies) still
-#      serves the identical root, and the control file survives everywhere.
-#      Per-operator, per-hash — no global switch.
-#   3. Existence check (on-chain): a trusted validator revokes the REAL,
-#      committed root → a takedown block commits; revoking a BOGUS root → no
-#      block ever commits (the chain refuses to revoke what it never published).
-#   4. Reversal: restart opA WITHOUT the denylist and re-publish the same
-#      convergent file → opA serves the once-denied root again. The denial was
-#      conditional on the list, not a permanent ban.
+#  1. Two independent operators (opA, opB) each publish the SAME convergent
+#  file → the SAME root. Both serve it (baseline). A control file is
+#  published too, to distinguish a real PASS from a global wipe.
+#  2. opA loads an operator-local `-denylist` naming that root → it PURGES the
+#  held chunks and REFUSES to serve it, while opB (never denies) still
+#  serves the identical root, and the control file survives everywhere.
+#  Per-operator, per-hash — no global switch.
+#  3. Existence check (on-chain): a trusted validator revokes the REAL,
+#  committed root → a takedown block commits; revoking a BOGUS root → no
+#  block ever commits (the chain refuses to revoke what it never published).
+#  4. Reversal: restart opA WITHOUT the denylist and re-publish the same
+#  convergent file → opA serves the once-denied root again. The denial was
+#  conditional on the list, not a permanent ban.
 #
-# Usage:  ./run.sh          # build, test, tear down; exit 0 = PASS
-#         KEEP=1 ./run.sh   # leave the topology up afterward to poke at
+# Usage:./run.sh # build, test, tear down; exit 0 = PASS
+#  KEEP=1 ./run.sh # leave the topology up afterward to poke at
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 cd "$(dirname "$0")"
@@ -73,7 +73,7 @@ await_log opA '^registry:|serving' || { echo "FAIL: opA registry never came up";
 await_log opB '^registry:|serving' || { echo "FAIL: opB registry never came up"; dc logs opB | tail -20; exit 1; }
 
 # Each operator's own peer/registry refs. The daemon binds a wildcard address,
-# so its printed `peer:`/`registry:` lines carry `[::]` — useless to dial. But
+# so its printed `peer:`/`registry:` lines carry `[:]` — useless to dial. But
 # the NodeID (a stable function of -id-seed) is right there, and each service
 # sits at a fixed compose IP, so build the dialable refs from ID@STATIC_IP.
 id_of()   { dc logs "$1" 2>&1 | grep -oE 'peer: [a-f0-9]{64}' | head -1 | awk '{print $2}'; }
@@ -96,7 +96,7 @@ head -c 400000 /dev/urandom > "$WORK/target.bin"
 head -c 400000 /dev/urandom > "$WORK/control.bin"
 # push identical bytes so the convergent root matches on every operator
 push() { dc exec -T "$1" sh -c "cat > '$2'"; }   # push <svc> <path-in-container> < hostfile
-add() {  # add <svc> <peer> <reg> <hostfile>  -> stdout is the daemon output
+add() {  # add <svc> <peer> <reg> <hostfile> -> stdout is the daemon output
   push "$1" /data/in.bin < "$4"
   dc exec -T "$1" sh -c "silt swarm add /data/in.bin -mode convergent -peers '$2' -registry '$3'"
 }
@@ -142,7 +142,7 @@ echo "== phase 2: apply an operator-local -denylist to opA ONLY =="
 printf '%s\n' "$TROOT" > "$WORK/deny.txt"
 dc cp "$WORK/deny.txt" opA:/data/deny.txt
 dc -f docker-compose.yml -f docker-compose.deny.yml up -d --force-recreate opA
-# match the daemon's OUTPUT line ("denylist: N root(s) denied; purged M ...") —
+# match the daemon's OUTPUT line ("denylist: N root(s) denied; purged M...") —
 # not the entrypoint's echo of the "-denylist=" flag.
 await_log opA 'denylist: [0-9]+ root' || { echo "FAIL: opA never logged a denylist enforcement line"; dc logs opA | tail -20; pass=0; }
 DENYLINE=$(dc logs opA 2>&1 | grep -iE 'denylist: [0-9]+ root' | tail -1)

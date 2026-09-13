@@ -1,16 +1,16 @@
 // Package lan discovers peers on the same local network with zero
 // configuration, over link-local multicast UDP.
 //
-// It is the cheapest rung of the discovery ladder (see
-// docs/design/cross-network.md): two silt nodes on one LAN find each
-// other with no -bootstrap, no DNS seed, and no public infrastructure at
-// all. The mechanism is the same idea as mDNS/DNS-SD — periodic multicast
-// announcements, scoped to the link — but purpose-built for silt rather
-// than the full DNS-SD wire format: a node multicasts its own peer string
-// ("ID@host:port") every few seconds and listens for others'. Because a
-// peer string is self-authenticating (the TLS handshake must present a key
-// hashing to ID), a multicast announcement can direct you to a node but can
-// never impersonate one — a hostile beacon just wastes a dial.
+// It is the cheapest rung of the discovery ladder: two silt nodes on one
+// LAN find each other with no -bootstrap, no DNS seed, and no public
+// infrastructure at all. The mechanism is the same idea as mDNS/DNS-SD —
+// periodic multicast announcements, scoped to the link — but purpose-built
+// for silt rather than the full DNS-SD wire format: a node multicasts its
+// own peer string ("ID@host:port") every few seconds and listens for
+// others'. Because a peer string is self-authenticating (the TLS handshake
+// must present a key hashing to ID), a multicast announcement can direct
+// you to a node but can never impersonate one — a hostile beacon just
+// wastes a dial.
 //
 // Scope: announcements go to an administratively-scoped multicast group at
 // the default multicast TTL of 1, so routers never forward them off the

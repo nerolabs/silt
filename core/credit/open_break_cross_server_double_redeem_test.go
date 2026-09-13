@@ -2,7 +2,7 @@ package credit
 
 // TestOpenBreak_CrossServerDoubleRedeemMoneyPump is the OPEN-BREAK regression
 // gate for the cross-server double-redeem money pump, confirmed by a blind
-// red-team run on origin/main = abe2d35 (2026-09-02).
+// red-team run on origin/main = abe2d35.
 //
 // # The confirmed break
 //
@@ -12,15 +12,15 @@ package credit
 // abort. With ONE ChargePublish (one fee, one fetcher debit), each of the K
 // servers calls RedeemDeliveryCredit for the same (fetcher, object) pair.
 //
-// RedeemDeliveryCredit (delivery.go:204-234) has NO cross-server double-spend
+// RedeemDeliveryCredit (delivery.go) has NO cross-server double-spend
 // guard. After the provisional-lane supersede it unconditionally pays:
 //
-//	s.balance += fee - skim        // line 229
-//	e.balance += skim              // line 231
+//	s.balance += fee - skim // line 229
+//	e.balance += skim // line 231
 //
-// for every call, regardless of how many times it has already been called for
+// For every call, regardless of how many times it has already been called for
 // the same (fetcher, object). The per-server double-spend guard
-// Bank.spent[serial] in core/node/demandrole.go (line 108: demand.NewBank()
+// Bank.spent[serial] in core/node/demandrole.go (line 108: demand.NewBank
 // allocated fresh per node) is NOT consulted here — it lives in the node
 // handler layer, not in the ledger. A cross-server colluder bypasses it
 // entirely by submitting to K different server nodes, each of which holds its
@@ -36,12 +36,12 @@ package credit
 //	K=3 → +100 000 credits minted without a counterparty debit
 //	K=5 → +200 000 credits minted without a counterparty debit
 //
-// Root cause: delivery.go:204-234, the conserved leg, lacks a
+// Root cause: delivery.go, the conserved leg, lacks a
 // per-object-per-fetcher redeem-count gate. The provisional map
 // (l.provisional) covers only the SAME server redeeming a lane it served;
 // it has no cross-server memory.
 //
-// # CLOSED — the gate is FLIPPED (R0.4b, 2026-09-02)
+// # CLOSED — the gate is FLIPPED
 //
 // This test asserted the (K-1)·fee mint while the break was live. The fix has
 // landed and the assertion is now the CONSERVATION assertion the comment above
@@ -63,18 +63,13 @@ package credit
 //
 // # Relation to A4
 //
-// A4 (TestA4MoneyPumpConservation, money_pump_test.go) was a per-server
+// A4 (TestMoneyPumpConservation, money_pump_test.go) was a per-server
 // double-pay: a single server's provisional-lane eviction left a self-mint
 // on the books that a later redeem then paid on top of. That break was
-// fixed (Boulder 0, R0.4a) by reversing the self-mint at eviction. This is
-// the second delivery-credit money pump, distinct axis: K servers, one fee,
-// K payouts. The delivery-credit subsystem now has two confirmed money-pump
-// shapes; both live in this package's scar record.
-//
-// DESIGN REFERENCE: scar ledger
-// .claude/agent-memory/tester/scar-cross-server-double-redeem.md
-// (second money-pump in the delivery/demand-credit subsystem, session-20,
-// 2026-09-02, origin/main = abe2d35).
+// fixed by reversing the self-mint at eviction. This is the
+// second delivery-credit money pump, distinct axis: K servers, one fee, K
+// payouts. The delivery-credit subsystem now has two confirmed money-pump
+// shapes, and both are covered in this package.
 
 import "testing"
 
@@ -129,15 +124,15 @@ func TestOpenBreak_CrossServerDoubleRedeemMoneyPump(t *testing.T) {
 
 			// One ChargePublish: the fetcher pays fee once.
 			// wantTotal after the attack (independent derivation):
-			//   initial
-			//   - fee            (ChargePublish debit, the one honest payment)
-			//   + K*(fee - skim) (K conserved-leg payouts, one per colluding server)
-			//   + K*skim         (K escrow payouts, one per colluding server)
+			// initial
+			// - fee (ChargePublish debit, the one honest payment)
+			// + K*(fee - skim) (K conserved-leg payouts, one per colluding server)
+			// + K*skim (K escrow payouts, one per colluding server)
 			// = initial - fee + K*fee
 			// = initial + (K-1)*fee
 			//
 			// Under correct conservation the ledger should be:
-			//   initial + 0   (one fee in, one fee distributed, net zero)
+			// initial + 0 (one fee in, one fee distributed, net zero)
 			//
 			// The difference: (K-1)*fee is the minted credit.
 
@@ -216,7 +211,7 @@ func openBreakKName(k int) string {
 type id8 = byte
 
 // objHash produces a test object hash from a byte index. Distinct from the
-// id() helper (which produces NodeIDs) — here we need a ports.Hash.
+// id helper (which produces NodeIDs) — here we need a ports.Hash.
 func objHash(b byte) [32]byte {
 	var h [32]byte
 	h[0] = b

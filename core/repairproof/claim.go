@@ -14,7 +14,7 @@ package repairproof
 // against Holder under an identity-bound seed. The claim only points the verifiers
 // at the work; the proofs are recomputed.
 //
-// ADVERSARY-SHAPE: capability=ClaimantChosenSurvivorSet UNCOVERED: no fixture GRANTS AND CONTROLS FOR a claimant any influence over which survivors the judge fetches. TestRTRC1_SurvivorFetchIsUnboundedPerSenderAndIsNMinusOneWide_PINNED_DEFECT shows the influence is REAL and negative -- an out-of-range claim.ShardPos excludes nothing and costs all n instead of n-1 -- but it carries no control that removes the influence, so it is not declared as cover. ROADMAP row F1.
+// ADVERSARY-SHAPE: capability=ClaimantChosenSurvivorSet UNCOVERED: no fixture GRANTS AND CONTROLS FOR a claimant any influence over which survivors the judge fetches. TestSurvivorFetchIsUnboundedPerSenderAndIsNMinusOneWide_PINNED_DEFECT shows the influence is REAL and negative -- an out-of-range claim.ShardPos excludes nothing and costs all n instead of n-1 -- but it carries no control that removes the influence, so it is not declared as cover.
 
 import (
 	"github.com/fxamacker/cbor/v2"
@@ -25,9 +25,9 @@ import (
 type RepairClaim struct {
 	// Root is the object whose durability escrow pays the bounty.
 	Root ports.Hash `cbor:"1,keyasint"`
-	// Stripe is the stripe index within the file, ShardPos the position within the
-	// stripe (0..n-1: data 0..k-1, parity k..n-1). Together with the manifest they
-	// pin which codeword coordinate was repaired.
+	// Stripe is the stripe index within the file, ShardPos the position within
+	// the stripe (0.n-1: data 0.k-1, parity k.n-1). Together with the manifest
+	// they pin which codeword coordinate was repaired.
 	Stripe   int `cbor:"2,keyasint"`
 	ShardPos int `cbor:"3,keyasint"`
 	// ShardID is the manifest-committed content ID of the repaired shard — the

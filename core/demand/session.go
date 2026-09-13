@@ -1,35 +1,32 @@
 package demand
 
-// R2.9 — the paid DELIVERY SESSION's wire vocabulary and its signatures (the pure
-// half; core/node holds the session table and the handlers). Certified shape:
-// silt-agent-memory/researcher/reviews/research-outcome/R2.9-G-R212-8-delivery-anchor-quantization-RESEARCH-CERTIFICATION-2026-09-06.md
-// §3.1 (C1–C10), §6.3 (receipt v3); the domain ruling (no fifth FDH domain — the
-// anchor IS the demand token, spent at OPEN instead of at redeem):
-// …/R2.9-build-questions-domain-rescale-guard-RESEARCH-CERTIFICATION-2026-09-04.md §2.
+// The paid DELIVERY SESSION's wire vocabulary and its signatures (the pure half; core/node holds the session table and the
+// handlers). Certified shape: §3.1 (C1–C10), §6.3 (receipt v3); the domaindecision (no fifth FDH domain — the anchor IS the
+// demand token, spent at OPEN instead of at redeem):
 //
 // Three messages mirror the relay lane's (core/relaypay/wire.go):
 //
-//   - SessionOpen: the fetcher's DURABLE identity presents k = 1 demand token
-//     (bought from this server through the ordinary blind withdrawal) as the
-//     session's anchor, signed over the open commitment M. The server verifies the
-//     token under its OWN committed key_E in the DEMAND domain, spends it into the
-//     shared paid-serial guard, and admits a session whose budget is the face.
-//   - SessionFund: a top-up of an admitted session with a fresh anchor (C8), signed
-//     over a fund commitment that names the handle.
-//   - SessionReceipt (receipt v3): the fetcher's CUMULATIVE acknowledged increment
-//     count for one object on one session (C5). It replaces the v2 receipt's bare
-//     serial with the session handle and the open commitment M, so a receipt
-//     acknowledges exactly one session and a session is exactly the anchors spent at
-//     its open (B-8). Its replay defence is the session's monotone counter, not the
-//     paid-serial guard (cert §6.3).
+// - SessionOpen: the fetcher's DURABLE identity presents k = 1 demand token
+// (bought from this server through the ordinary blind withdrawal) as the
+// session's anchor, signed over the open commitment M. The server verifies the
+// token under its OWN committed key_E in the DEMAND domain, spends it into the
+// shared paid-serial guard, and admits a session whose budget is the face.
+// - SessionFund: a top-up of an admitted session with a fresh anchor (C8), signed
+// over a fund commitment that names the handle.
+// - SessionReceipt (receipt v3): the fetcher's CUMULATIVE acknowledged increment
+// count for one object on one session (C5). It replaces the v2 receipt's bare
+// serial with the session handle and the open commitment M, so a receipt
+// acknowledges exactly one session and a session is exactly the anchors spent at
+// its open. Its replay defence is the session's monotone counter, not the
+// paid-serial guard.
 //
 // Receipts are not committed to the chain, so the v3 bump has no era or freeze
-// coupling (the R2.14 argument). The v2 flat path (one token spent at redeem) is
-// RETIRED — the node refused it at B-9 and C1 (2026-09-08) deleted the primitive
-// behind it — so the session lane is the only delivery path this package holds.
-// ports.MsgDeliveryReceipt keeps its kind number and is answered OK=false with a named
-// retirement (core/node handleDeliveryReceipt): a retired kind is never re-used, so no
-// two paths ever share a message kind.
+// coupling (the argument). The v2 flat path (one token spent at redeem) is RETIRED —
+// the node refused it at B-9 and C1 deleted the primitive behind it — so the session
+// lane is the only delivery path this package holds. ports.MsgDeliveryReceipt keeps
+// its kind number and is answered OK=false with a named retirement (core/node
+// handleDeliveryReceipt): a retired kind is never re-used, so no two paths ever share
+// a message kind.
 
 import (
 	"crypto/ed25519"
@@ -56,8 +53,8 @@ const (
 
 // MaxAnchorsPerOpen is k_max_delivery, the decode/DoS bound on anchors per open or
 // top-up. It is DERIVED from the face in cmd/silt (⌈D_max·p/(U·f)⌉ = 1: one face funds
-// the whole 12.21 GiB session, T-RELAY-GRAN one lane over) and pinned to this literal
-// by TestDeliverySessionCeilingIsDerivedFromTheFace (G-λ-8-1); core/demand carries
+// the whole 12.21 GiB session, one lane over) and pinned to this literal
+// by TestDeliverySessionCeilingIsDerivedFromTheFace; core/demand carries
 // no dependency on core/credit or core/relaypay.
 const MaxAnchorsPerOpen = 1
 
@@ -128,7 +125,7 @@ func writeSerials(h interface{ Write([]byte) (int, error) }, anchors []Token) {
 
 // receiptMsgV3 is what the fetcher signs: every field that fixes which session,
 // which object, which server, whom-for, and how much — tampering any of them breaks
-// the signature (B-8).
+// the signature.
 func (r SessionReceipt) receiptMsgV3() []byte {
 	h := sha256.New()
 	h.Write([]byte(receiptDomainV3))
@@ -256,32 +253,29 @@ func UnmarshalSessionReceipt(b []byte) (SessionReceipt, error) {
 	return r, nil
 }
 
-// Witness records units of witnessed delivery for object from a SESSION receipt the
-// ledger settled (R2.9; certification
-// silt-agent-memory/researcher/reviews/research-outcome/R2.9-witnessed-demand-observable-under-sessions-RESEARCH-CERTIFICATION-2026-09-06.md
-// §3.3). The rule, clause by clause:
+// Witness records units of witnessed delivery for object from a SESSION receipt the ledger settled. The rule, clause by clause:
 //
-//  1. DENOMINATION: units = settled/p, where settled is SettleDelivery's first return
-//     (the ledger is the authority on what was settled — never the receipt's Count,
-//     never the node's delta). One unit = one DeliveryIncrementBytes witnessed.
-//  2. ORDERING: called AFTER a settlement that returned ReasonPaid; the settlement is
-//     never gated on this call's result.
-//  3. TWO SURFACES, never one field with a flag-dependent unit: increments[object]
-//     (this counter) and the distinct bonded fetchers per object (the P3b credited set,
-//     read by DistinctBondedFetchers). A consumer reads exactly one.
-//  4. P3b keeps its ADMISSION role — an unbonded fetcher contributes nothing to either
-//     surface — and loses its dedup role on the increment counter.
-//  5. ONE COUNTER, ONE DENOMINATION: the v2 lane's demand[] (one unit per redeemed
-//     token, a unit differing by up to 50,000x from this one) is GONE — it retired with
-//     the flat lane in C1, 2026-09-08, so there is no second surface to confuse with
-//     this one.
-//  6. Bounds inherited: maxDemandObjects, refuse-at-cap.
+// 1. DENOMINATION: units = settled/p, where settled is SettleDelivery's first return
+// (the ledger is the authority on what was settled — never the receipt's Count,
+// never the node's delta). One unit = one DeliveryIncrementBytes witnessed.
+// 2. ORDERING: called AFTER a settlement that returned ReasonPaid; the settlement is
+// never gated on this call's result.
+// 3. TWO SURFACES, never one field with a flag-dependent unit: increments[object]
+// (this counter) and the distinct bonded fetchers per object (the P3b credited set,
+// read by DistinctBondedFetchers). A consumer reads exactly one.
+// 4. P3b keeps its ADMISSION role — an unbonded fetcher contributes nothing to either
+// surface — and loses its dedup role on the increment counter.
+// 5. ONE COUNTER, ONE DENOMINATION: the v2 lane's demand[] (one unit per redeemed
+// token, a unit differing by up to 50,000x from this one is GONE — it retired with
+// the flat lane in C1, 2026-09-08, so there is no second surface to confuse with
+// this one.
+// 6. Bounds inherited: maxDemandObjects, refuse-at-cap.
 //
-// The published claim this restates (P-SESSION, cert §3.4): demand_S(C)·p ≤ Σ credits
-// settled at S on fetcher-signed acknowledgements naming C ≤ Σ face spent into S's
-// guard; and per fetcher, over the ledger's life, Σ_C demand·p ≤ its grant. Token-level
-// unforgeability becomes credit-level. Ratification of that restatement is the owner's
-// (D-DEMAND's doc-truth rule); the code carries it because the v3 lane is built.
+// The published claim this restates (P-SESSION): demand_S(C)·p ≤ Σ credits settled at S
+// on fetcher-signed acknowledgements naming C ≤ Σ face spent into S's guard; and per
+// fetcher, over the ledger's life, Σ_C demand·p ≤ its grant. Token-level unforgeability
+// becomes credit-level. Ratification of that restatement is the project 's doc-truth
+// rule; the code carries it because the v3 lane is built.
 func (b *Bank) Witness(object ports.Hash, fetcherPub []byte, units int64) (credited bool, reason string) {
 	if units <= 0 {
 		return false, "no settled increments"

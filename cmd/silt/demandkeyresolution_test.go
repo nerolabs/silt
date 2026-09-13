@@ -4,11 +4,10 @@ package main
 // key resolved against the committed E -> key_E binding. That refusal is correct and
 // is NOT relaxed here — but the operator has to be able to read it.
 //
-// THE BUG THIS PINS (Tester finding, 2026-09-03). The guard was
-// `if keyErr != nil || pinned == 0` over a message that formatted keyErr with %w. On
-// the pinned==0, keyErr==nil branch — the branch a client hits whenever the chain
-// carries no committed binding, which is every chain below the era-4/v5 flip — the
-// operator got:
+// THE BUG THIS PINS. The guard was `if keyErr != nil || pinned == 0` over a message
+// that formatted keyErr with %w. On the pinned==0, keyErr==nil branch — the branch a
+// client hits whenever the chain carries no committed binding, which is every chain
+// below the era-4/v5 flip — the operator got:
 //
 //	silt: resolve demand issuer keys from ca7e… against the committed binding (pinned 0): %!w(<nil>)
 //

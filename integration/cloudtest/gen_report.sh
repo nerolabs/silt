@@ -89,7 +89,7 @@ doc = f"""<!doctype html><html><head><meta charset="utf-8">
  h1{{margin-bottom:.2rem}} .meta{{color:#57606a;font-size:13px}}
  .result{{display:inline-block;padding:.2rem .6rem;border-radius:6px;color:#fff;background:{ocolor};font-weight:700}}
  table{{border-collapse:collapse;width:100%;margin:1rem 0;font-size:14px}}
- th,td{{border:1px solid #d0d7de;padding:.4rem .6rem;text-align:left;vertical-align:top}}
+ th,td{{border:1px solid #d0d7de;padding:.4rem.6rem;text-align:left;vertical-align:top}}
  th{{background:#f6f8fa}} code{{background:#f6f8fa;padding:.05rem .3rem;border-radius:4px}}
  .tally span{{margin-right:1rem;font-weight:600}}
 </style></head><body>

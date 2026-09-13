@@ -18,7 +18,7 @@ import (
 // stripe, so one death costs that stripe at most one shard. >1 means a
 // stripe has clustered onto fewer hosts, eroding the erasure budget.
 // skip excludes caretakers: a caretaker fetches a whole stripe into its
-// own store to reconstruct and only purges it in cleanup(), so sampling
+// own store to reconstruct and only purges it in cleanup, so sampling
 // mid-sweep would count that transient holding as clustering. The
 // durability invariant is about where shards come to rest on storage
 // nodes, so we measure those.

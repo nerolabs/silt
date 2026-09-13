@@ -15,7 +15,7 @@ const repoRoot = "../.."
 func checkContract(e ContractedString, src string) (ok bool, why string) {
 	if !strings.Contains(src, e.Marker) {
 		return false, "SOURCE GATE: the announced marker " + strconvQuote(e.Marker) + " is no longer in " + e.File +
-			" — it is an S5 observable contract (" + e.Why + "); renaming it breaks the operator interface and the " +
+			" it is an S5 observable contract (" + e.Why + "); renaming it breaks the operator interface and the " +
 			"spawned-process tier that asserts it. Preserve the literal; never move the goalposts."
 	}
 	return true, ""
@@ -74,7 +74,7 @@ func TestObservableContractHasTeeth(t *testing.T) {
 	if ok, _ := checkContract(e, string(src)); !ok {
 		t.Fatalf("precondition: %q must be present in %s", e.Marker, e.File)
 	}
-	ablated := strings.ReplaceAll(string(src), e.Marker, "RENAMED-MARKER")
+	ablated := strings.ReplaceAll(string(src), e.Marker, "RENAME")
 	if ok, _ := checkContract(e, ablated); ok {
 		t.Fatalf("SOURCE GATE: the presence check passed with %q removed — the registry has no teeth", e.Marker)
 	}

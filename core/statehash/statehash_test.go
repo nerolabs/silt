@@ -10,9 +10,9 @@ import (
 )
 
 // The encoder unit tests pin the canonical byte encoding. Widths and endianness
-// are CONSENSUS PARAMETERS (research cert Q6 flag 2): a change here changes every
-// root and is a hard fork. These tests are the tripwire that a width/endianness
-// edit is a deliberate era bump, not a silent formatting change.
+// are CONSENSUS PARAMETERS flag 2: a change here changes every root and is a hard
+// fork. These tests are the tripwire that a width/endianness edit is a deliberate
+// era bump, not a silent formatting change.
 
 func TestEncodeInt64IsEightByteBigEndianTwosComplement(t *testing.T) {
 	cases := []int64{0, 1, -1, math.MaxInt64, math.MinInt64, 1 << 21}
@@ -111,7 +111,7 @@ func TestKeyIsFieldTagPrefixInjective(t *testing.T) {
 func idBytes(id ports.NodeID) []byte { return EncodeID(id) }
 func hashBytes(h ports.Hash) []byte  { b := make([]byte, 32); copy(b, h[:]); return b }
 
-// TestRootIsInsertionOrderIndependent is the core determinism property (cert R2):
+// TestRootIsInsertionOrderIndependent is the core determinism property:
 // the root is a function of the leaf SET, not the order the leaves are supplied in.
 func TestRootIsInsertionOrderIndependent(t *testing.T) {
 	forward := []Leaf{
@@ -170,7 +170,7 @@ func TestRootRejectsDuplicateKey(t *testing.T) {
 	}
 }
 
-// TestRootRejectsEmptyLeafValue is G-R31-5 (ratified 2026-09-06): a leaf whose value is
+// TestRootRejectsEmptyLeafValue is the gate: a leaf whose value is
 // empty is refused with *EmptyValueError. Positive control: the same key with a one-byte
 // value commits, and its root differs from the root WITHOUT the key — so an accepted
 // empty value would have been a silent delete (the library's empty-update semantics),
@@ -198,7 +198,7 @@ func TestRootRejectsEmptyLeafValue(t *testing.T) {
 }
 
 // TestEmptyRootIsAFixedConstant pins that the empty committedSet commits a
-// DEFINITE, reproducible root (cert freeze condition 4: empty-vs-absent closed).
+// DEFINITE, reproducible root (empty-vs-absent closed).
 func TestEmptyRootIsAFixedConstant(t *testing.T) {
 	r1, err := Root(nil)
 	if err != nil {

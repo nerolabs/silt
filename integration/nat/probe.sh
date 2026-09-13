@@ -8,8 +8,8 @@
 # relay fallback. This validates the #27 approach against real conntrack before
 # it's wired into the transport.
 #
-#   ./probe.sh                 # cone NAT (default) — expect DIRECT-OK
-#   NAT_MODE=symmetric ./probe.sh   # expect DIRECT-FAIL (relay fallback needed)
+# ./probe.sh # cone NAT (default) — expect DIRECT-OK
+#  NAT_MODE=symmetric ./probe.sh # expect DIRECT-FAIL (relay fallback needed)
 set -uo pipefail
 cd "$(dirname "$0")"
 ROOT=$(cd ../.. && pwd)

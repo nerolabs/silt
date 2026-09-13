@@ -32,7 +32,7 @@ STORE = "/var/lib/silt"
 VPC_CIDR = os.environ.get("VPC_CIDR", "10.20.0.0/16")
 # One /24 public subnet per AZ (az slot 0/1/2 → 10.20.1/2/3.0/24) + one private NAT
 # subnet (10.20.9.0/24, in az slot 0). The host octet of each node's IP (which encodes
-# role: .11-.14 validators, .21-.22 storage, …) is preserved into its AZ's subnet, so
+# role:.11-.14 validators,.21-.22 storage, …) is preserved into its AZ's subnet, so
 # addressing stays legible and deterministic — same trick as the GCP per-region remap,
 # but per-AZ within a single regional VPC.
 PUBLIC_SUBNET = {0: "10.20.1.0/24", 1: "10.20.2.0/24", 2: "10.20.3.0/24"}
@@ -42,7 +42,7 @@ NAT_SUBNET = "10.20.9.0/24"
 # Identical roles/seeds/host-octets to the GCP topology; `az` is the AZ SLOT (0/1/2),
 # mirroring the GCP grouping (primary cluster in slot 0, the us-east1 pair in slot 1,
 # the europe single in slot 2) so the fault-domain spread is the same shape.
-#   name        role         seed  host_octet  az_slot
+#  name role seed host_octet az_slot
 NODES = [
     ("val-a",     "validator", 6001, 11, 0),
     ("val-b",     "validator", 6002, 12, 1),
@@ -120,19 +120,19 @@ def main():
     else:
         bond, min_bond, min_floor = "64M", "1M", "0"
 
-    # -request-timeout 8s belt for the multi-node run (#286; the product size-scales the
+    # -request-timeout 8s belt for the multi-node run (the product size-scales the
     # deadline for the one-time ~1.5MB bond-registration block, this leaves extra margin).
     common = f"-listen 0.0.0.0:{SWARM_PORT} -store {STORE} -mdns=false -log info -request-timeout 8s"
 
-    # ── argv(): IDENTICAL to the GCP topology.py (the silt command line is the same on
-    #    any substrate). Kept in lock-step deliberately — if it diverges, the two clouds
-    #    stop testing the same thing.
+    # ── argv: IDENTICAL to the GCP topology.py (the silt command line is the same on
+    #  any substrate). Kept in lock-step deliberately — if it diverges, the two clouds
+    #  stop testing the same thing.
     def argv(name):
         n = nodes[name]
         role, ip = n["role"], n["ip"]
         if role == "validator":
             attesters = ",".join(nodes[v]["nodeid"] for v in validators if v != name)
-            # #286 Layer 2 (docs/network-durability.md §8): configure the whole validator set
+            #  Layer 2): configure the whole validator set
             # as a static, never-evicted persistent-peer tier so proposer-initiated quorum can
             # form at genesis without depending on address discovery over a fresh WAN mesh.
             persistent = ",".join(f'{nodes[v]["nodeid"]}@{nodes[v]["ip"]}:{SWARM_PORT}'

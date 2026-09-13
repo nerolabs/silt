@@ -8,17 +8,17 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// B2 (research certification 2026-08-13): the mature-phase quorum must be
+// B2: the mature-phase quorum must be
 // counted in FROZEN EPOCH WEIGHT, never heads. Epoch admission is deliberately
 // unfiltered (every qualified bond becomes a member at rotation — Condition A),
 // so under head counting a cohort of MinBond identities riding an honest
 // handoff acquired, per head, the same quorum power as a real validator:
-//   - 8 cheap members among 4 honest pushed bftThreshold(12)=8 past what the
-//     honest side could ever attest — the mature phase born unable to commit
-//     (STALL at 8×MinBond, nothing slashable), and
-//   - 9 cheap members among 4 honest made bftThreshold(13)=8 reachable by the
-//     cohort alone — a commit with ZERO honest attestation (CAPTURE at
-//     9×MinBond), persisting into full maturity.
+// - 8 cheap members among 4 honest pushed bftThreshold(12)=8 past what the
+// honest side could ever attest — the mature phase born unable to commit
+// (STALL at 8×MinBond, nothing slashable), and
+// - 9 cheap members among 4 honest made bftThreshold(13)=8 reachable by the
+// cohort alone — a commit with ZERO honest attestation (CAPTURE at
+// 9×MinBond), persisting into full maturity.
 // Both are C1-discounts (control priced per-head at MinBond, not per real
 // weight) and C2 quiet-capture breaks. The weight rule prices them correctly:
 // stall needs >⅓, capture >⅔, of the epoch's REAL bonded weight.
@@ -50,12 +50,13 @@ func TestMatureQuorumCheapMemberCaptureRefused(t *testing.T) {
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
 
-	// Genesis commits every bond. MatureValidators=0 makes the genesis boundary
-	// the handoff (the maturity BAR is not this drill's subject — the counting
-	// basis after handoff is; it also keeps matureNow() true so the F-1
-	// de-maturation gate stays dormant and cannot mask the weight rule). The
-	// epoch snapshot seats all 13 — honest whales and MinBond cohort alike
-	// (Condition A admission is unfiltered; that is the drill's honest premise).
+	// Genesis commits every bond. MatureValidators=0 makes the genesis
+	// boundary the handoff (the maturity BAR is not this drill's subject —
+	// the counting basis after handoff is; it also keeps matureNow true so
+	// the de-maturation gate stays dormant and cannot mask the weight
+	// rule). The epoch snapshot seats all 13 — honest whales and MinBond
+	// cohort alike (Condition A admission is unfiltered; that is the drill's
+	// honest premise).
 	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	for i, k := range hk {
 		g.BondRegs = append(g.BondRegs, bondRegDom(k, honestBond, ports.Hash{}, uint64(i+1)))
@@ -77,11 +78,11 @@ func TestMatureQuorumCheapMemberCaptureRefused(t *testing.T) {
 		t.Fatal("setup: a MinBond epoch member must be attester-qualified (unfiltered admission — the premise)")
 	}
 
-	// THE CAPTURE DRILL: the 9-member cohort proposes and attests ALONE — 8
-	// distinct non-proposer attestations, zero honest signatures. Under head
-	// counting this was bftThreshold(13)=8 → a valid commit (the certified
-	// break). Under weight counting the coalition holds 9 MiB of 265 MiB and
-	// must be refused for lack of the frozen-weight super-majority.
+	// THE CAPTURE DRILL: the 9-member cohort proposes and attests ALONE —
+	// 8 distinct non-proposer attestations, zero honest signatures. Under
+	// head counting this was bftThreshold(13)=8 → a valid commit (the
+	// break). Under weight counting the coalition holds 9 MiB of 265 MiB
+	// and must be refused for lack of the frozen-weight super-majority.
 	prev, _ := c.Head()
 	capture := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)}}
 	Sign(capture, sk[0])

@@ -1,6 +1,6 @@
 package pipeline_test
 
-// Decision 4′ (2026-09-07): the manifest is framed at TRUE length — a sealed manifest
+// Decision 4′: the manifest is framed at TRUE length — a sealed manifest
 // smaller than a chunk is one frame of exactly len(blob) + chunk.HeaderSize bytes, with
 // zero padding, and round-trips through LoadBlob unchanged; a manifest larger than a chunk
 // keeps the data chunk size. Ablation: split the manifest at opts.ChunkSize again ⇒ RED
@@ -34,7 +34,7 @@ func TestManifestIsFramedAtTrueLength(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(c.Data) >= pipeline.DefaultChunkSize {
-		t.Fatalf("the manifest frame is %d bytes — padded to the data chunk size (the R-MANIFEST-PADDING waste)", len(c.Data))
+		t.Fatalf("the manifest frame is %d bytes — padded to the data chunk size (the waste)", len(c.Data))
 	}
 	blob, err := pipeline.LoadBlob(context.Background(), store, entry)
 	if err != nil {
@@ -48,8 +48,8 @@ func TestManifestIsFramedAtTrueLength(t *testing.T) {
 	}
 }
 
-// TestDefaultChunkSizeIs256KiB pins the ratified default (D-R2.9-NODE-HALF-CALLS 4′). The
-// alignment with the delivery increment is pinned in cmd/silt, the package that imports both.
+// TestDefaultChunkSizeIs256KiB pins the default 4′. The alignment with the delivery
+// increment is pinned in cmd/silt, the package that imports both.
 func TestDefaultChunkSizeIs256KiB(t *testing.T) {
 	if pipeline.DefaultChunkSize != 262_144 {
 		t.Fatalf("DefaultChunkSize %d, want 262,144 — a moved default changes every new publish's root; re-ratify", pipeline.DefaultChunkSize)

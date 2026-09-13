@@ -12,44 +12,44 @@ import (
 // era-4 (v5) trustless floor-box RECOMPUTE — lane-1 Part B core, increment 1.
 //
 // This file reproduces ONE weighted validity predicate — requireEpochWeightQuorum, the
-// mature-phase >⅔ frozen-WEIGHT super-quorum (chain.go:2845) — trustlessly, from the
-// committed StateRoot + witnesses ALONE, proving the C-1 weight-composition pattern the
-// v5-wholeset-digest-root cert (2026-08-31) names as the load-bearing gap. It is ADDITIVE:
+// mature-phase >⅔ frozen-WEIGHT super-quorum (chain.go) — trustlessly, from the
+// committed StateRoot + witnesses ALONE, proving the weight-composition pattern the
+// v5-wholeset-digest-root the research names as the load-bearing gap. It is ADDITIVE:
 // it calls no full-node accept path, mutates nothing, and changes NO consensus/validity
 // rule. A full node still computes requireEpochWeightQuorum from its own in-memory epochSet
 // (chain.go untouched). This is a SEPARATE root-only path a semi-stateless box calls INSTEAD
 // of holding the tree — the same posture floorbox_v5.go already holds.
 //
-// THE C-1 GAP THIS CLOSES (cert Q2 / C-1). The five F1 digest roots bind MEMBERSHIP only.
+// THE C-1 GAP THIS CLOSES /. The five F1 digest roots bind MEMBERSHIP only.
 // requireEpochWeightQuorum folds Σ epochSet WEIGHT, not a membership count. So set-
-// completeness alone (the digest) certifies the WRONG thing: a prover could witness the
+// completeness alone (the digest) verifies the WRONG thing: a prover could witness the
 // complete id-set yet hand FORGED per-member weights and the tally would be forgeable. The
 // recompute is sound ONLY as the COMPOSITION:
 //
 //	digest (reconstruct epochSetRoot from the id-list ⇒ set-completeness)
-//	  ∪ per-member value proof (Resolve epochSet[id] against the committed root ⇒ the weights)
-//	  ∪ genesis config from OWN cfg, never the witness (C-6 ⇒ threshold un-shiftable)
+//	 ∪ per-member value proof (Resolve epochSet[id] against the committed root ⇒ the weights)
+//	 ∪ genesis config from OWN cfg, never the witness (C-6 ⇒ threshold un-shiftable)
 //
 // THE THREE-PART PROOF (recomputeEpochWeightQuorum):
-//  1. SET-COMPLETENESS: reconstruct nodeSetMTH(witnessedIDs); require it equals the committed
-//     epochSetRoot leaf (proven present against the StateRoot by an SMT inclusion proof). One
-//     omitted frozen member ⇒ a different MTH ⇒ mismatch ⇒ stall. This is the F1 epochSetRoot
-//     digest FINALLY READ (F1 committed it inert; this increment consumes it for epochSet).
-//  2. PER-MEMBER WEIGHT (C-1): for EVERY id in the reconstructed set, Resolve the epochSet[id]
-//     value leaf against the committed StateRoot. A forged weight fails smt.VerifyProof ⇒
-//     NoWitness ⇒ stall. The digest gave membership; the inclusion proofs give the values.
-//  3. GENESIS CONFIG (C-6): MinBond is read from the box's OWN cfg (c.cfg.MinBond), NEVER from
-//     any witness. The eligibility screen a box applies before folding a member into the tally
-//     is threshold-shifting if an attacker controls it; reading own config forecloses the shift.
+// 1. SET-COMPLETENESS: reconstruct nodeSetMTH(witnessedIDs); require it equals the committed
+// epochSetRoot leaf (proven present against the StateRoot by an SMT inclusion proof). One
+// omitted frozen member ⇒ a different MTH ⇒ mismatch ⇒ stall. This is the F1 epochSetRoot
+// digest FINALLY READ (F1 committed it inert; this increment consumes it for epochSet).
+// 2. PER-MEMBER WEIGHT: for EVERY id in the reconstructed set, Resolve the epochSet[id]
+// value leaf against the committed StateRoot. A forged weight fails smt.VerifyProof ⇒
+// NoWitness ⇒ stall. The digest gave membership; the inclusion proofs give the values.
+// 3. GENESIS CONFIG: MinBond is read from the box's OWN cfg (c.cfg.MinBond), NEVER from
+// any witness. The eligibility screen a box applies before folding a member into the tally
+// is threshold-shifting if an attacker controls it; reading own config forecloses the shift.
 //
-// Then the fold + threshold, byte-for-byte the full node's (chain.go:2850-2864):
+// Then the fold + threshold, byte-for-byte the full node's (chain.go):
 // total = Σ verified weights; support = proposer + Σ seen verified weights; 3*support > 2*total.
 //
-// STOP BOUNDARY (this increment). It reproduces ONE predicate. It does NOT flip #657
-// the box to Accept — that is the final increment, only after ALL predicates are
-// reproduced. The box STILL never-Accepts. It reproduces the NON-boundary epochSet fold only;
-// the #535 recovery boundary (effectiveEpochSet = liveQualifiedSet) stays the ratified trust-
-// the-directive carve-out (cert C-2), governed by the #535 policy floorbox_v5.go already ships.
+// STOP BOUNDARY (this increment). It reproduces ONE predicate. It does NOT flip the box to
+// Accept — that is the final increment, only after ALL predicates are reproduced. The box
+// STILL never-Accepts. It reproduces the NON-boundary epochSet fold only; the recovery
+// boundary (effectiveEpochSet = liveQualifiedSet) stays the trust- the-directive
+// carve-out, governed by the policy floorbox_v5.go already ships.
 
 var (
 	// ErrRecomputeSetIncomplete marks a stall where the witnessed id-list does not reconstruct
@@ -65,7 +65,7 @@ var (
 
 	// ErrRecomputeMemberWeightUnproven marks a stall where a per-member epochSet[id] weight leaf
 	// could not be proven present against the committed StateRoot (no/failed/forged inclusion
-	// witness). This is the C-1 closure: a forged weight cannot verify, so it stalls the fold
+	// witness). This is the closure: a forged weight cannot verify, so it stalls the fold
 	// rather than letting a forgeable tally through.
 	ErrRecomputeMemberWeightUnproven = errors.New("chain: floor-box recompute — a per-member epochSet weight leaf not proven present against the committed StateRoot (C-1: the weight is forged or missing)")
 
@@ -103,7 +103,7 @@ type EpochSetWitness struct {
 
 	// MemberWeights maps each id in IDs to its claimed per-member epochSet weight and the SMT
 	// inclusion proof of the epochSet[id] value leaf. The recompute Resolves each against the
-	// committed StateRoot: a forged weight fails verification and stalls (C-1). Every id in IDs
+	// committed StateRoot: a forged weight fails verification and stalls. Every id in IDs
 	// MUST have an entry, else the recompute cannot verify that member's weight and stalls.
 	MemberWeights map[ports.NodeID]MemberWeightWitness
 
@@ -122,7 +122,7 @@ type MemberWeightWitness struct {
 	// Weight is the claimed committed epochSet[id] weight. It is NOT trusted: the recompute
 	// verifies it by Resolving the epochSet[id] leaf (encoded as EncodeInt64(Weight)) against the
 	// committed root — a forged weight produces a leaf value the committed root does not commit,
-	// so smt.VerifyProof fails and the member's weight is unproven (C-1).
+	// so smt.VerifyProof fails and the member's weight is unproven.
 	Weight int64
 
 	// Proof is the SMT inclusion proof of Key(tagEpochSet, id) → EncodeInt64(Weight) against the
@@ -131,14 +131,14 @@ type MemberWeightWitness struct {
 }
 
 // recomputeEpochWeightQuorum reproduces requireEpochWeightQuorum (the mature-phase >⅔
-// frozen-WEIGHT super-quorum, chain.go:2845) TRUSTLESSLY, from the committed StateRoot + the
+// frozen-WEIGHT super-quorum, chain.go) TRUSTLESSLY, from the committed StateRoot + the
 // witness alone. It returns (met, nil) where met is the quorum verdict a full node's
 // requireEpochWeightQuorum would produce (met == the err==nil case), or (false, reason) when
 // the box cannot verify the witness and must stall — NEVER folding an unverified set/weight.
 //
-// It reads MinBond from the box's OWN cfg (C-6), never the witness. It reproduces the
-// NON-boundary epochSet fold; the #535 recovery boundary is the ratified carve-out (cert C-2)
-// governed by floorbox_v5.go's policy, out of scope here.
+// It reads MinBond from the box's OWN cfg, never the witness. It reproduces the
+// NON-boundary epochSet fold; the recovery boundary is the carve-out governed by
+// floorbox_v5.go's policy, out of scope here.
 //
 // N1 — THE AUTHOR SCREEN, and why it is HERE and not in the node's tally. The node's
 // requireEpochWeightQuorum credits `set[proposer]` with NO screen, and that is correct on the
@@ -186,16 +186,16 @@ func (c *Chain) recomputeEpochWeightQuorum(
 		return false, fmt.Errorf("%w: author %x", ErrRecomputeAuthorUnscreened, proposer[:])
 	}
 
-	// (2) PER-MEMBER WEIGHT (C-1) + (4) THE FOLD. For every id in the now-completeness-verified
+	// (2) PER-MEMBER WEIGHT + (4) THE FOLD. For every id in the now-completeness-verified
 	// set, Resolve its epochSet[id] weight leaf against the committed StateRoot (a forged weight
-	// fails verification ⇒ stall), then fold exactly as chain.go:2850-2864: total = Σ verified
+	// fails verification ⇒ stall), then fold exactly as chain.go: total = Σ verified
 	// weights, support = proposer + Σ seen verified weights. The full node does NOT re-screen
 	// epochSet members by MinBond in this fold — MinBond screened them at FREEZE time
-	// (liveQualifiedSet, chain.go:1352), so every epochSet member already cleared it and
+	// (liveQualifiedSet, chain.go), so every epochSet member already cleared it and
 	// contributes its full weight. Re-screening here would DIVERGE from the full node, so the
 	// recompute must NOT. The ONE screen the tally carries is the author's, above, and it exists
 	// because proposerQualifiedAt is the stage that screens on the node and is not in front of
-	// this function. See the C-6 note below for how this increment still reads own config.
+	// this function. See the note below for how this increment still reads own config.
 	var total, support int64
 	for _, id := range w.IDs {
 		mw, ok := w.MemberWeights[id]
@@ -207,7 +207,7 @@ func (c *Chain) recomputeEpochWeightQuorum(
 		memberKey := statehash.Key(tagEpochSet, id[:])
 		res := statehash.Resolve(committedStateRoot, memberKey, statehash.EncodeInt64(mw.Weight), mw.Proof)
 		if !res.IsProvenPresent() {
-			// C-1: a forged weight produces a leaf value the committed root does not commit, so
+			// a forged weight produces a leaf value the committed root does not commit, so
 			// the inclusion proof fails to verify. Stall — the tally would otherwise be forgeable.
 			return false, fmt.Errorf("%w: id %x weight %d", ErrRecomputeMemberWeightUnproven, id[:], mw.Weight)
 		}
@@ -217,7 +217,7 @@ func (c *Chain) recomputeEpochWeightQuorum(
 		}
 	}
 
-	// (3) THE FROZEN-WEIGHT ⅔ THRESHOLD, byte-for-byte the full node's (chain.go:2854-2864).
+	// (3) THE FROZEN-WEIGHT ⅔ THRESHOLD, byte-for-byte the full node's (chain.go).
 	//
 	// C-6 (genesis config from OWN config, never the witness). The ⅔ ratio itself is a fixed
 	// consensus constant, not a genesis knob, so THIS predicate's fold reads no per-deployment
@@ -226,7 +226,7 @@ func (c *Chain) recomputeEpochWeightQuorum(
 	// consensus parameters (via c) and treats the WITNESS as carrying committed STATE only
 	// (id-list + per-member weights), never a threshold. A predicate that DID read a genesis
 	// knob (e.g. a whole-bonded fold that screens by MinBond, a later increment) reads it from
-	// c.cfg here, exactly as liveQualifiedSet does (chain.go:1352) — never from w. The C-6
+	// c.cfg here, exactly as liveQualifiedSet does (chain.go) — never from w. The C-6
 	// ablation asserts this separation: a witness that tries to carry a shifted threshold cannot
 	// move the verdict, because the recompute takes no threshold from w.
 	if total <= 0 {

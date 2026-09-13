@@ -16,10 +16,10 @@ import (
 //
 // It resolves the identity exactly as `silt daemon` does, so the printed ID is
 // the one the daemon will actually use:
-//   - `-id-seed N` derives a deterministic identity (nothing is written);
-//   - otherwise the persistent keyfile under `-store` is loaded, minting one on
-//     first use just as the daemon would (so `silt id` then `silt daemon` on the
-//     same store share an identity).
+// - `-id-seed N` derives a deterministic identity (nothing is written);
+// - otherwise the persistent keyfile under `-store` is loaded, minting one on
+// First use just as the daemon would (so `silt id` then `silt daemon` on the
+// same store share an identity).
 //
 // With `-listen ADDR` it also prints the `peer: ID@ADDR` bootstrap line.
 func cmdID(args []string) error {

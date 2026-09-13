@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# Deterministic adversarial-consensus certification.
+# Deterministic adversarial-consensus research.
 #
 # The trust plane's marquee denials — equivocation → slash, partition → heal to
 # the heavier fork, forged/under-bonded proposal → reject — must be proven under
 # ADVERSE network conditions, not only on a clean localhost. The 2026-08 rescue
-# audit found these being "certified" on a flaky live GCP wire that kept failing
+# audit found these being "verifies" on a flaky live GCP wire that kept failing
 # to even DRIVE the attack, then re-grading the miss as a passing GAP. That is
 # backwards: an attack you cannot schedule is not a test.
 #
@@ -21,15 +21,15 @@
 # not for discovering causes or forcing attacks.
 #
 # Usage:
-#   ./run.sh                                   # default impairment (cross-region-ish)
-#   NETEM="" ./run.sh                          # clean-network control (must PASS)
-#   TESTS='TestEquivocatorSlashedOverTCP' ./run.sh   # one drill
+# ./run.sh # default impairment (cross-region-ish)
+#  NETEM=""./run.sh # clean-network control (must PASS)
+#  TESTS='TestEquivocatorSlashedOverTCP'./run.sh # one drill
 #
 # The scheduled arms (.github/workflows/nightly-netem.yml) — build-immutable #5
 # names jitter, latency, packet loss AND reordering, so each gets an arm:
-#   NETEM="delay 80ms 20ms distribution normal"           ./run.sh   # jitter
-#   NETEM="delay 120ms 40ms distribution normal loss 2%"  ./run.sh   # loss
-#   NETEM="delay 20ms reorder 25% 50%"                    ./run.sh   # reorder
+#  NETEM="delay 80ms 20ms distribution normal"./run.sh # jitter
+#  NETEM="delay 120ms 40ms distribution normal loss 2%"./run.sh # loss
+#  NETEM="delay 20ms reorder 25% 50%"./run.sh # reorder
 # `reorder` REQUIRES a delay — tc rejects it outright otherwise ("reordering not
 # possible without specifying some delay", exit 1), which this harness renders as
 # a HARNESS ERROR, never as a clean pass. A malformed reorder arm cannot go green.
@@ -52,24 +52,24 @@ ROOT=$(cd ../.. && pwd)
 : "${TIMEOUT:=900s}"
 
 # SUITE presets (override with an explicit TESTS='<regex>' for one property):
-#   adversarial (default) — the M0 consensus DENIAL drills (equivocation-slash,
-#                           partition-heal, forged/low-bond reject).
-#   substrate             — the P0 LIVENESS/durability substrate over the wire:
-#                           objective quorum commit, bond-earned-standing commit,
-#                           and publish→fetch bit-perfect — the "does the network
-#                           stay live and serve" half the adversarial drills ride on.
-#   all                   — both, the full P0 netem gate in one run.
+#  adversarial (default) — the M0 consensus DENIAL drills (equivocation-slash,
+#  partition-heal, forged/low-bond reject).
+#  substrate — the P0 LIVENESS/durability substrate over the wire:
+#  objective quorum commit, bond-earned-standing commit,
+#  and publish→fetch bit-perfect — the "does the network
+#  stay live and serve" half the adversarial drills ride on.
+#  all — both, the full P0 netem gate in one run.
 # NOTE: the cold-start re-mesh test (TestBootstrapRetryRecoversColdStartRace) is
 # deliberately EXCLUDED from the netem suite — it runs with -request-timeout 500ms
 # -request-retries 0 (a clean-localhost timing test of the self-heal LOGIC, "not
 # about RPC retry" per its own comment), so a dropped packet under netem flakes it.
-# The bootstrap-retry FIX is certified in the clean e2e suite (bootstrap_test.go);
+# The bootstrap-retry FIX is in the clean e2e suite (bootstrap_test.go);
 # netem-hardening that specific race is tracked, not faked green here.
 ADVERSARIAL='TestEquivocatorSlashedOverTCP|TestPartitionHealsToHeavierForkOverTCP|TestForgedBlockRejectedOverTCP|TestLowBondProposerRejectedOverTCP'
 SUBSTRATE='TestObjectiveConsensusCommitsOverTCP|TestBondEarnedStandingCommitsOverTCP|TestPublishCommitFetchOverTCP'
 # `noun` is the verdict line's subject, set explicitly per SUITE. It used to be
 # derived by chopping `kind` at its first space, which mangled SUITE=all into
-# "every FULL property held" — a verdict line that cannot name what it certified
+# "every FULL property held" — a verdict line that cannot name what it verifies
 # is one edit away from a verdict line that names the wrong thing.
 case "${SUITE:-adversarial}" in
   adversarial) : "${TESTS:=$ADVERSARIAL}"; kind="adversarial-consensus drills"; noun="adversarial-consensus"; verb="DENIED its attack" ;;
@@ -113,13 +113,12 @@ set -e
 echo ""
 # A verdict this harness did not EARN must not be printed. netem-run.sh separates
 # the ways a run can end (see its header for the code contract); this renders each
-# as itself. The old code had a single else-branch, so ANY non-zero exit printed
-# "a property did NOT hold" — and for thirteen consecutive nights that sentence
-# described a package that had failed to COMPILE with zero drills run. Nobody
-# triaged it, because it read as a durability finding rather than a broken build.
+# as itself. A single else-branch would print "a property did NOT hold" for ANY
+# non-zero exit, including a package that failed to COMPILE with zero drills run —
+# which reads as a durability finding rather than a broken build.
 case "$code" in
   0)
-    echo "RESULT: PASS ✅  every ${noun} property ${verb} under [${NETEM:-CLEAN}] — certified deterministically, off-cloud."
+    echo "RESULT: PASS ✅  every ${noun} property ${verb} under [${NETEM:-CLEAN}] — deterministically, off-cloud."
     ;;
   4)
     echo "RESULT: SETUP FAILED ⛔  the ${noun} drills never BUILT under [${NETEM:-CLEAN}] — ZERO drills ran."
@@ -133,7 +132,7 @@ case "$code" in
     ;;
   5)
     echo "RESULT: UNEARNED ⛔  the drills built and ran, but not every NAMED drill produced a result under [${NETEM:-CLEAN}]."
-    echo "  This is NOT a property verdict. A green over partial execution certifies nothing;"
+    echo "  This is NOT a property verdict. A green over partial execution proves nothing;"
     echo "  check the 'drills: N of M' line above and the -run regex."
     ;;
   125 | 126 | 127)

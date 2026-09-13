@@ -33,7 +33,7 @@ import (
 // entries the publisher can reach come first in canonical order, then any remaining
 // reachable peers (stable). So two publishers with overlapping reachable sets pick
 // the SAME signer subset up to reachability — the subset is no longer an arbitrary
-// per-publisher choice that leaks who published (R-3 / seam-4). Deterministic: same
+// per-publisher choice that leaks who published (R-3 /). Deterministic: same
 // (reachable, canon) → same order, independent of the input peer order.
 func rankByCanonical(reachable, canon []ports.NodeID) []ports.NodeID {
 	reach := make(map[ports.NodeID]bool, len(reachable))
@@ -87,7 +87,7 @@ func acquirePublishToken(nd *node.Node, validators []ports.NodeID, k int, cont f
 	}
 	// Stage 2: mint one credit per validator (charged at mint), concurrent.
 	// A per-issuer mint failure stays best-effort — the spend handles a shortfall — but the FIRST
-	// cause is kept (D-TD-3). Without it the whole lane's only observable is a bare
+	// cause is kept. Without it the whole lane's only observable is a bare
 	// ErrTokenAcquire: AcquireCredits reports its error here, acquireToken silently SKIPS an
 	// issuer with no credit, and the operator debugging a refused publish is told the signatures
 	// could not be gathered and never why. The error is a diagnosis, not a control flow — nothing
@@ -250,7 +250,7 @@ func parseDeclaredChainID(s string) (ports.Hash, bool, error) {
 // after Bootstrap completes, so by the time swarmAdd holds the node the event loop is already
 // processing inbound frames; the off-loop mutations this one resembles (SetSigner, SetEphemeral)
 // all happen before any peer is added. Writing declaredChainID from the main goroutine is safe
-// only while nothing reads it, and #828 is the change that makes something read it — from a
+// only while nothing reads it, and is the change that makes something read it — from a
 // handler, on the loop. Posting the write gives the happens-before now, not after the race.
 //
 // It also OWNS THE GUARD. Whether a declaration was made is decided here, in a function a
@@ -281,9 +281,9 @@ func swarmAdd(args []string) error {
 	tokenQuorum := fs.Int("token-quorum", 0, "publisher privacy: acquire a publish token from this many validators so the publish carries no Publisher identity. The signers are chosen by a NETWORK-CANONICAL ordering (ranked by committed bond, fetched from a chain-holding peer), the SAME for every publisher, so the signer subset can't narrow the publisher's anonymity set (R-3); falls back to -peers order if no peer serves a chain. 0 = off")
 	allowPublisher := fs.Bool("allow-publisher", false, "record this node's durable Publisher identity on the entry (permanent linkage; off by default for privacy — prefer -token-quorum or an ungated publish)")
 	replication := fs.Int("replication", 0, "how many closest holders receive each chunk (0 = default). Parity across holders backstops copies, so even 1 is viable; a lower factor makes shard loss (and thus caretaker repair) reproducible on a small swarm")
-	saveToken := fs.String("save-token", "", "after acquiring a -token-quorum publish token, write it (CBOR) to this file so it can be RE-PRESENTED later with -use-token. A publish-token serial is single-use, so this is the seam that lets a harness drive the DOUBLE-SPEND rejection over the wire (#233)")
+	saveToken := fs.String("save-token", "", "after acquiring a -token-quorum publish token, write it (CBOR) to this file so it can be RE-PRESENTED later with -use-token. A publish-token serial is single-use, so this is the seam that lets a harness drive the DOUBLE-SPEND rejection over the wire ")
 	chainIDHex := fs.String("chain-id", "", "this network's IDENTITY — the genesis block's hash, 64 hex chars, as the daemon prints it at start-up (`network: ... (genesis <hash>)`). A `swarm add` client holds no chain, so it cannot DERIVE which network it is on; this is how an operator tells it. ON THIS BUILD the value is carried and nothing blinds under it yet — the prepaid publish-credit lane binds it under M3. A wrong value can then only DENY this client its own token; it widens nothing any validator accepts. Empty = not declared")
-	useToken := fs.String("use-token", "", "RED-TEAM / TEST-HARNESS: publish carrying a token previously saved by -save-token, instead of minting a fresh one. Presenting the same token a second time re-uses its already-committed serial, which the chain rejects (ErrTokenSpent, double-spend). Never mint-once/publish-twice on a real network")
+	useToken := fs.String("use-token", "", "ADVERSARY / TEST-HARNESS: publish carrying a token previously saved by -save-token, instead of minting a fresh one. Presenting the same token a second time re-uses its already-committed serial, which the chain rejects (ErrTokenSpent, double-spend). Never mint-once/publish-twice on a real network")
 	pos := parseFlexible(fs, args)
 	if len(pos) != 1 || *peers == "" || *regURL == "" {
 		return fmt.Errorf("usage: silt swarm add <file> -peers ID@ADDR -registry URL [flags]")
@@ -326,9 +326,9 @@ func swarmAdd(args []string) error {
 	}
 
 	var h link.Handle
-	// Price the publish before it is staged: the shard a repair will pull is the object's
-	// own bytes when it fits in one frame, so the SIZE is part of the price (blind PE B-3).
-	// A file that cannot be stat'd prices the geometry alone.
+	// Price the publish before it is staged: the shard a repair will pull is the
+	// object's own bytes when it fits in one frame, so the SIZE is part of the price. A
+	// file that cannot be stat'd prices the geometry alone.
 	warnBountyPrice(*chunkSize, fileSizeOrUnknown(f), os.Stderr)
 	var placed int
 	err = nil
@@ -372,7 +372,7 @@ func swarmAdd(args []string) error {
 		if *useToken != "" {
 			// Re-present a token saved by an earlier -save-token publish. Its serial
 			// is already committed, so this SECOND publish is a double-spend the chain
-			// must reject (ErrTokenSpent) — the wire seam for #233.
+			// must reject (ErrTokenSpent) — the wire seam for.
 			raw, rerr := os.ReadFile(*useToken)
 			if rerr != nil {
 				err = rerr
@@ -404,7 +404,7 @@ func swarmAdd(args []string) error {
 					publish(tok)
 				})
 			}
-			// R-3 / seam-4: pick the token signers by a NETWORK-CANONICAL ordering
+			// R-3 /: pick the token signers by a NETWORK-CANONICAL ordering
 			// (validators ranked by committed bond, fetched from a chain-holding peer)
 			// rather than an arbitrary subset of -peers, so the signer subset stops
 			// being a per-publisher quasi-identifier that can collapse the publisher
@@ -413,10 +413,11 @@ func swarmAdd(args []string) error {
 			// with validators it can dial, so the ranking is applied to the reachable
 			// -peers; connecting to the canonical validator set makes it fully global.
 			if len(validators) > 0 {
-				// Try EVERY validator for the canonical set, not just validators[0]: a
-				// single un-synced/unreachable validator (e.g. one that just restarted,
-				// #351) otherwise drops us into the anonymity-narrowing fallback. The
-				// ranking is deterministic, so any chain-holder answers the same.
+				// Try EVERY validator for the canonical set, not just
+				// validators[0]: a single un-synced/unreachable validator
+				// (e.g. one that just restarted) otherwise drops us into the
+				// anonymity-narrowing fallback. The ranking is deterministic,
+				// so any chain-holder answers the same.
 				e.nd.FetchCanonicalIssuersFromAny(validators, func(canon []ports.NodeID, ferr error) {
 					if ferr != nil || len(canon) == 0 {
 						fmt.Fprintln(os.Stderr, "note: no canonical issuer set from peers; signing from -peers in given order — the signer subset may narrow the publisher anonymity set (connect to canonical validators for full privacy)")
@@ -489,27 +490,26 @@ func swarmGet(args []string) error {
 	return f.Close()
 }
 
-// swarmReceipt is the fetcher half of the PoD neutral lane (docs/design/pod.md,
-// certified 2026-08-26): having received and content-verified an object's bytes
-// from a server, the fetcher spends a blind-withdrawn retrieval token by signing
-// a delivery receipt and submitting it. The server banks it and settles the
+// swarmReceipt is the fetcher half of the PoD neutral lane, verifies
+// 2026-08-26: having received and content-verified an object's bytes from a
+// server, the fetcher spends a blind-withdrawn retrieval token by signing a
+// delivery receipt and submitting it. The server banks it and settles the
 // conserved delivery credit — the fee this fetcher already paid at withdrawal,
 // less the durability skim.
 //
 // The peer is BOTH issuer and server, which is the bilateral shape the
-// certification's settlement answer covers (per-node bookkeeping suffices for
-// tit-for-tat; a credit a third operator must honor is a later, committed-state
-// question).
+// settlement answer covers (per-node bookkeeping suffices for tit-for-tat; a
+// credit a third operator must honor is a later, committed-state question).
 //
-// The receipt carries no possession proof, by certified design: an honest
-// fetcher signs only after the fetch path re-verified the bytes against their
-// content address, and forging one is unprofitable because the credit is
-// conserved, not because possession is proven. So this command attests a
-// delivery the caller performed; it does not fetch.
+// The receipt carries no possession proof, by design: an honest fetcher signs
+// only after the fetch path re-verified the bytes against their content
+// address, and forging one is unprofitable because the credit is conserved,
+// not because possession is proven. So this command attests a delivery the
+// caller performed; it does not fetch.
 func swarmReceipt(args []string) error {
 	fs := flag.NewFlagSet("swarm receipt", flag.ExitOnError)
 	peers := fs.String("peers", "", "the serving peer, which also issues its retrieval tokens: ID@HOST:PORT (required)")
-	increments := fs.Int64("increments", 1, "R2.9: how many 256 KiB increments of <root-hash> this client received and content-verified from the peer — the cumulative count the session receipt acknowledges (one credit each; the face funds up to 50,000)")
+	increments := fs.Int64("increments", 1, " how many 256 KiB increments of <root-hash> this client received and content-verified from the peer — the cumulative count the session receipt acknowledges (one credit each; the face funds up to 50,000)")
 	pos := parseFlexible(fs, args)
 	if len(pos) != 1 || *peers == "" {
 		return fmt.Errorf("usage: silt swarm receipt <root-hash> -peers ID@ADDR [-increments N]")
@@ -536,14 +536,14 @@ func swarmReceipt(args []string) error {
 	}
 	defer e.close()
 
-	// R0.4b: the withdrawal runs on the PINNED per-epoch demand lane, never the
+	// The withdrawal runs on the PINNED per-epoch demand lane, never the
 	// publish-token lane. FetchDemandIssuerKeys holds a served key_E only if its
-	// fingerprint equals the consensus-attested commitment for (server, E), so this
-	// client never blinds against a key the network has not agreed on — an issuer
-	// that serves this fetcher a private key gets a denial, not a tagged token. It
-	// also means the client needs a chain: a swarm join with no committed E ↦ key_E
-	// binding pins nothing and the withdrawal refuses rather than buying a token the
-	// bank will never honour.
+	// fingerprint equals the consensus-attested commitment for (server, E), so
+	// this client never blinds against a key the network has not agreed on — an
+	// issuer that serves this fetcher a private key gets a denial, not a tagged
+	// token. It also means the client needs a chain: a swarm join with no
+	// committed E ↦ key_E binding pins nothing and the withdrawal refuses rather
+	// than buying a token the bank will never honour.
 	var pinned int
 	var keyErr error
 	if rerr := run(func(done func()) {
@@ -555,15 +555,14 @@ func swarmReceipt(args []string) error {
 		return err
 	}
 
-	// R2.9: the demand token IS the session anchor, spent at session OPEN (not at
-	// redeem). This command is STATELESS, so every invocation opens a fresh session
-	// with one fresh anchor and settles one receipt on it; the session then closes on
-	// the server's idle window and its unsettled remainder becomes a DEPOSIT, released
-	// to the fetcher's existing account when the anchor leaves the guard window
-	// (D-R2.9-NODE-HALF-CALLS call 1', PR #763 — it is NOT burned on this lane; the
-	// relay lane keeps the burn). A second invocation inside the window from the same identity is
-	// refused by the server's one-session-per-fetcher rule — the sim and the e2e drive
-	// the multi-receipt, multi-object session through the node API.
+	// The demand token IS the session anchor, spent at session OPEN (not at redeem). This
+	// command is STATELESS, so every invocation opens a fresh session with one fresh anchor
+	// and settles one receipt on it; the session then closes on the server's idle window
+	// and its unsettled remainder becomes a DEPOSIT, released to the fetcher's existing
+	// account when the anchor leaves the guard window call 1', PR — it is NOT burned on
+	// this lane; the relay lane keeps the burn. A second invocation inside the window from
+	// the same identity is refused by the server's one-session-per-fetcher rule — the sim
+	// and the e2e drive the multi-receipt, multi-object session through the node API.
 	var tok demand.Token
 	var tokErr error
 	if rerr := run(func(done func()) {
@@ -590,8 +589,8 @@ func swarmReceipt(args []string) error {
 		return rerr
 	}
 	if openErr != nil {
-		// The anchor is spent only on an ADMITTED open; a refused open records nothing
-		// (T-10), so the token is still the caller's to present again.
+		// The anchor is spent only on an ADMITTED open; a refused open records
+		// nothing, so the token is still the caller's to present again.
 		return fmt.Errorf("%s %s: session open refused: %v", notBankedMarker, server, openErr)
 	}
 
@@ -615,8 +614,8 @@ func swarmReceipt(args []string) error {
 }
 
 // notBankedMarker is the ANNOUNCED marker for "your delivery receipt did not
-// bank" (S5: an announced string is an observable contract — the `freeload: ON`
-// scar). e2e TestDeliveryReceiptRefusedWhenLaneOff asserts it, and every refusal
+// bank". An announced string is an observable contract, as the `freeload: ON`
+// rename showed. e2e TestDeliveryReceiptRefusedWhenLaneOff asserts it, and every refusal
 // on this command that leaves the receipt unbanked must carry it, so an operator
 // greps one phrase rather than a taxonomy of causes. It is a const, not two
 // literals, because the two sites that emit it must never drift apart.
@@ -637,25 +636,25 @@ var errNoCommittedDemandKeyBinding = errors.New(
 // transport/serving failure carries keyErr. A resolution failure does NOT: the
 // request succeeded and pinned is simply 0, because nothing the issuer served
 // matched the committed binding. Formatting the second case with %w printed the
-// literal `%!w(<nil>)` to the operator (Tester finding, 2026-09-03), which names no
-// cause at all — and this refusal is the one an operator is most likely to hit,
-// since a chain with no committed E -> key_E binding pins nothing.
+// literal `%!w(<nil>)` to the operator, which names no cause at all — and this
+// refusal is the one an operator is most likely to hit, since a chain with no
+// committed E -> key_E binding pins nothing.
 //
 // The refusal itself is NOT softened here: with no committed binding there is no
-// anti-fingerprinting anchor, and the certification is explicit that withdrawing
+// anti-fingerprinting anchor, and the research is explicit that withdrawing
 // without the anchor is unsafe (core/node/demandkeys.go pinDemandIssuerKey). This
 // function only makes the reason legible.
 func demandKeyResolutionError(server ports.NodeID, pinned int, keyErr error) error {
 	switch {
 	case errors.Is(keyErr, node.ErrNoIssuerKey):
-		// THE LANE-OFF CASE, and the one an operator hits first. A daemon started
-		// without -accept-delivery-receipts opens no demand key store, runs no
-		// rotation and arms no bank, so it serves NO issuer key and this refusal is
-		// reached before a token is ever withdrawn. Carrying the announced "NOT
-		// banked" marker here is the S5 fix: the marker used to live only below the
-		// submit step, which this early return can never reach, so the daemon refused
-		// correctly and the client said something else (PE ruling §2, G-8 convergence
-		// §5, 2026-09-03).
+		// THE LANE-OFF CASE, and the one an operator hits first. A daemon
+		// started without -accept-delivery-receipts opens no demand key store,
+		// runs no rotation and arms no bank, so it serves NO issuer key and
+		// this refusal is reached before a token is ever withdrawn. Carrying
+		// the announced "NOT banked" marker here is the S5 fix: the marker used
+		// to live only below the submit step, which this early return can never
+		// reach, so the daemon refused correctly and the client said something
+		// else.
 		//
 		// "The token is spent regardless" is deliberately NOT said: nothing was
 		// withdrawn, so the fetcher paid no fee and loses nothing by retrying against

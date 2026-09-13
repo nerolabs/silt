@@ -8,8 +8,7 @@
 // deterministic, anyone who can GUESS your exact plaintext can encrypt
 // their guess and check whether the resulting chunk exists in the
 // network. Convergent encryption hides content only when the content is
-// not guessable. Fine for public/shared data; wrong for secrets. See
-// docs/math/02-convergent-encryption.md.
+// not guessable. Fine for public/shared data; wrong for secrets. See.
 //
 // Private: one random key per file, AES-256-GCM per chunk, with the chunk
 // index bound into the nonce so a manifest full of valid ciphertexts

@@ -15,10 +15,10 @@ import (
 // HonorRevocations makes this reader subscribe to the chain's takedown
 // records. It defaults to false — a bare registry resolves EVERYTHING the
 // chain committed, so following the chain never silently imposes someone
-// else's takedowns (red-team F5). An operator that chooses to honor on-chain
-// revocations sets it true; the effect is then "proportional to who trusts
-// you" (TENETS §9), the same voluntary, per-operator stance as the local
-// denylist — never a global switch that every chain-follower inherits.
+// else's takedowns. An operator that chooses to honor on-chain revocations
+// sets it true; the effect is then "proportional to who trusts you" (TENETS
+// §9), the same voluntary, per-operator stance as the local denylist — never
+// a global switch that every chain-follower inherits.
 type ReplicaRegistry struct {
 	C                *Chain
 	HonorRevocations bool

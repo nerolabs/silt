@@ -16,13 +16,13 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Integration/sim tier for the M0 privacy fee decoupling (red-team F4). The unit
-// tests (core/node/redteam_privacy_test.go) call the issuer handler directly;
-// this drives the OUTCOME through the real node loop over the sim transport
-// (MsgTokenRequest → answerTokenRequest → ledger). What good looks like: a
-// publisher pays the fee ONCE, in bulk, at mint; publishing later by SPENDING a
-// prepaid credit does NOT debit its durable standing key again — so no
-// per-publish ledger event links the standing key to the publish.
+// Integration/sim tier for the M0 privacy fee decoupling. The unit tests
+// (core/node/privacy_test.go) call the issuer handler directly; this drives the
+// OUTCOME through the real node loop over the sim transport (MsgTokenRequest →
+// answerTokenRequest → ledger). What good looks like: a publisher pays the fee
+// ONCE, in bulk, at mint; publishing later by SPENDING a prepaid credit does NOT
+// debit its durable standing key again — so no per-publish ledger event links
+// the standing key to the publish.
 func TestPrepaidCreditDecouplesFeeOverTheNetwork(t *testing.T) {
 	const (
 		seed = int64(31)

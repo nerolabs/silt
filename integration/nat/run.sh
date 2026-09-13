@@ -5,8 +5,8 @@
 # back bit-perfect having crossed the relay. No second machine, no manual
 # steps — this is the automatable replacement for the Mac-A↔Mac-B rig.
 #
-# Usage:  ./run.sh            # build, test, tear down; exit 0 = PASS
-#         KEEP=1 ./run.sh     # leave the topology up afterward to poke at
+# Usage:./run.sh # build, test, tear down; exit 0 = PASS
+#  KEEP=1 ./run.sh # leave the topology up afterward to poke at
 set -uo pipefail
 cd "$(dirname "$0")"
 ROOT=$(cd ../.. && pwd)
@@ -108,7 +108,7 @@ if [ "${RESTART:-0}" = 1 ] && [ "$pass" = 1 ]; then
   # fixed sleep is the wrong tool (build-immutable #5: wait for the condition, never a
   # magic constant). A single `sleep 6` + one-shot re-fetch FALSE-FAILed bimodally under
   # a loaded CI runner where 6s was sometimes too short for the record to propagate
-  # before nodeB looked it up (#390). So confirm the reload happened, then WAIT FOR THE
+  # before nodeB looked it up. So confirm the reload happened, then WAIT FOR THE
   # ACTUAL CONDITION: retry the re-fetch on a bounded deadline. A genuine reprovide gap
   # still fails after it (this never masks a real #69 break — it only rides out a slow
   # re-announce), exactly the "retry, don't guess a timeout" discipline the product uses.

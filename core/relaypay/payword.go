@@ -1,15 +1,14 @@
 // Package relaypay holds the PayWord hash-chain primitive that funds relay /
-// gateway bandwidth compensation (docs/design/pod.md §7.3, certified
-// 2026-08-30). It is a sender-funded incremental micropayment: the fetcher
-// commits a chain root once, then reveals one preimage per forwarded increment.
-// The relay verifies each preimage with a single SHA-256 and redeems the
-// highest one it holds. There is no committed state, no TTP, and no new
-// dependency — SHA-256 only.
+// gateway bandwidth compensation, verifies 2026-08-30. It is a sender-funded
+// incremental micropayment: the fetcher commits a chain root once, then reveals
+// one preimage per forwarded increment. The relay verifies each preimage with a
+// single SHA-256 and redeems the highest one it holds. There is no committed
+// state, no TTP, and no new dependency — SHA-256 only.
 //
-// Why PayWord and not per-increment tokens: the certified shape (Q2) is the
-// cheapest possible per-increment verify (one hash) and scales as increments
-// shrink, which is the whole point of bounding the irreducible one-increment
-// stiff small. A blind token per increment would cost an RSA op per KB.
+// Why PayWord and not per-increment tokens: the shape (Q2) is the cheapest
+// possible per-increment verify (one hash) and scales as increments shrink,
+// which is the whole point of bounding the irreducible one-increment stiff
+// small. A blind token per increment would cost an RSA op per KB.
 //
 // Two M0 invariants live OUTSIDE this primitive, at the wiring layer, because
 // they are about identity and funding, not the chain itself: (i) the chain root
@@ -27,40 +26,37 @@ import (
 // RelayIncrementBytes is the payload size, in bytes, of one PayWord increment —
 // the amount of forwarded payload one revealed preimage authorizes.
 //
-// B = 524,288 bytes (512 KiB): the CERTIFIED re-price of 2026-09-06, owner-ratified the
-// same day (G-R212-2; silt-agent-memory/researcher/reviews/research-outcome/G-R212-2-relay-lane-reprice-
-// RESEARCH-CERTIFICATION-2026-09-06.md §8; docs/decisions.md D-R2.9a-RUN-CALLS). The relay
-// lane's price is RelayIncrementCredit/RelayIncrementBytes credits per byte. At the
-// original 4 KiB (the 2026-08-30 floor-box derivation) the 500,000-credit starter grant
-// bought 1.9 GiB of relayed fetch, 23.4× below the 44.7 GiB structural floor; at 512 KiB
-// one grant buys 244 GiB. Bounded below by the 64 GiB grant/r pin read on the SUM of the
-// prices a NAT'd fetcher pays and by Don't #7 (at 256 KiB the relay would out-earn the
-// server per byte); bounded above by T-AR (B ≤ 1,048,576). The original constraint (b),
-// fetcher-side chain-state memory, still holds: S_max · 32 B = 1.6 MB.
+// B = 524,288 bytes (512 KiB): the re-price. The relay
+// lane's price is RelayIncrementCredit/RelayIncrementBytes credits per byte. At the original 4 KiB (the
+// 2026-08-30 floor-box derivation) the 500,000-credit starter grant bought 1.9 GiB of relayed fetch,
+// 23.4× below the 44.7 GiB structural floor; at 512 KiB one grant buys 244 GiB. Bounded below by the 64
+// GiB grant/r pin read on the SUM of the prices a NAT'd fetcher pays and by Don't #7 (at 256 KiB the
+// relay would out-earn the server per byte); bounded above by T-AR (B ≤ 1,048,576). The original
+// constraint (b), fetcher-side chain-state memory, still holds: S_max · 32 B = 1.6 MB.
 //
-// T-RELAY-GRAN (cert §4.1): a price change MUST move MaxSessionBytes with it. Per-anchor
+// A price change MUST move MaxSessionBytes with it. Per-anchor
 // yield is min(face · B / RelayIncrementCredit, MaxSessionBytes) and the remainder is
 // BURNED, so raising B against the old fixed 1 GiB cap would have burned 95.6 % of every
 // payment. MaxChainLength and MaxSessionBytes are therefore DERIVED below, never pinned.
 const RelayIncrementBytes = 524_288
 
 // MaxChainLength is S_max: the largest committed chain length a relay accepts,
-// derived RELAY-SIDE and never trusted from the fetcher. Since R2.14 a session's
+// derived RELAY-SIDE and never trusted from the fetcher. Since a session's
 // budget is the face of its anchors, and one anchor's face funds
 //
 //	S_max = ShippedAnchorFace / RelayIncrementCredit = 50,000
 //
 // increments, so MaxAnchorsPerSession derives to 1 and the longest chain one anchor
 // funds IS the ceiling. This bounds the worst-case AdvanceTo walk to 50K SHA-256
-// (~5 ms) instead of the attacker-chosen millions the unbounded path allowed (#644).
+// (~5 ms) instead of the attacker-chosen millions the unbounded path allowed.
 const MaxChainLength = ShippedAnchorFace / RelayIncrementCredit
 
 // MaxSessionBytes is the per-session payload ceiling the relay will ever forward, in
 // bytes: exactly what a full-length chain authorizes, so nothing a fetcher paid for is
-// left unforwardable (T-RELAY-GRAN). The relay adapter's per-splice cap defaults to
+// left unforwardable. The relay adapter's per-splice cap defaults to
 // THIS constant and Serve refuses a lower explicit cap (adapters/relay/server.go) —
 // ONE shared cap for free and paid splices, a coherence refusal and never a
-// free/paid differential (D-POD-RELAY-COEXIST).
+// free/paid differential.
 //
 //	MaxSessionBytes = MaxChainLength × RelayIncrementBytes = 26,214,400,000 B (24.414 GiB)
 const MaxSessionBytes int64 = MaxChainLength * RelayIncrementBytes
@@ -68,8 +64,8 @@ const MaxSessionBytes int64 = MaxChainLength * RelayIncrementBytes
 // RelayIncrementCredit is the credit value one forwarded increment settles for —
 // the settlement unit. One increment = one credit, so a session's settled value is
 // count × RelayIncrementCredit == count and the committed budget is S credits. The
-// conservation chain is count <= min(S, Σ face of the spent anchors) (R2.14: the
-// ledger's budget is the anchors' face, never S). Keeping it 1 makes the settlement
+// conservation chain is count <= min(S, Σ face of the spent anchors) (the ledger's
+// budget is the anchors' face, never S). Keeping it 1 makes the settlement
 // arithmetic the identity and the cap a plain count <= budget.
 const RelayIncrementCredit = 1
 
@@ -134,17 +130,17 @@ func (c *Chain) Preimage(k int) []byte {
 // the committed chain length S, the highest preimage revealed so far, and the
 // increment count it authorizes. It holds exactly one preimage (32 B) regardless
 // of chain length. S is the DoS clamp: the walk in AdvanceTo can never exceed S
-// hashes because claimedCount > S is rejected before the walk (#644).
+// hashes because claimedCount > S is rejected before the walk.
 type Verifier struct {
 	held  []byte // the highest preimage verified so far; starts as the root x_0
 	count int    // increments authorized: held == x_count
 	s     int    // the committed chain length; count never exceeds this
 
 	// walkSteps accumulates the SHA-256 walk steps AdvanceTo has executed on this
-	// verifier. It is the ENFORCED per-session walk budget (RT-RELAY-3, 2026-09-03):
+	// verifier. It is the ENFORCED per-session walk budget:
 	// AdvanceTo refuses, before walking, any claim that would push it past S, so a
 	// session never costs the relay more than S hashes in total (see AdvanceTo).
-	// It is also what the #644 clamp ablation reads. It is a plain field, not an
+	// It is also what the clamp ablation reads. It is a plain field, not an
 	// atomic: AdvanceTo already requires exclusive access to the verifier (it
 	// mutates held/count), so the counter carries no synchronization beyond that.
 	// One increment per hash is negligible against the SHA-256 itself; the
@@ -154,9 +150,9 @@ type Verifier struct {
 }
 
 // ErrWalkBudgetExhausted is returned by AdvanceTo when a claim's hash walk would
-// push the session's cumulative walk past the committed chain length S
-// (RT-RELAY-3). The session stays open; the caller acks OK=false. A session that
-// reaches this has already been sent at least one preimage that did not verify.
+// push the session's cumulative walk past the committed chain length S. The
+// session stays open; the caller acks OK=false. A session that reaches this has
+// already been sent at least one preimage that did not verify.
 var ErrWalkBudgetExhausted = errors.New("relaypay: session walk budget exhausted (cumulative walk would exceed the committed chain length S)")
 
 // NewVerifier starts a relay-side session from the committed root x_0 with the
@@ -197,7 +193,7 @@ func (v *Verifier) Advance(preimage []byte) error {
 	// held preimage is x_S = H(tip); a fetcher who reveals the TIP would hash to
 	// x_S and, without this guard, push count to S+1 — an unfunded (S+1)th
 	// increment past the committed budget (the settlement cap chain relies on
-	// count <= S). Reject the reveal once the chain is exhausted (#644 budget cap).
+	// count <= S). Reject the reveal once the chain is exhausted.
 	if v.count >= v.s {
 		return errors.New("relaypay: chain exhausted (count == committed length S)")
 	}
@@ -216,31 +212,26 @@ func (v *Verifier) Advance(preimage []byte) error {
 // claimed count that the preimage does not actually reach. On success the held
 // preimage advances to the revealed value and count = claimedCount.
 //
-// THE #644 CLAMP: claimedCount > S (the committed chain length carried at
-// NewVerifier) is REJECTED BEFORE the walk. The walk is therefore bounded to at
-// most (S - count) <= S hashes, and S is itself relay-clamped to
-// S_max = MaxChainLength at OpenRelaySession. claimedCount
-// is an attacker int in a bogus MsgRelayPay, but it can no longer drive work past
-// S hashes per message. Without this clamp a single bogus preimage with a large
-// claimedCount spins the relay for that many hashes (the PE measured ~5M hashes /
-// ~0.28s on an M4 from one message). Removing the clamp turns
-// TestAdvanceToClampsToChainLength RED.
+// THE CLAMP: claimedCount > S (the committed chain length carried at NewVerifier)
+// is REJECTED BEFORE the walk. The walk is therefore bounded to at most (S -
+// count) <= S hashes, and S is itself relay-clamped to S_max = MaxChainLength at
+// OpenRelaySession. claimedCount is an attacker int in a bogus MsgRelayPay, but
+// it can no longer drive work past S hashes per message. Without this clamp a
+// single bogus preimage with a large claimedCount spins the relay for that many
+// hashes. Removing the clamp turns TestAdvanceToClampsToChainLength RED.
 //
-// THE CUMULATIVE WALK BUDGET (RT-RELAY-3): the #644 clamp bounds ONE call to S
-// hashes; nothing bounded the COUNT of such calls. A rejected preimage leaves
-// count unmoved, so a bogus claimedCount = S is replayable forever on one open
-// session, each replay walking S hashes (the red-team measured ~53 ms per
-// ~48-byte bogus pay). The bound is exact and reuses walkSteps: every honest
-// walk step advances count toward its final value and count <= S, so an honest
-// session's cumulative walk is at most S. A claim whose walk would push
-// walkSteps past S is refused with ErrWalkBudgetExhausted BEFORE walking. No
-// slack: a retransmit of an already-accepted preimage fails the "not ahead"
-// check above the walk and costs nothing, so only a preimage that does not
-// verify spends budget, and the fetcher who sends one stiffs itself (the lane
-// is sender-funded; the relay stops forwarding when pays stop). Cert:
-// RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md
-// §8. Removing the budget check turns
-// TestRelayPayAdvanceToCumulativeWalkBudgetEnforced RED.
+// THE CUMULATIVE WALK BUDGET: the clamp bounds ONE call to S hashes; nothing bounded
+// the COUNT of such calls. A rejected preimage leaves count unmoved, so a bogus
+// claimedCount = S is replayable forever on one open session, each replay walking S
+// hashes. The bound is exact and reuses walkSteps: every honest walk step advances
+// count toward its final value and count <= S, so an honest session's cumulative
+// walk is at most S. A claim whose walk would push walkSteps past S is refused with
+// ErrWalkBudgetExhausted BEFORE walking. No slack: a retransmit of an
+// already-accepted preimage fails the "not ahead" check above the walk and costs
+// nothing, so only a preimage that does not verify spends budget, and the fetcher
+// who sends one stiffs itself (the lane is sender-funded; the relay stops forwarding
+// when pays stop). Cert: RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION- Removing the
+// budget check turns TestRelayPayAdvanceToCumulativeWalkBudgetEnforced RED.
 func (v *Verifier) AdvanceTo(preimage []byte, claimedCount int) error {
 	if len(preimage) != hashLen {
 		return errors.New("relaypay: preimage wrong length")
@@ -248,7 +239,7 @@ func (v *Verifier) AdvanceTo(preimage []byte, claimedCount int) error {
 	if claimedCount <= v.count {
 		return errors.New("relaypay: claimed count is not ahead of the held count")
 	}
-	// #644 clamp: never walk past the committed chain length. This bounds the walk
+	// clamp: never walk past the committed chain length. This bounds the walk
 	// to at most S hashes regardless of the attacker-chosen claimedCount.
 	if claimedCount > v.s {
 		return errors.New("relaypay: claimed count exceeds the committed chain length S")
@@ -256,7 +247,7 @@ func (v *Verifier) AdvanceTo(preimage []byte, claimedCount int) error {
 	// Walk H forward (claimedCount - count) times; the result must be the held
 	// value. x_{claimedCount} hashed (claimedCount - count) times == x_count.
 	steps := claimedCount - v.count
-	// RT-RELAY-3 cumulative budget: refuse before walking if this walk would push
+	// cumulative budget: refuse before walking if this walk would push
 	// the session's total past S. Checked here, after the per-call clamp, so the
 	// clamp's error text is unchanged for the single oversized-claim case.
 	if v.walkSteps+uint64(steps) > uint64(v.s) {

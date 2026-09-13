@@ -8,10 +8,10 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Consensus model-check — the UNIFIED step-oracle (#406).
+// Consensus model-check — the UNIFIED step-oracle.
 //
-// The spec (docs/design/consensus-model-check.md §"The oracle", DoD, First steps)
-// names a piece the per-invariant oracles do NOT provide:
+// The spec §"The oracle", DoD, First steps names a piece the per-invariant
+// oracles do NOT provide:
 //
 //	"Write the I1–I5 oracle as a single assertInvariants(replicas) called each step."
 //
@@ -19,14 +19,14 @@ import (
 // drives its OWN bespoke scenario and asserts its OWN invariant inside it (paths
 // are relative to the repo root — the I1/I3/I5-enumeration oracles live in
 // core/chain, NOT this package):
-//   - core/chain/modelcheck_test.go              — I1 launch (anchor-coalition enum)
-//   - core/chain/modelcheck_i3_test.go           — I3 (weight-quorum set-constancy)
-//   - core/chain/modelcheck_i5_accountable_test.go
-//     + core/chain/modelcheck_i5_357_test.go     — I5 accountable safety
-//   - core/node/modelcheck_tier2_test.go         — I5 honest-never-slashed, real loop
-//   - core/node/modelcheck_i2_exhaustive_test.go — I2 (restart persistence)
-//   - core/node/modelcheck_i4_liveness_test.go
-//     + modelcheck_441_*/modelcheck_451_* siblings — I4 liveness
+// - core/chain/modelcheck_test.go — I1 launch (anchor-coalition enum)
+// - core/chain/modelcheck_i3_test.go — I3 (weight-quorum set-constancy)
+// - core/chain/modelcheck_i5_accountable_test.go
+// + core/chain/modelcheck_i5_launch_replay_test.go — I5 accountable safety
+// - core/node/modelcheck_node_loop_test.go — I5 honest-never-slashed, real loop
+// - core/node/modelcheck_i2_exhaustive_test.go — I2 (restart persistence)
+// - core/node/modelcheck_i4_liveness_test.go
+// + modelcheck_441_*/modelcheck_451_* siblings — I4 liveness
 //
 // What was missing
 // — verified by `grep -rn assertInvariants core/` returning nothing on
@@ -38,19 +38,19 @@ import (
 //
 // SCOPE (honest, S5). This monitor covers the two invariants that are pure
 // functions of observable cross-replica state:
-//   - I1 (AGREEMENT): no two replicas expose DIFFERENT finalized block hashes at
-//     the same height. This is I1's observable consequence — an intersecting
-//     finality quorum admits at most one final block per height, so every replica
-//     that finalized height h agrees on its hash. A non-intersecting quorum shows
-//     here as two replicas final-disagreeing (the #357/#397/#402 fork face).
-//   - I5 (ACCOUNTABLE SAFETY): no honest replica is ever slashed, observed live
-//     via OnSlash across the whole schedule (the #397 honest-self-slash face).
+// - I1 (AGREEMENT): no two replicas expose DIFFERENT finalized block hashes at
+// The same height. This is I1's observable consequence — an intersecting
+// finality quorum admits at most one final block per height, so every replica
+// that finalized height h agrees on its hash. A non-intersecting quorum shows
+// here as two replicas final-disagreeing (the fork face).
+// - I5 (ACCOUNTABLE SAFETY): no honest replica is ever slashed, observed live
+// via OnSlash across the whole schedule (the honest-self-slash face).
 // I2/I3/I4 are predicate/liveness properties owned exhaustively by their dedicated
 // oracles; folding them in here would add no red those oracles do not already
 // own, so this monitor does not reimplement them (simplicity — cover what the
 // step-monitor genuinely adds).
 //
-// TEST-INFRA ONLY: no consensus rule, validity predicate, or apply() change.
+// TEST-INFRA ONLY: no consensus rule, validity predicate, or apply change.
 
 // invReplica is the observable surface the unified oracle reads from one replica:
 // its finalized suffix (for the I1 agreement check) and whether an honest node it
@@ -98,7 +98,7 @@ func assertInvariants(t *testing.T, replicas []invReplica) {
 	// slash predicate).
 	for _, r := range replicas {
 		if r.honestSlashed() {
-			t.Fatalf("I5 VIOLATION — an honest replica (%s) was slashed: accountable safety broke (an honest node must NEVER be slashed; a slash is proof of malice, not of a race). This is the #397 honest-self-slash.",
+			t.Fatalf("I5 VIOLATION — an honest replica (%s) was slashed: accountable safety broke (an honest node must NEVER be slashed; a slash is proof of malice, not of a race). This is the honest-self-slash.",
 				r.label())
 		}
 	}
@@ -134,7 +134,7 @@ func (r *nodeReplica) finalizedBlocks() map[uint64]ports.Hash {
 
 // stepDriver delivers exactly one held message per Step over a matureWorld net,
 // calling the unified oracle after EACH delivery — the spec's "assert after every
-// step" contract. Deterministic: FIFO message pick over net.Pending(), fixed
+// step" contract. Deterministic: FIFO message pick over net.Pending, fixed
 // replica order, no wall-clock, no map-iteration in the ordering. Same world +
 // same schedule ⇒ same result every run (spec v1 seed-replay).
 type stepDriver struct {

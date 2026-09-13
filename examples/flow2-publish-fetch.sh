@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
 # Flow 2 — Publish → fetch across separate processes, and survive a node death.
-# Reproduces docs/local-test-network.md Tier 2.
+# Reproduces Tier 2.
 #
 # PASS if: an ephemeral client publishes to a swarm and keeps nothing; a
 # different process fetches bit-perfect after the publisher left; and it still
 # fetches bit-perfect after one holder daemon is killed.
 #
-#   ./examples/flow2-publish-fetch.sh          (or SILT_REPO=/path/to/silt …)
+# ./examples/flow2-publish-fetch.sh (or SILT_REPO=/path/to/silt …)
 # Binds loopback ports 7100-7103; run one example at a time.
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail

@@ -12,12 +12,11 @@ import (
 	"github.com/nerolabs/silt/adapters/identity"
 )
 
-// TestEquivocatorSlashedOverTCP is the #184 accountability gate over the REAL WIRE,
+// TestEquivocatorSlashedOverTCP is the accountability gate over the REAL WIRE,
 // OBJECTIVE mode (the deployed regime) — a DEDICATED, minimal, ephemeral 4-anchor
-// network whose only job is this one drill (PE ruling 2026-08-17: the equivocation
-// drill is the one irreversible drill — a proven double-sign is a permanent
+// network whose only job is this one drill proven double-sign is a permanent
 // eviction, F2 — so it runs on its own throwaway net, never mid-sheet where the
-// eviction would leave a zero-fault-tolerance tail).
+// eviction would leave a zero-fault-tolerance tail.
 //
 // Under a BFT commit floor (3-of-4) a fork can NEVER be committed onto a target, so
 // the legacy commit-based placement can't drive here. The faithful route is
@@ -29,11 +28,11 @@ import (
 // cross-fork prepare pair and slashes — unaided, on the product's own reconcile
 // path, without ever adopting the invalid (quorum-short) loser.
 //
-// Division of labour (the drill narrates it, per the PE's transparency condition):
-// the ADVERSARY earns standing and authors both conflicting prepares (the
+// Division of labour (the drill narrates it, per the transparency condition): the
+// ADVERSARY earns standing and authors both conflicting prepares (the
 // un-bypassable self-incrimination); the PRODUCT detects and slashes. The harness
 // only builds the range. The in-process merge gate is
-// core/node/modelcheck_184_equivocation_objective_test.go.
+// core/node/modelcheck_equivocation_objective_test.go.
 func TestEquivocatorSlashedOverTCP(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e spawns processes; skipped under -short")

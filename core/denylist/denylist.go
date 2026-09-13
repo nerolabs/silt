@@ -15,13 +15,13 @@
 // Crucially this never touches encryption. A denied root is matched by
 // its hash; nothing is decrypted, and infrastructure stays content-blind.
 //
-// A Set is populated two ways (see docs/safety-denylist.md): from
-// on-chain revocation records (append-only tombstones committed by the
-// same reputation quorum that commits publications, so takedown
-// replicates and is tamper-evident like everything else), and from an
-// operator's local file (a jurisdiction's list, a trusted blocklist).
-// It is deliberately not a single global authority — operators choose
-// which lists to honor, the way DNS and mail operators choose blocklists.
+// A Set is populated two ways: from on-chain revocation records
+// (append-only tombstones committed by the same reputation quorum that
+// commits publications, so takedown replicates and is tamper-evident like
+// everything else), and from an operator's local file (a jurisdiction's
+// list, a trusted blocklist). It is deliberately not a single global
+// authority — operators choose which lists to honor, the way DNS and mail
+// operators choose blocklists.
 package denylist
 
 import (

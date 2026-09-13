@@ -2,10 +2,10 @@
 
 package main
 
-// R2.9a — the B_bootstrap histogram on GET /api/status, under the top-level
-// `bBootstrap` key. Counts only: 8 age buckets × 41 log2 byte bins, plus the
-// census total, the clock self-report, the ledger's uptime and both axes. No identity,
-// no label, no row, no exact age, and no per-cell byte SUM (immutable #4).
+// The B_bootstrap histogram on GET /api/status, under the top-level `bBootstrap` key.
+// Counts only: 8 age buckets × 41 log2 byte bins, plus the census total, the clock
+// self-report, the ledger's uptime and both axes. No identity, no label, no row, no
+// exact age, and no per-cell byte SUM (immutable #4).
 
 import (
 	"encoding/json"
@@ -22,7 +22,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// r29aServer is statusServer (r29a_status_surface_test.go, untagged) plus the two
+// r29aServer is statusServer (status_surface_test.go, untagged) plus the two
 // collaborators only the instrument needs: the /api/status renderer and the injected
 // observability clock. It builds on the untagged fixture rather than repeating it so
 // the two cannot drift — statusServer is where the nil-peerCount trap is fixed.
@@ -34,16 +34,16 @@ func r29aServer(t *testing.T, publish bool) (*uiServer, *credit.Ledger, *r29aClo
 	// The fixture injects the clock DIRECTLY, on both arms, because these gates are
 	// about the RENDERER. The daemon's own rule — that -bbootstrap gates the injection
 	// too, so an unasked-for instrument records nothing — is the separate seam gate
-	// TestR29aTheFlagGatesTheRecordingNotJustThePublication, which drives
+	// TestTheFlagGatesTheRecordingNotJustThePublication, which drives
 	// bbootstrapInject the way daemon.go does.
 	led.SetObservabilityClock(clk, clk.monotonic)
 	// EVERY POLL IN THIS FIXTURE IS A LATER POLL. /api/status serves a snapshot
-	// recomputed at most once per statusSnapshotInterval (G-BB-26), so a fixture that
+	// recomputed at most once per statusSnapshotInterval, so a fixture that
 	// asks twice at the same instant would read the same document twice and every
 	// content assertion below would be asserting on a stale block rather than on the
 	// state the test just set up. Advancing one whole interval per read reproduces the
 	// per-request-recompute semantics these gates were written against, and it is what a
-	// real polling reader does. TestR29aBB21StatusSnapshotIsCachedForOneInterval is the
+	// real polling reader does. TestStatusSnapshotIsCachedForOneInterval is the
 	// gate that the caching itself works; it deliberately does NOT advance.
 	polls := 0
 	s.now = func() time.Time {
@@ -54,7 +54,7 @@ func r29aServer(t *testing.T, publish bool) (*uiServer, *credit.Ledger, *r29aClo
 }
 
 // r29aClock is BOTH injected observability sources: the wall clock the test moves by
-// hand, and the monotone source G-BB-4 cross-checks it against. `monotonic` is derived
+// hand, and the monotone source the gate cross-checks it against. `monotonic` is derived
 // from `now` so the two agree unless the test calls `step`, which moves only the wall
 // reading — an NTP step.
 type r29aClock struct {
@@ -72,12 +72,12 @@ func (c *r29aClock) step(d int64) {
 
 func getR29aStatusBody(t *testing.T, s *uiServer) string {
 	t.Helper()
-	// THE FIXTURE READS AS THE OPERATOR. Since G-BB-12′ the block is served only to a
-	// request carrying the API token in the Authorization header; every content gate in
-	// this suite is a statement about what the OPERATOR sees, so the helper presents it.
-	// The untokened view has its own gates (r29a_g12_reader_is_operator_test.go), and no
-	// content gate may grow a "withheld is also acceptable" branch — that is how a real
-	// regression gets absorbed (blind PE ruling RULING-R2.9a-G-BB-12-design S6).
+	// THE FIXTURE READS AS THE OPERATOR. Since the block is served only to a
+	// request carrying the API token in the Authorization header; every content gate
+	// in this suite is a statement about what the OPERATOR sees, so the helper
+	// presents it. The untokened view has its own gates (reader_is_operator_test.go),
+	// and no content gate may grow a "withheld is also acceptable" branch — that is
+	// how a real regression gets absorbed.
 	r := httptest.NewRequest("GET", "http://127.0.0.1:8080/api/status", nil)
 	r.Header.Set("Authorization", "Bearer "+s.token)
 	w := httptest.NewRecorder()
@@ -116,17 +116,17 @@ func r29aFetch(led *credit.Ledger, i int, bytes int64) {
 	led.RecordServe(ports.HashBytes([]byte("srv")), ports.HashBytes([]byte{byte(i), byte(i >> 8), 0x29}), ports.Hash{}, bytes)
 }
 
-// --- BB-8: default off -------------------------------------------------------------
+// --- default off -------------------------------------------------------------
 
-// TestR29aStatusOmitsTheBlockUnlessAsked is BB-8. With the switch unset the block is
-// ABSENT from /api/status, not present-and-empty. GET /api/status needs no token (reads
-// are exempt) and the Host allow-list stops a rebinding browser, not curl, so anything
-// published there is world-readable wherever -ui is bound off loopback. Absent and empty
-// must be different objects, and off must be the default.
-func TestR29aStatusOmitsTheBlockUnlessAsked(t *testing.T) {
+// TestStatusOmitsTheBlockUnlessAsked is. With the switch unset the block is ABSENT from
+// /api/status, not present-and-empty. GET /api/status needs no token (reads are exempt)
+// and the Host allow-list stops a rebinding browser, not curl, so anything published
+// there is world-readable wherever -ui is bound off loopback. Absent and empty must be
+// different objects, and off must be the default.
+func TestStatusOmitsTheBlockUnlessAsked(t *testing.T) {
 	s, led, clk := r29aServer(t, false)
 	// TEN requesters, not one: credit.BBootstrapMinRequesters is the minimum-requester
-	// floor (G-BB-11) and a smaller census publishes no counts at all, so a one-requester
+	// floor and a smaller census publishes no counts at all, so a one-requester
 	// fixture would be asserting on a suppressed block rather than on the default-off
 	// property this gate is about.
 	for i := 0; i < credit.BBootstrapMinRequesters; i++ {
@@ -149,30 +149,30 @@ func TestR29aStatusOmitsTheBlockUnlessAsked(t *testing.T) {
 	}
 }
 
-// TestR29aDaemonDefaultsTheInstrumentOff is the SOURCE GATE behind BB-8: the flag's
+// TestDaemonDefaultsTheInstrumentOff is the SOURCE GATE behind: the flag's
 // declared default in cmd/silt/daemon.go is false. A runtime test cannot see a flag
 // default that is never parsed, so this reads the declaration.
 //
-// RUNTIME GATE: TestR29aStatusOmitsTheBlockUnlessAsked observes the actual behaviour —
+// RUNTIME GATE: TestStatusOmitsTheBlockUnlessAsked observes the actual behaviour —
 // that an unset switch produces no block on the wire.
 //
 // IT ASSERTS ONE THING ONLY. It used to carry a second assertion, about the observability
 // clock injection, under this same doc comment — and that cover line was a lie for the
-// second assertion, because TestR29aStatusOmitsTheBlockUnlessAsked observes the FLAG and
+// second assertion, because TestStatusOmitsTheBlockUnlessAsked observes the FLAG and
 // nothing about the clock. scripts/check_source_gates.py passed anyway: it requires a
 // NAMED cover, not a MATCHING one. The clock assertion now lives in its own gate below,
 // with the honest annotation.
 //
 // AND IT ASSERTS ONLY ABOUT THE TAGGED BUILD, which is the build it runs in. It used to
 // also assert that the UNTAGGED daemon.go declares no -bbootstrap — a guard against a
-// DEFAULT-build reintroduction, living in the one build that cannot have one. A blind
+// DEFAULT-build reintroduction, living in the one build that cannot have one. A a
 // review put fs.Bool("bbootstrap", …) into daemon.go and shipped it green, because this
 // file compiles only under the tag. That assertion moved to
-// TestR29aDefaultBuildHasNoBBootstrapFlag in r29a_build_tag_absent_test.go, which runs in
-// the ordinary (untagged) test job, and it is stronger there: it walks the default
-// build's whole file set rather than one literal in one file.
-func TestR29aDaemonDefaultsTheInstrumentOff(t *testing.T) {
-	// THE FILE MOVED (D-BB-BUILD-TAG, 2026-09-05). The flag is declared in
+// TestDefaultBuildHasNoBBootstrapFlag in build_tag_absent_test.go, which runs in the
+// ordinary (untagged) test job, and it is stronger there: it walks the default build's
+// whole file set rather than one literal in one file.
+func TestDaemonDefaultsTheInstrumentOff(t *testing.T) {
+	// THE FILE MOVED. The flag is declared in
 	// bbootstrap.go, which compiles only under the `bbootstrap` build tag, so a default
 	// binary has no such flag at all — a stronger form of "off" than a false default,
 	// and the reason this gate reads a different file than it used to.
@@ -185,11 +185,10 @@ func TestR29aDaemonDefaultsTheInstrumentOff(t *testing.T) {
 	}
 }
 
-// TestR29aDaemonInjectsBothClocksBeforeTheLedgerIsReachable is the SOURCE GATE behind
-// G-BB-2 and G-BB-4. It reads three things out of daemon.go's TEXT: that both
-// observability sources are injected in ONE call, that the monotone one is Go's monotonic
-// reading rather than a second wall-clock read, and that the call appears BEFORE
-// nd.SetLedger.
+// TestDaemonInjectsBothClocksBeforeTheLedgerIsReachable is the SOURCE GATE behind. It
+// reads three things out of daemon.go's TEXT: that both observability sources are
+// injected in ONE call, that the monotone one is Go's monotonic reading rather than a
+// second wall-clock read, and that the call appears BEFORE nd.SetLedger.
 //
 // The ORDER is the property that matters and it is why this is worth a source gate at
 // all. Injection must precede the first account, or requesters register unstamped, carry
@@ -203,17 +202,16 @@ func TestR29aDaemonDefaultsTheInstrumentOff(t *testing.T) {
 // that a live daemon reports clockSource "injected", monotonicSource "injected" and
 // unstamped == 0. Both cmd/silt fixtures inject the clocks by hand and would keep passing
 // if daemon.go stopped injecting them entirely. The source order is the only evidence
-// there is, and this comment says so rather than naming a cover that does not cover it
-// (scar:source-gate-promises-a-runtime-property-2026-09-03). The behavioural consequence
-// IS covered, one tier down: core/credit's TestR29aUnstampedRequestersAreCountedNotAged
-// shows what an account registered before injection reports, and BB-14 refuses a run that
-// carries any such account.
-func TestR29aDaemonInjectsBothClocksBeforeTheLedgerIsReachable(t *testing.T) {
+// there is, and this comment says so rather than naming a cover that does not cover it.
+// The behavioural consequence IS covered, one tier down: core/credit's
+// TestUnstampedRequestersAreCountedNotAged shows what an account registered before
+// injection reports, and the gate refuses a run that carries any such account.
+func TestDaemonInjectsBothClocksBeforeTheLedgerIsReachable(t *testing.T) {
 	src, err := os.ReadFile("daemon.go")
 	if err != nil {
 		t.Fatal(err)
 	}
-	// THE CALL IS NOW A SEAM (D-BB-BUILD-TAG, 2026-09-05): daemon.go is untagged and
+	// THE CALL IS NOW A SEAM: daemon.go is untagged and
 	// calls bbootstrapInject, whose tagged implementation in bbootstrap.go holds the
 	// SetObservabilityClock call. The ORDER property this gate exists for is unchanged
 	// and still lives at daemon.go's call site, so the anchor moves to the seam and the
@@ -238,16 +236,16 @@ func TestR29aDaemonInjectsBothClocksBeforeTheLedgerIsReachable(t *testing.T) {
 	}
 }
 
-// --- BB-5: the payload is bounded in R ----------------------------------------------
+// --- the payload is bounded in R ----------------------------------------------
 
-// TestR29aPayloadIsBoundedInTheRequesterCount is BB-5. The certification words this as
-// "byte-identical in length at R = 10 and R = 500,000", which a JSON count histogram
-// cannot literally satisfy: the counts are decimal numbers, so 500,000 costs more digits
-// than 10. What IS asserted is the property behind it — the STRUCTURE is identical (same
-// key set, same 8 × 41 grid, same axis arrays) and the serialized length stays under a
-// fixed ceiling however large R gets. The row export's payload grew without bound in R;
-// this one does not grow at all except by digits.
-func TestR29aPayloadIsBoundedInTheRequesterCount(t *testing.T) {
+// TestPayloadIsBoundedInTheRequesterCount is. The research words this as "byte-identical
+// in length at R = 10 and R = 500,000", which a JSON count histogram cannot literally
+// satisfy: the counts are decimal numbers, so 500,000 costs more digits than 10. What IS
+// asserted is the property behind it — the STRUCTURE is identical (same key set, same 8
+// × 41 grid, same axis arrays) and the serialized length stays under a fixed ceiling
+// however large R gets. The row export's payload grew without bound in R; this one does
+// not grow at all except by digits.
+func TestPayloadIsBoundedInTheRequesterCount(t *testing.T) {
 	shape := func(R int) (keys []string, cells int, rowLens map[int]bool, size int) {
 		s, led, clk := r29aServer(t, true)
 		for i := 0; i < R; i++ {
@@ -288,18 +286,18 @@ func TestR29aPayloadIsBoundedInTheRequesterCount(t *testing.T) {
 		}
 	}
 	// The ceiling: 8 KiB covers 328 counters, both axes and the metadata with room for
-	// every count to be six digits (it was 32 KiB for the 1,312-counter grid before
-	// G-BB-23). R = 20,000 is 4.9× the row cap the refuted shape carried, and the payload
-	// does not notice.
+	// every count to be six digits (it was 32 KiB for the 1,312-counter grid before).
+	// R = 20,000 is 4.9× the row cap the refuted shape carried, and the payload does
+	// not notice.
 	const ceiling = 8 << 10
 	if bigSize > ceiling {
 		t.Fatalf("payload %d bytes at R = 20,000, above the %d-byte ceiling", bigSize, ceiling)
 	}
-	t.Logf("BB-5: payload %d bytes at R=10 and %d bytes at R=20,000 (%d counters, ceiling %d)",
+	t.Logf("payload %d bytes at R=10 and %d bytes at R=20,000 (%d counters, ceiling %d)",
 		smallSize, bigSize, credit.BBootstrapAgeBuckets*credit.BBootstrapByteBins, ceiling)
 }
 
-// --- BB-7: no join key ---------------------------------------------------------------
+// --- no join key ---------------------------------------------------------------
 
 // r29aWireKeys is the CLOSED key set of the published block. Adding a key here is a
 // privacy question, not a formatting one: the refuted shape's join key was a per-row
@@ -318,11 +316,11 @@ var r29aWireKeys = map[string]bool{
 	"cells": true,
 }
 
-// TestR29aWirePayloadCarriesNoJoinKey is BB-7. It pins the key set as CLOSED and then
-// scans the block's own bytes for anything identity-shaped — a hex node id, or the
-// telltale of a per-identity row. It scans ONLY the bBootstrap block, not the whole
-// status body, because the rest of /api/status legitimately carries this node's own id.
-func TestR29aWirePayloadCarriesNoJoinKey(t *testing.T) {
+// TestWirePayloadCarriesNoJoinKey is. It pins the key set as CLOSED and then scans the
+// block's own bytes for anything identity-shaped — a hex node id, or the telltale of a
+// per-identity row. It scans ONLY the bBootstrap block, not the whole status body,
+// because the rest of /api/status legitimately carries this node's own id.
+func TestWirePayloadCarriesNoJoinKey(t *testing.T) {
 	s, led, clk := r29aServer(t, true)
 	for i := 0; i < 40; i++ {
 		r29aFetch(led, i, int64(1<<uint(i%30)))
@@ -359,19 +357,19 @@ func TestR29aWirePayloadCarriesNoJoinKey(t *testing.T) {
 	}
 }
 
-// TestR29aWirePayloadReportsAClockStep is the wire half of BB-13 / G-BB-4. The detection
-// is worth nothing if it stops at the ledger: the artifact a third party reads is this
-// JSON block, so the step has to be legible THERE, with its size and its direction.
+// TestWirePayloadReportsAClockStep is the wire half of. The detection is worth nothing
+// if it stops at the ledger: the artifact a third party reads is this JSON block, so
+// the step has to be legible THERE, with its size and its direction.
 //
 // Both fixtures below step ONLY the wall clock. The monotone source stays where it was,
 // which is what makes the divergence visible at all — the reviewed build derived uptime
 // and every age from one clock, so a step moved both and cancelled.
-func TestR29aWirePayloadReportsAClockStep(t *testing.T) {
+func TestWirePayloadReportsAClockStep(t *testing.T) {
 	const minute = int64(60 * 1e9)
 	const day = 24 * 60 * minute
 
 	// Clean: two COHORTS of five an hour apart, no step, no flag. Five and five rather
-	// than one and one because the minimum-requester floor (G-BB-11) withholds every
+	// than one and one because the minimum-requester floor withholds every
 	// census count below credit.BBootstrapMinRequesters, cells included — a two-identity
 	// fixture would publish a suppressed block and this gate would assert on nothing.
 	s, led, clk := r29aServer(t, true)
@@ -439,10 +437,10 @@ func TestR29aWirePayloadReportsAClockStep(t *testing.T) {
 	}
 }
 
-// TestR29aWirePayloadSelfReportsADeadClock is the wire half of BB-1 / G-BB-2: with no
+// TestWirePayloadSelfReportsADeadClock is the wire half of: with no
 // clock injected the block still publishes (so a reader can tell the instrument is ON),
 // says so in clockSource, and carries a NULL cell grid — never an all-zero age column.
-func TestR29aWirePayloadSelfReportsADeadClock(t *testing.T) {
+func TestWirePayloadSelfReportsADeadClock(t *testing.T) {
 	s, _, _, led := economyServer(t, 0)
 	s.peerCount = func() int { return 0 }
 	bbootstrapWireUI(s, true) // switched ON, but no clock is injected

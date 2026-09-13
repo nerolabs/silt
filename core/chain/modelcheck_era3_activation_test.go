@@ -10,22 +10,19 @@ import (
 
 // era-3 build step 2c — height-gated activation + mint-flip to v4.
 //
-// The certified activation shape (RESEARCH-CERTIFICATION-2026-08-28 Q5/Q7) is the
-// #506 machinery reused one readiness level up: a frozen-epoch-weight supermajority
-// signalling regVersion >= BlockVersionStateRoot (== 4) locks in era-3 at the NEXT
-// finalized boundary (H_era3), from which v4 is REQUIRED (mint + validity). These
-// model-check oracles assert the four properties 2c must hold, EACH paired with a
-// demonstrated RED (an injected defect that flips the assertion) recorded inline, per
-// the session-7 rule: a green check is not shipped until its defect has been watched
-// go red. Invariants: I1/I2/I4 untouched; I3 relied on (rule change integrates only at
-// a finalized boundary, by weight); I5 preserved (era3Active/MintVersion are pure
-// functions of committed state). Deliberation:
-// docs/thinking/2026-08-29-era3-step2c-activation-mint-flip.md.
-
+// The activation shape is the machinery reused one readiness level up: a
+// frozen-epoch-weight supermajority signalling regVersion >= BlockVersionStateRoot (==
+// 4) locks in era-3 at the NEXT finalized boundary (H_era3), from which v4 is REQUIRED
+// (mint + validity). These model-check oracles assert the four properties 2c must
+// hold, EACH paired with a demonstrated RED (an injected defect that flips the
+// assertion) recorded inline, per the rule: a green check is not shipped until its
+// defect has been watched go red. Invariants: I1/I2/I4 untouched; I3 relied on (rule
+// change integrates only at a finalized boundary, by weight); I5 preserved
+// (era3Active/MintVersion are pure functions of committed state).
 // twoPhaseSign fills b's PrepareQC and Atts with a full round-0 two-phase certificate:
 // the proposer (keys[0]) self-prepares and self-precommits (count-neutral by
 // authorship), and every key signs both phases. This is the era-2/era-3 (v2/v4) commit
-// certificate shape (mirrors archival_fixture_570_test.go's era2Block). b's roots and
+// certificate shape (mirrors archival_fixture_test.go's era2Block). b's roots and
 // Version must already be set — the signatures cover them.
 func twoPhaseSign(b *Block, keys []ed25519.PrivateKey, chainID ports.Hash) {
 	Sign(b, keys[0])
@@ -97,8 +94,8 @@ func era3AnchorChain(t *testing.T, activation uint64) (*Chain, []ed25519.Private
 // (ErrEra3VersionRequired), and a v4 block with a wrong StateRoot is REJECTED (the 2b
 // predicate). era-2 validation below the boundary is unchanged.
 func TestEra3PreLatchMintFlipAndBoundary2c(t *testing.T) {
-	// Boundary at height 3: heights 0..2 are era-2, height >= 3 is era-3 (the >=
-	// convention — H_era3 is itself the first v4 height).
+	// Boundary at height 3: heights 0.2 are era-2, height >= 3 is era-3 (the
+	// >= convention — H_era3 is itself the first v4 height).
 	c, keys := era3AnchorChain(t, 3)
 
 	// --- Below H_era3: mint v2, accept v2, no v4 requirement. ---
@@ -170,8 +167,8 @@ func TestEra3PreLatchMintFlipAndBoundary2c(t *testing.T) {
 // readiness tally is WEIGHT-counted (a cheap-bond heads majority does NOT lock in),
 // locks in at the first boundary the ready weight clears >⅔, sets H_era3 to the NEXT
 // boundary, and is MONOTONIC (a later ready-weight collapse never un-flips). This is
-// the #506 tally at the regVersion >= 4 level, so it mirrors
-// TestRegGateLockInIsWeightCountedAndBoundaryExact506.
+// the tally at the regVersion >= 4 level, so it mirrors
+// TestRegGateLockInIsWeightCountedAndBoundaryExact.
 func TestEra3PostLatchReadinessGatesActivation2c(t *testing.T) {
 	whale := key(52311)
 	minnows := []ed25519.PrivateKey{key(52312), key(52313), key(52314)}
@@ -193,9 +190,9 @@ func TestEra3PostLatchReadinessGatesActivation2c(t *testing.T) {
 		t.Fatalf("genesis: %v", err)
 	}
 
-	// Two full epochs (boundaries 4, 8): the ¾ HEADS majority at 43% weight must NOT
-	// lock era-3 in. Below the boundary the chain mints v2, so commit() (v1-tagged
-	// era-2 blocks) still applies — nothing is era-3 active yet.
+	// Two full epochs (boundaries 4, 8): the ¾ HEADS majority at 43% weight must
+	// NOT lock era-3 in. Below the boundary the chain mints v2, so commit
+	// (v1-tagged era-2 blocks) still applies — nothing is era-3 active yet.
 	for c.Len() < 9 {
 		commit(t, c, whale, minnows)
 	}
@@ -245,7 +242,7 @@ func TestEra3PostLatchReadinessGatesActivation2c(t *testing.T) {
 // TestEra3ActivationIsReorgStableAndReplayDerived2c: H_era3 is derived committed
 // state. A fresh replica replaying the identical committed history computes the
 // IDENTICAL activation (so the boundary is reorg-stable — a reorg replays every
-// rotation and re-derives the same H_era3, epoch-final per #357 Condition A); and a
+// rotation and re-derives the same H_era3, epoch-final per Condition A); and a
 // fork WITHOUT the ready signal carries NO activation (the boundary cannot be moved to
 // un-enforce it). Cert Q5.
 func TestEra3ActivationIsReorgStableAndReplayDerived2c(t *testing.T) {
@@ -268,9 +265,9 @@ func TestEra3ActivationIsReorgStableAndReplayDerived2c(t *testing.T) {
 		return c
 	}
 	c := build()
-	// This rig matures at genesis (all bonds mature immediately), so lock-in fires at
-	// the boundary-0 rotation and H_era3 = 0 + EpochBlocks = 4. The mature v1 commit()
-	// cannot build a v4 block, so commit only heights 1..3 (below H_era3).
+	// This rig matures at genesis (all bonds mature immediately), so lock-in fires
+	// at the boundary-0 rotation and H_era3 = 0 + EpochBlocks = 4. The mature v1
+	// commit cannot build a v4 block, so commit only heights 1.3 (below H_era3).
 	for c.Len() < 4 {
 		commit(t, c, whale, minnows)
 	}

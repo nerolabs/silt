@@ -10,12 +10,12 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// #281: silt's Kademlia join is ONE-SHOT. A node that starts before its bootstrap
-// target is listening lands with an EMPTY routing table and, without a retry,
-// stays isolated forever — no peers, no consensus, no discovery — until a manual
-// restart (found on the 13-node cross-region cloud cold start). StartBootstrapRetry
-// re-runs the join while the table is empty, so the node recovers on its own once
-// the target comes up.
+// silt's Kademlia join is ONE-SHOT. A node that starts before its bootstrap target
+// is listening lands with an EMPTY routing table and, without a retry, stays
+// isolated forever — no peers, no consensus, no discovery — until a manual restart
+// (found on the 13-node cross-region cloud cold start). StartBootstrapRetry re-runs
+// the join while the table is empty, so the node recovers on its own once the
+// target comes up.
 func TestBootstrapRetryRecoversIsolatedNode(t *testing.T) {
 	sched := simclock.New()
 	net := simnet.New(sched, 1, simnet.DefaultConfig())
@@ -46,14 +46,14 @@ func TestBootstrapRetryRecoversIsolatedNode(t *testing.T) {
 	// Advance past a few retry intervals; the empty-table retry re-dials A.
 	sched.RunUntil(sched.Now().Add(cfg.BootstrapRetryInterval * 4))
 	if b.Table().Size() == 0 {
-		t.Fatal("#281: re-bootstrap did not recover — B still isolated after A came up")
+		t.Fatal("re-bootstrap did not recover — B still isolated after A came up")
 	}
 }
 
 // A SPARSE cold-start mesh must converge, not just become non-empty. The seedless
 // boot validator is the worst case: it gets ONE incoming dial and never re-looks-up,
 // so it can't discover the rest of the validator set and consensus quorum never
-// forms (the deeper gap behind a stalled simultaneous cold start; #281 follow-up).
+// forms (the deeper gap behind a stalled simultaneous cold start; follow-up).
 // The sparse-refresh keeps doing a self-lookup while the table is under-populated.
 func TestBootstrapRetryConvergesSparseTable(t *testing.T) {
 	sched := simclock.New()
@@ -90,7 +90,7 @@ func TestBootstrapRetryConvergesSparseTable(t *testing.T) {
 }
 
 // The retry is a no-op once the node is healthy: a node that joined successfully
-// must not have its table disturbed by the retry tick (it only acts on Size()==0).
+// must not have its table disturbed by the retry tick (it only acts on Size==0).
 func TestBootstrapRetryNoopWhenHealthy(t *testing.T) {
 	sched := simclock.New()
 	net := simnet.New(sched, 1, simnet.DefaultConfig())

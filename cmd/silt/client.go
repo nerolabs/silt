@@ -1,7 +1,7 @@
 package main
 
 // The desktop client (M14): a long-lived node that CONSUMES and SERVES
-// in the same process — Andrew's "every client is also a serving node".
+// in the same process — the project owner's "every client is also a serving node".
 // It pledges a slice of disk by default (so downloading and contributing
 // are the same act), bootstraps via discovery, keeps a link book (the
 // files you hold keys for), serves the local web UI, and opens your
@@ -29,8 +29,8 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// clientNodeConfig is the node config the shipped desktop client runs with. The
-// H5-B eclipse-resistance defenses are ON here, NOT left at node.DefaultConfig()'s
+// clientNodeConfig is the node config the shipped desktop client runs with. The H5-B
+// eclipse-resistance defenses are ON here, NOT left at node.DefaultConfig's
 // legacy-off: a shipped consumer must resolve/announce provider records over a
 // domain-spread, signed set, or an adversary owning the NodeIDs closest to a root's
 // keys but sitting in one failure domain (a ~$4 /24 key-surround) can make that root
@@ -60,7 +60,7 @@ func cmdClient(args []string) error {
 	dnsSeed := fs.String("dns-seed", "", "domain whose TXT records list bootstrap peers")
 	registryURL := fs.String("registry", "", "registry ref for browsing/publishing (ID@https://host:port)")
 	uiAddr := fs.String("ui", "127.0.0.1:8090", "local web UI address")
-	privacyFlag := fs.String("privacy", privacyModeName(privacyDefaultWithheld), "on|off (D-UI-PRIVACY-FLAG). on: node-wide serve counters and the library's link keys are withheld from readers that do not present the API token (a hosted resolver on an -allow-web-origin origin must send it in the Authorization header). off: publish them to any admitted reader, labelled pre-release. Any other value refuses to start")
+	privacyFlag := fs.String("privacy", privacyModeName(privacyDefaultWithheld), "on|off. on: node-wide serve counters and the library's link keys are withheld from readers that do not present the API token (a hosted resolver on an -allow-web-origin origin must send it in the Authorization header). off: publish them to any admitted reader, labelled pre-release. Any other value refuses to start")
 	allowWebOrigin := fs.String("allow-web-origin", "", "comma-separated web origins (e.g. https://app.example.com) allowed to draw content from this node's local API — off by default; lets a hosted resolver surface render from your local Silt node")
 	open := fs.Bool("open", true, "open the library in your browser on start")
 	debug := fs.Bool("debug", false, "shorthand for -log debug (the full firehose)")

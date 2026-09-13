@@ -6,41 +6,40 @@ import (
 	"testing"
 )
 
-// THE WIRING PIN, SOURCE HALF — owner call F.
+// THE WIRING PIN, SOURCE HALF.
 //
 // WHY A SOURCE GATE IS THE RIGHT INSTRUMENT HERE, narrowly. The defect being closed is not a wrong
 // behaviour; it is an ABSENT CALL. chain.ConsensusParams shipped with 17 fields, five green gates,
 // and no production writer: genesis was minted as a Block literal with no Params, cbor omitempty
 // dropped the key, and CheckConsensusParams had ZERO non-test callers. No runtime assertion on the
 // predicate can see that, because the predicate was always correct — it was simply never reached.
-// What the runtime gates CAN see is covered next door: core/genesis G-CFGBIND-6 drives
-// genesis.Build itself, and core/chain G-CFGBIND-1..5 drive the predicates.
+// What the runtime gates CAN see is covered next door: core/genesis's wiring pin drives genesis.Build
+// itself, and core/chain.5 drive the predicates.
 //
 // These gates observe strings and their ORDER in cmd/silt/daemon.go, and they claim nothing else.
 // That is the convention scripts/check_source_gates.py enforces and the idiom
-// TestG_SLASHCAP_4_TheRefusalIsWiredAtStartup_Source already uses in this package.
+// TestTheSlashCapRefusalIsWiredAtStartup_Source already uses in this package.
 //
-// THE RUNTIME COVER IS IN e2e, AND IT IS NOT OPTIONAL. A blind review measured the shape a
-// source gate cannot see: the check lifted into a helper defined later in daemon.go and called
-// BEFORE chainstore.Recover left every gate in this file GREEN while the mechanism was dead — the
-// binary served under a divergent -bond-label-k with zero refusal lines. e2e/consensus_config_bind_test.go
-// drives both halves in real processes and is what actually holds the seam; the order assertion
-// below was re-anchored on that finding.
+// THE RUNTIME COVER IS IN e2e, AND IT IS NOT OPTIONAL. The shape a source gate cannot
+// see: the check lifted into a helper defined later in daemon.go and called BEFORE chainstore.Recover left
+// every gate in this file GREEN while the mechanism was dead — the binary served under a divergent
+// -bond-label-k with zero refusal lines. e2e/consensus_config_bind_test.go drives both halves in real
+// processes and is what actually holds the seam; the order assertion below was re-anchored on that
+// finding.
 //
-// UNGATED: R-CONSENSUS-CONFIG-UNBOUND — WHAT A GREEN IN THIS FILE DOES NOT MEAN. This hole is
-// DISCLOSED, not closed, and the disclosure is deliberate. A second blind review measured the
-// strongest surviving shape: the check written as a closure defined BETWEEN the two landmarks and
-// NEVER INVOKED (`_ = checkParams`). Both gates in this file PASS over it, the mechanism is
-// entirely dead, and only the e2e reddens. No stronger lexical gate closes that — a call-string
-// check locates a STRING, and an uninvoked closure supplies the string by construction. What closes
-// it is the runtime cover in the `Go — multi-process e2e (real TCP)` job, which runs the e2e
-// package BY PACKAGE and without -short (every other go test in ci.yml passes -short, and both
-// e2e tests skip under it).
+// UNGATED: WHAT A GREEN IN THIS FILE DOES NOT MEAN. This hole is DISCLOSED, not closed, and the
+// disclosure is deliberate. The strongest surviving shape is: the check
+// written as a closure defined BETWEEN the two landmarks and NEVER INVOKED (`_ = checkParams`).
+// Both gates in this file PASS over it, the mechanism is entirely dead, and only the e2e reddens.
+// No stronger lexical gate closes that — a call-string check locates a STRING, and an uninvoked
+// closure supplies the string by construction. What closes it is the runtime cover in the `Go —
+// multi-process e2e (real TCP)` job, which runs the e2e package BY PACKAGE and without -short
+// (every other go test in ci.yml passes -short, and both e2e tests skip under it).
 //
 // THAT COVER WAS NOT MERGE-BLOCKING WHEN THIS GATE WAS WRITTEN, and the fix is a repo-wide CI
-// policy call the owner holds. He made it on 2026-09-11: the e2e job is added to ruleset 19729396's
-// required status checks (five -> six) immediately AFTER the merge that lands this file —
-// deliberately after, because a job must not be made required while the change it was added to
+// policy call the project holds. He made it on 2026-09-11: the e2e job is added to ruleset
+// 19729396's required status checks (five -> six) immediately AFTER the merge that lands this file
+// — deliberately after, because a job must not be made required while the change it was added to
 // protect is still in flight. Evidence he ruled on: three commits (18e267a, c22fa2c, 55900ac) were
 // merge-eligible with that job as the sole red, and over the last 40 completed ci.yml runs on main
 // the e2e job's mean is 448 s against the already required race job's 525 s (40/40 green), so it
@@ -49,16 +48,16 @@ import (
 // SO READ THIS DISCLOSURE IN TWO LEGS. Leg one — "the runtime cover is not merge-blocking" —
 // RETIRES the moment the ruleset read-back shows six contexts. Leg two does not retire and is the
 // reason the marker stays: a green in THIS file means "the strings are present and in this order",
-// never "the mechanism is live". Locally, run `go test ./e2e -run ConsensusConfig`.
+// never "the mechanism is live". Locally, run `go test./e2e -run ConsensusConfig`.
 //
 // FOR A NEW FIELD ON A CONSENSUS TYPE, A READER IS NOT ENOUGH — the pin must require a non-test
-// WRITER. G-CFGBIND-7 is that requirement: it fails if genesis.Build stops being handed real
+// WRITER. this gate is that requirement: it fails if genesis.Build stops being handed real
 // params on the daemon path, which is precisely the state the tree was in before this change.
 
 // ungatedDisclosure rides EVERY failure message in this file, so the admission above is where a
-// reader MEETS the gate and not only where a reader browses it. That is the repo's convention
-// (ROADMAP.md, the R-CONFIG-GATE-V5-REGIME row): the marker in the DECLARATION and in the FAILURE
-// TEXT, because the failure text is the sentence someone reads at 2 a.m. after a red.
+// reader MEETS the gate and not only where a reader browses it. That is the repo's convention the
+// row: the marker in the DECLARATION and in the FAILURE TEXT, because the failure text is the
+// sentence someone reads at 2 a.m. after a red.
 //
 // AND THE MARKER ITSELF IS NOT MACHINE-ENFORCED, measured: scripts/check_source_gates.py accepts
 // `RUNTIME GATE:` OR `UNGATED:` (COVER_RE), and these gates carry both, so deleting every
@@ -67,22 +66,22 @@ import (
 // in its scope at all (its count went 34 -> 36) and that every failure message opens with
 // `SOURCE GATE:` (stripping one prefix reddens it, measured). Treat the disclosure as prose a human
 // must keep true, not as a gate.
-const ungatedDisclosure = " · UNGATED: R-CONSENSUS-CONFIG-UNBOUND — this is a STRING check on " +
+const ungatedDisclosure = " · UNGATED:  — this is a STRING check on " +
 	"daemon.go, and it is GREEN over a check that is defined between the landmarks and never " +
 	"invoked (measured), so a green here is not evidence the mechanism is live. The instrument that " +
-	"binds is e2e/consensus_config_bind_test.go (G-CFGBIND-10/11), in the `Go — multi-process e2e " +
+	"binds is e2e/consensus_config_bind_test.go, in the `Go — multi-process e2e " +
 	"(real TCP)` job — it skips under -short, so no other job runs it. Run " +
 	"`go test ./e2e -run ConsensusConfig`."
 
-// G-CFGBIND-7 — THE GENESIS MINT WRITES REAL PARAMS, on the production path.
+// THE GENESIS MINT WRITES REAL PARAMS, on the production path.
 //
 // RUNTIME GATE: e2e TestGenesisHashMovesWithTheConsensusConfig — two daemons differing only in
 // -bond-label-k must mint DIFFERENT genesis blocks, and the same config the same one. The
 // paramless mint compiles and prints the same line; what it cannot do is move the hash.
 //
-// UNGATED: R-CONSENSUS-CONFIG-UNBOUND — that runtime gate lives in the e2e job, and this source
+// UNGATED: that runtime gate lives in the e2e job, and this source
 // gate cannot see whether the mechanism is live. See the two-leg disclosure at the top of this file.
-func TestG_CFGBIND_7_TheGenesisWiringIsOnTheProductionPath_Source(t *testing.T) {
+func TestTheGenesisWiringIsOnTheProductionPath_Source(t *testing.T) {
 	src, err := os.ReadFile("daemon.go")
 	if err != nil {
 		t.Fatalf("SOURCE GATE: cannot read daemon.go as text, so the wiring is unverified: %v", err)
@@ -122,13 +121,13 @@ func TestG_CFGBIND_7_TheGenesisWiringIsOnTheProductionPath_Source(t *testing.T) 
 	}
 }
 
-// G-CFGBIND-8 — THE REFUSE-TO-START ARM HAS ITS PRODUCTION CALLER, between the replay and the
-// point this node arms its consensus role, and it REFUSES rather than warns.
+// THE REFUSE-TO-START ARM HAS ITS PRODUCTION CALLER, between the replay and the point this
+// node arms its consensus role, and it REFUSES rather than warns.
 //
 // RUNTIME GATE: e2e TestDaemonRefusesToStartOnADivergentConsensusConfig — a persisted genesis
 // committing k=64, a daemon started with -bond-label-k 32, a non-zero exit and no peer line.
 //
-// UNGATED: R-CONSENSUS-CONFIG-UNBOUND — this gate is green over an uninvoked closure, and only the
+// UNGATED: this gate is green over an uninvoked closure, and only the
 // e2e decides whether the check runs. See the two-leg disclosure at the top of this file.
 //
 // WHAT THIS CATCHES THAT JOINING CANNOT (and therefore why the call must exist at all): an
@@ -150,14 +149,14 @@ func TestG_CFGBIND_7_TheGenesisWiringIsOnTheProductionPath_Source(t *testing.T) 
 // check reads. THE UPPER BOUND IS NOT A LAST-SAFE-MOMENT, and an earlier draft of this comment
 // wrongly said refusing after it was too late: measured, with the check moved after EnableChain the
 // daemon still exits 1 and never prints a peer line, and the TCP listener has been accepting since
-// tcpnet.New (cmd/silt/daemon.go:266) in either position. What EnableChain actually is, is the
-// point this node ARMS its consensus role — two field assignments (core/node/chainrole.go:22-25),
+// tcpnet.New (cmd/silt/daemon.go) in either position. What EnableChain actually is, is the
+// point this node ARMS its consensus role — two field assignments (core/node/chainrole.go),
 // with every chain-role handler nil-guarded on n.chain — which makes it a cheap lexical anchor for
 // "still inside startup". Its measured WORK is the other half of the sandwich: it is what catches
 // the check lifted into a helper defined further down the file, whose text lands after every
 // landmark here. Both bounds are lexical; see the UNGATED disclosure at the top of this file for
 // the shape neither of them can see.
-func TestG_CFGBIND_8_TheParamsRefusalIsWiredAtStartup_Source(t *testing.T) {
+func TestTheParamsRefusalIsWiredAtStartup_Source(t *testing.T) {
 	src, err := os.ReadFile("daemon.go")
 	if err != nil {
 		t.Fatalf("SOURCE GATE: cannot read daemon.go as text, so the wiring is unverified: %v", err)

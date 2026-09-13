@@ -58,7 +58,7 @@ func buildC2Dom(t *testing.T, k int, bonds []c2DomBond) *Chain {
 	return c
 }
 
-// TestC2Metric_AddressDiversityGate pins the A axis (D-C2): the maturity shed counts
+// TestC2Metric_AddressDiversityGate pins the A axis: the maturity shed counts
 // ADDRESS-DIVERSE participants, so a stake split across many keys in ONE declared
 // domain cannot fake the decentralization that retires the launch anchors — only
 // distinct domains can. Unset domains reproduce the pre-A-axis behavior exactly.

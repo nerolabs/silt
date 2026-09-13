@@ -50,7 +50,7 @@ func TestClientServerRoundtrip(t *testing.T) {
 	if _, ok, err := c.Lookup(ctx, ports.HashBytes([]byte("nope"))); ok || err != nil {
 		t.Fatalf("missing root: ok=%v err=%v", ok, err)
 	}
-	// /all is deliberately NOT served on the public mux (F-3): a remote client asking
+	// /all is deliberately NOT served on the public mux: a remote client asking
 	// for a whole-registry dump gets ErrAllNotServed and should degrade to per-root
 	// lookups, not a full download. (An operator lists its OWN registry in-process.)
 	if _, err := c.All(ctx); !errors.Is(err, httpregistry.ErrAllNotServed) {

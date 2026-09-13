@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 """Repo lint: no unresolved git merge-conflict marker may reach a branch.
 
-SCAR (scar:conflict-markers-shipped-in-ci-yml-2026-09-03):
-  A rebase resolution missed `.github/workflows/ci.yml`. The three conflict markers sat
-  in the tree across a full review round. The file is YAML, so the markers did not just
-  look untidy — the whole `docs` job stopped parsing, and with it BOTH
-  `scripts/check_cited_tests.py` and `scripts/check_source_gates.py`. Two shipped
-  documents then described the source-gate lint as "in CI" when nothing in the docs job
-  ran at all. Nothing was red: the job did not fail, it did not exist. That is the
-  failure mode this lint exists for — a silently absent gate, not a noisy one.
+WHY IT MATTERS MORE THAN IT LOOKS. A conflict marker left in a YAML workflow does not
+just read untidy: the job stops parsing, and every lint that job runs stops with it.
+Nothing goes red — the job does not fail, it does not exist. A silently absent gate is
+the failure mode this lint exists for.
 
 THE RULE:
   No tracked text file may contain a line beginning with a git conflict marker.
@@ -20,8 +16,8 @@ THE RULE:
 
   Excluded: `.git/` (packed objects and MERGE_MSG legitimately contain markers),
   `website/` (generated from the Markdown sources, which are themselves linted), and
-  every NESTED CHECKOUT — an agent worktree or a clone dropped under the root is a
-  different branch's tree, and its markers are not this branch's problem. See
+  every NESTED CHECKOUT — a worktree or a clone dropped under the root is a different
+  branch's tree, and its markers are not this branch's problem. See
   `repo_walk.is_other_checkout` for the rule and why it is not a path.
 
 Dependency-free (stdlib only). Run: python3 scripts/check_conflict_markers.py
@@ -34,7 +30,6 @@ from repo_walk import repo_files
 
 ROOT = Path(__file__).resolve().parent.parent
 
-SCAR_ID = "scar:conflict-markers-shipped-in-ci-yml-2026-09-03"
 
 # Built from parts so that no line of this file is itself a marker line.
 _LT = "<" * 7
@@ -77,20 +72,20 @@ def main() -> int:
 
     if failures:
         print(
-            f"FAIL [{SCAR_ID}] — unresolved merge-conflict marker(s) in {scanned} scanned files:",
+            f"FAIL — unresolved merge-conflict marker(s) in {scanned} scanned files:",
             file=sys.stderr,
         )
         for rel, lineno, ln in failures:
             print(f"  {rel}:{lineno}  {ln}", file=sys.stderr)
         print(
             "\nFix: finish the merge/rebase resolution. If the two sides are both wanted,\n"
-            "the resolution is the UNION, not a choice — that is how the ci.yml scar was\n"
-            "created (one lint step silently replaced another).\n",
+            "the resolution is the UNION, not a choice — that is how one lint step once\n"
+            "silently replaced another.\n",
             file=sys.stderr,
         )
         return 1
 
-    print(f"OK [{SCAR_ID}] — {scanned} text files scanned; no conflict markers.")
+    print(f"OK — {scanned} text files scanned; no conflict markers.")
     return 0
 
 

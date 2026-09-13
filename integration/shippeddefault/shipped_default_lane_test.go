@@ -1,7 +1,6 @@
-// Package shippeddefault is THE SHIPPED-DEFAULT GRADED LANE (ROADMAP row F2,
-// ratified `D-STRUCTURAL-GATES-2026-09-12`; canon calls it "G-1" and that letter
-// COLLIDES with R-membership's own, different, closed G-1 — this package never
-// uses the letter).
+// Package shippeddefault is THE SHIPPED-DEFAULT GRADED LANE row F2, settled “;
+// canon calls it "" and that letter COLLIDES with R-membership's own,
+// different, closed — this package never uses the letter.
 //
 // THE RULE IT ENFORCES: at least one graded lane runs the configuration a stock
 // operator gets, with nothing turned on or off to make the test convenient.
@@ -10,45 +9,45 @@
 // WHAT THIS LANE COVERS, AND WHAT IT DOES NOT
 //
 // COVERS:
-//   - The two published `silt daemon` entry points a stock operator actually
-//     types — the edge node (`silt daemon`) and the validator (`silt daemon
-//     -validator`) — executed as the REAL built binary in a subprocess, with
-//     argv carrying no flag beyond the role selector.
-//   - The START-UP outcome of each: whether the process comes up or refuses,
-//     its exit code, and the operator-visible text it prints.
-//   - A structural census of every OTHER tracked integration lane, asserting
-//     that none of them runs the anti-release floor DERIVED — which is the
-//     measured evidence behind row F2's claim that every existing gate
-//     configures its way out of the posture it should be testing.
+// - The two published `silt daemon` entry points a stock operator actually
+// types — the edge node (`silt daemon`) and the validator `silt daemon
+// -validator`) — executed as the REAL built binary in a subprocess, with
+// argv carrying no flag beyond the role selector.
+// - The START-UP outcome of each: whether the process comes up or refuses,
+// Its exit code, and the operator-visible text it prints.
+// - A structural census of every OTHER tracked integration lane, asserting
+// That none of them runs the anti-release floor DERIVED — which is the
+// measured evidence behind row F2's claim that every existing gate
+// configures its way out of the posture it should be testing.
 //
 // DOES NOT COVER — say it plainly rather than let the name over-claim:
-//   - Any multi-node behaviour. This lane starts ONE process at a time. It has
-//     no swarm, no chain, no commit, no quorum, no peer. It cannot see a
-//     consensus property and must never be cited for one.
-//   - Any property past start-up. The edge node is observed to reach "serving"
-//     and is then killed. Nothing about steady state is asserted.
-//   - What happens AFTER the bond floor is cleared. MEASURED OUT OF BAND on
-//     2026-09-12 at b870ade, and recorded here because it corrects ROADMAP row
-//     F3's stated remedy: raising `-bond` past the floor does NOT make the stock
-//     validator posture start. A SECOND refusal sits behind the first —
-//     `silt daemon -validator -bond 1100M` exits 1 with "consensus: refusing to
-//     start — an untrusted objective validator with no cold-start scaffolding
-//     would treat itself as mature from genesis". That refusal is CORRECT (it is
-//     the M0 cold-start capture defense) and it is already gated behaviourally by
-//     cmd/silt TestInvariantB_S6_ColdStartScaffoldRefusedByDefault, which drives
-//     coldStartScaffoldOK in both polarities. It cannot be satisfied by any
-//     default, because -anchors and -ws-checkpoint carry NETWORK-SPECIFIC values.
-//     So "raise the default so the stock validator starts" is not achievable as
-//     written; what a raise buys is the removal of a SPURIOUS refusal, leaving
-//     the substantive one. This lane does not assert it, because asserting it
-//     would require passing `-bond` — the exact behaviour the lane forbids.
-//   - Whether the shipped defaults are CORRECT. It asserts what they DO, not
-//     what they SHOULD be. The `-bond` default raise is ratified as a direction
-//     (`D-BOND-DEFAULT-CLEARS-FLOOR-2026-09-12`) and its VALUE is the owner's.
-//   - Any lane that is not a tracked docker-compose or topology.py under
-//     integration/. The census walks `git ls-files`, never the filesystem: a
-//     gitignored stale artifact once turned local `main` RED on a SHA whose CI
-//     was 14/14 (scar: a source gate walks gitignored artifacts).
+// - Any multi-node behaviour. This lane starts ONE process at a time. It has
+// No swarm, no chain, no commit, no quorum, no peer. It cannot see a
+// consensus property and must never be cited for one.
+// - Any property past start-up. The edge node is observed to reach "serving"
+// And is then killed. Nothing about steady state is asserted.
+// - What happens AFTER the bond floor is cleared. MEASURED OUT OF BAND on
+// 2026-09-12, and recorded here because it corrects row
+// F3's stated remedy: raising `-bond` past the floor does NOT make the stock
+// validator posture start. A SECOND refusal sits behind the first —
+// `silt daemon -validator -bond 1100M` exits 1 with "consensus: refusing to
+// start — an untrusted objective validator with no cold-start scaffolding
+// would treat itself as mature from genesis". That refusal is CORRECT (it is
+// the M0 cold-start capture defense) and it is already gated behaviourally by
+// cmd/silt TestInvariantB_S6_ColdStartScaffoldRefusedByDefault, which drives
+// coldStartScaffoldOK in both polarities. It cannot be satisfied by any
+// default, because -anchors and -ws-checkpoint carry NETWORK-SPECIFIC values.
+// So "raise the default so the stock validator starts" is not achievable as
+// written; what a raise buys is the removal of a SPURIOUS refusal, leaving
+// the substantive one. This lane does not assert it, because asserting it
+// would require passing `-bond` — the exact behaviour the lane forbids.
+// - Whether the shipped defaults are CORRECT. It asserts what they DO, not
+// what they SHOULD be. The `-bond` default raise is settled as a direction
+// (“) and its VALUE is the project.
+// - Any lane that is not a tracked docker-compose or topology.py under
+// integration/. The census walks `git ls-files`, never the filesystem: a
+// gitignored stale artifact once turned local `main` RED on a SHA whose CI
+// was 14/14.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // THE ONE JUDGEMENT CALL, MADE VISIBLE
@@ -109,7 +108,7 @@ func mustBeStockArgv(argv []string) error {
 			return fmt.Errorf(
 				"THE SHIPPED-DEFAULT LANE WAS HANDED A FLAG: %q in argv %v. "+
 					"This lane exists to run the posture a stock operator gets. Passing a flag to make it "+
-					"start, pass, or run faster is precisely the behaviour ROADMAP row F2 forbids. If the "+
+					"start, pass, or run faster is precisely the behaviour the roadmap forbids. If the "+
 					"shipped default is wrong, change the default (owner's call) and update the pin below — "+
 					"do not configure the lane out of the posture", a, argv)
 		}
@@ -135,7 +134,7 @@ func TestMain(m *testing.M) {
 	if err := build.Run(); err != nil {
 		// Loud, not skipped. A lane that cannot build the thing it grades has
 		// no verdict to report, and `t.Skip` would report green for zero
-		// execution (scar: short-run-is-zero-execution).
+		// execution.
 		fmt.Fprintln(os.Stderr, "shipped-default lane: cannot build cmd/silt, so the lane has NO verdict:", err)
 		os.Exit(1)
 	}
@@ -230,8 +229,8 @@ func runStockDaemon(t *testing.T, argv []string, wait time.Duration, until strin
 //
 // Without it, the refusal assertion below passes identically on a harness that
 // can never start ANY daemon — a wedged box and a correct refusal look the same
-// from the outside. That confusion has a scar in this repo (a gate passing on a
-// bystander, third-time fired 2026-09-12), so the control is not optional.
+// from the outside. That confusion has bitten before (a gate passing on a
+// bystander, and it has fired three times), so the control is not optional.
 
 func TestShippedDefaultLane_StockEdgeNodeStarts(t *testing.T) {
 	res := runStockDaemon(t, stockEdgeArgv, 90*time.Second, "serving; Ctrl-C to stop")
@@ -252,18 +251,18 @@ func TestShippedDefaultLane_StockEdgeNodeStarts(t *testing.T) {
 // The `-bond` default (67,108,864 B) does not clear the derived anti-release
 // floor (1,080,000,000 B), which defaults ON for an untrusted objective
 // validator. This test asserts the defect as the CURRENT measured state, so that
-// raising the default — ratified as a direction, value owed to the owner
-// (`D-BOND-DEFAULT-CLEARS-FLOOR-2026-09-12`, ROADMAP row F3) — turns this RED
-// and forces the record to be updated rather than silently drifting.
+// raising the default — settled as a direction, with the value still owed (row
+// F3) — turns this RED and forces the record to be updated rather than silently
+// drifting.
 //
-// The claim and the reference are taken from THREE independent places, never one
-// (scar: a verifier that reads the claim and the root it checks against out of
-// the same response is a tautology):
-//   - the REFUSAL is the daemon's observed run-time behaviour;
-//   - the `-bond` default is read from the flag's own declaration via the
-//     binary's flag table, never from prose or a copied literal (row F4 exists
-//     because docs name defaults that are not the shipped ones);
-//   - the floor is re-derived here from core/bond.PlotSealThroughput.
+// # The claim and the reference are taken from THREE independent places, never one
+//
+// the same response is a tautology:
+// - the REFUSAL is the daemon's observed run-time behaviour;
+// - the `-bond` default is read from the flag's own declaration via the
+// binary's flag table, never from prose or a copied literal (row F4 exists
+// because docs name defaults that are not the shipped ones);
+// - the floor is re-derived here from core/bond.PlotSealThroughput.
 func TestShippedDefaultLane_StockValidatorRefusesToStart_PINNED_DEFECT(t *testing.T) {
 	// (a) The independent derivation of the floor. AntiReleaseComputeWindow is
 	// 2s and unexported in package main, so the window is restated here as the
@@ -285,15 +284,15 @@ func TestShippedDefaultLane_StockValidatorRefusesToStart_PINNED_DEFECT(t *testin
 	}
 	if gotBond != 67_108_864 {
 		t.Fatalf("PIN MOVED — and this is the pin doing its job: the shipped -bond default is now %q = %d B, "+
-			"pinned at \"64M\" = 67,108,864 B. If the default was raised per D-BOND-DEFAULT-CLEARS-FLOOR-2026-09-12, "+
-			"update ROADMAP row F3 and this test TOGETHER", bondDefault, gotBond)
+			"pinned at \"64M\" = 67,108,864 B. If the default was raised per, "+
+			"update the roadmap and this test TOGETHER", bondDefault, gotBond)
 	}
 
 	// (c) The composition that row F3 records, asserted rather than assumed.
 	if gotBond >= wantFloor {
 		t.Fatalf("PIN MOVED: the shipped -bond default (%d B) now CLEARS the derived floor (%d B). "+
 			"Row F3's defect is fixed. Retire this PINNED_DEFECT, keep the positive assertion that the "+
-			"stock validator STARTS, and update ROADMAP row F3 and D-BOND-DEFAULT-CLEARS-FLOOR-2026-09-12",
+			"stock validator STARTS, and update the roadmap and ",
 			gotBond, wantFloor)
 	}
 
@@ -313,9 +312,9 @@ func TestShippedDefaultLane_StockValidatorRefusesToStart_PINNED_DEFECT(t *testin
 	}
 
 	// (e) The operator-visible reason. An announced operator string is a
-	// contract (scar, count=2): if this text changes, the change is deliberate
-	// and the record moves with it. ROADMAP row F5 queues a rewrite of the
-	// RESTART error text, which is a different message from this one.
+	// contract, and it has broken twice: if this text changes, the change is
+	// deliberate and the record moves with it. row F5 queues a rewrite of
+	// the RESTART error text, which is a different message from this one.
 	const wantReason = "below the anti-release floor"
 	if !strings.Contains(res.stderr, wantReason) {
 		t.Fatalf("the stock validator refused for a DIFFERENT reason than row F3 records. "+
@@ -337,8 +336,7 @@ func TestShippedDefaultLane_StockValidatorRefusesToStart_PINNED_DEFECT(t *testin
 }
 
 // TestShippedDefaultLane_TheStockArgvGuardHasTeeth drives the guard that keeps
-// this lane honest. A guard with no demonstrated failure is decoration
-// (simplicity rule 7; scar: a pin without teeth).
+// this lane honest. A guard with no demonstrated failure is decoration.
 func TestShippedDefaultLane_TheStockArgvGuardHasTeeth(t *testing.T) {
 	for _, argv := range [][]string{
 		{"daemon", "-validator", "-min-bond-floor", "0"}, // the door 20 services use today
@@ -361,16 +359,16 @@ func TestShippedDefaultLane_TheStockArgvGuardHasTeeth(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────────────
 // THE CENSUS, ENCODED.
 //
-// This is the measured evidence behind ROADMAP row F2's claim that "every
-// existing gate configures its way OUT of the posture it should be testing",
-// turned into a standing assertion. Two doors lead out of the stock validator
+// This is the measured evidence behind row F2's claim that "every existing
+// gate configures its way OUT of the posture it should be testing", turned
+// into a standing assertion. Two doors lead out of the stock validator
 // posture and every tracked lane uses one of them:
 //
 //	DOOR A — an explicit `-min-bond-floor` (0 disarms it; any value overrides
-//	         the derived one), while the objective path stays on.
+//	 the derived one), while the objective path stays on.
 //	DOOR B — `-objective=false` or `-min-rep=0`, which makes objectivePath false
-//	         so the floor never arms at all (cmd/silt cmdDaemon: objectivePath =
-//	         validator && objective && minRep > 0).
+//	 so the floor never arms at all (cmd/silt cmdDaemon: objectivePath =
+//	 validator && objective && minRep > 0).
 //
 // The assertion is the INVARIANT, not the counts: every validator service must
 // be classifiable into exactly one door, and none may run the floor derived. A
@@ -431,7 +429,7 @@ func TestShippedDefaultLane_NoOtherLaneRunsTheDerivedFloor_PINNED_DEFECT(t *test
 			names = append(names, s.file+"::"+s.service)
 		}
 		t.Fatalf("PIN MOVED — and this is good news: %d lane validator service(s) now run the DERIVED "+
-			"anti-release floor: %v. ROADMAP row F2 records that NONE did. Update row F2 and this pin; "+
+			"anti-release floor: %v. the roadmap records that NONE did. Update row F2 and this pin; "+
 			"the shipped-default posture is no longer exclusive to this lane", len(derived), names)
 	}
 
@@ -453,7 +451,8 @@ func TestShippedDefaultLane_NoOtherLaneRunsTheDerivedFloor_PINNED_DEFECT(t *test
 				continue
 			}
 			valLines++
-			// the flag may sit on the same or an adjacent f-string fragment
+			// The flag may sit on the same or an adjacent f-string
+			// fragment
 			if strings.Contains(ln, "-min-bond-floor") {
 				floored++
 			}
@@ -482,7 +481,7 @@ func TestShippedDefaultLane_NoOtherLaneRunsTheDerivedFloor_PINNED_DEFECT(t *test
 // classifier on fixtures, including the DERIVED case that does not exist in the
 // tree today. Without this, the census's "0 on the derived floor" result is
 // indistinguishable from a classifier that can never emit DERIVED at all — a
-// gate that passes because it cannot fail (simplicity rule 7).
+// gate that passes because it cannot fail.
 func TestShippedDefaultLane_TheCensusClassifierHasTeeth(t *testing.T) {
 	fixture := func(body string) string {
 		dir := t.TempDir()
@@ -552,7 +551,7 @@ func shippedFlagDefault(t *testing.T, flagName string) string {
 	if len(m) != 1 {
 		t.Fatalf("flag -%s: want exactly one '(default ...)' in its own block, found %d. "+
 			"The flag table is the only source this lane trusts for a default; fix the parse rather than "+
-			"hard-coding the value (ROADMAP row F4)", flagName, len(m))
+			"hard-coding the value (the roadmap)", flagName, len(m))
 	}
 	return strings.Trim(strings.TrimSpace(m[0][1]), `"`)
 }
@@ -608,7 +607,7 @@ func repoRoot(t *testing.T) string {
 
 // trackedFiles walks `git ls-files`, never the filesystem. A filesystem walk
 // once made local `main` RED on a gitignored month-old artifact while CI was
-// 14/14 green (scar: a source gate walks gitignored artifacts).
+// 14/14 green.
 func trackedFiles(t *testing.T, root string) []string {
 	t.Helper()
 	cmd := exec.Command("git", "ls-files")

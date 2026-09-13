@@ -1,7 +1,7 @@
 package e2e
 
-// R0.4b C3 final round — the paid-serial guard's refuse-to-start is scoped to the
-// lane that uses it. PE ruling H-3 @ 271ab81, 2026-09-03.
+// C3 final round — the paid-serial guard's refuse-to-start is scoped to the
+// lane that uses it.
 //
 // THE FINDING. `guardstore.Open` + `LoadPaidSerials` ran at daemon boot OUTSIDE any
 // flag branch, and a corrupt or unreadable `<store>/paidserials.log` is a
@@ -12,15 +12,15 @@ package e2e
 //
 // THE ASYMMETRY IS DELIBERATE, and both halves are asserted here:
 //
-//   - LANE OFF: the daemon must BOOT and do its real job. Nothing on this node can
-//     read or write the guard, so opening it at all was the defect.
-//   - LANE ON: the daemon must REFUSE TO START. Inside the lane the guard is
-//     load-bearing — starting with an empty guard IS the eviction that re-opens the
-//     F2 double-pay, so a corrupt store must never be started over.
+// - LANE OFF: the daemon must BOOT and do its real job. Nothing on this node can
+// read or write the guard, so opening it at all was the defect.
+// - LANE ON: the daemon must REFUSE TO START. Inside the lane the guard is
+// load-bearing — starting with an empty guard IS the eviction that re-opens the
+// F2 double-pay, so a corrupt store must never be started over.
 //
 // This is the RUNTIME gate. It drives real `silt daemon` processes, because the
-// property is a boot outcome and a source gate cannot see one (the third-time rule on
-// [[scar-verifies-x-must-name-the-axes]], fired 2026-09-03).
+// property is a boot outcome and a source gate cannot see one (the third time on
+// [[]], fired 2026-09-03).
 //
 // ABLATION that must redden it: remove the `if *acceptReceipts {` wrapper from the
 // guard-store block in cmd/silt/daemon.go. Arm 1 then dies with
@@ -75,7 +75,7 @@ func TestCorruptGuardStoreStopsOnlyTheDaemonThatUsesIt(t *testing.T) {
 		if m := a.out.find(regexp.MustCompile(`delivery-credit guard store`)); m != nil {
 			t.Fatalf("a node with NO delivery lane reported on the paid-serial guard: %q. "+
 				"It cannot bank a receipt, so it can never read or write that file — "+
-				"opening it is pure blast radius (PE H-3)", m[0])
+				"opening it is pure blast radius (a review)", m[0])
 		}
 		// And it did not "repair" a file it has no business touching.
 		after, err := os.ReadFile(path)
@@ -97,8 +97,8 @@ func TestCorruptGuardStoreStopsOnlyTheDaemonThatUsesIt(t *testing.T) {
 		b := startDaemon(t, "lane-corrupt-guard",
 			"-listen", "127.0.0.1:0", "-store", store,
 			"-serve-registry", "127.0.0.1:0", "-validator",
-			"-accept-delivery-receipts", "-delivery-idle-window", "10m", "-epoch-blocks", "8", // R2.10 / F8: a paid lane needs an epoch clock
-			"-grant-capacity", "256", "-grant-per-hour", "256", // R2.12 / G-R212-1: and a configured faucet
+			"-accept-delivery-receipts", "-delivery-idle-window", "10m", "-epoch-blocks", "8", // a paid lane needs an epoch clock
+			"-grant-capacity", "256", "-grant-per-hour", "256", // and a configured faucet
 			"-objective=false", "-min-rep", "100", "-quorum", "1",
 			"-bond", "8M", "-min-bond-floor", "0",
 			"-capacity", "1G", "-mdns=false", "-id-seed", "4806")

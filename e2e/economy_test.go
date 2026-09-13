@@ -10,8 +10,7 @@ package e2e
 // PAYOUT (that needs a multi-node reconstruction + a judge quorum — covered in sim
 // by TestRepairBountyPaysHolderWithoutMovingStanding); it validates that the economy
 // config, the endowment path, and the telemetry all come up and agree on a live
-// daemon. Design: docs/thinking/2026-08-19-cloudtest-economy-scenario-design.md.
-
+// daemon.
 import (
 	"encoding/json"
 	"fmt"
@@ -39,9 +38,9 @@ type statusDurability struct {
 	} `json:"durability"`
 }
 
-// getStatus reads the OPERATOR's view. The per-object durability array is token-gated
-// (red-team F2: delta funded x 8 is the exact byte count served of a NAMED content
-// root), so the operator's own reader presents the token — which is what the daemon's
+// getStatus reads the OPERATOR's view. The per-object durability array is
+// token-gated: delta funded x 8 is the exact byte count served of a NAMED content
+// root, so the operator's own reader presents the token — which is what the daemon's
 // own web UI does on every same-origin /api/ call. getStatusUntokened below is the
 // public reader, and the e2e gate asserts it sees no roots.
 func getStatus(t *testing.T, base, token string) statusDurability {
@@ -102,10 +101,10 @@ func TestEconomyEndToEndOnLiveDaemon(t *testing.T) {
 		"-economy", "-care-published",
 		"-capacity", "1G", "-mdns=false", "-id-seed", "1001",
 		// -privacy=off: this test's F2 arm asserts the node-wide AGGREGATES stay open
-		// to an unauthenticated reader while the per-object detail is withheld. Since
-		// D-UI-PRIVACY-FLAG (2026-09-05) the compiled default withholds the aggregates
-		// too, so the F2 property is asserted in the published posture; the default
-		// posture has its own live-daemon gate, TestPrivacyDefaultWithholdsCountersOnLiveDaemon.
+		// to an unauthenticated reader while the per-object detail is withheld. Since the
+		// compiled default withholds the aggregates too, so the F2 property is asserted in
+		// the published posture; the default posture has its own live-daemon gate,
+		// TestPrivacyDefaultWithholdsCountersOnLiveDaemon.
 		"-ui", "127.0.0.1:0", "-privacy=off")
 	ui := a.waitFor(t, reUI, 20*time.Second)
 	base, token := "http://"+ui[1], ui[2]
@@ -174,12 +173,12 @@ func TestEconomyEndToEndOnLiveDaemon(t *testing.T) {
 		t.Fatalf("object reserve %d < endowment %d — /api/fund did not credit the escrow the telemetry reads", funded, endow)
 	}
 
-	// R2.9a / red-team F2, on a REAL daemon over real HTTP (build-immutable #1, the
-	// e2e tier). The same GET without the token must carry the aggregates and NO
-	// per-object entry: `funded` moves by one eighth of every byte served of a NAMED
-	// root, so an unauthenticated reader polling it recovers the exact byte count
-	// served of that object. The operator's view above is unchanged; only the
-	// unauthenticated one loses the decomposition.
+	// /, on a REAL daemon over real HTTP (build-immutable #1, the e2e
+	// tier). The same GET without the token must carry the aggregates and NO
+	// per-object entry: `funded` moves by one eighth of every byte served of a
+	// NAMED root, so an unauthenticated reader polling it recovers the exact byte
+	// count served of that object. The operator's view above is unchanged; only
+	// the unauthenticated one loses the decomposition.
 	pubView := decodeStatus(t, base, "")
 	if pubView.Durability == nil {
 		t.Fatalf("the durability block vanished for an unauthenticated reader — the AGGREGATES stay open; only the per-object array is gated")
@@ -194,13 +193,12 @@ func TestEconomyEndToEndOnLiveDaemon(t *testing.T) {
 		t.Fatalf("the node-wide balance changed with the token (%d vs %d) — this change publishes less, it never counts less", pubView.Durability.Balance, s1.Durability.Balance)
 	}
 
-	// THE SIBLING, on the same live daemon. The blind PE review found F2 still open
-	// here after the gate above: /api/economy/self withheld objects[] but published
+	// THE SIBLING, on the same live daemon. Theheld objects[] but published
 	// selfFunding.skimIn, the sum of objects[].funded, which on a one-object node IS
-	// the withheld counter — and it was recomputed per request, so the extraction ran
-	// at the reader's own rate. Untokened: no selfFunding key, no objects key, no root,
-	// and the same snapshot stamp as /api/status. Tokened: the operator's Panel 3 with
-	// the number.
+	// the withheld counter — and it was recomputed per request, so the extraction
+	// ran at the reader's own rate. Untokened: no selfFunding key, no objects key,
+	// no root, and the same snapshot stamp as /api/status. Tokened: the operator's
+	// Panel 3 with the number.
 	pubSelf := getEconomySelfRaw(t, base, "")
 	if _, open := pubSelf["selfFunding"]; open {
 		t.Fatalf("unauthenticated /api/economy/self published selfFunding: %s — skimIn is the sum of the per-object funded counters and with one cared object it is that counter; /api/roots names the root", pubSelf["selfFunding"])
@@ -251,12 +249,12 @@ func getEconomySelfRaw(t *testing.T, base, token string) map[string]json.RawMess
 	return out
 }
 
-// TestPrivacyDefaultWithholdsCountersOnLiveDaemon is D-UI-PRIVACY-FLAG at the e2e tier
-// (build-immutable #1): a real daemon started with NO -privacy flag withholds the whole
-// stats block and durability.balance from an unauthenticated reader — absent, with the
-// countersWithheld marker, never a zero — publishes privacy.mode "on", and serves the
-// operator's tokened read unchanged. The compiled default is asserted here on a live
-// process the way release.yml asserts it on the released artifact.
+// TestPrivacyDefaultWithholdsCountersOnLiveDaemon is at the e2e tier (build-immutable
+// #1): a real daemon started with NO -privacy flag withholds the whole stats block and
+// durability.balance from an unauthenticated reader — absent, with the countersWithheld
+// marker, never a zero — publishes privacy.mode "on", and serves the operator's tokened
+// read unchanged. The compiled default is asserted here on a live process the way
+// release.yml asserts it on the released artifact.
 func TestPrivacyDefaultWithholdsCountersOnLiveDaemon(t *testing.T) {
 	a := startDaemon(t, "P",
 		"-listen", "127.0.0.1:0", "-store", t.TempDir(),

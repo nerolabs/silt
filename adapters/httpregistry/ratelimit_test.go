@@ -37,7 +37,7 @@ func TestRateLimiterBurstThenThrottleThenRefill(t *testing.T) {
 	}
 }
 
-// TestBucketMapIsBounded is the F-3 hardening regression: the per-IP bucket map is a
+// TestBucketMapIsBounded is the hardening regression: the per-IP bucket map is a
 // bounded resource — a flood that cycles source IPs cannot grow it without bound (it
 // would otherwise be its OWN cost vector). It never exceeds maxBuckets, and a
 // recently-active IP survives the sampled-LRU eviction that a flood triggers.

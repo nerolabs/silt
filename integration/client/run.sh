@@ -14,27 +14,27 @@
 # rule is satisfied. The attacks then spoof Host / Origin / token to prove the
 # guard (#89) holds.
 #
-#   U1 publish:      POST /api/publish (multipart + bearer token) scatters the
-#                    file across the swarm and returns a link. POSITIVE CONTROL:
-#                    we then read each holder's own GET /api/status held-chunk
-#                    count and require >=2 DISTINCT holders actually hold shards
-#                    — otherwise every shard could have landed on the ui daemon
-#                    alone (a valid remote node) with zero holders participating,
-#                    and a single-node loopback would masquerade as a swarm
-#                    scatter. That would be a false PASS on a broken product.
-#   U2 roots:        GET /api/roots then lists the new root — AND the U1 holder
-#                    floor still holds, so the "reflected" publish is a real one.
-#   U3 fetch:        GET /api/fetch?link=… returns the bytes BIT-PERFECT — a real
-#                    end-to-end user round-trip over HTTP that had to traverse the
-#                    swarm (holders held the shards), not a ui-node-only replay.
-#   U4 no token:     POST /api/publish with NO token → 401 (a drive-by can't publish).
-#   U5 wrong token:  POST /api/publish with a bad token → 401.
-#   U6 DNS-rebinding: any request with a non-local Host → 403.
-#   U7 cross-origin: any request with an evil Origin → 403.
-#   U8 ergonomics:   GET /api/status with no token → 200 (reads stay frictionless).
+#  U1 publish: POST /api/publish (multipart + bearer token) scatters the
+#  file across the swarm and returns a link. POSITIVE CONTROL:
+#  we then read each holder's own GET /api/status held-chunk
+#  count and require >=2 DISTINCT holders actually hold shards
+#  — otherwise every shard could have landed on the ui daemon
+#  alone (a valid remote node) with zero holders participating,
+#  and a single-node loopback would masquerade as a swarm
+#  scatter. That would be a false PASS on a broken product.
+#  U2 roots: GET /api/roots then lists the new root — AND the U1 holder
+#  floor still holds, so the "reflected" publish is a real one.
+#  U3 fetch: GET /api/fetch?link=… returns the bytes BIT-PERFECT — a real
+#  end-to-end user round-trip over HTTP that had to traverse the
+#  swarm (holders held the shards), not a ui-node-only replay.
+#  U4 no token: POST /api/publish with NO token → 401 (a drive-by can't publish).
+#  U5 wrong token: POST /api/publish with a bad token → 401.
+#  U6 DNS-rebinding: any request with a non-local Host → 403.
+#  U7 cross-origin: any request with an evil Origin → 403.
+#  U8 ergonomics: GET /api/status with no token → 200 (reads stay frictionless).
 #
-# Usage:  ./run.sh          # build, test, tear down; exit 0 = PASS
-#         KEEP=1 ./run.sh   # leave the topology up to poke at
+# Usage:./run.sh # build, test, tear down; exit 0 = PASS
+#  KEEP=1 ./run.sh # leave the topology up to poke at
 # exit 0 = PASS; non-zero = FAIL
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail

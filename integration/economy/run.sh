@@ -3,17 +3,17 @@
 # stands up two validator/issuers (one serves the registry) + a holder + a
 # freeloader on a flat container net, and asserts against REAL daemon behavior:
 #
-#   FIELD TEST 5 claims
-#   (a) hosts earn per byte served and freeloaders go broke   -> `silt sim run economy`
-#   (b) M0 adds publisher-unlinkable prepaid blind-signed publish credits:
-#         - a token-less publish is REFUSED when validators -require-tokens   (control)
-#         - a Publisher-identity publish is REFUSED (durable linkage rejected)(control)
-#         - a tokened publish (blind sigs from -token-quorum validators) COMMITS
-#           carrying NO durable Publisher — proven on the committed chain.cbor
-#         - a DOUBLE-SPEND of a token is rejected  ... see the FINDING below.
+#  FIELD TEST 5 claims
+#  (a) hosts earn per byte served and freeloaders go broke -> `silt sim run economy`
+#  (b) M0 adds publisher-unlinkable prepaid blind-signed publish credits:
+#  - a token-less publish is REFUSED when validators -require-tokens (control)
+#  - a Publisher-identity publish is REFUSED (durable linkage rejected)(control)
+#  - a tokened publish (blind sigs from -token-quorum validators) COMMITS
+#  carrying NO durable Publisher — proven on the committed chain.cbor
+#  - a DOUBLE-SPEND of a token is rejected... see the FINDING below.
 #
-# Usage:  ./run.sh          # build, test, tear down; exit 0 = PASS
-#         KEEP=1 ./run.sh   # leave the topology up afterward to poke at
+# Usage:./run.sh # build, test, tear down; exit 0 = PASS
+#  KEEP=1 ./run.sh # leave the topology up afterward to poke at
 set -uo pipefail
 cd "$(dirname "$0")"
 ROOT=$(cd ../.. && pwd)
@@ -118,9 +118,9 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 # CLAIM (b) POSITIVE: a tokened publish (blind sigs from -token-quorum=2 distinct
 # validators) COMMITS and carries NO durable Publisher. Proven two ways:
-#   (i)  val1 prints "chain: committed block N";
-#   (ii) the committed entry in val1's chain.cbor carries a Token+Serial and a
-#        ZERO NodeID Publisher (32 zero bytes) — the unlinkability wire proof.
+#  (i) val1 prints "chain: committed block N";
+#  (ii) the committed entry in val1's chain.cbor carries a Token+Serial and a
+#  ZERO NodeID Publisher (32 zero bytes) — the unlinkability wire proof.
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== CLAIM (b) positive: a tokened publish (quorum 2) COMMITS with no Publisher =="
@@ -180,7 +180,7 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CLAIM (b) DOUBLE-SPEND — now GATED over the wire (#233). The positive publish
+# CLAIM (b) DOUBLE-SPEND — now GATED over the wire. The positive publish
 # above saved its token with -save-token; here we RE-PRESENT that same token for a
 # DIFFERENT file with -use-token. Its serial is already committed, so the chain
 # rejects the second publish (core/chain ErrTokenSpent, "publish token serial
@@ -224,11 +224,11 @@ fi
 echo ""
 if [ "$pass" = 1 ]; then
   echo "RESULT: PASS ✅  economy observatory + blind-credit publisher-unlinkability validated,"
-  echo "  and the token DOUBLE-SPEND rejection is now driven over the real wire (#233):"
+  echo "  and the token DOUBLE-SPEND rejection is now driven over the real wire:"
   echo "  a re-presented serial is refused (ErrTokenSpent) while a fresh token still commits."
-  echo "  tier note (immutable #3): CLAIM (a) per-byte earning / freeloaders-broke stays SIM-TIER"
+  echo "  tier note: per-byte earning / freeloaders-broke stays SIM-TIER"
   echo "    (in-process 'silt sim run economy' — the daemon still does not wire the credit-gated"
-  echo "    registry, so per-byte balance is not yet wire-exposed; see README FINDING 2 / #233(B))."
+  echo "    registry, so per-byte balance is not yet wire-exposed)."
 else
   echo "RESULT: FAIL ❌"
 fi

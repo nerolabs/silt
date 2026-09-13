@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""THE ADVERSARY-SHAPE GATE — roadmap row F1, `D-STRUCTURAL-GATES-2026-09-12`.
+"""THE ADVERSARY-SHAPE GATE.
 
-  ⚠ NAME: this gate is called THE ADVERSARY-SHAPE GATE. Some records call it "G-2".
-    Do not use that spelling anywhere. `R-membership` has its own G-1/G-2/G-3 family
-    and `R-membership`'s G-1 is a CLOSED, DIFFERENT object; a document was nearly
-    corrupted by the collision. Write the name out in full, always.
+  ⚠ NAME: write this gate's name out in full, always. A one-letter abbreviation
+    collides with other gate families and has nearly corrupted a document before.
 
 THE RULE THIS GATE ENCODES
 
@@ -50,7 +48,7 @@ RATCHET MODE — WHAT A GREEN RUN DOES AND DOES NOT MEAN
   WHY THE OLD BEHAVIOUR COULD NOT BE KEPT. `CAPABILITY-CONTROL` asks that the same
   attack FAIL without the capability. Where a defence HOLDS, it fails without every
   capability, so the control cannot discriminate and a `fixture=` is only reachable
-  when the defence is BROKEN (`R-ADVERSARY-SHAPE-CONTROL-NEEDS-A-BROKEN-DEFENCE`).
+  when the defence is BROKEN.
   The 19 therefore cannot be driven to zero by covering them, and a gate that can
   never go green cannot be wired to CI. Ratchet mode changes the assertion from
   "nothing is uncovered" to "nothing is NEW", which is a claim the tree can satisfy.
@@ -63,8 +61,8 @@ RATCHET MODE — WHAT A GREEN RUN DOES AND DOES NOT MEAN
 WHY THE COMPLEMENT IS CLOSED ON THE SIDE THAT MATTERS
 
   The claim inventory is DERIVED from the tracked source on every run, never hand-listed
-  (scar-inventory-gate-is-a-hand-list: a "covers EVERY X" gate built from a hand list
-  silently stops covering X the moment X grows). Add a defence to a scoped file and
+  (a "covers EVERY X" gate built from a hand list silently stops covering X the moment
+  X grows). Add a defence to a scoped file and
   write it in the vocabulary, and it enters the inventory and FAILS CLOSED until it is
   declared. That is the half a gate can own. The other half — writing the claim in a
   vocabulary nobody checks — it cannot.
@@ -72,10 +70,10 @@ WHY THE COMPLEMENT IS CLOSED ON THE SIDE THAT MATTERS
   The walk is `git ls-files` on this checkout, NOT a filesystem walk. That is one
   mechanism answering two recorded failures at once: a filesystem walk descends into
   every nested agent worktree under this root and judges another branch's files by
-  this branch's rules (scar:lint-walks-into-another-checkout-2026-09-11, measured at
+  this branch's rules (measured at
   610 false findings from one lint), and a filesystem walk also reads GITIGNORED
-  artifacts (scar-source-gate-walks-gitignored-artifacts, 2026-09-12: a month-old
-  gitignored artifact made local `main` RED on a SHA whose CI was 14/14 green).
+  artifacts: a month-old gitignored artifact can make a local tree RED on a commit
+  whose CI is entirely green.
   `git ls-files` reports neither. It does mean an UNSTAGED new file is invisible to
   this gate until it is added — which is correct for a gate that judges the tree. The
   three PoR evidence files that were untracked when this gate was written are TRACKED
@@ -113,9 +111,9 @@ THE DECLARATION FORMAT
   binding-B self-test case defends. The grant and control legs used to bind to the
   FILE, not to the named function: main() stored each test name against its WHOLE
   file body. MEASURED 2026-09-12: re-pointing a `capability=LayoutKey` declaration
-  at TestRT_POR_2_ChallengeProxyPassesAudit_PINNED_DEFECT — which does not grant
-  LayoutKey — left the gate at 19 problems, NOT CAUGHT, because both RT-POR
-  fixtures share core/node/rt_por_m1_gates_test.go. `marker_scopes` now binds each
+  at TestChallengeProxyPassesAudit_PINNED_DEFECT — which does not grant
+  LayoutKey — left the gate at 19 problems, NOT CAUGHT, because both proof-of-retrievability
+  fixtures share core/node/por_key_distribution_test.go. `marker_scopes` now binds each
   marker to ONE test. RE-MEASURED on the same patched tree: the pre-fix gate
   reports 19 and the post-fix gate reports 20, naming the mis-pointed fixture.
   What survives of the old warning: a fixture that lies in BOTH markers still
@@ -140,8 +138,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 GATE_NAME = "the adversary-shape gate"
-ROADMAP_ROW = "ROADMAP.md row F1"
-DECISION = "D-STRUCTURAL-GATES-2026-09-12"
 
 # ---------------------------------------------------------------------------
 # SCOPE. The storage/proof surface, which is where the measured failure lives.
@@ -230,7 +226,7 @@ def marker_scopes(body):
          only if that function is a test. A marker inside a HELPER's body binds
          to no test and is dropped.
       2. A marker anywhere else — a comment block between declarations, which is
-         where both RT-POR fixtures put theirs, above the test's own helpers —
+         where both proof-of-retrievability fixtures put theirs, above the test's own helpers —
          binds FORWARD to the next test DECLARED after it.
 
     A marker after the last test declaration in a file, and not inside a test
@@ -289,20 +285,19 @@ def claim_key(rel, cap, sentence):
 
 
 # ---------------------------------------------------------------------------
-# THE RATCHET ALLOW-LIST. Ratified by the owner 2026-09-12
-# (`D-ADVERSARY-SHAPE-RATCHET-2026-09-12`).
+# THE RATCHET ALLOW-LIST.
 #
 # WHY IT EXISTS. A `fixture=` is only reachable when the defence is BROKEN — the
 # CAPABILITY-CONTROL leg asks that the same attack FAIL without the capability,
 # and where the defence holds it fails for every capability, so the control
-# cannot discriminate (`R-ADVERSARY-SHAPE-CONTROL-NEEDS-A-BROKEN-DEFENCE`).
+# cannot discriminate.
 # The 19 `UNCOVERED:` records therefore CANNOT be driven to zero by covering
 # them, and a gate that can never go green cannot be wired to CI. Ratchet mode
 # changes what the gate asserts: not "there is no uncovered claim" but "there is
 # no claim this gate has not SEEN BEFORE".
 #
-# ⚠ READ THE 19 AS A RECORD, NEVER AS A COUNTDOWN. `R-ADVERSARY-SHAPE-CONTROL-
-# NEEDS-A-BROKEN-DEFENCE` says so in terms, and at least three of them
+# ⚠ READ THE 19 AS A RECORD, NEVER AS A COUNTDOWN. The control-needs-a-broken-defence
+# constraint says so in terms, and at least three of them
 # (`ForeignSeedProof`, `ClaimantChosenSurvivorSet`, `UntrustedClaimFields`) have
 # a fixture that GRANTS the capability while the defence HOLDS — they are stuck
 # for a structural reason and not for any gap in the tree.
@@ -341,7 +336,7 @@ RATCHET = (
     ('core/bond/bond.go', 'CrossEpochProofReplay', 'fe5526229678'),
     ('core/node/bondaudit.go', 'PeerAcceptedSelfAssertedBond', 'f95c92fcdd45'),
     ('core/node/por.go', 'TagsWithoutBytes', 'e281e2c299e7'),
-    ('core/node/por.go', 'UnderReportedBlockCount', 'd167da6e5b2a'),
+    ('core/node/por.go', 'UnderReportedBlockCount', '2aa4e533bae9'),
     ('core/node/por.go', 'ForeignSeedProof', '10e0a2bd116d'),
     ('core/node/repairclaim.go', 'UntrustedClaimFields', '1e72f903ca2a'),
     ('core/node/repairclaim.go', 'JudgeWithoutCareHandle', '8759c679dacc'),
@@ -396,7 +391,7 @@ def main(root=None, quiet=False, strict=False, allow=None):
     allow = RATCHET if allow is None else tuple(allow)
     files = tracked_files(root)
     # Every test function in the tracked tree, name -> file. Built once; a
-    # citation resolves against it (scar-cited-gate-does-not-exist, count=5).
+    # citation resolves against it.
     tests = {}
     for rel in files:
         if not rel.endswith("_test.go"):
@@ -439,8 +434,7 @@ def main(root=None, quiet=False, strict=False, allow=None):
                     f"{rel}:{lineno}: DECLARED UNCOVERED — capability={cap}. "
                     f"No fixture grants the adversary this capability.\n"
                     f"    reason: {decl.group('unc')[:200]}\n"
-                    f"    This is a RECORD, not an exemption "
-                    f"({ROADMAP_ROW}, {DECISION})."))
+                    f"    This is a RECORD, not an exemption."))
                 continue
             fix = decl.group("fix")
             if fix not in tests:
@@ -454,7 +448,7 @@ def main(root=None, quiet=False, strict=False, allow=None):
                     f"{rel}:{lineno}: FIXTURE DOES NOT GRANT THE CAPABILITY — {fix} "
                     f"({frel}) carries no `ADVERSARY-HOLDS: {cap}`.\n"
                     f"    A fixture whose adversary holds LESS than a legitimate participant "
-                    f"cannot witness this defence; that is the exact shape {ROADMAP_ROW} exists "
+                    f"cannot witness this defence; that is the exact shape this gate exists "
                     f"to catch. Declared holds: {sorted(holds) or 'none'}")
                 continue
             if cap not in ctrl:
@@ -463,7 +457,7 @@ def main(root=None, quiet=False, strict=False, allow=None):
                     f"({frel}) carries no `CAPABILITY-CONTROL: {cap}`.\n"
                     f"    Without a control asserting the SAME attack fails WITHOUT {cap}, the "
                     f"fixture cannot show the capability is load-bearing, and a bystander passes "
-                    f"as a witness (scar-gate-passes-on-a-bystander, count=3, third-time fired).")
+                    f"as a witness.")
 
     # ── THE RATCHET ────────────────────────────────────────────────────────
     # Three buckets, and only the middle one is grandfathered.
@@ -481,7 +475,7 @@ def main(root=None, quiet=False, strict=False, allow=None):
                 f"    The allow-list grandfathers a fixed set of {RATCHET_COUNT} "
                 f"pre-existing uncovered claims and NOTHING else. To land this you must "
                 f"edit RATCHET and RATCHET_COUNT in {Path(__file__).name} together, in a "
-                f"diff a reviewer reads. That edit GROWS the backlog and the ratified "
+                f"diff a reader sees. That edit GROWS the backlog and the settled "
                 f"direction is that it may only shrink.")
     for e in stale:
         ratchet_problems.append(
@@ -519,7 +513,6 @@ def main(root=None, quiet=False, strict=False, allow=None):
     print(f"\n{GATE_NAME}: {len(failing)} problem(s).\n")
     for p in failing:
         print("  - " + p + "\n")
-    print(f"  Authority: {ROADMAP_ROW}, docs/decisions.md {DECISION}.")
     return 1
 
 
@@ -548,7 +541,7 @@ def main(root=None, quiet=False, strict=False, allow=None):
 # strictly LESS than an honest holder (it corrupts data it already has and
 # reuses an honest sigma; the name itself says "WithoutKey"). The gate must
 # refuse it as a witness. A gate that accepts a bystander is the failure shape
-# recorded three times over in this project's scar ledger.
+# this project has hit three times over.
 # ---------------------------------------------------------------------------
 # The claim sentence every manufactured case uses, spelled once so the ratchet
 # cases key on the SAME text the gate will extract from them.

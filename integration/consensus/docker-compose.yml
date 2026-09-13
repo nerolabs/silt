@@ -1,12 +1,12 @@
 # Multi-validator consensus + partition-heal, on one host, in containers:
 #
-#   flat network 10.50.0.0/24 (all four validators can route to each other)
+#  flat network 10.50.0.0/24 (all four validators can route to each other)
 #
-#     valA (10.50.0.11)  registry  ─┐   GROUP 1 (TALLER): commits [g,a1,a2]
-#     valB (10.50.0.12)  attester  ─┘   — NOT partitioned; a healed C reconnects here
+#  valA (10.50.0.11) registry ─┐ GROUP 1 (TALLER): commits [g,a1,a2]
+#  valB (10.50.0.12) attester ─┘ — NOT partitioned; a healed C reconnects here
 #
-#     valC (10.50.0.13)  registry  ─┐   GROUP 2 (SHORTER): commits [g,c1]
-#     valD (10.50.0.14)  attester  ─┘   — carry -block-peers valA,valB → severed link
+#  valC (10.50.0.13) registry ─┐ GROUP 2 (SHORTER): commits [g,c1]
+#  valD (10.50.0.14) attester ─┘ — carry -block-peers valA,valB → severed link
 #
 # All four share the SAME -anchors launch set, so every replica starts from an
 # identical genesis config and every replica applies the same validity and
@@ -17,9 +17,9 @@
 # objective on-chain-bond fork choice, and to say the set converges on whichever
 # fork carries the most bond. (The retired wording is NOT quoted here: it is a
 # banned literal and quoting it would trip the gate that bans it. See
-# core/chain/o3t_canon_text_test.go for the set.) Fork choice ranks on HEIGHT
+# core/chain/canon_text_test.go for the set.) Fork choice ranks on HEIGHT
 # then head hash and reads
-# NOTHING else (core/chain heavier(); O3 Direction T, owner-ratified 2026-09-03),
+# NOTHING else (core/chain heavier),
 # so there is no bond or weight term for a group to win on. The claim also
 # survived here because it is a .yml comment: the repair that retired this
 # wording from run.sh and README.md, and the gate written to police it, drew

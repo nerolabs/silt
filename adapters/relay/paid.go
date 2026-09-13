@@ -10,22 +10,22 @@ package relay
 // adapter gates). This file is the adapter-side byte pump. It knows NOTHING about
 // PayWord or preimages; it only asks the authorizer "how many bytes am I cleared to
 // forward" and blocks until that ceiling rises. Keeping the verifier in core/node
-// keeps the M0 guards and the #644 S-clamp on the tested path (design §2 Option A).
+// keeps the M0 guards and the S-clamp on the tested path (design §2 Option A).
 //
 // TWO PROPERTIES this pump must hold that the plain splice does NOT:
 //
-//   - PAY-AS-YOU-GO GATE. The forward direction never delivers more than the
-//     authorized ceiling. If the fetcher stops authorizing, the pump blocks; the
-//     irreducible stiff is bounded to one increment (the origin may have one
-//     increment already buffered in flight).
+// - PAY-AS-YOU-GO GATE. The forward direction never delivers more than the
+// authorized ceiling. If the fetcher stops authorizing, the pump blocks; the
+// irreducible stiff is bounded to one increment (the origin may have one
+// increment already buffered in flight).
 //
-//   - SPLICE-EOF SURVIVAL (the sharpest hazard). The plain splice closes BOTH
-//     conns on the FIRST EOF because swarm exchanges are short-lived (server.go).
-//     A paid session is NOT short-lived: the reverse direction (fetcher → origin)
-//     may EOF while the paid forward still owes authorized bytes. The paid pump
-//     must NOT tear down the forward stream on a reverse EOF. The forward stream
-//     ends on its OWN completion (origin EOF, the byte cap, or the fetcher hanging
-//     up its read side), never on the reverse direction closing.
+// - SPLICE-EOF SURVIVAL (the sharpest hazard). The plain splice closes BOTH
+// conns on the FIRST EOF because swarm exchanges are short-lived (server.go).
+// A paid session is NOT short-lived: the reverse direction (fetcher → origin)
+// may EOF while the paid forward still owes authorized bytes. The paid pump
+// must NOT tear down the forward stream on a reverse EOF. The forward stream
+// ends on its OWN completion (origin EOF, the byte cap, or the fetcher hanging
+// up its read side), never on the reverse direction closing.
 
 import (
 	"io"

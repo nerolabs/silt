@@ -30,19 +30,17 @@ import (
 
 type Config struct {
 	// PublishWorkCounters lets this node gossip its own ServedBytes / RepairsDone on the
-	// two work fields (R2.2 rows 8-9). FALSE BY DEFAULT, AND THE ZERO VALUE IS THE SAFE
+	// two work fields. FALSE BY DEFAULT, AND THE ZERO VALUE IS THE SAFE
 	// ONE ON PURPOSE: a caller that forgets this field withholds, it does not leak.
 	//
-	// It is the wire half of -privacy (RESEARCH CERTIFICATION C3-GOSSIP-DISCLOSURE-vs-
-	// D-UI-PRIVACY-FLAG-2026-09-09, alternative A, condition M-1, owner ratification
-	// pending). The two gossiped integers are BIT-IDENTICAL to two of the three
-	// quantities D-UI-PRIVACY-FLAG withholds from an HTTP reader — same account fields,
-	// same numbers — and they go to a wider audience over a more public port: -ui is
-	// empty by default, so a hobbyist daemon serves no HTTP surface at all and would
-	// still have published these to every DHT peer. Worse, D-STATUS-SNAPSHOT-INTERVAL
-	// ratified the 5 s snapshot as a SECURITY parameter precisely because "the poll rate
-	// is the reader's choice, so that was never a bound" — and a counter stamped on every
-	// reply hands the observer its own rate back, voiding that bound for these two.
+	// It is the wire half of -privacy. The two gossiped integers are BIT-IDENTICAL to two of the three
+	// quantities withholds from an HTTP reader — same account fields, same numbers —
+	// and they go to a wider audience over a more public port: -ui is empty by
+	// default, so a hobbyist daemon serves no HTTP surface at all and would still have
+	// published these to every DHT peer. Worse, the 5 s snapshot is a SECURITY
+	// parameter precisely because "the poll rate is the reader's choice, so that was
+	// never a bound" — and a counter stamped on every reply hands the observer its own
+	// rate back, voiding that bound for these two.
 	//
 	// So the flag that governs the reader governs the wire. cmd/silt sets this from
 	// -privacy; every other caller (tests, sim) gets the withholding default.
@@ -66,49 +64,51 @@ type Config struct {
 	// keeps a fetch from a dead holder cheap under churn even when the general
 	// RequestTimeout is generous for jittery consensus. 0 = fall back to RequestTimeout.
 	HolderDialTimeout ports.Duration
-	// RequestSizeFloorBytesPerSec extends a request's per-attempt deadline for a LARGE
-	// outbound payload (#286). A block carrying a validator's one-time ~1.5 MB space-time
-	// bond registration must cross a real WAN and be re-verified before the attester can
-	// reply — which a flat RTT-scale RequestTimeout cannot cover, so a fresh quorum-2
-	// genesis WEDGED cross-region while the identical block committed on a single-zone
-	// quorum-1 SMOKE (the two-substrate immutable earning its keep). A tight wall-clock
-	// TRANSPORT deadline is a category error: transport deadlines must be generous, the
-	// security lives in the proof not the clock (docs/network-durability.md, research
-	// #289). The deadline gains len(payload)/floor of transfer time at this assumed
-	// worst-case WAN throughput (bounded so a pathological block can't hang forever).
-	// 0 = off (flat RequestTimeout). Few-KB steady-state blocks gain ~nothing; the
-	// structural close is a succinct proof (#299). Holder-fetch dials never extend.
+	// RequestSizeFloorBytesPerSec extends a request's per-attempt deadline for a
+	// LARGE outbound payload. A block carrying a validator's one-time ~1.5 MB
+	// space-time bond registration must cross a real WAN and be re-verified before
+	// the attester can reply — which a flat RTT-scale RequestTimeout cannot cover,
+	// so a fresh quorum-2 genesis WEDGED cross-region while the identical block
+	// committed on a single-zone quorum-1 SMOKE (the two-substrate immutable
+	// earning its keep). A tight wall-clock TRANSPORT deadline is a category
+	// error: transport deadlines must be generous, the security lives in the proof
+	// not the clock, research. The deadline gains len(payload)/floor of transfer
+	// time at this assumed worst-case WAN throughput (bounded so a pathological
+	// block can't hang forever). 0 = off (flat RequestTimeout). Few-KB
+	// steady-state blocks gain ~nothing; the structural close is a succinct proof.
+	// Holder-fetch dials never extend.
 	RequestSizeFloorBytesPerSec int64
 	// MaxBondRegBytesPerBlock caps the total BYTES of bond registrations a proposer
-	// embeds in ONE block (#286 Layer 2b). At a fresh multi-validator objective genesis,
+	// embeds in ONE block. At a fresh multi-validator objective genesis,
 	// every founding validator submits its ~1.5 MB space-time bond proof; embedding all
 	// of them piles into one ~8 MB block the quorum gather cannot move + re-verify over a
-	// real 3-region WAN before the round churns — the cert stalled here with regs=5 /
+	// real 3-region WAN before the round churns — the research stalled here with regs=5 /
 	// 7.9 MB. The founding set are ANCHORS (chain.launchAnchor), so genesis commits SMALL
-	// on anchor attestations at zero committed bond while the deferred registrations drain
-	// over the next blocks (each validator still gains real bonded weight and reaches
-	// MatureValidators). A BYTE budget (not a count) is the right lever because the
-	// blocker is SIZE, not number: at genesis a full ~1.5 MB proof means ~1 reg/block,
-	// but small steady-state renewals (fewer label samples / smaller plots) pack many per
-	// block — so an attest-only validator's renewals are NOT starved under a tight TTL
-	// (a count cap would lapse them; sim/bond_renewal proves it). Default ~2 MiB keeps a
-	// block within the size #313 proved gathers while fitting one full proof or many small
-	// renewals. The proposer always embeds at least ONE reg even if it alone exceeds the
-	// budget (never stall the queue on an oversized proof). 0 = unbounded (legacy). This
-	// is the near-term unblock; the structural close is a succinct + aggregated proof
-	// (#299, docs/network-durability.md §6). Proposer-side policy only — validity is
-	// unchanged (a block with N regs is valid), so mixed caps across proposers are safe.
+	// On anchor attestations at zero committed bond while the deferred registrations
+	// drain over the next blocks (each validator still gains real bonded weight and
+	// reaches MatureValidators). A BYTE budget (not a count) is the right lever
+	// because the blocker is SIZE, not number: at genesis a full ~1.5 MB proof means
+	// ~1 reg/block, but small steady-state renewals (fewer label samples / smaller
+	// plots) pack many per block — so an attest-only validator's renewals are NOT
+	// starved under a tight TTL (a count cap would lapse them; sim/bond_renewal
+	// proves it). Default ~2 MiB keeps a block within the size proved gathers while
+	// fitting one full proof or many small renewals. The proposer always embeds at
+	// least ONE reg even if it alone exceeds the budget (never stall the queue on an
+	// oversized proof). 0 = unbounded (legacy). This is the near-term unblock; the
+	// structural close is a succinct + aggregated proof. Proposer-side policy only —
+	// validity is unchanged (a block with N regs is valid), so mixed caps across
+	// proposers are safe.
 	MaxBondRegBytesPerBlock int64
-	// MaxEntryBytesPerBlock caps the total BYTES of mempool ENTRIES a proposer folds
-	// into one block — SEPARATE from the reg budget by design (#441 certification
-	// Addition 1): a single ~1.5 MB bond reg fills the whole reg cap, so a shared
-	// budget would leave the tens-of-bytes entry no room and the publish starvation
-	// would reappear one layer down; and the dual — an entry flood must never crowd
-	// out consensus-critical renewals. Independent budgets guarantee each stream its
-	// slice; their SUM must stay WAN-gatherable (#286 L2b). At least one entry is
-	// always folded (never stall the queue). 0 = unbounded. Proposer-side policy
-	// only — validity is unchanged. The value is an M1 tuning knob, not a consensus
-	// rule (certification caveat 3).
+	// MaxEntryBytesPerBlock caps the total BYTES of mempool ENTRIES a proposer
+	// folds into one block — SEPARATE from the reg budget by design: a single
+	// ~1.5 MB bond reg fills the whole reg cap, so a shared budget would leave
+	// the tens-of-bytes entry no room and the publish starvation would
+	// reappear one layer down; and the dual — an entry flood must never crowd
+	// out consensus-critical renewals. Independent budgets guarantee each
+	// stream its slice; their SUM must stay WAN-gatherable. At least one entry
+	// is always folded (never stall the queue). 0 = unbounded. Proposer-side
+	// policy only — validity is unchanged. The value is an M1 tuning knob, not
+	// a consensus rule.
 	MaxEntryBytesPerBlock int64
 	// Replication is how many closest nodes receive each chunk at
 	// distribute/repair time. With erasure coding doing the heavy
@@ -119,17 +119,17 @@ type Config struct {
 	// before repair kicks in (repair when missing > slack).
 	RepairInterval ports.Duration
 	RepairSlack    int
-	// RepairEconomy is the S7 repair-bounty PARTICIPATION switch (PE ruling
-	// 2026-08-19, Q1): opt-in, DEFAULT OFF. When on, a verified repair pays the
-	// new holder of the rebuilt shard out of the object's own escrow, priced by
-	// credit.RepairBounty(k, n, reachable, shardBytes) — the witnessed delivery price
-	// of the repair's byte basis (G-R212-7; the basis itself is derived at
-	// credit.RepairBountyCoeffNum/Den and is not restated here) scaled by the
-	// rarest-shard multiplier, with the single division LAST (G-BT-2)
-	// — a protocol price, never an operator-set amount (an operator-set base is a
-	// lottery, not a price, and undefines S7's equilibrium). Off: repair still
-	// runs and escrows still fill via the serve auto-skim, but no bounty disburses
-	// (the half-open state). The daemon flips this from -economy.
+	// RepairEconomy is the S7 repair-bounty PARTICIPATION switch: opt-in, DEFAULT
+	// OFF. When on, a verified repair pays the new holder of the rebuilt shard out
+	// of the object's own escrow, priced by credit.RepairBounty(k, n, reachable,
+	// shardBytes) — the witnessed delivery price of the repair's byte basis
+	// (the basis itself is derived at credit.RepairBountyCoeffNum/Den
+	// and is not restated here) scaled by the rarest-shard multiplier, with the
+	// single division LAST — a protocol price, never an operator-set amount (an
+	// operator-set base is a lottery, not a price, and undefines S7's
+	// equilibrium). Off: repair still runs and escrows still fill via the serve
+	// auto-skim, but no bounty disburses (the half-open state). The daemon flips
+	// this from -economy.
 	RepairEconomy bool
 	// RepairQuorumTau is τ, the retrievability-confirmation threshold a single
 	// caretaker-judge requires before releasing the bounty from its own ledger
@@ -168,7 +168,7 @@ type Config struct {
 	// HolderCooldown is how long the fetch/repair loop skips a holder after a
 	// dial to it timed out, so stale provider records to dead holders can't make
 	// a churny swarm re-dial the same corpses at full RequestTimeout every
-	// sweep (#226). 0 disables the negative cache (every provider re-dialed).
+	// sweep. 0 disables the negative cache (every provider re-dialed).
 	HolderCooldown ports.Duration
 	// BondAuditInterval is how often a validator challenges the storage
 	// bonds of the validators it knows, and BondMaxAge is how long a bond
@@ -184,17 +184,17 @@ type Config struct {
 	// audits and isn't ready the instant the daemon starts.
 	ChainSyncInterval ports.Duration
 	// BootstrapRetryInterval is how often an ISOLATED node (empty routing table)
-	// re-runs the Kademlia join against its original -bootstrap seeds. silt's join
-	// is otherwise one-shot, so a node that started before its bootstrap target was
-	// listening — or that later lost every peer to churn — would stay isolated
-	// forever (empty table ⇒ no consensus, no discovery) until a manual restart
-	// (#281, found on the 13-node cross-region cloud cold start). 0 disables.
+	// re-runs the Kademlia join against its original -bootstrap seeds. silt's
+	// join is otherwise one-shot, so a node that started before its bootstrap
+	// target was listening — or that later lost every peer to churn — would stay
+	// isolated forever (empty table ⇒ no consensus, no discovery) until a manual
+	// restart. 0 disables.
 	BootstrapRetryInterval ports.Duration
 	// BootstrapWellConnected is the routing-table size at/above which a node is
 	// considered converged. Below it, the bootstrap-retry loop keeps doing a
 	// Kademlia self-lookup (bucket refresh) each interval, so a SPARSE mesh left by
 	// a simultaneous cold start converges enough for consensus quorum to form.
-	// Recovering from an EMPTY table (#281) is necessary but not sufficient: a node
+	// Recovering from an EMPTY table is necessary but not sufficient: a node
 	// can re-bootstrap to just one or two peers and stall there. The seedless boot
 	// validator is the worst case — it never re-bootstraps, so without this refresh
 	// it stays stuck at the single entry an incoming dial gave it and can never
@@ -210,8 +210,7 @@ type Config struct {
 	// the deterministic sim fast. 0 disables the time binding (space-only).
 	BondVDFDelay uint64
 	// BondMaxAnswerLatency is the reply-deadline on a LIVE bond challenge — the
-	// enforcing leg of the C1 partial-storage-recompute residual (BREAK 1, red-team
-	// 2026-08-08; owned-residuals A5). A prover that deleted ε of its plot recomputes
+	// enforcing leg of the partial-storage-recompute residual. A prover that deleted ε of its plot recomputes
 	// the dropped blocks on demand; recomputed bytes are content-identical to stored
 	// ones, so no CONTENT check (verifyLabels) can catch it — enforcement is
 	// necessarily the TIME leg. Past the ~0.25 work knee of the DRSample graph the
@@ -220,49 +219,49 @@ type Config struct {
 	// implies a materially-short prover and earns no standing. SOFT by nature
 	// (wall-clock ⇒ fastest-evaluator-sensitive + network jitter), so it is
 	// calibrated with a GENEROUS margin: it deters the rational SERIAL disk-saver
-	// past the knee, not a well-resourced parallel farm (that residual is
-	// compute-repriced and owned — A5; the tight close is Option A / H-track). Only
+	// past the knee, not a well-resourced parallel farm (that case is
+	// compute-repriced and owned). Only
 	// meaningful on a real wall clock: 0 (default) = OFF, which the deterministic sim
 	// and tests need (their tick clock has no wall meaning); the daemon sets a real
 	// duration. Composes with BondTTL: on-chain weight lapses without live re-proof,
 	// so this gate bounds even the objective weight over time.
 	BondMaxAnswerLatency ports.Duration
-	// MinBondBytes is the anti-release floor (M0 Sybil, red-team F1/F2): a bond
-	// smaller than this earns NO standing, self or peer. The read-bound plot makes
-	// a released prover recompute (memory-hard) before it can answer, but that
-	// only bites if re-sealing the pledged size takes LONGER than the anti-release
-	// COMPUTE window — a re-seal budget that is DELIBERATELY DECOUPLED from the
-	// transport RequestTimeout (build-immutable #3/#4, docs/TENETS.md). At the
-	// measured plot throughput (bond.PlotSealThroughput, ~270 MB/s) a ~2 s compute
-	// window re-seals ~540 MiB, so a bond at or below that could be released and
-	// recomputed just-in-time. Setting this floor above that threshold (with
-	// margin) makes storing the plot the only viable strategy — and because the
-	// window is compute, raising RequestTimeout for durability (#288) never moves
-	// this floor, so hardening the network does not price out small validators.
-	// Enforcement is the floor plus the bond-audit statistics over history, NOT a
-	// single hard reply deadline (a full re-seal is a multi-second cost, orders of
-	// magnitude above network jitter — immutable #3). 0 = no floor (the
-	// deterministic sim uses small bonds); a real deployment sets it — the daemon
-	// defaults it safely.
+	// MinBondBytes is the anti-release floor (M0 Sybil/F2): a bond smaller than
+	// this earns NO standing, self or peer. The read-bound plot makes a
+	// released prover recompute (memory-hard) before it can answer, but that
+	// only bites if re-sealing the pledged size takes LONGER than the
+	// anti-release COMPUTE window — a re-seal budget that is DELIBERATELY
+	// DECOUPLED from the transport RequestTimeout (build-immutable #3/#4). At
+	// the measured plot throughput (bond.PlotSealThroughput, ~270 MB/s) a ~2 s
+	// compute window re-seals ~540 MiB, so a bond at or below that could be
+	// released and recomputed just-in-time. Setting this floor above that
+	// threshold (with margin) makes storing the plot the only viable strategy —
+	// and because the window is compute, raising RequestTimeout for durability
+	// never moves this floor, so hardening the network does not price out small
+	// validators. Enforcement is the floor plus the bond-audit statistics over
+	// history, NOT a single hard reply deadline (a full re-seal is a
+	// multi-second cost, orders of magnitude above network jitter — immutable
+	// #3). 0 = no floor (the deterministic sim uses small bonds); a real
+	// deployment sets it — the daemon defaults it safely.
 	MinBondBytes int64
 	// BondLabelSamples is k, the number of labeling-consistency opens a bond
-	// challenge carries and a verifier checks (M0 Sybil G2,
-	// docs/design/m0-sybil-rebind.md): each open recomputes one block's label from
-	// its opened DRSample parents, catching a prover that committed bytes it did
-	// not correctly plot for its (identity, size). Against an ε-short prover the
-	// soundness error is ≤ (1-ε)^k. A per-network EVOLVING knob: prover and
-	// verifier must agree (like BondVDFDelay), so a deployment sets it uniformly.
-	// 0 resolves to bond.DefaultLabelSamples (64) — the check is never disabled by
-	// leaving it unset (safe-by-default; sims/tests inherit the full k).
+	// challenge carries and a verifier checks (M0 Sybil G2): each open
+	// recomputes one block's label from its opened DRSample parents, catching a
+	// prover that committed bytes it did not correctly plot for its (identity,
+	// size). Against an ε-short prover the soundness error is ≤ (1-ε)^k. A
+	// per-network EVOLVING knob: prover and verifier must agree (like
+	// BondVDFDelay), so a deployment sets it uniformly. 0 resolves to
+	// bond.DefaultLabelSamples (64) — the check is never disabled by leaving it
+	// unset (safe-by-default; sims/tests inherit the full k).
 	BondLabelSamples int
-	// RequireSignedProviders makes this node reject provider records that are not
-	// self-certifying (M0 H5 / Memo 08): on announce it stores/re-serves only
-	// signed records, and a fetch discards any provider record whose signature
-	// doesn't verify — so a node holding the k-closest slots to a key cannot
-	// fabricate provider records for identities that never announced. Off by
-	// default (legacy/sim: unsigned records flow); the daemon defaults it ON for an
-	// untrusted swarm. Requires the node's signing key (SetSigner) to produce its
-	// own signed records.
+	// RequireSignedProviders makes this node reject provider records that are
+	// not self-certifying (M0 H5 /): on announce it stores/re-serves only signed
+	// records, and a fetch discards any provider record whose signature doesn't
+	// verify — so a node holding the k-closest slots to a key cannot fabricate
+	// provider records for identities that never announced. Off by default
+	// (legacy/sim: unsigned records flow); the daemon defaults it ON for an
+	// untrusted swarm. Requires the node's signing key (SetSigner) to produce
+	// its own signed records.
 	RequireSignedProviders bool
 	// ProviderRecordTTL, when > 0, stamps signed provider records with an expiry
 	// this far ahead of the clock, so a re-served record also proves FRESHNESS
@@ -271,12 +270,13 @@ type Config struct {
 	// the daemon sets a real duration.
 	ProviderRecordTTL ports.Duration
 	// DHTDomainCap is the failure-domain diversity cap for eclipse resistance
-	// (M0 H5-B / Memo 08): at most this many peers sharing one domain are kept per
-	// routing bucket, AND provider records are announced to / resolved from a set
-	// spread across domains — so an adversary that owns the NodeIDs closest to a
-	// key but sits in a SINGLE domain (a ~$4 /24 key-surround) cannot suppress
-	// discovery: the record still lands on, and is found via, honest nodes in other
-	// domains. 0 (default) = off (legacy/sim; no diversity constraint).
+	// (M0 H5-B /): at most this many peers sharing one domain are kept per
+	// routing bucket, AND provider records are announced to / resolved from a
+	// set spread across domains — so an adversary that owns the NodeIDs closest
+	// to a key but sits in a SINGLE domain (a ~$4 /24 key-surround) cannot
+	// suppress discovery: the record still lands on, and is found via, honest
+	// nodes in other domains. 0 (default) = off (legacy/sim; no diversity
+	// constraint).
 	DHTDomainCap int
 }
 
@@ -288,10 +288,10 @@ func DefaultConfig() Config {
 		RequestBackoff:    250 * ports.Millisecond,
 		HolderDialTimeout: 0, // sim/tests: holder fetches use RequestTimeout; the daemon sets a tighter one
 		// 256 KB/s — a pessimistic transcontinental lossy path. A ~1.5 MB bond-registration
-		// block then gains ~6 s of transport headroom over the base RequestTimeout (#286).
+		// block then gains ~6 s of transport headroom over the base RequestTimeout.
 		RequestSizeFloorBytesPerSec: 262144,
-		MaxBondRegBytesPerBlock:     2 << 20,  // #286 L2b: ~2 MiB/block stays gatherable; one full ~1.5 MB genesis proof or many small renewals
-		MaxEntryBytesPerBlock:       64 << 10, // #441: entries are tens of bytes — 64 KiB admits hundreds/block; reg+entry sum stays WAN-gatherable
+		MaxBondRegBytesPerBlock:     2 << 20,  // ~2 MiB/block stays gatherable; one full ~1.5 MB genesis proof or many small renewals
+		MaxEntryBytesPerBlock:       64 << 10, // entries are tens of bytes — 64 KiB admits hundreds/block; reg+entry sum stays WAN-gatherable
 		Replication:                 3,
 		RepairInterval:              60 * ports.Second,
 		RepairSlack:                 2,
@@ -304,12 +304,12 @@ func DefaultConfig() Config {
 		ReachabilityTimeout: 3 * ports.Second,
 		FetchAttempts:       3,
 		FetchBackoff:        200 * ports.Millisecond,
-		HolderCooldown:      30 * ports.Second, // BASE negative-cache cooldown; doubles per consecutive exhaustion up to 16× (#226/#501, see corpse)
+		HolderCooldown:      30 * ports.Second, // BASE negative-cache cooldown; doubles per consecutive exhaustion up to 16×
 
 		BondAuditInterval:      60 * ports.Second,
 		BondMaxAge:             300 * ports.Second, // ~5 audit intervals unproven → standing lapses
 		ChainSyncInterval:      30 * ports.Second,  // catch-up retries so a restart rejoins once bond audits re-establish peer standing
-		BootstrapRetryInterval: 15 * ports.Second,  // isolated-node self-heal: re-join while the table is empty (#281)
+		BootstrapRetryInterval: 15 * ports.Second,  // isolated-node self-heal: re-join while the table is empty
 		BootstrapWellConnected: 8,                  // keep bucket-refreshing until a node knows ~this many peers (sparse cold-start convergence)
 		BondVDFDelay:           1000,               // modest; a real deployment raises it for a stronger time floor
 		BondLabelSamples:       64,                 // bond.DefaultLabelSamples: labeling-consistency opens per challenge (G2)
@@ -318,26 +318,27 @@ func DefaultConfig() Config {
 
 var ErrTimeout = errors.New("node: request timed out")
 
-// maxDeadHolders bounds the failed-holder negative cache (#226): past this
+// maxDeadHolders bounds the failed-holder negative cache: past this
 // many entries a stamp sweeps out lapsed cooldowns before adding one, so
 // ephemeral-identity churn can't grow the map without limit.
 const maxDeadHolders = 4096
 
-// corpse is one negative-cache entry (#226/#277/#501).
+// corpse is one negative-cache entry.
 type corpse struct {
 	until ports.Time // cooldown deadline: skip speculative dials before this
-	// streak counts consecutive exhaustions and drives the decaying cooldown
-	// (#501): each re-exhaustion doubles the cooldown, HolderCooldown <<
+	// streak counts consecutive exhaustions and drives the decaying
+	// cooldown: each re-exhaustion doubles the cooldown, HolderCooldown <<
 	// (streak-1), capped at corpseStreakCap shifts — 30s → 60 → 120 → 240 →
 	// 480s at the default. Without the decay the cache only RATE-LIMITS the
 	// re-dial: corpses re-enter lookups via other peers' FindNode replies
-	// forever, and every cooldown lapse re-paid a full retry ladder (measured:
-	// a 45s all-timeout sweep recurring every ~30s, indefinitely, on a fully
-	// healed object). The cap sits under the reprovide period
-	// (ProviderRecordTTL/2), and recovery is announced-in anyway — any inbound
-	// message deletes the entry (proof of life, #69), so a recovered holder is
-	// never re-admitted slower than today. Analogue: negative caching with
-	// backoff (RFC 2308; libp2p dial backoff).
+	// forever, and every cooldown lapse re-paid a full retry ladder
+	// (measured: a 45s all-timeout sweep recurring every ~30s,
+	// indefinitely, on a fully healed object). The cap sits under the
+	// reprovide period (ProviderRecordTTL/2), and recovery is announced-in
+	// anyway — any inbound message deletes the entry (proof of life, #69),
+	// so a recovered holder is never re-admitted slower than today.
+	// Analogue: negative caching with backoff (RFC 2308; libp2p dial
+	// backoff).
 	streak uint8
 	// epoch is the repair tick (Node.sweepEpoch) of the last exhaustion; see
 	// corpseGated.
@@ -349,7 +350,7 @@ const corpseStreakCap = 5
 
 // corpseGated reports whether a peer should be skipped by a speculative dial
 // right now: still inside its cooldown, or already proven dead by a full
-// ladder during the CURRENT repair tick (#501). Callers keep their own
+// ladder during the CURRENT repair tick. Callers keep their own
 // sole-candidate guards (#69 anyLive) — the gate never decides "unreachable",
 // only "don't pay for this corpse again yet".
 func (n *Node) corpseGated(id ports.NodeID, now ports.Time) bool {
@@ -403,17 +404,18 @@ type Stats struct {
 	// rebuilt shard. BountiesReleased / FalseRepairSlashes: verdicts this node
 	// settled as a caretaker-judge (paid the holder / slashed a false claimant).
 	RepairClaims int
-	// DrainProposalsArmed counts the times maybeProposeBondDrain passed its quiescence and
-	// designation gates and ARMED a proposal (R2.11 gate observable: a drain keyed on queue
-	// length rather than on FOLDABLE work would arm here and fail the empty-block check).
+	// DrainProposalsArmed counts the times maybeProposeBondDrain passed its quiescence
+	// and designation gates and ARMED a proposal (gate observable: a drain keyed on
+	// queue length rather than on FOLDABLE work would arm here and fail the empty-block
+	// check).
 	DrainProposalsArmed int
 	// ParityColumnLookups / ParityShardsPulled count NetGet's parity fallback: provider lookups
 	// of parity columns (one per column consulted) and parity shards actually pulled. The
-	// per-stripe deficit walk (R-PARITY-AMPLIFICATION) makes both proportional to the damage,
+	// per-stripe deficit walk makes both proportional to the damage,
 	// not the object; gates assert them.
 	ParityColumnLookups int
 	ParityShardsPulled  int
-	// BountyBaseZero (G-λ-8, G-R212-7): repair releases whose bounty base was ZERO for
+	// BountyBaseZero: repair releases whose bounty base was ZERO for
 	// the object's geometry — below one credit of fetch, on whichever byte quantity
 	// credit.RepairBountyBase prices — a bounty silently OFF, named loudly here and in
 	// the journal instead.
@@ -424,21 +426,22 @@ type Stats struct {
 	// because it had ALREADY paid a bounty for that (root, stripe, position). A
 	// replayed claim used to draw the full bounty a second time out of the same
 	// escrow, so this gauge is the drain that is no longer happening: any non-zero
-	// value is a replay the dedup caught (D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12,
-	// direction D). It counts REFUSALS, not payments — it never moves standing.
+	// value is a replay the dedup caught, direction D. It counts REFUSALS, not
+	// payments — it never moves standing.
 	BountyDuplicatePosition int
-	// A4-2 (R2.7 detector A4, Economist advisory §1.2): repair bounties this judge paid
-	// to ITSELF, count and credits. claim.Holder is a field of an inbound,
-	// attacker-declared MsgRepairClaim and nothing refuses a claim naming the judge as
-	// the holder, so this is reachable, not a vacuous gate. An honest judge never pays
-	// itself: ANY non-zero value is the A4 self-dealing shape (canary abort C-7, HARD).
+	// detector A4: repair bounties this judge paid to ITSELF, count and
+	// credits. claim.Holder is a field of an inbound, attacker-declared
+	// MsgRepairClaim and nothing refuses a claim naming the judge as the holder,
+	// so this is reachable, not a vacuous gate. An honest judge never pays
+	// itself: ANY non-zero value is the A4 self-dealing shape (canary abort,
+	// HARD).
 	//
 	// It lives on the NODE, not the ledger: the Ledger does not know its own node id,
 	// and coupling the ledger to identity for a pure observability read would drag the
 	// Invariant-A classification surface with it. The judge already holds both values.
 	BountyPaidToSelf        int
 	BountyCreditsPaidToSelf int64
-	// #277 dead-peer-envelope gauges (M1 baseline — the dial-storm is where trust
+	// dead-peer-envelope gauges (M1 baseline — the dial-storm is where trust
 	// either stays cheap or floods the network). HolderDialsSkipped: full-timeout
 	// holder dials AVOIDED because the target was in the dead-peer negative cache
 	// (the "dials-per-fetch/repair stays bounded" gauge — an unbounded climb means a
@@ -446,7 +449,7 @@ type Stats struct {
 	// a holder was confirmed dead (the lifecycle gauge — records age out, not linger).
 	HolderDialsSkipped        int
 	DeadProviderRecordsPruned int
-	// #382 chain-sync cost gauges (M1 baseline). ChainSyncHeadMatches: sweeps where a
+	// chain-sync cost gauges (M1 baseline). ChainSyncHeadMatches: sweeps where a
 	// peer's head hash matched ours and the full-chain fetch + re-validate was ELIDED
 	// (the steady-state win — this should dominate once the network converges).
 	// ChainSyncFullFetches: sweeps that DID fetch a peer's whole chain (a real
@@ -466,16 +469,16 @@ type Stats struct {
 	// to be on this network almost always means a divergent local flag, not a hostile peer.
 	ChainSyncForeignGenesis int
 	// ChainSyncWindows: non-empty MsgGetChain reply windows decoded during full
-	// fetches (#466). windows/full-fetch ≈ suffix bytes / maxChainReplyBytes; a
+	// fetches. windows/full-fetch ≈ suffix bytes / maxChainReplyBytes; a
 	// value equal to FullFetches means every fetch fit one window.
 	ChainSyncWindows int
-	// #528 catch-up cost split. ChainSyncSuffixAppends: blocks adopted through the
+	// catch-up cost split. ChainSyncSuffixAppends: blocks adopted through the
 	// extension fast path (validated once, via the normal Append commit path — the
 	// O(delta) route). ChainSyncFullReconciles: slow-path Reconcile invocations,
 	// each a full genesis replay of the reconstructed fork (~1s per 1.5 MB reg
 	// block on the event loop — the h≈56 knee). Steady-state catch-up must live
 	// entirely in SuffixAppends; FullReconciles climbing during plain catch-up is
-	// the #528 regression signal.
+	// the regression signal.
 	ChainSyncSuffixAppends  int
 	ChainSyncFullReconciles int
 }
@@ -496,10 +499,10 @@ type Node struct {
 	provs *dht.Providers
 
 	// bootstrapSeeds are the original -bootstrap seed IDs, kept so an isolated
-	// node (empty table) can re-run the Kademlia join instead of staying stranded
-	// (#281). bootstrapRetryRunning guards the self-rescheduling retry tick;
-	// bootstrapRejoin, if set, fires when a retry recovers an empty table (so the
-	// daemon can surface the self-heal to operators).
+	// node (empty table) can re-run the Kademlia join instead of staying
+	// stranded. bootstrapRetryRunning guards the self-rescheduling retry tick;
+	// bootstrapRejoin, if set, fires when a retry recovers an empty table (so
+	// the daemon can surface the self-heal to operators).
 	bootstrapSeeds        []ports.NodeID
 	bootstrapRetryRunning bool
 	bootstrapRejoin       func(tableSize int)
@@ -519,17 +522,17 @@ type Node struct {
 	// dialer skips a peer still in cooldown instead of eating another full
 	// RequestTimeout (or a whole retry ladder) on it. Stale provider records to
 	// dead holders otherwise let a churny swarm re-dial the same corpses every
-	// repair sweep, starving the serial fetch loop on timeouts (#226). Stamped
+	// repair sweep, starving the serial fetch loop on timeouts. Stamped
 	// on any request timeout; consulted only in the fetch/repair/walk dial
 	// paths so consensus re-probes are unaffected. Cooldown expiry lets a
 	// recovered holder back in — and any inbound message clears the entry
 	// immediately (proof of life, #69). Each entry carries a streak-decayed
-	// cooldown and the repair-tick epoch of its last exhaustion (#501): see
+	// cooldown and the repair-tick epoch of its last exhaustion: see
 	// corpse and corpseGated.
 	dead map[ports.NodeID]corpse
 
 	// repairConfirm counts consecutive sweeps a stripe's repair condition
-	// (missing > slack, or over-exposure) has held — the #517 confirmation
+	// (missing > slack, or over-exposure) has held — the confirmation
 	// gate: a repair fires only on the second consecutive observation, so a
 	// single unconverged probe sample (a just-armed caretaker racing record
 	// propagation) can't trigger false rebuilds. Cleared on a clean sweep.
@@ -538,11 +541,10 @@ type Node struct {
 
 	// bountyPaid records the (root, stripe, position) coordinates this judge has
 	// already PAID a durability bounty for, so a replayed claim for the same
-	// position draws nothing a second time. credit.Ledger keys its escrow on ROOT
-	// ALONE and carries no per-position state — e.repairs is a counter, not a set —
-	// so the record has to be created here; the ports.CreditLedger signature is a
-	// published port and does not move for it
-	// (D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12, direction D).
+	// position draws nothing a second time. credit.Ledger keys its escrow on
+	// ROOT ALONE and carries no per-position state — e.repairs is a counter, not
+	// a set — so the record has to be created here; the ports.CreditLedger
+	// signature is a published port and does not move for it, direction D.
 	//
 	// ⚠ WRITTEN ON PAID, NEVER ON JUDGED. A judged-but-unpaid position MUST stay
 	// payable: an empty escrow, a BountyBaseZero geometry and a deferred re-judgment
@@ -552,43 +554,43 @@ type Node struct {
 	// position first could make the honest one-shot claim for it refusable forever.
 	//
 	// ⚠ KEYED BY POSITION, NEVER BY claim.ShardID. Two positions can carry
-	// byte-identical shards (a zero-filled data chunk, or any duplicate content under
-	// convergent mode) and content addressing collapses them to ONE id, so an id key
-	// would let one payment permanently block a different, legitimate position
-	// (R-SHARDID-ALIASES-POSITION).
+	// byte-identical shards (a zero-filled data chunk, or any duplicate content
+	// under convergent mode) and content addressing collapses them to ONE id, so
+	// an id key would let one payment permanently block a different, legitimate
+	// position.
 	//
 	// Bounded by cared roots × stripes × n, and the cared set is operator-chosen —
 	// n.care is appended only by (*Node).Care, which takes a link.CareHandle that no
 	// message handler possesses — so an adversary cannot grow it.
 	//
-	// ⚠ EPHEMERAL, AND THE RESTART WINDOW REOPENS BY ITSELF. This set dies at restart
-	// and so does the escrow it guards (D-FP2-SCOPE). That is NOT the same as safe.
-	// The escrow REFILLS without anyone re-endowing anything: credit.Ledger's
-	// RecordServeToObject skims into the object's escrow on EVERY serve, so ordinary
-	// delivery traffic re-funds it while this set stays empty. The window is shut for
-	// exactly as long as the escrow is empty and reopens with the FIRST skim, at which
-	// point a restarted judge pays a position it already paid for. It is inert today
-	// only because cfg.RepairEconomy is default OFF (the -economy flag), which is a
-	// weaker reason than "it cannot happen" and stops holding the day the flag flips
-	// (R-DEDUP-NOT-PERSISTED, held in tension; correction 2026-09-12 — this comment
+	// ⚠ EPHEMERAL, AND THE RESTART WINDOW REOPENS BY ITSELF. This set dies at
+	// restart and so does the escrow it guards. That is NOT the same as safe. The
+	// escrow REFILLS without anyone re-endowing anything: credit.Ledger's
+	// RecordServeToObject skims into the object's escrow on EVERY serve, so
+	// ordinary delivery traffic re-funds it while this set stays empty. The window
+	// is shut for exactly as long as the escrow is empty and reopens with the FIRST
+	// skim, at which point a restarted judge pays a position it already paid for.
+	// It is inert today only because cfg.RepairEconomy is default OFF (the -economy
+	// flag), which is a weaker reason than "it cannot happen" and stops holding the
+	// day the flag flips (held in tension; correction 2026-09-12 — this comment
 	// used to claim a restarted judge "denies rather than double-pays").
 	bountyPaid map[bountyPosKey]bool
 
 	// sweepEpoch counts repair ticks. A corpse whose ladder exhausted during
 	// the CURRENT tick is skipped for the tick's remainder regardless of its
-	// cooldown (#501): a sweep that runs longer than the cooldown must not
+	// cooldown: a sweep that runs longer than the cooldown must not
 	// re-pay full-ladder discovery for the same corpse mid-sweep — the measured
 	// cost was a 159s sweep (vs 2s healthy) spanning five cooldown lapses.
 	// 0 = no tick has run (non-caretakers): epoch gating stays off.
 	sweepEpoch uint64
 
 	// staticPeers is the configured consensus/anchor tier (-persistent-peers): peers
-	// whose address is CONFIGURED, not discovered, so they are NEVER evicted from the
-	// routing table on a reachability timeout — a transient WAN miss is a retry
-	// situation, not an eviction. This is what lets a fresh multi-region validator set
-	// form proposer-initiated quorum at genesis (no chain yet ⇒ no discoverable address
-	// registry): #286 Layer 2, docs/network-durability.md §2/§8, Tendermint
-	// persistent_peers. Written once at startup, read on the loop in requestAttempt.
+	// whose address is CONFIGURED, not discovered, so they are NEVER evicted from
+	// the routing table on a reachability timeout — a transient WAN miss is a retry
+	// situation, not an eviction. This is what lets a fresh multi-region validator
+	// set form proposer-initiated quorum at genesis (no chain yet ⇒ no discoverable
+	// address registry): Layer 2/§8, Tendermint persistent_peers. Written once at
+	// startup, read on the loop in requestAttempt.
 	staticPeers map[ports.NodeID]bool
 
 	// reachability probes (our AutoNAT): a check sends helpers a nonce and
@@ -610,7 +612,7 @@ type Node struct {
 	// ledger, when set, is credited for every chunk this node serves.
 	ledger ports.CreditLedger
 	// workRep is ledger's optional non-registering work-counter reader, resolved once
-	// in SetLedger so the per-message gossip stamp does not type-assert (R2.2 row 8-9).
+	// in SetLedger so the per-message gossip stamp does not type-assert.
 	workRep workReporter
 	// freeload makes the node a pure consumer: it refuses to store
 	// pushed chunks and refuses to serve fetches, while still fetching
@@ -628,10 +630,10 @@ type Node struct {
 	// whole point of the tag. Exists so audits have someone to catch.
 	liar bool
 	// equivPlan holds the RESUMABLE double-sign state for the -equivocate
-	// red-team drill (adversary.go). It pins the fork base ONCE and latches
+	// adversary drill (adversary.go). It pins the fork base ONCE and latches
 	// each leg's placement, so a retry after a partial placement resumes the
 	// un-placed legs instead of rebuilding at the (since-advanced) live head —
-	// the #378 wedge. Test-harness only; nil on an honest node.
+	// the wedge. Test-harness only; nil on an honest node.
 	equivPlan *equivPlan
 	// equivServedFork is the OBJECTIVE-mode equivocation primitive's crafted
 	// GetChain response (adversary.go PlaceConflictingSigned): a losing fork the
@@ -646,20 +648,20 @@ type Node struct {
 	// It still answers routing (FindNode), the way a real eclipser routes you
 	// deeper into its own cluster. Adversary/test seam for H5-B (cf. SetLiar).
 	eclipser bool
-	// shrinkLiar makes the node hold only the FIRST block of each shard, then
-	// answer a challenge reporting PorBlocks=1 and proving over that single
-	// block — the red-team F4 "tail-shard shrink" attack. The auditor must
-	// reject it by demanding the shard's committed block count, not the
-	// prover's self-report. Exists so the F4 regression exercises the real
+	// shrinkLiar makes the node hold only the FIRST block of each shard,
+	// then answer a challenge reporting PorBlocks=1 and proving over that
+	// single block — "tail-shard shrink" attack. The auditor must reject
+	// it by demanding the shard's committed block count, not the prover's
+	// self-report. Exists so the F4 regression exercises the real
 	// answerChallenge → gradeAnswers path end to end.
 	shrinkLiar bool
-	// proofMeta holds the ALWAYS-RESIDENT small fields of each hosted chunk's
-	// storage proof (Root, Column, ...) — enough for existence checks, the
-	// iterate-all sweeps, and re-announcing coded shards under the right column
-	// key, without paging. The full proof (Merkle Path + PoR tags, ~5.4 KB) lives
-	// in proofs, the durable backing, and is paged in only to serve or audit — so
-	// resident proof RAM is O(hot), not O(total held) (the daemon OOM fix). See
-	// proofbacking.go.
+	// proofMeta holds the ALWAYS-RESIDENT small fields of each hosted
+	// chunk's storage proof (Root, Column,.) — enough for existence checks,
+	// the iterate-all sweeps, and re-announcing coded shards under the
+	// right column key, without paging. The full proof (Merkle Path + PoR
+	// tags, ~5.4 KB) lives in proofs, the durable backing, and is paged in
+	// only to serve or audit — so resident proof RAM is O(hot), not O(total
+	// held) (the daemon OOM fix). See proofbacking.go.
 	proofMeta map[ports.ChunkID]proofMeta
 	// proofs is the durable, full-proof backing (#69: a restart re-announces coded
 	// shards under the right key and still answers audits). Defaults to an in-core
@@ -679,10 +681,10 @@ type Node struct {
 	// cost real held storage. See bondaudit.go.
 	bond      *bond.Commitment
 	peerBonds map[ports.NodeID]bondInfo
-	// evictionLogged latches the one-time "permanently evicted" warning (#503
-	// Q1(c)): once this node observes its own F2 slash on the committed chain it
-	// stops submitting renewals forever, and the reason is logged once, not
-	// every 30 s sweep.
+	// evictionLogged latches the one-time "permanently evicted" warning: once
+	// this node observes its own F2 slash on the committed chain it stops
+	// submitting renewals forever, and the reason is logged once, not every
+	// 30 s sweep.
 	evictionLogged bool
 	// peerBondRTT tracks each peer's recent bond-challenge reply latencies so the
 	// C1 partial-storage timing signal is the windowed-MINIMUM (low quantile) of
@@ -693,17 +695,17 @@ type Node struct {
 	peerBondRTT map[ports.NodeID]*latWindow
 	// bondChallengeRate caps VDF-evals served per challenger per audit window —
 	// the cheap gate in front of the costly AnswerSpaceTime so an unbounded
-	// challenger can't pin the single goroutine (#424). See bondaudit.go.
+	// challenger can't pin the single goroutine. See bondaudit.go.
 	bondChallengeRate map[ports.NodeID]*challengerRate
 	// bondSubmitRate is the same gate for MsgSubmitBondReg: submits examined per
 	// sender per ChainSyncInterval window, charged BEFORE decode+verify (the
 	// Phase 1.2 CPU-DoS floor). See allowBondSubmit in bondaudit.go.
 	bondSubmitRate map[ports.NodeID]*challengerRate
-	roundCertRate  map[ports.NodeID]*challengerRate // h43 G-H43-12: MsgRoundCert per-sender window budget
-	// issuerKeySubmitRate is the R2.11 per-sender budget for MsgSubmitIssuerKeyReg (see
+	roundCertRate  map[ports.NodeID]*challengerRate // MsgRoundCert per-sender window budget
+	// issuerKeySubmitRate is the per-sender budget for MsgSubmitIssuerKeyReg (see
 	// allowIssuerKeySubmit): a refusal costs a map lookup, before decode or verify.
 	issuerKeySubmitRate map[ports.NodeID]*challengerRate
-	// entrySubmitRate is the SAME gate for MsgSubmitEntry (#183 red-team F-1):
+	// entrySubmitRate is the SAME gate for MsgSubmitEntry:
 	// entry submits examined per sender per ChainSyncInterval window, charged
 	// BEFORE decode+ValidateEntry — which, under -require-tokens, runs an RSA
 	// verify per token signature. Without it a single peer floods entry submits
@@ -722,40 +724,43 @@ type Node struct {
 	// can be blinded against and verified across the network.
 	issuerKeyDER   []byte
 	peerIssuerKeys map[ports.NodeID]*rsa.PublicKey
-	// Prepaid publish credits (M0 privacy D3 / F4). A token request may carry a
-	// prepaid credit this issuer verifies and marks spent INSTEAD OF charging the
-	// requester's durable identity — so the per-publish fee no longer links the
-	// standing key to the publish. The fee was charged in bulk at mint (a normal,
-	// charged token request blinded in the credit domain). creditSpent is this
-	// issuer's online double-spend set. It is DURABLE (R2.13b, PE F-4): creditStore
-	// is a second guardstore file (creditspent.log) appended BEFORE the in-memory
-	// mark, restored by LoadCreditSpent at boot; while a store is attached and
-	// creditLoaded is false every credit-bearing request is refused. See
-	// tokenrole.go for the shape and the (disclosed) liveness cap.
+	// Prepaid publish credits (M0 privacy D3 / F4). A token request may
+	// carry a prepaid credit this issuer verifies and marks spent INSTEAD OF
+	// charging the requester's durable identity — so the per-publish fee no
+	// longer links the standing key to the publish. The fee was charged in
+	// bulk at mint (a normal, charged token request blinded in the credit
+	// domain). creditSpent is this issuer's online double-spend set. It is
+	// DURABLE: creditStore is a second guardstore file (creditspent.log)
+	// appended BEFORE the in-memory mark, restored by LoadCreditSpent at
+	// boot; while a store is attached and creditLoaded is false every
+	// credit-bearing request is refused. See tokenrole.go for the shape and
+	// the (disclosed) liveness cap.
 	creditSpent         map[string]bool
 	creditStore         ports.PaidSerialStore
-	creditGuardRefusals uint64 // R2.13b F1: refusals by guard state (full / store / unloaded)
+	creditGuardRefusals uint64 // refusals by guard state (full / store / unloaded)
 	creditLoaded        bool
-	// tokenIssued makes token ISSUANCE idempotent under transport retries
-	// (research certification 2026-08-13, A2): a lost REPLY makes the requester
-	// re-present the SAME blinded serial (requestAttempt re-sends msg.Data
-	// verbatim), and without dedup the issuer would charge the fee twice — or,
-	// on the credit path, refuse the retry outright as a credit double-spend.
-	// Keyed on the blinded-serial hash (issuer-local, high-entropy, reveals
-	// nothing beyond what the issuer already saw); entries expire after the
-	// transport retry window (tokenDedupTTL) and the map is swept past a cap.
+	// tokenIssued makes token ISSUANCE idempotent under transport retries: a
+	// lost REPLY makes the requester re-present the SAME blinded serial
+	// (requestAttempt re-sends msg.Data verbatim), and without dedup the
+	// issuer would charge the fee twice — or, on the credit path, refuse the
+	// retry outright as a credit double-spend. Keyed on the blinded-serial
+	// hash (issuer-local, high-entropy, reveals nothing beyond what the
+	// issuer already saw); entries expire after the transport retry window
+	// (tokenDedupTTL) and the map is swept past a cap.
 	tokenIssued map[string]tokenIssuedEntry
 
-	// D-DEMAND (#181): the witnessed-demand ledger (demandBank) a server banks
-	// delivery receipts into, and the issuer public key it trusts to have signed the
-	// retrieval tokens those receipts spend (demandIssuer). Nil until EnableDemandBank.
-	// Demand is a NEUTRAL observable — never wired to consensus standing (γ→1/N).
+	// The witnessed-demand ledger (demandBank) a server banks delivery receipts
+	// into, and the issuer public key it trusts to have signed the retrieval
+	// tokens those receipts spend (demandIssuer). Nil until EnableDemandBank.
+	// Demand is a NEUTRAL observable — never wired to consensus standing
+	// (γ→1/N).
 	demandBank *demand.Bank
 	// demandIssuer is the NodeID of the issuer whose demand tokens this bank
-	// accepts. R0.4b: the bank no longer holds ONE trusted RSA key — it holds a
-	// WINDOW of per-epoch keys (peerDemandKeys[demandIssuer]), each one PINNED only
-	// after its fingerprint matched the consensus-attested commitment. That is what
-	// makes an off-commitment (targeted, per-cohort) key refusable by construction.
+	// accepts. the bank no longer holds ONE trusted RSA key — it holds a WINDOW
+	// of per-epoch keys (peerDemandKeys[demandIssuer]), each one PINNED only
+	// after its fingerprint matched the consensus-attested commitment. That is
+	// what makes an off-commitment (targeted, per-cohort) key refusable by
+	// construction.
 	demandIssuer ports.NodeID
 	// demandIssuers is the ISSUING side: this node's per-epoch demand blind-signing
 	// keys, retained for the validity window. Empty unless SetDemandIssuerKey was
@@ -769,7 +774,7 @@ type Node struct {
 	// pendingIssuerKeys are signed key commitments staged for inclusion in this
 	// node's next v5 proposal (drained in chainrole.go's propose path).
 	pendingIssuerKeys []chain.IssuerKeyReg
-	// pendingPeerIssuerKeys (R2.11) are key commitments PEERS submitted
+	// pendingPeerIssuerKeys are key commitments PEERS submitted
 	// (MsgSubmitIssuerKeyReg) that this node folds into the next v5 block it proposes —
 	// the non-proposer path for the demand-issuer keyspace, the same shape as
 	// pendingBondRegs for bond renewals. One slot per (issuer, epoch), latest wins,
@@ -779,14 +784,14 @@ type Node struct {
 	// retention with no healing path.
 	pendingPeerIssuerKeys []chain.IssuerKeyReg
 
-	// PoD relay lane (§7.3, certified 2026-08-30). relayAccept gates whether this
+	// PoD relay lane. relayAccept gates whether this
 	// node accepts sender-funded PayWord chains (mirror of the demand-bank gate,
 	// off by default). relaySeenEph and relaySeenRoot enforce the two M0 guards:
 	// no ephemeral identity and no chain root is reused across sessions — reuse
 	// would upgrade the relay from a per-session to a longitudinal observer, a
 	// real Don't-#3 regression. See relayrole.go.
 	// relaySeenEph and relaySeenRoot map each admitted ephemeral identity / chain
-	// root to the EPOCH it was admitted in (#645). Eviction is epoch-tied, not raw
+	// root to the EPOCH it was admitted in. Eviction is epoch-tied, not raw
 	// FIFO: entries older than the retention window are swept lazily on
 	// OpenRelaySession, bounding the maps to sessions-per-epoch × the window rather
 	// than growing at the session rate forever. A raw FIFO evict of an old root
@@ -812,11 +817,12 @@ type Node struct {
 	relaySessions   map[uint64]*RelaySession
 	relaySessionSeq uint64
 
-	// R2.9 — the paid delivery session lane (deliverysession.go). deliveryAccept gates
-	// it (EnableDeliverySessions, behind -accept-delivery-receipts with a set idle
-	// window); deliverySessions is the live table keyed by handle, deliveryByFetcher
-	// the one-session-per-fetcher index (C1); deliveryIdle the reaper window on the
-	// node's clock (swept lazily on activity and by SweepDeliverySessions).
+	// The paid delivery session lane (deliverysession.go). deliveryAccept gates it
+	// (EnableDeliverySessions, behind -accept-delivery-receipts with a set idle
+	// window); deliverySessions is the live table keyed by handle,
+	// deliveryByFetcher the one-session-per-fetcher index (C1); deliveryIdle the
+	// reaper window on the node's clock (swept lazily on activity and by
+	// SweepDeliverySessions).
 	deliveryAccept     bool
 	deliveryIdle       ports.Duration
 	deliverySessions   map[uint64]*DeliverySession
@@ -829,7 +835,7 @@ type Node struct {
 	domainID    uint64
 	peerDomains map[ports.NodeID]uint64
 
-	// R4.3b observed-address keying (address_class.go): the transport's classifier
+	// Observed-address keying (address_class.go): the transport's classifier
 	// the DHT reads, the configured cap, and the operator-typed -bootstrap seeds.
 	classifier ports.PeerClassifier
 	addrCap    addressCapConfig
@@ -854,61 +860,58 @@ type Node struct {
 	onCommit        func(chain.Block)
 	onSlash         func(culprit ports.NodeID, height uint64)
 	onReorg         func(dropped int, newHeight uint64)
-	// blockedPeers simulates a NETWORK PARTITION: messages to/from these peers are
-	// dropped, as if the link were down. Test-harness / field-drill control (the
-	// daemon's -block-peers), used to exercise partition→heal over the real wire
-	// (#184); nil/empty in normal operation.
+	// blockedPeers simulates a NETWORK PARTITION: messages to/from these peers
+	// are dropped, as if the link were down. Test-harness / field-drill control
+	// (the daemon's -block-peers), used to exercise partition→heal over the
+	// real wire; nil/empty in normal operation.
 	blockedPeers map[ports.NodeID]bool
 	// pendingSlashes are equivocation proofs this node detected (during Reconcile)
 	// and has not yet recorded on-chain; proposeBlock drains them into Block.Slashes
 	// so every replica evicts the culprit from the objective set in lockstep (F2).
 	pendingSlashes []chain.Equivocation
-	// pendingBondRegs are fresh bond renewals PEERS submitted (MsgSubmitBondReg)
-	// that this node will fold into the next block it proposes — the NON-PROPOSER
-	// renewal path (H2 / red-team RT-2). Without it a validator renews its
-	// objective standing only when IT proposes, so with a bond TTL on (RT-2), an
-	// attest-only validator would never renew and would lapse, dropping the
-	// quorum's weight. Keyed by validator id; the latest submission wins.
+	// pendingBondRegs are fresh bond renewals PEERS submitted
+	// (MsgSubmitBondReg) that this node will fold into the next block it
+	// proposes — the NON-PROPOSER renewal path (H2 /). Without it a validator
+	// renews its objective standing only when IT proposes, so with a bond TTL
+	// on, an attest-only validator would never renew and would lapse, dropping
+	// the quorum's weight. Keyed by validator id; the latest submission wins.
 	pendingBondRegs []pendingBondReg
-	// pendingEntries is the ENTRY MEMPOOL (#441, certified 2026-08-16): publish
-	// entries PEERS submitted (MsgSubmitEntry) that the next block this node
-	// proposes will fold in — entries are block CONTENT the single (h,r)
-	// designee carries, never a second proposal stream that can lose the r0
-	// race (the mature-regime starvation) or sit escape-less (the launch-face
-	// wedge; pendingEntries also ARMS maybeAdvanceRound). Ordered FIFO by
-	// arrival and dedup'd by root — a resubmission of a queued root is a no-op
-	// that keeps the original position, so resubmitting cannot queue-jump
-	// (certification Addition 2: FIFO ⇒ no valid entry is starved by another).
+	// pendingEntries is the ENTRY MEMPOOL: publish entries PEERS submitted
+	// (MsgSubmitEntry) that the next block this node proposes will fold in
+	// — entries are block CONTENT the single (h,r) designee carries, never
+	// a second proposal stream that can lose the r0 race (the mature-regime
+	// starvation) or sit escape-less (the launch-face wedge; pendingEntries
+	// also ARMS maybeAdvanceRound). Ordered FIFO by arrival and dedup'd by
+	// root — a resubmission of a queued root is a no-op that keeps the
+	// original position, so resubmitting cannot queue-jump.
 	pendingEntries []pendingEntry
-	// signMark is this validator's monotonic last-signed watermark: the height
-	// and hash of the newest consensus signature it has released — PROPOSAL or
-	// attestation alike, committed or not — so it NEVER signs a second,
-	// different block at a signed height. An honest validator does not
-	// equivocate, even if two competing proposals reach it before either
-	// commits, and even if IT proposed one of them (#397: the proposer's own
-	// signature counting is exactly what was missing when two renewal-aligned
-	// anchors cross-attested each other's block-6 and were both slashed). When
-	// signMarkStore is set (the daemon: adapters/markstore), the mark is made
-	// DURABLE before each signature is released, so a crash/restart cannot wipe
-	// it and let the node contradict a signature it already shipped (research
-	// #397 Q1b — permanent slashing is sound only with this). Nil store (sim /
-	// unit tests) keeps the mark in-memory. See chainrole.go signAllowedAt /
+	// signMark is this validator's monotonic last-signed watermark: the
+	// height and hash of the newest consensus signature it has released —
+	// PROPOSAL or attestation alike, committed or not — so it NEVER signs a
+	// second, different block at a signed height. An honest validator does
+	// not equivocate, even if two competing proposals reach it before either
+	// commits, and even if IT proposed one of them. When signMarkStore is
+	// set (the daemon: adapters/markstore), the mark is made DURABLE before
+	// each signature is released, so a crash/restart cannot wipe it and let
+	// the node contradict a signature it already shipped (research Q1b —
+	// permanent slashing is sound only with this). Nil store (sim / unit
+	// tests) keeps the mark in-memory. See chainrole.go signAllowedAt /
 	// recordSign.
 	signMark      ports.SignMark
 	signMarkSet   bool
 	signMarkStore ports.SignMarkStore
-	// slashedLocal latches the local-ledger slash per culprit (#397 Q4-i): a
+	// slashedLocal latches the local-ledger slash per culprit: a
 	// live fork is re-observed by EVERY reconcile sweep until it heals, and
 	// re-detecting the same double-sign must not re-apply the ledger penalty or
 	// re-log/re-fire the callback every ~2s (the field hot-loop). The on-chain
 	// record keeps its own lifecycle (pendingSlashes requeues until committed).
 	slashedLocal map[ports.NodeID]bool
-	// slashQueued latches the ON-CHAIN queue per culprit, separately from slashedLocal
-	// (R0.6, Researcher V-1): set only when a proof is actually appended to
-	// pendingSlashes, cleared if that proof is later dropped, so a culprit whose first
-	// detected proof was over SlashesBytesCap (never queued) still gets a later, small
-	// proof queued for on-chain eviction. slashOverCapLogged keeps the over-cap WARN
-	// once per culprit (the #397 Q4-i hot-loop discipline).
+	// slashQueued latches the ON-CHAIN queue per culprit, separately from
+	// slashedLocal: set only when a proof is actually appended to
+	// pendingSlashes, cleared if that proof is later dropped, so a culprit whose
+	// first detected proof was over SlashesBytesCap (never queued) still gets a
+	// later, small proof queued for on-chain eviction. slashOverCapLogged keeps
+	// the over-cap WARN once per culprit (the Q4-i hot-loop discipline).
 	slashQueued        map[ports.NodeID]bool
 	slashOverCapLogged map[ports.NodeID]bool
 	// chain-sync loop (F1): chainSyncSeed is the explicit attester set to
@@ -918,13 +921,13 @@ type Node struct {
 	chainSyncSeed      []ports.NodeID
 	chainSyncOnCatchUp func(added int)
 	chainSyncRunning   bool
-	// bondDrainInFlight guards the #338 reactive bond-registration drain — at
+	// bondDrainInFlight guards the reactive bond-registration drain — at
 	// most one drain proposal in flight per sweep cadence; drainWaitSweeps
 	// counts sweeps spent deferring to the designated drain proposer before the
 	// liveness fallback lets this node take over (see maybeProposeBondDrain).
 	bondDrainInFlight bool
 	drainWaitSweeps   int
-	// rounds is the #432 per-height round/lock/view-change state (see
+	// rounds is the per-height round/lock/view-change state (see
 	// core/node/rounds.go). Lazily (re)created for the current working height
 	// by roundsFor; carries the lock (highest witnessed prepare-QC) and the
 	// collected round-change messages.
@@ -943,14 +946,14 @@ type Node struct {
 }
 
 // capInfo is what one peer has gossiped about itself: its capacity pledge (M9) and,
-// since R2.2, its two work counters. All four are SELF-REPORTED and advisory — the
+// since, its two work counters. All four are SELF-REPORTED and advisory — the
 // sample they feed estimates the crowd's shape for a dashboard, never a consensus,
 // standing or disbursement decision.
 type capInfo struct{ used, total, served, repairs int64 }
 
 // SetLedger wires credit accounting; nil disables it.
 // SetLedger wires the credit ledger. It ALSO resolves the optional work-counter reader
-// the capacity gossip stamps its two R2.2 work fields from (workReporter): resolving it
+// the capacity gossip stamps its two work fields from (workReporter): resolving it
 // once here rather than type-asserting per outbound message keeps send's cost where it
 // was. A ledger that does not implement it (a test double, a bare ports.CreditLedger)
 // leaves workRep nil and this node gossips zeros — the honest reading of "I cannot see
@@ -1030,7 +1033,7 @@ func (n *Node) CreditBalance() int64 {
 	return n.ledger.Balance(n.id)
 }
 
-// FaucetStats is the R2.12 faucet rate-limit telemetry read off this node's own ledger
+// FaucetStats is the faucet rate-limit telemetry read off this node's own ledger
 // (credit.FaucetStats). Observability only; reading moves nothing. Zero-valued — and
 // Configured false — with no ledger wired or a ledger that is not the concrete type.
 func (n *Node) FaucetStats() credit.FaucetStats {
@@ -1040,7 +1043,7 @@ func (n *Node) FaucetStats() credit.FaucetStats {
 	return credit.FaucetStats{}
 }
 
-// ServeMintStats is the G-R212-7 serve-mint telemetry read off this node's own ledger
+// ServeMintStats is the serve-mint telemetry read off this node's own ledger
 // (credit.ServeMintStats). Observability only; reading moves nothing. Zero-valued with
 // no ledger wired or a ledger that is not the concrete type.
 func (n *Node) ServeMintStats() credit.ServeMintStats {
@@ -1050,7 +1053,7 @@ func (n *Node) ServeMintStats() credit.ServeMintStats {
 	return credit.ServeMintStats{}
 }
 
-// DeliverySettlementStats reads the R2.9 delivery-settlement telemetry (settlements,
+// DeliverySettlementStats reads the delivery-settlement telemetry (settlements,
 // deposits released / pending / burned, guard entries restored at the last boot).
 // Node-wide aggregates, no identity axis (Don't #3). Zero-valued without a ledger.
 func (n *Node) DeliverySettlementStats() credit.DeliverySettlementStats {
@@ -1061,7 +1064,7 @@ func (n *Node) DeliverySettlementStats() credit.DeliverySettlementStats {
 }
 
 // EconomySelf snapshots THIS node's own local-exact economy accounting — the
-// numbers the economy-observability SELF panels read (Boulder 2, R2.1 slice 6a):
+// numbers the economy-observability SELF panels read:
 // balance, lifetime served/fetched bytes, and repair-work (count + credits earned
 // as a repairer). Every field is read from this node's own Ledger, so all of it is
 // local-exact and none of it touches standing (Invariant A). Zero-valued with no
@@ -1073,10 +1076,10 @@ func (n *Node) EconomySelf() EconomySelf {
 	es := EconomySelf{Balance: n.ledger.Balance(n.id)}
 	// ServedBytes/FetchedBytes/RepairsDone/BountyEarned are observability readers on
 	// *credit.Ledger, none of them on the ports.CreditLedger interface (the port is
-	// deliberately the consensus-relevant surface). Reach them through an optional
-	// interface so a node with a bare ports.CreditLedger (e.g. a test double) still
-	// compiles and reports zero — the same optional-interface pattern the bond
-	// auditor uses for RecordBondChallenge (credit.go).
+	// deliberately the consensus-relevant surface. Reach them through an
+	// optional interface so a node with a bare ports.CreditLedger (e.g. a test
+	// double) still compiles and reports zero — the same optional-interface
+	// pattern the bond auditor uses for RecordBondChallenge (credit.go).
 	if r, ok := n.ledger.(interface {
 		ServedBytes(ports.NodeID) int64
 		FetchedBytes(ports.NodeID) int64
@@ -1088,7 +1091,7 @@ func (n *Node) EconomySelf() EconomySelf {
 		es.RepairsDone = r.RepairsDone(n.id)
 		es.BountyEarned = r.BountyEarned(n.id)
 	}
-	// A4-3 (R2.7): the node-wide wash SHAPE, through its own optional interface for the
+	// the node-wide wash SHAPE, through its own optional interface for the
 	// same reason — it is not on the ports.CreditLedger consensus surface.
 	if r, ok := n.ledger.(interface{ BountyToPriorFetcher() (int64, int64) }); ok {
 		es.BountyToPriorFetcherPayments, es.BountyToPriorFetcherCredits = r.BountyToPriorFetcher()
@@ -1096,14 +1099,14 @@ func (n *Node) EconomySelf() EconomySelf {
 	return es
 }
 
-// EconomySelf is this node's own local-exact economy accounting (EconomySelf()).
+// EconomySelf is this node's own local-exact economy accounting (EconomySelf).
 type EconomySelf struct {
 	Balance      int64 // spendable credit balance (serve revenue + bounty revenue − spends)
 	ServedBytes  int64 // lifetime bytes this node served (the serve-work signal)
 	FetchedBytes int64 // lifetime bytes this node fetched (the wash-symmetry denominator)
 	RepairsDone  int64 // shard-repairs this node was paid a bounty for (repair-work count)
 	BountyEarned int64 // lifetime credits earned as a repairer (repair revenue, split from serve)
-	// A4-3 (R2.7): bounties this node released to a repairer that had already fetched
+	// bounties this node released to a repairer that had already fetched
 	// from it. A wash SHAPE, one-sided-informative, never a slashing input — see
 	// credit.Ledger.BountyToPriorFetcher for the honest limit.
 	BountyToPriorFetcherPayments int64
@@ -1169,7 +1172,7 @@ func (n *Node) SetObservedAddr(a string) { n.observedAddr = a }
 // AddStaticPeer marks id as a configured consensus/anchor peer (see -persistent-peers):
 // it is NEVER evicted from the routing table on a reachability timeout — its address is
 // configured, not discovered, so a transient WAN miss is a retry situation, not an
-// eviction (#286 Layer 2 Q4; docs/network-durability.md §2/§8, Tendermint persistent_peers).
+// eviction.
 // Call at startup, before consensus runs.
 func (n *Node) AddStaticPeer(id ports.NodeID) {
 	if n.staticPeers == nil {
@@ -1254,11 +1257,12 @@ const proofReloadBatch = 128
 // (clock.AfterFunc), so the daemon binds its listeners and begins serving immediately
 // while proofMeta matures lazily in the background. Every proofMeta write stays on
 // the loop, preserving its single-threaded invariant, and the full proofs page on
-// demand (#464) so serving never waits for the scan. Call after New + SetProofStore,
+// demand so serving never waits for the scan. Call after New + SetProofStore,
 // in place of LoadProofs, on a daemon path. A metadata sidecar (O(delta) cold start)
 // is the tracked fast-follow that makes the background scan itself cheap.
 func (n *Node) StartProofReload() {
-	// Defer even Keys() (a full store listing) off the startup path onto the loop.
+	// Defer even Keys (a full store listing) off the startup path onto the
+	// loop.
 	n.clock.AfterFunc(0, func() {
 		keys, err := n.proofs.Keys()
 		if err != nil {
@@ -1305,12 +1309,12 @@ func (n *Node) dropHosted(id ports.ChunkID) {
 
 // hostShardLocally stores a shard on THIS node and records the provider + proof —
 // making the node a real, audit-answerable holder — mirroring the MsgStoreChunk
-// success path. It exists for the (a-domain-fresh) repair self-hold (PE ruling
-// 2026-08-19): when the economy is on and the paramedic's own failure domain is
-// unused by the stripe, it keeps the shard it rebuilt (funding the reconstruction
-// cost/RAM it bore) instead of pushing it to a stranger, WITHOUT reducing diversity.
-// Returns false (hosting nothing) if the bytes don't hash to id or the proof won't
-// verify — never host what a later audit can't defend (B3/B7).
+// success path. It exists for the (a-domain-fresh) repair self-hold: when the
+// economy is on and the paramedic's own failure domain is unused by the stripe, it
+// keeps the shard it rebuilt (funding the reconstruction cost/RAM it bore) instead
+// of pushing it to a stranger, WITHOUT reducing diversity. Returns false (hosting
+// nothing) if the bytes don't hash to id or the proof won't verify — never host what
+// a later audit can't defend (B3/B7).
 func (n *Node) hostShardLocally(id ports.ChunkID, data []byte, proof *ports.StorageProof) bool {
 	c := ports.Chunk{ID: id, Data: data}
 	if !c.Verify() {
@@ -1367,7 +1371,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		slashQueued:         make(map[ports.NodeID]bool),
 		slashOverCapLogged:  make(map[ports.NodeID]bool),
 		peerIssuerKeys:      make(map[ports.NodeID]*rsa.PublicKey),
-		peerDemandKeys:      make(map[ports.NodeID]*demand.Keyset), // R0.4b pinned per-epoch demand keysets
+		peerDemandKeys:      make(map[ports.NodeID]*demand.Keyset), // pinned per-epoch demand keysets
 		creditSpent:         make(map[string]bool),
 		tokenIssued:         make(map[string]tokenIssuedEntry),
 		serveLoad:           make(map[ports.ChunkID]int),
@@ -1400,16 +1404,16 @@ func (n *Node) send(to ports.NodeID, msg ports.Message) error {
 	}
 	if n.capRep != nil {
 		msg.CapUsed, msg.CapTotal = n.capRep.Capacity()
-		// R2.2 rows 8-9: the work counters ride WITH the capacity pledge, never
+		// The work counters ride WITH the capacity pledge, never
 		// without it. A receiver files them under CapTotal > 0 (handle), and the
 		// tier band that classifies the sample is derived from CapTotal, so a work
 		// figure arriving with no pledge could not be classified and would be
 		// dropped anyway. Same gossip, one condition.
 		//
-		// AND ONLY WHEN THE OPERATOR PUBLISHES THEM (M-1). With the compiled default
+		// AND ONLY WHEN THE OPERATOR PUBLISHES THEM. With the compiled default
 		// -privacy=on this leaves both at 0, and because both wire fields are omitempty
-		// a zero emits NO CBOR key at all — the frame is byte-identical to a pre-R2.2
-		// node's. See Config.PublishWorkCounters.
+		// A zero emits NO CBOR key at all — the frame is byte-identical to a
+		// pre-work-counter node's. See Config.PublishWorkCounters.
 		if n.cfg.PublishWorkCounters {
 			msg.ServedBytes, msg.RepairsDone = n.selfWork()
 		}
@@ -1442,17 +1446,15 @@ func (n *Node) ReachablePeers() map[ports.NodeID]bool {
 // cancellation semantics, so a background context is honest.
 func bg() context.Context { return context.Background() }
 
-// lookupEntry resolves a registry entry, answering from this node's own
-// committed chain replica when it has one. On a validator the chain IS the
-// registry — chainhost.Lookup performs exactly this read — and the core paths
-// that run on the event loop (Care, NetGet, the repair/audit sweeps, repair-claim
+// lookupEntry resolves a registry entry, answering from this node's own committed
+// chain replica when it has one. On a validator the chain IS the registry —
+// chainhost.Lookup performs exactly this read — and the core paths that run on
+// the event loop (Care, NetGet, the repair/audit sweeps, repair-claim
 // verification) must never reach a committed entry through a blocking adapter
 // that marshals back onto the same loop: that reentrant post-and-wait wedged the
 // daemon's single thread for the whole chainhost timeout after every UI publish
-// (the concurrent-publish 502; mechanism record:
-// docs/thinking/2026-08-19-publish-502-attribution-care-self-deadlock.md).
-// Chainless nodes (clients, plain daemons) fall through to the registry port
-// unchanged.
+// (the concurrent-publish 502; mechanism record:). Chainless nodes (clients,
+// plain daemons) fall through to the registry port unchanged.
 func (n *Node) lookupEntry(reg ports.Registry, root ports.Hash) (ports.Entry, bool, error) {
 	if n.chain != nil {
 		e, ok := n.chain.LookupRoot(root)
@@ -1461,7 +1463,7 @@ func (n *Node) lookupEntry(reg ports.Registry, root ports.Hash) (ports.Entry, bo
 	return reg.Lookup(bg(), root)
 }
 
-// lookupEntryAsync is lookupEntry for the loop-driven sweeps (#473): the
+// lookupEntryAsync is lookupEntry for the loop-driven sweeps: the
 // remaining face of the concurrent-publish 502 class. On a validator the chain
 // answers locally; on a CHAINLESS node a network registry's Lookup is a
 // blocking HTTP round-trip, and the five core sweeps that called it inline
@@ -1471,7 +1473,7 @@ func (n *Node) lookupEntry(reg ports.Registry, root ports.Hash) (ports.Entry, bo
 // ports.AsyncRegistry (httpregistry) runs the round-trip off-loop; the sync
 // fallback covers the in-memory registries, whose Lookup is nanoseconds.
 // done is ALWAYS posted through the loop, never run on the caller's stack —
-// including the error path — per the #467 contract.
+// including the error path — per the contract.
 func (n *Node) lookupEntryAsync(reg ports.Registry, root ports.Hash, done func(ports.Entry, bool, error)) {
 	if n.chain != nil {
 		e, ok := n.chain.LookupRoot(root)
@@ -1503,18 +1505,18 @@ func (n *Node) request(to ports.NodeID, msg ports.Message, cb func(ports.Message
 // peer on the first slow or dropped packet — and only gives the peer up (evict +
 // negative-cache) once the retries are exhausted.
 // requestTimeoutFor picks the per-attempt TRANSPORT deadline for msg:
-//   - a speculative holder-fetch dial (MsgFetchChunk/MsgHasChunk) gets the TIGHTER
-//     HolderDialTimeout (fail fast on a dead holder under churn, no size extension);
-//   - a lean consensus/mesh RPC gets the base RequestTimeout;
-//   - a LARGE outbound payload (a block carrying a validator's one-time ~1.5 MB
-//     space-time bond registration) gets a size-extended deadline (#286): it must
-//     cross a real WAN and be re-verified before the attester can reply, which a flat
-//     RTT-scale deadline cannot cover — a tight fixed transport deadline is the
-//     category error that wedged quorum-2 genesis cross-region while the identical
-//     block committed on a single-zone quorum-1 SMOKE. The extension is
-//     len(payload)/RequestSizeFloorBytesPerSec of transfer time, capped at 30 s so a
-//     pathological block can't hang the round. Few-KB steady-state blocks gain ~nothing.
-//     See docs/network-durability.md; the structural close is a succinct proof (#299).
+// - a speculative holder-fetch dial (MsgFetchChunk/MsgHasChunk) gets the TIGHTER
+// HolderDialTimeout (fail fast on a dead holder under churn, no size extension);
+// - a lean consensus/mesh RPC gets the base RequestTimeout;
+// - a LARGE outbound payload (a block carrying a validator's one-time ~1.5 MB
+// space-time bond registration gets a size-extended deadline: it must cross a real
+// WAN and be re-verified before the attester can reply, which a flat RTT-scale
+// deadline cannot cover — a tight fixed transport deadline is the category error
+// that wedged quorum-2 genesis cross-region while the identical block committed on a
+// single-zone quorum-1 SMOKE. The extension is
+// len(payload)/RequestSizeFloorBytesPerSec of transfer time, capped at 30 s so a
+// pathological block can't hang the round. Few-KB steady-state blocks gain ~nothing.
+// See; the structural close is a succinct proof.
 func (n *Node) requestTimeoutFor(msg ports.Message) ports.Duration {
 	if msg.Kind == ports.MsgFetchChunk || msg.Kind == ports.MsgHasChunk {
 		if n.cfg.HolderDialTimeout > 0 && n.cfg.HolderDialTimeout < n.cfg.RequestTimeout {
@@ -1524,15 +1526,15 @@ func (n *Node) requestTimeoutFor(msg ports.Message) ports.Duration {
 	}
 	timeout := n.cfg.RequestTimeout
 	if n.cfg.RequestSizeFloorBytesPerSec > 0 {
-		// Size-extend for the larger direction of the exchange. Outbound payload:
-		// the #286 case (a ~1.5 MB bond-reg block must cross the wire before the
-		// attester can reply). ANTICIPATED REPLY: a windowed chain fetch (#466)
-		// sends a tiny MsgGetChain{Height} but asks for up to maxChainReplyBytes
-		// back — without this the reply is bounded by the base RequestTimeout
-		// (2 s at daemon defaults), which no window near the floor can meet, and
-		// the slow-but-honest WAN peers pagination exists for stall (PE ruling
-		// 2026-08-22). The window and this deadline derive from the same two
-		// symbols, so they cannot drift.
+		// Size-extend for the larger direction of the exchange. Outbound
+		// payload: the case (a ~1.5 MB bond-reg block must cross the wire
+		// before the attester can reply). ANTICIPATED REPLY: a windowed
+		// chain fetch sends a tiny MsgGetChain{Height} but asks for up to
+		// maxChainReplyBytes back — without this the reply is bounded by
+		// the base RequestTimeout (2 s at daemon defaults), which no window
+		// near the floor can meet, and the slow-but-honest WAN peers
+		// pagination exists for stall. The window and this deadline derive
+		// from the same two symbols, so they cannot drift.
 		payload := int64(len(msg.Data))
 		if msg.Kind == ports.MsgGetChain {
 			if w := int64(n.maxChainReplyBytes()); w > payload {
@@ -1548,15 +1550,15 @@ func (n *Node) requestTimeoutFor(msg ports.Message) ports.Duration {
 	return timeout
 }
 
-// requestSizeExtensionCap bounds the payload-scaled deadline extension (#286): a
-// pathological payload cannot hang a round past this, and the #466 chain-serve
+// requestSizeExtensionCap bounds the payload-scaled deadline extension: a
+// pathological payload cannot hang a round past this, and the chain-serve
 // window is derived FROM it (maxChainReplyBytes), so the two cannot drift.
 const requestSizeExtensionCap = 30 * ports.Second
 
 // maxChainReplyBytes is the byte budget for one MsgGetChain reply window — the
-// #466 chain-serve bound (a node marshaling its whole bond-reg-laden chain into
+// chain-serve bound (a node marshaling its whole bond-reg-laden chain into
 // one buffer was the measured 144 MB serve-side OOM driver). DERIVED, never a
-// literal (PE ruling 2026-08-22): the reply must cross the wire inside the
+// literal: the reply must cross the wire inside the
 // deadline the requester arms, so window = floor × extension-cap × ½ — the ½
 // margin leaves the base deadline for RTT and decode. 3.75 MiB at daemon
 // defaults (256 KiB/s × 30 s / 2). If either symbol changes, the window tracks.
@@ -1577,15 +1579,15 @@ func (n *Node) requestAttempt(to ports.NodeID, msg ports.Message, attempt int, c
 	// tighter deadline and does NOT retry the same holder (the fetch loop already retries
 	// at a higher level via FetchAttempts and skips known-dead holders via the
 	// negative cache).
-	// A too-generous timeout + retry here just deepens the dead-holder dial-storm (#277).
+	// A too-generous timeout + retry here just deepens the dead-holder dial-storm.
 	// MESH/CONSENSUS RPCs get the full RequestTimeout + retries, to ride out jitter
 	// without tearing a live peer out of the mesh.
 	holderFetch := msg.Kind == ports.MsgFetchChunk || msg.Kind == ports.MsgHasChunk
 	// The discovery plane: the RPC kinds the dead-peer negative cache serves.
 	// Only these may be failed fast mid-ladder by a corpse verdict from a
-	// PARALLEL ladder (#501) — every other kind keeps its full retry patience,
+	// PARALLEL ladder — every other kind keeps its full retry patience,
 	// so a discovery-plane "dead" can never shorten a bond audit's or a
-	// consensus RPC's wait (#3: one signal, one job; #288).
+	// consensus RPC's wait (#3: one signal, one job).
 	discovery := msg.Kind == ports.MsgFindNode || msg.Kind == ports.MsgGetProviders || msg.Kind == ports.MsgAddProvider
 	timeout := n.requestTimeoutFor(msg)
 	p := &pending{cb: cb, to: to}
@@ -1593,12 +1595,13 @@ func (n *Node) requestAttempt(to ports.NodeID, msg ports.Message, attempt int, c
 		delete(n.pending, rid)
 		n.Stats.Timeouts++
 		if !holderFetch && attempt < n.cfg.RequestRetries {
-			// A concurrent phase (the sweep's 32-wide probe fan-out) launches
-			// many walks before the first ladder to a corpse exhausts; without
-			// this check every in-flight ladder still rides its full retry
-			// schedule into the same corpse — the measured residual wall
-			// (#501). The peer is already stamped and evicted by whichever
-			// ladder finished first; this one just ends, without re-stamping.
+			// A concurrent phase (the sweep's 32-wide probe fan-out)
+			// launches many walks before the first ladder to a corpse
+			// exhausts; without this check every in-flight ladder still
+			// rides its full retry schedule into the same corpse — the
+			// measured residual wall. The peer is already stamped and
+			// evicted by whichever ladder finished first; this one just
+			// ends, without re-stamping.
 			if discovery && n.corpseGated(to, n.clock.Now()) {
 				n.logf(ports.LogDebug, "request abandoned: peer negative-cached mid-ladder", "to", to, "kind", msg.Kind)
 				cb(ports.Message{}, fmt.Errorf("%w (to %s)", ErrTimeout, to))
@@ -1627,13 +1630,13 @@ func (n *Node) requestAttempt(to ports.NodeID, msg ports.Message, attempt int, c
 		// tier) is likewise never evicted: its address is configured, not discovered,
 		// so a transient WAN unreachability is a retry situation, not an eviction —
 		// evicting it would let a proposer lose an attester mid-formation and stall
-		// quorum (#286 Layer 2 Q4; docs/network-durability.md §2/§8).
+		// quorum.
 		if msg.Kind != ports.MsgBondChallenge && !n.staticPeers[to] {
 			n.table.Remove(to)
 			delete(n.reachable, to) // no longer proven reachable (#43)
 			// Negative-cache the corpse so the fetch/repair loop skips it for a
 			// cooldown instead of re-eating a full RequestTimeout on the same dead
-			// holder every sweep (#226). A reply later (n.reachable set in handle)
+			// holder every sweep. A reply later (n.reachable set in handle)
 			// doesn't clear this, but cooldown expiry re-admits a recovered holder.
 			if n.cfg.HolderCooldown > 0 {
 				now := n.clock.Now()
@@ -1673,13 +1676,14 @@ func (n *Node) requestAttempt(to ports.NodeID, msg ports.Message, attempt int, c
 			}
 			// The corpse is confirmed unreachable (retries exhausted) and just left
 			// the routing table — so prune it from the provider-record candidate set
-			// too, for every key where a LIVE alternative exists. This is the #277
-			// dial-storm floor fix: without it, the negative cache only RATE-LIMITS the re-dial
-			// (one full RequestTimeout per HolderCooldown, forever), because the stale
-			// record is never removed. A SOLE holder's record is KEPT (RemoveIfNotSole)
-			// so its content stays discoverable and re-probeable (#69/#226); a recovered
-			// holder re-announces (reprovide) to rejoin the set, and its inbound message
-			// clears its corpse entry (proof of life, above).
+			// too, for every key where a LIVE alternative exists. This is the
+			// dial-storm floor fix: without it, the negative cache only RATE-LIMITS
+			// the re-dial (one full RequestTimeout per HolderCooldown, forever),
+			// because the stale record is never removed. A SOLE holder's record is
+			// KEPT (RemoveIfNotSole) so its content stays discoverable and
+			// re-probeable (#69/); a recovered holder re-announces (reprovide) to
+			// rejoin the set, and its inbound message clears its corpse entry (proof
+			// of life, above).
 			if pruned := n.provs.RemoveIfNotSole(to); pruned > 0 {
 				n.Stats.DeadProviderRecordsPruned += pruned
 			}
@@ -1692,7 +1696,7 @@ func (n *Node) requestAttempt(to ports.NodeID, msg ports.Message, attempt int, c
 	if err := n.send(to, msg); err != nil {
 		p.cancel()
 		delete(n.pending, rid)
-		// Defer the failure through the loop (#467 audit): a synchronous send
+		// Defer the failure through the loop: a synchronous send
 		// error otherwise runs cb on the caller's stack, and every per-item
 		// continuation chain that crosses request — probe try-chains, announce
 		// send-chains, walk steps — becomes O(items)-deep inline recursion the
@@ -1724,7 +1728,7 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 		// negative-cached as unreachable (a prior dial timed out → a corpse entry), hearing
 		// from it means it RECOVERED — a restart+reprovide (#69), or a NATed peer now
 		// reachable via the relay. A truly departed holder sends nothing and stays
-		// gated (so the #277 dial-storm gate on the diversity sweep still holds), but a
+		// gated (so the dial-storm gate on the diversity sweep still holds), but a
 		// recovered one must be re-dialable at once or the sweep/walk keep skipping a
 		// peer that is demonstrably back (this is what broke cross-NAT restart survival
 		// when the sweep gate was added).
@@ -1732,8 +1736,8 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 	}
 	if msg.CapTotal > 0 {
 		evictPeerInfoIfFull(n.peerCaps, from)
-		// The two R2.2 work fields land in the SAME bounded map under the SAME
-		// eviction, so rows 8-9 add no new unbounded peer-keyed state: the bound is
+		// The two work fields land in the SAME bounded map under the SAME
+		// eviction, so they add no new unbounded peer-keyed state: the bound is
 		// maxPeerInfo, proved by peerinfo_bound_test.go, and two int64s per entry is
 		// the whole cost.
 		n.peerCaps[from] = capInfo{used: msg.CapUsed, total: msg.CapTotal, served: msg.ServedBytes, repairs: msg.RepairsDone}
@@ -1766,13 +1770,13 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 			Nodes: n.closestExcluding(msg.Target, from),
 		})
 	case ports.MsgGetProviders:
-		// Re-serve the SIGNED records (H5), so the fetcher self-certifies each
+		// Re-serve the SIGNED records, so the fetcher self-certifies each
 		// instead of trusting a bare NodeID list we could have fabricated. An
 		// eclipser (H5-B test seam) suppresses the records while still routing.
 		var recs []ports.ProviderRecord
 		if !n.eclipser {
 			// Serve only LIVE records: a lapsed record is a departed holder, and
-			// re-serving it propagates the #277 dial-storm to whoever asked us.
+			// re-serving it propagates the dial-storm to whoever asked us.
 			recs = n.provs.Live(msg.Target, int64(n.clock.Now()))
 		}
 		n.reply(from, msg, ports.Message{
@@ -1824,7 +1828,7 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 			} else {
 				n.Stats.ChunksReceived++
 				n.provs.Add(n.providerRecord(key)) // we are now a provider
-				// Debug narration (#497): every byte-write into the store names its
+				// Debug narration: every byte-write into the store names its
 				// path, so a disk census is attributable to a call site.
 				n.logf(ports.LogDebug, "chunk stored", "chunk", msg.ChunkID, "from", from, "key", key, "lease", msg.Lease)
 				if msg.Proof != nil {
@@ -1889,17 +1893,17 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 	case ports.MsgRepairClaim:
 		n.handleRepairClaim(from, msg) // async: replies MsgRepairVote when the two legs settle (H7)
 	case ports.MsgDeliveryReceipt:
-		n.handleDeliveryReceipt(from, msg) // RETIRED (B-9, R2.9): refused with a named reason; the session lane is MsgDeliveryOpen/Settle
+		n.handleDeliveryReceipt(from, msg) // RETIRED: refused with a named reason; the session lane is MsgDeliveryOpen/Settle
 	case ports.MsgRelayOpen:
 		n.handleRelayOpen(from, msg) // PoD §7.3: open a paid relay session (M0 guards + S-clamp fire here)
 	case ports.MsgRelayPay:
 		n.handleRelayPay(from, msg) // PoD §7.3: a preimage reveal authorizes the next increment(s)
 	case ports.MsgDeliveryOpen:
-		n.handleDeliveryOpen(from, msg) // R2.9: open a paid delivery session (anchor spent at open)
+		n.handleDeliveryOpen(from, msg) // open a paid delivery session (anchor spent at open)
 	case ports.MsgDeliveryFund:
-		n.handleDeliveryFund(from, msg) // R2.9: top up a session with a fresh anchor
+		n.handleDeliveryFund(from, msg) // top up a session with a fresh anchor
 	case ports.MsgDeliverySettle:
-		n.handleDeliverySettle(from, msg) // R2.9: settle a cumulative-count receipt (v3)
+		n.handleDeliverySettle(from, msg) // settle a cumulative-count receipt (v3)
 	case ports.MsgBondChallenge:
 		n.reply(from, msg, n.answerBondChallenge(from, msg))
 	case ports.MsgTokenRequest:
@@ -1907,9 +1911,9 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 	case ports.MsgGetIssuerKey:
 		n.reply(from, msg, n.answerIssuerKey())
 	case ports.MsgGetDemandIssuerKeys:
-		n.reply(from, msg, n.answerDemandIssuerKeys()) // R0.4b: serve the per-epoch key WINDOW
+		n.reply(from, msg, n.answerDemandIssuerKeys()) // serve the per-epoch key WINDOW
 	case ports.MsgDemandTokenRequest:
-		n.reply(from, msg, n.answerDemandTokenRequest(from, msg)) // R0.4b: blind-sign under key_current
+		n.reply(from, msg, n.answerDemandTokenRequest(from, msg)) // blind-sign under key_current
 	case ports.MsgGetCanonicalIssuers:
 		n.reply(from, msg, n.answerCanonicalIssuers())
 	case ports.MsgCheckReachability:
@@ -1952,7 +1956,7 @@ func (n *Node) closestExcluding(target ports.Hash, exclude ports.NodeID) []ports
 // buckets closest to self (the ones that matter most).
 func (n *Node) Bootstrap(seeds []ports.NodeID, done func()) {
 	if len(seeds) > 0 {
-		n.bootstrapSeeds = seeds // remember for empty-table re-bootstrap (#281)
+		n.bootstrapSeeds = seeds // remember for empty-table re-bootstrap
 	}
 	for _, s := range seeds {
 		n.observeSeed(s)
@@ -2000,17 +2004,19 @@ func (w *walk) step() {
 		if w.l.Done() {
 			w.finished = true
 			result := w.l.Result()
-			// Trampoline the terminal callback through the event loop instead of firing
-			// it inline. A walk that converges SYNCHRONOUSLY — every candidate dead/cooled,
-			// or the node alone — otherwise runs done() on the same stack that entered
-			// step(); when done() re-enters another walk (announceAll's per-key
-			// IterativeFindNode; the resolveProviders⇄probeShard⇄sweepProviders repair
-			// cycle) the frames pile up O(keys) deep and overflow the goroutine stack over
-			// a large held set (flixz load test: 193K keys → fatal error: stack overflow →
-			// watchdog kill, blocking publish of the two largest films). Deferring done()
-			// bounds stack depth to O(1) across keys regardless of sync-vs-async completion.
-			// AfterFunc(0) posts to the loop (walltime marshals onto it, sim enqueues) —
-			// B2-safe, one extra tick per walk (negligible for background repair/announce).
+			// Trampoline the terminal callback through the event loop instead of
+			// firing it inline. A walk that converges SYNCHRONOUSLY — every
+			// candidate dead/cooled, or the node alone — otherwise runs done on the
+			// same stack that entered step; when done re-enters another walk
+			// (announceAll's per-key IterativeFindNode; the
+			// resolveProviders⇄probeShard⇄sweepProviders repair cycle) the frames
+			// pile up O(keys) deep and overflow the goroutine stack over a large
+			// held set (flixz load test: 193K keys → fatal error: stack overflow →
+			// watchdog kill, blocking publish of the two largest films). Deferring
+			// done bounds stack depth to O(1) across keys regardless of
+			// sync-vs-async completion. AfterFunc(0) posts to the loop (walltime
+			// marshals onto it, sim enqueues) — B2-safe, one extra tick per walk
+			// (negligible for background repair/announce).
 			w.n.clock.AfterFunc(0, func() { w.done(result) })
 			return
 		}
@@ -2026,7 +2032,7 @@ func (w *walk) step() {
 			// keys drowns in these stale dials before it can probe a single shard
 			// — the churn dial-storm: the caretaker never finishes a sweep, never
 			// sees the loss, never repairs. Fail it in the lookup without the dial
-			// (mirrors the fetch/probe negative cache, #226); a later walk past
+			// (mirrors the fetch/probe negative cache); a later walk past
 			// its cooldown re-queries it in case it recovered.
 			if w.n.corpseGated(peer, now) {
 				w.n.Stats.HolderDialsSkipped++
@@ -2044,7 +2050,7 @@ func (w *walk) step() {
 					w.l.OnReply(peer, resp.Nodes)
 					for _, id := range resp.Nodes {
 						// Reply-learned, never contacted: UNVERIFIED, charged to the
-						// replier's group until it answers a query itself (R4.3b, cert §5).
+						// replier's group until it answers a query itself.
 						w.n.table.ObserveIntroduced(id, peer)
 					}
 					if w.onProviders != nil && len(resp.ProviderRecs) > 0 && w.onProviders(resp.ProviderRecs) {
@@ -2058,6 +2064,7 @@ func (w *walk) step() {
 		if dispatched > 0 {
 			return // real requests in flight; their callbacks drive the walk
 		}
-		// every candidate this round was cooled down — loop to advance the lookup
+		// Every candidate this round was cooled down — loop to advance the
+		// lookup
 	}
 }

@@ -4,16 +4,16 @@ package relay
 //
 // Two hazards this file pins failing-first:
 //
-//  1. PAY-THEN-FORWARD (the gate). The relay forwards increment k only after the
-//     fetcher authorizes it (a preimage reveal, modeled here as an authorizer's
-//     byte ceiling rising). If the fetcher stops authorizing, the relay stops
-//     forwarding — the irreducible stiff is bounded to ONE increment.
+// 1. PAY-THEN-FORWARD (the gate). The relay forwards increment k only after the
+// fetcher authorizes it (a preimage reveal, modeled here as an authorizer's
+// byte ceiling rising). If the fetcher stops authorizing, the relay stops
+// forwarding — the irreducible stiff is bounded to ONE increment.
 //
-//  2. SPLICE-EOF SURVIVAL (the sharpest transport hazard, design §2). The existing
-//     splice closes BOTH conns on the FIRST EOF because swarm exchanges are
-//     short-lived (server.go). A paid ≤1 GiB relay session is NOT short-lived: a
-//     reverse-direction EOF must NOT tear down the paid forward stream. The naive
-//     splice reddens this test.
+// 2. SPLICE-EOF SURVIVAL (the sharpest transport hazard, design §2). The existing
+// splice closes BOTH conns on the FIRST EOF because swarm exchanges are
+// short-lived (server.go). A paid ≤1 GiB relay session is NOT short-lived: a
+// reverse-direction EOF must NOT tear down the paid forward stream. The naive
+// splice reddens this test.
 
 import (
 	"bytes"

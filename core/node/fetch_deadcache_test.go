@@ -47,7 +47,7 @@ func deadHolderRig(t *testing.T, cfg Config, chunks ...ports.Chunk) (*Node, []po
 	return fetcher, []ports.NodeID{deadID, liveID}, sched, &deadSends
 }
 
-// TestFetchNegativeCachesDeadHolder is the #226 regression: a holder that
+// TestFetchNegativeCachesDeadHolder is the regression: a holder that
 // times out once is negative-cached, so a LATER fetch skips it instead of
 // eating another full RequestTimeout on the same corpse. Without this, a
 // churny swarm re-dials dead provider records every sweep and the serial

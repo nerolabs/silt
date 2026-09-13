@@ -15,7 +15,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// R2.9a — the node-tier read of the B_bootstrap histogram.
+// The node-tier read of the B_bootstrap histogram.
 
 func r29aNode(t *testing.T) (*Node, *credit.Ledger, *simclock.Scheduler) {
 	t.Helper()
@@ -23,12 +23,12 @@ func r29aNode(t *testing.T) (*Node, *credit.Ledger, *simclock.Scheduler) {
 	net := simnet.New(sched, 1, simnet.DefaultConfig())
 	ident := identity.FromSeed(29001)
 	ledger := credit.New(50_000, 0)
-	// G-BB-2: the age axis rides an INJECTED ports.Clock, so a sim passes its own
-	// scheduler and the whole instrument stays deterministic and replayable by seed.
-	// G-BB-4's second source is the SAME scheduler here, deliberately: in a sim there is
-	// no wall clock to step, so the two agree by construction and the skew is a constant
+	// The age axis rides an INJECTED ports.Clock, so a sim passes its own scheduler
+	// and the whole instrument stays deterministic and replayable by seed. the second
+	// source is the SAME scheduler here, deliberately: in a sim there is no wall
+	// clock to step, so the two agree by construction and the skew is a constant
 	// zero. The step behaviour is driven where the step is possible — core/credit's
-	// BB-13 arms, which move the two sources apart by hand.
+	// arms, which move the two sources apart by hand.
 	ledger.SetObservabilityClock(sched, func() int64 { return int64(sched.Now()) })
 	nd := New(ident.NodeID(), DefaultConfig(), sched, net.Endpoint(ident.NodeID()), memstore.New())
 	nd.SetLedger(ledger)
@@ -48,18 +48,18 @@ func r29aAdvance(t *testing.T, sched *simclock.Scheduler, d ports.Duration) {
 	}
 }
 
-// TestR29aNodeSnapshotIsTheHistogramWithNoIdentity is the node tier's gate. The node
+// TestNodeSnapshotIsTheHistogramWithNoIdentity is the node tier's gate. The node
 // used to narrow the ledger snapshot here, dropping a salted requester label before
 // publication; under the histogram there is nothing left to narrow, and this pins that:
 // the object the node hands up carries counts and axis metadata and NOTHING that names,
 // labels or times an individual.
-func TestR29aNodeSnapshotIsTheHistogramWithNoIdentity(t *testing.T) {
+func TestNodeSnapshotIsTheHistogramWithNoIdentity(t *testing.T) {
 	nd, ledger, sched := r29aNode(t)
 	server := ports.HashBytes([]byte("server"))
 
 	// Nine old identities fetch 1,000 bytes each, then two hours pass, then a young one
 	// fetches 250. The census is TEN, which is credit.BBootstrapMinRequesters: the
-	// minimum-requester floor (G-BB-11) is applied at this very seam, so a fixture below
+	// minimum-requester floor is applied at this very seam, so a fixture below
 	// it would publish nothing at all and this gate would be asserting on a suppressed
 	// block instead of on the histogram it exists to audit.
 	for i := 0; i < 9; i++ {
@@ -101,7 +101,8 @@ func TestR29aNodeSnapshotIsTheHistogramWithNoIdentity(t *testing.T) {
 	if got := h.Cells[0][7]; got != 1 {
 		t.Fatalf("the age-0 identity (250 bytes → bin 7) count = %d, want 1; row 0 = %v", got, h.Cells[0])
 	}
-	// The old ones: two hours → bucket 4 ([1h, 6h)), 1,000 bytes → bin floor(log2(1000)) = 9.
+	// The old ones: two hours → bucket 4 ([1h, 6h), 1,000 bytes → bin floor(log2(1000)) =
+	// 9.
 	if got := h.Cells[4][9]; got != 9 {
 		t.Fatalf("the two-hour-old identities (1,000 bytes → bin 9) count = %d in bucket 4, want 9; row 4 = %v", got, h.Cells[4])
 	}
@@ -135,10 +136,10 @@ func TestR29aNodeSnapshotIsTheHistogramWithNoIdentity(t *testing.T) {
 	}
 }
 
-// TestR29aNoLedgerYieldsNoExport: a node with no ledger reports "no export" rather than
+// TestNoLedgerYieldsNoExport: a node with no ledger reports "no export" rather than
 // an empty-looking histogram a reader could mistake for a quiet network (the same shape
 // EconomySelf uses).
-func TestR29aNoLedgerYieldsNoExport(t *testing.T) {
+func TestNoLedgerYieldsNoExport(t *testing.T) {
 	sched := simclock.New()
 	net := simnet.New(sched, 1, simnet.DefaultConfig())
 	ident := identity.FromSeed(29002)
@@ -148,22 +149,22 @@ func TestR29aNoLedgerYieldsNoExport(t *testing.T) {
 	}
 }
 
-// TestR29aEconomySelfFieldsAreUnchanged: pin EconomySelf's exported field set, in order,
-// so an edit to the economy surface cannot silently drop, rename or ADD one. R2.9a added
+// TestEconomySelfFieldsAreUnchanged: pin EconomySelf's exported field set, in order,
+// so an edit to the economy surface cannot silently drop, rename or ADD one. the gate added
 // an instrument without touching this panel; the pin outlived that round because the same
 // question applies to every later edit — as the sibling gate above puts it, a new field on
 // a published instrument is a privacy question, not a formatting one.
 //
-// AUDITED 2026-09-08 (Lane C4, R2.7 detector A4-3): BountyToPriorFetcherPayments and
+// AUDITED 2026-09-08 (this lane detector): BountyToPriorFetcherPayments and
 // BountyToPriorFetcherCredits are appended. Both are node-wide aggregates with no identity
 // and no object axis — they never carry the (fetcher × object) join Don't #3 forbids. They
 // are NOT free to publish, and this gate is not the one that holds that: on a node
 // caretaking one root, a bounty-out figure IS that root's withheld objects[].bountyOut
-// while /api/roots supplies the name half (red-team F2). Their withholding on the
-// unauthenticated wire is held by cmd/silt's whole-surface scans — see
-// TestR27A4PriorFetcherCreditsAreTokenGatedOnTheWholeSurface. Appending a field here
-// without that gate re-opens the join.
-func TestR29aEconomySelfFieldsAreUnchanged(t *testing.T) {
+// while /api/roots supplies the name half. Their withholding on the unauthenticated wire
+// is held by cmd/silt's whole-surface scans — see
+// TestPriorFetcherCreditsAreTokenGatedOnTheWholeSurface. Appending a field here without
+// that gate re-opens the join.
+func TestEconomySelfFieldsAreUnchanged(t *testing.T) {
 	want := []string{
 		"Balance", "ServedBytes", "FetchedBytes", "RepairsDone", "BountyEarned",
 		"BountyToPriorFetcherPayments", "BountyToPriorFetcherCredits",

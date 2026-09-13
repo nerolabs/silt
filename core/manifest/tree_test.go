@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// TestTreeMatchesStandaloneProve is the load-bearing conformance guard for #340:
+// TestTreeMatchesStandaloneProve is the load-bearing conformance guard for:
 // the cached Tree must produce a BIT-IDENTICAL root and inclusion proof to the
 // standalone MerkleRoot / Prove for every leaf count — otherwise the O(log n)
 // optimization would silently change a bond's committed root or a proof's bytes,
@@ -61,7 +61,7 @@ func TestTreeProveOutOfRange(t *testing.T) {
 	}
 }
 
-// TestTreeProveIsSublinear pins the whole point of #340: Tree.Prove must not
+// TestTreeProveIsSublinear pins the whole point of: Tree.Prove must not
 // rehash a growing fraction of the leaves per call the way standalone Prove does.
 // We assert the per-proof WORK (bytes hashed) is O(log n), not O(n): quadrupling
 // the leaf count must not quadruple the standalone/Tree proof-time ratio — the

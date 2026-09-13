@@ -23,10 +23,10 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SILT_BIN = os.environ.get("SILT_BIN", "go run ./cmd/silt")
 
 # ── The node table + DEFAULT cloud split (README §4): validators on BOTH clouds so
-#    quorum crosses the provider boundary; boot/registry + relay on GCP (public); the
-#    natted pair on AWS (reaching the GCP relay over the internet — real cross-provider
-#    NAT traversal). Override any assignment with SPLIT="nat-1=gcp,val-c=gcp".
-#   name        role         seed   default_cloud
+#  quorum crosses the provider boundary; boot/registry + relay on GCP (public); the
+#  natted pair on AWS (reaching the GCP relay over the internet — real cross-provider
+#  NAT traversal). Override any assignment with SPLIT="nat-1=gcp,val-c=gcp".
+#  name role seed default_cloud
 NODES = [
     ("val-a",     "validator", 6001, "gcp"),   # boot + serves the registry
     ("val-b",     "validator", 6002, "gcp"),

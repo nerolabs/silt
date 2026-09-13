@@ -35,8 +35,8 @@ func startClient(t *testing.T, cl *Client) {
 
 // TestRegisterReportsObservedAddr is the #27 Phase-1 check: the relay reports
 // a registrant its public host:port as observed (STUN-style), and the client
-// exposes it via Observed(). A NATed node can't otherwise learn its own
-// public endpoint — hole-punching needs it.
+// exposes it via Observed. A NATed node can't otherwise learn its own public
+// endpoint — hole-punching needs it.
 func TestRegisterReportsObservedAddr(t *testing.T) {
 	identR, identB := identity.FromSeed(20), identity.FromSeed(21)
 	srv, err := Serve("127.0.0.1:0", identR, Config{}, nil)
@@ -297,7 +297,7 @@ func TestSessionCap(t *testing.T) {
 }
 
 // TestPerPeerSessionCap proves the per-target limit in isolation of the
-// global one (server.go:261 is an OR of the two). PerPeerSessions=1 with a
+// global one (server.go is an OR of the two). PerPeerSessions=1 with a
 // roomy MaxSessions: a second concurrent splice to the SAME target is refused
 // while the global cap is nowhere near, but a splice to a DIFFERENT target
 // still succeeds. This is the #65 knob that stops one NATed target's fan-out

@@ -7,18 +7,18 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// M0 hardening H3 — the Invariant-A structural guardrail.
+// — the Invariant-A structural guardrail.
 //
-// Invariant A (archive/design-history/m0-hardening-strategy.md §2): no standing without a
-// verified, identity-bound, unpredictable-challenge, deduped, bond-gated proof.
+// Invariant A §2: no standing without a verified, identity-bound,
+// unpredictable-challenge, deduped, bond-gated proof.
 //
 // The strategy doc's meta-pattern #1 is "we fix instances, not classes": F1 →
-// G2 → RT-1 were three re-instances of one class (a standing press that skips
-// identity-binding), and we only ever hardened the surface a red team pointed
-// at. This file is the guardrail that turns the class into a compile-and-test
-// obligation: it ENUMERATES every press that can mint standing and asserts each
-// satisfies Invariant A, and it fails loudly when a new Ledger method ships
-// unclassified — so a fourth instance cannot slip in unaudited.
+// G2 → this gate were three re-instances of one class (a standing press that
+// skips identity-binding), and we only ever hardened the surface a red team
+// pointed at. This file is the guardrail that turns the class into a
+// compile-and-test obligation: it ENUMERATES every press that can mint standing
+// and asserts each satisfies Invariant A, and it fails loudly when a new Ledger
+// method ships unclassified — so a fourth instance cannot slip in unaudited.
 //
 // Why enumerating *credit.Ledger is complete for the MINT side: all standing
 // state lives in credit.account (bondedBytes/auditsFailed/bondFails/
@@ -50,7 +50,7 @@ var standingClassification = map[string]standingClass{
 
 	// Integrity teeth — can only ever SUBTRACT standing, so they can never be
 	// Sybil-amplified (piling them on hurts you, it cannot lift a bondless id).
-	"RecordAudit":       reduces, // a FAILED PoR audit subtracts (a passed one funds balance only — RT-1/H1)
+	"RecordAudit":       reduces, // a FAILED PoR audit subtracts (a passed one funds balance only —)
 	"SlashEquivocation": reduces, // proven double-sign buries standing
 	"SlashFalseRepair":  reduces, // proven false repair claim docks standing (H7 slice-2 slash gate)
 	"DecayStale":        reduces, // un-refreshed bond standing retires to zero
@@ -59,14 +59,15 @@ var standingClassification = map[string]standingClass{
 	// touch bondedBytes, so none can move Reputation upward.
 	"Register":    neutral,
 	"RecordServe": neutral, // self-reported serving funds BALANCE, never standing
-	// R2.12 — the faucet rate limit. All three move or read BALANCE only: SetFaucet
-	// configures the bucket, GrantOwner applies the node's own starter grant, FaucetStats is
-	// telemetry. The grant itself was always balance (Register minted it); R2.12 only meters
-	// WHEN it lands. Standing is bond-only (Invariant A) in both builds and both postures.
+	// The faucet rate limit. All three move or read BALANCE only: SetFaucet configures
+	// the bucket, GrantOwner applies the node's own starter grant, FaucetStats is
+	// telemetry. The grant itself was always balance (Register minted it) only
+	// meters WHEN it lands. Standing is bond-only (Invariant A) in both builds and both
+	// postures.
 	"SetFaucet":      neutral,
 	"GrantOwner":     neutral,
 	"FaucetStats":    neutral,
-	"ServeMintStats": neutral, // G-R212-7 serve-mint telemetry; reads, moves nothing
+	"ServeMintStats": neutral, // serve-mint telemetry; reads, moves nothing
 	"Grant":          neutral, // reads the starter-grant constant; moves nothing
 	"ChargePublish":  neutral,
 	"CanPublish":     neutral,
@@ -97,55 +98,57 @@ var standingClassification = map[string]standingClass{
 	"RepairsDone":         neutral, // observability (per-node repair-work count; no standing)
 	"WorkSample":          neutral, // observability (the gossip stamp's NON-registering read; moves nothing, creates nothing)
 	"BountyEarned":        neutral, // observability (repair revenue split; no standing)
-	// A4-3 (R2.7): a node-wide count of bounties released to a prior fetcher. Reads
+	// a node-wide count of bounties released to a prior fetcher. Reads
 	// account state, writes two counters, touches no bond and no balance.
 	"BountyToPriorFetcher": neutral, // observability (wash SHAPE; never a slashing input)
-	// R2.7 §1.3: records a refusal a caller already decided. Registers the account (acct
-	// does) and moves two counters; touches no bond, no balance, no standing.
+	// records a refusal a caller already decided. Registers the account (acct does)
+	// and moves two counters; touches no bond, no balance, no standing.
 	"NoteSpendRefused": neutral, // observability (the affordability floor's third gate)
 
-	// PoD neutral lane. The witnessed delivery credit is a CONSERVED balance transfer
-	// (the fetcher's burned anchor face, less skim) that supersedes the serve
-	// self-record — pure balance economy. It must never move standing: a receipt is
-	// mintable with zero object bytes by certified design, so the entire soundness
-	// story rests on this press staying neutral (delivery_test.go pins it against a
-	// heavy deliverer, the direct §7.1 firewall test). Its entry points are
-	// SpendDeliveryAnchors / SettleDelivery / CloseDeliverySession, classified in
-	// deliveryanchor.go's block below; the flat leg's RedeemDeliveryCredit and
-	// RedeemDeliveryCreditReason retired with it (C1, 2026-09-08).
+	// PoD neutral lane. The witnessed delivery credit is a CONSERVED balance
+	// transfer (the fetcher's burned anchor face, less skim) that supersedes the
+	// serve self-record — pure balance economy. It must never move standing: a
+	// receipt is mintable with zero object bytes by design, so the entire
+	// soundness story rests on this press staying neutral (delivery_test.go pins
+	// it against a heavy deliverer, the direct §7.1 firewall test). Its entry
+	// points are SpendDeliveryAnchors / SettleDelivery / CloseDeliverySession,
+	// classified in deliveryanchor.go's block below; the flat leg's
+	// RedeemDeliveryCredit and RedeemDeliveryCreditReason retired with it (C1,
+	// 2026-09-08).
 	//
 	// The observability counters behind the guard: read by logs and tests only — no
 	// accounting rule and no standing press reads them.
 	"GuardFullRefusals":  neutral, // observability (paid-serial guard cap hits)
-	"SerialSweeps":       neutral, // observability (expiry sweep count, RT-E bound)
-	"CompactFailures":    neutral, // observability (R2.13: durable-store Compact errors, counted never refused)
-	"LastCompactError":   neutral, // observability (R2.13: the most recent such error)
+	"SerialSweeps":       neutral, // observability (expiry sweep count bound)
+	"CompactFailures":    neutral, // observability (durable-store Compact errors, counted never refused)
+	"LastCompactError":   neutral, // observability (the most recent such error)
 	"SetPaidSerialStore": neutral, // attaches the durable guard store; moves nothing
-	"SetEpochSource":     neutral, // R2.10 / F8: injects the ledger's epoch clock; moves nothing
-	// R2.9a B_bootstrap: SetObservabilityClock and BBootstrapPublish are classified in
+	"SetEpochSource":     neutral, // injects the ledger's epoch clock; moves nothing
+	// B_bootstrap: SetObservabilityClock and BBootstrapPublish are classified in
 	// invariant_a_bbootstrap_test.go, which compiles only under the `bbootstrap` build
-	// tag — the two methods do not exist in a default build (D-BB-BUILD-TAG). This map
+	// tag — the two methods do not exist in a default build. This map
 	// is checked in BOTH directions (a method with no entry fails; an entry with no
 	// method fails), so the entries have to be tagged exactly as the methods are.
-	"Epoch":           neutral, // R2.10 / F8: reads max(watermark, source); a pure observer
+	"Epoch":           neutral, // reads max(watermark, source); a pure observer
 	"LoadPaidSerials": neutral, // restores the guard from disk; moves nothing
 
-	// PoD relay lane (relay.go; R0.7 interim: pays 0 until R2.14). Relay/gateway
-	// bandwidth compensation would settle a sender-funded PayWord chain into the
-	// relay operator's BALANCE once the prepayment anchor binds it — a
-	// conserved transfer, never a mint. Like the delivery lane it MUST never move
-	// standing: a PayWord chain is fundable with zero object bytes by certified
-	// design (it pays for forwarding, which is unprovable), so this press buying
-	// even one unit of standing would convert funded chains into consensus weight
-	// (relay_test.go pins it against a heavy relay, the §7.3 firewall test).
+	// PoD relay lane (relay.go interim: pays 0 until). Relay/gateway
+	// bandwidth compensation would settle a sender-funded PayWord chain
+	// into the relay operator's BALANCE once the prepayment anchor binds
+	// it — a conserved transfer, never a mint. Like the delivery lane it
+	// MUST never move standing: a PayWord chain is fundable with zero
+	// object bytes by design (it pays for forwarding, which is
+	// unprovable), so this press buying even one unit of standing would
+	// convert funded chains into consensus weight (relay_test.go pins it
+	// against a heavy relay, the §7.3 firewall test).
 	"RedeemRelayCredit": neutral,
-	// R2.14: the anchor spend records (epoch, serial) pairs in the paid-serial guard
-	// and returns their face — the session budget. Guard map, durable store and
+	// The anchor spend records (epoch, serial) pairs in the paid-serial guard and
+	// returns their face — the session budget. Guard map, durable store and
 	// counters only; no field Reputation reads.
 	"SpendRelayAnchors": neutral,
-	// R2.9: the delivery lane's anchor spend (the same guard press with the server
-	// recorded), the count-denominated settlement (pays out of an anchor budget into the
-	// server's BALANCE and the object's escrow, reverses the provisional lane per
+	// The delivery lane's anchor spend (the same guard press with the server
+	// recorded), the count-denominated settlement (pays out of an anchor budget into
+	// the server's BALANCE and the object's escrow, reverses the provisional lane per
 	// increment — balance economy only) and its telemetry reader.
 	"SpendDeliveryAnchors":    neutral,
 	"SettleDelivery":          neutral,
@@ -194,7 +197,7 @@ func TestInvariantA_EveryLedgerMethodClassified(t *testing.T) {
 // here regardless of what the map claims.
 func TestInvariantA_NoNonMintPressRaisesStanding(t *testing.T) {
 	l := New(50_000, 0)
-	src := &mockEpochSource{} // R2.10 / F8: the relay press below spends an anchor AT the round's epoch
+	src := &mockEpochSource{} // the relay press below spends an anchor AT the round's epoch
 	l.SetEpochSource(src)
 	n := id(1)
 	other := id(2)
@@ -214,7 +217,7 @@ func TestInvariantA_NoNonMintPressRaisesStanding(t *testing.T) {
 		l.RecordServeToObject(n, other, obj, id(9), 1<<40) // object-aware serve + auto-skim
 		paidOnLane(l, n, other, obj, testSerial(531), 0)   // witnessed delivery credit (PoD neutral lane)
 		// PayWord relay credit (PoD relay lane), pressed against an ANCHORED session
-		// so the settle body actually pays (cert §3): buy one anchor through the
+		// so the settle body actually pays: buy one anchor through the
 		// real burn, spend it, settle the whole budget to n.
 		l.acct(other).balance += l.Fee() // other is the durable buyer; fund the burn
 		if err := l.ChargePublish(other); err != nil {
@@ -227,7 +230,7 @@ func TestInvariantA_NoNonMintPressRaisesStanding(t *testing.T) {
 		if paid := l.RedeemRelayCredit(n, other, 1<<30, face); paid != face {
 			t.Fatalf("round %d: RedeemRelayCredit paid %d against budget %d — the relay press is vacuous", round, paid, face)
 		}
-		// R2.9 delivery settlement, pressed against an ANCHORED, paying session (B-14):
+		// delivery settlement, pressed against an ANCHORED, paying session:
 		// buy one anchor through the real burn, spend it at open naming n as the
 		// server, serve a lane, settle the whole budget to n.
 		l.acct(other).balance += l.Fee()

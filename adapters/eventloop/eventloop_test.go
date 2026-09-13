@@ -50,7 +50,7 @@ func TestPanicContainedWithoutHook(t *testing.T) {
 }
 
 // A task slower than SlowThreshold is reported through OnSlow with its label —
-// the "function taking unreasonable time" evidence (Andrew's timing idea).
+// the "function taking unreasonable time" evidence (the project owner's timing idea).
 func TestSlowTaskReported(t *testing.T) {
 	l := New()
 	l.SlowThreshold = 10 * time.Millisecond

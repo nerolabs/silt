@@ -1,0 +1,137 @@
+package main
+
+import (
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/nerolabs/silt/core/credit"
+	"github.com/nerolabs/silt/core/demand"
+	"github.com/nerolabs/silt/core/relaypay"
+)
+
+// node-half gates that need core/credit, core/demand AND core/relaypay plus
+// TestDeliverySessionCeilingIsDerivedFromTheFace. D_max == ⌊f/p⌋·U and k_max_delivery
+// == 1, computed from relaypay.ShippedAnchorFace and credit.Delivery*; the wire bound
+// demand.MaxAnchorsPerOpen equals the derivation. Ablation: pin D_max to a literal, or
+// move f to 25,000 and watch D_max fail to follow.
+func TestDeliverySessionCeilingIsDerivedFromTheFace(t *testing.T) {
+	dMax, kMax := deliverySessionCeiling(relaypay.ShippedAnchorFace)
+	if dMax != 13_107_200_000 {
+		t.Fatalf("D_max %d, want ⌊f/p⌋·U = 13,107,200,000 (12.21 GiB)", dMax)
+	}
+	if credit.DeliveryBytesPerAnchor != dMax {
+		t.Fatalf("credit.DeliveryBytesPerAnchor %d != the derived D_max %d", credit.DeliveryBytesPerAnchor, dMax)
+	}
+	if kMax != 1 {
+		t.Fatalf("k_max_delivery %d, want 1", kMax)
+	}
+	if demand.MaxAnchorsPerOpen != kMax {
+		t.Fatalf("demand.MaxAnchorsPerOpen %d != the derived k_max %d — the wire bound drifted from the derivation", demand.MaxAnchorsPerOpen, kMax)
+	}
+	// The derivation FOLLOWS the face: a halved face halves the ceiling and keeps k_max.
+	if d2, k2 := deliverySessionCeiling(relaypay.ShippedAnchorFace / 2); d2 != dMax/2 || k2 != 1 {
+		t.Fatalf("at half the face: D_max %d (want %d), k_max %d", d2, dMax/2, k2)
+	}
+}
+
+// TestGrantFundsThePinInWholeFaces. ⌈B_pin/D_max⌉ + ⌈B_pin/relayBytesPerAnchor⌉ ≤ ⌊g/f⌋
+// at the runtime constants (6 + 3 = 9 ≤ 10, one face of margin); a raised face, a lowered
+// grant, a lowered U or a lowered relay increment must each REFUSE.
+func TestGrantFundsThePinInWholeFaces(t *testing.T) {
+	const grant = int64(500_000)
+	relay := int64(relaypay.RelayIncrementBytes / relaypay.RelayIncrementCredit)
+	need, have, ok := grantFundsThePinInWholeFaces(grant, relaypay.ShippedAnchorFace, relay)
+	if !ok || need != 9 || have != 10 {
+		t.Fatalf("whole-face pin: need %d have %d ok %v, want 9 ≤ 10", need, have, ok)
+	}
+	// Raising the face lowers BOTH face counts the pin needs and the faces a grant holds;
+	// the cliff is a 4× face: 2 faces cannot fund ⌈64/48.8⌉ + ⌈64/97.7⌉ = 3.
+	if need, have, ok := grantFundsThePinInWholeFaces(grant, 200_000, relay); ok || need != 3 || have != 2 {
+		t.Fatalf("a 4× face must refuse: need %d have %d ok %v", need, have, ok)
+	}
+	if _, _, ok := grantFundsThePinInWholeFaces(400_000, relaypay.ShippedAnchorFace, relay); ok {
+		t.Fatal("a lowered grant (8 faces) must refuse")
+	}
+	if _, _, ok := grantFundsThePinInWholeFaces(grant, relaypay.ShippedAnchorFace, relay/4); ok {
+		t.Fatal("a quartered relay increment (12 relay faces) must refuse")
+	}
+}
+
+// TestAffordabilityLineIsAnnounced: The S5 line carries the numbers computed from
+// the constants; a hand-typed number cannot drift because there is none.
+func TestAffordabilityLineIsAnnounced(t *testing.T) {
+	line := deliveryAffordabilityLine(500_000, relaypay.ShippedAnchorFace, relaypay.RelayIncrementBytes/relaypay.RelayIncrementCredit, "1h0m0s")
+	for _, want := range []string{
+		"delivery settlement: p=1 credit per 262144 B", "U/p=262144 B/credit", "Dλ=393216 B/credit", "PF 1.50",
+		"anchor face 50000 funds 50000 increments = 13107200000 B (12.21 GiB) per session, k_max=1",
+		"one grant = 10 faces, the 64 GiB pin needs 9 faces", "idle window 1h0m0s", "DEPOSIT returned to the fetcher", "5-epoch guard window",
+	} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("affordability line lacks %q:\n%s", want, line)
+		}
+	}
+}
+
+// TestDaemonRefusalsAreWiredAtStartup_Source — the two start-up refusals, gated
+// where the RUNTIME value is read.12 source-gate shape: the daemon must (i) refuse
+// -accept-delivery-receipts below the idle-window floor on a line naming the flag and the
+// floor, and (ii) CALL grantFundsThePinInWholeFaces on the ledger's own grant and fee
+// (never a literal). This gate sees STRINGS and ORDER only. RUNTIME GATE:
+// TestDeliveryIdleWindowFloorIsEnforcedAtStartUp (e2e: the daemon exits with the refusal
+// naming the flag, under the derived floor and sub-second); its other polarity is
+// TestDeliveryIdleWindowDefaultBootsThePaidLane, which asserts the ANNOUNCED window — and
+// since daemon.go announces what it read back out of the reaper, that e2e arm is also the
+// runtime cover for: an install that diverges from the checked flag is announced
+// as what it is, and the arm reddens. The whole-face pin refusal's runtime arm is UNGATED:
+// it cannot fire at the shipped constants — 9 of 10 faces fit — so no launch can reach
+// it without moving a price.
+func TestDaemonRefusalsAreWiredAtStartup_Source(t *testing.T) {
+	src, err := os.ReadFile("daemon.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := stripLineComments(string(src))
+	if !strings.Contains(body, "*deliveryIdle < deliveryIdleFloor") {
+		t.Fatal("SOURCE GATE: daemon.go no longer compares -delivery-idle-window against deliveryIdleFloor before enabling the lane — the refuse-until-set (C9) is gone")
+	}
+	line := lineContaining(body, "-accept-delivery-receipts: refusing to start — set -delivery-idle-window")
+	if line == "" {
+		t.Fatal("SOURCE GATE: the idle-window refusal line (naming the flag and 'refusing to start') is gone from daemon.go")
+	}
+	// The window the daemon INSTALLS in the reaper and the window it ANNOUNCES are one
+	// value, read back out of the node. Two independent reads of *deliveryIdle would
+	// let the daemon refuse a non-compliant window at start-up, install a different
+	// one, and announce a third; only the refusal is gated on the floor.
+	if !strings.Contains(body, "nd.EnableDeliverySessions(ports.Duration(*deliveryIdle))") {
+		t.Fatal("SOURCE GATE: daemon.go no longer installs the CHECKED flag value in the reaper — the string `nd.EnableDeliverySessions(ports.Duration(*deliveryIdle))` is gone, so the value the floor check judged and the value the reaper runs on may differ")
+	}
+	if !strings.Contains(body, "installedIdle := time.Duration(nd.DeliveryIdleWindow())") {
+		t.Fatal("SOURCE GATE: daemon.go no longer reads the window BACK OUT of the reaper (`installedIdle := time.Duration(nd.DeliveryIdleWindow())`) — the sweep cadence and the announced window would go back to re-reading the flag, and an install that diverges from it would be silent")
+	}
+	for _, consumer := range []string{"deliverySweepInterval(installedIdle)", "installedIdle.String()"} {
+		if !strings.Contains(body, consumer) {
+			t.Fatalf("SOURCE GATE: daemon.go does not pass the installed window to %s — a consumer reading the flag instead of the reaper breaks the tie between what is announced and what is installed", consumer)
+		}
+	}
+	if !strings.Contains(body, "grantFundsThePinInWholeFaces(ledger.Grant(), ledger.Fee(), relaypay.RelayIncrementBytes/relaypay.RelayIncrementCredit)") {
+		t.Fatal("SOURCE GATE: daemon.go does not call grantFundsThePinInWholeFaces on the ledger's grant and fee —  is a pure function nobody reads at start-up")
+	}
+	if deliveryIdleFloor < time.Second {
+		t.Fatalf("SOURCE GATE: deliveryIdleFloor %s below one second — the idle/2 wall-clock ticker interval would round to zero and panic; the runtime cover is e2e TestDeliveryIdleWindowFloorIsEnforcedAtStartUp", deliveryIdleFloor)
+	}
+}
+
+func lineContaining(body, needle string) string {
+	i := strings.Index(body, needle)
+	if i < 0 {
+		return ""
+	}
+	lo := strings.LastIndex(body[:i], "\n") + 1
+	hi := strings.Index(body[i:], "\n")
+	if hi < 0 {
+		return body[lo:]
+	}
+	return body[lo : i+hi]
+}

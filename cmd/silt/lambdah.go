@@ -1,9 +1,9 @@
 package main
 
 // λ_H arrival-rate instrumentation — the measurement the CT-1 conditional theorem is
-// owed. See research cert C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27,
+// owed. See
 // §6 ("the one owed input"): RECORD the honest-arrival RATE at launch and alarm on a
-// floor exit. Design: docs/thinking/2026-08-27-lambda-h-arrival-rate-instrumentation.md.
+// floor exit.
 //
 // λ_H is the operator/domain-distinct bonded-arrival rate per block-height. The honest-
 // arrival COUNT A(t) is the shipped shed metric min(NakamotoOperators, NakamotoDomains)
@@ -61,7 +61,7 @@ func (t *lambdaHTracker) ready() bool {
 
 // rate returns the measured λ_H = (A(t1) − A(t0)) / (t1 − t0) over the trailing window,
 // the realized net operator/domain-distinct bonded-arrival rate per block-height. Only
-// meaningful when ready().
+// meaningful when ready.
 func (t *lambdaHTracker) rate() float64 {
 	if !t.ready() {
 		return 0
@@ -81,10 +81,10 @@ func (t *lambdaHTracker) span() uint64 {
 }
 
 // belowFloor reports whether the measured λ_H has fallen strictly below the configured
-// floor — the CT-1 hypothesis-H exit. Only fires once the window is ready() and the floor
-// is enabled (> 0). The CALLER additionally gates on !EverMature(): after the one-way
-// latch the arrival floor is moot (P4 — post-maturity concentration cannot re-arm anchors),
-// so the alarm only matters in the pre-maturity window the theorem must order.
+// floor — the CT-1 hypothesis-H exit. Only fires once the window is ready and the floor is
+// enabled (> 0). The CALLER additionally gates on !EverMature: after the one-way latch the
+// arrival floor is moot (P4 — post-maturity concentration cannot re-arm anchors), so the
+// alarm only matters in the pre-maturity window the theorem must order.
 func (t *lambdaHTracker) belowFloor(floor float64) bool {
 	return floor > 0 && t.ready() && t.rate() < floor
 }

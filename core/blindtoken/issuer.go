@@ -38,16 +38,17 @@ func ParsePub(b []byte) (*rsa.PublicKey, error) {
 		N: new(big.Int).SetBytes(b[4 : 4+n]),
 		E: int(binary.BigEndian.Uint32(b[4+n : 8+n])),
 	}
-	// A DECODED KEY IS UNTRUSTED INPUT, NOT A KEY (red-team re-break F4, 2026-09-03).
-	// This used to bound nothing: any N, any E. N = 0 panicked every verifier inside
-	// big.Int.Mod (division by zero) — reachable today, a bonded Byzantine issuer
-	// crashing every fetcher that transacts with it. N = 1 made s^e mod 1 == 0 == the
-	// FDH image, so EVERY (serial, sig) pair verified — a universal forgery. E = 1 made
-	// sig := FDH(msg) computable by anyone holding the public key. The consensus
-	// commitment cannot catch any of it: it attests sha256(MarshalPub(key)), 32 bytes,
-	// which is a binding on WHICH BYTES an issuer serves and never on whether those
-	// bytes are an unforgeable signature scheme. RFC 9578 key configurations carry
-	// validated key material; this one now does too.
+	// A DECODED KEY IS UNTRUSTED INPUT, NOT A KEY, 2026-09-03. This used to bound
+	// nothing: any N, any E. N = 0 panicked every verifier inside big.Int.Mod
+	// (division by zero) — reachable today, a bonded Byzantine issuer crashing
+	// every fetcher that transacts with it. N = 1 made s^e mod 1 == 0 == the FDH
+	// image, so EVERY (serial, sig) pair verified — a universal forgery. E = 1
+	// made sig:= FDH(msg) computable by anyone holding the public key. The
+	// consensus commitment cannot catch any of it: it attests
+	// sha256(MarshalPub(key)), 32 bytes, which is a binding on WHICH BYTES an
+	// issuer serves and never on whether those bytes are an unforgeable signature
+	// scheme. RFC 9578 key configurations carry validated key material; this one
+	// now does too.
 	if err := ValidatePub(pub); err != nil {
 		return nil, err
 	}
@@ -84,16 +85,16 @@ var ErrBadPubKey = errors.New("blindtoken: malformed issuer public key")
 // degenerate key is a legible refusal at the earliest boundary that sees it and can
 // never be a panic at the latest.
 //
-// SHAPE, THEN HARDNESS (crypto-specialist advisory C-3, 2026-09-03). The first four
+// SHAPE, THEN HARDNESS. The first four
 // checks bound the key's SHAPE. They are necessary and were not sufficient: the seat's
 // spike fed four moduli through the shape-only bound set and ALL FOUR passed —
 //
-//	N = one 2048-bit PRIME       → φ(N) = N−1 is public, so ANY node computes d
+//	N = one 2048-bit PRIME → φ(N) = N−1 is public, so ANY node computes d
 //	N = 122 distinct 17-bit primes → any node that trial-divides N computes d
-//	N = p² (p 1024-bit)          → a perfect power, factorable
-//	E = 3                        → below FIPS 186-5's 2^16 floor
+//	N = p² (p 1024-bit) → a perfect power, factorable
+//	E = 3 → below FIPS 186-5's 2^16 floor
 //
-// and the first two are outright universal forgery by any observer. The consensus
+// And the first two are outright universal forgery by any observer. The consensus
 // commitment cannot catch any of it: it attests sha256(MarshalPub(key)), a binding on
 // WHICH BYTES an issuer serves and never on whether those bytes are an unforgeable
 // signature scheme. So a Byzantine bonded issuer could commit a deliberately weak
@@ -101,7 +102,7 @@ var ErrBadPubKey = errors.New("blindtoken: malformed issuer public key")
 // means tokens were paid for" — the premise the credit layer's conservation argument
 // rests on — would be false.
 //
-// The four hardness checks below are the ACME/Boulder GoodKey schema and NIST SP
+// The four hardness checks below are the ACME/the roadmapGoodKey schema and NIST SP
 // 800-56B partial public-key validation, adopted rather than invented (tenet B8). They
 // do NOT make N provably a semiprime; that needs a ZK proof of correct key generation,
 // which is out of scope. State the residual honestly: BLINDNESS AGAINST A MALICIOUS
@@ -109,20 +110,20 @@ var ErrBadPubKey = errors.New("blindtoken: malformed issuer public key")
 // commitment bounds EQUIVOCATION, not soundness.
 //
 // Shape:
-//   - N odd (every RSA modulus is a product of odd primes; this alone rejects 0 and
-//     every even degenerate), in [MinModulusBits, MaxModulusBits].
-//   - E odd (an even exponent is not invertible mod φ(N), so no signature could ever
-//     verify) and at most MaxPubExp.
+// - N odd (every RSA modulus is a product of odd primes; this alone rejects 0 and
+// Every even degenerate, in [MinModulusBits, MaxModulusBits].
+// - E odd (an even exponent is not invertible mod φ(N), so no signature could ever
+// verify and at most MaxPubExp.
 //
 // Hardness:
-//   - E > 65536 (FIPS 186-5 App. A.1.1: "2^16 < e < 2^256"). Every key this tree
-//     generates uses e = 65537, so this rejects nothing honest.
-//   - no prime factor below SmallFactorBound (one gcd against the primorial) — kills
-//     the smooth modulus. See SmallFactorBound for exactly what that bar buys.
-//   - N is not a perfect power p^k — kills the p² case.
-//   - N is not itself prime (Miller-Rabin) — kills the single-prime universal forgery.
+// - E > 65536 (FIPS 186-5 App. A.1.1: "2^16 < e < 2^256"). Every key this tree
+// generates uses e = 65537, so this rejects nothing honest.
+// - no prime factor below SmallFactorBound (one gcd against the primorial) — kills
+// The smooth modulus. See SmallFactorBound for exactly what that bar buys.
+// - N is not a perfect power p^k — kills the p² case.
+// - N is not itself prime (Miller-Rabin) — kills the single-prime universal forgery.
 //
-// COST, measured (TestC3_ValidatePubCostBudget): well under the 5 ms per-pin
+// COST, measured (TestValidatePubCostBudget): well under the 5 ms per-pin
 // budget, and it runs at most W+1 = 5 times per issuer per window.
 func ValidatePub(pub *rsa.PublicKey) error {
 	if err := validateShape(pub); err != nil {
@@ -140,7 +141,7 @@ func ValidatePub(pub *rsa.PublicKey) error {
 	}
 	// ProbablyPrime(0) is already a Baillie-PSW test in Go (Miller-Rabin bases plus a
 	// Lucas test) and no composite is known to pass it; the argument only adds extra
-	// RANDOM Miller-Rabin rounds. One is what the advisory priced (2.2 ms measured) and
+	// RANDOM Miller-Rabin rounds. One is what was priced (2.2 ms measured) and
 	// it is the dominant term in this function's cost, so it stays at one.
 	if pub.N.ProbablyPrime(1) {
 		return fmt.Errorf("%w: modulus is PRIME, so phi(N) = N-1 is public and any "+
@@ -153,7 +154,7 @@ func ValidatePub(pub *rsa.PublicKey) error {
 // the LAST-LINE defence run before every modexp (blindD, Unblind, verifyD), and it must
 // stay cheap for exactly that reason — those are hot paths on the single-threaded node
 // loop, and an attacker chooses how often they run. It is what closes the N = 0 panic
-// and the N = 1 / E = 1 universal forgeries (red-team re-break F4).
+// and the N = 1 / E = 1 universal forgeries.
 //
 // The HARDNESS half (primorial gcd, perfect power, primality — ~3.5 ms) runs only where
 // a key is ADMITTED: ParsePub at the wire boundary and demand.Keyset.Put at the keyset
@@ -200,10 +201,10 @@ func ValidateShape(pub *rsa.PublicKey) error { return validateShape(pub) }
 // INSTRUMENTATION, not a control — nothing branches on it. It exists because the C-3
 // split ("hardness at admission, shape on the hot path") is a claim about HOW OFTEN an
 // expensive function runs, and the only honest way to gate that is to count it. Timing
-// cannot: the crypto advisory found the split silently re-broken through a different
+// cannot: the split was found silently re-broken through a different
 // door (Node.DemandIssuerKeyset re-Put every held key on every read, so one
 // unauthenticated inbound MsgDeliveryReceipt cost 9 x 3.3 ms on the node loop), and
-// TestC3_HardnessRunsAtAdmissionNotOnEveryModexp could not see it because it timed the
+// TestHardnessRunsAtAdmissionNotOnEveryModexp could not see it because it timed the
 // two functions in isolation instead of counting them along the node path.
 var validatePubHardnessRuns atomic.Uint64
 
@@ -217,16 +218,17 @@ func ValidatePubHardnessRuns() uint64 { return validatePubHardnessRuns.Load() }
 //
 // IT IS A BAR, NOT A PROOF, and the honest statement is in two halves. What it buys:
 // every "product of many small primes" modulus up to 20-bit factors is refused, which
-// covers the advisory's 122-times-17-bit shape and everything an attacker could build
+// covers the 122-times-17-bit shape and everything an attacker could build
 // from a sieve that fits in memory. What it does NOT buy: an attacker who uses 21-bit
 // factors walks past it. Deciding "N is a product of exactly two large primes" cheaply
 // is not possible; that needs a ZK proof of correct key generation, which is out of
 // scope (see ValidatePub's residual note).
 //
-// The bound is 2^20 rather than ACME/Boulder's 2^16 because the primorial-GCD form
-// below makes the higher bar CHEAPER than naive trial division at the lower one:
-// measured 0.77 ms per key at 2^20 against 0.30 ms of batched modular reductions at
-// 2^16, both far under the 5 ms per-pin budget (TestC3_ValidatePubCostBudget).
+// The bound is 2^20 rather than ACME's 2^16 because the primorial-GCD
+// form below makes the higher bar CHEAPER than naive trial division at the lower
+// one: measured 0.77 ms per key at 2^20 against 0.30 ms of batched modular
+// reductions at 2^16, both far under the 5 ms per-pin budget
+// (TestValidatePubCostBudget).
 const SmallFactorBound = 1 << 20
 
 // smallPrimorial is the product of every odd prime below SmallFactorBound, so one
@@ -344,8 +346,7 @@ type Issuer struct {
 	spent map[string]bool
 }
 
-// NewIssuer takes the randomness source the private-key operation blinds with
-// (advisory C-2). It is INJECTED, never ambient: core is forbidden crypto/rand
+// NewIssuer takes the randomness source the private-key operation blinds with. It is INJECTED, never ambient: core is forbidden crypto/rand
 // (internal/depcheck), the adapter passes crypto/rand and a sim passes a seeded
 // source. The blinding factor cancels, so the signature this issuer produces is the
 // same value for any rng — only the modexp's timing profile changes.
@@ -360,7 +361,7 @@ func (i *Issuer) Public() *rsa.PublicKey { return &i.key.PublicKey }
 // blind-signs the token — learning nothing about its serial. If the charge
 // fails (e.g. insufficient credit), no token is minted.
 //
-// THE INPUT IS CHECKED BEFORE THE CHARGE, and the order is the property (advisory C-5).
+// THE INPUT IS CHECKED BEFORE THE CHARGE, and the order is the property.
 // SignBlinded refuses a non-canonical or out-of-range representative, so without this
 // pre-check a rejected spelling would still have taken the requester's fee — a strictly
 // worse bug than the dedup bypass the refusal exists to close. The CHARGE still comes

@@ -1,0 +1,71 @@
+//go:build bbootstrap
+
+package main
+
+// The ONE /api/status snapshot gate that reads the B_bootstrap block, and therefore
+// the one that can only run under the `bbootstrap` build tag. Its siblings in
+// status_surface_test.go are untagged, because the cache, its staleness stamps, the
+// invalidation hook and the F2 token gate are properties of the status endpoint in
+// EVERY build — a default binary has no histogram to cache, and it still must not
+// recompute the O(R) + O(chunks) document per unauthenticated GET.
+
+import (
+	"testing"
+	"time"
+
+	"github.com/nerolabs/silt/core/credit"
+	"github.com/nerolabs/silt/ports"
+)
+
+// --- the snapshot is not recomputed per request -------------------
+
+// TestStatusSnapshotIsCachedForOneInterval is the research the gate. Two GET
+// /api/status calls inside one refresh interval, WITH A FETCH INTERLEAVED, return
+// byte-identical bBootstrap blocks; a third call past the interval sees the fetch.
+//
+// WHY IT IS REQUIRED, on two independent grounds. The residual was disclosed as "bounded by the poll rate", and the poll
+// rate is the READER's own choice — there is no rate limiter anywhere on the UI
+// server, so that was not a bound at all. And the recompute is an O(R) walk over a
+// never-evicted account set plus the whole chunk store, INSIDE the node's event loop,
+// per unauthenticated GET: build-immutable #8, "an unbounded system on a small box is
+// not inefficient, it is unsafe."
+func TestStatusSnapshotIsCachedForOneInterval(t *testing.T) {
+	s, led, clk := r29aServer(t, true)
+	s.now = nil // this gate drives the clock itself; see r29aServer's per-poll advance
+	for i := 0; i < credit.BBootstrapMinRequesters; i++ {
+		r29aFetch(led, i, 4096)
+	}
+	clk.now = ports.Time(3600 * 1e9)
+
+	// THE READS ARE THE OPERATOR'S: since 2026-09-05 the block is served only to
+	// a request carrying the token in the Authorization header, so an untokened reader
+	// sees the marker and no block at all. The cache property this gate pins is
+	// unchanged and reader-independent — ONE document, recomputed once per interval,
+	// copied per reader — and the untokened read below rides the same cache line, so the
+	// build-immutable #8 ground (the O(R) walk runs once per interval, not once per
+	// unauthenticated GET) is still exactly what is asserted.
+	base := s.started
+	first := statusAt(t, s, base, true)
+	if _, withheld := statusKeyPresent(t, statusAt(t, s, base, false), "bBootstrapWithheld"); !withheld {
+		t.Fatalf("an untokened GET inside the interval did not read bBootstrapWithheld — the unauthenticated reader must ride the same cached document and see the marker")
+	}
+
+	// The interleaved fetch: a brand-new identity, a byte count in a different bin.
+	// This is exactly the observation the trajectory attack needs, and it must not be
+	// visible until the interval turns over.
+	r29aFetch(led, 999, 1<<20)
+	clk.now = ports.Time(3600*1e9 + int64(statusSnapshotInterval/2))
+
+	second := statusAt(t, s, base.Add(statusSnapshotInterval-time.Millisecond), true)
+
+	fb, sb := statusKey(t, first, "bBootstrap"), statusKey(t, second, "bBootstrap")
+	if string(fb) != string(sb) {
+		t.Fatalf("two reads inside one refresh interval returned DIFFERENT bBootstrap blocks — the snapshot is being recomputed per request, so the disclosed bound is the reader's poll rate and the O(R) census walk runs once per unauthenticated GET on the event loop.\nfirst:  %s\nsecond: %s", fb, sb)
+	}
+
+	// Past the interval the instrument is live again: the interleaved fetch appears.
+	third := statusAt(t, s, base.Add(statusSnapshotInterval+time.Second), true)
+	if tb := statusKey(t, third, "bBootstrap"); string(tb) == string(fb) {
+		t.Fatalf("the block did not change a full interval after a new identity fetched — the cache never expires, which is not a snapshot, it is a freeze: %s", tb)
+	}
+}

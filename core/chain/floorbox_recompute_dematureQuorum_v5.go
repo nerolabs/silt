@@ -12,7 +12,7 @@ import (
 // era-4 (v5) trustless floor-box RECOMPUTE — lane-1 Part B core, increment 3.
 //
 // This file reproduces a THIRD validity predicate — the F-1 DE-MATURE SUPER-QUORUM
-// requireDeMatureSuperQuorum (chain.go:2947) — trustlessly, from the committed StateRoot +
+// requireDeMatureSuperQuorum (chain.go) — trustlessly, from the committed StateRoot +
 // witnesses ALONE. It replicates increment 1's C-1 pattern (floorbox_recompute_v5.go,
 // recomputeEpochWeightQuorum) over a DIFFERENT keyspace: the WHOLE bonded map (the R-membership
 // budget path), rather than the frozen epochSet.
@@ -23,45 +23,44 @@ import (
 // box calls INSTEAD of holding the tree — the same posture the two prior increments hold.
 //
 // THE PREDICATE. Once a chain has matured (everMature) but its live decentralization has since
-// dropped below the bar (everMature && objective() && !matureNow(), chain.go:2827), a commit
-// must be carried by a real-bond SUPER-MAJORITY: the committing coalition (proposer + the
-// distinct qualified attesters `seen`) must control >= ⌈2·total/3⌉ of the WHOLE live bonded
-// weight (Σ bonded), no anchor sign-off. Any two such super-quorums intersect in > ⅓ of the
-// weight, so they share honest bond — the center-less replacement for the retired anchor net.
+// dropped below the bar (everMature && objective && !matureNow, chain.go), a commit must
+// be carried by a real-bond SUPER-MAJORITY: the committing coalition (proposer + the distinct
+// qualified attesters `seen`) must control >= ⌈2·total/3⌉ of the WHOLE live bonded weight (Σ
+// bonded), no anchor sign-off. Any two such super-quorums intersect in > ⅓ of the weight, so
+// they share honest bond — the center-less replacement for the retired anchor net.
 //
 // THE MATURITY GATE (the increment-3-specific piece). requireDeMatureSuperQuorum fires ONLY
-// when !matureNow(). So the trustless reproduction gates on the REPRODUCED maturity state:
+// when !matureNow. So the trustless reproduction gates on the REPRODUCED maturity state:
 // recomputeDeMatureSuperQuorum calls recomputeMatureNow (increment 2) first and folds the
 // super-quorum ONLY when the maturity recompute returns mature == false. When mature == true
-// the full node does not run this predicate, so the recompute returns (met=true, nil) — a
-// no-op that matches the full node's skip. The maturity state is itself PROVEN from the
-// committed root (increment 2), so a producer cannot trick the box into enforcing (or skipping)
-// the de-mature bar in the wrong maturity state.
+// the full node does not run this predicate, so the recompute returns (met=true, nil) — a no-op
+// that matches the full node's skip. The maturity state is itself PROVEN from the committed
+// root (increment 2), so a producer cannot trick the box into enforcing (or skipping) the
+// de-mature bar in the wrong maturity state.
 //
 // THE THREE-PART PROOF (recomputeDeMatureSuperQuorum, the super-quorum fold):
-//  1. SET-COMPLETENESS: reconstruct nodeSetMTH(witnessedIDs) over the whole-bonded id-list;
-//     require it equals the committed bondedRoot leaf (proven present against the StateRoot).
-//     One omitted (or injected) member ⇒ a different MTH ⇒ mismatch ⇒ stall. This is the F1
-//     bondedRoot digest FINALLY READ (F1 committed it inert; increment 3 consumes it for bonded).
-//  2. PER-MEMBER WEIGHT (C-1): for EVERY id in the reconstructed set, Resolve the bonded[id]
-//     value leaf against the committed StateRoot. A forged weight fails smt.VerifyProof ⇒ stall.
-//     The digest gave membership; the inclusion proofs give the values.
-//  3. THRESHOLD (C-6): the ⅔ ratio is a fixed consensus constant, NOT a genesis knob, so this
-//     predicate's fold reads no per-deployment config value — there is nothing here an attacker
-//     could shift via the witness (exactly like increment 1's requireEpochWeightQuorum). The C-6
-//     obligation is nonetheless exercised, not skipped: the recompute takes NO threshold from w.
+// 1. SET-COMPLETENESS: reconstruct nodeSetMTH(witnessedIDs) over the whole-bonded id-list;
+// require it equals the committed bondedRoot leaf (proven present against the StateRoot).
+// One omitted (or injected) member ⇒ a different MTH ⇒ mismatch ⇒ stall. This is the F1
+// bondedRoot digest FINALLY READ (F1 committed it inert; increment 3 consumes it for bonded).
+// 2. PER-MEMBER WEIGHT: for EVERY id in the reconstructed set, Resolve the bonded[id]
+// value leaf against the committed StateRoot. A forged weight fails smt.VerifyProof ⇒ stall.
+// The digest gave membership; the inclusion proofs give the values.
+// 3. THRESHOLD: the ⅔ ratio is a fixed consensus constant, NOT a genesis knob, so this
+// predicate's fold reads no per-deployment config value — there is nothing here an attacker
+// could shift via the witness (exactly like increment 1's requireEpochWeightQuorum). The C-6
+// obligation is nonetheless exercised, not skipped: the recompute takes NO threshold from w.
 //
-// Then the fold + threshold, byte-for-byte the full node's (chain.go:2949-2963):
+// Then the fold + threshold, byte-for-byte the full node's (chain.go):
 // total = Σ verified whole-bonded weights; committed = bonded[proposer] + Σ_{id∈seen} bonded[id];
 // need = ⌈2·total/3⌉; met = committed >= need.
 //
-// STOP BOUNDARY (this increment). It reproduces ONE predicate. It does NOT flip #657
-// the box to Accept — that is the final increment, only after ALL predicates are
-// reproduced. The box STILL never-Accepts. requireDeMatureSuperQuorum folds the WHOLE bonded map
-// directly — it does NOT consult effectiveEpochSet/liveQualifiedSet, so the #535 recovery
-// boundary does NOT change this fold (there is no boundary case to carve out for it). The
-// boundary remains the ratified trust-the-directive carve-out (cert C-2) for the sets it DOES
-// touch (epochSet, increment 1), out of scope here.
+// STOP BOUNDARY (this increment). It reproduces ONE predicate. It does NOT flip the box to
+// Accept — that is the final increment, only after ALL predicates are reproduced. The box STILL
+// never-Accepts. requireDeMatureSuperQuorum folds the WHOLE bonded map directly — it does NOT
+// consult effectiveEpochSet/liveQualifiedSet, so the recovery boundary does NOT change this fold
+// (there is no boundary case to carve out for it). The boundary remains the trust-the-directive
+// carve-out for the sets it DOES touch (epochSet, increment 1), out of scope here.
 
 var (
 	// ErrRecomputeBondedSetIncomplete marks a stall where the witnessed whole-bonded id-list does
@@ -77,7 +76,7 @@ var (
 
 	// ErrRecomputeBondedMemberWeightUnproven marks a stall where a per-member bonded[id] weight leaf
 	// could not be proven present against the committed StateRoot (no/failed/forged inclusion
-	// witness). This is the C-1 closure: a forged weight cannot verify, so it stalls the fold rather
+	// witness). This is the closure: a forged weight cannot verify, so it stalls the fold rather
 	// than letting a forgeable super-quorum tally through.
 	ErrRecomputeBondedMemberWeightUnproven = errors.New("chain: floor-box de-mature recompute — a per-member bonded weight leaf not proven present against the committed StateRoot (C-1: the weight is forged or missing)")
 )
@@ -105,13 +104,13 @@ type BondedSetWitness struct {
 
 	// MemberWeights maps each id in IDs to its claimed per-member bonded weight and the SMT
 	// inclusion proof of the bonded[id] value leaf. The recompute Resolves each against the
-	// committed StateRoot: a forged weight fails verification and stalls (C-1). Every id in IDs
+	// committed StateRoot: a forged weight fails verification and stalls. Every id in IDs
 	// MUST have an entry, else the recompute cannot verify that member's weight and stalls.
 	MemberWeights map[ports.NodeID]MemberWeightWitness
 }
 
-// recomputeDeMatureSuperQuorum reproduces requireDeMatureSuperQuorum (the F-1 de-mature
-// super-quorum, chain.go:2947) TRUSTLESSLY, from the committed StateRoot + the witnesses alone.
+// recomputeDeMatureSuperQuorum reproduces requireDeMatureSuperQuorum (the de-mature
+// super-quorum, chain.go) TRUSTLESSLY, from the committed StateRoot + the witnesses alone.
 // It returns (met, nil) where met is the verdict a full node's ValidateCommit would produce for
 // the de-mature gate at this state (met == the err==nil case), or (false, reason) when the box
 // cannot verify a witness and must stall — NEVER folding an unverified set/weight.
@@ -122,23 +121,23 @@ type BondedSetWitness struct {
 // seenW is the increment-2 SeenSetWitness proving the maturity state; bondedW is this increment's
 // whole-bonded witness proving the super-quorum fold.
 //
-// It reads the ⅔ threshold from a fixed consensus constant (C-6), never the witness. It
-// reproduces the whole-bonded fold; requireDeMatureSuperQuorum consults no epoch set, so the #535
+// It reads the ⅔ threshold from a fixed consensus constant, never the witness. It
+// reproduces the whole-bonded fold; requireDeMatureSuperQuorum consults no epoch set, so the
 // recovery boundary does not change it (no boundary carve-out for this predicate).
 //
-// This does NOT flip the box to Accept (the STOP boundary is the R1.8 downgrade in (*Box).Validate): it reproduces ONE predicate.
+// This does NOT flip the box to Accept (the STOP boundary is the downgrade in (*Box).Validate): it reproduces ONE predicate.
 //
-// ⚠ PARTIAL GATE — the accept-flip assembler (#657) MUST re-add everMature && objective().
-// The full-node caller gate is `everMature && objective() && !matureNow()` (chain.go:2827). This
-// recompute reproduces ONLY the `!matureNow()` condition (via recomputeMatureNow, increment 2); it
-// does NOT reproduce `everMature` or `objective()`. That deferral is legitimate under this
-// increment's STOP boundary (the box still never-Accepts, so folding the bar in a state a full
-// node would skip is inert TODAY). But it is a LATENT TRAP for #657: in the reachable state
-// `!everMature && !matureNow()` (a young chain below the bar), a full node does NOT run this
-// predicate, yet recomputeDeMatureSuperQuorum WOULD fold the de-mature bar. The accept-flip
-// assembler MUST gate this call on everMature && objective() before flipping to Accept, or it
-// would wrongly fold the de-mature bar on a not-yet-matured chain. The everMature leaf
-// (tagEverMature) is already in the v5 read-set (readset_v5.go), so the witness is available.
+// ⚠ PARTIAL GATE — the accept-flip assembler MUST re-add everMature && objective. The full-node
+// caller gate is `everMature && objective && !matureNow` (chain.go). This recompute
+// reproduces ONLY the `!matureNow` condition (via recomputeMatureNow, increment 2); it does NOT
+// reproduce `everMature` or `objective`. That deferral is legitimate under this increment's STOP
+// boundary (the box still never-Accepts, so folding the bar in a state a full node would skip is
+// inert TODAY). But it is a LATENT TRAP for: in the reachable state `!everMature &&
+// !matureNow` (a young chain below the bar), a full node does NOT run this predicate, yet
+// recomputeDeMatureSuperQuorum WOULD fold the de-mature bar. The accept-flip assembler MUST gate
+// this call on everMature && objective before flipping to Accept, or it would wrongly fold the
+// de-mature bar on a not-yet-matured chain. The everMature leaf (tagEverMature) is already in the
+// v5 read-set (readset_v5.go), so the witness is available.
 func (c *Chain) recomputeDeMatureSuperQuorum(
 	committedStateRoot ports.Hash,
 	proposer ports.NodeID,
@@ -146,10 +145,10 @@ func (c *Chain) recomputeDeMatureSuperQuorum(
 	seenW SeenSetWitness,
 	bondedW BondedSetWitness,
 ) (met bool, reason error) {
-	// (0) THE MATURITY GATE (increment 2). requireDeMatureSuperQuorum runs only when !matureNow().
-	// Reproduce matureNow trustlessly; if the box cannot verify the maturity witness, stall. If the
-	// chain is mature, the full node does NOT run the de-mature predicate — return met=true (the
-	// gate is vacuous), matching the full node's skip.
+	// (0) THE MATURITY GATE (increment 2). requireDeMatureSuperQuorum runs only when !matureNow.
+	// Reproduce matureNow trustlessly; if the box cannot verify the maturity witness, stall. If
+	// the chain is mature, the full node does NOT run the de-mature predicate — return met=true
+	// (the gate is vacuous), matching the full node's skip.
 	mature, mReason := c.recomputeMatureNow(committedStateRoot, seenW)
 	if mReason != nil {
 		return false, mReason
@@ -172,9 +171,9 @@ func (c *Chain) recomputeDeMatureSuperQuorum(
 			ErrRecomputeBondedSetIncomplete, reconstructed, bondedW.BondedRootValue)
 	}
 
-	// (2) PER-MEMBER WEIGHT (C-1) + (4) THE FOLD. For every id in the now-completeness-verified
+	// (2) PER-MEMBER WEIGHT + (4) THE FOLD. For every id in the now-completeness-verified
 	// whole-bonded set, Resolve its bonded[id] weight leaf against the committed StateRoot (a
-	// forged weight fails verification ⇒ stall), then fold exactly as chain.go:2949-2957:
+	// forged weight fails verification ⇒ stall), then fold exactly as chain.go:
 	// total = Σ verified whole-bonded weights; committed = bonded[proposer] + Σ_{id∈seen} bonded[id].
 	// A proposer/seen id NOT in the bonded set contributes 0 (it is not folded), matching the full
 	// node where c.bonded[id] is 0 for a non-bonded id.
@@ -189,7 +188,7 @@ func (c *Chain) recomputeDeMatureSuperQuorum(
 		memberKey := statehash.Key(tagBonded, id[:])
 		res := statehash.Resolve(committedStateRoot, memberKey, statehash.EncodeInt64(mw.Weight), mw.Proof)
 		if !res.IsProvenPresent() {
-			// C-1: a forged weight produces a leaf value the committed root does not commit, so the
+			// a forged weight produces a leaf value the committed root does not commit, so the
 			// inclusion proof fails to verify. Stall — the tally would otherwise be forgeable.
 			return false, fmt.Errorf("%w: id %x weight %d", ErrRecomputeBondedMemberWeightUnproven, id[:], mw.Weight)
 		}
@@ -199,16 +198,16 @@ func (c *Chain) recomputeDeMatureSuperQuorum(
 		}
 	}
 
-	// (3) THE ≥⅔ SUPER-QUORUM THRESHOLD, byte-for-byte the full node's (chain.go:2952-2963).
+	// (3) THE ≥⅔ SUPER-QUORUM THRESHOLD, byte-for-byte the full node's (chain.go).
 	//
 	// C-6 (threshold from a fixed constant, never the witness). The ⅔ ratio is a fixed consensus
 	// constant, not a genesis knob, so this fold reads no per-deployment config value — there is
-	// nothing here an attacker could shift via the witness. The C-6 obligation is exercised, not
+	// nothing here an attacker could shift via the witness. The obligation is exercised, not
 	// skipped: the recompute takes NO threshold from bondedW (the config-from-witness ablation
 	// asserts a witness-carried threshold cannot move the verdict).
 	if total <= 0 {
 		return true, nil // no bonded weight to measure against (nothing to protect) — full node returns nil.
 	}
-	need := (2*total + 2) / 3 // ⌈2·total/3⌉, byte-for-byte chain.go:2959
+	need := (2*total + 2) / 3 // ⌈2·total/3⌉, byte-for-byte chain.go
 	return committed >= need, nil
 }

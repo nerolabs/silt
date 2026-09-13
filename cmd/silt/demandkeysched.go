@@ -1,14 +1,14 @@
 package main
 
-// R0.4b C3 close — the per-epoch demand-key ROTATION SCHEDULE.
+// C3 close — the per-epoch demand-key ROTATION SCHEDULE.
 //
-// THE BREAK THIS CLOSES (red-team probe B, 2026-09-02). The daemon installed the
-// PERSISTED PUBLISH key as the demand key for its boot epoch, once, and nothing ever
-// rotated it. Two failures followed. From boot+1 the demand lane refused to issue at
-// all (no key for the current epoch). From boot+W+1 the bank rejected every token the
-// lane had ever signed, while the fee-charging withdrawal path kept charging — a fee
-// burned for a token the system would never honour. The lane's whole life was W+1
-// epochs, and nothing in the code said so.
+// THE BREAK THIS CLOSES, 2026-09-02. The daemon installed the PERSISTED PUBLISH key
+// as the demand key for its boot epoch, once, and nothing ever rotated it. Two
+// failures followed. From boot+1 the demand lane refused to issue at all (no key for
+// the current epoch). From boot+W+1 the bank rejected every token the lane had ever
+// signed, while the fee-charging withdrawal path kept charging — a fee burned for a
+// token the system would never honour. The lane's whole life was W+1 epochs, and
+// nothing in the code said so.
 //
 // THE SCHEDULE. At boot and on every epoch turn, ensure a key exists for each epoch in
 // [cur, cur+W] and stage its commitment (SetDemandIssuerKey signs an IssuerKeyReg the
@@ -44,7 +44,7 @@ type demandKeyInstaller interface {
 func installDemandKeys(nd demandKeyInstaller, es *diskissuer.EpochStore, rng io.Reader, cur uint64) error {
 	return es.RotateWindow(rng, cur, demand.DefaultWindow, func(e uint64, k *rsa.PrivateKey) {
 		// The SAME injected reader signs with the key it installs: the issuer blinds
-		// its private-key operation with it (advisory C-2).
+		// its private-key operation with it.
 		nd.SetDemandIssuerKey(rng, e, k)
 	})
 }

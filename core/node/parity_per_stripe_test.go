@@ -1,14 +1,12 @@
 package node
 
-// R-PARITY-AMPLIFICATION — the per-stripe DEFICIT walk in NetGet's parity fallback, held to the
-// blind PE design ruling RULING-parity-fetch-per-stripe-design-2026-09-06 §7 (G-PS-1…7). The rig
-// is the existing 80 KiB / 4 KiB swarm: 21 data chunks, K=10 ⇒ 3 stripes, the final stripe
+// The per-stripe DEFICIT walk in NetGet's parity fallback, held to3 stripes, the final stripe
 // holding ONE real data shard. Withholding = deleting a shard from every node's store. The
 // consumer uses NetGetRetain so the pulled parity ids are observable in its store afterwards.
-// These gates do NOT claim R-PARITY-AMPLIFICATION closed — that claim is research-gated; they
+// These gates do NOT claim the residual closed — that claim is research-gated; they
 // pin what the fetcher pulls. There is no uncoded (K == 0) gate: K == 0 is unreachable from any
 // publish path (pipeline.Add always erasure-codes), so the dead helper's removal is safe by
-// unreachability, not by suite (PE code ruling F-3).
+// unreachability, not by suite.
 
 import (
 	"bytes"
@@ -91,10 +89,10 @@ func psDataOfStripe(r *netgetRig, s int) []ports.ChunkID {
 	return data[lo:hi]
 }
 
-// TestPSHealthyObjectFetchesNoParity (G-PS-1): no data shard missing ⇒ zero parity shards pulled
-// and zero parity-column lookups. A REGRESSION PIN, not a discriminator: the old whole-column
-// fallback also fetched no parity on a healthy object (PE code ruling F-2), so this gate stays
-// green under that ablation and red only if a future change fetches parity unconditionally.
+// TestPSHealthyObjectFetchesNoParity: no data shard missing ⇒ zero parity shards pulled and
+// zero parity-column lookups. A REGRESSION PIN, not a discriminator: the old whole-column
+// fallback also fetched no parity on a healthy object, so this gate stays green under that
+// ablation and red only if a future change fetches parity unconditionally.
 func TestPSHealthyObjectFetchesNoParity(t *testing.T) {
 	r := newNetgetRig(t)
 	consumer := psConsumer(t, r)
@@ -107,7 +105,7 @@ func TestPSHealthyObjectFetchesNoParity(t *testing.T) {
 	}
 }
 
-// TestPSOneLossOneStripePullsExactlyOneParityShardOfThatStripe (G-PS-2 + G-PS-3): one data
+// TestPSOneLossOneStripePullsExactlyOneParityShardOfThatStripe: one data
 // shard of stripe 0 withheld ⇒ bit-perfect, exactly ONE parity shard pulled and it belongs to
 // stripe 0 (the id SET, not a count), and exactly ONE parity-column lookup (early exit).
 func TestPSOneLossOneStripePullsExactlyOneParityShardOfThatStripe(t *testing.T) {
@@ -124,7 +122,7 @@ func TestPSOneLossOneStripePullsExactlyOneParityShardOfThatStripe(t *testing.T) 
 	}
 }
 
-// TestPSEveryStripeDamagedPullsOneParityShardPerStripe (G-PS-4): one data shard withheld from
+// TestPSEveryStripeDamagedPullsOneParityShardPerStripe: one data shard withheld from
 // EVERY stripe ⇒ bit-perfect and exactly one parity shard per stripe — 1.0×, never the whole
 // parity columns.
 func TestPSEveryStripeDamagedPullsOneParityShardPerStripe(t *testing.T) {
@@ -151,7 +149,7 @@ func TestPSEveryStripeDamagedPullsOneParityShardPerStripe(t *testing.T) {
 	}
 }
 
-// TestPSShortFinalStripeDeficitIsItsRealDataCount (G-PS-5): the final stripe holds ONE real data
+// TestPSShortFinalStripeDeficitIsItsRealDataCount: the final stripe holds ONE real data
 // shard (21 chunks, K=10). Withholding it must complete with exactly ONE parity shard — a deficit
 // of realData (1), never K (10). Under-fetch is the fatal direction; over-fetch merely costs.
 func TestPSShortFinalStripeDeficitIsItsRealDataCount(t *testing.T) {
@@ -170,7 +168,7 @@ func TestPSShortFinalStripeDeficitIsItsRealDataCount(t *testing.T) {
 	}
 }
 
-// TestPSMissingParityShardFallsThroughToTheNextColumn (G-PS-6): withhold one data shard of
+// TestPSMissingParityShardFallsThroughToTheNextColumn: withhold one data shard of
 // stripe 1 AND that stripe's first parity shard ⇒ bit-perfect via the NEXT parity column, with
 // at most N−K parity-column lookups (here exactly 2).
 func TestPSMissingParityShardFallsThroughToTheNextColumn(t *testing.T) {
@@ -211,11 +209,11 @@ func (r *rotStore) Get(ctx context.Context, id ports.ChunkID) (ports.Chunk, erro
 	return r.ChunkStore.Get(ctx, id)
 }
 
-// TestPSBitRottenLocalShardCountsAsMissing (PE code ruling F-1): a data shard the consumer's
-// store REPORTS as present (Has) but cannot deliver verified (Get fails, as the disk store does
-// on bit rot) must count toward the stripe's deficit, so the walk fetches parity for it and the
-// retrieval is bit-perfect. Under a Has-based deficit the walk fetched nothing and the pipeline
-// failed on the rotten shard — the old whole-column fetch masked this by accident.
+// TestPSBitRottenLocalShardCountsAsMissing: a data shard the consumer's store REPORTS as
+// present (Has) but cannot deliver verified (Get fails, as the disk store does on bit rot) must
+// count toward the stripe's deficit, so the walk fetches parity for it and the retrieval is
+// bit-perfect. Under a Has-based deficit the walk fetched nothing and the pipeline failed on
+// the rotten shard — the old whole-column fetch masked this by accident.
 func TestPSBitRottenLocalShardCountsAsMissing(t *testing.T) {
 	r := newNetgetRig(t)
 	// A fresh consumer on a rotStore, bootstrapped into the rig like the others.
@@ -242,7 +240,7 @@ func TestPSBitRottenLocalShardCountsAsMissing(t *testing.T) {
 	}
 	victim := psDataOfStripe(r, 0)[5]
 	psWithhold(t, r, victim)  // no honest copy anywhere in the swarm...
-	rot.rotten[victim] = true // ...and the consumer's own copy is rotten
+	rot.rotten[victim] = true //...and the consumer's own copy is rotten
 	psRetain(t, r, consumer)
 	held := psParityHeld(r, consumer)
 	if len(held) != 1 || len(held[0]) != 1 {
@@ -250,8 +248,8 @@ func TestPSBitRottenLocalShardCountsAsMissing(t *testing.T) {
 	}
 }
 
-// TestPSAlreadyHeldParityIsNotCountedAsPulled (PE code ruling F-4): a parity shard the consumer
-// already holds settles the deficit without a transfer and is not counted as pulled.
+// TestPSAlreadyHeldParityIsNotCountedAsPulled: a parity shard the consumer already holds
+// settles the deficit without a transfer and is not counted as pulled.
 func TestPSAlreadyHeldParityIsNotCountedAsPulled(t *testing.T) {
 	r := newNetgetRig(t)
 	consumer := psConsumer(t, r)
@@ -283,12 +281,12 @@ func TestPSAlreadyHeldParityIsNotCountedAsPulled(t *testing.T) {
 	}
 }
 
-// TestPSHeldParitySettlesOneOfTwoAndTheWalkContinues (G-PS-8; PE code ruling Open-1): a stripe
-// that lost TWO data shards and already holds one parity shard has its first deficit settled by
-// the held shard with nothing to ask column K for — `want` is empty while `remaining > 0` — and
-// the walk MUST advance to column K+1 for the second. Ablation: replacing that advance with a
-// finish leaves the stripe at 9 of 16 shards and the retrieval fails while every other gate
-// stays green. Asserts exactly one lookup (column K+1) and one transfer.
+// TestPSHeldParitySettlesOneOfTwoAndTheWalkContinues: a stripe that lost TWO data
+// shards and already holds one parity shard has its first deficit settled by the held shard
+// with nothing to ask column K for — `want` is empty while `remaining > 0` — and the walk MUST
+// advance to column K+1 for the second. Ablation: replacing that advance with a finish leaves
+// the stripe at 9 of 16 shards and the retrieval fails while every other gate stays green.
+// Asserts exactly one lookup (column K+1) and one transfer.
 func TestPSHeldParitySettlesOneOfTwoAndTheWalkContinues(t *testing.T) {
 	r := newNetgetRig(t)
 	consumer := psConsumer(t, r)

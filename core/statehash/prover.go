@@ -16,9 +16,9 @@ import (
 //
 // It reuses the ONE audited pokt-network/smt implementation and the pinned SHA-256 spec, so a
 // proof it issues verifies under Resolve's verifySpec by construction — the prover and the
-// verifier cannot drift on the trie spec (the failure mode witness.go:152-157 warns of).
+// verifier cannot drift on the trie spec (the failure mode witness.go warns of).
 //
-// Root() returns the committed root the box holds; it MUST equal the block's committed StateRoot
+// Root returns the committed root the box holds; it MUST equal the block's committed StateRoot
 // for the box's verification to succeed. A caller builds a Prover from exactly the leaf set that
 // produced the committed root (e.g. Chain.stateRootLeavesV5 for a v5 block).
 type Prover struct {

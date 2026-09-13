@@ -29,33 +29,33 @@ var (
 	// both programming errors) and demandkeys.go for an issuer that answered a
 	// demand-token request not-OK.
 	ErrTokenAcquire = errors.New("node: could not gather enough publish-token signatures")
-	// ErrCreditIssuerKeyUnknown means this client holds NO CACHED publish-credit
-	// issuer key for that validator, so the prepaid-credit request never left the
-	// client. It is the credit lane's own refusal and it is deliberately NOT
-	// ErrTokenAcquire: one sentinel covering both made the composed error name
-	// itself, because cmd/silt joins the first mint cause onto the acquisition
-	// error and both legs were the same object (PE ruling RULING-PR852 F-2 —
-	// measured "first cause: node: could not gather enough publish-token
-	// signatures", which is the outer sentence repeated).
+	// ErrCreditIssuerKeyUnknown means this client holds NO CACHED
+	// publish-credit issuer key for that validator, so the prepaid-credit
+	// request never left the client. It is the credit lane's own refusal and
+	// it is deliberately NOT ErrTokenAcquire: one sentinel covering both made
+	// the composed error name itself, because cmd/silt joins the first mint
+	// cause onto the acquisition error and both legs were the same object ken
+	// signatures", which is the outer sentence repeated.
 	//
 	// WHY NOT REUSE ErrNoIssuerKey below, and the reason is mechanical rather than
 	// semantic: cmd/silt's demandKeyResolutionError carries a LIVE
 	// `errors.Is(keyErr, ErrNoIssuerKey)` arm that emits the operator-facing "NOT
 	// banked" text ("that server serves no demand issuer key — it is not running
-	// -accept-delivery-receipts"), and cmd/silt/rt_r04b_c3_notbanked_test.go pins
-	// that classification. Feeding a publish-credit cache miss into that sentinel
-	// would put a second, unrelated condition under a classification a test pins —
-	// "start -accept-delivery-receipts", which is no remedy for a missing cached
-	// key. STATED AT ITS TRUE STRENGTH: that classifier reads only the error
-	// FetchDemandIssuerKeys returns, so the misclassification would be LATENT
-	// today, not immediate. That is the shape that bites later. (An earlier version
-	// of this comment said ErrNoIssuerKey is "a peer's answer over the wire" and
-	// that this one never reaches the wire. That was FALSE and it was PUBLISHED to
-	// the changelog: measured, ErrNoIssuerKey has SEVEN return sites
-	// and FIVE of them never reach the wire — the local keyset/epoch-key cache
-	// misses in demandkeys.go and relaytransport.go, and demandrole.go's
-	// issuerPub == nil, which is structurally the same predicate this sentinel
-	// splits off. ErrNoIssuerKey was ALREADY a sentinel with two jobs.)
+	// -accept-delivery-receipts"), and cmd/silt/notbanked_test.go pins
+	// That classification. Feeding a publish-credit cache miss into that
+	// sentinel would put a second, unrelated condition under a classification a
+	// test pins — "start -accept-delivery-receipts", which is no remedy for a
+	// missing cached key. STATED AT ITS TRUE STRENGTH: that classifier reads
+	// only the error FetchDemandIssuerKeys returns, so the misclassification
+	// would be LATENT today, not immediate. That is the shape that bites later.
+	// (An earlier version of this comment said ErrNoIssuerKey is "a peer's
+	// answer over the wire" and that this one never reaches the wire. That was
+	// FALSE and it was PUBLISHED to the changelog: measured, ErrNoIssuerKey has
+	// SEVEN return sites and FIVE of them never reach the wire — the local
+	// keyset/epoch-key cache misses in demandkeys.go and relaytransport.go, and
+	// demandrole.go's issuerPub == nil, which is structurally the same predicate
+	// this sentinel splits off. ErrNoIssuerKey was ALREADY a sentinel with two
+	// jobs.)
 	ErrCreditIssuerKeyUnknown = errors.New("node: no cached publish-credit issuer key for this validator — fetch the canonical issuer set first")
 	// ErrNoIssuerKey means NO ISSUER KEY IS AVAILABLE to blind against, from either
 	// direction: the peer answered the key request and serves none (FetchIssuerKey,
@@ -85,7 +85,7 @@ var (
 	// the DEMAND issuer for the epoch and not on the publish issuer.
 	errNoTokenIssuer = errors.New("node: no publish token issuer — cannot verify an attached credit")
 	// errCreditStoreForeignKey refuses to boot on a creditspent.log written under a
-	// different publish key (R2.13b F2): the file and the key rotate together.
+	// different publish key (F2): the file and the key rotate together.
 	errCreditStoreForeignKey = errors.New("node: credit-spent guard file belongs to another publish key")
 
 	// errCreditRefused means a credit was presented but does not verify, or is
@@ -93,12 +93,12 @@ var (
 	// charge the durable identity instead.
 	errCreditRefused = errors.New("node: attached publish credit is invalid or already spent")
 
-	// ErrDemandEpochMismatch refuses a demand-token reply signed for an epoch the
-	// withdrawal did not name (R0.4b (b1)). The issue epoch is inside the
-	// blind-signed message, so such a signature unblinds to nothing redeemable —
-	// failing here makes an issuer's attempt to hand a cohort a different key a
-	// DENIAL the fetcher sees, not a tagged token it discovers is worthless at
-	// redemption.
+	// ErrDemandEpochMismatch refuses a demand-token reply signed for an epoch
+	// the withdrawal did not name ((b1)). The issue epoch is inside the
+	// blind-signed message, so such a signature unblinds to nothing redeemable
+	// — failing here makes an issuer's attempt to hand a cohort a different
+	// key a DENIAL the fetcher sees, not a tagged token it discovers is
+	// worthless at redemption.
 	ErrDemandEpochMismatch = errors.New("node: demand-token reply names a different issue epoch than the withdrawal")
 )
 
@@ -106,7 +106,7 @@ var (
 // (charging the fee to each requester) and serve its issuer public key to
 // peers who ask (MsgGetIssuerKey).
 //
-// rng is the randomness the PRIVATE-KEY operation blinds with (advisory C-2). This is
+// rng is the randomness the PRIVATE-KEY operation blinds with. This is
 // a network-facing signing oracle over attacker-chosen input, which is the
 // Brumley-Boneh remote-timing setting, so the blinding is not optional. It is injected
 // like every other randomness source in core (internal/depcheck bans crypto/rand
@@ -163,7 +163,7 @@ const maxTokenIssued = 4096
 // tokenDedupTTL is how long an issuance stays replay-safe: the requester's
 // transport-level retry window (attempts × per-attempt timeout, plus the
 // decaying backoffs between them), doubled for headroom. Derived from the
-// transport config — never a fixed constant (docs/network-durability.md §1).
+// transport config — never a fixed constant.
 func (n *Node) tokenDedupTTL() ports.Duration {
 	window := n.cfg.RequestTimeout * ports.Duration(n.cfg.RequestRetries+1)
 	for a := 0; a < n.cfg.RequestRetries; a++ {
@@ -172,16 +172,15 @@ func (n *Node) tokenDedupTTL() ports.Duration {
 	return 2 * window
 }
 
-// answerTokenRequest blind-signs a token request, IDEMPOTENTLY (research
-// certification 2026-08-13, A2): signing is deterministic RSA-FDH, so
-// re-presenting the same blinded serial must yield the same signature with
-// the fee charged ONCE. The transport layer re-sends msg.Data verbatim on a
-// retry (a lost reply is indistinguishable from a lost request), so without
-// this dedup a retry double-charged the legacy fee — and on the prepaid-credit
-// path was REFUSED as a credit double-spend, failing the whole gather. The
-// dedup key is the blinded-serial hash: issuer-local, high-entropy (fresh
-// blinding factor per issuer), and it reveals nothing the issuer did not
-// already see.
+// answerTokenRequest blind-signs a token request, IDEMPOTENTLY: signing is
+// deterministic RSA-FDH, so re-presenting the same blinded serial must yield
+// the same signature with the fee charged ONCE. The transport layer re-sends
+// msg.Data verbatim on a retry (a lost reply is indistinguishable from a lost
+// request), so without this dedup a retry double-charged the legacy fee — and
+// on the prepaid-credit path was REFUSED as a credit double-spend, failing the
+// whole gather. The dedup key is the blinded-serial hash: issuer-local,
+// high-entropy (fresh blinding factor per issuer), and it reveals nothing the
+// issuer did not already see.
 func (n *Node) answerTokenRequest(from ports.NodeID, msg ports.Message) ports.Message {
 	reply := ports.Message{Kind: ports.MsgTokenReply}
 	if n.tokenIssuer == nil || len(msg.Data) == 0 {
@@ -197,7 +196,7 @@ func (n *Node) answerTokenRequest(from ports.NodeID, msg ports.Message) ports.Me
 	}
 	charge, err := n.tokenChargeFor(from, msg.Credit)
 	if err != nil {
-		n.logCreditGuardRefusal(err) // R2.13b F1: a full / broken / unloaded guard is loud on the issuer
+		n.logCreditGuardRefusal(err) // F1: a full / broken / unloaded guard is loud on the issuer
 		return reply                 // no issuer to verify against, or the credit is invalid/spent
 	}
 	blindSig, err := n.tokenIssuer.Issue(charge, msg.Data)
@@ -270,14 +269,14 @@ func (n *Node) tokenChargeFor(from ports.NodeID, credit *ports.PublishCredit) (f
 	}, nil
 }
 
-// R2.13b (PE ruling F-4, 2026-09-04): the credit-spent guard is DURABLE.
+// The credit-spent guard is DURABLE.
 //
 // creditSpent used to be process memory. A publish credit carries no epoch
 // (silt/blindcredit/fdh/v1 blinds the serial only), so its validity is the persisted
 // publish key's lifetime — unbounded — while the guard's memory ended at the next
 // restart. Every held credit re-opened for a second spend per restart: one 50,000
 // burn, two demand tokens with distinct serials, two conserved payouts (measured by
-// the PE). The durable paid-serial guard cannot catch it: it keys on the TOKEN serial
+// it). The durable paid-serial guard cannot catch it: it keys on the TOKEN serial
 // and the replay yields a fresh token.
 //
 // The store is a SECOND guardstore.Disk (creditspent.log) behind the unchanged
@@ -290,10 +289,10 @@ func (n *Node) tokenChargeFor(from ports.NodeID, credit *ports.PublishCredit) (f
 // set. The cap below is therefore a LIVENESS ceiling, disclosed: an issuer that has
 // recorded maxCreditSpent spends refuses every further credit-bearing request
 // (errCreditGuardFull) and keeps serving credit-free ones. Refusal is the under-issue
-// direction; eviction would re-open the F-4 hole one record at a time. The structural
+// direction; eviction would re-open the hole one record at a time. The structural
 // close — an epoch in the credit's FDH message so the set can sweep on the band
-// advance — is a credit-format change under the D3 certification and is its own,
-// research-gated Rock (R-CREDITSPENT-UNBOUNDED).
+// advance — is a credit-format change under the D3 research and is its own,
+// research-gated Rock.
 var (
 	// errCreditStore: the durable append failed. The credit is NOT marked spent and
 	// no token is signed; the requester can retry once the store heals.
@@ -342,12 +341,11 @@ func (n *Node) LoadCreditSpent() error {
 	if len(fresh) > maxCreditSpent {
 		return fmt.Errorf("node: persisted credit-spent guard holds %d entries, cap is %d", len(fresh), maxCreditSpent)
 	}
-	// The file is BOUND to the publish key it was written under (PE ruling
-	// RULING-R2.13b-creditspent-build-fa9f988 F2): the only recovery from a full guard
-	// is rotating the publish key AND clearing this file together, and a file that
-	// outlives its key would re-open F-4 for every credit under the still-valid key.
-	// A record written under another key refuses the boot by name; an unbound record
-	// (zero Server) is tolerated (test-padded or pre-binding files — none exist in the field).
+	// The file is BOUND to the publish key it was written under: the only recovery from a
+	// full guard is rotating the publish key AND clearing this file together, and a file
+	// that outlives its key would re-open F-4 for every credit under the still-valid key. A
+	// record written under another key refuses the boot by name; an unbound record (zero
+	// Server) is tolerated (test-padded or pre-binding files — none exist in the field).
 	owner := n.creditGuardOwner()
 	for _, e := range entries {
 		if e.Server != (ports.NodeID{}) && e.Server != owner {
@@ -400,7 +398,7 @@ func (n *Node) AcquireCredits(rng io.Reader, v ports.NodeID, count int,
 		n.request(v, ports.Message{Kind: ports.MsgTokenRequest, Data: blinded},
 			func(resp ports.Message, err error) {
 				if err == nil && resp.OK && len(resp.Data) > 0 {
-					// RFC 9474 §4.4 Finalize (advisory C-1): a credit that does not
+					// RFC 9474 §4.4 Finalize: a credit that does not
 					// verify under the issuer's own key is dropped here, not carried
 					// forward as a credit that fails at spend time.
 					if sig, uerr := blindtoken.UnblindCredit(pub, serial, resp.Data, secret); uerr == nil {
@@ -455,10 +453,10 @@ func (n *Node) AcquireTokenWithCredits(rng io.Reader, serial []byte, validators 
 // The forbidden shape is first-k-of-N-to-reply, which would make the token's
 // revealed signer set a function of the publisher's network position — a
 // positional fingerprint re-opening the R-3 leak. Two consequences here:
-//   - completion waits for every in-flight canonical target to RESOLVE
-//     (a slow issuer is waited out, never raced past), and
-//   - Sigs are assembled in canonical order, not arrival order, so the token's
-//     structure cannot leak the arrival permutation either.
+// - completion waits for every in-flight canonical target to RESOLVE
+// (a slow issuer is waited out, never raced past), and
+// - Sigs are assembled in canonical order, not arrival order, so the token's
+// structure cannot leak the arrival permutation either.
 func (n *Node) acquireToken(rng io.Reader, serial []byte, validators []ports.NodeID,
 	issuerPub func(ports.NodeID) *rsa.PublicKey, credit func(ports.NodeID) *ports.PublishCredit, k int,
 	done func(*ports.PublishToken, error)) {
@@ -526,7 +524,7 @@ func (n *Node) acquireToken(rng io.Reader, serial []byte, validators []ports.Nod
 				func(resp ports.Message, rerr error) {
 					inflight--
 					if rerr == nil && resp.OK && len(resp.Data) > 0 {
-						// RFC 9474 §4.4 Finalize (advisory C-1).
+						// RFC 9474 §4.4 Finalize.
 						if sig, uerr := blindtoken.Unblind(pub, serial, resp.Data, secret); uerr == nil {
 							sigs[i] = sig
 						}
@@ -557,11 +555,11 @@ func (n *Node) creditGuardOwner() ports.NodeID {
 	return ports.NodeID(sha256.Sum256(x509.MarshalPKCS1PublicKey(n.tokenIssuer.Public())))
 }
 
-// logCreditGuardRefusal makes the three guard-state refusals visible on the ISSUER (PE
-// ruling F1): a credit refused because the durable guard is full, broken, or not yet
-// loaded is an operator condition, not a client error; without this line the only
-// symptom of an issuer at cap was a DEBUG line on the client. The recovery from a full
-// guard is rotate-the-publish-key AND clear creditspent.log, together.
+// logCreditGuardRefusal makes the three guard-state refusals visible on the ISSUER: a
+// credit refused because the durable guard is full, broken, or not yet loaded is an
+// operator condition, not a client error; without this line the only symptom of an
+// issuer at cap was a DEBUG line on the client. The recovery from a full guard is
+// rotate-the-publish-key AND clear creditspent.log, together.
 func (n *Node) logCreditGuardRefusal(err error) {
 	switch {
 	case errors.Is(err, errCreditGuardFull):

@@ -86,8 +86,8 @@ func TestObjectiveColdStartBootstrapsFromAnchors(t *testing.T) {
 	}
 	// Every replica agrees on the objective bonded size (it is chain-derived).
 	for i, nd := range nodes {
-		// nodes 1..N-1 only hear the commit via broadcast; drive one sync so they
-		// have block 1 too, then check agreement.
+		// nodes 1.N-1 only hear the commit via broadcast; drive one sync so
+		// they have block 1 too, then check agreement.
 		if nd.Chain().Len() < 2 {
 			if err := runSync(nd, ids[0], sched); err != nil {
 				t.Fatalf("node %d sync: %v", i, err)

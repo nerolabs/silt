@@ -11,15 +11,14 @@ import (
 
 // Tests for the P1-c class-T TTL-sweep state-root recompute (floorbox_recompute_stateroot_ttl_v5.go).
 //
-// CERTIFIED-IN-DIRECTION (2026-08-31):
-//   research: floorbox-Rboundary-writeset-digest-reconstruction-RESEARCH-CERTIFICATION-2026-08-31.md
-//     (T CERTIFIED-in-direction, inherits the CRUX dueBucket reconstruction).
+// research: floorbox-Rboundary-writeset-digest-reconstruction-
+// (T: inherits the CRUX dueBucket reconstruction).
 //
 // R3 (execution-derived drift guard, MANDATORY): the box's derived T write-set + digest+bucket
-// reconstruction is checked against the REAL apply() + StateRootForVersion(5) — the oracle a full
-// node uses — and ablated RED on a forged expired set (wrong dueBucket members), a mis-derived
+// reconstruction is checked against the REAL apply + StateRootForVersion(5) — the oracle a full node
+// uses — and ablated RED on a forged expired set (wrong dueBucket members), a mis-derived
 // bonded/qualified delta, an omitted digest reconstruction, and the circular anchor. Ground truth is
-// real execution (the session-7 scar: a hand-built mirror shares the producer's blind spot).
+// real execution (the: a hand-built mirror shares the producer's blind spot).
 
 // ttlFixture is a v5 chain with a bonded+qualified member whose TTL is about to fire, advanced to
 // the block BEFORE the sweep. prevStateRoot + a Prover over its v5 leaf set are captured there.
@@ -212,7 +211,7 @@ func (f ttlFixture) ttlSweepWitness(t *testing.T, b Block, expired []ports.NodeI
 	return w
 }
 
-// --- Ablation 1: the T recompute AGREES with real apply() over a firing sweep. ---
+// --- Ablation 1: the T recompute AGREES with real apply over a firing sweep. ---
 func TestRecomputeStateRootTTLAgreesWithApply(t *testing.T) {
 	f := buildTTLFixture(t)
 	b := f.sweepBlock()
@@ -289,7 +288,7 @@ func TestRecomputeStateRootTTLAblationForgedExpiredSet(t *testing.T) {
 // StateRoot where the expirer is STILL bonded post-sweep and hand the box an HONEST witness. The box
 // derives the CORRECT delta (DELETE the expirer from bonded), folds the honest bondedRoot, and that
 // must MISMATCH the buggy committed root ⇒ ErrRecomputeStateRootMismatch. This drives the REAL
-// recompute (session-7 scar: a hand-built comparison is decoration). ---
+// recompute: a hand-built comparison is decoration. ---
 func TestRecomputeStateRootTTLAblationBondedNotDeleted(t *testing.T) {
 	f := buildTTLFixture(t)
 	b := f.sweepBlock()
@@ -346,14 +345,14 @@ func TestRecomputeStateRootTTLAblationOmittedDigest(t *testing.T) {
 
 // --- 7f: class-T MULTI-BLOCK contiguity schedule. ---
 //
-// The dueBucket[b.Height] scope-gate (floorbox_recompute_stateroot_v5.go:383-410) is sound ONLY under
-// chain height-CONTIGUITY: apply()'s sweep loop is `b.Height-regH > ttl` (chain.go:3273, a `>=` over
+// The dueBucket[b.Height] scope-gate (floorbox_recompute_stateroot_v5.go) is sound ONLY under
+// chain height-CONTIGUITY: apply's sweep loop is `b.Height-regH > ttl` (chain.go, a `>=` over
 // ALL overdue ids), while the recompute reads the SINGLE bucket keyed at EXACTLY b.Height. These
 // coincide because dueBucketMoveOnReg files each id at due = regH+ttl+1, and every intervening height
 // runs a sweep — so when the chain reaches height h, every earlier bucket has already emptied and the
 // only ids overdue at h are exactly dueBucket[h]. gate 7c ARGUES this; this test EXERCISES it: a
 // multi-block schedule of consecutive sweep heights, each firing a DIFFERENT bucket, reproduced
-// byte-exact; and an ablation where a height is SKIPPED so apply()'s `>=` vacuums a bucket the
+// byte-exact; and an ablation where a height is SKIPPED so apply's `>=` vacuums a bucket the
 // recompute's `==` gate never witnesses ⇒ stall. A future break of contiguity reddens the ablation.
 
 // buildStaggeredTTLChain seats a proposer (renewed every block, never expires) plus expirers filed
@@ -368,7 +367,7 @@ func buildStaggeredTTLChain(t *testing.T) (*Chain, ed25519.PrivateKey, ports.Nod
 	c.SetBondVerifier(objectiveVerify)
 	prop := key(77001)
 	e1 := key(77002) // registered at genesis ⇒ due 0+3 = 3
-	e2 := key(77003) // registered at h1      ⇒ due 1+3 = 4
+	e2 := key(77003) // registered at h1 ⇒ due 1+3 = 4
 	g := &Block{Version: BlockVersionWitnessable, Height: 0, Entries: []ports.Entry{entry(30)}}
 	g.BondRegs = append(g.BondRegs,
 		bondRegFull(prop, ports.HashBytes(pubOf(prop)), 8<<20, ports.Hash{}, 5, 1),
@@ -391,7 +390,7 @@ func buildStaggeredTTLChain(t *testing.T) (*Chain, ed25519.PrivateKey, ports.Nod
 
 // recomputeSweepAt captures a prover over the chain's CURRENT v5 leaf set, builds the class-T witness
 // for the block b that fires the sweep at b.Height, and runs the REAL recompute against the real
-// apply() committed root. It returns the recompute error (nil = agrees).
+// apply committed root. It returns the recompute error (nil = agrees).
 func recomputeSweepAt(t *testing.T, c *Chain, prop ed25519.PrivateKey, b Block) error {
 	t.Helper()
 	leaves := c.stateRootLeavesV5()
@@ -420,7 +419,7 @@ func recomputeSweepAt(t *testing.T, c *Chain, prop ed25519.PrivateKey, b Block) 
 
 // TestRecomputeStateRootTTLMultiBlockScheduleAgreesWithApply is the POSITIVE 7f test: two consecutive
 // sweep heights (h=3 fires e1's bucket, h=4 fires e2's bucket), each reproduced byte-exact vs the real
-// apply(). Between them the chain advances (h=3 applied for real) so h=4's pre-state reflects the h=3
+// apply. Between them the chain advances (h=3 applied for real) so h=4's pre-state reflects the h=3
 // sweep — the contiguity the gate relies on.
 func TestRecomputeStateRootTTLMultiBlockScheduleAgreesWithApply(t *testing.T) {
 	c, prop, e1, e2 := buildStaggeredTTLChain(t)
@@ -450,10 +449,10 @@ func TestRecomputeStateRootTTLMultiBlockScheduleAgreesWithApply(t *testing.T) {
 	}
 }
 
-// TestRecomputeStateRootTTLAblationSkippedHeightContiguityBreak is the 7f ablation: SKIP a sweep
-// height so apply()'s `>=` loop vacuums a bucket the recompute's `==` gate at a LATER height never
-// witnesses. e1 is due at bucket 3; instead of applying h=3 then h=4 contiguously, we SKIP h=3 and
-// apply h=4 directly. apply()'s sweep at h=4 finds e1 overdue (4-0 > 2) and expires it, but e1 sits in
+// TestRecomputeStateRootTTLAblationSkippedHeightContiguityBreak is the 7f ablation: SKIP a sweep height
+// so apply's `>=` loop vacuums a bucket the recompute's `==` gate at a LATER height never witnesses. e1
+// is due at bucket 3; instead of applying h=3 then h=4 contiguously, we SKIP h=3 and apply h=4
+// directly. apply's sweep at h=4 finds e1 overdue (4-0 > 2) and expires it, but e1 sits in
 // dueBucket[3], NOT dueBucket[4]. The recompute at h=4 witnesses dueBucket[4] (empty of e1), derives an
 // expired set that OMITS e1, and folds a bondedRoot that still CONTAINS e1 — which MISMATCHES the
 // committed root that reflects e1's expiry ⇒ stall. This reddens the moment height-contiguity breaks.
@@ -464,8 +463,8 @@ func TestRecomputeStateRootTTLAblationSkippedHeightContiguityBreak(t *testing.T)
 		t.Fatalf("fixture: e1 not due at bucket 3")
 	}
 
-	// SKIP h=3. Apply h=4 directly: apply()'s `>=` sweep expires e1 (in bucket 3), but the recompute
-	// at h=4 only witnesses dueBucket[4].
+	// SKIP h=3. Apply h=4 directly: apply's `>=` sweep expires e1 (in bucket 3), but the
+	// recompute at h=4 only witnesses dueBucket[4].
 	prev, _ := c.Head()
 	b4 := Block{Version: BlockVersionWitnessable, Height: 4, Prev: prev, Entries: []ports.Entry{entry(43)}}
 

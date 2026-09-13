@@ -109,7 +109,7 @@ func TestSetNetworkIdentityRefusesTheZeroHash(t *testing.T) {
 // distinguishable. RequesterChainID answers the ZERO HASH for an undeclared node, which is the
 // exact value SetNetworkIdentity refuses as a declaration, so on that accessor alone a consumer
 // cannot tell "I was told nothing" from "I was told something real". The predicate is the second
-// observable, and #828 is what refuses on it.
+// observable, and is what refuses on it.
 //
 // ABLATIONS (each drives a DIFFERENT arm RED): return true unconditionally → the undeclared arm;
 // return false unconditionally → the declared and chain-holder arms; read only declaredChainID and
@@ -140,9 +140,9 @@ func TestHasNetworkIdentityDistinguishesAbsentFromZero(t *testing.T) {
 }
 
 // TestAChainOutranksADeclaration pins the precedence: a node that acquires a chain reads the
-// chain's own genesis hash, never an earlier declaration. Consumer 3 of the certification (a
-// JOINING daemon) depends on this — its refusal window is transient precisely because the chain
-// takes over the moment it exists.
+// chain's own genesis hash, never an earlier declaration. Consumer 3 of the research (a JOINING
+// daemon) depends on this — its refusal window is transient precisely because the chain takes
+// over the moment it exists.
 func TestAChainOutranksADeclaration(t *testing.T) {
 	nd, genesis := chainHolder(t, 9105)
 	nd.declaredChainID = ports.HashBytes([]byte("a stale declaration"))

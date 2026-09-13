@@ -6,13 +6,13 @@ import (
 	"testing"
 )
 
-// The PayWord primitive tests (docs/design/pod.md §7.3, certified 2026-08-30).
-// PayWord is a sender-funded hash chain: the fetcher picks a random tip and
-// hashes it S+1 times; the most-hashed value is the ROOT committed once to the
-// relay. To authorize increment k the fetcher reveals x_k, and the relay checks
-// H(x_k) = x_{k-1} against the preimage it currently holds — one SHA-256 per
-// increment. Forgery is cryptographically excluded (one-way hash); the relay
-// can redeem only preimages the fetcher revealed.
+// The PayWord primitive tests, verifies 2026-08-30. PayWord is a sender-funded
+// hash chain: the fetcher picks a random tip and hashes it S+1 times; the
+// most-hashed value is the ROOT committed once to the relay. To authorize
+// increment k the fetcher reveals x_k, and the relay checks H(x_k) = x_{k-1}
+// against the preimage it currently holds — one SHA-256 per increment. Forgery
+// is cryptographically excluded (one-way hash); the relay can redeem only
+// preimages the fetcher revealed.
 
 // TestChainRootIsMostHashedValue: the root is H^{S+1}(tip). Revealing preimages
 // in order x_1, x_2, … walks BACK toward the tip, each one hashing to the last.
@@ -94,7 +94,7 @@ func TestForgedPreimageRejected(t *testing.T) {
 	}
 }
 
-// TestSkippedIncrementsAllowedInOrder: the fetcher may reveal x_2 directly if
+// The fetcher may reveal x_2 directly if
 // the relay is willing to walk two hashes; but the default Advance is strictly
 // one hash. AdvanceTo walks up to a bounded number of hashes to reach the
 // claimed count, so a fetcher can pay several increments at once.
@@ -126,7 +126,7 @@ func TestAdvanceToWalksToClaimedCount(t *testing.T) {
 	}
 }
 
-// TestAdvanceToClampsToChainLength is the #644 failing-first test: an adversarial
+// TestAdvanceToClampsToChainLength is the failing-first test: an adversarial
 // oversized claimedCount (far past the committed chain length S) must be REJECTED
 // BEFORE the hash walk runs, so a single bogus MsgRelayPay cannot spin the relay
 // for millions of hashes. The Verifier carries S (NewVerifier(root, S)); AdvanceTo
@@ -134,7 +134,7 @@ func TestAdvanceToWalksToClaimedCount(t *testing.T) {
 //
 // The ablation: the per-verifier walk-step counter (v.walkSteps) must never exceed
 // S for this call. Removing the `claimedCount > S` clamp lets the walk run the full
-// attacker-chosen (claimedCount - count) hashes — the ~5M-hash spin the PE measured
+// attacker-chosen (claimedCount - count) hashes — the ~5M-hash spin measured
 // — and the counter assertion turns RED.
 func TestAdvanceToClampsToChainLength(t *testing.T) {
 	const S = 8

@@ -6,26 +6,26 @@
 # next scenario: "raise the fetch concurrency here to exercise the retry
 # against a real saturated relay". We:
 #
-#   1. bring up relay + natA/natB + nodeA/nodeB (same phase-1/phase-2 as run.sh)
-#   2. publish a file from nodeA (behind NAT A) — content lives ONLY on nodeA
-#   3. bandwidth-cap the relay's public interface with `tc qdisc` (NET_ADMIN),
-#      turning the single splice path into a genuinely congested pipe
-#   4. run a baseline single fetch (control), then fire N concurrent
-#      `silt swarm get` from nodeB through the saturated relay
-#   5. assert graceful degradation: EVERY fetch completes bit-perfect, none
-#      hangs (each capped by `timeout`), splices really crossed, and the
-#      fetch-side backoff/retry engaged under contention.
+#  1. bring up relay + natA/natB + nodeA/nodeB (same phase-1/phase-2 as run.sh)
+#  2. publish a file from nodeA (behind NAT A) — content lives ONLY on nodeA
+#  3. bandwidth-cap the relay's public interface with `tc qdisc` (NET_ADMIN),
+#  turning the single splice path into a genuinely congested pipe
+#  4. run a baseline single fetch (control), then fire N concurrent
+#  `silt swarm get` from nodeB through the saturated relay
+#  5. assert graceful degradation: EVERY fetch completes bit-perfect, none
+#  hangs (each capped by `timeout`), splices really crossed, and the
+#  fetch-side backoff/retry engaged under contention.
 #
 # Every assertion keys off REAL behavior: SHA-256 bit-perfect equality of each
 # fetched copy, real "relay splice" counts in /data/debug.log, and real
 # "relay refused: at capacity" / "relay refused: relay at capacity" log lines.
 #
 # Usage:
-#   ./loadtest.sh              # build, run, assert, tear down; exit 0 = PASS
-#   N=16 ./loadtest.sh         # 16 concurrent fetches (default 12)
-#   RATE=2mbit ./loadtest.sh   # relay bandwidth cap (default 4mbit)
-#   FILE_BYTES=8000000 ./loadtest.sh
-#   KEEP=1 ./loadtest.sh       # leave the topology up afterward
+# ./loadtest.sh # build, run, assert, tear down; exit 0 = PASS
+#  N=16 ./loadtest.sh # 16 concurrent fetches (default 12)
+#  RATE=2mbit ./loadtest.sh # relay bandwidth cap (default 4mbit)
+#  FILE_BYTES=8000000 ./loadtest.sh
+#  KEEP=1 ./loadtest.sh # leave the topology up afterward
 set -uo pipefail
 cd "$(dirname "$0")"
 ROOT=$(cd ../.. && pwd)

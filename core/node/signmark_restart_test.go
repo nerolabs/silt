@@ -13,15 +13,15 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// #397 Q1b — the crash variant of the honest double-sign: a validator signs a
+// Q1b — the crash variant of the honest double-sign: a validator signs a
 // proposal, crashes before it commits, restarts, and receives a COMPETING
 // block at the same height. With only an in-memory ledger the restart wipes
 // the never-sign-twice mark and the node attests the competitor — equivocating
-// against its own pre-crash signature and getting permanently slashed (F2)
-// for a crash. With the persisted watermark (research-certified: mark made
-// durable BEFORE the signature is released, Tendermint priv_validator_state)
-// the restarted node refuses.
-func TestRestartedValidatorRefusesToContradictPreCrashSignature397(t *testing.T) {
+// against its own pre-crash signature and getting permanently slashed (F2) for
+// a crash. With the persisted watermark: mark made durable BEFORE the
+// signature is released, Tendermint priv_validator_state the restarted node
+// refuses.
+func TestRestartedValidatorRefusesToContradictPreCrashSignature(t *testing.T) {
 	mark := markstore.NewMem() // one durable store across the simulated restart
 
 	ledger := credit.New(50_000, 0)
@@ -85,7 +85,7 @@ func TestRestartedValidatorRefusesToContradictPreCrashSignature397(t *testing.T)
 		t.Fatalf("expected exactly one attest reply, got %v", replies)
 	}
 	if replies[0] {
-		t.Fatal("a restarted validator attested a block contradicting its pre-crash signature — the sign mark must survive restart (#397 Q1b)")
+		t.Fatal("a restarted validator attested a block contradicting its pre-crash signature — the sign mark must survive restart (1b)")
 	}
 
 	// And the persisted mark still allows normal progress: a block at height 2

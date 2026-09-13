@@ -1,17 +1,17 @@
 package credit
 
-// Tester seat — compaction/tombstone adversarial fuzz for Boulder-0 (2026-09-01).
+// The research seat — compaction/tombstone adversarial fuzz for the
 //
 // Drives a long serve/redeem/evict sequence with heavy redeem-then-reserve
 // (tombstone churn), pushing provOrder past its 2*maxProvisional compaction
 // threshold repeatedly.
 //
 // Three invariants asserted at every step (or every 1000 steps for (a)):
-//   (a) conservation: Σbalances + Σescrow == expected ledger sum
-//   (b) provOrder bounded: len(provOrder) <= 2*maxProvisional
-//   (c) provIndex integrity: every live provisional map key maps to a correct
-//       provOrder position; no tombstone reversal ever debits a LIVE re-served
-//       lane; compaction preserves the index
+// (a) conservation: Σbalances + Σescrow == expected ledger sum
+// (b) provOrder bounded: len(provOrder) <= 2*maxProvisional
+// (c) provIndex integrity: every live provisional map key maps to a correct
+// provOrder position; no tombstone reversal ever debits a LIVE re-served
+// lane; compaction preserves the index
 //
 // Seeds are fixed so failures are deterministic and citable. A failure reports
 // the seed and step so the repro is always available.
@@ -19,13 +19,13 @@ package credit
 // Run with -short for a fast integrity check (fewer ops, suitable for -race);
 // run without -short for the full adversarial stress.
 //
-// REAL SERIALS (PE ruling @ 271ab81 §4, correction 1, 2026-09-03). Every redeem used
-// to pass a NIL serial, and `RedeemDeliveryCreditReason` short-circuits its whole
-// R0.4b guard on `if len(serial) > 0`. So this fuzz — cited as evidence for the
-// durable paid-serial guard — never touched `paidSerial`, the epoch watermark, or the
-// expiry sweep at all. It now drives a UNIQUE 32-byte serial per redeem on a moving
-// epoch clock, which puts the guard's admission, watermark advance and per-epoch sweep
-// under the same adversarial churn as provOrder, and adds invariant (d).
+// REAL SERIALS. Every redeem used to pass a NIL serial, and
+// `RedeemDeliveryCreditReason` short-circuits its whole guard on `if len(serial)
+// > 0`. So this fuzz — cited as evidence for the durable paid-serial guard — never
+// touched `paidSerial`, the epoch watermark, or the expiry sweep at all. It now drives
+// a UNIQUE 32-byte serial per redeem on a moving epoch clock, which puts the guard's
+// admission, watermark advance and per-epoch sweep under the same adversarial churn as
+// provOrder, and adds invariant (d).
 //
 // The epoch clock advances every fuzzEpochEvery steps so the sweep retires expired
 // entries: with W = paidSerialWindow the live set is bounded by the redeems of the
@@ -83,7 +83,7 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 	t.Helper()
 	const (
 		fee       = 50_000
-		serveSize = SkimDen * ServeMintBytesPerCredit   // bytes per serve: one mint unit, so every serve mints exactly serveMint credits (G-R212-7)
+		serveSize = SkimDen * ServeMintBytesPerCredit   // bytes per serve: one mint unit, so every serve mints exactly serveMint credits
 		serveMint = serveSize / ServeMintBytesPerCredit // credits per serve across both legs (net + skim)
 		// fuzzEpochEvery: steps per demand epoch. Chosen so the guard's live set —
 		// the redeems of the last paidSerialWindow+1 epochs — stays two orders of
@@ -113,11 +113,11 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 
 	l := New(fee, 0 /*no auto-grant*/)
 
-	// R2.10 (PE ruling RULING-R2.10-F8-build-178ff3b F1): the ledger's clock is an
-	// injected source, not a call parameter. Before R2.10 this fuzz drove the watermark
-	// through RedeemDeliveryCreditReason's currentEpoch argument; the migration left the
-	// moving `epoch` bound only to issuedEpoch, so the watermark stayed 0, the band-advance
-	// sweep never ran, and invariant (d) went RED past 32,768 live serials — invisible under
+	// The ledger's clock is an injected source, not a call parameter. Before
+	// this fuzz drove the watermark through RedeemDeliveryCreditReason's currentEpoch
+	// argument; the migration left the moving `epoch` bound only to issuedEpoch, so
+	// the watermark stayed 0, the band-advance sweep never ran, and invariant (d) went
+	// RED past 32,768 live serials — invisible under
 	// -short. The source below is the fuzz's clock; every point that moves `epoch` moves it.
 	clock := &mockEpochSource{}
 	l.SetEpochSource(clock)
@@ -383,11 +383,11 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 		}
 	}
 
-	// TRIPWIRE (PE ruling F1, the coupling): this fuzz's header claims it exercises the
-	// watermark advance and the per-epoch sweep. A migration that silently unbinds the
-	// clock makes that claim false while every assertion still passes under -short, which
-	// is how F1 shipped. Assert the sweep actually ran whenever the scenario spans more
-	// than the guard's window, so the claim is checked at the tier that runs by default.
+	// TRIPWIRE: this fuzz's header claims it exercises the watermark advance and the
+	// per-epoch sweep. A migration that silently unbinds the clock makes that claim
+	// false while every assertion still passes under -short, which is how F1 shipped.
+	// Assert the sweep actually ran whenever the scenario spans more than the guard's
+	// window, so the claim is checked at the tier that runs by default.
 	if epochsSpanned := uint64(ops / fuzzEpochEvery); epochsSpanned > paidSerialWindow {
 		if l.SerialSweeps() == 0 {
 			t.Fatalf("seed=%#x: the scenario spanned %d epochs (window %d) but the expiry sweep NEVER ran — the ledger's epoch source is not wired to the scenario's clock", seed, epochsSpanned, paidSerialWindow)

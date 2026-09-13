@@ -53,10 +53,11 @@ func (n *Node) DistributeFrom(src ports.ChunkStore, entry ports.Entry, m *manife
 func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manifest.Manifest, keepLocal bool, porKey *por.Key, done func(placed int, err error)) {
 	leaves := m.Leaves()
 	// One cached Merkle tree for the whole distribution: a proof is built per
-	// shard below, and the standalone manifest.Prove is O(n) per call (it rehashes
-	// subtrees), so proving S shards over an n-leaf manifest was O(S·n) ≈ O(n²) on
-	// the loop — seconds for a large file. The tree makes each proof O(log n), and
-	// tree.Root() reuses the same build instead of recomputing the root O(n) (#340).
+	// shard below, and the standalone manifest.Prove is O(n) per call (it
+	// rehashes subtrees), so proving S shards over an n-leaf manifest was
+	// O(S·n) ≈ O(n²) on the loop — seconds for a large file. The tree makes
+	// each proof O(log n), and tree.Root reuses the same build instead of
+	// recomputing the root O(n).
 	tree := manifest.BuildTree(leaves)
 	root := tree.Root()
 	manifestN := len(entry.ManifestChunks)
@@ -182,7 +183,7 @@ func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manife
 				id := ids[grp.members[k]]
 				c, err := src.Get(bg(), id)
 				if err != nil { // convergent dedup can mean it already shipped
-					// Defer (#467 audit): a column whose members all dedup away
+					// Defer: a column whose members all dedup away
 					// otherwise skips through them inline, O(members) deep.
 					n.clock.AfterFunc(0, func() { nextMember(k + 1) })
 					return
@@ -287,7 +288,7 @@ func (n *Node) placeAt(id ports.ChunkID, data []byte, proof *ports.StorageProof,
 		}
 		msg := ports.Message{Kind: ports.MsgStoreChunk, ChunkID: id, Data: data, Proof: proof}
 		n.request(target, msg, func(resp ports.Message, err error) {
-			// Debug narration (#497): an errored/refused attempt walks to the NEXT
+			// Debug narration: an errored/refused attempt walks to the NEXT
 			// candidate, but the store may have completed on this one — a lost ack
 			// mints a silent extra copy. Name every attempt so the disk census can
 			// be correlated with the sender's view.
@@ -325,18 +326,19 @@ func (n *Node) resolveProviders(id ports.ChunkID, done func([]ports.NodeID)) {
 	add(n.acceptedProviderIDs(id, n.provs.Get(id)))
 	finish := func() {
 		dht.SortByDistance(id, acc)
-		// Non-globality signal (R-2 / #180): if a key's whole discoverable provider
-		// set has collapsed into ONE failure domain, it is one key-surround from being
-		// censorable at the routing layer for a fetcher who consented to no takedown
-		// (red-team BREAK 2 residual). Surface it — silent routing censorship becomes a
-		// measurable event. Only bites when domains are actually declared (a domainless
-		// swarm reads every provider as its own group, so this never false-fires).
-		// Warn only on a genuine COLLAPSE: several providers all sharing one declared
-		// failure domain (sn==1 with >1 provider). A single provider, or a domainless
-		// swarm (every provider its own group), is not a collapse and stays quiet.
+		// Non-globality signal (R-2 /): if a key's whole discoverable provider
+		// set has collapsed into ONE failure domain, it is one key-surround from
+		// being censorable at the routing layer for a fetcher who consented to no
+		// takedown. Surface it — silent routing censorship becomes a measurable
+		// event. Only bites when domains are actually declared (a domainless
+		// swarm reads every provider as its own group, so this never
+		// false-fires). Warn only on a genuine COLLAPSE: several providers all
+		// sharing one declared failure domain (sn==1 with >1 provider). A single
+		// provider, or a domainless swarm (every provider its own group), is not
+		// a collapse and stays quiet.
 		if len(acc) > 1 {
 			if sn := n.survivorNakamoto(acc); sn <= 1 {
-				n.logf(ports.LogWarn, "provider set collapsed to one failure domain — near-censorable (non-globality #180)",
+				n.logf(ports.LogWarn, "provider set collapsed to one failure domain — near-censorable (non-globality)",
 					"key", id, "providers", len(acc), "survivor-nakamoto", sn)
 			}
 		}
@@ -364,16 +366,16 @@ func (n *Node) resolveProviders(id ports.ChunkID, done func([]ports.NodeID)) {
 }
 
 // survivorNakamoto counts the distinct failure domains represented in a resolved
-// provider set — the raw non-globality metric (immutable #5 / D-TAKEDOWN, #180). It
-// is the survivor Nakamoto-coefficient over failure domains: a censor must eclipse
-// THIS MANY independent domains to make the content undiscoverable, so a set spread
-// across many domains is censorship-resistant and one collapsed to a single domain
-// is one key-surround from dark. Mirrors the C2 convention — each distinct declared
-// domain is one group, and a provider whose domain this node has not learned counts
-// as its own (an unknown position, conservatively treated as independent). The RAW
-// scalar ships in M0 (the data — signed provider records + gossiped domains — already
-// exists); the ZK/PIR wrapper that certifies it as a lower bound ≥ t WITHOUT
-// revealing which domains is post-M0 (H9). Observability, never enforcement.
+// provider set — the raw non-globality metric (immutable #5 /). It is the survivor
+// Nakamoto-coefficient over failure domains: a censor must eclipse THIS MANY
+// independent domains to make the content undiscoverable, so a set spread across many
+// domains is censorship-resistant and one collapsed to a single domain is one
+// key-surround from dark. Mirrors the C2 convention — each distinct declared domain
+// is one group, and a provider whose domain this node has not learned counts as its
+// own (an unknown position, conservatively treated as independent). The RAW scalar
+// ships in M0 (the data — signed provider records + gossiped domains — already
+// exists); the ZK/PIR wrapper that verifies it as a lower bound ≥ t WITHOUT revealing
+// which domains is post-M0 (H9). Observability, never enforcement.
 func (n *Node) survivorNakamoto(ids []ports.NodeID) int {
 	domains := map[uint64]bool{}
 	unknown := 0
@@ -389,7 +391,7 @@ func (n *Node) survivorNakamoto(ids []ports.NodeID) int {
 
 // SurvivorNakamoto reports the failure-domain diversity of the providers this node
 // currently knows for key — the raw survivor Nakamoto-coefficient over failure
-// domains (non-globality metric, immutable #5 / #180). 1 = one key-surround from
+// domains (non-globality metric, immutable #5 /). 1 = one key-surround from
 // dark. Computed over the LOCALLY-known, accepted (signed, verified) providers; a
 // live query (resolveProviders) widens the set first for a fetch-time reading.
 func (n *Node) SurvivorNakamoto(key ports.ChunkID) int {
@@ -415,7 +417,7 @@ func (n *Node) fetchFrom(id ports.ChunkID, provs []ports.NodeID, done func(bool)
 	var sweep func()
 	sweep = func() {
 		if ok, _ := n.store.Has(bg(), id); ok {
-			// Defer (#467 audit): the first sweep runs on the caller's stack, so an
+			// Defer: the first sweep runs on the caller's stack, so an
 			// inline done here recurses a per-column chain O(ids) deep when the
 			// column is already held.
 			n.clock.AfterFunc(0, func() { done(true) })
@@ -424,7 +426,7 @@ func (n *Node) fetchFrom(id ports.ChunkID, provs []ports.NodeID, done func(bool)
 		transient := false
 		// Only skip cooled-down holders if a live alternative exists this sweep.
 		// The negative cache is an optimization — it must NEVER be the reason a
-		// fetch fails (#226 vs #69). A required chunk (e.g. a manifest chunk)
+		// fetch fails. A required chunk (e.g. a manifest chunk)
 		// can have a single provider that timed out transiently — a node that
 		// restarted and is already re-announcing — and if it's the only
 		// candidate we must dial it, not report the content unreachable.
@@ -448,7 +450,7 @@ func (n *Node) fetchFrom(id ports.ChunkID, provs []ports.NodeID, done func(bool)
 					n.clock.AfterFunc(ports.Duration(attempt)*n.cfg.FetchBackoff, sweep)
 					return
 				}
-				// Defer (#467 audit): with an empty (or all-skipped) provider set this
+				// Defer: with an empty (or all-skipped) provider set this
 				// exit is reached synchronously — the fresh-root condition — and an
 				// inline done recurses the calling chain on this stack.
 				n.clock.AfterFunc(0, func() { done(false) })
@@ -460,7 +462,7 @@ func (n *Node) fetchFrom(id ports.ChunkID, provs []ports.NodeID, done func(bool)
 			}
 			// Skip a holder we recently failed to reach: a stale record to a
 			// dead node otherwise costs a full RequestTimeout here, every
-			// column, every sweep (#226). A cooldown skip is NOT transient —
+			// column, every sweep. A cooldown skip is NOT transient —
 			// it must not trigger the FetchAttempts re-sweep amplification;
 			// the shard just goes unfetched this round and a later sweep, past
 			// the holder's cooldown, re-probes in case it recovered. Guarded by
@@ -477,7 +479,7 @@ func (n *Node) fetchFrom(id ports.ChunkID, provs []ports.NodeID, done func(bool)
 					if err == nil && resp.Found {
 						c := ports.Chunk{ID: id, Data: resp.Data}
 						if c.Verify() && n.store.Put(bg(), c) == nil { // a node that trusts is a bug
-							// Debug narration (#497): fetch-pulls write bytes with NO
+							// Debug narration: fetch-pulls write bytes with NO
 							// provider record — name them so a disk census can tell a
 							// pulled copy from a placed one.
 							n.logf(ports.LogDebug, "chunk pulled", "chunk", id, "from", provs[i])
@@ -501,7 +503,7 @@ func (n *Node) fetchFrom(id ports.ChunkID, provs []ports.NodeID, done func(bool)
 // fetched via fetchColumn instead.
 func (n *Node) FetchChunk(id ports.ChunkID, done func(error)) {
 	if ok, _ := n.store.Has(bg(), id); ok {
-		// Defer the held fast path through the loop (#467 audit): fetchAll /
+		// Defer the held fast path through the loop: fetchAll /
 		// fetchColumn advance their chains from this callback, so an inline
 		// return here recurses O(ids) deep over a fully-held list.
 		n.clock.AfterFunc(0, func() { done(nil) })
@@ -575,7 +577,7 @@ func (n *Node) fetchStripeByColumn(root ports.Hash, refs []shardRef, done func(u
 	next(0)
 }
 
-// columnsOf groups a manifest's shard ids by column (0..n-1), each list
+// columnsOf groups a manifest's shard ids by column (0.n-1), each list
 // in stripe order — the shape retrieval and repair fetch in.
 func columnsOf(m *manifest.Manifest) map[int][]ports.ChunkID {
 	cols := map[int][]ports.ChunkID{}
@@ -613,18 +615,18 @@ func (n *Node) fetchAll(ids []ports.ChunkID, done func(missing []ports.ChunkID))
 // stripe that has misses. Final verification/repair/decryption is
 // pipeline.Get against the local store.
 //
-// The pulled chunks are a WORKING SET (#500): they are dropped once assembly
+// The pulled chunks are a WORKING SET: they are dropped once assembly
 // finishes, success or failure — the same paramedic discipline as both repair
 // paths. Before this, NetGet retained everything it pulled, forever, with no
 // provider record: bytes that counted against the capacity pledge while being
-// undiscoverable to every fetcher (the #497 records-vs-bytes divergence).
+// undiscoverable to every fetcher (the records-vs-bytes divergence).
 // Chunks the node already hosted are never touched. A caller that WANTS to
 // keep serving what it consumed uses NetGetRetain.
 func (n *Node) NetGet(reg ports.Registry, h link.Handle, w io.Writer, done func(error)) {
 	n.netGet(reg, h, w, false, done)
 }
 
-// NetGetRetain is NetGet with the consumer==provider promise wired (#500): the
+// NetGetRetain is NetGet with the consumer==provider promise wired: the
 // chunks this call pulled are kept as REAL hosting — each coded shard gets its
 // full StorageProof + PoR tags minted from the manifest tree and the link's
 // layout key (the caller holds LayoutKey, so the retainer can defend an audit
@@ -647,7 +649,7 @@ func (n *Node) netGet(reg ports.Registry, h link.Handle, w io.Writer, retain boo
 	})
 }
 
-// netGetEntry is netGet past the (async, #473) registry resolution. reg is
+// netGetEntry is netGet past the (async) registry resolution. reg is
 // threaded for pipeline.Get's final verification read only.
 func (n *Node) netGetEntry(reg ports.Registry, entry ports.Entry, h link.Handle, w io.Writer, retain bool, done func(error)) {
 	// Held-before snapshot (the repairStripe discipline): only what THIS call
@@ -717,35 +719,38 @@ func (n *Node) netGetEntry(reg ports.Registry, entry ports.Entry, h link.Handle,
 			return
 		}
 
-		// Erasure-coded: fetch by column. Pull the k data columns first. Only the
-		// STRIPES that lost a data shard need parity, and each needs exactly as many
-		// parity shards as it lost (the pipeline reconstructs any K of N per stripe). The
-		// parity fallback is therefore a DEFICIT WALK: per stripe, deficit = data shards
-		// of that stripe − data shards present; walk the parity columns in order, pull
-		// from each only the shards of stripes still in deficit, decrement as they land,
-		// and stop at the first column that clears every deficit — typically ONE parity
-		// column lookup, and never more parity than the damage. Before 2026-09-06 any
-		// missing data shard pulled EVERY parity column of the WHOLE object (a 1.6× draw
-		// on one withheld chunk, R-PARITY-AMPLIFICATION); the 64 GiB grant/r pin's floor
-		// still carries that N/K factor as the WORST case, because a provider that returns
-		// a CORRUPT shard has already transferred the bytes before fetchFrom's verify
-		// rejects it — this walk changes the honest and the withholding cases, not the
-		// corrupting one. The floor's N/K factor (G-BB-19 sentence, G-BB-31 ratification,
-		// docs/decisions.md D-R2.9a-RUN-CALLS) is therefore untouched by this walk. Each
-		// column is one provider lookup.
+		// Erasure-coded: fetch by column. Pull the k data columns first.
+		// Only the STRIPES that lost a data shard need parity, and each
+		// needs exactly as many parity shards as it lost (the pipeline
+		// reconstructs any K of N per stripe). The parity fallback is
+		// therefore a DEFICIT WALK: per stripe, deficit = data shards of
+		// that stripe − data shards present; walk the parity columns in
+		// order, pull from each only the shards of stripes still in
+		// deficit, decrement as they land, and stop at the first column
+		// that clears every deficit — typically ONE parity column
+		// lookup, and never more parity than the damage. Before
+		// 2026-09-06 any missing data shard pulled EVERY parity column
+		// of the WHOLE object (a 1.6× draw on one withheld chunk); the
+		// 64 GiB grant/r pin's floor still carries that N/K factor as
+		// the WORST case, because a provider that returns a CORRUPT
+		// shard has already transferred the bytes before fetchFrom's
+		// verify rejects it — this walk changes the honest and the
+		// withholding cases, not the corrupting one. The floor's N/K
+		// factor (sentence decision) is therefore untouched by
+		// this walk. Each column is one provider lookup.
 		//
-		// PRESENCE IS VERIFIED, NOT STAT'ED (PE code ruling F-1): the disk store's Has is an
-		// os.Stat while Get verifies the bytes, so a bit-rotten local shard would count as
-		// present here and then fail in the pipeline — the old whole-column fetch masked that
-		// by accident. present() reads the shard through Get, which re-verifies by contract
-		// (ports.ChunkStore.Get, honoured by diskstore and memstore), and keeps a belt
-		// Verify() because cachestore.Get does not re-verify. THE COST, MEASURED (PE code
-		// ruling Open-2, adapters/diskstore, 64 MiB chunk, warm cache, hardware SHA): Has
+		// PRESENCE IS VERIFIED, NOT STAT'ED: the disk store's Has is an os.Stat
+		// while Get verifies the bytes, so a bit-rotten local shard would count
+		// as present here and then fail in the pipeline — the old whole-column
+		// fetch masked that by accident. present reads the shard through Get,
+		// which re-verifies by contract (ports.ChunkStore.Get, honoured by
+		// diskstore and memstore), and keeps a belt Verify because cachestore.Get
+		// does not re-verify. THE COST, MEASURED: Has
 		// 2.5 µs · Get 25.5 ms · Get+Verify 46.3 ms — retrieval now pays two reads and three
-		// hashes over the data instead of one read and one hash, ~21 s at S_max = 30 GB here
-		// and more on a pony without SHA acceleration. Taken knowingly: the alternative
-		// (trust Has, pay on pipeline failure) is the pay-on-failure redesign filed as
-		// R-PS-PRESENCE-COST; correctness first, the cheaper shape second.
+		// hashes over the data instead of one read and one hash, ~21 s at S_max = 30
+		// GB here and more on a pony without SHA acceleration. Taken knowingly: the
+		// alternative (trust Has, pay on pipeline failure) is the pay-on-failure
+		// redesign filed as; correctness first, the cheaper shape second.
 		cols := columnsOf(m)
 		present := func(id ports.ChunkID) bool {
 			c, err := n.store.Get(bg(), id)
@@ -799,7 +804,7 @@ func (n *Node) netGetEntry(reg ports.Registry, entry ports.Entry, h link.Handle,
 				// This parity column's shards for the stripes still in deficit. cols[j] is in
 				// stripe order (columnsOf), so cols[j][s] is stripe s's shard in column j.
 				// A parity shard this node already holds (verified) settles its stripe's deficit
-				// without a fetch and without counting as pulled (F-4: the counter is TRANSFERS).
+				// without a fetch and without counting as pulled (the counter is TRANSFERS).
 				var want []ports.ChunkID
 				stripeOf := map[ports.ChunkID]int{}
 				for s := 0; s < stripes && s < len(cols[j]); s++ {
@@ -816,7 +821,7 @@ func (n *Node) netGetEntry(reg ports.Registry, entry ports.Entry, h link.Handle,
 					stripeOf[id] = s
 				}
 				if len(want) == 0 {
-					walk(j + 1) // nothing to ask this column for; the next may still be needed (F-6)
+					walk(j + 1) // nothing to ask this column for; the next may still be needed
 					return
 				}
 				n.Stats.ParityColumnLookups++
@@ -844,8 +849,8 @@ func (n *Node) netGetEntry(reg ports.Registry, entry ports.Entry, h link.Handle,
 }
 
 // retainPulled converts a successful NetGetRetain's working set into real,
-// audit-answerable hosting (#500). Each pulled leaf gets its StorageProof
-// minted from the manifest tree (O(log n) per shard off one build, #340) with
+// audit-answerable hosting. Each pulled leaf gets its StorageProof
+// minted from the manifest tree (O(log n) per shard off one build) with
 // PoR tags from the link's layout key — the identical artifacts a
 // MsgStoreChunk recipient receives — and is hosted via hostShardLocally (the
 // repair self-hold primitive: verify, store, record, persist proof). Manifest
@@ -902,7 +907,7 @@ func (n *Node) retainPulled(m *manifest.Manifest, h link.Handle, pulled []ports.
 // from every stripe, so the caretaker must rebuild (the deterministic trigger the
 // cloud economy grade needs). An uncoded object (K==0) maps column -1 to its
 // per-chunk holders. Loop-driven (resolveProviders walks the DHT); call via the
-// ephemeral run() harness. Read-only.
+// ephemeral run harness. Read-only.
 func (n *Node) ColumnHolders(reg ports.Registry, h link.Handle, done func(map[int][]ports.NodeID, error)) {
 	n.lookupEntryAsync(reg, h.Root, func(entry ports.Entry, ok bool, err error) {
 		if err != nil || !ok {
@@ -913,7 +918,7 @@ func (n *Node) ColumnHolders(reg ports.Registry, h link.Handle, done func(map[in
 	})
 }
 
-// columnHoldersEntry is ColumnHolders past the (async, #473) registry resolution.
+// columnHoldersEntry is ColumnHolders past the (async) registry resolution.
 func (n *Node) columnHoldersEntry(entry ports.Entry, h link.Handle, done func(map[int][]ports.NodeID, error)) {
 	n.fetchAll(entry.ManifestChunks, func(missing []ports.ChunkID) {
 		if len(missing) > 0 {
@@ -945,17 +950,18 @@ func (n *Node) columnHoldersEntry(entry ports.Entry, h link.Handle, done func(ma
 			next(0)
 			return
 		}
-		// Erasure-coded: one provider walk per column (0..N-1), then BYTE-CONFIRM
-		// each record with a MsgHasChunk round-trip (#514). A bare provider record
-		// is not trusted: a lost-ack extra copy (#497) or a stale/false-repair
-		// record (#517) can leave a record on a node that no longer backs the
-		// bytes, or omit a node that does. The repair judgment (probeShard) already
-		// byte-confirms for exactly this reason, so a holders view that reported raw
-		// records diverged from the view the caretaker repairs on — the selector
-		// killed record-holders while a live byte copy survived elsewhere, and the
-		// caretaker (correctly) saw missing ≤ slack and never armed. Confirming here
-		// makes this read agree with the repair judgment: a listed holder provably
-		// holds one of the column's shards.
+		// Erasure-coded: one provider walk per column (0.N-1), then
+		// BYTE-CONFIRM each record with a MsgHasChunk round-trip. A bare
+		// provider record is not trusted: a lost-ack extra copy or a
+		// stale/false-repair record can leave a record on a node that no
+		// longer backs the bytes, or omit a node that does. The repair
+		// judgment (probeShard) already byte-confirms for exactly this reason,
+		// so a holders view that reported raw records diverged from the view
+		// the caretaker repairs on — the selector killed record-holders while
+		// a live byte copy survived elsewhere, and the caretaker (correctly)
+		// saw missing ≤ slack and never armed. Confirming here makes this read
+		// agree with the repair judgment: a listed holder provably holds one
+		// of the column's shards.
 		colShards := columnShardIDs(m)
 		var next func(col int)
 		next = func(col int) {
@@ -974,7 +980,7 @@ func (n *Node) columnHoldersEntry(entry ports.Entry, h link.Handle, done func(ma
 	})
 }
 
-// columnShardIDs maps each erasure column (0..N-1) to the shard chunk IDs
+// columnShardIDs maps each erasure column (0.N-1) to the shard chunk IDs
 // that live at that column across every stripe (data leaf i at column i%k,
 // parity leaf p at column k + p%(n-k) — the columnOfLeaf convention). A
 // holder is a genuine byte-holder for a column if it holds ANY of these.
@@ -988,16 +994,16 @@ func columnShardIDs(m *manifest.Manifest) map[int][]ports.ChunkID {
 }
 
 // confirmColumnHolders filters a column's resolved provider records down to the
-// nodes that provably hold one of the column's shards (#514). Each candidate is
+// nodes that provably hold one of the column's shards. Each candidate is
 // asked MsgHasChunk for the column's shards in order; the first found keeps the
 // holder, and a candidate that answers found for none is dropped as a stale
 // record. Self is kept without a round-trip when this node holds a shard on
 // disk. Mirrors probeShard's "a bare provider record isn't trusted."
 //
-// Corpse-gated exactly like probeShard (repair.go:479,498): a provider proven
+// Corpse-gated exactly like probeShard (repair.go,498): a provider proven
 // dead this walk is skipped entirely, so a stale record to a departed holder
 // costs one HolderDialTimeout for the whole walk instead of one PER SHARD — the
-// #226/#277/#501 dead-holder dial-storm class that PR #607 re-introduced on the
+// dead-holder dial-storm class that PR re-introduced on the
 // holders read (a 100-stripe column has one shard per stripe, so an ungated dead
 // provider dialed every shard cost ~stripes × HolderDialTimeout serially). The
 // anyLive guard preserves the #69 sole-candidate rule: a lone holder that just

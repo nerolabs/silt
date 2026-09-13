@@ -1,23 +1,22 @@
-// Package repairproof is the correctness leg of H7 proof-of-correct-repair
-// (docs/design/h7-proof-of-repair.md): given a caretaker's CLAIM that it repaired
-// a lost shard, decide whether the produced shard really is the correct Reed–
-// Solomon codeword coordinate for its stripe — so a repair bounty pays only for a
-// real, correct repair, never a bare claim.
+// Package repairproof is the correctness leg of H7 proof-of-correct-repair: given
+// a caretaker's CLAIM that it repaired a lost shard, decide whether the produced
+// shard really is the correct Reed– Solomon codeword coordinate for its stripe —
+// so a repair bounty pays only for a real, correct repair, never a bare claim.
 //
 // M0 uses the RECOMPUTE construction: reconstruct the target position from k
 // survivor shards and check the result is byte-identical to what the manifest
 // already commits to (its content-addressed shard ID). This is:
 //
-//   - SOUND — Reed–Solomon reconstruction is deterministic, so the claim is
-//     accepted iff the produced bytes ARE the codeword coordinate the survivors
-//     imply, and the survivors are pinned by their manifest-anchored IDs. There is
-//     no other ground truth in a content-addressed system: "correct" means
-//     "consistent with the manifest-anchored survivors under the public code."
-//   - PUBLICLY CHECKABLE — anyone holding the survivor bytes and the committed
-//     target ID can rerun it and get the same answer, so a false claim's rejection
-//     is a reproducible fraud proof (no trusted verifier, no secret key).
-//   - CONTENT-BLIND — silt caretakers verify over ciphertext shards under the
-//     layout key; no plaintext is ever seen.
+// - SOUND — Reed–Solomon reconstruction is deterministic, so the claim is
+// accepted iff the produced bytes ARE the codeword coordinate the survivors
+// imply, and the survivors are pinned by their manifest-anchored IDs. There is
+// no other ground truth in a content-addressed system: "correct" means
+// "consistent with the manifest-anchored survivors under the public code."
+// - PUBLICLY CHECKABLE — anyone holding the survivor bytes and the committed
+// target ID can rerun it and get the same answer, so a false claim's rejection
+// is a reproducible fraud proof (no trusted verifier, no secret key).
+// - CONTENT-BLIND — silt caretakers verify over ciphertext shards under the
+// layout key; no plaintext is ever seen.
 //
 // What it is NOT (an explicit M0 non-goal): it is not BANDWIDTH-blind — the
 // verifier must hold k survivor shards to recompute. The succinct, fetch-free
@@ -54,20 +53,20 @@ var ErrUnrecoverable = errors.New("repairproof: fewer than k survivors — targe
 // supplied survivors and checking the reconstruction is byte-identical to the
 // shard the manifest commits to (its content address `want`).
 //
-//   - p is the stripe's (k, n) code.
-//   - survivors maps a stripe position (0..n-1, data 0..k-1 then parity k..n-1) to
-//     that shard's bytes, none at `target`; the bytes are trusted only as far as the
-//     caller has verified them against their own committed IDs (a survivor whose
-//     bytes don't match its ID is not a survivor — verify before calling). It must
-//     hold enough entries that the supplied survivors PLUS the implicit-zero padding
-//     slots [realData, k) total at least k. On a FULL stripe (realData == k) there is
-//     no padding, so that is the familiar "at least k supplied survivors". On a short
-//     final stripe the padding counts for free, exactly as it does in
-//     erasure.ReconstructStripe.
-//   - realData is how many leading data positions of the stripe are real chunks
-//     (the rest are implicit zero padding of a short final stripe); it must be
-//     1..k, exactly as core/erasure uses it.
-//   - want is the manifest-committed content ID of the target shard.
+// - p is the stripe's (k, n) code.
+// - survivors maps a stripe position (0..n-1, data 0..k-1 then parity k..n-1) to
+// That shard's bytes, none at `target`; the bytes are trusted only as far as the
+// caller has verified them against their own committed IDs (a survivor whose
+// bytes don't match its ID is not a survivor — verify before calling). It must
+// hold enough entries that the supplied survivors PLUS the implicit-zero padding
+// slots [realData, k total at least k. On a FULL stripe (realData == k) there is
+// no padding, so that is the familiar "at least k supplied survivors". On a short
+// final stripe the padding counts for free, exactly as it does in
+// erasure.ReconstructStripe.
+// - realData is how many leading data positions of the stripe are real chunks
+// (the rest are implicit zero padding of a short final stripe); it must be
+// 1..k, exactly as core/erasure uses it.
+// - want is the manifest-committed content ID of the target shard.
 //
 // It returns true iff the recomputed target hashes to `want`. A wrong-but-claimed
 // shard, a garbage claim, or a survivor set that reconstructs to something else all
@@ -85,9 +84,10 @@ func VerifyByRecompute(p erasure.Params, survivors map[int][]byte, realData, tar
 		return false, fmt.Errorf("repairproof: realData=%d, want 1..%d", realData, p.K)
 	}
 	if target < realData {
-		// A real data position is content the object actually carries; verifying it
-		// is legitimate. A padding position (realData..k-1) is implicit zero, never
-		// stored and never repaired, so a claim to have "repaired" one is malformed.
+		// A real data position is content the object actually carries;
+		// verifying it is legitimate. A padding position (realData.k-1) is
+		// implicit zero, never stored and never repaired, so a claim to have
+		// "repaired" one is malformed.
 	} else if target < p.K {
 		return false, fmt.Errorf("repairproof: target %d is implicit zero padding, not a repairable shard", target)
 	}
@@ -109,32 +109,34 @@ func VerifyByRecompute(p erasure.Params, survivors map[int][]byte, realData, tar
 		present++
 	}
 	// Count the implicit-zero padding slots of a SHORT FINAL STRIPE. ReconstructStripe
-	// fills every nil slot in [realData, K) with zeros and counts them as available, so
+	// fills every nil slot in [realData, K with zeros and counts them as available, so
 	// a `present` count that ignores them is STRICTLY STRICTER than the authoritative
 	// recoverability predicate below it. That gap is the whole defect: storedShards
 	// emits realData + (N-K) refs for a final stripe, the judge excludes the claimed
-	// position, so at most realData + (N-K) - 1 survivors can ever be supplied. Judgeable
-	// therefore required realData >= 2K - N + 1 — 5 at the shipped k=10/n=16 — and EVERY
-	// object of four chunks or fewer was entirely unjudgeable: the paramedic repairs it
-	// and no judge can ever judge it. Counting the padding makes this predicate exactly
-	// ReconstructStripe's, minus the target: uniform slack N-K-1 for every realData.
+	// position, so at most realData + (N-K) - 1 survivors can ever be supplied.
+	// Judgeable therefore required realData >= 2K - N + 1 — 5 at the shipped k=10/n=16
+	// — and EVERY object of four chunks or fewer was entirely unjudgeable: the
+	// paramedic repairs it and no judge can ever judge it. Counting the padding makes
+	// this predicate exactly ReconstructStripe's, minus the target: uniform slack
+	// N-K-1 for every realData.
 	//
 	// The zeros are JUDGE-DERIVED, not claimant-supplied: realData comes from the
 	// caller's own manifest layout and the claimant determines nothing about them. The
-	// target is never one of them — a target in [realData, K) is rejected above as
-	// padding, and a target below realData or at/above K is disjoint from the range.
-	// A survivor already sitting on a padding slot was counted by the loop above and is
-	// skipped here, so no slot is counted twice; ReconstructStripe still checks that such
-	// a supplied padding shard is actually zero.
+	// target is never one of them — a target in [realData, K is rejected above as
+	// padding, and a target below realData or at/above K is disjoint from the range. A
+	// survivor already sitting on a padding slot was counted by the loop above and is
+	// skipped here, so no slot is counted twice; ReconstructStripe still checks that
+	// such a supplied padding shard is actually zero.
 	//
-	// ⚠ DO NOT "SIMPLIFY" THIS BY DELETING THE present PRE-CHECK. ReconstructStripe's
-	// below-k failure is a plain error, which this function maps to (false, nil), and
-	// Decide(false, ...) SLASHES. The ErrUnrecoverable / (false, nil) split is what keeps
-	// "I could not check you" — a transient short-survivor fetch, which the node's judge
-	// defers and retries — distinct from "you lied". Deleting the pre-check converts a
-	// transient into a bond-slash of an honest paramedic. REFUTED placement, and so is
-	// moving this into erasure.ReconstructStripe, which is already correct and sits on
-	// the genesis path (D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12).
+	// ⚠ DO NOT "SIMPLIFY" THIS BY DELETING THE present PRE-CHECK.
+	// ReconstructStripe's below-k failure is a plain error, which this function
+	// maps to (false, nil), and Decide(false,.) SLASHES. The ErrUnrecoverable /
+	// (false, nil) split is what keeps "I could not check you" — a transient
+	// short-survivor fetch, which the node's judge defers and retries — distinct
+	// from "you lied". Deleting the pre-check converts a transient into a
+	// bond-slash of an honest paramedic. REFUTED placement, and so is moving this
+	// into erasure.ReconstructStripe, which is already correct and sits on the
+	// genesis path.
 	for i := realData; i < p.K; i++ {
 		if shards[i] == nil {
 			present++

@@ -13,32 +13,29 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Genesis attestation seating rule — gates G1–G6, G7b, G10 (RED-first on main).
-//
-// Spec: genesis-atts-seating-rule-RESEARCH-CERTIFICATION-2026-09-04.md §4.1 (rule text)
-// and §8 (the gate table). Owner-ratified 2026-09-04 ("I ratify 1").
+// The genesis attestation seating rule, RED-first.
 //
 // THE RULE. In AppendGenesis, after the proposer-signature check and before c.apply(b):
-// keep exactly the entries a of b.Atts with verifyAtt(a, b.Hash()), in a fresh slice;
-// assign it to b.Atts; never return an error on this account. The committed
-// blocks[0].Atts is therefore the verified subset. apply's seating predicate
-// (id != ProposerID() && attesterQualified(id)) is unchanged, so the seated set is
-// verified ∧ qualified ∧ non-proposer — the same predicate the committed lane uses.
-// LastCommit on genesis stays REFUSED (hash-covered; TestGenesisLastCommitIsRefused = G9).
+// keep exactly the entries a of b.Atts with verifyAtt(a, b.Hash), in a fresh slice; assign
+// it to b.Atts; never return an error on this account. The committed blocks[0].Atts is
+// therefore the verified subset. apply's seating predicate (id != ProposerID &&
+// attesterQualified(id)) is unchanged, so the seated set is verified ∧ qualified ∧
+// non-proposer — the same predicate the committed lane uses. LastCommit on genesis stays
+// REFUSED (hash-covered; TestGenesisLastCommitIsRefused = G9).
 //
-// ABLATION TEETH (§8): revert the filter (seat from raw Atts) ⇒ G1–G6 RED; replace it
+// ABLATION TEETH: revert the filter (seat from raw Atts) ⇒ G1–G6 RED; replace it
 // with `b.Atts = nil` ⇒ G8 (the four core/node A11 fixtures) and G2 RED; replace it with
 // a refusal ⇒ G1/G3/G4 RED.
 //
 // "Stub" = one attestation with a QUALIFIED id (a rep-qualified key in legacy mode; an
 // anchor key in objective mode) and a 64-zero-byte signature, appended AFTER Sign — the
-// in-transit mutation every relaying peer can perform, because Atts is outside the
-// Hash() preimage (hash_literal_pin_test.go). Every fixture asserts that premise.
+// in-transit mutation every relaying peer can perform, because Atts is outside the Hash
+// preimage (hash_literal_pin_test.go). Every fixture asserts that premise.
 //
-// G7 (TestProductionGenesisCarriesNoAtts) lives in core/genesis (import direction).
-// G8 is the four core/node fixtures, unedited. G10 is re-targeted: Weight() was deleted
-// with O3 Direction T (PR #722), so the fork-choice pin is "same Hash(), same heavier
-// outcome against a common competitor".
+// G7 (TestProductionGenesisCarriesNoAtts) lives in core/genesis (import direction). G8
+// is the four core/node fixtures, unedited. G10 is re-targeted: Weight was deleted with
+// The weight term is retired, so the fork-choice pin is "same Hash, same heavier outcome against a
+// common competitor".
 
 // gasStub is a signature nobody made: priv's REAL public key with 64 zero bytes.
 func gasStub(priv ed25519.PrivateKey) Attestation {
@@ -155,9 +152,9 @@ func gasAssertStubGone(t *testing.T, c *Chain, stubKey ed25519.PrivateKey, path 
 }
 
 // ---------------------------------------------------------------------------------------
-// G1 — TestGenesisStubAttsAreStrippedNotFatal: genesis + stub ⇒ AppendGenesis returns
-// nil; Regime().ValidatorsSeen == 0; Blocks(0)[0].Atts is empty. Two arms: legacy
-// (rep-qualified stub key) and objective (anchor stub key on a production-shaped genesis).
+// G1 — TestGenesisStubAttsAreStrippedNotFatal: genesis + stub ⇒ AppendGenesis returns nil;
+// Regime.ValidatorsSeen == 0; Blocks(0)[0].Atts is empty. Two arms: legacy (rep-qualified
+// stub key) and objective (anchor stub key on a production-shaped genesis).
 // ---------------------------------------------------------------------------------------
 
 func TestGenesisStubAttsAreStrippedNotFatal(t *testing.T) {
@@ -180,7 +177,7 @@ func TestGenesisStubAttsAreStrippedNotFatal(t *testing.T) {
 	t.Run("objective-anchor", func(t *testing.T) {
 		keys := gasAnchorKeys()
 		c := gasAnchorChain(gasAnchorCfg(keys, 0, 99))
-		stubKey := keys[3] // an anchor: the ONLY key a relayer can seat on a production genesis (§3)
+		stubKey := keys[3] // an anchor: the ONLY key a relayer can seat on a production genesis
 		g := gasWithAtts(t, gasAnchorGenesis(keys), gasStub(stubKey))
 		if err := c.AppendGenesis(g); err != nil {
 			t.Fatalf("AppendGenesis REFUSED a production-shaped genesis carrying one unsigned anchor stub: %v", err)
@@ -201,7 +198,7 @@ func TestGenesisStubAttsAreStrippedNotFatal(t *testing.T) {
 // whichever era each declares) + m=2 stubs (a zero signature; a real signature over a
 // foreign hash) + one verified-but-unqualified att + one verified proposer self-att.
 // Seated set == exactly the k ids; Blocks(0)[0].Atts has exactly k+2 entries (the
-// verified subset — unqualified and self are KEPT but not seated, matching :2927-2928).
+// verified subset — unqualified and self are KEPT but not seated, matching:2927-2928).
 // ---------------------------------------------------------------------------------------
 
 func TestGenesisSeatedCountEqualsVerifiedCount(t *testing.T) {
@@ -266,7 +263,7 @@ func TestGenesisSeatedCountEqualsVerifiedCount(t *testing.T) {
 // G3 — TestReloadSurvivesAGenesisWithAStubAtt: the own-disk path. Persist
 // [genesis+stub, b1, b2] (EncodeBlocks, the bytes chainstore writes), Reload into a
 // fresh chain: returns n+1, nil; stub not seated; reloaded blocks[0].Atts has the stub
-// removed; Regime() equals a CLEAN reload's. Legacy arm and objective (anchor) arm.
+// removed; Regime equals a CLEAN reload's. Legacy arm and objective (anchor) arm.
 // ---------------------------------------------------------------------------------------
 
 func TestReloadSurvivesAGenesisWithAStubAtt(t *testing.T) {
@@ -423,9 +420,9 @@ func TestGenesisStubAttDoesNotSurviveForkAdopt(t *testing.T) {
 
 // ---------------------------------------------------------------------------------------
 // G5 — the latch does not move on a stub. Legacy config (MinBond 0, everyone rep-qualified,
-// MatureValidators 1, no anchors): genesis + stub ⇒ EverMature() == false; positive
-// control: genesis + one VERIFIED non-anchor att ⇒ EverMature() == true. Objective arm:
-// genesis + stub(anchor key) ⇒ C2Metric() and EverMature() unchanged from the clean genesis.
+// MatureValidators 1, no anchors): genesis + stub ⇒ EverMature == false; positive control:
+// genesis + one VERIFIED non-anchor att ⇒ EverMature == true. Objective arm: genesis +
+// stub(anchor key) ⇒ C2Metric and EverMature unchanged from the clean genesis.
 // ---------------------------------------------------------------------------------------
 
 func TestGenesisLatchDoesNotMoveOnAStubAtt(t *testing.T) {
@@ -475,9 +472,9 @@ func TestGenesisLatchDoesNotMoveOnAStubAtt(t *testing.T) {
 
 // ---------------------------------------------------------------------------------------
 // G6 — served-variant determinism at height 0 (the owed height-0 twin of the served-
-// variant gate; scar-uncovered-slot-decides-a-verdict): two replicas fed the clean and the
-// stubbed copy of ONE genesis hold identical Regime(), StateRootForVersion(4) and (5).
-// Weight() no longer exists (O3 Direction T); the ranking half is G10.
+// variant gate): two replicas fed the clean and the
+// stubbed copy of ONE genesis hold identical Regime, StateRootForVersion(4) and (5).
+// Weight no longer exists; the ranking half is the stub-ranking gate below.
 // ---------------------------------------------------------------------------------------
 
 func TestGenesisServedVariantDeterminismAtHeightZero(t *testing.T) {
@@ -529,7 +526,7 @@ func TestGenesisServedVariantDeterminismAtHeightZero(t *testing.T) {
 // ---------------------------------------------------------------------------------------
 // G7b — the archival half of G7: every committed archival fixture's block 0 carries no
 // Atts and no PrepareQC (the pin that makes "no era gate" sound, §4.4). Directory
-// listing, not a hand list (scar-inventory-gate-is-a-hand-list); a new era's fixture is
+// listing, not a hand list; a new era's fixture is
 // covered the day it lands.
 // ---------------------------------------------------------------------------------------
 
@@ -565,12 +562,12 @@ func TestArchivalFixturesGenesisCarriesNoAtts(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------------------
-// G10 — a stub adds no fork-choice ranking. Weight() was deleted (O3 Direction T, PR
-// #722), so the pin is re-targeted: the stubbed and the clean genesis have the same
-// Hash() and produce the same heavier outcome against a common competitor in all three
-// head relations (taller, shorter, equal-height hash tiebreak). This overlaps the O3-T
-// AST purity pin (TestO3T_HeavierReadsOnlyHeightAndHeadHash) but is the runtime pin at
-// height 0 specifically; it is GREEN on main by construction under T.
+// A stub adds no fork-choice ranking. Weight was deleted,
+// so the pin is re-targeted: the stubbed and the clean genesis have the same Hash and
+// produce the same heavier outcome against a common competitor in all three head
+// relations (taller, shorter, equal-height hash tiebreak). This overlaps the AST purity
+// pin (TestHeavierReadsOnlyHeightAndHeadHash) but is the runtime pin at height 0
+// specifically; with the weight term deleted it is green by construction.
 // ---------------------------------------------------------------------------------------
 
 func TestGenesisStubAttAddsNoForkChoiceRanking(t *testing.T) {

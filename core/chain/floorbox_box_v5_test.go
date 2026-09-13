@@ -19,7 +19,7 @@ func recomputeViaHead(c *Chain, prevStateRoot, committedStateRoot ports.Hash, b 
 }
 
 // recomputeViaHeadOn is recomputeViaHead with the box's NETWORK IDENTITY supplied explicitly, for
-// the drivers whose *Chain is COLD — it holds no blocks, so c.ChainID() is the zero hash and every
+// the drivers whose *Chain is COLD — it holds no blocks, so c.ChainID is the zero hash and every
 // era-4 carrier entry would fail to verify. That is the deployment target, and it is why the
 // recompute takes the chain id as a threaded parameter (BoxConfig.ChainID → HeadRef.ChainID → here)
 // rather than reading it off the chain: the fold-file pin denies `blocks` by name for exactly this
@@ -41,15 +41,14 @@ func headProposerOrZero(c *Chain) ports.NodeID {
 	return id
 }
 
-// =============================================================================
-// THE BOX DOOR — gates G-3 (RT2-CARRIER-13 through the door), G-7 (the witness leg of BG-3),
-// and the door's own honest twin
+// ============================================================================= THE BOX DOOR
+// — the gate (through the door), (the witness leg of), and the door's own honest twin
 // =============================================================================
 //
-// Governing: PE build brief §7 steps 6 and 8, P-table delta certification G-D10 + §6 (BG-2 split,
-// BG-3 with M-4). The box under test is NewBox over the struct fixture's h1 block as parent, with a
-// prover-backed WitnessSource over the fixture chain's own committed leaves — everything served is
-// genuine, so the gates exercise the composition and the view accessors, not a mock.
+// with. The box under test is NewBox over the struct fixture's h1 block as
+// parent, with a prover-backed WitnessSource over the fixture chain's own committed leaves —
+// everything served is genuine, so the gates exercise the composition and the view accessors, not a
+// mock.
 
 // proverSource is a WitnessSource over a chain's committed v5 leaf set: point leaves proven by a
 // real statehash prover, whole sets as the chain's own id-lists, the ancestor window from the
@@ -215,15 +214,15 @@ func boxOver(t *testing.T, f structFixture, src WitnessSource) *Box {
 	return box
 }
 
-// assertBoxReachesTheDowngrade is the door's HONEST TWIN (NG-2): the honest block runs the whole
-// composition through the box, over genuine witnesses, up to the R1.8 downgrade. It proves the door
-// can reach the far end — a door that stalled on everything would pass every refusal gate below
-// for the wrong reason.
+// assertBoxReachesTheDowngrade is the door's HONEST TWIN: the honest block runs the whole
+// composition through the box, over genuine witnesses, up to the downgrade. It proves the door can
+// reach the far end — a door that stalled on everything would pass every refusal gate below for the
+// wrong reason.
 func assertBoxReachesTheDowngrade(t *testing.T, box *Box, b Block, w StateRootWitness) {
 	t.Helper()
 	out, err := box.Validate(b, w)
 	if out != IndeterminateTrustlessly || !errors.Is(err, ErrRecomputeGated) {
-		t.Fatalf("NON-VACUITY BROKEN: the honest block must run the composition through the door to the R1.8 "+
+		t.Fatalf("NON-VACUITY BROKEN: the honest block must run the composition through the door to the  "+
 			"downgrade (IndeterminateTrustlessly / ErrRecomputeGated); got %s / %v", out, err)
 	}
 }
@@ -255,21 +254,21 @@ func TestNewBox_RefusesWhatItCannotOwn(t *testing.T) {
 	src := newProverSource(t, f.c)
 	honest := f.mkBlock(t, nil)
 	assertBoxReachesTheDowngrade(t, boxOver(t, f, src), honest, structWitnessFor(t, f, src, honest))
-	// G-7 / G-D10 at the box: an unset budget is refused at construction; ∞ is not expressible.
+	// at the box: an unset budget is refused at construction; ∞ is not expressible.
 	if _, err := NewBox(f.c, parent, BoxConfig{}, nil); !errors.Is(err, ErrBudgetNotPositive) {
-		t.Fatalf("G-7: NewBox with an unset BudgetBytes must REFUSE (ErrBudgetNotPositive); got %v", err)
+		t.Fatalf("NewBox with an unset BudgetBytes must REFUSE (ErrBudgetNotPositive); got %v", err)
 	}
 	if _, err := NewBox(f.c, parent, BoxConfig{BudgetBytes: -1}, nil); !errors.Is(err, ErrBudgetNotPositive) {
-		t.Fatalf("G-7: NewBox with a negative BudgetBytes must REFUSE; got %v", err)
+		t.Fatalf("NewBox with a negative BudgetBytes must REFUSE; got %v", err)
 	}
 	// The S2 mode fence at the door: a legacy chain is not a box.
 	lf := buildLegacyFixture(t)
 	if _, err := NewBox(lf.c, lf.c.Blocks(0)[0], BoxConfig{BudgetBytes: 1 << 20}, nil); !errors.Is(err, ErrBoxLegacyMode) {
 		t.Fatalf("NewBox over a legacy chain must REFUSE (ErrBoxLegacyMode); got %v", err)
 	}
-	// A parent whose heavy proofs are shed cannot anchor the box. The parent must actually HAVE a
-	// proof to shed: (d-3) retires `Pruned` for v5, so Prune() on an entry-only v5 block is a
-	// legitimate no-op and this arm would assert against an unpruned parent.
+	// A parent whose heavy proofs are shed cannot anchor the box. The parent must actually
+	// HAVE a proof to shed: retires `Pruned` for v5, so Prune on an entry-only v5 block is
+	// a legitimate no-op and this arm would assert against an unpruned parent.
 	shedParent := parent
 	d := answerDigestOf([]byte("valid"))
 	shedParent.BondRegs = []BondReg{{Validator: pubOf(f.keys[0]), Root: ports.Hash{0x11}, Size: twoMiB, AnswerDigest: &d}}
@@ -288,20 +287,20 @@ func TestNewBox_RefusesWhatItCannotOwn(t *testing.T) {
 	}
 }
 
-// TestG3_ParentBindingPrecedesTheCarrierLeg is the RT2-CARRIER-13 gate through the door (step 6).
+// TestParentBindingPrecedesTheCarrierLeg is the gate through the door (step 6).
 //
 // The box's old recompute entry took (b, parentStateRoot, witness) and had no position of its
-// own, so the carrier was verified over whatever b.Prev the author chose (RT2-CARRIER-13/13b/13c),
+// own, so the carrier was verified over whatever b.Prev the author chose,
 // and the parent proposer came from the witness. Now the door runs P1 over the box's OWN head
 // before any carrier crypto. Two arms, both refused ON THE PARENT BINDING, BY NAME:
-//   - a stale-but-valid replay: the committed h1 block, genuine signatures, genuine roots — the
-//     block the header sweep cannot catch (its signature verifies; only the reader's position
-//     refuses it);
-//   - a forged carrier on a FOREIGN parent: zero-signature entries over a parent the box does not
-//     hold. The discriminator is the refusal's NAME: ErrWrongParent (P1) and not ErrCarrier*
-//     (P12). Ablation (G-3): derive the view's head from the block's own b.Prev/b.Height (the old
-//     driver-asserted parent) ⇒ P1 passes ⇒ the verdict names the carrier ⇒ RED.
-func TestG3_ParentBindingPrecedesTheCarrierLeg(t *testing.T) {
+// - a stale-but-valid replay: the committed h1 block, genuine signatures, genuine roots — the
+// block the header sweep cannot catch (its signature verifies; only the reader's position
+// refuses it);
+// - a forged carrier on a FOREIGN parent: zero-signature entries over a parent the box does not
+// hold. The discriminator is the refusal's NAME: ErrWrongParent (P1) and not ErrCarrier*
+// (P12). Ablation: derive the view's head from the block's own b.Prev/b.Height (the old
+// driver-asserted parent) ⇒ P1 passes ⇒ the verdict names the carrier ⇒ RED.
+func TestParentBindingPrecedesTheCarrierLeg(t *testing.T) {
 	f := buildStructFixture(t)
 	src := newProverSource(t, f.c)
 	box := boxOver(t, f, src)
@@ -319,7 +318,7 @@ func TestG3_ParentBindingPrecedesTheCarrierLeg(t *testing.T) {
 	}
 	out, err := box.Validate(stale, StateRootWitness{})
 	if out != Reject || !errors.Is(err, ErrWrongParent) {
-		t.Fatalf("RT2-CARRIER-13: the box must refuse a stale-but-valid replay on the PARENT BINDING, by name; got %s / %v", out, err)
+		t.Fatalf("the box must refuse a stale-but-valid replay on the PARENT BINDING, by name; got %s / %v", out, err)
 	}
 
 	// Arm 2: a forged carrier over a FOREIGN parent. The foreign parent is a self-consistent block
@@ -340,19 +339,19 @@ func TestG3_ParentBindingPrecedesTheCarrierLeg(t *testing.T) {
 	}
 	out, err = box.Validate(forged, StateRootWitness{})
 	if out != Reject || !errors.Is(err, ErrWrongParent) {
-		t.Fatalf("RT2-CARRIER-13: the box must refuse a forged carrier over a FOREIGN parent on the PARENT BINDING (P1), "+
+		t.Fatalf("the box must refuse a forged carrier over a FOREIGN parent on the PARENT BINDING (P1), "+
 			"BEFORE the carrier leg (P12) is reached; got %s / %v", out, err)
 	}
 	if errors.Is(err, ErrCarrierBadSignature) {
-		t.Fatalf("RT2-CARRIER-13: the refusal named the CARRIER — the carrier leg ran before the parent binding: %v", err)
+		t.Fatalf("the refusal named the CARRIER — the carrier leg ran before the parent binding: %v", err)
 	}
 }
 
-// TestG7_BoxBudgetCoversTheWitness is the witness leg of BG-3 (step 8; G-D10 covers the frame
-// leg). The door charges FRAME + WITNESS bytes against the box's one config-derived ceiling, before
-// any crypto: the discriminator is a GARBAGE proposer signature that would otherwise fail P3.
-// Ablation (G-7): charge the frame alone at the door ⇒ the over-budget witness proceeds to P3 ⇒ RED.
-func TestG7_BoxBudgetCoversTheWitness(t *testing.T) {
+// TestBoxBudgetCoversTheWitness is the witness leg of (step 8; this gate covers the frame leg). The
+// door charges FRAME + WITNESS bytes against the box's one config-derived ceiling, before any
+// crypto: the discriminator is a GARBAGE proposer signature that would otherwise fail P3. Ablation:
+// charge the frame alone at the door ⇒ the over-budget witness proceeds to P3 ⇒ RED.
+func TestBoxBudgetCoversTheWitness(t *testing.T) {
 	f := buildStructFixture(t)
 	src := newProverSource(t, f.c)
 	parent := f.c.Blocks(1)[0]
@@ -376,7 +375,7 @@ func TestG7_BoxBudgetCoversTheWitness(t *testing.T) {
 	}
 	out, err := tight.Validate(garbage, w)
 	if out != IndeterminateTrustlessly || !errors.Is(err, ErrWitnessBudgetExceeded) {
-		t.Fatalf("G-7 VIOLATED: frame + witness above the box's ceiling must STALL on the budget before any crypto; got %s / %v", out, err)
+		t.Fatalf("VIOLATED: frame + witness above the box's ceiling must STALL on the budget before any crypto; got %s / %v", out, err)
 	}
 	// Within the ceiling the same block fails on its garbage signature — the budget is what fired.
 	loose, err := NewBox(f.c, parent, BoxConfig{BudgetBytes: frame + wb + 1, ChainID: f.c.ChainID()}, src)
@@ -384,9 +383,9 @@ func TestG7_BoxBudgetCoversTheWitness(t *testing.T) {
 		t.Fatal(err)
 	}
 	if out, err := loose.Validate(garbage, w); out != Reject || !errors.Is(err, ErrBadSignature) {
-		t.Fatalf("G-7 control: within budget the garbage signature must fail P3; got %s / %v", out, err)
+		t.Fatalf("control: within budget the garbage signature must fail P3; got %s / %v", out, err)
 	}
-	// witnessBytes measures the quantity BG-3 bounds: adding one screen with real proofs grows it.
+	// witnessBytes measures the quantity the gate bounds: adding one screen with real proofs grows it.
 	grown := w
 	k1 := idOf(f.keys[1])
 	grown.AttScreens = append(grown.AttScreens, StateRootAttScreen{Attester: k1,

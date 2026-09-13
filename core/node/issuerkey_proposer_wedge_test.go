@@ -3,7 +3,7 @@ package node
 // C2 — the proposer self-wedge on a current-era objective network.
 //
 // MECHANISM. `chain.validateIssuerKeys` reads the bond ledger PRE-apply
-// (`c.bonded[r.IssuerID()] <= 0` ⇒ ErrIssuerKeyUnbonded), while `proposeBlock` folds
+// (`c.bonded[r.IssuerID] <= 0` ⇒ ErrIssuerKeyUnbonded), while `proposeBlock` folds
 // the proposer's own first `BondReg` AND every still-uncommitted `pendingIssuerKeys`
 // entry into the SAME block, then runs `n.chain.ValidateProposal(b)` as a local
 // pre-check. The pre-check therefore fails against the PRE-state, `done(err)` aborts
@@ -15,7 +15,7 @@ package node
 // FIX. Proposer POLICY: defer a registration whose issuer is not bonded in the
 // PRE-state (`chain.IssuerKeyRegAdmissible`), keeping it staged. No validity rule
 // changes, so a mixed swarm cannot fork on it — the same shape as the IsSlashed
-// filter on pending bond regs (#503 Q1(a)).
+// filter on pending bond regs.
 
 import (
 	"crypto/rand"
@@ -45,8 +45,8 @@ import (
 //
 // EPOCHS ARE OFF HERE (EpochBlocks == 0), which is what the C2 wedge needs: the
 // wedge is about the BOND ledger, and an epoch clock would add an unrelated moving
-// part. The epoch-enabled variant of this same network — the R-E2E-ERA4-FIXTURE
-// posture — is era4EpochNet in issuerkey_epoch_posture_test.go.
+// part. The epoch-enabled variant of this same network — the posture — is
+// era4EpochNet in issuerkey_epoch_posture_test.go.
 func era4AnchorNet(t *testing.T, nAnchors int) ([]*Node, []*identity.Identity, *simnet.Network, *chain.Block, chain.Config) {
 	t.Helper()
 	return era4EpochNet(t, nAnchors, 0)
@@ -160,7 +160,7 @@ func TestIssuerKeyRegDoesNotWedgeTheProposer(t *testing.T) {
 	}
 
 	// The queue drains on the NEXT fold, not at commit: a registration RIDES AND
-	// STAYS QUEUED until the chain confirms it (the #397-Q4-ii discipline), so the
+	// STAYS QUEUED until the chain confirms it (the discipline), so the
 	// deferral must not have turned that into permanent residency either.
 	if err := proposeOnce(t, fresh, net, all, "drain"); err != nil {
 		t.Fatalf("the drain proposal must commit: %v", err)

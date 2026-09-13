@@ -2,11 +2,11 @@ package credit
 
 import "testing"
 
-// TestR212FaucetBucketArithmetic pins the bucket under a fake monotonic source: a fresh
+// TestFaucetBucketArithmetic pins the bucket under a fake monotonic source: a fresh
 // bucket is full; each take drains one; a drained bucket denies; tokens accrue
 // CONTINUOUSLY at refill/interval with the sub-token remainder carried exactly; the level
 // saturates at capacity; a source that does not advance or steps backward accrues nothing.
-func TestR212FaucetBucketArithmetic(t *testing.T) {
+func TestFaucetBucketArithmetic(t *testing.T) {
 	now := int64(1_000)
 	f := newFaucet(3, 2, 100, func() int64 { return now }) // 2 tokens per 100 ns = one per 50 ns
 	if f.Level() != 3 {
@@ -53,10 +53,10 @@ func TestR212FaucetBucketArithmetic(t *testing.T) {
 	}
 }
 
-// TestR212FaucetNeverBuildsABucketThatCannotRefill is the PE's S5: a non-positive capacity,
-// refill or interval — or no time source — yields nil (UNLIMITED), never a bucket that drains
-// once and denies for 104 simulated days.
-func TestR212FaucetNeverBuildsABucketThatCannotRefill(t *testing.T) {
+// TestFaucetNeverBuildsABucketThatCannotRefill is the S5: a non-positive capacity, refill or
+// interval — or no time source — yields nil (UNLIMITED), never a bucket that drains once and
+// denies for 104 simulated days.
+func TestFaucetNeverBuildsABucketThatCannotRefill(t *testing.T) {
 	now := func() int64 { return 0 }
 	for _, c := range [][3]int64{{0, 1, 1}, {1, 0, 1}, {1, 1, 0}, {-5, 1, 1}, {1, -1, 1}, {1, 1, -1}} {
 		if f := newFaucet(c[0], c[1], c[2], now); f != nil {
@@ -71,9 +71,9 @@ func TestR212FaucetNeverBuildsABucketThatCannotRefill(t *testing.T) {
 	}
 }
 
-// TestR212FaucetRecoversFromEmptyAfterALongIdle pins the recovery the PE's probe wanted: an
-// empty bucket left alone for many intervals is full again — a denial is never permanent.
-func TestR212FaucetRecoversFromEmptyAfterALongIdle(t *testing.T) {
+// TestFaucetRecoversFromEmptyAfterALongIdle pins the recovery the probe wanted: an empty
+// bucket left alone for many intervals is full again — a denial is never permanent.
+func TestFaucetRecoversFromEmptyAfterALongIdle(t *testing.T) {
 	now := int64(0)
 	f := newFaucet(256, 256, 3_600_000_000_000, func() int64 { return now }) // 256 per hour
 	for i := 0; i < 256; i++ {

@@ -1,7 +1,7 @@
 // Package dht is textbook Kademlia, kept pure: XOR distance, k-bucket
 // routing tables, and the iterative lookup as a standalone state machine
 // that never touches a network. The node package drives these over the
-// Transport port. See docs/math/04-kademlia.md.
+// Transport port. See.
 package dht
 
 import (
@@ -35,7 +35,7 @@ func Closer(target ports.Hash, a, b ports.NodeID) bool {
 }
 
 // BucketIndex returns which k-bucket id falls into from self's point of
-// view: the index of the highest differing bit, 0..255 (255 = differ in
+// view: the index of the highest differing bit, 0.255 (255 = differ in
 // the first bit = the far half of the ID space). Returns -1 for self.
 func BucketIndex(self, id ports.NodeID) int {
 	for i := 0; i < len(self); i++ {

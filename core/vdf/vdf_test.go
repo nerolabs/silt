@@ -139,7 +139,7 @@ func TestForgedProofFails(t *testing.T) {
 	}
 }
 
-// Non-canonical group elements (out of [1, N)) are rejected rather than
+// Non-canonical group elements (out of [1, N) are rejected rather than
 // wrapped, closing a malleability seam.
 func TestNonCanonicalRejected(t *testing.T) {
 	p := testParams(t)

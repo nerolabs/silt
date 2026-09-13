@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# check_escape_fingerprint.sh — offline RED/GREEN for ft_escape_progress (#536).
+# check_escape_fingerprint.sh — offline RED/GREEN for ft_escape_progress.
 #
-# The run 45da13c-17686 mis-attribution: the escape fingerprint counted
+# The run the field run mis-attribution: the escape fingerprint counted
 # `round-change` from journald, where that structured n.logf line NEVER
 # appears (it is written to $STORE/debug.log only) — so rc read 0 on every
 # sample and a LIVE ladder (114 round-change lines at h64 r1→r5) fingerprinted
@@ -47,24 +47,24 @@ LATER="$(epoch_to_iso $((KILL + 300)))Z"          # 5 min later, still after
 
 # ── Case 1: a LIVE ladder (round-changes present, advancing) must NOT read rc=0
 STUB_JOURNAL=""                                   # no commit since kill (wedged height)
-STUB_DEBUGLOG="$AFTER info round-change: advancing (#432 view-change) height=64 round=1
-$AFTER info round-change: recorded (#432 view-change) height=64 round=1
-$AFTER info round-change: advancing (#432 view-change) height=64 round=2"
+STUB_DEBUGLOG="$AFTER info round-change: advancing (view-change) height=64 round=1
+$AFTER info round-change: recorded (view-change) height=64 round=1
+$AFTER info round-change: advancing (view-change) height=64 round=2"
 fp="$(ft_escape_progress "$KILL" val-a)"
-if printf '%s' "$fp" | grep -q 'rc=3 '; then ok "live ladder read rc=3 (was rc=0 before #536): $fp"
+if printf '%s' "$fp" | grep -q 'rc=3 '; then ok "live ladder read rc=3: $fp"
 else bad "live ladder must count round-changes from debug.log, got: $fp"; fi
 
 # ── Case 2: two samples of a LIVE ladder differ (more round-changes appear) →
-#    the caller sees fp0 != fp1 → NOT a wedge (routes to OUT-OF-MODEL gap)
+#  the caller sees fp0 != fp1 → NOT a wedge (routes to OUT-OF-MODEL gap)
 fp0="$fp"
 STUB_DEBUGLOG="$STUB_DEBUGLOG
-$LATER info round-change: advancing (#432 view-change) height=64 round=3"
+$LATER info round-change: advancing (view-change) height=64 round=3"
 fp1="$(ft_escape_progress "$KILL" val-a)"
 if [ "$fp0" != "$fp1" ]; then ok "an advancing ladder yields fp0 != fp1 (no wedge): $fp0 → $fp1"
 else bad "advancing ladder must change the fingerprint, got equal: $fp0"; fi
 
 # ── Case 3: an UNREADABLE source (ssh returned nothing) yields `?`, never 0 —
-#    two such samples must not compare equal-and-frozen and manufacture a wedge
+#  two such samples must not compare equal-and-frozen and manufacture a wedge
 STUB_JOURNAL=""; STUB_DEBUGLOG=""
 fpu="$(ft_escape_progress "$KILL" val-a)"
 if printf '%s' "$fpu" | grep -q 'rc=?'; then ok "unreadable debug.log reads rc=? (UNKNOWN, not 0): $fpu"
@@ -74,17 +74,17 @@ if [ "${fpu#*\?}" != "$fpu" ]; then ok "the '?' guard rejects an UNKNOWN fingerp
 else bad "the '?' guard failed to detect UNKNOWN in: $fpu"; fi
 
 # ── Case 4: a genuinely FROZEN readable ladder (round-changes present, but the
-#    SAME across both samples, no new commit) IS a wedge — the true positive.
-#    The journal is READABLE (non-empty) but carries no committed-block-since-kill
-#    → h=0 (not h=?): a real down-designee wedge, not an unreadable source.
+#  SAME across both samples, no new commit) IS a wedge — the true positive.
+#  The journal is READABLE (non-empty) but carries no committed-block-since-kill
+#  → h=0 (not h=?): a real down-designee wedge, not an unreadable source.
 STUB_JOURNAL="Aug 23 16:12:00 host silt[1]: standing self=abc reputation=1024"
-STUB_DEBUGLOG="$AFTER info round-change: recorded (#432 view-change) height=64 round=1
-$AFTER info round-change: recorded (#432 view-change) height=64 round=1"
+STUB_DEBUGLOG="$AFTER info round-change: recorded (view-change) height=64 round=1
+$AFTER info round-change: recorded (view-change) height=64 round=1"
 fa="$(ft_escape_progress "$KILL" val-a)"
 fb="$(ft_escape_progress "$KILL" val-a)"
 if [ "$fa" = "$fb" ] && [ "${fa#*\?}" = "$fa" ] && printf '%s' "$fa" | grep -q 'h=0'; then
   ok "a frozen readable ladder is a true wedge (fp0==fp1, no '?', h=0): $fa"
 else bad "frozen readable ladder must be a stable readable fingerprint, got: $fa / $fb"; fi
 
-[ "$fail" = 0 ] && say "escape-fingerprint self-test GREEN (#536)" || say "escape-fingerprint self-test RED"
+[ "$fail" = 0 ] && say "escape-fingerprint self-test GREEN" || say "escape-fingerprint self-test RED"
 exit "$fail"

@@ -7,14 +7,13 @@ import (
 
 // TestPerHeightCostLinear is the STANDING GATE for the memory-accumulation
 // SUBSET of the depth-war failure class: per-height MEMORY that grows with chain
-// depth (#528, #535, #549, #555, #556, #558, #560, #561, #562, #563, #572 — all
-// field-confirmed, one class). It does NOT cover the whole class: the metric is
-// HeapObjects-based, so a CPU-time-shaped O(depth) defect (no extra allocation)
-// is out of scope — tracked in follow-on issue #616. A unit test at a fixed
-// height is ALWAYS green for an O(depth) bug (canonical: #555, AllEntries built
-// an O(n) slice per block — green in every constant-height test, catastrophic at
-// real chain depth). This gate measures the SLOPE of cost vs depth and fails on
-// super-linear growth.
+// depth (— all field-confirmed, one class). It does NOT cover the whole class:
+// the metric is HeapObjects-based, so a CPU-time-shaped O(depth) defect (no
+// extra allocation) is out of scope — tracked in follow-on issue. A unit test at
+// a fixed height is ALWAYS green for an O(depth) bug (canonical:, AllEntries
+// built an O(n) slice per block — green in every constant-height test,
+// catastrophic at real chain depth). This gate measures the SLOPE of cost vs
+// depth and fails on super-linear growth.
 //
 // Metric: baseline-subtracted runtime.MemStats.HeapObjects. It is deterministic
 // across runs (seeded sim + a forced GC before each sample) — unlike HeapInuse,
@@ -24,9 +23,8 @@ import (
 // object count, so growth(2H)/growth(H) → 2.0 (measured baseline: 1.998–1.999).
 // A super-linear O(n)-per-block defect (O(n²) total) gives ratio → 4.0. The gate
 // asserts the ratio stays below 2.6 at TWO doublings — 30% above the linear
-// baseline, 35% below the super-linear signal. See
-// docs/thinking/2026-08-27-o-depth-ci-gate.md for the full derivation and the
-// false-positive analysis.
+// baseline, 35% below the super-linear signal. See for the full derivation and
+// the false-positive analysis.
 //
 // Cost: ~1.5s to h=1000 under -short; ~6s to h=2000 on the wide ladder. The
 // STANDING per-PR gate is the SHORT 250→500→1000 ladder (go test -short,
@@ -114,9 +112,9 @@ func TestPerHeightCostLinear(t *testing.T) {
 		if ratio >= bound {
 			t.Errorf("SUPER-LINEAR per-height cost: growth(%d)/growth(%d) = %.3f ≥ %.1f. "+
 				"Per-height object cost is growing faster than linear with chain depth — "+
-				"the depth-war failure class (#555 shape). A hot-path structure is "+
+				"the depth-war failure class (shape). A hot-path structure is "+
 				"accumulating per-block super-linearly. Make it linear (incremental "+
-				"update), do not loosen the bound. See docs/thinking/2026-08-27-o-depth-ci-gate.md.",
+				"update), do not loosen the bound. See the design notes",
 				hi, lo, ratio, bound)
 		}
 	}
@@ -141,8 +139,8 @@ func gcd(a, b int) int {
 
 // injectSuperLinear parks `h` fresh heap objects at height h. Wired as the
 // per-height hook under SILT_ODEPTH_INJECT=1, the total object count grows as
-// sum(1..h) ≈ h²/2 — a synthetic O(n)-per-block regression (the #555 shape) used
-// to prove the gate goes RED. The objects are held in the package-level `injected`
+// sum(1.h) ≈ h²/2 — a synthetic O(n)-per-block regression (the shape) used to
+// prove the gate goes RED. The objects are held in the package-level `injected`
 // ring so the GC cannot reclaim them and HeapObjects (the asserted metric) climbs
 // quadratically. NOT reachable in any normal run.
 func injectSuperLinear(h int) {

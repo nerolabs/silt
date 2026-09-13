@@ -1,13 +1,13 @@
-// D-DEMAND wiring (#181): the delivery-receipt path that turns the pure
-// core/demand primitive into a live network capability. Since R2.9 the fetcher's
-// blind-withdrawn token is the SESSION ANCHOR, spent at session open
-// (deliverysession.go); deliveries are acknowledged by cumulative-count receipts on
-// that session, banked into the NEUTRAL witnessed-demand observable and settled per
-// increment. The v2 flat receipt (token spent at redeem) is RETIRED (B-9) and refused
-// with a named reason below. What stays here: the demand bank's wiring, the bonded-
-// fetcher credential, and the witnessed-demand readers.
+// wiring: the delivery-receipt path that turns the pure core/demand primitive into a
+// live network capability. Since the fetcher's blind-withdrawn token is the
+// SESSION ANCHOR, spent at session open (deliverysession.go); deliveries are
+// acknowledged by cumulative-count receipts on that session, banked into the NEUTRAL
+// witnessed-demand observable and settled per increment. The v2 flat receipt (token
+// spent at redeem) is RETIRED and refused with a named reason below. What stays
+// here: the demand bank's wiring, the bonded- fetcher credential, and the
+// witnessed-demand readers.
 //
-// ISSUANCE IS ITS OWN LANE (R0.4b C3 close). Demand tokens are withdrawn on
+// ISSUANCE IS ITS OWN LANE (C3 close). Demand tokens are withdrawn on
 // MsgDemandTokenRequest under a PER-EPOCH demand key, never on the publish-token lane
 // (MsgTokenRequest) under the publish key. The publish key never enters the demand
 // keyset, so a demand-domain blind bought on the publish lane is a token no bank will
@@ -18,7 +18,7 @@
 // NEUTRAL by construction: witnessed demand is an observable, never read by
 // consensus standing, so a forged or self-dealt receipt buys ZERO standing (the
 // γ→1/N firewall). The cost-to-wash re-pricing (fee-burn + bonded-fetcher
-// credential) and fetcher-unlinkability (D3) are later D-DEMAND phases.
+// credential) and fetcher-unlinkability (D3) are later phases.
 package node
 
 import (
@@ -44,13 +44,13 @@ var ErrNoSigner = errors.New("node: no signing identity (SetSigner) — cannot s
 // the fetcher (the blind signature already hides the serial; this severs the
 // account/identity link).
 //
-// issuerPub AND epoch ARE THE PARENT'S RESOLUTION, NOT THE ISSUER'S SAY-SO (R0.4b,
-// red-team break 5). An ephemeral node has no chain, so it cannot resolve key_E against
-// the committed E ↦ key_E binding itself; the DURABLE parent does that
-// (Node.ResolvedDemandIssuerKey) and hands the pair down. Blinding against whatever key
-// the issuer happens to serve is what made a per-cohort key an ACCEPTED tagged token
-// instead of a denial. The withdrawal refuses a reply that names any other epoch, so a
-// targeting issuer gets a denial, not a fingerprint.
+// issuerPub AND epoch ARE THE PARENT'S RESOLUTION, NOT THE ISSUER'S SAY-SO. An
+// ephemeral node has no chain, so it cannot resolve key_E against the committed E ↦
+// key_E binding itself; the DURABLE parent does that (Node.ResolvedDemandIssuerKey) and
+// hands the pair down. Blinding against whatever key the issuer happens to serve is
+// what made a per-cohort key an ACCEPTED tagged token instead of a denial. The
+// withdrawal refuses a reply that names any other epoch, so a targeting issuer gets a
+// denial, not a fingerprint.
 //
 // done fires once with the token or an error.
 func (n *Node) AcquireDemandTokenWithCredit(rng io.Reader, issuer ports.NodeID, issuerPub *rsa.PublicKey,
@@ -74,13 +74,13 @@ func (n *Node) AcquireDemandTokenWithCredit(rng io.Reader, issuer ports.NodeID, 
 // pins its committed key_E). It is NOT the issuer whose anchors this node accepts: a
 // session anchor verifies under this server's OWN committed key only (verifyDeliveryAnchors,
 // the own-key rule — gated by TestComposedSessions_ForeignIssuersFreshAnchorIsRefused).
-// The v2 flat receipt this bank once banked (MsgDeliveryReceipt) is retired (B-9), and
+// The v2 flat receipt this bank once banked (MsgDeliveryReceipt) is retired, and
 // the primitive behind it is gone (C1): the bank's only counter is WitnessedIncrements.
 //
-// R0.4b: issuer is a NodeID, not an RSA key. A key enters a keyset ONLY after its
+// issuer is a NodeID, not an RSA key. A key enters a keyset ONLY after its
 // fingerprint matched the consensus-attested commitment (pinDemandIssuerKey). Taking
-// a raw key here would be exactly the architecture the R0.4b certification refuses:
-// a redeemer with nothing consensus-attested to resolve key_E against.
+// a raw key here would be exactly the architecture the research refuses: a redeemer
+// with nothing consensus-attested to resolve key_E against.
 func (n *Node) EnableDemandBank(issuer ports.NodeID) {
 	n.demandBank = demand.NewBank()
 	n.demandIssuer = issuer
@@ -124,16 +124,16 @@ func guardFullRefusals(l ports.CreditLedger) int64 {
 	return 0
 }
 
-// handleDeliveryReceipt REFUSES the retired v2 flat receipt (B-9, R2.9: the token is
+// handleDeliveryReceipt REFUSES the retired v2 flat receipt (the token is
 // spent at session OPEN and acknowledged by cumulative-count receipts — MsgDeliveryOpen /
 // MsgDeliverySettle, deliverysession.go). Nothing is parsed, banked or paid: a fetcher
 // left on the flat path would re-create the suppression break the anchored lane closed
-// (build-questions certification 2026-09-04 §2.2 point 1), and one face must never buy a
-// v2 demand unit beside its v3 increments (R-V2-V3-DEMAND-DILUTION, closed here). The
-// kind keeps its number (appended kinds are pinned) and answers with the named reason.
+// (build-questions research 2026-09-04 §2.2 point 1), and one face must never buy a v2
+// demand unit beside its v3 increments (closed here). The kind keeps its number (appended
+// kinds are pinned) and answers with the named reason.
 func (n *Node) handleDeliveryReceipt(from ports.NodeID, msg ports.Message) {
 	n.reply(from, msg, ports.Message{Kind: ports.MsgDeliveryReceiptAck, OK: false, Data: []byte(errFlatReceiptRetired.Error())})
 }
 
 // errFlatReceiptRetired is the S5 reason the retired lane answers with.
-const errFlatReceiptRetired = deliveryError("delivery: the flat receipt (token spent at redeem) is retired — open a session (MsgDeliveryOpen) and acknowledge with cumulative-count receipts (MsgDeliverySettle); R2.9")
+const errFlatReceiptRetired = deliveryError("delivery: the flat receipt (token spent at redeem) is retired — open a session (MsgDeliveryOpen) and acknowledge with cumulative-count receipts (MsgDeliverySettle); ")

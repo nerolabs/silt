@@ -1,8 +1,8 @@
 package node
 
-// R0.4b — the MANDATORY targeted-key equivocation gate (research certification
-// 2026-09-02, Verdict 2: "a targeted-key equivocation gate ... is MANDATORY; without
-// it the construction is certified-unsafe").
+// The MANDATORY targeted-key equivocation gate (research 2026-09-02, Verdict 2:
+// "a targeted-key equivocation gate. is MANDATORY; without it the construction is
+// verifies-unsafe").
 //
 // The attack these gates close: per-epoch issuer keys make "which key verified you" a
 // property of the token. An issuer that serves a DISTINCT key_E to a small cohort
@@ -156,10 +156,10 @@ func TestIssuerKey_PinFollowsTheChain(t *testing.T) {
 }
 
 // TestIssuerKey_NoChainRefusesEverything: with no chain there is nothing
-// consensus-attested to resolve against. Refusing is the certified behavior — the
-// certification is explicit that running the per-epoch-key construction WITHOUT the
-// binding is unsafe, because it manufactures a linkable tag the no-epoch design did
-// not have. Fail closed, never open.
+// consensus-attested to resolve against. Refusing is the behavior — the research is
+// explicit that running the per-epoch-key construction WITHOUT the binding is
+// unsafe, because it manufactures a linkable tag the no-epoch design did not have.
+// Fail closed, never open.
 func TestIssuerKey_NoChainRefusesEverything(t *testing.T) {
 	sched := simclock.New()
 	net := simnet.New(sched, 2, simnet.DefaultConfig())

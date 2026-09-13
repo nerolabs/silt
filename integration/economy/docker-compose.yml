@@ -1,10 +1,10 @@
 # The economy + blind-credit field test, on one host, in containers:
 #
-#   econ (flat bridge 10.80.0.0/24)
-#     ├─ val1  (10.80.0.11)  validator + token ISSUER + serves the registry
-#     ├─ val2  (10.80.0.12)  validator + token ISSUER (second quorum signer)
-#     ├─ holder(10.80.0.20)  plain storage node — hosts + serves chunks
-#     └─ leech (10.80.0.30)  -freeload: routes but REFUSES to store/serve
+#  econ (flat bridge 10.80.0.0/24)
+#  ├─ val1 (10.80.0.11) validator + token ISSUER + serves the registry
+#  ├─ val2 (10.80.0.12) validator + token ISSUER (second quorum signer)
+#  ├─ holder(10.80.0.20) plain storage node — hosts + serves chunks
+#  └─ leech (10.80.0.30) -freeload: routes but REFUSES to store/serve
 #
 # Both validators run -require-tokens 1: the chain accepts an entry only if it
 # carries a blind-signed publish token, NOT a durable Publisher identity. A

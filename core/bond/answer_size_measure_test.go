@@ -8,17 +8,17 @@ import (
 	"github.com/nerolabs/silt/core/manifest"
 )
 
-// TestMeasure_AnswerSizeBreakdown299 is the #299 measurement, not an assert:
-// it decomposes the encoded answer into its byte terms so the compression
-// tiers are chosen on evidence (ROADMAP Phase 3). Run with -v to read it.
+// TestMeasure_AnswerSizeBreakdown is the measurement, not an assert: it
+// decomposes the encoded answer into its byte terms so the compression
+// tiers are chosen on evidence Phase 3. Run with -v to read it.
 //
 // Terms:
-//   - possession blocks (challengeIndices samples)
-//   - label-open blocks, raw vs deduped-by-leaf-index (the #299 "shared
-//     DRSample parents sent duplicated" question)
-//   - Merkle proof bytes, raw vs the distinct-hash union (the multiproof
-//     compression floor: shared path nodes collapse)
-func TestMeasure_AnswerSizeBreakdown299(t *testing.T) {
+// - possession blocks (challengeIndices samples)
+// - label-open blocks, raw vs deduped-by-leaf-index (the "shared
+// DRSample parents sent duplicated" question
+// - Merkle proof bytes, raw vs the distinct-hash union (the multiproof
+// compression floor: shared path nodes collapse
+func TestMeasure_AnswerSizeBreakdown(t *testing.T) {
 	if testing.Short() {
 		t.Skip("measurement only")
 	}

@@ -9,8 +9,8 @@ import (
 
 // TestHeldDeliveryParksAndFiresInChosenOrder is the conformance test for the
 // model-check delivery control: in held mode Send parks messages (nothing fires on
-// its own), the driver inspects Pending() and fires them in an order IT picks via
-// Deliver(id), and DropPending() models loss. This is the substrate the tier-2
+// its own), the driver inspects Pending and fires them in an order IT picks via
+// Deliver(id), and DropPending models loss. This is the substrate the tier-2
 // consensus model-check drives the real node loop over.
 func TestHeldDeliveryParksAndFiresInChosenOrder(t *testing.T) {
 	_, n := setup(1, simnet.DefaultConfig())

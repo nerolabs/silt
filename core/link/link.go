@@ -1,9 +1,9 @@
 // Package link defines the silt link — the share handle for a file —
 // and its one-way key hierarchy:
 //
-//	link key  ──HKDF──►  layout key  (decrypts stripe structure)
-//	    │
-//	    └─────HKDF──►  content key  (decrypts the file's key material)
+//	link key ──HKDF──► layout key (decrypts stripe structure)
+//	 │
+//	 └─────HKDF──► content key (decrypts the file's key material)
 //
 // Holding the FULL link (root + link key) means you can derive both:
 // read the layout, decrypt the content. Holding only a CARE link

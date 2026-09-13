@@ -180,8 +180,7 @@ func TestMaxSerialBytesMatchesTheTokenSerial(t *testing.T) {
 	}
 }
 
-// TestTornTailIsRealignedBeforeTheNextAppend is the G-3 gate (research certification
-// R0.4b-C3-composed-close-bc062d0, 2026-09-03).
+// TestTornTailIsRealignedBeforeTheNextAppend is the gate.
 //
 // TestTornTailIsDroppedNotFatal above only proves Load SKIPS a torn tail on the same
 // handle. It never re-opens and never appends after the tear, so it does not see the
@@ -208,9 +207,10 @@ func TestTornTailIsRealignedBeforeTheNextAppend(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A crash mid-Append: the HEAD of a fourth record reached the disk. Half a real
-	// record, so its length byte is valid and the splice below is SILENT rather than
-	// an ErrCorrupt boot failure — the ~1-in-8 case the certification names.
+	// A crash mid-Append: the HEAD of a fourth record reached the disk. Half a
+	// real record, so its length byte is valid and the splice below is SILENT
+	// rather than an ErrCorrupt boot failure — the ~1-in-8 case the research
+	// names.
 	torn, err := encode(entry(4, 4))
 	if err != nil {
 		t.Fatal(err)

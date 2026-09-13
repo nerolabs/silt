@@ -1,11 +1,11 @@
-// Failure-domain diversity for eclipse resistance (M0 H5-B / Memo 08). The
-// forgery half (signed records, H5-A) stops a node fabricating provider records;
-// this stops the SUPPRESSION half — an adversary owning the NodeIDs closest to a
-// key but sitting in a single failure domain (a cheap /24 key-surround). Provider
-// records are announced to, and resolved from, a set of near peers SPREAD across
-// domains, so an honest node in a domain the adversary doesn't control both holds
-// the record and answers for it. Paired with the routing table's per-bucket domain
-// cap (dht.Table.SetDiversity), which keeps those honest peers routable.
+// Failure-domain diversity for eclipse resistance (M0 H5-B /). The forgery half
+// (signed records, H5-A) stops a node fabricating provider records; this stops the
+// SUPPRESSION half — an adversary owning the NodeIDs closest to a key but sitting
+// in a single failure domain (a cheap /24 key-surround). Provider records are
+// announced to, and resolved from, a set of near peers SPREAD across domains, so
+// an honest node in a domain the adversary doesn't control both holds the record
+// and answers for it. Paired with the routing table's per-bucket domain cap
+// (dht.Table.SetDiversity), which keeps those honest peers routable.
 package node
 
 import "github.com/nerolabs/silt/ports"
@@ -19,7 +19,7 @@ import "github.com/nerolabs/silt/ports"
 // provider set to DHTDomainCap peers (replication collapse). The same reasoning is
 // why the ADMISSION cap (core/dht/table.go domainSaturated) keeps its unknown
 // exemption too — the red-team showed capping it locks buckets in the default swarm.
-// The eclipse close is R4.3b (observed-address keying), not a label rule here.
+// The eclipse close is (observed-address keying), not a label rule here.
 func (n *Node) diverseNear(key ports.Hash, count int) []ports.NodeID {
 	all := n.table.Closest(key, n.table.Size()) // everything, distance-sorted
 	cap := n.cfg.DHTDomainCap
@@ -62,11 +62,12 @@ func (n *Node) sweepProviders(key ports.Hash, targets []ports.NodeID, onRecs fun
 			next(i + 1)
 			return
 		}
-		// #277: gate the negative cache here too. The distance walk (node.go:1132)
-		// and the fetch/probe paths (file.go, repair.go) already skip a peer that
-		// recently timed out; the diversity sweep was the one resolveProviders leg
-		// that did not — so under churn a cooled corpse ate a full RequestTimeout on
-		// every resolve (the daemon runs this sweep on every resolution, DHTDomainCap
+		// gate the negative cache here too. The distance walk (node.go)
+		// and the fetch/probe paths (file.go, repair.go) already skip a peer
+		// that recently timed out; the diversity sweep was the one
+		// resolveProviders leg that did not — so under churn a cooled corpse
+		// ate a full RequestTimeout on every resolve (the daemon runs this
+		// sweep on every resolution, DHTDomainCap
 		// > 0). A sweep is breadth discovery across many near peers, so skipping a
 		// cooled one is safe — no sole-holder concern like the fetch path's anyLive
 		// guard (#69). Found by the 2026-08-12 blind field test (durability/churn).

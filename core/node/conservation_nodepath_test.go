@@ -1,20 +1,20 @@
 package node
 
-// R0.5 node-path integration conservation gate (Tester seat, Boulder-0, 2026-09-01).
+// node-path integration conservation gate.
 //
 // Proves the A4 conservation fix is wired on the REAL NODE PATH, not just the
 // bare credit.Ledger. Exercises:
-//   - node.go:1576: RecordServeToObject called from the MsgFetchChunk handler
-//     when n.ledger != nil and n.proofMeta[chunkID].Root != zero hash
-//   - deliverysession.go: SettleDelivery called from SettleDeliveryReceipt when an
-//     authenticated receipt on a live, anchored session advances the count (B-9)
+// - node.go: RecordServeToObject called from the MsgFetchChunk handler
+// When n.ledger != nil and n.proofMeta[chunkID].Root != zero hash
+// - deliverysession.go: SettleDelivery called from SettleDeliveryReceipt when an
+// authenticated receipt on a live, anchored session advances the count
 //
 // Scenario:
-//   1. Serve lane-0 VIA THE NODE HANDLER (proves node.go:1576 fires).
-//   2. Flood maxProvisional-1 additional lanes DIRECTLY ON THE LEDGER (setup
-//      only — does not re-test the node-handler wiring, keeps conservation simple).
-//   3. Open a session and settle a receipt VIA THE NODE PATH (proves SettleDelivery fires).
-//   4. Assert conservation end-to-end.
+// 1. Serve lane-0 VIA THE NODE HANDLER (proves node.go fires).
+// 2. Flood maxProvisional-1 additional lanes DIRECTLY ON THE LEDGER (setup
+// Only — does not re-test the node-handler wiring, keeps conservation simple.
+// 3. Open a session and settle a receipt VIA THE NODE PATH (proves SettleDelivery fires).
+// 4. Assert conservation end-to-end.
 
 import (
 	"context"
@@ -33,14 +33,14 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// TestR05NodePathConservation is the R0.5 gate: the A4 fix must be wired on the
-// real node path. It fails if:
-//   - node.go:1576 does not call RecordServeToObject (the lane-0 serve assertion)
-//   - SettleDeliveryReceipt does not call SettleDelivery with conservation
-//   - the eviction claw-back (reverseProvisional at eviction) is absent
-func TestR05NodePathConservation(t *testing.T) {
+// TestNodePathConservation is the gate: the A4 fix must be wired on the real
+// node path. It fails if:
+// - node.go does not call RecordServeToObject (the lane-0 serve assertion)
+// - SettleDeliveryReceipt does not call SettleDelivery with conservation
+// - the eviction claw-back (reverseProvisional at eviction) is absent
+func TestNodePathConservation(t *testing.T) {
 	const fee = 50_000
-	const bytes0 = credit.SkimDen * credit.ServeMintBytesPerCredit // lane-0 serve size: one mint unit → 7 net + 1 skim (G-R212-7)
+	const bytes0 = credit.SkimDen * credit.ServeMintBytesPerCredit // lane-0 serve size: one mint unit → 7 net + 1 skim
 	const mint0 = bytes0 / credit.ServeMintBytesPerCredit
 
 	// nodFloodSize is the flood size. Must be >= maxProvisional (8192) to trigger
@@ -67,11 +67,11 @@ func TestR05NodePathConservation(t *testing.T) {
 	nd.SetLedger(ledger)
 	nd.SetSigner(serverIdent.Signer())
 
-	// R0.4b: the bank verifies against a per-epoch keyset whose key_E was resolved
-	// against the CONSENSUS-ATTESTED binding, so this fixture must commit the binding
-	// before the receipt can be banked at all. The node issues to itself (the
-	// bilateral shape the daemon runs), so the issuer identity is serverID. Epochs
-	// are off, so the consensus epoch is 0 throughout.
+	// The bank verifies against a per-epoch keyset whose key_E was resolved
+	// against the CONSENSUS-ATTESTED binding, so this fixture must commit the
+	// binding before the receipt can be banked at all. The node issues to itself
+	// (the bilateral shape the daemon runs), so the issuer identity is serverID.
+	// Epochs are off, so the consensus epoch is 0 throughout.
 	c := chain.New(chain.Config{Quorum: 1}, func(ports.NodeID) int64 { return 1 << 30 })
 	g := chain.Block{
 		Version: chain.BlockVersionWitnessable,
@@ -88,7 +88,7 @@ func TestR05NodePathConservation(t *testing.T) {
 	nd.EnableChain(c, serverIdent.Signer())
 	nd.SetDemandIssuerKey(rand.Reader, 0, issuerPriv)
 	nd.EnableDemandBank(serverID)
-	nd.EnableDeliverySessions(10 * ports.Second) // B-9: deliveries are sessions
+	nd.EnableDeliverySessions(10 * ports.Second) // deliveries are sessions
 	if ks := nd.DemandIssuerKeyset(serverID); ks == nil || ks.Key(0) == nil {
 		t.Fatal("setup: the committed issuer key was not pinned - the bank would reject every receipt")
 	}
@@ -118,11 +118,12 @@ func TestR05NodePathConservation(t *testing.T) {
 	// controlled credit amount. Since grant=0, all auto-registered flood nodes
 	// get 0 credits. No balances change for flood nodes — only the server's
 	// balance and escrow change. So conservation is:
-	//   Σ(balances) = server.balance + fetcher.balance + all flood nodes (0 each)
-	//   Σ(escrow)   = escrow[objRoot] + Σ escrow[floodRoot[i]]
+	// Σ(balances) = server.balance + fetcher.balance + all flood nodes (0 each)
+	// Σ(escrow) = escrow[objRoot] + Σ escrow[floodRoot[i]]
 	//
-	// We inject the fetcher's fee by doing a serve FROM some "bank" node TO the
-	// fetcher... but again, RecordServe credits the SERVER (the first argument).
+	// We inject the fetcher's fee by doing a serve FROM some "bank" node
+	// TO the fetcher. but again, RecordServe credits the SERVER (the
+	// first argument).
 	//
 	// OK: use credit.New(fee, fee) so every new account starts at fee. The fetcher
 	// starts at fee (enough for one ChargePublish). The server starts at fee. All
@@ -134,9 +135,9 @@ func TestR05NodePathConservation(t *testing.T) {
 	//
 	// SIMPLEST CORRECT APPROACH: use grant=fee. Pre-register server+fetcher only.
 	// Do the flood on the ledger directly (not via node handler). Flood nodes are
-	// not pre-registered, so they auto-register with fee credits on first acct() call.
-	// That means each flood node contributes fee to the sum. We add them to the
-	// "all known IDs" list.
+	// not pre-registered, so they auto-register with fee credits on first acct
+	// call. That means each flood node contributes fee to the sum. We add them to
+	// the "all known IDs" list.
 	//
 	// Let's track this cleanly.
 
@@ -165,7 +166,7 @@ func TestR05NodePathConservation(t *testing.T) {
 		for _, root := range escrowRoots {
 			total += ledger.EscrowBalance(root)
 		}
-		// B-9: the session's unsettled remainder is a pending DEPOSIT (released to the
+		// the session's unsettled remainder is a pending DEPOSIT (released to the
 		// fetcher at anchor expiry) and is part of the conserved total.
 		total += ledger.DeliverySettlementStats().PendingRefundCredits
 		return total
@@ -193,7 +194,7 @@ func TestR05NodePathConservation(t *testing.T) {
 		t.Fatalf("setup: initial sum %d, want %d = %d accounts * fee", initial, want, 2+nodFloodSize)
 	}
 
-	// ── Step 1: serve lane 0 via the MsgFetchChunk handler (node.go:1576). ──
+	// ── Step 1: serve lane 0 via the MsgFetchChunk handler (node.go). ──
 	// This proves the RecordServeToObject wiring is present.
 	chunkData := make([]byte, bytes0)
 	for i := range chunkData {
@@ -207,10 +208,10 @@ func TestR05NodePathConservation(t *testing.T) {
 	nd.proofMeta[chunkID] = proofMeta{Root: objRoot}
 
 	// Fire the handler: RecordServeToObject(serverID, fetcherID, objRoot, chunkID, bytes0)
-	// at node.go:1576.
+	// at node.go.
 	nd.handle(fetcherID, ports.Message{Kind: ports.MsgFetchChunk, ChunkID: chunkID, Ephemeral: true})
 
-	// Verify the serve self-mint landed (proves node.go:1576 ran RecordServeToObject).
+	// Verify the serve self-mint landed (proves node.go ran RecordServeToObject).
 	skim0 := int64(mint0) * credit.SkimNum / credit.SkimDen // 1
 	net0 := int64(mint0) - skim0                            // 7
 	wantServerAfterLane0 := int64(fee) + net0               // server started at fee (grant)
@@ -256,7 +257,7 @@ func TestR05NodePathConservation(t *testing.T) {
 		t.Fatalf("demand.Unblind: %v", uerr)
 	}
 
-	// B-9: the token is the SESSION anchor. Open (spent into the guard), settle ONE
+	// the token is the SESSION anchor. Open (spent into the guard), settle ONE
 	// increment for objRoot, close (the unsettled remainder becomes a pending deposit,
 	// part of the conserved total below).
 	if !sessionPresent(t, nd, fetcherIdent, token, objRoot) {
@@ -265,22 +266,22 @@ func TestR05NodePathConservation(t *testing.T) {
 
 	// ── Step 5: conservation assertion. ──
 	// Under the A4 fix (eviction reverses the lane-0 self-mint):
-	//   initial                          = (2+nodFloodSize)*fee
-	//   + bytes0                         (lane-0 self-mint at serve via node handler)
-	//   - bytes0                         (eviction reversal of lane-0 self-mint)
-	//   + nodFloodSize*floodBytes        (flood self-mints, all legitimately unwitnessed)
-	//   - fee                            (ChargePublish debit from fetcher)
-	//   + 1 + (fee − 1)                  (one increment settled to server+escrow; the rest a pending deposit)
-	//   = initial + nodFloodSize*floodBytes
+	// initial = (2+nodFloodSize)*fee
+	// + bytes0 (lane-0 self-mint at serve via node handler)
+	// - bytes0 (eviction reversal of lane-0 self-mint)
+	// + nodFloodSize*floodBytes (flood self-mints, all legitimately unwitnessed)
+	// - fee (ChargePublish debit from fetcher)
+	// + 1 + (fee − 1) (one increment settled to server+escrow; the rest a pending deposit)
+	// = initial + nodFloodSize*floodBytes
 	//
 	// Under the bug (no eviction reversal), bytes0 is NOT subtracted:
-	//   gotTotal = initial + bytes0 + nodFloodSize*floodBytes
-	//   delta    = +mint0 = +8 — the leaked mint.
+	// gotTotal = initial + bytes0 + nodFloodSize*floodBytes
+	// delta = +mint0 = +8 — the leaked mint.
 	wantTotal := initial + int64(nodFloodSize)*floodMint
 	gotTotal := sumLedger()
 	if gotTotal != wantTotal {
 		delta := gotTotal - wantTotal
-		t.Errorf("R0.5 node-path conservation VIOLATED:\n"+
+		t.Errorf("node-path conservation VIOLATED:\n"+
 			"  Σbalances+Σescrow = %d\n"+
 			"  want              = %d\n"+
 			"  delta             = %+d\n"+

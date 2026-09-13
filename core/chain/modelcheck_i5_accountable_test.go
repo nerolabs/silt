@@ -9,29 +9,28 @@ import (
 
 // Consensus model-check — tier 1, I5 ACCOUNTABLE SAFETY, EXHAUSTIVE.
 //
-// The red-team #183 verdict's coverage caveat C-1: I5's "an honest node is
-// NEVER slashed" (and its dual, "a genuine double-sign IS caught") was covered
-// by SCENARIO tests (equivocation_proposer_test.go, modelcheck_i5_357_test.go),
-// not by an exhaustive adversarial-schedule sweep. This promotes the I5
-// accountable-safety oracle into the enumerated tier: it drives the REAL
-// VerifyEquivocation predicate over the FULL space of signature schedules one
-// key can produce across two same-height blocks, and asserts the exact
-// characterization on every one — the honest-never-slashed direction and the
-// completeness direction at once.
+// The's coverage caveat: I5's "an honest node is NEVER slashed" (and its dual, "a
+// genuine double-sign IS caught") was covered by SCENARIO tests
+// (equivocation_proposer_test.go, modelcheck_i5_launch_replay_test.go), not by an
+// exhaustive adversarial-schedule sweep. This promotes the I5 accountable-safety oracle
+// into the enumerated tier: it drives the REAL VerifyEquivocation predicate over the FULL
+// space of signature schedules one key can produce across two same-height blocks, and
+// asserts the exact characterization on every one — the honest-never-slashed direction
+// and the completeness direction at once.
 //
 // THE INVARIANT (equivocation.go): two era-2 blocks A, B at one height are a
 // provable double-sign IFF the culprit released a verifying consensus signature
 // at the SAME (round, phase) slot in BOTH, over DIFFERENT block hashes. Every
 // other schedule is honest and must NOT be flagged:
-//   - disjoint slots (signed prepare-r0 in A, precommit-r0 or prepare-r1 in B):
-//     the lock-change-under-POL liveness escape (#432/#397 I5 requirement);
-//   - the SAME block hash in both (idempotent re-sign / re-broadcast);
-//   - a bare-hash ProposerSig, which is authorship, not a consensus vote.
+// - disjoint slots (signed prepare-r0 in A, precommit-r0 or prepare-r1 in B):
+// The lock-change-under-POL liveness escape;
+// - the SAME block hash in both (idempotent re-sign / re-broadcast);
+// - a bare-hash ProposerSig, which is authorship, not a consensus vote.
 //
 // FAILING-FIRST (verified by controlled revert): dropping the `sa == sb`
 // same-slot guard in VerifyEquivocation (flag on ANY shared key across
 // different hashes) makes the honest cross-round schedules flag — RED, the
-// #397 honest-self-slash. With the shipped slot guard — GREEN.
+// honest-self-slash. With the shipped slot guard — GREEN.
 
 // era2SigSlot is one (round, phase) at which a culprit released a consensus
 // signature. phase ∈ {PhasePrepare, PhasePrecommit}; round ∈ {0, 1}.
@@ -128,22 +127,22 @@ func TestModelCheck_I5_AccountableSafety_Exhaustive(t *testing.T) {
 	}
 }
 
-// TestModelCheck_I5_ForkChoiceDeterminism_AllPermutations promotes the #357
-// order-independence scenario (modelcheck_i5_357_test.go, three hand-picked
-// orders) to the EXHAUSTIVE tier: reconciling the SAME set of competing forks
-// in EVERY permutation must land on the identical head — fork-choice is a pure
-// function of the message multiset, never a function of arrival order (the
-// #357 hash-luck-tiebreak scar). k=4 forks → 4! = 24 orderings.
+// TestModelCheck_I5_ForkChoiceDeterminism_AllPermutations promotes the
+// order-independence scenario (modelcheck_i5_launch_replay_test.go, three hand-picked
+// orders) to the EXHAUSTIVE tier: reconciling the SAME set of competing forks in
+// EVERY permutation must land on the identical head — fork-choice is a pure function
+// of the message multiset, never a function of arrival order (the hash-luck tiebreak
+// defect). k=4 forks → 4! = 24 orderings.
 //
-// FAILING-FIRST (verified by controlled revert): the #357 fix is what makes
-// this hold — modelcheck_i5_357_test.go records that forcing finalityQuorumActive
+// FAILING-FIRST (verified by controlled revert): the fix is what makes
+// this hold — modelcheck_i5_launch_replay_test.go records that forcing finalityQuorumActive
 // false reopens the order-dependent reorg. This oracle widens the witness from
 // 3 orders to all 24, so an order-dependence that only surfaces on an untested
 // permutation cannot hide.
 func TestModelCheck_I5_ForkChoiceDeterminism_AllPermutations(t *testing.T) {
 	// The fork set (built fresh per run so no shared mutation): a much-taller
 	// fork, a bare genesis, and two mid-height conflicts — the same shapes the
-	// #357 scenario used, now swept over every order.
+	// scenario used, now swept over every order.
 	buildForks := func(g *Block, ak []ed25519.PrivateKey) [][]Block {
 		return [][]Block{
 			anchorFork(g, ak, 5, 130),
@@ -153,7 +152,7 @@ func TestModelCheck_I5_ForkChoiceDeterminism_AllPermutations(t *testing.T) {
 		}
 	}
 	run := func(order []int) (ports.Hash, uint64) {
-		c, ak, g := ramp357(t)
+		c, ak, g := rampLaunch(t)
 		forks := buildForks(g, ak)
 		for _, i := range order {
 			c.Reconcile(forks[i])
@@ -169,7 +168,7 @@ func TestModelCheck_I5_ForkChoiceDeterminism_AllPermutations(t *testing.T) {
 	for _, order := range perms {
 		h, ht := run(order)
 		if h != wantHash || ht != wantHeight {
-			t.Fatalf("#357 I5 VIOLATION — fork-choice is order-dependent: order %v → %x@%d, but order %v → %x@%d (fork-choice must be a pure function of the fork set)",
+			t.Fatalf("I5 VIOLATION — fork-choice is order-dependent: order %v → %x@%d, but order %v → %x@%d (fork-choice must be a pure function of the fork set)",
 				perms[0], wantHash, wantHeight, order, h, ht)
 		}
 	}
@@ -218,7 +217,7 @@ func era2SlotSubsets(slots []era2SigSlot) [][]era2SigSlot {
 // TestModelCheck_I5_ProposerSigIsNotAVote_Exhaustive pins the bare-hash
 // ProposerSig exemption across the same slot space: a validator that AUTHORED
 // two different blocks at one height (a bare ProposerSig on each, no consensus
-// attestation) is NOT convicted in era 2 — authorship is not a vote (the #432
+// attestation) is NOT convicted in era 2 — authorship is not a vote (the
 // re-propose-fresh-after-a-lock-free-view-change liveness rule). The moment it
 // adds a real same-slot consensus signature to both, it IS convicted.
 func TestModelCheck_I5_ProposerSigIsNotAVote_Exhaustive(t *testing.T) {
@@ -233,7 +232,7 @@ func TestModelCheck_I5_ProposerSigIsNotAVote_Exhaustive(t *testing.T) {
 	}
 	a, bb := mkAuthored(1), mkAuthored(2)
 	if VerifyEquivocation(&Equivocation{Culprit: pub, A: a, B: bb}, ports.Hash{}, eraFloorOf(0)) {
-		t.Fatal("I5 VIOLATION: authoring two different blocks at one height was convicted — a bare-hash ProposerSig is authorship, not a consensus vote (#432)")
+		t.Fatal("I5 VIOLATION: authoring two different blocks at one height was convicted — a bare-hash ProposerSig is authorship, not a consensus vote ")
 	}
 	// Now the author ALSO consensus-signs both at the same (r0, prepare) slot →
 	// that is the double-vote, and it must convict.
@@ -245,33 +244,31 @@ func TestModelCheck_I5_ProposerSigIsNotAVote_Exhaustive(t *testing.T) {
 }
 
 // ===========================================================================================
-// R0.6 §9 EXTENSION — I5-cross-height-pruned-slash-forgery-FIX-DIRECTION-RESEARCH-
-// CERTIFICATION-2026-09-03.md §9. Widens the exhaustive tier along the three axes the ORIGINAL
-// schedule space above could not reach (§8.2: "the exhaustive I5 model-check is era-2 only",
-// and the original space has NO declared-vs-signed-height axis and never sets Pruned).
+// EXTENSION — the cross-height forgery fix. Widens the exhaustive tier along the three axes
+// the schedule space above could not reach: that space is era-2 only, has NO
+// declared-vs-signed-height axis, and never sets Pruned.
 //
-// New characterization (§9), replacing `want := diffHash && slotsIntersect(sa, sb)`:
+// New characterization, replacing `want:= diffHash && slotsIntersect(sa, sb)`:
 //
-//   convict IFF diffHash ∧ slotsIntersect ∧ bothBodiesReproduceTheirHash ∧
-//              theTwoSignaturesWereReleasedAtTheSameTRUEheight
+// convict IFF diffHash ∧ slotsIntersect ∧ bothBodiesReproduceTheirHash ∧
+// theTwoSignaturesWereReleasedAtTheSameTRUEheight
 //
 // "True height" is read from the block that ACTUALLY produced each signature (trueHeightA /
-// trueHeightB below), never from the evidence struct's Height field — exactly the field RT-SV-1
-// showed is attacker-controlled once Pruned is set. "bothBodiesReproduceTheirHash" is modeled
-// here as `mode == prunedUnset` for BOTH sides: T-4 (q2_gate_test.go, TestPrunedEvidenceIsRefused)
+// trueHeightB below), never from the evidence struct's Height field — exactly the field
+// showed is attacker-controlled once Pruned is set. "bothBodiesReproduceTheirHash" is modeled here
+// as `mode == prunedUnset` for BOTH sides: T-4 (q2_gate_test.go, TestPrunedEvidenceIsRefused)
 // requires ANY pruned evidence — real OR forged — to be refused outright, not merely evidence
 // whose Pruned digest happens to mismatch a content recompute (a genuinely-pruned block with NO
-// BondRegs is a content-preserving no-op under Prune(), so a literal "recompute may still match"
-// reading would let it through; the cert's own T-4 table entry ("Both-pruned and mixed
-// full/pruned pairs are refused") is unconditional, so this model-check pins the STRICTER,
-// cert-consistent reading. Tester note: this is a NAMED interpretation choice, flagged for the
-// Researcher/Builder to confirm when F2-EVIDENCE-RECOMPUTE is implemented — see the R0.6 gate
-// report.)
+// BondRegs is a content-preserving no-op under Prune, so a literal "recompute may still match"
+// reading would let it through; the own T-4 table entry ("Both-pruned and mixed full/pruned
+// pairs are refused") is unconditional, so this model-check pins the STRICTER, cert-consistent
+// reading.: this is a NAMED interpretation choice, flagged for confirmation
+// when F2-EVIDENCE-RECOMPUTE is implemented — see the gate report.)
 // ===========================================================================================
 
 // prunedMode is one of the three Pruned states §9 axis 2 requires: unset (ordinary, live
 // content), real (Pruned set to the block's own true hash — the honest late-reveal shape),
-// and forged (Pruned set to some OTHER block's hash — RT-SV-1's mechanism).
+// and forged (Pruned set to some OTHER block's hash — the mechanism).
 type prunedMode int
 
 const (
@@ -284,11 +281,11 @@ func allPrunedModes() []prunedMode { return []prunedMode{prunedUnset, prunedReal
 
 // evidenceCopy builds the EVIDENCE representation handed to VerifyEquivocation: declaredHeight
 // may disagree with base's TRUE signed height (axis 1, "declared vs signed"), and mode controls
-// what (if anything) IsPruned() exposes (axis 2). ownTrueHash is base's own real (unpruned)
-// Hash(); otherHash is the OTHER side's real hash (used by prunedForged — Pruned set to a hash
-// that is NOT this block's own, RT-SV-1's exact construction: fa.Pruned = honestA.Hash() is
-// this side's OWN true hash reused as "forged" relative to the outer pair's declared identity —
-// modeled here as reading the SAME axis independently per side for full coverage).
+// what (if anything) IsPruned exposes (axis 2). ownTrueHash is base's own real (unpruned) Hash;
+// otherHash is the OTHER side's real hash (used by prunedForged — Pruned set to a hash that is
+// NOT this block's own, the exact construction: fa.Pruned = honestA.Hash is this side's OWN
+// true hash reused as "forged" relative to the outer pair's declared identity — modeled here as
+// reading the SAME axis independently per side for full coverage).
 func evidenceCopy(base Block, declaredHeight uint64, mode prunedMode, ownTrueHash, otherHash ports.Hash) Block {
 	ex := base
 	ex.Height = declaredHeight
@@ -386,7 +383,7 @@ func blockWithCulpritRolesAtHeight(culprit, other ed25519.PrivateKey, h uint64, 
 // 16x16 slot subsets x diffHash x signedHeightsAgree x Pruned(A) x Pruned(B) = 9,216 cases.
 // RED today on every case where (pmA or pmB) != prunedUnset AND heightsAgree == false AND the
 // slots/diffHash would otherwise convict — the shipped code trusts Block.Pruned exactly as
-// RT-SV-1/T-1 demonstrate, so it wrongly convicts precisely the cases this test says it must
+// demonstrate, so it wrongly convicts precisely the cases this test says it must
 // not.
 func TestModelCheck_I5_CrossHeightPrunedExtension_Era2(t *testing.T) {
 	culprit := key(9710)

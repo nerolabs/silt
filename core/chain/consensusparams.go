@@ -10,12 +10,12 @@ import (
 // ConsensusParams is the CONSENSUS-CRITICAL GENESIS CONFIG, committed into the genesis block so
 // that the genesis hash covers it.
 //
-// WHY IT EXISTS — canon rule 8 (docs/build-process.md). A consensus quantity must be a function of
-// the CHAIN. silt named this class in prose for a long time ("consensus-critical genesis config",
-// Config's own field docs) with NO enumeration and NO enforcement, so membership was a human
-// remembering to write the sentence — and three instances slipped through: #380's Config.Quorum on
-// the objective path, SlashesBytesCap's invariant derived from proposer-side flag defaults, and
-// MinBond, a validity threshold that was a bare command-line flag.
+// WHY IT EXISTS — canon rule 8. A consensus quantity must be a function of the CHAIN. silt named
+// this class in prose for a long time ("consensus-critical genesis config", Config's own field
+// docs) with NO enumeration and NO enforcement, so membership was a human remembering to write the
+// sentence — and three instances slipped through: the Config.Quorum on the objective path,
+// SlashesBytesCap's invariant derived from proposer-side flag defaults, and MinBond, a validity
+// threshold that was a bare command-line flag.
 //
 // WHY A REFUSE-TO-START WAS REFUTED FOR THIS CLASS. Rule 8's first arm binds a LOCALLY CHECKABLE
 // invariant with a start-up check. MinBond divergence is NOT locally observable: no node can tell
@@ -23,7 +23,7 @@ import (
 // assert against and would ship a gate that looks green and enforces nothing. Rule 8's second arm
 // applies instead — bind it to committed state.
 //
-// WHY VALUES AND NOT A DIGEST. Values reuse Block.Hash()'s canonical CBOR, so no new injectivity
+// WHY VALUES AND NOT A DIGEST. Values reuse Block.Hash's canonical CBOR, so no new injectivity
 // proof is owed, and a mismatch is DIAGNOSABLE — an operator can be told which field differs
 // instead of that two hashes differ. A gossiped digest was refuted separately: it is an
 // unauthenticated claim, where a genesis hash is self-authenticating.
@@ -38,7 +38,7 @@ import (
 // catches the one case joining cannot — an operator editing a flag and restarting on a chain it
 // has ALREADY joined. CheckConsensusParams is that arm.
 //
-// THE SECOND CATEGORY — an identity property of the network (owner ruling, 2026-09-11). The
+// THE SECOND CATEGORY — an identity property of the network. The
 // membership rule used to read: every field that can change a validity verdict is BOUND TO THE
 // CHAIN, or is EXPLICITLY EXCLUDED WITH A RECORDED REASON. NetworkName fits neither arm — it
 // reaches NO verdict, and "it reaches no verdict" is this struct's own recorded reason for
@@ -48,18 +48,18 @@ import (
 // The rule is amended to THREE closed categories, not two plus an exception. A chain.Config field
 // is exactly one of:
 //
-//	(a) BOUND          — it can change a validity verdict, so it is bound to the chain;
+//	(a) BOUND — it can change a validity verdict, so it is bound to the chain;
 //	(b) NETWORK IDENTITY — it changes NO validity verdict, and it IS genesis-covered;
-//	(c) EXCLUDED       — with a recorded reason.
+//	(c) EXCLUDED — with a recorded reason.
 //
-// WHY (b) IS CLOSED AND NOT AN ESCAPE HATCH — the owner's binding condition, and both of its arms
+// WHY (b) IS CLOSED AND NOT AN ESCAPE HATCH — the project binding condition, and both of its arms
 // are machine-checked from opposite sides:
 //
-//   - "changes no validity verdict" is MEASURED, never asserted. The field must carry a
-//     perturbation that actually ran, and it must diverge in ZERO regimes. A field that diverges
-//     anywhere is (a), and declaring it (b) is RED.
-//   - "is genesis-covered" is RESOLVED BY REFLECTION against this struct. A field that is not
-//     carried is (c), and declaring it (b) is RED.
+// - "changes no validity verdict" is MEASURED, never asserted. The field must carry a
+// perturbation that actually ran, and it must diverge in ZERO regimes. A field that diverges
+// anywhere is (a), and declaring it (b) is RED.
+// - "is genesis-covered" is RESOLVED BY REFLECTION against this struct. A field that is not
+// carried is (c), and declaring it (b) is RED.
 //
 // So (b) admits exactly the fields that ride in the genesis hash and move no verdict. Such a
 // field has precisely ONE observable effect: it partitions networks and names them. That is what
@@ -69,21 +69,18 @@ import (
 // MEMBERSHIP IS DELIBERATE IN BOTH DIRECTIONS. Five Config fields are OUT, each for a different
 // reason, and each exclusion is load-bearing: Archive is retention only and reaches no verdict;
 // sharing WSCheckpoint would DESTROY weak subjectivity, since it is the operator's own trust
-// anchor (this sentence read "WSCheckpoint is narrowing-only and sharing it would ..." until
-// 2026-09-11, when narrowing-only was MEASURED FALSE: setting the pin raises trustFloor() and
+// anchor (this sentence read "WSCheckpoint is narrowing-only and sharing it would." until
+// 2026-09-11, when narrowing-only was MEASURED FALSE: setting the pin raises trustFloor and
 // WIDENS what the node trusts unverified. The exclusion never rested on that clause);
-// MinProposerRep/MinAttesterRep cannot be usefully bound because the
-// INPUT is the local reputation view, so a shared threshold still diverges; and
-// LivenessRecoveryHeight is structurally unbindable — it is set AFTER launch, on a chain that by
-// construction cannot commit it (R-LIVENESS-RECOVERY-UNBOUND, which is a DISCLOSURE in
-// docs/design/m0.md 10.1 rather than a register row — it has no closer).
+// MinProposerRep/MinAttesterRep cannot be usefully bound because the INPUT is the local
+// reputation view, so a shared threshold still diverges; and LivenessRecoveryHeight is
+// structurally unbindable — it is set AFTER launch, on a chain that by construction cannot
+// commit it (which is a DISCLOSURE 10.1 rather than a register row — it has no closer).
 //
 // NO `omitempty` ON ANY FIELD. A zero value here is a MEANING (Quorum 0, MinBond 0 = legacy mode),
 // not an absence, and omitting it would make two different configurations encode identically. The
 // pointer is on Block.Params instead, which is what keeps a paramless genesis byte-identical to
 // one written before this field existed.
-//
-// Certification: GENESIS-CONFIG-FAMILY-BIND-RESEARCH-CERTIFICATION-2026-09-10.
 type ConsensusParams struct {
 	// --- the quorum rule ---
 	Quorum          int  `cbor:"1,keyasint"`
@@ -107,14 +104,14 @@ type ConsensusParams struct {
 	// --- entry admission ---
 	AllowPublisher bool `cbor:"15,keyasint"`
 	// --- the node-side verifier parameters (core/node.Config, carried here by VALUE to avoid an
-	// import cycle). These are the sharpest members of the family and the reason its membership had
+	// import cycle. These are the sharpest members of the family and the reason its membership had
 	// to be re-derived: core/bond's verifier compares a proof's label count against the verifier's
 	// OWN local k, so a k=32 node rejects EVERY bond registration a k=64 swarm accepts. The flag
-	// help states the coordination requirement and in the same breath invites the change. They live
-	// outside chain.Config, which is why the divergence gate's reflection never saw them
-	// (R-CONFIG-GATE-NODE-SCOPE — now CLOSED: core/node's
-	// TestNodeConsensusVerdictIsNotAFunctionOfLocalConfig closes the complement over node.Config, and
-	// the two declaration tables are a checked bijection onto this struct).
+	// help states the coordination requirement and in the same breath invites the change. They
+	// live outside chain.Config, which is why the divergence gate's reflection never saw them
+	// (now CLOSED: core/node's
+	// TestNodeConsensusVerdictIsNotAFunctionOfLocalConfig closes the complement over node.Config,
+	// and the two declaration tables are a checked bijection onto this struct).
 	BondLabelSamples int    `cbor:"16,keyasint"`
 	BondVDFDelay     uint64 `cbor:"17,keyasint"`
 	// --- the network's own identity (category (b); see THE SECOND CATEGORY above) ---

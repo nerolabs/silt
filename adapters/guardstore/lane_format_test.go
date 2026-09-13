@@ -1,20 +1,17 @@
 package guardstore
 
-// R-GUARD-RESTORE-LANE-UNKNOWN, the ADAPTER half: the record has to carry the lane,
-// and a file written before the record grew one has to be refused rather than
-// re-framed. PE ruling
-// /Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-R2.9-deposit-at-anchor-expiry-4d4a90c-2026-09-07.md
-// §4 (the (3, 0) measurement). The ledger half is
+// The ADAPTER half: the record has to carry the lane, and a file written before the
+// record grew one has to be refused rather than re-framed. The ledger half is
 // core/credit/guard_restore_lane_test.go.
 //
 // ABLATIONS (each run RED once, 2026-09-08):
-//   - drop the lane byte from encode/decode → TestRecordCarriesTheLane fails
-//     ("record 1 read back as delivery, want relay").
-//   - drop the header check from Open (accept a headerless file) →
-//     TestPreLaneFormatIsRefusedNotSilentlyReframed fails: the 4-record legacy file
-//     (292 bytes) is not a multiple of 74, so Load reports ErrCorrupt on a torn tail
-//     it silently accepted — and at 74 legacy records it loads SILENTLY with wrong
-//     contents (the F2 shape the realign comment already names).
+// - drop the lane byte from encode/decode → TestRecordCarriesTheLane fails
+// ("record 1 read back as delivery, want relay").
+// - drop the header check from Open (accept a headerless file) →
+// TestPreLaneFormatIsRefusedNotSilentlyReframed fails: the 4-record legacy file
+// (292 bytes) is not a multiple of 74, so Load reports ErrCorrupt on a torn tail
+// it silently accepted — and at 74 legacy records it loads SILENTLY with wrong
+// contents (the F2 shape the realign comment already names).
 
 import (
 	"bytes"
@@ -138,9 +135,7 @@ func TestFreshStoreWritesItsHeader(t *testing.T) {
 }
 
 // TestEmptyPreBumpStoreUpgradesButAWrittenOneRefuses is the BLAST RADIUS of the format
-// bump, measured (blind PE ruling
-// RULING-c1-demand-v2-and-flat-leg-retirement-a290bff-2026-09-08.md §2): which operators
-// are actually stopped by it, and which are not.
+// bump, measured: which operators are actually stopped by it, and which are not.
 //
 // A pre-bump build wrote no header, so a node that armed a paid lane and never paid left
 // a 0-BYTE file. That file is upgraded in place, not refused, and that is the correct
@@ -206,7 +201,7 @@ func TestEmptyPreBumpStoreUpgradesButAWrittenOneRefuses(t *testing.T) {
 	}
 	if !bytes.Equal(after, blob) {
 		t.Fatalf("the refusal rewrote the file (%d bytes, was %d). A refusal that clears the store "+
-			"destroys the state the operator's remedy needs — on creditspent.log the ratified remedy "+
+			"destroys the state the operator's remedy needs — on creditspent.log the settled remedy "+
 			"is to rotate the publish key AND clear the log together, which is not available once the "+
 			"adapter has cleared it unilaterally", len(after), len(blob))
 	}

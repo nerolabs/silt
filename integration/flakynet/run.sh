@@ -10,7 +10,7 @@
 # consensus, commit, and serve a bit-perfect fetch?
 #
 # Motivation: every CLEAN local test (e2e, integration/consensus) commits in
-# seconds, but the FLAKY GCP topology mostly fails to bootstrap consensus (#286).
+# seconds, but the FLAKY GCP topology mostly fails to bootstrap consensus.
 # The single variable is the flakiness. This reproduces that adversity locally and
 # deterministically, so durability weaknesses can be found and fixed without GCP.
 #
@@ -20,11 +20,11 @@
 # — a reproducer, not a hidden failure. A harness/build error is a hard FAIL.
 #
 # Usage:
-#   ./run.sh                       # default impairment (moderate internet)
-#   NETEM="delay 150ms 40ms distribution normal loss 5%" ./run.sh
-#   NETEM="" ./run.sh              # clean-network control (must PASS)
-#   CHURN=1 ./run.sh               # also kill+restart the boot validator mid-cold-start
-#   KEEP=1 ./run.sh                # leave the swarm up to poke at
+# ./run.sh # default impairment (moderate internet)
+#  NETEM="delay 150ms 40ms distribution normal loss 5%"./run.sh
+#  NETEM=""./run.sh # clean-network control (must PASS)
+#  CHURN=1 ./run.sh # also kill+restart the boot validator mid-cold-start
+#  KEEP=1 ./run.sh # leave the swarm up to poke at
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 cd "$(dirname "$0")"
@@ -114,7 +114,7 @@ if [ "$warm" = 1 ]; then
   fi
 else
   # ATTRIBUTE the failure honestly (introspective): a no-commit under impairment
-  # has TWO very different causes a blind reviewer must NOT conflate — the mesh
+  # has TWO very different causes a a review must NOT conflate — the mesh
   # never formed (a DISCOVERY / bootstrap-under-adversity limit, upstream of
   # consensus), or the mesh formed but consensus could not commit (a consensus /
   # standing-under-adversity limit). Read each validator's largest logged routing-
@@ -124,9 +124,9 @@ else
   meshmax=$(printf '%s\n' "${tA:-0}" "${tB:-0}" "${tC:-0}" "${tD:-0}" | sort -n | tail -1)
   echo "  mesh: peak routing-table entries A=${tA:-0} B=${tB:-0} C=${tC:-0} D=${tD:-0} (max=${meshmax:-0} of 3 peers)"
   if [ "${meshmax:-0}" -le 1 ]; then
-    echo "RESULT: FINDING ⚠  the MESH never converged under [$NETEM]$([ "$CHURN" = 1 ] && echo " + boot-node churn") — validators stayed at ≤1 routing-table entry, so the DHT join/refresh could not complete over this impairment. This is a DISCOVERY / bootstrap-under-adversity limit UPSTREAM of consensus — do NOT read it as a consensus or C1-latency-gate failure (those never got a chance to run). cf. #281/#286."
+    echo "RESULT: FINDING ⚠  the MESH never converged under [$NETEM]$([ "$CHURN" = 1 ] && echo " + boot-node churn") — validators stayed at ≤1 routing-table entry, so the DHT join/refresh could not complete over this impairment. This is a DISCOVERY / bootstrap-under-adversity limit UPSTREAM of consensus — do NOT read it as a consensus or latency-gate failure (those never got a chance to run)."
   else
-    echo "RESULT: FINDING ⚠  the mesh FORMED (≥2 entries) but 4 objective validators did NOT commit within ${WARM_TIMEOUT}s under [$NETEM]$([ "$CHURN" = 1 ] && echo " + boot-node churn") — a genuine consensus/standing-under-adversity gap (not a discovery failure). cf. #286."
+    echo "RESULT: FINDING ⚠  the mesh FORMED (≥2 entries) but 4 objective validators did NOT commit within ${WARM_TIMEOUT}s under [$NETEM]$([ "$CHURN" = 1 ] && echo " + boot-node churn") — a genuine consensus/standing-under-adversity gap (not a discovery failure)."
   fi
   echo "  --- valA tail ---"; dc logs valA 2>&1 | tail -12
   exit 0

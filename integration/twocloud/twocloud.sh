@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # twocloud.sh — SKELETON orchestrator for the split GCP+AWS field test. It composes the
-# GCP (cloudtest) and AWS (awstest) harnesses and runs the SAME ../cloudtest/scenarios.sh
+# GCP (cloudtest) and AWS (awstest) harnesses and runs the SAME../cloudtest/scenarios.sh
 # against the combined fleet, dispatched per-node by the unified lib.sh router.
 #
 # STATUS: SCAFFOLD. The phase structure, the split, the shared-scenario wiring, and the
 # teardown-both are here; the phases marked TODO (phase-0 public-IP reservation + the
 # argv rebind + the per-cloud terraform apply with node subsets) need both substrates
-# certified and real creds — see README §3/§6. Running it today stops at the first TODO.
+# and real creds — see README §3/§6. Running it today stops at the first TODO.
 set -euo pipefail
 FT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$FT_DIR/../.." && pwd)"

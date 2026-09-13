@@ -12,26 +12,25 @@ import (
 	"github.com/nerolabs/silt/adapters/identity"
 )
 
-// TestPartitionHealsToHeavierForkOverTCP is the #184 partition→heal case over the
-// REAL WIRE under the ratified BFT model (era-2 rounds+locking): a validator SEVERED
-// into a sub-quorum MINORITY cannot commit, stalls behind the > ⅔ majority that keeps
+// TestPartitionHealsToHeavierForkOverTCP is the partition→heal case over the REAL
+// WIRE under the BFT model (era-2 rounds+locking): a validator SEVERED into a
+// sub-quorum MINORITY cannot commit, stalls behind the > ⅔ majority that keeps
 // committing, and on heal CATCHES UP to the majority's heavier chain — consensus
 // reconverges on one history over real TCP.
 //
-// This REPLACES the pre-BFT "each side commits its own fork then reorgs" test (PE
-// ruling 2026-08-17 / the note the old skip left): under a 3-of-4 commit floor a
-// minority committing a conflicting fork is an I1 violation, so there is no droppable
-// reorg — the minority stalls and does a forward catch-up (dropped=0). The ABSENCE of
-// a reorg line is the safety property, not a gap; the success signal is the stalled
-// minority reaching the majority head (height + hash).
+// This REPLACES the pre-BFT "each side commits its own fork then reorgs" test: under
+// a 3-of-4 commit floor a minority committing a conflicting fork is an I1 violation,
+// so there is no droppable reorg — the minority stalls and does a forward catch-up
+// (dropped=0). The ABSENCE of a reorg line is the safety property, not a gap; the
+// success signal is the stalled minority reaching the majority head (height + hash).
 //
 // Topology (objective, 4 anchors, quorum 2 → ByzantineQuorum raises to 3-of-4):
-//   - Majority = {A, B, D}: A serves a registry; publishes drive it to commit a
-//     heavier chain while C is away.
-//   - Minority = {C}: severed from A, B, D (-block-peers, both directions). A 1-of-4
-//     island cannot reach the strict anchor majority (3), so it STALLS.
-//   - Heal: restart C without the block; it reconnects and catches up to the
-//     majority's head. Assert its head advances to match A's (height + hash).
+// - Majority = {A, B, D}: A serves a registry; publishes drive it to commit a
+// heavier chain while C is away.
+// - Minority = {C}: severed from A, B, D (-block-peers, both directions). A 1-of-4
+// island cannot reach the strict anchor majority (3), so it STALLS.
+// - Heal: restart C without the block; it reconnects and catches up to the
+// majority's head. Assert its head advances to match A's (height + hash).
 func TestPartitionHealsToHeavierForkOverTCP(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e spawns processes; skipped under -short")

@@ -11,21 +11,21 @@ import (
 // silt holds the network identity as TWO quantities with the same 32 bytes and opposite failure
 // directions. They must never be collapsed into one accessor.
 //
-//   - (*Node).chainID is the VERIFIER's own value, read from its own committed chain and from
-//     nothing else. A wrong value there is a WRONG-ACCEPT — it widens what this node admits — so
-//     it is never caller-supplied, and it stays the ZERO hash when this node holds no chain so a
-//     chainless node convicts nobody on era-4 evidence and mints no era-4 signature a peer would
-//     take. NOTHING HERE CHANGES THAT. A declared identity does not reach chainID, and
-//     TestDeclaringANetworkIdentityDoesNotMoveTheVerifierSideChainID pins it.
-//   - RequesterChainID is the REQUESTER's value, blinded into a blind-token message. A wrong
-//     value there can only DENY this requester its own token: every verifier checks under ITS OWN
-//     chain id, so a message blinded under any other value verifies nowhere the requester wants.
-//     Deny-only is why an operator may declare it.
+// - (*Node).chainID is the VERIFIER's own value, read from its own committed chain and from
+// nothing else. A wrong value there is a WRONG-ACCEPT — it widens what this node admits — so
+// it is never caller-supplied, and it stays the ZERO hash when this node holds no chain so a
+// chainless node convicts nobody on era-4 evidence and mints no era-4 signature a peer would
+// take. NOTHING HERE CHANGES THAT. A declared identity does not reach chainID, and
+// TestDeclaringANetworkIdentityDoesNotMoveTheVerifierSideChainID pins it.
+// - RequesterChainID is the REQUESTER's value, blinded into a blind-token message. A wrong
+// value there can only DENY this requester its own token: every verifier checks under ITS OWN
+// chain id, so a message blinded under any other value verifies nowhere the requester wants.
+// Deny-only is why an operator may declare it.
 //
 // The binding quantity is the genesis block's hash — (*Chain).ChainID, which is written once
 // (AppendGenesis refuses a non-empty chain) and which Reconcile refuses to move (ErrForeignGenesis).
 // So it is time-invariant for the life of a network, and a client carries 32 bytes instead of a
-// chain. Certified 2026-09-12, ledger D-TOKEN-DOMAIN-CHAINLESS-CLIENT-2026-09-12.
+// chain. Certified 2026-09-12, ledger
 //
 // This is the same shape as ResolvedDemandIssuerKey — a seam built where the value enters, ahead
 // of the lane that consumes it. The consumer is the prepaid-credit lane (AcquireCredits), which
@@ -37,9 +37,9 @@ var (
 	// turn a wrong flag into a wrong-accept on the verifier side, which is the one direction the
 	// split above exists to prevent.
 	ErrNetworkIdentityDerived = errors.New("node: this node holds a chain, so its network identity is DERIVED from genesis and cannot be declared")
-	// ErrNetworkIdentityZero refuses the zero hash. The zero hash is already this node's "I do not
-	// know which network I am on"; accepting it as a declaration would report success and change
-	// nothing, which is exactly the silent shape D-TD-3 is about.
+	// ErrNetworkIdentityZero refuses the zero hash. The zero hash is already this node's "I do
+	// not know which network I am on"; accepting it as a declaration would report success and
+	// change nothing, which is exactly the silent shape is about.
 	ErrNetworkIdentityZero = errors.New("node: the zero hash is not a network identity — it is this node's \"I do not know which network I am on\"")
 )
 
@@ -84,7 +84,7 @@ func (n *Node) RequesterChainID() ports.Hash {
 // sentinel from a real identity, so the setter's refusal would be bypassed by the default path and
 // the client would blind under 32 zero bytes and learn nothing when it failed.
 //
-// The consumer is the prepaid-credit lane under M3 (#828), and what this buys it is the ability to
+// The consumer is the prepaid-credit lane under M3, and what this buys it is the ability to
 // REFUSE an undeclared client with an actionable message instead of proceeding under zero. That is
 // the second half of the 2026-09-11 design option this seam otherwise defers — an explicit
 // -chain-id flag, REFUSING when unset — and the refusal belongs on the consumer, so the API has to

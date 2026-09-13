@@ -26,12 +26,12 @@ import (
 // so an older or foreign file triggers a clean re-plot rather than a misread.
 const (
 	magic = 0x53504c54 // "SPLT"
-	// version 3: the M0 Sybil fix G2 reseeds the plot from a PUBLIC, identity- and
-	// size-bound seed H(pk, n) folded into every label, so a v2 plot's blocks are
-	// labeled from the old private secret and would fail the new labeling-
-	// consistency check. Bumping the format version makes an older file read as "no
-	// plot" → a clean re-plot, so a restart never reloads an insecure plot. (One-
-	// time fleet re-plot cost on upgrade; see docs/design/m0-sybil-rebind.md.)
+	// version 3: the M0 Sybil fix G2 reseeds the plot from a PUBLIC, identity-
+	// and size-bound seed H(pk, n) folded into every label, so a v2 plot's
+	// blocks are labeled from the old private secret and would fail the new
+	// labeling- consistency check. Bumping the format version makes an older
+	// file read as "no plot" → a clean re-plot, so a restart never reloads an
+	// insecure plot. (One- time fleet re-plot cost on upgrade.)
 	version    = 3
 	headerSize = 4 + 4 + 4 + 4 + 32 // magic, version, blockSize, nBlocks, root
 )

@@ -2,7 +2,7 @@ name: CI
 
 # Gates every push and pull request: the Go suite (with a coverage
 # floor), formatting, a race-detector build, the `bbootstrap` build-tag
-# variant (D-BB-BUILD-TAG), a link-check plus changelog/roadmap freshness
+# variant), a link-check plus changelog freshness
 # for the website, and a docs-ship-with-code check that a code change also
 # touches the changelog. Branch protection should require these before
 # merging to main or staging.
@@ -29,11 +29,11 @@ jobs:
           fi
       - name: go vet
         run: go vet ./...
-      - name: cloudtest shell lint (no unbraced $var before a multibyte char — bash-3.2 set -u crash, P1 b525b0b)
+      - name: cloudtest shell lint (no unbraced $var before a multibyte char — bash-3.2 set -u crash)
         run: ./integration/cloudtest/check_shell_multibyte.sh
       - name: cloudtest local-proof parity lint (every graded flow declares its LOCAL_PROOF or an explicit n/a)
         run: ./integration/cloudtest/check_local_proofs.sh
-      - name: cloudtest escape-fingerprint self-test (#536 — rc from debug.log not journald; UNKNOWN never 0)
+      - name: cloudtest escape-fingerprint self-test
         run: ./integration/cloudtest/check_escape_fingerprint.sh
       - name: go test + coverage floor
         run: |
@@ -49,35 +49,35 @@ jobs:
           if awk "BEGIN {exit !($total < $floor)}"; then
             echo "::error::coverage ${total}% is below the ${floor}% floor"; exit 1
           fi
-      # THE UNTAGGED R2.9a GATES CARRY THE LOAD FOR KEEPING THE INSTRUMENT OUT OF A DEFAULT
+      # THE UNTAGGED GATES CARRY THE LOAD FOR KEEPING THE INSTRUMENT OUT OF A DEFAULT
       # BUILD, and nothing above asserts they still exist by name: `go test` reports a
       # renamed or deleted test as nothing at all, and a t.Skip as a pass, so a rename
       # would go unnoticed by every job. Same treatment as the tagged job below — named
       # anchors, one per untagged gate, no skip. Rename a gate: update this list in the
       # same commit.
-      - name: the untagged R2.9a gates really ran (not renamed away, not skipped)
+      - name: the untagged gates really ran (not renamed away, not skipped)
         run: |
           out=$(go test -short -count=1 -v ./core/credit/ ./core/node/ ./cmd/silt/ -run 'R29a|Privacy' 2>&1)
           echo "$out"
           for tst in \
-            TestR29aDefaultBuildStampsNoFirstTouchOnRegister \
-            TestR29aBondChallengeStampsNoFirstTouch \
-            TestR29aRetentionReadsLastBondTickInNanoseconds \
-            TestR29aLedgerStateIsEmptyInADefaultBuild \
-            TestR29aDefaultBuildHasNoCensusReaderOnTheLedger \
-            TestR29aBondAuditStampsAWallClockNanosecondNotACounter \
-            TestR29aDefaultBuildHasNoBBootstrapReaderOnTheNode \
-            TestR29aDefaultBuildHasNoBBootstrapFlag \
-            TestR29aDaemonHandsTheNodeAWallClock \
-            TestR29aDefaultBuildStatusHasNoBBootstrapKey \
-            TestR29aWalltimeAdapterIsAWallClock \
-            TestR29aBB21StaleIsIdentifiableAsStale \
-            TestR29aBB21OperatorsOwnWriteIsNotHiddenByTheCache \
-            TestR29aF2StatusWithholdsPerObjectDetailWithoutAToken \
-            TestR29aF2EconomySelfWithholdsPerObjectDetailWithoutAToken \
-            TestR29aF2NoUnauthenticatedResponseOnTheWholeSurfaceCarriesTheWithheldCounter \
-            TestR29aOneCacheTwoViewsAnAnonymousReadDoesNotStripTheOperatorsView \
-            TestR29aEconomySelfIsServedFromTheStatusSnapshot \
+            TestDefaultBuildStampsNoFirstTouchOnRegister \
+            TestBondChallengeStampsNoFirstTouch \
+            TestRetentionReadsLastBondTickInNanoseconds \
+            TestLedgerStateIsEmptyInADefaultBuild \
+            TestDefaultBuildHasNoCensusReaderOnTheLedger \
+            TestBondAuditStampsAWallClockNanosecondNotACounter \
+            TestDefaultBuildHasNoBBootstrapReaderOnTheNode \
+            TestDefaultBuildHasNoBBootstrapFlag \
+            TestDaemonHandsTheNodeAWallClock \
+            TestDefaultBuildStatusHasNoBBootstrapKey \
+            TestWalltimeAdapterIsAWallClock \
+            TestStaleIsIdentifiableAsStale \
+            TestOperatorsOwnWriteIsNotHiddenByTheCache \
+            TestStatusWithholdsPerObjectDetailWithoutAToken \
+            TestEconomySelfWithholdsPerObjectDetailWithoutAToken \
+            TestNoUnauthenticatedResponseOnTheWholeSurfaceCarriesTheWithheldCounter \
+            TestOneCacheTwoViewsAnAnonymousReadDoesNotStripTheOperatorsView \
+            TestEconomySelfIsServedFromTheStatusSnapshot \
             TestPrivacyStatusWithholdsCountersFromUnauthenticatedReaders \
             TestPrivacyZeroBalanceIsPublishedNotOmitted \
             TestPrivacyEconomySelfIsAnAllowList \
@@ -93,26 +93,26 @@ jobs:
               echo "::error::${tst} did not PASS in the DEFAULT build. Either it was renamed (fix this list), it was skipped, or the default build lost the gate."; exit 1; }
           done
           if echo "$out" | grep -q '^--- SKIP'; then
-            echo "::error::an untagged R2.9a gate SKIPPED. A skipped gate is a gate that rots."
+            echo "::error::an untagged gate SKIPPED. A skipped gate is a gate that rots."
             echo "$out" | grep '^--- SKIP'; exit 1
           fi
           echo "OK — every named untagged gate ran and passed"
       # EVERY OTHER `go test` IN THIS FILE PASSES `-short`, AND THESE FIVE TESTS SKIP
       # UNDER IT. Measured: they executed in NO CI job at all — `--- SKIP` on each, exit
-      # 0, a green check standing for zero execution (scar:short-run-is-zero-execution-
+      # 0, a green check standing for zero execution
       # 2026-09-10, count 2; instance 1 was a seat choosing -short by hand, this one is
       # the workflow itself, so it recurred on every push). NO `-short` here, deliberately.
       #
       # These are the ones that ASSERT, so a skip costs real coverage. Four carry
       # substantive t.Fatalf regressions: the nested-evidence fixed point ("Q2/Q3
-      # REGRESSED"), the #563 field-confirmed OOM budget ("#563 REPRODUCED"), the C3
+      # REGRESSED"), the field-confirmed OOM budget (" REPRODUCED"), the C3
       # serve-Gini honest-null pin, and the §0.1 reconstruct resident floor. The fifth,
       # TestSlashesBytesCapWorstCaseCost, asserts only PRECONDITIONS — its four figures
       # go through t.Logf, so running it buys execution, not protection of the numbers
       # (said in full at core/chain.SlashesBytesCap). It is here because it is the
       # derivation witness for a FROZEN era-4 parameter and must at least run.
       #
-      # NOT in the race job: TestReconcileMemoryBounded_563 self-skips under -race too,
+      # NOT in the race job: TestReconcileMemoryBounded self-skips under -race too,
       # so -race would put it straight back in the dark.
       #
       # Measured on a throttled 2-core box: 36.9 s of test time, 58 s wall including the
@@ -124,12 +124,12 @@ jobs:
       # turns that test dark, and the lint goes red in the website job.
       - name: the -short-dark asserting tests really ran (no other job executes these)
         run: |
-          out=$(go test -count=1 -v ./core/chain/ ./cmd/silt/ ./core/erasure/ -run '^(TestRNestGate_SelfArmorMeasurement|TestGateC3_1_ServeGiniHonestNullIsMixDependentNotSampleSizeDependent|TestReconcileMemoryBounded_563|TestSlashesBytesCapWorstCaseCost|TestReconstructMemoryFootprint_SimVsProd)$' -timeout 20m 2>&1)
+          out=$(go test -count=1 -v ./core/chain/ ./cmd/silt/ ./core/erasure/ -run '^(TestRNestGate_SelfArmorMeasurement|TestServeGiniHonestNullIsMixDependentNotSampleSizeDependent|TestReconcileMemoryBounded|TestSlashesBytesCapWorstCaseCost|TestReconstructMemoryFootprint_SimVsProd)$' -timeout 20m 2>&1)
           echo "$out"
           for tst in \
             TestRNestGate_SelfArmorMeasurement \
-            TestGateC3_1_ServeGiniHonestNullIsMixDependentNotSampleSizeDependent \
-            TestReconcileMemoryBounded_563 \
+            TestServeGiniHonestNullIsMixDependentNotSampleSizeDependent \
+            TestReconcileMemoryBounded \
             TestSlashesBytesCapWorstCaseCost \
             TestReconstructMemoryFootprint_SimVsProd ; do
             echo "$out" | grep -q "^--- PASS: ${tst} " || {
@@ -157,7 +157,7 @@ jobs:
         run: go test -race -short ./...
 
   bbootstrap:
-    name: Go — the `bbootstrap` build tag (D-BB-BUILD-TAG)
+    name: Go — the `bbootstrap` build tag
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -165,15 +165,15 @@ jobs:
         with:
           go-version: "1.26"
           cache: true
-      # THE DEFAULT BINARY MUST CONTAIN NO PART OF THE INSTRUMENT. This is the half of
-      # D-BB-BUILD-TAG that no Go test can assert, because a test that can see the
-      # symbol is running in the build that has it. It reads the linked binary instead.
+      # THE DEFAULT BINARY MUST CONTAIN NO PART OF THE INSTRUMENT. No Go test can assert
+      # this, because a test that can see the symbol is running in the build that has it.
+      # It reads the linked binary instead.
       - name: A default silt binary carries no B_bootstrap mechanism
         run: |
           go build -o /tmp/silt-default ./cmd/silt
           syms=$(go tool nm /tmp/silt-default | grep -i 'bbootstrap' || true)
           if [ -n "$syms" ]; then
-            echo "::error::a DEFAULT silt binary contains B_bootstrap symbols. TENETS Part VI Don't #3 is a claim about what silt BUILDS; the instrument must compile only under -tags bbootstrap (D-BB-BUILD-TAG, docs/decisions.md)."
+            echo "::error::a DEFAULT silt binary contains B_bootstrap symbols. TENETS Part VI Don't #3 is a claim about what silt BUILDS; the instrument must compile only under -tags bbootstrap."
             echo "$syms"; exit 1
           fi
           # And the flag must not exist. Not "default false" — absent.
@@ -186,9 +186,9 @@ jobs:
           echo "OK — default binary: no symbols, no flag, rejects -bbootstrap"
       - name: go vet -tags bbootstrap
         run: go vet -tags bbootstrap ./...
-      # A BUILD TAG CI NEVER COMPILES IS CODE THAT ROTS. Everything R2.9a shipped — the
-      # minimum-requester floor, the G-BB-11' construct-from-the-instrument-class
-      # property, the BB-20 wire-equivalence gate, the two-clock cross-check and the
+      # A BUILD TAG CI NEVER COMPILES IS CODE THAT ROTS. Everything shipped — the
+      # minimum-requester floor, the' construct-from-the-instrument-class
+      # property, the wire-equivalence gate, the two-clock cross-check and the
       # package-scope export gate — now runs ONLY here. The `go` job above cannot see
       # any of it.
       - name: go test -tags bbootstrap -short ./...
@@ -202,36 +202,36 @@ jobs:
           out=$(go test -tags bbootstrap -short -count=1 -v ./core/credit/ ./core/node/ ./cmd/silt/ -run 'R29a' 2>&1)
           echo "$out"
           for tst in \
-            TestR29aTheFlagGatesTheRecordingNotJustThePublication \
-            TestR29aFlippingTheFlagOnDoesNotRecoverThePastIsTheACCEPTEDCOST \
-            TestR29aBB15FloorWithholdsEveryCensusCountBelowRMin \
-            TestR29aBB15FloorIsDerivedNotChosen \
-            TestR29aBB20BelowFloorBlockIsAFunctionOfTheClockAlone \
-            TestR29aBB20HasTeeth \
-            TestR29aBBootstrapHasOneExportedRoute \
-            TestR29aExportRouteGateHasTeeth \
-            TestR29aWallClockStepIsDetectedNotAbsorbed \
-            TestR29aOccupiedAgeBucketsNeverExceedUptime \
-            TestR29aBBootstrapSnapshotWritesNothing \
-            TestR29aDaemonInjectsBothClocksBeforeTheLedgerIsReachable \
-            TestR29aByteBinMatchesTheClosedForm \
-            TestR29aTopBinSaturatesThroughTheSnapshot \
-            TestR29aBB16PolledSeriesRevealsNoSingleIdentityTrajectory \
-            TestR29aG12RoutableBindWithBBootstrapIsRefusedAtStartup \
-            TestR29aG12DaemonRefusesBeforeItBindsOrMintsAToken \
-            TestR29aG12ClientSubcommandWiresNoInstrument \
-            TestR29aG12ThreeWireStatesAreDistinctKeySets \
-            TestR29aG12QueryTokenDoesNotUnlockTheBlock \
-            TestR29aG12ProxyUpstreamHostAndLocalOriginReadWithheld \
-            TestR29aG12WithholdingDoesNotPoisonTheSharedCache \
-            TestR29aG12InsecureTokenFileIsRefusedAtStartup \
-            TestR29aG12ReaderViewIsTheOneCompositionPoint \
-            TestR29aG12TokenFileMustBeTheDaemonUsers ; do
+            TestTheFlagGatesTheRecordingNotJustThePublication \
+            TestFlippingTheFlagOnDoesNotRecoverThePastIsTheACCEPTEDCOST \
+            TestFloorWithholdsEveryCensusCountBelowRMin \
+            TestFloorIsDerivedNotChosen \
+            TestBelowFloorBlockIsAFunctionOfTheClockAlone \
+            TestBelowFloorEquivalenceHasTeeth \
+            TestBBootstrapHasOneExportedRoute \
+            TestExportRouteGateHasTeeth \
+            TestWallClockStepIsDetectedNotAbsorbed \
+            TestOccupiedAgeBucketsNeverExceedUptime \
+            TestBBootstrapSnapshotWritesNothing \
+            TestDaemonInjectsBothClocksBeforeTheLedgerIsReachable \
+            TestByteBinMatchesTheClosedForm \
+            TestTopBinSaturatesThroughTheSnapshot \
+            TestPolledSeriesRevealsNoSingleIdentityTrajectory \
+            TestRoutableBindWithBBootstrapIsRefusedAtStartup \
+            TestDaemonRefusesBeforeItBindsOrMintsAToken \
+            TestClientSubcommandWiresNoInstrument \
+            TestThreeWireStatesAreDistinctKeySets \
+            TestQueryTokenDoesNotUnlockTheBlock \
+            TestProxyUpstreamHostAndLocalOriginReadWithheld \
+            TestWithholdingDoesNotPoisonTheSharedCache \
+            TestInsecureTokenFileIsRefusedAtStartup \
+            TestReaderViewIsTheOneCompositionPoint \
+            TestTokenFileMustBeTheDaemonUsers ; do
             echo "$out" | grep -q "^--- PASS: ${tst} " || {
               echo "::error::${tst} did not PASS under -tags bbootstrap. Either it was renamed (fix this list), it was skipped, or the tagged build lost the gate."; exit 1; }
           done
           if echo "$out" | grep -q '^--- SKIP'; then
-            echo "::error::a tagged R2.9a gate SKIPPED. A skipped gate is a gate that rots."
+            echo "::error::a tagged gate SKIPPED. A skipped gate is a gate that rots."
             echo "$out" | grep '^--- SKIP'; exit 1
           fi
           echo "OK — every named tagged gate ran and passed"
@@ -257,7 +257,7 @@ jobs:
       # that keeps it alive. A grep sweep cannot catch it either — it keys on bare
       # identifiers, so an inert method hides behind a live namesake (it missed
       # demand.Commit outright). `go tool nm` on the linked binary has neither hole.
-      - name: Scar-lint — a lane the release checklist claims must be reachable in ./cmd/silt (scar:mechanism-shipped-inert-2026-09-10)
+      - name: Lint — a lane the release checklist claims must be reachable in ./cmd/silt
         run: python3 scripts/check_reachability.py
 
   e2e:
@@ -274,7 +274,7 @@ jobs:
         # publish → chain-commit → fetch, bit-perfect. This is the layer
         # the in-process sim skips — the class of bug #36 was.
         # -timeout 25m: the economy repair test's pay window is 600s (the
-        # measured sweep-under-dead-holders band, #501/#497) — go test's
+        # measured sweep-under-dead-holders band) — go test's
         # default 10m killed the binary mid-window (a sleeping-goroutine
         # panic at the poll loop, not a test verdict).
         run: go test ./e2e/ -count=1 -v -timeout 25m
@@ -329,10 +329,10 @@ jobs:
         run: ./integration/nat/probe.sh
       - name: Symmetric NAT defeats the punch — raw primitive (relay fallback is genuinely needed)
         run: NAT_MODE=symmetric ./integration/nat/probe.sh
-      - name: Two NATed DAEMONS upgrade the relay path to direct (integrated, #27/#111)
+      - name: Two NATed DAEMONS upgrade the relay path to direct (integrated)
         # The integrated path — caretaker traffic triggers the relay-coordinated
         # punch and both daemons go direct — not just the standalone probe. This
-        # is the regression gate for #111 (the punch was never firing, then never
+        # is the regression gate for (the punch was never firing, then never
         # binding): a re-break fails here, locally and in CI (build-immutable V5).
         run: ./integration/nat/holepunch.sh
       - name: Symmetric NAT — integrated daemons correctly stay on the relay
@@ -343,20 +343,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # The three generated pages are NOT tracked (D-WEBSITE-HTML-AT-DEPLOY-2026-09-12).
-      # They are produced here, exactly as Netlify's build command produces them, and
-      # consumed by the link check below — which is what makes these three steps a gate
-      # rather than a formality: check_links.py reads website/*.html off the filesystem,
-      # and index.html, docs.html and node.html all link to these three pages, so a
-      # generator that fails or writes nothing takes the job red on a broken link.
-      # Measured 2026-09-12: with the three pages absent, check_links.py exits 1 and
-      # names nine broken links across docs.html, index.html and node.html.
-      - name: Scar-lint — TENETS.md Sybil-composition must carry design-target qualifier (scar:sybil-design-target-overclaim-2026-09-01)
+      - name: Lint — TENETS.md Sybil-composition must carry design-target qualifier
         run: python3 scripts/check_tenet_qualifiers.py
-      - name: Scar-lint — every cited test name must resolve to a real test, and every symbol-anchored source coordinate must point at its symbol (scar:cited-test-does-not-exist-2026-09-02, scar:cited-source-coordinate-decayed-2026-09-10)
-        # External review trees are absent in CI, so this checks the repo only.
+      - name: Lint — every cited test name must resolve to a real test, and every symbol-anchored source coordinate must point at its symbol
+        # External trees are absent in CI, so this checks the repo only.
         run: python3 scripts/check_cited_tests.py
-      - name: Scar-lint — the external-tree citation check must still CATCH a phantom after the review record moved (scar:review-record-moved-and-every-citation-went-dark-2026-09-11)
+      - name: Lint — the external-tree citation check must still CATCH a phantom
         # The external roots are absent in CI, and `collect_external` skips an absent
         # root — so the step above proves nothing about that half. This one MANUFACTURES
         # an external root in a temp dir and drives three arms: a forged phantom is
@@ -364,15 +356,15 @@ jobs:
         # ABSENT root says so instead of passing in silence (MUTE, the defect that
         # actually happened on 2026-09-11).
         run: python3 scripts/check_cited_tests.py --self-test
-      - name: Scar-lint — the shared repo walk must not descend into another checkout (scar:lint-walks-into-another-checkout-2026-09-11)
+      - name: Lint — the shared repo walk must not descend into another checkout
         # A CI checkout has NO nested worktree, so running the lints proves nothing here.
         # The self-test manufactures one in a temp directory and asserts both directions.
         run: python3 scripts/repo_walk.py --self-test
-      - name: Scar-lint — a source-text test gate must be labelled and must name its runtime cover (scar:source-gate-promises-a-runtime-property-2026-09-03)
+      - name: Lint — a source-text test gate must be labelled and must name its runtime cover
         run: python3 scripts/check_source_gates.py
-      - name: Scar-lint — no unresolved merge-conflict marker may reach a branch (scar:conflict-markers-shipped-in-ci-yml-2026-09-03)
+      - name: Lint — no unresolved merge-conflict marker may reach a branch
         run: python3 scripts/check_conflict_markers.py
-      - name: Scar-lint — no test may skip under -short in every merge-gating job (scar:short-run-is-zero-execution-2026-09-10)
+      - name: Lint — no test may skip under -short in every merge-gating job
         run: python3 scripts/check_short_dark_tests.py
   docs-shipped:
     name: Docs ship with code
@@ -384,7 +376,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Scar-lint — a changed SCHEDULED workflow must show a verified green workflow_dispatch run (scar:scheduled-workflow-never-observed-green-2026-09-11)
+      - name: Lint — a changed SCHEDULED workflow must show a verified green workflow_dispatch run
         # nightly-netem merged inside an omnibus commit, was red on its FIRST cron
         # run, and stayed red 19 of its first 21 — it had never been watched.
         env:

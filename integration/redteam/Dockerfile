@@ -1,4 +1,4 @@
-# Runtime image for the Byzantine red-team harness (#184 validator
+# Runtime image for the Byzantine red-team harness (validator
 # accountability). It carries the prebuilt `silt` binary on a slim base — one
 # image plays every role in the topology: honest validators and the three
 # adversaries (equivocator, forged-block proposer, low-bond proposer).

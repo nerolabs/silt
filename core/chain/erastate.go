@@ -1,10 +1,10 @@
 package chain
 
-// The ERA OBSERVABLE (freeze manifest item 19, R-CLOUD-ERA-PROBE).
+// The ERA OBSERVABLE (freeze manifest item 19).
 //
-// WHY IT EXISTS. Three investigations stalled on the same absence. A Tester could not confirm
-// whether the live test networks carry any v4 block, because no shipped command prints a block's
-// Version. The live maximum len(b.Atts) is named as unmeasured on two certifications and no
+// WHY IT EXISTS. Three investigations stalled on the same absence. A the research could not
+// confirm whether the live test networks carry any v4 block, because no shipped command prints a
+// block's Version. The live maximum len(b.Atts) is named as unmeasured on two research and no
 // command produces it. And the cloud sheet's 13b-delivery-settlement row SKIPs with one sentence
 // that covers two different worlds — "era-4 is dark" and "the issuer's keys are off-commitment" —
 // because nothing distinguishes them.
@@ -12,7 +12,7 @@ package chain
 // WHAT IT READS, AND WHAT IT REFUSES TO READ. Nothing here touches Config. Not one field. The era
 // activation state has two routes — the genesis override (Era3ActivationHeight /
 // Era4ActivationHeight) and the readiness-tally latch — and reading the override off the local
-// Config would be the #380 class: a consensus quantity answered from what an operator typed rather
+// Config would be the class: a consensus quantity answered from what an operator typed rather
 // than from what the chain says. The override IS committed now, at cbor key 20 fields 13-14 (see
 // ConsensusParams), but CheckConsensusParams returns nil on a paramless genesis, so the paramless
 // path survives and on it a Config read has no referent at all. Not reading it costs nothing:
@@ -29,20 +29,19 @@ package chain
 // so a block-only view renders it identically to "dark" — and that window is the single most useful
 // state for an operator watching a stamp raise land. EraPhase separates them.
 //
-// THE ANTI-VACUITY DISCIPLINE, AND WHY THIS FILE STATES IT. This row absorbs
-// R-CARRIER-ROLLOUT-SIGNAL, "whose code half was vacuous" (ROADMAP). The vacuity mechanism there
-// was a gate taking its guard condition from its own subject: TestG5_StampFiveImpliesTheCarrierIsHashCovered
-// returns early while the stamp is 3, so it asserts nothing and prints ok exactly as
-// a real pass would. Transposed into an observable, the same shape is a field that is always zero
-// or always absent — indistinguishable from a field correctly reporting an empty state. Three
-// devices keep it out of this one:
+// THE ANTI-VACUITY DISCIPLINE, AND WHY THIS FILE STATES IT. This row absorbs, "whose code half was
+// vacuous". The vacuity mechanism there was a gate taking its guard condition from its own subject:
+// TestStampFiveImpliesTheCarrierIsHashCovered returns early while the stamp is 3, so it asserts nothing
+// and prints ok exactly as a real pass would. Transposed into an observable, the same shape is a field
+// that is always zero or always absent — indistinguishable from a field correctly reporting an empty
+// state. Three devices keep it out of this one:
 //
-//  1. EraPhase is a closed string enum with NO zero value. "" is not a phase, so a field that was
-//     never populated cannot masquerade as EraDark.
-//  2. Optional heights are *uint64. Height 0 is a legal height — a genesis block can itself be v5 —
-//     so 0 cannot mean "none". nil means none, and omitempty makes absent-versus-present-zero a
-//     structural difference rather than a convention two fields must maintain in step.
-//  3. A zero count is narrated by its renderer, never printed bare.
+// 1. EraPhase is a closed string enum with NO zero value. "" is not a phase, so a field that was
+// never populated cannot masquerade as EraDark.
+// 2. Optional heights are *uint64. Height 0 is a legal height — a genesis block can itself be v5 —
+// So 0 cannot mean "none". nil means none, and omitempty makes absent-versus-present-zero a
+// structural difference rather than a convention two fields must maintain in step.
+// 3. A zero count is narrated by its renderer, never printed bare.
 //
 // Every phase is driven by a real chain in TestEraStateDrivesEveryPhaseFromCommittedState, and the
 // no-Config claim is ablated in TestEraStateIgnoresDivergentLocalConfig.
@@ -101,9 +100,9 @@ type VersionCensus struct {
 	// Both are keyed by version. JSON renders the keys as strings.
 	Counts       map[uint64]int    `json:"counts"`
 	FirstHeights map[uint64]uint64 `json:"firstHeights"`
-	// MaxAtts is max_h len(blocks[h].Atts), the live maximum attestation-carrier width, and
-	// MaxAttsHeight the FIRST height attaining it. This is the figure two certification items
-	// name as unmeasured; no shipped command produced it before this one.
+	// MaxAtts is max_h len(blocks[h].Atts), the live maximum attestation-carrier width,
+	// and MaxAttsHeight the FIRST height attaining it. This is the figure two research
+	// items name as unmeasured; no shipped command produced it before this one.
 	//
 	// AttsMeasured distinguishes "measured, and the answer is zero" from "never computed". A
 	// bare 0 here would be the vacuity trap: a genesis-only chain legitimately carries no

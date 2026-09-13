@@ -2,15 +2,15 @@
 # 2026-08-19 audit): the VPC, subnets, firewalls, and Cloud NAT router are
 # identical every run yet cost several minutes to create and destroy each time.
 # This root module owns them once, in its own state; a run launched with
-# PERSIST_NET=1 data-sources them instead of creating its own (see ../main.tf
+# PERSIST_NET=1 data-sources them instead of creating its own (see../main.tf
 # `persistent_network`). Everything here is REGION-CANONICAL: the subnets use
 # topology.py's canonical region→octet mapping (default 20; europe-west1 21;
 # us-east1 22; 30 reserved for the NAT subnet), which is a function of the
 # region alone — safe for every topology subset (SMOKE through the full
 # SYBILS+MATURING+ECONOMY sheet).
 #
-#   terraform -chdir=terraform/network apply  -var project_id=… [-var default_region=…]
-#   (or: ./cloudtest.sh net-up / net-down)
+#  terraform -chdir=terraform/network apply -var project_id=… [-var default_region=…]
+#  (or:./cloudtest.sh net-up / net-down)
 #
 # Nothing here carries a run_id, and a `cloudtest.sh destroy` never touches it.
 # Cost while idle: $0 (VPC/subnets/firewalls are free; Cloud NAT bills only for

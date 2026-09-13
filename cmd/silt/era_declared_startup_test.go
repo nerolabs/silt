@@ -35,7 +35,7 @@ func startupChain(t *testing.T, cfg chain.Config) *chain.Chain {
 	return c
 }
 
-// TestEraStartupLinesDeclareTheBUILDNotTheFlags is GATE G-DE-7, the flag ablation.
+// TestEraStartupLinesDeclareTheBUILDNotTheFlags is the gate, the flag ablation.
 //
 // A declared era an operator can set answers nothing: an operator diagnosing a dark network would
 // be reading their own input back, and 13b's discrimination — healthy dark versus wrong build —
@@ -57,19 +57,19 @@ func TestEraStartupLinesDeclareTheBUILDNotTheFlags(t *testing.T) {
 		strings.Join(a, "\n"), strings.Join(b, "\n"))
 
 	if strings.Join(a, "\n") != strings.Join(b, "\n") {
-		t.Fatalf("G-DE-7 RED: the start-up era render MOVED with consensus config. The declared era "+
+		t.Fatalf("RED: the start-up era render MOVED with consensus config. The declared era "+
 			"would then be what an operator typed.\nDEFAULT:\n%s\nDIVERGENT:\n%s",
 			strings.Join(a, "\n"), strings.Join(b, "\n"))
 	}
 	if strings.Contains(strings.Join(a, "\n"), "999999") {
-		t.Fatal("G-DE-7 RED: a local config value reached the render verbatim")
+		t.Fatal("RED: a local config value reached the render verbatim")
 	}
 
 	// The number is the build's, and it is the SHIPPED one. Asserting the literal (not just
 	// equality with the constant) is what makes this gate notice a stamp raise that ships
 	// without moving the declaration — the two must travel together.
 	if got := strings.Join(a, "\n"); !strings.Contains(got, "declares era-4 (v5)") {
-		t.Fatalf("G-DE-7 RED: this build declares chain.DeclaredMaxBlockVersion = v%d, and the "+
+		t.Fatalf("RED: this build declares chain.DeclaredMaxBlockVersion = v%d, and the "+
 			"start-up line must say so; got:\n%s", chain.DeclaredMaxBlockVersion, got)
 	}
 
@@ -79,11 +79,11 @@ func TestEraStartupLinesDeclareTheBUILDNotTheFlags(t *testing.T) {
 	// it is constructed here rather than observed; what it proves is about the RENDERER, and the
 	// shipped path's own number is proved above.
 	if same := strings.Join(a, "\n"); same == chain.StartupEraLines(chain.BlockVersionRounds, startupChain(t, chain.Config{Quorum: 1}).EraState())[0] {
-		t.Fatal("G-DE-7 RED: an era-2 build renders the same declaration line as this one")
+		t.Fatal("RED: an era-2 build renders the same declaration line as this one")
 	}
 }
 
-// TestDaemonPrintsTheEraPairAtStartUp is GATE G-DE-8 — the WIRING.
+// TestDaemonPrintsTheEraPairAtStartUp is the gate — the WIRING.
 //
 // A renderer nothing calls is decoration, which is the exact shape this row absorbs (its
 // predecessor's code half asserted nothing because an early return always fired). So the call site
@@ -92,8 +92,8 @@ func TestEraStartupLinesDeclareTheBUILDNotTheFlags(t *testing.T) {
 // THIS IS A SOURCE GATE, AND THE LIMIT IS NAMED RATHER THAN GLOSSED: it reads daemon.go as TEXT and
 // can therefore see only a string and an order. It proves the call is in the start-up path's source
 // and sits after the two loads it describes; it does NOT prove the call is REACHED at run time — a
-// new early return above it would be invisible here (instance 2 of the observable-log-contract
-// scar).
+// new early return above it would be invisible here (the second instance of the
+// observable-log-contract defect).
 //
 // UNGATED: no test in this repo boots the real daemon, so NOTHING observes these lines at runtime.
 // The e2e tier is where that would live, and a start-up log line did not justify a spawned-process
@@ -106,7 +106,7 @@ func TestDaemonPrintsTheEraPairAtStartUp(t *testing.T) {
 	}
 	s := string(src)
 	if !strings.Contains(s, "for _, ln := range eraStartupLines(ch) {") {
-		t.Fatal("SOURCE GATE: G-DE-8 RED — the literal `for _, ln := range eraStartupLines(ch) {` is " +
+		t.Fatal("SOURCE GATE: RED — the literal `for _, ln := range eraStartupLines(ch) {` is " +
 			"no longer in daemon.go's text, so the daemon no longer prints the era pair at start-up. " +
 			"The renderer is then decoration: freeze manifest item 19 asks the DAEMON to print its " +
 			"declared max block era, and cloud row 13b reads it off the daemon's log.")
@@ -116,14 +116,14 @@ func TestDaemonPrintsTheEraPairAtStartUp(t *testing.T) {
 	call := strings.Index(s, "for _, ln := range eraStartupLines(ch) {")
 	for _, before := range []string{"chainstore.Recover(chainPath, ch, *acceptChainLoss)", "genesis.Build(store, &gp)"} {
 		if at := strings.Index(s, before); at < 0 || at > call {
-			t.Fatalf("SOURCE GATE: G-DE-8 RED — in daemon.go's TEXT the era-pair call appears BEFORE "+
+			t.Fatalf("SOURCE GATE: RED — in daemon.go's TEXT the era-pair call appears BEFORE "+
 				"%q, so at run time it would describe a chain the daemon has not finished loading. "+
 				"This checks ORDER in the source, not execution order.", before)
 		}
 	}
 }
 
-// TestEraStartupLinesAreRegisteredObservables is GATE G-DE-9.
+// TestEraStartupLinesAreRegisteredObservables is the gate.
 //
 // The start-up markers are an operator interface: cloud row 13b reads them off the daemon's log,
 // which is what "an announced log line is an OBSERVABLE CONTRACT" (S5) means. Registering them puts
@@ -138,7 +138,7 @@ func TestEraStartupLinesAreRegisteredObservables(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Fatalf("G-DE-9 RED: the start-up marker %q is not in ObservableContract, so nothing "+
+			t.Fatalf("RED: the start-up marker %q is not in ObservableContract, so nothing "+
 				"stops a later change from deleting it to make a build green", want)
 		}
 	}

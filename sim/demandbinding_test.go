@@ -1,10 +1,10 @@
 package sim
 
-// R0.4b sim scaffolding: wiring the demand lane's per-epoch issuer keyset.
+// sim scaffolding: wiring the demand lane's per-epoch issuer keyset.
 //
-// Since R0.4b a redeemer will not hold key_E unless its fingerprint matches the
+// Since a redeemer will not hold key_E unless its fingerprint matches the
 // CONSENSUS-ATTESTED commitment for (issuer, epoch). That is the anti-fingerprinting
-// binding the certification makes mandatory, and it has a consequence for every
+// binding the research makes mandatory, and it has a consequence for every
 // demand-lane test: the server needs a CHAIN carrying the binding, and the issuer's
 // identity must be the one the binding names.
 //
@@ -67,7 +67,7 @@ func issuerKeyGenesis(t *testing.T, issuerSigner ed25519.PrivateKey, issuerKey *
 	return g
 }
 
-// wireDemandLane is the standard R0.4b demand-lane setup: the issuer installs its
+// wireDemandLane is the standard demand-lane setup: the issuer installs its
 // per-epoch key, the server holds a chain committing that key's binding and banks
 // against the issuer's identity, and every fetcher pins the issuer's served keyset.
 //
@@ -117,7 +117,7 @@ func wireDemandLane(t *testing.T, cl *Cluster, issuer, server *node.Node,
 	}
 }
 
-// acquireDemandToken withdraws one token on the R0.4b demand lane and returns it.
+// acquireDemandToken withdraws one token on the demand lane and returns it.
 func acquireDemandToken(t *testing.T, cl *Cluster, f *node.Node, issuer ports.NodeID) demand.Token {
 	t.Helper()
 	var tok demand.Token

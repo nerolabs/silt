@@ -7,29 +7,29 @@
 # churn the DHT (#43/#60), a fresh client's cold provider lookup starts timing
 # out and fetches fail. This test MEASURES that, on a real multi-holder swarm:
 #
-#   1. stand up a seed/registry + a pool of N holders on a flat network
-#   2. publish FILES files (each from its own ephemeral client), record link+sha
-#   3. optionally POLLUTE routing: POLLUTERS throwaway ephemeral publishes, each a
-#      fresh identity that announces then vanishes — the #43 churn pressure
-#   4. MEASURE: run FETCHES fetches, each from a FRESH ephemeral client doing a
-#      cold lookup of a random published link, and assert each is bit-perfect
-#   5. report the fetch SUCCESS RATE and gate it on FLOOR%
+#  1. stand up a seed/registry + a pool of N holders on a flat network
+#  2. publish FILES files (each from its own ephemeral client), record link+sha
+#  3. optionally POLLUTE routing: POLLUTERS throwaway ephemeral publishes, each a
+#  fresh identity that announces then vanishes — the #43 churn pressure
+#  4. MEASURE: run FETCHES fetches, each from a FRESH ephemeral client doing a
+#  cold lookup of a random published link, and assert each is bit-perfect
+#  5. report the fetch SUCCESS RATE and gate it on FLOOR%
 #
 # Every `silt swarm add`/`swarm get` joins with its own ephemeral identity, so
 # each measured fetch is a genuinely new fetcher — exactly a new user's path.
 #
 # Verdict:
-#   rate >= FLOOR  -> PASS  (retrieval holds at scale — the #43 mitigations work)
-#   rate <  FLOOR  -> FINDING (real discoverability degradation at scale, #43) —
-#                     reported with the rate + a diagnostic, never faked green.
+#  rate >= FLOOR -> PASS (retrieval holds at scale — the #43 mitigations work)
+#  rate < FLOOR -> FINDING (real discoverability degradation at scale, #43) —
+#  reported with the rate + a diagnostic, never faked green.
 # A publish that never returns a link, or the swarm failing to come up, is FAIL.
 #
 # Usage:
-#   ./run.sh                                  # 24 holders, 12 files, 60 fetches
-#   HOLDERS=40 FETCHES=100 ./run.sh           # crank the scale
-#   POLLUTERS=0 ./run.sh                      # no identity churn (baseline)
-#   FLOOR=95 ./run.sh                         # stricter success-rate gate
-#   KEEP=1 ./run.sh                           # leave the swarm up to poke at
+# ./run.sh # 24 holders, 12 files, 60 fetches
+#  HOLDERS=40 FETCHES=100 ./run.sh # crank the scale
+#  POLLUTERS=0 ./run.sh # no identity churn (baseline)
+#  FLOOR=95 ./run.sh # stricter success-rate gate
+#  KEEP=1 ./run.sh # leave the swarm up to poke at
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 cd "$(dirname "$0")"
@@ -74,7 +74,7 @@ bootok=0
 HIDS=()
 while IFS= read -r _id; do [ -n "$_id" ] && HIDS+=("$_id"); done < <(dc ps -q holder)
 for id in "${HIDS[@]}"; do
-  # audit #303: require a NON-EMPTY routing table, not the bare word "bootstrapped"
+  # the audit: require a NON-EMPTY routing table, not the bare word "bootstrapped"
   # — a node logs `bootstrapped (0 table entries)` when it lands isolated, which is
   # NOT "at scale" and must not count toward the ≥90% scale gate below.
   for _ in $(seq 1 60); do docker logs "$id" 2>&1 | grep -qE 'bootstrapped \([1-9][0-9]* table entries\)' && { bootok=$((bootok+1)); break; }; sleep 1; done
@@ -123,12 +123,12 @@ if [ "$POLLUTERS" -gt 0 ]; then
   echo "  $POLLUTERS ephemeral identities churned through the DHT"
 fi
 
-# ── phase 4.5: BASELINE positive control (audit #303 retrieval [low] confound) ──
+# ── phase 4.5: BASELINE positive control (the audit retrieval [low] confound) ──
 # Before measuring the churn-degraded rate, prove the ephemeral-client→seed→registry
 # fetch path itself still works. Without this, ANY phase-5 shortfall is hard-attributed
 # to '#43 ephemeral-identity routing pollution' — but a seed/registry that got
 # overloaded/flaky under the phase-4 polluter fan-out would drive the SAME failures for
-# a rendezvous-layer reason, pointing a blind reviewer at the wrong cause. One clean cold
+# a rendezvous-layer reason, pointing a a review at the wrong cause. One clean cold
 # fetch of a known-good link disambiguates: if the baseline itself fails, the rendezvous
 # layer is saturated → FAIL with that attribution, NOT a #43 discoverability FINDING.
 echo "== phase 4.5: baseline cold fetch (post-pollution positive control) =="

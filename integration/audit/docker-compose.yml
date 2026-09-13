@@ -1,11 +1,11 @@
 # Proof-of-retrieval (PoR) audit field test — a real multi-daemon swarm on one
 # flat Docker network:
 #
-#            seed (registry + bootstrap, 10.60.0.10)
-#              |
-#   holder1 .21   holder2 .22   holder3 .23   holder4 .24     (honest holders)
-#              \        \         /        /
-#                     caretaker .30  (-care <careLink>, -log info: repair loop)
+#  seed (registry + bootstrap, 10.60.0.10)
+#  |
+#  holder1.21 holder2.22 holder3.23 holder4.24 (honest holders)
+#  \ \ / /
+#  caretaker.30 (-care <careLink>, -log info: repair loop)
 #
 # run.sh publishes an erasure-coded file so shards scatter across the holders,
 # then physically `rm`s one holder's shard files from its /data/objects tree
@@ -96,7 +96,7 @@ services:
       swarm:
         ipv4_address: 10.60.0.23
 
-  # holder4 is a PoR LIAR (#232): it keeps its storage-proof tags and advertises
+  # holder4 is a PoR LIAR: it keeps its storage-proof tags and advertises
   # as a provider, but silently drops the shard bytes. It still ANSWERS a
   # MsgChallenge — with a proof over data it no longer holds — so the caretaker's
   # -audit sweep catches it by VERIFYING the proof (no ground-truth fetch) and

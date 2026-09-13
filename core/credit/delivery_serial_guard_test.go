@@ -1,9 +1,9 @@
 package credit
 
-// Regression tests for the R0.4b cross-server double-redeem guard: one demand token
-// (one serial, one fee) funds exactly ONE conserved delivery payout.
+// Regression tests for the cross-server double-redeem guard: one demand token (one
+// serial, one fee) funds exactly ONE conserved delivery payout.
 //
-// The eviction gates below are the RED-TEAM's (2026-09-02, against the FIFO-bounded
+// The eviction gates below are the ADVERSARY's (2026-09-02, against the FIFO-bounded
 // guard at commit fcbab7e). They are the discriminator between this design and the
 // refuted one, so they are permanent:
 //
@@ -43,7 +43,7 @@ func testSerial(n int) []byte {
 // written against the flat leg's (paid, reason) pair reads the same way.
 //
 // The two calls are the mechanism, not a convenience: on the flat lane one call
-// guarded the serial AND paid; under R2.9 the anchor is spent at OPEN (before any
+// guarded the serial AND paid; under the anchor is spent at OPEN (before any
 // service) and the payment is a separate, per-increment settlement out of the budget
 // that spend created. A refusal at the OPEN therefore pays nothing and records
 // nothing, which is why the reason it returns is the open's.
@@ -173,16 +173,16 @@ func TestSerialGuard_SetIsBounded(t *testing.T) {
 		t.Fatalf("paidSerial map grew to %d after %d distinct serials, cap is %d - unbounded state on the floor box (build-immutable #8)",
 			got, cycles, maxPaidSerial)
 	}
-	// G-F8-3 brick ablation (R2.10 / F8, cert §6, 2026-09-04): with NO epoch clock
-	// (epoch 0 throughout, the -epoch-blocks 0 posture) nothing ever expires, so once
-	// the cap is full of still-live serials every further paid delivery is REFUSED —
-	// the lane bricks at maxPaidSerial. This ONE assertion is the unit-tier stand-in
-	// for driving 65,536 deliveries through an OS process; the daemon-tier
-	// consequence (refuse to start a paid lane with effective EpochBlocks == 0) is
-	// e2e TestF8_PaidLanesRefuseToStartWithoutAnEpochClock.
+	// brick ablation (2026-09-04): with NO epoch clock (epoch 0
+	// throughout, the -epoch-blocks 0 posture) nothing ever expires, so once the
+	// cap is full of still-live serials every further paid delivery is REFUSED —
+	// the lane bricks at maxPaidSerial. This ONE assertion is the unit-tier
+	// stand-in for driving 65,536 deliveries through an OS process; the
+	// daemon-tier consequence (refuse to start a paid lane with effective
+	// EpochBlocks == 0) is e2e TestPaidLanesRefuseToStartWithoutAnEpochClock.
 	if lastReason != ReasonGuardFull {
 		t.Fatalf("the %dth redeem at a permanent epoch 0 returned reason %q, want %q: with no epoch "+
-			"clock the guard can never free a slot, so a full cap must refuse (R-F8-DISABLED's brick)",
+			"clock the guard can never free a slot, so a full cap must refuse ('s brick)",
 			cycles, lastReason, ReasonGuardFull)
 	}
 }
@@ -197,7 +197,7 @@ func TestSerialGuard_SetIsBounded(t *testing.T) {
 func TestSerialGuard_ExpiryFreesTheCap(t *testing.T) {
 	const fee = 50_000
 	l := New(fee, 0)
-	src := &mockEpochSource{} // R2.10 / F8: the ledger reads its clock; the test moves it
+	src := &mockEpochSource{} // the ledger reads its clock; the test moves it
 	l.SetEpochSource(src)
 	server, fetcher := id(1), id(2)
 	obj := id(7)
@@ -231,8 +231,7 @@ func TestSerialGuard_ExpiryFreesTheCap(t *testing.T) {
 	}
 }
 
-// TestSerialGuard_MalformedSerialIsRefusedAndUnrecorded replaces
-// TestSerialGuard_EmptySerialUnguarded (retired with the flat leg, C1 2026-09-08).
+// TestSerialGuard_MalformedSerialIsRefusedAndUnrecorded.
 //
 // WHAT CHANGED, AND WHY IT IS STRICTLY STRONGER. The flat leg had an UNGUARDED path:
 // a redeem with no serial was neither recorded nor blocked, on the reasoning that no
@@ -278,8 +277,8 @@ func TestSerialGuard_MalformedSerialIsRefusedAndUnrecorded(t *testing.T) {
 	}
 }
 
-// --- The red-team's two EVICTION gates (2026-09-02). RED at fcbab7e (FIFO-bounded
-// guard), GREEN under expiry-only eviction. ---
+// --- The two EVICTION gates. RED (FIFO-bounded
+// guard, GREEN under expiry-only eviction. ---
 
 // TestSerialGuard_EvictThenReRedeemMintsZero: the single-target eviction pump.
 // Server A redeems a target serial (honest first payout). The attacker floods

@@ -8,11 +8,11 @@
 // (ASIACRYPT 2008), §3 — adopted, not invented (tenet B8). It is a
 // homomorphic linear authenticator over a prime field:
 //
-//	setup:      secret key = (PRF key k, sector secrets α₁..α_s ∈ Z_p)
-//	tag:        for block i with sectors mᵢ₁..mᵢ_s,  σᵢ = f_k(i) + Σⱼ αⱼ·mᵢⱼ (mod p)
-//	challenge:  a seed expands to l sampled blocks i with coefficients νᵢ ∈ Z_p
-//	prove:      μⱼ = Σᵢ νᵢ·mᵢⱼ  and  σ = Σᵢ νᵢ·σᵢ   (aggregate — O(s), size-independent)
-//	verify:     σ ?= Σᵢ νᵢ·f_k(i) + Σⱼ αⱼ·μⱼ        (no data touched)
+//	setup: secret key = (PRF key k, sector secrets α₁..α_s ∈ Z_p)
+//	tag: for block i with sectors mᵢ₁..mᵢ_s, σᵢ = f_k(i) + Σⱼ αⱼ·mᵢⱼ (mod p)
+//	challenge: a seed expands to l sampled blocks i with coefficients νᵢ ∈ Z_p
+//	prove: μⱼ = Σᵢ νᵢ·mᵢⱼ and σ = Σᵢ νᵢ·σᵢ (aggregate — O(s), size-independent)
+//	verify: σ ?= Σᵢ νᵢ·f_k(i) + Σⱼ αⱼ·μⱼ (no data touched)
 //
 // A prover that has deleted or altered any sampled block cannot produce a
 // (μ, σ) that satisfies the verification equation except with negligible
@@ -41,7 +41,7 @@
 // NON-ZERO mu forged with the alphas. Shacham-Waters Definition 2.1 assumes the
 // key is not known to the prover; in silt it rides the care link.
 //
-// ADVERSARY-SHAPE: capability=LayoutKey fixture=TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT
+// ADVERSARY-SHAPE: capability=LayoutKey fixture=TestCareLinkHolderForgesWithZeroBytes_PINNED_DEFECT
 package por
 
 import (
@@ -125,7 +125,7 @@ type Key struct {
 // forgery fails without the key. One fixture covers this claim and the identical
 // one at core/node/por.go's porKeyDomain.
 //
-// ADVERSARY-SHAPE: capability=LayoutKey fixture=TestRT_POR_1_CareLinkHolderForgesWithZeroBytes_PINNED_DEFECT
+// ADVERSARY-SHAPE: capability=LayoutKey fixture=TestCareLinkHolderForgesWithZeroBytes_PINNED_DEFECT
 func DeriveKey(seed []byte, params Params) (*Key, error) {
 	if params.SectorsPerBlock <= 0 {
 		return nil, errors.New("por: SectorsPerBlock must be positive")
@@ -185,7 +185,7 @@ func (k *Key) Params() Params { return k.params }
 // prover can't answer a challenge on chunk A with chunk B's stored tags).
 // The returned slice has one 32-byte tag per block; store it with the chunk.
 //
-// ADVERSARY-SHAPE: capability=CrossChunkTagSubstitution UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover chunk B's tags and driving them at a challenge on chunk A. ROADMAP row F1.
+// ADVERSARY-SHAPE: capability=CrossChunkTagSubstitution UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover chunk B's tags and driving them at a challenge on chunk A.
 func (k *Key) Tags(unitID []byte, data []byte) [][]byte {
 	nb := k.params.Blocks(len(data))
 	tags := make([][]byte, nb)
@@ -278,7 +278,7 @@ type Proof struct {
 // bytes and tags can always answer; a holder that lost bytes cannot make the
 // answer verify.
 //
-// ADVERSARY-SHAPE: capability=TagsAfterByteLoss UNCOVERED: no fixture GRANTS AND CONTROLS FOR a holder its tags after the bytes are gone. See core/node/por.go: with the VERIFICATION key too, the answer verifies anyway. ROADMAP row F1.
+// ADVERSARY-SHAPE: capability=TagsAfterByteLoss UNCOVERED: no fixture GRANTS AND CONTROLS FOR a holder its tags after the bytes are gone. See core/node/por.go: with the VERIFICATION key too, the answer verifies anyway.
 func Prove(params Params, data []byte, tags [][]byte, c Challenge) (Proof, error) {
 	if params.SectorsPerBlock <= 0 {
 		return Proof{}, errors.New("por: bad params")
@@ -408,15 +408,15 @@ func prfBytes(seed [32]byte, domain string, ctr uint32) [32]byte {
 	return out
 }
 
-// randElem draws a uniform field element in [0, p) by rejection sampling.
+// randElem draws a uniform field element in [0, p by rejection sampling.
 func randElem(rng io.Reader) (*big.Int, error) {
 	var buf [32]byte
 	for {
 		if _, err := io.ReadFull(rng, buf[:]); err != nil {
 			return nil, err
 		}
-		// clear the top bit so the value is < 2²⁵⁵, then reject the tiny
-		// window [p, 2²⁵⁵) so the result is uniform in [0, p).
+		// clear the top bit so the value is < 2²⁵⁵, then reject the
+		// tiny window [p, 2²⁵⁵ so the result is uniform in [0, p.
 		buf[0] &= 0x7f
 		v := new(big.Int).SetBytes(buf[:])
 		if v.Cmp(prime) < 0 {

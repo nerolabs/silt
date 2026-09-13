@@ -5,11 +5,11 @@
 # suites can adopt these helpers incrementally (they still stand alone).
 #
 # The convention every suite already follows, which these helpers key off:
-#   • a suite prints a final line  RESULT: PASS|FAIL|FINDING <text>
-#   • and exits 0 on pass (or a deliberately-reproduced FINDING), non-zero on fail
-#   • repair/relay/commit events are asserted from <store>/debug.log, not stdout
+#  • a suite prints a final line RESULT: PASS|FAIL|FINDING <text>
+#  • and exits 0 on pass (or a deliberately-reproduced FINDING), non-zero on fail
+#  • repair/relay/commit events are asserted from <store>/debug.log, not stdout
 #
-# shellcheck disable=SC2034  # colors are used by sourcing scripts
+# shellcheck disable=SC2034 # colors are used by sourcing scripts
 
 # ---- pretty output ---------------------------------------------------------
 if [ -t 1 ]; then

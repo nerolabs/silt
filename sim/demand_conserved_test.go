@@ -1,7 +1,7 @@
 package sim
 
 // TestDeliveryCreditConservedOverWire is conservation on the SESSION lane, end to end in
-// one ledger view (B-9 retired the flat receipt): the fetcher's withdrawal burns one face
+// one ledger view (retired the flat receipt): the fetcher's withdrawal burns one face
 // on the server's ledger; the token opens a session at the server; a cumulative-count
 // receipt settles count·p — count·p − skim to the server, skim to the object's escrow —
 // and the unsettled remainder is a pending DEPOSIT (released at anchor expiry). Nothing is

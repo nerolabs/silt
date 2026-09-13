@@ -1,9 +1,8 @@
 package main
 
-// D-UI-PRIVACY-FLAG (owner-ratified 2026-09-05) — the -privacy flag's gates, held to the
-// blind PE design ruling RULING-UI-PRIVACY-FLAG-design-2026-09-05 §6. Untagged: this is
-// default-build code. Every withheld field is ABSENT with a sibling marker, never a zero;
-// every privacy withhold is an ALLOW-LIST; the pages never throw on a withheld document.
+// — the -privacy flag's gates, held to. Every withheld field is ABSENT with a sibling
+// marker, never a zero; every privacy withhold is an ALLOW-LIST; the pages never throw on
+// a withheld document.
 
 import (
 	"encoding/json"
@@ -214,16 +213,16 @@ func TestPrivacyFlagRefusesAnythingButOnOrOff(t *testing.T) {
 		}
 	}
 	if !privacyDefaultWithheld {
-		t.Fatalf("the compiled default is EXPOSED — D-UI-PRIVACY-FLAG's guarantee sentence and the release.yml assertion both require withheld by default (PE ruling S4, option E)")
+		t.Fatalf("the compiled default is EXPOSED — 's guarantee sentence and the release.yml assertion both require withheld by default (a review S4, option E)")
 	}
 }
 
 // TestPrivacyBothSubcommandsParseTheFlagBeforeServing is a source gate: daemon.go and
 // client.go both declare -privacy through parsePrivacyFlag, each refuses before ui.serve,
 // and in daemon.go the parse sits BEFORE the `if *uiAddr != ""` block — a parse inside it
-// let `silt daemon -privacy=bogus` (no -ui) boot while the help text promised a refusal
-// (PE code ruling B3). RUNTIME GATE: TestPrivacyFlagRefusesAnythingButOnOrOff observes the
-// predicate; this gate adds only that the call sites exist and where they sit.
+// let `silt daemon -privacy=bogus` (no -ui) boot while the help text promised a refusal.
+// RUNTIME GATE: TestPrivacyFlagRefusesAnythingButOnOrOff observes the predicate; this gate
+// adds only that the call sites exist and where they sit.
 func TestPrivacyBothSubcommandsParseTheFlagBeforeServing(t *testing.T) {
 	for _, f := range []string{"daemon.go", "client.go"} {
 		src, err := os.ReadFile(f)
@@ -253,8 +252,8 @@ func TestPrivacyBothSubcommandsParseTheFlagBeforeServing(t *testing.T) {
 // creates, gated: Stats and durability.Balance are now POINTERS into the cached document,
 // so a privacy clause that wrote through them would zero the operator's next read. An
 // untokened privacy=on read, then the operator's read inside the same snapshot interval,
-// must show the operator the same balance and stats the cache holds (PE code ruling M1:
-// zeroing *out.Durability.Balance in the clause left every gate green).
+// must show the operator the same balance and stats the cache holds.Durability.Balance in
+// the clause left every gate green.
 func TestPrivacyWithholdDoesNotPoisonTheSharedCache(t *testing.T) {
 	// A FUNDED fixture: the zero-grant fixture's balance is legitimately 0, which is the
 	// value a poisoning write would also produce. 5,000 makes the two distinguishable.
@@ -283,7 +282,7 @@ func TestPrivacyWithholdDoesNotPoisonTheSharedCache(t *testing.T) {
 }
 
 // TestPrivacyAllThreeHandlersRouteThroughTheirView widens the composition-point gate the
-// G-BB-12′ build left covering /api/status only: apiStatus → readerView, apiEconomySelf →
+// build left covering /api/status only: apiStatus → readerView, apiEconomySelf →
 // economyView, apiLibrary → libraryView, no withhold outside them, and the three view
 // functions are declared adjacent under one doc comment. RUNTIME GATE: the three privacy
 // wire tests above observe the behaviour; this gate adds only WHERE the clauses live.
@@ -348,7 +347,7 @@ console.log(JSON.stringify(out));`
 	cmd := exec.Command(node, "-e", script, filepath.Join("ui", "render.js"))
 	raw, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("render.js THREW on the fixture (the abort-the-page shape the PE measured): %v\n%s", err, raw)
+		t.Fatalf("render.js THREW on the fixture (the abort-the-page shape a review measured): %v\n%s", err, raw)
 	}
 	var out struct {
 		CardsW, CardsP, CardsO struct {
@@ -382,7 +381,7 @@ console.log(JSON.stringify(out));`
 		t.Fatalf("banners = %q / %q / %q: only a -privacy=off node is labelled", out.BannerP, out.BannerW, out.BannerO)
 	}
 	if !strings.Contains(out.CellLinkW, "link withheld") || strings.Contains(out.CellLinkW, "data-link") {
-		t.Fatalf("withheld library row = %q — must say withheld, never emit a get button with an undefined link (PE B2)", out.CellLinkW)
+		t.Fatalf("withheld library row = %q — must say withheld, never emit a get button with an undefined link (a review)", out.CellLinkW)
 	}
 	if !strings.Contains(out.CellLinkP, `data-link="silt:v1:a:b"`) || strings.Contains(out.CellLinkNone, "data-link") {
 		t.Fatalf("library cells = %q / %q", out.CellLinkP, out.CellLinkNone)
@@ -394,10 +393,11 @@ console.log(JSON.stringify(out));`
 	if strings.Contains(string(lib), `data-link="${f.link}"`) || !strings.Contains(string(lib), "siltRender.libraryGetCell(") {
 		t.Fatalf("SOURCE GATE: library.html still builds the get button inline from f.link; route through render.js so a withheld row cannot send link=undefined")
 	}
-	// And the pages actually use render.js: no bare stats dereference survives in either.
-	// economy.html joined the list with R2.2 (Lane C3): it renders /api/economy/self's
-	// revenue/margin/wash blocks, which the privacy clause OMITS entirely — the same
-	// absent-block-deref shape this gate was written for, one document over.
+	// And the pages actually use render.js: no bare stats dereference survives in
+	// either. economy.html joined the list with (this lane): it renders
+	// /api/economy/self's revenue/margin/wash blocks, which the privacy clause OMITS
+	// entirely — the same absent-block-deref shape this gate was written for, one
+	// document over.
 	for _, page := range []string{"index.html", "observatory.html", "library.html", "economy.html"} {
 		html, err := os.ReadFile(filepath.Join("ui", page))
 		if err != nil {
@@ -428,13 +428,13 @@ func TestPrivacyWithheldDocumentsCarryOnlyAllowedKeys(t *testing.T) {
 		}
 	}
 	if _, has := status["faucet"]; has {
-		t.Fatalf("privacy=on untokened /api/status carries the R2.12 faucet block — its counters are arrival-adjacent and belong under countersWithheld")
+		t.Fatalf("privacy=on untokened /api/status carries the faucet block — its counters are arrival-adjacent and belong under countersWithheld")
 	}
 	if _, has := status["serveMint"]; has {
-		t.Fatalf("privacy=on untokened /api/status carries the G-R212-7 serveMint block — token holders only")
+		t.Fatalf("privacy=on untokened /api/status carries the serveMint block — token holders only")
 	}
 	if _, has := status["deliverySettlement"]; has {
-		t.Fatalf("privacy=on untokened /api/status carries the R2.9 deliverySettlement block — token holders only")
+		t.Fatalf("privacy=on untokened /api/status carries the deliverySettlement block — token holders only")
 	}
 	// The Go type says the same thing: every statusInfo field either is in the allow-list
 	// by its JSON name, or is one of the two withheld fields (stats, and balance inside

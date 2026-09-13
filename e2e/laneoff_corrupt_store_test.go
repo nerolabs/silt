@@ -1,25 +1,25 @@
 package e2e
 
-// R0.4b C3 — the LANE OFF degrade path, driven in a REAL PROCESS.
+// C3 — the LANE OFF degrade path, driven in a REAL PROCESS.
 //
 // WHY THIS FILE EXISTS. The F7 close (a corrupt demandkeys.cbor must stop the receipt
 // lane, not the validator) shipped with a SOURCE-TEXT gate only:
-// cmd/silt/rt_r04b_c3_laneoff_test.go greps daemon.go for "LANE OFF" and for the absence
-// of one forbidden return. The Tester demonstrated that gate has no teeth — F7 was
+// cmd/silt/laneoff_test.go greps daemon.go for "LANE OFF" and for the absence of one
+// forbidden return. The research demonstrated that gate has no teeth — F7 was
 // reintroduced verbatim, with the gate GREEN and `go vet` clean, by adding a DIFFERENT
-// early return above the switch. That fired the third-time rule on
-// [[scar-verifies-x-must-name-the-axes]]: a gate's failure text must not promise a
+// early return above the switch. That fired the third time on
+// [[]]: a gate's failure text must not promise a
 // runtime property it cannot measure.
 //
 // This is the runtime half. It writes a corrupt demand key store, starts a real
 // `silt daemon` over real TCP, and asserts the four things the property actually means:
 //
-//  1. the PROCESS SURVIVES — it reaches peer announcement and commits blocks;
-//  2. the LANE IS OFF — "delivery receipts: ACCEPTING" never appears;
-//  3. the exact operator line is printed, with the store path and the restore
-//     instruction (an announced log line is an observable contract, S5);
-//  4. the FILE IS UNCHANGED, byte for byte — regenerating over already-committed
-//     fingerprints is the unrecoverable F6 failure.
+// 1. the PROCESS SURVIVES — it reaches peer announcement and commits blocks;
+// 2. the LANE IS OFF — "delivery receipts: ACCEPTING" never appears;
+// 3. the exact operator line is printed, with the store path and the restore
+// instruction (an announced log line is an observable contract, S5);
+// 4. the FILE IS UNCHANGED, byte for byte — regenerating over already-committed
+// fingerprints is the unrecoverable F6 failure.
 //
 // Ablation that must redden it: restore the F7 death in cmd/silt/daemon.go by returning
 // the store error out of runDaemon (in any spelling). The daemon then exits before the
@@ -45,7 +45,7 @@ func TestDaemonSurvivesACorruptDemandKeyStore(t *testing.T) {
 	}
 	keyPath := filepath.Join(store, "issuer", "demandkeys.cbor")
 	// Not CBOR. Load returns "corrupt demand key store", which is the hard error the
-	// store is REQUIRED to return (adapters/diskissuer TestRTC3_CorruptStoreErrorsAndIsNeverRewritten).
+	// store is REQUIRED to return (adapters/diskissuer TestCorruptStoreErrorsAndIsNeverRewritten).
 	corrupt := []byte("this is not a CBOR demand key band\n")
 	if err := os.WriteFile(keyPath, corrupt, 0o600); err != nil {
 		t.Fatal(err)
@@ -54,8 +54,8 @@ func TestDaemonSurvivesACorruptDemandKeyStore(t *testing.T) {
 	a := startDaemon(t, "corrupt-demand-keys",
 		"-listen", "127.0.0.1:0", "-store", store,
 		"-serve-registry", "127.0.0.1:0", "-validator",
-		"-accept-delivery-receipts", "-delivery-idle-window", "10m", "-epoch-blocks", "8", // R2.10 / F8: a paid lane needs an epoch clock
-		"-grant-capacity", "256", "-grant-per-hour", "256", // R2.12 / G-R212-1: and a configured faucet
+		"-accept-delivery-receipts", "-delivery-idle-window", "10m", "-epoch-blocks", "8", // a paid lane needs an epoch clock
+		"-grant-capacity", "256", "-grant-per-hour", "256", // and a configured faucet
 		"-objective=false", "-min-rep", "100", "-quorum", "1",
 		"-bond", "8M", "-min-bond-floor", "0",
 		"-capacity", "1G", "-mdns=false", "-id-seed", "4803")

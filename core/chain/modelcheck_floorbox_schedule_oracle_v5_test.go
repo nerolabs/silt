@@ -8,57 +8,55 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// R1.5 — the floor-box RESOLVE-path SCHEDULING ORACLE (model-check tier, test-only).
+// The floor-box RESOLVE-path SCHEDULING ORACLE (model-check tier, test-only).
 //
-// SEAT: Builder — 2026-09-02. Toward Boulder 1's accept-flip (#657 / R1.8).
-// Refs:
-//   R1.4 cert: floorbox-R1.3-refutation-R1.4-witness-soundness-RESEARCH-CERTIFICATION-2026-09-01.md
-//   design:    docs/thinking/2026-09-01-floorbox-witness-soundness-fix-design.md
+// accept-flip.
+//
 //
 // WHY THIS EXISTS. The consensus model-check has ZERO coverage of the floor-box Resolve
-// path because the box short-circuits at (IndeterminateTrustlessly,
-// ErrRecomputeGated) BEFORE the recompute (floorbox_v5.go:244 — the never-Accept STOP
-// boundary certified in R1.4-Q5). This oracle exercises the recompute DIRECTLY, calling
+// path because the box short-circuits at (IndeterminateTrustlessly, ErrRecomputeGated)
+// BEFORE the recompute (floorbox_v5.go — the never-Accept STOP boundary in).
+// This oracle exercises the recompute DIRECTLY, calling
 // recomputeStateRootEntriesRevocations (the box's Resolve function) and bypassing the
 // never-Accept gate. It runs PRE-FLIP: it tests the recompute itself, not the wired box.
 //
 // "ACCEPT" in this oracle = the recompute returns nil (it AGREES the committed root is the
 // one a full node would compute). A "stall" = a non-nil return (the box refuses to agree).
-// The accept-flip (R1.8) would make a nil return terminal; today it does not. So the
+// The accept-flip would make a nil return terminal; today it does not. So the
 // invariants below are stated over the recompute VERDICT, the precondition the flip needs.
 //
-// TWO ADDITIONS (task R1.5):
-//   1. Box-as-I1-participant scheduling oracle (TestScheduleOracle_I1_DisjointBoxesNoConflictingAccept,
-//      TestScheduleOracle_I5_HonestNeverSlashed). An adversarial scheduler delivers honest
-//      witnesses to some boxes and forged witnesses (via adversarialCommittedRoot) to others,
-//      under adversarial delivery order / partition. Asserts I1 (no two disjoint boxes emit
-//      Accept for conflicting blocks at one height) and I5 (honest is never slashed).
-//   2. Multi-block Resolve schedule (TestScheduleOracle_MultiBlockResolveStableUnderReorder,
-//      TestScheduleOracle_ForgedWitnessDoesNotPoisonNextPrevRoot). Consecutive epoch-boundary
-//      blocks under adversarially-ordered witness delivery. Asserts each box's Resolve verdict
-//      is stable under reorder (Resolve is pure over prevStateRoot + block), and a forged
-//      witness at height h does NOT poison prevStateRoot for h+1's Resolve (I3-adjacent).
+// TWO ADDITIONS (task):
+// 1. Box-as-I1-participant scheduling oracle (TestScheduleOracle_I1_DisjointBoxesNoConflictingAccept,
+// TestScheduleOracle_I5_HonestNeverSlashed. An adversarial scheduler delivers honest
+// witnesses to some boxes and forged witnesses (via adversarialCommittedRoot) to others,
+// under adversarial delivery order / partition. Asserts I1 (no two disjoint boxes emit
+// Accept for conflicting blocks at one height) and I5 (honest is never slashed).
+// 2. Multi-block Resolve schedule (TestScheduleOracle_MultiBlockResolveStableUnderReorder,
+// TestScheduleOracle_ForgedWitnessDoesNotPoisonNextPrevRoot. Consecutive epoch-boundary
+// blocks under adversarially-ordered witness delivery. Asserts each box's Resolve verdict
+// is stable under reorder (Resolve is pure over prevStateRoot + block), and a forged
+// witness at height h does NOT poison prevStateRoot for h+1's Resolve (I3-adjacent).
 //
-// COMPOUND-SHAPE BREAKS this oracle DRIVES — now CLOSED (classP-anchoring cert 2026-09-02):
-//   (a) class-P activation-lock LockedIn.OldValue unanchored wrong-accept. A forged
-//       GateLockedIn.OldValue=true SUPPRESSED the activation tally; the suppressed tally emitted no
-//       lock-in op, the forged OldValue was never fold-checked, and the box wrong-accepted a block
-//       that OMITTED a mandatory lock-in. FIXED by DIRECTION A (rotateTallyOps anchors each lock-in
-//       bool against prevStateRoot before the branch read). Driven by
-//       TestScheduleOracle_OpenBreak_A_ForgedLockInOldValueSuppression — now asserts the STALL.
-//   (b) RegVersion in-block cross-check gap. apply()'s rotate tally reads the JUST-WRITTEN
-//       regVersion of an in-block bond (chain.go:3444); the box anchored regVersion against PRE-state
-//       only (absent for a fresh in-block bond → RegVersionKnown=false → excluded → false-stall).
-//       FIXED by DIRECTION B (regVerWrites → anchorRotateMember in-block cross-check). Driven by
-//       TestScheduleOracle_OpenBreak_B_InBlockRegVersionTallyDivergence — now asserts AGREE-on-honest
-//       + STALL-on-suppressed.
+// COMPOUND-SHAPE BREAKS this oracle DRIVES — now CLOSED:
+// (a) class-P activation-lock LockedIn.OldValue unanchored wrong-accept. A forged
+// GateLockedIn.OldValue=true SUPPRESSED the activation tally; the suppressed tally emitted no
+// lock-in op, the forged OldValue was never fold-checked, and the box wrong-accepted a block
+// that OMITTED a mandatory lock-in. FIXED by the pre-state anchor (rotateTallyOps anchors each lock-in
+// bool against prevStateRoot before the branch read). Driven by
+// TestScheduleOracle_OpenBreak_A_ForgedLockInOldValueSuppression — now asserts the STALL.
+// (b) RegVersion in-block cross-check gap. apply's rotate tally reads the JUST-WRITTEN
+// regVersion of an in-block bond (chain.go); the box anchored regVersion against PRE-state
+// only (absent for a fresh in-block bond → RegVersionKnown=false → excluded → false-stall).
+// FIXED by DIRECTION B (regVerWrites → anchorRotateMember in-block cross-check). Driven by
+// TestScheduleOracle_OpenBreak_B_InBlockRegVersionTallyDivergence — now asserts AGREE-on-honest
+// + STALL-on-suppressed.
 //
-// A blind Tester verifies the oracle BITES: each gate asserts the box now STALLS the forgery (and,
-// for (b), AGREES on the honest in-block boundary). The box STILL never Accepts ((*Box).Validate →
-// Gated); these are recompute-verdict gates, stall-adding only.
+// A blind the research verifies the oracle BITES: each gate asserts the box now STALLS the forgery
+// (and, for (b), AGREES on the honest in-block boundary). The box STILL never Accepts
+// ((*Box).Validate → Gated); these are recompute-verdict gates, stall-adding only.
 
 // =============================================================================
-// Shared fixture builders (self-contained; no dependency on the R1.6 branch files)
+// Shared fixture builders (self-contained; no dependency on the branch files)
 // =============================================================================
 
 // unfiredLockInChain builds a mature-from-genesis, v5-admissible chain whose gate(>=3) and

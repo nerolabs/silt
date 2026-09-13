@@ -6,22 +6,21 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// M-1A-1 (research certification FLOORBOX-STRUCTURE-ROUND-1A-COMPOSED-DIFF-869399e §0): v5MatureNow
-// must call the ONE receiverless nakamotoCoefficient, not carry a third body of the coefficient
-// arithmetic. This gate is the maturity mirror's direct parity oracle: over a table of committed
-// worlds that exercise every branch of the fold — the degenerate total, equal bonds, a whale, a
-// shared domain, the operator margin, and the three exclusions (anchor / slashed / below MinBond) —
-// v5MatureNow over liveView must answer exactly what the node's matureNow answers.
+// v5MatureNow must call the ONE receiverless nakamotoCoefficient, not carry a third body of
+// the coefficient arithmetic. This gate is the maturity mirror's direct parity oracle: over a table
+// of committed worlds that exercise every branch of the fold — the degenerate total, equal bonds, a
+// whale, a shared domain, the operator margin, and the three exclusions (anchor / slashed / below
+// MinBond) — v5MatureNow over liveView must answer exactly what the node's matureNow answers.
 //
 // The worlds are written straight into the chain's committed maps (validatorsSeen, bonded,
 // bondDomain, slashed): the node's matureNow reads those maps and nothing else, and the mirror
 // reads the same maps through liveView, so the comparison is between the two BODIES, which is the
-// property M-1A-1 protects. The accept-path driver for the same mirror is the v4/v5 parity oracle
+// property protects. The accept-path driver for the same mirror is the v4/v5 parity oracle
 // (parity_oracle_v4v5_test.go, the de-mature regime).
 //
-// Ablation (M-1A-1): reintroduce a divergent inline coefficient in v5MatureNow (e.g. `cum >=
+// Ablation: reintroduce a divergent inline coefficient in v5MatureNow (e.g. `cum >=
 // threshold`) ⇒ the "three equal bonds, MatureValidators 2" row reddens (node 2, mirror 1).
-func TestM1A1_V5MatureNowEqualsNodeMatureNow(t *testing.T) {
+func TestV5MatureNowEqualsNodeMatureNow(t *testing.T) {
 	f := buildStructFixture(t)
 	assertHonestTwinAccepts(t, f.c, f.mkBlock(t, nil))
 	c := f.c
@@ -82,13 +81,13 @@ func TestM1A1_V5MatureNowEqualsNodeMatureNow(t *testing.T) {
 		node := c.matureNow()
 		mirror, out, err := v5MatureNow(liveView{c})
 		if out != Accept || err != nil {
-			t.Fatalf("M-1A-1 (%s): v5MatureNow over liveView must not stall; got %s / %v", w.name, out, err)
+			t.Fatalf("(%s): v5MatureNow over liveView must not stall; got %s / %v", w.name, out, err)
 		}
 		if node != w.want {
-			t.Fatalf("M-1A-1 (%s): the world is mis-specified — the node's matureNow answers %v, the table expects %v", w.name, node, w.want)
+			t.Fatalf("(%s): the world is mis-specified — the node's matureNow answers %v, the table expects %v", w.name, node, w.want)
 		}
 		if mirror != node {
-			t.Fatalf("M-1A-1 VIOLATED (%s): the node's matureNow answers %v, the composition's v5MatureNow answers %v — "+
+			t.Fatalf("VIOLATED (%s): the node's matureNow answers %v, the composition's v5MatureNow answers %v — "+
 				"the maturity coefficient has a second body; v5MatureNow must call nakamotoCoefficient", w.name, node, mirror)
 		}
 	}

@@ -18,13 +18,13 @@ import (
 
 // TestConsensusMemoryGrowth is a DIAGNOSTIC (opt-in: SILT_OOM_DIAG=1), not a
 // pass/fail assertion — it attributes the MATURING consensus-node memory
-// footprint that OOM-crash-loops the field cohort (the fix #464 did NOT resolve;
+// footprint that OOM-crash-loops the field cohort (the fix did NOT resolve;
 // the crash-looping nodes hold ~no chunks, so the proof map was never their hog —
-// silt-oom-NOT-the-proof-map-FINDING-2026-08-17). It drives a mature-epoch
+// silt-oom-NOT-the-proof-map-FINDI-08-17). It drives a mature-epoch
 // network for many heights in-process and logs resident-heap + per-node state
 // growth per height. Run with a heap profile to attribute the dominant alloc:
 //
-//	SILT_OOM_DIAG=1 SILT_OOM_HEIGHTS=300 go test ./sim/ -run TestConsensusMemoryGrowth -memprofile /tmp/heap.out -v
+//	SILT_OOM_DIAG=1 SILT_OOM_HEIGHTS=300 go test./sim/ -run TestConsensusMemoryGrowth -memprofile /tmp/heap.out -v
 //	go tool pprof -inuse_space -top /tmp/heap.out
 //
 // If HeapInuse grows ~linearly with height, a per-height/per-block structure
@@ -88,9 +88,9 @@ type heapSample struct {
 //
 // The setup is deterministic: seed=11 fixes identities, the seeded simnet fixes
 // message ordering, and a forced GC before each sample makes HeapObjects a
-// reproducible signal (see docs/thinking/2026-08-27-o-depth-ci-gate.md).
+// reproducible signal.
 //
-// heapsOpts.perHeight, if set, runs after every committed height (h=1..heights).
+// heapsOpts.perHeight, if set, runs after every committed height (h=1.heights).
 // The O(depth) gate uses it only to inject a synthetic super-linear cost for the
 // failing-first proof; it is nil in all normal runs.
 type heapsOpts struct {

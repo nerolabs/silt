@@ -1,39 +1,37 @@
 package demand
 
-// R0.4b — the per-epoch issuer keyset and the token validity WINDOW.
+// The per-epoch issuer keyset and the token validity WINDOW.
 //
-// THE CONSTRUCTION (certified 2026-09-02, R0.4b-per-epoch-issuer-key-expiry, as
-// amended by the red-team reconciliation verdict of the same date, §2.4 fix (b1)):
-// the issuer holds one RSA key per epoch and blind-signs an epoch-E withdrawal under
-// key_E OVER A MESSAGE THAT BINDS E. A token verifies under exactly the PAIR
-// (key_E, E).
+// THE CONSTRUCTION: the issuer holds one RSA key per epoch and blind-signs an
+// epoch-E withdrawal under key_E OVER A MESSAGE THAT BINDS E. A token verifies under
+// exactly the PAIR (key_E, E).
 //
 // THE EPOCH IS NOT A TOKEN FIELD AND NOT A RECEIPT FIELD — Token{Serial,Sig} and the
-// signed receipt message are byte-identical to the pre-R0.4b shape, so the change adds
-// ZERO new receipt quasi-identifier (cert Verdict 3; the epoch is a CONSENSUS epoch
-// index, not wall-clock, so the R0.4 Q1 refutation of a wall-clock stamp does not
+// signed receipt message are byte-identical to the pre-rotation shape, so the change adds
+// ZERO new receipt quasi-identifier (the epoch is a CONSENSUS epoch
+// index, not wall-clock, so the refutation of a wall-clock stamp does not
 // reach it). At redemption the epoch is DISCOVERED by trying the held (key_e, e)
 // pairs; the issuer keeps no serial↔epoch map, so serial→withdrawer stays blind.
 //
 // WHY THE EPOCH MUST BE IN THE SIGNED MESSAGE, not only in the key. The first
-// R0.4b build put the epoch ONLY in the key. Then issuedEpoch(token) was a function
-// of the token AND the verifier's current keyset: one RSA key bound to two epochs —
-// which an ordinary RESTART produces, since the persisted key was re-registered for
-// the new boot epoch, and which no validity rule forbids — made an old token verify
-// under the NEWEST epoch that key is held for. Guard entries at the credit layer
-// then expired while the tokens did not, and the cross-server double-redeem pump
-// re-opened (red-team probes G and I, 2026-09-02). Binding E into the blind-signed
-// message makes issuedEpoch a PURE FUNCTION OF THE TOKEN for ANY key schedule,
-// which is the coupling condition "evicted ⇒ expired ⇒ un-redeemable" needs. The MOVE
-// is Privacy Pass's — put the key's identity inside the signed message so a token
-// cannot be re-dated (tenet B8, adopt the analogue's schema).
+// build put the epoch ONLY in the key. Then issuedEpoch(token) was a function of the
+// token AND the verifier's current keyset: one RSA key bound to two epochs — which an
+// ordinary RESTART produces, since the persisted key was re-registered for the new
+// boot epoch, and which no validity rule forbids — made an old token verify under the
+// NEWEST epoch that key is held for. Guard entries at the credit layer then expired
+// while the tokens did not, and the cross-server double-redeem pump re-opened.
+// Binding E into the blind-signed message makes issuedEpoch a PURE FUNCTION OF THE
+// TOKEN for ANY key schedule, which is the coupling condition "evicted ⇒ expired ⇒
+// un-redeemable" needs. The MOVE is Privacy Pass's — put the key's identity inside
+// the signed message so a token cannot be re-dated (tenet B8, adopt the analogue's
+// schema).
 //
-// WHAT SILT ACTUALLY SIGNS, STATED EXACTLY (crypto-specialist advisory C-4,
+// WHAT SILT ACTUALLY SIGNS, STATED EXACTLY (
 // 2026-09-03). RFC 9578 §5.3 signs token_input = 0x0002 ‖ nonce ‖ challenge_digest ‖
 // token_key_id, where token_key_id = SHA256(DER SubjectPublicKeyInfo of pk_I) — a hash
 // of the WHOLE issuer public key, identifying the issuer AND the key. silt signs an
 // EPOCH INDEX (8-byte BE ‖ serial; see blindtoken.demandMsg), which identifies
-// NEITHER. That is enough for the re-dating property, which is what R0.4b needed, and
+// NEITHER. That is enough for the re-dating property, and
 // it is NOT the RFC 9578 binding. Do not describe it as one.
 //
 // THE GAP THIS LEAVES, named: validateIssuerKeys (core/chain/issuerkey.go) requires a
@@ -44,9 +42,8 @@ package demand
 // under B's keyset. That is Duplicate-Signature Key Selection (Blake-Wilson & Menezes
 // 1999). It is NOT live today — a session open (core/node/deliverysession.go) verifies an
 // anchor under the server's OWN committed key only, and ledgers are per-node — so it is latent, and the close (an issuer-key
-// proof-of-possession, and/or binding keyFingerprint into demandMsg) is a VALIDITY-RULE
-// change: research-gated, owner-ratified, tracked as a ROADMAP Rock before the stamp
-// raise. Not built here.
+// proof-of-possession, and/or binding keyFingerprint into demandMsg) is a VALIDITY-RULE change: research-gated, tracked as a
+// Rock before the stamp raise. Not built here.
 //
 // ROTATION IS THEREFORE LIVENESS, NOT SOUNDNESS. Something must be committed for the
 // current epoch or the lane cannot issue; but soundness holds even if the issuer
@@ -59,21 +56,21 @@ package demand
 // token from that epoch stops verifying AT ONCE. There is no per-token expiry field
 // to forge or mis-read.
 //
-// WHY THIS EXISTS: it is the second half of the ratified (b)-prunable rule. It makes
+// WHY THIS EXISTS: it is the second half of the prunable rule. It makes
 // "evicted ⇒ expired ⇒ un-redeemable" TRUE at the credit layer, which is what closes
 // the self-financing eviction pump a bounded FIFO paid-serial guard could not close
-// (see core/credit/delivery.go's paidSerial note and the red-team eviction gates).
+// (see core/credit/delivery.go's paidSerial note and the eviction gates).
 //
-// THE MANDATORY COMPANION (cert Verdict 2): per-epoch keys manufacture a linkable
+// THE MANDATORY COMPANION: per-epoch keys manufacture a linkable
 // tag — "which key verified you" — if a Byzantine issuer serves a distinct key_E to
 // a small cohort. A pinned or published keyset does NOT close that (an issuer that
 // equivocates keys equivocates the published list too). Soundness REQUIRES the
 // redeemer to resolve key_E against a CONSENSUS-ATTESTED binding, which is why
 // chain.IssuerKeyCommitment exists and why core/node pins this keyset against it.
-// A Keyset assembled WITHOUT that cross-check is certified-unsafe for the neutral
+// A Keyset assembled WITHOUT that cross-check is unsafe for the neutral
 // demand lane: per-epoch keys can then be worse for privacy than no epoch at all.
 //
-// The anonymity set coarsens to epoch width (cert residual R1) — the accepted,
+// The anonymity set coarsens to epoch width — the accepted,
 // on-tenet price of any epoch-granular expiry, and the same coarse granularity
 // pod.md:213 already commits demand at.
 
@@ -93,21 +90,20 @@ import (
 // epoch-denominated window auto-scales with the swarm's real cadence: when blocks
 // are slow the network is stressed, which is exactly when redemption is slow too,
 // and the window stretches WITH it. A wall-clock window would decouple from the very
-// cadence that drives the latency it must cover (economist advisory §2), and a
+// cadence that drives the latency it must cover, and a
 // wall-clock stamp on the receipt is separately REFUTED as a new timing
-// quasi-identifier (R0.4 cert Q1).
+// quasi-identifier.
 //
-// THE VALUE IS ASSUMPTION-BASED, not measured (cert residual R0.4b-2). The floor is
-// the honest serve→bank redemption-latency tail, which is UNMEASURED: the
-// tail-setting path is abort-at-A / re-complete-at-B, whose token must still be
-// in-window when B banks. 4 epochs (~32 blocks at DerivedEpochBlocks = 8) is the
-// deliberately generous starting value — being too long costs a few MB of guard
-// state, being too short costs an honest pony an unpaid delivery, and the ponies
-// most likely to hit the tail are the small, distant, churny ones we federate work
-// TO. The sim that replaces this assumption with a measurement (p99.9 of the
-// serve→bank latency, in epochs) is named in the economist advisory §5 and is owed
-// to the Tester. W and EpochBlocks are COUPLED knobs: re-check the tail before
-// changing either.
+// THE VALUE IS ASSUMPTION-BASED, not measured. The floor is the
+// honest serve→bank redemption-latency tail, which is UNMEASURED: the tail-setting
+// path is abort-at-A / re-complete-at-B, whose token must still be in-window when B
+// banks. 4 epochs (~32 blocks at DerivedEpochBlocks = 8) is the deliberately
+// generous starting value — being too long costs a few MB of guard state, being too
+// short costs an honest pony an unpaid delivery, and the ponies most likely to hit
+// the tail are the small, distant, churny ones we federate work TO. The sim that
+// replaces this assumption with a measurement (p99.9 of the serve→bank latency, in
+// epochs) is still owed. W and
+// EpochBlocks are COUPLED knobs: re-check the tail before changing either.
 const DefaultWindow = uint64(4)
 
 // Keyset is a redeemer's WINDOW of per-epoch issuer public keys — the demand lane's
@@ -150,20 +146,20 @@ func (k *Keyset) Window() uint64 { return k.window }
 
 // Put binds pub as the issuer key for epoch. The caller is responsible for having
 // resolved pub against the committed E ↦ key_E binding FIRST — an unchecked Put is
-// exactly the targeted-key fingerprinting channel the cert gates on (see the package
+// exactly the targeted-key fingerprinting channel the research gates on (see the package
 // note above). A nil pub is ignored.
 //
-// A MALFORMED KEY IS ALSO IGNORED (red-team re-break F4, 2026-09-03). Resolving
-// against the commitment proves WHICH BYTES the issuer serves; it proves nothing about
-// whether those bytes are an RSA key. A held N = 0 panicked the verifier and a held
-// N = 1 verified an arbitrary (serial, sig) pair — a universal forgery behind a
-// perfectly valid consensus pin. blindtoken.ValidatePub is the single definition of
-// well-formedness and this is the door it guards; Held reports what actually went in.
+// A MALFORMED KEY IS ALSO IGNORED, 2026-09-03. Resolving against the commitment proves
+// WHICH BYTES the issuer serves; it proves nothing about whether those bytes are an
+// RSA key. A held N = 0 panicked the verifier and a held N = 1 verified an arbitrary
+// (serial, sig) pair — a universal forgery behind a perfectly valid consensus pin.
+// blindtoken.ValidatePub is the single definition of well-formedness and this is the
+// door it guards; Held reports what actually went in.
 func (k *Keyset) Put(epoch uint64, pub *rsa.PublicKey) {
 	if pub == nil {
 		return
 	}
-	// THE ADMISSION MEMO (crypto advisory R1, 2026-09-03). ValidatePub's hardness half
+	// THE ADMISSION MEMO. ValidatePub's hardness half
 	// costs ~3.3 ms, and this door is driven from a HOT, UNAUTHENTICATED path:
 	// Node.DemandIssuerKeyset re-pins every held epoch on every read, and
 	// the delivery session open calls it on any inbound MsgDeliveryOpen that decodes and
@@ -172,7 +168,7 @@ func (k *Keyset) Put(epoch uint64, pub *rsa.PublicKey) {
 	// rate limit (core/node/deliverysession.go). With the
 	// issuer's staged band 9 epochs deep that was 9 x 3.3 ms = ~28.6 ms of RSA work
 	// per one-byte message on the single-threaded node loop: the exact CPU amplifier
-	// the C-3 shape/hardness split exists to prevent, re-entered through another door.
+	// the shape/hardness split exists to prevent, re-entered through another door.
 	//
 	// Re-Put is not idempotent-free: Prune drops every FUTURE epoch on every read, so
 	// the memo cannot live in k.keys — it must survive the deletion. Keying it on the
@@ -208,13 +204,13 @@ func (k *Keyset) Key(epoch uint64) *rsa.PublicKey { return k.keys[epoch] }
 func (k *Keyset) Len() int { return len(k.keys) }
 
 // Retain drops every held key for which keep reports false. It is how a redeemer
-// makes its keyset FOLLOW THE CHAIN: the pin is a CACHE of the chain's committed
-// E ↦ key_E binding, not an independent record, so after a reorg (or any adoption
-// that re-points a commitment) a held key whose fingerprint no longer matches the
-// CURRENT commitment must be dropped rather than kept and verified against
-// (red-team probe H, 2026-09-02 — the redeemer otherwise accepts the abandoned
-// fork's key and refuses the canonical one for W+1 epochs). Iteration order does not
-// matter: keep is a pure predicate on one (epoch, key) pair.
+// makes its keyset FOLLOW THE CHAIN: the pin is a CACHE of the chain's committed E ↦
+// key_E binding, not an independent record, so after a reorg (or any adoption that
+// re-points a commitment) a held key whose fingerprint no longer matches the CURRENT
+// commitment must be dropped rather than kept and verified against, 2026-09-02 — the
+// redeemer otherwise accepts the abandoned fork's key and refuses the canonical one
+// for W+1 epochs. Iteration order does not matter: keep is a pure predicate on one
+// (epoch, key) pair.
 func (k *Keyset) Retain(keep func(epoch uint64, pub *rsa.PublicKey) bool) {
 	for e, pub := range k.keys {
 		if !keep(e, pub) {
@@ -224,7 +220,7 @@ func (k *Keyset) Retain(keep func(epoch uint64, pub *rsa.PublicKey) bool) {
 }
 
 // Prune drops every key whose epoch has left the window at current — the operation
-// that ENFORCES expiry. After Prune the held set is exactly {key_E : current−W <= E
+// that ENFORCES expiry. After Prune the held set is exactly {key_E: current−W <= E
 // <= current} for the keys the caller supplied, so every token from a dropped epoch
 // stops verifying at once. Keys for FUTURE epochs (E > current) are also dropped:
 // holding one would accept a token the issuer cannot yet have signed honestly.
@@ -244,7 +240,7 @@ func (k *Keyset) Prune(current uint64) {
 //
 // AT MOST ONE PAIR CAN MATCH, whatever keys are held: the epoch is inside the
 // signed message, so a signature made for epoch E fails the check at every e != E
-// even under the identical key (R0.4b (b1)). That is what makes the returned
+// even under the identical key. That is what makes the returned
 // issuedEpoch a pure function of the token — the property the credit layer's expiry
 // guard rests on.
 //
@@ -269,19 +265,19 @@ func (k *Keyset) VerifyInWindow(current uint64, t Token) (epoch uint64, ok bool)
 	}
 }
 
-// VerifyAnchorInWindow is VerifyInWindow's twin for RELAY PREPAYMENT ANCHORS
-// (R2.14): the same newest-first walk over the held (key_e, e) pairs, calling
+// VerifyAnchorInWindow is VerifyInWindow's twin for RELAY PREPAYMENT ANCHORS: the
+// same newest-first walk over the held (key_e, e) pairs, calling
 // blindtoken.VerifyRelayAnchor instead of VerifyDemand. Everything VerifyInWindow
 // says holds here unchanged — at most one pair can match (the epoch is inside the
 // signed message), the returned issuedEpoch is a pure function of the anchor, and an
 // anchor whose issuing epoch has left the window verifies under no held key. The
 // relay calls this under its OWN pinned keyset only (core/node OpenRelaySession,
-// cert G-A5): an anchor is a claim on the ledger that burned its fee, and only the
+// An anchor is a claim on the ledger that burned its fee, and only the
 // issuer's ledger did.
 //
 // It also refuses a signature that verifies in the DEMAND domain: the domains are
 // distinct FDH inputs under one key (blindtoken relayAnchorDomain), so a demand token
-// offered as an anchor fails at every pair — one fee, one lane (cert T-6).
+// offered as an anchor fails at every pair — one fee, one lane.
 func (k *Keyset) VerifyAnchorInWindow(current uint64, t Token) (epoch uint64, ok bool) {
 	if len(t.Serial) == 0 {
 		return 0, false

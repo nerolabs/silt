@@ -12,36 +12,35 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// R-ROTATE-EPOCH-LAST — the drift guard for the load-bearing coupling that #620
-// leans on (RULING-620-mature-epoch-order-independence-2026-08-28, "Couplings the
-// consult should carry forward").
+// The drift guard for the load-bearing coupling that leans on, "Couplings the
+// consult should carry forward".
 //
-// The claim #620 discharges — `epochSet` is an order-INVARIANT read of the two
+// The claim discharges — `epochSet` is an order-INVARIANT read of the two
 // final maps — holds ONLY BY CONSTRUCTION, and that construction is two facts about
 // production code, NEITHER guarded before this file:
 //
-//  1. rotateEpoch runs LAST in apply(chain.go), AFTER every bonded/slashed mutation
-//     and the maturity latch. So the freeze reads the block's POST-APPLY state, and
-//     `epochSet = liveQualifiedSet(bonded, slashed)` is a deterministic function of
-//     the two FINAL maps — order-invariant, because those maps' own order-independence
-//     is covered elsewhere (#617/#618). Move rotateEpoch before slash/bond application
-//     and it freezes a PRE-final (mid-apply) set, reopening the I3 mid-epoch-churn fork.
-//  2. liveQualifiedSet reads ONLY bonded, slashed, and cfg.MinBond — no history
-//     (blocks/revLog/bondRegHeight/…). Make it read history and `epochSet` becomes
-//     history-DEPENDENT, silently breaking the SMT history-independence premise for
-//     the frozen set even if rotate still runs last.
+// 1. rotateEpoch runs LAST in apply(chain.go), AFTER every bonded/slashed mutation
+// And the maturity latch. So the freeze reads the block's POST-APPLY state, and
+// `epochSet = liveQualifiedSet(bonded, slashed)` is a deterministic function of the
+// two FINAL maps — order-invariant, because those maps' own order-independence is
+// covered elsewhere. Move rotateEpoch before slash/bond application and it freezes a
+// PRE-final (mid-apply) set, reopening the I3 mid-epoch-churn fork.
+// 2. liveQualifiedSet reads ONLY bonded, slashed, and cfg.MinBond — no history
+// (blocks/revLog/bondRegHeight/…). Make it read history and `epochSet` becomes
+// history-DEPENDENT, silently breaking the SMT history-independence premise for
+// the frozen set even if rotate still runs last.
 //
 // Both facts are STRUCTURAL, so the guards are structural — a purely behavioral
 // fixture can pass through a refactor that reorders statements when the scenario does
-// not happen to distinguish them (the exact scope-honesty gap the #620 ruling names:
+// not happen to distinguish them (the exact scope-honesty gap decision names:
 // "convergent by construction," not "a divergence-capable ordering was tried"). These
 // tests pin the construction itself, then a behavioral fixture confirms the effect.
 //
-// RED-on-injection (session-7 rule — a green check with no demonstrated red is a
-// comment that compiles): each guard was ablated red before it was trusted. The
-// injections and their reddening are recorded in this file's doc comments and the
-// R-ROTATE-EPOCH-LAST report. This file adds NO production logic (a _test.go only);
-// the class-P fix that will touch apply()/rotateEpoch is separate and gated.
+// RED-on-injection rule — a green check with no demonstrated red is a comment
+// that compiles: each guard was ablated red before it was trusted. The injections
+// and their reddening are recorded in this file's doc comments and the report.
+// This file adds NO production logic (a _test.go only); the class-P fix that will
+// touch apply/rotateEpoch is separate and gated.
 
 // parseChainAST parses core/chain/chain.go into an AST, located relative to this test
 // file so it does not depend on the working directory (the readChainSource pattern).
@@ -74,7 +73,7 @@ func chainMethod(t *testing.T, f *ast.File, name string) *ast.FuncDecl {
 	return nil
 }
 
-// callName returns the selector name of a call expression `x.Name(...)`, or "".
+// callName returns the selector name of a call expression `x.Name(.)`, or "".
 func callName(e ast.Expr) string {
 	ce, ok := e.(*ast.CallExpr)
 	if !ok {
@@ -87,11 +86,11 @@ func callName(e ast.Expr) string {
 	return se.Sel.Name
 }
 
-// TestRotateEpochIsLastInApply is the STRUCTURAL half of guard (1): rotateEpoch is
-// the LAST thing apply() does. The freeze's order-invariance depends on it reading the
+// TestRotateEpochIsLastInApply is the STRUCTURAL half of guard (1): rotateEpoch is the
+// LAST thing apply does. The freeze's order-invariance depends on it reading the
 // block's post-apply state, which holds iff no bonded/slashed mutation runs after it.
 //
-// The guard asserts, from the AST of apply(): the final top-level statement is the
+// The guard asserts, from the AST of apply: the final top-level statement is the
 // epoch-rotation gate, and rotateEpoch is the LAST statement IN THAT GATE'S BODY. The
 // invariant is rotate-is-last, NOT that the gate body holds exactly one statement — a
 // benign extra statement (e.g. a metric emit or a post-rotate assertion) that runs AFTER
@@ -99,8 +98,8 @@ func callName(e ast.Expr) string {
 // WOULD break order-invariance is a bonded/slashed mutation running after rotate, which
 // requires rotate to no longer be last.
 //
-// RED-on-injection (verified, then restored): moving the `if c.epochsEnabled() && … {
-// c.rotateEpoch(b.Height) }` gate above the slash loop in apply() makes the last
+// RED-on-injection (verified, then restored): moving the `if c.epochsEnabled && … {
+// c.rotateEpoch(b.Height) }` gate above the slash loop in apply makes the last
 // statement the slash loop (an *ast.RangeStmt, not the rotate gate), so this test
 // fatals with "rotateEpoch is NOT last". GREEN on current code.
 func TestRotateEpochIsLastInApply(t *testing.T) {
@@ -117,7 +116,7 @@ func TestRotateEpochIsLastInApply(t *testing.T) {
 	if !ok {
 		t.Fatalf("the LAST statement of apply() is %T, not the epoch-rotation gate (*ast.IfStmt) — "+
 			"rotateEpoch is NOT last, so the boundary freeze may read a PRE-final (mid-apply) set "+
-			"(I3 mid-epoch-churn divergence; #620 order-invariance premise broken)", last)
+			"(I3 mid-epoch-churn divergence;  order-invariance premise broken)", last)
 	}
 	if len(ifs.Body.List) == 0 {
 		t.Fatal("the final gate of apply() has an EMPTY body — it no longer calls rotateEpoch")
@@ -152,11 +151,12 @@ func TestLiveQualifiedSetReadsOnlyFinalMaps(t *testing.T) {
 	lqs := chainMethod(t, f, "liveQualifiedSet")
 
 	// The ONLY receiver members the freeze read is allowed to touch. bonded/slashed are
-	// the two final maps; cfg supplies MinBond. idQualifies is the SANCTIONED single-source
-	// qualified-membership predicate (chain.go:1359-1361) — it reads ONLY bonded/slashed/cfg
-	// itself (guarded by TestIdQualifiesReadsOnlyFinalMaps below), so re-expressing
-	// liveQualifiedSet over it (the refactor #620 invites) does NOT widen the read-set. Adding
-	// ANY OTHER member is a history read (or a new coupling) and must be re-certified.
+	// the two final maps; cfg supplies MinBond. idQualifies is the SANCTIONED
+	// single-source qualified-membership predicate (chain.go) — it reads ONLY
+	// bonded/slashed/cfg itself (guarded by TestIdQualifiesReadsOnlyFinalMaps below), so
+	// re-expressing liveQualifiedSet over it (the refactor invites) does NOT widen the
+	// read-set. Adding ANY OTHER member is a history read (or a new coupling) and must be
+	// re-check.
 	allowed := map[string]bool{"bonded": true, "slashed": true, "cfg": true, "idQualifies": true}
 
 	refs := map[string]bool{}
@@ -175,13 +175,13 @@ func TestLiveQualifiedSetReadsOnlyFinalMaps(t *testing.T) {
 
 	if len(refs) == 0 {
 		t.Fatal("liveQualifiedSet references NO receiver member — it no longer reads bonded/slashed at all; " +
-			"the freeze source moved, the #620 premise no longer describes this function")
+			"the freeze source moved, the premise no longer describes this function")
 	}
 	for field := range refs {
 		if !allowed[field] {
 			t.Fatalf("liveQualifiedSet reads c.%s — NOT one of {bonded, slashed, cfg, idQualifies}. "+
 				"If it reads history (blocks/revLog/bondRegHeight/…), the frozen epochSet becomes "+
-				"history-DEPENDENT and the SMT history-independence premise for the mature set (#620) breaks. "+
+				"history-DEPENDENT and the SMT history-independence premise for the mature set breaks. "+
 				"This is a research-gated change, not a refactor.", field)
 		}
 	}
@@ -198,7 +198,7 @@ func TestLiveQualifiedSetReadsOnlyFinalMaps(t *testing.T) {
 
 // TestIdQualifiesReadsOnlyFinalMaps guards the sanctioned idQualifies predicate the read-set
 // allowlist above trusts: idQualifies must itself read ONLY the two final maps + cfg. If a
-// refactor re-expressed liveQualifiedSet over idQualifies (the #620-invited change) AND idQualifies
+// refactor re-expressed liveQualifiedSet over idQualifies (the invited change) AND idQualifies
 // then grew a history read, the frozen epochSet would become history-dependent through the delegate.
 // This closes that transitive hole — the allowlist is only safe because idQualifies is pinned too.
 func TestIdQualifiesReadsOnlyFinalMaps(t *testing.T) {
@@ -280,9 +280,9 @@ func TestLiveQualifiedSetIsPureFunctionOfFinalMaps(t *testing.T) {
 // TestRotateEpochFreezesPostApplySetNotPreBlock is the BEHAVIORAL confirmation of guard
 // (1): at a boundary block that ALSO slashes a member, the frozen epochSet equals the
 // POST-apply recompute and DIFFERS from the PRE-block set. This makes the ordering
-// DISTINGUISHABLE — the exact non-vacuity the #620 ruling flags as missing from the
-// original fixture ("a divergence-capable ordering was tried and converged"): here the
-// pre- and post-freeze sets genuinely differ, so rotate-LAST is load-bearing, not moot.
+// DISTINGUISHABLE — the exact non-vacuity decision flags as missing from the original
+// fixture ("a divergence-capable ordering was tried and converged"): here the pre- and
+// post-freeze sets genuinely differ, so rotate-LAST is load-bearing, not moot.
 //
 // RED-on-injection (verified, then restored): sourcing the freeze from a snapshot of
 // qualified taken BEFORE the slash loop (i.e. rotate reading pre-final state) freezes
@@ -291,7 +291,7 @@ func TestLiveQualifiedSetIsPureFunctionOfFinalMaps(t *testing.T) {
 func TestRotateEpochFreezesPostApplySetNotPreBlock(t *testing.T) {
 	a, b, victim := key(88001), key(88002), key(88003)
 	// MatureValidators=0 hands maturity off at the genesis boundary, so rotateEpoch
-	// freezes a real set without driving the full latch (the #535/stale-capture pattern).
+	// freezes a real set without driving the full latch (the/stale-capture pattern).
 	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
 		MatureValidators: 0, EpochBlocks: 2}
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
@@ -337,12 +337,12 @@ func TestRotateEpochFreezesPostApplySetNotPreBlock(t *testing.T) {
 	// The freeze must EXCLUDE the slashed victim (post-final state).
 	if _, in := c.epochSet[idOf(victim)]; in {
 		t.Fatal("STALE CAPTURE: the boundary froze the slashed victim into epochSet — rotate read a " +
-			"PRE-final (pre-slash) set; rotate-LAST is broken (I3 mid-epoch-churn divergence, #620 premise gone)")
+			"PRE-final (pre-slash) set; rotate-LAST is broken (I3 mid-epoch-churn divergence, premise gone)")
 	}
 	// The freeze must DIFFER from the pre-block set — proving the ordering is genuinely
-	// distinguishable (the #620 non-vacuity gap: pre != post here, so rotate-LAST matters).
+	// distinguishable (the non-vacuity gap: pre != post here, so rotate-LAST matters).
 	if reflect.DeepEqual(c.epochSet, preBlockSet) {
 		t.Fatal("frozen epochSet EQUALS the pre-boundary-block set — the ordering is not distinguishable in " +
-			"this fixture, so it cannot witness rotate-LAST; strengthen the fixture (the #620 scope-honesty gap)")
+			"this fixture, so it cannot witness rotate-LAST; strengthen the fixture (the scope-honesty gap)")
 	}
 }

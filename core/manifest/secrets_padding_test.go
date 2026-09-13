@@ -9,13 +9,12 @@ import (
 	"github.com/nerolabs/silt/core/crypto"
 )
 
-// These gates hold the close of RT-SFO-1, the keyless encryption-mode oracle
-// (docs/threat-catalog.md F8; research certification
-// "privacy-property-measured-part0-corner-entry-filesize-and-mode-oracle", 2026-09-11).
-// The end-to-end property — a published object's manifest frames identically in both modes —
-// is asserted in core/pipeline (TestRT_SFO_1_ModeIsNotRecoverableFromManifestFrameLength).
-// What lives here is the two things that gate cannot see: that secretsPlainLen's ARITHMETIC
-// really bounds every encoding, and that the padded plaintext still round-trips.
+// These gates hold the close of, the keyless encryption-mode oracle F8; research
+// "privacy-property-measured-part0-corner-entry-filesize-and-mode-oracle", 2026-09-11. The
+// end-to-end property — a published object's manifest frames identically in both modes — is
+// asserted in core/pipeline (TestModeIsNotRecoverableFromManifestFrameLength). What lives
+// here is the two things that gate cannot see: that secretsPlainLen's ARITHMETIC really
+// bounds every encoding, and that the padded plaintext still round-trips.
 
 func padTestHash(i int) []byte {
 	h := sha256.Sum256(binary.BigEndian.AppendUint64([]byte("silt/pad-test"), uint64(i)))
@@ -41,7 +40,7 @@ func padTestManifest(t *testing.T, mode crypto.Mode, nChunks int, fileSize int64
 
 // TestSecretsPlainLenBoundsEveryEncoding DRIVES the arithmetic in secretsPlainLen instead of
 // trusting it. A padding target is a derived figure, and a derived figure is a hypothesis
-// until something marshals the real thing against it (scar: silt-derive-then-drive). If the
+// until something marshals the real thing against it. If the
 // target were ever SMALLER than a real encoding, Seal would refuse to publish; if it were
 // mode-DEPENDENT, the oracle would be back with every existing gate still green.
 //
@@ -121,7 +120,7 @@ func TestSealedSecretsLengthIsModeIndependent(t *testing.T) {
 			t.Fatalf("seal private n=%d: %v", n, err)
 		}
 		if len(conv) != len(priv) {
-			t.Fatalf("RT-SFO-1 IS BACK AT THE SEAL — a %d-chunk manifest seals to %d bytes convergent and %d "+
+			t.Fatalf("IS BACK AT THE SEAL — a %d-chunk manifest seals to %d bytes convergent and %d "+
 				"bytes private. The sealed blob's length is the encryption mode (threat-catalog F8); it is read "+
 				"by a keyless stranger through the manifest frame AND by any care-link holder through "+
 				"Layout.Box. Fix secretsPlainLen.", n, len(conv), len(priv))

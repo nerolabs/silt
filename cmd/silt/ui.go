@@ -67,16 +67,16 @@ type uiServer struct {
 	carePublished bool             // daemon repairs content published through its own UI (#44)
 	token         string           // per-daemon bearer token gating state-changing calls (#89)
 	webOrigins    []string         // extra web origins allowed to draw content (e.g. https://app.example.com); off by default. Lets a hosted resolver surface render from this local node.
-	addressCap    addressCapConfig // R4.3b: the configured observed-address cap, reported with series A/B/E
-	// statusExtra, when non-nil, fills the one optional extra block on GET /api/status.
-	// IT IS NIL IN EVERY DEFAULT BUILD AND NOTHING CAN SET IT: the only implementation
-	// is the R2.9a B_bootstrap renderer in bbootstrap.go, which compiles under the
-	// `bbootstrap` build tag, and even there it is wired only when -bbootstrap is set
-	// (D-BB-BUILD-TAG, docs/decisions.md). Untagged, statusExtras is an empty struct
+	addressCap    addressCapConfig // The configured observed-address cap, reported with series A/B/E
+	// statusExtra, when non-nil, fills the one optional extra block on GET
+	// /api/status. IT IS NIL IN EVERY DEFAULT BUILD AND NOTHING CAN SET IT: the only
+	// implementation is the B_bootstrap renderer in bbootstrap.go, which
+	// compiles under the `bbootstrap` build tag, and even there it is wired only
+	// when -bbootstrap is set. Untagged, statusExtras is an empty struct
 	// (bbootstrap_off.go) and this hook has no possible target.
 	statusExtra func(*statusExtras)
 
-	// privacy is the -privacy process flag (D-UI-PRIVACY-FLAG, owner-ratified 2026-09-05):
+	// privacy is the -privacy process flag:
 	// true (the compiled default, "on") withholds the node-wide serve counters and the
 	// library link keys from a reader that has not authenticated; false ("off") publishes
 	// them to any reader the guard admits, and every response then carries privacy.mode
@@ -84,7 +84,7 @@ type uiServer struct {
 	// readerView for the clauses and the predicate rule.
 	privacy bool
 
-	// The /api/status snapshot cache (R2.9a, G-BB-26). Guarded by its own mutex, not
+	// The /api/status snapshot cache. Guarded by its own mutex, not
 	// by the event loop: the whole point is that a request that hits a fresh cache
 	// never reaches the loop at all.
 	//
@@ -98,9 +98,10 @@ type uiServer struct {
 	statusMu    sync.Mutex
 	statusDoc   *statusInfo // nil until the first request; the FULL document, including the tokened detail
 	statusTaken time.Time   // when statusDoc was computed
-	// flowRing is the R2.2 escrow-delta ring (ui_economy.go), appended from
+	// flowRing is the escrow-delta ring (ui_economy.go), appended from
 	// statusSnapshot under statusMu and read by /api/economy/flows and
-	// /api/economy/g. Bounded at flowRingDepth samples x maxFlowRings roots.
+	// /api/economy/g. Bounded at flowRingDepth samples x maxFlowRings
+	// roots.
 	flowRing []flowSample
 	// now reads the wall clock the CACHE ages against. nil means time.Now, which is
 	// what the daemon uses. A test injects it so it can poll across an interval
@@ -121,58 +122,54 @@ func (s *uiServer) nowWall() time.Time {
 // statusSnapshotInterval is T, the fixed interval at which GET /api/status recomputes.
 // Between recomputes every caller is served the same cached document.
 //
-// WHY A CACHE AT ALL, on two independent grounds (RESEARCH CERTIFICATION
-// R2.9a-instrument-necessity-geometry-bound-and-tail-merging, 2026-09-05, §3.5, which
-// rules it REQUIRED).
+// WHY A CACHE AT ALL, on two independent grounds.
 //
-//  1. PRIVACY. The B_bootstrap block's R-BB-DELTA-TRAJECTORY residual was disclosed as
-//     "bounded by the poll rate". The poll rate is the READER's choice and nothing here
-//     limits it, so that was not a bound. With a fixed T an observer gets at most
-//     floor(uptime/T) distinct ledger-derived documents however fast it asks, and
-//     every bin crossing inside one interval is unresolvable.
+// 1. PRIVACY. The B_bootstrap block's trajectory residual was disclosed as
+// "bounded by the poll rate". The poll rate is the READER's choice and nothing here
+// limits it, so that was not a bound. With a fixed T an observer gets at most
+// floor(uptime/T) distinct ledger-derived documents however fast it asks, and
+// every bin crossing inside one interval is unresolvable.
 //
-//     THE BOUND COVERS EXACTLY THE TWO ENDPOINTS SERVED OFF THIS ONE SNAPSHOT:
-//     GET /api/status and GET /api/economy/self. Nothing counted moves inside an
-//     interval on either; snapshotAgeSec moves per serve by design (Don't #4). The
-//     other GET routes (/api/roots, /api/registry, /api/chain, /api/library) are not
-//     snapshotted and carry no ledger counter. As first shipped the bound covered
-//     /api/status ONLY: /api/economy/self recomputed per request and republished the
-//     same aggregates, measured by the blind PE review at 330 ms resolution, which is
-//     why it now reads the same snapshot (apiEconomySelf).
+// THE BOUND COVERS EXACTLY THE TWO ENDPOINTS SERVED OFF THIS ONE SNAPSHOT:
+// GET /api/status and GET /api/economy/self. Nothing counted moves inside an
+// interval on either; snapshotAgeSec moves per serve by design (Don't #4). The
+// other GET routes (/api/roots, /api/registry, /api/chain, /api/library) are not
+// snapshotted and carry no ledger counter. As first shipped the bound covered
+// /api/status ONLY: /api/economy/self recomputed per request and republished the
+// same aggregates, measured by
+// why it now reads the same snapshot (apiEconomySelf).
 //
-//     T bounds the RATE. It does NOT close the red-team's F2 join on
-//     durability.objects[].funded; the token gate on the per-object detail and on the
-//     pooled selfFunding figures is what closes that (withheldDurability,
-//     withheldEconomySelf).
+// T bounds the RATE. It does NOT close the F2 join on
+// durability.objects[].funded; the token gate on the per-object detail and on the
+// pooled selfFunding figures is what closes that (withheldDurability,
+// withheldEconomySelf).
 //
-//  2. BUILD-IMMUTABLE #8. The handler walks the whole append-only, never-evicted
-//     account set (core/credit/bbootstrap.go) plus the whole chunk store, INSIDE the
-//     node's event loop, per unauthenticated GET. "An unbounded system on a small box is
-//     not inefficient, it is unsafe." Caching makes the per-request cost O(1) and the
-//     per-interval cost O(R), which caps the amplification of a GET flood at 1 per
-//     interval instead of at the attacker's request rate.
+// 2. BUILD-IMMUTABLE #8. The handler walks the whole append-only, never-evicted
+// account set (core/credit/bbootstrap.go) plus the whole chunk store, INSIDE the
+// node's event loop, per unauthenticated GET. "An unbounded system on a small box is
+// not inefficient, it is unsafe." Caching makes the per-request cost O(1) and the
+// per-interval cost O(R), which caps the amplification of a GET flood at 1 per
+// interval instead of at the attacker's request rate.
 //
-// RATIFIED 2026-09-05 by the owner ("I'll ratify the 5 seconds for now. We can always
-// take user feedback later") — see docs/decisions.md D-STATUS-SNAPSHOT-INTERVAL. T bounds
-// a disclosure rate, so it is a security
-// parameter and not a tuning knob (docs/build-process.md: a durability knob has twice
-// also been a security parameter). Derived from shipped numbers, not taste, and bounded
-// on both sides:
+// The value is 5 seconds for now. It can always take user feedback later" — T bounds a
+// disclosure rate, so it is a security parameter and not a tuning knob: a durability
+// knob has twice also been a security parameter. Derived from shipped numbers, not
+// taste, and bounded on both sides:
 //
-//   - From above by the FIT: the narrowest positive-width age bucket is 60 s
-//     (bbAgeEdgeNanos[2]-[1]) and the candidate W values the edges bracket run from an
-//     hour to a week, so any T well inside 60 s is over-sampled by orders of magnitude
-//     and costs the estimate NOTHING.
-//   - From above by the OPERATOR: the shipped dashboard polls every 3,000 ms
-//     (cmd/silt/ui/index.html). Sitting just above that keeps the operator's view
-//     essentially live while making the recompute rate strictly lower than the request
-//     rate, so the amplification cap bites for the ordinary reader too.
-//   - From below by PRIVACY and COST: a larger T means fewer observations per identity
-//     and less loop work.
+// - From above by the FIT: the narrowest positive-width age bucket is 60 s
+// (bbAgeEdgeNanos[2]-[1]) and the candidate W values the edges bracket run from an
+// hour to a week, so any T well inside 60 s is over-sampled by orders of magnitude
+// and costs the estimate NOTHING.
+// - From above by the OPERATOR: the shipped dashboard polls every 3,000 ms
+// (cmd/silt/ui/index.html). Sitting just above that keeps the operator's view
+// essentially live while making the recompute rate strictly lower than the request
+// rate, so the amplification cap bites for the ordinary reader too.
+// - From below by PRIVACY and COST: a larger T means fewer observations per identity
+// And less loop work.
 //
-// 5 s is above the poll period and 12x inside the narrowest bucket. The trade the owner
+// 5 s is above the poll period and 12x inside the narrowest bucket. The trade
 // TOOK, with the cost stated rather than buried: the privacy side wants T much LARGER —
-// at 5 s an observer still gets 17,280 documents a day. The ratification is explicitly
+// at 5 s an observer still gets 17,280 documents a day. The choice is explicitly
 // REVISITABLE on operator feedback about dashboard liveness; raising T costs the
 // estimate nothing until T approaches 60 s, so the privacy direction is cheap to take
 // later and the liveness direction is not. One named site changes it.
@@ -187,11 +184,11 @@ type addressCapConfig struct {
 	Reserve   int    `json:"reserve"`
 }
 
-// addressCapInfo is the R4.3b shadow-run telemetry (cert §6.3): series A (would-
-// refuse per bucket/class under the (R, cap_relay) grid, labelled with the width),
-// B (relay fan-in: counts and the top relay's share — never a relay's group) and E
-// (the per-bucket group-density census). Aggregates only: no group value leaves
-// the process.
+// addressCapInfo is the shadow-run telemetry: series A (would- refuse per
+// bucket/class under the (R, cap_relay) grid, labelled with the width), B (relay
+// fan-in: counts and the top relay's share — never a relay's group) and E (the
+// per-bucket group-density census). Aggregates only: no group value leaves the
+// process.
 type addressCapInfo struct {
 	addressCapConfig
 	WouldRefuse []wouldRefuseRow   `json:"wouldRefuse"`
@@ -208,7 +205,7 @@ type wouldRefuseRow struct {
 	Count    int    `json:"count"`
 }
 
-// relayFanInInfo is series B as seen from THIS node only (the cert's series-B aggregation
+// relayFanInInfo is series B as seen from THIS node only (the series-B aggregation
 // gap: the swarm-wide top-relay share is a harness-side join across nodes). LocalView is
 // always true here so a reader cannot mistake it for the swarm figure.
 type relayFanInInfo struct {
@@ -272,8 +269,7 @@ func (s *uiServer) onLoop(fn func()) {
 }
 
 // apiRoutes is THE list of API routes, keyed by the ServeMux pattern. serve registers
-// it, and the whole-surface privacy gate (TestR29aF2NoUnauthenticatedResponseOnTheWhole
-// SurfaceCarriesTheWithheldCounter) walks it, so a route cannot be added without being
+// it, and the whole-surface privacy gate (TestNoUnauthenticatedResponseOnTheWholeSurfaceCarriesTheWithheldCounter) walks it, so a route cannot be added without being
 // examined for what it republishes. The static file server is not in it: it serves
 // embedded pages, never ledger state.
 func (s *uiServer) apiRoutes() map[string]http.HandlerFunc {
@@ -321,18 +317,18 @@ func (s *uiServer) serve(addr string) (string, error) {
 func (s *uiServer) guard(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 1. Host allow-list: the browser echoes the host it was pointed at,
-		// so a DNS-rebinding page (evil.com → 127.0.0.1) arrives with a
-		// non-local Host and is refused here.
+		// So a DNS-rebinding page (evil.com → 127.0.0.1) arrives with
+		// a non-local Host and is refused here.
 		if !isLocalHost(r.Host) {
 			httpError(w, http.StatusForbidden, fmt.Errorf("non-local Host %q refused", r.Host))
 			return
 		}
 		// 2. Origin allow-list, replacing CORS `*`. A same-origin GET sends
-		// no Origin (skip). A cross-origin page (drive-by or observatory)
-		// sends one: reflect localhost origins (so the observatory keeps
-		// working) plus any operator-allow-listed web origin (-allow-web-origin,
-		// e.g. https://app.example.com so a hosted resolver can render from this node);
-		// refuse everything else.
+		// No Origin (skip). A cross-origin page (drive-by or observatory) sends
+		// one: reflect localhost origins (so the observatory keeps working) plus
+		// any operator-allow-listed web origin (-allow-web-origin, e.g.
+		// https://app.example.com so a hosted resolver can render from this
+		// node); refuse everything else.
 		if origin := r.Header.Get("Origin"); origin != "" {
 			local := isLocalOrigin(origin)
 			if !local && !s.webOriginAllowed(origin) {
@@ -356,7 +352,7 @@ func (s *uiServer) guard(h http.Handler) http.Handler {
 			return
 		}
 		// 4. Token gate on state-changing methods only — reads keep their
-		// no-token localhost ergonomics.
+		// No-token localhost ergonomics.
 		if isMutating(r.Method) && !s.validToken(r) {
 			httpError(w, http.StatusUnauthorized, fmt.Errorf("missing or invalid API token"))
 			return
@@ -418,7 +414,7 @@ func isLocalHost(host string) bool {
 	case "localhost", "127.0.0.1", "::1", "[::1]":
 		return true
 	}
-	// Any loopback literal (127.0.0.0/8, ::1) counts.
+	// Any loopback literal (127.0.0.0/8,:1) counts.
 	if ip := net.ParseIP(strings.Trim(h, "[]")); ip != nil {
 		return ip.IsLoopback()
 	}
@@ -498,12 +494,13 @@ func httpError(w http.ResponseWriter, code int, err error) {
 type chainInfo struct {
 	Height  int `json:"height"`
 	Entries int `json:"entries"`
-	// HeadVersion is the head block's rule era, and Era the whole era observable —
-	// the block-version census plus the two era statuses (R-CLOUD-ERA-PROBE, freeze
-	// manifest item 19). This is the programmatic half: the cloud sheet's
-	// 13b-delivery-settlement row reads `.chain.era.era4.phase` to tell "era-4 dark"
-	// from "the issuer's keys are off-commitment", two worlds its SKIP sentence has
-	// been covering with one clause because nothing distinguished them.
+	// HeadVersion is the head block's rule era, and Era the whole era observable
+	// — the block-version census plus the two era statuses freeze manifest item
+	// 19). This is the programmatic half: the cloud sheet's
+	// 13b-delivery-settlement row reads `.chain.era.era4.phase` to tell "era-4
+	// dark" from "the issuer's keys are off-commitment", two worlds its SKIP
+	// sentence has been covering with one clause because nothing distinguished
+	// them.
 	//
 	// Unlike the offline `silt chain-status` path, this one holds a real chain.Chain,
 	// so the readiness-tally latch IS visible here and `phase` can be "pending" — the
@@ -531,40 +528,40 @@ type statusInfo struct {
 	Peers     int    `json:"peers"`
 	// Stats is the WHOLE node.Stats block, or absent with countersWithheld when the
 	// privacy clause fires for an unauthenticated reader. The whole block, on purpose,
-	// and this over-withholds relative to D-UI-PRIVACY-FLAG's letter ("stats.bytesServed"):
-	// node.Stats carries no JSON tags, so every counter is public by its Go name, and on a
-	// one-root node ChunksServed × chunk size reconstructs BytesServed to within one chunk,
-	// while Repairs / ShardsRebuilt / Dispersals are per-object activity signals of the
-	// same root. Withholding one leaf and publishing its reconstruction closes nothing
-	// (blind PE design ruling RULING-UI-PRIVACY-FLAG-design-2026-09-05 S6). What the
-	// withheld reader loses that is NOT a serve signal — QueriesSent, Timeouts, Probes,
-	// RepairFailures, BlocksCommitted — has no consumer on any page.
+	// and this over-withholds relative to's letter ("stats.bytesServed"): node.Stats
+	// carries no JSON tags, so every counter is public by its Go name, and on a one-root
+	// node ChunksServed × chunk size reconstructs BytesServed to within one chunk, while
+	// Repairs / ShardsRebuilt / Dispersals are per-object activity signals of the same
+	// root. Withholding one leaf and publishing its reconstruction closes nothing. What
+	// the withheld reader loses that is NOT a serve signal — QueriesSent, Timeouts,
+	// Probes, RepairFailures, BlocksCommitted — has no consumer on any page.
 	Stats        *node.Stats      `json:"stats,omitempty"`
 	Network      node.NetEstimate `json:"network"`
 	Validator    bool             `json:"validator"`
 	Reachability string           `json:"reachability"`
 	Chain        *chainInfo       `json:"chain,omitempty"`
 	Durability   *durabilityInfo  `json:"durability,omitempty"`
-	AddressCap   addressCapInfo   `json:"addressCap"` // R4.3b series A/B/E (shadow-run telemetry)
-	// Faucet is the R2.12 rate-limit telemetry (credit.FaucetStats): configured or not,
-	// the bucket's policy and level, and the grant counters. The COUNTERS are node-wide
-	// arrival-adjacent numbers, so the whole block is withheld with `stats` under the
-	// privacy clause. It is NOT the R2.9a arrival series (it counts spenders, not
-	// fetchers) and must not be read as one.
+	AddressCap   addressCapInfo   `json:"addressCap"` // series A/B/E (shadow-run telemetry)
+	// Faucet is the rate-limit telemetry (credit.FaucetStats): configured or not,
+	// the bucket's policy and level, and the grant counters. The COUNTERS are
+	// node-wide arrival-adjacent numbers, so the whole block is withheld with
+	// `stats` under the privacy clause. It is NOT the arrival series (it counts
+	// spenders, not fetchers) and must not be read as one.
 	Faucet *faucetInfo `json:"faucet,omitempty"`
-	// ServeMint is the G-R212-7 serve-mint telemetry: node-wide aggregates of what the
-	// unwitnessed lane minted against what it served (Economist §6, certified as
-	// instrument-class). Withheld with the counters under the privacy clause, like Stats.
+	// ServeMint is the serve-mint telemetry: node-wide aggregates of what the
+	// unwitnessed lane minted against what it served. Withheld with the
+	// counters under the privacy clause, like Stats.
 	ServeMint *serveMintInfo `json:"serveMint,omitempty"`
 	// ServeMintWithheld is the marker for the block above: it is served to the TOKEN
-	// holder only. Its skim counter is the sum of every object's funded skim, which on a
-	// one-object node IS that object's per-object figure (red-team F2's reconstruction
-	// shape), so it rides with the per-object detail, never the unauthenticated wire.
+	// holder only. Its skim counter is the sum of every object's funded skim, which
+	// on a one-object node IS that object's per-object figure 's reconstruction
+	// shape, so it rides with the per-object detail, never the unauthenticated wire.
 	ServeMintWithheld bool `json:"serveMintWithheld,omitempty"`
-	// DeliverySettlement is the R2.9 session-lane telemetry: settlements, the remainder's
+	// DeliverySettlement is the session-lane telemetry: settlements, the remainder's
 	// three destinations (deposit released / pending / genuinely burned) and the guard
-	// entries restored at the last boot (an upper bound on deposits lost to a restart).
-	// Node-wide aggregates, no identity axis; withheld with the counters like ServeMint.
+	// entries restored at the last boot (an upper bound on deposits lost to a
+	// restart). Node-wide aggregates, no identity axis; withheld with the counters
+	// like ServeMint.
 	DeliverySettlement *deliverySettlementInfo `json:"deliverySettlement,omitempty"`
 	// CountersWithheld is the privacy clause's marker on THIS document. It covers exactly
 	// four absences: the whole `stats` block above, `durability.balance`, the whole
@@ -588,23 +585,23 @@ type statusInfo struct {
 	// contains no JSON key name for it either: encoding/json promotes an embedded
 	// unexported struct's exported fields, and an empty one promotes nothing.
 	//
-	// IT IS CACHED BY VALUE with the rest of the document, and apiStatus's shallow
-	// copy carries it verbatim: nothing below rewrites it, so two reads inside one
-	// interval return the same block, which is what BB-21 asserts. Untagged there is
-	// nothing to carry.
+	// IT IS CACHED BY VALUE with the rest of the document, and apiStatus's
+	// shallow copy carries it verbatim: nothing below rewrites it, so two reads
+	// inside one interval return the same block, which is what this gate asserts.
+	// Untagged there is nothing to carry.
 	statusExtras
 
-	// THE SNAPSHOT IS NOT LIVE, AND SAYING SO IS PART OF THE MECHANISM (G-BB-26). A
+	// THE SNAPSHOT IS NOT LIVE, AND SAYING SO IS PART OF THE MECHANISM. A
 	// cache that quietly serves an old number is a silent-loss failure shape (Don't
 	// #4), so every response carries its own provenance.
 	//
-	// snapshotTakenAtUnix is FIXED for the life of one snapshot, which is what makes
-	// two reads inside one interval byte-identical everywhere it matters (Tester gate
-	// BB-21 reads the bBootstrap block). snapshotAgeSec is computed at SERVE time and
-	// is the one field that moves between two such reads — deliberately, because it is
-	// the field that stops a reader mistaking a cached value for a live one.
-	// snapshotIntervalSec publishes T itself, beside the axis constants, so an analyst
-	// can price R-BB-DELTA-TRAJECTORY without reading the source.
+	// snapshotTakenAtUnix is FIXED for the life of one snapshot, which is what
+	// makes two reads inside one interval byte-identical everywhere it matters.
+	// snapshotAgeSec is computed at SERVE time and is the one field that moves
+	// between two such reads — deliberately, because it is the field that stops
+	// a reader mistaking a cached value for a live one. snapshotIntervalSec
+	// publishes T itself, beside the axis constants, so an analyst can price
+	// the staleness without reading the source.
 	SnapshotTakenAtUnix int64 `json:"snapshotTakenAtUnix"`
 	SnapshotAgeSec      int64 `json:"snapshotAgeSec"`
 	SnapshotIntervalSec int64 `json:"snapshotIntervalSec"`
@@ -617,8 +614,8 @@ type statusInfo struct {
 }
 
 // apiStatus serves the status document from a snapshot recomputed at most once per
-// statusSnapshotInterval (G-BB-26), then strips the per-object durability detail for a
-// caller that presents no API token (red-team F2).
+// statusSnapshotInterval, then strips the per-object durability detail for a
+// caller that presents no API token.
 //
 // ONE CACHE, NOT TWO. The cached document is the FULL one, and the withholding is
 // applied to a copy at serve time. Keying the cache on "did this caller authenticate"
@@ -642,8 +639,8 @@ func (s *uiServer) apiStatus(w http.ResponseWriter, r *http.Request) {
 // THE MARKER CONVENTION. A withheld field is ABSENT, never a zero, and every absence class
 // has a sibling marker whose name is the set it covers: detailWithheld (the F2 per-object
 // detail), countersWithheld (the node-wide serve counters — enumerated on each field),
-// linksWithheld (the library link keys), bBootstrapWithheld (the R2.9a census). Absent and
-// empty stay different objects on the wire.
+// linksWithheld (the library link keys), bBootstrapWithheld (the census). Absent and empty
+// stay different objects on the wire.
 //
 // THE PREDICATE RULE, so nobody re-derives it: a NODE-WIDE AGGREGATE takes readerAuth.token
 // (any accepted route — header, query or form; the same predicate as the finer per-object
@@ -652,13 +649,13 @@ func (s *uiServer) apiStatus(w http.ResponseWriter, r *http.Request) {
 // capability leaked once is leaked for good). That is why the census block and the library
 // link keys key on tokenHeader while the counters key on token.
 //
-// THE PRIVACY CLAUSE (-privacy, D-UI-PRIVACY-FLAG). With the flag on (the compiled default)
-// an unauthenticated reader is denied the node-wide counters and the link keys; the
-// operator's own tokened reads are unchanged; -privacy=off publishes them and labels the
-// node. Every privacy withhold is an ALLOW-LIST — a fresh struct naming what it KEEPS — so
-// a field added to a document later ships withheld until someone decides otherwise. The
-// opposite spelling, nil-ing named fields, is how the pooled selfFunding figures once
-// shipped open (see withheldEconomySelf).
+// THE PRIVACY CLAUSE (-privacy). With the flag on (the compiled default) an unauthenticated
+// reader is denied the node-wide counters and the link keys; the operator's own tokened
+// reads are unchanged; -privacy=off publishes them and labels the node. Every privacy
+// withhold is an ALLOW-LIST — a fresh struct naming what it KEEPS — so a field added to a
+// document later ships withheld until someone decides otherwise. The opposite spelling,
+// nil-ing named fields, is how the pooled selfFunding figures once shipped open (see
+// withheldEconomySelf).
 
 // readerAuth is what the node can establish about the caller of one request. It is
 // computed once per request and handed to every withhold, so no clause re-derives it.
@@ -667,13 +664,13 @@ type readerAuth struct {
 	// query, or form field. This is what mutations require and what the F2 per-object
 	// durability withhold keys on.
 	token bool
-	// tokenHeader: the API token arrived in the Authorization header ONLY. A query or
-	// form token does not count. This is the operator predicate the B_bootstrap block
-	// keys on (G-BB-12′): a URL secret lands in access logs, proxy logs, Referer headers
-	// and browser history, so a credential that can ride the URL cannot be the thing
-	// that establishes "the reader is the operator" (Red-team F9 points 1–2; the cookie
-	// discipline of Tor's control port and Bitcoin Core's .cookie). The dashboard already
-	// sends the header (cmd/silt/ui/app.js), so nothing the operator uses loses access.
+	// tokenHeader: the API token arrived in the Authorization header ONLY. A query
+	// or form token does not count. This is the operator predicate the B_bootstrap
+	// block keys on: a URL secret lands in access logs, proxy logs, Referer
+	// headers and browser history, so a credential that can ride the URL cannot be
+	// the thing that establishes "the reader is the operator". The dashboard
+	// already sends the header (cmd/silt/ui/app.js), so nothing the operator uses
+	// loses access.
 	tokenHeader bool
 	// privacy: the -privacy process flag is ON for this node. Not a fact about the
 	// caller, but every privacy clause needs it beside the two token facts, and reading
@@ -687,14 +684,13 @@ func (s *uiServer) readerAuthFor(r *http.Request) readerAuth {
 }
 
 // readerView is THE ONE COMPOSITION POINT for every serve-time withhold on GET /api/status.
-// It takes the cached FULL document and the request, copies the document, and applies
-// each withhold as one clause on the copy. Every withhold this surface will ever carry
-// belongs here as another clause — the F2 per-object detail (token), the R2.9a
-// B_bootstrap block (header token, tag-split), and D-UI-PRIVACY-FLAG's node-wide counters
-// (a process flag, build owed) when they land — so one document never grows N ad-hoc
-// rewrites with N marker conventions. The document's correctness argument everywhere is
-// "absent and empty are different objects"; keeping the withholds in one function is
-// what keeps that argument checkable.
+// It takes the cached FULL document and the request, copies the document, and applies each
+// withhold as one clause on the copy. Every withhold this surface will ever carry belongs
+// here as another clause — the per-object detail (token), the B_bootstrap block
+// (header token, tag-split), and's node-wide counters (a process flag, build owed) when
+// they land — so one document never grows N ad-hoc rewrites with N marker conventions. The
+// document's correctness argument everywhere is "absent and empty are different objects";
+// keeping the withholds in one function is what keeps that argument checkable.
 //
 // THE CACHE IS NEVER MUTATED. out is a shallow copy; every clause ASSIGNS a new value or
 // nil into the copy and never writes through a pointer the cached document also holds
@@ -704,14 +700,15 @@ func (s *uiServer) readerView(doc *statusInfo, r *http.Request) *statusInfo {
 	out := *doc
 	auth := s.readerAuthFor(r)
 	if !auth.token {
-		out.Durability = withheldDurability(doc.Durability) // red-team F2
+		out.Durability = withheldDurability(doc.Durability) //
 		out.ServeMint = nil                                 // F2: its skim sum reconstructs a lone object's funded figure
 		out.ServeMintWithheld = true
-		out.DeliverySettlement = nil // R2.9: token holders only, with the counters (the same F2 shape one lane over)
+		out.DeliverySettlement = nil // token holders only, with the counters (the same shape one lane over)
 	}
 	if auth.privacy && !auth.token {
-		// D-UI-PRIVACY-FLAG: the node-wide serve counters. Assign, never mutate — the
-		// Stats pointer and the Balance pointer are shared with the cached document.
+		// The node-wide serve counters. Assign, never mutate — the Stats
+		// pointer and the Balance pointer are shared with the cached
+		// document.
 		out.Stats = nil
 		out.ServeMint = nil
 		out.DeliverySettlement = nil
@@ -719,7 +716,7 @@ func (s *uiServer) readerView(doc *statusInfo, r *http.Request) *statusInfo {
 		out.Durability = privacyWithheldDurability(out.Durability)
 		out.CountersWithheld = true
 	}
-	withholdBBootstrap(&out.statusExtras, auth.tokenHeader) // G-BB-12′; a no-op in a default build
+	withholdBBootstrap(&out.statusExtras, auth.tokenHeader) // a no-op in a default build
 	return &out
 }
 
@@ -783,10 +780,10 @@ func (s *uiServer) libraryView(doc libraryDoc, auth readerAuth) libraryDoc {
 	return out
 }
 
-// faucetInfo is the wire form of credit.FaucetStats (R2.12). Configured false means the
+// faucetInfo is the wire form of credit.FaucetStats. Configured false means the
 // faucet is unlimited and every counter is zero and meaningless; the block is present so
 // "unlimited" and "withheld" stay different objects on the wire.
-// serveMintInfo mirrors credit.ServeMintStats on the wire (G-R212-7).
+// serveMintInfo mirrors credit.ServeMintStats on the wire.
 type deliverySettlementInfo struct {
 	Settlements            int64 `json:"settlements"`
 	SettledCredits         int64 `json:"settledCredits"`
@@ -810,11 +807,11 @@ type serveMintInfo struct {
 	ZeroMintServes          int64 `json:"zeroMintServes"`
 	RemainderBytesServerLeg int64 `json:"remainderBytesServerLeg"`
 	RemainderBytesEscrowLeg int64 `json:"remainderBytesEscrowLeg"`
-	// A2 supersede-suppression (R2.7). Three stored counters, one live-lane sum and
-	// three DERIVED numbers, all node-wide with no identity axis. They ride the block's
+	// A2 supersede-suppression. Three stored counters, one live-lane sum and three
+	// DERIVED numbers, all node-wide with no identity axis. They ride the block's
 	// existing serveMintWithheld + countersWithheld markers rather than adding a
-	// fourth: on a one-root node these are that root's served bytes split by whether a
-	// fetch was paid, which is the red-team's F2 join with a payment axis added.
+	// fourth: on a one-root node these are that root's served bytes split by whether
+	// a fetch was paid, which is the F2 join with a payment axis added.
 	ServeBytesObjectAware  int64 `json:"serveBytesObjectAware"`
 	ServeBytesWitnessed    int64 `json:"serveBytesWitnessed"`
 	ServeBytesLaneEvicted  int64 `json:"serveBytesLaneEvicted"` // the pony's wage confiscated at the lane cap
@@ -855,11 +852,11 @@ type faucetInfo struct {
 	GrantsDegraded int64 `json:"grantsDegraded"`
 	GrantsDenied   int64 `json:"grantsDenied"`  // distinct identities refused at a spend gate — the counter that moves on a denial
 	GrantsPending  int64 `json:"grantsPending"` // registrations awaiting a spend; NOT denials
-	// The affordability floor (R2.7 §1.3, build-immutable #4). Refusals at the spend
+	// The affordability floor (build-immutable #4). Refusals at the spend
 	// gates for want of CREDIT — not for want of a faucet token — so they are reported
 	// whether or not a bucket is configured. FLOOR DETECTOR ONLY: a non-zero value
 	// proves honest demand is being refused somewhere and can abort a canary; a zero
-	// value certifies nothing, because an adversary inflates the number at will with
+	// value proves nothing, because an adversary inflates the number at will with
 	// underfunded identities. The note ships beside the numbers so no reader can quote
 	// them without the caveat.
 	SpendRefusedInsufficientCredit int64  `json:"spendRefusedInsufficientCredit"`
@@ -868,7 +865,7 @@ type faucetInfo struct {
 }
 
 // spendRefusalNote is the honest limit that ships with the affordability floor.
-const spendRefusalNote = "FLOOR detector only: non-zero proves honest demand is being refused somewhere; zero certifies NOTHING (an adversary inflates this at will with underfunded identities)"
+const spendRefusalNote = "FLOOR detector only: non-zero proves honest demand is being refused somewhere; zero proves NOTHING (an adversary inflates this at will with underfunded identities)"
 
 // privacyInfo is the -privacy posture published on every GET /api/status response.
 type privacyInfo struct {
@@ -877,15 +874,13 @@ type privacyInfo struct {
 }
 
 // privacyDefaultWithheld is the compiled default of -privacy: WITHHELD in every build. There
-// is no beta/release flip in code (blind PE design ruling RULING-UI-PRIVACY-FLAG-design-
-// 2026-09-05 S4, option (E)): a default that a human must remember to flip at release is a
-// default that will one day ship wrong, and the owner's guarantee sentence — "this data is
-// not exposed in production without the explicit -privacy=off flag" — is honoured
-// literally by having no flip. The flixz beta nodes run -privacy=off and are labelled.
-// (The owner's other sentence, "default ON through the BETA", is the one this does not
-// honour; the change to that ratified default is flagged for the owner in
-// docs/decisions.md D-UI-PRIVACY-FLAG's appended note.) .github/workflows/release.yml
-// asserts this default on the built artifact.
+// is no beta/release flip in code: a default that a human must remember to flip at release
+// is a default that will one day ship wrong, and the guarantee sentence — "this data
+// is not exposed in production without the explicit -privacy=off flag" — is honoured
+// literally by having no flip. The flixz beta nodes run -privacy=off and are labelled. (The
+// owner's other sentence, "default ON through the BETA", is the one this does not honour;
+// the change to that default is flagged for an explicit
+// note.).github/workflows/release.yml asserts this default on the built artifact.
 const privacyDefaultWithheld = true
 
 func privacyModeName(withheld bool) string {
@@ -896,7 +891,7 @@ func privacyModeName(withheld bool) string {
 }
 
 // parsePrivacyFlag turns the -privacy string into the posture, refusing anything but the
-// two accepted values. A bool flag would reject the owner's literal syntax -privacy=off at
+// two accepted values. A bool flag would reject the literal syntax -privacy=off at
 // parse time, and a silent fallback on a typo would be either a silent-loss shape
 // (-privacy=false meaning "on") or a privacy failure (-privacy=0 meaning "off"), so the
 // only accepted spellings are "on" and "off" and everything else refuses to start.
@@ -935,10 +930,11 @@ func (s *uiServer) statusSnapshot(now time.Time) (*statusInfo, time.Time) {
 	}
 	s.statusDoc = s.computeStatus(now)
 	s.statusTaken = now
-	// The R2.2 flow ring rides THIS recompute (ui_economy.go): one sample lands per
+	// The flow ring rides THIS recompute (ui_economy.go): one sample lands per
 	// flowSampleInterval, off the document just computed, so /api/economy/flows and
-	// /api/economy/g difference the same accounting /api/status published rather than
-	// a second read of the ledger taken at a different instant. No timer, no goroutine.
+	// /api/economy/g difference the same accounting /api/status published rather
+	// than a second read of the ledger taken at a different instant. No timer, no
+	// goroutine.
 	s.noteFlowSample(now, s.statusDoc)
 	return s.statusDoc, s.statusTaken
 }
@@ -1015,17 +1011,17 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 }
 
 // withheldDurability returns the durability block an UNAUTHENTICATED reader gets: the
-// aggregates, and no per-object array (red-team F2, owner-ratified 2026-09-05).
+// aggregates, and no per-object array.
 //
 // THE LEAK. RecordServeToObject adds ⌊Σbytes/(SkimDen·Dλ)⌋ to an object's funded reserve
-// (core/credit/escrow.go; since G-R212-7 the skim is one credit per 8·Dλ = 3,145,728
+// (core/credit/escrow.go; the skim is one credit per 8·Dλ = 3,145,728
 // bytes served on a lane, and before it one credit per 8 bytes), so `delta funded × 8 × Dλ`
 // recovers the byte count served of a NAMED content root to within 3.1 MiB — the leak the
 // old arithmetic exposed exactly is now coarsened 3,145,728×, but a delta of one is still
 // "≥ 3 MiB of this root went to someone", and the per-object join is the harm, not the
 // resolution. Joined to the B_bootstrap
 // block's per-identity decomposition that is who-fetched-what verbatim, it needs no flag
-// and no token, and it predates R2.9a entirely. Don't #3 is a bright line.
+// and no token. Don't #3 is a bright line.
 //
 // WHY A TOKEN AND NOT LESS PRECISION. Rounding a CUMULATIVE counter does not stop delta
 // extraction: an observer polling across the rounding boundary still recovers the
@@ -1033,30 +1029,29 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 // a cumulative cell. The cache above bounds the extraction RATE and leaves the join
 // intact at low traffic, where one interval routinely holds one fetch.
 //
-// WHY THE TOKEN IS SOUND HERE, against the red-team's own F9 critique of tokens. F9's
-// objections all turn on the secret having to TRAVEL to a remote analyst: printed to
-// stdout, carried in a URL, doubling as a write capability. The consumer of this block
-// is the operator's OWN node — the embedded UI already attaches the bearer token to
-// every same-origin /api/ call (cmd/silt/ui/app.js) and cloudtest already reads `funded`
-// with an Authorization header — so the secret never travels and the holder already has
-// write control. F9's remaining point was that tokening the histogram would not close F2
+// WHY THE TOKEN IS SOUND HERE, against the own F9 critique of tokens. F9's objections
+// all turn on the secret having to TRAVEL to a remote analyst: printed to stdout,
+// carried in a URL, doubling as a write capability. The consumer of this block is the
+// operator's OWN node — the embedded UI already attaches the bearer token to every
+// same-origin /api/ call (cmd/silt/ui/app.js) and cloudtest already reads `funded` with
+// an Authorization header — so the secret never travels and the holder already has write
+// control. F9's remaining point was that tokening the histogram would not close F2
 // because `funded` stayed open. This is that half.
 //
 // WITHHELD IS NOT EMPTY. objects is ABSENT, never []: an empty array means "this node
 // caretakes nothing", a missing key means "withheld". Same absent-vs-empty discipline as
 // the minimum-requester floor.
 //
-// WHAT STAYS OPEN, AND WHAT THAT LEAVES. bountyOn and the node's own balance carry no
-// root. But "names no root" is a property of the SURFACE, not of a field: GET /api/roots
-// publishes every held root unauthenticated, so on a node holding ONE root every
-// node-wide counter — balance here, stats.BytesServed above, revenue.* on the sibling
-// endpoint — is that root's counter. That was R-BB-SIBLING-AGGREGATES; since D-UI-PRIVACY-FLAG
-// those counters are withheld from unauthenticated readers by default (readerView's privacy
-// clause) and published only under -privacy=off, labelled. Under -privacy=off it is bounded
-// to floor(uptime/T) observations by the shared snapshot and NOT closed by this gate.
-// Closing it means gating stats.BytesServed, which the cross-origin observatory reads
-// with no token by design; that trade is the owner's (docs/decisions.md,
-// D-STATUS-SNAPSHOT-INTERVAL, the appended correction).
+// WHAT STAYS OPEN, AND WHAT THAT LEAVES. bountyOn and the node's own balance carry no root.
+// But "names no root" is a property of the SURFACE, not of a field: GET /api/roots publishes
+// every held root unauthenticated, so on a node holding ONE root every node-wide counter —
+// balance here, stats.BytesServed above, revenue.* on the sibling endpoint — is that root's
+// counter. That was; since those counters are withheld from unauthenticated readers by
+// default (readerView's privacy clause) and published only under
+// -privacy=off, labelled. Under -privacy=off it is bounded to floor(uptime/T) observations by
+// The shared snapshot and NOT closed by this gate. Closing it means gating stats.BytesServed,
+// which the cross-origin observatory reads with no token by design; that trade is deliberate,
+// the appended correction.
 func withheldDurability(di *durabilityInfo) *durabilityInfo {
 	if di == nil {
 		return nil
@@ -1078,10 +1073,10 @@ func withheldDurability(di *durabilityInfo) *durabilityInfo {
 // (Invariant A: credits fund durability, never consensus weight).
 type durabilityInfo struct {
 	BountyOn bool `json:"bountyOn"`
-	// BountyBaseZero counts repair releases whose bounty base was ZERO for the object's
-	// geometry (shardBytes below one credit of fetch, G-R212-7 / G-λ-8; it was
-	// k·shardBytes until the F1 re-pricing, D-BOUNTY-PRICE-F1-2026-09-12, which is why
-	// the zero class widened 10.008×) — a bounty silently OFF, surfaced where the
+	// BountyBaseZero counts repair releases whose bounty base was ZERO for the
+	// object's geometry shardBytes below one credit of fetch; it was
+	// k·shardBytes until the F1 re-pricing, which is why the zero class widened
+	// 10.008×) — a bounty silently OFF, surfaced where the
 	// -economy operator looks. A node-wide count that
 	// names no root; withheld with the counters under the privacy clause.
 	BountyBaseZero int `json:"bountyBaseZero"`
@@ -1089,10 +1084,10 @@ type durabilityInfo struct {
 	// would omit a legitimate zero balance, which is a false absence (S7). Present, it
 	// may legitimately be 0.
 	Balance *int64 `json:"balance,omitempty"`
-	// Objects is TOKEN-GATED and ABSENT without one (red-team F2; see
-	// withheldDurability for the mechanism and the reasoning). detailWithheld tells the
-	// two absences apart: `objects: []` means this node caretakes nothing,
-	// `detailWithheld: true` with no objects key means the caller did not authenticate.
+	// Objects is TOKEN-GATED and ABSENT without one; see withheldDurability for the
+	// mechanism and the reasoning. detailWithheld tells the two absences apart:
+	// `objects: []` means this node caretakes nothing, `detailWithheld: true` with
+	// no objects key means the caller did not authenticate.
 	Objects        []objDurability `json:"objects,omitempty"`
 	DetailWithheld bool            `json:"detailWithheld"`
 }
@@ -1101,7 +1096,7 @@ type objDurability struct {
 	Root    string `json:"root"`
 	Reserve int64  `json:"reserve"`
 	Funded  int64  `json:"funded"`
-	// A4-1 (R2.7): the two legs of Funded. The wash loop's recoverable money is the
+	// the two legs of Funded. The wash loop's recoverable money is the
 	// SKIM; a combined figure leaves "escrow recovered by self-repair" with no
 	// denominator. Rides this block's existing token gate + detailWithheld (F2).
 	FundedPrepay int64 `json:"fundedPrepay"`
@@ -1111,8 +1106,8 @@ type objDurability struct {
 	HorizonSec   int64 `json:"horizonSec"` // -1 = not yet measurable (no burn observed); >=0 = projected
 	// Finite is credit.Horizon's own second return: true only when a real burn has
 	// been observed (Paid>0) so the horizon is measurable. false renders as "horizon
-	// not yet measurable", NEVER as "perpetual" (instruments.go:47-49) — never fake
-	// precision. Cliff is the solvency early-warning (Boulder 2 R2.1 Panel 1): the
+	// not yet measurable", NEVER as "perpetual" (instruments.go) — never fake
+	// precision. Cliff is the solvency early-warning: the
 	// reserve has a measurable, finite horizon within the warning window, i.e. the
 	// object's funded durability runs out soon at the observed burn rate.
 	Finite bool `json:"finite"`
@@ -1170,8 +1165,7 @@ func (s *uiServer) durabilitySnapshot(uptime time.Duration) *durabilityInfo {
 // the read path; no network number is invented here.
 const horizonWarningWindow = ports.Duration(30 * 24 * time.Hour)
 
-// apiEconomySelf serves the economy-observability SELF panels (Boulder 2, R2.1
-// slice 6a): the four LOCAL-EXACT panels an operator reads to see their own
+// apiEconomySelf serves the economy-observability SELF panels: the four LOCAL-EXACT panels an operator reads to see their own
 // economy's health from ONE node, with no aggregator and no network estimation.
 // Every field is read from this node's own Ledger/care state, so every number is
 // local-exact. It ships cert-free and economy-OFF: with the repair economy off the
@@ -1197,16 +1191,16 @@ func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// ONE SNAPSHOT, TWO DOCUMENTS. This endpoint republishes the ledger aggregates
-	// /api/status carries (balance, bytes served, the escrow sums), so it reads the SAME
-	// cached document, taken at the same instant and recomputed at most once per
-	// statusSnapshotInterval. As first shipped it recomputed per request: the blind PE
-	// review polled it at 250 ms across one real fetch and recovered a 16,388-credit step
-	// in selfFunding.skimIn — 131,104 bytes of a root /api/roots had named — with no
-	// token and at the reader's own rate, the exact defect G-BB-26 was certified to
-	// close on the sibling. A second cache would double the recompute an unauthenticated
-	// flood can drive; a separate interval would let the two documents be diffed
-	// against each other. So there is one.
+	// ONE SNAPSHOT, TWO DOCUMENTS. This endpoint republishes the ledger
+	// aggregates /api/status carries (balance, bytes served, the escrow sums),
+	// so it reads the SAME cached document, taken at the same instant and
+	// recomputed at most once per statusSnapshotInterval. As first shipped it
+	// recomputed per request:it step in selfFunding.skimIn — 131,104 bytes of a
+	// root /api/roots had named — with no token and at the reader's own rate,
+	// the exact defect this gate was to close on the sibling. A second cache
+	// would double the recompute an unauthenticated flood can drive; a separate
+	// interval would let the two documents be diffed against each other. So
+	// there is one.
 	now := s.nowWall()
 	doc, takenAt := s.statusSnapshot(now)
 	self := doc.economy
@@ -1275,7 +1269,7 @@ func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
 			// negative if the node has spent (funded escrows, publish fees) more than
 			// it earned serving — that is real and honestly shown.
 			ServeRevenue: self.Balance - self.BountyEarned,
-			// A4-3: the wash SHAPE, carried with its honest limit on the wire so no
+			// the wash SHAPE, carried with its honest limit on the wire so no
 			// reader can quote the number without the caveat.
 			BountyPaidToPriorFetcherPayments: self.BountyToPriorFetcherPayments,
 			BountyPaidToPriorFetcherCredits:  self.BountyToPriorFetcherCredits,
@@ -1320,22 +1314,20 @@ func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
 // selfFunding IS WITHHELD, not just objects. skimIn is the sum of objects[].funded, and
 // on a node caretaking ONE object — every node from its first published object to its
 // second — the sum IS the withheld per-object counter, bit for bit, while /api/roots
-// names the root. Withholding the array and publishing its one-term sum closed nothing;
-// the blind PE review measured the two as the same number on a live daemon.
+// names the root. Withholding the array and publishing its one-term sum closed nothing.
 //
-// What stays open: revenue (the node-wide balance and byte totals), margin and wash
-// (derived from them), the provenance stamps. These are the same node-wide aggregates
-// /api/status publishes and the observatory reads; on a node holding one root they are
-// that root's counters (R-BB-SIBLING-AGGREGATES — closed by default since D-UI-PRIVACY-FLAG:
-// withheld from unauthenticated readers unless the operator runs -privacy=off; see readerView).
+// What stays open: revenue (the node-wide balance and byte totals), margin and wash (derived
+// from them), the provenance stamps. These are the same node-wide aggregates /api/status
+// publishes and the observatory reads; on a node holding one root they are that root's counters
+// (closed by default: withheld from unauthenticated readers
+// unless the operator runs -privacy=off; see readerView).
 //
-// REVENUE IS REBUILT, not passed through (A4-3, R2.7). The allow-list is at the
-// economySelf field level, so a field added to economyRevenue would ship OPEN — the
-// exact shape this comment warns about, one level down. bountyPaidToPriorFetcher* is a
-// bounty-out figure: on a node caretaking ONE root it IS that root's withheld
-// objects[].bountyOut while /api/roots names the root (red-team F2). So the withheld
-// document carries a fresh economyRevenue with those two fields dropped and the note
-// replaced.
+// REVENUE IS REBUILT, not passed through. The allow-list is at the economySelf
+// field level, so a field added to economyRevenue would ship OPEN — the exact shape
+// this comment warns about, one level down. bountyPaidToPriorFetcher* is a bounty-out
+// figure: on a node caretaking ONE root it IS that root's withheld objects[].bountyOut
+// while /api/roots names the root. So the withheld document carries a fresh
+// economyRevenue with those two fields dropped and the note replaced.
 //
 // It COPIES rather than writing through the pointer, and the reason is not the cache:
 // apiEconomySelf allocates a fresh &economyRevenue per request off a value copy of the
@@ -1368,7 +1360,7 @@ func withheldEconomySelf(full economySelf) economySelf {
 // (evolving-tier), not a mechanism: it gates a dashboard label, never a slash. A
 // wash pair ping-pongs bytes, so its serve and fetch totals track each other;
 // 0.9 catches near-symmetric flow while leaving an honest hot server (serves far
-// more than it fetches) below it.
+// more than it fetches below it.
 const washSymmetryThreshold = 0.9
 
 // economySelf is the SELF-panel response (GET /api/economy/self). One flat object
@@ -1383,13 +1375,14 @@ type economySelf struct {
 	Revenue          *economyRevenue `json:"revenue,omitempty"`
 	Margin           *economyMargin  `json:"margin,omitempty"`
 	CountersWithheld bool            `json:"countersWithheld,omitempty"`
-	// SelfFunding and Objects are TOKEN-GATED and ABSENT without one (red-team F2; see
-	// withheldEconomySelf). This endpoint republishes the same per-root skimIn/bountyOut
-	// that /api/status withholds, and the pooled selfFunding sum equals the per-object
-	// term whenever the node caretakes one object, so gating one and leaving the other
-	// open would close nothing. detailWithheld tells the two absences apart:
-	// `objects: []` with a selfFunding block means this node caretakes nothing;
-	// `detailWithheld: true` with neither key means the caller did not authenticate.
+	// SelfFunding and Objects are TOKEN-GATED and ABSENT without one; see
+	// withheldEconomySelf. This endpoint republishes the same per-root
+	// skimIn/bountyOut that /api/status withholds, and the pooled selfFunding sum
+	// equals the per-object term whenever the node caretakes one object, so gating
+	// one and leaving the other open would close nothing. detailWithheld tells the
+	// two absences apart: `objects: []` with a selfFunding block means this node
+	// caretakes nothing; `detailWithheld: true` with neither key means the caller did
+	// not authenticate.
 	SelfFunding    *economySelfFunding `json:"selfFunding,omitempty"`
 	Wash           *economyWash        `json:"wash,omitempty"`
 	Objects        []economyObject     `json:"objects,omitempty"`
@@ -1410,7 +1403,7 @@ type economyRevenue struct {
 	RepairsDone  int64 `json:"repairsDone"`
 	BountyEarned int64 `json:"bountyEarned"`
 	ServeRevenue int64 `json:"serveRevenue"` // balance − bountyEarned (derived split)
-	// A4-3 (R2.7): bounties this node RELEASED to a repairer that had already fetched
+	// bounties this node RELEASED to a repairer that had already fetched
 	// bytes from it. A SHAPE, not a detection — a repairer may legitimately have
 	// fetched survivor shards from this judge. One-sided-informative: a high ratio of
 	// these to bountyOut alongside a high wash.symmetry is the round-trip signature.
@@ -1429,8 +1422,8 @@ type economyMargin struct {
 
 type economySelfFunding struct {
 	SkimIn     int64 `json:"skimIn"`     // pooled lifetime funded (prepay + auto-skim) = prepayIn + autoSkimIn
-	PrepayIn   int64 `json:"prepayIn"`   // A4-1: the pooled operator-deposited leg (never clawed back)
-	AutoSkimIn int64 `json:"autoSkimIn"` // A4-1: the pooled serve auto-skim leg (the leg a reversal claws back)
+	PrepayIn   int64 `json:"prepayIn"`   // the pooled operator-deposited leg (never clawed back)
+	AutoSkimIn int64 `json:"autoSkimIn"` // the pooled serve auto-skim leg (the leg a reversal claws back)
 	BountyOut  int64 `json:"bountyOut"`  // pooled lifetime paid (repair bounties)
 	Net        int64 `json:"net"`        // skimIn − bountyOut; persistently negative = drain
 	BountyOn   bool  `json:"bountyOn"`   // does repair actually disburse on this node (-economy)
@@ -1448,7 +1441,7 @@ type economyObject struct {
 	Root    string `json:"root"`
 	Reserve int64  `json:"reserve"`
 	// SkimIn is the COMBINED lifetime inflow (prepay + auto-skim) — the name it has
-	// always had on this surface. PrepayIn and AutoSkimIn are its two legs (A4-1);
+	// always had on this surface. PrepayIn and AutoSkimIn are its two legs;
 	// SkimIn == PrepayIn + AutoSkimIn.
 	SkimIn     int64 `json:"skimIn"`
 	PrepayIn   int64 `json:"prepayIn"`
@@ -1485,7 +1478,7 @@ func (s *uiServer) apiRoots(w http.ResponseWriter, r *http.Request) {
 }
 
 // paginateRoots sorts rows by shard count (desc — most-hosted first), then
-// root for a stable order, and returns the [offset, offset+limit) window
+// root for a stable order, and returns the [offset, offset+limit window
 // plus the total. A limit <= 0 uses the default page and is capped at
 // maxRootsPage; offset is clamped, so out-of-range paging yields an empty
 // page rather than a panic.
@@ -1530,7 +1523,7 @@ func (s *uiServer) apiRegistry(w http.ResponseWriter, r *http.Request) {
 	}
 	entries, err := s.reg.All(r.Context())
 	if err != nil {
-		// A remote public registry no longer serves a bulk /all dump (F-3), so a UI
+		// A remote public registry no longer serves a bulk /all dump, so a UI
 		// pointed at one degrades to an empty list rather than erroring. An operator's
 		// OWN registry (-serve-registry) is read in-process and lists fully.
 		writeJSON(w, []any{})
@@ -1769,7 +1762,7 @@ func (s *uiServer) apiFetch(w http.ResponseWriter, r *http.Request) {
 	// nothing — making the client a pure leech (chunks-held stays 0, nothing to
 	// share back) and leaking a 127.0.0.1 address-book entry on every fetch.
 	// Fetching on s.nd means the next read of the same link hits the local-store
-	// fast path above — and RETAIN wires the rest of the promise (#500): the
+	// fast path above — and RETAIN wires the rest of the promise: the
 	// pulled shards get real storage proofs minted from the link's layout key,
 	// register under their placement keys, and ANNOUNCE, so the node is a
 	// discoverable, audit-answerable provider of what it consumed rather than a

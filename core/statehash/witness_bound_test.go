@@ -127,7 +127,7 @@ func TestOverProofCapRejectedPreParse(t *testing.T) {
 // honest small proof + one bloated ~1.5·SProofMax absence proof has total < C_block
 // — gate 2 (the ceiling) does NOT catch the bloat. ONLY the per-proof byte cap
 // (gate 1) stops it. The bloat is a padded-but-structurally-valid absence proof
-// (NonMembershipLeafData is unbounded upward — cert fact 2), so if it reached
+// (NonMembershipLeafData is unbounded upward), so if it reached
 // VerifyProof it would verify as ProvenAbsent. The cap must stop it as NoWitness
 // BEFORE parse. RED premise: with the per-proof cap disabled, the bloated proof
 // falls through to verify and its ABSENCE key resolves to PROVEN_ABSENT.
@@ -190,7 +190,7 @@ func TestOverProofCapIsPreParseNotVerify(t *testing.T) {
 // passes the per-proof cap, gate 1) whose sum exceeds C_block. The ceiling (gate 2)
 // fires before the shape gate (gate 3) even runs — the ordering that stops
 // proof-count blowup pre-verify, exactly the vector the per-proof cap alone leaves
-// open (RULING §"Why the per-proof cap alone fails", vector 1). RED premise: without
+// open — the per-proof cap alone does not close it. RED premise: without
 // the per-block ceiling, the ingest walks into shape/verify carrying both blobs.
 func TestOverBlockCeilingRejectedPreVerify(t *testing.T) {
 	// A one-key read-set: C_block = 1 · SProofMax.
@@ -246,7 +246,7 @@ func TestOverBlockCeilingRejectedPreVerify(t *testing.T) {
 	// (a duplicate), so the reason distinguishes which gate caught it. Gate 2 must
 	// win: it is the cheaper running-sum early-out, run before the shape gate builds
 	// its maps. This is the ordering that stops proof-count/byte blowup at the
-	// cheapest possible point (RULING §"Where it is enforced").
+	// cheapest possible point.
 	if !strings.Contains(got.RejectReason, "C_block") {
 		t.Fatalf("expected the per-block ceiling (gate 2) to fire before the shape gate; "+
 			"got reason %q", got.RejectReason)
@@ -418,9 +418,9 @@ func TestHonestBundleVerifies(t *testing.T) {
 }
 
 // TestPresenceQueryEmptyValueNeverProvenAbsent is the Kind/Value-disagreement
-// ablation (safety, blind PE review). A QueryPresent read carrying a nil/empty
-// Value is a MALFORMED read-set entry: Resolve keys on len(value) == 0 to select
-// the non-membership branch, so an empty value would route a presence query to
+// ablation (safety). A QueryPresent read carrying a nil/empty Value is a
+// MALFORMED read-set entry: Resolve keys on len(value) == 0 to select the
+// non-membership branch, so an empty value would route a presence query to
 // ProvenAbsent — Kind says present, Value wins as absent. Kind is authoritative,
 // so IngestBlockWitnesses must reject it to NoWitness BEFORE Resolve. This is the
 // same class as the R4 empty-value finding.
@@ -465,8 +465,8 @@ func TestPresenceQueryEmptyValueNeverProvenAbsent(t *testing.T) {
 
 // TestCBlockDerivation pins the exact C_block formula the gate enforces:
 // C_block = len(readSet) · SProofMax, scaling with the read-set, not a flat
-// constant. This is the ratified derivation (cert Q2). If someone changes it to a
-// flat constant or a different multiple, this goes RED.
+// constant. This is the derivation. If someone changes it to a flat
+// constant or a different multiple, this goes RED.
 func TestCBlockDerivation(t *testing.T) {
 	for _, n := range []int{0, 1, 2, 4, 1024} {
 		rs := make([]ReadEntry, n)
@@ -478,6 +478,6 @@ func TestCBlockDerivation(t *testing.T) {
 		}
 	}
 	if SProofMax != 16*1024 {
-		t.Fatalf("SProofMax = %d, want 16 KiB (ratified security parameter)", SProofMax)
+		t.Fatalf("SProofMax = %d, want 16 KiB (settled security parameter)", SProofMax)
 	}
 }

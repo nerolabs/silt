@@ -8,26 +8,25 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Consensus model-check — the I4 LIVENESS oracle (issue #432).
+// Consensus model-check — the I4 LIVENESS oracle (issue).
 //
 // consensus-invariants.md I4's assert-note names the property: "a connected
 // network never suffers a *permanent* non-final stall." This is the
-// deterministic repro of the field wedge in runs 9c3777d-73949 ("chain STARVED
-// at tip ~6") and 8ae8326-34086 (stall at h6: zero commits for 30+ min).
+// deterministic repro of the field wedge in runs the field run ("chain STARVED
+// at tip ~6") and the field run (stall at h6: zero commits for 30+ min).
 //
-// THE MECHANISM (pre-fix): the #397 never-sign-twice watermark was HEIGHT-ONLY
-// and FINAL — once a validator signed any block at height h, it refused every
+// THE MECHANISM (pre-fix): the never-sign-twice watermark was HEIGHT-ONLY and
+// FINAL — once a validator signed any block at height h, it refused every
 // other h-block forever; the mark cleared only on a commit the marks
 // themselves forbade. One crossed proposer race splitting the anchor
-// signatures 2-2 left NO h-block able to reach the #402 strict anchor majority
+// signatures 2-2 left NO h-block able to reach the strict anchor majority
 // (3-of-4): a permanent stall of a connected, all-honest, 0-fault network.
 // This oracle was born RED on branch oracle/i4-liveness-wedge (commit 3617b1d,
-// failing-first) and turns GREEN with the certified #432 fix on this branch:
-// rounds WITH locking (research certification 432-rounds-locking-liveness,
-// 2026-08-15) — the (height, ROUND, phase)-scoped watermark plus the
-// deterministic sweep-count round advance give the wedged height a next round
-// where fresh signatures are honest, and the lock rule keeps the escape from
-// re-opening I1 (asserted by the S1/S2 oracles in modelcheck_s1s2_test.go).
+// failing-first) and turns GREEN with the fix on this branch: rounds WITH
+// locking — the (height, ROUND, phase)-scoped watermark plus the deterministic
+// sweep-count round advance give the wedged height a next round where fresh
+// signatures are honest, and the lock rule keeps the escape from re-opening I1
+// (asserted by the S1/S2 oracles in modelcheck_s1s2_test.go).
 //
 // Literature (B8): Tendermint's priv_validator_state signs (height, ROUND,
 // step); a failed height advances the round so validators may sign again at
@@ -47,11 +46,11 @@ func TestModelCheck_I4_WedgedHeightMustRecover(t *testing.T) {
 		nd.OnSlash(func(ports.NodeID, uint64) { honestSlashed = true })
 	}
 
-	// THE CROSSED RACE at h1 — two proposal paths, disjoint attester targets,
-	// so the four anchors' signatures split 2-2: n0 proposes A gathering only
-	// n2; n1 proposes B gathering only n3. Neither side can reach the #402
-	// strict anchor majority (3 of 4); every anchor's (1, r0, prepare) slot is
-	// now marked.
+	// THE CROSSED RACE at h1 — two proposal paths, disjoint attester
+	// targets, so the four anchors' signatures split 2-2: n0 proposes A
+	// gathering only n2; n1 proposes B gathering only n3. Neither side can
+	// reach the strict anchor majority (3 of 4); every anchor's (1, r0,
+	// prepare) slot is now marked.
 	blkA := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("publish-A")}}
 	blkB := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("drain-B")}}
 	var errA, errB error
@@ -62,14 +61,14 @@ func TestModelCheck_I4_WedgedHeightMustRecover(t *testing.T) {
 
 	// Wedge precondition: NEITHER side committed (2 sigs < the 3-of-4 anchor
 	// majority). If either committed here, the anchor gate is not engaged and
-	// this oracle is not testing what it claims (anti-#303).
+	// this oracle is not testing what it claims (anti-).
 	for i, nd := range nodes {
 		if _, h := nd.Chain().Head(); h != 1 {
 			t.Fatalf("setup: node %d committed at the 2-2 race (head=%d) — the anchor majority gate is not engaged; the wedge premise is broken (errA=%v errB=%v)", i, h, errA, errB)
 		}
 	}
 
-	// The pre-#432 dead ends, kept as evidence the wedge shape is real:
+	// The earlier dead ends, kept as evidence the wedge shape is real:
 	// (a) same-hash re-proposals re-gather only the side that already signed;
 	for _, re := range []struct {
 		n    int
@@ -99,7 +98,7 @@ func TestModelCheck_I4_WedgedHeightMustRecover(t *testing.T) {
 		}
 	}
 
-	// THE #432 ESCAPE — the production sweep: pending work + no progress for
+	// THE ESCAPE — the production sweep: pending work + no progress for
 	// roundAdvanceSweeps sweeps → deterministic round-changes to r1 → the
 	// designated proposer assembles the new-view certificate (no locks were
 	// formed at r0 — no side reached a prepare-QC) and proposes a FRESH drain

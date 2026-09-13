@@ -11,7 +11,7 @@ import (
 // registry is a costless public good only if a single caller can't drive unbounded
 // lookup cost; without a bound, a flood of lookups is a free way to make a volunteer's
 // registry expensive. (The one truly unbounded endpoint, the whole-registry `GET /all`
-// dump, is no longer served on the public mux — F-3.) These defaults are generous for
+// dump, is no longer served on the public mux.) These defaults are generous for
 // normal clients (a lookup is the hot path and cheap) — bursts are absorbed, sustained
 // floods from one source get 429 — and are a per-network posture, not a hard promise.
 const (
@@ -19,9 +19,9 @@ const (
 	defaultBurst      = 40.0 // absorbed instantaneous burst per client IP
 
 	// maxBuckets hard-caps the per-IP bucket map so it stays a BOUNDED resource even
-	// under a flood that cycles source IPs faster than the idle-prune reclaims them —
-	// otherwise the map is its own DoS vector (red-team F-3 hardening §5.3). At the cap
-	// a sampled-LRU eviction drops the oldest of a small random sample per new IP,
+	// under a flood that cycles source IPs faster than the idle-prune reclaims them
+	// — otherwise the map is its own DoS vector hardening §5.3. At the cap a
+	// sampled-LRU eviction drops the oldest of a small random sample per new IP,
 	// bounding memory without an O(n) scan per request.
 	maxBuckets = 100_000
 )

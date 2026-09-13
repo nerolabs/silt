@@ -12,16 +12,15 @@ import (
 // Tests for the P1-d class-B bond-registration state-root recompute
 // (floorbox_recompute_stateroot_bondreg_v5.go).
 //
-// CERTIFIED-IN-DIRECTION (2026-08-31):
-//   research: floorbox-Rboundary-writeset-digest-reconstruction-RESEARCH-CERTIFICATION-2026-08-31.md
-//     (B CERTIFIED-in-direction; carries the R-B-displacement residual — a derivation-correctness/
-//      liveness burden, fold-caught, never a wrong-accept).
+// research: floorbox-Rboundary-writeset-digest-reconstruction-
+// (B: carries the residual — a derivation-correctness/
+// liveness burden, fold-caught, never a wrong-accept).
 //
 // R3 (execution-derived drift guard, MANDATORY): the box's derived B write-set + digest + due-bucket
-// reconstruction is checked against the REAL apply() + StateRootForVersion(5) over a FRESH reg, a
+// reconstruction is checked against the REAL apply + StateRootForVersion(5) over a FRESH reg, a
 // RENEW (same id, resize+version bump, moving the due-bucket), and a DISPLACEMENT (proof beats a
 // genesis squatter). Ablated RED on a mis-derived delta (skip the displacement) and a forged screen.
-// Ground truth is real execution (the session-7 scar).
+// Ground truth is real execution.
 
 // bondFixture is a v5 chain with a proposer + a genesis squatter on a shared root, advanced to h=0,
 // with prevStateRoot + a Prover captured at genesis.
@@ -240,7 +239,7 @@ func (f bondFixture) bondWitness(t *testing.T, b Block, affectedBuckets []uint64
 	return w
 }
 
-// --- Ablation 1: FRESH bond reg AGREES with real apply(). ---
+// --- Ablation 1: FRESH bond reg AGREES with real apply. ---
 func TestRecomputeStateRootBondRegFreshAgreesWithApply(t *testing.T) {
 	f := buildBondFixture(t)
 	prev, h := f.c.Head()
@@ -258,7 +257,7 @@ func TestRecomputeStateRootBondRegFreshAgreesWithApply(t *testing.T) {
 	}
 }
 
-// --- Ablation 2: RENEW (same id, resize+version bump) AGREES with real apply(). The renew moves the
+// --- Ablation 2: RENEW (same id, resize+version bump) AGREES with real apply. The renew moves the
 // proposer's due-bucket (old delete + new insert) and CHANGEs bonded/regVersion but NOT the bonded
 // or qualified id-SET (so no whole-set digest is touched). ---
 func TestRecomputeStateRootBondRegRenewAgreesWithApply(t *testing.T) {
@@ -282,14 +281,14 @@ func TestRecomputeStateRootBondRegRenewAgreesWithApply(t *testing.T) {
 
 // --- Ablation 3: DISPLACEMENT — honest PROVES the genesis-squatted root, displacing the squatter.
 // The delta must strip the squatter from bonded+qualified (an id NOT in the payload) AND add the
-// honest owner. AGREES with real apply(). ---
+// honest owner. AGREES with real apply. ---
 func TestRecomputeStateRootBondRegDisplacementAgreesWithApply(t *testing.T) {
 	f := buildBondFixture(t)
 	prev, h := f.c.Head()
 	honest := key(81003)
 	b := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev,
 		BondRegs: []BondReg{bondRegFull(honest, f.sharedRoot, 4<<20, prev, 5, 3)}}
-	// Confirm displacement fires in real apply().
+	// Confirm displacement fires in real apply.
 	clone := f.c.cloneForDryRun()
 	clone.apply(b)
 	sqid := ports.HashBytes(pubOf(f.squatter))
@@ -306,7 +305,7 @@ func TestRecomputeStateRootBondRegDisplacementAgreesWithApply(t *testing.T) {
 }
 
 // --- Ablation 4: mis-derived delta — a committed root reflecting the DISPLACEMENT NOT applied (the
-// squatter still bonded). We forge a StateRoot where the squatter kept its bonded standing, hand the
+// squatter still bonded. We forge a StateRoot where the squatter kept its bonded standing, hand the
 // box an HONEST witness. The box derives the CORRECT displacement (strips the squatter), folds the
 // honest bondedRoot, which MISMATCHES the buggy committed root ⇒ ErrRecomputeStateRootMismatch. This
 // drives the REAL recompute and proves the displacement branch is load-bearing. ---
@@ -368,9 +367,9 @@ func TestRecomputeStateRootBondRegAblationForgedScreen(t *testing.T) {
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a forged (unclaimed) screen must stall, got nil")
 	}
-	// R1.2: the forged Claimed=false requires a NON-MEMBERSHIP proof of bondRootOwner||sharedRoot, but
+	// The forged Claimed=false requires a NON-MEMBERSHIP proof of bondRootOwner||sharedRoot, but
 	// the honest OwnerProof proves it PRESENT (the squatter owns it), so the class-B anchor stalls
-	// (ErrRecomputeStateRootDigest) — a stronger, earlier catch than the pre-R1.2 fold/mismatch.
+	// (ErrRecomputeStateRootDigest) — a stronger, earlier catch than the earlier fold/mismatch.
 	if !errors.Is(err, ErrRecomputeStateRootDigest) && !errors.Is(err, ErrRecomputeStateRootFold) && !errors.Is(err, ErrRecomputeStateRootMismatch) {
 		t.Fatalf("ABLATION FAILED: expected an anchor/fold/mismatch stall, got %v", err)
 	}
@@ -416,7 +415,7 @@ func TestRecomputeStateRootBondRegAblationBoundaryOutOfScope(t *testing.T) {
 		t.Fatalf("ABLATION FAILED: a boundary bond-reg block with an empty witness must stall, got nil")
 	}
 	// The block dispatches (B/P in scope); the empty witness fails an anchor — the class-M/handoff
-	// pre-state anchor (which the entry now runs FIRST and UNCONDITIONALLY, R-FOLD-LIVE-STATE-READS
+	// pre-state anchor (which the entry now runs FIRST and UNCONDITIONALLY
 	// 2026-09-02), the TTL scope-gate non-membership proof (dueBucket), the digest anchor, or the
 	// fold. All never-Accept; WHICH anchor fires first is incidental, the stall is the property.
 	if !errors.Is(err, ErrRecomputeStateRootDigest) && !errors.Is(err, ErrRecomputeStateRootFold) &&
@@ -428,8 +427,8 @@ func TestRecomputeStateRootBondRegAblationBoundaryOutOfScope(t *testing.T) {
 // --- 7e: class-B BELOW-MinBond fresh reg (bonded, NOT qualified). ---
 //
 // A fresh bond reg with MinBondBytes <= Size < MinBond passes the objective anti-release floor
-// (chain.go:3232, so it writes bonded/bondRegHeight/regVersion/bondDomain and moves the TTL
-// due-bucket) but does NOT enter qualified (chain.go:3264 qualifiedMaintain: size < MinBond ⇒ not
+// (chain.go, so it writes bonded/bondRegHeight/regVersion/bondDomain and moves the TTL
+// due-bucket) but does NOT enter qualified (chain.go qualifiedMaintain: size < MinBond ⇒ not
 // qualified). This path was unexercised: every prior B fixture registers at or above MinBond, so the
 // "bonded-but-not-qualified" branch of the delta (postBonded grows, postQual unchanged, no
 // qualifiedRoot digest touched, no qualified||id leaf) had no test. The below-floor fixture sets
@@ -469,8 +468,8 @@ func buildBelowMinBondFixture(t *testing.T) bondFixture {
 }
 
 // TestRecomputeStateRootBondRegBelowMinBondAgreesWithApply is the POSITIVE 7e test: a fresh reg at a
-// size in [MinBondBytes, MinBond) is bonded-but-not-qualified, and the recompute reproduces the
-// committed StateRoot byte-exact vs the real apply() + StateRootForVersion(5). It confirms the delta
+// size in [MinBondBytes, MinBond is bonded-but-not-qualified, and the recompute reproduces the
+// committed StateRoot byte-exact vs the real apply + StateRootForVersion(5). It confirms the delta
 // grows bonded (touching bondedRoot) WITHOUT touching qualifiedRoot or writing qualified||id.
 func TestRecomputeStateRootBondRegBelowMinBondAgreesWithApply(t *testing.T) {
 	f := buildBelowMinBondFixture(t)
@@ -481,7 +480,8 @@ func TestRecomputeStateRootBondRegBelowMinBondAgreesWithApply(t *testing.T) {
 	b := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev,
 		BondRegs: []BondReg{bondRegFull(fresh, ports.HashBytes(pubOf(fresh)), size, prev, 5, 9)}}
 
-	// Confirm the fixture actually exercises the bonded-but-not-qualified path in real apply().
+	// Confirm the fixture actually exercises the bonded-but-not-qualified path in real
+	// apply.
 	clone := f.c.cloneForDryRun()
 	clone.apply(b)
 	if _, bonded := clone.bonded[fid]; !bonded {

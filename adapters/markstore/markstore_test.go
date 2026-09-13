@@ -8,7 +8,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// #183 red-team coverage caveat C-2: the fsync-before-broadcast durability of
+// red-team coverage caveat: the fsync-before-broadcast durability of
 // the never-sign-twice watermark (I2) was verified by INSPECTION only — the
 // restart tests all used markstore.NewMem, so nothing asserted the on-disk
 // Save/Load contract against the real Disk store, the one place a future
@@ -44,7 +44,7 @@ func TestDiskMarkSurvivesRestart(t *testing.T) {
 		t.Fatal("I2 durability VIOLATION: a Saved mark was not found after restart (Save did not reach durable storage)")
 	}
 	if got.Height != want.Height || got.Round != want.Round || got.Phase != want.Phase || got.Hash != want.Hash || string(got.LockQC) != string(want.LockQC) {
-		t.Fatalf("mark corrupted across restart: got %+v, want %+v (every field — including the #432 round/phase/lockQC — must survive)", got, want)
+		t.Fatalf("mark corrupted across restart: got %+v, want %+v (every field — including the round/phase/lockQC — must survive)", got, want)
 	}
 }
 
@@ -79,7 +79,7 @@ func TestDiskAtomicOverwrite(t *testing.T) {
 	}
 }
 
-// TestDiskMissingIsCleanStart: no file → (zero, false, nil), NOT an error — a
+// No file → (zero, false, nil), NOT an error — a
 // genuinely fresh validator has no mark and must start, while a CORRUPT file is
 // a refuse-to-start error (losing a real mark is the crash window this store
 // exists to close, so it must never be mistaken for "fresh").

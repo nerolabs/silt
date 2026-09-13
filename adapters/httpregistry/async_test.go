@@ -73,7 +73,7 @@ func (r *asyncReg) All(context.Context) ([]ports.Entry, error) { return nil, nil
 
 // The async happy path: a publish is ACCEPTED (202) and commits in the background; the
 // client's Publish blocks until it commits (via polling Lookup), not on a held connection.
-// This is what removes the flat 10s guillotine on the ~1.5 MB genesis gather (#286 Layer 1).
+// This is what removes the flat 10s guillotine on the ~1.5 MB genesis gather.
 func TestAsyncPublish_AcceptThenPollCommits(t *testing.T) {
 	reg := &asyncReg{committed: map[ports.Hash]ports.Entry{}, failed: map[ports.Hash]error{}, commitDelay: 400 * time.Millisecond}
 	addr, shutdown, err := httpregistry.Serve("127.0.0.1:0", reg)
@@ -118,13 +118,13 @@ func TestAsyncPublish_RefusalIsSynchronous(t *testing.T) {
 	}
 }
 
-// lossyReg models the field's dropped fire-and-forget submit burst (run
-// 82bcd2b-39478 / the rotation-wait oracle in core/node): the FIRST submission
-// is accepted but never commits — the entry is stranded — and only a
-// RE-submission of the same root lands it. The pre-fix client submitted once
-// and then only polled, so it polled out its whole budget on a stranded entry;
-// the fixed client re-submits inside the poll window and recovers. This test is
-// the failing-first regression for that re-submit (V5).
+// lossyReg models the field's dropped fire-and-forget submit burst (run the
+// field run / the rotation-wait oracle in core/node): the FIRST submission is
+// accepted but never commits — the entry is stranded — and only a RE-submission
+// of the same root lands it. The pre-fix client submitted once and then only
+// polled, so it polled out its whole budget on a stranded entry; the fixed
+// client re-submits inside the poll window and recovers. This test is the
+// failing-first regression for that re-submit (V5).
 type lossyReg struct {
 	mu        sync.Mutex
 	submits   map[ports.Hash]int

@@ -13,11 +13,11 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Integration tier for the blind red-team F2 (equivocation slash inert in
-// objective mode): a validator detects a peer's proven double-sign, records it
-// ON-CHAIN in the block it proposes, and every replica then evicts the culprit
-// from the objective bonded set — the deterrent bites the set consensus actually
-// reads, not just the reputation ledger.
+// Integration tier for (equivocation slash inert in objective mode): a validator
+// detects a peer's proven double-sign, records it ON-CHAIN in the block it
+// proposes, and every replica then evicts the culprit from the objective bonded
+// set — the deterrent bites the set consensus actually reads, not just the
+// reputation ledger.
 func TestObjectiveEquivocationSlashEvictsOverTheLoop(t *testing.T) {
 	const bondSize = int64(2) << 20
 	sched := simclock.New()

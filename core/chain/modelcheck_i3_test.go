@@ -7,18 +7,14 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Consensus model-check — tier 1, I3/B2 (in-package, mature-epoch weight quorum).
+// Consensus model-check — tier 1 (in-package, mature-epoch weight quorum).
 //
-// I3 (`docs/design/consensus-invariants.md`): the finality quorum in a mature epoch
-// is counted by WEIGHT over the frozen bonded snapshot, never by HEAD COUNT — the B2
-// scar, where 8 minimum-bond sybils rode into the epoch snapshot as full members and a
-// head-counted threshold handed a MinBond-per-head cohort stall/capture power that
-// weight-counting denies. This oracle drives the REAL Chain over the mature-epoch
-// weight rule and asserts: a coalition finalizes IFF it carries > ⅔ of the frozen
-// epoch WEIGHT — so a head-count-majority-but-weight-minority sybil cohort is refused.
-//
-// Design + failing-first plan: docs/thinking/2026-08-15-406-model-check-approach.md.
-
+// I3: the finality quorum in a mature epoch is counted by WEIGHT over the frozen bonded
+// snapshot, never by HEAD COUNT. Under head counting, 8 minimum-bond sybils that ride
+// into the epoch snapshot as full members carry stall and capture power that
+// weight-counting denies them. This oracle drives the REAL Chain over the mature-epoch
+// weight rule and asserts: a coalition finalizes IFF it carries > ⅔ of the frozen epoch
+// WEIGHT — so a head-count-majority-but-weight-minority sybil cohort is refused.
 const (
 	i3Honest   = int64(20) << 20 // a real validator's weight
 	i3Sybil    = int64(2) << 20  // a min-bond sybil
@@ -95,7 +91,7 @@ func matureWeightedEpoch(t *testing.T) (*Chain, []ed25519.PrivateKey, []ed25519.
 }
 
 // TestModelCheck_I3_SetupReachesMatureWeightedEpoch verifies the SETUP before any
-// oracle trusts it (the anti-#303 discipline: a green oracle over a broken setup is
+// oracle trusts it (the discipline: a green oracle over a broken setup is
 // worse than none). It asserts we are in a mature epoch with the exact frozen weighted
 // membership the B2 oracle depends on.
 func TestModelCheck_I3_SetupReachesMatureWeightedEpoch(t *testing.T) {
@@ -147,7 +143,7 @@ func TestModelCheck_I3_SetupReachesMatureWeightedEpoch(t *testing.T) {
 // FAILING-FIRST (verified by a controlled revert): with requireEpochWeightQuorum
 // temporarily counting HEADS (the pre-B2 rule), a head-count-supermajority-but-weight-
 // minority coalition finalizes and the oracle catches it — RED. Under the shipped weight
-// rule (#389) it is refused — GREEN.
+// rule it is refused — GREEN.
 func TestModelCheck_I3_MatureWeightQuorum(t *testing.T) {
 	c, honest, sybil := matureWeightedEpoch(t)
 	prev, _ := c.Head() // height-4 head; candidates are at height 5 (still the mature epoch)
@@ -169,8 +165,8 @@ func TestModelCheck_I3_MatureWeightQuorum(t *testing.T) {
 		return b, weight, len(honAtt) + len(sybAtt)
 	}
 	checked := 0
-	// proposerKind: honest[0] (leaves honest[1..2] + all 8 sybils as attesters) and
-	// sybil[0] (leaves all 3 honest + sybil[1..7]).
+	// proposerKind: honest[0] (leaves honest[1.2] + all 8 sybils as attesters)
+	// and sybil[0] (leaves all 3 honest + sybil[1.7]).
 	for _, pk := range []struct {
 		proposer ed25519.PrivateKey
 		honPool  []ed25519.PrivateKey

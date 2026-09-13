@@ -6,9 +6,9 @@ import "testing"
 // (the read-only half of the H2 payload-selective-prune OOM fix). Blocks strictly
 // BELOW the returned height are prune-eligible (their heavy BondReg.Answer may be
 // dropped, header+sigs kept); blocks at/above it retain the full proof and are still
-// re-verifiable. Research-certified safetyDepth = 2·BondTTL, epoch-aligned; the
-// horizon is FLOORED to an epoch boundary so it lands on a validator-set snapshot
-// (#357 Cond A) and retains AT LEAST safetyDepth (err long, per the cert).
+// re-verifiable. Research-safetyDepth = 2·BondTTL, epoch-aligned; the horizon is
+// FLOORED to an epoch boundary so it lands on a validator-set snapshot and retains
+// AT LEAST safetyDepth (err long, per the research).
 func TestRetentionHorizonAt(t *testing.T) {
 	const ttl = 32
 	const safety = 2 * ttl // 64
@@ -25,9 +25,9 @@ func TestRetentionHorizonAt(t *testing.T) {
 		// Deep enough, no epochs: horizon = finalizedHeight − safetyDepth.
 		{"deep-no-epochs", 200, safety, 0, 200 - safety}, // 136
 		// Deep with epochs: floor (finalizedHeight − safetyDepth) to an epoch boundary.
-		//   raw = 300 − 64 = 236; epochs=50 → floor(236/50)*50 = 200.
+		// raw = 300 − 64 = 236; epochs=50 → floor(236/50)*50 = 200.
 		{"deep-epoch-floored", 300, safety, 50, 200},
-		//   raw = 264 − 64 = 200; already on a 50-boundary → 200.
+		// raw = 264 − 64 = 200; already on a 50-boundary → 200.
 		{"deep-epoch-on-boundary", 264, safety, 50, 200},
 		// Flooring must never raise the horizon above raw (retain ≥ safetyDepth).
 		{"epoch-floor-conservative", 249, safety, 50, 150}, // raw=185 → floor→150

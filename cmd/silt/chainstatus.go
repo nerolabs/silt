@@ -16,10 +16,10 @@ import (
 // daemon or mutating anything. It reads the same `chain.cbor` the daemon
 // persists. This is how an operator confirms the two things flows 5–7 are about
 // without hashing files by hand (acceptance new-F2):
-//   - CONVERGENCE: run it on each replica; identical head height AND head hash
-//     means they agree byte-for-byte on the committed history.
-//   - RESTART CATCH-UP: the head height advances after a restarted validator
-//     rejoins, instead of staying stuck at its pre-restart height.
+// - CONVERGENCE: run it on each replica; identical head height AND head hash
+// means they agree byte-for-byte on the committed history.
+// - RESTART CATCH-UP: the head height advances after a restarted validator
+// rejoins, instead of staying stuck at its pre-restart height.
 //
 // EVERY COUNTER HERE IS READ BY A FIELD GATE, SO ITS PREDICATE IS PART OF ITS
 // CONTRACT. integration/cloudtest/scenarios.sh scrapes these lines and asserts on
@@ -31,7 +31,7 @@ import (
 func cmdChainStatus(args []string) error {
 	fs := flag.NewFlagSet("chain-status", flag.ExitOnError)
 	storeDir := fs.String("store", ".silt-daemon", "store directory holding chain.cbor (matches `silt daemon -store`)")
-	epochBlocks := fs.Uint64("epoch-blocks", DerivedEpochBlocks, "the swarm's epoch cadence (matches `silt daemon -epoch-blocks`), used only to diagnose a head stuck at an epoch boundary (#535); 0 disables the diagnosis")
+	epochBlocks := fs.Uint64("epoch-blocks", DerivedEpochBlocks, "the swarm's epoch cadence (matches `silt daemon -epoch-blocks`), used only to diagnose a head stuck at an epoch boundary; 0 disables the diagnosis")
 	fs.Parse(args)
 
 	path := filepath.Join(*storeDir, "chain.cbor")
@@ -49,12 +49,13 @@ func cmdChainStatus(args []string) error {
 	entries, shed, declared := 0, 0, 0
 	for i := range blocks {
 		entries += len(blocks[i].Entries)
-		// TWO FACTS, TWO COUNTERS (build-immutable #3). `HeavyProofsShed()` is BOND
-		// POSSESSION — "this block committed space-time proofs it no longer carries" —
-		// and it is the one that answers "did the retention prune engage". `IsPruned()`
-		// is IDENTITY — "this block's hash is declared, not recomputable". Before (d-3)
-		// one field meant both; (d-3) retired `Pruned` for v5 and split the signal, so
-		// on a v5 chain IsPruned() is FALSE FOR EVERY BLOCK, pruned or not.
+		// TWO FACTS, TWO COUNTERS (build-immutable #3). `HeavyProofsShed`
+		// is BOND POSSESSION — "this block committed space-time proofs it
+		// no longer carries" — and it is the one that answers "did the
+		// retention prune engage". `IsPruned` is IDENTITY — "this block's
+		// hash is declared, not recomputable". Before one field meant both;
+		// retired `Pruned` for v5 and split the signal, so on a v5 chain
+		// IsPruned is FALSE FOR EVERY BLOCK, pruned or not.
 		if blocks[i].HeavyProofsShed() {
 			shed++
 		}
@@ -72,17 +73,18 @@ func cmdChainStatus(args []string) error {
 	// an operator (or the field harness) confirms the prune is engaged from real
 	// persisted state, not a log line.
 	//
-	// THE PREDICATE IS THE CONTRACT, NOT THE LABEL — DO NOT RE-KEY THIS TO IsPruned().
-	// This line shipped counting IsPruned() and the graded run `869ad9a-deep` failed
-	// row 12b-deep-prune with a uniform zero across all four validators on a chain of
-	// 1 x v2 + 137 x v5. Nothing was wrong with the prune: (d-3) retired `Pruned` for
-	// v5, so the counter was structurally zero and the assertion `pruned: N >= 1` could
-	// never pass, whatever the node did. (d-3) re-keyed the consensus readers
-	// (validate_v5_quorum, the floor-box door and NewBox, Prune's own idempotence) to
-	// HeavyProofsShed(); this reader was the one site the sweep missed, and the comment
-	// that used to sit here — promising a nonzero count while naming no predicate — is
-	// what let it be missed. An observable that a format era can silently zero is a
-	// defect one layer up from the thing it was built to observe.
+	// THE PREDICATE IS THE CONTRACT, NOT THE LABEL — DO NOT RE-KEY THIS TO
+	// IsPruned. This line shipped counting IsPruned and the graded run `the
+	// field run` failed row 12b-deep-prune with a uniform zero across all four
+	// validators on a chain of 1 x v2 + 137 x v5. Nothing was wrong with the
+	// prune: retired `Pruned` for v5, so the counter was structurally zero and
+	// the assertion `pruned: N >= 1` could never pass, whatever the node did.
+	// re-keyed the consensus readers (validate_v5_quorum, the floor-box door
+	// and NewBox, Prune's own idempotence) to HeavyProofsShed; this reader was
+	// the one site the sweep missed, and the comment that used to sit here —
+	// promising a nonzero count while naming no predicate — is what let it be
+	// missed. An observable that a format era can silently zero is a defect
+	// one layer up from the thing it was built to observe.
 	//
 	// The label and its spacing are a SCRAPE SURFACE: integration/cloudtest/scenarios.sh
 	// reads `pruned:[[:space:]]*[0-9]+` off this output and takes the LAST match. No
@@ -90,20 +92,20 @@ func cmdChainStatus(args []string) error {
 	// TestChainStatusPrunedCountIsSoundOnAV5Chain pins the number and the shape.
 	fmt.Printf("  pruned:       %d blocks have shed their heavy bond proofs below the retention horizon\n", shed)
 	// The identity half, reported separately BECAUSE it is a different question, and
-	// narrated because a bare 0 is exactly the trap above. IsPruned() is a subset of
-	// HeavyProofsShed() (which returns true immediately when IsPruned() does), so this never
-	// exceeds the line above — and on v1/v2/v4 the two are not merely nested but IDENTICAL,
-	// because validateD3Digests refuses a pre-v5 AnswerDigest outright, leaving the IsPruned
-	// short-circuit as the only way HeavyProofsShed can fire there. v5 is the ONE era where
-	// the numbers can differ, which is why TestChainStatusPrunedCountIsSoundOnAV5Chain is the
-	// only place this line's predicate can be gated. It is still worth an operator's
-	// attention: a block
-	// whose body cannot reproduce its hash is refused as equivocation evidence
-	// (ErrPrunedEvidence) and is the R-CARRIER-PRUNED-HASH surface, so "how much of my
-	// replica is in that state" is a real diagnostic — it is just not "did the prune run".
+	// narrated because a bare 0 is exactly the trap above. IsPruned is a subset of
+	// HeavyProofsShed (which returns true immediately when IsPruned does), so this never
+	// exceeds the line above — and on v1/v2/v4 the two are not merely nested but
+	// IDENTICAL, because validateBlockDigests refuses a pre-v5 AnswerDigest outright,
+	// leaving the IsPruned short-circuit as the only way HeavyProofsShed can fire there.
+	// v5 is the ONE era where the numbers can differ, which is why
+	// TestChainStatusPrunedCountIsSoundOnAV5Chain is the only place this line's
+	// predicate can be gated. It is still worth an operator's attention: a block whose
+	// body cannot reproduce its hash is refused as equivocation evidence
+	// (ErrPrunedEvidence) and is the surface, so "how much of my replica is in that
+	// state" is a real diagnostic — it is just not "did the prune run".
 	fmt.Printf("  of those:     %d declare a pre-v5 non-recomputable identity (the retired `Pruned` token); 0 is EXPECTED on a v5 chain and does NOT mean nothing was shed — a v5 block sheds its proofs and still recomputes its own hash\n", declared)
 	printEraObservable(blocks)
-	// #535 diagnosis (S5 — never silently fail): when the NEXT height to commit
+	// diagnosis (S5 — never silently fail): when the NEXT height to commit
 	// is an epoch boundary, a head that is not advancing may be the epoch-
 	// boundary liveness wedge — members holding > 1/3 of the frozen epoch's
 	// weight lapsed, so no live coalition can reach the frozen 2/3 bar, and the
@@ -112,21 +114,21 @@ func cmdChainStatus(args []string) error {
 	// daemon's stalled-at-boundary warn log carries the weight evidence), so
 	// this names the state and the recovery path rather than asserting it.
 	if *epochBlocks > 0 && (head.Height+1)%*epochBlocks == 0 {
-		fmt.Printf("  next height:  %d is an EPOCH BOUNDARY — if the head is stuck here, check the daemon log for `stalled-at-boundary` (#535: live-qualified weight below the frozen 2/3 bar; the recovery is a coordinated -liveness-recovery-height, weak-subjectivity trust — see `silt daemon -h`)\n", head.Height+1)
+		fmt.Printf("  next height:  %d is an EPOCH BOUNDARY — if the head is stuck here, check the daemon log for `stalled-at-boundary` (live-qualified weight below the frozen 2/3 bar; the recovery is a coordinated -liveness-recovery-height, weak-subjectivity trust — see `silt daemon -h`)\n", head.Height+1)
 	}
 	fmt.Println("  → identical values across replicas mean they agree on the committed history")
 	return nil
 }
 
 // printEraObservable prints the era half of chain-status: the block-version census and the two
-// era lines (R-CLOUD-ERA-PROBE, freeze manifest item 19). It reads the persisted blocks and
-// NOTHING ELSE — no config, no flag, no replay. See chain.CensusOf for why.
+// era lines (freeze manifest item 19). It reads the persisted blocks and NOTHING ELSE — no
+// config, no flag, no replay. See chain.CensusOf for why.
 //
 // WHAT THIS PATH CANNOT SEE, AND SAYS SO. chain-status holds a []Block, not a chain.Chain, so the
 // readiness-tally latch is out of reach. It must not be rebuilt here: recovering the latch means
 // replaying into a fresh Chain with a Config this command does not have, so EpochBlocks would come
 // from a CLI flag and the reported activation height would be a function of what the operator
-// typed. That is the #380 class, manufactured inside the tool built to observe era state. So
+// typed. That is the class, manufactured inside the tool built to observe era state. So
 // EraLine is called with tallyVisible=false, and the dark case names the limit and where to get
 // the answer instead of printing a false that means "not observable here".
 func printEraObservable(blocks []chain.Block) {
@@ -142,9 +144,9 @@ func printEraObservable(blocks []chain.Block) {
 		}
 		fmt.Printf("  %s\n", s.EraLine(false))
 	}
-	// max_h len(blocks[h].Atts) — the live attestation-carrier width, a figure two certification
-	// items name as unmeasured and no shipped command produced before this one. A bare "0" would
-	// be unreadable against "never computed", so zero is narrated.
+	// max_h len(blocks[h].Atts) — the live attestation-carrier width, a figure two research
+	// items name as unmeasured and no shipped command produced before this one. A bare "0"
+	// would be unreadable against "never computed", so zero is narrated.
 	switch {
 	case !c.AttsMeasured:
 		fmt.Println("  max atts:     NOT MEASURED — no block was walked")

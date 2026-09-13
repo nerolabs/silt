@@ -13,39 +13,38 @@ import (
 // tagRevLogSize — freeze-manifest item 1, the SAFETY leaf. The driven gates.
 // =============================================================================
 //
-// Certification: ERA4-V5-FREEZE-MANIFEST-RESEARCH-CERTIFICATION-2026-09-07.md section 4.1,
-// ratified 2026-09-07 (freeze manifest section 8, owner call 9).
-// Deliberation: docs/thinking/2026-09-11-tagrevlogsize-freeze-manifest-item-1.md
+// section 4.1 (freeze manifest section 8).
+// Deliberation:
 //
 // WHAT THE LEAF IS FOR. The floor box verifies a revocation-bearing block's LogRoot
 // verify-not-recompute: a consistency proof from the parent's log root at size m to the block's
 // LogRoot at size m+k. `m` is a field of no block and a value of no committed root, and it is not
-// recoverable from committed state (apply() DELETES from `revoked` on an un-revocation, so
+// recoverable from committed state (apply DELETES from `revoked` on an un-revocation, so
 // |revoked| != len(revLog)). A witness-supplied m is a WRONG-ACCEPT, not a stall:
-// TestGD9_WitnessSuppliedLogSizeIsUnsound_Control (redteam_revlog_size_control_v5_test.go) drives
+// TestWitnessSuppliedLogSizeIsUnsound_Control (revlog_size_control_v5_test.go) drives
 // the degenerate m = 1 right-spine forgery and asserts it PASSES translog.VerifyConsistency. This
 // leaf is what makes m non-forgeable.
 //
-// THE THREE CERTIFIED BUILD CONDITIONS, one gate each:
-//   C-a ALWAYS-EMIT     -> TestRevLogSizeLeafIsAlwaysEmitted (an EMPTY log commits EncodeUint64(0);
-//                          no absent-vs-empty shortcut).
-//   C-b POST-APPLY      -> TestRevLogSizeIsThePostApplyLogSize (driven on a real chain: the value
-//                          Resolved from the PARENT's committed StateRoot is exactly the m the
-//                          honest consistency proof for the child's LogRoot verifies at; an
-//                          off-by-one in either direction fails the proof).
-//   C-c THE ABLATION    -> the box-side lift, which is where a forged or omitted witness can be
-//                          driven through provenView. NOT in this commit: provenView still refuses
-//                          every revocation-bearing block by name (ErrRevLogSizeUnauthenticated),
-//                          so there is no accept path a forged m could reach. What IS driven here
-//                          is the recompute half -- dropping the counter derivation makes the fold
-//                          commit size 0 and land on ErrRecomputeStateRootMismatch, a stall.
+// THE THREE BUILD CONDITIONS, one gate each:
+// C-a ALWAYS-EMIT -> TestRevLogSizeLeafIsAlwaysEmitted (an EMPTY log commits EncodeUint64(0);
+// no absent-vs-empty shortcut).
+// C-b POST-APPLY -> TestRevLogSizeIsThePostApplyLogSize (driven on a real chain: the value
+// Resolved from the PARENT's committed StateRoot is exactly the m the
+// honest consistency proof for the child's LogRoot verifies at; an
+// off-by-one in either direction fails the proof).
+// C-c THE ABLATION -> the box-side lift, which is where a forged or omitted witness can be
+// driven through provenView. NOT in this commit: provenView still refuses
+// every revocation-bearing block by name (ErrRevLogSizeUnauthenticated),
+// so there is no accept path a forged m could reach. What IS driven here
+// is the recompute half -- dropping the counter derivation makes the fold
+// commit size 0 and land on ErrRecomputeStateRootMismatch, a stall.
 //
 // AND THE FROZEN-FORMAT PAIR, which must be read together:
-//   TestRevLogSizeLeafDoesNotMoveTheEra3Root -- a v4 root is invariant to the log size (the leaf is
-//     v5-only, so no live-history block hash can move).
-//   TestRevLogSizeLeafBindsTheV5Root -- the NON-VACUITY twin: over the SAME pair the v5 root must
-//     DIFFER. Without it the first gate is satisfied by a leaf that was never added at all, which
-//     is precisely the state of the tree before this change.
+// TestRevLogSizeLeafDoesNotMoveTheEra3Root -- a v4 root is invariant to the log size (the leaf is
+// v5-only, so no live-history block hash can move).
+// TestRevLogSizeLeafBindsTheV5Root -- the NON-VACUITY twin: over the SAME pair the v5 root must
+// DIFFER. Without it the first gate is satisfied by a leaf that was never added at all, which
+// is precisely the state of the tree before this change.
 
 // revLogSizeLeafValue returns the value stateRootLeavesV5 emits at the tagRevLogSize scalar key,
 // and whether it emitted one at all. It matches by KEY, not by position.
@@ -127,7 +126,7 @@ func TestRevLogSizeLeafBindsTheV5Root(t *testing.T) {
 	if loRoot == hiRoot {
 		t.Fatalf("the v5 state root does NOT bind the revocation-log size: two states differing only "+
 			"in len(revLog) (%d vs %d) commit the same root %x. m is then witness-supplied, and a "+
-			"witness-supplied m is a WRONG-ACCEPT (TestGD9_WitnessSuppliedLogSizeIsUnsound_Control).",
+			"witness-supplied m is a WRONG-ACCEPT (TestWitnessSuppliedLogSizeIsUnsound_Control).",
 			lo.revLog.Size(), hi.revLog.Size(), loRoot)
 	}
 }
@@ -137,8 +136,8 @@ func TestRevLogSizeLeafBindsTheV5Root(t *testing.T) {
 // (StateRoot) and the era-gated one (StateRootForVersion below BlockVersionWitnessable).
 //
 // This is the whole no-live-history-moves argument at the root level. The block level is closed by
-// construction: this change adds no Block field and no cbor key, so Hash() is byte-identical for
-// every block of every version. Ablation (demonstrated): move the add(tagRevLogSize, ...) call from
+// construction: this change adds no Block field and no cbor key, so Hash is byte-identical for
+// every block of every version. Ablation (demonstrated): move the add(tagRevLogSize,.) call from
 // stateRootLeavesV5 into stateRootLeaves and this gate goes red on all four versions.
 func TestRevLogSizeLeafDoesNotMoveTheEra3Root(t *testing.T) {
 	lo, hi := revLogSizePair(t)

@@ -10,11 +10,11 @@ package relaypay
 // that ride ports.Message Data, exactly as demand.SessionOpen rides
 // MsgDeliveryOpen.
 //
-// R2.14 (2026-09-04) makes RelayOpen v2: the chain root is ANCHORED to k blind-signed
+// This gate makes RelayOpen v2: the chain root is ANCHORED to k blind-signed
 // prepayment credentials the fetcher's durable identity bought from this relay, and
-// the whole commitment is signed by the session's ephemeral key — Rivest–Shamir's
-// M = {vendor, C_U, w_0, …}_SK_U with C_U the blind credentials. No consensus
-// coupling: nothing in core/chain reads this payload (cert §8).
+// the whole commitment is signed by the session's ephemeral key — Rivest–Shamir's M
+// = {vendor, C_U, w_0, …}_SK_U with C_U the blind credentials. No consensus
+// coupling: nothing in core/chain reads this payload.
 
 import (
 	"errors"
@@ -27,18 +27,18 @@ import (
 
 // ShippedAnchorFace is the face of one anchor at the shipped fee: cmd/silt's default
 // --fee (50,000 credits), the value the relay's ledger charged for the blind
-// withdrawal (core/credit: face = Fee(), an identity with the burn). Pinned as a
+// withdrawal (core/credit: face = Fee, an identity with the burn). Pinned as a
 // literal here because core/relaypay carries no dependency on core/credit; the
 // derivation below is checked against a second, independent literal in
 // TestRelayMaxAnchorsPerSessionCoversTheSessionCeiling.
 const ShippedAnchorFace = 50_000
 
 // MaxAnchorsPerSession is the decode/DoS bound on anchors per RelayOpen — DERIVED,
-// never a bare number (cert §5): the fewest anchors whose summed face covers the
+// never a bare number: the fewest anchors whose summed face covers the
 // longest session a relay accepts, ⌈S_max × RelayIncrementCredit / face⌉. Since the
 // 2026-09-06 re-price S_max is itself ShippedAnchorFace / RelayIncrementCredit, so
 // this is IDENTICALLY 1 for any face — one anchor funds the whole 24.4 GiB session
-// (T-RELAY-GRAN; it was 6 at the 4 KiB increment against a 1 GiB cap). The expression is
+// (it was 6 at the 4 KiB increment against a 1 GiB cap). The expression is
 // kept so a future de-coupling of S_max from the face re-derives k_max instead of
 // re-pinning it; slack above the ceiling would only let an attacker pad an open with
 // garbage anchors that cost the relay a modexp each.
@@ -62,9 +62,8 @@ type Anchor struct {
 // value a caller presents to be refused; it enforces nothing by itself. What
 // enforces guard (i) is the anchor: a blind bearer credential verified under the
 // relay's chain-committed key, bought by a durable identity the relay cannot link to
-// this session (docs/design/pod.md §7.3.4).
 //
-// v2 fields (R2.14): Anchors, the k ≤ MaxAnchorsPerSession prepayment credentials
+// v2 fields: Anchors, the k ≤ MaxAnchorsPerSession prepayment credentials
 // the root is committed under; Fetcher, the session ephemeral's ed25519 public key
 // (sha256(Fetcher) MUST equal the authenticated sender); and Sig, its signature over
 // the commitment M = sha256("silt/relay/open/v1" ‖ relayID ‖ Root ‖ uint32BE(S) ‖
@@ -73,7 +72,7 @@ type Anchor struct {
 // tampered field or a replay at another relay fails one ed25519 verify before any
 // RSA work.
 //
-// Version skew fails safe both ways (cert §8): a v1 open at a v2 relay decodes with
+// Version skew fails safe both ways: a v1 open at a v2 relay decodes with
 // no anchors and is refused with a named reason; a v2 open at a v1 relay is admitted
 // unanchored and pays 0.
 type RelayOpen struct {
@@ -136,7 +135,7 @@ func UnmarshalRelayOpen(b []byte) (RelayOpen, error) {
 // RelayPay is a preimage reveal (MsgRelayPay): the fetcher reveals x_Count to
 // authorize the relay to advance to increment Count. Handle names the live session
 // the relay returned in MsgRelayOpenAck. The relay drives the carried-S Verifier
-// with this (AdvanceTo), which is bounded to at most S hashes (the #644 clamp).
+// with this (AdvanceTo), which is bounded to at most S hashes (the clamp).
 type RelayPay struct {
 	Handle   uint64 `cbor:"1,keyasint"`
 	Preimage []byte `cbor:"2,keyasint"`

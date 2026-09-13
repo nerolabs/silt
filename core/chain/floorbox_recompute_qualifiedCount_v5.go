@@ -11,11 +11,11 @@ import (
 
 // era-4 (v5) trustless floor-box RECOMPUTE — lane-1 Part B core, increment 4.
 //
-// This file reproduces a FOURTH validity predicate — qualifiedCount (chain.go:1479), the
+// This file reproduces a FOURTH validity predicate — qualifiedCount (chain.go), the
 // distinct-qualified-validator COUNT N that sizes the count-quorum floor — trustlessly, from the
 // committed StateRoot + witnesses ALONE. It replicates increments 1-3's C-1 pattern
 // (floorbox_recompute_v5.go / _maturity_v5.go / _dematureQuorum_v5.go) over the WHOLE bonded map,
-// and closes the `slashed`-over-bonded quorum-stack whole-set read the #664 enumeration named as
+// and closes the `slashed`-over-bonded quorum-stack whole-set read the enumeration named as
 // the keyspace the earlier hand-lists OMITTED.
 //
 // It is ADDITIVE: it calls no full-node accept path, mutates nothing, and changes NO
@@ -23,37 +23,37 @@ import (
 // and slashed maps (chain.go untouched). This is a SEPARATE root-only path a semi-stateless box
 // calls INSTEAD of holding the tree — the same posture the three prior increments hold.
 //
-// THE PREDICATE. qualifiedCount (chain.go:1479-1487) folds the WHOLE bonded map:
+// THE PREDICATE. qualifiedCount (chain.go) folds the WHOLE bonded map:
 //
-//	N = count over id ∈ bonded of ( bonded[id] >= MinBond && !slashed[id] )
+//	N = count over id ∈ bonded of (bonded[id] >= MinBond && !slashed[id])
 //
 // N is the size of the distinct-qualified validator set the count-quorum is sized against:
-// validatorSetSize (chain.go:1563, the fall-through when NOT the anchor window and NOT a mature
-// epoch) → RequiredQuorum (chain.go:1526-1537, the count floor) → the requireQuorumStack count leg
-// (chain.go:2779). An untouched bonded member's slash drops N and can move bftThreshold(N) — the
-// count floor a commit must clear (readset_v5_quorum_wholeset_test.go:108-138, the oracle world
+// validatorSetSize (chain.go, the fall-through when NOT the anchor window and NOT a mature
+// epoch) → RequiredQuorum (chain.go, the count floor) → the requireQuorumStack count leg
+// (chain.go). An untouched bonded member's slash drops N and can move bftThreshold(N) — the
+// count floor a commit must clear (readset_v5_quorum_wholeset_test.go, the oracle world
 // countFloorPoisedWorld proves the flip).
 //
 // THE FOUR-PART PROOF (recomputeQualifiedCount):
-//  1. SET-COMPLETENESS over BONDED: reconstruct nodeSetMTH(witnessedIDs) over the whole-bonded
-//     id-list; require it equals the committed bondedRoot leaf (proven present against the
-//     StateRoot). One omitted (or injected) member ⇒ a different MTH ⇒ mismatch ⇒ stall. This
-//     reuses the F1 bondedRoot digest increment 3 already reads (the completeness anchor).
-//  2. PER-MEMBER BONDED WEIGHT (C-1): for EVERY id in the reconstructed set, Resolve the bonded[id]
-//     value leaf against the committed StateRoot. The weight is the `>= MinBond` screen operand; a
-//     forged weight fails smt.VerifyProof ⇒ stall.
-//  3. PER-MEMBER SLASHED BIT (C-1): for EVERY id, Resolve the slashed[id] membership leaf —
-//     inclusion when claimed slashed, non-inclusion when claimed unslashed. A prover cannot silently
-//     drop a slash (that would INFLATE N) nor inject one (that would DEFLATE N): the bit is verified
-//     either way, exactly as the maturity increment does (floorbox_recompute_maturity_v5.go:197-210).
-//     This is the `slashed`-over-bonded read this increment consumes.
-//  4. OWN CONFIG (C-6): MinBond is read from the box's OWN cfg (c.cfg.MinBond), NEVER from any
-//     witness. It is the eligibility screen; a lower MinBond admits cheap members and inflates N (a
-//     C1-discount lever), so reading own config forecloses the shift. The C-6 ablation asserts a
-//     witness-carried MinBond cannot move N.
+// 1. SET-COMPLETENESS over BONDED: reconstruct nodeSetMTH(witnessedIDs) over the whole-bonded
+// id-list; require it equals the committed bondedRoot leaf (proven present against the
+// StateRoot). One omitted (or injected) member ⇒ a different MTH ⇒ mismatch ⇒ stall. This
+// reuses the F1 bondedRoot digest increment 3 already reads (the completeness anchor).
+// 2. PER-MEMBER BONDED WEIGHT: for EVERY id in the reconstructed set, Resolve the bonded[id]
+// value leaf against the committed StateRoot. The weight is the `>= MinBond` screen operand; a
+// forged weight fails smt.VerifyProof ⇒ stall.
+// 3. PER-MEMBER SLASHED BIT: for EVERY id, Resolve the slashed[id] membership leaf —
+// inclusion when claimed slashed, non-inclusion when claimed unslashed. A prover cannot silently
+// drop a slash (that would INFLATE N) nor inject one (that would DEFLATE N): the bit is verified
+// either way, exactly as the maturity increment does (floorbox_recompute_maturity_v5.go).
+// This is the `slashed`-over-bonded read this increment consumes.
+// 4. OWN CONFIG: MinBond is read from the box's OWN cfg (c.cfg.MinBond), NEVER from any
+// witness. It is the eligibility screen; a lower MinBond admits cheap members and inflates N (a
+// C1-discount lever), so reading own config forecloses the shift. The ablation asserts a
+// witness-carried MinBond cannot move N.
 //
-// Then the count, byte-for-byte the full node's (chain.go:1479-1487):
-// N = |{ id ∈ bonded : bonded[id] >= MinBond && !slashed[id] }|.
+// Then the count, byte-for-byte the full node's (chain.go):
+// N = |{ id ∈ bonded: bonded[id] >= MinBond && !slashed[id] }|.
 //
 // WHY `slashedRoot` IS NOT READ (and stays inert). qualifiedCount iterates the BONDED domain and
 // reads slashed[id] PER-MEMBER; its completeness is anchored on bondedRoot, not slashedRoot. A
@@ -63,12 +63,11 @@ import (
 // bondedRoot (already non-inert, increment 3) + per-member bonded[id]/slashed[id], and adds NO new
 // digest-root read. slashedRoot remains a legitimately-inert derived commitment.
 //
-// STOP BOUNDARY (this increment). It reproduces ONE predicate. It does NOT flip #657
-// the box to Accept — that is the final increment, only after ALL predicates are
-// reproduced. The box STILL never-Accepts. It reproduces the raw COUNT N (and the derived
-// bftThreshold(N) count floor); the anchor-window and mature-epoch legs of RequiredQuorum are
-// governed by other predicates (the launch anchor gate; requireEpochWeightQuorum, increment 1), out
-// of scope here.
+// STOP BOUNDARY (this increment). It reproduces ONE predicate. It does NOT flip the box to Accept —
+// that is the final increment, only after ALL predicates are reproduced. The box STILL
+// never-Accepts. It reproduces the raw COUNT N (and the derived bftThreshold(N) count floor); the
+// anchor-window and mature-epoch legs of RequiredQuorum are governed by other predicates (the
+// launch anchor gate; requireEpochWeightQuorum, increment 1), out of scope here.
 
 var (
 	// ErrRecomputeQualifiedBondedSetIncomplete marks a stall where the witnessed whole-bonded id-list
@@ -84,7 +83,7 @@ var (
 
 	// ErrRecomputeQualifiedMemberStateUnproven marks a stall where a per-member committed value leaf
 	// (bonded weight or slashed membership) could not be proven present/absent against the committed
-	// StateRoot (no/failed/forged witness). This is the C-1 closure: a forged member value cannot
+	// StateRoot (no/failed/forged witness). This is the closure: a forged member value cannot
 	// verify, so it stalls the count rather than letting a forgeable N through.
 	ErrRecomputeQualifiedMemberStateUnproven = errors.New("chain: floor-box qualified-count recompute — a per-member committed value leaf (bonded/slashed) not proven against the committed StateRoot (C-1: forged or missing)")
 )
@@ -96,7 +95,7 @@ var (
 type QualifiedMemberWitness struct {
 	// Bonded is the claimed committed bonded[id] weight — the `>= MinBond` screen operand. Verified
 	// by Resolving the bonded[id] leaf (encoded EncodeInt64(Bonded)) against the committed root; a
-	// forged weight fails (C-1).
+	// forged weight fails.
 	Bonded int64
 
 	// BondedProof is the SMT inclusion proof of Key(tagBonded, id) → EncodeInt64(Bonded).
@@ -110,7 +109,7 @@ type QualifiedMemberWitness struct {
 	// SlashedProof is the SMT proof of the slashed[id] membership — inclusion when Slashed,
 	// non-inclusion otherwise. A prover cannot silently drop a slashed member (that would inflate N)
 	// nor inject one (that would deflate N): the recompute verifies the slashed bit for every member
-	// either way (C-1).
+	// either way.
 	SlashedProof statehash.Witness
 }
 
@@ -142,16 +141,16 @@ type QualifiedCountWitness struct {
 }
 
 // recomputeQualifiedCount reproduces qualifiedCount (the distinct-qualified validator COUNT N,
-// chain.go:1479) TRUSTLESSLY, from the committed StateRoot + the witness alone. It returns (n, nil)
-// where n == qualifiedCount()'s value a full node would produce over the committed bonded/slashed
+// chain.go) TRUSTLESSLY, from the committed StateRoot + the witness alone. It returns (n, nil)
+// where n == qualifiedCount's value a full node would produce over the committed bonded/slashed
 // maps, or (0, reason) when the box cannot verify a witness and must stall — NEVER counting an
 // unverified set/value.
 //
-// It reads MinBond from the box's OWN cfg (C-6), never the witness. The count over the whole bonded
+// It reads MinBond from the box's OWN cfg, never the witness. The count over the whole bonded
 // map is anchored on the committed bondedRoot (set-completeness), with each member's bonded weight
 // and slashed bit proven per-member against the committed StateRoot.
 //
-// This does NOT flip the box to Accept (the STOP boundary is the R1.8 downgrade in (*Box).Validate): it reproduces ONE predicate.
+// This does NOT flip the box to Accept (the STOP boundary is the downgrade in (*Box).Validate): it reproduces ONE predicate.
 func (c *Chain) recomputeQualifiedCount(
 	committedStateRoot ports.Hash,
 	w QualifiedCountWitness,
@@ -170,8 +169,8 @@ func (c *Chain) recomputeQualifiedCount(
 			ErrRecomputeQualifiedBondedSetIncomplete, reconstructed, w.BondedRootValue)
 	}
 
-	// (2) PER-MEMBER BONDED WEIGHT (C-1) + (3) PER-MEMBER SLASHED BIT (C-1) + (4) THE COUNT,
-	// byte-for-byte qualifiedCount (chain.go:1479-1487). For every member of the
+	// (2) PER-MEMBER BONDED WEIGHT + (3) PER-MEMBER SLASHED BIT + (4) THE COUNT,
+	// byte-for-byte qualifiedCount (chain.go). For every member of the
 	// completeness-verified whole-bonded set, verify its bonded weight (the screen operand) and its
 	// slashed bit against the committed root, then count it iff bonded[id] >= own MinBond && !slashed.
 	minBond := c.cfg.MinBond
@@ -183,7 +182,7 @@ func (c *Chain) recomputeQualifiedCount(
 			return 0, fmt.Errorf("%w: id %x has no member state witness", ErrRecomputeQualifiedMemberStateUnproven, id[:])
 		}
 
-		// C-1: bonded weight. Inclusion proof of (bonded[id] → EncodeInt64(Bonded)). A forged weight
+		// bonded weight. Inclusion proof of (bonded[id] → EncodeInt64(Bonded)). A forged weight
 		// fails ⇒ stall. Every bonded member has a committed weight leaf (bondedRoot's members are
 		// exactly the keys of the bonded map), so an honest producer always resolves present.
 		bondedKey := statehash.Key(tagBonded, id[:])
@@ -192,7 +191,7 @@ func (c *Chain) recomputeQualifiedCount(
 			return 0, fmt.Errorf("%w: id %x bonded %d", ErrRecomputeQualifiedMemberStateUnproven, id[:], mw.Bonded)
 		}
 
-		// C-1: slashed membership. Present ⇒ inclusion proof of (slashed[id] → Present); absent ⇒
+		// slashed membership. Present ⇒ inclusion proof of (slashed[id] → Present); absent ⇒
 		// non-inclusion proof. Either must verify against the committed root, else stall. A prover
 		// cannot fake the bit in either direction (inflating N by dropping a slash, or deflating it by
 		// injecting one).
@@ -209,7 +208,7 @@ func (c *Chain) recomputeQualifiedCount(
 			return 0, fmt.Errorf("%w: id %x slashed(absent)", ErrRecomputeQualifiedMemberStateUnproven, id[:])
 		}
 
-		// (4) THE COUNT: bonded[id] >= own MinBond (C-6) && !slashed[id]. Byte-for-byte chain.go:1482.
+		// (4) THE COUNT: bonded[id] >= own MinBond && !slashed[id]. Byte-for-byte chain.go.
 		if mw.Bonded >= minBond && !mw.Slashed {
 			n++
 		}

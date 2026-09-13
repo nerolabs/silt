@@ -15,7 +15,7 @@ import (
 // grantOverSummedPriceBytes is how many bytes one starter grant buys when a NAT'd
 // fetcher pays BOTH lane prices at once: g / (1/D_delivery + 1/D_relay) =
 // g·D_delivery·D_relay / (D_delivery + D_relay). The 64 GiB grant/r pin is read on this
-// SUM (G-R212-6); the priced-lane start-up refusal compares against it (G-λ-3).
+// SUM; the priced-lane start-up refusal compares against it.
 func grantOverSummedPriceBytes(grant, deliveryBytesPerCredit, relayBytesPerCredit int64) int64 {
 	if deliveryBytesPerCredit <= 0 || relayBytesPerCredit <= 0 {
 		return 0
@@ -45,17 +45,15 @@ func fileSizeOrUnknown(f *os.File) int64 {
 // warnBountyPrice names, at publish time, a publish whose SHARD short-pays the repair
 // bounty. The base is an integer floor of the witnessed fetch price of the one shard the
 // payee moves (F1, 2026-09-12), so a shard below one credit of fetch rounds to nothing
-// (G-λ-8, G-R212-7) and a shard just above it rounds away up to half the repairer's wage
-// (R-BOUNTY-TRUNCATION, G-BT-1).
+// and a shard just above it rounds away up to half the repairer's wage.
 //
 // TWO things can put a publish there, and both are named because a publisher can act on
 // neither once the object is stored. (1) A chunk size the operator chose. (2) The OBJECT:
-// since R-SHORT-FINAL-STRIPE a single-frame object is stored at its true length, so ITS
+// a single-frame object is stored at its true length, so ITS
 // shard is its own bytes and no chunk size changes that — at the shipped default every
-// object of 262,119 B or less pays a base of ZERO (26,190 B before F1; the class widened
-// 10.008×, R-BOUNTY-ZERO-BELOW-262KB). Case (2) is created by this same change, so leaving
-// it silent would ship a warning that misses the class it invented (blind PE B-3,
-// 2026-09-09).
+// object of 262,119 B or less pays a base of ZERO 26,190 B before F1; the class widened
+// 10.008×). Case (2) is created by this same change, so leaving
+// It silent would ship a warning that misses the class it invented.
 //
 // The daemon has no publish geometry at start-up to refuse on, and the judge that names a
 // zero at settlement is a caretaker the publisher neither runs nor sees, so this is the
@@ -84,7 +82,7 @@ func minBountyChunkBytes() int64 {
 // was a comment until 2026-09-12; F1 compressed the margin from 235,945 B to 16 B, so it is
 // now an assertion — checkBountyDisclosureHeadroom, a refuse-to-start (canon rule 8, first
 // arm: locally checkable ⇒ refuse to start). The gate also asserts this reads 1 and says to
-// re-read G-BT-1 on any move of the default (blind PE N-7).
+// re-read on any move of the default.
 func shippedBountyBase() int64 {
 	return credit.RepairBountyBase(erasure.DefaultParams.K, int64(pipeline.DefaultChunkSize)+crypto.Overhead)
 }
@@ -105,16 +103,16 @@ func shippedBountyBase() int64 {
 // It is deliberately NOT gated on -economy: the disclosure is what the publisher needs
 // whether or not THIS node pays bounties, and the publish path runs in `silt add` with no
 // economy flag at all. Raising pipeline.DefaultChunkSize to widen the margin is REFUSED —
-// it moves blocks[0].Hash() (see that constant's own doc, and core/genesis
+// it moves blocks[0].Hash (see that constant's own doc, and core/genesis
 // TestGenesisBlockHashIsPinned). The admissible move is the PRICE, which is a separate
-// certification because U/p carries GrantOverRPinBytes and the G-λ-3 refusal.
+// research because U/p carries GrantOverRPinBytes and the refusal.
 //
-// Driven both ways by TestF1RefusesAPublishDefaultThatPaysNoBounty.
+// Driven both ways by TestRefusesAPublishDefaultThatPaysNoBounty.
 func checkBountyDisclosureHeadroom(defaultChunk, minChunk int64) error {
 	if defaultChunk >= minChunk {
 		return nil
 	}
-	return fmt.Errorf("the publish default pays a ZERO repair bounty: pipeline.DefaultChunkSize is %d B but a non-zero base needs at least %d B (one shard of witnessed fetch, %d B, less the %d-byte tag — F1, D-BOUNTY-PRICE-F1-2026-09-12). At a zero shipped base the publish warning's threshold is 0, so every publish reads as at-or-above it and the ZERO warning never fires again — a publisher would have no way to learn its object's repairs pay nothing. Re-derive the delivery price (credit.DeliveryBytesPerCredit); do NOT raise the chunk default, which moves the height-0 block hash",
+	return fmt.Errorf("the publish default pays a ZERO repair bounty: pipeline.DefaultChunkSize is %d B but a non-zero base needs at least %d B (one shard of witnessed fetch, %d B, less the %d-byte tag — F1,). At a zero shipped base the publish warning's threshold is 0, so every publish reads as at-or-above it and the ZERO warning never fires again — a publisher would have no way to learn its object's repairs pay nothing. Re-derive the delivery price (credit.DeliveryBytesPerCredit); do NOT raise the chunk default, which moves the height-0 block hash",
 		defaultChunk, minChunk, int64(credit.DeliveryBytesPerCredit), int64(crypto.Overhead))
 }
 
@@ -140,49 +138,45 @@ func publishShardBytes(chunkBytes, objectBytes int64) int64 {
 // a base at or above that.
 //
 // WHAT AN UNSET -chunk-size DOES, precisely, because the first version of this comment
-// overstated it (blind PE R-1, 2026-09-09). An unset flag IS DefaultChunkSize, so the
-// GEOMETRY cause can never fire without one; the OBJECT cause can, and is meant to.
-// Measured at the shipped default with no flag set: 1,024 B fires (ZERO), 100,000 B fires
-// (ZERO), 262,119 B fires (ZERO), and 262,120 B is the first silent size. So a default
-// publish is silent for a FULL-FRAME object and speaks for a short-framed one — every
-// object of 262,119 B or less warns.
+// overstated it. An unset flag IS DefaultChunkSize, so the GEOMETRY cause can never fire
+// without one; the OBJECT cause can, and is meant to. Measured at the shipped default
+// with no flag set: 1,024 B fires (ZERO), 100,000 B fires (ZERO), 262,119 B fires (ZERO),
+// and 262,120 B is the first silent size. So a default publish is silent for a FULL-FRAME
+// object and speaks for a short-framed one — every object of 262,119 B or less warns.
 //
-// THE BOUNDARY DID NOT MOVE WITH F1 (2026-09-12); THE ARM DID. 262,119/262,120 is the same
-// pair before and after, because both the base and the threshold fell by the same factor.
-// What changed is that the sizes below it used to warn TRUNCATES and now warn ZERO — they
-// pay nothing rather than paying short. That IS the accepted cost of the re-pricing
-// (R-BOUNTY-ZERO-BELOW-262KB), and the shortFrame fix text below already said the right
-// thing for it.
+// THE BOUNDARY DID NOT MOVE WITH F1; THE ARM DID. 262,119/262,120 is the same pair before
+// and after, because both the base and the threshold fell by the same factor. What
+// changed is that the sizes below it used to warn TRUNCATES and now warn ZERO — they pay
+// nothing rather than paying short. That IS the accepted cost of the re-pricing, and the
+// shortFrame fix text below already said the right thing for it.
 //
 // AND THE TRUNCATES ARM IS NOW UNREACHABLE THROUGH THIS FUNCTION, disclosed rather than
-// deleted. The rule fires iff base < shippedBountyBase(), which is 1, so a firing publish
+// deleted. The rule fires iff base < shippedBountyBase, which is 1, so a firing publish
 // has base == 0 and always takes the ZERO arm.
 //
 // THE COST IS MEASURED, and it is larger than the anecdote first filed for it. The maximum
 // SILENT repair-wage short-pay rises 5.5×, from 9.09 % pre-F1 (base ≥ 10 ⇒ loss ≤ 1/11) to
 // 50.0 % (base ≥ 1 ⇒ loss ≤ 1/2), and it is reachable at ordinary operator choices, not
-// only at the 524,264 corner: -chunk-size 393216 (384 KiB) goes 0.00 % → 33.3 %, 327,680
+// Only at the 524,264 corner: -chunk-size 393216 (384 KiB) goes 0.00 % → 33.3 %, 327,680
 // goes 4.00 % → 20.0 %, 524,264 goes 5.00 % → 50.0 %. Pre-F1 the warning covered exactly
 // the large-loss region; post-F1 that whole region is silent.
 //
-// THE RULE IS NOT WIDENED HERE, AND THE REASON IS THE CLOSED COMPLEMENT. The earlier
-// record gave a different reason — that a loss-fraction clause "would speak on the shipped
-// default itself, the finding blind PE M6 closed" — and THE SHIPPED CODE REFUTES IT:
-// credit.RepairBountyTruncation returns 0 tenths of a percent at both 262,144 B (the
-// default) and 262,128 B (the minimum chunk), against 200 / 333 / 500 at the rows above,
-// so an OR of `lossTenths >= 10` (1 %) is silent on both. What such a clause really costs
-// is this rule's one structural property: "warn iff base < shippedBountyBase()" has a
-// CLOSED COMPLEMENT — silent in exactly one case, and that case is stated — and an
-// OR-clause breaks it. Taking the widening is therefore a DECISION, not a defect fix, and
-// it is filed with its measured cost as R-TRUNCATION-DISCLOSURE-NARROWS. The arm's arithmetic stays and is
-// driven directly in core/credit TestRepairBountyTruncationIsExactIntegerArithmetic; the
+// THE RULE IS NOT WIDENED HERE, AND THE REASON IS THE CLOSED COMPLEMENT. The earlier record gave a
+// different reason — that a loss-fraction clause "would speak on the shipped default itself, the finding a
+// review M6 closed" — and THE SHIPPED CODE REFUTES IT: credit.RepairBountyTruncation returns 0 tenths of a
+// percent at both 262,144 B (the default) and 262,128 B (the minimum chunk), against 200 / 333 / 500 at
+// the rows above, so an OR of `lossTenths >= 10` (1 %) is silent on both. What such a clause really costs
+// is this rule's one structural property: "warn iff base < shippedBountyBase" has a CLOSED COMPLEMENT —
+// silent in exactly one case, and that case is stated — and an OR-clause breaks it. Taking the widening is
+// therefore a DECISION, not a defect fix, and it is filed with its measured cost as. The arm's arithmetic
+// stays and is driven directly in core/credit TestRepairBountyTruncationIsExactIntegerArithmetic; the
 // threshold is DERIVED, so a re-tune of U/p or the publish default revives the arm.
 //
 // That is a deliberate TRADE against the earlier "don't warn on every default publish"
-// finding (blind PE M6), not a way of satisfying it: after R-SHORT-FINAL-STRIPE the object
-// is what pays, and a publisher who is told nothing has no other way to learn that this
-// object's repairs pay nothing. TestGLambda8PublishWarningFiresOnlyWhenThePublishShort
-// PaysTheRepairer drives both sides and both causes, including the first silent size.
+// finding, not a way of satisfying it: the object is what pays,
+// and a publisher who is told nothing has no other way to learn that this object's repairs
+// pay nothing. TestPublishWarningFiresOnlyWhenThePublishShortPaysTheRepairer
+// drives both sides and both causes, including the first silent size.
 func bountyPriceWarning(chunkBytes, objectBytes int64) string {
 	k := erasure.DefaultParams.K
 	shardBytes := publishShardBytes(chunkBytes, objectBytes)
@@ -195,15 +189,15 @@ func bountyPriceWarning(chunkBytes, objectBytes int64) string {
 	cause := fmt.Sprintf("-chunk-size %d gives a %d-byte shard", chunkBytes, shardBytes)
 	fix := fmt.Sprintf("use -chunk-size >= %d for a non-zero bounty; the shipped default %d pays %d", minBountyChunkBytes(), pipeline.DefaultChunkSize, shippedBountyBase())
 	if shortFrame {
-		cause = fmt.Sprintf("this object is %d B, which fits in ONE frame, so it is stored at its true length and its shard is %d B (R-SHORT-FINAL-STRIPE)", objectBytes, shardBytes)
+		cause = fmt.Sprintf("this object is %d B, which fits in ONE frame, so it is stored at its true length and its shard is %d B", objectBytes, shardBytes)
 		fix = "NO chunk size changes this — the shard IS the object; under a repair economy this object's durability is prepay-only (fund its escrow), because its serves are also too small to skim a credit"
 	}
 	if base == 0 {
-		return fmt.Sprintf("warning: this publish pays a ZERO repair bounty: %s, which is below one credit of fetch (%d B), so under a repair economy (-economy) a repair of it pays NOTHING (G-λ-8); %s",
+		return fmt.Sprintf("warning: this publish pays a ZERO repair bounty: %s, which is below one credit of fetch (%d B), so under a repair economy (-economy) a repair of it pays NOTHING; %s",
 			cause, int64(credit.DeliveryBytesPerCredit), fix)
 	}
 	exactE5, lossTenths := credit.RepairBountyTruncation(k, shardBytes)
-	return fmt.Sprintf("warning: this publish TRUNCATES the repair bounty: %s, worth %s credits but paying %d — a repair of this object short-pays the repairer by %s%% of the price (R-BOUNTY-TRUNCATION, G-BT-1); %s",
+	return fmt.Sprintf("warning: this publish TRUNCATES the repair bounty: %s, worth %s credits but paying %d — a repair of this object short-pays the repairer by %s%% of the price; %s",
 		cause, creditsE5(exactE5), base, tenthsPct(lossTenths), fix)
 }
 
@@ -218,7 +212,7 @@ func tenthsPct(t int64) string {
 	return fmt.Sprintf("%d.%d", t/10, t%10)
 }
 
-// ---- R2.9 delivery session: the derived ceiling, the quantized pin, the S5 line.
+// ---- delivery session: the derived ceiling, the quantized pin, the S5 line.
 
 // ---- the delivery idle window: the bound, the floor, the shipped default.
 //
@@ -229,31 +223,29 @@ func tenthsPct(t int64) string {
 
 // deliveryIdleBound is a CONSERVATIVE ENVELOPE, not a mechanism the reaper is racing. Its
 // status changed on 2026-09-09: the window was originally sized on the sentence "a chain
-// stall reaps every live session", and that sentence is refuted (`R-SESSION-WALLCLOCK-STEP`
-// in docs/design/m0.md — nothing in the settle or fetch path reads the chain, driven). With
-// the causal path withdrawn, this number is adopted because ratified call 4 of
-// `D-TRUE-UP-CALLS-2026-09-07` instructs a window ABOVE the bound, and because it is a safe
-// envelope on how long an honest fetcher may be gapped for reasons of its own. It is the
-// worst stall the model admits: a LOST entry forward is bounded
-// by the re-keyed takeover at ≤ (N+2)·ChainSyncInterval + G = 14·30 + 10 s at N = 12
-// (docs/decisions.md D-H43-WORKLESS-DESIGNEE (21), ratified 2026-09-07). It DOMINATES the
-// 190 s modal tier of D-CONSENSUS-ARMING (19), which is why a defensive window is sized
-// against it and not against the tier: a window that only clears the modal case is broken
-// by the worst case the same document publishes.
+// stall reaps every live session", and that sentence is refuted — nothing in the settle
+// or fetch path reads the chain. With the causal path withdrawn, this number is adopted
+// deliberately as a window ABOVE
+// the bound, and because it is a safe envelope on how long an honest fetcher may be gapped
+// for reasons of its own. It is the worst stall the model admits: a LOST entry forward is
+// bounded by the re-keyed takeover at ≤ (N+2)·ChainSyncInterval + G = 14·30 + 10 s at N =
+// 12 (21). It DOMINATES the 190 s modal tier of (19), which is why a defensive window is
+// sized against it and not against the tier: a window that only clears the modal case is
+// broken by the worst case the same document publishes.
 //
 // FIELD STATUS, stated precisely (corrected 2026-09-09 by the pre-freeze derivation-route
 // audit; the prior sentence here claimed BOTH numbers were field-confirmed and that is
-// FALSE). The 190 s modal tier IS field-confirmed: report-97e3101-deep.md row
+// FALSE). The 190 s modal tier IS field-confirmed: the field report, row
 // 6-fault-tolerance drives exactly it. The 430 s figure is NOT. Row 10a-stall-drill also
 // computes 430, but from an UNRELATED formula — (3+n_syb)*30 + 220 at n_syb = 4
 // (integration/cloudtest/scenarios.sh, the staggered-takeover ladder for DECLINING
 // ATTESTERS) — which merely collides numerically with (N+2)*30 + G = 430 at N = 12. A
 // coincident total is not a measurement of this bound: 10a never exercises a lost entry
-// forward. So the number governing this floor rests on the ratified MODEL
-// (D-H43-WORKLESS-DESIGNEE (21)) and on call 4's instruction to size above the bound, and
-// it is a conservative envelope rather than a confirmed quantity. Call 4's own stated
-// release precondition named the 190 s bound and IS met; do not read that as covering this
-// one. Driving the lost-forward path in the field is owed (Lane E5, at the RC grade).
+// forward. So the number governing this floor rests on the MODEL (21) and on call 4's
+// instruction to size above the bound, and it is a conservative envelope rather than a
+// confirmed quantity. Call 4's own stated release precondition named the 190 s bound and
+// IS met; do not read that as covering this one. Driving the lost-forward path in the
+// field is owed (this lane, at the RC grade).
 const deliveryIdleBound = 430 * time.Second
 
 // deliveryIdleStampDivisor mirrors core/node's unexported deliveryStampDivisor, which
@@ -265,31 +257,31 @@ const deliveryIdleStampDivisor = 4
 
 // deliveryIdleFloor is the smallest -delivery-idle-window the daemon accepts. The stamp
 // coarsening spends up to a whole bucket of the window before the reaper ever looks, so a
-// window of D only GUARANTEES D − D/divisor of survival since a real settlement (MEASURED
-// at 0.751× on a 1000 s window: core/node TestC2GuaranteedSurvivalIsThreeQuartersOfTheWindow).
-// The floor is therefore the bound scaled by divisor/(divisor−1), not the bound itself:
-// a daemon started at exactly deliveryIdleBound reaps a session gapped only 322.5 s.
-// This REPLACES the old 1 s floor, which existed only to keep the idle/2 ticker interval
-// positive (blind PE item 3) and enforced nothing about the bound.
+// window of D only GUARANTEES D − D/divisor of survival since a real settlement MEASURED at
+// 0.751× on a 1000 s window: core/node TestC2GuaranteedSurvivalIsThreeQuartersOfTheWindow).
+// The floor is therefore the bound scaled by divisor/(divisor−1), not the bound itself: a
+// daemon started at exactly deliveryIdleBound reaps a session gapped only 322.5 s. This
+// REPLACES the old 1 s floor, which existed only to keep the idle/2 ticker interval positive
+// and enforced nothing about the bound.
 const deliveryIdleFloor = deliveryIdleBound * deliveryIdleStampDivisor / (deliveryIdleStampDivisor - 1)
 
-// deliveryIdleFieldStall is the one stall the field has actually produced: run
-// c450985-deep, block 43 committed 17 min 20 s after block 42. That is the DEFECT the A1
-// fix closed, so it is not a bound — it is carried here as the margin datum the shipped
+// deliveryIdleFieldStall is the one stall the field has actually produced: the field
+// run, block 43 committed 17 min 20 s after block 42. That is the DEFECT the A1 fix
+// closed, so it is not a bound — it is carried here as the margin datum the shipped
 // default is required to clear.
 const deliveryIdleFieldStall = 1040 * time.Second
 
-// deliveryIdleDefault is the SHIPPED -delivery-idle-window (owner call 4 of
-// D-TRUE-UP-CALLS-2026-09-07: refuse-until-set is released once the bound is
-// field-confirmed, and the default is then set ABOVE the bound).
+// deliveryIdleDefault is the SHIPPED -delivery-idle-window of:
+// refuse-until-set is released once the bound is field-confirmed, and the
+// default is then set ABOVE the bound.
 //
 // 24m, not the tighter 10m that also clears the floor, for two measured reasons:
-//   - 10m guarantees 450 s against a 430 s bound: 4.7 % of margin, inside the measurement
-//     error of the block interval the bound's inputs are quoted at (45.865 s/height
-//     measured vs the 30 s ChainSyncInterval the bound is computed at).
-//   - 10m does NOT survive a repeat of the stall the field produced. Driven, both
-//     candidates, both directions: core/node TestC2SessionSurvivesTheWorstAdmittedStall
-//     rows candidate-tight-10m/1040s (reaped) and candidate-margin-24m/1040s (alive).
+// - 10m guarantees 450 s against a 430 s bound: 4.7 % of margin, inside the measurement
+// error of the block interval the bound's inputs are quoted at (45.865 s/height
+// measured vs the 30 s ChainSyncInterval the bound is computed at).
+// - 10m does NOT survive a repeat of the stall the field produced. Driven, both
+// candidates, both directions: core/node TestC2SessionSurvivesTheWorstAdmittedStall
+// rows candidate-tight-10m/1040s (reaped) and candidate-margin-24m/1040s (alive).
 //
 // It is a DURATION, not an epoch count: the bound is denominated in ChainSyncInterval and
 // does not move with the block time, so an epoch-denominated default would drift away from
@@ -316,27 +308,27 @@ const (
 	_ = uint(deliveryIdleFloor - deliveryIdleFloor/deliveryIdleStampDivisor - deliveryIdleBound)          // the floor's guaranteed survival clears the bound
 	_ = uint(deliveryIdleDefault - deliveryIdleFloor)                                                     // the default is at or above the floor
 	_ = uint(deliveryIdleDefault - deliveryIdleDefault/deliveryIdleStampDivisor - deliveryIdleFieldStall) // and clears the observed field stall
-	_ = uint(deliveryIdleFloor/2 - time.Second)                                                           // the idle/2 ticker interval stays positive (PE item 3)
+	_ = uint(deliveryIdleFloor/2 - time.Second)                                                           // the idle/2 ticker interval stays positive)
 )
 
 // deliverySweepInterval is the wall-clock cadence of the daemon's periodic delivery
 // sweep: half the INSTALLED window, so a silent server still closes an idle session
 // within 1.5× the window. The half is why deliveryIdleFloor may never fall to a
-// sub-second value — time.NewTicker panics on a non-positive interval (blind PE item 3),
-// and at the derived floor the interval is 4m46.67s.
+// sub-second value — time.NewTicker panics on a non-positive interval, and at the
+// derived floor the interval is 4m46.67s.
 //
-// UNGATED: R-DELIVERY-SWEEP-TICKER-UNFIRED. This function's ARITHMETIC is gated
+// UNGATED:. This function's ARITHMETIC is gated
 // (TestC2SweepIntervalIsHalfTheInstalledWindow); the goroutine that FIRES it
 // (cmd/silt/daemon.go) is observed at no tier. Every test caller of
 // SweepDeliverySessions invokes it directly, and at the shipped 24m window the ticker
-// fires at 12m, which no graded cloud flow lives long enough to see — before Lane C2 the
-// cloudtest close poll was the only observation that the shipped daemon ever swept.
+// fires at 12m, which no graded cloud flow lives long enough to see — before this lane
+// the cloudtest close poll was the only observation that the shipped daemon ever swept.
 func deliverySweepInterval(installed time.Duration) time.Duration { return installed / 2 }
 
-// deliverySessionCeiling is C3 (G-R212-8 cert §3.1): D_max = ⌊f/p⌋·U bytes per anchor
-// and k_max_delivery = ⌈D_max·p/(U·f)⌉ = 1 anchor per open, DERIVED from the face this
-// ledger charges (the ONE fee constant), never pinned. A ceiling pinned independently of
-// f re-creates the burn the relay re-price removed (T-RELAY-GRAN; gate G-λ-8-1).
+// deliverySessionCeiling is C3: D_max = ⌊f/p⌋·U bytes per anchor and k_max_delivery =
+// ⌈D_max·p/(U·f)⌉ = 1 anchor per open, DERIVED from the face this ledger charges (the
+// ONE fee constant), never pinned. A ceiling pinned independently of f re-creates the
+// burn the relay re-price removed (the gate).
 func deliverySessionCeiling(fee int64) (dMax int64, kMax int) {
 	if fee <= 0 {
 		return 0, 0
@@ -346,13 +338,13 @@ func deliverySessionCeiling(fee int64) (dMax int64, kMax int) {
 	return dMax, kMax
 }
 
-// grantFundsThePinInWholeFaces is G-λ-8-2, the QUANTIZED form of the grant/r pin: a
-// face is indivisible and spent at one server, so the pin is funded iff the faces the
-// pin needs on BOTH lanes fit in one grant: ⌈B_pin/D_max⌉ + ⌈B_pin/relayBytesPerAnchor⌉
-// ≤ ⌊g/f⌋. Today 6 + 3 = 9 ≤ 10 — one face of margin (cert §8). This is the φ = 1
-// reading (every face fully consumed); the certified refutation of the COMPOSED claim
-// (φ ≪ 1 on the real path while G-6 burns the remainder) is the owner's call, not this
-// gate's — the gate holds the arithmetic that must survive either way.
+// grantFundsThePinInWholeFaces is, the QUANTIZED form of the grant/r pin: a face is
+// indivisible and spent at one server, so the pin is funded iff the faces the pin needs
+// on BOTH lanes fit in one grant: ⌈B_pin/D_max⌉ + ⌈B_pin/relayBytesPerAnchor⌉ ≤ ⌊g/f⌋.
+// Today 6 + 3 = 9 ≤ 10 — one face of margin. This is the φ = 1 reading (every face
+// fully consumed); the refutation of the COMPOSED claim (φ ≪ 1 on the real path while
+// burns the remainder) is the project call, not this gate's — the gate holds the
+// arithmetic that must survive either way.
 func grantFundsThePinInWholeFaces(grant, fee, relayBytesPerCredit int64) (need, have int64, ok bool) {
 	if fee <= 0 || relayBytesPerCredit <= 0 {
 		return 0, 0, false
@@ -365,13 +357,13 @@ func grantFundsThePinInWholeFaces(grant, fee, relayBytesPerCredit int64) (need, 
 	return need, have, need <= have
 }
 
-// deliveryAffordabilityLine is the S5 disclosure (R2.9 gate B-11): one announced line,
+// deliveryAffordabilityLine is the S5 disclosure (gate): one announced line,
 // every number COMPUTED from the constants and the ledger, never typed. Registered in
 // observable_contract.go with TestAffordabilityLineIsAnnounced as its asserter.
 func deliveryAffordabilityLine(grant, fee, relayBytesPerCredit int64, idle string) string {
 	dMax, kMax := deliverySessionCeiling(fee)
 	need, have, _ := grantFundsThePinInWholeFaces(grant, fee, relayBytesPerCredit)
-	return fmt.Sprintf("delivery settlement: p=%d credit per %d B (U/p=%d B/credit; self-mint Dλ=%d B/credit, PF %.2f); anchor face %d funds %d increments = %d B (%.2f GiB) per session, k_max=%d; one grant = %d faces, the 64 GiB pin needs %d faces across delivery+relay; idle window %s; unsettled remainder: a DEPOSIT returned to the fetcher's account when its anchor leaves the %d-epoch guard window (D-R2.9-NODE-HALF-CALLS 1′; the relay lane keeps the burn)",
+	return fmt.Sprintf("delivery settlement: p=%d credit per %d B (U/p=%d B/credit; self-mint Dλ=%d B/credit, PF %.2f); anchor face %d funds %d increments = %d B (%.2f GiB) per session, k_max=%d; one grant = %d faces, the 64 GiB pin needs %d faces across delivery+relay; idle window %s; unsettled remainder: a DEPOSIT returned to the fetcher's account when its anchor leaves the %d-epoch guard window (1′; the relay lane keeps the burn)",
 		int64(credit.DeliveryIncrementCredit), int64(credit.DeliveryIncrementBytes), int64(credit.DeliveryBytesPerCredit), int64(credit.ServeMintBytesPerCredit),
 		float64(credit.ServeMintBytesPerCredit)/float64(credit.DeliveryBytesPerCredit),
 		fee, dMax/credit.DeliveryIncrementBytes, dMax, float64(dMax)/float64(1<<30), kMax, have, need, idle, credit.PaidSerialWindow+1)

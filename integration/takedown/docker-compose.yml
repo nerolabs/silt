@@ -1,13 +1,13 @@
 # Field test #6 — takedown. One flat container network; three real daemons:
 #
-#   10.90.0.10  val   chain-backed validator + registry (trusted self-commit).
-#                     Holds the on-chain ledger, so it is where the -revoke
-#                     existence check is exercised (real vs bogus root).
-#   10.90.0.11  opA   an independent operator (own file-backed registry) that
-#                     will load a -denylist and take the target root DOWN.
-#   10.90.0.12  opB   a second independent operator (own file-backed registry)
-#                     that NEVER denies — the per-operator control: it keeps
-#                     serving the exact same (convergent → identical) root.
+#  10.90.0.10 val chain-backed validator + registry (trusted self-commit).
+#  Holds the on-chain ledger, so it is where the -revoke
+#  existence check is exercised (real vs bogus root).
+#  10.90.0.11 opA an independent operator (own file-backed registry) that
+#  will load a -denylist and take the target root DOWN.
+#  10.90.0.12 opB a second independent operator (own file-backed registry)
+#  that NEVER denies — the per-operator control: it keeps
+#  serving the exact same (convergent → identical) root.
 #
 # opA and opB are deliberately SEPARATE operators with their own registries so
 # the per-operator scope is unambiguous: the same convergent file yields the

@@ -1,58 +1,52 @@
 package node
 
-// R2.9 — the paid DELIVERY SESSION: the node half (the ledger half is
-// core/credit/deliveryanchor.go; the wire vocabulary core/demand/session.go). The
-// certified shape, clause by clause (Researcher certification
-// silt-agent-memory/researcher/reviews/research-outcome/R2.9-G-R212-8-delivery-anchor-quantization-RESEARCH-CERTIFICATION-2026-09-06.md
-// §3.1; deliberation docs/thinking/2026-09-06-r2.9-node-half.md):
+// The paid DELIVERY SESSION: the node half (the ledger half is core/credit/deliveryanchor.go; the wire vocabulary
+// core/demand/session.go). The shape, clause by clause:
 //
-//	C1  one live session per (this server, durable fetcher); the fetcher is the
-//	    authenticated wire peer, the identity the serve path already credits.
-//	C2  open = k = 1 demand-domain anchor (the demand token this fetcher bought here),
-//	    verified under this node's OWN committed key_E newest-epoch-first, then spent
-//	    all-or-nothing into the shared paid-serial guard, DURABLY, before admission
-//	    (OpenRelaySession steps 4–8, one lane over). Budget = Σ face.
-//	C3  the byte ceiling is DERIVED from the face (credit.DeliveryBytesPerAnchor), never
-//	    pinned: a session may acknowledge at most budget/p increments in total.
-//	C4  increments are authorized by the fetcher's SIGNED cumulative count (receipt v3),
-//	    not a preimage chain — the fetcher signs only after the fetch path
-//	    content-verified the bytes (B3).
-//	C5  settle INCREMENTALLY against a MONOTONE counter: a receipt with cumulative count
-//	    j pays for the delta since the last one; a lower or equal count pays 0 by
-//	    arithmetic, not by a guard lookup; settled ≤ budget always (R2.14's C-1).
-//	C6  per-increment reversal per OBJECT is the ledger's (SettleDelivery).
-//	C7  a session spans objects and fetch episodes until its budget is exhausted;
-//	    nothing else closes it but an idle timeout. No object-keyed collection lives on
-//	    the session (Don't #3, cert §7; gate G-λ-8-7).
-//	C8  top-up = MsgDeliveryFund with a fresh anchor: one all-or-nothing guard spend,
-//	    budget += face.
-//	C9  close on exhaustion, or on IDLE measured from the last settlement on the node's
-//	    INJECTED clock (never the admit epoch, never the chain — cert §6.2; wall time in
-//	    production, so a forward clock step reaps every live session at once —
-//	    R-SESSION-WALLCLOCK-STEP).
-//	    The idle window is NO LONGER refuse-until-set. Owner call 4 of
-//	    D-TRUE-UP-CALLS-2026-09-07 released it on its own conditional once the liveness
-//	    bound was field-confirmed, and the SHIPPED default is 24m (cmd/silt/numeraire.go
-//	    deliveryIdleDefault; value ratified D-C2-IDLE-WINDOW-VALUE 2026-09-09). What
-//	    survives of the refusal: the daemon refuses a window below the derived floor
-//	    (bound × divisor/(divisor−1)), and a non-positive window here leaves the lane off.
-//	    The remainder budget − settled is accounted ONCE at close through the ledger's
-//	    CloseDeliverySession. Under G-6 as RATIFIED (D-R2.9-NODE-HALF-CALLS call 1, amended
-//	    1′) that is a REFUND, not a burn: the remainder is a DEPOSIT returned to the durable
-//	    fetcher at the LATER of the anchors' release epoch and the close. The owner call is
-//	    CLOSED. It burns only in the two named corners — the pending-refund table at its cap,
-//	    and a fetcher with no account on this ledger (R-REFUND-NEEDS-AN-ACCOUNT).
+//	C1 one live session per (this server, durable fetcher); the fetcher is the
+//	 authenticated wire peer, the identity the serve path already credits.
+//	C2 open = k = 1 demand-domain anchor (the demand token this fetcher bought here),
+//	 verified under this node's OWN committed key_E newest-epoch-first, then spent
+//	 all-or-nothing into the shared paid-serial guard, DURABLY, before admission
+//	 (OpenRelaySession steps 4–8, one lane over). Budget = Σ face.
+//	C3 the byte ceiling is DERIVED from the face (credit.DeliveryBytesPerAnchor), never
+//	 pinned: a session may acknowledge at most budget/p increments in total.
+//	C4 increments are authorized by the fetcher's SIGNED cumulative count (receipt v3),
+//	 not a preimage chain — the fetcher signs only after the fetch path
+//	 content-verified the bytes (B3).
+//	C5 settle INCREMENTALLY against a MONOTONE counter: a receipt with cumulative count
+//	 j pays for the delta since the last one; a lower or equal count pays 0 by
+//	 arithmetic, not by a guard lookup; settled ≤ budget always.
+//	C6 per-increment reversal per OBJECT is the ledger's (SettleDelivery).
+//	C7 a session spans objects and fetch episodes until its budget is exhausted;
+//	 nothing else closes it but an idle timeout. No object-keyed collection lives on
+//	 the session (Don't #3; the gate).
+//	C8 top-up = MsgDeliveryFund with a fresh anchor: one all-or-nothing guard spend,
+//	 budget += face.
+//	C9 close on exhaustion, or on IDLE measured from the last settlement on the node's
+//	 INJECTED clock (never the admit epoch, never the chain; wall time in
+//	 production, so a forward clock step reaps every live session at once).
+//	 The idle window is NO LONGER refuse-until-set: the SHIPPED default is 24m
+//	 (cmd/silt/numeraire.go deliveryIdleDefault). What
+//	 survives of the refusal: the daemon refuses a window below the derived floor
+//	 (bound × divisor/(divisor−1)), and a non-positive window here leaves the lane off.
+//	 The remainder budget − settled is accounted ONCE at close through the ledger's
+//	 CloseDeliverySession. That is a REFUND, not a burn: the remainder is a DEPOSIT
+//	 returned to the durable fetcher at the LATER of the anchors' release epoch and
+//	 the close. The burn is
+//	 CLOSED. It burns only in the two named corners — the pending-refund table at its cap,
+//	 and a fetcher with no account on this ledger.
 //	C10 a hard live-session cap (deliveryMaxLiveSessions): refuse at cap, never evict.
 //
-// The v2 flat path (MsgDeliveryReceipt: token spent at REDEEM) is RETIRED (B-9): the
+// The v2 flat path (MsgDeliveryReceipt: token spent at REDEEM) is RETIRED: the
 // kind is refused with a named reason (demandrole.go handleDeliveryReceipt).
 //
-// M0 (cert §7): the session record adds no who-fetched-what capability the shipped
+// M0: the session record adds no who-fetched-what capability the shipped
 // receipt does not already hand the server (Receipt.Fetcher is the durable key in the
 // clear); the idle stamp is stored COARSE (deliveryStampGranularity) so it is no finer
 // an access record than the reaper needs; the close log line carries no identity and
 // no object (the relay lane's audit rule). Serving stays FREE: nothing here gates
-// MsgFetchChunk (cert §3.2).
+// MsgFetchChunk.
 
 import (
 	"bytes"
@@ -70,8 +64,8 @@ import (
 // "delivery: idle window unset — refuse-until-set" to an operator and had ZERO references
 // anywhere in the tree (measured, whole tree): an unreferenced package-level const does not
 // fail to build, which is how a retired premise outlived every caller that could say it.
-// Owner call 4 of D-TRUE-UP-CALLS-2026-09-07 released refuse-until-set and the flag ships a
-// 24m default, so there was nothing to re-word it to.
+// A project decision of released refuse-until-set and the flag ships a 24m default, so there was
+// nothing to re-word it to.
 type deliveryError string
 
 func (e deliveryError) Error() string { return string(e) }
@@ -105,15 +99,15 @@ const (
 // refused; idle expiry, not the cap, reclaims.
 const deliveryMaxLiveSessions = 4096
 
-// deliveryStampDivisor sets the idle stamp's granularity: idle/4. The reaper needs
-// no finer a resolution, and a fine last-activity timestamp per durable identity would
-// be a finer access record than anything shipped (cert §7, GATED: coarse).
+// deliveryStampDivisor sets the idle stamp's granularity: idle/4. The reaper needs no
+// finer a resolution, and a fine last-activity timestamp per durable identity would be
+// a finer access record than anything shipped, GATED: coarse.
 const deliveryStampDivisor = 4
 
 // DeliverySession is one live paid delivery session. It holds exactly the fields a
-// decided function reads (cert §7 T-DONT3): the budget and counters for conservation,
-// the stamp for the reaper, the commitment for receipt binding. NO object-keyed
-// collection (gate G-λ-8-7 asserts this by reflection).
+// decided function reads T-DONT3: the budget and counters for conservation, the stamp
+// for the reaper, the commitment for receipt binding. NO object-keyed collection (the
+// gate asserts this by reflection).
 type DeliverySession struct {
 	handle     uint64
 	fetcher    ports.NodeID // the durable fetcher (the authenticated peer)
@@ -123,10 +117,10 @@ type DeliverySession struct {
 	settled    int64        // credits settled so far, gross; monotone; ≤ budget
 	count      uint64       // cumulative acknowledged increments; monotone
 	lastSettle ports.Time   // COARSE stamp of the last settlement (or the open)
-	// maxAnchorEpoch is the newest issue epoch among the session's anchors (open + funds):
-	// the unsettled remainder is a deposit released when that anchor leaves the guard
-	// window (M2, D-R2.9-NODE-HALF-CALLS 1′), so the epoch rides the session, never a new
-	// dimension on the guard entry (G-6R-8).
+	// maxAnchorEpoch is the newest issue epoch among the session's anchors (open +
+	// funds): the unsettled remainder is a deposit released when that anchor leaves the
+	// guard window (M2 1′), so the epoch rides the session, never a new dimension on
+	// the guard entry.
 	maxAnchorEpoch uint64
 }
 
@@ -136,9 +130,9 @@ func (s *DeliverySession) Settled() int64 { return s.settled }
 func (s *DeliverySession) Count() uint64  { return s.count }
 
 // deliveryAnchorSpender / deliverySettler / deliveryCloser are the optional halves of
-// ports.CreditLedger the R2.9 lane needs (core/credit implements them). Optional so the
-// port stays narrow and test doubles need not carry them; a ledger without them
-// refuses every open with a named reason.
+// ports.CreditLedger the lane needs (core/credit implements them). Optional so the port
+// stays narrow and test doubles need not carry them; a ledger without them refuses
+// every open with a named reason.
 type deliveryAnchorSpender interface {
 	SpendDeliveryAnchors(server ports.NodeID, anchors []ports.RelayAnchor) (face int64, reason string)
 }
@@ -154,14 +148,13 @@ type refundReleaser interface{ ReleaseDueRefunds() }
 // idle window (C9). The daemon refuses any window below the derived floor
 // (deliveryIdleFloor = bound × divisor/(divisor−1)); a non-positive window is one such
 // window, so it is refused there too. The label for that refusal is NOT
-// "refuse-until-set" — that premise was released by owner call 4 of
-// D-TRUE-UP-CALLS-2026-09-07 and the flag now ships a 24m default. Here a non-positive
-// window leaves the lane off so a misuse cannot admit a session the reaper would
-// never close. The reaper is LAZY — it sweeps on every open, fund and settle (the
-// relay lane's sweepRelaySeen shape, and the cap check sweeps first) — plus
-// SweepDeliverySessions for a periodic caller (the daemon), so a silent server still
-// closes idle sessions. No self-re-arming timer: one would keep the deterministic sim
-// from ever reaching quiescence (the demandTick rule).
+// "refuse-until-set" — that premise was released by of and the flag now ships a 24m
+// default. Here a non-positive window leaves the lane off so a misuse cannot admit a
+// session the reaper would never close. The reaper is LAZY — it sweeps on every open,
+// fund and settle (the relay lane's sweepRelaySeen shape, and the cap check sweeps
+// first) — plus SweepDeliverySessions for a periodic caller (the daemon), so a silent
+// server still closes idle sessions. No self-re-arming timer: one would keep the
+// deterministic sim from ever reaching quiescence (the demandTick rule).
 func (n *Node) EnableDeliverySessions(idle ports.Duration) {
 	if idle <= 0 {
 		return
@@ -177,7 +170,7 @@ func (n *Node) EnableDeliverySessions(idle ports.Duration) {
 // caller that has to state the window (a boot banner, a status surface) states what is
 // installed rather than re-reading whatever input it thinks was used: the daemon's flag
 // check and the daemon's install are two reads of one variable, and only the check is
-// gated, so the announcement is what ties the second read to the first (G-C2-18).
+// gated, so the announcement is what ties the second read to the first.
 // Zero when the lane is off.
 func (n *Node) DeliveryIdleWindow() ports.Duration { return n.deliveryIdle }
 
@@ -217,8 +210,8 @@ func (n *Node) deliveryStamp(now ports.Time) ports.Time {
 }
 
 // sweepDeliverySessions closes every session idle for at least the window, measured
-// from its last settlement on the node's clock (C9; cert §6.2 point 1: idleness, not
-// the admit epoch — a session settling every tick lives; a silent one is reaped).
+// from its last settlement on the node's clock (C9 point 1: idleness, not the admit
+// epoch — a session settling every tick lives; a silent one is reaped).
 func (n *Node) sweepDeliverySessions(now ports.Time) {
 	if !n.deliveryAccept {
 		return
@@ -232,10 +225,9 @@ func (n *Node) sweepDeliverySessions(now ports.Time) {
 
 // closeDeliverySession removes the session FIRST (the SettleRelaySession delete-first
 // ordering: nothing can settle or fund it after this) and then accounts the remainder
-// ONCE through the ledger (G-λ-8-6), as a DEPOSIT released to the fetcher when the
-// session's anchors leave the guard window (M1 + M2, D-R2.9-NODE-HALF-CALLS 1′). The
-// log line carries per-session numbers and the reason only — no identity, no object
-// (M0 audit).
+// ONCE through the ledger, as a DEPOSIT released to the fetcher when the session's
+// anchors leave the guard window (M1 + M2 1′). The log line carries per-session
+// numbers and the reason only — no identity, no object (M0 audit).
 func (n *Node) closeDeliverySession(handle uint64, why string) {
 	s, ok := n.deliverySessions[handle]
 	if !ok {
@@ -254,7 +246,7 @@ func (n *Node) closeDeliverySession(handle uint64, why string) {
 }
 
 // verifyDeliveryAnchors verifies each anchor under this node's OWN keyset in the
-// DEMAND domain (B-7: a relay-domain credential fails here, before any ledger call)
+// DEMAND domain (a relay-domain credential fails here, before any ledger call)
 // and returns the (epoch, serial) pairs the ledger guards.
 func (n *Node) verifyDeliveryAnchors(anchors []demand.Token) ([]ports.RelayAnchor, error) {
 	if len(anchors) == 0 {
@@ -275,12 +267,12 @@ func (n *Node) verifyDeliveryAnchors(anchors []demand.Token) ([]ports.RelayAncho
 	if ks == nil {
 		return nil, errDeliveryNoIssuerKey
 	}
-	cur := n.chainEpoch() // the epoch the keyset was pruned with; the ledger reads the same clock (R2.10 / F8)
+	cur := n.chainEpoch() // the epoch the keyset was pruned with; the ledger reads the same clock
 	spend := make([]ports.RelayAnchor, 0, len(anchors))
 	for _, a := range anchors {
 		e, ok := ks.VerifyInWindow(cur, a)
 		if !ok {
-			return nil, errDeliveryAnchorInvalid // ≤ W+1 modexps for a garbage open (T-7)
+			return nil, errDeliveryAnchorInvalid // ≤ W+1 modexps for a garbage open
 		}
 		spend = append(spend, ports.RelayAnchor{Epoch: e, Serial: a.Serial})
 	}
@@ -330,7 +322,7 @@ func (n *Node) OpenDeliverySession(from ports.NodeID, open demand.SessionOpen) (
 	if err != nil {
 		return nil, err
 	}
-	face, err := n.spendDeliveryAnchors(spend) // all-or-nothing, durable before admission (G-λ-8-9)
+	face, err := n.spendDeliveryAnchors(spend) // all-or-nothing, durable before admission
 	if err != nil {
 		return nil, err
 	}
@@ -423,17 +415,16 @@ func (n *Node) SettleDeliveryReceipt(from ports.NodeID, r demand.SessionReceipt)
 		return 0, errDeliveryNoLedger
 	}
 	delta := int64(r.Count - s.count)
-	settled, paid, why := st.SettleDelivery(n.id, from, r.Object, delta, s.budget-s.settled, s.settled) // prior = the session's cumulative settled: the skim floors on the SESSION (G-SKIM)
+	settled, paid, why := st.SettleDelivery(n.id, from, r.Object, delta, s.budget-s.settled, s.settled) // prior = the session's cumulative settled: the skim floors on the SESSION
 	if why != credit.ReasonPaid {
 		return 0, fmt.Errorf("%w: %s", errDeliverySettleRefused, why)
 	}
 	s.settled += settled
 	s.count = r.Count
 	s.lastSettle = n.deliveryStamp(n.clock.Now())
-	// The witnessed-demand observable, denominated in the LEDGER's settled increments
-	// (certified 2026-09-06, demand.Bank.Witness rule 1–2): never the receipt's count,
-	// never the delta; bumped AFTER ReasonPaid and never gating the settlement (rule 3).
-	// Balance only, never standing.
+	// The witnessed-demand observable, denominated in the LEDGER's settled
+	// increments: never the receipt's count, never the delta; bumped AFTER ReasonPaid
+	// and never gating the settlement (rule 3). Balance only, never standing.
 	var witnessed bool
 	if n.demandBank != nil {
 		witnessed, _ = n.demandBank.Witness(r.Object, r.Fetcher, settled/credit.DeliveryIncrementCredit)
@@ -518,15 +509,16 @@ func (n *Node) handleDeliverySettle(from ports.NodeID, msg ports.Message) {
 	settled, err := n.SettleDeliveryReceipt(from, r)
 	if err != nil {
 		if deliveryPostAuth(err) {
-			// "delivery receipt paid NO credit" is the announced S5 marker (observable_contract.go)
-			// — the one signal an operator gets when an AUTHENTICATED receipt on a live session
-			// settles nothing. Post-auth only: the owner, commitment and signature checks passed.
+			// "delivery receipt paid NO credit" is the announced S5 marker
+			// (observable_contract.go) — the one signal an operator gets when an
+			// AUTHENTICATED receipt on a live session settles nothing. Post-auth only: the
+			// project, commitment and signature checks passed.
 			n.logf(ports.LogWarn, "delivery receipt paid NO credit", "object", r.Object, "reason", err.Error(),
 				"serial_guard_refusals", guardFullRefusals(n.ledger))
 		} else {
-			// Pre-auth refusals (no session, not the owner, bad signature, lane off) are one
-			// unauthenticated message per line with no rate limit on logf: Debug, never WARN
-			// (blind PE, 2026-09-07).
+			// Pre-auth refusals (no session, not the project, bad
+			// signature, lane off) are one unauthenticated message per
+			// line with no rate limit on logf: Debug, never WARN.
 			n.logf(ports.LogDebug, "delivery settle refused", "reason", err.Error())
 		}
 		deny(err)

@@ -1,27 +1,27 @@
 package node
 
-// The judge-side half of D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12 — the three
-// items the mechanism certification discharged the research gate for, and nothing
-// else. Each test here was driven RED against the tree that preceded its fix.
+// The judge-side half of — the three items the mechanism research discharged the
+// research gate for, and nothing else. Each test here was driven RED against the
+// tree that preceded its fix.
 //
-//	A  The claimed position is screened against the manifest BEFORE any survivor
-//	   fetch. A listed position whose committed id disagrees with claim.ShardID is
-//	   SLASHED; a position the manifest does not list is DENIED.
-//	B  repairproof.VerifyByRecompute counts the implicit-zero padding of a short
-//	   final stripe, so a stripe whose every stored shard the judge can see is
-//	   judgeable. Its unit gate is core/repairproof; this file carries the wired arm.
-//	D  A (root, stripe, pos) already PAID draws nothing on a later claim. Its main
-//	   assertion is the CONVERTED RT-RC-2 gate in rt_repairclaim_gates_test.go; what
-//	   lives here are the TWO control legs that fix WHERE the record is written — one
-//	   for the deny arm and one for the release-that-paid-nothing arm. Two arms,
-//	   because the deny one alone leaves the realistic mis-placement uncovered
-//	   (measured in blind review, 2026-09-12).
+//	A The claimed position is screened against the manifest BEFORE any survivor
+//	 fetch. A listed position whose committed id disagrees with claim.ShardID is
+//	 SLASHED; a position the manifest does not list is DENIED.
+//	B repairproof.VerifyByRecompute counts the implicit-zero padding of a short
+//	 final stripe, so a stripe whose every stored shard the judge can see is
+//	 judgeable. Its unit gate is core/repairproof; this file carries the wired arm.
+//	D A (root, stripe, pos) already PAID draws nothing on a later claim. Its main
+//	 assertion is the CONVERTED gate in repair_claim_gates_test.go; what
+//	 lives here are the TWO control legs that fix WHERE the record is written — one
+//	 for the deny arm and one for the release-that-paid-nothing arm. Two arms,
+//	 because the deny one alone leaves the realistic mis-placement uncovered
+//	 (measured).
 //
 // WHAT IS NOT HERE, deliberately: the loss witness. Nothing below asserts that the
 // claimed position was ever missing, and nothing below may be read as doing so. The
-// witness is GATED behind R-PROBE-FALSE-NEGATIVE-RATE, RT-RC-3 stays open, and the
-// honest summary of what these three buy is that the bounty becomes correctly
-// METERED and stays MIS-ATTRIBUTABLE.
+// witness is GATED behind, the gate stays open, and the honest summary of what these
+// three buy is that the bounty becomes correctly METERED and stays
+// MIS-ATTRIBUTABLE.
 
 import (
 	"testing"
@@ -106,7 +106,7 @@ func TestRepairJudge_WrongIdAtAListedPositionIsSlashedBeforeAnyFetch(t *testing.
 }
 
 // TestRepairJudge_UnlistedPositionIsDeniedWithoutFetchOrRetry: a claim.ShardPos
-// outside 0..n−1 is STRUCTURALLY impossible. It matches no manifest ref, so before
+// outside 0.n−1 is STRUCTURALLY impossible. It matches no manifest ref, so before
 // the screen it excluded NOTHING from the survivor set and the judge fetched all n —
 // one MORE than an honest claim — and then ran that fetch FOUR times, because the
 // deferral predicate is `cerr != nil` and cannot tell "too few survivors"
@@ -327,8 +327,8 @@ func TestRepairJudge_DeniedPositionStaysPayable(t *testing.T) {
 // ⚠ THE CONTROL ABOVE DOES NOT COVER THIS. TestRepairJudge_DeniedPositionStaysPayable
 // arranges a RETRIEVABILITY DENY, which settleRepairVerdict refuses at the
 // PRE-EXISTING `if !d.Release` return — upstream of the record site, and never in
-// doubt. Measured 2026-09-12 (blind review of this PR): moving the record from the
-// `paid > 0` arm up to just after the dedup check leaves the ENTIRE core/node package
+// doubt. Measured: moving the record from the `paid
+// > 0` arm up to just after the dedup check leaves the ENTIRE core/node package
 // green, that control included. The realistic mis-placement had no gate. This arm is
 // the one that reddens.
 //

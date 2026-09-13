@@ -1,8 +1,8 @@
 package node
 
-// R-CARRIER-ATTS-PREPAREQC, steps 0 and 1 — the gates.
+//steps 0 and 1 — the gates.
 //
-// THE MECHANISM (certification §1.2, §5.4, §7). (*Node).handleChain's
+// THE MECHANISM. (*Node).handleChain's
 // ports.MsgPrepareQC arm hands an attacker-supplied attestation list straight to
 // (*Chain).VerifyPrepareQC → (*Chain).collectQuorumSigs, which pays one
 // ed25519.Verify per entry. collectQuorumSigs records seen[id] only AFTER the
@@ -14,14 +14,14 @@ package node
 //
 // Gates in this file, each naming the function whose behaviour changes:
 //
-//	G-QC-0  (*Node).handleChain, ports.MsgPrepareQC — the sender screen (step 0).
-//	G-QC-1  (*Node).gatherTwoPhase — the producer screen (step 1). Shared with
-//	        R-CB-ATTS-UNBOUNDED's G-ATTS-1: one screen, both closures.
-//	G-QC-2  the at-ceiling ACCEPT arm, on the launch regime that has zero slack.
-//	G-QC-4  the sender screen refuses nothing honest, on the one path where the
-//	        gatherer is NOT the block's author.
+//	(*Node).handleChain, ports.MsgPrepareQC — the sender screen (step 0).
+//	(*Node).gatherTwoPhase — the producer screen (step 1). Shared with
+//	 the: one screen, both closures.
+//	the at-ceiling ACCEPT arm, on the launch regime that has zero slack.
+//	the sender screen refuses nothing honest, on the one path where the
+//	 gatherer is NOT the block's author.
 //
-// Deliberation: docs/thinking/2026-09-11-prepareqc-sender-and-producer-screens.md
+// Deliberation:
 
 import (
 	"crypto/ed25519"
@@ -74,7 +74,7 @@ func (l *qcLog) last(prefix string) string {
 // is the shipped `-attesters` shape: chainhost.Host.Attesters is the flag,
 // unfiltered, and the ports.MsgProposeBlock arm replies for any node that
 // passes (*Chain).ValidateProposal with no test of the REPLIER's own
-// qualification (certification §3.1(3), §3.2).
+// qualification (3), §3.2.
 func qcOutsiderNode(t *testing.T, clock ports.Clock, net *simnet.Network, id *identity.Identity, cfg chain.Config, g *chain.Block) *Node {
 	t.Helper()
 	nd := New(id.NodeID(), DefaultConfig(), clock, net.Endpoint(id.NodeID()), memstore.New())
@@ -91,9 +91,9 @@ func qcOutsiderNode(t *testing.T, clock ports.Clock, net *simnet.Network, id *id
 	return nd
 }
 
-// ── G-QC-0 ────────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────── ───────────────────────────────────────────────────────────────────
 //
-// TestG_QC_0_PrepareQCFromUnscreenedSenderIsRefusedBeforeTheVerifier.
+// TestPrepareQCFromUnscreenedSenderIsRefusedBeforeTheVerifier.
 //
 // THE SCHEDULE. A 4-anchor launch network. n0 gathers a REAL prepare-QC for a
 // real block among n0/n1/n2, with n3 excluded from both the attester and the
@@ -104,9 +104,9 @@ func qcOutsiderNode(t *testing.T, clock ports.Clock, net *simnet.Network, id *id
 // ARM 1 (the primitive). The genuine QC is delivered to n3 `from` an identity
 // that is in no anchor set and holds no bond — the attacker of §1.2, who needs
 // no keypair farm, no bond and no proposal.
-//   - RED at HEAD: n3 verifies the whole list, adopts the lock and precommits.
-//     The attacker got a validator's full CPU budget for one replayed message.
-//   - GREEN: refused. No lock, no mark.
+// - RED at HEAD: n3 verifies the whole list, adopts the lock and precommits.
+// The attacker got a validator's full CPU budget for one replayed message.
+// - GREEN: refused. No lock, no mark.
 //
 // ARM 2 (the control, and it is what makes arm 1 mean anything). The IDENTICAL
 // bytes from a QUALIFIED sender are accepted. Without this the gate could pass
@@ -118,7 +118,7 @@ func qcOutsiderNode(t *testing.T, clock ports.Clock, net *simnet.Network, id *id
 // verifier's own voice and proves it walked the list. From the unscreened
 // sender the refusal must be the SCREEN's, and must not carry the signature
 // error: the verifier was never entered, so not one ed25519.Verify was paid.
-func TestG_QC_0_PrepareQCFromUnscreenedSenderIsRefusedBeforeTheVerifier(t *testing.T) {
+func TestPrepareQCFromUnscreenedSenderIsRefusedBeforeTheVerifier(t *testing.T) {
 	nodes, _, net, g, _ := tier2AnchorNet(t, 4)
 	n0, n1, n2, n3 := nodes[0], nodes[1], nodes[2], nodes[3]
 
@@ -163,14 +163,14 @@ func TestG_QC_0_PrepareQCFromUnscreenedSenderIsRefusedBeforeTheVerifier(t *testi
 	drainHeld(t, net, fifo)
 
 	if rs := n3.roundsFor(); rs.Lock != nil {
-		t.Fatalf("G-QC-0 VIOLATION: an identity with no anchor seat and no bond spent n3's whole "+
+		t.Fatalf("VIOLATION: an identity with no anchor seat and no bond spent n3's whole "+
 			"VerifyPrepareQC budget and made it LOCK (round %d, hash %x). collectQuorumSigs pays one "+
 			"ed25519.Verify per entry and dedups only qualified ids, so one offline signature replayed "+
-			"to the CBOR ceiling buys 131,072 verifies from any peer at line rate (certification §1.2).",
+			"to the CBOR ceiling buys 131,072 verifies from any peer at line rate (research §1.2).",
 			rs.Lock.Round, rs.Lock.Hash)
 	}
 	if n3.signMarkSet {
-		t.Fatal("G-QC-0 VIOLATION: an unscreened sender moved n3's sign mark")
+		t.Fatal("VIOLATION: an unscreened sender moved n3's sign mark")
 	}
 
 	// ── ARM 2: the control ───────────────────────────────────────────────────
@@ -178,7 +178,7 @@ func TestG_QC_0_PrepareQCFromUnscreenedSenderIsRefusedBeforeTheVerifier(t *testi
 	drainHeld(t, net, fifo)
 	rs := n3.roundsFor()
 	if rs.Lock == nil {
-		t.Fatal("G-QC-0 CONTROL FAILED: the same bytes from a QUALIFIED sender were refused — the screen " +
+		t.Fatal("CONTROL FAILED: the same bytes from a QUALIFIED sender were refused — the screen " +
 			"is refusing honest traffic, or the fixture's QC was never acceptable and arm 1 proved nothing")
 	}
 
@@ -201,14 +201,14 @@ func TestG_QC_0_PrepareQCFromUnscreenedSenderIsRefusedBeforeTheVerifier(t *testi
 	drainHeld(t, net, fifo)
 	atkLine := lgAtk.last("gather/precommit: REFUSED")
 	if atkLine == "" {
-		t.Fatal("G-QC-0 VIOLATION: the unscreened sender's padded prepare-QC was not refused at all")
+		t.Fatal("VIOLATION: the unscreened sender's padded prepare-QC was not refused at all")
 	}
 	if strings.Contains(atkLine, "signature") {
-		t.Fatalf("G-QC-0 VIOLATION: the unscreened sender's padded prepare-QC reached collectQuorumSigs — "+
+		t.Fatalf("VIOLATION: the unscreened sender's padded prepare-QC reached collectQuorumSigs — "+
 			"the refusal is the VERIFIER's (%q), so every entry before the corrupt one was paid for. "+
 			"The screen must refuse before the first ed25519.Verify.", atkLine)
 	}
-	t.Logf("G-QC-0: unscreened sender refused at %q; qualified sender's identical bytes accepted; "+
+	t.Logf("unscreened sender refused at %q; qualified sender's identical bytes accepted; "+
 		"padded list never reached the verifier.", atkLine)
 }
 
@@ -241,33 +241,32 @@ func qcPlusCorruptEntry(t *testing.T, raw []byte) []byte {
 	return out
 }
 
-// ── G-QC-1 ────────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────── ───────────────────────────────────────────────────────────────────
 //
-// TestG_QC_1_GatherSolicitsOnlyTheGoverningSet.
+// TestGatherSolicitsOnlyTheGoverningSet.
 //
-// THE DEFECT (certification §3.2, canon rule 8). (*Node).gatherTwoPhase
-// solicits `attesters` verbatim. On the client-publish path that slice is
-// chainhost.Host.Attesters — the `-attesters` flag, UNFILTERED — so the shipped
-// honest maximum for len(env.QC) is `2 + |-attesters|`, a function of LOCAL
-// CONFIG, not of the chain. The #380 class, and it blocks every bound over
-// committed quantities.
+// THE DEFECT, canon rule 8. (*Node).gatherTwoPhase solicits `attesters`
+// verbatim. On the client-publish path that slice is chainhost.Host.Attesters —
+// the `-attesters` flag, UNFILTERED — so the shipped honest maximum for
+// len(env.QC) is `2 + |-attesters|`, a function of LOCAL CONFIG, not of the
+// chain. The class, and it blocks every bound over committed quantities.
 //
-// THE SCHEDULE. A 4-anchor launch network (GoverningSetCap() = 4) plus SIX live
+// THE SCHEDULE. A 4-anchor launch network (GoverningSetCap = 4) plus SIX live
 // outsiders that share the genesis and reply to a proposal but hold no seat and
 // no bond. n0 publishes with the outsiders listed FIRST, so their replies land
 // before the anchors' and the gather cannot close before they are counted —
 // which is the honest `-attesters` ordering hazard, not a contrivance.
 //
-//   - RED at HEAD: len(qc) = 1 + 6 + (anchors needed) — strictly above
-//     GoverningSetCap() + 2, so no bound expressed over committed quantities
-//     can be stated at all.
-//   - GREEN: len(qc) ≤ GoverningSetCap() + 2, and the block still commits.
+// - RED at HEAD: len(qc) = 1 + 6 + (anchors needed) — strictly above
+// GoverningSetCap + 2, so no bound expressed over committed quantities
+// can be stated at all.
+// - GREEN: len(qc) ≤ GoverningSetCap + 2, and the block still commits.
 //
-// The ceiling is the CERTIFIED expression, not the screen's own predicate: the
+// The ceiling is the derived expression, not the screen's own predicate: the
 // screen filters on (*Chain).AttesterEligibleAt; the assertion is against
-// (*Chain).GoverningSetCap()+2, an independent quantity, pinned to its literal
+// (*Chain).GoverningSetCap+2, an independent quantity, pinned to its literal
 // value by the premise below.
-func TestG_QC_1_GatherSolicitsOnlyTheGoverningSet(t *testing.T) {
+func TestGatherSolicitsOnlyTheGoverningSet(t *testing.T) {
 	nodes, ids, net, g, cfg := tier2AnchorNet(t, 4)
 	n0 := nodes[0]
 
@@ -275,7 +274,7 @@ func TestG_QC_1_GatherSolicitsOnlyTheGoverningSet(t *testing.T) {
 		t.Fatalf("premise: a 4-anchor launch network must have GoverningSetCap()==4, got %d", cap)
 	}
 
-	const outsiders = 6 // > GoverningSetCap(), so the RED is not a rounding artefact
+	const outsiders = 6 // > GoverningSetCap, so the RED is not a rounding artefact
 	attesters := make([]ports.NodeID, 0, outsiders+3)
 	for i := 0; i < outsiders; i++ {
 		oid := identity.FromSeed(int64(91000 + i))
@@ -311,7 +310,7 @@ func TestG_QC_1_GatherSolicitsOnlyTheGoverningSet(t *testing.T) {
 	drainHeld(t, net, fifo)
 
 	if !done || perr != nil {
-		t.Fatalf("G-QC-1 VIOLATION (liveness): a publish whose -attesters list names unqualified peers "+
+		t.Fatalf("VIOLATION (liveness): a publish whose -attesters list names unqualified peers "+
 			"must still commit — the screen removed something the gather needed: done=%v err=%v", done, perr)
 	}
 	if qcLen == 0 {
@@ -319,41 +318,41 @@ func TestG_QC_1_GatherSolicitsOnlyTheGoverningSet(t *testing.T) {
 	}
 	want := n0.chain.GoverningSetCap() + 2
 	if qcLen > want {
-		t.Fatalf("G-QC-1 VIOLATION: the gather emitted a prepare-QC of %d entries against a governing-set "+
+		t.Fatalf("VIOLATION: the gather emitted a prepare-QC of %d entries against a governing-set "+
 			"ceiling of %d (GoverningSetCap()=%d, +2 for the two seeds collectQuorumSigs structurally "+
 			"skips). The solicitation set is the -attesters flag, so len(env.QC)'s honest maximum is a "+
-			"function of LOCAL CONFIG, not of the chain (#380 class, canon rule 8) — and no wire bound "+
+			"function of LOCAL CONFIG, not of the chain (class, canon rule 8) — and no wire bound "+
 			"over committed quantities can be stated until it is not.", qcLen, want, n0.chain.GoverningSetCap())
 	}
-	t.Logf("G-QC-1: %d outsiders solicited, prepare-QC carried %d entries (ceiling %d); block committed.",
+	t.Logf("%d outsiders solicited, prepare-QC carried %d entries (ceiling %d); block committed.",
 		outsiders, qcLen, want)
 }
 
-// ── G-QC-2 + G-QC-4 ───────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────── ──────────────────────────────────────────────────────────
 //
-// TestG_QC_2_4_ForcedReproposalAtTheLaunchCeilingIsAcceptedByEveryAttester.
+// TestForcedReproposalAtTheLaunchCeilingIsAcceptedByEveryAttester.
 //
-// THE TWO CLAIMS, on the one regime that has zero slack (certification §4.1).
+// THE TWO CLAIMS, on the one regime that has zero slack.
 //
-// G-QC-4 — the sender screen refuses nothing honest on the ONE path where the
-// gatherer is not the block's author. Every other prepare-QC arrives from the
-// block's own author, who has already passed the receiver's stronger
+// The sender screen refuses nothing honest on the ONE path where the gatherer
+// is not the block's author. Every other prepare-QC arrives from the block's
+// own author, who has already passed the receiver's stronger
 // proposerQualifiedAt test at the prepare phase. On a FORCED RE-PROPOSAL the
 // sender is the designee and the author is a third party, so the screen is
 // genuinely new there.
 //
-// G-QC-2 (accept arm) — that honest re-proposal's certificate carries MORE than
-// GoverningSetCap() entries. The two extra are the seeds
-// (*Chain).collectQuorumSigs skips via `id == b.ProposerID()` WITHOUT consuming
-// a `seen` slot — the gatherer's own prepare and the absent author's carried
+// (accept arm) — that honest re-proposal's certificate carries MORE than
+// GoverningSetCap entries. The two extra are the seeds
+// (*Chain).collectQuorumSigs skips via `id == b.ProposerID` WITHOUT consuming a
+// `seen` slot — the gatherer's own prepare and the absent author's carried
 // self-prepare — so no set-size term can ever cover them. This is the measured
-// evidence that a RAW GoverningSetCap() cap would wedge an honest round, and it
+// evidence that a RAW GoverningSetCap cap would wedge an honest round, and it
 // is why step 2's bound is `+2` rather than a chosen constant.
 //
-// The refuse arm of G-QC-2 (ceiling+1 refused with zero verifies) belongs to
-// the cap itself, which the certification's landing order (§8) puts at step 2,
-// ≥ one deployment window after step 1. Not built here; owed with the cap.
-func TestG_QC_2_4_ForcedReproposalAtTheLaunchCeilingIsAcceptedByEveryAttester(t *testing.T) {
+// The refuse arm of (ceiling+1 refused with zero verifies) belongs to the
+// cap itself, which the landing order puts at step 2, ≥ one deployment
+// window after step 1. Not built here; owed with the cap.
+func TestForcedReproposalAtTheLaunchCeilingIsAcceptedByEveryAttester(t *testing.T) {
 	nodes, ids, net, g, _ := tier2AnchorNet(t, 4)
 	all := make([]ports.NodeID, len(ids))
 	byID := map[ports.NodeID]*Node{}
@@ -368,7 +367,7 @@ func TestG_QC_2_4_ForcedReproposalAtTheLaunchCeilingIsAcceptedByEveryAttester(t 
 	// The DESIGNEE for (height 1, round 1) is DERIVED, never chosen — the same
 	// call (*Node).proposeAtNewView makes. The AUTHOR is another anchor, so the
 	// gatherer is not the block's author: the one path on which the sender
-	// screen is genuinely new (certification §4.4).
+	// screen is genuinely new.
 	designeeID := nodes[0].designatedProposer(1, 1)
 	designee, ok := byID[designeeID]
 	if !ok {
@@ -458,9 +457,9 @@ func TestG_QC_2_4_ForcedReproposalAtTheLaunchCeilingIsAcceptedByEveryAttester(t 
 					qcLen = len(env.QC)
 					exempt = 0
 					for _, a := range env.QC {
-						// The entries (*Chain).collectQuorumSigs skips via
-						// `id == b.ProposerID()`: a list slot and no `seen`
-						// slot, so no set-size term can ever cover them.
+						// The entries (*Chain).collectQuorumSigs skips via `id ==
+						// b.ProposerID`: a list slot and no `seen` slot, so no
+						// set-size term can ever cover them.
 						if a.AttesterID() == lb.ProposerID() {
 							exempt++
 						}
@@ -471,11 +470,11 @@ func TestG_QC_2_4_ForcedReproposalAtTheLaunchCeilingIsAcceptedByEveryAttester(t 
 		})
 	}
 
-	// The AUTHOR is solicited FIRST. `attesters` is syncTargets() order in
-	// production, so any order is reachable, and this one maximises the exempt
-	// count: the author is alive here (a designee re-proposes on a TIMEOUT, not
-	// on a proof of death), so its own reply lands alongside its carried
-	// self-prepare and both are proposer-skipped.
+	// The AUTHOR is solicited FIRST. `attesters` is syncTargets order in
+	// production, so any order is reachable, and this one maximises the
+	// exempt count: the author is alive here (a designee re-proposes on a
+	// TIMEOUT, not on a proof of death), so its own reply lands alongside
+	// its carried self-prepare and both are proposer-skipped.
 	order := []ports.NodeID{author.NodeID()}
 	for _, id := range rest {
 		order = append(order, id.NodeID())
@@ -490,13 +489,13 @@ func TestG_QC_2_4_ForcedReproposalAtTheLaunchCeilingIsAcceptedByEveryAttester(t 
 	drainHeld(t, net, fifo)
 
 	if !done || perr != nil {
-		t.Fatalf("G-QC-4 VIOLATION: an honest forced re-proposal by a non-author designee was not "+
+		t.Fatalf("VIOLATION: an honest forced re-proposal by a non-author designee was not "+
 			"accepted — the sender screen refused honest traffic on the one path where the gatherer "+
 			"is not the block's author: done=%v err=%v", done, perr)
 	}
 	for i, nd := range nodes {
 		if _, h := nd.chain.Head(); h != 2 {
-			t.Fatalf("G-QC-4 VIOLATION: node %d did not end up holding the re-proposed block (head=%d)", i, h)
+			t.Fatalf("VIOLATION: node %d did not end up holding the re-proposed block (head=%d)", i, h)
 		}
 	}
 	if qcLen == 0 {
@@ -504,40 +503,41 @@ func TestG_QC_2_4_ForcedReproposalAtTheLaunchCeilingIsAcceptedByEveryAttester(t 
 	}
 	capN := nodes[0].chain.GoverningSetCap()
 
-	// THE +2, DRIVEN. `len(qc) = |seen| + exempt`. |seen| is a set of qualified
-	// distinct ids, so GoverningSetCap() bounds it — and NOTHING bounds `exempt`
-	// by a set-size term, because those entries are skipped before `seen` is
-	// touched. `exempt` is at most 2 by construction: gatherTwoPhase lifts AT
-	// MOST ONE carried author self-prepare (`break` on first match) and the
-	// author answers AT MOST ONE solicitation. This gate drives the case where
-	// both are present, which is what makes the ceiling GoverningSetCap() + 2
-	// and not GoverningSetCap() + 1.
+	// THE +2, DRIVEN. `len(qc) = |seen| + exempt`. |seen| is a set of
+	// qualified distinct ids, so GoverningSetCap bounds it — and NOTHING
+	// bounds `exempt` by a set-size term, because those entries are skipped
+	// before `seen` is touched. `exempt` is at most 2 by construction:
+	// gatherTwoPhase lifts AT MOST ONE carried author self-prepare (`break`
+	// on first match) and the author answers AT MOST ONE solicitation. This
+	// gate drives the case where both are present, which is what makes the
+	// ceiling GoverningSetCap + 2 and not GoverningSetCap + 1.
 	if exempt != 2 {
-		t.Fatalf("G-QC-2 PREMISE LOST: the honest forced re-proposal carried %d entries of which %d were "+
+		t.Fatalf("PREMISE LOST: the honest forced re-proposal carried %d entries of which %d were "+
 			"proposer-skipped, want 2 (the carried author self-prepare AND the live author's own reply). "+
 			"The +2 in step 2's bound is exactly this count; if the fixture no longer produces both, "+
 			"the bound is being validated against a case that does not exercise it.", qcLen, exempt)
 	}
 	if qcLen > capN+2 {
-		t.Fatalf("G-QC-2 VIOLATION: an honest forced re-proposal carried %d entries, above the certified "+
+		t.Fatalf("VIOLATION: an honest forced re-proposal carried %d entries, above the "+
 			"ceiling GoverningSetCap()+2 = %d — step 2's cap would refuse honest traffic.", qcLen, capN+2)
 	}
 	if qcLen-exempt > capN {
-		t.Fatalf("G-QC-2 VIOLATION: %d counted entries against GoverningSetCap()=%d — the set-size term "+
+		t.Fatalf("VIOLATION: %d counted entries against GoverningSetCap=%d — the set-size term "+
 			"does not dominate the qualified signer set the certificate carries", qcLen-exempt, capN)
 	}
-	// CORRECTION, driven: the certification's §4.1 arithmetic ("1 + 1 + 3 = 5 > 4")
-	// over-counts. finishPrep closes on the FIRST reply that satisfies supportMet,
-	// so a 4-anchor launch network produces |seen| = 2 and len(qc) = 4 — EXACTLY
-	// GoverningSetCap(), not one above it. A raw cap refuses nothing here; it has
-	// ZERO SLACK, which is why the +2 is still required and not merely prudent.
+	// CORRECTION, driven: arithmetic ("1 + 1 + 3 = 5 > 4") over-counts.
+	// finishPrep closes on the FIRST reply that satisfies supportMet, so a
+	// 4-anchor launch network produces |seen| = 2 and len(qc) = 4 — EXACTLY
+	// GoverningSetCap, not one above it. A raw cap refuses nothing here; it
+	// has ZERO SLACK, which is why the +2 is still required and not merely
+	// prudent.
 	if qcLen != capN {
 		t.Logf("NOTE: the honest launch-window certificate is %d entries against GoverningSetCap()=%d "+
 			"(it was exactly at the cap when this gate was written); the raw cap's slack has moved.", qcLen, capN)
 	}
-	t.Logf("G-QC-2/G-QC-4: honest forced re-proposal by non-author designee %s accepted by every attester; "+
+	t.Logf("honest forced re-proposal by non-author designee %s accepted by every attester; "+
 		"certificate carried %d entries = %d counted + %d proposer-skipped, against GoverningSetCap()=%d "+
-		"and the certified ceiling %d.", designeeID, qcLen, qcLen-exempt, exempt, capN, capN+2)
+		"and the ceiling %d.", designeeID, qcLen, qcLen-exempt, exempt, capN, capN+2)
 }
 
 // indexOfID locates an identity by its NodeID.
@@ -550,15 +550,15 @@ func indexOfID(ids []*identity.Identity, want ports.NodeID) int {
 	return -1
 }
 
-// ── R-CARRIER-QC-LEGACY-UNCAPPED, driven ──────────────────────────────────────
+// ──, driven ──────────────────────────────────────
 //
 // TestQC_LegacyPostureKeepsThePrimitive_Driven pins the residual the screen
 // leaves open, because a residual carried as prose decays and a coverage row
-// nobody drives is decoration (simplicity rule 7).
+// nobody drives is decoration.
 //
-// The screen is guarded by (*Chain).Objective(). In a trusted/demo posture
+// The screen is guarded by (*Chain).Objective. In a trusted/demo posture
 // (*Chain).attesterQualifiedAt falls through to `rep >= MinAttesterRep`, a
-// quantity no committed state bounds, and (*Chain).GoverningSetCap() is 0 — so
+// quantity no committed state bounds, and (*Chain).GoverningSetCap is 0 — so
 // the guard is what keeps an honest legacy network from halting, and the price
 // is that the ports.MsgPrepareQC primitive stays OPEN there.
 //
@@ -578,9 +578,9 @@ func TestQC_LegacyPostureKeepsThePrimitive_Driven(t *testing.T) {
 	}
 	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g-legacy")}}
 	chain.Sign(g, ids[0].Signer())
-	// MinBond 0 and no bond verifier ⇒ objective() is FALSE: the trusted/demo
-	// posture. MinAttesterRep 100 against a rep oracle is how such a network
-	// actually qualifies attesters.
+	// MinBond 0 and no bond verifier ⇒ objective is FALSE: the
+	// trusted/demo posture. MinAttesterRep 100 against a rep oracle is how
+	// such a network actually qualifies attesters.
 	cfg := chain.Config{Quorum: 1, MinProposerRep: 100, MinAttesterRep: 100}
 
 	nodes := make([]*Node, len(ids))
@@ -636,12 +636,12 @@ func TestQC_LegacyPostureKeepsThePrimitive_Driven(t *testing.T) {
 	n3.handle(attacker.NodeID(), ports.Message{Kind: ports.MsgPrepareQC, Data: captured})
 	drainHeld(t, net, fifo)
 	if rs := n3.roundsFor(); rs.Lock == nil {
-		t.Fatal("R-CARRIER-QC-LEGACY-UNCAPPED IS CLOSED: the legacy posture now refuses an unqualified " +
+		t.Fatal("IS CLOSED: the legacy posture now refuses an unqualified " +
 			"sender's prepare-QC. That is an improvement, not a failure — but the residual in the " +
-			"certification and in this file's doc is now stale, and an honest legacy network whose " +
+			"research and in this file's doc is now stale, and an honest legacy network whose " +
 			"MinProposerRep is below its MinAttesterRep can no longer precommit. Update both, then " +
 			"replace this probe with its inverse.")
 	}
-	t.Log("R-CARRIER-QC-LEGACY-UNCAPPED: driven — in the trusted/demo posture an unqualified sender " +
+	t.Log("driven — in the trusted/demo posture an unqualified sender " +
 		"still spends the full VerifyPrepareQC budget. The objective() guard is what keeps that open.")
 }

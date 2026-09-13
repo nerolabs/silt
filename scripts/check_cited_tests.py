@@ -1,186 +1,38 @@
 #!/usr/bin/env python3
-"""Doc/code-lint: catch a CITED TEST THAT DOES NOT EXIST — a green check that does
-not verify the property it claims.
+"""Doc/code-lint: catch a CITED TEST THAT DOES NOT EXIST, and a CITED SOURCE
+COORDINATE THAT NO LONGER POINTS AT ITS SYMBOL — a green check that does not verify
+the property it claims.
 
-SCAR (third-time rule fired; count 5 as of 2026-09-02):
-  A production comment in core/credit/delivery.go cited
-  `TestPaidSerialWindowMatchesDemandWindow` as the test pinning the paid-serial
-  window to the demand window. No such test has ever existed anywhere in the tree.
-  A research certification then REPEATED the claim
-  (silt-agent-memory/researcher/reviews/research-outcome/R0.4b-per-epoch-key-expiry-BUILD-
-  VERIFICATION-RESEARCH-CERTIFICATION-2026-09-02.md), so the phantom laundered
-  from a comment into a certification. Both read as "this property is verified".
-  Neither was. This lint fails the build any time a Test name is cited in a place
-  that asserts verification while no `func TestX(` backs it.
-
-  This is the same family as check_claims.py, which already enforces the linkage
-  for docs/design/claims-ledger.md ONLY. That narrow scope is exactly why the
-  delivery.go comment and the certification both got through. This lint widens the
-  net to Go comments and string literals, CHANGELOG, ROADMAP, docs/**, and the
-  external review trees.
-
-SECOND INSTANCE (2026-09-09) — WHY STRING LITERALS ARE IN SCOPE:
-  The scan covered Go COMMENTS only, and said so in its own docstring. But two
-  registries in this tree make their citations in STRING LITERALS, and both are
-  exactly the "this property is verified by that test" shape:
-    - core/chain/floorbox_coldauditor_v5_test.go's coverage meta-test, whose every
-      undriven-field excuse row names the gate that covers the field;
-    - cmd/silt/observable_contract.go's Asserter column, naming the e2e test that
-      asserts each announced operator string.
-  A blind PE renamed a cited test everywhere EXCEPT inside the map value; this lint
-  reported zero in-repo hits and EXITED 0. The row survived only incidentally,
-  because the name also sat in three '//' comments. Delete a test through its doc
-  comment — the ordinary way a test disappears — and the row rots in silence, which
-  is the precise hole those rows were written to close.
+A comment that says "pinned by TestFoo" reads as evidence. If no `func TestFoo(`
+exists anywhere, the check is green because it is ABSENT, not because the property
+holds — and the claim launders from a comment into whatever cites the comment.
 
 WHAT IS CHECKED
-  A name matching \\bTest[A-Z][A-Za-z0-9_]*\\b, appearing in:
-    - Go COMMENTS and STRING LITERALS (not bare code) under the source roots below
-    - CHANGELOG.md, ROADMAP.md, docs/**/*.md
-    - optionally the external certification/ruling trees (see --external-root)
-  must resolve to a `func TestX(` declaration in some *_test.go in this repo.
 
-SCOPE NOTES (deliberate limits)
-  - METASYNTACTIC PLACEHOLDERS (TestFoo, TestXxx, ...) are never citations.
-  - SUBTESTS ARE OUT OF SCOPE. A `t.Run("name", ...)` subtest is not a top-level
-    func, so a citation naming only a subtest resolves only via its parent Test
-    func (see FAMILY below). Cite the parent, or use the allowlist. Because string
-    literals are now scanned, the FIRST argument of any `.Run(` call is masked, so
-    a subtest literally named TestX is not read as a citation of one.
-  - FAMILY citations resolve by PREFIX. `TestOpenBreak_*Locked...`,
-    `TestFoo_{A,B}Bar` and `TestFoo_A/_B` name a family, not one func; a citation
-    immediately followed by * { / ... or a unicode ellipsis resolves if ANY
-    defined test starts with it.
-  - SOFT-WRAPPED names resolve joined. This tree wraps long identifiers across
-    comment lines, with or without a trailing hyphen ("TestStateRootCoversExactly-"
-    / "TheCommittedSetFields"). A name ending a line is also tried joined with the
-    leading word of the next line. Joining only ever removes false positives.
-  - Markdown is scanned WHOLE, including fenced code blocks: a phantom cited
-    inside a fence still reads to a human as a real test.
-  - FROZEN HISTORY is excluded: /archive/, docs/thinking/, docs/reviews/,
-    docs/buildlog/ — the same set check_status_headers.py skips. Those are dated
-    point-in-time records, and docs/thinking/ deliberately proposes test names
-    before the tests exist.
-  - .claude/ is excluded and this is LOAD-BEARING: it holds agent worktrees, which
-    are full copies of the repo on OTHER branches. Scanning them would let a
-    phantom "resolve" against a test that exists only on an unmerged branch, which
-    is precisely the unsoundness this lint exists to catch.
+  1. TEST NAMES. A name matching \bTest[A-Z][A-Za-z0-9_]*\b appearing in:
+       - Go COMMENTS and STRING LITERALS (not bare code) under the source roots below
+       - Markdown under docs/
+     must resolve to a real `func TestX(` somewhere in the repo.
 
-SCOPE NOTES FOR COORDINATES (deliberate limits, each measured before it was drawn)
-  - AN UNANCHORED COORDINATE IS NOT CHECKED. `chain.go:1198` with no symbol beside
-    it asserts nothing a machine can test, and guessing what a reader "meant" would
-    be the vacuous-gate defect in a new costume. Naming the symbol is what buys
-    coverage; that is the behaviour this lint is trying to create, not a hole to
-    paper over. THE COVERAGE, COUNTED ON THE SURFACE THIS CHECK ACTUALLY WALKS
-    (2026-09-10, both arms):
+     STRING LITERALS are in scope because two registries in this tree make their
+     citations there, and both are "this property is verified by that test" in shape:
+     a coverage meta-test whose excuse rows name the gate covering each field, and
+     cmd/silt/observable_contract.go's Asserter column, naming the e2e test that
+     asserts each announced operator string. A rename that misses a map value would
+     otherwise leave the row rotting in silence.
 
-      markdown          151 coordinates  12 path-unresolvable  36 ANCHORED
-      production Go     145 coordinates  26 path-unresolvable  58 ANCHORED
-      allowlisted       64 (15 markdown + 49 Go)  ->  30 ENFORCED today
+  2. SOURCE COORDINATES. A `path.go:NNN` cited beside a backticked symbol must still
+     land on that symbol's declaration. Line numbers rot on every insertion above
+     them; symbol names do not. The fix for a rotted one is to drop the number and
+     cite the symbol alone.
 
-    An earlier version of this note published "134 of 187 unanchored". That figure
-    was computed INCLUDING CHANGELOG.md, which the next bullet declares exempt, so
-    it described a surface this check does not walk. Count on the linted surface.
-  - CHANGELOG.md is exempt from the COORDINATE check (its TEST-name checking is
-    unchanged). A CHANGELOG entry is a DATED point-in-time record — the same reason
-    docs/buildlog/ is skipped above. A coordinate in a released entry was true when
-    written, and "correcting" it would falsify the record. 58 coordinates sit
-    there, 18 of them stale, and every one of the 18 is correct history.
-  - RANGES check their FIRST number only: `chain.go:3005-3013` is checked at 3005.
-  - PRODUCTION GO COMMENTS ARE IN SCOPE (widened 2026-09-10). The previous note
-    excluded them "because no coordinate defect has been observed in a Go comment".
-    THAT WAS FALSE WHEN IT WAS WRITTEN: 49 were already decayed, three of them by
-    178, 371 and 527 lines, and one by 785 (core/node/dht_diversity.go:65 cites
-    node.go:1132 for `walk`, which is at node.go:1917). A comment beside the code
-    is the citation a reader trusts MOST. The mechanical half of the old objection
-    was real and is answered rather than waived: Go comments do not use backticks,
-    so the anchor there is a BARE identifier, filtered to those the cited file
-    declares. The 49 are enumerated in the allowlist as OWED, so this arm is STRICT
-    from its first green run.
-  - *_test.go COMMENTS ARE OUT OF SCOPE (272 coordinates in 559 files). Production
-    comments first: that is where all four measured multi-hundred-line rots live.
-    Widen if a test-comment rot is ever measured, and record the measurement here.
-  - docs/thinking/ IS OUT OF SCOPE — the largest exclusion on this surface, 983
-    coordinates across 203 files, seven times the whole linted markdown surface.
-    Those are DATED deliberations; drift in one is expected, not a defect, and the
-    file's date tells the reader what SHA it was written against. This exclusion
-    was silent until 2026-09-10; it is recorded here with its count so that it is a
-    decision rather than an accident.
-  - AN AMBIGUOUS BASENAME DROPS SILENTLY, and is counted in the "path-unresolvable"
-    column above: 4 on the markdown surface, 12 in Go comments. `statehash.go:40`
-    names a basename this tree carries more than once, and a check that guesses
-    which one is worse than no check.
-  - THE EXTERNAL REVIEW TREES ARE NOT COORDINATE-CHECKED, for the CHANGELOG reason
-    at full strength. A ruling or certification is a review OF A NAMED SHA; its
-    coordinates were true at that SHA and are not the current tree's to correct.
-    Measured before the arm was dropped: 1844 stale coordinates across 304 review
-    documents, back to the #286 and #357 rounds — an advisory nobody could read,
-    naming nothing anyone should change. Their TEST-name citations stay advisory
-    (a test name is not SHA-relative the way a line number is).
-  - A BARE SYMBOL MENTION — a backticked identifier with no file and no coordinate
-    — is NOT checked. Re-measured 2026-09-10, with the definition stated because
-    the earlier figure ("213 distinct over 497 occurrences") could not be
-    reproduced from it: counting every backticked identifier on the linted
-    markdown surface that matches no top-level declaration under GO_ROOTS gives
-    212 distinct names over 409 occurrences (111 / 237 if restricted to
-    camelCase). They are dominated by names that are HISTORICALLY CORRECT in the
-    append-only ledgers precisely because the symbol was later deleted. Gating
-    that class would need a ~200-line allowlist of entries with no defect-catching
-    power, which is what the allowlist header below forbids.
+EXEMPTIONS
+  - `scripts/cited_tests_allowlist.txt` — deliberately historical citations, one
+    reason per row. It is a ledger, not a dumping ground.
+  - Frozen-history directories are never walked: /archive/, vendor, and any nested
+    checkout (see repo_walk).
 
-WIDENED 2026-09-10 — SYMBOL-ANCHORED SOURCE COORDINATES
-  Same defect family, second carrier. A `path.go:NNN` coordinate in prose reads as
-  "open this file at this line and you will see the thing I just named". Nothing
-  checked that. Three coordinates in docs/decisions.md — two of them written
-  "verified" — pointed at unrelated lines, because every insertion above a symbol
-  moves it and nothing tells the doc:
-
-    `consensusSigBytes`  cited chain.go:918   actually core/chain/chain.go:1067
-    `bodyHash`           cited chain.go:822   actually core/chain/chain.go:902
-    `SlashesEncodedSize` cited chain.go:2217  actually core/chain/chain.go:2372
-
-  LINE NUMBERS ROT SILENTLY; A SYMBOL NAME DOES NOT MOVE. That is why the symbol
-  is the resolution key, and a coordinate is checkable ONLY when it is tied to one:
-
-    A `path.go:NNN` cited beside one or more identifiers DECLARED in that file
-    must land ON one of them — inside its declaration (doc comment through
-    closing brace) or on a line where the name occurs as a WHOLE WORD (±2 lines,
-    for wrapped signatures). Otherwise the coordinate is rotten.
-
-  WHAT THIS CHECK DOES NOT DO, stated because the sentence it replaces claimed the
-  opposite: IT DOES NOT SEE A RENAME. Measured 2026-09-10 by driving all three —
-  renaming a cited symbol throughout its file, `mv`-ing the file, and deleting the
-  symbol outright each leave this check at EXIT 0 with zero findings. An anchor
-  that resolves to no declaration is treated exactly like prose, so the coordinate
-  beside it becomes SILENTLY UNCHECKED rather than reported. The compiler goes loud
-  about the code; nothing goes loud about the doc. The gate this buys is narrower
-  than "symbols do not rot": it catches a coordinate that has DRIFTED off a symbol
-  that still exists, which is the defect measured 49 + 3 times in this tree.
-
-  The "or the name occurs at that line" arm is load-bearing: prose legitimately
-  cites a CALL SITE, not only a declaration ("every non-test read of the flag:
-  `core/node/chainrole.go:890`). Such a citation still points at the symbol, so it
-  passes. What fails is a coordinate that points at neither — which is exactly what
-  a decayed line number looks like. That arm matched on a SUBSTRING until
-  2026-09-10, which let `Block` match inside `BlockVersion` and passed
-  docs/design/block-format-by-era.md:16 — `Block` cited at chain.go:311, 177 lines
-  above `type Block struct`. It matches on a word boundary now: the green surface
-  over the enforced symbols shrinks from 3,488 lines to 2,451 (-30 %).
-
-  ONE ANCHOR IS NOT ENOUGH, AND THE NEAREST ONE IS THE WRONG ONE. See
-  anchored_coords(): the coordinate is checked against EVERY identifier the
-  sentence names, and is rotten only when it lands on none of them.
-
-STRICT vs ADVISORY
-  - IN-REPO citations are STRICT: a phantom fails the build (exit 1).
-  - EXTERNAL-TREE citations are ADVISORY by default: those trees are outside this
-    repo, are not version-locked to it, and may legitimately cite a test that is
-    real but sits on a branch not yet merged. Use --strict-external to fail on
-    them too (that is how the scar above is reproduced).
-
-Dependency-free (stdlib only).
-Run: python3 scripts/check_cited_tests.py [--strict-external] [--external-root PATH]
-Env: SILT_CITED_TESTS_EXTERNAL_ROOTS=path1:path2  (overrides the defaults)
+Dependency-free (stdlib only). Run: python3 scripts/check_cited_tests.py
 """
 import os
 import re
@@ -190,52 +42,30 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ALLOWLIST = ROOT / "scripts" / "cited_tests_allowlist.txt"
 
-SCAR_ID = "scar:cited-test-does-not-exist-2026-09-02"
-COORD_SCAR_ID = "scar:cited-source-coordinate-decayed-2026-09-10"
 
 # Go source roots whose COMMENTS are scanned for test citations.
 GO_ROOTS = ["cmd", "core", "adapters", "ports", "sim", "integration", "e2e"]
 
 # Markdown scanned in full.
-MD_FILES = ["CHANGELOG.md", "ROADMAP.md"]
+MD_FILES = []
 MD_ROOTS = ["docs"]
 
 # Never walk into these directory names, anywhere.
-#   .claude  — agent worktrees: full copies of the repo on other branches (see above)
+#   .claude  — worktrees: full copies of the repo on other branches
 #   archive  — frozen history, allowed to name removed tests
 SKIP_DIRS = {".git", ".claude", "node_modules", "dist", "archive", "vendor", "__pycache__"}
 
-# Frozen-history subtrees of docs/ — NOT linted. Same set check_status_headers.py
-# already skips, for the same reason. docs/thinking/ records dated deliberations
-# that PROPOSE test names before the tests are written (standing rule: record each
-# deliberation, dated, shipped in the same PR); docs/reviews/ and docs/buildlog/
-# are point-in-time records. Flagging a proposed name as a phantom is a category
-# error, and "fixing" one would rewrite a historical record.
+# Frozen-history subtrees of docs/ — NOT linted. A point-in-time record is allowed
+# to name a test that has since been renamed or removed.
 DOC_SKIP_DIRS = {"thinking", "buildlog", "reviews", "archive"}
 
-# External certification / ruling trees. Read-only, outside the repo. Skipped
-# silently when absent so CI stays hermetic.
-#
-# DERIVED, not written down. These were two hard-coded absolute paths, and when the
-# review record moved on 2026-09-11 they were repointed by hand — a fix that NOTHING
-# checked. Measured: reverting them to the two dead `silt-reviews` paths left  (scar:review-record-moved)
-# `--self-test` at exit 0 and the plain run at exit 0, because the self-test drives the
-# mechanism through an explicit `--external-root` and never reads the shipped constant.
-# The only signal was a stderr note whose own text says "In CI that is expected".
-# scar:the-shipped-constant-was-the-ungated-thing-2026-09-11 (PR #815, C-3).
-#
-# `check_agent_memory_link.STORE` is the ONE place the store path is defined (it is the
-# same value `.claude/setup-agent-memory.sh` writes). Deriving from it means the root
-# cannot be repointed at a dead tree without moving the store itself, and the ROOTS arm
-# of `self_test()` asserts both the derivation and the `<seat>/reviews/` shape.
+# External review trees, if any. Read-only, outside the repo, and skipped silently
+# when absent so CI stays hermetic.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_agent_memory_link import STORE as MEMORY_STORE  # noqa: E402
 
-EXTERNAL_ROOT_RELS = [
-    "researcher/reviews/research-outcome",
-    "principal-engineer/reviews",
-]
-DEFAULT_EXTERNAL_ROOTS = [str(MEMORY_STORE / rel) for rel in EXTERNAL_ROOT_RELS]
+# No external tree ships with this repo. The external-tree half of this lint is reachable
+# only through an explicit --external-root or SILT_CITED_TESTS_EXTERNAL_ROOTS.
+DEFAULT_EXTERNAL_ROOTS = []
 
 TEST_NAME_RE = re.compile(r"\bTest[A-Z][A-Za-z0-9_]*\b")
 TEST_FUNC_RE = re.compile(r"^func\s+(Test[A-Za-z0-9_]+)\s*\(", re.MULTILINE)
@@ -243,7 +73,7 @@ TEST_FUNC_RE = re.compile(r"^func\s+(Test[A-Za-z0-9_]+)\s*\(", re.MULTILINE)
 # --- symbol-anchored source coordinates -----------------------------------
 # Markdown that is NOT coordinate-checked because it is dated history (see the
 # scope notes). Its TEST-name checking is unchanged.
-COORD_EXEMPT_MD = {"CHANGELOG.md"}
+COORD_EXEMPT_MD = set()
 
 # `core/chain/chain.go:918`, chain.go:2217, `…/foo_test.go:79`. The optional
 # leading backtick is consumed so an offset comparison against a preceding
@@ -298,7 +128,7 @@ GO_KEYWORDS = {
 }
 
 # Metasyntactic placeholders. Prose that EXPLAINS test naming (this lint's own
-# CHANGELOG entry, a design doc describing a convention) writes these to stand for
+# a design doc describing a convention) writes these to stand for
 # "any test", never to cite one. Kept deliberately tiny: only names that could not
 # plausibly be a real silt test.
 PLACEHOLDER_NAMES = {
@@ -329,7 +159,7 @@ def go_citation_mask(src: str) -> str:
     STRING LITERALS WERE ADDED 2026-09-09, and the reason is a measured hole rather than
     a tidy-up. The floor box's coverage meta-test excuses each undriven Block field with a
     prose row naming the gate that covers it, and every row is a string literal in a map.
-    A blind PE renamed a cited test everywhere except inside the map value: this lint
+    A rename that misses a map value leaves the row rotting: this lint
     reported zero in-repo hits and EXITED 0. The row was protected only incidentally,
     because the same name also appeared in three `//` comments — so deleting a test
     through its doc comment, which is how a test ordinarily disappears, would have left
@@ -509,7 +339,7 @@ class SymbolIndex:
 
         The second arm matches on a WORD BOUNDARY, not a substring. Measured
         2026-09-10: `name in line` let `Block` match inside `BlockVersion`, so
-        `docs/design/block-format-by-era.md:16` cited `Block` at chain.go:311 —
+        a doc cited `Block` at a line that had moved —
         177 lines above `type Block struct` — and this check passed it. The
         substring form spread the green surface over the enforced symbols from
         1,227 lines to 3,488 (+184 %).
@@ -719,12 +549,11 @@ def collect_in_repo():
 
 
 def collect_external(roots):
-    """Yield the same shape for the read-only review trees outside the repo.
+    """Yield the same shape for read-only trees outside the repo.
 
     An absent root is skipped so CI stays hermetic — but it is skipped OUT LOUD.
-    Until 2026-09-11 this `continue` was silent, and when the review record moved
-    the two default roots stopped existing: the check went on printing OK while
-    scanning nothing. A green gate with no demonstrated red, in the lint built to
+    A silent `continue` here is how the check once went on printing OK while
+    scanning nothing: both default roots had stopped existing. A green gate with no demonstrated red, in the lint built to
     catch exactly that. `external_root_status()` is what main() prints so the
     difference between "scanned and clean" and "did not run" is visible.
     """
@@ -831,7 +660,7 @@ def main() -> int:
     if in_repo:
         failed = True
         report(
-            f"FAIL [{SCAR_ID}] — these citations name a test that does not exist.\n"
+            f"FAIL — these citations name a test that does not exist.\n"
             f"  A comment or doc claims a property is verified by a test that has no\n"
             f"  `func TestX(` anywhere in the tree. The check is green because it is\n"
             f"  absent, not because the property holds.\n",
@@ -848,7 +677,7 @@ def main() -> int:
     if coords_in_repo:
         failed = True
         report_coords(
-            f"FAIL [{COORD_SCAR_ID}] — these source coordinates no longer point at the\n"
+            f"FAIL — these source coordinates no longer point at the\n"
             f"  symbol they are cited beside. A reader who opens the file at that line\n"
             f"  sees unrelated code, and several of these are written \"verified\".\n"
             f"  Line numbers rot on every insertion above them; symbol names do not.\n",
@@ -867,7 +696,7 @@ def main() -> int:
         stream = sys.stderr if strict_external else sys.stdout
         label = "FAIL" if strict_external else "ADVISORY"
         report(
-            f"\n{label} [{SCAR_ID}] — external review trees cite tests absent from this repo.\n"
+            f"\n{label} — external review trees cite tests absent from this repo.\n"
             f"  These files live outside the repo and are not version-locked to it, so a\n"
             f"  name here may be real but sitting on an unmerged branch. Verify before\n"
             f"  relying on any of them as evidence that a property is checked.\n",
@@ -878,10 +707,10 @@ def main() -> int:
             failed = True
 
     for r in ext_absent:
-        print(f"note [{SCAR_ID}] — external root ABSENT, not scanned: {r}",
+        print(f"note — external root ABSENT, not scanned: {r}",
               file=sys.stderr)
     if not ext_present and roots:
-        print(f"note [{SCAR_ID}] — NO external review tree was scanned this run. "
+        print(f"note — NO external review tree was scanned this run. "
               f"In CI that is expected; locally it means the roots are wrong.",
               file=sys.stderr)
 
@@ -889,11 +718,11 @@ def main() -> int:
         return 1
 
     print(
-        f"OK [{SCAR_ID}] — every cited test name resolves to a real `func TestX(` "
+        f"OK — every cited test name resolves to a real `func TestX(` "
         f"({len(defined)} tests defined, {len(allowed)} allowlisted)."
     )
     print(
-        f"OK [{COORD_SCAR_ID}] — every symbol-anchored source coordinate points at its "
+        f"OK — every symbol-anchored source coordinate points at its "
         f"symbol ({len(index.spans)} declarations indexed, {len(allowed_coords)} allowlisted)."
     )
     return 0
@@ -902,30 +731,16 @@ def main() -> int:
 def self_test() -> int:
     """DRIVE the external-tree check: forge a phantom, prove it is caught.
 
-    WHY THIS EXISTS. On 2026-09-11 the review record moved out of
-    `silt-reviews/` (scar:review-record-moved-and-every-citation-went-dark-2026-09-11)
-    and `DEFAULT_EXTERNAL_ROOTS` pointed at two directories that
-    no longer existed. `collect_external` skips an absent root, so the check would
-    have gone on printing OK forever while reading nothing — the exact failure this
-    lint family was built to catch, inside the lint itself. A repointed constant is
-    not evidence that the check still works. This is.
-
-    Three arms, and all three are needed:
+    A repointed constant is not evidence that a check still works; this is. Three
+    arms, and all three are needed:
 
       RED    a forged phantom citation in an external root IS reported under
              --strict-external, and the run exits 1.
       GREEN  a citation of a REAL test in the same root is NOT reported. Without
              this arm an implementation that flags everything passes the RED arm,
              and the gate would mean nothing.
-      MUTE   an ABSENT root emits the "not scanned" note. This is the defect that
-             actually happened; "did not run" must never again read as "ran clean".
-      ROOTS  the SHIPPED `DEFAULT_EXTERNAL_ROOTS` derive from the single store
-             definition (`check_agent_memory_link.STORE`) and carry the
-             `<seat>/reviews/` shape. The three arms above drive the mechanism through
-             an explicit `--external-root` and never read the shipped constant, so
-             reverting the 2026-09-11 repoint to the two dead `silt-reviews` paths (scar:review-record-moved) left
-             all of them GREEN — measured. The fix was the ungated thing.
-             scar:the-shipped-constant-was-the-ungated-thing-2026-09-11.
+      MUTE   an ABSENT root emits the "not scanned" note. "Did not run" must never
+             read as "ran clean".
     """
     import subprocess
     import tempfile
@@ -952,8 +767,8 @@ def self_test() -> int:
         root.mkdir()
 
         # --- arm RED --------------------------------------------------------
-        (root / "forged-RULING.md").write_text(
-            f"# forged ruling\n\nThe gate is `{phantom}` and it does not exist.\n")
+        (root / "forged-record.md").write_text(
+            f"# forged record\n\nThe gate is `{phantom}` and it does not exist.\n")
         r = run("--strict-external", f"--external-root={root}")
         blob = r.stdout + r.stderr
         if r.returncode == 0:
@@ -962,8 +777,8 @@ def self_test() -> int:
             failures.append("RED arm: the phantom name was not named in the output")
 
         # --- arm GREEN ------------------------------------------------------
-        (root / "forged-RULING.md").write_text(
-            f"# forged ruling\n\nThe gate is `{real_name}` and it is real.\n")
+        (root / "forged-record.md").write_text(
+            f"# forged record\n\nThe gate is `{real_name}` and it is real.\n")
         r = run("--strict-external", f"--external-root={root}")
         blob = r.stdout + r.stderr
         if r.returncode != 0:
@@ -972,41 +787,6 @@ def self_test() -> int:
         if real_name in blob:
             failures.append(f"GREEN arm: a REAL test name ({real_name}) was reported "
                             f"as a phantom")
-
-    # --- arm ROOTS ----------------------------------------------------------
-    # The three arms above drive the MECHANISM through an explicit --external-root.
-    # None of them reads DEFAULT_EXTERNAL_ROOTS, which is the thing the 2026-09-11 fix
-    # actually changed. Ablating that fix left every arm GREEN. This arm gates the
-    # shipped value. CI has no store, so existence is checked only when the store is
-    # there — but the DERIVATION and the SHAPE are checkable everywhere, and they are
-    # what a repoint would break.
-    store = str(MEMORY_STORE)
-    for rel, full in zip(EXTERNAL_ROOT_RELS, DEFAULT_EXTERNAL_ROOTS):
-        if not full.startswith(store + os.sep):
-            failures.append(
-                f"ROOTS arm: external root {full!r} is not under the single store "
-                f"definition ({store}) — it was hard-coded away from "
-                f"check_agent_memory_link.STORE")
-        if "silt-reviews" in full:   # scar:review-record-moved — the literal is the TEST
-            failures.append(
-                f"ROOTS arm: external root {full!r} still names the RETIRED review "
-                f"tree — this is the exact 2026-09-11 defect, re-shipped")
-        parts = rel.split("/")
-        if len(parts) < 2 or parts[1] != "reviews":
-            failures.append(
-                f"ROOTS arm: external root {rel!r} is not the `<seat>/reviews/...` "
-                f"shape the review-record migration defines")
-    if os.path.isdir(store):
-        for full in DEFAULT_EXTERNAL_ROOTS:
-            if not os.path.isdir(full):
-                failures.append(
-                    f"ROOTS arm: the store exists but external root {full!r} does "
-                    f"not — the check would read NOTHING and still print OK")
-        roots_note = f"the {len(DEFAULT_EXTERNAL_ROOTS)} shipped roots EXIST under {store}"
-    else:
-        # Say what was NOT checked. 'did not run' must never read as 'ran clean'.
-        roots_note = (f"the store is ABSENT ({store}), so existence was NOT checked — "
-                      f"derivation and shape were")
 
     # --- arm MUTE -----------------------------------------------------------
     r = run("--external-root=/definitely/not/a/directory/here")
@@ -1019,15 +799,13 @@ def self_test() -> int:
                         "nothing about it")
 
     if failures:
-        print(f"FAIL [{SCAR_ID}] — self-test: {len(failures)} arm failure(s):",
+        print(f"FAIL — self-test: {len(failures)} arm failure(s):",
               file=sys.stderr)
         for f in failures:
             print("  " + f, file=sys.stderr)
         return 1
-    print(f"OK [{SCAR_ID}] — self-test: the external-tree check CATCHES a forged "
-          f"phantom, ACCEPTS a real name ({real_name}), SAYS SO when a root is "
-          f"absent, and the SHIPPED roots derive from check_agent_memory_link.STORE "
-          f"in the `<seat>/reviews/` shape — {roots_note}.")
+    print(f"OK — self-test: the external-tree check CATCHES a forged phantom, "
+          f"ACCEPTS a real name ({real_name}), and SAYS SO when a root is absent.")
     return 0
 
 

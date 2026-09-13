@@ -13,7 +13,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// TestEquivocateResumesAfterPartialPlacement378 is the #378 regression guard:
+// TestEquivocateResumesAfterPartialPlacement is the regression guard:
 // Node.Equivocate must be RESUMABLE across retries. The drill needs two
 // conflicting blocks at the SAME height on the SAME base, but the two honest
 // peers earn the culprit's standing at INDEPENDENT moments, so a first attempt
@@ -32,7 +32,7 @@ import (
 // completes and no slash fires — this test fails. With resumable placement
 // (pinned base + per-leg latch) the retry skips the already-placed Y,Z and drives
 // only X, pinned to the original height, so any interleaving converges.
-func TestEquivocateResumesAfterPartialPlacement378(t *testing.T) {
+func TestEquivocateResumesAfterPartialPlacement(t *testing.T) {
 	const bondSize = int64(2) << 20
 	sched := simclock.New()
 	net := simnet.New(sched, 9, simnet.DefaultConfig())
@@ -114,7 +114,7 @@ func TestEquivocateResumesAfterPartialPlacement378(t *testing.T) {
 	c.Equivocate(idA.NodeID(), idB.NodeID(), func(e error) { err2, done2 = e, true })
 	sched.Run()
 	if !done2 || err2 != nil {
-		t.Fatalf("#378: the retry after a partial placement must RESUME and complete (old code rebuilds X at the advanced head and wedges): %v", err2)
+		t.Fatalf("the retry after a partial placement must RESUME and complete (old code rebuilds X at the advanced head and wedges): %v", err2)
 	}
 	if _, ok := a.Chain().LookupRoot(advEntry("X").Root); !ok {
 		t.Fatal("the retry should have placed X on A (the final leg, pinned to the original height)")
@@ -131,6 +131,6 @@ func TestEquivocateResumesAfterPartialPlacement378(t *testing.T) {
 		t.Fatal("A should commit a block carrying the on-chain slash")
 	}
 	if !a.Chain().IsSlashed(idC.NodeID()) || a.Chain().BondedSize(idC.NodeID()) != 0 {
-		t.Fatal("#378: the resumed double-sign must still be detected and the culprit evicted")
+		t.Fatal("the resumed double-sign must still be detected and the culprit evicted")
 	}
 }

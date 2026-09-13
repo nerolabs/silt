@@ -8,19 +8,17 @@ import (
 )
 
 // =============================================================================
-// R-CARRIER-REFLECTION — the fold-input carrier reflection pin (Boulder 1, owed before R1.8)
+// The fold-input carrier reflection pin
 // =============================================================================
 //
-// THE RESIDUAL THIS CLOSES. The R1.4 witness-soundness certification
-// (floorbox-R1.3-refutation-R1.4-witness-soundness-RESEARCH-CERTIFICATION-2026-09-01, §Q2 and
-// §Residuals) held R-CARRIER-REFLECTION as BOUNDED-BUT-OPEN: `TestAdversarialRootCoverageIsComplete`
-// reflects only the VALUE/PREDICATE carriers (StateRootAttScreen, StateRootRotateMember,
-// StateRootBondRegScreen, plus StateRootRotateScalar added by R1.6), NOT the FOLD-INPUT carriers.
-// The certifier verified BY HAND that the fold-input carriers are all prevStateRoot- or
-// committedStateRoot-anchored, and wrote: "It is not pinned: a future field added to a fold-input
-// carrier that ALSO decides a branch would escape the walk. Lift = extend the walk to the
-// fold-input carriers with an 'already-anchored' classification, so a new value-bearing field on
-// them reddens. Owed before the flip."
+// THE RESIDUAL THIS CLOSES. The witness-soundness analysis
+// left this BOUNDED-BUT-OPEN: `TestAdversarialRootCoverageIsComplete` reflects only the VALUE/PREDICATE
+// carriers (StateRootAttScreen, StateRootRotateMember, StateRootBondRegScreen, plus
+// StateRootRotateScalar added by), NOT the FOLD-INPUT carriers. This was verified BY HAND:
+// the fold-input carriers are all prevStateRoot- or committedStateRoot-anchored, and wrote: "It is
+// not pinned: a future field added to a fold-input carrier that ALSO decides a branch would escape
+// the walk. Lift = extend the walk to the fold-input carriers with an 'already-anchored'
+// classification, so a new value-bearing field on them reddens. Owed before the flip."
 //
 // Hand-verification is not a gate. This file is the gate.
 //
@@ -28,9 +26,9 @@ import (
 // closure from the state-root fold's witness roots (StateRootWitness, plus SeenSetWitness which is
 // also reached through Maturity.SeenSet), descending through pointers / slices / arrays / maps into
 // every named struct type declared in package chain. The reachable set is compared for EXACT
-// EQUALITY against the declared coverage — the union of `r12CoverageTable` (the R1.2/R1.4
-// value/predicate rows, unchanged by this file) and `foldInputCoverageTable` (the fold-input rows
-// added here). Three ways to go RED:
+// EQUALITY against the declared coverage — the union of `r12CoverageTable` (the value/predicate
+// rows, unchanged by this file) and `foldInputCoverageTable` (the fold-input rows added here).
+// Three ways to go RED:
 //
 //	1. a NEW CARRIER TYPE reachable from the fold's witness bundle with no table entry;
 //	2. a NEW FIELD on any reachable carrier with no classification row;
@@ -53,35 +51,35 @@ import (
 //
 // SCOPE BOUNDARIES — deliberate and named, not oversights:
 //
-//   - `statehash.Witness` / `statehash.FoldSibling` are OPAQUE leaves. The walk descends only into
-//     structs declared in package chain, so the proof primitives are not enumerated field-by-field.
-//     They are the verification primitives (`core/statehash/witness.go` Resolve, `fold.go`
-//     FoldChangedPaths), certified in their own package, not floor-box carriers.
-//   - The SIBLING recompute witnesses — `EpochSetWitness`, `MemberWeightWitness`,
-//     `BondedSetWitness`, `QualifiedCountWitness`, `QualifiedMemberWitness` — are OUT OF SCOPE.
-//     They feed the root-only predicate recomputes (requireEpochWeightQuorum,
-//     requireDeMatureSuperQuorum, qualifiedCount), not the state-root FOLD, and they are not
-//     reachable from StateRootWitness. R-CARRIER-REFLECTION is scoped to the fold-input carriers.
-//     If one ever becomes reachable from the fold's witness bundle, this pin reddens until it is
-//     classified — the boundary is enforced by the closure, not by trust.
-//   - The READ-SET side (`readset_v5.go`) emits `[]statehash.ReadEntry`, not a chain-local carrier
-//     struct. Its completeness is pinned by the EXECUTION-DERIVED drift guard
-//     (`readset_v5_drift_test.go`), which is the stronger instrument for that surface: it derives
-//     ground truth from the real recompute's leaf-touch, not from a table.
+// - `statehash.Witness` / `statehash.FoldSibling` are OPAQUE leaves. The walk descends only into
+// structs declared in package chain, so the proof primitives are not enumerated field-by-field.
+// They are the verification primitives (`core/statehash/witness.go` Resolve, `fold.go`
+// FoldChangedPaths), in their own package, not floor-box carriers.
+// - The SIBLING recompute witnesses — `EpochSetWitness`, `MemberWeightWitness`,
+// `BondedSetWitness`, `QualifiedCountWitness`, `QualifiedMemberWitness` — are OUT OF SCOPE.
+// They feed the root-only predicate recomputes (requireEpochWeightQuorum,
+// requireDeMatureSuperQuorum, qualifiedCount), not the state-root FOLD, and they are not
+// reachable from StateRootWitness. this gate is scoped to the fold-input carriers.
+// If one ever becomes reachable from the fold's witness bundle, this pin reddens until it is
+// classified — the boundary is enforced by the closure, not by trust.
+// - The READ-SET side (`readset_v5.go`) emits `[]statehash.ReadEntry`, not a chain-local carrier
+// struct. Its completeness is pinned by the EXECUTION-DERIVED drift guard
+// (`readset_v5_drift_test.go`), which is the stronger instrument for that surface: it derives
+// ground truth from the real recompute's leaf-touch, not from a table.
 
 // foldInputCoverageTable classifies every field of every FOLD-INPUT carrier reachable from the
-// state-root fold's witness bundle: the carriers R1.4 §Q2 verified by hand. It is DISJOINT from
+// state-root fold's witness bundle: the carriers verified by hand. It is DISJOINT from
 // `r12CoverageTable` (the value/predicate carriers) — `declaredCarrierCoverage` fails if a type
 // appears in both, so ownership of a carrier is never ambiguous.
 //
 // Every row here names a SPECIFIC anchor or a specific open break. That is the point: a new field on
 // one of these carriers cannot be waved through, because adding the row forces the author to state
-// which anchor covers it — or to classify it FIX and build a driven gate (the R1.2 pattern).
+// which anchor covers it — or to classify it FIX and build a driven gate (the pattern).
 //
 // Rows were all `already-anchored` until 2026-09-13, when StateRootDigestWitness.PreIDs was
 // reclassified FIX-OPEN: a confirmed wrong-accept whose remedy is research-gated. Read that row's
 // comment before adding another FIX-OPEN here — it records which count gate does and does not see
-// this table, and why that is an open owner call rather than a fix.
+// this table, and why that is an openrather than a fix.
 var foldInputCoverageTable = map[string]map[string]r12Disposition{
 	// ---- the top-level bundle: each slot's SET-COMPLETENESS is payload-derived, never witness-chosen ----
 	"StateRootWitness": {
@@ -89,15 +87,15 @@ var foldInputCoverageTable = map[string]map[string]r12Disposition{
 		"DueBucketProof": {"already-anchored", "the TTL scope-gate non-membership proof, Resolved against prevStateRoot; a membership or failed proof stalls the scope gate"},
 		"DigestPreSets":  {"already-anchored", "derived-set: touched digests are derived from the payload and matched by Tag; a non-derived tag is ignored (values classified under StateRootDigestWitness)"},
 		"TTLSweep":       {"already-anchored", "presence is own-cfg + height gated (BondTTLBlocks, dueBucket[h]), never witness-decided (C-6); values classified under StateRootTTLWitness"},
-		"BondRegScreens": {"already-anchored", "derived-set: one screen per payload bond-reg Root; values classified under StateRootBondRegScreen (R1.2 FIX gates)"},
+		"BondRegScreens": {"already-anchored", "derived-set: one screen per payload bond-reg Root; values classified under StateRootBondRegScreen (IX gates)"},
 		"BondRegBuckets": {"already-anchored", "derived-set: one entry per payload-derived affected due-height; values classified under StateRootBucketWitness"},
-		"AttScreens":     {"already-anchored", "derived-set: one screen per carried non-parent-proposer signer in b.LastCommit — the HASH-COVERED carrier (R-BOX-ATTESTS O1), so the derived set is a pure function of signed content; values classified under StateRootAttScreen (R1.2 FIX gates)"},
-		// The parent-proposer EXCLUSION is not a witness field any more (floor-box structure round
-		// 1A, step 6): it is HeadRef.ProposerID, box-owned, derived by the door from the parent
-		// block it holds after P1 binds b.Prev to that parent. The earlier ParentProposer /
-		// ParentProposerSig slots were anchored only by "some key signed b.Prev", which a fresh
-		// keypair satisfies (R-CARRIER-PARENTPROPOSER, ADD direction). No slot, nothing to forge.
-		// Driven: TestClassA_ParentProposerExclusionIsBoxOwned.
+		"AttScreens":     {"already-anchored", "derived-set: one screen per carried non-parent-proposer signer in b.LastCommit — the HASH-COVERED carrier (1), so the derived set is a pure function of signed content; values classified under StateRootAttScreen (IX gates)"},
+		// The parent-proposer EXCLUSION is not a witness field any more (floor-box structure
+		// round 1A, step 6): it is HeadRef.ProposerID, box-owned, derived by the door from
+		// the parent block it holds after P1 binds b.Prev to that parent. The earlier
+		// ParentProposer / ParentProposerSig slots were anchored only by "some key signed
+		// b.Prev", which a fresh keypair satisfies (ADD direction). No slot, nothing to
+		// forge. Driven: TestClassA_ParentProposerExclusionIsBoxOwned.
 		"Rotate":   {"already-anchored", "presence is own-cfg gated (epochsEnabled && h%EpochBlocks==0), never witness-decided (C-6); values classified under StateRootRotateWitness"},
 		"Maturity": {"already-anchored", "REQUIRED on every v5 block — maturityLatchOps STALLS on a nil Maturity, so its presence is not attacker-optional; values classified under StateRootMaturityWitness"},
 	},
@@ -120,29 +118,29 @@ var foldInputCoverageTable = map[string]map[string]r12Disposition{
 		// forgery itself arranges), class P qualifiedRoot, class A validatorsSeenRoot (when post ==
 		// pre). For those, "a short or padded id-list stalls" is FALSE: it is consumed as attacker data.
 		//
-		// The row is therefore RECLASSIFIED to the table's own machine-readable term for exactly this
-		// case, FIX-OPEN — "a confirmed wrong-accept awaiting an anchoring fix"
-		// (floorbox_recompute_adversarialroot_v5_test.go). A correction written only in a comment
-		// beside a machine-read value is not a correction: until this edit, every walk over this table
-		// still read `already-anchored` for a row this finding proves false
-		// (scar:a-claim-about-a-gate-is-itself-a-claim).
+		// The row is therefore RECLASSIFIED to the table's own machine-readable term for exactly
+		// this case, FIX-OPEN — "a confirmed wrong-accept awaiting an anchoring fix"
+		// (floorbox_recompute_adversarialroot_v5_test.go). A correction written only in a
+		// comment beside a machine-read value is not a correction: until this edit, every walk
+		// over this table still read `already-anchored` for a row this finding proves false.
 		//
-		// ⚠ WHAT THE FIX-OPEN LABEL DOES **NOT** BUY, STATED PLAINLY. The "expected 0 FIX-OPEN rows"
-		// assertion in TestAdversarialRootCoverageIsComplete walks `r12CoverageTable` ONLY, not the
-		// merged set that declaredCarrierCoverage builds. StateRootDigestWitness lives in THIS table,
-		// so that count gate does not see this row and stays GREEN. That is deliberate, not an
-		// oversight: widening the walk would put a permanently RED gate on main for as long as the
-		// research gate holds the remedy, which is a scope and sequencing call against the era-4
-		// freeze train — the owner's, not a seat's. It is OPEN. An honest label with a deferred gate
-		// is the interim; a silently-green gate with a label pretending otherwise is not.
+		// ⚠ WHAT THE FIX-OPEN LABEL DOES **NOT** BUY, STATED PLAINLY. The "expected 0 FIX-OPEN
+		// rows" assertion in TestAdversarialRootCoverageIsComplete walks `r12CoverageTable`
+		// ONLY, not the merged set that declaredCarrierCoverage builds. StateRootDigestWitness
+		// lives in THIS table, so that count gate does not see this row and stays GREEN. That
+		// is deliberate, not an oversight: widening the walk would put a permanently RED gate
+		// on main for as long as the research gate holds the remedy, which is a scope and
+		// sequencing call against the era-4 freeze train — the project, not a seat's. It is
+		// OPEN. An honest label with a deferred gate is the interim; a silently-green gate with
+		// a label pretending otherwise is not.
 		//
-		// EVIDENCE: rt_anchor_preset_gates_test.go, RT-ANCHOR-0..6 (PINNED_DEFECT) + the census at its
+		// EVIDENCE: anchor_preset_gates_test.go.6 (PINNED_DEFECT) + the census at its
 		// head. Re-derive both before restoring this row to already-anchored.
-		"PreIDs": {"FIX-OPEN", "CONFIRMED WRONG-ACCEPT, remedy RESEARCH-GATED. Open-break gates: RT-ANCHOR-0..6 in rt_anchor_preset_gates_test.go (PINNED_DEFECT) — TestRTAnchor_A0_AnchoredPreSetDoesNotAnchor_PINNED_DEFECT and the five class gates. anchoredPreSet neither Resolves the digest leaf nor computes nodeSetMTH(PreIDs), so on any tag whose digestFoldOp is never emitted the id-list is consumed as attacker data. Containment: the R1.8 downgrade in (*Box).Validate. NOT counted by the 0-FIX-OPEN walk, which reads r12CoverageTable only — see the comment above"},
-		// Proof rests on the SAME conditional: digestFoldOp routes w.Proof into the op it emits, so on
-		// an unemitted tag the proof is never verified either. It is deliberately NOT reclassified
-		// here — the ruling's required fix names the PreIDs row, and widening a record beyond the
-		// reviewed finding is how a correction becomes a claim of its own.
+		"PreIDs": {"FIX-OPEN", "CONFIRMED WRON, remedy RESEARCH-GATED. Open-break gates: ..6 in anchor_preset_gates_test.go (PINNED_DEFECT) — TestAnchoredPreSetDoesNotAnchor_PINNED_DEFECT and the five class gates. anchoredPreSet neither Resolves the digest leaf nor computes nodeSetMTH(PreIDs), so on any tag whose digestFoldOp is never emitted the id-list is consumed as attacker data. Containment: the downgrade in (*Box).Validate. NOT counted by the 0-FIX-OPEN walk, which reads r12CoverageTable only — see the comment above"},
+		// Proof rests on the SAME conditional: digestFoldOp routes w.Proof into the op it emits,
+		// so on an unemitted tag the proof is never verified either. It is deliberately NOT
+		// reclassified here — decision's required fix names the PreIDs row, and widening a
+		// record beyond the reviewed finding is how a correction becomes a claim of its own.
 		"Proof": {"already-anchored", "the digest leaf inclusion proof, routed as the FoldOp OldValue and verified against prevStateRoot (R-anchor-prevroot)"},
 	},
 	// ---- class T: the TTL-sweep accelerator carrier ----
@@ -161,24 +159,24 @@ var foldInputCoverageTable = map[string]map[string]r12Disposition{
 	},
 	// ---- class P: the epoch-boundary bundle (its MEMBER carrier is r12-classified; its SCALARS are split-classified) ----
 	"StateRootRotateWitness": {
-		"Members":       {"already-anchored", "cross-checked against the entry-threaded post-qualified id-set (the anchored pre-qualified set plus this block's S/B/T deltas); a short or padded member list mismatches the derived set and stalls (per-member values: StateRootRotateMember, R1.2 FIX gates)"},
+		"Members":       {"already-anchored", "cross-checked against the entry-threaded post-qualified id-set (the anchored pre-qualified set plus this block's S/B/T deltas); a short or padded member list mismatches the derived set and stalls (per-member values: StateRootRotateMember,  FIX gates)"},
 		"PriorEpochSet": {"already-anchored", "per-leaving-member epochSet DELETE proofs against prevStateRoot; per-member values classified under StateRootRotateMember"},
 		"EpochStart":    {"already-anchored", "class-P scalar, EMIT-ANCHORED: scalarSuppressObligations[tagEpochStart] (height strictly advances, so the emit always fires and the fold verifies OldValue); fields under StateRootRotateScalar"},
-		"MatureEpoch":   {"already-anchored", "class-P scalar, SUPPRESS-ANCHORED: scalarSuppressObligations[tagMatureEpoch] (Direction A pre-state anchor plus a driven suppression gate); fields under StateRootRotateScalar"},
+		"MatureEpoch":   {"already-anchored", "class-P scalar, SUPPRESS-ANCHORED: scalarSuppressObligations[tagMatureEpoch] (pre-state anchor plus a driven suppression gate); fields under StateRootRotateScalar"},
 		"GateLockedIn":  {"already-anchored", "class-P scalar, SUPPRESS-ANCHORED: scalarSuppressObligations[tagGateLockedIn]; fields under StateRootRotateScalar"},
 		"GateHeight":    {"already-anchored", "class-P scalar riding its lock-in bool (classP-anchoring cert 2026-09-02 §1b): suppressing GateLockedIn suppresses the pair, so anchoring the bool closes it; keeps its emit-time fold anchor"},
 		"Era3LockedIn":  {"already-anchored", "class-P scalar, SUPPRESS-ANCHORED: scalarSuppressObligations[tagEra3LockedIn]; fields under StateRootRotateScalar"},
-		"Era3Height":    {"already-anchored", "class-P scalar riding Era3LockedIn (cert §1b); keeps its emit-time fold anchor"},
+		"Era3Height":    {"already-anchored", "class-P scalar riding Era3LockedIn; keeps its emit-time fold anchor"},
 		"Era4LockedIn":  {"already-anchored", "class-P scalar, SUPPRESS-ANCHORED: scalarSuppressObligations[tagEra4LockedIn]; fields under StateRootRotateScalar"},
-		"Era4Height":    {"already-anchored", "class-P scalar riding Era4LockedIn (cert §1b); keeps its emit-time fold anchor"},
+		"Era4Height":    {"already-anchored", "class-P scalar riding Era4LockedIn; keeps its emit-time fold anchor"},
 	},
 	// ---- class M: the everMature latch bundle ----
 	"StateRootMaturityWitness": {
-		"EverMature": {"already-anchored", "class-M scalar, SUPPRESS-ANCHORED: scalarSuppressObligations[tagEverMature] (Direction A pre-state anchor against prevStateRoot plus a driven suppression gate); fields under StateRootRotateScalar"},
-		// R-FOLD-LIVE-STATE-READS (cert 2026-09-02, Q3 step 1): the class-A screen's BRANCH SELECTOR.
-		// Homed on this carrier because it is REQUIRED on every block, while the class-P rotate witness
-		// is nil off-boundary. Anchored UNCONDITIONALLY by handoffPreState before any class dispatches.
-		"MatureEpoch": {"already-anchored", "class-M/A scalar, SUPPRESS-ANCHORED: scalarSuppressObligations[tagMatureEpoch] (Direction A pre-state anchor in handoffPreState against prevStateRoot, plus the driven both-polarity gate TestColdBox_D1_ForgedMatureEpochOldValueStalls); fields under StateRootRotateScalar"},
+		"EverMature": {"already-anchored", "class-M scalar, SUPPRESS-ANCHORED: scalarSuppressObligations[tagEverMature] (pre-state anchor against prevStateRoot plus a driven suppression gate); fields under StateRootRotateScalar"},
+		// The class-A screen's BRANCH SELECTOR. Homed on this carrier because it is REQUIRED on
+		// every block, while the class-P rotate witness is nil off-boundary. Anchored
+		// UNCONDITIONALLY by handoffPreState before any class dispatches.
+		"MatureEpoch": {"already-anchored", "class-M/A scalar, SUPPRESS-ANCHORED: scalarSuppressObligations[tagMatureEpoch] (pre-state anchor in handoffPreState against prevStateRoot, plus the driven both-polarity gate TestColdBoxForgedMatureEpochOldValueStalls); fields under StateRootRotateScalar"},
 		"SeenSet":     {"already-anchored", "the maturity witness recomputeMatureNow verifies against committedStateRoot; read only when the pre-latch everMature is false, and a missing/forged one stalls (values classified under SeenSetWitness)"},
 	},
 	// ---- class M: the validatorsSeen set witness ----
@@ -188,7 +186,7 @@ var foldInputCoverageTable = map[string]map[string]r12Disposition{
 		"SeenRootValue":   {"already-anchored", "the value SeenRootWitness proves (Resolve-anchored); the comparand nodeSetMTH(IDs) must equal"},
 		"Members":         {"already-anchored", "every id in IDs must have an entry or the recompute stalls; per-member values classified under MemberStateWitness (C-1 Resolve-anchored)"},
 	},
-	// ---- class M: the per-member committed-state witness (C-1: every field Resolve-anchored) ----
+	// ---- class M: the per-member committed-state witness (every field Resolve-anchored) ----
 	"MemberStateWitness": {
 		"Bonded":        {"already-anchored", "C-1 Resolve-anchored: the bonded[id] leaf must prove EncodeInt64(Bonded) against committedStateRoot; a forged weight fails to verify and the member is unproven"},
 		"BondedProof":   {"already-anchored", "the anchoring proof for Bonded (verified via Resolve)"},
@@ -213,7 +211,7 @@ func carrierClosureRoots() []reflect.Type {
 
 // reachableCarriers walks the transitive struct closure from roots, descending through pointers,
 // slices, arrays and maps (both key and element), and collects every NAMED struct type declared in
-// package chain. External types (statehash.Witness, ports.NodeID, ...) are opaque leaves — see the
+// package chain. External types (statehash.Witness, ports.NodeID,.) are opaque leaves — see the
 // SCOPE BOUNDARIES note above. The returned map is keyed by type name, which is what the coverage
 // tables key on.
 func reachableCarriers(roots []reflect.Type) map[string]reflect.Type {
@@ -335,15 +333,15 @@ func carrierCoverageGaps(reachable map[string]reflect.Type, declared map[string]
 	return gaps
 }
 
-// TestFoldInputCarrierCoverageIsComplete is the R-CARRIER-REFLECTION pin: the reflected transitive
-// carrier closure of the state-root fold's witness bundle EQUALS the declared coverage set, field
-// for field. See the file header for what this does and does not claim.
+// TestFoldInputCarrierCoverageIsComplete is the pin: the reflected transitive carrier closure of
+// the state-root fold's witness bundle EQUALS the declared coverage set, field for field. See the
+// file header for what this does and does not claim.
 func TestFoldInputCarrierCoverageIsComplete(t *testing.T) {
 	reachable := reachableCarriers(carrierClosureRoots())
 	declared := declaredCarrierCoverage(t)
 
 	if gaps := carrierCoverageGaps(reachable, declared); len(gaps) != 0 {
-		msg := fmt.Sprintf("R-CARRIER-REFLECTION: %d coverage gap(s) between the reflected fold-input carrier closure "+
+		msg := fmt.Sprintf("%d coverage gap(s) between the reflected fold-input carrier closure "+
 			"and the declared coverage table:\n", len(gaps))
 		for _, g := range gaps {
 			msg += "  - " + g + "\n"
@@ -351,8 +349,8 @@ func TestFoldInputCarrierCoverageIsComplete(t *testing.T) {
 		t.Fatal(msg)
 	}
 
-	// Report the enumeration so the numbers are visible in the run record (the cert's carrier count
-	// is a DOC count; the reflection is authoritative — R1.4 §Q2).
+	// Report the enumeration so the numbers are visible in the run record (the carrier count
+	// is a DOC count; the reflection is authoritative —).
 	fields := 0
 	names := make([]string, 0, len(reachable))
 	for name, ty := range reachable {
@@ -394,7 +392,7 @@ func TestFoldInputCarrierCoverageHasTeeth(t *testing.T) {
 	if !gapsContain(gaps, "UNCLASSIFIED FIELD: StateRootDigestWitness.ForgedNewCarrierField") {
 		t.Fatalf("TEETH FAILED (new field): adding an unclassified field to a fold-input carrier must be reported.\n"+
 			"  If this does not redden, a future added carrier field slips the coverage table silently — the exact\n"+
-			"  R-CARRIER-REFLECTION failure mode. gaps=%v", gaps)
+			"  failure mode. gaps=%v", gaps)
 	}
 
 	// --- Direction 2: a STALE ROW — a covered carrier's field removed from the struct. ---
@@ -419,7 +417,7 @@ func TestFoldInputCarrierCoverageHasTeeth(t *testing.T) {
 	gaps = carrierCoverageGaps(mutated, baseDeclared)
 	if !gapsContain(gaps, "STALE ROW: the coverage table lists StateRootTTLWitness.Members") {
 		t.Fatalf("TEETH FAILED (stale row): a coverage row for a removed field must be reported stale.\n"+
-			"  If this does not redden, a renamed carrier field leaves a row that certifies a field that no longer\n"+
+			"  If this does not redden, a renamed carrier field leaves a row that covers a field that no longer\n"+
 			"  exists, while the real (renamed) field is unclassified. gaps=%v", gaps)
 	}
 
@@ -451,7 +449,7 @@ func TestFoldInputCarrierCoverageHasTeeth(t *testing.T) {
 	gaps = carrierCoverageGaps(reducedReachable, baseDeclared)
 	if !gapsContain(gaps, "STALE CARRIER: the coverage table lists StateRootBucketWitness") {
 		t.Fatalf("TEETH FAILED (stale carrier): a table entry for an unreachable carrier must be reported.\n"+
-			"  If this does not redden, an unwired carrier keeps a coverage row that certifies nothing. gaps=%v", gaps)
+			"  If this does not redden, an unwired carrier keeps a coverage row that covers nothing. gaps=%v", gaps)
 	}
 
 	// --- Direction 4: an empty anchor detail is not coverage. ---

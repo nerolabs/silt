@@ -1,10 +1,10 @@
-// Self-certifying provider records (M0 H5 / Memo 08). A provider record is a
-// signed "I hold content under key K" claim bound to the provider's identity, so
-// a node that holds the k-closest slots to K cannot fabricate records for
-// identities that never announced, and a fetcher a record is re-served to can
-// verify it rather than trust the responder. Off by default (unsigned records
-// flow, as before); RequireSignedProviders makes a node produce, store, and
-// accept only signed records — the untrusted-swarm posture.
+// Self-certifying provider records (M0 H5 /). A provider record is a signed "I
+// hold content under key K" claim bound to the provider's identity, so a node
+// that holds the k-closest slots to K cannot fabricate records for identities
+// that never announced, and a fetcher a record is re-served to can verify it
+// rather than trust the responder. Off by default (unsigned records flow, as
+// before); RequireSignedProviders makes a node produce, store, and accept only
+// signed records — the untrusted-swarm posture.
 package node
 
 import (

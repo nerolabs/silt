@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # awstest.sh — one-command AWS field test for silt (the fallback substrate; mirrors
 # integration/cloudtest/cloudtest.sh on AWS). Runs the SAME flows by SOURCING
-# ../cloudtest/scenarios.sh + ../cloudtest/gen_report.sh — only the substrate differs.
+# ../cloudtest/scenarios.sh +../cloudtest/gen_report.sh — only the substrate differs.
 #
-#   ./awstest.sh setup      interactive: pick AWS profile/region → write config.env
-#   ./awstest.sh            build → topology → apply → run flows → report → DESTROY
-#   ./awstest.sh up         bring the fleet up and leave it (implies KEEP_UP)
-#   ./awstest.sh run        run the scenarios against an already-up fleet
-#   ./awstest.sh report     regenerate the report from results.jsonl
-#   ./awstest.sh down       terraform destroy
-#   ./awstest.sh nuke       last-resort: terminate/release billable resources tagged silt:awstest=<run>
+# ./awstest.sh setup interactive: pick AWS profile/region → write config.env
+# ./awstest.sh build → topology → apply → run flows → report → DESTROY
+# ./awstest.sh up bring the fleet up and leave it (implies KEEP_UP)
+# ./awstest.sh run run the scenarios against an already-up fleet
+# ./awstest.sh report regenerate the report from results.jsonl
+# ./awstest.sh down terraform destroy
+# ./awstest.sh nuke last-resort: terminate/release billable resources tagged silt:awstest=<run>
 #
 # STATUS: first cut, dry-validated only — see README. Teardown is guaranteed:
 # destroy-on-EXIT + a per-instance `shutdown -h +TTL` (terminate-on-shutdown).
@@ -80,7 +80,7 @@ apply() {
     -var "all_on_demand=${ALL_ON_DEMAND:-false}"
   tf output -json nodes > "$FT_DIR/nodes.json"
   # Merge the deterministic nodeid from topology.json into nodes.json (terraform output
-  # carries instance_id/az/ips/role but NOT the silt NodeID the #184 drills derive peers
+  # carries instance_id/az/ips/role but NOT the silt NodeID the drills derive peers
   # from). Identical merge to the GCP harness.
   python3 - "$FT_DIR/nodes.json" "$FT_DIR/topology.json" <<'PY'
 import json, sys

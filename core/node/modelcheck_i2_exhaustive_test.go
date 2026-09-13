@@ -14,12 +14,12 @@ import (
 
 // Consensus model-check — tier 2, I2 NEVER-SIGN-TWICE ACROSS RESTART, EXHAUSTIVE.
 //
-// The red-team #183 verdict's coverage caveat C-1: I2-across-restart was a
-// SCENARIO test (modelcheck_i2_rounds_test.go: one signed slot, one competitor)
-// rather than an exhaustive sweep. This promotes it: it drives the REAL
-// watermark predicate (signAllowedAt) against a mark RELOADED from a persisted
-// store — the restart — over EVERY (signed slot) × (competitor slot) pair in
-// the {height, round, phase, hash} space, and asserts the exact monotone rule.
+// The's coverage caveat: I2-across-restart was a SCENARIO test
+// (modelcheck_i2_rounds_test.go: one signed slot, one competitor) rather than
+// an exhaustive sweep. This promotes it: it drives the REAL watermark predicate
+// (signAllowedAt) against a mark RELOADED from a persisted store — the restart
+// — over EVERY (signed slot) × (competitor slot) pair in the {height, round,
+// phase, hash} space, and asserts the exact monotone rule.
 //
 // THE INVARIANT (chainrole.go signAllowedAt / slotCompare): after a validator
 // has signed slot S = (h, r, phase) over hash H, a fresh signature at slot C
@@ -30,7 +30,7 @@ import (
 // persisted watermark (never live memory, which a restart wipes).
 //
 // FAILING-FIRST: the non-persisted control (a blank store after "restart")
-// allows the same-slot competitor — the pre-#397 crash-wipe self-slash — so the
+// allows the same-slot competitor — the earlier crash-wipe self-slash — so the
 // REFUSE half is exercising persistence, not live state.
 
 // i2Reload builds an objective validator wired to `mark`, seeded so a fresh
@@ -138,7 +138,7 @@ func TestModelCheck_I2_AcrossRestart_Exhaustive(t *testing.T) {
 		t.Fatalf("enumeration miscount: %d checks, want %d", checks, len(slots)*len(slots)*2)
 	}
 
-	// FAILING-FIRST control: a BLANK store after restart (the pre-#397
+	// FAILING-FIRST control: a BLANK store after restart (the earlier
 	// crash-wipe) allows the same-slot different-hash competitor — proving the
 	// REFUSE assertions above are the persisted mark's work.
 	store := markstore.NewMem()

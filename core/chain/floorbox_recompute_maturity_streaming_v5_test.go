@@ -10,21 +10,21 @@ import (
 // Tests for the STREAMING class-M maturity recompute (recomputeMatureNowStreaming,
 // floorbox_recompute_maturity_v5.go). The streaming path pulls each member's proof witness on
 // demand (SeenSetStreamWitness.Member) and lets that member's proof heap be freed before the next
-// member is verified, cutting resident witness from O(N·depth) to O(depth). It is CERTIFIED
+// member is verified, cutting resident witness from O(N·depth) to O(depth). It is sound
 // soundness-neutral ONLY under these conditions, which these tests hold the line on:
 //
-//   - FOLD-EQUIVALENCE: the streamed verdict == the resident-map verdict == the full-node
-//     matureNow() verdict, over the SAME committed state, mature and immature. Streaming changes
-//     HOW memory is held, never WHAT is verified.
-//   - R-M-STREAM-COMPLETENESS (the load-bearing RED ablation): a SHORT / truncated id-list must
-//     still STALL. Streaming frees per-member PROOF heaps, NEVER the id-list; the completeness MTH
-//     nodeSetMTH(w.IDs) still consumes the full list. If a member is dropped from IDs, the
-//     reconstructed MTH differs from the committed validatorsSeenRoot and the box stalls
-//     ErrRecomputeSeenSetIncomplete. This test feeds a short id-list to the STREAMING path and
-//     asserts the stall bites — the residual R-M-STREAM-COMPLETENESS the cert names.
-//   - FORGED-VALUE-UNDER-STREAMING: a member pulled by the provider with a forged bonded weight
-//     still fails its Resolve against the committed root and stalls ErrRecomputeMemberStateUnproven.
-//     Streaming does not weaken the per-member anchor.
+// - FOLD-EQUIVALENCE: the streamed verdict == the resident-map verdict == the full-node
+// matureNow verdict, over the SAME committed state, mature and immature. Streaming changes
+// HOW memory is held, never WHAT is verified.
+// - THE LOA RED ABLATION: a SHORT / truncated id-list must
+// still STALL. Streaming frees per-member PROOF heaps, NEVER the id-list; the completeness MTH
+// nodeSetMTH(w.IDs) still consumes the full list. If a member is dropped from IDs, the
+// reconstructed MTH differs from the committed validatorsSeenRoot and the box stalls
+// ErrRecomputeSeenSetIncomplete. This test feeds a short id-list to the STREAMING path and
+// asserts the stall bites.
+// - FORGED-VALUE-UNDER-STREAMING: a member pulled by the provider with a forged bonded weight
+// still fails its Resolve against the committed root and stalls ErrRecomputeMemberStateUnproven.
+// Streaming does not weaken the per-member anchor.
 
 // streamWitnessFor converts a resident SeenSetWitness fixture into the streaming SeenSetStreamWitness
 // form: the SAME id-list, digest proof, and per-member witnesses, but delivered through a pull
@@ -44,7 +44,7 @@ func streamWitnessFor(w SeenSetWitness) SeenSetStreamWitness {
 
 // TestRecomputeMatureNowStreaming_MatchesResidentAndFullNode is the equivalence anchor for the
 // streaming path: over the SAME committed state, the streamed verdict equals BOTH the resident-map
-// recomputeMatureNow verdict AND the full-node matureNow() verdict — for a mature config (low bar)
+// recomputeMatureNow verdict AND the full-node matureNow verdict — for a mature config (low bar)
 // and an immature config (high bar), and across the diverse / mixed-domain / slashed fixtures. This
 // proves the streaming refactor reproduces the predicate byte-for-byte, not merely that it runs.
 func TestRecomputeMatureNowStreaming_MatchesResidentAndFullNode(t *testing.T) {
@@ -93,7 +93,7 @@ func TestRecomputeMatureNowStreaming_MatchesResidentAndFullNode(t *testing.T) {
 	}
 }
 
-// TestRecomputeMatureNowStreaming_ShortIDListStalls is the R-M-STREAM-COMPLETENESS RED ablation.
+// TestRecomputeMatureNowStreaming_ShortIDListStalls is the RED ablation.
 // It drops ONE member from the streamed id-list (a truncated/short list) and asserts the streaming
 // path still STALLS ErrRecomputeSeenSetIncomplete. This proves the completeness check bites under
 // streaming: the box reconstructs nodeSetMTH over the SHORT list, which differs from the committed
@@ -119,14 +119,14 @@ func TestRecomputeMatureNowStreaming_ShortIDListStalls(t *testing.T) {
 
 	// Ablation: drop the last member from the id-list. The Member provider still HAS every member's
 	// witness (streaming did not prune it) — only the id-LIST is short. This is exactly the
-	// "streaming shortened the completeness input" hazard R-M-STREAM-COMPLETENESS guards.
+	// "streaming shortened the completeness input" hazard.
 	shortIDs := make([]ports.NodeID, len(sw.IDs)-1)
 	copy(shortIDs, sw.IDs[:len(sw.IDs)-1])
 	sw.IDs = shortIDs
 
 	mature, err := f.c.recomputeMatureNowStreaming(f.root, sw)
 	if err == nil {
-		t.Fatalf("short id-list must STALL (R-M-STREAM-COMPLETENESS), got mature=%v nil error", mature)
+		t.Fatalf("short id-list must STALL, got mature=%v nil error", mature)
 	}
 	if !errors.Is(err, ErrRecomputeSeenSetIncomplete) {
 		t.Fatalf("short id-list stalled with the wrong reason: got %v, want ErrRecomputeSeenSetIncomplete", err)

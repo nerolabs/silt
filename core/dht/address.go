@@ -1,21 +1,19 @@
 package dht
 
-// R4.3b — the H5-B eclipse cap keyed on the OBSERVED contacted-at address (the
-// geth / Bitcoin Core form). The table never sees an IP: a ports.PeerClassifier
-// hands it an opaque, per-process-salted (class, group) for a peer it has actually
-// conversed with. The class lives WITH the table entry (cert C-4), captured at
-// admission and deleted on Remove — never a soft cache that a distinct-sender
-// flood can evict.
+// The H5-B eclipse cap keyed on the OBSERVED contacted-at address (the geth /
+// Bitcoin Core form). The table never sees an IP: a ports.PeerClassifier hands it
+// an opaque, per-process-salted (class, group) for a peer it has actually
+// conversed with. The class lives WITH the table entry, captured at admission and
+// deleted on Remove — never a soft cache that a distinct-sender flood can evict.
 //
-// The rule (research-certified 2026-09-04, silt-agent-memory/researcher/reviews/research-outcome/
-// R4.3b-relayed-class-and-observed-address-keying-RESEARCH-CERTIFICATION-2026-09-04.md):
+// The rule:
 //
-//	per-group entries per bucket  ≤ capDirect (DIRECT) | capRelay (RELAYED)
-//	                                 counted over ONE group namespace across classes (C-1)
-//	non-DIRECT entries per bucket ≤ K − reserve                             (C-2)
-//	one group across the table    ≤ tableGroupCap (geth's 10-per-/24)
-//	DIRECT is never downgraded by a later relayed conversation              (C-3)
-//	adversary floor per bucket    = ⌈reserve / capDirect⌉ paid /24s + (K − reserve) free slots
+//	per-group entries per bucket ≤ capDirect (DIRECT) | capRelay (RELAYED)
+//	 counted over ONE group namespace across classes
+//	non-DIRECT entries per bucket ≤ K − reserve
+//	one group across the table ≤ tableGroupCap (geth's 10-per-/24)
+//	DIRECT is never downgraded by a later relayed conversation
+//	adversary floor per bucket = ⌈reserve / capDirect⌉ paid /24s + (K − reserve) free slots
 //
 // UNVERIFIED (reply-learned, never contacted) entries are charged to the
 // INTRODUCER's group and re-checked at their first classification — a narrowing
@@ -61,8 +59,8 @@ type ShadowKey struct {
 	CapRelay int
 }
 
-// shadowGrid is the series-A hypothesis grid the reserve must be set from
-// (cert §6.3): R ∈ {4, 6, 8} × capRelay ∈ {2, 4}. The configured pair is always
+// shadowGrid is the series-A hypothesis grid the reserve must be set
+// from: R ∈ {4, 6, 8} × capRelay ∈ {2, 4}. The configured pair is always
 // evaluated too.
 var shadowGrid = [][2]int{{4, 2}, {4, 4}, {6, 2}, {6, 4}, {8, 2}, {8, 4}}
 
@@ -76,7 +74,7 @@ type BucketCensus struct {
 	NonDirect   int // relayed + unverified + unclassified (the reserve's load)
 }
 
-// entryMeta is the class stored WITH a table entry (C-4).
+// entryMeta is the class stored WITH a table entry.
 type entryMeta struct {
 	class  ports.PeerClass
 	group  uint64
@@ -103,9 +101,9 @@ type addressRule struct {
 
 // SetAddressDiversity turns on the observed-address cap. capDirect / capRelay ≤ 0
 // disable that per-group cap; reserve is clamped into [⌈K/2⌉, K] (a value below K/2
-// lets the adversary own a bucket majority for free through honest relays — cert
-// §4 — so it is never applied; the daemon refuses such a flag before it gets here).
-// Resets the shadow counters.
+// lets the adversary own a bucket majority for free through honest relays — so it
+// is never applied; the daemon refuses such a flag before it gets here). Resets the
+// shadow counters.
 func (t *Table) SetAddressDiversity(cl ports.PeerClassifier, capDirect, capRelay, reserve int, mode AddressMode) {
 	if min := (t.k + 1) / 2; reserve < min {
 		reserve = min
@@ -142,7 +140,7 @@ func (t *Table) ObserveIntroduced(id, introducer ports.NodeID) {
 // every cap (operator-typed, count-bounded, unforgeable).
 func (t *Table) ObserveStatic(id ports.NodeID) { t.observe(id, nil, true) }
 
-// EntryClass reports the class and group stored WITH the table entry (C-4);
+// EntryClass reports the class and group stored WITH the table entry;
 // known=false if id is not tabled or is unclassified.
 func (t *Table) EntryClass(id ports.NodeID) (class ports.PeerClass, group uint64, known bool) {
 	m, ok := t.meta[id]
@@ -274,7 +272,7 @@ func (t *Table) veto(b []ports.NodeID, self ports.NodeID, m entryMeta, reserve, 
 		}
 		em := t.meta[e]
 		if m.known && m.group != 0 && em.known && em.group == m.group {
-			inGroup++ // C-1: one namespace, every class counts
+			inGroup++ // one namespace, every class counts
 		}
 		if !em.direct() {
 			nonDirect++
@@ -289,7 +287,7 @@ func (t *Table) veto(b []ports.NodeID, self ports.NodeID, m entryMeta, reserve, 
 		}
 	}
 	if !m.direct() && nonDirect >= t.k-reserve {
-		return true // C-2: the reserve bounds ALL non-DIRECT entries
+		return true // the reserve bounds ALL non-DIRECT entries
 	}
 	return false
 }
@@ -355,16 +353,16 @@ func (t *Table) observe(id ports.NodeID, introducer *ports.NodeID, static bool) 
 }
 
 // refresh updates a tabled entry's stored class on a repeat observation.
-//   - class loss (m unknown): inert (C-4).
-//   - DIRECT → non-DIRECT: inert (C-3).
-//   - a re-introduction of an uncontacted entry: keeps its first charge.
-//   - first classification of an uncontacted entry: the re-check — the admission
-//     rule applied late against the rest of the bucket; `on` removes a refused
-//     entry, shadow counts it, off just re-keys. Never fires for a static entry.
-//   - re-key of a contacted entry (DIRECT at a new /24, a punch upgrade): applied
-//     only if the new key is admissible under `on`; otherwise the entry keeps the
-//     key it paid for (so two /24s cannot fill a bucket by shuffling). Off and
-//     shadow always re-key, matching each other exactly.
+// - class loss (m unknown): inert.
+// - DIRECT → non-DIRECT: inert.
+// - a re-introduction of an uncontacted entry: keeps its first charge.
+// - first classification of an uncontacted entry: the re-check — the admission
+// rule applied late against the rest of the bucket; `on` removes a refused
+// entry, shadow counts it, off just re-keys. Never fires for a static entry.
+// - re-key of a contacted entry (DIRECT at a new /24, a punch upgrade): applied
+// Only if the new key is admissible under `on`; otherwise the entry keeps the
+// key it paid for (so two /24s cannot fill a bucket by shuffling). Off and
+// shadow always re-key, matching each other exactly.
 func (t *Table) refresh(bucket int, id ports.NodeID, m entryMeta, static bool) {
 	old := t.meta[id]
 	if static {

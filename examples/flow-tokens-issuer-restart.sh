@@ -5,15 +5,15 @@
 # (-require-tokens), a client acquires one (-token-quorum) so the committed entry
 # carries a TOKEN and no Publisher, then the issuing validator is RESTARTED and
 # must still issue tokens its peers accept — proving the issuer key persisted
-# (#126) and peers' cached copies of it didn't go stale.
+#  and peers' cached copies of it didn't go stale.
 #
 # PASS if:
-#   (negative) with -require-tokens on, a publish WITHOUT a token is REFUSED;
-#   (positive) a tokened publish commits; after restarting the issuer, its
-#              issuer.key is byte-identical (no new key) and a SECOND tokened
-#              publish still commits (the reloaded key's tokens still verify).
+#  (negative) with -require-tokens on, a publish WITHOUT a token is REFUSED;
+#  (positive) a tokened publish commits; after restarting the issuer, its
+#  issuer.key is byte-identical (no new key) and a SECOND tokened
+#  publish still commits (the reloaded key's tokens still verify).
 #
-#   ./examples/flow-tokens-issuer-restart.sh     (or SILT_REPO=/path/to/silt …)
+# ./examples/flow-tokens-issuer-restart.sh (or SILT_REPO=/path/to/silt …)
 # Binds loopback ports 7100-7102; run one example at a time.
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail

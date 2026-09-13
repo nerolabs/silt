@@ -1,7 +1,7 @@
 package e2e
 
-// The cloud harness's EXACT posture for the R2.9 delivery lane, proven on a laptop before
-// a fleet is paid for (blind PE on the cloud flow, 2026-09-07, item 5: every other proof of
+// The cloud harness's EXACT posture for the delivery lane, proven on a laptop before a
+// fleet is paid for (on the cloud flow: every other proof of
 // "delivery receipts: ACCEPTING" used -objective=false with an explicit -epoch-blocks; the
 // derived-epoch OBJECTIVE path, the 90s window and the CLI were unproven). This boots ONE
 // objective validator with the flags integration/cloudtest/topology.py puts on the boot
@@ -15,13 +15,13 @@ package e2e
 //
 // This test passes NO -era4-activation-height, so the daemon takes its default of 1 and era-4
 // is CONFIGURED here from height 1 (cmd/silt/daemon.go; the wiring is pinned by cmd/silt
-// TestTheThreeGenesisFlagsAreDeclaredAndWired). The header used to say the opposite — "era-4
-// is dark ... until the R3.4 stamp raise" — and that was never the ground the refusal stood on.
+// TestTheThreeGenesisFlagsAreDeclaredAndWired). The header used to say the opposite — "era-4 is
+// dark. until the stamp raise" — and that was never the ground the refusal stood on.
 //
 // CONFIGURED IS NOT REACHED, and that distinction is measured. A chain that never commits
 // above genesis mints nothing: on the sibling paid-lane fixture, booted on its exact argv,
 // `silt chain-status` reports "no chain yet (0 blocks)" and the daemon's own banner reports
-// "head v2 at height 0" and "era-4 (v5): DARK" (2026-09-11). The same measurement on a
+// "head v2 at height 0" and "era-4 (v5): DARK". The same measurement on a
 // topology that DOES commit (the TestBondEarnedStandingCommitsOverTCP argv, stores kept)
 // reports "head version: v5" and "era-4 (v5): ACTIVE — first v5 block at height 1". So the
 // activation default discharges the era-4 FORMAT only on fixtures that commit; on THIS one
@@ -29,8 +29,8 @@ package e2e
 //
 // THE REFUSAL BELOW IS NOT ATTRIBUTABLE TO THE BINDING. `silt swarm receipt` runs on the
 // chain-less ephemeral node joinSwarm builds, so pinDemandIssuerKey refuses at `n.chain ==
-// nil` before the commitment check. Deleting that check outright leaves this test GREEN
-// (measured 2026-09-11). The predicate's own two-armed gate is core/node
+// nil` before the commitment check. Deleting that check outright leaves this test GREEN.
+// The predicate's own two-armed gate is core/node
 // TestIssuerKeyBindingResolvesInTheObjectiveBondedEpochPosture; what THIS test gates is the
 // harness's flag literals and the operator-facing refusal strings, which is still worth
 // having — it is the cloud sheet's classifier.
@@ -52,17 +52,19 @@ func TestPaidDeliveryLaneArmsInTheHarnessPosture(t *testing.T) {
 		"-validator", "-objective",
 		"-min-bond", "1M", "-min-bond-floor", "0", "-bond", "8M",
 		"-mature-validators", "1", "-quorum", "1",
-		// The cold-start scaffolding an objective validator refuses to start without. TWO
-		// anchors, only one of them live here — which is the harness's actual shape, not a
-		// concession to the MinObjectiveAnchors floor: topology.py declares EVERY validator
-		// as an anchor (`anchors = ",".join(... for v in validators)`), and the boot
-		// validator starts before any peer exists. Declaring itself as the sole anchor was
-		// the simplification, and it is the posture the daemon now refuses, because at one
-		// anchor bftThreshold is 0, the #402 majority is self-satisfied by the proposer and
-		// finality engages at 0 — the node would commit alone with zero attestations.
-		// Nothing here needs a commit: the assertions are start-up lines plus a withdrawal
-		// refused for want of a committed E->key binding, which an un-committed chain gives
-		// all the more surely. IDs are silt id -id-seed 4811 (this node) and 4812.
+		// The cold-start scaffolding an objective validator refuses to start
+		// without. TWO anchors, only one of them live here — which is the
+		// harness's actual shape, not a concession to the MinObjectiveAnchors
+		// floor: topology.py declares EVERY validator as an anchor (`anchors =
+		// ",".join(. for v in validators)`), and the boot validator starts
+		// before any peer exists. Declaring itself as the sole anchor was the
+		// simplification, and it is the posture the daemon now refuses, because
+		// at one anchor bftThreshold is 0, the majority is self-satisfied by
+		// the proposer and finality engages at 0 — the node would commit alone
+		// with zero attestations. Nothing here needs a commit: the assertions
+		// are start-up lines plus a withdrawal refused for want of a committed
+		// E->key binding, which an un-committed chain gives all the more
+		// surely. IDs are silt id -id-seed 4811 (this node) and 4812.
 		"-anchors", "023bfdb715f3452ede2812ed3124a58230a5a3659314650c1ef94512805ffcd6,"+
 			"399301aaac39f431ed526fb4f8d643ced1c3317072580741e8a8afd228481662",
 		"-capacity", "1G", "-mdns=false", "-id-seed", "4811",

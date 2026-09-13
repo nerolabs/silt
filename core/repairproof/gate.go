@@ -18,10 +18,10 @@ import (
 // a bounty challenge by relaying an existing honest holder's proof of an
 // already-present replica, because that proof was aggregated under the holder's
 // seed and fails under the claimant's. It mirrors core/node porProverSeed for the
-// bond-audit path — the same defense H1/RT-1 gave the standing bond, inherited here
+// bond-audit path — the same defense gave the standing bond, inherited here
 // for the durability bounty.
 //
-// ADVERSARY-SHAPE: capability=RelayedHolderProof UNCOVERED: no fixture GRANTS AND CONTROLS FOR a claimant an honest holder's proof of an already-present replica. The seed binding does deny a REPLAY; the outsourcing variant -- asking the holder to compute under the CLAIMANT's seed -- is pinned open on the audit path by TestRT_POR_2_ChallengeProxyPassesAudit_PINNED_DEFECT and is untested here. ROADMAP row F1.
+// ADVERSARY-SHAPE: capability=RelayedHolderProof UNCOVERED: no fixture GRANTS AND CONTROLS FOR a claimant an honest holder's proof of an already-present replica. The seed binding does deny a REPLAY; the outsourcing variant -- asking the holder to compute under the CLAIMANT's seed -- is pinned open on the audit path by TestChallengeProxyPassesAudit_PINNED_DEFECT and is untested here.
 func RepairChallengeSeed(base [32]byte, repairer ports.NodeID) [32]byte {
 	h := sha256.New()
 	h.Write([]byte("silt/repair/challenge/prover/v1"))
@@ -40,7 +40,7 @@ func RepairChallengeSeed(base [32]byte, repairer ports.NodeID) [32]byte {
 // demonstrably holds every sampled block — a data-less claimant, or one relaying a
 // proof built under another identity's seed, cannot make it verify.
 //
-// ADVERSARY-SHAPE: capability=DataLessClaimant UNCOVERED: no fixture GRANTS AND CONTROLS FOR a claimant a passing retrievability answer without the bytes. This leg is also not the one that fails a NO-LOSS claim: the named holder genuinely holds, and TestRTRC3_ClaimWithNoLossIsPaid_PINNED_DEFECT pins that gap. ROADMAP row F1.
+// ADVERSARY-SHAPE: capability=DataLessClaimant UNCOVERED: no fixture GRANTS AND CONTROLS FOR a claimant a passing retrievability answer without the bytes. This leg is also not the one that fails a NO-LOSS claim: the named holder genuinely holds, and TestClaimWithNoLossIsPaid_PINNED_DEFECT pins that gap.
 func VerifyRetrievability(porKey *por.Key, unitID []byte, repairer ports.NodeID, base [32]byte, blocks, count int, proof por.Proof) bool {
 	if porKey == nil || blocks <= 0 {
 		return false
@@ -61,13 +61,13 @@ type Decision struct {
 // Decide gates a repair bounty on the composed proof (design §6, §8), splitting the
 // two legs by their trust properties:
 //
-//   - CORRECTNESS is deterministic and publicly reproducible (VerifyByRecompute), so
-//     it is single-verifier-sufficient AND self-attributing: a claim that fails it
-//     carries its own fraud proof. correctnessOK=false ⇒ Slash, no release — full
-//     stop, regardless of retrievability.
-//   - RETRIEVABILITY is where independent verifiers add value (each issues its own
-//     identity-bound random challenge), so release additionally requires a τ-of-q
-//     quorum of caretakers to confirm it.
+// - CORRECTNESS is deterministic and publicly reproducible (VerifyByRecompute), so
+// It is single-verifier-sufficient AND self-attributing: a claim that fails it
+// carries its own fraud proof. correctnessOK=false ⇒ Slash, no release — full
+// stop, regardless of retrievability.
+// - RETRIEVABILITY is where independent verifiers add value (each issues its own
+// identity-bound random challenge, so release additionally requires a τ-of-q
+// quorum of caretakers to confirm it.
 //
 // A retrievability shortfall (fewer than τ confirmations) DENIES the bounty but does
 // NOT slash: it may be transient (the repairer is briefly offline or slow), and only

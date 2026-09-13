@@ -64,7 +64,7 @@ func TestRestartedValidatorCatchesUpOnceStandingReturns(t *testing.T) {
 	dNode.EnableChain(dCh, di.Signer())
 
 	// 1) Empty standing: a sync must NOT adopt block1 — D cannot yet see that
-	//    P/V carry real standing, so it correctly refuses the fork.
+	// P/V carry real standing, so it correctly refuses the fork.
 	added := -1
 	dNode.SyncChain([]ports.NodeID{ai.NodeID()}, func(a int, _ error) { added = a })
 	sched.Run()
@@ -73,7 +73,7 @@ func TestRestartedValidatorCatchesUpOnceStandingReturns(t *testing.T) {
 	}
 
 	// 2) Bond audits land — D now sees P and V as bonded (>= 100 standing). A
-	//    retry of the identical sync catches up.
+	// retry of the identical sync catches up.
 	for _, id := range []ports.NodeID{p.NodeID(), v.NodeID()} {
 		dLedger.RecordBondChallenge(id, ports.HashBytes(id[:]), 8<<20, true, 1)
 	}

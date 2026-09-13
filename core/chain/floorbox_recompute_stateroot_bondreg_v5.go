@@ -12,39 +12,38 @@ import (
 // era-4 (v5) trustless floor-box RECOMPUTE — Path-1 state-root recompute, sub-increment P1-d,
 // CLASS B (bond registrations) — the THIRD delta-derivable changed-whole-set-digest class.
 //
-// CERTIFIED-IN-DIRECTION (2026-08-31):
-//   research: floorbox-Rboundary-writeset-digest-reconstruction-RESEARCH-CERTIFICATION-2026-08-31.md
-//     (B CERTIFIED-in-direction; carries the R-B-displacement residual — the displacement branch is
-//      a screen the delta MUST reproduce exactly; under/over-reproduction is FOLD-CAUGHT, so it is a
-//      liveness/derivation-correctness burden, never a wrong-accept.)
+// research: floorbox-Rboundary-writeset-digest-reconstruction-
+// (B: carries the residual — the displacement branch is
+// a screen the delta MUST reproduce exactly; under/over-reproduction is FOLD-CAUGHT, so it is a
+// liveness/derivation-correctness burden, never a wrong-accept.)
 // Box STILL never-Accepts (R-scope). This reproduces validateEra3Roots' StateRoot equality
 // root-only for a v5 block whose committed-state effect is entries/revocations (E/R) PLUS a set of
 // on-chain bond registrations (B). It stalls loud on every other class.
 //
-// WHY B IS THE RICHEST DELTA. A single accepted reg (chain.go:3228-3265) touches up to EIGHT
+// WHY B IS THE RICHEST DELTA. A single accepted reg (chain.go) touches up to EIGHT
 // committed leaves for the registrant plus TWO for a displaced squatter, and moves the id's TTL
 // due-bucket:
-//   - bondRootOwner||Root   = EncodeID(id)          (ADD fresh / CHANGE on displacement)
-//   - bondRootProven||Root  = EncodeBool(true)      (ADD, only if proven = height>0)
-//   - bonded||id            = EncodeInt64(size)      (ADD fresh / CHANGE renew)
-//   - bondRegHeight||id     = EncodeUint64(height)   (ADD / CHANGE)
-//   - regVersion||id        = EncodeUint8(version)   (ADD / CHANGE)
-//   - bondDomain||id        = EncodeUint64(domain)   (ADD / CHANGE)
-//   - qualified||id         = EncodeInt64(size)      (ADD/CHANGE iff size>=MinBond && !slashed)
-//   - dueBucket moves       : DELETE id from old bucket (renew) + INSERT id into new bucket
-//   - DISPLACEMENT           : delete(bonded,oldOwner) + qualifiedMaintain(oldOwner) — an id NOT in
-//                              the payload, read from bondRootOwner[Root]
-// Across the block it changes the bondedRoot / qualifiedRoot whole-set digests (iff membership
-// changed — a pure same-id renew does NOT change either digest, since the id-set is unchanged).
+// - bondRootOwner||Root = EncodeID(id) (ADD fresh / CHANGE on displacement)
+// - bondRootProven||Root = EncodeBool(true) (ADD, only if proven = height>0)
+// - bonded||id = EncodeInt64(size) (ADD fresh / CHANGE renew)
+// - bondRegHeight||id = EncodeUint64(height) (ADD / CHANGE)
+// - regVersion||id = EncodeUint8(version) (ADD / CHANGE)
+// - bondDomain||id = EncodeUint64(domain) (ADD / CHANGE)
+// - qualified||id = EncodeInt64(size) (ADD/CHANGE iff size>=MinBond && !slashed)
+// - dueBucket moves: DELETE id from old bucket (renew) + INSERT id into new bucket
+// - DISPLACEMENT: delete(bonded,oldOwner) + qualifiedMaintain(oldOwner) — an id NOT in
+// The payload, read from bondRootOwner[Root] Across the block it changes the bondedRoot /
+// qualifiedRoot whole-set digests (iff membership changed — a pure same-id renew does NOT
+// change either digest, since the id-set is unchanged).
 //
-// THE DELTA DERIVATION (R-B-displacement). The box reproduces apply()'s screens FROM ITS OWN CFG,
-// never a witness scalar (C-1/C-6):
-//   1. canonicalBondRegs(b.BondRegs)  — the same-id last-writer canonicalization (chain.go:3345),
-//      so the derived per-id winner is order-free and identical to apply().
-//   2. per-reg screens: len==ed25519 size, Size>=MinBondBytes, !slashed[id] (from the anchored
-//      pre-slashed set), and the per-root displacement branch (proof-beats-declaration) read from
-//      the committed bondRootOwner/bondRootProven leaves (per-key witnesses).
-//   3. the surviving winners drive the per-member write-set + the bonded/qualified/dueBucket deltas.
+// THE DELTA DERIVATION. The box reproduces apply's screens FROM ITS OWN CFG,
+// never a witness scalar:
+// 1. canonicalBondRegs(b.BondRegs) — the same-id last-writer canonicalization (chain.go),
+// So the derived per-id winner is order-free and identical to apply.
+// 2. per-reg screens: len==ed25519 size, Size>=MinBondBytes, !slashed[id] (from the anchored
+// pre-slashed set, and the per-root displacement branch (proof-beats-declaration) read from
+// the committed bondRootOwner/bondRootProven leaves (per-key witnesses).
+// 3. the surviving winners drive the per-member write-set + the bonded/qualified/dueBucket deltas.
 // A mis-reproduced screen under/over-produces the delta → wrong post-set → the FOLD CATCHES IT
 // (postRoot != StateRoot ⇒ stall), never a wrong-accept.
 //
@@ -69,7 +68,7 @@ type StateRootBondRegScreen struct {
 	// PriorProven is the committed bondRootProven[Root] pre-state (false if unclaimed or unproven).
 	PriorProven bool
 
-	// R1.2 WITNESS-SOUNDNESS ANCHORS (per-root proofs against prevStateRoot, BUILD note D5). The
+	// WITNESS-SOUNDNESS ANCHORS (per-root proofs against prevStateRoot, BUILD note D5). The
 	// displacement branch reads PriorOwner/Claimed/PriorProven to decide whether to strip a squatter's
 	// standing; a forged read flips the decision (the ForgedPriorOwner/Claimed/PriorProven attacks). Each
 	// is anchored the same way a fold-written leaf is — by a proof the box VERIFIES against prevStateRoot
@@ -103,7 +102,7 @@ type StateRootBucketWitness struct {
 }
 
 // bondRegDelta is the fully-reproduced effect of one block's bond regs on the committed leaf set,
-// derived by reproducing apply()'s canonicalization + screens + displacement + due-bucket moves.
+// derived by reproducing apply's canonicalization + screens + displacement + due-bucket moves.
 type bondRegDelta struct {
 	writes       []stateRootWrite          // per-member leaf writes (bonded/bondRegHeight/regVersion/bondDomain/owner/proven adds+changes, displaced deletes)
 	bucketMoves  map[uint64]bucketMove     // due-height → the insert/delete on that bucket
@@ -119,15 +118,15 @@ type bucketMove struct {
 	deletes map[ports.NodeID]struct{}
 }
 
-// stateRootBondRegWriteSet reproduces apply()'s bond-reg loop (chain.go:3228-3265) LEAF EFFECT and
+// stateRootBondRegWriteSet reproduces apply's bond-reg loop (chain.go) LEAF EFFECT and
 // returns the full delta. It reads the box's OWN cfg (MinBondBytes, BondTTLBlocks) for the screens
 // — never a witness scalar. preBonded / preQualified / preSlashed are the anchored pre-state sets
 // (from the digest witnesses); ownership is the per-root committed screen (bondRootOwner/Proven).
 //
-// The delta is the certified R-B-displacement reproduction: canonicalize same-id regs, drop
-// below-floor / malformed / slashed regs, resolve the per-root proof-beats-declaration displacement,
-// then emit the surviving winners' per-member writes + the bonded/qualified/due-bucket membership
-// changes. proven = b.Height > 0 (a height>0 reg went through validateBondRegs; genesis is declared).
+// The delta is the reproduction: canonicalize same-id regs, drop below-floor /
+// malformed / slashed regs, resolve the per-root proof-beats-declaration displacement, then emit the
+// surviving winners' per-member writes + the bonded/qualified/due-bucket membership changes. proven =
+// b.Height > 0 (a height>0 reg went through validateBondRegs; genesis is declared).
 func (c *Chain) stateRootBondRegWriteSet(
 	prevStateRoot ports.Hash,
 	b Block,
@@ -144,11 +143,11 @@ func (c *Chain) stateRootBondRegWriteSet(
 	owner := map[ports.Hash]ports.NodeID{}
 	claimed := map[ports.Hash]bool{}
 	provenRoot := map[ports.Hash]bool{}
-	// R1.2: ANCHOR the per-root displacement inputs against prevStateRoot BEFORE reading them (BUILD
-	// note D5). The displacement branch (below) reads owner[root]/claimed[root]/provenRoot[root] to
-	// decide whether to strip a squatter's standing. A forged PriorOwner/Claimed/PriorProven flips that
-	// decision (the ForgedPriorOwner/Claimed/PriorProven attacks). Each is trusted only after its proof
-	// Resolves against prevStateRoot; a nil/forged proof yields NoWitness ⇒ stall.
+	// ANCHOR the per-root displacement inputs against prevStateRoot BEFORE reading them (BUILD note
+	// D5). The displacement branch (below) reads owner[root]/claimed[root]/provenRoot[root] to
+	// decide whether to strip a squatter's standing. A forged PriorOwner/Claimed/PriorProven flips
+	// that decision (the ForgedPriorOwner/Claimed/PriorProven attacks). Each is trusted only after
+	// its proof Resolves against prevStateRoot; a nil/forged proof yields NoWitness ⇒ stall.
 	for root, sc := range screens {
 		ownerKey := statehash.Key(tagBondRootOwner, root[:])
 		if sc.Claimed {
@@ -208,7 +207,7 @@ func (c *Chain) stateRootBondRegWriteSet(
 
 	for _, r := range canonicalBondRegs(b.BondRegs) {
 		if len(r.Validator) != ed25519.PublicKeySize {
-			continue // apply()'s malformed guard
+			continue // apply's malformed guard
 		}
 		if r.Size < c.cfg.MinBondBytes {
 			continue // below the objective anti-release floor (retest G4)
@@ -253,7 +252,7 @@ func (c *Chain) stateRootBondRegWriteSet(
 			stateRootWrite{key: statehash.Key(tagRegVersion, id[:]), newValue: statehash.EncodeUint8(r.Version)},
 			stateRootWrite{key: statehash.Key(tagBondDomain, id[:]), newValue: statehash.EncodeUint64(r.Domain)},
 		)
-		// DIRECTION B (classP-anchoring cert 2026-09-02, P-r2): record the just-written regVersion so the
+		// DIRECTION B: record the just-written regVersion so the
 		// class-P freeze can cross-check an in-block bond's tally regVersion against this fold-anchored
 		// value (the regVersion||id leaf is in `writes`, verified by the class-B fold), rather than the
 		// PRE-state Resolve (which is absent for a fresh in-block bond and forces the id to count 0).
@@ -268,7 +267,7 @@ func (c *Chain) stateRootBondRegWriteSet(
 			qualWrites[id] = statehash.EncodeInt64(r.Size)
 			writes = append(writes, stateRootWrite{key: statehash.Key(tagQualified, id[:]), newValue: statehash.EncodeInt64(r.Size)})
 		} else if _, wasQual := preQualified[id]; wasQual {
-			// a resize BELOW MinBond drops a previously-qualified id.
+			// A resize BELOW MinBond drops a previously-qualified id.
 			delete(postQual, id)
 			qualWrites[id] = nil
 			writes = append(writes, stateRootWrite{key: statehash.Key(tagQualified, id[:]), newValue: nil})
@@ -377,15 +376,15 @@ func (c *Chain) bondRegOps(prevStateRoot ports.Hash, b Block, w StateRootWitness
 
 // bondRegOpsWithQual is bondRegOps that ALSO returns the POST-apply qualified id-set the class-B
 // delta produces. A boundary block's class-P freeze needs this (the freeze copies the post-qualified
-// set, R-P-sameblock-order); a non-boundary block ignores the third return.
+// set); a non-boundary block ignores the third return.
 func (c *Chain) bondRegOpsWithQual(prevStateRoot ports.Hash, b Block, w StateRootWitness) ([]statehash.FoldOp, []stateRootWrite, map[ports.NodeID]struct{}, error) {
 	ops, writes, postQual, _, _, err := c.bondRegOpsWithQualWrites(prevStateRoot, b, w)
 	return ops, writes, postQual, err
 }
 
 // bondRegOpsWithQualWrites is bondRegOpsWithQual that ALSO returns the per-id qualified leaf writes
-// (R1.2 class-P Weight anchor, BUILD note D4) AND the per-id regVersion writes (DIRECTION B in-block
-// RegVersion cross-check, classP-anchoring cert 2026-09-02 P-r2). The class-P freeze cross-checks
+// (class-P Weight anchor, BUILD note D4) AND the per-id regVersion writes (DIRECTION B in-block
+// RegVersion cross-check, the class-P anchoring rule 2026-09-02 P-r2). The class-P freeze cross-checks
 // each frozen member's witnessed Weight against the B-derived qualWrites[id], and its tally
 // regVersion against regVerWrites[id], for an id bonded in THIS block (whose pre-state qualified||id
 // / regVersion||id leaves are stale/absent). Both are anchored by the class-B fold.

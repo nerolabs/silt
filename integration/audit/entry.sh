@@ -5,7 +5,7 @@
 # dialable address for us. Discover our own container IP and stamp it onto
 # -advertise so every daemon announces a real, dialable HOST:PORT.
 #
-# Usage: entry.sh <port> <silt daemon args...>   (no -advertise; we inject it)
+# Usage: entry.sh <port> <silt daemon args...> (no -advertise; we inject it)
 set -e
 PORT="$1"; shift
 IP=$(getent hosts "$(cat /etc/hostname)" | awk '{print $1}' | head -1)

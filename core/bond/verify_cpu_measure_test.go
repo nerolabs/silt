@@ -7,12 +7,12 @@ import (
 	"time"
 )
 
-// TestMeasure_VerifyCPUBreakdown299: where does the per-answer verify CPU go?
-// This is the term that prices every new block on the event loop (the #528
+// TestMeasure_VerifyCPUBreakdown: where does the per-answer verify CPU go?
+// This is the term that prices every new block on the event loop (the
 // knee's ~1s/block was dominated by bond re-verification during replay; the
 // replay is gone, but each freshly synced/committed block still pays one
 // verify on the loop). Measurement only — read with -v.
-func TestMeasure_VerifyCPUBreakdown299(t *testing.T) {
+func TestMeasure_VerifyCPUBreakdown(t *testing.T) {
 	if testing.Short() {
 		t.Skip("measurement only")
 	}

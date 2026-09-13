@@ -1,10 +1,10 @@
 package credit
 
-// TestA4MoneyPumpConservation is the RED-first regression gate for the A4
-// money-pump (Boulder 0, R0.1). It must go RED on current main and GREEN after
+// TestMoneyPumpConservation is the RED-first regression gate for the A4
+// money-pump. It must go RED on current main and GREEN after
 // the (b)-minimal fix lands.
 //
-// The bug (delivery.go:67-71 + delivery.go:99): when a provisional lane is
+// The bug (delivery.go + delivery.go): when a provisional lane is
 // FIFO-evicted, the eager self-mint (server.balance += bytes - skim) is retained
 // on the server's balance and never reversed. When a receipt later redeems that
 // evicted lane, RedeemDeliveryCredit pays the conserved leg (fee - skim to
@@ -16,13 +16,13 @@ package credit
 // Conservation invariant (what this test measures):
 //
 //	Σ(all account balances) + Σ(all escrow reserves) == initial_grant
-//	    + Σ(legitimate self-mints for UNWITNESSED serves only)
+//	 + Σ(legitimate self-mints for UNWITNESSED serves only)
 //
 // In this test the only legitimate credit movements are:
-//   - per-lane self-mints from RecordServeToObject (bytes-skim to balance, skim
-//     to escrow) — correct for unwitnessed bilateral serves
-//   - the ChargePublish debit on the fetcher (fee leaves the fetcher's balance)
-//   - the conserved fee credit at redeem (server receives fee-skim, escrow skim)
+// - per-lane self-mints from RecordServeToObject (bytes-skim to balance, skim
+// to escrow — correct for unwitnessed bilateral serves
+// - the ChargePublish debit on the fetcher (fee leaves the fetcher's balance)
+// - the conserved fee credit at redeem (server receives fee-skim, escrow skim)
 //
 // When an evicted lane is redeemed, rule (b) requires the self-mint to be
 // reversed (at eviction time) before the conserved leg is paid. The self-mint
@@ -30,8 +30,7 @@ package credit
 // remain on the books, making total credit exceed the closed-system sum by the
 // serve size of the evicted lane.
 //
-// DESIGN REFERENCE: docs/thinking/2026-09-01-a4-provisional-eviction-fix-design.md
-// §"Failing-first regression gate".
+// DESIGN REFERENCE: §"Failing-first regression gate".
 
 import (
 	"testing"
@@ -39,7 +38,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-func TestA4MoneyPumpConservation(t *testing.T) {
+func TestMoneyPumpConservation(t *testing.T) {
 	const fee = 50_000
 	// Grant the fetcher enough to ChargePublish. Server and flood requesters
 	// start at 0 — they earn through serves.
@@ -72,7 +71,7 @@ func TestA4MoneyPumpConservation(t *testing.T) {
 	initial := sumLedger() // == grant
 
 	// ── Step 2: serve lane 0 (the lane that will be evicted). ──
-	const bytes0 = mintUnit // one mint unit: 7 net + 1 skim = 8 credits (G-R212-7)
+	const bytes0 = mintUnit // one mint unit: 7 net + 1 skim = 8 credits
 	const mint0 = bytes0 / ServeMintBytesPerCredit
 	// After this serve: server.balance += 7; escrow[obj] += 1.
 	// Total increases by mint0 (the legitimate self-mint for an unwitnessed serve).
@@ -122,17 +121,17 @@ func TestA4MoneyPumpConservation(t *testing.T) {
 
 	// ── Step 7: conservation assertion. ──
 	// Expected total under rule (b) — the only correct sum:
-	//   initial (grant to fetcher)
-	//   + bytes0 (lane-0 self-mint, reversed at eviction under fix, NOT reversed under bug)
-	//   + maxProvisional*floodBytes (flood self-mints, all legitimately unwitnessed)
-	//   - fee (ChargePublish debit)
-	//   + fee (conserved fee credited to server+escrow at redeem)
-	//   - bytes0 (eviction reversal of lane-0 mint — present under fix, absent under bug)
-	//   = initial + maxProvisional*floodBytes
+	// initial (grant to fetcher)
+	// + bytes0 (lane-0 self-mint, reversed at eviction under fix, NOT reversed under bug)
+	// + maxProvisional*floodBytes (flood self-mints, all legitimately unwitnessed)
+	// - fee (ChargePublish debit)
+	// + fee (conserved fee credited to server+escrow at redeem)
+	// - bytes0 (eviction reversal of lane-0 mint — present under fix, absent under bug)
+	// = initial + maxProvisional*floodBytes
 	//
 	// Under the bug (no eviction reversal), bytes0 is never subtracted:
-	//   gotTotal = initial + bytes0 + maxProvisional*floodBytes
-	//   gotTotal - wantTotal = mint0 = 8 — the leaked mint.
+	// gotTotal = initial + bytes0 + maxProvisional*floodBytes
+	// gotTotal - wantTotal = mint0 = 8 — the leaked mint.
 	wantTotal := initial + int64(maxProvisional)*floodMint
 	gotTotal := sumLedger()
 	if gotTotal != wantTotal {
@@ -151,9 +150,9 @@ func TestA4MoneyPumpConservation(t *testing.T) {
 	}
 }
 
-// TestA4SharedLedgerServerCollisionConservation is the RT-DELIV-3 regression
-// gate. It covers the SHARED-LEDGER sim shape the per-node gate above cannot
-// reach: ≥2 DISTINCT servers serving the SAME (requester, root) into ONE ledger.
+// TestSharedLedgerServerCollisionConservation is the regression gate. It covers
+// the SHARED-LEDGER sim shape the per-node gate above cannot reach: ≥2 DISTINCT
+// servers serving the SAME (requester, root) into ONE ledger.
 //
 // The defect: provKey omitted the server, so two distinct servers serving the
 // same object to the same fetcher COLLIDED on one provisional lane. serverB's
@@ -174,7 +173,7 @@ func TestA4MoneyPumpConservation(t *testing.T) {
 // it goes RED without the fix (server omitted from provKey) and GREEN with it.
 // Per-node prod is unaffected either way — one server per ledger means the lanes
 // never collide, so the key shape is constant there.
-func TestA4SharedLedgerServerCollisionConservation(t *testing.T) {
+func TestSharedLedgerServerCollisionConservation(t *testing.T) {
 	const fee = 50_000
 	l := New(fee, 0)
 
@@ -225,23 +224,23 @@ func TestA4SharedLedgerServerCollisionConservation(t *testing.T) {
 
 	// ── Conservation assertion, anchored to the OPERATIONS (not the ledger). ──
 	// Correct (fix) bookkeeping, step by step from initial:
-	//   + mintA           serverA self-mint (unwitnessed, kept; credits = the lane's two floors)
-	//   + mintB           serverB self-mint
-	//   − fee             ChargePublish debit
-	//   − mintB           redeem reverses serverB's OWN lane (net+skim = mintB)
-	//   + fee             conserved fee paid at redeem (fee-skim to serverB, skim to escrow)
-	//   = initial + mintA
+	// + mintA serverA self-mint (unwitnessed, kept; credits = the lane's two floors)
+	// + mintB serverB self-mint
+	// − fee ChargePublish debit
+	// − mintB redeem reverses serverB's OWN lane (net+skim = mintB)
+	// + fee conserved fee paid at redeem (fee-skim to serverB, skim to escrow)
+	// = initial + mintA
 	// serverA's self-mint stands (never witnessed); serverB's was superseded and
 	// replaced by the conserved fee, which nets out against the ChargePublish debit.
 	//
 	// Under the bug, redeem reverses the COMBINED (bytesA+bytesB) off serverB
 	// instead of bytesB, so the total is initial + bytesA − bytesA = initial:
 	// short by exactly bytesA (serverA's leaked/double-reversed mint).
-	wantTotal := initial + mintA // serverA's self-mint, in credits (G-R212-7)
+	wantTotal := initial + mintA // serverA's self-mint, in credits
 	gotTotal := sumLedger()
 	if gotTotal != wantTotal {
 		delta := gotTotal - wantTotal
-		t.Errorf("RT-DELIV-3 shared-ledger conservation VIOLATED:\n"+
+		t.Errorf("shared-ledger conservation VIOLATED:\n"+
 			"  Σbalances+Σescrow = %d\n"+
 			"  want (initial+mintA) = %d\n"+
 			"  delta = %+d (bytesA=%d)\n"+

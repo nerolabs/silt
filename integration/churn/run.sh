@@ -15,16 +15,16 @@
 # to actually repair, then prove retrieval survived. A field test should run
 # close to real time; we do not rush the sweeps.
 #
-# Usage:  ./run.sh              # build, churn, assert, tear down; exit 0 = PASS
-#         KEEP=1 ./run.sh       # leave the swarm up afterward to poke at
-#         HOLDERS=20 WAVES=3 FILE_BYTES=50000000 ./run.sh   # crank it up
+# Usage:./run.sh # build, churn, assert, tear down; exit 0 = PASS
+#  KEEP=1 ./run.sh # leave the swarm up afterward to poke at
+#  HOLDERS=20 WAVES=3 FILE_BYTES=50000000 ./run.sh # crank it up
 set -uo pipefail
 cd "$(dirname "$0")"
 ROOT=$(cd ../.. && pwd)
 
 # ---- knobs (env-overridable; defaults chosen for signal, not for speed) ----
 HOLDERS=${HOLDERS:-16}            # size of the storage pool (more = finer kill granularity,
-                                  #   so kills land cleanly inside the repairable window)
+                                  #  so kills land cleanly inside the repairable window)
 PROTECTED=${PROTECTED:-3}         # holders never killed (a permanent survivor set)
 WAVES=${WAVES:-2}                 # how many kill→repair→refetch cycles to run
 FILE_BYTES=${FILE_BYTES:-20000000}
@@ -34,12 +34,12 @@ FILE_BYTES=${FILE_BYTES:-20000000}
 # stripe past RepairSlack and FORCE a reconstruct — repair is exercised in
 # seconds on a small swarm, isolating the erasure-repair mechanic (reconstruct
 # from k=10 parity + re-scatter) from replication redundancy.
-#   The FAITHFUL, shipped default is 3x-replication (a stripe only needs repair
-#   once ALL copies of >RepairSlack columns die). Reproducing THAT needs a large
-#   swarm where placement is spread — set REPLICATION=3 HOLDERS>=50 and run it on
-#   the GCP field-test harness (integration/cloudtest), not a laptop, where 16
-#   holders leave every stripe a live replica after any few kills (coverage stays
-#   correctly fine and no repair is forced — the small-swarm coverage cliff).
+#  The FAITHFUL, shipped default is 3x-replication (a stripe only needs repair
+#  once ALL copies of >RepairSlack columns die). Reproducing THAT needs a large
+#  swarm where placement is spread — set REPLICATION=3 HOLDERS>=50 and run it on
+#  the GCP field-test harness (integration/cloudtest), not a laptop, where 16
+#  holders leave every stripe a live replica after any few kills (coverage stays
+#  correctly fine and no repair is forced — the small-swarm coverage cliff).
 REPLICATION=${REPLICATION:-1}
 STEP_WAIT=${STEP_WAIT:-120}       # per-kill wait for a repair sweep (2 * 60s cadence + margin)
 STEADY_WAIT=${STEADY_WAIT:-75}    # let the caretaker's first sweep pass before baseline
@@ -98,7 +98,7 @@ echo "  all ${#HOLDER_IDS[@]} holders bootstrapped"
 # ── phase 3b: DETERMINISTIC forced-repair proof (runs EVERY run) ────────────────
 # The wave-kill below characterizes the small-swarm coverage cliff, but whether it
 # FORCES a reconstruction is random-placement-sensitive (blind field test #2 §C /
-# ROADMAP #6): some runs reach the survivor floor with coverage held and reconstruct
+#  #6): some runs reach the survivor floor with coverage held and reconstruct
 # NOTHING. So before it, prove the repair MECHANISM deterministically: publish a
 # SINGLE-STRIPE file (< K·chunk = 640 KiB ⇒ one 16-shard stripe) at -replication 1,
 # then remove EXACTLY RepairSlack+1 (=3) of its shards — 3 > slack(2) forces a
@@ -278,11 +278,11 @@ for w in $(awk -v n="$WAVES" 'BEGIN{for(i=1;i<=n;i++)print i}'); do
 
   if [ "$forced" != 1 ]; then
     # These are the CHARACTERIZED small-swarm coverage cliff, not a regression:
-    #   • overkilled — killing past the k-of-n floor on a tiny swarm before a sweep
-    #     lands (documented: on a small pool the heaviest holders cover almost
-    #     everything, so a kill can strand a column faster than repair catches it);
-    #   • reached the survivor floor with coverage still fine, so no repair was ever
-    #     FORCED (nothing to reconstruct).
+    #  • overkilled — killing past the k-of-n floor on a tiny swarm before a sweep
+    #  lands (documented: on a small pool the heaviest holders cover almost
+    #  everything, so a kill can strand a column faster than repair catches it);
+    #  • reached the survivor floor with coverage still fine, so no repair was ever
+    #  FORCED (nothing to reconstruct).
     # Per immutable #4 a characterized shortfall is a FINDING (exit 0), not a FAIL —
     # only a real regression (repaired-but-unfetchable, below) is a FAIL.
     if [ "$overkilled" = 1 ]; then

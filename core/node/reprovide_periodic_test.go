@@ -9,9 +9,9 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// TestStartReprovideKeepsHeldRecordsLivePastTTL is the #69 residual (confirmed dark
-// ~30 min after boot under a real streaming load test): provider records carry a
-// ProviderRecordTTL lease and GetProviders serves only Live() records, but AnnounceHeld
+// TestStartReprovideKeepsHeldRecordsLivePastTTL is the #69 residual (confirmed dark ~30
+// min after boot under a real streaming load test): provider records carry a
+// ProviderRecordTTL lease and GetProviders serves only Live records, but AnnounceHeld
 // runs once at startup — so a holder goes undiscoverable the moment its startup records
 // lapse. StartReprovide re-announces on a TTL/2 timer to keep them fresh.
 //

@@ -13,8 +13,8 @@ import (
 )
 
 // Field tags keep one field's key space from colliding with another's. silt's
-// keystone commits several maps under one root (byRoot, spent, ...), so a key
-// is the tag concatenated with the raw key, never the raw key alone.
+// keystone commits several maps under one root (byRoot, spent,.), so a key is
+// the tag concatenated with the raw key, never the raw key alone.
 const (
 	tagByRoot = "byRoot\x00"
 	tagSpent  = "spent\x00"
@@ -30,7 +30,7 @@ func stateKey(tag string, raw []byte) []byte {
 var present = []byte{1}
 
 // newTrie builds a committed trie over the given keys and returns the trie and
-// its root. Commit() flushes to the node store, which is the path a real
+// its root. Commit flushes to the node store, which is the path a real
 // keystone takes before publishing a root.
 func newTrie(t testing.TB, keys ...[]byte) (*smt.SMT, []byte) {
 	t.Helper()
@@ -103,7 +103,7 @@ func TestAbsenceProofForPresentKeyFails(t *testing.T) {
 		// Sweep candidate absent keys. Each one's proof is offered as evidence
 		// that keyA — which IS present — is absent. None may verify, and at
 		// least one must land on keyA's leaf so the "related leaf" guard at
-		// proofs.go:422 is actually exercised rather than assumed.
+		// proofs.go is actually exercised rather than assumed.
 		relatedLeafGuardFired := false
 		const candidates = 256
 

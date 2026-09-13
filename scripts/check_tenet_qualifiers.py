@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""Scar-lint: guard the Sybil-composition design-target framing in docs/TENETS.md Part 0.
+"""Doc lint: guard the Sybil-composition design-target framing in docs/TENETS.md Part 0.
 
-SCAR (confirmed 2026-09-01, session-18 TENETS rewrite):
-  A prose "tightening" pass turned the Sybil-composition *design target* in Part 0 into
-  an achieved present-tense property — "forging standing becomes indistinguishable from
-  honest provision" — which reads as Sybil-PROOF. The blind red-team caught it. The
-  honest form is the design-target qualifier: "the composition is *designed so that* …
-  forging standing *would become* indistinguishable from honest provision." This lint
-  fails the build any time that qualifier is dropped, preventing silent recurrence.
+A prose "tightening" can turn the Sybil-composition *design target* into an achieved
+present-tense property — "forging standing becomes indistinguishable from honest
+provision" — which reads as Sybil-PROOF. The honest form carries the design-target
+qualifier: "the composition is *designed so that* … forging standing *would become*
+indistinguishable from honest provision." This lint fails the build any time that
+qualifier is dropped.
 
 The forbidden pattern (present-tense over-claim, no qualifier):
   "standing becomes indistinguishable" — or any close variant — appearing without the
   "designed so that … would become" guard that scopes it to a design target.
 
-The required pattern (design-target framing, currently on main at bb52d26):
+The required pattern (design-target framing):
   "designed so that" ... "would become" ... "indistinguishable"
 
 Dependency-free (stdlib only). Run: python3 scripts/check_tenet_qualifiers.py
@@ -38,7 +37,6 @@ FORBIDDEN_RE = re.compile(
 REQUIRED_DESIGNED = re.compile(r"(?i)designed\s+so\s+that")
 REQUIRED_WOULD    = re.compile(r"(?i)would\s+become")
 
-SCAR_ID = "scar:sybil-design-target-overclaim-2026-09-01"
 
 
 def paragraphs(text: str):
@@ -74,7 +72,7 @@ def main() -> int:
 
     if forbidden_hits:
         print(
-            f"FAIL [{SCAR_ID}] — docs/TENETS.md contains the over-claim:\n"
+            f"FAIL — docs/TENETS.md contains the over-claim:\n"
             f"  Present-tense 'standing becomes indistinguishable' asserts Sybil-proof,\n"
             f"  not a design target. The required form is:\n"
             f"    'the composition is *designed so that* … forging standing *would become*\n"
@@ -106,7 +104,7 @@ def main() -> int:
 
     if not qualifier_found:
         print(
-            f"FAIL [{SCAR_ID}] — docs/TENETS.md: the 'indistinguishable' Sybil claim\n"
+            f"FAIL — docs/TENETS.md: the 'indistinguishable' Sybil claim\n"
             f"  exists but neither 'designed so that' nor 'would become' appears in the\n"
             f"  same paragraph — the design-target qualifier is missing.\n"
             f"  Required form: 'the composition is *designed so that* … forging standing\n"
@@ -117,7 +115,7 @@ def main() -> int:
         return 1
 
     print(
-        f"OK [{SCAR_ID}] — docs/TENETS.md Sybil-composition claim carries "
+        f"OK — docs/TENETS.md Sybil-composition claim carries "
         "the required design-target qualifier."
     )
     return 0

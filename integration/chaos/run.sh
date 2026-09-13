@@ -10,26 +10,26 @@
 # bit-perfect. The registry/chain node, crashed and restarted, must reload its
 # persisted chain. Every assertion keys off real daemon logs + real SHA-256.
 #
-#   phase 1: seed/registry + N holders; publish; baseline cold-fetch bit-perfect.
-#   WAVE 1 (default): SIGKILL every holder (hard crash), restart the SAME
-#            containers, wait for each to re-bootstrap AND log "re-announced N held
-#            chunks" (#69), then cold-fetch bit-perfect — content survived a full
-#            holder crash. This is the robust, well-characterised recovery gate.
-#   WAVE 2 (opt-in, WAVES=2): ALSO SIGKILL the sole seed/registry/bootstrap and
-#            restart it. This surfaces a discoverability gap — the content stays on
-#            disk but a fresh client can't rediscover the providers in the window —
-#            recorded honestly as an OBSERVATION to root-cause (entangled with the
-#            single-bootstrap SPOF), not a verified product defect. Off by default.
-#   throughout: no crash-loop — every restarted container is RUNNING at the end.
+#  phase 1: seed/registry + N holders; publish; baseline cold-fetch bit-perfect.
+#  WAVE 1 (default): SIGKILL every holder (hard crash), restart the SAME
+#  containers, wait for each to re-bootstrap AND log "re-announced N held
+#  chunks" (#69), then cold-fetch bit-perfect — content survived a full
+#  holder crash. This is the robust, well-characterised recovery gate.
+#  WAVE 2 (opt-in, WAVES=2): ALSO SIGKILL the sole seed/registry/bootstrap and
+#  restart it. This surfaces a discoverability gap — the content stays on
+#  disk but a fresh client can't rediscover the providers in the window —
+#  recorded honestly as an OBSERVATION to root-cause (entangled with the
+#  single-bootstrap SPOF), not a verified product defect. Off by default.
+#  throughout: no crash-loop — every restarted container is RUNNING at the end.
 #
 # Unlike durability (permanent loss: `docker rm`), this NEVER removes a container,
 # so `docker start` restores the same filesystem — exactly the crash-restart under
 # test. A fetch failing after a restart is a FINDING (e.g. a reprovide gap),
 # reported with the evidence; a crash-loop or corruption is a FAIL.
 #
-# Usage:  ./run.sh              # build, crash, recover, assert, tear down; exit 0 = PASS
-#         HOLDERS=8 WAVES=3 ./run.sh
-#         KEEP=1 ./run.sh
+# Usage:./run.sh # build, crash, recover, assert, tear down; exit 0 = PASS
+#  HOLDERS=8 WAVES=3 ./run.sh
+#  KEEP=1 ./run.sh
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 cd "$(dirname "$0")"

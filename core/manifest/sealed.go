@@ -1,7 +1,7 @@
 // Sealed manifests (M11): what gets stored in the swarm is ciphertext
 // twice over.
 //
-//	blob = Seal_layoutKey( layout ‖ Seal_contentKey(secrets) )
+//	blob = Seal_layoutKey(layout ‖ Seal_contentKey(secrets))
 //
 // The outer layer hides the stripe structure from infrastructure; the
 // inner box hides the decryption material from caretakers. Opening with
@@ -21,7 +21,7 @@
 // that could fetch the manifest chunk — no keys, no care link, no bond,
 // no token: 341 bytes private against 345 convergent at FileSize=1,
 // widening 34 bytes per data chunk. The publisher's own secret/not-secret
-// classification of every root was public (docs/threat-catalog.md F8).
+// classification of every root was public F8.
 //
 // secretsPlainLen closes it: the secrets plaintext is zero-padded to a
 // length that is a function of the DATA-SHARD COUNT and nothing else,
@@ -82,17 +82,17 @@ func (l *Layout) Root() ports.Hash           { return MerkleRoot(l.Leaves()) }
 // manifest with nChunks data chunks. It is the whole of the mode-oracle
 // fix, so read the two properties it has to have:
 //
-//   - It is a function of nChunks ALONE. nChunks is the data-shard count,
-//     which Layout publishes by construction (one 34-byte chunk ID each,
-//     outside the inner box), so the target discloses nothing the
-//     caretaker's view did not already carry. This signature is the
-//     structure, not a convention: secretsPlainLen cannot be made to read
-//     Mode, FileKey or ChunkSecrets without changing it, so a future edit
-//     that would reintroduce the oracle cannot be a quiet one.
-//   - It is an UPPER BOUND on the canonical encoding of any secretsPart
-//     at that nChunks, in either mode, at any FileSize. Seal refuses to
-//     ship a plaintext that exceeds it rather than truncating or growing,
-//     because a target that is silently too small is the oracle back.
+// - It is a function of nChunks ALONE. nChunks is the data-shard count,
+// which Layout publishes by construction (one 34-byte chunk ID each,
+// outside the inner box), so the target discloses nothing the
+// caretaker's view did not already carry. This signature is the
+// structure, not a convention: secretsPlainLen cannot be made to read
+// Mode, FileKey or ChunkSecrets without changing it, so a future edit
+// that would reintroduce the oracle cannot be a quiet one.
+// - It is an UPPER BOUND on the canonical encoding of any secretsPart
+// At that nChunks, in either mode, at any FileSize. Seal refuses to
+// ship a plaintext that exceeds it rather than truncating or growing,
+// because a target that is silently too small is the oracle back.
 //
 // The arithmetic is canonical-CBOR widths, and it is DRIVEN rather than
 // trusted: TestSecretsPlainLenBoundsEveryEncoding marshals real

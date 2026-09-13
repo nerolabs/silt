@@ -42,8 +42,7 @@ var _ ports.Registry = (*Host)(nil)
 // task finishes, so a loop-context caller blocks in the select until Timeout — a
 // reentrant self-deadlock that wedges the node's single thread (this exact shape
 // stalled the daemon 30s per UI publish via Care → Lookup; core now answers
-// loop-context registry reads from its own chain — see node.lookupEntry and
-// docs/thinking/2026-08-19-publish-502-attribution-care-self-deadlock.md).
+// loop-context registry reads from its own chain — see node.lookupEntry).
 func (h *Host) onLoop(fn func(done func())) error {
 	ch := make(chan struct{})
 	h.Loop.Post("commit", func() { fn(func() { close(ch) }) })
@@ -60,12 +59,13 @@ func (h *Host) onLoop(fn func(done func())) error {
 }
 
 func (h *Host) Publish(ctx context.Context, e ports.Entry) error {
-	// #441 (certified 2026-08-16): publish is SUBMIT-then-poll-for-finality, never
-	// propose-then-gather. The old ProposeEntry client raced the drain designee for
-	// the same (h, r0) prepare slots and could win no round of any height (zero
-	// entry-blocks post-latch on run a56ac10-42834); as mempool content the entry
-	// rides whichever designee block commits. B7/S3 hold exactly as before: this
-	// returns nil only once the entry is READ BACK from the committed chain.
+	// publish is SUBMIT-then-poll-for-finality, never propose-then-gather.
+	// The old ProposeEntry client raced the drain designee for the same (h,
+	// r0) prepare slots and could win no round of any height (zero
+	// entry-blocks post-latch on run the field run); as mempool content the
+	// entry rides whichever designee block commits. B7/S3 hold exactly as
+	// before: this returns nil only once the entry is READ BACK from the
+	// committed chain.
 	if err := h.PublishAsync(ctx, e); err != nil {
 		return err
 	}
@@ -87,11 +87,11 @@ func (h *Host) Publish(ctx context.Context, e ports.Entry) error {
 	return fmt.Errorf("chainhost: entry %s not committed within %s (submitted to the mempool; still pending)", e.Root, timeout)
 }
 
-// PublishAsync is the async publish path (#286 Layer 1). It runs the SYNCHRONOUS local
+// PublishAsync is the async publish path. It runs the SYNCHRONOUS local
 // validation on the loop — returning the refusals a client must learn immediately (no
 // publish token when required, a durable Publisher identity the refuse-to-surveil chain
 // rejects, a double-spent token, a duplicate root) — then kicks off the commit gather
-// FIRE-AND-FORGET and returns. The HTTP handler therefore replies 202 at once instead of
+// FIRE-AN and returns. The HTTP handler therefore replies 202 at once instead of
 // blocking the whole quorum gather under a flat 10s-client / 30s-server deadline that
 // guillotined the ~1.5 MB genesis round; the client polls Lookup until the entry commits.
 // Only the slow gather is async — every refusal is still synchronous. nil = accepted.
@@ -113,7 +113,7 @@ func (h *Host) PublishAsync(_ context.Context, e ports.Entry) error {
 		}
 		h.outcomes.Delete(e.Root)
 		if h.Node.Chain().Objective() {
-			// Accepted: SUBMIT to the entry mempool (#441 — the certified fix).
+			// Accepted: SUBMIT to the entry mempool.
 			// The entry enters this validator's own pending queue and is
 			// broadcast to the other eligible proposers; whichever designee
 			// commits the next block folds it in (FIFO, separate entry byte
@@ -126,11 +126,11 @@ func (h *Host) PublishAsync(_ context.Context, e ports.Entry) error {
 			done()
 			return
 		}
-		// LEGACY (subjective, -objective=false) keeps the direct propose path:
-		// there is no designee sweep and no round machinery to drive the
-		// mempool there — and no drain contention either, so the #441
-		// starvation cannot arise. The certified submit path is
-		// objective-mode-scoped by its own premise.
+		// LEGACY (subjective, -objective=false) keeps the direct
+		// propose path: there is no designee sweep and no round
+		// machinery to drive the mempool there — and no drain
+		// contention either, so the starvation cannot arise. The
+		// submit path is objective-mode-scoped by its own premise.
 		h.Node.ProposeEntry(e, h.Attesters, h.Broadcast, h.Quorum, func(err error) {
 			if err != nil {
 				h.outcomes.Store(e.Root, err)
@@ -149,7 +149,7 @@ func (h *Host) PublishAsync(_ context.Context, e ports.Entry) error {
 // (the gather could not reach quorum this round) — rather than waiting out the whole budget.
 // A gather still in progress returns (false, nil): pending, keep polling. This is what keeps
 // a publish-retry-until-standing caller (bond earned-standing, revocation) able to retry
-// promptly while a genuinely slow ~1.5 MB genesis gather (#286) is still allowed to finish.
+// promptly while a genuinely slow ~1.5 MB genesis gather is still allowed to finish.
 func (h *Host) PublishStatus(_ context.Context, root ports.Hash) (committed bool, failErr error) {
 	if err := h.onLoop(func(done func()) {
 		_, committed = h.Node.Chain().LookupRoot(root)

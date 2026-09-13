@@ -1,18 +1,16 @@
 package main
 
-// C1 / B1 (blind PE ruling RULING-c1-demand-v2-and-flat-leg-retirement-a290bff-2026-09-08.md):
-// adapters/guardstore is opened on TWO files with DIFFERENT safety properties, and the
-// format bump's refusal reaches an operator through BOTH.
+// C1 / B1: adapters/guardstore is opened on TWO files with DIFFERENT safety properties, and
+// the format bump's refusal reaches an operator through BOTH.
 //
-//   - paidserials.log — through the RC the credit ledger is ephemeral (D-FP2-SCOPE), so
-//     the guarded payouts' credits reset at the same restart and clearing the file costs
-//     nothing.
-//   - creditspent.log — the publish issuer key PERSISTS, so every credit it signed stays
-//     spendable. Clearing that guard on its own re-opens every held credit for a second
-//     spend: the F-4 pump, measured at core/node/r213b_creditspent_test.go (one 50,000
-//     credit redeemed 43,750 + 43,750 against one burn). The ratified rule is to rotate
-//     the publish key AND clear creditspent.log TOGETHER (R-CREDITSPENT-UNBOUNDED, owner
-//     call 6, D-TRUE-UP-CALLS-2026-09-07; docs/design/m0.md, docs/decisions.md).
+// - paidserials.log — through the RC the credit ledger is ephemeral, so
+// The guarded payouts' credits reset at the same restart and clearing the file costs
+// nothing.
+// - creditspent.log — the publish issuer key PERSISTS, so every credit it signed stays
+// spendable. Clearing that guard on its own re-opens every held credit for a second
+// spend: the pump, measured at core/node/creditspent_test.go (one 50,000 credit
+// redeemed 43,750 + 43,750 against one burn). The rule is to rotate the publish key
+// AND clear creditspent.log TOGETHER (a project decision).
 //
 // So the adapter's sentinel states the CONDITION and names no remedy, and the DAEMON
 // attaches the remedy for the file it opened. These gates pin that pairing: the text
@@ -29,9 +27,9 @@ import (
 )
 
 // TestGuardStoreRemedyTextIsSafePerStore is the TEXT gate: what an operator reads on a
-// refused boot. The creditspent remedy must carry the ratified rotate-and-clear pairing
-// and must never carry the paidserials "costs nothing" licence, which on that file IS
-// the F-4 pump.
+// refused boot. The creditspent remedy must carry the rotate-and-clear pairing and must
+// never carry the paidserials "costs nothing" licence, which on that file IS the F-4
+// pump.
 func TestGuardStoreRemedyTextIsSafePerStore(t *testing.T) {
 	cs := fmt.Sprintf("%v", fmt.Errorf("publish-credit guard store: %w\n%s",
 		fmt.Errorf("%w: /store/creditspent.log", guardstore.ErrLegacyFormat), remedyCreditSpent))
@@ -49,11 +47,11 @@ func TestGuardStoreRemedyTextIsSafePerStore(t *testing.T) {
 		t.Fatal("ErrLegacyFormat no longer wraps")
 	}
 
-	// creditspent.log: the ratified procedure, and nothing that reads as "just delete it".
+	// creditspent.log: the procedure, and nothing that reads as "just delete it".
 	for _, want := range []string{"creditspent.log", "rotate", "publish key", "together"} {
 		if !strings.Contains(strings.ToLower(cs), strings.ToLower(want)) {
 			t.Errorf("the creditspent.log refusal does not contain %q — an operator reading it has "+
-				"no ratified procedure and the obvious guess (clear the file) is the F-4 double-spend "+
+				"no settled procedure and the obvious guess (clear the file) is the F-4 double-spend "+
 				"pump.\nGot:\n%s", want, cs)
 		}
 	}
@@ -70,7 +68,7 @@ func TestGuardStoreRemedyTextIsSafePerStore(t *testing.T) {
 	}
 
 	// paidserials.log: the remedy that IS "remove it", with the reason it is safe here.
-	for _, want := range []string{"paidserials.log", "remove", "D-FP2-SCOPE"} {
+	for _, want := range []string{"paidserials.log", "remove", "the credit ledger is ephemeral"} {
 		if !strings.Contains(ps, want) {
 			t.Errorf("the paidserials.log refusal does not contain %q — the operator is refused "+
 				"with no remedy.\nGot:\n%s", want, ps)
@@ -83,7 +81,7 @@ func TestGuardStoreRemedyTextIsSafePerStore(t *testing.T) {
 }
 
 // TestDaemonPairsEachGuardStoreWithItsOwnRemedy is the SOURCE gate, in the
-// r213b_creditspent_wiring_test.go style: the daemon has no callable seam around the two
+// creditspent_wiring_test.go style: the daemon has no callable seam around the two
 // open sites, so the wiring is checked as literals and their order. It sees which remedy
 // constant is cited in which file's block and nothing else.
 //

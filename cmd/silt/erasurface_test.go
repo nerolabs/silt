@@ -13,7 +13,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// THE ERA OBSERVABLE, cmd tier (R-CLOUD-ERA-PROBE, freeze manifest item 19).
+// THE ERA OBSERVABLE, cmd tier (freeze manifest item 19).
 //
 // WHAT THIS TIER TESTS AND WHAT IT DOES NOT. These are RENDERER gates. Their fixtures write blocks
 // directly, which does NOT establish that a real chain produces v5 blocks, a real carrier or a real
@@ -46,16 +46,16 @@ func eraChainStatus(t *testing.T, dir string) string {
 	})
 }
 
-// TestChainStatusDistinguishesAnEra4ChainFromADarkOne is GATE G-EP-5 and GATE G-EP-6 (cmd tier).
-// It is the gate the whole row exists for.
+// TestChainStatusDistinguishesAnEra4ChainFromADarkOne is the gate and the gate (cmd tier). It is
+// the gate the whole row exists for.
 //
 // The evidence that this observable was missing: on the tree before this change, `silt chain-status`
-// against a store holding a v4 block, two v5 blocks and a 3-wide attestation carrier printed
-// head height, head hash, block count, entry count and pruned count — and NOTHING ELSE. That output
-// is byte-identical to the output for an all-v2 chain carrying no attestation at all. A Tester's
-// verdict had to end "I verified the in-repo configuration, not the live nets' actual chain.cbor",
-// and cloud row 13b-delivery-settlement SKIPped with one sentence covering both "era-4 is dark" and
-// "the issuer's keys are off-commitment" because nothing separated them.
+// against a store holding a v4 block, two v5 blocks and a 3-wide attestation carrier printed head
+// height, head hash, block count, entry count and pruned count — and NOTHING ELSE. That output is
+// byte-identical to the output for an all-v2 chain carrying no attestation at all. A the verdict had
+// to end "I verified the in-repo configuration, not the live nets' actual chain.cbor", and cloud row
+// 13b-delivery-settlement SKIPped with one sentence covering both "era-4 is dark" and "the issuer's
+// keys are off-commitment" because nothing separated them.
 //
 // BOTH ARMS, and the assertion is that they DIFFER. A surface where the two render alike answers
 // nothing, which is exactly how this row's predecessor came to be vacuous.
@@ -83,7 +83,7 @@ func TestChainStatusDistinguishesAnEra4ChainFromADarkOne(t *testing.T) {
 	t.Logf("ARM A (era-4 chain):\n%s\nARM B (dark chain):\n%s", lit, dark)
 
 	if lit == dark {
-		t.Fatal("G-EP-5 RED: an era-4 chain and a DARK chain of the same height render IDENTICALLY. " +
+		t.Fatal("RED: an era-4 chain and a DARK chain of the same height render IDENTICALLY. " +
 			"That is the state cloud row 13b could not name, reproduced.")
 	}
 	for _, want := range []string{
@@ -93,23 +93,23 @@ func TestChainStatusDistinguishesAnEra4ChainFromADarkOne(t *testing.T) {
 		"max atts:     3, first at height 2",
 	} {
 		if !strings.Contains(lit, want) {
-			t.Errorf("G-EP-5 RED: the era-4 arm must report %q; whole output:\n%s", want, lit)
+			t.Errorf("RED: the era-4 arm must report %q; whole output:\n%s", want, lit)
 		}
 	}
 	// The dark arm must NAME its state and must NOT claim to know the tally, which no offline
 	// caller can see. A "lockedIn: false" here would be a lie dressed as a zero.
 	if !strings.Contains(dark, "era-4 (v5): NOT ON THIS CHAIN") {
-		t.Errorf("G-EP-5 RED: the dark arm must NAME the state, not print an empty field; whole output:\n%s", dark)
+		t.Errorf("RED: the dark arm must NAME the state, not print an empty field; whole output:\n%s", dark)
 	}
 	if !strings.Contains(dark, "/api/status .chain.era") {
-		t.Errorf("G-EP-5 RED: the dark arm must say where the tally IS observable; whole output:\n%s", dark)
+		t.Errorf("RED: the dark arm must say where the tally IS observable; whole output:\n%s", dark)
 	}
 	if strings.Contains(dark, "lockedIn") || strings.Contains(dark, "DARK") {
-		t.Errorf("G-EP-5 RED: the offline path asserted a tally fact it cannot observe; whole output:\n%s", dark)
+		t.Errorf("RED: the offline path asserted a tally fact it cannot observe; whole output:\n%s", dark)
 	}
 }
 
-// TestChainStatusNarratesAMeasuredZeroCarrier is GATE G-EP-5's zero arm.
+// TestChainStatusNarratesAMeasuredZeroCarrier is the gate's zero arm.
 //
 // max_h len(blocks[h].Atts) is legitimately 0 on a genesis-only or single-signer chain. A bare "0"
 // would be unreadable against "the field was never computed" — the precise shape of the defect this
@@ -119,11 +119,11 @@ func TestChainStatusNarratesAMeasuredZeroCarrier(t *testing.T) {
 	out := eraChainStatus(t, eraStore(t, []chain.Block{g}))
 	t.Logf("genesis-only chain:\n%s", out)
 	if !strings.Contains(out, "max atts:     0 — measured across every block") {
-		t.Fatalf("G-EP-5 RED: a measured zero must say it was measured, not print a bare 0:\n%s", out)
+		t.Fatalf("RED: a measured zero must say it was measured, not print a bare 0:\n%s", out)
 	}
 }
 
-// TestStatusRouteCarriesTheEraState is GATE G-EP-7 (cmd tier). The programmatic half.
+// TestStatusRouteCarriesTheEraState is the gate (cmd tier). The programmatic half.
 //
 // Before this change GET /api/status `.chain` was, in full, {"height":1,"entries":1}. The cloud
 // sheet's 13b row reads `.chain.era.era4.phase`; a consumer that cannot see the era has to infer it
@@ -160,31 +160,31 @@ func TestStatusRouteCarriesTheEraState(t *testing.T) {
 		t.Fatalf("decode .chain: %v (%s)", err, raw)
 	}
 	if doc.Era.Era4 == nil || doc.Era.Era3 == nil || doc.Era.Census == nil {
-		t.Fatal("G-EP-7 RED: .chain.era is missing an era or the census")
+		t.Fatal("RED: .chain.era is missing an era or the census")
 	}
 	var phase chain.EraPhase
 	if err := json.Unmarshal(doc.Era.Era4["phase"], &phase); err != nil {
-		t.Fatalf("G-EP-7 RED: .chain.era.era4.phase is not readable: %v", err)
+		t.Fatalf("RED: .chain.era.era4.phase is not readable: %v", err)
 	}
 	if phase != chain.EraDark {
-		t.Fatalf("G-EP-7 RED: a v1 genesis-only chain must report era-4 %q, got %q", chain.EraDark, phase)
+		t.Fatalf("RED: a v1 genesis-only chain must report era-4 %q, got %q", chain.EraDark, phase)
 	}
 	if phase == "" {
-		t.Fatal("G-EP-7 RED: phase is the empty string — a never-populated field is indistinguishable from it")
+		t.Fatal("RED: phase is the empty string — a never-populated field is indistinguishable from it")
 	}
 	// The wire contract: an era that has not activated carries NO height keys at all.
 	for _, k := range []string{"firstHeight", "activationHeight"} {
 		if _, present := doc.Era.Era4[k]; present {
-			t.Errorf("G-EP-7 RED: era-4 has not activated, so %q must be ABSENT from the wire, not present as 0. "+
+			t.Errorf("RED: era-4 has not activated, so %q must be ABSENT from the wire, not present as 0. "+
 				"Height 0 is a legal height, so a zero there could not be read as an absence.", k)
 		}
 	}
 	// attsMeasured is what separates a measured zero from a figure nobody computed.
 	var measured bool
 	if err := json.Unmarshal(doc.Era.Census["attsMeasured"], &measured); err != nil || !measured {
-		t.Errorf("G-EP-7 RED: census.attsMeasured must be true on a walked chain (err %v, value %v)", err, measured)
+		t.Errorf("RED: census.attsMeasured must be true on a walked chain (err %v, value %v)", err, measured)
 	}
 	if doc.HeadVersion != 1 {
-		t.Errorf("G-EP-7 RED: headVersion must be the head block's Version (1), got %d", doc.HeadVersion)
+		t.Errorf("RED: headVersion must be the head block's Version (1), got %d", doc.HeadVersion)
 	}
 }

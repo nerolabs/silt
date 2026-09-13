@@ -7,28 +7,28 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Optimistic fair exchange (D-DEMAND P2) — the ASW-shaped floor silt can build in
-// pure Go. The exchange is content C (server → fetcher) ⟷ a delivery receipt
-// (fetcher → server, the server's demand credit). Fair exchange PROVABLY needs a TTP
-// (Pagnia–Gärtner); silt's is the VALIDATOR QUORUM as a threshold-distributed TTP
+// Optimistic fair exchange P2 — the ASW-shaped floor silt can build in pure Go. The
+// exchange is content C (server → fetcher) ⟷ a delivery receipt (fetcher → server,
+// the server's demand credit). Fair exchange PROVABLY needs a TTP (Pagnia–Gärtner);
+// silt's is the VALIDATOR QUORUM as a threshold-distributed TTP
 // (Asokan–Shoup–Waidner), meant to be invoked ONLY on dispute.
 //
 // WHAT M0 BUILDS (this file + the abort-safety regressions): the optimistic path and
 // its two abort-SAFETY properties, which hold structurally today.
 //
-//  1. FETCHER-SIDE abort safety: an aborted exchange never CONSUMES the fetcher's
-//     token. A serial is spent only at a completed session OPEN (a valid anchor
-//     receipt), so a server that takes the commitment and then vanishes — or delivers
-//     nothing — leaves the paid token UNSPENT and reusable at another server. The
-//     fetcher cannot be robbed of its token by a non-delivering server.
+// 1. FETCHER-SIDE abort safety: an aborted exchange never CONSUMES the fetcher's
+// token. A serial is spent only at a completed session OPEN (a valid anchor
+// receipt), so a server that takes the commitment and then vanishes — or delivers
+// nothing — leaves the paid token UNSPENT and reusable at another server. The
+// fetcher cannot be robbed of its token by a non-delivering server.
 //
-//  2. SERVER-SIDE abort safety: a fetcher's pre-release ExchangeCommitment — a signed
-//     promise made BEFORE content release, carrying NO proof of possession — is NOT a
-//     redeemable receipt. It is domain-separated from the SessionReceipt signature
-//     so a server cannot convert "the fetcher engaged" into a fake
-//     completed delivery. The unforgeability bound (#receipts(C) ≤ #completed
-//     paid deliveries) survives the abort path: only a SessionReceipt signed under
-//     receiptDomainV3, settled on an admitted session, credits the server.
+// 2. SERVER-SIDE abort safety: a fetcher's pre-release ExchangeCommitment — a signed
+// promise made BEFORE content release, carrying NO proof of possession — is NOT a
+// redeemable receipt. It is domain-separated from the SessionReceipt signature
+// so a server cannot convert "the fetcher engaged" into a fake
+// completed delivery. The unforgeability bound (#receipts(C) ≤ #completed
+// paid deliveries) survives the abort path: only a SessionReceipt signed under
+// receiptDomainV3, settled on an admitted session, credits the server.
 //
 // WHAT IS GATED (the dispute-RESOLUTION half, deliberately not built): converting a
 // server-held commitment into a TTP-affidavit receipt on a fetcher default requires

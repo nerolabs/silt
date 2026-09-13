@@ -1,6 +1,6 @@
 package credit
 
-// R0.4b-5 — the shared-ledger epoch-skew re-pay, and the high-water mark that closes it.
+// The shared-ledger epoch-skew re-pay, and the high-water mark that closes it.
 //
 // THE HOLE. `sweepExpiredSerials` and the admission check ran against the CALLER's
 // `currentEpoch`. Two redeemers sharing ONE ledger whose heads straddle an epoch
@@ -17,12 +17,12 @@ package credit
 // what is refused — so the worst case is an under-pay of one server's conserved leg
 // during a skew, never an over-pay and never a mint.
 //
-// R2.10 / F8 (G-F8-4, 2026-09-04): the epoch is no longer a caller parameter — the
-// ledger reads ONE injected EpochSource (R-F8-SOURCE). "Two redeemers whose heads
-// straddle a boundary" is therefore re-driven as "the SOURCE moved 10 → 9 between
-// calls" (a mock or embedder source may fall; the latch is a port contract,
-// R-F8-LATCH). The assertions are the SAME as before the re-drive: if either of the
-// two gates below must be deleted, the latch was dropped — stop.
+// the epoch is no longer a caller parameter — the ledger reads ONE
+// injected EpochSource. "Two redeemers whose heads straddle a boundary" is
+// therefore re-driven as "the SOURCE moved 10 → 9 between calls" (a mock or
+// embedder source may fall; the latch is a port contract). The assertions are the
+// SAME as before the re-drive: if either of the two gates below must be deleted,
+// the latch was dropped — stop.
 //
 // These tests isolate the watermark from the source's current value, which is the ONLY
 // place the two differ: every gate that reads the raw source alone is blind here,
@@ -30,7 +30,7 @@ package credit
 
 import "testing"
 
-// TestEpochWatermark_LaggardRedeemerCannotRePay is the R0.4b-5 gate, with its control.
+// TestEpochWatermark_LaggardRedeemerCannotRePay is the gate, with its control.
 //
 // The control is what makes it a gate rather than an assertion: the IDENTICAL call on
 // a ledger that never saw the further-ahead epoch PAYS. That is the pre-fix behaviour,
@@ -112,8 +112,7 @@ func TestEpochWatermark_IsMonotone(t *testing.T) {
 // it must refuse only what has left the window, never an in-window anchor at a server
 // that happens to be behind.
 //
-// C1 (2026-09-08) re-home. This test was TestEpochWatermark_UnguardedRedeemIsUnaffected
-// and its subject was the flat leg's serial-less path — "outside the guard by
+// This test's earlier subject was the flat leg's serial-less path — "outside the guard by
 // construction, and it must not acquire a new refusal". The anchored lane has no
 // serial-less path (a session's budget exists only because an anchor was spent into the
 // guard; a mis-sized serial is refused, see

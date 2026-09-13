@@ -19,7 +19,7 @@ func (w *world) genesis() *Block {
 
 // blockAt builds a block at height h on top of prev with the given entry,
 // attested by the first `nAtt` validators. The attestations are VALIDITY inputs
-// only: fork-choice is height → head-hash (O3 Direction T) and reads no
+// only: fork-choice is height → head-hash and reads no
 // certificate, so nAtt never ranks a fork.
 func (w *world) blockAt(prev ports.Hash, h uint64, e ports.Entry, nAtt int) *Block {
 	b := &Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{e}}
@@ -36,9 +36,8 @@ func (w *world) forkBlock(prev ports.Hash, e ports.Entry, nAtt int) *Block {
 }
 
 // The heal: a replica committed to a shorter fork adopts a TALLER valid one that
-// shares its genesis, and rolls its state off the abandoned fork. (Was
-// TestReconcileAdoptsHeavierFork, which ranked the forks by attester count at
-// equal height; under O3 Direction T fork-choice is height → head-hash, and the
+// shares its genesis, and rolls its state off the abandoned fork. (The earlier gate
+// ranked the forks by attester count at equal height; fork-choice is height → head-hash, and the
 // re-grounded fixture makes the adopted fork strictly taller — never an
 // equal-height head-hash coin flip.)
 func TestReconcileAdoptsTallerFork(t *testing.T) {
@@ -75,7 +74,7 @@ func TestReconcileAdoptsTallerFork(t *testing.T) {
 }
 
 // A SHORTER fork is NOT adopted, however many attesters stand behind it — we
-// don't thrash off a taller committed history. (Was TestReconcileRejectsLighterFork.)
+// don't thrash off a taller committed history.
 func TestReconcileRejectsShorterFork(t *testing.T) {
 	w := newWorld(DefaultConfig())
 	g := w.genesis()

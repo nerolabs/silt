@@ -9,16 +9,16 @@ import (
 )
 
 // TestLivePeerIsRetriedNotEvictedOnOneMiss is the direct behavior guard for the
-// #288 / build-immutable #5 anti-pattern ("retry — don't evict a live peer on a
+// / build-immutable #5 anti-pattern ("retry — don't evict a live peer on a
 // single slow/dropped packet"). A full AST guard for retry/evict isn't tractable
 // (retry counts and eviction are semantic policy, not a single construct — see the
 // SCOPE NOTE in internal/wanguard), so the enforcement lives here, at the tier the
 // bug lives: a dead peer given RequestRetries=2 must be DIALED 3 times (the initial
 // attempt + 2 retries) before it is finally evicted. If eviction-on-the-first-miss
-// ever regresses (the #288 shape that starves consensus under loss), the corpse is
+// ever regresses (the shape that starves consensus under loss), the corpse is
 // dialed only ONCE and this goes red. Counting dials over a run-to-completion is
 // timing-independent, so unlike a mid-retry window assertion this cannot flake.
-// (TestStaticPeerSurvivesReachabilityEviction286 is the post-exhaustion companion:
+// (TestStaticPeerSurvivesReachabilityEviction is the post-exhaustion companion:
 // after the retries here DO exhaust, a normal peer is correctly evicted.)
 func TestLivePeerIsRetriedNotEvictedOnOneMiss(t *testing.T) {
 	sched := simclock.New()
@@ -45,7 +45,7 @@ func TestLivePeerIsRetriedNotEvictedOnOneMiss(t *testing.T) {
 	sched.Run() // run to quiescence: all retries fire, then the eviction branch
 
 	if dials != cfg.RequestRetries+1 {
-		t.Fatalf("#288: a good peer must be RETRIED before eviction, not dropped on one miss — "+
+		t.Fatalf("a good peer must be RETRIED before eviction, not dropped on one miss — "+
 			"got %d dials, want %d (initial + %d retries). dials==1 means evict-on-one-miss regressed.",
 			dials, cfg.RequestRetries+1, cfg.RequestRetries)
 	}

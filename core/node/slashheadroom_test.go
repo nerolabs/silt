@@ -7,7 +7,7 @@ import (
 	"github.com/nerolabs/silt/core/chain"
 )
 
-// G-SLASHCAP-1 (the DRIVEN ablation, owner call 2026-09-09 "CLOSE THE ROUTE").
+// (the DRIVEN ablation "CLOSE THE ROUTE").
 //
 // SlashesBytesCap is a CONSENSUS VALIDITY rule enforced on every validator
 // (core/chain/validate_v5_predicates.go). Its value was derived from the DEFAULTS of two
@@ -19,13 +19,13 @@ import (
 // cap, so the equivocator KEEPS ITS SEAT. That is an accountability break (a Part-0
 // corner), reached from local config alone.
 //
-// This is the #380 class: a consensus quantity that is a function of LOCAL CONFIG rather
-// than of the chain. #380 was RequiredQuorum() reading cfg.Quorum; this is
+// This is the class: a consensus quantity that is a function of LOCAL CONFIG rather
+// than of the chain. was RequiredQuorum reading cfg.Quorum; this is
 // SlashesBytesCap's invariant reading cfg.MaxBondRegBytesPerBlock.
 //
 // The rows below DRIVE the boundary, they do not describe it. Each names the runtime
 // config values the gate reads, never the constants that feed them.
-func TestG_SLASHCAP_1_ConfigCannotDefeatSlashEvidence(t *testing.T) {
+func TestConfigCannotDefeatSlashEvidence(t *testing.T) {
 	const mib = 1 << 20
 
 	rows := []struct {
@@ -109,7 +109,7 @@ func TestG_SLASHCAP_1_ConfigCannotDefeatSlashEvidence(t *testing.T) {
 // The shipped DefaultConfig must satisfy the invariant. If a future edit moves a default
 // past the boundary this fails here rather than in the field, where the symptom is an
 // equivocator that cannot be evicted.
-func TestG_SLASHCAP_2_ShippedDefaultsSatisfyTheInvariant(t *testing.T) {
+func TestShippedDefaultsSatisfyTheSlashCapInvariant(t *testing.T) {
 	cfg := DefaultConfig()
 	if err := CheckSlashEvidenceHeadroom(cfg); err != nil {
 		t.Fatalf("the SHIPPED defaults violate the invariant SlashesBytesCap was derived from: %v", err)

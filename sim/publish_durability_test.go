@@ -47,9 +47,9 @@ func (f *flakyStore) Put(ctx context.Context, c ports.Chunk) error {
 // report a non-nil error naming the unplaceable manifest chunk, so the
 // publisher fails loudly instead.
 func TestPublishFailsLoudWhenManifestUnplaceable(t *testing.T) {
-	// Node 0 is the publisher (roomy scratch). Nodes 1..3 are storage nodes
-	// with a ZERO pledge, so capstore refuses every Put with ErrStoreFull —
-	// a swarm whose capacity is exhausted.
+	// Node 0 is the publisher (roomy scratch). Nodes 1.3 are storage
+	// nodes with a ZERO pledge, so capstore refuses every Put with
+	// ErrStoreFull — a swarm whose capacity is exhausted.
 	cl := NewClusterWithStores(1, 4, simnet.DefaultConfig(), node.DefaultConfig(),
 		func(i int) ports.ChunkStore {
 			if i == 0 {
@@ -101,8 +101,8 @@ func TestPublishFailsLoudWhenManifestUnplaceable(t *testing.T) {
 // outcome the fix actually promises: no link is registered for content the
 // swarm never took (tenet S5).
 func TestRegisterAfterDistributeLeavesNoDanglingEntry(t *testing.T) {
-	// Same shape as the unplaceable test: node 0 publishes with roomy scratch;
-	// nodes 1..3 have a ZERO pledge, so every Put is refused.
+	// Same shape as the unplaceable test: node 0 publishes with roomy
+	// scratch; nodes 1.3 have a ZERO pledge, so every Put is refused.
 	cl := NewClusterWithStores(1, 4, simnet.DefaultConfig(), node.DefaultConfig(),
 		func(i int) ports.ChunkStore {
 			if i == 0 {

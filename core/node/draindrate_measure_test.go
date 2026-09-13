@@ -1,18 +1,17 @@
 package node
 
-// The E5 drain-rate measurement (PE drain ruling 2026-08-19, the go/no-go rider
-// on Phase 1.2): the v2b starvation latency is ≈ cap/drain, so the question that
-// decides whether the two-class priority drain is ever built is the REAL
-// single-loop drain rate for the cheapest bulk a flood can ride — measured on a
-// real node handler over a real transport, not the v2b drill's hypothetical
-// 2 MiB/s. MsgStoreChunk is that bulk (the drill's own flood kind; bond-reg
-// submits are now rate-gated, Phase 1.2). This is a MEASUREMENT harness, not a
-// pass/fail gate — it prints the number and the derived cap/drain at the shipped
-// 256M against the 2 s saturation bound, so the verdict is evidence, not a guess.
-// Records into docs/thinking/2026-08-19-bondreg-submit-cpu-gate.md's E5 rider.
+// The E5 drain-rate measurement: the v2b starvation latency is ≈ cap/drain, so
+// the question that decides whether the two-class priority drain is ever built is
+// the REAL single-loop drain rate for the cheapest bulk a flood can ride —
+// measured on a real node handler over a real transport, not the v2b drill's
+// hypothetical 2 MiB/s. MsgStoreChunk is that bulk (the drill's own flood kind;
+// bond-reg submits are now rate-gated, Phase 1.2). This is a MEASUREMENT harness,
+// not a pass/fail gate — it prints the number and the derived cap/drain at the
+// shipped 256M against the 2 s saturation bound, so the verdict is evidence, not
+// a guess. Records into's E5 rider.
 //
 // Run explicitly:
-//   go test ./core/node -run TestMeasure_StoreChunkDrainRate -v -count=1
+// go test./core/node -run TestMeasure_StoreChunkDrainRate -v -count=1
 // Skipped in the normal suite (it is a benchmark-shaped measurement, timing-
 // sensitive, and asserts only a sanity floor).
 
@@ -48,9 +47,9 @@ func TestMeasure_StoreChunkDrainRate(t *testing.T) {
 	recv := New(rID.NodeID(), DefaultConfig(), walltime.New(rLoop), rTr, memstore.New())
 	_ = recv
 
-	// Sender floods valid, self-consistent chunks (c.Verify() passes → the full
-	// store path runs; a flood of garbage would fail the hash cheaply and measure
-	// the wrong, faster path).
+	// Sender floods valid, self-consistent chunks (c.Verify passes → the full
+	// store path runs; a flood of garbage would fail the hash cheaply and
+	// measure the wrong, faster path).
 	sLoop := eventloop.New()
 	go sLoop.Run()
 	defer sLoop.Stop()
@@ -61,9 +60,9 @@ func TestMeasure_StoreChunkDrainRate(t *testing.T) {
 	}
 	defer sTr.Close()
 
-	// acks is written by the transport's readLoop goroutine and read by the
-	// test body after the window — atomic, or the measurement itself races
-	// (#507: the one test that forced -race runs to skip it).
+	// acks is written by the transport's readLoop goroutine and read by
+	// the test body after the window — atomic, or the measurement itself
+	// races.
 	var acks atomic.Int64
 	sTr.SetHandler(func(_ ports.NodeID, m ports.Message) {
 		if m.Kind == ports.MsgStoreChunkAck {
@@ -77,7 +76,7 @@ func TestMeasure_StoreChunkDrainRate(t *testing.T) {
 	for i := range data {
 		data[i] = byte(i * 131)
 	}
-	id := ports.HashBytes(data) // the id must hash the data or c.Verify() rejects
+	id := ports.HashBytes(data) // the id must hash the data or c.Verify rejects
 
 	// Warm the connection, then measure sustained ack throughput over a window.
 	const window = 5 * time.Second

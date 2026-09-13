@@ -13,7 +13,7 @@ if [ "$FT_BACKEND" = local ]; then : "${PROJECT_ID:=local}"; fi
 # live cloud run's node map (the 2026-08-20 root cause: LOCAL island verifications
 # overwrote a running cloud sheet's nodes.json/topology.json, breaking its ssh_node
 # on zone=local and masking the real verdicts). The cloud uses the bare names
-# (terraform/report tooling expects them); LOCAL uses .local.json siblings. Every
+# (terraform/report tooling expects them); LOCAL uses.local.json siblings. Every
 # reader routes through $NODES_JSON / $FT_TOPO, never a hardcoded path.
 if [ "$FT_BACKEND" = local ]; then
   : "${NODES_JSON:=$FT_DIR/nodes.local.json}"
@@ -36,7 +36,7 @@ node_exists() { python3 -c "import json,sys;sys.exit(0 if '$1' in json.load(open
 # HARD TIMEOUT (SSH_NODE_TIMEOUT, default 90s): a `gcloud compute ssh` over an IAP
 # tunnel has no internal deadline, so a single stalled tunnel blocks the caller
 # FOREVER — with no timeout, one stuck stop-in-the-capture-drill wedged a whole
-# MATURING run for an hour (run 1ebd487-7457, no verdict, VMs left burning until a
+# MATURING run for an hour (run the field run, no verdict, VMs left burning until a
 # manual kill). `timeout` bounds every remote call so a stalled node degrades that
 # ONE call (the caller's `|| true` / retry then proceeds), never the whole run.
 # 124 = timeout's own exit; the caller sees a non-zero exit exactly as a real ssh
@@ -59,11 +59,11 @@ jlog() { ssh_node "$1" "sudo journalctl -u silt --no-pager -n ${2:-400}"; }
 
 # jlog_since NAME EPOCH — every journald line at/after EPOCH. Use for any read
 # that COUNTS lines (fingerprints, rates): a line-windowed `jlog N` read is
-# scrolled by unrelated later narration — run 94ef1e8-36901's economy sweep spam
-# pushed the round-change lines out of the last-600 window, so the #509 escape
+# scrolled by unrelated later narration — run the field run's economy sweep spam
+# pushed the round-change lines out of the last-600 window, so the escape
 # fingerprint read rc=0 ("frozen") while the ladder was demonstrably advancing,
-# manufacturing a false WEDGE FAIL (#525). Same unscoped-read class waitfor_since
-# closes for MATCHES (audit #303), applied to counts.
+# manufacturing a false WEDGE FAIL. Same unscoped-read class waitfor_since
+# closes for MATCHES (audit), applied to counts.
 jlog_since() { ssh_node "$1" "sudo journalctl -u silt --no-pager --since \"@${2}\""; }
 
 # The daemon splits its output: fmt.Printf banners (chain: committed block,
@@ -71,7 +71,7 @@ jlog_since() { ssh_node "$1" "sudo journalctl -u silt --no-pager --since \"@${2}
 # every STRUCTURED n.logf(...) line — the per-node signals like `standing self=…
 # reputation=N` and `bond challenge peer=… passed=…` — goes to an on-disk file
 # (cmd/silt/daemon.go openLog → $STORE/debug.log), NEVER to journald. Assert on
-# those via dlog, not jlog. (A #310 assertion greped journald for the standing
+# those via dlog, not jlog. (A assertion greped journald for the standing
 # line and could never match — SMOKE caught it.)
 dlog() { ssh_node "$1" "sudo tail -n ${2:-1200} /var/lib/silt/debug.log 2>/dev/null"; }
 
@@ -94,7 +94,7 @@ waitfor() { # waitfor NAME 'EXTENDED_REGEX' TIMEOUT_S
 # held chunks', 'bond: reloaded …') is also emitted on a PRIOR boot and can still
 # sit in the last-800-line window — an unscoped waitfor would match the stale
 # earlier-boot line and false-pass a restart that actually hung/failed to reload
-# (audit #303 cloudtest restart-standing + chaos-reprovide stale-gaps). Capture
+# (the audit cloudtest restart-standing + chaos-reprovide stale-gaps). Capture
 # `t0="$(date +%s)"` immediately BEFORE the restart/pkill, pass it as SINCE, and
 # only a line emitted by the post-restart boot can satisfy the match.
 waitfor_since() { # waitfor_since NAME 'EXTENDED_REGEX' SINCE_EPOCH TIMEOUT_S
@@ -132,7 +132,7 @@ relaunch_with() { # relaunch_with NAME "-extra flags"
   ssh_node "$name" "sudo sed -i 's#^ExecStart=/usr/local/bin/silt .*#&#; s#^ExecStart=/usr/local/bin/silt \\(.*\\)\$#ExecStart=/usr/local/bin/silt \\1 ${extra}#' /etc/systemd/system/silt.service && sudo systemctl daemon-reload && sudo systemctl restart silt.service"
   _ensure_silt_active "$name"
 }
-restore_argv() { # restore_argv NAME  — reset ExecStart to the baked argv
+restore_argv() { # restore_argv NAME — reset ExecStart to the baked argv
   local name="$1" argv
   if [ "$FT_BACKEND" = local ]; then
     # LOCAL provision bakes the argv to a file (no GCP metadata server here).
@@ -148,7 +148,7 @@ restore_argv() { # restore_argv NAME  — reset ExecStart to the baked argv
 # lacked systemd's SIGKILL escalation, so a >10s graceful shutdown left the port
 # held): the new daemon died on 'bind: address already in use', nothing
 # restarted it, and the driving flow graded a DEAD daemon for its whole window —
-# run 577f0f1-27476: 184-forged-block false FAIL + 184-partition false GAP, one
+# run the field run: 184-forged-block false FAIL + 184-partition false GAP, one
 # mechanism, two flows. The shim now escalates (parity fix); this belt covers
 # both backends and any other transient boot death. Loud when it can't recover.
 _ensure_silt_active() {
@@ -169,11 +169,11 @@ _json_str() { python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$1"; 
 # ── evidence capture on FAIL/GAP (build-immutable #7) ──────────────────────────
 # A scenario-level FAIL/GAP used to leave NO evidence: journals were captured only
 # for nodes that never came READY (wait_ready), the console isn't persisted, and
-# the network is destroyed right after the run — so run beb3628-95860's two fails
+# the network is destroyed right after the run — so run the field run's two fails
 # (9-cross-nat, chaos-reprovide) and its sybil-resume gap could not be attributed
 # afterwards, only guessed at. Now every flow's involved nodes are stashed (by
 # require_nodes, or explicitly via flow_evidence_nodes for flows that don't use
-# it), and record() snapshots their service state + journal + debug.log into
+# it), and record snapshots their service state + journal + debug.log into
 # flow-evidence-$RUN_ID.log AT THE MOMENT a fail/gap verdict lands — while the
 # nodes still exist. FT_NO_CAPTURE=1 disables (e.g. when iterating on a KEEP_UP
 # network where the journals are still live).
@@ -190,7 +190,7 @@ capture_flow_evidence() { # capture_flow_evidence FLOW VERDICT — snapshot FT_F
       node_exists "$n" || continue
       printf '======== %s ========\n-- systemctl status --\n' "$n"
       ssh_node "$n" "sudo systemctl status silt.service --no-pager -l 2>&1 | head -12" || echo "(status unavailable — node unreachable)"
-      # Depth (#402): a verdict fires MINUTES after the event that explains it (the
+      # Depth: a verdict fires MINUTES after the event that explains it (the
       # fork-committed blocks were ~30 min old when flow 5 graded), so a shallow tail
       # rotates past the cause. Prefer the WHOLE run's journal (--since the boot that
       # started this run's service ≈ run start) with a high-N safety cap; deepen the
@@ -220,7 +220,7 @@ record() { # record FLOW VERDICT SEVERITY DETAIL [ELAPSED_S]
   case "$verdict" in fail|gap) capture_flow_evidence "$flow" "$verdict" ;; esac
 }
 
-# scan_node_liveness — the PE's NODE-LIVENESS PRECONDITION (proof-OOM field
+# scan_node_liveness — the NODE-LIVENESS PRECONDITION (proof-OOM field
 # corroboration 2026-08-17). A run whose cohort OOM-crash-loops CANNOT grade its
 # flows: a node dying and restarting is indistinguishable from a slow/dead peer, so
 # every flow verdict on a crash-looping network is noise. This exact kill signature
@@ -230,9 +230,9 @@ record() { # record FLOW VERDICT SEVERITY DETAIL [ELAPSED_S]
 # as a FIRST-CLASS blocker finding, so it can never again hide. Called at run end,
 # before teardown (nodes still reachable). The harness REPORTS the crash-loop; it
 # must NOT assert a root cause (the first "resident PoR proof map" attribution was
-# doubly falsified — #464 shipped and the OOM persisted, and it was a consensus
+# doubly falsified — shipped and the OOM persisted, and it was a consensus
 # node, not a storage one). Attribution belongs to a heap profile (DEBUG_PROFILE=1
-# → ./cloudtest.sh heap <node>), not a hard-coded verdict string.
+# →./cloudtest.sh heap <node>), not a hard-coded verdict string.
 scan_node_liveness() {
   local n oomnodes="" total=0 c
   for n in $(node_names); do
@@ -245,9 +245,9 @@ scan_node_liveness() {
     # userspace kill -9. The old scan read the SERVICE journal for `Main process exited,
     # code=killed, status=9` — but status=9 is SIGKILL, which the chaos drill sends
     # DELIBERATELY to store-2 (flow_chaos_crash), so a scripted test kill was miscounted
-    # as an OOM and FALSE-FAILED clean runs (run cd1a719-98020: chaos-reprovide PASSED,
+    # as an OOM and FALSE-FAILED clean runs (run the field run: chaos-reprovide PASSED,
     # yet infra-node-liveness counted store-2×1, with no kernel oom-killer line anywhere;
-    # cd1a719-26323 same). Matching the real crash signatures instead catches every genuine
+    # the field run same). Matching the real crash signatures instead catches every genuine
     # OOM AND every Go fatal (a load test found a `fatal error: stack overflow` from a
     # provider-resolution recursion the old OOM-only signature would have missed) and never
     # the deliberate chaos SIGKILL. (A real oom-kill DOES also emit status=9, so nothing is lost.)
@@ -257,10 +257,10 @@ scan_node_liveness() {
   done
   if [ -n "$oomnodes" ]; then
     # CAPTURE BEFORE the verdict returns and teardown destroys the evidence
-    # (build-immutable #7 — its canonical loss recurred on run fa501cc-56689:
+    # (build-immutable #7 — its canonical loss recurred on run the field run:
     # this row named island-c×3, the teardown trap then deleted the VM, and the
     # crash-type attribution (OOM vs Go fatal), the crash times, and the
-    # pre-crash log tail were unrecoverable; only the RSS series survived, #504).
+    # pre-crash log tail were unrecoverable; only the RSS series survived).
     # Pull each NAMED node's full journal (all boots — the crash is in a PRIOR
     # boot by definition) + the kernel's oom/fatal lines into the same
     # failed-nodes-<run>.log the flow-level capture uses.
@@ -276,7 +276,7 @@ scan_node_liveness() {
       } >> "$cap"
     done
     echo "    liveness-FAIL evidence captured → $(basename "$cap") (${oomnodes# })"
-    record "infra-node-liveness" fail blocker "NODE CRASH-LOOP — ${total} node crash(es) (kernel OOM-kill or Go fatal error) across:${oomnodes}. A run whose cohort DIES cannot grade its flows (a crashing node is indistinguishable from a slow/dead peer), so EVERY verdict on this sheet is PROVISIONAL until a clean no-crash re-run — including the computed bounds (which may be inflated). This is INFRASTRUCTURE FAILURE, not independent flow results. Journals captured to failed-nodes-${RUN_ID}.log (#504); attribute from those + a heap profile (re-run with DEBUG_PROFILE=1, then ./cloudtest.sh heap <node>) — do NOT presume a cause."
+    record "infra-node-liveness" fail blocker "NODE CRASH-LOOP — ${total} node crash(es) (kernel OOM-kill or Go fatal error) across:${oomnodes}. A run whose cohort DIES cannot grade its flows (a crashing node is indistinguishable from a slow/dead peer), so EVERY verdict on this sheet is PROVISIONAL until a clean no-crash re-run — including the computed bounds (which may be inflated). This is INFRASTRUCTURE FAILURE, not independent flow results. Journals captured to failed-nodes-${RUN_ID}.log; attribute from those + a heap profile (re-run with DEBUG_PROFILE=1, then ./cloudtest.sh heap <node>) — do NOT presume a cause."
   else
     record "infra-node-liveness" pass blocker "node-liveness precondition HELD — no OOM-kill or crash-loop across the cohort, so the sheet was graded on a HEALTHY network"
   fi
@@ -290,7 +290,7 @@ scan_node_liveness() {
 # rested on the ABSENCE of a crash, not a MEASURED ceiling. These helpers sample each
 # node's cgroup memory across the run into a committed rss-<RUN_ID>.jsonl and summarise
 # it to peak/final per node, so the claim becomes a citable file + a number.
-# Design + options: docs/thinking/2026-08-19-cloudtest-rss-telemetry.md.
+# Design + options:.
 
 MEM_SERIES="${MEM_SERIES:-$FT_DIR/rss-${RUN_ID:-local}.jsonl}"
 : "${MEM_SAMPLE_INTERVAL:=30}"   # seconds between sweeps (coarse — an envelope, not a profiler)
@@ -375,7 +375,7 @@ PY
 # its flow ids) re-runs only the named flows against a standing network — the
 # selective re-drive loop (TEARDOWN=0 / KEEP_UP=1 + ./cloudtest.sh run). A
 # re-driven subset is a CONVERGENCE aid, never a grade: the exit-gate/RC artifact
-# stays one clean uninterrupted sheet (docs/thinking/2026-08-20-harness-local-first.md).
+# stays one clean uninterrupted sheet).
 run_flow() {
   local fn="$1" f
   [ -z "${FLOWS:-}" ] && { "$fn"; return; }
@@ -388,7 +388,7 @@ run_flow() {
   echo "  · skipped by FLOWS filter: $fn"
 }
 
-# require_nodes FLOW SEVERITY NODE...  — record skip + return 1 if any node is absent
+# require_nodes FLOW SEVERITY NODE... — record skip + return 1 if any node is absent
 # (so SMOKE=1 / trimmed topologies don't false-fail scenarios they can't run).
 # Also stashes the node list for capture_flow_evidence: the nodes a flow REQUIRES
 # are the nodes whose journals attribute its failure.
@@ -402,7 +402,7 @@ require_nodes() {
   return 0
 }
 
-# require_live FLOW SEVERITY NODE...  — record GAP + return 1 if any required node's
+# require_live FLOW SEVERITY NODE... — record GAP + return 1 if any required node's
 # silt.service is not active. A node the substrate killed (SPOT preemption) is not a
 # property failure: the flow is UNTESTED, so it must GAP, never FAIL (the 2026-08-12
 # blind SMOKE false-FAILed web-ui-guard/publisher-unlinkability with empty output
@@ -421,7 +421,7 @@ require_live() {
   return 0
 }
 
-# require_link FLOW SEVERITY  — record GAP + return 1 if no prior publish landed a
+# require_link FLOW SEVERITY — record GAP + return 1 if no prior publish landed a
 # link this run (FT_LAST_LINK empty). A flow whose SETUP publish never produced a link
 # tested nothing; it must GAP (as 8-takedown already does), not FAIL with
 # `want=? got=<none>` (the 2026-08-12 7-restart-content cascade false-FAIL).
@@ -433,7 +433,7 @@ require_link() {
   return 0
 }
 
-# slo_assert FLOW SEVERITY DETAIL  — call after setting `ok` (0/1) and `elapsed`.
+# slo_assert FLOW SEVERITY DETAIL — call after setting `ok` (0/1) and `elapsed`.
 slo_assert() { # slo_assert FLOW SEVERITY "detail" OK ELAPSED
   local flow="$1" sev="$2" detail="$3" ok="$4" elapsed="${5:-}"
   if [ "$ok" = 1 ]; then record "$flow" pass "$sev" "$detail" "$elapsed"

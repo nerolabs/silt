@@ -9,7 +9,7 @@ import (
 )
 
 // mustSign / mustUnblind keep these tests reading as round trips now that the
-// primitives return errors (advisory C-1 Finalize verification, C-2 verify-after-sign).
+// primitives return errors (Finalize verification, verify-after-sign).
 func mustSign(t *testing.T, priv *rsa.PrivateKey, blinded []byte) []byte {
 	t.Helper()
 	sig, err := SignBlinded(rand.Reader, priv, blinded)

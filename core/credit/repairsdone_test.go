@@ -1,11 +1,11 @@
 package credit
 
-// Per-node repair-work counter (Boulder 2, R2.1 economy observability slice 6a).
-// The per-OBJECT repair count (objectEscrow.repairs) cannot say WHO did the work;
-// the repair-work observability needs the per-NODE dual. PayBounty now counts the
-// repair against the repairer (RepairsDone) and accumulates the credits it earned
-// (BountyEarned). Both are observability only — the Invariant-A guard
-// (invariant_a_test.go) proves they raise no standing.
+// Per-node repair-work counter (economy observability slice
+// 6a). The per-OBJECT repair count (objectEscrow.repairs) cannot say WHO did the
+// work; the repair-work observability needs the per-NODE dual. PayBounty now
+// counts the repair against the repairer (RepairsDone) and accumulates the
+// credits it earned (BountyEarned). Both are observability only — the Invariant-A
+// guard (invariant_a_test.go) proves they raise no standing.
 
 import (
 	"testing"

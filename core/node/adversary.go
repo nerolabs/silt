@@ -1,9 +1,9 @@
 package node
 
-// RED-TEAM / TEST-HARNESS ONLY. This file holds DELIBERATELY BYZANTINE consensus
+// ADVERSARY / TEST-HARNESS ONLY. This file holds DELIBERATELY BYZANTINE consensus
 // behaviour a correct node NEVER performs — the double-sign that honest nodes refuse
 // (handleChain / chainrole.go). It exists so the accountability property "a proven
-// double-sign costs standing" (D2, #184) can be exercised over the REAL WIRE, not only
+// double-sign costs standing" (D2) can be exercised over the REAL WIRE, not only
 // in the in-process sim, and so an external adversary can drive the same attack against
 // a deployment to check the defence holds. It is reached only through the daemon's
 // loudly-announced `-equivocate` flag; no honest path calls it.
@@ -39,26 +39,27 @@ func advEntry(label string) ports.Entry {
 // done reports whether the target actually COMMITTED the block (committed=true only on
 // a fresh MsgCommitAck OK). Two gates can delay a placement, and the caller must retry
 // through BOTH — which is why committed, not merely "the round-trip finished", is the
-// latch signal (#378): (1) the PROPOSAL — a target that has not yet earned this node's
+// latch signal: (1) the PROPOSAL — a target that has not yet earned this node's
 // standing refuses to attest; (2) the COMMIT — even after it attests, a target whose
 // OWN attestation is not yet qualified from its local view cannot Append the block, so
 // it acks not-OK. Under WAN delay these two warm-ups land at different times, so a leg
 // routinely attests-but-doesn't-commit on one attempt and commits on a later one.
 // Latching a leg "done" on the round-trip alone (the old best-effort commit) then
 // stranded a fork whose next block could never extend an uncommitted parent — the
-// second #378 wedge. A transport error is fatal; a not-OK commit ack is a RETRY, not a
+// second wedge. A transport error is fatal; a not-OK commit ack is a RETRY, not a
 // success.
 func (n *Node) proposeAndCommitTo(b *chain.Block, target ports.NodeID, done func(committed bool, err error)) {
-	// #432 two-phase: the target speaks prepare→precommit now, so the drive-in
-	// runs both phases at round 0 — prepare, staple the target's prepare into a
-	// prepare-QC, collect its precommit, then commit. (The adversary keeps no
-	// sign-marks and no locks — bypassing the honesty machinery is the point
-	// of this primitive.) What it CANNOT bypass: the target's ValidateCommit
-	// requires the AUTHOR's round-scoped prepare in the certificate
-	// (chain.requireProposerPrepare), so the equivocator must sign its own
-	// (h, r, prepare) over each fork — leaving exactly the same-slot
-	// different-hash signature pair the era-2 slash rule catches. That forced
-	// self-incrimination is the #345/#378 accountability working as designed.
+	// Two-phase: the target speaks prepare→precommit now, so the drive-in
+	// runs both phases at round 0 — prepare, staple the target's prepare
+	// into a prepare-QC, collect its precommit, then commit. (The adversary
+	// keeps no sign-marks and no locks — bypassing the honesty machinery is
+	// the point of this primitive.) What it CANNOT bypass: the target's
+	// ValidateCommit requires the AUTHOR's round-scoped prepare in the
+	// certificate (chain.requireProposerPrepare), so the equivocator must
+	// sign its own (h, r, prepare) over each fork — leaving exactly the
+	// same-slot different-hash signature pair the era-2 slash rule catches.
+	// That forced self-incrimination is the accountability working as
+	// designed.
 	raw := chain.Encode(b)
 	envRaw, merr := cbor.Marshal(proposeEnv{Raw: raw, Round: 0})
 	if merr != nil {
@@ -114,20 +115,20 @@ func (n *Node) proposeAndCommitTo(b *chain.Block, target ports.NodeID, done func
 }
 
 // ProposeBadBlock sends ONE crafted proposal to an honest target and reports whether
-// the target REFUSED it — how #184 proves over the wire that honest validators reject a
+// the target REFUSED it — how proves over the wire that honest validators reject a
 // proposal that fails ValidateProposal before attesting. The block is built at the
 // target's head with a valid entry, so the ONLY thing wrong is the fault under test:
 //
-//   - forge=true (forged-block→reject): the proposer signature is corrupted AFTER
-//     signing, so ValidateProposal's ed25519.Verify fails — refused for a bad signature,
-//     regardless of this node's standing.
-//   - forge=false (low-bond→reject): the block is correctly signed and well-formed, so
-//     the only reason to refuse is that this node is not a qualified (sufficiently
-//     bonded) proposer — refused with ErrLowReputation.
+// - forge=true (forged-block→reject): the proposer signature is corrupted AFTER
+// signing, so ValidateProposal's ed25519.Verify fails — refused for a bad signature,
+// regardless of this node's standing.
+// - forge=false (low-bond→reject): the block is correctly signed and well-formed, so
+// The only reason to refuse is that this node is not a qualified (sufficiently
+// bonded) proposer — refused with ErrLowReputation.
 //
 // A correct node never proposes a forged block, and an honest under-bonded node's own
 // pre-check stops it from proposing at all; this bypasses both so honest PEERS are the
-// ones proving the defence. RED-TEAM / TEST-HARNESS ONLY — see the file header.
+// ones proving the defence. ADVERSARY / TEST-HARNESS ONLY — see the file header.
 func (n *Node) ProposeBadBlock(target ports.NodeID, forge bool, done func(refused bool, err error)) {
 	if n.chain == nil || n.signer == nil {
 		done(false, ErrNoChain)
@@ -149,13 +150,13 @@ func (n *Node) ProposeBadBlock(target ports.NodeID, forge bool, done func(refuse
 }
 
 // ProposeGoodBlock is the POSITIVE CONTROL for the ProposeBadBlock rejections: a
-// WELL-FORMED, correctly-signed block from THIS (properly-bonded) proposer, sent
-// to target. An honest, working target ATTESTS it (OK:true). Without this control,
-// a target that refuses EVERY proposal (chain role wedged, head mismatch, etc.)
-// is indistinguishable from one correctly rejecting a forged/under-bonded block —
-// so the forged-block / low-bond reject tests could pass on a broken target
-// (audit #303). Callers gate those reject checks on this good proposal being
-// ACCEPTED first, so a rejection is attributed to the real defence, not a dead node.
+// WELL-FORMED, correctly-signed block from THIS (properly-bonded) proposer, sent to
+// target. An honest, working target ATTESTS it (OK:true). Without this control, a
+// target that refuses EVERY proposal (chain role wedged, head mismatch, etc.) is
+// indistinguishable from one correctly rejecting a forged/under-bonded block — so
+// the forged-block / low-bond reject tests could pass on a broken target. Callers
+// gate those reject checks on this good proposal being ACCEPTED first, so a
+// rejection is attributed to the real defence, not a dead node.
 func (n *Node) ProposeGoodBlock(target ports.NodeID, done func(accepted bool, err error)) {
 	if n.chain == nil || n.signer == nil {
 		done(false, ErrNoChain)
@@ -173,7 +174,7 @@ func (n *Node) ProposeGoodBlock(target ports.NodeID, done func(accepted bool, er
 	})
 }
 
-// equivPlan is the RESUMABLE state for the double-sign drill (#378). The three
+// equivPlan is the RESUMABLE state for the double-sign drill. The three
 // conflicting blocks are built ONCE against a pinned fork base and each leg's
 // placement is latched, so a retry after a partial placement resumes only the
 // un-placed legs. Height is the pinned double-sign height (for the log line).
@@ -187,9 +188,9 @@ type equivPlan struct {
 // honest nodes refuse. It builds two DIFFERENT blocks at that height, both signed by
 // this node as proposer, and places them on two different honest peers:
 //
-//   - the heavier fork Y@height then its extension Z@height+1 land on honestYZ, so
-//     honestYZ = [g, Y, Z] with weight 2;
-//   - the conflicting block X@height lands on honestX (honestX = [g, X], weight 1).
+// - the heavier fork Y@height then its extension Z@height+1 land on honestYZ, so
+// honestYZ = [g, Y, Z] with weight 2;
+// - the conflicting block X@height lands on honestX (honestX = [g, X], weight 1).
 //
 // When honestX later syncs the heavier fork from honestYZ it reconciles across the two
 // histories, and chain.FindEquivocations catches this node signing X and Y at the same
@@ -198,33 +199,33 @@ type equivPlan struct {
 // so the detection is not a race. Requires this node to already hold consensus standing
 // with both peers (so its proposals are accepted); callers retry until that is true.
 //
-// RESUMABLE PLACEMENT (#378, the structural close). Three wedges under WAN-ish delay,
+// RESUMABLE PLACEMENT. Three wedges under WAN-ish delay,
 // each closed here:
 //
-//  1. ErrDupRoot re-placement. The two peers earn this node's standing at INDEPENDENT
-//     moments, so a first attempt routinely lands one leg and has the next refused. The
-//     old driver rebuilt the blocks at the LIVE head every retry; once a leg committed
-//     and this node synced it back (its head advanced), later attempts re-proposed the
-//     same deterministic root at a new height — refused forever (ErrDupRoot). Fix: PIN
-//     the fork base + blocks on the first call and LATCH each placed leg, so a committed
-//     root is never re-proposed. (The #345 tip-targeting win is preserved: the base is
-//     the live tip AT PIN TIME, so the drill still double-signs live on an advanced
-//     chain — it just no longer chases the tip across retries.)
+// 1. ErrDupRoot re-placement. The two peers earn this node's standing at INDEPENDENT
+// moments, so a first attempt routinely lands one leg and has the next refused. The
+// old driver rebuilt the blocks at the LIVE head every retry; once a leg committed
+// and this node synced it back (its head advanced), later attempts re-proposed the
+// same deterministic root at a new height — refused forever (ErrDupRoot). Fix: PIN
+// the fork base + blocks on the first call and LATCH each placed leg, so a committed
+// root is never re-proposed. (The tip-targeting win is preserved: the base is
+// the live tip AT PIN TIME, so the drill still double-signs live on an advanced
+// chain — it just no longer chases the tip across retries.)
 //
-//  2. Attested-but-not-committed. A target attests on the PROPOSER's standing but commits
-//     on its OWN attestation's qualification, which warms up later — so a leg can attest
-//     and ack the commit not-OK. Latching on the round-trip alone stranded the next block
-//     chasing an uncommitted parent. Fix: latch a leg only on a CONFIRMED commit
-//     (proposeAndCommitTo's committed=true) and retry an attested-but-uncommitted one.
+// 2. Attested-but-not-committed. A target attests on the PROPOSER's standing but commits
+// On its OWN attestation's qualification, which warms up later — so a leg can attest
+// and ack the commit not-OK. Latching on the round-trip alone stranded the next block
+// chasing an uncommitted parent. Fix: latch a leg only on a CONFIRMED commit
+// (proposeAndCommitTo's committed=true) and retry an attested-but-uncommitted one.
 //
-//  3. Detection disqualifies the proposer mid-drill. The moment an honest node holds BOTH
-//     forks it slashes this node — which removes it from that node's qualified proposer
-//     set, so any REMAINING placement on that node is refused "not yet standing" forever
-//     (the property firing wedges the drill). Fix: place the COMPLETE heavier fork [Y,Z]
-//     on honestYZ FIRST, then X on honestX LAST. No honest node can see both forks until
-//     the final X placement, so detection cannot disqualify this node before every leg is
-//     down; the slash then propagates asynchronously (honestX reconciles the heavier fork
-//     and slashes), which is the property under test.
+// 3. Detection disqualifies the proposer mid-drill. The moment an honest node holds BOTH
+// forks it slashes this node — which removes it from that node's qualified proposer
+// set, so any REMAINING placement on that node is refused "not yet standing" forever
+// (the property firing wedges the drill). Fix: place the COMPLETE heavier fork [Y,Z]
+// on honestYZ FIRST, then X on honestX LAST. No honest node can see both forks until
+// the final X placement, so detection cannot disqualify this node before every leg is
+// down; the slash then propagates asynchronously (honestX reconciles the heavier fork
+// and slashes), which is the property under test.
 func (n *Node) Equivocate(honestX, honestYZ ports.NodeID, done func(error)) {
 	if n.chain == nil || n.signer == nil {
 		done(ErrNoChain)
@@ -308,33 +309,33 @@ func (n *Node) EquivocateHeight() uint64 {
 	return n.equivPlan.height
 }
 
-// PlaceConflictingSigned is the OBJECTIVE-mode (3-of-4) equivocation primitive
-// (PE ruling 2026-08-17). Under a BFT commit floor a fork can NEVER be committed
-// onto a target (a 2-attestation single-target commit is quorum-short, and a
-// minority committing a conflicting fork is an I1 violation), so the legacy
-// commit-based Equivocate cannot place a double-sign here. The faithful route is
-// slash-on-DETECTION: the crime is SIGNING two conflicting blocks at one height,
-// not committing two forks.
+// PlaceConflictingSigned is the OBJECTIVE-mode (3-of-4) equivocation primitive.
+// Under a BFT commit floor a fork can NEVER be committed onto a target (a
+// 2-attestation single-target commit is quorum-short, and a minority committing
+// a conflicting fork is an I1 violation), so the legacy commit-based Equivocate
+// cannot place a double-sign here. The faithful route is slash-on-DETECTION: the
+// crime is SIGNING two conflicting blocks at one height, not committing two
+// forks.
 //
 // This node must already be a consensus-set signer whose PREPARE for the honest
 // block at its head is on-chain — i.e. it just proposed (or attested) the
 // committed head block W@H, so W.PrepareQC carries this node's round-scoped
 // self-prepare (requireProposerPrepare guarantees it for the proposer). We then:
 //
-//  1. build a CONFLICTING block L at the same height H (a different entry → a
-//     different hash);
-//  2. sign a PREPARE over L at the SAME (H, CommitRound, prepare) slot this node
-//     used for W — the un-bypassable self-incrimination the era-2 slash rule
-//     catches (VerifyEquivocation: a shared (round, phase) consensus signature on
-//     two different blocks at one height);
-//  3. SERVE the losing fork [g … W.parent, L] on GetChain (equivServedFork), so
-//     any honest peer that syncs this node fetches L, scans it against its own
-//     held W, and slashes this node on detection — pre-Reconcile, never adopting
-//     the invalid (quorum-short) fork.
+// 1. build a CONFLICTING block L at the same height H (a different entry → a
+// different hash;
+// 2. sign a PREPARE over L at the SAME (H, CommitRound, prepare) slot this node
+// used for W — the un-bypassable self-incrimination the era-2 slash rule
+// catches (VerifyEquivocation: a shared (round, phase) consensus signature on
+// two different blocks at one height);
+// 3. SERVE the losing fork [g … W.parent, L] on GetChain (equivServedFork), so
+// any honest peer that syncs this node fetches L, scans it against its own
+// held W, and slashes this node on detection — pre-Reconcile, never adopting
+// the invalid (quorum-short) fork.
 //
 // The Byzantine BROADCAST (serving a different signed block than the one it
 // committed) IS the equivocating act; honest FindEquivocations does the detection
-// and slash unaided. RED-TEAM / TEST-HARNESS ONLY. Returns the double-sign height
+// and slash unaided. ADVERSARY / TEST-HARNESS ONLY. Returns the double-sign height
 // and an error if this node has no committed head to fork.
 func (n *Node) PlaceConflictingSigned() (uint64, error) {
 	if n.chain == nil || n.signer == nil {

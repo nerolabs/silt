@@ -12,10 +12,10 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// RED home #1 (part 3) — per-field ORDER-independence, mandated by the #597
-// certification.
+// RED home #1 (part 3) — per-field ORDER-independence, mandated by the
+// research.
 //
-// The certification refined its own round-9 mandate after RED home #1 found
+// The research refined its own round-9 mandate after RED home #1 found
 // `revLog`:
 //
 //	Replace "the tree is history-independent" with a per-field property: every
@@ -29,17 +29,17 @@ import (
 // drift and that each enumerated field is load-bearing — but both are blind to
 // a field that is *present, populated, and load-bearing* while being derived
 // from the ORDER of history rather than from a set. Such a field breaks the
-// SMT's history-independence premise, which is the single argument the
-// certification's Q1 used to choose the SMT at all.
+// SMT's history-independence premise, which is the single argument used to
+// choose the SMT at all.
 //
 // The test is symmetric, and both directions are findings:
 //
-//   - a `committedSet` field that VARIES with order is misclassified — it
-//     cannot live in the history-independent SMT, and a snapshot-booted node
-//     would diverge from a replay-booted one. This is the #597 class.
-//   - a `committedLog` field that does NOT vary with order is also
-//     misclassified — it is really set-valued, so it belongs in the SMT and
-//     does not need its own append-only root.
+// - a `committedSet` field that VARIES with order is misclassified — it
+// cannot live in the history-independent SMT, and a snapshot-booted node
+// would diverge from a replay-booted one. This is the class.
+// - a `committedLog` field that does NOT vary with order is also
+// misclassified — it is really set-valued, so it belongs in the SMT and
+// does not need its own append-only root.
 
 // orderIssuers holds the token-issuer RSA keys and the mint closure, created
 // ONCE and shared across both orderings. Sharing matters: an RSA blind signature
@@ -103,7 +103,7 @@ func newOrderIssuers(t *testing.T) *orderIssuers {
 //
 // squatRoot, when non-zero, is a bond root a genesis squatter (squatKey) DECLARES
 // (unproven) at genesis — the G3 precondition. A later PROVEN registration on the
-// same root displaces it (chain.go:2780-2794). Threading it through orderWorld
+// same root displaces it (chain.go). Threading it through orderWorld
 // keeps the genesis identical across both orderings, so the squat is not itself an
 // order variable — only the height-1 registration slice order is.
 func orderWorld(t *testing.T, oi *orderIssuers, squatRoot ports.Hash, squatKey ed25519.PrivateKey) (*Chain, *Block) {
@@ -162,7 +162,7 @@ func slashProofForm(version uint64, chainID ports.Hash, culprit ed25519.PrivateK
 		b := Block{Version: version, Height: 9, Prev: prev, Entries: []ports.Entry{entry(tag)}}
 		if version >= BlockVersionWitnessable {
 			b.StateRoot, b.LogRoot = &ports.Hash{}, &ports.Hash{}
-			setD3Digests(&b)
+			setBlockDigests(&b)
 		}
 		Sign(&b, culprit)
 		if version >= BlockVersionRounds {
@@ -176,7 +176,7 @@ func slashProofForm(version uint64, chainID ports.Hash, culprit ed25519.PrivateK
 
 // bondRegFull mints a signed, verifier-accepted registration carrying a non-zero
 // Version and Domain, so a committed reg drives regVersion and bondDomain non-empty
-// too (both signed — see signingBytes chain.go:465-480). Otherwise identical to
+// too (both signed — see signingBytes chain.go). Otherwise identical to
 // bondRegAt.
 func bondRegFull(s ed25519.PrivateKey, root ports.Hash, size int64, prev ports.Hash, version uint8, domain uint64) BondReg {
 	r := BondReg{Validator: pubOf(s), Root: root, Size: size, Answer: []byte("valid"),
@@ -192,31 +192,31 @@ func bondRegFull(s ed25519.PrivateKey, root ports.Hash, size int64, prev ports.H
 // same three bond registrations (including a G3 displacement of a genesis
 // squatter). Only the ORDER of the events differs.
 //
-// The certification (#597) mandated VARYING order, not just classifying
-// presence. This fixture exercises the grow-only set families under order
+// The research mandated VARYING order, not just classifying presence.
+// This fixture exercises the grow-only set families under order
 // variation:
 //
-//   - byRoot/revoked (publish + revoke), spent (two token spends), and slashed
-//     (two equivocation slashes) — swapped across HEIGHTS (these are keyed by
-//     root/serial/culprit, so height is not part of their value).
-//   - the bond-registration family — bonded, bondRootOwner, bondRootProven,
-//     bondRegHeight, regVersion, bondDomain — exercised by flipping the SLICE
-//     ORDER of BondRegs WITHIN a single height-5 block. bondRegHeight stores
-//     b.Height (chain.go:2796), so the regs must land at the SAME height in both
-//     orderings; only their intra-block processing order varies. That intra-block
-//     order is precisely where the G3 proof-beats-declaration displacement rule
-//     (chain.go:2780-2794) could be order-sensitive.
+// - byRoot/revoked (publish + revoke), spent (two token spends), and slashed
+// (two equivocation slashes) — swapped across HEIGHTS (these are keyed by
+// root/serial/culprit, so height is not part of their value).
+// - the bond-registration family — bonded, bondRootOwner, bondRootProven,
+// bondRegHeight, regVersion, bondDomain — exercised by flipping the SLICE
+// ORDER of BondRegs WITHIN a single height-5 block. bondRegHeight stores
+// b.Height (chain.go), so the regs must land at the SAME height in both
+// orderings; only their intra-block processing order varies. That intra-block
+// order is precisely where the G3 proof-beats-declaration displacement rule
+// (chain.go) could be order-sensitive.
 //
-// SCOPE CORRECTION (2026-08-28, cert sameid-twoversion-intrablock-bondreg-contention,
+// SCOPE CORRECTION (2026-08-28, the same-id two-version rule,
 // "What I corrected"): the two height-5 regs here are DISTINCT ids on DISJOINT roots
 // (honestH on rootShared, validatorX on rootX). That exercises the G3 displacement
 // under order variation, but it covers NOTHING for the SAME-ID two-version case — two
-// regs for ONE id in one block, the seam where apply()'s last-writer-wins over
+// regs for ONE id in one block, the seam where apply's last-writer-wins over
 // regVersion/bondDomain was order-dependent. This fixture's regVersion/bondDomain
 // green was therefore an over-claim for that seam (it proves distinct-id disjoint-root
 // order-independence, not same-id). The same-id coverage is gateSwingOrderings (the
 // swing trip-wire) plus TestRegVersionIntraBlockOrderIndependent (the covering probe);
-// both are RED without the canonicalBondRegs fold in apply().
+// both are RED without the canonicalBondRegs fold in apply.
 func twoOrderings(t *testing.T) (*Chain, *Chain) {
 	t.Helper()
 
@@ -316,9 +316,9 @@ func twoOrderings(t *testing.T) (*Chain, *Chain) {
 // The regime twoOrderings cannot enter (it is a launch-anchor world with
 // MatureValidators=99): an ANCHORLESS objective world with epochs on and a small
 // MatureValidators, so the maturity latch trips on a real bonded set and the first
-// post-latch rotation freezes epochSet (#357 Conditions A+B).
+// post-latch rotation freezes epochSet.
 //
-// The order variable is a SLASH height, per the #618 lesson that a commutative
+// The order variable is a SLASH height, per the lesson that a commutative
 // single-actor fixture is a decoration. A victim validator bonds at genesis
 // alongside the four-key governing quorum, then is slashed at height 1 in one
 // ordering and height 3 in the OTHER. So the (bonded, slashed) maps are built by
@@ -332,13 +332,13 @@ func twoOrderings(t *testing.T) (*Chain, *Chain) {
 // frozen epochSet are set at the height-4 rotation. The property under test: two
 // opposite slash orders reach byte-identical everMature, matureEpoch, epochSet.
 //
-// SCOPE (per RULING-620): epochSet is order-INVARIANT BY CONSTRUCTION — rotateEpoch runs
-// LAST in apply on the final post-block state, so the freeze reads only the converged
-// bonded/slashed maps (their order-independence is #617/#618's job). This fixture CONFIRMS
-// that invariance; it does not discover-or-refute a fork as #618 did. Un-stressed residual:
-// the latch/handoff HEIGHT is NOT varied — all validators bond at genesis, so the latch
-// trips at the SAME height in both orderings. Acceptable (one-way final-state bools cannot
-// flip), but named so the residual is on the record before the era-3 freeze.
+// SCOPE: epochSet is order-INVARIANT BY CONSTRUCTION — rotateEpoch runs LAST in apply on
+// the final post-block state, so the freeze reads only the converged bonded/slashed maps
+// (their order-independence is the job). This fixture CONFIRMS that invariance; it does
+// not discover-or-refute a fork as did. Un-stressed residual: the latch/handoff HEIGHT is
+// NOT varied — all validators bond at genesis, so the latch trips at the SAME height in
+// both orderings. Acceptable (one-way final-state bools cannot flip), but named so the
+// residual is on the record before the era-3 freeze.
 func matureOrderings(t *testing.T) (*Chain, *Chain) {
 	t.Helper()
 	build := func(slashEarly bool) *Chain {
@@ -401,11 +401,11 @@ func matureOrderings(t *testing.T) (*Chain, *Chain) {
 // verify on the mature world rather than declare vacuous.
 var matureFields = []string{"everMature", "matureEpoch", "epochSet"}
 
-// gateSwingOrderings drives the #506 lock-in tally (rotateEpoch:2922) where a
+// gateSwingOrderings drives the lock-in tally (rotateEpoch:2922) where a
 // SAME-ID TWO-VERSION validator is the exact >⅔ swing, and returns both chains, so
-// the #506-gate family — gateLockedIn, gateHeight — AND the same-id regVersion/
+// the gate family — gateLockedIn, gateHeight — AND the same-id regVersion/
 // bondDomain seam are exercised under intra-block order variation rather than
-// declared vacuous. This is the fixture the cert
+// declared vacuous. This is the fixture the research
 // sameid-twoversion-intrablock-bondreg-contention (2026-08-28, residual R2) gates on.
 //
 // The regime twoOrderings/matureOrderings cannot reach: an anchorless objective world
@@ -417,10 +417,10 @@ var matureFields = []string{"everMature", "matureEpoch", "epochSet"}
 //
 // The tally at the height-2 boundary: total = 3w over {r1, r2, x}. ready counts
 // members with regVersion ≥ BlockVersionRegGate.
-//   - If x commits version 3: ready = 3w, 3·3w=9w > 2·3w=6w → gateLockedIn, gateHeight set.
-//   - If x commits version 2: ready = 2w, 3·2w=6w > 6w is FALSE → NOT locked in.
+// - If x commits version 3: ready = 3w, 3·3w=9w > 2·3w=6w → gateLockedIn, gateHeight set.
+// - If x commits version 2: ready = 2w, 3·2w=6w > 6w is FALSE → NOT locked in.
 //
-// So x is the EXACT swing: before the apply()-canonicalization fix, the slice order
+// So x is the EXACT swing: before the apply-canonicalization fix, the slice order
 // decided x's committed version, hence whether the gate locked — an order-dependent
 // gateLockedIn/gateHeight (a committedSet fork). After the fix, canonicalBondRegs
 // picks the largest-Size reg (x's version-3 2w reg) in BOTH orders, so the gate locks
@@ -457,8 +457,8 @@ func gateSwingOrderings(t *testing.T) (*Chain, *Chain) {
 		// root. Both SIZE w (so x's tally WEIGHT is w in every ordering, pre- and
 		// post-fix — the swing is over x's committed VERSION, not its weight), distinct
 		// in Version AND Domain:
-		//   loV:  size w, version 2,                    domain 0x33
-		//   hiV:  size w, version BlockVersionRegGate(3), domain 0x44
+		// loV: size w, version 2, domain 0x33
+		// hiV: size w, version BlockVersionRegGate(3), domain 0x44
 		// The total order's primary key (Size) TIES, so the canonical winner is decided
 		// by the next key, Version: hiV (version 3) wins in BOTH orders post-fix. Pre-fix,
 		// LAST-in-slice wins, so v3First flips x's committed version — the swing.
@@ -470,13 +470,14 @@ func gateSwingOrderings(t *testing.T) (*Chain, *Chain) {
 		if v3First {
 			regs = []BondReg{hiV, loV} // v3 first
 		}
-		// The proposer ROTATES across the two blocks (r1 proposes h1, r2 proposes h2)
-		// so validatorsSeen accumulates all three non-proposer attesters {r1, r2, x}
-		// over the chain — the maturity coefficient needs ≥ 2 distinct SEEN bonds, and
-		// the per-block proposer is excluded from validatorsSeen (apply()). Without the
-		// rotation only two are ever seen and the network never matures, so the tally
-		// (post-latch only) never runs. The tally SET is still exactly the three bonded
-		// validators (liveQualifiedSet reads bonded, not validatorsSeen).
+		// The proposer ROTATES across the two blocks (r1 proposes h1, r2 proposes
+		// h2) so validatorsSeen accumulates all three non-proposer attesters {r1,
+		// r2, x} over the chain — the maturity coefficient needs ≥ 2 distinct
+		// SEEN bonds, and the per-block proposer is excluded from validatorsSeen
+		// (apply). Without the rotation only two are ever seen and the network
+		// never matures, so the tally (post-latch only) never runs. The tally SET
+		// is still exactly the three bonded validators (liveQualifiedSet reads
+		// bonded, not validatorsSeen).
 		b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: prev,
 			Entries: []ports.Entry{entry(1)}, BondRegs: regs}
 		commitRounds(b1, []ed25519.PrivateKey{r1, r2, x}, 0, ports.Hash{}) // r1 proposes
@@ -484,11 +485,11 @@ func gateSwingOrderings(t *testing.T) (*Chain, *Chain) {
 			t.Fatalf("gateSwingOrderings height 1 (v3First=%v): %v", v3First, err)
 		}
 
-		// Height 2: the epoch boundary. r2 proposes so r1 joins validatorsSeen; the
-		// maturity latch trips in this apply (three distinct seen bonds ≥
-		// MatureValidators=2), then rotateEpoch freezes {r1, r2, x} and runs the #506
-		// tally over their committed regVersion in the SAME commit (the boundary block
-		// that also trips maturity hands off in one commit, chain.go).
+		// Height 2: the epoch boundary. r2 proposes so r1 joins validatorsSeen;
+		// the maturity latch trips in this apply (three distinct seen bonds ≥
+		// MatureValidators=2), then rotateEpoch freezes {r1, r2, x} and runs the
+		// tally over their committed regVersion in the SAME commit (the boundary
+		// block that also trips maturity hands off in one commit, chain.go).
 		b2 := &Block{Version: BlockVersionRounds, Height: 2, Prev: b1.Hash(),
 			Entries: []ports.Entry{entry(2)}}
 		commitRounds(b2, []ed25519.PrivateKey{r2, r1, x}, 0, ports.Hash{}) // r2 proposes (rotated)
@@ -500,7 +501,7 @@ func gateSwingOrderings(t *testing.T) (*Chain, *Chain) {
 	return build(true), build(false) // v3-first vs v3-last: opposite intra-block orders
 }
 
-// gateFields are the committedSet fields gateSwingOrderings covers — the #506-gate
+// gateFields are the committedSet fields gateSwingOrderings covers — the gate
 // lock-in family. They are EMPTY in both twoOrderings (no post-latch tally) and
 // matureOrderings (no regVersion signalling), so their order-independence is proven
 // on this swing world instead. Kept beside the fixture so the oracle guard knows to
@@ -508,17 +509,16 @@ func gateSwingOrderings(t *testing.T) (*Chain, *Chain) {
 var gateFields = []string{"gateLockedIn", "gateHeight"}
 
 // era3SwingOrderings is gateSwingOrderings at the era-3 (v4) readiness level (build step
-// 2c). The era-3 lock-in tally is the #506 tally reused with the bar at
-// BlockVersionStateRoot (≥4), so its order-independence is proven the SAME way: a same-id
-// TWO-VERSION swing validator whose committed version is the exact >⅔ ready-weight margin.
-// A dedicated fixture (rather than lifting gateSwingOrderings' ready signal to v4) keeps
-// the certified #506 fixture — which asserts a version-3 winner
-// (TestGateLockInSwingIsOrderIndependent) — untouched.
+// 2c). The era-3 lock-in tally is the tally reused with the bar at BlockVersionStateRoot
+// (≥4), so its order-independence is proven the SAME way: a same-id TWO-VERSION swing
+// validator whose committed version is the exact >⅔ ready-weight margin. A dedicated
+// fixture (rather than lifting gateSwingOrderings' ready signal to v4) keeps the fixture —
+// which asserts a version-3 winner (TestGateLockInSwingIsOrderIndependent) — untouched.
 //
 // r1, r2 register READY at v4; x swings between v2 (loV) and v4 (hiV). The tally at the
 // height-2 boundary over {r1, r2, x} at weight w each:
-//   - x commits v4: ready = 3w, 3·3w > 2·3w → era3LockedIn set, era3Height = 2 + 2 = 4.
-//   - x commits v2: ready = 2w, 3·2w > 6w is FALSE → NOT locked in.
+// - x commits v4: ready = 3w, 3·3w > 2·3w → era3LockedIn set, era3Height = 2 + 2 = 4.
+// - x commits v2: ready = 2w, 3·2w > 6w is FALSE → NOT locked in.
 //
 // The same-id fold (canonicalBondRegs) must pick the SAME winner (largest-Size, then
 // Version → v4) in both slice orders, so era3LockedIn/era3Height are order-independent.
@@ -585,9 +585,9 @@ var era3Fields = []string{"era3LockedIn", "era3Height"}
 //
 // r1, r2 register READY at v5; x swings between v2 (loV) and v5 (hiV). The tally at the
 // height-2 boundary over {r1, r2, x} at weight w each:
-//   - x commits v5: ready = 3w, 3·3w > 2·3w → era4LockedIn set, era4Height = 2 + 2 = 4
-//     (and era3LockedIn set too — a v5 signaller is v4-ready).
-//   - x commits v2: era-4 ready = 2w, 3·2w > 6w is FALSE → era-4 NOT locked in.
+// - x commits v5: ready = 3w, 3·3w > 2·3w → era4LockedIn set, era4Height = 2 + 2 = 4
+// (and era3LockedIn set too — a v5 signaller is v4-ready).
+// - x commits v2: era-4 ready = 2w, 3·2w > 6w is FALSE → era-4 NOT locked in.
 //
 // The same-id fold (canonicalBondRegs) must pick the SAME winner (largest-Size, then
 // Version → v5) in both slice orders, so era4LockedIn/era4Height are order-independent.
@@ -652,19 +652,19 @@ var era4Fields = []string{"era4LockedIn", "era4Height"}
 // records what a covering fixture would have to construct. This is a DECLARED, SHRINKING
 // debt (mirroring probeUncovered in the snapshot oracle): the guard below fails on any
 // NEW empty-vs-empty committedSet field not listed here, so the vacuous-green hole can
-// never silently reopen. `spent`/`slashed` (#617) and the bond-registration family
-// (#618) were moved out by twoOrderings; the mature-epoch family (everMature, matureEpoch,
+// never silently reopen. `spent`/`slashed` and the bond-registration family
+// were moved out by twoOrderings; the mature-epoch family (everMature, matureEpoch,
 // epochSet) is now moved out by matureOrderings.
 var orderVacuous = map[string]string{
 	// Bond-registration state (bonded, bondRootOwner, bondRootProven, bondRegHeight,
 	// regVersion, bondDomain) is COVERED by twoOrderings' height-5 bond block whose
 	// BondReg slice order flips (incl. a G3 displacement). The mature-epoch family
-	// (everMature, matureEpoch, epochSet) is COVERED by matureOrderings' opposite slash
-	// orders. The #506-gate family (gateLockedIn, gateHeight) is COVERED by
+	// (everMature, matureEpoch, epochSet) is COVERED by matureOrderings' opposite
+	// slash orders. The gate family (gateLockedIn, gateHeight) is COVERED by
 	// gateSwingOrderings, whose same-id two-version swing validator flips the lock-in
-	// tally across intra-block orders (moved out 2026-08-28, cert
-	// sameid-twoversion-intrablock-bondreg-contention). All are enforced non-empty below.
-	// validatorsSeen is NOT listed: the attesting anchors qualify, so apply()
+	// tally across intra-block orders (moved out 2026-08-28
+	// sameid-twoversion-intrablock-bondreg-contention). All are enforced non-empty
+	// below. validatorsSeen is NOT listed: the attesting anchors qualify, so apply
 	// populates it — its order-independence is genuinely exercised here.
 	//
 	// era-4 (v5) maintenance spine. `qualified` is NOT listed: it is
@@ -677,7 +677,7 @@ var orderVacuous = map[string]string{
 		"(the canonical-MTH bucket over a random-order id set) and by the byte-identical " +
 		"post-apply replay (TestV5PostApplyRootByteIdenticalAcrossOrderings). A covering " +
 		"fixture would enable TTL and (re)register the same ids in two intra-block orders.",
-	"issuerKeyCommit": "R0.4b — the per-epoch demand-issuer key binding. Populated only by a " +
+	"issuerKeyCommit": "the per-epoch demand-issuer key binding. Populated only by a " +
 		"block carrying IssuerKeys, which is v5-ONLY; neither twoOrderings nor matureOrderings " +
 		"mints a v5 block, so both orderings leave it empty. Its order-independence is not in " +
 		"doubt for a structural reason worth stating: apply writes it FIRST-WRITE-WINS keyed on " +
@@ -711,7 +711,7 @@ func TestCommittedSetFieldsAreOrderIndependent(t *testing.T) {
 
 	// A field is covered on whichever world POPULATES it: the launch twoOrderings
 	// world for the launch/objective families, the mature matureOrderings world for
-	// the mature-epoch family, the gateSwingOrderings world for the #506-gate family,
+	// the mature-epoch family, the gateSwingOrderings world for the gate family,
 	// the era3SwingOrderings world for the era-3 (v4) activation family.
 	// Pairing a field with its populating world is the same union-of-worlds pattern the
 	// snapshot oracle uses (worldGroup). matureFields/gateFields/era3Fields declare which
@@ -748,14 +748,14 @@ func TestCommittedSetFieldsAreOrderIndependent(t *testing.T) {
 		return a, b
 	}
 
-	// The durable fix (PE ruling "Coupling", 2026-08-28): a field that is EMPTY
-	// in both orderings is compared as DeepEqual(∅, ∅) — a vacuous green that
-	// asserts nothing. Every committedSet field the oracle claims to prove
-	// order-independent must be NON-EMPTY in at least one ordering of its populating
-	// world, OR be explicitly declared in orderVacuous with the reason no fixture
-	// populates it. Otherwise "all N identical" reads as coverage while some
-	// fraction of it is empty-vs-empty — exactly the shape that let `spent` and
-	// `slashed` show green over an unexercised map.
+	// The durable fix: a field that is EMPTY in both orderings is compared as
+	// DeepEqual(∅, ∅) — a vacuous green that asserts nothing. Every committedSet
+	// field the oracle claims to prove order-independent must be NON-EMPTY in at
+	// least one ordering of its populating world, OR be explicitly declared in
+	// orderVacuous with the reason no fixture populates it. Otherwise "all N
+	// identical" reads as coverage while some fraction of it is empty-vs-empty —
+	// exactly the shape that let `spent` and `slashed` show green over an
+	// unexercised map.
 	var undeclaredVacuous []string
 	populated := map[string]bool{}
 	for _, name := range fields {
@@ -812,13 +812,13 @@ func TestCommittedSetFieldsAreOrderIndependent(t *testing.T) {
 	if len(orderDependent) > 0 {
 		t.Fatalf("%d field(s) classified `committedSet` DIFFER between two histories "+
 			"that reach the same final state: %v\n\n"+
-			"These cannot live in the history-independent SMT. The certification's "+
+			"These cannot live in the history-independent SMT. The research's "+
 			"Q1 chose the SMT on exactly one argument — that the root is identical "+
 			"however the state was reached, because a snapshot-booted node never "+
 			"replayed the history. An order-derived value under that root breaks the "+
 			"argument, and a snapshot-booted validator diverges from a replay-booted "+
 			"one. Either the field is really an ordered log (reclassify as "+
-			"`committedLog`, give it its own append-only root — the #597 resolution), "+
+			"`committedLog`, give it its own append-only root — the resolution), "+
 			"or the state it accumulates must be made order-free.",
 			len(orderDependent), orderDependent)
 	}
@@ -837,7 +837,7 @@ func TestCommittedSetFieldsAreOrderIndependent(t *testing.T) {
 // The two-root separation is asserted in the same breath: the twoOrderings pair
 // differs in revLog (order-dependent — TestRevLogRootIsOrderDependent), so its
 // LogRoots DIFFER while its StateRoots must MATCH. Equal state root, different log
-// root: two kinds of committed data, two roots (#597), proven on the computed roots.
+// root: two kinds of committed data, two roots, proven on the computed roots.
 func TestStateRootIsOrderIndependentAcrossHistories(t *testing.T) {
 	stateRoot := func(c *Chain) ports.Hash {
 		r, err := c.StateRoot()
@@ -873,9 +873,9 @@ func TestStateRootIsOrderIndependentAcrossHistories(t *testing.T) {
 	ga, gb := gateSwingOrderings(t)
 	if ra, rb := stateRoot(ga), stateRoot(gb); ra != rb {
 		t.Fatalf("gateSwingOrderings: StateRoot DIFFERS across opposite intra-block "+
-			"orderings (%x != %x) — the #506-gate family (gateLockedIn/gateHeight) or the "+
+			"orderings (%x != %x) — the family (gateLockedIn/gateHeight) or the "+
 			"same-id regVersion/bondDomain seam made the root order-dependent. This is the "+
-			"certified fork surfacing at the root level. Route, do not relax.", ra, rb)
+			"fork surfacing at the root level. Route, do not relax.", ra, rb)
 	}
 
 	t.Logf("StateRoot byte-identical across opposite orderings on all three fixture " +
@@ -915,21 +915,20 @@ func TestCommittedLogFieldsAreGenuinelyOrderDependent(t *testing.T) {
 // the coverage is vacuous.
 //
 // This asserts the end state directly: in BOTH orderings the genesis squatter is
-// removed from bonded and is no longer the owner of the shared root, honestH is
+// removed from bonded and is no longer the project of the shared root, honestH is
 // the PROVEN owner, and validatorX is bonded on its own DISJOINT root. If the two
 // orderings had reached DIFFERENT bond-root states, that would be a real consensus
 // finding (an order-sensitive displacement validity rule under a history-
 // independent root) — STOP-and-escalate, no rule change. They do not: G3/bond-root
 // ownership is order-INDEPENDENT for this disjoint-root construction.
 //
-// SCOPE (certified 2026-08-28, same-root-intrablock-bondreg-contention): this
-// covers ONE proven claimant per root (a squat displaced by a single proof, plus
-// an independent claim on a DISJOINT root). It does NOT cover two DISTINCT-ID
-// proven claims on the SAME root in one block — that case IS order-dependent in
-// apply() and is handled at the validity layer, which now REJECTS such a block
-// (ErrSharedRootInBlock). See redteam_verify_sameroot-intrablock_test.go. So
-// G3/bond-root ownership is order-independent for every ADMISSIBLE block because
-// the same-root distinct-ID collision is no longer admitted.
+// SCOPE: this covers ONE proven claimant per root (a squat displaced by a single
+// proof, plus an independent claim on a DISJOINT root). It does NOT cover two
+// DISTINCT-ID proven claims on the SAME root in one block — that case IS
+// order-dependent in apply and is handled at the validity layer, which now
+// REJECTS such a block (ErrSharedRootInBlock). See sameroot_intrablock_test.go.
+// So G3/bond-root ownership is order-independent for every ADMISSIBLE block
+// because the same-root distinct-ID collision is no longer admitted.
 func TestBondRegG3DisplacementIsOrderIndependent(t *testing.T) {
 	squatKey, honestH, validatorX := key(51), key(52), key(53)
 	rootShared := ports.HashBytes([]byte("g3-shared-plot-root"))
@@ -943,7 +942,8 @@ func TestBondRegG3DisplacementIsOrderIndependent(t *testing.T) {
 		c    *Chain
 	}{{"hClaimFirst", a}, {"xRegFirst", b}} {
 		c := tc.c
-		// The displacement fired: the squatter has no standing and is not the owner.
+		// The displacement fired: the squatter has no standing and is not the
+		// project.
 		if _, ok := c.bonded[sq]; ok {
 			t.Fatalf("[%s] G3 did NOT fire: squatter still bonded (%d) — the coverage is "+
 				"vacuous, the displacement branch was never taken", tc.name, c.bonded[sq])
@@ -969,7 +969,7 @@ func TestBondRegG3DisplacementIsOrderIndependent(t *testing.T) {
 		"bondRegHeight", "regVersion", "bondDomain"} {
 		if !reflect.DeepEqual(fieldValue(a, name), fieldValue(b, name)) {
 			t.Fatalf("bond field %q DIFFERS across the two BondReg orderings — the G3 "+
-				"displacement is ORDER-DEPENDENT. This is a consensus finding to route, "+
+				"displacement is ORDE. This is a consensus finding to route, "+
 				"NOT a test to relax:\n  hClaimFirst: %v\n  xRegFirst:   %v",
 				name, fieldValue(a, name), fieldValue(b, name))
 		}
@@ -982,7 +982,7 @@ func TestBondRegG3DisplacementIsOrderIndependent(t *testing.T) {
 // for the mature-epoch family (everMature, matureEpoch, epochSet). Byte-identity
 // across the two orderings is necessary but not sufficient: the match must be over
 // a maturity latch and an epoch freeze that ACTUALLY FIRED, and over two GENUINELY
-// different histories, else the coverage is vacuous (the #618 lesson).
+// different histories, else the coverage is vacuous (the lesson).
 //
 // It asserts directly: in BOTH orderings the network matured (everMature), handed
 // off (matureEpoch), and froze the SAME four-key governing set into epochSet — the
@@ -1010,7 +1010,7 @@ func TestMatureEpochFamilyIsOrderIndependent(t *testing.T) {
 			t.Fatalf("[%s] everMature did NOT latch — the maturity path never fired, coverage is vacuous", tc.name)
 		}
 		if !c.matureEpoch {
-			t.Fatalf("[%s] matureEpoch did NOT set — the #357 Cond-B handoff never fired, coverage is vacuous", tc.name)
+			t.Fatalf("[%s] matureEpoch did NOT set — the  Cond-B handoff never fired, coverage is vacuous", tc.name)
 		}
 		// The freeze captured exactly the four governors; the slashed victim is excluded.
 		if len(c.epochSet) != 4 {
@@ -1031,36 +1031,36 @@ func TestMatureEpochFamilyIsOrderIndependent(t *testing.T) {
 	for _, name := range matureFields {
 		if !reflect.DeepEqual(fieldValue(a, name), fieldValue(b, name)) {
 			t.Fatalf("mature-epoch field %q DIFFERS across the two slash orderings — maturity/"+
-				"rotation is ORDER-DEPENDENT. This is a consensus finding to route, NOT a test "+
+				"rotation is ORDE. This is a consensus finding to route, NOT a test "+
 				"to relax:\n  slash-early: %v\n  slash-late:  %v",
 				name, fieldValue(a, name), fieldValue(b, name))
 		}
 	}
 	t.Logf("network matured and froze an identical %d-member epochSet across two opposite "+
 		"slash orderings — epochSet is order-INVARIANT BY CONSTRUCTION (rotateEpoch is last "+
-		"in apply, a deterministic read of bonded/slashed; #617/#618 cover those). This "+
-		"CONFIRMS invariance; it does not discover-or-refute a fork as #618 did. Residual: "+
+		"in apply, a deterministic read of bonded/slashed;  cover those). This "+
+		"CONFIRMS invariance; it does not discover-or-refute a fork as did. Residual: "+
 		"latch/handoff HEIGHT not varied (all bond at genesis), one-way bools that cannot flip",
 		len(a.epochSet))
 }
 
 // TestGateLockInSwingIsOrderIndependent is the consensus-correctness trip-wire for
-// the #506-gate family (gateLockedIn, gateHeight) AND the certified real coverage of
-// the same-id regVersion/bondDomain seam. Byte-identity across the two orderings is
-// necessary but not sufficient: the match must be over a lock-in tally that ACTUALLY
-// FIRED with the two-version validator as the EXACT >⅔ swing, else the coverage is
-// vacuous (the #618 / session-7 lesson). This is the fixture the cert
-// sameid-twoversion-intrablock-bondreg-contention (2026-08-28, residual R2) gates on.
+// the gate family (gateLockedIn, gateHeight) AND the real coverage of the same-id
+// regVersion/bondDomain seam. Byte-identity across the two orderings is necessary but
+// not sufficient: the match must be over a lock-in tally that ACTUALLY FIRED with the
+// two-version validator as the EXACT >⅔ swing, else the coverage is vacuous (the /).
+// This is the fixture the research sameid-twoversion-intrablock-bondreg-contention
+// (2026-08-28, residual R2) gates on.
 //
 // It asserts directly: in BOTH intra-block orderings the gate LOCKED IN, at the SAME
 // gateHeight, and the swing validator x committed the SAME regVersion (BlockVersionRegGate,
-// the canonical largest-Size-then-Version winner) and bondDomain. Before the apply()
-// canonicalization fix, flipping the height-1 slice order flipped x's committed version
-// (v3 vs v2), and x is the marginal ⅔ ready-weight, so gateLockedIn/gateHeight forked
-// across the two orderings — the exact propagation the cert traces (a committedSet field
-// feeding a consensus-decision field). If the two orderings had reached DIFFERENT gate
-// state, that would be the live fork; they do not, because canonicalBondRegs makes x's
-// committed version a pure function of block content.
+// the canonical largest-Size-then-Version winner) and bondDomain. Before the apply
+// canonicalization fix, flipping the height-1 slice order flipped x's committed version (v3
+// vs v2), and x is the marginal ⅔ ready-weight, so gateLockedIn/gateHeight forked across
+// the two orderings — the exact propagation the research traces (a committedSet field feeding a
+// consensus-decision field). If the two orderings had reached DIFFERENT gate state, that
+// would be the live fork; they do not, because canonicalBondRegs makes x's committed
+// version a pure function of block content.
 func TestGateLockInSwingIsOrderIndependent(t *testing.T) {
 	x := idOf(key(70003)) // the two-version swing validator
 
@@ -1072,11 +1072,11 @@ func TestGateLockInSwingIsOrderIndependent(t *testing.T) {
 	}{{"v3-first", a}, {"v3-last", b}} {
 		c := tc.c
 		if !c.matureEpoch {
-			t.Fatalf("[%s] matureEpoch did NOT set — the #506 tally runs only post-latch, so "+
+			t.Fatalf("[%s] matureEpoch did NOT set — the tally runs only post-latch, so "+
 				"coverage is vacuous; the fixture never reached the boundary rotation", tc.name)
 		}
 		if !c.gateLockedIn {
-			t.Fatalf("[%s] gateLockedIn is FALSE — the #506 lock-in tally did not fire (the swing "+
+			t.Fatalf("[%s] gateLockedIn is FALSE — the lock-in tally did not fire (the swing "+
 				"validator's version did not clear the >⅔ ready-weight bar). The coverage is "+
 				"vacuous: without a lock-in there is no gateHeight to compare. Re-derive the swing "+
 				"weights (x must be the marginal ready vote).", tc.name)
@@ -1101,13 +1101,13 @@ func TestGateLockInSwingIsOrderIndependent(t *testing.T) {
 	// The two orderings reach byte-identical gate state AND same-id bond state.
 	for _, name := range []string{"gateLockedIn", "gateHeight", "regVersion", "bondDomain"} {
 		if !reflect.DeepEqual(fieldValue(a, name), fieldValue(b, name)) {
-			t.Fatalf("field %q DIFFERS across the two intra-block orderings — the #506 gate "+
-				"inherited the same-id version split. This is the certified fork; the "+
+			t.Fatalf("field %q DIFFERS across the two intra-block orderings — the gate "+
+				"inherited the same-id version split. This is the fork; the "+
 				"canonicalization has regressed:\n  v3-first: %v\n  v3-last:  %v",
 				name, fieldValue(a, name), fieldValue(b, name))
 		}
 	}
-	t.Logf("the #506 gate locked in identically across two opposite intra-block orderings "+
+	t.Logf("the gate locked in identically across two opposite intra-block orderings "+
 		"(gateLockedIn=%v gateHeight=%d) with the same-id two-version validator as the ⅔ swing "+
 		"— gateLockedIn/gateHeight no longer inherit the version split", a.gateLockedIn, a.gateHeight)
 }
@@ -1218,14 +1218,14 @@ func TestEra4LockInSwingIsOrderIndependent(t *testing.T) {
 		a.era4LockedIn, a.era4Height)
 }
 
-// TestRevLogRootIsOrderDependent is the concrete #597 statement, asserted on
+// TestRevLogRootIsOrderDependent is the concrete statement, asserted on
 // the published API rather than on the field: the transparency-log ROOT — the
 // value era-3 will commit in its own header field — differs between the two
 // orderings, while the `revoked` status set does not.
 //
-// That single pair of facts is the whole certified resolution: the same events
-// in different orders yield one identical set and two different log roots, so
-// the two must live under two different roots.
+// That single pair of facts is the whole resolution: the same events in
+// different orders yield one identical set and two different log roots, so the
+// two must live under two different roots.
 func TestRevLogRootIsOrderDependent(t *testing.T) {
 	a, b := twoOrderings(t)
 
@@ -1241,7 +1241,7 @@ func TestRevLogRootIsOrderDependent(t *testing.T) {
 	ra, rb := a.RevocationLogRoot(), b.RevocationLogRoot()
 	if ra == rb {
 		t.Fatal("the revocation-log roots are EQUAL across two opposite orderings.\n" +
-			"If the log root is order-independent, #597's resolution is wrong and " +
+			"If the log root is order-independent, 's resolution is wrong and " +
 			"revLog could simply be an SMT leaf. Re-derive before changing the " +
 			"classification — translog.Root() is the RFC-6962 MTH over an ordered " +
 			"slice (translog.go:54/:106), so this should not happen.")
@@ -1250,9 +1250,8 @@ func TestRevLogRootIsOrderDependent(t *testing.T) {
 		"two kinds of committed data, two roots", len(a.revoked), ra[:6], rb[:6])
 }
 
-// TestBondedOrderFreeUnderSlashInteraction traces the residual the PE ruling
-// flagged: apply() pairs slashed[culprit]=true with delete(c.bonded, culprit)
-// (chain.go:2819-2820). `slashed` is grow-only, but `bonded` is MUTATED in the
+// TestBondedOrderFreeUnderSlashInteraction traces the residual.bonded, culprit
+// (chain.go). `slashed` is grow-only, but `bonded` is MUTATED in the
 // same step, so a mid-block slash could in principle make the final bonded set
 // order-sensitive. The twoOrderings fixture slashes NON-bonded culprits, so its
 // delete is a no-op and does not exercise this interaction. This test does: it

@@ -3,18 +3,18 @@
 // "single honest instance". The consensus is deliberately NOT
 // proof-of-work: blocks commit by reputation-weighted quorum.
 //
-//   - A block is proposed by a node whose reputation clears
-//     MinProposerRep, and commits only with attestations (Ed25519
-//     signatures over the block hash) from at least Quorum DISTINCT
-//     validators, each clearing MinAttesterRep, none of them the
-//     proposer. No single node's say-so writes a block.
-//   - Reputation is earned the M7/M9 way: passed storage audits and
-//     bytes served (see credit.Reputation). A fresh identity starts at
-//     zero and cannot propose or attest; and because NodeID is the hash
-//     of the signing key (M10), reputation cannot be transplanted.
-//   - Blocks carry registry entries only — root, manifest chunk
-//     pointers, size. Manifests stay chunked and sealed off-chain, so
-//     the chain stays small and content-blind.
+// - A block is proposed by a node whose reputation clears
+// MinProposerRep, and commits only with attestations (Ed25519
+// signatures over the block hash) from at least Quorum DISTINCT
+// validators, each clearing MinAttesterRep, none of them the
+// proposer. No single node's say-so writes a block.
+// - Reputation is earned the M7/M9 way: passed storage audits and
+// bytes served (see credit.Reputation). A fresh identity starts at
+// zero and cannot propose or attest; and because NodeID is the hash
+// of the signing key (M10), reputation cannot be transplanted.
+// - Blocks carry registry entries only — root, manifest chunk
+// pointers, size. Manifests stay chunked and sealed off-chain, so
+// the chain stays small and content-blind.
 //
 // Every validator holds a full replica and validates everything: a
 // block is accepted exactly when its hashes, signatures, reputations,
@@ -51,24 +51,23 @@ type Config struct {
 	MinProposerRep int64
 	MinAttesterRep int64
 	Quorum         int // attestations required (a FLOOR; see ByzantineQuorum), excluding the proposer
-	// ByzantineQuorum sizes the required quorum at the Byzantine threshold
-	// (H4 / Memo 05): in OBJECTIVE mode a commit's support set (the proposer plus
-	// its attesters) is raised to a supermajority n−f of the qualified bonded set
-	// of size N (f = ⌊(N-1)/3⌋), so any two support sets intersect in ≥ f+1 ≥ 1
-	// honest validator — the classic quorum-intersection safety, which a FIXED
-	// Quorum loses as the set grows (a fixed 3 among 30 validators no longer
-	// guarantees two quorums share an honest node). With it on, the attestation
-	// requirement is DERIVED from the chain and Config.Quorum is NOT a validity term
-	// (#380 direction (1), D-CONSENSUS-ARMING (20)): bftThreshold(N) = N−f−1 in the
-	// launch window / epochs off, and 0 in a mature epoch, where the >⅔ frozen-weight
-	// rule is the bar. Config.Quorum survives as the proposer-side GATHER target
+	// ByzantineQuorum sizes the required quorum at the Byzantine threshold: in
+	// OBJECTIVE mode a commit's support set (the proposer plus its attesters)
+	// is raised to a supermajority n−f of the qualified bonded set of size N (f =
+	// ⌊/3⌋), so any two support sets intersect in ≥ f+1 ≥ 1 honest validator —
+	// the classic quorum-intersection safety, which a FIXED Quorum loses as the set
+	// grows (a fixed 3 among 30 validators no longer guarantees two quorums share an
+	// honest node). With it on, the attestation requirement is DERIVED from the chain
+	// and Config.Quorum is NOT a validity term: bftThreshold(N) = N−f−1 in the launch
+	// window / epochs off, and 0 in a mature epoch, where the >⅔ frozen-weight rule
+	// is the bar. Config.Quorum survives as the proposer-side GATHER target
 	// (proposeBlockAt gathers max(Quorum, derived)). This is not a strict raise: with
-	// Quorum above bftThreshold(N) the VALIDITY bar goes down (3 → 2 at four anchors),
-	// which is the point — every replica computes the same bar, so a -quorum skew can
-	// no longer strand a node (#338). Defaulted on for an untrusted objective validator;
-	// off (explicit opt-out, or legacy/trusted) keeps Config.Quorum as the count floor.
-	// See RequiredQuorum. No effect in legacy (reputation) mode, where the qualified set
-	// size is a local, divergent view.
+	// Quorum above bftThreshold(N) the VALIDITY bar goes down (3 → 2 at four
+	// anchors), which is the point — every replica computes the same bar, so a
+	// -quorum skew can no longer strand a node. Defaulted on for an untrusted
+	// objective validator; off (explicit opt-out, or legacy/trusted) keeps
+	// Config.Quorum as the count floor. See RequiredQuorum. No effect in legacy
+	// (reputation) mode, where the qualified set size is a local, divergent view.
 	ByzantineQuorum bool
 	// Launch-window "training wheels" (risk 15): while the network is immature —
 	// its NAKAMOTO COEFFICIENT over non-anchor bonded weight is below
@@ -83,11 +82,11 @@ type Config struct {
 	// no training wheels (the default; trusted/sim deployments).
 	Anchors      map[ports.NodeID]bool
 	AnchorQuorum int
-	// MatureValidators is the required NAKAMOTO COEFFICIENT (H4 / Memo 05): the
+	// MatureValidators is the required NAKAMOTO COEFFICIENT: the
 	// minimum number of DISTINCT non-anchor bonds whose combined bonded weight must
 	// EXCEED the Byzantine fraction (⌊total/3⌋) of the non-anchor bonded set before
 	// the training wheels shed. This is cost-to-corrupt over bond-distinct operators,
-	// not a head-count: a network whose weight is dominated by one big bond (Nakamoto
+	// not a head-count: a network whose weight is dominated by one big bond Nakamoto
 	// 1) is NOT mature no matter how many satellite keys an operator adds, so one
 	// operator cannot cheaply trip the wheels off. 0 = no threshold (always mature;
 	// the default). (Residual, documented: a determined operator that splits its
@@ -100,20 +99,20 @@ type Config struct {
 	// Nakamoto coefficient by: since on-chain data carries no operator label, one
 	// operator may split its stake across up to ~M keys, so the true operator count
 	// is bounded k* ≥ k̂/M and the maturity shed demands k̂ ≥ MatureValidators × M
-	// distinct bonds. HEURISTIC by theorem (Kwon, D-C2): only as tight as M is
+	// distinct bonds. HEURISTIC by theorem (Kwon): only as tight as M is
 	// honest. 0/unset = 1 (no discount — legacy/sim/single-operator default,
 	// behavior unchanged); a real untrusted deployment sets it > 1 in genesis.
 	OperatorMargin int
 	// AllowPublisher permits an entry to carry a durable Publisher NodeID.
 	// It is FALSE by default because a Publisher→root record is permanent
 	// on an append-only chain — the M0 privacy corner silently surrendered
-	// in the historical record (F1/#14, #97). The unlinkable path (a
+	// in the historical record. The unlinkable path (a
 	// blind-signed publish token, or no identity at all) is the default;
 	// only an explicitly trusted deployment opts back into Publisher
 	// entries. Genesis is exempt (it seeds via AppendGenesis, and its
 	// proposer is public by design).
 	AllowPublisher bool
-	// MinBond turns on OBJECTIVE fork-choice (D2 / red-team F6). When > 0 (and a
+	// MinBond turns on OBJECTIVE fork-choice. When > 0 (and a
 	// bond verifier is wired, SetBondVerifier), proposer/attester eligibility,
 	// and the quorum count are all decided by ON-CHAIN
 	// bond registrations (Block.BondRegs) — a quantity every replica recomputes
@@ -147,7 +146,7 @@ type Config struct {
 	// BondRegNonce(prev), and a strict single-head rule makes it go STALE the instant
 	// the head advances — so over a real WAN, where a proposer proposes on head-advance
 	// before the resubmission arrives, the drain starves (blocks commit empty below the
-	// #286 byte cap; maturity never reaches bar-2 in-window). Accepting a reg over the
+	// byte cap; maturity never reaches bar-2 in-window). Accepting a reg over the
 	// last K committed head nonces removes the staleness while keeping freshness bounded.
 	// K is a C1 security parameter — a reg's space-time proof must still evidence RECENT
 	// possession — and is safe because (1) it must be ≪ BondTTLBlocks (which already
@@ -156,11 +155,11 @@ type Config struct {
 	// 0 = the DefaultBondRegHeadWindow. Set 1 to restore the strict single-head rule.
 	// The exact bound vs the anti-release/reseal window is research-gated.
 	BondRegHeadWindow int
-	// Archive makes this node the ARCHIVAL tier (D-TIERING §3/§4, `-archive`):
+	// Archive makes this node the ARCHIVAL tier (`-archive`):
 	// it RETAINS every block's heavy space-time bond proof to genesis instead of
 	// shedding it below the rolling retention horizon, so it can serve deep
 	// history to a node that fell behind the swarm's prune horizon (the
-	// ErrNeedCheckpoint / #559 true-loss case an archive is the answer to).
+	// ErrNeedCheckpoint / true-loss case an archive is the answer to).
 	//
 	// It is a RETENTION choice ONLY — never a validity one. An archival node
 	// validates by exactly the same rules as a pruning node (trustFloor and the
@@ -171,41 +170,40 @@ type Config struct {
 	// build-immutable #8 forbids on the 1 vCPU / 2 GB box — the tier model
 	// exists so the edge node does NOT carry this. Off by default.
 	Archive bool
-	// EpochBlocks freezes the MATURE-phase validator set per epoch (#357 research
-	// certification, Condition A): when > 0 in objective mode, the post-handoff
-	// finality quorum (validatorSetSize / RequiredQuorum), attester/proposer
-	// qualification, and the attester weight quorum are read from a SNAPSHOT of the
-	// committed bonded set taken at the last epoch-boundary block (height % EpochBlocks
-	// == 0), never recomputed live from the churning bonded map. Finality is
-	// quorum-INTERSECTION safety — two super-quorums are only guaranteed to share an
-	// honest validator when both are taken over the SAME set — so bonds that join,
-	// renew, or TTL-expire integrate only at the next rotation; the sole live mid-epoch
-	// disqualification is a proven slash (shrink-only: N stays frozen, so it can only
-	// raise the effective bar). The boundary block is itself super-quorum-final under
-	// the §3 gate, so every rotation happens at a finalized checkpoint — and the
-	// young→mature handoff (Condition B) is simply the FIRST mature rotation: the
-	// anchors keep governing after the everMature latch trips mid-epoch, shedding at
-	// the next boundary, so the change in what quorum weight MEANS is rooted at an
-	// immutable base and can never reach back across it. Consensus-critical: every
-	// validator in a swarm must run the same value (like MinBond/Anchors — genesis
-	// config discipline). Keep it well below BondTTLBlocks: a frozen epoch extends a
+	// EpochBlocks freezes the MATURE-phase validator set per epoch: when > 0 in
+	// objective mode, the post-handoff finality quorum (validatorSetSize /
+	// RequiredQuorum), attester/proposer qualification, and the attester weight
+	// quorum are read from a SNAPSHOT of the committed bonded set taken at the last
+	// epoch-boundary block (height % EpochBlocks == 0), never recomputed live from
+	// the churning bonded map. Finality is quorum-INTERSECTION safety — two
+	// super-quorums are only guaranteed to share an honest validator when both are
+	// taken over the SAME set — so bonds that join, renew, or TTL-expire integrate
+	// only at the next rotation; the sole live mid-epoch disqualification is a
+	// proven slash (shrink-only: N stays frozen, so it can only raise the effective
+	// bar). The boundary block is itself super-quorum-final under the §3 gate, so
+	// every rotation happens at a finalized checkpoint — and the young→mature
+	// handoff (Condition B) is simply the FIRST mature rotation: the anchors keep
+	// governing after the everMature latch trips mid-epoch, shedding at the next
+	// boundary, so the change in what quorum weight MEANS is rooted at an immutable
+	// base and can never reach back across it. Consensus-critical: every validator
+	// in a swarm must run the same value (like MinBond/Anchors — genesis config
+	// discipline). Keep it well below BondTTLBlocks: a frozen epoch extends a
 	// mid-epoch-lapsed bond's vote by at most EpochBlocks. 0 (default) = no epochs:
 	// the mature phase recomputes live (pre-Condition-A behavior; safe only for
 	// trusted/sim deployments — the daemon defaults it ON for untrusted objective
 	// validators).
 	EpochBlocks uint64
-	// RegGateActivationHeight is the PRE-LATCH activation override for the #506
-	// reg-inclusion rate bound (the R-rule): when > 0, the rule is enforced on
-	// every block of height > this, with no readiness signalling — the trusted
-	// launch-anchor set coordinates its upgrade and declares the boundary as
-	// genesis config, exactly like EpochBlocks/WSCheckpoint (research
-	// certification 2026-08-22, Q1.5). 0 (default) = post-latch behavior: the
-	// rule activates only when rule-aware bonded WEIGHT over a frozen epoch
-	// crosses the >⅔ finality super-quorum (see rotateEpoch), which never fires
-	// without epochs. Consensus-critical genesis config, same discipline as
-	// MinBond/Anchors.
+	// RegGateActivationHeight is the PRE-LATCH activation override for the
+	// reg-inclusion rate bound (the R-rule): when > 0, the rule is enforced
+	// on every block of height > this, with no readiness signalling — the
+	// trusted launch-anchor set coordinates its upgrade and declares the
+	// boundary as genesis config, exactly like EpochBlocks/WSCheckpoint. 0
+	// (default) = post-latch behavior: the rule activates only when
+	// rule-aware bonded WEIGHT over a frozen epoch crosses the >⅔ finality
+	// super-quorum (see rotateEpoch), which never fires without epochs.
+	// Consensus-critical genesis config, same discipline as MinBond/Anchors.
 	RegGateActivationHeight uint64
-	// WSCheckpoint is a WEAK-SUBJECTIVITY checkpoint (F-1): a recent trusted block
+	// WSCheckpoint is a WEAK-SUBJECTIVITY checkpoint: a recent trusted block
 	// (height + hash) this replica refuses to reorg AT OR BEFORE, regardless of fork
 	// weight. silt is weakly subjective — a node syncing from genesis (or long
 	// offline) cannot distinguish the real matured chain from a forged long-range one
@@ -218,9 +216,9 @@ type Config struct {
 	// The trusting window (how recent the checkpoint must be) is the weak-subjectivity
 	// period, bounded by BondTTLBlocks + slashing depth (the eviction/unbonding
 	// analogue). Zero Height = no checkpoint (genesis-trusting; safe only at launch,
-	// on a trusted swarm, or before the network has matured). See docs/design/m0.md §10.
+	// on a trusted swarm, or before the network has matured).
 	WSCheckpoint WSCheckpoint
-	// LivenessRecoveryHeight is the #535 fix (3) OPERATOR-DIRECTED liveness-floor
+	// LivenessRecoveryHeight is the fix (3) OPERATOR-DIRECTED liveness-floor
 	// escape: an epoch-boundary height at which mature-epoch validation re-bases
 	// proposer/attester qualification and the >⅔ weight quorum against the LIVE
 	// qualified bonded set instead of the frozen epochSet — ONE boundary, then
@@ -229,7 +227,7 @@ type Config struct {
 	// (members whose bonds TTL-lapsed and stayed gone): that state is outside
 	// the BFT liveness model, the boundary stalls by design (safety-first), and
 	// no automatic rule can make progress safe there — automatic re-basing was
-	// refuted (fix (2), modelcheck_535_fix2_rebasing_test.go: excluding
+	// refuted (fix (2), modelcheck_rebasing_test.go: excluding
 	// possibly-honest lapsed weight raises the Byzantine fraction and reopens
 	// I1). So the trust moves to a HUMAN: the operator confirms out-of-band that
 	// the loss is a real outage, not a partition or an attack, and every honest
@@ -238,15 +236,14 @@ type Config struct {
 	// wrongly-invoked recovery can fork, exactly the fix (2) counterexample).
 	// Consensus-critical coordination config, same discipline as WSCheckpoint /
 	// RegGateActivationHeight. 0 (default) = off: a bled boundary stalls, which
-	// is the certified-correct behavior. A non-boundary value never fires.
+	// is the correct behavior. A non-boundary value never fires.
 	LivenessRecoveryHeight uint64
 	// Era3ActivationHeight is the PRE-LATCH activation override for the era-3
 	// committed-state-root format (the v4 mint-flip + the v4-required boundary
 	// rule): when > 0, era-3 is active on every block of height >= this, with no
 	// readiness signalling — a trusted launch-anchor set coordinates its upgrade
 	// and declares the boundary as genesis config, exactly like
-	// RegGateActivationHeight (research cert Q5, mirroring the #506 pre-latch
-	// override). 0 (default) = post-latch behavior: era-3 activates only when
+	// RegGateActivationHeight, mirroring the pre-latch override. 0 (default) = post-latch behavior: era-3 activates only when
 	// era-3-aware bonded WEIGHT over a frozen epoch crosses the >⅔ finality
 	// super-quorum (see rotateEpoch, the regVersion >= BlockVersionStateRoot
 	// tally), which never fires without epochs. Consensus-critical genesis config,
@@ -254,7 +251,7 @@ type Config struct {
 	//
 	// NOTE the >= (not >) boundary: era-3 is a MINT/FORMAT boundary, so H_era3 is
 	// itself the first v4 height ("at/above H_era3, a block MUST be v4"), unlike
-	// the #506 R-rule's height > H_act (where the boundary block is the last
+	// the R-rule's height > H_act (where the boundary block is the last
 	// old-rules block). Monotonic height-gated activation keyed on finalized
 	// history either way (2c deliberation).
 	Era3ActivationHeight uint64
@@ -269,13 +266,13 @@ type Config struct {
 	// Consensus-critical genesis config, same discipline as Era3ActivationHeight.
 	//
 	// >= boundary (like era-3): era-4 is a MINT/FORMAT boundary, so H_era4 is itself the
-	// first v5 height.
+	// First v5 height.
 	//
 	// LAYERING CONSTRAINT (enforced in New): a v5 block commits a SUPERSET of the v4
 	// leaves, so era-4 cannot activate below the era-3 boundary. When both overrides are
 	// set, Era4ActivationHeight MUST be >= Era3ActivationHeight, or a v5 block would be
 	// minted below H_era3 — an ill-formed block. A misconfigured launch fails loudly at
-	// New rather than minting one. TODO(ratify): the mainnet activation height is a
+	// New rather than minting one. TODO: the mainnet activation height is a
 	// consensus value the human sets before mainnet — no default is picked here.
 	Era4ActivationHeight uint64
 	// NetworkName is this network's CANONICAL TEXT NAME, committed into the genesis block.
@@ -325,31 +322,30 @@ func DefaultConfig() Config {
 // this); a version bump is reserved for a change that would otherwise be a
 // silent flag-day.
 //
-// v2 = BlockVersionRounds (#432, the rounds era): consensus signatures become
+// v2 = BlockVersionRounds: consensus signatures become
 // two-phase and (height, round, phase)-scoped — Atts hold the PRECOMMIT quorum
 // at CommitRound, PrepareQC holds the prepare quorum that justified it, and
 // both sign the domain-separated v2 payload instead of the bare hash. A v1
 // block keeps validating under v1 rules (era-gated in ValidateCommit /
 // VerifyEquivocation), so committed history is never re-interpreted.
 // BlockVersion (what the node MINTS) flipped to BlockVersionRounds once the
-// propose path gathered two-phase (#432, merged b56f611) — the flip promised
+// propose path gathered two-phase — the flip promised
 // by the era-2 change, landed as its own behavior-neutral follow-up: the
 // propose path already stamped BlockVersionRounds explicitly, so production
 // minting is unchanged; only hand-built test blocks tracked this const.
 const BlockVersion = BlockVersionRounds
 
-// BlockVersionRounds is the #432 two-phase-rounds rule era.
+// BlockVersionRounds is the two-phase-rounds rule era.
 const BlockVersionRounds = 2
 
-// BlockVersionRegGate is the #506 reg-inclusion-rate-bound rule era. NOTE the
-// deliberate deviation from the certification's rule-packaging candidate:
-// blocks are NOT minted with this tag (BlockVersion stays BlockVersionRounds),
-// because versionSupported on every pre-gate binary is an EXACT set — a v3-tagged
-// block is rejected outright at decode, which is a hard fork, not the certified
-// soft fork. The R-rule needs no schema change to enforce (it only REJECTS
-// payloads), so enforcement keys on HEIGHT relative to the chain-derived
-// activation boundary (regGateActive — exactly the certification's Q2 form:
-// "apply the rule to every block of height > H_act"), and this constant's job
+// BlockVersionRegGate is the reg-inclusion-rate-bound rule era. NOTE the
+// deliberate deviation from packaging the rule as a new block tag: blocks are
+// NOT minted with this tag (BlockVersion stays BlockVersionRounds), because
+// versionSupported on every pre-gate binary is an EXACT set — a v3-tagged
+// block is rejected outright at decode, which is a hard fork, not a soft fork.
+// The R-rule needs no schema change to enforce (it only REJECTS payloads), so
+// enforcement keys on HEIGHT relative to the chain-derived activation boundary
+// (regGateActive applies the rule to every block of height > H_act), and this constant's job
 // is the READINESS threshold: a bond reg signalling Version ≥ BlockVersionRegGate
 // counts its validator's frozen-epoch weight as rule-aware. This binary ACCEPTS
 // v3-tagged blocks (validated under the ≥-rounds rules), so a future era that
@@ -362,15 +358,15 @@ const BlockVersionRegGate = 3
 // era3LockedIn/era3Height) and LogRoot (the RFC-6962 revocation-log MTH) — so
 // every validating node that accepts the block can check the state it commits to.
 //
-// era-3 is a HARD fork, NOT a soft fork (research cert Q5/Q7): it adds a schema and,
-// in step 2b, a validity predicate a pre-era-3 binary cannot evaluate. So era-3 MINTS
-// a NEW version (4, not 3) and versionSupported is extended to <= 4 in the SAME
-// release that adds the root fields — otherwise a pre-era-3 binary, which already
-// decode-accepts v3 (v <= BlockVersionRegGate), would accept an era-3 block and never
-// check its roots: a forged root would ride through unvalidated. Minting 3 is refuted
-// for exactly that silent-mis-validation reason (RESEARCH-CERTIFICATION-2026-08-28 Q7).
+// era-3 is a HARD fork, NOT a soft fork: it adds a schema and, in step 2b, a validity
+// predicate a pre-era-3 binary cannot evaluate. So era-3 MINTS a NEW version (4, not 3)
+// and versionSupported is extended to <= 4 in the SAME release that adds the root
+// fields — otherwise a pre-era-3 binary, which already decode-accepts v3 (v <=
+// BlockVersionRegGate), would accept an era-3 block and never check its roots: a forged
+// root would ride through unvalidated. Minting 3 is refuted for exactly that
+// silent-mis-validation reason.
 //
-// Build order (certified, choice 5): step 2a (THIS) adds the fields, folds them into
+// Build order: step 2a (THIS) adds the fields, folds them into
 // Hash so attesters sign them, and widens versionSupported so a v4 block DECODES and is
 // accepted. It does NOT flip minting (BlockVersion stays BlockVersionRounds) and does
 // NOT add the root-matches-recomputed-state validity predicate — that is 2b. Minting v4
@@ -378,15 +374,13 @@ const BlockVersionRegGate = 3
 // block is ever minted before its predicate exists.
 const BlockVersionStateRoot = 4
 
-// BlockVersionWitnessable is the era-4 rule era: the two whole-map apply() scans
+// BlockVersionWitnessable is the era-4 rule era: the two whole-map apply scans
 // (TTL-expiry and epoch rotation) become O(payload)-witnessable by committing two
 // new accelerator keyspaces — a due-height bucket index (TTL) and a materialized
 // `qualified` set with a frozen `epochStart` marker (rotation) — under the state
-// root as v5-only leaves. The design is RATIFIED in
-// docs/thinking/2026-08-29-era4-witnessable-transitions-options.md and the ordered
-// build in docs/thinking/2026-08-29-era4-build-decomposition-options.md.
+// root as v5-only leaves.
 //
-// Build order (ratified, PREDICATE-FIRST): 4a (THIS) mints this constant and defines
+// Build order, PREDICATE-FIRST: 4a (THIS) mints this constant and defines
 // the three new field tags, but does NOT lift versionSupported to <= 5, does NOT add
 // the maintenance maps, and does NOT emit any new leaf — so 4a is INERT on the live
 // v4 chain (no v4 block's committed root changes). 4b adds the maintenance spine and
@@ -396,21 +390,20 @@ const BlockVersionStateRoot = 4
 // window). 4d height-gates activation and flips minting to v5.
 const BlockVersionWitnessable = 5
 
-// RegCap is the era-4 (v5) per-block TOTAL BondReg count validity ceiling: a v5 block
-// is INVALID if the number of registrations it carries, counted AFTER canonicalBondRegs
+// RegCap is the era-4 (v5) per-block TOTAL BondReg count validity ceiling: a v5 block is
+// INVALID if the number of registrations it carries, counted AFTER canonicalBondRegs
 // (same-id fold), exceeds RegCap — fresh AND renewal together, no distinction. Every
 // replica enforces it on receipt (validateBondRegs → ValidateProposal), so no block
 // exceeding it can commit, so no TTL due-bucket (tagDueBucket) can exceed RegCap entries.
 // That bounds the era-4 TTL-firing witness read-set to a registry-INDEPENDENT constant —
-// the O(registry) wall era-4 exists to remove (RESEARCH-CERTIFICATION era4-regcap-recert
-// 2026-08-29, Q2). Counting the TOTAL (not fresh-only) is load-bearing: both fresh and
-// renewal write bondRegHeight[id]=h at the same apply site (chain.go, "reset the TTL
-// clock") and land in the same due-bucket, and #506 rate-limits renewals per-IDENTITY not
-// per-block, so O(registry) distinct ids can each renew once in one block. A fresh-only
-// cap leaves that renewal term unbounded (Research REFUTED fresh-only three times).
+// the O(registry) wall era-4 exists to remove. Counting the TOTAL (not fresh-only) is
+// load-bearing: both fresh and renewal write bondRegHeight[id]=h at the same apply site
+// (chain.go, "reset the TTL clock") and land in the same due-bucket, and rate-limits
+// renewals per-IDENTITY not per-block, so O(registry) distinct ids can each renew once in
+// one block. A fresh-only cap leaves that renewal term unbounded (Research REFUTED
+// fresh-only three times).
 //
-// VALUE N = 256 is CERTIFIED for the total-count rule (era4-regcap-VALUE-DERIVATION-VERDICT
-// 2026-08-29): it clears the honest ceiling at the lowest permitted k (18 at k=1) with 14×
+// VALUE N = 256 is the derived total-count rule: it clears the honest ceiling at the lowest permitted k (18 at k=1) with 14×
 // margin, sits far below the witness-fit ceiling 16,384, and its worst-case valid block
 // (~363 MiB of 256 real space-time regs) is bounded by real Sybil seal cost, not a free DoS
 // surface (each reg needs a distinct sealed MinBond plot).
@@ -418,31 +411,26 @@ const BlockVersionWitnessable = 5
 // RE-DERIVATION GATE: N = f(B, k, Samples, BlockSize, BondVDFDelay, MinBond, proof scheme) —
 // all SEVEN determinants of the minimum valid reg size. Any change to any one re-derives N
 // at the NEXT BlockVersion mint (the value is a frozen v5-format constant until then, like
-// SProofMax). #299 (succinct proofs) is the sharpest single determinant — it shrinks the
+// SProofMax). (succinct proofs) is the sharpest single determinant — it shrinks the
 // min reg ~1000× and raises the honest ceiling above 256, forcing a re-mint — but it is NOT
-// the only one. See docs/decisions.md (era-4 entry) and docs/design/owned-residuals.md.
+// the only one.
 const RegCap = 256
 
-// SlashesBytesCap is the per-block ceiling on the canonically-encoded BYTES of the
-// Slashes field, enforced on every write path in EVERY era (R0.6 (d-2), certification
-// I5-cross-height-pruned-slash-forgery-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03
-// §7). It is DUAL-FACE (the Researcher's delta certification
-// R0.6-SlashesBytesCap-value-security-face-DELTA-CERTIFICATION-2026-09-03 REFUTED the
-// original "not a security parameter" wording as stated): on I5's honest-never-slashed
-// axis it is an immutable-#8 RESOURCE CEILING expressed as a validity rule — raising it
-// never admits a forged slash (CheckEquivocation is the only thing that convicts) and
-// lowering it never convicts an honest validator; on I5's COMPLETENESS axis it is the
-// evidence size above which a double-signer keeps its seat (below). NOT RegCap's class.
-// Invariant the value ASPIRES to (unsatisfiable as stated — see THE FIXED POINT below):
-// SlashesBytesCap ≥ 2 × (configured honest block) +
-// overhead — 16 MiB against ~4.2 MiB. It is needed because F2-EVIDENCE-RECOMPUTE makes FULL bodies the only
-// admissible evidence and Prune() never recurses into Slashes, so every admitted proof
-// pins two full block bodies — BondReg.Answer included — permanently resident on every
-// node, in the one slot pruning cannot reach. A BYTE ceiling, not a count: one proof
-// spans ~1 KB (header-only pair) to hundreds of MB (two reg-laden blocks), so a count
-// bounds nothing. The proposer packs pendingSlashes under this cap and carries the rest;
-// a proof that ALONE exceeds the cap is never queued or embedded (core/node/chainrole.go),
-// because it can never commit and embedding it would doom every later proposal.
+// SlashesBytesCap is the per-block ceiling on the canonically-encoded BYTES of the Slashes field, enforced
+// on every write path in EVERY era. It is DUAL-FACE — calling it "not a security parameter"
+// is wrong as stated: on I5's honest-never-slashed axis it is an immutable-#8 RESOURCE
+// CEILING expressed as a validity rule — raising it never admits a forged slash (CheckEquivocation is the
+// only thing that convicts) and lowering it never convicts an honest validator; on I5's COMPLETENESS axis
+// it is the evidence size above which a double-signer keeps its seat (below). NOT RegCap's class. Invariant
+// the value ASPIRES to (unsatisfiable as stated — see THE FIXED POINT below): SlashesBytesCap ≥ 2 ×
+// (configured honest block) + overhead — 16 MiB against ~4.2 MiB. It is needed because
+// F2-EVIDENCE-RECOMPUTE makes FULL bodies the only admissible evidence and Prune never recurses into
+// Slashes, so every admitted proof pins two full block bodies — BondReg.Answer included — permanently
+// resident on every node, in the one slot pruning cannot reach. A BYTE ceiling, not a count: one proof
+// spans ~1 KB (header-only pair) to hundreds of MB (two reg-laden blocks), so a count bounds nothing. The
+// proposer packs pendingSlashes under this cap and carries the rest; a proof that ALONE exceeds the cap is
+// never queued or embedded (core/node/chainrole.go), because it can never commit and embedding it would
+// doom every later proposal.
 //
 // The second face: the value is ALSO the size above which a double-signer's evidence
 // cannot be committed — an equivocator who signs two over-cap blocks keeps its on-chain
@@ -452,41 +440,35 @@ const RegCap = 256
 // coalitions accountable safety degrades to plain safety: attribution survives (the
 // over-cap WARN), eviction is lost. NO admissible value closes this face — silt's
 // evidence is the whole signed body — so the number is not what it turns on; only the
-// v5 two-level block hash (d-3, header + digests, fixed-size evidence) removes it, and
-// that sits on the R3.4 pre-freeze carry-list. The class pre-existed at the 132 MiB
-// transport frame (R-BIG-EVIDENCE-UNSLASHABLE); this constant lowers it to 16 MiB and
-// is disclosed to the R4.4 external brief. PE ruling
-// RULING-R0.6-i5-evidence-recompute-3131d5a-2026-09-03 F-2 raised it.
+// v5 two-level block hash (header + digests, fixed-size evidence) removes it, and that is
+// not yet built. The class pre-existed at the 132 MiB transport frame; this constant
+// lowers it to 16 MiB.
 //
-// PROVISIONAL VALUE — OWNER RATIFIES on immutable-#8 grounds. G-3 is MEASURED, not
-// pending (this line read "G-3 measurement pending" until 2026-09-10, while
-// docs/decisions.md already recorded the measurement; the code comment was the stale
-// half). TestSlashesBytesCapWorstCaseCost reports, at the shipped defaults: 5 reg-laden
+// PROVISIONAL VALUE, held on immutable-#8 grounds. The worst case is MEASURED:
+// TestSlashesBytesCapWorstCaseCost reports, at the shipped defaults: 5 reg-laden
 // proofs of 3.00 MiB each fill the cap (15,733,931 B on the wire), 15.0 MiB resident
 // after decode, validateSlashes in single-to-tens of milliseconds.
 //
 // AND THAT TEST IS A DERIVATION WITNESS, NOT A DERIVATION GATE. Its own doc says so —
-// "the R0.6 G-3 MEASUREMENT harness, not a gate". All four figures go through t.Logf
+// it is a measurement harness, not a gate. All four figures go through t.Logf
 // and are asserted by nothing; its only t.Fatal calls are preconditions (the double-sign
 // must be provable; an at-cap field must validate). So it CANNOT go RED on figure drift.
 // The wall time is the plainest demonstration: 11.5 ms when first recorded, 37.8 ms on a
 // throttled 2-core box re-running it — same green. Do not read its pass as protection of
 // the numbers above; if a change moves them, re-run it by name and re-derive the value.
 // It runs unshortened in the required CI job only because it would otherwise execute
-// nowhere at all (scar:short-run-is-zero-execution-2026-09-10) — that buys EXECUTION of
+// nowhere at all — that buys EXECUTION of
 // its preconditions, not a bound on its figures.
 // Derivation from shipped bounds, not taste: an honest block is at most the CONFIGURED
-// per-block budgets (defaults 2 MiB of BondRegs + 64 KiB of entries, cmd/silt/daemon.go
+// per-block budgets defaults 2 MiB of BondRegs + 64 KiB of entries, cmd/silt/daemon.go
 // -max-bondreg-bytes-per-block / -max-entry-bytes-per-block) plus a small header, so one
 // legitimate evidence pair is ≤ ~4.2 MiB; 16 MiB admits three such fat proofs, or
 // ~18,000 header-only proofs, per block, and is 1/8 of the 128 MiB transport frame
 // (adapters/tcpnet) that already bounds a block non-uniformly. A larger legitimate
 // backlog drains over successive blocks (liveness, not safety).
 //
-// THE CONFIGURATION ROUTE IS CLOSED — AND THE INVARIANT ABOVE IS NOT SATISFIABLE
-// (2026-09-09 owner call: "CLOSE THE ROUTE. Not a re-ratification. The value stays 16 MiB.
-// The route goes."; corrected 2026-09-10 by the blind PE review of the close itself, which
-// REFUTED the stronger claim this comment first carried).
+// THE CONFIGURATION ROUTE IS CLOSED — AND THE INVARIANT ABOVE IS NOT SATISFIABLE.
+// The value stays 16 MiB; what goes is the route by which local config could move it.
 //
 // What was wrong. The invariant three paragraphs up read "2 × (DEFAULT honest block)", and
 // nothing held the RUNNING configuration to it. The two budgets are PROPOSER-SIDE ONLY —
@@ -494,9 +476,9 @@ const RegCap = 256
 // core/node/entrypool.go (foldPendingEntries) — and their help documented "0 = unbounded",
 // so an operator could raise its own budget past ~7.9 MiB and make its OWN equivocation
 // unprovable: the pair exceeds this cap, the cap rejects it before CheckEquivocation runs,
-// and the double-signer keeps its seat. That is the #380 class — a consensus quantity that
+// and the double-signer keeps its seat. That is the class — a consensus quantity that
 // is a function of LOCAL CONFIG rather than of the chain. It is closed by
-// core/node.CheckSlashEvidenceHeadroom, which cmd/silt refuses to start on (G-SLASHCAP-1..4).
+// core/node.CheckSlashEvidenceHeadroom, which cmd/silt refuses to start on.
 //
 // THE FIXED POINT — and this is why that close is NECESSARY BUT NOT SUFFICIENT. Equivocation
 // carries two FULL Blocks (equivocation.go), and a Block carries its own Slashes field
@@ -515,7 +497,7 @@ const RegCap = 256
 // nothing in the config route-close improved that answer, and this comment does not claim it.
 const SlashesBytesCap = 16 << 20
 
-// Consensus signature phases (#432 two-phase gather, research-certified).
+// Consensus signature phases.
 // PhaseLegacy (0) is the era-1 bare-hash signature — what a pre-rounds
 // Attestation decodes as; never minted in era 2.
 //
@@ -527,7 +509,7 @@ const SlashesBytesCap = 16 << 20
 // validator's durable anti-double-sign watermark by comparing the phase byte NUMERICALLY,
 // so prepare < precommit is what stops a validator taking the prepare slot AFTER the
 // precommit slot within one height. Assigning PhasePrecommitV5 below PhasePrepareV5 would
-// invert that within era 4. Pinned by TestGPRE4_PhaseConstantOrderingIsMonotone, not by
+// invert that within era 4. Pinned by TestPhaseConstantOrderingIsMonotone, not by
 // this comment.
 const (
 	PhaseLegacy      uint8 = 0
@@ -540,18 +522,18 @@ const (
 // AttPhase maps a canonical consensus STEP (PhasePrepare / PhasePrecommit) to the WIRE phase
 // constant a block of version `version` carries. It is the ONE place the era→form mapping
 // lives, so the producer (AttestAt) and every phase-exactness check (collectQuorumSigs,
-// requireProposerPrepare and their v5 twins) cannot drift — the #558 share-the-arithmetic
+// requireProposerPrepare and their v5 twins) cannot drift — the share-the-arithmetic
 // lesson applied to the constant instead of to the preimage.
 //
-// T-STEP-VS-FORM (certification §5.4, 2026-09-10). The DURABLE watermark
+// T-STEP-VS-FORM. The DURABLE watermark
 // (ports.SignMark.Phase, fsynced before any signature is released) records the STEP and is
 // never passed through here; only the attestation on the wire records the ERA-FORM. Keeping
 // the watermark's alphabet frozen at {0,1,2} is what makes SignMark's on-disk encoding
 // byte-identical across the era-4 upgrade: a mark written (H, r, PhasePrecommit=2) and read
 // back by a v5 binary probing with 3 would compare 3 > 2, NOT block, and the node would sign
 // a different block at a height it had already precommitted — a self-manufactured double-sign
-// produced by the upgrade itself (the #397 crash variant, driven RED by
-// TestGPRE3_UpgradeMustNotReinterpretTheDurableSignMark).
+// produced by the upgrade itself (the crash variant, driven RED by
+// TestUpgradeMustNotReinterpretTheDurableSignMark).
 //
 // PhaseLegacy and any unknown step pass through unchanged: era 1 has no v5 form.
 func AttPhase(version uint64, step uint8) uint8 {
@@ -577,7 +559,7 @@ func AttPhase(version uint64, step uint8) uint8 {
 // forms admits exactly the honest set plus, at most, an off-form signature by a Byzantine
 // attester; that grants nothing, because seating is idempotent, screened by
 // attesterQualified, and counts toward NO quorum (collectQuorumSigs is fatal on a phase
-// mismatch). Residual R-CARRIER-OFFFORM-SEAT, held in tension, certification §5.3.
+// mismatch). That off-form seat is a disclosed residual, held in tension.
 //
 // ONE PREDICATE, TWO CALLERS: validateCarrier (the validity rule) and HeadCarrier (the
 // producer filter). If the two disagreed, an honest proposer would mint a carrier its own
@@ -612,7 +594,7 @@ type Block struct {
 	// and, like a revocation, it is quorum-gated and replicated.
 	Unrevocations []ports.Hash `cbor:"9,keyasint,omitempty"`
 	// BondRegs are on-chain PoST-bond registrations that make fork-choice
-	// OBJECTIVE (D2 / red-team F6): each records a validator's bonded size with a
+	// OBJECTIVE: each records a validator's bonded size with a
 	// fresh space-time proof any replica re-verifies, so "who is a qualified
 	// validator, and how heavy is their attestation" is a function of the chain,
 	// not of the local reputation view. Only meaningful when Config.MinBond > 0;
@@ -620,14 +602,14 @@ type Block struct {
 	// as before, so no BlockVersion bump). Committed by Hash so attesters sign
 	// over them.
 	BondRegs []BondReg `cbor:"10,keyasint,omitempty"`
-	// Slashes are on-chain equivocation records (red-team F2): a self-verifying
+	// Slashes are on-chain equivocation records: a self-verifying
 	// proof that a validator double-signed. On commit, the culprit is EVICTED from
 	// the objective bonded set (its `c.bonded` weight → 0) and permanently barred
 	// from re-earning it — so a proven double-sign costs standing in objective
 	// mode, not only in the reputation ledger the objective set never reads.
 	// Committed by Hash (attesters sign over them); omitempty keeps it additive.
 	Slashes []Equivocation `cbor:"11,keyasint,omitempty"`
-	// CommitRound is the round this block committed at (#432 rounds era). The
+	// CommitRound is the round this block committed at. The
 	// round is NOT part of the value's identity — the SAME block re-proposed at
 	// a higher round after a view-change must hash identically (Tendermint
 	// separates the vote's (h, r, block-id) from the block for exactly this) —
@@ -636,53 +618,51 @@ type Block struct {
 	// Hash). 0 for era-1 blocks and for round-0 commits.
 	CommitRound uint64 `cbor:"12,keyasint,omitempty"`
 	// PrepareQC is the prepare-phase quorum certificate that justified the
-	// precommit phase (#432): the quorum of PhasePrepare attestations at
+	// precommit phase: the quorum of PhasePrepare attestations at
 	// (Height, CommitRound). ValidateCommit (era 2) requires it at the SAME
 	// thresholds as the commit itself — ⌊A/2⌋+1 anchors in launch, >⅔ frozen
 	// epoch weight in mature — because the POL threshold IS the commit
-	// threshold (certification §4). Excluded from Hash like Atts.
+	// threshold. Excluded from Hash like Atts.
 	PrepareQC []Attestation `cbor:"13,keyasint,omitempty"`
-	// Pruned, when set, is the block's pre-prune Hash. A payload-selectively pruned
-	// block (heavy BondReg.Answer proofs dropped below the retention horizon — the H2
-	// OOM fix) can no longer recompute its own hash because Hash commits BondRegs, so
-	// it carries the hash it had when full. EXCLUDED from Hash (like the QCs): a full
-	// block never sets it and hashes exactly as before (no BlockVersion bump, additive).
-	// Hash() returns it for a pruned block. The value is trusted ONLY when authenticated
-	// by chain Prev-linkage to the node's own trusted anchor, and a pruned block is
-	// accepted ONLY strictly below that finalized anchor (the Q2 gate in Reconcile) —
-	// never on this field alone. See retention.go + docs/thinking/2026-08-18-serve-retain-from-checkpoint-oom-fix.md.
+	// Pruned, when set, is the block's pre-prune Hash. A payload-selectively pruned block (heavy BondReg.Answer
+	// proofs dropped below the retention horizon — the H2 OOM fix) can no longer recompute its own hash because
+	// Hash commits BondRegs, so it carries the hash it had when full. EXCLUDED from Hash (like the QCs): a full
+	// block never sets it and hashes exactly as before (no BlockVersion bump, additive). Hash returns it for a
+	// pruned block. The value is trusted ONLY when authenticated by chain Prev-linkage to the node's own trusted
+	// anchor, and a pruned block is accepted ONLY strictly below that finalized anchor (the Q2 gate in Reconcile)
+	// — never on this field alone. See retention.go.
 	Pruned ports.Hash `cbor:"14,keyasint,omitempty"`
 
-	// StateRoot and LogRoot are the era-3 committed roots (the keystone, #603/#597).
-	// StateRoot is the SMT over the 18 committedSet validity fields (StateRoot());
-	// LogRoot is the RFC-6962 MTH over the revocation transparency log (LogRoot() =
-	// RevocationLogRoot()). BOTH are folded into Hash below — unlike the QCs and
-	// CommitRound, attesters SIGN them, so a forged root cannot ride a valid signature.
-	// This is the Ethereum stateRoot/receiptsRoot shape: two committed roots of two
-	// kinds (an order-invariant authenticated map + an append-only log, #597), one
-	// signature covering both.
+	// StateRoot and LogRoot are the era-3 committed roots (the keystone). StateRoot
+	// is the SMT over the 18 committedSet validity fields (StateRoot); LogRoot is
+	// the RFC-6962 MTH over the revocation transparency log (LogRoot =
+	// RevocationLogRoot). BOTH are folded into Hash below — unlike the QCs and
+	// CommitRound, attesters SIGN them, so a forged root cannot ride a valid
+	// signature. This is the Ethereum stateRoot/receiptsRoot shape: two committed
+	// roots of two kinds (an order-invariant authenticated map + an append-only
+	// log), one signature covering both.
 	//
-	// COMPAT (step 2a — the load-bearing decision, see
-	// docs/thinking/2026-08-29-era3-step2a-commit-roots-schema.md): these are POINTERS so
-	// omitempty keeps the change INVISIBLE to era-2. An era-2 block leaves both nil, and
-	// omitempty omits a nil pointer — the unsigned body is byte-identical to pre-2a and
-	// Hash() is unchanged (committed history is never re-interpreted, chain.go:260-268).
-	// A plain ports.Hash ([32]byte) would NOT work: omitempty never omits a fixed-size
-	// ARRAY (it is never "empty"), so a zero [32]byte would be emitted as 32 zero bytes
-	// and change every era-2 hash. The byte-identity oracle caught exactly that; the
-	// pointer is the fix that keeps the fixed-32-byte type AND omits cleanly. An era-3
-	// block sets both to the non-zero committed roots (empty-state SMT / sha256("") log —
-	// fixed non-zero constants), so they are emitted and signed. nil means unambiguously
-	// absent; a set pointer means present-with-this-value. 2a adds NO predicate that
-	// rejects a v4 block with a nil root — that belongs to 2b.
+	// COMPAT (step 2a — the load-bearing decision): these are POINTERS
+	// so omitempty keeps the change INVISIBLE to era-2. An era-2 block leaves both
+	// nil, and omitempty omits a nil pointer — the unsigned body is byte-identical to
+	// pre-2a and Hash is unchanged (committed history is never re-interpreted,
+	// chain.go). A plain ports.Hash ([32]byte) would NOT work: omitempty never
+	// omits a fixed-size ARRAY (it is never "empty"), so a zero [32]byte would be
+	// emitted as 32 zero bytes and change every era-2 hash. The byte-identity oracle
+	// caught exactly that; the pointer is the fix that keeps the fixed-32-byte type
+	// AND omits cleanly. An era-3 block sets both to the non-zero committed roots
+	// (empty-state SMT / sha256("") log — fixed non-zero constants), so they are
+	// emitted and signed. nil means unambiguously absent; a set pointer means
+	// present-with-this-value. 2a adds NO predicate that rejects a v4 block with a nil
+	// root — that belongs to 2b.
 	StateRoot *ports.Hash `cbor:"15,keyasint,omitempty"`
 	LogRoot   *ports.Hash `cbor:"16,keyasint,omitempty"`
 
-	// IssuerKeys are R0.4b per-epoch demand-issuer key commitments: each binds one
+	// IssuerKeys are per-epoch demand-issuer key commitments: each binds one
 	// validator's RSA blind-signing public key for one epoch to its committed
 	// identity, so a redeemer can resolve key_E against consensus-attested state
-	// rather than one peer's say-so (the anti-fingerprinting binding the R0.4b
-	// certification makes MANDATORY — see issuerkey.go). Committed by Hash so
+	// rather than one peer's say-so — the anti-fingerprinting binding is MANDATORY,
+	// see issuerkey.go. Committed by Hash so
 	// attesters sign over them; omitempty keeps this ADDITIVE (a block with no
 	// registrations hashes exactly as before, the same discipline BondRegs and
 	// Slashes ship). VALID ONLY IN A v5 BLOCK — the era-3 leaf set does not commit
@@ -690,36 +670,35 @@ type Block struct {
 	IssuerKeys []IssuerKeyReg `cbor:"17,keyasint,omitempty"`
 
 	// LastCommit republishes the PARENT block's precommit attestations. It is the era-4
-	// (v5) ATTESTATION CARRIER (R-BOX-ATTESTS, owner call O1, ratified 2026-09-03) and it
+	// (v5) ATTESTATION CARRIER and it
 	// is the ONLY input to the v5 validatorsSeen transition — see carrier.go for the
 	// defect it closes and applyCarrier for the rule.
 	//
-	// FOLDED INTO Hash() (unlike Atts/PrepareQC/CommitRound, which are certificate slots a
-	// replica may legitimately hold differently). That is the whole point: the proposer
-	// holds these bytes BEFORE it populates and signs its committed roots, so the root it
-	// signs is the root the block commits.
+	// FOLDED INTO Hash (unlike Atts/PrepareQC/CommitRound, which are certificate slots
+	// a replica may legitimately hold differently). That is the whole point: the
+	// proposer holds these bytes BEFORE it populates and signs its committed roots, so
+	// the root it signs is the root the block commits.
 	//
 	// ADDITIVE + omitempty: a nil carrier is omitted from the canonical encoding, so every
 	// block that does not carry one — every era-2 and era-3 block, and every v5 block at
 	// height 1 — hashes BYTE-IDENTICALLY to pre-carrier code (pinned by
-	// TestCarrierHashDriftGuard). cbor key 18, not 17: 17 is the R0.4b IssuerKeys
+	// TestCarrierHashDriftGuard). cbor key 18, not 17: 17 is the IssuerKeys
 	// field above (merged to main before this carrier), so the two additive open-era fields
 	// never collide on the wire.
 	LastCommit []Attestation `cbor:"18,keyasint,omitempty"`
-	// SlashesDigest is sha256(canonical(Slashes)) — the second application of (d-3)'s
-	// two-level idiom, after AnswerDigest. The v5 preimage folds THIS instead of Slashes.
+	// SlashesDigest is sha256(canonical(Slashes)) — the second application of the
+	// two-level idiom, after AnswerDigest. The v5 preimage folds THIS instead of
+	// Slashes.
 	//
-	// WHY A DIGEST AND NOT THE REDUCED COPY THE FREEZE MANIFEST SPECIFIED. §4.3's recursively
-	// reduced `Slashes'` was REFUTED (D-D3-CERT-REFUTATION-2026-09-10): Prune() never recurses
-	// into Slashes (see Prune's comment), so the reduction buys nothing for self-covering, and it
-	// costs a per-hash deep copy of up to SlashesBytesCap — re-opening #563. The owner's test for
-	// it: "does it add a concept or remove one? Slashes' is a recursively-reduced copy — a
-	// genuinely complex object. A digest is a hash."
+	// WHY A DIGEST AND NOT A RECURSIVELY REDUCED COPY. Prune never recurses into Slashes
+	// (see Prune's comment), so a reduced `Slashes'` buys nothing for self-covering, and it
+	// costs a per-hash deep copy of up to SlashesBytesCap. It also adds a concept where a
+	// digest removes one: a reduced copy is a genuinely complex object; a digest is a hash.
 	//
 	// WHAT IT BUYS BEYOND SIMPLICITY: it is the only form that keeps nested evidence bodies
 	// PRUNABLE later without an era. Folding Slashes verbatim would commit the outer block's hash
 	// to every byte of every embedded evidence body, permanently — and that 16 MiB unprunable
-	// slot is the surface R-NEST-GATE measured being weaponised. Settled corner: Ethereum's
+	// slot is the surface measured being weaponised. Settled corner: Ethereum's
 	// BeaconBlockHeader committing its body by a single body_root.
 	//
 	// COVERAGE ON v5 IS TRANSITIVE, AND THAT IS DELIBERATE. Mutating Slashes does not move a v5
@@ -727,37 +706,36 @@ type Block struct {
 	// SlashesDigest == sha256(canonical(Slashes)) whenever Slashes is present. Same shape as
 	// AnswerDigest. The era-aware half of TestHashLiteralPinRuntimePair encodes exactly this.
 	//
-	// KEY 19 — allocated here after verifying 1..18 were taken. The genesis-config family bind
-	// (R-CONSENSUS-CONFIG-UNBOUND) also proposed key 19 for `Params *ConsensusParams`; that
-	// change takes key 20. Both certs said "next free, verify at build", and both were right to.
+	// KEY 19 — allocated here after verifying 1.18 were taken. The genesis-config family
+	// bind also wanted key 19 for `Params *ConsensusParams`; that field takes key 20.
 	SlashesDigest *ports.Hash `cbor:"19,keyasint,omitempty"`
 	// Params is the CONSENSUS-CRITICAL GENESIS CONFIG, committed on the GENESIS BLOCK ONLY so the
 	// genesis hash covers it. See ConsensusParams for why this exists and why the alternatives were
 	// refuted. A node configured differently computes a different genesis hash and cannot join —
 	// Reconcile refuses the fork with ErrForeignGenesis before any validity question arises.
 	//
-	// KEY 20, allocated after verifying 1..19 were taken. The genesis-config certification proposed
-	// key 19 and so did (d-3)'s SlashesDigest; both said "next free, verify at build", and both
-	// were right to. (d-3) landed first and took 19.
+	// KEY 20, allocated after verifying 1.19 were taken. SlashesDigest wanted key 19 too and
+	// landed first.
 	//
-	// POINTER, per the same rule as the (d-3) digests: cbor's omitempty never omits a struct value,
+	// POINTER, per the same rule as the block digests: cbor's omitempty never omits a struct value,
 	// so a non-pointer field would emit an empty map into EVERY block body and move every committed
 	// hash. Nil here means "this genesis predates the bind", which keeps ~250 existing
 	// AppendGenesis fixtures byte-identical. That paramless path SURVIVING is a disclosed residual,
 	// not an oversight: only the daemon refuses to launch a new untrusted network without it.
 	Params *ConsensusParams `cbor:"20,keyasint,omitempty"`
 
-	// hashMemo caches Hash() (#555). A block's hashed content is immutable once
-	// minted (Sign computes the hash it signs) or decoded, but Hash() re-marshaled
-	// the whole body — BondRegs' ~1.5 MB proofs included — and re-hashed it on
-	// EVERY call. blockByHash recomputes per scan step and recentBondRegNonces does
-	// up to K=8 such lookups per validated block, so a deep-chain Reconcile paid
-	// O(depth × K × scan) full-body hashes on the node thread: the 16–86 s
-	// ChainReply stalls that saturated the event loop, stretched the sweep timers,
-	// and starved the two-phase gather in the 95d39e8-deep field run. Unexported:
-	// never on the wire (cbor skips it), zero on decode, travels with value copies.
-	// Sign invalidates it (the one place hashed content mutates after a possible
-	// Hash call); everything else constructs before hashing.
+	// hashMemo caches Hash. A block's hashed content is immutable once minted
+	// (Sign computes the hash it signs) or decoded, but Hash re-marshaled the
+	// whole body — BondRegs' ~1.5 MB proofs included — and re-hashed it on
+	// EVERY call. blockByHash recomputes per scan step and
+	// recentBondRegNonces does up to K=8 such lookups per validated block, so
+	// a deep-chain Reconcile paid O(depth × K × scan) full-body hashes on the
+	// node thread: the 16–86 s ChainReply stalls that saturated the event
+	// loop, stretched the sweep timers, and starved the two-phase gather in
+	// the field run. Unexported: never on the wire (cbor skips
+	// it), zero on decode, travels with value copies. Sign invalidates it
+	// (the one place hashed content mutates after a possible Hash call);
+	// everything else constructs before hashing.
 	hashMemo    ports.Hash
 	hashMemoSet bool
 }
@@ -766,7 +744,7 @@ type Block struct {
 // key rides along because a NodeID (its hash) can't be inverted.
 //
 // Era 1 (Round=0, Phase=PhaseLegacy): Sig is over the bare block hash.
-// Era 2 (#432 rounds): Sig is over the domain-separated payload
+// Era 2: Sig is over the domain-separated payload
 // consensusSigBytes(phase, round, hash) — so a prepare can never be replayed
 // as a precommit, and a signature at one round can never complete a quorum at
 // another (the delayed-quorum schedule S1). Round/Phase are cbor-additive:
@@ -793,9 +771,9 @@ type BondReg struct {
 	Size      int64      `cbor:"3,keyasint"`
 	Answer    []byte     `cbor:"4,keyasint,omitempty"`
 	Sig       []byte     `cbor:"5,keyasint,omitempty"`
-	// Domain is the validator's committed failure-domain label (A axis, D-C2): a
-	// self-declared AS/rack/geo hash (the same domainID gossiped for DHT diversity,
-	// H5-B), now COMMITTED in the bond so the concentration metric can count
+	// Domain is the validator's committed failure-domain label (the address axis): a
+	// self-declared AS/rack/geo hash — the same domainID gossiped for DHT diversity,
+	// now COMMITTED in the bond so the concentration metric can count
 	// address-diverse participants deterministically (C2Metric NakamotoDomains).
 	// Signed (see signingBytes) so it binds to the validator. 0 = unset (treated as
 	// independent — behavior identical to pre-A-axis chains). HONESTLY WEAK, and
@@ -804,13 +782,13 @@ type BondReg struct {
 	// transport-verified against the peer's observed address. So it PRICES a single-
 	// /24 split (equal-domain bonds aggregate into one group) but a splitter that
 	// simply DECLARES distinct domains gets distinct groups for free; it does not
-	// CLOSE the honest-whale residue (Kwon — m0.md §10, #182). The composition does
+	// CLOSE the honest-whale residue (Kwon). The composition does
 	// not rely on any cross-check: the shed gates on min(NakamotoOperators,
 	// NakamotoDomains), so free domains can only LOWER the min, never trip the wheels
-	// off early (verified — see the colluding-validator red-team, seam-5).
+	// off early (verified against a colluding-validator adversary).
 	Domain uint64 `cbor:"6,keyasint,omitempty"`
 	// Version is the highest block-rule era this validator's software validates —
-	// the #506 readiness signal. It rides the bond reg (not the attestation)
+	// the readiness signal. It rides the bond reg (not the attestation)
 	// because a reg is hash-covered (Block.Hash commits BondRegs; Atts are NOT
 	// committed and are strippable by any re-serving peer), validator-signed
 	// (signingBytes, conditionally — the Domain idiom), renewed every ≤ TTL/2,
@@ -819,32 +797,31 @@ type BondReg struct {
 	// 0 (absent — a pre-gate binary's reg) reads as NOT rule-aware, the safe
 	// default. Kept by Prune (a light field, like Domain).
 	Version uint8 `cbor:"7,keyasint,omitempty"`
-	// AnswerDigest is sha256(Answer) — the (d-3) two-level hash. It exists so a v5 block's
+	// AnswerDigest is sha256(Answer) — the two-level block hash. It exists so a v5 block's
 	// preimage can commit to the heavy space-time proof WITHOUT carrying it, which is what lets
 	// a PRUNED v5 block recompute its own hash from what it retains. That is the whole purchase:
 	// `Pruned` — a DECLARED identity nothing recomputes — is retired for v5, and the retained
 	// body (LastCommit / StateRoot / Entries / Revocations / Slashes) becomes self-covering
-	// instead of covered by nothing. See Block.Hash's comment for the defect this closes, and
-	// docs/decisions.md D-FREEZE-CALLS-CDEF-2026-09-10 (owner call C, bought on the third-time
-	// rule: a proof that a property holds today is not a structure that makes violating it
-	// impossible).
+	// instead of covered by nothing. See Block.Hash's comment for the defect this closes. The
+	// reason to buy structure here rather than a proof: a proof that a property holds today is
+	// not a structure that makes violating it impossible.
 	//
-	// IT IS A POINTER, AND THAT IS LOAD-BEARING — NOT A STYLE CHOICE. The freeze manifest
-	// specified a bare `ports.Hash`, and that spec was REFUTED
-	// (D-D3-CERT-REFUTATION-2026-09-10): cbor's omitempty NEVER omits a fixed-size ARRAY, so a
-	// zero [32]byte is emitted as 32 zero bytes. bodyHash folds BondRegs with NO version branch
-	// for v2/v4, so a bare array here would have changed the hash of EVERY v2 and v4 block
-	// carrying a bond registration — breaking the frozen-format immutable on LIVE history,
-	// before era-4 ever activates. A nil pointer omits cleanly and pre-v5 bytes are unchanged.
-	// This is exactly the era-3 step-2a fix already proven here for StateRoot/LogRoot
-	// (chain.go:565-575). Gate: TestCarrierHashDriftGuard's WITH-a-bond-reg cases.
+	// IT IS A POINTER, AND THAT IS LOAD-BEARING — NOT A STYLE CHOICE. A bare `ports.Hash`
+	// does not work: cbor's omitempty NEVER omits
+	// a fixed-size ARRAY, so a zero [32]byte is emitted as 32 zero bytes. bodyHash folds
+	// BondRegs with NO version branch for v2/v4, so a bare array here would have changed the
+	// hash of EVERY v2 and v4 block carrying a bond registration — breaking the
+	// frozen-format immutable on LIVE history, before era-4 ever activates. A nil pointer
+	// omits cleanly and pre-v5 bytes are unchanged. This is exactly the era-3 step-2a fix
+	// already proven here for StateRoot/LogRoot. Gate:
+	// TestCarrierHashDriftGuard's WITH-a-bond-reg cases.
 	AnswerDigest *ports.Hash `cbor:"8,keyasint,omitempty"`
 }
 
 // v5PreimageBondRegs projects registrations onto their v5 PREIMAGE form: the heavy Answer is
 // replaced by the committed AnswerDigest. It is a per-registration SHALLOW copy — the reduced
 // copy the freeze manifest specified for Slashes was refuted partly for costing a deep copy of up
-// to SlashesBytesCap on every hash (#563); this one copies a slice header per reg and nils it.
+// to SlashesBytesCap on every hash; this one copies a slice header per reg and nils it.
 // Returns nil for nil so the omitempty bytes are unchanged for a reg-free block.
 func v5PreimageBondRegs(in []BondReg) []BondReg {
 	if in == nil {
@@ -885,7 +862,7 @@ func (r BondReg) signingBytes(nonce uint64) []byte {
 		b = append(b, []byte("silt/chain/bondreg/domain/v1")...)
 		b = append(b, d[:]...)
 	}
-	// Bind the #506 readiness signal the same conditional way: a version-less reg
+	// Bind the readiness signal the same conditional way: a version-less reg
 	// signs the exact pre-gate message (existing signatures verify unchanged), and
 	// a signalling reg's Version cannot be flipped without breaking Sig.
 	if r.Version != 0 {
@@ -898,11 +875,11 @@ func (r BondReg) signingBytes(nonce uint64) []byte {
 var encMode cbor.EncMode
 
 // encModeBuf is encMode's buffer-reusing twin (identical CanonicalEncOptions,
-// so identical bytes — asserted by TestHashPooledBufferIdentity_563). Hash()
-// marshals a block's FULL body to hash it; on the cold-sync Reconcile path that
-// is one multi-MB transient per decoded block, and the resulting O(fork-bytes)
-// garbage burst is what crossed the 2 GB box's envelope in the field (#563).
-// MarshalToBuffer into a pooled buffer keeps the churn at ~one resident buffer.
+// so identical bytes — asserted by TestHashPooledBufferIdentity). Hash marshals
+// a block's FULL body to hash it; on the cold-sync Reconcile path that is one
+// multi-MB transient per decoded block, and the resulting O(fork-bytes) garbage
+// burst is what crossed the 2 GB box's envelope in the field. MarshalToBuffer
+// into a pooled buffer keeps the churn at ~one resident buffer.
 var encModeBuf cbor.UserBufferEncMode
 
 var hashBufPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
@@ -932,19 +909,17 @@ func (b *Block) Hash() ports.Hash {
 	// evidence blocks inside Slashes[i] — has nothing binding Pruned to its body, so
 	// "the sigs are over the real hash" holds only for the digest the ACCUSER chose.
 	// The equivocation path therefore never reads this short-circuit: it recomputes
-	// from the body (bodyHash) and refuses pruned evidence outright (R0.6,
-	// F2-EVIDENCE-RECOMPUTE; docs/decisions.md D-F2-EVIDENCE-RECOMPUTE).
+	// from the body (bodyHash) and refuses pruned evidence outright.
 	//
 	// THE PRUNED FIELD IS A LINKAGE TOKEN, NOT A CONTENT COMMITMENT — the complementary
-	// statement for the body fields Prune() keeps (PE ruling
-	// RULING-floorbox-predicate-rederivation-structure-2026-09-03.md §6(b), red-team
-	// RT-CARRIER-2). The attack is not forging Pruned. It is KEEPING Pruned and the
-	// real signatures while mutating the body: Hash() returns b.Pruned unchanged, so every
-	// signature still verifies. Prune() (below) drops only BondReg.Answer — it KEEPS
-	// LastCommit, StateRoot, Entries, Revocations, Slashes and the light BondReg fields, and
-	// none of them is covered by Hash() once the block is pruned. That is a pre-existing
-	// property of era-3 pruning, which exists for build-immutable #8; the era-4 carrier is
-	// simply the first TRANSITION input to ride it.
+	// statement for the body fields Prune keeps. The attack is not forging Pruned. It is
+	// KEEPING Pruned and the real
+	// signatures while mutating the body: Hash returns b.Pruned unchanged, so every
+	// signature still verifies. Prune (below) drops only BondReg.Answer — it KEEPS
+	// LastCommit, StateRoot, Entries, Revocations, Slashes and the light BondReg fields,
+	// and none of them is covered by Hash once the block is pruned. That is a
+	// pre-existing property of era-3 pruning, which exists for build-immutable #8; the
+	// era-4 carrier is simply the first TRANSITION input to ride it.
 	//
 	// THE INVARIANT THAT ACTUALLY HOLDS: a pruned block's integrity rests on
 	// (i) the recompute chain to the first NON-pruned descendant — whose signed StateRoot IS
@@ -952,24 +927,23 @@ func (b *Block) Hash() ports.Hash {
 	// (ii) trustFloor, below which alone a pruned block is trusted (Reconcile). CONSEQUENTLY:
 	// NO CONSENSUS DECISION MAY DEPEND ON RE-READING THE BODY OF A PRUNED BLOCK.
 	//
-	// THE CARRIER IS NOT PROTECTED BY ITS SIGNATURES (RT2-CARRIER-14; P-table delta
-	// certification §5.2 — the third time this comment has shipped a false safety claim).
-	// validateCarrier accepts an entry iff it is a genuine PhasePrecommit signature over
-	// b.Prev, with no round constraint and no qualification screen. b.Prev is the PARENT's
-	// hash, and collectQuorumSigs verified the parent's own published Atts at PhasePrecommit
-	// over exactly that hash — so EVERY entry of the parent's Atts is a valid carrier entry
-	// for the child, byte for byte, on every replica's disk and served by MsgGetChain.
-	// ADDING carrier entries to a pruned block is therefore exactly as free as DROPPING
-	// them: harvest the parent's Atts, rewrite LastCommit and StateRoot, and Hash() returns
-	// b.Pruned unchanged, so every signature still verifies and validateCarrier ACCEPTS.
-	// No key is needed. The DESCENDANT CATCH (i) is the ONLY defence, and its consequence is
-	// not a rejection of the history: under Reload's longest-valid-prefix contract a node
-	// fed a rewritten pruned ancestor accepts it, applies the forged seating, and then
-	// refuses the first non-pruned descendant on its hash-covered StateRoot — a SILENT HEAD
-	// TRUNCATION at that descendant, with the forged seat live in the replayed state
-	// (validatorsSeen, the maturity input). TestGD11_PrunedCarrierRewriteIsCaughtOnlyBy-
-	// TheDescendant (pruned_block_test.go) drives both sides; the underlying property is
-	// R-CARRIER-PRUNED-HASH, OPEN, bounded not eliminated, deadline the stamp raise.
+	// THE CARRIER IS NOT PROTECTED BY ITS SIGNATURES — this is the third time this comment
+	// has shipped a false safety claim. validateCarrier accepts an entry iff it is a genuine PhasePrecommit signature over
+	// b.Prev, with no round constraint and no qualification screen. b.Prev is the
+	// PARENT's hash, and collectQuorumSigs verified the parent's own published Atts at
+	// PhasePrecommit over exactly that hash — so EVERY entry of the parent's Atts is a
+	// valid carrier entry for the child, byte for byte, on every replica's disk and
+	// served by MsgGetChain. ADDING carrier entries to a pruned block is therefore
+	// exactly as free as DROPPING them: harvest the parent's Atts, rewrite LastCommit and
+	// StateRoot, and Hash returns b.Pruned unchanged, so every signature still verifies
+	// and validateCarrier ACCEPTS. No key is needed. The DESCENDANT CATCH (i) is the ONLY
+	// defence, and its consequence is not a rejection of the history: under Reload's
+	// longest-valid-prefix contract a node fed a rewritten pruned ancestor accepts it,
+	// applies the forged seating, and then refuses the first non-pruned descendant on its
+	// hash-covered StateRoot — a SILENT HEAD TRUNCATION at that descendant, with the
+	// forged seat live in the replayed state (validatorsSeen, the maturity input).
+	// TestPrunedCarrierRewriteIsCaughtOnlyByTheDescendant (pruned_block_test.go)
+	// drives both sides; the underlying property is OPEN — bounded, not eliminated.
 	if b.IsPruned() {
 		return b.Pruned
 	}
@@ -984,11 +958,11 @@ func (b *Block) Hash() ports.Hash {
 // bodyHash is the content digest recomputed from the block body, ALWAYS: it never
 // short-circuits to Pruned and never reads or writes hashMemo. It is the one hash
 // function the equivocation path uses (CheckEquivocation for verification and
-// FindEquivocations for candidate selection — G-6 of the R0.6 certification), because
+// FindEquivocations for candidate selection), because
 // an equivocation proof's blocks arrive with no independent hash: reading Pruned would
 // let the accuser choose the signed message (the I5 cross-height forgery), and reading
 // the memo would let an in-process value carry a digest over content it no longer
-// holds (RT-SV-2). Hash() memoizes exactly this value for a non-pruned block.
+// holds. Hash memoizes exactly this value for a non-pruned block.
 //
 // StateRoot/LogRoot are folded in so attesters sign the era-3 committed roots. For an
 // era-2 block both are zero and omitempty omits them, so the marshalled body — and thus
@@ -996,19 +970,19 @@ func (b *Block) Hash() ports.Hash {
 //
 // LastCommit is folded in for the SAME reason one era up: the era-4 carrier is a TRANSITION
 // input (it writes validatorsSeen), so it must be covered by the signature the attesters
-// give — that coverage IS the R-BOX-ATTESTS fix (O1). A nil carrier is omitted by omitempty,
+// give — that coverage is the whole point of folding it in. A nil carrier is omitted by omitempty,
 // so every pre-carrier block's hash bytes are unchanged. The literal below MUST name BOTH
 // open-era additive fields (IssuerKeys, LastCommit): TestHashLiteralPinsEveryHashCoveredField
-// (hash_literal_pin_test.go) is RED if either is dropped (CD-0).
+// (hash_literal_pin_test.go) is RED if either is dropped.
 func (b *Block) bodyHash() ports.Hash {
-	// (d-3) — the preimage is VERSION-DEPENDENT from era-4 on. Two literals, and the gate that
+	// The preimage is VERSION-DEPENDENT from era-4 on. Two literals, and the gate that
 	// polices them judges EACH ONE separately (TestHashLiteralPinsEveryHashCoveredField): it used
 	// to union them, which would have let a field folded here and dropped there read as covered
 	// in both. Every non-excluded Block field must appear in BOTH literals.
 	var unsigned Block
 	if b.Version >= BlockVersionWitnessable {
 		// v5: the heavy payloads are committed by DIGEST, not by value. That is what lets a
-		// PRUNED v5 block recompute its own hash from what it retains — the whole (d-3) purchase.
+		// PRUNED v5 block recompute its own hash from what it retains — the whole purchase.
 		// Answer is replaced by AnswerDigest per registration; Slashes by the single
 		// SlashesDigest. Both digests are the STORED fields, and validity requires each to equal
 		// sha256 of its content — so coverage of Answer/Slashes on v5 is TRANSITIVE through that
@@ -1016,7 +990,7 @@ func (b *Block) bodyHash() ports.Hash {
 		// hashed, which is the property the era-aware runtime pin encodes.
 		unsigned = Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: v5PreimageBondRegs(b.BondRegs), Slashes: nil, SlashesDigest: b.SlashesDigest, Params: b.Params, StateRoot: b.StateRoot, LogRoot: b.LogRoot, IssuerKeys: b.IssuerKeys, LastCommit: b.LastCommit}
 	} else {
-		// pre-v5: BYTE-IDENTICAL to before (d-3). AnswerDigest and SlashesDigest are POINTERS and
+		// pre-v5: BYTE-IDENTICAL to before the digests landed. AnswerDigest and SlashesDigest are POINTERS and
 		// are nil on every pre-v5 block (validity refuses a pre-v5 block that carries either), so
 		// omitempty omits them and no committed v2/v4 hash moves. That is the frozen-format
 		// immutable, and TestCarrierHashDriftGuard's WITH-a-bond-reg cases are what hold it.
@@ -1034,7 +1008,7 @@ func (b *Block) bodyHash() ports.Hash {
 }
 
 // blockHashComputes counts actual (non-memoized) Hash computations — the
-// deterministic oracle for the #555 hash-work bound (a wall-clock assertion
+// deterministic oracle for the hash-work bound (a wall-clock assertion
 // would be flaky; the WORK count is what the memo bounds). Atomic only so a
 // concurrent test cannot trip the race detector; the node loop is
 // single-threaded.
@@ -1046,15 +1020,15 @@ func (b *Block) IsPruned() bool { return b.Pruned != (ports.Hash{}) }
 
 // HeavyProofsShed reports whether this block COMMITTED space-time proofs it no longer CARRIES.
 //
-// ONE SIGNAL, ONE JOB (build-immutable #3). Before (d-3), `Pruned` served two masters and nobody
-// had to notice: it meant BOTH "this block's identity is declared, not recomputable" AND "this
-// block's heavy bond proofs are gone, so bond verification cannot be re-run". Those are different
-// facts, and (d-3) changes only the first — a pruned v5 block reproduces its own hash, so it is
-// not `IsPruned`. Retiring `Pruned` for v5 without splitting the signal would therefore silently
-// stop the SECOND fact from firing, and the trust-floor refusal that rests on it
-// (ErrPrunedAboveHorizon) would quietly stop protecting v5 blocks.
+// ONE SIGNAL, ONE JOB (build-immutable #3). Before the digests landed, `Pruned` served two
+// masters and nobody had to notice: it meant BOTH "this block's identity is declared, not
+// recomputable" AND "this block's heavy bond proofs are gone, so bond verification cannot be
+// re-run". Those are different facts, and the digests change only the first — a pruned v5 block
+// reproduces its own hash, so it is not `IsPruned`. Retiring `Pruned` for v5 without splitting
+// the signal would therefore silently stop the SECOND fact from firing, and the trust-floor
+// refusal that rests on it (ErrPrunedAboveHorizon) would quietly stop protecting v5 blocks.
 //
-// That is the disqualifying widening the (d-3) delta certification named in advance:
+// That is the disqualifying widening the delta review named in advance:
 // *identity != bond possession, trustFloor stays.* This predicate is the "bond possession" half.
 //
 // A registration has shed its proof when it carries no Answer but commits a digest of one. A
@@ -1074,21 +1048,21 @@ func (b *Block) HeavyProofsShed() bool {
 }
 
 // Prune returns a payload-selective pruned copy of a FULL block: the heavy space-time
-// proofs (BondReg.Answer, ~1.5 MB each) are dropped and the pre-prune hash is stored,
-// so the block still hash-links and still carries its consensus signatures while
-// shedding what OOMs a small box (build-immutable #8). A pruned block is NOT
-// equivocation evidence: its body no longer reproduces its hash, so CheckEquivocation
-// refuses it (R0.6) — a double-sign whose evidence blocks have both been pruned is
-// unslashable (R-LATE-REVEAL, held in tension; bounded to below the prune floor, where
-// ErrPreFinalityReorg already forbids adoption). Note that Prune does NOT recurse into
-// Slashes: evidence bodies embedded in a committed block stay resident forever, which is
-// why SlashesBytesCap bounds that slot. The header, signatures, and the light BondReg
-// fields the STATE paths read (Validator/Root/Size/Sig/Domain) are kept. Call ONLY on a
-// finalized block strictly below the retention horizon — the caller enforces that gate.
-// Idempotent.
+// proofs (BondReg.Answer, ~1.5 MB each) are dropped and the pre-prune hash is stored, so
+// the block still hash-links and still carries its consensus signatures while shedding
+// what OOMs a small box (build-immutable #8). A pruned block is NOT equivocation
+// evidence: its body no longer reproduces its hash, so CheckEquivocation refuses it — a
+// double-sign whose evidence blocks have both been pruned is unslashable (held in
+// tension; bounded to below the prune floor, where ErrPreFinalityReorg already forbids
+// adoption). Note that Prune does NOT recurse into Slashes: evidence bodies embedded in
+// a committed block stay resident forever, which is why SlashesBytesCap bounds that
+// slot. The header, signatures, and the light BondReg fields the STATE paths read
+// (Validator/Root/Size/Sig/Domain) are kept. Call ONLY on a finalized block strictly
+// below the retention horizon — the caller enforces that gate. Idempotent.
 func (b Block) Prune() Block {
-	// Idempotence keys on BOND POSSESSION, not the declared token: a pruned v5 block sets no
-	// `Pruned`, so IsPruned() would say "not pruned" and this would re-run on every call.
+	// Idempotence keys on BOND POSSESSION, not the declared token: a pruned v5 block sets
+	// no `Pruned`, so IsPruned would say "not pruned" and this would re-run on every
+	// call.
 	if b.HeavyProofsShed() {
 		return b
 	}
@@ -1102,20 +1076,22 @@ func (b Block) Prune() Block {
 		}
 	}
 	if b.Version >= BlockVersionWitnessable {
-		// (d-3) — THIS IS THE PURCHASE. A v5 block's preimage already folds AnswerDigest in place
+		// THIS IS THE PURCHASE. A v5 block's preimage already folds AnswerDigest in place
 		// of Answer, and AnswerDigest survives the prune above, so the pruned body STILL
 		// reproduces its own hash. `Pruned` is therefore not set, and is retired for v5.
 		//
-		// What that buys, stated as the defect it closes: on pre-v5, Hash() short-circuits to the
-		// declared b.Pruned, so once a block is pruned NONE of its retained body — LastCommit,
-		// StateRoot, Entries, Revocations, Slashes — is hash-covered, and an attacker who KEEPS
-		// Pruned and the real signatures while mutating the body passes every signature check.
-		// See Block.Hash's comment, which records that this safety claim has shipped false three
-		// times. Here the retained body is self-covering, so the violation is impossible rather
-		// than merely absent (docs/decisions.md D-FREEZE-CALLS-CDEF-2026-09-10, owner call C).
+		// What that buys, stated as the defect it closes: on pre-v5, Hash
+		// short-circuits to the declared b.Pruned, so once a block is pruned NONE of
+		// its retained body — LastCommit, StateRoot, Entries, Revocations, Slashes —
+		// is hash-covered, and an attacker who KEEPS Pruned and the real signatures
+		// while mutating the body passes every signature check. See Block.Hash's
+		// comment, which records that this safety claim has shipped false three
+		// times. Here the retained body is self-covering, so the violation is
+		// impossible rather than merely absent.
 		//
-		// Gate: G-D3-7 asserts out.Hash() == h with no Pruned set, and that mutating the pruned
-		// body moves the hash — the two halves of "self-covering".
+		// Gate: this gate asserts out.Hash == h with no Pruned set, and that
+		// mutating the pruned body moves the hash — the two halves of
+		// "self-covering".
 		return out
 	}
 	out.Pruned = h
@@ -1141,7 +1117,7 @@ func (a Attestation) AttesterID() ports.NodeID { return sha256.Sum256(a.PubKey) 
 
 // Sign fills in the proposer key and signature. Setting Proposer mutates
 // hashed content, so the memo is invalidated first — Sign must never sign a
-// stale hash (#555).
+// stale hash.
 func Sign(b *Block, priv ed25519.PrivateKey) {
 	b.Proposer = append([]byte(nil), priv.Public().(ed25519.PublicKey)...)
 	b.hashMemoSet = false
@@ -1189,38 +1165,37 @@ const consensusSigDomainV5 = "silt/consensus/v5\x00"
 
 // consensusSigPreimageV5Len is the exact width of every consensusSigBytesV5 output.
 // Load-bearing for the junk-leaf re-pricing, so it is MEASURED, never quoted from a derivation
-// (silt-derive-then-drive): TestGPRE9_MeasureThePreimageAndTheEvidenceMaterial prints and pins it.
+// (silt-derive-then-drive): TestMeasureThePreimageAndTheEvidenceMaterial prints and pins it.
 const consensusSigPreimageV5Len = len(consensusSigDomainV5) + len(ports.Hash{}) + 1 + 8 + 8 + len(ports.Hash{})
 
-// consensusSigBytesV5 is the ERA-4 signed payload — the owner-call-A layout, research-certified
-// 2026-09-10:
+// consensusSigBytesV5 is the ERA-4 signed payload:
 //
-//	offset  0  18  "silt/consensus/v5\x00"   domain tag
-//	offset 18  32  chainID                   the genesis block's Hash() — NETWORK IDENTITY
-//	offset 50   1  phase                     PhasePrepareV5 | PhasePrecommitV5
-//	offset 51   8  height   little-endian    THE #397 FIELD — what this change buys
-//	offset 59   8  round    little-endian
-//	offset 67  32  h                         the attested block hash
+//	offset 0 18 "silt/consensus/v5\x00" domain tag
+//	offset 18 32 chainID the genesis block's Hash — NETWORK IDENTITY
+//	offset 50 1 phase PhasePrepareV5 | PhasePrecommitV5
+//	offset 51 8 height little-endian THE FIELD — what this change buys
+//	offset 59 8 round little-endian
+//	offset 67 32 h the attested block hash
 //
 // WHY HEIGHT. The era-2 preimage binds (round, phase) and lets the height ride "inside the
 // hash". That indirection is exactly what Block.Pruned severed: the accuser supplied the height
 // from OUTSIDE the signed message, so two genuine signatures at two DIFFERENT heights could be
-// re-labelled as one double-sign and evict an honest validator (I5, R0.6 — CheckEquivocation's
+// re-labelled as one double-sign and evict an honest validator (I5 — CheckEquivocation's
 // comment says the height check "is sound only because the signed message is a digest OVER the
-// declared Height"). This is the SECOND occurrence of the #397 watermark scar — the same
-// (height, round, step) schema family, the same dropped field, and the dropped field is again
-// the thing that broke (docs/build-process.md rule 6). With the height declared INSIDE the
-// message the forgery has no expression: at most one of the two signatures verifies at one
-// declared height. Driven by TestGPRE5_DeclaredHeightMustBindTheSignature.
+// declared Height"). This is the SECOND occurrence of the watermark defect — the same (height,
+// round, step) schema family, the same dropped field, and the dropped field is again the thing
+// that broke rule 6. With the height declared INSIDE the message the forgery has no expression:
+// at most one of the two signatures verifies at one declared height. Driven by
+// TestDeclaredHeightMustBindTheSignature.
 //
 // WHY THE CHAIN ID, AND WHY A DOMAIN TAG IS NOT ONE. consensusSigDomain separates message KINDS,
 // not NETWORKS — it is the same constant on every silt network that has ever existed, and the
 // genesis moved on 2026-09-07, so two exist. Without this field, one identity key honestly
 // precommitting at the same (h, r) on two networks yields a VALID equivocation proof on EITHER:
-// validateSlashes performs no chain-membership check and apply() evicts permanently. CometBFT's
+// validateSlashes performs no chain-membership check and apply evicts permanently. CometBFT's
 // CanonicalVote carries ChainID; Ethereum's compute_fork_data_root names the purpose verbatim
 // ("to avoid collisions across forks/chains"). Driven by
-// TestGPRE6_CrossChainHonestSignaturesAreNotEvidence.
+// TestCrossChainHonestSignaturesAreNotEvidence.
 //
 // NO LENGTH PREFIX, AND THE STANDING CONSTRAINT THAT COMES WITH IT. CometBFT length-delimits its
 // sign-bytes because protobuf is variable-length and self-describing. This is a concatenation of
@@ -1251,14 +1226,14 @@ func consensusSigBytesV5(chainID ports.Hash, phase uint8, height, round uint64, 
 //
 // It is a struct and not two positional arguments because ChainID and the attested block hash
 // are both ports.Hash. Across nine call sites a positional swap of two identically-typed
-// 32-byte values is a silent wrong-verdict with no compiler complaint — the #397 family. Named
+// 32-byte values is a silent wrong-verdict with no compiler complaint — the family. Named
 // fields make the swap impossible instead of making it a gate's job.
 //
 // Both fields are IGNORED by the era-1 and era-2 arms of verifyAtt, whose preimages do not carry
 // them. They are load-bearing only for PhasePrepareV5 / PhasePrecommitV5.
 type attScope struct {
-	// ChainID is the genesis block's Hash() — the VERIFIER'S OWN, never a field of the block
-	// under judgement and never a driver's parameter (BG-2).
+	// ChainID is the genesis block's Hash — the VERIFIER'S OWN, never a field of the
+	// block under judgement and never a driver's parameter.
 	ChainID ports.Hash
 	// Height is the height of the block being ATTESTED. It is READ from that block wherever it
 	// is in scope, and DERIVED as b.Height-1 at the one site that holds only the child
@@ -1268,8 +1243,8 @@ type attScope struct {
 	Height uint64
 }
 
-// AttestAt produces a validator's phase/round-scoped consensus signature for b (#432 two-phase
-// gather), in the FORM b's own era demands.
+// AttestAt produces a validator's phase/round-scoped consensus signature for b, in the FORM
+// b's own era demands.
 //
 // `step` is the CANONICAL step (PhasePrepare / PhasePrecommit); AttPhase maps it to the wire
 // phase for b.Version. A caller therefore never picks an era form, and the durable watermark it
@@ -1280,7 +1255,7 @@ type attScope struct {
 // often does not — validateCarrier verifies the PARENT's precommits while holding only the child
 // — so the era must be recoverable from the object that CARRIES the signature. Keying a verifier
 // on the CONTAINING block's version is a permanent liveness wedge at exactly the first v5
-// height, driven RED by TestGPRE1_Era4BoundaryCarrierIsNotAWedge.
+// height, driven RED by TestEra4BoundaryCarrierIsNotAWedge.
 //
 // chainID is ignored for a sub-v5 block. For a v5 block it must be the signer's own chain id;
 // signing under the zero hash mints a signature no verifier will accept.
@@ -1300,12 +1275,12 @@ func AttestAt(b *Block, priv ed25519.PrivateKey, round uint64, step uint8, chain
 }
 
 // verifyAtt verifies one attestation against h under ITS OWN declared era — the ONE dispatcher,
-// extended, never a parallel path (#558):
+// extended, never a parallel path:
 //
-//	PhaseLegacy                        the era-1 bare hash, round 0 only
-//	PhasePrepare, PhasePrecommit       the era-2 payload at the declared (round, phase)
-//	PhasePrepareV5, PhasePrecommitV5   the era-4 payload, additionally binding s.ChainID and
-//	                                   s.Height
+//	PhaseLegacy the era-1 bare hash, round 0 only
+//	PhasePrepare, PhasePrecommit the era-2 payload at the declared (round, phase)
+//	PhasePrepareV5, PhasePrecommitV5 the era-4 payload, additionally binding s.ChainID and
+//	 s.Height
 //
 // The caller enforces WHICH phase/round it will accept — this only answers "is the signature
 // genuine for what it claims to be".
@@ -1340,18 +1315,17 @@ func Encode(b *Block) []byte {
 	return raw
 }
 
-// versionSupported: v1 (legacy single-phase), v2 (#432 rounds), v3 (#506 reg-gate
-// readiness tag), v4 (era-3 committed state root), and v5 (era-4 witnessable transitions)
-// all decode; each validates under ITS OWN era's rules (era-gated in ValidateCommit /
-// VerifyEquivocation) — committed history is never re-interpreted. The ceiling is
-// BlockVersionWitnessable: a v5 block is accepted at decode AND, in the SAME release (build
-// increment 4c, PREDICATE-FIRST), is subject to the era-4 validity rules — the v5
-// committed-root predicate (validateEra3Roots recomputes via StateRootForVersion(5)) and
-// the RegCap per-block BondReg count cap (validateBondRegs). Widening the decode ceiling
-// atomically with the predicate closes the era-3 interim window (a version decode-accepted
-// before its validity rule existed). A version BEYOND 5 is refused loudly with
-// ErrBlockVersion — the hard-fork guard: a block from a not-yet-known era is never silently
-// mis-validated.
+// versionSupported: v1 (legacy single-phase), v2, v3, v4 (era-3 committed state root), and
+// v5 (era-4 witnessable transitions) all decode; each validates under ITS OWN era's rules
+// (era-gated in ValidateCommit / VerifyEquivocation) — committed history is never
+// re-interpreted. The ceiling is BlockVersionWitnessable: a v5 block is accepted at decode
+// AND, in the SAME release (build increment 4c, PREDICATE-FIRST), is subject to the era-4
+// validity rules — the v5 committed-root predicate (validateEra3Roots recomputes via
+// StateRootForVersion(5)) and the RegCap per-block BondReg count cap (validateBondRegs).
+// Widening the decode ceiling atomically with the predicate closes the era-3 interim window
+// (a version decode-accepted before its validity rule existed). A version BEYOND 5 is
+// refused loudly with ErrBlockVersion — the hard-fork guard: a block from a not-yet-known
+// era is never silently mis-validated.
 func versionSupported(v uint64) bool { return v >= 1 && v <= BlockVersionWitnessable }
 
 func Decode(raw []byte) (*Block, error) {
@@ -1377,12 +1351,12 @@ func EncodeBlocks(bs []Block) []byte {
 // maxBytes, always at least ONE block (a lone oversized block still moves — never
 // stall). It sizes blocks one at a time and stops early, so it never marshals more
 // than the returned window — the point is to bound the chain-SERVE buffer (a node
-// serving its whole chain into one buffer was the 144 MB `EncodeBlocks` OOM driver,
-// docs/thinking/2026-08-18-oom-is-multi-driver-chain-serve.md), NOT to marshal the
-// full chain. A syncing peer requests successive windows (Height:0, then last+1, …)
-// until it reaches the server's head; Reconcile validates the reassembled linkage,
-// so a windowed fetch cannot corrupt the chain. maxBytes <= 0 means unbounded (the
-// legacy whole-chain encode, for callers/tests that want it).
+// serving its whole chain into one buffer was the 144 MB `EncodeBlocks` OOM
+// driver), NOT to marshal the full chain. A syncing peer requests successive
+// windows (Height:0, then last+1, …) until it reaches the server's head; Reconcile
+// validates the reassembled linkage, so a windowed fetch cannot corrupt the chain.
+// maxBytes <= 0 means unbounded (the legacy whole-chain encode, for callers/tests
+// that want it).
 func EncodeBlocksUpTo(bs []Block, maxBytes int) []byte {
 	if maxBytes <= 0 || len(bs) == 0 {
 		return EncodeBlocks(bs)
@@ -1419,8 +1393,8 @@ func DecodeBlocks(raw []byte) ([]Block, error) {
 var (
 	ErrLowReputation      = errors.New("chain: reputation below threshold")
 	ErrNoQuorum           = errors.New("chain: insufficient valid attestations")
-	ErrNoQuorumWeight     = errors.New("chain: mature-epoch commit lacks the frozen-weight super-majority (>⅔ of epoch bonded weight — B2, research certification 2026-08-13)")
-	ErrRegGate            = errors.New("chain: bond registration violates the active reg-inclusion rate bound (#506 R-rule — slashed identity, or re-registered within R of its last committed reg)")
+	ErrNoQuorumWeight     = errors.New("chain: mature-epoch commit lacks the frozen-weight super-majority (>⅔ of epoch bonded weight)")
+	ErrRegGate            = errors.New("chain: bond registration violates the active reg-inclusion rate bound (the R-rule — slashed identity, or re-registered within R of its last committed reg)")
 	ErrBadSignature       = errors.New("chain: bad signature")
 	ErrWrongParent        = errors.New("chain: block does not extend the local head")
 	ErrDupRoot            = errors.New("chain: root already registered")
@@ -1428,21 +1402,21 @@ var (
 	ErrAnchorRequired     = errors.New("chain: immature network requires anchor attestations (training wheels)")
 	ErrDeMatureQuorum     = errors.New("chain: de-matured network requires a real-bond super-quorum (≥⅔ of live bonded weight)")
 	ErrPreCheckpointReorg = errors.New("chain: fork rewrites history at or before the weak-subjectivity checkpoint (long-range reorg refused)")
-	ErrPreFinalityReorg   = errors.New("chain: fork would revert a finalized (super-quorum-committed) objective block (BFT finality gate — reorg refused; prefer stall to reorg, D-1, #357 §3)")
+	ErrPreFinalityReorg   = errors.New("chain: fork would revert a finalized (super-quorum-committed) objective block (BFT finality gate — reorg refused; prefer stall to reorg, D-1,  §3)")
 	ErrTokenRequired      = errors.New("chain: entry has no publish token (required)")
 	ErrTokenSpent         = errors.New("chain: publish token serial already spent (double-spend)")
 	ErrBlockVersion       = errors.New("chain: unsupported block version")
 	ErrRegCapExceeded     = errors.New("chain: era-4 (v5) block exceeds RegCap — too many BondRegs (per-block TOTAL count, fresh + renewal, after same-id fold; bounds the TTL due-bucket witness read-set)")
-	ErrProposerPrepare    = errors.New("chain: era-2 commit lacks the proposer's round-scoped prepare (the authorship vote that makes a double-proposal attributable — #432/I5)")
+	ErrProposerPrepare    = errors.New("chain: era-2 commit lacks the proposer's round-scoped prepare (the authorship vote that makes a double-proposal attributable — /I5)")
 	ErrPublisherEntry     = errors.New("chain: entry carries a durable Publisher (records permanent linkage; publish unlinkably or run an explicitly trusted deployment)")
 	ErrEmptyFork          = errors.New("chain: cannot reconcile an empty fork")
 	ErrNoGenesis          = errors.New("chain: local replica has no genesis to anchor a reconcile")
 	ErrForeignGenesis     = errors.New("chain: fork does not share our genesis (refusing to swap chains)")
-	// ErrRevokeUnknownRoot rejects a takedown that names a root the chain has
-	// never committed. Without this a quorum could revoke a competitor's
-	// unpublished hash, or a hash that never existed — arbitrary censorship of
-	// content that isn't on the ledger (red-team F5). A revocation must point
-	// at a real prior publication record.
+	// ErrRevokeUnknownRoot rejects a takedown that names a root the chain
+	// has never committed. Without this a quorum could revoke a
+	// competitor's unpublished hash, or a hash that never existed —
+	// arbitrary censorship of content that isn't on the ledger. A
+	// revocation must point at a real prior publication record.
 	ErrRevokeUnknownRoot = errors.New("chain: revocation names a root never published on this chain")
 	// ErrUnrevokeNotRevoked rejects an un-revoke of a root that is not
 	// currently revoked — the reversibility record only clears a live takedown.
@@ -1453,44 +1427,45 @@ var (
 	ErrBadBondReg = errors.New("chain: invalid on-chain bond registration")
 
 	// ErrSharedRootInBlock rejects a block that carries two bond registrations
-	// from DISTINCT validator IDs on the SAME root (CONSENSUS-RULE, certified
-	// 2026-08-28 same-root-intrablock-bondreg-contention, resolution (a)).
-	// apply()'s per-root dedup resolves such a collision by intra-block SLICE
-	// ORDER (chain.go:2780-2790), so two honest replicas applying the identical
-	// block in a different BondReg order commit a different bonded/bondRootOwner
-	// state — an order-dependent commit the era-3 SMT root cannot tolerate. The
-	// validity layer rejects the collision so it can never commit. Runs
-	// UNCONDITIONALLY (not behind regGateActive); a validator re-registering its
-	// OWN root (same ID) is NOT a collision (renew/resize is legal, F1). Dedup is
-	// on (root × distinct-ID), never on root alone.
+	// from DISTINCT validator IDs on the SAME root (a CONSENSUS RULE).
+	// apply's per-root dedup resolves such a collision by intra-block SLICE
+	// ORDER (chain.go), so two honest replicas applying the
+	// identical block in a different BondReg order commit a different
+	// bonded/bondRootOwner state — an order-dependent commit the era-3 SMT
+	// root cannot tolerate. The validity layer rejects the collision so it can
+	// never commit. Runs UNCONDITIONALLY (not behind regGateActive); a
+	// validator re-registering its OWN root (same ID) is NOT a collision
+	// (renew/resize is legal, F1). Dedup is on (root × distinct-ID), never on
+	// root alone.
 	ErrSharedRootInBlock = errors.New("chain: block carries two bond registrations from distinct identities on the same root (order-dependent commit — refused)")
 
-	// ErrPrunedAboveHorizon rejects a payload-pruned (Answer-less) block presented
-	// at or above the node's OWN trust floor (max WS-checkpoint / rolling retention
-	// horizon). A pruned block cannot have its space-time proof re-verified, so
-	// trusting one at/above the finalized anchor would let a peer strip Answer to
-	// skip verification and forge standing — a C1 (no-discount) break. Trusted only
-	// strictly below the floor, where finality already makes the reg irreversible
-	// (Q2 gate, slice 3; PE ruling pruned-block-representation-2026-08-18).
+	// ErrPrunedAboveHorizon rejects a payload-pruned (Answer-less) block
+	// presented at or above the node's OWN trust floor (max WS-checkpoint /
+	// rolling retention horizon). A pruned block cannot have its space-time
+	// proof re-verified, so trusting one at/above the finalized anchor would let
+	// a peer strip Answer to skip verification and forge standing — a C1
+	// (no-discount) break. Trusted only strictly below the floor, where finality
+	// already makes the reg irreversible (Q2 gate, slice 3).
 	ErrPrunedAboveHorizon = errors.New("chain: pruned block at/above the node's trust floor (would skip space-time verification — refused)")
 
 	// ErrMalformedPruned rejects a block marked pruned (Pruned set) that still
 	// carries a BondReg.Answer — a full block cannot smuggle a forged stored-hash
-	// past the Q2 skip. The two are mutually exclusive by construction (Prune()
-	// drops every Answer); a hybrid is hand-crafted and refused (decode-invariant belt).
+	// past the Q2 skip. The two are mutually exclusive by construction (Prune drops
+	// every Answer); a hybrid is hand-crafted and refused (decode-invariant belt).
 	ErrMalformedPruned = errors.New("chain: block is marked pruned but carries a BondReg.Answer (malformed)")
 	// ErrPrunedEvidence rejects an equivocation proof whose evidence block is pruned
-	// (R0.6, F2-EVIDENCE-RECOMPUTE): a pruned body cannot reproduce its hash, so nothing
+	// (F2-EVIDENCE-RECOMPUTE): a pruned body cannot reproduce its hash, so nothing
 	// binds the declared Height to the signed message and the accuser could pick the
-	// digest. Refused loudly and by name (S5) so a gate can tell "the rule fired" from
-	// "the fixture was degenerate". Always wrapped under ErrBadSlash on the write path.
-	ErrPrunedEvidence = errors.New("chain: equivocation evidence block is pruned — its body cannot reproduce its hash, so it binds no height and is not evidence (R0.6 F2-EVIDENCE-RECOMPUTE)")
+	// digest. Refused loudly and by name (S5) so a gate can tell "the rule fired"
+	// from "the fixture was degenerate". Always wrapped under ErrBadSlash on the
+	// write path.
+	ErrPrunedEvidence = errors.New("chain: equivocation evidence block is pruned — its body cannot reproduce its hash, so it binds no height and is not evidence (F2-EVIDENCE-RECOMPUTE)")
 	// ErrNotEquivocation is CheckEquivocation's generic refusal for the honest
 	// exemptions (sequential heights, same block twice, mixed eras, no shared slot, no
 	// verifying signature) — the cases VerifyEquivocation has always returned false for.
 	ErrNotEquivocation = errors.New("chain: equivocation proof does not prove a double-sign")
-	// ErrSlashesBytesCapExceeded rejects a block whose canonically-encoded Slashes field
-	// exceeds SlashesBytesCap (R0.6 (d-2)); an at-cap block is accepted.
+	// ErrSlashesBytesCapExceeded rejects a block whose canonically-encoded Slashes
+	// field exceeds SlashesBytesCap; an at-cap block is accepted.
 	ErrSlashesBytesCapExceeded = errors.New("chain: block exceeds SlashesBytesCap — encoded Slashes bytes over the per-block ceiling (an immutable-#8 resource ceiling on the honest axis; the evidence-size completeness bound on the other)")
 	// ErrBadSlash rejects an on-chain equivocation record that is not a valid,
 	// self-verifying double-sign proof — so a forged slash cannot evict an honest
@@ -1519,19 +1494,20 @@ type Chain struct {
 	// ever committed a block — the monotonic decentralization signal the
 	// training wheels shed on (see Mature).
 	validatorsSeen map[ports.NodeID]bool
-	// everMature is the ONE-WAY MATURITY LATCH (F-1): true once Mature() has held
-	// at ANY committed height. The launch anchors are load-bearing only while this
-	// is FALSE, so once a network is first certified decentralized the zero-bond
-	// anchors NEVER become load-bearing again — the one-way ratchet immutable #3
-	// promises. Like validatorsSeen/bonded it is a pure, monotonic function of the
-	// committed block sequence (latched in apply, re-derived on Reload, carried
-	// across a reorg by adopt), so every replica agrees on it as a CONSENSUS fact.
-	// It is never reset. The old code gated anchors on the LIVE Mature(), which
-	// re-armed the wheels whenever concentration rose — even from one honest whale
-	// growing REAL bond — handing a zero-bond anchor permanent power, or halting the
-	// chain if the anchors were gone. De-maturation liveness AFTER the latch is
-	// carried by the real-bond super-quorum fallback (RequiredQuorum), never by
-	// re-arming anchors. See docs/design/m0.md §10 (F-1).
+	// everMature is the ONE-WAY MATURITY LATCH: true once Mature has
+	// held at ANY committed height. The launch anchors are load-bearing
+	// only while this is FALSE, so once a network is first decentralized
+	// the zero-bond anchors NEVER become load-bearing again — the one-way
+	// ratchet immutable #3 promises. Like validatorsSeen/bonded it is a
+	// pure, monotonic function of the committed block sequence (latched in
+	// apply, re-derived on Reload, carried across a reorg by adopt), so
+	// every replica agrees on it as a CONSENSUS fact. It is never reset.
+	// The old code gated anchors on the LIVE Mature, which re-armed the
+	// wheels whenever concentration rose — even from one honest whale
+	// growing REAL bond — handing a zero-bond anchor permanent power, or
+	// halting the chain if the anchors were gone. De-maturation liveness
+	// AFTER the latch is carried by the real-bond super-quorum fallback
+	// (RequiredQuorum), never by re-arming anchors. See.
 	everMature bool
 	// Publisher-privacy publish tokens (F1): when tokenQuorum > 0 every entry
 	// must carry a PublishToken blind-signed by that many distinct qualified
@@ -1547,12 +1523,12 @@ type Chain struct {
 	// space-time proof (injected so core/chain stays decoupled from core/bond).
 	bonded     map[ports.NodeID]int64
 	verifyBond func(pk []byte, root ports.Hash, size int64, nonce uint64, answer []byte) bool
-	// bondRootOwner enforces, in the OBJECTIVE set, the same per-root dedup the
-	// credit ledger has (credit.rootOwner): a bond Root builds standing for AT
-	// MOST ONE identity, so a colluding operator pointing N identities at one
-	// shared plot earns one bond's standing, not N (red-team F1). The space-time
-	// proof is not identity-bound, so without this a single plot's answer would
-	// verify — and be credited — for every identity that copies it.
+	// bondRootOwner enforces, in the OBJECTIVE set, the same per-root dedup
+	// the credit ledger has (credit.rootOwner): a bond Root builds standing
+	// for AT MOST ONE identity, so a colluding operator pointing N identities
+	// at one shared plot earns one bond's standing, not N. The space-time
+	// proof is not identity-bound, so without this a single plot's answer
+	// would verify — and be credited — for every identity that copies it.
 	bondRootOwner map[ports.Hash]ports.NodeID
 	// bondRootProven records whether a root's current owner claimed it with a
 	// VERIFIED space-time proof (a height>0 registration, gated by
@@ -1569,38 +1545,38 @@ type Chain struct {
 	// within the TTL window is pruned from `bonded`. Deterministic (a function of
 	// block height), so every replica decays standing identically.
 	bondRegHeight map[ports.NodeID]uint64
-	// regVersion records the #506 readiness signal from each validator's LATEST
+	// regVersion records the readiness signal from each validator's LATEST
 	// bond registration (0 = a pre-gate binary, not rule-aware). Derived state,
 	// a pure function of the blocks like bondRegHeight; expires with it.
 	regVersion map[ports.NodeID]uint8
-	// gateLockedIn/gateHeight are the #506 activation state (post-latch path):
-	// at the first mature epoch boundary where rule-aware frozen weight clears
-	// the >⅔ super-quorum, the gate locks in ONE-WAY (monotonic — un-tightening
-	// would itself be a hard fork; a later ready-weight collapse stalls commits,
-	// it never forks, per the certification Q3) and enforcement begins at the
+	// gateLockedIn/gateHeight are the activation state (post-latch path): at
+	// the first mature epoch boundary where rule-aware frozen weight clears
+	// the >⅔ super-quorum, the gate locks in ONE-WAY (monotonic —
+	// un-tightening would itself be a hard fork; a later ready-weight
+	// collapse stalls commits, it never forks) and enforcement begins at the
 	// NEXT boundary: gateHeight = H_act, the R-rule applies to every block of
-	// height > gateHeight. Derived deterministically from committed history in
-	// rotateEpoch, so every replica — live or replaying — computes the identical
-	// H_act; epoch boundaries are super-quorum-final (#357 Condition A), so
-	// H_act cannot be reorged out from under enforcement (certification Q2/I3).
+	// height > gateHeight. Derived deterministically from committed history
+	// in rotateEpoch, so every replica — live or replaying — computes the
+	// identical H_act; epoch boundaries are super-quorum-final, so H_act
+	// cannot be reorged out from under enforcement.
 	gateLockedIn bool
 	gateHeight   uint64
 	// era3LockedIn/era3Height are the era-3 (v4) committed-state-root activation
-	// state, the #506 gateLockedIn/gateHeight mechanism reused one readiness level
-	// up (research cert Q5/Q7). At the first mature epoch boundary where
-	// era-3-AWARE frozen weight (regVersion >= BlockVersionStateRoot, == 4) clears
-	// the same >⅔ super-quorum, era-3 locks in ONE-WAY (monotonic — un-tightening
-	// would itself be a hard fork; a later ready-weight collapse stalls, never
+	// state, the gateLockedIn/gateHeight mechanism reused one readiness level up.
+	// At the first mature epoch boundary where era-3-AWARE frozen weight
+	// (regVersion >= BlockVersionStateRoot, == 4) clears the same >⅔
+	// super-quorum, era-3 locks in ONE-WAY (monotonic — un-tightening would
+	// itself be a hard fork; a later ready-weight collapse stalls, never
 	// un-flips) and activation begins at the NEXT boundary: era3Height = H_era3,
-	// and v4 is REQUIRED (mint + validity) for every block of height >= era3Height.
-	// The >= (vs #506's >) is because era-3 is a MINT/FORMAT boundary: H_era3 is
-	// itself the first v4 height. Derived deterministically from committed history
-	// in rotateEpoch, so every replica — live or replaying — computes the identical
-	// H_era3; epoch boundaries are super-quorum-final (#357 Condition A), so H_era3
-	// cannot be reorged out from under enforcement (certification Q5/I3). A DISTINCT
-	// readiness level from the #506 gate (>= 3): a node signals 4 only when it can
-	// enforce the R-rule AND validate committed roots — the two are different
-	// software states, so one const cannot gate both (cert Q7).
+	// and v4 is REQUIRED (mint + validity) for every block of height >=
+	// era3Height. The >= (vs the >) is because era-3 is a MINT/FORMAT boundary:
+	// H_era3 is itself the first v4 height. Derived deterministically from
+	// committed history in rotateEpoch, so every replica — live or replaying —
+	// computes the identical H_era3; epoch boundaries are super-quorum-final, so
+	// H_era3 cannot be reorged out from under enforcement. A DISTINCT readiness
+	// level from the gate (>= 3): a node signals 4 only when it can enforce the
+	// R-rule AND validate committed roots — the two are different software
+	// states, so one const cannot gate both.
 	era3LockedIn bool
 	era3Height   uint64
 	// era4LockedIn/era4Height are the era-4 (v5) witnessable-transitions activation
@@ -1611,9 +1587,9 @@ type Chain struct {
 	// collapse stalls, never un-flips) and activation begins at the NEXT boundary:
 	// era4Height = H_era4, and v5 is REQUIRED (mint + validity) for every block of height
 	// >= era4Height. The >= (a MINT/FORMAT boundary, like era-3) makes H_era4 itself the
-	// first v5 height. Derived deterministically from committed history in rotateEpoch, so
-	// every replica — live or replaying — computes the identical H_era4; epoch boundaries
-	// are super-quorum-final (#357 Condition A), so H_era4 cannot be reorged out from under
+	// First v5 height. Derived deterministically from committed history in rotateEpoch,
+	// so every replica — live or replaying — computes the identical H_era4; epoch
+	// boundaries are super-quorum-final, so H_era4 cannot be reorged out from under
 	// enforcement.
 	//
 	// A DISTINCT readiness level from era-3 (>= 4): a node signals 5 only when it can mint
@@ -1624,7 +1600,7 @@ type Chain struct {
 	//
 	// COMMITTED as V5-ONLY leaves (tagEra4LockedIn/tagEra4Height in stateRootLeavesV5): a
 	// v4 block cannot commit them without breaking the era-3 byte-identical freeze
-	// (immutable #632), and it does not need to — before activation these scalars are at
+	// (immutable), and it does not need to — before activation these scalars are at
 	// their zero value, and era4Active first fires at era4Height, which is a v5 height. So
 	// on every block where a non-zero era-4 scalar matters, the block is v5 and the scalar
 	// is committed. This mirrors the 4b epochStart promotion (a v5-only scalar leaf). A
@@ -1641,7 +1617,7 @@ type Chain struct {
 	// slashed id is disqualified and cannot re-earn bonded standing, so a proven
 	// double-sign costs standing in the OBJECTIVE set, not only the rep ledger.
 	slashed map[ports.NodeID]bool
-	// epochSet is the FROZEN mature-phase validator set (#357 Condition A):
+	// epochSet is the FROZEN mature-phase validator set:
 	// NodeID → bonded size, snapshotted from the committed bonded ledger at the
 	// last epoch-boundary block (rotateEpoch). While a mature epoch is in force
 	// (matureEpoch, EpochBlocks > 0), qualification, the finality quorum size N,
@@ -1652,41 +1628,42 @@ type Chain struct {
 	// are disabled. Like every other derived field it is a pure function of the
 	// committed blocks: re-derived by apply on Reload/replay, carried by adopt.
 	epochSet map[ports.NodeID]int64
-	// qualified is the era-4 (v5) LIVE materialization of liveQualifiedSet(): every
-	// identity whose committed bond clears MinBond and is not slashed, with its
-	// weight, maintained INCREMENTALLY at every bonded/slashed mutation (the five
-	// sites in apply()) rather than recomputed by a whole-map scan. It is a
-	// BOUNDARY-COMPUTATION ACCELERATOR: at an epoch boundary rotateEpoch copies it
-	// into the FROZEN epochSet (epochSet := qualified) instead of running the
-	// O(registry) liveQualifiedSet() scan over bonded. It MUTATES mid-epoch and is a
-	// DISTINCT keyspace from the frozen epochSet — the two are semantically different
-	// objects (a live filter vs a frozen snapshot) that MUST diverge mid-epoch (era-4
-	// RECERT2 Q1). Committed under the state root as a v5-ONLY leaf (tagQualified);
-	// on a v4 block it contributes nothing so the era-3 root stays byte-identical.
-	// Redundant with filter(bonded, slashed, MinBond) by construction — the drift
-	// guard (TestQualifiedMaintenanceDriftGuard) is a HARD gate, not a comment.
+	// qualified is the era-4 (v5) LIVE materialization of liveQualifiedSet:
+	// every identity whose committed bond clears MinBond and is not slashed,
+	// with its weight, maintained INCREMENTALLY at every bonded/slashed
+	// mutation (the five sites in apply) rather than recomputed by a whole-map
+	// scan. It is a BOUNDARY-COMPUTATION ACCELERATOR: at an epoch boundary
+	// rotateEpoch copies it into the FROZEN epochSet (epochSet:= qualified)
+	// instead of running the O(registry) liveQualifiedSet scan over bonded. It
+	// MUTATES mid-epoch and is a DISTINCT keyspace from the frozen epochSet —
+	// the two are semantically different objects (a live filter vs a frozen
+	// snapshot) that MUST diverge mid-epoch (era-4). Committed under the state
+	// root as a v5-ONLY leaf (tagQualified); on a v4 block it contributes
+	// nothing so the era-3 root stays byte-identical. Redundant with
+	// filter(bonded, slashed, MinBond) by construction — the drift guard
+	// (TestQualifiedMaintenanceDriftGuard) is a HARD gate, not a comment.
 	qualified map[ports.NodeID]int64
 	// dueBucket is the era-4 (v5) T-3 due-height index: for each due-height h, the
 	// SET of bonded ids scheduled to expire at h (due height D(id) =
 	// bondRegHeight[id] + BondTTLBlocks + 1). One in-memory bucket per occupied
-	// height; a (re)registration inserts id into bucket D and, on a renew, removes it
-	// from its previous bucket D_old; TTL expiry and slash delete the entry. It turns
-	// the era-3 whole-map TTL sweep's completeness claim ("nothing else was due at h")
-	// into a single next-bucket membership query. Committed under the state root as a
-	// v5-ONLY leaf per occupied height (tagDueBucket), value = RFC-6962 MTH over the
-	// CANONICAL (sorted-ascending / dedup / unpadded) id list (era-4 design §4b;
-	// RECERT2 canonical-list pin). A DUAL SOURCE with bondRegHeight (era-3 had one),
-	// so the dual-source drift guard is a HARD gate.
+	// height; a (re)registration inserts id into bucket D and, on a renew, removes
+	// it from its previous bucket D_old; TTL expiry and slash delete the entry. It
+	// turns the era-3 whole-map TTL sweep's completeness claim ("nothing else was
+	// due at h") into a single next-bucket membership query. Committed under the
+	// state root as a v5-ONLY leaf per occupied height (tagDueBucket), value =
+	// RFC-6962 MTH over the CANONICAL (sorted-ascending / dedup / unpadded) id list
+	// (era-4 design §4b). A DUAL SOURCE with bondRegHeight (era-3 had one), so the
+	// dual-source drift guard is a HARD gate.
 	dueBucket map[uint64]map[ports.NodeID]struct{}
-	// epochStart is the height of the boundary block that began the current epoch.
-	// era-4 (v5) COMMITS it under the state root (O-1, tagEpochStart, a v5-only
-	// scalar leaf): it is CERTIFIED narrowly (RECERT2 Residuals) — no quorum or
-	// validity predicate reads it (its only reader is Regime()), so committing it
-	// changes no quorum decision, removes one uncommitted observable, and doubles as
-	// the E-2 epoch pointer. On a v4 block it is not emitted, so the era-3 root stays
-	// byte-identical.
+	// epochStart is the height of the boundary block that began the current
+	// epoch. era-4 (v5) COMMITS it under the state root (O-1, tagEpochStart, a
+	// v5-only scalar leaf): the commitment is narrow — no quorum or validity
+	// predicate reads it (its only reader is Regime), so committing it changes
+	// no quorum decision, removes one uncommitted observable, and doubles as
+	// the E-2 epoch pointer. On a v4 block it is not emitted, so the era-3 root
+	// stays byte-identical.
 	epochStart uint64
-	// matureEpoch is the ONE-WAY handoff flag (#357 Condition B): set at the first
+	// matureEpoch is the ONE-WAY handoff flag: set at the first
 	// epoch rotation at-or-after the everMature latch trips, never cleared. The
 	// latch (everMature) records the consensus FACT of maturity the moment it
 	// holds; the HANDOFF — anchors shed, weight meaning flips to committed bond,
@@ -1697,36 +1674,36 @@ type Chain struct {
 	// residual non-monotonicity Condition B exists to close). With epochs disabled
 	// the handoff degenerates to the raw latch (pre-Condition-B behavior).
 	matureEpoch bool
-	// issuerKeyCommit is the R0.4b consensus-attested per-epoch demand-issuer key
-	// binding: epoch -> (issuer NodeID -> sha256 fingerprint of that epoch's RSA
-	// blind-signing public key). It is what lets a redeemer resolve key_E against
-	// state every honest node agrees on instead of against one peer's say-so, which
-	// is what stops a Byzantine issuer serving a per-cohort key and turning "which
-	// key verified you" into a fingerprint (research certification 2026-09-02,
-	// Verdict 2 — the lighter pinned-keyset mitigation is REFUTED as sufficient).
+	// issuerKeyCommit is the consensus-attested per-epoch demand-issuer key
+	// binding: epoch -> (issuer NodeID -> sha256 fingerprint of that epoch's
+	// RSA blind-signing public key). It is what lets a redeemer resolve key_E
+	// against state every honest node agrees on instead of against one peer's
+	// say-so, which is what stops a Byzantine issuer serving a per-cohort key
+	// and turning "which key verified you" into a fingerprint.
 	//
-	// APPEND-ONLY: a committed (epoch, issuer) is never overwritten, so key_E cannot
-	// be re-pointed after the fact. Bounded: the retention band is a fixed number of
-	// epochs around the head, pruned on every apply THAT CARRIES A REGISTRATION
-	// (pruneIssuerKeyCommit, called only inside that branch). A registration-free
-	// block is a no-op — pruning by HEIGHT deleted committed leaves the floor box
-	// could neither see nor reproduce, which is the two-tier split red-team break F1
-	// closed. Every ADD is in-band by validity, so pruning at each add re-establishes
-	// at most 2W+1 buckets on every block that can grow the map: the bound holds
-	// (build-immutable #8). The behavioural give is residual R-BAND-DRAIN — after the
-	// last registration the band no longer drains to empty, it persists. Committed as
-	// v5-ONLY leaves (tagIssuerKey), so a v4 block's root stays byte-identical to the
-	// frozen era-3 leaf set. INERT to consensus — no validity predicate, quorum,
-	// fork-choice rule, or floor-box recompute reads it. See issuerkey.go.
+	// APPEND-ONLY: a committed (epoch, issuer) is never overwritten, so key_E
+	// cannot be re-pointed after the fact. Bounded: the retention band is a fixed
+	// number of epochs around the head, pruned on every apply THAT CARRIES A
+	// REGISTRATION (pruneIssuerKeyCommit, called only inside that branch). A
+	// registration-free block is a no-op — pruning by HEIGHT deleted committed
+	// leaves the floor box could neither see nor reproduce, which is the two-tier
+	// split closed. Every ADD is in-band by validity, so pruning at each add
+	// re-establishes at most 2W+1 buckets on every block that can grow the map:
+	// the bound holds (build-immutable #8). The behavioural give: after the last
+	// registration the band no longer drains to
+	// empty, it persists. Committed as v5-ONLY leaves (tagIssuerKey), so a v4
+	// block's root stays byte-identical to the frozen era-3 leaf set. INERT to
+	// consensus — no validity predicate, quorum, fork-choice rule, or floor-box
+	// recompute reads it. See issuerkey.go.
 	issuerKeyCommit map[uint64]map[ports.NodeID]ports.Hash
 	// trustFloorOverride, when non-nil, pins the pruned-tolerance floor to the
-	// RECEIVING node's own anchor during a Reconcile replay, so the throwaway `tmp`
-	// replica trusts a payload-pruned block only strictly below the RECEIVER's
-	// finalized/checkpoint anchor — never a height derived from the (attacker-
-	// supplied) fork under replay. nil on a live chain, where trustFloor() computes
-	// from the node's own state. This is the C1 gate's load-bearing edge: without
-	// it a peer could inflate the acceptance floor by presenting a fork with a high
-	// finalized head. (Q2 gate, slice 3.)
+	// RECEIVING node's own anchor during a Reconcile replay, so the throwaway
+	// `tmp` replica trusts a payload-pruned block only strictly below the
+	// RECEIVER's finalized/checkpoint anchor — never a height derived from the
+	// (attacker- supplied) fork under replay. nil on a live chain, where
+	// trustFloor computes from the node's own state. This is the C1 gate's
+	// load-bearing edge: without it a peer could inflate the acceptance floor by
+	// presenting a fork with a high finalized head. (Q2 gate, slice 3.)
 	trustFloorOverride *uint64
 }
 
@@ -1762,14 +1739,16 @@ func New(cfg Config, rep func(ports.NodeID) int64) *Chain {
 		regVersion:     make(map[ports.NodeID]uint8),
 		bondDomain:     make(map[ports.NodeID]uint64),
 		slashed:        make(map[ports.NodeID]bool),
-		// era-4 (v5) maintenance spine: the live qualified accelerator and the T-3
-		// due-height index. Maintained incrementally by apply(); committed as v5-only
-		// leaves. Always initialised (never nil) so the maintenance hooks and the
-		// dry-run clone operate on a real map even on a v4-only chain.
+		// era-4 (v5) maintenance spine: the live qualified accelerator and the
+		// due-height index. Maintained incrementally by apply; committed as
+		// v5-only leaves. Always initialised (never nil) so the maintenance
+		// hooks and the dry-run clone operate on a real map even on a v4-only
+		// chain.
 		qualified: make(map[ports.NodeID]int64),
 		dueBucket: make(map[uint64]map[ports.NodeID]struct{}),
-		// R0.4b per-epoch demand-issuer key binding. Always initialised so apply() and
-		// the dry-run clone operate on a real map even on a chain that never sees one.
+		// Per-epoch demand-issuer key binding. Always initialised so apply
+		// and the dry-run clone operate on a real map even on a chain that never
+		// sees one.
 		issuerKeyCommit: make(map[uint64]map[ports.NodeID]ports.Hash)}
 }
 
@@ -1791,17 +1770,17 @@ func (c *Chain) SetBondVerifier(f func(pk []byte, root ports.Hash, size int64, n
 func (c *Chain) objective() bool { return c.cfg.MinBond > 0 && c.verifyBond != nil }
 
 // epochsEnabled reports whether the mature phase runs on per-epoch validator-set
-// snapshots (#357 Condition A). Objective-mode only: the legacy reputation path
+// snapshots. Objective-mode only: the legacy reputation path
 // has no committed bonded set to snapshot.
 func (c *Chain) epochsEnabled() bool { return c.cfg.EpochBlocks > 0 && c.objective() }
 
 // handedOff reports whether the young→mature handoff has occurred — the moment
 // the anchors shed and consensus (eligibility, quorum sizing, quorum weight)
 // moves onto the committed bonded set. With epochs enabled this is the FIRST
-// mature epoch rotation (#357 Condition B: a finalized boundary block), which may
+// mature epoch rotation, which may
 // trail the everMature latch by up to EpochBlocks; with epochs disabled it is the
 // raw latch (the pre-Condition-B behavior, safe only for trusted/sim configs).
-// One-way either way (F-1): matureEpoch is never cleared and everMature never
+// One-way either way: matureEpoch is never cleared and everMature never
 // resets, so the anchors can never re-arm.
 func (c *Chain) handedOff() bool {
 	if c.epochsEnabled() {
@@ -1815,41 +1794,41 @@ func (c *Chain) handedOff() bool {
 // to attach its live bond registration.
 func (c *Chain) Objective() bool { return c.objective() }
 
-// launchAnchor reports whether id bootstraps the objective validator set: a
-// declared training-wheels anchor, but ONLY while the network is immature. It
-// breaks the objective-mode cold-start chicken-and-egg (you must be bonded on
-// chain to propose/attest, but the first block that records bonds must itself be
-// proposed and attested) by letting the declared launch set commit the early
-// blocks — the same plural, threshold-gated set the training wheels already
-// trust. It sheds MECHANICALLY at maturity (Mature()), after which only real
-// on-chain bonds qualify. Anchors are expected to register their OWN real bonds
-// early (live self-registration), so this is a launch crutch, not a standing
-// exemption. It grants ELIGIBILITY only. (The fixed bootstrap fork-choice weight it
-// once carried, #357 §1a, is retired with the weight term — O3 Direction T,
-// 2026-09-03: fork-choice is height → head-hash among descendants of the finalized
-// head, and the §1b height preference is the primary term, so a height-blind tiebreak
-// can no longer drop committed blocks.)
+// launchAnchor reports whether id bootstraps the objective validator set: a declared
+// training-wheels anchor, but ONLY while the network is immature. It breaks the
+// objective-mode cold-start chicken-and-egg (you must be bonded on chain to
+// propose/attest, but the first block that records bonds must itself be proposed and
+// attested) by letting the declared launch set commit the early blocks — the same
+// plural, threshold-gated set the training wheels already trust. It sheds
+// MECHANICALLY at maturity (Mature), after which only real on-chain bonds qualify.
+// Anchors are expected to register their OWN real bonds early (live
+// self-registration), so this is a launch crutch, not a standing exemption. It grants
+// ELIGIBILITY only. (The fixed bootstrap fork-choice weight it once carried, §1a, is
+// retired with the weight term: fork-choice is height →
+// head-hash among descendants of the finalized head, and the §1b height preference is
+// the primary term, so a height-blind tiebreak can no longer drop committed blocks.)
 func (c *Chain) launchAnchor(id ports.NodeID) bool {
-	// Gated on the one-way handoff, not the live Mature(): once the network has
-	// handed off, anchors lose bond-free eligibility FOREVER (F-1). An anchor that
-	// registered its own real bond stays a normal validator on that real weight.
-	// With epochs enabled the handoff is the first mature epoch ROTATION (#357
-	// Condition B), so after the everMature latch trips mid-epoch the anchors keep
-	// governing — deterministically, for at most EpochBlocks more blocks — until
-	// the finalized boundary sheds them; without epochs it is the raw latch.
+	// Gated on the one-way handoff, not the live Mature: once the network
+	// has handed off, anchors lose bond-free eligibility FOREVER. An
+	// anchor that registered its own real bond stays a normal validator on
+	// that real weight. With epochs enabled the handoff is the first mature
+	// epoch ROTATION, so after the everMature latch trips mid-epoch the
+	// anchors keep governing — deterministically, for at most EpochBlocks
+	// more blocks — until the finalized boundary sheds them; without epochs
+	// it is the raw latch.
 	return c.launchAnchorGiven(id, c.handedOff())
 }
 
 // launchAnchorGiven is launchAnchor with the handoff predicate SUPPLIED rather than read from
 // this replica's live latch fields. It is the ONE definition of the launch-anchor rule; the two
-// callers differ only in where the handoff bool comes from (R-FOLD-LIVE-STATE-READS cert
-// 2026-09-02, Q3 step 3 — the #402 non-fork rule, one function, never a second copy):
+// callers differ only in where the handoff bool comes from (the
+// non-fork rule, one function, never a second copy):
 //
-//   - the LIVE node (launchAnchor above) supplies c.handedOff(), its own applied state;
-//   - the trustless floor-box recompute supplies the handoff predicate computed from the
-//     COMMITTED pre-state scalars Resolved against prevStateRoot (matureEpoch with epochs
-//     enabled, everMature without) — because a box that replays no apply() has no live latch
-//     to read, and reading one made its class-A screen diverge from what a full node accepts.
+// - the LIVE node (launchAnchor above) supplies c.handedOff, its own applied state;
+// - the trustless floor-box recompute supplies the handoff predicate computed from the
+// COMMITTED pre-state scalars Resolved against prevStateRoot (matureEpoch with epochs
+// enabled, everMature without) — because a box that replays no apply has no live latch
+// to read, and reading one made its class-A screen diverge from what a full node accepts.
 //
 // It reads own-cfg ONLY (Anchors), never live state, so it is safe for the fold files to call.
 func (c *Chain) launchAnchorGiven(id ports.NodeID, handedOff bool) bool {
@@ -1858,7 +1837,7 @@ func (c *Chain) launchAnchorGiven(id ports.NodeID, handedOff bool) bool {
 
 // attesterQualified reports whether id may have its attestation counted toward
 // quorum (and, if it has a real bond, weight), OUTSIDE any specific block's
-// validation — the frozen-set rule, with no #535 recovery awareness. Height-
+// validation — the frozen-set rule, with no recovery awareness. Height-
 // keyed validation paths use attesterQualifiedAt so the one directed recovery
 // boundary consults the re-based set; every height-less probe (solicitation,
 // token issuer quorum, the maturity metric) stays on the frozen rule.
@@ -1867,11 +1846,9 @@ func (c *Chain) attesterQualified(id ports.NodeID) bool {
 }
 
 // attesterQualifiedAt is attesterQualified for the block at height h. Objective
-// mode: membership in the epoch set GOVERNING h during a mature epoch (#357
-// Condition A — the frozen snapshot everywhere except the operator-directed
-// #535 recovery boundary, effectiveEpochSet), otherwise its committed bonded
-// size clears MinBond OR it is a launch anchor bootstrapping an immature
-// network. Legacy mode: the local reputation view.
+// mode: membership in the epoch set GOVERNING h during a mature epoch,
+// otherwise its committed bonded size clears MinBond OR it is a launch anchor
+// bootstrapping an immature network. Legacy mode: the local reputation view.
 func (c *Chain) attesterQualifiedAt(id ports.NodeID, h uint64) bool {
 	if c.slashed[id] {
 		return false // evicted for a proven equivocation (F2) — the ONE live mid-epoch disqualification
@@ -1886,10 +1863,10 @@ func (c *Chain) attesterQualifiedAt(id ports.NodeID, h uint64) bool {
 			// deliberate — a protocol-forced mid-epoch disqualification would
 			// shrink the attester supply below the frozen N and could stall the
 			// chain before it ever reaches the boundary that rotates it out.)
-			// The ONE exception is the #535 operator-directed recovery boundary,
+			// The ONE exception is the operator-directed recovery boundary,
 			// where the governing set is the live re-base — the attester filter
 			// must draw from the SAME set the weight quorum sums, or the quorum
-			// is sized over one set and filled from another (the #402 trap).
+			// is sized over one set and filled from another (the trap).
 			_, ok := c.effectiveEpochSet(h)[id]
 			return ok
 		}
@@ -1906,7 +1883,7 @@ func (c *Chain) proposerQualified(id ports.NodeID) bool {
 
 // proposerQualifiedAt is proposerQualified for the block at height h. Objective
 // mode: membership in the epoch set governing h during a mature epoch
-// (Condition A; the #535 recovery boundary re-bases — same rule as attesters),
+// (Condition A; the recovery boundary re-bases — same rule as attesters),
 // otherwise a bonded validator or a launch anchor while the network is
 // immature. Legacy mode uses MinProposerRep.
 func (c *Chain) proposerQualifiedAt(id ports.NodeID, h uint64) bool {
@@ -1918,15 +1895,15 @@ func (c *Chain) proposerQualifiedAt(id ports.NodeID, h uint64) bool {
 			_, ok := c.effectiveEpochSet(h)[id] // governing set for h, same rule as attesters
 			return ok
 		}
-		// LAUNCH WINDOW — ANCHOR-ONLY PROPOSING (#402 encoding B; research
-		// certification 2026-08-14). While the network is young, ONLY anchors
-		// propose; a bonded sybil drains its standing via MsgSubmitBondReg
-		// (submit-don't-propose, #397), never by proposing. This removes the
-		// sybil-proposed launch fork at its source — the both-sybil-proposed 2-2
-		// anchor split the intersecting-quorum invariant (I1) must otherwise refuse
-		// — and composes with the derived strict-anchor-majority gate in
-		// ValidateCommit. Post-handoff (launchAnchor ⇒ false, F-1) this falls through
-		// to the bonded rule, so a matured validator proposes on its real weight.
+		// LAUNCH WINDOW — ANCHOR-ONLY PROPOSING. While the network is young,
+		// ONLY anchors propose; a bonded sybil drains its standing via
+		// MsgSubmitBondReg (submit-don't-propose), never by proposing. This
+		// removes the sybil-proposed launch fork at its source — the
+		// both-sybil-proposed 2-2 anchor split the intersecting-quorum
+		// invariant (I1) must otherwise refuse — and composes with the derived
+		// strict-anchor-majority gate in ValidateCommit. Post-handoff
+		// (launchAnchor ⇒ false) this falls through to the bonded rule, so
+		// a matured validator proposes on its real weight.
 		if len(c.cfg.Anchors) > 0 && !c.handedOff() {
 			return c.launchAnchor(id)
 		}
@@ -1938,7 +1915,7 @@ func (c *Chain) proposerQualifiedAt(id ports.NodeID, h uint64) bool {
 // liveQualifiedSet is the CURRENT qualified committed bonded set — every
 // identity whose committed bond clears MinBond and is not slashed, with its
 // weight. It is the set a rotation freezes for the next epoch (rotateEpoch)
-// and the set the #535 recovery boundary re-bases against (effectiveEpochSet)
+// and the set the recovery boundary re-bases against (effectiveEpochSet)
 // — ONE computation, shared, so the recovered boundary's governing set is
 // byte-identical to the snapshot its own commit then freezes. A pure function
 // of committed state: every replica computes it identically.
@@ -1967,10 +1944,10 @@ func (c *Chain) idQualifies(id ports.NodeID) (int64, bool) {
 
 // qualifiedMaintain is the era-4 (v5) incremental hook: after a bonded/slashed
 // mutation for id, bring qualified[id] into agreement with the current
-// filter(bonded, slashed, MinBond). Called at each of the five apply() mutation
-// sites so the live qualified accelerator is always equal to what liveQualifiedSet()
-// would recompute — the invariant the drift guard enforces (RECERT2 Q1). Idempotent:
-// it reads the post-mutation committed state and sets or deletes the one key.
+// filter(bonded, slashed, MinBond). Called at each of the five apply mutation sites
+// so the live qualified accelerator is always equal to what liveQualifiedSet would
+// recompute — the invariant the drift guard enforces. Idempotent: it reads the
+// post-mutation committed state and sets or deletes the one key.
 func (c *Chain) qualifiedMaintain(id ports.NodeID) {
 	if w, ok := c.idQualifies(id); ok {
 		c.qualified[id] = w
@@ -2023,15 +2000,15 @@ func (c *Chain) dueBucketRemove(id ports.NodeID, d uint64) {
 	}
 }
 
-// BoundaryLivenessFloorLost reports whether the chain is in the #535 wedge
-// state at height h: a mature-epoch boundary whose frozen members still
-// holding live qualified bonds carry at most ⅔ of the frozen weight — so NO
-// coalition of live members can commit h, and the rotation that would shed the
-// lapsed weight is gated behind the very quorum the lapse denies (the
-// certified-correct, safety-first stall). Exposed for OPERATOR VISIBILITY
-// (S5 — never silently fail): the node logs this state and chain-status names
-// it, so the operator knows a coordinated -liveness-recovery-height (the #535
-// fix (3) escape) may be required. Diagnosis only — it changes no rule.
+// BoundaryLivenessFloorLost reports whether the chain is in the wedge state at
+// height h: a mature-epoch boundary whose frozen members still holding live
+// qualified bonds carry at most ⅔ of the frozen weight — so NO coalition of
+// live members can commit h, and the rotation that would shed the lapsed
+// weight is gated behind the very quorum the lapse denies (the correct,
+// safety-first stall). Exposed for OPERATOR VISIBILITY (S5 — never silently
+// fail): the node logs this state and chain-status names it, so the operator
+// knows a coordinated -liveness-recovery-height (the fix (3) escape) may be
+// required. Diagnosis only — it changes no rule.
 func (c *Chain) BoundaryLivenessFloorLost(h uint64) bool {
 	if !c.objective() || !c.epochsEnabled() || !c.matureEpoch || h%c.cfg.EpochBlocks != 0 {
 		return false
@@ -2048,16 +2025,16 @@ func (c *Chain) BoundaryLivenessFloorLost(h uint64) bool {
 
 // effectiveEpochSet is the validator set GOVERNING the block at height h in a
 // mature epoch: the frozen epochSet everywhere, except the one operator-
-// directed #535 liveness-recovery boundary (Config.LivenessRecoveryHeight),
-// where it is the live qualified bonded set. All three mature-epoch validation
+// directed liveness-recovery boundary (Config.LivenessRecoveryHeight), where it
+// is the live qualified bonded set. All three mature-epoch validation
 // predicates — attester qualification, proposer qualification, and the >⅔
 // weight quorum — consult THIS function, so the set a quorum is sized over and
-// the set it is filled from can never differ (I1; the #402 checklist: the
-// arithmetic intersects because both coalitions of the h block are >⅔ of the
-// SAME set). Boundary-only by construction: a non-boundary directive never
-// fires, so a mid-epoch set change (the I3 churning-set unsoundness) is
-// impossible. Off (0) by default — a bled boundary stalls, the certified
-// safety-first behavior; see Config.LivenessRecoveryHeight for the trust model.
+// the set it is filled from can never differ (I1; the checklist: the arithmetic
+// intersects because both coalitions of the h block are >⅔ of the SAME set).
+// Boundary-only by construction: a non-boundary directive never fires, so a
+// mid-epoch set change (the I3 churning-set unsoundness) is impossible. Off (0)
+// by default — a bled boundary stalls, the safety-first behavior; see
+// Config.LivenessRecoveryHeight for the trust model.
 func (c *Chain) effectiveEpochSet(h uint64) map[ports.NodeID]int64 {
 	if c.cfg.LivenessRecoveryHeight != 0 && h == c.cfg.LivenessRecoveryHeight &&
 		c.epochsEnabled() && h%c.cfg.EpochBlocks == 0 {
@@ -2084,7 +2061,7 @@ func (c *Chain) qualifiedCount() int {
 
 // ByzantineThreshold exposes bftThreshold for a caller OUTSIDE the package that must
 // size something against the same arithmetic the commit path uses — today the daemon's
-// derived -quorum gather target (#380, D-CONSENSUS-ARMING (20)). It is the one export of
+// derived -quorum gather target. It is the one export of
 // this number: a caller that re-derives f = ⌊(n-1)/3⌋ locally is a duplicated consensus
 // literal, and the two copies drift. It sizes a GATHER TARGET, never a validity term —
 // validity reads RequiredQuorum, which is derived here and is not the operator's to set.
@@ -2110,58 +2087,56 @@ func bftThreshold(n int) int {
 	return q
 }
 
-// RequiredQuorum is the number of distinct qualified non-proposer attestations a
-// commit needs — the COUNT leg of requireQuorumStack (Q1). In objective mode
-// with Byzantine sizing it is DERIVED from the chain, so every replica computes
-// it identically; Config.Quorum is read only where there is no derived rule to
-// defer to. Four regimes (#380 direction (1), ratified as D-CONSENSUS-ARMING
-// (20) in docs/decisions.md; the predicate is specified exactly by the research
-// certification CONSENSUS-380-quorum-floor-direction-1-PREDICATE-AND-CERTIFICATION-2026-09-08.md §1):
+// RequiredQuorum is the number of distinct qualified non-proposer attestations a commit needs — the
+// COUNT leg of requireQuorumStack (Q1). In objective mode with Byzantine sizing it is DERIVED from
+// the chain, so every replica computes it identically; Config.Quorum is read only where there is no
+// derived rule to defer to. Four regimes:
 //
-//	(a) objective && ByzantineQuorum, NOT a mature epoch (the launch window, or
-//	    epochs off): bftThreshold(validatorSetSize()) — the whole Byzantine bar.
-//	    Config.Quorum no longer raises it. A local, unreplicated term inside a
-//	    validity rule that objective mode promises is replica-identical never
-//	    contributed intersection, only a higher bar — the #338 sync-strand, and
-//	    the permanently dead new-view round of a higher-floor designee. Corner,
-//	    A = 1: bftThreshold(1) = 0, so a single-anchor launch commits on the
-//	    proposer's own signature with ZERO attestations, and no count gate holds
-//	    anything there — requiredLaunchAnchors = 1 is self-satisfied because
-//	    countAnchorSupport credits the proposer-if-anchor, and
-//	    finalityQuorumActive is true (0 >= 0). What holds is that the sole anchor
-//	    is the only qualified proposer and never signs twice at a height (#397):
-//	    a one-anchor objective network is a single-trusted-operator chain (f = 0),
-//	    full stop. Whether -anchors <single> stays a supported launch posture is
-//	    an owner's call (PE ruling on d0067fd, B3).
-//	(b) objective && ByzantineQuorum && a mature epoch: 0. The Byzantine bar is
-//	    the >⅔ FROZEN-WEIGHT rule (requireEpochWeightQuorum; research
-//	    certification 2026-08-13 B2) — Tendermint/Casper count stake, never
-//	    heads. Head-counting the epoch set let every MinBond identity in the
-//	    snapshot raise the bar one head (stall at 8×MinBond; one head past that,
-//	    capture with zero honest attestation). A floor of 1 buys nothing either:
-//	    the weight rule already implies ≥ 1 non-proposer head in every epoch
-//	    where no single identity holds >⅔, and where one does, a floor of 1 is
-//	    defeated for one MinBond identity already in the snapshot — exactly the
-//	    per-head defence B2 refuted. Degenerate corner: with an EMPTY governing
-//	    set the weight rule's total <= 0 branch also passes, so every quorum leg
-//	    is a no-op — the block is still refused, because proposerQualifiedAt
-//	    (ValidateProposal, before the quorum stack) admits nobody from an empty
-//	    set: a stall, with safety there resting on the proposer filter alone.
-//	(c) objective && !ByzantineQuorum (the explicit -byzantine-quorum=false
-//	    trusted opt-out): Config.Quorum, unchanged. There is no derived rule to
-//	    defer to, and raising it to bftThreshold would flip finalityQuorumActive
-//	    and kill the trusted-weak-config escape of the §3 finality gate.
-//	(d) !objective (legacy): Config.Quorum, unchanged.
+//		(a) objective && ByzantineQuorum, NOT a mature epoch (the launch window, or
+//		 epochs off): bftThreshold(validatorSetSize) — the whole Byzantine bar.
+//		 Config.Quorum no longer raises it. A local, unreplicated term inside a
+//		 validity rule that objective mode promises is replica-identical never
+//		 contributed intersection, only a higher bar — the sync-strand, and
+//		 the permanently dead new-view round of a higher-floor designee. Corner,
+//		 A = 1: bftThreshold(1) = 0, so a single-anchor launch commits on the
+//		 proposer's own signature with ZERO attestations, and no count gate holds
+//		 anything there — requiredLaunchAnchors = 1 is self-satisfied because
+//		 countAnchorSupport credits the proposer-if-anchor, and
+//		 finalityQuorumActive is true (0 >= 0). What holds is that the sole anchor
+//		 is the only qualified proposer and never signs twice at a height:
+//		 a one-anchor objective network is a single-trusted-operator chain (f = 0),
+//		 full stop. Whether -anchors <single> stays a supported launch posture is
+//		 an owner's call).
+//		(b) objective && ByzantineQuorum && a mature epoch: 0. The Byzantine bar is
+//		 the >⅔ FROZEN-WEIGHT rule (requireEpochWeightQuorum; research
 //
-// In every regime the value is ≤ the old max(Quorum, bftThreshold(N)): the
-// change only ADDS accepts. Config.Quorum survives as the proposer-side gather
-// target: gatherTwoPhase gathers max(caller floor, ConfigQuorum(), RequiredQuorum())
-// on every proposal path, so a uniform swarm's blocks carry the same attestation
-// count as before this change (the local floor is a gather target, never a
-// validity rule). Exposed so
-// a proposer gathers what ValidateCommit will demand; validateStructural reads
-// it too, so Reload accepts what ValidateCommit accepted. The v5 mirror is
-// v5RequiredQuorum, pinned by G-D13.
+//	 — Tendermint/Casper count stake, never
+//
+//		 heads. Head-counting the epoch set let every MinBond identity in the
+//		 snapshot raise the bar one head (stall at 8×MinBond; one head past that,
+//		 capture with zero honest attestation). A floor of 1 buys nothing either:
+//		 the weight rule already implies ≥ 1 non-proposer head in every epoch
+//		 where no single identity holds >⅔, and where one does, a floor of 1 is
+//		 defeated for one MinBond identity already in the snapshot — exactly the
+//		 per-head defence B2 refuted. Degenerate corner: with an EMPTY governing
+//		 set the weight rule's total <= 0 branch also passes, so every quorum leg
+//		 is a no-op — the block is still refused, because proposerQualifiedAt
+//		 (ValidateProposal, before the quorum stack) admits nobody from an empty
+//		 set: a stall, with safety there resting on the proposer filter alone.
+//		(c) objective && !ByzantineQuorum (the explicit -byzantine-quorum=false
+//		 trusted opt-out): Config.Quorum, unchanged. There is no derived rule to
+//		 defer to, and raising it to bftThreshold would flip finalityQuorumActive
+//		 and kill the trusted-weak-config escape of the §3 finality gate.
+//		(d) !objective (legacy): Config.Quorum, unchanged.
+//
+// In every regime the value is ≤ the old max(Quorum, bftThreshold(N)): the change
+// only ADDS accepts. Config.Quorum survives as the proposer-side gather target:
+// gatherTwoPhase gathers max(caller floor, ConfigQuorum, RequiredQuorum) on every
+// proposal path, so a uniform swarm's blocks carry the same attestation count as
+// before this change (the local floor is a gather target, never a validity rule).
+// Exposed so a proposer gathers what ValidateCommit will demand; validateStructural
+// reads it too, so Reload accepts what ValidateCommit accepted. The v5 mirror is
+// v5RequiredQuorum, pinned by.
 func (c *Chain) RequiredQuorum() int {
 	if !c.cfg.ByzantineQuorum || !c.objective() {
 		return c.cfg.Quorum // (c) trusted opt-out, (d) legacy — no derived rule to defer to
@@ -2172,37 +2147,35 @@ func (c *Chain) RequiredQuorum() int {
 	return bftThreshold(c.validatorSetSize()) // (a)
 }
 
-// validatorSetSize is N, the set the Byzantine quorum is sized against (#357 §2).
-// It must be STABLE across a ramp: sizing against the live `qualifiedCount` made
-// RequiredQuorum shift block-to-block as ~1.5 MB bond registrations drained in, so
-// no fork ever held a quorum of a consistent set (quorum-intersection safety needs a
-// FIXED n) — the "0 of 2 gathered" stall. During the young window the set is the
-// fixed anchor set (seeded at genesis — the sanctioned trust, immutable #3); after
-// the handoff it is the per-epoch FROZEN bonded snapshot (#357 Condition A —
-// Tendermint/Casper both fix the set to buy finality), falling back to the live
-// qualifiedCount only when epochs are explicitly disabled (trusted/demo). A
-// bootstrap 4-anchor network gets bftThreshold(4)=2, matching the "2 attestations"
-// the field logs show.
-// GoverningSetCap is a cheap UPPER bound on the number of distinct identities
-// that can pass AttesterEligible at the working height on the OBJECTIVE path —
-// anchors ∪ bonded ∪ the frozen epoch set, counted without dedup. Legacy mode's
-// reputation-qualified attesters are not counted (PE F-6), so this returns 0
-// there and EVERY caller must guard on objective().
+// validatorSetSize is N, the set the Byzantine quorum is sized against. It must be
+// STABLE across a ramp: sizing against the live `qualifiedCount` made RequiredQuorum
+// shift block-to-block as ~1.5 MB bond registrations drained in, so no fork ever
+// held a quorum of a consistent set (quorum-intersection safety needs a FIXED n) —
+// the "0 of 2 gathered" stall. During the young window the set is the fixed anchor
+// set (seeded at genesis — the sanctioned trust, immutable #3); after the handoff it
+// is the per-epoch FROZEN bonded snapshot, falling back to the live qualifiedCount
+// only when epochs are explicitly disabled (trusted/demo). A bootstrap 4-anchor
+// network gets bftThreshold(4)=2, matching the "2 attestations" the field logs show.
+// GoverningSetCap is a cheap UPPER bound on the number of distinct identities that
+// can pass AttesterEligible at the working height on the OBJECTIVE path — anchors ∪
+// bonded ∪ the frozen epoch set, counted without dedup. Legacy mode's
+// reputation-qualified attesters are not counted, so this returns 0 there and EVERY
+// caller must guard on objective.
 //
 // The two sentences this doc used to carry — "every round path gates on
 // Objective" and "no round machinery runs there" — were FALSE, and the
-// correction is load-bearing rather than cosmetic (R-CARRIER-ATTS-PREPAREQC
-// §4.3/§9.2). (*Node).maybeAdvanceRound and (*Node).maybeCatchUpRound do gate
-// on Objective; (*Node).gatherTwoPhase does NOT, and (*Node).proposeBlock
-// stamps BlockVersionRounds unconditionally. The round-0 two-phase gather, and
-// with it the ports.MsgPrepareQC arm, therefore runs in EVERY posture — so a
-// caller that inherited the old premise would derive a 0-entry ceiling for a
-// live, non-empty legacy certificate and halt the chain.
+// correction is load-bearing rather than cosmetic. (*Node).maybeAdvanceRound
+// and (*Node).maybeCatchUpRound do gate on Objective; (*Node).gatherTwoPhase
+// does NOT, and (*Node).proposeBlock stamps BlockVersionRounds
+// unconditionally. The round-0 two-phase gather, and with it the
+// ports.MsgPrepareQC arm, therefore runs in EVERY posture — so a caller that
+// inherited the old premise would derive a 0-entry ceiling for a live,
+// non-empty legacy certificate and halt the chain.
 //
-// A DoS bound for wire objects that
-// carry one envelope per member (the h43 round certificate, G-H43-12), never a
-// quorum term: a certificate with more envelopes than this is malformed by
-// construction and is refused before any signature is examined.
+// A DoS bound for wire objects that carry one envelope per member (the
+// round certificate), never a quorum term: a certificate with more envelopes
+// than this is malformed by construction and is refused before any signature
+// is examined.
 func (c *Chain) GoverningSetCap() int {
 	return len(c.cfg.Anchors) + len(c.bonded) + len(c.epochSet)
 }
@@ -2212,7 +2185,7 @@ func (c *Chain) validatorSetSize() int {
 		return len(c.cfg.Anchors)
 	}
 	if c.epochsEnabled() && c.matureEpoch {
-		// #357 Condition A: post-handoff, N is the FROZEN epoch snapshot — never
+		// Condition A: post-handoff, N is the FROZEN epoch snapshot — never
 		// the live qualifiedCount, whose churn (joins, renewals, TTL expiry) would
 		// let two conflicting commits each gather a "super-quorum" of two different
 		// sets with no guaranteed honest intersection. N holds even as members are
@@ -2240,25 +2213,25 @@ func (c *Chain) finalityQuorumActive() bool {
 }
 
 // requiredLaunchAnchors is the number of anchor signatures a commit needs during
-// the launch window — the launch face of quorum-intersection (I1, #402). In
+// the launch window — the launch face of quorum-intersection (I1). In
 // OBJECTIVE mode it is DERIVED: a STRICT ANCHOR MAJORITY ⌊A/2⌋+1 over the configured
 // anchor set, independent of the AnchorQuorum knob. Deriving it is load-bearing: the
 // field run left `-anchor-quorum` unset (default 0) so the gate went inert and a
-// two-sybil-signature quorum forked the launch chain (#402); config can no longer
+// two-sybil-signature quorum forked the launch chain; config can no longer
 // disable intersection. Two ⌊A/2⌋+1 anchor sets over A anchors share ≥1 anchor, which
-// never signs twice at a height (#397) → at most one block per height finalizes. In
+// never signs twice at a height → at most one block per height finalizes. In
 // LEGACY (non-objective) mode there is no finality gate, so this is the configured
-// AnchorQuorum capture-prevention floor (unchanged pre-#402 behavior). 0 = no gate
+// AnchorQuorum capture-prevention floor (unchanged legacy behavior). 0 = no gate
 // (handed off, no anchors, or legacy with AnchorQuorum unset).
 //
 // Quorum-intersection checklist (consensus-invariants.md): (1) finalizes? yes — a
 // passing commit is reorg-refused by the finality gate. (2) N/membership? N =
 // len(Anchors); countAnchorSupport draws ONLY from Anchors — size-set == membership-
-// set, the #402 trap closed. (3) intersects? 2·(⌊A/2⌋+1) > A ∀A≥1 (⌈A/2⌉ is the even-A
+// set, the trap closed. (3) intersects? 2·(⌊A/2⌋+1) > A ∀A≥1 (⌈A/2⌉ is the even-A
 // off-by-one that admitted the 2-2 split). (4) non-members excluded? sybils never
 // count. (5) basis? anchors are the pinned, Sybil-resistant-equal launch set, so
 // head-count is sound (weight is the mature phase's job). (6) phase boundary? gated on
-// !handedOff(); post-handoff the >⅔ frozen-weight rule takes over.
+// !handedOff; post-handoff the >⅔ frozen-weight rule takes over.
 func (c *Chain) requiredLaunchAnchors() int {
 	if len(c.cfg.Anchors) == 0 || c.handedOff() {
 		return 0
@@ -2271,11 +2244,11 @@ func (c *Chain) requiredLaunchAnchors() int {
 
 // countAnchorSupport counts the anchors in a commit's support coalition: the distinct
 // anchor attesters in `seen`, plus the proposer if it is an anchor (objective mode —
-// the certified #402 rule counts the proposer-if-anchor toward the intersecting set;
-// legacy counts non-proposer anchors only, as it always has). Shared by ValidateCommit
-// (validation) and SupportMeetsQuorum (the proposer's gather target) so the two cannot
-// drift — a gather that stopped short of what validation demands is exactly the
-// under-gather → self-Append-failure bug this centralization prevents.
+// the rule counts the proposer-if-anchor toward the intersecting set; legacy counts
+// non-proposer anchors only, as it always has). Shared by ValidateCommit (validation)
+// and SupportMeetsQuorum (the proposer's gather target) so the two cannot drift — a
+// gather that stopped short of what validation demands is exactly the under-gather →
+// self-Append-failure bug this centralization prevents.
 func (c *Chain) countAnchorSupport(proposer ports.NodeID, seen map[ports.NodeID]bool) int {
 	n := 0
 	for id := range seen {
@@ -2295,18 +2268,18 @@ func (c *Chain) countAnchorSupport(proposer ports.NodeID, seen map[ports.NodeID]
 // or fork. A registrant (see NewBondReg) computes its space-time answer for this
 // nonce; the chain re-derives it identically at validation.
 //
-// HONESTLY WEAK, by necessity (seam-6, red-team 2026-08-08): this nonce is
-// deterministic and therefore PREDICTABLE — once `prev` commits, a validator knows
-// the exact challenge for its next on-chain renewal, so the on-chain path alone does
-// not bound release-and-recompute-just-in-time. It cannot be made unpredictable
-// without a randomness beacon (M0 has none) and MUST stay a pure function of
-// committed history so every replica re-derives it identically for objective
-// verification. The coast it would otherwise permit is bounded ELSEWHERE: (1) the
-// parallel LIVE peer-audit (core/node/bondaudit.go) issues an UNPREDICTABLE nonce
-// (n.rid, peer-initiated) at random, and (2) that live audit now carries the
-// BondMaxAnswerLatency reply-deadline (BREAK 1 / owned-residuals A5), so a prover
-// that released and must recompute past the ~0.25 knee fails it. So the predictable
-// on-chain nonce is a documented weakness held by the live-audit path, not a hole.
+// HONESTLY WEAK, by necessity: this nonce is deterministic and therefore PREDICTABLE
+// — once `prev` commits, a validator knows the exact challenge for its next on-chain
+// renewal, so the on-chain path alone does not bound
+// release-and-recompute-just-in-time. It cannot be made unpredictable without a
+// randomness beacon (M0 has none) and MUST stay a pure function of committed history
+// so every replica re-derives it identically for objective verification. The coast
+// it would otherwise permit is bounded ELSEWHERE: (1) the parallel LIVE peer-audit
+// (core/node/bondaudit.go) issues an UNPREDICTABLE nonce (n.rid, peer-initiated) at
+// random, and (2) that live audit now carries the BondMaxAnswerLatency
+// reply-deadline (BREAK 1 / owned-residuals A5), so a prover that released and must
+// recompute past the ~0.25 knee fails it. So the predictable on-chain nonce is a
+// documented weakness held by the live-audit path, not a hole.
 func BondRegNonce(prev ports.Hash) uint64 {
 	h := sha256.Sum256(append([]byte("silt/chain/bondreg/nonce/v1"), prev[:]...))
 	return binary.BigEndian.Uint64(h[:8])
@@ -2324,7 +2297,7 @@ func NewBondReg(signer ed25519.PrivateKey, root ports.Hash, size int64, answer [
 		Size:      size,
 		Answer:    answer,
 		Domain:    domain, // committed A-axis label (0 = unset); signed via signingBytes
-		// The #506 readiness signal is a property of the BINARY, not a choice:
+		// The readiness signal is a property of the BINARY, not a choice:
 		// software that mints regs through this constructor validates the gate
 		// era's rules, so every reg it produces says so (signed via signingBytes).
 		Version: BlockVersionRegGate,
@@ -2400,46 +2373,50 @@ func (c *Chain) validateBondRegs(b *Block) error {
 	// Q2 pruned-tolerance gate (slice 3; C1/M0 merge gate). A payload-pruned block has
 	// its heavy BondReg.Answer dropped, so its space-time proof cannot be re-verified.
 	// Trust it ONLY strictly below this node's OWN finalized/checkpoint anchor
-	// (trustFloor) — where finality already makes the reg irreversible and re-verification
-	// is neither possible nor needed. At/above the floor, trusting an Answer-less block
-	// would let a peer skip the proof and forge standing (a no-discount break), so REJECT.
-	// During a Reconcile replay trustFloor() reflects the RECEIVER's anchor (threaded via
-	// trustFloorOverride), never the attacker-supplied fork's. A full block (Answer
-	// present) falls through to full verification at any height, unchanged.
+	// (trustFloor) — where finality already makes the reg irreversible and
+	// re-verification is neither possible nor needed. At/above the floor, trusting an
+	// Answer-less block would let a peer skip the proof and forge standing (a
+	// no-discount break), so REJECT. During a Reconcile replay trustFloor reflects the
+	// RECEIVER's anchor (threaded via trustFloorOverride), never the attacker-supplied
+	// fork's. A full block (Answer present) falls through to full verification at any
+	// height, unchanged.
 	//
-	// BOND POSSESSION, not identity — the node-path twin of v5ValidateBondRegs's arm. (d-3)
-	// retires `Pruned` for v5, so IsPruned() no longer detects a v5 block that shed its proofs;
-	// HeavyProofsShed() does. Keeping IsPruned() here would let an Answer-less v5 block past the
-	// trust floor, which is a no-discount break and the disqualifying widening the (d-3) delta
-	// cert named: "identity != bond possession, trustFloor stays".
+	// BOND POSSESSION, not identity — the node-path twin of v5ValidateBondRegs's arm.
+	// retires `Pruned` for v5, so IsPruned no longer detects a v5 block that shed its
+	// proofs; HeavyProofsShed does. Keeping IsPruned here would let an Answer-less v5
+	// block past the trust floor, which is a no-discount break and the disqualifying
+	// widening an earlier review named: "identity != bond possession, trustFloor stays".
 	if b.HeavyProofsShed() {
 		if b.Height >= c.trustFloor() {
 			// The floor VALUE is deliberately not rendered. Its v5 mirror (v5ValidateBondRegs) reads
 			// the pruned-tolerance rule through StateView.PrunedTolerated, which answers the question
 			// and never the scalar (D0 / H-4: a floor on that interface is a wrong-accept vector), so
 			// the mirror structurally cannot know the number. The v4/v5 parity oracle requires the two
-			// renderings to be IDENTICAL — the #572 attribution contract, which already carries its
+			// renderings to be IDENTICAL — the attribution contract, which already carries its
 			// one permitted text departure (rootsRendered) — and a value on one side only is exactly
 			// the drift it exists to catch.
 			//
-			// WHAT THIS COSTS THE OPERATOR, stated rather than glossed. An earlier draft of this
-			// comment said the floor is "node-local and queryable". It is node-local; it is NOT
-			// queryable. trustFloor() is unexported and has no reader in cmd/, core/node/, adapters/
-			// or internal/, and chain-status prints the pruned block COUNT, not the floor. So an
-			// operator who sees this refusal learns the height of the offending block and not how far
-			// under their anchor it sits. Surfacing it is not the one-line fix it looks like:
-			// chain-status never constructs a Chain — it decodes chain.cbor directly, which is why it
-			// already takes the epoch cadence as a FLAG — and trustFloor is max(RetentionHorizon(),
-			// WSCheckpoint.Height) with RetentionHorizon() gated on finalityQuorumActive(), a
-			// predicate over committed state under the full consensus config. A queryable floor is a
-			// real operator-surface change, not a print statement, and it is not in this row's scope.
-			// Recorded here as a known gap rather than papered over by a false clause.
+			// WHAT THIS COSTS THE OPERATOR, stated rather than glossed. An earlier draft of
+			// this comment said the floor is "node-local and queryable". It is node-local;
+			// it is NOT queryable. trustFloor is unexported and has no reader in cmd/,
+			// core/node/, adapters/ or internal/, and chain-status prints the pruned block
+			// COUNT, not the floor. So an operator who sees this refusal learns the height
+			// of the offending block and not how far under their anchor it sits. Surfacing
+			// it is not the one-line fix it looks like: chain-status never constructs a
+			// Chain — it decodes chain.cbor directly, which is why it already takes the
+			// epoch cadence as a FLAG — and trustFloor is max(RetentionHorizon,
+			// WSCheckpoint.Height) with RetentionHorizon gated on finalityQuorumActive, a
+			// predicate over committed state under the full consensus config. A queryable
+			// floor is a real operator-surface change, not a print statement, and it is not
+			// in this row's scope. Recorded here as a known gap rather than papered over by
+			// a false clause.
 			return fmt.Errorf("%w: pruned block at height %d", ErrPrunedAboveHorizon, b.Height)
 		}
-		// Below the anchor: skip the space-time re-verify. Belt (decode-invariant): a
-		// pruned block must not also carry an Answer — a full block cannot smuggle a
-		// forged stored-hash past the skip. Structural + proposer/attester-sig checks
-		// still run elsewhere, against the stored Hash() (slice 2).
+		// Below the anchor: skip the space-time re-verify. Belt
+		// (decode-invariant): a pruned block must not also carry an Answer — a
+		// full block cannot smuggle a forged stored-hash past the skip.
+		// Structural + proposer/attester-sig checks still run elsewhere,
+		// against the stored Hash (slice 2).
 		for _, r := range b.BondRegs {
 			if r.Answer != nil {
 				return fmt.Errorf("%w: validator %s", ErrMalformedPruned, r.ValidatorID())
@@ -2463,12 +2440,12 @@ func (c *Chain) validateBondRegs(b *Block) error {
 		}
 	}
 	nonces := c.recentBondRegNonces(b.Prev)
-	// #506 R-rule (VALIDITY, active only past the gate — regGateActive): a bond
+	// R-rule (VALIDITY, active only past the gate — regGateActive): a bond
 	// reg for identity X is a valid payload only if X is not slashed (R∞ — the
-	// #503 Defect-A commit path, closed structurally) and X's last committed reg
+	// Defect-A commit path, closed structurally) and X's last committed reg
 	// is ≥ R blocks old (first registrations are exempt: bondRegHeight unset).
 	// This is what bounds reg-BLOCK volume — the ~1.5 MB Answer per committed
-	// reg was the #503 OOM driver; the proposer-side filter (#508) keeps honest
+	// reg was the OOM driver; the proposer-side filter keeps honest
 	// proposers clean, this makes a storm block INVALID so it cannot commit.
 	// Validation runs against the PARENT state, so a block carrying two regs for
 	// the same identity needs its own in-block check (seenReg) or a one-block
@@ -2478,20 +2455,20 @@ func (c *Chain) validateBondRegs(b *Block) error {
 	if gate {
 		seenReg = make(map[ports.NodeID]bool, len(b.BondRegs))
 	}
-	// PER-ROOT DEDUP (CONSENSUS-RULE, certified 2026-08-28
-	// same-root-intrablock-bondreg-contention, resolution (a)): reject a block
-	// carrying two registrations from DISTINCT identities on the SAME root. apply()
-	// would resolve such a collision by intra-block slice order (chain.go:2780-2790),
-	// so two honest replicas applying the identical block in a different BondReg
-	// order commit a different bonded/bondRootOwner state — the order-dependent
-	// commit the era-3 SMT root cannot tolerate. Rejecting it at validity means the
-	// divergent input never commits, so nothing order-dependent is left to hash.
+	// PER-ROOT DEDUP (a CONSENSUS RULE): reject a block
+	// carrying two registrations from DISTINCT identities on the SAME root. apply
+	// would resolve such a collision by intra-block slice order
+	// (chain.go), so two honest replicas applying the identical block in
+	// a different BondReg order commit a different bonded/bondRootOwner state —
+	// the order-dependent commit the era-3 SMT root cannot tolerate. Rejecting it
+	// at validity means the divergent input never commits, so nothing
+	// order-dependent is left to hash.
 	//
-	// UNCONDITIONAL, by certified caveat: seenRoot is NOT gate-gated (seenReg is).
-	// The freeze seam must be closed in EVERY regime, including pre-gate genesis-
-	// adjacent heights on this validated path. And it dedups on (root × DISTINCT-ID)
-	// only — a validator re-registering its OWN root (same ID: renew/resize) is
-	// legal (F1) and stays admitted.
+	// UNCONDITIONAL, by caveat: seenRoot is NOT gate-gated (seenReg is). The
+	// freeze seam must be closed in EVERY regime, including pre-gate genesis-
+	// adjacent heights on this validated path. And it dedups on (root ×
+	// DISTINCT-ID) only — a validator re-registering its OWN root (same ID:
+	// renew/resize) is legal (F1) and stays admitted.
 	seenRoot := make(map[ports.Hash]ports.NodeID, len(b.BondRegs))
 	for _, r := range b.BondRegs {
 		id := r.ValidatorID()
@@ -2554,7 +2531,7 @@ func (c *Chain) ValidateBondReg(r BondReg) bool {
 
 // ValidateBondRegErr is ValidateBondReg with the refusal REASON. A refused
 // peer-submitted reg must be attributable from one field observation — the
-// #432 wedge hid for three billable runs partly because the receipt path
+// wedge hid for three billable runs partly because the receipt path
 // dropped refusals silently (chainrole.go MsgSubmitBondReg), so the drop
 // looked like discovery/egress from the outside. Never refuse silently (B5).
 func (c *Chain) ValidateBondRegErr(r BondReg) error {
@@ -2562,11 +2539,11 @@ func (c *Chain) ValidateBondRegErr(r BondReg) error {
 		return fmt.Errorf("bond reg refused: chain is not objective")
 	}
 	head, next := c.Head()
-	// #506 pre-filter: refuse a submission the R-rule would refuse in the block
+	// pre-filter: refuse a submission the R-rule would refuse in the block
 	// it would ride (height next). Without this an honest proposer includes it,
 	// mints a block its OWN validity check rejects, and burns its proposer turn —
 	// the gate must fail the reg at receipt, attributably, not the block at
-	// commit. (Same reason the #508 slashed filter lives proposer-side.)
+	// commit. (Same reason the slashed filter lives proposer-side.)
 	if c.regGateActive(next) {
 		id := r.ValidatorID()
 		if c.slashed[id] {
@@ -2583,12 +2560,12 @@ func (c *Chain) ValidateBondRegErr(r BondReg) error {
 // validateSlashes verifies a block's on-chain equivocation records (F2): each
 // must be a self-verifying double-sign proof — the culprit's own signatures over
 // two DIFFERENT blocks at the SAME height, with both hashes RECOMPUTED from full
-// bodies (never read from Pruned — R0.6). A forged accusation fails
-// CheckEquivocation, so an honest validator cannot be evicted (forged-slash
-// griefing stays denied); the named reason rides under ErrBadSlash. The
-// SlashesBytesCap ceiling is checked FIRST, before any signature work, so an
-// over-size field costs the validator one encode, not a verification sweep.
-// Enforced on every write path, every era.
+// bodies (never read from Pruned). A forged accusation fails CheckEquivocation,
+// so an honest validator cannot be evicted (forged-slash griefing stays denied);
+// the named reason rides under ErrBadSlash. The SlashesBytesCap ceiling is
+// checked FIRST, before any signature work, so an over-size field costs the
+// validator one encode, not a verification sweep. Enforced on every write path,
+// every era.
 func (c *Chain) validateSlashes(b *Block) error {
 	if len(b.Slashes) == 0 {
 		return nil
@@ -2623,19 +2600,19 @@ func (c *Chain) BondedSize(id ports.NodeID) int64 { return c.bonded[id] }
 
 // ProposerEligible reports whether id currently qualifies to propose — the same
 // rule ValidateProposal applies. Read-only probe for the node layer, so a
-// validator can decide whether a proposal is worth attempting (the #338
+// validator can decide whether a proposal is worth attempting (the
 // bond-registration drain) without paying a doomed gather.
 func (c *Chain) ProposerEligible(id ports.NodeID) bool { return c.proposerQualified(id) }
 
 // EligibleProposers is the sorted set of validators currently qualified to
 // propose, derived ONLY from committed chain state (the anchor set during the
 // launch window, the bonded/epoch set after) — so every honest replica computes
-// the SAME list. The #338 drain uses it to designate a single proposer per
+// the SAME list. The drain uses it to designate a single proposer per
 // height (ids[height % len]): without a deterministic designation two eligible
 // proposers drain-race the same height, cross-attest each other's conflicting
 // blocks on a small young network, and read each other's signatures as
 // equivocation — two honest anchors slashing each other into a wedged chain
-// (observed in the failing-first #338 repro).
+// (observed in the failing-first repro).
 func (c *Chain) EligibleProposers() []ports.NodeID {
 	seen := make(map[ports.NodeID]bool)
 	var out []ports.NodeID
@@ -2665,16 +2642,16 @@ func (c *Chain) EligibleProposers() []ports.NodeID {
 // toward quorum — the same rule ValidateCommit applies. Read-only probe for the
 // node layer: a gather that solicits attestations from unqualified peers
 // collects signatures that then don't count, failing its own commit — so the
-// #338 drain filters its attester set through this.
+// drain filters its attester set through this.
 func (c *Chain) AttesterEligible(id ports.NodeID) bool { return c.attesterQualified(id) }
 
 // AttesterEligibleAt is AttesterEligible for the block at height h — identical
-// everywhere except the #535 operator-directed recovery boundary, where the
+// everywhere except the operator-directed recovery boundary, where the
 // governing set is the live re-base (attesterQualifiedAt). The gather must
 // SOLICIT from the same set validation will count: a live-but-unfrozen
 // member's weight is in the recovery denominator, so a frozen-set solicitation
 // filter could leave the assembling coalition short of the very bar it is
-// measured against (the #402 size-set/membership-set law, at the wire).
+// measured against (the size-set/membership-set law, at the wire).
 func (c *Chain) AttesterEligibleAt(id ports.NodeID, h uint64) bool {
 	return c.attesterQualifiedAt(id, h)
 }
@@ -2682,7 +2659,7 @@ func (c *Chain) AttesterEligibleAt(id ports.NodeID, h uint64) bool {
 // IsBonded reports whether id is a qualified bond-distinct identity in the COMMITTED
 // on-chain bond ledger: its bonded size clears MinBond and it has not been slashed.
 // This is the LIVE admission bar (what attesterQualified reads outside a mature
-// epoch; within one, qualification is the epoch snapshot — #357 Condition A),
+// epoch; within one, qualification is the epoch snapshot — Condition A),
 // exposed so the demand bank's P3b bonded-fetcher credential prices fake demand onto
 // exactly the Sybil-priced identity supply C2 measures. Always false in legacy mode
 // (MinBond 0).
@@ -2700,8 +2677,8 @@ func (c *Chain) IsBonded(id ports.NodeID) bool {
 // bonded validator re-registering on EVERY proposal re-embeds its full space-time
 // proof in every block for no gain — the LATEST registration already stands — which
 // on a real cross-region network bloated every block past what attestation could
-// carry in time and WEDGED the chain after the first bond (#313). It also raised the
-// participation floor (build-immutable #4) and the per-block bandwidth (#299). Only
+// carry in time and WEDGED the chain after the first bond. It also raised the
+// participation floor (build-immutable #4) and the per-block bandwidth. Only
 // the not-yet-bonded and the genuinely-due-for-renewal cases justify the proof.
 func (c *Chain) BondRenewalDue(id ports.NodeID) bool {
 	if !c.objective() {
@@ -2714,31 +2691,32 @@ func (c *Chain) BondRenewalDue(id ports.NodeID) bool {
 		return false // no expiry configured — one registration stands
 	}
 	_, next := c.Head() // height of the block being proposed next
-	// #555 renewal PHASE-JITTER (research certification 2026-08-25): validators
+	// renewal PHASE-JITTER: validators
 	// that all registered near genesis hit TTL/2 together, so 5–7 heavy ~1.5 MB
 	// space-time proofs land in ONE block every few heights — and each attester
 	// verifies every proof on the gather's critical path before it will sign,
 	// inflating the two-phase gather latency on the 1 vCPU box (the deep-drive
 	// crawl; real networks spread naturally via organic join-times).
 	//
-	// Shift the renewal point onto a per-identity ABSOLUTE grid — period TTL/2,
-	// phase = offset(id) — rounded to the NEAREST grid point within ±TTL/4 of the
-	// plain TTL/2 due point. This spreads the genesis-aligned fleet's FIRST
-	// renewal across [TTL/4, 3·TTL/4) (so ~1 reg lands per block), while leaving
-	// the PERIOD exactly TTL/2 on every LATER cycle: after a renewal
-	// bondRegHeight lands on the grid, so the next due point is bondRegHeight +
-	// TTL/2 unchanged. That keeps re-registration frequency (the #313 bloat bound)
-	// AND the renewal margin (≥ TTL/4 to expiry) intact — only the phase differs
-	// per identity. CLIENT-SIDE PACING ONLY: BondRenewalDue gates the node's own
-	// drain/submit decision, never block validation, so this changes WHEN an
-	// identity re-proves, never a consensus rule; the TTL denomination and its
-	// #503 couplings are untouched. Small-TTL (< 4) falls back to the plain point.
+	// Shift the renewal point onto a per-identity ABSOLUTE grid — period
+	// TTL/2, phase = offset(id) — rounded to the NEAREST grid point within
+	// ±TTL/4 of the plain TTL/2 due point. This spreads the genesis-aligned
+	// fleet's FIRST renewal across [TTL/4, 3·TTL/4 (so ~1 reg lands per
+	// block), while leaving the PERIOD exactly TTL/2 on every LATER cycle:
+	// after a renewal bondRegHeight lands on the grid, so the next due point
+	// is bondRegHeight + TTL/2 unchanged. That keeps re-registration frequency
+	// (the bloat bound) AND the renewal margin (≥ TTL/4 to expiry) intact —
+	// only the phase differs per identity. CLIENT-SIDE PACING ONLY:
+	// BondRenewalDue gates the node's own drain/submit decision, never block
+	// validation, so this changes WHEN an identity re-proves, never a
+	// consensus rule; the TTL denomination and its couplings are untouched.
+	// Small-TTL (< 4) falls back to the plain point.
 	return next >= c.renewalDueHeight(id)
 }
 
-// renewalDueHeight computes the #555 phase-jittered renewal point for id: the
+// renewalDueHeight computes the phase-jittered renewal point for id: the
 // nearest per-identity grid point (period TTL/2, phase offset(id)) to the plain
-// TTL/2 due point, clamped to respect the #506 R-rule (#562). Factored out of
+// TTL/2 due point, clamped to respect the R-rule. Factored out of
 // BondRenewalDue so the phase/clamp arithmetic is directly testable.
 func (c *Chain) renewalDueHeight(id ports.NodeID) uint64 {
 	period := c.cfg.BondTTLBlocks / 2
@@ -2751,18 +2729,19 @@ func (c *Chain) renewalDueHeight(id ports.NodeID) uint64 {
 		} else {
 			due += period - r // round up
 		}
-		// #562: the nearest grid point can sit CLOSER to the last committed reg
-		// than the #506 R-rule allows (rounding reaches down to TTL/4, and R =
-		// K+2 can exceed TTL/4 — 10 vs 8 at the field TTL=32), so the renewal
-		// submitted there is refused every sweep ("re-registering 9 blocks
-		// after its last reg") until the chain outruns R. Clamp to the rate
-		// bound instead: at most ONE off-grid cycle (the next due point
-		// re-rounds from the new reg height and re-aligns to the grid), never
-		// a shortened steady-state period (an on-grid reg's next due point is
-		// a full period away, which the R cap < TTL/2 always clears), and —
-		// unlike jumping to the NEXT grid point — never past the TTL at small
-		// TTLs (R < TTL/2 ≪ expiry). Client-side pacing only, like the jitter
-		// itself: no consensus rule changes.
+		// The nearest grid point can sit CLOSER to the last committed reg
+		// than the R-rule allows (rounding reaches down to TTL/4, and R =
+		// K+2 can exceed TTL/4 — 10 vs 8 at the field TTL=32), so the
+		// renewal submitted there is refused every sweep ("re-registering
+		// 9 blocks after its last reg") until the chain outruns R. Clamp
+		// to the rate bound instead: at most ONE off-grid cycle (the next
+		// due point re-rounds from the new reg height and re-aligns to
+		// the grid), never a shortened steady-state period (an on-grid
+		// reg's next due point is a full period away, which the R cap <
+		// TTL/2 always clears), and — unlike jumping to the NEXT grid
+		// point — never past the TTL at small TTLs (R < TTL/2 ≪ expiry).
+		// Client-side pacing only, like the jitter itself: no consensus
+		// rule changes.
 		if min := c.bondRegHeight[id] + c.regMinInterval(); due < min {
 			due = min
 		}
@@ -2770,8 +2749,8 @@ func (c *Chain) renewalDueHeight(id ports.NodeID) uint64 {
 	return due
 }
 
-// renewalPhaseOffset is a deterministic per-identity offset in [0, window) used
-// to spread bond renewals across the TTL window (#555). A pure function of the
+// renewalPhaseOffset is a deterministic per-identity offset in [0, window used
+// to spread bond renewals across the TTL window. A pure function of the
 // identity, so the pacing is stable and every replica agrees on any node's
 // timing (it is not consensus-relevant, but determinism keeps it debuggable).
 func renewalPhaseOffset(id ports.NodeID, window uint64) uint64 {
@@ -2824,7 +2803,7 @@ func (c *Chain) CanonicalIssuers(max int) []ports.NodeID {
 // RequireTokens turns on publisher-privacy publish tokens (F1): every entry
 // must carry a PublishToken blind-signed by `quorum` distinct qualified
 // validators (their issuer keys via issuerKey), and each serial spends exactly
-// once (double-spend rejected across the whole chain). Off by default (quorum
+// once (double-spend rejected across the whole chain). Off by default quorum
 // 0) — existing behavior is unchanged, so a Publisher-NodeID entry still works.
 func (c *Chain) RequireTokens(quorum int, issuerKey func(ports.NodeID) *rsa.PublicKey) {
 	c.tokenQuorum = quorum
@@ -2833,17 +2812,17 @@ func (c *Chain) RequireTokens(quorum int, issuerKey func(ports.NodeID) *rsa.Publ
 
 // Mature reports whether the network has decentralized enough for the launch-
 // window anchors to no longer be required: its NAKAMOTO COEFFICIENT over the
-// non-anchor bonded set is at least MatureValidators (H4 / Memo 05). Unlike the
-// old head-count of distinct validators — which one operator could trip by
-// spinning up many minimum bonds, then capture consensus once the wheels shed —
-// this is cost-to-corrupt over bond-distinct operators: a set whose weight is
-// dominated by a few bonds has a LOW coefficient and stays immature no matter how
-// many satellite keys are added. It reads the CURRENT bonded set — the LIVE metric.
-// It does NOT gate the anchors: that is the one-way latch EverMature() (F-1), so a
-// later drop in decentralization can never re-arm the wheels. Mature() vs
-// EverMature() diverge only in the de-maturation window, which the real-bond
-// super-quorum handles. Legacy mode has no on-chain bonded set, so it falls back to
-// the head count of distinct qualified validators seen.
+// non-anchor bonded set is at least MatureValidators (H4 /). Unlike the old
+// head-count of distinct validators — which one operator could trip by spinning up
+// many minimum bonds, then capture consensus once the wheels shed — this is
+// cost-to-corrupt over bond-distinct operators: a set whose weight is dominated by
+// a few bonds has a LOW coefficient and stays immature no matter how many satellite
+// keys are added. It reads the CURRENT bonded set — the LIVE metric. It does NOT
+// gate the anchors: that is the one-way latch EverMature, so a later drop in
+// decentralization can never re-arm the wheels. Mature vs EverMature diverge only
+// in the de-maturation window, which the real-bond super-quorum handles. Legacy
+// mode has no on-chain bonded set, so it falls back to the head count of distinct
+// qualified validators seen.
 func (c *Chain) Mature() bool {
 	if c.cfg.MatureValidators <= 0 {
 		return true
@@ -2851,18 +2830,17 @@ func (c *Chain) Mature() bool {
 	return c.matureNow()
 }
 
-// EverMature reports the one-way maturity LATCH (F-1): whether the network has
-// been certified mature at ANY committed height. This — not the live Mature() — is
-// what gates the launch anchors, so once a network first decentralizes the anchors
-// never re-arm. A pure function of the committed blocks (see the everMature field).
+// EverMature reports the one-way maturity LATCH: whether the network has been
+// mature at ANY committed height. This — not the live Mature — is what gates the
+// launch anchors, so once a network first decentralizes the anchors never re-arm. A
+// pure function of the committed blocks (see the everMature field).
 func (c *Chain) EverMature() bool { return c.everMature }
 
 // RegimeState is the derived consensus-regime snapshot a replica holds — the
-// state whose live-vs-replay divergence wedged 474718e-deep's val-d (#572: a
-// restored replica demanded launch-rule anchors for mature commits, forever).
-// Exposed so the daemon can PRINT it at every restore and the next divergence
-// names the map that failed to rebuild, instead of hiding behind a validation
-// error. Diagnostic only; changes no rule.
+// state whose live-vs-replay divergence wedged the field run's val-d.
+// Exposed so the daemon can PRINT it at every restore and the next
+// divergence names the map that failed to rebuild, instead of hiding behind
+// a validation error. Diagnostic only; changes no rule.
 type RegimeState struct {
 	EverMature, MatureEpoch bool
 	ValidatorsSeen, Bonded  int
@@ -2878,11 +2856,11 @@ func (c *Chain) Regime() RegimeState {
 	}
 }
 
-// matureNow is the LIVE maturity metric over the CURRENT bonded set. Mature()
-// wraps it; the latch (everMature) is what gates anchors. The two diverge exactly
-// in the de-maturation window (everMature && !matureNow): the network matured, then
+// matureNow is the LIVE maturity metric over the CURRENT bonded set. Mature wraps
+// it; the latch (everMature) is what gates anchors. The two diverge exactly in the
+// de-maturation window (everMature && !matureNow): the network matured, then
 // concentration/attrition dropped it back below the bar — handled by the real-bond
-// super-quorum, never by re-arming anchors (F-1).
+// super-quorum, never by re-arming anchors.
 func (c *Chain) matureNow() bool {
 	if !c.objective() {
 		n := 0
@@ -2896,19 +2874,19 @@ func (c *Chain) matureNow() bool {
 	// Objective maturity gates on the OPERATOR-discounted coefficient AND the
 	// address-diverse coefficient (A axis, D-C2), whichever is smaller — so a stake
 	// split across many keys must clear MatureValidators × M distinct bonds AND
-	// MatureValidators distinct declared domains. At M=1 with no domains set this is
-	// the plain bond-distinct coefficient (unchanged behavior). min() only ever RAISES
-	// the bar to shed, so it can never weaken an existing config.
+	// MatureValidators distinct declared domains. At M=1 with no domains set this
+	// is the plain bond-distinct coefficient (unchanged behavior). min only ever
+	// RAISES the bar to shed, so it can never weaken an existing config.
 	return c.MatureCoefficient() >= c.cfg.MatureValidators
 }
 
 // MatureCoefficient is the operator-and-domain-distinct bonded-distinctness count over
 // the COMMITTED ledger — min(NakamotoOperators, NakamotoDomains) from C2Metric — the
 // exact quantity the maturity shed gates on (matureNow). It is the shipped H metric the
-// CT-1 conditional theorem measures its honest-arrival count A(t) by (research cert
+// CT-1 conditional theorem measures its honest-arrival count A(t) by (research
 // C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27, §2.1): the honest
 // operator/domain-distinct arrival count at height t. Exposed so an observer can RECORD
-// the arrival RATE λ_H = ΔA/Δheight for the floor-exit alarm the cert owes (§6) WITHOUT
+// the arrival RATE λ_H = ΔA/Δheight for the floor-exit alarm the research owes WITHOUT
 // a second, driftable definition of the distinctness metric — the shed and the λ_H floor
 // must count the same thing or the floor parameterizes a different quantity than the
 // theorem binds (T_mature ≤ M_req / λ_H). Pure read of committed state; changes no rule.
@@ -2921,14 +2899,14 @@ func (c *Chain) MatureCoefficient() int {
 	return k
 }
 
-// C2 is the concentration measurement behind the "no quiet capture" axis (D-C2):
+// C2 is the concentration measurement behind the "no quiet capture" axis:
 // cost-to-corrupt over bond-distinct participants, computed from the COMMITTED
 // on-chain bond ledger (c.bonded) — never gossip, which kills the "lie about your
 // size" skew half outright — plus the conservative operator-margin discount that
 // stands in for the (impossible-on-chain) key→operator clustering, bounding the
 // split half. It is ONE measurement, consumed by the maturity shed (Mature) and
 // published for observability (chain-status); the private-lookup committee
-// certification (H8/#179) is the third intended consumer.
+// is the third intended consumer.
 type C2 struct {
 	// NakamotoBonds is the fewest bond-distinct participants whose combined
 	// committed weight EXCEEDS the Byzantine fraction (⌊total/3⌋) of the
@@ -2943,7 +2921,7 @@ type C2 struct {
 	// so a splitter must clear k·M distinct bonds — the split-half defense. At M=1
 	// (default) it equals NakamotoBonds. HEURISTIC by theorem (Kwon): only as tight
 	// as M is honest; M_est under adversarial NodeID placement is unquantified
-	// (carry margin, D-C2 / #182).
+	// (carry margin, D-C2 /).
 	NakamotoOperators int
 	// CostToCorruptBytes is the bonded weight an attacker must control to reach the
 	// fault threshold: ⌊total/3⌋ + 1 (one byte past the Byzantine fraction).
@@ -2963,7 +2941,7 @@ type C2 struct {
 	// k·M distinct bonds AND k distinct domains. Weak signal: a domain is
 	// SELF-ASSERTED (declared and gossiped, trusted verbatim — NOT transport-verified
 	// against the observed /24), so it prices an equal-/24 split but a splitter that
-	// declares distinct domains evades it — pricing, not proof (#182).
+	// declares distinct domains evades it — pricing, not proof.
 	NakamotoDomains int
 	// DistinctDomains is the number of address-diversity groups counted (distinct
 	// non-zero declared domains + each unset-domain bond as its own group).
@@ -2982,19 +2960,20 @@ type C2 struct {
 	// the Byzantine capture fraction (⌊total/3⌋) — the honest-whale alarm threshold.
 	TopShare float64
 	// WeightUniformity is the evenness of the bonded-weight distribution: the
-	// effective participant count (1/HHI, the order-2 Hill number) over the actual
-	// count ∈ (0,1]. →1 = every bond identical (perfectly uniform); →1/n = one bond
-	// dominates. It is the COUNT/ENTROPY companion the weight-concentration signals
-	// (HHI, Gini, TopShare) are BLIND to: an equal-bond SPLIT — one operator posting
-	// N identical min-bonds across N keys — drives HHI→1/n, Gini→0, TopShare→1/n
-	// (all reading "maximally decentralized") while WeightUniformity→1 with a LARGE
-	// Participants count. That "many atoms, implausibly uniform" fingerprint is the
-	// naive splitter's tell, invisible to the weight signals (colluding-validator
-	// red-team, seam-5). NECESSARY-NOT-SUFFICIENT: healthy decentralization is also
-	// uniform, and a splitter that VARIES its bond sizes evades it, so it does NOT
-	// close the honest-whale/M_est residue (#182) — it is surfaced so an operator
-	// correlating with OUT-OF-BAND address/timing diversity can tell an implausibly
-	// perfect split from real decentralization. Observability, never enforcement.
+	// effective participant count (1/HHI, the order-2 Hill number) over the
+	// actual count ∈ 0,1]. →1 = every bond identical (perfectly uniform); →1/n =
+	// one bond dominates. It is the COUNT/ENTROPY companion the
+	// weight-concentration signals (HHI, Gini, TopShare) are BLIND to: an
+	// equal-bond SPLIT — one operator posting N identical min-bonds across N keys
+	// — drives HHI→1/n, Gini→0, TopShare→1/n (all reading "maximally
+	// decentralized") while WeightUniformity→1 with a LARGE Participants count.
+	// That "many atoms, implausibly uniform" fingerprint is the naive splitter's
+	// tell, invisible to the weight signals (colluding-validator).
+	// NECESSARY-NOT-SUFFICIENT: healthy decentralization is also uniform, and a
+	// splitter that VARIES its bond sizes evades it, so it does NOT close the
+	// honest-whale/M_est residue — it is surfaced so an operator correlating with
+	// OUT-OF-BAND address/timing diversity can tell an implausibly perfect split
+	// from real decentralization. Observability, never enforcement.
 	WeightUniformity float64
 }
 
@@ -3041,7 +3020,7 @@ func (c *Chain) C2Metric() C2 {
 		}
 	}
 	m.NakamotoOperators = m.NakamotoBonds / m.Margin // ⌊k̂/M⌋, conservative
-	// A axis (D-C2): NakamotoDomains is the Nakamoto coefficient over ADDRESS-DIVERSE
+	// A axis: NakamotoDomains is the Nakamoto coefficient over ADDRESS-DIVERSE
 	// groups — bonds sharing a declared domain aggregate into one group, so splitting
 	// a stake across many keys in ONE domain does NOT inflate the count; only distinct
 	// declared domains do (the earned-per-network-position cost the flat margin M only
@@ -3079,10 +3058,11 @@ func (c *Chain) C2Metric() C2 {
 	}
 	m.HHI = hhi
 	m.Gini = giniNum / (float64(n) * ftotal)
-	// WeightUniformity = effective participants (1/HHI, order-2 Hill number) / actual
-	// participants. Equal bonds → HHI=1/n → 1/HHI=n → uniformity=1 (the equal-split
-	// fingerprint the weight signals read as "decentralized"); concentration pulls it
-	// toward 1/n. Companion count/entropy signal (seam-5), observability only.
+	// WeightUniformity = effective participants (1/HHI, order-2 Hill number) /
+	// actual participants. Equal bonds → HHI=1/n → 1/HHI=n → uniformity=1 (the
+	// equal-split fingerprint the weight signals read as "decentralized");
+	// concentration pulls it toward 1/n. Companion count/entropy signal,
+	// observability only.
 	if hhi > 0 {
 		m.WeightUniformity = (1.0 / hhi) / float64(n)
 	}
@@ -3104,7 +3084,7 @@ func (c *Chain) operatorMargin() int {
 // revocation record.
 func (c *Chain) Revoked(root ports.Hash) bool { return c.revoked[root] }
 
-// The takedown-transparency operations logged as CT events (D-TAKEDOWN / #180).
+// The takedown-transparency operations logged as CT events.
 const (
 	RevOp   byte = 'R' // a root was revoked (taken down)
 	UnrevOp byte = 'U' // a prior revocation was reversed
@@ -3156,7 +3136,7 @@ func (c *Chain) Head() (ports.Hash, uint64) {
 	return last.Hash(), last.Height + 1
 }
 
-// ChainID is this chain's NETWORK IDENTITY: the height-0 block's Hash().
+// ChainID is this chain's NETWORK IDENTITY: the height-0 block's Hash.
 //
 // It is the SAME quantity Reconcile already refuses a fork on (ErrForeignGenesis) and the
 // freeze manifest classes as "NETWORK IDENTITY, and moving it is not an era, it is a new
@@ -3170,7 +3150,7 @@ func (c *Chain) Head() (ports.Hash, uint64) {
 // fact (the floor box at construction) check for the zero explicitly.
 //
 // Derived from committed history, so every replica — live, replaying or auditing — computes the
-// identical value; blocks[0].Hash() memoizes on the stored block, so this is O(1) after first
+// identical value; blocks[0].Hash memoizes on the stored block, so this is O(1) after first
 // call.
 func (c *Chain) ChainID() ports.Hash {
 	if len(c.blocks) == 0 {
@@ -3181,12 +3161,12 @@ func (c *Chain) ChainID() ports.Hash {
 
 // EpochBlocks returns the configured epoch length in blocks (0 = epochs disabled).
 // Read-only getter of a config value; it changes no rule. The relay lane uses it
-// to derive a sequential epoch index (head height / EpochBlocks) for #645
-// epoch-tied seen-map eviction. See core/node/relayrole.go.
+// to derive a sequential epoch index (head height / EpochBlocks) for epoch-tied
+// seen-map eviction. See core/node/relayrole.go.
 func (c *Chain) EpochBlocks() uint64 { return c.cfg.EpochBlocks }
 
 // ConfigQuorum returns the operator's Config.Quorum — the proposer-side GATHER
-// target (#380 direction (1), D-CONSENSUS-ARMING (20)), NOT a validity term in
+// target, NOT a validity term in
 // objective mode with Byzantine sizing (see RequiredQuorum). Read-only getter of
 // a config value; it changes no rule. gatherTwoPhase reads it so every proposal
 // path gathers max(ConfigQuorum, RequiredQuorum) whatever floor its caller passed.
@@ -3224,10 +3204,10 @@ func (c *Chain) Blocks(from uint64) []Block {
 // signing: ancestry, proposer signature and reputation, and that every
 // entry is well-formed and new.
 func (c *Chain) ValidateProposal(b *Block) error {
-	// era-4 (v5) — THE ONE ACCEPT COMPOSITION, proposal entry (BG-1: v5-ONLY; M-2: BOTH node
-	// entry points dispatch, so the attester signs under the rule the committer accepts under).
+	// era-4 (v5) — THE ONE ACCEPT COMPOSITION, proposal entry (v5-ONLY: BOTH node entry
+	// points dispatch, so the attester signs under the rule the committer accepts under).
 	// The era-1/era-2 body below is BYTE-UNTOUCHED. Both non-Accept outcomes REFUSE:
-	// IndeterminateTrustlessly is unreachable under liveView (G-5) and is mapped to an error
+	// IndeterminateTrustlessly is unreachable under liveView and is mapped to an error
 	// anyway, so a bug in the live adapter costs a refusal, never an acceptance.
 	if b.Version >= BlockVersionWitnessable {
 		out, err := ValidateProposalV5(liveView{c}, b)
@@ -3253,11 +3233,12 @@ func (c *Chain) ValidateProposal(b *Block) error {
 	}
 	if !c.proposerQualifiedAt(b.ProposerID(), b.Height) {
 		if c.objective() {
-			// Name the ACTUAL disqualifying branch (#572): the 474718e-deep
-			// stall printed "bonded 1048576, needs 1048576" — equal-but-failing
-			// — because the real refusal was frozen-set membership on a
-			// divergent-regime replica, and the bonded/MinBond rendering sent
-			// the attribution down a false trail. Mirror proposerQualifiedAt.
+			// Name the ACTUAL disqualifying branch: the field run
+			// stall printed "bonded 1048576, needs 1048576" —
+			// equal-but-failing — because the real refusal was frozen-set
+			// membership on a divergent-regime replica, and the
+			// bonded/MinBond rendering sent the attribution down a false
+			// trail. Mirror proposerQualifiedAt.
 			id := b.ProposerID()
 			if c.slashed[id] {
 				return fmt.Errorf("%w: proposer %s is slashed (F2 eviction)", ErrLowReputation, id)
@@ -3267,7 +3248,7 @@ func (c *Chain) ValidateProposal(b *Block) error {
 					ErrLowReputation, id, b.Height, c.bonded[id])
 			}
 			if len(c.cfg.Anchors) > 0 && !c.handedOff() {
-				return fmt.Errorf("%w: proposer %s is not a launch anchor (young network proposes anchor-only, #402; bonded %d)",
+				return fmt.Errorf("%w: proposer %s is not a launch anchor (young network proposes anchor-only; bonded %d)",
 					ErrLowReputation, id, c.bonded[id])
 			}
 			return fmt.Errorf("%w: proposer %s bonded %d, needs %d",
@@ -3324,22 +3305,23 @@ func (c *Chain) ValidateProposal(b *Block) error {
 	if err := c.validateEra4Version(b); err != nil {
 		return err
 	}
-	// (d-3) digest consistency — the transitive half of the v5 preimage. Runs beside the two
-	// version-boundary rules, on the same disk-write paths, for the same #572 symmetry reason.
-	if err := validateD3Digests(b); err != nil {
+	// digest consistency — the transitive half of the v5 preimage. Runs beside the two
+	// version-boundary rules, on the same disk-write paths, for the same symmetry reason.
+	if err := validateBlockDigests(b); err != nil {
 		return err
 	}
 	// Genesis-config placement: only height 0 may commit consensus params.
 	if err := validateParamsPlacement(b); err != nil {
 		return err
 	}
-	// era-4 (v5) LastCommit carrier validity (R-BOX-ATTESTS, O1). A pure block-local check
-	// (header + signatures, no committed state), placed BEFORE the roots predicate so a bad
-	// carrier fails naming itself rather than as an opaque root mismatch — the roots
-	// predicate would fold the carrier's seating effect and report only "root != recompute".
-	// The own-disk Reload path runs the identical rule in appendStructural; both disk-write
-	// paths are pinned by TestEveryDiskWritePathRunsTheEra3RootCheck
-	// (core/chain/reload_era3_boundary_test.go), which was extended to require validateCarrier.
+	// era-4 (v5) LastCommit carrier validity (O1). A pure block-local check (header +
+	// signatures, no committed state), placed BEFORE the roots predicate so a bad carrier
+	// fails naming itself rather than as an opaque root mismatch — the roots predicate would
+	// fold the carrier's seating effect and report only "root != recompute". The own-disk
+	// Reload path runs the identical rule in appendStructural; both disk-write paths are
+	// pinned by TestEveryDiskWritePathRunsTheEra3RootCheck
+	// (core/chain/reload_era3_boundary_test.go), which was extended to require
+	// validateCarrier.
 	if err := validateCarrier(b, c.ChainID()); err != nil {
 		return err
 	}
@@ -3356,7 +3338,7 @@ func (c *Chain) ValidateProposal(b *Block) error {
 // ValidateEntry runs the per-entry checks against the CURRENT chain state —
 // dup-root, manifest pointers, the refuse-to-surveil publisher rule, and the
 // publish-token verify + chain-wide spent-serial check. Factored out of
-// ValidateProposal's loop (byte-identical rules) so the #441 entry mempool can
+// ValidateProposal's loop (byte-identical rules) so the entry mempool can
 // validate one peer-submitted entry on arrival and re-validate at fold time —
 // a single stale or forged submission never poisons a whole block, exactly the
 // reg path's ValidateBondReg discipline. Intra-block dedup (two entries in ONE
@@ -3380,7 +3362,7 @@ func (c *Chain) ValidateEntry(e ports.Entry) error {
 		if e.Token == nil {
 			return fmt.Errorf("%w: entry %s", ErrTokenRequired, e.Root)
 		}
-		// Cheap replay reject BEFORE the RSA work (#183 red-team F-1): a
+		// Cheap replay reject BEFORE the RSA work: a
 		// committed token is public on the append-only chain, so an attacker can
 		// pair a harvested valid token with a novel Root and flood — every
 		// signature is genuine, so publishtoken.Verify would run all N modexps to
@@ -3401,13 +3383,13 @@ func (c *Chain) ValidateEntry(e ports.Entry) error {
 }
 
 // validateTakedowns enforces the accountability tenet on a block's revocation
-// and un-revocation records (red-team F5): a revocation may only name a root
-// this chain has already committed (no censoring content that isn't on the
-// ledger), and an un-revocation may only name a root that is currently
-// revoked. Called from both the attester pre-check (ValidateProposal) and the
-// commit path (validateStructural) so a malicious quorum cannot slip either
-// past. Roots published within the SAME block are not yet committed, so
-// same-block revoke-what-you-publish is (correctly) refused as nonsensical.
+// and un-revocation records: a revocation may only name a root this chain has
+// already committed (no censoring content that isn't on the ledger), and an
+// un-revocation may only name a root that is currently revoked. Called from
+// both the attester pre-check (ValidateProposal) and the commit path
+// (validateStructural) so a malicious quorum cannot slip either past. Roots
+// published within the SAME block are not yet committed, so same-block
+// revoke-what-you-publish is (correctly) refused as nonsensical.
 func (c *Chain) validateTakedowns(b *Block) error {
 	for _, r := range b.Revocations {
 		if _, ok := c.byRoot[r]; !ok {
@@ -3427,20 +3409,20 @@ func (c *Chain) validateTakedowns(b *Block) error {
 // Era 1 (legacy): a quorum of distinct, qualified, non-proposer bare-hash
 // attestations, then the phase-independent quorum stack.
 //
-// Era 2 (#432 rounds): TWO quorums at the SAME (Height, CommitRound) — the
+// Era 2: TWO quorums at the SAME (Height, CommitRound) — the
 // PrepareQC (PhasePrepare) that justified precommitting, and Atts
 // (PhasePrecommit), the commit certificate — EACH held to the full quorum
 // stack (RequiredQuorum + anchor gate + epoch weight + de-mature), because the
-// POL threshold IS the commit threshold (certification §4): at most one value
+// POL threshold IS the commit threshold: at most one value
 // can gather a prepare-QC per round (two would share an honest signer), so a
 // committed value was uniquely prepared, and any view-change quorum intersects
 // its prepare quorum in ≥1 honest carrier. A signature at the wrong phase or
 // round is REFUSED (never coerced) — that refusal is what excludes the S1
 // delayed-quorum and S2 equivocate-then-misreport schedules.
 func (c *Chain) ValidateCommit(b *Block) error {
-	// era-4 (v5) — THE ONE ACCEPT COMPOSITION, commit entry (BG-1: v5-ONLY). ValidateCommitV5 is
-	// ValidateProposalV5 then C1..C5 over liveView; the era-1/era-2 legs below are BYTE-UNTOUCHED.
-	// Both non-Accept outcomes REFUSE (see ValidateProposal).
+	// era-4 (v5) — THE ONE ACCEPT COMPOSITION, commit entry (v5-ONLY). ValidateCommitV5 is
+	// ValidateProposalV5 then C1.C5 over liveView; the era-1/era-2 legs below are
+	// BYTE-UNTOUCHED. Both non-Accept outcomes REFUSE (see ValidateProposal).
 	if b.Version >= BlockVersionWitnessable {
 		out, err := ValidateCommitV5(liveView{c}, b)
 		if out == Accept {
@@ -3480,10 +3462,10 @@ func (c *Chain) ValidateCommit(b *Block) error {
 }
 
 // VerifyPrepareQC reports whether qc is a valid prepare-phase quorum
-// certificate for b at round r — the POL the #432 precommit and view-change
-// rules lean on. Held to the same thresholds as a commit (certification §4:
-// the POL threshold IS the commit threshold, so POL-intersects-commit is the
-// same theorem as commit-intersects-commit).
+// certificate for b at round r — the POL the precommit and view-change rules
+// lean on. Held to the same thresholds as a commit: the POL threshold IS the
+// commit threshold, so POL-intersects-commit is the same theorem as
+// commit-intersects-commit.
 func (c *Chain) VerifyPrepareQC(b *Block, qc []Attestation, round uint64) error {
 	seen, err := c.collectQuorumSigs(b, qc, PhasePrepare, round)
 	if err != nil {
@@ -3537,8 +3519,8 @@ func (c *Chain) requireProposerPrepare(b *Block) error {
 func (c *Chain) collectQuorumSigs(b *Block, sigs []Attestation, step uint8, round uint64) (map[ports.NodeID]bool, error) {
 	h := b.Hash()
 	s := attScope{ChainID: c.ChainID(), Height: b.Height}
-	// The quorum demands the wire phase of THIS BLOCK'S era — exactly one form, never both
-	// (G-PRE-8). Callers pass the canonical step; AttPhase is the one era→form mapping.
+	// The quorum demands the wire phase of THIS BLOCK'S era — exactly one form, never
+	// both. Callers pass the canonical step; AttPhase is the one era→form mapping.
 	phase := AttPhase(b.Version, step)
 	seen := make(map[ports.NodeID]bool)
 	for _, a := range sigs {
@@ -3568,47 +3550,46 @@ func (c *Chain) collectQuorumSigs(b *Block, sigs []Attestation, step uint8, roun
 // verified signer set: the count quorum, then the regime gates below (anchor
 // majority / epoch weight / de-mature super-quorum). Shared by the era-1
 // commit, the era-2 prepare-QC, and the era-2 precommit certificate, so the
-// three can never drift (the #402 share-the-arithmetic lesson).
+// three can never drift (the share-the-arithmetic lesson).
 func (c *Chain) requireQuorumStack(b *Block, seen map[ports.NodeID]bool) error {
 	if req := c.RequiredQuorum(); len(seen) < req {
 		return fmt.Errorf("%w: %d qualified, need %d", ErrNoQuorum, len(seen), req)
 	}
-	// Training wheels: until the network has HANDED OFF, the quorum must ALSO
-	// carry anchor sign-off, so a Sybil quorum can't capture a young network
-	// before it has decentralized. Gated on the one-way handoff (handedOff —
-	// with epochs, the first mature rotation per #357 Condition B; without, the
-	// everMature latch), NOT the live Mature() — so a later drop in
-	// decentralization (e.g. an honest whale concentrating real bond) can never
-	// re-arm the anchors (F-1). The anchors therefore keep their sign-off duty
-	// through the (≤ EpochBlocks) tail between the latch and the boundary —
-	// coherent with launchAnchor keeping them eligible over the same window.
-	// Once handed off, de-maturation liveness is the real-bond super-quorum
-	// (requireDeMatureSuperQuorum), not this.
-	// Launch anchor gate (#402): a strict anchor majority, derived in objective mode
-	// so config can never disable intersection. requiredLaunchAnchors + countAnchorSupport
-	// are shared with SupportMeetsQuorum, so the proposer's gather stops on EXACTLY what
-	// this validation demands (no under-gather → self-Append failure drift).
+	// Training wheels: until the network has HANDED OFF, the quorum must ALSO carry
+	// anchor sign-off, so a Sybil quorum can't capture a young network before it has
+	// decentralized. Gated on the one-way handoff (handedOff — with epochs, the first
+	// mature rotation per Condition B; without, the everMature latch), NOT the live
+	// Mature — so a later drop in decentralization (e.g. an honest whale concentrating
+	// real bond) can never re-arm the anchors. The anchors therefore keep their
+	// sign-off duty through the (≤ EpochBlocks) tail between the latch and the boundary
+	// — coherent with launchAnchor keeping them eligible over the same window. Once
+	// handed off, de-maturation liveness is the real-bond super-quorum
+	// (requireDeMatureSuperQuorum), not this. Launch anchor gate: a strict anchor
+	// majority, derived in objective mode so config can never disable intersection.
+	// requiredLaunchAnchors + countAnchorSupport are shared with SupportMeetsQuorum, so
+	// the proposer's gather stops on EXACTLY what this validation demands (no
+	// under-gather → self-Append failure drift).
 	if need := c.requiredLaunchAnchors(); need > 0 {
 		if got := c.countAnchorSupport(b.ProposerID(), seen); got < need {
 			return fmt.Errorf("%w: %d of required %d", ErrAnchorRequired, got, need)
 		}
 	}
-	// Mature-epoch WEIGHT quorum (research certification 2026-08-13, B2): once
-	// the network has handed off, the Byzantine super-majority is counted in
-	// FROZEN EPOCH BONDED WEIGHT, never in heads. Membership admission is
-	// unfiltered (every qualified bond becomes an epoch member at rotation), so
-	// a head-counted threshold handed a MinBond-per-head cohort both a stall
-	// lever (ride the snapshot, decline to attest — nothing slashable) and,
-	// one head past bftThreshold, outright capture (a cheap-member majority
-	// committing with zero honest attestation). Weight-counting prices both at
-	// what C1 says they must cost: >⅓ (stall) / >⅔ (capture) of the epoch's
-	// REAL bonded weight.
+	// Mature-epoch WEIGHT quorum: once the network has handed off, the
+	// Byzantine super-majority is counted in FROZEN EPOCH BONDED WEIGHT,
+	// never in heads. Membership admission is unfiltered (every qualified
+	// bond becomes an epoch member at rotation), so a head-counted threshold
+	// handed a MinBond-per-head cohort both a stall lever (ride the
+	// snapshot, decline to attest — nothing slashable) and, one head past
+	// bftThreshold, outright capture (a cheap-member majority committing
+	// with zero honest attestation). Weight-counting prices both at what C1
+	// says they must cost: >⅓ (stall) / >⅔ (capture) of the epoch's REAL
+	// bonded weight.
 	if c.cfg.ByzantineQuorum && c.objective() && c.epochsEnabled() && c.matureEpoch {
 		if err := c.requireEpochWeightQuorum(b.ProposerID(), seen, b.Height); err != nil {
 			return err
 		}
 	}
-	// De-maturation super-quorum (F-1, ships WITH the latch): once matured, the
+	// De-maturation super-quorum (ships WITH the latch): once matured, the
 	// anchors never re-arm — but if live decentralization has since dropped below the
 	// bar (everMature && !matureNow, e.g. an honest whale concentrated real bond or
 	// small bonds lapsed), a commit instead needs a real-bond SUPER-MAJORITY: ≥⅔ of
@@ -3636,9 +3617,9 @@ func (c *Chain) requireQuorumStack(b *Block, seen map[ports.NodeID]bool) error {
 // membership), so a cheap-member cohort weighs exactly what it paid. A pure
 // function of the frozen snapshot — every replica agrees within the epoch.
 func (c *Chain) requireEpochWeightQuorum(proposer ports.NodeID, seen map[ports.NodeID]bool, h uint64) error {
-	// The governing set for h: the frozen snapshot everywhere but the #535
-	// recovery boundary (effectiveEpochSet) — the SAME set the attester filter
-	// admits from, so sizing-set == membership-set (the #402 law).
+	// The governing set for h: the frozen snapshot everywhere but the
+	// recovery boundary (effectiveEpochSet) — the SAME set the attester
+	// filter admits from, so sizing-set == membership-set (the law).
 	set := c.effectiveEpochSet(h)
 	var total int64
 	for _, w := range set {
@@ -3658,10 +3639,10 @@ func (c *Chain) requireEpochWeightQuorum(proposer ports.NodeID, seen map[ports.N
 	return nil
 }
 
-// RoundCatchupMet is the #451 view-synchronizer's catch-up threshold
-// (certification §2b, adopted from PBFT's responsive f+1 view-change): the
-// smallest set of round-change senders that PROVES at least one honest member
-// is ahead, so a straggler may safely jump to their round. Mature epoch:
+// RoundCatchupMet is the view-synchronizer's catch-up threshold, adopted from
+// PBFT's responsive f+1 view-change: the smallest set of round-change senders
+// that PROVES at least one honest member is ahead, so a straggler may safely
+// jump to their round. Mature epoch:
 // >⅓ of the frozen weight (one Byzantine third cannot fake it). Launch:
 // f+1 of the anchor set (f = ⌊(A−1)/3⌋). Adversary-robust both ways: a lone
 // Byzantine can neither DRAG honest nodes to a fabricated round (the
@@ -3702,12 +3683,12 @@ func (c *Chain) RoundCatchupMet(senders map[ports.NodeID]bool) bool {
 // `proposer` and attested by `attesters` would clear ValidateCommit's quorum:
 // the distinct qualified non-proposer count floor (RequiredQuorum) plus, in a
 // mature epoch, the weight super-majority over the set governing h
-// (requireEpochWeightQuorum — the frozen snapshot everywhere but the #535
-// recovery boundary). Exposed so a proposer's gather loop can stop asking
-// exactly when the coalition it holds would commit — under weight counting,
-// "how many attestations" is no longer the question; "whose" is. h is the
-// height of the block being gathered, so the gather and the validation judge
-// the SAME governing set.
+// (requireEpochWeightQuorum — the frozen snapshot everywhere but the recovery
+// boundary). Exposed so a proposer's gather loop can stop asking exactly when
+// the coalition it holds would commit — under weight counting, "how many
+// attestations" is no longer the question; "whose" is. h is the height of the
+// block being gathered, so the gather and the validation judge the SAME
+// governing set.
 func (c *Chain) SupportMeetsQuorum(proposer ports.NodeID, attesters []ports.NodeID, h uint64) bool {
 	seen := make(map[ports.NodeID]bool, len(attesters))
 	for _, id := range attesters {
@@ -3719,7 +3700,7 @@ func (c *Chain) SupportMeetsQuorum(proposer ports.NodeID, attesters []ports.Node
 	if len(seen) < c.RequiredQuorum() {
 		return false
 	}
-	// The launch anchor gate (#402): the coalition must carry the strict anchor
+	// The launch anchor gate: the coalition must carry the strict anchor
 	// majority ValidateCommit will demand, so the gather stops on enough ANCHORS, not
 	// merely enough heads — otherwise the proposer commits-attempts a count-quorum that
 	// its own Append then rejects (ErrAnchorRequired).
@@ -3732,7 +3713,7 @@ func (c *Chain) SupportMeetsQuorum(proposer ports.NodeID, attesters []ports.Node
 	return true
 }
 
-// requireDeMatureSuperQuorum enforces the F-1 de-maturation rule: the committing
+// requireDeMatureSuperQuorum enforces the de-maturation rule: the committing
 // coalition (proposer + the distinct qualified attesters `seen`) must control ≥⅔ of
 // the live bonded weight. Only real committed bond counts (in the de-maturation
 // window launchAnchor is false, so `seen` is bonded validators only). A pure function
@@ -3775,15 +3756,16 @@ func (c *Chain) Append(b Block) error {
 // different trust class and still goes through Reconcile, which re-validates
 // reputation in full — Reload is only ever fed our own disk.
 func (c *Chain) Reload(blocks []Block) (int, error) {
-	// #572 guard: an objective-config replica MUST NOT replay history before
-	// its bond verifier is wired. objective() is MinBond>0 AND verifyBond!=nil;
-	// replaying with a nil verifier silently demotes every qualification check
-	// to the LEGACY rep-gated path (empty at boot) — validatorsSeen rebuilds
-	// EMPTY, the everMature latch is lost, and the restored validator refuses
-	// every mature-regime commit forever (the 474718e-deep restore wedge,
-	// proven by the save/restore regime pairs). Refuse loudly instead.
+	// guard: an objective-config replica MUST NOT replay history before
+	// its bond verifier is wired. objective is MinBond>0 AND
+	// verifyBond!=nil; replaying with a nil verifier silently demotes
+	// every qualification check to the LEGACY rep-gated path (empty at
+	// boot) — validatorsSeen rebuilds EMPTY, the everMature latch is
+	// lost, and the restored validator refuses every mature-regime commit
+	// forever (the field run restore wedge, proven by the
+	// save/restore regime pairs). Refuse loudly instead.
 	if len(blocks) > 0 && c.cfg.MinBond > 0 && c.verifyBond == nil {
-		return 0, errors.New("chain: objective config (MinBond>0) replayed with NO bond verifier — wire SetBondVerifier before Reload, or the maturity latch is silently lost (#572)")
+		return 0, errors.New("chain: objective config (MinBond>0) replayed with NO bond verifier — wire SetBondVerifier before Reload, or the maturity latch is silently lost ")
 	}
 	for i, b := range blocks {
 		var err error
@@ -3829,12 +3811,12 @@ func (c *Chain) appendStructural(b Block) error {
 	if err := c.validateEra3Version(&b); err != nil {
 		return err
 	}
-	// era-4 (v5) version-boundary rule on the OWN-DISK reload path — the same symmetry the
-	// era-3 version check above has: both era boundaries are enforced on every disk-write
-	// path (4d, mirroring 2c). A v4 block at/above H_era4 is rejected here just as it is on
-	// the commit path.
-	// (d-3) digest consistency on the OWN-DISK reload path, mirroring the commit path above.
-	if err := validateD3Digests(&b); err != nil {
+	// era-4 (v5) version-boundary rule on the OWN-DISK reload path — the same symmetry
+	// the era-3 version check above has: both era boundaries are enforced on every
+	// disk-write path (4d, mirroring 2c). A v4 block at/above H_era4 is rejected here
+	// just as it is on the commit path. digest consistency on the OWN-DISK reload path,
+	// mirroring the commit path above.
+	if err := validateBlockDigests(&b); err != nil {
 		return err
 	}
 	if err := validateParamsPlacement(&b); err != nil {
@@ -3843,12 +3825,12 @@ func (c *Chain) appendStructural(b Block) error {
 	if err := c.validateEra4Version(&b); err != nil {
 		return err
 	}
-	// era-4 (v5) LastCommit carrier validity on the OWN-DISK reload path — the same symmetry
-	// the era-3/era-4 version checks above have (R-BOX-ATTESTS, O1). The carrier is a
-	// TRANSITION input, so a disk block carrying a forged or mis-versioned carrier must be
-	// refused here exactly as on the commit path; the root check below would catch a seating
-	// divergence, but it would name the root, not the cause. Pure block-local, so it runs
-	// BEFORE apply and a rejected block is never left applied.
+	// era-4 (v5) LastCommit carrier validity on the OWN-DISK reload path — the same
+	// symmetry the era-3/era-4 version checks above have (O1). The carrier is a
+	// TRANSITION input, so a disk block carrying a forged or mis-versioned carrier must
+	// be refused here exactly as on the commit path; the root check below would catch a
+	// seating divergence, but it would name the root, not the cause. Pure block-local, so
+	// it runs BEFORE apply and a rejected block is never left applied.
 	if err := validateCarrier(&b, c.ChainID()); err != nil {
 		return err
 	}
@@ -3863,7 +3845,7 @@ func (c *Chain) appendStructural(b Block) error {
 	// validateEra3Roots) enforce the equality; this own-disk path skipped it, so a
 	// corrupt/tampered v4 disk block was accepted with an UNENFORCED root.
 	//
-	// The check runs BEFORE apply, on the same #558-guarded dry-run clone the commit
+	// The check runs BEFORE apply, on the same guarded dry-run clone the commit
 	// path uses (validateEra3Roots → postApplyRoots), NOT after apply on live state. A
 	// post-apply-then-reject would leave the bad block applied to the live chain — head
 	// advanced, byRoot mutated — which breaks Reload's load-bearing "keep the longest
@@ -3914,28 +3896,29 @@ func (c *Chain) validateStructural(b *Block) error {
 		if seen[id] || id == b.ProposerID() {
 			continue // duplicates and self-attestation don't count
 		}
-		// Era-aware (#558): era-2 attestations sign the domain-separated
-		// consensusSigBytes(phase, round, hash), not the bare hash. This path
-		// verified the bare hash only, so replay of ANY era-2 chain failed at
-		// its first non-genesis block and the daemon silently fell to genesis —
-		// masked by peer full-fetch until the retention prune removed the mask
-		// (the a434494-deep val-d stranding). verifyAtt is the same arithmetic
-		// the live commit path uses.
+		// Era-aware: era-2 attestations sign the domain-separated
+		// consensusSigBytes(phase, round, hash), not the bare hash. This
+		// path verified the bare hash only, so replay of ANY era-2 chain
+		// failed at its first non-genesis block and the daemon silently
+		// fell to genesis — masked by peer full-fetch until the retention
+		// prune removed the mask (the field run val-d stranding).
+		// verifyAtt is the same arithmetic the live commit path uses.
 		if !verifyAtt(a, attScope{ChainID: c.ChainID(), Height: b.Height}, h) {
 			return fmt.Errorf("%w: attester %s", ErrBadSignature, id)
 		}
 		seen[id] = true
 		valid++
 	}
-	// The count leg is RequiredQuorum(), the same predicate ValidateCommit applied
-	// when this node committed the block (#380 M-380-1) — a bare cfg.Quorum here
-	// was a second, local floor: a node whose -quorum exceeds the derived bar
-	// accepted and persisted a peer block live, then refused its own replay, and
-	// since D-RC-SCOPE-S3 a failed replay refuses to start the daemon. The
-	// count leg drifting from the commit path is the #558 shape at this function.
-	// objective() holds on replay because Reload refuses to run without the bond
-	// verifier wired (the #572 guard above), so the derived value equals the one
-	// the commit path computed; in legacy mode this is cfg.Quorum verbatim.
+	// The count leg is RequiredQuorum, the same predicate ValidateCommit
+	// applied when this node committed the block — a bare cfg.Quorum here
+	// was a second, local floor: a node whose -quorum exceeds the derived
+	// bar accepted and persisted a peer block live, then refused its own
+	// replay, and since a failed replay refuses to start the daemon. The
+	// count leg drifting from the commit path is the shape at this function.
+	// objective holds on replay because Reload refuses to run without the
+	// bond verifier wired (the guard above), so the derived value equals the
+	// one the commit path computed; in legacy mode this is cfg.Quorum
+	// verbatim.
 	if need := c.RequiredQuorum(); valid < need {
 		return fmt.Errorf("%w: %d valid, need %d", ErrNoQuorum, valid, need)
 	}
@@ -3966,80 +3949,80 @@ func (c *Chain) AppendGenesis(b Block) error {
 		return fmt.Errorf("chain: empty genesis")
 	}
 	// A genesis seeds entries (and declared launch bonds) — never takedowns.
-	// AppendGenesis skips validateTakedowns (there is no prior history to check a
-	// revocation against), so allowing Revocations here would let whoever controls
-	// genesis PRE-EMPTIVELY revoke a never-published root, exactly what immutable
-	// #5 forbids (red-team F3). Reject them outright; a takedown must go through
-	// the governed normal path, where ErrRevokeUnknownRoot enforces existence.
+	// AppendGenesis skips validateTakedowns (there is no prior history to check
+	// a revocation against), so allowing Revocations here would let whoever
+	// controls genesis PRE-EMPTIVELY revoke a never-published root, exactly
+	// what immutable #5 forbids. Reject them outright; a takedown must go
+	// through the governed normal path, where ErrRevokeUnknownRoot enforces
+	// existence.
 	if len(b.Revocations) > 0 || len(b.Unrevocations) > 0 {
 		return ErrGenesisTakedown
 	}
-	// R0.4b: a genesis-declared demand-issuer key binding is admitted, but only under
-	// the same rules the normal path enforces. See validateGenesisIssuerKeys for why
+	// A genesis-declared demand-issuer key binding is admitted, but only under the
+	// same rules the normal path enforces. See validateGenesisIssuerKeys for why
 	// this door is open where the Revocations/Slashes doors are shut.
 	if err := c.validateGenesisIssuerKeys(&b); err != nil {
 		return err
 	}
 	// The same door, for the STRONGER lever (retest G1). AppendGenesis skips
-	// validateSlashes, and apply() unconditionally evicts every Slashes culprit
+	// validateSlashes, and apply unconditionally evicts every Slashes culprit
 	// (slashed[id]=true, deleted from bonded, barred from re-earning, carried
-	// through adopt()). A genesis carrying an UNVERIFIED Slash would therefore be
-	// a proof-free, pre-emptive, identity-level kill switch — a fortiori what
-	// immutable #5 forbids. A slash is only meaningful against equivocation
-	// WITHIN this chain's history, of which a genesis has none, so genesis may
-	// never carry one. Reject outright; a slash must go through the normal path,
-	// where validateSlashes → VerifyEquivocation gates it on a real proof.
+	// through adopt). A genesis carrying an UNVERIFIED Slash would therefore
+	// be a proof-free, pre-emptive, identity-level kill switch — a fortiori
+	// what immutable #5 forbids. A slash is only meaningful against
+	// equivocation WITHIN this chain's history, of which a genesis has none,
+	// so genesis may never carry one. Reject outright; a slash must go through
+	// the normal path, where validateSlashes → VerifyEquivocation gates it on
+	// a real proof.
 	if len(b.Slashes) > 0 {
 		return ErrGenesisTakedown
 	}
-	// R-BOX-ATTESTS (O1): a genesis carrying a LastCommit carrier is refused BY RULE. Height 0
-	// has no parent to attest, and the carrier is the hash-covered v5 validatorsSeen input, so
-	// a declared genesis carrying one would be an authored, signed pre-seating of the maturity
-	// metric. ONLY the hash-covered slot is refused here. Atts (outside the Hash() preimage)
-	// are FILTERED below, before apply: only the entries whose signature verifies over the
-	// genesis hash are seated; the rest are stripped, never refused (D-GENESIS-ATTS-SEATING,
-	// ratified 2026-09-04). Production genesis carries no Atts at all (core/genesis emits
-	// Entries only; anchors seat at height >= 1 through the founding drain). Gates:
-	// TestGenesisLastCommitIsRefused; genesis_atts_seating_test.go G1–G10.
+	// A genesis carrying a LastCommit carrier is refused BY RULE.
+	// Height 0 has no parent to attest, and the carrier is the hash-covered v5
+	// validatorsSeen input, so a declared genesis carrying one would be an authored,
+	// signed pre-seating of the maturity metric. ONLY the hash-covered slot is refused
+	// here. Atts (outside the Hash preimage) are FILTERED below, before apply: only the
+	// entries whose signature verifies over the genesis hash are seated; the rest are
+	// stripped, never refused. Production genesis carries no Atts at all (core/genesis
+	// emits Entries only; anchors seat at height >= 1 through the founding drain).
+	// Gates: TestGenesisLastCommitIsRefused; genesis_atts_seating_test.go G1–G10.
 	if len(b.LastCommit) > 0 {
 		return fmt.Errorf("%w: %d LastCommit entries", ErrGenesisLastCommit, len(b.LastCommit))
 	}
 	// NAMED PREMISE (residual R-G, era-3 freeze coupling): AppendGenesis does NOT
-	// run validateBondRegs, so the #618 seenRoot per-root distinct-ID dedup does
-	// NOT cover genesis. Genesis apply() IS order-dependent for two distinct-ID
-	// UNPROVEN same-root regs (apply() below, proven=false). This is safe ONLY
-	// because the production genesis is a byte-identical shared constant carrying
-	// NO BondRegs (genesis.Build → core/genesis/genesis.go:79, Entries only), so
-	// there is no per-node slice order to diverge on. The era-3 SMT freeze's
-	// unconditional order-independence claim leans on THIS premise, not on a guard.
-	// The premise is pinned by TestGenesisSameRootApplyIsOrderDependent (this
-	// package) + TestProductionGenesisCarriesNoBondRegs (core/genesis). Making
-	// genesis order-independent BY REJECTION would be a consensus-rule change to
-	// genesis validity (research-gated) — see
-	// docs/thinking/2026-08-28-genesis-sameroot-residual.md option (b).
-	// R-CARRIER-GENESIS-DISPOSAL, the Atts half — RATIFIED 2026-09-04 (owner: "I ratify 1";
-	// genesis-atts-seating-rule-RESEARCH-CERTIFICATION-2026-09-04.md §4.1): a genesis seats
-	// ONLY the attestations whose signature verifies over its hash; the rest are STRIPPED,
-	// never refused. Atts sit outside the Hash() preimage, so a relaying peer can append an
-	// unsigned stub that the proposer signature does not cover; before this rule the stub
-	// was seated into validatorsSeen (a phantom seat from zero key material, and an era-3
-	// committed-root divergence on a fresh-sync victim), and refusing it would let that same
-	// zero-cost stub wedge fork-adopt and Reload. Production genesis carries no Atts at all
-	// (core/genesis emits Entries only); the filter is extensionally the identity on every
-	// honest history and costs |Atts| verifies once. The committed blocks[0].Atts is the
-	// verified subset, so Save / serve / Reload are idempotent. "Strip all" (the earlier
-	// MG-C) was REFUTED: it discarded a real signer's consent and forked the seating
-	// predicate. The hash-covered carrier field (LastCommit) is authored content and is
-	// refused above. Gates: genesis_atts_seating_test.go G1–G10.
+	// run validateBondRegs, so the seenRoot per-root distinct-ID dedup does NOT
+	// cover genesis. Genesis apply IS order-dependent for two distinct-ID UNPROVEN
+	// same-root regs (apply below, proven=false). This is safe ONLY because the
+	// production genesis is a byte-identical shared constant carrying NO BondRegs
+	// (genesis.Build → core/genesis/genesis.go, Entries only), so there is no
+	// per-node slice order to diverge on. The era-3 SMT freeze's unconditional
+	// order-independence claim leans on THIS premise, not on a guard. The premise
+	// is pinned by TestGenesisSameRootApplyIsOrderDependent (this package) +
+	// TestProductionGenesisCarriesNoBondRegs (core/genesis). Making genesis
+	// order-independent BY REJECTION would be a consensus-rule change to genesis
+	// validity. THE ATTS HALF: a genesis seats ONLY the
+	// attestations whose signature verifies over its hash; the rest are STRIPPED,
+	// never refused. Atts sit outside the Hash preimage, so a relaying peer can
+	// append an unsigned stub that the proposer signature does not cover; before
+	// this rule the stub was seated into validatorsSeen (a phantom seat from zero
+	// key material, and an era-3 committed-root divergence on a fresh-sync victim),
+	// and refusing it would let that same zero-cost stub wedge fork-adopt and
+	// Reload. Production genesis carries no Atts at all (core/genesis emits Entries
+	// only); the filter is extensionally the identity on every honest history and
+	// costs |Atts| verifies once. The committed blocks[0].Atts is the verified
+	// subset, so Save / serve / Reload are idempotent. "Strip all" (the earlier)
+	// was REFUTED: it discarded a real signer's consent and forked the seating
+	// predicate. The hash-covered carrier field (LastCommit) is authored content
+	// and is refused above. Gates: genesis_atts_seating_test.go G1–G10.
 	if len(b.Atts) > 0 {
 		h := b.Hash()
 		// THE GENESIS BEING APPENDED IS THE CHAIN ID — c.blocks is still empty here, so
-		// c.ChainID() would be the zero hash and every v5-form attestation would be filtered out
-		// silently rather than judged. h IS blocks[0].Hash() by construction at this line, which
-		// makes the scope self-consistent: a genesis attestation is verified against the network
-		// that genesis defines. (The production genesis is a v2 block forever — core/genesis
-		// mints chain.BlockVersion — so this arm is reached by v2 phases in practice; it is
-		// written to be correct rather than to rely on that.)
+		// c.ChainID would be the zero hash and every v5-form attestation would be filtered
+		// out silently rather than judged. h IS blocks[0].Hash by construction at this
+		// line, which makes the scope self-consistent: a genesis attestation is verified
+		// against the network that genesis defines. (The production genesis is a v2 block
+		// forever — core/genesis mints chain.BlockVersion — so this arm is reached by v2
+		// phases in practice; it is written to be correct rather than to rely on that.)
 		s := attScope{ChainID: h, Height: b.Height}
 		verified := b.Atts[:0:0]
 		for _, a := range b.Atts {
@@ -4054,7 +4037,7 @@ func (c *Chain) AppendGenesis(b Block) error {
 }
 
 func (c *Chain) apply(b Block) {
-	// R-BOX-ATTESTS (O1): the parent's proposer, captured BEFORE b is appended — it is the
+	// The parent's proposer, captured BEFORE b is appended — it is the
 	// one id the carrier fold excludes (the parent's proposer does not seat itself off its
 	// own block). Absent only for the genesis, which carries no attestations by rule.
 	parentProposer, _ := c.headProposerID()
@@ -4069,9 +4052,9 @@ func (c *Chain) apply(b Block) {
 		c.revoked[r] = true
 		c.revLog.Append(RevocationLeaf(RevOp, r, b.Height)) // append-only transparency record
 	}
-	// Un-revocations clear a prior takedown (validated as currently-revoked).
-	// delete rather than set-false so the map stays a clean set and adopt()'s
-	// pure-replay rebuild yields identical state.
+	// Un-revocations clear a prior takedown (validated as
+	// currently-revoked). delete rather than set-false so the map stays a
+	// clean set and adopt's pure-replay rebuild yields identical state.
 	for _, r := range b.Unrevocations {
 		delete(c.revoked, r)
 		c.revLog.Append(RevocationLeaf(UnrevOp, r, b.Height)) // the reversal is logged too
@@ -4080,35 +4063,36 @@ func (c *Chain) apply(b Block) {
 	// height>0 registration was already VERIFIED by validateBondRegs (real
 	// space-time proof); a genesis (height 0) registration is merely DECLARED.
 	// The latest registration wins, so a validator can renew or resize.
-	// PER-ROOT DEDUP (red-team F1): a bond Root credits AT MOST ONE identity — the
-	// first to claim it. A later registration on an already-claimed root by a
-	// DIFFERENT identity earns nothing, so a colluding operator cannot back N
-	// Sybil standings off one shared plot. The first owner may re-register (renew
-	// or resize) its own root freely.
-	// ---- era-4 (v5) ATTESTATION CARRIER FOLD (R-BOX-ATTESTS, O1) — ORDER-PINNED FIRST ----
+	// PER-ROOT DEDUP: a bond Root credits AT MOST ONE identity — the first to
+	// claim it. A later registration on an already-claimed root by a DIFFERENT
+	// identity earns nothing, so a colluding operator cannot back N Sybil
+	// standings off one shared plot. The first owner may re-register (renew or
+	// resize) its own root freely.
+	// ---- era-4 (v5) ATTESTATION CARRIER FOLD (O1) — ORDER-PINNED FIRST ----
 	// This runs BEFORE this block's bond registrations, TTL expiries and slashes, so the
 	// qualification screen reads the CHILD'S PRE-STATE = the parent's committed post-state =
 	// the floor box's prevStateRoot. Chain and box therefore screen against the same state by
 	// construction. Pinned structurally by TestCarrierFoldPrecedesBondRegsInApply — moving it
 	// below the bond loop screens a mid-apply state no committed root names (the sibling of
-	// the rotate-LAST hazard, #620). No-op for a sub-v5 block: see applyCarrier.
+	// the rotate-LAST hazard). No-op for a sub-v5 block: see applyCarrier.
 	c.applyCarrier(b, parentProposer)
 
 	proven := b.Height > 0 // genesis regs are declared; height>0 went through validateBondRegs
-	// CONSENSUS-RULE (canonicalize same-id intra-block regs, cert
-	// sameid-twoversion-intrablock-bondreg-contention 2026-08-28): a block may carry
-	// more than one BondReg for the SAME validator id (a legal F1 renew/resize, or a
-	// Byzantine same-id-two-version block admissible pre-#506-gate). The old loop
-	// resolved these LAST-WRITER-WINS by slice position, so regVersion/bondDomain/
-	// bonded committed an order-dependent value → an order-dependent history-
-	// independent SMT root (a latent fork; regVersion also feeds the #506 lock-in
-	// tally, so gateLockedIn/gateHeight inherited the split). Fold to ONE canonical
-	// winner per id by a TOTAL ORDER that is a pure function of content — largest
-	// Size, then Version, then Domain, then Sig — and apply ALL of that winner's
-	// fields. The result is identical however the proposer ordered the slice. Reject
-	// was refuted (it breaks the legal resize); canonicalize is the certified fix.
-	// The winner is applied in a deterministic id order so the ownership/displacement
-	// writes (bondRootOwner/bondRootProven) are order-free too.
+	// CONSENSUS-RULE (canonicalize same-id intra-block regs
+	// sameid-twoversion-intrablock-bondreg-contention 2026-08-28): a block may
+	// carry more than one BondReg for the SAME validator id (a legal F1
+	// renew/resize, or a Byzantine same-id-two-version block admissible pre-gate).
+	// The old loop resolved these LAST-WRITER-WINS by slice position, so
+	// regVersion/bondDomain/ bonded committed an order-dependent value → an
+	// order-dependent history- independent SMT root (a latent fork; regVersion
+	// also feeds the lock-in tally, so gateLockedIn/gateHeight inherited the
+	// split). Fold to ONE canonical winner per id by a TOTAL ORDER that is a pure
+	// function of content — largest Size, then Version, then Domain, then Sig —
+	// and apply ALL of that winner's fields. The result is identical however the
+	// proposer ordered the slice. Reject was refuted (it breaks the legal resize);
+	// canonicalize is the fix. The winner is applied in a deterministic id order
+	// so the ownership/displacement writes (bondRootOwner/bondRootProven) are
+	// order-free too.
 	for _, r := range canonicalBondRegs(b.BondRegs) {
 		if len(r.Validator) != ed25519.PublicKeySize {
 			continue
@@ -4136,14 +4120,14 @@ func (c *Chain) apply(b Block) {
 		if proven {
 			c.bondRootProven[r.Root] = true
 		}
-		// era-4 T-3: move the id's due-height bucket BEFORE overwriting bondRegHeight,
+		// era-4: move the id's due-height bucket BEFORE overwriting bondRegHeight,
 		// so the OLD due-height (computed from the prior bondRegHeight) is removed on a
 		// renew and the id is re-inserted at the NEW due-height. A missed old-bucket
 		// delete is the sharpest TTL equivalence hazard (design §4).
 		c.dueBucketMoveOnReg(id, b.Height)
 		c.bonded[id] = r.Size
 		c.bondRegHeight[id] = b.Height // reset the TTL clock on every (re)registration (G4)
-		c.regVersion[id] = r.Version   // #506 readiness signal; latest committed reg governs
+		c.regVersion[id] = r.Version   // readiness signal; latest committed reg governs
 		c.bondDomain[id] = r.Domain    // committed A-axis label (0 = unset); latest wins
 		c.qualifiedMaintain(id)        // era-4 site 2: fresh/renew/resize may join or leave qualified
 	}
@@ -4155,7 +4139,7 @@ func (c *Chain) apply(b Block) {
 	if ttl := c.cfg.BondTTLBlocks; ttl > 0 {
 		for id, regH := range c.bondRegHeight {
 			if b.Height-regH > ttl {
-				c.dueBucketRemove(id, regH+ttl+1) // era-4 T-3: clear the expiring id's due-bucket
+				c.dueBucketRemove(id, regH+ttl+1) // era-4: clear the expiring id's due-bucket
 				delete(c.bonded, id)
 				delete(c.bondRegHeight, id)
 				delete(c.regVersion, id) // a lapsed bond's readiness signal lapses with it
@@ -4172,22 +4156,24 @@ func (c *Chain) apply(b Block) {
 		delete(c.bonded, culprit)    // era-4 site 5: evict from bonded
 		c.qualifiedMaintain(culprit) // covers both 4 and 5: filter now excludes culprit
 	}
-	// R0.4b: commit this block's per-epoch demand-issuer key registrations
-	// (first-write-wins, then prune the retention band). Placed AFTER slashes so a
-	// culprit evicted in this same block cannot also land a fresh binding, and
-	// BEFORE the attestation/maturity/rotation tail so the rotate-LAST ordering
-	// invariant is untouched. Writes only the issuerKeyCommit keyspace, which no
-	// validity predicate, quorum, or fork-choice rule reads (issuerkey.go).
+	// commit this block's per-epoch demand-issuer key registrations
+	// (first-write-wins, then prune the retention band). Placed AFTER slashes
+	// so a culprit evicted in this same block cannot also land a fresh binding,
+	// and BEFORE the attestation/maturity/rotation tail so the rotate-LAST
+	// ordering invariant is untouched. Writes only the issuerKeyCommit
+	// keyspace, which no validity predicate, quorum, or fork-choice rule reads
+	// (issuerkey.go).
 	c.applyIssuerKeys(b)
 	// Track distinct qualified validators for the maturity metric — a
 	// monotonic, chain-internal, auditable measure of decentralization.
 	//
-	// FROZEN PRIOR-ERA RULE (R-BOX-ATTESTS, O1). This loop is left BYTE-FOR-BYTE and is now
-	// era-gated to sub-v5 blocks. It is the defect: b.Atts is NOT covered by Hash(), so the
-	// seating write it performs is a transition input a replica may legitimately hold
-	// differently — the freeze + stall of converged verdict §2.3. era-3 (v4) is frozen (#632)
-	// and carries the defect forever, retired unrun under owner call O2. A v5 block seats from
-	// the hash-covered LastCommit carrier instead (applyCarrier, folded ABOVE the bond regs).
+	// FROZEN PRIOR-ERA RULE (O1). This loop is left BYTE-FOR-BYTE and is now
+	// era-gated to sub-v5 blocks. It is the defect: b.Atts is NOT covered by Hash,
+	// so the seating write it performs is a transition input a replica may
+	// legitimately hold differently — the freeze + stall of converged verdict §2.3.
+	// era-3 (v4) is frozen and carries the defect forever, retired unrun underO2. A
+	// v5 block seats from the hash-covered LastCommit carrier instead (applyCarrier,
+	// folded ABOVE the bond regs).
 	if b.Version < BlockVersionWitnessable {
 		for _, a := range b.Atts {
 			id := a.AttesterID()
@@ -4196,14 +4182,14 @@ func (c *Chain) apply(b Block) {
 			}
 		}
 	}
-	// Latch maturity (F-1): once the network is first certified mature, record it
-	// permanently, so the launch anchors never re-arm. Checked AFTER this block's
-	// bonds/slashes/TTL are applied, so it reflects the post-block bonded set.
-	// Monotonic — only ever set, never cleared.
+	// Latch maturity: once the network is first mature, record it
+	// permanently, so the launch anchors never re-arm. Checked AFTER this
+	// block's bonds/slashes/TTL are applied, so it reflects the post-block
+	// bonded set. Monotonic — only ever set, never cleared.
 	if !c.everMature && c.Mature() {
 		c.everMature = true
 	}
-	// Epoch rotation (#357 Conditions A+B), LAST — after this block's bonds, TTL
+	// Epoch rotation, LAST — after this block's bonds, TTL
 	// expiries, slashes, and the maturity latch — so a boundary block that also
 	// trips maturity hands off in the same commit. The boundary block itself was
 	// validated under the OUTGOING epoch's set/quorum; the new snapshot governs
@@ -4221,9 +4207,9 @@ func (c *Chain) apply(b Block) {
 // choosing the SAME-ID winner by a TOTAL ORDER on content, and returns one reg per
 // id in FIRST-APPEARANCE order. It is the ordering-canonicalization half of the SMR
 // block-determinism requirement: same-id multi-reg is legitimate content (a
-// renew/resize), so it is CANONICALIZED rather than rejected (the #618 sibling
-// rejected distinct-id same-root content, which has no legitimate form). See the
-// CONSENSUS-RULE note in apply() and the cert
+// renew/resize), so it is CANONICALIZED rather than rejected (the sibling rejected
+// distinct-id same-root content, which has no legitimate form). See the
+// CONSENSUS-RULE note in apply and the research
 // sameid-twoversion-intrablock-bondreg-contention 2026-08-28.
 //
 // The winner rule is largest Size, then Version, then Domain, then Sig bytes — a
@@ -4233,13 +4219,13 @@ func (c *Chain) apply(b Block) {
 // is the right renew/resize semantics (and keeps TestSameRootSameIDRenewAdmitted
 // green — reg2's 2S wins in both orderings).
 //
-// SCOPE (deliberate, cert §3(a1) + the residual R-G premise): this fold ONLY collapses
-// SAME-ID multi-reg. It does NOT re-order distinct ids — the winners are emitted in the
-// order their id first appears in the slice. Sorting the winners by id would ALSO make
-// the DISTINCT-ID same-root case order-independent, which is a genuinely different rule:
-// #618 rejects that collision at height>0 validity, and at genesis it is the intentionally
+// SCOPE (deliberate(a1) + the residual R-G premise): this fold ONLY collapses SAME-ID
+// multi-reg. It does NOT re-order distinct ids — the winners are emitted in the order
+// their id first appears in the slice. Sorting the winners by id would ALSO make the
+// DISTINCT-ID same-root case order-independent, which is a genuinely different rule:
+// rejects that collision at height>0 validity, and at genesis it is the intentionally
 // order-dependent residual R-G premise (TestGenesisSameRootApplyIsOrderDependent). Both
-// are OUT of this cert's scope and research-gated; touching them silently would break a
+// are OUT of this the scope and research-gated; touching them silently would break a
 // named premise. Preserving first-appearance order keeps the distinct-id ownership-branch
 // behavior byte-for-byte identical to the pre-fold loop.
 func canonicalBondRegs(regs []BondReg) []BondReg {
@@ -4250,7 +4236,7 @@ func canonicalBondRegs(regs []BondReg) []BondReg {
 	out := make([]BondReg, 0, len(regs))
 	for _, r := range regs {
 		if len(r.Validator) != ed25519.PublicKeySize {
-			continue // malformed regs are dropped by apply()'s own guard; skip here too
+			continue // malformed regs are dropped by apply's own guard; skip here too
 		}
 		id := r.ValidatorID()
 		if idx, seen := winners[id]; seen {
@@ -4287,37 +4273,38 @@ func bondRegLess(a, b BondReg) bool {
 // rotateEpoch begins a new epoch at boundary height h. During the launch phase
 // (pre-latch) there is nothing to snapshot — the fixed anchor set governs and
 // bonds accrue live toward maturity. The first rotation at-or-after the
-// everMature latch is the HANDOFF (#357 Condition B): matureEpoch sets one-way,
+// everMature latch is the HANDOFF: matureEpoch sets one-way,
 // and from then on every rotation freezes the qualified committed bonded set —
-// membership and size — as the epoch's consensus set (#357 Condition A).
+// membership and size — as the epoch's consensus set.
 func (c *Chain) rotateEpoch(h uint64) {
 	c.epochStart = h
 	if !c.everMature {
 		return
 	}
 	c.matureEpoch = true
-	// era-4 E-2: the boundary FREEZES the qualified committed bonded set into epochSet.
-	// The freeze runs LAST (rotate-LAST, gated in apply()), AFTER this block's
-	// bonds/TTL/slashes, so it captures this block's POST-APPLY set — reading it before
-	// this block's maintenance would freeze a STALE set (an I3 mid-epoch-churn
-	// divergence; the sharpest ordering hazard, TestBoundaryCopyStaleCaptureOrderingAblation).
+	// era-4 E-2: the boundary FREEZES the qualified committed bonded set into epochSet. The
+	// freeze runs LAST (rotate-LAST, gated in apply), AFTER this block's bonds/TTL/slashes,
+	// so it captures this block's POST-APPLY set — reading it before this block's
+	// maintenance would freeze a STALE set (an I3 mid-epoch-churn divergence; the sharpest
+	// ordering hazard, TestBoundaryCopyStaleCaptureOrderingAblation).
 	//
 	// The freeze SOURCE must equal the set that GOVERNED this boundary block's
 	// validation (effectiveEpochSet), or the frozen set diverges from what the quorum
 	// was sized over:
-	//   - Normal boundary: the block validated under the frozen epochSet, and the next
-	//     epoch freezes the live qualified accelerator. era-4 copies the MATERIALIZED
-	//     `qualified` map instead of re-running the O(registry) liveQualifiedSet() scan
-	//     — the era-4 apply win. In production qualified == liveQualifiedSet() by the
-	//     five-site maintenance invariant (the drift guard), so this is byte-identical
-	//     to era-3.
-	//   - #535 recovery boundary: the block validated under liveQualifiedSet() (the
-	//     re-base, effectiveEpochSet's recovery branch). The freeze MUST come from the
-	//     SAME recompute, or the frozen set would re-admit the lapsed weight the
-	//     operator recovered from (the Q5 coupling, RECERT2). At this one boundary the
-	//     materialized qualified and the recompute agree in production, but the recovery
-	//     re-base is defined against the recompute, so freeze from it explicitly.
-	// A deep copy so the frozen epochSet never aliases the live qualified map.
+	// - Normal boundary: the block validated under the frozen epochSet, and the next
+	// epoch freezes the live qualified accelerator. era-4 copies the MATERIALIZED
+	// `qualified` map instead of re-running the O(registry) liveQualifiedSet scan
+	// — the era-4 apply win. In production qualified == liveQualifiedSet by the
+	// five-site maintenance invariant (the drift guard), so this is byte-identical
+	// to era-3.
+	// - recovery boundary: the block validated under liveQualifiedSet (the
+	// re-base, effectiveEpochSet's recovery branch. The freeze MUST come from the
+	// SAME recompute, or the frozen set would re-admit the lapsed weight the
+	// operator recovered from (the Q5 coupling). At this one boundary the
+	// materialized qualified and the recompute agree in production, but the
+	// recovery re-base is defined against the recompute, so freeze from it
+	// explicitly. A deep copy so the frozen epochSet never aliases the live
+	// qualified map.
 	var set map[ports.NodeID]int64
 	if c.cfg.LivenessRecoveryHeight != 0 && h == c.cfg.LivenessRecoveryHeight {
 		set = c.liveQualifiedSet() // recovery re-base: freeze the live recompute
@@ -4326,17 +4313,17 @@ func (c *Chain) rotateEpoch(h uint64) {
 	}
 	c.epochSet = set
 
-	// #506 lock-in detection (post-latch path; the pre-latch genesis override
-	// bypasses signalling entirely). At each boundary, tally the frozen set's
-	// rule-aware WEIGHT — weight, never heads, for the same C1/C2 reason the
-	// commit quorum is weight-counted (requireEpochWeightQuorum): a cheap-bond
-	// cohort must not be able to fake-signal an activation. Lock in the first
-	// time it clears the SAME >⅔ super-quorum the finality rule uses; enforce
-	// from the NEXT boundary (one finalized epoch of notice; rule changes, like
-	// set changes, integrate only at rotations — certification Q1.3/Q1.4).
-	// Byzantine signal-inflation is absorbed by the shared threshold: with ≤ f
-	// falsely signalling, honest-enforcing weight still exceeds what any storm
-	// coalition can gather (certification Q2). Monotonic by the guard.
+	// lock-in detection (post-latch path; the pre-latch genesis override
+	// bypasses signalling entirely). At each boundary, tally the frozen
+	// set's rule-aware WEIGHT — weight, never heads, for the same C1/C2
+	// reason the commit quorum is weight-counted (requireEpochWeightQuorum):
+	// a cheap-bond cohort must not be able to fake-signal an activation.
+	// Lock in the first time it clears the SAME >⅔ super-quorum the finality
+	// rule uses; enforce from the NEXT boundary (one finalized epoch of
+	// notice; rule changes, like set changes, integrate only at rotations
+	// —3/Q1.4). Byzantine signal-inflation is absorbed by the shared
+	// threshold: with ≤ f falsely signalling, honest-enforcing weight still
+	// exceeds what any storm coalition can gather. Monotonic by the guard.
 	if !c.gateLockedIn && c.cfg.RegGateActivationHeight == 0 && c.cfg.EpochBlocks > 0 {
 		var total, ready int64
 		for id, w := range set {
@@ -4351,14 +4338,14 @@ func (c *Chain) rotateEpoch(h uint64) {
 		}
 	}
 
-	// era-3 (v4) activation lock-in — build step 2c, the #506 tally reused one
-	// readiness level up (research cert Q5/Q7). Same frozen-set weight, same >⅔
-	// super-quorum, same one-epoch-of-notice and monotonic guard — the ONLY
-	// difference is the readiness threshold: regVersion >= BlockVersionStateRoot
-	// (== 4), a DISTINCT signal from the #506 gate's >= 3, because a node signals 4
-	// only when it can enforce the R-rule AND validate committed roots (cert Q7).
-	// Byzantine signal-inflation is absorbed by the shared threshold, identical to
-	// #506. Separate from the gate tally above (a node may know the R-rule long
+	// era-3 (v4) activation lock-in — build step 2c, the tally reused one
+	// readiness level up. Same frozen-set weight, same >⅔ super-quorum, same
+	// one-epoch-of-notice and monotonic guard — the ONLY difference is the
+	// readiness threshold: regVersion >= BlockVersionStateRoot (== 4), a
+	// DISTINCT signal from the gate's >= 3, because a node signals 4 only when
+	// it can enforce the R-rule AND validate committed roots. Byzantine
+	// signal-inflation is absorbed by the shared threshold, identical to.
+	// Separate from the gate tally above (a node may know the R-rule long
 	// before it has the era-3 root software), so the two lock in independently.
 	if !c.era3LockedIn && c.cfg.Era3ActivationHeight == 0 && c.cfg.EpochBlocks > 0 {
 		var total, ready int64
@@ -4404,9 +4391,9 @@ func (c *Chain) rotateEpoch(h uint64) {
 // or at/past the chain-derived H_era3 (post-latch lock-in). At-or-greater (unlike
 // regGateActive's strictly-greater): era-3 is a MINT/FORMAT boundary, so H_era3 is
 // itself the first v4 height ("at/above H_era3, a block MUST be v4"), whereas the
-// #506 boundary block is the last OLD-rules block. Derived from committed history,
+// boundary block is the last OLD-rules block. Derived from committed history,
 // so every replica — live or replaying — agrees; epoch-final, so a reorg cannot
-// move the boundary to un-enforce it (#357 Condition A, cert Q5).
+// move the boundary to un-enforce it.
 func (c *Chain) era3Active(h uint64) bool {
 	if c.cfg.Era3ActivationHeight > 0 {
 		return h >= c.cfg.Era3ActivationHeight
@@ -4419,7 +4406,7 @@ func (c *Chain) era3Active(h uint64) bool {
 // at/past the chain-derived H_era4 (post-latch lock-in). At-or-greater, like era3Active:
 // era-4 is a MINT/FORMAT boundary, so H_era4 is itself the first v5 height. Derived from
 // committed history, so every replica — live or replaying — agrees; epoch-final, so a
-// reorg cannot move the boundary to un-enforce it (#357 Condition A). era-4 layers on top
+// reorg cannot move the boundary to un-enforce it. era-4 layers on top
 // of era-3 (a v5 block commits a superset of the v4 leaves); the New layering assertion
 // and the strictly-higher readiness threshold (>= 5) keep H_era4 >= H_era3.
 func (c *Chain) era4Active(h uint64) bool {
@@ -4457,7 +4444,7 @@ func (c *Chain) MintVersion(h uint64) uint64 {
 // (*Node).slashEquivocators / (*Node).proposeBlock through (*Node).eraFloor. The fourth site,
 // v5ValidateSlashes, holds a StateView and no *Chain by design, and derives the same floor with
 // v5EraFloorAt; that the two derivations agree is DRIVEN by
-// TestGEF6_TheTwoEraFloorDerivationsAgree, not assumed from a doc claim.
+// TestTheTwoEraFloorDerivationsAgree, not assumed from a doc claim.
 func (c *Chain) EraFloor() EraFloor { return c.MintVersion }
 
 // PopulateEra3Roots stamps b as a v4 block and attaches this chain's committed
@@ -4466,15 +4453,14 @@ func (c *Chain) EraFloor() EraFloor { return c.MintVersion }
 // all apply-affecting content (BondRegs, entries, slashes) is folded into b, so the
 // roots cover the block as it will actually commit.
 //
-// R-BOX-ATTESTS (O1): that sentence was FALSE before the LastCommit carrier — the
-// attestation certificate is gathered AFTER this call, and the pre-carrier transition seated
-// validatorsSeen from it, so these roots could never cover a certificate that seated a new
-// attester. It stays false for a v4 block: era-3 is frozen and carries the defect, retired
-// unrun (owner call O2). See PopulateEra4Roots for where it becomes true. The recompute uses the same
-// dry-run apply (postApplyRoots) the 2b predicate uses, so the proposer's root and
-// the validator's recompute come from one authoritative state-transition function.
-// A no-op below the era-3 boundary: the propose path only calls this when
-// MintVersion(h) == BlockVersionStateRoot.
+// That sentence was FALSE before the LastCommit carrier — the attestation
+// certificate is gathered AFTER this call, and the pre-carrier transition seated validatorsSeen from
+// it, so these roots could never cover a certificate that seated a new attester. It stays false for a
+// v4 block: era-3 is frozen and carries the defect, retired unrun O2. See PopulateEra4Roots for where
+// it becomes true. The recompute uses the same dry-run apply (postApplyRoots) the 2b predicate uses,
+// so the proposer's root and the validator's recompute come from one authoritative state-transition
+// function. A no-op below the era-3 boundary: the propose path only calls this when MintVersion(h) ==
+// BlockVersionStateRoot.
 func (c *Chain) PopulateEra3Roots(b *Block) error {
 	sr, lr, err := c.postApplyRoots(*b)
 	if err != nil {
@@ -4495,18 +4481,19 @@ func (c *Chain) PopulateEra3Roots(b *Block) error {
 // path AFTER all apply-affecting content is folded into b — INCLUDING the LastCommit
 // attestation carrier, which the propose path attaches immediately before this call — so the
 // roots cover the block as it will actually commit. That sentence becomes TRUE for the first
-// time here (R-BOX-ATTESTS O1): the carrier is hash-covered and is the sole v5 validatorsSeen
+// time here: the carrier is hash-covered and is the sole v5 validatorsSeen
 // input, so unlike every prior era there is no post-signature transition input left.
 // A no-op below the era-4 boundary: the propose path calls this
 // only when MintVersion(h) == BlockVersionWitnessable.
 func (c *Chain) PopulateEra4Roots(b *Block) error {
 	b.Version = BlockVersionWitnessable // select the v5 leaf set for the recompute below
-	// (d-3): populate the two-level digests BEFORE anything hashes this block. A v5 preimage
-	// folds AnswerDigest / SlashesDigest in place of the payloads, so an honest producer must
-	// commit them here or validateD3Digests refuses its own block. This is the ONE proposer-side
-	// home — deliberately not inside Sign(), because a red-team fixture that forges a payload and
-	// re-signs must NOT have its forgery silently re-committed by the signing step.
-	setD3Digests(b)
+	// populate the two-level digests BEFORE anything hashes this block. A v5 preimage folds
+	// AnswerDigest / SlashesDigest in place of the payloads, so an honest producer must
+	// commit them here or validateBlockDigests refuses its own block. This is the ONE
+	// proposer-side home — deliberately not inside Sign, because an adversary fixture that
+	// forges a payload and re-signs must NOT have its forgery silently re-committed by the
+	// signing step.
+	setBlockDigests(b)
 	sr, lr, err := c.postApplyRoots(*b)
 	if err != nil {
 		return err
@@ -4516,14 +4503,14 @@ func (c *Chain) PopulateEra4Roots(b *Block) error {
 	return nil
 }
 
-// regGateActive reports whether the #506 reg-inclusion rate bound governs a
-// block at height h: past the genesis-declared boundary (pre-latch), or past
-// the chain-derived H_act (post-latch lock-in). Strictly greater — the boundary
-// block itself is the last old-rules block (certification Q2: "apply the R-rule
-// to every block of height > H_act"). Enforcement is HEIGHT-keyed, not
-// version-tag-keyed, so an un-upgraded proposer's v2-tagged block cannot carry
-// a storm reg past the gate; its honest (reg-clean) blocks stay valid, which is
-// the bounded-liveness story (≤ ~1.5 rounds via the #451 escape).
+// regGateActive reports whether the reg-inclusion rate bound governs a block at
+// height h: past the genesis-declared boundary (pre-latch), or past the
+// chain-derived H_act (post-latch lock-in). Strictly greater — the boundary
+// block itself is the last old-rules block: "apply the R-rule to every block of
+// height > H_act". Enforcement is HEIGHT-keyed, not version-tag-keyed, so an
+// un-upgraded proposer's v2-tagged block cannot carry a storm reg past the
+// gate; its honest (reg-clean) blocks stay valid, which is the bounded-liveness
+// story (≤ ~1.5 rounds via the escape).
 func (c *Chain) regGateActive(h uint64) bool {
 	if c.cfg.RegGateActivationHeight > 0 {
 		return h > c.cfg.RegGateActivationHeight
@@ -4533,18 +4520,17 @@ func (c *Chain) regGateActive(h uint64) bool {
 
 // restoresHeldStanding reports whether a bond registration (id, root) merely
 // RESTORES standing the identity already held — a current frozen-epoch member
-// re-proving a Root it already owns — which is EXEMPT from the #506 R interval
-// (research certification 2026-08-23, #535 fix (4)). The R interval defends
-// against a reg-FLOOD of fresh identities/plots (each carrying a ~1.5 MB Answer,
-// the #503 OOM driver); a returning frozen-set member re-proving its OWN plot is
-// not that — it can only restore weight the honest set already trusted for this
-// epoch, never admit new weight, so it cannot cheapen capture (unlike shrinking
-// the quorum denominator — the certification's rejected fix (1)). This removes
+// re-proving a Root it already owns — which is EXEMPT from the R interval. The R
+// interval defends against a reg-FLOOD of fresh identities/plots (each carrying
+// a ~1.5 MB Answer, the OOM driver); a returning frozen-set member re-proving
+// its OWN plot is not that — it can only restore weight the honest set already
+// trusted for this epoch, never admit new weight, so it cannot cheapen capture
+// (unlike shrinking the quorum denominator — the rejected fix (1)). This removes
 // the non-recovery the h64 field wedge showed: a returning member was R-refused
 // (`re-registering 1 block after its last reg, R=10`) and so could not re-bond
 // to heal the stalled boundary. Narrow + deterministic: same OWNED root
 // (bondRootOwner survives a lapse; F1's ownership record is never cleared) AND
-// current frozen-epoch membership (≤ EpochBlocks old — the cert's "within ~one
+// current frozen-epoch membership (≤ EpochBlocks old — the "within ~one
 // epoch of its lapse"; a lapsed member keeps its frozen epochSet vote for the
 // epoch, chain.go attesterQualified). Mature-epoch only, where the frozen set —
 // hence "already held standing" — exists; launch-window R is unchanged.
@@ -4556,10 +4542,11 @@ func (c *Chain) restoresHeldStanding(id ports.NodeID, root ports.Hash) bool {
 		return false // not re-proving a root this identity already owns
 	}
 	if c.bonded[id] >= c.cfg.MinBond {
-		// Still holds LIVE standing — a re-reg here is padding volume (the #506
-		// storm), not a restore. The exemption is only for a member whose
-		// standing has LAPSED (the cert's "within ~one epoch of its lapse"),
-		// so #506's storm/flood protection is untouched for bonded members.
+		// Still holds LIVE standing — a re-reg here is padding volume
+		// (the storm), not a restore. The exemption is only for a member
+		// whose standing has LAPSED (the "within ~one epoch of its
+		// lapse"), so the storm/flood protection is untouched for bonded
+		// members.
 		return false
 	}
 	_, inEpoch := c.epochSet[id]
@@ -4572,8 +4559,8 @@ func (c *Chain) restoresHeldStanding(id ports.NodeID, root ports.Hash) bool {
 // blocked; the "single dropped renewal cannot lapse standing" margin holds:
 // R < TTL/2 < TTL), floored at the head-freshness window K plus margin so
 // re-tuning TTL down never pushes R below the window the reg is fresh over
-// (certification Q3 caveat). If a pathological config leaves TTL/2 ≤ R,
-// honest-renewal liveness wins: cap at TTL/2 − 1.
+// caveat. If a pathological config leaves TTL/2 ≤ R, honest-renewal
+// liveness wins: cap at TTL/2 − 1.
 func (c *Chain) regMinInterval() uint64 {
 	k := uint64(c.cfg.BondRegHeadWindow)
 	if k == 0 {
@@ -4608,7 +4595,7 @@ func (c *Chain) Reconcile(fork []Block) (bool, error) {
 	if fork[0].Height != 0 || fork[0].Hash() != c.blocks[0].Hash() {
 		return false, ErrForeignGenesis // must branch from our own genesis
 	}
-	// Weak-subjectivity guard (F-1): refuse — regardless of weight — any fork that does
+	// Weak-subjectivity guard: refuse — regardless of weight — any fork that does
 	// not contain the trusted checkpoint block, i.e. that rewrites finalized history at
 	// or before it. This is the long-range-attack defense that makes the maturity latch
 	// safe for a fresh/long-offline node. Cheap and positional (fork blocks are
@@ -4620,26 +4607,27 @@ func (c *Chain) Reconcile(fork []Block) (bool, error) {
 			return false, ErrPreCheckpointReorg
 		}
 	}
-	// §3 quorum-finality gate (#357; research certification 2026-08-13; owner decision D-1
-	// "prefer stall to reorg"). In OBJECTIVE mode every committed block is super-quorum-final:
-	// it met RequiredQuorum, which §2 sizes over the PINNED validator set (the anchor set in
-	// the launch window). Quorum-intersection therefore makes it irreversible — so refuse any
-	// fork that does not CONTAIN our committed head, i.e. that would revert a finalized block.
-	// Fork-choice (heavier: height → head-hash) then only ever adjudicates among DESCENDANTS
-	// of the finalized head (the Tendermint/Gasper rule) — "reorg to height 0" is structurally
-	// impossible. Finality is quorum-based, NEVER bare depth (a depth cap lets two partitions
-	// finalize conflicting blocks — worse than a reorg). Under a >⅓ partition a node simply
-	// STALLS (can't gather the super-quorum) rather than reorg committed history (D-1); the
-	// storage plane keeps serving throughout (D-2), so durability is unaffected. Fork blocks
-	// are contiguous from genesis (index == height) and each hash chains its ancestry, so
-	// matching our head hash at its index proves the fork extends our exact finalized history.
-	// Legacy (subjective) mode keeps pure longest-chain reorg — it has no BFT finality.
-	// (Launch-phase: finalized == committed head over the pinned anchor set. The mature
-	// phase is sound with epochs enabled: Condition A freezes the finality set per epoch
-	// — every quorum is taken over the same snapshot, so super-quorums genuinely
-	// intersect — and Condition B roots the handoff at a finalized boundary. With epochs
-	// explicitly disabled (trusted/demo), a mature-phase conflict stalls both sides,
-	// which is D-1-safe.)
+	// §3 quorum-finality gate. In OBJECTIVE mode every committed block is
+	// super-quorum-final: it met RequiredQuorum, which §2 sizes over the PINNED
+	// validator set (the anchor set in the launch window). Quorum-intersection
+	// therefore makes it irreversible — so refuse any fork that does not CONTAIN our
+	// committed head, i.e. that would revert a finalized block. Fork-choice (heavier:
+	// height → head-hash) then only ever adjudicates among DESCENDANTS of the
+	// finalized head (the Tendermint/Gasper rule) — "reorg to height 0" is
+	// structurally impossible. Finality is quorum-based, NEVER bare depth (a depth
+	// cap lets two partitions finalize conflicting blocks — worse than a reorg).
+	// Under a >⅓ partition a node simply STALLS (can't gather the super-quorum)
+	// rather than reorg committed history; the storage plane keeps serving
+	// throughout, so durability is unaffected. Fork blocks are contiguous from
+	// genesis (index == height) and each hash chains its ancestry, so matching our
+	// head hash at its index proves the fork extends our exact finalized history.
+	// Legacy (subjective) mode keeps pure longest-chain reorg — it has no BFT
+	// finality. (Launch-phase: finalized == committed head over the pinned anchor
+	// set. The mature phase is sound with epochs enabled: Condition A freezes the
+	// finality set per epoch — every quorum is taken over the same snapshot, so
+	// super-quorums genuinely intersect — and Condition B roots the handoff at a
+	// finalized boundary. With epochs explicitly disabled (trusted/demo), a
+	// mature-phase conflict stalls both sides, which is)
 	//
 	// GATED ON A REAL SUPER-QUORUM. Finality is quorum-INTERSECTION safety, which only holds
 	// when a commit takes ≥ bftThreshold of the validator set — so the gate applies only when
@@ -4690,22 +4678,22 @@ func (c *Chain) Reconcile(fork []Block) (bool, error) {
 // deterministic total order, height → head-hash (I5): the strictly TALLER chain
 // wins; at equal height the lower head hash wins, so every honest node picks the
 // same winner. Both terms are read from the signed block body (Height is inside
-// Hash()'s unsigned struct; the head hash IS the body digest), so the order is a
+// Hash's unsigned struct; the head hash IS the body digest), so the order is a
 // pure function of the committed chain and of nothing a replica holds privately —
 // no certificate slot (Atts/PrepareQC/CommitRound), no replica-local state.
 //
-// A weight term is deliberately absent (owner-ratified 2026-09-03, O3 Direction T).
-// Reconcile's finality gate admits only forks that CONTAIN the committed head, and
-// on that set any pure, extension-monotone chain-weight function selects the same
-// head as height; the retired term also verified attestations against the bare
-// block hash (#558's third site) and read live qualification and bond state (the
-// #357 oscillation mechanism), so it was both inert and unsafe to repair. The §1b
-// height preference (#357) is now the PRIMARY term: a height-blind head-hash
-// tiebreak can never again let a genesis fork displace committed blocks.
+// A weight term is deliberately absent. Reconcile's finality gate
+// admits only forks that CONTAIN the committed head, and on that set any pure,
+// extension-monotone chain-weight function selects the same head as height; the
+// retired term also verified attestations against the bare block hash and read live
+// qualification and bond state (the oscillation mechanism), so it was both inert
+// and unsafe to repair. The §1b height preference is now the PRIMARY term: a
+// height-blind head-hash tiebreak can never again let a genesis fork displace
+// committed blocks.
 //
-// Reads ONLY blocks[len-1].Height and blocks[len-1].Hash() — pinned by an AST walk
-// (TestO3T_HeavierReadsOnlyHeightAndHeadHash). Do not add a read here; a fork-choice
-// input must be Hash()-covered and shared by every replica.
+// Reads ONLY blocks[len-1].Height and blocks[len-1].Hash — pinned by an AST walk
+// (TestHeavierReadsOnlyHeightAndHeadHash). Do not add a read here; a fork-choice
+// input must be Hash-covered and shared by every replica.
 func heavier(a, b *Chain) bool {
 	ah, bh := a.blocks[len(a.blocks)-1].Height, b.blocks[len(b.blocks)-1].Height
 	if ah != bh {
@@ -4742,7 +4730,7 @@ func (c *Chain) adopt(t *Chain) {
 	c.bondRootProven = t.bondRootProven
 	c.bondRegHeight = t.bondRegHeight
 	c.regVersion = t.regVersion
-	c.gateLockedIn = t.gateLockedIn // #506 activation is derived state too: the
+	c.gateLockedIn = t.gateLockedIn // activation is derived state too: the
 	c.gateHeight = t.gateHeight     // replayed fork re-ran every rotation (Q2/I3)
 	c.era3LockedIn = t.era3LockedIn // era-3 (v4) activation is derived the same way:
 	c.era3Height = t.era3Height     // the replayed fork re-ran every rotation (Q5/I3)
@@ -4750,20 +4738,22 @@ func (c *Chain) adopt(t *Chain) {
 	c.era4Height = t.era4Height     // the replayed fork re-ran every rotation (4d)
 	c.bondDomain = t.bondDomain
 	c.slashed = t.slashed
-	c.everMature = t.everMature // the maturity latch is a function of the adopted history (F-1)
+	c.everMature = t.everMature // the maturity latch is a function of the adopted history
 	// The epoch machinery is derived state like everything above: the replayed
 	// fork re-ran every rotation, so its snapshot/handoff ARE the adopted truth.
 	c.epochSet = t.epochSet
 	c.epochStart = t.epochStart
 	c.matureEpoch = t.matureEpoch
-	// era-4 (v5) maintenance-spine maps are derived state like everything above: the
-	// replayed fork re-ran every apply(), so t's qualified/dueBucket ARE the adopted
-	// truth. A forgotten swap here reddens TestAdoptCopiesEveryCommittedField.
+	// era-4 (v5) maintenance-spine maps are derived state like everything above:
+	// the replayed fork re-ran every apply, so t's qualified/dueBucket ARE the
+	// adopted truth. A forgotten swap here reddens
+	// TestAdoptCopiesEveryCommittedField.
 	c.qualified = t.qualified
 	c.dueBucket = t.dueBucket
-	// R0.4b: the per-epoch issuer-key binding is derived state like everything above
-	// — the replayed fork re-ran every applyIssuerKeys, so t's binding IS the adopted
-	// truth. A forgotten swap here reddens TestAdoptCopiesEveryCommittedField.
+	// The per-epoch issuer-key binding is derived state like everything above —
+	// the replayed fork re-ran every applyIssuerKeys, so t's binding IS the
+	// adopted truth. A forgotten swap here reddens
+	// TestAdoptCopiesEveryCommittedField.
 	c.issuerKeyCommit = t.issuerKeyCommit
 }
 

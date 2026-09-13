@@ -1,8 +1,8 @@
 # Retrieval / discoverability at SCALE, on one flat Docker network.
 #
-#   seed ── registry + bootstrap (holds no content: -capacity 1)
-#     ├─ holder×N ── real disk stores; the content lives here (scaled by run.sh)
-#     └─ client ── idle box run.sh execs ephemeral `silt swarm add/get` on
+#  seed ── registry + bootstrap (holds no content: -capacity 1)
+#  ├─ holder×N ── real disk stores; the content lives here (scaled by run.sh)
+#  └─ client ── idle box run.sh execs ephemeral `silt swarm add/get` on
 #
 # The thing under test is not traversal or durability but DISCOVERY: as the
 # swarm grows and short-lived publisher/fetcher identities churn the DHT (#43),

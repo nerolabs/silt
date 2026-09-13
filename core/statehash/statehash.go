@@ -1,33 +1,29 @@
 // Package statehash computes the era-3 committed state SMT root over silt's
 // set-valued validity state. It is the promotion of internal/smtspike into
-// product code: the pokt-network/smt v1.0.0 library (adopted #596) now lives
+// product code: the pokt-network/smt v1.0.0 library (adopted) now lives
 // behind this package, and the state root is a pure function of the committed
 // key→value set.
 //
-// This is build step 1 of the certified era-3 sequence
-// (docs/thinking/2026-08-28-era3-format-design-options.md, choice 5). It computes
-// the root and proves the encoding deterministic. It does NOT add a Block field,
-// change Hash(), add a validity predicate, or touch BlockVersion — those are later
-// certified steps. The root computed here goes behind the keystone oracles so a
-// value-encoding defect is caught as a test failure before it can become a signed
-// field.
+// This is build step 1 of the era-3 sequence, choice 5. It computes the root and
+// proves the encoding deterministic. It does NOT add a Block field, change Hash,
+// add a validity predicate, or touch BlockVersion — those are later steps. The
+// root computed here goes behind the keystone oracles so a value-encoding defect
+// is caught as a test failure before it can become a signed field.
 //
 // The value encoding is the load-bearing decision both consults flagged highest-
 // severity: the SMT binds the leaf VALUE into the leaf digest, so the root is a
 // function of the exact leaf bytes. Three super-quorum predicates SUM bonded/
 // epochSet weights, so a wrong-value witness is a consensus-safety attack. The
-// per-field-class byte encoding is pinned in
-// docs/thinking/2026-08-28-era3-state-root-value-encoding.md and implemented by the
-// EncodeInt64/EncodeUint64/... helpers below. Widths and endianness are CONSENSUS
-// PARAMETERS (research cert Q6 flag 2): a change is a hard fork.
+// per-field-class byte encoding is pinned and implemented by the
+// EncodeInt64/EncodeUint64/. helpers below. Widths and endianness are CONSENSUS
+// PARAMETERS flag 2: a change is a hard fork.
 //
-// DOMAIN SEPARATION (R3.1). Proof unforgeability against the committed root rests on
-// the library's node-type prefix bytes and the prefix-free disjointness of silt's
-// preimage classes — NOT on fixed widths — under seven scope invariants (non-sum trie,
-// default value hasher, no closest proof, NUL-terminated key tags, no externally-writeable
-// node store, no empty leaf value, the v1.0.0 pin). The argument, its gates, the two
-// latent defects closed on the fold surface, and the residuals are recorded in
-// docs/design/state-root-domain-separation.md.
+// DOMAIN SEPARATION. Proof unforgeability against the committed root rests on the
+// library's node-type prefix bytes and the prefix-free disjointness of silt's preimage
+// classes — NOT on fixed widths — under seven scope invariants (non-sum trie, default
+// value hasher, no closest proof, NUL-terminated key tags, no externally-writeable node
+// store, no empty leaf value, the v1.0.0 pin). The argument, its gates, the two latent
+// defects closed on the fold surface, and the residuals are recorded.
 package statehash
 
 import (
@@ -42,7 +38,7 @@ import (
 // Present is the leaf value for a set-membership (Class A) field. The predicate
 // reads existence, never a value, so the leaf carries a fixed marker; the security
 // rests on the key's presence/absence, which the SMT proves via inclusion and
-// exclusion proofs. Matches the smtspike marker (exclusion_test.go:30).
+// exclusion proofs. Matches the smtspike marker (exclusion_test.go).
 var Present = []byte{1}
 
 // EncodeInt64 is the canonical encoding for the int64 weight fields (bonded,
@@ -62,7 +58,7 @@ func EncodeInt64(v int64) []byte {
 // bondDomain, gateHeight): 8-byte big-endian. bondDomain's 0 = unset is a legal
 // in-domain value committed as the encoding of 0; a key ABSENT from the map has no
 // leaf at all, so present-zero and proven-absent are distinct leaf states under the
-// root (the distinction the eventual witness accessor must preserve — cert Q4).
+// root (the distinction the eventual witness accessor must preserve —).
 func EncodeUint64(v uint64) []byte {
 	var b [8]byte
 	binary.BigEndian.PutUint64(b[:], v)
@@ -85,7 +81,7 @@ func EncodeBool(v bool) []byte {
 
 // EncodeID is the canonical encoding for identity values (bondRootOwner's NodeID):
 // the raw 32 bytes, no transform and no length prefix. NodeID = Hash = [32]byte
-// (ports/net.go:82, ports/ports.go:17); the value IS the owner identity.
+// (ports/net.go, ports/ports.go); the value IS the project identity.
 func EncodeID(id ports.NodeID) []byte {
 	out := make([]byte, len(id))
 	copy(out, id[:])
@@ -94,9 +90,9 @@ func EncodeID(id ports.NodeID) []byte {
 
 // Key builds a field-tagged leaf key: tag ‖ rawKey, where tag is the field name
 // followed by a single NUL. The NUL terminator makes the concatenation injective
-// across all field tags and the scalar reserved keys (research cert Q3): the first
+// across all field tags and the scalar reserved keys: the first
 // \x00 terminates the field name, so no raw key under one tag can equal a key under
-// another. This is the smtspike scheme (exclusion_test.go:18-25), kept verbatim.
+// another. This is the smtspike scheme (exclusion_test.go), kept verbatim.
 //
 // A scalar leaf uses an empty rawKey (Key(tag)), which cannot collide with any map
 // keyspace because map raw keys (32-byte NodeIDs/Hashes, non-empty serials) are
@@ -109,7 +105,7 @@ func Key(tag string, rawKey []byte) []byte {
 }
 
 // Leaf is one committed (key, value) pair, already encoded to canonical bytes. A
-// Builder accumulates Leaves and Root() commits them into the SMT. Keeping the
+// Builder accumulates Leaves and Root commits them into the SMT. Keeping the
 // encoding in the caller (package chain, which owns the field types) and the SMT
 // mechanics here keeps this package free of any dependency on chain.
 type Leaf struct {
@@ -119,14 +115,14 @@ type Leaf struct {
 
 // Root computes the committed state SMT root over the given leaves. The result is a
 // pure function of the SET of (key, value) pairs, independent of the order they are
-// supplied in — the history-independence property the SMT was chosen for (#597 Q1).
+// supplied in — the history-independence property the SMT was chosen for.
 // The determinism oracle proves this by execution.
 //
-// The hash is sha256 (research cert Q6 flag 1: a security parameter the exclusion
-// soundness rests on — pinned, never config). The store is an in-memory simplemap:
-// step 1 computes a root, it does not persist a tree (the disk-backed NodeStore is
-// a separate ratified follow-on, RULING-keystone-node-store). A duplicate key in
-// the input is a programming error in the caller's marshalling and is reported.
+// The hash is sha256 flag 1: a security parameter the exclusion soundness rests on
+// — pinned, never config. The store is an in-memory simplemap: step 1 computes a
+// root, it does not persist a tree (the disk-backed NodeStore is a separate
+// settled follow-on). A duplicate key in the input is a programming error in the
+// caller's marshalling and is reported.
 func Root(leaves []Leaf) (ports.Hash, error) {
 	trie := smt.NewSparseMerkleTrie(simplemap.NewSimpleMap(), sha256.New())
 	seen := make(map[string]struct{}, len(leaves))
@@ -153,7 +149,7 @@ func Root(leaves []Leaf) (ports.Hash, error) {
 	return h, nil
 }
 
-// EmptyValueError reports a leaf with no value (G-R31-5, ratified 2026-09-06). No
+// EmptyValueError reports a leaf with no value. No
 // committed field encodes to zero bytes — set members carry Present, scalars a
 // fixed-width encoding, set roots a 32-byte digest — so an empty value is a
 // marshalling bug, not a state. The SMT library treats an empty update as a

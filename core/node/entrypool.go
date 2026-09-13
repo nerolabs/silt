@@ -1,15 +1,15 @@
-// The #441 entry mempool (research-certified 2026-08-16, direction A): publish
-// entries are MEMPOOL CONTENT the single (h, r) designee's block folds in —
-// the leader-carries-the-mempool shape of every mature BFT SMR — never a
-// second proposal stream. The pre-fix ProposeEntry client raced the drain
-// designee for the same (h, r0) prepare slots and could win no round of any
-// height: the round machinery's new-view seat re-proposed only drain blocks
-// and its escape armed only on drain work, so on a matured network publishes
-// starved outright (run a56ac10-42834: zero entry-blocks post-latch) and on a
-// launch network a crossed publish race had no escape driver (soak run
-// 9453325-7258: a 361s height stall vs the 160s computed bound). The mirror
-// of the MsgSubmitBondReg path: submit → validate-on-arrival → FIFO queue →
-// designee folds under a SEPARATE byte budget → client polls for finality.
+// The entry mempool, direction A: publish entries are MEMPOOL CONTENT the
+// single (h, r) designee's block folds in — the leader-carries-the-mempool
+// shape of every mature BFT SMR — never a second proposal stream. The pre-fix
+// ProposeEntry client raced the drain designee for the same (h, r0) prepare
+// slots and could win no round of any height: the round machinery's new-view
+// seat re-proposed only drain blocks and its escape armed only on drain work,
+// so on a matured network publishes starved outright (a field run recorded zero
+// entry-blocks post-latch) and on a launch network a crossed publish race had
+// no escape driver (a soak run recorded a 361s height stall vs the 160s
+// computed bound). The mirror of the MsgSubmitBondReg path: submit →
+// validate-on-arrival → FIFO queue → designee folds under a SEPARATE byte
+// budget → client polls for finality.
 package node
 
 import (
@@ -48,12 +48,12 @@ func entryDecode(raw []byte) (ports.Entry, error) {
 // with valid publish tokens could submit distinct roots faster than the designee
 // drains them and grow it without bound — a resident-memory DoS (boundedness audit
 // A2). Past the cap a new arrival is REJECTED rather than admitted, which preserves
-// the FIFO seniority the #441 certification pinned ("waiting cannot lose seniority")
-// — dropping the oldest would let a flood evict entries that were first in line. Safe
-// to reject: the #441 client path is fire-and-forget + poll-for-finality, so a
-// rejected submission is re-sent by the client's retry loop (and the pool has usually
-// drained by then). Far above any honest in-flight publish count. The bond pool is
-// already validator-bounded (one slot per validator, replace-in-place); the cap is
+// the FIFO seniority the research pinned ("waiting cannot lose seniority") — dropping
+// the oldest would let a flood evict entries that were first in line. Safe to reject:
+// the client path is fire-and-forget + poll-for-finality, so a rejected submission is
+// re-sent by the client's retry loop (and the pool has usually drained by then). Far
+// above any honest in-flight publish count. The bond pool is already
+// validator-bounded (one slot per validator, replace-in-place); the cap is
 // defense-in-depth against a forged-ID path.
 const maxMempool = 8192
 
@@ -78,8 +78,8 @@ func (n *Node) queuePendingEntry(e ports.Entry) bool {
 }
 
 // SubmitEntry broadcasts a publish entry to peers so whichever eligible
-// proposer makes the next block folds it in — the certified #441 client path
-// (submit, never propose; poll for finality). Fire-and-forget, like
+// proposer makes the next block folds it in — the client path (submit,
+// never propose; poll for finality). Fire-and-forget, like
 // SubmitBondRenewal: a dropped submission is re-sent by the client's retry
 // loop, and inclusion is read from the chain. The entry ALSO enters this
 // node's own mempool when it is itself proposer-eligible (the registry
@@ -106,7 +106,7 @@ func (n *Node) SubmitEntry(e ports.Entry, peers []ports.NodeID) {
 // one poisoned entry never kills the block), under the SEPARATE entry byte
 // budget (never the reg budget — Addition 1; at least one entry always folds
 // so an oversized entry cannot stall the queue). The queue keeps only the
-// still-valid entries that did not fit — the durable-queue rule (#427 B).
+// still-valid entries that did not fit — the durable-queue rule.
 // Dedup within the block by root AND token serial: two mempool entries can
 // each be valid against the chain yet conflict inside one block.
 func (n *Node) foldPendingEntries(b *chain.Block) {
@@ -153,10 +153,10 @@ func (n *Node) foldPendingEntries(b *chain.Block) {
 }
 
 // pendingBondReg is one reg-queue slot. The queue is FIFO BY ARRIVAL — the
-// same no-priority rule the #441 certification pinned for entries (Addition
+// same no-priority rule the research pinned for entries (Addition
 // 2): with the byte budget admitting ~one plot-sized reg per block, any
 // priority order (the old validator-ID sort) starves whoever sorts last for
-// as long as higher-priority traffic flows (confirm run 54003f7-91159: a
+// as long as higher-priority traffic flows (a confirm field run recorded a
 // first-time maturer reg queued 22 minutes behind lower-ID renewals).
 type pendingBondReg struct {
 	R chain.BondReg

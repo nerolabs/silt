@@ -1,12 +1,12 @@
 package node
 
-// PoD relay lane — the relay-accept role and its two M0 guards
-// (docs/design/pod.md §7.3, certified 2026-08-30). A relay opts into accepting
-// sender-funded PayWord chains behind a flag (mirror of --accept-delivery-
-// receipts / EnableDemandBank). The two guards are bright-line, non-negotiable
-// M0 access-privacy constraints (immutable Don't-#3): the relay must reject any
-// chain funded by a durable-account credit, and any session that reuses an
-// ephemeral identity or a chain across sessions.
+// PoD relay lane — the relay-accept role and its two M0 guards, verifies
+// 2026-08-30. A relay opts into accepting sender-funded PayWord chains behind a
+// flag (mirror of --accept-delivery- receipts / EnableDemandBank). The two
+// guards are bright-line, non-negotiable M0 access-privacy constraints
+// (immutable Don't-#3): the relay must reject any chain funded by a
+// durable-account credit, and any session that reuses an ephemeral identity or
+// a chain across sessions.
 
 import (
 	"net"
@@ -25,16 +25,16 @@ import (
 func relayTestID(b byte) ports.NodeID { return ports.HashBytes([]byte{b}) }
 
 // setRelayEpochFnForTest overrides the relay eviction epoch source so a test can
-// drive epoch rotation without wiring a full chain (#645).
+// drive epoch rotation without wiring a full chain.
 func (n *Node) setRelayEpochFnForTest(f func() uint64) { n.relayEpochFn = f }
 
 // relaySeenEntryCountForTest returns the total live seen-map entries across both
-// relay maps — the bound the #645 eviction test asserts stays small.
+// relay maps — the bound the eviction test asserts stays small.
 func (n *Node) relaySeenEntryCountForTest() int {
 	return len(n.relaySeenEph) + len(n.relaySeenRoot)
 }
 
-// relayEvictionFloorForTest exposes the monotonic eviction floor so the #645 test
+// relayEvictionFloorForTest exposes the monotonic eviction floor so the test
 // can assert it never lowers on a reorg.
 func (n *Node) relayEvictionFloorForTest() uint64 { return n.relayEvictionFloor }
 
@@ -52,8 +52,8 @@ func newRelayTestNode(idSeed int64) *Node {
 	return New(ident.NodeID(), DefaultConfig(), sched, net.Endpoint(ident.NodeID()), memstore.New())
 }
 
-// newAnchoredRelayTestNode is newRelayTestNode plus the R2.14 anchor lane's
-// preconditions — a ledger and a chain-committed demand key_0 — so an anchored open
+// newAnchoredRelayTestNode is newRelayTestNode plus the anchor lane's preconditions
+// — a ledger and a chain-committed demand key_0 — so an anchored open
 // (openAnchored) is admissible. The chain-less form above stays for the tests that
 // need the lane DARK (TestRelayOpenRefusesWithoutSelfKeyset).
 func newAnchoredRelayTestNode(t *testing.T, idSeed int64) *Node {
@@ -123,7 +123,7 @@ func TestRelayGuardII_EphemeralReuseRejected(t *testing.T) {
 	}
 }
 
-// TestOpenRelaySessionClampsChainLength is the #644 open-side clamp, failing-first:
+// TestOpenRelaySessionClampsChainLength is the open-side clamp, failing-first:
 // a fetcher cannot open a session claiming a chain LONGER than the relay will ever
 // forward (S > S_max = relaypay.MaxChainLength; 50,000 since the 2026-09-06 re-price). S is
 // derived relay-side from the relay's own config and the protocol increment, never
@@ -142,7 +142,7 @@ func TestOpenRelaySessionClampsChainLength(t *testing.T) {
 	root := make([]byte, 32)
 	oversized := relaypay.MaxChainLength + 1
 	if _, err := openAnchored(t, n, 9, root, oversized); err == nil {
-		t.Fatalf("OpenRelaySession accepted S=%d > S_max=%d: the #644 open-side clamp is missing", oversized, relaypay.MaxChainLength)
+		t.Fatalf("OpenRelaySession accepted S=%d > S_max=%d: the open-side clamp is missing", oversized, relaypay.MaxChainLength)
 	}
 
 	// Exactly S_max is accepted (inclusive ceiling).
@@ -151,7 +151,7 @@ func TestOpenRelaySessionClampsChainLength(t *testing.T) {
 	}
 }
 
-// TestRelaySessionPayCannotExceedChainLength is the #644 pay-side budget cap on the
+// TestRelaySessionPayCannotExceedChainLength is the pay-side budget cap on the
 // live session path, failing-first. It exercises the exact hole the exhaustion
 // guard closes: after the chain is exhausted at count == S, the held preimage is
 // x_S = H(tip), so a fetcher who reveals the raw TIP hashes to x_S and — without
@@ -193,22 +193,22 @@ func TestRelaySessionPayCannotExceedChainLength(t *testing.T) {
 	}
 }
 
-// TestRelaySeenMapEvictsOnEpoch is the #645 failing-first test: the relay-seen
+// TestRelaySeenMapEvictsOnEpoch is the failing-first test: the relay-seen
 // maps must be EPOCH-tied and MONOTONIC, not raw FIFO. It pins three properties
 // with an ablatable RED for each:
 //
-//  1. BOUNDED — entries admitted two-or-more epochs ago are swept, so the maps do
-//     not grow unboundedly across epochs. (Ablation: remove the sweep → the map
-//     keeps every entry and the size assertion reddens.)
-//  2. GUARD (ii) HELD ACROSS THE BOUNDARY — a root/identity admitted in the
-//     PREVIOUS epoch is STILL rejected on reuse after one epoch advance. Eviction
-//     that is too eager (drops the previous epoch) re-opens the longitudinal
-//     linkage the guard forecloses. (Ablation: retention window 0 → a
-//     previous-epoch reuse slips through and reddens.)
-//  3. MONOTONIC FLOOR (reorg-safe) — after advancing the epoch and then a reorg
-//     that moves the epoch back, the eviction floor does NOT lower, so an entry
-//     evicted at the higher epoch is not re-admitted below the floor. (Ablation:
-//     let the floor track the epoch down → the floor lowers on reorg.)
+// 1. BOUNDED — entries admitted two-or-more epochs ago are swept, so the maps do
+// Not grow unboundedly across epochs. (Ablation: remove the sweep → the map
+// keeps every entry and the size assertion reddens.)
+// 2. GUARD (ii) HELD ACROSS THE BOUNDARY — a root/identity admitted in the
+// PREVIOUS epoch is STILL rejected on reuse after one epoch advance. Eviction
+// that is too eager (drops the previous epoch) re-opens the longitudinal
+// linkage the guard forecloses. (Ablation: retention window 0 → a
+// previous-epoch reuse slips through and reddens.)
+// 3. MONOTONIC FLOOR (reorg-safe) — after advancing the epoch and then a reorg
+// That moves the epoch back, the eviction floor does NOT lower, so an entry
+// evicted at the higher epoch is not re-admitted below the floor. (Ablation:
+// let the floor track the epoch down → the floor lowers on reorg.)
 //
 // The epoch is injected via the test seat's relayEpochFn override so the test does
 // not need a full chain wired; production reads the epoch from the chain.
@@ -256,8 +256,8 @@ func TestRelaySeenMapEvictsOnEpoch(t *testing.T) {
 		t.Fatalf("relay-seen maps hold %d entries after 3 epochs; epoch-0 entries were not swept (unbounded growth)", got)
 	}
 
-	// (1)/(2) The swept epoch-0 root A can now be re-admitted (it aged out past the
-	// retention window — the certified epoch-TTL boundary). This is the intended
+	// (1)/(2) The swept epoch-0 root A can now be re-admitted (it aged out past
+	// the retention window — the epoch-TTL boundary). This is the intended
 	// eviction, and it confirms the sweep actually happened.
 	if _, err := openAnchored(t, n, 100, root(0xA1), 8); err != nil {
 		t.Fatalf("epoch-0 root A should have aged out and be re-admittable at epoch 2: %v", err)
@@ -288,16 +288,16 @@ func TestRelaySeenMapEvictsOnEpoch(t *testing.T) {
 // TestReapedSessionStopsLivePump is the Batch-3 reaper-teardown failing-first test
 // (design §3b), closing the TODO(Batch-3) in sweepRelaySeen. Once the daemon binding
 // wires SplicePaid, a reaped session may have a LIVE pump goroutine blocked in
-// paidPump on auth.Wait(), waiting for a ceiling that will never rise (the fetcher is
+// paidPump on auth.Wait, waiting for a ceiling that will never rise (the fetcher is
 // gone). Deleting the table entry alone leaks that goroutine — it blocks forever.
 //
-// The fix is one line at the reap site: sweepRelaySeen must call sess.closeSession()
-// so the pump's Done() check trips and the goroutine drains to its ceiling and
+// The fix is one line at the reap site: sweepRelaySeen must call sess.closeSession
+// so the pump's Done check trips and the goroutine drains to its ceiling and
 // returns. RED before that line (the pump goroutine never exits — the timeout below
 // fires); green after.
 //
-// Ablation: remove sess.closeSession() from the reap loop → the pump stays blocked on
-// auth.Wait() and the "pump exited" assertion times out RED.
+// Ablation: remove sess.closeSession from the reap loop → the pump stays blocked on
+// auth.Wait and the "pump exited" assertion times out RED.
 func TestReapedSessionStopsLivePump(t *testing.T) {
 	n := newAnchoredRelayTestNode(t, 1)
 	n.EnableRelayAccept()
@@ -316,10 +316,11 @@ func TestReapedSessionStopsLivePump(t *testing.T) {
 	handle := uint64(1)
 	n.relaySessions[handle] = sess
 
-	// Start a LIVE pump against the session's authorizer. The ceiling is 0 (no Pay
-	// has raised it), so the origin's first chunk cannot be delivered and the pump
-	// blocks in paidPump on auth.Wait() — exactly a live session with a vanished
-	// fetcher. Real TCP conns so the pump's reads/writes behave like the live path.
+	// Start a LIVE pump against the session's authorizer. The ceiling is 0 (no
+	// Pay has raised it), so the origin's first chunk cannot be delivered and
+	// the pump blocks in paidPump on auth.Wait — exactly a live session with a
+	// vanished fetcher. Real TCP conns so the pump's reads/writes behave like
+	// the live path.
 	ao, originEnd := relayTCPPair(t) // relay↔origin
 	bf, fetchEnd := relayTCPPair(t)  // relay↔fetcher
 	defer ao.Close()
@@ -352,8 +353,8 @@ func TestReapedSessionStopsLivePump(t *testing.T) {
 	if _, ok := n.relaySessions[handle]; ok {
 		t.Fatalf("reaped session still in the table after the sweep")
 	}
-	// The pump goroutine MUST exit now (closeSession woke it and Done() is set). If
-	// the reaper did not close the session, the pump stays blocked forever.
+	// The pump goroutine MUST exit now (closeSession woke it and Done is set).
+	// If the reaper did not close the session, the pump stays blocked forever.
 	select {
 	case <-pumpDone:
 		// pump drained and exited — correct

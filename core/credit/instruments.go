@@ -10,12 +10,12 @@ package credit
 // out. These pure functions are how an operator or the observatory MEASURES where
 // an object sits on that contract, from a ports.DurabilitySnapshot:
 //
-//   - CostPerRepair — the realised credits per shard-repair so far.
-//   - Horizon       — how long the current reserve lasts at the observed burn.
-//   - G             — instrument g: the annualized trend of cost-per-repair, the
-//                     single number that decides perpetual-vs-finite. g stays
-//                     MEASURED, never assumed: "perpetual" is a claim silt earns
-//                     only while g > 0, never an architectural promise.
+// - CostPerRepair — the realised credits per shard-repair so far.
+// - Horizon — how long the current reserve lasts at the observed burn.
+// - G — instrument g: the annualized trend of cost-per-repair, the
+// single number that decides perpetual-vs-finite. g stays
+// MEASURED, never assumed: "perpetual" is a claim silt earns
+// only while g > 0, never an architectural promise.
 //
 // They read only observable accounting — never Reputation — so measuring durability
 // can't perturb standing.
@@ -41,12 +41,12 @@ func CostPerRepair(s ports.DurabilitySnapshot) int64 {
 // burn rate the object has ACTUALLY shown — its lifetime Paid spread over the
 // elapsed observation window. It returns (remaining, finite):
 //
-//   - finite == true  → a real, bounded horizon: the reserve runs dry in
-//     `remaining` at the observed burn (re-endow before then).
-//   - finite == false → no burn has been observed (Paid == 0) or the window is
-//     non-positive, so the reserve is unbounded at the current (zero) rate. This
-//     is NOT "perpetual achieved": it means the horizon is not yet measurable, and
-//     the caller should treat perpetual as unproven. `remaining` is 0 and ignored.
+// - finite == true → a real, bounded horizon: the reserve runs dry in
+// `remaining` at the observed burn (re-endow before then).
+// - finite == false → no burn has been observed (Paid == 0) or the window is
+// non-positive, so the reserve is unbounded at the current (zero) rate. This
+// is NOT "perpetual achieved": it means the horizon is not yet measurable, and
+// the caller should treat perpetual as unproven. `remaining` is 0 and ignored.
 //
 // A depleted reserve (Balance <= 0) is a real, finite horizon of zero.
 func Horizon(s ports.DurabilitySnapshot, elapsed ports.Duration) (ports.Duration, bool) {

@@ -13,8 +13,8 @@ import (
 // every call — which is what the standalone Prove(leaves, index) does, making
 // that O(n) per proof. The recompute is invisible on a small file manifest, but
 // on a large, frequently-challenged bond plot (up to ~16k leaves, O(k) proofs
-// every audit epoch) it dominates the consensus loop (#340). The construction is
-// bit-for-bit the standalone one, so Tree.Root() == MerkleRoot(leaves) and
+// every audit epoch) it dominates the consensus loop. The construction is
+// bit-for-bit the standalone one, so Tree.Root == MerkleRoot(leaves) and
 // Tree.Prove(i) returns the SAME Proof as Prove(leaves, i): a proof from either
 // verifies against the same root. Use it where many proofs are drawn from one
 // stable leaf set; a one-off proof over a fresh slice should still use Prove.

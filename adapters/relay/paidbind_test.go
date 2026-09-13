@@ -4,21 +4,21 @@ package relay
 //
 // Two halves of one rendezvous are pinned here:
 //
-//   - THE PAID MARKER (§2). A connect frame carries an optional Paid handle. A ZERO
-//     marker routes to the free splice byte-for-byte (backward-compat: an old client
-//     sends no field). A NONZERO marker routes to the paid path.
+// - THE PAID MARKER. A connect frame carries an optional Paid handle. A ZERO
+// marker routes to the free splice byte-for-byte (backward-compat: an old client
+// sends no field). A NONZERO marker routes to the paid path.
 //
-//   - THE REFUSE-NEVER-DOWNGRADE CONDITION (§3, certified residual #2). A paid connect
-//     whose handle does not resolve to a live, fetcher-OWNED session is REFUSED — never
-//     downgraded to the free splice. A free downgrade would hand a non-payer an
-//     unfunded, uncapped forward. This is RED if the accept path ignores an unresolved
-//     paid marker and splices free.
+// - THE REFUSE-NEVER-DOWNGRADE CONDITION (§3, residual #2). A paid connect
+// whose handle does not resolve to a live, fetcher-OWNED session is REFUSED — never
+// downgraded to the free splice. A free downgrade would hand a non-payer an
+// unfunded, uncapped forward. This is RED if the accept path ignores an unresolved
+// paid marker and splices free.
 //
-//   - THE AUTHORIZER SEAM (§3). A resolved paid connect runs SplicePaid gated on the
-//     node-owned authorizer, and the settler fires ONCE at close with the forwarded
-//     count. The resolver is called OFF the node loop (the Server's accept goroutine),
-//     so a real node marshals the lookup onto its loop; the test resolver is
-//     mutex-guarded and the suite runs under -race.
+// - THE AUTHORIZER SEAM. A resolved paid connect runs SplicePaid gated on the
+// node-owned authorizer, and the settler fires ONCE at close with the forwarded
+// count. The resolver is called OFF the node loop (the Server's accept goroutine),
+// so a real node marshals the lookup onto its loop; the test resolver is
+// mutex-guarded and the suite runs under -race.
 
 import (
 	"bytes"
@@ -149,12 +149,12 @@ func TestFreeConnectUnchangedByPaidField(t *testing.T) {
 	}
 }
 
-// TestPaidConnectRefusedWhenUnresolved is the §3 certified-residual-#2 pin: a connect
+// TestPaidConnectRefusedWhenUnresolved is the §3 verifies-residual-#2 pin: a connect
 // carrying a nonzero Paid handle that does NOT resolve to a live, owned session is
 // REFUSED — never spliced free. Two cases:
 //
 //	(a) NO RESOLVER installed (a relay that does not accept payments): the paid marker
-//	    must be refused, not silently downgraded to free.
+//	 must be refused, not silently downgraded to free.
 //	(b) RESOLVER installed but returns ok=false (unknown or unowned handle): refused.
 //
 // RED if the accept path ignores the marker and runs the free splice (the connector
@@ -210,7 +210,7 @@ func TestPaidConnectRefusedWhenUnresolved(t *testing.T) {
 			t.Fatalf("accept read: %v", err)
 		}
 		if bfr.Op == "ok" {
-			t.Fatalf("unresolved paid connect was SPLICED (accept got ok) — it must be REFUSED, never downgraded to free (certified residual #2)")
+			t.Fatalf("unresolved paid connect was SPLICED (accept got ok) — it must be REFUSED, never downgraded to free (disclosed residual #2)")
 		}
 		if bfr.Op != "err" {
 			t.Fatalf("accept got %q, want err (paid session unresolved)", bfr.Op)
@@ -242,8 +242,8 @@ func TestPaidConnectResolvesAndGates(t *testing.T) {
 
 	const handle = uint64(99)
 	auth := newGateAuthorizer()
-	// The resolver checks the fetcher owns the handle (the ephID-ownership check the
-	// node enforces). Here identS is the owner.
+	// The resolver checks the fetcher owns the handle (the ephID-ownership check
+	// the node enforces). Here identS is the project.
 	var resolverCalls int32
 	var rmu sync.Mutex
 	srv.SetPaidResolver(func(fetcher ports.NodeID, h uint64) (Authorizer, bool) {

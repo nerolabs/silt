@@ -9,14 +9,14 @@
 # wrong here and they are NOT the same finding. Each gets its own exit code so
 # the caller can never render one as another:
 #
-#   4  SETUP    — the drills did not BUILD. Zero properties were exercised.
-#   3  HARNESS  — an impairment was REQUESTED but tc could not apply it (missing
-#                 --cap-add NET_ADMIN). Running anyway would be a false CLEAN cert.
-#   5  UNEARNED — the drills built and ran, but fewer than all of them produced a
-#                 result (a regex matching nothing, a t.Skip). `go test` exits 0
-#                 on "no tests to run"; that is a green with zero execution.
-#   0           — every NAMED drill ran and held.
-#   other       — a real property verdict from `go test`.
+#  4 SETUP — the drills did not BUILD. Zero properties were exercised.
+#  3 HARNESS — an impairment was REQUESTED but tc could not apply it (missing
+#  --cap-add NET_ADMIN). Running anyway would be a false CLEAN cert.
+#  5 UNEARNED — the drills built and ran, but fewer than all of them produced a
+#  result (a regex matching nothing, a t.Skip). `go test` exits 0
+#  on "no tests to run"; that is a green with zero execution.
+#  0 — every NAMED drill ran and held.
+#  other — a real property verdict from `go test`.
 #
 # Code 4 is the one that cost the most: for thirteen consecutive nights this
 # suite printed a durability finding while the e2e package had failed to compile

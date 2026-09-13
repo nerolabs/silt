@@ -1,20 +1,17 @@
 package e2e
 
-// The concurrent-publish 502 (2026-08-19, found by silt's first production
-// workload): every successful UI publish ran its -care-published auto-caretake
-// ON the daemon's event loop, where Node.Care's synchronous registry Lookup
-// marshalled back onto the same loop through chainhost — a reentrant
-// post-and-wait self-deadlock that wedged the node's single thread for the 30s
-// chainhost timeout per publish. Under concurrent ingest the wedge starved every
-// queued message: placements blew their 4×2s attempts ("placed on no node"),
-// entries outlived the 30s commit poll, and the caller got hard 502s while the
-// daemon survived. Fixed by node.lookupEntry (a validator answers loop-context
-// registry reads from its own committed chain); this test drives the real field
-// shape — concurrent multipart publishes against a validator daemon's UI API —
-// and requires every publish to succeed. The daemon runs -inbound-cap 0, which
-// also regression-covers the documented "0 = unbounded" sentinel (previously
-// rejected by parseSize).
-// Mechanism record: docs/thinking/2026-08-19-publish-502-attribution-care-self-deadlock.md
+// The concurrent-publish 502 (2026-08-19, found by silt's first production workload):
+// every successful UI publish ran its -care-published auto-caretake ON the daemon's event
+// loop, where Node.Care's synchronous registry Lookup marshalled back onto the same loop
+// through chainhost — a reentrant post-and-wait self-deadlock that wedged the node's
+// single thread for the 30s chainhost timeout per publish. Under concurrent ingest the
+// wedge starved every queued message: placements blew their 4×2s attempts ("placed on no
+// node"), entries outlived the 30s commit poll, and the caller got hard 502s while the
+// daemon survived. Fixed by node.lookupEntry (a validator answers loop-context registry
+// reads from its own committed chain); this test drives the real field shape — concurrent
+// multipart publishes against a validator daemon's UI API — and requires every publish to
+// succeed. The daemon runs -inbound-cap 0, which also regression-covers the documented "0
+// = unbounded" sentinel (previously rejected by parseSize). Mechanism record:
 
 import (
 	"bytes"

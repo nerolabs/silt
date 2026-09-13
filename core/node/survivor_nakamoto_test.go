@@ -11,7 +11,7 @@ import (
 )
 
 // TestSurvivorNakamoto_CountsDistinctFailureDomains pins the raw non-globality
-// metric (R-2 / immutable #5 / #180): the survivor Nakamoto-coefficient over a key's
+// metric (R-2 / immutable #5 /): the survivor Nakamoto-coefficient over a key's
 // live provider set is the number of DISTINCT failure domains those providers sit
 // in — how many independent domains a censor must eclipse to make the content
 // undiscoverable. A set spread across N domains reads N; the same providers

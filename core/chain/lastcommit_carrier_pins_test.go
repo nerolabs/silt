@@ -10,18 +10,18 @@ import (
 )
 
 // =============================================================================
-// R-BOX-ATTESTS — the two STRUCTURAL pins the carrier's correctness rests on
+// The two STRUCTURAL pins the carrier's correctness rests on
 // =============================================================================
 //
 // Both facts below are load-bearing and neither is behavioural, so both guards are
-// structural — the R-ROTATE-EPOCH-LAST shape (rotate_epoch_last_drift_test.go). A purely
-// behavioural fixture can pass through a refactor that reorders statements when the scenario
-// does not happen to distinguish them.
+// structural — the shape (rotate_epoch_last_drift_test.go). A purely behavioural fixture can
+// pass through a refactor that reorders statements when the scenario does not happen to
+// distinguish them.
 
-// preCarrierUnsigned mirrors the pre-carrier unsigned Hash() body EXACTLY as it stood at
-// pre-carrier origin/main (d7e4df0) — the eleven fields, in order, with their cbor keys. It is a FROZEN
-// literal, deliberately NOT derived from Block, so a change to Block cannot move both sides of
-// the comparison at once.
+// preCarrierUnsigned mirrors the pre-carrier unsigned Hash body EXACTLY as it stood at pre-carrier
+// origin/main (d7e4df0) — the eleven fields, in order, with their cbor keys. It is a FROZEN literal,
+// deliberately NOT derived from Block, so a change to Block cannot move both sides of the comparison at
+// once.
 type preCarrierUnsigned struct {
 	Height        uint64              `cbor:"1,keyasint"`
 	Prev          ports.Hash          `cbor:"2,keyasint"`
@@ -39,17 +39,17 @@ type preCarrierUnsigned struct {
 	LogRoot   *ports.Hash `cbor:"16,keyasint,omitempty"`
 }
 
-// preCarrierBondReg is the FROZEN pre-(d-3) BondReg wire shape — the seven fields with their
-// cbor keys, as they stand on era-2/era-3 committed history.
+// preCarrierBondReg is the FROZEN pre- BondReg wire shape — the seven fields with their cbor
+// keys, as they stand on era-2/era-3 committed history.
 //
-// WHY IT EXISTS (re-point, 2026-09-10, owner precondition on owner call C). The struct above
-// claims it is "deliberately NOT derived from Block, so a change to Block cannot move both sides
-// of the comparison at once" — but it declared `BondRegs []BondReg`, the LIVE type. A change to
-// BondReg therefore moved BOTH sides together and this guard stayed GREEN.
+// WHY IT EXISTS (re-point, 2026-09-10, owner precondition on). The struct above claims it is
+// "deliberately NOT derived from Block, so a change to Block cannot move both sides of the
+// comparison at once" — but it declared `BondRegs []BondReg`, the LIVE type. A change to BondReg
+// therefore moved BOTH sides together and this guard stayed GREEN.
 //
 // That is not hypothetical. Freeze-manifest §4.3 specifies `AnswerDigest ports.Hash` on BondReg,
-// and cbor's omitempty NEVER omits a fixed-size array (chain.go:569-572; Pruned is the living
-// proof at key 14). bodyHash folds BondRegs with no version branch (chain.go:822), so that field
+// and cbor's omitempty NEVER omits a fixed-size array (chain.go; Pruned is the living
+// proof at key 14). bodyHash folds BondRegs with no version branch (chain.go), so that field
 // would have emitted 32 zero bytes into the preimage of EVERY v2 and v4 block carrying a bond
 // registration — breaking the frozen-format immutable on live history. This guard is the
 // instrument that should catch it, and unfrozen it could not. Mirroring the type freezes it.
@@ -81,11 +81,11 @@ func freezeBondRegs(in []BondReg) []preCarrierBondReg {
 }
 
 // TestCarrierHashDriftGuard pins the additive-compat property O1 requires: adding LastCommit to
-// Hash() leaves the hash of EVERY carrier-free block BYTE-IDENTICAL to pre-carrier code. It
+// Hash leaves the hash of EVERY carrier-free block BYTE-IDENTICAL to pre-carrier code. It
 // recomputes the pre-carrier hash from the frozen struct above and requires equality for an
 // era-2 block, an era-3 (v4) block with committed roots, and a v5 block with no carrier.
 //
-// The era-3 format is FROZEN (#632). If this guard ever reddens, the freeze is broken.
+// The era-3 format is FROZEN. If this guard ever reddens, the freeze is broken.
 func hasV5Substitutable(b Block) bool {
 	if len(b.Slashes) > 0 {
 		return true
@@ -108,19 +108,20 @@ func TestCarrierHashDriftGuard(t *testing.T) {
 	k := key(58401)
 
 	// hasV5Substitutable reports whether a block carries content the v5 preimage actually
-	// substitutes. A v5 block with no bond registrations and no slashes has NOTHING to substitute,
-	// so it hashes identically to the pre-(d-3) bytes — that is correct additive-compat, not a
-	// regression, and the complement assertion below must not fire on it. (Caught by this very
-	// guard on the first run: asserting "every v5 block must differ" failed the empty v5 row.)
+	// substitutes. A v5 block with no bond registrations and no slashes has NOTHING to
+	// substitute, so it hashes identically to the pre- bytes — that is correct additive-compat,
+	// not a regression, and the complement assertion below must not fire on it. (Caught by this
+	// very guard on the first run: asserting "every v5 block must differ" failed the empty v5
+	// row.)
 	//
-	// frozen says whether this era's preimage is FROZEN and must still hash to the pre-carrier
-	// bytes. v2 and v4 are frozen (#632) and always will be. v5 is NOT: the era-4 format freeze has
-	// not been entered (ROADMAP D3), and (d-3) deliberately changes its preimage to commit the
+	// frozen says whether this era's preimage is FROZEN and must still hash to the
+	// pre-carrier bytes. v2 and v4 are frozen and always will be. v5 is NOT: the era-4 format
+	// freeze has not been entered D3, and deliberately changes its preimage to commit the
 	// heavy payloads by digest. (The older reason given here — "era-4 is dark" — was void by
-	// 2026-09-11: -era4-activation-height defaults to 1, so era-4 is live from height 1 on every
-	// fresh network. It never carried this row; the freeze status does.) So the v5 rows
+	// 2026-09-11: -era4-activation-height defaults to 1, so era-4 is live from height 1 on
+	// every fresh network. It never carried this row; the freeze status does.) So the v5 rows
 	// assert the COMPLEMENT — they must DIFFER — which keeps them load-bearing instead of
-	// deleting them: a regression that quietly gave v5 the pre-(d-3) preimage reddens here.
+	// deleting them: a regression that quietly gave v5 the pre- preimage reddens here.
 	cases := []struct {
 		name   string
 		b      Block
@@ -166,29 +167,29 @@ func TestCarrierHashDriftGuard(t *testing.T) {
 			switch {
 			case tc.frozen && got != want:
 				t.Fatalf("CARRIER HASH DRIFT: a carrier-free %s block no longer hashes to its "+
-					"pre-carrier bytes.\n  got  %x\n  want %x\nThe era-2/era-3 formats are FROZEN (#632) "+
+					"pre-carrier bytes.\n got  %x\n want %x\nThe era-2/era-3 formats are FROZEN  "+
 					"and every additive field since must omit cleanly — every block that carries no "+
 					"LastCommit must hash byte-identically to pre-carrier origin/main. A fixed-size "+
 					"array field is the classic way to break this: cbor's omitempty never omits one "+
 					"(chain.go:565-575).", tc.name, got, want)
 			case !tc.frozen && hasV5Substitutable(b) && got == want:
-				t.Fatalf("(d-3) REGRESSION: %s hashes to the PRE-(d-3) bytes, so its preimage is not "+
+				t.Fatalf("REGRESSION: %s hashes to the pre-digest bytes, so its preimage is not "+
 					"the v5 one.\n  hash %x\nv5 must commit BondReg.Answer by AnswerDigest and Slashes "+
 					"by SlashesDigest — that substitution is what lets a PRUNED v5 block recompute its "+
 					"own hash, which is the entire purchase. If v5's preimage was deliberately reverted, "+
-					"this row is what must change, and the decision belongs in docs/decisions.md.", tc.name, got)
+					"this row is what must change, and the decision belongs in the design notes", tc.name, got)
 			}
 		})
 	}
 
-	// And the complement: a block that DOES carry one hashes DIFFERENTLY. Without this the guard
-	// above would also pass if Hash() simply ignored the field — which is the R-BOX-ATTESTS defect.
+	// And the complement: a block that DOES carry one hashes DIFFERENTLY. Without this the
+	// guard above would also pass if Hash simply ignored the field — which is the defect.
 	withNo := cases[2].b
 	withYes := withNo
 	withYes.LastCommit = []Attestation{{PubKey: pubOf(k), Sig: make([]byte, 64), Phase: PhasePrecommit}}
 	if withNo.Hash() == withYes.Hash() {
 		t.Fatal("Hash() does NOT cover LastCommit — the carrier's seating transition would ride on " +
-			"unsigned bytes, which IS the defect R-BOX-ATTESTS closes")
+			"unsigned bytes, which IS the defect closes")
 	}
 }
 
@@ -204,7 +205,7 @@ func TestCarrierHashDriftGuard(t *testing.T) {
 // on same-block bond content.
 //
 // RED-on-injection (verified, then restored): moving `c.applyCarrier(b, parentProposer)` below
-// the `for _, r := range canonicalBondRegs(b.BondRegs)` loop makes the recorded index of the
+// the `for _, r:= range canonicalBondRegs(b.BondRegs)` loop makes the recorded index of the
 // bond-reg range statement smaller than the carrier call's, and this test fatals.
 func TestCarrierFoldPrecedesBondRegsInApply(t *testing.T) {
 	_, f := parseChainAST(t)
@@ -229,7 +230,8 @@ func TestCarrierFoldPrecedesBondRegsInApply(t *testing.T) {
 				slashAt = i
 			}
 		case *ast.IfStmt:
-			// The TTL sweep gate: `if ttl := c.cfg.BondTTLBlocks; ttl > 0 { ... }`.
+			// The TTL sweep gate: `if ttl:= c.cfg.BondTTLBlocks; ttl > 0
+			// {. }`.
 			if s.Init != nil {
 				if as, ok := s.Init.(*ast.AssignStmt); ok && len(as.Lhs) == 1 {
 					if id, ok := as.Lhs[0].(*ast.Ident); ok && id.Name == "ttl" {
@@ -241,7 +243,7 @@ func TestCarrierFoldPrecedesBondRegsInApply(t *testing.T) {
 	}
 	if carrierAt < 0 {
 		t.Fatal("apply() no longer calls c.applyCarrier(...) as a top-level statement — the era-4 " +
-			"seating transition moved, and this pin no longer describes it (R-BOX-ATTESTS O1)")
+			"seating transition moved, and this pin no longer describes it (1)")
 	}
 	for _, later := range []struct {
 		name string

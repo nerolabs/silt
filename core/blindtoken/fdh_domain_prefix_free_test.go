@@ -1,6 +1,6 @@
 package blindtoken
 
-// Freeze manifest item 11 / R0.4b-FDH — THE FDH DOMAIN SET IS PAIRWISE PREFIX-FREE.
+// THE FDH DOMAIN SET IS PAIRWISE PREFIX-FREE.
 //
 // WHAT THE GATE HOLDS. fullDomainHashD hashes `domain ‖ ctr(4B BE) ‖ msg` with the domain
 // BARE: no length prefix, no separator, no terminator. Prefix-freeness of the domain set
@@ -23,19 +23,16 @@ package blindtoken
 // rescues. silt's canon on proof-versus-structure says to gate the structure, not the
 // accident. Prefix-freeness is the structure.
 //
-// If the separation ever DID fail, the cost is that one issuer key's signature moves
-// lanes: a credit spent as a publish token, or a relay-lane anchor spent as a delivery-lane
-// demand token — one 50,000-credit fee funding two payouts, because the two spent sets
-// cannot see each other (R2.14 cert §2.4 door (iii)).
+// If the separation ever DID fail, the cost is that one issuer key's signature moves lanes:
+// a credit spent as a publish token, or a relay-lane anchor spent as a delivery-lane demand
+// token — one 50,000-credit fee funding two payouts, because the two spent sets cannot see
+// each other (door (iii)).
 //
-// WHY A GATE AND NOT THE FIX. Crypto advisory C-8 (2026-09-03) proposed length-prefixing
-// the domain, the RFC 9380 §5.3 `expand_message_xmd` DST treatment. That changes the FDH
-// input, so it changes every token's bytes, and the publish and credit domains are
-// byte-frozen against chain replay. The change was DECLINED at the era-4 freeze in favour
-// of this gate (ROADMAP R0.4b-FDH; PE re-audit item 11,
-// /Users/andrewedmond/.claude/silt-agent-memory/principal-engineer/reviews/RULING-era4-freeze-manifest-re-audit-f826c72-2026-09-11.md).
-// The advisory's own words for the status quo: sound "by accident of the constants". This
-// file converts the accident into a checked property.
+// WHY A GATE AND NOT THE FIX. Length-prefixing the domain was proposed, the RFC 9380 §5.3 `expand_message_xmd` DST
+// treatment. That changes the FDH input, so it changes every token's bytes, and the publish and credit domains are byte-frozen against
+// chain replay. The change was DECLINED at the era-4 freeze in favour of this gate-FDH; re-audit item 11,
+// The status quo is sound "by accident of the constants". This file converts
+// the accident into a checked property.
 //
 // DERIVED, NOT HAND-LISTED. The pairs come from a source walk of this package, so a fifth
 // domain is covered the day it is declared (M3 is exactly that case). Enumeration by
@@ -51,27 +48,27 @@ package blindtoken
 // copy before the run was believed, each reverted and re-diffed after. Baseline exit 0 on
 // both sides; legs 1-4 exit 1.
 //
-//  1. Add `testFifthDomain = "silt/blindtoken/fdh/v1/extended"` →
-//     TestFDHDomainSetIsPairwisePrefixFree RED. Under that same patch the pre-existing
-//     DISTINCTNESS assertions (TestRelayAnchorDomainIsPinnedByteExactly,
-//     TestDemandDomainStillSeparatesFromPublishAndCredit) stay GREEN: measured, in this
-//     tree, that distinctness does not discharge prefix-freeness.
-//  2. Declare `relayAnchorDomain` as `"silt/blindrelay/" + "fdh/v1"` — same value, invisible
-//     to a literal walk → TestFDHDomainSetIsPairwisePrefixFree,
-//     TestFDHDomainSetSourceWalkFindsTheRealDeclarations and
-//     TestEveryOrderedDomainPairRefusesTheOthersSignature all RED. A gate that reads source
-//     goes vacuous quietly; that is the leg that matters most.
-//  3. Add an exported `ExportedFullDomainHash(..., domain string)` →
-//     TestFDHDomainArgumentStaysInsideThisPackage RED.
-//  4. Make `blindD` and `verifyD` pass `fdhDomain` instead of their `domain` argument →
-//     TestEveryOrderedDomainPairRefusesTheOthersSignature RED, the three source gates GREEN.
-//     The runtime half and the source half fail independently, which is the point of having
-//     both.
-//  5. CONTROL, and the reason this file does not duplicate a field-order pin: move the
-//     counter to `domain ‖ msg ‖ ctr`. All five tests here stay GREEN; the three existing
-//     byte-exact pins (TestPublishAndCreditFDHAreUnchanged,
-//     TestDemandFDHInputBindsTheEpochByteExactly, TestRelayAnchorDomainIsPinnedByteExactly)
-//     all go RED. Verified by running them under the patch, not assumed.
+// 1. Add `testFifthDomain = "silt/blindtoken/fdh/v1/extended"` →
+// TestFDHDomainSetIsPairwisePrefixFree RED. Under that same patch the pre-existing
+// DISTINCTNESS assertions (TestRelayAnchorDomainIsPinnedByteExactly,
+// TestDemandDomainStillSeparatesFromPublishAndCredit) stay GREEN: measured, in this
+// tree, that distinctness does not discharge prefix-freeness.
+// 2. Declare `relayAnchorDomain` as `"silt/blindrelay/" + "fdh/v1"` — same value, invisible
+// to a literal walk → TestFDHDomainSetIsPairwisePrefixFree,
+// TestFDHDomainSetSourceWalkFindsTheRealDeclarations and
+// TestEveryOrderedDomainPairRefusesTheOthersSignature all RED. A gate that reads source
+// goes vacuous quietly; that is the leg that matters most.
+// 3. Add an exported `ExportedFullDomainHash(..., domain string)` →
+// TestFDHDomainArgumentStaysInsideThisPackage RED.
+// 4. Make `blindD` and `verifyD` pass `fdhDomain` instead of their `domain` argument →
+// TestEveryOrderedDomainPairRefusesTheOthersSignature RED, the three source gates GREEN.
+// The runtime half and the source half fail independently, which is the point of having
+// both.
+// 5. CONTROL, and the reason this file does not duplicate a field-order pin: move the
+// counter to `domain ‖ msg ‖ ctr`. All five tests here stay GREEN; the three existing
+// byte-exact pins (TestPublishAndCreditFDHAreUnchanged,
+// TestDemandFDHInputBindsTheEpochByteExactly, TestRelayAnchorDomainIsPinnedByteExactly)
+// all go RED. Verified by running them under the patch, not assumed.
 
 import (
 	"bytes"
@@ -102,7 +99,7 @@ type fdhDomainDecl struct {
 // anchor covers only the four domains the compiler resolves here.
 const domainValuePrefix = "silt/blind"
 
-// collectFDHDomains walks every non-test .go file in this package and returns the string
+// collectFDHDomains walks every non-test.go file in this package and returns the string
 // constants that are FDH domains.
 func collectFDHDomains(t *testing.T) []fdhDomainDecl {
 	t.Helper()
@@ -189,15 +186,15 @@ func TestFDHDomainSetIsPairwisePrefixFree(t *testing.T) {
 				"WHAT IT COSTS IF THE SEPARATION FAILS: one issuer key's signature moves lanes — a credit "+
 				"spent as a publish token, or a relay-lane anchor spent as a delivery-lane demand token, one "+
 				"50,000-credit fee funding two payouts, because the two spent sets cannot see each other "+
-				"(R2.14 cert §2.4 door (iii)).\n"+
+				"(door (iii)).\n"+
 				"READ THIS BEFORE YOU DISMISS IT: the separation does not fail TODAY on this alone. "+
 				"TestAPrefixPairFailsToCollideOnlyBecauseTheCounterVaries measures a prefix pair colliding on "+
 				"SHA-256 block 0 and NOT on block 1, because the counter sits between the domain and the "+
 				"message and changes per block. That rescue lives in fullDomainHashD's field order, which no "+
 				"separation argument anywhere rests on and no review approved as one. Do not spend it.\n"+
 				"THE FIX IS A DIFFERENT DOMAIN STRING FOR THE NEW LANE, NOT AN EDIT TO AN EXISTING ONE: the "+
-				"publish and credit domains are byte-frozen against chain replay (ROADMAP R0.4b-FDH), so "+
-				"changing one invalidates history. Length-prefixing the domain (crypto advisory C-8) fixes "+
+				"publish and credit domains are byte-frozen against chain replay (the roadmap), so "+
+				"changing one invalidates history. Length-prefixing the domain fixes "+
 				"the class but rewrites every token's bytes, which is why it is era-gated and why this gate "+
 				"stands in its place.",
 				b.name, b.value, b.file, a.name, a.value, a.file, b.name, a.name)
@@ -326,8 +323,8 @@ func TestEveryOrderedDomainPairRefusesTheOthersSignature(t *testing.T) {
 			if verifyD(pub, serial, sig, b.value) {
 				t.Fatalf("DOMAIN SEPARATION BROKEN AT RUNTIME: a signature withdrawn under %s = %q "+
 					"verifies under %s = %q on the same serial and the same issuer key. One fee now buys "+
-					"a token in two lanes, and the two spent sets cannot see each other (R2.14 cert §2.4 "+
-					"door (iii)).", a.name, a.value, b.name, b.value)
+					"a token in two lanes, and the two spent sets cannot see each other "+
+					"(door (iii)).", a.name, a.value, b.name, b.value)
 			}
 		}
 	}

@@ -10,21 +10,20 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// =============================================================================
-// SCOPE, stated plainly (PE re-ruling 2026-09-08): the v4 twin is minted in TWO passes, because
-// era-3 `apply` seats validatorsSeen from the block's non-hash-covered Atts while the attestations
-// sign the hash that covers the root (R-BOX-ATTESTS / O1–O2, retired unrun on main). That procedure
-// is one a real proposer cannot execute, so this oracle proves parity of the era-3 validity BODIES
-// between the node and the mirrors — not that a v4 block is mintable on the real path.
+// ============================================================================= SCOPE, stated
+// plainly: the v4 twin is minted in TWO passes, because era-3 `apply` seats validatorsSeen from the
+// block's non-hash-covered Atts while the attestations sign the hash that covers the root
+// (retired unrun on main). That procedure is one a real proposer cannot
+// execute, so this oracle proves parity of the era-3 validity BODIES between the node and the
+// mirrors — not that a v4 block is mintable on the real path.
 //
-// M-1A-3 — THE v4/v5 PARITY ORACLE (research certification
-// FLOORBOX-STRUCTURE-ROUND-1A-COMPOSED-DIFF-869399e §7.3; PE ruling §1.2, the seven regimes)
+// THE v4/v5 PARITY ORACLE
 // =============================================================================
 //
-// WHY THIS IS THE ONLY DIFFERENTIAL LEFT. M-2 made the node's v5 accept path BE the composition:
+// WHY THIS IS THE ONLY DIFFERENTIAL LEFT. the gate made the node's v5 accept path BE the composition:
 // for a v5 block, ValidateCommit is ValidateCommitV5(liveView{c}, b). "Composition vs node" is
-// therefore one function compared with itself (the G-D6 vacuity, M-1A-4). What still exists is
-// the node's OWN era-3 body — proposerQualifiedAt, attesterQualifiedAt, validateBondRegs,
+// therefore one function compared with itself (the vacuity). What still exists is the
+// node's OWN era-3 body — proposerQualifiedAt, attesterQualifiedAt, validateBondRegs,
 // requireQuorumStack, matureNow, … — which a v4 block runs verbatim. So: the SAME committed state,
 // the SAME block content, minted once at BlockVersionStateRoot (the node's bodies) and once at
 // BlockVersionWitnessable (the mirrors), must draw the SAME verdict and, where a sentinel exists,
@@ -38,40 +37,39 @@ import (
 // RENDERED roots differ — the one case where text parity is not asserted). A fifth is driven as
 // an EXPECTED divergence: at/past Era4ActivationHeight the v4 twin is refused by name.
 //
-// A SIXTH, added 2026-09-10 with (d-3): a FORGED Answer smuggled onto a shed registration is a
-// by-rule divergence. On v4 it is ErrMalformedPruned (the Pruned mark contradicts the body); on v5
-// the digest catches it FIRST — ErrD3DigestMismatch from validateD3Digests, which runs before P7
-// is reached. Both refuse; the sentinels differ because v5 has a strictly earlier, more specific
-// check. NOTE the distinction this turns on: smuggling back the ORIGINAL Answer is NOT this case —
-// it reconstitutes a byte-identical valid block, and the malformed-pruned arm below drives that
-// with TWO registrations so the block still reports shed. Delta cert
-// D3-PARITY-MALFORMEDPRUNED-DELTA-RESEARCH-CERTIFICATION-2026-09-10, G-PMP-3.
+// A SIXTH, added 2026-09-10 with: a FORGED Answer smuggled onto a shed registration is a by-rule
+// divergence. On v4 it is ErrMalformedPruned (the Pruned mark contradicts the body); on v5 the digest
+// catches it FIRST — ErrBlockDigestMismatch from validateBlockDigests, which runs before P7 is
+// reached. Both refuse; the sentinels differ because v5 has a strictly earlier, more specific check.
+// NOTE the distinction this turns on: smuggling back the ORIGINAL Answer is NOT this case — it
+// reconstitutes a byte-identical valid block, and the malformed-pruned arm below drives that with TWO
+// registrations so the block still reports shed. The parity delta review.
 //
-// WHAT IT COVERS. Every regime the round's other fixtures never reach (certification §7.2): the
-// mature epoch (Q3 and the frozen arms of P4 / the attester filter), the launch window (Q2 and the
-// anchor-only proposer arm), the reg gate (P7's active arm, including the #535 restore exemption),
-// the #535 recovery boundary (v5EffectiveEpochSet's recovery arm), de-maturation (v5MatureNow and
-// Q4), the pruned leg of P7, the legacy leg, and the era-3 / era-4 version rules. Each regime
-// asserts one accept and at least one refusal per mirrored stage, and records — right after the
-// by-name assertion that proves it ran — which of the uncovered mirrors it drove. The
-// closing assertion holds the record to the certification's list.
+// WHAT IT COVERS. Every regime the round's other fixtures never reach: the mature epoch (Q3 and
+// the frozen arms of P4 / the attester filter), the launch window (Q2 and the anchor-only proposer
+// arm), the reg gate (P7's active arm, including the restore exemption), the recovery boundary
+// (v5EffectiveEpochSet's recovery arm), de-maturation (v5MatureNow and Q4), the pruned leg of P7,
+// the legacy leg, and the era-3 / era-4 version rules. Each regime asserts one accept and at least
+// one refusal per mirrored stage, and records — right after the by-name assertion that proves it
+// ran — which of the uncovered mirrors it drove. The closing assertion holds the record to the
+// list.
 //
-// Ablation (M-1A-3): delete one mirrored clause — e.g. the `seenReg[id]` twice-in-one-block check
+// Ablation: delete one mirrored clause — e.g. the `seenReg[id]` twice-in-one-block check
 // in v5ValidateBondRegs — and the v4 and v5 verdicts diverge in the reg-gate regime ⇒ RED naming
 // the regime and the case.
 
-// uncoveredMirrors are the eight mirrors the certification found with ZERO driven coverage before
-// this oracle (§7.2), plus v5RequiredQuorum's mature leg (#380 direction (1), regime (b)). The oracle must drive every one; a renamed mirror reddens the closing check.
+// uncoveredMirrors are the eight mirrors the research found with ZERO driven coverage before this oracle, plus
+// v5RequiredQuorum's mature leg. The oracle must drive every one; a renamed mirror reddens the closing check.
 var uncoveredMirrors = []string{
 	"v5RequireEpochWeightQuorum",   // Q3
 	"v5RequireDeMatureSuperQuorum", // Q4
 	"v5MatureNow",                  // the objective maturity metric
-	"v5EffectiveEpochSet",          // the #535 recovery arm
-	"v5RestoresHeldStanding",       // the #535 restore exemption
+	"v5EffectiveEpochSet",          // the recovery arm
+	"v5RestoresHeldStanding",       // the restore exemption
 	"v5RegGateActive",              // the active arm
 	"v5ValidateBondRegs",           // P7's pruned arm
 	"v5RequireProposerQualified",   // the mature-epoch (frozen-set) arm, and v5AttesterQualifiedAt's
-	"v5RequiredQuorum",             // Q1's regime (b) — the mature-epoch floor 0 (#380 direction (1))
+	"v5RequiredQuorum",             // Q1's regime (b) — the mature-epoch floor 0
 }
 
 // parityWorld is one committed chain plus the signers that can mint on it.
@@ -108,10 +106,10 @@ func (w *parityWorld) mint(version uint64, proposer ed25519.PrivateKey, attester
 	}
 	// TWO PASSES for the roots. A v4 block's post-apply state includes the seating write from
 	// b.Atts (validatorsSeen — the era-3 transition input that is NOT hash-covered, the
-	// R-BOX-ATTESTS defect), so its roots depend on WHO attests, while the attestations sign the
-	// hash that covers the roots. Seating depends on the attester IDS alone, so: attach the
-	// attester set provisionally, compute the roots, sign, re-issue the attestations over the
-	// final hash. A v5 block's own Atts write nothing (the carrier seats), so for it the second
+	// defect), so its roots depend on WHO attests, while the attestations sign the hash that
+	// covers the roots. Seating depends on the attester IDS alone, so: attach the attester
+	// set provisionally, compute the roots, sign, re-issue the attestations over the final
+	// hash. A v5 block's own Atts write nothing (the carrier seats), so for it the second
 	// pass changes no root — which is exactly the property era-4 was built for.
 	attach := func() {
 		b.PrepareQC, b.Atts = nil, nil
@@ -121,8 +119,8 @@ func (w *parityWorld) mint(version uint64, proposer ed25519.PrivateKey, attester
 			b.Atts = append(b.Atts, AttestAt(b, k, 0, PhasePrecommit, w.c.ChainID()))
 		}
 	}
-	setD3Digests(b)   // (d-3): an honest v5 proposer commits Answer/Slashes by digest. No-op below v5.
-	Sign(b, proposer) // provisional: sets b.Proposer for the seating exclusion in apply
+	setBlockDigests(b) // an honest v5 proposer commits Answer/Slashes by digest. No-op below v5.
+	Sign(b, proposer)  // provisional: sets b.Proposer for the seating exclusion in apply
 	attach()
 	state, log, err := w.c.postApplyRoots(*b)
 	if err != nil {
@@ -181,7 +179,7 @@ func (w *parityWorld) assertParity(pc parityCase) {
 			w.regime, pc.name, pc.want, e4, e5)
 	}
 	if !pc.rootsRendered && e4.Error() != e5.Error() {
-		w.t.Fatalf("PARITY VIOLATED (%s / %s): same sentinel, DIFFERENT rendering (the #572 attribution contract)\n  v4: %v\n  v5: %v",
+		w.t.Fatalf("PARITY VIOLATED (%s / %s): same sentinel, DIFFERENT rendering (the attribution contract)\n v4: %v\n v5: %v",
 			w.regime, pc.name, e4, e5)
 	}
 }
@@ -224,9 +222,9 @@ func newParityWorld(t *testing.T, regime string, seed int64, cfg Config, extraGe
 	return &parityWorld{t: t, regime: regime, c: c, anchors: anchors, drove: drove}
 }
 
-// TestM1A3_V4V5ParityOracle drives every regime. One test, so the closing mirror-coverage
-// assertion sees every subtest's record; each regime also carries the honest twin (NG-2).
-func TestM1A3_V4V5ParityOracle(t *testing.T) {
+// TestV4V5ParityOracle drives every regime. One test, so the closing mirror-coverage
+// assertion sees every subtest's record; each regime also carries the honest twin.
+func TestV4V5ParityOracle(t *testing.T) {
 	drove := map[string][]string{}
 
 	// ---------------------------------------------------------------------------------------
@@ -241,23 +239,28 @@ func TestM1A3_V4V5ParityOracle(t *testing.T) {
 		assertHonestTwinAccepts(t, w.c, honest5)
 		w.assertParity(parityCase{name: "honest", v4: honest4, v5: honest5})
 
-		// P7's PRUNED leg, BOTH arms. A pruned twin keeps its payload (P5 passes) and reaches P7.
-		// At/above the reader's OWN trust floor it is refused — the space-time proof cannot be
-		// re-verified. Strictly below the floor the Answer-less registrations are trusted (finality
-		// made them irreversible) and an Answer smuggled back is malformed. The floor is the
-		// reader's: a Reconcile replay threads the RECEIVER's anchor through trustFloorOverride,
-		// which is the only way a block at the head can sit below it; the box's provenView never
-		// answers a floor at all (its door stalls on a pruned block before the composition).
-		// TWO registrations, deliberately. (d-3) did not delete the malformed-pruned category on v5
-		// — validate_v5_quorum.go:48-52 is live, reachable and v5-only — but it changed its
-		// GRANULARITY. `Pruned` was a per-BLOCK mark, so ONE registration could contradict it.
-		// HeavyProofsShed() is a per-ITEM property lifted by exists, so contradicting it needs a
-		// SECOND registration: shed both, restore the Answer on one, and the block still reports
-		// shed (from the other) while carrying an Answer. With a single reg the restore
-		// reconstitutes the byte-identical valid original, which a v5 reader MUST accept — the
-		// fixture would fail, not the contract. Delta certification
-		// D3-PARITY-MALFORMEDPRUNED-DELTA-RESEARCH-CERTIFICATION-2026-09-10 (option (c)); the #572
-		// attribution contract is NOT amended, both twins still want ErrMalformedPruned.
+		// P7's PRUNED leg, BOTH arms. A pruned twin keeps its payload (P5
+		// passes) and reaches P7. At/above the reader's OWN trust floor it
+		// is refused — the space-time proof cannot be re-verified. Strictly
+		// below the floor the Answer-less registrations are trusted
+		// (finality made them irreversible) and an Answer smuggled back is
+		// malformed. The floor is the reader's: a Reconcile replay threads
+		// the RECEIVER's anchor through trustFloorOverride, which is the
+		// only way a block at the head can sit below it; the box's
+		// provenView never answers a floor at all (its door stalls on a
+		// pruned block before the composition). TWO registrations,
+		// deliberately. did not delete the malformed-pruned category on v5
+		// — validate_v5_quorum.go is live, reachable and v5-only —
+		// but it changed its GRANULARITY. `Pruned` was a per-BLOCK mark, so
+		// ONE registration could contradict it. HeavyProofsShed is a
+		// per-ITEM property lifted by exists, so contradicting it needs a
+		// SECOND registration: shed both, restore the Answer on one, and
+		// the block still reports shed (from the other) while carrying an
+		// Answer. With a single reg the restore reconstitutes the
+		// byte-identical valid original, which a v5 reader MUST accept —
+		// the fixture would fail, not the contract. Delta (option (c)); the
+		// attribution contract is NOT amended, both twins still want
+		// ErrMalformedPruned.
 		fresh, fresh2 := key(91100), key(91101)
 		reg4, reg5 := w.pair(a[0], a[1:], func(b *Block) {
 			b.BondRegs = []BondReg{bondReg(fresh, twoMiB, b.Prev), bondReg(fresh2, twoMiB, b.Prev)}
@@ -275,14 +278,15 @@ func TestM1A3_V4V5ParityOracle(t *testing.T) {
 		w.assertParity(parityCase{name: "pruned block below the anchor with an Answer smuggled back (P7 pruned arm)", v4: smuggled4, v5: smuggled5, want: ErrMalformedPruned})
 		w.driven("v5ValidateBondRegs", "P7 pruned arm below the floor — Answer-less regs ACCEPTED, a smuggled Answer is ErrMalformedPruned")
 
-		// G-PMP-3, the SIXTH exclusion DRIVEN rather than asserted: a FORGED Answer diverges BY
-		// RULE. v4 reaches ErrMalformedPruned; v5 is caught earlier and more specifically by the
-		// (d-3) digest check. Driven so the divergence is a measured fact rather than a claim in
-		// the header — the shape simplicity rule 7 demands of every "expected" row.
+		//The SIXTH exclusion DRIVEN rather than asserted: a FORGED Answer diverges
+		//BY RULE. v4 reaches ErrMalformedPruned; v5 is caught earlier and more
+		//specifically by the digest check. Driven so the divergence is a measured
+		//fact rather than a claim in the header — the shape a demonstrated-red rule
+		//demands of every "expected" row.
 		forged5 := reg5.Prune()
 		forged5.BondRegs[0].Answer = []byte("forged, not the committed proof")
-		if err := validateD3Digests(&forged5); !errors.Is(err, ErrD3DigestMismatch) {
-			t.Fatalf("G-PMP-3: the v5 twin with a FORGED Answer must be ErrD3DigestMismatch (caught before P7), got %v", err)
+		if err := validateBlockDigests(&forged5); !errors.Is(err, ErrBlockDigestMismatch) {
+			t.Fatalf("the v5 twin with a FORGED Answer must be ErrBlockDigestMismatch (caught before P7), got %v", err)
 		}
 		w.c.trustFloorOverride = nil
 
@@ -355,7 +359,7 @@ func TestM1A3_V4V5ParityOracle(t *testing.T) {
 		w.assertParity(parityCase{name: "mid-epoch newcomer proposes (P4 frozen arm)", v4: v4, v5: v5, want: ErrLowReputation})
 		w.driven("v5RequireProposerQualified", "the frozen-set refusal by name, '… not in the frozen epoch set governing height …'")
 		// The attester frozen arm drops the newcomer, leaving the proposer alone. Q1's floor is 0
-		// in a mature epoch (#380 regime (b)), so the refusal is Q3's, by name — a mirror that
+		// in a mature epoch, so the refusal is Q3's, by name — a mirror that
 		// still floored at Params.Quorum would say ErrNoQuorum here and break parity.
 		v4, v5 = w.pair(a[0], []ed25519.PrivateKey{newcomer}, nil)
 		w.assertParity(parityCase{name: "only the newcomer attests (attester frozen arm drops it → Q1 floor 0 → Q3)", v4: v4, v5: v5, want: ErrNoQuorumWeight})
@@ -364,8 +368,8 @@ func TestM1A3_V4V5ParityOracle(t *testing.T) {
 
 	// ---------------------------------------------------------------------------------------
 	// Regime 3b — the MATURE EPOCH with a WHALE: one frozen member holds > 2/3 of the frozen
-	// weight, so the node ACCEPTS a commit with ZERO non-proposer attestations (#380 regime (b),
-	// gate arm 8c(i)). This is the only world where Q1's floor 0 is observable as an accept.
+	// weight, so the node ACCEPTS a commit with ZERO non-proposer attestations. This is the
+	// only world where Q1's floor 0 is observable as an accept.
 	// ---------------------------------------------------------------------------------------
 	t.Run("mature-epoch-whale", func(t *testing.T) {
 		whale := key(93500)
@@ -391,7 +395,7 @@ func TestM1A3_V4V5ParityOracle(t *testing.T) {
 
 	// ---------------------------------------------------------------------------------------
 	// Regime 4 — the REG GATE ACTIVE, in a mature epoch with a TTL (R = 10): P7's active arm —
-	// first registration, twice-in-one-block, re-registration inside R, and the #535 restore
+	// first registration, twice-in-one-block, re-registration inside R, and the restore
 	// exemption for a LAPSED frozen member re-proving its own root.
 	// ---------------------------------------------------------------------------------------
 	t.Run("reggate-active", func(t *testing.T) {
@@ -417,16 +421,16 @@ func TestM1A3_V4V5ParityOracle(t *testing.T) {
 		v4, v5 = w.pair(a[0], a[1:], func(b *Block) { b.BondRegs = []BondReg{bondReg(member, twoMiB, b.Prev)} })
 		w.assertParity(parityCase{name: "a bonded frozen member re-registers inside R (no restore: it holds live standing)", v4: v4, v5: v5, want: ErrRegGate})
 		w.driven("v5RestoresHeldStanding", "false for a member with LIVE standing → ErrRegGate '… re-registered 2 blocks after its last reg (R=10)'")
-		// THE LAPSE (the shipped #535 fix-(4) test's surgery): the member's standing drops below
+		// THE LAPSE (the shipped fix-(4) test's surgery): the member's standing drops below
 		// MinBond while it stays frozen-epoch-seated and still owns its root.
 		delete(w.c.bonded, idOf(member))
 		v4, v5 = w.pair(a[0], a[1:], func(b *Block) { b.BondRegs = []BondReg{bondReg(member, twoMiB, b.Prev)} })
-		w.assertParity(parityCase{name: "a LAPSED frozen member re-proves its own root inside R (the #535 restore exemption)", v4: v4, v5: v5})
+		w.assertParity(parityCase{name: "a LAPSED frozen member re-proves its own root inside R (the restore exemption)", v4: v4, v5: v5})
 		w.driven("v5RestoresHeldStanding", "true for a lapsed frozen member re-proving its owned root → ACCEPT inside R")
 	})
 
 	// ---------------------------------------------------------------------------------------
-	// Regime 5 — the #535 RECOVERY BOUNDARY: LivenessRecoveryHeight names the next boundary, so
+	// Regime 5 — the RECOVERY BOUNDARY: LivenessRecoveryHeight names the next boundary, so
 	// the governing set at that height is the LIVE qualified set, not the frozen one. Driven
 	// against a twin world with the directive OFF, so the arm is the measured discriminator.
 	// ---------------------------------------------------------------------------------------
@@ -458,7 +462,7 @@ func TestM1A3_V4V5ParityOracle(t *testing.T) {
 		on.driven("v5EffectiveEpochSet", "recovery arm: a non-frozen live-qualified attester counts at LivenessRecoveryHeight")
 		on.driven("v5RequireEpochWeightQuorum", "weight summed over the LIVE set at the recovery boundary (accept)")
 		// With the directive OFF the joiner is dropped and the proposer stands alone; Q1's floor is
-		// 0 in a mature epoch (#380 regime (b)), so the refusal is Q3's (2 of 8 MiB), by name.
+		// 0 in a mature epoch, so the refusal is Q3's (2 of 8 MiB), by name.
 		v4, v5 = off.pair(off.anchors[0], []ed25519.PrivateKey{fresh}, nil)
 		off.assertParity(parityCase{name: "the same block with the directive OFF: the joiner is dropped (Q1 floor 0 → Q3)", v4: v4, v5: v5, want: ErrNoQuorumWeight})
 		v4, v5 = on.pair(fresh, a[1:], nil)
@@ -507,7 +511,7 @@ func TestM1A3_V4V5ParityOracle(t *testing.T) {
 	})
 
 	// ---------------------------------------------------------------------------------------
-	// Regime 7 — LEGACY (MinBond == 0, the local reputation view): the G-D6 differential.
+	// Regime 7 — LEGACY (MinBond == 0, the local reputation view): the differential.
 	// ---------------------------------------------------------------------------------------
 	t.Run("legacy", func(t *testing.T) {
 		lf := buildLegacyFixture(t)
@@ -552,7 +556,7 @@ func TestM1A3_V4V5ParityOracle(t *testing.T) {
 	})
 
 	// ---------------------------------------------------------------------------------------
-	// The closing check: every mirror the certification listed as undriven was driven, by name,
+	// The closing check: every mirror the research listed as undriven was driven, by name,
 	// and every name is a real composition function (a renamed mirror reddens here).
 	// SOURCE GATE: the name check. RUNTIME GATE: the regimes above.
 	// ---------------------------------------------------------------------------------------
@@ -560,19 +564,19 @@ func TestM1A3_V4V5ParityOracle(t *testing.T) {
 	var missing []string
 	for _, m := range uncoveredMirrors {
 		if comp.decls[m] == nil {
-			t.Fatalf("SOURCE GATE: M-1A-3 — uncoveredMirrors names %s, which is not a composition function in %v", m, compositionFiles)
+			t.Fatalf("SOURCE GATE: — uncoveredMirrors names %s, which is not a composition function in %v", m, compositionFiles)
 		}
 		if len(drove[m]) == 0 {
 			missing = append(missing, m)
 		}
 	}
 	if len(missing) > 0 {
-		t.Fatalf("M-1A-3 INCOMPLETE: the parity oracle did not drive %v (certification §7.2 lists eight mirrors with zero driven coverage; #380 added v5RequiredQuorum)", missing)
+		t.Fatalf("INCOMPLETE: the parity oracle did not drive %v (research §7.2 lists eight mirrors with zero driven coverage;  added v5RequiredQuorum)", missing)
 	}
 	var record []string
 	for m, ev := range drove {
 		record = append(record, m+": "+strings.Join(ev, " | "))
 	}
 	sort.Strings(record)
-	t.Logf("M-1A-3 mirrors driven:\n  %s", strings.Join(record, "\n  "))
+	t.Logf("mirrors driven:\n  %s", strings.Join(record, "\n  "))
 }

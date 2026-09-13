@@ -5,14 +5,14 @@
 // far better than who-WRITES). A blind token breaks that link while keeping
 // the fee/anti-spam economics:
 //
-//  1. A publisher, using its durable identity, asks the issuer for a token.
-//     It BLINDS a random serial and sends only the blinded value; the issuer
-//     charges the fee to the durable key and signs the blinded value — WITHOUT
-//     ever seeing the serial.
-//  2. The publisher UNBLINDS the issuer's signature into a valid signature on
-//     the plain serial, and later spends (serial, sig) to publish. The token
-//     verifies (a fee was paid) but is unlinkable to the issuance session, so
-//     the publish carries no durable identity.
+// 1. A publisher, using its durable identity, asks the issuer for a token.
+// It BLINDS a random serial and sends only the blinded value; the issuer
+// charges the fee to the durable key and signs the blinded value — WITHOUT
+// ever seeing the serial.
+// 2. The publisher UNBLINDS the issuer's signature into a valid signature on
+// The plain serial, and later spends (serial, sig) to publish. The token
+// verifies (a fee was paid) but is unlinkable to the issuance session, so
+// the publish carries no durable identity.
 //
 // This is textbook RSA-FDH blind signatures (Chaum 1982): sig = FDH(serial)^d
 // mod N; blinding multiplies by r^e so the issuer signs FDH(serial)·r, and
@@ -33,37 +33,37 @@ import (
 
 const fdhDomain = "silt/blindtoken/fdh/v1"
 
-// creditDomain is the FDH domain for PREPAID PUBLISH CREDITS (M0 privacy D3,
-// red-team F4). A credit is a blind signature under the SAME issuer key as a
-// publish token, but over a domain-separated message — so a credit signature can
-// never be presented as a publish token (or vice versa): each verifies only
-// under its own domain. That lets one issuer key mint both a bulk, fee-charged
-// credit (decoupled from any publish) and, spending that credit, an unlinkable
-// publish token WITHOUT a second per-publish fee — the ledger link the red-team
-// exploited. This is online Chaumian e-cash (Chaum 1982): the coin is a
-// blind-signed serial, double-spend is caught by the issuer's spent-set.
+// creditDomain is the FDH domain for PREPAID PUBLISH CREDITS (M0 privacy D3). A
+// credit is a blind signature under the SAME issuer key as a publish token, but
+// over a domain-separated message — so a credit signature can never be presented
+// as a publish token (or vice versa): each verifies only under its own domain.
+// That lets one issuer key mint both a bulk, fee-charged credit (decoupled from
+// any publish) and, spending that credit, an unlinkable publish token WITHOUT a
+// second per-publish fee — the ledger link the red-team exploited. This is
+// online Chaumian e-cash (Chaum 1982): the coin is a blind-signed serial,
+// double-spend is caught by the issuer's spent-set.
 const creditDomain = "silt/blindcredit/fdh/v1"
 
-// demandDomain is the FDH domain for BLIND-WITHDRAWN RETRIEVAL TOKENS (D-DEMAND
-// P1, issue #181). A retrieval token is a blind signature under an issuer key,
-// domain-separated from a publish token and a publish credit — so a demand token
-// can never be presented as either (or vice versa) even under one key. The blind
-// withdrawal is what makes the token unlinkable to the fetch at issuance time (the
-// issuer signs the blinded value, never seeing the serial); the residual IP/timing
-// channel is closed only by D3 issuance-mixing (shared with H8).
+// demandDomain is the FDH domain for BLIND-SAMPLING RETRIEVAL TOKENS P1, issue. A
+// retrieval token is a blind signature under an issuer key, domain-separated from
+// a publish token and a publish credit — so a demand token can never be presented
+// as either (or vice versa) even under one key. The blind withdrawal is what makes
+// the token unlinkable to the fetch at issuance time (the issuer signs the blinded
+// value, never seeing the serial); the residual IP/timing channel is closed only
+// by D3 issuance-mixing (shared with H8).
 //
-// v2 BINDS THE ISSUE EPOCH INTO THE SIGNED MESSAGE (R0.4b (b1), certified
-// 2026-09-02 in the red-team reconciliation verdict §2.4). The MOVE is Privacy Pass's:
-// RFC 9578 (Blind RSA, type 0x0002) signs token_input = token_type ‖ nonce ‖
-// challenge_digest ‖ token_key_id, i.e. the key's identity is inside the signed
-// message, which is why a Privacy Pass token cannot be re-dated. The first R0.4b
-// import took Privacy Pass's key-per-period schema but dropped that binding, and
-// the omission was the whole break: with the epoch living only in the KEY, one RSA
-// key bound to two epochs (which an ordinary restart does) let a verifier re-date
-// an old token to the newest epoch that key is held for, so guard entries expired
-// while tokens did not, and the cross-server double-redeem pump re-opened.
+// v2 BINDS THE ISSUE EPOCH INTO THE SIGNED MESSAGE ((b1), verifies 2026-09-02 in
+// verdict §2.4). The MOVE is Privacy Pass's: RFC 9578 (Blind RSA, type 0x0002) signs
+// token_input = token_type ‖ nonce ‖ challenge_digest ‖ token_key_id, i.e. the key's
+// identity is inside the signed message, which is why a Privacy Pass token cannot be
+// re-dated. The first import took Privacy Pass's key-per-period schema but
+// dropped that binding, and the omission was the whole break: with the epoch living
+// only in the KEY, one RSA key bound to two epochs (which an ordinary restart does)
+// let a verifier re-date an old token to the newest epoch that key is held for, so
+// guard entries expired while tokens did not, and the cross-server double-redeem pump
+// re-opened.
 //
-// WHAT SILT SIGNS IS NOT RFC 9578's token_key_id (advisory C-4, 2026-09-03).
+// WHAT SILT SIGNS IS NOT RFC 9578's token_key_id.
 // token_key_id is SHA256(DER SPKI of pk_I) — a hash of the whole issuer public key.
 // silt signs an EPOCH INDEX. That closes re-dating and nothing more; it does not bind
 // the issuer or the key identity, and the DSKS surface that leaves is named and
@@ -80,18 +80,17 @@ const creditDomain = "silt/blindcredit/fdh/v1"
 // already answers with an epoch. See core/demand/keyset.go.
 const demandDomain = "silt/blinddemand/fdh/v2"
 
-// relayAnchorDomain is the FDH domain for RELAY-LANE PREPAYMENT ANCHORS (R2.14,
-// docs/design/pod.md §7.3.2 step 1). An anchor is a blind signature under the
-// RELAY's own per-epoch demand key_E over the SAME message layout as a demand token
-// (demandMsg: uint64BE(issueEpoch) ‖ serial), domain-separated from it — so one
-// signature verifies in exactly one lane. That separation is load-bearing for
-// conservation, not hygiene: the delivery lane's spent set (demand.Bank) and the
-// relay lane's spent set (credit.Ledger.SpendRelayAnchors) are different maps that
-// cannot see each other, so a token that verified in BOTH lanes would be one
-// 50,000-credit fee funding two payouts on the same node (advisory finding A; cert
-// §2.4 door (iii)).
+// relayAnchorDomain is the FDH domain for RELAY-LANE PREPAYMENT ANCHORS step
+// 1). An anchor is a blind signature under the RELAY's own per-epoch demand key_E
+// over the SAME message layout as a demand token (demandMsg: uint64BE(issueEpoch) ‖
+// serial), domain-separated from it — so one signature verifies in exactly one
+// lane. That separation is load-bearing for conservation, not hygiene: the delivery
+// lane's spent set (demand.Bank) and the relay lane's spent set
+// (credit.Ledger.SpendRelayAnchors) are different maps that cannot see each other,
+// so a token that verified in BOTH lanes would be one 50,000-credit fee funding two
+// payouts on the same node (finding A, door (iii)).
 //
-// SOUND UNDER ONE RSA KEY (cert §6). SignBlinded is already a raw RSA-inversion
+// SOUND UNDER ONE RSA KEY. SignBlinded is already a raw RSA-inversion
 // oracle on attacker-chosen input; a second domain changes what the REQUESTER hashes
 // before blinding, never what the oracle returns. Bellare–Namprempre–Pointcheval–
 // Semanko (J. Cryptology 2003, Def. 6.1 / Cor. 6.3) bound the number of valid
@@ -99,7 +98,7 @@ const demandDomain = "silt/blinddemand/fdh/v2"
 // Issue charges one fee per inversion — so one fee buys at most one token in at most
 // one lane.
 //
-// A FORMAT CONSTANT the T-6 proof depends on: pinned byte-exact by
+// A FORMAT CONSTANT the proof depends on: pinned byte-exact by
 // TestRelayAnchorDomainIsPinnedByteExactly. A change is a token-format version, never
 // an edit.
 const relayAnchorDomain = "silt/blindrelay/fdh/v1"
@@ -110,12 +109,12 @@ const SerialSize = 32
 var (
 	ErrBadToken = errors.New("blindtoken: signature does not verify")
 	ErrZeroHash = errors.New("blindtoken: serial hashed to zero (retry)")
-	// ErrNotCoprime is RFC 9474 §4.2 step 4: gcd(m, N) must be 1 (advisory C-6).
+	// ErrNotCoprime is RFC 9474 §4.2 step 4: gcd(m, N) must be 1.
 	ErrNotCoprime = errors.New("blindtoken: message is not coprime to the modulus")
 	// ErrNotCanonical is the RFC 8017 §5.2.2 range check plus silt's minimal-encoding
-	// requirement on any RSA representative crossing the wire (advisory C-5).
+	// requirement on any RSA representative crossing the wire.
 	ErrNotCanonical = errors.New("blindtoken: non-canonical RSA representative")
-	// ErrSignFault is the verify-after-sign refusal (advisory C-2): the signature the
+	// ErrSignFault is the verify-after-sign refusal: the signature the
 	// modexp produced does not verify under the issuer's own public key.
 	ErrSignFault = errors.New("blindtoken: signature failed verify-after-sign")
 )
@@ -168,23 +167,23 @@ func fullDomainHashD(pub *rsa.PublicKey, msg []byte, domain string) *big.Int {
 	return m.Mod(m, pub.N)
 }
 
-// randInt draws a random value in [0, max) from the injected reader. Core must
+// randInt draws a random value in [0, max from the injected reader. Core must
 // not touch ambient randomness (crypto/rand) — the adapter passes crypto/rand,
 // a sim passes a seeded source.
 //
-// DECLARED DIVERGENCE FROM RFC 9474 §4.2 (crypto advisory R4, 2026-09-03). This is
+// DECLARED DIVERGENCE FROM RFC 9474 §4.2. This is
 // MOD-REDUCTION with 64 bits of slack (8 extra bytes), not rejection sampling. RFC 9474
 // §4.2 says: "The blinding factor r MUST be randomly chosen from a uniform distribution.
 // This is typically done via rejection sampling." So a stated MUST is met only
 // STATISTICALLY here: the resulting distribution is within 2^-64 of uniform.
 //
-// NOT CHANGED IN R0.4b, deliberately. The gap is a conformance gap, not a break — a
-// 2^-64 bias in the blinding factor buys an attacker nothing anyone has shown how to
-// use — and changing the draw changes no committed byte, so it is not urgent and it is
-// not free to slip in silently either. Filed as ROADMAP Rock R0.4b-BLIND-SAMPLING with
-// the RFC citation. If you are implementing that Rock: rejection-sample into [1, N) and
-// keep the retry bounded, because both loops that call randInt spin forever on a reader
-// that yields zeros.
+// NOT CHANGED IN, deliberately. The gap is a conformance gap, not a break — a 2^-64
+// bias in the blinding factor buys an attacker nothing anyone has shown how to use —
+// and changing the draw changes no committed byte, so it is not urgent and it is not
+// free to slip in silently either. Filed as an open item with the RFC
+// citation. If you are implementing that Rock: rejection-sample into [1, N and keep the
+// retry bounded, because both loops that call randInt spin forever on a reader that
+// yields zeros.
 func randInt(rng io.Reader, max *big.Int) (*big.Int, error) {
 	b := make([]byte, (max.BitLen()+7)/8+8)
 	if _, err := io.ReadFull(rng, b); err != nil {
@@ -207,8 +206,8 @@ func BlindCredit(rng io.Reader, pub *rsa.PublicKey, serial []byte) (blinded, sec
 	return blindD(rng, pub, serial, creditDomain)
 }
 
-// BlindDemand blinds serial as a RETRIEVAL TOKEN for ISSUE EPOCH epoch (D-DEMAND,
-// domain-separated from a publish token and a credit, same key). The fetcher
+// BlindDemand blinds serial as a RETRIEVAL TOKEN for ISSUE EPOCH epoch,
+// domain-separated from a publish token and a credit, same key. The fetcher
 // withdraws it blindly so the issuer cannot link the token to a later fetch; it
 // spends at delivery-ack time.
 //
@@ -232,12 +231,12 @@ func demandMsg(epoch uint64, serial []byte) []byte {
 }
 
 func blindD(rng io.Reader, pub *rsa.PublicKey, msg []byte, domain string) (blinded, secret []byte, err error) {
-	// LAST-LINE KEY VALIDITY (red-team re-break F4). Every modexp below reduces mod
-	// pub.N, and big.Int.Mod PANICS on a zero modulus — a committed N = 0 crashed the
-	// whole fetcher lane. The key should already have been refused at ParsePub and at
-	// Keyset.Put; this makes a bypass a legible error instead of a process death. It is
-	// the SHAPE half only — see validateShape for why the hardness checks belong at
-	// admission and not on a hot path.
+	// LAST-LINE KEY VALIDITY. Every modexp below reduces mod pub.N, and big.Int.Mod
+	// PANICS on a zero modulus — a committed N = 0 crashed the whole fetcher lane.
+	// The key should already have been refused at ParsePub and at Keyset.Put; this
+	// makes a bypass a legible error instead of a process death. It is the SHAPE
+	// half only — see validateShape for why the hardness checks belong at admission
+	// and not on a hot path.
 	if err := validateShape(pub); err != nil {
 		return nil, nil, err
 	}
@@ -245,7 +244,7 @@ func blindD(rng io.Reader, pub *rsa.PublicKey, msg []byte, domain string) (blind
 	if m.Sign() == 0 {
 		return nil, nil, ErrZeroHash
 	}
-	// RFC 9474 §4.2 step 4: c = is_coprime(m, n); if not, raise an error (C-6).
+	// RFC 9474 §4.2 step 4: c = is_coprime(m, n); if not, raise an error.
 	// If gcd(m, N) > 1 the blinded value carries the same common factor, so the issuer
 	// can compute gcd(b, N) at issuance and gcd(FDH(E‖serial), N) at redemption and
 	// LINK them — a blindness break, not a forgery. It is negligible for an honest
@@ -254,9 +253,9 @@ func blindD(rng io.Reader, pub *rsa.PublicKey, msg []byte, domain string) (blind
 	if !coprime(m, pub.N) {
 		return nil, nil, ErrNotCoprime
 	}
-	// r random in [1, N), invertible mod N. r = 1 is NO blinding; it is drawn with
-	// probability 2^-2048, but the check is free and the comment must not claim a
-	// bound the code does not enforce.
+	// r random in [1, N, invertible mod N. r = 1 is NO blinding; it is drawn
+	// with probability 2^-2048, but the check is free and the comment must not
+	// claim a bound the code does not enforce.
 	var r, rInv *big.Int
 	for {
 		r, err = randInt(rng, pub.N)
@@ -281,31 +280,31 @@ func blindD(rng io.Reader, pub *rsa.PublicKey, msg []byte, domain string) (blind
 // SignBlinded is the ISSUER side: it signs the blinded value, learning nothing
 // about the serial. (Charging the fee to the requester is the caller's job.)
 //
-// THREE DEFENCES AROUND ONE MODEXP (crypto-specialist advisory C-2 / C-5, 2026-09-03).
+// THREE DEFENCES AROUND ONE MODEXP.
 // This is a network-facing signing oracle over a fully attacker-chosen input, so the
 // bare `Exp(b, priv.D, priv.N)` it used to be was the Brumley-Boneh remote-timing
 // setting exactly:
 //
-//  1. RANGE CHECK the input (RFC 8017 §5.2.2 RSAVP1: the representative must be in
-//     [0, N-1]) and require a CANONICAL big-endian encoding. The old code silently did
-//     `b.Mod(b, N)`, so `blinded` and `blinded + N` — and any zero-padded spelling —
-//     signed identically. The issuance dedup cache is keyed on the RAW BLINDED BYTES
-//     (core/node/demandkeys.go demandDedupKey), so that was a dedup bypass: a
-//     requester could re-present a re-encoded blind and be charged again for an
-//     issuance the issuer had already settled.
-//  2. RANDOM BLINDING of the private operation. Go's math/big documents that Exp "is
-//     not a cryptographically constant-time operation", and Go's own crypto/rsa blinds
-//     every private-key op for this reason. CLIENT-side blinding does not help the
-//     ISSUER: the client chose r and knows m, so it knows the exact modexp input.
-//     rng is injected — core touches no ambient randomness (internal/depcheck).
-//  3. VERIFY-AFTER-SIGN. s^e == b mod N before the signature is released, the
-//     Boneh-DeMillo-Lipton fault-attack countermeasure Go pairs with CRT in
-//     decryptAndCheck. It is also a free correctness check on our own signer.
+// 1. RANGE CHECK the input (RFC 8017 §5.2.2 RSAVP1: the representative must be in
+// [0, N-1] and require a CANONICAL big-endian encoding. The old code silently did
+// `b.Mod(b, N)`, so `blinded` and `blinded + N` — and any zero-padded spelling —
+// signed identically. The issuance dedup cache is keyed on the RAW BLINDED BYTES
+// (core/node/demandkeys.go demandDedupKey), so that was a dedup bypass: a
+// requester could re-present a re-encoded blind and be charged again for an
+// issuance the issuer had already settled.
+// 2. RANDOM BLINDING of the private operation. Go's math/big documents that Exp "is
+// Not a cryptographically constant-time operation", and Go's own crypto/rsa blinds
+// every private-key op for this reason. CLIENT-side blinding does not help the
+// ISSUER: the client chose r and knows m, so it knows the exact modexp input. rng
+// is injected — core touches no ambient randomness (internal/depcheck).
+// 3. VERIFY-AFTER-SIGN. s^e == b mod N before the signature is released, the
+// Boneh-DeMillo-Lipton fault-attack countermeasure Go pairs with CRT in
+// decryptAndCheck. It is also a free correctness check on our own signer.
 //
-// The WIRE FORMAT is unchanged: the returned bytes are s.Bytes(), exactly as before.
+// The WIRE FORMAT is unchanged: the returned bytes are s.Bytes, exactly as before.
 //
 // DECLARED RESIDUAL — A LOCAL CACHE CHANNEL, WITH A DEPLOYMENT ASSUMPTION (crypto
-// advisory R6, 2026-09-03). Blinding closes the REMOTE channel: Go's expNNMontgomery
+// Blinding closes the REMOTE channel: Go's expNNMontgomery
 // ends in a data-dependent conditional subtraction (math/big nat.go), which is
 // Schindler's extra-reduction oracle and the one Brumley-Boneh exploited over a network.
 // It does NOT close the other one. expNNMontgomery uses a fixed 4-bit window and indexes
@@ -321,8 +320,7 @@ func blindD(rng io.Reader, pub *rsa.PublicKey, msg []byte, domain string) (blind
 //
 // So it is carried as a DEPLOYMENT ASSUMPTION rather than a code fix: DO NOT RUN A
 // DEMAND ISSUER ON A HOST WITH UNTRUSTED CO-TENANTS SHARING ITS CPU CACHE. Recorded for
-// operators in docs/network-durability.md and for auditors in
-// docs/thinking/2026-09-02-r0.4b-c3-close-design.md §12.
+// operators and for auditors
 func SignBlinded(rng io.Reader, priv *rsa.PrivateKey, blinded []byte) ([]byte, error) {
 	if priv == nil || priv.N == nil {
 		return nil, fmt.Errorf("%w: nil private key", ErrBadPubKey)
@@ -367,19 +365,19 @@ func SignBlinded(rng io.Reader, priv *rsa.PrivateKey, blinded []byte) ([]byte, e
 // range check; the minimality requirement is silt's, and it is what makes a signature
 // or a blinded value have exactly ONE valid wire spelling — see SignBlinded (1).
 //
-// DECLARED DIVERGENCE FROM RFC 8017 / RFC 9474 (crypto advisory R2, 2026-09-03).
-// RFC 8017 §4.1 I2OSP and RFC 9474 §4.3 step 5 produce a FIXED-LENGTH modulus_len octet
+// DECLARED DIVERGENCE FROM RFC 8017 / RFC 9474. RFC
+// 8017 §4.1 I2OSP and RFC 9474 §4.3 step 5 produce a FIXED-LENGTH modulus_len octet
 // string, and RFC 9474 §4.4 step 1 refuses anything else. silt requires the OPPOSITE:
 // minimal encoding, refusing any leading zero. Both are canonical (each is injective),
 // and silt's is the DELIBERATE choice, because the alternative is not free: the wire
-// format is s.Bytes(), committed publish-token signatures re-verify on every chain
+// format is s.Bytes, committed publish-token signatures re-verify on every chain
 // replay, and re-spelling them fixed-length would invalidate history.
 //
 // The price is stated so no one has to re-derive it: this FORECLOSES drop-in RFC 9474
 // interop. About 1 in 256 honest RFC-encoded blind_sig values begins with a zero octet
 // and would be refused here — an intermittent failure, which is the worst kind to meet
 // for the first time against a live peer. Any future RFC 9474 interop is a versioned
-// change behind the same era gate as R0.4b-FDH, not a local edit to this function.
+// change behind the same era gate as, not a local edit to this function.
 func canonicalRep(b []byte, n *big.Int) (*big.Int, error) {
 	if len(b) == 0 {
 		return nil, fmt.Errorf("%w: empty", ErrNotCanonical)
@@ -397,7 +395,7 @@ func canonicalRep(b []byte, n *big.Int) (*big.Int, error) {
 // Unblind turns the issuer's blind signature into a signature on the plain serial,
 // using the secret from Blind, and VERIFIES it before returning (publish domain).
 //
-// THE VERIFICATION IS AN RFC MUST (crypto-specialist advisory C-1, 2026-09-03).
+// THE VERIFICATION IS AN RFC MUST.
 // RFC 9474 §4.4 Finalize: "result = RSASSA-PSS-VERIFY(pk, msg, sig); if not valid,
 // raise an invalid signature error and stop", so the client learns at WITHDRAWAL that
 // the issuer misbehaved rather than at redemption. The composition that makes this
@@ -423,7 +421,7 @@ func UnblindDemand(pub *rsa.PublicKey, epoch uint64, serial, blindSig, secret []
 }
 
 // BlindRelayAnchor blinds serial as a RELAY PREPAYMENT ANCHOR for ISSUE EPOCH epoch
-// (R2.14; see relayAnchorDomain). The fetcher's durable identity withdraws it from
+// (see relayAnchorDomain). The fetcher's durable identity withdraws it from
 // the relay it will later pay, blindly — the relay charges the fee and signs without
 // seeing the serial, so the anchor is unlinkable to the purchase. The message layout
 // is the demand layout byte for byte (demandMsg), under the relay-anchor domain.
@@ -479,7 +477,7 @@ func VerifyCredit(pub *rsa.PublicKey, serial, sig []byte) bool {
 // serial ISSUED AT epoch (demand domain). A publish-token or credit signature fails
 // this check and vice versa, so the three token kinds are not interchangeable under
 // one key — and a token signed for a DIFFERENT epoch fails too, even under the very
-// same key, which is the R0.4b (b1) coupling.
+// same key, which is the (b1) coupling.
 func VerifyDemand(pub *rsa.PublicKey, epoch uint64, serial, sig []byte) bool {
 	return verifyD(pub, demandMsg(epoch, serial), sig, demandDomain)
 }
@@ -488,7 +486,7 @@ func VerifyDemand(pub *rsa.PublicKey, epoch uint64, serial, sig []byte) bool {
 // ValidatePubHardnessRuns idiom: INSTRUMENTATION, not a control. It exists because
 // the relay open path's cost claim ("free guards first; RSA last; stop at the first
 // bad anchor") is a claim about HOW OFTEN a modexp runs, and the only honest gate is
-// to count it (cert §9 T-7, core/node TestRelayOpenRefusesCheaplyBeforeRSA).
+// to count it, core/node TestRelayOpenRefusesCheaplyBeforeRSA.
 var relayAnchorVerifyRuns atomic.Uint64
 
 // RelayAnchorVerifyRuns is how many relay-anchor RSA verifies have run in this
@@ -498,23 +496,23 @@ func RelayAnchorVerifyRuns() uint64 { return relayAnchorVerifyRuns.Load() }
 // VerifyRelayAnchor checks that sig is a valid issuer signature on a RELAY
 // PREPAYMENT ANCHOR serial ISSUED AT epoch (relay-anchor domain). A demand-token
 // signature under the same key, epoch and serial fails this check and vice versa —
-// one fee, one lane (cert §6.3) — and a signature for a different epoch fails too
-// (the R0.4b (b1) coupling, so an anchor cannot be re-dated past its guard entry).
+// one fee, one lane — and a signature for a different epoch fails too (the (b1)
+// coupling, so an anchor cannot be re-dated past its guard entry).
 func VerifyRelayAnchor(pub *rsa.PublicKey, epoch uint64, serial, sig []byte) bool {
 	relayAnchorVerifyRuns.Add(1)
 	return verifyD(pub, demandMsg(epoch, serial), sig, relayAnchorDomain)
 }
 
 func verifyD(pub *rsa.PublicKey, msg, sig []byte, domain string) bool {
-	// A malformed key VERIFIES NOTHING (red-team re-break F4). N = 1 made the FDH image
-	// 0 and s^e mod 1 == 0, so every (serial, sig) pair verified; E = 1 made the
-	// signature the message itself. Both are refused here rather than answered "true".
+	// A malformed key VERIFIES NOTHING. N = 1 made the FDH image 0 and s^e mod 1 ==
+	// 0, so every (serial, sig) pair verified; E = 1 made the signature the message
+	// itself. Both are refused here rather than answered "true".
 	if validateShape(pub) != nil {
 		return false
 	}
 	// RFC 8017 §5.2.2: the signature representative must be in [0, N-1], and silt
 	// additionally requires it to be MINIMALLY encoded, so a valid signature has
-	// exactly one wire spelling (advisory C-5). Without this, `sig` and `sig + N` and
+	// exactly one wire spelling. Without this, `sig` and `sig + N` and
 	// any zero-padded spelling all verify — three distinct Token.Sig byte strings for
 	// one signature, which is a free re-encoding of anything keyed on the raw bytes.
 	s, err := canonicalRep(sig, pub.N)

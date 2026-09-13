@@ -15,19 +15,19 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// CD-2 (composed-direction cert, 2026-09-03): VerifyEquivocation's ACCEPT SET must be
+// : VerifyEquivocation's ACCEPT SET must be
 // byte-identical before and after the LastCommit carrier merge — "proven by a gate,
 // not by review". This golden corpus pins it: a fixed set of Equivocation fixtures,
 // built deterministically (fixed key seeds, fixed entries, ed25519 is deterministic),
 // serialised once to testdata/equivocation_golden.cbor with the verdict
 // CheckEquivocation returned at pin time. The test DECODES the committed bytes and
-// asserts every verdict; it never regenerates silently. A merge that touches
-// signers, consensusSigScopes, signedBlock, bodyHash or the Attestation encoding and
-// moves one verdict reddens here.
+// asserts every verdict; it never regenerates silently. A merge that touches signers,
+// consensusSigScopes, signedBlock, bodyHash or the Attestation encoding and moves one
+// verdict reddens here.
 //
 // Regenerate ONLY with an intentional accept-set change, then diff the verdicts:
 //
-//	go test ./core/chain/ -run EquivocationGolden -update-equivocation-golden
+//	go test./core/chain/ -run EquivocationGolden -update-equivocation-golden
 var updateEquivocationGolden = flag.Bool("update-equivocation-golden", false,
 	"rewrite testdata/equivocation_golden.cbor from the deterministic builder (an ACCEPT-SET change; never routine)")
 
@@ -197,7 +197,7 @@ func buildEquivocationGoldenCorpus() []equivocationGoldenCase {
 	// ---- mixed eras ----
 	add("mixed-era1-era2-REFUSE", Equivocation{Culprit: cul, A: a1, B: b2})
 
-	// ---- pruned evidence (R0.6) ----
+	// ---- pruned evidence ----
 	add("pruned-A-REFUSE", Equivocation{Culprit: cul, A: a1.Prune(), B: b1})
 	add("pruned-B-REFUSE", Equivocation{Culprit: cul, A: a1, B: b1.Prune()})
 	add("pruned-both-REFUSE", Equivocation{Culprit: cul, A: a1.Prune(), B: b1.Prune()})
@@ -245,7 +245,7 @@ func readEquivocationGolden(t *testing.T) []equivocationGoldenCase {
 }
 
 // TestEquivocationGoldenCorpusVerdicts: every committed fixture's verdict is what
-// CheckEquivocation returns today. This is the CD-2 accept-set pin.
+// CheckEquivocation returns today. This is the accept-set pin.
 func TestEquivocationGoldenCorpusVerdicts(t *testing.T) {
 	if *updateEquivocationGolden {
 		built := buildEquivocationGoldenCorpus()

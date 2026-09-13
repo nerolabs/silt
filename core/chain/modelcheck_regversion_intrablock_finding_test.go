@@ -8,35 +8,35 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// CONSENSUS-RULE COVERING PROBE (2026-08-28, the #506-gate order-independence
-// increment) — the RED-then-GREEN gate for the certified canonicalization fix in
-// apply() (cert sameid-twoversion-intrablock-bondreg-contention 2026-08-28,
-// resolution §3(a1): fold same-id multi-reg to one canonical winner by a total
-// order — largest Size, then Version, then Domain, then Sig).
+// CONSENSUS-RULE COVERING PROBE (2026-08-28, the gate order-independence
+// increment) — the RED-then-GREEN gate for the canonicalization fix in apply
+// (resolution
+// §3(a1): fold same-id multi-reg to one canonical winner by a total order —
+// largest Size, then Version, then Domain, then Sig).
 //
-// This REPLACES the earlier finding-repro (TestRegVersionIntraBlockOrderFinding),
+// This REPLACES the earlier finding-repro,
 // which ASSERTED the buggy divergence so the finding was on the record while it was
-// routed to the Researcher. The fix has landed; this probe now asserts the FIXED
+// routed to the research. The fix has landed; this probe now asserts the FIXED
 // property: two same-id regs with distinct Version/Domain/Size in ONE pre-gate block
 // commit BYTE-IDENTICAL regVersion/bondDomain/bonded across BOTH intra-block slice
 // orderings.
 //
 // MECHANISM the probe pins (chain.go):
-//   - apply() folds b.BondRegs through canonicalBondRegs() before the bond loop, so
-//     for a single id carrying multiple regs a canonical winner is chosen by
-//     bondRegLess (largest Size, then Version, then Domain, then Sig) and ALL its
-//     fields (regVersion, bondDomain, bonded, bondRootOwner, …) are applied. The
-//     winner is a pure function of block content, not slice position.
-//   - Before the fix apply() took the LAST reg in slice order, so flipping the slice
-//     flipped the committed regVersion/bondDomain/bonded — an order-dependent
-//     history-independent SMT root (a #618-class fork). regVersion feeds the #506
-//     lock-in tally (rotateEpoch), so gateLockedIn/gateHeight inherited the split.
+// - apply folds b.BondRegs through canonicalBondRegs before the bond loop, so
+// For a single id carrying multiple regs a canonical winner is chosen by
+// bondRegLess (largest Size, then Version, then Domain, then Sig) and ALL its
+// fields (regVersion, bondDomain, bonded, bondRootOwner, …) are applied. The
+// winner is a pure function of block content, not slice position.
+// - Before the fix apply took the LAST reg in slice order, so flipping the slice
+// flipped the committed regVersion/bondDomain/bonded — an order-dependent
+// history-independent SMT root (a class fork). regVersion feeds the lock-in
+// tally (rotateEpoch), so gateLockedIn/gateHeight inherited the split.
 //
-// ABLATION (session-7 "inject the defect" rule): stash the canonicalBondRegs fold
-// in apply() (revert to `for _, r := range b.BondRegs`) and this test goes RED — the
-// two orderings diverge (regVersion 3 vs 2, distinct bondDomain, distinct bonded).
-// With the fold in place it is GREEN. The RED-then-GREEN transcript is pasted in the
-// PR / the docs/thinking note.
+// ABLATION "inject the defect" rule: stash the canonicalBondRegs fold in apply
+// (revert to `for _, r:= range b.BondRegs`) and this test goes RED — the two
+// orderings diverge (regVersion 3 vs 2, distinct bondDomain, distinct bonded). With
+// the fold in place it is GREEN. The RED-then-GREEN transcript is pasted in the PR /
+// the note.
 func TestRegVersionIntraBlockOrderIndependent(t *testing.T) {
 	// build commits ONE pre-gate block carrying two regs for validator v on its own
 	// root, with DISTINCT Version, Domain, AND Size, so the canonical total order is
@@ -67,8 +67,8 @@ func TestRegVersionIntraBlockOrderIndependent(t *testing.T) {
 		prev := g.Hash()
 		rootV := ports.HashBytes(v.Public().(ed25519.PublicKey))
 		// Two regs for v on its OWN root, distinct in ALL three total-order keys:
-		//   lo:  size twoMiB,     version 2,                domain 0x11
-		//   hi:  size 2*twoMiB,   version BlockVersionRegGate(3), domain 0x22
+		// lo: size twoMiB, version 2, domain 0x11
+		// hi: size 2*twoMiB, version BlockVersionRegGate(3), domain 0x22
 		// hi has the larger size, so hi is the canonical winner in both orderings.
 		lo := bondRegFull(v, rootV, twoMiB, prev, 2, 0x11)
 		hi := bondRegFull(v, rootV, 2*twoMiB, prev, BlockVersionRegGate, 0x22)
@@ -85,25 +85,25 @@ func TestRegVersionIntraBlockOrderIndependent(t *testing.T) {
 	a, errA := build(true)  // hi first
 	b, errB := build(false) // hi last
 
-	// Premise: the block is ADMISSIBLE in BOTH orderings — the certified fix
-	// CANONICALIZES the commit, it does NOT reject the block (reject was refuted,
-	// it breaks the legal resize). If a future validity change rejects it, this
-	// guard fires and names the premise break.
+	// Premise: the block is ADMISSIBLE in BOTH orderings — the fix
+	// CANONICALIZES the commit, it does NOT reject the block (reject was
+	// refuted, it breaks the legal resize). If a future validity change
+	// rejects it, this guard fires and names the premise break.
 	if errA != nil || errB != nil {
 		t.Fatalf("the same-id two-version block is no longer ADMISSIBLE in both orderings "+
-			"(errA=%v errB=%v) — the certified fix canonicalizes at APPLY, it does not "+
+			"(errA=%v errB=%v) — the fix canonicalizes at APPLY, it does not "+
 			"reject at validity. A rejection here means the resolution drifted from the "+
 			"cert (§3(a): canonicalize, not reject); STOP and re-derive.", errA, errB)
 	}
 
 	v := idOf(key(90001))
-	// The certified property: the committed same-id-slot fields are BYTE-IDENTICAL
-	// across the two intra-block orderings — the fold makes the winner a pure
-	// function of block content, not slice position.
+	// The property: the committed same-id-slot fields are BYTE-IDENTICAL across
+	// the two intra-block orderings — the fold makes the winner a pure function
+	// of block content, not slice position.
 	if a.regVersion[v] != b.regVersion[v] {
 		t.Fatalf("regVersion DIVERGED across intra-block orderings (%d vs %d) — the "+
 			"canonicalBondRegs fold in apply() is not order-independent. This is the "+
-			"#618-class fork the cert gates on; the fix has regressed.",
+			"fork the cert gates on; the fix has regressed.",
 			a.regVersion[v], b.regVersion[v])
 	}
 	if a.bondDomain[v] != b.bondDomain[v] {

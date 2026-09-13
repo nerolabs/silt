@@ -1,6 +1,6 @@
 package diskissuer
 
-// R0.4b C3 close — the per-epoch demand key store. The properties that matter are
+// C3 close — the per-epoch demand key store. The properties that matter are
 // RESTART (a regenerated band would be un-committable, because the on-chain binding
 // is append-only and backdating is rejected — so the lane would be dead for W epochs)
 // and PRUNING (the band must not grow without bound; build-immutable #8).
@@ -64,7 +64,8 @@ func TestEpochBandPrunesOutsideTheRetainedRange(t *testing.T) {
 	if _, err := s.EnsureBand(rand.Reader, 0, 0, 2); err != nil { // epochs 0,1,2
 		t.Fatal(err)
 	}
-	// Advance: retain from 2, generate 2..3. Epochs 0 and 1 must be dropped.
+	// Advance: retain from 2, generate 2.3. Epochs 0 and 1 must be
+	// dropped.
 	band, err := s.EnsureBand(rand.Reader, 2, 2, 3)
 	if err != nil {
 		t.Fatal(err)
@@ -156,8 +157,7 @@ func TestEpochStoreAbsentIsEmpty(t *testing.T) {
 }
 
 // TestEpochStoreSurvivesACrashBeforeRename pins the ATOMICITY of Save, which until
-// now was asserted by inspection only (Tester finding, 2026-09-03: zero tests
-// referenced demandkeys.cbor or the temp name).
+// now was asserted by inspection only.
 //
 // Why it matters more here than for an ordinary cache: a half-written band is
 // UNRECOVERABLE. The fingerprints of the keys already on disk are committed on-chain,
@@ -167,16 +167,16 @@ func TestEpochStoreAbsentIsEmpty(t *testing.T) {
 //
 // Two failure shapes, both real:
 //
-//   - CRASH BETWEEN CreateTemp AND Rename. The artifact is a stale .tmp-demandkeys-*
-//     file beside an untouched demandkeys.cbor. The store must load the OLD band
-//     byte-identically and must not be confused by the leftover. This also pins the
-//     one-file design (§3.3): a Load that scanned the directory instead of reading one
-//     fixed path would parse this garbage.
-//   - A Save THAT CANNOT WRITE. Ablation: replace temp+rename with a direct
-//     os.WriteFile(s.path, ...) and the second subtest goes RED — a direct write to an
-//     existing 0600 file succeeds in a read-only directory, so the committed band is
-//     destroyed and replaced. temp+rename fails at CreateTemp instead, leaving the
-//     committed band intact.
+// - CRASH BETWEEN CreateTemp AND Rename. The artifact is a stale.tmp-demandkeys-*
+// file beside an untouched demandkeys.cbor. The store must load the OLD band
+// byte-identically and must not be confused by the leftover. This also pins the
+// one-file design: a Load that scanned the directory instead of reading one
+// fixed path would parse this garbage.
+// - A Save THAT CANNOT WRITE. Ablation: replace temp+rename with a direct
+// os.WriteFile(s.path,...) and the second subtest goes RED — a direct write to an
+// existing 0600 file succeeds in a read-only directory, so the committed band is
+// destroyed and replaced. temp+rename fails at CreateTemp instead, leaving the
+// committed band intact.
 func TestEpochStoreSurvivesACrashBeforeRename(t *testing.T) {
 	dir := t.TempDir()
 	s, err := OpenEpochs(dir)

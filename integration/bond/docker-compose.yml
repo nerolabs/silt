@@ -4,16 +4,16 @@
 # container disks, so the M0 claim C1 ("no discount — a bond is genuinely
 # expensive to fake") becomes numbers instead of prose:
 #
-#   honest   ─┐  a -validator that SEALS a real ${BOND_SIZE} plot (measured:
-#             │  wall-clock plot time + on-disk bytes) and answers live
-#             │  proof-of-space-TIME challenges from its peer.
-#   peer     ─┤  a second -validator that MUTUALLY audits honest over the wire
-#             │  (real MsgBondChallenge → `bond challenge … passed=true`), and
-#             │  earns standing proportional to its own real bond.
-#   adversary ┘  the NEGATIVE control: an UNDER-BONDED validator that tries to
-#                propose a well-formed block to honest (-lowbond-propose); an
-#                honest validator REFUSES it (ErrLowReputation) before attesting
-#                — a shortcut earns nothing.
+#  honest ─┐ a -validator that SEALS a real ${BOND_SIZE} plot (measured:
+#  │ wall-clock plot time + on-disk bytes) and answers live
+#  │ proof-of-space-TIME challenges from its peer.
+#  peer ─┤ a second -validator that MUTUALLY audits honest over the wire
+#  │ (real MsgBondChallenge → `bond challenge … passed=true`), and
+#  │ earns standing proportional to its own real bond.
+#  adversary ┘ the NEGATIVE control: an UNDER-BONDED validator that tries to
+#  propose a well-formed block to honest (-lowbond-propose); an
+#  honest validator REFUSES it (ErrLowReputation) before attesting
+#  — a shortcut earns nothing.
 #
 # The daemons run the LEGACY subjective path (-objective=false, like
 # examples/flow4) so a single small cluster commits without the objective
@@ -85,7 +85,7 @@ services:
       - -bond-label-k=64
       - -capacity=2G
       - -mdns=false
-      # POSITIVE CONTROL for PHASE 2 (audit #303 bond): peer is a real 64M-bonded
+      # POSITIVE CONTROL for PHASE 2 (the audit bond): peer is a real 64M-bonded
       # validator, so its WELL-FORMED block to honest MUST be ATTESTED. Without
       # this, PHASE 2's low-bond "correctly REJECTED" (which fires for ANY OK:false —
       # wrong-parent, decode, a reject-all wedged honest) could not be attributed to

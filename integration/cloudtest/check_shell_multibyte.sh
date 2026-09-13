@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Regression guard (build-immutable V5) for the P1-run b525b0b-87478 harness bug:
+# Regression guard (build-immutable V5) for the P1-run the field run harness bug:
 # an UNBRACED shell variable ($var) placed IMMEDIATELY before a multibyte character
 # (e.g. →, …) crashes macOS's bash 3.2 under `set -u` — its identifier parser absorbs
 # a byte of the multibyte char into the variable name, yielding an unbound name like
-# `h1<0xe2>`. This silently killed the C2 no-capture flow's PASS record() at
+# `h1<0xe2>`. This silently killed the C2 no-capture flow's PASS record at
 # scenarios.sh:832 (`($h1→$h2)`), dropping an otherwise-green verdict.
 #
 # It is macOS-bash-3.2-specific: Linux/bash-5 (where CI runs the flows in-VM) parses it

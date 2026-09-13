@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
 # Flow 8 — Per-hash takedown on ONE operator; nothing is removed everywhere.
-# Reproduces docs/safety-denylist.md + user-seam.md Role 3 (-denylist).
+# Reproduces + user-seam.md Role 3 (-denylist).
 #
 # PASS if: the same file (convergent → identical root) is served by two
 # independent operators; after operator A loads a -denylist with that root, A
 # purges it and refuses to serve, while operator B still serves it. No global
 # switch — takedown is per-hash and per-operator.
 #
-#   ./examples/flow8-takedown.sh        (or SILT_REPO=/path/to/silt …)
+# ./examples/flow8-takedown.sh (or SILT_REPO=/path/to/silt …)
 # Binds loopback ports 7100/7101 (op A) and 7200/7201 (op B); one at a time.
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail

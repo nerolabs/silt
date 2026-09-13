@@ -8,7 +8,7 @@ import (
 
 // EstimateNetworkSize infers how many nodes exist in the whole network
 // from nothing but the distances to your m nearest known neighbors —
-// counting a crowd you cannot see. See docs/math/06-counting-the-crowd.md.
+// counting a crowd you cannot see. See.
 //
 // The idea: node IDs are uniform in a space of 2^256 points. If the
 // m-th closest node to you sits at XOR distance d, then a ball of

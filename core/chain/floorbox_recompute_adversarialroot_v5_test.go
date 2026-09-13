@@ -1,42 +1,40 @@
 package chain
 
-// era-4 (v5) floor-box BOULDER-1 invariant pins and adversarial-committed-root regression gates.
+// era-4 (v5) floor-box invariant pins and adversarial-committed-root regression gates.
 //
-// TESTER SEAT — 2026-09-01.
-// Governs: RULING-floorbox-R1.2-invariant-pins-2026-09-01.md (all tiers A/B/C).
-//          docs/thinking/2026-09-01-floorbox-witness-soundness-fix-design.md (gate shapes, 23-field cert).
+// Covers all tiers A/B/C.
+// (gate shapes, 23-field walk).
 //
-// PART 1 — R1.0 INVARIANT PINS (must stay GREEN on main; they guard the R1.2 refactor):
-//   TestActivationQuorumNonFork — Tier-B pin #5. Asserts rotateTallyOps and rotateEpoch produce
-//     IDENTICAL lock-in verdicts across a swept schedule of (ready, total) pairs. Reddens if either
-//     copy of 3*ready>2*total drifts. The driven sub-tests exercise the actual rotateTallyOps call.
+// PART 1 — INVARIANT PINS (must stay GREEN on main; they guard the refactor):
+// TestActivationQuorumNonFork — Tier-B pin #5. Asserts rotateTallyOps and rotateEpoch produce
+// IDENTICAL lock-in verdicts across a swept schedule of (ready, total) pairs. Reddens if either
+// copy of 3*ready>2*total drifts. The driven sub-tests exercise the actual rotateTallyOps call.
 //
-// PART 2 — R1.1 ADVERSARIAL-COMMITTED-ROOT GATES (must be RED on main):
-//   The attack: forge a witness field, fold the forged ops to get the root the attacker would commit
-//   (forgedRoot), then assert Recompute(prev, forgedRoot, b, forgedWit) == nil (wrong-accept).
-//   nil on main = RED gate = the gap is real. After R1.2 these gates must return non-nil (stall).
+// PART 2 — ADVERSARIAL-COMMITTED GATES (must be RED on main):
+// The attack: forge a witness field, fold the forged ops to get the root the attacker would commit
+// (forgedRoot), then assert Recompute(prev, forgedRoot, b, forgedWit) == nil (wrong-accept).
+// nil on main = RED gate = the gap is real. After the fix these gates must return non-nil (stall).
 //
-//   TestAdversarialRoot_ClassP_ForgedFrozenWeight — PE Tier-A required gate. Forges a frozen
-//     member's Weight. Proves Weight is forgeable on main (§5 claim discharged).
+// TestAdversarialRoot_ClassP_ForgedFrozenWeight — a required gate. Forges a frozen
+// member's Weight. Proves Weight is forgeable on main.
 //
-//   TestAdversarialRoot_ClassA_ForgedInEpochSet — Tier-A gate for sc.InEpochSet. Forges the screen
-//     to report a post-freeze bonded attester IS in the epochSet, inflating validatorsSeen.
+// TestAdversarialRoot_ClassA_ForgedInEpochSet — Tier-A gate for sc.InEpochSet. Forges the screen
+// to report a post-freeze bonded attester IS in the epochSet, inflating validatorsSeen.
 //
-//   TestAdversarialRoot_ClassM_PoisonedBySpuriousAtt — PE Tier-A required gate (ruling Q2).
-//     Forges class-A InEpochSet to add a spurious validatorsSeen member; committed root moves to
-//     the inflated set; class-M then latches everMature early on current main. The gate forges BOTH
-//     the screen AND the committed root (PE ruling sharpening: a gate that checks against the honest
-//     root is blind — same blindness as rotate_v5_test.go:407).
+// TestAdversarialRoot_ClassM_PoisonedBySpuriousAtt — a required gate. Forges class-A InEpochSet
+// to add a spurious validatorsSeen member; committed root moves to the inflated set; class-M
+// then latches everMature early on current main. The gate forges BOTH the screen AND the
+// committed root root is blind — same blindness as rotate_v5_test.go.
 //
-// COVERAGE ENUMERATION — fields not gated in this pass (owed before R1.2 lands):
-//   Class P: RegVersion, RegVersionKnown (2 adversarial-root gates, distinct from the honest-root
-//     ablation TestRecomputeStateRootRotateAblationLiveTallyForgedRegVersion which exists but is
-//     blind to committed-root-moving forgeries).
-//   Class A: Slashed, BondedSize, BondedPresent (3 gates; Slashed omitted here because building a
-//     valid equivocation proof pair requires crypto tooling — use a slashed pre-state fixture; the
-//     shape is identical to ForgedInEpochSet).
-//   Class B: PriorOwner, Claimed, PriorProven (3 gates).
-//   Total owed: 8 adversarial-root gates (P:2 + A:3 + B:3). This pass delivers 3 load-bearing ones.
+// COVERAGE ENUMERATION — fields not gated in this pass:
+// Class P: RegVersion, RegVersionKnown (2 adversarial-root gates, distinct from the honest-root
+// ablation TestRecomputeStateRootRotateAblationLiveTallyForgedRegVersion which exists but is
+// blind to committed-root-moving forgeries).
+// Class A: Slashed, BondedSize, BondedPresent (3 gates; Slashed omitted here because building a
+// valid equivocation proof pair requires crypto tooling — use a slashed pre-state fixture; the
+// shape is identical to ForgedInEpochSet).
+// Class B: PriorOwner, Claimed, PriorProven (3 gates).
+// Total owed: 8 adversarial-root gates (P:2 + A:3 + B:3). This pass delivers 3 load-bearing ones.
 
 import (
 	"fmt"
@@ -47,10 +45,10 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// mustProve issues an SMT proof for key against the prover's committed root, panicking on error.
-// It is the R1.2 witness-builder helper: the fixtures always hold a valid prover, so a Prove failure
-// is a test-construction bug, not an expected path. Used to populate the per-field screen/member
-// anchor proofs the R1.2 fix requires.
+// mustProve issues an SMT proof for key against the prover's committed root, panicking on error. It
+// is the witness-builder helper: the fixtures always hold a valid prover, so a Prove failure is a
+// test-construction bug, not an expected path. Used to populate the per-field screen/member anchor
+// proofs the fix requires.
 func mustProve(p *statehash.Prover, key []byte) statehash.Witness {
 	w, err := p.Prove(key)
 	if err != nil {
@@ -60,24 +58,24 @@ func mustProve(p *statehash.Prover, key []byte) statehash.Witness {
 }
 
 // =============================================================================
-// PART 1 — R1.0 INVARIANT PINS
+// PART 1 — INVARIANT PINS
 // =============================================================================
 
-// TestActivationQuorumNonFork is Tier-B pin #5 from the PE ruling. It asserts that the two live
-// copies of the activation quorum — rotateTallyOps (:355,:363,:371) and rotateEpoch (:3448,:3471,
-// :3495) — produce IDENTICAL lock-in decisions across a swept schedule of (ready, total) pairs.
+// TestActivationQuorumNonFork is Tier-B pin #5 from. It asserts that the two live copies of the
+// activation quorum — rotateTallyOps (:355,:363,:371) and rotateEpoch (:3448,:3471,:3495) —
+// produce IDENTICAL lock-in decisions across a swept schedule of (ready, total) pairs.
 //
-// The #402 trap the PE flagged: both copies use `3*ready > 2*total` today and agree by inspection.
+// The trap: both copies use `3*ready > 2*total` today and agree by inspection.
 // Nothing enforces agreement. This pin makes the enforcement testable: a future edit that changes
 // one copy's arithmetic must redden this test.
 //
 // Structure:
-//   - The table sub-tests verify the quorum predicate against protocol-specified expected values.
-//   - The driven sub-tests exercise the ACTUAL rotateTallyOps function to confirm it uses the
-//     same arithmetic, not a reworded equivalent.
+// - The table sub-tests verify the quorum predicate against protocol-specified expected values.
+// - The driven sub-tests exercise the ACTUAL rotateTallyOps function to confirm it uses the
+// Same arithmetic, not a reworded equivalent.
 func TestActivationQuorumNonFork(t *testing.T) {
 	// canonicalQuorum is the reference form of the quorum predicate, exactly as written in both
-	// chain.go:3448,3471,3495 (rotateEpoch) and rotate_v5.go:355,363,371 (rotateTallyOps).
+	// chain.go,3471,3495 (rotateEpoch) and rotate_v5.go,363,371 (rotateTallyOps).
 	// It is the SINGLE canonical reference this pin enforces. A future edit that changes either
 	// live copy to a different expression (e.g. 2*ready > total) will diverge from this reference
 	// on some row in the table — the pin reddens. The driven sub-tests then confirm the actual
@@ -132,10 +130,10 @@ func TestActivationQuorumNonFork(t *testing.T) {
 		})
 	}
 
-	// DRIVEN PIN (lock-in fires): a single member, weight=9, regVersion=5.
-	// Every threshold (3/4/5) is met ⇒ all three tallies lock in. At the SUBSEQUENT boundary the
-	// tallies are already locked: rotateTallyOps must emit 0 ops (monotonic guards).
-	// This confirms rotateTallyOps' tally() closure uses the canonical arithmetic.
+	// DRIVEN PIN (lock-in fires): a single member, weight=9, regVersion=5. Every threshold
+	// (3/4/5) is met ⇒ all three tallies lock in. At the SUBSEQUENT boundary the tallies are
+	// already locked: rotateTallyOps must emit 0 ops (monotonic guards). This confirms
+	// rotateTallyOps' tally closure uses the canonical arithmetic.
 	t.Run("driven-rotateTallyOps-all-locked-emits-nothing", func(t *testing.T) {
 		cfg := Config{
 			Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
@@ -164,8 +162,8 @@ func TestActivationQuorumNonFork(t *testing.T) {
 		prev2, h2 := c.Head()
 		rb := Block{Version: BlockVersionWitnessable, Height: h2, Prev: prev2}
 		Sign(&rb, prop)
-		// The #402 non-fork ARITHMETIC pin targets rotateTallyArithmeticOps directly (the anchor split of
-		// rotateTallyOps runs Direction A first and needs a real prevStateRoot; this pins the arithmetic).
+		// The non-fork ARITHMETIC pin targets rotateTallyArithmeticOps directly (the anchor split of
+		// rotateTallyOps runs the pre-state anchor first and needs a real prevStateRoot; this pins the arithmetic).
 		ops := c.rotateTallyArithmeticOps(rb, &StateRootRotateWitness{
 			GateLockedIn: StateRootRotateScalar{OldValue: statehash.EncodeBool(true)},
 			GateHeight:   StateRootRotateScalar{OldValue: statehash.EncodeUint64(c.gateHeight)},
@@ -190,8 +188,8 @@ func TestActivationQuorumNonFork(t *testing.T) {
 		}
 		c := New(cfg, func(ports.NodeID) int64 { return 0 })
 		c.SetBondVerifier(objectiveVerify)
-		// regVersion=0: does not meet any threshold (≥3/4/5).
-		// Apply genesis via a regVersion-0 bond — but apply() tracks regVersion, so we set it directly.
+		// regVersion=0: does not meet any threshold (≥3/4/5). Apply genesis via a regVersion-0
+		// bond — but apply tracks regVersion, so we set it directly.
 		prop := key(70002)
 		g := &Block{Version: BlockVersionWitnessable, Height: 0}
 		g.BondRegs = append(g.BondRegs, bondRegFull(prop, ports.HashBytes(pubOf(prop)), 9<<20, ports.Hash{}, 0, 1))
@@ -226,7 +224,7 @@ func TestActivationQuorumNonFork(t *testing.T) {
 				"must emit 0 lock-in ops, but got op on key %x (newValue=%x).\n"+
 				"  This means rotateTallyOps's quorum arithmetic diverges from canonicalQuorum.\n"+
 				"  Two copies are: chain.go:3448 and rotate_v5.go:355. One has drifted.\n"+
-				"  The #402 trap has been triggered — route both to a shared function.",
+				"  The trap has been triggered — route both to a shared function.",
 				op.Key, op.NewValue)
 		}
 	})
@@ -247,15 +245,15 @@ func TestActivationQuorumNonFork(t *testing.T) {
 }
 
 // =============================================================================
-// PART 2 — R1.1 ADVERSARIAL-COMMITTED-ROOT GATES
+// PART 2 — ADVERSARIAL-COMMITTED GATES
 // =============================================================================
 
 // adversarialCommittedRoot builds the forged committed root for a forged witness by calling
 // assembleStateRootRecomputeOps (the op-assembly half of the box) and FoldChangedPaths (the
 // fold), using the SAME code path the box uses. The result is the root the attacker would embed
 // in b.StateRoot. The gate asserts:
-//  1. forgedRoot != honestRoot (the forgery is real, not a no-op).
-//  2. Recompute(prev, forgedRoot, b, forgedWit) == nil (wrong-accept on main = RED gate).
+// 1. forgedRoot != honestRoot (the forgery is real, not a no-op).
+// 2. Recompute(prev, forgedRoot, b, forgedWit) == nil (wrong-accept on main = RED gate).
 //
 // honestCommitted is passed as the "committedStateRoot" for assembleStateRootRecomputeOps so the
 // class-M maturity recompute path can resolve against a valid root. For tests that need the class-M
@@ -290,16 +288,16 @@ func adversarialCommittedRoot(
 // =============================================================================
 // TestAdversarialRoot_ClassP_ForgedFrozenWeight
 // =============================================================================
-// PE Tier-A required gate. The design §5 claim ("Weight is FORGEABLE, not fold-caught") is
-// analytically-sound but not yet measured (PE ruling caveat). This gate CONFIRMS it by running
-// RED on current main.
+// required gate. The claim that Weight is FORGEABLE, not fold-caught, is
+// analytically-sound but not yet measured. This gate CONFIRMS it by running RED on current
+// main.
 //
 // Mechanism: nodeSetMTHFromInt64 commits membership only (weights dropped). A forged Weight does
 // not diverge epochSetRoot. The attacker forges Weight=W+1, folds → forgedRoot (the forged
 // epochSet||id leaf value), then submits (prev, forgedRoot, b, forgedWit). postRoot==forgedRoot
 // == committedStateRoot ⇒ wrong-accept ⇒ nil return. The gate asserts nil.
 //
-// Gate is RED on main (nil = wrong-accept). After R1.2 this gate must return non-nil.
+// Gate is RED on main (nil = wrong-accept). After the fix this gate must return non-nil.
 func TestAdversarialRoot_ClassP_ForgedFrozenWeight(t *testing.T) {
 	f := buildRotateFixture(t)
 	b := f.boundaryBlock(nil)
@@ -332,15 +330,15 @@ func TestAdversarialRoot_ClassP_ForgedFrozenWeight(t *testing.T) {
 		t.Fatalf("GATE VACUOUS: forgedRoot == honestCommitted after forging Weight %d→%d", originalWeight, forgedWeight)
 	}
 
-	// R1.2: the box MUST STALL. The Weight anchor requires the frozen Weight proven present in
-	// qualified||id under prevStateRoot; the forged Weight cannot be, so the class-P member anchor stalls.
+	// The box MUST STALL. The Weight anchor requires the frozen Weight proven present in qualified||id
+	// under prevStateRoot; the forged Weight cannot be, so the class-P member anchor stalls.
 	err := recomputeViaHead(f.c, f.prevRoot, forgedRoot, b, w)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedFrozenWeight): box WRONG-ACCEPTED a forged frozen Weight.\n"+
-			"  Expected a stall (R1.2 anchors Weight against qualified||id). Got nil.\n"+
+			"  Expected a stall (anchors Weight against qualified||id). Got nil.\n"+
 			"  member=%x forgedWeight=%d originalWeight=%d", memberID[:4], forgedWeight, originalWeight)
 	}
-	t.Logf("GATE GREEN (R1.2): forged frozen Weight STALLS: %v\n"+
+	t.Logf("GATE GREEN: forged frozen Weight STALLS: %v\n"+
 		"  member=%x forgedWeight=%d originalWeight=%d — Weight anchored against qualified||id under prevStateRoot.",
 		err, memberID[:4], forgedWeight, originalWeight)
 }
@@ -416,13 +414,14 @@ func TestAdversarialRoot_ClassA_ForgedInEpochSet(t *testing.T) {
 		return nil
 	}
 
-	// Test block at h=2: newAtt attests. apply() skips it (not in epochSet).
+	// Test block at h=2: newAtt attests. apply skips it (not in
+	// epochSet).
 	prev2, h2 := c.Head()
 	bTest := Block{Version: BlockVersionWitnessable, Height: h2, Prev: prev2, Entries: []ports.Entry{entry(55)}}
 	bTest.LastCommit = append(bTest.LastCommit, carrierEntry(c, newAtt))
 	Sign(&bTest, prop)
 
-	// Honest committed root: apply() skips newAtt.
+	// Honest committed root: apply skips newAtt.
 	clone := c.cloneForDryRun()
 	clone.apply(bTest)
 	honestCommitted, err := clone.StateRootForVersion(BlockVersionWitnessable)
@@ -440,7 +439,7 @@ func TestAdversarialRoot_ClassA_ForgedInEpochSet(t *testing.T) {
 	newAttBP2 := func() bool { _, ok := c.bonded[newAttID]; return ok }()
 	_ = newAttBP
 
-	// R1.2 screen proofs, from the pre-state prover. newAtt is bonded (present) but NOT in epochSet
+	// Screen proofs, from the pre-state prover. newAtt is bonded (present) but NOT in epochSet
 	// (absent) and not slashed (absent).
 	honestScreen := StateRootAttScreen{
 		Attester: newAttID, Slashed: false, InEpochSet: false,
@@ -493,7 +492,7 @@ func TestAdversarialRoot_ClassA_ForgedInEpochSet(t *testing.T) {
 	// FORGE: swap InEpochSet to true — the box would emit a spurious validatorsSeen ADD for newAtt.
 	// The attacker cannot forge a MEMBERSHIP proof of epochSet||newAtt (newAtt is not in the frozen
 	// set), so the forged screen still carries the honest NON-MEMBERSHIP proof — which fails
-	// IsProvenPresent under R1.2 ⇒ stall.
+	// IsProvenPresent ⇒ stall.
 	forgedScreen := StateRootAttScreen{
 		Attester: newAttID, Slashed: false, InEpochSet: true, // forged
 		BondedSize: newAttBonded, BondedPresent: newAttBP2,
@@ -527,15 +526,15 @@ func TestAdversarialRoot_ClassA_ForgedInEpochSet(t *testing.T) {
 		t.Fatalf("GATE VACUOUS: forgedRoot == honestRoot — InEpochSet forge did not change root (newAtt already seen?)")
 	}
 
-	// R1.2: the box MUST STALL against forgedRoot — the forged InEpochSet=true cannot be proven present
+	// The box MUST STALL against forgedRoot — the forged InEpochSet=true cannot be proven present
 	// against prevStateRoot, so attesterQualifiedFromScreen refuses to seat newAtt.
 	err = recomputeViaHead(c, prevRoot, forgedRoot, bTest, forgedW)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedInEpochSet): box WRONG-ACCEPTED a forged InEpochSet screen.\n"+
-			"  Expected a stall (R1.2 anchors InEpochSet against epochSet||id). Got nil.\n"+
+			"  Expected a stall (anchors InEpochSet against epochSet||id). Got nil.\n"+
 			"  forgedRoot=%x honestRoot=%x", forgedRoot, honestRoot)
 	}
-	t.Logf("GATE GREEN (R1.2): forged InEpochSet STALLS: %v\n  newAtt=%x — InEpochSet anchored against epochSet||id under prevStateRoot.",
+	t.Logf("GATE GREEN: forged InEpochSet STALLS: %v\n newAtt=%x — InEpochSet anchored against epochSet||id under prevStateRoot.",
 		err, newAttID[:4])
 }
 
@@ -561,29 +560,28 @@ func spuriousSeatedRoot(t *testing.T, base *Chain, b Block, id ports.NodeID) por
 // =============================================================================
 // TestAdversarialRoot_ClassM_PoisonedBySpuriousAtt
 // =============================================================================
-// PE Tier-A REQUIRED gate (ruling Q2, "class-M IS A2-poisoned").
+// A REQUIRED gate: class-M is poisoned by a spurious attestation.
 //
-// The claim (PE ruling Q2): once class-A adds a spurious validatorsSeen||id ADD via an
+// The claim: once class-A adds a spurious validatorsSeen||id ADD via an
 // unanchored screen, class-M inherits the inflated validatorsSeenRoot from the committed root
 // and can wrong-latch everMature early. The poisoning enters at class-A and rides the committed
 // root into class-M; fixing class-A is the correct fix (not class-M).
 //
-// THE REACHABLE PATH (PE ruling Q2, verified). The class-M poison ENTERS at the class-A screen and
-// RIDES the committed validatorsSeenRoot into class-M's recomputeMatureNow (maturitylatch_v5.go:87,
-// over committedStateRoot). A forged class-A screen that seats a bonded-but-unqualified attester adds
-// a spurious validatorsSeen||id, inflating the seen set class-M then folds — wrong-latching everMature
+// THE REACHABLE PATH. The class-M poison ENTERS at the class-A screen and RIDES the committed
+// validatorsSeenRoot into class-M's recomputeMatureNow (maturitylatch_v5.go, over
+// committedStateRoot). A forged class-A screen that seats a bonded-but-unqualified attester adds a
+// spurious validatorsSeen||id, inflating the seen set class-M then folds — wrong-latching everMature
 // early. recomputeMatureNow in ISOLATION cannot detect the spurious seating (seating is class A's job);
-// the DEFENSE is the class-A screen anchor (R1.2). So this gate drives the poison through the FULL
-// entry recomputeStateRootEntriesRevocations — the reachable path — and asserts the box STALLS at the
-// class-A anchor before the spurious ADD can inflate the seen set class-M inherits.
+// the DEFENSE is the class-A screen anchor. So this gate drives the poison through the FULL entry
+// recomputeStateRootEntriesRevocations — the reachable path — and asserts the box STALLS at the class-A
+// anchor before the spurious ADD can inflate the seen set class-M inherits.
 //
 // Fixture: a mature-epoch chain (MatureValidators=0 ⇒ everMature latched at genesis, epochSet frozen).
 // `third` bonds AFTER the genesis freeze, so it is bonded but NOT in the frozen epochSet — honest
-// apply() does NOT seat it (R-A-membership-source). At the test block `third` attests. A forged
-// InEpochSet=true would seat it into validatorsSeen, inflating the validatorsSeenRoot that class-M's
-// recomputeMatureNow reads over the committed root (the PE Q2 inheritance). The box must STALL at the
-// class-A anchor — closing the class-M inheritance AT SOURCE, so recomputeMatureNow never sees the
-// spuriously-seated member.
+// apply does NOT seat it. At the test block `third` attests. A forged InEpochSet=true would seat it
+// into validatorsSeen, inflating the validatorsSeenRoot that class-M's recomputeMatureNow reads over
+// the committed root. The box must STALL at the class-A anchor — closing the class-M inheritance AT
+// SOURCE, so recomputeMatureNow never sees the spuriously-seated member.
 //
 // NOTE ON THE ARCHITECTURAL CONSTRAINT (verified): an end-to-end everMature CROSSING via a spurious
 // seating is not constructible — everMature=false pre-state requires a young chain, but on a young
@@ -591,7 +589,7 @@ func spuriousSeatedRoot(t *testing.T, base *Chain, b Block, id ports.NodeID) por
 // So the reachable class-M defense is precisely the class-A screen anchor demonstrated here: with it,
 // the seen set class-M inherits from the committed root cannot be inflated by a forged screen.
 //
-// Gate ships RED on main by asserting the wrong-accept; after R1.2 it asserts the class-A stall.
+// Gate ships RED on main by asserting the wrong-accept; after the fix it asserts the class-A stall.
 func TestAdversarialRoot_ClassM_PoisonedBySpuriousAtt(t *testing.T) {
 	// MatureValidators=0: everMature latches at genesis, matureEpoch true. Epochs enabled + a genesis
 	// boundary freezes the epochSet, so a post-freeze bond is NOT in epochSet (the mature-epoch screen).
@@ -651,7 +649,8 @@ func TestAdversarialRoot_ClassM_PoisonedBySpuriousAtt(t *testing.T) {
 		return nil
 	}
 
-	// Test block at h=2: third attests. Honest apply() skips it (not in epochSet).
+	// Test block at h=2: third attests. Honest apply skips it (not in
+	// epochSet).
 	prev2, h2 := c.Head()
 	bTest := Block{Version: BlockVersionWitnessable, Height: h2, Prev: prev2, Entries: []ports.Entry{entry(88)}}
 	bTest.LastCommit = append(bTest.LastCommit, carrierEntry(c, third))
@@ -716,34 +715,34 @@ func TestAdversarialRoot_ClassM_PoisonedBySpuriousAtt(t *testing.T) {
 	forgedW.ChangedLeaves = append(append([]StateRootChangedLeafWitness(nil), w.ChangedLeaves...),
 		leafWit(statehash.Key(tagValidatorsSeen, thirdID[:])))
 
-	// R1.2: the box MUST STALL at the class-A anchor — the forged InEpochSet=true cannot prove present,
-	// so third is never seated, the spurious validatorsSeen ADD is never emitted, and class-M never
-	// inherits an inflated seen set. This is the PE Q2 corollary made testable end-to-end.
+	// The box MUST STALL at the class-A anchor — the forged InEpochSet=true cannot prove present, so
+	// third is never seated, the spurious validatorsSeen ADD is never emitted, and class-M never
+	// inherits an inflated seen set. That corollary is made testable end-to-end here.
 	err = recomputeViaHead(c, prevRoot, forgedRoot, bTest, forgedW)
 	if err == nil {
 		t.Fatalf("GATE FAILED (class-M poison via class-A): box WRONG-ACCEPTED a forged class-A seating\n"+
 			"  that would inflate validatorsSeenRoot and cross everMature early.\n"+
-			"  Expected a class-A stall (R1.2 anchors the screen). Got nil.\n"+
+			"  Expected a class-A stall (anchors the screen). Got nil.\n"+
 			"  forgedRoot=%x honestCommitted=%x spuriousMember=%x", forgedRoot, honestCommitted, thirdID[:4])
 	}
-	t.Logf("GATE GREEN (R1.2): class-M poison closed at source — forged class-A seating STALLS: %v\n"+
+	t.Logf("GATE GREEN: class-M poison closed at source — forged class-A seating STALLS: %v\n"+
 		"  spuriousMember=%x (bonded %d, not in epochSet). The class-A screen anchor forecloses the\n"+
-		"  spurious validatorsSeen||id ADD, so class-M inherits the honest seen set. PE Q2 corollary confirmed.",
+		"  spurious validatorsSeen||id ADD, so class-M inherits the honest seen set. a review corollary confirmed.",
 		err, thirdID[:4], c.bonded[thirdID])
 }
 
 // =============================================================================
-// PART 3 — R1.1 REMAINING ADVERSARIAL-COMMITTED-ROOT GATES
+// PART 3 — REMAINING ADVERSARIAL-COMMITTED GATES
 // =============================================================================
 //
 // These 8 gates complete the Tier-A adversarial-committed-root coverage.
 // Each gate:
-//   1. Builds a fixture where the forged field is meaningful (affects the recompute output).
-//   2. Forges the field value in the witness.
-//   3. Calls adversarialCommittedRoot → gets forgedRoot (same code path as the box).
-//   4. Asserts forgedRoot != honestRoot (forge is real, not vacuous).
-//   5. Asserts Recompute(prev, forgedRoot, b, forgedWit) == nil (wrong-accept = RED on main).
-//   nil = wrong-accept = RED gate = the gap is real. After R1.2 each gate must return non-nil.
+// 1. Builds a fixture where the forged field is meaningful (affects the recompute output).
+// 2. Forges the field value in the witness.
+// 3. Calls adversarialCommittedRoot → gets forgedRoot (same code path as the box).
+// 4. Asserts forgedRoot != honestRoot (forge is real, not vacuous).
+// 5. Asserts Recompute(prev, forgedRoot, b, forgedWit) == nil (wrong-accept = RED on main).
+// nil = wrong-accept = RED gate = the gap is real. After the fix each gate must return non-nil.
 
 // =============================================================================
 // CLASS P — RegVersion
@@ -760,7 +759,7 @@ func TestAdversarialRoot_ClassM_PoisonedBySpuriousAtt(t *testing.T) {
 // honest-root path stalls (mismatch). This gate proves the ADVERSARIAL-ROOT path wrong-accepts (nil).
 // Both are needed: the ablation confirms the field matters; this gate confirms it is attackable.
 //
-// Gate is RED on main (nil = wrong-accept). After R1.2 this gate must return non-nil.
+// Gate is RED on main (nil = wrong-accept). After the fix this gate must return non-nil.
 func TestAdversarialRoot_ClassP_ForgedRegVersion(t *testing.T) {
 	cfg := Config{Quorum: 1, MinBond: era4MinBond, MinBondBytes: era4MinBond, ByzantineQuorum: true,
 		EpochBlocks: 2, MatureValidators: 0, BondTTLBlocks: 0}
@@ -788,7 +787,7 @@ func TestAdversarialRoot_ClassP_ForgedRegVersion(t *testing.T) {
 	Sign(&b1, small)
 	c.apply(b1)
 
-	// Confirm honest apply() locks era-4 at h=2.
+	// Confirm honest apply locks era-4 at h=2.
 	prev2, h2 := c.Head()
 	rb := Block{Version: BlockVersionWitnessable, Height: h2, Prev: prev2, Entries: []ports.Entry{entry(99)}}
 	Sign(&rb, small)
@@ -817,7 +816,7 @@ func TestAdversarialRoot_ClassP_ForgedRegVersion(t *testing.T) {
 	}
 	w := f.witnessForBoundary(t, rb)
 
-	// Baseline: honest witness agrees with apply().
+	// Baseline: honest witness agrees with apply.
 	if checkErr := recomputeViaHead(f.c, f.prevRoot, honestCommitted, rb, w); checkErr != nil {
 		t.Fatalf("honest boundary witness must agree with apply(): %v", checkErr)
 	}
@@ -844,16 +843,16 @@ func TestAdversarialRoot_ClassP_ForgedRegVersion(t *testing.T) {
 		t.Fatalf("GATE VACUOUS: forgedRoot == honestCommitted (era4 lock unchanged by the forge)")
 	}
 
-	// R1.2: the box MUST STALL — the forged RegVersion=4 requires a MEMBERSHIP proof of regVersion||big
-	// at EncodeUint8(4), but the honest witness carries a membership proof of the TRUE value 5, so
+	// The box MUST STALL — the forged RegVersion=4 requires a MEMBERSHIP proof of regVersion||big at
+	// EncodeUint8(4), but the honest witness carries a membership proof of the TRUE value 5, so
 	// IsProvenPresent at 4 fails ⇒ stall at the class-P member anchor.
 	err = recomputeViaHead(f.c, f.prevRoot, forgedRoot, rb, w)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedRegVersion): box WRONG-ACCEPTED a forged RegVersion 5→4.\n"+
-			"  Expected a stall (R1.2 anchors RegVersion against regVersion||id). Got nil. bigID=%x originalRV=%d",
+			"  Expected a stall (anchors RegVersion against regVersion||id). Got nil. bigID=%x originalRV=%d",
 			bigID[:4], originalRV)
 	}
-	t.Logf("GATE GREEN (R1.2): forged RegVersion STALLS: %v\n  bigID=%x rv forged %d→4 — RegVersion anchored against regVersion||id.",
+	t.Logf("GATE GREEN: forged RegVersion STALLS: %v\n bigID=%x rv forged %d→4 — RegVersion anchored against regVersion||id.",
 		err, bigID[:4], originalRV)
 }
 
@@ -888,7 +887,7 @@ func forgedRootWithoutEra4Lock(t *testing.T, base *Chain, b Block) ports.Hash {
 // Same fixture as ForgedRegVersion. The forge is a different field (RegVersionKnown, not RegVersion),
 // but the effect on the tally is identical: the member stops counting toward the ready weight.
 //
-// Gate is RED on main (nil = wrong-accept). After R1.2 this gate must return non-nil.
+// Gate is RED on main (nil = wrong-accept). After the fix this gate must return non-nil.
 func TestAdversarialRoot_ClassP_ForgedRegVersionKnown(t *testing.T) {
 	cfg := Config{Quorum: 1, MinBond: era4MinBond, MinBondBytes: era4MinBond, ByzantineQuorum: true,
 		EpochBlocks: 2, MatureValidators: 0, BondTTLBlocks: 0}
@@ -965,15 +964,15 @@ func TestAdversarialRoot_ClassP_ForgedRegVersionKnown(t *testing.T) {
 		t.Fatalf("GATE VACUOUS: forgedRoot == honestCommitted (era4 lock unchanged by the forge)")
 	}
 
-	// R1.2: the box MUST STALL — the forged RegVersionKnown=false requires a NON-MEMBERSHIP proof of
-	// regVersion||big, but the honest witness carries a MEMBERSHIP proof (big's regVersion=5 leaf is
-	// present), so IsProvenAbsent fails ⇒ stall at the class-P member anchor.
+	// The box MUST STALL — the forged RegVersionKnown=false requires a NON-MEMBERSHIP proof of
+	// regVersion||big, but the honest witness carries a MEMBERSHIP proof (big's regVersion=5 leaf
+	// is present), so IsProvenAbsent fails ⇒ stall at the class-P member anchor.
 	err = recomputeViaHead(f.c, f.prevRoot, forgedRoot, rb, w)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedRegVersionKnown): box WRONG-ACCEPTED a forged RegVersionKnown=false.\n"+
-			"  Expected a stall (R1.2 anchors RegVersion against regVersion||id). Got nil. bigID=%x", bigID[:4])
+			"  Expected a stall (anchors RegVersion against regVersion||id). Got nil. bigID=%x", bigID[:4])
 	}
-	t.Logf("GATE GREEN (R1.2): forged RegVersionKnown STALLS: %v\n  bigID=%x — RegVersion anchored against regVersion||id under prevStateRoot.",
+	t.Logf("GATE GREEN: forged RegVersionKnown STALLS: %v\n bigID=%x — RegVersion anchored against regVersion||id under prevStateRoot.",
 		err, bigID[:4])
 }
 
@@ -989,13 +988,13 @@ func TestAdversarialRoot_ClassP_ForgedRegVersionKnown(t *testing.T) {
 // inflated validatorsSeenRoot → wrong-accept.
 //
 // Fixture: a slashed attester exists pre-state (applied via an equivocation proof). The test block
-// carries an att from the culprit. Honest apply() skips it (slashed). Gate forges Slashed=false →
+// carries an att from the culprit. Honest apply skips it (slashed). Gate forges Slashed=false →
 // box seats the culprit → inflated seen set → forgedRoot != honestRoot → nil (wrong-accept).
 //
-// Gate is RED on main (nil = wrong-accept). After R1.2 this gate must return non-nil.
+// Gate is RED on main (nil = wrong-accept). After the fix this gate must return non-nil.
 func TestAdversarialRoot_ClassA_ForgedSlashed(t *testing.T) {
-	// EpochBlocks=0: epochsEnabled()=false → pre-maturity A-qualification path always active.
-	// MatureValidators=0: Mature()=true always → everMature=true post-genesis → latchedMaturityWitness works (no SeenSet).
+	// EpochBlocks=0: epochsEnabled=false → pre-maturity A-qualification path always active. MatureValidators=0:
+	// Mature=true always → everMature=true post-genesis → latchedMaturityWitness works (no SeenSet).
 	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
 		EpochBlocks: 0, MatureValidators: 0, BondTTLBlocks: 0}
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
@@ -1053,7 +1052,8 @@ func TestAdversarialRoot_ClassA_ForgedSlashed(t *testing.T) {
 		return nil
 	}
 
-	// Test block: culprit attests at h=2. Honest apply() skips culprit (slashed).
+	// Test block: culprit attests at h=2. Honest apply skips culprit
+	// (slashed).
 	prev2, h2 := c.Head()
 	bTest := Block{Version: BlockVersionWitnessable, Height: h2, Prev: prev2, Entries: []ports.Entry{entry(77)}}
 	bTest.LastCommit = append(bTest.LastCommit, carrierEntry(c, culprit))
@@ -1094,10 +1094,10 @@ func TestAdversarialRoot_ClassA_ForgedSlashed(t *testing.T) {
 		t.Fatalf("Prove(validatorsSeenRoot): %v", pErr)
 	}
 
-	// epochsEnabled()=false (EpochBlocks=0) → pre-maturity A-qualification: (BondedPresent && BondedSize >= MinBond) || launchAnchor.
-	// Honest: Slashed=true → F2 gate → false (BondedSize/BondedPresent irrelevant for F2).
-	// NOTE: slashing removes culprit from bonded map (chain.go:3288), so c.bonded[culpritID]=0.
-	// The honest screen reflects the real post-slash state: not bonded.
+	// epochsEnabled=false (EpochBlocks=0) → pre-maturity A-qualification: (BondedPresent && BondedSize >= MinBond) ||
+	// launchAnchor. Honest: Slashed=true → F2 gate → false (BondedSize/BondedPresent irrelevant for F2). NOTE: slashing removes
+	// culprit from bonded map (chain.go), so c.bonded[culpritID]=0. The honest screen reflects the real post-slash state: not
+	// bonded.
 	honestScreen := StateRootAttScreen{
 		Attester: culpritID, Slashed: true, InEpochSet: false,
 		BondedSize: 0, BondedPresent: false,
@@ -1144,9 +1144,9 @@ func TestAdversarialRoot_ClassA_ForgedSlashed(t *testing.T) {
 	err = recomputeViaHead(c, prevRoot, forgedRoot, bTest, forgedW)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedSlashed): box WRONG-ACCEPTED a forged Slashed=false for a slashed culprit.\n"+
-			"  Expected a stall (R1.2 anchors Slashed against slashed||id). Got nil. culpritID=%x", culpritID[:4])
+			"  Expected a stall (anchors Slashed against slashed||id). Got nil. culpritID=%x", culpritID[:4])
 	}
-	t.Logf("GATE GREEN (R1.2): forged Slashed STALLS: %v\n  culpritID=%x — Slashed anchored against slashed||id under prevStateRoot.",
+	t.Logf("GATE GREEN: forged Slashed STALLS: %v\n culpritID=%x — Slashed anchored against slashed||id under prevStateRoot.",
 		err, culpritID[:4])
 }
 
@@ -1162,14 +1162,14 @@ func TestAdversarialRoot_ClassA_ForgedSlashed(t *testing.T) {
 // validatorsSeen ADD → inflated validatorsSeenRoot → wrong-accept.
 //
 // Fixture: MatureValidators=0 (everMature=true after genesis → latchedMaturityWitness works, no SeenSet
-// needed), EpochBlocks=0 (epochsEnabled()=false → pre-maturity A-qualification path always active).
-// One attester bonded below MinBond. Test block has that attester attest. Honest: excluded. Forged:
+// needed), EpochBlocks=0 (epochsEnabled=false → pre-maturity A-qualification path always active). One
+// attester bonded below MinBond. Test block has that attester attest. Honest: excluded. Forged:
 // BondedSize raised to MinBond → included.
 //
-// Gate is RED on main (nil = wrong-accept). After R1.2 this gate must return non-nil.
+// Gate is RED on main (nil = wrong-accept). After the fix this gate must return non-nil.
 func TestAdversarialRoot_ClassA_ForgedBondedSize(t *testing.T) {
-	// EpochBlocks=0: no epochs → epochsEnabled()=false → pre-maturity path always.
-	// MatureValidators=0: Mature()=true always → everMature=true after genesis → latchedMaturityWitness ok.
+	// EpochBlocks=0: no epochs → epochsEnabled=false → pre-maturity path always. MatureValidators=0:
+	// Mature=true always → everMature=true after genesis → latchedMaturityWitness ok.
 	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
 		EpochBlocks: 0, MatureValidators: 0, BondTTLBlocks: 0}
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
@@ -1305,10 +1305,10 @@ func TestAdversarialRoot_ClassA_ForgedBondedSize(t *testing.T) {
 	err = recomputeViaHead(c, prevRoot, forgedRoot, bTest, forgedW)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedBondedSize): box WRONG-ACCEPTED a forged BondedSize %d→%d.\n"+
-			"  Expected a stall (R1.2 anchors BondedSize against bonded||id). Got nil. underBondedID=%x",
+			"  Expected a stall (anchors BondedSize against bonded||id). Got nil. underBondedID=%x",
 			ubBonded, forgedBondedSize, underBondedID[:4])
 	}
-	t.Logf("GATE GREEN (R1.2): forged BondedSize STALLS: %v\n  underBondedID=%x forged %d→%d — BondedSize anchored against bonded||id.",
+	t.Logf("GATE GREEN: forged BondedSize STALLS: %v\n underBondedID=%x forged %d→%d — BondedSize anchored against bonded||id.",
 		err, underBondedID[:4], ubBonded, forgedBondedSize)
 }
 
@@ -1325,7 +1325,7 @@ func TestAdversarialRoot_ClassA_ForgedBondedSize(t *testing.T) {
 //
 // Same fixture design as BondedSize: MatureValidators=0, EpochBlocks=0.
 //
-// Gate is RED on main (nil = wrong-accept). After R1.2 this gate must return non-nil.
+// Gate is RED on main (nil = wrong-accept). After the fix this gate must return non-nil.
 func TestAdversarialRoot_ClassA_ForgedBondedPresent(t *testing.T) {
 	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
 		EpochBlocks: 0, MatureValidators: 0, BondTTLBlocks: 0}
@@ -1452,9 +1452,9 @@ func TestAdversarialRoot_ClassA_ForgedBondedPresent(t *testing.T) {
 	err = recomputeViaHead(c, prevRoot, forgedRoot, bTest, forgedW)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedBondedPresent): box WRONG-ACCEPTED a forged BondedPresent false→true.\n"+
-			"  Expected a stall (R1.2 anchors BondedPresent against bonded||id). Got nil. notBondedID=%x", notBondedID[:4])
+			"  Expected a stall (anchors BondedPresent against bonded||id). Got nil. notBondedID=%x", notBondedID[:4])
 	}
-	t.Logf("GATE GREEN (R1.2): forged BondedPresent STALLS: %v\n  notBondedID=%x — BondedPresent anchored against bonded||id.",
+	t.Logf("GATE GREEN: forged BondedPresent STALLS: %v\n notBondedID=%x — BondedPresent anchored against bonded||id.",
 		err, notBondedID[:4])
 }
 
@@ -1473,7 +1473,7 @@ func TestAdversarialRoot_ClassA_ForgedBondedPresent(t *testing.T) {
 // Fixture: buildBondFixture has a genesis squatter on a shared root (unproven). The gate forges the
 // screen to report the squatter's PriorOwner AS the new honest registrant → displacement suppressed.
 //
-// Gate is RED on main (nil = wrong-accept). After R1.2 this gate must return non-nil.
+// Gate is RED on main (nil = wrong-accept). After the fix this gate must return non-nil.
 func TestAdversarialRoot_ClassB_ForgedPriorOwner(t *testing.T) {
 	f := buildBondFixture(t)
 	prev, h := f.c.Head()
@@ -1484,7 +1484,7 @@ func TestAdversarialRoot_ClassB_ForgedPriorOwner(t *testing.T) {
 	b := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev,
 		BondRegs: []BondReg{bondRegFull(honest, f.sharedRoot, 4<<20, prev, 5, 3)}}
 
-	// Confirm displacement fires in honest apply().
+	// Confirm displacement fires in honest apply.
 	sanity := f.c.cloneForDryRun()
 	sanity.apply(b)
 	if _, still := sanity.bonded[sqID]; still {
@@ -1495,14 +1495,15 @@ func TestAdversarialRoot_ClassB_ForgedPriorOwner(t *testing.T) {
 	newDue := h + f.c.cfg.BondTTLBlocks + 1
 	w := f.bondWitness(t, b, []uint64{newDue})
 
-	// Honest witness agrees with apply().
+	// Honest witness agrees with apply.
 	if checkErr := recomputeViaHead(f.c, f.prevRoot, honestCommitted, b, w); checkErr != nil {
 		t.Fatalf("honest witness (displacement) must agree with apply(): %v", checkErr)
 	}
 
 	// FORGE PriorOwner: claim the shared root's prior owner IS the new honest registrant.
-	// stateRootBondRegWriteSet reads: `if o, isClaimed := owner[root]; isClaimed && o != id`.
-	// With o=honestID, id=honestID: o==id → false → branch skipped → squatter NOT displaced.
+	// stateRootBondRegWriteSet reads: `if o, isClaimed:= owner[root]; isClaimed && o !=
+	// id`. With o=honestID, id=honestID: o==id → false → branch skipped → squatter NOT
+	// displaced.
 	for i := range w.BondRegScreens {
 		if w.BondRegScreens[i].Root == f.sharedRoot {
 			w.BondRegScreens[i].PriorOwner = honestID // forge: claim honest IS the prior owner
@@ -1518,16 +1519,16 @@ func TestAdversarialRoot_ClassB_ForgedPriorOwner(t *testing.T) {
 		t.Fatalf("GATE VACUOUS: forgedRoot == honestCommitted (squatter standing unchanged)")
 	}
 
-	// R1.2: the box MUST STALL — the forged PriorOwner=honestID requires a MEMBERSHIP proof of
-	// bondRootOwner||sharedRoot at EncodeID(honestID), but the honest OwnerProof proves the TRUE owner
-	// (the squatter), so IsProvenPresent at the forged owner fails ⇒ class-B stall.
+	// The box MUST STALL — the forged PriorOwner=honestID requires a MEMBERSHIP proof of
+	// bondRootOwner||sharedRoot at EncodeID(honestID), but the honest OwnerProof proves the TRUE
+	// owner (the squatter), so IsProvenPresent at the forged owner fails ⇒ class-B stall.
 	err := recomputeViaHead(f.c, f.prevRoot, forgedRoot, b, w)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedPriorOwner): box WRONG-ACCEPTED a forged PriorOwner (=honestID → no displacement).\n"+
-			"  Expected a stall (R1.2 anchors PriorOwner against bondRootOwner||root). Got nil. sqID=%x honestID=%x",
+			"  Expected a stall (anchors PriorOwner against bondRootOwner||root). Got nil. sqID=%x honestID=%x",
 			sqID[:4], honestID[:4])
 	}
-	t.Logf("GATE GREEN (R1.2): forged PriorOwner STALLS: %v\n  sqID=%x honestID=%x — PriorOwner anchored against bondRootOwner||root.",
+	t.Logf("GATE GREEN: forged PriorOwner STALLS: %v\n sqID=%x honestID=%x — PriorOwner anchored against bondRootOwner||root.",
 		err, sqID[:4], honestID[:4])
 }
 
@@ -1563,11 +1564,11 @@ func forgedRootDisplacementSuppressed(t *testing.T, base *Chain, b Block, sqID p
 // StateRootBondRegScreen.Claimed.
 //
 // Attack: forge Claimed=false for a root that IS honestly claimed by the squatter. The displacement
-// branch `if o, isClaimed := owner[root]; isClaimed && o != id` requires isClaimed=true. With
-// Claimed=false, isClaimed=false → branch skipped → no displacement. Squatter keeps standing.
-// The attacker commits the delta without squatter deletes → wrong-accept.
+// branch `if o, isClaimed:= owner[root]; isClaimed && o != id` requires isClaimed=true. With
+// Claimed=false, isClaimed=false → branch skipped → no displacement. Squatter keeps standing. The
+// attacker commits the delta without squatter deletes → wrong-accept.
 //
-// Gate is RED on main (nil = wrong-accept). After R1.2 this gate must return non-nil.
+// Gate is RED on main (nil = wrong-accept). After the fix this gate must return non-nil.
 func TestAdversarialRoot_ClassB_ForgedClaimed(t *testing.T) {
 	f := buildBondFixture(t)
 	prev, h := f.c.Head()
@@ -1607,15 +1608,15 @@ func TestAdversarialRoot_ClassB_ForgedClaimed(t *testing.T) {
 		t.Fatalf("GATE VACUOUS: forgedRoot == honestCommitted (squatter standing unchanged)")
 	}
 
-	// R1.2: the box MUST STALL — the forged Claimed=false requires a NON-MEMBERSHIP proof of
-	// bondRootOwner||sharedRoot, but the honest OwnerProof proves it PRESENT (the squatter owns it), so
-	// IsProvenAbsent fails ⇒ class-B stall.
+	// The box MUST STALL — the forged Claimed=false requires a NON-MEMBERSHIP proof of
+	// bondRootOwner||sharedRoot, but the honest OwnerProof proves it PRESENT (the squatter owns it),
+	// so IsProvenAbsent fails ⇒ class-B stall.
 	err := recomputeViaHead(f.c, f.prevRoot, forgedRoot, b, w)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedClaimed): box WRONG-ACCEPTED a forged Claimed true→false (displacement skipped).\n"+
-			"  Expected a stall (R1.2 anchors Claimed against bondRootOwner||root). Got nil. sqID=%x", sqID[:4])
+			"  Expected a stall (anchors Claimed against bondRootOwner||root). Got nil. sqID=%x", sqID[:4])
 	}
-	t.Logf("GATE GREEN (R1.2): forged Claimed STALLS: %v\n  sqID=%x — Claimed anchored against bondRootOwner||root.",
+	t.Logf("GATE GREEN: forged Claimed STALLS: %v\n sqID=%x — Claimed anchored against bondRootOwner||root.",
 		err, sqID[:4])
 }
 
@@ -1636,7 +1637,7 @@ func TestAdversarialRoot_ClassB_ForgedClaimed(t *testing.T) {
 // standing AND the honest reg gets no standing. The committed delta omits both the squatter deletes
 // AND the honest reg inserts. The attacker commits this root → wrong-accept.
 //
-// Gate is RED on main (nil = wrong-accept). After R1.2 this gate must return non-nil.
+// Gate is RED on main (nil = wrong-accept). After the fix this gate must return non-nil.
 func TestAdversarialRoot_ClassB_ForgedPriorProven(t *testing.T) {
 	f := buildBondFixture(t)
 	prev, h := f.c.Head()
@@ -1647,7 +1648,8 @@ func TestAdversarialRoot_ClassB_ForgedPriorProven(t *testing.T) {
 	b := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev,
 		BondRegs: []BondReg{bondRegFull(honest, f.sharedRoot, 4<<20, prev, 5, 3)}}
 
-	// Confirm displacement fires AND honest reg lands in honest apply().
+	// Confirm displacement fires AND honest reg lands in honest
+	// apply.
 	sanity := f.c.cloneForDryRun()
 	sanity.apply(b)
 	if _, still := sanity.bonded[sqID]; still {
@@ -1670,7 +1672,7 @@ func TestAdversarialRoot_ClassB_ForgedPriorProven(t *testing.T) {
 	}
 
 	// FORGE: PriorProven=false → true. Displacement condition:
-	//   proven(h=1>0=true) && !provenRoot[root](=!true=false) → false → !false → continue.
+	// proven(h=1>0=true) && !provenRoot[root](=!true=false) → false → !false → continue.
 	// The honest reg is REJECTED (continues out of loop body without writing anything).
 	// The box derives a delta where: no squatter deletes, no honest reg inserts.
 	// This matches a root where the squatter is still bonded and honest reg is absent.
@@ -1690,16 +1692,17 @@ func TestAdversarialRoot_ClassB_ForgedPriorProven(t *testing.T) {
 		t.Fatalf("GATE VACUOUS: prevRoot == honestCommitted (the honest reg produced no state change?)")
 	}
 
-	// R1.2: the box MUST STALL — the forged PriorProven=true requires a MEMBERSHIP proof of
-	// bondRootProven||sharedRoot at EncodeBool(true), but the squatter's root is UNPROVEN (no proven
-	// leaf), so the honest ProvenProof proves ABSENT and IsProvenPresent fails ⇒ class-B stall.
+	// The box MUST STALL — the forged PriorProven=true requires a MEMBERSHIP proof of
+	// bondRootProven||sharedRoot at EncodeBool(true), but the squatter's root is UNPROVEN (no
+	// proven leaf), so the honest ProvenProof proves ABSENT and IsProvenPresent fails ⇒ class-B
+	// stall.
 	err := recomputeViaHead(f.c, f.prevRoot, forgedRoot, b, w)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedPriorProven): box WRONG-ACCEPTED a forged PriorProven false→true (honest reg rejected).\n"+
-			"  Expected a stall (R1.2 anchors PriorProven against bondRootProven||root). Got nil. sqID=%x honestID=%x",
+			"  Expected a stall (anchors PriorProven against bondRootProven||root). Got nil. sqID=%x honestID=%x",
 			sqID[:4], honestID[:4])
 	}
-	t.Logf("GATE GREEN (R1.2): forged PriorProven STALLS: %v\n  sqID=%x honestID=%x — PriorProven anchored against bondRootProven||root.",
+	t.Logf("GATE GREEN: forged PriorProven STALLS: %v\n sqID=%x honestID=%x — PriorProven anchored against bondRootProven||root.",
 		err, sqID[:4], honestID[:4])
 }
 
@@ -1708,24 +1711,24 @@ func TestAdversarialRoot_ClassB_ForgedPriorProven(t *testing.T) {
 // =============================================================================
 //
 // TestAdversarialRootCoverageIsComplete reflects over the three untrusted witness CARRIER structs and
-// asserts every field is classified in the R1.2 cert table with a disposition of either:
-//   - "FIX"            — the field feeds a NewValue or a branch predicate and has a driven
-//                        adversarial-root gate (named) that reddens if its anchor is dropped; or
-//   - "already-anchored" — the field is a pure OldValue/proof/key already verified by the fold or is
-//                        own-cfg (with a stated reason).
+// asserts every field is classified in the research table with a disposition of either:
+// - "FIX" — the field feeds a NewValue or a branch predicate and has a driven
+// adversarial-root gate (named) that reddens if its anchor is dropped; or
+// - "already-anchored" — the field is a pure OldValue/proof/key already verified by the fold or is
+// own-cfg (with a stated reason).
 //
 // Modeled on TestLeafDiffGuardCoversEveryEmittableTag (floorbox_recompute_leafdiff_v5_test.go): the
 // table is keyed on reflect.TypeOf, NOT a hand list, so a NEW field on any carrier reddens this test
-// until it is classified. That closes the silent-new-hole gap (PE ruling Tier C). Its teeth are
-// demonstrated by TestAdversarialRootCoverageMetaHasTeeth below.
+// until it is classified. That closes the silent-new-hole gap. Its teeth are demonstrated by
+// TestAdversarialRootCoverageMetaHasTeeth below.
 
-// r12Disposition classifies one carrier field for the R1.2 witness-soundness coverage cert.
+// r12Disposition classifies one carrier field for the witness-soundness coverage cert.
 type r12Disposition struct {
 	kind   string // "FIX" or "already-anchored"
 	detail string // the driven gate name (FIX) or the anchoring reason (already-anchored)
 }
 
-// r12CoverageTable is the cert table: carrier struct name → field name → disposition. It is checked
+// r12CoverageTable is the research table: carrier struct name → field name → disposition. It is checked
 // against the reflected fields of each carrier, so it cannot silently drift from the structs.
 var r12CoverageTable = map[string]map[string]r12Disposition{
 	"StateRootAttScreen": {
@@ -1760,17 +1763,17 @@ var r12CoverageTable = map[string]map[string]r12Disposition{
 	},
 	// The StateRootRotateScalar carrier is reflection-pinned. OldValue is dual-role: for an ALWAYS-emitted
 	// scalar (epochStart) it is the fold OldValue (emit-anchored); for a SUPPRESSIBLE scalar (matureEpoch
-	// + the three lock-in bools) the emit can be skipped, so the fold does NOT anchor it — DIRECTION A
-	// anchors it with an unconditional pre-state Resolve (classP-anchoring cert 2026-09-02). Because the
+	// + the three lock-in bools) the emit can be skipped, so the fold does NOT anchor it — the pre-state anchor
+	// anchors it with an unconditional pre-state Resolve. Because the
 	// disposition of OldValue depends on WHICH scalar carries it, it is classified SUPPRESS-SPLIT and the
-	// per-scalar obligations live in scalarSuppressObligations below (R-COVERAGE-SCALAR-SPLIT) — a future
+	// per-scalar obligations live in scalarSuppressObligations below — a future
 	// suppressible scalar cannot be wholesale-classified "anchored". Proof is the always-anchored fold
 	// inclusion proof. See floorbox_recompute_perfield_oracle_v5_test.go PART C.
 	"StateRootRotateScalar": {
 		"OldValue": {"SUPPRESS-SPLIT", "scalarSuppressObligations (per-scalar: emit-anchored vs suppress-anchored)"},
 		"Proof":    {"already-anchored", "the scalar leaf inclusion proof, verified by the fold OldValue vs prevStateRoot when the scalar op is emitted"},
 	},
-	// NOTE: the class-M carrier StateRootMaturityWitness — which since R-FOLD-LIVE-STATE-READS homes
+	// NOTE: the class-M carrier StateRootMaturityWitness — which homes
 	// BOTH young→mature handoff scalars (everMature and matureEpoch) — is owned by
 	// foldInputCoverageTable (floorbox_recompute_carrier_reflection_v5_test.go). A carrier is declared
 	// in EXACTLY ONE table; the reflection pin reddens on a carrier in both. Its per-scalar
@@ -1778,9 +1781,8 @@ var r12CoverageTable = map[string]map[string]r12Disposition{
 }
 
 // scalarSuppressPath classifies one class-P/M scalar's OldValue anchoring obligation. This is the
-// R-COVERAGE-SCALAR-SPLIT: the coverage walk must model the emit-vs-suppress distinction the R1.4 Q1
-// row missed. An emit-anchored scalar's OldValue is fold-verified because its emit ALWAYS fires; a
-// suppress-anchored scalar's emit can be SKIPPED, so it needs the DIRECTION A pre-state anchor and a
+// The coverage walk must model the emit-vs-suppress distinction an earlier walk missed. An emit-anchored scalar's OldValue is fold-verified because its emit ALWAYS fires; a
+// suppress-anchored scalar's emit can be SKIPPED, so it needs the pre-state anchor and a
 // driven suppression gate (named) that reddens if the anchor is dropped.
 type scalarSuppressPath struct {
 	kind string // "emit-anchored" or "suppress-anchored"
@@ -1790,30 +1792,30 @@ type scalarSuppressPath struct {
 // scalarSuppressObligations enumerates EVERY class-P/M scalar the recompute reads, split by whether its
 // emit is suppressible. A new scalar tag added to the recompute must be classified here or the split
 // coverage test reddens (TestScalarSuppressSplitIsComplete). The suppress-anchored rows name the driven
-// gate that asserts the box STALLS on a forged suppression (Direction A).
+// gate that asserts the box STALLS on a forged suppression (pre-state anchor).
 var scalarSuppressObligations = map[string]scalarSuppressPath{
 	// Emit-anchored: newValue strictly advances every boundary, so the emit ALWAYS fires and the fold
-	// verifies OldValue. No suppression path exists (cert §1a).
+	// verifies OldValue. No suppression path exists.
 	tagEpochStart: {"emit-anchored", "TestPerField_RotateScalar_EpochStart_Anchored (height strictly advances ⇒ always emits)"},
-	// Suppress-anchored (Direction A): a forged OldValue equal to the post-value suppresses the emit;
+	// Suppress-anchored (pre-state anchor): a forged OldValue equal to the post-value suppresses the emit;
 	// anchored unconditionally against prevStateRoot before the emit/branch decision.
 	// matureEpoch has TWO consumers: class P's boundary WRITE (suppressible emit) and — since
-	// R-FOLD-LIVE-STATE-READS (2026-09-02) — the class-A screen's BRANCH SELECTOR, anchored on EVERY
+	// the class-A screen's BRANCH SELECTOR, anchored on EVERY
 	// block by handoffPreState. Both are driven.
-	tagMatureEpoch:  {"suppress-anchored", "TestRecomputeStateRootRotateMatureEpochOldValueSuppressionStalls + TestColdBox_D1_ForgedMatureEpochOldValueStalls"},
+	tagMatureEpoch:  {"suppress-anchored", "TestRecomputeStateRootRotateMatureEpochOldValueSuppressionStalls + TestColdBoxForgedMatureEpochOldValueStalls"},
 	tagEverMature:   {"suppress-anchored", "TestClassMEverMatureOldValueSuppressionStalls"},
 	tagGateLockedIn: {"suppress-anchored", "TestOpenBreak_GateLockedInOldValuePredicate"},
 	tagEra3LockedIn: {"suppress-anchored", "TestOpenBreak_Era3LockedInOldValuePredicate"},
 	tagEra4LockedIn: {"suppress-anchored", "TestOpenBreak_Era4LockedInOldValuePredicate"},
 }
 
-// r12Carriers returns the reflected type of each untrusted witness carrier the R1.2 fix anchors.
+// r12Carriers returns the reflected type of each untrusted witness carrier the fix anchors.
 func r12Carriers() []reflect.Type {
 	return []reflect.Type{
 		reflect.TypeOf(StateRootAttScreen{}),
 		reflect.TypeOf(StateRootRotateMember{}),
 		reflect.TypeOf(StateRootBondRegScreen{}),
-		reflect.TypeOf(StateRootRotateScalar{}), // R1.6: closes R-CARRIER-REFLECTION for the scalar carrier
+		reflect.TypeOf(StateRootRotateScalar{}), // closes the gap for the scalar carrier
 	}
 }
 
@@ -1822,7 +1824,7 @@ func TestAdversarialRootCoverageIsComplete(t *testing.T) {
 		name := carrier.Name()
 		table, ok := r12CoverageTable[name]
 		if !ok {
-			t.Fatalf("COVERAGE GAP: carrier %s has no R1.2 cert-table entry. Classify every field FIX or already-anchored.", name)
+			t.Fatalf("COVERAGE GAP: carrier %s has no cert-table entry. Classify every field FIX or already-anchored.", name)
 		}
 		// Every reflected field must be classified.
 		seen := map[string]struct{}{}
@@ -1831,7 +1833,7 @@ func TestAdversarialRootCoverageIsComplete(t *testing.T) {
 			seen[f.Name] = struct{}{}
 			disp, classified := table[f.Name]
 			if !classified {
-				t.Fatalf("COVERAGE GAP: %s.%s is UNCLASSIFIED in the R1.2 cert table.\n"+
+				t.Fatalf("COVERAGE GAP: %s.%s is UNCLASSIFIED in the cert table.\n"+
 					"  A new untrusted field must be either FIX (with a driven adversarial-root gate) or\n"+
 					"  already-anchored (with a stated reason). Add it to r12CoverageTable.", name, f.Name)
 			}
@@ -1871,7 +1873,7 @@ func TestAdversarialRootCoverageIsComplete(t *testing.T) {
 		t.Fatalf("COVERAGE: expected 10 per-field FIX gates in the cert table, got %d: %v", len(fixGates), fixGates)
 	}
 	// FIX-OPEN rows: a confirmed wrong-accept awaiting an anchoring fix. The class-P scalar OldValue break
-	// is now CLOSED by Direction A (classP-anchoring cert 2026-09-02), so the count MUST be 0 — the
+	// is now CLOSED by the pre-state anchor, so the count MUST be 0 — the
 	// scalar OldValue is reclassified SUPPRESS-SPLIT with the per-scalar suppress gates in
 	// scalarSuppressObligations. A NEW FIX-OPEN would have to be a routed, named entry, never a silent one.
 	openGates := map[string]string{}
@@ -1887,19 +1889,19 @@ func TestAdversarialRootCoverageIsComplete(t *testing.T) {
 		}
 	}
 	if len(openGates) != 0 {
-		t.Fatalf("COVERAGE: expected 0 FIX-OPEN rows (the class-P scalar OldValue break is closed by Direction A),\n"+
+		t.Fatalf("COVERAGE: expected 0 FIX-OPEN rows (the class-P scalar OldValue break is closed by the pre-state anchor),\n"+
 			"  got %d: %v. A live FIX-OPEN is a routed, named open break — if this is the scalar OldValue row,\n"+
 			"  reclassify it SUPPRESS-SPLIT (scalarSuppressObligations); if a NEW break, route and name it.",
 			len(openGates), openGates)
 	}
 }
 
-// TestScalarSuppressSplitIsComplete is the R-COVERAGE-SCALAR-SPLIT walk (classP-anchoring cert
-// 2026-09-02): every class-P/M scalar tag the recompute reads is classified in scalarSuppressObligations
-// as emit-anchored or suppress-anchored, with a named driven gate. The teeth: a suppressible scalar left
-// UNclassified (or misclassified emit-anchored) is what let the R1.4 Q1 row wholesale-call the scalar
-// carrier "anchored" — the third-recurrence hole. This pins the split so a future suppressible scalar
-// must be classified with its own suppression gate. TestScalarSuppressSplitHasTeeth proves it bites.
+// TestScalarSuppressSplitIsComplete is the walk: every class-P/M
+// scalar tag the recompute reads is classified in scalarSuppressObligations as emit-anchored or
+// suppress-anchored, with a named driven gate. The teeth: a suppressible scalar left UNclassified (or
+// misclassified emit-anchored) is what let an earlier walk wholesale-call the scalar carrier "anchored"
+// — the third-recurrence hole. This pins the split so a future suppressible scalar must be classified
+// with its own suppression gate. TestScalarSuppressSplitHasTeeth proves it bites.
 func TestScalarSuppressSplitIsComplete(t *testing.T) {
 	// The complete set of class-P/M scalar tags the recompute reads (rotate_v5.go scalars + the class-M
 	// everMature latch). This list is the pin: adding a scalar to the recompute without adding it here
@@ -1913,7 +1915,7 @@ func TestScalarSuppressSplitIsComplete(t *testing.T) {
 		if !ok {
 			t.Fatalf("SPLIT GAP: scalar tag %q is read by the recompute but UNCLASSIFIED in "+
 				"scalarSuppressObligations. Classify it emit-anchored (always emits) or suppress-anchored "+
-				"(needs a Direction A pre-state anchor + a driven suppression gate).", tag)
+				"(needs a pre-state anchor + a driven suppression gate).", tag)
 		}
 		if ob.kind != "emit-anchored" && ob.kind != "suppress-anchored" {
 			t.Fatalf("SPLIT GAP: scalar %q has invalid kind %q (want emit-anchored or suppress-anchored)", tag, ob.kind)
@@ -1933,7 +1935,7 @@ func TestScalarSuppressSplitIsComplete(t *testing.T) {
 		}
 	}
 	// The height scalars (gateHeight/era3Height/era4Height) are DELIBERATELY not listed: they ride their
-	// lock-in bool (cert §1b) — suppressing the bool suppresses the pair, so anchoring the bool closes
+	// lock-in bool — suppressing the bool suppresses the pair, so anchoring the bool closes
 	// them. They keep their emit-time fold anchor and need no separate suppress obligation.
 }
 
@@ -1961,8 +1963,8 @@ func TestScalarSuppressSplitHasTeeth(t *testing.T) {
 }
 
 // TestAdversarialRootCoverageMetaHasTeeth proves the coverage meta-assertion is not decoration: a field
-// dropped from the cert table (simulating an un-classified new field) MUST be reported as a gap by the
-// same reflect walk. A meta-assertion with no demonstrated red is a comment that compiles (session-7).
+// dropped from the research table (simulating an un-classified new field) MUST be reported as a gap by the
+// same reflect walk. A meta-assertion with no demonstrated red is a comment that compiles.
 func TestAdversarialRootCoverageMetaHasTeeth(t *testing.T) {
 	carrier := reflect.TypeOf(StateRootAttScreen{})
 	full := r12CoverageTable[carrier.Name()]

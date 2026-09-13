@@ -1,10 +1,10 @@
-// Objective fork-choice wiring (M0 consensus D2 / red-team F6). These turn a
-// validator's replica from the subjective reputation view onto the objective,
-// on-chain PoST-bond view: the chain verifies bond registrations with the same
-// space-time primitive the audit loop uses (EnableObjectiveChain), and a node
-// mints its own registration from its held bond (RegisterBondReg). With MinBond
-// set, quorum and eligibility then become a function of the chain — identical on
-// every replica — so honest replicas can no longer diverge.
+// Objective fork-choice wiring (M0 consensus D2 /). These turn a validator's
+// replica from the subjective reputation view onto the objective, on-chain
+// PoST-bond view: the chain verifies bond registrations with the same space-time
+// primitive the audit loop uses (EnableObjectiveChain), and a node mints its own
+// registration from its held bond (RegisterBondReg). With MinBond set, quorum
+// and eligibility then become a function of the chain — identical on every
+// replica — so honest replicas can no longer diverge.
 package node
 
 import (
@@ -16,12 +16,11 @@ import (
 
 // SpaceTimeBondVerifier returns the bond.VerifySpaceTime-backed verifier
 // closure the objective chain runs over committed BondRegs. Exported so the
-// daemon can wire it onto a replica BEFORE chainstore.Replay: objective() is
+// daemon can wire it onto a replica BEFORE chainstore.Replay: objective is
 // MinBond>0 AND verifyBond!=nil, so a replay executed before the verifier is
 // wired silently falls to the LEGACY rep-gated qualification — with an empty
-// boot ledger, validatorsSeen rebuilds EMPTY and the everMature latch is lost
-// (#572: the 474718e-deep/8a52aba-deep restore under-latch — saved seen=12
-// everMature=true, restored seen=0 everMature=false over identical blocks).
+// boot ledger, validatorsSeen rebuilds EMPTY and the everMature latch is
+// lost.
 func SpaceTimeBondVerifier(delay uint64, k int) func(pk []byte, root ports.Hash, size int64, nonce uint64, answer []byte) bool {
 	return func(pk []byte, root ports.Hash, size int64, nonce uint64, answer []byte) bool {
 		ans, err := bond.DecodeAnswer(answer)
@@ -39,7 +38,7 @@ func SpaceTimeBondVerifier(delay uint64, k int) func(pk []byte, root ports.Hash,
 // replica so on-chain BondRegs are re-checked against the real bond primitive
 // (bond.VerifySpaceTime, the same check the audit loop runs). Call after
 // EnableChain. It only changes behavior when the chain's Config.MinBond > 0 —
-// otherwise the replica stays on the legacy reputation path. NOTE (#572): a
+// otherwise the replica stays on the legacy reputation path. NOTE: a
 // replica that REPLAYS history (chainstore.Replay) must have the verifier
 // wired BEFORE the replay — the daemon does this directly via
 // SpaceTimeBondVerifier; Reload refuses an objective-config replay without it.
@@ -72,17 +71,17 @@ func (n *Node) RegisterBondReg(prev ports.Hash) (chain.BondReg, bool) {
 
 // SubmitBondRenewal broadcasts a fresh self-signed bond registration to peers so
 // whichever one proposes next folds it into a block — the NON-PROPOSER renewal
-// path (H2 / red-team RT-2). It is the liveness half of a bond TTL: an attest-only
-// validator that still holds its plot can answer the fresh challenge and so keeps
-// its objective standing without ever proposing, while a validator that RELEASED
-// its plot (the release-and-coast attack) cannot produce the proof and decays out.
+// path (H2 /). It is the liveness half of a bond TTL: an attest-only validator
+// that still holds its plot can answer the fresh challenge and so keeps its
+// objective standing without ever proposing, while a validator that RELEASED its
+// plot (the release-and-coast attack) cannot produce the proof and decays out.
 // No-op off the objective path or with no bond/signer. Fire-and-forget: a dropped
 // submission is retried on the next sweep, and one inclusion resets the TTL clock.
 func (n *Node) SubmitBondRenewal(peers []ports.NodeID) {
 	if n.chain == nil || !n.chain.Objective() || n.bond == nil || n.signer == nil {
 		return
 	}
-	// #503 Q1(c): an F2 eviction is permanent (the chain never clears slashed),
+	// Q1(c): an F2 eviction is permanent (the chain never clears slashed),
 	// but it also deletes bonded[id] — which makes BondRenewalDue read true
 	// FOREVER for this node. Without this gate an evicted daemon re-broadcast
 	// its full ~1.5 MB space-time proof every sweep, unbounded, and honest
@@ -98,7 +97,7 @@ func (n *Node) SubmitBondRenewal(peers []ports.NodeID) {
 	}
 	// Only submit when a (re)registration is actually due — not on every sweep. An
 	// already-bonded validator broadcasting its full space-time proof each sweep just
-	// hands proposers more block bloat to carry (the peer half of the #313 wedge).
+	// hands proposers more block bloat to carry (the peer half of the wedge).
 	if !n.chain.BondRenewalDue(n.id) {
 		return
 	}

@@ -11,8 +11,6 @@ import (
 	"testing"
 )
 
-// R-V5-TAGSET-EQUALITY (ROADMAP; composed-direction cert CD-0, 2026-09-03).
-//
 // statehash.go DECLARES the committed leaf tags (the `tag*` string constants, each
 // mirrored by name in stateRootTags / stateRootTagsV5 / stateRootDigestTagsV5). The
 // floor-box side — the read-set producer (readset_v5.go) and the recomputes
@@ -20,22 +18,22 @@ import (
 // producer references tags ad hoc, so "the set the box knows" is DERIVED here as the
 // set of `tag*` identifiers those files reference. The carrier branch's statehash.go
 // (base 1adca0f) has 24 tag constants and a five-entry stateRootTagsV5; main has 29
-// and six (issuerKeyCommit joined in #711). A merge that resolves statehash.go toward
+// and six (issuerKeyCommit joined in). A merge that resolves statehash.go toward
 // the carrier drops a committed keyspace from the declared set while the emit-guard
 // list and the box's references still name it — this gate reddens on that.
 //
 // Existing pins this one composes with rather than duplicates:
-//   - issuerkey_rollout_gate_test.go:57 pins "issuerKeyCommit" ∈ stateRootTagsV5;
-//   - TestStateRootV5CoversExactlyTheV5Fields binds the three runtime lists to what
-//     stateRootLeavesV5 EMITS (runtime);
-//   - readset_v5_drift_test.go v5CommittedKeyspaceTags() is the test-side closed set
-//     of the 23 member keyspaces the execution-derived read-set guard iterates.
+// - issuerkey_rollout_gate_test.go pins "issuerKeyCommit" ∈ stateRootTagsV5;
+// - TestStateRootV5CoversExactlyTheV5Fields binds the three runtime lists to what
+// stateRootLeavesV5 EMITS (runtime);
+// - readset_v5_drift_test.go v5CommittedKeyspaceTags is the test-side closed set
+// of the 23 member keyspaces the execution-derived read-set guard iterates.
 //
 // v5TagsNotReadByBox is the TIGHT allowlist of declared tags no box-side file may
 // reference. An entry whose tag becomes referenced must be removed (the test fails
 // until it is), and an entry naming an undeclared tag fails too.
 var v5TagsNotReadByBox = map[string]string{
-	"tagIssuerKey": "R0.4b per-epoch issuer-key leaf: nothing folds this keyspace and no validity predicate, quorum or fork-choice rule reads it (statehash.go tagIssuerKey doc; chain.go applyIssuerKeys comment). A redeemer resolves ONE leaf by inclusion proof, outside the box.",
+	"tagIssuerKey": "per-epoch issuer-key leaf: nothing folds this keyspace and no validity predicate, quorum or fork-choice rule reads it (statehash.go tagIssuerKey doc; chain.go applyIssuerKeys comment). A redeemer resolves ONE leaf by inclusion proof, outside the box.",
 }
 
 // v5TagSetSides is everything the gate compares, so the teeth can run the same
@@ -151,8 +149,8 @@ func boxSideTagRefs(srcs map[string]string) (map[string]bool, error) {
 }
 
 // boxSideFiles enumerates the box-side sources by DIRECTORY LISTING, not a glob
-// pattern: every non-test .go file whose name starts with "floorbox" or "readset".
-// (scar-ast-pin-glob-misses-the-defect-file: a hand glob covered 10 of 15 files.)
+// pattern: every non-test.go file whose name starts with "floorbox" or "readset".
+// A hand glob covered only 10 of 15 files.
 func boxSideFiles(t *testing.T) map[string]string {
 	t.Helper()
 	ents, err := os.ReadDir(".")
@@ -209,7 +207,7 @@ func liveV5TagSetSides(t *testing.T) v5TagSetSides {
 	return v5TagSetSides{declared: declared, runtime: runtimeTagValues(), boxRefs: refs, allow: v5TagsNotReadByBox}
 }
 
-// TestV5TagSetEqualityAcrossStatehashAndBox is the R-V5-TAGSET-EQUALITY source gate.
+// TestV5TagSetEqualityAcrossStatehashAndBox is the source gate.
 //
 // SOURCE GATE: it reads statehash.go and the floorbox*/readset* sources as text and
 // compares (i) the declared tag constants to the three runtime tag lists by value,
@@ -224,10 +222,11 @@ func TestV5TagSetEqualityAcrossStatehashAndBox(t *testing.T) {
 	for _, g := range v5TagSetGaps(s) {
 		t.Error("SOURCE GATE: " + g)
 	}
-	// The CD-0 tag by name: issuerKeyCommit must be declared AND in stateRootTagsV5
-	// (issuerkey_rollout_gate_test.go pins the list side; this pins the const side).
+	// The tag by name: issuerKeyCommit must be declared AND in stateRootTagsV5
+	// (issuerkey_rollout_gate_test.go pins the list side; this pins the const
+	// side).
 	if v, ok := s.declared["tagIssuerKey"]; !ok || v != "issuerKeyCommit\x00" {
-		t.Errorf("SOURCE GATE: statehash.go no longer declares tagIssuerKey = \"issuerKeyCommit\\x00\" (got %q, present=%v) — the carrier base predates #711 and a merge toward it drops the keyspace", v, ok)
+		t.Errorf("SOURCE GATE: statehash.go no longer declares tagIssuerKey = \"issuerKeyCommit\\x00\" (got %q, present=%v) — the carrier base predates and a merge toward it drops the keyspace", v, ok)
 	}
 	if !s.runtime["issuerKeyCommit"] {
 		t.Error("SOURCE GATE: \"issuerKeyCommit\" is in none of the runtime tag lists — stateRootTagsV5 was resolved toward the carrier's five-entry list")
@@ -286,7 +285,7 @@ func TestV5TagSetEqualityHasTeeth(t *testing.T) {
 		t.Errorf("SOURCE GATE: TEETH FAILED — deleting tagIssuerKey from statehash.go produced no gap naming it: %v", g)
 	}
 
-	// Teeth 2: a box file referencing an undeclared tag (CD-1's forbidden tagPrevHash).
+	// Teeth 2: a box file referencing an undeclared tag (the forbidden tagPrevHash).
 	refs, err := boxSideTagRefs(map[string]string{"phantom.go": "package chain\nvar _ = tagPrevHash\n"})
 	if err != nil {
 		t.Fatal(err)

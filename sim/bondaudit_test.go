@@ -18,10 +18,10 @@ import (
 // T1b: validators challenge each other's storage bonds THROUGH THE NODE LOOP
 // (gossip → MsgBondChallenge → MsgBondReply → Verify → ledger), and the
 // OUTCOMES are asserted:
-//  1. standing earned over the network lets a bonded quorum commit a block;
-//  2. a node that runs no bond earns no standing and is refused;
-//  3. standing must be sustained — once bonds stop being re-proven, decay
-//     retires it and a formerly-bonded validator can no longer commit.
+// 1. standing earned over the network lets a bonded quorum commit a block;
+// 2. a node that runs no bond earns no standing and is refused;
+// 3. standing must be sustained — once bonds stop being re-proven, decay
+// retires it and a formerly-bonded validator can no longer commit.
 func TestBondAuditEarnsStandingOverTheNetwork(t *testing.T) {
 	const (
 		seed     = int64(7)

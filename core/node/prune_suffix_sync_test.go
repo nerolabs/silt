@@ -143,7 +143,7 @@ func TestSuffixSync_DeepColdSignalsNeedCheckpoint(t *testing.T) {
 }
 
 // TestReconstructFork_PrependsOwnPrefix unit-tests the M1 prepend: it keys off the served
-// start height, prepending our own [0, start) and using a genesis-rooted serve as-is.
+// start height, prepending our own [0, start and using a genesis-rooted serve as-is.
 func TestReconstructFork_PrependsOwnPrefix(t *testing.T) {
 	n1, _, a1, a2, g, _, _ := prunableNet(t)
 	prev := g.Hash()

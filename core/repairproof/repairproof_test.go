@@ -8,7 +8,7 @@ import (
 )
 
 // makeStripe builds a full, honestly-encoded stripe of `size`-byte shards and
-// returns every shard's bytes (n positions: data 0..k-1, parity k..n-1) and its
+// returns every shard's bytes (n positions: data 0.k-1, parity k.n-1) and its
 // content-addressed ID.
 func makeStripe(t *testing.T, p erasure.Params, size int) (shards [][]byte, ids []ports.ChunkID) {
 	t.Helper()
@@ -66,7 +66,7 @@ func TestVerifyByRecompute_HonestRepairVerifies(t *testing.T) {
 	}
 }
 
-// TestVerifyByRecompute_ExactlyKSurvivorsSuffice and a full n-1 survivor set both
+// Exactly k survivors and a full n-1 survivor set both
 // verify — the recompute is over ANY k of the survivors.
 func TestVerifyByRecompute_SurvivorSetSizes(t *testing.T) {
 	p := erasure.Params{K: 4, N: 8}
@@ -181,7 +181,7 @@ func TestVerifyByRecompute_MalformedInputs(t *testing.T) {
 	if _, err := VerifyByRecompute(p, surv, 0, 0, ids[0]); err == nil {
 		t.Fatal("realData=0 must error")
 	}
-	// A padding position (realData..k-1) is not a repairable shard.
+	// A padding position (realData.k-1) is not a repairable shard.
 	if _, err := VerifyByRecompute(p, surv, 3 /* realData */, 3 /* target = pad */, ids[3]); err == nil {
 		t.Fatal("claiming to repair an implicit-zero padding position must error")
 	}
@@ -291,21 +291,20 @@ func storedSurvivorsExcluding(shards [][]byte, p erasure.Params, realData, targe
 }
 
 // TestVerifyByRecompute_ShortFinalStripeJudgeableFromStoredSurvivorsAlone is the
-// gate for the `present`-count fix (D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12,
-// item 2). At the SHIPPED geometry k=10/n=16, a final stripe of 4 real data chunks
-// stores 4 + 6 = 10 shards, so a judge that excludes the claimed position can
-// supply at most 9 survivors — one short of k. Counting only supplied survivors
-// therefore made the claim STRUCTURALLY unjudgeable forever: the paramedic repairs
-// the position and no judge can ever judge it. Every object of four chunks or fewer
-// is such an object, which at the default 256 KiB chunk size is every object of at
-// most 1 MiB.
+// gate for the `present`-count fix. At the SHIPPED geometry k=10/n=16, a final
+// stripe of 4 real data chunks stores 4 + 6 = 10 shards, so a judge that excludes
+// the claimed position can supply at most 9 survivors — one short of k. Counting
+// only supplied survivors therefore made the claim STRUCTURALLY unjudgeable
+// forever: the paramedic repairs the position and no judge can ever judge it. Every
+// object of four chunks or fewer is such an object, which at the default 256 KiB
+// chunk size is every object of at most 1 MiB.
 //
 // The fix counts the implicit-zero padding slots erasure.ReconstructStripe will
 // fill, making this function's recoverability predicate exactly ReconstructStripe's
 // minus the target.
 //
 // DRIVEN RED FIRST: without the padding count this returns ErrUnrecoverable for
-// every realData in 1..4 at k=10/n=16.
+// every realData in 1.4 at k=10/n=16.
 func TestVerifyByRecompute_ShortFinalStripeJudgeableFromStoredSurvivorsAlone(t *testing.T) {
 	p := erasure.DefaultParams // the SHIPPED geometry, not a convenient one
 	const size = 64
@@ -338,13 +337,12 @@ func TestVerifyByRecompute_ShortFinalStripeJudgeableFromStoredSurvivorsAlone(t *
 }
 
 // TestVerifyByRecompute_PaddingCountDoesNotDeleteTheUnrecoverableSplit is the
-// REFUTED-placement guard. The certified fix counts padding; it does NOT delete the
-// `present < k` pre-check, and deleting that pre-check is REFUTED
-// (D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12): erasure.ReconstructStripe's below-k
-// failure is a plain error, which this function maps to (false, nil), and
-// Decide(false, …) SLASHES. A genuinely short survivor fetch is a TRANSIENT — the
-// node judge defers and retries it — so routing it into (false, nil) would
-// bond-slash an HONEST paramedic.
+// REFUTED-placement guard. The fix counts padding; it does NOT delete the `present
+// < k` pre-check, and deleting that pre-check is REFUTED:
+// erasure.ReconstructStripe's below-k failure is a plain error, which this function
+// maps to (false, nil), and Decide(false, …) SLASHES. A genuinely short survivor
+// fetch is a TRANSIENT — the node judge defers and retries it — so routing it into
+// (false, nil) would bond-slash an HONEST paramedic.
 //
 // So: even with the padding counted, a survivor set short enough that
 // supplied + padding < k must still return ErrUnrecoverable, never (false, nil).
@@ -380,7 +378,7 @@ func TestVerifyByRecompute_PaddingCountDoesNotDeleteTheUnrecoverableSplit(t *tes
 
 // TestVerifyByRecompute_FullStripeSurvivorRequirementIsUnchanged pins that the
 // padding count changes NOTHING on a full stripe. realData == k leaves the range
-// [realData, k) empty, so the requirement stays the familiar k supplied survivors
+// [realData, k empty, so the requirement stays the familiar k supplied survivors
 // and k−1 stays unrecoverable. A fix that widened the full-stripe case would be
 // widening the judge's acceptance on the path that carries every ordinary object.
 func TestVerifyByRecompute_FullStripeSurvivorRequirementIsUnchanged(t *testing.T) {

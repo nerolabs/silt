@@ -13,14 +13,14 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// The deep-sheet exit gate (ROADMAP Phase 3) asserts the retention prune from
-// REAL persisted state: chain-status must count payload-stripped blocks so an
+// The deep-sheet exit gate Phase 3 asserts the retention prune from REAL
+// persisted state: chain-status must count payload-stripped blocks so an
 // operator (and the field harness) can confirm the prune engaged without
 // depending on a debug log line. This pins the count against a store holding
 // a pruned and an un-pruned block.
 //
 // THIS IS THE PRE-v5 LEG, AND SAYING SO IS THE POINT. Its fixture is a v1 chain,
-// where Prune() sets `Pruned` and IsPruned() therefore answers the question. That
+// where Prune sets `Pruned` and IsPruned therefore answers the question. That
 // fixture is exactly why this test stayed GREEN while the shipped counter was
 // structurally zero on the v5 chain the field harness actually drives — see
 // TestChainStatusPrunedCountIsSoundOnAV5Chain for the era leg.
@@ -44,8 +44,8 @@ func TestChainStatusReportsPrunedBlocks(t *testing.T) {
 		}
 	})
 	// Both counters read 1 here, and the reason is EQUALITY, not the subset direction:
-	// validateD3Digests refuses a pre-v5 AnswerDigest outright, so on v1/v2/v4 the only way
-	// HeavyProofsShed() can fire is the IsPruned() short-circuit and the two predicates are
+	// validateBlockDigests refuses a pre-v5 AnswerDigest outright, so on v1/v2/v4 the only
+	// way HeavyProofsShed can fire is the IsPruned short-circuit and the two predicates are
 	// the same predicate. That is precisely why this leg cannot gate the second line's
 	// choice of predicate, and why the v5 leg has to.
 	for _, want := range []string{
@@ -59,18 +59,18 @@ func TestChainStatusReportsPrunedBlocks(t *testing.T) {
 }
 
 // TestChainStatusPrunedCountIsSoundOnAV5Chain is the era leg, and it drives the defect the
-// graded run `869ad9a-deep` surfaced: row 12b-deep-prune failed with a UNIFORM ZERO across
-// all four validators (`0pruned` on val-a…val-d) on a chain of 1 x v2 + 137 x v5.
+// graded field run surfaced: row 12b-deep-prune failed with a UNIFORM ZERO
+// across all four validators (`0pruned` on val-a…val-d) on a chain of 1 x v2 + 137 x v5.
 //
-// THE MECHANISM. `chain-status` counted `Block.IsPruned()`, which is `b.Pruned != Hash{}`.
-// (d-3) retired `Pruned` for v5 — a pruned v5 block's preimage folds AnswerDigest in place of
-// Answer, so the pruned body still reproduces its own hash and Prune() sets no token. The
-// counter is therefore STRUCTURALLY zero on a v5 chain and the harness gate (`pruned: N >= 1`)
-// fails by construction, whatever the node actually did. The consensus readers were re-keyed to
-// `HeavyProofsShed()` by the (d-3) sweep; this reader was missed.
+// THE MECHANISM. `chain-status` counted `Block.IsPruned`, which is `b.Pruned != Hash{}`.
+// retired `Pruned` for v5 — a pruned v5 block's preimage folds AnswerDigest in place of Answer,
+// so the pruned body still reproduces its own hash and Prune sets no token. The counter is
+// therefore STRUCTURALLY zero on a v5 chain and the harness gate (`pruned: N >= 1`) fails by
+// construction, whatever the node actually did. The consensus readers were re-keyed to
+// `HeavyProofsShed` by the sweep; this reader was missed.
 //
 // The rig-error arms are the anti-vacuity anchor: they pin that the fixture really is in the
-// post-(d-3) regime (no declared token, proofs demonstrably shed), so this cannot pass for the
+// post- regime (no declared token, proofs demonstrably shed), so this cannot pass for the
 // pre-v5 reason the sibling test covers.
 func TestChainStatusPrunedCountIsSoundOnAV5Chain(t *testing.T) {
 	dir := t.TempDir()
@@ -80,7 +80,7 @@ func TestChainStatusPrunedCountIsSoundOnAV5Chain(t *testing.T) {
 		Entries: []ports.Entry{{Root: ports.HashBytes([]byte("g"))}}}
 	answer := []byte("heavy-proof-bytes")
 	// A v5 registration commits its proof by digest whether the proof is carried or pruned —
-	// validateD3Digests refuses one that does not, so a fixture without this is not a legal
+	// validateBlockDigests refuses one that does not, so a fixture without this is not a legal
 	// v5 block and would prove nothing about a real chain.
 	digest := ports.Hash(sha256.Sum256(answer))
 	b1 := chain.Block{Version: chain.BlockVersionWitnessable, Height: 1, Prev: g.Hash(),
@@ -88,7 +88,7 @@ func TestChainStatusPrunedCountIsSoundOnAV5Chain(t *testing.T) {
 	pruned := b1.Prune()
 
 	if pruned.IsPruned() {
-		t.Fatal("rig error: (d-3) retires `Pruned` for v5 — a pruned v5 block must carry no declared token; " +
+		t.Fatal("rig error: the two-level block hash retires `Pruned` for v5 — a pruned v5 block must carry no declared token; " +
 			"if this fires, the era premise moved and this test is measuring the wrong regime")
 	}
 	if !pruned.HeavyProofsShed() || b1.HeavyProofsShed() {
@@ -109,12 +109,13 @@ func TestChainStatusPrunedCountIsSoundOnAV5Chain(t *testing.T) {
 	//
 	// THE SECOND LINE'S PREDICATE IS PINNED HERE TOO, AND v5 IS THE ONLY ERA THAT CAN PIN IT.
 	// chainstatus.go asserts in a comment that the identity counter never exceeds the
-	// possession one; on v1/v2/v4 the two predicates are IDENTICAL (validateD3Digests refuses
-	// a pre-v5 AnswerDigest outright, so HeavyProofsShed can only fire through the IsPruned
-	// short-circuit), which is why the pre-v5 leg cannot separate them and why swapping this
-	// counter to HeavyProofsShed() left the WHOLE cmd/silt package green. Under that swap the
-	// output reads "of those: 1" in the same sentence that narrates 0 as EXPECTED — a false
-	// statement contradicting its own narration. This want is what executes the claim.
+	// possession one; on v1/v2/v4 the two predicates are IDENTICAL (validateBlockDigests
+	// refuses a pre-v5 AnswerDigest outright, so HeavyProofsShed can only fire through the
+	// IsPruned short-circuit), which is why the pre-v5 leg cannot separate them and why
+	// swapping this counter to HeavyProofsShed left the WHOLE cmd/silt package green. Under
+	// that swap the output reads "of those: 1" in the same sentence that narrates 0 as
+	// EXPECTED — a false statement contradicting its own narration. This want is what
+	// executes the claim.
 	for _, want := range []string{
 		"pruned:       1 blocks have shed their heavy bond proofs below the retention horizon",
 		"of those:     0 declare a pre-v5 non-recomputable identity",

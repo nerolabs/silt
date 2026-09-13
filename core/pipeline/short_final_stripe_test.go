@@ -29,12 +29,11 @@ func storedBytes(t *testing.T, store ports.ChunkStore, ids []ports.ChunkID) (tot
 	return total, sizes
 }
 
-// TestSingleFrameObjectIsFramedAtItsTrueLength is R-SHORT-FINAL-STRIPE. A single-frame
-// object is alone in its erasure stripe, so nothing forces it to full length: it and its
-// six parity shards are computed at the frame's true length, and the geometry travels in
-// manifest.ChunkSize. At the 256 KiB default a 1 KB object stored 7 × 262,160 =
-// 1,835,120 B of mostly zeros (the erasure floor the Economist priced at +300 %); it now
-// stores 7 × 1,048 = 7,336 B.
+// TestSingleFrameObjectIsFramedAtItsTrueLength is. A single-frame object is alone in its
+// erasure stripe, so nothing forces it to full length: it and its six parity shards are
+// computed at the frame's true length, and the geometry travels in manifest.ChunkSize.
+// At the 256 KiB default a 1 KB object stored 7 × 262,160 = 1,835,120 B of mostly zeros
+// (the erasure floor the research priced at +300 %); it now stores 7 × 1,048 = 7,336 B.
 //
 // Ablation that must go RED: split the file at opts.ChunkSize again (chunk.Split in
 // Stage), or keep manifest.ChunkSize = opts.ChunkSize.
@@ -84,8 +83,8 @@ func TestSingleFrameObjectIsFramedAtItsTrueLength(t *testing.T) {
 
 // TestMultiFrameObjectsKeepThePaddedTail is the control arm and the blast-radius bound:
 // the moment an object has two frames they SHARE a stripe, equal-length shards are forced
-// again, and every byte — chunk IDs, root, stored size — is what it was before
-// R-SHORT-FINAL-STRIPE. Only single-frame objects re-address.
+// again, and every byte — chunk IDs, root, stored size — is what it was before. Only
+// single-frame objects re-address.
 func TestMultiFrameObjectsKeepThePaddedTail(t *testing.T) {
 	ctx := context.Background()
 	const cs = 4096
@@ -131,9 +130,9 @@ func (r memRegistry) Lookup(_ context.Context, root ports.Hash) (ports.Entry, bo
 // other: DataFrameSize decides from a LENGTH, splitFile decides from a STREAM that cannot
 // know the length ahead, and the committed manifest.ChunkSize must be what the first says
 // for every object. It also fixes the re-addressing boundary, which the first published
-// statement of this change got wrong by one byte (blind PE B-1, 2026-09-09): an object of
-// exactly chunkSize − HeaderSize FILLS the first frame and is unchanged; the largest
-// object that re-addresses is chunkSize − HeaderSize − 1.
+// statement of this change got wrong by one byte: an object of exactly chunkSize −
+// HeaderSize FILLS the first frame and is unchanged; the largest object that re-addresses
+// is chunkSize − HeaderSize − 1.
 func TestDataFrameSizeIsWhatStageCommits(t *testing.T) {
 	ctx := context.Background()
 	const cs = 4096
@@ -178,7 +177,7 @@ func TestDataFrameSizeIsWhatStageCommits(t *testing.T) {
 }
 
 // TestConvergentDedupNowSpansTheChunkSize records a PRIVACY consequence of the short final
-// stripe that no source named until the blind PE found it (N-1, 2026-09-09), and records
+// stripe that no source named until it was found, and records
 // it as a measurement so it cannot be argued away later. Padding used to make a sub-frame
 // object's ciphertext — and so its chunk ID, root and link key — depend on the publisher's
 // -chunk-size. At true length it does not: the same bytes published at 64 KiB, 256 KiB and
@@ -187,8 +186,8 @@ func TestDataFrameSizeIsWhatStageCommits(t *testing.T) {
 // Dedup improves. So does the confirmation attack that cmd/silt already warns about for
 // convergent mode: chunk size was an accidental salt and is no longer one, so a guesser
 // needs the plaintext alone rather than the plaintext AND the geometry. silt claims no
-// size hiding (docs/threat-catalog.md F3) and this is NOT a mitigation — inventing a salt
-// here would be exactly the unreviewed novelty B8 forbids. A red-team pass is owed.
+// size hiding F3 and this is NOT a mitigation — inventing a salt here would be exactly
+// the unreviewed novelty B8 forbids. A is owed.
 func TestConvergentDedupNowSpansTheChunkSize(t *testing.T) {
 	ctx := context.Background()
 	roots := map[string]int{}

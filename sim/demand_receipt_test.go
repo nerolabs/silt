@@ -1,10 +1,10 @@
 package sim
 
-// TestDemandReceiptFlowBanksWitnessedDemand is the D-DEMAND wiring at the sim tier, on
-// the SESSION lane (B-9 retired the flat receipt): the fetcher's blind-withdrawn token is
-// the session anchor, spent at open under the SERVER's own committed key (issuer ==
-// server, the bilateral shape); a cumulative-count receipt banks witnessed increments; a
-// replayed count banks nothing more; a token from an impostor issuer opens nothing.
+// TestDemandReceiptFlowBanksWitnessedDemand is the wiring at the sim tier, on the SESSION
+// lane (retired the flat receipt): the fetcher's blind-withdrawn token is the session
+// anchor, spent at open under the SERVER's own committed key (issuer == server, the
+// bilateral shape); a cumulative-count receipt banks witnessed increments; a replayed
+// count banks nothing more; a token from an impostor issuer opens nothing.
 
 import (
 	"crypto/rand"

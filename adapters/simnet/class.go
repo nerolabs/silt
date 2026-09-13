@@ -1,11 +1,11 @@
 package simnet
 
-// R4.3b — the simnet class oracle, the deterministic mirror of the tcpnet
-// classifier (class.go there). SetClass(id, class, group) is what an endpoint
-// reports for id after a DIRECT delivery from id; a relay-spliced delivery reports
-// (RELAYED, the relay's group); an endpoint that never heard from id reports
-// known=false; DIRECT is never downgraded (C-3). A NATed sender with no SetClass
-// defaults to one DIRECT group per NAT box (its home /24).
+// The simnet class oracle, the deterministic mirror of the tcpnet classifier
+// (class.go there). SetClass(id, class, group) is what an endpoint reports for id
+// after a DIRECT delivery from id; a relay-spliced delivery reports (RELAYED, the
+// relay's group); an endpoint that never heard from id reports known=false; DIRECT
+// is never downgraded. A NATed sender with no SetClass defaults to one
+// DIRECT group per NAT box (its home /24).
 
 import "github.com/nerolabs/silt/ports"
 

@@ -7,71 +7,72 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// era-4 (v5) LastCommit ATTESTATION CARRIER — R-BOX-ATTESTS, owner call O1, ratified 2026-09-03.
+// era-4 (v5) LastCommit ATTESTATION CARRIER.
 //
-// THE DEFECT THIS CLOSES (converged verdict §2.3, RED-captured as gate G1). apply() wrote
-// validatorsSeen from b.Atts (the attestation loop below's sub-v5 twin, chain.go), but Hash()
-// EXCLUDES Atts and the era-3/era-4 root predicate re-runs the real apply() over the ATTACHED
+// THE DEFECT THIS CLOSES (converged verdict §2.3, RED-captured as gate G1). apply wrote
+// validatorsSeen from b.Atts (the attestation loop below's sub-v5 twin, chain.go), but Hash
+// EXCLUDES Atts and the era-3/era-4 root predicate re-runs the real apply over the ATTACHED
 // certificate (era3validity.go validateEra3Roots → postApplyRoots). A proposer populates its
 // committed roots BEFORE it gathers precommits (core/node/chainrole.go proposeBlock), so a
 // certificate that would seat a NEW attester makes the recomputed root differ from the root the
 // proposer signed, and EVERY replica rejects that block. Two consequences, both HIGH:
 //
 //	(a) THE MEASUREMENT FREEZES. Only blocks that seat NOBODY commit, so validatorsSeen is
-//	    constant from the first root-checked block onward. C2Metric ranges only validatorsSeen,
-//	    so MatureCoefficient — the quantity the maturity shed gates on — is permanently CEILINGED
-//	    by the set that attested before activation. No operator who joins after activation is
-//	    ever counted, and a de-maturation window can be closed only by re-bonding identities that
-//	    had already attested (never by new arrivals). Corner 3's "shed on MEASURED
-//	    decentralization" clause is broken.
+//	 constant from the first root-checked block onward. C2Metric ranges only validatorsSeen,
+//	 so MatureCoefficient — the quantity the maturity shed gates on — is permanently CEILINGED
+//	 by the set that attested before activation. No operator who joins after activation is
+//	 ever counted, and a de-maturation window can be closed only by re-bonding identities that
+//	 had already attested (never by new arrivals). Corner 3's "shed on MEASURED
+//	 decentralization" clause is broken.
 //	(b) THE CHAIN STALLS INTERMITTENTLY. Every round whose first-to-quorum prefix carries a
-//	    qualified never-seen attester kills that height for that round ("commit rejected by own
-//	    replica", chainrole.go finishPC). Connected, all-honest, unbounded in expectation. It
-//	    clears only by the certificate DROPPING the new attester — i.e. it clears into (a).
+//	 qualified never-seen attester kills that height for that round ("commit rejected by own
+//	 replica", chainrole.go finishPC). Connected, all-honest, unbounded in expectation. It
+//	 clears only by the certificate DROPPING the new attester — i.e. it clears into (a).
 //
 // THE FIX — a HASH-COVERED carrier. Block h+1 republishes block h's precommits in LastCommit,
-// which IS folded into Hash(). The proposer of h+1 holds those bytes before it signs, so the root
+// which IS folded into Hash. The proposer of h+1 holds those bytes before it signs, so the root
 // it signs is the root the block commits. The seat lands ONE BLOCK LATE — monotone, benign, and
 // disclosed in O1. CometBFT's LastCommit is the settled analogue; silt deliberately omits the
 // quorum re-check, because the carrier is a SEATING WITNESS, not a commit proof (that keeps I1 /
-// #402's one-function-two-callers quorum stack untouched — the carrier counts NOTHING).
+// the one-function-two-callers quorum stack untouched — the carrier counts NOTHING).
 //
 // ERA GATING. The carrier transition fires ONLY for v5 (BlockVersionWitnessable). The frozen
-// era-3 (v4) and era-2 (v2) transition rule — the b.Atts seating loop in apply() — is left
-// BYTE-FOR-BYTE and now runs only for sub-v5 blocks. The era-3 format freeze (#632) is not
-// touched: statehash.go's leaf tags and encodings are unchanged. The carrier changes WHEN and
-// FROM WHAT the transition writes validatorsSeen, not the leaf.
+// era-3 (v4) and era-2 (v2) transition rule — the b.Atts seating loop in apply — is left
+// BYTE-FOR-BYTE and now runs only for sub-v5 blocks. The era-3 format freeze is not touched:
+// statehash.go's leaf tags and encodings are unchanged. The carrier changes WHEN and FROM
+// WHAT the transition writes validatorsSeen, not the leaf.
 //
-// FORK-CHOICE: the carrier is a VALIDITY input only. Fork-choice is height → head-hash (O3
-// Direction T, owner-ratified 2026-09-03; the weight term is retired) and reads no certificate,
-// LastCommit included — see `heavier` and its AST purity pin.
+// FORK-CHOICE: the carrier is a VALIDITY input only. Fork-choice is height → head-hash (the
+// weight term is retired) and reads no certificate, LastCommit included — see
+// `heavier` and its AST purity pin.
 
 var (
-	// ErrCarrierNotWitnessable is a block BELOW the current open era (v5) carrying the LastCommit
-	// field. O1: "a pre-v5 block carrying the field is invalid." Without this rule a v4 block
-	// could carry carrier bytes that the frozen era-3 transition ignores but Hash() covers —
-	// silently version-dependent semantics for the same bytes.
+	// ErrCarrierNotWitnessable is a block BELOW the current open era (v5) carrying the
+	// LastCommit field. O1: "a pre-v5 block carrying the field is invalid." Without this rule
+	// a v4 block could carry carrier bytes that the frozen era-3 transition ignores but Hash
+	// covers — silently version-dependent semantics for the same bytes.
 	ErrCarrierNotWitnessable = errors.New("chain: block below era-4 (v5) carries a LastCommit attestation carrier")
 	// ErrCarrierAtHeightOne is a height-1 block with a non-empty carrier. O1: "height 1's carrier
 	// is empty BY RULE." Height 1's parent is the genesis, which is DECLARED, not agreed — it has
 	// no precommits, and a declared genesis certificate must never pre-seat validatorsSeen.
 	ErrCarrierAtHeightOne = errors.New("chain: height-1 block carries a non-empty LastCommit (the carrier is empty by rule at height 1)")
-	// ErrCarrierBadSignature is a carrier entry that is not a genuine PhasePrecommit signature
-	// over b.Prev. Verified at the entry's OWN declared round: O1 binds the rule to
-	// (PhasePrecommit, b.Prev) and deliberately NOT to CommitRound, which Hash() does not cover.
+	// ErrCarrierBadSignature is a carrier entry that is not a genuine PhasePrecommit
+	// signature over b.Prev. Verified at the entry's OWN declared round: O1 binds the rule to
+	// (PhasePrecommit, b.Prev) and deliberately NOT to CommitRound, which Hash does not
+	// cover.
 	ErrCarrierBadSignature = errors.New("chain: LastCommit entry is not a genuine PhasePrecommit signature over the parent block hash")
-	// ErrCarrierDuplicateID is two carrier entries for the same attester id. O1: "distinct ids".
-	// The seating write is idempotent, so a duplicate cannot change the transition — but it can
-	// pad the block. NOTE: distinctness does NOT bound the carrier. Distinct ids are free —
-	// every fresh keypair is a distinct id that passes all three clauses of validateCarrier — so
-	// there is no size rule here. See R-CARRIER-BYTES (ROADMAP.md, Boulder 1 carry-list).
+	// ErrCarrierDuplicateID is two carrier entries for the same attester id. O1: "distinct
+	// ids". The seating write is idempotent, so a duplicate cannot change the transition —
+	// but it can pad the block. NOTE: distinctness does NOT bound the carrier. Distinct ids
+	// are free — every fresh keypair is a distinct id that passes all three clauses of
+	// validateCarrier — so there is no size rule here.
 	ErrCarrierDuplicateID = errors.New("chain: LastCommit carries two entries for the same attester id")
 	// ErrGenesisLastCommit is a genesis block carrying a LastCommit carrier. Height 0 has no
 	// parent to attest, and the carrier is the hash-covered v5 seating input, so a declared
 	// genesis carrying one is an authored pre-seating of validatorsSeen. O1 refuses it by rule.
 	// The UNSIGNED slot (Atts) is deliberately NOT covered by this error: AppendGenesis
 	// FILTERS it instead — only attestations that verify over the genesis hash are seated,
-	// the rest are stripped (D-GENESIS-ATTS-SEATING, 2026-09-04) — because refusing an
+	// the rest are stripped — because refusing an
 	// unsigned stub would let a relayer wedge fork-adopt and Reload for free.
 	ErrGenesisLastCommit = errors.New("chain: genesis block carries a LastCommit carrier — refused by rule; height 0 has no parent to attest and a declared genesis must not pre-seat validatorsSeen")
 )
@@ -92,29 +93,27 @@ var (
 // hold") produce an INVALID block whenever a proposer holds parent precommits from two rounds.
 // The two readings agree on every certificate collectQuorumSigs accepts — that function is fatal
 // on a mixed-round set — and differ only on the supra-certificate set an honest-maximal proposer
-// may hold. Recorded in docs/thinking/2026-09-03-lastcommit-carrier-round-A-design.md §3.2.
+// may hold. Recorded
 //
 // It does NOT check quorum, weight, or qualification. The carrier is a SEATING WITNESS: an
 // unqualified signer's entry is valid and simply writes nothing (applyCarrier screens it). Adding
-// a quorum check here would fork the #402 one-function-two-callers quorum stack.
+// a quorum check here would fork the one-function-two-callers quorum stack.
 //
-// ONE FUNCTION, FOUR CALLERS — and NO *Chain RECEIVER, deliberately (PE ruling
-// RULING-floorbox-predicate-rederivation-structure-2026-09-03.md §3(E), §6(a), §7 merge-condition 1;
-// this is the FIRST INSTANCE of that structure). The callers are the two full-node disk-write paths
+// ONE FUNCTION, FOUR CALLERS — and NO *Chain RECEIVER, deliberately, §6(a), §7 merge-condition 1;
+// this is the FIRST INSTANCE of that structure. The callers are the two full-node disk-write paths
 // (ValidateProposal, appendStructural), the ONE accept composition (ValidateProposalV5) and the
-// trustless floor box's recompute entry
-// (assembleStateRootRecomputeOps). The box applies the SAME validity function the node applies, so
-// the box's class-A write-set can never be derived from a carrier the node refuses — the
-// RT-CARRIER-1 / RT-CARRIER-12 wrong-accept, closed at the root rather than by a box-side
+// trustless floor box's recompute entry (assembleStateRootRecomputeOps). The box applies the SAME
+// validity function the node applies, so the box's class-A write-set can never be derived from a
+// carrier the node refuses — the wrong-accept, closed at the root rather than by a box-side
 // counterpart. Dropping the receiver is what makes that call legal in a fold file: a package-level
-// function CANNOT reach c.slashed / c.matureEpoch, so R-FOLD-LIVE-STATE-READS is enforced by the
-// compiler here instead of by the AST allowlist pin (which covers fold files only, and whose glob
-// the same ruling measured as holed). Do NOT re-add a receiver, and do NOT write a box-side
+// function CANNOT reach c.slashed / c.matureEpoch, so this gate is enforced by the compiler here
+// instead of by the AST allowlist pin (which covers fold files only, and whose glob the
+// samedecision measured as holed). Do NOT re-add a receiver, and do NOT write a box-side
 // counterpart: a second implementation is the defect shape this closes.
 //
-// chainID is the CALLER'S OWN network identity, not a field of b (BG-2). It is still not a
+// chainID is the CALLER'S OWN network identity, not a field of b. It is still not a
 // receiver: a ports.Hash cannot reach c.slashed / c.matureEpoch, so the compiler-enforced
-// fold-file property the PE ruling installed is untouched.
+// fold-file property.
 //
 // THE SIGNING HEIGHT IS DERIVED, NOT READ — the ONE site of the nine where it is. The entries
 // are the PARENT's precommits and the parent is not in scope, so the height they were signed at
@@ -123,9 +122,9 @@ var (
 // by rule rather than by convention; the b.Height <= 1 refusal below means it cannot underflow.
 // And it is a strict NARROWING: a mis-declared b.Height makes GENUINE entries fail to verify
 // and can never make a forged one pass, so the worst case is the fail-safe direction P1 already
-// rejects for. This is explicitly NOT the #397 class — #397 silently changed which slot was
+// rejects for. This is explicitly NOT the class — silently changed which slot was
 // considered signed; here every deviation is a loud refusal. Driven by
-// TestGPRE2_TheCarrierSigningHeightIsTheParents.
+// TestTheCarrierSigningHeightIsTheParents.
 func validateCarrier(b *Block, chainID ports.Hash) error {
 	if len(b.LastCommit) == 0 {
 		return nil // the empty carrier is always valid — including at height 1 and on every prior era
@@ -146,7 +145,7 @@ func validateCarrier(b *Block, chainID ports.Hash) error {
 				ErrCarrierBadSignature, i, a.Phase, PhasePrecommit, PhasePrecommitV5)
 		}
 		// verifyAtt is the SAME era-aware arithmetic the live commit path uses
-		// (collectQuorumSigs, validateStructural) — the #558 fix's shared function, never a
+		// (collectQuorumSigs, validateStructural) — the fix's shared function, never a
 		// second bare-hash copy. It dispatches the preimage form on the ENTRY'S OWN Phase, which
 		// is what makes this rule correct at the era-4 boundary: at H_era4 the child is v5 and
 		// the parent is v4, so the entries are v2-form while the container is v5. A dispatch
@@ -164,7 +163,7 @@ func validateCarrier(b *Block, chainID ports.Hash) error {
 	return nil
 }
 
-// applyCarrier is the O1 TRANSITION rule: for each carried signer with id != parent.ProposerID()
+// applyCarrier is the O1 TRANSITION rule: for each carried signer with id != parent.ProposerID
 // and attesterQualified(id) evaluated against the CHILD'S PRE-STATE, set validatorsSeen[id].
 //
 // ORDER (load-bearing, pinned by TestCarrierFoldPrecedesBondRegsInApply): this runs BEFORE this
@@ -172,7 +171,7 @@ func validateCarrier(b *Block, chainID ports.Hash) error {
 // committed post-state — which is exactly the box's prevStateRoot — so the chain and the trustless
 // floor box screen against the SAME state by construction (the S3 divergence the box-entry round
 // A screen was already anchored for). Putting it after the bond loop would screen a mid-apply
-// state that no committed root names, the sibling of the rotate-LAST hazard (#620).
+// state that no committed root names, the sibling of the rotate-LAST hazard.
 //
 // The child's OWN Atts write NOTHING for a v5 block. That is the whole point: Atts are not
 // hash-covered, so they must not be a transition input.
@@ -216,19 +215,19 @@ func (c *Chain) headProposerID() (ports.NodeID, bool) {
 // power a proposer already had by trimming its own certificate (refutation K), so the carrier adds
 // no new degree of freedom. An honest proposer that under-carries harms only its own fork.
 //
-// THE SOURCE IS THE HEAD BLOCK'S STORED CERTIFICATE (head.Atts), WHICH IS THE FIRST-TO-QUORUM
-// PREFIX — not "everything this replica holds" (R-CARRIER-PREFIX-ONLY, research certification
-// 2026-09-03 §5). The gatherer snapshots its precommit set at the moment the quorum predicate holds
-// and DISCARDS every reply that lands after (core/node/chainrole.go finishPC / the gather callback),
-// so those signatures are not retained anywhere. Consequences, stated rather than glossed:
+// THE SOURCE IS THE HEAD BLOCK'S STORED CERTIFICATE (head.Atts), WHICH IS THE FIRST-TO-QUORUM PREFIX
+// — not "everything this replica holds". The gatherer snapshots its precommit set at the moment the
+// quorum predicate holds and DISCARDS every reply that lands after (core/node/chainrole.go finishPC
+// / the gather callback), so those signatures are not retained anywhere. Consequences, stated rather
+// than glossed:
 //
-//   - For a proposer that did NOT itself gather the parent, the parent's stored certificate IS
-//     everything it holds, so this is honest-maximal.
-//   - For a node proposing h and h+1 back to back it is NOT: precommits received after the prefix
-//     closed cannot be carried, so an HONEST proposer can also delay a seating — previously stated
-//     as a property of a malicious proposer only.
-//   - A persistently slow attester is seated once it makes a first-to-quorum prefix at SOME height.
-//     That is a latency condition, not the permanent seating freeze this fix closed.
+// - For a proposer that did NOT itself gather the parent, the parent's stored certificate IS
+// everything it holds, so this is honest-maximal.
+// - For a node proposing h and h+1 back to back it is NOT: precommits received after the prefix
+// closed cannot be carried, so an HONEST proposer can also delay a seating — previously stated
+// as a property of a malicious proposer only.
+// - A persistently slow attester is seated once it makes a first-to-quorum prefix at SOME height.
+// That is a latency condition, not the permanent seating freeze this fix closed.
 //
 // Making this literally maximal is NOT a producer-side one-liner: it would need a new post-commit
 // attestation store, with its own lifecycle and memory bound, inside the round machinery.
@@ -250,7 +249,7 @@ func (c *Chain) HeadCarrier() []Attestation {
 	// keyed on the entry's own Phase, at the head's height), so the filter and the validity rule
 	// cannot disagree. They MUST NOT: if they did, an honest proposer would mint a carrier its
 	// own replica refuses, and at the era-4 boundary — where the head is v4 and the child is v5
-	// — that is a permanent liveness wedge (G-PRE-1).
+	// — that is a permanent liveness wedge.
 	s := attScope{ChainID: c.ChainID(), Height: head.Height}
 	seen := make(map[ports.NodeID]bool, len(head.Atts))
 	out := make([]Attestation, 0, len(head.Atts))

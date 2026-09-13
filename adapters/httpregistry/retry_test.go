@@ -12,7 +12,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// #329 / immutable #5: the registry client's idempotent GET reads are the one client path
+// / immutable #5: the registry client's idempotent GET reads are the one client path
 // NOT behind the consensus layer's retry. A transient network blip (a 5xx, a dropped
 // packet) must be ridden out with a bounded backoff, not fail a swarm-get / root resolution
 // on a single sample. A flaky server that 503s the first two attempts then serves the entry

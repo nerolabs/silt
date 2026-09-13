@@ -1,15 +1,15 @@
 // Package depcheck enforces the architecture rules with a test, so a
 // violation is a red build, not a code-review hope:
 //
-//  1. core/* and ports never import adapters (hexagonal dependency rule).
-//  2. core/* and ports never import effectful stdlib packages — no
-//     networking, no filesystem, no wall clock, no ambient randomness.
-//     All effects must arrive through injected interfaces; that is what
-//     makes sim runs deterministic and replayable by seed.
-//  3. No cmd/ entry point constructs the credit-Gated registry
-//     (registry.NewGated): it hard-requires a durable Publisher and has no
-//     token path, so it is sim/test-only and must never back a persistent
-//     network (#99, M0 privacy). The production registry is the chain.
+// 1. core/* and ports never import adapters (hexagonal dependency rule).
+// 2. core/* and ports never import effectful stdlib packages — no
+// networking, no filesystem, no wall clock, no ambient randomness.
+// All effects must arrive through injected interfaces; that is what
+// makes sim runs deterministic and replayable by seed.
+// 3. No cmd/ entry point constructs the credit-Gated registry
+// (registry.NewGated): it hard-requires a durable Publisher and has no
+// token path, so it is sim/test-only and must never back a persistent
+// network (#99, M0 privacy). The production registry is the chain.
 //
 // Test files are exempt: tests may use os, math/rand, etc.
 package depcheck
@@ -153,9 +153,7 @@ var transitiveEffectAllowed = map[string]string{
 }
 
 // TestNoThirdPartyEffectsReachableFromCore closes the transitive gap the
-// keystone node-store consult exposed, per the PE ruling
-// (RULING-keystone-node-store-dependency-2026-08-27.md, Q3: "close it now — this
-// is the change that makes the gap live").
+// keystone node-store consult exposed, per.
 //
 // The test above inspects DIRECT imports only. That was honest while core
 // imported nothing third-party. It no longer is: a pure-looking third-party
@@ -166,11 +164,11 @@ var transitiveEffectAllowed = map[string]string{
 // replay by seed — had quietly gone. A green check that no longer verifies its
 // property is worse than no check: it manufactures confidence.
 //
-// SCOPE (the PE's note, and it matters for false positives): the boundary is
-// about THIRD-PARTY purity, not the standard library. Stdlib uses `os`
-// internally by design — `fmt` does — so flagging stdlib would make this
-// unrunnable. So: walk every non-stdlib, non-silt package transitively
-// reachable from core/ports, and flag any that imports the forbidden set.
+// SCOPE: the boundary is about THIRD-PARTY purity, not the standard library.
+// Stdlib uses `os` internally by design — `fmt` does — so flagging stdlib
+// would make this unrunnable. So: walk every non-stdlib, non-silt package
+// transitively reachable from core/ports, and flag any that imports the
+// forbidden set.
 func TestNoThirdPartyEffectsReachableFromCore(t *testing.T) {
 	repoRoot, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {

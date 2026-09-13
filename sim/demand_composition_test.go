@@ -1,33 +1,33 @@
 package sim
 
-// R0.4b C3 final round — the composition gate the e2e re-scope owes.
+// C3 final round — the composition gate the e2e re-scope owes.
 //
-// WHY THIS EXISTS. e2e TestDeliveryReceiptBankedOverTCP used to drive the paid
-// delivery lane's POSITIVE arm through two real OS processes. It cannot any more: a
+// WHY THIS EXISTS. The e2e suite used to drive the paid delivery lane's POSITIVE
+// arm through two real OS processes. It cannot any more: a
 // withdrawal is now only sound against a key that resolves to a committed E->key_E
 // binding, and that binding needs an era-4/v5 chain, which the e2e fixture's
-// -objective=false topology can never produce (G-8 convergence §1, 2026-09-03). That
-// test was re-scoped to the certified refusal and renamed
+// -objective=false topology can never produce (convergence §1, 2026-09-03). That
+// test was re-scoped to the refusal and renamed
 // TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding.
 //
-// The convergence priced that re-scope at exactly TWO uncovered arms (§3), and this
+// The convergence priced that re-scope at exactly TWO uncovered arms, and this
 // test is the payment for both:
 //
-//  1. THE THREE-CALL COMPOSITION on the SUCCESS arm. No tier ran
-//     FetchDemandIssuerKeys -> AcquireDemandTokenInWindow -> SubmitDeliveryReceipt in
-//     the order cmd/silt/swarm.go makes them, on a lane that pays. core/node
-//     TestRTC3_RestartDoesNotRePayTheSameWireReceipt mints its token in-process and
-//     calls the wire handler directly; TestRTC3_DegenerateCommittedKeyIsRefusedByThePinAndTheLane
-//     drives call 2 on the REFUSAL arm only. Here the fetcher makes all three calls
-//     itself, in order, over simnet, with no in-process shortcut.
+// 1. THE THREE-CALL COMPOSITION on the SUCCESS arm. No tier ran
+// FetchDemandIssuerKeys -> AcquireDemandTokenInWindow -> SubmitDeliveryReceipt in
+// the order cmd/silt/swarm.go makes them, on a lane that pays. core/node
+// TestRestartDoesNotRePayTheSameWireReceipt mints its token in-process and
+// calls the wire handler directly; TestDegenerateCommittedKeyIsRefusedByThePinAndTheLane
+// drives call 2 on the REFUSAL arm only. Here the fetcher makes all three calls
+// itself, in order, over simnet, with no in-process shortcut.
 //
-//  2. THE SECOND GENUINE DELIVERY. The e2e test asserted that a fresh token on the
-//     same lane banks again — one delivery is not a lane. Nothing below e2e drove it.
+// 2. THE SECOND GENUINE DELIVERY. The e2e test asserted that a fresh token on the
+// Same lane banks again — one delivery is not a lane. Nothing below e2e drove it.
 //
 // The chain is a REAL v5 chain with a REAL committed IssuerKeyReg (issuerKeyGenesis),
 // so the pin resolves against genuine consensus state; the withdrawal is a real blind
 // RSA withdrawal over the wire; the delivery goes through the real MsgDeliveryOpen and
-// MsgDeliverySettle handlers (B-9); and the assertion is POSITIVE SETTLED CREDIT, which is what the e2e
+// MsgDeliverySettle handlers; and the assertion is POSITIVE SETTLED CREDIT, which is what the e2e
 // `credit=` non-zero assertion measured.
 //
 // ABLATION that must redden it: drop the FetchDemandIssuerKeys call in step 1 (the
@@ -52,14 +52,14 @@ func TestPaidDeliveryLaneThreeCallComposition(t *testing.T) {
 	const seed = 20260903
 	const fee = int64(50_000) // the shipped daemon's fee (cmd/silt/daemon.go)
 	cl := NewCluster(seed, 8, simnet.DefaultConfig(), node.DefaultConfig())
-	// R2.9: the session open is signed by the fetcher's DURABLE signer and the server
-	// checks sha256(Fetcher) == the authenticated sender, so the fetcher must be a node
-	// whose ID IS its signer's key hash (identityNode), not a cluster node with a random
-	// signer bolted on.
+	// The session open is signed by the fetcher's DURABLE signer and the server
+	// checks sha256(Fetcher) == the authenticated sender, so the fetcher must be a
+	// node whose ID IS its signer's key hash (identityNode), not a cluster node with
+	// a random signer bolted on.
 	fetcher, fetcherSigner := identityNode(cl, 2026090302)
 
-	// The bilateral issuer==server shape the certification's settlement answer covers,
-	// and the shape the e2e daemon ran: one node issues the tokens it later banks.
+	// The bilateral issuer==server shape the settlement answer covers, and the
+	// shape the e2e daemon ran: one node issues the tokens it later banks.
 	server, serverSigner := identityNode(cl, 2026090301)
 	ledger := credit.New(fee, 100*fee)
 	server.SetLedger(ledger)
@@ -84,9 +84,9 @@ func TestPaidDeliveryLaneThreeCallComposition(t *testing.T) {
 	ledger.Register(server.ID())
 	ledger.Register(fetcher.ID())
 
-	// R2.9: the delivery is a SESSION. The four node calls, in the order
-	// `silt swarm receipt` makes them: pin the keys, withdraw the token (= the anchor),
-	// open the session with it (the token is spent at OPEN), then settle one or more
+	// The delivery is a SESSION. The four node calls, in the order `silt swarm
+	// receipt` makes them: pin the keys, withdraw the token (= the anchor), open the
+	// session with it (the token is spent at OPEN), then settle one or more
 	// cumulative-count receipts on it — here for TWO objects on ONE session (C7).
 	var pinned int
 	var keyErr error

@@ -1,6 +1,6 @@
 package demand
 
-// R0.4b expiry tests: the held keyset IS the validity window.
+// expiry tests: the held keyset IS the validity window.
 
 import (
 	"crypto/rand"
@@ -31,8 +31,8 @@ func newEpochScene(t *testing.T, epochs ...uint64) epochScene {
 }
 
 // withdraw runs a full blind withdrawal under key_epoch, with epoch bound INTO the
-// signed message (R0.4b (b1)). The returned Token still carries NO epoch field —
-// the epoch is in what was signed, never on the wire.
+// signed message ((b1)). The returned Token still carries NO epoch field — the
+// epoch is in what was signed, never on the wire.
 func (es epochScene) withdraw(t *testing.T, epoch uint64) Token {
 	t.Helper()
 	priv := es.priv[epoch]
@@ -183,8 +183,7 @@ func TestKeyFingerprintBindsTheKey(t *testing.T) {
 	}
 }
 
-// TestExpiredTokenVerifiesNowhereSoNothingIsConsumed (was
-// TestRedeemRejectsExpiredTokenBeforeCrediting) is the end-to-end SUBTRACTIVE property:
+// TestExpiredTokenVerifiesNowhereSoNothingIsConsumed is the end-to-end SUBTRACTIVE property:
 // an expired token has no held key that verifies it, so the anchor never reaches the
 // credit ledger's guard and nothing is consumed by the attempt — expiry can only ever
 // REJECT, it never mints and never burns an honest fetcher's token on a clock
@@ -194,7 +193,7 @@ func TestKeyFingerprintBindsTheKey(t *testing.T) {
 // Bank.Redeem and the bank's own spent set. Both are retired. The surviving statement of
 // the same property is in two halves: the keyset refuses (here), and the guard the
 // anchor would have entered records nothing on a refusal — core/credit
-// TestF8_FallingSourceLowersNothingAndReadmitsNothing_Delivery (the ReasonBackdated
+// TestFallingSourceLowersNothingAndReadmitsNothing_Delivery (the ReasonBackdated
 // arm) and core/node TestComposedExpiryBoundary_EvictionIsClosedAtBothLayers.
 func TestExpiredTokenVerifiesNowhereSoNothingIsConsumed(t *testing.T) {
 	const W = 4
@@ -208,16 +207,16 @@ func TestExpiredTokenVerifiesNowhereSoNothingIsConsumed(t *testing.T) {
 		t.Fatalf("an expired token verified at epoch %d — the anchor would be spent into the guard", e)
 	}
 	// Not "no key at all": the SAME keyset still verifies a fresh token, so the refusal
-	// above is the WINDOW and not an empty fixture (the vacuous-gate scar, 2026-09-07).
+	// above is the WINDOW and not an empty fixture, which would be a vacuous gate.
 	if e, ok := ks.VerifyInWindow(current, es.withdraw(t, current)); !ok || e != current {
 		t.Fatalf("the control token did not verify (epoch %d, ok %v) — the expiry arm above measures darkness", e, ok)
 	}
 }
 
-// TestNoKeysetRefusesEveryAnchor (was TestRedeemWithNoKeysetRefuses): a server that
+// TestNoKeysetRefusesEveryAnchor: a server that
 // could not resolve key_E against the committed binding has no anti-fingerprinting
-// anchor, and the certification is explicit that running without it is unsafe — so the
-// safe default is refuse, not accept. A keyset holding nothing verifies nothing.
+// anchor, and the research is explicit that running without it is unsafe — so the safe
+// default is refuse, not accept. A keyset holding nothing verifies nothing.
 //
 // The NODE half of the same rule — a server with no pinned issuer key refuses the open
 // with errDeliveryNoIssuerKey rather than opening an unguarded session — is

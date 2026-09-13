@@ -16,12 +16,12 @@ import (
 )
 
 // ProviderRecord is a self-certifying "I hold content under key Key" DHT
-// announcement (M0 H5 / Memo 08). The provider signs (Key, its identity, expiry)
-// with its own key, so a storing node — and any fetcher the record is later
-// re-served to — can verify the claim was made by the provider ITSELF and is
-// still fresh, instead of trusting whatever a (possibly eclipsing) intermediary
-// hands back. Without this, a malicious node holding the k-closest slots to a key
-// can fabricate provider records for identities that never announced. ID is the
+// announcement (M0 H5 /). The provider signs (Key, its identity, expiry) with its
+// own key, so a storing node — and any fetcher the record is later re-served to —
+// can verify the claim was made by the provider ITSELF and is still fresh,
+// instead of trusting whatever a (possibly eclipsing) intermediary hands back.
+// Without this, a malicious node holding the k-closest slots to a key can
+// fabricate provider records for identities that never announced. ID is the
 // provider's NodeID; PubKey/Sig are nil on an UNSIGNED (legacy/trusted) record,
 // which a strict verifier (RequireSignedProviders) rejects.
 type ProviderRecord struct {
@@ -146,52 +146,50 @@ const (
 	MsgSubmitBondRegAck      // OK: the renewal was received (queued if valid for the current head)
 	MsgRepairClaim           // Data: a CBOR repairproof.RepairClaim — "I placed a correct rebuilt shard on Holder; verify and pay the bounty" (H7)
 	MsgRepairVote            // OK: the caretaker independently verified correctness+retrievability and settled the verdict on its own ledger (H7)
-	MsgDeliveryReceipt       // RETIRED (B-9, R2.9): the v2 flat receipt. Kind number kept; a server answers OK=false with the named retirement (core/node handleDeliveryReceipt). Deliveries are sessions: MsgDeliveryOpen/Fund/Settle below
-	MsgDeliveryReceiptAck    // OK is always false since B-9; Data names the retirement
+	MsgDeliveryReceipt       // RETIRED: the v2 flat receipt. Kind number kept; a server answers OK=false with the named retirement (core/node handleDeliveryReceipt). Deliveries are sessions: MsgDeliveryOpen/Fund/Settle below
+	MsgDeliveryReceiptAck    // OK is always false since; Data names the retirement
 	MsgGetCanonicalIssuers   // ask a chain-holder for the deterministic canonical issuer set (top-k by committed bond) — publisher privacy (R-3)
 	MsgCanonicalIssuersReply // Data: concatenated 32-byte NodeIDs, heaviest-bond first; OK=false if no chain
-	MsgGetChainHead          // cheap chain-sync head probe (#382): "what is your head?" — no payload
+	MsgGetChainHead          // cheap chain-sync head probe: "what is your head?" — no payload
 	MsgChainHeadReply        // Height: head height; Data: 32-byte head hash (so a matching head skips the full-chain fetch)
-	MsgPrepareQC             // Data: CBOR prepareQCEnv (#432 two-phase): "here is the prepare-QC for (h, r) — precommit"
+	MsgPrepareQC             // Data: CBOR prepareQCEnv: "here is the prepare-QC for (h, r) — precommit"
 	MsgPrecommitReply        // OK + Data: CBOR precommit attestation (or OK=false refusal)
-	MsgRoundChange           // Data: CBOR roundChangeEnv (#432 view-change): signed "advance (h, r→r')" carrying the sender's lock
+	MsgRoundChange           // Data: CBOR roundChangeEnv: signed "advance (h, r→r')" carrying the sender's lock
 	MsgRoundChangeAck        // OK: the round-change was received and recorded
-	MsgSubmitEntry           // Data: a CBOR entry a publisher submits for the designee's block to include (#441: entries are mempool content, never a second proposal stream)
-	MsgSubmitEntryAck        // OK: queued if valid; OK=false + Data: the synchronous refusal reason (#441 §2.2 — never refuse silently)
+	MsgSubmitEntry           // Data: a CBOR entry a publisher submits for the designee's block to include
+	MsgSubmitEntryAck        // OK: queued if valid; OK=false + Data: the synchronous refusal reason
 	MsgRelayOpen             // Data: a CBOR relaypay.RelayOpen — a fetcher commits a chain root + funding + S to open a paid relay session (PoD §7.3 transport)
 	MsgRelayOpenAck          // OK + Height: the relay opened the session; Height carries the session handle. OK=false + Data: the refusal reason (M0 guard / S-clamp)
 	MsgRelayPay              // Data: a CBOR relaypay.RelayPay — a preimage reveal that authorizes the next forwarded increment(s) (PoD §7.3 transport)
 	MsgRelayPayAck           // OK + Height: the relay advanced; Height carries the authorized increment count. OK=false if the preimage did not verify
-	// R0.4b per-epoch demand-issuer keys. A SEPARATE lane from MsgGetIssuerKey /
+	// per-epoch demand-issuer keys. A SEPARATE lane from MsgGetIssuerKey /
 	// MsgTokenRequest, which serve the PUBLISH-token issuer key: that key is the
 	// chain's issuerKey lookup and committed publish tokens are re-verified against
 	// it on every replay, so it must NOT rotate per epoch. See core/node/demandkeys.go.
-	MsgGetDemandIssuerKeys   // ask an issuer for its per-epoch demand-token key WINDOW {key_E : current−W <= E <= current}
+	MsgGetDemandIssuerKeys   // ask an issuer for its per-epoch demand-token key WINDOW {key_E: current−W <= E <= current}
 	MsgDemandIssuerKeysReply // Data: CBOR demandKeysetWire (epoch → DER public key); OK=false if the peer issues no demand tokens
 	MsgDemandTokenRequest    // Data: a blinded demand-token serial to blind-sign under the CURRENT epoch key (fee charged to sender, or to an attached credit)
 	MsgDemandTokenReply      // Data: the blind signature; Height: the issuing epoch E (which key_E signed it); OK=false if refused
-	// R2.11 — APPENDED, never inserted: MsgKind is a positional uint8 and an old peer's kinds
-	// must keep their numbers (TestR211MsgKindNumbersArePinned). A validator that never wins a
+	// APPENDED, never inserted: MsgKind is a positional uint8 and an old peer's kinds must
+	// keep their numbers (TestMsgKindNumbersArePinned). A validator that never wins a
 	// proposal slot submits its per-epoch demand-issuer key registration to its peers, and
 	// whoever proposes next folds it (the MsgSubmitBondReg shape, one keyspace over).
 	MsgSubmitIssuerKeyReg    // Data: a block-CBOR wrapper carrying exactly ONE chain.IssuerKeyReg, the sender's own
 	MsgSubmitIssuerKeyRegAck // OK: received (queued if valid for the receiver's head; every refusal is logged)
-	// R2.9 — the paid DELIVERY session (APPENDED). A durable fetcher opens one session per
-	// server with a demand-domain anchor spent at OPEN, tops it up with fresh anchors, and
-	// settles incrementally with cumulative-count receipts (receipt v3). Certification:
-	// silt-agent-memory/researcher/reviews/research-outcome/R2.9-G-R212-8-delivery-anchor-quantization-RESEARCH-CERTIFICATION-2026-09-06.md §3.
+	// The paid DELIVERY session (APPENDED). A durable fetcher opens one session per server with a demand-domain anchor spent at OPEN,
+	// tops it up with fresh anchors, and settles incrementally with cumulative-count receipts (receipt v3).
 	MsgDeliveryOpen      // Data: a CBOR demand.SessionOpen — k = 1 demand-domain anchor + the durable fetcher's signature over the open commitment
 	MsgDeliveryOpenAck   // OK + Height: the session handle. OK=false + Data: the refusal reason (named, never silent)
 	MsgDeliveryFund      // Data: a CBOR demand.SessionFund — a top-up of an admitted session with a fresh anchor
 	MsgDeliveryFundAck   // OK + Height: the session's budget after the top-up (credits). OK=false + Data: the refusal reason
 	MsgDeliverySettle    // Data: a CBOR demand.SessionReceipt (receipt v3) — the fetcher's CUMULATIVE acknowledged increment count for one object
 	MsgDeliverySettleAck // OK + Height: the credits this receipt settled (gross of the skim; 0 for a non-advancing count). OK=false + Data: the refusal reason
-	// h43 / D-CONSENSUS-ARMING (APPENDED, never inserted): the TRANSFERABLE round
-	// certificate — the DiemBFT timeout-certificate shape, gossiped to every peer as
-	// Tendermint does. A node that assembles a quorum of round-changes for (h, r)
-	// broadcasts it ONCE; a receiver validates it with the same rule an attester
-	// applies to a proposal-carried certificate and enters r. A wire object only —
-	// never a block field, never a transition or fork-choice input (I5).
+	// APPENDED, never inserted: the TRANSFERABLE round certificate — the
+	// DiemBFT timeout-certificate shape, gossiped to every peer as Tendermint
+	// does. A node that assembles a quorum of round-changes for (h, r) broadcasts
+	// it ONCE; a receiver validates it with the same rule an attester applies to
+	// a proposal-carried certificate and enters r. A wire object only — never a
+	// block field, never a transition or fork-choice input (I5).
 	MsgRoundCert    // Data: CBOR roundCertEnv {Height, Round, Raws}: the signed round-change envelopes for exactly Round
 	MsgRoundCertAck // OK: the certificate verified and was recorded; OK=false: wrong height or below quorum
 )
@@ -206,10 +204,11 @@ type StorageProof struct {
 	Index int
 	Total int
 	Path  []Hash
-	// Column is the shard's position within its stripe (0..n-1) for an
-	// erasure-coded file — the placement/provider key is hash(root‖Column)
-	// so a whole column co-locates and is discovered together. -1 means
-	// "no column" (manifest chunks and uncoded files), keyed by chunk id.
+	// Column is the shard's position within its stripe (0.n-1) for an
+	// erasure-coded file — the placement/provider key is
+	// hash(root‖Column) so a whole column co-locates and is discovered
+	// together. -1 means "no column" (manifest chunks and uncoded
+	// files), keyed by chunk id.
 	Column int
 	// PorTags are the per-block proof-of-retrievability authenticators for
 	// this shard (core/por), computed by the publisher under a key derived
@@ -257,19 +256,20 @@ type Message struct {
 	// the network's storage for the M9 capacity estimate.
 	CapUsed  int64
 	CapTotal int64
-	// Work gossip (R2.2 rows 8-9): the sender's own served bytes and repairs done
-	// SINCE ITS PROCESS STARTED — not lifetime. D-FP2-SCOPE keeps the credit ledger
-	// ephemeral through the RC (core/credit's account map is in memory and only paid
-	// serials are restored at boot), so both counters reset on every restart. A
-	// concentration measure over them therefore partly measures UPTIME: a node up for a
-	// week and one up for an hour differ by how long they have been running, not by how
-	// they behave. Every consumer must carry that caveat; the concentration document
-	// stamps it (cmd/silt/ui_economy.go, workCounterEpoch).
+	// Work gossip: the sender's own served bytes and repairs done SINCE ITS PROCESS
+	// STARTED — not lifetime. keeps the credit ledger ephemeral through the RC
+	// (core/credit's account map is in memory and only paid serials are restored at
+	// boot), so both counters reset on every restart. A concentration measure over
+	// them therefore partly measures UPTIME: a node up for a week and one up for an
+	// hour differ by how long they have been running, not by how they behave. Every
+	// consumer must carry that caveat; the concentration document stamps it
+	// (cmd/silt/ui_economy.go, workCounterEpoch).
 	//
-	// It is not a mitigation either. The reset hands an observer a KNOWN ZERO BASELINE,
-	// which removes the differencing step rather than adding one, and because both fields
-	// are omitempty it makes every restart an unforgeable beacon to every peer. It must be
-	// re-priced at the R2.4 economy-ON flip that D-FP2-SCOPE names as a re-arm trigger.
+	// It is not a mitigation either. The reset hands an observer a KNOWN ZERO
+	// BASELINE, which removes the differencing step rather than adding one, and
+	// because both fields are omitempty it makes every restart an unforgeable beacon
+	// to every peer. It must be re-priced at the economy-ON flip that names as a
+	// re-arm trigger.
 	//
 	// They ride the same messages as the capacity pledge so a node can
 	// compute the serve-work and repair-work Gini over its local peer sample
@@ -379,8 +379,8 @@ type Transport interface {
 }
 
 // PeerClass is the OBSERVED address class of a peer, as the transport saw it
-// (R4.3b, the DHT eclipse cap keyed on the contacted-at address). Never a
-// declared label: a class is a fact about a completed conversation.
+// (the DHT eclipse cap keyed on the contacted-at address). Never a declared
+// label: a class is a fact about a completed conversation.
 type PeerClass uint8
 
 const (
@@ -390,7 +390,7 @@ const (
 	// ClassDirect: a TLS-completed conversation at the peer's own address.
 	ClassDirect
 	// ClassRelayed: reached through a relay splice; keyed on the RELAY's
-	// group, as its own class (research-certified 2026-09-04).
+	// group, as its own class.
 	ClassRelayed
 )
 

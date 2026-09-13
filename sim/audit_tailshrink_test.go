@@ -16,7 +16,7 @@ import (
 // Red-team F4 (integrity, S1) at the integration tier: a "shrink liar" keeps
 // only the FIRST PoR block of each shard and answers challenges reporting
 // PorBlocks=1. The old auditor applied a lenient "tail" branch to the file's
-// last leaf (accept any 1..wantFull) even though that shard is full-size on the
+// last leaf (accept any 1.wantFull) even though that shard is full-size on the
 // wire — so the shrink liar passed there while holding one block. The fix grades
 // EVERY leaf against the auditor's own full block count, so the shrink liar is
 // caught, while an honest holder still passes.

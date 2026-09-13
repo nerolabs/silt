@@ -16,7 +16,7 @@ import (
 // UNREPRESENTABLE. A green here with no demonstrated red is a comment that
 // compiles; each test below was watched to fail first (see the builder report).
 
-// tagTest is a field tag used only by these tests, matching the Key() scheme.
+// tagTest is a field tag used only by these tests, matching the Key scheme.
 const tagTest = "byRoot\x00"
 
 // buildTrie commits the given raw keys under tagTest with Present values and
@@ -119,7 +119,7 @@ func TestNoWitnessNeverAbsent(t *testing.T) {
 // TestFailedVerificationNeverAbsent is ablation test 3: a proof that FAILS to
 // verify (wrong root, or tampered) resolves to NO_WITNESS, never PROVEN_ABSENT.
 // An over-budget/malformed/failed-fetch witness upstream lands here identically:
-// verification fails → NO_WITNESS → stall (RULING §"failure paths").
+// verification fails → NO_WITNESS → stall.
 func TestFailedVerificationNeverAbsent(t *testing.T) {
 	absent := []byte("absent-key")
 	trie, root := buildTrie(t, []byte("k1"), []byte("k2"))
@@ -174,7 +174,7 @@ func TestFailedVerificationNeverAbsent(t *testing.T) {
 
 	t.Run("membership proof re-read as an absence claim -> not PROVEN_ABSENT", func(t *testing.T) {
 		// A present key's membership proof offered as its absence proof must not
-		// verify as absent (the C-7 forgery), so it lands in NO_WITNESS here.
+		// verify as absent (the forgery), so it lands in NO_WITNESS here.
 		presentKey := Key(tagTest, []byte("k1"))
 		mProof, err := trie.Prove(presentKey)
 		if err != nil {
@@ -190,17 +190,17 @@ func TestFailedVerificationNeverAbsent(t *testing.T) {
 	})
 }
 
-// TestEmptyValueNeverPresent is the mirror-of-banned-move ablation (PE LOW
-// finding, 2026-08-29): an empty-but-non-nil []byte{} value query against a VALID
-// absence proof must resolve to PROVEN_ABSENT, NEVER PROVEN_PRESENT. The pokt
-// library selects membership vs non-membership on bytes.Equal(value,
-// defaultEmptyValue) with defaultEmptyValue == nil, and bytes.Equal treats nil and
-// []byte{} as equal — so the library verifies []byte{} as a NON-membership query.
-// If Resolve keyed on value == nil (the pre-fix code), that same []byte{} would
-// route to the ProvenPresent branch and return PROVEN_PRESENT(value="") off a
-// valid absence proof — a false PRESENCE, the mirror of the C-7 §104 banned move.
-// This test was watched RED against the value==nil code and GREEN after keying on
-// len(value) == 0 (see the builder report).
+// TestEmptyValueNeverPresent is the mirror-of-banned-move ablation: an
+// empty-but-non-nil []byte{} value query against a VALID absence proof must
+// resolve to PROVEN_ABSENT, NEVER PROVEN_PRESENT. The pokt library selects
+// membership vs non-membership on bytes.Equal(value, defaultEmptyValue) with
+// defaultEmptyValue == nil, and bytes.Equal treats nil and []byte{} as equal — so
+// the library verifies []byte{} as a NON-membership query. If Resolve keyed on
+// value == nil (the pre-fix code), that same []byte{} would route to the
+// ProvenPresent branch and return PROVEN_PRESENT(value="") off a valid absence
+// proof — a false PRESENCE, the mirror of the C-7 §104 banned move. This test was
+// watched RED against the value==nil code and GREEN after keying on len(value) ==
+// 0 (see the builder report).
 func TestEmptyValueNeverPresent(t *testing.T) {
 	absent := []byte("absent-raw-key") // never inserted
 	trie, root := buildTrie(t, []byte("present-raw-key"))
@@ -230,12 +230,12 @@ func TestEmptyValueNeverPresent(t *testing.T) {
 
 // TestOutcomesHaveExactlyOneConstructionSite is the by-construction ablation: it
 // proves each verified outcome is constructible from exactly ONE source literal.
-//   - PROVEN_ABSENT: only from a verified non-membership proof, in the len==0
-//     branch after a successful VerifyProof. A second site would be the banned
-//     C-7 §104 move (missing/failed witness read as absent).
-//   - PROVEN_PRESENT: only from a verified membership proof, in the len>0 branch.
-//     A second site would be the MIRROR banned move (an unverified path — or an
-//     empty-value absence query — read as present).
+// - PROVEN_ABSENT: only from a verified non-membership proof, in the len==0
+// branch after a successful VerifyProof. A second site would be the banned
+// C-7 §104 move (missing/failed witness read as absent).
+// - PROVEN_PRESENT: only from a verified membership proof, in the len>0 branch.
+// A second site would be the MIRROR banned move (an unverified path — or an
+// empty-value absence query — read as present).
 //
 // The type's unexported outcome field already prevents outside packages from
 // fabricating either outcome; this test guards against a new construction site

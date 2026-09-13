@@ -11,18 +11,16 @@ import (
 // era-4 build step 4d — height-gated activation + mint-flip to v5.
 //
 // The activation shape is the era-3 (2c) machinery reused one readiness level up: a
-// frozen-epoch-weight supermajority signalling regVersion >= BlockVersionWitnessable
-// (== 5) locks in era-4 at the NEXT finalized boundary (H_era4), from which v5 is REQUIRED
+// frozen-epoch-weight supermajority signalling regVersion >= BlockVersionWitnessable (==
+// 5) locks in era-4 at the NEXT finalized boundary (H_era4), from which v5 is REQUIRED
 // (mint + validity). era-4 layers ON TOP of era-3: a v5 block commits a SUPERSET of the v4
 // leaves, so H_era4 >= H_era3 (enforced in New for the pre-latch overrides; automatic
 // post-latch because a v5 signaller is v4-ready). These oracles assert the four properties
 // 4d must hold, EACH paired with a demonstrated RED (an injected defect that flips the
-// assertion) recorded inline, per the session-7 rule: a green check is not shipped until
-// its defect has been watched go red. Invariants: I1/I2/I4 untouched; I3 relied on (rule
-// change integrates only at a finalized boundary, by weight); I5 preserved
+// assertion) recorded inline, per the rule: a green check is not shipped until its defect
+// has been watched go red. Invariants: I1/I2/I4 untouched; I3 relied on (rule change
+// integrates only at a finalized boundary, by weight); I5 preserved
 // (era4Active/MintVersion/validateEra4Version are pure functions of committed state).
-// Deliberation: docs/thinking/2026-08-29-era4-4d-activation-mintflip-approach.md.
-
 // mintNext4 builds the next block the way an era-4 proposer WOULD: it asks the chain for
 // the mint version, and for a v5 boundary block populates the committed roots over the
 // block's own post-apply state (the same PopulateEra4Roots the propose path calls); for a
@@ -79,10 +77,10 @@ func era4AnchorChain(t *testing.T, era3Activation, era4Activation uint64) (*Chai
 
 // TestEra4PreLatchMintFlipAndBoundary4d: with genesis-declared boundaries (H_era3=2,
 // H_era4=4), the four regimes are exercised:
-//   - below H_era3: mint v2, accept v2;
-//   - at/above H_era3 and below H_era4: mint v4, accept a correctly-rooted v4 block;
-//   - at/above H_era4: mint v5, accept a correctly-rooted v5 block, REJECT a v4 block
-//     (ErrEra4VersionRequired), REJECT a v5 block with a wrong StateRoot (the 4c predicate).
+// - below H_era3: mint v2, accept v2;
+// - at/above H_era3 and below H_era4: mint v4, accept a correctly-rooted v4 block;
+// - at/above H_era4: mint v5, accept a correctly-rooted v5 block, REJECT a v4 block
+// (ErrEra4VersionRequired), REJECT a v5 block with a wrong StateRoot (the 4c predicate).
 //
 // GATE (PACE): "Before activation: v4, era-3 freeze holds" AND "At/after activation: v5,
 // first v5 block accepted with the new keyspaces committed and RegCap-valid".
@@ -178,9 +176,9 @@ func TestEra4PreLatchMintFlipAndBoundary4d(t *testing.T) {
 func TestEra4FirstV5BlockCommitsTheSpineKeyspaces4d(t *testing.T) {
 	c, keys := era4AnchorChain(t, 2, 4)
 
-	// Drive to the last v4 height (3) so the chain carries real bonded/qualified/dueBucket
-	// state at the boundary. The v4 block's committed root must equal the era-3 root
-	// (StateRoot(), the 18-leaf set) — the freeze.
+	// Drive to the last v4 height (3) so the chain carries real
+	// bonded/qualified/dueBucket state at the boundary. The v4 block's committed root
+	// must equal the era-3 root (StateRoot, the 18-leaf set) — the freeze.
 	mustAppend(t, c, mintNext4(t, c, keys)) // 1, v2
 	mustAppend(t, c, mintNext4(t, c, keys)) // 2, v4
 	v4 := c.Blocks(2)[0]
@@ -268,9 +266,9 @@ func TestEra4ActivationIsReorgStableAndReplayDerived4d(t *testing.T) {
 		c := New(cfg, func(ports.NodeID) int64 { return 0 })
 		c.SetBondVerifier(objectiveVerify)
 		g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
-		// All four signal v5 (which is also v4-ready), so BOTH era-3 and era-4 lock at the
-		// first boundary. The mature v1 commit() cannot build a v4/v5 block, so commit only
-		// heights 1..3 (below H_era4 = 4).
+		// All four signal v5 (which is also v4-ready), so BOTH era-3 and era-4 lock
+		// at the first boundary. The mature v1 commit cannot build a v4/v5 block, so
+		// commit only heights 1.3 (below H_era4 = 4).
 		g.BondRegs = append(g.BondRegs, bondRegV(whale, twoMiB, ports.Hash{}, BlockVersionWitnessable))
 		for _, m := range minnows {
 			g.BondRegs = append(g.BondRegs, bondRegV(m, twoMiB, ports.Hash{}, BlockVersionWitnessable))
@@ -313,13 +311,13 @@ func TestEra4ActivationIsReorgStableAndReplayDerived4d(t *testing.T) {
 			"must be a pure function of committed history", c.era4Height, replica.era4Height)
 	}
 
-	// A fork WITHOUT the era-4 ready signal earns NO era-4 activation: same shape, v4-only
-	// regs. This fork DOES lock era-3 at boundary 0 (all signal v4), so H_era3 = 4 and the
-	// v1 commit() helper can only build heights 1..3 (below H_era3) — exactly the era-3
-	// reorg test's constraint. Boundary 0 is where era-4 must decline to lock.
-	// RED shown: make the era-4 rotateEpoch tally lock in whenever total>0 (drop the
-	// `3*ready > 2*total` readiness threshold) and this unready fork locks era-4 in at
-	// boundary 0 — the readiness gate is what makes the boundary EARNED.
+	// A fork WITHOUT the era-4 ready signal earns NO era-4 activation: same shape,
+	// v4-only regs. This fork DOES lock era-3 at boundary 0 (all signal v4), so H_era3
+	// = 4 and the v1 commit helper can only build heights 1.3 (below H_era3) — exactly
+	// the era-3 reorg test's constraint. Boundary 0 is where era-4 must decline to
+	// lock. RED shown: make the era-4 rotateEpoch tally lock in whenever total>0 (drop
+	// the `3*ready > 2*total` readiness threshold) and this unready fork locks era-4 in
+	// at boundary 0 — the readiness gate is what makes the boundary EARNED.
 	unready := New(cfg, func(ports.NodeID) int64 { return 0 })
 	unready.SetBondVerifier(objectiveVerify)
 	gu := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}

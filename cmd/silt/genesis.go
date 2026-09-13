@@ -18,12 +18,12 @@ func cmdGenesis(args []string) error {
 	fs.Parse(args)
 
 	// nil params ON PURPOSE, and the caveat below is why it is not a lie. This
-	// command has no network configuration and cannot invent one: since owner call F
-	// the genesis a DAEMON mints commits its consensus config (chain.ConsensusParams),
-	// so height-0 identity is a function of the manifesto AND the flags. There is no
-	// longer one true genesis hash to print. What is still universal — the manifesto,
-	// its chunking/erasure geometry, and therefore the link and the root — is printed
-	// unqualified; the block hash is printed with what it actually is.
+	// command has no network configuration and cannot invent one: since the genesis
+	// a DAEMON mints commits its consensus config (chain.ConsensusParams), so
+	// height-0 identity is a function of the manifesto AND the flags. There is no
+	// longer one true genesis hash to print. What is still universal — the
+	// manifesto, its chunking/erasure geometry, and therefore the link and the root
+	// — is printed unqualified; the block hash is printed with what it actually is.
 	block, h, entry, err := genesis.Build(memstore.New(), nil)
 	if err != nil {
 		return err

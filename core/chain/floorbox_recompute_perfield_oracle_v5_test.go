@@ -1,38 +1,35 @@
 package chain
 
-// era-4 (v5) floor-box BOULDER-1 R1.6 — PER-FIELD Resolve-path oracle probes for the 23-field
+// era-4 (v5) floor-box — PER-FIELD Resolve-path oracle probes for the 23-field
 // carrier table.
 //
 // BUILDER SEAT — 2026-09-02. Branch builder/floorbox-r1.6-per-field-oracle-probes.
-// Governs: ROADMAP.md Boulder-1 R1.6 (ratified). Hardens the R1.4 recompute-soundness cert
-//   (.../research-outcome/floorbox-R1.3-refutation-R1.4-witness-soundness-RESEARCH-CERTIFICATION-2026-09-01.md),
-//   which left R-CARRIER-REFLECTION HELD and named per-field ablation-teeth as the missing half of
-//   the coverage walk.
-// Design: docs/thinking/2026-09-02-floorbox-R1.6-per-field-oracle-probes-design.md.
+// Hardens the recompute-soundness walk,
+// which left the coverage walk short of per-field ablation teeth.
 //
 // WHAT THIS FILE ADDS (over the 10 FIX gates + class-M gate in
 // floorbox_recompute_adversarialroot_v5_test.go):
-//   1. A DRIVEN per-field probe for each of the 13 "already-anchored" carrier obligations (the proofs,
-//      the fold OldValues, the always-emitted scalar pairs). Each forges the field so it is
-//      inconsistent with prevStateRoot and asserts the box STALLS. If the field's anchor (its paired
-//      Resolve, or the fold's prevStateRoot VerifyProof) is dropped, the forged value folds into the
-//      attacker's committed root and the box wrong-accepts — the probe reddens. TestPerFieldProbeBites
-//      demonstrates this on a representative sample.
-//   2. The StateRootRotateScalar carrier is pinned into the reflection walk (r12Carriers +
-//      r12CoverageTable extended in floorbox_recompute_adversarialroot_v5_test.go), closing
-//      R-CARRIER-REFLECTION for the scalar carrier — a new value-bearing scalar field now reddens the
-//      coverage test until classified. The OldValue predicate rows are classified FIX-OPEN (the break
-//      below), Proof as already-anchored.
-//   3. THREE OPEN-BREAK gates for the activation-lock OldValue predicates
-//      (GateLockedIn/Era3LockedIn/Era4LockedIn .OldValue). These read an UNANCHORED witness OldValue
-//      as a BRANCH PREDICATE (rotate_v5.go:442,:450,:458): a forged OldValue=true SUPPRESSES the
-//      lock-in emission, so the value is never folded, and the attacker commits a lock-free root — a
-//      WRONG-ACCEPT. Confirmed reproducible for all three. This partially REFUTES the R1.4 Q1 "scalar
-//      pairs are already-anchored: fold OldValue" classification (true only when an op is emitted).
-//      Routed to the Researcher/PE as a consensus-adjacent recompute-soundness break. These gates
-//      assert the CURRENT wrong-accept (so they are GREEN on this branch) and MUST be flipped to
-//      assert-stall by the fix PR — the RED-on-current-code evidence a full-node reconstruction relies
-//      on the lock scalars being present.
+// 1. A DRIVEN per-field probe for each of the 13 "already-anchored" carrier obligations (the proofs,
+// The fold OldValues, the always-emitted scalar pairs. Each forges the field so it is
+// inconsistent with prevStateRoot and asserts the box STALLS. If the field's anchor (its paired
+// Resolve, or the fold's prevStateRoot VerifyProof) is dropped, the forged value folds into the
+// attacker's committed root and the box wrong-accepts — the probe reddens. TestPerFieldProbeBites
+// demonstrates this on a representative sample.
+// 2. The StateRootRotateScalar carrier is pinned into the reflection walk (r12Carriers +
+// r12CoverageTable extended in floorbox_recompute_adversarialroot_v5_test.go, closing the gap
+// for the scalar carrier — a new value-bearing scalar field now reddens the coverage test until
+// classified. The OldValue predicate rows are classified FIX-OPEN (the break below), Proof as
+// already-anchored.
+// 3. THREE OPEN-BREAK gates for the activation-lock OldValue predicates
+// (GateLockedIn/Era3LockedIn/Era4LockedIn.OldValue). These read an UNANCHORED witness OldValue as
+// a BRANCH PREDICATE (rotate_v5.go,:450,:458): a forged OldValue=true SUPPRESSES the lock-in
+// emission, so the value is never folded, and the attacker commits a lock-free root — a
+// WRONG-ACCEPT. Confirmed reproducible for all three. This partially REFUTES the Q1 "scalar
+// pairs are already-anchored: fold OldValue" classification (true only when an op is emitted).
+// A consensus-adjacent recompute-soundness break. These gates assert
+// the CURRENT wrong-accept (so they are GREEN on this branch) and MUST be flipped to assert-stall
+// by the fix PR — the RED-on-current-code evidence a full-node reconstruction relies on the lock
+// scalars being present.
 
 import (
 	"testing"
@@ -47,13 +44,13 @@ import (
 //
 // Each probe forges ONE already-anchored carrier field on an honest, agreeing witness and asserts the
 // box STALLS. The anchor that catches each is named. A probe with no demonstrated ablation-RED is
-// decoration (session-7 scar); TestPerFieldProbeBites drives a representative sample RED by making
-// the forged value the one the box would fold if its anchor were dropped.
+// decoration; TestPerFieldProbeBites drives a representative sample RED by making the forged value
+// the one the box would fold if its anchor were dropped.
 
 // --- StateRootAttScreen proof/value fields (4): SlashedProof, EpochSetProof, EpochSetValue, BondedProof ---
 
 // TestPerField_AttScreen_SlashedProof forges the SlashedProof (swaps in a proof for a different key).
-// The anchor is the Resolve of Slashed against prevStateRoot (atts_v5.go:165): a proof that does not
+// The anchor is the Resolve of Slashed against prevStateRoot (atts_v5.go): a proof that does not
 // verify yields NoWitness ⇒ neither IsProvenAbsent nor IsProvenPresent ⇒ stall.
 func TestPerField_AttScreen_SlashedProof(t *testing.T) {
 	f := buildAttFixture(t)
@@ -72,7 +69,7 @@ func TestPerField_AttScreen_SlashedProof(t *testing.T) {
 }
 
 // TestPerField_AttScreen_EpochSetProof forges the AttScreen EpochSetProof. Anchor: Resolve(epochSet||id)
-// (atts_v5.go:186). The fixture attester IS in the frozen epochSet, so InEpochSet=true and the box
+// (atts_v5.go). The fixture attester IS in the frozen epochSet, so InEpochSet=true and the box
 // requires a present-proof; a wrong-key proof fails ⇒ stall.
 func TestPerField_AttScreen_EpochSetProof(t *testing.T) {
 	f := buildAttFixture(t)
@@ -108,9 +105,10 @@ func TestPerField_AttScreen_EpochSetValue(t *testing.T) {
 }
 
 // TestPerField_AttScreen_BondedProof forges the BondedProof on a pre-maturity fixture (where the
-// bonded screen is read). Anchor: Resolve(bonded||id) (atts_v5.go:206). A wrong-key proof stalls.
+// bonded screen is read). Anchor: Resolve(bonded||id) (atts_v5.go). A wrong-key proof stalls.
 func TestPerField_AttScreen_BondedProof(t *testing.T) {
-	// Pre-maturity path: EpochBlocks=0 ⇒ epochsEnabled()=false ⇒ the bonded screen is read.
+	// Pre-maturity path: EpochBlocks=0 ⇒ epochsEnabled=false ⇒ the bonded screen is
+	// read.
 	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
 		EpochBlocks: 0, MatureValidators: 0, BondTTLBlocks: 0}
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
@@ -188,7 +186,7 @@ func TestPerField_AttScreen_BondedProof(t *testing.T) {
 // ProvenProof anchors PriorProven. A wrong-key proof yields NoWitness ⇒ the Resolve stalls.
 
 // TestPerField_BondRegScreen_OwnerProof forges the OwnerProof. Anchor: Resolve(bondRootOwner||root)
-// (bondreg_v5.go:155/:180). The squatter OWNS the shared root pre-state (Claimed=true), so the box
+// (bondreg_v5.go/:180). The squatter OWNS the shared root pre-state (Claimed=true), so the box
 // requires a present-proof; a wrong-key proof fails ⇒ stall.
 func TestPerField_BondRegScreen_OwnerProof(t *testing.T) {
 	f := buildBondFixture(t)
@@ -213,7 +211,7 @@ func TestPerField_BondRegScreen_OwnerProof(t *testing.T) {
 }
 
 // TestPerField_BondRegScreen_ProvenProof forges the ProvenProof. Anchor: Resolve(bondRootProven||root)
-// (bondreg_v5.go:164/:169). The squatter's root is claimed-but-unproven pre-state, so PriorProven=false
+// (bondreg_v5.go/:169). The squatter's root is claimed-but-unproven pre-state, so PriorProven=false
 // requires a non-membership proof; a wrong-key proof fails IsProvenAbsent ⇒ stall.
 func TestPerField_BondRegScreen_ProvenProof(t *testing.T) {
 	f := buildBondFixture(t)
@@ -241,7 +239,7 @@ func TestPerField_BondRegScreen_ProvenProof(t *testing.T) {
 
 // TestPerField_RotateMember_EpochSetOldValue forges a frozen member's EpochSetOldValue (the fold's
 // OldValue for the epochSet||id leaf). Anchor: FoldChangedPaths verifies OldValue against prevStateRoot
-// (fold.go:126). A forged OldValue fails VerifyProof ⇒ stall.
+// (fold.go). A forged OldValue fails VerifyProof ⇒ stall.
 func TestPerField_RotateMember_EpochSetOldValue(t *testing.T) {
 	f := buildRotateFixture(t)
 	b := f.boundaryBlock(nil)
@@ -279,7 +277,7 @@ func TestPerField_RotateMember_EpochSetProof(t *testing.T) {
 
 // TestPerField_RotateMember_PriorEpochSetOldValue forges the OldValue of a DROPPED prior-epochSet
 // member (the fold's OldValue for the epochSet||id DELETE). Anchor: FoldChangedPaths verifies the
-// DELETE's OldValue against prevStateRoot (fold.go:126). A forged OldValue fails VerifyProof ⇒ stall.
+// DELETE's OldValue against prevStateRoot (fold.go). A forged OldValue fails VerifyProof ⇒ stall.
 // This is the driven per-field probe for the DELETE path of the RotateMember carrier; the
 // EpochSetDeleteSiblings are anchored by the final root-equality (TestPerFieldProbeBites), a
 // fold-machinery detail, not an independently-forgeable value.
@@ -355,7 +353,7 @@ func epochSetDropFixture(t *testing.T) (rotateFixture, Block, ports.Hash, StateR
 // --- StateRootRotateScalar always-emitted pairs (2): EpochStart, MatureEpoch OldValue/Proof ---
 
 // TestPerField_RotateScalar_EpochStart_Anchored forges the EpochStart scalar OldValue. epochStart
-// advances EVERY boundary (rotate_v5.go:253), so the op is ALWAYS emitted and the OldValue/Proof are
+// advances EVERY boundary (rotate_v5.go), so the op is ALWAYS emitted and the OldValue/Proof are
 // folded and verified against prevStateRoot. A forged OldValue fails the fold ⇒ stall. This is the
 // scalar carrier's SAFE case — contrast the LockedIn.OldValue break in PART C.
 func TestPerField_RotateScalar_EpochStart_Anchored(t *testing.T) {
@@ -420,16 +418,16 @@ func TestPerFieldProbeBites(t *testing.T) {
 }
 
 // =============================================================================
-// PART C — CLOSED-BREAK gates: the activation-lock OldValue predicates now STALL (Direction A)
+// PART C — CLOSED-BREAK gates: the activation-lock OldValue predicates now STALL (pre-state anchor)
 // =============================================================================
 //
-// rotate_v5.go read rw.GateLockedIn.OldValue / rw.Era3LockedIn.OldValue / rw.Era4LockedIn.OldValue
-// as a BRANCH PREDICATE (!decodeBoolLeaf(...)) to decide whether to attempt each activation lock-in.
-// The OldValue was UNTRUSTED and only fold-verified when scalarFoldOp emitted an op (i.e. when the
-// value CHANGED). A forged OldValue=true SUPPRESSED the lock-in attempt: no op emitted, the forged
-// OldValue never folded, and the attacker committed a root WITHOUT the lock scalars → a WRONG-ACCEPT.
+// rotate_v5.go read rw.GateLockedIn.OldValue / rw.Era3LockedIn.OldValue / rw.Era4LockedIn.OldValue as
+// a BRANCH PREDICATE (!decodeBoolLeaf(.)) to decide whether to attempt each activation lock-in. The
+// OldValue was UNTRUSTED and only fold-verified when scalarFoldOp emitted an op (i.e. when the value
+// CHANGED). A forged OldValue=true SUPPRESSED the lock-in attempt: no op emitted, the forged OldValue
+// never folded, and the attacker committed a root WITHOUT the lock scalars → a WRONG-ACCEPT.
 //
-// FIXED by DIRECTION A (classP-anchoring cert 2026-09-02): rotateTallyOps now anchors each lock-in
+// FIXED by the pre-state anchor: rotateTallyOps now anchors each lock-in
 // bool's committed pre-value against prevStateRoot (anchorRotateScalar → Resolve.IsProvenPresent)
 // UNCONDITIONALLY, before the branch read. A forged OldValue that cannot Resolve present ⇒ NoWitness
 // ⇒ STALL. These gates now assert the STALL (err != nil): each forges the lock-in OldValue=true, the
@@ -509,7 +507,7 @@ func forgedRootSuppressLock(t *testing.T, base *Chain, b Block, which string) po
 
 // runLockPredicateAnchorStall drives one activation-lock OldValue predicate: forge it true (which
 // WOULD suppress the lock-in emission), build the lock-free forgedRoot, and assert the box STALLS
-// (Direction A anchor). The baseline (honest witness → honest root) must still agree, proving the
+// (pre-state anchor). The baseline (honest witness → honest root) must still agree, proving the
 // anchor only rejects the forgery, not the honest path.
 func runLockPredicateAnchorStall(t *testing.T, which string, forge func(*StateRootRotateWitness)) {
 	f, rb, honestCommitted := allThreeLockFixture(t)
@@ -525,11 +523,11 @@ func runLockPredicateAnchorStall(t *testing.T, which string, forge func(*StateRo
 	err := recomputeViaHead(f.c, f.prevRoot, forgedRoot, rb, w)
 	if err == nil {
 		t.Fatalf("[%s] ANCHOR REGRESSED: box WRONG-ACCEPTS a forged LockedIn.OldValue=true predicate.\n"+
-			"  Direction A (rotateTallyOps → anchorRotateScalar) must Resolve the lock-in OldValue present\n"+
+			"  the pre-state anchor (rotateTallyOps → anchorRotateScalar) must Resolve the lock-in OldValue present\n"+
 			"  against prevStateRoot BEFORE the branch read; a forged OldValue must STALL. forgedRoot=%x honest=%x",
 			which, forgedRoot, honestCommitted)
 	}
-	t.Logf("[%s] ANCHOR HOLDS (Direction A): a forged LockedIn.OldValue=true STALLS (%v) — the pre-state "+
+	t.Logf("[%s] ANCHOR HOLDS (pre-state anchor): a forged LockedIn.OldValue=true STALLS (%v) — the pre-state "+
 		"anchor catches the suppression; the box never agrees with the lock-free forgedRoot.", which, err)
 }
 

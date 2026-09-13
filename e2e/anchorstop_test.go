@@ -2,7 +2,7 @@ package e2e
 
 // TestAnchorStopHaltsBondedNonAnchors is the LOCAL twin of the cloud
 // 5-sybil-no-capture flow (the parity gap the 2026-08-20 harness analysis named):
-// in the launch phase, finality requires a strict anchor majority (#402), so a
+// in the launch phase, finality requires a strict anchor majority, so a
 // bonded NON-anchor cohort must not be able to advance the chain while every
 // anchor is down — and the chain must resume the moment the anchors return (the
 // cloud flow's "clincher"). The cloud run still owns the full C2 shape (8 sybil
@@ -27,31 +27,31 @@ import (
 )
 
 // resumeObserveSweeps is the resume-observation window in ChainSyncInterval
-// units. Derived (#583, docs/thinking/2026-08-28-583-anchorstop-resume-window.md):
+// units. Derived:
 // after the anchors return and the driven publish commits, a bonded NON-anchor
 // that missed the live commit round heals on its next chainSyncTick, which
-// reschedules every ChainSyncInterval (core/node/chainrole.go:1527) at an
+// reschedules every ChainSyncInterval (core/node/chainrole.go) at an
 // ARBITRARY phase. A window equal to ONE interval catches ZERO sweeps in the
-// worst phase — the identical zero-overlap-margin defect #549-Q3 fixed. Two
+// worst phase — the identical zero-overlap-margin defect the gate fixed. Two
 // sweeps guarantee one fires regardless of phase; the third is the measured
-// ~30 s CI/local load stretch (#583: CI 76 s − local 46 s ≈ one interval). So
+// ~30 s CI/local load stretch. So
 // 3 × 30 s = 90 s.
 const resumeObserveSweeps = 3
 
 // chainSyncInterval MIRRORS core/node/node.go ChainSyncInterval (30 s). The e2e
 // binary is a separate process, so this is a mirror, not a read: if the daemon's
-// ChainSyncInterval changes, re-sync this constant (the #549-Q3 residual).
+// ChainSyncInterval changes, re-sync this constant (the residual).
 const chainSyncInterval = 30 * time.Second
 
 // resumeObserveWindow is the derived poll budget for the resume clincher.
 const resumeObserveWindow = resumeObserveSweeps * chainSyncInterval
 
-// The gate against a fourth silent #583 reroll: a window below two sweeps
+// The gate against a fourth silent reroll: a window below two sweeps
 // re-opens the zero-phase-margin flake. Lowering resumeObserveSweeps < 2 fails
 // the whole e2e package at init, so the window can never silently regress.
 func init() {
 	if resumeObserveSweeps < 2 {
-		panic("resumeObserveSweeps < 2 re-opens #583: a resume-observation window " +
+		panic("resumeObserveSweeps < 2 re-opens: a resume-observation window " +
 			"≤ 1 ChainSyncInterval has zero phase margin for the non-anchor catch-up sweep")
 	}
 }
@@ -74,7 +74,7 @@ func TestAnchorStopHaltsBondedNonAnchors(t *testing.T) {
 	}
 	// 3 anchors + 2 bonded non-anchors. Three anchors, not two: launch finality
 	// needs a strict anchor majority AND `-quorum 2` non-proposer attestations
-	// drawn from the anchor set (#402 size-set == fill-set), so A=2 leaves only
+	// drawn from the anchor set, so A=2 leaves only
 	// one counting attester and the BASELINE can never commit (the first cut of
 	// this test proved that at 90s of silence).
 	const N = 5
@@ -192,7 +192,7 @@ func TestAnchorStopHaltsBondedNonAnchors(t *testing.T) {
 			daemons[0].out.dump(), nAnchors, daemons[nAnchors].out.dump())
 	}
 	// A survivor observes the resumed chain (fresh commit lines appear). The
-	// window is DERIVED from the non-anchor catch-up cadence (#583), not a
+	// window is DERIVED from the non-anchor catch-up cadence, not a
 	// fixed guess: a non-anchor that missed the live round heals on its next
 	// chainSyncTick (every ChainSyncInterval, arbitrary phase), so the poll must
 	// span >= 2 sweeps to guarantee one fires under any phase, plus the measured
@@ -206,6 +206,6 @@ func TestAnchorStopHaltsBondedNonAnchors(t *testing.T) {
 		}
 		time.Sleep(2 * time.Second)
 	}
-	t.Fatalf("val%d never observed a committed block within %s after the anchors resumed (derived catch-up window, #583):\n%s",
+	t.Fatalf("val%d never observed a committed block within %s after the anchors resumed (derived catch-up window,):\n%s",
 		nAnchors, resumeObserveWindow, daemons[nAnchors].out.dump())
 }

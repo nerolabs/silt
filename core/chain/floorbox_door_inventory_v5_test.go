@@ -11,21 +11,21 @@ import (
 )
 
 // =============================================================================
-// G-6 — the exported box-door inventory (step 9) · G-4 — every gate carries an honest twin (step 10)
+// the exported box-door inventory (step 9) · — every gate carries an honest twin (step 10)
 // =============================================================================
 
 // exportedBoxDoors is the EXACT set of exported *Chain methods a floor-box file may declare. Main
 // had nine; eight were second doors — a caller could reach one reproduced predicate with none of
 // P1–P4 in front of it (N1 is exactly that shape). The box's door is (*Box).Validate, which is not
 // a *Chain method and runs the ONE composition. ONE stays:
-//   - WitnessReadSetV5: the read-set PRODUCER, which expresses no verdict (readset_v5.go).
+// - WitnessReadSetV5: the read-set PRODUCER, which expresses no verdict (readset_v5.go).
 //
-// WitnessValidateV5 was the second, and D0 DELETED it. Its row here, and its line in the P-table
-// delta certification §6, were an ENUMERATION of the surface as it stood; this list exists to make
-// a NEW door a reviewed event, and a list of today's doors does not oblige keeping one. The
-// substantive reason it went: it held no head, so it could not key its #535 recovery posture on
-// anything it owned, which is the defect B-1 fixed at the door and could not fix there. Keeping it
-// would have shipped two exported box entries with two different recovery semantics.
+// WitnessValidateV5 was the second, and D0 DELETED it. Its row here, and its line in the P-table,
+// were an ENUMERATION of the surface as it stood; this list exists to make a NEW door a reviewed
+// event, and a list of today's doors does not oblige keeping one. The substantive reason it went:
+// it held no head, so it could not key its recovery posture on anything it owned, which is the
+// defect the gate fixed at the door and could not fix there. Keeping it would have shipped two exported
+// box entries with two different recovery semantics.
 var exportedBoxDoors = []string{"WitnessReadSetV5"}
 
 // boxDoorFiles are the files the inventory is derived over: every non-test floorbox_*.go plus the
@@ -45,12 +45,12 @@ func boxDoorFiles(t *testing.T) []string {
 	return append(out, "readset_v5.go")
 }
 
-// TestG6_ExportedBoxDoorInventory derives the exported *Chain methods declared in the box files
-// and asserts they are exactly exportedBoxDoors. Ablation (G-6): declare a tenth exported *Chain
+// TestExportedBoxDoorInventory derives the exported *Chain methods declared in the box files
+// and asserts they are exactly exportedBoxDoors. Ablation: declare a tenth exported *Chain
 // method in any floorbox_*.go ⇒ RED.
 // SOURCE GATE: an AST inventory of FuncDecls. RUNTIME GATE: TestWitnessReadSetV5_LegacyFence (the
 // producer's fence) and TestBoxDoor_HonestBlockReachesTheDowngrade (the one real door).
-func TestG6_ExportedBoxDoorInventory(t *testing.T) {
+func TestExportedBoxDoorInventory(t *testing.T) {
 	fset := token.NewFileSet()
 	var got []string
 	for _, f := range boxDoorFiles(t) {
@@ -70,7 +70,7 @@ func TestG6_ExportedBoxDoorInventory(t *testing.T) {
 	}
 	sort.Strings(got)
 	if strings.Join(got, ",") != strings.Join(exportedBoxDoors, ",") {
-		t.Fatalf("SOURCE GATE: G-6 — the box files declare exported *Chain methods %v; exactly %v are permitted.\n"+
+		t.Fatalf("SOURCE GATE: — the box files declare exported *Chain methods %v; exactly %v are permitted.\n"+
 			"  A new exported *Chain method in a floorbox_*.go is a SECOND DOOR: a caller can reach one reproduced\n"+
 			"  predicate with none of P1–P4 in front of it. Unexport it and route through (*Box).Validate.", got, exportedBoxDoors)
 	}
@@ -91,20 +91,20 @@ func TestWitnessReadSetV5_LegacyFence(t *testing.T) {
 	}
 }
 
-// twinHelpers are the honest-twin assertions (NG-2). Every Test* in twinGateFiles must call one of
+// twinHelpers are the honest-twin assertions. Every Test* in twinGateFiles must call one of
 // them DIRECTLY: a gate whose refusal arm is green while its twin fails is refusing for the wrong
 // reason, and a box that stalls on everything satisfies box.Accept ⇒ node.Accept trivially.
 var twinHelpers = map[string]string{
 	"assertHonestTwinAgrees":       "the carrier gates: the box agrees with the node on the honest block, warm and cold",
 	"assertHonestTwinAccepts":      "the structure gates: the node and the composition over liveView Accept the honest block",
-	"assertBoxReachesTheDowngrade": "the door gates and the D0 cold-auditor arms: the honest block runs the composition through the box to the R1.8 downgrade",
+	"assertBoxReachesTheDowngrade": "the door gates and the D0 cold-auditor arms: the honest block runs the composition through the box to the downgrade",
 	"requireV5Fixture":             "the stage-cover arms: arm D, which calls assertHonestTwinAccepts",
 }
 
-// twinGateFiles are the gate files under the NG-2 rule.
+// twinGateFiles are the gate files under the rule.
 var twinGateFiles = []string{
-	"redteam_carrier_boxsplit_gate_test.go",
-	"redteam_floorbox_structure_gate_test.go",
+	"carrier_boxsplit_gate_test.go",
+	"floorbox_structure_gate_test.go",
 	"composition_stage_cover_v5_test.go",
 	"floorbox_box_v5_test.go",
 	"floorbox_coldauditor_v5_test.go",
@@ -112,13 +112,13 @@ var twinGateFiles = []string{
 	"validate_v5_maturity_gate_test.go",
 }
 
-// TestG4_EveryGateCarriesAnHonestTwin counts, per Test* declaration in twinGateFiles, the direct
+// TestEveryGateCarriesAnHonestTwin counts, per Test* declaration in twinGateFiles, the direct
 // calls to a twin helper, and requires at least one each: call sites == gate count, as the brief
-// states it. Ablation (G-4): make the box stall unconditionally (the recompute for the carrier
+// states it. Ablation: make the box stall unconditionally (the recompute for the carrier
 // gates; the composition's step 0b for the structure gates) ⇒ EVERY gate in these files goes RED
 // through its twin; then delete one twin call ⇒ this gate goes RED.
 // SOURCE GATE: an AST count of call sites. RUNTIME GATE: every twin call in twinGateFiles.
-func TestG4_EveryGateCarriesAnHonestTwin(t *testing.T) {
+func TestEveryGateCarriesAnHonestTwin(t *testing.T) {
 	fset := token.NewFileSet()
 	gates := 0
 	for _, f := range twinGateFiles {
@@ -151,12 +151,12 @@ func TestG4_EveryGateCarriesAnHonestTwin(t *testing.T) {
 				return true
 			})
 			if calls == 0 {
-				t.Errorf("SOURCE GATE: G-4 — %s (%s) carries NO honest twin: it must call one of %v directly", fd.Name.Name, f, twinHelperNames())
+				t.Errorf("SOURCE GATE: — %s (%s) carries NO honest twin: it must call one of %v directly", fd.Name.Name, f, twinHelperNames())
 			}
 		}
 	}
 	if gates < 20 {
-		t.Fatalf("SOURCE GATE: G-4 VACUOUS — only %d Test* declarations found across %v", gates, twinGateFiles)
+		t.Fatalf("SOURCE GATE: VACUOUS — only %d Test* declarations found across %v", gates, twinGateFiles)
 	}
 }
 
@@ -169,8 +169,8 @@ func twinHelperNames() []string {
 	return out
 }
 
-// =============================================================================
-// G-6b — the exported PACKAGE-LEVEL surface of the box files (PE ruling F-2, 2026-09-08)
+// ============================================================================= —
+// the exported PACKAGE-LEVEL surface of the box files
 // =============================================================================
 
 // packageSurfaceFiles are the files the wide inventory is derived over: the box files, the
@@ -184,7 +184,7 @@ var packageSurfaceFiles = []string{"floorbox_*.go", "validate_v5*.go", "statevie
 // reason it is permitted. Exported VARS are excluded by rule: every one is an Err* sentinel, a
 // value with no behaviour, and a new sentinel is not a door.
 //
-// G-6 closed nine exported *Chain methods; the same commit exported ValidateCommitV5 over an
+// closed nine exported *Chain methods; the same commit exported ValidateCommitV5 over an
 // exported StateView, which was a SECOND door around (*Box).Validate's downgrade until StateView
 // was sealed (stateview_v5.go). This inventory is what makes a new exported entry a REVIEWED
 // event: it reddens until the entry is listed here with its reason.
@@ -192,11 +192,11 @@ var exportedPackageSurface = map[string]string{
 	// ---- funcs ----
 	"func ValidateProposalV5": "the ONE composition's proposal entry; the chain.go dispatch calls it over liveView. It ACCEPTS an honest block — never-Accept is (*Box).Validate's property. Drivable only by the two sealed views",
 	"func ValidateCommitV5":   "the ONE composition's commit entry; the node's dispatch and the box door both call it. Same seal",
-	"func NewBox":             "the box constructor: refuses a legacy chain, an unset budget, a pruned or unsigned parent; the head record is derived from the parent block (BG-2)",
-	"func ByteBudget":         "the only bounded Budget constructor; refuses a non-positive ceiling (M-4)",
-	"func UnlimitedBudget":    "the node's Budget; only liveView returns it (G-D10)",
+	"func NewBox":             "the box constructor: refuses a legacy chain, an unset budget, a pruned or unsigned parent; the head record is derived from the parent block ",
+	"func ByteBudget":         "the only bounded Budget constructor; refuses a non-positive ceiling ",
+	"func UnlimitedBudget":    "the node's Budget; only liveView returns it ",
 	// ---- methods on exported receivers ----
-	"method Box.Validate":           "THE DOOR: budget → the unconditional #535 recovery stall → pruned stall → ValidateCommitV5(provenView) → the one-line R1.8 downgrade",
+	"method Box.Validate":           "THE DOOR: budget → the unconditional recovery stall → pruned stall → ValidateCommitV5(provenView) → the one-line downgrade",
 	"method Box.Head":               "the box's own head record, read-only",
 	"method Budget.Check":           "the ONE budget comparison; the zero Budget stalls by name",
 	"method Budget.Unlimited":       "accessor",
@@ -204,14 +204,14 @@ var exportedPackageSurface = map[string]string{
 	"method Budget.MaxBytes":        "accessor",
 	"method FloorBoxOutcome.String": "rendering",
 	"method Availability.String":    "rendering",
-	"method Chain.WitnessReadSetV5": "the read-set PRODUCER, fenced to objective mode; expresses no verdict (G-6)",
+	"method Chain.WitnessReadSetV5": "the read-set PRODUCER, fenced to objective mode; expresses no verdict ",
 	// ---- types ----
 	"type Box":             "the box: config-bearing chain, derived head, derived budget, delivery seam",
-	"type BoxConfig":       "box-owned operator config: the byte ceiling. D0 deleted its Recovery field and the RecoveryDirective type with it — the #535 stall is unconditional, so there is nothing left to configure",
+	"type BoxConfig":       "box-owned operator config: the byte ceiling. D0 deleted its Recovery field and the RecoveryDirective type with it — the stall is unconditional, so there is nothing left to configure",
 	"type StateView":       "the composition's read interface — SEALED by an unexported method, so only liveView/provenView implement it",
 	"type WitnessSource":   "the witness DELIVERY seam a witness server implements; it returns leaves, never a verdict",
-	"type HeadRef":         "the view's own position (M-3)",
-	"type Budget":          "the BG-3 byte ceiling; unexported fields, two constructors",
+	"type HeadRef":         "the view's own position ",
+	"type Budget":          "the byte ceiling; unexported fields, two constructors",
 	"type Params":          "the view's own consensus configuration (class 3)",
 	"type Availability":    "the three-valued read result; NoWitness is the zero",
 	"type FloorBoxOutcome": "the three-valued verdict",
@@ -244,15 +244,14 @@ var exportedPackageSurface = map[string]string{
 	"const Present":                  "Availability value",
 }
 
-// TestG6b_ExportedPackageSurfaceInventory derives the exported package-level surface of
+// TestExportedPackageSurfaceInventory derives the exported package-level surface of
 // packageSurfaceFiles by AST and asserts it equals exportedPackageSurface exactly, both ways, with
-// a reason on every entry. It also asserts StateView carries its unexported seal method.
-// Ablation (G-6b): declare `func ExportedAblationDoor()` in validate_v5.go ⇒ RED naming it; delete
-// sealedStateView from the interface ⇒ RED.
-// SOURCE GATE: an AST inventory of exported declarations. RUNTIME GATE:
+// a reason on every entry. It also asserts StateView carries its unexported seal method. Ablation:
+// declare `func ExportedAblationDoor` in validate_v5.go ⇒ RED naming it; delete sealedStateView
+// from the interface ⇒ RED. SOURCE GATE: an AST inventory of exported declarations. RUNTIME GATE:
 // TestBoxDoor_HonestBlockReachesTheDowngrade (the one door, driven to its downgrade) and
-// TestGD12_BothNodeEntryPointsDispatchToTheComposition (the two sealed callers of the composition).
-func TestG6b_ExportedPackageSurfaceInventory(t *testing.T) {
+// TestBothNodeEntryPointsDispatchToTheComposition (the two sealed callers of the composition).
+func TestExportedPackageSurfaceInventory(t *testing.T) {
 	var files []string
 	for _, g := range packageSurfaceFiles {
 		m, err := filepath.Glob(g)
@@ -266,7 +265,7 @@ func TestG6b_ExportedPackageSurfaceInventory(t *testing.T) {
 		}
 	}
 	if len(files) < 20 {
-		t.Fatalf("SOURCE GATE: G-6b VACUOUS — only %d non-test files matched %v", len(files), packageSurfaceFiles)
+		t.Fatalf("SOURCE GATE: VACUOUS — only %d non-test files matched %v", len(files), packageSurfaceFiles)
 	}
 	fset := token.NewFileSet()
 	got := map[string]string{}
@@ -313,10 +312,10 @@ func TestG6b_ExportedPackageSurfaceInventory(t *testing.T) {
 						}
 					case *ast.ValueSpec:
 						if d.Tok == token.VAR {
-							// Exported vars are permitted ONLY as Err* sentinels (values with no
-							// behaviour). A var of any other type — say `var DefaultNodeView
-							// StateView = liveView{…}` — would be a door the inventory must see
-							// (PE re-ruling 2026-09-08): it is listed under "var" and must be
+							// Exported vars are permitted ONLY as Err* sentinels (values
+							// with no behaviour). A var of any other type — say `var
+							// DefaultNodeView StateView = liveView{…}` — would be a door
+							// the inventory must see: it is listed under "var" and must be
 							// allow-listed by name with a reason like every other entry.
 							for i, n := range sp.Names {
 								if !ast.IsExported(n.Name) {
@@ -354,7 +353,7 @@ func TestG6b_ExportedPackageSurfaceInventory(t *testing.T) {
 		}
 	}
 	if !sealed {
-		t.Fatal("SOURCE GATE: G-6b — StateView must carry the unexported seal method sealedStateView, or any package can implement it and take Accept out of ValidateCommitV5 with no downgrade in front (PE F-2)")
+		t.Fatal("SOURCE GATE: — StateView must carry the unexported seal method sealedStateView, or any package can implement it and take Accept out of ValidateCommitV5 with no downgrade in front (a review)")
 	}
 	var extra, missing []string
 	for k, f := range got {
@@ -367,13 +366,13 @@ func TestG6b_ExportedPackageSurfaceInventory(t *testing.T) {
 			missing = append(missing, k)
 		}
 		if why == "" {
-			t.Fatalf("SOURCE GATE: G-6b — %s is listed with no reason", k)
+			t.Fatalf("SOURCE GATE: — %s is listed with no reason", k)
 		}
 	}
 	sort.Strings(extra)
 	sort.Strings(missing)
 	if len(extra) > 0 || len(missing) > 0 {
-		t.Fatalf("SOURCE GATE: G-6b — the exported package-level surface of the box files differs from exportedPackageSurface.\n"+
+		t.Fatalf("SOURCE GATE: — the exported package-level surface of the box files differs from exportedPackageSurface.\n"+
 			"  NEW (not listed): %v\n  LISTED but gone: %v\n"+
 			"  A new exported func, method, type or const in these files is a new entry point onto the composition or the box.\n"+
 			"  Either unexport it, or list it here with the one-line reason it cannot be a second door.", extra, missing)

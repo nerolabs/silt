@@ -4,10 +4,8 @@ package main
 // publisher/operator prepays an object's repair reserve from THIS daemon's own
 // EARNED credit balance, so content outlives churn before it self-funds via the
 // serve auto-skim. Standing is untouched (Invariant A). These tests cover the
-// new parsing (link OR bare hash) and the handler's status-code contract
-// (200 endow / 402 insufficient credit / 400 bad input).
-// Deliberation: docs/thinking/2026-08-19-phase2-economy-on-deliberation.md.
-
+// new parsing (link OR bare hash) and the handler's status-code contract (200
+// endow / 402 insufficient credit / 400 bad input).
 import (
 	"net/http"
 	"net/http/httptest"
@@ -138,7 +136,7 @@ func TestApiFundNeedsToken(t *testing.T) {
 	form := url.Values{"root": {ports.Hash{0x03}.String()}, "amount": {"100"}}
 	r := httptest.NewRequest("POST", "http://127.0.0.1:8080/api/fund", strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	// no Authorization header
+	// No Authorization header
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	if w.Code != http.StatusUnauthorized {

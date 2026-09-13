@@ -20,25 +20,25 @@ import (
 // RED home #1 (part 1) — state-field completeness, proven mechanically rather
 // than by inspection.
 //
-// The state-root keystone certification makes one obligation load-bearing:
+// The state-root keystone research makes one obligation load-bearing:
 //
 //	The completeness of the 16-field enumeration … must be proven by the
 //	snapshot-boot-equivalence oracle, NOT by inspection (inspection already
-//	missed fields — the PE's list was a subset). … Treat any field discovered
+//	missed fields — the list was a subset). … Treat any field discovered
 //	later by that oracle as a soundness bug, not an optimization.
 //
 // The tempting oracle — capture the enumerated fields, restore them, compare
 // them — is inspection wearing a test costume: it can only ever test the list
-// it was handed, so field #17 lands green and silent. That is the #558
+// it was handed, so field #17 lands green and silent. That is the
 // silent-divergence class exactly.
 //
 // So this file does not compare a list. It cross-binds THREE independent
 // enumerations with reflection over the real struct, and fails if any two
 // disagree:
 //
-//  1. `stateClass` below — every field of Chain, classified.
-//  2. `populateCommitted` — assigns a distinctive value to each committed field.
-//  3. `adopt` (PRODUCT CODE, chain.go) — the reorg path's state swap.
+// 1. `stateClass` below — every field of Chain, classified.
+// 2. `populateCommitted` — assigns a distinctive value to each committed field.
+// 3. `adopt` (PRODUCT CODE, chain.go) — the reorg path's state swap.
 //
 // A field added to Chain fails (1) until classified; once classified committed
 // it fails (2) until populated; then it fails (3) until `adopt` copies it. You
@@ -46,8 +46,8 @@ import (
 // point.
 //
 // WHY THIS ALREADY MATTERS: `adopt` is a hand-maintained copy list on the reorg
-// path that copies 19 fields, while the certification's enumeration names 16.
-// They disagree about `revLog` and `epochStart`. See the findings on
+// path that copies 19 fields, while the enumeration names 16. They disagree
+// about `revLog` and `epochStart`. See the findings on
 // TestStateFieldsAreClassified.
 
 // stateKind is why a Chain field does or does not belong in committed state.
@@ -61,7 +61,7 @@ const (
 	committedSet stateKind = iota
 	// committedLog: an ordered, append-only log. Gets its OWN append-only
 	// (RFC-6962) root, NEVER a leaf in the SMT — folding an order-derived
-	// value into the state root is the category error #597 identified.
+	// value into the state root is the category error identified.
 	committedLog
 	// observable: derived from block history and swapped on reorg, but read by
 	// NO block-validity predicate, so it sits under no committed root. Losing
@@ -80,23 +80,23 @@ const (
 	// for three of them. A class doc is read as a guarantee, so a premise that is
 	// false for most of its members is worse than no premise.
 	//
-	//   - cfg     MIXED. 16 of the 21 chain.Config fields are genesis-covered via
-	//             ConsensusParams, so those ARE uniform (a divergent node computes a
-	//             different genesis hash and cannot join). FIVE are deliberately
-	//             per-node — the ratified exclusions in configMemberships
-	//             (consensus_config_divergence_test.go). WSCheckpoint MUST differ
-	//             per node or it is not an independent anchor at all.
-	//   - rep     FALSE by design, and this row's own reason already said so: the
-	//             local reputation view is local and divergent.
-	//   - issuerKey  FALSE. It is wired to (*node.Node).IssuerKeyOf, which returns
-	//             n.peerIssuerKeys[v] — a PEER-POPULATED cache — and ValidateEntry
-	//             reads it through publishtoken.Verify on the block-validity path.
-	//             NOT FIXED HERE and NOT this file's to fix; recorded so the class
-	//             doc stops asserting the opposite of what the wiring does.
-	//   - tokenQuorum  UNBOUND. Nothing in silt makes it uniform; see its row.
-	//   - verifyBond   Uniform only in the sense that matters: its two divergent
-	//             INPUTS (BondLabelSamples, BondVDFDelay) are genesis-covered in
-	//             ConsensusParams, and core/node's own divergence gate claims them.
+	// - cfg MIXED. 16 of the 21 chain.Config fields are genesis-covered via
+	// ConsensusParams, so those ARE uniform (a divergent node
+	// computes a different genesis hash and cannot join). FIVE are
+	// deliberately per-node — the exclusions in configMemberships
+	// (consensus_config_divergence_test.go). WSCheckpoint MUST differ
+	// per node or it is not an independent anchor at all.
+	// - rep FALSE by design, and this row's own reason already said so: the
+	// local reputation view is local and divergent.
+	// - issuerKey FALSE. It is wired to (*node.Node).IssuerKeyOf, which returns
+	// n.peerIssuerKeys[v] — a PEER-POPULATED cache — and ValidateEntry
+	// reads it through publishtoken.Verify on the block-validity path.
+	// NOT FIXED HERE and NOT this file's to fix; recorded so the class
+	// doc stops asserting the opposite of what the wiring does.
+	// - tokenQuorum UNBOUND. Nothing in silt makes it uniform; see its row.
+	// - verifyBond Uniform only in the sense that matters: its two divergent
+	// INPUTS (BondLabelSamples, BondVDFDelay) are genesis-covered in
+	// ConsensusParams, and core/node's own divergence gate claims them.
 	//
 	// So: injected means injected. Any uniformity claim belongs on the ROW, with
 	// the mechanism that delivers it named.
@@ -127,23 +127,23 @@ var stateClass = map[string]struct {
 	kind   stateKind
 	reason string
 }{
-	// ---- committed: the certification's enumerated 16 ----
+	// ---- committed: the enumerated 16 ----
 	"byRoot":         {committedSet, "cert field 1 — `ValidateEntry` dup-reject, `validateTakedowns` existence"},
-	"spent":          {committedSet, "cert field 2 — `ValidateEntry` replay-reject (#183 F-1 order)"},
+	"spent":          {committedSet, "cert field 2 — `ValidateEntry` replay-reject (-1 order)"},
 	"revoked":        {committedSet, "cert field 3 — `validateTakedowns` unrevocation target"},
 	"slashed":        {committedSet, "cert field 4 — qualification, quorum N, C2, de-mature super-quorum"},
-	"bonded":         {committedSet, "cert field 5 — qualification, `RoundCatchupMet` (the fork-choice weight read is retired, O3 Direction T)"},
-	"epochSet":       {committedSet, "cert field 6 — frozen-set membership, `validatorSetSize`, weight quorum (#357 Cond A)"},
+	"bonded":         {committedSet, "cert field 5 — qualification, `RoundCatchupMet` (the fork-choice weight read is retired)"},
+	"epochSet":       {committedSet, "cert field 6 — frozen-set membership, `validatorSetSize`, weight quorum (ond A)"},
 	"bondRootOwner":  {committedSet, "cert field 7 — `apply` first-owner-wins dedup (F1)"},
 	"bondRootProven": {committedSet, "cert field 8 — `apply` displacement rule (G3)"},
-	"bondRegHeight":  {committedSet, "cert field 9 — bond TTL clock, #506 R-rule distance"},
-	"regVersion":     {committedSet, "cert field 10 — #506 `rotateEpoch` lock-in tally"},
+	"bondRegHeight":  {committedSet, "cert field 9 — bond TTL clock,  R-rule distance"},
+	"regVersion":     {committedSet, "cert field 10 —  `rotateEpoch` lock-in tally"},
 	"bondDomain":     {committedSet, "cert field 11 — `C2Metric` A-axis"},
 	"validatorsSeen": {committedSet, "cert field 12 — `Mature`/`C2Metric` (legacy mode)"},
-	"gateLockedIn":   {committedSet, "cert field 13a — #506 activation latch"},
-	"gateHeight":     {committedSet, "cert field 13b — #506 enforcement boundary H_act"},
+	"gateLockedIn":   {committedSet, "cert field 13a —  activation latch"},
+	"gateHeight":     {committedSet, "cert field 13b —  enforcement boundary H_act"},
 	"everMature":     {committedSet, "cert field 14 — one-way maturity latch (F-1)"},
-	"matureEpoch":    {committedSet, "cert field 15 — handoff flag (#357 Cond B)"},
+	"matureEpoch":    {committedSet, "cert field 15 — handoff flag (ond B)"},
 	"era3LockedIn":   {committedSet, "step 2c — era-3 (v4) activation latch (mirrors gateLockedIn, regVersion>=4)"},
 	"era3Height":     {committedSet, "step 2c — era-3 (v4) enforcement boundary H_era3 (mirrors gateHeight)"},
 	"era4LockedIn": {committedSet, "step 4d — era-4 (v5) activation latch (mirrors `era3LockedIn`, " +
@@ -163,36 +163,37 @@ var stateClass = map[string]struct {
 		"v5-only leaf (`tagQualified`)."},
 	"dueBucket": {committedSet, "era-4 4b (T-3) — due-height index; one bucket per occupied " +
 		"expiry height, committed as an MTH over the canonical id list. v5-only leaf (`tagDueBucket`)."},
-	"issuerKeyCommit": {committedSet, "R0.4b — the consensus-attested per-epoch demand-issuer " +
+	"issuerKeyCommit": {committedSet, "the consensus-attested per-epoch demand-issuer " +
 		"key binding (epoch -> issuer -> key fingerprint). Committed so every honest node " +
 		"agrees on key_E and an off-commitment (targeted, per-cohort) key is rejectable by " +
-		"construction — the anti-fingerprinting binding the R0.4b certification makes " +
+		"construction — the anti-fingerprinting binding the research makes " +
 		"MANDATORY (Verdict 2; the lighter pinned-keyset is REFUTED as sufficient). It is " +
 		"set-valued derived state: `apply` writes it, `adopt` swaps it, the dry-run clone copies " +
 		"it, and the v5 marshaller commits it. INERT to consensus — no validity predicate, " +
 		"quorum, fork-choice rule, or floor-box recompute reads it; the only reader is the " +
 		"demand-lane redeemer, out of band. v5-only leaf (`tagIssuerKey`)."},
 
-	// RE-DERIVED 2026-09-11. The load-bearing clause — "no quorum/validity predicate reads
-	// it" — HOLDS at source. The parenthetical that followed it, "its only reader is
-	// Regime()", did NOT: the O-1 promotion this same sentence describes ADDED readers
+	// RE-DERIVED 2026-09-11. The load-bearing clause — "no quorum/validity predicate
+	// reads it" — HOLDS at source. The parenthetical that followed it, "its only reader
+	// is Regime", did NOT: the O-1 promotion this same sentence describes ADDED readers
 	// (statehash.go's leaf emitter, readset_v5.go's accumulator, liveView's scalar
-	// accessor, the rotate fold). They are the commitment, not a predicate, so the claim
-	// survives — but a reader checking the parenthetical would have found it false and had
-	// no way to tell which half was load-bearing.
+	// accessor, the rotate fold). They are the commitment, not a predicate, so the
+	// claim survives — but a reader checking the parenthetical would have found it
+	// false and had no way to tell which half was load-bearing.
 	"epochStart": {committedSet, "era-4 4b (O-1) — PROMOTED from observable to committed. " +
-		"CERTIFIED narrowly (RECERT2): no quorum/validity predicate reads it (its only " +
+		"Narrow by design: no quorum/validity predicate reads it (its only " +
 		"NON-COMMITMENT reader is `Regime`; the commitment path reads it too, which is what " +
 		"the promotion means), so committing it changes no quorum decision; it removes one " +
 		"uncommitted observable and doubles as the E-2 epoch pointer. v5-only scalar leaf " +
 		"(`tagEpochStart`)."},
 
-	// ---- committed: NOT in the certification's enumeration (findings) ----
-	// RE-DERIVED 2026-09-11. The line citation "translog.go:54/:106" was stale: :54 is
-	// blank and :106 is a section header. The symbols are translog.Log.Root and
-	// translog.MTH. They are CROSS-PACKAGE, so they stay out of backticks — the resolver
-	// covers package chain only, and a backtick it cannot resolve is a false red.
-	"revLog": {committedLog, "CERTIFIED #597: an ordered CT-style transparency log, " +
+	// ---- committed: NOT in the enumeration (findings) ----
+	// RE-DERIVED 2026-09-11. The line citation "translog.go/:106" was stale:54 is
+	// blank and:106 is a section header. The symbols are translog.Log.Root and
+	// translog.MTH. They are CROSS-PACKAGE, so they stay out of backticks — the
+	// resolver covers package chain only, and a backtick it cannot resolve is a false
+	// red.
+	"revLog": {committedLog, "CERTIFIED: an ordered CT-style transparency log, " +
 		"NOT set-valued state. Its root is the RFC-6962 MTH over an ORDERED slice " +
 		"(translog.Log.Root -> translog.MTH), so it is history-DEPENDENT by design. It gets its own " +
 		"append-only root and must NEVER become a leaf in the history-independent SMT " +
@@ -203,16 +204,16 @@ var stateClass = map[string]struct {
 	// ---- not committed ----
 	"blocks": {input, "the committed history itself; committed state is derived FROM this"},
 
-	// RE-DERIVED 2026-09-11. "identical on every replica by config" was the class doc's
-	// blanket premise and it is false here: 16 of the 21 chain.Config fields are
-	// genesis-covered, FIVE are per-node by ratified design, and one of the five MUST
+	// RE-DERIVED 2026-09-11. "identical on every replica by config" was the class
+	// doc's blanket premise and it is false here: 16 of the 21 chain.Config fields
+	// are genesis-covered, FIVE are per-node by design, and one of the five MUST
 	// differ per node. The uniformity claim now names its mechanism and its hole.
 	"cfg": {injected, "genesis/operator configuration. UNIFORM only for the 16 fields " +
 		"carried in ConsensusParams (genesis-hash-covered: a divergent node computes a " +
-		"different genesis and cannot join). The five ratified exclusions are per-node by " +
+		"different genesis and cannot join). The five settled exclusions are per-node by " +
 		"design — see configMemberships in consensus_config_divergence_test.go. It reaches " +
 		"validity verdicts and is NOT derived from history, which is why it is here."},
-	"rep": {injected, "local reputation view — the certification excludes it explicitly: " +
+	"rep": {injected, "local reputation view — the rule excludes it explicitly: " +
 		"local and divergent by design"},
 
 	// RE-DERIVED 2026-09-11. This row read "set by SetTokenQuorum". SetTokenQuorum does
@@ -238,8 +239,8 @@ var stateClass = map[string]struct {
 		"BondVDFDelay) are carried in ConsensusParams and claimed by core/node's " +
 		"divergence gate."},
 
-	// RE-DERIVED 2026-09-11. Both line citations were stale — chain.go:3120 is revlog leaf
-	// bytes and retention.go:136 is a doc comment. Symbols instead, so a move cannot
+	// RE-DERIVED 2026-09-11. Both line citations were stale — chain.go is revlog leaf
+	// bytes and retention.go is a doc comment. Symbols instead, so a move cannot
 	// silently invalidate them.
 	"trustFloorOverride": {transient, "set only on the `Reconcile` scratch chain and read " +
 		"within that replay by `trustFloor`; never accumulated across blocks, and " +
@@ -250,22 +251,22 @@ var stateClass = map[string]struct {
 // enumerated — the only failure mode a list-comparison oracle structurally
 // cannot catch.
 //
-// FINDINGS ALREADY PRODUCED BY THIS GUARD (recorded here because the
-// certification says to treat them as soundness questions, not optimizations):
+// FINDINGS ALREADY PRODUCED BY THIS GUARD (recorded here because the research
+// says to treat them as soundness questions, not optimizations):
 //
-//   - `revLog` and `epochStart` are accumulated by apply()/rotateEpoch() and
-//     swapped by adopt(), but are absent from the certification's 16-field
-//     enumeration. Product code and the certification disagree about what
-//     "committed state" means, and the disagreement predates this test.
+// - `revLog` and `epochStart` are accumulated by apply/rotateEpoch and
+// swapped by adopt, but are absent from the 16-field enumeration.
+// Product code and the research disagree about what "committed state"
+// means, and the disagreement predates this test.
 //
-//   - `revLog` is HISTORY-DEPENDENT: a CT-style append-only log whose root is a
-//     function of append ORDER, not of a key→value set. The certification's Q1
-//     chose the SMT precisely because "the root is identical however the state
-//     was reached." A snapshot-booted validator that never replayed cannot
-//     rebuild revLog from set-valued state, so the keystone must either carry
-//     the whole log in the snapshot or commit only its root and accept that a
-//     snapshot-booted node cannot serve inclusion/consistency proofs. That is a
-//     design question the certification does not answer.
+// - `revLog` is HISTORY-DEPENDENT: a CT-style append-only log whose root is a
+// function of append ORDER, not of a key→value set. The chose the SMT
+// precisely because "the root is identical however the state was reached."
+// A snapshot-booted validator that never replayed cannot rebuild revLog
+// from set-valued state, so the keystone must either carry the whole log in
+// the snapshot or commit only its root and accept that a snapshot-booted
+// node cannot serve inclusion/consistency proofs. That is a design question
+// the research does not answer.
 func TestStateFieldsAreClassified(t *testing.T) {
 	ct := reflect.TypeOf(Chain{})
 
@@ -301,8 +302,8 @@ func TestStateFieldsAreClassified(t *testing.T) {
 
 // historyDerived returns every field derived from block history — set-valued
 // state, the ordered log, AND observables. All three must survive a reorg, so
-// all three are what adopt() owes. Only the first two go under a committed
-// root, and they go under DIFFERENT roots (#597).
+// all three are what adopt owes. Only the first two go under a committed
+// root, and they go under DIFFERENT roots.
 func historyDerived(t *testing.T) []string {
 	t.Helper()
 	ct := reflect.TypeOf(Chain{})
@@ -317,10 +318,10 @@ func historyDerived(t *testing.T) []string {
 	return out
 }
 
-// fieldValue reads an unexported field. reflect refuses .Interface() on
-// unexported fields, and the alternative — hand-written per-field comparisons —
-// would be a fourth enumeration to keep in sync, which is the exact failure
-// this file exists to prevent. Confined to this test.
+// fieldValue reads an unexported field. reflect refuses.Interface on unexported
+// fields, and the alternative — hand-written per-field comparisons — would be a
+// fourth enumeration to keep in sync, which is the exact failure this file
+// exists to prevent. Confined to this test.
 func fieldValue(c *Chain, name string) any {
 	f := reflect.ValueOf(c).Elem().FieldByName(name)
 	return reflect.NewAt(f.Type(), unsafe.Pointer(f.UnsafeAddr())).Elem().Interface()
@@ -374,7 +375,7 @@ func populateCommitted(c *Chain) {
 	// era-4 (v5) maintenance spine.
 	c.qualified = map[ports.NodeID]int64{id: 1 << 21}
 	c.dueBucket = map[uint64]map[ports.NodeID]struct{}{43: {id: struct{}{}}}
-	// R0.4b per-epoch demand-issuer key binding: epoch -> issuer -> fingerprint.
+	// per-epoch demand-issuer key binding: epoch -> issuer -> fingerprint.
 	c.issuerKeyCommit = map[uint64]map[ports.NodeID]ports.Hash{2: {id: ports.Hash{0xAB}}}
 
 	rl := translog.New()
@@ -386,7 +387,7 @@ func populateCommitted(c *Chain) {
 // code on the REORG path: it replaces this replica's state with a reconciled
 // fork's. A committed field it forgets survives the reorg with the losing
 // fork's value — state from a chain this node no longer follows — which is a
-// silent divergence between replicas, the #558 class.
+// silent divergence between replicas, the class.
 //
 // Reflection makes the guard total: it asserts over whatever the struct says is
 // committed, not over a list written next to it.
@@ -431,7 +432,7 @@ func TestAdoptCopiesEveryCommittedField(t *testing.T) {
 		t.Fatalf("adopt() did not transfer %d committed field(s): %v\n\n"+
 			"On a reorg this replica keeps the LOSING fork's value for those "+
 			"fields while following the winning fork's blocks — a silent "+
-			"replica divergence (the #558 class). Either copy them in adopt() "+
+			"replica divergence (the class). Either copy them in adopt "+
 			"or reclassify them with the claim that they are "+
 			"not derived from history.", len(missed), missed)
 	}
@@ -457,17 +458,17 @@ func TestAdoptCopiesEveryCommittedField(t *testing.T) {
 // parses the package's own non-test sources and collects what they DECLARE. A name that
 // only ever appears inside a comment is not declared and does not resolve.
 //
-// THE SCOPE, STATED HONESTLY (simplicity rule 7, and the "gate nobody can keep green gets
+// THE SCOPE, STATED HONESTLY (and the "gate nobody can keep green gets
 // disabled" problem):
 //
-//   IN : backticked bare Go identifiers in stateClass reason strings, resolved against
-//        the declarations of package chain.
-//   OUT: prose (never checked), cross-package and package-qualified names (the resolver
-//        cannot see them, so backticking one is a FALSE RED — the gate says so by name),
-//        and every other table in the repo. It is deliberately NOT cross-bound to
-//        configDecls: that table's reason strings are not yet fully re-derived, and a
-//        merge-blocking gate over un-re-derived prose launders a stale claim into a
-//        requirement. That cross-bind is the next leg, not this one.
+// IN: backticked bare Go identifiers in stateClass reason strings, resolved against
+// the declarations of package chain.
+// OUT: prose (never checked), cross-package and package-qualified names (the resolver
+// cannot see them, so backticking one is a FALSE RED — the gate says so by name),
+// and every other table in the repo. It is deliberately NOT cross-bound to
+// configDecls: that table's reason strings are not yet fully re-derived, and a
+// merge-blocking gate over un-re-derived prose launders a stale claim into a
+// requirement. That cross-bind is the next leg, not this one.
 //
 // A NARROW GATE THAT HOLDS BEATS A BROAD ONE THAT GETS DISABLED. Adding a symbol to a
 // reason string is opt-in: write it in backticks and it is checked forever; write it in
@@ -476,13 +477,13 @@ func TestAdoptCopiesEveryCommittedField(t *testing.T) {
 // THE ABLATION BATTERY, RUN 2026-09-11 BEFORE THIS GATE WAS TRUSTED. Verified by EXIT
 // CODE, and every patched file was `diff`ed against its pristine copy before either run
 // was believed — a patch that silently fails to apply reports GREEN and is
-// indistinguishable from a passing check (the scar behind this step).
+// indistinguishable from a passing check.
 //
-//	A0 baseline ..................................................... GREEN  exit 0
-//	A1 restore the real defect (`RequireTokens` -> `SetTokenQuorum`) . RED    exit 1
-//	A2 revert ....................................................... GREEN  exit 0
-//	A3 backtick a package-qualified name (`translog.MTH`) ........... RED    exit 1
-//	A4 revert ....................................................... GREEN  exit 0
+//	A0 baseline..................................................... GREEN exit 0
+//	A1 restore the real defect (`RequireTokens` -> `SetTokenQuorum`). RED exit 1
+//	A2 revert....................................................... GREEN exit 0
+//	A3 backtick a package-qualified name (`translog.MTH`)........... RED exit 1
+//	A4 revert....................................................... GREEN exit 0
 //
 // The two RED arms are the two ways this gate can be wrong, and they fail DIFFERENTLY:
 // A1 is a claim about a symbol that does not exist, A3 is a claim the resolver cannot
@@ -490,8 +491,7 @@ func TestAdoptCopiesEveryCommittedField(t *testing.T) {
 //
 // The in-test self-check is the third leg: the resolver must answer NO to
 // `SetTokenQuorum` and YES to `RequireTokens` before it judges anything. A resolver that
-// says yes to everything passes every reason string, which is the vacuous-gate shape the
-// sessions-19/20 scars are about.
+// says yes to everything passes every reason string, which is the vacuous-gate shape.
 
 // reasonBacktick captures a `token` inside a reason string.
 var reasonBacktick = regexp.MustCompile("`([^`]*)`")
@@ -499,7 +499,7 @@ var reasonBacktick = regexp.MustCompile("`([^`]*)`")
 // bareGoIdent is a single unqualified Go identifier — the only thing this gate resolves.
 var bareGoIdent = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// packageChainDeclarations parses every NON-TEST .go file of this package and returns the
+// packageChainDeclarations parses every NON-TEST.go file of this package and returns the
 // set of identifiers it declares: funcs and methods, types and their fields, consts and
 // package-level vars. It is deliberately declaration-only — an identifier that appears
 // solely in a comment or a string is absent, which is the whole difference from a grep.

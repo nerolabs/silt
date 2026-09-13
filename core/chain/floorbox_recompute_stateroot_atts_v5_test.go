@@ -12,14 +12,13 @@ import (
 // Tests for the P1-e class-A attestations → validatorsSeen state-root recompute
 // (floorbox_recompute_stateroot_atts_v5.go).
 //
-// CERTIFIED-IN-DIRECTION (2026-08-31):
-//   research: floorbox-recompute-classA-classP-wholeset-RESEARCH-CERTIFICATION-2026-08-31.md
+// research: floorbox-recompute-classA-classP-wholeset-
 //
 // R3 (execution-derived drift guard, MANDATORY): the box's derived A write-set + validatorsSeenRoot
-// reconstruction is checked against the REAL apply() + StateRootForVersion(5), and ablated RED on a
+// reconstruction is checked against the REAL apply + StateRootForVersion(5), and ablated RED on a
 // forged qualification screen, a legacy-mode block, and an omitted validatorsSeenRoot. Each ablation
 // drives the REAL recomputeStateRootEntriesRevocations (a hand-built mirror shares the producer's
-// blind spot — the session-7 scar).
+// blind spot — the).
 
 type attFixture struct {
 	c        *Chain
@@ -76,7 +75,7 @@ func buildAttFixture(t *testing.T) attFixture {
 }
 
 // attBlock builds a block with one E/R entry + a LastCommit carrier holding one carried signer
-// (the fixture's attester, who is not the parent's proposer). R-BOX-ATTESTS O1: the v5 seating
+// (the fixture's attester, who is not the parent's proposer). the v5 seating
 // source is the hash-covered carrier over b.Prev, not the block's own Atts.
 func (f attFixture) attBlock() Block {
 	prev, h := f.c.Head()
@@ -130,7 +129,7 @@ func (f attFixture) preIDsValidatorsSeen() []ports.NodeID {
 }
 
 // attScreen builds the per-attester screen witness reading the fixture chain's committed pre-state,
-// including the R1.2 per-field proofs against prevStateRoot (slashed / epochSet / bonded).
+// including the per-field proofs against prevStateRoot (slashed / epochSet / bonded).
 func (f attFixture) attScreen(id ports.NodeID) StateRootAttScreen {
 	sz, bp := f.c.bonded[id]
 	esVal, inES := f.c.epochSet[id]
@@ -205,7 +204,7 @@ func (f attFixture) applyAndCommittedRoot(t *testing.T, b Block) ports.Hash {
 	return sr
 }
 
-// --- Ablation 0: the A recompute AGREES with real apply() over a qualified non-proposer att. ---
+// --- Ablation 0: the A recompute AGREES with real apply over a qualified non-proposer att. ---
 func TestRecomputeStateRootAttAgreesWithApply(t *testing.T) {
 	f := buildAttFixture(t)
 	b := f.attBlock()
@@ -259,9 +258,9 @@ func TestRecomputeStateRootAttAblationForgedScreen(t *testing.T) {
 			w.AttScreens[i].InEpochSet = false
 		}
 	}
-	// R1.2: the forged InEpochSet=false requires a NON-MEMBERSHIP proof of epochSet||aid, but the honest
+	// The forged InEpochSet=false requires a NON-MEMBERSHIP proof of epochSet||aid, but the honest
 	// EpochSetProof proves PRESENT (the attester IS in the frozen set), so the class-A anchor stalls
-	// (ErrRecomputeStateRootDigest) — a STRONGER, earlier catch than the pre-R1.2 fold mismatch.
+	// (ErrRecomputeStateRootDigest) — a STRONGER, earlier catch than the earlier fold mismatch.
 	err := recomputeViaHead(f.c, f.prevRoot, committed, b, w)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a forged (not-in-epochSet) screen must stall, got nil")
@@ -275,10 +274,11 @@ func TestRecomputeStateRootAttAblationForgedScreen(t *testing.T) {
 // asserts objective-mode and STALLS. We build a legacy (non-objective) chain and confirm the A
 // dispatch stalls. ---
 func TestRecomputeStateRootAttAblationLegacyMode(t *testing.T) {
-	// A legacy chain: MinBond=0 (or no verifier) ⇒ objective() false. attOps must stall.
+	// A legacy chain: MinBond=0 (or no verifier) ⇒ objective false. attOps must
+	// stall.
 	cfg := Config{Quorum: 1, MinBond: 0, ByzantineQuorum: true, EpochBlocks: 1024, MatureValidators: 0}
 	c := New(cfg, func(ports.NodeID) int64 { return 100 }) // rep-based
-	// No bond verifier ⇒ objective() false.
+	// No bond verifier ⇒ objective false.
 
 	prop := key(54101)
 	att := key(54102)
@@ -326,7 +326,7 @@ func TestRecomputeStateRootAttProposerOnlyNoWrite(t *testing.T) {
 	f := buildAttFixture(t)
 	prev, h := f.c.Head()
 	b := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev, Entries: []ports.Entry{entry(42)}}
-	b.Atts = append(b.Atts, Attest(&b, f.proposer)) // proposer's own att — skipped by apply()
+	b.Atts = append(b.Atts, Attest(&b, f.proposer)) // proposer's own att — skipped by apply
 	Sign(&b, f.proposer)
 	committed := f.applyAndCommittedRoot(t, b)
 
@@ -351,12 +351,10 @@ func TestRecomputeStateRootAttProposerOnlyNoWrite(t *testing.T) {
 // empty BY RULE, O1) so a genesis-only fixture's NEXT block lands at height 2.
 //
 // WHY EVERY CLASS-A FIXTURE NEEDS IT. The box entry now runs the SHARED validateCarrier
-// (assembleStateRootRecomputeOps — the RT-CARRIER-1 fix), and a height-1 block carrying a carrier is
-// INVALID. A fixture that minted one was driving the box with a block no full node would accept, so
-// its "the box agrees with apply()" baseline was asserting agreement on an unreachable block. This
-// is fixture repair, not a weakening of the rule: PE ruling
-// RULING-floorbox-predicate-rederivation-structure-2026-09-03.md O-3 requires sweeps to be built by
-// MUTATING a block the node accepts.
+// (assembleStateRootRecomputeOps — the fix), and a height-1 block carrying a carrier is INVALID. A
+// fixture that minted one was driving the box with a block no full node would accept, so its "the
+// box agrees with apply" baseline was asserting agreement on an unreachable block. This is fixture
+// repair, not a weakening of the rule.
 func advancePastHeightOne(c *Chain, proposer ed25519.PrivateKey) {
 	prev, h := c.Head()
 	b := &Block{Version: BlockVersionWitnessable, Height: h, Prev: prev, Entries: []ports.Entry{entry(31)}}

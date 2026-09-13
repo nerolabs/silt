@@ -1,0 +1,245 @@
+package node
+
+// CRYPTO ADVISORY R1 — the hardness checks reached an
+// UNAUTHENTICATED HOT PATH.
+//
+// The mechanism, verbatim from the finding and re-derived here:
+//
+//	(As found, on the flat lane:) handleDeliveryReceipt called DemandIssuerKeyset as its
+//	FIRST real action on any inbound frame — before the parse, before the server screen,
+//	with no authentication and no rate limit. (Today, on the session lane —:)
+//	handleDeliveryOpen → OpenDeliverySession → verifyDeliveryAnchors reaches it after the
+//	parse, the sha256(Fetcher)==sender screen and one ed25519 verify, still with no rate
+//	limit — a self-signed open is the whole price of admission.
+//	DemandIssuerKeyset re-pins every held epoch on every read (`for e, iss:= range
+//	n.demandIssuers { pinDemandIssuerKey(...) }`), and Keyset.Put ran the full
+//	ValidatePub — hardness included, ~3.3 ms — unconditionally. Re-Put is unavoidable
+//	because Prune drops every FUTURE epoch on every read, so the held map cannot itself
+//	serve as the memo.
+//
+//	Result: one one-byte message from any peer bought 5-9 x 3.3 ms of RSA work on the
+//	single-threaded node loop. That is the exact CPU amplifier issuer.go's own comment
+//	says the shape/hardness split exists to prevent, re-entered through another door.
+//	TestHardnessRunsAtAdmissionNotOnEveryModexp cannot see it: it times the two
+//	functions in isolation and never walks the node path.
+//
+// The gate below COUNTS hardness executions along the real node path rather than
+// timing them, because "how often does this run" is the property, and a count is the
+// only thing that cannot be greened by a faster machine.
+
+import (
+	"crypto/rand"
+	"crypto/rsa"
+	"math/big"
+	"testing"
+	"time"
+
+	"github.com/nerolabs/silt/adapters/identity"
+	"github.com/nerolabs/silt/adapters/memstore"
+	"github.com/nerolabs/silt/adapters/simclock"
+	"github.com/nerolabs/silt/adapters/simnet"
+	"github.com/nerolabs/silt/core/blindtoken"
+	"github.com/nerolabs/silt/core/chain"
+	"github.com/nerolabs/silt/core/credit"
+	"github.com/nerolabs/silt/core/demand"
+	"github.com/nerolabs/silt/ports"
+)
+
+// c3HeldBandNode builds a self-issuing node holding a band of `epochs` distinct RSA
+// keys, every one committed at genesis, with the demand bank armed — the shipped
+// daemon's shape (cmd/silt/daemon.go: EnableDemandBank(nd.ID), so the self-pin
+// branch is the LIVE branch). It returns the node and a peer NodeID to send from.
+//
+// The band is 5 deep, not the daemon's 9: issuerKeyPrePublish = 4 caps a genesis
+// block's registrations at epochs [0, 4]. The amplification is linear in the band, so
+// 5 proves the shape; the shipped daemon's is 9/5 worse.
+func c3HeldBandNode(t testing.TB, epochs int) (*Node, ports.NodeID) {
+	t.Helper()
+	sched := simclock.New()
+	net := simnet.New(sched, 3, simnet.DefaultConfig())
+	ident := identity.FromSeed(9401)
+
+	keys := make([]*rsa.PrivateKey, epochs)
+	regs := make([]chain.IssuerKeyReg, epochs)
+	for e := 0; e < epochs; e++ {
+		k, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			t.Fatal(err)
+		}
+		keys[e] = k
+		regs[e] = chain.SignIssuerKeyReg(ident.Signer(), uint64(e), demand.KeyFingerprint(&k.PublicKey))
+	}
+
+	c := chain.New(chain.Config{Quorum: 1}, func(ports.NodeID) int64 { return 1 << 30 })
+	g := chain.Block{
+		Version:    chain.BlockVersionWitnessable,
+		Height:     0,
+		Entries:    []ports.Entry{{Root: ports.HashBytes([]byte("c3-hotpath-genesis"))}},
+		IssuerKeys: regs,
+	}
+	chain.Sign(&g, ident.Signer())
+	if err := c.AppendGenesis(g); err != nil {
+		t.Fatalf("genesis committing %d issuer-key bindings: %v", epochs, err)
+	}
+
+	nd := New(ident.NodeID(), DefaultConfig(), sched, net.Endpoint(ident.NodeID()), memstore.New())
+	nd.SetSigner(ident.Signer())
+	nd.SetLedger(credit.New(50_000, 500_000))
+	nd.EnableChain(c, ident.Signer())
+	for e := 0; e < epochs; e++ {
+		nd.SetDemandIssuerKey(rand.Reader, uint64(e), keys[e])
+	}
+	nd.EnableDemandBank(ident.NodeID())
+	nd.EnableDeliverySessions(10 * ports.Second) // the priced inbound path is MsgDeliveryOpen
+
+	// Deliberately NOT calling DemandIssuerKeyset here: the band's first admission is
+	// what the gate measures, and a warm-up in the fixture would hide it.
+	return nd, identity.FromSeed(9402).NodeID()
+}
+
+// TestInboundReceiptsCostOHardnessChecksNotOPerMessage is the R1 gate.
+//
+// RED before the admission memo in demand.Keyset.Put: 50 messages x 5 held epochs =
+// 250 hardness runs. GREEN after: the band is admitted ONCE and every subsequent
+// message costs zero.
+//
+// Ablation (run 2026-09-03): delete the `k.admitted` lookup in Keyset.Put so it calls
+// blindtoken.ValidatePub unconditionally -> RED at "message 2. 5 hardness runs".
+func TestInboundReceiptsCostOHardnessChecksNotOPerMessage(t *testing.T) {
+	const band = 5
+	const messages = 50
+
+	nd, peer := c3HeldBandNode(t, band)
+
+	// Warm: the band's first admission. This is the O(distinct keys) cost the design
+	// allows — hardness AT ADMISSION.
+	before := blindtoken.ValidatePubHardnessRuns()
+	nd.handleDeliveryOpen(peer, c3GarbageOpen(nd.id))
+	admission := blindtoken.ValidatePubHardnessRuns() - before
+	// NON-VACUITY, and it is the load-bearing half of this gate: the first message must
+	// pay EXACTLY one hardness run per band key. If it paid zero the fixture would not
+	// be driving the door at all and "0 per message" below would prove nothing.
+	if admission != band {
+		t.Fatalf("the band's first admission ran hardness %d times, want exactly %d "+
+			"(one per committed key). Either the fixture is not reaching Keyset.Put, or "+
+			"the memo is skipping an admission it must pay for.", admission, band)
+	}
+	if ks := nd.DemandIssuerKeyset(nd.id); ks == nil || ks.Key(0) == nil {
+		t.Fatal("the committed issuer key was not pinned — the fixture would be measuring " +
+			"a keyset that never admits anything")
+	}
+
+	// The gate: every message after the band is admitted costs ZERO hardness.
+	base := blindtoken.ValidatePubHardnessRuns()
+	start := time.Now()
+	for i := 0; i < messages; i++ {
+		nd.handleDeliveryOpen(peer, c3GarbageOpen(nd.id))
+		if got := blindtoken.ValidatePubHardnessRuns() - base; got != 0 {
+			t.Fatalf("message %d: %d hardness runs on an inbound MsgDeliveryOpen. "+
+				"ValidatePub's hardness half (~3.3 ms) must run at ADMISSION only. An "+
+				"unauthenticated peer that can drive it per-message owns the node loop: "+
+				"at a %d-epoch band that is %d x 3.3 ms per one-byte frame (crypto "+
+				"advisory R1, 2026-09-03).", i+1, got, band, band)
+		}
+	}
+	elapsed := time.Since(start)
+	perMsg := elapsed / messages
+
+	// The budget. A hardness run is ~3.3 ms, so ANY per-message hardness blows this by
+	// more than an order of magnitude; the check is a second, independent statement of
+	// the same property that also catches a cost regression the counter cannot see.
+	//
+	// NOT UNDER -race. The COUNT above is the property and runs under both builds. The
+	// wall-clock half is a measurement, and the race detector's instrumentation inflates
+	// it ~10x: 4.8 µs/message uninstrumented, 45 µs under -race on the same box, 108 µs
+	// on the CI runner's -race job, all on the same code. Under -race the number
+	// measures the detector, not the path — the same reason `TestValidatePubCostBudget`
+	// sits behind `//go:build !race`. The cost is still LOGGED under both builds so a
+	// human reads it. B-9 re-derivation: the stand-in is a WELL-FORMED open with a
+	// garbage anchor, and the per-open cost of that is one ed25519 verify plus at most
+	// W+1 RSA verifies ("≤ W+1 modexps for a garbage open" — cheap refusals BEFORE
+	// RSA, RSA under the SELF keyset only). At ~30 µs per RSA-2048 verify and ~60 µs for
+	// ed25519 that is well under a millisecond; the retired one-byte frame's 100 µs
+	// budget measured decode-only shape and is not this path's number. Hardness (~3.3 ms
+	// per run) would still blow this by 3× per band key, so the budget keeps its teeth
+	// against the property it guards.
+	budget := time.Duration(band+1)*60*time.Microsecond + 400*time.Microsecond
+	if perMsg > budget && !raceEnabled {
+		t.Fatalf("inbound MsgDeliveryOpen cost %v/message over %d messages (budget %v = T-7's ≤ W+1 RSA verifies + one ed25519). "+
+			"The C-3 design puts hardness at admission and SHAPE + T-7 ONLY on this path.",
+			perMsg, messages, budget)
+	}
+	t.Logf("R1 CLOSED: %d-epoch band. Hardness runs = %d at the band's first admission, "+
+		"then 0 across %d further inbound receipts. Cost %v/message (budget %v, "+
+		"asserted only without -race; race=%v).",
+		band, admission, messages, perMsg, budget, raceEnabled)
+}
+
+// TestADifferentCommittedKeyStillPaysFullAdmission is the memo's teeth-check: the
+// memo must be an identity cache, not a bypass. A key the keyset has never admitted
+// runs the full hardness half however many other keys are memoised.
+func TestADifferentCommittedKeyStillPaysFullAdmission(t *testing.T) {
+	ks := demand.NewKeyset(demand.DefaultWindow)
+	a, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	before := blindtoken.ValidatePubHardnessRuns()
+	ks.Put(0, &a.PublicKey)
+	if n := blindtoken.ValidatePubHardnessRuns() - before; n != 1 {
+		t.Fatalf("first Put of key A ran hardness %d times, want 1", n)
+	}
+	before = blindtoken.ValidatePubHardnessRuns()
+	for i := 0; i < 10; i++ {
+		ks.Put(0, &a.PublicKey)
+	}
+	if n := blindtoken.ValidatePubHardnessRuns() - before; n != 0 {
+		t.Fatalf("re-Put of the IDENTICAL key A ran hardness %d times, want 0", n)
+	}
+	before = blindtoken.ValidatePubHardnessRuns()
+	ks.Put(1, &b.PublicKey)
+	if n := blindtoken.ValidatePubHardnessRuns() - before; n != 1 {
+		t.Fatalf("first Put of a DIFFERENT key B ran hardness %d times, want 1 — the memo "+
+			"is an identity cache keyed on the committed fingerprint, never a bypass", n)
+	}
+
+	// And the memo must not admit a degenerate key by memo-hit on a sibling: shape runs
+	// on every Put. N = 1 is the F4 universal forgery.
+	ks.Put(2, &rsa.PublicKey{N: big.NewInt(1), E: 65537})
+	if ks.Key(2) != nil {
+		t.Fatal("a degenerate N = 1 key entered the keyset — the memo must skip HARDNESS " +
+			"only; ValidateShape still runs on every Put (F4)")
+	}
+	t.Log("memo teeth: identical key -> 0 hardness runs; a new key -> 1; a degenerate key " +
+		"is still refused by shape on every Put")
+}
+
+// BenchmarkC3InboundDeliveryReceipt measures the per-message cost of the
+// unauthenticated inbound path over a held band — the number priced at
+// 28.6 ms before the memo.
+func BenchmarkC3InboundDeliveryReceipt(b *testing.B) {
+	nd, peer := c3HeldBandNode(b, 5)
+	msg := c3GarbageOpen(nd.id)
+	nd.handleDeliveryOpen(peer, msg) // admit the band
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		nd.handleDeliveryOpen(peer, msg)
+	}
+}
+
+// c3GarbageOpen is a WELL-FORMED session open from the fixture peer carrying one anchor
+// whose blind signature is garbage: it decodes, its ed25519 commitment verifies, the
+// server reaches its keyset (the admission the gate measures) and the RSA verify fails.
+// The shape the retired one-byte MsgDeliveryReceipt frame stood in for.
+func c3GarbageOpen(server ports.NodeID) ports.Message {
+	peer := identity.FromSeed(9402)
+	serial := make([]byte, 32)
+	open := demand.SignSessionOpen(peer.Signer(), server, []demand.Token{{Serial: serial, Sig: make([]byte, 256)}})
+	blob, _ := open.Marshal()
+	return ports.Message{Kind: ports.MsgDeliveryOpen, Data: blob}
+}

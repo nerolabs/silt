@@ -7,7 +7,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// C2 metric wiring (#185 / D-C2). The concentration measurement is computed from
+// C2 metric wiring. The concentration measurement is computed from
 // the COMMITTED on-chain bond ledger (never gossip — that kills the skew half),
 // and discounted by the operator margin M to bound the split half. These pin the
 // arithmetic and the split-resistant shed.
@@ -161,14 +161,14 @@ func TestC2Metric_ConcentrationSignals(t *testing.T) {
 	}
 }
 
-// TestC2Metric_WeightUniformityCatchesEqualBondSplit pins the seam-5 count/entropy
+// TestC2Metric_WeightUniformityCatchesEqualBondSplit pins the count/entropy
 // companion signal. An equal-bond SPLIT — one operator posting N identical min-bonds
 // across N keys — is the strategy the WEIGHT signals (HHI, Gini, TopShare) are blind
 // to: it drives them all to their most-decentralized values, so the ⅓ whale alarm
 // never fires. WeightUniformity exposes the "many atoms, implausibly uniform"
 // fingerprint (→1 for identical bonds) that the weight signals miss, while a whale
 // reads LOW uniformity. It is necessary-not-sufficient (a size-varying splitter
-// evades it, healthy decentralization is also uniform — #182), but it is strictly
+// evades it, healthy decentralization is also uniform —), but it is strictly
 // more signal than the weight-only alarms had.
 func TestC2Metric_WeightUniformityCatchesEqualBondSplit(t *testing.T) {
 	const minBond = int64(1) << 20

@@ -2,13 +2,12 @@ package demand
 
 // The demand primitive's unit gates, ON THE ANCHORED SESSION LANE.
 //
-// C1 (2026-09-08) retired the v2 flat path — Bank.Redeem, DeliveryReceipt, Ack,
-// SubmittedReceipt and the bank's own spent set — so every property these tests pin is
-// asserted through the surface that survived: the anchor (Withdraw → Unblind →
-// VerifyInWindow), the session open (SignSessionOpen / SessionOpenCommitment), the
-// settlement acknowledgement (AckSession / VerifySig) and the observable (Witness /
-// WitnessedIncrements / DistinctBondedFetchers). The re-homing ledger is in
-// docs/thinking/2026-09-07-b9-flat-path-retirement.md.
+// C1 retired the v2 flat path — Bank.Redeem, DeliveryReceipt, Ack, SubmittedReceipt
+// and the bank's own spent set — so every property these tests pin is asserted through
+// the surface that survived: the anchor (Withdraw → Unblind → VerifyInWindow), the
+// session open (SignSessionOpen / SessionOpenCommitment), the settlement
+// acknowledgement (AckSession / VerifySig) and the observable (Witness /
+// WitnessedIncrements / DistinctBondedFetchers). The re-homing ledger is.
 
 import (
 	"crypto/ed25519"
@@ -21,9 +20,9 @@ import (
 )
 
 // scene sets up a (blind-signing RSA) issuer, a fetcher, a server, and one
-// object C. The receipt carries no bytes and no PoR (the certified neutral-lane
-// shape), so the scene needs no object data — the fetch path's content-verify is
-// where bytes are checked, before any honest acknowledgement.
+// object C. The receipt carries no bytes and no PoR (the neutral-lane shape), so
+// the scene needs no object data — the fetch path's content-verify is where
+// bytes are checked, before any honest acknowledgement.
 type scene struct {
 	issuerPub  *rsa.PublicKey
 	issuerPriv *rsa.PrivateKey
@@ -99,7 +98,7 @@ func (s scene) openSession(t *testing.T, anchors ...Token) (uint64, []byte) {
 	return 1, m
 }
 
-// TestHonestSessionDeliveryCreditsWitnessedDemand (was TestHonestDeliveryCreditsDemand):
+// TestHonestSessionDeliveryCreditsWitnessedDemand:
 // a real issued token, presented as a session anchor and acknowledged by a
 // fetcher-signed cumulative receipt, credits the object's witnessed-demand observable —
 // and only the observable, never standing.
@@ -119,7 +118,7 @@ func TestHonestSessionDeliveryCreditsWitnessedDemand(t *testing.T) {
 	}
 }
 
-// TestForgedAnchorIsRefusedAtTheOpen (was TestForgedTokenRejected): a serial not
+// TestForgedAnchorIsRefusedAtTheOpen: a serial not
 // blind-signed by the issuer the server resolved buys nothing. On the flat lane the
 // refusal was inside Redeem; on the session lane the anchor is verified at OPEN, under
 // the server's own committed per-epoch key, before any guard entry or budget exists.
@@ -179,29 +178,28 @@ func TestBlindWithdrawalIsUnlinkable(t *testing.T) {
 	}
 }
 
-// TestAcknowledgementCarriesNoPossessionClaim (was TestReceiptCarriesNoPossessionClaim)
-// pins the CERTIFIED boundary of the neutral lane (the 2026-08-26 PoD certification,
-// Q2 / owned residual B3): an acknowledgement is mintable with zero object bytes BY
-// DESIGN — the willing fetcher's signature is the delivery attestation, and nothing in
-// it proves possession. This is sound because the sound properties live elsewhere: the
-// anchor level (one token, one session budget, spent at open into the ledger's guard)
-// and conservation (a colluding pair settles at most the face it burned — a strict
-// loss). If a future change makes this test's premise false (a possession proof returns
-// to the receipt), it must be the content-committed recompute floor arriving with the
-// strong form or relay — re-read the certification before touching this.
+// TestAcknowledgementCarriesNoPossessionClaim pins the boundary of the neutral lane:
+// an acknowledgement is mintable with zero object bytes BY DESIGN —
+// the willing fetcher's signature is the delivery attestation, and nothing in it proves
+// possession. This is sound because the sound properties live elsewhere: the anchor
+// level (one token, one session budget, spent at open into the ledger's guard) and
+// conservation (a colluding pair settles at most the face it burned — a strict loss).
+// If a future change makes this test's premise false (a possession proof returns to the
+// receipt), it must be the content-committed recompute floor arriving with the strong
+// form or relay — re-read the research before touching this.
 func TestAcknowledgementCarriesNoPossessionClaim(t *testing.T) {
 	s := newScene(t, "obj-C")
 	handle, m := s.openSession(t, s.token(t))
 	// The fetcher never saw a single byte of the object; the acknowledgement still signs.
 	r := AckSession(s.fetcher, handle, m, s.object, s.server, 1)
 	if !r.VerifySig() {
-		t.Fatal("the neutral-lane acknowledgement must verify without a possession proof (certified)")
+		t.Fatal("the neutral-lane acknowledgement must verify without a possession proof")
 	}
 	// What it bought: one unit of a NEUTRAL observable. Never standing (the
 	// firewall test for the conserved credit lives in core/credit).
 	bank := NewBank()
 	if ok, why := bank.Witness(s.object, r.Fetcher, 1); !ok {
-		t.Fatalf("witness refused a certified receipt: %s", why)
+		t.Fatalf("witness refused a receipt: %s", why)
 	}
 	if got := bank.WitnessedIncrements(s.object); got != 1 {
 		t.Fatalf("witnessed increments = %d, want 1", got)
@@ -269,16 +267,16 @@ func TestBondedGateRejectsUnbonded(t *testing.T) {
 }
 
 // TestSelfDealOneBondedIdentityIsOneDistinctFetcher is the P3b self-dealing red-team
-// (was TestSelfDealOneBondedIdentityCapsDemand): a washer runs ONE bonded fetcher
+// a washer runs ONE bonded fetcher
 // identity and settles N genuine, individually-funded sessions — indistinguishable
 // from honest demand, because a self-fetch IS a real paid delivery; Douceur is
-// unbeaten. The DISTINCT-BONDED-FETCHER surface rises by exactly 1, not N: faking U
+// unbeaten. The DISTINCT-BONDED surface rises by exactly 1, not N: faking U
 // units of that surface takes U distinct bonded identities, i.e. U real storage bonds.
 //
-// What CHANGED from the v2 twin, by certification and not by accident: P3b keeps its
-// ADMISSION role and loses its dedup role on the INCREMENT counter (R2.9 cert §3.3
-// rule 4 — two surfaces, never one field with a flag-dependent unit). So the increment
-// counter here is N, and the cost-to-wash claim is carried by DistinctBondedFetchers.
+// What CHANGED from the v2 twin, by research and not by accident: P3b keeps its
+// ADMISSION role and loses its dedup role on the INCREMENT counter (rule 4 — two
+// surfaces, never one field with a flag-dependent unit). So the increment counter here
+// is N, and the cost-to-wash claim is carried by DistinctBondedFetchers.
 func TestSelfDealOneBondedIdentityIsOneDistinctFetcher(t *testing.T) {
 	s := newScene(t, "obj-C")
 	fetcherPub := s.fetcher.Public().(ed25519.PublicKey)

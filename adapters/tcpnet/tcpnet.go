@@ -12,26 +12,26 @@
 // Two realities of leaving the sim are handled here, both invisibly to
 // the core:
 //
-//   - Addressing. Core speaks pure NodeIDs; TCP needs ip:port. The
-//     adapter keeps an address book, stamps every outgoing frame with
-//     the sender's own listen address, and attaches known addresses for
-//     any NodeIDs mentioned in the message. Receivers learn as they
-//     listen — address gossip as an envelope concern.
+// - Addressing. Core speaks pure NodeIDs; TCP needs ip:port. The
+// adapter keeps an address book, stamps every outgoing frame with
+// the sender's own listen address, and attaches known addresses for
+// any NodeIDs mentioned in the message. Receivers learn as they
+// listen — address gossip as an envelope concern.
 //
-//   - Concurrency. Sockets mean goroutines; core code is lock-free and
-//     single-threaded by contract. Every delivery is posted onto the
-//     node's event loop, never invoked from a reader goroutine.
+// - Concurrency. Sockets mean goroutines; core code is lock-free and
+// single-threaded by contract. Every delivery is posted onto the
+// node's event loop, never invoked from a reader goroutine.
 //
-//   - Conversations. A message rides the live connection with its peer
-//     when one exists, and otherwise dials fresh and KEEPS the conn.
-//     The crucial case is a reply riding the very conn the request
-//     arrived on — the only road back to a NATed caller, who can dial
-//     out but can never be dialed. Loss semantics stay UDP-ish: a
-//     failed write or dial just drops the message and the core's
-//     timeout machinery owns recovery; there is no retransmit here.
-//     One deliberate exception: a reachability dial-back never reuses
-//     a conn, because its entire meaning is "a fresh inbound dial to
-//     your advertised address landed".
+// - Conversations. A message rides the live connection with its peer
+// When one exists, and otherwise dials fresh and KEEPS the conn.
+// The crucial case is a reply riding the very conn the request
+// arrived on — the only road back to a NATed caller, who can dial
+// out but can never be dialed. Loss semantics stay UDP-ish: a
+// failed write or dial just drops the message and the core's
+// timeout machinery owns recovery; there is no retransmit here.
+// One deliberate exception: a reachability dial-back never reuses
+// a conn, because its entire meaning is "a fresh inbound dial to
+// your advertised address landed".
 package tcpnet
 
 import (
@@ -68,7 +68,7 @@ const frameOverhead = 4 << 20
 // to still cap per-frame allocation against a hostile peer (#14). It is
 // derived from the manifest chunk-size ceiling, not a standalone number, so
 // the transport can always carry a chunk the manifest layer accepts — the
-// two limits can't drift apart (#104). The minimum production chunk is 64
+// two limits can't drift apart. The minimum production chunk is 64
 // MiB, so the old 32 MiB cap silently dropped every production chunk.
 const maxFrame = manifest.MaxChunkSize + frameOverhead
 
@@ -93,7 +93,7 @@ type Transport struct {
 	inbound *inboundGate
 
 	// inHandshakes counts inbound TLS handshakes currently in flight — the
-	// hub-stampede gauge for #286 Layer 2 (Q3): when many spokes dial a hub at
+	// hub-stampede gauge for Layer 2 (Q3): when many spokes dial a hub at
 	// once over a WAN, overlapping handshakes contend and a dialer's deadline can
 	// fire mid-handshake (the hub then logs an EOF). Logged alongside each inbound
 	// handshake failure so the next -log debug run can attribute the EOF (high
@@ -107,19 +107,20 @@ type Transport struct {
 	// keeping both lets the dialer prefer the cheap path and fall back,
 	// instead of one form clobbering the other (the old one-slot book).
 	peers map[ports.NodeID]addrPair
-	// relays records peers that gossip a relay *service* (they run
+	// relays records peers that gossip a relay *service* they run
 	// -relay at that host:port) — the pool a NATed node can lean on
-	// without being handed -relay-via. First-hand only: a node stamps
-	// its own service, never someone else's, so an entry is exactly as
-	// trustworthy as the pinned conn it arrived on (and dialing pins the
-	// relay's identity anyway).
+	// Without being handed -relay-via. First-hand only: a node stamps
+	// its own service, never someone else's, so an entry is exactly
+	// as trustworthy as the pinned conn it arrived on (and dialing
+	// pins the relay's identity anyway).
 	relays map[ports.NodeID]string
 	// conns holds the live conversation per peer, either direction.
 	// The newest conn wins the slot; a displaced one keeps serving its
 	// own readLoop until it dies naturally.
 	conns map[ports.NodeID]*peerConn
-	// classes is the observed (class, group) per peer with a live conversation
-	// (R4.3b, class.go); salt is per process, drawn at New, never persisted.
+	// classes is the observed (class, group) per peer with a live
+	// conversation (class.go); salt is per process, drawn at New, never
+	// persisted.
 	classes          map[ports.NodeID]peerClass
 	salt             [16]byte
 	v4Width, v6Width int
@@ -267,7 +268,7 @@ func (t *Transport) advertised() string {
 		return t.adv
 	}
 	if isWildcard(t.listenAddr) {
-		// A wildcard bind ("0.0.0.0" / "[::]") is not a dialable
+		// A wildcard bind ("0.0.0.0" / "[:]") is not a dialable
 		// address; stamping it would poison peers' address books — a
 		// receiver "learns" to dial its own loopback. Stamp nothing:
 		// peers that know a real address for us keep it, and everyone
@@ -294,9 +295,10 @@ func isWildcard(hostport string) bool {
 	return ip != nil && ip.IsUnspecified()
 }
 
-// isLoopbackOrUnspecified reports whether hostport names a loopback (127/8,
-// ::1) or unspecified (0.0.0.0, ::) IP — an address no other host can dial.
-// Non-IP forms (hostnames, relay forms) are not judged here (returns false).
+// isLoopbackOrUnspecified reports whether hostport names a loopback
+// (127/8,:1) or unspecified (0.0.0.0,:) IP — an address no other host can
+// dial. Non-IP forms (hostnames, relay forms) are not judged here (returns
+// false).
 func isLoopbackOrUnspecified(hostport string) bool {
 	host, _, err := net.SplitHostPort(hostport)
 	if err != nil {
@@ -312,7 +314,7 @@ func isLoopbackOrUnspecified(hostport string) bool {
 // selfPublic reports whether this node presents a routable (non-loopback)
 // address to the network — i.e. it set -advertise or a concrete public
 // -listen. A wildcard/empty or loopback self-address (a NATed client or an
-// on-host test swarm) is not "public".
+// On-host test swarm is not "public".
 func (t *Transport) selfPublic() bool {
 	a := t.advertised()
 	return a != "" && !isLoopbackOrUnspecified(a)
@@ -325,7 +327,7 @@ func (t *Transport) selfPublic() bool {
 // worse, gets walked (and times out) during provider resolution — the failure
 // mode where a public bootstrap node accumulates hundreds of dead localhost
 // "peers" and can no longer resolve who holds a chunk. On-host/NATed nodes
-// (selfPublic() == false) keep the old behavior so a loopback test swarm still
+// (selfPublic == false) keep the old behavior so a loopback test swarm still
 // discovers itself. Explicit -bootstrap (AddPeer) never routes through here.
 func (t *Transport) learnGossip(id ports.NodeID, addr string, overwrite bool) {
 	if t.selfPublic() && isLoopbackOrUnspecified(addr) {
@@ -366,8 +368,8 @@ func (t *Transport) Peers() []Peer {
 }
 
 // PeerCount is the number of DISTINCT peers in the address book. Use
-// this, not len(Peers()): Peers() emits one entry per address form, so
-// a peer known by both a direct and a relay address counts twice there.
+// this, not len(Peers): Peers emits one entry per address form, so a
+// peer known by both a direct and a relay address counts twice there.
 func (t *Transport) PeerCount() int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -586,7 +588,7 @@ func (t *Transport) dialPeer(to ports.NodeID, addr string) (*tls.Conn, error) {
 		conn.SetDeadline(time.Time{})
 		return conn, nil
 	}
-	// Instrument the dial (#286 Layer 2 Q3): log the budget + how long we actually
+	// Instrument the dial: log the budget + how long we actually
 	// spent, so a failure whose elapsed ≈ deadline is attributable to the deadline
 	// firing (vs a fast pin-rejection/teardown). Budget bounds TCP connect + the TLS
 	// handshake together here (net.Dialer.Timeout covers both).
@@ -627,7 +629,7 @@ func (t *Transport) dropConn(id ports.NodeID, pc *peerConn) {
 	t.mu.Lock()
 	if t.conns[id] == pc {
 		delete(t.conns, id)
-		delete(t.classes, id) // the class map is bounded by live conns (C-4); the table keeps its own copy
+		delete(t.classes, id) // the class map is bounded by live conns; the table keeps its own copy
 	}
 	t.mu.Unlock()
 	pc.conn.Close()
@@ -669,11 +671,11 @@ func (t *Transport) readLoop(conn *tls.Conn, viaRelay bool) {
 		t.logf(ports.LogWarn, "recovered panic in read loop", "remote", conn.RemoteAddr(), "panic", r)
 		conn.Close()
 	})
-	// Instrument the inbound handshake (#286 Layer 2 Q3): a mid-handshake EOF over a
-	// WAN is most consistent with the DIALER's deadline firing under a hub stampede.
-	// Log the concurrent in-flight count + how long this handshake ran before failing,
-	// so the next run can attribute the EOF (high concurrency + elapsed ≈ the dialer
-	// budget ⇒ stampede/deadline; instant ⇒ a pin/teardown; see docs/network-durability.md §8).
+	// Instrument the inbound handshake: a mid-handshake EOF over a WAN is most consistent
+	// with the DIALER's deadline firing under a hub stampede. Log the concurrent in-flight
+	// count + how long this handshake ran before failing, so the next run can attribute the
+	// EOF (high concurrency + elapsed ≈ the dialer budget ⇒ stampede/deadline; instant ⇒ a
+	// pin/teardown).
 	inflight := t.inHandshakes.Add(1)
 	defer t.inHandshakes.Add(-1)
 	hsStart := time.Now()
@@ -696,7 +698,7 @@ func (t *Transport) readLoop(conn *tls.Conn, viaRelay bool) {
 	// our replies to a NATed peer ride it, because no dial can ever go
 	// the other way.
 	pc := t.adopt(from, conn, viaRelay)
-	t.observeConn(from, conn.RemoteAddr(), viaRelay) // R4.3b: the observed contacted-at address
+	t.observeConn(from, conn.RemoteAddr(), viaRelay) // the observed contacted-at address
 	defer t.dropConn(from, pc)
 	for {
 		var hdr [4]byte

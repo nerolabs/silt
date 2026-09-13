@@ -105,7 +105,7 @@ func TestLoadForeignFormat(t *testing.T) {
 // under the v3 identity-and-size-bound labeling instead of reloading the insecure
 // v2 labeling the red-team broke. This is the version guard doing its load-bearing
 // job — without it, a v2 plot's root re-derives fine (Merkle of block hashes) and
-// would be silently reloaded (docs/design/m0-sybil-rebind.md §5, §8.4).
+// would be silently reloaded, §8.4.
 func TestLoadRejectsPreviousFormatVersion(t *testing.T) {
 	dir := t.TempDir()
 	s, _ := Open(dir)

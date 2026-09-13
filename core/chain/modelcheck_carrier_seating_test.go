@@ -10,45 +10,44 @@ import (
 )
 
 // =============================================================================
-// Consensus model-check — CARRIER SEATING AGREEMENT (R-CARRIER-MODELCHECK,
-// freeze-manifest item 14)
+// Consensus model-check — CARRIER SEATING AGREEMENT (freeze-manifest item 14)
 // =============================================================================
 //
 // THE PROPERTY. Every honest replica, given the same committed history, seats EXACTLY
 // the same identity set from a LastCommit carrier. Formally, for a block b applied to a
 // chain whose head is p:
 //
-//	seated(b) = { AttesterID(e) : e in b.LastCommit,
-//	                              AttesterID(e) != p.ProposerID(),
-//	                              attesterQualified(id) IN p's COMMITTED POST-STATE }
+//	seated(b) = { AttesterID(e): e in b.LastCommit,
+//	 AttesterID(e) != p.ProposerID,
+//	 attesterQualified(id) IN p's COMMITTED POST-STATE }
 //
 // Three consequences, and this file DRIVES each rather than asserting it:
 //
-//  1. AGREEMENT. seated(b) is a function of the SET of carried ids and of the parent's
-//     committed post-state — of nothing else. It is invariant under the entry ORDER, under
-//     WHICH replica proposed b, under duplicate entries, and under padding with entries
-//     from unqualified ids. A replica that read any of those would fork the seating and,
-//     because validatorsSeenRoot is a committed v5 leaf (statehash.go, tagValidatorsSeenRoot),
-//     would reject a block every other replica accepts. The oracle therefore checks the
-//     seated SET and the committed v5 STATE ROOT, which is the quantity replicas compare.
+// 1. AGREEMENT. seated(b) is a function of the SET of carried ids and of the parent's
+// committed post-state — of nothing else. It is invariant under the entry ORDER, under
+// WHICH replica proposed b, under duplicate entries, and under padding with entries
+// from unqualified ids. A replica that read any of those would fork the seating and,
+// because validatorsSeenRoot is a committed v5 leaf (statehash.go, tagValidatorsSeenRoot),
+// would reject a block every other replica accepts. The oracle therefore checks the
+// seated SET and the committed v5 STATE ROOT, which is the quantity replicas compare.
 //
-//  2. THE ORDERING PROPERTY. applyCarrier runs BEFORE this block's bond registrations, TTL
-//     expiries and slashes (carrier.go applyCarrier; chain.go apply), so the screen reads
-//     the PARENT's committed post-state — which is exactly the floor box's prevStateRoot.
-//     TestCarrierFoldPrecedesBondRegsInApply PINS that statement order structurally. This
-//     file DRIVES the inversion instead: it re-folds the same carrier over the same block's
-//     POST-bond/TTL/slash state and shows the seated set DIVERGES, in all three directions
-//     (a same-block bond that newly qualifies, a same-block slash, a same-block TTL lapse).
-//     A pin says the statement has not moved; this says what moving it would cost.
+// 2. THE ORDERING PROPERTY. applyCarrier runs BEFORE this block's bond registrations, TTL
+// expiries and slashes (carrier.go applyCarrier; chain.go apply), so the screen reads
+// the PARENT's committed post-state — which is exactly the floor box's prevStateRoot.
+// TestCarrierFoldPrecedesBondRegsInApply PINS that statement order structurally. This
+// file DRIVES the inversion instead: it re-folds the same carrier over the same block's
+// POST-bond/TTL/slash state and shows the seated set DIVERGES, in all three directions
+// (a same-block bond that newly qualifies, a same-block slash, a same-block TTL lapse).
+// A pin says the statement has not moved; this says what moving it would cost.
 //
-//  3. THE REGIMES AND THE ERA SEAM. The screen is attesterQualified, whose meaning changes
-//     with the regime: young/objective screens bonded >= MinBond || launchAnchor; a MATURE
-//     epoch screens FROZEN epochSet membership. Both are driven, and a mid-epoch bond is the
-//     discriminator that keeps the two arms from being the same test twice — the SAME
-//     registration is seated in the young regime and refused in the mature one. At the
-//     era-3 -> era-4 boundary the child is v5 while the parent is v4: the parent seated from
-//     the frozen b.Atts rule, the child seats from the carrier, and the two must compose
-//     into one set every replica computes.
+// 3. THE REGIMES AND THE ERA SEAM. The screen is attesterQualified, whose meaning changes
+// With the regime: young/objective screens bonded >= MinBond || launchAnchor; a MATURE
+// epoch screens FROZEN epochSet membership. Both are driven, and a mid-epoch bond is the
+// discriminator that keeps the two arms from being the same test twice — the SAME
+// registration is seated in the young regime and refused in the mature one. At the era-3
+// -> era-4 boundary the child is v5 while the parent is v4: the parent seated from the
+// frozen b.Atts rule, the child seats from the carrier, and the two must compose into
+// one set every replica computes.
 //
 // WHY THIS TIER. The consensus model-check tier runs in the required, merge-blocking CI job
 // and carries no -short skip, so a property proven here cannot silently stop running.
@@ -57,8 +56,8 @@ import (
 // in flight over core/chain/chain.go, core/chain/carrier.go and core/node/chainrole.go. This
 // file edits none of them and cites SYMBOLS, not coordinates: applyCarrier, validateCarrier,
 // attesterQualified, HeadCarrier, PopulateEra4Roots, MintVersion. If that branch changes the
-// era dispatch (the H_era4 liveness wedge, G-PRE-1), the era-seam oracle below is the one to
-// re-read: it asserts composition across a v4 parent and a v5 child, which is that seam.
+// era dispatch (the H_era4 liveness wedge), the era-seam oracle below is the one to re-read:
+// it asserts composition across a v4 parent and a v5 child, which is that seam.
 
 // ---- the population ---------------------------------------------------------------
 //
@@ -67,15 +66,15 @@ import (
 // "seat the qualified" agree on every input. The screened identities are qualified for
 // DIFFERENT reasons and unqualified for FOUR different reasons:
 //
-//	big       8 MiB bond                         -> QUALIFIED
-//	mid       4 MiB bond                         -> QUALIFIED (a different weight from big)
-//	sub       512 KiB bond, BELOW MinBond        -> refused by the MinBond branch
-//	unbonded  no bond at all                     -> refused by the absent-bond branch
-//	slashed   4 MiB bond, slashed at height 1    -> refused by the slashed branch (the one
-//	                                                live mid-epoch disqualification)
-//	midEpoch  6 MiB bond registered at height 1  -> QUALIFIED in the young regime,
-//	                                                refused by the FROZEN-SET branch in the
-//	                                                mature one. The regime discriminator.
+//	big 8 MiB bond -> QUALIFIED
+//	mid 4 MiB bond -> QUALIFIED (a different weight from big)
+//	sub 512 KiB bond, BELOW MinBond -> refused by the MinBond branch
+//	unbonded no bond at all -> refused by the absent-bond branch
+//	slashed 4 MiB bond, slashed at height 1 -> refused by the slashed branch (the one
+//	 live mid-epoch disqualification)
+//	midEpoch 6 MiB bond registered at height 1 -> QUALIFIED in the young regime,
+//	 refused by the FROZEN-SET branch in the
+//	 mature one. The regime discriminator.
 //
 // plus the certificate signers, which qualify by a route of their own: launchAnchor (no bond
 // at all) in the young regime, frozen epochSet membership in the mature one. Signer 0 is the
@@ -153,9 +152,10 @@ func newCarrierWorld(t *testing.T, mature bool) *carrierWorld {
 	}
 	var genesisRegs []BondReg
 	if mature {
-		// MATURE: no anchors; MatureValidators 0 makes Mature() true from the first apply, so
-		// everMature latches at the genesis apply and the genesis rotation freezes epochSet.
-		// EpochBlocks csEpochBlocks keeps heights 1 and 2 strictly inside that epoch.
+		// MATURE: no anchors; MatureValidators 0 makes Mature true from the first
+		// apply, so everMature latches at the genesis apply and the genesis rotation
+		// freezes epochSet. EpochBlocks csEpochBlocks keeps heights 1 and 2 strictly
+		// inside that epoch.
 		chCfg.MatureValidators = 0
 		chCfg.EpochBlocks = csEpochBlocks
 		// Distinct weights: a weight-blind reducer cannot hide behind a uniform certificate.
@@ -254,7 +254,7 @@ func precommitOver(k ed25519.PrivateKey, h ports.Hash, round uint64) Attestation
 }
 
 // seenSet reads the committed seated set as a sorted id list. In-package, so it reads the map
-// the transition writes rather than the COUNT Regime() exposes: the property is about the SET,
+// the transition writes rather than the COUNT Regime exposes: the property is about the SET,
 // and a count agrees on two different sets of the same size.
 func seenSet(c *Chain) []ports.NodeID {
 	out := make([]ports.NodeID, 0, len(c.validatorsSeen))
@@ -304,7 +304,7 @@ func replicaSeats(t *testing.T, c *Chain, b Block) ([]ports.NodeID, ports.Hash) 
 // invertedFoldSeats is the ORDERING INVERSION, driven rather than described: it applies the
 // block with the carrier REMOVED — so this block's bond registrations, TTL expiries and
 // slashes land first — and only THEN folds the same carrier. That is exactly what moving
-// `c.applyCarrier(b, parentProposer)` below the bond loop in apply() would do, and it uses
+// `c.applyCarrier(b, parentProposer)` below the bond loop in apply would do, and it uses
 // the REAL applyCarrier, so the inversion is the production function reading a mid-apply
 // state instead of the parent's committed post-state.
 func invertedFoldSeats(t *testing.T, c *Chain, b Block, parentProposer ports.NodeID) []ports.NodeID {
@@ -312,7 +312,7 @@ func invertedFoldSeats(t *testing.T, c *Chain, b Block, parentProposer ports.Nod
 	r := c.cloneForDryRun()
 	stripped := b
 	stripped.LastCommit = nil
-	stripped.hashMemoSet = false // #555: a stripped copy must never serve the un-stripped hash
+	stripped.hashMemoSet = false // a stripped copy must never serve the un-stripped hash
 	r.apply(stripped)
 	r.applyCarrier(b, parentProposer)
 	return seenSet(r)
@@ -462,17 +462,17 @@ func TestModelCheck_CarrierSeating_SetupIsNonUniform(t *testing.T) {
 // Four variations, each of which MUST be irrelevant:
 //
 //	(a) WHICH IDS — exhaustive over all 2^n subsets of the screened population. This is the
-//	    reducer oracle: for every possible carrier content the seated set equals the screen
-//	    evaluated on the parent. A wrong screen (no screen, bonded>0, slashed ignored,
-//	    frozen-set ignored) differs from the oracle on a DIFFERENT subset in each case, so
-//	    the enumeration separates them.
+//	 reducer oracle: for every possible carrier content the seated set equals the screen
+//	 evaluated on the parent. A wrong screen (no screen, bonded>0, slashed ignored,
+//	 frozen-set ignored) differs from the oracle on a DIFFERENT subset in each case, so
+//	 the enumeration separates them.
 //	(b) ORDER — the same set, permuted. Order-freedom is what lets two honest proposers build
-//	    different blocks from the same held precommits without forking the seating.
+//	 different blocks from the same held precommits without forking the seating.
 //	(c) PROPOSER — the same carrier, each certificate signer proposing in turn. The excluded
-//	    id is the PARENT's proposer, which does not move when the child's does.
+//	 id is the PARENT's proposer, which does not move when the child's does.
 //	(d) DUPLICATES and ROUNDS — the same signer carried twice, and at two different rounds.
-//	    The transition is idempotent; the VALIDITY rule refuses the duplicate outright, so no
-//	    two replicas can even be presented with a set that differs by one.
+//	 The transition is idempotent; the VALIDITY rule refuses the duplicate outright, so no
+//	 two replicas can even be presented with a set that differs by one.
 //
 // (b), (c) and (d) also compare the committed v5 STATE ROOT, because that is the quantity a
 // replica actually compares before it accepts a block.
@@ -723,15 +723,15 @@ func perms4() [][4]int {
 // =============================================================================
 //
 // The screen must read the PARENT's committed post-state. Three same-block contents change
-// qualification WITHIN the subject block, in the three directions apply() can move it:
+// qualification WITHIN the subject block, in the three directions apply can move it:
 //
-//	(a) a BondReg that raises the sub-MinBond identity above the bar  (unqualified -> qualified)
-//	(b) a Slash of a qualified identity                               (qualified -> unqualified)
-//	(c) a TTL expiry that lapses a genesis bond at this height        (qualified -> unqualified)
+//	(a) a BondReg that raises the sub-MinBond identity above the bar (unqualified -> qualified)
+//	(b) a Slash of a qualified identity (qualified -> unqualified)
+//	(c) a TTL expiry that lapses a genesis bond at this height (qualified -> unqualified)
 //
 // For each, the correct fold (carrier FIRST) and the inverted fold (carrier LAST) disagree, and
 // the correct one equals the parent-post-state screen. Moving applyCarrier below the bond loop
-// in apply() fails BOTH assertions: the correct arm becomes the inverted result.
+// in apply fails BOTH assertions: the correct arm becomes the inverted result.
 //
 // All three run in the YOUNG regime deliberately: the certificate is carried by unbonded
 // anchors, so changing bond state inside the subject block cannot disturb the quorum that
@@ -898,10 +898,10 @@ func newCarrierWorldTTL(t *testing.T, ttl uint64) *carrierWorld {
 // At H_era4 the child is the first v5 block while its parent is the last v4 block. Three rules
 // meet there and must compose into ONE set every replica computes:
 //
-//  1. the parent (v4) seated from its OWN Atts under the FROZEN era-3 rule;
-//  2. the child (v5) seats from the CARRIER, whose entries are precommits over that v4 parent;
-//  3. the child's own Atts seat NOTHING — a v5 block's uncovered attestations are not a
-//     transition input, which is the whole point of the carrier.
+// 1. the parent (v4) seated from its OWN Atts under the FROZEN era-3 rule;
+// 2. the child (v5) seats from the CARRIER, whose entries are precommits over that v4 parent;
+// 3. the child's own Atts seat NOTHING — a v5 block's uncovered attestations are not a
+// transition input, which is the whole point of the carrier.
 //
 // Driven from both sides: an identity present ONLY in the v4 parent's Atts IS seated; an
 // identity present ONLY in the v5 child's Atts is NOT; an identity present only in the child's
@@ -944,14 +944,15 @@ func TestModelCheck_CarrierSeating_EraSeamV4ParentV5Child(t *testing.T) {
 
 	// ---- the v4 parent. Its OWN Atts are the transition input (the frozen era-3 rule). ----
 	//
-	// BUILDING ONE IS AWKWARD, AND THE AWKWARDNESS IS THE DEFECT THE CARRIER CLOSES. Under v4
-	// the Atts feed apply() but are NOT covered by Hash(), so the committed root must be
-	// computed over a certificate the proposer has not gathered yet. The fixture resolves the
-	// circularity the only way it can be resolved: fix the ATTESTER IDS first (the sub-v5
-	// seating loop reads AttesterID and verifies nothing), populate the roots over those ids,
-	// and only then sign — Hash() covers neither Atts nor PrepareQC, so the signatures land
-	// over the final root-bearing hash. A live v4 proposer cannot do this, which is precisely
-	// consequence (b) of the R-BOX-ATTESTS verdict.
+	// BUILDING ONE IS AWKWARD, AND THE AWKWARDNESS IS THE DEFECT THE CARRIER CLOSES.
+	// Under v4 the Atts feed apply but are NOT covered by Hash, so the committed root
+	// must be computed over a certificate the proposer has not gathered yet. The
+	// fixture resolves the circularity the only way it can be resolved: fix the
+	// ATTESTER IDS first (the sub-v5 seating loop reads AttesterID and verifies
+	// nothing), populate the roots over those ids, and only then sign — Hash covers
+	// neither Atts nor PrepareQC, so the signatures land over the final root-bearing
+	// hash. A live v4 proposer cannot do this, which is precisely consequence (b) of
+	// the verdict.
 	prev, _ := c.Head()
 	h1 := &Block{Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)}}
 	h1.Proposer = append([]byte(nil), pubOf(cert[0])...)
@@ -1024,7 +1025,7 @@ func TestModelCheck_CarrierSeating_EraSeamV4ParentV5Child(t *testing.T) {
 	}
 	if containsID(afterChild, idOf(viaChildAtts)) {
 		t.Fatalf("an identity present ONLY in the v5 child's own Atts was SEATED — a v5 block's uncovered "+
-			"attestations are not a transition input; this is the R-BOX-ATTESTS defect restored: seated %s",
+			"attestations are not a transition input; this is the defect restored: seated %s",
 			fmtIDs(afterChild))
 	}
 	if containsID(afterChild, idOf(unqual)) {

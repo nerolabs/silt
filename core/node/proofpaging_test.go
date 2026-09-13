@@ -108,15 +108,15 @@ func TestColdProofAnswersAuditIdentically(t *testing.T) {
 	}
 }
 
-// TestColdLiarProofStillCaught is the liar twin of the honest cold-page test
-// (PE review of #464). The OOM fix moves the liar's proof out of a resident map
-// and into the bounded cache over the backing — so a liar's proof CAN be evicted.
-// The write-through (Decision 2) keeps it durable in the backing precisely so
-// that a cold-paged liar proof still produces the intended **caught-as-liar**
-// signal: `Found=true` with a bad μ that FAILS verification — NOT the degenerate
-// `Found=false` ("I don't have it") a lost proof would give, which would silently
-// test the wrong path. This is the regression wall for the durable-liar-proof
-// behavior the review flagged as the specifically-new thing.
+// TestColdLiarProofStillCaught is the liar twin of the honest cold-page test. The
+// OOM fix moves the liar's proof out of a resident map and into the bounded cache
+// over the backing — so a liar's proof CAN be evicted. The write-through
+// (Decision 2) keeps it durable in the backing precisely so that a cold-paged
+// liar proof still produces the intended **caught-as-liar** signal: `Found=true`
+// with a bad μ that FAILS verification — NOT the degenerate `Found=false` ("I
+// don't have it") a lost proof would give, which would silently test the wrong
+// path. This is the regression wall for the durable-liar-proof behavior the
+// review flagged as the specifically-new thing.
 func TestColdLiarProofStillCaught(t *testing.T) {
 	// The liar keeps the receipt + real tags but never the data (empty store).
 	data := make([]byte, 6000)
@@ -157,13 +157,14 @@ func TestColdLiarProofStillCaught(t *testing.T) {
 	reply := n.answerChallenge(msg)
 
 	// 1. The cold-paged liar proof still ANSWERS (Found=true) — not the degenerate
-	//    Found=false a lost/evicted proof would give. This is what the durable
-	//    write-through buys: the bad-μ catch path keeps running.
+	// Found=false a lost/evicted proof would give. This is what the durable
+	// write-through buys: the bad-μ catch path keeps running.
 	if !reply.Found {
 		t.Fatal("cold-paged liar proof returned Found=false — the write-through failed and the drill would silently test the wrong path")
 	}
 	// 2. And that answer FAILS verification: the liar is CAUGHT (bad μ over the
-	//    data it no longer has), byte-for-byte the same outcome as when resident.
+	// data it no longer has, byte-for-byte the same outcome as when
+	// resident.
 	c := porChallenge(seed, blocks, msg.PorCount)
 	if key.Verify(chunk.ID[:], c, por.Proof{Mu: reply.PorMu, Sigma: reply.PorSigma}) {
 		t.Fatal("liar's cold-paged proof VERIFIED — it must fail (caught as a liar)")

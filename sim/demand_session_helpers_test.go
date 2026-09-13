@@ -1,6 +1,6 @@
 package sim
 
-// B-9 (2026-09-07): the sim's demand-lane tests drive the SESSION lane (open with the token
+// the sim's demand-lane tests drive the SESSION lane (open with the token
 // as the anchor, settle cumulative counts) instead of the retired flat receipt. The
 // properties they pin are unchanged; only the driver is.
 
@@ -70,8 +70,8 @@ func bondingGenesis(t *testing.T, proposer ed25519.PrivateKey, issuerReg chain.I
 	for _, pub := range bonded {
 		regs = append(regs, reg(pub))
 	}
-	// R0.4b: v5 genesis so it can commit the demand-issuer key binding (the era-3 leaf
-	// set does not carry that keyspace, so a pre-v5 block carrying one is rejected).
+	// v5 genesis so it can commit the demand-issuer key binding (the era-3 leaf set
+	// does not carry that keyspace, so a pre-v5 block carrying one is rejected).
 	g := &chain.Block{
 		Version:    chain.BlockVersionWitnessable,
 		Height:     0,

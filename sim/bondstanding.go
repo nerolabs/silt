@@ -1,4 +1,4 @@
-// The bond-standing scenario — the trust pivot's demo (Trust roadmap T1).
+// The bond-standing scenario — the trust pivot's demo.
 // Consensus standing is EARNED BY STORAGE, not bought with chatter: a
 // validator that proves an identity-bound storage bond (core/bond, via
 // credit.RecordBondChallenge) clears the chain's reputation bar and can

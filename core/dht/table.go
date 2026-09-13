@@ -3,35 +3,36 @@ package dht
 import "github.com/nerolabs/silt/ports"
 
 // Table is the k-bucket routing table. Bucket i holds peers whose
-// highest differing bit from self is i — i.e. peers at distance
-// [2^i, 2^(i+1)). Close buckets are tiny neighborhoods the node knows
+// highest differing bit from self is i — i.e. peers at distance [2^i,
+// 2^(i+1). Close buckets are tiny neighborhoods the node knows
 // exhaustively; far buckets each cover half the network in k samples.
 // That asymmetry is the whole O(log N) trick.
 type Table struct {
 	self    ports.NodeID
 	k       int
 	buckets [256][]ports.NodeID // each ordered oldest → newest
-	// Failure-domain diversity (M0 H5-B / Memo 08): when domainOf is set and
+	// Failure-domain diversity (M0 H5-B /): when domainOf is set and
 	// perDomainCap > 0, a bucket admits at most perDomainCap peers sharing one
 	// domain, so an adversary minting many NodeIDs in ONE domain (a cheap key-
-	// surround from a single /24) can't fill the buckets near a key and crowd out
-	// the honest, domain-diverse peers a lookup needs. Domain 0 (unknown) is never
-	// capped — an unknown peer is assumed independent (like preferFreshDomain).
+	// surround from a single /24) can't fill the buckets near a key and crowd
+	// out the honest, domain-diverse peers a lookup needs. Domain 0 (unknown)
+	// is never capped — an unknown peer is assumed independent (like
+	// preferFreshDomain).
 	//
-	// KNOWN HOLE, owned (R4.3a → R4.3b, 2026-09-03): the domain is a free self-declaration
+	// KNOWN HOLE, owned (→, 2026-09-03): the domain is a free self-declaration
 	// off the wire, so "unknown ⇒ never capped" is an exemption an adversary gets by
 	// omitting -domain, and "N random labels ⇒ N domains" defeats the cap for free
-	// either way. Capping the unknown pool was BUILT and then REFUTED by the red-team:
-	// in the default (domainless) swarm it caps every honest peer too, so two early
-	// undeclared Sybils lock a K=8 bucket (exclusion cost 8 → 2 identities). No
-	// declared-label design prices an eclipse. The close is R4.3b: key this cap on the
-	// OBSERVED contacted-at address, as geth and Bitcoin Core do (ROADMAP R4.3b;
-	// red-team RED-TEAM-R4.3b-dht-eclipse-keying-2026-09-03.md). Gates:
-	// core/node/r43a_dht_domain0_test.go.
+	// either way. Capping the unknown pool was BUILT and then REFUTED by the
+	// red-team: in the default (domainless) swarm it caps every honest peer too, so
+	// two early undeclared Sybils lock a K=8 bucket (exclusion cost 8 → 2
+	// identities). No declared-label design prices an eclipse. The close is the gate:
+	// key this cap on the OBSERVED contacted-at address, as geth and Bitcoin Core
+	// do; red-team the eclipse-keying analysis. Gates:
+	// core/node/dht_domain0_test.go.
 	domainOf     func(ports.NodeID) uint64
 	perDomainCap int
-	// R4.3b: the observed-address cap (address.go). meta is the class stored WITH
-	// each tabled entry (cert C-4): captured at admission, deleted on Remove.
+	// The observed-address cap (address.go). meta is the class stored
+	// WITH each tabled entry: captured at admission, deleted on Remove.
 	addr addressRule
 	meta map[ports.NodeID]entryMeta
 }
@@ -49,18 +50,18 @@ func (t *Table) SetDiversity(domainOf func(ports.NodeID) uint64, perDomainCap in
 	t.perDomainCap = perDomainCap
 }
 
-// domainSaturated reports whether bucket b already holds perDomainCap peers in
-// id's (known) domain — in which case a NEW peer from that domain is not admitted.
+// domainSaturated reports whether bucket b already holds perDomainCap peers in id's
+// (known) domain — in which case a NEW peer from that domain is not admitted.
 // Domain 0 (unknown) is exempt: a KNOWN HOLE (see the Table doc), kept deliberately
 // because capping the unknown pool locks buckets in the default domainless swarm;
-// closed by R4.3b's observed-address keying, never by a declared label.
+// closed by the observed-address keying, never by a declared label.
 func (t *Table) domainSaturated(b []ports.NodeID, id ports.NodeID) bool {
 	if t.domainOf == nil || t.perDomainCap <= 0 {
 		return false
 	}
 	d := t.domainOf(id)
 	if d == 0 {
-		return false // unknown domain: assumed independent, never capped (R4.3b closes this)
+		return false // unknown domain: assumed independent, never capped (closes this)
 	}
 	cnt := 0
 	for _, e := range b {
@@ -91,7 +92,7 @@ func (t *Table) Remove(id ports.NodeID) {
 	for j, existing := range b {
 		if existing == id {
 			t.buckets[i] = append(b[:j:j], b[j+1:]...)
-			delete(t.meta, id) // the class lives with the entry (C-4)
+			delete(t.meta, id) // the class lives with the entry
 			return
 		}
 	}

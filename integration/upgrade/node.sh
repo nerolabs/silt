@@ -11,15 +11,15 @@
 # IS the upgrade under test.
 #
 # Env (set per-service in docker-compose.yml, SILT_VERSION overridden at swap):
-#   SILT_VERSION  v1 | v2                (which baked-in binary to exec)
-#   NODE_IP       this container's static IP (how peers dial us back)
-#   PORT          swarm listen port (default 4001)
-#   ROLE          holder | seed
-#   BOOTSTRAP     ID@HOST:PORT of the seed (empty for the seed itself)
-#   REG_SERVE     addr to serve the registry on (seed only, e.g. 0.0.0.0:4003)
-#   CAPACITY      storage pledge (e.g. 5G, or 1 for a store-nothing vantage)
-#   VALIDATOR     1 to run -validator (seed only)
-#   EXTRA         extra raw flags (version-safe caller-supplied)
+#  SILT_VERSION v1 | v2 (which baked-in binary to exec)
+#  NODE_IP this container's static IP (how peers dial us back)
+#  PORT swarm listen port (default 4001)
+#  ROLE holder | seed
+#  BOOTSTRAP ID@HOST:PORT of the seed (empty for the seed itself)
+#  REG_SERVE addr to serve the registry on (seed only, e.g. 0.0.0.0:4003)
+#  CAPACITY storage pledge (e.g. 5G, or 1 for a store-nothing vantage)
+#  VALIDATOR 1 to run -validator (seed only)
+#  EXTRA extra raw flags (version-safe caller-supplied)
 set -e
 
 : "${SILT_VERSION:?set SILT_VERSION=v1|v2}"

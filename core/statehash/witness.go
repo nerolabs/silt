@@ -25,28 +25,27 @@ import (
 // over-budget/malformed witness rejected upstream (R3), a fetch that failed
 // (Delivery) — yields NO_WITNESS. A caller can NEVER read "I have no proof" as
 // "the key is verifiably absent." That conflation is the single banned move in
-// the C-7 certification (§104: "no witness supplied → accept"), the one
+// the research (§104: "no witness supplied → accept"), the one
 // implementation error that breaks the safe-degradation soundness proof. This
 // type makes the banned move a compile-time impossibility, not a code-review
 // catch: the Outcome enum has no public path to PROVEN_ABSENT except through
 // Resolve verifying a non-membership proof.
 //
 // Certified by:
-//   - C-7 (semi-stateless floor box soundness), §23/§56/§104 — safe degradation,
-//     stall-not-accept, the banned move.
-//   - RULING-witness-floor-box-mechanism-2026-08-29 (R4: three-valued, not
-//     two-valued-plus-flag, not panic).
+// - C-7 (semi-stateless floor box soundness), §23/§56/§104 — safe degradation,
+// stall-not-accept, the banned move.
+// - (R4: three-valued, not
+// Two-valued-plus-flag, not panic.
 //
-// SCOPE of this increment (R4-a): the accessor type, its construction invariant,
-// and its unit ablation. It does NOT build the R3 per-block byte ceiling or the
-// D-2 on-demand delivery. Those feed this accessor's NO_WITNESS arm; they are
-// separate increments (RULING §"Couplings", §"Sequencing").
+// SCOPE of this file: the accessor type, its construction invariant, and its unit
+// ablation. It does NOT build the per-block byte ceiling or on-demand delivery.
+// Those feed this accessor's NO_WITNESS arm and live elsewhere.
 
 // Outcome is the three-valued result of resolving a committed-set key K against
 // the committed StateRoot with a supplied witness. It is a closed set of exactly
 // three states. It is deliberately NOT a (value, bool) pair: a bool false that
 // doubles as both "absent" and "unknown" is the exact conflation this type
-// exists to forbid (RULING R4, C-7 §104).
+// exists to forbid.
 type Outcome uint8
 
 const (
@@ -64,8 +63,8 @@ const (
 
 	// ProvenAbsent means a valid NON-MEMBERSHIP proof of K against the committed
 	// root verified. K is absent from the ENTIRE committed keyspace (silt's
-	// single root makes this a whole-set exclusion, not a per-shard one —
-	// RULING R4 §"sharded-omission"). This is the ONLY outcome a caller may read
+	// single root makes this a whole-set exclusion, not a per-shard one).
+	// This is the ONLY outcome a caller may read
 	// as "verifiably absent." It is constructible ONLY through Resolve verifying
 	// a non-membership proof; there is no public constructor, factory, or literal
 	// that yields it.
@@ -86,7 +85,7 @@ func (o Outcome) String() string {
 // Result is the outcome of resolving one key against the committed root. It is
 // returned by value. The zero Result is {NoWitness, nil} — the safe default.
 //
-// The invariant this type guards: a Result whose Outcome() is ProvenAbsent can
+// The invariant this type guards: a Result whose Outcome is ProvenAbsent can
 // only have been produced by Resolve after smt.VerifyProof returned true for the
 // non-membership claim. There is NO other code path in this package that sets
 // the outcome field to ProvenAbsent, and the field is unexported, so no code
@@ -123,7 +122,7 @@ func (r Result) Value() []byte { return r.value }
 func (r Result) IsProvenAbsent() bool { return r.outcome == ProvenAbsent }
 
 // IsProvenPresent reports whether the key is VERIFIABLY present, with its value
-// available via Value().
+// available via Value.
 func (r Result) IsProvenPresent() bool { return r.outcome == ProvenPresent }
 
 // MustStall reports whether the floor box has NO usable answer for this key and
@@ -131,7 +130,7 @@ func (r Result) IsProvenPresent() bool { return r.outcome == ProvenPresent }
 // path). It is true exactly for NoWitness. A caller evaluating a predicate that
 // reads K MUST check MustStall and refuse to decide the predicate when it is
 // true, never falling through to a false/absent reading. This is the direct
-// encoding of the C-7 stall-not-accept invariant.
+// encoding of the stall-not-accept invariant.
 func (r Result) MustStall() bool { return r.outcome == NoWitness }
 
 // Witness is a supplied SMT proof for one key, awaiting verification against the
@@ -177,12 +176,12 @@ func (w Witness) SideNodeCount() int {
 	return len(w.proof.SideNodes)
 }
 
-// verifySpec is the TrieSpec the accessor verifies proofs under. It MUST match
-// the spec statehash.Root builds its trie with (smt.NewSparseMerkleTrie(store,
-// sha256.New()) — a non-sum SHA-256 trie), or a valid proof against the committed
+// verifySpec is the TrieSpec the accessor verifies proofs under. It MUST match the
+// spec statehash.Root builds its trie with (smt.NewSparseMerkleTrie(store,
+// sha256.New) — a non-sum SHA-256 trie), or a valid proof against the committed
 // root would fail to verify here and every key would degrade to NoWitness. SHA-256
-// is the pinned consensus/security parameter (statehash.go value-encoding cert
-// Q6 flag 1); this reuses it, it does not choose a new one.
+// is the pinned consensus/security parameter (statehash.go value-encoding flag 1);
+// this reuses it, it does not choose a new one.
 func verifySpec() *smt.TrieSpec {
 	spec := smt.NewTrieSpec(sha256.New(), false)
 	return &spec
@@ -196,14 +195,14 @@ func verifySpec() *smt.TrieSpec {
 // The membership/non-membership distinction is the value the caller asks the
 // witness to prove. It MUST match the library's own selection, which keys on
 // bytes.Equal(value, defaultEmptyValue) where defaultEmptyValue is a nil []byte
-// (pokt-network/smt@v1.0.0 proofs.go:411, types.go:18). bytes.Equal treats a nil
+// (pokt-network/smt@v1.0.0 proofs.go, types.go). bytes.Equal treats a nil
 // and an empty-but-non-nil []byte{} as equal, so the library routes BOTH to its
 // non-membership branch. This accessor therefore keys on len(value) == 0, not
 // value == nil: an empty-value query is an absence query on both sides.
-//   - To test PRESENCE, pass the expected committed value (len > 0). A verified
-//     proof of (key → value) yields ProvenPresent(value).
-//   - To test ABSENCE, pass an empty value (nil OR []byte{}). A verified
-//     non-membership proof yields ProvenAbsent.
+// - To test PRESENCE, pass the expected committed value (len > 0). A verified
+// proof of (key → value) yields ProvenPresent(value).
+// - To test ABSENCE, pass an empty value (nil OR []byte{}). A verified
+// non-membership proof yields ProvenAbsent.
 //
 // If this accessor keyed on value == nil while the library keys on len == 0, an
 // empty-but-non-nil []byte{} query against a VALID absence proof would verify
@@ -212,10 +211,10 @@ func verifySpec() *smt.TrieSpec {
 // len(value) == 0 forecloses that: an empty value can NEVER yield ProvenPresent.
 //
 // The wiring that makes the banned move unrepresentable:
-//   - no witness (nil) → NoWitness. Never ProvenAbsent.
-//   - proof fails to verify (wrong root, tampered, wrong key) → NoWitness. Never
-//     ProvenAbsent.
-//   - VerifyProof returns an error → NoWitness. Never ProvenAbsent.
+// - no witness (nil) → NoWitness. Never ProvenAbsent.
+// - proof fails to verify (wrong root, tampered, wrong key) → NoWitness. Never
+// ProvenAbsent.
+// - VerifyProof returns an error → NoWitness. Never ProvenAbsent.
 //
 // ProvenAbsent is reachable ONLY through the single branch below where
 // len(value) == 0 AND VerifyProof returned (true, nil). There is no other
@@ -226,7 +225,7 @@ func Resolve(root ports.Hash, key []byte, value []byte, w Witness) Result {
 		return Result{outcome: NoWitness}
 	}
 	if !proofShapeParsable(w.proof) {
-		// G-R31-2: a shape the library would PANIC on (checkPrefix) is an absent witness,
+		// A shape the library would PANIC on (checkPrefix) is an absent witness,
 		// refused before VerifyProof. Never ProvenAbsent.
 		return Result{outcome: NoWitness}
 	}
@@ -245,8 +244,8 @@ func Resolve(root ports.Hash, key []byte, value []byte, w Witness) Result {
 	// equal). Keying on len == 0 — not value == nil — is what prevents an
 	// empty-but-non-nil []byte{} query against a valid absence proof from yielding
 	// a false ProvenPresent (the mirror of the banned move).
-	//   len(value) == 0  → a non-membership claim verified → ProvenAbsent.
-	//   len(value)  > 0  → a membership claim for that value verified → ProvenPresent.
+	// len(value) == 0 → a non-membership claim verified → ProvenAbsent.
+	// len(value) > 0 → a membership claim for that value verified → ProvenPresent.
 	// This is the ONLY construction site for ProvenPresent and ProvenAbsent.
 	if len(value) == 0 {
 		return Result{outcome: ProvenAbsent}

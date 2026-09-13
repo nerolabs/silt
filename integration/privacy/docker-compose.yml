@@ -1,8 +1,8 @@
 # Publisher-privacy adversary, on one host, in containers.
 #
-#   flat network 10.60.0.0/24
-#     valA (10.60.0.11)  chain-backed registry + validator
-#     valB (10.60.0.12)  attester (qualifies valA's commits; quorum=1)
+#  flat network 10.60.0.0/24
+#  valA (10.60.0.11) chain-backed registry + validator
+#  valB (10.60.0.12) attester (qualifies valA's commits; quorum=1)
 #
 # Two real `silt daemon -validator` processes form a committing chain. run.sh
 # derives each NodeID from its -id-seed up front (via `silt id`), so -anchors /
@@ -15,10 +15,10 @@
 # entries (chain: ErrPublisherEntry); an unlinkable entry (no Publisher, or a
 # blind-signed -token-quorum credential) commits fine. `-allow-publisher=${ALLOW_PUB}`
 # lets run.sh flip the chain policy between phases from ONE compose file:
-#   ALLOW_PUB=true  → a trusted deployment that ACCEPTS Publisher entries (the
-#                     positive control: proves a Publisher entry CAN commit, so a
-#                     refusal on the default chain is a policy gate, not a bug).
-#   ALLOW_PUB=false → the M0 default: refuse-to-surveil.
+#  ALLOW_PUB=true → a trusted deployment that ACCEPTS Publisher entries (the
+#  positive control: proves a Publisher entry CAN commit, so a
+#  refusal on the default chain is a policy gate, not a bug).
+#  ALLOW_PUB=false → the M0 default: refuse-to-surveil.
 
 networks:
   swarm:

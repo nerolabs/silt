@@ -10,20 +10,21 @@ import (
 )
 
 // =============================================================================
-// R-BOX-ATTESTS — the LastCommit attestation carrier (owner call O1, ratified 2026-09-03)
+// The LastCommit attestation carrier
 // =============================================================================
 //
-// THE HAZARD (converged verdict §2.3). apply() writes validatorsSeen from b.Atts
-// (chain.go:3293-3298) but Hash() excludes Atts (chain.go:656), and the era-3/era-4 root
-// predicate re-runs the real apply over the ATTACHED certificate (era3validity.go:117-138,
-// :148-160). A proposer populates its roots BEFORE it gathers (chainrole.go:870-884), so any
-// certificate that would seat a NEW attester makes the recomputed root differ from the signed
-// one and EVERY replica rejects that block. Consequence (a): validatorsSeen freezes at the
-// pre-activation set, permanently ceilinging MatureCoefficient. Consequence (b): the height
-// stalls for any round whose first-to-quorum prefix carries a never-seen qualified attester.
+// THE HAZARD (converged verdict §2.3). apply writes validatorsSeen from b.Atts
+// (chain.go) but Hash excludes Atts (chain.go), and the era-3/era-4 root
+// predicate re-runs the real apply over the ATTACHED certificate
+// (era3validity.go,:148-160). A proposer populates its roots BEFORE it gathers
+// (chainrole.go), so any certificate that would seat a NEW attester makes the
+// recomputed root differ from the signed one and EVERY replica rejects that block.
+// Consequence (a): validatorsSeen freezes at the pre-activation set, permanently ceilinging
+// MatureCoefficient. Consequence (b): the height stalls for any round whose first-to-quorum
+// prefix carries a never-seen qualified attester.
 //
 // THE FIX. Seat from a HASH-COVERED carrier: block h+1 republishes block h's precommits in
-// LastCommit, which is folded into Hash(), so the proposer holds the seating bytes before it
+// LastCommit, which is folded into Hash, so the proposer holds the seating bytes before it
 // signs its roots. The seat lands one block late (monotone, disclosed).
 //
 // These are gates G1–G4, G6a, G6b and G9 of the verdict §11 table, at the tiers it names.
@@ -62,17 +63,17 @@ func mintNext4Carrier(t *testing.T, c *Chain, keys []ed25519.PrivateKey, regs ..
 	return b
 }
 
-// TestG1_CarrierSeatsUnseenAttestersOneBlockLate is GATE G1 (cold chain, objective arm).
+// TestCarrierSeatsUnseenAttestersOneBlockLate is GATE G1 (cold chain, objective arm).
 //
-// RED at d7e4df0: era4AnchorChain(t, 1, 1) mints a v5 block at height 1 and signs it with all
-// four anchor keys. Three of them have never been seen, so the attached certificate's apply
-// writes three validatorsSeen leaves the pre-gather root does not contain, and Append fails
-// with ErrEra3StateRootMismatch.
+// RED: era4AnchorChain(t, 1, 1) mints a v5 block at height 1 and signs it with all four
+// anchor keys. Three of them have never been seen, so the attached certificate's apply writes
+// three validatorsSeen leaves the pre-gather root does not contain, and Append fails with
+// ErrEra3StateRootMismatch.
 //
 // GREEN on the carrier: height 1 commits (its own Atts write nothing), height 2 carries the
-// three non-proposer precommits of height 1 in LastCommit and seats them — Regime().
+// three non-proposer precommits of height 1 in LastCommit and seats them — Regime.
 // ValidatorsSeen == 3 after height 2, and 0 after height 1 (the disclosed one-block lag).
-func TestG1_CarrierSeatsUnseenAttestersOneBlockLate(t *testing.T) {
+func TestCarrierSeatsUnseenAttestersOneBlockLate(t *testing.T) {
 	c, keys := era4AnchorChain(t, 1, 1)
 
 	h1 := mintNext4Carrier(t, c, keys)
@@ -102,14 +103,14 @@ func TestG1_CarrierSeatsUnseenAttestersOneBlockLate(t *testing.T) {
 	}
 }
 
-// TestG9_StubAttsDoNotMoveTheRecomputedRoot is GATE G9 (cold chain).
+// TestStubAttsDoNotMoveTheRecomputedRoot is GATE G9 (cold chain).
 //
-// RED at d7e4df0: ValidateProposal checks no attestation signature, and validateEra3Roots folds
-// whatever b.Atts the proposal bytes carry (era3validity.go:117-138) — so a proposal carrying
-// UNSIGNED stub Atts moves the recomputed root. GREEN on the carrier: a v5 block's Atts no
-// longer feed apply at all, so stub Atts cannot move the root. (O1 pins the first of G9's two
-// alternatives: "Atts in proposal bytes do not move the recomputed root".)
-func TestG9_StubAttsDoNotMoveTheRecomputedRoot(t *testing.T) {
+// RED: ValidateProposal checks no attestation signature, and validateEra3Roots folds whatever
+// b.Atts the proposal bytes carry (era3validity.go) — so a proposal carrying UNSIGNED
+// stub Atts moves the recomputed root. GREEN on the carrier: a v5 block's Atts no longer feed
+// apply at all, so stub Atts cannot move the root. (O1 pins the first of G9's two alternatives:
+// "Atts in proposal bytes do not move the recomputed root".)
+func TestStubAttsDoNotMoveTheRecomputedRoot(t *testing.T) {
 	c, keys := era4AnchorChain(t, 1, 1)
 	mustAppend(t, c, mintNext4Carrier(t, c, keys))
 
@@ -233,14 +234,14 @@ func carrierEntry(c *Chain, k ed25519.PrivateKey) Attestation {
 }
 
 // =============================================================================
-// R-CARRIER-PARENTPROPOSER — the exclusion is BOX-OWNED (floor-box structure round 1A, step 6)
+// The exclusion is BOX-OWNED
 // =============================================================================
 //
-// The carrier transition excludes id == parent.ProposerID(). That id is not a committed leaf, and
+// The carrier transition excludes id == parent.ProposerID. That id is not a committed leaf, and
 // it used to be a WITNESS field anchored by "some key signed b.Prev" — which a freshly minted
 // keypair satisfies, so a witness could un-exclude the true parent proposer and let it self-seat
-// (the ADD direction, research certification 2026-09-03 §6.2). The slot is gone: the recompute
-// takes the parent proposer as a parameter the box door derives from the parent block it holds
+// (the ADD direction, research 2026-09-03 §6.2). The slot is gone: the recompute takes the
+// parent proposer as a parameter the box door derives from the parent block it holds
 // (HeadRef.ProposerID, class 3), AFTER P1 has bound b.Prev to that parent's hash.
 //
 // TestClassA_ParentProposerExclusionIsBoxOwned drives the exclusion both ways on one block whose
@@ -276,7 +277,8 @@ func TestClassA_ParentProposerExclusionIsBoxOwned(t *testing.T) {
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForAtt(t, b)
 
-	// Box-owned id: the fold reproduces apply()'s exclusion and agrees with the node's root.
+	// Box-owned id: the fold reproduces apply's exclusion and agrees with the node's
+	// root.
 	if err := f.c.recomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w, parentProposer, f.c.ChainID()); err != nil {
 		t.Fatalf("GATE FAILED: with the box-owned parent proposer the recompute must agree with the node's root; got %v", err)
 	}
@@ -293,12 +295,12 @@ func TestClassA_ParentProposerExclusionIsBoxOwned(t *testing.T) {
 	t.Logf("GATE GREEN: box-owned exclusion agrees; a foreign id diverges: %v", err)
 }
 
-// TestG8_BoxIsBlindToTheBlocksOwnAtts is GATE G8's second arm (cold box): a served copy of the
+// TestBoxIsBlindToTheBlocksOwnAtts is GATE G8's second arm (cold box): a served copy of the
 // same committed block carrying a DIFFERENT but valid certificate (the S5 same-round superset)
 // no longer moves the box verdict, because the class-A derivation reads the hash-covered carrier.
 // RED before the re-point: the derivation read b.Atts, so the superset variant made the box
 // Reject a canonical block.
-func TestG8_BoxIsBlindToTheBlocksOwnAtts(t *testing.T) {
+func TestBoxIsBlindToTheBlocksOwnAtts(t *testing.T) {
 	f := buildAttFixture(t)
 	b := f.attBlock()
 	committed := f.applyAndCommittedRoot(t, b)
@@ -318,24 +320,23 @@ func TestG8_BoxIsBlindToTheBlocksOwnAtts(t *testing.T) {
 	}
 }
 
-// TestG3_ServedVariantDeterminism is GATE G3 (cold chain): a peer may legitimately serve a
+// TestServedVariantDeterminism is GATE G3 (cold chain): a peer may legitimately serve a
 // same-hash copy of a committed block carrying a DIFFERENT valid certificate. Both variants must
 // ACCEPT with identical StateRoot, and the child must seat the same signers from its hash-covered
 // carrier regardless of which copy the replica held.
 //
-// RED at d7e4df0: apply seated from b.Atts, so the superset variant recomputed a different root
-// and a fresh replica REJECTED a block whose certificate was valid (shape S5).
-func TestG3_ServedVariantDeterminism(t *testing.T) {
+// RED: apply seated from b.Atts, so the superset variant recomputed a different root and a
+// fresh replica REJECTED a block whose certificate was valid (shape S5).
+func TestServedVariantDeterminism(t *testing.T) {
 	c, keys := era4AnchorChain(t, 1, 1)
 	h1 := mintNext4Carrier(t, c, keys)
 
-	// Variant A: the certificate as minted. Variant B: the SAME block with a same-round genuine
-	// precommit from a fifth qualified identity appended, plus a rewritten CommitRound.
-	// Variant A: the certificate as minted (round 0).
-	// Variant B: a genuine SAME-ROUND precommit from a fifth qualified identity appended (the S5
-	// same-round superset).
-	// Variant C: an entirely DIFFERENT-round but valid (PrepareQC_r', Atts_r') pair with
-	// CommitRound rewritten to r' — legal because CommitRound is uncovered by Hash().
+	// Variant A: the certificate as minted. Variant B: the SAME block with a same-round
+	// genuine precommit from a fifth qualified identity appended, plus a rewritten
+	// CommitRound. Variant A: the certificate as minted (round 0). Variant B: a genuine
+	// SAME-ROUND precommit from a fifth qualified identity appended (the S5 same-round
+	// superset). Variant C: an entirely DIFFERENT-round but valid (PrepareQC_r', Atts_r')
+	// pair with CommitRound rewritten to r' — legal because CommitRound is uncovered by Hash.
 	fifth := key(58001)
 	varA := *h1
 	varB := *h1
@@ -396,16 +397,16 @@ func TestG3_ServedVariantDeterminism(t *testing.T) {
 	}
 }
 
-// TestG4_NewOperatorsRaiseTheCoefficient is GATE G4 (cold chain, objective arm).
+// TestNewOperatorsRaiseTheCoefficient is GATE G4 (cold chain, objective arm).
 //
 // The verdict is explicit that this asserts a CEILING, not monotonicity: a seated member may
 // lapse (TTL) and re-bond and be re-counted, so a monotone assertion is wrong and would pass
 // vacuously. What was broken is that NO operator joining after activation could EVER be counted.
 //
-// RED at d7e4df0: a validator bonded after activation attests, its block is rejected, and if the
-// proposer trims it the chain commits but the operator is never seated — C2Metric().Participants
-// never rises. GREEN: the new operator is counted within the stated 2-height bound.
-func TestG4_NewOperatorsRaiseTheCoefficient(t *testing.T) {
+// RED: a validator bonded after activation attests, its block is rejected, and if the proposer
+// trims it the chain commits but the operator is never seated — C2Metric.Participants never
+// rises. GREEN: the new operator is counted within the stated 2-height bound.
+func TestNewOperatorsRaiseTheCoefficient(t *testing.T) {
 	c, keys := era4AnchorChain(t, 1, 1)
 	mustAppend(t, c, mintNext4Carrier(t, c, keys)) // h1
 	mustAppend(t, c, mintNext4Carrier(t, c, keys)) // h2 — seats the three founding attesters
@@ -439,11 +440,11 @@ func TestG4_NewOperatorsRaiseTheCoefficient(t *testing.T) {
 	}
 }
 
-// TestG5_StampFiveImpliesTheCarrierIsHashCovered is GATE G5 (unit). It is VACUOUSLY GREEN today,
-// by design: the readiness stamp is 3 and this round does NOT raise it (owner call O2 is not
-// ratified here). The gate is the compile-time rollout condition the stamp-raising release must
-// satisfy — a binary that stamps 5 MUST cover the carrier in Hash(), and NO code path stamps 4.
-func TestG5_StampFiveImpliesTheCarrierIsHashCovered(t *testing.T) {
+// TestStampFiveImpliesTheCarrierIsHashCovered is GATE G5 (unit). It is VACUOUSLY GREEN today,
+// by design: the readiness stamp is 3 and this round does NOT raise it O2 is not settled here.
+// The gate is the compile-time rollout condition the stamp-raising release must satisfy — a
+// binary that stamps 5 MUST cover the carrier in Hash, and NO code path stamps 4.
+func TestStampFiveImpliesTheCarrierIsHashCovered(t *testing.T) {
 	k := key(58201)
 	r := NewBondReg(k, ports.HashBytes(pubOf(k)), twoMiB, []byte("valid"), ports.Hash{}, 1)
 
@@ -464,17 +465,17 @@ func TestG5_StampFiveImpliesTheCarrierIsHashCovered(t *testing.T) {
 	b.LastCommit = []Attestation{{PubKey: pubOf(k), Sig: make([]byte, 64), Phase: PhasePrecommit}}
 	if a.Hash() == b.Hash() {
 		t.Fatal("ROLLOUT GATE (G5) RED: this binary stamps 5 but Hash() does NOT cover LastCommit — " +
-			"the v5 seating transition would ride on unsigned bytes (R-BOX-ATTESTS)")
+			"the v5 seating transition would ride on unsigned bytes ")
 	}
 }
 
-// TestG6a_NoV4WindowOnTheTallyPath is GATE G6a (cold chain). With every reg stamped 5, BOTH
+// TestNoV4WindowOnTheTallyPath is GATE G6a (cold chain). With every reg stamped 5, BOTH
 // activation tallies clear at the SAME rotation, so era3Height == era4Height and the first
 // root-checked block is v5 — no block is ever minted at v4.
 //
 // The ablation is the forbidden case, and the test DOCUMENTS it as forbidden rather than
 // accepting it: stamping an epoch of regs at 4 first opens a v4 window.
-func TestG6a_NoV4WindowOnTheTallyPath(t *testing.T) {
+func TestNoV4WindowOnTheTallyPath(t *testing.T) {
 	whale := key(58301)
 	minnows := []ed25519.PrivateKey{key(58302), key(58303), key(58304)}
 	build := func(stamp uint8) *Chain {
@@ -539,7 +540,7 @@ func TestG6a_NoV4WindowOnTheTallyPath(t *testing.T) {
 		BlockVersionStateRoot, bad.era3Height)
 }
 
-// TestG6b_OverrideActivationIgnoresTheStamp is GATE G6b (cold chain / config), NEW in the
+// TestOverrideActivationIgnoresTheStamp is GATE G6b (cold chain / config), NEW in the
 // converged verdict. The pre-latch genesis override does NOT consult regVersion at all, so the
 // 3 → 5 stamp rule protects the TALLY path only. This gate makes the exposure VISIBLE and
 // RED-on-regression: the rollout rule (O2) must read "no mainnet era activation, by tally OR by
@@ -548,7 +549,7 @@ func TestG6a_NoV4WindowOnTheTallyPath(t *testing.T) {
 // It also pins that setting Era3ActivationHeight WITHOUT Era4ActivationHeight opens a v4 window,
 // and that New's layering assertion does NOT prevent it (that assertion fires only when BOTH are
 // set and era4 < era3).
-func TestG6b_OverrideActivationIgnoresTheStamp(t *testing.T) {
+func TestOverrideActivationIgnoresTheStamp(t *testing.T) {
 	// Era-3 overridden, era-4 left at 0 ⇒ a v4 WINDOW. New does not panic.
 	c, keys := era4AnchorChain(t, 1, 0)
 	if v := c.MintVersion(1); v != BlockVersionStateRoot {

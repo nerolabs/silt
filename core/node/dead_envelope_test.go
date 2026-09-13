@@ -16,7 +16,7 @@ func nodeHasProvider(n *Node, key ports.Hash, id ports.NodeID) bool {
 }
 
 // TestConfirmedDeadHolderPrunedFromReplicatedKeptForSole is the P0-1 headline
-// regression (#277 dead-peer envelope): when a holder is CONFIRMED dead (a real
+// regression: when a holder is CONFIRMED dead (a real
 // dial to it exhausts its retries and times out), it must leave the provider-record
 // candidate set for keys that have a live alternative — so the fetch/repair loop
 // stops re-dialing the corpse once per deadUntil cooldown forever — WHILE its record
@@ -48,7 +48,7 @@ func TestConfirmedDeadHolderPrunedFromReplicatedKeptForSole(t *testing.T) {
 		t.Fatal("the dial to the corpse never completed (should have timed out)")
 	}
 	if nodeHasProvider(searcher, replicated, deadID) {
-		t.Fatal("#277: a confirmed-dead holder must be pruned from a REPLICATED key (a live sibling exists)")
+		t.Fatal("a confirmed-dead holder must be pruned from a REPLICATED key (a live sibling exists)")
 	}
 	if !nodeHasProvider(searcher, replicated, liveID) {
 		t.Fatal("the live sibling must remain a provider of the replicated key")

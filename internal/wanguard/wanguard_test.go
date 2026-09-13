@@ -2,12 +2,12 @@
 // internet — durability is the default") with a test, so a flat transport
 // deadline on a WAN path is a red build, not a code-review hope.
 //
-// The rule silt keeps losing days to (#286, #288): a wall-clock number is a
-// TRANSPORT measurement (RTT + jitter + transfer time), never a security or
-// correctness signal, and a *flat* one on a payload-bearing path is a category
-// error (docs/network-durability.md §1). The durable policy already exists —
-// core/node's requestAttempt: size-aware deadline + retry/backoff + evict-on-
-// exhaustion + negative cache. New WAN code should route through it.
+// The rule silt keeps losing days to: a wall-clock number is a TRANSPORT
+// measurement (RTT + jitter + transfer time), never a security or correctness
+// signal, and a *flat* one on a payload-bearing path is a category error. The
+// durable policy already exists — core/node's requestAttempt: size-aware
+// deadline + retry/backoff + evict-on- exhaustion + negative cache. New WAN
+// code should route through it.
 //
 // This guard does NOT try to auto-classify "payload-bearing" (impossible
 // statically). Instead it keeps a LEDGER: every low-level transport-deadline
@@ -18,26 +18,26 @@
 // conn.Set*Deadline, net.DialTimeout(d, …), and context.WithTimeout /
 // context.WithDeadline. The call forms are the ways the *next* flat constant
 // sneaks past a struct-only scan: a bare net.DialTimeout(2*time.Second, …) is
-// the #286 shape in function clothing, and a context deadline silently bounds
+// the shape in function clothing, and a context deadline silently bounds
 // whatever network op rides that context. A NEW deadline that isn't in the
 // ledger fails the build — forcing the author to either route it through the
 // durable-WAN policy or consciously declare its intent (payload-scaled /
 // fail-fast / keepalive-idle / server-DoS-bound / first-contact-modest /
 // non-transport). A STALE ledger entry (registered but no longer present) also
-// fails, so the ledger can't rot. This is the #329 regression guard: it can't
+// fails, so the ledger can't rot. This is the regression guard: it can't
 // fix a live violation (there are none as of the audit), but it stops the
-// *next* #286.
+// *next*.
 //
 // SCOPE NOTE (what this does NOT lint-guard, and how it IS guarded): the
 // retry/backoff/eviction knobs of the durable-WAN policy (attempt counts, LRS
 // eviction thresholds) are semantic, not a single AST construct, so an AST ledger
 // over them would be false-positive-prone. They are guarded two other ways instead:
-//   - ROUTING: new WAN code goes through core/node's requestAttempt (size-aware
-//     deadline + retry + evict-on-exhaustion + negative cache), not its own constants.
-//   - BEHAVIOR: the #288 evict-on-one-miss anti-pattern (evicting a live peer on a
-//     single slow/dropped packet, which starves consensus under loss) is a red build
-//     via core/node's TestLivePeerIsRetriedNotEvictedOnOneMiss (a dead peer must be
-//     dialed retries+1 times before eviction) and TestStaticPeerSurvivesReachabilityEviction286.
+// - ROUTING: new WAN code goes through core/node's requestAttempt (size-aware
+// deadline + retry + evict-on-exhaustion + negative cache, not its own constants.
+// - BEHAVIOR: the evict-on-one-miss anti-pattern (evicting a live peer on a
+// single slow/dropped packet, which starves consensus under loss is a red build via
+// core/node's TestLivePeerIsRetriedNotEvictedOnOneMiss (a dead peer must be dialed
+// retries+1 times before eviction) and TestStaticPeerSurvivesReachabilityEviction.
 //
 // A magic *deadline* in any covered construct is a red build here; a magic *retry
 // count* / early evict is a red build there (plus the #6 mechanism-paragraph review).
@@ -75,12 +75,12 @@ type siteKey string
 // test and it prints any unregistered site verbatim for pasting.
 var ledger = map[siteKey]string{
 	// --- httpregistry ---------------------------------------------------------
-	// Client GETs are wrapped in doGetRetry (bounded exp backoff, #334) and the
-	// publish POST is async 202+poll (#328), so this 10s bounds only small,
+	// Client GETs are wrapped in doGetRetry (bounded exp backoff) and the
+	// publish POST is async 202+poll, so this 10s bounds only small,
 	// idempotent, retried requests. The ~1.5 MB bond payload never crosses here
 	// — it rides the size-aware consensus RPC (core/node). Small-payload +
 	// retry-wrapped.
-	"adapters/httpregistry/httpregistry.go|NewClient|http.Client.Timeout":       "small-payload + retry-wrapped (GETs via doGetRetry #334, publish async #328); the 1.5MB bond rides the size-aware consensus RPC, not this client",
+	"adapters/httpregistry/httpregistry.go|NewClient|http.Client.Timeout":       "small-payload + retry-wrapped (GETs via doGetRetry, publish async); the 1.5MB bond rides the size-aware consensus RPC, not this client",
 	"adapters/httpregistry/httpregistry.go|NewPinnedClient|http.Client.Timeout": "small-payload + retry-wrapped (pinned variant of NewClient); same rationale",
 	// Server-side receive/write/idle bounds protect a cheap public registry from
 	// slow-loris / resource exhaustion (S6 keep-registries-cheap). Bodies are
@@ -108,9 +108,9 @@ var ledger = map[siteKey]string{
 	// Direct-peer dial: a MODEST first-contact deadline is the CORRECT reading of
 	// network-durability §1 (the instinct to raise 2s→10s is the named trap). It
 	// nests below RequestTimeout; the upper layer (core/node requestAttempt)
-	// retries; and the consensus set is never-evicted (persistent-peers #331).
-	// #332 confirmed the observed EOFs were µs teardowns, not this deadline firing.
-	"adapters/tcpnet/tcpnet.go|dialPeer|net.Dialer.Timeout": "first-contact-modest — direct-peer dial (2s, nested < RequestTimeout); upper-layer requestAttempt retries; consensus set never-evicted (#331); §1-correct, not a flat steady-state constant",
+	// retries; and the consensus set is never-evicted (persistent-peers).
+	// confirmed the observed EOFs were µs teardowns, not this deadline firing.
+	"adapters/tcpnet/tcpnet.go|dialPeer|net.Dialer.Timeout": "first-contact-modest — direct-peer dial (2s, nested < RequestTimeout); upper-layer requestAttempt retries; consensus set never-evicted; §1-correct, not a flat steady-state constant",
 	"adapters/tcpnet/tcpnet.go|dialPeer|conn.SetDeadline":   "first-contact-modest — relayed-peer TLS handshake (5s); cleared after handshake; upper-layer retries",
 }
 
@@ -351,7 +351,7 @@ func setDeadlineKind(x *ast.CallExpr) string {
 // "context.WithDeadline" for the stdlib CALL forms that create a transport or
 // operation deadline the composite-literal finder can't see, or "" otherwise.
 // These are the other ways a flat WAN deadline enters: a bare
-// net.DialTimeout(2*time.Second, …) is the #286 shape as a function call, and a
+// net.DialTimeout(2*time.Second, …) is the shape as a function call, and a
 // context deadline bounds whatever network op rides the context. Non-deadline
 // context constructors (Background/TODO/WithCancel/WithValue) return "". Like the
 // composite finder this keys on the local package identifier (net/context), which

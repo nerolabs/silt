@@ -2,16 +2,16 @@
 // (Certificate Transparency) construction. The root is the file's global
 // identity; an inclusion proof shows "chunk i belongs to root R" with
 // O(log n) hashes — the seam the future proof-of-retrieval credit system
-// will hang off. See docs/math/01-merkle-trees.md.
+// will hang off. See.
 //
 // Two details worth noticing:
 //
-//   - Domain separation: leaves are hashed with a 0x00 prefix and
-//     interior nodes with 0x01, so an interior node can never be
-//     reinterpreted as a leaf (or vice versa) to forge a proof.
-//   - Unbalanced trees: for n leaves the split point is the largest power
-//     of two strictly less than n. This handles any leaf count without
-//     padding or duplicating leaves, and makes proofs unambiguous.
+// - Domain separation: leaves are hashed with a 0x00 prefix and
+// interior nodes with 0x01, so an interior node can never be
+// reinterpreted as a leaf (or vice versa) to forge a proof.
+// - Unbalanced trees: for n leaves the split point is the largest power
+// of two strictly less than n. This handles any leaf count without
+// padding or duplicating leaves, and makes proofs unambiguous.
 package manifest
 
 import (

@@ -9,9 +9,9 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// G-CFGBIND-1 — MEMBERSHIP IS CLOSED. Every chain.Config field is either CARRIED in
-// ConsensusParams or EXPLICITLY EXCLUDED here with its reason. A new Config field fails this gate
-// until someone decides which it is.
+// MEMBERSHIP IS CLOSED. Every chain.Config field is either CARRIED in ConsensusParams or
+// EXPLICITLY EXCLUDED here with its reason. A new Config field fails this gate until someone
+// decides which it is.
 //
 // This is the same closed-complement discipline as the divergence gate, applied to the bind rather
 // than to the measurement — and it exists because silt named this class in prose for months with no
@@ -27,7 +27,7 @@ var paramsExcluded = map[string]string{
 	"WSCheckpoint":           "narrowing-only, and sharing it would DESTROY weak subjectivity. The pin is the operator's OWN trust anchor and silt is weakly subjective by design (TENETS Part 0); a network-wide value would make every node trust the same anchor, which is the opposite of the property.",
 	"MinProposerRep":         "binding it would be INEFFECTIVE, not merely unnecessary: the INPUT is the local reputation view, so two nodes sharing a threshold still diverge. The real fix for that leg is objective mode, which replaces the reputation gate with committed bond.",
 	"MinAttesterRep":         "same as MinProposerRep — the threshold is not the divergent term, the local view is.",
-	"LivenessRecoveryHeight": "STRUCTURALLY UNBINDABLE. It is set AFTER launch, on a chain that by construction cannot commit it — the #535 recovery re-bases one boundary against the LIVE qualified set precisely because the chain is stalled. Rule 8's second arm cannot reach it (R-LIVENESS-RECOVERY-UNBOUND).",
+	"LivenessRecoveryHeight": "STRUCTURALLY UNBINDABLE. It is set AFTER launch, on a chain that by construction cannot commit it — the recovery re-bases one boundary against the LIVE qualified set precisely because the chain is stalled. Rule 8's second arm cannot reach it.",
 }
 
 func TestConsensusParamsMembershipIsComplete(t *testing.T) {
@@ -76,9 +76,9 @@ func TestConsensusParamsMembershipIsComplete(t *testing.T) {
 	}
 }
 
-// G-CFGBIND-2 — the genesis hash COVERS the params. This is the whole mechanism: if it did not,
-// a divergent node would compute the SAME genesis hash and join happily.
-func TestGCFGBIND2_GenesisHashCoversParams(t *testing.T) {
+// The genesis hash COVERS the params. This is the whole mechanism: if it did not, a divergent
+// node would compute the SAME genesis hash and join happily.
+func TestTheGenesisHashCoversParams(t *testing.T) {
 	k := key(70001)
 	mk := func(p *ConsensusParams) ports.Hash {
 		b := Block{Version: BlockVersionRounds, Height: 0, Entries: []ports.Entry{entry(1)}, Proposer: pubOf(k), Params: p}
@@ -107,8 +107,8 @@ func TestGCFGBIND2_GenesisHashCoversParams(t *testing.T) {
 	}
 }
 
-// G-CFGBIND-3 — only genesis may carry params.
-func TestGCFGBIND3_ParamsOnlyOnGenesis(t *testing.T) {
+// Only genesis may carry params.
+func TestParamsOnlyOnGenesis(t *testing.T) {
 	p := ParamsFromConfig(Config{Quorum: 3}, 64, 100)
 	g := &Block{Version: BlockVersionRounds, Height: 0, Params: &p}
 	if err := validateParamsPlacement(g); err != nil {
@@ -126,10 +126,10 @@ func TestGCFGBIND3_ParamsOnlyOnGenesis(t *testing.T) {
 	}
 }
 
-// G-CFGBIND-4 — the refuse-to-start arm catches the case JOINING cannot: an operator editing a
-// flag and restarting on a chain already joined. And the refusal must be DIAGNOSABLE — naming the
-// field — which is the reason values are committed rather than a digest.
-func TestGCFGBIND4_RestartWithAnEditedFlagIsRefused(t *testing.T) {
+// The refuse-to-start arm catches the case JOINING cannot: an operator editing a flag and
+// restarting on a chain already joined. And the refusal must be DIAGNOSABLE — naming the field —
+// which is the reason values are committed rather than a digest.
+func TestRestartWithAnEditedFlagIsRefused(t *testing.T) {
 	cfg := Config{Quorum: 3, MinBond: 1 << 20, ByzantineQuorum: true}
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
@@ -160,9 +160,9 @@ func TestGCFGBIND4_RestartWithAnEditedFlagIsRefused(t *testing.T) {
 	}
 }
 
-// G-CFGBIND-5 — a genesis predating the bind still starts. The paramless path is a DISCLOSED
-// residual, not an accident, so it is asserted rather than left to chance.
-func TestGCFGBIND5_ParamlessGenesisStillStarts(t *testing.T) {
+// A genesis predating the bind still starts. The paramless path is a DISCLOSED residual, not
+// an accident, so it is asserted rather than left to chance.
+func TestParamlessGenesisStillStarts(t *testing.T) {
 	c := New(Config{Quorum: 3}, func(ports.NodeID) int64 { return 0 })
 	k := key(70003)
 	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
