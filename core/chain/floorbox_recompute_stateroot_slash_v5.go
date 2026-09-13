@@ -190,6 +190,19 @@ func stateRootSlashDigestOps(
 // prevStateRoot via the digest leaf inclusion proof. So a PreIDs that is not the true committed
 // pre-set yields an OldValue != the committed pre-digest ⇒ the fold's VerifyProof fails ⇒ stall.
 // The pre-set the delta is applied to is therefore the completeness-anchored set (cert sub-Q2).
+//
+// ⚠ THE PARAGRAPH ABOVE IS FALSIFIED FOR ANY TAG WHOSE digestFoldOp IS NEVER EMITTED. The anchor it
+// describes is real but CONDITIONAL: FoldChangedPaths verifies only the ops it is handed, and four
+// reads in this package emit no op for the tag they read — class B slashedRoot (no such op exists at
+// all), class B bonded/qualifiedRoot (guarded by !idSetsEqual, an equality the forged pre-set itself
+// steers), class P qualifiedRoot (rotate emits only epochSetRoot), class A validatorsSeenRoot (post
+// == pre). For those, PreIDs and Proof are consumed as ATTACKER DATA. Contrast provenView.members
+// (stateview_proven_v5.go), which Resolves and checks nodeSetMTH UNCONDITIONALLY.
+//
+// The text is left standing, not rewritten, so the correction reads as ONE correction. The remedy is
+// RESEARCH-GATED (a consensus-adjacent verification rule) and is deliberately NOT implemented here.
+// EVIDENCE: rt_anchor_preset_gates_test.go — RT-ANCHOR-0..6 (PINNED_DEFECT), with the unanchored-read
+// census and the oracle argument at its head. CONTAINMENT: the R1.8 downgrade in (*Box).Validate.
 func anchoredPreSet(byTag map[string]*StateRootDigestWitness, tag string) (map[ports.NodeID]struct{}, error) {
 	w, ok := byTag[tag]
 	if !ok || w.Proof.IsNil() {

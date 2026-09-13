@@ -75,14 +75,21 @@ package node
 // FETCH is not budgeted to it. That gap is the whole of RT-RC-1, and the pin's
 // mechanism arms below assert it directly. Corrected in canon by #844.
 //
-// CONTRADICTION OF RECORD — do not resolve it in this file. The shipped positive
-// control TestRedteamRepair_HonestClaimIsPaid (redteam_repair_claim_test.go)
-// stages a shard with the SAME helper RT-RC-3 uses (stageShardOn: fetch the live
-// shard from its providers, re-place a copy on a fresh holder) and asserts the
-// bounty IS paid. RT-RC-3 pins the same outcome for the opposite reason: the
-// shipped test reads it as the intended rule, RT-RC-3 reads it as the defect.
-// Both are left standing on purpose. Which one states the intended rule is the
-// owner's call, not a seat's.
+// THE CONTRADICTION OF RECORD IS SETTLED — RT-RC-3 STATES THE INTENDED RULE.
+// D-RTRC3-INTENT-STANDS-2026-09-12 (ROADMAP F8) ruled that a durability bounty
+// pays for a REPAIR, so a shard that was never missing was never repaired. The
+// shipped positive control TestRedteamRepair_HonestClaimIsPaid
+// (redteam_repair_claim_test.go) used to build RT-RC-3's own arrangement — the
+// same stageShardOn no-loss staging — and assert the bounty IS paid, which made it
+// an assertion that the defect was correct behaviour. It was re-derived over a
+// REAL loss on 2026-09-13 and no longer agrees with this pin on anything.
+//
+// ⚠ THE PIN IS UNCHANGED AND STILL RED-WHEN-FIXED. Nothing about that re-derivation
+// touched the judge, so a no-loss claim is still paid and RT-RC-3 still pins it.
+// Its closer is the loss witness, GATED behind R-PROBE-FALSE-NEGATIVE-RATE: a
+// repair erases its own evidence (T-LOSS-IS-A-TRANSIENT). Do not read the positive
+// control's new loss fixture as that witness — the fixture stages the loss for
+// itself, the JUDGE still cannot see one.
 
 import (
 	"context"
@@ -411,12 +418,15 @@ func TestRTRC2_ReplayedClaimForAPaidPositionDrawsNothing(t *testing.T) {
 // before it judges: the shard is still retrievable from its ORIGINAL providers at
 // the moment the claim is delivered. Nothing was rebuilt; a live copy was moved.
 //
-// ⚠ THIS PIN AGREES WITH A SHIPPED TEST, AND THAT AGREEMENT IS THE FINDING.
-// TestRedteamRepair_HonestClaimIsPaid (redteam_repair_claim_test.go) builds the
-// identical arrangement with the same stageShardOn helper and asserts
-// BountiesReleased == 1 as the INTENDED rule. This pin asserts the same outcome
-// as a DEFECT. Exactly one of those readings is right, and which one is the
-// owner's call. Do not reconcile them by editing either test.
+// ⚠ THIS PIN USED TO AGREE WITH A SHIPPED TEST, AND THAT AGREEMENT WAS THE
+// FINDING. TestRedteamRepair_HonestClaimIsPaid (redteam_repair_claim_test.go)
+// built the identical arrangement with the same stageShardOn helper and asserted
+// BountiesReleased == 1 as the INTENDED rule, while this pin asserted the same
+// outcome as a DEFECT. D-RTRC3-INTENT-STANDS-2026-09-12 resolved it in THIS pin's
+// favour, and on 2026-09-13 that control was re-derived over a REAL loss — a
+// position destroyed across the swarm and rebuilt from the survivors — so the two
+// arrangements are now disjoint. This one is still the no-loss arrangement and is
+// still the only test in the tree that asserts a no-loss claim pays.
 //
 // PIN. GREEN today. It goes RED when a prior-loss requirement lands.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -429,9 +439,18 @@ func rtRC3Pin(before, after int64, releases int) string {
 	}
 	return fmt.Sprintf("RT-RC-3 PIN IS RED — a claim for a shard that was NEVER LOST no longer pays as pinned: EscrowPaid %d -> %d, BountiesReleased=%d (pinned at a positive delta and exactly 1).\n"+
 		"  THE FIX CASE: no payment and no release means the judge now requires evidence of prior loss for the claimed (root, stripe, position).\n"+
-		"  That is the repair this pin was waiting for — BUT IT CANNOT LAND ALONE. TestRedteamRepair_HonestClaimIsPaid asserts the OPPOSITE on\n"+
-		"  this same arrangement and will have gone RED in the same run. Both tests must be re-decided together, and the owner decides which\n"+
-		"  states the intended rule. The judge's two legs (correctness recompute in judgeRepairClaim, retrievability in\n"+
+		"  That is the repair this pin was waiting for, and since 2026-09-13 it CAN land alone: TestRedteamRepair_HonestClaimIsPaid was\n"+
+		"  re-derived over a REAL loss (D-RTRC3-INTENT-STANDS-2026-09-12) and no longer asserts the opposite on this arrangement, so it\n"+
+		"  should stay GREEN in the same run.\n"+
+		"  IF IT WENT RED TOO, CHECK THE FIXTURE BEFORE YOU CHECK PAYMENT. Two causes are known and this list is NOT exhaustive:\n"+
+		"    (a) the loss witness is shaped as a RESTORATION DIFFERENTIAL — the position unreachable before the claim, reachable after.\n"+
+		"        That control cannot satisfy that shape today: rebuildLostShard places through placeAt, which sends MsgStoreChunk and\n"+
+		"        announces NOTHING to the nodes near the column key, so after the rebuild the position is not discoverable under\n"+
+		"        colKey(root, pos) and lives on ONE node, down from three (measured 2026-09-13). Teach rebuildLostShard to announce\n"+
+		"        before you conclude anything about payment.\n"+
+		"    (b) payment itself broke.\n"+
+		"  Retire this pin by replacing it with the positive assertion of the rule, never by deleting it. The judge's two legs (correctness\n"+
+		"  recompute in judgeRepairClaim, retrievability in\n"+
 		"  challengeHolderRetrievability) both pass for a live shard merely COPIED to a new holder; nothing on the path asserted prior loss.\n"+
 		"  THE OTHER CASE: more than one release, or a payment where the premise arm above did not hold, is a different defect. Re-derive first.",
 		before, after, releases)
