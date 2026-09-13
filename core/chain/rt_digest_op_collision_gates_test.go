@@ -37,21 +37,27 @@ package chain
 //	B op NewValue                 = 6bc0de14…  == nodeSetMTH(pre ∪ fresh)      ← the fold takes this
 //	honest committed bondedRoot   = c92028bf…  == nodeSetMTH((pre ∪ fresh) \ culprit)
 //
-// CORRECTION OF RECORD vs the routed §9.1. The certification says the block "folds bondedRoot to B's
-// value, silently dropping the slash's eviction" — that is right about the winner, but it understates
-// the shape. The honest value equals NEITHER class's op. No class computes it, because no class ever
-// sees another class's delta. This is not "the wrong one of two candidates won"; it is "the right
-// answer was never a candidate". That is why the remedy direction is a single cross-class post-set
-// threaded in apply() order (B → T → S) and NOT a dedup — deduping would just pick one of two values
-// that are both wrong. (The remedy is research-gated and is not encoded here.)
+// ONE SENTENCE OF THE ROUTED CERTIFICATION IS LOOSE, AND ONLY THAT SENTENCE. §9.1 says the block
+// "folds bondedRoot to B's value, silently dropping the slash's eviction". That is exact about the
+// winner. What it invites is the reading that B's value IS the honest value minus the eviction, and
+// it is not: the honest value equals NEITHER class's op. No class computes it, because no class ever
+// sees another class's delta. So this is not "the wrong one of two candidates won"; it is "the right
+// answer was never a candidate".
+//
+// THE CERTIFICATION'S DIRECTION IS NOT CORRECTED — it was already right, in the same section 9, and
+// the measurement below AGREES with it. §9.2 states the honest post-set outright ("The honest post-set
+// is (pre ∪ regs) \ culprits"), and §9.4 already prescribes "a single cross-class computation — one
+// postBonded threaded through S, B and T in apply() order — not to dedup", naming
+// reconstructPostQualifiedWithWrites as the algorithm the tree already has. This file sharpens §9.1's
+// wording; it moves nothing else. (The remedy is research-gated and is not encoded here.)
 //
 // ────────────────────────────────────────────────────────────────────────────────────────
 // WHY IT IS A WRONG-ACCEPT, AND WHY THE SHIPPED ABLATIONS MISS IT
 // ────────────────────────────────────────────────────────────────────────────────────────
 //
 // Measured against the HONEST committed root the box MISMATCHES and stalls — safe, and that stall is
-// what every shipped compound-adjacent ablation would observe (ControlCompoundStallsAgainstTheHonestRoot
-// below records it). But a real proposer does not commit the honest root. It commits whatever root
+// what every shipped compound-adjacent ablation would observe (D5 below pins that stall, and pins the
+// error CLASS it must arrive in). But a real proposer does not commit the honest root. It commits whatever root
 // ITS OWN FOLD produces from its own block, and the box's terminal equality
 // (`if postRoot != committedStateRoot`) then passes by construction. MEASURED: recomputeViaHead
 // returns nil against the box's own fold root, on both an S+B block (D1) and an S+T block (D2).
@@ -108,6 +114,7 @@ package chain
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -224,9 +231,19 @@ func rtDigestCollisionInconsistentStatePin(defect string, perMemberIsDelete bool
 	}
 	if !digestCountsCulprit {
 		return fmt.Sprintf(
-			"%s CONSISTENCY ARM IS RED — the bondedRoot digest the fold lands on NO LONGER counts the slashed\n"+
-				"  culprit, so the digest and the per-member leaves now agree. That is the expected outcome of\n"+
-				"  the cross-class post-set remedy. Retire this pin and keep its teeth.", defect)
+			"%s CONSISTENCY ARM IS RED — the bondedRoot digest the fold lands on is NO LONGER class B's\n"+
+				"  single-delta value nodeSetMTH(pre ∪ fresh), the one that still counts the slashed culprit.\n"+
+				"  TWO reachable changes land here and THIS ARM CANNOT TELL THEM APART, so check which before\n"+
+				"  disposing of the pin — only the first is a fix:\n"+
+				"    (a) THE REMEDY LANDED — one cross-class post-set, so the digest is now\n"+
+				"        nodeSetMTH((pre ∪ fresh) \\ culprit) and it AGREES with the per-member leaves. The\n"+
+				"        contradiction is gone: retire this pin and keep its teeth.\n"+
+				"    (b) THE APPEND ORDER MOVED — a different class's single-delta value now wins. Defer class S\n"+
+				"        in assembleStateRootRecomputeOps and the digest becomes nodeSetMTH(pre \\ culprit), which\n"+
+				"        drops the FRESH BOND instead of the eviction. The accepted state is still internally\n"+
+				"        inconsistent and the break is still LIVE: re-pin against the new winner, do NOT retire.\n"+
+				"  DISCRIMINATE by comparing the landed NewValue against nodeSetMTH((pre ∪ fresh) \\ culprit):\n"+
+				"  equal is (a); anything else is (b) or a changed fixture.", defect)
 	}
 	return ""
 }
@@ -379,8 +396,10 @@ func TestRTDigestCollision_D0_TwoClassesEmitTheSameDigestKey_PINNED_DEFECT(t *te
 		if msg := rtDigestCollisionDuplicateOpPin("RT-DIGEST-0", tag, ops); msg != "" {
 			t.Fatalf("%s", msg)
 		}
-		// The duplicates must share OldValue and Proof, else they would not BOTH verify and the
-		// break would be a stall instead of a wrong-accept.
+		// The duplicates must share OldValue AND the pre-state witness, else they would not BOTH
+		// verify and the break would be a stall instead of a wrong-accept. digestFoldOp reads both
+		// off one witness (w := byTag[tag]), so the duplicates carry the SAME statehash.Witness
+		// value — one wrapped proof, which is byte-identity a fortiori.
 		want := statehash.Key(tag, nil)
 		var first *statehash.FoldOp
 		for i := range ops {
@@ -396,6 +415,13 @@ func TestRTDigestCollision_D0_TwoClassesEmitTheSameDigestKey_PINNED_DEFECT(t *te
 					"  (%x vs %x). They would no longer both verify against prevStateRoot, so the defect\n"+
 					"  would surface as a STALL rather than a wrong-accept. Re-derive digestFoldOp before re-pinning.",
 					rtDigestTagName(tag), first.OldValue, ops[i].OldValue)
+			}
+			if first.Proof != ops[i].Proof {
+				t.Fatalf("RT-DIGEST-0 PIN IS RED — the duplicate ops for %q no longer carry the SAME\n"+
+					"  pre-state witness. digestFoldOp reads Proof off one w := byTag[tag] per tag, so every\n"+
+					"  duplicate shares one wrapped proof today; two different witnesses mean the emission\n"+
+					"  changed shape and the header's OldValue+Proof claim must be re-derived before re-pinning.",
+					rtDigestTagName(tag))
 			}
 		}
 	}
@@ -606,7 +632,7 @@ func rtDigestKeepDuplicate(ops []statehash.FoldOp, tag string, first bool) []sta
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// CONTROLS — the fixtures are not degenerate, and the honest-root oracle is why this was missed
+// CONTROLS — the fixtures are not degenerate
 // ══════════════════════════════════════════════════════════════════════════════
 
 // TestRTDigestCollision_ControlSingleClassBlocksAgree is the non-vacuity control: the SAME witness
@@ -641,18 +667,38 @@ func TestRTDigestCollision_ControlSingleClassBlocksAgree(t *testing.T) {
 	})
 }
 
-// TestRTDigestCollision_ControlCompoundStallsAgainstTheHonestRoot records WHY the shipped ablations in
-// this package never saw this: measured against the HONEST committed root the compound block STALLS,
-// and a stall reads as "the box is sound". It is not — the box simply folded to a different root than
-// the one it was handed. Only the box's OWN output is a sound oracle here
+// ══════════════════════════════════════════════════════════════════════════════
+// RT-DIGEST-5 — the honest root is REJECTED, and on the terminal comparison specifically
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// THIS IS A PIN, NOT A CONTROL, and it used to be named as one. It records WHY the shipped ablations
+// in this package never saw the break: measured against the HONEST committed root the compound block
+// is rejected, and a rejection reads as "the box is sound". It is not — the box simply folded to a
+// different root than the one it was handed. Only the box's OWN output is a sound oracle here
 // (scar-ablation-oracle-is-the-honest-artifact).
-func TestRTDigestCollision_ControlCompoundStallsAgainstTheHonestRoot(t *testing.T) {
+//
+// It is a pin because it reddens on the REMEDY, not on a corruption: it stayed green under all five
+// of the review's ablations. What it asserts is therefore held to ONE error class. An earlier draft
+// asserted only err != nil and passed, under the duplicate-key-refusal ablation, on a completely
+// unrelated error — a rejection that never reached the root comparison at all. A pin that cannot
+// distinguish its own cause is decoration.
+func TestRTDigestCollision_D5_TheHonestRootIsRejectedOnTheTerminalComparison_PINNED_DEFECT(t *testing.T) {
 	f := buildSlashFixture(t)
 	b, w := rtDigestSBBlock(t, f)
 	honest := f.applyAndCommittedRoot(t, b)
-	if err := recomputeViaHead(f.c, f.prevRoot, honest, b, w); err == nil {
-		t.Fatalf("CONTROL IS RED — the compound block now AGREES with the honest root. If that is because\n" +
-			"  the cross-class post-set landed, this whole file must be retired, not just this control.")
+	err := recomputeViaHead(f.c, f.prevRoot, honest, b, w)
+	if err == nil {
+		t.Fatalf("RT-DIGEST-5 PIN IS RED — the compound block now AGREES with the honest root. If that is\n" +
+			"  because the cross-class post-set landed, this whole file must be retired, not just this pin.")
+	}
+	if !errors.Is(err, ErrRecomputeStateRootMismatch) {
+		t.Fatalf("RT-DIGEST-5 PIN IS RED — the compound block is still rejected against the honest root, but\n"+
+			"  NOT on the terminal root comparison: %v\n"+
+			"  This pin holds exactly ONE error class, ErrRecomputeStateRootMismatch: the fold COMPLETED and\n"+
+			"  the root it produced differed from the one it was handed. Any other class — a scope stall, a\n"+
+			"  changed-leaf proof that failed, a fold that refused the duplicate key — means the block never\n"+
+			"  reached the comparison, so 'the honest root reads as a sound stall' is no longer what is being\n"+
+			"  measured here. Re-derive before re-pinning.", err)
 	}
 }
 
