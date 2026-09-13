@@ -626,7 +626,7 @@ flow_restart_survival() {
 }
 
 # ── Flow 8: per-hash takedown on ONE operator only ──────────────────────────────
-# LOCAL_PROOF:./integration/takedown/run.sh
+# LOCAL_PROOF: ./integration/takedown/run.sh
 flow_takedown() {
   flow_evidence_nodes store-1 store-2
   # SELF-CONTAINED (2026-08-20 randomization): reuse a prior link if one exists,
@@ -667,7 +667,7 @@ flow_takedown() {
 }
 
 # ── Flow 9: cross-NAT — a natted node moves a file via the relay ────────────────
-# LOCAL_PROOF:./integration/nat/run.sh (EMULATED NAT; the real-middlebox cone/symmetric decision is the owned cloud residue)
+# LOCAL_PROOF: ./integration/nat/run.sh (EMULATED NAT; the real-middlebox cone/symmetric decision is the owned cloud residue)
 flow_cross_nat() {
   require_nodes "9-cross-nat" major nat-1 nat-2 || return
   client_preflight "9-cross-nat" major nat-1 nat-2 || return
@@ -964,7 +964,7 @@ ft_add_validator_evidence() {
 }
 
 # ── durability (#2): content OUTLIVES a permanent storage-node loss ─────────────
-# LOCAL_PROOF:./integration/durability/run.sh
+# LOCAL_PROOF: ./integration/durability/run.sh
 flow_durability_turnover() {
   require_nodes "durability-turnover" major store-1 store-2 fetch-1 || return
   client_preflight "durability-turnover" major fetch-1 store-2 || return
@@ -999,7 +999,7 @@ flow_durability_turnover() {
 }
 
 # ── chaos (#7): hard crash (SIGKILL) recovery + #69 reprovide over real VMs ──────
-# LOCAL_PROOF:./integration/chaos/run.sh
+# LOCAL_PROOF: ./integration/chaos/run.sh
 flow_chaos_crash() {
   require_nodes "chaos-crash" major store-1 store-2 || return
   # Capture the REGISTRY (val-a) + validator journals alongside store-1/store-2 on any
@@ -1062,7 +1062,7 @@ flow_chaos_crash() {
 }
 
 # ── client/UI (#4): the web-UI local-security guard (#89) over a real VM ─────────
-# LOCAL_PROOF:./integration/client/run.sh
+# LOCAL_PROOF: ./integration/client/run.sh
 flow_web_ui_guard() {
   require_nodes "web-ui" minor fetch-1 || return
   require_live  "web-ui" minor fetch-1 || return   # preempted node ⇒ GAP, not empty-code FAIL (H2)
