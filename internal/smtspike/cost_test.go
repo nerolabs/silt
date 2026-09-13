@@ -58,7 +58,7 @@ var costScales = []int{1_000, 10_000, 100_000, 1_000_000}
 //
 // Heavy by design — run it explicitly:
 //
-//	SILT_SMT_PROFILE=1 go test./internal/smtspike/ -run TestFloorBoxProfile -v -timeout 60m
+//	SILT_SMT_PROFILE=1 go test ./internal/smtspike/ -run TestFloorBoxProfile -v -timeout 60m
 //
 // Report the numbers from the 1 vCPU / 2 GB floor box, never from a dev laptop:
 // a laptop number is the shape, not the gate.

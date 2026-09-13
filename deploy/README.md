@@ -49,9 +49,14 @@ relay-via: <ID>@203.0.113.7:4002     # for NATed daemons' -relay-via
 
 Open TCP 4001 (swarm) and 4002 (relay) in the provider's firewall.
 
-Then follow [docs/cross-network-runbook.md](../docs/cross-network-runbook.md)
-to prove two NATed machines on different networks can publish and fetch
-through it.
+Point two NATed machines on different networks at it and confirm one can
+publish and the other can fetch. The automated form of the same proof is
+`integration/nat/run.sh`, which stands up two genuinely-NATed daemons and a
+relay in real container networks and drives publish, fetch, restart survival
+and hole-punch (cone punches through, symmetric falls back to the relay). CI
+gates it as `Integration — cross-NAT over a real relay (docker)` and
+`Integration — NAT hole-punch (cone punches, symmetric falls back)`. A VPS
+adds real routers, real NAT timeouts and a real WAN on top of that.
 
 ## Teardown
 

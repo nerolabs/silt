@@ -1,10 +1,9 @@
 package chain
 
-// C3 re-break — BREAK 1 (F1) regression gates, chain tier.
+// Pruned-forgery regression gates, chain tier.
 //
-// Source: the red-team probes core/chain/rt_c3_prune_test.go + rt_c3_prune_accept_test.go, archived at
-// The probes asserted the BREAK; these assert the CLOSE, on the identical
-// fixture, so the same scenario that measured the split now measures its absence.
+// These assert the CLOSE on the identical fixture the attack used, so the same
+// scenario that measured the split now measures its absence.
 //
 // THE MECHANISM (root cause, not the symptom). applyIssuerKeys called
 // pruneIssuerKeyCommit(b.Height) unconditionally, so a block carrying ZERO IssuerKeys still

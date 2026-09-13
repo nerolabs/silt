@@ -48,7 +48,7 @@ import (
 // SO READ THIS DISCLOSURE IN TWO LEGS. Leg one — "the runtime cover is not merge-blocking" —
 // RETIRES the moment the ruleset read-back shows six contexts. Leg two does not retire and is the
 // reason the marker stays: a green in THIS file means "the strings are present and in this order",
-// never "the mechanism is live". Locally, run `go test./e2e -run ConsensusConfig`.
+// never "the mechanism is live". Locally, run `go test ./e2e -run ConsensusConfig`.
 //
 // FOR A NEW FIELD ON A CONSENSUS TYPE, A READER IS NOT ENOUGH — the pin must require a non-test
 // WRITER. this gate is that requirement: it fails if genesis.Build stops being handed real

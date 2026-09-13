@@ -9,7 +9,7 @@ package credit
 //
 // THE ONE LOAD-BEARING INVARIANT. Escrow lives in the BALANCE economy: it moves
 // the credit unit between node balances and object reserves, and that is ALL it
-// does. No field here ever feeds Reputation (core/credit.go). The durability
+// does. No field here ever feeds Reputation (credit.go). The durability
 // budget confers ZERO consensus standing. If it did, the shared-content sealing
 // hole (γ→1/N) would re-open: one physical copy of an erasure-coded shard could
 // answer for N pledges and buy N nodes' standing. Standing is minted by the bond

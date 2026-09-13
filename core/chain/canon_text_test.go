@@ -283,6 +283,9 @@ func o3tShippedText(t *testing.T, root string) (lines []o3tLine, flat []o3tFlatF
 //	skip every file named run-all.sh 172 GREEN RED integration/run-all.sh
 //	drop integration/ from the skip switch 72 RED (not reached)
 //
+// The two website/ rows are no longer re-drivable: website/ left this repo, so that leg
+// has no file to remove. `.html` still carries weight through cmd/silt/ui/'s six pages.
+//
 // Read the first SIX rows as the finding: in every one of them the COUNT FLOOR IS GREEN and the
 // gate is red only because an anchor is missing. Rows 2-4 are this change's own subject matter —
 // the website/ skip and the.html and.yml extensions — and the floor notices none of them; row 4 is
@@ -600,8 +603,7 @@ func TestTheTextGatesActuallyUseTheFlattenedPass(t *testing.T) {
 // It used to read the objective-fork-choice row out of, pin it to, and THEN assert that the
 // three witnesses the row names exist. The ledger was deleted with the written record, so the
 // row half is gone. The WITNESS half is kept and is now the only enforcement of that linkage in
-// the tree: scripts/check_claims.py, which checked the same linkage in CI, was deleted with the
-// ledger it read. These three test names are the objective-fork-choice claim's backing; if one
+// the tree. These three test names are the objective-fork-choice claim's backing; if one
 // is renamed away, this goes RED.
 func TestForkChoiceLedgerWitnessesExist(t *testing.T) {
 	root := o3tRepoRoot(t)

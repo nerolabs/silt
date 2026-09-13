@@ -80,7 +80,7 @@ func TestProviderWalkSkipsCooledPeer(t *testing.T) {
 // (the churn dial-storm).
 func TestProviderDiversitySweepSkipsCooledPeer(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.DHTDomainCap = 2 // ENGAGE the diversity sweep — exactly what daemon.go/client.go do
+	cfg.DHTDomainCap = 2 // ENGAGE the diversity sweep — exactly what daemon.go and client.go do
 	searcher, deadID, deadDials, sched := walkDeadRig(t, cfg)
 
 	// The corpse is already negative-cached: a prior resolve timed out on it.

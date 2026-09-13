@@ -76,9 +76,8 @@ package chain
 // ────────────────────────────────────────────────────────────────────────────────────────
 //
 // The remedy — do inside anchoredPreSet what provenView.members already does — changes a
-// consensus-adjacent verification rule and is RESEARCH-GATED (.claude/CLAUDE.md, the research gate).
-// The research encodes a confirmed break; it does not fix one. So these land as PINNED_DEFECT
-// under: each asserts CURRENT BROKEN BEHAVIOUR, passes today, and REDDENS the moment the behaviour
+// consensus-adjacent verification rule, so it is not made here. These land as PINNED_DEFECT
+// instead: each asserts CURRENT BROKEN BEHAVIOUR, passes today, and REDDENS the moment the behaviour
 // moves — which forces the record to be updated rather than letting the defect close silently.
 // t.Skip is refused by that same decision; a skip is a dark test.
 //

@@ -1,7 +1,7 @@
 package demand
 
-// C3 re-break — demand/crypto-tier regression gates. Inversions of the red-team probes
-// core/demand/rt_c3b_demand_test.go, archived at
+// Demand and crypto-tier regression gates. Each keeps an attack verbatim and asserts
+// the CLOSE.
 
 import (
 	"crypto/ed25519"

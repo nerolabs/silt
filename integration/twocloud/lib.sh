@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lib.sh (two-cloud) — the UNIFIED substrate layer. Its ssh_node reads each node's
 # `cloud` field from nodes.json and routes to the right provider (GCP IAP SSH or AWS
-# SSM), so the SHARED../cloudtest/scenarios.sh runs UNCHANGED across a topology split
+# SSM), so the SHARED ../cloudtest/scenarios.sh runs UNCHANGED across a topology split
 # over two clouds — a flow whose two endpoints live on different providers never knows.
 # This router is the one genuinely-new piece of the two-cloud harness; the flows,
 # result recording, and per-cloud Terraform are all reused.
@@ -92,7 +92,7 @@ restore_argv() { # restore_argv NAME — reset ExecStart to the baked argv.
   ssh_node "$name" 'sudo sed -i "s#^ExecStart=.*#ExecStart=/usr/local/bin/silt $(cat /etc/silt/argv)#" /etc/systemd/system/silt.service && sudo systemctl daemon-reload && sudo systemctl restart silt.service'
 }
 
-# ── result recording (feeds../cloudtest/gen_report.sh) — SUBSTRATE-AGNOSTIC ─────
+# ── result recording (feeds ../cloudtest/gen_report.sh) — SUBSTRATE-AGNOSTIC ─────
 _json_str() { python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$1"; }
 record() { # record FLOW VERDICT SEVERITY DETAIL [ELAPSED_S]
   local flow="$1" verdict="$2" sev="$3" detail="$4" elapsed="${5:-}"

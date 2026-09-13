@@ -24,7 +24,7 @@ import (
 // network for many heights in-process and logs resident-heap + per-node state
 // growth per height. Run with a heap profile to attribute the dominant alloc:
 //
-//	SILT_OOM_DIAG=1 SILT_OOM_HEIGHTS=300 go test./sim/ -run TestConsensusMemoryGrowth -memprofile /tmp/heap.out -v
+//	SILT_OOM_DIAG=1 SILT_OOM_HEIGHTS=300 go test ./sim/ -run TestConsensusMemoryGrowth -memprofile /tmp/heap.out -v
 //	go tool pprof -inuse_space -top /tmp/heap.out
 //
 // If HeapInuse grows ~linearly with height, a per-height/per-block structure
