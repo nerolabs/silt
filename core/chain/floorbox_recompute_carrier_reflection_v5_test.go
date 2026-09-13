@@ -74,9 +74,14 @@ import (
 // `r12CoverageTable` (the value/predicate carriers) — `declaredCarrierCoverage` fails if a type
 // appears in both, so ownership of a carrier is never ambiguous.
 //
-// Every row here is `already-anchored` with a SPECIFIC anchor named. That is the point: a new field
-// on one of these carriers cannot be waved through, because adding the row forces the author to
-// state which anchor covers it — or to classify it FIX and build a driven gate (the R1.2 pattern).
+// Every row here names a SPECIFIC anchor or a specific open break. That is the point: a new field on
+// one of these carriers cannot be waved through, because adding the row forces the author to state
+// which anchor covers it — or to classify it FIX and build a driven gate (the R1.2 pattern).
+//
+// Rows were all `already-anchored` until 2026-09-13, when StateRootDigestWitness.PreIDs was
+// reclassified FIX-OPEN: a confirmed wrong-accept whose remedy is research-gated. Read that row's
+// comment before adding another FIX-OPEN here — it records which count gate does and does not see
+// this table, and why that is an open owner call rather than a fix.
 var foldInputCoverageTable = map[string]map[string]r12Disposition{
 	// ---- the top-level bundle: each slot's SET-COMPLETENESS is payload-derived, never witness-chosen ----
 	"StateRootWitness": {
@@ -105,9 +110,40 @@ var foldInputCoverageTable = map[string]map[string]r12Disposition{
 	},
 	// ---- class S: the whole-set digest pre-set carrier ----
 	"StateRootDigestWitness": {
-		"Tag":    {"already-anchored", "derived-key: the touched-digest tag set is derived from the payload; a witness for a non-derived tag is ignored"},
-		"PreIDs": {"already-anchored", "completeness-anchored: nodeSetMTH(PreIDs) must equal the committed pre-digest, which is itself the FoldOp OldValue verified against prevStateRoot; a short or padded id-list stalls"},
-		"Proof":  {"already-anchored", "the digest leaf inclusion proof, routed as the FoldOp OldValue and verified against prevStateRoot (R-anchor-prevroot)"},
+		"Tag": {"already-anchored", "derived-key: the touched-digest tag set is derived from the payload; a witness for a non-derived tag is ignored"},
+		// ⚠ PreIDs WAS CLASSIFIED already-anchored AND THAT CLAIM IS FALSIFIED. It held only for a tag
+		// whose digestFoldOp is actually emitted. anchoredPreSet
+		// (floorbox_recompute_stateroot_slash_v5.go) computes no nodeSetMTH, Resolves nothing, and
+		// takes no prevStateRoot; the anchoring is a SIDE EFFECT of a later digestFoldOp, and
+		// FoldChangedPaths verifies only the ops it is handed. Four reads emit no such op — class B
+		// slashedRoot (never), class B bonded/qualifiedRoot (when membership is unchanged, which the
+		// forgery itself arranges), class P qualifiedRoot, class A validatorsSeenRoot (when post ==
+		// pre). For those, "a short or padded id-list stalls" is FALSE: it is consumed as attacker data.
+		//
+		// The row is therefore RECLASSIFIED to the table's own machine-readable term for exactly this
+		// case, FIX-OPEN — "a confirmed wrong-accept awaiting an anchoring fix"
+		// (floorbox_recompute_adversarialroot_v5_test.go). A correction written only in a comment
+		// beside a machine-read value is not a correction: until this edit, every walk over this table
+		// still read `already-anchored` for a row this finding proves false
+		// (scar:a-claim-about-a-gate-is-itself-a-claim).
+		//
+		// ⚠ WHAT THE FIX-OPEN LABEL DOES **NOT** BUY, STATED PLAINLY. The "expected 0 FIX-OPEN rows"
+		// assertion in TestAdversarialRootCoverageIsComplete walks `r12CoverageTable` ONLY, not the
+		// merged set that declaredCarrierCoverage builds. StateRootDigestWitness lives in THIS table,
+		// so that count gate does not see this row and stays GREEN. That is deliberate, not an
+		// oversight: widening the walk would put a permanently RED gate on main for as long as the
+		// research gate holds the remedy, which is a scope and sequencing call against the era-4
+		// freeze train — the owner's, not a seat's. It is OPEN. An honest label with a deferred gate
+		// is the interim; a silently-green gate with a label pretending otherwise is not.
+		//
+		// EVIDENCE: rt_anchor_preset_gates_test.go, RT-ANCHOR-0..6 (PINNED_DEFECT) + the census at its
+		// head. Re-derive both before restoring this row to already-anchored.
+		"PreIDs": {"FIX-OPEN", "CONFIRMED WRONG-ACCEPT, remedy RESEARCH-GATED. Open-break gates: RT-ANCHOR-0..6 in rt_anchor_preset_gates_test.go (PINNED_DEFECT) — TestRTAnchor_A0_AnchoredPreSetDoesNotAnchor_PINNED_DEFECT and the five class gates. anchoredPreSet neither Resolves the digest leaf nor computes nodeSetMTH(PreIDs), so on any tag whose digestFoldOp is never emitted the id-list is consumed as attacker data. Containment: the R1.8 downgrade in (*Box).Validate. NOT counted by the 0-FIX-OPEN walk, which reads r12CoverageTable only — see the comment above"},
+		// Proof rests on the SAME conditional: digestFoldOp routes w.Proof into the op it emits, so on
+		// an unemitted tag the proof is never verified either. It is deliberately NOT reclassified
+		// here — the ruling's required fix names the PreIDs row, and widening a record beyond the
+		// reviewed finding is how a correction becomes a claim of its own.
+		"Proof": {"already-anchored", "the digest leaf inclusion proof, routed as the FoldOp OldValue and verified against prevStateRoot (R-anchor-prevroot)"},
 	},
 	// ---- class T: the TTL-sweep accelerator carrier ----
 	"StateRootTTLWitness": {
