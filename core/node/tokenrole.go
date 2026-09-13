@@ -94,7 +94,7 @@ var (
 	errCreditRefused = errors.New("node: attached publish credit is invalid or already spent")
 
 	// ErrDemandEpochMismatch refuses a demand-token reply signed for an epoch
-	// the withdrawal did not name ((b1)). The issue epoch is inside the
+	// the withdrawal did not name. The issue epoch is inside the
 	// blind-signed message, so such a signature unblinds to nothing redeemable
 	// — failing here makes an issuer's attempt to hand a cohort a different
 	// key a DENIAL the fetcher sees, not a tagged token it discovers is
@@ -237,7 +237,7 @@ func (n *Node) tokenChargeFor(from ports.NodeID, credit *ports.PublishCredit) (f
 	if n.tokenIssuer == nil {
 		return nil, errNoTokenIssuer // no key to verify the credit against — fail closed
 	}
-	if len(credit.Serial) == 0 || !blindtoken.VerifyCredit(n.tokenIssuer.Public(), credit.Serial, credit.Sig) {
+	if len(credit.Serial) == 0 || !blindtoken.VerifyCredit(n.tokenIssuer.Public(), n.chainID(), credit.Serial, credit.Sig) {
 		return nil, errCreditRefused // a credit was presented but does not verify
 	}
 	if n.creditStore != nil && !n.creditLoaded {
@@ -390,7 +390,7 @@ func (n *Node) AcquireCredits(rng io.Reader, v ports.NodeID, count int,
 			done(nil, err)
 			return
 		}
-		blinded, secret, err := blindtoken.BlindCredit(rng, pub, serial)
+		blinded, secret, err := blindtoken.BlindCredit(rng, pub, n.chainID(), serial)
 		if err != nil {
 			done(nil, err)
 			return
@@ -401,7 +401,7 @@ func (n *Node) AcquireCredits(rng io.Reader, v ports.NodeID, count int,
 					// RFC 9474 §4.4 Finalize: a credit that does not
 					// verify under the issuer's own key is dropped here, not carried
 					// forward as a credit that fails at spend time.
-					if sig, uerr := blindtoken.UnblindCredit(pub, serial, resp.Data, secret); uerr == nil {
+					if sig, uerr := blindtoken.UnblindCredit(pub, n.chainID(), serial, resp.Data, secret); uerr == nil {
 						credits = append(credits, ports.PublishCredit{Serial: serial, Sig: sig})
 					}
 				}

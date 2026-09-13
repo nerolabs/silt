@@ -55,8 +55,8 @@ func TestGuardLifetimeMatchesDemandKeysetLifetime(t *testing.T) {
 	}
 	// One token withdrawn at epoch 0, one guard entry recorded for it at epoch 0.
 	serial, _ := blindtoken.NewSerial(rand.Reader)
-	blinded, secret, _ := demand.Withdraw(rand.Reader, &key.PublicKey, 0, serial)
-	tok, uerr := demand.Unblind(&key.PublicKey, 0, serial, demand.SignWithdrawal(rand.Reader, key, blinded), secret)
+	blinded, secret, _ := demand.Withdraw(rand.Reader, &key.PublicKey, creditTestChainID, 0, serial)
+	tok, uerr := demand.Unblind(&key.PublicKey, creditTestChainID, 0, serial, demand.SignWithdrawal(rand.Reader, key, creditTestChainID, blinded), secret)
 	if uerr != nil {
 		t.Fatal(uerr)
 	}
@@ -79,7 +79,7 @@ func TestGuardLifetimeMatchesDemandKeysetLifetime(t *testing.T) {
 			ks.Put(e, &key.PublicKey)
 		}
 		ks.Prune(cur)
-		_, upstreamAccepts := ks.VerifyInWindow(cur, tok)
+		_, upstreamAccepts := ks.VerifyInWindow(creditTestChainID, cur, tok)
 
 		// Force the guard to run its sweep at this epoch, then ask whether it still
 		// remembers the serial. reservePaidSerial only sweeps at the cap, so drive
@@ -97,7 +97,7 @@ func TestGuardLifetimeMatchesDemandKeysetLifetime(t *testing.T) {
 		if !guardRemembers {
 			// Past the boundary: a second server presenting the same token must be
 			// refused UPSTREAM, before it ever reaches the ledger.
-			if _, ok := ks.VerifyInWindow(cur, tok); ok {
+			if _, ok := ks.VerifyInWindow(creditTestChainID, cur, tok); ok {
 				t.Fatalf("epoch %d: the token still verifies after the guard forgot it", cur)
 			}
 			_ = srvB
