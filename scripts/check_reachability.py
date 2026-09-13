@@ -100,7 +100,7 @@ WHAT AN ENTRY ASSERTS (scripts/reachability_lanes.txt)
       the label says THIS SYMBOL is unreachable  ==  the symbol is absent
 
   The label's claim is the PAIR: the phrase "cannot be exercised" AND the symbol's own
-  name, both inside the lane's posture line in docs/release-checklist.md. So:
+  name, both inside the lane's posture line in scripts/reachability_postures.md. So:
     ABSENT + label says so, naming it   -> pass  (an honest lane).
     ABSENT + any other label            -> FAIL  (the over-claim this gate exists for).
     PRESENT + no such claim about it    -> pass.
@@ -123,7 +123,7 @@ EVERY ENTRY CARRIES A WRITTEN REASON, AND EVERY REASON HAS A MECHANICAL COMPANIO
   `claim` is checked by resolving `label` in the checklist, and `substantial` is checked
   against the compiler's inline verdict. A record missing either field FAILS.
 
-SCOPE — deliberately small. This gate covers LANES THE RELEASE CHECKLIST MAKES A PUBLIC
+SCOPE — deliberately small. This gate covers LANES THE POSTURE FILE MAKES A PUBLIC
 CLAIM ABOUT. It is not a sweep of exported symbols: the floor-box keystone is inert by
 ratified owner direction (D-RECOMPUTE-FREEZE) and would drown the signal. Adding a lane
 is adding a record.
@@ -150,7 +150,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SCAR_ID = "scar:mechanism-shipped-inert-2026-09-10"
 
 LANES_FILE = ROOT / "scripts" / "reachability_lanes.txt"
-CHECKLIST = ROOT / "docs" / "release-checklist.md"
+CHECKLIST = ROOT / "scripts" / "reachability_postures.md"
 MAIN_PKG = "./cmd/silt"
 
 REQUIRED_FIELDS = ("lane", "symbol", "label", "claim", "substantial")

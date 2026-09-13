@@ -93,68 +93,20 @@ func o3tRepoRoot(t *testing.T) string {
 	return root
 }
 
-// o3tI5Block returns the I5 section of consensus-invariants.md: from the `## I5` heading to the
-// next `---` rule.
-func o3tI5Block(t *testing.T, doc string) string {
-	t.Helper()
-	i := strings.Index(doc, "\n## I5 ")
-	if i < 0 {
-		t.Fatal("SOURCE GATE: no `## I5 ` heading in docs/design/consensus-invariants.md")
-	}
-	rest := doc[i+1:]
-	j := strings.Index(rest, "\n---")
-	if j < 0 {
-		t.Fatal("SOURCE GATE: I5 block is not terminated by a `---` rule")
-	}
-	return rest[:j]
-}
-
-// TestO3T_CanonI5TextMatchesCertification is gate (d), parts 1-5.
-func TestO3T_CanonI5TextMatchesCertification(t *testing.T) {
-	root := o3tRepoRoot(t)
-	raw, err := os.ReadFile(filepath.Join(root, "docs", "design", "consensus-invariants.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	doc := string(raw)
-	i5 := o3tI5Block(t, doc)
-
-	var missing []string
-	for _, s := range o3tI5StatementSentences {
-		if !strings.Contains(i5, s) {
-			missing = append(missing, "Statement: "+s)
-		}
-	}
-	for _, s := range o3tI5AssertSentences {
-		if !strings.Contains(i5, s) {
-			missing = append(missing, "Assert: "+s)
-		}
-	}
-	if !strings.Contains(i5, o3tI5AccountableSafetyVerbatim) {
-		missing = append(missing, "Assert (accountable-safety half, must be VERBATIM): "+o3tI5AccountableSafetyVerbatim[:80]+"…")
-	}
-	if !strings.Contains(i5, o3tR06ScarLineVerbatim) {
-		missing = append(missing, "Scar R0.6 (must be UNCHANGED, cert §3.5): "+o3tR06ScarLineVerbatim[:80]+"…")
-	}
-	if !strings.Contains(i5, o3t357ScarRewordKey) {
-		missing = append(missing, "Scar #357 re-word (cert §3.4): "+o3t357ScarRewordKey)
-	}
-	if !strings.Contains(i5, "`heavier` (height → head-hash)") {
-		missing = append(missing, "Governs: `heavier` (height → head-hash)")
-	}
-	if strings.Contains(i5, "weight → height → hash") {
-		missing = append(missing, "Statement still names the retired order `weight → height → hash`")
-	}
-	for _, row := range o3tClosureRows {
-		if !strings.Contains(doc, row) {
-			missing = append(missing, "closure table row (cert §6): "+row)
-		}
-	}
-	if len(missing) > 0 {
-		t.Fatalf("SOURCE GATE: docs/design/consensus-invariants.md I5 block does not carry the O3 Direction T canon text "+
-			"(%d item(s) missing or wrong):\n  %s\n\n  Source of truth: the research cert §3.2-§3.6 and §6.", len(missing), strings.Join(missing, "\n  "))
-	}
-}
+// RETIRED WITH THE WRITTEN RECORD. `TestO3T_CanonI5TextMatchesCertification` and its
+// `o3tI5Block` helper pinned the I5 Statement/Assert/scar text of
+// docs/design/consensus-invariants.md against the O3 Direction T research certification.
+// That document was deleted, so the gate has no subject left to read. It is retired here
+// rather than repointed, because no surviving file carries the text.
+//
+// WHAT IS LOST, stated rather than dropped silently: the certified I5 wording is no longer
+// pinned anywhere, so a future restatement of fork-choice cannot be checked against the cert.
+// WHAT SURVIVES: the RUNTIME gates named in this file's header —
+// TestO3T_CertificateVariantNeverRanksHeavier, TestO3T_HeavierReadsOnlyHeightAndHeadHash,
+// TestO3T_VerifierInventoryPin and TestModelCheck_I5_CrossHeightPrunedExtension_{Era1,Era2}
+// — which assert the BEHAVIOUR the retired text described. The sentence constants above are
+// kept as the record of what was certified, and the banned-literal walks below still refuse
+// the retired `weight → height → hash` claim anywhere in surviving shipped text.
 
 // o3tShippedText walks the SHIPPED PROSE of the whole repository and hands back (relative path,
 // line number, line) for every line, PLUS a whitespace-flattened form of each file for the
@@ -348,19 +300,19 @@ var o3tWalkAnchors = []struct{ Rel, Why string }{
 			"so the claim sat in README.md for months with a gate in the tree that looked like it covered it"},
 	{"integration/run-all.sh",
 		"integration/ (101 of the 173 walked files at 75c0f89) AND the .sh extension"},
-	{"docs/threat-model.md",
-		"docs/ (43 of 173). Measured: dropping docs/ leaves the count at 130, above the floor, " +
-			"and neither original anchor was under docs/ — so the entire ratification-gated repair " +
-			"set outside the front page could leave the walk with every leg still green"},
+	{"docs/TENETS.md",
+		"docs/ — the area anchor. It was docs/threat-model.md until the written record was " +
+			"deleted; docs/ now holds only TENETS.md and VISION.md, so the anchor moved to the " +
+			"survivor rather than being retired. The area still needs one: dropping docs/ leaves " +
+			"the count above the floor, so the count alone cannot see the loss"},
 	{"integration/consensus/docker-compose.yml",
 		"the .yml extension, which is not decoration: this exact file carried a banned literal at " +
 			"75c0f89 that the .md/.sh-only walk was structurally incapable of reaching"},
-	{"website/index.html",
-		"the .html extension AND the website/ directory, both admitted by this change. Until " +
-			"2026-09-12 website/ was skipped wholesale on a reason that was FALSE for three of " +
-			"its six pages, and this file carried the retired claim on silt's public front page " +
-			"while every gate in the tree stayed green. If the blanket skip ever comes back, this " +
-			"anchor is what says so"},
+	{"cmd/silt/ui/index.html",
+		"the .html extension. This was website/index.html until the website/ tree was deleted " +
+			"with the written record; the extension still has six walked files, all product UI " +
+			"pages under cmd/silt/ui/, so the extension anchor moved to one of them rather than " +
+			"being retired. Dropping .html from the filter must still go RED somewhere"},
 }
 
 type o3tLine struct {
@@ -758,26 +710,19 @@ func TestO3T_TheTextGatesActuallyUseTheFlattenedPass(t *testing.T) {
 	}
 }
 
-// TestO3T_ClaimsLedgerForkChoiceRowMatchesCertification is gate (d) part 7.
-func TestO3T_ClaimsLedgerForkChoiceRowMatchesCertification(t *testing.T) {
+// TestO3T_ForkChoiceLedgerWitnessesExist is what survives of gate (d) part 7.
+//
+// It used to read the objective-fork-choice row out of docs/design/claims-ledger.md, pin it to
+// the research cert §7, and THEN assert that the three witnesses the row names exist. The ledger
+// was deleted with the written record, so the row half is gone. The WITNESS half is kept and is
+// now the only enforcement of that linkage in the tree: scripts/check_claims.py, which checked
+// the same linkage in CI, was deleted with the ledger it read. These three test names are the
+// objective-fork-choice claim's backing; if one is renamed away, this goes RED.
+func TestO3T_ForkChoiceLedgerWitnessesExist(t *testing.T) {
 	root := o3tRepoRoot(t)
-	raw, err := os.ReadFile(filepath.Join(root, "docs", "design", "claims-ledger.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	doc := string(raw)
-	if strings.Contains(doc, o3tLedgerRow47Old) {
-		t.Fatalf("SOURCE GATE: docs/design/claims-ledger.md still carries the pre-T row %q — it names a mechanism "+
-			"false since 2026-08-16 and a legacy-config unit fixture as an objective witness (cert §7).", o3tLedgerRow47Old)
-	}
-	if !strings.Contains(doc, o3tLedgerRow47) {
-		t.Fatalf("SOURCE GATE: docs/design/claims-ledger.md does not carry the cert §7 row verbatim:\n  %s", o3tLedgerRow47)
-	}
-	// The three witnesses in the row must exist in this tree (scripts/check_claims.py enforces the
-	// same in CI; asserting here keeps the gate self-contained).
 	for _, name := range []string{"TestObjectiveConsensusCommitsOverTCP", "TestRedteamF6_ObjectiveForkChoiceConvergesByCatchUp", "TestModelCheck_357_NoReorgOfFinalizedLaunchBlock"} {
 		if !o3tTestFuncExists(t, root, name) {
-			t.Fatalf("SOURCE GATE: ledger witness %s does not exist as a `func %s(` in any *_test.go", name, name)
+			t.Fatalf("SOURCE GATE: fork-choice witness %s does not exist as a `func %s(` in any *_test.go", name, name)
 		}
 	}
 }

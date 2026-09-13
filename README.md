@@ -1,182 +1,191 @@
-# Silt
+# silt
 
-A content-addressed, erasure-coded, distributed file store — built as a
-real product from day one, simulated in-process until it needs real
-sockets. The finished system we are building toward is
-[`docs/VISION.md`](docs/VISION.md); the design canon is
-[`docs/TENETS.md`](docs/TENETS.md) and the path to V1 is
-[`ROADMAP.md`](ROADMAP.md); `docs/math/` has friendly explanations of the
-math, and the current M0 security spec is
-[`docs/design/m0.md`](docs/design/m0.md). Superseded history lives under
-[`/archive/`](archive/).
+A content-addressed, erasure-coded storage and distribution network.
 
-> **Early & experimental — 0.x, unaudited.** Silt is published to get
-> technical feedback, not to be trusted with data you can't afford to
-> lose. Please read the **[threat model](docs/threat-model.md)** — it
-> names the weak parts on purpose — and help us break it.
+> **Early and experimental — 0.x, unaudited.** silt is published to get technical
+> feedback, not to be trusted with data you cannot afford to lose.
 
-**▶ [Build your own Silt test network on your own computer](docs/local-test-network.md)** —
-a hands-on, end-to-end walkthrough: run the whole swarm in one command, then
-stand up a real multi-node network on your laptop, publish a file, and watch it
-survive a node death.
+## What silt is
 
-## Status: storage plane field-proven; trust plane mechanism built, review pending
+silt is **two planes on one substrate**: a *storage plane* (content-addressed,
+erasure-coded, peer-served chunks with NAT traversal) and a *trust plane*
+(consensus-secured registry, reputation, and revocation). The storage plane stands
+alone and is the default; the trust plane is opt-in and secures governance.
 
-silt has two planes. The **storage plane** — content-addressed,
-erasure-coded, peer-served chunks with NAT traversal — is
-**sim-proven at scale, field-proven cross-network at small scale**:
-bit-perfect retrieval under churn and the silent-loss failure shapes
-fixed (#46/#60/#64) — proven at scale in the deterministic in-process
-simulation; and cross-network publish/fetch proven through cone NAT via
-TCP hole-punching on a real Docker multi-container harness in CI. A warm
-multi-region cloud run has not yet graded a full suite end-to-end. The
-**trust plane** — consensus-secured registry, reputation,
-and revocation — is where M0 lives. M0's Sybil-resistance is a **systemic
-composition held in tension**, not a single Sybil-proof primitive (no such
-primitive can exist under free identity + no permanent center — that's Douceur).
-The claim is **C1 — no discount** (earning a fraction *q* of consensus standing
-costs ≈ *q* × the real resource an honest provider pays: disk × address-diversity
-× time × served-demand) **plus C2 — no quiet capture** (honest standing can't
-silently concentrate past the capture threshold). The parts that make each axis
-real are built and internally hardened (Gate 4): a verify-without-fetch
-proof-of-retrieval, an identity-bound proof-of-**space-time** bond over a proven
-depth-robust graph, objective, bond-weighted commit admission — a block
-commits only on an intersecting super-quorum of a validator set the
-chain itself sizes (a strict anchor majority at launch, >⅔ of the
-epoch's frozen on-chain bond once standing is earned), so a sub-quorum
-partition commits nothing, stalls, and catches up to the majority's
-history on heal rather than reorging onto it,
-publisher-unlinkable publishing (ephemeral identity +
-prepaid blind-signed credits), and per-operator, existence-checked, reversible
-takedowns — covered at the unit, in-process-simulation, and real-daemon end-to-end
-tiers. What they are **not** yet: **externally re-verified.** A primitive failing a
-standalone "is-it-Sybil-proof?" test is *expected* (Douceur), not an M0 failure;
-M0 is *held* only when a fresh external red-team finds no discount (¬C1), no quiet
-capture (¬C2), and no broken composition seam. That pass (plus an operator
-acceptance round) is still ahead. M0 ships proven or it does not ship.
+Neither plane is the product. silt is the **substrate** other things are built on.
 
-The 0.x releases are **experimental learning releases**, not steps to
-V1: the cadence is learning phase → feature-complete = 0.9.0 (RC line)
-→ 1.0.0 = V1, field-proven multi-machine. The build so far grew through
-a series of learning-phase milestones (the chunk/erasure/DHT/repair
-core, real TCP transport, daemon mode, capacity pledging, identity/TLS,
-encrypted manifests and care links, the reputation-quorum chain, the
-web UI and desktop client) — that history and its marker system live in
-[`docs/buildlog/`](docs/buildlog/). silt has **not** had an independent
-security review — the [threat model](docs/threat-model.md) is the
-honest account of what's weak.
+Three properties shape everything else:
 
-Where this is all going: [`ROADMAP.md`](ROADMAP.md) — the Boulder spine is the
-single source of truth for the task order. The resolver layer that maps
-meaning onto opaque identifiers is a deliberately separate product:
-[`docs/aslan-boundary.md`](docs/aslan-boundary.md).
+- **The link is the primitive.** A `silt:` link is the whole product surface: a
+  content-addressed identity plus the key to read it. Durability, placement, and
+  repair are the network's job, not the holder's.
+- **Capabilities, not infrastructure.** Store, relay, registry, validate, caretake
+  are capabilities *any node can offer*, never special nodes baked into the binary.
+  No node is permanently load-bearing.
+- **The naming boundary.** silt core resolves *hashes*, never *names*. Turning an
+  opaque root into human meaning — names, descriptions, curation — is a separate
+  resolver layer, and core carries zero meaning. A link guarantees the bytes it
+  names; trusting a *name* means trusting whatever resolver you asked.
 
-**Economy status, in one sentence:** the economy is built and running in shadow; payout is
-opt-in until the delivery price lands. `-economy` defaults OFF, so every node fills object
-escrows from serve revenue but disburses no bounty until its operator opts in, and the
-dashboard reports `bountyOn: false` until then. The default flip is R2.4 in `ROADMAP.md`,
-sequenced after the delivery lane (R2.14 → R2.9) is priced, because paying the flat lane
-today would read to an edge node as a ~99.9% pay cut on a 64 MiB object.
+silt is use-agnostic. Core carries zero meaning and takes zero position on use.
 
-## Try it
+## What silt promises
 
-The guided version of everything below — with what to look for at each
-step — is [`docs/v1-test.md`](docs/v1-test.md).
+silt exists to **hold the privacy × accountability × Sybil trilemma** — to refuse to
+trade any corner away. Every prior system in this space picks two corners and
+surrenders the third.
 
-```sh
-go build -o silt ./cmd/silt
+- **Privacy.** Publishing is unlinkable to a durable identity. silt refuses to
+  surveil who fetches what, pursuing access-privacy to the metadata-layer limit the
+  anonymity trilemma allows — not an absolute blob-layer guarantee. A serving node
+  necessarily sees what it serves and to whom, for as long as serving requires;
+  silt records nothing beyond that, and nothing of it leaves the node.
+- **Accountability.** Genuinely harmful content can be removed by acting on a
+  **hash**, never on an identity and never through a global switch. Takedown is
+  pluralistic, curators are themselves accountable, and every honored removal is
+  committed to an append-only transparency log with inclusion and consistency
+  proofs.
+- **Sybil-resistance.** Standing cannot be cheaply forged. Identity is free and
+  pseudonymous; *influence* costs sustained, challenged, real work — and the
+  publishing act stays cryptographically unlinkable from the bonded identity that
+  did the work.
 
-./silt add somefile.pdf            # prints a silt: link (silt:v1:<root>:<key>)
-./silt ls                          # registry contents
-./silt info <silt-link>            # stripe map: every shard, its stripe, its presence
-./silt get <silt-link> -o restored.pdf  # full verify-everything retrieval
-./silt add secret.txt -mode private  # random key, no dedup, no confirmation attack
-./silt add big.iso -k 4 -n 7       # custom erasure geometry
+This is **hold**, not **resolve**. It is not a claim to have solved a research
+problem all at once. It is a refusal to trade a corner away, and a design in which
+the corners co-mature: privacy is architectural from day one, accountability is
+content-level and reactive from day one, and Sybil-resistance is the corner that
+bootstraps — weakest on a young network, strengthening as real, sustained work
+accrues.
 
-# the network, simulated: 100 nodes, 3% packet loss, 8 nodes killed
-./silt sim run scatter -nodes 100 -loss 0.03 -kill 8 -seed 7
+### The bet, stated plainly
 
-# the money demo: watch repair outrun two waves of node death
-./silt sim run churn -seed 11
+Decouple the cost of *creating* an identity from the cost of *having standing*.
 
-# the economy: hosts earn per byte served; freeloaders go broke
-./silt sim run economy -seed 21
+No single mechanism can prevent Sybils under free identity minting with no permanent
+center; that is a settled impossibility. The guarantee lives in the composition.
+Each part denies one economy of scale a Sybil relies on — a size-bound bond, unique
+sealed content, witnessed unlinkable demand receipts, address and AS diversity,
+retention decay — so that every shortcut on one axis trips another axis's check. The
+target is that forging N standings costs N× of every non-substitutable resource,
+which is exactly what honest provision costs.
 
-# storage audits: liars keep the proof, ditch the data, get caught
-./silt sim run audit -seed 31
+**This multiplicative interlock is the target, not yet the operative guarantee.**
+Today consensus standing is gated by the bond axis alone. The other axes are
+designed and staged, not fully wired.
 
-# the same core over real TCP sockets on localhost
-./silt net demo -nodes 8
-```
+### How you would know
 
-## Run a real swarm (separate processes)
+silt is finished when an external red-team — a party other than the author — runs the
+adversarial suite and denies all three failure modes: no publish-to-identity linkage,
+no identity-level or global takedown, and no Sybil-farmed standing at a discount.
+That answer belongs to an outsider, not to the builder.
 
-The full, tested, step-by-step walkthrough — several daemons, a published
-file, and a node death it survives — lives in
-[**docs/local-test-network.md**](docs/local-test-network.md). The short
-version:
+## Design posture
 
-```sh
-# terminal 1: seed daemon — hosts the registry and a web UI
-./silt daemon -listen 127.0.0.1:7101 -serve-registry 127.0.0.1:7100 \
-              -store d1 -ui 127.0.0.1:8081 -capacity 2G
-# it prints two lines to COPY VERBATIM:
-#   registry: serving <ID>@https://127.0.0.1:7100   ← the registry ref
-#   peer:     <ID>@127.0.0.1:7101                    ← the bootstrap string
+- **Consensus is boring, by policy.** The novelty budget is spent entirely on the
+  Sybil composition. The consensus layer is literature-faithful BFT, hardened, not
+  reinvented. Admission is
+  objective, bond-weighted commit admission — a block
+  commits only on an intersecting super-quorum of a validator set the
+  chain itself sizes (a strict anchor majority at launch, >⅔ of the
+  epoch's frozen on-chain bond once standing is earned), so a sub-quorum
+  partition commits nothing, stalls, and catches up to the majority's
+  history on heal rather than reorging onto it.
+  A validator never signs twice at a height, and that memory survives
+  restart. The validator set changes only at finalized boundaries. Commit and final
+  are distinct. Fork-choice is a deterministic total order, and every safety
+  violation is attributable — an honest node is never slashed.
+- **Storage is tiered.** *Archival* nodes retain all history to genesis. *Pruning*
+  nodes keep a rolling retention horizon. *Edge* nodes serve content and relay
+  bandwidth without carrying validation weight. The registry's validity-relevant
+  state is committed each block under a state root, so a validator on a small box
+  validates by checking transitions against witnesses instead of holding the tree.
+- **The economy prices value and never mints a subsidy.** Bandwidth earns
+  balance-lane credit that can never become standing. A delivery receipt mints no
+  credit. Repair bounties are funded only from an object's own escrow, never from a
+  network mint.
+- **Durability is the default, not a hardening pass.** Every network path assumes
+  the adverse internet — jitter, loss, reordering — as the everyday case. Security
+  never rests on a wall-clock number an adversary's own path can move.
 
-# terminals 2..n: more daemons
-./silt daemon -listen 127.0.0.1:7102 -store d2 -ui 127.0.0.1:8082 -capacity 2G \
-  -bootstrap <ID>@127.0.0.1:7101 -registry <ID>@https://127.0.0.1:7100
+It runs on a hobbyist's ~1 vCPU / 2 GB box. Cheap honest participation is treated as
+a security property, not a courtesy.
 
-# publish from anywhere: an ephemeral client joins, scatters, leaves
-./silt swarm add movie.mp4 -peers <ID>@127.0.0.1:7101 -registry <ID>@https://127.0.0.1:7100
+## Build
 
-# retrieve from anywhere (kill a daemon first, for sport)
-./silt swarm get <silt-link> -o out.mp4 -peers <ID>@127.0.0.1:7101 -registry <ID>@https://127.0.0.1:7100
-```
-
-The registry is served over **key-pinned HTTPS**, so its reference is
-`<ID>@https://host:port` — copy the exact `registry:` line the daemon
-prints; plain `http://` or bare `https://` will fail. Daemons use real
-disk stores and survive restarts (they re-announce what they hold). The
-`-serve-registry` "single honest instance" is the seam a chain replaces
-someday.
-
-Chunks land in `.silt/objects/<xx>/<hash>` — sharded one level deep by a
-2-hex prefix, each file named by its SHA-256. Add the same file twice in
-**convergent mode** (`-mode convergent`) and you get the same root with zero
-new bytes stored; the **default is `-mode private`** (a random per-file key —
-privacy-by-default, no cross-file dedup, no guessed-plaintext confirmation
-attack, H6). Delete or corrupt up to n−k shards per stripe (default: any 6 of
-16) and `get` silently reconstructs them from parity; one loss beyond that
-and it names the dead stripe and refuses.
-
-## Layout
-
-```
-ports/       all cross-component interfaces + shared primitives
-core/        pure logic: chunking, crypto, erasure, manifests/Merkle,
-             pipeline, registry, dht (Kademlia), node behavior
-adapters/    the effects: memstore, diskstore, fileregistry,
-             simclock (deterministic scheduler), simnet (latency/loss/partitions)
-sim/         the harness: clusters, scenarios, stats
-cmd/         CLI
-internal/depcheck  the architecture rule as a failing test
-docs/math/   the math, explained for humans
-```
-
-The sim runs on a single-threaded event scheduler — no goroutines, no
-wall clock, every random draw seeded — so any run reproduces exactly
-from its seed. Failing scenarios print the seed that kills them.
-
-Core packages import no adapters, no `os`/`net`/`time`/ambient
-randomness — enforced by `go test ./internal/depcheck`. Every effect
-arrives through an interface in `ports`, which is what makes the
-network simulation deterministic and seed-replayable.
-
-## Test
+Requires Go 1.26.5 or newer. No cgo, no native toolkit.
 
 ```sh
-go test -timeout 40m ./...   # the full suite; core/chain carries a ~5-minute measurement test (CI runs -short)
-go test -bench . ./core/...
+go build ./cmd/silt          # single binary at ./silt
+go test ./...                # the suite
 ```
+
+Cross-compile release binaries for macOS, Windows, and Linux, with checksums:
+
+```sh
+./build.sh v0.1.0            # writes dist/ plus dist/SHA256SUMS
+```
+
+Each artifact is one self-contained binary. The web UI is embedded with `go:embed`;
+there is nothing else to ship.
+
+## Run
+
+Store a file and get a link back. `add` prints the root (the public name) plus the
+key (the private capability), and a care link that grants repair rights without
+decryption. Files are erasure-coded — with the default k=10, n=16, any 10 shards of
+each stripe reconstruct it.
+
+```sh
+silt add <file> [-store DIR] [-mode convergent|private] [-k K] [-n N]
+silt get <link> -o <out> [-store DIR]
+silt info <link-or-care-link> [-store DIR]
+silt ls [-store DIR]
+```
+
+Run a node:
+
+```sh
+# desktop app: serves and consumes, opens a browser UI
+silt client [-store DIR] [-capacity 5G] [-bootstrap ID@ADDR,...] [-ui ADDR]
+
+# headless swarm node
+silt daemon [-listen ADDR] [-store DIR] [-capacity 2G] [-bootstrap ID@ADDR,...]
+
+# as a validator
+silt daemon -validator -bond 8M -quorum Q -attesters ID[,...]
+```
+
+Work against a real swarm, and inspect:
+
+```sh
+silt swarm add <file>     -peers ID@ADDR[,...] -registry REF
+silt swarm get <link>     -o <out> -peers ID@ADDR[,...] -registry REF
+silt swarm holders <link> -peers ID@ADDR[,...] -registry REF
+
+silt id [-store DIR] [-listen ADDR]     # a node's ID, without launching it
+silt chain-status [-store DIR]          # head height and hash, read-only
+silt genesis [-text]                    # the founding block a fresh network carries
+```
+
+Simulations run the whole network in-process, no sockets:
+
+```sh
+silt sim run scatter | churn | economy | audit | capacity | consensus | bondstanding | takedown
+silt net demo [-nodes N] [-size B]      # the same, over real TCP
+```
+
+Run `silt help` for the full flag surface.
+
+## Canon
+
+Two documents govern this repository:
+
+- [`docs/TENETS.md`](docs/TENETS.md) — the mission, what silt is, how it is built and
+  tested, the bright lines, and the three tiers that say which decisions are
+  immutable.
+- [`docs/VISION.md`](docs/VISION.md) — the finished system, told through the people
+  it serves.
+
+Where the build differs from the vision, the code and its tests are the honest
+record.

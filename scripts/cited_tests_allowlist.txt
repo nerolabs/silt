@@ -332,3 +332,25 @@ core/node/slashheadroom.go  Slashes  chain.go:518   # declared core/chain/chain.
 # write it as "X -> Y", so a reader grepping the retired name finds the live one.
 # The property itself is asserted by the replacement, which exists.
 TestRTRC2_ReplayedClaimPaysAgain_PINNED_DEFECT
+
+# ---------------------------------------------------------------------------
+# (H) HISTORICAL — two text gates RETIRED WITH THE WRITTEN RECORD, 2026-09-13
+# ---------------------------------------------------------------------------
+# The project deleted its written record. Two gates in
+# core/chain/o3t_canon_text_test.go read documents that no longer exist and were
+# retired rather than repointed, because no surviving file carries the text:
+#
+#   TestO3T_CanonI5TextMatchesCertification
+#     read docs/design/consensus-invariants.md and pinned the I5 Statement,
+#     Assert and scar text to the O3 Direction T research certification.
+#   TestO3T_ClaimsLedgerForkChoiceRowMatchesCertification
+#     read docs/design/claims-ledger.md. Its surviving half — the three named
+#     fork-choice witnesses must exist — is now
+#     TestO3T_ForkChoiceLedgerWitnessesExist in the same file.
+#
+# Both names are cited ONLY in the retirement note that replaces them, which
+# says what was lost and which runtime gates still assert the behaviour. Nothing
+# claims either name verifies anything today. The second also appears in an
+# external research certification, where the citation is a frozen record.
+TestO3T_CanonI5TextMatchesCertification
+TestO3T_ClaimsLedgerForkChoiceRowMatchesCertification

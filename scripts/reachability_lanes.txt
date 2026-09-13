@@ -10,10 +10,10 @@
 #                A bare identifier is refused. A bare identifier is what the grep
 #                sweep keyed on, and it is why an inert method hid behind a live
 #                namesake (demand.Commit) and never showed up in the count.
-#   label        a substring that occurs EXACTLY ONCE in docs/release-checklist.md,
+#   label        a substring that occurs EXACTLY ONCE in scripts/reachability_postures.md,
 #                inside the lane's posture line. The gate reads the enclosing bullet
 #                or paragraph and asks whether it says the lane CANNOT BE EXERCISED.
-#   claim        the public claim in the release checklist this lane backs. This is
+#   claim        the public claim the posture file records for this lane. This is
 #                why the lane is in a BOUNDED gate at all.
 #   substantial  why this symbol cannot be inlined away, so that its ABSENCE from the
 #                symbol table is proof and not noise.
