@@ -22,8 +22,25 @@ import (
 
 var (
 	// ErrTokenAcquire means fewer than k issuers granted a signature (e.g.
-	// offline or out of the requester's credit).
+	// offline or out of the requester's credit). It is a COUNT outcome, and the
+	// causes that produced it are separate errors — do not add a second meaning to
+	// it. ITS SCOPE IS STATED HONESTLY RATHER THAN IDEALISED: two other sites still
+	// return it, AcquireCredits for a malformed request (self-issuer or count <= 0,
+	// both programming errors) and demandkeys.go for an issuer that answered a
+	// demand-token request not-OK.
 	ErrTokenAcquire = errors.New("node: could not gather enough publish-token signatures")
+	// ErrCreditIssuerKeyUnknown means this client holds NO CACHED publish-credit
+	// issuer key for that validator, so the prepaid-credit request never left the
+	// client. It is the credit lane's own refusal and it is deliberately NOT
+	// ErrTokenAcquire: one sentinel covering both made the composed error name
+	// itself, because cmd/silt joins the first mint cause onto the acquisition
+	// error and both legs were the same object (PE ruling RULING-PR852 F-2 —
+	// measured "first cause: node: could not gather enough publish-token
+	// signatures", which is the outer sentence repeated).
+	//
+	// It is distinct from ErrNoIssuerKey below, which is a PEER'S ANSWER over the
+	// wire ("that server runs no issuer"). This one never reaches the wire.
+	ErrCreditIssuerKeyUnknown = errors.New("node: no cached publish-credit issuer key for this validator — fetch the canonical issuer set first")
 	// ErrNoIssuerKey means the peer answered the key request but serves no issuer
 	// key at all — it runs no token/demand issuer. EXPORTED because the client has
 	// to tell it apart from "the issuer served keys, none resolved against a
@@ -326,7 +343,15 @@ func (n *Node) AcquireCredits(rng io.Reader, v ports.NodeID, count int,
 	issuerPub func(ports.NodeID) *rsa.PublicKey, done func([]ports.PublishCredit, error)) {
 
 	pub := issuerPub(v)
-	if pub == nil || v == n.id || count <= 0 {
+	// The two refusals are SPLIT because they are different diagnoses. No cached issuer key is
+	// the operator-visible one — it is what a client that never fetched the canonical issuer set
+	// hits, and it is the cause cmd/silt reports when a publish is refused. Self-issuer and a
+	// non-positive count are programming errors and keep the count sentinel.
+	if pub == nil {
+		done(nil, ErrCreditIssuerKeyUnknown)
+		return
+	}
+	if v == n.id || count <= 0 {
 		done(nil, ErrTokenAcquire)
 		return
 	}

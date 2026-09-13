@@ -104,6 +104,41 @@ func TestSetNetworkIdentityRefusesTheZeroHash(t *testing.T) {
 	}
 }
 
+// TestHasNetworkIdentityDistinguishesAbsentFromZero is the anti-vacuity bar this repo states on
+// `unnamedNetwork` in core/chain/networkidentity.go — absent and zero must be structurally
+// distinguishable. RequesterChainID answers the ZERO HASH for an undeclared node, which is the
+// exact value SetNetworkIdentity refuses as a declaration, so on that accessor alone a consumer
+// cannot tell "I was told nothing" from "I was told something real". The predicate is the second
+// observable, and #828 is what refuses on it.
+//
+// ABLATIONS (each drives a DIFFERENT arm RED): return true unconditionally → the undeclared arm;
+// return false unconditionally → the declared and chain-holder arms; read only declaredChainID and
+// ignore the chain → the chain-holder arm.
+func TestHasNetworkIdentityDistinguishesAbsentFromZero(t *testing.T) {
+	undeclared := chainlessClient(t, 9106)
+	if undeclared.HasNetworkIdentity() {
+		t.Fatal("an undeclared chainless client reports a network identity it does not have")
+	}
+	// The two states this predicate exists to separate produce the SAME 32 bytes on the accessor.
+	if got := undeclared.RequesterChainID(); got != (ports.Hash{}) {
+		t.Fatalf("undeclared RequesterChainID = %s, want the zero hash (the ambiguity is the point)", got)
+	}
+
+	declared := chainlessClient(t, 9107)
+	want := ports.HashBytes([]byte("a declared network"))
+	if err := declared.SetNetworkIdentity(want); err != nil {
+		t.Fatal(err)
+	}
+	if !declared.HasNetworkIdentity() {
+		t.Fatalf("a client declared onto %s reports NO network identity", want)
+	}
+
+	holder, genesis := chainHolder(t, 9108)
+	if !holder.HasNetworkIdentity() {
+		t.Fatalf("a chain-holder deriving %s reports NO network identity", genesis)
+	}
+}
+
 // TestAChainOutranksADeclaration pins the precedence: a node that acquires a chain reads the
 // chain's own genesis hash, never an earlier declaration. Consumer 3 of the certification (a
 // JOINING daemon) depends on this — its refusal window is transient precisely because the chain

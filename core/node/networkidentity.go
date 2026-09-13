@@ -60,9 +60,35 @@ func (n *Node) SetNetworkIdentity(id ports.Hash) error {
 // RequesterChainID is the network identity this node BLINDS UNDER: the chain's own genesis hash
 // when this node holds a chain, otherwise whatever SetNetworkIdentity declared, otherwise the zero
 // hash. A chain always outranks a declaration — a chain-holder never reads an operator's guess.
+//
+// THE ZERO IT RETURNS IS AMBIGUOUS ON ITS OWN, AND HasNetworkIdentity IS HOW A CONSUMER RESOLVES
+// IT. Ask HasNetworkIdentity first; blinding under an undeclared zero is the silent shape
+// SetNetworkIdentity refuses one function above.
 func (n *Node) RequesterChainID() ports.Hash {
 	if n.chain != nil {
 		return n.chain.ChainID()
 	}
 	return n.declaredChainID
+}
+
+// HasNetworkIdentity reports whether this node has a requester-side network identity AT ALL —
+// derived from a chain, or declared by an operator. It exists because RequesterChainID alone
+// cannot meet the bar this repo states one package over, on `unnamedNetwork` in
+// core/chain/networkidentity.go:
+//
+//	the anti-vacuity bar — absent and zero must be structurally distinguishable
+//
+// RequesterChainID answers the ZERO HASH for an undeclared node, and the zero hash is the exact
+// value SetNetworkIdentity REFUSES as a declaration ("it is this node's 'I do not know which
+// network I am on'"). Without a second observable a consumer cannot tell the refusal's own
+// sentinel from a real identity, so the setter's refusal would be bypassed by the default path and
+// the client would blind under 32 zero bytes and learn nothing when it failed.
+//
+// The consumer is the prepaid-credit lane under M3 (#828), and what this buys it is the ability to
+// REFUSE an undeclared client with an actionable message instead of proceeding under zero. That is
+// the second half of the 2026-09-11 design option this seam otherwise defers — an explicit
+// -chain-id flag, REFUSING when unset — and the refusal belongs on the consumer, so the API has to
+// make it expressible.
+func (n *Node) HasNetworkIdentity() bool {
+	return n.RequesterChainID() != (ports.Hash{})
 }

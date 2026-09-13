@@ -129,7 +129,11 @@ func acquirePublishToken(nd *node.Node, validators []ports.NodeID, k int, cont f
 			nd.AcquireTokenWithCredits(rand.Reader, serial, validators, nd.IssuerKeyOf, credits, k,
 				func(tok *ports.PublishToken, aerr error) {
 					if aerr != nil && mintErr != nil {
-						aerr = fmt.Errorf("%w (no prepaid publish credit from %d of %d validators; first cause: %v)",
+						// BOTH are %w: the acquisition sentinel is what callers already match
+						// on, and the mint cause is what an operator needs to match on next.
+						// Wrapping the cause is also what makes "does this clause carry
+						// information?" a checkable question rather than a string opinion.
+						aerr = fmt.Errorf("%w (no prepaid publish credit from %d of %d validators; first cause: %w)",
 							aerr, len(validators)-len(credits), len(validators), mintErr)
 					}
 					cont(tok, aerr)
@@ -220,19 +224,52 @@ func swarmHolders(args []string) error {
 // an explicit zero hash are both refused HERE, before the client joins: a network identity that
 // silently failed to take is the same silent shape as the discarded mint error one lane over, and
 // the only symptom either produces is a publish that cannot gather signatures.
-func parseDeclaredChainID(s string) (ports.Hash, error) {
+//
+// The second return is DECLARED, and it is a return value rather than a `!= zero` test at the call
+// site for the same reason (*Node).HasNetworkIdentity exists: the not-declared answer and a
+// refused declaration are both the zero hash, so absent and zero have to be structurally
+// distinguishable or the caller re-derives the ambiguity.
+func parseDeclaredChainID(s string) (ports.Hash, bool, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return ports.Hash{}, nil
+		return ports.Hash{}, false, nil
 	}
 	h, err := ports.ParseHash(s)
 	if err != nil {
-		return ports.Hash{}, fmt.Errorf("-chain-id %q: %w (want the 64-hex genesis block hash the daemon prints at start-up)", s, err)
+		return ports.Hash{}, false, fmt.Errorf("-chain-id %q: %w (want the 64-hex genesis block hash the daemon prints at start-up)", s, err)
 	}
 	if h == (ports.Hash{}) {
-		return ports.Hash{}, fmt.Errorf("-chain-id: the all-zero hash is not a network identity — pass the genesis block hash the daemon prints at start-up")
+		return ports.Hash{}, false, fmt.Errorf("-chain-id: the all-zero hash is not a network identity — pass the genesis block hash the daemon prints at start-up")
 	}
-	return h, nil
+	return h, true, nil
+}
+
+// declareNetworkIdentity installs a parsed -chain-id on the client node `joinSwarm` built.
+//
+// IT RUNS ON THE NODE'S OWN LOOP, and that is the point of taking `run`. joinSwarm returns only
+// after Bootstrap completes, so by the time swarmAdd holds the node the event loop is already
+// processing inbound frames; the off-loop mutations this one resembles (SetSigner, SetEphemeral)
+// all happen before any peer is added. Writing declaredChainID from the main goroutine is safe
+// only while nothing reads it, and #828 is the change that makes something read it — from a
+// handler, on the loop. Posting the write gives the happens-before now, not after the race.
+//
+// It also OWNS THE GUARD. Whether a declaration was made is decided here, in a function a
+// behavioural test can drive, because a guard that lives only in swarmAdd's body is reachable by
+// no test on this branch: swarmAdd builds its client internally and exposes it to nobody, so a
+// dead guard there is invisible (measured — blind-review ablation A9, recorded on the source gate
+// below).
+func declareNetworkIdentity(run func(fn func(done func())) error, nd *node.Node, id ports.Hash, declared bool) error {
+	if !declared {
+		return nil
+	}
+	var serr error
+	if rerr := run(func(done func()) {
+		serr = nd.SetNetworkIdentity(id)
+		done()
+	}); rerr != nil {
+		return rerr
+	}
+	return serr
 }
 
 func swarmAdd(args []string) error {
@@ -251,7 +288,7 @@ func swarmAdd(args []string) error {
 	if len(pos) != 1 || *peers == "" || *regURL == "" {
 		return fmt.Errorf("usage: silt swarm add <file> -peers ID@ADDR -registry URL [flags]")
 	}
-	declaredChainID, err := parseDeclaredChainID(*chainIDHex)
+	declaredChainID, chainIDDeclared, err := parseDeclaredChainID(*chainIDHex)
 	if err != nil {
 		return err
 	}
@@ -273,10 +310,8 @@ func swarmAdd(args []string) error {
 		return err
 	}
 	defer e.close()
-	if declaredChainID != (ports.Hash{}) {
-		if serr := e.nd.SetNetworkIdentity(declaredChainID); serr != nil {
-			return serr
-		}
+	if serr := declareNetworkIdentity(run, e.nd, declaredChainID, chainIDDeclared); serr != nil {
+		return serr
 	}
 	reg, err := openRegistry(*regURL)
 	if err != nil {
