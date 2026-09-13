@@ -5,13 +5,13 @@
     "guard can reach a seat running in one. `.claude/settings.local.json` is personal and",
     "gitignored; hooks that must follow the repo belong HERE.",
     "",
-    "scar:worktree-agent-memory-written-to-a-doomed-dir-2026-09-11 — a fresh worktree has no",
+    "scar:worktree-agent-memory-written-to-a-doomed-dir-2026-09-11 \u2014 a fresh worktree has no",
     "`.claude/agent-memory` symlink, so a seat's memory write silently created a real local",
     "directory that died with the worktree. The PreToolUse hook blocks that write BEFORE any",
     "byte lands; the SessionStart hook warns the seat before it writes anything at all. Both",
     "name `.claude/setup-agent-memory.sh`, which fixes it in one command.",
     "",
-    "scar:agent-memory-store-ten-days-unpushed-2026-09-11 — the OTHER half of the same",
+    "scar:agent-memory-store-ten-days-unpushed-2026-09-11 \u2014 the OTHER half of the same",
     "exposure. The symlink rule gets memory into the shared store; nothing got the store",
     "off this box. It sat ten days uncommitted, which is why five of the leaked files were",
     "unrecoverable rather than merely leaked. `--autosave` commits and pushes the store on",
@@ -33,54 +33,9 @@
     "Drive it: python3 scripts/check_agent_memory_link.py --self-test"
   ],
   "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Write|Edit|NotebookEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/check_agent_memory_link.py\" --hook",
-            "timeout": 10,
-            "statusMessage": "Checking agent-memory symlink"
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/check_agent_memory_link.py\" --hook",
-            "timeout": 60,
-            "statusMessage": "Checking agent-memory symlink + banking the store"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/check_agent_memory_link.py\" --hook",
-            "timeout": 60,
-            "statusMessage": "Banking agent memory"
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/check_agent_memory_link.py\" --hook",
-            "timeout": 60,
-            "statusMessage": "Banking agent memory"
-          }
-        ]
-      }
-    ]
+    "PreToolUse": [],
+    "SessionStart": [],
+    "Stop": [],
+    "SubagentStop": []
   }
 }
