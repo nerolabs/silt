@@ -384,6 +384,15 @@ calls closed and two of the five below are new questions raised by their answers
    surface.** **M5 (JOIN/START) is still owed the same answer ONCE**, because a separate answer for
    `joinSwarm` forks the rule. Cert:
    `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/TOKEN-DOMAIN-GENESIS-COVERAGE-AND-THE-CHAINLESS-CLIENT-RESEARCH-CERTIFICATION-2026-09-12.md`
+   **SUPPLY ROUTE BUILT 2026-09-13 — route (a) only, and the CONSUMER is still #828.** `swarm add`
+   gains **`-chain-id <64 hex>`**; `(*Node).SetNetworkIdentity` / `(*Node).RequesterChainID` are the
+   requester-side seam, and `(*Node).chainID` is deliberately UNCHANGED so the verifier-side value
+   stays derived-or-zero (gate `core/node TestDeclaringANetworkIdentityDoesNotMoveTheVerifierSideChainID`).
+   Peer-fetch is **not built**, in either form. **The flag carries the value and nothing blinds under
+   it yet** — the credit lane binds it in #828 — so the wiring is held by a SOURCE gate
+   (`cmd/silt TestSwarmAddWiresTheDeclaredChainIDIntoTheClientNode`) that retires the day a
+   behavioural arm exists. The `D-TD-3` disclosure is closed in the same change: a credit-lane
+   refusal now NAMES its cause instead of surfacing as a bare `ErrTokenAcquire`.
 8. **Does the acceptance surface actually block anything?** THE EVIDENCE, two halves folded into one
    call because answering either alone leaves the surface advisory: (i) the fixture census gates —
    **25 of 40 fixtures go RED** if they are built; and (ii) the reachability job **`Go — every
@@ -926,8 +935,16 @@ state table re-derived), **#830** (item 11 — the FDH domain set gated pairwise
 **#831** (the h43 round-ladder model-check now DISCRIMINATES — RED without the #772 fix, GREEN with
 it), **#832** (the reachability lint watches the freeze-manifest mechanisms) and **#833** (item 17,
 the posture half, as a two-armed gate). **#828 is NOT in that list: it is a deliberate DRAFT, held
-with its e2e RED on open call 7** (the chainless client) — all three e2e failures reduce to the one
-mechanism, a requester with no chain, so the lane is OFF rather than green.
+with its e2e RED on open call 7** (the chainless client) — every e2e failure reduces to the one
+mechanism, a requester with no chain, so the lane is OFF rather than green. **THE COUNT IS CORRECTED
+BY MEASUREMENT (2026-09-13, cert gate `G-TD-2` discharged): SIX, not three.** Read off run
+`34626975444`, job `103354324512` (`Go — multi-process e2e (real TCP)`, the only failing job on the
+branch): `TestAnchorStopHaltsBondedNonAnchors`, `TestObjectiveColdStartCommitsGenesis`,
+`TestObjectiveColdStartWithSatelliteValidator`, `TestUnlinkablePublishOverTCP`,
+`TestEquivocatorSlashedOverTCP`, `TestPartitionHealsToHeavierForkOverTCP`. The attribution HOLDS and
+is now checkable: `e2e/` has exactly six `-token-quorum` argv sites, one per failing test, and each
+of the six loops until the client prints `silt:v1:`. **None is a `swarm receipt` failure**, so none
+is consumer 2 — `G-TD-2`'s open question about the demand lane is answered NO.
 
 **D1's FORMAT set is CLOSED and the owed-and-format list is EMPTY.** That is the headline above, and
 nothing merged in this stretch reopened it: every one of the nine is a test, a lint, a register row

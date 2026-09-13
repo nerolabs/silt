@@ -86,6 +86,13 @@ func acquirePublishToken(nd *node.Node, validators []ports.NodeID, k int, cont f
 		settle()
 	}
 	// Stage 2: mint one credit per validator (charged at mint), concurrent.
+	// A per-issuer mint failure stays best-effort — the spend handles a shortfall — but the FIRST
+	// cause is kept (D-TD-3). Without it the whole lane's only observable is a bare
+	// ErrTokenAcquire: AcquireCredits reports its error here, acquireToken silently SKIPS an
+	// issuer with no credit, and the operator debugging a refused publish is told the signatures
+	// could not be gathered and never why. The error is a diagnosis, not a control flow — nothing
+	// below branches on it.
+	var mintErr error
 	mintCredits := func(next func(map[ports.NodeID]ports.PublishCredit)) {
 		credits := map[ports.NodeID]ports.PublishCredit{}
 		pending := 0
@@ -98,9 +105,11 @@ func acquirePublishToken(nd *node.Node, validators []ports.NodeID, k int, cont f
 		for _, v := range validators {
 			v := v
 			pending++
-			nd.AcquireCredits(rand.Reader, v, 1, nd.IssuerKeyOf, func(cs []ports.PublishCredit, _ error) {
+			nd.AcquireCredits(rand.Reader, v, 1, nd.IssuerKeyOf, func(cs []ports.PublishCredit, cerr error) {
 				if len(cs) == 1 {
 					credits[v] = cs[0] // best-effort per issuer; spend handles a shortfall
+				} else if cerr != nil && mintErr == nil {
+					mintErr = cerr
 				}
 				pending--
 				settle()
@@ -117,7 +126,14 @@ func acquirePublishToken(nd *node.Node, validators []ports.NodeID, k int, cont f
 				cont(nil, err)
 				return
 			}
-			nd.AcquireTokenWithCredits(rand.Reader, serial, validators, nd.IssuerKeyOf, credits, k, cont)
+			nd.AcquireTokenWithCredits(rand.Reader, serial, validators, nd.IssuerKeyOf, credits, k,
+				func(tok *ports.PublishToken, aerr error) {
+					if aerr != nil && mintErr != nil {
+						aerr = fmt.Errorf("%w (no prepaid publish credit from %d of %d validators; first cause: %v)",
+							aerr, len(validators)-len(credits), len(validators), mintErr)
+					}
+					cont(tok, aerr)
+				})
 		})
 	})
 }
@@ -199,6 +215,26 @@ func swarmHolders(args []string) error {
 	return nil
 }
 
+// parseDeclaredChainID reads `swarm add -chain-id`. Empty means NOT DECLARED, which is the shipped
+// default and leaves this client's requester-side identity at the zero hash. A malformed value and
+// an explicit zero hash are both refused HERE, before the client joins: a network identity that
+// silently failed to take is the same silent shape as the discarded mint error one lane over, and
+// the only symptom either produces is a publish that cannot gather signatures.
+func parseDeclaredChainID(s string) (ports.Hash, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ports.Hash{}, nil
+	}
+	h, err := ports.ParseHash(s)
+	if err != nil {
+		return ports.Hash{}, fmt.Errorf("-chain-id %q: %w (want the 64-hex genesis block hash the daemon prints at start-up)", s, err)
+	}
+	if h == (ports.Hash{}) {
+		return ports.Hash{}, fmt.Errorf("-chain-id: the all-zero hash is not a network identity — pass the genesis block hash the daemon prints at start-up")
+	}
+	return h, nil
+}
+
 func swarmAdd(args []string) error {
 	fs := flag.NewFlagSet("swarm add", flag.ExitOnError)
 	peers := fs.String("peers", "", "bootstrap peers: ID@HOST:PORT[,...] (required)")
@@ -209,10 +245,15 @@ func swarmAdd(args []string) error {
 	allowPublisher := fs.Bool("allow-publisher", false, "record this node's durable Publisher identity on the entry (permanent linkage; off by default for privacy — prefer -token-quorum or an ungated publish)")
 	replication := fs.Int("replication", 0, "how many closest holders receive each chunk (0 = default). Parity across holders backstops copies, so even 1 is viable; a lower factor makes shard loss (and thus caretaker repair) reproducible on a small swarm")
 	saveToken := fs.String("save-token", "", "after acquiring a -token-quorum publish token, write it (CBOR) to this file so it can be RE-PRESENTED later with -use-token. A publish-token serial is single-use, so this is the seam that lets a harness drive the DOUBLE-SPEND rejection over the wire (#233)")
+	chainIDHex := fs.String("chain-id", "", "this network's IDENTITY — the genesis block's hash, 64 hex chars, as the daemon prints it at start-up (`network: ... (genesis <hash>)`). A `swarm add` client holds no chain, so it cannot DERIVE which network it is on; this is how an operator tells it. ON THIS BUILD the value is carried and nothing blinds under it yet — the prepaid publish-credit lane binds it under M3. A wrong value can then only DENY this client its own token; it widens nothing any validator accepts. Empty = not declared")
 	useToken := fs.String("use-token", "", "RED-TEAM / TEST-HARNESS: publish carrying a token previously saved by -save-token, instead of minting a fresh one. Presenting the same token a second time re-uses its already-committed serial, which the chain rejects (ErrTokenSpent, double-spend). Never mint-once/publish-twice on a real network")
 	pos := parseFlexible(fs, args)
 	if len(pos) != 1 || *peers == "" || *regURL == "" {
 		return fmt.Errorf("usage: silt swarm add <file> -peers ID@ADDR -registry URL [flags]")
+	}
+	declaredChainID, err := parseDeclaredChainID(*chainIDHex)
+	if err != nil {
+		return err
 	}
 	m, err := crypto.ParseMode(*mode)
 	if err != nil {
@@ -232,6 +273,11 @@ func swarmAdd(args []string) error {
 		return err
 	}
 	defer e.close()
+	if declaredChainID != (ports.Hash{}) {
+		if serr := e.nd.SetNetworkIdentity(declaredChainID); serr != nil {
+			return serr
+		}
+	}
 	reg, err := openRegistry(*regURL)
 	if err != nil {
 		return err

@@ -845,11 +845,15 @@ type Node struct {
 
 	// validator role (M12): the local chain replica and the signing key
 	// (nil = not a validator).
-	chain    *chain.Chain
-	signer   ed25519.PrivateKey
-	onCommit func(chain.Block)
-	onSlash  func(culprit ports.NodeID, height uint64)
-	onReorg  func(dropped int, newHeight uint64)
+	chain  *chain.Chain
+	signer ed25519.PrivateKey
+	// declaredChainID is the REQUESTER-side network identity an operator declared on a node that
+	// holds no chain (SetNetworkIdentity). It is read ONLY by RequesterChainID, never by chainID —
+	// see core/node/networkidentity.go for why the two must not be collapsed.
+	declaredChainID ports.Hash
+	onCommit        func(chain.Block)
+	onSlash         func(culprit ports.NodeID, height uint64)
+	onReorg         func(dropped int, newHeight uint64)
 	// blockedPeers simulates a NETWORK PARTITION: messages to/from these peers are
 	// dropped, as if the link were down. Test-harness / field-drill control (the
 	// daemon's -block-peers), used to exercise partition→heal over the real wire
