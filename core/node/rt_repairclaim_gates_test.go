@@ -440,8 +440,15 @@ func rtRC3Pin(before, after int64, releases int) string {
 	return fmt.Sprintf("RT-RC-3 PIN IS RED — a claim for a shard that was NEVER LOST no longer pays as pinned: EscrowPaid %d -> %d, BountiesReleased=%d (pinned at a positive delta and exactly 1).\n"+
 		"  THE FIX CASE: no payment and no release means the judge now requires evidence of prior loss for the claimed (root, stripe, position).\n"+
 		"  That is the repair this pin was waiting for, and since 2026-09-13 it CAN land alone: TestRedteamRepair_HonestClaimIsPaid was\n"+
-		"  re-derived over a REAL loss (D-RTRC3-INTENT-STANDS-2026-09-12) and no longer asserts the opposite on this arrangement — it should\n"+
-		"  stay GREEN in the same run, and if it went RED too the change broke payment itself rather than adding a loss requirement.\n"+
+		"  re-derived over a REAL loss (D-RTRC3-INTENT-STANDS-2026-09-12) and no longer asserts the opposite on this arrangement, so it\n"+
+		"  should stay GREEN in the same run.\n"+
+		"  IF IT WENT RED TOO, CHECK THE FIXTURE BEFORE YOU CHECK PAYMENT. Two causes are known and this list is NOT exhaustive:\n"+
+		"    (a) the loss witness is shaped as a RESTORATION DIFFERENTIAL — the position unreachable before the claim, reachable after.\n"+
+		"        That control cannot satisfy that shape today: rebuildLostShard places through placeAt, which sends MsgStoreChunk and\n"+
+		"        announces NOTHING to the nodes near the column key, so after the rebuild the position is not discoverable under\n"+
+		"        colKey(root, pos) and lives on ONE node, down from three (measured 2026-09-13). Teach rebuildLostShard to announce\n"+
+		"        before you conclude anything about payment.\n"+
+		"    (b) payment itself broke.\n"+
 		"  Retire this pin by replacing it with the positive assertion of the rule, never by deleting it. The judge's two legs (correctness\n"+
 		"  recompute in judgeRepairClaim, retrievability in\n"+
 		"  challengeHolderRetrievability) both pass for a live shard merely COPIED to a new holder; nothing on the path asserted prior loss.\n"+

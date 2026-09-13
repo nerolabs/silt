@@ -10,6 +10,11 @@ package node
 
 import (
 	"bytes"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/nerolabs/silt/adapters/identity"
@@ -197,11 +202,15 @@ func (s *repairAdv) finalStripeRealData() int {
 // It differs from the positive control in exactly ONE input: the claimed id. Nothing
 // is rebuilt here, because a garbage claimant rebuilt nothing.
 //
-// ⚠ WHICH CHECK IT REACHES. Since the 2026-09-12 position screen this claim is
-// slashed BEFORE a single survivor is fetched, so the leg it pins is the screen, not
-// the recompute. The two are defence in depth over one quantity — claim.ShardID
-// against the manifest — and neutering only one still slashes, which is why the
-// ablation that reddens this control has to make the judge TRUST claim.ShardID.
+// ⚠ WHICH CHECK IT REACHES, AND WHAT IT PINS — THEY ARE NOT THE SAME. Since the
+// 2026-09-12 position screen this claim is slashed BEFORE a single survivor is
+// fetched, so the check it REACHES is the screen and the recompute never runs here.
+// What it PINS is the DISJUNCTION of the two: they are defence in depth over one
+// quantity — claim.ShardID against the manifest — and neutering EITHER one alone
+// still slashes, which is why the ablation that reddens this control has to make the
+// judge TRUST claim.ShardID. The screen on its own is pinned properly, at zero
+// survivor fetches and with an anti-vacuity witness, by
+// TestRepairJudge_WrongIdAtAListedPositionIsSlashedBeforeAnyFetch.
 func TestRedteamRepair_GarbageClaimIsSlashed(t *testing.T) {
 	s := newRepairAdv(t, 42)
 	s.fundEscrow(5_000_000)
@@ -218,7 +227,7 @@ func TestRedteamRepair_GarbageClaimIsSlashed(t *testing.T) {
 	s.deliverClaim(judge, attacker.ID(), claim)
 
 	if judge.Stats.FalseRepairSlashes != 1 {
-		t.Fatalf("garbage claim not slashed: FalseRepairSlashes=%d (correctness recompute must reject a wrong id)", judge.Stats.FalseRepairSlashes)
+		t.Fatalf("garbage claim not slashed: FalseRepairSlashes=%d (the POSITION SCREEN in judgeRepairClaim must SLASH a listed position whose claimed id disagrees with the manifest-committed one; it fires before any survivor is fetched, so the correctness recompute never runs on this claim)", judge.Stats.FalseRepairSlashes)
 	}
 	if got := s.ledger.Reputation(attacker.ID()); got >= baseline {
 		t.Fatalf("claimant standing not docked: %d >= %d", got, baseline)
@@ -382,6 +391,17 @@ func (s *repairAdv) shardIsReachable(from *Node, id ports.ChunkID, pos int) bool
 // consistent with a probe that never worked, and a helper that silently stopped
 // dropping anything would otherwise hand every caller a no-loss arrangement wearing
 // a loss's name, which is the exact substitution this whole rework undoes.
+//
+// ⚠ THE FOUR t.Fatalf LINES BELOW ARE THE ENTIRE ENFORCEMENT OF THE LOSS. Reduce
+// this body to t.Helper() and all three §11 controls still PASS — measured. That is
+// not a fixture weakness, it is R-PROBE-FALSE-NEGATIVE-RATE showing through: nothing
+// on judgeRepairClaim's path reads whether the claimed position was ever lost, so
+// every judge-observable outcome (BountiesReleased, FalseRepairSlashes, EscrowPaid,
+// Balance, Reputation) is identical with the loss and without it. The controls
+// therefore cannot detect their own premise collapsing, and these guards are the only
+// thing that can. Do not weaken one without reading
+// TestRedteamRepair_ControlsStageTheLossAtTheirCallSites, which holds the other half
+// — that the controls still CALL this helper.
 func (s *repairAdv) loseStripePosition(t *testing.T, probe *Node, id ports.ChunkID, pos int) {
 	t.Helper()
 	if !s.shardIsReachable(probe, id, pos) {
@@ -527,6 +547,14 @@ func TestRedteamRepair_HonestClaimIsPaid(t *testing.T) {
 	// it, are all a DHT walk finds. The claim names its holder, so the judge's own
 	// retrievability leg is unaffected; this arm asks the same question of the same
 	// holder, over real bytes instead of a PoR proof.
+	//
+	// MEASURED, 2026-09-13, and it is state this fixture introduces: before the loss
+	// the position sat on THREE nodes and shardIsReachable answered true; after the
+	// rebuild it sits on ONE — the named holder — and shardIsReachable answers FALSE.
+	// A loss witness shaped as a restoration differential would redden this control
+	// for that reason alone, which is why rtRC3Pin's failure text names the fixture
+	// before it names payment. The fix, when it is needed, is an announce in
+	// rebuildLostShard, not a change to the judge.
 	restored := false
 	s.nodes[3].fetchFrom(parityID, []ports.NodeID{holder.ID()}, func(ok bool) { restored = ok })
 	s.sched.Run()
@@ -570,4 +598,117 @@ func TestRedteamRepair_QuorumIsDiscoverableAcrossNodes(t *testing.T) {
 			t.Fatalf("caretaker %s announced under careKey but was not discovered — the quorum would silently exclude it", id.String()[:8])
 		}
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE CALL-SITE GATE — the three §11 controls must STAGE the loss, not merely be
+// documented as staging it.
+//
+// Swap a control's loseStripePosition back to stageShardOn and every test in the tree
+// stays GREEN while the ROADMAP F8 row silently becomes false. Nothing else in the
+// repo notices: the judge has no loss check, so a control cannot observe its own
+// premise being removed. That is the repo's proof-vs-structure rule with a known
+// substitution attached, and this is the structure.
+//
+// ⚠ WHAT IT PROVES, AND WHAT IT DOES NOT. A source gate proves the call is WRITTEN.
+// It cannot prove the call RUNS, and it cannot prove the helper still asserts anything
+// — reduce loseStripePosition's body to t.Helper() and this gate stays GREEN, as do
+// all three controls. That half is held by the four in-line t.Fatalf guards inside the
+// helper, and is stated in the helper's own doc comment. Neither half implies the
+// other; keep both.
+//
+// THE RULE HAS A CLOSED COMPLEMENT, which is why it is worth having. In THIS file a
+// test that hands the judge a repair claim (deliverClaim) is a §11 control and there
+// is no other kind, so the rule is "every deliverClaim test also calls
+// loseStripePosition" rather than a hand-written list of three that a fourth control
+// would quietly escape.
+//
+// RUNTIME GATE: TestRedteamRepair_HonestClaimIsPaid (and the two negative controls).
+// They are the tests that EXECUTE loseStripePosition's four t.Fatalf guards, which is
+// the half this gate cannot see. This annotation follows scripts/check_source_gates.py's
+// rule — a source-text gate says it is one and names its runtime cover — even though
+// that lint's trigger is an os.ReadFile of a literal .go path and does not reach a
+// parser.ParseFile gate like this one.
+//
+// IT IS FILE-SCOPED ON PURPOSE. The no-loss arrangement is the entire point of
+// TestRTRC3_ClaimWithNoLossIsPaid_PINNED_DEFECT and of the judge fixtures in
+// rt_repairclaim_gates_test.go, repairclaim_judge_fixes_test.go and
+// judge_defer_518_test.go. They must keep staging it, and a repo-wide form of this
+// rule would demand they stop.
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestRedteamRepair_ControlsStageTheLossAtTheirCallSites(t *testing.T) {
+	const file = "redteam_repair_claim_test.go"
+	const lossHelper, noLossHelper, claimCall = "loseStripePosition", "stageShardOn", "deliverClaim"
+
+	f, err := parser.ParseFile(token.NewFileSet(), file, nil, 0)
+	if err != nil {
+		t.Fatalf("SOURCE GATE: could not parse %s: %v", file, err)
+	}
+	callees := func(fn *ast.FuncDecl) map[string]bool {
+		got := map[string]bool{}
+		ast.Inspect(fn, func(n ast.Node) bool {
+			if c, ok := n.(*ast.CallExpr); ok {
+				if sel, ok := c.Fun.(*ast.SelectorExpr); ok {
+					got[sel.Sel.Name] = true
+				}
+			}
+			return true
+		})
+		return got
+	}
+
+	declared := map[string]bool{}
+	var controls, offenders []string
+	for _, d := range f.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok {
+			continue
+		}
+		declared[fn.Name.Name] = true
+		if !strings.HasPrefix(fn.Name.Name, "Test") {
+			continue
+		}
+		c := callees(fn)
+		if !c[claimCall] {
+			continue // not a repair-claim control
+		}
+		controls = append(controls, fn.Name.Name)
+		if !c[lossHelper] {
+			offenders = append(offenders, "  "+fn.Name.Name)
+		}
+	}
+
+	// ANCHOR 1 — the helpers still exist under these names. A rename would turn the
+	// walk into a green no-op over a mechanism that moved.
+	for _, h := range []string{lossHelper, noLossHelper, claimCall} {
+		if !declared[h] {
+			t.Fatalf("SOURCE GATE IS VACUOUS — the symbol it reads is gone: %s is no longer declared in %s, so it "+
+				"was renamed or removed. Re-derive this gate rather than leaving it green over nothing", h, file)
+		}
+	}
+	// ANCHOR 2 — the walk actually found controls. Without a floor, "the walk broke"
+	// and "every control is clean" are the same green.
+	if len(controls) < 3 {
+		t.Fatalf("SOURCE GATE IS VACUOUS — the walk found nothing to check: %d test(s) deliver a repair claim "+
+			"in %s (%v). The three §11 controls are the floor, so either the walk broke or a control left "+
+			"this file", len(controls), file, controls)
+	}
+
+	if len(offenders) > 0 {
+		sort.Strings(offenders)
+		t.Fatalf("SOURCE GATE: a §11 REPAIR-CLAIM CONTROL NO LONGER CALLS THE LOSS HELPER:\n%s\n\n"+
+			"  Each of these delivers a repair claim to the judge without calling %s, so it is judging a\n"+
+			"  claim for a position that was never missing. Under D-BOUNTY-PAYS-FOR-REPAIR-2026-09-12 that\n"+
+			"  arrangement must pay NOTHING, and the shipped judge pays it — which is the defect\n"+
+			"  TestRTRC3_ClaimWithNoLossIsPaid_PINNED_DEFECT pins, not a control.\n"+
+			"  NOTHING ELSE CATCHES THIS. The judge has no loss check (R-PROBE-FALSE-NEGATIVE-RATE is still\n"+
+			"  GATED), so the control itself stays GREEN either way and ROADMAP F8 silently becomes false.\n"+
+			"  If a no-loss stage is genuinely the point of a new test, put it in rt_repairclaim_gates_test.go\n"+
+			"  beside RT-RC-3, where that arrangement is the subject rather than the premise.",
+			strings.Join(offenders, "\n"), lossHelper)
+	}
+	sort.Strings(controls)
+	t.Logf("SOURCE GATE (call site): %d repair-claim control(s) in %s, all calling %s — %v",
+		len(controls), file, lossHelper, controls)
 }
