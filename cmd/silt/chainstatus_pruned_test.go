@@ -43,9 +43,11 @@ func TestChainStatusReportsPrunedBlocks(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	// Both counters read 1 here, and that is the subset relationship stated as a fact:
-	// HeavyProofsShed() returns true immediately when IsPruned() does, so on pre-v5
-	// history the two numbers agree and the era line below them is 0 on neither.
+	// Both counters read 1 here, and the reason is EQUALITY, not the subset direction:
+	// validateD3Digests refuses a pre-v5 AnswerDigest outright, so on v1/v2/v4 the only way
+	// HeavyProofsShed() can fire is the IsPruned() short-circuit and the two predicates are
+	// the same predicate. That is precisely why this leg cannot gate the second line's
+	// choice of predicate, and why the v5 leg has to.
 	for _, want := range []string{
 		"pruned:       1 blocks have shed their heavy bond proofs below the retention horizon",
 		"of those:     1 declare a pre-v5 non-recomputable identity",
@@ -104,9 +106,22 @@ func TestChainStatusPrunedCountIsSoundOnAV5Chain(t *testing.T) {
 	// The `pruned:` label and its spacing are the field harness's scrape surface
 	// (integration/cloudtest/scenarios.sh reads `pruned:[[:space:]]*[0-9]+`), so the shape is
 	// pinned here as well as the number.
-	want := "pruned:       1 blocks have shed their heavy bond proofs below the retention horizon"
-	if !strings.Contains(out, want) {
-		t.Fatalf("chain-status must count a pruned v5 block; a v5 chain reads 0 under IsPruned() by construction.\nwant line %q in:\n%s", want, out)
+	//
+	// THE SECOND LINE'S PREDICATE IS PINNED HERE TOO, AND v5 IS THE ONLY ERA THAT CAN PIN IT.
+	// chainstatus.go asserts in a comment that the identity counter never exceeds the
+	// possession one; on v1/v2/v4 the two predicates are IDENTICAL (validateD3Digests refuses
+	// a pre-v5 AnswerDigest outright, so HeavyProofsShed can only fire through the IsPruned
+	// short-circuit), which is why the pre-v5 leg cannot separate them and why swapping this
+	// counter to HeavyProofsShed() left the WHOLE cmd/silt package green. Under that swap the
+	// output reads "of those: 1" in the same sentence that narrates 0 as EXPECTED — a false
+	// statement contradicting its own narration. This want is what executes the claim.
+	for _, want := range []string{
+		"pruned:       1 blocks have shed their heavy bond proofs below the retention horizon",
+		"of those:     0 declare a pre-v5 non-recomputable identity",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("chain-status must count a pruned v5 block under HeavyProofsShed() and report ZERO declared identities under IsPruned();\na v5 chain reads 0 for the first by construction, and a non-zero second line contradicts its own narration.\nwant line %q in:\n%s", want, out)
+		}
 	}
 
 	// THE HARNESS'S OWN READ, RUN. The comment in chainstatus.go that says "no other line

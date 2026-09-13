@@ -90,9 +90,14 @@ func cmdChainStatus(args []string) error {
 	// TestChainStatusPrunedCountIsSoundOnAV5Chain pins the number and the shape.
 	fmt.Printf("  pruned:       %d blocks have shed their heavy bond proofs below the retention horizon\n", shed)
 	// The identity half, reported separately BECAUSE it is a different question, and
-	// narrated because a bare 0 is exactly the trap above. IsPruned() is a strict subset
-	// of HeavyProofsShed() (which returns true immediately when IsPruned() does), so this
-	// never exceeds the line above. It is still worth an operator's attention: a block
+	// narrated because a bare 0 is exactly the trap above. IsPruned() is a subset of
+	// HeavyProofsShed() (which returns true immediately when IsPruned() does), so this never
+	// exceeds the line above — and on v1/v2/v4 the two are not merely nested but IDENTICAL,
+	// because validateD3Digests refuses a pre-v5 AnswerDigest outright, leaving the IsPruned
+	// short-circuit as the only way HeavyProofsShed can fire there. v5 is the ONE era where
+	// the numbers can differ, which is why TestChainStatusPrunedCountIsSoundOnAV5Chain is the
+	// only place this line's predicate can be gated. It is still worth an operator's
+	// attention: a block
 	// whose body cannot reproduce its hash is refused as equivocation evidence
 	// (ErrPrunedEvidence) and is the R-CARRIER-PRUNED-HASH surface, so "how much of my
 	// replica is in that state" is a real diagnostic — it is just not "did the prune run".
