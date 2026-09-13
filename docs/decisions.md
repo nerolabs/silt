@@ -6494,6 +6494,14 @@ why this entry ratifies the READING and not the BUILD, and why the sequencing ru
 
 - **It authorises no build.** Nothing in `core/node` changes on this entry. The three authorised
   items on `D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12` are unchanged and this is not a fourth.
+  **★ SUPERSEDED AS TO THE BUILD, 2026-09-13 — the sentence above is kept because it is a true
+  statement about THIS entry, and the correction reads as one correction.**
+  `D-F8-BUILD-AUTHORISED-2026-09-13` is the separate authorisation, taken on the owner's call H, and
+  **PR #855 (`b890308`) changed `core/node` tests on it.** It is narrowed to the half the judge
+  already delivers — *a real repair IS paid* — while the other half, *a no-loss claim is NOT paid*,
+  **stays pinned and GATED behind `R-PROBE-FALSE-NEGATIVE-RATE`**, with
+  `TestRTRC3_ClaimWithNoLossIsPaid_PINNED_DEFECT` green on `main` asserting the defect. Read the two
+  entries together; §4 alone is false about the tree after 2026-09-13.
 - **It does not ratify the current behaviour as correct**, and it does not make the pin retirable. A
   pin buys visibility, not a repair.
 - **It does not touch `R-RTRC3-PREMISE-CHECKS-A-RECORD`.** That is a different question about
@@ -6891,3 +6899,744 @@ Every number below was re-measured here before it was written down.
 DETERMINED"* holds **for the BASE only** — see §2. Every site about to publish that sentence carries
 the multiplier's qualifier: this entry, `CHANGELOG.md`, `core/credit/escrow.go`, the thinking doc and
 the generated website.
+
+---
+
+## D-RTSFO4-REFUTED-ROUTE-B-2026-09-12 — the RT-SFO-4 REFUTED verdict is ratified; route R-B is taken, R-A rides the genesis batch, and the `k >= 2` floor is NOT bought
+
+- **Status:** ✅ RATIFIED — 2026-09-12, on the Researcher's certification. Owner call 5 is ANSWERED.
+- **Tier:** ratifying a research verdict is a **veto-gate** act, and the verdict falsifies a
+  **published claim**. The chosen route is **accounting only** and moves no consensus rule, no
+  format door and no genesis hash; the declined route R-A does move the genesis hash, which is
+  exactly why it is not taken here.
+- **Certification:**
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/RT-SFO-4-ERASURE-SHARD-COLLAPSE-DURABILITY-RESEARCH-CERTIFICATION-2026-09-11.md`
+- **Scope:** `ROADMAP.md` owner call 5 and the `RT-SFO-4` rows. No code changes in this entry.
+
+### 1. ★ WHAT IS REFUTED, IN THE CERTIFICATION'S OWN TERMS — this is NOT a data-loss finding
+
+The Researcher returned **REFUTED** on *"silt's published durability holds for every stripe
+configuration reachable in production"*, with three independent refuting instances, **two of them
+reachable through shipped defaults**.
+
+**The refutation is of the PUBLISHED BOUND and of the ACCOUNTING THAT READS IT — not of
+recoverability.** In the honest-failure model **the bytes still come back.** Any reading that
+turns this entry into a data-loss finding is wrong, and the distinction has to be repeated at
+every site because the verdict word *REFUTED* invites the stronger reading on its own.
+
+### 2. The routes, and why they are not equivalent
+
+| Route | What it changes | Cost | Disposition |
+|---|---|---|---|
+| **R-B** — fix the accounting | the bound and the code that reads it | **free** | **✅ TAKEN.** It closes **five** defects |
+| **R-A** — a Cauchy generator | the shard derivation | **moves the genesis hash** | **HELD as a rider** on the genesis-batch decision |
+| a **`k >= 2` floor** | the read path | a read-path change | **❌ NOT BOUGHT** |
+
+**R-B is taken because it is free and closes five defects at once.** R-A is not declined — it is
+**parked as a rider on `D-GENESIS-BATCH-DEFERRED-2026-09-12`**, because a generator change moves the
+height-0 hash and a re-mint is scarce by CALENDAR. Riding the batch is what makes R-A affordable;
+taking it alone would spend a whole re-mint on it.
+
+**The `k >= 2` floor is NOT bought.** It is a read-path change and it is not what the refutation
+requires: the accounting is what is wrong.
+
+### 3. What this entry does NOT do
+
+- **It does not retire the pin.** `core/pipeline TestRT_SFO_4_SingleDataShardStripeHasSixDistinctShards_PINNED_DEFECT`
+  banks the finding **whichever route is taken**, and it stays.
+- **It does not decline R-A.** A rider held behind a trigger is not a decline, and recording it as
+  one would lose the move.
+- **It does not authorise the accounting fix to be written here.** R-B is the ratified ROUTE; the
+  build is ordinary Builder work against the certification's own list of five.
+
+### 4. Residuals
+
+`R-SUBFRAME-SIZE-ORACLE` cited *"the owner rules … (open call 4 above)"* as its closer. **Call 4 was
+answered on 2026-09-11** (ship RT-SFO-5 disclosed, route RT-SFO-4 to the Researcher) and **the live
+substance is this call.** That stale pointer is corrected beside its struck text in `ROADMAP.md`.
+
+---
+
+## D-GENESIS-BATCH-DEFERRED-2026-09-12 — no second height-0 move is bought yet; the composition is decided as ONE trade when the F6 measurement set returns
+
+- **Status:** ✅ RATIFIED — 2026-09-12. Owner call 6 is ANSWERED, and the answer is **NOT YET, as one
+  trade, on a TRIGGER.**
+- **Tier:** a **sequencing** decision over the **format/genesis** surface. It buys nothing, moves no
+  consensus rule and mints no genesis. The things it holds — R-A, O-8 — are each format-tier and each
+  stays exactly where it was.
+- **Scope:** `ROADMAP.md` owner call 6, row F6, and the owner-owned block. No code changes.
+
+### 1. The answer
+
+**Do NOT buy a second height-0 move yet.** Genesis has been re-minted **twice already** on this
+train and **there is no reserved move left to ride**. A re-mint is scarce by **CALENDAR, not by
+permanence** (`D-FREEZE-REPRICE-2026-09-10`) — each one costs the graded re-run set — so the
+question is never *"is this item worth a re-mint"* but *"what is the whole batch worth."*
+
+**The composition is therefore decided as ONE trade, and the trigger is the F6 measurement set
+returning.** Deciding the riders one at a time is the failure this defers: each looks cheap against
+a re-mint that is already being paid, so the batch grows by ratchet and nobody ever prices it whole.
+
+### 2. ★ THIS IS WHAT PARKS THE O-8 RE-DECISION BEHIND A TRIGGER
+
+`D-O8-BASIS-CHANGED-2026-09-12` records that **a re-decision IS OWED** on O-8: a direction was
+ratified conditional on its own certification, the certification returned **GATED**, and it
+**REFUTED the headline number the ratification was given on.** Read alone, that entry leaves an
+owner decision hanging open with no date.
+
+**It is not hanging open. It is parked behind this trigger.** The O-8 re-decision returns as a
+numbered owner call **when the F6 measurement set lands** — not before, and not on a calendar.
+Filing it as a live call today would assert the owner owes a decision he deliberately deferred,
+which is the opposite of true. The reason is structural rather than a bound: **O-8 must be IN a
+batched re-mint or abandoned**, because it moves the shard derivation and the manifest frames at
+once. There is no batch yet, so there is nothing to decide it against.
+
+Recorded here explicitly so a future reader holding `D-O8-BASIS-CHANGED-2026-09-12` sees the trigger
+rather than an unexplained silence.
+
+### 3. What rides the batch, as of this entry
+
+- **RT-SFO-4 route R-A** (a Cauchy generator) — `D-RTSFO4-REFUTED-ROUTE-B-2026-09-12` §2.
+- **O-8**, if and only if its re-decision is taken affirmatively, and **only with its two
+  preconditions** — the leg-1 verifier fix (`R-POR-MERKLE-TAUTOLOGY`) and the seed-derivation fix
+  B-1. Those are **preconditions, not separable cheap wins**: ship O-8 over the current verifier and
+  O-8 is vacuous.
+
+**This list is not closed and is not a commitment.** It records what is known to want a re-mint at
+the time of writing. Nothing joins the batch by being mentioned here.
+
+### 4. What this entry does NOT do
+
+- **It does not schedule O-8** and it does not revive the refuted number. The economics are
+  INVERTED relative to the ratification and the re-decision IS that trade; nobody has taken it.
+- **It does not declare the freeze near.** See `D-FREEZE-ENTRY-AT-RC-2026-09-13`.
+- **It does not make F6 an O-8 build.** Row F6 is a **measurement set**, its three pieces are
+  Researcher/Tester/Builder work, and **none of it is the owner's.**
+
+---
+
+## D-ACCEPTANCE-SURFACE-SPLIT-2026-09-12 — owner call 8 SPLITS: the reachability job becomes required after F6(i) lands clean; the fixture census does not, until the adversary-shape gate says which fixtures matter
+
+- **Status:** ✅ RATIFIED — 2026-09-12. Owner call 8 is ANSWERED, and the answer is a **SPLIT**, not a
+  yes or a no.
+- **Tier:** a **process** change (the merge-gate ruleset). It touches no consensus rule, no format
+  door and no published claim. It changes **when a gate blocks**, never what a gate checks.
+- **Scope:** `ROADMAP.md` owner call 8; the GitHub ruleset's required-status-check list. No code
+  changes in this entry, and **no check is made required by this entry** — each half is triggered.
+
+### 1. Why one call had two halves, and why they separate
+
+The call was filed as one because answering either half alone leaves the acceptance surface
+advisory. The evidence was two measurements:
+
+1. **The fixture census gates: 25 of 40 fixtures go RED** if they are built.
+2. **The reachability job `Go — every claimed lane is IN the linked binary` is NOT a required
+   status check.** Read back from the ruleset, the six required contexts are `Go — vet, fmt, test`,
+   `Website — changelog + links`, `Go — race detector`, `Docs ship with code`, `Go — the bbootstrap
+   build tag (D-BB-BUILD-TAG)` and `Go — multi-process e2e (real TCP)`. **The reachability lane gate
+   can therefore go RED and a PR still merges.**
+
+**They separate because their costs are not the same shape.** The reachability job's cost is a
+sequencing cost — it must be clean before it blocks. The census's cost is 25 repairs, and **the
+order in which those repairs are done is itself the open question.**
+
+### 2. The reachability job: REQUIRED, after a defined clean window
+
+**The reachability job becomes a required status check AFTER the F6(i) call-site census lands and
+runs clean for a defined window.** It is the gate that refuses *"a mechanism shipped inert"*, which
+is the founding scar of the whole lane set — so it should block, and the only question was when.
+
+**The condition is not decoration.** F6(i) — the G-O8-D call-site census — is the piece most likely
+to move lane records, and making the job required while its own inputs are still moving is how a
+gate earns a reputation for crying wolf before it has caught anything.
+
+### 3. The fixture census: NOT required, until the adversary-shape gate lands
+
+**The fixture census does NOT become a required status check until the adversary-shape gate lands.**
+
+**Requiring it first forces 25 repairs ahead of the gate that says which of them matter.** The
+adversary-shape gate is what classifies a capability as covered or UNCOVERED; without it, all 25
+reds are equal, and the repair order is chosen by whoever is holding the branch.
+
+### 4. ★ THE ACCEPTED RISK, in the owner's own framing
+
+> **A required gate that cries wolf gets disabled.**
+
+That is the whole reason both halves are triggered rather than taken today. The risk being accepted
+is the other side of it: **for the length of both windows the acceptance surface stays advisory, and
+a PR can merge over a red reachability lane or a red fixture.** That is a real hole and it is taken
+knowingly, because a gate that is switched off by a frustrated operator is worth strictly less than
+a gate that arrives late.
+
+### 5. What this entry does NOT do
+
+- **It makes nothing required today.** Both halves are conditions on future events. A reader must
+  not treat this entry as authority to edit the ruleset.
+- **It does not define the window.** *"Runs clean for a defined window"* is a placeholder for a
+  number nobody has set; setting it is part of taking the first half, not a separate call.
+- **It does not order the 25 repairs**, and it must not be read as deferring them indefinitely —
+  they are gated on the adversary-shape gate, which is itself a first-class roadmap item
+  (`D-STRUCTURAL-GATES-2026-09-12`).
+
+---
+
+## D-LOCKQC-UNDER-SIGBYTES-2026-09-12 — owner call 9 takes CLOSER 1: `LockQC` comes under `sigBytes`, PULLED FORWARD ON SEVERITY and not sorted with its family at launch
+
+- **Status:** ✅ RATIFIED — 2026-09-12, on the Researcher's deadline classification. Owner call 9 is
+  ANSWERED: **closer 1.**
+- **Tier:** the change touches a **SIGNED** preimage — `(*roundChangeEnv).sigBytes` — but **NOT a
+  format preimage.** `(*Block).bodyHash` is unaltered and **none of the four doors moves.**
+  **Deadline class: WIRE COMPATIBILITY.** It is **not a format item and does not come to the owner
+  as one.**
+- **Certification:**
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/LOCKQC-UNDER-SIGBYTES-DEADLINE-CLASSIFICATION-2026-09-11.md`
+- **Scope:** `ROADMAP.md` owner call 9. No code changes in this entry; the build is authorised as
+  ordinary Builder work at its own priority.
+
+### 1. The route: CLOSER 1
+
+The classification named an undecided design decision (its residual R-1) that governed whether the
+item is built **at all** — the second closer would have meant it is never built. **Closer 1 is
+taken: bring `LockQC` under `sigBytes`.**
+
+This is the residue of answered call 2, which was carried as **PLACEMENT, not a decision**. That is
+why it returned as its own call rather than closing with call 2.
+
+### 2. ★ WHY IT IS PULLED FORWARD: SEVERITY, NOT DEADLINE
+
+Its deadline class says it **sorts with its family at launch.** It is not being taken on the
+deadline. **It is pulled forward on SEVERITY.**
+
+**Face (b) is a liveness veto any peer can cast against any new-view certificate, in shipped code.**
+A veto that any peer can cast, against a certificate the protocol needs to make progress, is not a
+launch-window item regardless of what its deadline class says. The deadline says when it becomes
+*expensive*; the severity says when it becomes *dangerous*, and those are different clocks.
+
+**Recording both honestly is the point.** An entry that said only *"wire compatibility, sorts at
+launch"* would justify leaving a live liveness veto in the tree; an entry that said only *"severe,
+do it now"* would invite someone to treat it as a format item and rush it into a freeze train.
+
+### 3. The classification, recorded exactly
+
+- **Signed preimage: YES** — `(*roundChangeEnv).sigBytes`.
+- **Format preimage: NO** — `(*Block).bodyHash` is unaltered; none of the four doors moves.
+- **Deadline class: WIRE COMPATIBILITY.**
+- **Cost of missing it: a coordinated fleet upgrade. NEVER an era.**
+
+**That last line is load-bearing and is written out rather than implied.** *"Or it costs an era"* is
+the pressure that turns a freeze train into a scope magnet, and it is **not available as a reason to
+rush this item.** The reason to do it early is face (b), and nothing else.
+
+### 4. What this entry does NOT do
+
+- **It does not make `LockQC` a format item**, and it must not be presented to the owner as one.
+- **It does not schedule it into the genesis batch.** It moves no genesis hash, so it has no
+  business riding a re-mint (`D-GENESIS-BATCH-DEFERRED-2026-09-12`).
+- **It does not certify the build.** The classification classified; the design of the change under
+  `sigBytes` is ordinary work against the shipped preimage, and anything in it that reaches a
+  consensus rule re-enters the research gate on its own merits.
+
+---
+
+## D-M3-828-HELD-OPEN-2026-09-13 — PR #828 stays OPEN and unmerged; #852 supplied the fix its six RED e2e tests needed, and its remaining blocker is the issuer-bind question
+
+- **Status:** ✅ RATIFIED — 2026-09-13. **HOLD, not decline.** The PR is open on purpose.
+- **Tier:** a **sequencing** decision about one branch. It ratifies no mechanism. The mechanisms
+  #828 carries are governed by `D-TOKEN-DOMAIN-CHAINLESS-CLIENT-2026-09-12` and by
+  `D-ISSUER-NETWORK-BIND-2026-09-13`, not by this entry.
+- **Scope:** PR **#828** (M3 — the chain-bound token domains). No code changes in this entry.
+
+### 1. The disposition
+
+**#828 stays OPEN and is not merged.** Verified at source on 2026-09-13: `#828` is `OPEN`,
+`mergedAt` is null.
+
+**Its six RED e2e tests are supplied by #852**, which merged 2026-09-13 (`ecfb70f`). #852 built the
+**supply route** — `swarm add -chain-id <64 hex>`, `(*Node).SetNetworkIdentity`,
+`(*Node).RequesterChainID`, `(*Node).HasNetworkIdentity` — and #828 is the **consumer**. That is why
+#852 could merge while #828 could not: the chainless client now has somewhere to get its 32 bytes,
+and #828 is what blinds under them.
+
+### 2. Its remaining blocker is the issuer-bind question, and that is now answered-but-gated
+
+The block is **`D-ISSUER-NETWORK-BIND-2026-09-13`**: the mechanism is CERTIFIED and the build is
+**GATED on G-NB-1 and G-NB-3**. Until those clear, #828 would merge a requester-chosen bind — which
+is exactly the exposure `R-BLIND-BIND-IS-REQUESTER-CHOSEN` names.
+
+**So the hold has a named opener, not a vibe.** #828 merges when the issuer-bind gates clear, and
+not on the strength of its e2e turning green.
+
+### 3. What this entry does NOT do
+
+- **It does not decline #828.** A held PR with a named opener is not a declined one, and filing it
+  as declined would lose the M3 work.
+- **It does not authorise binding `fdhDomain`.** M3b stays gated:
+  `D-TOKEN-DOMAIN-CHAINLESS-CLIENT-2026-09-12` §3 is explicit that binding `fdhDomain` is a
+  **consensus-rule change** and inverts that entry's own "no consensus rule" verdict.
+- **It does not close `R-CLIENT-HAS-NO-CHAIN` or `R-E2E-ERA4-FIXTURE`.** Both are separately held
+  open by that entry's §4 and neither rides #828's merge.
+
+---
+
+## D-INGEST-WITNESSES-SUBSUMED-2026-09-13 — call A: the mechanism CANNOT BE SPECIFIED, so the row is SUBSUMED by the recompute freeze and its closer RE-HOMED to Boulder 1's consult. It is NOT declined
+
+- **Status:** ✅ RATIFIED — 2026-09-13, on the Researcher's certification, which returned **GATED**.
+  Owner call A is ANSWERED, and the answer is **RELOCATED**, not built and not declined.
+- **Tier:** the certification **refutes the premise the call was gated on.** The row touches **NO
+  consensus rule and NO freeze door** (§3). It was routed as a research-gated consensus question on
+  a hypothesis the evidence refutes.
+- **Certification:**
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/R-INGEST-WITNESSES-INERT-MECHANISM-RESEARCH-CERTIFICATION-2026-09-13.md`
+- **Scope:** `ROADMAP.md` register row `R-INGEST-WITNESSES-INERT`; `core/statehash`. **No code
+  changes in this entry, and none authorised by it.**
+
+### 1. The direction, and the verdict that met it
+
+The owner's direction was: *"why decline something we need anyway. build it."* That is the right
+instinct and it is why the row was routed rather than closed.
+
+**The certification returned GATED, and the mechanism CANNOT BE SPECIFIED.** Not "is expensive", not
+"needs a design" — cannot be specified, for a structural reason:
+
+> **`core/statehash.IngestBlockWitnesses` gates `[]RawWitness`, and NOTHING IN THE TREE PRODUCES
+> ONE.**
+
+Re-verified at source on 2026-09-13 at `b890308`: outside `_test.go` files, `RawWitness` appears
+only in its own declaration and in `IngestBlockWitnesses`/`checkShape`'s signatures
+(`core/statehash/witness_bound.go`), and `IngestBlockWitnesses` has **zero non-test callers.** Every
+construction of a `[]RawWitness` in the repository is in a test.
+
+It belongs to a **PUSH** witness design that the shipped **PULL** box did not adopt. The function is
+not a wire that came loose; it is the far end of a wire that was never run.
+
+### 2. ★ T-NO-PRODUCER-NO-WIRING — why "just wire it up" is not a task
+
+> **A function whose input type has no producer is not UNWIRED, it is UNWIRABLE. Wiring it is the
+> CONSTRUCTION OF THE PRODUCER.**
+
+This is the whole reason the call cannot be answered as posed. *"Wire `IngestBlockWitnesses` into v5
+acceptance"* sounds like an integration task and reads as a day's work. It is not: it is designing
+and building the push-side witness production that the pull box declined, and **that is a
+design-consult-sized piece of work in a different lane.** The estimate the row invited was wrong by
+the size of a subsystem.
+
+### 3. TWO FINDINGS THAT RE-PRICE THE ROW, and both cut toward relocation
+
+**(a) It touches NO consensus rule and NO freeze door.** The row was carried as *"a consensus-rule
+change and therefore research-gated"* — either wire it into v5 block acceptance, or DECLINE it for
+the RC and disclose to B8. **That framing rested on a hypothesis the evidence refutes.** An inert
+function with no producer reaches no validity rule and closes no door. It was **never on the freeze
+surface**, so it was never subject to the freeze's clock, and the urgency the row carried was
+manufactured by its own mis-classification.
+
+**(b) ★ THE "478 AGAINST A BUDGET OF 80" IS THE GO COMPILER'S INLINER BUDGET, NOT A RESOURCE
+BUDGET — AND IT IS EVIDENCE *FOR* THE FINDING.**
+
+The register row records, measured at `cb491ec`: *"`cannot inline` at cost 478 against a budget of
+80."* Read as a resource overrun it looks like a defect to fix. It is not. `80` is
+`cmd/compile`'s **`inlineMaxBudget`**, printed by `go build -gcflags=-m=2` as
+`cannot inline <name>: function too complex: cost N exceeds budget 80`.
+
+**`478 > 80` is the substantiality evidence.** It is what proves that the symbol's **absence from
+the linked `./cmd/silt`** is the **linker dropping a dead function**, rather than the inliner
+collapsing its name into a live caller. Without it, absence from `nm` would be ambiguous.
+
+> **⚠ A builder told to "fix the 478" would destroy the gate's only proof.** Shrinking the function
+> below the inline budget makes it inlinable, which makes its `nm` absence uninformative, which
+> removes the evidence that it is inert. The number must be read as a measurement of the
+> reachability gate, never as a target.
+
+Filed as the theorem `T-INLINE-COST-IS-NOT-A-BUDGET` in the certification.
+
+### 4. The ratified disposition
+
+- **The row is SUBSUMED by `D-RECOMPUTE-FREEZE`.**
+- **Its closer is RE-HOMED to Boulder 1's design consult** — where the producer would get designed,
+  if a push-side witness path is ever wanted.
+- **It is NOT declined.** It is **relocated to where its producer gets designed.**
+
+**The distinction is the point of this entry.** A decline says silt does not want witness-bound
+ingest. That is false and it is not what was decided. What was decided is that the question belongs
+to the design that would create its input, and asking it of a function in isolation cannot produce
+an answer.
+
+### 5. What this entry does NOT do
+
+- **It does not authorise any wiring, any producer, or any change to `core/statehash`.** The
+  re-home is a **ROADMAP line and nothing else.**
+- **It does not close `R-R3-GOB-ALLOC-AMPLIFICATION`.** That row is re-priced by the same inertness
+  (a decoder bound built inside this function ships inert) and its *"this disposition comes first"*
+  pointer now resolves here. It stays open, still paired with `R-membership G-3`'s half B as **ONE
+  build**.
+- **It adds no lane record and wires nothing to make a gate green.** That is the over-claim the
+  reachability gate exists to refuse, and this row is the gate's founding scar
+  (`scar:mechanism-shipped-inert-2026-09-10`).
+- **It does not re-open the pull-vs-push box choice.** The shipped box is pull; this entry records
+  that the function belongs to the other design, not that the other design should be adopted.
+
+---
+
+## D-ISSUER-NETWORK-BIND-2026-09-13 — call C: the network bind must be ISSUER-enforced by a PER-NETWORK ISSUER KEY; "put the domain on the issuing surface" is IMPOSSIBLE, and the severity was amended by the finding's own author
+
+- **Status:** ✅ RATIFIED — 2026-09-13. The direction is ratified (*"same, build it"*), the
+  **MECHANISM is CERTIFIED**, and the **BUILD is GATED on G-NB-1 and G-NB-3.**
+- **Tier:** touches the **token issuance surface**, which is M0-adjacent. **There is no immutable
+  trade: the privacy cost is ZERO bits at the shipped operating point** (§4). **Nothing is owed on
+  the published claim** (§5). **Neither gate is a research question** — both are engineering, which
+  is why this ratifies at MECHANISM strength rather than returning to the Researcher.
+- **Certification:**
+  `/Users/andrewedmond/.claude/silt-agent-memory/researcher/reviews/research-outcome/ISSUER-ENFORCED-NETWORK-BIND-CALL-C-MECHANISM-RESEARCH-CERTIFICATION-2026-09-13.md`
+- **Scope:** `core/blindtoken`, the issuance path, and PR **#828**, which this gates
+  (`D-M3-828-HELD-OPEN-2026-09-13`). **No code changes in this entry.**
+
+### 1. The finding it answers
+
+`R-BLIND-BIND-IS-REQUESTER-CHOSEN`, filed as an unasked finding inside
+`D-TOKEN-DOMAIN-CHAINLESS-CLIENT-2026-09-12` §6:
+`blindtoken.SignBlinded(rng, priv, blinded)` takes **only the blinded representative.** The issuer
+never sees the domain, so **the network bind is REQUESTER-CHOSEN, not issuer-enforced.** A bind
+nobody enforces at issuance is a self-declaration.
+
+### 2. ★ THE CERTIFIED ROUTE IS A PER-NETWORK ISSUER KEY — and the obvious route is IMPOSSIBLE
+
+**"Put the domain on the issuing surface" is IMPOSSIBLE.** Not hard, not expensive — impossible, and
+for the reason the scheme exists:
+
+> **Blinding makes the signed value UNIFORM independently of the domain.** The issuer sees a blinded
+> representative whose distribution carries no information about what was hashed under it. There is
+> nothing on the issuing surface for the issuer to check, because that is precisely the property the
+> blind signature provides.
+
+Adding a domain *parameter* to `SignBlinded` would therefore be theatre: the issuer would be told a
+domain it cannot verify against the bytes it signs.
+
+**The certified route is a PER-NETWORK ISSUER KEY.** The bind moves from the *message* to the *key*:
+a signature made under network A's issuer key verifies only against network A's issuer key. The
+issuer enforces the bind by which key it reaches for, which is something it genuinely controls and
+the requester genuinely cannot steer.
+
+**Recording the impossibility is as important as recording the route.** Without it, the next reader
+re-proposes the domain parameter, because it is the shorter diff.
+
+### 3. ★ THE SEVERITY CORRECTION — the finding's own author amended it
+
+The finding as filed named **double-publish** as the exposure. **That is already CLOSED**, by the
+scheme's own **exclusivity property**: one fee buys one network's token, **even against an
+adversarial requester.** The amendment came from the author of the finding, on its own re-reading,
+and it is recorded here rather than quietly dropped.
+
+**The live exposure is FEE-LANE ARBITRAGE** — a requester paying on the cheap network and spending
+on the expensive one. That is a real economic break and it is what the per-network key closes.
+
+**Why the correction is in the ledger:** the ratification was taken while the double-publish framing
+was live, and a future reader who finds double-publish already closed would otherwise conclude the
+whole call was moot and unwind a mechanism that is still needed. **The direction survives the
+correction; only the reason changed.**
+
+### 4. Privacy cost: ZERO bits at the shipped operating point, so there is no immutable trade
+
+A per-network issuer key is, on its face, a partition — and a partition is where an anonymity-set
+argument usually has to be paid. **Measured at the shipped operating point the cost is ZERO bits**,
+which is why this entry does not reach the veto gate at all. **This is an operating-point claim, not
+a theorem**: it is stated with its operating point attached, and a future configuration that
+multiplies live networks per issuer re-opens it.
+
+### 5. Nothing is owed on the published claim
+
+The wording rule that would have applied — *"minted ON"* a network — **appears nowhere.** Re-verified
+by grep at `b890308`: the only *"minted on"* occurrences in the repository are about the per-daemon
+bearer token minted on first run (`cmd/silt/id.go`, `cmd/silt/ui.go`) and about block fixtures. **No
+published surface makes the claim the bind would falsify**, so **the wording rule is PROSPECTIVE** —
+it binds what may be written, not anything that must be corrected.
+
+### 6. The gates
+
+**Build is GATED on G-NB-1 and G-NB-3. Neither is a research question**; both are engineering, and
+naming that is what lets a Builder proceed without re-routing to the Researcher. They are held by
+the Tester (`tester/rt-nb-issuer-network-bind`).
+
+### 7. What this entry does NOT do
+
+- **It does not build the key.** No per-network issuer key, no key-management change, and no
+  `core/blindtoken` edit is authorised by this entry.
+- **It does not merge #828.** See `D-M3-828-HELD-OPEN-2026-09-13`.
+- **It does not license binding `fdhDomain`.** That remains a consensus-rule change and M3b stays
+  gated.
+- **It does not close `R-BLIND-BIND-IS-REQUESTER-CHOSEN`.** The row closes when the per-network key
+  ships, not when its route is chosen.
+
+---
+
+## D-COVERAGE-TABLE-GATE-DEFERRED-2026-09-13 — call D: KEEP the deferred gate. The `FIX-OPEN` row stands honestly reclassified, the count walk is deliberately NOT widened, and the widening is tied to the R1.8 accept-flip
+
+- **Status:** ✅ RATIFIED — 2026-09-13. Owner call D is ANSWERED: **KEEP the deferred gate.**
+- **Tier:** a **process / gate-sequencing** decision. It changes no consensus rule, no format door
+  and no production behaviour. The break it concerns (`R-ANCHORED-PRE-SET`) is separately
+  research-gated and is **not** decided here.
+- **Scope:** `core/chain`'s `foldInputCoverageTable` / `r12CoverageTable` and
+  `TestAdversarialRootCoverageIsComplete`; `ROADMAP.md` row `R-ANCHORED-PRE-SET`. **No code changes
+  in this entry.**
+
+### 1. The question, and the answer
+
+`foldInputCoverageTable`'s `StateRootDigestWitness.PreIDs` row is reclassified **`FIX-OPEN`** — the
+table's own machine-readable term for *"a confirmed wrong-accept awaiting an anchoring fix"* —
+naming `RT-ANCHOR-0..6` as its open-break gate. **That reclassification stands and is honest.**
+
+**But the *expected 0 `FIX-OPEN` rows* assertion walks `r12CoverageTable` only, not the merged set,
+so it does NOT see that row and stays GREEN.** Measured 2026-09-13: placing the same disposition
+inside `r12CoverageTable` takes `TestAdversarialRootCoverageIsComplete` **RED**, so the walk is alive
+and the blindness is about the **TABLE**, not about the walk.
+
+**The ratified answer: the count walk is deliberately NOT widened.**
+
+### 2. Why the label stands even though the gate does not fire
+
+An honest label with a deferred gate is the interim. **A silently-green gate with a label pretending
+otherwise is not.** The row says `FIX-OPEN` because that is true; the walk stays narrow because
+widening it would park a permanently-RED gate on `main` for as long as the research gate holds the
+remedy — and the remedy is research-gated precisely because it is a consensus-adjacent verification
+rule that no seat builds alone.
+
+### 3. ★ THE ACCEPTED RISK, recorded
+
+**A permanently-RED gate on `main` trains people to ignore reds.** That is the cost being avoided,
+and it is the same failure mode as `D-ACCEPTANCE-SURFACE-SPLIT-2026-09-12` §4 — *a required gate
+that cries wolf gets disabled.*
+
+**And the containment is real, which is what makes the deferral affordable:** the **R1.8 downgrade
+in `(*Box).Validate`** forces `Accept` to `IndeterminateTrustlessly`, and it is untouched. The break
+is contained by a shipped mechanism, not by a hope.
+
+**The risk taken in exchange is stated plainly: for as long as this holds, a machine-readable
+`FIX-OPEN` row exists that no gate reads.** A reader who trusts *"the count walk is green"* to mean
+*"there are no open wrong-accepts"* is wrong, and only this entry and the row's prose say so.
+
+### 4. The widening is TIED TO THE R1.8 ACCEPT-FLIP, and a ROADMAP row carries it
+
+**The containment IS the R1.8 downgrade. So the day R1.8 flips, the containment ends and the
+deferral's premise ends with it.** The widening is therefore not deferred to a date and not deferred
+indefinitely — it is **tied to the flip**, which is the same deadline `R-ANCHORED-PRE-SET` already
+carries.
+
+A ROADMAP row is filed making that tie explicit, so a future reader does not have to re-derive it
+from this entry.
+
+### 5. What this entry does NOT do
+
+- **It does not widen anything.** No walk, no table, no test changes.
+- **It does not decide `R-ANCHORED-PRE-SET`.** That break's remedy is research-gated and its
+  certification is owed; this entry decides only whether a gate reads its label today.
+- **It does not retire any of `RT-ANCHOR-0..6`.** They are `PINNED_DEFECT` under
+  `D-REPAIR-CLAIM-GATES-PINNED-2026-09-12`, they assert the current broken behaviour, and they
+  redden when the remedy lands.
+
+---
+
+## D-FREEZE-ENTRY-AT-RC-2026-09-13 — manifest item 21, the era-4 freeze entry, is written AT THE RC and not before. Era 4 is OPEN
+
+- **Status:** ✅ RATIFIED — 2026-09-13. Owner, in terms: *"we only write the freeze at RC. We are
+  nowhere near there."*
+- **Tier:** the freeze act itself is the **owner's**, and it is a **veto-gate** act. This entry does
+  not perform it, schedule it, or bring it nearer. It records that it has not happened.
+- **Scope:** `ROADMAP.md` row D1 (manifest item 21) and row D3; `docs/era4-freeze-what-closes.md`.
+  **No code changes.**
+
+### 1. The decision
+
+**Manifest item 21 — the era-4 freeze ENTRY — is written AT THE RC and not before.**
+
+Item 21 is the owner's act, and it is what blocks D3; the format content of D1 is already delivered
+(`D-FREEZE-REAUDIT-2026-09-11`: the owed-and-format list is EMPTY). What remains is not engineering.
+It is a signature, and the signature is taken at the RC.
+
+### 2. ★ THIS CONFIRMS `era 4 is OPEN`, and must not read as scheduling the freeze
+
+The sentence that matters is the second half: **we are nowhere near there.**
+
+**Era 4 is OPEN.** The doors close when item 21 is written, and it is not written. Every format
+question that reads *"or it costs an era"* is therefore reading a door that is still open, and the
+cost of moving through it today is the graded re-run set and calendar — **not permanence**
+(`D-FREEZE-REPRICE-2026-09-10`).
+
+> **⚠ A reader must not take this entry as a schedule.** *"At the RC"* is a **condition**, not a
+> date, and the RC is not near. An entry that said *"the freeze is written at the RC"* and stopped
+> would read as a countdown; the owner's own second sentence is what stops it reading that way, and
+> it is quoted here for that reason.
+
+### 3. What this entry does NOT do
+
+- **It does not re-open any item the manifest already froze or dropped.** The re-audit's
+  classification stands.
+- **It does not make the one-page *what is frozen* doc owed again.**
+  `docs/era4-freeze-what-closes.md` is drafted and its re-check against the manifest's final content
+  is DONE as of 2026-09-11. It is ready for the owner to read; this entry changes nothing about it.
+- **It does not license a new format item on the grounds that the freeze is far off.** The era being
+  open lowers the cost of a genuine move; it is not a reason to make one
+  (`D-GENESIS-BATCH-DEFERRED-2026-09-12`).
+
+---
+
+## D-F8-BUILD-AUTHORISED-2026-09-13 — call H: the F8 build is AUTHORISED, in the half the judge already delivers. This RECONCILES `D-RTRC3-INTENT-STANDS-2026-09-12` §4
+
+- **Status:** ✅ RATIFIED — 2026-09-13. Owner call H. **BUILT and MERGED the same day: PR #855,
+  `b890308`.**
+- **Tier:** the underlying rule is an **economic mechanism** and stays inside
+  `D-BOUNTY-REPAIR-MECHANISM-GATED-2026-09-12`'s gate. This entry authorises a **test** change and
+  no mechanism change.
+- **Scope:** `core/node/rt_repairclaim_gates_test.go`, `core/node/redteam_repair_claim_test.go`.
+- **★ CORRECTS:** `D-RTRC3-INTENT-STANDS-2026-09-12` §4 — see §2. Read the two as **one
+  correction**, not as two conflicting entries.
+
+### 1. What is authorised, and what is not
+
+`D-RTRC3-INTENT-STANDS-2026-09-12` named the closer: build a positive control over a **REAL loss** —
+a stripe position actually missing, then rebuilt — and re-point both negative controls at it. It
+then declined to authorise it, because the loss witness sits behind `R-PROBE-FALSE-NEGATIVE-RATE`.
+
+**The build is authorised, and it lands ahead of its gated input ONLY IN THE HALF THE JUDGE ALREADY
+DELIVERS.** The two halves separate cleanly:
+
+| Half | Assertion | Disposition |
+|---|---|---|
+| positive | **a real repair IS paid** | **BUILT.** The judge already delivers this; the fixture stages a genuinely destroyed stripe position and a genuine rebuild from survivors |
+| negative | **a no-loss claim is NOT paid** | **STAYS PINNED and GATED** behind `R-PROBE-FALSE-NEGATIVE-RATE` |
+
+**`TestRTRC3_ClaimWithNoLossIsPaid_PINNED_DEFECT` is GREEN on `main`, asserting the DEFECT.** It is
+not retired, not skipped, and not weakened. A pin buys visibility, not a repair.
+
+**That split is the whole reason the build is affordable.** The accepted risk the predecessor named
+— *"the work lands asserting an intent the mechanism cannot yet deliver"* — applies to the negative
+half and only to it. The positive half asserts something the judge does today, so it cannot pass by
+arrangement.
+
+### 2. ★ THE RECONCILIATION — `D-RTRC3-INTENT-STANDS-2026-09-12` §4 said no build, and a build landed
+
+That entry's §4 says, in terms:
+
+> *"**It authorises no build.** Nothing in `core/node` changes on this entry."*
+
+**PR #855 merged 2026-09-13 (`b890308`) and changed `core/node` tests** —
+`core/node/redteam_repair_claim_test.go` and `core/node/rt_repairclaim_gates_test.go`.
+
+**That is not a contradiction and it is not a breach.** §4 is a true statement about **that entry**:
+it ratified a READING and authorised nothing. **This entry is the separate authorisation** §4 left
+room for, taken later, on the owner's call H, and narrowed to the half the judge delivers.
+
+**Cross-referenced explicitly so a future reader sees ONE correction rather than two conflicting
+entries.** Reading §4 alone, at any date after 2026-09-13, yields a false conclusion about what is
+in the tree. The pointer runs both ways: §4's *"authorises no build"* is scoped to itself, and the
+authorisation is here.
+
+### 3. What this entry does NOT do
+
+- **It does not lift `R-PROBE-FALSE-NEGATIVE-RATE`.** The no-loss half is still gated, for the
+  reasons that row states: a repair **erases its own evidence** (`T-LOSS-IS-A-TRANSIENT`), and a
+  witness must be produced on a prompt that is **never itself the evidence**
+  (`T-WITNESS-NEEDS-A-PROMPT`).
+- **It does not ratify the current behaviour as correct**, and it does not make the pin retirable.
+- **It does not change any mechanism.** No price, no payee, no judge rule.
+- **It does not resolve anything by deleting a test.** The predecessor's ★ warning stands: deleting
+  the positive control guts both negative controls; deleting the pin removes the record of a live
+  defect.
+
+---
+
+## D-GC-GUARD-2026-09-13 — `gc.auto=0` and `gc.pruneExpire=never` are set on this repo, PROVEN by experiment; and the measured limit is that `git prune` and `gc --prune=now` STILL BYPASS them
+
+- **Status:** ✅ RATIFIED — 2026-09-13, and **in force on this repository.** Verified at source on
+  2026-09-13: `git config --get gc.auto` → `0`, `git config --get gc.pruneExpire` → `never`.
+- **Tier:** **repository hygiene.** No consensus rule, no format door, no published claim, no
+  economic mechanism.
+- **Scope:** the silt git repository's local config. No files in the repository change.
+
+### 1. What is set, and what it buys
+
+- **`gc.auto = 0`** — no automatic garbage collection on any porcelain command.
+- **`gc.pruneExpire = never`** — an unreachable object is not expired by the un-flagged path.
+
+Together they stop the routine, silent object loss that makes a detached-HEAD experiment or an
+abandoned branch tip unrecoverable. That matters here because seats work in detached worktrees and
+because evidence is routinely held at a SHA nothing references.
+
+### 2. ★ PROVEN BY A THROWAWAY-REPO EXPERIMENT, not by reading the documentation
+
+The guard was **established by experiment in a throwaway repository**, not asserted from the config
+names. That is the standard this ledger holds for any claim about what a mechanism does
+(`docs/build-process.md` #7), and it is what produced §3 — which reading the config names would not
+have.
+
+### 3. ★ THE MEASURED LIMIT — `git prune` and `gc --prune=now` STILL BYPASS THE GUARD
+
+> **The guard covers the AUTOMATIC and UN-FLAGGED paths only.**
+
+Measured in the same experiment: **`git prune` and `git gc --prune=now` still delete unreachable
+objects with both settings in place.** An explicit prune expiry on the command line overrides
+`gc.pruneExpire`, and `git prune` is not gated by `gc.auto` at all.
+
+**So the guard is not a safety net against a seat that types the command.** It protects against
+background and incidental collection; it protects against nothing deliberate. Recording the limit is
+the point — a guard believed to be total is worse than no guard, because it licenses the command it
+does not actually stop.
+
+**The operational rule that follows, and it is the load-bearing half:** **NEVER run `git gc`,
+`git prune`, `git reflog expire` or `git clean` in this repository.** The config does not make them
+safe.
+
+### 4. What this entry does NOT do
+
+- **It does not make history recovery guaranteed.** Reflog expiry and explicit prunes remain
+  destructive, by §3.
+- **It does not change any tracked file**, and it is not enforced by any lint. It is a local config
+  fact plus a standing prohibition.
+
+---
+
+## D-BRANCH-DELETION-BY-HAND-2026-09-13 — branch deletion is AUTHORISED and the OWNER runs the script by hand, because seats are classifier-blocked
+
+- **Status:** ✅ RATIFIED — 2026-09-13. The deletion is authorised; the **execution route** is the
+  owner's own hands. This closes the *scheduling* half of owner call 10.
+- **Tier:** **repository hygiene**, and an **operational routing** decision. No consensus rule, no
+  format door, no published claim.
+- **Predecessor:** `D-BRANCH-CLEANUP-SESSION-2026-09-12` decided the SHAPE (one dedicated
+  interactive session, inventory generated beforehand). This decides WHO RUNS IT and HOW.
+- **Scope:** git branches on this repository. **No files in the repository change.**
+
+### 1. The decision
+
+**Branch deletion is AUTHORISED, and the owner runs the script by hand.**
+
+The script:
+`/Users/andrewedmond/Claude/claude/silt/.claude/agent-memory/tester/evidence/2026-09-13-branch-deletion/delete-branches-2026-09-13.sh`
+— verified present 2026-09-13. It carries **394 deletes and 22 holds, with a tip SHA on every
+line.**
+
+**The tip SHA on every line is the recovery affordance**, and it is why this is a script rather than
+a loop: with `D-GC-GUARD-2026-09-13`'s config in force and no explicit prune, a wrongly-deleted
+branch is restorable from the SHA the script itself printed.
+
+### 2. ★ WHY A SEAT DOES NOT RUN IT: SEATS ARE CLASSIFIER-BLOCKED, AND IT FIRED TWICE
+
+**A bulk branch delete is classifier-blocked for the seats.** It fired **twice, with the owner's
+explicit GO in hand.**
+
+> **Owner authorization does not clear a classifier block.**
+
+That was already recorded as a reason the cleanup is a session rather than a queued task. **What is
+new here is the routing consequence: the block is not a thing to retry around, so the execution
+moves to the owner's hands.** Two firings with explicit authorization is the evidence; a third
+attempt by a seat is a known-failure repeat, and repeating a known failure is the waste this project
+measures in hours.
+
+**The corollary, which is the reusable part:** when a seat is classifier-blocked on an action the
+owner has authorized, the remedy is to **hand the artifact over**, not to re-phrase the command. The
+script exists so the handover is a single verified command rather than a transcript of intentions.
+
+### 3. What this entry does NOT do
+
+- **It does not delete anything**, and no seat deletes anything on the strength of it.
+- **It does not retire the 22 holds.** A held branch stays held; the script's hold list is a
+  decision already taken per branch and this entry does not revisit it.
+- **It does not change the shape decided in `D-BRANCH-CLEANUP-SESSION-2026-09-12`** — one brief, one
+  risk class, an inventory read rather than derived live. It supplies the execution route that shape
+  was missing.
