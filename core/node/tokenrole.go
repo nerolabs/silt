@@ -38,15 +38,40 @@ var (
 	// measured "first cause: node: could not gather enough publish-token
 	// signatures", which is the outer sentence repeated).
 	//
-	// It is distinct from ErrNoIssuerKey below, which is a PEER'S ANSWER over the
-	// wire ("that server runs no issuer"). This one never reaches the wire.
+	// WHY NOT REUSE ErrNoIssuerKey below, and the reason is mechanical rather than
+	// semantic: cmd/silt's demandKeyResolutionError carries a LIVE
+	// `errors.Is(keyErr, ErrNoIssuerKey)` arm that emits the operator-facing "NOT
+	// banked" text ("that server serves no demand issuer key — it is not running
+	// -accept-delivery-receipts"), and cmd/silt/rt_r04b_c3_notbanked_test.go pins
+	// that classification. Feeding a publish-credit cache miss into that sentinel
+	// would put a second, unrelated condition under a classification a test pins —
+	// "start -accept-delivery-receipts", which is no remedy for a missing cached
+	// key. STATED AT ITS TRUE STRENGTH: that classifier reads only the error
+	// FetchDemandIssuerKeys returns, so the misclassification would be LATENT
+	// today, not immediate. That is the shape that bites later. (An earlier version
+	// of this comment said ErrNoIssuerKey is "a peer's answer over the wire" and
+	// that this one never reaches the wire. That was FALSE and it was PUBLISHED to
+	// the changelog: measured, ErrNoIssuerKey has SEVEN return sites
+	// and FIVE of them never reach the wire — the local keyset/epoch-key cache
+	// misses in demandkeys.go and relaytransport.go, and demandrole.go's
+	// issuerPub == nil, which is structurally the same predicate this sentinel
+	// splits off. ErrNoIssuerKey was ALREADY a sentinel with two jobs.)
 	ErrCreditIssuerKeyUnknown = errors.New("node: no cached publish-credit issuer key for this validator — fetch the canonical issuer set first")
-	// ErrNoIssuerKey means the peer answered the key request but serves no issuer
-	// key at all — it runs no token/demand issuer. EXPORTED because the client has
-	// to tell it apart from "the issuer served keys, none resolved against a
-	// committed binding": the first is "that server does not run the lane", the
-	// second is "that server's chain has no era-4 binding yet", and cmd/silt owes
-	// the operator a different sentence for each (S5, cmd/silt/swarm.go).
+	// ErrNoIssuerKey means NO ISSUER KEY IS AVAILABLE to blind against, from either
+	// direction: the peer answered the key request and serves none (FetchIssuerKey,
+	// FetchDemandIssuerKeys — the two sites that reach the wire), or this client
+	// holds no pinned keyset, no key for the current epoch, or was handed a nil key
+	// by its parent (AcquireDemandTokenInWindow, AcquireRelayAnchors,
+	// AcquireDemandTokenWithCredit — the five that do not). THE SCOPE IS STATED
+	// THIS WAY BECAUSE THE NARROWER SENTENCE WAS WRONG: this comment used to say
+	// only the first, and five of its own seven call sites contradicted it.
+	//
+	// EXPORTED because the client has to tell it apart from "the issuer served
+	// keys, none resolved against a committed binding": the first is "that server
+	// does not run the lane", the second is "that server's chain has no era-4
+	// binding yet", and cmd/silt owes the operator a different sentence for each
+	// (S5, cmd/silt/swarm.go). That classifier is why a new condition gets a new
+	// sentinel instead of this one.
 	ErrNoIssuerKey = errors.New("node: peer has no issuer key")
 
 	errNoCanonicalIssuers = errors.New("node: peer served no canonical issuer set (no chain)")

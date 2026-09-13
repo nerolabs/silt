@@ -100,3 +100,62 @@ accessor re-opened (F-1); `ErrCreditIssuerKeyUnknown` splits a sentinel that was
 the *"first cause"* clause stops printing the outer sentence back (F-2); the inert mechanism gets
 its register row (F-4); and the install is POSTED onto the node's loop rather than written from the
 main goroutine after `Bootstrap` has already made the loop live (F-5).
+
+
+## Fold-in 2, 2026-09-13 — I moved the hole, I did not close it
+
+The fold-in verification upheld the guard move and then measured the thing the move left behind.
+**Ablation B-ARG:** leave `swarmAdd`'s install call written, discard `parseDeclaredChainID`'s
+DECLARED result into `_`, pass a literal `false`. The **whole `cmd/silt` package stayed GREEN**.
+The flag parses, a malformed value is still refused, and the operator's declared identity is then
+dropped in silence — ablation A9 verbatim, one argument to the right.
+
+Neither instrument followed the guard, and the reason is structural rather than careless:
+
+- the four behavioural arms call `declareNetworkIdentity` with **their own** arguments, so they
+  prove the callee is correct and say nothing about what `swarmAdd` hands it;
+- the source gate collected call **names** and never read `ast.CallExpr.Args`.
+
+So the seam between `parseDeclaredChainID`'s results and `declareNetworkIdentity`'s parameters was
+covered by nothing at any tier. **The completion of last section's rule:** when a gate cannot reach
+the thing it asserts, move the thing to where a gate can reach it — *and then ask what the move left
+behind at the old site, because a caller that now merely forwards is a caller that can forward the
+wrong thing.*
+
+**What was built.** The gate walks the arguments: it reads the identifiers the
+`parseDeclaredChainID` assignment binds in `swarmAdd`'s own body and requires those same identifiers
+at positions 3 and 4 of the install call. `_` is refused (the first line of B-ARG) and a literal is
+refused (the second line; Go parses `false` as an identifier, so the name comparison catches it).
+Five ablations, five arms, one at a time — the discard, a hardcoded wrong hash at argument 3, a
+hardcoded `false` at argument 4, a changed arity, and the parse assignment rewritten as a `var`
+declaration. B-ARG now reddens the package it used to pass.
+
+**What is deliberately still unpinned, stated so the enumeration is complete this time:** arguments
+1 and 2 (`run` and the node). `run`'s posting behaviour is gated on the callee side by arm 4, and
+`swarmAdd` holds exactly one runner and one client node, neither operator-supplied. Reachability
+stays the one residual, and `R-CHAINID-INSTALL-SOURCE-GATED` stays open — the widening did not close
+it and is not filed as closing it.
+
+**Measured, and it is a finding for another lane:** `scripts/check_source_gates.py` recognises a
+source gate by `os.ReadFile("x.go")` only. It therefore does not see this gate, nor the other 21
+`_test.go` files in the tree that read source through `go/parser` (27 files it does see). This test
+now carries the `RUNTIME GATE:` / `UNGATED:` annotations the lint wants, so it is clean when that
+pattern widens; widening the pattern is not done here, because it would redden unrelated tests and
+this is a record-accuracy fold-in.
+
+## Fold-in 2 — a published reason that was false
+
+The F-2 split was right and the reason I gave for it was wrong. I declined to reuse `ErrNoIssuerKey`
+because it means *"a peer's answer over the wire."* **Measured: it has seven return sites and five
+never reach the wire** — the local keyset and epoch-key cache misses in `demandkeys.go` and
+`relaytransport.go`, and `demandrole.go`'s `issuerPub == nil`, which is structurally the same
+predicate this PR split off. It was already a sentinel doing two jobs, which is the exact defect the
+split exists to fix. The sentence shipped to `silthq.com/changelog`.
+
+**The true reason is mechanical and better.** `cmd/silt`'s `demandKeyResolutionError` carries a live
+`errors.Is(keyErr, node.ErrNoIssuerKey)` arm that emits the operator-facing *not banked* text, and
+`cmd/silt/rt_r04b_c3_notbanked_test.go` pins it. Reusing the sentinel would put a second, unrelated
+condition under a classification a test pins. Stated at its true strength: that classifier reads
+only the error `FetchDemandIssuerKeys` returns, so the misclassification would be **latent** today,
+not immediate — which is the shape that bites later, not a reason to shrug. `ErrNoIssuerKey`'s own
+doc comment, false for five of its seven sites, is corrected in the same commit.

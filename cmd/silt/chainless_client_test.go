@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -280,7 +281,9 @@ func testClientNode(t *testing.T, seed int64) (*node.Node, *eventloop.Loop) {
 // TestSwarmAddCallsDeclareNetworkIdentity is a SOURCE gate, and this docstring states its reach
 // EXACTLY, because an earlier version of it did not.
 //
-// WHAT IT PROVES: swarmAdd's own body contains a call named declareNetworkIdentity. That is all.
+// WHAT IT PROVES, and it is two things: swarmAdd's own body contains a call named
+// declareNetworkIdentity, AND that call is handed the two values parseDeclaredChainID bound in the
+// same body — not a literal, and not a discarded result. That is all.
 //
 // WHAT IT DOES NOT PROVE, MEASURED: that the call RUNS. A blind review drove ablation A9 — leave
 // the call written in swarmAdd and make its guard impossible — and the whole cmd/silt suite stayed
@@ -289,12 +292,28 @@ func testClientNode(t *testing.T, seed int64) (*node.Node, *eventloop.Loop) {
 // that defect ("the -chain-id flag parses and is then dropped"); it did not, and it no longer says
 // it does.
 //
+// ALSO NOT PROVED, and it is named because the residual set is stated in full: arguments 1 and 2
+// (`run` and the node) are NOT pinned. A wrong `run` is covered on the callee side by
+// TestDeclareNetworkIdentityIsBehaviouralAndOnTheLoop's posting arm; swarmAdd holds exactly one
+// runner and one client node, and neither is a value the operator supplies.
+//
 // WHAT WAS DONE ABOUT IT INSTEAD OF RE-WORDING ALONE: the guard A9 corrupted was moved OUT of
 // swarmAdd and into declareNetworkIdentity, which TestDeclareNetworkIdentityIsBehaviouralAndOnThe
-// Loop drives for real. A9's class of defect is now RED at the unit tier. What is left un-gated is
-// narrower and louder: swarmAdd's unconditional call being made unreachable (wrapped in a dead
-// branch, or the function returning before it). That residual is why this gate still exists, and
-// it is filed as R-CHAINID-INSTALL-SOURCE-GATED.
+// Loop drives for real. A9's class of defect is now RED at the unit tier.
+//
+// AND MOVING THE GUARD LEFT A SECOND HOLE, WHICH IS WHY THE ARGUMENT ARMS BELOW EXIST. Ablation
+// B-ARG, measured by the fold-in review: discard parseDeclaredChainID's DECLARED result into `_`
+// and pass a literal `false` here. The whole cmd/silt package stayed GREEN. The flag parses, a
+// malformed value is still refused, and the value is then silently dropped — A9 verbatim, one
+// argument to the right. Neither instrument followed the guard: the four behavioural arms call
+// declareNetworkIdentity with their OWN arguments, and a walk collecting call NAMES never reads
+// ast.CallExpr.Args. THE GENERAL SHAPE, and it outlives this file: moving a guard into a callee
+// relocates the un-gated surface to the CALL'S ARGUMENTS, because a caller that now merely
+// forwards is a caller that can forward the wrong thing.
+//
+// What is left un-gated is therefore ONE thing, narrower and louder: swarmAdd's unconditional call
+// being made unreachable (wrapped in a dead branch, or the function returning before it). That
+// residual is why this gate still exists, and it is filed as R-CHAINID-INSTALL-SOURCE-GATED.
 //
 // WHY A SOURCE GATE AT ALL: swarmAdd builds its client node internally and exposes it to no
 // caller, and no production reader of RequesterChainID exists anywhere in the tree until #828
@@ -302,8 +321,19 @@ func testClientNode(t *testing.T, seed int64) (*node.Node, *eventloop.Loop) {
 // install". The gate retires the day the credit lane reads the value: a token publish against a
 // token-requiring network, with and without -chain-id, dominates it.
 //
+// RUNTIME GATE: TestDeclareNetworkIdentityIsBehaviouralAndOnTheLoop covers the guard and the
+// posted write; TestSwarmAddChainIDReachesTheClientNode covers parse-then-install end to end.
+// UNGATED: that swarmAdd's call is REACHED at run time (R-CHAINID-INSTALL-SOURCE-GATED).
+//
+// Those two annotations are the shape scripts/check_source_gates.py reads. MEASURED, and it is a
+// finding rather than a formality: that lint recognises a source gate by `os.ReadFile("x.go")`
+// only, so it does NOT see this test, or the other 21 _test.go files that read source through
+// go/parser. The annotations are here so this gate is already clean when that pattern widens.
+//
 // It walks swarmAdd's OWN body — a call anywhere else in swarm.go does not satisfy it — and
-// carries two anti-vacuity anchors so a rename cannot make it pass by finding nothing.
+// carries three anti-vacuity anchors so a rename cannot make it pass by finding nothing: swarmAdd
+// itself, swarmAdd's FetchCanonicalIssuersFromAny call, and the parseDeclaredChainID assignment
+// the argument arms bind against.
 func TestSwarmAddCallsDeclareNetworkIdentity(t *testing.T) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "swarm.go", nil, 0)
@@ -319,11 +349,19 @@ func TestSwarmAddCallsDeclareNetworkIdentity(t *testing.T) {
 	// Anchor 1: the function this gate claims to read exists. Without it a rename of swarmAdd
 	// turns the whole gate into a no-op that reports GREEN.
 	if body == nil {
-		t.Fatal("SOURCE GATE is VACUOUS: swarm.go declares no func swarmAdd — this gate read nothing")
+		t.Fatal("SOURCE GATE: VACUOUS — swarm.go declares no func swarmAdd, so this gate read nothing")
 	}
 	// Collect BOTH call shapes: `x.Method(...)` and the bare `f(...)` that declareNetworkIdentity
-	// is. Collecting only SelectorExpr would make this gate silently blind to its own target.
+	// is. Collecting only SelectorExpr would make this gate silently blind to its own target. The
+	// install CallExpr itself is KEPT, not just its name, because a call by the right name can be
+	// handed the wrong arguments (ablation B-ARG — see the argument arms below).
 	calls := map[string]bool{}
+	var install *ast.CallExpr
+	// The identifiers parseDeclaredChainID binds IN THIS BODY. They are read from the assignment
+	// rather than hardcoded, so a rename of the locals is not a failure — passing something other
+	// than what the parse returned is.
+	var parsedID, parsedDeclared ast.Expr
+	sawParse := false
 	ast.Inspect(body, func(n ast.Node) bool {
 		switch v := n.(type) {
 		case *ast.SelectorExpr:
@@ -331,22 +369,101 @@ func TestSwarmAddCallsDeclareNetworkIdentity(t *testing.T) {
 		case *ast.CallExpr:
 			if id, ok := v.Fun.(*ast.Ident); ok {
 				calls[id.Name] = true
+				if id.Name == "declareNetworkIdentity" {
+					install = v
+				}
+			}
+		case *ast.AssignStmt:
+			if len(v.Rhs) != 1 {
+				return true
+			}
+			call, ok := v.Rhs[0].(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			fn, ok := call.Fun.(*ast.Ident)
+			if !ok || fn.Name != "parseDeclaredChainID" {
+				return true
+			}
+			sawParse = true
+			if len(v.Lhs) == 3 {
+				parsedID, parsedDeclared = v.Lhs[0], v.Lhs[1]
 			}
 		}
 		return true
 	})
-	// Anchor 2: the walk reaches real calls. `joinSwarm` builds the client node swarmAdd then
-	// declares the identity on, so if this is absent the walk is looking at the wrong tree.
+	// The gate's primary assertion: the install is WRITTEN in swarmAdd's own body.
 	if !calls["declareNetworkIdentity"] {
 		t.Fatal("SOURCE GATE: swarmAdd's body contains no declareNetworkIdentity call, so nothing " +
 			"installs the parsed -chain-id on the client node. READ THE LIMIT BEFORE ACTING ON A " +
-			"GREEN HERE: this gate proves only that the call is WRITTEN in swarmAdd, never that it " +
-			"RUNS — a call inside a dead branch passes it (measured, blind-review ablation A9). " +
+			"GREEN HERE: this gate proves that the call is WRITTEN in swarmAdd and that it is passed " +
+			"the parsed values, never that it RUNS — a call inside a dead branch passes it (measured, " +
+			"blind-review ablation A9). " +
 			"The guard itself is gated behaviourally by TestDeclareNetworkIdentityIsBehaviouralAndOnTheLoop. " +
 			"D-TOKEN-DOMAIN-CHAINLESS-CLIENT-2026-09-12, route (a); residual R-CHAINID-INSTALL-SOURCE-GATED.")
 	}
+	// Anchor 2: the walk reaches real calls. swarmAdd's own token block calls
+	// FetchCanonicalIssuersFromAny, so if this is absent the walk is looking at the wrong tree.
 	if !calls["FetchCanonicalIssuersFromAny"] {
-		t.Fatal("SOURCE GATE is reading the wrong body: swarmAdd's own token block calls " +
+		t.Fatal("SOURCE GATE: reading the wrong body — swarmAdd's own token block calls " +
 			"FetchCanonicalIssuersFromAny and this walk did not see it")
+	}
+	// Anchor 3: the assignment the argument arms bind against exists. Without it those arms would
+	// have nothing to compare to and would pass by finding nothing.
+	if !sawParse {
+		t.Fatal("SOURCE GATE: VACUOUS in its argument arms — swarmAdd's body has no `a, b, err := " +
+			"parseDeclaredChainID(...)` assignment, so there is no parsed hash and no parsed DECLARED " +
+			"flag to check the install against. This gate reads the ASSIGNMENT form only — if the " +
+			"parse was re-homed or rewritten as a `var` declaration, move this arm with it rather " +
+			"than deleting it")
+	}
+	if install == nil {
+		t.Fatal("SOURCE GATE: the only declareNetworkIdentity in swarmAdd is a method call on some " +
+			"receiver, not the package-level function this gate reads — the argument arms cannot bind")
+	}
+	// THE ARGUMENT ARMS. Ablation B-ARG is the reason they exist: `declaredChainID, _, err :=
+	// parseDeclaredChainID(...)` plus a literal `false` at the call left the whole cmd/silt package
+	// GREEN while the operator's declared identity was silently dropped. `_` is refused here
+	// because discarding the result is the first half of that ablation, and a literal is refused
+	// because passing one is the second half. Go parses `false` and `nil` as identifiers, so the
+	// NAME comparison catches them; a composite literal is not an *ast.Ident at all.
+	//
+	// exprName quotes what the walk found. The blank `_` and the literals `false`/`nil` are all
+	// *ast.Ident, so the NAME is the text worth printing; anything else is named by its node type.
+	exprName := func(e ast.Expr) string {
+		if id, ok := e.(*ast.Ident); ok {
+			return id.Name
+		}
+		return fmt.Sprintf("%T", e)
+	}
+	if id, ok := parsedID.(*ast.Ident); !ok || id.Name == "_" {
+		t.Fatalf("SOURCE GATE: swarmAdd DISCARDS parseDeclaredChainID's hash result (bound to %s), so "+
+			"the parsed -chain-id cannot reach declareNetworkIdentity. This is blind-review ablation "+
+			"B-ARG: the flag parses, a malformed value is still refused, and the value is then "+
+			"dropped in silence.", exprName(parsedID))
+	}
+	if d, ok := parsedDeclared.(*ast.Ident); !ok || d.Name == "_" {
+		t.Fatalf("SOURCE GATE: swarmAdd DISCARDS parseDeclaredChainID's DECLARED result (bound to %s), "+
+			"so the install can only be handed a literal. This is blind-review ablation B-ARG, and it "+
+			"is ablation A9's defect one argument to the right: the declared identity is silently "+
+			"dropped and the operator is told nothing.", exprName(parsedDeclared))
+	}
+	if len(install.Args) != 4 {
+		t.Fatalf("SOURCE GATE: declareNetworkIdentity is called with %d arguments, want 4 — this "+
+			"gate's argument arms read positions 3 (the parsed hash) and 4 (the parsed DECLARED "+
+			"flag) and cannot bind to a different signature", len(install.Args))
+	}
+	wantArgs := []ast.Expr{parsedID, parsedDeclared}
+	for i, want := range wantArgs {
+		wantName := want.(*ast.Ident).Name
+		got, ok := install.Args[2+i].(*ast.Ident)
+		if !ok || got.Name != wantName {
+			t.Fatalf("SOURCE GATE: declareNetworkIdentity's argument %d is not %s, the identifier "+
+				"parseDeclaredChainID bound in this same body (got %s). A call by the right NAME can "+
+				"still be handed the wrong VALUES: blind-review ablation B-ARG passed a literal false "+
+				"here and the whole cmd/silt package stayed GREEN while the operator's declared "+
+				"network identity was dropped. Residual R-CHAINID-INSTALL-SOURCE-GATED.",
+				3+i, wantName, exprName(install.Args[2+i]))
+		}
 	}
 }
