@@ -188,11 +188,20 @@ func (s *repairAdv) finalStripeRealData() int {
 	return n - (p.Stripes(n)-1)*p.K
 }
 
-// TestRedteamRepair_GarbageClaimIsSlashed (§11 a): a caretaker claims a repair it
-// did not do — the claim names a real position but a BOGUS shard id. The judge
-// recomputes the position from the manifest-anchored survivors, sees it does not
-// match the claimed id (a self-attributing fraud proof), and SLASHES the claimant.
-// No bounty is paid.
+// TestRedteamRepair_GarbageClaimIsSlashed (§11 a): a stripe position is really lost,
+// and a caretaker claims a repair it did not do — the claim names the real position
+// but a BOGUS shard id. The judge rejects it on the id the manifest commits at that
+// position (a self-attributing fraud proof) and SLASHES the claimant. No bounty is
+// paid.
+//
+// It differs from the positive control in exactly ONE input: the claimed id. Nothing
+// is rebuilt here, because a garbage claimant rebuilt nothing.
+//
+// ⚠ WHICH CHECK IT REACHES. Since the 2026-09-12 position screen this claim is
+// slashed BEFORE a single survivor is fetched, so the leg it pins is the screen, not
+// the recompute. The two are defence in depth over one quantity — claim.ShardID
+// against the manifest — and neutering only one still slashes, which is why the
+// ablation that reddens this control has to make the judge TRUST claim.ShardID.
 func TestRedteamRepair_GarbageClaimIsSlashed(t *testing.T) {
 	s := newRepairAdv(t, 42)
 	s.fundEscrow(5_000_000)
@@ -200,7 +209,8 @@ func TestRedteamRepair_GarbageClaimIsSlashed(t *testing.T) {
 	attacker := s.nodes[2]
 	baseline := s.bond(attacker)
 
-	pos, _, _ := s.parityTarget()
+	pos, parityID, _ := s.parityTarget()
+	s.loseStripePosition(t, s.nodes[3], parityID, pos)
 	bogus := ports.HashBytes([]byte("not the real shard"))
 	claim := repairproof.RepairClaim{
 		Root: s.root, Stripe: 0, ShardPos: pos, ShardID: bogus, Holder: s.nodes[7].ID(),
@@ -221,14 +231,24 @@ func TestRedteamRepair_GarbageClaimIsSlashed(t *testing.T) {
 	}
 }
 
-// TestRedteamRepair_ComputeButDontStoreIsDenied (§11 c): the claimed shard id IS
-// correct (the correct bytes even exist on the survivors), but the NAMED holder is
-// a liar that kept the proof + PoR tags and dropped the bytes. Its identity-bound
-// retrievability challenge fails, so the bounty is DENIED — and, crucially, NOT
-// slashed: a retrievability shortfall may be transient, and only the mathematically
-// attributable correctness lie is ever punished. This also pins the anti-double-
-// count property: retrievability binds to the NAMED holder, so "the correct bytes
-// exist somewhere in the swarm" does not pay.
+// TestRedteamRepair_ComputeButDontStoreIsDenied (§11 c): a stripe position is really
+// lost and the claimed shard id IS correct — the attacker really did reconstruct it
+// from the survivors — but the NAMED holder is a liar that kept the proof + PoR tags
+// and dropped the bytes. Its identity-bound retrievability challenge fails, so the
+// bounty is DENIED — and, crucially, NOT slashed: a retrievability shortfall may be
+// transient, and only the mathematically attributable correctness lie is ever
+// punished. This also pins the anti-double-count property: retrievability binds to
+// the NAMED holder, so "the correct bytes exist somewhere in the swarm" does not pay.
+//
+// It differs from the positive control in exactly ONE input: the holder's liar-ness.
+// The loss is therefore still open at judgement time, which is the whole adversary —
+// a claim that the position was restored when it was not.
+//
+// ⚠ THE LIAR IS WHY THE LOSS MUST BE PROVEN BEFORE IT IS STAGED ON. A liar answers
+// MsgHasChunk from its proof metadata ("of course I have it"), so once the rebuilt
+// shard is placed on it, shardIsReachable reports the position reachable again. The
+// PoR challenge is the only thing that sees through that, and it is the judge's leg
+// under test.
 func TestRedteamRepair_ComputeButDontStoreIsDenied(t *testing.T) {
 	s := newRepairAdv(t, 43)
 	s.fundEscrow(5_000_000)
@@ -239,7 +259,8 @@ func TestRedteamRepair_ComputeButDontStoreIsDenied(t *testing.T) {
 	pos, parityID, leafIdx := s.parityTarget()
 	liar := s.nodes[9]
 	liar.SetLiar(true)
-	s.stageShardOn(judge, liar, parityID, pos, leafIdx)
+	s.loseStripePosition(t, s.nodes[3], parityID, pos)
+	s.rebuildLostShard(t, attacker, liar, 0, pos, parityID, leafIdx)
 
 	claim := repairproof.RepairClaim{
 		Root: s.root, Stripe: 0, ShardPos: pos, ShardID: parityID, Holder: liar.ID(),
@@ -263,7 +284,14 @@ func TestRedteamRepair_ComputeButDontStoreIsDenied(t *testing.T) {
 // stageShardOn fetches the real shard from the swarm and re-places it on `holder`
 // WITH a valid Merkle proof and PoR tags. An honest holder keeps the bytes (and can
 // answer retrievability); a liar holder (SetLiar) keeps the receipt + tags but drops
-// the bytes — the compute-but-don't-store adversary. The caller sets liar-ness.
+// the bytes. The caller sets liar-ness.
+//
+// ⚠ IT STAGES A NO-LOSS ARRANGEMENT: the shard is live on its own providers the
+// whole time and a COPY is moved. That is the arrangement
+// TestRTRC3_ClaimWithNoLossIsPaid_PINNED_DEFECT exists to pin, and it is why the
+// three §11 controls stopped using this helper on 2026-09-13 — see the loss
+// arrangement banner below. Reach for loseStripePosition + rebuildLostShard
+// instead unless a no-loss stage is the point of the test.
 func (s *repairAdv) stageShardOn(fetcher, holder *Node, id ports.ChunkID, pos, leafIdx int) {
 	// A coded shard registers under its COLUMN key, not its own id, so resolve the
 	// column's providers and fetch the specific shard from them.
@@ -287,27 +315,192 @@ func (s *repairAdv) stageShardOn(fetcher, holder *Node, id ports.ChunkID, pos, l
 	s.sched.Run()
 }
 
-// TestRedteamRepair_HonestClaimIsPaid is the positive control: the SAME judge that
-// slashes a garbage claim and denies a data-less one PAYS a genuine repair — a
-// correct shard id on a holder that really holds the bytes clears both legs and the
-// bounty flows to the holder, still moving no standing. Without this, the deny/slash
-// tests could be passing by rejecting everything.
+// ─────────────────────────────────────────────────────────────────────────────
+// THE LOSS ARRANGEMENT — the stage the three §11 controls share.
+//
+// ROADMAP F8 / D-RTRC3-INTENT-STANDS-2026-09-12. Until 2026-09-13 all three
+// controls stood on stageShardOn's NO-LOSS arrangement: fetch a shard that was
+// never missing and re-place a live copy of it on a second holder. Under
+// D-BOUNTY-PAYS-FOR-REPAIR-2026-09-12 a durability bounty pays for a REPAIR
+// having happened, so that arrangement must pay NOTHING — which made the positive
+// control an assertion that the defect was correct behaviour, and the two negative
+// controls rest on that control's non-vacuity.
+//
+// The three now share ONE arrangement — a stripe position really destroyed across
+// the whole swarm — and each negative control differs from the positive one in
+// exactly ONE input: the claimed id (slash) or the holder's liar-ness (deny).
+// Legs that can only fail together are one leg wearing two names, so keep that
+// one-input discipline when editing any of the three.
+//
+// ⚠ THIS ASSERTS ONE HALF OF THE INTENT, AND ONLY ONE. The rule has two halves:
+// a real repair IS paid, and a no-loss claim is NOT. The judge delivers the first
+// today; the second is still broken, still pinned by
+// TestRTRC3_ClaimWithNoLossIsPaid_PINNED_DEFECT, and its closer — the loss witness
+// — is GATED behind R-PROBE-FALSE-NEGATIVE-RATE. A repair erases its own evidence
+// (T-LOSS-IS-A-TRANSIENT), so the JUDGE still cannot see the loss these helpers
+// stage; they stage it for the FIXTURE, not for the judge. Nothing in this file
+// may be cited as "the bounty now pays for repair" or as grounds to retire the pin.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// stripeRefsOf lists one stripe's STORED shard refs, derived from the fixture's own
+// manifest with the arithmetic storedShards uses on a Layout. A short final stripe
+// stores fewer than n — its implicit-zero positions are math, not storage.
+func (s *repairAdv) stripeRefsOf(stripe int) []shardRef {
+	p := erasure.Params{K: s.m.K, N: s.m.N}
+	dataIDs, parityIDs := s.m.ChunkIDs(), s.m.ParityIDs()
+	lo, hi := stripe*p.K, min((stripe+1)*p.K, len(dataIDs))
+	var refs []shardRef
+	for i, id := range dataIDs[lo:hi] {
+		refs = append(refs, shardRef{id: id, stripe: stripe, pos: i, leafIdx: lo + i})
+	}
+	for q, id := range parityIDs[stripe*p.ParityShards() : (stripe+1)*p.ParityShards()] {
+		refs = append(refs, shardRef{
+			id: id, stripe: stripe, pos: p.K + q,
+			leafIdx: len(dataIDs) + stripe*p.ParityShards() + q,
+		})
+	}
+	return refs
+}
+
+// shardIsReachable asks the PRODUCTION probe whether the swarm still answers for a
+// shard. probeShard confirms every provider with a HasChunk round-trip, so the stale
+// provider record dropHosted deliberately leaves behind does NOT read as reachable.
+// That distinction is the one R-RTRC3-PREMISE-CHECKS-A-RECORD says a resolveProviders
+// check misses, and it is exactly what a loss premise has to get right.
+func (s *repairAdv) shardIsReachable(from *Node, id ports.ChunkID, pos int) bool {
+	reachable := false
+	from.probeShard(id, colKey(s.root, pos), true, func(ok bool, _ map[uint64]bool) { reachable = ok })
+	s.sched.Run()
+	return reachable
+}
+
+// loseStripePosition destroys one stripe position across the WHOLE swarm: every node
+// holding the bytes drops them, proof and PoR tags included.
+//
+// The loss is asserted as a DIFFERENTIAL — the probe answers YES before and NO after
+// — because only the pair proves a loss. An "unreachable" reading alone is equally
+// consistent with a probe that never worked, and a helper that silently stopped
+// dropping anything would otherwise hand every caller a no-loss arrangement wearing
+// a loss's name, which is the exact substitution this whole rework undoes.
+func (s *repairAdv) loseStripePosition(t *testing.T, probe *Node, id ports.ChunkID, pos int) {
+	t.Helper()
+	if !s.shardIsReachable(probe, id, pos) {
+		t.Fatalf("rig: stripe position %d was NOT reachable before the loss — nothing was lost, so a later unreachable reading proves nothing", pos)
+	}
+	held := 0
+	for _, nd := range s.nodes {
+		if ok, _ := nd.Store().Has(bg(), id); ok {
+			nd.dropHosted(id)
+			held++
+		}
+	}
+	s.sched.Run()
+	if held == 0 {
+		t.Fatalf("rig: no node held stripe position %d, so no loss was staged", pos)
+	}
+	if s.shardIsReachable(probe, id, pos) {
+		t.Fatalf("rig: stripe position %d is STILL reachable after %d holder(s) dropped it — this is not a loss arrangement", pos, held)
+	}
+}
+
+// rebuildLostShard reconstructs a LOST stripe position from that stripe's SURVIVORS
+// and places the rebuilt bytes on holder with a valid Merkle proof and PoR tags.
+//
+// Every step is the paramedic's own, in repairStripeFetch's order:
+// fetchStripeByColumn, erasure.ReconstructStripe, the hash check against the
+// manifest-committed id, then placeAt. What it leaves out is the placement roulette
+// and the claim broadcast, so the caller names the holder and delivers the claim on
+// the same deliverClaim path all three controls use.
+//
+// It mirrors repairStripeFetch's heldBefore discipline: the repairer keeps what it
+// hosted before this repair and drops the copies it fetched for it, so the rebuilt
+// position ends up on the holder and nowhere else.
+func (s *repairAdv) rebuildLostShard(t *testing.T, repairer, holder *Node, stripe, pos int, id ports.ChunkID, leafIdx int) {
+	t.Helper()
+	p := erasure.Params{K: s.m.K, N: s.m.N}
+	var survivors []shardRef
+	realData := 0
+	for _, r := range s.stripeRefsOf(stripe) {
+		if r.pos < p.K {
+			realData++
+		}
+		if r.pos != pos { // by POSITION, never by id — R-SHARDID-ALIASES-POSITION
+			survivors = append(survivors, r)
+		}
+	}
+	heldBefore := make(map[ports.ChunkID]bool, len(survivors))
+	for _, r := range survivors {
+		if ok, _ := repairer.Store().Has(bg(), r.id); ok {
+			heldBefore[r.id] = true
+		}
+	}
+	complete := false
+	repairer.fetchStripeByColumn(s.root, survivors, func(unfetched []ports.ChunkID, _ map[uint64]int) {
+		complete = len(unfetched) == 0
+	})
+	s.sched.Run()
+	if !complete {
+		t.Fatal("rig: the repairer could not fetch every surviving shard of the stripe")
+	}
+	shards := make([][]byte, p.N)
+	for _, r := range survivors {
+		if c, err := repairer.Store().Get(bg(), r.id); err == nil {
+			shards[r.pos] = c.Data
+		}
+	}
+	if shards[pos] != nil {
+		t.Fatalf("rig: position %d arrived among the survivors — it was not lost, so nothing here is a rebuild", pos)
+	}
+	if err := erasure.ReconstructStripe(p, shards, realData); err != nil {
+		t.Fatalf("rig: reconstruction from the survivors failed: %v", err)
+	}
+	if ports.HashBytes(shards[pos]) != id {
+		t.Fatalf("rig: the bytes rebuilt for position %d do not hash to the id the manifest commits there", pos)
+	}
+	pr, err := manifest.Prove(s.m.Leaves(), leafIdx)
+	if err != nil {
+		t.Fatalf("rig: merkle proof for leaf %d: %v", leafIdx, err)
+	}
+	proof := &ports.StorageProof{
+		Root: s.root, Index: pr.Index, Total: pr.Total, Path: pr.Path, Column: pos,
+		PorTags: s.porKey.Tags(id[:], shards[pos]),
+	}
+	s.nodes[0].placeAt(id, shards[pos], proof, []ports.NodeID{holder.ID()}, 1, nil, func(int) {})
+	s.sched.Run()
+	for _, r := range survivors {
+		if !heldBefore[r.id] {
+			repairer.dropHosted(r.id)
+		}
+	}
+}
+
+// TestRedteamRepair_HonestClaimIsPaid is the positive control: a stripe position is
+// really destroyed across the swarm, a paramedic rebuilds it from the surviving
+// shards, and the SAME judge that slashes a garbage claim and denies a data-less one
+// PAYS for that repair — the bounty flows to the holder, still moving no standing.
+// Without this, the deny/slash tests could be passing by rejecting everything.
+//
+// ⚠ READ THE LOSS ARRANGEMENT BANNER ABOVE BEFORE CITING THIS TEST. It asserts one
+// half of D-BOUNTY-PAYS-FOR-REPAIR-2026-09-12 — that a real repair is paid. The other
+// half, that a no-loss claim pays NOTHING, is still broken and is what
+// TestRTRC3_ClaimWithNoLossIsPaid_PINNED_DEFECT pins. This test does not move that pin.
 func TestRedteamRepair_HonestClaimIsPaid(t *testing.T) {
 	s := newRepairAdv(t, 44)
 	s.fundEscrow(5_000_000)
 	judge := s.careJudge()
-	attacker := s.nodes[2] // an honest caretaker here; kept named for symmetry
+	paramedic := s.nodes[2] // rebuilds the lost position, then claims for it
 
 	pos, parityID, leafIdx := s.parityTarget()
-	holder := s.nodes[9] // honest: keeps the bytes
+	holder := s.nodes[9] // honest: keeps the rebuilt bytes
 	holderStanding := s.bond(holder)
 	holderBalance := s.ledger.Balance(holder.ID())
-	s.stageShardOn(judge, holder, parityID, pos, leafIdx)
+	s.loseStripePosition(t, s.nodes[3], parityID, pos)
+	s.rebuildLostShard(t, paramedic, holder, 0, pos, parityID, leafIdx)
 
 	claim := repairproof.RepairClaim{
 		Root: s.root, Stripe: 0, ShardPos: pos, ShardID: parityID, Holder: holder.ID(),
 	}
-	s.deliverClaim(judge, attacker.ID(), claim)
+	s.deliverClaim(judge, paramedic.ID(), claim)
 
 	if judge.Stats.BountiesReleased != 1 {
 		t.Fatalf("an honest repair was not paid: BountiesReleased=%d", judge.Stats.BountiesReleased)
@@ -320,6 +513,25 @@ func TestRedteamRepair_HonestClaimIsPaid(t *testing.T) {
 	}
 	if got := s.ledger.Balance(holder.ID()); got <= holderBalance {
 		t.Fatalf("holder balance did not rise: %d <= %d", got, holderBalance)
+	}
+	// The position is whole again: a third party really pulls the bytes off the
+	// named holder. Without this the payment assertion would be measuring the
+	// judge's leniency rather than a repair.
+	//
+	// It fetches from the NAMED holder rather than re-running shardIsReachable,
+	// and the difference is a fixture limitation worth stating. rebuildLostShard
+	// places on the holder the CALLER names — the deny control needs that holder to
+	// be a specific liar — whereas the paramedic places on IterativeFindNode's
+	// candidates for colKey(root, pos). So the rebuilt shard sits outside its column
+	// here and the column's stale provider records, left by the nodes that dropped
+	// it, are all a DHT walk finds. The claim names its holder, so the judge's own
+	// retrievability leg is unaffected; this arm asks the same question of the same
+	// holder, over real bytes instead of a PoR proof.
+	restored := false
+	s.nodes[3].fetchFrom(parityID, []ports.NodeID{holder.ID()}, func(ok bool) { restored = ok })
+	s.sched.Run()
+	if !restored {
+		t.Fatalf("stripe position %d could not be fetched from the paid holder — the bounty paid for nothing restored", pos)
 	}
 	if got := s.ledger.Reputation(holder.ID()); got != holderStanding {
 		t.Fatalf("holder standing moved from %d to %d on a paid bounty", holderStanding, got)
