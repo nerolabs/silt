@@ -1,11 +1,11 @@
 name: CI
 
-# Gates every push and pull request: the Go suite (with a coverage
-# floor), formatting, a race-detector build, the `bbootstrap` build-tag
-# variant), a link-check plus changelog freshness
-# for the website, and a docs-ship-with-code check that a code change also
-# touches the changelog. Branch protection should require these before
-# merging to main or staging.
+# Gates every push and pull request: the Go suite (with a coverage floor),
+# formatting, a race-detector build, the `bbootstrap` build-tag variant, the
+# cross-NAT integration suites, and the repo lints. Branch protection should
+# require these before merging to main or staging.
+#
+# The website is not built or checked here. It no longer lives in this repo.
 on:
   push:
     branches: [main, staging]
@@ -129,7 +129,7 @@ jobs:
       #
       # scripts/check_short_dark_tests.py READS THIS `-run` LIST as the source of truth
       # for what runs unshortened. Dropping a name here does not just lose the run — it
-      # turns that test dark, and the lint goes red in the website job.
+      # turns that test dark, and the lint goes red in the repo-lints job.
       - name: the -short-dark asserting tests really ran (no other job executes these)
         run: |
           out=$(go test -count=1 -v ./core/chain/ ./cmd/silt/ ./core/erasure/ -run '^(TestRNestGate_SelfArmorMeasurement|TestServeGiniHonestNullIsMixDependentNotSampleSizeDependent|TestReconcileMemoryBounded|TestSlashesBytesCapWorstCaseCost|TestReconstructMemoryFootprint_SimVsProd)$' -timeout 20m 2>&1)
@@ -350,8 +350,8 @@ jobs:
       - name: Symmetric NAT — integrated daemons correctly stay on the relay
         run: NAT_MODE=symmetric ./integration/nat/holepunch.sh
 
-  website:
-    name: Website — changelog + links
+  repo-lints:
+    name: Repo lints
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -378,8 +378,8 @@ jobs:
         run: python3 scripts/check_conflict_markers.py
       - name: Lint — no test may skip under -short in every merge-gating job
         run: python3 scripts/check_short_dark_tests.py
-  docs-shipped:
-    name: Docs ship with code
+  scheduled-workflow-proof:
+    name: Scheduled workflow proof
     runs-on: ubuntu-latest
     permissions:
       contents: read
