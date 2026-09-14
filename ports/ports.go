@@ -127,6 +127,40 @@ type PlotStore interface {
 	Load(id NodeID) (root Hash, blocks [][]byte, ok bool, err error)
 }
 
+// PlotBlocks is random access to one plot's fixed-width blocks. Blocks are
+// addressed by index and are all the same size, so a file-backed store is a
+// fixed-stride seek — no index and no codec.
+//
+// It is the face a plot store offers when the plot must NOT be held in memory. A
+// plot is large by design, and holding every block resident makes the largest bond
+// an operator can post a function of its MEMORY rather than of the disk it
+// actually bought. That caps how much standing the smallest machines can hold and
+// concentrates consensus weight on larger ones — a re-centralization through a
+// resource bound rather than through anyone's decision. Producing a plot is cheap
+// in CPU and expensive only in residency, and answering a challenge reads a
+// handful of blocks, so the plot belongs on disk and is read back sparsely.
+type PlotBlocks interface {
+	// ReadBlock fills into with block i. into is the store's block size.
+	ReadBlock(i int, into []byte) error
+	// WriteBlock stores block i.
+	WriteBlock(i int, b []byte) error
+}
+
+// PlotBlockStore is a PlotStore that can also hand out random access to a plot's
+// blocks, so a plot can be sealed to disk and answered from disk instead of being
+// held in memory. A store that does not implement it keeps the resident path.
+type PlotBlockStore interface {
+	PlotStore
+	// OpenBlocks prepares storage for an n-block plot belonging to id and returns
+	// random access to it. An existing plot for id is replaced.
+	OpenBlocks(id NodeID, n int) (PlotBlocks, error)
+	// CommitBlocks finalizes a plot opened with OpenBlocks under its committed root.
+	CommitBlocks(id NodeID, root Hash) error
+	// LoadBlocks reopens a persisted plot for random access instead of reading it
+	// whole. ok is false when no readable plot exists for id.
+	LoadBlocks(id NodeID) (root Hash, blocks PlotBlocks, n int, ok bool, err error)
+}
+
 // Entry is what gets published to the global registry: the Merkle root
 // that names a file, plus enough metadata to begin retrieval. The chunk
 // IDs of the serialized manifest are included because the root alone

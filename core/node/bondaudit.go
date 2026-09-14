@@ -105,10 +105,30 @@ func (n *Node) EnableBond(signer ed25519.PrivateKey, size int64) (reloaded bool)
 		n.signer = signer
 	}
 	pk := plotPubKey(signer)
+
+	// A store that offers random access keeps the plot on disk: the plot is sealed
+	// block by block and answered by sparse reads, so the memory cost is the leaves
+	// and their tree rather than the plot's own size. That matters because standing
+	// is proportional to bonded size — if the largest plot a node can hold is set by
+	// its MEMORY, the biggest bond a small operator can post is a fraction of the
+	// disk it bought, and consensus weight concentrates on larger machines for no
+	// reason anyone chose. Stores without random access keep the resident path.
+	streaming, _ := n.plotStore.(ports.PlotBlockStore)
+
 	if n.plotStore != nil {
-		if root, blocks, ok, err := n.plotStore.Load(n.id); ok && err == nil {
+		if streaming != nil {
+			if root, blocks, _, ok, err := streaming.LoadBlocks(n.id); ok && err == nil {
+				if c, rerr := bond.ReconstructFrom(pk, size, blocks); rerr == nil && c.Root == root {
+					n.bond = c // reloaded from disk, re-verified against its own bytes
+					return true
+				}
+				n.logf(ports.LogWarn, "bond plot reload failed; re-plotting", "id", n.id)
+			} else if err != nil {
+				n.logf(ports.LogWarn, "bond plot load error; re-plotting", "err", err)
+			}
+		} else if root, blocks, ok, err := n.plotStore.Load(n.id); ok && err == nil {
 			if c, rerr := bond.Reconstruct(pk, size, blocks); rerr == nil && c.Root == root {
-				n.bond = c // reloaded from disk, re-verified — no re-plot (#93)
+				n.bond = c // reloaded from disk, re-verified — no re-plot
 				return true
 			}
 			n.logf(ports.LogWarn, "bond plot reload failed; re-plotting", "id", n.id)
@@ -116,6 +136,24 @@ func (n *Node) EnableBond(signer ed25519.PrivateKey, size int64) (reloaded bool)
 			n.logf(ports.LogWarn, "bond plot load error; re-plotting", "err", err)
 		}
 	}
+
+	if streaming != nil {
+		if dst, err := streaming.OpenBlocks(n.id, bond.NumBlocks(size)); err == nil {
+			if c, serr := bond.SealInto(pk, size, dst); serr == nil {
+				if cerr := streaming.CommitBlocks(n.id, c.Root); cerr == nil {
+					n.bond = c
+					return false
+				} else {
+					n.logf(ports.LogWarn, "bond plot commit failed; sealing in memory", "err", cerr)
+				}
+			} else {
+				n.logf(ports.LogWarn, "streamed bond seal failed; sealing in memory", "err", serr)
+			}
+		} else {
+			n.logf(ports.LogWarn, "bond plot open failed; sealing in memory", "err", err)
+		}
+	}
+
 	n.bond = bond.Seal(pk, size)
 	if n.plotStore != nil {
 		if err := n.plotStore.Save(n.id, n.bond.Root, n.bond.Blocks()); err != nil {
