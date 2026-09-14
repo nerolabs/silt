@@ -494,6 +494,12 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		// the reassembled linkage, so a windowed fetch cannot corrupt the chain.
 		n.reply(from, msg, ports.Message{Kind: ports.MsgChainReply, OK: true,
 			Data: chain.EncodeBlocksUpTo(blocks, n.maxChainReplyBytes())})
+	case ports.MsgGetWitness:
+		// The witness seam: a box that holds no tree asks this node, which does, for the
+		// committed leaves and proofs it needs to judge a block for itself. Serving is not a
+		// trusted role and grants the asker nothing — every answer is checked against a root
+		// the box already holds, so a lie here produces a stall and never an acceptance.
+		n.reply(from, msg, n.serveWitness(msg))
 	case ports.MsgGetChainHead:
 		// Cheap head probe: answer "what is your head?" with (height, hash) so
 		// a peer whose head matches ours can SKIP the full-chain fetch + re-validate.
@@ -655,6 +661,8 @@ func replyKind(k ports.MsgKind) ports.MsgKind {
 		return ports.MsgCommitAck
 	case ports.MsgGetChainHead:
 		return ports.MsgChainHeadReply
+	case ports.MsgGetWitness:
+		return ports.MsgWitnessReply
 	case ports.MsgSubmitEntry:
 		return ports.MsgSubmitEntryAck
 	default:

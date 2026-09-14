@@ -853,6 +853,11 @@ type Node struct {
 	// (nil = not a validator).
 	chain  *chain.Chain
 	signer ed25519.PrivateKey
+	// witnessProviders caches the SERVING side of the witness seam: one prover over the
+	// committed leaf set, rebuilt only when the head moves. Serving a witness is otherwise
+	// dominated by building that prover, which would let a stranger make this node redo the
+	// work once per request. Single-entry, so the cache itself cannot be grown by a peer.
+	witnessProviders chain.ProviderCache
 	// declaredChainID is the REQUESTER-side network identity an operator declared on a node that
 	// holds no chain (SetNetworkIdentity). It is read ONLY by RequesterChainID, never by chainID —
 	// see core/node/networkidentity.go for why the two must not be collapsed.
