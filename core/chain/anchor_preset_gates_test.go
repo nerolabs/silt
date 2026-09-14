@@ -83,12 +83,14 @@ package chain
 //
 // The idiom (PIN + TEETH + MECHANISM) is documented in full at the head of
 // core/pipeline/subframe_manifest_oracle_test.go. Each pin here carries:
-// 1. the PIN — the symptom, via rtAnchorPin: the box returned nil for the adversary's own root;
-// 2. a MECHANISM arm — via rtAnchorMechanismPin: NO fold op for the forged tag was emitted, so the
-// pre-set went unanchored. A fix that emitted the op but left the symptom, or moved the symptom
-// without removing the cause, reddens here rather than passing by coincidence;
-// 3. TEETH — TestPinRedensWhenTheBoxRejects, …WhenTheTagIsFolded and …WhenAnchoredPreSetAnchors,
-// which feed each predicate its POST-FIX input and assert it speaks up. A pin whose teeth are
+// 1. the SYMPTOM, via forgedPreSetMustStall: the box must refuse to certify the root its own fold
+// derives from the forged witness;
+// 2. the STRUCTURE, via anchoringMustNotDependOnTheFoldOp: no fold op is emitted for the forged
+// tag, so the refusal demonstrates anchoring AT THE READ rather than a fold that happened to
+// cover it. A test whose tag IS folded proves less than it appears to;
+// 3. TEETH — TestTheStallAssertionSpeaksWhenTheBoxAccepts, TestTheAnchoringAssertionSpeaksWhenThe
+// TagIsFolded and TestTheRejectAssertionSpeaksWhenAnchoredPreSetAccepts, which feed each
+// predicate the input it exists to catch and assert it speaks up. An assertion whose teeth are
 // untested has never been shown capable of failing.
 //
 // CONTAINMENT, so nobody reads these as "main is exploitable today": (*Box).Validate still applies
