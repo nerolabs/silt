@@ -330,7 +330,7 @@ func assertShedHolds(t *testing.T, era3, era4, epochBlocks uint64) {
 	}
 	fork := append([]Block(nil), rival.c.blocks...)
 	if fork[0].Hash() != w.c.blocks[0].Hash() {
-		t.Fatalf("GATE VACUOUS: the rival history branches from a different genesis — Reconcile refuses it "+
+		t.Fatalf("GATE VACUOUS: the rival history branches from a different genesis — Reconcile refuses it " +
 			"as foreign before the shed is ever tested")
 	}
 	if len(fork) <= len(w.c.blocks) {

@@ -2,6 +2,7 @@ package diskplot
 
 import (
 	"bytes"
+	"os"
 	"testing"
 
 	"github.com/nerolabs/silt/core/bond"
@@ -144,5 +145,63 @@ func TestACommittedPlotStillAnswers(t *testing.T) {
 	}
 	if !bond.VerifySpaceTime(key, c.Root, size, nonce, a, vdf.Default(), 300, 8) {
 		t.Fatal("an answer from a committed plot does not verify against its own root")
+	}
+}
+
+// TestAnAbandonedSealLeavesNothingBehind pins that retrying a seal does not accumulate
+// half-written plots.
+//
+// Sealing writes into a temp file that only becomes the identity's plot once the root is
+// known, so a seal that fails part-way — or a process that dies between opening and
+// committing — leaves one behind. Plots are large by design, so a few abandoned attempts
+// cost an operator more disk than their bond, on the tier whose whole premise is that a
+// small box can participate.
+func TestAnAbandonedSealLeavesNothingBehind(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := testID(4)
+
+	countFiles := func() int {
+		ents, rerr := os.ReadDir(dir)
+		if rerr != nil {
+			t.Fatal(rerr)
+		}
+		return len(ents)
+	}
+
+	// Three abandoned attempts: opened, written to, never committed.
+	for i := 0; i < 3; i++ {
+		blocks, oerr := s.OpenBlocks(id, 4)
+		if oerr != nil {
+			t.Fatalf("OpenBlocks %d: %v", i, oerr)
+		}
+		if werr := blocks.WriteBlock(0, make([]byte, blockSize)); werr != nil {
+			t.Fatalf("WriteBlock %d: %v", i, werr)
+		}
+	}
+	if n := countFiles(); n > 1 {
+		t.Fatalf("ABANDONED SEALS ACCUMULATE — %d files remain in the store after three uncommitted attempts, "+
+			"want at most the one still open. A plot is large by design, so a handful of retries costs a small "+
+			"operator more disk than the bond they are trying to post.", n)
+	}
+
+	// The surviving open still commits cleanly, so discarding the earlier ones did not
+	// break the attempt that matters.
+	blocks, err := s.OpenBlocks(id, bond.NumBlocks(1<<20))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := bond.SealInto([]byte("an identity key of some length!!"), 1<<20, blocks)
+	if err != nil {
+		t.Fatalf("SealInto after abandoned attempts: %v", err)
+	}
+	if err := s.CommitBlocks(id, c.Root); err != nil {
+		t.Fatalf("CommitBlocks after abandoned attempts: %v", err)
+	}
+	if _, _, _, ok, lerr := s.LoadBlocks(id); !ok || lerr != nil {
+		t.Fatalf("the committed plot is not readable: ok=%v err=%v", ok, lerr)
 	}
 }

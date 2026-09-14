@@ -92,7 +92,7 @@ func TestSeatingIsHashCovered(t *testing.T) {
 
 			stripped, removed := stripSeating(*seated, anchors)
 			if removed == 0 {
-				t.Fatalf("GATE VACUOUS: stripping removed nothing from the block's seating field — the variant "+
+				t.Fatalf("GATE VACUOUS: stripping removed nothing from the block's seating field — the variant " +
 					"is the original and this asserts nothing")
 			}
 

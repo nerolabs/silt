@@ -184,6 +184,16 @@ func (s *Store) OpenBlocks(id ports.NodeID, n int) (ports.PlotBlocks, error) {
 	if n <= 0 {
 		return nil, fmt.Errorf("diskplot: refusing to open a plot of %d blocks", n)
 	}
+	// Discard any earlier open for this identity. A seal that failed part-way — or a
+	// process that died between opening and committing — leaves a temp file and a
+	// half-written plot behind, and the next attempt is the moment to be rid of them
+	// rather than accumulating one per try.
+	if prev, ok := s.pending[id]; ok {
+		name := prev.f.Name()
+		prev.f.Close()
+		os.Remove(name)
+		delete(s.pending, id)
+	}
 	tmp, err := os.CreateTemp(s.root, ".tmp-*")
 	if err != nil {
 		return nil, err
