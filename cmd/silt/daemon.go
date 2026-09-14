@@ -426,6 +426,38 @@ func cmdDaemon(args []string) error {
 	// sweep) lets an honest attest-only validator renew without proposing, so the
 	// default costs no liveness.
 	effTTL, ttlDefaulted := effectiveBondTTL(ttlSet, *bondTTL, objectivePath)
+
+	// No window below the witnessable format. Heights from 1 up to an era-4
+	// activation mint the earlier formats, and those formats carry two defects a
+	// launched network must never be exposed to: the committed state root covers
+	// the seating map while the seating itself is read from a block's own
+	// attestations, which are signatures OVER the hash that covers that root. The
+	// consequences are that no block can seat a validator the chain has not already
+	// seen — so the set cannot grow, the maturity coefficient is frozen and the
+	// launch anchors never shed — and that a history rewritten to carry a different
+	// seating hashes identically to ours, which the finality gate, fork-choice and
+	// the checkpoint all compare by hash and so cannot tell apart.
+	//
+	// The witnessable format resolves both by taking the seating from a carrier of
+	// precommits over the PARENT, which is folded into the hash and known before
+	// signing. Activation at height 1 is the shipped default; anything later opens
+	// the window deliberately, and there is no configuration in which that is the
+	// right thing to do.
+	if *era4Activation != 1 {
+		return fmt.Errorf("-era4-activation-height %d would run heights 1..%d on a pre-witnessable block format. "+
+			"Those formats commit the seating map in the state root while reading the seating from the block's own "+
+			"attestations, which sign over the hash covering that root: no block can seat a validator the chain has "+
+			"not already seen, so the validator set cannot grow, the network never matures and the launch anchors "+
+			"never shed their bond-free eligibility — and a history rewritten to carry a different seating hashes "+
+			"identically, so the finality gate cannot refuse it. Set -era4-activation-height=1 (the default)",
+			*era4Activation, *era4Activation-1)
+	}
+	if *era3Activation != 1 {
+		return fmt.Errorf("-era3-activation-height %d must be 1 (the default): era 4 layers on top of era 3 and "+
+			"activates at height 1, so any other era-3 height either contradicts that or opens a window on a "+
+			"block format whose validator set cannot grow", *era3Activation)
+	}
+
 	if ttlDefaulted {
 		fmt.Printf("bond: objective re-challenge TTL defaulted to %d blocks for this untrusted (objective) swarm — standing lapses this many blocks after a validator's latest bond proof unless it renews, so a released plot can't keep voting. Override with -bond-ttl (0 disables; safe only for a trusted/demo swarm).\n", effTTL)
 	}
