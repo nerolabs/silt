@@ -19,13 +19,20 @@ evidence that makes commissioning it worth doing. They are not a substitute for 
 
 ## Tier A — the handoff is not responsible without these
 
-**1. Eligibility resolves from the block's parent state, never the replica's live latch.**
-*Done:* the state-root recompute anchors its pre-state set digest to `prevStateRoot`; an
-adversary-supplied pre-state makes the floor box stall, never accept.
-*Evidence:* unit → consensus model-check → e2e → integration.
-*Note:* the cross-phase seam is closed. Quorum intersection holds across the launch→mature
+**1. Eligibility resolves from the block's parent state, never the replica's live latch.** ✅ *done*
+*Done:* the floor box proves every whole-set pre-state member list against `prevStateRoot`
+where it reads it, so an omitted or injected id stalls. It no longer depends on a later fold
+op, which was emitted only when the set changed — and the post-set is derived from the
+pre-set, so the forgery itself decided whether it would be checked.
+*Evidence:* unit → consensus model-check → e2e.
+*What it closed:* re-seating a slashed equivocator as bonded and qualified; erasing a bond
+registration so its block folds to the root before it; keeping an under-bonded validator's
+standing; evicting an honest validator from the frozen epoch set for an epoch; staling the
+decentralization digest that decides whether the launch anchors have shed. Each is a gate
+that was seen red before the fix and asserts a stall after it.
+*Also closed:* the cross-phase seam — quorum intersection holds across the launch→mature
 handoff, phase follows applied history rather than delivery order, and the one-way shed does
-not re-arm under fork adoption. The hostile-witness arm of the recompute remains open.
+not re-arm under fork adoption.
 
 **2. Forging N standings costs N×, with no arm passing vacuously.**
 *Done:* every arm paired with a positive control **on its own axis**. The bond and
@@ -33,7 +40,8 @@ possession arms pass. The demand and diversity arms do not construct, and are re
 **unwired** rather than denied.
 *Evidence:* unit → integration → field.
 *Ships with:* removing the build-status paragraph from `VISION.md`, whose own header says it
-carries none.
+carries none. The two are coupled deliberately — the paragraph is the only place that records
+which axes are unwired, so it goes when this item's gate starts reporting that instead.
 
 **3. The shipped default is the defended configuration, and the stock binary runs.**
 *Done:* `silt daemon -validator`, no other flags, reaches serving; the possession audit and
@@ -45,10 +53,15 @@ the publish-token replay guard are on; every defence this list demonstrates runs
 test names or file names. Comments describe the product or cite external work.
 *Evidence:* unit — a permanent source gate, kept in the suite so it cannot regress.
 
-**5. One command from a clean clone reproduces every gate.**
+**5. One command from a clean clone reproduces every gate.** ⚠ *red for want of a machine*
 *Done:* fresh clone, no credentials, no committed binary → the suite runner builds from
 source and maps each item onto a named suite.
 *Evidence:* the run itself, from a scratch clone on a machine that has never built silt.
+*State:* the clone is clean — no committed binaries, and the runner builds from source. The
+run itself returned rc=137 or rc=124 on all twelve suites while the host was carrying other
+work, which is resource starvation rather than a code result. It needs an idle machine before
+it is evidence either way; until then this item is red, because a demonstration that could
+not be driven is a failure.
 
 **6. The claims the adversary receives exist as an artifact.**
 *Done:* an in-repo statement of the three denials in checkable form, plus what is out of
