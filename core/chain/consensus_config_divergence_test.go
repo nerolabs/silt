@@ -332,6 +332,16 @@ var configDecls = map[string]configDecl{
 		why:    "Retention policy: whether THIS node keeps full bodies. An operator's storage choice, deliberately per-node (build-immutable #8) — it must never reach a validity verdict.",
 		readIn: nil,
 	},
+	"ArchiveProofHeavyWindow": {
+		class: classLocal,
+		why: "Retention policy: how many recent blocks an archival node keeps heavy bond possession proofs " +
+			"for. Like Archive itself it is an operator's storage choice and reaches no validity verdict — a " +
+			"witnessable block's preimage folds the proof's digest rather than the proof, so a shed body still " +
+			"reproduces its own hash and every committed transition stays checkable. Binding it would forbid the " +
+			"heterogeneity the durability design depends on, and would make the one number that decides how many " +
+			"parties can afford full history a function of the chain rather than of the operator's disk.",
+		readIn: nil,
+	},
 	"WSCheckpoint": {
 		class: classLocal,
 		// ⚠ THE "NARROWING-ONLY" CLAUSE WAS MEASURED FALSE, 2026-09-11. This row read "It
@@ -415,7 +425,13 @@ var configMemberships = map[string]configMembership{
 	// ---- CATEGORY (b): AN IDENTITY PROPERTY OF THE NETWORK. Carried, and it moves no verdict. ----
 	"NetworkName": {carriedAs: "NetworkName"},
 
-	// ---- THE FIVE EXCLUSIONS. Read them as five distinct arguments, not one policy. ----
+	// ---- THE EXCLUSIONS. Read them as distinct arguments, not one policy. ----
+	"ArchiveProofHeavyWindow": {reasonNotCarried: "RETENTION ONLY — it reaches no verdict. It bounds how long an " +
+		"archival node keeps heavy possession proofs, and a shed proof leaves the block's hash and its committed " +
+		"state root intact, so nothing about validity moves with it. It is excluded for the same reason Archive is, " +
+		"and additionally because it is the number that decides how many independent parties can afford to hold " +
+		"full history: fixing it on-chain would make the deep past's plurality a consensus rule rather than a " +
+		"property of what operators choose to keep."},
 	"Archive": {reasonNotCarried: "RETENTION ONLY — it reaches no verdict. Whether THIS node keeps full bodies is " +
 		"an operator's storage choice and is deliberately per-node (build-immutable #8). Binding it would forbid " +
 		"the heterogeneity the durability design depends on."},
@@ -497,6 +513,8 @@ func perturbConfig(cfg Config, field string) (Config, bool) {
 		cfg.BondRegHeadWindow = 1
 	case "Archive":
 		cfg.Archive = !cfg.Archive
+	case "ArchiveProofHeavyWindow":
+		cfg.ArchiveProofHeavyWindow = 1
 	case "EpochBlocks":
 		cfg.EpochBlocks = 8
 	case "RegGateActivationHeight":

@@ -170,6 +170,29 @@ type Config struct {
 	// build-immutable #8 forbids on the 1 vCPU / 2 GB box — the tier model
 	// exists so the edge node does NOT carry this. Off by default.
 	Archive bool
+
+	// ArchiveProofHeavyWindow is how many recent committed blocks an ARCHIVAL node
+	// keeps heavy bond possession proofs for. It retains every block to genesis
+	// either way; this bounds only the multi-megabyte proofs inside them.
+	//
+	// Retaining those forever is what decides how many parties can afford to hold
+	// full history, and therefore how decentralized the deep past is. A validator
+	// republishes a possession proof every few minutes to keep its standing, so the
+	// stored proof volume grows with the NUMBER OF INDEPENDENT OPERATORS — the very
+	// quantity decentralization is measured by, making a more decentralized network
+	// one that fewer parties can archive.
+	//
+	// Shedding them past a window is sound because a possession proof justifies a
+	// seating decision at the height it appears, and that decision is already
+	// committed under a hash-covered state root. A witnessable block's preimage
+	// folds the proof's digest rather than the proof, so a shed body still
+	// reproduces its own hash and the history stays verifiable — what is given up
+	// is re-running a years-old possession challenge, not the ability to check what
+	// the chain committed.
+	//
+	// 0 = DefaultArchiveProofHeavyWindow. Retention is local policy: it moves no
+	// consensus rule and leaves trustFloor untouched.
+	ArchiveProofHeavyWindow uint64
 	// EpochBlocks freezes the MATURE-phase validator set per epoch: when > 0 in
 	// objective mode, the post-handoff finality quorum (validatorSetSize /
 	// RequiredQuorum), attester/proposer qualification, and the attester weight
@@ -2310,6 +2333,12 @@ func NewBondReg(signer ed25519.PrivateKey, root ports.Hash, size int64, answer [
 // carry a validator signature over its (root, size, nonce) and a space-time
 // proof the injected verifier accepts for the fresh per-position nonce. Only
 // enforced in objective mode; a legacy chain ignores BondRegs entirely.
+// DefaultArchiveProofHeavyWindow is the heavy-proof window an archival node keeps
+// when Config.ArchiveProofHeavyWindow is 0. It is deep enough to serve a dispute
+// over recent seatings and shallow enough that holding full history stays something
+// a volunteer can do, which is what keeps the deep past plural.
+const DefaultArchiveProofHeavyWindow = uint64(4096)
+
 // DefaultBondRegHeadWindow is the K used when Config.BondRegHeadWindow is 0: a bond
 // reg stays valid over the last 8 committed heads. Covers WAN propagation + one
 // proposer rotation (the factor-ii staleness window) while remaining ≪ any real

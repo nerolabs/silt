@@ -101,15 +101,22 @@ func (c *Chain) pruneFloor() uint64 {
 // deep-cold node beyond the WS window is told to use a checkpoint/archive. Safe to call on
 // every commit — pruneFloor is 0 (no-op) without BFT finality or with a degenerate BondTTL.
 //
-// The ARCHIVAL tier (Config.Archive, `-archive`) opts out entirely and keeps every heavy
-// proof to genesis, so it can serve the deep history a pruning swarm has shed. That is a
-// retention choice only — trustFloor and the horizon are untouched, so an archival node
-// validates identically to a pruning one.
+// The ARCHIVAL tier (Config.Archive, `-archive`) keeps every BLOCK to genesis so it can
+// serve the deep history a pruning swarm has shed, and keeps heavy proofs for a much
+// deeper window than a pruning node — but not forever. Holding every proof to genesis is
+// what decides how many parties can afford full history: a validator republishes a
+// multi-megabyte possession proof every few minutes to hold its standing, so the stored
+// volume grows with the number of independent operators, and a more decentralized network
+// becomes one fewer parties can archive. Shedding past the window is sound because a
+// witnessable block's preimage folds the proof's DIGEST, so a shed body still reproduces
+// its own hash and every committed transition stays checkable. All of this is a retention
+// choice only — trustFloor and the horizon are untouched, so an archival node validates
+// identically to a pruning one.
 func (c *Chain) PruneBelowHorizon() int {
-	if c.cfg.Archive {
-		return 0 // archival tier: retain every heavy proof to genesis
-	}
 	floor := c.pruneFloor()
+	if c.cfg.Archive {
+		floor = c.archiveProofFloor()
+	}
 	if floor == 0 {
 		return 0
 	}
@@ -125,6 +132,30 @@ func (c *Chain) PruneBelowHorizon() int {
 		n++
 	}
 	return n
+}
+
+// archiveProofFloor is the height below which an archival node sheds heavy bond proofs:
+// its committed head less the archival heavy-proof window. It is always at or below the
+// pruning floor, so an archival node never keeps LESS than a pruning one. 0 means keep
+// everything, which is the correct answer before the chain is deep enough to have a
+// window at all.
+func (c *Chain) archiveProofFloor() uint64 {
+	if !c.finalityQuorumActive() {
+		return 0
+	}
+	_, finalized := c.Head()
+	w := c.cfg.ArchiveProofHeavyWindow
+	if w == 0 {
+		w = DefaultArchiveProofHeavyWindow
+	}
+	if finalized <= w {
+		return 0
+	}
+	floor := finalized - w
+	if pf := c.pruneFloor(); pf > 0 && floor > pf {
+		floor = pf // never shed more than a pruning node would
+	}
+	return floor
 }
 
 // trustFloor is the height at/above which this node re-verifies bond space-time
