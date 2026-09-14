@@ -53,15 +53,20 @@ the publish-token replay guard are on; every defence this list demonstrates runs
 test names or file names. Comments describe the product or cite external work.
 *Evidence:* unit — a permanent source gate, kept in the suite so it cannot regress.
 
-**5. One command from a clean clone reproduces every gate.** ⚠ *red for want of a machine*
+**5. One command from a clean clone reproduces every gate.** ⚠ *red — never driven on a box proven clean*
 *Done:* fresh clone, no credentials, no committed binary → the suite runner builds from
 source and maps each item onto a named suite.
 *Evidence:* the run itself, from a scratch clone on a machine that has never built silt.
 *State:* the clone is clean — no committed binaries, and the runner builds from source. The
-run itself returned rc=137 or rc=124 on all twelve suites while the host was carrying other
-work, which is resource starvation rather than a code result. It needs an idle machine before
-it is evidence either way; until then this item is red, because a demonstration that could
-not be driven is a failure.
+run itself returned rc=137 or rc=124 on all twelve suites. That was attributed to the host
+carrying other work; the attribution does not hold. rc=137 is the OOM-killer and rc=124 is the
+per-suite cap, and both are also what a run inherits from the PREVIOUS run's leftovers — twelve
+containers from an earlier suite were found still up with no driver behind them, one of them
+already `Exited (137)`, holding ~950 MiB of the container host's memory. Whether the starvation
+was the host or the leftovers is now untested rather than known. The suites start clean and end
+clean mechanically (`ft_preflight` / `ft_sweep`, `integration/lib.sh`), so the re-run can tell
+the two apart. Until it is driven on a box proven clean at the start, this item is red, because
+a demonstration that could not be driven is a failure.
 
 **6. The claims the adversary receives exist as an artifact.**
 *Done:* an in-repo statement of the three denials in checkable form, plus what is out of
@@ -116,11 +121,44 @@ succeeds on retry. A validator killed mid-consensus re-pins from its own last fi
 checkpoint and never contradicts a signature it made before the crash.
 *e2e under impairment → field.*
 
-**14. The floor box holds, and the chain prunes.** A validator on the declared floor spec —
-one core, 2 GiB, 10 GiB of disk — validates against witnesses without holding the tree,
-stays under its memory ceiling on adversarial input, stalls rather than accepts when no
-witness provider is reachable, and prunes at depth from persisted state.
+**14. The floor box holds, and the chain prunes.** ⚠ *red — half demonstrated, half unwired*
+A validator on the declared floor spec — one core, 2 GiB, 10 GiB of disk — validates against
+witnesses without holding the tree, stays under its memory ceiling on adversarial input, stalls
+rather than accepts when no witness provider is reachable, and prunes at depth from persisted
+state.
 *unit → e2e under impairment → field.*
+
+*State:* the claim has four legs and they are in three different conditions. The `floor` suite
+drives what a binary can be made to do; it enforces the spec with a cgroup rather than a flag,
+because `-mem-limit` is a SOFT ceiling and a soft ceiling cannot answer "does this survive on a
+2 GiB box".
+
+- **Under its memory ceiling — DEMONSTRATED, under HONEST load only.** `memory.max` 2 GiB with
+  `memory.swap.max` 0 and `nproc` 1, asserted from inside the container before anything else is
+  measured. Peak 291.1 MiB, 14% of the ceiling, read from the cgroup's own high-water mark
+  rather than sampled. The box committed to height 22 on the same head hash as two ordinary
+  validators, so it was participating and not merely surviving. **The gap:** the load was honest
+  consensus traffic. "On adversarial input" is NOT yet shown — that wants the redteam and sybil
+  topologies re-pointed at a floor-spec seat, which is the next increment on this item.
+- **Prunes at depth from persisted state — DEMONSTRATED.** Seven blocks shed their heavy bond
+  proofs at height 22, which is exactly what the retention rule predicts:
+  `retain = max(2·BondTTL, BondRegHeadWindow+4) = 12`, `raw = 22-12 = 10`, epoch-aligned to 8,
+  leaving heights 1–7 (genesis carries no registration). A restart onto the same volume reloaded
+  the already-pruned store, still reported the shed, and committed again to height 24 — so the
+  prune is a property of persisted state and did not trade an OOM for a stall.
+- **Validates against witnesses without holding the tree — UNWIRED.**
+- **Stalls rather than accepts when no witness provider is reachable — UNWIRED.**
+
+*Why UNWIRED and not skipped:* there is no process to drive. `chain.NewBox` has no caller
+outside `core/chain`'s own tests, the only implementation of `chain.WitnessSource` in the repo is
+the `proverSource` test double, and no daemon flag puts a node in that mode. The mechanism is
+thoroughly gated at the unit tier; it has no transport and no entry point. Reporting these green
+on the strength of the unit gates would be the exact substitution this list forbids — a
+demonstration that could not be driven is a failure, and "unwired" names which failure it is.
+
+*What would turn it green:* a witness server and a floor-box daemon mode, then the two witness
+legs added to the same suite. That is product work, not harness work, and it is the item's
+critical path — the memory and prune halves are done.
 
 **15. The floor box can post the bond its disk allows.** ✅ *done*
 *Done:* the plot is sealed to disk block by block and answered by sparse reads, so residency
