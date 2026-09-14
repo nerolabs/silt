@@ -2,6 +2,7 @@ package node
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/fxamacker/cbor/v2"
@@ -168,7 +169,7 @@ func TestWitnessDriverReportsExactlyOnceWhenNothingAnswers(t *testing.T) {
 		func(src chain.WitnessSource) (*chain.Box, error) {
 			return chain.NewBox(c, parent, chain.BoxConfig{BudgetBytes: 1 << 22, ChainID: c.ChainID()}, src)
 		},
-		b, chain.StateRootWitness{}, ghost, ports.Hash{},
+		b, chain.StateRootWitness{}, []ports.NodeID{ghost}, ports.Hash{},
 		func(o chain.FloorBoxOutcome, _ error) { fired++; gotOut = o })
 	sched.Run()
 
@@ -177,5 +178,55 @@ func TestWitnessDriverReportsExactlyOnceWhenNothingAnswers(t *testing.T) {
 	}
 	if gotOut == chain.Accept {
 		t.Fatal("ACCEPTED with no witness provider reachable — the box signed off on a block it never checked")
+	}
+}
+
+// TestWitnessFetchFailsOverPastADeadProvider: a floor box's liveness must not rest on ONE
+// provider. Witness-serving is an open, un-permissioned duty of any archival or pruning node,
+// so the box carries a list and walks it; a box pinned to a single provider has handed that
+// provider an outage switch over its ability to audit at all.
+//
+// Driven at the FETCH layer rather than through the box, deliberately. A box anchored on this
+// package's genesis-only fixture stalls for want of a committed StateRoot before it ever
+// consults a source, so routing the gate through the box would assert failover while never
+// reaching the transport. This drives the walk directly, which is where the walk lives.
+func TestWitnessFetchFailsOverPastADeadProvider(t *testing.T) {
+	server, client, _, _, _, sched := twoAgreeingValidators(t)
+
+	sc := server.Chain()
+	head, _ := sc.Head()
+	key := statehash.Key("slashed\x00", idBytes(server.ID()))
+	req := witnessReq{Call: witnessCallLeaf, Head: head, Key: key}
+
+	var ghost ports.NodeID
+	ghost[0], ghost[1] = 0xDE, 0xAD
+
+	run := func(peers []ports.NodeID) (*witnessCache, error) {
+		cache := newWitnessCache(head)
+		var gotErr error
+		fired := 0
+		client.fetchWitnesses(peers, cache, []witnessReq{req}, func(e error) { fired++; gotErr = e })
+		sched.Run()
+		if fired != 1 {
+			t.Fatalf("the fetch callback must fire EXACTLY once; fired %d", fired)
+		}
+		return cache, gotErr
+	}
+
+	// Vacuity guard: the ghost alone must genuinely be unreachable, or "failover worked" would
+	// be indistinguishable from "the first provider answered all along".
+	if _, err := run([]ports.NodeID{ghost}); !errors.Is(err, ErrWitnessUnreachable) {
+		t.Fatalf("the ghost must be unreachable on its own, else the failover arm proves nothing; got %v", err)
+	}
+
+	// Dead first, live second: the walk must reach the live provider and file its answer.
+	cache, err := run([]ports.NodeID{ghost, server.ID()})
+	if err != nil {
+		t.Fatalf("the fetch did not fail over past a dead provider to a live one — liveness rests on a single "+
+			"provider, the choke the open multi-provider tier exists to prevent: %v", err)
+	}
+	if _, _, ok := cache.Leaf(key); !ok {
+		t.Fatal("failover reported success but filed no answer — the cache is empty, so the next replay pass " +
+			"would ask for the same read again and the box would never converge")
 	}
 }

@@ -199,11 +199,25 @@ var ErrWitnessUnreachable = errors.New("node: floor box could not reach a witnes
 // whatever source that box already held, while the cache below filled up unread — the replay
 // would never converge and the stall would look like a transport failure. The source has to
 // reach the box through its constructor, so the constructor is the parameter.
+// PROVIDERS, PLURAL, and it is a liveness requirement rather than a convenience. A floor box's
+// safety never rests on the tier above — a lying provider stalls it, a silent one stalls it —
+// but its LIVENESS does, and a box pinned to one provider has handed that provider an outage
+// switch. Witness-serving is an open, un-permissioned duty of any archival or pruning node, so
+// the box carries a list and moves down it.
+//
+// MIXING PROVIDERS WITHIN ONE VALIDATION IS SAFE, which is what makes failover cheap. Every
+// answer is checked against a root the box already holds, so an answer from the second provider
+// is worth exactly what an answer from the first was: checked, or a stall. The head field keeps
+// them talking about the same committed state, and nothing else about their identity matters.
 func (n *Node) ValidateWithWitnesses(mkBox func(chain.WitnessSource) (*chain.Box, error),
 	b chain.Block, w chain.StateRootWitness,
-	peer ports.NodeID, head ports.Hash, done func(chain.FloorBoxOutcome, error)) {
+	peers []ports.NodeID, head ports.Hash, done func(chain.FloorBoxOutcome, error)) {
 	if mkBox == nil {
 		done(chain.IndeterminateTrustlessly, errors.New("node: no floor box constructor"))
+		return
+	}
+	if len(peers) == 0 {
+		done(chain.IndeterminateTrustlessly, fmt.Errorf("%w: no witness providers configured", ErrWitnessUnreachable))
 		return
 	}
 	cache := newWitnessCache(head)
@@ -216,13 +230,13 @@ func (n *Node) ValidateWithWitnesses(mkBox func(chain.WitnessSource) (*chain.Box
 		done(chain.IndeterminateTrustlessly, errors.New("node: no floor box"))
 		return
 	}
-	n.witnessPass(box, b, w, peer, cache, 0, done)
+	n.witnessPass(box, b, w, peers, cache, 0, done)
 }
 
 // witnessPass runs one replay pass and either returns its verdict or fetches what the pass
 // asked for and schedules the next one.
 func (n *Node) witnessPass(box *chain.Box, b chain.Block, w chain.StateRootWitness,
-	peer ports.NodeID, cache *witnessCache, pass int, done func(chain.FloorBoxOutcome, error)) {
+	peers []ports.NodeID, cache *witnessCache, pass int, done func(chain.FloorBoxOutcome, error)) {
 	if pass >= maxWitnessPasses {
 		done(chain.IndeterminateTrustlessly, fmt.Errorf("%w: the read set did not close in %d passes", ErrWitnessUnreachable, maxWitnessPasses))
 		return
@@ -238,12 +252,12 @@ func (n *Node) witnessPass(box *chain.Box, b chain.Block, w chain.StateRootWitne
 	// The pass stalled on reads we can still go and get. Fetch them, then replay.
 	pending := make([]witnessReq, len(cache.misses))
 	copy(pending, cache.misses)
-	n.fetchWitnesses(peer, cache, pending, func(fetchErr error) {
+	n.fetchWitnesses(peers, cache, pending, func(fetchErr error) {
 		if fetchErr != nil {
 			done(chain.IndeterminateTrustlessly, fetchErr)
 			return
 		}
-		n.witnessPass(box, b, w, peer, cache, pass+1, done)
+		n.witnessPass(box, b, w, peers, cache, pass+1, done)
 	})
 }
 
@@ -256,7 +270,10 @@ func (n *Node) witnessPass(box *chain.Box, b chain.Block, w chain.StateRootWitne
 // A refusal (OK=false) is FILED, not treated as a failure. "I have no witness for this" is a
 // legitimate answer that stalls the read that wanted it; filing it stops the replay from
 // asking again forever, and lets the box reach its own stall by its own route.
-func (n *Node) fetchWitnesses(peer ports.NodeID, cache *witnessCache, reqs []witnessReq, done func(error)) {
+//
+// Each request walks the provider list until one serves it (askOneProvider), so a single
+// provider going away costs a retry rather than the whole validation.
+func (n *Node) fetchWitnesses(peers []ports.NodeID, cache *witnessCache, reqs []witnessReq, done func(error)) {
 	if len(reqs) == 0 {
 		done(nil)
 		return
@@ -268,20 +285,49 @@ func (n *Node) fetchWitnesses(peer ports.NodeID, cache *witnessCache, reqs []wit
 		done(fmt.Errorf("node: encode witness request: %w", err))
 		return
 	}
-	n.request(peer, ports.Message{Kind: ports.MsgGetWitness, Data: raw}, func(resp ports.Message, rerr error) {
+	n.askOneProvider(peers, 0, req, raw, cache, func(aerr error) {
+		if aerr != nil {
+			done(aerr)
+			return
+		}
+		n.fetchWitnesses(peers, cache, rest, done)
+	})
+}
+
+// askOneProvider walks the provider list for ONE request, moving on when a provider is
+// unreachable, answers something undecodable, or answers about a head it does not hold.
+//
+// It does NOT move on when a provider answers "I have no witness for that" (OK=false). That is
+// a legitimate answer about committed state, not a failure, and every honest provider at the
+// same head owes the same one — retrying it elsewhere would spend the whole list to arrive back
+// at the answer the first provider already gave. The box reaches its own stall by its own route.
+func (n *Node) askOneProvider(peers []ports.NodeID, i int, req witnessReq, raw []byte,
+	cache *witnessCache, done func(error)) {
+	if i >= len(peers) {
+		done(fmt.Errorf("%w: %d provider(s) tried, none served this read", ErrWitnessUnreachable, len(peers)))
+		return
+	}
+	next := func(cause error) {
+		if i+1 < len(peers) {
+			n.askOneProvider(peers, i+1, req, raw, cache, done)
+			return
+		}
+		done(fmt.Errorf("%w: %d provider(s) tried, last said: %v", ErrWitnessUnreachable, len(peers), cause))
+	}
+	n.request(peers[i], ports.Message{Kind: ports.MsgGetWitness, Data: raw}, func(resp ports.Message, rerr error) {
 		if rerr != nil {
-			done(fmt.Errorf("%w: %v", ErrWitnessUnreachable, rerr))
+			next(rerr)
 			return
 		}
 		r, derr := decodeWitnessResp(resp.Data, cache.head)
 		if derr != nil {
-			done(fmt.Errorf("%w: %v", ErrWitnessUnreachable, derr))
+			next(derr)
 			return
 		}
 		if serr := cache.store(req, r); serr != nil {
-			done(fmt.Errorf("%w: %v", ErrWitnessUnreachable, serr))
+			next(serr)
 			return
 		}
-		n.fetchWitnesses(peer, cache, rest, done)
+		done(nil)
 	})
 }
