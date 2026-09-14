@@ -111,17 +111,18 @@ func stateRootTTLWriteSet(expired []ports.NodeID, height uint64, preQualified ma
 func stateRootTTLDigestOps(
 	tw StateRootTTLWitness,
 	digestWits []StateRootDigestWitness,
+	prevStateRoot ports.Hash,
 ) (ops []statehash.FoldOp, preBonded, preQualified map[ports.NodeID]struct{}, expired []ports.NodeID, err error) {
 	byTag := make(map[string]*StateRootDigestWitness, len(digestWits))
 	for i := range digestWits {
 		byTag[digestWits[i].Tag] = &digestWits[i]
 	}
 
-	bondedSet, err := anchoredPreSet(byTag, tagBondedRoot)
+	bondedSet, err := anchoredPreSet(byTag, tagBondedRoot, prevStateRoot)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	qualifiedSet, err := anchoredPreSet(byTag, tagQualifiedRoot)
+	qualifiedSet, err := anchoredPreSet(byTag, tagQualifiedRoot, prevStateRoot)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

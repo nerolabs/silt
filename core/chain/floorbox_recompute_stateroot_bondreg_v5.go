@@ -393,15 +393,15 @@ func (c *Chain) bondRegOpsWithQualWrites(prevStateRoot ports.Hash, b Block, w St
 	for i := range w.DigestPreSets {
 		byTag[w.DigestPreSets[i].Tag] = &w.DigestPreSets[i]
 	}
-	preBonded, err := anchoredPreSet(byTag, tagBondedRoot)
+	preBonded, err := anchoredPreSet(byTag, tagBondedRoot, prevStateRoot)
 	if err != nil {
 		return nil, nil, nil, nil, nil, err
 	}
-	preQualified, err := anchoredPreSet(byTag, tagQualifiedRoot)
+	preQualified, err := anchoredPreSet(byTag, tagQualifiedRoot, prevStateRoot)
 	if err != nil {
 		return nil, nil, nil, nil, nil, err
 	}
-	preSlashed, err := anchoredPreSet(byTag, tagSlashedRoot)
+	preSlashed, err := anchoredPreSet(byTag, tagSlashedRoot, prevStateRoot)
 	if err != nil {
 		return nil, nil, nil, nil, nil, err
 	}

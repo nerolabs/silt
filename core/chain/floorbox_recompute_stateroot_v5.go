@@ -370,7 +370,7 @@ func (c *Chain) assembleStateRootRecomputeOps(
 
 	// Class S (slashes, P1-b): reconstruct the three touched digests + the per-member write-set.
 	if len(b.Slashes) > 0 {
-		dOps, preBonded, preQualified, dErr := stateRootSlashDigestOps(b, w.DigestPreSets)
+		dOps, preBonded, preQualified, dErr := stateRootSlashDigestOps(b, w.DigestPreSets, prevStateRoot)
 		if dErr != nil {
 			return nil, dErr
 		}
@@ -390,7 +390,7 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	// Class T (TTL sweep, P1-c): derive the expired set from the dueBucket[b.Height] accelerator
 	// witness, then reconstruct the touched digests + the bucket DELETE.
 	if w.TTLSweep != nil {
-		tOps, preBonded, preQualified, expired, tErr := stateRootTTLDigestOps(*w.TTLSweep, w.DigestPreSets)
+		tOps, preBonded, preQualified, expired, tErr := stateRootTTLDigestOps(*w.TTLSweep, w.DigestPreSets, prevStateRoot)
 		if tErr != nil {
 			return nil, tErr
 		}

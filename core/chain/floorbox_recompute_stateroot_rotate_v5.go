@@ -168,7 +168,7 @@ func (c *Chain) reconstructPostQualifiedWithWrites(prevStateRoot ports.Hash, b B
 	for i := range w.DigestPreSets {
 		byTag[w.DigestPreSets[i].Tag] = &w.DigestPreSets[i]
 	}
-	preQualified, err := anchoredPreSet(byTag, tagQualifiedRoot)
+	preQualified, err := anchoredPreSet(byTag, tagQualifiedRoot, prevStateRoot)
 	if err != nil {
 		return nil, nil, nil, err
 	}

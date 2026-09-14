@@ -242,7 +242,7 @@ func TestRecomputeStateRootTTLDigestsAreByteExact(t *testing.T) {
 		[]StateRootDigestWitness{
 			f.digestWitness(t, tagBondedRoot, f.preIDsBonded()),
 			f.digestWitness(t, tagQualifiedRoot, f.preIDsQualified()),
-		})
+		}, f.prevRoot)
 	if err != nil {
 		t.Fatalf("stateRootTTLDigestOps: %v", err)
 	}

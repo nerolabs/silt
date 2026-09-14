@@ -138,6 +138,7 @@ func stateRootSlashWriteSet(b Block, preBonded, preQualified map[ports.NodeID]st
 func stateRootSlashDigestOps(
 	b Block,
 	digestWits []StateRootDigestWitness,
+	prevStateRoot ports.Hash,
 ) (ops []statehash.FoldOp, preBonded, preQualified map[ports.NodeID]struct{}, err error) {
 	byTag := make(map[string]*StateRootDigestWitness, len(digestWits))
 	for i := range digestWits {
@@ -148,15 +149,15 @@ func stateRootSlashDigestOps(
 	// by a non-empty slash block (slashed always changes; bonded/qualified change iff any culprit was
 	// a member — but the digest scalar leaf is committed every block and its VALUE changes whenever
 	// the set changes, so the box must reconstruct all three to fold the block's committed StateRoot).
-	preSlashed, err := anchoredPreSet(byTag, tagSlashedRoot)
+	preSlashed, err := anchoredPreSet(byTag, tagSlashedRoot, prevStateRoot)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	bondedSet, err := anchoredPreSet(byTag, tagBondedRoot)
+	bondedSet, err := anchoredPreSet(byTag, tagBondedRoot, prevStateRoot)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	qualifiedSet, err := anchoredPreSet(byTag, tagQualifiedRoot)
+	qualifiedSet, err := anchoredPreSet(byTag, tagQualifiedRoot, prevStateRoot)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -202,10 +203,29 @@ func stateRootSlashDigestOps(
 // RESEARCH-GATED (a consensus-adjacent verification rule) and is deliberately NOT implemented here.
 // EVIDENCE: anchor_preset_gates_test.go.6 (PINNED_DEFECT), with the unanchored-read census and the
 // oracle argument at its head. CONTAINMENT: the downgrade in (*Box).Validate.
-func anchoredPreSet(byTag map[string]*StateRootDigestWitness, tag string) (map[ports.NodeID]struct{}, error) {
+// anchoredPreSet returns the witnessed pre-state member set for a whole-set digest tag,
+// PROVEN against prevStateRoot before it is returned.
+//
+// The proof is what makes the set the chain's rather than the producer's. A whole-set
+// digest commits membership as nodeSetMTH over the member ids, so recomputing that digest
+// from the witnessed ids and Resolving it against the committed root refuses any set with
+// an id omitted or injected — the same check provenView.members makes, for the same reason.
+//
+// It is deliberately UNCONDITIONAL. Folding a changed digest also verifies its OldValue,
+// so it is tempting to let the fold do this work; but a fold op is only emitted when the
+// set actually changes, and the post-set is derived FROM the pre-set. An attacker forging
+// the pre-set therefore steers the very equality that decides whether the forgery is ever
+// checked, and the tags whose ops are conditional — or, for slashedRoot on a bond
+// registration, never emitted at all — are consumed as attacker-chosen data. Anchoring
+// here removes that dependency: every read is proven when it is read.
+func anchoredPreSet(byTag map[string]*StateRootDigestWitness, tag string, prevStateRoot ports.Hash) (map[ports.NodeID]struct{}, error) {
 	w, ok := byTag[tag]
 	if !ok || w.Proof.IsNil() {
 		return nil, fmt.Errorf("%w: no digest witness for touched %s", ErrRecomputeStateRootDigest, tag)
+	}
+	if !statehash.Resolve(prevStateRoot, statehash.Key(tag, nil), nodeSetMTH(w.PreIDs), w.Proof).IsProvenPresent() {
+		return nil, fmt.Errorf("%w: the %s pre-state member set does not resolve against prevStateRoot — "+
+			"an id has been omitted or injected", ErrRecomputeStateRootDigest, tag)
 	}
 	set := make(map[ports.NodeID]struct{}, len(w.PreIDs))
 	for _, id := range w.PreIDs {

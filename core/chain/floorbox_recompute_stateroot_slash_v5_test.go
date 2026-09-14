@@ -257,7 +257,7 @@ func TestRecomputeStateRootSlashDigestsAreByteExact(t *testing.T) {
 		f.digestWitness(t, tagSlashedRoot, f.preIDsSlashed()),
 		f.digestWitness(t, tagBondedRoot, f.preIDsBonded()),
 		f.digestWitness(t, tagQualifiedRoot, f.preIDsQualified()),
-	})
+	}, f.prevRoot)
 	if err != nil {
 		t.Fatalf("stateRootSlashDigestOps: %v", err)
 	}
@@ -296,10 +296,15 @@ func TestRecomputeStateRootSlashAblationForgedQualifiedScreen(t *testing.T) {
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a forged qualified pre-set (culprit dropped) must stall, got nil")
 	}
-	// It stalls either at the fold's pre-digest anchor (VerifyProof) or at the terminal mismatch —
-	// both are correct never-Accept outcomes.
-	if !errors.Is(err, ErrRecomputeStateRootFold) && !errors.Is(err, ErrRecomputeStateRootMismatch) {
-		t.Fatalf("ABLATION FAILED: expected a fold/mismatch stall, got %v", err)
+	// It stalls at the pre-set anchor, at the fold's pre-digest anchor, or at the terminal
+	// mismatch — all three are correct never-Accept outcomes. Which one fires depends on how
+	// early the forged set is proven, and that is an implementation choice, not a safety
+	// property: demanding one exact class would redden whenever a check moves earlier, which is
+	// the direction a soundness fix always travels.
+	if !errors.Is(err, ErrRecomputeStateRootDigest) &&
+		!errors.Is(err, ErrRecomputeStateRootFold) &&
+		!errors.Is(err, ErrRecomputeStateRootMismatch) {
+		t.Fatalf("ABLATION FAILED: expected a digest/fold/mismatch stall, got %v", err)
 	}
 }
 
@@ -450,9 +455,13 @@ func TestRecomputeStateRootSlashAblationCircularAnchor(t *testing.T) {
 	}
 
 	err = recomputeViaHead(f.c, f.prevRoot, committed, b, w)
-	if !errors.Is(err, ErrRecomputeStateRootFold) {
-		t.Fatalf("ABLATION FAILED: a StateRoot-anchored (circular) digest proof must fail the fold's "+
-			"prevStateRoot verify, got %v", err)
+	// The id-lists here are HONEST and only the proof's anchor is circular, so the refusal lands
+	// wherever that proof is first checked against prevStateRoot — at the pre-set anchor now that
+	// whole-set reads are proven when they are read, or at the fold otherwise. Both refuse a proof
+	// that anchors to the root it is being used to derive.
+	if !errors.Is(err, ErrRecomputeStateRootDigest) && !errors.Is(err, ErrRecomputeStateRootFold) {
+		t.Fatalf("ABLATION FAILED: a StateRoot-anchored (circular) digest proof must be refused against "+
+			"prevStateRoot, got %v", err)
 	}
 }
 

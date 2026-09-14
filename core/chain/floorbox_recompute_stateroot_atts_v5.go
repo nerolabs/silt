@@ -318,7 +318,7 @@ func (c *Chain) attOps(prevStateRoot ports.Hash, b Block, w StateRootWitness, pr
 	for i := range w.DigestPreSets {
 		byTag[w.DigestPreSets[i].Tag] = &w.DigestPreSets[i]
 	}
-	preSeen, err := anchoredPreSet(byTag, tagValidatorsSeenRoot)
+	preSeen, err := anchoredPreSet(byTag, tagValidatorsSeenRoot, prevStateRoot)
 	if err != nil {
 		return nil, nil, err
 	}
