@@ -32,6 +32,15 @@
 # chain, no registry and no state tree, and judges blocks against witnesses it
 # pulls from the two validators. Legs 6 and 7 drive it.
 #
+# THEY ARE EXPECTED RED TODAY, and the cause is named rather than worked around.
+# The box cannot reproduce a block that touches TWO committed-state classes at
+# once — a bond registration landing on the height that same bond falls due — and
+# on this topology, where every proposer renews as it proposes under a short TTL,
+# that is most blocks. The stall is safe (the box never accepts what it cannot
+# reproduce) and it is not live (it never reaches a verdict either). The defect is
+# reduced to a deterministic local repro in core/node, pinned there, so this suite
+# confirms a fix rather than discovering the cause.
+#
 # WHAT A "VALIDATED" VERDICT IS, so a green run is not read as more than it is:
 # the box ran the whole committed-state transition to a verdict of accept over
 # witnesses, and its door WITHHELD the accept. That downgrade is deliberate and
@@ -100,10 +109,17 @@ FLOOR_DISK_GIB=${FLOOR_DISK_GIB:-10}
 TARGET_HEIGHT=${TARGET_HEIGHT:-17}     # above the 12-block prune guard, epoch-aligned headroom
 EPOCH_BLOCKS=${EPOCH_BLOCKS:-4}
 BOND_TTL=${BOND_TTL:-2}
-HEIGHT_BUDGET=${HEIGHT_BUDGET:-420}    # seconds to reach TARGET_HEIGHT
+# Seconds to reach TARGET_HEIGHT. The cadence this has to cover is a property of
+# the HOST, not of the product: every block carries a validator's multi-megabyte
+# space-time proof, and three nodes sharing two cores commit one about every 28 s
+# on a developer laptop. Seventeen blocks therefore wants ~480 s before anything
+# has gone wrong. Raise it further only after confirming, in the progress lines,
+# that the chain is advancing monotonically — a budget raised over a STALLED
+# chain converts a real failure into a slow pass.
+HEIGHT_BUDGET=${HEIGHT_BUDGET:-600}
 PRUNE_BUDGET=${PRUNE_BUDGET:-180}      # seconds, after the height, to observe the shed
 RESTART_BUDGET=${RESTART_BUDGET:-120}  # seconds for the restarted box to re-commit
-WITNESS_BUDGET=${WITNESS_BUDGET:-180}  # seconds for the witness box to reach its verdicts
+WITNESS_BUDGET=${WITNESS_BUDGET:-300}  # seconds for the witness box to reach its verdicts
 WITNESS_HEIGHTS=${WITNESS_HEIGHTS:-3}  # distinct heights the witness box must judge
 export EPOCH_BLOCKS BOND_TTL
 
@@ -162,14 +178,25 @@ floor_oom_killed() { docker inspect -f '{{.State.OOMKilled}}' "$(dc ps -aq floor
 # is legible rather than silent. Echoes the height it actually reached.
 await_height() { # await_height <svc> <target> <budget-seconds>
   local svc="$1" target="$2" budget="$3" h="" waited=0
-  while [ "$waited" -lt "$budget" ]; do
+  # The check runs FIRST and again after the last sleep, so the final window is not
+  # lost. It was: the loop slept, incremented past the budget and exited without
+  # re-reading, so a height that landed during the last interval was reported as a
+  # timeout — a failure the very next line of the suite contradicted, because
+  # head_height read the new height immediately afterwards. A budget that reports a
+  # success as a failure is worse than a short budget.
+  while :; do
     h=$(head_height "$svc")
     case "$h" in ''|*[!0-9]*) h=0 ;; esac
     if [ "$h" -ge "$target" ]; then echo "$h"; return 0; fi
     # A dead box will never climb. Fail fast instead of burning the budget.
     if [ "$(dc ps -q floor | wc -l | tr -d ' ')" = "0" ]; then echo "$h"; return 1; fi
+    [ "$waited" -ge "$budget" ] && break
     sleep 5; waited=$((waited + 5))
-    [ $((waited % 30)) -eq 0 ] && echo "    ${svc} height=${h} (${waited}s/${budget}s)"
+    # Progress goes to STDERR. This function's STDOUT is its RETURN VALUE — a caller
+    # captures it in a variable — so a progress line printed there lands inside the
+    # number, and the failure message that reports it becomes unreadable at exactly
+    # the moment someone needs to read it.
+    [ $((waited % 30)) -eq 0 ] && echo "    ${svc} height=${h} (${waited}s/${budget}s)" >&2
   done
   echo "$h"; return 1
 }
@@ -258,13 +285,18 @@ echo "  floor = ${ID_F:0:16}…  (the box under test)"
 echo "  wbox  = ${ID_BOX:0:16}…  (the same spec, validating by proof)"
 
 echo "== phase 2: the topology, one genesis =="
-dc up -d valA valB floor witnessbox >/dev/null 2>&1 || fail "up the topology"
+# The witness box is NOT started here. Legs 1-5 measure a memory ceiling and a
+# retention horizon on a two-CPU host, and a fourth node competing for those
+# cycles changes what they measure — the chain simply advances slower, and the
+# height budget becomes a statement about the harness rather than about the box.
+# It comes up for leg 6, on the same chain, once those legs have their numbers.
+dc up -d valA valB floor >/dev/null 2>&1 || fail "up the topology"
 sleep 8
-for svc in valA valB floor witnessbox; do
+for svc in valA valB floor; do
   [ "$(dc ps -q "$svc" | wc -l | tr -d ' ')" != "0" ] \
     || fail "$svc exited during startup — $(dc logs "$svc" 2>&1 | tail -5)"
 done
-echo "  three validators and one witness-validating box up, anchored on one set"
+echo "  three validators up, anchored on one set"
 
 # ---- leg 1: the spec actually binds ----------------------------------------
 # THE VACUITY GUARD. Everything after this is only evidence if the kernel really
@@ -376,6 +408,10 @@ echo "  ✓ the shed is a property of persisted state, and the box still commits
 
 # ---- leg 6: it validates against witnesses, holding no tree -----------------
 echo "== leg 6: the witness box validates against witnesses, holding no tree =="
+dc up -d witnessbox >/dev/null 2>&1 || fail "could not start the witness box"
+sleep 10
+[ "$(dc ps -q witnessbox | wc -l | tr -d ' ')" != "0" ] \
+  || fail "the witness box exited at start-up — $(dc logs witnessbox 2>&1 | tail -10)"
 # VACUITY GUARD 1 — the same network. A floor box derives this network's identity
 # by minting the genesis its own configuration implies. If one consensus-critical
 # flag differs it computes a different genesis hash, every era-4 signature fails
@@ -396,6 +432,12 @@ echo "  the box holds ${BOX_BLOCKS} block(s) of its own"
 [ "$BOX_BLOCKS" -eq 0 ] \
   || fail "the witness box is holding ${BOX_BLOCKS} block(s) — it has a chain replica, so 'validates without holding the tree' is not what this leg would be measuring"
 
+# Legs 6 and 7 are recorded rather than exited on, so BOTH are driven. They are
+# independent claims — one is about reading witnesses, the other about what
+# happens when there are none — and a suite that stopped at the first failure
+# would leave the second undriven, which this list counts as a failure of its own.
+L6=FAIL; L7=FAIL; L6_WHY=""; L7_WHY=""
+
 VALIDATED=0; waited=0
 while [ "$waited" -lt "$WITNESS_BUDGET" ]; do
   VALIDATED=$(box_verdicts witnessbox VALIDATED)
@@ -404,14 +446,23 @@ while [ "$waited" -lt "$WITNESS_BUDGET" ]; do
   [ $((waited % 30)) -eq 0 ] && echo "    validated=${VALIDATED}/${WITNESS_HEIGHTS} (${waited}s/${WITNESS_BUDGET}s)"
 done
 STALLED=$(box_verdicts witnessbox STALL)
-echo "  verdicts — validated=${VALIDATED} at distinct heights, stalled=${STALLED}"
-if [ "$VALIDATED" -lt "$WITNESS_HEIGHTS" ]; then
-  echo "  last lines from the box:"; dc logs --tail 12 witnessbox 2>&1 | sed 's/^/    /'
-  fail "the witness box reached a VALIDATED verdict at only ${VALIDATED} of the ${WITNESS_HEIGHTS} distinct heights this leg requires. It holds no tree, so every committed read it made crossed the wire — a shortfall is the seam, not the box."
+ACCEPTED=$(box_verdicts witnessbox ACCEPT)
+echo "  verdicts — validated=${VALIDATED} at distinct heights, stalled=${STALLED}, accepted=${ACCEPTED}"
+# Whatever else happens, an ACCEPT is a different order of failure and ends the run:
+# the box's door withholds accept by construction, so one here means the posture
+# changed under the operator and nothing below is worth measuring.
+[ "$ACCEPTED" -eq 0 ] || fail "the witness box printed ${ACCEPTED} ACCEPT verdict(s). Its door withholds accept by construction, so this is not a slow leg — it is a different build than the one this suite describes."
+if [ "$VALIDATED" -ge "$WITNESS_HEIGHTS" ]; then
+  L6=PASS
+  echo "  ✓ judged ${VALIDATED} distinct heights by proof, holding no chain of its own"
+  echo "    (VALIDATED means the transition ran to a verdict of accept over witnesses and the"
+  echo "     door withheld it: this box adopts nothing and advances no head)"
+else
+  L6_WHY="validated ${VALIDATED} of ${WITNESS_HEIGHTS} required distinct heights; stalled at ${STALLED}"
+  echo "  ✗ the witness box reached a VALIDATED verdict at only ${VALIDATED} of the ${WITNESS_HEIGHTS}"
+  echo "    distinct heights this leg requires. The stall reason is the evidence, not the count:"
+  dc logs witnessbox 2>&1 | grep -oE 'verdict=STALL height=[0-9]+ providers=[0-9]+ reason=.*' | tail -2 | sed 's/^/    /'
 fi
-echo "  ✓ judged ${VALIDATED} distinct heights by proof, holding no chain of its own"
-echo "    (VALIDATED means the transition ran to a verdict of accept over witnesses and the"
-echo "     door withheld it: this box adopts nothing and advances no head)"
 
 # ---- leg 7: and it stalls when no provider is reachable ---------------------
 echo "== leg 7: with no witness provider reachable, it STALLS — never accepts =="
@@ -441,12 +492,16 @@ echo "  control verdicts — stalled=${BLIND_STALLED} validated=${BLIND_OK} acce
 [ "$BLIND_ACCEPT" -eq 0 ] \
   || fail "the control box ACCEPTED a block with no witness provider reachable. Safety must never rest on the tier above; this is the failure the whole posture exists to exclude."
 [ "$BLIND_OK" -eq 0 ] \
-  || fail "the control box reported ${BLIND_OK} VALIDATED verdict(s) while its only provider does not exist — it is not reading witnesses from where it says it is, and leg 6 is green for the wrong reason."
-if [ "$BLIND_STALLED" -lt 1 ]; then
-  echo "  last lines from the control box:"; dc logs --tail 12 witnessbox-blind 2>&1 | sed 's/^/    /'
-  fail "the control box reached no verdict at all within ${WITNESS_BUDGET}s. A box that neither validates nor stalls has stopped auditing without saying so, which is the worst of the three outcomes."
+  || fail "the control box reported ${BLIND_OK} VALIDATED verdict(s) while its only provider does not exist — it is not reading witnesses from where it says it is, and leg 6 would be green for the wrong reason."
+if [ "$BLIND_STALLED" -ge 1 ]; then
+  L7=PASS
+  echo "  ✓ the control stalled at ${BLIND_STALLED} distinct height(s) and never accepted"
+else
+  L7_WHY="reached no verdict at all in ${WITNESS_BUDGET}s"
+  echo "  ✗ the control box reached no verdict at all within ${WITNESS_BUDGET}s. A box that neither"
+  echo "    validates nor stalls has stopped auditing without saying so — the worst of the three."
+  dc logs --tail 8 witnessbox-blind 2>&1 | sed 's/^/    /'
 fi
-echo "  ✓ the control stalled at ${BLIND_STALLED} distinct height(s) and never accepted"
 
 # ---- verdict ---------------------------------------------------------------
 echo
@@ -455,12 +510,19 @@ echo "  peak memory         : $(human_bytes "$PRE_PEAK") (${PCT}% of the ceiling
 echo "  height / shed       : ${HF} / ${SHED} blocks"
 echo "  restart             : reloaded the pruned store, committed to ${REACHED2}"
 echo
-echo "  by proof            : ${VALIDATED} distinct heights judged against witnesses, holding no tree"
-echo "  with no provider    : ${BLIND_STALLED} stall(s), 0 accepts"
+echo "  by proof            : leg 6 ${L6} — ${VALIDATED} distinct heights validated, ${STALLED} stalled"
+echo "  with no provider    : leg 7 ${L7} — ${BLIND_STALLED} stall(s), 0 accepts"
 echo
 echo "  not shown here       : the ceiling under ADVERSARIAL input (this load is honest)"
 echo "  not claimed here     : that the witness box PARTICIPATES — its door withholds accept by"
 echo "                         design, so it audits and reports, and adopts nothing"
 echo
-echo "RESULT: FINDING ⚠  the floor box validates, stays under a kernel-enforced 2 GiB at ${PCT}% peak on HONEST load, prunes at depth, and restarts from the pruned store; a second box on the same spec judges ${VALIDATED} committed heights against witnesses while holding no tree, and its no-provider control stalls without ever accepting — but the memory ceiling is not yet driven on adversarial input, so the floor-box claim is not wholly demonstrated"
-exit 0
+if [ "$L6" = PASS ] && [ "$L7" = PASS ]; then
+  echo "RESULT: FINDING ⚠  the floor box validates, stays under a kernel-enforced 2 GiB at ${PCT}% peak on HONEST load, prunes at depth, and restarts from the pruned store; a second box on the same spec judges ${VALIDATED} committed heights against witnesses while holding no tree, and its no-provider control stalls without ever accepting — but the memory ceiling is not yet driven on adversarial input, so the floor-box claim is not wholly demonstrated"
+  exit 0
+fi
+[ "$L6" = FAIL ] && echo "  leg 6 FAILED: ${L6_WHY}"
+[ "$L7" = FAIL ] && echo "  leg 7 FAILED: ${L7_WHY}"
+echo
+echo "RESULT: FAIL ❌  the resource half of the floor-box claim holds — kernel-enforced 2 GiB at ${PCT}% peak, pruned at depth, restarted from the pruned store — and the witness half is DRIVEN AND RED. It is no longer unwired: there is a process, it runs, and it does not reach the verdict the claim needs."
+exit 1

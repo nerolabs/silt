@@ -441,9 +441,18 @@ func cmdDaemon(args []string) error {
 	}
 	// objectivePath mirrors the decision made later for the chain config (see
 	// useObjective): objective fork-choice is the default for an untrusted
-	// VALIDATOR, auto-off when trusted. A non-validator claims no consensus
-	// standing, so the floor never applies to it.
-	objectivePath := *validator && *objective && *minRep > 0
+	// VALIDATOR, auto-off when trusted. A node that neither keeps a replica nor
+	// validates by proof claims no consensus standing, so the floor never applies
+	// to it.
+	//
+	// A FLOOR BOX IS ON THIS PATH. It keeps no replica, but it judges blocks under
+	// the objective rules, and every value derived from this decision is committed
+	// into the genesis those rules are read from. A box excluded here derives a
+	// DIFFERENT genesis hash from the validators it audits — the network identity
+	// rule working exactly as intended, refusing a configuration nobody is running —
+	// so it would stall on every block and never say why in terms an operator could
+	// act on.
+	objectivePath := (*validator || *floorBox) && *objective && *minRep > 0
 	effFloor, defaulted := effectiveBondFloor(floorSet, explicitFloor, objectivePath)
 	if defaulted {
 		fmt.Printf("bond: anti-release floor defaulted to %d MiB for this untrusted (objective) swarm — a smaller plot could be released and re-sealed within the anti-release compute window (%s × plot throughput; independent of -request-timeout). Override with -min-bond-floor (0 disables; safe only for a trusted/demo swarm).\n", effFloor>>20, AntiReleaseComputeWindow)

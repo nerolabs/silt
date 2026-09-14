@@ -121,44 +121,60 @@ succeeds on retry. A validator killed mid-consensus re-pins from its own last fi
 checkpoint and never contradicts a signature it made before the crash.
 *e2e under impairment → field.*
 
-**14. The floor box holds, and the chain prunes.** ⚠ *red — half demonstrated, half unwired*
+**14. The floor box holds, and the chain prunes.** ⚠ *red — three legs demonstrated, one driven and red*
 A validator on the declared floor spec — one core, 2 GiB, 10 GiB of disk — validates against
 witnesses without holding the tree, stays under its memory ceiling on adversarial input, stalls
-rather than accepts when no witness provider is reachable, and prunes at depth from persisted
-state.
+rather than accepts when no witness provider is reachable, and prunes at depth from persisted state.
 *unit → e2e under impairment → field.*
 
-*State:* the claim has four legs and they are in three different conditions. The `floor` suite
-drives what a binary can be made to do; it enforces the spec with a cgroup rather than a flag,
-because `-mem-limit` is a SOFT ceiling and a soft ceiling cannot answer "does this survive on a
-2 GiB box".
+*State:* the claim has four legs. The `floor` suite drives all four; it enforces the spec with a
+cgroup rather than a flag, because `-mem-limit` is a SOFT ceiling and a soft ceiling cannot answer
+"does this survive on a 2 GiB box". The witness half runs as a SECOND box on the same spec in the
+witness-validating posture (`silt daemon -floor-box -witness-from=...`), with a no-provider control
+beside it.
 
 - **Under its memory ceiling — DEMONSTRATED, under HONEST load only.** `memory.max` 2 GiB with
   `memory.swap.max` 0 and `nproc` 1, asserted from inside the container before anything else is
-  measured. Peak 291.1 MiB, 14% of the ceiling, read from the cgroup's own high-water mark
-  rather than sampled. The box committed to height 22 on the same head hash as two ordinary
-  validators, so it was participating and not merely surviving. **The gap:** the load was honest
-  consensus traffic. "On adversarial input" is NOT yet shown — that wants the redteam and sybil
-  topologies re-pointed at a floor-spec seat, which is the next increment on this item.
-- **Prunes at depth from persisted state — DEMONSTRATED.** Seven blocks shed their heavy bond
-  proofs at height 22, which is exactly what the retention rule predicts:
-  `retain = max(2·BondTTL, BondRegHeadWindow+4) = 12`, `raw = 22-12 = 10`, epoch-aligned to 8,
-  leaving heights 1–7 (genesis carries no registration). A restart onto the same volume reloaded
-  the already-pruned store, still reported the shed, and committed again to height 24 — so the
-  prune is a property of persisted state and did not trade an OOM for a stall.
-- **Validates against witnesses without holding the tree — UNWIRED.**
-- **Stalls rather than accepts when no witness provider is reachable — UNWIRED.**
+  measured. Peak 262.5 MiB, 12% of the ceiling, read from the cgroup's own high-water mark rather
+  than sampled. The box committed to height 17 on the same head hash as two ordinary validators, so
+  it was participating and not merely surviving. **The gap:** the load was honest consensus traffic.
+  "On adversarial input" is NOT yet shown — that wants the redteam and sybil topologies re-pointed
+  at a floor-spec seat.
+- **Prunes at depth from persisted state — DEMONSTRATED.** Three blocks shed their heavy bond proofs
+  at height 17. A restart onto the same volume reloaded the already-pruned store, still reported the
+  shed, and committed again to height 18 — so the prune is a property of persisted state and did not
+  trade an OOM for a stall.
+- **Stalls rather than accepts when no witness provider is reachable — DEMONSTRATED.** A box on the
+  same genesis, anchored on an operator checkpoint and pointed at a provider that does not exist,
+  reached the block above its anchor and stalled: one stall, zero accepts. Its twin, pointed at two
+  real providers, stalls for a different reason and also never accepts — eleven stalls, zero accepts
+  across the run. Safety does not rest on the tier above.
+- **Validates against witnesses without holding the tree — DRIVEN AND RED.** The box is on the same
+  genesis as the validators (it derives the hash from its own configuration; the suite compares the
+  two) and holds zero blocks of its own. It reached a verdict on every block it was handed and
+  validated none of them.
 
-*Why UNWIRED and not skipped:* there is no process to drive. `chain.NewBox` has no caller
-outside `core/chain`'s own tests, the only implementation of `chain.WitnessSource` in the repo is
-the `proverSource` test double, and no daemon flag puts a node in that mode. The mechanism is
-thoroughly gated at the unit tier; it has no transport and no entry point. Reporting these green
-on the strength of the unit gates would be the exact substitution this list forbids — a
-demonstration that could not be driven is a failure, and "unwired" names which failure it is.
+*Why it is red, named:* the box cannot reproduce a block that touches TWO committed-state classes at
+once. The recompute's class dispatch composes slashes, bond registrations and TTL expiry by
+appending each class's own reconstruction, and each computes its post-set from the anchored
+pre-state independently — so a block that touches two emits two conflicting fold operations for one
+committed key, and the fold refuses the second. On a live swarm this is most blocks: every proposer
+renews its bond as it proposes, and under a short TTL a renewal lands on the very height that bond
+falls due. The failure is SAFE (a box never accepts what it cannot reproduce) and it is not live (it
+never reaches a verdict either). It is reduced to a deterministic local repro in `core/node` and
+pinned there, so the field run confirms a fix rather than discovering the cause. The fix is a
+running post-set threaded through B → T → S with each digest emitted once; the precedent is already
+in the tree, in the rotate path's own replay of that order.
 
-*What would turn it green:* a witness server and a floor-box daemon mode, then the two witness
-legs added to the same suite. That is product work, not harness work, and it is the item's
-critical path — the memory and prune halves are done.
+*What is no longer true:* the witness half was reported UNWIRED — no process to drive. There is one
+now. `chain.WitnessProvider` builds the O(payload) evidence a box folds and serves it over the wire,
+`silt daemon -floor-box` runs the audit cycle, and the box is gated end to end at the unit and
+transport tiers on a live objective chain with bond registrations, epoch turns and TTL sweeps. What
+remains is the compound-class composition above.
+
+*What is not claimed:* that the box PARTICIPATES. Its door maps Accept to a downgrade by design, so
+it audits and reports, adopts nothing, and advances no head. Taking that downgrade is a
+consensus-rule change and is the owner's call.
 
 **15. The floor box can post the bond its disk allows.** ✅ *done*
 *Done:* the plot is sealed to disk block by block and answered by sparse reads, so residency

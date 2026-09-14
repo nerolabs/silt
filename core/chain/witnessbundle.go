@@ -152,7 +152,7 @@ func (p *WitnessProvider) Bundle(b Block) (StateRootWitness, error) {
 		}
 		w.BondRegScreens = append(w.BondRegScreens, sc)
 	}
-	for _, due := range movedBuckets(p.snap.dueBucket, post.dueBucket, b.Height) {
+	for _, due := range movedBuckets(p.snap.dueBucket, post.dueBucket) {
 		wit, sibs, bErr := p.prover.ProveWithSiblings(dueBucketKey(due))
 		if bErr != nil {
 			return StateRootWitness{}, fmt.Errorf("%w: dueBucket[%d]: %v", ErrBundleNoPreState, due, bErr)
@@ -468,15 +468,18 @@ func dueBucketKey(h uint64) []byte {
 }
 
 // movedBuckets is the set of due-heights whose bucket membership changed across the payload,
-// ascending. The sweep height is excluded: its bucket is the class-T witness's own, and serving it
-// twice would put two witnesses in front of one key.
-func movedBuckets(pre, post map[uint64]map[ports.NodeID]struct{}, sweepHeight uint64) []uint64 {
+// ascending.
+//
+// THE SWEEP HEIGHT IS INCLUDED, and leaving it out was a real stall on a live chain. A validator
+// that renews at the same height its bond comes due touches that bucket twice in one block — the
+// sweep drains it, and the registration moves the renewer out of it — so the box derives a
+// registration write against it and needs a witness for it. The bucket also travels on the class-T
+// witness, and that is not a conflict: both are pre-state proofs of the same leaf against the same
+// root, read by two different derivations, and which FoldOps get emitted is the box's decision.
+func movedBuckets(pre, post map[uint64]map[ports.NodeID]struct{}) []uint64 {
 	moved := map[uint64]bool{}
 	mark := func(m map[uint64]map[ports.NodeID]struct{}, other map[uint64]map[ports.NodeID]struct{}) {
 		for h, members := range m {
-			if h == sweepHeight {
-				continue
-			}
 			if !idSetsEqual(setOf(members), setOf(other[h])) {
 				moved[h] = true
 			}
