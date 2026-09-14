@@ -354,50 +354,34 @@ func (c *Chain) assembleStateRootRecomputeOps(
 
 	// (2) DERIVE the write-set from the block payload. The box runs the generator, not the prover —
 	// so the changed-key set is complete by construction (no un-named leaf escapes). E/R gives the
-	// byRoot/spent/revoked leaves; class S (P1-b) gives the slashed/bonded/qualified per-member
-	// leaves PLUS the three changed whole-set digest scalars, reconstructed via the changed-digest
-	// primitive. The digest ops are built FIRST because they anchor the pre-bonded / pre-qualified
-	// membership the S per-member write-set consumes (so the per-member delta and the digest delta
-	// agree on the pre-state, and neither trusts a witness scalar —).
+	// byRoot/spent/revoked leaves; the id-keyed classes give the slashed/bonded/qualified per-member
+	// leaves, the due-bucket leaves, and the changed whole-set digest scalars, each reconstructed
+	// via the changed-digest primitive over the anchored pre-state — so the per-member delta and
+	// the digest delta agree on the pre-state, and neither trusts a witness scalar.
 	writeSet := applyEntriesRevocationsWriteSet(b)
 	var digestOps []statehash.FoldOp
-	// postQualified is the POST-apply qualified id-SET a boundary (class P) freezes
-	// (rotate-LAST). It is reconstructed by a DEDICATED pass in apply order (B → T → S) on the
-	// anchored pre-qualified set, AFTER the digest ops (whose emission order is irrelevant —
-	// each touched digest is a pure function of pre + its own delta). Built only when a
-	// boundary needs it.
 	isBoundary := c.epochsEnabled() && c.cfg.EpochBlocks > 0 && b.Height%c.cfg.EpochBlocks == 0
 
-	// Class S (slashes, P1-b): reconstruct the three touched digests + the per-member write-set.
-	if len(b.Slashes) > 0 {
-		dOps, preBonded, preQualified, dErr := stateRootSlashDigestOps(b, w.DigestPreSets, prevStateRoot)
-		if dErr != nil {
-			return nil, dErr
-		}
-		digestOps = append(digestOps, dOps...)
-		writeSet = append(writeSet, stateRootSlashWriteSet(b, preBonded, preQualified)...)
+	// Classes B, T and S (bond registrations, TTL expiry, slashes) are COMPOSED, not appended.
+	// All three write the bonded and qualified keyspaces and the TTL due-buckets, so each one's
+	// post-state is a function of the others' deltas: they run once, in apply's order, over one
+	// running state, and every digest, per-member leaf and bucket leaf is emitted from the state
+	// the last class leaves behind. See floorbox_recompute_stateroot_compose_v5.go for why
+	// deriving each class's post-set from the pre-state alone computes a state no block commits.
+	//
+	// The composition also owns the POST-apply qualified id-SET a boundary (class P) freezes
+	// (rotate-LAST) — one reconstruction, not a second one beside the digest ops.
+	idSets, idErr := c.composeIDSetTransition(prevStateRoot, b, w, isBoundary)
+	if idErr != nil {
+		return nil, idErr
 	}
-	// Class B (bond regs, P1-d): derive the delta from b.BondRegs + own-cfg screens + the per-root
-	// displacement witnesses, then reconstruct the touched digests + affected dueBucket leaves.
-	if len(b.BondRegs) > 0 {
-		bOps, bWrites, bErr := c.bondRegOps(prevStateRoot, b, w)
-		if bErr != nil {
-			return nil, bErr
-		}
-		digestOps = append(digestOps, bOps...)
-		writeSet = append(writeSet, bWrites...)
+	digestOps = append(digestOps, idSets.digestOps()...)
+	bucketOps, bucketErr := idSets.bucketOps(w)
+	if bucketErr != nil {
+		return nil, bucketErr
 	}
-	// Class T (TTL sweep, P1-c): derive the expired set from the dueBucket[b.Height] accelerator
-	// witness, then reconstruct the touched digests + the bucket DELETE.
-	if w.TTLSweep != nil {
-		tOps, preBonded, preQualified, expired, tErr := stateRootTTLDigestOps(*w.TTLSweep, w.DigestPreSets, prevStateRoot)
-		if tErr != nil {
-			return nil, tErr
-		}
-		digestOps = append(digestOps, tOps...)
-		writeSet = append(writeSet, stateRootTTLWriteSet(expired, w.TTLSweep.Height, preQualified)...)
-		_ = preBonded
-	}
+	digestOps = append(digestOps, bucketOps...)
+	writeSet = append(writeSet, idSets.netWrites()...)
 	// Class A (the LastCommit carrier → validatorsSeen, P1-e): screen each carried signer from
 	// own-cfg over the per-attester witnesses, derive the validatorsSeen ADDs, reconstruct
 	// validatorsSeenRoot. The source is the HASH-COVERED carrier (the carrier re-point), not b.Atts.
@@ -430,11 +414,8 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	// The post-latch everMature (from class M) gates the freeze; P does NOT emit the
 	// tagEverMature leaf.
 	if isBoundary {
-		postQualified, qualWrites, regVerWrites, pqErr := c.reconstructPostQualifiedWithWrites(prevStateRoot, b, w)
-		if pqErr != nil {
-			return nil, pqErr
-		}
-		pOps, pErr := c.rotateOps(prevStateRoot, b, w, postQualified, qualWrites, regVerWrites, postEverMature)
+		pOps, pErr := c.rotateOps(prevStateRoot, b, w,
+			idSets.Qualified(), idSets.qualWrites, idSets.regVerWrites, postEverMature)
 		if pErr != nil {
 			return nil, pErr
 		}
@@ -494,9 +475,9 @@ func (c *Chain) assembleStateRootRecomputeOps(
 // to a later sub-increment; removing a clause is the visible signal that its class's recompute has
 // landed.
 func (c *Chain) stateRootScopeGate(prevStateRoot ports.Hash, b Block, w StateRootWitness) error {
-	// Class B (bond regs, P1-d) / Class S (slashes, P1-b) are IN scope — handled by bondRegOps /
-	// stateRootSlashDigestOps. Class A (attestations → validatorsSeen, P1-e) and Class P (epoch
-	// rotation, P1-e) are ALSO now IN scope — handled by attOps / rotateOps. None is stalled here.
+	// Classes B (bond regs), S (slashes) and T (TTL expiry) are IN scope — composed by
+	// composeIDSetTransition. Class A (attestations → validatorsSeen) and Class P (epoch rotation)
+	// are IN scope too — handled by attOps / rotateOps. None is stalled here.
 	//
 	// A legacy-mode block (a v5 block never is, by construction) cannot reproduce the rep(id)
 	// screen from committed state — attOps asserts objective and stalls otherwise. the recovery

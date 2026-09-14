@@ -248,28 +248,38 @@ func TestRecomputeStateRootSlashAgreesWithApply(t *testing.T) {
 func TestRecomputeStateRootSlashDigestsAreByteExact(t *testing.T) {
 	f := buildSlashFixture(t)
 	b := f.slashBlock()
+	w := f.witnessForSlash(t, b)
 
 	// Real post-state via apply.
 	clone := f.c.cloneForDryRun()
 	clone.apply(b)
 
-	ops, _, _, err := stateRootSlashDigestOps(b, []StateRootDigestWitness{
-		f.digestWitness(t, tagSlashedRoot, f.preIDsSlashed()),
-		f.digestWitness(t, tagBondedRoot, f.preIDsBonded()),
-		f.digestWitness(t, tagQualifiedRoot, f.preIDsQualified()),
-	}, f.prevRoot)
+	idSets, err := f.c.composeIDSetTransition(f.prevRoot, b, w, false)
 	if err != nil {
-		t.Fatalf("stateRootSlashDigestOps: %v", err)
+		t.Fatalf("composeIDSetTransition: %v", err)
 	}
+	ops := idSets.digestOps()
 	want := map[string][]byte{
 		string(statehash.Key(tagSlashedRoot, nil)):   nodeSetMTHFromBool(clone.slashed),
 		string(statehash.Key(tagBondedRoot, nil)):    nodeSetMTHFromInt64(clone.bonded),
 		string(statehash.Key(tagQualifiedRoot, nil)): nodeSetMTHFromInt64(clone.qualified),
 	}
+	emitted := map[string]bool{}
 	for _, op := range ops {
-		w := want[string(op.Key)]
-		if string(op.NewValue) != string(w) {
-			t.Fatalf("digest %x NewValue not byte-exact: got %x want %x", op.Key, op.NewValue, w)
+		v, ok := want[string(op.Key)]
+		if !ok {
+			continue
+		}
+		emitted[string(op.Key)] = true
+		if string(op.NewValue) != string(v) {
+			t.Fatalf("digest %x NewValue not byte-exact: got %x want %x", op.Key, op.NewValue, v)
+		}
+	}
+	// A digest the slash MOVED and did not emit folds to the pre-state value and the box would
+	// agree with a root that still counts the culprit, so absence is a failure here.
+	for key := range want {
+		if !emitted[key] {
+			t.Fatalf("the slash changed the set behind %x and no digest op was emitted for it", key)
 		}
 	}
 }

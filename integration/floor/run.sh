@@ -32,14 +32,13 @@
 # chain, no registry and no state tree, and judges blocks against witnesses it
 # pulls from the two validators. Legs 6 and 7 drive it.
 #
-# THEY ARE EXPECTED RED TODAY, and the cause is named rather than worked around.
-# The box cannot reproduce a block that touches TWO committed-state classes at
-# once — a bond registration landing on the height that same bond falls due — and
-# on this topology, where every proposer renews as it proposes under a short TTL,
-# that is most blocks. The stall is safe (the box never accepts what it cannot
-# reproduce) and it is not live (it never reaches a verdict either). The defect is
-# reduced to a deterministic local repro in core/node, pinned there, so this suite
-# confirms a fix rather than discovering the cause.
+# THE COMPOUND BLOCK IS THE ORDINARY BLOCK HERE, and it is why this topology is
+# the one that matters. Every proposer renews its bond as it proposes, and under
+# a short TTL that renewal lands on the very height the bond falls due — so most
+# blocks touch two committed-state classes at once, and the box has to reproduce
+# both against one committed leaf set. It composes them over a single running
+# post-state in apply's order and emits each changed leaf once; a box that
+# derived each class from the pre-state alone stalls here on block after block.
 #
 # WHAT A "VALIDATED" VERDICT IS, so a green run is not read as more than it is:
 # the box ran the whole committed-state transition to a verdict of accept over

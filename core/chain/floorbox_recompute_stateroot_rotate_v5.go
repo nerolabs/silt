@@ -143,65 +143,6 @@ type StateRootRotateWitness struct {
 	Era4Height   StateRootRotateScalar
 }
 
-// reconstructPostQualified rebuilds the POST-apply qualified id-set the class-P freeze copies. It
-// replays this block's qualified-mutating classes in apply ORDER (bond regs → TTL sweep → slashes,
-// chain.go) on the anchored pre-qualified set — the same order apply runs, so a
-// pathological compound block (e.g. an id that bonds then is slashed in ONE block) reconstructs
-// byte-identically. A wrong order/set diverges epochSetRoot ⇒ fold-caught ⇒ stall.
-//
-// The pre-qualified anchor is the qualifiedRoot digest witness (verified against prevStateRoot). B's
-// full post-qualified set (from bondRegOpsWithQual) is authoritative for B's touched ids; T deletes
-// the expired set; S deletes the slashed culprits — matching qualifiedMaintain at each apply site.
-func (c *Chain) reconstructPostQualified(prevStateRoot ports.Hash, b Block, w StateRootWitness) (map[ports.NodeID]struct{}, error) {
-	post, _, _, err := c.reconstructPostQualifiedWithWrites(prevStateRoot, b, w)
-	return post, err
-}
-
-// reconstructPostQualifiedWithWrites is reconstructPostQualified that ALSO returns the per-id
-// qualified leaf writes class B derived this block (class-P Weight anchor, BUILD note D4). For an
-// id bonded/resized in THIS block the pre-state qualified||id leaf is stale/absent, so the
-// steady-state qualified-leaf anchor is wrong; the box cross-checks the frozen Weight against the
-// B-derived qualWrites[id] (itself anchored by the class-B fold) instead. qualWrites is nil for a
-// non-bond-reg boundary.
-func (c *Chain) reconstructPostQualifiedWithWrites(prevStateRoot ports.Hash, b Block, w StateRootWitness) (map[ports.NodeID]struct{}, map[ports.NodeID][]byte, map[ports.NodeID]uint8, error) {
-	byTag := make(map[string]*StateRootDigestWitness, len(w.DigestPreSets))
-	for i := range w.DigestPreSets {
-		byTag[w.DigestPreSets[i].Tag] = &w.DigestPreSets[i]
-	}
-	preQualified, err := anchoredPreSet(byTag, tagQualifiedRoot, prevStateRoot)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	post := cloneIDSet(preQualified)
-	var qualWrites map[ports.NodeID][]byte
-	var regVerWrites map[ports.NodeID]uint8
-
-	// (1) Bond regs (apply FIRST): B computes the whole post-qualified set from the same
-	// pre-qualified anchor. Adopt it wholesale as the qualified set post-B.
-	if len(b.BondRegs) > 0 {
-		_, _, bPostQual, bQualWrites, bRegVerWrites, bErr := c.bondRegOpsWithQualWrites(prevStateRoot, b, w)
-		if bErr != nil {
-			return nil, nil, nil, bErr
-		}
-		post = cloneIDSet(bPostQual)
-		qualWrites = bQualWrites
-		regVerWrites = bRegVerWrites
-	}
-	// (2) TTL sweep (apply SECOND): each expired id leaves
-	// qualified.
-	if w.TTLSweep != nil {
-		for _, id := range w.TTLSweep.Members {
-			delete(post, id)
-		}
-	}
-	// (3) Slashes (apply THIRD): each slashed culprit leaves qualified (slashed ⇒ never
-	// qualified).
-	for i := range b.Slashes {
-		delete(post, b.Slashes[i].CulpritID())
-	}
-	return post, qualWrites, regVerWrites, nil
-}
-
 // hasCarrierSigners reports whether the block carries a LastCommit attestation carrier — the only
 // class-A dispatch condition since the carrier re-point moved the seating source from
 // the block's own uncovered Atts to the hash-covered carrier. The PARENT-proposer exclusion is

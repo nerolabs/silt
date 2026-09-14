@@ -121,7 +121,7 @@ succeeds on retry. A validator killed mid-consensus re-pins from its own last fi
 checkpoint and never contradicts a signature it made before the crash.
 *e2e under impairment → field.*
 
-**14. The floor box holds, and the chain prunes.** ⚠ *red — three legs demonstrated, one driven and red*
+**14. The floor box holds, and the chain prunes.** ⚠ *four legs demonstrated; the ceiling is not driven on adversarial input*
 A validator on the declared floor spec — one core, 2 GiB, 10 GiB of disk — validates against
 witnesses without holding the tree, stays under its memory ceiling on adversarial input, stalls
 rather than accepts when no witness provider is reachable, and prunes at depth from persisted state.
@@ -135,42 +135,45 @@ beside it.
 
 - **Under its memory ceiling — DEMONSTRATED, under HONEST load only.** `memory.max` 2 GiB with
   `memory.swap.max` 0 and `nproc` 1, asserted from inside the container before anything else is
-  measured. Peak 262.5 MiB, 12% of the ceiling, read from the cgroup's own high-water mark rather
-  than sampled. The box committed to height 17 on the same head hash as two ordinary validators, so
+  measured. Peak 209.6 MiB, 10% of the ceiling, read from the cgroup's own high-water mark rather
+  than sampled. The box committed to height 18 on the same head hash as two ordinary validators, so
   it was participating and not merely surviving. **The gap:** the load was honest consensus traffic.
   "On adversarial input" is NOT yet shown — that wants the redteam and sybil topologies re-pointed
   at a floor-spec seat.
 - **Prunes at depth from persisted state — DEMONSTRATED.** Three blocks shed their heavy bond proofs
-  at height 17. A restart onto the same volume reloaded the already-pruned store, still reported the
-  shed, and committed again to height 18 — so the prune is a property of persisted state and did not
+  at height 18. A restart onto the same volume reloaded the already-pruned store, still reported the
+  shed, and committed again to height 19 — so the prune is a property of persisted state and did not
   trade an OOM for a stall.
 - **Stalls rather than accepts when no witness provider is reachable — DEMONSTRATED.** A box on the
   same genesis, anchored on an operator checkpoint and pointed at a provider that does not exist,
-  reached the block above its anchor and stalled: one stall, zero accepts. Its twin, pointed at two
-  real providers, stalls for a different reason and also never accepts — eleven stalls, zero accepts
-  across the run. Safety does not rest on the tier above.
-- **Validates against witnesses without holding the tree — DRIVEN AND RED.** The box is on the same
+  reached the block above its anchor and stalled: one stall, zero verdicts, zero accepts. Safety does
+  not rest on the tier above.
+- **Validates against witnesses without holding the tree — DEMONSTRATED.** The box is on the same
   genesis as the validators (it derives the hash from its own configuration; the suite compares the
-  two) and holds zero blocks of its own. It reached a verdict on every block it was handed and
-  validated none of them.
+  two) and holds zero blocks of its own. It reached a VALIDATED verdict at three distinct committed
+  heights and stalled on NONE. The control above is what keeps that reading honest: the same binary,
+  denied its providers, validates nothing.
 
-*Why it is red, named:* the box cannot reproduce a block that touches TWO committed-state classes at
-once. The recompute's class dispatch composes slashes, bond registrations and TTL expiry by
-appending each class's own reconstruction, and each computes its post-set from the anchored
-pre-state independently — so a block that touches two emits two conflicting fold operations for one
-committed key, and the fold refuses the second. On a live swarm this is most blocks: every proposer
-renews its bond as it proposes, and under a short TTL a renewal lands on the very height that bond
-falls due. The failure is SAFE (a box never accepts what it cannot reproduce) and it is not live (it
-never reaches a verdict either). It is reduced to a deterministic local repro in `core/node` and
-pinned there, so the field run confirms a fix rather than discovering the cause. The fix is a
-running post-set threaded through B → T → S with each digest emitted once; the precedent is already
-in the tree, in the rotate path's own replay of that order.
+*What closed the last leg:* the box could not reproduce a block touching two committed-state classes
+at once. The recompute composed slashes, bond registrations and TTL expiry by APPENDING each class's
+reconstruction, and each derived its post-set from the anchored pre-state alone — so a block touching
+two emitted two fold operations for one committed key. The classes now run once over ONE running
+post-state, in the order `apply` runs them (registrations → expiry → slashes), and each digest,
+per-member leaf and due-bucket leaf is emitted once from the state the last class leaves. The order
+is load-bearing rather than cosmetic: `apply` resets `bondRegHeight` inside the registration loop and
+the sweep reads that map afterwards, so a validator renewing on the very height its bond falls due
+keeps its standing and its bucket leaf moves once. On this topology that is most blocks.
 
-*What is no longer true:* the witness half was reported UNWIRED — no process to drive. There is one
-now. `chain.WitnessProvider` builds the O(payload) evidence a box folds and serves it over the wire,
-`silt daemon -floor-box` runs the audit cycle, and the box is gated end to end at the unit and
-transport tiers on a live objective chain with bond registrations, epoch turns and TTL sweeps. What
-remains is the compound-class composition above.
+*What the fix also closed, and it was sharper than a stall.* Measured against the HONEST committed
+root the compound block mismatched and the box stalled — safe, and what every shipped ablation
+observed. But a real proposer commits the root ITS OWN fold produced, and against that root the box
+returned no objection: the duplicate operations carried a byte-identical pre-state value and proof,
+so every one of them verified, the fold took whichever was appended last, and the terminal equality
+passed by construction. That is box-accept with node-reject, reached with no forgery at all, and the
+accepted state contradicted itself — the per-member leaf recorded an eviction the whole-set digest
+covering it still counted. It was contained only by the door's accept downgrade. The pins that
+recorded it are retired and replaced by the straight assertion that a compound block folds to the
+root `apply` commits, with one fold operation per committed key.
 
 *What is not claimed:* that the box PARTICIPATES. Its door maps Accept to a downgrade by design, so
 it audits and reports, adopts nothing, and advances no head. Taking that downgrade is a

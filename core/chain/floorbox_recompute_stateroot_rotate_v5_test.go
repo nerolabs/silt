@@ -313,8 +313,8 @@ func (f rotateFixture) addBondRegWitness(t *testing.T, b Block, w *StateRootWitn
 		w.BondRegBuckets = append(w.BondRegBuckets, StateRootBucketWitness{DueHeight: due, PreMembers: nil, Proof: bp})
 	}
 
-	// The B per-member write-set: reconstruct via bondRegOps to enumerate the changed keys. Build a
-	// temporary witness with the digest pre-sets + buckets so bondRegOps can anchor.
+	// The B per-member write-set: reconstruct via the composed transition to enumerate the changed
+	// keys. Build a temporary witness with the digest pre-sets + buckets so it can anchor.
 	tmp := StateRootWitness{
 		DigestPreSets: []StateRootDigestWitness{
 			f.digestWitness(t, tagBondedRoot, f.preBondedIDs()),
@@ -324,11 +324,11 @@ func (f rotateFixture) addBondRegWitness(t *testing.T, b Block, w *StateRootWitn
 		BondRegScreens: w.BondRegScreens,
 		BondRegBuckets: w.BondRegBuckets,
 	}
-	_, bWrites, err := f.c.bondRegOps(f.prevRoot, b, tmp)
+	idSets, err := f.c.composeIDSetTransition(f.prevRoot, b, tmp, false)
 	if err != nil {
-		t.Fatalf("bondRegOps (witness build): %v", err)
+		t.Fatalf("composeIDSetTransition (witness build): %v", err)
 	}
-	for _, wr := range bWrites {
+	for _, wr := range idSets.netWrites() {
 		w.ChangedLeaves = append(w.ChangedLeaves, f.leafWitness(t, wr))
 	}
 }
@@ -370,11 +370,11 @@ func TestRecomputeStateRootRotateWithBondRegAgreesWithApply(t *testing.T) {
 		t.Fatalf("P+bondreg recompute should AGREE with real apply() but stalled: %v", err)
 	}
 	// Confirm the just-bonded validator IS in the reconstructed frozen set (else the ablation is vacuous).
-	postQual, err := f.c.reconstructPostQualified(f.prevRoot, b, w)
+	idSets, err := f.c.composeIDSetTransition(f.prevRoot, b, w, true)
 	if err != nil {
-		t.Fatalf("reconstructPostQualified: %v", err)
+		t.Fatalf("composeIDSetTransition: %v", err)
 	}
-	if _, ok := postQual[ports.HashBytes(pubOf(nv))]; !ok {
+	if _, ok := idSets.Qualified()[ports.HashBytes(pubOf(nv))]; !ok {
 		t.Fatalf("the just-bonded validator must be in the reconstructed post-qualified freeze set")
 	}
 }
@@ -391,12 +391,12 @@ func TestRecomputeStateRootRotateEpochSetRootByteExact(t *testing.T) {
 	clone.apply(b)
 
 	w := f.witnessForBoundary(t, b)
-	postQual, qualWrites, regVerWrites, err := f.c.reconstructPostQualifiedWithWrites(f.prevRoot, b, w)
+	idSets, err := f.c.composeIDSetTransition(f.prevRoot, b, w, true)
 	if err != nil {
-		t.Fatalf("reconstructPostQualifiedWithWrites: %v", err)
+		t.Fatalf("composeIDSetTransition: %v", err)
 	}
 	// Mature-from-genesis fixture ⇒ post-latch everMature is true (class M threads it in).
-	ops, err := f.c.rotateOps(f.prevRoot, b, w, postQual, qualWrites, regVerWrites, true)
+	ops, err := f.c.rotateOps(f.prevRoot, b, w, idSets.Qualified(), idSets.qualWrites, idSets.regVerWrites, true)
 	if err != nil {
 		t.Fatalf("rotateOps: %v", err)
 	}

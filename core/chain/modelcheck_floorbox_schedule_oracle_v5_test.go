@@ -227,11 +227,11 @@ func boundaryWitnessFor(t *testing.T, c *Chain, prover *statehash.Prover, b Bloc
 			BondRegScreens: w.BondRegScreens,
 			BondRegBuckets: w.BondRegBuckets,
 		}
-		_, bWrites, err := c.bondRegOps(prover.Root(), b, tmp)
+		idSets, err := c.composeIDSetTransition(prover.Root(), b, tmp, false)
 		if err != nil {
-			t.Fatalf("bondRegOps (witness build): %v", err)
+			t.Fatalf("composeIDSetTransition (witness build): %v", err)
 		}
-		for _, wr := range bWrites {
+		for _, wr := range idSets.netWrites() {
 			w.ChangedLeaves = append(w.ChangedLeaves, leafWit(wr.key))
 		}
 	}

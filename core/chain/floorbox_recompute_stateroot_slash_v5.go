@@ -77,9 +77,11 @@ type StateRootDigestWitness struct {
 // Like applyEntriesRevocationsWriteSet, the KEY set is a pure function of the payload (the
 // culprits) — completeness bound. The oldValue is left nil here; the matched witness carries the
 // pre-state claim and the fold verifies it against prevStateRoot. A bonded/qualified DELETE fires
-// only if the culprit was present pre-state; the box reads that presence from the anchored pre-set
-// id-lists (the digest witnesses), NOT from a witness scalar — see stateRootSlashDigestOps.
-// A culprit that was neither bonded nor qualified changes only slashed (and slashedRoot).
+// only if the culprit is present in the sets passed in, which are the RUNNING sets of the composed
+// transition — this class runs last, so a culprit this same block bonded is evicted from what the
+// registration wrote rather than from a pre-state it was never in
+// (floorbox_recompute_stateroot_compose_v5.go). A culprit that was neither bonded nor qualified
+// changes only slashed (and slashedRoot).
 func stateRootSlashWriteSet(b Block, preBonded, preQualified map[ports.NodeID]struct{}) []stateRootWrite {
 	type wr struct {
 		newValue []byte
@@ -120,68 +122,6 @@ func stateRootSlashWriteSet(b Block, preBonded, preQualified map[ports.NodeID]st
 		out = append(out, stateRootWrite{key: []byte(k), newValue: nv})
 	}
 	return out
-}
-
-// stateRootSlashDigestOps reconstructs the THREE touched whole-set digest scalars (slashedRoot,
-// bondedRoot, qualifiedRoot) as FoldOps, via the changed-digest primitive. For each: verify the
-// claimed pre-set id-list reconstructs the committed pre-digest, apply the payload- derived S
-// membership delta to the pre-set, and fold the post-digest as the changed leaf.
-//
-// The pre-set membership the S per-member write-set needs (was the culprit bonded / qualified) is
-// derived HERE from the anchored pre-sets and returned to the caller — so the per-member delta and
-// the digest delta agree on the pre-state by construction, and neither trusts a witness scalar.
-//
-// It returns the digest FoldOps, plus the pre-bonded / pre-qualified membership sets the per-member
-// write-set consumes. A missing/short/padded pre-set id-list stalls (nodeSetMTH != committed
-// pre-digest). A touched digest with no supplied witness stalls (the box will not fold an
-// unwitnessed digest change).
-func stateRootSlashDigestOps(
-	b Block,
-	digestWits []StateRootDigestWitness,
-	prevStateRoot ports.Hash,
-) (ops []statehash.FoldOp, preBonded, preQualified map[ports.NodeID]struct{}, err error) {
-	byTag := make(map[string]*StateRootDigestWitness, len(digestWits))
-	for i := range digestWits {
-		byTag[digestWits[i].Tag] = &digestWits[i]
-	}
-
-	// Reconstruct + anchor each touched pre-set once. slashed / bonded / qualified are ALWAYS touched
-	// by a non-empty slash block (slashed always changes; bonded/qualified change iff any culprit was
-	// a member — but the digest scalar leaf is committed every block and its VALUE changes whenever
-	// the set changes, so the box must reconstruct all three to fold the block's committed StateRoot).
-	preSlashed, err := anchoredPreSet(byTag, tagSlashedRoot, prevStateRoot)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	bondedSet, err := anchoredPreSet(byTag, tagBondedRoot, prevStateRoot)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	qualifiedSet, err := anchoredPreSet(byTag, tagQualifiedRoot, prevStateRoot)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	preBonded = bondedSet
-	preQualified = qualifiedSet
-
-	// Apply the payload-derived S delta to each pre-set → post-set (copy, don't mutate the pre-sets;
-	// the per-member write-set still needs the pre-membership).
-	postSlashed := cloneIDSet(preSlashed)
-	postBonded := cloneIDSet(bondedSet)
-	postQualified := cloneIDSet(qualifiedSet)
-	for i := range b.Slashes {
-		culprit := b.Slashes[i].CulpritID()
-		postSlashed[culprit] = struct{}{} // slashed: ADD
-		delete(postBonded, culprit)       // bonded: evict (no-op if absent)
-		delete(postQualified, culprit)    // qualified: post-slash unqualified ⇒ evict (no-op if absent)
-	}
-
-	ops = []statehash.FoldOp{
-		digestFoldOp(tagSlashedRoot, byTag, postSlashed),
-		digestFoldOp(tagBondedRoot, byTag, postBonded),
-		digestFoldOp(tagQualifiedRoot, byTag, postQualified),
-	}
-	return ops, preBonded, preQualified, nil
 }
 
 // anchoredPreSet reconstructs one digest's pre-state id-set from its witness. It requires a witness

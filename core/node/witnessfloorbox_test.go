@@ -3,6 +3,7 @@ package node
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"testing"
 
 	"github.com/fxamacker/cbor/v2"
@@ -473,14 +474,14 @@ func (s witnessableSwarm) auditVia(t *testing.T, pin FloorBoxPin, sources, provi
 	return got
 }
 
+// bondTTL and epochBlocks are the live chain's cadence: a short bond lifetime so standing lapses
+// inside a short run, and an epoch every four blocks so the run turns several.
+const epochBlocks, bondTTL = 4, 2
+
 // liveChainRun is one pass over a live objective chain: bonded validators, a short bond TTL and a
 // short epoch cadence, with a floor box auditing every committed block from a pin one height
 // behind it — the daemon's own cycle. It returns each height's verdict and what the chain actually
 // produced, so a gate can assert BOTH the verdict and that the classes it names were exercised.
-//
-// stopRenewingAt / resumeAt take the proposer's bond away for a stretch: a proposer renews on every
-// block it mints, so nothing ever expires on a chain left alone, and the TTL sweep — a class the box
-// has to reproduce — would never fire.
 type liveChainRun struct {
 	verdicts   map[uint64]FloorBoxVerdict
 	committed  map[uint64]chain.Block
@@ -489,9 +490,18 @@ type liveChainRun struct {
 	sweeps     int
 }
 
-func driveLiveChain(t *testing.T, heights, stopRenewingAt, resumeAt uint64) liveChainRun {
+// driveLiveChain commits `heights` blocks and audits each one, taking the proposer's bond away at
+// the `bondless` heights. A proposer renews on every block it mints, so nothing ever expires on a
+// chain left alone and the TTL sweep — a class the box has to reproduce — would never fire. Where
+// the gaps fall decides which shapes the run produces: a gap that ENDS on a due height mints the
+// compound block, where the registration vacates the very bucket the sweep is draining, and a gap
+// that SPANS one mints the plain expiry.
+func driveLiveChain(t *testing.T, heights uint64, bondless ...uint64) liveChainRun {
 	t.Helper()
-	const epochBlocks, bondTTL = 4, 2
+	noBond := map[uint64]bool{}
+	for _, h := range bondless {
+		noBond[h] = true
+	}
 	sched := simclock.New()
 	net := simnet.New(sched, 1, simnet.DefaultConfig())
 
@@ -540,10 +550,9 @@ func driveLiveChain(t *testing.T, heights, stopRenewingAt, resumeAt uint64) live
 	savedBond := nodes[0].bond
 	server := nodes[0]
 	for h := uint64(1); h <= heights; h++ {
-		switch h {
-		case stopRenewingAt:
+		if noBond[h] {
 			server.bond = nil
-		case resumeAt:
+		} else {
 			server.bond = savedBond
 		}
 		prevHash, next := server.Chain().Head()
@@ -612,11 +621,23 @@ func driveLiveChain(t *testing.T, heights, stopRenewingAt, resumeAt uint64) live
 // sweeps regularly. A seam that only carried the quiet blocks would report a green unit tier and
 // stall on the network.
 //
-// The counters are the non-vacuity: a run in which no block registered a bond, no epoch turned and
-// no bond expired would prove nothing about the classes it claims to cover.
+// THE COMPOUND BLOCK IS A COVERED HEIGHT HERE, not a gate of its own. A block that both registers a
+// bond and falls on an earlier registration's due height makes two transition classes write one
+// committed leaf — the bucket the registration vacates is the bucket the sweep drains — and it is
+// the ORDINARY block on a live swarm, because every proposer renews its bond as it proposes and a
+// short TTL brings that renewal due. The bondless heights below are chosen so the run mints one:
+// the proposer's bond lapses across heights 5 and 6 and returns at 7, which is exactly when the
+// registration it made at height 4 falls due.
+//
+// The counters are the non-vacuity: a run in which no block registered a bond, no epoch turned, no
+// bond expired, or no block carried two classes at once would prove nothing about the classes it
+// claims to cover.
 func TestFloorBoxValidatesEveryTransitionClassAliveNetworkProduces(t *testing.T) {
 	const heights = 14
-	run := driveLiveChain(t, heights, 5, 10)
+	// 5, 6: the gap that ENDS on the due height of the height-4 registration, so height 7 both
+	// registers and sweeps. 9, 10, 11: the gap that SPANS the due height of the height-8
+	// registration, so height 11 is a plain expiry with no registration beside it.
+	run := driveLiveChain(t, heights, 5, 6, 9, 10, 11)
 
 	for h := uint64(2); h <= heights; h++ {
 		v, got := run.verdicts[h]
@@ -628,64 +649,43 @@ func TestFloorBoxValidatesEveryTransitionClassAliveNetworkProduces(t *testing.T)
 				"want the door's downgrade, got %s / %v", h, len(run.committed[h].BondRegs), v.Outcome, v.Err)
 		}
 	}
-	if run.withRegs == 0 || run.boundaries == 0 || run.sweeps == 0 {
-		t.Fatalf("GATE VACUOUS: the run produced regs=%d boundaries=%d sweeps=%d — a run that exercised "+
-			"none of the three classes a live network produces says nothing about whether the bundle "+
-			"carries them", run.withRegs, run.boundaries, run.sweeps)
+	compound := compoundHeights(run.committed, bondTTL)
+	if run.withRegs == 0 || run.boundaries == 0 || run.sweeps == 0 || len(compound) == 0 {
+		t.Fatalf("GATE VACUOUS: the run produced regs=%d boundaries=%d sweeps=%d compound=%v — a run that "+
+			"exercised none of the shapes a live network produces says nothing about whether the bundle "+
+			"carries them", run.withRegs, run.boundaries, run.sweeps, compound)
 	}
-	t.Logf("judged %d blocks: %d carried bond registrations, %d turned an epoch, %d swept an expired bond",
-		heights-1, run.withRegs, run.boundaries, run.sweeps)
+	t.Logf("judged %d blocks: %d carried bond registrations, %d turned an epoch, %d swept an expired "+
+		"bond, and %v registered a bond on the very height an earlier one fell due",
+		heights-1, run.withRegs, run.boundaries, run.sweeps, compound)
 }
 
-// PINNED DEFECT — the floor box cannot reproduce a block that touches TWO committed-state classes.
-//
-// THIS GATE ASSERTS THE BREAK, NOT A PROPERTY. It is green while the defect stands and goes RED the
-// moment it is fixed, at which point it must be inverted. Nothing here is a contract.
-//
-// THE MECHANISM. The recompute's class dispatch composes S (slashes), B (bond registrations) and T
-// (TTL expiry) by APPENDING each class's own reconstruction, and each computes its post-set from
-// the anchored PRE-set independently. A block that touches two of them therefore emits two
-// conflicting fold operations for one committed key — two values for bondedRoot, two for
-// qualifiedRoot, and, when a registration and an expiry name the same due-bucket, two deletes of
-// one bucket leaf. The fold refuses the second and the box STALLS.
-//
-// IT IS SAFE AND IT IS NOT LIVE. The box never accepts what it cannot reproduce, so the failure
-// costs a stall and never an acceptance. But a live swarm produces such blocks constantly — every
-// proposer renews its bond as it proposes, and under a short TTL a renewal lands on the very height
-// that bond falls due — so a floor box pointed at one stalls on block after block and never reaches
-// a verdict. That is what keeps the field suite's witness legs red.
-//
-// The fix is a running post-set threaded through B → T → S with each digest emitted once, and the
-// precedent for it is already in the tree: reconstructPostQualifiedWithWrites replays exactly that
-// order for the rotate path. It is a change to how the box composes consensus classes and is not
-// made here.
-func TestPinnedDefectCompoundClassBlockCannotBeReproduced(t *testing.T) {
-	// A registration at height 4 falls due at 7 under a TTL of 2, and the proposer holds no bond
-	// across 5 and 6. Block 7 therefore both sweeps that due-bucket and registers a bond that moves
-	// out of it.
-	const collision = 7
-	run := driveLiveChain(t, collision, 5, collision)
+// compoundHeights returns the heights whose block BOTH registers a bond and falls on the due height
+// of an earlier registration. It is derived from the committed payload alone — an id registered at
+// regH falls due at regH+ttl+1 — so it reports what the chain actually minted rather than what the
+// driver intended.
+func compoundHeights(committed map[uint64]chain.Block, ttl uint64) []uint64 {
+	ordered := make([]uint64, 0, len(committed))
+	for h := range committed {
+		ordered = append(ordered, h)
+	}
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i] < ordered[j] })
 
-	blk, committed := run.committed[collision]
-	if !committed {
-		t.Fatalf("height %d committed nothing", collision)
+	lastReg := map[ports.NodeID]uint64{}
+	var out []uint64
+	for _, h := range ordered {
+		blk := committed[h]
+		if len(blk.BondRegs) > 0 {
+			for _, regH := range lastReg {
+				if regH+ttl+1 == h {
+					out = append(out, h)
+					break
+				}
+			}
+		}
+		for i := range blk.BondRegs {
+			lastReg[blk.BondRegs[i].ValidatorID()] = h
+		}
 	}
-	if len(blk.BondRegs) == 0 {
-		t.Fatalf("FIXTURE: height %d carries no bond registration, so it is not the compound block "+
-			"this gate is about", collision)
-	}
-	// THE ORACLE: the network committed this block, so a box that cannot judge it is diverging from
-	// the rule, not finding a bad block.
-	if v, got := run.verdicts[collision]; !got {
-		t.Fatalf("height %d was never judged", collision)
-	} else if errors.Is(v.Err, chain.ErrRecomputeGated) {
-		t.Fatalf("PINNED DEFECT IS FIXED: the box now reproduces a compound bond-registration + "+
-			"TTL-expiry block at height %d. Invert this gate — it exists to assert the break, and a "+
-			"gate that asserts a fixed break is a comment. Verdict: %s / %v", collision, v.Outcome, v.Err)
-	} else if v.Outcome == chain.Accept {
-		t.Fatalf("the box ACCEPTED a block it cannot reproduce at height %d — the stall is the only "+
-			"correct outcome here; got %s / %v", collision, v.Outcome, v.Err)
-	} else {
-		t.Logf("height %d stalls as expected: %s / %v", collision, v.Outcome, v.Err)
-	}
+	return out
 }

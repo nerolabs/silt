@@ -232,31 +232,36 @@ func TestRecomputeStateRootTTLDigestsAreByteExact(t *testing.T) {
 	f := buildTTLFixture(t)
 	b := f.sweepBlock()
 	expired := f.expiredMembers()
+	w := f.ttlSweepWitness(t, b, expired)
 
 	clone := f.c.cloneForDryRun()
 	clone.apply(b)
 
-	ops, _, _, _, err := stateRootTTLDigestOps(
-		StateRootTTLWitness{Height: b.Height, Members: expired,
-			BucketProof: f.ttlSweepWitness(t, b, expired).TTLSweep.BucketProof},
-		[]StateRootDigestWitness{
-			f.digestWitness(t, tagBondedRoot, f.preIDsBonded()),
-			f.digestWitness(t, tagQualifiedRoot, f.preIDsQualified()),
-		}, f.prevRoot)
+	idSets, err := f.c.composeIDSetTransition(f.prevRoot, b, w, false)
 	if err != nil {
-		t.Fatalf("stateRootTTLDigestOps: %v", err)
+		t.Fatalf("composeIDSetTransition: %v", err)
 	}
+	ops := idSets.digestOps()
 	want := map[string][]byte{
 		string(statehash.Key(tagBondedRoot, nil)):    nodeSetMTHFromInt64(clone.bonded),
 		string(statehash.Key(tagQualifiedRoot, nil)): nodeSetMTHFromInt64(clone.qualified),
 	}
+	emitted := map[string]bool{}
 	for _, op := range ops {
-		w, ok := want[string(op.Key)]
+		v, ok := want[string(op.Key)]
 		if !ok {
-			continue // the bucket op
+			continue
 		}
-		if string(op.NewValue) != string(w) {
-			t.Fatalf("digest %x NewValue not byte-exact: got %x want %x", op.Key, op.NewValue, w)
+		emitted[string(op.Key)] = true
+		if string(op.NewValue) != string(v) {
+			t.Fatalf("digest %x NewValue not byte-exact: got %x want %x", op.Key, op.NewValue, v)
+		}
+	}
+	// A digest the sweep MOVED and did not emit folds to the pre-state value and the box would
+	// agree with a root that still counts the expired member, so absence is a failure here.
+	for key := range want {
+		if !emitted[key] {
+			t.Fatalf("the sweep changed the set behind %x and no digest op was emitted for it", key)
 		}
 	}
 }

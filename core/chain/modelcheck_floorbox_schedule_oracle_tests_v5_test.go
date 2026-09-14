@@ -100,7 +100,7 @@ func TestScheduleOracle_OpenBreak_A_ForgedLockInOldValueSuppression(t *testing.T
 // it from the tally, DIVERGING from apply — and (when the in-block weight was decisive) AGREEING
 // with an attacker who committed the suppressed (no-lock-in) root: a wrong-accept.
 //
-// FIXED by DIRECTION B: bondRegOpsWithQualWrites now surfaces
+// FIXED by DIRECTION B: the class-B delta now surfaces
 // regVerWrites (the fold-anchored post-write regVersion), and anchorRotateMember cross-checks an
 // in-block member's tally regVersion against it (mirroring the Weight in-block treatment). The box's
 // tally now MATCHES apply's: it counts the in-block bond and locks in, so it STALLS against the
