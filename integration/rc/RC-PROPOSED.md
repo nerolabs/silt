@@ -1,176 +1,200 @@
-# silt — proposed release candidate list
-
-A proposal, not a verdict. Derived from `docs/VISION.md` and `docs/TENETS.md`, plus a set of
-defects confirmed in the code. Nothing here is graded and nothing here is final. Whoever
-picks this up should expect to cut items, merge items, and rewrite pass conditions.
+# silt — the release candidate list
 
 **The line this list draws:** a release candidate is the point at which handing silt to an
 adversary is a responsible act. Not the point at which it is pleasant to use.
 
+Every item carries a done-condition, the evidence tiers it must clear, and a gate test that
+is proven RED before its fix. A gate that was never red is a comment, not evidence — so
+each one also carries a vacuity guard proving its fixture could fail.
+
+**The date: 2026-09-27.** Anything not green on that date ships disclosed rather than fixed.
+
+**The verdict this list ships toward is not on it.** An external adversary — given the
+artifact and the claims, but not the rationale — returns DENIED on publish-to-identity
+linkage, on identity-level or global takedown, and on Sybil-farmed standing at a discount.
+That is the mission, and it is not the builder's to turn green. The items below are the
+evidence that makes commissioning it worth doing. They are not a substitute for it.
+
 ---
 
-## The twenty
+## Tier A — the handoff is not responsible without these
 
-**1 — Publishing is unlinkable.** Colluding token issuers who also control the validators,
-the chain and the wire cannot link a committed root to the identity that paid to publish it.
-Measured as a matching score against chance, not as the absence of a struct field.
+**1. Eligibility resolves from the block's parent state, never the replica's live latch.**
+*Done:* the state-root recompute anchors its pre-state set digest to `prevStateRoot`; an
+adversary-supplied pre-state makes the floor box stall, never accept.
+*Evidence:* unit → consensus model-check → e2e → integration.
+*Note:* the cross-phase seam is closed. Quorum intersection holds across the launch→mature
+handoff, phase follows applied history rather than delivery order, and the one-way shed does
+not re-arm under fork adoption. The hostile-witness arm of the recompute remains open.
 
-**2 — No surveillance mechanism exists.** After a fetch-heavy run, seize every node's disk
-and every byte it emitted. No artifact holds a (fetcher, content) pair. Published metadata
-leaks no content shape — today the exact plaintext byte count is public, which makes the
-padding defence a no-op.
+**2. Forging N standings costs N×, with no arm passing vacuously.**
+*Done:* every arm paired with a positive control **on its own axis**. The bond and
+possession arms pass. The demand and diversity arms do not construct, and are reported
+**unwired** rather than denied.
+*Evidence:* unit → integration → field.
+*Ships with:* removing the build-status paragraph from `VISION.md`, whose own header says it
+carries none.
 
-**3 — Takedown bites, cannot go global, and is provable.** Operators who honour a denylist
-stop serving; operators who don't, keep serving. No accepted operation removes more than one
-named root, and none works by identity. Every honoured removal carries an inclusion proof
-and a consistency proof from an append-only log.
+**3. The shipped default is the defended configuration, and the stock binary runs.**
+*Done:* `silt daemon -validator`, no other flags, reaches serving; the possession audit and
+the publish-token replay guard are on; every defence this list demonstrates runs flagless.
+*Evidence:* integration → e2e → field. Gates four other items.
 
-**4 — Forging N standings costs N times the real work.** Shared plots, data-less possession,
-self-dealt demand and massed keys each earn zero. An honest control in the same run must
-earn non-zero, or eight zeros just means the harness granted nothing to anyone.
+**4. The repo reads without the record that was deleted.**
+*Done:* no milestone, lane, catalog, slice, issue or change-request identifiers in source,
+test names or file names. Comments describe the product or cite external work.
+*Evidence:* unit — a permanent source gate, kept in the suite so it cannot regress.
 
-**5 — No quiet capture, and the scaffolding sheds one way.** A bonded Sybil quorum with real
-committed standing cannot advance a young chain once the anchors stop. Once the network
-matures and the launch scaffolding sheds, no later collapse in decentralization re-arms it —
-including after a full replay from genesis.
+**5. One command from a clean clone reproduces every gate.**
+*Done:* fresh clone, no credentials, no committed binary → the suite runner builds from
+source and maps each item onto a named suite.
+*Evidence:* the run itself, from a scratch clone on a machine that has never built silt.
 
-**6 — An external adversary denies all three failure modes.** A party other than the author,
-given the artifact and the claims but not the rationale, runs its own suite and returns
-DENIED on publish-to-identity linkage, on identity-level or global takedown, and on
-Sybil-farmed standing at a discount. **This one is not the builder's to turn green.**
+**6. The claims the adversary receives exist as an artifact.**
+*Done:* an in-repo statement of the three denials in checkable form, plus what is out of
+scope, written so a cold reader can construct attacks from it.
+*Evidence:* a cold read.
 
-**7 — Publish and fetch work on the internet as it is.** A NATed publisher in one region, a
-cold fetcher in another, bit-perfect bytes inside a bound derived from the deployed
-configuration rather than a chosen constant. The chain keeps committing under sustained load
-and under injected latency, jitter, loss and reordering.
+**7. No consensus state derives from a field the block hash does not cover.** ✅ *gated*
+*Done:* the seating map — which sets the maturity coefficient and decides whether the launch
+anchors have shed — cannot be changed without changing the block's hash. Below the
+witnessable format it can: removing a block's bonded attestations leaves it hashing
+identically, so a rewritten history is invisible to the finality gate, fork-choice and the
+checkpoint, all of which compare by hash. The witnessable format resolves it by taking the
+seating from a carrier of precommits over the parent, which is folded into the hash.
+*Evidence:* unit → e2e. The daemon refuses any configuration that would run a height on a
+pre-witnessable format.
 
-**8 — Bit-perfect or an explicit failure.** Never silently wrong. A publish that cannot be
-placed returns an error naming what could not be placed, returns no link, and leaves no
-registry entry. A transient failure still succeeds on retry, so the loud failure isn't
-bought by breaking retries.
+**8. A validator set that cannot grow is refused.** ✅ *gated*
+*Done:* a block can seat a validator the chain has not seen. Below the witnessable format it
+cannot — the state root commits the seating while the seating is read from the block's own
+attestations, which sign over that root — so the set is frozen, the network never matures,
+and the anchors never shed.
+*Evidence:* unit → e2e, in every mintable format.
 
-**9 — Crash recovery with no human in the loop.** A validator killed mid-consensus restarts,
-re-pins from its own last finalized checkpoint, and never contradicts a signature it made
-before the crash. A fresh node cold-starts from a checkpoint and converges.
+## Tier B — reachable, none free
 
-**10 — Content outlives the nodes that held it.** Holders depart permanently and are never
-replaced; repair outruns loss and fetches stay bit-perfect. Including against a provider that
-simply lies about what it holds — today a self-reported boolean is the only check that runs
-on shipped defaults.
+**9. Consensus denials hold, and no honest node is ever slashed.** Equivocation attributed;
+forged and under-bonded proposals rejected pre-attestation; a partition heals to one order.
+The honest-never-slashed property asserted over the whole run's slash set, not per attack.
+*model-check → e2e → field.*
 
-**11 — The floor box holds.** A validator on the declared floor spec validates against
-witnesses without holding the tree, stays under its memory ceiling on adversarial input, and
-stalls rather than accepting when no witness provider is reachable. A hostile witness is
-rejected — today it is not; see the defect note below.
+**10. A prover without the bytes fails the audit and is paid nothing.** Three defeats: the
+care link printed on every publish is the storage-proof verification key; a data-less
+identity passes by relaying the challenge to a real holder; the inclusion proof is checked
+against a root the prover supplies. Plus work bounds on the unsigned repair claim and the
+challenge frame, neither of which is rate-limited.
+*unit → integration → e2e under impairment → field.* Largest code item in scope.
 
-**12 — The economy pays for durability and mints nothing.** Repair is funded from the
-object's own escrow. A colluding pair strictly loses. Balance-lane credit never becomes
-consensus standing. A false repair claim is slashed. The edge tier that does most of the work
-ends a run net-positive.
+**11. Publishing is unlinkable and no surveillance artifact exists.** A matching score
+against chance; seize every disk and emitted byte after a fetch-heavy run and find no
+(fetcher, content) pair; published metadata no longer leaks the exact plaintext byte count,
+which today makes the padding defence a no-op.
+*integration → e2e → field.*
 
-**13 — The consensus denials hold, and no honest node is ever slashed.** Equivocation is
-detected and attributed; forged and under-bonded proposals are rejected before attestation; a
-partition heals to one order. Asserted under adversarial scheduling before any expensive run.
-The honest-never-slashed part is a property of the whole run's slash set, not of each attack.
+**12. Takedown bites, cannot go global, and is provable.** Honouring operators stop serving
+and others keep serving; no accepted operation removes more than one named root or works by
+identity; every honoured removal carries inclusion and consistency proofs.
+*integration → e2e → field.*
 
-**14 — An un-upgraded node stalls; the network never updates itself.** A node that cannot
-validate a shipped format stops rather than accepting it, and says so while staying alive. A
+**13. Bit-perfect or an explicit failure, and crash recovery needs no human.** An unplaceable
+publish names what could not be placed, returns no link, leaves no registry entry, and still
+succeeds on retry. A validator killed mid-consensus re-pins from its own last finalized
+checkpoint and never contradicts a signature it made before the crash.
+*e2e under impairment → field.*
+
+**14. The floor box holds, and the chain prunes.** A validator on the declared floor spec —
+one core, 2 GiB, 10 GiB of disk — validates against witnesses without holding the tree,
+stays under its memory ceiling on adversarial input, stalls rather than accepts when no
+witness provider is reachable, and prunes at depth from persisted state.
+*unit → e2e under impairment → field.*
+
+**15. The floor box can post the bond its disk allows.** ✅ *done*
+*Done:* the plot is sealed to disk block by block and answered by sparse reads, so residency
+is the leaves and their tree rather than the plot's size. A 5 GiB plot needs ~247 MiB
+against a 1 GiB budget, where it previously needed 6,219 MiB.
+*Why it is on this list:* standing is proportional to bonded size. When the largest plot a
+node can hold was set by its memory, the biggest bond a small operator could post was a
+sixth of the disk they bought, and consensus weight concentrated on larger machines for no
+reason anyone chose.
+*Evidence:* unit → e2e. A byte-identical-plot test proves the streamed and resident seals
+commit the same bond and that a disk-backed plot answers a live challenge that verifies.
+
+**16. Full history fits a volunteer.** ✅ *done*
+*Done:* the archival tier keeps every block to genesis and keeps heavy possession proofs for
+a bounded window rather than forever. Five years of full history at 100 bonded validators is
+~104 GiB, against ~30 TiB unshed.
+*Why it is on this list:* a validator republishes a multi-megabyte possession proof every few
+minutes to hold its standing, so retained proof volume grows with the number of independent
+operators — making a more decentralized network one that fewer parties can archive, and the
+deep past the property of whoever can afford terabytes.
+*Evidence:* unit → integration.
+
+**17. The economy mints nothing, and the core squeeze is measured.** Balance-lane credit
+never becomes consensus standing; a colluding pair strictly loses; repair is funded from the
+object's own escrow; a false claim is slashed. Plus core-node net margin at two edge
+populations against held-constant demand, reported as a signed number.
+*unit → integration → e2e.*
+
+**18. Core carries nothing.** Seize a holder and fail to recover known plaintext, with a
+key-holder succeeding on the same objects in the same run; core resolves hashes, never names.
+*unit → e2e.*
+
+**19. An un-upgraded node stalls, and the network never updates itself.** A node that cannot
+validate a shipped format stops rather than accepting it and says so while staying alive. A
 node whose consensus-reaching configuration diverges from what the chain committed refuses to
 start. No version-floor advisory below the signing threshold changes anything, and no node
 ever replaces its own binary.
+*integration → e2e.*
 
-**15 — Core carries nothing.** Hosts hold ciphertext they cannot read and did not choose by
-content. Core holds no capability to decrypt it and resolves hashes, never names. Proven by
-seizing a holder and failing to recover known plaintext — with a key-holder succeeding on the
-same objects in the same run.
+## Tier C — field
 
-**16 — A prover without the bytes fails the audit and is paid nothing.** Today three separate
-paths defeat this: the care link printed on every publish is the storage-proof verification
-key, so a zero-byte prover passes; an identity with no data passes by relaying the challenge
-to a real holder; and the inclusion proof is checked against a root the prover supplies.
+**20. Publish and fetch work on the internet as it is.** A NATed publisher in one region, a
+cold fetcher in another, bit-perfect bytes inside a bound derived from the deployed
+configuration. The chain keeps committing under sustained load with injected latency, jitter,
+loss and reordering.
+*field.* Run it early: a failure needs time to reduce to a local reproduction.
 
-**17 — No unauthenticated frame buys unbounded work.** One small unsigned repair claim
-currently makes a judge fetch n−1 survivor shards and run a decode, with no rate limit. One
-73-byte challenge frame costs a paged read and an aggregation, with no limit either.
-
-**18 — The stock binary runs.** `silt daemon -validator` with no other flags reaches serving.
-Today the default bond sits below the derived floor and the process exits.
-
-**19 — The shipped default is the defended configuration.** Every defence this list
-demonstrates is on with no flags passed. Today the possession audit and the publish-token
-replay guard both ship off, which means several items above are being demonstrated against a
-configuration nobody runs.
-
-**20 — The chain prunes; disk is bounded too.** Retention pruning engages on every validator
-at depth, read from persisted state. The list asserts a memory ceiling on the floor box and
-currently no storage ceiling anywhere — both come from the same commitment, that
-participation stays cheap on a small machine.
+**21. Every item has a cloud-harness run.** Each item above named in a cloud scenario, with
+the gaps written down as decisions rather than left as silence.
+*field.*
 
 ---
 
 ## What this list deliberately does not cover
 
 Blob-layer unobservability against a global passive adversary — the vision says outright that
-silt does not promise the impossible. The full multiplicative Sybil interlock — the vision
-calls it the target, not yet the guarantee, and a destination that concedes a gap cannot be
-used to manufacture a gate it does not claim. Throughput numbers — bounded first, fast
-second. Conformance across multiple implementations, when there is one. Ergonomics, SDKs and
-embeddability, which belong to 1.0. Scale beyond three regions.
+silt does not promise the impossible. The full multiplicative Sybil interlock: the vision
+calls it the target and not yet the guarantee, and a destination that concedes a gap cannot
+be used to manufacture a gate it does not claim. Throughput numbers — bounded first, fast
+second. Conformance across implementations, when there is one. Ergonomics, SDKs and
+embeddability. Cross-cloud field runs: the harness is a scaffold that stops at its first
+unbuilt phase, and finishing it costs days that Tier A needs.
 
 Two limits worth carrying in writing rather than by implication. The non-globality metric and
 the diversity axis both rest on **self-declared** operator domains, so both are claims about
 declared diversity. And the profitable-edge commitment is about a trajectory at network
-scale; any single run can only measure a point on it.
+scale; any single run measures one point on it.
+
+## Known open, carried rather than closed
+
+**A pruned block's body is not bound to its hash.** For a pruned block, the hash is a
+stored linkage token rather than a content commitment, so an adversary can keep the token and
+the real signatures while rewriting the body — including the carrier that seats validators.
+The only defence is the first non-pruned descendant, whose signed state root is recomputed
+over the rewritten ancestor state, and the consequence is a silent head truncation at that
+descendant with the forged seating live in the replayed state. Bounded, not eliminated.
+
+**The bonded set is capped by bandwidth.** Standing lapses after a short window and renewal
+runs at half of it, so each validator republishes a multi-megabyte possession proof every few
+minutes, and every other validator must receive and verify all of it. Each node ingests the
+set size times that volume. This is live traffic, so retention policy does not touch it, and
+it caps the practical bonded set well below the intended participant count.
 
 ## Tenets that could not be reduced to a demonstration
 
 Legibility. The hexagonal core and the single lock-free loop — architectural constraints
 asserted by structure, whose consequence is testable but whose violation would not
-necessarily show. "Never reinvent a primitive," a negative over all future choices. Reactive-
-not-eager, which states no threshold. Canon-tracks-behaviour and throwaway-stays-throwaway,
-which are disciplines rather than properties of a running system.
-
-And the mission itself. It is falsifiable only as item 6. The other nineteen are the evidence
-that makes commissioning item 6 worth doing. **They are not a substitute for it.**
-
----
-
-## Decisions that live only here
-
-These do not derive from the vision or the tenets. They are the owner's.
-
-- **The date: 2026-09-27.** Anything not green on that date ships disclosed rather than
-  fixed.
-- **The stopping rule: nineteen green.** Item 6 is carved out and happens after the handoff.
-  Nineteen green is not the mission proven.
-- **The cut.** That these twenty are exhaustive is a judgement, not a derivation.
-- **Two numbers that do not exist yet.** The floor box has no declared memory ceiling and
-  nothing anywhere declares a disk ceiling. Items 11, 19 and 20 cannot be graded until both
-  are set, and they should be what the machine can afford — not what the daemon happens to
-  use today, which would make the bound unfailable.
-
----
-
-## Two defects worth naming separately
-
-**The recompute does not anchor its pre-state.** Item 11's hostile-witness arm is the only
-confirmed consensus-soundness break in the list. The floor box's state-root recompute reads
-witnessed pre-state membership without anchoring it, so an attacker chooses the set the box
-applies its deltas to — re-bonding a slashed equivocator, or evicting an honest validator.
-Two instances, and the second has no non-membership check at all, so removal is free.
-Per-member proofs do not close it. Only anchoring the set digest does. **A fix that hardens
-the member checks will look correct and leave the break intact.**
-
-**The launch/mature intersection has a hole at the seam.** This is the last thing the deleted
-record gave up, and it is recorded nowhere else. Every consensus invariant has at least one
-passing test, so none is unguarded. But two gaps sit inside the first invariant, agreement:
-
-- Its direct disjointness oracle is **launch-phase only**, and says so in its own comment. The
-  mature phase is covered by a *threshold* test pinning a strict two-thirds boundary, with
-  intersection following arithmetically rather than from a direct oracle.
-- The **handoff transition has no test at all.** Intersection must hold *across* the boundary,
-  not only within each phase. The disjointness check is called at exactly one site in the
-  tree — inside the launch oracle. Nothing asserts that a block finalized under launch rules
-  and a block finalized under mature rules cannot both finalize at the same height.
-
-That seam is where a fork would live if one lives anywhere.
+necessarily show. "Never reinvent a primitive," a negative over all future choices.
+Reactive-not-eager, which states no threshold. Canon-tracks-behaviour and
+throwaway-stays-throwaway, which are disciplines rather than properties of a running system.
