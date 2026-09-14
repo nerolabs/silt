@@ -41,6 +41,13 @@ const (
 	witnessCallMembers      witnessCall = 2
 	witnessCallAncestors    witnessCall = 3
 	witnessCallLogExtension witnessCall = 4
+	// witnessCallBundle is the fifth, and it is not an accessor. The other four answer one
+	// question the composition asked; this one carries the O(payload) pre-state bundle the
+	// state-root recompute FOLDS, which cannot be pulled key by key because the fold needs every
+	// changed leaf's proof in hand before it can compute a post-root at all. It is untrusted like
+	// the rest: the box derives the changed-key set itself and verifies every proof against
+	// prevStateRoot, so a short or forged bundle stalls.
+	witnessCallBundle witnessCall = 5
 )
 
 // witnessReq is one accessor call against a named head.
@@ -58,6 +65,10 @@ type witnessReq struct {
 	K      int          `cbor:"5,keyasint"` // ancestors
 	M      int          `cbor:"6,keyasint"` // log extension: the parent log size to prove from
 	Leaves []ports.Hash `cbor:"7,keyasint"` // log extension: the leaves the block appends
+	// Block is the encoded candidate block a bundle is requested for. The server reads it for its
+	// PAYLOAD only — which leaves it would change, and which ids its carrier names — and believes
+	// nothing it claims: every value in the answer is the server's own committed pre-state.
+	Block []byte `cbor:"8,keyasint"`
 }
 
 // witnessResp is the answer. OK=false is a REFUSAL TO ANSWER — "I have no witness for this" —
@@ -76,6 +87,12 @@ type witnessResp struct {
 	// discards a mismatch, so a server that advanced mid-conversation cannot silently mix two
 	// states into one judgement.
 	Head ports.Hash `cbor:"7,keyasint"`
+	// Bundle is the encoded StateRootWitness (witnessCallBundle only).
+	Bundle []byte `cbor:"8,keyasint"`
+	// NextHeight is the height the server's chain would commit next, so a box that asked about
+	// no head in particular learns not only WHICH head it was answered from but WHERE that head
+	// sits — which is what it needs to ask a source for the block above it.
+	NextHeight uint64 `cbor:"9,keyasint"`
 }
 
 // witnessReqMaxBytes bounds a decoded request. A request is attacker-chosen and decoding
@@ -84,11 +101,27 @@ type witnessResp struct {
 // would exceed the box's own frame budget long before it got here.
 const witnessReqMaxBytes = 1 << 20
 
+// witnessBlockMaxBytes bounds a BUNDLE request, which carries a whole candidate block and is
+// therefore bounded by what a block can be rather than by what an accessor call can be. A
+// validator's bond registration alone runs to megabytes, so the accessor ceiling above would
+// refuse the most ordinary block a live network produces. A block past this has already failed the
+// proposer-side byte budgets that keep a block gatherable over a real WAN, so nothing honest is
+// refused here.
+const witnessBlockMaxBytes = 16 << 20
+
 // witnessProofMaxBytes bounds ONE decoded leaf proof at the client. A sparse-Merkle proof over
 // a tree of any realistic size is a few KiB; the ceiling is generous enough never to refuse an
 // honest proof and small enough that a server cannot hand a 2 GiB floor box its memory ceiling
 // one reply at a time.
 const witnessProofMaxBytes = 1 << 20
+
+// witnessBundleMaxBytes bounds ONE decoded state-root bundle at the client. A bundle is
+// O(payload write-set x log N) plus the whole-set digest pre-images, so it is the largest single
+// reply the seam carries; the ceiling is well above what an honest block needs and below what a
+// hostile server could use to spend a 2 GiB floor box's memory in one frame. The box's own byte
+// budget is the binding limit on the honest path — this is the belt that stops a decode the
+// budget never gets to see.
+const witnessBundleMaxBytes = 16 << 20
 
 // errWitnessHeadMoved is a server's refusal to answer about a head it no longer holds. Named,
 // because the box's correct response is to re-anchor on the new head and ask again — not to
@@ -103,28 +136,37 @@ func (n *Node) serveWitness(msg ports.Message) ports.Message {
 		raw, _ := cbor.Marshal(witnessResp{OK: false})
 		return ports.Message{Kind: ports.MsgWitnessReply, OK: false, Data: raw}
 	}
-	if len(msg.Data) > witnessReqMaxBytes {
+	if len(msg.Data) > witnessBlockMaxBytes {
 		return deny()
 	}
 	var req witnessReq
 	if cbor.Unmarshal(msg.Data, &req) != nil {
 		return deny()
 	}
+	// The accessor calls keep the tight ceiling; only the bundle call is allowed to be
+	// block-sized, and only because it carries a block.
+	if req.Call != witnessCallBundle && len(msg.Data) > witnessReqMaxBytes {
+		return deny()
+	}
 	if n.chain == nil {
 		return deny()
 	}
-	p, ok := n.witnessProviders.For(n.chain)
+	// The cache is asked for the head the REQUEST names, not for whatever head this node is on.
+	// A box names one head for the whole of one validation, and this node keeps committing under
+	// it; serving from the current head instead would mix two states into one judgement, and
+	// refusing outright would make a box on a live chain re-anchor forever.
+	p, ok := n.witnessProviders.For(n.chain, req.Head)
 	if !ok {
 		return deny()
 	}
-	head, _ := p.Head()
-	// A request about a head this node has moved past is refused rather than answered from
-	// the current one. See witnessReq.Head.
+	head, next := p.Head()
+	// Belt: a head this node has never held, or has held and dropped, is refused rather than
+	// answered from another one. See witnessReq.Head.
 	if req.Head != (ports.Hash{}) && req.Head != head {
 		return deny()
 	}
 
-	resp := witnessResp{OK: true, Head: head}
+	resp := witnessResp{OK: true, Head: head, NextHeight: next}
 	switch req.Call {
 	case witnessCallLeaf:
 		v, w, got := p.Leaf(req.Key)
@@ -154,6 +196,22 @@ func (n *Node) serveWitness(msg ports.Message) ports.Message {
 			return deny()
 		}
 		resp.Hashes, resp.Incl = cons, incl
+	case witnessCallBundle:
+		blk, err := chain.Decode(req.Block)
+		if err != nil {
+			return deny()
+		}
+		w, bErr := p.Bundle(*blk)
+		if bErr != nil {
+			// A provider that cannot build this block's bundle says so. It is not a lie and not
+			// a proof of anything; the asker walks on to the next provider.
+			return deny()
+		}
+		raw, eErr := chain.EncodeStateRootWitness(w)
+		if eErr != nil {
+			return deny()
+		}
+		resp.Bundle = raw
 	default:
 		return deny()
 	}

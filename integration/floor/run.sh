@@ -27,15 +27,17 @@
 # wants the redteam and sybil topologies re-pointed at a floor-spec seat. The
 # ceiling leg is evidence for the honest case only.
 #
-# WHAT THIS SUITE CANNOT DRIVE, and says so rather than skipping:
-#  The floor box's OTHER half — validating against WITNESSES without holding
-#  the tree, and stalling rather than accepting when no witness provider is
-#  reachable — has no process to run. `chain.NewBox` has no caller outside
-#  core/chain's own tests, nothing implements `chain.WitnessSource` in
-#  production, and no daemon flag puts a node in that mode. Those two legs are
-#  reported UNWIRED. Unwired is not skipped and not green: it is the suite
-#  saying the product does not expose the thing the claim is about. The legs
-#  below are the half that a binary can be made to do today.
+# THE OTHER HALF OF THE CLAIM is a SECOND box, on the same floor spec, in the
+# witness-validating posture: `silt daemon -floor-box -witness-from=...` keeps no
+# chain, no registry and no state tree, and judges blocks against witnesses it
+# pulls from the two validators. Legs 6 and 7 drive it.
+#
+# WHAT A "VALIDATED" VERDICT IS, so a green run is not read as more than it is:
+# the box ran the whole committed-state transition to a verdict of accept over
+# witnesses, and its door WITHHELD the accept. That downgrade is deliberate and
+# is one line of product code; taking it is a consensus-rule change. So the box
+# audits and reports, and it adopts nothing and advances no head. It is not a
+# consensus participant today, and nothing here claims it is.
 #
 # The legs:
 #  1. SPEC BINDS (the vacuity guard) — read memory.max, memory.swap.max and
@@ -56,6 +58,17 @@
 #     reload the already-pruned store, still report the shed, and commit again.
 #     Without this leg the prune could be a live in-memory view that a restart
 #     silently undoes.
+#  6. VALIDATES AGAINST WITNESSES — the witness box, holding no tree, reaches a
+#     VALIDATED verdict on a block the network committed. Guarded twice: it must
+#     be on the SAME network (it derives the genesis hash from its own config, so
+#     a mismatch would make it audit a network that does not exist), and it must
+#     hold no chain replica (a box that kept one would not be proving anything
+#     about witnesses).
+#  7. STALLS WITH NO PROVIDER — the control box, anchored on an operator
+#     checkpoint and pointed at a provider that does not exist, reaches the same
+#     blocks and STALLS on every one. Never a VALIDATED line, never an ACCEPT.
+#     Without this leg, leg 6's green is indistinguishable from a box that
+#     stalls on everything.
 #
 # The prune arithmetic this suite must clear (core/chain/retention.go): the node
 # retains max(2·BondTTL, BondRegHeadWindow+4) full-proof blocks below its
@@ -90,6 +103,8 @@ BOND_TTL=${BOND_TTL:-2}
 HEIGHT_BUDGET=${HEIGHT_BUDGET:-420}    # seconds to reach TARGET_HEIGHT
 PRUNE_BUDGET=${PRUNE_BUDGET:-180}      # seconds, after the height, to observe the shed
 RESTART_BUDGET=${RESTART_BUDGET:-120}  # seconds for the restarted box to re-commit
+WITNESS_BUDGET=${WITNESS_BUDGET:-180}  # seconds for the witness box to reach its verdicts
+WITNESS_HEIGHTS=${WITNESS_HEIGHTS:-3}  # distinct heights the witness box must judge
 export EPOCH_BLOCKS BOND_TTL
 
 PROJECT=floor
@@ -122,6 +137,16 @@ pruned_count() {
         | grep -oE 'pruned:[[:space:]]*[0-9]+' | tail -1 | grep -oE '[0-9]+')
   echo "${n:-0}"
 }
+
+# The floor box's verdict lines. `verdict=` is the greppable field; the counts
+# below are of DISTINCT heights, so a box that reprinted one verdict forever
+# cannot pass for one that kept auditing.
+box_verdicts() { # box_verdicts <svc> <verdict>
+  dc logs "$1" 2>/dev/null | grep -oE "floor-box: verdict=$2 height=[0-9]+" \
+    | awk '{print $NF}' | sort -u | wc -l | tr -d ' '
+}
+box_network() { dc logs "$1" 2>/dev/null | grep -oE 'genesis [0-9a-f]{64}' | head -1 | awk '{print $2}'; }
+box_blocks_held() { dc exec -T "$1" silt chain-status -store /data 2>/dev/null | awk '/blocks:/{print $2}' | tr -d '\r'; }
 
 # cgroup facts, read from inside the container under test.
 cg() { dc exec -T floor sh -c "cat /sys/fs/cgroup/$1 2>/dev/null" | tr -d '\r\n'; }
@@ -207,7 +232,8 @@ echo "== phase 1: the anchor set, resolved before launch =="
 # front. The binary is a linux image, so run it in a throwaway container.
 silt_id() { docker run --rm silt-floor silt id -id-seed "$1" | tr -d '\r'; }
 ID_A=$(silt_id 9101); ID_B=$(silt_id 9102); ID_F=$(silt_id 9103)
-for pair in "valA:$ID_A" "valB:$ID_B" "floor:$ID_F"; do
+ID_BOX=$(silt_id 9104); ID_GHOST=$(silt_id 9999)
+for pair in "valA:$ID_A" "valB:$ID_B" "floor:$ID_F" "witnessbox:$ID_BOX" "ghost:$ID_GHOST"; do
   case "${pair#*:}" in
     "" ) fail "could not derive the NodeID for ${pair%%:*} — \`silt id\` returned nothing" ;;
   esac
@@ -220,18 +246,25 @@ export PEER_A="$ID_A@10.140.0.11:4001" REG_A="$ID_A@https://10.140.0.11:4003"
 # table holds bare NodeIDs), so proposer-initiated quorum needs the whole set
 # configured up front on every seat, not just a path back to valA.
 export PEERS_ALL="$PEER_A,$ID_B@10.140.0.12:4001,$ID_F@10.140.0.13:4001"
+# The witness tier the box pulls from: an OPEN, un-permissioned set. These two
+# serve because they hold the tree, not because they were designated — the box
+# extends them no trust, and a third node would do just as well.
+export PROVIDERS="$ID_A,$ID_B"
+# A well-formed node id that belongs to nobody: the control box's provider.
+export GHOST_PROVIDER="$ID_GHOST"
 echo "  valA  = ${ID_A:0:16}…"
 echo "  valB  = ${ID_B:0:16}…"
 echo "  floor = ${ID_F:0:16}…  (the box under test)"
+echo "  wbox  = ${ID_BOX:0:16}…  (the same spec, validating by proof)"
 
 echo "== phase 2: the topology, one genesis =="
-dc up -d valA valB floor >/dev/null 2>&1 || fail "up the topology"
+dc up -d valA valB floor witnessbox >/dev/null 2>&1 || fail "up the topology"
 sleep 8
-for svc in valA valB floor; do
+for svc in valA valB floor witnessbox; do
   [ "$(dc ps -q "$svc" | wc -l | tr -d ' ')" != "0" ] \
     || fail "$svc exited during startup — $(dc logs "$svc" 2>&1 | tail -5)"
 done
-echo "  three validators up, anchored on one set"
+echo "  three validators and one witness-validating box up, anchored on one set"
 
 # ---- leg 1: the spec actually binds ----------------------------------------
 # THE VACUITY GUARD. Everything after this is only evidence if the kernel really
@@ -341,19 +374,79 @@ POST_PEAK=$(cg memory.peak)
 echo "  committed to ${REACHED2} from the pruned store; peak since restart $(human_bytes "${POST_PEAK:-0}")"
 echo "  ✓ the shed is a property of persisted state, and the box still commits"
 
-# ---- the legs no binary can run --------------------------------------------
-# Reported, not skipped. The distinction matters: a skip says "we chose not to
-# run this", and what is true here is "there is nothing to run".
-echo
-echo "== unwired: the witness half of the floor box =="
-echo "  NOT RUN, and not skippable — no process exists to drive:"
-echo "    • validates against witnesses without holding the tree"
-echo "    • stalls rather than accepts when no witness provider is reachable"
-echo "  chain.NewBox has no caller outside core/chain's own tests, nothing"
-echo "  implements chain.WitnessSource in production, and no daemon flag puts a"
-echo "  node in that mode. The mechanism is gated at the unit tier; it has no"
-echo "  transport and no entry point, so there is no e2e to drive. These legs"
-echo "  turn green when a witness server and a floor-box daemon mode exist."
+# ---- leg 6: it validates against witnesses, holding no tree -----------------
+echo "== leg 6: the witness box validates against witnesses, holding no tree =="
+# VACUITY GUARD 1 — the same network. A floor box derives this network's identity
+# by minting the genesis its own configuration implies. If one consensus-critical
+# flag differs it computes a different genesis hash, every era-4 signature fails
+# to verify, and it would be auditing a network that does not exist. Comparing
+# the two reported identities is what stops a green run from meaning "the box
+# agreed with itself".
+BOX_NET=$(box_network witnessbox); VAL_NET=$(box_network valA)
+echo "  network — valA=${VAL_NET:0:16}… box=${BOX_NET:0:16}…"
+[ -n "$BOX_NET" ] && [ "$BOX_NET" = "$VAL_NET" ] \
+  || fail "the witness box is on a DIFFERENT network than valA (box=${BOX_NET:-none} valA=${VAL_NET:-none}): it derives the genesis hash from its own consensus configuration, so a mismatch means a flag differs and every signature it checks is against a network nobody is running."
+
+# VACUITY GUARD 2 — it holds no tree. The whole claim is about a validator that
+# validates WITHOUT the state; a box that had quietly synced a replica would
+# reach the same verdicts for an entirely different reason.
+BOX_BLOCKS=$(box_blocks_held witnessbox)
+case "$BOX_BLOCKS" in ''|*[!0-9]*) BOX_BLOCKS=0 ;; esac
+echo "  the box holds ${BOX_BLOCKS} block(s) of its own"
+[ "$BOX_BLOCKS" -eq 0 ] \
+  || fail "the witness box is holding ${BOX_BLOCKS} block(s) — it has a chain replica, so 'validates without holding the tree' is not what this leg would be measuring"
+
+VALIDATED=0; waited=0
+while [ "$waited" -lt "$WITNESS_BUDGET" ]; do
+  VALIDATED=$(box_verdicts witnessbox VALIDATED)
+  [ "$VALIDATED" -ge "$WITNESS_HEIGHTS" ] && break
+  sleep 5; waited=$((waited + 5))
+  [ $((waited % 30)) -eq 0 ] && echo "    validated=${VALIDATED}/${WITNESS_HEIGHTS} (${waited}s/${WITNESS_BUDGET}s)"
+done
+STALLED=$(box_verdicts witnessbox STALL)
+echo "  verdicts — validated=${VALIDATED} at distinct heights, stalled=${STALLED}"
+if [ "$VALIDATED" -lt "$WITNESS_HEIGHTS" ]; then
+  echo "  last lines from the box:"; dc logs --tail 12 witnessbox 2>&1 | sed 's/^/    /'
+  fail "the witness box reached a VALIDATED verdict at only ${VALIDATED} of the ${WITNESS_HEIGHTS} distinct heights this leg requires. It holds no tree, so every committed read it made crossed the wire — a shortfall is the seam, not the box."
+fi
+echo "  ✓ judged ${VALIDATED} distinct heights by proof, holding no chain of its own"
+echo "    (VALIDATED means the transition ran to a verdict of accept over witnesses and the"
+echo "     door withheld it: this box adopts nothing and advances no head)"
+
+# ---- leg 7: and it stalls when no provider is reachable ---------------------
+echo "== leg 7: with no witness provider reachable, it STALLS — never accepts =="
+# The control is anchored by an OPERATOR CHECKPOINT rather than by a provider's
+# reported head, which is what lets it reach a block to judge at all when no
+# provider answers. Without the checkpoint it would fail one step earlier, at
+# "where do I anchor", and the leg would never test the thing it is named for.
+CP_H=$(head_height valA); CP_X=$(head_hash valA)
+case "$CP_H" in ''|*[!0-9]*) fail "could not read valA's head to build the control box's checkpoint" ;; esac
+[ -n "$CP_X" ] || fail "could not read valA's head hash to build the control box's checkpoint"
+export WS_CHECKPOINT="${CP_H}:${CP_X}"
+echo "  control anchored at ${CP_H}:${CP_X:0:16}…, witnesses from a node that does not exist"
+dc --profile control up -d witnessbox-blind >/dev/null 2>&1 || fail "could not start the control box"
+sleep 10
+[ "$(dc ps -q witnessbox-blind | wc -l | tr -d ' ')" != "0" ] \
+  || fail "the control box exited at start-up — $(dc logs witnessbox-blind 2>&1 | tail -10)"
+
+BLIND_STALLED=0; waited=0
+while [ "$waited" -lt "$WITNESS_BUDGET" ]; do
+  BLIND_STALLED=$(box_verdicts witnessbox-blind STALL)
+  [ "$BLIND_STALLED" -ge 1 ] && break
+  sleep 5; waited=$((waited + 5))
+done
+BLIND_OK=$(box_verdicts witnessbox-blind VALIDATED)
+BLIND_ACCEPT=$(box_verdicts witnessbox-blind ACCEPT)
+echo "  control verdicts — stalled=${BLIND_STALLED} validated=${BLIND_OK} accepted=${BLIND_ACCEPT}"
+[ "$BLIND_ACCEPT" -eq 0 ] \
+  || fail "the control box ACCEPTED a block with no witness provider reachable. Safety must never rest on the tier above; this is the failure the whole posture exists to exclude."
+[ "$BLIND_OK" -eq 0 ] \
+  || fail "the control box reported ${BLIND_OK} VALIDATED verdict(s) while its only provider does not exist — it is not reading witnesses from where it says it is, and leg 6 is green for the wrong reason."
+if [ "$BLIND_STALLED" -lt 1 ]; then
+  echo "  last lines from the control box:"; dc logs --tail 12 witnessbox-blind 2>&1 | sed 's/^/    /'
+  fail "the control box reached no verdict at all within ${WITNESS_BUDGET}s. A box that neither validates nor stalls has stopped auditing without saying so, which is the worst of the three outcomes."
+fi
+echo "  ✓ the control stalled at ${BLIND_STALLED} distinct height(s) and never accepted"
 
 # ---- verdict ---------------------------------------------------------------
 echo
@@ -362,8 +455,12 @@ echo "  peak memory         : $(human_bytes "$PRE_PEAK") (${PCT}% of the ceiling
 echo "  height / shed       : ${HF} / ${SHED} blocks"
 echo "  restart             : reloaded the pruned store, committed to ${REACHED2}"
 echo
-echo "  not shown here       : the ceiling under ADVERSARIAL input (this load is honest)"
-echo "  unwired              : validates against witnesses; stalls with no provider"
+echo "  by proof            : ${VALIDATED} distinct heights judged against witnesses, holding no tree"
+echo "  with no provider    : ${BLIND_STALLED} stall(s), 0 accepts"
 echo
-echo "RESULT: FINDING ⚠  the floor box validates, stays under a kernel-enforced 2 GiB at ${PCT}% peak on HONEST load, prunes at depth, and restarts from the pruned store — but the ceiling is not yet driven on adversarial input, and the witness half of the claim has no process to run and is reported UNWIRED, so the floor-box claim is not wholly demonstrated"
+echo "  not shown here       : the ceiling under ADVERSARIAL input (this load is honest)"
+echo "  not claimed here     : that the witness box PARTICIPATES — its door withholds accept by"
+echo "                         design, so it audits and reports, and adopts nothing"
+echo
+echo "RESULT: FINDING ⚠  the floor box validates, stays under a kernel-enforced 2 GiB at ${PCT}% peak on HONEST load, prunes at depth, and restarts from the pruned store; a second box on the same spec judges ${VALIDATED} committed heights against witnesses while holding no tree, and its no-provider control stalls without ever accepting — but the memory ceiling is not yet driven on adversarial input, so the floor-box claim is not wholly demonstrated"
 exit 0

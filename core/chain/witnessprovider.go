@@ -44,6 +44,14 @@ type WitnessProvider struct {
 	// are served off a CLONE, never this one: a provider answers questions, it does not
 	// advance the node's own log to do so.
 	log *translog.Log
+	// snap is a private copy of the chain as it stood at this head — a chain the provider can
+	// APPLY a candidate block to without touching the node's own. The bundle is built by diffing
+	// the committed leaf set across that apply, so the changed-key set the box will derive is
+	// arrived at by running the transition rather than by a second implementation of every class's
+	// write-set living on the serving side. It is also what proves the class-M maturity set, which
+	// is anchored against the block's OWN post-apply root and so cannot come from a snapshot of
+	// the parent state at all.
+	snap *Chain
 }
 
 // A provider IS the serving half of the witness seam, and the compiler is what keeps that
@@ -81,6 +89,7 @@ func NewWitnessProvider(c *Chain) (*WitnessProvider, bool) {
 	for _, l := range leafSet {
 		p.leaves[string(l.Key)] = l.Value
 	}
+	p.snap = c.cloneForDryRun()
 	// The five whole-set keyspaces the composition folds. Each is served as the COMPLETE
 	// claimed id-list; the reader checks completeness itself by re-deriving the MTH and
 	// comparing it against the committed digest root, so one omitted or injected id stalls.
@@ -200,18 +209,40 @@ func flaggedIDs(m map[ports.NodeID]bool) []ports.NodeID {
 	return out
 }
 
-// ProviderCache holds ONE provider for a serving node, so a run of witness requests about the
-// same head pays for the leaf set and the prover once. Single-entry deliberately: a box
-// validates forward, so the useful working set is the current head, and a map keyed by a
-// peer-supplied hash would let a stranger make the node build an unbounded number of provers.
+// ProviderCache holds the provider a serving node answers from, plus the ONE before it, so a run
+// of witness requests about the same head pays for the leaf set and the prover once.
+//
+// WHY THE PREVIOUS SNAPSHOT IS RETAINED, and it is not an optimization. A box validates the block
+// at h+1 against the committed state at h, and it names h on every request of that validation so
+// the answers cannot come from two states. Meanwhile the serving node keeps committing. Without
+// the retained snapshot, the first block the serving node commits mid-validation makes every
+// remaining request refuse — the box stalls, re-anchors, and races the same way again, which on a
+// live chain is a box that can never finish. One snapshot back is what makes a validation that
+// started at h able to END at h.
+//
+// TWO, AND NOT MORE. The retained set is bounded by construction rather than by a policy: a box
+// validates forward, so the useful working set is the head and the head it is judging from. A map
+// keyed by a peer-supplied hash would let a stranger make the node build an unbounded number of
+// provers.
 type ProviderCache struct {
-	p *WitnessProvider
+	p    *WitnessProvider
+	prev *WitnessProvider
 }
 
-// For returns a provider over c's current head, rebuilding only when the head has moved.
-func (pc *ProviderCache) For(c *Chain) (*WitnessProvider, bool) {
+// For returns a provider over the head the caller NAMED. A retained snapshot that matches is
+// served as it stands; otherwise the cache rebuilds over the chain's current head and demotes what
+// it held. The zero hash means "whatever head you are on", which is how a box discovers the head to
+// anchor its first request against.
+func (pc *ProviderCache) For(c *Chain, want ports.Hash) (*WitnessProvider, bool) {
 	if c == nil {
 		return nil, false
+	}
+	if want != (ports.Hash{}) {
+		for _, held := range []*WitnessProvider{pc.p, pc.prev} {
+			if held != nil && held.head == want {
+				return held, true
+			}
+		}
 	}
 	head, _ := c.Head()
 	if pc.p != nil && pc.p.head == head {
@@ -221,6 +252,6 @@ func (pc *ProviderCache) For(c *Chain) (*WitnessProvider, bool) {
 	if !ok {
 		return nil, false
 	}
-	pc.p = p
+	pc.prev, pc.p = pc.p, p
 	return p, true
 }

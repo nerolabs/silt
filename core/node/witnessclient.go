@@ -83,6 +83,10 @@ type witnessCache struct {
 	// asked for them. Reset between passes.
 	misses []witnessReq
 	seen   map[witnessCacheKey]bool
+	// bundle is the fetched state-root witness bundle for the block under judgement. It is not
+	// an accessor answer — the box takes it as a parameter, not through the source — so it is
+	// filed here rather than in one of the answer maps.
+	bundle chain.StateRootWitness
 }
 
 func newWitnessCache(head ports.Hash) *witnessCache {
@@ -167,8 +171,18 @@ func (c *witnessCache) store(req witnessReq, r witnessResp) error {
 		c.members[membersKey(req.Tag)] = membersAnswer{ids: r.IDs, ok: r.OK}
 	case witnessCallAncestors:
 		c.hashes[ancestorsKey(req.K)] = hashesAnswer{hashes: r.Hashes, ok: r.OK}
-	case witnessCallLogExtension:
-		c.hashes[logExtKey(req.M, req.Leaves)] = hashesAnswer{hashes: r.Hashes, incl: r.Incl, ok: r.OK}
+	case witnessCallBundle:
+		// A refusal here is about the PROVIDER, not about committed state: it could not build
+		// this block's bundle. Unlike a leaf refusal, another provider may well serve it, so
+		// this is returned as an error and the walk moves on.
+		if !r.OK {
+			return errors.New("node: the provider has no state-root witness bundle for this block")
+		}
+		w, err := chain.DecodeStateRootWitness(r.Bundle, witnessBundleMaxBytes, witnessProofMaxBytes)
+		if err != nil {
+			return err
+		}
+		c.bundle = w
 	default:
 		return fmt.Errorf("node: unknown witness call %d", req.Call)
 	}
@@ -210,8 +224,7 @@ var ErrWitnessUnreachable = errors.New("node: floor box could not reach a witnes
 // is worth exactly what an answer from the first was: checked, or a stall. The head field keeps
 // them talking about the same committed state, and nothing else about their identity matters.
 func (n *Node) ValidateWithWitnesses(mkBox func(chain.WitnessSource) (*chain.Box, error),
-	b chain.Block, w chain.StateRootWitness,
-	peers []ports.NodeID, head ports.Hash, done func(chain.FloorBoxOutcome, error)) {
+	b chain.Block, peers []ports.NodeID, head ports.Hash, done func(chain.FloorBoxOutcome, error)) {
 	if mkBox == nil {
 		done(chain.IndeterminateTrustlessly, errors.New("node: no floor box constructor"))
 		return
@@ -230,7 +243,22 @@ func (n *Node) ValidateWithWitnesses(mkBox func(chain.WitnessSource) (*chain.Box
 		done(chain.IndeterminateTrustlessly, errors.New("node: no floor box"))
 		return
 	}
-	n.witnessPass(box, b, w, peers, cache, 0, done)
+	// The bundle comes first because the box takes it as a parameter, not through the source: a
+	// replay pass with no bundle in hand would stall on the recompute for a reason that has
+	// nothing to do with the reads the pass is there to discover.
+	req := witnessReq{Call: witnessCallBundle, Head: head, Block: chain.Encode(&b)}
+	raw, err := cbor.Marshal(req)
+	if err != nil {
+		done(chain.IndeterminateTrustlessly, fmt.Errorf("node: encode witness bundle request: %w", err))
+		return
+	}
+	n.askOneProvider(peers, 0, req, raw, cache, func(aerr error) {
+		if aerr != nil {
+			done(chain.IndeterminateTrustlessly, aerr)
+			return
+		}
+		n.witnessPass(box, b, cache.bundle, peers, cache, 0, done)
+	})
 }
 
 // witnessPass runs one replay pass and either returns its verdict or fetches what the pass

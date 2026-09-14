@@ -168,12 +168,36 @@ func TestWitnessProviderHeadPinsTheStateItServes(t *testing.T) {
 	// leaf set and the prover per request is what would make serving witnesses expensive
 	// enough for a stranger to weaponise.
 	var pc ProviderCache
-	first, ok := pc.For(f.c)
+	first, ok := pc.For(f.c, ports.Hash{})
 	if !ok {
 		t.Fatal("ProviderCache.For must succeed over a committed chain")
 	}
-	again, ok := pc.For(f.c)
+	again, ok := pc.For(f.c, ports.Hash{})
 	if !ok || first != again {
 		t.Fatal("ProviderCache must reuse its provider while the head is unchanged")
+	}
+
+	// And a caller that NAMES the head it wants gets that one. This is what lets a validation
+	// that anchored at one head finish there while the serving chain commits under it: the box
+	// names the head on every request, and one snapshot back is retained for exactly that.
+	named, ok := pc.For(f.c, wantHash)
+	if !ok || named != first {
+		t.Fatal("ProviderCache must serve the head a caller names when it still holds it")
+	}
+	if err := f.c.Append(f.mkBlock(t, nil)); err != nil {
+		t.Fatalf("the fixture chain must commit one more block: %v", err)
+	}
+	moved, ok := pc.For(f.c, ports.Hash{})
+	if !ok || moved == first {
+		t.Fatal("ProviderCache must rebuild once the chain head has moved")
+	}
+	back, ok := pc.For(f.c, wantHash)
+	if !ok || back != first {
+		t.Fatal("ProviderCache must still serve the PREVIOUS head: a box that anchored there is still " +
+			"asking about it, and refusing would make it re-anchor and race the chain forever")
+	}
+	stale, _ := pc.For(f.c, ports.HashBytes([]byte("a head this node never held")))
+	if stale != nil && stale.head == ports.HashBytes([]byte("a head this node never held")) {
+		t.Fatal("ProviderCache invented a provider for a head it never held")
 	}
 }

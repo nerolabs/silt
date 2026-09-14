@@ -20,13 +20,13 @@ import (
 // gate in the tree touches — the box's own gates drive an in-process source, and the
 // provider's gates compare the production provider to that source without a wire between them.
 //
-// WHAT THEY DO NOT COVER: a full box-through-the-wire validation. That needs a parent block
-// carrying a committed v5 StateRoot, because the view resolves every committed read against
-// one and returns NoWitness before it ever consults a source when there is none. This
-// package's validator fixtures commit genesis only, so a box anchored there stalls for want of
-// a state root rather than for want of a witness — a stall that would make a transport gate
-// pass while proving nothing about the transport. Building that fixture is the remaining work
-// on this seam and it is named here rather than papered over.
+// WHAT THEY DO NOT COVER: the box itself. These gates are driven on a genesis-only fixture,
+// whose head carries no committed v5 StateRoot — and the view answers NoWitness for every
+// committed read before it consults any source when there is none, so a box anchored here
+// stalls for want of a state root rather than for want of a witness. Routing a box through
+// this fixture would assert a transport property while never reaching the transport. The
+// box-through-the-wire legs live in witnessfloorbox_test.go, over a fixture that drives the
+// node's own consensus path to a committed v5 block first.
 
 // idBytes views a NodeID as the raw key bytes a leaf key is built from.
 func idBytes(id ports.NodeID) []byte { return id[:] }
@@ -147,49 +147,15 @@ func TestWitnessServerRefusesAHeadItDoesNotHold(t *testing.T) {
 	}
 }
 
-// TestWitnessDriverReportsExactlyOnceWhenNothingAnswers: whatever the verdict, the floor box's
-// callback fires exactly once and never Accepts when the provider is unreachable. A box whose
-// callback never fires has stopped auditing without saying so — indistinguishable from a slow
-// one, and the worst of the three outcomes.
-func TestWitnessDriverReportsExactlyOnceWhenNothingAnswers(t *testing.T) {
-	_, client, a1, _, _, sched := twoAgreeingValidators(t)
-
-	c := client.Chain()
-	parent := c.Blocks(0)[0]
-	prev, next := c.Head()
-	b := chain.Block{Version: 5, Height: next, Prev: prev, Entries: []ports.Entry{mkEntry("witness-once")}}
-	chain.Sign(&b, a1.Signer())
-
-	var ghost ports.NodeID
-	ghost[0], ghost[1] = 0xDE, 0xAD
-
-	var gotOut chain.FloorBoxOutcome
-	fired := 0
-	client.ValidateWithWitnesses(
-		func(src chain.WitnessSource) (*chain.Box, error) {
-			return chain.NewBox(c, parent, chain.BoxConfig{BudgetBytes: 1 << 22, ChainID: c.ChainID()}, src)
-		},
-		b, chain.StateRootWitness{}, []ports.NodeID{ghost}, ports.Hash{},
-		func(o chain.FloorBoxOutcome, _ error) { fired++; gotOut = o })
-	sched.Run()
-
-	if fired != 1 {
-		t.Fatalf("the verdict callback must fire EXACTLY once; fired %d", fired)
-	}
-	if gotOut == chain.Accept {
-		t.Fatal("ACCEPTED with no witness provider reachable — the box signed off on a block it never checked")
-	}
-}
-
 // TestWitnessFetchFailsOverPastADeadProvider: a floor box's liveness must not rest on ONE
 // provider. Witness-serving is an open, un-permissioned duty of any archival or pruning node,
 // so the box carries a list and walks it; a box pinned to a single provider has handed that
 // provider an outage switch over its ability to audit at all.
 //
-// Driven at the FETCH layer rather than through the box, deliberately. A box anchored on this
-// package's genesis-only fixture stalls for want of a committed StateRoot before it ever
-// consults a source, so routing the gate through the box would assert failover while never
-// reaching the transport. This drives the walk directly, which is where the walk lives.
+// Driven at the FETCH layer, which is where the walk lives: this gate pins the walk itself —
+// that an unreachable provider is stepped past and the live one's answer is FILED, so the next
+// replay pass does not ask for the same read again. The same property through the box, on a
+// chain whose head carries a real state root, is TestFloorBoxFailsOverToASecondProvider.
 func TestWitnessFetchFailsOverPastADeadProvider(t *testing.T) {
 	server, client, _, _, _, sched := twoAgreeingValidators(t)
 

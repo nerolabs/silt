@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -94,6 +95,9 @@ func cmdDaemon(args []string) error {
 	honorRevocations := fs.Bool("honor-chain-revocations", false, "SUBSCRIBE to the chain's on-chain takedowns (M0 F5): also deny roots a quorum has revoked on-chain. Default OFF — following the chain does not impose someone else's takedowns; honoring is a per-operator choice, proportional to who trusts you, never a global switch. The operator-local -denylist is always honored")
 	revokeRoot := fs.String("revoke", "", "as a validator, propose an on-chain takedown of this root hash once standing is earned and the root is committed (M0 F5: quorum-gated, existence-checked; honored only by nodes that -honor-chain-revocations)")
 	validator := fs.Bool("validator", false, "keep a chain replica and take part in consensus")
+	floorBox := fs.Bool("floor-box", false, "FLOOR BOX: validate by PROOF instead of by replica — keep no chain, no registry and no state tree, and judge a block against witnesses pulled from nodes that do hold one (-witness-from). This is the posture VISION calls settled for the smallest box: a semi-stateless witness-validating full validator, the same security as a tree-holding node with a narrower self-sufficiency. Its liveness rests on at least ONE reachable honest witness provider from an open, un-permissioned tier — any archival or pruning node may serve — and never on a particular one; its SAFETY rests on nothing above it, because every witness is checked against a root the box already holds, so a provider that lies, omits or vanishes produces a STALL and never an acceptance. WHAT IT DOES TODAY, stated narrowly: it audits the block that lands above a pinned parent and reports the verdict. It does NOT follow the chain and does NOT attest — the box's door maps Accept to a downgrade (a consensus-rule change is what would take it), so the box never adopts what it judged and never advances its own head. Refused together with -validator: this node keeps a replica or it does not")
+	floorBoxInterval := fs.Duration("floor-box-interval", 10*time.Second, "FLOOR BOX: how often to re-anchor and audit the block above the anchor. A liveness cadence, not a security parameter — the box's verdict is the same at any setting, because nothing it reads is trusted on a clock. Lower it on a fast local swarm so a verdict appears in seconds")
+	witnessFrom := fs.String("witness-from", "", "FLOOR BOX: comma-separated node IDs to pull witnesses from. PLURAL and un-permissioned by design: safety never rests on these nodes, but LIVENESS does, and a box pinned to one has handed that node a switch over its ability to audit at all — so list several and the box walks past whichever is unreachable. They need no relationship with this node beyond reachability, and mixing them inside one judgement is safe because every answer is checked against a root this box already holds. Empty with -floor-box is refused")
 	uiAddr := fs.String("ui", "", "serve the web UI at this address (e.g. 127.0.0.1:8081)")
 	grantCapacity := fs.Int64("grant-capacity", 0, "Faucet rate limit — bucket capacity in starter grants. 0 (default) = the faucet is UNLIMITED, exactly as before the faucet. Set together with -grant-per-hour: a fresh identity's 500,000 starter grant is then applied at its first SPEND (publish, token purchase, escrow funding) only if the bucket admits; otherwise it stays grant-pending and is retried at its next spend (never permanently denied). Metered per node, on the node's own monotonic clock — never on the chain epoch. A soft, disclosed deterrent on the RATE of fresh grants (dN/dt), not a bound on the total: a patient farm recovers every deferred grant. Start-up refuses a capacity whose worst-case guard occupancy exceeds a quarter of the paid-serial cap")
 	grantPerHour := fs.Int64("grant-per-hour", 0, "Faucet rate limit — sustained refill, in starter grants per hour, accrued continuously. 0 (default) = unlimited. The rate is a SECURITY PARAMETER bounded by build-immutable #4 on both sides: no value is recommended here, and a shipped default requires a research-verified admissible interval and an owner decision; until then an operator who sets it owns the posture, and the start-up line prints what the value implies")
@@ -353,6 +357,32 @@ func cmdDaemon(args []string) error {
 	// The route is closed.
 	if err := node.CheckSlashEvidenceHeadroom(cfg); err != nil {
 		return fmt.Errorf("refusing to start: %w", err)
+	}
+	// THE FLOOR-BOX POSTURE, refused rather than silently resolved where it contradicts itself.
+	// A node keeps a chain replica or it validates by proof; a build that tried to be both would
+	// have two sources for every committed read and no rule saying which wins. And a box with no
+	// providers is not a box that stalls safely — it is a box that can never audit anything, which
+	// an operator should learn at start-up and not from a log line every ten seconds.
+	var floorProviders []ports.NodeID
+	if *floorBox {
+		if *validator {
+			return errors.New("-floor-box and -validator are mutually exclusive: a floor box keeps NO chain replica and validates by proof against witnesses, which is the whole posture. Drop one")
+		}
+		for _, raw := range strings.Split(*witnessFrom, ",") {
+			if strings.TrimSpace(raw) == "" {
+				continue
+			}
+			pid, perr := ports.ParseHash(strings.TrimSpace(raw))
+			if perr != nil {
+				return fmt.Errorf("-witness-from %q: %w", raw, perr)
+			}
+			floorProviders = append(floorProviders, pid)
+		}
+		if len(floorProviders) == 0 {
+			return errors.New("-floor-box needs at least one -witness-from provider: the box holds no tree, so every committed read it makes comes from one. They are not trusted — a provider that lies or vanishes stalls this box and can never make it accept — but with none configured there is nothing to audit against at all")
+		}
+	} else if strings.TrimSpace(*witnessFrom) != "" {
+		return errors.New("-witness-from is only meaningful with -floor-box: a node that keeps its own replica reads committed state from it, never from a provider")
 	}
 	// SOURCE GATE, canon rule 8 first arm: the publish default must stay at or above the
 	// chunk size that pays a non-zero repair bounty, or the publish warning's threshold
@@ -854,8 +884,15 @@ func cmdDaemon(args []string) error {
 		}
 	}
 	nd0ledger := ledger // wired onto the node below
-	if *validator {
-		anchorSet := map[ports.NodeID]bool{}
+	// The consensus-critical configuration is built once and read by BOTH postures: a validator
+	// keeps a replica under it, a floor box audits by proof under it. One derivation, because two
+	// would be two rules for one network.
+	var ch *chain.Chain
+	var boxChainID ports.Hash
+	var minBondBytes int64
+	anchorSet := map[ports.NodeID]bool{}
+	useObjective := false
+	if *validator || *floorBox {
 		for _, s := range strings.Split(*anchorList, ",") {
 			if strings.TrimSpace(s) == "" {
 				continue
@@ -878,7 +915,7 @@ func cmdDaemon(args []string) error {
 		// consensus path). A trusted deployment (-min-rep 0, self-commit) does not
 		// need it, so it auto-disables there rather than forcing anchor config on a
 		// single trusted box.
-		useObjective := *objective && *minRep > 0
+		useObjective = *objective && *minRep > 0
 		// The proposer-side GATHER TARGET gets the same safe-by-default treatment as the
 		// bond floor, the TTL, the Byzantine sizing and the operator margin — except this
 		// one derives DOWNWARD. Since the shipped literal 3 is no longer a validity
@@ -893,7 +930,6 @@ func cmdDaemon(args []string) error {
 				q, len(anchorSet), *quorum)
 			*quorum = q
 		}
-		var minBondBytes int64
 		if useObjective {
 			mb, perr := parseSize(*minBond)
 			if perr != nil || mb <= 0 {
@@ -924,17 +960,9 @@ func cmdDaemon(args []string) error {
 		// TTL. cfg.MinBondBytes is 0 unless -min-bond-floor was set.
 		var wsCP chain.WSCheckpoint
 		if *wsCheckpoint != "" {
-			parts := strings.SplitN(*wsCheckpoint, ":", 2)
-			if len(parts) != 2 {
-				return fmt.Errorf("-ws-checkpoint must be HEIGHT:HASH, got %q", *wsCheckpoint)
-			}
-			h, herr := strconv.ParseUint(parts[0], 10, 64)
-			if herr != nil {
-				return fmt.Errorf("-ws-checkpoint height %q: %w", parts[0], herr)
-			}
-			hash, perr := ports.ParseHash(parts[1])
-			if perr != nil {
-				return fmt.Errorf("-ws-checkpoint hash %q: %w", parts[1], perr)
+			h, hash, cperr := parseCheckpoint(*wsCheckpoint)
+			if cperr != nil {
+				return cperr
 			}
 			wsCP = chain.WSCheckpoint{Height: h, Hash: hash}
 			fmt.Printf("chain: weak-subjectivity checkpoint pinned at %d:%s — a reorg at or before it is refused (F-1)\n", h, hash)
@@ -957,7 +985,7 @@ func cmdDaemon(args []string) error {
 		if *era4Activation > 0 && *era3Activation > 0 && *era4Activation < *era3Activation {
 			return fmt.Errorf("-era4-activation-height %d is below -era3-activation-height %d: era 4 layers ON TOP of era 3 (a v5 block commits a SUPERSET of the v4 leaves), so era-4 can never activate first. Raise -era4-activation-height to at least %d, or lower -era3-activation-height", *era4Activation, *era3Activation, *era3Activation)
 		}
-		ch := chain.New(chain.Config{
+		ch = chain.New(chain.Config{
 			MinProposerRep: *minRep, MinAttesterRep: *minRep, Quorum: *quorum,
 			ByzantineQuorum: effByz,
 			Anchors:         anchorSet, AnchorQuorum: *anchorQuorum, MatureValidators: *matureValidators,
@@ -995,6 +1023,33 @@ func cmdDaemon(args []string) error {
 		// objective-config replay with no verifier, so this ordering
 		// can never regress silently.
 		ch.SetBondVerifier(node.SpaceTimeBondVerifier(cfg.BondVDFDelay, cfg.BondLabelSamples))
+	}
+	if *floorBox {
+		// THE BOX'S NETWORK IDENTITY. A box that holds no blocks has no genesis to hash, and the
+		// era-4 consensus preimage binds the chain id — so a box auditing under the wrong one
+		// would be checking signatures against a network that does not exist. It derives the id
+		// the same way a validator does: it MINTS the genesis its own configuration implies and
+		// takes that block's hash. The consequence is the one the genesis rule already carries —
+		// a box configured differently from the network it is pointed at computes a different id
+		// and refuses every signature, rather than auditing under rules nobody agreed to. The
+		// block itself is discarded: the chain this box holds stays empty, which is the whole
+		// posture.
+		gp := ch.ConsensusParams(cfg.BondLabelSamples, cfg.BondVDFDelay)
+		gb, _, _, gErr := genesis.Build(store, &gp)
+		if gErr != nil {
+			return fmt.Errorf("floor box: could not derive this network's identity from the configured consensus parameters: %w", gErr)
+		}
+		boxChainID = gb.Hash()
+		if ch.Len() != 0 {
+			return fmt.Errorf("floor box: the configuration-bearing chain must hold NO blocks, it holds %d", ch.Len())
+		}
+		// Rendered by the SAME rule a validator reports its network with, so an operator can compare
+		// the two lines directly. A box on a different genesis is auditing a network that does not
+		// exist, and the only place that is visible is here.
+		fmt.Printf("floor box: validating by PROOF — no replica, no registry, no state tree\n")
+		fmt.Println("network: " + chain.NetworkIdentityOf(*networkName, boxChainID))
+	}
+	if *validator {
 		// / this lane (scope call S3): a replay that would discard
 		// finalized history REFUSES TO START unless the operator
 		// accepts the loss with -accept-chain-loss. Before this the
@@ -1843,6 +1898,18 @@ func cmdDaemon(args []string) error {
 			// This comes BEFORE chain sync on purpose — a restarted node re-earns
 			// its view of peer reputation here, and SyncChain needs that view to
 			// judge which fork carries real standing (F1).
+			if *floorBox {
+				// The blocks come from the peer set, the witnesses from the providers, and they are
+				// deliberately separate lists: a box that could not reach a block has nothing to
+				// judge, while a box that reached the block and cannot reach a witness is the case
+				// the whole posture turns on — it must stall, not accept. Collapsing them would make
+				// those two failures indistinguishable in the field.
+				sources := attesterIDs
+				if len(sources) == 0 {
+					sources = floorProviders
+				}
+				startFloorBox(nd, clk, ch, boxChainID, sources, floorProviders, *wsCheckpoint, *floorBoxInterval)
+			}
 			if *validator {
 				nd.StartBondAudit()
 				// Fetch the other validators' token-issuer keys so we can verify
@@ -2580,3 +2647,100 @@ func eraStartupLines(ch *chain.Chain) []string {
 func networkIdentityLines(ch *chain.Chain) []string {
 	return chain.NetworkIdentityLines(ch)
 }
+
+// startFloorBox runs the audit cycle of a validator that keeps no replica.
+//
+// THE CYCLE, and what each step is trusted for. The box asks the providers where they can answer
+// from, pins there, waits for a block to land above the pin, and judges that block against
+// witnesses. Only the PIN is a trust decision — it is the root every other answer is checked
+// against — so where it comes from is reported on every line rather than left to be inferred:
+// an operator -ws-checkpoint is a deliberate weak-subjectivity anchor, and the provider's own
+// reported head is trust-on-first-use, which is disclosed and never silent.
+//
+// THE VERDICT IS NEVER AN ADOPTION. (*chain.Box).Validate maps Accept to a downgrade, so a
+// VALIDATED line means the composition ran the whole transition to a verdict of accept over
+// witnesses and the door withheld it. The box adopts nothing and advances no head, and the line
+// says so rather than letting "validated" be read as "committed".
+func startFloorBox(nd *node.Node, clk ports.Clock, cold *chain.Chain, chainID ports.Hash,
+	sources, providers []ports.NodeID, wsCheckpoint string, interval time.Duration) {
+	pin := node.FloorBoxPin{ChainID: chainID}
+	pinned := false
+	if wsCheckpoint != "" {
+		if h, hash, err := parseCheckpoint(wsCheckpoint); err == nil {
+			pin.Height, pin.Hash, pinned = h, hash, true
+			fmt.Printf("floor box: anchored on the operator's checkpoint %d:%s — every witness is checked against this block's committed roots, so nothing else needs trusting\n", h, hash)
+		}
+	}
+	var cycle func()
+	cycle = func() {
+		again := func() { clk.AfterFunc(ports.Duration(interval), cycle) }
+		if !pinned {
+			nd.WitnessHead(providers, func(head ports.Hash, height uint64, err error) {
+				if err != nil {
+					fmt.Printf("floor-box: verdict=NO-ANCHOR reason=%v\n", err)
+					again()
+					return
+				}
+				pin.Height, pin.Hash, pinned = height, head, true
+				fmt.Printf("floor box: anchored on the provider's reported head %d:%s — TRUST ON FIRST USE, disclosed: pass -ws-checkpoint to anchor on a block you chose instead\n", height, head)
+				cycle()
+			})
+			return
+		}
+		nd.AuditAbovePin(cold, pin, floorBoxWitnessBudgetBytes, sources, providers,
+			func(v node.FloorBoxVerdict) {
+				switch {
+				case errors.Is(v.Err, node.ErrFloorBoxNothingAbovePin):
+					fmt.Printf("floor-box: verdict=WAITING height=%d reason=nothing committed above the pin yet\n", pin.Height)
+				case v.Outcome == chain.Accept:
+					// Unreachable while the door's downgrade stands. If it is ever reached, the
+					// posture has changed under the operator and the line must not look routine.
+					fmt.Printf("floor-box: verdict=ACCEPT height=%d — the door's accept downgrade is no longer in force\n", v.Height)
+				case v.Outcome == chain.Reject:
+					fmt.Printf("floor-box: verdict=REFUSED height=%d providers=%d reason=%v\n", v.Height, len(providers), v.Err)
+				case errors.Is(v.Err, chain.ErrRecomputeGated):
+					fmt.Printf("floor-box: verdict=VALIDATED height=%d providers=%d (judged against witnesses, holding no tree; the door withholds accept, so this box adopts nothing)\n", v.Height, len(providers))
+					// Re-anchor so the next cycle judges the next block. A box cannot adopt what it
+					// judged, so the anchor has to be re-taken rather than advanced.
+					pinned = wsCheckpoint != ""
+				default:
+					fmt.Printf("floor-box: verdict=STALL height=%d providers=%d reason=%v\n", v.Height, len(providers), v.Err)
+					// A stall is no verdict at all, so there is nothing to hold the anchor for. Where
+					// the anchor was the box's own trust-on-first-use, re-take it: a provider whose
+					// snapshot of that head has gone would otherwise stall this box at one height
+					// forever. An operator's checkpoint is a deliberate pin and is NOT re-taken —
+					// moving it would be the box quietly choosing a different anchor than the one it
+					// was given.
+					pinned = wsCheckpoint != ""
+				}
+				again()
+			})
+	}
+	cycle()
+}
+
+// parseCheckpoint reads a HEIGHT:HASH weak-subjectivity anchor. ONE rule, two callers: the
+// validator pins its replica against a reorg with it, and a floor box anchors its audit on it.
+// Two parsers would be two definitions of what an operator typed.
+func parseCheckpoint(s string) (uint64, ports.Hash, error) {
+	parts := strings.SplitN(s, ":", 2)
+	if len(parts) != 2 {
+		return 0, ports.Hash{}, fmt.Errorf("-ws-checkpoint must be HEIGHT:HASH, got %q", s)
+	}
+	h, err := strconv.ParseUint(parts[0], 10, 64)
+	if err != nil {
+		return 0, ports.Hash{}, fmt.Errorf("-ws-checkpoint height %q: %w", parts[0], err)
+	}
+	hash, err := ports.ParseHash(parts[1])
+	if err != nil {
+		return 0, ports.Hash{}, fmt.Errorf("-ws-checkpoint hash %q: %w", parts[1], err)
+	}
+	return h, hash, nil
+}
+
+// floorBoxWitnessBudgetBytes is the ceiling a floor box puts over one block's frame plus the
+// witnesses it needs to judge it. It is the box's OWN limit and is not a validity rule: a block
+// whose evidence exceeds it is a STALL for this box, never a rejection anyone else must honour.
+// Four MiB leaves room for an ordinary block's payload proofs and the whole-set pre-images the
+// state-root recompute folds, well inside the 2 GiB the declared floor spec allows.
+const floorBoxWitnessBudgetBytes = 4 << 20
