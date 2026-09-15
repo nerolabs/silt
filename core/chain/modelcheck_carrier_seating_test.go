@@ -594,7 +594,7 @@ func TestModelCheck_CarrierSeating_AgreementOverCarrierVariation(t *testing.T) {
 				t.Fatalf("a duplicated carrier changed the transition: seated %s (want %s), root %x (want %x) — "+
 					"the seating write must be idempotent", fmtIDs(gotDup), fmtIDs(refSeats), rootDup[:8], refRoot[:8])
 			}
-			if err := validateCarrier(dupBlock, w.c.ChainID()); !errors.Is(err, ErrCarrierDuplicateID) {
+			if err := validateCarrier(dupBlock, w.c.ChainID(), 0); !errors.Is(err, ErrCarrierDuplicateID) {
 				t.Fatalf("the VALIDITY rule must refuse a duplicated carrier with ErrCarrierDuplicateID, got %v — "+
 					"otherwise two replicas can be handed carriers that differ by a duplicate", err)
 			}
@@ -602,7 +602,7 @@ func TestModelCheck_CarrierSeating_AgreementOverCarrierVariation(t *testing.T) {
 			// carried at round 3 seats the same ids and is equally valid.
 			r3 := w.carrierFrom(pool, 3)
 			r3Block := mintSubject(t, w, r3, 0, nil)
-			if err := validateCarrier(r3Block, w.c.ChainID()); err != nil {
+			if err := validateCarrier(r3Block, w.c.ChainID(), 0); err != nil {
 				t.Fatalf("a carrier whose entries declare round 3 must be VALID (O1 binds per entry, not to a "+
 					"common round): %v", err)
 			}
@@ -626,7 +626,7 @@ func TestModelCheck_CarrierSeating_AgreementOverCarrierVariation(t *testing.T) {
 			}
 			prodBlock := mintSubject(t, w, prod, 0, nil)
 			// It must satisfy the validity rule BY CONSTRUCTION (HeadCarrier's own claim).
-			if err := validateCarrier(prodBlock, w.c.ChainID()); err != nil {
+			if err := validateCarrier(prodBlock, w.c.ChainID(), 0); err != nil {
 				t.Fatalf("HeadCarrier emitted a carrier its own validity rule REFUSES: %v", err)
 			}
 			gotProd, _ := replicaSeats(t, w.c, *prodBlock)
@@ -986,7 +986,7 @@ func TestModelCheck_CarrierSeating_EraSeamV4ParentV5Child(t *testing.T) {
 	bad := &Block{Version: BlockVersionStateRoot, Height: badNext, Prev: badPrev,
 		Entries:    []ports.Entry{entry(9)},
 		LastCommit: []Attestation{precommitOver(viaCarrier, badPrev, 0)}}
-	if err := validateCarrier(bad, c.ChainID()); !errors.Is(err, ErrCarrierNotWitnessable) {
+	if err := validateCarrier(bad, c.ChainID(), 0); !errors.Is(err, ErrCarrierNotWitnessable) {
 		t.Fatalf("a pre-v5 block carrying a LastCommit must be refused with ErrCarrierNotWitnessable, got %v", err)
 	}
 
@@ -1005,7 +1005,7 @@ func TestModelCheck_CarrierSeating_EraSeamV4ParentV5Child(t *testing.T) {
 	// Checked AFTER the version is stamped: validateCarrier's FIRST clause is the era gate, so
 	// on an unstamped block it would report ErrCarrierNotWitnessable and say nothing about the
 	// signatures. The rule under test here is that the entries verify over a V4 parent's hash.
-	if err := validateCarrier(h2, c.ChainID()); err != nil {
+	if err := validateCarrier(h2, c.ChainID(), 0); err != nil {
 		t.Fatalf("the seam carrier must be VALID over the v4 parent's hash: %v", err)
 	}
 	signCert(h2, cert, 0, c.ChainID())

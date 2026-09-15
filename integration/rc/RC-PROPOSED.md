@@ -427,9 +427,20 @@ bar, not a refactor.
    keyspace grows with every attributable equivocation for the life of the chain and has no
    ceiling to assert. The test asserts its monotonicity instead, so if slashing ever became
    reversible both the defence and this cost argument re-open.
-2. **A bound on per-block verification cost.** The box runs the shared carrier validity rule, so
-   its cost is `|LastCommit| × ed25519.Verify` — measured ~68 s single-core at the ~1.3M-entry
-   frame ceiling. Frame-bounded, not witness-bounded, and named in-source as a flip precondition.
+2. ~~**A bound on per-block verification cost.**~~ **— CLOSED.** `validateCarrier` verified an
+   ed25519 signature for every `LastCommit` entry with no count checked first, so the work one
+   block could demand was bounded only by the transport frame: ~1.3M entries, ~68 s of single-core
+   verification, from any peer that can send a block. It now checks the COUNT before any signature,
+   against a ceiling derived from the chain's own committed configuration — `carrierCap` returns
+   `RegCap * (BondTTLBlocks + 1)`, which is precondition 1's membership bound restated as a count,
+   because a carrier holds at most one precommit per qualified validator and the duplicate-id
+   refusal enforces the "at most one". At the shipped defaults that is 8,448 entries, ~0.44 s.
+   NO NEW SECURITY PARAMETER: the rule refuses only carriers no honest proposer could have built,
+   which makes it a strict narrowing. ZERO MEANS UNCAPPED, honestly — a chain with no re-challenge
+   cadence has no bounded qualified set to derive a ceiling from, and that is the trusted posture
+   where the threat does not apply. `BondTTLBlocks` is consensus-critical and genesis-bound, so
+   every replica derives the same ceiling. The ordering is the rule and is gated directly: entries
+   whose signatures cannot verify are refused for SIZE, proving the count ran first.
 3. **The anchor.** Without `-ws-checkpoint` a box pins on a provider's reported head:
    trust-on-first-use, disclosed on the line it prints. An ACCEPTING box anchored that way inherits
    its provider's choice of history. Acceptable for an auditor; decided, not assumed, for a

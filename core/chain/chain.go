@@ -439,6 +439,40 @@ const BlockVersionWitnessable = 5
 // the only one.
 const RegCap = 256
 
+// carrierCap is the largest number of precommits a block's LastCommit carrier can legitimately
+// hold, derived from the chain's own committed configuration rather than chosen as a constant.
+//
+// THE DERIVATION. A carrier holds at most one precommit per qualified validator — validateCarrier
+// refuses a duplicate id — and the qualified set is bounded by two rules that already ship: RegCap
+// caps registrations per block after the same-id fold, and the TTL sweep evicts any id whose latest
+// registration is older than BondTTLBlocks. So a bonded id must have registered inside the last ttl
+// blocks, each admitting at most RegCap distinct ids, and `qualified` is filtered from `bonded`:
+//
+//	|qualified| <= |bonded| <= RegCap * (BondTTLBlocks + 1)
+//
+// which is the ceiling returned here. Nothing about it is a new security parameter: it is the
+// membership bound restated as a count, so a change to either rule moves it automatically instead of
+// leaving a literal behind. membership_bound_v5_test.go drives the bound itself.
+//
+// ZERO MEANS UNCAPPED, and that is the honest reading rather than a gap. With BondTTLBlocks == 0
+// nothing is ever evicted, the qualified set grows with the chain, and there is no ceiling to
+// derive. That configuration is the trusted or demo posture — the TTL defaults ON for an untrusted
+// objective swarm, which is the posture the cost rule is for — so the cap binds exactly where the
+// threat it answers exists. BondTTLBlocks is consensus-critical and genesis-bound, so every replica
+// derives the same ceiling from the same committed value.
+func carrierCap(cfg Config) int {
+	if cfg.BondTTLBlocks == 0 {
+		return 0
+	}
+	// Clamp rather than overflow: an operator may commit an enormous cadence, and a wrapped
+	// ceiling would refuse honest carriers instead of hostile ones.
+	const clamp = 1 << 22
+	if cfg.BondTTLBlocks > clamp/uint64(RegCap) {
+		return clamp
+	}
+	return RegCap * int(cfg.BondTTLBlocks+1)
+}
+
 // SlashesBytesCap is the per-block ceiling on the canonically-encoded BYTES of the Slashes field, enforced
 // on every write path in EVERY era. It is DUAL-FACE — calling it "not a security parameter"
 // is wrong as stated: on I5's honest-never-slashed axis it is an immutable-#8 RESOURCE
@@ -3351,7 +3385,7 @@ func (c *Chain) ValidateProposal(b *Block) error {
 	// pinned by TestEveryDiskWritePathRunsTheEra3RootCheck
 	// (core/chain/reload_era3_boundary_test.go), which was extended to require
 	// validateCarrier.
-	if err := validateCarrier(b, c.ChainID()); err != nil {
+	if err := validateCarrier(b, c.ChainID(), carrierCap(c.cfg)); err != nil {
 		return err
 	}
 	// era-3 (v4) committed-root predicate (build step 2b). A no-op for sub-v4 blocks
@@ -3860,7 +3894,7 @@ func (c *Chain) appendStructural(b Block) error {
 	// be refused here exactly as on the commit path; the root check below would catch a
 	// seating divergence, but it would name the root, not the cause. Pure block-local, so
 	// it runs BEFORE apply and a rejected block is never left applied.
-	if err := validateCarrier(&b, c.ChainID()); err != nil {
+	if err := validateCarrier(&b, c.ChainID(), carrierCap(c.cfg)); err != nil {
 		return err
 	}
 	// era-3 (v4) committed-root re-validation on the OWN-DISK reload path (A-bare).

@@ -417,7 +417,7 @@ func callsViewMethod(body *ast.BlockStmt, method string) bool {
 // error-message tweak inside validateBondRegs and be turned off within a month; that
 // calibration is the, and its cost (an inline change INSIDE a called stage is unseen) is the
 // stated bound.
-const nodeAcceptPathDigest = "068cb9bfbca60ab45fc41a25427ef3b47326c343e3ebfce285175e8d4b5a318d"
+const nodeAcceptPathDigest = "3c5a5d5eab3bf79b968472642b4cdfa2f7a130b4136e20b51654a18843670aa2"
 
 // TestStageCover_ArmB_NodeBodyDigest is a CHANGE DETECTOR, not a cover proof.
 // Ablation: add `&& true` to the P5 clause chain in ValidateProposal ⇒ RED.
@@ -521,7 +521,7 @@ func TestStageCover_ArmC_ReverseCover(t *testing.T) {
 var nodeBodyDigests = map[string]string{
 	"ValidateEntry":              "f6844363fb7212b625f60ca726f3d361b7b3eaca7f4af22efb33703c2f5bf3e5",
 	"RequiredQuorum":             "c3a413ba707abae6cfdd40806fe5c195a79a2c4a7e4fa2939d8ee1cb92257454",
-	"ValidateProposal":           "400257e0ad3495b1318d1ceeaf72abbee033ec7bad42c646b0b6fa25b51053a2",
+	"ValidateProposal":           "738ec66e39b2ef23ac2ce02df76d98a07a0690259f974fea08ebc5f2edd0742a",
 	"attesterQualifiedAt":        "fd5de208dcecba70d1fcaf32172ef185c20b12020413ba7fff0ddd04fef3723f",
 	"collectQuorumSigs":          "c0b0a3aa3f475f6bcd0e7621b07d0005d575a21fadcc7e3f6aa457b0d634e603",
 	"effectiveEpochSet":          "8da6023fc1b8b0e5482b8f8c275ad9d93a7db8edf304750fdd15e6bfca4d292a",
@@ -541,7 +541,7 @@ var nodeBodyDigests = map[string]string{
 	"validateBondReg":            "595b695e1d665885b4de70585fe94ed4b09654ce956b6b08fe712665b80f3bf6",
 	"validateBondRegWindow":      "cceaf238101c9a751ebba1bfcb406ce01c90387d03fc62fdd8015b5e98ad7745",
 	"validateBondRegs":           "44a7b37852f162e47a7b409222f86251d846c959163659f07ac2d758fb39c08d",
-	"validateCarrier":            "e5cf4078a9d633fca3e977457e5c40fb203c2f6b49ab634ff9c8bc83faf2fbe2",
+	"validateCarrier":            "572daceb9f66a61706b2b1d2696ec94a43d3ba166c32b054cdb37a05c63db09a",
 	"validateEra3Roots":          "a7ec421d2ea91224cec48dc7cfe34f935908fdf0bc46d8e3dcbd8addf6823b92",
 	"validateEra3Version":        "1ff98cdc43e91fb10dc080c41a0c788beb6b8ddc06a87461a7fceea55fe4dc0b",
 	"validateEra4Version":        "9a1a52aa6d4d5182afddeae6b3b3da3fb6b1b93e1a517b6b026c687afd33edac",

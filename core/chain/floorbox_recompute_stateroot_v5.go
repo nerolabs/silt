@@ -324,7 +324,7 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	//
 	// The verdict is a STALL (never-Accept is unchanged): the box refuses the block, it does not
 	// judge it. box.Accept => node.Accept, never the biconditional.
-	if err := validateCarrier(&b, chainID); err != nil {
+	if err := validateCarrier(&b, chainID, carrierCap(c.cfg)); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrRecomputeCarrierInvalid, err)
 	}
 
