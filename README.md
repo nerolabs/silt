@@ -70,8 +70,12 @@ target is that forging N standings costs N× of every non-substitutable resource
 which is exactly what honest provision costs.
 
 **This multiplicative interlock is the target, not yet the operative guarantee.**
-Today consensus standing is gated by the bond axis alone. The other axes are
-designed and staged, not fully wired.
+Today consensus standing is gated by the bond axis and its time dimension: a bond
+must be sized, backed by real sealed bytes, and continuously re-proved, and one
+plot cannot back two identities. Served demand and address diversity are designed
+and staged, and do not yet enter the standing number.
+`core/chain/sybil_cost_census_v5_test.go` reports which of the five is denying and
+which is unwired, arm by arm, and fails if that changes without being noticed.
 
 ### How you would know
 
