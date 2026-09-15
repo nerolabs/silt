@@ -34,14 +34,54 @@ that was seen red before the fix and asserts a stall after it.
 handoff, phase follows applied history rather than delivery order, and the one-way shed does
 not re-arm under fork adoption.
 
-**2. Forging N standings costs N×, with no arm passing vacuously.**
+**2. Forging N standings costs N×, with no arm passing vacuously.** ⚠ *the census runs and reports; the coupled canon edit is unmade*
 *Done:* every arm paired with a positive control **on its own axis**. The bond and
 possession arms pass. The demand and diversity arms do not construct, and are reported
 **unwired** rather than denied.
 *Evidence:* unit → integration → field.
-*Ships with:* removing the build-status paragraph from `VISION.md`, whose own header says it
-carries none. The two are coupled deliberately — the paragraph is the only place that records
-which axes are unwired, so it goes when this item's gate starts reporting that instead.
+
+*THE ITEM UNDERCOUNTED THE ARMS.* `VISION.md` names FIVE economies of scale a Sybil relies on and
+one denial for each, not four — the fifth is retention decay, which is wired and denying, and the
+item did not credit it. `core/chain/sybil_cost_census_v5_test.go` drives all five at the place
+standing is decided and reports:
+
+| axis | verdict | the economy of scale |
+|---|---|---|
+| bond size | **DENIED** | one sealed plot backing many identities |
+| possession | **DENIED** | synthetic bytes standing in for storage |
+| demand | *UNWIRED* | self-dealt demand buying standing |
+| diversity | *UNWIRED* | massing identities behind one operator or subnet |
+| retention | **DENIED** | coasting on a single one-time proof |
+
+Three of five deny an economy of scale. Consensus standing is gated by the bond axis **and its
+time dimension** — which is a correction to the loose form "the bond axis alone".
+
+*UNWIRED IS A RESULT, NOT A SKIP,* and the arms that report it drive the fact rather than assert
+it: standing is the bonded size and nothing else, so demand neither earns standing nor can be
+inflated to buy it; and four identities behind one declared domain each hold FULL standing, because
+the domain enters the C2 concentration metric that gates the maturity shed rather than
+`idQualifies` — and it is self-declared, so a splitter separates into four domains at no cost.
+
+*NO ARM PASSES VACUOUSLY.* Each denial carries a positive control on its own axis — the same
+fixture made to GRANT standing by removing exactly the attack — because otherwise an arm passes
+whenever anything at all goes wrong. Four ablations, each red for its own reason: remove per-root
+ownership and three identities on one plot all earn standing; stop evicting on the TTL and coasting
+works; skip the space-time verify and synthetic bytes earn standing; and WIRE the diversity axis
+into `idQualifies` and the arm reporting it UNWIRED goes red rather than staying stale — which is
+what stops an UNWIRED verdict rotting into a lie once an axis is connected.
+
+*A FIXTURE ERROR WORTH KEEPING IN THE RECORD:* the possession arm first drove `apply` directly and
+reported the axis broken. `apply` does not verify a space-time proof — its own comment says a
+height>0 registration "was already VERIFIED by validateBondRegs" — so driving it bypasses the
+screen entirely. The arm drives validation now, which is where a registration from the network
+actually arrives, and its doc comment says so because the next person will reach for `apply` too.
+
+*STILL OWED — the coupled canon edit.* The build-status paragraph in `VISION.md` is the only place
+that recorded which axes are unwired, and this census now reports it instead, so the paragraph is
+free to go. It has NOT been removed: `VISION.md` is canon and the edit is the owner's. When it
+goes, the correction above travels with it — standing is gated by the bond axis and its time
+dimension, not by the bond axis alone.
+*Also owed:* the integration and field tiers. This is the unit tier.
 
 **3. The shipped default is the defended configuration, and the stock binary runs.** ⚠ *the defended half is gated; "reaches serving" is unreachable BY DESIGN and the condition is restated*
 *Done:* every defence this list demonstrates runs flagless; the stock EDGE node reaches serving on
