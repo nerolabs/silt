@@ -52,9 +52,15 @@ pure defaults; the stock VALIDATOR refuses, for a reason that names what the ope
 `silt daemon -validator` with no other flags reach serving. It cannot, and it must not. Driven
 against the built binary 2026-09-15, the stock validator posture meets TWO refusals in order:
 
-1. **The `-bond` default (64 MiB) is below the anti-release floor (1029 MiB)** that defaults ON for
-   an untrusted swarm, so the validator would earn no standing. Spurious, and fixable by raising
-   the default — already pinned in `integration/shippeddefault/`, and the VALUE is the owner's.
+1. ~~**The `-bond` default (64 MiB) is below the anti-release floor (1029 MiB)**~~ **— CLOSED.**
+   The bond now DERIVES from the floor when the operator names neither, the same way the floor, the
+   re-challenge TTL, the quorum sizing, the operator margin and the epoch cadence already do. The
+   shipped literal stays 64 MiB on purpose: the floor applies only on the objective path, and a
+   trusted or demo swarm should keep paying for the small plot it asked for rather than sealing a
+   gigabyte it has no use for — raising the literal for every posture would have raised the floor of
+   honest participation, which build-immutable #4 forbids. An EXPLICIT sub-floor `-bond` is still
+   refused rather than silently raised: an operator who asks for a bond that earns no standing is
+   told so.
 2. **Behind it, the one that cannot be defaulted away.** With the floor cleared the daemon still
    exits: *"refusing to start — an untrusted objective validator with no cold-start scaffolding
    would treat itself as mature from genesis (no anchor co-sign), letting a young or Sybil quorum
@@ -64,8 +70,9 @@ against the built binary 2026-09-15, the stock validator posture meets TWO refus
    quiet capture this list's third claim denies.
 
 So "the stock binary runs" is true of the edge node and correctly FALSE of the validator, and the
-item now says that instead. Raising the `-bond` default remains worth doing — it removes a spurious
-refusal that hides the substantive one — but it will not make this condition's original wording true.
+item now says that instead. Removing the spurious refusal was worth doing and is done — the
+substantive one is no longer hidden behind it — and, as predicted, it did not make the original
+wording true. Nothing can: that is the point of the second refusal.
 
 *DRIVEN, and newly gated:* `TestShippedDefaultLane_EveryDefenceIsOnBeforeAnyFlag` starts the stock
 validator posture with nothing but the role selector and requires five defences to announce

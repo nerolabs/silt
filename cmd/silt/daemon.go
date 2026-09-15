@@ -419,8 +419,11 @@ func cmdDaemon(args []string) error {
 	// released and recomputed just-in-time. At bond.PlotSealThroughput (~270 MB/s)
 	// and the ~2s compute window that is ~540 MiB, so the default carries ~2x margin.
 	floorSet, ttlSet, byzSet, marginSet, epochSet, quorumSet := false, false, false, false, false, false
+	bondSet := false
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
+		case "bond":
+			bondSet = true
 		case "min-bond-floor":
 			floorSet = true
 		case "bond-ttl":
@@ -454,6 +457,20 @@ func cmdDaemon(args []string) error {
 	// act on.
 	objectivePath := (*validator || *floorBox) && *objective && *minRep > 0
 	effFloor, defaulted := effectiveBondFloor(floorSet, explicitFloor, objectivePath)
+	// The bond itself gets the same safe-by-default treatment as the floor that
+	// judges it. Shipping a default BELOW the floor this same code arms produced a
+	// stock validator that refused its own defaults: the operator sees a bond
+	// rejected for being under a limit nobody chose and the binary derived. The
+	// default now follows the floor, so the two cannot disagree, and it tracks the
+	// derivation rather than a literal that drifts when the seal rate is re-measured.
+	// An EXPLICIT sub-floor -bond still refuses, which is the case that means what it
+	// says: an operator asked for a bond that earns no standing.
+	if bsz, err := parseSize(*bondSize); err == nil {
+		if eff, bondDefaulted := effectiveBondSize(bondSet, bsz, objectivePath, effFloor); bondDefaulted {
+			*bondSize = fmt.Sprintf("%d", eff)
+			fmt.Printf("bond: -bond defaulted to %d MiB for this untrusted (objective) swarm — the shipped default is below the anti-release floor armed above, and a bond under that floor earns NO standing. Override with -bond (an explicit bond below the floor is refused, not silently raised).\n", eff>>20)
+		}
+	}
 	if defaulted {
 		fmt.Printf("bond: anti-release floor defaulted to %d MiB for this untrusted (objective) swarm — a smaller plot could be released and re-sealed within the anti-release compute window (%s × plot throughput; independent of -request-timeout). Override with -min-bond-floor (0 disables; safe only for a trusted/demo swarm).\n", effFloor>>20, AntiReleaseComputeWindow)
 	}
@@ -2441,6 +2458,20 @@ func effectiveQuorum(quorumSet bool, explicit int, objectivePath, byzantineSizin
 // same treatment -objective already has, while an operator can still opt out
 // EXPLICITLY (-min-bond-floor 0) for a trusted/demo swarm. defaulted reports
 // whether the value was derived rather than operator-set.
+// effectiveBondSize is the bond an untrusted (objective) validator seals when the
+// operator names none. It mirrors effectiveBondFloor: an explicit choice always
+// wins — including one below the floor, which is then refused rather than raised,
+// because silently sealing ten times what an operator asked for is worse than
+// telling them their number earns nothing. Off the objective path the floor does
+// not apply and the shipped default stands, so a trusted or demo swarm keeps
+// paying for the small plot it asked for.
+func effectiveBondSize(bondSet bool, explicit int64, objectivePath bool, floor int64) (size int64, defaulted bool) {
+	if bondSet || !objectivePath || floor <= 0 || explicit >= floor {
+		return explicit, false
+	}
+	return floor, true
+}
+
 func effectiveBondFloor(floorSet bool, explicit int64, objectivePath bool) (floor int64, defaulted bool) {
 	if floorSet {
 		return explicit, false // an explicit choice always wins, including 0 (opt out)
