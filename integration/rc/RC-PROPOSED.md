@@ -84,10 +84,28 @@ clean mechanically (`ft_preflight` / `ft_sweep`, `integration/lib.sh`), so the r
 the two apart. Until it is driven on a box proven clean at the start, this item is red, because
 a demonstration that could not be driven is a failure.
 
-**6. The claims the adversary receives exist as an artifact.**
-*Done:* an in-repo statement of the three denials in checkable form, plus what is out of
-scope, written so a cold reader can construct attacks from it.
-*Evidence:* a cold read.
+**6. The claims the adversary receives exist as an artifact.** ⚠ *written, not yet cold-read*
+*Done:* an in-repo statement of the three denials in checkable form, written so a cold reader
+can construct attacks from it. `ADVERSARY.md`, at the repository root.
+*Evidence:* a cold read — by someone who has not read this list.
+
+*CLAIMS IN, GAPS OUT — the owner ruled this 2026-09-15, and it amended this item.* The
+done-condition used to read "plus what is out of scope". It no longer does. Handing the grader a
+list of our own gaps means the grader confirms the gaps we already knew, and a verdict reached
+that way proves nothing about the ones we did not. The artifact therefore states the three
+claims at full strength, as claims UNDER TEST, and says so — it does not assert they hold, and it
+does not map where they are weakest. The grader finds that itself, and a denial it reaches
+independently is worth what one we steered it to is not.
+
+*What "full strength" does and does not license.* Each claim is stated with its OWN boundaries,
+because a boundary is part of the claim and omitting it would overclaim: access-unobservability
+is metadata-layer and bounded by the anonymity trilemma; Sybil-resistance is re-pricing and
+concentration-bounding rather than prevention. Those are the claim. A catalogue of where the
+build falls short of the claim is not, and is not there.
+
+*The out-of-scope material still exists* — in this list, under *What this list deliberately does
+not cover*. It is for the owner, to hand over separately if the grader spends its budget on a
+gap the vision already concedes. It is not in the artifact.
 
 **7. No consensus state derives from a field the block hash does not cover.** ✅ *gated*
 *Done:* the seating map — which sets the maturity coefficient and decides whether the launch
