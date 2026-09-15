@@ -70,7 +70,7 @@ type Options struct {
 	// registry is credit-gated, ignored otherwise.
 	Publisher ports.NodeID
 	// Token, when set, is a quorum-issued publish credential that authorizes
-	// the entry WITHOUT a durable Publisher identity (T3, #14/F1). Acquire it
+	// the entry WITHOUT a durable Publisher identity (T3, persona 14 / F1). Acquire it
 	// (node.AcquireToken) before calling Add and pass it here; the entry then
 	// carries the token instead of a publisher.
 	Token *ports.PublishToken
@@ -94,7 +94,7 @@ type Options struct {
 // the right path for callers that don't distribute separately (local add,
 // genesis, sim). A networked publish that scatters to peers should instead
 // Stage, distribute, and publish only once distribution is confirmed, so a
-// failed scatter never leaves a dangling registry entry (#65) — see Stage.
+// failed scatter never leaves a dangling registry entry — see Stage.
 func Add(ctx context.Context, store ports.ChunkStore, reg ports.Registry, r io.Reader, opts Options) (link.Handle, error) {
 	h, entry, err := Stage(ctx, store, r, opts)
 	if err != nil {
@@ -111,7 +111,7 @@ func Add(ctx context.Context, store ports.ChunkStore, reg ports.Registry, r io.R
 // publishing. The caller publishes (reg.Publish) only after confirming the
 // content is distributed, so a loud placement failure never leaves a
 // dangling registry entry pointing at content that isn't actually placed
-// (register-after-distribute, #65 / tenet S5). The returned entry carries
+// (register-after-distribute / tenet S5). The returned entry carries
 // the manifest-chunk pointers, so the caller can LoadFull and Distribute
 // straight from it without a registry round-trip.
 func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Options) (link.Handle, ports.Entry, error) {
@@ -249,7 +249,7 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 	}
 	// Deliberately NOT published here: the caller registers it after
 	// distribution is confirmed (Add does so immediately; a networked
-	// publish waits for a successful scatter) — see #65.
+	// publish waits for a successful scatter) — see
 	return h, entry, nil
 }
 
@@ -261,14 +261,14 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 //	nd.Distribute(entry, m, false, porKey, func(placed int, derr error) {
 //	 n, err:= pipeline.RegisterAfterDistribute(ctx, reg, entry, placed, derr)
 //
-// ...
+//
 //
 //	})
 //
 // On a failed scatter (derr != nil) the registry is left untouched and the
 // scatter error is returned, so a loud placement failure never leaves a
 // dangling entry that names content the swarm can't actually serve
-// (register-after-distribute, #65 / tenet S5). Only on a confirmed scatter is
+// (register-after-distribute / tenet S5). Only on a confirmed scatter is
 // the entry published — and any publish error is surfaced too, never
 // swallowed. Extracting the gate here means both call sites share one tested
 // decision instead of duplicating "publish iff derr == nil" by hand.

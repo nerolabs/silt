@@ -1,6 +1,6 @@
 package credit
 
-// Durability escrow — the H7/S7 funding layer (issue #95 D-S7). The repair loop
+// Durability escrow — the H7/S7 funding layer (issue D-S7). The repair loop
 // that keeps content alive under churn must be paid in equilibrium, not charity
 // — the wound that killed Freenet/GNUnet. This file is the accounting for that:
 // a per-object credit reserve that pays repair bounties, kept solvent by an
@@ -213,7 +213,7 @@ func RepairBountyTruncation(k int, shardBytes int64) (exactE5, underpayTenthsPct
 		return 0, 0
 	}
 	num := shardBytes * RepairBountyCoeffNum                    // the exact price's numerator
-	den := int64(DeliveryBytesPerCredit) * RepairBountyCoeffDen //... over this
+	den := int64(DeliveryBytesPerCredit) * RepairBountyCoeffDen // .. over this
 	exactE5 = num * 100_000 / den
 	rem := num - repairBountyCredits(k, shardBytes, 1)*den
 	underpayTenthsPct = (rem*1_000 + num/2) / num

@@ -1,4 +1,4 @@
-// Bond audit (T1b, #78): validators challenge each other's identity-bound
+// Bond audit (T1b): validators challenge each other's identity-bound
 // storage bonds over the network, so consensus standing is continuously
 // backed by real held storage rather than self-reported serving. This is the
 // live half of the mechanism whose primitive (core/bond) and ledger
@@ -89,7 +89,7 @@ func (w *latWindow) min() ports.Duration {
 // it. Holding the plot is the cost; a validator must EnableBond to build
 // consensus standing. If a plot store is attached (SetPlotStore) and already
 // holds this identity's plot, it is RELOADED and re-verified against its
-// committed root (B7) — a restart never re-plots (#93); otherwise the plot is
+// committed root (B7) — a restart never re-plots; otherwise the plot is
 // generated once and persisted. (The plot is still held in memory; a
 // disk-backed lazy commitment and moving plotting off the core loop are the
 // recorded hardening follow-ups — see the core/bond package doc.)

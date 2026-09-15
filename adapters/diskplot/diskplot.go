@@ -1,7 +1,7 @@
 // Package diskplot persists a node's identity-bound storage-bond plot
 // (core/bond) to disk, so a restarting daemon RELOADS its multi-block plot
 // and re-verifies it against the committed root instead of re-plotting from
-// scratch (#93). Plotting is deliberately expensive — that expense is the
+// scratch. Plotting is deliberately expensive — that expense is the
 // Sybil cost — so paying it again on every restart would be both wasteful and,
 // for a large pledge, a long stall before the validator can prove standing.
 //

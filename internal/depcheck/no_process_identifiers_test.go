@@ -99,6 +99,15 @@ var processVocabulary = []processTerm{
 		why:  "a numbered item in a retest plan.",
 	},
 	{
+		name: "issue or change-request reference",
+		re:   regexp.MustCompile(`#\d{2,}`),
+		why: "a number after a hash is an issue or pull-request in someone's tracker. Direction comes " +
+			"from docs/VISION.md, docs/TENETS.md and the release-candidate list, and from nothing else: a " +
+			"reader who has to open a tracker to understand a comment is reading a record this project " +
+			"deliberately does not keep. The canon's own numbered items — the immutables, the don'ts, the " +
+			"personas — are single digits or written out, so this pattern cannot reach them.",
+	},
+	{
 		name: "milestone",
 		re:   regexp.MustCompile(`(?i)\bmilestone\b`),
 		why:  "a unit of build scheduling.",
@@ -284,16 +293,17 @@ func TestNoProcessIdentifiersInFileNames(t *testing.T) {
 // nobody has watched fire is a gate nobody knows the shape of.
 func TestProcessIdentifierGateFiresOnItsOwnVocabulary(t *testing.T) {
 	samples := map[string]string{
-		"build lane":                  "// era-4 recompute — lane-1 Part B core.",
-		"sub-increment":               "// the first sub-increment of the recompute.",
-		"build increment":             "// era-4 build increment 4c — the per-block rule.",
-		"build slice":                 "// bounding resident payload (slice 2).",
-		"build phase":                 "// the durability telemetry (Phase 2). Pure observability.",
-		"recompute sub-increment tag": "// class S (P1-b) reconstructs the digests.",
-		"build note":                  "// the class-P Weight anchor, BUILD note D4.",
-		"build direction":             "// DIRECTION B: record the just-written regVersion.",
-		"retest identifier":           "// below the objective anti-release floor (retest G4).",
-		"milestone":                   "// deferred to the next milestone.",
+		"build lane":                        "// era-4 recompute — lane-1 Part B core.",
+		"sub-increment":                     "// the first sub-increment of the recompute.",
+		"build increment":                   "// era-4 build increment 4c — the per-block rule.",
+		"build slice":                       "// bounding resident payload (slice 2).",
+		"build phase":                       "// the durability telemetry (Phase 2). Pure observability.",
+		"recompute sub-increment tag":       "// class S (P1-b) reconstructs the digests.",
+		"build note":                        "// the class-P Weight anchor, BUILD note D4.",
+		"build direction":                   "// DIRECTION B: record the just-written regVersion.",
+		"retest identifier":                 "// below the objective anti-release floor (retest G4).",
+		"issue or change-request reference": "// a restart reuses it (#93). Say so.",
+		"milestone":                         "// deferred to the next milestone.",
 	}
 	for _, term := range processVocabulary {
 		line, ok := samples[term.name]

@@ -80,15 +80,15 @@ func cmdDaemon(args []string) error {
 	care := fs.String("care", "", "comma-separated care links (siltcare:...) to repair — no decryption possible or needed")
 	repairInterval := fs.Duration("repair-interval", 60*time.Second, "how often a caretaker sweeps each -care'd root for lost shards (probe → reconstruct past the slack). A liveness cadence, not a security parameter — the repair-bounty legs stay structural at any setting. Lower it on a small/local swarm so repair (and the e2e proof) fires in seconds")
 	capacity := fs.String("capacity", "5G", "storage pledge, e.g. 2G, 500M (matches the client's default so the node contributes measurable, countable storage; \"\" = unlimited but doesn't count toward network storage)")
-	freeload := fs.Bool("freeload", false, "role separation (#47): serve the registry/relay/routing role but REFUSE to store or serve content — for public-infrastructure operators who run a rendezvous registry without being conscripted into hosting arbitrary content. The node still carries DHT routing; it just holds and serves no chunks")
+	freeload := fs.Bool("freeload", false, "role separation: serve the registry/relay/routing role but REFUSE to store or serve content — for public-infrastructure operators who run a rendezvous registry without being conscripted into hosting arbitrary content. The node still carries DHT routing; it just holds and serves no chunks")
 	serveContent := fs.Bool("serve-content", true, "hold and serve content shards (the edge tier's core contribution, bounded by -capacity). ON by default — this is what an ordinary node does. The explicit form exists so a tier profile composes positively (`-serve-content -archive=false -validator=false` is the transient edge box) rather than as a double negative. `-serve-content=false` is the same refusal as -freeload; passing both with opposite senses is refused rather than silently resolved")
 	acceptReceipts := fs.Bool("accept-delivery-receipts", false, "PoD neutral lane: BANK delivery receipts from fetchers this node served, and settle the conserved delivery credit — the fetcher's retrieval fee less the durability skim, which routes to the delivered object's repair escrow. Requires the token-issuer role (implied by -validator), because a receipt is verified against the issuer key that signed its retrieval token; the bilateral issuer==server shape is what the research's per-node settlement answer covers. Delivery credit is BALANCE ONLY and can never become consensus standing (the γ→1/N firewall) — a receipt is mintable with zero object bytes by design, and conservation, not possession, is what makes forging it unprofitable. Off by default")
 	deliveryIdle := fs.Duration("delivery-idle-window", deliveryIdleDefault, "Paid delivery sessions: close a session idle for this long since its LAST settlement, measured on this node's injected clock (wall time in production; a forward clock STEP reaps every live session at once — ; a chain stall does NOT, the settle path reads no chain), and book its unsettled face remainder ONCE as a DEPOSIT returned to the fetcher when the anchor leaves the guard window (1′; nothing is burned). The window is a LIVENESS choice and the default is DERIVED, not chosen: the stamp is coarsened to window/4, so a window guarantees only 3/4 of itself since a real settlement, and 24m is the value whose guarantee (18m) dominates both the 430 s worst stall the liveness model admits ((21)) and the 1040 s stall the field produced. The 430 s figure is a CONSERVATIVE ENVELOPE adopted because a project decision instructs a window above the bound, not a mechanism the reaper is racing — the chain-stall path it was originally sized on is refuted. Below the derived floor the daemon refuses. A session is one durable fetcher's prepayment at this server (one demand-domain anchor = 50,000 credits = 12.21 GiB of delivery), spans objects, settles incrementally on cumulative-count receipts, and is topped up with fresh anchors")
 	acceptRelayPayments := fs.Bool("accept-relay-payments", false, "PoD relay lane: ACCEPT sender-funded PayWord payment chains for forwarding content-blind bytes as a relay/gateway, ANCHORED (2026-09-04) to prepayment credentials this node blind-signs under its own per-epoch demand key and sells for the retrieval fee — a fetcher's durable identity buys k ≤ k_max anchors (k_max = 1 since the 2026-09-06 re-price; one anchor funds a whole 24.4 GiB session) here, a fresh ephemeral spends them at session open, and settlement pays min(paid increments, Σ face) into this node's operator BALANCE, burning the unconsumed remainder (settled ≤ Σ face, on this ledger). BUILT, NOT LIVE: an anchor verifies only under a chain-committed key (an era-4/v5 IssuerKeyReg — this node must be a bonded validator with the demand-key schedule, which this flag now turns on), so until this node COMMITS that key every session open is REFUSED with a named reason and nothing is paid. Era-4 activation is not the blocker it once was: -era4-activation-height defaults to 1, so v5 is live from height 1 and the missing piece is the commitment, not the era. What holds throughout: a fetcher commits a chain root once under a FRESH EPHEMERAL identity (M0 guard (i): the credential is blind, so the burn cannot be linked to the session) and reveals one preimage per forwarded increment; this node verifies each with one SHA-256 under a per-session walk budget; a fresh identity and chain are required PER SESSION (M0 guard (ii)); nothing here ever touches standing (the γ→1/N firewall). UNFIT FOR THE EDGE TIER, and off by default at EVERY tier ((1)): settlement is all-or-nothing at session CLOSE, and sweepRelaySeen drops a session at admitEpoch+2 UNSETTLED, so an over-running session forfeits 100 % of the credit it earned while the fetcher's face was already spent at open (driven: 8 increments forwarded, paid 0). A session lives 9-16 blocks = 413-734 s at the measured T_b, so clearing one 24.41 GiB face inside it needs 286-508 Mbit/s SUSTAINED on a single session; at a 100 Mbit/s uplink a session moves 4.81 of 24.41 GiB and is paid NOTHING. Enable this only if your uplink clears that ratio -- a pony or horse that turns it on is doing the work and collecting zero. The all-or-nothing settlement is tracked as design debt (a periodic relay sweep, or incremental settlement); until it lands this lane is horse-and-above by construction. Built, sim-proven, never exercised on a real network")
 	archive := fs.Bool("archive", false, "ARCHIVAL tier: retain every block's heavy space-time bond proof to genesis instead of shedding it below the rolling retention horizon, so this node can serve the deep history a pruning swarm has already dropped (what a node stranded past the prune horizon needs — 's true-loss residual, ErrNeedCheckpoint). RETENTION ONLY, never validity: an archival node validates by exactly the same rules as a pruning one, so the tiers cannot fork against each other. Costs O(all history) resident payload — build-immutable #8 forbids it on the 1 vCPU / 2 GB box, which is the whole reason the tier model exists. Off by default")
-	registryOnly := fs.Bool("registry-only", false, "the LEANEST public-registry role (#47): serve a file-backed registry over HTTPS and construct NO storage node at all — no DHT, chunk store, chain, or caretaker. Unlike -freeload (a full routing node that refuses to host content), this builds nothing but the registry server, so a public-infrastructure operator runs a rendezvous registry at minimal cost. Needs -serve-registry <addr>")
+	registryOnly := fs.Bool("registry-only", false, "the LEANEST public-registry role: serve a file-backed registry over HTTPS and construct NO storage node at all — no DHT, chunk store, chain, or caretaker. Unlike -freeload (a full routing node that refuses to host content), this builds nothing but the registry server, so a public-infrastructure operator runs a rendezvous registry at minimal cost. Needs -serve-registry <addr>")
 	// Empty default is deliberate: no built-in seed domain (neutral infra,
-	// community-run) — see the discovery package doc (#27 Part A).
+	// community-run) — see the discovery package doc (Part A).
 	dnsSeed := fs.String("dns-seed", "", "domain whose TXT records list bootstrap peers")
 	mdns := fs.Bool("mdns", true, "announce and discover peers on the local network (LAN multicast); needs a non-loopback -listen")
 	denylistPath := fs.String("denylist", "", "operator takedown list: a file of denied root hashes to refuse to store/serve (you choose which lists to honor)")
@@ -242,7 +242,7 @@ func cmdDaemon(args []string) error {
 	}
 	id := ident.NodeID()
 
-	// -registry-only (#47): the leanest public-registry role — serve a file-backed
+	// -registry-only: the leanest public-registry role — serve a file-backed
 	// registry over HTTPS and construct NO storage node (no DHT, chunk store, chain, or
 	// caretaker). This returns before the node, transport, and everything downstream is
 	// built, so a rendezvous registry runs at minimal cost. Blocks until the process is
@@ -263,7 +263,7 @@ func cmdDaemon(args []string) error {
 			return err
 		}
 		defer shutdown()
-		fmt.Printf("registry-only: %s serving a file-backed registry at https://%s (no storage node, #47)\n", id, bound)
+		fmt.Printf("registry-only: %s serving a file-backed registry at https://%s (no storage node)\n", id, bound)
 		fmt.Println("serving; Ctrl-C to stop")
 		select {} // block until the process is stopped; the registry server runs in its own goroutine
 	}
@@ -331,8 +331,8 @@ func cmdDaemon(args []string) error {
 		return err
 	}
 	// Base on DefaultConfig so new fields are inherited, not silently
-	// dropped to their zero value (#71 — this is how demand-dispersion was
-	// off in the daemon and the #65 fetch-retry shipped inert). Override
+	// dropped to their zero value (this is how demand-dispersion was
+	// off in the daemon and the fetch-retry shipped inert). Override
 	// only what the daemon genuinely needs to differ on.
 	cfg := node.DefaultConfig()
 	cfg.PublishWorkCounters = !privacyOn
@@ -406,7 +406,7 @@ func cmdDaemon(args []string) error {
 	cfg.DHTDomainCap = *dhtDomainCap // failure-domain diversity for eclipse resistance (H5-B)
 	cfg.Domain = *domain             // this node's failure-domain label (H5-B DHT diversity + committed in the bond for the A-axis C2 metric)
 	// The anti-release floor is SAFE-BY-DEFAULT on the objective/open path (M0
-	// ). Shipping the mechanism but defaulting it OFF left a
+	// Shipping the mechanism but defaulting it OFF left a
 	// doc-following open validator admitting a sub-floor, releasable bond to full
 	// standing — "fixed but off by default" is not fixed. So it gets the same
 	// treatment -objective already has: auto-on for an untrusted swarm -min-rep
@@ -616,7 +616,7 @@ func cmdDaemon(args []string) error {
 		// for, so the rename must not silently break it — an announced line
 		// is an observable contract (S5). The new positive-axis name leads
 		// because that is how the tier profile is now composed.
-		fmt.Println("serve-content: OFF (freeload: ON) — this node refuses to store or serve content (registry/relay/routing only, #47)")
+		fmt.Println("serve-content: OFF (freeload: ON) — this node refuses to store or serve content (registry/relay/routing only)")
 	}
 	if *archive {
 		fmt.Println("archive: ON — ARCHIVAL tier: every heavy bond proof retained to genesis, so this node can serve the deep history a pruning swarm has shed (O(all history) resident — not for the 2 GB box)")
@@ -641,7 +641,7 @@ func cmdDaemon(args []string) error {
 			lg.Log(ports.LogInfo, event, kv...)
 		}
 	}
-	// #69: persist each hosted chunk's storage proof so a restart re-announces
+	// persist each hosted chunk's storage proof so a restart re-announces
 	// coded shards under the right column key (AnnounceHeld, below, reads the
 	// reloaded proofs) — otherwise a disk full of content is invisible until
 	// re-hosted. The reload is scheduled LAZILY onto the event loop (below), so a
@@ -668,10 +668,10 @@ func cmdDaemon(args []string) error {
 		// registry listeners below bind immediately (a public node's registry/relay
 		// were connection-refused for ~9 min after every restart on a 14 GB store)
 		// and proofMeta matures lazily while the daemon serves. An announce that
-		// races the scan self-corrects on the next reprovide sweep (#69).
+		// races the scan self-corrects on the next reprovide sweep.
 		nd.StartProofReload()
 	}
-	// #93: persist the bond plot so a restart reloads (and re-verifies) it
+	// persist the bond plot so a restart reloads (and re-verifies) it
 	// instead of re-plotting the deliberately-expensive dataset. Attach before
 	// EnableBond, below, which loads-or-plots through it.
 	if pl, perr := diskplot.Open(filepath.Join(*storeDir, "plot")); perr != nil {
@@ -1220,7 +1220,7 @@ func cmdDaemon(args []string) error {
 		if sz, perr := parseSize(*bondSize); perr == nil && sz > 0 {
 			if nd.EnableBond(ident.Signer(), sz) {
 				// Reloaded the existing plot — a restart reuses it, no re-plot
-				// (#93). Say so; logging "sealed" would falsely suggest the
+				// Say so; logging "sealed" would falsely suggest the
 				// expensive one-time plotting ran again (acceptance F7).
 				fmt.Printf("bond: reloaded the %s storage bond for consensus standing (no re-plot)\n", *bondSize)
 			} else {
@@ -1246,7 +1246,7 @@ func cmdDaemon(args []string) error {
 		// Publisher privacy (T3): this validator issues blind-signed publish
 		// tokens, and (when -require-tokens) the chain accepts only entries that
 		// carry one — no Publisher identity on-chain. The issuer key PERSISTS
-		// (#93 / §3d): a restart reuses it, so outstanding tokens stay verifiable
+		// (§3d): a restart reuses it, so outstanding tokens stay verifiable
 		// and peers' cached issuer keys don't go stale.
 		// Demand-key rotation state: the epoch the band was last built for,
 		// and the (off-loop) rotation step. Both stay nil/zero unless
@@ -1773,7 +1773,7 @@ func cmdDaemon(args []string) error {
 	// Persist the living address book so the next start needs no flags —
 	// but only peers we've actually reached, not every address ever
 	// observed. Otherwise a warm restart reloads a graveyard of dead
-	// ephemeral publisher identities and drowns lookups in timeouts (#43).
+	// ephemeral publisher identities and drowns lookups in timeouts.
 	// The reachable set lives on the (lock-free) node loop, so snapshot it
 	// there and do the disk write off-loop.
 	go func() {
@@ -1816,7 +1816,7 @@ func cmdDaemon(args []string) error {
 			report(err)
 			return
 		}
-		// #27: let the transport upgrade a relay path to a direct one. The
+		// let the transport upgrade a relay path to a direct one. The
 		// relay coordinates (RequestPunch); when it signals us, punch the peer
 		// from our registration port (HolePunch).
 		rc.SetOnPunch(func(peer ports.NodeID, peerAddr string, localPort int) {
@@ -1834,7 +1834,7 @@ func cmdDaemon(args []string) error {
 				tr.SetAdvertise(rc.Addr())
 				fmt.Printf("relay-via: registered — peers reach us at %s\n", rc.Addr())
 				dlog("relay-via registered", "addr", rc.Addr())
-				if seen := rc.Observed(); seen != "" { // STUN-style, for hole-punching (#27)
+				if seen := rc.Observed(); seen != "" { // STUN-style, for hole-punching
 					nd.SetObservedAddr(seen)
 					fmt.Printf("relay-via: this node's public endpoint looks like %s (observed by the relay)\n", seen)
 					dlog("observed public endpoint", "addr", seen)
@@ -2139,7 +2139,7 @@ func cmdDaemon(args []string) error {
 				}
 			})
 			// Provider records lease out after ProviderRecordTTL; a holder that never
-			// re-announces goes invisible the moment its startup records lapse (#69).
+			// re-announces goes invisible the moment its startup records lapse.
 			// Reprovide on a timer set well inside the TTL — a full re-announce, safe over
 			// a large held set now that the DHT walk terminal is trampolined.
 			nd.StartReprovide()
@@ -2292,8 +2292,8 @@ func joinSwarm(peers string, replication int) (*ephemeral, func(fn func(done fun
 	if err != nil {
 		return nil, nil, err
 	}
-	// Same DefaultConfig base as the daemon (#71). This is the actual swarm
-	// add/get fetcher, so it inherits the #65 retry; it stages and leaves,
+	// Same DefaultConfig base as the daemon. This is the actual swarm
+	// add/get fetcher, so it inherits the retry; it stages and leaves,
 	// so the repair/demand fields are harmless (it never caretakes).
 	cfg := node.DefaultConfig()
 	cfg.RequestTimeout = ports.Duration(2 * time.Second)
@@ -2305,7 +2305,7 @@ func joinSwarm(peers string, replication int) (*ephemeral, func(fn func(done fun
 	}
 	nd := node.New(ident.NodeID(), cfg, walltime.New(loop), tr, memstore.New())
 	nd.SetSigner(ident.Signer()) // sign self-certifying provider records (H5)
-	nd.SetEphemeral(true)        // a publish/fetch client that keeps nothing — peers must not route to it (#43)
+	nd.SetEphemeral(true)        // a publish/fetch client that keeps nothing — peers must not route to it
 	if os.Getenv("SILT_SWARM_DEBUG") != "" {
 		// Per-attempt narration to stderr: a swarm add/get client is
 		// otherwise silent about placement attempts, so a delivered-but-unacked

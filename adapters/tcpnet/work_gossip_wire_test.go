@@ -2,7 +2,7 @@ package tcpnet
 
 // rows 8-9 — the two work-gossip fields must survive real CBOR.
 //
-// The #65 class: a ports.Message field with no wireMsg mapping is SILENTLY DROPPED over
+// The class: a ports.Message field with no wireMsg mapping is SILENTLY DROPPED over
 // TCP and the feature works only in the in-process sim. Here that failure is especially
 // quiet, because a dropped work figure decodes as 0 and 0 is a legal value — every
 // remote peer would look like a node that has served nothing, the serve-Gini would read

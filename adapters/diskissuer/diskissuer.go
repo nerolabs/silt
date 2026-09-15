@@ -3,7 +3,7 @@
 // issuer key is load-bearing for privacy AND liveness: peers cache its public
 // half to verify the token signatures it blind-signed, and outstanding tokens
 // were signed under it — regenerate on every restart and those tokens become
-// unverifiable and every cached peer key goes stale (#93 / §3d). A validator's
+// unverifiable and every cached peer key goes stale (§3d). A validator's
 // issuer identity must survive a restart just as its bond plot does.
 package diskissuer
 

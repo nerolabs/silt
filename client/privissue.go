@@ -74,7 +74,7 @@ func WithdrawDemandTokenPrivately(rng io.Reader, issuerID ports.NodeID, issuerAd
 	defer tr.Close()
 
 	nd := node.New(ephID, node.DefaultConfig(), walltime.New(loop), tr, memstore.New())
-	nd.SetEphemeral(true) // a short-lived client: peers must not route to it (#43)
+	nd.SetEphemeral(true) // a short-lived client: peers must not route to it
 	tr.AddPeer(issuerID, issuerAddr)
 
 	type result struct {

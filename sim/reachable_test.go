@@ -8,7 +8,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// #43: peers.json must persist only peers we have actually reached, so a
+// peers.json must persist only peers we have actually reached, so a
 // warm restart re-seeds from live peers instead of reloading a graveyard of
 // dead (e.g. ephemeral publisher) identities that then drown lookups in
 // timeouts. ReachablePeers backs that filter: a peer enters the set on a

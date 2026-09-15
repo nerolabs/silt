@@ -263,7 +263,6 @@ func Seal(pk []byte, size int64) *Commitment {
 
 // Blocks exposes the plot blocks so the project can persist them
 // (ports. PlotStore) and reload on restart instead of re-plotting
-// (#93).
 func (c *Commitment) Blocks() [][]byte { return c.blocks }
 
 // ReleaseBlocks drops the resident plot bytes, keeping only the commitment

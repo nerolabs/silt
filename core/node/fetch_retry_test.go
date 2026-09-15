@@ -13,7 +13,7 @@ import (
 // path. It delivers each Send to the target node's handler via the shared
 // scheduler — so replies flow through the real serving code, not a mock —
 // and can fail a fetcher's FetchChunk send transiently, standing in for the
-// "relay at capacity" refusal a saturated relay returns under load (#65).
+// "relay at capacity" refusal a saturated relay returns under load.
 type linkNet struct {
 	sched     *simclock.Scheduler
 	ends      map[ports.NodeID]*linkEnd
@@ -73,7 +73,7 @@ func twoNode(t *testing.T, cfg Config, held ports.Chunk, dropFetch func(from, to
 	return fetcher, pID, sched
 }
 
-// TestFetchRetryRecoversTransientRelayCongestion is the #65 fetch-side
+// TestFetchRetryRecoversTransientRelayCongestion is the fetch-side
 // regression: a provider reached through a saturated relay refuses the first
 // fetch ("relay at capacity"), then the slot frees. With FetchAttempts>1 the
 // fetch re-sweeps after a backoff and succeeds; before the retry it reported

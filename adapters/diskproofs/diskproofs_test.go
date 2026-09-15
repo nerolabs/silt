@@ -29,7 +29,7 @@ func TestRoundTripLoadDelete(t *testing.T) {
 		var id, root, p0, p1 ports.Hash
 		id[0], root[0], p0[0], p1[0] = b, b+1, b+2, b+3
 		// PoR tags must persist too, or a restarted host re-announces a shard
-		// it can no longer prove and gets slashed (#69 / Gate 4a).
+		// it can no longer prove and gets slashed (Gate 4a).
 		tag0, tag1 := make([]byte, 32), make([]byte, 32)
 		tag0[0], tag1[0] = b+4, b+5
 		return id, ports.StorageProof{Root: root, Index: int(b), Total: 8,

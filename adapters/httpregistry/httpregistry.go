@@ -133,7 +133,7 @@ func ServeTLS(addr string, ident *identity.Identity, reg ports.Registry) (boundA
 // replies 202 and the client polls PublishStatus until the entry commits OR the gather
 // reaches a terminal failure. This removes the flat 10s-client / 30s-server deadlines that
 // guillotined a ~1.5 MB genesis gather WITHOUT holding a connection open for
-// the whole gather (no slowloris, #48). PublishStatus is what lets the client fast-fail on a
+// the whole gather (no slowloris). PublishStatus is what lets the client fast-fail on a
 // no-quorum round — so a publish-retry-until-standing caller retries promptly — instead of
 // polling out the full budget. A registry that commits instantly (fileregistry) implements
 // neither, so the sync Publish is used.
@@ -181,7 +181,7 @@ var (
 )
 
 func serve(addr string, reg ports.Registry, tlsCfg *tls.Config) (boundAddr string, shutdown func(), err error) {
-	// Read-cost bounding (#48): a per-IP rate limit + server timeouts keep a public
+	// Read-cost bounding: a per-IP rate limit + server timeouts keep a public
 	// registry cheap to run and hard to exhaust (slowloris, lookup floods).
 	lim := newIPRateLimiter(defaultRatePerSec, defaultBurst)
 	mux := http.NewServeMux()
@@ -293,7 +293,7 @@ func serve(addr string, reg ports.Registry, tlsCfg *tls.Config) (boundAddr strin
 	if tlsCfg != nil {
 		ln = tls.NewListener(ln, tlsCfg)
 	}
-	// Server timeouts round out the read-cost bounding (#48) against slowloris and slow
+	// Server timeouts round out the read-cost bounding against slowloris and slow
 	// reads/writes (the per-IP limiter `lim` is created above; /all is priced by work).
 	srv := &http.Server{
 		Handler:           lim.limit(mux),

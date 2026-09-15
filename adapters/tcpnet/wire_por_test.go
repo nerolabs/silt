@@ -9,7 +9,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// TestPorFieldsSurviveWire is the #65-class guard: the wire codec is
+// TestPorFieldsSurviveWire is the-class guard: the wire codec is
 // hand-rolled (toWire/fromWire map field-by-field), so a new field is
 // SILENTLY DROPPED over real TCP until it is added there — a unit test on
 // the port struct alone would never notice. This round-trips a message
@@ -82,7 +82,7 @@ func TestPorFieldsSurviveWire(t *testing.T) {
 	}
 }
 
-// TestCreditSurvivesWire is the same #65-class guard for the prepaid publish credit
+// TestCreditSurvivesWire is the same-class guard for the prepaid publish credit
 // (F4 / D3 fee decoupling): the Credit riding a MsgTokenRequest was a port-struct field
 // with no wire mapping, so it was SILENTLY DROPPED over real TCP — the fee-decoupling
 // and any ephemeral/credit-paid withdrawal only worked in the in-process sim. This

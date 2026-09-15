@@ -20,7 +20,7 @@ import (
 )
 
 // TestUnlinkablePublishViaQuorumToken is the end-to-end integration tier for
-// publisher privacy (T3, #14/F1): a publisher acquires a publish token by
+// publisher privacy (T3, persona 14 / F1): a publisher acquires a publish token by
 // collecting blind signatures from a QUORUM of validators over the node loop
 // (paying the fee with its durable identity, but the issuers never see the
 // serial), then publishes an entry that COMMITS carrying the token and NO

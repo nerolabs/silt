@@ -340,7 +340,7 @@ func DefaultConfig() Config {
 // never be silently mis-validated under another era's rules — the
 // hard-fork guard the chain needs BEFORE any change to what a block hash
 // commits to or how a block validates (real-bond commitments, mandatory
-// tokens; #98, prerequisite for #90/#91/#92). Additive field changes stay
+// tokens;, prerequisite for/). Additive field changes stay
 // version-compatible via the keyasint tags (the Token addition proved
 // this); a version bump is reserved for a change that would otherwise be a
 // silent flag-day.
@@ -3380,7 +3380,7 @@ func (c *Chain) ValidateEntry(e ports.Entry) error {
 	if len(e.ManifestChunks) == 0 {
 		return fmt.Errorf("chain: entry %s has no manifest pointers", e.Root)
 	}
-	// M0 privacy (#97): a Publisher→root record is permanent on this
+	// M0 privacy: a Publisher→root record is permanent on this
 	// append-only chain, so the default refuses it. Publish carries no
 	// durable identity — a blind-signed token, or nothing — unless the
 	// deployment is explicitly trusted (AllowPublisher).

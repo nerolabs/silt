@@ -130,7 +130,7 @@ func TestApiFundBadInputIs400(t *testing.T) {
 }
 
 // TestApiFundNeedsToken: funding spends credits, so it is a mutating call and
-// must be refused without the bearer token (the #89 gate).
+// must be refused without the bearer token (the gate).
 func TestApiFundNeedsToken(t *testing.T) {
 	_, h := fundServer(t, 10_000)
 	form := url.Values{"root": {ports.Hash{0x03}.String()}, "amount": {"100"}}

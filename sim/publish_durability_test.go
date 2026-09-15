@@ -39,7 +39,7 @@ func (f *flakyStore) Put(ctx context.Context, c ports.Chunk) error {
 	return f.ChunkStore.Put(ctx, c)
 }
 
-// TestPublishFailsLoudWhenManifestUnplaceable is the B7 / #60 regression:
+// TestPublishFailsLoudWhenManifestUnplaceable is the B7 / regression:
 // when every storage node refuses (all at capacity — the post-cap state that
 // stranded ~14% of the scaling run), a manifest chunk lands nowhere. Before
 // the fix, Distribute reported success and the publisher returned a link to
@@ -90,7 +90,7 @@ func TestPublishFailsLoudWhenManifestUnplaceable(t *testing.T) {
 	}
 }
 
-// TestRegisterAfterDistributeLeavesNoDanglingEntry is the #65
+// TestRegisterAfterDistributeLeavesNoDanglingEntry is the
 // register-after-distribute regression at the integration-within-a-peer tier:
 // it drives the REAL node.Distribute failure (every storage node refuses)
 // through the exact gate the swarm/UI publish paths run — Stage (no publish),
@@ -140,12 +140,12 @@ func TestRegisterAfterDistributeLeavesNoDanglingEntry(t *testing.T) {
 		t.Fatal("expected a loud scatter failure when no node can hold the manifest chunk")
 	}
 	if _, ok, _ := cl.Registry.Lookup(bgCtx, h.Root); ok {
-		t.Fatal("a failed scatter left a dangling registry entry — register-after-distribute (#65) regressed")
+		t.Fatal("a failed scatter left a dangling registry entry — register-after-distribute regressed")
 	}
 }
 
 // TestManifestPlacementRetriesTransientFailure proves the availability half
-// of the #60 fix: a manifest chunk whose first placement fails transiently
+// of the fix: a manifest chunk whose first placement fails transiently
 // is retried (with a fresh lookup) and succeeds, so the publish completes
 // instead of failing — no strand, no loud error.
 func TestManifestPlacementRetriesTransientFailure(t *testing.T) {
@@ -190,7 +190,7 @@ func TestManifestPlacementRetriesTransientFailure(t *testing.T) {
 
 // selectiveStore refuses to Put any chunk whose ID is in refuse, accepting
 // the rest — so a test can let manifest chunks land while starving the data
-// shards, isolating the #64 stripe-durability check from the #60 manifest one.
+// shards, isolating the stripe-durability check from the manifest one.
 // refuse is shared by pointer and populated AFTER pipeline.Add (which writes
 // only to the publisher's own store), so it bites only during Distribute.
 type selectiveStore struct {
@@ -228,8 +228,8 @@ func codedFile(t *testing.T, cl *Cluster, pub *node.Node, size, chunkSize int) (
 	return entry, m, h
 }
 
-// TestPublishFailsLoudWhenStripeUnrecoverable is the B7 / #64 regression, the
-// data-shard twin of the #60 manifest case: the manifest chunk places fine,
+// TestPublishFailsLoudWhenStripeUnrecoverable is the B7 / regression, the
+// data-shard twin of the manifest case: the manifest chunk places fine,
 // but every data and parity shard is refused, so the one stripe is left with
 // zero of its shards placed — unrecoverable. Before the fix, Distribute
 // ignored data-column placement entirely and reported success, returning a
@@ -249,7 +249,7 @@ func TestPublishFailsLoudWhenStripeUnrecoverable(t *testing.T) {
 	entry, m, h := codedFile(t, cl, pub, 4096, 1024)
 
 	// Refuse every data + parity leaf on the storage nodes; leave the manifest
-	// chunk placeable so the failure is unambiguously the data stripe, not #60.
+	// chunk placeable so the failure is unambiguously the data stripe, not
 	for _, id := range m.Leaves() {
 		refuse[id] = true
 	}
@@ -268,7 +268,7 @@ func TestPublishFailsLoudWhenStripeUnrecoverable(t *testing.T) {
 	}
 }
 
-// TestPublishSucceedsWhenStripeStillRecoverable proves the #64 check does not
+// TestPublishSucceedsWhenStripeStillRecoverable proves the check does not
 // false-positive: with all 6 parity shards refused but every real data shard
 // placed, the stripe still reconstructs (the missing parity isn't needed, and
 // the short stripe's padding positions are known zero), so Distribute must

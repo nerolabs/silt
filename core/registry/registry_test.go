@@ -68,7 +68,7 @@ func TestRepublishIgnoresPublisher(t *testing.T) {
 	// Same content, different publisher — a retry from a fresh CLI identity
 	// (each `swarm add` mints one), or a second person adding the same file.
 	// Must dedup, not collide: regression for the "already published with
-	// different entry" failure that made retries unrecoverable (#46).
+	// different entry" failure that made retries unrecoverable.
 	other := e
 	other.Publisher = ports.HashBytes([]byte("bob"))
 	if err := r.Publish(ctx, other); err != nil {

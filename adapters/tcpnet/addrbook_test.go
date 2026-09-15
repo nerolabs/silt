@@ -1,6 +1,6 @@
 package tcpnet_test
 
-// The two-slot address book (#27 polish): a peer may be known by a
+// The two-slot address book (polish): a peer may be known by a
 // direct host:port AND a relay:R@host:port form at once. The dialer
 // prefers direct (no third hop), falls back to the relay in the same
 // delivery, and drops a direct address only when the relay fallback

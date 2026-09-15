@@ -1,6 +1,6 @@
 package tcpnet_test
 
-// Regression tests from the first real cross-network run (issue #27):
+// Regression tests from the first real cross-network run (issue):
 // a NATed peer can dial out but can never be dialed, so a request/reply
 // exchange only works if the reply rides the requester's own inbound
 // conn — and a wildcard bind must never be advertised, or peers "learn"

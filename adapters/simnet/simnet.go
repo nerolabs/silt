@@ -35,7 +35,7 @@ type Stats struct {
 	Sent      int
 	Delivered int
 	Dropped   int // loss + partitions + dead endpoints + unsolicited-into-NAT
-	Relayed   int // delivered the long way, spliced through the relay (#27)
+	Relayed   int // delivered the long way, spliced through the relay
 	// Kinds counts attempted sends per MsgKind, so a test can assert a
 	// message type never crossed the wire (e.g. an audit that must verify
 	// WITHOUT fetching ground truth sends zero MsgFetchChunk). Indexed by
@@ -51,7 +51,7 @@ type Network struct {
 	// partitioned maps node → group; nodes in different groups can't
 	// talk. Empty map = no partition.
 	group map[ports.NodeID]int
-	// nat models home routers (#27): a node listed here is un-dialable
+	// nat models home routers: a node listed here is un-dialable
 	// cold from off its LAN. Empty (the default) = a flat, public net,
 	// so directlyReachable short-circuits and there is zero overhead.
 	nat map[ports.NodeID]natBox
@@ -156,7 +156,7 @@ func (e *Endpoint) Send(to ports.NodeID, msg ports.Message) error {
 		n.Stats.Dropped++
 		return nil
 	}
-	// NAT routing (#27): deliver direct if the destination is dialable,
+	// NAT routing: deliver direct if the destination is dialable,
 	// else splice through the relay, else the packet is an unsolicited
 	// inbound to a NAT with nowhere to go. In a flat net (no NAT
 	// configured) directlyReachable is always true, so neither the extra
@@ -295,7 +295,7 @@ func (n *Network) Alive(id ports.NodeID) bool {
 	return ok && !ep.dead
 }
 
-// --- NAT model (#27): the deterministic mirror of the Docker harness, so
+// --- NAT model: the deterministic mirror of the Docker harness, so
 // The relay and hole-punch paths get fast, CI-native coverage too. A real
 // home router lets a node dial out (and holds the reverse mapping open so
 // replies get back in) but drops unsolicited inbound — so two NATed nodes
@@ -325,7 +325,7 @@ func (n *Network) NAT(id ports.NodeID, lan int, symmetric bool) {
 // node that registered with it (so it can reach them, and they it).
 func (n *Network) Relay(id ports.NodeID) { n.relay, n.hasRelay = id, true }
 
-// HolePunch models the #27 coordinated simultaneous-open: both peers fire
+// HolePunch models the coordinated simultaneous-open: both peers fire
 // at each other's relay-observed endpoint at once. For endpoint-
 // independent (cone) NATs the crossing packets leave matching mappings
 // and a direct path opens; if either side is symmetric, its per-

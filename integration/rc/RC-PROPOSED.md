@@ -120,12 +120,17 @@ exemption excused moves, nobody re-read the rule against what replaced it.
 - **Bare letter-number tags** (`D3`, `H-4`, `F1`) are not in the gate. `D3` alone has 65 hits and
   they collide with real domain names here; a gate that fires on domain terms teaches people to
   work around it. Their absence is a limit of the gate, not a permission.
-- **GitHub issue references (`#93`, `#69`, …), 214 of them, are NOT treated as violations.** The
-  item's text bans issue identifiers; its reason is that a pointer into a record nobody can fetch
-  looks like a reason and is not one. These resolve: every one sampled is a real, readable issue,
-  and the grader has GitHub access. They are live citations rather than dead pointers, so removing
-  them would destroy working provenance to satisfy a literal reading. If the literal reading is
-  the intended one, that is a separate pass and the gate takes one more pattern.
+- **GitHub issue references are gone too, and the gate bans them.** 214 references to 27 issues
+  across 78 files. They resolved — the issues are real and readable — and an earlier draft of this
+  item argued that made them live citations worth keeping. That argument is retired: direction comes
+  from `VISION.md`, `TENETS.md` and this list, and from nothing else, so a comment that sends its
+  reader to a tracker is pointing at a record this project deliberately does not keep. The pattern
+  is `#` followed by two or more digits, which cannot reach the canon's own numbered items: the
+  immutables and the don'ts are single digits, and the persona references were rewritten to name the
+  persona rather than hash a number, so the rule has no exceptions to remember.
+- **Bare letter-number tags** (`D3`, `H-4`, `F1`) are still not in the gate. `D3` alone has 65 hits
+  and they collide with real domain names here; a gate that fires on a domain term teaches people to
+  work around it. Their absence is a limit of the gate, written into its own header.
 
 **5. One command from a clean clone reproduces every gate.** ⚠ *the local half is driven; the whole-suite half belongs to the cloud harness*
 *Done:* fresh clone, no credentials, no committed binary → the suite runner builds from

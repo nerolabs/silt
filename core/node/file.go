@@ -36,7 +36,7 @@ import (
 // durably enough to be retrievable: any MANIFEST chunk (or any chunk of an
 // uncoded file, which carries no parity) that landed on no node, OR any
 // erasure STRIPE left with fewer placed shards than reconstruction needs
-// (#64). A link is unretrievable in all three cases, so the caller must NOT
+// A link is unretrievable in all three cases, so the caller must NOT
 // register/return one for it.
 func (n *Node) Distribute(entry ports.Entry, m *manifest.Manifest, keepLocal bool, porKey *por.Key, done func(placed int, err error)) {
 	n.distributeFrom(n.store, entry, m, keepLocal, porKey, done)
@@ -72,7 +72,7 @@ func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manife
 	var distErr error
 	// shardPlaced[i] records whether ids[i] landed on at least one node, so
 	// after distribution we can verify every erasure stripe kept enough
-	// placed shards to be reconstructable (#64) — the data-shard analogue of
+	// placed shards to be reconstructable — the data-shard analogue of
 	// the required-chunk (manifest / uncoded) check below.
 	shardPlaced := make([]bool, len(ids))
 	// usedDomains counts how many of this file's columns already live in
@@ -128,7 +128,7 @@ func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manife
 	var nextGroup func(g, attempt int)
 	nextGroup = func(g, attempt int) {
 		if g == len(groups) {
-			// B7 / #64: before returning a link, verify every erasure stripe
+			// B7 / before returning a link, verify every erasure stripe
 			// kept enough placed shards to reconstruct. Column placement means
 			// a shard-position that landed on no node is missing from EVERY
 			// stripe; if that leaves a stripe with fewer stored shards than it
@@ -407,8 +407,8 @@ func (n *Node) SurvivorNakamoto(key ports.ChunkID) int {
 // because nobody has the chunk: once the public rendezvous node caps out,
 // every byte to a NATed provider funnels through the relay, whose per-peer
 // splice slots saturate under concurrent fan-out and return "relay at
-// capacity" (#65). Those slots free within moments, so a backed-off re-sweep
-// usually succeeds — the fetch-side analogue of the #63 placement retry.
+// capacity". Those slots free within moments, so a backed-off re-sweep
+// usually succeeds — the fetch-side analogue of the placement retry.
 // We re-sweep only when at least one provider failed with a transport error
 // (timeout / relay refusal); a sweep where every provider cleanly answered
 // "don't have it" is a real miss and retrying it would just burn time.
@@ -466,7 +466,7 @@ func (n *Node) fetchFrom(id ports.ChunkID, provs []ports.NodeID, done func(bool)
 			// it must not trigger the FetchAttempts re-sweep amplification;
 			// the shard just goes unfetched this round and a later sweep, past
 			// the holder's cooldown, re-probes in case it recovered. Guarded by
-			// anyLive so we never skip our only remaining candidate (#69).
+			// anyLive so we never skip our only remaining candidate.
 			if anyLive {
 				if n.corpseGated(provs[i], now) {
 					n.Stats.HolderDialsSkipped++
@@ -1006,7 +1006,7 @@ func columnShardIDs(m *manifest.Manifest) map[int][]ports.ChunkID {
 // dead-holder dial-storm class that PR re-introduced on the
 // holders read (a 100-stripe column has one shard per stripe, so an ungated dead
 // provider dialed every shard cost ~stripes × HolderDialTimeout serially). The
-// anyLive guard preserves the #69 sole-candidate rule: a lone holder that just
+// anyLive guard preserves the sole-candidate rule: a lone holder that just
 // restarted and is re-announcing is still probed, never written off as gone.
 func (n *Node) confirmColumnHolders(provs []ports.NodeID, shards []ports.ChunkID, done func([]ports.NodeID)) {
 	now := n.clock.Now()

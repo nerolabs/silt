@@ -303,7 +303,7 @@ type Message struct {
 	// `swarm get` publisher or fetcher that keeps nothing and then dies).
 	// Receivers must NOT add such a sender to their routing table: routing
 	// to a peer that will vanish poisons the table with ghosts and drowns
-	// lookups in timeouts (#43).
+	// lookups in timeouts.
 	Ephemeral bool
 	// Height is the chain-sync cursor (MsgGetChain).
 	Height uint64

@@ -93,7 +93,7 @@ type CapacityReporter interface {
 // shard is announced under its COLUMN key hash(root‖column), which it can only
 // compute from that shard's proof. Keeping proofs in memory meant a restart
 // re-announced coded shards under the wrong key, leaving a disk full of
-// content undiscoverable (#69). Persisting them alongside the chunks lets the
+// content undiscoverable. Persisting them alongside the chunks lets the
 // re-announce reconstruct the right keys — and lets the node still answer
 // storage-audit challenges after a restart. A nil ProofStore means
 // no persistence (memory-only, fine for sims and ephemeral clients).
@@ -117,7 +117,7 @@ type ProofStore interface {
 // the large space-time dataset behind its consensus standing. Plotting is
 // deliberately expensive (that is the Sybil cost), so a restart must RELOAD
 // the plot and re-verify it against its committed root (B7: persisted state is
-// re-verified, not trusted) rather than re-plotting from scratch (#93). A nil
+// re-verified, not trusted) rather than re-plotting from scratch. A nil
 // PlotStore means memory-only — the node re-plots on every start, fine for
 // sims and tests.
 type PlotStore interface {

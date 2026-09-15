@@ -29,7 +29,7 @@ import (
 //
 // The tempting oracle — capture the enumerated fields, restore them, compare
 // them — is inspection wearing a test costume: it can only ever test the list
-// it was handed, so field #17 lands green and silent. That is the
+// it was handed, so field lands green and silent. That is the
 // silent-divergence class exactly.
 //
 // So this file does not compare a list. It cross-binds THREE independent

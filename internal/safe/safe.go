@@ -2,7 +2,7 @@
 // contained failure instead of a dead node.
 //
 // Silt's decoders parse bytes that arrive from the network and from users
-// — i.e. from an adversary (anti-persona #14, resource exhaustion /
+// — i.e. from an adversary (anti-persona 14, resource exhaustion /
 // malformed input). A decoder that panics on a malformed frame takes the
 // whole process down, and a node that vanishes mid-request is
 // indistinguishable from one that corrupted the bytes — exactly the
