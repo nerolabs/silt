@@ -70,7 +70,7 @@ func (n *Node) sweepProviders(key ports.Hash, targets []ports.NodeID, onRecs fun
 		// sweep on every resolution, DHTDomainCap
 		// > 0). A sweep is breadth discovery across many near peers, so skipping a
 		// cooled one is safe — no sole-holder concern like the fetch path's anyLive
-		// guard (#69). Found by the 2026-08-12 blind field test (durability/churn).
+		// guard. Found by the 2026-08-12 blind field test (durability/churn).
 		if n.corpseGated(t, n.clock.Now()) {
 			n.Stats.HolderDialsSkipped++
 			next(i + 1)

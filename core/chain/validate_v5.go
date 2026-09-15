@@ -296,7 +296,7 @@ func ValidateProposalV5(v StateView, b *Block) (FloorBoxOutcome, error) {
 	// head was read at step 1 and P1 has already bound (b.Prev, b.Height) to it, which is
 	// the precondition the carrier's DERIVED signing height (b.Height-1) rides on. The
 	// chain id is the view's own (class 3) — never b's author's.
-	if err := validateCarrier(b, head.ChainID); err != nil {
+	if err := validateCarrier(b, head.ChainID, carrierCap(v.Params().Config)); err != nil {
 		return Reject, err
 	}
 

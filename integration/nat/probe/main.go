@@ -2,7 +2,7 @@
 // the integration/nat harness, behind real kernel NAT — that two peers on
 // separate NATed LANs can form a DIRECT connection (cone NAT) or must fall
 // back to a relay (symmetric NAT). It is NOT part of silt; it exists so the
-// hole-punch approach (#27) is validated against real conntrack before it is
+// hole-punch approach is validated against real conntrack before it is
 // wired into the transport.
 //
 //	probe coord:9000 # rendezvous: pairs two peers, swaps their observed addrs

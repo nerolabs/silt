@@ -68,7 +68,7 @@ Prototype and iterate locally; **certify on GCP.**
 **Local (free, ~15 min for the fast set):** you need Docker running + a Go toolchain.
 ```sh
 ./integration/run-all.sh            # the fast gate set → consolidated report + per-suite logs
-FULL=1 ./integration/run-all.sh     # + the slow suites (soak, upgrade)
+FULL=1 ./integration/run-all.sh     # + the slow suites (floor, soak, durability, retrieval, upgrade)
 ./integration/audit/run.sh          # or run any single suite on its own
 ```
 `run-all.sh` prints a live pass/finding/fail summary, writes `integration/.run-all/report.md`,
@@ -168,6 +168,7 @@ KEEP=1 ./integration/<name>/run.sh     # leave the topology up to poke at
 | `takedown/run.sh` | per-operator, existence-checked, reversible takedown |
 | `privacy/run.sh` | publisher unlinkability: the default chain refuses a durable file→publisher link (refuse-to-surveil), the private path works, `-token-quorum` authorizes without identity |
 | `client/run.sh` | web-UI path: publish→list→fetch bit-perfect over the daemon's HTTP API, and the local-security guard holds (no-token/wrong-token→401, DNS-rebinding/cross-origin→403) |
+| `floor/run.sh` | a validator on the declared floor spec (one core, 2 GiB, 10 GiB): validates and converges under a kernel-enforced memory ceiling with no swap (honest load; adversarial input not yet driven), sheds heavy bond proofs below the retention horizon, and restarts from the pruned store. A SECOND box on the same spec validates by proof instead of by replica: it stalls and never accepts with no witness provider reachable, and it is RED on reaching a verdict over real witnesses — it cannot reproduce a block that touches two committed-state classes at once, which on a live chain is most blocks |
 | `soak/run.sh` | sustained load + gentle churn: bit-perfect throughout, bounded memory/disk |
 | `upgrade/run.sh` | rolling binary upgrade on persisted stores: reload + fetch bit-perfect |
 | `retrieval/run.sh` | retrieval/discoverability at scale + ephemeral-identity churn: cold-fetch success-rate floor (#43) |

@@ -6,7 +6,7 @@ package main
 // through an in-process ephemeral swarm client so the daemon's storage
 // pledge is never touched by UI operations.
 //
-// The local surface is LOCKED (Gate 1 / I1, #89): the API used to send
+// The local surface is LOCKED (Gate 1 / I1): the API used to send
 // CORS `*`, so any web page the operator visited could enumerate or drive
 // their node. Now every request must arrive with a localhost Host (no DNS
 // rebinding), any cross-origin request from a non-localhost page is
@@ -64,8 +64,8 @@ type uiServer struct {
 	started       time.Time
 	peerCount     func() int
 	links         *linkbook.Book   // client mode only (nil on a plain daemon)
-	carePublished bool             // daemon repairs content published through its own UI (#44)
-	token         string           // per-daemon bearer token gating state-changing calls (#89)
+	carePublished bool             // daemon repairs content published through its own UI
+	token         string           // per-daemon bearer token gating state-changing calls
 	webOrigins    []string         // extra web origins allowed to draw content (e.g. https://app.example.com); off by default. Lets a hosted resolver surface render from this local node.
 	addressCap    addressCapConfig // The configured observed-address cap, reported with series A/B/E
 	// statusExtra, when non-nil, fills the one optional extra block on GET
@@ -308,7 +308,7 @@ func (s *uiServer) serve(addr string) (string, error) {
 	return ln.Addr().String(), nil
 }
 
-// guard locks the local surface (#89). Order matters: reject a non-local
+// guard locks the local surface. Order matters: reject a non-local
 // Host (DNS-rebinding) and a cross-origin drive-by before doing any work,
 // answer CORS preflight, then require the bearer token on anything that
 // changes state. Static file requests (no /api/ prefix) still pass the
@@ -1064,7 +1064,7 @@ func withheldDurability(di *durabilityInfo) *durabilityInfo {
 }
 
 // durabilityInfo makes the built-but-previously-invisible S7 repair economy
-// observable (Phase 2): the node's credit balance (what serving earned) and, per
+// observable: the node's credit balance (what serving earned) and, per
 // object it caretakes, the funded reserve, lifetime skim/pay, and the projected
 // funded horizon. `bountyOn` reports whether repair bounties actually PAY on this
 // node (the -economy switch) — an economy whose escrows fill but never disburse
@@ -1170,7 +1170,7 @@ const horizonWarningWindow = ports.Duration(30 * 24 * time.Hour)
 // local-exact. It ships cert-free and economy-OFF: with the repair economy off the
 // escrows still fill (the auto-skim), so the accounting is real; only the bounty
 // disbursement is dormant, which `bountyOn` reports. Read-only GET; reading moves
-// nothing (the #89 gate lets read-only localhost through without a token).
+// nothing (the gate lets read-only localhost through without a token).
 //
 // Knowability tier is stamped per block: everything here is "local-exact" except
 // the wash AUTHENTICITY, which is "not-knowable" (Douceur — a node cannot prove
@@ -1600,11 +1600,11 @@ func (s *uiServer) apiPublish(w http.ResponseWriter, r *http.Request) {
 		var aerr error
 		var entry ports.Entry
 		// No Publisher: a UI publish is the default user path and must be
-		// unlinkable (M0/#97). A durable Publisher→root record is permanent
+		// unlinkable (M0). A durable Publisher→root record is permanent
 		// on the chain; the UI never opts into it.
 		//
 		// Stage (not Add): store the content, register only after a confirmed
-		// scatter, so a placement failure never leaves a dangling entry (#65).
+		// scatter, so a placement failure never leaves a dangling entry.
 		h, entry, aerr = pipeline.Stage(context.Background(), e.nd.Store(), f, pipeline.Options{
 			Mode: mode, Rand: rand.Reader,
 		})
@@ -1621,7 +1621,7 @@ func (s *uiServer) apiPublish(w http.ResponseWriter, r *http.Request) {
 		}
 		e.nd.DistributeFrom(e.nd.Store(), entry, m, node.DerivePorKey(h.LayoutKey()), func(p int, derr error) {
 			// Publish only on a confirmed scatter; a failed one leaves the
-			// registry untouched so no dangling entry survives (#65).
+			// registry untouched so no dangling entry survives.
 			placed, opErr = pipeline.RegisterAfterDistribute(context.Background(), s.reg, entry, p, derr)
 			done()
 		})
@@ -1655,7 +1655,7 @@ func (s *uiServer) apiPublish(w http.ResponseWriter, r *http.Request) {
 }
 
 // apiFund prepays an object's durability reserve from THIS node's own credit
-// balance (Phase 2, Slice 3 — the publisher/operator endowment path over
+// balance (the publisher/operator endowment path over
 // FundDurability). A publisher endows a repair budget so their content outlives
 // churn before it is popular enough to self-fund via the serve auto-skim; the
 // credits come from what this daemon EARNED by serving, and standing is untouched

@@ -6,7 +6,7 @@
 // balances but earns ZERO standing, so it can neither propose nor form a
 // quorum. And standing must be SUSTAINED: once validators stop re-proving
 // their bonds, DecayStale retires their standing and their votes stop
-// counting. This is the deterministic sim-proof behind #78 / D1 / D3.
+// counting. This is the deterministic sim-proof behind / D1 / D3.
 package sim
 
 import (

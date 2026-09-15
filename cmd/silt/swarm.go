@@ -347,7 +347,7 @@ func swarmAdd(args []string) error {
 			// Stage stores the chunks + manifest but does NOT register the
 			// entry yet; we publish only after a confirmed scatter, so a
 			// placement failure never leaves a dangling registry entry that
-			// no link reaches (register-after-distribute, #65).
+			// no link reaches (register-after-distribute).
 			var aerr error
 			var entry ports.Entry
 			h, entry, aerr = pipeline.Stage(context.Background(), e.nd.Store(), f, opts)
@@ -364,7 +364,7 @@ func swarmAdd(args []string) error {
 			}
 			e.nd.Distribute(entry, mf, false, node.DerivePorKey(h.LayoutKey()), func(p int, derr error) {
 				// Publish only on a confirmed scatter; a failed one leaves the
-				// registry untouched so no dangling entry survives (#65).
+				// registry untouched so no dangling entry survives.
 				placed, err = pipeline.RegisterAfterDistribute(context.Background(), reg, entry, p, derr)
 				done()
 			})

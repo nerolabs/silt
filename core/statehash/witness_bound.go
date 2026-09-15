@@ -52,7 +52,7 @@ import (
 // SCOPE of this file: the pre-verify byte caps + shape gate, wired so every rejection
 // maps to NoWitness. It does NOT build on-demand delivery, the serve-side slow-loris
 // read deadline (a TIME attack the byte ceiling does not close), or
-// a fetch fan-out cap. Those are increment 3. This layer assumes the witness bundle
+// a fetch fan-out cap. Those are a later concern. This layer assumes the witness bundle
 // is already in hand (in-block carry or a completed fetch) and gates it.
 //
 // Certified by:

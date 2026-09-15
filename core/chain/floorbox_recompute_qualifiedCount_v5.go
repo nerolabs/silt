@@ -9,7 +9,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// era-4 (v5) trustless floor-box RECOMPUTE — lane-1 Part B core, increment 4.
+// era-4 (v5) trustless floor-box RECOMPUTE.
 //
 // This file reproduces a FOURTH validity predicate — qualifiedCount (chain.go), the
 // distinct-qualified-validator COUNT N that sizes the count-quorum floor — trustlessly, from the
@@ -38,7 +38,7 @@ import (
 // 1. SET-COMPLETENESS over BONDED: reconstruct nodeSetMTH(witnessedIDs) over the whole-bonded
 // id-list; require it equals the committed bondedRoot leaf (proven present against the
 // StateRoot). One omitted (or injected) member ⇒ a different MTH ⇒ mismatch ⇒ stall. This
-// reuses the F1 bondedRoot digest increment 3 already reads (the completeness anchor).
+// reuses the F1 bondedRoot digest recomputeDeMatureSuperQuorum already reads (the completeness anchor).
 // 2. PER-MEMBER BONDED WEIGHT: for EVERY id in the reconstructed set, Resolve the bonded[id]
 // value leaf against the committed StateRoot. The weight is the `>= MinBond` screen operand; a
 // forged weight fails smt.VerifyProof ⇒ stall.
@@ -60,14 +60,14 @@ import (
 // member slashed but NOT bonded is invisible to the count (the loop never reaches it), so the WHOLE
 // slashed set is never folded — no predicate reads slashedRoot whole-set (grep: the only
 // whole-slashed iterations are clone/restore/emit, none a predicate). So this increment reads
-// bondedRoot (already non-inert, increment 3) + per-member bonded[id]/slashed[id], and adds NO new
+// bondedRoot (already non-inert) + per-member bonded[id]/slashed[id], and adds NO new
 // digest-root read. slashedRoot remains a legitimately-inert derived commitment.
 //
 // STOP BOUNDARY (this increment). It reproduces ONE predicate. It does NOT flip the box to Accept —
 // that is the final increment, only after ALL predicates are reproduced. The box STILL
 // never-Accepts. It reproduces the raw COUNT N (and the derived bftThreshold(N) count floor); the
 // anchor-window and mature-epoch legs of RequiredQuorum are governed by other predicates (the
-// launch anchor gate; requireEpochWeightQuorum, increment 1), out of scope here.
+// launch anchor gate; requireEpochWeightQuorum), out of scope here.
 
 var (
 	// ErrRecomputeQualifiedBondedSetIncomplete marks a stall where the witnessed whole-bonded id-list

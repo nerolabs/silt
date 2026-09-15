@@ -66,6 +66,14 @@ var (
 	// but it can pad the block. NOTE: distinctness does NOT bound the carrier. Distinct ids
 	// are free — every fresh keypair is a distinct id that passes all three clauses of
 	// validateCarrier — so there is no size rule here.
+	// ErrCarrierTooLarge marks a carrier holding more precommits than the chain's own rules allow a
+	// qualified set to contain. It is a COST rule before it is a correctness one: validateCarrier
+	// verifies every entry, so without a count checked FIRST the work a block can demand is bounded
+	// only by the transport frame — about 1.3M entries, ~68 s of single-core ed25519 at the measured
+	// 52.6 us/op, from one block any peer may send. The ceiling below is not a new number; it is the
+	// most entries a carrier could ever legitimately hold, which is one per qualified validator.
+	ErrCarrierTooLarge = errors.New("chain: LastCommit carries more precommits than the chain's qualified set can contain")
+
 	ErrCarrierDuplicateID = errors.New("chain: LastCommit carries two entries for the same attester id")
 	// ErrGenesisLastCommit is a genesis block carrying a LastCommit carrier. Height 0 has no
 	// parent to attest, and the carrier is the hash-covered v5 seating input, so a declared
@@ -125,9 +133,22 @@ var (
 // rejects for. This is explicitly NOT the class — silently changed which slot was
 // considered signed; here every deviation is a loud refusal. Driven by
 // TestTheCarrierSigningHeightIsTheParents.
-func validateCarrier(b *Block, chainID ports.Hash) error {
+// maxEntries is the carrier ceiling the CALLER derives from the chain's own committed
+// configuration (carrierCap). It is checked BEFORE any signature is verified, because the cost this
+// bounds IS the verification: a count checked after the loop bounds nothing. Zero means uncapped,
+// which is the honest reading when the chain runs no re-challenge cadence and therefore has no
+// bounded qualified set to derive a ceiling from — see carrierCap.
+func validateCarrier(b *Block, chainID ports.Hash, maxEntries int) error {
 	if len(b.LastCommit) == 0 {
 		return nil // the empty carrier is always valid — including at height 1 and on every prior era
+	}
+	// THE COUNT, FIRST. Every check below this line costs an ed25519 verify per entry; this one
+	// costs a comparison. A carrier can hold at most one precommit per qualified validator (the
+	// duplicate-id refusal below enforces the "at most one"), and the qualified set is bounded by
+	// the per-block registration cap and the re-challenge cadence together, so a carrier larger
+	// than that ceiling was never a carrier any honest proposer could build.
+	if maxEntries > 0 && len(b.LastCommit) > maxEntries {
+		return fmt.Errorf("%w: %d entries, ceiling %d", ErrCarrierTooLarge, len(b.LastCommit), maxEntries)
 	}
 	if b.Version < BlockVersionWitnessable {
 		return fmt.Errorf("%w: height %d version %d carries %d entries",

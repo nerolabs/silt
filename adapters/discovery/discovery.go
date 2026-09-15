@@ -12,7 +12,7 @@
 // A DNS server can therefore direct you but never impersonate anyone.
 //
 // The DNS-seed mechanism ships with NO default domain, and that empty
-// default is deliberate, not an unfinished hole (#27 Part A). Baking in a
+// default is deliberate, not an unfinished hole (Part A). Baking in a
 // well-known seed domain would make joining depend on infrastructure the
 // project operates — squarely against the neutral-infrastructure stance
 // ("SiltHQ operates nothing"; seeds and relays are community-run). So a

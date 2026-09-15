@@ -15,7 +15,7 @@ func bondRegAt(s ed25519.PrivateKey, root ports.Hash, size int64, prev ports.Has
 	return r
 }
 
-// Retest G4 part (a/b) INVERTED: a sub-floor bond earns NO objective standing.
+// INVERTED: a sub-floor bond earns NO objective standing.
 // The anti-release floor (Config.MinBondBytes) now gates the objective set, so a
 // plot too small to survive the challenge window (releasable + re-plottable) buys
 // no fork-choice weight — whether it arrives declared at genesis or proven on the
@@ -62,7 +62,7 @@ func TestObjectiveSubFloorBondEarnsNoStanding(t *testing.T) {
 	}
 }
 
-// Retest G4 part (c) INVERTED: objective standing DECAYS if not renewed, so a
+// INVERTED: objective standing DECAYS if not renewed, so a
 // validator that proves once and RELEASES its plot cannot keep voting. A validator
 // that RENEWS with a fresh proof within the TTL keeps its standing.
 func TestObjectiveBondStandingDecaysWithoutRenewal(t *testing.T) {

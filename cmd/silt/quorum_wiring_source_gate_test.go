@@ -72,7 +72,11 @@ func TestDerivedQuorumIsWiredWithBothPreconditions(t *testing.T) {
 	// chain config. Below it, *quorum = q still runs and still prints, but chain.Config
 	// already holds the underived literal — the f=0 launch this change exists to fix is
 	// not fixed, and the console says it was.
-	consumer := strings.Index(s, "ch := chain.New(chain.Config{")
+	// The needle is the CONSTRUCTOR, not the assignment form. Whether the config-bearing chain is
+	// declared here or assigned to a binding that outlives the block is a scoping choice — a floor
+	// box reads the same config without keeping a replica under it — and the ordering property
+	// this gate holds does not depend on which one the file uses.
+	consumer := strings.Index(s, "chain.New(chain.Config{")
 	if consumer < 0 {
 		t.Fatal("SOURCE GATE: cannot find the chain.New(chain.Config{...}) consumer in daemon.go, so the ordering below cannot be checked at all")
 	}

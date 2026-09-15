@@ -138,7 +138,7 @@ func (n *Node) AnnounceHeld(done func(int)) {
 // only for -care'd roots). So without this a node holding content past the TTL goes
 // silently undiscoverable ~TTL after boot — every GetProviders returns empty and its
 // held content fails to fetch ("manifest chunks unreachable") while the daemon looks
-// healthy (the #69 residual; confirmed dark ~30 min after every restart under a real
+// healthy (the residual; confirmed dark ~30 min after every restart under a real
 // streaming load test). Re-announce at ProviderRecordTTL/2 (floored 60 s): a full
 // AnnounceHeld re-stamps this node's OWN records AND re-plants them on near-nodes, so
 // multi-holder discovery survives too — safe over a large held set now that the walk
@@ -469,7 +469,7 @@ func (n *Node) probeShard(id ports.ChunkID, key ports.Hash, includeLocal bool, d
 		// so the caretaker never registers the loss and never repairs (the churn
 		// field-test stall). Guarded by anyLive so we never skip the only
 		// candidate: a lone holder that restarted and is re-announcing must
-		// still be probed, not written off as gone (#69).
+		// still be probed, not written off as gone.
 		now := n.clock.Now()
 		anyLive := false
 		for _, p := range provs {

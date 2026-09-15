@@ -9,16 +9,14 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// era-4 (v5) trustless floor-box RECOMPUTE — Path-1 state-root recompute, sub-increment P1-a,
-// O(payload) HYBRID.
+// era-4 (v5) trustless floor-box RECOMPUTE — the O(payload) state-root recompute.
 //
 // This file reproduces validateEra3Roots' StateRoot equality check (era3validity.go) — the
 // committed StateRoot MUST equal the SMT recomputed over the POST-APPLY committed leaf set —
 // TRUSTLESSLY, from two committed roots + CHANGED-PATH witnesses ALONE, at O(payload) cost (NOT
-// O(whole-state)). It is the FIRST sub-increment of the Path-1 recompute (PACE:); the full
-// validateEra3Roots recompute spans eight apply transition classes. P1-a lands the
-// ROOT-EQUALITY SPINE every later class reuses, on the two classes that are pure payload-driven
-// set writes with NO membership screen: entries (byRoot / spent) and revocations /
+// O(whole-state)). validateEra3Roots' recompute spans eight apply transition classes; this file
+// holds the ROOT-EQUALITY SPINE every class reuses, and the two classes that are pure
+// payload-driven set writes with NO membership screen: entries (byRoot / spent) and revocations /
 // un-revocations (revoked).
 //
 // THE HYBRID (replaces the whole-pre-state transfer). The box:
@@ -36,7 +34,7 @@ import (
 // un-named change diverges the honest root from the forged committed root).
 //
 // THE SCOPE GATE, RE-ANCHORED ON dueBucket (or O(payload) is false). The superseded whole-state
-// P1-a scanned the WHOLE bondRegHeight map to detect a firing TTL expiry — O(whole-state), which
+// form scanned the WHOLE bondRegHeight map to detect a firing TTL expiry — O(whole-state), which
 // would force a whole-state witness even under the fold. This box re-anchors that decision on the
 // dueBucket[h] accelerator: a TTL expiry fires at height h IFF dueBucket[uint64BE(h)] is OCCUPIED
 // (chain.go, readset_v5.go). The box tests it with ONE non-membership witness of
@@ -47,18 +45,15 @@ import (
 // StateRootForVersion (era3validity.go, chain.go untouched). This is a SEPARATE root-only path a
 // semi-stateless box calls INSTEAD of cloning the whole state and replaying apply.
 //
-// STOP BOUNDARY (this sub-increment). It reproduces the root-equality MECHANISM on classes E + R
-// only; classes S/A (screens), T (TTL), B (bond regs), P (rotation), M (maturity) are later
-// sub-increments. It does NOT flip the box to Accept — the box STILL never-Accepts (research
+// It does NOT flip the box to Accept — the box STILL never-Accepts (research
 // the scope rule: do not flip Accept for E/R until R-fold is fully pinned AND owner- settled; this
 // increment keeps never-Accept). It changes NO apply rule.
 
 var (
 	// ErrRecomputeStateRootScopeStall marks a stall where the block carries a transition class this
-	// P1-a sub-increment does not reproduce (a BondReg, a Slash, a validatorsSeen-writing Att, a
-	// firing TTL expiry, or an epoch boundary). The box never-Accepts an out-of-scope block; it
-	// stalls loud so a later sub-increment's absence can never be a silent wrong-Accept.
-	ErrRecomputeStateRootScopeStall = errors.New("chain: floor-box O(payload) state-root recompute — block carries a transition class outside P1-a scope (bond reg / slash / seen-writing att / firing TTL expiry / epoch boundary); the box stalls, never Accepts")
+	// recompute does not reproduce. The box never-Accepts an out-of-scope block; it stalls loud, so
+	// an unreproduced class can never become a silent wrong-Accept.
+	ErrRecomputeStateRootScopeStall = errors.New("chain: floor-box O(payload) state-root recompute — block carries a committed-state transition this recompute does not reproduce; the box stalls, never Accepts")
 
 	// ErrRecomputeStateRootTTLWitness marks a stall where the dueBucket[h] scope-gate witness is
 	// not a verified NON-MEMBERSHIP proof against prevStateRoot: the box cannot prove NO TTL expiry
@@ -92,7 +87,7 @@ var (
 	ErrRecomputeStateRootMaturity = errors.New("chain: floor-box state-root recompute — the class-M everMature latch could not be reconstructed (no maturity witness, or the maturity recompute could not verify the SeenSet against the committed root)")
 
 	// ErrRecomputeStateRootDigest marks a stall in the class-S changed-whole-set-digest reconstruction
-	// (P1-b): a touched digest (slashedRoot / bondedRoot / qualifiedRoot) with no supplied pre-set
+	// a touched digest (slashedRoot / bondedRoot / qualifiedRoot) with no supplied pre-set
 	// witness, or a pre-set id-list that does not reconstruct the committed pre-digest. The box will
 	// not fold an unwitnessed / uncompleteness-anchored digest change; it stalls.
 	ErrRecomputeStateRootDigest = errors.New("chain: floor-box state-root recompute — a class-S touched whole-set digest (slashed/bonded/qualified root) is missing its pre-set witness or its pre-set id-list does not reconstruct the committed pre-digest")
@@ -175,12 +170,12 @@ type StateRootWitness struct {
 	DigestPreSets []StateRootDigestWitness
 	// TTLSweep carries the class-T accelerator delta: the members of dueBucket[b.Height] (the expired
 	// set) + the bucket MTH inclusion proof + the bucket-delete off-path siblings. Present only for a
-	// firing TTL sweep block (P1-c). The box reconstructs dueBucketMTH(Members) and requires it equals
+	// firing TTL sweep block. The box reconstructs dueBucketMTH(Members) and requires it equals
 	// the committed bucket value (the CRUX completeness anchor).
 	TTLSweep *StateRootTTLWitness
 	// BondRegScreens carries, per bond-reg Root, the committed pre-state ownership the class-B
 	// displacement branch reads (bondRootOwner / bondRootProven). Present only for a bond-reg block
-	// (P1-d). The box derives the B delta from these + its own cfg screens.
+	// The box derives the B delta from these + its own cfg screens.
 	BondRegScreens []StateRootBondRegScreen
 	// BondRegBuckets carries, per affected TTL due-height, the pre-state bucket member id-list + the
 	// bucket leaf proof against prevStateRoot. Present only for a bond-reg block with TTL enabled
@@ -188,13 +183,13 @@ type StateRootWitness struct {
 	BondRegBuckets []StateRootBucketWitness
 	// AttScreens carries, per non-proposer attester, the committed pre-state qualification inputs the
 	// class-A screen reads (slashed / frozen epochSet membership / bonded). Present only for a block
-	// with non-proposer atts (P1-e). The box computes qualification itself from own-cfg over these,
+	// with non-proposer atts. The box computes qualification itself from own-cfg over these,
 	// then reconstructs the validatorsSeenRoot digest. See floorbox_recompute_stateroot_atts_v5.go.
 	AttScreens []StateRootAttScreen
 	// Rotate carries the class-P epoch-boundary witness: the pre-qualified id-set (the freeze source),
 	// the per-frozen-member regVersion (the activation tallies), the prior epochSet, and the rotate
 	// scalar pre-values (epochStart / matureEpoch / the three lock-in scalars). Present only for an
-	// epoch-boundary block (P1-e). The box applies the same block's S/B/T qualified deltas FIRST, then
+	// epoch-boundary block. The box applies the same block's S/B/T qualified deltas FIRST, then
 	// freezes (rotate-LAST). See floorbox_recompute_stateroot_rotate_v5.go. The everMature latch is NOT
 	// homed here — it is class M (Maturity below), the boundary-independent single owner.
 	Rotate *StateRootRotateWitness
@@ -211,14 +206,14 @@ type StateRootWitness struct {
 
 // recomputeStateRootEntriesRevocations reproduces validateEra3Roots' StateRoot equality check
 // TRUSTLESSLY for a v5 block whose committed-state effect is its entries and revocations/
-// un-revocations (classes E + R) and/or its on-chain equivocation slashes (class S, P1-b). It
+// un-revocations (classes E + R) and/or its on-chain equivocation slashes (class S). It
 // returns nil iff the block's committed StateRoot equals the SMT over the post-apply committed leaf
 // set a full node would compute — the same verdict validateEra3Roots reaches — and a stall reason
 // otherwise. It NEVER returns "valid" for an out-of-scope block: it stalls loud, never-Accepts.
 //
 // COST is O(payload) for a pure E/R block; a class-S block is O(payload) + O(|keyspace|) per touched
 // whole-set digest (slashed/bonded/qualified) ≈ O(registry) per digest — the digest reconstruction
-// is a whole-list MTH fold, NOT O(payload) (R-cost-wholeset). See the P1-b file doc-comment.
+// is a whole-list MTH fold, NOT O(payload) (R-cost-wholeset). See floorbox_recompute_stateroot_slash_v5.go.
 //
 // prevStateRoot is the previous block's committed StateRoot (the pre-state the changed-leaf proofs
 // verify against). committedStateRoot is b.StateRoot. parentProposer is the PARENT's proposer id —
@@ -329,7 +324,7 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	//
 	// The verdict is a STALL (never-Accept is unchanged): the box refuses the block, it does not
 	// judge it. box.Accept => node.Accept, never the biconditional.
-	if err := validateCarrier(&b, chainID); err != nil {
+	if err := validateCarrier(&b, chainID, carrierCap(c.cfg)); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrRecomputeCarrierInvalid, err)
 	}
 
@@ -344,7 +339,8 @@ func (c *Chain) assembleStateRootRecomputeOps(
 		return nil, preErr
 	}
 
-	// (1) SCOPE GATE. Stall (never-Accept) on any transition class P1-a does not reproduce. The
+	// (1) SCOPE GATE. Stall (never-Accept) on any transition class this recompute does not
+	// reproduce. The
 	// payload-visible classes (BondReg / Slash / non-proposer Att) and the epoch boundary are
 	// checked from the block + own cfg; the TTL-expiry class is checked from the O(1) dueBucket
 	// non-membership witness (NOT a whole-state scan).
@@ -354,51 +350,35 @@ func (c *Chain) assembleStateRootRecomputeOps(
 
 	// (2) DERIVE the write-set from the block payload. The box runs the generator, not the prover —
 	// so the changed-key set is complete by construction (no un-named leaf escapes). E/R gives the
-	// byRoot/spent/revoked leaves; class S (P1-b) gives the slashed/bonded/qualified per-member
-	// leaves PLUS the three changed whole-set digest scalars, reconstructed via the changed-digest
-	// primitive. The digest ops are built FIRST because they anchor the pre-bonded / pre-qualified
-	// membership the S per-member write-set consumes (so the per-member delta and the digest delta
-	// agree on the pre-state, and neither trusts a witness scalar —).
+	// byRoot/spent/revoked leaves; the id-keyed classes give the slashed/bonded/qualified per-member
+	// leaves, the due-bucket leaves, and the changed whole-set digest scalars, each reconstructed
+	// via the changed-digest primitive over the anchored pre-state — so the per-member delta and
+	// the digest delta agree on the pre-state, and neither trusts a witness scalar.
 	writeSet := applyEntriesRevocationsWriteSet(b)
 	var digestOps []statehash.FoldOp
-	// postQualified is the POST-apply qualified id-SET a boundary (class P) freezes
-	// (rotate-LAST). It is reconstructed by a DEDICATED pass in apply order (B → T → S) on the
-	// anchored pre-qualified set, AFTER the digest ops (whose emission order is irrelevant —
-	// each touched digest is a pure function of pre + its own delta). Built only when a
-	// boundary needs it.
 	isBoundary := c.epochsEnabled() && c.cfg.EpochBlocks > 0 && b.Height%c.cfg.EpochBlocks == 0
 
-	// Class S (slashes, P1-b): reconstruct the three touched digests + the per-member write-set.
-	if len(b.Slashes) > 0 {
-		dOps, preBonded, preQualified, dErr := stateRootSlashDigestOps(b, w.DigestPreSets)
-		if dErr != nil {
-			return nil, dErr
-		}
-		digestOps = append(digestOps, dOps...)
-		writeSet = append(writeSet, stateRootSlashWriteSet(b, preBonded, preQualified)...)
+	// Classes B, T and S (bond registrations, TTL expiry, slashes) are COMPOSED, not appended.
+	// All three write the bonded and qualified keyspaces and the TTL due-buckets, so each one's
+	// post-state is a function of the others' deltas: they run once, in apply's order, over one
+	// running state, and every digest, per-member leaf and bucket leaf is emitted from the state
+	// the last class leaves behind. See floorbox_recompute_stateroot_compose_v5.go for why
+	// deriving each class's post-set from the pre-state alone computes a state no block commits.
+	//
+	// The composition also owns the POST-apply qualified id-SET a boundary (class P) freezes
+	// (rotate-LAST) — one reconstruction, not a second one beside the digest ops.
+	idSets, idErr := c.composeIDSetTransition(prevStateRoot, b, w, isBoundary)
+	if idErr != nil {
+		return nil, idErr
 	}
-	// Class B (bond regs, P1-d): derive the delta from b.BondRegs + own-cfg screens + the per-root
-	// displacement witnesses, then reconstruct the touched digests + affected dueBucket leaves.
-	if len(b.BondRegs) > 0 {
-		bOps, bWrites, bErr := c.bondRegOps(prevStateRoot, b, w)
-		if bErr != nil {
-			return nil, bErr
-		}
-		digestOps = append(digestOps, bOps...)
-		writeSet = append(writeSet, bWrites...)
+	digestOps = append(digestOps, idSets.digestOps()...)
+	bucketOps, bucketErr := idSets.bucketOps(w)
+	if bucketErr != nil {
+		return nil, bucketErr
 	}
-	// Class T (TTL sweep, P1-c): derive the expired set from the dueBucket[b.Height] accelerator
-	// witness, then reconstruct the touched digests + the bucket DELETE.
-	if w.TTLSweep != nil {
-		tOps, preBonded, preQualified, expired, tErr := stateRootTTLDigestOps(*w.TTLSweep, w.DigestPreSets)
-		if tErr != nil {
-			return nil, tErr
-		}
-		digestOps = append(digestOps, tOps...)
-		writeSet = append(writeSet, stateRootTTLWriteSet(expired, w.TTLSweep.Height, preQualified)...)
-		_ = preBonded
-	}
-	// Class A (the LastCommit carrier → validatorsSeen, P1-e): screen each carried signer from
+	digestOps = append(digestOps, bucketOps...)
+	writeSet = append(writeSet, idSets.netWrites()...)
+	// Class A (the LastCommit carrier → validatorsSeen): screen each carried signer from
 	// own-cfg over the per-attester witnesses, derive the validatorsSeen ADDs, reconstruct
 	// validatorsSeenRoot. The source is the HASH-COVERED carrier (the carrier re-point), not b.Atts.
 	if hasCarrierSigners(b) {
@@ -423,18 +403,15 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	}
 	digestOps = append(digestOps, mOps...)
 
-	// Class P (epoch rotation, P1-e): rotate runs LAST. Reconstruct the POST-apply qualified
+	// Class P (epoch rotation): rotate runs LAST. Reconstruct the POST-apply qualified
 	// set in apply order (B → T → S), freeze it into epochSet, reconstruct epochSetRoot +
 	// per-member epochSet leaves, run the three activation tallies over per-member regVersion
 	// witnesses (own-cfg thresholds + activation guards), and reconstruct the rotate scalars.
 	// The post-latch everMature (from class M) gates the freeze; P does NOT emit the
 	// tagEverMature leaf.
 	if isBoundary {
-		postQualified, qualWrites, regVerWrites, pqErr := c.reconstructPostQualifiedWithWrites(prevStateRoot, b, w)
-		if pqErr != nil {
-			return nil, pqErr
-		}
-		pOps, pErr := c.rotateOps(prevStateRoot, b, w, postQualified, qualWrites, regVerWrites, postEverMature)
+		pOps, pErr := c.rotateOps(prevStateRoot, b, w,
+			idSets.Qualified(), idSets.qualWrites, idSets.regVerWrites, postEverMature)
 		if pErr != nil {
 			return nil, pErr
 		}
@@ -488,15 +465,15 @@ func (c *Chain) assembleStateRootRecomputeOps(
 }
 
 // stateRootScopeGate stalls (returns ErrRecomputeStateRootScopeStall /.TTLWitness) if block b
-// carries any committed-state transition outside P1-a's E + R scope. It reads the box's OWN cfg
+// carries any committed-state transition this recompute does not reproduce. It reads its OWN cfg
 // for the epoch/TTL parameters and, for the TTL-expiry class, the O(1) dueBucket
 // non-membership witness — NEVER a whole-state scan (the O(payload) re-anchor). Every clause maps
-// to a later sub-increment; removing a clause is the visible signal that its class's recompute has
-// landed.
+// to a class the box does not reproduce; removing a clause is the visible signal that its class's
+// recompute has landed.
 func (c *Chain) stateRootScopeGate(prevStateRoot ports.Hash, b Block, w StateRootWitness) error {
-	// Class B (bond regs, P1-d) / Class S (slashes, P1-b) are IN scope — handled by bondRegOps /
-	// stateRootSlashDigestOps. Class A (attestations → validatorsSeen, P1-e) and Class P (epoch
-	// rotation, P1-e) are ALSO now IN scope — handled by attOps / rotateOps. None is stalled here.
+	// Classes B (bond regs), S (slashes) and T (TTL expiry) are IN scope — composed by
+	// composeIDSetTransition. Class A (attestations → validatorsSeen) and Class P (epoch rotation)
+	// are IN scope too — handled by attOps / rotateOps. None is stalled here.
 	//
 	// A legacy-mode block (a v5 block never is, by construction) cannot reproduce the rep(id)
 	// screen from committed state — attOps asserts objective and stalls otherwise. the recovery
@@ -534,7 +511,7 @@ func (c *Chain) stateRootScopeGate(prevStateRoot ports.Hash, b Block, w StateRoo
 			ErrRecomputeStateRootScopeStall, len(b.IssuerKeys))
 	}
 
-	// Class T (TTL sweep, P1-c): an expiry fires at b.Height iff dueBucket[uint64BE(h)] is occupied
+	// Class T (TTL sweep): an expiry fires at b.Height iff dueBucket[uint64BE(h)] is occupied
 	// (chain.go). The box distinguishes the two cases from the dueBucket witness against
 	// prevStateRoot:
 	// - PROVEN ABSENT ⇒ no expiry fires ⇒ the block is E/R(+B/S)-only; w.TTLSweep must be nil.

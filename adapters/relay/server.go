@@ -29,7 +29,7 @@ func (c Config) withDefaults() Config {
 		// Splices are short-lived (a request frame and its reply), so the cap
 		// bounds *concurrent* fan-out, not total traffic. The original 64/8
 		// throttled a single NATed target to 8 concurrent exchanges, which
-		// saturated under a conc-10 publish/fetch sweep (#65); 128/16 gives a
+		// saturated under a conc-10 publish/fetch sweep; 128/16 gives a
 		// rendezvous node realistic headroom while staying a bounded,
 		// operator-tunable cost (each splice is still byte-capped below).
 		c.MaxSessions = 128
@@ -105,7 +105,7 @@ func (s *Server) SetPaidSettler(st PaidSettler) { s.paidSettler = st }
 type control struct {
 	conn     net.Conn
 	wmu      sync.Mutex
-	observed string // the registrant's public host:port as we saw it (#27)
+	observed string // the registrant's public host:port as we saw it
 }
 
 func (c *control) write(fr ctrl) error {
@@ -193,7 +193,7 @@ func (s *Server) acceptLoop() {
 func (s *Server) handle(conn *tls.Conn) {
 	// A relay decodes control frames from unauthenticated dialers; a
 	// malformed frame must drop the conn, not the relay (Gate 1 /
-	// anti-persona #14).
+	// anti-persona 14).
 	defer safe.Guard(func(r any) {
 		s.logf(ports.LogWarn, "recovered panic in relay handler", "remote", conn.RemoteAddr(), "panic", r)
 		conn.Close()
@@ -233,7 +233,7 @@ func (s *Server) handle(conn *tls.Conn) {
 func (s *Server) serveControl(from ports.NodeID, conn *tls.Conn) {
 	// The remote address is the registrant's NAT mapping as we see it — hand
 	// it back (STUN-style) so a NATed node learns its own public endpoint, and
-	// keep it to hand a hole-punch initiator (#27).
+	// keep it to hand a hole-punch initiator.
 	c := &control{conn: conn, observed: conn.RemoteAddr().String()}
 	s.mu.Lock()
 	if old := s.regs[from]; old != nil {
@@ -267,7 +267,7 @@ func (s *Server) serveControl(from ports.NodeID, conn *tls.Conn) {
 
 // coordinatePunch relays a hole-punch request from `from` for the target in fr:
 // it tells each registered peer the OTHER's observed endpoint, so both dial it
-// at once (#27). The relay only swaps addresses — it forwards no bytes for the
+// at once. The relay only swaps addresses — it forwards no bytes for the
 // direct path. If the target isn't registered here, nothing happens and the
 // requester keeps using the relay.
 func (s *Server) coordinatePunch(from ports.NodeID, cFrom *control, fr ctrl) {

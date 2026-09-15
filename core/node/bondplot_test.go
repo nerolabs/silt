@@ -14,7 +14,7 @@ import (
 
 // countingPlotStore is an in-memory ports.PlotStore that records how often it
 // plots (Save) versus reloads (Load hit), so a test can prove a restart
-// RELOADS instead of re-plotting (#93).
+// RELOADS instead of re-plotting.
 type countingPlotStore struct {
 	root   ports.Hash
 	blocks [][]byte
@@ -73,7 +73,7 @@ func TestEnableBondReloadsInsteadOfReplotting(t *testing.T) {
 	second.EnableBond(signer, size)
 
 	if store.saves != 1 {
-		t.Fatalf("restart re-plotted (saves=%d) instead of reloading — #93 regressed", store.saves)
+		t.Fatalf("restart re-plotted (saves=%d) instead of reloading — regressed", store.saves)
 	}
 	if store.loads != 1 {
 		t.Fatalf("restart did not load the persisted plot; loads=%d", store.loads)

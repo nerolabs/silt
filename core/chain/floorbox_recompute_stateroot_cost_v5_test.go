@@ -11,7 +11,7 @@ import (
 // TestRecomputeStateRootCostIsFlat proves the O(payload) claim (the whole point): the SAME small
 // E/R payload block, recomputed against a 100-entry vs a 10,000-entry pre-state, uses a witness
 // bundle whose size scales with the PAYLOAD + O(log N), NOT with the total state. The superseded
-// whole-state P1-a witnessed ALL 100 vs ALL 10,000 leaves; the flat result here is the win.
+// the whole-state form witnessed ALL 100 vs ALL 10,000 leaves; the flat result here is the win.
 //
 // The measured quantity is the witness's total sidenode count (the actual bytes a box fetches):
 // Σ over changed-leaf proofs of len(SideNodes) + the dueBucket proof's sidenodes. It grows only

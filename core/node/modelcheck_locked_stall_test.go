@@ -344,12 +344,12 @@ func TestModelCheck_StaggeredSweepsMustStillConverge(t *testing.T) {
 	}
 	liveIDs := all[:8]
 
-	// THE SCHEDULE (the field's asynchrony, deterministic). Phase 1 — pre-GST
+	// THE SCHEDULE (the field's asynchrony, deterministic). Before GST
 	// chaos: skewed sweeps with every new-view prepare HELD and delivered
 	// LATE (stale-by-arrival, the WAN reality): each delivery still resolves
 	// its gather (refusals/partial accepts — no driver-artifact hangs) while
 	// scattering the (h, r, prepare) sign marks across rounds, and the skewed
-	// timers smear the members' round clocks apart. Phase 2 — GST: delivery
+	// timers smear the members' round clocks apart. After GST: delivery
 	// stabilizes (lockstep sweeps, everything delivered promptly). THE ORACLE
 	// asserts the derived BOUND: after GST, the locked value commits within
 	// gstBudget rotations. RED without a synchronizer — the smeared members

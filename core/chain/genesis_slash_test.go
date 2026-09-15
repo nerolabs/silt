@@ -8,7 +8,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Retest G1 (Accountability, Critical) INVERTED as a regression: a genesis block
+// INVERTED as a regression: a genesis block
 // must NOT be able to carry an equivocation Slash. AppendGenesis skips
 // validateSlashes and apply unconditionally evicts every Slashes culprit, so an
 // UNVERIFIED genesis Slash was a proof-free, pre-emptive, identity-level kill

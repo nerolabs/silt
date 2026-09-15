@@ -8,7 +8,7 @@
 #
 # Usage:
 # ./integration/run-all .sh # the fast gate set (default)
-#  FULL=1 ./integration/run-all .sh # + the slow suites (soak, upgrade)
+#  FULL=1 ./integration/run-all .sh # + the slow suites (floor, soak, durability, retrieval, upgrade)
 #  SUITES="consensus bond nat"./integration/run-all .sh # an explicit subset
 #  SOAK_DURATION=120 ./integration/run-all .sh FULL=1
 #
@@ -38,6 +38,7 @@ SUITES_CATALOG=(
   "audit|gate|240|A liar deletes shards but keeps proofs → the loss is caught over the wire and repaired"
   "economy|gate|180|Per-byte earning + blind-signed, publisher-unlinkable credits"
   "churn|gate|540|Repair-under-churn: kill holders, caretaker reconstructs from parity + re-scatters, bit-perfect"
+  "floor|slow|900|a validator on the declared floor spec (one core, 2 GiB, 10 GiB): validates and converges under a kernel-enforced memory ceiling with no swap (honest load; adversarial input not yet driven), sheds heavy bond proofs below the retention horizon, and restarts from the pruned store. A SECOND box on the same spec validates by proof instead of by replica: it stalls and never accepts with no witness provider reachable, and it is RED on reaching a verdict over real witnesses — it cannot reproduce a block that touches two committed-state classes at once, which on a live chain is most blocks"
   "chaos|gate|300|Crash-recovery: SIGKILL every holder, restart, #69 re-announce fires, cold-fetch bit-perfect (WAVES=2 probes a seed-crash discoverability gap)"
   "soak|slow|700|Sustained load + gentle churn: bit-perfect throughout, no crash-loop, bounded memory"
   "durability|slow|1800|Durability under permanent loss: shrink the swarm, caretaker reconstructs+re-scatters, content outlives the nodes (surfaces the durability↔retrievability boundary)"

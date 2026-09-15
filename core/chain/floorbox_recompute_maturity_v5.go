@@ -10,11 +10,11 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// era-4 (v5) trustless floor-box RECOMPUTE — lane-1 Part B core, increment 2.
+// era-4 (v5) trustless floor-box RECOMPUTE.
 //
 // This file reproduces a SECOND validity predicate — the MATURITY LATCH metric matureNow
 // (chain.go) via C2Metric (chain.go) — trustlessly, from the committed
-// StateRoot + witnesses ALONE. It replicates increment 1's structure
+// StateRoot + witnesses ALONE. It replicates the structure of floorbox_recompute_v5.go
 // (floorbox_recompute_v5.go, recomputeEpochWeightQuorum) and, crucially, it is the FIRST
 // predicate whose fold READS GENESIS CONFIG, so it is where the obligation finally has
 // TEETH (see the note below and the ablation in the test).
@@ -55,7 +55,7 @@ import (
 // box's OWN cfg (c.cfg.*), NEVER from any witness. This predicate is the FIRST whose fold
 // reads genesis knobs; each is threshold-shifting if an attacker controls it (a lower MinBond
 // admits cheap members, a lower margin inflates the coefficient, a lower MatureValidators
-// lowers the bar). Reading own config forecloses every such shift — the teeth increment 1
+// lowers the bar). Reading own config forecloses every such shift — the teeth floorbox_recompute_v5.go
 // could not exercise.
 //
 // Then the fold + threshold, byte-for-byte the full node's (chain.go, 2207-2214,

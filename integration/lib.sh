@@ -73,3 +73,73 @@ ft_require() {
 
 # ft_docker_up — true if a docker daemon is reachable.
 ft_docker_up() { docker info >/dev/null 2>&1; }
+
+# ---- start clean, end clean ------------------------------------------------
+# A suite that starts on a dirty box measures the wrong machine, and a suite
+# that ends dirty poisons the next one. Both have happened here: a run left
+# twelve containers up for hours, and the next run's suites returned 137 (the
+# guest OOM-killer) and 124 (the per-suite cap) — read at the time as host
+# contention rather than as the leftovers they were. So the check is mechanical,
+# not a habit.
+#
+# The asymmetry is deliberate. ft_preflight REFUSES on someone else's leftovers
+# rather than removing them: another session or another suite may be mid-run,
+# and a harness that silently kills what it finds is worse than one that stops.
+# It only cleans its OWN project, which is by definition finished. ft_sweep is
+# the mirror — it removes exactly what this suite created.
+
+# ft_preflight <project> — assert the box is clean enough to measure on.
+# Removes this project's own leftovers, reports foreign ones and fails.
+ft_preflight() {
+  local project="$1" stray foreign
+
+  # This suite's own leftovers are always safe to remove: whatever run created
+  # them is over (we are the next one), and reusing a half-torn-down topology is
+  # how a stale volume silently answers a fresh assertion.
+  docker compose -p "$project" down -v --remove-orphans >/dev/null 2>&1 || true
+
+  # A `silt` daemon running on the HOST shares this machine's memory and ports
+  # with the containers under test. On a memory-ceiling suite that is not noise,
+  # it is the measurement.
+  stray=$(pgrep -f '(^|/)silt (daemon|swarm)' 2>/dev/null | tr '\n' ' ')
+  if [ -n "$stray" ]; then
+    echo "${C_RED}preflight FAILED${C_RESET}: silt is already running on this host (pid(s): $stray)." >&2
+    echo "  A host daemon competes with the containers for memory and ports. Stop it, then re-run." >&2
+    return 1
+  fi
+
+  # Containers from ANY silt suite, including this one's siblings. Named so the
+  # operator can see whose they are instead of guessing.
+  foreign=$(docker ps --filter 'ancestor=silt-consensus' --filter 'ancestor=silt-durability' \
+                      --format '{{.Names}}' 2>/dev/null | tr '\n' ' ')
+  foreign="$foreign$(docker ps --format '{{.Names}} {{.Image}}' 2>/dev/null \
+                      | awk '$2 ~ /^silt-/ {printf "%s ", $1}')"
+  foreign=$(echo "$foreign" | tr -s ' ' | sed 's/^ //;s/ $//')
+  if [ -n "$foreign" ]; then
+    echo "${C_RED}preflight FAILED${C_RESET}: containers from another silt suite are still up:" >&2
+    echo "  $foreign" >&2
+    echo "  They hold memory and CPU this run would be measured against. Tear them down" >&2
+    echo "  (their suite's ./run.sh does it, or: docker compose -p <project> down -v) and re-run." >&2
+    echo "  NOT removed automatically: another session may be mid-run." >&2
+    return 1
+  fi
+
+  echo "  preflight: no stray silt process, no foreign suite containers"
+  return 0
+}
+
+# ft_sweep <project> — tear down everything this suite built. Safe to call more
+# than once (it is the EXIT trap), and it reports what it could NOT remove
+# rather than exiting quietly, because a silent sweep that failed is how the
+# next run inherits the mess.
+ft_sweep() {
+  local project="$1" left
+  docker compose -p "$project" down -v --remove-orphans >/dev/null 2>&1 || true
+  left=$(docker ps -a --filter "label=com.docker.compose.project=$project" --format '{{.Names}}' 2>/dev/null | tr '\n' ' ')
+  if [ -n "$(echo "$left" | tr -d ' ')" ]; then
+    echo "${C_YELLOW}sweep INCOMPLETE${C_RESET}: still present after teardown: $left" >&2
+    echo "  remove them before the next run: docker rm -f $left" >&2
+    return 1
+  fi
+  return 0
+}

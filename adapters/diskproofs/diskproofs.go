@@ -3,7 +3,7 @@
 //
 //	<root>/<first two hex chars>/<full hex chunk id>
 //
-// It is the durable half of the #69 fix: after a restart the node reloads
+// It is the durable half of the fix: after a restart the node reloads
 // these proofs so it can re-announce each coded shard under the right column
 // key (and still answer storage-audit challenges). Writes are atomic
 // (temp file + rename), like the object store.
@@ -59,7 +59,7 @@ func (s *Store) Put(id ports.ChunkID, p ports.StorageProof) error {
 		dp.Path = append(dp.Path, append([]byte(nil), h[:]...))
 	}
 	// PoR authenticators must survive a restart: without them a re-announced
-	// shard can't answer an audit and its honest host is wrongly slashed (#69
+	// shard can't answer an audit and its honest host is wrongly slashed
 	// / Gate 4a). One 32-byte tag per por-block.
 	for _, tag := range p.PorTags {
 		dp.PorTags = append(dp.PorTags, append([]byte(nil), tag...))

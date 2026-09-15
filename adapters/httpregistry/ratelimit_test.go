@@ -9,7 +9,7 @@ import (
 
 // TestRateLimiterBurstThenThrottleThenRefill: a client gets its full burst, is then
 // throttled, and recovers as tokens refill — the read-cost bound that keeps a public
-// registry cheap (#48).
+// registry cheap.
 func TestRateLimiterBurstThenThrottleThenRefill(t *testing.T) {
 	l := newIPRateLimiter(10, 5) // 10/s, burst 5
 	defer l.close()

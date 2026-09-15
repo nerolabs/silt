@@ -155,7 +155,7 @@ func TestPrunedBlockHashDoesNotCoverCarrierOrStateRoot(t *testing.T) {
 	b.Atts = []Attestation{AttestAt(&b, attester, 0, PhasePrecommit, cid)}
 
 	fullHash := b.Hash()
-	if err := validateCarrier(&b, cid); err != nil {
+	if err := validateCarrier(&b, cid, 0); err != nil {
 		t.Fatalf("fixture: the honest carrier must be valid, got %v", err)
 	}
 
@@ -203,7 +203,7 @@ func TestPrunedBlockHashDoesNotCoverCarrierOrStateRoot(t *testing.T) {
 	// from the parent's published Atts is a genuine precommit over b.Prev and is ACCEPTED —
 	// adding is as free as dropping. An earlier version of this clause read the refusal below
 	// as "fabricating an entry needs a real key"; it does not. See TestPrunedCarrierRewriteIsCaughtOnlyByTheDescendant for both sides.
-	if err := validateCarrier(&forged, cid); err == nil {
+	if err := validateCarrier(&forged, cid, 0); err == nil {
 		t.Fatal("PROPERTY CHANGED: validateCarrier accepted a ZERO-signature carrier entry on a pruned block")
 	}
 }
@@ -276,7 +276,7 @@ func TestPrunedCarrierRewriteIsCaughtOnlyByTheDescendant(t *testing.T) {
 	}
 
 	// SIDE (i): the carrier rule ACCEPTS the harvested rewrite. No key material was used.
-	if err := validateCarrier(&rewritten, w.c.ChainID()); err != nil {
+	if err := validateCarrier(&rewritten, w.c.ChainID(), 0); err != nil {
 		t.Fatalf("(i): validateCarrier must ACCEPT a carrier harvested from the parent's real Atts — "+
 			"that is what makes adding as free as dropping; got %v", err)
 	}

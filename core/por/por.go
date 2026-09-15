@@ -24,7 +24,7 @@
 //
 // This package is pure: it speaks in bytes and keys, touches no store, no
 // network, no ports. Wiring it into the manifest, the node audit loop, and
-// the credit ledger is a separate change (Gate 4a, #90).
+// the credit ledger is a separate change (Gate 4a).
 //
 // ⚠ THE DECLARATION BELOW IS NAMED FOR THE CLAIM THE GATE ACTUALLY MATCHES IN
 // THIS BLOCK, WHICH IS NOT THE ONE THE PROSE LEADS WITH. The gate binds one

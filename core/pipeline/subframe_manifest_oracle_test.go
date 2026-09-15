@@ -213,7 +213,7 @@ func rtSFO1ModeHidden(L, conv, priv int) string {
 			"  bond and no token reads Entry.ManifestChunks off the unauthenticated MsgGetChain\n"+
 			"  (core/node/chainrole.go), fetches that chunk over the unauthenticated MsgFetchChunk\n"+
 			"  (core/node/node.go), and recovers the publisher's own secret/not-secret classification of the\n"+
-			"  root — docs/threat-catalog.md F8.\n"+
+			"  root.\n"+
 			"  IT WAS 345 vs 341 AT FileSize=1 ON 00082b8. That is the state this gate exists to prevent.\n"+
 			"  DO THIS: the close is manifest.secretsPlainLen, which pads secretsPart to a length that is a\n"+
 			"  function of the DATA-SHARD COUNT ALONE. Find what made that length mode-dependent again — a\n"+
@@ -418,7 +418,7 @@ func TestSubFrameRootIsChunkSizeIndependentAcrossTheLegalRange(t *testing.T) {
 				"  This was measured TOTAL at 00082b8 — 3,978 of 4,088 chunk sizes in [9,4096] collapse to one root,\n"+
 				"  and the only salting values are chunkSize <= L+7 (arm (b)).\n"+
 				"  DO THIS: confirm the re-salt is DELIBERATE. Inventing a salt here without a research is the\n"+
-				"  unreviewed novelty B8 forbids, and docs/threat-catalog.md F3's text depends on which reading is\n"+
+				"  unreviewed novelty B8 forbids, and the published privacy statement depends on which reading is\n"+
 				"  true. Route to the research before recording it as a mitigation.",
 				L, cs, got, predicted)
 		}
@@ -467,7 +467,7 @@ func TestSubFrameRootIsChunkSizeIndependentAcrossTheLegalRange(t *testing.T) {
 	if collapsedTotal := legal - saltingTotal; collapsedTotal != 134_217_610 {
 		t.Fatalf("the legal chunk-size range is [%d,%d] (%d values) of which %d salt, so %d collapse — "+
 			"this gate pins 134,217,610 (99.99992%%). If chunk.MinChunkSize or manifest.MaxChunkSize moved, the "+
-			"privacy statement in docs/threat-catalog.md F3 moves with it; update both together.",
+			"published privacy statement moves with it; update both together.",
 			chunk.MinChunkSize, manifest.MaxChunkSize, legal, saltingTotal, collapsedTotal)
 	}
 
@@ -521,7 +521,7 @@ func rtSFO5Pin(wantExact int64, got int64, mode crypto.Mode) string {
 			"    1. Confirm the research CERTIFIED the change. Entry sits at cbor key 3 inside chain.Block and is\n"+
 			"       inside the signing preimage, so this is a FORMAT change and an era question, not a local edit.\n"+
 			"    2. Confirm the project settled. It was an OPEN OWNER CALL when this pin was written.\n"+
-			"    3. Re-read docs/threat-catalog.md F3(a) and docs/math/02-convergent-encryption.md's 'no confirmation\n"+
+			"    3. Re-read the convergent-encryption derivation.md's 'no confirmation\n"+
 			"       surface' clause. BOTH were measured FALSE at 00082b8 BECAUSE of this field. A fix here is the\n"+
 			"       first thing that could make them true, and correcting them without the fix is NOT a mitigation.\n"+
 			"    4. Replace this pin with the positive assertion and state the blinding rule it enforces.",

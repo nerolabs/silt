@@ -65,7 +65,7 @@ const frameOverhead = 4 << 20
 
 // maxFrame bounds an inbound frame: large enough to carry the biggest legal
 // chunk (a frame carries at most one chunk) plus its envelope, small enough
-// to still cap per-frame allocation against a hostile peer (#14). It is
+// to still cap per-frame allocation against a hostile peer (persona 14). It is
 // derived from the manifest chunk-size ceiling, not a standalone number, so
 // the transport can always carry a chunk the manifest layer accepts — the
 // two limits can't drift apart. The minimum production chunk is 64
@@ -141,7 +141,7 @@ type Transport struct {
 	// requestPunch asks our relay to coordinate a hole-punch with a peer we
 	// currently reach through the relay (wired to relay.Client.RequestPunch by
 	// the daemon; nil if we run no relay client). punchedAt rate-limits those
-	// requests per peer so a busy relay path doesn't spam them (#27).
+	// requests per peer so a busy relay path doesn't spam them.
 	requestPunch func(ports.NodeID)
 	punchedAt    map[ports.NodeID]time.Time
 }
@@ -179,7 +179,7 @@ type peerConn struct {
 	// viaRelay marks a conn that rides the relay splice (either we dialed
 	// the peer's relay form, or the peer reached us through the relay). A
 	// relay conn, once established, is reused for every subsequent frame —
-	// so the hole-punch upgrade (#27) must be triggered on that reuse, not
+	// so the hole-punch upgrade must be triggered on that reuse, not
 	// only at dial time, or a steady-state relay path never tries to go
 	// direct. Set once at adopt; a later direct (punched) conn replaces the
 	// slot with a fresh peerConn whose viaRelay is false.
@@ -520,7 +520,7 @@ func (t *Transport) deliver(to ports.NodeID, pair addrPair, frame []byte, freshD
 				// A relay conn is reused for every frame, so this is the only
 				// place a steady-state relay path can be nudged toward a direct
 				// link. Cooldown-gated, so it's at most one request per peer per
-				// interval regardless of traffic (#27).
+				// interval regardless of traffic.
 				if pc.viaRelay {
 					t.maybeRequestPunch(to)
 				}
@@ -556,7 +556,7 @@ func (t *Transport) deliver(to ports.NodeID, pair addrPair, frame []byte, freshD
 		go t.readLoop(conn, viaRelay)
 		if viaRelay {
 			// We reached the peer through the relay; try to upgrade to a direct
-			// link so the bulk traffic leaves the relay (#27). Harmless if it
+			// link so the bulk traffic leaves the relay. Harmless if it
 			// fails — this relay conn keeps serving.
 			t.maybeRequestPunch(to)
 		}
@@ -642,7 +642,7 @@ func (t *Transport) dropConn(id ports.NodeID, pc *peerConn) {
 // relay contributed a pipe, not an identity.
 func (t *Transport) RelayInbound(raw net.Conn) {
 	// Inbound through the relay splice: mark the conn relay-backed so reusing
-	// it triggers the hole-punch upgrade (#27).
+	// it triggers the hole-punch upgrade.
 	t.readLoop(tls.Server(raw, &tls.Config{
 		Certificates: []tls.Certificate{t.cert},
 		ClientAuth:   tls.RequireAnyClientCert,
@@ -662,7 +662,7 @@ func (t *Transport) acceptLoop() {
 
 func (t *Transport) readLoop(conn *tls.Conn, viaRelay bool) {
 	// A malformed frame from a peer must fail this conversation, not the
-	// node (Gate 1 / anti-persona #14). The decoders below are panic-free
+	// node (Gate 1 / anti-persona 14). The decoders below are panic-free
 	// by construction — the fuzz targets prove it — but this guard is the
 	// net underneath: a panic anywhere in the read path drops the conn
 	// instead of unwinding into the runtime and killing every other peer's

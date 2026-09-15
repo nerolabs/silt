@@ -21,11 +21,11 @@ import (
 
 const Version = 1
 
-// Decode-time bounds (Gate 1 / A6, #88). A manifest arrives as reassembled
+// Decode-time bounds (Gate 1 / A6). A manifest arrives as reassembled
 // chunk data — attacker-controlled bytes — and *declares* its own chunk
 // count and sizes. A declared number is a claim, not a fact (tenet B7), so
 // the node must never allocate against it before checking it, or a tiny
-// manifest becomes a memory-exhaustion vector (anti-persona #14). These
+// manifest becomes a memory-exhaustion vector (anti-persona 14). These
 // bounds are the check; they are exported so the limit is visible and
 // referenceable rather than a buried magic number.
 const (
@@ -42,7 +42,7 @@ const (
 	// the parity-shard count). At the 256 KiB publish default this is a
 	// 256 GiB file — beyond any V1 need — while capping manifest-
 	// decode allocation to a few hundred MB in the worst case instead of
-	// letting a declared count drive it unbounded (S1/S3, B7, #14).
+	// letting a declared count drive it unbounded (S1/S3, B7, persona 14).
 	MaxChunks = 1 << 20
 )
 
@@ -92,7 +92,7 @@ func init() {
 	}
 	// Bound the decoder against a manifest that *declares* a huge array:
 	// the element count is refused as the array header is read, before the
-	// slice is allocated — the "before allocation" half of #88. MaxChunks
+	// slice is allocated — the "before allocation" half of MaxChunks
 	// covers Chunks, ChunkSecrets, and Parity alike (each is one CBOR
 	// array). Other limits keep the library defaults.
 	decMode, err = cbor.DecOptions{MaxArrayElements: MaxChunks}.DecMode()

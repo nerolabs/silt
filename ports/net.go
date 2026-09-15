@@ -192,6 +192,13 @@ const (
 	// block field, never a transition or fork-choice input (I5).
 	MsgRoundCert    // Data: CBOR roundCertEnv {Height, Round, Raws}: the signed round-change envelopes for exactly Round
 	MsgRoundCertAck // OK: the certificate verified and was recorded; OK=false: wrong height or below quorum
+	// APPENDED, never inserted: the WITNESS seam — how a box that holds no tree asks a node
+	// that does for the committed leaves, whole-set member lists, ancestor window and
+	// transparency-log extension proofs it needs to validate a block. Serving is NOT a trusted
+	// role: every answer is checked by the asker against a root it already holds, so a lying
+	// server produces a stall and never an acceptance (core/chain WitnessProvider).
+	MsgGetWitness   // Data: CBOR witnessReq — one accessor call (leaf, members, ancestors or log extension) against a named head
+	MsgWitnessReply // Data: CBOR witnessResp — the answer, or OK=false when this node has no witness to serve
 )
 
 // StorageProof is a Merkle inclusion proof shipped alongside a chunk:
@@ -296,7 +303,7 @@ type Message struct {
 	// `swarm get` publisher or fetcher that keeps nothing and then dies).
 	// Receivers must NOT add such a sender to their routing table: routing
 	// to a peer that will vanish poisons the table with ghosts and drowns
-	// lookups in timeouts (#43).
+	// lookups in timeouts.
 	Ephemeral bool
 	// Height is the chain-sync cursor (MsgGetChain).
 	Height uint64
@@ -335,6 +342,7 @@ func (k MsgKind) String() string {
 		MsgRoundChange: "RoundChange", MsgRoundChangeAck: "RoundChangeAck",
 		MsgCommitBlock: "CommitBlock", MsgCommitAck: "CommitAck",
 		MsgGetChain: "GetChain", MsgChainReply: "ChainReply",
+		MsgGetWitness: "GetWitness", MsgWitnessReply: "WitnessReply",
 		MsgGetChainHead: "GetChainHead", MsgChainHeadReply: "ChainHeadReply",
 		MsgCheckReachability: "CheckReachability", MsgReachabilityReply: "ReachabilityReply",
 		MsgSubmitBondReg: "SubmitBondReg", MsgSubmitBondRegAck: "SubmitBondRegAck",
@@ -364,7 +372,7 @@ func (k MsgKind) String() string {
 // IsReply reports whether this kind terminates a pending request.
 func (m Message) IsReply() bool {
 	switch m.Kind {
-	case MsgFindNodeReply, MsgGetProvidersReply, MsgAddProviderAck, MsgStoreChunkAck, MsgFetchChunkReply, MsgHasChunkReply, MsgChallengeReply, MsgAttestReply, MsgCommitAck, MsgChainReply, MsgChainHeadReply, MsgBondReply, MsgTokenReply, MsgIssuerKeyReply, MsgSubmitBondRegAck, MsgSubmitEntryAck, MsgRepairVote, MsgDeliveryReceiptAck, MsgCanonicalIssuersReply, MsgPrecommitReply, MsgRoundChangeAck, MsgRelayOpenAck, MsgRelayPayAck, MsgDemandIssuerKeysReply, MsgDemandTokenReply, MsgSubmitIssuerKeyRegAck, MsgDeliveryOpenAck, MsgDeliveryFundAck, MsgDeliverySettleAck, MsgRoundCertAck:
+	case MsgFindNodeReply, MsgGetProvidersReply, MsgAddProviderAck, MsgStoreChunkAck, MsgFetchChunkReply, MsgHasChunkReply, MsgChallengeReply, MsgAttestReply, MsgCommitAck, MsgChainReply, MsgChainHeadReply, MsgBondReply, MsgTokenReply, MsgIssuerKeyReply, MsgSubmitBondRegAck, MsgSubmitEntryAck, MsgRepairVote, MsgDeliveryReceiptAck, MsgCanonicalIssuersReply, MsgPrecommitReply, MsgRoundChangeAck, MsgRelayOpenAck, MsgRelayPayAck, MsgDemandIssuerKeysReply, MsgDemandTokenReply, MsgSubmitIssuerKeyRegAck, MsgDeliveryOpenAck, MsgDeliveryFundAck, MsgDeliverySettleAck, MsgRoundCertAck, MsgWitnessReply:
 		return true
 	}
 	return false

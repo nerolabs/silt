@@ -1,7 +1,7 @@
 // Package e2e drives the real `silt` binary as separate OS processes
 // over real TCP — the layer the in-process sim deliberately skips. It
 // exists because the class of bug the sim cannot see is exactly the one
-// that bit us in the field (#36: a reply that could never reach a NATed
+// that bit us in the field (a reply that could never reach a NATed
 // peer, invisible until real sockets carried it). Here a built binary
 // runs actual daemons, publishes through the chain-backed registry over
 // pinned HTTPS, and fetches back across the swarm — asserting the file
@@ -142,7 +142,7 @@ var (
 	reRefuse    = regexp.MustCompile(`refusing to start`)
 )
 
-// TestFreeloadRoleSeparation (#47): a daemon started with -freeload announces the
+// TestFreeloadRoleSeparation: a daemon started with -freeload announces the
 // role and still comes up as a routing peer — it serves registry/relay/routing but
 // refuses to host content. Role separation for public-infra operators, not a broken
 // node.
@@ -453,7 +453,7 @@ func TestDefaultsRefuseRubberStampCommit(t *testing.T) {
 }
 
 // TestBondEarnedStandingCommitsOverTCP is the e2e tier for the trust pivot
-// (T1b, #78): two validators earn consensus standing by proving their storage
+// (T1b): two validators earn consensus standing by proving their storage
 // bonds to EACH OTHER over TCP (gossip → challenge → verify → ledger), and a
 // publish then commits on the SAFE min-rep path — no `-quorum 0` trusted-
 // deployment shortcut. Standing is earned, not granted; a publish that commits
@@ -700,7 +700,7 @@ func TestObjectiveConsensusCommitsOverTCP(t *testing.T) {
 }
 
 // TestUnlinkablePublishOverTCP is the e2e tier for publisher privacy (T3,
-// #14/F1): three validators issue and REQUIRE publish tokens; a `swarm add`
+// persona 14 / F1): three validators issue and REQUIRE publish tokens; a `swarm add`
 // acquires a 2-of-3 token over real TCP (paying the fee with its identity, the
 // issuers never seeing the serial) and publishes — the entry commits and the
 // file round-trips, with no Publisher identity gating it.

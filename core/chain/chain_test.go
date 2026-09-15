@@ -182,7 +182,7 @@ func TestDupRootAndWrongParent(t *testing.T) {
 	}
 }
 
-// M0 privacy (#97): a default chain refuses an entry that carries a durable
+// M0 privacy: a default chain refuses an entry that carries a durable
 // Publisher — a permanent Publisher→root link on an append-only chain is the
 // privacy corner silently surrendered. An unlinkable entry (no Publisher)
 // commits; only an explicitly trusted deployment (AllowPublisher) accepts
@@ -238,7 +238,7 @@ func TestEncodeDecodeRoundtrip(t *testing.T) {
 	}
 }
 
-// The hard-fork guard (#98): a block minted under a different rule era must
+// The hard-fork guard: a block minted under a different rule era must
 // be refused at decode, not silently decoded and mis-validated under this
 // era's rules. This is the whole point of the version field.
 func TestDecodeRefusesForeignBlockVersion(t *testing.T) {

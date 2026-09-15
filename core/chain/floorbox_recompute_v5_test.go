@@ -20,7 +20,7 @@ func sortMembersByWeightDesc(ids []ports.NodeID, weights map[ports.NodeID]int64)
 	})
 }
 
-// Tests for the trustless floor-box RECOMPUTE increment 1 (floorbox_recompute_v5.go): the
+// Tests for the trustless floor-box RECOMPUTE in floorbox_recompute_v5.go: the
 // root-only reproduction of requireEpochWeightQuorum (Σ epochSet weight super-quorum), proving
 // the weight-composition pattern.
 //

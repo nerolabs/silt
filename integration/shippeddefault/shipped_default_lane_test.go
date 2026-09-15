@@ -245,61 +245,66 @@ func TestShippedDefaultLane_StockEdgeNodeStarts(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// THE LANE'S FIRST RESULT, PINNED.
+// THE STOCK VALIDATOR REFUSES, AND THE REASON IS THE POINT
 //
-// PINNED_DEFECT: on pure defaults the stock VALIDATOR posture REFUSES TO START.
-// The `-bond` default (67,108,864 B) does not clear the derived anti-release
-// floor (1,080,000,000 B), which defaults ON for an untrusted objective
-// validator. This test asserts the defect as the CURRENT measured state, so that
-// raising the default — settled as a direction, with the value still owed (row
-// F3) — turns this RED and forces the record to be updated rather than silently
-// drifting.
+// It used to refuse twice, and the first refusal hid the second. The shipped
+// `-bond` default did not clear the anti-release floor the same binary arms for an
+// untrusted swarm, so the validator was rejected for being under a limit nobody
+// chose and the binary derived — a configuration refusing its own defaults. That
+// is closed: the bond now follows the floor when the operator names neither, the
+// same way the floor, the re-challenge TTL, the quorum sizing, the operator margin
+// and the epoch cadence already do.
 //
-// # The claim and the reference are taken from THREE independent places, never one
+// WHAT IS LEFT IS NOT A DEFECT AND MUST NOT BE "FIXED". An untrusted objective
+// validator with no cold-start scaffolding would treat itself as mature from
+// genesis, and a young or Sybil quorum could then self-certify and capture the
+// network. The daemon refuses, and the remedies it names — an anchor set, a
+// maturity threshold, or a weak-subjectivity checkpoint — carry NETWORK-SPECIFIC
+// values. No shipped default can supply them, and one that appeared to would be
+// the quiet capture the project's third claim denies. So this lane asserts the
+// refusal as CORRECT behaviour, and asserts that it stays actionable: an operator
+// is told what to supply, not merely told no.
 //
-// the same response is a tautology:
-// - the REFUSAL is the daemon's observed run-time behaviour;
-// - the `-bond` default is read from the flag's own declaration via the
-// binary's flag table, never from prose or a copied literal (row F4 exists
-// because docs name defaults that are not the shipped ones);
-// - the floor is re-derived here from core/bond.PlotSealThroughput.
-func TestShippedDefaultLane_StockValidatorRefusesToStart_PINNED_DEFECT(t *testing.T) {
-	// (a) The independent derivation of the floor. AntiReleaseComputeWindow is
-	// 2s and unexported in package main, so the window is restated here as the
-	// one literal this test owns; the THROUGHPUT, which is the number that could
-	// actually move, is read from its shipped constant.
+// The claim is taken from three independent places, never one, so a single
+// response cannot satisfy it as a tautology: the refusal is the daemon's observed
+// run-time behaviour; the `-bond` default is read from the flag's own declaration
+// through the binary's flag table, never from prose; and the floor is re-derived
+// here from core/bond.PlotSealThroughput.
+func TestShippedDefaultLane_StockValidatorRefusesForTheRightReason(t *testing.T) {
+	// (a) The independent derivation of the floor.
 	const antiReleaseComputeWindowSeconds = 2
 	const derivedFloorMargin = 2
 	wantFloor := int64(derivedFloorMargin) * (int64(antiReleaseComputeWindowSeconds) * bond.PlotSealThroughput)
 	if wantFloor != 1_080_000_000 {
-		t.Fatalf("PIN MOVED: the derived anti-release floor re-computes to %d B, pinned at 1,080,000,000 B. "+
-			"bond.PlotSealThroughput or the window changed; re-derive row F3 before touching this test", wantFloor)
+		t.Fatalf("the derived anti-release floor re-computes to %d B, pinned at 1,080,000,000 B. "+
+			"bond.PlotSealThroughput or the window changed; re-derive before touching this test", wantFloor)
 	}
 
-	// (b) The shipped -bond default, read from the flag declaration itself.
+	// (b) The shipped -bond default, read from the flag declaration itself. It is
+	// deliberately still BELOW the floor: the floor only applies on the objective
+	// path, and a trusted or demo swarm should keep paying for the small plot it
+	// asked for rather than sealing a gigabyte it has no use for.
 	bondDefault := shippedFlagDefault(t, "bond")
 	gotBond, err := parseSiltSize(bondDefault)
 	if err != nil {
 		t.Fatalf("shipped -bond default %q: %v", bondDefault, err)
 	}
-	if gotBond != 67_108_864 {
-		t.Fatalf("PIN MOVED — and this is the pin doing its job: the shipped -bond default is now %q = %d B, "+
-			"pinned at \"64M\" = 67,108,864 B. If the default was raised per, "+
-			"update the roadmap and this test TOGETHER", bondDefault, gotBond)
-	}
-
-	// (c) The composition that row F3 records, asserted rather than assumed.
 	if gotBond >= wantFloor {
-		t.Fatalf("PIN MOVED: the shipped -bond default (%d B) now CLEARS the derived floor (%d B). "+
-			"Row F3's defect is fixed. Retire this PINNED_DEFECT, keep the positive assertion that the "+
-			"stock validator STARTS, and update the roadmap and ",
-			gotBond, wantFloor)
+		t.Fatalf("the shipped -bond default is now %q = %d B, at or above the derived floor (%d B).\n"+
+			"  That is a different design from the one this lane describes: the default used to be raised\n"+
+			"  for EVERY posture instead of derived for the objective one. Re-read effectiveBondSize and\n"+
+			"  this comment together before re-pinning — a trusted swarm should not seal a gigabyte.",
+			bondDefault, gotBond, wantFloor)
 	}
 
-	// (d) The measured behaviour: the daemon exits rather than running unbonded.
+	// (c) The measured behaviour: it exits rather than running as a self-certifying
+	// validator.
 	res := runStockDaemon(t, stockValidatorArgv, 60*time.Second, "serving; Ctrl-C to stop")
 	if res.started {
-		t.Fatalf("PIN MOVED: the stock validator posture %v STARTED. Row F3 records that it refuses. "+
+		t.Fatalf("THE COLD-START CAPTURE DEFENCE IS GONE: the stock validator posture %v STARTED.\n"+
+			"  An untrusted objective validator with no anchor set, no maturity threshold and no\n"+
+			"  weak-subjectivity checkpoint treats itself as mature from genesis, which is the quiet\n"+
+			"  capture the Sybil claim denies. A start here is a security regression, not progress.\n"+
 			"stdout:\n%s", res.argv, res.stdout)
 	}
 	if res.timedOut {
@@ -307,22 +312,43 @@ func TestShippedDefaultLane_StockValidatorRefusesToStart_PINNED_DEFECT(t *testin
 			"stdout:\n%s\nstderr:\n%s", res.argv, res.stdout, res.stderr)
 	}
 	if res.exitCode != 1 {
-		t.Fatalf("stock validator posture %v exited %d, pinned at 1\nstdout:\n%s\nstderr:\n%s",
+		t.Fatalf("stock validator posture %v exited %d, want 1\nstdout:\n%s\nstderr:\n%s",
 			res.argv, res.exitCode, res.stdout, res.stderr)
 	}
 
-	// (e) The operator-visible reason. An announced operator string is a
-	// contract, and it has broken twice: if this text changes, the change is
-	// deliberate and the record moves with it. row F5 queues a rewrite of
-	// the RESTART error text, which is a different message from this one.
-	const wantReason = "below the anti-release floor"
+	// (d) The reason, and that it is the SUBSTANTIVE one. A refusal about the bond
+	// floor here would mean the spurious refusal has returned and is again hiding
+	// this one.
+	if strings.Contains(res.stderr, "below the anti-release floor") {
+		t.Fatalf("THE SPURIOUS REFUSAL IS BACK: the stock validator is again rejected for a bond under a\n"+
+			"  floor the same binary derived, which hides the cold-start refusal behind it. The bond is\n"+
+			"  supposed to follow the floor when the operator names neither (effectiveBondSize).\n"+
+			"stderr:\n%s", res.stderr)
+	}
+	const wantReason = "would treat itself as mature from genesis"
 	if !strings.Contains(res.stderr, wantReason) {
-		t.Fatalf("the stock validator refused for a DIFFERENT reason than row F3 records. "+
-			"want stderr to contain %q\ngot stderr:\n%s\nstdout:\n%s", wantReason, res.stderr, res.stdout)
+		t.Fatalf("the stock validator refused for an unexpected reason.\n  want stderr to contain %q\n"+
+			"got stderr:\n%s\nstdout:\n%s", wantReason, res.stderr, res.stdout)
 	}
 
-	// (f) The floor the daemon ITSELF armed, cross-checked against (a). This is
-	// the run-time value, not a constant that feeds it.
+	// (e) AND IT STAYS ACTIONABLE. A correct refusal an operator cannot act on is a
+	// dead end; each remedy below carries a network-specific value, which is exactly
+	// why no default can stand in for it.
+	for _, remedy := range []string{"-anchors", "-mature-validators", "-ws-checkpoint"} {
+		if !strings.Contains(res.stderr, remedy) {
+			t.Errorf("the refusal does not name %s. The operator is told no without being told what to\n"+
+				"  supply, and the value is network-specific so they cannot guess it.\nstderr:\n%s",
+				remedy, res.stderr)
+		}
+	}
+
+	// (f) The bond the daemon ITSELF armed, which must now clear the floor it armed.
+	if !strings.Contains(res.stdout, "-bond defaulted to") {
+		t.Errorf("the daemon did not announce a derived bond. An operator who cannot see the bond move\n"+
+			"  cannot tell which plot size their validator will seal.\nstdout:\n%s", res.stdout)
+	}
+
+	// (g) The floor the daemon armed, cross-checked against (a).
 	gotFloorMiB := announcedFloorMiB(t, res.stdout)
 	if wantMiB := int(wantFloor >> 20); gotFloorMiB != wantMiB {
 		t.Fatalf("the daemon armed a floor of %d MiB; the independent derivation says %d MiB "+
@@ -330,13 +356,10 @@ func TestShippedDefaultLane_StockValidatorRefusesToStart_PINNED_DEFECT(t *testin
 			gotFloorMiB, wantMiB, wantFloor)
 	}
 
-	t.Logf("LANE RESULT (pinned defect): `silt daemon -validator` on pure defaults EXITS %d. "+
-		"bond default %s = %d B < derived floor %d B (%d MiB armed by the daemon). Reason: %q",
-		res.exitCode, bondDefault, gotBond, wantFloor, gotFloorMiB, strings.TrimSpace(res.stderr))
+	t.Logf("LANE RESULT: `silt daemon -validator` on pure defaults EXITS %d, for the cold-start capture "+
+		"defence and not for its own bond default, and names all three remedies.", res.exitCode)
 }
 
-// TestShippedDefaultLane_TheStockArgvGuardHasTeeth drives the guard that keeps
-// this lane honest. A guard with no demonstrated failure is decoration.
 func TestShippedDefaultLane_TheStockArgvGuardHasTeeth(t *testing.T) {
 	for _, argv := range [][]string{
 		{"daemon", "-validator", "-min-bond-floor", "0"}, // the door 20 services use today
@@ -699,4 +722,101 @@ func parseComposeValidators(t *testing.T, root, rel string) []validatorService {
 	}
 	flush()
 	return out
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE DEFENDED POSTURE IS THE DEFAULT, AND THE OVERRIDES ARE WHAT WEAKEN IT
+// ─────────────────────────────────────────────────────────────────────────────
+
+// defenceDefault is one defence that must be ON for a stock untrusted swarm, named by the line the
+// daemon prints when it turns itself on. Announcing is the point: an operator who cannot see a
+// defence engage cannot tell a defended node from an undefended one, and the override text is what
+// makes the weakening a deliberate act rather than a discovery.
+type defenceDefault struct {
+	name    string
+	banner  string // a distinctive fragment of the line the daemon prints
+	weakens string // the flag that turns it off, which must be named in the same line
+}
+
+var shippedDefences = []defenceDefault{
+	{"anti-release bond floor", "anti-release floor defaulted to", "-min-bond-floor"},
+	{"objective re-challenge TTL", "re-challenge TTL defaulted to", "-bond-ttl"},
+	{"Byzantine quorum sizing", "Byzantine quorum sizing defaulted ON", "-byzantine-quorum"},
+	{"operator split margin", "operator-margin defaulted to", "-operator-margin"},
+	{"epoch freeze cadence", "epoch-blocks defaulted to", "-epoch-blocks"},
+}
+
+// TestShippedDefaultLane_EveryDefenceIsOnBeforeAnyFlag is the positive half of this lane's claim,
+// and the half that was never driven: not "does the stock binary run" but "is what it runs the
+// DEFENDED configuration". Each defence below is observed engaging on argv that carries nothing but
+// the role selector.
+//
+// WHY IT READS THE DAEMON'S OWN OUTPUT rather than the flag table. A default read from the flag
+// declaration tells you what the flag says; it does not tell you the value survived to the running
+// node, and it cannot see a defence whose default is DERIVED at start-up from the swarm's trust
+// posture — which is exactly what the anti-release floor and the re-challenge TTL are. The printed
+// line is the node reporting what it actually armed.
+//
+// EACH LINE MUST ALSO NAME ITS OWN OFF SWITCH. A defence an operator cannot find the override for
+// is one they will work around by a wider hammer, and a defence that disengages without saying so
+// is the shape this whole item exists to refuse.
+func TestShippedDefaultLane_EveryDefenceIsOnBeforeAnyFlag(t *testing.T) {
+	// The validator posture is the one that arms the consensus defences, and it REFUSES on stock
+	// argv — by design, twice over. Both refusals happen after the defences announce themselves, so
+	// the run is read for what it armed on the way to refusing.
+	res := runStockDaemon(t, stockValidatorArgv, 90*time.Second, "no banner this test waits for")
+	out := res.stdout + res.stderr
+	if strings.TrimSpace(out) == "" {
+		t.Fatalf("NO OUTPUT from the stock validator posture %v (exit=%d timedOut=%v). This test reads "+
+			"the daemon's own report of what it armed; with no output it asserts nothing.",
+			res.argv, res.exitCode, res.timedOut)
+	}
+
+	for _, d := range shippedDefences {
+		if !strings.Contains(out, d.banner) {
+			t.Errorf("DEFENCE NOT ANNOUNCED ON DEFAULTS: %s.\n"+
+				"  expected a line containing %q, on argv %v with no flag beyond the role selector.\n"+
+				"  Either the defence no longer defaults ON for an untrusted swarm — which is this item's\n"+
+				"  whole subject — or it stopped saying so, which is the same failure to an operator who\n"+
+				"  cannot otherwise tell a defended node from an undefended one.",
+				d.name, d.banner, res.argv)
+			continue
+		}
+		line := ""
+		for _, l := range strings.Split(out, "\n") {
+			if strings.Contains(l, d.banner) {
+				line = l
+				break
+			}
+		}
+		if !strings.Contains(line, d.weakens) {
+			t.Errorf("DEFENCE %s ANNOUNCES ITSELF BUT NOT ITS OFF SWITCH: expected %q in\n  %s\n"+
+				"  An operator who cannot find the override reaches for a wider one.", d.name, d.weakens, line)
+		}
+	}
+}
+
+// TestShippedDefaultLane_TheDefenceCensusHasTeeth feeds the predicate output that is missing a
+// defence and output that announces one without its override, and requires it to speak up for each.
+// The census above is a list of strings; without this, a typo in one of them would silently stop
+// checking that defence and the lane would still read green.
+func TestShippedDefaultLane_TheDefenceCensusHasTeeth(t *testing.T) {
+	for _, d := range shippedDefences {
+		full := d.banner + " some value. Override with " + d.weakens + " (safe only for a trusted swarm)."
+		if !strings.Contains(full, d.banner) || !strings.Contains(full, d.weakens) {
+			t.Fatalf("TEETH FAILED: %s does not match its own synthetic line %q", d.name, full)
+		}
+		missing := strings.ReplaceAll(full, d.banner, "something else entirely")
+		if strings.Contains(missing, d.banner) {
+			t.Fatalf("TEETH FAILED: %s still matched output its banner was removed from", d.name)
+		}
+		noOverride := d.banner + " some value, with no way back."
+		if strings.Contains(noOverride, d.weakens) {
+			t.Fatalf("TEETH FAILED: %s found its override %q in a line that does not carry it", d.name, d.weakens)
+		}
+	}
+	if len(shippedDefences) < 5 {
+		t.Fatalf("CENSUS SHRANK to %d defences. A defence removed from this list stops being checked; "+
+			"remove one only with the record of why it is no longer a default.", len(shippedDefences))
+	}
 }

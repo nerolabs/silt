@@ -98,12 +98,15 @@ func TestEveryDiskWritePathRunsTheEra4VersionCheck(t *testing.T) {
 
 	t.Run("structural/scanner-covers-the-whole-package", func(t *testing.T) {
 		// Leg 1 scans chain.go only. That is total only while chain.go holds every
-		// apply on a LIVE chain. The one apply outside it is postApplyRoots'
-		// `scratch.apply` — a throwaway clone, not a disk write. Any OTHER receiver
-		// calling.apply in a non-test file is either a new write path (which must move
-		// into leg 1's scan) or a new clone (which must be named here), and either way
-		// is a reviewed change, not a default.
-		cloneReceivers := map[string]bool{"scratch": true}
+		// apply on a LIVE chain. The applies outside it are on throwaway clones, not
+		// disk writes: postApplyRoots' `scratch`, and the witness bundle's `post` — the
+		// copy a provider applies a candidate to so it can diff the committed leaf set
+		// across the transition and prove the maturity set against the block's own
+		// post-apply root (witnessbundle.go). Any OTHER receiver calling .apply in a
+		// non-test file is either a new write path (which must move into leg 1's scan)
+		// or a new clone (which must be named here), and either way is a reviewed
+		// change, not a default.
+		cloneReceivers := map[string]bool{"scratch": true, "post": true}
 		for file, src := range packageSources(t) {
 			if file == "chain.go" {
 				continue

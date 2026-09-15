@@ -1,4 +1,4 @@
-// Publish-token issuance and acquisition (T3, #14 / F1). A validator can be a
+// Publish-token issuance and acquisition (T3, persona 14 / F1). A validator can be a
 // token ISSUER: it blind-signs a requester's blinded serial, charging the fee
 // to the requester's durable identity but learning nothing about the serial.
 // A publisher ACQUIRES a token by collecting k such blind signatures from

@@ -8,7 +8,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// era-4 build increment 4c — the RegCap per-block TOTAL BondReg count validity rule,
+// era-4 RegCap per-block TOTAL BondReg count validity rule,
 // model-check tier. RegCap is a consensus block-validity predicate, so it lives beside the
 // other modelcheck_* validity oracles and is enforced through ValidateProposal (the path
 // every replica runs on receipt).

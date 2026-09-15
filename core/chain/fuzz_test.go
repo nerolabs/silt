@@ -8,7 +8,7 @@ import (
 // FuzzDecode drives arbitrary bytes through the block decoder. Blocks
 // arrive over the wire in a GET/response payload (see core/node
 // chainrole), so a malformed encoding must fail with an error and never
-// panic (Gate 1 / anti-persona #14).
+// panic (Gate 1 / anti-persona 14).
 func FuzzDecode(f *testing.F) {
 	f.Add(Encode(&Block{}))
 	f.Add([]byte{})

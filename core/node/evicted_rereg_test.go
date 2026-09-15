@@ -104,7 +104,7 @@ func TestSlashedSelfNeverSubmitsRenewal(t *testing.T) {
 
 // TestSlashedIdentityRegRefusedAtSubmit — Q1(a), arrival: an honest receiver
 // refuses a slashed identity's submitted reg BEFORE the expensive space-time
-// verify (a map lookup, same placement discipline as the Phase 1.2 CPU gate)
+// verify (a map lookup, same placement discipline as the CPU gate)
 // and never queues it. A non-slashed sender still passes (control). RED
 // pre-fix: the reg reaches the verify and the queue.
 func TestSlashedIdentityRegRefusedAtSubmit(t *testing.T) {

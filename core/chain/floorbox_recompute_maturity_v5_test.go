@@ -9,9 +9,9 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Tests for the trustless floor-box RECOMPUTE increment 2 (floorbox_recompute_maturity_v5.go):
+// Tests for the trustless floor-box RECOMPUTE in floorbox_recompute_maturity_v5.go:
 // the root-only reproduction of matureNow (the maturity-latch metric via C2Metric), replicating
-// increment 1's C-1 pattern AND shipping the mandatory C-6 config-from-witness ablation TEETH.
+// the C-1 pattern AND shipping the mandatory C-6 config-from-witness ablation TEETH.
 //
 // The four HARD ABLATIONS (red-before-green), each injected and watched to flip the verdict,
 // so a green here is not decoration:

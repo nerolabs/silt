@@ -116,7 +116,7 @@ const foldFileGlob = "floorbox_*.go"
 // foldFileFloor is the vacuity floor: the number of non-test floorbox_*.go files measured when the
 // glob was last widened (13 on 2026-09-08). A count below it means the glob drifted from the
 // naming, not that files were deleted — a deletion must lower this number in the same commit.
-const foldFileFloor = 13
+const foldFileFloor = 14
 
 // TestFoldFilesReadNoLiveBoxState is the pin. Any `c.<sel>` in a fold file that is neither
 // allowlisted nor a self-dispatch method declared in a fold file reddens it.

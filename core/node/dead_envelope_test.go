@@ -20,7 +20,7 @@ func nodeHasProvider(n *Node, key ports.Hash, id ports.NodeID) bool {
 // dial to it exhausts its retries and times out), it must leave the provider-record
 // candidate set for keys that have a live alternative — so the fetch/repair loop
 // stops re-dialing the corpse once per deadUntil cooldown forever — WHILE its record
-// for a key it SOLELY provides is kept, so that content stays discoverable (#69).
+// for a key it SOLELY provides is kept, so that content stays discoverable.
 //
 // Fails before the node.go RemoveIfNotSole wiring (the corpse lingered in every
 // key); passes after.
@@ -54,7 +54,7 @@ func TestConfirmedDeadHolderPrunedFromReplicatedKeptForSole(t *testing.T) {
 		t.Fatal("the live sibling must remain a provider of the replicated key")
 	}
 	if !nodeHasProvider(searcher, soleKey, deadID) {
-		t.Fatal("#69: a SOLE dead holder must be KEPT — orphaning it makes its content undiscoverable")
+		t.Fatal("a SOLE dead holder must be KEPT — orphaning it makes its content undiscoverable")
 	}
 	if searcher.Stats.DeadProviderRecordsPruned != 1 {
 		t.Fatalf("expected exactly 1 pruned record (the replicated corpse), got %d", searcher.Stats.DeadProviderRecordsPruned)

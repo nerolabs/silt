@@ -9,7 +9,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Tests for the P1-e class-P epoch-rotation state-root recompute
+// Tests for the class-P epoch-rotation state-root recompute
 // (floorbox_recompute_stateroot_rotate_v5.go).
 //
 // research: floorbox-recompute-classA-classP-wholeset-
@@ -168,7 +168,7 @@ func (f rotateFixture) rotateMember(t *testing.T, id ports.NodeID, weight int64)
 
 // rotateMemberPost builds a frozen-member witness whose RegVersion is taken from the supplied
 // regVersion map. Callers pass the POST-apply clone's regVersion so an in-block bonded member carries
-// its just-written version (RegVersionKnown=true) — the DIRECTION B in-block cross-check input. For a
+// its just-written version (RegVersionKnown=true) — the in-block cross-check input. For a
 // steady-state member the post map equals pre-state, so the pre-state RegVersionProof still resolves.
 func (f rotateFixture) rotateMemberPost(t *testing.T, id ports.NodeID, weight int64, regVersion map[ports.NodeID]uint8) StateRootRotateMember {
 	t.Helper()
@@ -191,7 +191,7 @@ func (f rotateFixture) rotateMemberPost(t *testing.T, id ports.NodeID, weight in
 	// proof (present when RegVersionKnown, else a non-membership proof). A fresh in-block bond has no
 	// pre-state qualified||id leaf, so QualifiedProof is a non-membership proof there and the box
 	// cross-checks Weight against the class-B write instead; likewise the box cross-checks RegVersion
-	// against the class-B regVerWrites for an in-block member (DIRECTION B) and does not read the proof.
+	// against the class-B regVerWrites for an in-block member and does not read the proof.
 	m.QualifiedProof = mustProve(f.prover, statehash.Key(tagQualified, id[:]))
 	m.RegVersionProof = mustProve(f.prover, statehash.Key(tagRegVersion, id[:]))
 	return m
@@ -228,7 +228,7 @@ func (f rotateFixture) witnessForBoundary(t *testing.T, b Block) StateRootWitnes
 	)
 
 	// Rotate witness: frozen members + prior epochSet droppers + scalars. An in-block bonded member
-	// carries its POST-write regVersion (from the applied clone) — the DIRECTION B cross-check input.
+	// carries its POST-write regVersion (from the applied clone) — the in-block cross-check input.
 	var rw StateRootRotateWitness
 	for id, wt := range clone.qualified {
 		rw.Members = append(rw.Members, f.rotateMemberPost(t, id, wt, clone.regVersion))
@@ -313,8 +313,8 @@ func (f rotateFixture) addBondRegWitness(t *testing.T, b Block, w *StateRootWitn
 		w.BondRegBuckets = append(w.BondRegBuckets, StateRootBucketWitness{DueHeight: due, PreMembers: nil, Proof: bp})
 	}
 
-	// The B per-member write-set: reconstruct via bondRegOps to enumerate the changed keys. Build a
-	// temporary witness with the digest pre-sets + buckets so bondRegOps can anchor.
+	// The B per-member write-set: reconstruct via the composed transition to enumerate the changed
+	// keys. Build a temporary witness with the digest pre-sets + buckets so it can anchor.
 	tmp := StateRootWitness{
 		DigestPreSets: []StateRootDigestWitness{
 			f.digestWitness(t, tagBondedRoot, f.preBondedIDs()),
@@ -324,11 +324,11 @@ func (f rotateFixture) addBondRegWitness(t *testing.T, b Block, w *StateRootWitn
 		BondRegScreens: w.BondRegScreens,
 		BondRegBuckets: w.BondRegBuckets,
 	}
-	_, bWrites, err := f.c.bondRegOps(f.prevRoot, b, tmp)
+	idSets, err := f.c.composeIDSetTransition(f.prevRoot, b, tmp, false)
 	if err != nil {
-		t.Fatalf("bondRegOps (witness build): %v", err)
+		t.Fatalf("composeIDSetTransition (witness build): %v", err)
 	}
-	for _, wr := range bWrites {
+	for _, wr := range idSets.netWrites() {
 		w.ChangedLeaves = append(w.ChangedLeaves, f.leafWitness(t, wr))
 	}
 }
@@ -370,11 +370,11 @@ func TestRecomputeStateRootRotateWithBondRegAgreesWithApply(t *testing.T) {
 		t.Fatalf("P+bondreg recompute should AGREE with real apply() but stalled: %v", err)
 	}
 	// Confirm the just-bonded validator IS in the reconstructed frozen set (else the ablation is vacuous).
-	postQual, err := f.c.reconstructPostQualified(f.prevRoot, b, w)
+	idSets, err := f.c.composeIDSetTransition(f.prevRoot, b, w, true)
 	if err != nil {
-		t.Fatalf("reconstructPostQualified: %v", err)
+		t.Fatalf("composeIDSetTransition: %v", err)
 	}
-	if _, ok := postQual[ports.HashBytes(pubOf(nv))]; !ok {
+	if _, ok := idSets.Qualified()[ports.HashBytes(pubOf(nv))]; !ok {
 		t.Fatalf("the just-bonded validator must be in the reconstructed post-qualified freeze set")
 	}
 }
@@ -391,12 +391,12 @@ func TestRecomputeStateRootRotateEpochSetRootByteExact(t *testing.T) {
 	clone.apply(b)
 
 	w := f.witnessForBoundary(t, b)
-	postQual, qualWrites, regVerWrites, err := f.c.reconstructPostQualifiedWithWrites(f.prevRoot, b, w)
+	idSets, err := f.c.composeIDSetTransition(f.prevRoot, b, w, true)
 	if err != nil {
-		t.Fatalf("reconstructPostQualifiedWithWrites: %v", err)
+		t.Fatalf("composeIDSetTransition: %v", err)
 	}
 	// Mature-from-genesis fixture ⇒ post-latch everMature is true (class M threads it in).
-	ops, err := f.c.rotateOps(f.prevRoot, b, w, postQual, qualWrites, regVerWrites, true)
+	ops, err := f.c.rotateOps(f.prevRoot, b, w, idSets.Qualified(), idSets.qualWrites, idSets.regVerWrites, true)
 	if err != nil {
 		t.Fatalf("rotateOps: %v", err)
 	}
@@ -885,7 +885,7 @@ func (f handoffFixture) witnessForHandoff(t *testing.T, b Block) StateRootWitnes
 	var rw StateRootRotateWitness
 	for id, wt := range applied.qualified {
 		esKey := statehash.Key(tagEpochSet, id[:])
-		// POST-apply regVersion (DIRECTION B): equals pre-state here (no in-block bond at the handoff).
+		// POST-apply regVersion: equals pre-state here (no in-block bond at the handoff).
 		rv, rvKnown := applied.regVersion[id]
 		rw.Members = append(rw.Members, StateRootRotateMember{
 			ID: id, Weight: wt, RegVersion: rv, RegVersionKnown: rvKnown,

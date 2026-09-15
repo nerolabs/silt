@@ -10,7 +10,7 @@ import (
 
 // TestMeasure_AnswerSizeBreakdown is the measurement, not an assert: it
 // decomposes the encoded answer into its byte terms so the compression
-// tiers are chosen on evidence Phase 3. Run with -v to read it.
+// tiers are chosen on evidence. Run with -v to read it.
 //
 // Terms:
 // - possession blocks (challengeIndices samples)

@@ -196,7 +196,7 @@ func OpenLayout(blob []byte, layoutKey [32]byte) (*Layout, error) {
 	// OpenLayout returns before the full Validate (that needs the content
 	// key), so it enforces the declared-number bounds itself: the decoder
 	// already caps array element counts, this rejects an oversize declared
-	// chunk size and is belt-and-suspenders on the counts (#88, B7, #14).
+	// chunk size and is belt-and-suspenders on the counts (B7, persona 14).
 	if l.ChunkSize <= 0 || l.ChunkSize > MaxChunkSize {
 		return nil, fmt.Errorf("manifest: layout chunk size %d out of range", l.ChunkSize)
 	}

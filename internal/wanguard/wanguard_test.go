@@ -155,7 +155,7 @@ func TestTransportDeadlinesAreLedgered(t *testing.T) {
 	}
 	sort.Slice(unregistered, func(i, j int) bool { return unregistered[i] < unregistered[j] })
 	for _, k := range unregistered {
-		t.Errorf("unregistered transport deadline at %s\n  site: %q\n  → route it through the durable-WAN policy (core/node requestAttempt: size-aware + retry + negative-cache), OR add a wanguard ledger entry declaring its shape (payload-scaled / fail-fast / keepalive-idle / server-DoS-bound / first-contact-modest) and why a flat deadline is correct there (docs/network-durability.md, build-immutable #5).", found[k], k)
+		t.Errorf("unregistered transport deadline at %s\n  site: %q\n  → route it through the durable-WAN policy (core/node requestAttempt: size-aware + retry + negative-cache), OR add a wanguard ledger entry declaring its shape (payload-scaled / fail-fast / keepalive-idle / server-DoS-bound / first-contact-modest) and why a flat deadline is correct there (the durable-WAN policy, build-immutable #5).", found[k], k)
 	}
 
 	// Stale: a ledger entry whose site is gone — keep the ledger honest.

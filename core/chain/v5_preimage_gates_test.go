@@ -94,7 +94,7 @@ func TestEra4BoundaryCarrierIsNotAWedge(t *testing.T) {
 	}
 
 	// --- THE SHIPPED RULE: the honest boundary block VALIDATES, on every path that judges it. ---
-	if err := validateCarrier(b, c.ChainID()); err != nil {
+	if err := validateCarrier(b, c.ChainID(), 0); err != nil {
 		t.Fatalf("VIOLATED (validity rule): the honest boundary carrier must be valid: %v", err)
 	}
 	if err := c.ValidateProposal(b); err != nil {
@@ -128,7 +128,7 @@ func TestEra4BoundaryCarrierIsNotAWedge(t *testing.T) {
 			"A patch that silently fails to apply reports GREEN and is indistinguishable from a passing "+
 			"ablation (silt-ablation-noop-guard)", wedged.LastCommit[0].Phase, PhasePrecommitV5)
 	}
-	err := validateCarrier(&wedged, c.ChainID())
+	err := validateCarrier(&wedged, c.ChainID(), 0)
 	if !errors.Is(err, ErrCarrierBadSignature) {
 		t.Fatalf("GATE IS DECORATION: keying the carrier's preimage dispatch on the CONTAINING "+
 			"block's version must REJECT every entry at H_era4 (that is the wedge), got %v", err)
@@ -172,7 +172,7 @@ func TestTheCarrierSigningHeightIsTheParents(t *testing.T) {
 	if honest.Phase != PhasePrecommitV5 {
 		t.Fatalf("GATE VACUOUS: a v5 parent's precommit must carry the v5 form, got phase %d", honest.Phase)
 	}
-	if err := validateCarrier(mk([]Attestation{honest}), cid); err != nil {
+	if err := validateCarrier(mk([]Attestation{honest}), cid, 0); err != nil {
 		t.Fatalf("(a) VIOLATED: a genuine parent precommit at b.Height-1 must be accepted: %v", err)
 	}
 
@@ -185,7 +185,7 @@ func TestTheCarrierSigningHeightIsTheParents(t *testing.T) {
 		t.Fatal("ABLATION DID NOT APPLY: the off-by-one signature is identical to the honest one, so the " +
 			"preimage does not bind the height at all and this gate carries zero bits")
 	}
-	if err := validateCarrier(mk([]Attestation{offByOne}), cid); !errors.Is(err, ErrCarrierBadSignature) {
+	if err := validateCarrier(mk([]Attestation{offByOne}), cid, 0); !errors.Is(err, ErrCarrierBadSignature) {
 		t.Fatalf("(b) GATE IS DECORATION: an entry signed at b.Height (not b.Height-1) must be "+
 			"REFUSED — the derived height is what makes it so; got %v", err)
 	}
@@ -194,7 +194,7 @@ func TestTheCarrierSigningHeightIsTheParents(t *testing.T) {
 	other := Block{Version: BlockVersionWitnessable, Height: next - 2, Prev: ports.HashBytes([]byte("elsewhere")),
 		Entries: []ports.Entry{entry(9)}}
 	foreign := AttestAt(&other, keys[1], 0, PhasePrecommit, cid)
-	if err := validateCarrier(mk([]Attestation{foreign}), cid); !errors.Is(err, ErrCarrierBadSignature) {
+	if err := validateCarrier(mk([]Attestation{foreign}), cid, 0); !errors.Is(err, ErrCarrierBadSignature) {
 		t.Fatalf("(c) VIOLATED: a genuine precommit over another block at another height must be "+
 			"REFUSED; got %v", err)
 	}
@@ -796,7 +796,7 @@ func TestCarrierAcceptsBothPrecommitFormsAndNoOther(t *testing.T) {
 	if onForm.Phase != PhasePrecommitV5 {
 		t.Fatalf("GATE VACUOUS: expected the era-4 form off a v5 parent, got phase %d", onForm.Phase)
 	}
-	if err := validateCarrier(mk(onForm), cid); err != nil {
+	if err := validateCarrier(mk(onForm), cid, 0); err != nil {
 		t.Fatalf("the era-4 precommit form must be accepted: %v", err)
 	}
 
@@ -807,7 +807,7 @@ func TestCarrierAcceptsBothPrecommitFormsAndNoOther(t *testing.T) {
 		Sig:    ed25519.Sign(keys[1], consensusSigBytes(PhasePrecommit, 0, head.Hash())),
 		Round:  0, Phase: PhasePrecommit,
 	}
-	if err := validateCarrier(mk(offForm), cid); err != nil {
+	if err := validateCarrier(mk(offForm), cid, 0); err != nil {
 		t.Fatalf("the era-2 precommit form must ALSO be accepted at the carrier — that dual "+
 			"acceptance is what stops the boundary wedge: %v", err)
 	}
@@ -823,7 +823,7 @@ func TestCarrierAcceptsBothPrecommitFormsAndNoOther(t *testing.T) {
 			Sig:   ed25519.Sign(keys[1], func() []byte { h := head.Hash(); return h[:] }()),
 			Phase: PhaseLegacy},
 	} {
-		if err := validateCarrier(mk(a), cid); !errors.Is(err, ErrCarrierBadSignature) {
+		if err := validateCarrier(mk(a), cid, 0); !errors.Is(err, ErrCarrierBadSignature) {
 			t.Fatalf("VIOLATED: a genuine %s signature must NOT be a carrier entry — a prepare "+
 				"that seats a validator is a seating the attester never consented to; got %v", name, err)
 		}
