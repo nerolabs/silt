@@ -95,7 +95,31 @@ paragraph was removed; correct "the bond axis alone" to "the bond axis and its t
 keep the disclosure; or leave it and accept that the front door hands the grader a partial map of
 where the composition is weakest.
 
-*Also owed:* the integration and field tiers. This is the unit tier.
+*THE INTEGRATION TIER, driven 2026-09-15 over real containers.* It needed no new suite: two of the
+three DENYING arms already have integration coverage in `integration/bond/`, and both passed — at
+HEAD and again at `d968fa2` in an isolated worktree, so the evidence is not an artefact of this
+session's changes.
+
+| arm | integration evidence | result |
+|---|---|---|
+| bond size | `bond` PHASE 3 — a second identity re-advertising the SAME root | **PASS** — earns ZERO (one plot, one standing) |
+| possession | `bond` PHASE 1 — a real plot sealed and challenged over the wire | **PASS** — 64M sealed in 0.90 s, 67,108,912 B on disk, peer challenge passed |
+| retention | *not asserted* | the TTL is CONFIGURED in `bond` and `floor` but no integration assertion drives decay-denies-coasting |
+| demand | — | unwired: nothing to drive at any tier |
+| diversity | — | unwired for standing: nothing to drive at any tier |
+
+*The one gap at this tier is RETENTION.* It is denied at the unit tier and its mechanism is
+configured in two integration topologies, but no integration suite asserts that an identity which
+stops re-proving loses standing over real containers. That is the next piece of work on this item,
+and it is an assertion in an existing suite rather than a new one.
+
+*A caveat that must travel with the bond evidence:* `integration/bond` as a whole RESULTS IN FAIL —
+its `POSITIVE-2` control fails because an honest node refuses a well-formed proposal. That failure
+is PRE-EXISTING (identical at `d968fa2`) and is in the suite's PHASE 2 attest path, not in the
+PHASE 1 or PHASE 3 cost arms this item relies on. The arms above are read individually and their
+verdicts are their own; the suite-level FAIL is item 5's problem, recorded there.
+
+*Still owed:* the field tier.
 
 **3. The shipped default is the defended configuration, and the stock binary runs.** ⚠ *the defended half is gated; "reaches serving" is unreachable BY DESIGN and the condition is restated*
 *Done:* every defence this list demonstrates runs flagless; the stock EDGE node reaches serving on
