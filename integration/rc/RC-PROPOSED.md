@@ -410,11 +410,23 @@ bar, not a refactor.
 
 *Preconditions — the flip is not sound until each is closed:*
 
-1. **A bound on committed-set membership.** Reconstructing a whole-set digest needs the complete
-   post-state id-list, so a class that touches one costs O(registry), not O(payload). Nothing in
-   the code bounds total bonded / qualified / slashed membership; the source carries this as OPEN
-   and **load-bearing for this flip**. Kilobytes per digest at present populations, megabytes per
-   block at 100k — on a 2 GiB box. This is the one that must not be waived.
+1. ~~**A bound on committed-set membership.**~~ **— CLOSED for bonded and qualified; named for
+   slashed.** The bound needed no new mechanism: two shipped validity rules compose into one.
+   `RegCap` caps registrations per block after the same-id fold, fresh and renewal together, and
+   the TTL sweep evicts every id whose latest registration is older than `BondTTLBlocks`. A bonded
+   id must therefore have registered inside the last `ttl` blocks, each admitting at most `RegCap`
+   distinct ids, so `|bonded| <= RegCap * (BondTTLBlocks + 1)`, and `qualified` is a subset that
+   inherits it. Driven in `core/chain/membership_bound_v5_test.go`: 480 fresh registrations across
+   12 blocks at TTL 2 collapse to exactly the ceiling; ablate the sweep and the gate reddens. At
+   the shipped objective defaults (`RegCap` 256, TTL 32) the ceiling is **8,448**, against the ~100
+   bonded validators the finished system describes, and the filed size measurement puts the member
+   list at ~0.27 MB there — the O(registry) term is real and bounded two orders of magnitude below
+   where it bites (at 1,000,000 members the prover's build costs 1,222 MB of live heap).
+   TWO RESIDUALS, gated rather than rounded away: the bound is CONDITIONAL on the TTL, and a swarm
+   that disables it has none; and `slashed` is MONOTONIC — apply never evicts a slashed id, so that
+   keyspace grows with every attributable equivocation for the life of the chain and has no
+   ceiling to assert. The test asserts its monotonicity instead, so if slashing ever became
+   reversible both the defence and this cost argument re-open.
 2. **A bound on per-block verification cost.** The box runs the shared carrier validity rule, so
    its cost is `|LastCommit| × ed25519.Verify` — measured ~68 s single-core at the ~1.3M-entry
    frame ceiling. Frame-bounded, not witness-bounded, and named in-source as a flip precondition.
