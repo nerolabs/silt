@@ -43,10 +43,45 @@ possession arms pass. The demand and diversity arms do not construct, and are re
 carries none. The two are coupled deliberately — the paragraph is the only place that records
 which axes are unwired, so it goes when this item's gate starts reporting that instead.
 
-**3. The shipped default is the defended configuration, and the stock binary runs.**
-*Done:* `silt daemon -validator`, no other flags, reaches serving; the possession audit and
-the publish-token replay guard are on; every defence this list demonstrates runs flagless.
+**3. The shipped default is the defended configuration, and the stock binary runs.** ⚠ *the defended half is gated; "reaches serving" is unreachable BY DESIGN and the condition is restated*
+*Done:* every defence this list demonstrates runs flagless; the stock EDGE node reaches serving on
+pure defaults; the stock VALIDATOR refuses, for a reason that names what the operator must supply.
 *Evidence:* integration → e2e → field. Gates four other items.
+
+*THE DONE-CONDITION WAS WRONG, and the measurement is what corrected it.* It asked that
+`silt daemon -validator` with no other flags reach serving. It cannot, and it must not. Driven
+against the built binary 2026-09-15, the stock validator posture meets TWO refusals in order:
+
+1. **The `-bond` default (64 MiB) is below the anti-release floor (1029 MiB)** that defaults ON for
+   an untrusted swarm, so the validator would earn no standing. Spurious, and fixable by raising
+   the default — already pinned in `integration/shippeddefault/`, and the VALUE is the owner's.
+2. **Behind it, the one that cannot be defaulted away.** With the floor cleared the daemon still
+   exits: *"refusing to start — an untrusted objective validator with no cold-start scaffolding
+   would treat itself as mature from genesis (no anchor co-sign), letting a young or Sybil quorum
+   self-certify and capture."* That is the M0 cold-start capture defence working. The remedies it
+   names — `-anchors`, `-mature-validators`, `-ws-checkpoint` — carry NETWORK-SPECIFIC values, so
+   no shipped default can supply them. A validator that started without them would be the exact
+   quiet capture this list's third claim denies.
+
+So "the stock binary runs" is true of the edge node and correctly FALSE of the validator, and the
+item now says that instead. Raising the `-bond` default remains worth doing — it removes a spurious
+refusal that hides the substantive one — but it will not make this condition's original wording true.
+
+*DRIVEN, and newly gated:* `TestShippedDefaultLane_EveryDefenceIsOnBeforeAnyFlag` starts the stock
+validator posture with nothing but the role selector and requires five defences to announce
+themselves ARMED — the anti-release bond floor, the objective re-challenge TTL, Byzantine quorum
+sizing, the operator split margin, and the epoch freeze cadence — each naming its own override in
+the same line. It reads the daemon's own output rather than the flag table, because a default read
+from a flag declaration cannot see a value DERIVED at start-up from the swarm's trust posture, which
+is what the floor and the TTL are. Red under ablation twice: a defence that stops defaulting ON, and
+a defence that arms without naming its off switch.
+
+*Also measured, and reported as numbers rather than asserted:* the publish-token replay guard is ON
+unconditionally — it is a validity rule in the accept path, not a flag, so no configuration can
+disable it. The validator's bond possession audit defaults to 60 s. The proof-of-retrievability
+audit sweep (`-audit`) defaults to 0, and `-require-tokens` defaults to 0; both are per-deployment
+choices rather than defences this item can call flagless, and naming them here is what stops the
+item from claiming more than it drove.
 
 **4. The repo reads without the record that was deleted.** ✅ *gated*
 *Done:* no milestone, lane, catalog, slice, issue or change-request identifiers in source,

@@ -700,3 +700,100 @@ func parseComposeValidators(t *testing.T, root, rel string) []validatorService {
 	flush()
 	return out
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE DEFENDED POSTURE IS THE DEFAULT, AND THE OVERRIDES ARE WHAT WEAKEN IT
+// ─────────────────────────────────────────────────────────────────────────────
+
+// defenceDefault is one defence that must be ON for a stock untrusted swarm, named by the line the
+// daemon prints when it turns itself on. Announcing is the point: an operator who cannot see a
+// defence engage cannot tell a defended node from an undefended one, and the override text is what
+// makes the weakening a deliberate act rather than a discovery.
+type defenceDefault struct {
+	name    string
+	banner  string // a distinctive fragment of the line the daemon prints
+	weakens string // the flag that turns it off, which must be named in the same line
+}
+
+var shippedDefences = []defenceDefault{
+	{"anti-release bond floor", "anti-release floor defaulted to", "-min-bond-floor"},
+	{"objective re-challenge TTL", "re-challenge TTL defaulted to", "-bond-ttl"},
+	{"Byzantine quorum sizing", "Byzantine quorum sizing defaulted ON", "-byzantine-quorum"},
+	{"operator split margin", "operator-margin defaulted to", "-operator-margin"},
+	{"epoch freeze cadence", "epoch-blocks defaulted to", "-epoch-blocks"},
+}
+
+// TestShippedDefaultLane_EveryDefenceIsOnBeforeAnyFlag is the positive half of this lane's claim,
+// and the half that was never driven: not "does the stock binary run" but "is what it runs the
+// DEFENDED configuration". Each defence below is observed engaging on argv that carries nothing but
+// the role selector.
+//
+// WHY IT READS THE DAEMON'S OWN OUTPUT rather than the flag table. A default read from the flag
+// declaration tells you what the flag says; it does not tell you the value survived to the running
+// node, and it cannot see a defence whose default is DERIVED at start-up from the swarm's trust
+// posture — which is exactly what the anti-release floor and the re-challenge TTL are. The printed
+// line is the node reporting what it actually armed.
+//
+// EACH LINE MUST ALSO NAME ITS OWN OFF SWITCH. A defence an operator cannot find the override for
+// is one they will work around by a wider hammer, and a defence that disengages without saying so
+// is the shape this whole item exists to refuse.
+func TestShippedDefaultLane_EveryDefenceIsOnBeforeAnyFlag(t *testing.T) {
+	// The validator posture is the one that arms the consensus defences, and it REFUSES on stock
+	// argv — by design, twice over. Both refusals happen after the defences announce themselves, so
+	// the run is read for what it armed on the way to refusing.
+	res := runStockDaemon(t, stockValidatorArgv, 90*time.Second, "no banner this test waits for")
+	out := res.stdout + res.stderr
+	if strings.TrimSpace(out) == "" {
+		t.Fatalf("NO OUTPUT from the stock validator posture %v (exit=%d timedOut=%v). This test reads "+
+			"the daemon's own report of what it armed; with no output it asserts nothing.",
+			res.argv, res.exitCode, res.timedOut)
+	}
+
+	for _, d := range shippedDefences {
+		if !strings.Contains(out, d.banner) {
+			t.Errorf("DEFENCE NOT ANNOUNCED ON DEFAULTS: %s.\n"+
+				"  expected a line containing %q, on argv %v with no flag beyond the role selector.\n"+
+				"  Either the defence no longer defaults ON for an untrusted swarm — which is this item's\n"+
+				"  whole subject — or it stopped saying so, which is the same failure to an operator who\n"+
+				"  cannot otherwise tell a defended node from an undefended one.",
+				d.name, d.banner, res.argv)
+			continue
+		}
+		line := ""
+		for _, l := range strings.Split(out, "\n") {
+			if strings.Contains(l, d.banner) {
+				line = l
+				break
+			}
+		}
+		if !strings.Contains(line, d.weakens) {
+			t.Errorf("DEFENCE %s ANNOUNCES ITSELF BUT NOT ITS OFF SWITCH: expected %q in\n  %s\n"+
+				"  An operator who cannot find the override reaches for a wider one.", d.name, d.weakens, line)
+		}
+	}
+}
+
+// TestShippedDefaultLane_TheDefenceCensusHasTeeth feeds the predicate output that is missing a
+// defence and output that announces one without its override, and requires it to speak up for each.
+// The census above is a list of strings; without this, a typo in one of them would silently stop
+// checking that defence and the lane would still read green.
+func TestShippedDefaultLane_TheDefenceCensusHasTeeth(t *testing.T) {
+	for _, d := range shippedDefences {
+		full := d.banner + " some value. Override with " + d.weakens + " (safe only for a trusted swarm)."
+		if !strings.Contains(full, d.banner) || !strings.Contains(full, d.weakens) {
+			t.Fatalf("TEETH FAILED: %s does not match its own synthetic line %q", d.name, full)
+		}
+		missing := strings.ReplaceAll(full, d.banner, "something else entirely")
+		if strings.Contains(missing, d.banner) {
+			t.Fatalf("TEETH FAILED: %s still matched output its banner was removed from", d.name)
+		}
+		noOverride := d.banner + " some value, with no way back."
+		if strings.Contains(noOverride, d.weakens) {
+			t.Fatalf("TEETH FAILED: %s found its override %q in a line that does not carry it", d.name, d.weakens)
+		}
+	}
+	if len(shippedDefences) < 5 {
+		t.Fatalf("CENSUS SHRANK to %d defences. A defence removed from this list stops being checked; "+
+			"remove one only with the record of why it is no longer a default.", len(shippedDefences))
+	}
+}
