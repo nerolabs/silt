@@ -377,7 +377,7 @@ start. No version-floor advisory below the signing threshold changes anything, a
 ever replaces its own binary.
 *integration → e2e.*
 
-**20. The floor box's verdict counts, or it is disclosed that it does not.** ⚠ *red — gated by one line, and by four preconditions that are not all closed*
+**20. The floor box's verdict counts, or it is disclosed that it does not.** ⚠ *SHIPS DISCLOSED — two preconditions closed, one waits on the flip, one waits on a new era*
 *Done:* a validator on the floor spec returns the SAME verdict set as a tree-holding node —
 Accept for a block a full node accepts, Reject for one it refuses, a stall only where it
 genuinely cannot see — established from committed roots and witnesses alone.
@@ -441,12 +441,34 @@ bar, not a refactor.
    where the threat does not apply. `BondTTLBlocks` is consensus-critical and genesis-bound, so
    every replica derives the same ceiling. The ordering is the rule and is gated directly: entries
    whose signatures cannot verify are refused for SIZE, proving the count ran first.
-3. **The anchor.** Without `-ws-checkpoint` a box pins on a provider's reported head:
-   trust-on-first-use, disclosed on the line it prints. An ACCEPTING box anchored that way inherits
-   its provider's choice of history. Acceptable for an auditor; decided, not assumed, for a
-   validator.
-4. **A pruned block's body is not bound to its hash** — carried under *Known open* below, and it
-   reaches this item because an accepting box is one of the parties that would be bound by it.
+3. **The anchor — DECIDED, and it lands with the flip.** The rule is that an ACCEPTING box must be
+   anchored on an operator checkpoint. Without `-ws-checkpoint` a box pins on a provider's reported
+   head — trust-on-first-use, disclosed on the line it prints — which is acceptable for an auditor
+   and not for a validator, because an accepting box anchored that way inherits its provider's
+   choice of history. It is not implemented separately ON PURPOSE: there is no accepting posture to
+   attach the requirement to, so a flag added now would gate nothing and could not be driven red.
+   It is a daemon refusal in the same idiom as the cold-start one, in the same commit as the flip.
+4. **A pruned block's body is not bound to its hash — THE BLOCKER, and the owner ruled it must be
+   closed first (2026-09-15).** For a pruned block the hash is a stored linkage token rather than a
+   content commitment, so an adversary can keep the token and the real signatures while rewriting
+   the body — including the carrier that seats validators. Closing it means the block must carry a
+   commitment that SURVIVES pruning, which is a FORMAT change and therefore a new era, not a
+   validity tightening. That does not happen before 2026-09-27.
+
+*THE CONSEQUENCE, STATED PLAINLY.* This item ships **disclosed rather than fixed**, which is what
+the date's stopping rule asks of anything not green. The floor box audits and reports; it adopts
+nothing and advances no head; and the release says so rather than letting "validated" be read as
+"participating". `VISION.md` calls the witness-validating posture settled with "same security as a
+tree-holding node" — that is the destination, and at this release the box does not reach it. The
+gap is recorded here, in item 14, and in the daemon's own verdict line.
+
+*A NOTE ON WHY THE BAR IS THE OWNER'S, since the builder argued the other way.* The case for
+accepting the pruned-body residual was that it is not specific to an accepting box: a full node
+replaying a rewritten pruned ancestor has the same exposure today, so the box would inherit a
+chain-wide residual rather than create one. The owner's call is that a box whose verdict COUNTS
+must not be flipped on while a block's body can be rewritten under its hash, whoever else shares
+the exposure. That is the conservative direction, and it is the one the frozen-format immutable
+points at.
 
 *And one gate this item must add rather than inherit:* a differential that drives the SAME
 composition over `liveView` and `provenView` across a block corpus and requires the two verdict
@@ -502,6 +524,12 @@ the real signatures while rewriting the body — including the carrier that seat
 The only defence is the first non-pruned descendant, whose signed state root is recomputed
 over the rewritten ancestor state, and the consequence is a silent head truncation at that
 descendant with the forged seating live in the replayed state. Bounded, not eliminated.
+
+*It stopped being only a carried residual on 2026-09-15.* It is now the blocker on item 20: the
+owner ruled that a floor box whose verdict COUNTS must not be flipped on while a block's body can
+be rewritten under its hash. Closing it means the block carrying a commitment that SURVIVES
+pruning — a format change, so a new era rather than a validity tightening — which does not happen
+before the date. Item 20 therefore ships disclosed, and this residual is the reason.
 
 **The bonded set is capped by bandwidth.** Standing lapses after a short window and renewal
 runs at half of it, so each validator republishes a multi-megabyte possession proof every few
