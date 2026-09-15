@@ -172,58 +172,69 @@ exemption excused moves, nobody re-read the rule against what replaced it.
   and they collide with real domain names here; a gate that fires on a domain term teaches people to
   work around it. Their absence is a limit of the gate, written into its own header.
 
-**5. One command from a clean clone reproduces every gate.** ⚠ *the local half is driven; the whole-suite half belongs to the cloud harness*
+**5. One command from a clean clone reproduces every gate.** ⚠ *DRIVEN on a box proven clean — 7 pass, 3 fail, 2 timeout, and the uniform-failure story was wrong*
 *Done:* fresh clone, no credentials, no committed binary → the suite runner builds from
 source and maps each item onto a named suite.
-*Evidence:* a scratch clone with a COLD build cache, driven locally for the unit and e2e tiers;
-the whole-suite run in the cloud harness.
+*Evidence:* a scratch clone with a COLD build cache for the unit and e2e tiers; the whole set
+driven locally, start-clean and end-clean.
 
-*THE SPLIT, ruled 2026-09-15.* The original evidence line asked for "a machine that has never
-built silt", and the whole docker set on one laptop. Neither is the right instrument. A box that
-has never built silt is a property of the box and cannot be manufactured on a developer machine,
-and the full seventeen-suite set is not feasible on a laptop even when the laptop is idle — the
-suites each assume exclusive use of their topology, and the container host is 2 CPUs and under
-4 GiB. That is what the cloud harness is for. So the item splits: the local tier proves the CLONE
-is clean and self-sufficient, and the cloud tier proves the WHOLE SET runs. The strictest local
-approximation is recorded rather than claimed as the real thing.
+*THE LOCAL CLONE, driven 2026-09-15:* no credentials (`config.env.example` travels, `config.env`
+does not); no committed binary (zero executables, the only tracked `application/octet-stream` files
+are CBOR fixtures); builds from source in 110 s from an EMPTY `GOCACHE`, leaving 1,889 fresh
+entries; the runner's catalog carries 17 entries each naming a suite, its tier, its timeout and the
+claim it gates; and `go test ./e2e/ -count=1` over that cold cache is green, 43 tests, 479.9 s. The
+honest limit: `GOMODCACHE` was shared, so third-party dependencies were not re-downloaded — they are
+not silt, and re-fetching them measures a network.
 
-*Driven locally 2026-09-15, from a scratch clone of this branch:*
-- **No credentials.** The clone carries `integration/cloudtest/config.env.example` and no
-  `config.env`. Nothing in the local path reads a secret.
-- **No committed binary.** Zero executables in the clone; the only tracked
-  `application/octet-stream` files are CBOR test fixtures under `core/chain/testdata/`. The
-  `silt-linux-*` files in a working tree are untracked build output and do not travel.
-- **Builds from source, cold.** `go build ./...` from an EMPTY `GOCACHE` in 110 s, leaving 1,889
-  fresh cache entries — so nothing of silt was pre-compiled. *The honest limit:* `GOMODCACHE` was
-  shared, so third-party dependencies were not re-downloaded. Those are not silt, and re-fetching
-  them measures a network rather than the build.
-- **Maps each item onto a named suite.** The runner's catalog carries 17 entries, each naming the
-  suite, its tier, its timeout and the claim it gates.
-- **The e2e tier runs from that clone.** `go test ./e2e/ -count=1` over the same cold cache: 43
-  tests, green, 479.9 s. Uncached and not `-short`, because the e2e binaries build the daemon at
-  runtime — a cached or short run of this tier is close to no evidence at all.
+*THE WHOLE SET, DRIVEN — and the record it replaces was wrong.* This item said "the run itself
+returned rc=137 or rc=124 on all twelve suites", first attributed to host contention, then corrected
+to inherited leftovers. **Neither holds.** Driven on a box verified clean at the start — zero
+containers, zero stray daemons, 2.4 GB wired, load 1.80 — the result is not uniform at all:
 
-*What is still owed, and where it lands — CORRECTED 2026-09-15.* The whole set running end to end
-is `./integration/run-all.sh`, and it belongs HERE, on a developer box. An earlier revision of this
-item handed it to `integration/cloudtest/`; that was wrong twice over and the correction is the
-useful part. `cloudtest` runs its OWN 27-node scenario set on GCP — `1-first-run`, `184-forged-block`,
-`5-convergence` — not the suites under `integration/*/run.sh` that this item is about. Assigning one
-to the other would have left this item permanently unclosable while looking assigned. And the
-feasibility claim behind the hand-off does not hold: `run-all.sh` runs the suites ONE AT A TIME,
-because each assumes exclusive use of its topology. It is never seventeen topologies at once; it is
-one small topology, seventeen times, in sequence — 12 gate suites inside a 61-minute budget, plus 5
-slow suites adding 75 minutes under `FULL=1`.
+    summary: 7 pass · 0 finding · 3 fail · 2 timeout · 0 skip        (~40 minutes)
 
-So this item is not blocked on spend and not blocked on a cloud harness. It is an hour of local
-wall-clock, and what it settles is the question the item exists for: whether the earlier
-rc=137 / rc=124 across every suite was host starvation or inherited leftovers — which
-`ft_preflight` / `ft_sweep` can now finally tell apart.
+| PASS | FAIL | TIMEOUT |
+|---|---|---|
+| `privacy` `client` `nat` `audit` `economy` `churn` `chaos` | `bond` `sybil` `takedown` | `consensus` `redteam` |
 
-*What the run has to settle.* The earlier local attempt returned rc=137 or rc=124 on all twelve
-suites and that was attributed to host contention; the attribution did not hold — twelve
-containers from an earlier run were still up, one already `Exited (137)`, holding ~950 MiB.
-`ft_preflight` / `ft_sweep` now make every suite start and end clean mechanically, so the run can
-finally tell a real failure from inherited leftovers. Until it exists, this item is not closed.
+Seven suites pass, including `churn` at 16m52s — six of sixteen holders killed across two waves,
+fifteen stripe-repair sweeps, every fetch bit-perfect — and `audit`, which catches a liar WITHOUT
+fetching its bytes. There was never one cause to find, which is why both previous explanations were
+wrong: they reasoned about a symptom pattern that does not exist.
+
+*THE FIVE, EACH WITH ITS OWN CAUSE:*
+- **`takedown` — DIAGNOSED, a stale assertion, not a product fault.** The daemon prints
+  `denylist: N root(s) denied; purged M held chunk(s)` when it purges and
+  `denylist: honoring N denied root(s)` when there is nothing to purge. The suite greps
+  `denylist: [0-9]+ root`, which matches only the first. It therefore fails whenever the daemon
+  legitimately takes the honoring branch, which makes it timing-dependent by construction. The same
+  capability PASSES in `cloudtest` on the same commit, because that harness asserts the EFFECT —
+  one operator stops serving while another keeps serving bit-perfect. Asserting on a log string
+  where an effect was available is the defect.
+- **`bond` — a positive control refused, and NOT caused by this session.** `POSITIVE-2: FAIL —
+  honest REFUSED a well-formed, 64M-bonded proposal; its attest path rejects EVERYTHING`. Driven
+  again at `d968fa2`, the commit before this session's first change, in an isolated worktree: the
+  SAME assertion fails byte-identically. Pre-existing. The suite catches it itself and says so — its
+  own negative result would otherwise read as proof of the bond gate when the node is rejecting
+  everything.
+- **`sybil` — the same shape, denials intact.** `C2-a` and `C2-b` both PASS: the young network stays
+  live with anchors present, and NO block passes the anchored ceiling, so the Sybil quorum cannot
+  capture. What fails is `C2-a2`, a liveness control — a Sybil node never earns publishable standing
+  (`chain: reputation below threshold`). The security claims hold; the control does not.
+- **`consensus` — the per-suite cap fired while the suite was visibly PROGRESSING** through its
+  stages, not wedged. 300 s is thin for a suite that drives a partition and a heal on a host whose
+  measured cadence has swung 10–28 s/block.
+- **`redteam` — WEDGED, and this is the one to look at first.** Three progress lines, then
+  `adversary: equivocation attempt refused: place Y on …` repeating until the cap. The adversary
+  cannot place its equivocating block, so the equivocation never reaches the chain, so the slash can
+  never be observed. That makes this suite's accountability evidence unobtainable rather than merely
+  slow.
+
+*WHAT THIS ITEM NOW MEANS.* The suite set was never green, and nobody knew, because it had never
+been driven to completion on a box proven clean — the leftovers masked what each suite would
+otherwise have reported. That is a more uncomfortable finding than a starved host and a more useful
+one: seven suites are real evidence today, and the other five are five separate pieces of work with
+five separate causes, four of them already named above.
 
 **6. The claims the adversary receives exist as an artifact.** ⚠ *written, not yet cold-read*
 *Done:* an in-repo statement of the three denials in checkable form, written so a cold reader
