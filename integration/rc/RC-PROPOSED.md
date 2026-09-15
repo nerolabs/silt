@@ -69,20 +69,52 @@ that no longer exists.
 vacuity guard proving it can fire; then clear the source; then the gate holds it. Clearing the
 strings first would make the item grep clean and leave the rule undefended for the next file.
 
-**5. One command from a clean clone reproduces every gate.** ⚠ *red — never driven on a box proven clean*
+**5. One command from a clean clone reproduces every gate.** ⚠ *the local half is driven; the whole-suite half belongs to the cloud harness*
 *Done:* fresh clone, no credentials, no committed binary → the suite runner builds from
 source and maps each item onto a named suite.
-*Evidence:* the run itself, from a scratch clone on a machine that has never built silt.
-*State:* the clone is clean — no committed binaries, and the runner builds from source. The
-run itself returned rc=137 or rc=124 on all twelve suites. That was attributed to the host
-carrying other work; the attribution does not hold. rc=137 is the OOM-killer and rc=124 is the
-per-suite cap, and both are also what a run inherits from the PREVIOUS run's leftovers — twelve
-containers from an earlier suite were found still up with no driver behind them, one of them
-already `Exited (137)`, holding ~950 MiB of the container host's memory. Whether the starvation
-was the host or the leftovers is now untested rather than known. The suites start clean and end
-clean mechanically (`ft_preflight` / `ft_sweep`, `integration/lib.sh`), so the re-run can tell
-the two apart. Until it is driven on a box proven clean at the start, this item is red, because
-a demonstration that could not be driven is a failure.
+*Evidence:* a scratch clone with a COLD build cache, driven locally for the unit and e2e tiers;
+the whole-suite run in the cloud harness.
+
+*THE SPLIT, ruled 2026-09-15.* The original evidence line asked for "a machine that has never
+built silt", and the whole docker set on one laptop. Neither is the right instrument. A box that
+has never built silt is a property of the box and cannot be manufactured on a developer machine,
+and the full seventeen-suite set is not feasible on a laptop even when the laptop is idle — the
+suites each assume exclusive use of their topology, and the container host is 2 CPUs and under
+4 GiB. That is what the cloud harness is for. So the item splits: the local tier proves the CLONE
+is clean and self-sufficient, and the cloud tier proves the WHOLE SET runs. The strictest local
+approximation is recorded rather than claimed as the real thing.
+
+*Driven locally 2026-09-15, from a scratch clone of this branch:*
+- **No credentials.** The clone carries `integration/cloudtest/config.env.example` and no
+  `config.env`. Nothing in the local path reads a secret.
+- **No committed binary.** Zero executables in the clone; the only tracked
+  `application/octet-stream` files are CBOR test fixtures under `core/chain/testdata/`. The
+  `silt-linux-*` files in a working tree are untracked build output and do not travel.
+- **Builds from source, cold.** `go build ./...` from an EMPTY `GOCACHE` in 110 s, leaving 1,889
+  fresh cache entries — so nothing of silt was pre-compiled. *The honest limit:* `GOMODCACHE` was
+  shared, so third-party dependencies were not re-downloaded. Those are not silt, and re-fetching
+  them measures a network rather than the build.
+- **Maps each item onto a named suite.** The runner's catalog carries 17 entries, each naming the
+  suite, its tier, its timeout and the claim it gates.
+- **The e2e tier runs from that clone.** `go test ./e2e/ -count=1` over the same cold cache: 43
+  tests, green, 479.9 s. Uncached and not `-short`, because the e2e binaries build the daemon at
+  runtime — a cached or short run of this tier is close to no evidence at all.
+
+*What is still owed, and where it lands:* the whole set actually running end to end, in
+`integration/cloudtest/` — the single-cloud harness, which is functional and has 23 reports from
+real 13-node runs across three regions behind it. NOT `integration/twocloud/`, which is the
+cross-cloud scaffold this list already defers.
+
+**It is billable and it is not a builder's to start.** The runbook's first ground rule is that
+every `apply` brings up real VMs and needs an explicit go from whoever owns the project, cheapest
+path first: validate with no spend, then a 4-node smoke run, then the full topology only once
+smoke is green. That sequence is the plan for this item; the go is the owner's.
+
+*What the run has to settle.* The earlier local attempt returned rc=137 or rc=124 on all twelve
+suites and that was attributed to host contention; the attribution did not hold — twelve
+containers from an earlier run were still up, one already `Exited (137)`, holding ~950 MiB.
+`ft_preflight` / `ft_sweep` now make every suite start and end clean mechanically, so the run can
+finally tell a real failure from inherited leftovers. Until it exists, this item is not closed.
 
 **6. The claims the adversary receives exist as an artifact.** ⚠ *written, not yet cold-read*
 *Done:* an in-repo statement of the three denials in checkable form, written so a cold reader
@@ -351,6 +383,13 @@ loss and reordering.
 **22. Every item has a cloud-harness run.** Each item above named in a cloud scenario, with
 the gaps written down as decisions rather than left as silence.
 *field.*
+
+*It also carries item 5's heavier half.* The whole-suite run that item 5 needs is not feasible on
+a laptop — the suites each assume exclusive use of their topology and the local container host is
+2 CPUs and under 4 GiB — so it lands here. `integration/cloudtest/` is the harness (functional,
+23 real runs behind it), `integration/twocloud/` is the cross-cloud scaffold this list defers.
+Every `apply` is billable and needs the owner's explicit go: no spend, then a 4-node smoke, then
+the full topology only once smoke is green.
 
 ---
 
