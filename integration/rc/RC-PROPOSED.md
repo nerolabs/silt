@@ -48,10 +48,26 @@ which axes are unwired, so it goes when this item's gate starts reporting that i
 the publish-token replay guard are on; every defence this list demonstrates runs flagless.
 *Evidence:* integration → e2e → field. Gates four other items.
 
-**4. The repo reads without the record that was deleted.**
+**4. The repo reads without the record that was deleted.** ⚠ *red — the gate does not exist, and the source does not meet the condition*
 *Done:* no milestone, lane, catalog, slice, issue or change-request identifiers in source,
 test names or file names. Comments describe the product or cite external work.
 *Evidence:* unit — a permanent source gate, kept in the suite so it cannot regress.
+*State:* the gate is UNBUILT. The evidence line above described it in the present tense; nothing
+in the suite walks `.go` source for these. `core/chain/canon_text_test.go` is the nearest thing
+and it is a different gate: it walks shipped PROSE (`.md`, `.sh`, `.yml`, `.yaml`, `.html`) for
+retired fork-choice claims, not Go source for process identifiers.
+Measured 2026-09-15 over non-`archive` Go source, on the item's own vocabulary plus the
+sub-increment names the same rule covers (`lane-1 Part`, `Slice N`, `Phase N`, `milestone`,
+`increment N`, `P1-a`…`P1-e`, `BUILD note`, `DIRECTION A/B`, `retest G3`, `threat-catalog`):
+**230 hits across 81 files, 34 of them non-test.** One is in `ErrRecomputeGated`'s text, which a
+floor box prints on every verdict line it writes.
+Four comments also cite documents the repo no longer has — `docs/build-process.md`,
+`docs/network-durability.md`, `docs/threat-catalog.md`, `docs/threat-model.md` — which is the
+case this item names outright: a comment that only makes sense to someone who read a document
+that no longer exists.
+*The work, in this order:* build the gate first and see it RED on the current tree, with a
+vacuity guard proving it can fire; then clear the source; then the gate holds it. Clearing the
+strings first would make the item grep clean and leave the rule undefended for the next file.
 
 **5. One command from a clean clone reproduces every gate.** ⚠ *red — never driven on a box proven clean*
 *Done:* fresh clone, no credentials, no committed binary → the suite runner builds from
@@ -175,9 +191,40 @@ covering it still counted. It was contained only by the door's accept downgrade.
 recorded it are retired and replaced by the straight assertion that a compound block folds to the
 root `apply` commits, with one fold operation per committed key.
 
+*The path to green on the remaining leg,* which is the memory ceiling under ADVERSARIAL input. The
+suite is not the missing piece: `integration/floor/` already carries the only hard part, the cgroup
+that makes the number mean anything (`mem_limit == memswap_limit`, `cpuset`, `memory.peak`, and leg
+1 asserting all three from inside the container before any other leg is believed). What is missing
+is the LOAD. In order:
+
+1. **A victim seat is nominatable — CHECKED 2026-09-15, this is no longer an open question.**
+   `integration/redteam/` seats honest bonded validators `h1`, `h2`, `h3` and `goodprop` and points
+   its attackers (`equiv-a`, `equiv-x`, `equiv-yz`, `forger`, `lowbond`) at them; `h1` is a
+   `-validator -bond=8M` seat the suite already drives and asserts from. `integration/sybil/` has
+   the same shape. NEITHER carries any `mem_limit` or `cpuset` today, so the floor spec is new to
+   both — that is the work, and it is additive rather than a rebuild.
+2. **Pin a victim seat to the floor spec** — the same three lines the `floor` service uses
+   (`cpuset`, `mem_limit`, `memswap_limit` equal), plus a leg-1-style vacuity guard reading
+   `memory.max` / `memory.swap.max` / `nproc` from inside that container, so a green run is evidence
+   rather than a measurement of an ordinary box. Prefer a seat the existing assertions already read
+   from, so the attack still lands where the suite is watching.
+3. **Drive it, and report `memory.peak` as a number with its margin**, the way leg 3 already does,
+   so a regression surfaces as shrinking headroom and not only as a failure. Honest load peaked at
+   209.6 MiB (10%); adversarial input is where a witness-bundle or frame-sized allocation would
+   show.
+4. **If it OOMs, that is the finding, not a tuning problem.** Build-immutable 8 says an unbounded
+   system on a small box is unsafe rather than slow: instrument and reduce to a local repro before
+   any knob moves.
+
+*The risks that remain, named:* pinning a seat to one core changes the CADENCE of a suite whose
+budgets were sized without it, so a first run may time out for a host reason rather than a product
+one — read the progress lines before raising a budget. And a floor-spec seat inside an adversarial
+topology competes for the same two-CPU VM as the attackers, so `docker info` and the measured
+blocks-per-second come before any budget is trusted.
+
 *What is not claimed:* that the box PARTICIPATES. Its door maps Accept to a downgrade by design, so
-it audits and reports, adopts nothing, and advances no head. Taking that downgrade is a
-consensus-rule change and is the owner's call.
+it audits and reports, adopts nothing, and advances no head. Taking that downgrade is **item 20**,
+with its own preconditions, and is the owner's call.
 
 **15. The floor box can post the bond its disk allows.** ✅ *done*
 *Done:* the plot is sealed to disk block by block and answered by sparse reads, so residency
@@ -217,15 +264,73 @@ start. No version-floor advisory below the signing threshold changes anything, a
 ever replaces its own binary.
 *integration → e2e.*
 
+**20. The floor box's verdict counts, or it is disclosed that it does not.** ⚠ *red — gated by one line, and by four preconditions that are not all closed*
+*Done:* a validator on the floor spec returns the SAME verdict set as a tree-holding node —
+Accept for a block a full node accepts, Reject for one it refuses, a stall only where it
+genuinely cannot see — established from committed roots and witnesses alone.
+*Why it is on this list:* `VISION.md` calls the witness-validating posture **settled** and claims
+"**same security as a tree-holding node**, narrower self-sufficiency". A box that audits and
+adopts nothing is not that validator. Leaving the verdict withheld is the deviation from canon;
+the flip is the alignment. So this ships either green or **disclosed** — it does not ship silent.
+*Evidence:* unit → consensus model-check → e2e → field.
+
+*The change is one line,* and it is one line deliberately, so that it is reviewed on its own.
+`(*Box).Validate` (`core/chain/floorbox_box_v5.go`) ends:
+
+```go
+out, err := ValidateCommitV5(v, &b)
+if out == Accept {
+    return IndeterminateTrustlessly, ErrRecomputeGated // the flip is not this round
+}
+```
+
+*It is not a missing accept path.* `ValidateCommitV5` is THE ONE accept composition: the full node
+runs it over `liveView` at both write entries and accepts on Accept; the box runs the same function
+over `provenView` and throws the Accept away. `StateView` is sealed, so there is no third door. A
+VALIDATED verdict in the field suite means the composition already reached accept and this line
+suppressed it.
+
+*It is the owner's call, not a builder's,* under the frozen-format immutable: it changes which
+nodes may say yes to a block, so the fleet would hold two classes of validator whose accept sets
+must be provably identical. That is a validity-rule claim at the "deliberate, reviewed consensus"
+bar, not a refactor.
+
+*Preconditions — the flip is not sound until each is closed:*
+
+1. **A bound on committed-set membership.** Reconstructing a whole-set digest needs the complete
+   post-state id-list, so a class that touches one costs O(registry), not O(payload). Nothing in
+   the code bounds total bonded / qualified / slashed membership; the source carries this as OPEN
+   and **load-bearing for this flip**. Kilobytes per digest at present populations, megabytes per
+   block at 100k — on a 2 GiB box. This is the one that must not be waived.
+2. **A bound on per-block verification cost.** The box runs the shared carrier validity rule, so
+   its cost is `|LastCommit| × ed25519.Verify` — measured ~68 s single-core at the ~1.3M-entry
+   frame ceiling. Frame-bounded, not witness-bounded, and named in-source as a flip precondition.
+3. **The anchor.** Without `-ws-checkpoint` a box pins on a provider's reported head:
+   trust-on-first-use, disclosed on the line it prints. An ACCEPTING box anchored that way inherits
+   its provider's choice of history. Acceptable for an auditor; decided, not assumed, for a
+   validator.
+4. **A pruned block's body is not bound to its hash** — carried under *Known open* below, and it
+   reaches this item because an accepting box is one of the parties that would be bound by it.
+
+*And one gate this item must add rather than inherit:* a differential that drives the SAME
+composition over `liveView` and `provenView` across a block corpus and requires the two verdict
+sets to be identical. Flipping without it asserts "same security" rather than demonstrating it.
+
+*What the flip does NOT deliver on its own, stated so it is not read as more:* participation.
+Nothing adopts the verdict today — `AuditAbovePin` reports and returns, the daemon prints and
+re-anchors, and no path appends a block or advances a head. Signing, head advance and pin adoption
+are separate work, explicitly out of the box's current scope. Flipping this line alone buys a true
+verdict, not a participating validator.
+
 ## Tier C — field
 
-**20. Publish and fetch work on the internet as it is.** A NATed publisher in one region, a
+**21. Publish and fetch work on the internet as it is.** A NATed publisher in one region, a
 cold fetcher in another, bit-perfect bytes inside a bound derived from the deployed
 configuration. The chain keeps committing under sustained load with injected latency, jitter,
 loss and reordering.
 *field.* Run it early: a failure needs time to reduce to a local reproduction.
 
-**21. Every item has a cloud-harness run.** Each item above named in a cloud scenario, with
+**22. Every item has a cloud-harness run.** Each item above named in a cloud scenario, with
 the gaps written down as decisions rather than left as silence.
 *field.*
 
