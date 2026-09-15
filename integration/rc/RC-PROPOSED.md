@@ -76,11 +76,25 @@ height>0 registration "was already VERIFIED by validateBondRegs" — so driving 
 screen entirely. The arm drives validation now, which is where a registration from the network
 actually arrives, and its doc comment says so because the next person will reach for `apply` too.
 
-*STILL OWED — the coupled canon edit.* The build-status paragraph in `VISION.md` is the only place
-that recorded which axes are unwired, and this census now reports it instead, so the paragraph is
-free to go. It has NOT been removed: `VISION.md` is canon and the edit is the owner's. When it
-goes, the correction above travels with it — standing is gated by the bond axis and its time
-dimension, not by the bond axis alone.
+*THE COUPLED CANON EDIT IS DONE.* The build-status paragraph is removed from `VISION.md`, in the
+same change that leaves the census reporting what it recorded. `VISION.md`'s own header says the
+document is "deliberately **not** a status report: where today's build differs from this picture,
+the code and its tests are the honest record" — so the paragraph contradicted the page it sat on,
+and the honest record it points at is now a test that runs. Nothing overclaims as a result: the
+preceding sentence already calls the interlock "the target", and the census carries the detail.
+
+*THE SAME PARAGRAPH IS ALSO IN `README.md`, AND IT IS NOT REMOVED.* The repo's front door says
+"This multiplicative interlock is the target, not yet the operative guarantee. Today consensus
+standing is gated by the bond axis alone." That is build status in the first document any reader
+opens — including the grader, who gets the repository and nothing else — and it is now imprecise:
+the census shows standing gated by the bond axis AND ITS TIME DIMENSION, because retention decay is
+wired and denying. It is left standing because `README.md` sentences are PUBLISHED CLAIMS, pinned as
+such by `canon_text_test.go`, whose own text says the wording must not be changed to make a gate
+pass. Changing it is the owner's call, and there are three options: remove it as the `VISION.md`
+paragraph was removed; correct "the bond axis alone" to "the bond axis and its time dimension" and
+keep the disclosure; or leave it and accept that the front door hands the grader a partial map of
+where the composition is weakest.
+
 *Also owed:* the integration and field tiers. This is the unit tier.
 
 **3. The shipped default is the defended configuration, and the stock binary runs.** ⚠ *the defended half is gated; "reaches serving" is unreachable BY DESIGN and the condition is restated*

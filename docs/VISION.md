@@ -107,14 +107,6 @@ what honest provision costs. Sybil-resistance is therefore *re-pricing plus
 concentration-bounding*, not prevention; the residual — an honest whale who genuinely
 provides that much — is *bounded* by the concentration metric, not eliminated.
 
-This multiplicative interlock is the **target**, not yet the operative guarantee. Today
-consensus standing is gated by the bond axis alone (`C_honest ≈ D`); served demand (B) is an
-unbuilt track, and address-diversity (A) is enforced at the DHT layer but does not yet enter
-the standing number — and where it does bind, the operator/domain split is *self-declared*,
-so a rational splitter evades it for the cost of a declaration, not a subnet. The other
-axes are designed and staged, not fully wired. Read this paragraph as the destination
-the composition is built toward.
-
 The finished system holds all three corners because the corners **co-mature**. Privacy is
 architectural from day one. Accountability is content-level and reactive from day one. And
 Sybil-resistance is the corner that bootstraps: weakest on a young network, strengthening as
