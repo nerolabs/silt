@@ -1,6 +1,6 @@
 package node
 
-// Phase 2, Slice 2 — durability telemetry. The S7 repair economy runs half-open on
+// durability telemetry. The S7 repair economy runs half-open on
 // a live daemon today: the serve auto-skim fills each object's escrow, but the
 // funded reserve, lifetime skim/pay, and whether bounties actually DISBURSE were
 // invisible (credit.G/Horizon computed only for a local repair decision, never
@@ -70,7 +70,7 @@ func TestDurabilityTelemetrySurfacesTheHalfOpenEconomy(t *testing.T) {
 		t.Fatalf("nothing paid yet (bounties off): paid=%d repairs=%d", cared[0].Snapshot.Paid, cared[0].Snapshot.Repairs)
 	}
 
-	// Enabling the economy flips the observable state to ON — the keystone Slice 1
+	// Enabling the economy flips the observable state to ON — the keystone
 	// will set this from a flag; the telemetry must reflect it.
 	nd.cfg.RepairEconomy = true
 	if !nd.RepairBountyEnabled() {

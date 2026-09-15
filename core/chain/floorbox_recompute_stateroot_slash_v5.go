@@ -9,8 +9,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// era-4 (v5) trustless floor-box RECOMPUTE — Path-1 state-root recompute, sub-increment P1-b,
-// CLASS S (slashes) — the FIRST delta-derivable CHANGED-DIGEST class.
+// era-4 (v5) trustless floor-box RECOMPUTE — CLASS S (slashes) — the FIRST delta-derivable CHANGED-DIGEST class.
 //
 // research: floorbox-Rboundary-writeset-digest-reconstruction-
 //

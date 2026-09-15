@@ -9,7 +9,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Tests for the P1-e class-A attestations → validatorsSeen state-root recompute
+// Tests for the class-A attestations → validatorsSeen state-root recompute
 // (floorbox_recompute_stateroot_atts_v5.go).
 //
 // research: floorbox-recompute-classA-classP-wholeset-

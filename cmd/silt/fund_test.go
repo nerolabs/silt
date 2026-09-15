@@ -1,6 +1,6 @@
 package main
 
-// Phase 2, Slice 3 — the durability endowment endpoint (POST /api/fund). A
+// the durability endowment endpoint (POST /api/fund). A
 // publisher/operator prepays an object's repair reserve from THIS daemon's own
 // EARNED credit balance, so content outlives churn before it self-funds via the
 // serve auto-skim. Standing is untouched (Invariant A). These tests cover the

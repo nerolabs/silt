@@ -9,7 +9,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Tests for the P1-b class-S changed-whole-set-digest state-root recompute
+// Tests for the class-S changed-whole-set-digest state-root recompute
 // (floorbox_recompute_stateroot_slash_v5.go).
 //
 // research: floorbox-Rboundary-writeset-digest-reconstruction-
@@ -475,7 +475,7 @@ func TestRecomputeStateRootSlashAblationCircularAnchor(t *testing.T) {
 	}
 }
 
-// --- Ablation 7: a slash+non-proposer-att compound. Class A is now IN scope (P1-e), so the block
+// --- Ablation 7: a slash+non-proposer-att compound. Class A is now IN scope, so the block
 // DISPATCHES to the A reconstruction. The slash witness carries no A witness (AttScreens /
 // validatorsSeenRoot digest), so the A dispatch stalls (never-Accept preserved). ---
 func TestRecomputeStateRootSlashAblationCompoundOutOfScope(t *testing.T) {

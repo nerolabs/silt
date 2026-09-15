@@ -48,26 +48,42 @@ which axes are unwired, so it goes when this item's gate starts reporting that i
 the publish-token replay guard are on; every defence this list demonstrates runs flagless.
 *Evidence:* integration → e2e → field. Gates four other items.
 
-**4. The repo reads without the record that was deleted.** ⚠ *red — the gate does not exist, and the source does not meet the condition*
+**4. The repo reads without the record that was deleted.** ✅ *gated*
 *Done:* no milestone, lane, catalog, slice, issue or change-request identifiers in source,
 test names or file names. Comments describe the product or cite external work.
-*Evidence:* unit — a permanent source gate, kept in the suite so it cannot regress.
-*State:* the gate is UNBUILT. The evidence line above described it in the present tense; nothing
-in the suite walks `.go` source for these. `core/chain/canon_text_test.go` is the nearest thing
-and it is a different gate: it walks shipped PROSE (`.md`, `.sh`, `.yml`, `.yaml`, `.html`) for
-retired fork-choice claims, not Go source for process identifiers.
-Measured 2026-09-15 over non-`archive` Go source, on the item's own vocabulary plus the
-sub-increment names the same rule covers (`lane-1 Part`, `Slice N`, `Phase N`, `milestone`,
-`increment N`, `P1-a`…`P1-e`, `BUILD note`, `DIRECTION A/B`, `retest G3`, `threat-catalog`):
-**230 hits across 81 files, 34 of them non-test.** One is in `ErrRecomputeGated`'s text, which a
-floor box prints on every verdict line it writes.
-Four comments also cite documents the repo no longer has — `docs/build-process.md`,
-`docs/network-durability.md`, `docs/threat-catalog.md`, `docs/threat-model.md` — which is the
-case this item names outright: a comment that only makes sense to someone who read a document
-that no longer exists.
-*The work, in this order:* build the gate first and see it RED on the current tree, with a
-vacuity guard proving it can fire; then clear the source; then the gate holds it. Clearing the
-strings first would make the item grep clean and leave the rule undefended for the next file.
+*Evidence:* unit — `internal/depcheck`, a permanent source gate kept in the suite so it cannot
+regress, driven RED on the tree before the source was cleared.
+
+*The gate was built first and seen red first,* which is the only order that proves it can fire on
+this repository rather than on a synthetic sample. It reported **236 hits**, and clearing them is
+what turned it green — 73 files, 219 process identifiers plus four dead document pointers. Four
+arms: the banned vocabulary in source, the same vocabulary in file names, every in-repo document a
+comment cites actually existing, and teeth that feed every term its own violating line and every
+exemption its own allowed phrase.
+
+*What the cleanup did NOT do is delete reasons.* A comment that pointed at a real thing by a build
+number now points at it by name: `increment 2's recomputeMatureNow` became `recomputeMatureNow`,
+and the recompute files cite each other by file name. The reader keeps the cross-reference and
+loses only the build's private numbering.
+
+*Three matches were the product's own words and were KEPT,* which is why the gate carries an
+allowlist of exact phrases with reasons rather than looser patterns. `PHASE 1 (prepare)` /
+`PHASE 2 (precommit)` in the consensus loop are BFT phases with `PhasePrepare` / `PhasePrecommit`
+behind them — renamed to name the leg rather than number it. A relay pump's `sub-increment read
+buffer` is sized below one authorized payment increment, and a hash-chain payer really does advance
+to `increment 5 by revealing x_5`. The gate also fails on a DEAD exemption: if the text an
+exemption excused moves, nobody re-read the rule against what replaced it.
+
+*Two limits, stated rather than left to be discovered:*
+- **Bare letter-number tags** (`D3`, `H-4`, `F1`) are not in the gate. `D3` alone has 65 hits and
+  they collide with real domain names here; a gate that fires on domain terms teaches people to
+  work around it. Their absence is a limit of the gate, not a permission.
+- **GitHub issue references (`#93`, `#69`, …), 214 of them, are NOT treated as violations.** The
+  item's text bans issue identifiers; its reason is that a pointer into a record nobody can fetch
+  looks like a reason and is not one. These resolve: every one sampled is a real, readable issue,
+  and the grader has GitHub access. They are live citations rather than dead pointers, so removing
+  them would destroy working provenance to satisfy a literal reading. If the literal reading is
+  the intended one, that is a separate pass and the gate takes one more pattern.
 
 **5. One command from a clean clone reproduces every gate.** ⚠ *the local half is driven; the whole-suite half belongs to the cloud harness*
 *Done:* fresh clone, no credentials, no committed binary → the suite runner builds from

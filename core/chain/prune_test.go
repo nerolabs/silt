@@ -6,9 +6,9 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Slice 4 — the DORMANT payload-selective prune (pruneBelowHorizon). Sheds the heavy
+// The DORMANT payload-selective prune (pruneBelowHorizon). Sheds the heavy
 // BondReg.Answer from finalized blocks strictly below the prune floor, keeping header +
-// consensus sigs (slice 2), bounding resident/durable/served heavy payload to a recent
+// consensus sigs, bounding resident/durable/served heavy payload to a recent
 // window. Nothing in production calls it yet — the enablement waits on the safe sync
 // redirect. These tests bank the shed logic + the degenerate-BondTTL guard.
 // TestPruneFloorAt pins the pure prune-floor arithmetic: retain max(2·BondTTL,
@@ -140,7 +140,7 @@ func TestPruneBelowHorizon_DegenerateBondTTL(t *testing.T) {
 
 // TestPruneBelowHorizon_PreservesLinkageAndReloads: after pruning, the chain still hash-links
 // and replays through Reload (Block.Prune preserves Hash; validateStructural verifies sigs
-// against the stored hash and never re-verifies bonds — slice 3 one-site finding).
+// against the stored hash and never re-verifies bonds).
 func TestPruneBelowHorizon_PreservesLinkageAndReloads(t *testing.T) {
 	c, _ := anchorChainWithRegs(t, 9, map[uint64]bool{1: true, 2: true, 3: true})
 	if n := c.PruneBelowHorizon(); n == 0 {

@@ -123,7 +123,7 @@ type Config struct {
 	// legacy reputation-gated path unchanged, so existing deployments and the
 	// permissive/sim configs are unaffected.
 	MinBond int64
-	// MinBondBytes is the OBJECTIVE anti-release floor (retest G4), mirroring the
+	// MinBondBytes is the OBJECTIVE anti-release floor, mirroring the
 	// node-side floor the credit ledger already enforces (core/node MinBondBytes,
 	// bondaudit): a bond below it earns NO objective standing, because a plot that
 	// small can be released and re-plotted inside a challenge window, so its
@@ -131,7 +131,7 @@ type Config struct {
 	// (the admission size): a deployment can admit at MinBond yet still deny
 	// fork-choice standing to sub-floor bonds. Zero (default) = no floor.
 	MinBondBytes int64
-	// BondTTLBlocks is the OBJECTIVE re-challenge cadence (retest G4): a bonded
+	// BondTTLBlocks is the OBJECTIVE re-challenge cadence: a bonded
 	// validator's standing LAPSES this many blocks after the block that carried
 	// its latest registration, unless it renews with a FRESH space-time proof
 	// (a new BondReg, bound to a recent parent nonce). This enforces the "time"
@@ -1342,7 +1342,7 @@ func Encode(b *Block) []byte {
 // v5 (era-4 witnessable transitions) all decode; each validates under ITS OWN era's rules
 // (era-gated in ValidateCommit / VerifyEquivocation) — committed history is never
 // re-interpreted. The ceiling is BlockVersionWitnessable: a v5 block is accepted at decode
-// AND, in the SAME release (build increment 4c, PREDICATE-FIRST), is subject to the era-4
+// AND, in the SAME release (PREDICATE-FIRST), is subject to the era-4
 // validity rules — the v5 committed-root predicate (validateEra3Roots recomputes via
 // StateRootForVersion(5)) and the RegCap per-block BondReg count cap (validateBondRegs).
 // Widening the decode ceiling atomically with the predicate closes the era-3 interim window
@@ -1468,7 +1468,7 @@ var (
 	// proof re-verified, so trusting one at/above the finalized anchor would let
 	// a peer strip Answer to skip verification and forge standing — a C1
 	// (no-discount) break. Trusted only strictly below the floor, where finality
-	// already makes the reg irreversible (Q2 gate, slice 3).
+	// already makes the reg irreversible.
 	ErrPrunedAboveHorizon = errors.New("chain: pruned block at/above the node's trust floor (would skip space-time verification — refused)")
 
 	// ErrMalformedPruned rejects a block marked pruned (Pruned set) that still
@@ -1559,12 +1559,12 @@ type Chain struct {
 	// (applied without a proof). A proof of possession displaces a declaration,
 	// so a malicious genesis cannot pre-squat an honest validator's real plot
 	// root and, via the F1 first-owner dedup, lock the true holder out when it
-	// later registers with a genuine proof (retest G3). Once proven, a root
+	// later registers with a genuine proof. Once proven, a root
 	// stays proven, so first-proven-owner still wins among real bonds (F1).
 	bondRootProven map[ports.Hash]bool
 	// bondRegHeight records the height of the block carrying each validator's
 	// LATEST bond registration, so objective standing can expire on a cadence
-	// (Config.BondTTLBlocks, retest G4): a bond not renewed with a fresh proof
+	// (Config.BondTTLBlocks): a bond not renewed with a fresh proof
 	// within the TTL window is pruned from `bonded`. Deterministic (a function of
 	// block height), so every replica decays standing identically.
 	bondRegHeight map[ports.NodeID]uint64
@@ -1726,7 +1726,7 @@ type Chain struct {
 	// (attacker- supplied) fork under replay. nil on a live chain, where
 	// trustFloor computes from the node's own state. This is the C1 gate's
 	// load-bearing edge: without it a peer could inflate the acceptance floor by
-	// presenting a fork with a high finalized head. (Q2 gate, slice 3.)
+	// presenting a fork with a high finalized head.
 	trustFloorOverride *uint64
 }
 
@@ -2399,7 +2399,7 @@ func (c *Chain) validateBondRegs(b *Block) error {
 	if !c.objective() {
 		return nil
 	}
-	// Q2 pruned-tolerance gate (slice 3; C1/M0 merge gate). A payload-pruned block has
+	// Q2 pruned-tolerance gate (C1/M0 merge gate). A payload-pruned block has
 	// its heavy BondReg.Answer dropped, so its space-time proof cannot be re-verified.
 	// Trust it ONLY strictly below this node's OWN finalized/checkpoint anchor
 	// (trustFloor) — where finality already makes the reg irreversible and
@@ -2445,7 +2445,7 @@ func (c *Chain) validateBondRegs(b *Block) error {
 		// (decode-invariant): a pruned block must not also carry an Answer — a
 		// full block cannot smuggle a forged stored-hash past the skip.
 		// Structural + proposer/attester-sig checks still run elsewhere,
-		// against the stored Hash (slice 2).
+		// against the stored Hash.
 		for _, r := range b.BondRegs {
 			if r.Answer != nil {
 				return fmt.Errorf("%w: validator %s", ErrMalformedPruned, r.ValidatorID())
@@ -2453,7 +2453,7 @@ func (c *Chain) validateBondRegs(b *Block) error {
 		}
 		return nil
 	}
-	// era-4 (v5) RegCap validity rule (build increment 4c). A v5 block is INVALID if its
+	// era-4 (v5) RegCap validity rule. A v5 block is INVALID if its
 	// per-block TOTAL BondReg count — fresh AND renewal, counted AFTER canonicalBondRegs so
 	// a same-id renew/resize pair folds to one — exceeds RegCap. This bounds any single
 	// block's due-bucket inflow to RegCap, which bounds the TTL-firing witness read-set to a
@@ -3204,7 +3204,7 @@ func (c *Chain) ConfigQuorum() int { return c.cfg.Quorum }
 func (c *Chain) Len() int { return len(c.blocks) }
 
 // FinalizedHeight is the height this node treats as irreversibly final — the anchor a
-// behind peer suffix-syncs FROM (slice 5) and the prune floor derives from. In OBJECTIVE
+// behind peer suffix-syncs FROM and the prune floor derives from. In OBJECTIVE
 // mode every committed block is super-quorum-final (the same property the Reconcile
 // finality gate rests on — launch: the pinned anchor majority IS the finality quorum;
 // mature: the >⅔-frozen-weight commit quorum IS the finality quorum), so the finalized
@@ -3993,7 +3993,7 @@ func (c *Chain) AppendGenesis(b Block) error {
 	if err := c.validateGenesisIssuerKeys(&b); err != nil {
 		return err
 	}
-	// The same door, for the STRONGER lever (retest G1). AppendGenesis skips
+	// The same door, for the STRONGER lever. AppendGenesis skips
 	// validateSlashes, and apply unconditionally evicts every Slashes culprit
 	// (slashed[id]=true, deleted from bonded, barred from re-earning, carried
 	// through adopt). A genesis carrying an UNVERIFIED Slash would therefore
@@ -4127,14 +4127,14 @@ func (c *Chain) apply(b Block) {
 			continue
 		}
 		if r.Size < c.cfg.MinBondBytes {
-			continue // below the objective anti-release floor → no standing (retest G4)
+			continue // below the objective anti-release floor → no standing
 		}
 		id := r.ValidatorID()
 		if c.slashed[id] {
 			continue // a slashed equivocator cannot re-earn bonded standing (F2)
 		}
 		if owner, claimed := c.bondRootOwner[r.Root]; claimed && owner != id {
-			// PROOF BEATS DECLARATION (retest G3): a verified registration displaces
+			// PROOF BEATS DECLARATION: a verified registration displaces
 			// an unproven genesis-DECLARED claim, so a malicious genesis cannot
 			// pre-squat an honest validator's real root and lock the true holder out
 			// via the dedup above. Any other collision (proven-vs-proven, or an
@@ -4160,7 +4160,7 @@ func (c *Chain) apply(b Block) {
 		c.bondDomain[id] = r.Domain    // committed A-axis label (0 = unset); latest wins
 		c.qualifiedMaintain(id)        // era-4 site 2: fresh/renew/resize may join or leave qualified
 	}
-	// OBJECTIVE RE-CHALLENGE (retest G4): standing lapses if not renewed with a
+	// OBJECTIVE RE-CHALLENGE: standing lapses if not renewed with a
 	// fresh proof within BondTTLBlocks. A validator that registers once and then
 	// releases its plot cannot answer the fresh challenge to renew, so its vote
 	// decays to nothing instead of persisting forever off a single one-time proof.
@@ -4682,7 +4682,7 @@ func (c *Chain) Reconcile(fork []Block) (bool, error) {
 	tmp := New(c.cfg, c.rep)
 	tmp.tokenQuorum, tmp.issuerKey = c.tokenQuorum, c.issuerKey
 	tmp.verifyBond = c.verifyBond // so the fork's bond registrations re-verify (F6)
-	// Pin the pruned-tolerance floor to THIS node's own anchor (Q2 gate, slice 3): a
+	// Pin the pruned-tolerance floor to THIS node's own anchor: a
 	// pruned block in the fork is trusted only strictly below the RECEIVER's finalized/
 	// checkpoint anchor, never a height the fork's own (attacker-supplied) replayed state
 	// could inflate. Snapshot so the floor cannot move mid-replay.

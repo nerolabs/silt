@@ -93,14 +93,14 @@ func TestScheduleOracle_OpenBreak_A_ForgedLockInOldValueSuppression(t *testing.T
 }
 
 // ============================================================================= CLOSED-BREAK (b) —
-// RegVersion in-block cross-check, now built (DIRECTION B). apply's rotate tally (chain.go)
+// RegVersion in-block cross-check, now built. apply's rotate tally (chain.go)
 // reads the JUST-WRITTEN c.regVersion[id] of an in-block bond (rotate runs LAST, after the block's
 // bonds). Pre-fix the box anchored regVersion against PRE-state only: a fresh in-block bond had no
 // pre-state regVersion leaf, so its honest witness set RegVersionKnown=false and the box EXCLUDED
 // it from the tally, DIVERGING from apply — and (when the in-block weight was decisive) AGREEING
 // with an attacker who committed the suppressed (no-lock-in) root: a wrong-accept.
 //
-// FIXED by DIRECTION B: the class-B delta now surfaces
+// FIXED: the class-B delta now surfaces
 // regVerWrites (the fold-anchored post-write regVersion), and anchorRotateMember cross-checks an
 // in-block member's tally regVersion against it (mirroring the Weight in-block treatment). The box's
 // tally now MATCHES apply's: it counts the in-block bond and locks in, so it STALLS against the
@@ -149,7 +149,7 @@ func TestScheduleOracle_OpenBreak_B_InBlockRegVersionTallyDivergence(t *testing.
 
 	prover, prevRoot := proverFor(t, c)
 	w := boundaryWitnessFor(t, c, prover, b2)
-	// DIRECTION B: the honest witness now carries the in-block bond's POST-write regVersion
+	// the in-block cross-check: the honest witness now carries the in-block bond's POST-write regVersion
 	// (known), so the box counts it in the tally and matches apply.
 	foundNew := false
 	for _, m := range w.Rotate.Members {
@@ -173,7 +173,7 @@ func TestScheduleOracle_OpenBreak_B_InBlockRegVersionTallyDivergence(t *testing.
 	// LIVENESS: the box now AGREES with apply on the honest root (it counts the in-block
 	// regVersion and locks in), where the pre-fix box false-stalled.
 	if herr := recomputeViaHead(c, prevRoot, honest, b2, w); herr != nil {
-		t.Fatalf("DIRECTION B LIVENESS REGRESSED: the box false-stalls on the honest in-block-bond boundary "+
+		t.Fatalf("IN-BLOCK CROSS-CHECK LIVENESS REGRESSED: the box false-stalls on the honest in-block-bond boundary "+
 			"(%v). The in-block regVersion cross-check (regVerWrites → anchorRotateMember) must let the box "+
 			"count the in-block bond and AGREE with apply().", herr)
 	}
@@ -195,11 +195,11 @@ func TestScheduleOracle_OpenBreak_B_InBlockRegVersionTallyDivergence(t *testing.
 	rerr := recomputeViaHead(c, prevRoot, forgedRoot, b2, w)
 	if rerr == nil {
 		t.Fatalf("ANCHOR REGRESSED (b): box WRONG-ACCEPTS a suppressed-lock-in root on an in-block-bond "+
-			"boundary. Direction B must count the in-block regVersion so the box's tally locks in and STALLS\n"+
+			"boundary. The in-block cross-check must count the in-block regVersion so the box's tally locks in and STALLS\n"+
 			"  against the suppressed root. newv=%x forgedRoot=%x honest=%x", newvID[:4], forgedRoot, honest)
 	}
 	t.Logf("CLOSED-BREAK (b): the box AGREES with apply() on the honest in-block-bond boundary AND STALLS "+
-		"(%v) against the suppressed root — the Direction B in-block regVersion cross-check closed both the "+
+		"(%v) against the suppressed root — the in-block regVersion cross-check closed both the "+
 		"false-stall (liveness) and the wrong-accept (safety).\n  newv=%x forgedRoot=%x honest=%x",
 		rerr, newvID[:4], forgedRoot, honest)
 }

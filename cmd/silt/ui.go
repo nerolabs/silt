@@ -1064,7 +1064,7 @@ func withheldDurability(di *durabilityInfo) *durabilityInfo {
 }
 
 // durabilityInfo makes the built-but-previously-invisible S7 repair economy
-// observable (Phase 2): the node's credit balance (what serving earned) and, per
+// observable: the node's credit balance (what serving earned) and, per
 // object it caretakes, the funded reserve, lifetime skim/pay, and the projected
 // funded horizon. `bountyOn` reports whether repair bounties actually PAY on this
 // node (the -economy switch) — an economy whose escrows fill but never disburse
@@ -1655,7 +1655,7 @@ func (s *uiServer) apiPublish(w http.ResponseWriter, r *http.Request) {
 }
 
 // apiFund prepays an object's durability reserve from THIS node's own credit
-// balance (Phase 2, Slice 3 — the publisher/operator endowment path over
+// balance (the publisher/operator endowment path over
 // FundDurability). A publisher endows a repair budget so their content outlives
 // churn before it is popular enough to self-fund via the serve auto-skim; the
 // credits come from what this daemon EARNED by serving, and standing is untouched

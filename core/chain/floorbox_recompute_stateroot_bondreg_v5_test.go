@@ -9,7 +9,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Tests for the P1-d class-B bond-registration state-root recompute
+// Tests for the class-B bond-registration state-root recompute
 // (floorbox_recompute_stateroot_bondreg_v5.go).
 //
 // research: floorbox-Rboundary-writeset-digest-reconstruction-
@@ -375,7 +375,7 @@ func TestRecomputeStateRootBondRegAblationForgedScreen(t *testing.T) {
 	}
 }
 
-// --- Ablation 6: a bond-reg block at an epoch boundary. Class P is now IN scope (P1-e), so the block
+// --- Ablation 6: a bond-reg block at an epoch boundary. Class P is now IN scope, so the block
 // DISPATCHES to the rotate reconstruction. With an EMPTY witness (no rotate witness, no digest pre-sets)
 // the box cannot reconstruct the boundary ⇒ it stalls (never-Accept preserved). ---
 func TestRecomputeStateRootBondRegAblationBoundaryOutOfScope(t *testing.T) {

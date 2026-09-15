@@ -92,11 +92,11 @@ func (c *Chain) pruneFloor() uint64 {
 
 // PruneBelowHorizon payload-selectively prunes every stored block strictly below the prune
 // floor that still carries a heavy BondReg.Answer — dropping the ~1.5 MB proof while keeping
-// the header + consensus sigs (Block.Prune, slice 2). Because the durable store and the
+// the header + consensus sigs (Block.Prune). Because the durable store and the
 // serve path both read c.blocks (chainstore.Save(Blocks(0)); chainrole serve Blocks(from)),
 // this one in-place shed bounds resident, on-disk, AND served heavy payload to a recent
 // finalized window. Returns the number of blocks newly pruned. Idempotent (skips
-// already-pruned and entry-only blocks). ENABLED (slice 5b): the node calls this after each
+// already-pruned and entry-only blocks). ENABLED: the node calls this after each
 // commit; a behind peer safely catches up via suffix-sync from its own finalized head, and a
 // deep-cold node beyond the WS window is told to use a checkpoint/archive. Safe to call on
 // every commit — pruneFloor is 0 (no-op) without BFT finality or with a degenerate BondTTL.

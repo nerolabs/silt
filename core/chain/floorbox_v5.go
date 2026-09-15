@@ -2,7 +2,7 @@ package chain
 
 import "errors"
 
-// era-4 (v5) trustless floor-box validation — lane-1 Part B, increment B1 (the sound,
+// era-4 (v5) trustless floor-box validation — the sound,
 // additive slice).
 //
 // A floor box is a SEMI-STATELESS witness-validating client: it holds the two committed
@@ -36,7 +36,7 @@ import "errors"
 // returns Accept. The safe default (stall/indeterminate) holds until a recompute lands, at
 // which point its verdict slots into the marked seam below.
 //
-// - 2026-08-30 (lane-1 increment 3), SUPERSEDED on the directive by
+// - 2026-08-30, SUPERSEDED on the directive by
 // (2): the recovery directive and the live-follower opt-in are
 // deleted and the stall is unconditional. The read-set identity is the 23-keyspace amended
 // form (cited in readset_v5.go), unchanged.
@@ -95,7 +95,7 @@ var (
 	// every check it CAN perform and stalled because the accept core is gated, not because the
 	// block is bad. A caller distinguishes "I cannot decide yet (gated)" from
 	// "recovery-boundary indeterminate" by this reason.
-	ErrRecomputeGated = errors.New("chain: floor-box v5 witnessable recompute is research-gated (lane-1 Part B core, not yet built) — trustless accept/reject withheld")
+	ErrRecomputeGated = errors.New("chain: floor-box v5 witnessable recompute reached a verdict of accept and the box's door withholds it — a floor box audits and reports, and adopts nothing")
 
 	// ErrRecoveryBoundaryStall marks the cold auditor's UNCONDITIONAL stall at an ambiguous
 	// recovery boundary (D0 of on direction (a')). There is no directive, no opt-in and no

@@ -556,7 +556,7 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 	}
 	if len(undeclared) > 0 {
 		t.Fatalf("chain.Config has %d UNDECLARED field(s): %v\n"+
-			"Canon rule 8 (docs/build-process.md): a consensus quantity must be a function of the CHAIN.\n"+
+			"A consensus quantity must be a function of the CHAIN (docs/TENETS.md, Part IX).\n"+
 			"Every Config field must be declared classLocal or classConsensusCritical in configDecls,\n"+
 			"because the class silt names in prose ('consensus-critical genesis config', chain.go:190)\n"+
 			"was never enumerated — which is how MinBond stayed a bare flag through three audits.\n"+
@@ -940,7 +940,7 @@ func TestConsensusVerdictIsNotAFunctionOfLocalConfig(t *testing.T) {
 	if !reflect.DeepEqual(got, wantDivergence) {
 		t.Fatalf("the CONFIG DIVERGENCE MAP changed.\n  got:  %v\n  want: %v\n"+
 			"A field that newly moves a validity verdict is a new instance of the class:\n"+
-			"bind it to the CHAIN (canon rule 8, docs/build-process.md) and route it as a\n"+
+			"bind it to the CHAIN (docs/TENETS.md, Part IX) and route it as a\n"+
 			"consensus-rule change. A field that STOPPED diverging means its binding landed —\n"+
 			"update this map, and when the unbound rows are gone close.",
 			got, wantDivergence)

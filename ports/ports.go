@@ -358,7 +358,7 @@ type DurabilitySnapshot struct {
 // double-sign the slash rule treats as proven malice (round-scoped per the
 // research — Tendermint's persisted priv_validator_state, whose schema is
 // (height, round, step); the height-only form wedged a contested height
-// permanently). Round 0 / Phase 0 is the legacy era-1 mark (a bare-hash
+// permanently). Round 0 is the legacy era-1 mark (a bare-hash
 // signature); marks persisted before rounds load as that.
 type SignMark struct {
 	Height uint64

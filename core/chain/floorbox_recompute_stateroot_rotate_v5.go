@@ -7,8 +7,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// era-4 (v5) trustless floor-box RECOMPUTE — Path-1 state-root recompute, sub-increment P1-e,
-// CLASS P (epoch rotation → epochSet + boundary scalars) — the FIFTH and LAST Path-1 class.
+// era-4 (v5) trustless floor-box RECOMPUTE — CLASS P (epoch rotation → epochSet + boundary scalars) — the FIFTH and LAST Path-1 class.
 //
 // A WHOLE-SET reconstruction for classes A and P. All FOLD-CAUGHT, never
 // wrong-accept.) Box STILL never-Accepts (R-scope). This reproduces validateEra3Roots'
@@ -87,7 +86,7 @@ type StateRootRotateMember struct {
 	// (empty for an ADD/overwrite; present only in PriorEpochSet entries that leave the set).
 	EpochSetDeleteSiblings []statehash.FoldSibling
 
-	// WITNESS-SOUNDNESS ANCHORS (per-member proofs against prevStateRoot, BUILD notes D3/D4). The
+	// WITNESS-SOUNDNESS ANCHORS (per-member proofs against prevStateRoot). The
 	// freeze writes EncodeInt64(Weight) into the epochSet||id leaf and the tally reads Weight/RegVersion;
 	// a forged Weight moves only the membership-only epochSet digest's per-member leaf (the ForgedFrozenWeight
 	// attack), and a forged RegVersion/RegVersionKnown flips a lock-in tally (the ForgedRegVersion attacks).
@@ -103,7 +102,7 @@ type StateRootRotateMember struct {
 	// (RegVersionKnown=false), against prevStateRoot. For an id whose regVersion||id this block
 	// MUTATED (bonded in-block), the box cross-checks RegVersion against the class-B regVerWrites[id]
 	// value (fold-anchored, = apply's post-write tally input) and RegVersionProof is NOT read — the
-	// DIRECTION B in-block cross-check, built in
+	// in-block cross-check, built in
 	// anchorRotateMember.
 	RegVersionProof statehash.Witness
 }
@@ -233,7 +232,7 @@ func (c *Chain) rotateOps(
 	for i := range rw.Members {
 		m := rw.Members[i]
 		// ANCHOR the frozen Weight and RegVersion against prevStateRoot BEFORE they enter the
-		// tally / epochSet-leaf freeze (BUILD notes D3/D4). This anchors the INPUTS to the
+		// tally / epochSet-leaf freeze. This anchors the INPUTS to the
 		// activation quorum; the tally arithmetic (3*ready>2*total) in rotateTallyOps is
 		// UNTOUCHED.
 		if err := c.anchorRotateMember(prevStateRoot, m, qualWrites, regVerWrites); err != nil {
@@ -283,14 +282,14 @@ func (c *Chain) rotateOps(
 }
 
 // anchorRotateMember re-anchors a frozen member's untrusted Weight and RegVersion against
-// prevStateRoot (BUILD notes D3/D4), so a forged value cannot enter the epochSet-leaf freeze or the
+// prevStateRoot, so a forged value cannot enter the epochSet-leaf freeze or the
 // activation tally. It touches NO tally arithmetic.
 //
 // Weight: a member whose qualified||id leaf this block MUTATED (present in qualWrites) is cross-checked
 // against the class-B-derived write (anchored by the class-B fold); a steady-state member's Weight is
 // required to be the committed qualified||id value under prevStateRoot (present-proof at EncodeInt64(Weight)).
 //
-// RegVersion (DIRECTION B, the class-P anchoring rule 2026-09-02 P-r2): a member whose regVersion||id leaf
+// RegVersion (the in-block rule): a member whose regVersion||id leaf
 // this block MUTATED (bonded in-block, present in regVerWrites) is cross-checked against the class-B
 // POST-write regVersion — the value apply's rotate tally reads (chain.go), fold-anchored by the
 // class-B changed leaf — and RegVersionProof is NOT read. Without this the fresh in-block bond has no
@@ -324,7 +323,7 @@ func (c *Chain) anchorRotateMember(prevStateRoot ports.Hash, m StateRootRotateMe
 
 	// RegVersion anchor.
 	if rv, mutated := regVerWrites[m.ID]; mutated {
-		// DIRECTION B in-block cross-check: the id bonded THIS block, so the PRE-state regVersion||id
+		// in-block cross-check: the id bonded THIS block, so the PRE-state regVersion||id
 		// leaf is absent — the pre-state Resolve is the WRONG oracle. Cross-check the tally regVersion
 		// against the class-B POST-write value (fold-anchored). The frozen witness MUST report the
 		// in-block regVersion known and equal to the write; RegVersionProof is not read.

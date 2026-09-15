@@ -9,7 +9,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Tests for the P1-e class-P epoch-rotation state-root recompute
+// Tests for the class-P epoch-rotation state-root recompute
 // (floorbox_recompute_stateroot_rotate_v5.go).
 //
 // research: floorbox-recompute-classA-classP-wholeset-
@@ -168,7 +168,7 @@ func (f rotateFixture) rotateMember(t *testing.T, id ports.NodeID, weight int64)
 
 // rotateMemberPost builds a frozen-member witness whose RegVersion is taken from the supplied
 // regVersion map. Callers pass the POST-apply clone's regVersion so an in-block bonded member carries
-// its just-written version (RegVersionKnown=true) — the DIRECTION B in-block cross-check input. For a
+// its just-written version (RegVersionKnown=true) — the in-block cross-check input. For a
 // steady-state member the post map equals pre-state, so the pre-state RegVersionProof still resolves.
 func (f rotateFixture) rotateMemberPost(t *testing.T, id ports.NodeID, weight int64, regVersion map[ports.NodeID]uint8) StateRootRotateMember {
 	t.Helper()
@@ -191,7 +191,7 @@ func (f rotateFixture) rotateMemberPost(t *testing.T, id ports.NodeID, weight in
 	// proof (present when RegVersionKnown, else a non-membership proof). A fresh in-block bond has no
 	// pre-state qualified||id leaf, so QualifiedProof is a non-membership proof there and the box
 	// cross-checks Weight against the class-B write instead; likewise the box cross-checks RegVersion
-	// against the class-B regVerWrites for an in-block member (DIRECTION B) and does not read the proof.
+	// against the class-B regVerWrites for an in-block member and does not read the proof.
 	m.QualifiedProof = mustProve(f.prover, statehash.Key(tagQualified, id[:]))
 	m.RegVersionProof = mustProve(f.prover, statehash.Key(tagRegVersion, id[:]))
 	return m
@@ -228,7 +228,7 @@ func (f rotateFixture) witnessForBoundary(t *testing.T, b Block) StateRootWitnes
 	)
 
 	// Rotate witness: frozen members + prior epochSet droppers + scalars. An in-block bonded member
-	// carries its POST-write regVersion (from the applied clone) — the DIRECTION B cross-check input.
+	// carries its POST-write regVersion (from the applied clone) — the in-block cross-check input.
 	var rw StateRootRotateWitness
 	for id, wt := range clone.qualified {
 		rw.Members = append(rw.Members, f.rotateMemberPost(t, id, wt, clone.regVersion))
@@ -885,7 +885,7 @@ func (f handoffFixture) witnessForHandoff(t *testing.T, b Block) StateRootWitnes
 	var rw StateRootRotateWitness
 	for id, wt := range applied.qualified {
 		esKey := statehash.Key(tagEpochSet, id[:])
-		// POST-apply regVersion (DIRECTION B): equals pre-state here (no in-block bond at the handoff).
+		// POST-apply regVersion: equals pre-state here (no in-block bond at the handoff).
 		rv, rvKnown := applied.regVersion[id]
 		rw.Members = append(rw.Members, StateRootRotateMember{
 			ID: id, Weight: wt, RegVersion: rv, RegVersionKnown: rvKnown,

@@ -206,7 +206,7 @@ func TestPrivateWithdrawalRefusedWithoutCredit(t *testing.T) {
 	}
 }
 
-// TestPrivateWithdrawalThroughRelay is D3 slice 2 over REAL TCP: the private withdrawal
+// TestPrivateWithdrawalThroughRelay is D3 issuance-mixing over REAL TCP: the private withdrawal
 // is routed THROUGH a content-blind relay, so the issuer's inbound connection comes from
 // the relay, not the fetcher — hiding the fetcher's IP as well as its identity. The
 // fetcher is given ONLY the issuer's RELAY-form address (no direct address), so a

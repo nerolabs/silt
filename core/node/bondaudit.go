@@ -318,7 +318,7 @@ func (n *Node) bondAuditOnce(now uint64) {
 // as a failure.
 // challengerRate tracks one challenger's bond-challenge eval budget in the
 // current window. The same shape budgets bond-reg SUBMITS per sender
-// (allowBondSubmit — the Phase 1.2 CPU gate).
+// (allowBondSubmit — the CPU gate).
 type challengerRate struct {
 	windowStart ports.Time
 	count       int

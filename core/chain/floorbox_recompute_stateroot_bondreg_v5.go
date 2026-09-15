@@ -9,8 +9,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// era-4 (v5) trustless floor-box RECOMPUTE — Path-1 state-root recompute, sub-increment P1-d,
-// CLASS B (bond registrations) — the THIRD delta-derivable changed-whole-set-digest class.
+// era-4 (v5) trustless floor-box RECOMPUTE — CLASS B (bond registrations) — the THIRD delta-derivable changed-whole-set-digest class.
 //
 // research: floorbox-Rboundary-writeset-digest-reconstruction-
 // (B: carries the residual — the displacement branch is
@@ -68,7 +67,7 @@ type StateRootBondRegScreen struct {
 	// PriorProven is the committed bondRootProven[Root] pre-state (false if unclaimed or unproven).
 	PriorProven bool
 
-	// WITNESS-SOUNDNESS ANCHORS (per-root proofs against prevStateRoot, BUILD note D5). The
+	// WITNESS-SOUNDNESS ANCHORS (per-root proofs against prevStateRoot). The
 	// displacement branch reads PriorOwner/Claimed/PriorProven to decide whether to strip a squatter's
 	// standing; a forged read flips the decision (the ForgedPriorOwner/Claimed/PriorProven attacks). Each
 	// is anchored the same way a fold-written leaf is — by a proof the box VERIFIES against prevStateRoot
@@ -144,8 +143,7 @@ func (c *Chain) stateRootBondRegWriteSet(
 	owner := map[ports.Hash]ports.NodeID{}
 	claimed := map[ports.Hash]bool{}
 	provenRoot := map[ports.Hash]bool{}
-	// ANCHOR the per-root displacement inputs against prevStateRoot BEFORE reading them (BUILD note
-	// D5). The displacement branch (below) reads owner[root]/claimed[root]/provenRoot[root] to
+	// ANCHOR the per-root displacement inputs against prevStateRoot BEFORE reading them. The displacement branch (below) reads owner[root]/claimed[root]/provenRoot[root] to
 	// decide whether to strip a squatter's standing. A forged PriorOwner/Claimed/PriorProven flips
 	// that decision (the ForgedPriorOwner/Claimed/PriorProven attacks). Each is trusted only after
 	// its proof Resolves against prevStateRoot; a nil/forged proof yields NoWitness ⇒ stall.
@@ -205,14 +203,14 @@ func (c *Chain) stateRootBondRegWriteSet(
 			continue // apply's malformed guard
 		}
 		if r.Size < c.cfg.MinBondBytes {
-			continue // below the objective anti-release floor (retest G4)
+			continue // below the objective anti-release floor
 		}
 		id := r.ValidatorID()
 		if _, isSlashed := preSlashed[id]; isSlashed {
 			continue // a slashed equivocator cannot re-earn standing (F2)
 		}
 		if o, isClaimed := owner[r.Root]; isClaimed && o != id {
-			// PROOF BEATS DECLARATION (retest G3): a verified reg displaces an unproven genesis claim.
+			// PROOF BEATS DECLARATION : a verified reg displaces an unproven genesis claim.
 			if !(proven && !provenRoot[r.Root]) {
 				continue // shared root already backs another identity → no standing
 			}
@@ -247,7 +245,7 @@ func (c *Chain) stateRootBondRegWriteSet(
 			stateRootWrite{key: statehash.Key(tagRegVersion, id[:]), newValue: statehash.EncodeUint8(r.Version)},
 			stateRootWrite{key: statehash.Key(tagBondDomain, id[:]), newValue: statehash.EncodeUint64(r.Domain)},
 		)
-		// DIRECTION B: record the just-written regVersion so the
+		// Record the just-written regVersion so the
 		// class-P freeze can cross-check an in-block bond's tally regVersion against this fold-anchored
 		// value (the regVersion||id leaf is in `writes`, verified by the class-B fold), rather than the
 		// PRE-state Resolve (which is absent for a fresh in-block bond and forces the id to count 0).

@@ -73,7 +73,7 @@ func cmdDaemon(args []string) error {
 	listen := fs.String("listen", "127.0.0.1:0", "TCP listen address for swarm traffic")
 	storeDir := fs.String("store", ".silt-daemon", "chunk store directory")
 	bootstrap := fs.String("bootstrap", "", "comma-separated peer list: ID@HOST:PORT")
-	persistentPeers := fs.String("persistent-peers", "", "comma-separated ID@HOST:PORT of a STATIC consensus/anchor peer set — address-configured up front and NEVER evicted by churn (Tendermint persistent_peers). At genesis there is no chain, so a proposer cannot DISCOVER its attesters' addresses (silt's routing table holds bare NodeIDs; addresses live in the transport layer, learned only from inbound frames/gossip) — configure the validator set here so proposer-initiated quorum can form on a fresh multi-region net (Layer 2; docs/network-durability.md §8). These are AddPeer'd at boot AND exempt from reachability eviction (§2)")
+	persistentPeers := fs.String("persistent-peers", "", "comma-separated ID@HOST:PORT of a STATIC consensus/anchor peer set — address-configured up front and NEVER evicted by churn (Tendermint persistent_peers). At genesis there is no chain, so a proposer cannot DISCOVER its attesters' addresses (silt's routing table holds bare NodeIDs; addresses live in the transport layer, learned only from inbound frames/gossip) — configure the validator set here so proposer-initiated quorum can form on a fresh multi-region net (Layer 2; the durable-WAN policy §8). These are AddPeer'd at boot AND exempt from reachability eviction (§2)")
 	registryURL := fs.String("registry", "", "registry ref: ID@https://host:port (key-pinned — copy the daemon's 'registry:' line verbatim; a bare http:// or unkeyed https:// is refused)")
 	serveRegistry := fs.String("serve-registry", "", "host the registry at this address (persisted in the store dir)")
 	idSeed := fs.Int64("id-seed", 0, "derive the identity from a seed (default: persistent keyfile) — for scripted demos")
@@ -406,7 +406,7 @@ func cmdDaemon(args []string) error {
 	cfg.DHTDomainCap = *dhtDomainCap // failure-domain diversity for eclipse resistance (H5-B)
 	cfg.Domain = *domain             // this node's failure-domain label (H5-B DHT diversity + committed in the bond for the A-axis C2 metric)
 	// The anti-release floor is SAFE-BY-DEFAULT on the objective/open path (M0
-	// retest G4-residual). Shipping the mechanism but defaulting it OFF left a
+	// ). Shipping the mechanism but defaulting it OFF left a
 	// doc-following open validator admitting a sub-floor, releasable bond to full
 	// standing — "fixed but off by default" is not fixed. So it gets the same
 	// treatment -objective already has: auto-on for an untrusted swarm -min-rep
@@ -963,7 +963,7 @@ func cmdDaemon(args []string) error {
 				return fmt.Errorf("consensus: refusing to start — an untrusted objective validator with no cold-start scaffolding would treat itself as mature from genesis (no anchor co-sign), letting a young or Sybil quorum self-certify and capture. Launch a fresh network with -anchors ID,... and -mature-validators N (the training-wheels launch set), OR join an already-mature network with -ws-checkpoint HEIGHT:HASH; alternatively -min-rep 0 for a trusted swarm, or -objective=false for the legacy (non-M0) path (a launch set needs at least 2 anchors: at 1 the Byzantine threshold is 0, the anchor majority is self-satisfied by the proposer, and finality engages at 0 — the sole anchor commits alone and those blocks read as final)")
 			}
 		}
-		// The objective anti-release floor and re-challenge cadence (retest G4)
+		// The objective anti-release floor and re-challenge cadence
 		// ride the same knobs as the node-side floor: a sub-floor bond earns no
 		// on-chain standing, and standing lapses without a fresh proof within the
 		// TTL. cfg.MinBondBytes is 0 unless -min-bond-floor was set.
@@ -2434,7 +2434,7 @@ func effectiveQuorum(quorumSet bool, explicit int, objectivePath, byzantineSizin
 	return derived, true
 }
 
-// effectiveBondFloor decides the anti-release floor (M0 retest G4-residual).
+// effectiveBondFloor decides the anti-release floor (M0).
 // Shipping the floor mechanism but defaulting it OFF left a doc-following open
 // validator admitting sub-floor, releasable bonds — "fixed but off by default"
 // is not fixed. So the floor is SAFE-BY-DEFAULT on the objective/open path, the

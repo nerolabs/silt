@@ -460,7 +460,7 @@ type Stats struct {
 	ChainSyncHeadMatches int
 	ChainSyncFullFetches int
 	// ChainSyncNeedCheckpoint: sweeps where a peer could not be synced from because this
-	// node is behind the weak-subjectivity window and the peer pruned the gap (slice 5).
+	// node is behind the weak-subjectivity window and the peer pruned the gap.
 	// A nonzero value means an operator must obtain a recent -ws-checkpoint out-of-band or
 	// point at an archive node — surfaced, never silent (I4/S5).
 	ChainSyncNeedCheckpoint int
@@ -699,7 +699,7 @@ type Node struct {
 	bondChallengeRate map[ports.NodeID]*challengerRate
 	// bondSubmitRate is the same gate for MsgSubmitBondReg: submits examined per
 	// sender per ChainSyncInterval window, charged BEFORE decode+verify (the
-	// Phase 1.2 CPU-DoS floor). See allowBondSubmit in bondaudit.go.
+	// CPU-DoS floor). See allowBondSubmit in bondaudit.go.
 	bondSubmitRate map[ports.NodeID]*challengerRate
 	roundCertRate  map[ports.NodeID]*challengerRate // MsgRoundCert per-sender window budget
 	// issuerKeySubmitRate is the per-sender budget for MsgSubmitIssuerKeyReg (see
@@ -1007,7 +1007,7 @@ func (n *Node) DurabilitySnapshot(root ports.Hash) ports.DurabilitySnapshot {
 }
 
 // RootDurability pairs a cared object's root with its durability snapshot — the
-// per-object row of the durability telemetry (Phase 2). Pure observability.
+// per-object row of the durability telemetry. Pure observability.
 type RootDurability struct {
 	Root     ports.Hash
 	Snapshot ports.DurabilitySnapshot
@@ -1121,7 +1121,7 @@ type EconomySelf struct {
 // CaredDurability snapshots the durability accounting of every object this node
 // caretakes (n.care) — the reserve that funds each one's repairs, what it has
 // earned via the serve auto-skim, and what it has paid out. This is the
-// built-but-previously-invisible S7 economy made observable (Phase 2, "wire
+// built-but-previously-invisible S7 economy made observable ("wire
 // credit.G/Horizon into live telemetry"): the raw snapshots the caller turns into
 // funded-horizon / g. Empty with no ledger. Loop-owned (reads n.care); call it on
 // the event loop. Observability; reading moves nothing.
@@ -1868,7 +1868,7 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 			bytes := int64(len(c.Data))
 			// Object-aware serve: a coded shard carries its object root in the
 			// storage proof, so route a durability auto-skim of the serve revenue
-			// into THAT object's escrow (H7 slice 3 — popular data self-funds its
+			// into THAT object's escrow (popular data self-funds its
 			// repair). Chunks with no proof-anchored root (manifest chunks, uncoded
 			// files) keep the plain serve; the server's net credit is the same either
 			// way, only a slice is diverted to durability.

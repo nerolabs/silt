@@ -5,8 +5,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// era-4 (v5) trustless floor-box RECOMPUTE — Path-1 state-root recompute, sub-increment P1-c,
-// CLASS T (TTL sweep) — the SECOND delta-derivable changed-whole-set-digest class.
+// era-4 (v5) trustless floor-box RECOMPUTE — CLASS T (TTL sweep) — the SECOND delta-derivable changed-whole-set-digest class.
 //
 // research: floorbox-Rboundary-writeset-digest-reconstruction-
 // (T: inherits the CRUX dueBucket reconstruction)

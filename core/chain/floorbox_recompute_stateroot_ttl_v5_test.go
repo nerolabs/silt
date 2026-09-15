@@ -9,7 +9,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Tests for the P1-c class-T TTL-sweep state-root recompute (floorbox_recompute_stateroot_ttl_v5.go).
+// Tests for the class-T TTL-sweep state-root recompute (floorbox_recompute_stateroot_ttl_v5.go).
 //
 // research: floorbox-Rboundary-writeset-digest-reconstruction-
 // (T: inherits the CRUX dueBucket reconstruction).
@@ -495,7 +495,7 @@ func TestRecomputeStateRootTTLAblationSkippedHeightContiguityBreak(t *testing.T)
 	}
 }
 
-// --- Ablation 5: a sweep+non-proposer-att compound. Class A is now IN scope (P1-e), so the block
+// --- Ablation 5: a sweep+non-proposer-att compound. Class A is now IN scope, so the block
 // DISPATCHES to the A reconstruction. The sweep witness carries no A witness (AttScreens /
 // validatorsSeenRoot digest), so the A dispatch stalls (never-Accept preserved). ---
 func TestRecomputeStateRootTTLAblationCompoundOutOfScope(t *testing.T) {

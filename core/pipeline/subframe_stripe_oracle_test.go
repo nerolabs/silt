@@ -155,7 +155,7 @@ func rtSFO4Pin(declared, distinct int, dupes []string) string {
 				"  DO THIS, in the same commit that reddened it:\n"+
 				"    1. Confirm the research the change. The erasure geometry feeds credit.RarestShardMultiplier\n"+
 				"       and the D-S7 durability economy — a durability knob that is also a security parameter is the\n"+
-				"       exact shape docs/build-process.md warns about, twice.\n"+
+				"       exact shape build-immutable #4 warns about: a defence that prices out the small operator.\n"+
 				"    2. Confirm the re-pricing. The repair bounty and the audit's per-leaf sweep both assumed\n"+
 				"       7 independent shards; making that true changes stored bytes per object.\n"+
 				"    3. Confirm this did NOT arrive as a side effect of changing erasure.DefaultParams. Check that\n"+

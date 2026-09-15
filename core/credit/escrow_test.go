@@ -284,7 +284,7 @@ func TestEscrow_ReadersOnUnknownObjectAreZero(t *testing.T) {
 // TestEscrow_AutoSkimKeepsColdObjectSolventAcrossRepairs is the small end-to-end
 // of the funding model: a publisher prepays a reserve, serving revenue auto-skims
 // top it up, and repair bounties draw it down. The reserve tracks funded - paid
-// throughout — the horizon accounting the g-instrument (slice 3) will read.
+// throughout — the horizon accounting the g-instrument will read.
 func TestEscrow_AutoSkimKeepsColdObjectSolventAcrossRepairs(t *testing.T) {
 	l := New(50_000, 10_000_000)
 	publisher, repairer := id(1), id(2)

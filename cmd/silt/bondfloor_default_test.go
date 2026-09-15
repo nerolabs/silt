@@ -25,7 +25,7 @@ func TestAntiReleaseFloorIsComputeSourcedNotTransport(t *testing.T) {
 	}
 }
 
-// Retest G4-RESIDUAL INVERTED as a regression: the anti-release floor must be ON
+// INVERTED as a regression: the anti-release floor must be ON
 // BY DEFAULT for an untrusted (objective) validator. shipped the mechanism
 // but defaulted both knobs to 0, so a stock/doc-following open M0 validator still
 // admitted a sub-floor, releasable bond to full objective standing —

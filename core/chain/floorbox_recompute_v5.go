@@ -9,7 +9,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// era-4 (v5) trustless floor-box RECOMPUTE — lane-1 Part B core, increment 1.
+// era-4 (v5) trustless floor-box RECOMPUTE.
 //
 // This file reproduces ONE weighted validity predicate — requireEpochWeightQuorum, the
 // mature-phase >⅔ frozen-WEIGHT super-quorum (chain.go) — trustlessly, from the

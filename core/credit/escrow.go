@@ -18,7 +18,7 @@ package credit
 // the build if a new escrow method ships unclassified — so the firewall cannot
 // silently erode.
 //
-// Prototype-first (this is H7 slice 1): these are the ledger primitives. Wiring
+// Prototype-first: these are the ledger primitives. Wiring
 // the auto-skim into the live serve path (node.go) and gating PayBounty on a
 // verified proof-of-repair transcript are later slices; here PayBounty trusts
 // its caller, and RecordServeToObject is the object-aware serve the wiring will
@@ -28,7 +28,7 @@ import "github.com/nerolabs/silt/ports"
 
 // objectEscrow is one object's durability reserve. balance is the credit
 // currently available to pay repair bounties; funded and paid are lifetime
-// totals kept for the horizon math (H7 slice 3, instrument g) and the
+// totals kept for the horizon math (instrument g) and the
 // observatory. None of these is ever read by Reputation.
 type objectEscrow struct {
 	balance int64 // credits available now to pay repair bounties
@@ -65,7 +65,7 @@ func (e *objectEscrow) funded() int64 { return e.fundedPrepay + e.fundedSkim }
 // is what makes popular data self-fund its own durability (every fetch tops up
 // the reserve) while cold data draws down what it prepaid. It is a tuning
 // parameter (Evolving, per the tenets), not a fixed law — 1/8 is a starting
-// point; the value that actually matters is g (slice 3), the credit-cost trend
+// point; the value that actually matters is g, the credit-cost trend
 // of a shard-repair, which decides perpetual-vs-finite.
 const (
 	SkimNum = 1
@@ -369,7 +369,7 @@ func (l *Ledger) RecordServeToObject(server, requester ports.NodeID, root ports.
 //
 // SLICE-1 CONTRACT: the caller is trusted to invoke this only on a repair it has
 // VERIFIED. The proof-of-repair gate — bounty releases iff BOTH correctness and
-// retrievability verify, and a false claim is bond-slashed — is H7 slice 2 and
+// retrievability verify, and a false claim is bond-slashed — is
 // wraps this primitive; it is not enforced here.
 func (l *Ledger) PayBounty(root ports.Hash, repairer ports.NodeID, amount int64) int64 {
 	if amount <= 0 {

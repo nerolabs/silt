@@ -7,8 +7,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// era-4 (v5) trustless floor-box RECOMPUTE — Path-1 state-root recompute, sub-increment P1-e,
-// CLASS A (the LastCommit carrier → validatorsSeen) — the FOURTH changed-whole-set-digest class.
+// era-4 (v5) trustless floor-box RECOMPUTE — CLASS A (the LastCommit carrier → validatorsSeen) — the FOURTH changed-whole-set-digest class.
 //
 // RE-POINTED. The class-A input source is the block's
 // HASH-COVERED LastCommit carrier — the PARENT's precommits, verified over b.Prev — not the block's

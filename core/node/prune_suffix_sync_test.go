@@ -14,7 +14,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Slice 5 — suffix-sync makes pruning safe: a behind node catches up AROUND a peer's
+// Suffix-sync makes pruning safe: a behind node catches up AROUND a peer's
 // pruned window by requesting from its OWN finalized head (M1), and a deep-cold node
 // beyond the weak-subjectivity window is told to use a checkpoint/archive (ErrNeedCheckpoint)
 // rather than silently failing. Fixture uses the mcStubVerify bond verifier + stub-answer
