@@ -203,15 +203,21 @@ approximation is recorded rather than claimed as the real thing.
   tests, green, 479.9 s. Uncached and not `-short`, because the e2e binaries build the daemon at
   runtime — a cached or short run of this tier is close to no evidence at all.
 
-*What is still owed, and where it lands:* the whole set actually running end to end, in
-`integration/cloudtest/` — the single-cloud harness, which is functional and has 23 reports from
-real 13-node runs across three regions behind it. NOT `integration/twocloud/`, which is the
-cross-cloud scaffold this list already defers.
+*What is still owed, and where it lands — CORRECTED 2026-09-15.* The whole set running end to end
+is `./integration/run-all.sh`, and it belongs HERE, on a developer box. An earlier revision of this
+item handed it to `integration/cloudtest/`; that was wrong twice over and the correction is the
+useful part. `cloudtest` runs its OWN 27-node scenario set on GCP — `1-first-run`, `184-forged-block`,
+`5-convergence` — not the suites under `integration/*/run.sh` that this item is about. Assigning one
+to the other would have left this item permanently unclosable while looking assigned. And the
+feasibility claim behind the hand-off does not hold: `run-all.sh` runs the suites ONE AT A TIME,
+because each assumes exclusive use of its topology. It is never seventeen topologies at once; it is
+one small topology, seventeen times, in sequence — 12 gate suites inside a 61-minute budget, plus 5
+slow suites adding 75 minutes under `FULL=1`.
 
-**It is billable and it is not a builder's to start.** The runbook's first ground rule is that
-every `apply` brings up real VMs and needs an explicit go from whoever owns the project, cheapest
-path first: validate with no spend, then a 4-node smoke run, then the full topology only once
-smoke is green. That sequence is the plan for this item; the go is the owner's.
+So this item is not blocked on spend and not blocked on a cloud harness. It is an hour of local
+wall-clock, and what it settles is the question the item exists for: whether the earlier
+rc=137 / rc=124 across every suite was host starvation or inherited leftovers — which
+`ft_preflight` / `ft_sweep` can now finally tell apart.
 
 *What the run has to settle.* The earlier local attempt returned rc=137 or rc=124 on all twelve
 suites and that was attributed to host contention; the attribution did not hold — twelve
@@ -532,12 +538,27 @@ loss and reordering.
 the gaps written down as decisions rather than left as silence.
 *field.*
 
-*It also carries item 5's heavier half.* The whole-suite run that item 5 needs is not feasible on
-a laptop — the suites each assume exclusive use of their topology and the local container host is
-2 CPUs and under 4 GiB — so it lands here. `integration/cloudtest/` is the harness (functional,
-23 real runs behind it), `integration/twocloud/` is the cross-cloud scaffold this list defers.
-Every `apply` is billable and needs the owner's explicit go: no spend, then a 4-node smoke, then
-the full topology only once smoke is green.
+*It does NOT carry item 5's whole-suite run,* and an earlier revision of this list said it did.
+`cloudtest` drives its own scenario set against a 27-node cloud topology; item 5 is about the
+suites under `integration/*/run.sh`, which run sequentially on a developer box. The two are
+different artifacts and the mistake would have left item 5 assigned to something that cannot close
+it. `integration/cloudtest/` is the functional harness (23 real runs behind it);
+`integration/twocloud/` is the cross-cloud scaffold this list defers.
+
+*THE FREE TIER IS DRIVEN, 2026-09-15:* `LOCAL=1 ./cloudtest.sh all` over a 4-node local topology —
+**21 pass / 0 gap / 0 fail**, swept clean. Among them: an equivocator slashed on the wire with zero
+blast radius to the main sheet; a minority partition that STALLED and then CAUGHT UP rather than
+reorging; takedown biting on one operator while another kept serving bit-perfect; the default chain
+refusing a durable file→publisher link; bit-perfect fetch after a SIGKILL; and a worst-case RSS of
+0.22 GiB across the whole cohort. That run is also the local proof the billable pre-flight gate
+demands before any spend — it refuses to `apply` until a mechanism, a reproduction and a local
+proof are recorded, which is build-immutables #6 and #7 wired into the money path.
+
+*Every `apply` is still billable:* no spend, then a small smoke run, then the full topology only
+once smoke is green. Two things to know before the full tier — `TTL_MINUTES=180` self-destructs
+every VM regardless of what the harness does, and `BUDGET_AMOUNT_USD` is 0 with no billing account,
+so NO budget alarm is configured and the TTL is the only backstop. Verify teardown explicitly
+rather than trusting the exit trap.
 
 ---
 
