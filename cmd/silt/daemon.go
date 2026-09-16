@@ -681,6 +681,21 @@ func cmdDaemon(args []string) error {
 			if purged := nd.EnforceDenylist(); purged > 0 {
 				fmt.Printf("denylist: purged %d held chunk(s) once the proof index finished loading\n", purged)
 			}
+			// AND RE-ANNOUNCE, for the reason stated above this block: AnnounceHeld reads
+			// the reloaded proofs to derive each chunk's PLACEMENT key (its column key when
+			// coded), and that is where readers look. The startup AnnounceHeld now runs
+			// BEFORE this scan fills the index, so it falls back to announcing every chunk
+			// under its BARE id — "a disk full of content is invisible until re-hosted",
+			// exactly as that comment warns. StartReprovide eventually corrects it, but not
+			// for up to half a provider-record TTL after boot, and a reader that looks in
+			// between finds nothing. Announcing once here closes that window at its source.
+			// Ordered AFTER the purge so denied chunks are gone before anything advertises
+			// them. AnnounceHeld is idempotent — the reprovide sweep calls it on a timer.
+			nd.AnnounceHeld(func(count int) {
+				if count > 0 {
+					fmt.Printf("re-announced %d held chunks under their placement keys\n", count)
+				}
+			})
 		})
 	}
 	// persist the bond plot so a restart reloads (and re-verifies) it

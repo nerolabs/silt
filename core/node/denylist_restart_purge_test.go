@@ -15,11 +15,16 @@ package node
 // forever — and the miss is silent, because purging zero chunks is indistinguishable from
 // having nothing to purge.
 //
-// The second casualty was quieter and worse. chunkDenied reads the same index and returns
+// The second casualty was quieter. chunkDenied reads the same index and returns
 // ok && denied, so an ABSENT entry reads as NOT DENIED — and AnnounceHeld skips
 // advertising only what chunkDenied reports. With an empty index a restarted node
-// re-announced the taken-down chunks to the DHT. Purging from the completion callback
-// fixes both: the bytes leave the store before the sweep that would advertise them.
+// re-announced the taken-down chunks to the DHT.
+//
+// PURGING FROM THE CALLBACK DOES NOT, BY ITSELF, FIX THAT SECOND HALF. The startup
+// AnnounceHeld runs BEFORE any reload batch, so it still advertises from a cold index no
+// matter when the purge runs. Closing it takes a second announce AFTER the index is
+// resident, ordered after the purge — see announce_after_reload_test.go, which holds that
+// half. This file holds the deletion.
 
 import (
 	"testing"
