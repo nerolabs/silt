@@ -128,28 +128,54 @@ else
   fail "C2-a expected 'wheels engaged' on the young network, got: $(echo "$C2LINE" | grep -oE 'wheels[^|]*')"
 fi
 
-# ── C2-a2: a BONDED sybil can publish while the anchors are up ──────────
-# The drain banked the sybils' committed standing, so s1 — proposing through its
-# OWN registry — must now clear the proposer-standing gate and commit WITH an
-# anchor co-sign (its -attesters include both anchors). This is the positive
-# control that makes C2-b's refusal attributable to the ANCHOR gate specifically:
-# the same proposer, same registry, same swarm commits with the anchors present
-# and is refused without them — the error TYPE proves which wheel refused.
-# Retries span a few sweeps: the drain serializes ~1 registration per 30s sweep,
-# so s1's own bond may bank a couple of sweeps after the first drain block.
+# ── C2-a2: a BONDED sybil BANKS committed standing while the anchors are up ──
+# WHAT THIS CONTROL IS FOR. C2-b refuses the Sybil set and reports WHICH training
+# wheel refused. The anchor gate is the strongest form — "even with standing, a young
+# commit needs an anchor" — but that attribution is only meaningful if the sybil
+# actually HOLDS committed standing when the anchors go away. Otherwise C2-b's refusal
+# could be the weaker standing gate and the strong claim goes unproven.
+#
+# IT USED TO ASK THE SYBIL TO PUBLISH, WHICH THE DESIGN FORBIDS. Publishing means
+# proposing, and while the network is young ONLY anchors propose: proposerQualifiedAt
+# returns launchAnchor(id), which asks whether THIS id is an anchor, not whether anchors
+# are reachable. A bonded non-anchor therefore cannot propose with the anchors up or
+# down, and the refusal it gets is wrapped in ErrLowReputation ("reputation below
+# threshold") even though reputation is not the reason — which is what sent this
+# suite's own note chasing a broken drain. C2-a directly above ASSERTS the wheels are
+# engaged, so the old C2-a2 contradicted the control immediately preceding it.
+#
+# WHAT IT ASSERTS NOW is the thing the design actually provides, and the thing C2-b
+# depends on: a bonded sybil earns committed standing by SUBMITTING its registration
+# for an anchor to bank (submit-don't-propose, MsgSubmitBondReg), never by proposing.
+# The anchor narrates the bank at info: "bond-reg drain: pending registrations
+# committed". That line is the sybil's standing becoming REAL on-chain, with no
+# proposal by the sybil anywhere in it.
 echo ""
-echo "== C2-a2: a bonded Sybil publishes THROUGH ITS OWN registry while the anchors are present =="
-S1_PUB=""
-s1_bonded=0
-for _ in $(seq 1 60); do
-  S1_PUB=$(publish s1 "$REG_S1" 2>&1)
-  if echo "$S1_PUB" | grep -q 'silt:v1:'; then s1_bonded=1; break; fi
-  sleep 4
-done
-if [ "$s1_bonded" = 1 ]; then
-  echo "  C2-a2 PASS: s1 (bonded sybil) published + committed with the anchors present — its drained bond standing is REAL"
+echo "== C2-a2: a bonded Sybil BANKS committed standing via the anchor drain (submit, never propose) =="
+# The observable is the COMMITTED BLOCK ITSELF, not a drain-internal narration: the
+# daemon prints "chain: committed block N (E entries, B bond-regs, A attestations)"
+# unconditionally (it is a registered entry in cmd/silt/observable_contract.go), and a
+# block with B >= 1 IS a banked registration. Reading the block is also the honest
+# altitude for this claim — standing becomes real when a registration COMMITS, not when
+# some internal sweep decides to try. The drain serializes roughly one registration per
+# sweep, so allow several sweeps.
+if await_log a1 'chain: committed block [0-9]+ \([0-9]+ entries, [1-9][0-9]* bond-regs' 150; then
+  echo "  C2-a2 PASS: an anchor COMMITTED a block carrying bond registrations — the submit-don't-propose route banked standing on-chain"
+  echo "    (SCOPE: the committed-block line does not name WHOSE registration is in the block, so this"
+  echo "     proves the banking ROUTE works and ran, not that this exact sybil's bond is in that block."
+  echo "     C2-b's gate reporting below is what distinguishes the anchor gate from a standing gate.)"
+  dc logs a1 2>&1 | grep -aoE 'chain: committed block [0-9]+ \([0-9]+ entries, [1-9][0-9]* bond-regs[^)]*\)' | tail -1 | sed 's/^/    a1: /'
 else
-  fail "C2-a2: s1 never earned publishable standing while the anchors were up (last: $(echo "$S1_PUB" | tail -1)) — the drain did not bank the sybil's bond"
+  fail "C2-a2: no anchor ever committed a block carrying a bond registration (submit-don't-propose never banked), so C2-b's refusal cannot be attributed to the anchor gate rather than to missing standing"
+fi
+# NEGATIVE HALF, and it is the half that keeps this honest: the sybil must NOT have
+# proposed anything. Banking standing is a submission; a committed block PROPOSED by a
+# non-anchor while the wheels are engaged would be the launch-fork this rule exists to
+# prevent.
+if dc logs s1 2>&1 | grep -qaE 'chain: committed block [1-9]'; then
+  fail "C2-a2: the Sybil COMMITTED a block of its own while the wheels were engaged — a non-anchor must not propose during the launch window"
+else
+  echo "  C2-a2 PASS (negative half): the Sybil proposed nothing — it earned standing by SUBMITTING, which is the only route the launch window allows"
 fi
 
 # ── C2-b: no quiet capture — stop both anchors, the Sybil quorum cannot advance ─
@@ -214,9 +240,10 @@ elif echo "$REASON" | grep -qiE 'reputation'; then
   echo "  C2-b PASS: NO block beyond the anchored ceiling h${h_ceiling} — the Sybil quorum could not capture the young network"
   echo "    (head $h_post ≤ ceiling h${h_ceiling}; no fresh Sybil commit: s1 ${cc_pre}→$cc_post, s2 ${cc_pre_s2}→$cc_post_s2 — both anchors absent)"
   echo "    gate: the standing requirement. reason: $REASON"
-  echo "    ⚠ NOTE: with the reactive drain + C2-a2 green, s1 SHOULD hold committed standing"
-  echo "    here — the standing refusal firing instead of the anchor gate suggests its bond TTL'd"
-  echo "    or the drain missed it; the outcome (no capture) still holds, but check the drain."
+  echo "    ⚠ NOTE: C2-a2 proved an anchor BANKED the sybil's registration, so it should hold"
+  echo "    committed standing here and the ANCHOR gate should be what refuses. Standing firing"
+  echo "    instead means the banked bond lapsed (TTL) between C2-a2 and now. The outcome (no"
+  echo "    capture) still holds — this is a weaker attribution, not a weaker denial."
 else
   # the audit: NO block beyond the ceiling is only "no capture" if a TRAINING-WHEELS
   # gate actually refused it. With no anchor/immature/reputation reason surfaced, a

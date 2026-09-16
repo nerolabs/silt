@@ -64,7 +64,7 @@ services:
       - -min-bond=1M
       - -mature-validators=99          # never shed the anchors: keep a stable objective launch set
       - -anchors=${ANCHORS:-unset}
-      - -attesters=${ID_B:-unset}
+      - -attesters=${ID_B:-unset},${ID_C:-unset}
       - -quorum=1
       - -min-bond-floor=0
       - -bond=8M
@@ -91,7 +91,7 @@ services:
       - -min-bond=1M
       - -mature-validators=99
       - -anchors=${ANCHORS:-unset}
-      - -attesters=${ID_A:-unset}
+      - -attesters=${ID_A:-unset},${ID_C:-unset}
       - -bootstrap=${ID_A:-unset}@10.50.0.11:4001
       - -quorum=1
       - -min-bond-floor=0
@@ -106,8 +106,10 @@ services:
       swarm:
         ipv4_address: 10.50.0.12
 
-  # GROUP 2 — lighter fork. valC hosts its own registry; valD attests it. Both
-  # PARTITIONED from group 1 via -block-peers (drop all traffic to/from A,B).
+  # valC completes the MAJORITY side (A,B,C). Objective mode requires a DERIVED
+  # strict anchor majority, floor(A/2)+1 = 3 of 4, so three anchors is the smallest
+  # group that can commit at all — a 2-2 split commits NOTHING on either side, which
+  # is the intersecting-quorum invariant (I1) working, not a stall to tune around.
   valC:
     image: silt-consensus
     command:
@@ -122,8 +124,8 @@ services:
       - -min-bond=1M
       - -mature-validators=99
       - -anchors=${ANCHORS:-unset}
-      - -attesters=${ID_D:-unset}
-      - -block-peers=${ID_A:-unset},${ID_B:-unset}
+      - -attesters=${ID_A:-unset},${ID_B:-unset}
+      - -bootstrap=${ID_A:-unset}@10.50.0.11:4001
       - -quorum=1
       - -min-bond-floor=0
       - -bond=8M
@@ -150,9 +152,8 @@ services:
       - -min-bond=1M
       - -mature-validators=99
       - -anchors=${ANCHORS:-unset}
-      - -attesters=${ID_C:-unset}
-      - -bootstrap=${ID_C:-unset}@10.50.0.13:4001
-      - -block-peers=${ID_A:-unset},${ID_B:-unset}
+      - -serve-registry=0.0.0.0:4003
+      - -block-peers=${ID_A:-unset},${ID_B:-unset},${ID_C:-unset}
       - -quorum=1
       - -min-bond-floor=0
       - -bond=8M

@@ -283,10 +283,17 @@ wrong: they reasoned about a symptom pattern that does not exist.
   ("chain: reputation below threshold") though it has nothing to do with reputation, so the suite's
   own note blamed the drain. That is the third time in this sweep a refusal named the wrong cause.
 
-  *NOT FIXED, deliberately.* The control needs a decision, not a patch: delete it, replace it with an
-  assertion that the sybil's bond COMMITTED (which is the thing C2-b actually depends on), or drive
-  the network to maturity first so a bonded non-anchor may legitimately propose. Each changes what
-  the suite claims. The security claims (C2-a, C2-b) are unaffected and still pass.
+  *FIXED AND DRIVEN GREEN 2026-09-16: `RESULT: PASS`, whole suite.* C2-a2 now asserts the thing the
+  design actually provides and the thing C2-b depends on: a bonded sybil earns committed standing by
+  SUBMITTING its registration for an anchor to bank (submit-don't-propose), never by proposing. The
+  observable is the committed block itself — `chain: committed block N (E entries, B bond-regs, …)`
+  with B ≥ 1, a registered entry in `cmd/silt/observable_contract.go` — because standing becomes real
+  when a registration COMMITS, not when an internal sweep decides to try. A negative half was added
+  and is the one that keeps it honest: the sybil must have proposed NOTHING, since a non-anchor
+  committing its own block during the launch window would be the very fork the rule prevents. Scope
+  is stated in the output: the committed-block line does not name WHOSE registration is in the block,
+  so this proves the banking route ran, and C2-b's gate reporting distinguishes the anchor gate from
+  a standing gate.
 - **`takedown` — A PRODUCT DEFECT, not suite rot. Fixed 2026-09-16.** The operator takedown purge
   did nothing on a restart, which is the only workflow it has. `EnforceDenylist` sweeps the resident
   chunk index; that index is rebuilt by `StartProofReload`, made ASYNC on purpose because a
@@ -351,10 +358,23 @@ wrong: they reasoned about a symptom pattern that does not exist.
   2-2 anchor split the intersecting-quorum invariant (I1) must otherwise refuse". Like `sybil`'s
   C2-a2, the suite asserts something a deliberately-added safety rule now forbids.
 
-  *NOT FIXED, deliberately — it needs a decision, not a patch:* seat an odd anchor count, split 3–1,
-  or assert the REFUSAL as the property under test. Each changes what the suite claims. The budget
-  was returned to 300 s, because at any budget the verdict is the same and a larger one only spends
-  more box time reaching it.
+  *FIXED AND DRIVEN GREEN 2026-09-16: `RESULT: PASS`, every phase.* The suite is now split 3–1, which
+  is what its own catalog claim always said — "a sub-quorum partition commits nothing, stalls, and
+  catches up to the majority history on heal". A 2–2 split has no majority side, so there was no
+  majority history to catch up to and the claim was untestable. P2 no longer asserts the two sides
+  commit RIVAL heads (a fork, which is the thing intersection prevents); it asserts the majority
+  advances while the severed minority commits NOTHING. Observed: majority to h=3 with the minority
+  at zero committed blocks, then the healed minority converging at h=4 by CATCH-UP, with nothing to
+  drop because it had committed nothing.
+
+  *Three harness bugs surfaced on the way, all of the same family — a bound that does not bound what
+  it appears to.* (1) The minority publish used the success-path retry budget, spending 90 s proving
+  a foregone conclusion. (2) That budget is checked only BETWEEN attempts, so one hung attempt sailed
+  past it — measured at ~5 minutes. (3) The per-attempt fix wrapped `timeout` around `dc`, a shell
+  FUNCTION, and timeout(1) execs a binary: every attempt died instantly with "cannot open file:
+  exec". That third one is the dangerous shape, because the chain still advances on its own sweep,
+  so the suite looked like it had merely lost a link rather than never having published at all.
+  The budget is 600 s, measured from a run that reached P2 at the 300 s mark rather than guessed.
 - **`redteam` — WEDGED; DIAGNOSED AND FIXED 2026-09-16, re-drive outstanding.** The symptom was
   three progress lines, then `adversary: equivocation attempt refused: place Y on …` repeating
   until the cap.
