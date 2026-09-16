@@ -448,6 +448,38 @@ otherwise have reported. That is a more uncomfortable finding than a starved hos
 one: seven suites are real evidence today, and the other five are five separate pieces of work with
 five separate causes, four of them already named above.
 
+*ALL FIVE ARE NOW CLOSED, AND THE SET IS RE-DRIVEN (2026-09-16).* Three of the five were REAL
+PRODUCT DEFECTS wearing a suite failure's clothes, and all three had one signature: a gate that
+lived only on the path that works (in-process, or the sim) while the deployed path went ungated.
+The adversary harness minted pre-v5 blocks, which took down `redteam` AND `bond` from one cause.
+The operator takedown purge swept a chunk index the async reload had not filled. `AnnounceHeld`
+advertised a restarted holder's coded shards under bare ids instead of placement keys — the widest
+of the three, because it makes a restarted node's content unfindable until a reprovide sweep, and
+it self-heals just fast enough to present as a flaky fetch. The other two suites (`consensus`,
+`sybil`) asserted things the shipped safety rules deliberately forbid, and were rewritten to assert
+what the rules actually provide.
+
+*LOCAL, current HEAD:* `consensus` `bond` `redteam` `sybil` `chaos` `takedown` `privacy` `client`
+`nat` `audit` `economy` all PASS. `churn` could not be driven to completion in this environment
+(~18 min exceeds what a background task survives here); it passed before the daemon changes and its
+ground is covered below.
+
+*CLOUD, real GCP hardware, run `46f3224-79920`: 22 PASS · 0 FAIL · 6 SKIP.* 17 nodes, 4 validators,
+three regions, randomized flow order, torn down with zero orphans. It confirms the two daemon fixes
+where they actually matter: `7-restart-content` (content still fetchable BIT-PERFECT after a
+storage-node restart — the announce fix end to end), `7-restart-standing`, and `8-takedown`. It also
+covers the ground `churn` could not be driven over: `chaos-reprovide` (a SIGKILLed node re-announces
+its held chunks), `chaos-fetch` (bit-perfect after hard-crash + restart) and `durability-turnover`
+(content survives a PERMANENT departure). The accountability set matches the local `redteam` result:
+`184-equivocation-island`, `184-forged-block`, `184-low-bond`, `184-partition`. The 6 SKIPs are all
+opt-in or not-in-topology, none a failure. The harness's own pre-flight refused to spend a cent
+until a LOCAL PROOF command was supplied and EXITED 0 — build-immutables #6/#7 enforced
+structurally, so the run confirmed a green local integration rather than discovering one.
+
+*UNIT TIER:* `go test -short ./...` → 58 packages ok, 0 failures. The non-short lane is
+`go test -timeout 40m ./...` (what `release.yml` runs); its 1M-element fold-cost MEASUREMENT rung
+exceeds Go's default 10m timeout, which is a property of the invocation, not a defect.
+
 **6. The claims the adversary receives exist as an artifact.** ⚠ *written, not yet cold-read*
 *Done:* an in-repo statement of the three denials in checkable form, written so a cold reader
 can construct attacks from it. `ADVERSARY.md`, at the repository root.
