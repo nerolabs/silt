@@ -44,7 +44,20 @@ trap cleanup EXIT INT TERM
 
 pass=1
 fail() { echo "FAIL: $*"; pass=0; }
-await_log() { local svc=$1 pat=$2 tries=${3:-60} i; for i in $(seq 1 "$tries"); do dc logs "$svc" 2>&1 | grep -qE "$pat" && return 0; sleep 1; done; return 1; }
+# The timeout is a DEADLINE, not an iteration count. Each poll pays for a
+# `docker compose logs` whose cost grows with the log, so a loop of N sleep-1
+# iterations takes far longer than N seconds on a loaded host — every nominal
+# timeout in this suite understated its true wall-clock, without bound. Reading
+# the clock makes these numbers mean what they say.
+await_log() { # service pattern [timeout_s]
+  local svc=$1 pat=$2 t=${3:-60} deadline
+  deadline=$(( $(date +%s) + t ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    dc logs "$svc" 2>&1 | grep -qE "$pat" && return 0
+    sleep 1
+  done
+  return 1
+}
 head_height() { dc exec -T "$1" silt chain-status -store /data 2>/dev/null | awk '/head height/{print $3}'; }
 commit_count() { dc logs "$1" 2>&1 | grep -c 'committed block' || true; }
 

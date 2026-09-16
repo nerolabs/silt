@@ -51,9 +51,15 @@ cleanup() { [ "${KEEP:-0}" = 1 ] || dc_heal down -v >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 # Wait until a regex appears in a service's stdout (docker compose logs).
-await_log() { # service pattern [tries]
-  local svc=$1 pat=$2 tries=${3:-60} i
-  for i in $(seq 1 "$tries"); do
+# The timeout is a DEADLINE, not an iteration count. Each poll pays for a
+# `docker compose logs` whose cost grows with the log, so a loop of N sleep-1
+# iterations takes far longer than N seconds on a loaded host — every nominal
+# timeout in this suite understated its true wall-clock, without bound. Reading
+# the clock makes these numbers mean what they say.
+await_log() { # service pattern [timeout_s]
+  local svc=$1 pat=$2 t=${3:-60} deadline
+  deadline=$(( $(date +%s) + t ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
     dc logs "$svc" 2>&1 | grep -qE "$pat" && return 0
     sleep 1
   done
@@ -171,9 +177,13 @@ BOOT_C="$ID_C@10.50.0.13:4001"
 
 # publish <container> <name> <boot> <reg> — retries until a link comes back, so we
 # don't race standing accrual. Runs the client from inside the group's registry node.
+# The retry budget is a DEADLINE for the same reason await_log's is, and it matters
+# more here: each attempt runs a FULL publish inside the container, so forty of them
+# is many minutes of wall-clock on a loaded host, not forty seconds.
 publish() {
-  local svc=$1 name=$2 boot=$3 reg=$4 i out
-  for i in $(seq 1 40); do
+  local svc=$1 name=$2 boot=$3 reg=$4 out deadline
+  deadline=$(( $(date +%s) + 90 ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
     out=$(dc exec -T "$svc" sh -c "head -c 32768 /dev/urandom > /tmp/$name.bin; \
       silt swarm add /tmp/$name.bin -peers '$boot' -registry '$reg' 2>&1")
     echo "$out" | grep -qoE 'silt:v1:[A-Za-z0-9_:-]+' && { echo "$out" | grep -oE 'silt:v1:[A-Za-z0-9_:-]+' | head -1; return 0; }

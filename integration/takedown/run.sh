@@ -44,9 +44,15 @@ b64url_to_hex() {
 }
 # wait for a log line inside a container's store debug/stdout. Daemons here log
 # to stdout (captured by `docker compose logs`), so grep there.
-await_log() {
-  local svc="$1" pat="$2" i
-  for i in $(seq 1 60); do
+# The timeout is a DEADLINE, not an iteration count. Each poll pays for a
+# `docker compose logs` whose cost grows with the log, so a loop of N sleep-1
+# iterations takes far longer than N seconds on a loaded host — every nominal
+# timeout in this suite understated its true wall-clock, without bound. Reading
+# the clock makes these numbers mean what they say.
+await_log() { # service pattern [timeout_s]
+  local svc="$1" pat="$2" t="${3:-60}" deadline
+  deadline=$(( $(date +%s) + t ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
     dc logs "$svc" 2>&1 | grep -qE "$pat" && return 0
     sleep 1
   done
