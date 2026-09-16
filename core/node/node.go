@@ -1265,16 +1265,27 @@ const proofReloadBatch = 128
 // demand so serving never waits for the scan. Call after New + SetProofStore,
 // in place of LoadProofs, on a daemon path. A metadata sidecar (O(delta) cold start)
 // is the tracked fast-follow that makes the background scan itself cheap.
-func (n *Node) StartProofReload() {
+//
+// done (may be nil) fires ON THE LOOP once the index is fully resident. IT IS NOT AN
+// OPTIONAL NICETY: anything that SWEEPS proofMeta exactly once is wrong until this
+// fires, because it would sweep a map the scan has not filled yet. An announce that
+// races the scan self-corrects on the next reprovide sweep, which is why the scan was
+// safe to make async — but a ONE-SHOT sweep has no next sweep to correct it. The
+// operator denylist purge is exactly that shape, and it silently purged nothing on
+// every restart until it was moved behind this callback.
+func (n *Node) StartProofReload(done func()) {
 	// Defer even Keys (a full store listing) off the startup path onto the
 	// loop.
 	n.clock.AfterFunc(0, func() {
 		keys, err := n.proofs.Keys()
 		if err != nil {
 			n.logf(ports.LogWarn, "proof reload failed", "err", err)
+			if done != nil {
+				done() // the index is as resident as it will get; sweepers must still run
+			}
 			return
 		}
-		n.reloadProofBatch(keys, 0, 0)
+		n.reloadProofBatch(keys, 0, 0, done)
 	})
 }
 
@@ -1282,7 +1293,7 @@ func (n *Node) StartProofReload() {
 // then reschedules itself for the next window until the store is drained. Runs only
 // on the loop goroutine (scheduled via clock.AfterFunc), so the proofMeta writes need
 // no synchronisation.
-func (n *Node) reloadProofBatch(keys []ports.ChunkID, from, loaded int) {
+func (n *Node) reloadProofBatch(keys []ports.ChunkID, from, loaded int, done func()) {
 	end := from + proofReloadBatch
 	if end > len(keys) {
 		end = len(keys)
@@ -1296,11 +1307,14 @@ func (n *Node) reloadProofBatch(keys []ports.ChunkID, from, loaded int) {
 		loaded++
 	}
 	if end < len(keys) {
-		n.clock.AfterFunc(0, func() { n.reloadProofBatch(keys, end, loaded) })
+		n.clock.AfterFunc(0, func() { n.reloadProofBatch(keys, end, loaded, done) })
 		return
 	}
 	if loaded > 0 {
 		n.logf(ports.LogInfo, "reloaded storage proofs (lazy)", "count", loaded)
+	}
+	if done != nil {
+		done()
 	}
 }
 

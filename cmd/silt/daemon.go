@@ -669,7 +669,19 @@ func cmdDaemon(args []string) error {
 		// were connection-refused for ~9 min after every restart on a 14 GB store)
 		// and proofMeta matures lazily while the daemon serves. An announce that
 		// races the scan self-corrects on the next reprovide sweep.
-		nd.StartProofReload()
+		//
+		// THE OPERATOR DENYLIST PURGE HAS NO NEXT SWEEP TO CORRECT IT, so it runs from
+		// the completion callback rather than at config time. EnforceDenylist sweeps
+		// proofMeta, which this scan is still filling, so the config-time call below
+		// found an empty index on every restart and purged nothing while reporting that
+		// it was honoring the list. The denied bytes stayed on disk. SetDenylist happens
+		// later in this same synchronous startup, and the loop does not turn until
+		// startup finishes, so the list is always in place before this fires.
+		nd.StartProofReload(func() {
+			if purged := nd.EnforceDenylist(); purged > 0 {
+				fmt.Printf("denylist: purged %d held chunk(s) once the proof index finished loading\n", purged)
+			}
+		})
 	}
 	// persist the bond plot so a restart reloads (and re-verifies) it
 	// instead of re-plotting the deliberately-expensive dataset. Attach before

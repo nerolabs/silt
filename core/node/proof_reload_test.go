@@ -57,7 +57,15 @@ func TestStartProofReloadIsNonBlockingAndChunked(t *testing.T) {
 	// (1) Non-blocking: the reload is scheduled onto the loop, not run inline, so
 	// nothing is resident until the loop runs. The OLD synchronous LoadProofs would
 	// have all N loaded right here — which IS the F3 startup stall.
-	nd.StartProofReload()
+	// The completion callback is the contract a ONE-SHOT proofMeta sweep depends on
+	// (the operator denylist purge). It must fire exactly once, and only when the
+	// index is fully resident — never synchronously, and never mid-scan.
+	fired, residentAtFire := 0, -1
+	nd.StartProofReload(func() { fired++; residentAtFire = len(nd.proofMeta) })
+	if fired != 0 {
+		t.Fatal("the reload-complete callback fired SYNCHRONOUSLY; a sweep run from it would " +
+			"see an index the scan has not filled yet, which is the defect it exists to prevent")
+	}
 	if got := len(nd.proofMeta); got != 0 {
 		t.Fatalf("StartProofReload loaded %d proofs synchronously — it must defer the scan to the loop so listeners bind first (F3)", got)
 	}
@@ -88,5 +96,23 @@ func TestStartProofReloadIsNonBlockingAndChunked(t *testing.T) {
 	}
 	if events < 2 {
 		t.Fatalf("reload finished in %d loop event(s) — it must run in bounded batches so it never monopolizes the loop (N=%d)", events, N)
+	}
+
+	// (4) The completion callback fired, once, with the WHOLE index resident. A sweep
+	// run any earlier reads a partially-filled map and silently under-reports — which
+	// is precisely how the denylist purge reported success while purging nothing.
+	for i := 0; i < 8 && fired == 0; i++ {
+		if !sched.Step() {
+			break
+		}
+	}
+	if fired != 1 {
+		t.Fatalf("reload-complete callback fired %d times, want exactly 1 — a one-shot sweep "+
+			"hung off it would run never (0) or repeatedly (>1)", fired)
+	}
+	if residentAtFire != N {
+		t.Fatalf("callback fired with %d/%d proofs resident: a sweep run from it would MISS %d "+
+			"held chunks. For the operator denylist purge those are denied bytes left on disk.",
+			residentAtFire, N, N-residentAtFire)
 	}
 }

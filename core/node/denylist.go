@@ -55,8 +55,19 @@ func (n *Node) chunkDenied(id ports.ChunkID) bool {
 }
 
 // EnforceDenylist sweeps everything the node holds and physically drops
-// chunks belonging to denied roots, forgetting their provider records
-// too. Called after a revocation commits or the operator's list changes,
+// chunks belonging to denied roots — bytes, proof and resident metadata.
+// It does NOT retract provider records already published for them: the DHT
+// carries no per-key retraction, so a record announced before the purge stands
+// until its TTL expires. What it buys is that the bytes are gone, so a fetch
+// following that stale record finds nothing to serve, and no later announce or
+// reprovide sweep can re-publish it.
+//
+// IT READS THE RESIDENT INDEX, SO IT IS ONLY CORRECT ONCE THAT INDEX IS FULL.
+// On a daemon restart the index is rebuilt asynchronously (StartProofReload), and
+// this is a ONE-SHOT sweep with no later pass to correct a miss — call it from that
+// scan's completion callback, never at config time. Called at config time it purges
+// nothing and says so in a way indistinguishable from having nothing to purge.
+// Called after a revocation commits or the operator's list changes,
 // it turns a policy decision into deleted bytes. Returns how many chunks
 // were purged.
 func (n *Node) EnforceDenylist() int {

@@ -259,10 +259,60 @@ wrong: they reasoned about a symptom pattern that does not exist.
   SAME assertion fails byte-identically. Pre-existing. The suite catches it itself and says so — its
   own negative result would otherwise read as proof of the bond gate when the node is rejecting
   everything.
+- **`bond` — SAME ROOT CAUSE AS `redteam`, fixed by the same commit.** `POSITIVE-2` reported
+  "honest REFUSED a well-formed, 64M-bonded proposal; its attest path rejects EVERYTHING". It drives
+  `-goodpropose`, which is `ProposeGoodBlock` — the same builder that stamped a pre-v5 version into
+  every block it made. The honest target refused it for the ERA, not the bond, and the suite read
+  that as the attest path being broken. One defect, two suites; only one of them showed it as a
+  wedge. Needs a re-drive to confirm, no further change expected.
 - **`sybil` — the same shape, denials intact.** `C2-a` and `C2-b` both PASS: the young network stays
   live with anchors present, and NO block passes the anchored ceiling, so the Sybil quorum cannot
-  capture. What fails is `C2-a2`, a liveness control — a Sybil node never earns publishable standing
-  (`chain: reputation below threshold`). The security claims hold; the control does not.
+  capture. What fails is `C2-a2`, a liveness control — a Sybil node never earns publishable standing.
+
+  *DIAGNOSED 2026-09-16: the control rests on a false premise, and an error name hid it.* The full
+  refusal is `proposer da799b47… is not a launch anchor (young network proposes anchor-only; bonded
+  8388608)`. s1 IS bonded. It is refused by the LAUNCH-WINDOW rule, which admits only anchors as
+  proposers while the network is young — the rule that exists to remove the sybil-proposed launch
+  fork at its source. `launchAnchor(id)` asks whether *id* is an anchor, not whether anchors are up,
+  so s1 can never propose while young, anchors present or not. C2-a2's premise — "the drain banked
+  the sybil's standing, so s1 must now clear the proposer gate" — is wrong: banking a bond does not
+  override the anchor-only rule. And C2-a, immediately above it, ASSERTS the training wheels are
+  engaged. The two controls contradict each other.
+
+  The name is why this took a re-read: the refusal is wrapped in `ErrLowReputation`
+  ("chain: reputation below threshold") though it has nothing to do with reputation, so the suite's
+  own note blamed the drain. That is the third time in this sweep a refusal named the wrong cause.
+
+  *NOT FIXED, deliberately.* The control needs a decision, not a patch: delete it, replace it with an
+  assertion that the sybil's bond COMMITTED (which is the thing C2-b actually depends on), or drive
+  the network to maturity first so a bonded non-anchor may legitimately propose. Each changes what
+  the suite claims. The security claims (C2-a, C2-b) are unaffected and still pass.
+- **`takedown` — A PRODUCT DEFECT, not suite rot. Fixed 2026-09-16.** The operator takedown purge
+  did nothing on a restart, which is the only workflow it has. `EnforceDenylist` sweeps the resident
+  chunk index; that index is rebuilt by `StartProofReload`, made ASYNC on purpose because a
+  synchronous scan held the relay and registry listeners down for ~9 minutes per restart on a 14 GB
+  store. The purge ran at config time, swept a map the scan had not filled, purged nothing, and
+  printed `denylist: honoring 1 denied root(s)`. The operator is told the list is honored; the denied
+  bytes stay on disk. Purging zero is indistinguishable from having nothing to purge, so it was
+  silent. Evidence: opA held 18 objects, served the target, purged 0.
+
+  *Why the race was permanent.* The async scan is safe for the re-announce path because an announce
+  that races it self-corrects on the next reprovide sweep — the code says so. The purge is a ONE-SHOT
+  sweep with no next pass. `sim/takedown.go` calls it on in-memory nodes that already hold their
+  chunks, which is why `silt sim run takedown` passed: the gate lived only on the path that works.
+
+  *The quieter half was worse.* `chunkDenied` reads the same index and returns `ok && denied`, so an
+  ABSENT entry reads as NOT DENIED — and `AnnounceHeld` skips advertising only what `chunkDenied`
+  reports. A restarted node RE-ANNOUNCED the taken-down chunks to the DHT. The refusal-to-serve half
+  always held (correct per-operator scope, reversible); it is the deletion and the non-advertisement
+  that failed.
+
+  *Fixed* by running the purge from the reload-completion callback, so it sweeps a full index.
+  Gated by `core/node/denylist_restart_purge_test.go` (rule, vacuity guard, and a positive control
+  that the callback is not a general-purpose shredder); ablated back to a config-time sweep it
+  reports `PURGED 0 OF 6 DENIED CHUNKS`. The suite's grep was also genuinely rotten — it matched only
+  the purge branch, so it could not tell "never enforced" from "enforced and purged nothing", which
+  are different bugs and the second hid the first.
 - **`consensus` — the per-suite cap fired while the suite was visibly PROGRESSING** through its
   stages, not wedged. 300 s is thin for a suite that drives a partition and a heal on a host whose
   measured cadence has swung 10–28 s/block.

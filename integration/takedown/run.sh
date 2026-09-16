@@ -150,8 +150,13 @@ dc cp "$WORK/deny.txt" opA:/data/deny.txt
 dc -f docker-compose.yml -f docker-compose.deny.yml up -d --force-recreate opA
 # match the daemon's OUTPUT line ("denylist: N root(s) denied; purged M...") —
 # not the entrypoint's echo of the "-denylist=" flag.
-await_log opA 'denylist: [0-9]+ root' || { echo "FAIL: opA never logged a denylist enforcement line"; dc logs opA | tail -20; pass=0; }
-DENYLINE=$(dc logs opA 2>&1 | grep -iE 'denylist: [0-9]+ root' | tail -1)
+# Match EITHER enforcement line. The daemon prints "denylist: N root(s) denied;
+# purged M..." when it dropped something and "denylist: honoring N denied root(s)"
+# when it did not, so a pattern that matches only the purge branch cannot tell
+# "the list was never enforced" from "the list was enforced and purged nothing".
+# Those are different bugs and the second one hid a real defect behind the first.
+await_log opA 'denylist: ([0-9]+ root|honoring)' 90 || { echo "FAIL: opA never logged a denylist enforcement line"; dc logs opA | tail -20; pass=0; }
+DENYLINE=$(dc logs opA 2>&1 | grep -iE 'denylist: ([0-9]+ root|honoring|purged)' | tail -1)
 echo "  opA: $DENYLINE"
 echo "$DENYLINE" | grep -qiE 'purged [1-9]' || fail "opA denylist did not report purging any held chunks"
 OBJ_A_AFTER=$(objects opA); OBJ_B_AFTER=$(objects opB)
