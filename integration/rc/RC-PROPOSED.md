@@ -210,7 +210,7 @@ exemption excused moves, nobody re-read the rule against what replaced it.
   and they collide with real domain names here; a gate that fires on a domain term teaches people to
   work around it. Their absence is a limit of the gate, written into its own header.
 
-**5. One command from a clean clone reproduces every gate.** ⚠ *DRIVEN on a box proven clean — 7 pass, 3 fail, 2 timeout, and the uniform-failure story was wrong*
+**5. One command from a clean clone reproduces every gate.** ⚠ *all five causes CLOSED (three were product defects); 11 of 12 gate suites pass locally + 22/22 in cloud; `churn` is undrivable in this environment*
 *Done:* fresh clone, no credentials, no committed binary → the suite runner builds from
 source and maps each item onto a named suite.
 *Evidence:* a scratch clone with a COLD build cache for the unit and e2e tiers; the whole set
