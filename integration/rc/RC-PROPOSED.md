@@ -313,6 +313,14 @@ wrong: they reasoned about a symptom pattern that does not exist.
   reports `PURGED 0 OF 6 DENIED CHUNKS`. The suite's grep was also genuinely rotten — it matched only
   the purge branch, so it could not tell "never enforced" from "enforced and purged nothing", which
   are different bugs and the second hid the first.
+
+  *RE-DRIVEN 2026-09-16: `RESULT: PASS`, whole suite, first time green.* The deployed path now
+  reports `denylist: purged 8 held chunk(s) once the proof index finished loading`, and opA's object
+  count drops 18 → 10 while opB stays at 9. Same fixture as the failing run (18/9), so it is a
+  like-for-like comparison: 8 chunks physically deleted where the old build deleted none. The
+  config-time call still prints `honoring 1 denied root(s)` and still purges nothing — it is left in
+  place because it is correct for a node whose index is already resident (the sim path), and the
+  callback covers the restart.
 - **`consensus` — the per-suite cap fired while the suite was visibly PROGRESSING** through its
   stages, not wedged. 300 s is thin for a suite that drives a partition and a heal on a host whose
   measured cadence has swung 10–28 s/block.
