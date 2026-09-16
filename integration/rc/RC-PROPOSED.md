@@ -314,16 +314,47 @@ wrong: they reasoned about a symptom pattern that does not exist.
   the purge branch, so it could not tell "never enforced" from "enforced and purged nothing", which
   are different bugs and the second hid the first.
 
-  *RE-DRIVEN 2026-09-16: `RESULT: PASS`, whole suite, first time green.* The deployed path now
+  *A SECOND DEFECT AT THE SAME SEAM, found by the full sweep.* The first standalone drive passed;
+  the sweep drive FAILED on a different assertion — `control file died on opA — takedown was not
+  per-hash` — with the purge evidence byte-identical in both. `AnnounceHeld` runs in synchronous
+  startup, BEFORE any reload batch, so it advertises from a cold index and `placementKey` falls back
+  to the bare chunk id — a key no reader queries. `daemon.go` states that contract and its
+  consequence ("AnnounceHeld, below, reads the reloaded proofs — otherwise a disk full of content is
+  invisible until re-hosted"); the lazy reload broke it without moving the comment. It self-heals on
+  the next reprovide sweep, which is why it presented as a flake. Fixed by announcing again from the
+  reload-completion callback, ordered after the purge; gated by
+  `core/node/announce_after_reload_test.go` with a paired ablation proving a cold announce misses the
+  column key.
+
+  *RE-DRIVEN 2026-09-16: `RESULT: PASS`, whole suite, first time green — and PASS again in the
+  verification drive after the announce fix.* The deployed path now
   reports `denylist: purged 8 held chunk(s) once the proof index finished loading`, and opA's object
   count drops 18 → 10 while opB stays at 9. Same fixture as the failing run (18/9), so it is a
   like-for-like comparison: 8 chunks physically deleted where the old build deleted none. The
   config-time call still prints `honoring 1 denied root(s)` and still purges nothing — it is left in
   place because it is correct for a node whose index is already resident (the sim path), and the
   callback covers the restart.
-- **`consensus` — the per-suite cap fired while the suite was visibly PROGRESSING** through its
-  stages, not wedged. 300 s is thin for a suite that drives a partition and a heal on a host whose
-  measured cadence has swung 10–28 s/block.
+- **`consensus` — DIAGNOSED 2026-09-16: it cannot commit as written, and the budget is not why.**
+  The first reading was that the cap fired while the suite was visibly progressing, so 300 s looked
+  thin. That hypothesis was tested and is WRONG. Driven on an idle box with the timeout helpers made
+  honest it TIMED OUT again; driven at 900 s it TIMED OUT at 15m02s, having reached the same place.
+
+  *The cause.* The suite seats FOUR anchors and partitions them 2–2 (A,B | C,D). Objective mode
+  requires a DERIVED strict anchor majority, `⌊A/2⌋+1` = 3 of 4, derived exactly so configuration
+  cannot disable quorum intersection — the daemon prints it at start-up: `training wheels: 4
+  anchor(s), strict majority 3 required (objective; derived)`. Neither side of a 2–2 split reaches
+  3, so nothing commits on either side. Observed: all four validators at ZERO committed blocks.
+  Every publish retry is doomed by construction, which is what consumes the budget.
+
+  *The rule is not a regression, and this is the second suite to encode a pre-rule expectation.*
+  `proposerQualifiedAt` names this shape as the thing it exists to refuse — "the both-sybil-proposed
+  2-2 anchor split the intersecting-quorum invariant (I1) must otherwise refuse". Like `sybil`'s
+  C2-a2, the suite asserts something a deliberately-added safety rule now forbids.
+
+  *NOT FIXED, deliberately — it needs a decision, not a patch:* seat an odd anchor count, split 3–1,
+  or assert the REFUSAL as the property under test. Each changes what the suite claims. The budget
+  was returned to 300 s, because at any budget the verdict is the same and a larger one only spends
+  more box time reaching it.
 - **`redteam` — WEDGED; DIAGNOSED AND FIXED 2026-09-16, re-drive outstanding.** The symptom was
   three progress lines, then `adversary: equivocation attempt refused: place Y on …` repeating
   until the cap.

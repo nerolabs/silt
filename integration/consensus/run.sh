@@ -45,6 +45,24 @@ set -uo pipefail
 cd "$(dirname "$0")"
 ROOT=$(cd ../.. && pwd)
 
+# THIS SUITE CANNOT COMMIT AS WRITTEN, AND THE BUDGET IS NOT WHY.
+#
+# It seats FOUR anchors and partitions them 2-2 (A,B | C,D). In objective mode the
+# launch requirement is a DERIVED strict anchor majority, floor(A/2)+1 = 3 of 4, and it
+# is derived precisely so configuration cannot disable quorum intersection (daemon.go
+# prints it at start-up: "training wheels: 4 anchor(s), strict majority 3 required
+# (objective; derived)"). Neither side of a 2-2 split can reach 3, so no group commits
+# anything, ever -- observed: all four validators at 0 committed blocks. The publish
+# retries are therefore doomed by construction, and raising the per-suite budget only
+# buys more of them: driven at 300s it TIMED OUT, and driven at 900s on an idle box it
+# TIMED OUT again at 15m02s having reached the same place.
+#
+# The rule is not a regression. proposerQualifiedAt names this exact shape as the thing
+# it exists to refuse -- "the both-sybil-proposed 2-2 anchor split the intersecting-quorum
+# invariant (I1) must otherwise refuse". This suite encodes a pre-rule expectation, the
+# same way sybil's C2-a2 does. Fixing it is a decision about what the suite should claim
+# (seat an odd anchor count, split 3-1, or assert the refusal as the property), not a
+# timeout to tune.
 dc()      { docker compose "$@"; }
 dc_heal() { docker compose -f docker-compose.yml -f docker-compose.heal.yml "$@"; }
 cleanup() { [ "${KEEP:-0}" = 1 ] || dc_heal down -v >/dev/null 2>&1 || true; }
