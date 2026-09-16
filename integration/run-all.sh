@@ -29,7 +29,7 @@ mkdir -p "$OUT"
 SUITES_CATALOG=(
   "consensus|gate|300|Objective bond-weighted commit admission: a sub-quorum partition commits nothing, stalls, and catches up to the majority history on heal"
   "bond|gate|180|Proof-of-space-time bond cost (C1): a real plot is dear to make, cheap to verify, shortcut rejected"
-  "redteam|gate|300|accountability: equivocator slashed, forged block rejected, low-bond proposer refused"
+  "redteam|gate|480|accountability: equivocator slashed, forged block rejected, low-bond proposer refused"
   "sybil|gate|600|C2 no quiet capture: a young objective network commits with the honest anchors and refuses to advance for a bonded Sybil set without them"
   "takedown|gate|180|Per-operator, existence-checked, reversible takedown"
   "privacy|gate|360|Publisher unlinkability: the default chain refuses a durable file→publisher link (refuse-to-surveil), the private path works, token-quorum authorizes without identity"

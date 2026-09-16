@@ -94,14 +94,23 @@ echo "########## SCENARIO 1 — EQUIVOCATION: double-signer caught & slashed ###
 echo "  adversary (equiv-a) id: $ID_EQUIV_A"
 dc --profile equiv up -d equiv-a equiv-x equiv-yz
 # The adversary retries until it has earned standing with BOTH peers, then reports.
-if wait_log equiv-a 'adversary: equivocation complete \(double-signed height 1\)' 150; then
+if wait_log equiv-a 'adversary: equivocation complete \(double-signed height [0-9]+\)' 90; then
   echo "  adversary double-signed (real: 'adversary: equivocation complete')"
 else
   fail "equivocator never completed the double-sign (could not earn standing with both peers)"
-  dc logs equiv-a 2>&1 | tail -15 | sed 's/^/    equiv-a: /'
+  # The adversary only sees an OK=false reply, so its own line can do no better than
+  # GUESS a cause ("not yet standing?"). The TARGETS know the real reason and print it
+  # under -debug: 'gather/prepare: REJECTED (ValidateProposal)' carries the error, and
+  # the per-sweep 'standing' line carries the reputation the proposer rule reads. A
+  # failure diagnosed only from the adversary's guess is undiagnosable from the outside.
+  dc logs equiv-a 2>&1 | tail -8 | sed 's/^/    equiv-a: /'
+  for tgt in equiv-x equiv-yz; do
+    dc logs "$tgt" 2>&1 | grep -aiE 'REJECTED|REFUSED|standing|anti-release floor|reputation' \
+      | tail -8 | sed "s/^/    $tgt: /"
+  done
 fi
 # The honest detector catches it and prints the slash for the adversary's ID.
-if wait_log equiv-x "chain: slashed equivocator $ID_EQUIV_A" 120; then
+if wait_log equiv-x "chain: slashed equivocator $ID_EQUIV_A" 90; then
   echo "  SCENARIO 1: PASS — honest replica caught the double-sign and SLASHED $ID_EQUIV_A"
   dc logs equiv-x 2>&1 | grep -E "chain: slashed equivocator $ID_EQUIV_A" | tail -1 | sed 's/^/    equiv-x: /'
 else

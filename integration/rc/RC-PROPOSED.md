@@ -262,11 +262,41 @@ wrong: they reasoned about a symptom pattern that does not exist.
 - **`consensus` — the per-suite cap fired while the suite was visibly PROGRESSING** through its
   stages, not wedged. 300 s is thin for a suite that drives a partition and a heal on a host whose
   measured cadence has swung 10–28 s/block.
-- **`redteam` — WEDGED, and this is the one to look at first.** Three progress lines, then
-  `adversary: equivocation attempt refused: place Y on …` repeating until the cap. The adversary
-  cannot place its equivocating block, so the equivocation never reaches the chain, so the slash can
-  never be observed. That makes this suite's accountability evidence unobtainable rather than merely
-  slow.
+- **`redteam` — WEDGED; DIAGNOSED AND FIXED 2026-09-16, re-drive outstanding.** The symptom was
+  three progress lines, then `adversary: equivocation attempt refused: place Y on …` repeating
+  until the cap.
+
+  *The cause was not standing.* The red-team block builders in `core/node/adversary.go` stamped
+  `BlockVersionRounds` (v2) into every block they made. `-era4-activation-height` defaults to 1 and
+  the daemon refuses to start with any other value, so v5 is required at height 1 — the FIRST
+  height an adversary can ever propose. Every adversary block was refused by the era rule before
+  any consensus property was reached. No warm-up fixes that and no retry outlasts it. An honest
+  proposer never picks a version; it asks `chain.MintVersion`, and the objective adversary path
+  (`PlaceConflictingSigned`) already derived its version from the committed block. The older
+  drive-in builders were simply never moved up with the era.
+
+  *The refusal named the wrong cause, and that is the second defect.* The reply is a bare
+  `OK=false`, so the adversary could not know why; it guessed `(not yet standing?)`. The guess was
+  plausible and wrong, and it held the diagnosis on the standing axis for a full suite budget.
+  The line now names the block it offered (height and version) and points at the target's debug
+  log, which has carried the real reason all along.
+
+  *The blast radius was wider than the wedge.* `ProposeGoodBlock` is the harness's own positive
+  control, the proposal an honest target must ACCEPT, and scenarios 2 and 3 are gated on it. It
+  built v2 too. So the forged-block and low-bond drills were refusing for the version rather than
+  for the forgery or the bond — REPORTING PASS while proving nothing. A false green is worse than
+  the red beside it, and only the equivocation wedge was visible from the outside.
+
+  *Why no gate caught it.* Every in-process drill gate builds its chain without an era-4
+  activation height, so all of them exercise the legacy v2 format and none could see a mint-era
+  defect. `core/node/adversary_era_mint_test.go` now drives the drill at the SHIPPED era, with
+  standing granted by fiat so a refusal can only be the era. Ablated back to the hardcoded
+  version it reproduces the wire symptom byte-for-byte, including the false `(not yet standing?)`
+  attribution.
+
+  *Outstanding:* the suite itself has not been re-driven. Its budget was also raised 300 s → 480 s,
+  because the failure path's own waits (150 s + 120 s) could not report inside 300 s — which is why
+  this arrived as `rc=124` with no diagnostics rather than as a FAIL that named itself.
 
 *WHAT THIS ITEM NOW MEANS.* The suite set was never green, and nobody knew, because it had never
 been driven to completion on a box proven clean — the leftovers masked what each suite would

@@ -89,8 +89,14 @@ services:
         ipv4_address: 10.110.0.12
 
   # ── Scenario 1: EQUIVOCATOR ──────────────────────────────────────────────
-  # Mirrors e2e/equivocation_test.go EXACTLY, decoupled from the positive
-  # control so the topologies don't cross-contaminate:
+  # The SUBJECTIVE (reputation) double-sign drill, decoupled from the positive
+  # control so the topologies don't cross-contaminate. It is NOT the same drill as
+  # e2e/equivocation_test.go: that one runs OBJECTIVE, 3-of-4, and serves its fork
+  # on GetChain (-equivocate objective), because a BFT commit floor makes a fork
+  # impossible to drive onto a target. This lane drives the forks IN at quorum 1,
+  # which is the only place that placement path is exercised end to end. The
+  # in-process gates are core/node/adversary_era_mint_test.go (placement at the
+  # shipped era) and the three wedge tests beside it.
   #  equiv-a (adversary, bootstrap ANCHOR): -attesters "idX,idYZ",
   #  -equivocate "idX,idYZ". Once it has earned standing with BOTH, it
   #  double-signs — block X onto equiv-x, heavier fork (Y,Z) onto equiv-yz.

@@ -72,7 +72,15 @@ func (n *Node) proposeAndCommitTo(b *chain.Block, target ports.NodeID, done func
 			return
 		}
 		if !resp.OK {
-			done(false, fmt.Errorf("target %s refused the proposal at height %d (not yet standing?)", target, b.Height))
+			// NAME THE BLOCK, NEVER GUESS THE CAUSE. The reply is a bare OK=false, so
+			// this side cannot know why. An earlier version of this line guessed "not
+			// yet standing?" and a mint-era defect — every adversary block stamped at a
+			// version the era rule forbids — wore that guess as its symptom for a whole
+			// suite budget, because the guess was plausible and wrong. The target knows
+			// the real reason and logs it at debug ("gather/prepare: REJECTED"), so say
+			// what was offered and send the reader there.
+			done(false, fmt.Errorf("target %s refused the proposal (height %d, v%d); the target logs the reason at -debug",
+				target, b.Height, b.Version))
 			return
 		}
 		prep, aerr := attDecode(resp.Data)
@@ -135,8 +143,11 @@ func (n *Node) ProposeBadBlock(target ports.NodeID, forge bool, done func(refuse
 		return
 	}
 	prev, height := n.chain.Head()
-	b := &chain.Block{Version: chain.BlockVersionRounds, Height: height, Prev: prev, Entries: []ports.Entry{advEntry("badproposal")}}
-	chain.Sign(b, n.signer)
+	b, berr := n.mintAdversaryBlock(height, prev, "badproposal")
+	if berr != nil {
+		done(false, berr)
+		return
+	}
 	if forge && len(b.ProposerSig) > 0 {
 		b.ProposerSig[0] ^= 0xFF // corrupt the signature so ValidateProposal's verify fails
 	}
@@ -163,8 +174,11 @@ func (n *Node) ProposeGoodBlock(target ports.NodeID, done func(accepted bool, er
 		return
 	}
 	prev, height := n.chain.Head()
-	b := &chain.Block{Version: chain.BlockVersionRounds, Height: height, Prev: prev, Entries: []ports.Entry{advEntry("goodproposal")}}
-	chain.Sign(b, n.signer)
+	b, berr := n.mintAdversaryBlock(height, prev, "goodproposal")
+	if berr != nil {
+		done(false, berr)
+		return
+	}
 	n.request(target, ports.Message{Kind: ports.MsgProposeBlock, Data: chain.Encode(b)}, func(resp ports.Message, err error) {
 		if err != nil {
 			done(false, err)
@@ -172,6 +186,46 @@ func (n *Node) ProposeGoodBlock(target ports.NodeID, done func(accepted bool, er
 		}
 		done(resp.OK, nil) // OK:true = attested = the target accepts a well-formed, bonded proposal
 	})
+}
+
+// mintAdversaryBlock builds a signed adversary block AT THE CHAIN'S OWN ERA.
+//
+// An honest proposer never picks a block version: it asks the chain, because MintVersion
+// is a pure function of committed history and every honest proposer at one head therefore
+// mints the identical version (I5). An adversary that hardcodes a version is not modelling
+// a Byzantine validator — it is modelling a node running the wrong binary, and the era
+// rule refuses it before any consensus property is reached. Since era-4 activates at
+// height 1 (and the daemon refuses to start with any other activation height), a
+// hardcoded pre-v5 block is refused at the FIRST height an adversary can ever propose:
+// the drill never places anything, the refusal drills pass for a reason that has nothing
+// to do with the property under test, and the equivocation drill cannot place its forks
+// at all.
+//
+// The roots are populated exactly as the honest propose path populates them, and for the
+// same reason: a v5 block commits its post-apply roots and its two-level digests, so a
+// block that carries the right VERSION and the wrong ROOTS is refused just as absolutely,
+// only with a less legible error. Signing is LAST — every field the preimage folds must
+// already be in place. A caller that wants a FORGERY corrupts the signature after this
+// returns, so the forgery is the only thing wrong with the block.
+func (n *Node) mintAdversaryBlock(height uint64, prev ports.Hash, tag string) (*chain.Block, error) {
+	b := &chain.Block{
+		Version: n.chain.MintVersion(height),
+		Height:  height,
+		Prev:    prev,
+		Entries: []ports.Entry{advEntry(tag)},
+	}
+	switch {
+	case b.Version >= chain.BlockVersionWitnessable:
+		if err := n.chain.PopulateEra4Roots(b); err != nil {
+			return nil, fmt.Errorf("populate era-4 roots at height %d: %w", height, err)
+		}
+	case b.Version >= chain.BlockVersionStateRoot:
+		if err := n.chain.PopulateEra3Roots(b); err != nil {
+			return nil, fmt.Errorf("populate era-3 roots at height %d: %w", height, err)
+		}
+	}
+	chain.Sign(b, n.signer)
+	return b, nil
 }
 
 // equivPlan is the RESUMABLE state for the double-sign drill. The three
@@ -238,13 +292,21 @@ func (n *Node) Equivocate(honestX, honestYZ ports.NodeID, done func(error)) {
 			done(fmt.Errorf("equivocate: no genesis"))
 			return
 		}
-		x := &chain.Block{Version: chain.BlockVersionRounds, Height: height, Prev: prev, Entries: []ports.Entry{advEntry("X")}}
-		chain.Sign(x, n.signer)
-		y := &chain.Block{Version: chain.BlockVersionRounds, Height: height, Prev: prev, Entries: []ports.Entry{advEntry("Y")}}
-		chain.Sign(y, n.signer)
-		z := &chain.Block{Version: chain.BlockVersionRounds, Height: height + 1, Prev: y.Hash(), Entries: []ports.Entry{advEntry("Z")}}
-		chain.Sign(z, n.signer)
-		n.equivPlan = &equivPlan{x: x, y: y, z: z, height: height}
+		// X and Y are the double-sign: two DIFFERENT blocks at ONE height, both
+		// extending the pinned base, so both are minted against the state this chain
+		// holds now. Z is NOT built here — it extends Y, and Y's post-apply state does
+		// not exist until Y is placed (see the zDone leg).
+		x, xerr := n.mintAdversaryBlock(height, prev, "X")
+		if xerr != nil {
+			done(xerr)
+			return
+		}
+		y, yerr := n.mintAdversaryBlock(height, prev, "Y")
+		if yerr != nil {
+			done(yerr)
+			return
+		}
+		n.equivPlan = &equivPlan{x: x, y: y, height: height}
 	}
 	p := n.equivPlan
 
@@ -268,6 +330,26 @@ func (n *Node) Equivocate(honestX, honestYZ ports.NodeID, done func(error)) {
 		return
 	}
 	if !p.zDone {
+		// Z EXTENDS Y, so it must commit the roots of the state that has Y IN IT — a
+		// state this chain does not hold until it adopts Y itself. Placing Y returned it
+		// fully certified (proposeAndCommitTo stamps the prepare-QC and the commit
+		// attestations onto the very block it placed), so adopting it here is an ordinary
+		// Append, and it is what a real equivocator does: it commits one of its own forks
+		// and builds on it. X is already built and signed against the pinned base, so
+		// moving this node's head does not disturb the leg still to be placed.
+		if p.z == nil {
+			if err := n.chain.Append(*p.y); err != nil {
+				done(fmt.Errorf("adopt Y to build Z on: %w", err))
+				return
+			}
+			prev, height := n.chain.Head()
+			z, zerr := n.mintAdversaryBlock(height, prev, "Z")
+			if zerr != nil {
+				done(zerr)
+				return
+			}
+			p.z = z
+		}
 		n.proposeAndCommitTo(p.z, honestYZ, func(committed bool, err error) {
 			if err != nil {
 				done(fmt.Errorf("extend Z on %s: %w", honestYZ, err))
