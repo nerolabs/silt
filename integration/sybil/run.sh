@@ -168,15 +168,15 @@ if await_log a1 'chain: committed block [0-9]+ \([0-9]+ entries, [1-9][0-9]* bon
 else
   fail "C2-a2: no anchor ever committed a block carrying a bond registration (submit-don't-propose never banked), so C2-b's refusal cannot be attributed to the anchor gate rather than to missing standing"
 fi
-# NEGATIVE HALF, and it is the half that keeps this honest: the sybil must NOT have
-# proposed anything. Banking standing is a submission; a committed block PROPOSED by a
-# non-anchor while the wheels are engaged would be the launch-fork this rule exists to
-# prevent.
-if dc logs s1 2>&1 | grep -qaE 'chain: committed block [1-9]'; then
-  fail "C2-a2: the Sybil COMMITTED a block of its own while the wheels were engaged — a non-anchor must not propose during the launch window"
-else
-  echo "  C2-a2 PASS (negative half): the Sybil proposed nothing — it earned standing by SUBMITTING, which is the only route the launch window allows"
-fi
+# WHY THERE IS NO "AND IT PROPOSED NOTHING" ASSERTION HERE. The obvious one is wrong:
+# `chain: committed block N` is printed by whoever COMMITS a block, proposer and syncer
+# alike, and C2-a above depends on exactly that — it waits for this line ON THE SYBIL to
+# prove the sybil SYNCED the anchors' block. Grepping it here would therefore fail the
+# moment the sybil does the very thing C2-a requires, and only pass while the sybil is
+# still behind: a race dressed as a security assertion. No proposer-side observable
+# exists at this altitude, so the "a non-anchor must not propose" property is carried
+# where it can actually be measured — C2-b, which gates on the head never passing the
+# anchored ceiling.
 
 # ── C2-b: no quiet capture — stop both anchors, the Sybil quorum cannot advance ─
 echo ""

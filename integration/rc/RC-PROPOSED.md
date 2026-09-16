@@ -288,10 +288,14 @@ wrong: they reasoned about a symptom pattern that does not exist.
   SUBMITTING its registration for an anchor to bank (submit-don't-propose), never by proposing. The
   observable is the committed block itself — `chain: committed block N (E entries, B bond-regs, …)`
   with B ≥ 1, a registered entry in `cmd/silt/observable_contract.go` — because standing becomes real
-  when a registration COMMITS, not when an internal sweep decides to try. A negative half was added
-  and is the one that keeps it honest: the sybil must have proposed NOTHING, since a non-anchor
-  committing its own block during the launch window would be the very fork the rule prevents. Scope
-  is stated in the output: the committed-block line does not name WHOSE registration is in the block,
+  when a registration COMMITS, not when an internal sweep decides to try. A negative half was added and then REMOVED as
+  unsound: `chain: committed block N` is printed by whoever COMMITS a block, proposer and syncer
+  alike, and C2-a depends on exactly that — it waits for that line ON THE SYBIL to prove the sybil
+  SYNCED the anchors' block. Grepping it as "the sybil proposed" therefore failed the moment the
+  sybil did the very thing C2-a requires, and passed only while it was still behind: a race dressed
+  as a security assertion, which is why it passed standalone and failed in the sweep. No
+  proposer-side observable exists at this altitude, so that property stays where it can actually be
+  measured — C2-b's anchored-ceiling gate. Scope is stated in the output: the committed-block line does not name WHOSE registration is in the block,
   so this proves the banking route ran, and C2-b's gate reporting distinguishes the anchor gate from
   a standing gate.
 - **`takedown` — A PRODUCT DEFECT, not suite rot. Fixed 2026-09-16.** The operator takedown purge
