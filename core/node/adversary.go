@@ -201,6 +201,14 @@ func (n *Node) ProposeGoodBlock(target ports.NodeID, done func(accepted bool, er
 // to do with the property under test, and the equivocation drill cannot place its forks
 // at all.
 //
+// WHY THIS WENT WRONG HERE AND NOWHERE ELSE. The honest mint-flip lives in
+// proposeBlockAt, which every honest proposal routes through. These primitives send
+// MsgProposeBlock directly, because bypassing the honesty machinery is the whole point of
+// them — and in doing so they bypassed the mint-flip too. Block format is not honesty
+// machinery: an adversary must be WELL-FORMED and dishonest, or the honest peer refuses it
+// for the wrong reason and the drill proves nothing. So the era half of proposeBlockAt is
+// reproduced here deliberately, and only the honesty half stays bypassed.
+//
 // The roots are populated exactly as the honest propose path populates them, and for the
 // same reason: a v5 block commits its post-apply roots and its two-level digests, so a
 // block that carries the right VERSION and the wrong ROOTS is refused just as absolutely,

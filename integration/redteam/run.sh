@@ -28,9 +28,15 @@ trap cleanup EXIT
 # Wait until a container's stdout (docker compose logs) contains a pattern.
 # The adversary/slash/reject lines are printed to STDOUT by the daemon
 # (fmt.Printf in cmd/silt/daemon.go), so we grep the compose logs, not debug.log.
+# The timeout is a DEADLINE, not an iteration count. `docker compose logs` costs real
+# time and its cost grows with the log, so a loop of N sleep-1 iterations takes far
+# longer than N seconds on a loaded host — which is how this suite blew a 300 s cap
+# while every individual wait looked small enough to fit inside it. Reading the clock
+# makes the numbers above mean what they say.
 wait_log() { # svc pattern timeout_s
-  local svc=$1 pat=$2 t=${3:-60} i
-  for ((i=0; i<t; i++)); do
+  local svc=$1 pat=$2 t=${3:-60} deadline
+  deadline=$(( $(date +%s) + t ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
     dc logs "$svc" 2>&1 | grep -qE "$pat" && return 0
     sleep 1
   done

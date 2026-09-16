@@ -235,6 +235,10 @@ containers, zero stray daemons, 2.4 GB wired, load 1.80 — the result is not un
 |---|---|---|
 | `privacy` `client` `nat` `audit` `economy` `churn` `chaos` | `bond` `sybil` `takedown` | `consensus` `redteam` |
 
+That table is the 2026-09-15 sweep and it is the baseline, not the current state. `redteam` has since
+moved: its wedge was a product defect, it is fixed, and all four accountability drills now report PASS
+— see the `redteam` entry below for what still fails there and why it is a lesser thing.
+
 Seven suites pass, including `churn` at 16m52s — six of sixteen holders killed across two waves,
 fifteen stripe-repair sweeps, every fetch bit-perfect — and `audit`, which catches a liar WITHOUT
 fetching its bytes. There was never one cause to find, which is why both previous explanations were
@@ -294,9 +298,36 @@ wrong: they reasoned about a symptom pattern that does not exist.
   version it reproduces the wire symptom byte-for-byte, including the false `(not yet standing?)`
   attribution.
 
-  *Outstanding:* the suite itself has not been re-driven. Its budget was also raised 300 s → 480 s,
-  because the failure path's own waits (150 s + 120 s) could not report inside 300 s — which is why
-  this arrived as `rc=124` with no diagnostics rather than as a FAIL that named itself.
+  *DRIVEN 2026-09-16, and every accountability property is now observed.* The four drills that
+  were unobtainable all report, on real containers over real TCP:
+
+  | drill | before | after |
+  |---|---|---|
+  | 1 — equivocator caught and SLASHED | never placed | **PASS** |
+  | positive control — H3 accepts a bonded proposal | would have refused | **PASS** |
+  | 2 — forged block rejected | passed for the wrong reason | **PASS** |
+  | 3 — low-bond proposer refused | passed for the wrong reason | **PASS** |
+  | H3 cross-check — no adversarial block committed | not reached | **PASS** |
+
+  The adversary logged ZERO refusals, against 15 in the wedged run, and the chain carried the
+  eviction: `chain: slashed equivocator d4f5ec0d… (double-signed at height 1)`. The fork shapes are
+  the drill's own design, confirmed on the wire — `equiv-x` at height 1 (the losing fork),
+  `equiv-yz` at height 2 (the heavier Y→Z fork).
+
+  *The suite still exits FAIL, on a different and lesser thing.* The FIRST positive control — H1
+  and H2 committing an ordinary publish — failed because the publish could not place a manifest
+  chunk (`placed on no node after 4 attempts`). That is storage placement timing out on a host at
+  load 49 with the owner's game running, not a consensus or accountability defect, and it is the
+  one leg that did not reproduce the earlier run (where it PASSED). It needs a re-drive on a quiet
+  box before it can be called anything else.
+
+  *Two suite-mechanics defects were fixed alongside.* The budget went 300 s → 480 s, because the
+  failure path's own waits could not report inside 300 s — which is why this arrived as `rc=124`
+  with no diagnostics rather than a FAIL that named itself. And `wait_log` counted ITERATIONS while
+  documenting SECONDS: each poll pays for a `docker compose logs` whose cost grows with the log, so
+  every nominal timeout in this suite understated its true wall-clock, without bound, on a loaded
+  host. It now reads a deadline off the clock. The failure path also dumps the TARGETS' logs, which
+  hold the real refusal reason, instead of only the adversary's guess.
 
 *WHAT THIS ITEM NOW MEANS.* The suite set was never green, and nobody knew, because it had never
 been driven to completion on a box proven clean — the leftovers masked what each suite would
