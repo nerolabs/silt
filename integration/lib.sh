@@ -143,3 +143,127 @@ ft_sweep() {
   fi
   return 0
 }
+
+# ---- the declared floor spec, measured from inside a container --------------
+# silt claims a validator runs on ONE core, 2 GiB of RAM and 10 GiB of disk, and
+# that it stays under that memory ceiling on ADVERSARIAL input. A suite that
+# wants to measure a seat against the claim has to do two things, and these
+# helpers are the two:
+#
+#  • Prove the kernel is ENFORCING the spec. `mem_limit` that silently did not
+#    bind — an older compose schema, a swarm-mode deploy block, a daemon without
+#    cgroup v2 — turns every later number into a measurement of an ordinary box,
+#    and the green that follows is worth nothing. Read the limits from INSIDE
+#    the container, never from the compose file that asked for them.
+#  • Read `memory.peak`, the cgroup's own high-water mark since the container
+#    started. It is the run's maximum rather than a sample, so a spike between
+#    two polls cannot hide in it. It lives with the container's cgroup, so read
+#    it BEFORE the service is stopped or removed.
+#
+# `cpuset` and not a CPU quota: a quota still reports every host core to `nproc`,
+# so the Go runtime sizes GOMAXPROCS and its worker pools for a multi-core box
+# and the node under test is not the node that ships. `memswap_limit` equal to
+# `mem_limit` means no swap at all, so crossing the ceiling is a clean OOM-kill
+# (exit 137) a harness can read instead of a thrash it would have to guess about.
+#
+# A caution for a topology that pins more than one seat: the container ceilings
+# over-subscribe the docker VM freely (a node's real use is a couple of hundred
+# MiB), but a seat that genuinely climbed toward 2 GiB would exhaust the VM
+# before its own cgroup, and the guest OOM-killer would land on whichever
+# container it chose. A peak near the ceiling is a finding to instrument, not a
+# number to compare against the VM's size.
+
+# ft_iec_bytes <2g|1500m|512k|1048576> — the suffixes docker's mem_limit accepts
+# (b/k/m/g, case insensitive, bare number = bytes) as a byte count, so a guard
+# compares what the kernel REPORTS against what the compose file ASKED for
+# instead of hardcoding one of them. `numfmt` is GNU coreutils and is not on a
+# stock macOS, so this is pure shell by necessity.
+ft_iec_bytes() {
+  local v="$1" n u
+  n=$(printf '%s' "$v" | tr -d '[:alpha:]')
+  u=$(printf '%s' "$v" | tr -d '[:digit:]' | tr '[:upper:]' '[:lower:]')
+  case "$n" in ''|*[!0-9]*) echo 0; return 1 ;; esac
+  case "$u" in
+    g|gb|gi|gib) echo $(( n * 1073741824 )) ;;
+    m|mb|mi|mib) echo $(( n * 1048576 )) ;;
+    k|kb|ki|kib) echo $(( n * 1024 )) ;;
+    ''|b)        echo "$n" ;;
+    *)           echo 0; return 1 ;;
+  esac
+}
+
+# ft_human_bytes <bytes> — a byte count in IEC units, for report lines.
+ft_human_bytes() {
+  local b="$1"
+  case "$b" in ''|*[!0-9]*) echo "?"; return ;; esac
+  if   [ "$b" -ge 1073741824 ]; then awk -v b="$b" 'BEGIN{printf "%.2f GiB", b/1073741824}'
+  elif [ "$b" -ge 1048576 ];    then awk -v b="$b" 'BEGIN{printf "%.1f MiB", b/1048576}'
+  elif [ "$b" -ge 1024 ];       then awk -v b="$b" 'BEGIN{printf "%.1f KiB", b/1024}'
+  else echo "${b}B"; fi
+}
+
+# ft_cgroup <project> <service> <file> — one cgroup v2 file, read inside the
+# container. Empty when the container is gone or the file does not exist; every
+# caller treats empty as "no measurement", which is a failure and not a pass.
+ft_cgroup() {
+  docker compose -p "$1" exec -T "$2" sh -c "cat /sys/fs/cgroup/$3 2>/dev/null" 2>/dev/null | tr -d '\r\n'
+}
+
+# ft_spec_binds <project> <service> <mem> <cpus> — THE VACUITY GUARD. Prints the
+# three facts it read and returns non-zero, with the reason, if any of them did
+# not bind. Call it before believing any number measured on that service.
+#
+# It retries: a service is reachable by `exec` only once its container is
+# running, and compose returns from `up -d` before that is necessarily true.
+ft_spec_binds() {
+  local project="$1" svc="$2" mem="$3" cpus="$4"
+  local want got_mem got_swap got_cpus i
+  want=$(ft_iec_bytes "$mem") || { echo "  '$mem' is not a size docker would accept (try 2g, 1500m)" >&2; return 1; }
+
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    got_mem=$(ft_cgroup "$project" "$svc" memory.max)
+    [ -n "$got_mem" ] && break
+    sleep 2
+  done
+  got_swap=$(ft_cgroup "$project" "$svc" memory.swap.max)
+  got_cpus=$(docker compose -p "$project" exec -T "$svc" sh -c 'nproc' 2>/dev/null | tr -d '\r\n')
+
+  echo "  ${svc}: memory.max      = ${got_mem:-<unreadable>} (want ${want})"
+  echo "  ${svc}: memory.swap.max = ${got_swap:-<unreadable>} (want 0 — no swap to escape into)"
+  echo "  ${svc}: nproc           = ${got_cpus:-<unreadable>} (want ${cpus})"
+
+  [ "$got_mem" = "$want" ] || {
+    echo "  the memory ceiling did NOT bind on ${svc}: memory.max is '${got_mem:-unreadable}', not ${want}. Any peak measured here would be a measurement of an ordinary box." >&2; return 1; }
+  [ "$got_swap" = "0" ] || {
+    echo "  ${svc} has swap (memory.swap.max='${got_swap:-unreadable}'): it can exceed its RAM ceiling by thrashing, so 'stayed under the ceiling' would not mean what it says." >&2; return 1; }
+  [ "$got_cpus" = "$cpus" ] || {
+    echo "  ${svc} sees nproc='${got_cpus:-unreadable}', not ${cpus}: the Go runtime is sizing for a wider box than the floor spec, so this is not the node we ship." >&2; return 1; }
+  return 0
+}
+
+# ft_peak_bytes <project> <service> — memory.peak, the high-water mark. Empty if
+# it could not be read, which the caller must treat as a missing measurement.
+ft_peak_bytes() { ft_cgroup "$1" "$2" memory.peak; }
+
+# ft_oom_killed <project> <service> — "true" when the kernel OOM-killed the
+# container. Under a memory cgroup with no swap that is what exceeding the
+# ceiling looks like, and it is a different failure from a slow or dead node.
+ft_oom_killed() {
+  local cid
+  cid=$(docker compose -p "$1" ps -aq "$2" 2>/dev/null | head -1)
+  [ -n "$cid" ] || { echo "unknown"; return; }
+  docker inspect -f '{{.State.OOMKilled}}' "$cid" 2>/dev/null | tr -d '\r\n'
+}
+
+# ft_peak_report <peak> <mem> — one line: the peak, the ceiling it is measured
+# against, the percentage and the headroom left. A regression then surfaces as a
+# shrinking margin and not only as an eventual failure.
+ft_peak_report() {
+  local peak="$1" want
+  want=$(ft_iec_bytes "$2")
+  case "$peak" in ''|*[!0-9]*) echo "no measurement"; return 1 ;; esac
+  printf '%s of %s (%d%%, %s of headroom)' \
+    "$(ft_human_bytes "$peak")" "$(ft_human_bytes "$want")" \
+    "$(( peak * 100 / want ))" "$(ft_human_bytes "$(( want - peak ))")"
+  [ "$peak" -lt "$want" ]
+}

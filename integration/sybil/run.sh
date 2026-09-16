@@ -27,6 +27,26 @@
 #  C2-c bonus: with ≥8 equal Sybil bonds the C2 atomization note fires (an equal-
 #  bond split reads as a fingerprint, not real decentralization).
 #
+# AND A SECOND PROPERTY, measured on the same topology: THE FLOOR BOX HOLDS
+# UNDER ADVERSARIAL INPUT. a1 — the honest anchor the whole farm feeds, since
+# every extra identity submits a bond registration for a1 to verify, bank and
+# commit — is cgroup-pinned to the declared floor spec: one core, 2 GiB, no
+# swap. It reports `memory.peak`, the cgroup's own high-water mark, against that
+# ceiling, alongside the size of the committed bond ledger it was carrying when
+# the peak was taken. The farm's size is the load, so the ledger size is the
+# number that gives the peak its meaning.
+#
+# THE MEASUREMENT IS ONLY EVIDENCE IF TWO THINGS HOLD, and both are asserted:
+# the kernel really enforced the spec (read from INSIDE a1 before any number
+# from it is believed), and the farm's registrations actually REACHED a1 and
+# committed (C2-a2) — otherwise a small peak is an anchor that sat idle.
+#
+# The peak is read BEFORE C2-b stops the anchors: memory.peak lives with the
+# container's cgroup, and the window where the farm is feeding a1 is exactly the
+# window that ends when a1 stops. If a1 is OOM-killed, that is the FINDING and
+# not a tuning problem — an unbounded working set on a small box is unsafe
+# rather than slow.
+#
 # Usage:./run.sh # build, test, tear down; exit 0 = PASS
 #  SYBILS=0 ./run.sh # core only (a1,a2,s1,s2)
 #  KEEP=1 ./run.sh
@@ -35,15 +55,37 @@ set -uo pipefail
 cd "$(dirname "$0")"
 ROOT=$(cd ../.. && pwd)
 
+# shellcheck source=../lib.sh
+. "$ROOT/integration/lib.sh"
+
 SYBILS=${SYBILS:-2}           # extra Sybil identities beyond s1,s2 (keep light for laptop robustness;
                               # the ≥8-bond atomization note is a cloud-scale concern regardless)
+# The declared floor spec, and it is the spec the compose file pins a1 to. The
+# env knobs exist to probe a TIGHTER box, never to quietly loosen a failing run:
+# the guard below compares what the kernel reports against what was asked for,
+# so a loosened value shows up in the report.
+FLOOR_CPUS=${FLOOR_CPUS:-1}
+FLOOR_MEM=${FLOOR_MEM:-2g}
+
 PROJECT=sybil
 dc() { docker compose -p "$PROJECT" "$@"; }
-cleanup() { [ "${KEEP:-0}" = 1 ] || dc down -v >/dev/null 2>&1 || true; }
+cleanup() { [ "${KEEP:-0}" = 1 ] || ft_sweep "$PROJECT"; }
 trap cleanup EXIT INT TERM
 
 pass=1
 fail() { echo "FAIL: $*"; pass=0; }
+
+# The floor-spec readings, kept apart from `pass` because a1's peak is credited
+# only if the spec bound AND the farm's load actually reached it.
+SPEC_A1=UNREAD     # did the kernel bind the floor spec on a1
+FARM_LANDED=0      # a1 committed a block carrying bond registrations
+PEAK_A1=""         # memory.peak, read before C2-b stops a1
+OOM_A1=unknown
+BANKED=""          # bond registrations a1 verified and COMMITTED under that load
+FARM=$(( SYBILS + 2 ))   # s1, s2 and the extra identities — every one of them a
+                         # live daemon peered to a1, sealing a plot, running a
+                         # bond audit against it every second and submitting its
+                         # registration for a1 to bank
 # The timeout is a DEADLINE, not an iteration count. Each poll pays for a
 # `docker compose logs` whose cost grows with the log, so a loop of N sleep-1
 # iterations takes far longer than N seconds on a loaded host — every nominal
@@ -60,6 +102,14 @@ await_log() { # service pattern [timeout_s]
 }
 head_height() { dc exec -T "$1" silt chain-status -store /data 2>/dev/null | awk '/head height/{print $3}'; }
 commit_count() { dc logs "$1" 2>&1 | grep -c 'committed block' || true; }
+
+ft_require docker go awk || exit 2
+ft_docker_up || { echo "FAIL: no reachable docker daemon"; exit 2; }
+
+# This suite now measures a memory ceiling, so a dirty box is not noise — it is
+# the measurement. Anything else holding memory on this host shows up as a1's
+# headroom.
+ft_preflight "$PROJECT" || exit 2
 
 echo "== build silt (linux/$(go env GOARCH)) + image =="
 ( cd "$ROOT" && CGO_ENABLED=0 GOOS=linux GOARCH="$(go env GOARCH)" go build -trimpath -o integration/sybil/silt ./cmd/silt ) \
@@ -78,6 +128,28 @@ dc up -d a1 a2 s1 s2 >/dev/null 2>&1 || fail "up core"
 await_log a1 'registry: .*serving' 40 || fail "a1 registry never came up"
 await_log a2 'bootstrapped \(' 40 || fail "a2 never bootstrapped"
 await_log s1 'registry: .*serving' 40 || fail "s1 registry never came up"
+
+# THE VACUITY GUARD for the anchor's seat. Read before the farm loads it,
+# because a peak measured on a seat whose limits did not bind is a measurement
+# of an ordinary box and would be a confident green from nothing.
+echo "== the anchor's seat is on the declared floor spec (${FLOOR_CPUS} core / ${FLOOR_MEM} / no swap) =="
+if ft_spec_binds "$PROJECT" a1 "$FLOOR_MEM" "$FLOOR_CPUS"; then
+  SPEC_A1=BOUND
+  echo "  ✓ the kernel is enforcing the floor spec on the honest anchor"
+else
+  SPEC_A1=UNBOUND
+  fail "the floor spec did NOT bind on a1 — its memory.peak would be a measurement of an ordinary box, not of the floor"
+fi
+# THE GUARD'S OWN NEGATIVE CONTROL. A vacuity guard that cannot fail is a
+# comment, not evidence. a2 is the same image running the same daemon with NO
+# cgroup pin at all, so the guard must report it UNBOUND. If it reported a2
+# bound too, it would be reading something other than the seat's own limits and
+# a1's BOUND verdict would be free.
+if ft_spec_binds "$PROJECT" a2 "$FLOOR_MEM" "$FLOOR_CPUS" >/dev/null 2>&1; then
+  fail "the floor-spec guard called the UNPINNED seat a2 bound. It is not reading a seat's own limits, so a1's BOUND verdict is vacuous and its peak is not evidence."
+else
+  echo "  ✓ negative control: the same guard reports the unpinned seat (a2) UNBOUND"
+fi
 # the young network must drain its deferred bond registrations AUTONOMOUSLY —
 # no publish traffic exists yet, so the reactive drain (a BondRegs-only block on the
 # chain-sync sweep) is the only way any validator earns committed standing. The
@@ -160,6 +232,7 @@ echo "== C2-a2: a bonded Sybil BANKS committed standing via the anchor drain (su
 # some internal sweep decides to try. The drain serializes roughly one registration per
 # sweep, so allow several sweeps.
 if await_log a1 'chain: committed block [0-9]+ \([0-9]+ entries, [1-9][0-9]* bond-regs' 150; then
+  FARM_LANDED=1
   echo "  C2-a2 PASS: an anchor COMMITTED a block carrying bond registrations — the submit-don't-propose route banked standing on-chain"
   echo "    (SCOPE: the committed-block line does not name WHOSE registration is in the block, so this"
   echo "     proves the banking ROUTE works and ran, not that this exact sybil's bond is in that block."
@@ -181,6 +254,28 @@ fi
 # ── C2-b: no quiet capture — stop both anchors, the Sybil quorum cannot advance ─
 echo ""
 echo "== C2-b no quiet capture: with BOTH anchors gone, the Sybil set CANNOT advance the chain =="
+# THE CEILING, on the anchor the farm has been feeding. This is the last moment
+# it can be read: memory.peak lives with the container's cgroup, and the next
+# line stops a1. The committed bond ledger is read in the same breath, because
+# it is the size of the load the peak was reached under.
+# The load is counted from the daemon's own committed-block line, which is a
+# registered observable: "committed block N (E entries, B bond-regs, A
+# attestations)". Summing B is the number of registrations a1 actually VERIFIED
+# and COMMITTED, which is the farm's real footprint on this seat. The C2
+# `nakamoto N bonds` line is the wrong number to reach for here: it is printed
+# on a sweep that can predate the drain block entirely, so it reads 0 on a run
+# where a registration demonstrably committed.
+BANKED=$(dc logs a1 2>&1 \
+  | grep -oE 'committed block [0-9]+ \([0-9]+ entries, [0-9]+ bond-regs' \
+  | sed -E 's/.*, ([0-9]+) bond-regs/\1/' \
+  | awk '{n+=$1} END{printf "%d", n+0}')
+PEAK_A1=$(ft_peak_bytes "$PROJECT" a1)
+OOM_A1=$(ft_oom_killed "$PROJECT" a1)
+echo "  -- the anchor's memory ceiling, measured across the farm's load --"
+echo "  a1 memory.peak = $(ft_peak_report "${PEAK_A1:-}" "$FLOOR_MEM")"
+echo "     under a farm of ${FARM} bonded Sybil identities, ${BANKED:-0} of whose registrations it verified and committed"
+[ "$OOM_A1" != "true" ] || fail "a1 was OOM-KILLED at ${FLOOR_MEM} while banking the farm's registrations. An unbounded working set on a small box is unsafe, not slow: this is a finding to instrument and reduce to a local repro, not a limit to raise."
+
 dc stop a1 a2 >/dev/null 2>&1 || fail "could not stop the anchors"
 echo "  both anchors stopped; the Sybil set (s1 proposes, s2 attests) now tries to commit alone…"
 # The anchored CEILING: the height the network legitimately reached while the
@@ -266,9 +361,45 @@ else
   echo "    cloud-test concern (integration/cloudtest)."
 fi
 
+# ── THE FLOOR SPEC UNDER ADVERSARIAL INPUT ───────────────────────────────────
+# Reported as a number with its margin, so a regression surfaces as shrinking
+# headroom and not only as an eventual failure. It is CREDITED only when all
+# four hold: the kernel bound the spec, the farm's load actually reached and
+# committed on a1, the peak was read, and it stayed under the ceiling with no
+# OOM-kill. Anything short of that is a gap, which is a failure and not a quiet
+# omission — so it fails the suite rather than printing an uncredited number and
+# moving on.
+echo ""
+echo "== the floor spec under adversarial input =="
+echo "  spec: ${FLOOR_CPUS} core / ${FLOOR_MEM} RAM / no swap, kernel-enforced on a1"
+WANT_MEM=$(ft_iec_bytes "$FLOOR_MEM")
+echo "  a1 memory.peak = $(ft_peak_report "${PEAK_A1:-}" "$FLOOR_MEM")"
+if [ "$SPEC_A1" != BOUND ]; then
+  fail "the ceiling is NOT credited: the floor spec did not bind on a1 (${SPEC_A1}), so the peak measures an ordinary box"
+elif [ "$FARM_LANDED" != 1 ]; then
+  fail "the ceiling is NOT credited: no block carrying the farm's bond registrations committed on a1, so a low peak is an idle anchor rather than a bounded one"
+else
+  case "${PEAK_A1:-}" in
+    ''|*[!0-9]*) fail "the ceiling is NOT credited: memory.peak could not be read from a1 — no measurement is a failure, not a pass" ;;
+    *)
+      if [ "$OOM_A1" = true ]; then
+        fail "FINDING: a1 was OOM-killed at ${FLOOR_MEM} under the farm's load"
+      elif [ "$PEAK_A1" -ge "$WANT_MEM" ]; then
+        fail "FINDING: a1's peak reached the ${FLOOR_MEM} ceiling under the farm's load"
+      else
+        echo "  CEILING: HELD — the honest anchor stayed under its kernel-enforced ${FLOOR_MEM} carrying"
+        echo "    a farm of ${FARM} bonded Sybil identities, ${BANKED:-0} of whose registrations it committed."
+        echo "    The drain serializes roughly one registration per sweep, so the committed count is a"
+        echo "    floor on what the farm asked of this seat, not the whole of it: every identity is also"
+        echo "    a live peer challenging it once a second for the length of the run."
+      fi
+      ;;
+  esac
+fi
+
 echo ""
 if [ "$pass" = 1 ]; then
-  echo "RESULT: PASS ✅  C2 holds — no quiet capture: the young objective network drains its bond registrations autonomously, a BONDED sybil publishes with the anchors present (its standing is real), and the bonded Sybil quorum still cannot advance the chain once the anchors are gone — refused by the anchor co-sign gate (ErrAnchorRequired). The ≥8-bond atomization signal stays a cloud-scale concern (integration/cloudtest)."
+  echo "RESULT: PASS ✅  C2 holds — no quiet capture: the young objective network drains its bond registrations autonomously, a BONDED sybil publishes with the anchors present (its standing is real), and the bonded Sybil quorum still cannot advance the chain once the anchors are gone — refused by the anchor co-sign gate (ErrAnchorRequired). The ≥8-bond atomization signal stays a cloud-scale concern (integration/cloudtest). The honest anchor carried the farm on the declared floor spec and stayed under its kernel-enforced memory ceiling."
 else
   echo "RESULT: FAIL ❌  (see the failing assertion(s) above)"
 fi

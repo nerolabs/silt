@@ -20,6 +20,29 @@
 # equivocation topology (H1/H2 + adversary double-signing both) and the
 # forged/low-bond topology (a fresh honest target H3 + one crafted proposal) do
 # not cross-contaminate.
+#
+# TWO SEATS ARE PINNED TO THE DECLARED FLOOR SPEC — one core, 2 GiB, no swap:
+# `equiv-x`, the honest detector that has to hold two conflicting chains and
+# reconcile them, and `h3`, the honest target the crafted proposals are aimed
+# at. They are the seats the adversaries actually feed, and they are the seats
+# this suite already asserts from, so the attack lands where the assertions are
+# watching. That makes the claim measurable here: silt stays under its memory
+# ceiling on ADVERSARIAL input, not merely on honest consensus traffic.
+#
+# The limits are a cgroup and not the daemon's `-mem-limit`, because
+# `-mem-limit` is a SOFT ceiling (it sets runtime/debug.SetMemoryLimit, so the
+# GC reclaims harder as the heap climbs) and a soft ceiling cannot answer "does
+# this node survive on a 2 GiB box". `memswap_limit` equal to `mem_limit` means
+# no swap at all, so crossing the ceiling is a clean OOM-kill the harness can
+# read rather than a thrash it would have to guess about. `cpuset` and not a CPU
+# quota, because a quota still reports every host core to `nproc` and the Go
+# runtime would size GOMAXPROCS for a box wider than the one that ships. The two
+# pinned seats never run at the same time — run.sh removes the equivocation
+# topology before the proposal topology comes up — so they share `cpuset: "0"`.
+#
+# The soft `-mem-limit=1500M` rides ALONGSIDE the hard ceiling on those seats,
+# because it is part of the floor-box configuration the product ships: the GC
+# gets a chance to act before the kernel does.
 
 networks:
   rt:
@@ -151,8 +174,12 @@ services:
       - -bond=8M
       - -bond-audit=1s
       - -capacity=1G
+      - -mem-limit=1500M
       - -mdns=false
       - -debug
+    cpuset: "0"
+    mem_limit: 2g
+    memswap_limit: 2g
     networks:
       rt:
         ipv4_address: 10.110.0.22
@@ -204,8 +231,12 @@ services:
       - -bond=8M
       - -bond-audit=1s
       - -capacity=1G
+      - -mem-limit=1500M
       - -mdns=false
       - -debug
+    cpuset: "0"
+    mem_limit: 2g
+    memswap_limit: 2g
     networks:
       rt:
         ipv4_address: 10.110.0.31

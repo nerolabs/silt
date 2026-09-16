@@ -462,7 +462,10 @@ what the rules actually provide.
 *LOCAL, current HEAD:* `consensus` `bond` `redteam` `sybil` `chaos` `takedown` `privacy` `client`
 `nat` `audit` `economy` all PASS. `churn` could not be driven to completion in this environment
 (~18 min exceeds what a background task survives here); it passed before the daemon changes and its
-ground is covered below.
+ground is covered below. `floor` was re-driven at this HEAD and now returns PASS rather than a
+FINDING, because the gap its verdict named — the ceiling on adversarial input — is closed.
+`redteam` and `sybil` carry item 14's floor-spec seats and were re-driven green with them —
+`redteam` four times, `sybil` at two farm sizes — each on a box proven clean by its own preflight.
 
 *CLOUD, real GCP hardware, run `46f3224-79920`: 22 PASS · 0 FAIL · 6 SKIP.* 17 nodes, 4 validators,
 three regions, randomized flow order, torn down with zero orphans. It confirms the two daemon fixes
@@ -551,29 +554,77 @@ succeeds on retry. A validator killed mid-consensus re-pins from its own last fi
 checkpoint and never contradicts a signature it made before the crash.
 *e2e under impairment → field.*
 
-**14. The floor box holds, and the chain prunes.** ⚠ *four legs demonstrated; the ceiling is not driven on adversarial input*
+**14. The floor box holds, and the chain prunes.** ✅ *done*
 A validator on the declared floor spec — one core, 2 GiB, 10 GiB of disk — validates against
 witnesses without holding the tree, stays under its memory ceiling on adversarial input, stalls
 rather than accepts when no witness provider is reachable, and prunes at depth from persisted state.
 *unit → e2e under impairment → field.*
 
-*State:* the claim has four legs. The `floor` suite drives all four; it enforces the spec with a
-cgroup rather than a flag, because `-mem-limit` is a SOFT ceiling and a soft ceiling cannot answer
-"does this survive on a 2 GiB box". The witness half runs as a SECOND box on the same spec in the
-witness-validating posture (`silt daemon -floor-box -witness-from=...`), with a no-provider control
-beside it.
+*State:* the claim has four legs and all four are driven. The `floor` suite drives them; it enforces
+the spec with a cgroup rather than a flag, because `-mem-limit` is a SOFT ceiling and a soft ceiling
+cannot answer "does this survive on a 2 GiB box". The witness half runs as a SECOND box on the same
+spec in the witness-validating posture (`silt daemon -floor-box -witness-from=...`), with a
+no-provider control beside it. The memory ceiling is measured on four seats in three topologies: the
+`floor` box under honest load at depth, and three honest seats inside the adversarial topologies.
 
-- **Under its memory ceiling — DEMONSTRATED, under HONEST load only.** `memory.max` 2 GiB with
-  `memory.swap.max` 0 and `nproc` 1, asserted from inside the container before anything else is
-  measured. Peak 209.6 MiB, 10% of the ceiling, read from the cgroup's own high-water mark rather
-  than sampled. The box committed to height 18 on the same head hash as two ordinary validators, so
-  it was participating and not merely surviving. **The gap:** the load was honest consensus traffic.
-  "On adversarial input" is NOT yet shown — that wants the redteam and sybil topologies re-pointed
-  at a floor-spec seat.
+- **Under its memory ceiling — DEMONSTRATED, on honest load at depth AND on adversarial input.** On
+  every seat below, `memory.max` is 2 GiB with `memory.swap.max` 0 and `nproc` 1, asserted from
+  inside that container before any number from it is believed, and the peak is the cgroup's own
+  high-water mark rather than a sample.
+
+  *Honest load, at depth — `floor`.* Peak 260.8 MiB, 12% of the ceiling, 1.75 GiB of headroom. The
+  box committed to height 17 on the same head hash as two ordinary validators, so it was
+  participating and not merely surviving, and it shed below the retention horizon on the way. This
+  figure moves between runs like the adversarial ones do — 209.6 to 291.1 MiB, 10% to 14%, across
+  the runs on this hardware — so it is the order that is the claim, not the digit.
+
+  *Adversarial input — three more honest seats on the same spec, inside the topologies where the
+  adversaries already live.*
+
+  | seat | what was fed to it | peak | of 2 GiB |
+  |---|---|---|---|
+  | `redteam` `equiv-x` | a double-signer's two conflicting chains, synced, reconciled, equivocator slashed | 29.9 MiB | 1% |
+  | `redteam` `h3` | a forged-proposer-signature block and an under-bonded proposal, both refused, head never moving | 42.5 MiB | 2% |
+  | `sybil` `a1` | a bonded Sybil farm of 4 challenging it every second, 3 of whose registrations it verified and committed | 87.5 MiB | 4% |
+  | `sybil` `a1` | the same, with the farm at 8 | 99.0 MiB | 4% |
+
+  The pin is the same three lines the `floor` service uses — `cpuset`, and `mem_limit` equal to
+  `memswap_limit` so there is no swap to escape into. The seats were not chosen for convenience:
+  each is a seat the adversaries already point at AND that the suite already asserts from, so the
+  attack lands where the assertions are watching.
+
+  *THE NUMBERS ARE NOISY AT THIS SCALE, and the ranges belong next to them* — a single figure read
+  as a fixed cost would make the next run look like a regression. Across four `redteam` runs
+  `equiv-x` fell in 29.9–39.2 MiB and `h3` in 30.6–42.5 MiB; the table cites the last run of each.
+  What is stable is the ORDER: every adversarial seat sits at 1–4% of the ceiling, an order of
+  magnitude clear of it, and the whole spread is smaller than the gap to the honest-load figure.
+  The one signal that IS a slope rather than noise is the farm size: doubling it moved the anchor's
+  peak 11.5 MiB, which is the shape a real regression would show up in.
+
+  *NO SEAT PASSES VACUOUSLY, and both controls are driven rather than asserted.* Two things could
+  make a small peak worthless, and each has its own control in the same run:
+  - *The limits might not have bound*, and then the peak measures an ordinary box. The same guard is
+    pointed at an UNPINNED seat in the same run — `h2` in `redteam`, `a2` in `sybil` — and must
+    report it UNBOUND. It does. If it did not, the guard would be reading something other than a
+    seat's own limits and every BOUND verdict in the run would be free.
+  - *The attack might not have landed*, and then the seat was idle. Each seat's ceiling verdict is
+    gated on the drill that proves the adversary reached it and was denied: the slash line for
+    `equiv-x`; both refusals plus the unchanged-head cross-check for `h3`; a committed block
+    carrying bond registrations for `a1`. A peak from a seat whose drill failed prints NOT CREDITED
+    and FAILS the suite, because an uncredited number and a measured one are not interchangeable.
+
+  *WHAT THE ADVERSARIAL NUMBERS DO NOT COVER, said plainly.* Both adversarial topologies run SHALLOW
+  chains — `equiv-x` judges at height 1, and `h3`'s head is asserted never to move at all. Those
+  three seats therefore measure the ADVERSARIAL PATHS, not adversarial input at depth; the depth
+  figure is `floor`'s 209.6 MiB at height 18, and that load is honest. No single run combines both,
+  and the leg rests on the composition. It is worth naming which number a regression would move
+  first: the closest to its ceiling is the honest-load one, at 12%.
 - **Prunes at depth from persisted state — DEMONSTRATED.** Three blocks shed their heavy bond proofs
-  at height 18. A restart onto the same volume reloaded the already-pruned store, still reported the
-  shed, and committed again to height 19 — so the prune is a property of persisted state and did not
-  trade an OOM for a stall.
+  at height 17, which is what the retention rule predicts: the node keeps
+  `max(2·BondTTL, BondRegHeadWindow+4) = 12` full-proof blocks below its finalized head and then
+  epoch-aligns down. A restart onto the same volume reloaded the already-pruned store, still
+  reported the shed, and committed again to height 18 — so the prune is a property of persisted
+  state and did not trade an OOM for a stall.
 - **Stalls rather than accepts when no witness provider is reachable — DEMONSTRATED.** A box on the
   same genesis, anchored on an operator checkpoint and pointed at a provider that does not exist,
   reached the block above its anchor and stalled: one stall, zero verdicts, zero accepts. Safety does
@@ -605,36 +656,27 @@ covering it still counted. It was contained only by the door's accept downgrade.
 recorded it are retired and replaced by the straight assertion that a compound block folds to the
 root `apply` commits, with one fold operation per committed key.
 
-*The path to green on the remaining leg,* which is the memory ceiling under ADVERSARIAL input. The
-suite is not the missing piece: `integration/floor/` already carries the only hard part, the cgroup
-that makes the number mean anything (`mem_limit == memswap_limit`, `cpuset`, `memory.peak`, and leg
-1 asserting all three from inside the container before any other leg is believed). What is missing
-is the LOAD. In order:
+*The two risks the adversarial half was expected to run into, and what actually happened.* Neither
+bit. Pinning a seat to one core changes the CADENCE of a suite whose budgets were sized without it,
+and a floor-spec seat competes for the same two-CPU docker VM as the attackers — so a first run
+could time out for a host reason rather than a product one. In the event NO budget was raised:
+`redteam` cleared its existing 90 s and 60 s windows on three consecutive runs and `sybil` cleared
+its existing drain sweeps, on a 2-CPU / 3.8 GiB guest, with the attackers running beside the pinned
+seat. The peaks make the reason plain — the seats that carry the attack run at 1–4% of the ceiling,
+so one core is not the constraint at this scale.
 
-1. **A victim seat is nominatable — CHECKED 2026-09-15, this is no longer an open question.**
-   `integration/redteam/` seats honest bonded validators `h1`, `h2`, `h3` and `goodprop` and points
-   its attackers (`equiv-a`, `equiv-x`, `equiv-yz`, `forger`, `lowbond`) at them; `h1` is a
-   `-validator -bond=8M` seat the suite already drives and asserts from. `integration/sybil/` has
-   the same shape. NEITHER carries any `mem_limit` or `cpuset` today, so the floor spec is new to
-   both — that is the work, and it is additive rather than a rebuild.
-2. **Pin a victim seat to the floor spec** — the same three lines the `floor` service uses
-   (`cpuset`, `mem_limit`, `memswap_limit` equal), plus a leg-1-style vacuity guard reading
-   `memory.max` / `memory.swap.max` / `nproc` from inside that container, so a green run is evidence
-   rather than a measurement of an ordinary box. Prefer a seat the existing assertions already read
-   from, so the attack still lands where the suite is watching.
-3. **Drive it, and report `memory.peak` as a number with its margin**, the way leg 3 already does,
-   so a regression surfaces as shrinking headroom and not only as a failure. Honest load peaked at
-   209.6 MiB (10%); adversarial input is where a witness-bundle or frame-sized allocation would
-   show.
-4. **If it OOMs, that is the finding, not a tuning problem.** Build-immutable 8 says an unbounded
-   system on a small box is unsafe rather than slow: instrument and reduce to a local repro before
-   any knob moves.
+*One correction the measurement forced, and it was the harness rather than the product.* The first
+version of `sybil`'s load line reported the C2 `nakamoto N bonds` metric as the size of what the
+anchor was carrying. That metric is printed on a sweep that can predate the drain block entirely,
+so it read 0 identities on a run where a registration demonstrably committed — a number that would
+have travelled next to the peak and made it look like a measurement of an idle anchor. The line now
+sums the `bond-regs` field of the daemon's own committed-block line, which is what the seat actually
+verified and committed.
 
-*The risks that remain, named:* pinning a seat to one core changes the CADENCE of a suite whose
-budgets were sized without it, so a first run may time out for a host reason rather than a product
-one — read the progress lines before raising a budget. And a floor-spec seat inside an adversarial
-topology competes for the same two-CPU VM as the attackers, so `docker info` and the measured
-blocks-per-second come before any budget is trusted.
+*And if a pinned seat ever OOMs, that is the finding, not a tuning problem.* Build-immutable 8 says
+an unbounded system on a small box is unsafe rather than slow. Both suites read `.State.OOMKilled`
+and report the kill as a FINDING to instrument and reduce to a local repro, rather than raising a
+limit around it.
 
 *What is not claimed:* that the box PARTICIPATES. Its door maps Accept to a downgrade by design, so
 it audits and reports, adopts nothing, and advances no head. Taking that downgrade is **item 20**,
