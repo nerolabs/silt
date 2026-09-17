@@ -34,7 +34,7 @@ that was seen red before the fix and asserts a stall after it.
 handoff, phase follows applied history rather than delivery order, and the one-way shed does
 not re-arm under fork adoption.
 
-**2. Forging N standings costs N×, with no arm passing vacuously.** ⚠ *the census runs and reports; the coupled canon edit is unmade*
+**2. Forging N standings costs N×, with no arm passing vacuously.** ⚠ *three of five axes deny, each driven to the integration tier; the README disclosure is the owner's call*
 *Done:* every arm paired with a positive control **on its own axis**. The bond and
 possession arms pass. The demand and diversity arms do not construct, and are reported
 **unwired** rather than denied.
@@ -104,20 +104,57 @@ session's changes.
 |---|---|---|
 | bond size | `bond` PHASE 3 — a second identity re-advertising the SAME root | **PASS** — earns ZERO (one plot, one standing) |
 | possession | `bond` PHASE 1 — a real plot sealed and challenged over the wire | **PASS** — 64M sealed in 0.90 s, 67,108,912 B on disk, peer challenge passed |
-| retention | *not asserted* | the TTL is CONFIGURED in `bond` and `floor` but no integration assertion drives decay-denies-coasting |
+| retention | `retention` — an identity stops re-proving while three keep going | **PASS** — evicted from the committed bonded set at the TTL; the three that kept re-proving kept their standing |
 | demand | — | unwired: nothing to drive at any tier |
 | diversity | — | unwired for standing: nothing to drive at any tier |
 
-*The one gap at this tier is RETENTION.* It is denied at the unit tier and its mechanism is
-configured in two integration topologies, but no integration suite asserts that an identity which
-stops re-proving loses standing over real containers. That is the next piece of work on this item,
-and it is an assertion in an existing suite rather than a new one.
+*THE RETENTION ARM IS DRIVEN, in `integration/retention`.* Four bonded objective validators seal
+real plots and commit real registrations; one of them is stopped so it can no longer renew; and the
+committed bonded set — the daemon's own `chain: saved … bonded=N` line, read from a node that never
+leaves — falls from 4 to 3 while the chain keeps committing. It comes back to 4 only when the
+returning node's FRESH registration commits, which is the other half of the claim: the proof is what
+buys the standing, every time.
 
-*A caveat that must travel with the bond evidence:* `integration/bond` as a whole RESULTS IN FAIL —
-its `POSITIVE-2` control fails because an honest node refuses a well-formed proposal. That failure
-is PRE-EXISTING (identical at `d968fa2`) and is in the suite's PHASE 2 attest path, not in the
-PHASE 1 or PHASE 3 cost arms this item relies on. The arms above are read individually and their
-verdicts are their own; the suite-level FAIL is item 5's problem, recorded there.
+| leg | measured |
+|---|---|
+| the set fills | four real bonds commit; `bonded=4` at height 4 |
+| CONTROL — nobody stopped | `bonded` held at 4 across heights 4→10, a window longer than the TTL, and never dipped |
+| decay | one identity stopped re-proving at height 10; `bonded` 4 → 3 by height 12 |
+| re-earned, not restored | it returned on its own store and `bonded` went back to 4 at height 14 |
+
+*THE CONTROL IS THE POINT, and it is on retention's own axis.* A falling counter proves nothing by
+itself — it would fall just as far if the swarm were dying, or if standing decayed with time
+regardless of renewal. So the same window runs first with the attack REMOVED, and the counter has to
+hold at four. Only then does the fall attribute to the one thing that changed.
+
+*AND THE ARM WAS SEEN RED.* `BOND_TTL=0 ./run.sh` — the daemon's own documented opt-out, not test
+scaffolding — keeps legs 1 and 2 green and fails leg 3 with "the committed bonded set is STILL 4 at
+height 11 … An identity is coasting on a proof it can no longer answer for", on a chain that
+advanced 10→11. The liveness assertion runs first, so an ablation that had merely killed the swarm
+would have failed for a different and clearly-named reason.
+
+*IT NEEDED ITS OWN TOPOLOGY, and the reason is worth recording rather than filed as a preference.*
+The expectation here was that this would be an assertion in an existing suite. Three were checked
+and none can carry it. `bond` sets `-bond-ttl=0` deliberately — its own arms need standing to hold
+still — and never advances a chain for a bond to age against. `sybil` leaves the TTL at the derived
+default of 32 blocks while its chain reaches a height in the low single digits, so the window is
+unreachable there. And `floor` runs THREE validators, where the Byzantine support set is n−f = 3 —
+every validator. Removing one stops the chain, and the TTL sweep runs inside block application, so
+the eviction rides on the very blocks the removal prevents: **at three validators the mechanism
+cannot be observed by removal at all.** That is why the new topology has four, where f = 1 and the
+three survivors still commit.
+
+*A SIDE OBSERVATION FROM THE ABLATION, not claimed as a result.* With the TTL ON the swarm recovered
+from losing a validator — the eviction dropped the set to three, and three of three is a support set
+the survivors can meet. With the TTL OFF the set stayed at four with one member permanently absent,
+and the chain advanced once and then crawled. Retention decay is doing liveness work here as well as
+Sybil work. That was measured on one run of each and is recorded as a thing to look at, not as a
+claim.
+
+*A caveat that travelled with the bond evidence, now CLOSED:* `integration/bond` used to RESULT IN
+FAIL on its `POSITIVE-2` control. That was the same adversary-harness era-mint defect as `redteam`,
+fixed at `ee4b21f`; the suite passes as a whole and `POSITIVE-2` now reads "goodpropose proposal
+ACCEPTED". The PHASE 1 and PHASE 3 arms this item reads were never the failing part.
 
 *Still owed:* the field tier.
 
@@ -459,8 +496,8 @@ it self-heals just fast enough to present as a flaky fetch. The other two suites
 `sybil`) asserted things the shipped safety rules deliberately forbid, and were rewritten to assert
 what the rules actually provide.
 
-*LOCAL, current HEAD:* `consensus` `bond` `redteam` `sybil` `chaos` `takedown` `privacy` `client`
-`nat` `audit` `economy` all PASS. `churn` could not be driven to completion in this environment
+*LOCAL, current HEAD:* `consensus` `bond` `redteam` `sybil` `retention` `chaos` `takedown` `privacy`
+`client` `nat` `audit` `economy` all PASS. `churn` could not be driven to completion in this environment
 (~18 min exceeds what a background task survives here); it passed before the daemon changes and its
 ground is covered below. `floor` was re-driven at this HEAD and now returns PASS rather than a
 FINDING, because the gap its verdict named — the ceiling on adversarial input — is closed.
