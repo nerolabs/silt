@@ -2319,14 +2319,12 @@ func joinSwarm(peers string, replication int) (*ephemeral, func(fn func(done fun
 	if err != nil {
 		return nil, nil, err
 	}
-	// Same DefaultConfig base as the daemon. This is the actual swarm
-	// add/get fetcher, so it inherits the retry; it stages and leaves,
-	// so the repair/demand fields are harmless (it never caretakes).
-	cfg := node.DefaultConfig()
-	cfg.RequestTimeout = ports.Duration(2 * time.Second)
-	cfg.RequireSignedProviders = true // reject forged/unsigned provider records on fetch (H5)
-	cfg.ProviderRecordTTL = ports.Duration(30 * time.Minute)
-	cfg.DHTDomainCap = 2 // resolve providers from a domain-spread set — eclipse resistance (H5-B)
+	// The client's network posture is one named thing (node.SwarmClientConfig),
+	// because the retry-don't-evict rule that keeps a publish alive on a lossy
+	// path is the same rule a daemon runs under and must not drift from it. The
+	// repair/demand fields it inherits are harmless: this node stages one object
+	// and leaves, and never caretakes.
+	cfg := node.SwarmClientConfig()
 	if replication > 0 {
 		cfg.Replication = replication // a publisher may pick a lower redundancy (parity backstops copies)
 	}
@@ -2356,8 +2354,10 @@ func joinSwarm(peers string, replication int) (*ephemeral, func(fn func(done fun
 		select {
 		case <-ch:
 			return nil
-		case <-time.After(5 * time.Minute):
-			return fmt.Errorf("swarm operation timed out")
+		case <-time.After(time.Duration(node.SwarmClientOperationCeiling)):
+			// The same ceiling the client REPORTS in its fetch posture, so the
+			// number an operator is shown cannot drift from the one enforced.
+			return fmt.Errorf("swarm operation timed out after %s", time.Duration(node.SwarmClientOperationCeiling))
 		}
 	}
 	e := &ephemeral{nd: nd, loop: loop, tr: tr}

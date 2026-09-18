@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/nerolabs/silt/adapters/discovery"
@@ -470,11 +471,20 @@ func swarmGet(args []string) error {
 		return err
 	}
 
+	// Announce the deadline structure BEFORE going to the network, so it is on
+	// the record whether the retrieval below succeeded or timed out. A failed
+	// fetch otherwise reports only which chunk had no reachable provider, which
+	// cannot distinguish a swarm that has lost the content from a path slower
+	// than the deadlines this client is holding it to.
+	posture := node.DeriveFetchPosture(node.SwarmClientConfig())
+	fmt.Fprintf(os.Stderr, "fetch posture: %s\n", posture)
+
 	f, err := os.Create(*out)
 	if err != nil {
 		return err
 	}
 	var getErr error
+	started := time.Now()
 	if rerr := run(func(done func()) {
 		e.nd.NetGet(reg, h, f, func(err error) { getErr = err; done() })
 	}); rerr != nil {
@@ -487,6 +497,11 @@ func swarmGet(args []string) error {
 		os.Remove(*out)
 		return getErr
 	}
+	// What the retrieval actually cost, against the ceiling it was held to. The
+	// pair is the point: an elapsed figure with no bound beside it grades
+	// nothing, and a bound with no measurement beside it is a claim.
+	fmt.Fprintf(os.Stderr, "fetch elapsed: %.3fs of a %.3fs operation ceiling\n",
+		time.Since(started).Seconds(), time.Duration(node.SwarmClientOperationCeiling).Seconds())
 	return f.Close()
 }
 

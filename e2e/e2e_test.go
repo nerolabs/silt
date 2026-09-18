@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -408,6 +409,21 @@ func runClient(t *testing.T, args ...string) string {
 		t.Fatalf("client %v: %v\n--- stdout ---\n%s\n--- stderr ---\n%s", args, err, stdout.String(), stderr.String())
 	}
 	return stdout.String()
+}
+
+// runClientStderr runs a one-shot client that must SUCCEED and returns its
+// stderr, which is where the client narrates — the posture it is holding the
+// network to, and what an operation actually cost against it. runClient
+// discards that half.
+func runClientStderr(t *testing.T, args ...string) string {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command(siltBin, args...)
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("client %v: %v\n--- stdout ---\n%s\n--- stderr ---\n%s", args, err, stdout.String(), stderr.String())
+	}
+	return stderr.String()
 }
 
 // runClientAllowErr runs a one-shot client and returns its combined output
@@ -833,7 +849,7 @@ func TestPublishCommitFetchOverTCP(t *testing.T) {
 	// chunks pulled across the swarm over TCP → verify → decode →
 	// decrypt.
 	dst := filepath.Join(t.TempDir(), "fetched.bin")
-	runClient(t, "swarm", "get", link, "-o", dst,
+	fetchErr := runClientStderr(t, "swarm", "get", link, "-o", dst,
 		"-peers", bootstrapA, "-registry", regRef)
 
 	got, err := os.ReadFile(dst)
@@ -842,5 +858,30 @@ func TestPublishCommitFetchOverTCP(t *testing.T) {
 	}
 	if !bytes.Equal(got, want) {
 		t.Fatalf("round-trip corrupted the file: got %d bytes, want %d", len(got), len(want))
+	}
+
+	// The retrieval narrated the deadline structure it ran under and what it
+	// spent against it. Both halves are load-bearing: a field harness derives
+	// its bound on a cross-region fetch from the posture line rather than from a
+	// number someone typed, and the elapsed line is what that bound is checked
+	// against. Asserted here so a rename cannot take the bound's source away
+	// while every unit test stays green.
+	if !strings.Contains(fetchErr, "fetch posture: ") {
+		t.Fatalf("the retrieval narrated no fetch posture, so a bound derived from the deployed\nconfiguration has nothing to read:\n%s", fetchErr)
+	}
+	if !strings.Contains(fetchErr, "operation ceiling ") {
+		t.Fatalf("the fetch posture named no operation ceiling — the outer bound every other\nnumber in it has to fit inside:\n%s", fetchErr)
+	}
+	m := regexp.MustCompile(`fetch elapsed: ([0-9.]+)s of a ([0-9.]+)s operation ceiling`).FindStringSubmatch(fetchErr)
+	if m == nil {
+		t.Fatalf("the retrieval reported no elapsed-against-ceiling pair:\n%s", fetchErr)
+	}
+	elapsed, _ := strconv.ParseFloat(m[1], 64)
+	ceiling, _ := strconv.ParseFloat(m[2], 64)
+	if ceiling <= 0 {
+		t.Fatalf("the reported operation ceiling is %v — a bound of zero grades nothing", ceiling)
+	}
+	if elapsed > ceiling {
+		t.Fatalf("the retrieval succeeded after %.3fs, past its own %.3fs ceiling: the client is\nnot enforcing the bound it reports", elapsed, ceiling)
 	}
 }
