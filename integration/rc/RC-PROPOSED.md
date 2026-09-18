@@ -563,7 +563,8 @@ and the anchors never shed.
 ## Tier B — reachable, none free
 
 **9. Consensus denials hold, and no honest node is ever slashed.** ⚠ *the distinctive clause now
-EXISTS and is driven: the narrated complement is GREEN, the committed one is RED*
+EXISTS and is driven: the narrated complement is GREEN, the committed one is UNDRIVEN — and chasing
+why turned up a product defect that is now fixed*
 Equivocation attributed;
 forged and under-bonded proposals rejected pre-attestation; a partition heals to one order.
 The honest-never-slashed property asserted over the whole run's slash set, not per attack.
@@ -588,7 +589,7 @@ from every seat that ever held a chain, before each is torn down:
 | set | what it answers | verdict |
 |---|---|---|
 | NARRATED — every identity any seat DECIDED to slash, from its own journal | item 9's clause at this suite's tier: a node that slashes an honest peer has violated it whether or not the proof reached a block | **PASS** — across 9 seats, exactly ONE identity was slashed and it is the equivocator's |
-| COMMITTED — the identities the HISTORY carries | the replicated, objective eviction (F2) — every replica evicting in lockstep rather than one local ledger | **FAIL — UNDRIVEN**: the chain commits nothing after the double-sign, so no block can carry the proof |
+| COMMITTED — the identities the HISTORY carries | the replicated, objective eviction (F2) — every replica evicting in lockstep rather than one local ledger | **FAIL — UNDRIVEN**: the drill's seats are non-objective, so the drain that carries the proof never runs there |
 
 *NEITHER CAN PASS VACUOUSLY.* The narrated complement is paired with scenario 1, which guarantees
 the set is non-empty — an empty slash set satisfies "no honest node was slashed" perfectly and
@@ -611,12 +612,34 @@ The equivocation chain does not commit another block after the double-sign. So n
 to carry the proof, and the replicated eviction has never been exercised — not here, and, since this
 is the only topology that produces an equivocation, not anywhere.
 
-*THE REASON IS THE ONE THE QUORUM FLOOR PREDICTS, AND IT IS CIRCULAR.* The equivocation topology
-runs three anchors. The double-signer is one of them, and the moment the two honest seats evict it
-locally they are two of three — at which point the chain stops committing. **The eviction that the
-chain would need to record is the thing that stops the chain that would record it.** A drill on more
-than three anchors is what breaks the circle, and that is what is owed before this half can say
-anything about the product at all.
+*THE FIRST ATTRIBUTION WAS WRONG, AND THE PROBE THAT CORRECTED IT FOUND A PRODUCT DEFECT.* This
+sheet said the cause was the quorum floor: three anchors, the double-signer is one, evicting it
+locally leaves two of three and the chain stops — "the eviction the chain would need to record is
+what stops the chain that would record it." That reads well and it is FALSE. It was inferred from
+the topology rather than measured, and the measurement says otherwise.
+
+*WHAT THE JOURNALS ACTUALLY SHOW,* driven on the equivocation topology alone 2026-09-19: both
+honest nodes committed their blocks, slashed the culprit, and then committed nothing for the rest of
+a 180 s window — with NO `bond-reg drain blocked at own sign slot`, no `round-change: advancing`, and
+no `stalled-at-boundary`. A chain short of quorum ladders rounds and says so. This one said nothing,
+because it was not wedged and was not short of quorum. **It was QUIESCENT** — idle, by design, while
+holding an eviction it had already proven.
+
+*THE DEFECT: A QUEUED EQUIVOCATION PROOF WAS NOT WORK.* `slashEquivocators` queues the proof so the
+objective set evicts the culprit in lockstep on every replica (F2) rather than in one local ledger.
+But the proof rides only a block someone proposes, and nothing armed a proposal BECAUSE one was
+held: the drain sweep's quiescence rule counted pending bond registrations, pending entries, an own
+renewal due and foldable issuer keys, and the rank-walk takeover branch counted entries. Neither
+counted a slash. On a busy chain unrelated traffic carried the proof along soon enough to hide it;
+on an idle one it never landed — and idle is the case that matters, because an attacker equivocates
+and then goes quiet. Fixed in both branches, each ablated separately because one test cannot see
+both, and a slash-only block is not empty so this cannot arm a proposal with nothing to carry.
+
+*THE DRILL'S OWN HALF IS STILL UNDRIVEN, FOR A DIFFERENT REASON THAN THE ONE FIRST WRITTEN HERE.*
+`integration/redteam`'s equivocation seats run `-objective=false`, and the drain path is gated on
+`Objective()` in its first line — so on those nodes it never runs at all, fix or no fix. Driving the
+committed complement there needs an objective equivocation topology, which is a change to the DRILL
+and not to the product. The narrated complement is unaffected and stays green.
 
 *SO THE SUITE IS RED FOR A REASON WORTH BEING RED FOR.* "Skipped", "gap" and "not run" are all
 failures here, and an undriven half of the accountability claim is exactly that. What is NOT claimed
