@@ -1321,12 +1321,61 @@ structural close is the one #5 already names — **keep large payloads off the c
 proofs > FEC > QUIC)** — and v5 already has the hook: `BondReg.AnswerDigest` exists so a block can
 COMMIT to the heavy proof without CARRYING it.
 
-*WHAT IS OWED.* Four things, in this order. (1) A deterministic repro at the tier the bug lives at:
-the cheapest is a byte-rate term in simnet — deliver at `latency + len(msg.Data)/RateBytesPerSec`,
-with a bounded per-link send queue — which turns a field-only finding into a unit-tier test that is
-red before the fix and green after (V5). (2) A composed arm in `integration/adversarial`, so the four
-conditions are exercised together somewhere below the field. (3) The structural close on the payload,
-and a bound on the outbound path. (4) A decision about what all of this means for the date. The
+*OWED ITEM (1) IS DONE: THE REPRO EXISTS BELOW THE FIELD TIER.* `simnet.Config` now carries
+`RateBytesPerSec`, so a link has finite capacity — a message costs serialization time and messages
+behind it WAIT. Opt-in: with no rate configured a 64 MiB message still arrives at t=0, which is what
+leaves every scenario written against atomic delivery unchanged. On top of it, `core/node` drives
+the same 1.5 MiB request on either side of the assumed floor — it times out at a quarter of the
+floor (24 s of wire against a 14 s deadline) and succeeds at the floor.
+
+*AND WORKING OUT WHAT "BELOW THE FLOOR" MEANS WAS THE EXERCISE.* The first cut used HALF the floor
+and PASSED, because the 8 s base absorbs it. A request fits whenever the wire beats
+`payload / deadline` = 112 KiB/s, itself below the floor. The tolerance is
+`base / (base + extension)`, so it SHRINKS as the payload grows: at 1.5 MiB the wire may run 43%
+slow; at 15 MiB the extension caps at 30 s and the tolerance collapses. The under-budgeting is worst
+exactly where the payload is largest, which is the consensus critical path.
+
+*OWED ITEM (2) WAS DRIVEN, AND THE RESULT REFRAMES IT.* The composed profile — all four conditions
+at once — was run against the full P0 gate on an impaired LOOPBACK, and the drills PASS:
+`TestBondEarnedStandingCommitsOverTCP` 27 s, `TestObjectiveConsensusCommitsOverTCP` 50 s,
+`TestPublishCommitFetchOverTCP` 48 s, `TestEquivocatorSlashedOverTCP` 42 s. **The field wedge does
+not reproduce on loopback.** The bond-standing drill carries the same ~1.5 MB registration that
+stopped the chain in the field, and it finished in 27 s.
+
+*THAT IS A FINDING ABOUT THE TIER, NOT A CLEAN BILL.* The mechanism is the DELIVERED RATE falling
+below the deadline's assumed floor. Loopback's capacity is not the constraint, so the four
+conditions degrade timing there without ever starving the wire — the same structural blindness the
+sim had, one tier up. The sim could not express rate because it had none; loopback cannot express it
+because it has too much. A composed arm is therefore cheap to add and will not destabilise the
+nightly, but it must NOT be sold as covering this item's failure: it closes a COVERAGE gap (the four
+conditions had never been exercised together anywhere) and buys no early warning of the wedge.
+
+*A RATE ARM WAS TRIED AND IS NOT ADDED, AND THE REASON IS WORTH THE LINES.* `tc netem rate` caps
+bandwidth directly and is the loopback analogue of the `RateBytesPerSec` term now in simnet, so it
+looked like the arm that would see this class. Driven at `rate 1mbit` (128 KiB/s, half the assumed
+floor) it DOES break the gate — and it breaks it in the wrong place:
+
+```
+TestBondEarnedStandingCommitsOverTCP FAIL (31.8s)
+  silt: manifest chunk 93678b1f… placed on no node after 4 attempts (network full or unreachable)
+```
+
+That is the PUBLISH/PLACEMENT leg timing out, not a consensus deadline being missed. The publish
+path gives up placing chunks long before consensus notices anything, so the red names a cause that
+is not the mechanism — and an arm whose failure points at the wrong subsystem is worse in the
+nightly than no arm, because the next reader spends their time there.
+
+*SO THE RATE ARM IS OWED A CALIBRATION, not a decision.* It needs a rate low enough to squeeze the
+consensus payload against its size-extended deadline but high enough that placement still completes
+— or it needs to drive the consensus drills alone rather than the full gate. Until that number is
+measured the arm stays out; what ships is the composed arm, which is green and closes the coverage
+gap honestly. The unit-tier repro above already covers the arithmetic deterministically, so nothing
+is UNTESTED here — what is missing is the loopback early-warning, and it is missing on purpose
+rather than by omission.
+
+*WHAT IS OWED.* (3) The structural close on the payload, and a bound on the outbound path. (4) A
+decision about what it means for the date — and the structural close is plausibly a NEW ERA rather
+than a validity tightening, which by the frozen-format rule does not happen before it. The
 publish/fetch half is done and is not affected by any of it.
 
 **22. Every item has a cloud-harness run.** Each item above named in a cloud scenario, with

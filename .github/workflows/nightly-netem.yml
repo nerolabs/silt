@@ -47,6 +47,22 @@ jobs:
             # `reorder` requires a delay — tc rejects it outright otherwise, which
             # the harness renders as a HARNESS ERROR (exit 3), never a clean pass.
             netem: "delay 20ms reorder 25% 50%"
+          - arm: composed
+            # ALL FOUR AT ONCE. Every arm above drives ONE condition, so the
+            # INTERACTION had never been exercised anywhere below the field — which
+            # is how a composition failure reached a field run undetected.
+            #
+            # ⚠ THIS ARM CLOSES A COVERAGE GAP AND BUYS NO EARLY WARNING OF THAT
+            # FAILURE, and the difference matters. Driven 2026-09-19 against the full
+            # P0 gate: 7 of 7 drills PASS, the bond-standing drill carrying the same
+            # ~1.5 MB registration that stopped the chain in the field finishing in
+            # 27 s. The field mechanism is the DELIVERED RATE falling below the
+            # deadline's assumed floor, and loopback's capacity is never the
+            # constraint — so the four conditions degrade timing here without ever
+            # starving the wire. Read a red on this arm as an interaction bug in the
+            # drills, never as the field wedge reproducing.
+            netem: "delay 80ms 20ms distribution normal loss 1% reorder 25% 50%"
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
