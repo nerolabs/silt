@@ -862,7 +862,7 @@ verdict, not a participating validator.
 
 ## Tier C — field
 
-**21. Publish and fetch work on the internet as it is.** ⚠ *DRIVEN IN THE FIELD. The publish/fetch half is GREEN; the chain does NOT keep committing under all four conditions at once, and that is a composition failure with no mechanism yet*
+**21. Publish and fetch work on the internet as it is.** ⚠ *DRIVEN IN THE FIELD. The publish/fetch half is GREEN; the chain does NOT keep committing under all four conditions at once. The mechanism is NAMED — the ~1.5 MB bond proof on the consensus critical path against a deadline sized off a link rate the composed wire does not deliver — and the instrumentation turned up a SECOND failure, unbounded outbound frames, that OOM-killed a validator*
 A NATed publisher in one region, a cold fetcher in another, bit-perfect bytes inside a bound
 derived from the deployed configuration. The chain keeps committing under sustained load with
 injected latency, jitter, loss and reordering.
@@ -1004,12 +1004,147 @@ and the same order.
 under sustained load with injected latency, jitter, loss and reordering" is false as stated: it keeps
 committing under each of them and stops under all of them. That is a composition failure, not a
 threshold one, and it is the shape build-immutable #5 is least equipped to catch — the nightly netem
-gate drives one arm per run, by design, so the interaction has never been exercised anywhere. It is
-not attributed to a mechanism yet: the next step is the validators' own debug logs across an impaired
-window, not another run.
+gate drives one arm per run, by design, so the interaction has never been exercised anywhere.
 
-*WHAT IS OWED.* A mechanism for the composition failure, and a decision about what it means for the
-date. The publish/fetch half is done.
+*THE MECHANISM IS NAMED, from the validators' own `-log debug` journals across an impaired window
+rather than from another run.* Driven locally 2026-09-18, reproducing the field shape a third time:
+749 s without a commit, zero heights, 0 of 2 publishes landed, impairment credited by netem's own
+counters on all four validator seats.
+
+**The failure is that the chain stops committing under all four conditions at once BECAUSE every
+consensus proposal carries the full ~1.5 MB space-time bond proof (`BondReg.Answer`) on the critical
+path, and its per-attempt transport deadline is sized from an ASSUMED 256 KiB/s floor
+(`RequestSizeFloorBytesPerSec`) that the four-condition wire does not deliver.** Measured on the
+impaired validator links: 53–181 KB/s, 0.2×–0.7× the assumed floor, because reordering and loss
+TOGETHER keep cubic permanently in recovery in a way neither does alone. The attester does receive
+the block and does prepare it — and its signed reply lands after the proposer has already declared
+the attempt timed out and re-sent the whole 1.5 MB on the same shared, ordered per-peer TLS
+connection. Each retry adds another 1.5 MB to a queue draining at ~110 KB/s, which lowers the
+delivered rate further, so no attempt in the ladder ever fits.
+
+*THE ARITHMETIC CLOSES, which is what makes this an attribution rather than a story.*
+
+| quantity | value |
+|---|---|
+| proposal size | `bytes=1575208`, `regs=1` — one space-time proof, on EVERY block h1–h5 |
+| per-attempt deadline | 8 s base + 1,575,208 B / 262,144 B/s = **14.009 s** |
+| first copy finishes arriving at val-c | `gather/prepare: PREPARED` at **t+14.004 s** |
+| whole ladder (4 attempts + 1.75 s backoff) | predicted 57.8 s, observed **57.43 s**, `NO PREPARE QUORUM … gathered=0 needed=2` |
+| the same 1.5 MB gather, unimpaired, minutes earlier | **19 ms** |
+
+The block finishes crossing at the instant the sender stops waiting for it, leaving 5 ms for a reply
+that needs a full round trip. That is the whole failure in one line.
+
+*THE RETRY LADDER FEEDS THE CONGESTION IT IS RECOVERING FROM, and the attesters' journals prove it.*
+All three attesters logged `gather/prepare: PREPARED` for val-a's h5 r1 block FOUR times each — once
+per retry — the last copies landing 86 s AFTER the gather that sent them had already terminated. Four
+attempts × three attesters × 1.5 MB is 18 MB pushed onto links delivering ~110 KB/s, for one round of
+one height that was already declared failed. Sampled `ss -tin` on val-a → val-d through the window:
+
+| t+ | Send-Q | cwnd | rtt | `dsack_dups` | delivery_rate |
+|---|---|---|---|---|---|
+| 91 s | 1.93 MB | 16 | 158 ms | 309 | 181 KB/s |
+| 112 s | 2.43 MB | 4 | 139 ms | 395 | 76 KB/s |
+| 132 s | 1.63 MB | 9 | 163 ms | 468 | **53 KB/s** |
+| 152 s | 1.28 MB | 11 | 155 ms | 564 | 79 KB/s |
+| 172 s | 2.33 MB | 10 | 140 ms | 649 | 63 KB/s |
+
+A standing 1.3–2.4 MB backlog that never drains, with spurious-retransmit counts climbing
+monotonically. Any consensus frame written into it — a 200-byte round-change included — waits
+8–40 s before its first byte reaches the wire.
+
+*AND THE BACKLOG IS ONLY ON THE LINKS CARRYING THE PROOF.* Under the identical shaping, val-a's links
+to store-1, store-2, relay and fetch-1 sat at `sendq=0` the whole window. The bulk traffic starving
+consensus is CONSENSUS'S OWN payload, not the storage plane — which is the opposite of the obvious
+guess and is why this had to be measured rather than reasoned about.
+
+*CLIMBING THE ROUND LADDER CANNOT ESCAPE IT.* At h5 r2 val-c proposed and its attesters prepared at
++25 s and +33 s against the same fixed 14.0 s deadline; val-c had already advanced to r3. The
+synchronizer's escape is an INCREASING ROUND DURATION (`sweepsForRound`: 2, 3, 5, 8 … sweeps × 30 s
+`ChainSyncInterval`). The thing that fails is a FIXED per-attempt transport deadline against a link
+the previous round's undrained copies have already slowed. The escape is orthogonal to the failure,
+so each additional round adds backlog and makes the next one worse. That is why this is a wedge
+rather than a slowdown, and why the 220 s escape bound was never going to cover it.
+
+*THIS PROMOTES A RESIDUAL THIS SHEET ALREADY CARRIES.* "The bonded set is capped by bandwidth", under
+*Known open*, says each validator republishes a multi-megabyte possession proof every few minutes and
+every other validator must receive and verify all of it. That residual is worse than carried: at
+FOUR validators, on the everyday impaired internet build-immutable #5 names as the default case, the
+renewal traffic does not merely cap the practical set size — it stops the chain.
+
+*A SECOND FAILURE THE INSTRUMENTATION TURNED UP, and it is a build-immutable #8 hit.* Under the same
+profile every shaped validator's resident set grows MONOTONICALLY with no plateau, and one was
+OOM-killed. RSS sampled every ~34 s through one 12-minute window:
+
+| node | shaped? | t+0 | t+374 | t+748 | cgroup `memory.events` |
+|---|---|---|---|---|---|
+| val-d | yes | 48 MB | 436 MB | **1054 MB** | **`oom_kill 1`**, peak 1075 MiB (1.05 GiB) |
+| val-b | yes | 58 MB | 359 MB | 906 MB | peak 1.010 GiB |
+| val-a | yes | 47 MB | 316 MB | 749 MB | peak 0.937 GiB |
+| val-c | yes | 64 MB | 221 MB | 463 MB | peak 0.674 GiB |
+| `adversary` — a bonded chain-holder, egress **NOT** shaped | no | 45 MB | 83 MB | 73 MB | flat all window |
+
+The unshaped control is what makes that column a measurement: same run, same box, same blocks, flat
+at 70–95 MB while every shaped seat climbs an order of magnitude.
+
+*ITS CAUSE IS AT THE SOURCE, not inferred.* `tcpnet.(*Transport).Send` marshals each frame and hands
+it to `go t.deliver(…)` — one unbounded goroutine per frame — and each goroutine RETAINS its whole
+marshalled frame while it waits on the per-peer write mutex `peerConn.wmu` and then on a socket whose
+send buffer already holds megabytes. The inbound path has a 256 MB gate with per-peer fairness
+(`adapters/tcpnet/inbound.go`); there is no outbound equivalent. Profiled on a second run with
+`DEBUG_PROFILE=1`:
+
+| | clean wire | t+130 s | t+260 s |
+|---|---|---|---|
+| val-d goroutines, total | 26 | 160 | 451 |
+| … in `deliver` → `peerConn.write` | 0 | **134 (84%)**, 130 parked on `wmu` | **425 (94%)**, 421 parked |
+| val-a goroutines, total | 30 | 87 | 172 |
+| … in `deliver` → `peerConn.write` | 0 | **56 (64%)**, 54 parked on `wmu` | **141 (82%)**, 138 parked |
+
+Nothing else grows. The whole goroutine population IS the outbound backlog, and the fraction parked
+on one peer's write mutex rises with it — 84% to 94% on val-d across two minutes.
+
+The heap agrees from the other side: at t+130 s `cbor.(*encMode).Marshal` — which is `Send`'s own
+frame encode — held **70.4% of val-d's live heap (65.0 MB of 92 MB)** and 43.9% of val-a's. The live
+heap IS the retained outbound frames.
+
+*WHAT THAT SECOND FINDING DOES NOT CLAIM.* These containers carry no cgroup ceiling — the LOCAL
+provisioner sets no `mem_limit` — so val-d's kill came from VM-wide pressure, not from a 2 GiB limit
+being crossed. What is measured is the SLOPE and its attribution: monotone growth to 1075 MiB with
+no plateau, in a structure that has no bound at all. Item 14's memory-ceiling leg measured honest
+load at depth (12% of the ceiling) and three adversarial seats (1–4%); none of them is a validator
+under the composed impairment, and item 14 already says how to read this — "*if a pinned seat ever
+OOMs, that is the finding, not a tuning problem.*" Whether a cgroup-pinned floor seat OOMs under this
+profile is a drill nobody has run.
+
+*THE TWO FINDINGS SHARE AN UPSTREAM AND ARE STILL TWO FINDINGS.* The 1.5 MB payload is what makes the
+unbounded outbound queue expensive rather than merely unbounded: each retry re-marshals and re-parks
+another 1.5 MB. Taking the proof off the critical path shrinks the second finding by three orders of
+magnitude but does not BOUND it — the outbound path would still have no cap, and #8 and S3 want a
+bound, not a small number.
+
+*WHY NOTHING BELOW THE FIELD COULD HAVE CAUGHT EITHER.* `adapters/simnet.Config` is
+`{LatencyMin, LatencyMax, Loss}`, and a message is delivered atomically after a latency draw — no
+bandwidth, no serialization delay, no send queue. A failure whose entire mechanism is "payload bytes
+÷ link rate exceeds the deadline" cannot exist in the sim tier however many scenarios are enumerated,
+and neither can a queue that grows because the wire is slower than the producer. That is a gap in the
+evidence pipeline, not in the code under test, and it is the reason V1's sim-first tier saw nothing.
+
+*WHAT THE FIX IS NOT.* A knob. `-request-timeout`, `RequestSizeFloorBytesPerSec` and the retry count
+are transport numbers whose only effect is to move where the cliff sits; #5 names "payload-scaled,
+never a magic constant" and #3 forbids resting anything on a number the adversary's own path can
+move. Raising the floor would also widen `maxChainReplyBytes`, which is derived from it. The
+structural close is the one #5 already names — **keep large payloads off the critical path (succinct
+proofs > FEC > QUIC)** — and v5 already has the hook: `BondReg.AnswerDigest` exists so a block can
+COMMIT to the heavy proof without CARRYING it.
+
+*WHAT IS OWED.* Four things, in this order. (1) A deterministic repro at the tier the bug lives at:
+the cheapest is a byte-rate term in simnet — deliver at `latency + len(msg.Data)/RateBytesPerSec`,
+with a bounded per-link send queue — which turns a field-only finding into a unit-tier test that is
+red before the fix and green after (V5). (2) A composed arm in `integration/adversarial`, so the four
+conditions are exercised together somewhere below the field. (3) The structural close on the payload,
+and a bound on the outbound path. (4) A decision about what all of this means for the date. The
+publish/fetch half is done and is not affected by any of it.
 
 **22. Every item has a cloud-harness run.** Each item above named in a cloud scenario, with
 the gaps written down as decisions rather than left as silence.
@@ -1074,6 +1209,14 @@ runs at half of it, so each validator republishes a multi-megabyte possession pr
 minutes, and every other validator must receive and verify all of it. Each node ingests the
 set size times that volume. This is live traffic, so retention policy does not touch it, and
 it caps the practical bonded set well below the intended participant count.
+
+*THIS STOPPED BEING ONLY A SCALE CAP ON 2026-09-18.* Item 21's second half attributes a chain
+wedge to this same traffic at FOUR validators: the proof rides the consensus critical path, so a
+link that cannot carry 1.5 MB inside the per-attempt deadline cannot commit a height at all, and
+the retry ladder re-ships the proof into the congestion it is recovering from. The residual is
+therefore a LIVENESS bound on the adverse internet, not only a participant-count bound on a
+healthy one. The same traffic is also what makes the unbounded outbound frame queue found beside
+it expensive. See item 21 for the evidence and the structural close.
 
 ## Tenets that could not be reduced to a demonstration
 
