@@ -562,10 +562,66 @@ and the anchors never shed.
 
 ## Tier B — reachable, none free
 
-**9. Consensus denials hold, and no honest node is ever slashed.** Equivocation attributed;
+**9. Consensus denials hold, and no honest node is ever slashed.** ⚠ *the distinctive clause now
+EXISTS and is driven: the narrated complement is GREEN, the committed one is RED*
+Equivocation attributed;
 forged and under-bonded proposals rejected pre-attestation; a partition heals to one order.
 The honest-never-slashed property asserted over the whole run's slash set, not per attack.
 *model-check → e2e → field.*
+
+*THE CLAUSE DID NOT EXIST, WHICH IS WHY IT COULD NOT FAIL.* `integration/redteam` asserted that the
+equivocator WAS slashed — one assertion per attack — and nothing asserted the complement. Every
+attack in that suite could pass while an honest seat was being slashed beside it, because no seat's
+slash set was ever read. The complement is a claim about a SET, and the set had no reading surface:
+the only one was the daemon's `chain: slashed equivocator` narration, which says what a node
+DECIDED, not what the history COMMITTED.
+
+*THE SURFACE EXISTS NOW.* `silt chain-status` reports the committed slash set — one line per
+CULPRIT, keyed by identity rather than by evidence, with the height each was first committed at,
+and an explicit narrated zero rather than a missing line (a missing line and a zero are the same
+character to a scraper). Gated by `cmd/silt/chainstatus_slashset_test.go`, driven RED against the
+reader without it and green after.
+
+*IT IS ASSERTED OVER TWO SETS, BECAUSE THEY ANSWER DIFFERENT QUESTIONS.* The suite collects both
+from every seat that ever held a chain, before each is torn down:
+
+| set | what it answers | verdict |
+|---|---|---|
+| NARRATED — every identity any seat DECIDED to slash, from its own journal | item 9's clause at this suite's tier: a node that slashes an honest peer has violated it whether or not the proof reached a block | **PASS** — across 9 seats, exactly ONE identity was slashed and it is the equivocator's |
+| COMMITTED — the identities the HISTORY carries | the replicated, objective eviction (F2) — every replica evicting in lockstep rather than one local ledger | **FAIL — UNDRIVEN**: the chain commits nothing after the double-sign, so no block can carry the proof |
+
+*NEITHER CAN PASS VACUOUSLY.* The narrated complement is paired with scenario 1, which guarantees
+the set is non-empty — an empty slash set satisfies "no honest node was slashed" perfectly and
+proves nothing. The committed complement is paired with the culprit's own presence and, when the
+set is empty, with whether the head ADVANCED after the detection: a chain that committed nothing had
+no block to carry the proof, and calling that a dropped slash would be a verdict naming the wrong
+cause. The rule asserted is stricter than the clause — exactly one identity may be slashed anywhere
+in the run — because silt slashes PROVEN EQUIVOCATION and nothing else, so a slash landing on the
+forger or the low-bond proposer would be an attributability failure too.
+
+*THE COMMITTED HALF IS RED, AND IT IS A PREMISE FAILURE RATHER THAN A PRODUCT ONE — which took a
+second drive to establish, because the first one could not tell the two apart.* Detection only
+QUEUES the proof (`core/node` `pendingSlashes`) for on-chain recording, whose own comment says it
+exists "so the OBJECTIVE set evicts the culprit in lockstep on every replica (F2), not just this
+local ledger". An absent committed slash therefore means one of two very different things, and only
+the head tells them apart. The gate now records it: **`the on-chain slash did not land within 90s on
+equiv-yz; head 2 → 2, advanced=no`.**
+
+The equivocation chain does not commit another block after the double-sign. So no block ever existed
+to carry the proof, and the replicated eviction has never been exercised — not here, and, since this
+is the only topology that produces an equivocation, not anywhere.
+
+*THE REASON IS THE ONE THE QUORUM FLOOR PREDICTS, AND IT IS CIRCULAR.* The equivocation topology
+runs three anchors. The double-signer is one of them, and the moment the two honest seats evict it
+locally they are two of three — at which point the chain stops committing. **The eviction that the
+chain would need to record is the thing that stops the chain that would record it.** A drill on more
+than three anchors is what breaks the circle, and that is what is owed before this half can say
+anything about the product at all.
+
+*SO THE SUITE IS RED FOR A REASON WORTH BEING RED FOR.* "Skipped", "gap" and "not run" are all
+failures here, and an undriven half of the accountability claim is exactly that. What is NOT claimed
+is that the product drops a queued slash — this run cannot see that far, and the verdict says so in
+those words rather than implying a defect it did not measure.
 
 **10. A prover without the bytes fails the audit and is paid nothing.** Three defeats: the
 care link printed on every publish is the storage-proof verification key; a data-less
@@ -1087,6 +1143,11 @@ OOM-killed. RSS sampled every ~34 s through one 12-minute window:
 The unshaped control is what makes that column a measurement: same run, same box, same blocks, flat
 at 70–95 MB while every shaped seat climbs an order of magnitude.
 
+*IT REPRODUCED ON A SECOND RUN, on a freshly provisioned fleet.* Same profile, same seat role,
+`oom_kill 1` again, and a higher peak: 1223 MiB against the first run's 1075 MiB, with the other
+three seats at 642–815 MiB. The chain verdict reproduced with it — 747 s without a commit against
+the first run's 749 s. Two runs, two OOM kills, the same order on both.
+
 *ITS CAUSE IS AT THE SOURCE, not inferred.* `tcpnet.(*Transport).Send` marshals each frame and hands
 it to `go t.deliver(…)` — one unbounded goroutine per frame — and each goroutine RETAINS its whole
 marshalled frame while it waits on the per-peer write mutex `peerConn.wmu` and then on a socket whose
@@ -1094,15 +1155,21 @@ send buffer already holds megabytes. The inbound path has a 256 MB gate with per
 (`adapters/tcpnet/inbound.go`); there is no outbound equivalent. Profiled on a second run with
 `DEBUG_PROFILE=1`:
 
-| | clean wire | t+130 s | t+260 s |
-|---|---|---|---|
-| val-d goroutines, total | 26 | 160 | 451 |
-| … in `deliver` → `peerConn.write` | 0 | **134 (84%)**, 130 parked on `wmu` | **425 (94%)**, 421 parked |
-| val-a goroutines, total | 30 | 87 | 172 |
-| … in `deliver` → `peerConn.write` | 0 | **56 (64%)**, 54 parked on `wmu` | **141 (82%)**, 138 parked |
+| goroutines, total | clean | t+0 | t+130 | t+260 | t+390 | t+520 | t+650 |
+|---|---|---|---|---|---|---|---|
+| val-d | 26 | 26 | 160 | 451 | 761 | 1101 | **1449** |
+| val-a | 30 | 30 | 87 | 172 | 339 | 445 | **708** |
+
+No plateau in eleven minutes. Where they are, at the two sampled depths:
+
+| | t+130 s | t+260 s |
+|---|---|---|
+| val-d in `deliver` → `peerConn.write` | **134 of 160 (84%)**, 130 parked on `wmu` | **425 of 451 (94%)**, 421 parked |
+| val-a in `deliver` → `peerConn.write` | **56 of 87 (64%)**, 54 parked on `wmu` | **141 of 172 (82%)**, 138 parked |
 
 Nothing else grows. The whole goroutine population IS the outbound backlog, and the fraction parked
-on one peer's write mutex rises with it — 84% to 94% on val-d across two minutes.
+on one peer's write mutex rises with it — 84% to 94% on val-d across two minutes. Each of those
+goroutines holds its own marshalled frame, so the count IS the memory curve, counted.
 
 The heap agrees from the other side: at t+130 s `cbor.(*encMode).Marshal` — which is `Send`'s own
 frame encode — held **70.4% of val-d's live heap (65.0 MB of 92 MB)** and 43.9% of val-a's. The live

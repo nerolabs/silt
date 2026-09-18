@@ -58,7 +58,7 @@ cleanup() {
   [ "${KEEP:-0}" = 1 ] && return 0
   dc --profile equiv --profile propose down -v >/dev/null 2>&1 || true
   ft_sweep "$PROJECT"
-  rm -f "$(dirname "$0")/silt"
+  rm -f "$(dirname "$0")/silt" "${SLASH_SEEN:-}" "${SLASH_NARRATED:-}" "${SLASH_HEADS:-}"
 }
 # EXIT alone is not enough. The run-all driver kills a suite that overruns its
 # cap with SIGTERM precisely so this trap can tear the topology down, and a
@@ -92,6 +92,88 @@ fail() { echo "  FAIL: $*"; PASS=0; }
 # landed. A peak from a seat nothing reached is not evidence about the ceiling.
 EQUIV_OK=0      # the detector caught and slashed the double-signer
 PROPOSE_OK=0    # h3 refused both crafted proposals and committed neither
+
+# THE WHOLE RUN'S SLASH SET (item 9's distinctive clause). "The equivocator was
+# slashed" is one assertion per attack, and every attack in this suite can pass
+# it while an honest seat is being slashed beside it — the complement is a claim
+# about the SET, so the set has to be collected across every seat that ever held
+# a chain, and collected BEFORE each seat is torn down.
+#
+# It is read from COMMITTED STATE (`silt chain-status`), not from the daemon's
+# `chain: slashed equivocator` narration the positive assertion uses. Those two
+# surfaces answer different questions — what a node DECIDED versus what the
+# history COMMITTED — and the gap between them is exactly where an honest slash
+# would hide.
+SLASH_SEEN="$(mktemp)"                  # committed: one "<svc> <id>" per line
+SLASH_NARRATED="$(mktemp)"              # narrated:  one "<svc> <id>" per line
+SLASH_HEADS="$(mktemp)"                 # one "<svc> <head-height|none>" per line
+SLASH_READS=0                           # seats whose committed set was read at all
+
+# seat_head: the seat's committed head height, or "none" when it has no chain.
+# It is collected beside the slash set because the two together are what make an
+# EMPTY committed set readable: a seat that never committed a block cannot
+# possibly carry a slash, and calling that a dropped slash would be a verdict
+# naming the wrong cause.
+seat_head() { # seat_head <chain-status output>
+  if printf '%s' "$1" | grep -qE 'head height: +[0-9]+'; then
+    printf '%s' "$1" | grep -oE 'head height: +[0-9]+' | grep -oE '[0-9]+' | head -1
+  else
+    printf 'none'
+  fi
+}
+
+collect_slash_set() { # collect_slash_set <svc>...
+  local svc out
+  for svc in "$@"; do
+    out="$(dc exec -T "$svc" silt chain-status -store /data 2>/dev/null || true)"
+    # A seat with no chain yet prints the no-chain line and no `slashed:` line.
+    # That is a legitimate reading of an empty set ONLY if the command ran; a
+    # seat we could not reach contributes nothing and must not be counted as one
+    # that reported clean.
+    printf '%s' "$out" | grep -qE 'slashed:[[:space:]]+[0-9]+|no chain yet' || continue
+    SLASH_READS=$(( SLASH_READS + 1 ))
+    printf '%s %s\n' "$svc" "$(seat_head "$out")" >> "$SLASH_HEADS"
+    printf '%s' "$out" | grep -oE 'slashed-id:[[:space:]]+[0-9a-f]{64}' \
+      | grep -oE '[0-9a-f]{64}' | while read -r id; do printf '%s %s\n' "$svc" "$id"; done >> "$SLASH_SEEN"
+    # The NARRATED set from the same seat: every identity this daemon ever
+    # decided to slash, committed or not. This is the surface item 9's clause
+    # can always be asserted over — a node that slashes an honest peer has
+    # violated it whether or not the proof ever reached a block.
+    dc logs "$svc" 2>&1 | grep -oE 'chain: slashed equivocator [0-9a-f]{64}' \
+      | grep -oE '[0-9a-f]{64}' | while read -r id; do printf '%s %s\n' "$svc" "$id"; done >> "$SLASH_NARRATED"
+  done
+}
+
+# wait_slash_committed: give the ON-CHAIN half of the slash a bounded chance to
+# land before the set is read. Detection queues the proof (core/node pendingSlashes);
+# it reaches committed state only when a holder of that queued proof gets a block
+# COMMITTED carrying it, which is at least one consensus round later. Reading the
+# set the instant the detection line appears measures the queue, not the chain.
+#
+# IT ALSO RECORDS WHETHER THE CHAIN MOVED AT ALL during the wait, because that is
+# what makes the eventual verdict decisive instead of ambiguous. An absent slash
+# means one of two very different things, and only the head tells them apart:
+#   - the head never advanced   → no block existed to carry it. The drill never
+#                                 gave the on-chain half a chance: a premise
+#                                 failure, and the finding is about the topology.
+#   - the head DID advance      → a block committed after the detection and did
+#                                 not carry the queued proof. The finding is
+#                                 about the product.
+SLASH_HEAD_MOVED=no
+wait_slash_committed() { # svc culprit-id timeout_s
+  local svc=$1 want=$2 t=${3:-90} deadline out h0 h
+  h0="$(seat_head "$(dc exec -T "$svc" silt chain-status -store /data 2>/dev/null || true)")"
+  deadline=$(( $(date +%s) + t ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    out="$(dc exec -T "$svc" silt chain-status -store /data 2>/dev/null || true)"
+    h="$(seat_head "$out")"
+    [ "$h" != "$h0" ] && [ "$h" != none ] && SLASH_HEAD_MOVED=yes
+    printf '%s' "$out" | grep -q "$want" && { SLASH_HEAD_MOVED=yes; return 0; }
+    sleep 3
+  done
+  echo "  (the on-chain slash did not land within ${t}s on ${svc}; head ${h0} → ${h:-?}, advanced=${SLASH_HEAD_MOVED})"
+  return 1
+}
 SPEC_X=UNREAD; SPEC_H3=UNREAD      # did the floor spec bind on that seat
 PEAK_X=""; PEAK_H3=""              # memory.peak, read before the seat is removed
 OOM_X=unknown; OOM_H3=unknown
@@ -215,6 +297,12 @@ OOM_X=$(ft_oom_killed "$PROJECT" equiv-x)
 echo "  -- the detector's memory ceiling, measured across the attack --"
 echo "  equiv-x memory.peak = $(ft_peak_report "${PEAK_X:-}" "$FLOOR_MEM")"
 [ "$OOM_X" != "true" ] || fail "equiv-x was OOM-KILLED at ${FLOOR_MEM} while reconciling the forks. An unbounded working set on a small box is unsafe, not slow: this is a finding to instrument and reduce to a local repro, not a limit to raise."
+
+# THE SLASH SET, READ BEFORE THE SEATS GO AWAY. This is the last moment the
+# equivocation topology's committed history exists on this host — and the on-chain
+# half gets a bounded wait first, because detection only QUEUES the proof.
+[ "$EQUIV_OK" = 1 ] && wait_slash_committed equiv-yz "$ID_EQUIV_A" 90
+collect_slash_set equiv-a equiv-x equiv-yz
 
 dc --profile equiv rm -sf equiv-a equiv-x equiv-yz >/dev/null 2>&1 || true
 
@@ -350,6 +438,70 @@ echo "  h3 memory.peak = $(ft_peak_report "${PEAK_H3:-}" "$FLOOR_MEM")"
 # that is printed as NOT CREDITED with the reason, because an uncredited number
 # and a measured one are not interchangeable — and an uncredited one is a gap,
 # which is a failure rather than a quiet omission.
+echo ""
+echo "########## THE COMPLEMENT — NO HONEST NODE IS IN THE RUN'S SLASH SET ##########"
+collect_slash_set h1 h2 h3 goodprop forger lowbond
+# THE RULE IS STRICTER THAN THE CLAUSE, DELIBERATELY: exactly ONE identity may be
+# slashed anywhere in this run, and it is the equivocator's. That implies "no
+# honest node was slashed" and also catches the case the clause does not name —
+# silt slashes PROVEN EQUIVOCATION and nothing else, so a slash landing on
+# `forger` or `lowbond`, who sent invalid proposals but never double-signed,
+# would be an attributability failure too.
+#
+# IT IS ASSERTED OVER TWO SETS, BECAUSE THEY ANSWER DIFFERENT QUESTIONS and only
+# one of them is always populated:
+#
+#   NARRATED  — every identity any seat DECIDED to slash, from its own journal.
+#               Scenario 1 guarantees this set is non-empty, so the complement
+#               over it can never pass vacuously. This is item 9's clause at the
+#               tier this suite operates at: a node that slashes an honest peer
+#               has violated it whether or not the proof reached a block.
+#   COMMITTED — the identities the HISTORY carries, read from committed state.
+#               This is the replicated, objective eviction (F2) — the thing that
+#               makes every replica evict in lockstep rather than one local
+#               ledger. It can legitimately be empty, and WHY it is empty is the
+#               whole diagnosis, so it is reported rather than asserted blind.
+unexpected() { awk -v ok="$1" '$2 != ok {printf " %s:%s", $1, $2}' "$2"; }
+NARRATED_IDS="$(awk '{print $2}' "$SLASH_NARRATED" | sort -u | wc -l | tr -d ' ')"
+COMMITTED_IDS="$(awk '{print $2}' "$SLASH_SEEN" | sort -u | wc -l | tr -d ' ')"
+echo "  read $SLASH_READS seat(s): $NARRATED_IDS identity(ies) NARRATED as slashed, $COMMITTED_IDS in COMMITTED state"
+[ -s "$SLASH_HEADS" ] && awk '{printf "    %-9s head=%s\n", $1, $2}' "$SLASH_HEADS" | sort -u
+
+# ── the narrated complement: always assertable, and never vacuous here ────────
+if [ "$SLASH_READS" -eq 0 ]; then
+  fail "no seat could be read at all — BOTH complements are UNTESTED, not held; a set nobody read cannot be empty"
+elif [ "$NARRATED_IDS" -eq 0 ]; then
+  fail "NO seat narrated a slash anywhere in this run, yet scenario 1 reported one — the complement would pass over an empty set and prove nothing. Either the drill did not drive or the journals were not readable"
+elif [ -n "$(unexpected "$ID_EQUIV_A" "$SLASH_NARRATED")" ]; then
+  fail "a node OTHER THAN the equivocator was slashed —$(unexpected "$ID_EQUIV_A" "$SLASH_NARRATED"). Only proven equivocation may slash, and no honest node may ever be slashed (item 9): every safety violation must be attributable to the node that caused it"
+else
+  echo "  COMPLEMENT (narrated): PASS — across $SLASH_READS seat(s), exactly one identity was slashed and it is the equivocator's"
+  awk '{printf "    %s slashed %s\n", $1, $2}' "$SLASH_NARRATED" | sort -u
+fi
+
+# ── the committed complement: the replicated half, reported with its premise ──
+if [ -n "$(unexpected "$ID_EQUIV_A" "$SLASH_SEEN")" ]; then
+  # Whatever the premise, an honest id in COMMITTED state is unconditionally wrong.
+  fail "a node OTHER THAN the equivocator is in the COMMITTED slash set —$(unexpected "$ID_EQUIV_A" "$SLASH_SEEN"). A committed slash evicts that identity on every replica (F2), so this is worse than a local misjudgement"
+elif [ "$COMMITTED_IDS" -ge 1 ]; then
+  echo "  COMPLEMENT (committed): PASS — the history carries the equivocator and nobody else"
+elif [ "$SLASH_HEAD_MOVED" != yes ]; then
+  # No seat committed ANY block, so no block could carry a slash. The complement
+  # over committed state is undriven — a premise failure, named as one.
+  # UNDRIVEN IS A FAILURE, not a pass with a note. A demonstration that could not
+  # be driven proves nothing, and the replicated eviction (F2) is the half of the
+  # accountability claim that makes it a network property rather than one node's
+  # opinion. Closing it means an equivocation topology whose chain COMMITS after
+  # the double-sign, so a block exists to carry the proof.
+  fail "the COMMITTED complement is UNDRIVEN — the equivocation chain did not commit a single block after the detection, so no block existed to carry the proof. The local eviction is proven and the replicated one (F2) is not: this is a premise failure of the drill, not a product verdict, and the close is an equivocation topology whose chain keeps committing after the double-sign"
+else
+  # Seats DID commit blocks and the slash is in none of them. The proof was
+  # queued (core/node pendingSlashes) and never reached committed state within
+  # the wait — the on-chain, replicated eviction (F2) did not happen.
+  fail "the equivocator $ID_EQUIV_A was slashed LOCALLY but is in NO seat's COMMITTED slash set, AND the chain COMMITTED at least one block after the detection (heads above). A block existed to carry the queued proof and did not carry it: the local ledger evicted the culprit, the objective set did not, so replicas do NOT evict in lockstep (F2)"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "########## THE FLOOR SPEC UNDER ADVERSARIAL INPUT ##########"
 echo "  spec: ${FLOOR_CPUS} core / ${FLOOR_MEM} RAM / no swap, kernel-enforced per seat"

@@ -9,6 +9,7 @@ import (
 
 	"github.com/nerolabs/silt/adapters/chainstore"
 	"github.com/nerolabs/silt/core/chain"
+	"github.com/nerolabs/silt/ports"
 )
 
 // cmdChainStatus prints a read-only summary of a validator's committed chain
@@ -47,8 +48,26 @@ func cmdChainStatus(args []string) error {
 	head := blocks[len(blocks)-1]
 	headHash := head.Hash()
 	entries, shed, declared := 0, 0, 0
+	// The committed slash set, in the order the history commits it. It is a SET
+	// keyed by culprit: the same identity can be slashed at more than one height
+	// (a second proof of a different double-sign is still admissible evidence),
+	// and "who has been slashed on this history" wants each identity once.
+	type slashSeen struct {
+		id     ports.NodeID
+		height uint64
+	}
+	var slashed []slashSeen
+	slashAt := map[ports.NodeID]bool{}
 	for i := range blocks {
 		entries += len(blocks[i].Entries)
+		for j := range blocks[i].Slashes {
+			id := blocks[i].Slashes[j].CulpritID()
+			if slashAt[id] {
+				continue
+			}
+			slashAt[id] = true
+			slashed = append(slashed, slashSeen{id: id, height: blocks[i].Height})
+		}
 		// TWO FACTS, TWO COUNTERS (build-immutable #3). `HeavyProofsShed`
 		// is BOND POSSESSION — "this block committed space-time proofs it
 		// no longer carries" — and it is the one that answers "did the
@@ -104,6 +123,34 @@ func cmdChainStatus(args []string) error {
 	// (ErrPrunedEvidence) and is the surface, so "how much of my replica is in that
 	// state" is a real diagnostic — it is just not "did the prune run".
 	fmt.Printf("  of those:     %d declare a pre-v5 non-recomputable identity (the retired `Pruned` token); 0 is EXPECTED on a v5 chain and does NOT mean nothing was shed — a v5 block sheds its proofs and still recomputes its own hash\n", declared)
+	// THE SLASH SET, READ FROM COMMITTED STATE. Item 9's distinctive clause is not
+	// "the attacker was slashed" — that is one assertion per attack, and a suite can
+	// make it while an honest node is being slashed beside it. It is the COMPLEMENT:
+	// across the whole run, the slash set contains nobody but the attacker. A
+	// complement can only be asserted over a set, so the set has to be readable, and
+	// until now it was not: the only surface was the daemon's `chain: slashed
+	// equivocator` narration, which says what a node DECIDED rather than what the
+	// history COMMITTED. Those differ exactly where it matters — a node that slashes
+	// and fails to commit it, or commits a slash it never narrated, is the shape the
+	// complement exists to catch.
+	//
+	// The label and its spacing are a SCRAPE SURFACE: integration/redteam/run.sh reads
+	// `slashed:[[:space:]]*[0-9]+` and the id list off this output. No other line here
+	// may carry that shape. Gate: TestChainStatusReportsTheCommittedSlashSet.
+	//
+	// Every identity is printed, never a head — a truncated set cannot answer a
+	// complement, and silently dropping the (N+1)th culprit would make the assertion
+	// pass by omission. One line per CULPRIT, not per proof, so the output is bounded
+	// by how many distinct identities have ever been slashed on this history rather
+	// than by how much evidence was committed against them.
+	if len(slashed) == 0 {
+		fmt.Println("  slashed:      0 identities in the committed slash set — no equivocation is committed on this history")
+	} else {
+		fmt.Printf("  slashed:      %d identities in the committed slash set:\n", len(slashed))
+		for _, sl := range slashed {
+			fmt.Printf("    slashed-id:   %s (first committed at height %d)\n", sl.id, sl.height)
+		}
+	}
 	printEraObservable(blocks)
 	// diagnosis (S5 — never silently fail): when the NEXT height to commit
 	// is an epoch boundary, a head that is not advancing may be the epoch-
