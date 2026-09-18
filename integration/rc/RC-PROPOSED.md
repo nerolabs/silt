@@ -862,7 +862,7 @@ verdict, not a participating validator.
 
 ## Tier C — field
 
-**21. Publish and fetch work on the internet as it is.** ⚠ *both halves are BUILT and reduced locally; two product defects closed on the path; the field tier is owed*
+**21. Publish and fetch work on the internet as it is.** ⚠ *DRIVEN IN THE FIELD. The publish/fetch half is GREEN; the chain does NOT keep committing under all four conditions at once, and that is a composition failure with no mechanism yet*
 A NATed publisher in one region, a cold fetcher in another, bit-perfect bytes inside a bound
 derived from the deployed configuration. The chain keeps committing under sustained load with
 injected latency, jitter, loss and reordering.
@@ -960,9 +960,56 @@ And the publish was run through a 90 s transport timeout while the client's own 
 so the landed-publish count was the harness's number rather than the product's. All three are fixed
 and the reasons are written where they bit.
 
-*Still owed: the field tier.* Neither flow has been driven on the cloud. `21-cross-region-cold-fetch`
-cannot be rehearsed locally at all — the LOCAL backend excludes the natted nodes on purpose, so it
-SKIPs there — and `21-impaired-commit` has been rehearsed only on one small box.
+*THE FIELD TIER IS DRIVEN, run `5adb538-9631` — 17 nodes, 4 validators, three regions, torn down
+with zero orphans.* **22 pass · 1 gap · 1 fail · 6 skip.** Every flow that passed before still
+passes with both client fixes in the shipped binary, so neither is a regression. The gap and the
+fail are the two new flows, and they say opposite things.
+
+*THE FIRST HALF IS GREEN, AND THE BOUND IS THE CLIENT'S OWN.* A NATed publisher in **us-west1**
+scattered an object it could only reach the network through the relay to publish; the coldest
+out-of-region seat, **us-east1**, held 3 of the object's 16 columns and pulled the rest across the
+region boundary; the bytes came back **BIT-PERFECT in 13 s against a 133 s bound** the client's
+posture derives over 4 chunks, inside its own 399 s operation ceiling. Every term in that bound came
+off the line the client printed.
+
+*"COLD" HAD TO BECOME A QUANTITY, and the first drive is what taught it.* The flow originally
+required a seat holding NONE of the object, and on a seventeen-node swarm at the shipped replication
+no such seat exists — an eight-chunk publish scatters twenty-odd placements over a dozen eligible
+holders, so every candidate was disqualified and the flow reported itself untestable. What the claim
+actually needs is a fetcher that cannot assemble the object without crossing the wire, so the flow
+now scores each out-of-region candidate by how many columns it already holds, takes the coldest,
+disqualifies only one holding every column, and carries the count into the verdict. A verdict that
+hid how cold the seat was would be claiming more than it measured.
+
+*THE SECOND HALF FAILS IN THE FIELD, and it is the composition that fails.* Same shape as the local
+reduction, on real hardware, one node per machine, across three regions. Every arm credited on all
+four validator seats by netem's own counters; interfaces verified clean after every arm.
+
+| profile | max inter-commit gap | heights | publishes landed |
+|---|---|---|---|
+| CONTROL — shaping present, `delay 0ms` | 62 s | 1 | 1/1 |
+| latency + jitter — `delay 80ms 20ms distribution normal` | 55 s | 1 | 1/1 |
+| loss — `loss 1%` (340/574/737/351 packets dropped) | 165 s | 1 | 1/1 |
+| reordering — `delay 20ms reorder 25% 50%` | 47 s | 1 | 1/1 |
+| **all four at once** | **843 s — 3.8× the bound** | **0** | **0/2** |
+
+*No single condition breaks it.* Loss is the costliest alone — 165 s against a 62 s control, 2.7× —
+and still lands inside the 220 s escape bound. Latency and reordering are indistinguishable from the
+control at this scale. Put together, the chain went **843 s without committing**, no publish landed,
+and the registry reported `accepted but not committed within 6m0s — the consensus gather did not
+finish`. The local box gave 802 s for the same profile. Two very different machines, the same shape
+and the same order.
+
+*SO THIS ITEM'S SECOND CLAIM IS NOT HELD, and the finding is specific.* "The chain keeps committing
+under sustained load with injected latency, jitter, loss and reordering" is false as stated: it keeps
+committing under each of them and stops under all of them. That is a composition failure, not a
+threshold one, and it is the shape build-immutable #5 is least equipped to catch — the nightly netem
+gate drives one arm per run, by design, so the interaction has never been exercised anywhere. It is
+not attributed to a mechanism yet: the next step is the validators' own debug logs across an impaired
+window, not another run.
+
+*WHAT IS OWED.* A mechanism for the composition failure, and a decision about what it means for the
+date. The publish/fetch half is done.
 
 **22. Every item has a cloud-harness run.** Each item above named in a cloud scenario, with
 the gaps written down as decisions rather than left as silence.

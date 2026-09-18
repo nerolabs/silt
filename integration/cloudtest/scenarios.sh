@@ -771,6 +771,11 @@ print(' '.join(n for _, n in sorted(out)))" 2>/dev/null)"
   fi
   # shellcheck disable=SC2086
   flow_evidence_nodes nat-1 relay $cands
+  # The publisher and the relay both have to answer before any of this means
+  # anything. An unreachable seat otherwise spends the whole publish window and
+  # then presents as a property failure — a preempted VM wearing a bit-perfect
+  # verdict's clothes.
+  client_preflight "21-cross-region-cold-fetch" blocker nat-1 relay || return
 
   # Publish from the NATed seat: nat-1 is un-dialable, so the link and every byte
   # behind it must cross the relay.
@@ -782,25 +787,43 @@ print(' '.join(n for _, n in sorted(out)))" 2>/dev/null)"
   fi
   local link="${res%% *}" sha="${res##* }"
 
-  # COLDNESS IS ASSERTED, NOT ASSUMED. A fetcher that already holds the object
-  # measures a local disk read wearing a cross-region label, so the holder set is
-  # read off the chain and any candidate in it is disqualified. `swarm holders`
-  # prints one line per column naming the NodeIDs that hold it.
+  # HOW COLD THE FETCHER IS IS MEASURED, NOT ASSUMED — and "cold" is the right
+  # amount of strict, which is not "holds nothing". On a swarm of this size with
+  # the shipped replication, every seat holds SOME shard of any object: an
+  # eight-chunk publish scatters twenty-odd placements over a dozen eligible
+  # holders. Demanding a seat that holds none of it selects nothing and the flow
+  # reports itself untestable, which is what the first drive did.
+  #
+  # What the claim needs is a fetcher that cannot assemble the object without
+  # crossing the wire. So the holder set is read off the chain, each out-of-region
+  # candidate is scored by how many of the object's columns it already holds, the
+  # COLDEST is chosen, and a candidate holding every column is disqualified —
+  # that one would measure a local disk read with a cross-region label on it. The
+  # count travels into the verdict, because "cold" is a quantity here and a
+  # verdict that hid it would be claiming more than it measured.
   local holders; holders="$(ssh_node nat-1 "/usr/local/bin/silt swarm holders '$link' -peers '$PEERS' -registry '$REGREF' 2>/dev/null" || true)"
-  local fetcher="" c cid
+  local ncols; ncols="$(printf '%s' "$holders" | grep -cE '^(column [0-9]+|uncoded)' || true)"
+  local fetcher="" fetcher_held=0 c cid held
   for c in $cands; do
     cid="$(node_field "$c" nodeid)"
     [ -z "$cid" ] && continue
-    if printf '%s' "$holders" | grep -q "$cid"; then continue; fi
-    if ssh_node "$c" "test -x /usr/local/bin/silt"; then fetcher="$c"; break; fi
+    ssh_node "$c" "test -x /usr/local/bin/silt" || continue
+    held="$(printf '%s' "$holders" | grep -cE "^(column [0-9]+|uncoded).*$cid" || true)"
+    held="${held:-0}"
+    # Holds every column: nothing to cross a region for.
+    [ "${ncols:-0}" -gt 0 ] && [ "$held" -ge "$ncols" ] && continue
+    if [ -z "$fetcher" ] || [ "$held" -lt "$fetcher_held" ]; then
+      fetcher="$c"; fetcher_held="$held"
+    fi
   done
   if [ -z "$fetcher" ]; then
     record "21-cross-region-cold-fetch" gap blocker \
-      "every out-of-region candidate ($cands) either HOLDS this object already or has no client binary — a fetch from a holder would measure a local disk read with a cross-region label on it, so the property is UNTESTED rather than failed"
+      "no usable out-of-region fetcher among ($cands): each either holds every one of the object's ${ncols} columns already — a local disk read with a cross-region label on it — or has no client binary; the property is UNTESTED rather than failed"
     return
   fi
+  client_preflight "21-cross-region-cold-fetch" blocker "$fetcher" || return
   local fetchregion; fetchregion="$(ft_region "$fetcher")"
-  echo "    21-cross-region-cold-fetch: NATed publisher nat-1 ($pubregion) -> cold fetcher $fetcher ($fetchregion), holding none of this object"
+  echo "    21-cross-region-cold-fetch: NATed publisher nat-1 ($pubregion) -> coldest out-of-region seat $fetcher ($fetchregion), already holding ${fetcher_held} of ${ncols} columns"
 
   # The fetch. SSH_NODE_TIMEOUT is raised past the client's own operation
   # ceiling for this call: at the default 90s the harness's transport would be
@@ -873,7 +896,7 @@ print('%d %d %d' % (round(bound), round(ceiling), chunks))" 2>/dev/null || true)
     return
   fi
   slo_assert "21-cross-region-cold-fetch" blocker \
-    "BIT-PERFECT across regions from a cold seat: NATed publisher nat-1 ($pubregion) -> $fetcher ($fetchregion), which held none of the object and reached it over the relay, in ${measured}s against the ${derived}s its deployed configuration derives (${chunks} chunks, ceiling ${ceiling}s)" 1 "$wall"
+    "BIT-PERFECT across regions from a cold seat: NATed publisher nat-1 ($pubregion) -> $fetcher ($fetchregion), which held ${fetcher_held} of the object's ${ncols} columns and pulled the rest over the relay, in ${measured}s against the ${derived}s its deployed configuration derives (${chunks} chunks, ceiling ${ceiling}s)" 1 "$wall"
 }
 
 # ── Field impairment: tc netem on the silt traffic, and nothing else ───────────
