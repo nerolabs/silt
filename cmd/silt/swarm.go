@@ -476,7 +476,7 @@ func swarmGet(args []string) error {
 	// fetch otherwise reports only which chunk had no reachable provider, which
 	// cannot distinguish a swarm that has lost the content from a path slower
 	// than the deadlines this client is holding it to.
-	posture := node.DeriveFetchPosture(node.SwarmClientConfig())
+	posture := node.DeriveFetchPosture(node.SwarmClientConfig(), swarmClientCeiling())
 	fmt.Fprintf(os.Stderr, "fetch posture: %s\n", posture)
 
 	f, err := os.Create(*out)
@@ -501,7 +501,7 @@ func swarmGet(args []string) error {
 	// pair is the point: an elapsed figure with no bound beside it grades
 	// nothing, and a bound with no measurement beside it is a claim.
 	fmt.Fprintf(os.Stderr, "fetch elapsed: %.3fs of a %.3fs operation ceiling\n",
-		time.Since(started).Seconds(), time.Duration(node.SwarmClientOperationCeiling).Seconds())
+		time.Since(started).Seconds(), swarmClientOperationCeiling().Seconds())
 	return f.Close()
 }
 

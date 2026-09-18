@@ -180,6 +180,15 @@ var (
 	publishResubmitEvery = 30 * time.Second
 )
 
+// PublishCommitBudget is how long a publish waits for its entry to COMMIT before
+// giving up with a terminal, named failure. It is exported because any caller
+// that wraps a publish in a cap of its own must size that cap ABOVE this one:
+// a client window below the chain's in-spec height cost manufactures failure
+// verdicts for healthy commits, and it also swallows the specific diagnosis this
+// budget produces ("accepted but not committed … the consensus gather did not
+// finish") in favour of whatever generic message the outer cap carries.
+func PublishCommitBudget() time.Duration { return publishPollTimeout }
+
 func serve(addr string, reg ports.Registry, tlsCfg *tls.Config) (boundAddr string, shutdown func(), err error) {
 	// Read-cost bounding: a per-IP rate limit + server timeouts keep a public
 	// registry cheap to run and hard to exhaust (slowloris, lookup floods).

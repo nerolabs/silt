@@ -2354,10 +2354,10 @@ func joinSwarm(peers string, replication int) (*ephemeral, func(fn func(done fun
 		select {
 		case <-ch:
 			return nil
-		case <-time.After(time.Duration(node.SwarmClientOperationCeiling)):
+		case <-time.After(swarmClientOperationCeiling()):
 			// The same ceiling the client REPORTS in its fetch posture, so the
 			// number an operator is shown cannot drift from the one enforced.
-			return fmt.Errorf("swarm operation timed out after %s", time.Duration(node.SwarmClientOperationCeiling))
+			return fmt.Errorf("swarm operation timed out after %s", swarmClientOperationCeiling())
 		}
 	}
 	e := &ephemeral{nd: nd, loop: loop, tr: tr}

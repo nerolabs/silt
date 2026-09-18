@@ -47,13 +47,6 @@ func SwarmClientConfig() Config {
 	return cfg
 }
 
-// SwarmClientOperationCeiling is the whole-operation cap on one client publish
-// or retrieval: past it the client gives up on itself and reports a timeout
-// rather than waiting on a swarm that is not going to answer. It is the outer
-// bound on every number FetchPosture reports — a per-attempt budget that does
-// not fit inside it cannot be spent.
-const SwarmClientOperationCeiling = 5 * 60 * ports.Second
-
 // FetchPosture is the deadline structure a client is actually running under,
 // derived from its configuration. A retrieval that fails today says only which
 // chunk had no reachable provider; it does not say how patient the client was
@@ -82,7 +75,10 @@ type FetchPosture struct {
 	// Providers is how many holders one sweep may dial, Alpha how many lookup
 	// queries may be in flight at once, and K the lookup's convergence width.
 	Providers, Alpha, K int
-	// Ceiling is the whole-operation cap (SwarmClientOperationCeiling).
+	// Ceiling is the whole-operation cap the caller enforces on itself. It is
+	// supplied rather than owned here: it is a property of the longest step the
+	// operation WRAPS — the registry's accept-to-commit budget among them — and
+	// core cannot see the adapters that define those.
 	Ceiling ports.Duration
 }
 
@@ -97,7 +93,7 @@ type FetchPosture struct {
 // HolderDialTimeout only when one is configured AND it is below RequestTimeout;
 // otherwise it takes RequestTimeout, which is why a client that sets no tighter
 // dial is not thereby dialing without a deadline.
-func DeriveFetchPosture(cfg Config) FetchPosture {
+func DeriveFetchPosture(cfg Config, ceiling ports.Duration) FetchPosture {
 	backoff := ports.Duration(0)
 	for a := 0; a < cfg.RequestRetries; a++ {
 		backoff += cfg.RequestBackoff << a
@@ -120,7 +116,7 @@ func DeriveFetchPosture(cfg Config) FetchPosture {
 		Providers:    cfg.Replication,
 		Alpha:        cfg.Alpha,
 		K:            cfg.K,
-		Ceiling:      SwarmClientOperationCeiling,
+		Ceiling:      ceiling,
 	}
 }
 
