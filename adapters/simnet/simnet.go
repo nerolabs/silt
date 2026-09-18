@@ -24,6 +24,27 @@ type Config struct {
 	LatencyMin ports.Duration
 	LatencyMax ports.Duration
 	Loss       float64
+	// RateBytesPerSec gives a link a FINITE CAPACITY, so a message costs time in
+	// proportion to its SIZE and messages behind it wait. 0 (the default) keeps the
+	// original behaviour exactly: delivery is atomic after a latency draw, and a
+	// 1.5 MB payload costs the same as a 200-byte one.
+	//
+	// WHY IT EXISTS. A latency-only model cannot express the whole failure class
+	// whose mechanism is "payload bytes ÷ link rate exceeds the deadline" — the
+	// deadline is met or missed on RTT alone, and a send queue that grows because the
+	// producer outruns the wire has nowhere to form. That blindness is structural,
+	// not a matter of enumerating more scenarios: no arrangement of LatencyMin,
+	// LatencyMax and Loss produces it. It is why the field tier was the first place
+	// such a failure could appear, which is the wrong tier to discover one at (V1).
+	//
+	// It is a MODEL, and a deliberately simple one: a single server with an
+	// unbounded queue per ordered pair. It reproduces serialization delay and
+	// head-of-line waiting, which is what the deadline arithmetic turns on. It does
+	// NOT model congestion control, loss-induced backoff or reordering — a sim that
+	// claimed those would be asserting a TCP stack it does not have. Impairment
+	// interactions stay the field tier's job; what moves down here is the part that
+	// is arithmetic.
+	RateBytesPerSec int64
 }
 
 func DefaultConfig() Config {
@@ -44,9 +65,14 @@ type Stats struct {
 }
 
 type Network struct {
-	sched     Scheduler
-	rng       *rand.Rand
-	cfg       Config
+	sched Scheduler
+	rng   *rand.Rand
+	cfg   Config
+	// busyUntil is when each ordered pair's link finishes what is already queued on
+	// it. Keyed per (from, to) because that is the direction a send occupies; a
+	// shared full-duplex link would be a different model and a less pessimistic one.
+	// Empty whenever RateBytesPerSec is 0, so the default path allocates nothing.
+	busyUntil map[[2]ports.NodeID]ports.Time
 	endpoints map[ports.NodeID]*Endpoint
 	// partitioned maps node → group; nodes in different groups can't
 	// talk. Empty map = no partition.
@@ -101,6 +127,7 @@ func New(sched Scheduler, seed int64, cfg Config) *Network {
 		sched:     sched,
 		rng:       rand.New(rand.NewSource(seed)),
 		cfg:       cfg,
+		busyUntil: make(map[[2]ports.NodeID]ports.Time),
 		endpoints: make(map[ports.NodeID]*Endpoint),
 		group:     make(map[ports.NodeID]int),
 		nat:       make(map[ports.NodeID]natBox),
@@ -192,12 +219,50 @@ func (e *Endpoint) Send(to ports.NodeID, msg ports.Message) error {
 		// Model-check mode: park the delivery; the driver decides when (and in what
 		// order relative to other parked messages) it fires. The latency draw above
 		// still happened, so the RNG stream is identical to timed mode.
+		//
+		// NO SERIALIZATION HERE, DELIBERATELY: held mode hands delivery ORDER to the
+		// driver, and a rate model only expresses itself as delivery TIME. Charging a
+		// link that the driver then drains out of order would be a number with no
+		// meaning attached. A model-check that wants the rate runs the timed oracle.
 		n.heldSeq++
 		n.heldQ = append(n.heldQ, heldMsg{id: n.heldSeq, from: e.id, to: to, kind: msg.Kind, deliver: deliver})
 		return nil
 	}
-	n.sched.AfterFunc(latency, deliver)
+	n.sched.AfterFunc(latency+n.occupy(e.id, to, msg), deliver)
 	return nil
+}
+
+// occupy charges this message's SERIALIZATION time to the (from, to) link and
+// returns how long it must wait before its last byte is on the wire — its own
+// transfer, plus whatever is still queued ahead of it.
+//
+// The queue is what makes this more than a size-scaled latency. A producer that
+// outruns the link does not merely see each message arrive late; the arrivals pile
+// up, and the message that matters waits behind bulk it has nothing to do with.
+// That is head-of-line waiting, and it is the half a per-message delay would miss.
+//
+// Returns 0 when no rate is configured, so the default network is byte-for-byte the
+// behaviour every existing scenario was written against.
+func (n *Network) occupy(from, to ports.NodeID, msg ports.Message) ports.Duration {
+	if n.cfg.RateBytesPerSec <= 0 {
+		return 0
+	}
+	// Data is what a real link carries; the struct's other fields are the sim's
+	// bookkeeping and charging for them would price a message by how the harness
+	// happens to represent it.
+	size := int64(len(msg.Data))
+	if size <= 0 {
+		return 0
+	}
+	serialize := ports.Duration(size * int64(ports.Second) / n.cfg.RateBytesPerSec)
+	now := n.sched.Now()
+	key := [2]ports.NodeID{from, to}
+	start := n.busyUntil[key]
+	if start < now {
+		start = now // link went idle; no credit for the gap
+	}
+	n.busyUntil[key] = start + ports.Time(serialize)
+	return ports.Duration(start-now) + serialize
 }
 
 // EnableHeldDelivery switches the network into model-check mode: Send parks each
