@@ -224,7 +224,7 @@ func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, claim repa
 	// short-survivor fetch, and with the short-final-stripe `present` fix in
 	// repairproof it is genuinely transient: padding now counts toward k, so no
 	// geometry is permanently unjudgeable.
-	n.fetchSurvivors(m.Root(), survivorRefs, func(survivors map[int][]byte, reachable int) {
+	n.fetchSurvivors(m.Root(), m.K, survivorRefs, func(survivors map[int][]byte, reachable int) {
 		correctnessOK, cerr := repairproof.VerifyByRecompute(p, survivors, realData, claim.ShardPos, claim.ShardID)
 		if cerr != nil {
 			// Structurally un-judgeable — usually TOO FEW SURVIVORS, and
@@ -384,14 +384,29 @@ func (n *Node) settleRepairVerdict(claimant ports.NodeID, claim repairproof.Repa
 // stripe position plus the count reachable. It is a paramedic, not a hoarder:
 // copies it did not already host are dropped afterwards, so judging a claim never
 // silently turns a judge into a holder.
-func (n *Node) fetchSurvivors(root ports.Hash, refs []shardRef, done func(survivors map[int][]byte, reachable int)) {
+//
+// THE FETCH IS BUDGETED TO k, WHICH IS WHAT THE VERIFIER NEEDS. survivorRefs is the
+// complement of ONE position over the stripe, so it is n−1 long; walking it to the
+// end cost the judge 15 shard fetches at the shipped k=10/n=16 for a verification
+// that consumes 10. An inbound repair claim is UNSIGNED and free to send, so the
+// gap between what the message costs its sender and what judging it costs the judge
+// is pure amplification, and it was 50% wider than it needed to be. The budget does
+// not close that gap — the per-sender half of it has no remedy that survives its own
+// precondition, since claim emission is one-shot and a refused claim is lost
+// forever — but it does stop the judge paying for shards no verdict will read.
+//
+// k COMES FROM THE MANIFEST THE JUDGE LOADED, never from the claim: a claimant that
+// could name its own k would set it to 1 and the recompute would have nothing to
+// check against.
+func (n *Node) fetchSurvivors(root ports.Hash, k int, refs []shardRef, done func(survivors map[int][]byte, reachable int)) {
 	heldBefore := make(map[ports.ChunkID]bool, len(refs))
 	for _, r := range refs {
 		if ok, _ := n.store.Has(bg(), r.id); ok {
 			heldBefore[r.id] = true
 		}
 	}
-	n.fetchStripeByColumn(root, refs, func(_ []ports.ChunkID, _ map[uint64]int) {
+	enough := func(fetched int) bool { return k > 0 && fetched >= k }
+	n.fetchStripeByColumn(root, refs, enough, func(_ []ports.ChunkID, _ map[uint64]int) {
 		survivors := make(map[int][]byte, len(refs))
 		for _, r := range refs {
 			c, err := n.store.Get(bg(), r.id)

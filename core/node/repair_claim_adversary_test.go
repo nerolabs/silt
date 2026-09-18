@@ -455,7 +455,7 @@ func (s *repairAdv) rebuildLostShard(t *testing.T, repairer, holder *Node, strip
 		}
 	}
 	complete := false
-	repairer.fetchStripeByColumn(s.root, survivors, func(unfetched []ports.ChunkID, _ map[uint64]int) {
+	repairer.fetchStripeByColumn(s.root, survivors, nil, func(unfetched []ports.ChunkID, _ map[uint64]int) {
 		complete = len(unfetched) == 0
 	})
 	s.sched.Run()

@@ -701,7 +701,10 @@ func (n *Node) repairStripeFetch(m *manifest.Layout, p erasure.Params, stripeRef
 	// Fetch by column: a stripe's shards register under their column key,
 	// not their own id, so a plain fetchAll (which resolves by id) would
 	// find nothing and every repair would fail to reconstruct.
-	n.fetchStripeByColumn(root, stripeRefs, func(unfetched []ports.ChunkID, usedDomains map[uint64]int) {
+	// nil budget: repair wants EVERY surviving column, because usedDomains is a
+	// census the re-seed reads and a partial one would place a rebuilt shard into a
+	// domain the walk simply never looked at.
+	n.fetchStripeByColumn(root, stripeRefs, nil, func(unfetched []ports.ChunkID, usedDomains map[uint64]int) {
 		// Build the stripe from whatever actually arrived.
 		shards := make([][]byte, p.N)
 		for _, r := range stripeRefs {

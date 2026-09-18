@@ -14,7 +14,7 @@ package repairproof
 // against Holder under an identity-bound seed. The claim only points the verifiers
 // at the work; the proofs are recomputed.
 //
-// ADVERSARY-SHAPE: capability=ClaimantChosenSurvivorSet UNCOVERED: no fixture GRANTS AND CONTROLS FOR a claimant any influence over which survivors the judge fetches. TestSurvivorFetchIsUnboundedPerSenderAndIsNMinusOneWide_PINNED_DEFECT shows the influence is REAL and negative -- an out-of-range claim.ShardPos excludes nothing and costs all n instead of n-1 -- but it carries no control that removes the influence, so it is not declared as cover.
+// ADVERSARY-SHAPE: capability=ClaimantChosenSurvivorSet UNCOVERED: no fixture GRANTS AND CONTROLS FOR a claimant any influence over which survivors the judge fetches. TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT measures what a claim costs the judge; the out-of-range influence it used to show is now screened before the fetch and the width is budgeted to k, but neither is a control that removes claimant influence, so this is still not declared as cover.
 
 import (
 	"github.com/fxamacker/cbor/v2"

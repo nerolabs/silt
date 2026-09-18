@@ -548,12 +548,28 @@ func (n *Node) fetchColumn(root ports.Hash, col int, ids []ports.ChunkID, done f
 // on receipt. Reports which ids couldn't be fetched, plus the failure
 // domains the surviving columns live in — so repair can re-seed the
 // rebuilt columns into domains the survivors aren't already using.
-func (n *Node) fetchStripeByColumn(root ports.Hash, refs []shardRef, done func(unfetched []ports.ChunkID, usedDomains map[uint64]int)) {
+//
+// enough, when non-nil, ENDS THE WALK EARLY once the caller has what it came for.
+// It is called with the number of shards fetched so far and returns true to stop.
+// Repair passes nil — it wants every surviving column, because usedDomains is a
+// census and a partial one would re-seed into a domain it failed to notice. The
+// repair-claim judge passes a k-budget, because its verifier needs k survivors and
+// nothing more: see fetchSurvivors.
+//
+// EARLY EXIT IS NOT THE SAME AS A SHORTER REF LIST, and the difference is the point.
+// Trimming refs to k up front would make any k shards being unreachable a failure
+// the judge could have avoided by asking one more holder. The walk still traverses
+// as far as it must; it just stops paying once the need is met.
+func (n *Node) fetchStripeByColumn(root ports.Hash, refs []shardRef, enough func(fetched int) bool, done func(unfetched []ports.ChunkID, usedDomains map[uint64]int)) {
 	var unfetched []ports.ChunkID
 	usedDomains := map[uint64]int{}
+	fetched := 0
 	var next func(i int)
 	next = func(i int) {
-		if i == len(refs) {
+		if i == len(refs) || (enough != nil && enough(fetched)) {
+			// The refs never reached are not "unfetched" — nobody asked for them.
+			// Reporting them as missing would turn a satisfied budget into a
+			// durability alarm.
 			done(unfetched, usedDomains)
 			return
 		}
@@ -563,6 +579,7 @@ func (n *Node) fetchStripeByColumn(root ports.Hash, refs []shardRef, done func(u
 				if !ok {
 					unfetched = append(unfetched, r.id)
 				} else {
+					fetched++
 					for _, p := range provs { // note the surviving column's domain
 						if d := n.domainOf(p); d != 0 {
 							usedDomains[d]++
