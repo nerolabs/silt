@@ -623,12 +623,81 @@ failures here, and an undriven half of the accountability claim is exactly that.
 is that the product drops a queued slash — this run cannot see that far, and the verdict says so in
 those words rather than implying a defect it did not measure.
 
-**10. A prover without the bytes fails the audit and is paid nothing.** Three defeats: the
+**10. A prover without the bytes fails the audit and is paid nothing.** ⚠ *both work bounds and
+one of the three defeats are CLOSED; the two that remain need a ruling, not more code*
+Three defeats: the
 care link printed on every publish is the storage-proof verification key; a data-less
 identity passes by relaying the challenge to a real holder; the inclusion proof is checked
 against a root the prover supplies. Plus work bounds on the unsigned repair claim and the
 challenge frame, neither of which is rate-limited.
 *unit → integration → e2e under impairment → field.* Largest code item in scope.
+
+*THE DIAGNOSIS WAS ALREADY DONE AND THE FIXES WERE NOT.* Every one of the five is carried by a
+`_PINNED_DEFECT` gate that asserts the BROKEN behaviour — green while the defect is live, red when
+it is fixed — with a vacuity guard proving each pin can see its own remediation. Nothing here had to
+be discovered; what follows is three of them redeemed on 2026-09-18, each by the route the pins
+prescribe: the fix reddens the pin, and the pin is replaced by the positive assertion of the rule
+that reddened it, in the same change. No test was deleted.
+
+| defect | gate | state |
+|---|---|---|
+| the inclusion proof is checked against a root the PROVER supplies | GATE 5a → `TestForeignRootedProofIsRefused` | **CLOSED** |
+| the unsigned repair claim's fetch is not budgeted (arm b) | GATE 1 (b) → `rc1SurvivorBudget` | **CLOSED** |
+| the challenge frame is not rate-limited | `TestPorChallengeRateLimitPerChallenger`, `TestRefusedPorChallengeSendsNoReply` | **CLOSED** |
+| the unsigned repair claim is unbounded PER SENDER (arm a) | `TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT` | open — remedy REFUTED |
+| the care link IS the storage-proof verification key | `TestCareLinkHolderForgesWithZeroBytes_PINNED_DEFECT` | open — needs a ruling |
+| a data-less identity outsources the challenge to a real holder | `TestChallengeProxyPassesAudit_PINNED_DEFECT` | open — needs a ruling |
+
+*THE ROOT WAS NEVER MISSING, ONLY UNUSED — which is the first thing build-immutable #6 says to
+check.* `verifyStorageProof` read `p.Root` from the RESPONSE, and with `{Index:0, Total:1, Path:nil}`
+`manifest.VerifyProof` reduces to `leafHash(leaf)==root`, so anyone knowing a chunk id satisfied the
+Merkle leg with zero knowledge. `auditEntry` already computed `root := m.Root()` and already passed
+it to `colKey`; it simply never reached the verify. The two questions are now two functions, because
+one name for both is what let them be conflated: `verifyStorageProofAgainst` (root supplied by the
+VERIFIER — the audit and the repair-claim judge) and `storageProofSelfConsistent` (store-time
+acceptance, where a receiver holds no independent root for content it was not asked to care for,
+documented as NOT a binding check).
+
+*AND IT DECOUPLED A SECOND PIN, WHICH IS THE PART WORTH KEEPING IN THE RECORD.* The care-link pin
+went red on the root binding. Its own text predicted exactly that and gave the disambiguation — *"5a
+red with isolation=false is the leg-1 fix; 5a still accepting the self-rooted proof in isolation
+means the key distribution is what moved."* 5a refuses in isolation, so the red was the leg-1 fix
+leaking across, not a key-distribution remediation. That pin's forger had been carrying a
+SELF-ROOTED proof, so it was riding the tautology next door. It now carries the honest inclusion
+proof — which any care-link holder can derive from the layout it is entitled to read — and is green
+again on its own merits. The care-link break is untouched and still live: `Passed=1`, 1000 credit
+minted to a prover holding zero bytes. Two pins that were coupled are now independent.
+
+*THE JUDGE'S FETCH IS BUDGETED TO WHAT THE VERDICT READS.* `survivorRefs` is the complement of ONE
+position over the stripe, so walking it to the end cost the judge n−1 = 15 shard fetches at the
+shipped k=10/n=16 for a `VerifyByRecompute` that consumes 10 — and a repair claim is unsigned and
+free to send, so every shard beyond what the verdict reads is pure amplification. Measured 15 → 10.
+The exit is on SUCCESSFUL fetches, not a shorter ref list: trimming refs to k would turn "k of these
+happen to be unreachable" into a failure the judge could have avoided by asking one more holder.
+Repair passes a nil budget deliberately — its `usedDomains` is a census the re-seed reads, and a
+partial one would place a rebuilt shard into a domain the walk never looked at.
+
+*THE CHALLENGE-FRAME REFUSAL IS A DROP, AND THAT IS THE LOAD-BEARING HALF.* Answering `MsgChallenge`
+reads the whole shard back and aggregates it — 8.3 ms and 8,643 field multiplications over a 256 KiB
+shard, measured — on the single serialized loop, from an unsigned frame with no standing
+requirement. Every other expensive inbound kind on the node already had a per-sender window budget;
+this one had none. The budget is derived from the loop share it concedes (128 × 8.3 ms ≈ 3.5% of a
+30 s window per challenger) and the honest auditor clears it because its sweep is SERIALIZED. But a
+rate limit on an audit response is only safe if refusing cannot be mistaken for failing: the auditor
+grades `Found=false` as a prover that could not produce a proof, the same verdict as a liar, so a
+gate that REPLIED would hand any peer a way to SLASH AN HONEST HOLDER by first spending its budget.
+`auditLeaf` counts an answer only when `err == nil`, so the refusal emits nothing and a dropped
+challenge is not a failed audit — it is no audit. Both ablations are driven red, including that one.
+
+*WHAT REMAINS IS NOT MORE CODE.* Arm (a) has no per-sender bound and its remedy is REFUTED on its
+own precondition rather than merely unbuilt: claim emission binds an empty reply callback, so a
+claim a budget refuses is lost forever. Narrowing what one claim costs is not bounding how many a
+sender sends. The care-link break needs a ruling on WHICH remediation option ships — the pin points
+at a research certification carrying V1/V2/V3 and a pricing addendum — because the care link must
+grant repair rights without handing over the PoR secret, and that is a key-distribution design
+choice. And the outsourcing defeat is the one the literature closes only with sealing or with
+latency, where build-immutable #3 forbids latency as a HARD gate. On the current evidence this item
+reaches the date at three of five closed with the other two disclosed and named, not closed.
 
 **11. Publishing is unlinkable and no surveillance artifact exists.** A matching score
 against chance; seize every disk and emitted byte after a fetch-heavy run and find no
