@@ -483,17 +483,14 @@ func TestChallengeProxyPassesAudit_PINNED_DEFECT(t *testing.T) {
 // claimant supplies) and never the response's.
 // ---------------------------------------------------------------------------
 
-// TestForeignRootedProofIsRefused is the POSITIVE assertion that replaced
-// TestMerkleLegDoesNotBindToAuditedRoot_PINNED_DEFECT and its rtPOR5aPin predicate.
-// The pin's own FIX CASE named both call sites — Node.auditLeaf against the layout
-// root and Node.challengeHolderRetrievability against the judge's recomputed root —
-// and both now pass the verifier a root of their own, so the pin went red and was
-// retired in the same change that made it red.
+// TestForeignRootedProofIsRefused asserts the rule the gate above now holds, in the
+// place a pin used to record its absence.
 //
-// It asserts the two halves the pin insisted stay independently observable: leg 1
-// refusing in isolation, and the composed grade failing. A composed FAIL alone would
-// not prove the root binding landed — a later leg can produce one — which is why the
-// isolation arm is asserted first and separately.
+// IT ASSERTS TWO HALVES, AND THEY MUST STAY INDEPENDENTLY OBSERVABLE: leg 1 refusing
+// in isolation, and the composed grade failing. A composed FAIL alone would not prove
+// the root binding landed, because a later leg can produce one on its own — which is
+// why the isolation arm is asserted first and separately. The no-over-rejection arm
+// is the third: a verifier that refused everything would satisfy the first two.
 func TestForeignRootedProofIsRefused(t *testing.T) {
 	n, _ := aloneNode(t, 0)
 	n.SetLedger(credit.New(1, 500_000))
