@@ -702,6 +702,11 @@ type Node struct {
 	// CPU-DoS floor). See allowBondSubmit in bondaudit.go.
 	bondSubmitRate map[ports.NodeID]*challengerRate
 	roundCertRate  map[ports.NodeID]*challengerRate // MsgRoundCert per-sender window budget
+	// porChallengeRate caps the PoR proofs computed per challenger per window —
+	// answering reads the whole shard back and aggregates it on the single loop,
+	// and MsgChallenge is unsigned. See allowPorChallenge for why a refusal is a
+	// DROP and never a Found=false reply.
+	porChallengeRate map[ports.NodeID]*challengerRate
 	// issuerKeySubmitRate is the per-sender budget for MsgSubmitIssuerKeyReg (see
 	// allowIssuerKeySubmit): a refusal costs a map lookup, before decode or verify.
 	issuerKeySubmitRate map[ports.NodeID]*challengerRate
@@ -1386,6 +1391,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		bondChallengeRate:   make(map[ports.NodeID]*challengerRate),
 		bondSubmitRate:      make(map[ports.NodeID]*challengerRate),
 		roundCertRate:       make(map[ports.NodeID]*challengerRate),
+		porChallengeRate:    make(map[ports.NodeID]*challengerRate),
 		entrySubmitRate:     make(map[ports.NodeID]*challengerRate),
 		issuerKeySubmitRate: make(map[ports.NodeID]*challengerRate),
 		slashedLocal:        make(map[ports.NodeID]bool),
@@ -1911,6 +1917,13 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 	case ports.MsgChallenge:
 		if n.chunkDenied(msg.ChunkID) {
 			n.reply(from, msg, ports.Message{Kind: ports.MsgChallengeReply, Found: false})
+			return
+		}
+		if !n.allowPorChallenge(from) {
+			// DROPPED, not denied. Replying Found=false here would grade this node
+			// as a prover without the bytes, so a rate limit would become a way to
+			// slash an honest holder. An absent reply is not counted by the auditor
+			// at all. See allowPorChallenge.
 			return
 		}
 		n.reply(from, msg, n.answerChallenge(msg))

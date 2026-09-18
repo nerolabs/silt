@@ -406,6 +406,43 @@ func (n *Node) allowRoundCert(from ports.NodeID) bool {
 	return n.allowWindowed(n.roundCertRate, from, roundCertBurst)
 }
 
+// porChallengeBurst caps the PoR proofs this node computes for ONE challenger per
+// ChainSyncInterval window. Answering a storage challenge reads the whole shard
+// back and aggregates it — measured at 8.3 ms and 8,643 field multiplications over
+// a 256 KiB shard — on the node's single serialized loop (B2), and MsgChallenge
+// carries no signature and no standing requirement, so an unbounded challenger is a
+// remote CPU-and-disk DoS against every other thing that loop owes.
+//
+// DERIVED FROM THE LOOP SHARE IT CONCEDES, not from a round number: 128 proofs at
+// the measured 8.3 ms is ~1.06 s of a 30 s window, so one challenger may take about
+// 3.5% of the loop and no more. The honest auditor clears it with room because its
+// sweep is SERIALIZED — auditLeaf issues the next challenge from inside the previous
+// one's reply callback, and nextLeaf waits on the grade — so reaching 128 in a
+// window needs a round trip under 234 ms sustained, which is a pipelined requester
+// rather than the shape the audit path has.
+//
+// THE RESIDUAL IS THE SAME ONE EVERY GATE IN THIS FILE CARRIES: the budget is
+// per-challenger, so N identities buy N budgets. Making one identity expensive is
+// M0's job, not this gate's; what this gate denies is the free unbounded flood from
+// one.
+const porChallengeBurst = 128
+
+// allowPorChallenge reports whether a storage challenge from `from` may be answered
+// now. It is the cheap gate in front of the shard read and the aggregation, so a
+// refusal costs this node nothing and the flooder gains no amplification.
+//
+// ⚠ A REFUSAL MUST NEVER REACH THE AUDITOR AS A DENIAL, and that is why the caller
+// drops the frame instead of replying. The auditor grades `Found=false` as a prover
+// that could not produce a proof — the same verdict as a liar — so a rate limit that
+// replied would let any peer slash an honest holder by first spending its budget.
+// An absent reply is scored differently and deliberately: auditLeaf counts an answer
+// only when `err == nil`, so a dropped challenge is not a failed audit, it is no
+// audit. The cost of exceeding the budget therefore lands on the CHALLENGER — a lost
+// measurement, and its own routing entry for a peer it flooded — never on the prover.
+func (n *Node) allowPorChallenge(from ports.NodeID) bool {
+	return n.allowWindowed(n.porChallengeRate, from, porChallengeBurst)
+}
+
 // allowWindowed charges one unit of `from`'s per-ChainSyncInterval budget in
 // `rate`, refusing once `burst` is spent; the table is bounded at
 // maxBondChallengers with expired windows evicted on demand.
