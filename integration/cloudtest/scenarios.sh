@@ -897,7 +897,16 @@ print('%d %d %d' % (round(bound), round(ceiling), chunks))" 2>/dev/null || true)
 : "${IMPAIR_HEIGHTS:=3}"
 
 # ft_impair_dev NODE — the interface the node's default route leaves by.
-ft_impair_dev() { ssh_node "$1" "ip route show default 2>/dev/null | awk '{for(i=1;i<=NF;i++) if(\$i==\"dev\") {print \$(i+1); exit}}'"; }
+#
+# EVERY `ip` AND `tc` CALL IN THIS SECTION GOES THROUGH sudo, READBACKS INCLUDED.
+# On the deployed image these live in /sbin and /usr/sbin, which are not on the
+# login user's PATH — so an unprivileged readback returns "tc: command not found"
+# rather than a count. That is not a cosmetic difference: it made ft_impair_on
+# report FAILURE for shaping it had just successfully applied, which left the
+# node shaped and out of the unwind list, and every flow after it on the sheet
+# was then graded over an impaired wire while the flow said it had never touched
+# anything. Measured on a real VM 2026-09-18.
+ft_impair_dev() { ssh_node "$1" "sudo ip route show default 2>/dev/null | awk '{for(i=1;i<=NF;i++) if(\$i==\"dev\") {print \$(i+1); exit}}'"; }
 
 # ft_impair_cidrs — the swarm's own subnets, derived from the addresses the run
 # actually deployed rather than from a written-down list: every node's /24, NAT
@@ -932,8 +941,13 @@ ft_impair_on() {
   # file runs under `set -o pipefail`, and the remote `grep -c` exits NON-ZERO
   # when its count is zero — so a pipeline here takes its status from the count
   # rather than from the comparison, and reports the opposite of what it found.
-  local n_netem; n_netem="$(ssh_node "$n" "$cmd >/dev/null 2>&1; tc qdisc show dev $dev | grep -c netem || true")"
-  [ "${n_netem:-0}" -ge 1 ] 2>/dev/null
+  local n_netem; n_netem="$(ssh_node "$n" "$cmd >/dev/null 2>&1; sudo tc qdisc show dev $dev | grep -c netem || true")"
+  if [ "${n_netem:-0}" -ge 1 ] 2>/dev/null; then return 0; fi
+  # A partial application must not be left behind. Whatever went wrong, this node
+  # may already be carrying a root qdisc, and a node that is shaped but absent
+  # from the caller's unwind list is the worst of both worlds.
+  ssh_node "$n" "sudo tc qdisc del dev $dev root >/dev/null 2>&1; true" >/dev/null 2>&1
+  return 1
 }
 
 # ft_impair_off NODE — remove it, and report whether the interface came back
@@ -946,7 +960,7 @@ ft_impair_off() {
   # bit here first and it bit loudly — the flow reported "the impairment did NOT
   # come off" about four interfaces that were already clean, which is a verdict
   # naming the wrong cause and would have buried the result it was guarding.
-  local n_netem; n_netem="$(ssh_node "$n" "sudo tc qdisc del dev $dev root >/dev/null 2>&1; tc qdisc show dev $dev | grep -c netem || true")"
+  local n_netem; n_netem="$(ssh_node "$n" "sudo tc qdisc del dev $dev root >/dev/null 2>&1; sudo tc qdisc show dev $dev | grep -c netem || true")"
   [ "${n_netem:-1}" -eq 0 ] 2>/dev/null
 }
 
@@ -993,6 +1007,14 @@ flow_impaired_commit() {
   [ "${IMPAIR:-1}" = 1 ] || { record "21-impaired-commit" skip blocker "opt-out (IMPAIR=0)"; return; }
   require_nodes "21-impaired-commit" blocker val-a val-b || return
   local vals; vals="$(python3 -c "import json;print(' '.join(n for n,v in json.load(open('$NODES_JSON')).items() if v['role']=='validator'))")"
+  # A validator the substrate took away is not a shaping failure. Without this
+  # the flow reaches a preempted seat, cannot read an interface off it, and
+  # reports "tc/netem unavailable, or the interface or subnet map did not match"
+  # about a machine that no longer exists — a refusal naming the wrong cause,
+  # and one that would send the next reader to the wrong place. Seen on a SPOT
+  # instance 2026-09-18.
+  # shellcheck disable=SC2086
+  require_live "21-impaired-commit" blocker $vals || return
   # shellcheck disable=SC2086
   flow_evidence_nodes $vals
   : "${H_ESCAPE_S:=220}"
@@ -1002,6 +1024,8 @@ flow_impaired_commit() {
   local applied="" v
   for v in $vals; do
     if ft_impair_on "$v"; then applied="$applied $v"; else
+      # ft_impair_on already removed anything it partially applied on $v; unwind
+      # the seats that DID take it, so the sheet after this flow runs clean.
       local u; for u in $applied; do ft_impair_off "$u" >/dev/null 2>&1 || true; done
       record "21-impaired-commit" gap blocker \
         "could not apply the impairment on $v (tc/netem unavailable, or the interface or subnet map did not match) — the chain was NOT driven under impairment, so this is UNTESTED; a run that continued here would have graded a clean network as an adverse one"
