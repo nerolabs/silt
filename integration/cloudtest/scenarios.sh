@@ -1236,10 +1236,46 @@ flow_equivocation_island() {
   # 3) An HONEST island anchor slashes the double-sign on the reconcile path — the
   #  accountability property on the wire. Assert the product's own slash line (#7).
   local slashline; slashline="$(waitfor "$honest" "chain: slashed equivocator ${byzid}" 120 || true)"
-  if [ -n "$slashline" ]; then
-    slo_assert "184-equivocation-island" blocker "accountability FIRED on the wire: a contained island anchor double-signed and an honest anchor SLASHED it (${slashline##*chain: }) — proven equivocation → permanent eviction (F2), zero blast radius to the main sheet (separate consensus universe)" 1
-  else
+  if [ -z "$slashline" ]; then
     record "184-equivocation-island" fail blocker "the equivocator double-signed but NO honest island anchor slashed it within 120s — the accountability detection did not fire; attribute from the island journals (reconcile/FindEquivocations path) before re-running (#7)"
+    return
+  fi
+
+  # 4) THE REPLICATED HALF (item 9's distinctive clause). The line above is what ONE
+  #  node DECIDED; this is what the HISTORY committed. They are different claims and
+  #  the gap between them is where an eviction that never lands would hide: a local
+  #  ledger evicting alone is not F2, which is the whole point of queuing the proof
+  #  for on-chain recording.
+  #
+  #  THE ISLAND IS THE RIGHT PLACE AND integration/redteam IS NOT. The drain that
+  #  carries a queued proof is gated on Objective() in its first line, and redteam's
+  #  equivocation seats run -objective=false, so there the proof can never ride
+  #  whatever the product does. The island is -objective with four anchors, so a
+  #  proposal can actually carry it.
+  #
+  #  The wait is bounded and its failure is SEPARATED from the detection above, so a
+  #  committed-set miss can never be read as "the slash did not fire".
+  local isl_slash="" i
+  for i in $(seq 1 24); do
+    isl_slash="$(ssh_node "$honest" "/usr/local/bin/silt chain-status -store /var/lib/silt 2>&1" \
+      | grep -oE 'slashed-id:[[:space:]]+[0-9a-f]{64}' | grep -oE '[0-9a-f]{64}' | sort -u)"
+    printf '%s' "$isl_slash" | grep -q "$byzid" && break
+    sleep 5
+  done
+  local isl_head; isl_head="$(ssh_node "$honest" "/usr/local/bin/silt chain-status -store /var/lib/silt 2>&1" \
+    | grep -oE 'head height:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | tail -1)"
+  local isl_extra; isl_extra="$(printf '%s' "$isl_slash" | grep -v "^${byzid}$" | tr '\n' ' ')"
+
+  if [ -n "$isl_extra" ]; then
+    # Unconditionally wrong whatever else is true: only PROVEN equivocation may slash.
+    record "184-equivocation-island" fail blocker \
+      "an identity OTHER THAN the equivocator is in the island's COMMITTED slash set — $isl_extra. A committed slash evicts that identity on every replica (F2), so no honest node may ever appear here (item 9)"
+  elif printf '%s' "$isl_slash" | grep -q "$byzid"; then
+    slo_assert "184-equivocation-island" blocker \
+      "accountability FIRED AND COMMITTED: an island anchor double-signed, an honest anchor slashed it (${slashline##*chain: }), and the HISTORY carries the eviction at head ${isl_head} with NOBODY else in the committed slash set — F2 on every replica, not one local ledger, zero blast radius to the main sheet" 1
+  else
+    record "184-equivocation-island" fail blocker \
+      "the slash FIRED but the island's committed slash set is still empty at head ${isl_head} after 120s — the local ledger evicted the equivocator and the history did not, so replicas do NOT evict in lockstep (F2). If the head is not advancing, the chain is quiescent and the queued proof is not arming a proposal (core/node maybeProposeBondDrain must count pendingSlashes); if it IS advancing, blocks are being proposed and the proof is not riding them"
   fi
 }
 

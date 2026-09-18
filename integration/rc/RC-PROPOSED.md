@@ -562,9 +562,9 @@ and the anchors never shed.
 
 ## Tier B — reachable, none free
 
-**9. Consensus denials hold, and no honest node is ever slashed.** ⚠ *the distinctive clause now
-EXISTS and is driven: the narrated complement is GREEN, the committed one is UNDRIVEN — and chasing
-why turned up a product defect that is now fixed*
+**9. Consensus denials hold, and no honest node is ever slashed.** ✅ *the distinctive clause EXISTS
+and BOTH halves are driven GREEN — and chasing the undriven one turned up a product defect that is
+now fixed*
 Equivocation attributed;
 forged and under-bonded proposals rejected pre-attestation; a partition heals to one order.
 The honest-never-slashed property asserted over the whole run's slash set, not per attack.
@@ -589,7 +589,7 @@ from every seat that ever held a chain, before each is torn down:
 | set | what it answers | verdict |
 |---|---|---|
 | NARRATED — every identity any seat DECIDED to slash, from its own journal | item 9's clause at this suite's tier: a node that slashes an honest peer has violated it whether or not the proof reached a block | **PASS** — across 9 seats, exactly ONE identity was slashed and it is the equivocator's |
-| COMMITTED — the identities the HISTORY carries | the replicated, objective eviction (F2) — every replica evicting in lockstep rather than one local ledger | **FAIL — UNDRIVEN**: the drill's seats are non-objective, so the drain that carries the proof never runs there |
+| COMMITTED — the identities the HISTORY carries | the replicated, objective eviction (F2) — every replica evicting in lockstep rather than one local ledger | **PASS**, on the equivocation island — see below |
 
 *NEITHER CAN PASS VACUOUSLY.* The narrated complement is paired with scenario 1, which guarantees
 the set is non-empty — an empty slash set satisfies "no honest node was slashed" perfectly and
@@ -635,11 +635,35 @@ on an idle one it never landed — and idle is the case that matters, because an
 and then goes quiet. Fixed in both branches, each ablated separately because one test cannot see
 both, and a slash-only block is not empty so this cannot arm a proposal with nothing to carry.
 
-*THE DRILL'S OWN HALF IS STILL UNDRIVEN, FOR A DIFFERENT REASON THAN THE ONE FIRST WRITTEN HERE.*
-`integration/redteam`'s equivocation seats run `-objective=false`, and the drain path is gated on
-`Objective()` in its first line — so on those nodes it never runs at all, fix or no fix. Driving the
-committed complement there needs an objective equivocation topology, which is a change to the DRILL
-and not to the product. The narrated complement is unaffected and stays green.
+*THE COMMITTED HALF IS NOW DRIVEN, AND THE ISLAND IS WHERE IT BELONGS.* `integration/redteam`'s
+equivocation seats run `-objective=false`, and the drain that carries a queued proof is gated on
+`Objective()` in its first line — so there the proof can never ride, fix or no fix. That is a
+property of the DRILL, not the product, and the right answer was not to convert a suite whose other
+scenarios depend on the subjective posture. The cloud sheet already runs a contained equivocation
+ISLAND that is `-objective` with four anchors and its own genesis, and it already asserted the slash
+FIRED. It now also asserts what the history COMMITTED.
+
+*DRIVEN 2026-09-19, LOCAL, and the numbers are the claim:*
+
+```
+accountability FIRED AND COMMITTED: an island anchor double-signed, an honest anchor
+slashed it (slashed equivocator 6c5f1115… (double-signed at height 2)), and the HISTORY
+carries the eviction at head 6 with NOBODY else in the committed slash set
+```
+
+Read after the flow, every island replica agrees — **head 9, exactly 1 identity in the committed
+slash set, on all four seats including the equivocator's own**. That is the lockstep the clause
+asks for: not one local ledger's opinion but the same committed history everywhere. The chain also
+kept committing past the permanent eviction (3 of 4 anchors clearing the ⌊A/2⌋+1 floor), which is
+what makes the proof landable at all.
+
+*IT IS ALSO THE FIRST END-TO-END CONFIRMATION OF THE QUIESCENCE FIX,* over real daemons rather than
+the sim: the proof rides a block because a queued slash now arms the drain. The three verdicts the
+assertion can return are deliberately distinct — an identity other than the equivocator is an
+unconditional fail; the equivocator alone is the pass; an empty set names WHICH half to look at,
+because a non-advancing head means the chain is quiescent and the proof is not arming a proposal
+while an advancing one means blocks are being proposed and the proof is not riding them. That
+distinction is exactly the one this sheet got wrong the first time.
 
 *SO THE SUITE IS RED FOR A REASON WORTH BEING RED FOR.* "Skipped", "gap" and "not run" are all
 failures here, and an undriven half of the accountability claim is exactly that. What is NOT claimed
