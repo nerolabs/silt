@@ -2058,7 +2058,24 @@ func (n *Node) maybeProposeBondDrain() {
 	// at fold would arm a proposal with no content, which fails the proposer's own
 	// empty-block check and spins on the sign slot.
 	issuerKeysDue := n.issuerKeysFoldable()
-	if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && !ownDue && !issuerKeysDue {
+	// A QUEUED EQUIVOCATION PROOF IS DESIGNEE WORK, and leaving it out of this rule
+	// made the replicated eviction wait on traffic that has nothing to do with it.
+	// slashEquivocators queues the proof so "the OBJECTIVE set evicts the culprit in
+	// lockstep on every replica (F2), not just this local ledger" — but the proof
+	// rides only a block someone proposes, and nothing here armed a proposal BECAUSE
+	// one was held. On a busy chain an unrelated renewal or entry carried it along
+	// soon enough to hide that; on an idle one it never landed at all.
+	//
+	// AND IDLE IS THE CASE THAT MATTERS: an attacker equivocates and then goes quiet,
+	// which is exactly the chain with no other work to arm the sweep. Measured on a
+	// three-anchor equivocation topology 2026-09-19 — both honest nodes committed,
+	// slashed the culprit, and then committed nothing for the rest of the window,
+	// with no sign-slot block, no round advance and no stall line. The chain was not
+	// wedged; it was quiescent, holding an eviction it had already proven.
+	//
+	// It cannot arm an empty proposal: proposeBlock's own empty-block check counts
+	// len(b.Slashes), so a slash-only block is carried, not refused.
+	if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && len(n.pendingSlashes) == 0 && !ownDue && !issuerKeysDue {
 		n.drainWaitSweeps = 0
 		return // nothing pending — stay quiet (B6)
 	}
@@ -2132,7 +2149,12 @@ func (n *Node) maybeProposeBondDrain() {
 		}
 	}
 	if dist > 0 {
-		if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && !issuerKeysDue {
+		// A queued equivocation proof is takeover-worthy for the same reason pending
+		// entries are: the designation is height-keyed, a silent designee stalls the
+		// head, and the eviction has nowhere else to ride. Omitting it here would arm
+		// the sweep above and then hand the proof back to a designee that is not
+		// proposing.
+		if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && len(n.pendingSlashes) == 0 && !issuerKeysDue {
 			// Own renewal only, and we are not the designated proposer:
 			// submit, never propose (Q2b-2). The reg reaches the chain via
 			// the designated proposer's queue; nothing to take over for.
