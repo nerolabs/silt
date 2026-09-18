@@ -446,7 +446,11 @@ PY
     argv="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['nodes']['$name']['argv'])")"
     argv="${argv#daemon }"; argv="daemon $argv"
     docker rm -f "$inst" >/dev/null 2>&1 || true
+    # NET_ADMIN so `tc` can shape this container's egress: the impairment flow
+    # applies netem to the swarm subnets, and without the capability it would
+    # report "could not apply" here and stay unrehearsed until the cloud.
     docker run -d --name "$inst" --network "$net" --ip "$ip" \
+      --cap-add NET_ADMIN \
       --label "cloudtest-local=$RUN_ID" \
       "$LOCAL_IMG" >/dev/null
     # COPY (never bind-mount) the binary + shims: a host-side edit of a bind-mounted

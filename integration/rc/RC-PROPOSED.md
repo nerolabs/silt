@@ -862,11 +862,107 @@ verdict, not a participating validator.
 
 ## Tier C — field
 
-**21. Publish and fetch work on the internet as it is.** A NATed publisher in one region, a
-cold fetcher in another, bit-perfect bytes inside a bound derived from the deployed
-configuration. The chain keeps committing under sustained load with injected latency, jitter,
-loss and reordering.
+**21. Publish and fetch work on the internet as it is.** ⚠ *both halves are BUILT and reduced locally; two product defects closed on the path; the field tier is owed*
+A NATed publisher in one region, a cold fetcher in another, bit-perfect bytes inside a bound
+derived from the deployed configuration. The chain keeps committing under sustained load with
+injected latency, jitter, loss and reordering.
 *field.* Run it early: a failure needs time to reduce to a local reproduction.
+
+*BOTH HALVES WERE UNBUILT, and the sheet read as though they were not.* `9-cross-nat` fetches on
+`nat-2` — the other side of the SAME NAT subnet in the SAME region, because `topology.py` pins every
+natted node to a single NAT subnet in the default region by construction. That proves the relay
+path and it is not this claim. And no impairment existed anywhere on the cloud sheet: the four
+conditions build-immutable #5 names are certified nightly on an impaired LOOPBACK
+(`integration/adversarial`), over real daemons and real TCP, which is the e2e tier and not the
+field one. Two flows now carry the two halves.
+
+*THE BOUND IS READ FROM THE CLIENT, because the harness was deriving it from the wrong process.*
+`FETCH_SLO_S` is documented as `-request-timeout 8s` × the daemon's retries ≈ 34 s/leg. The
+publish/fetch client is a SEPARATE process and takes none of the daemon's flags — its per-attempt
+deadline is its own — so that arithmetic describes a process that performs no fetch. The client now
+narrates the posture it holds (per-RPC worst case with retries and backoff, holder-dial deadline,
+sweep schedule, provider count, and the ceiling it enforces on itself) and
+`21-cross-region-cold-fetch` builds its bound out of those numbers. A deployment that widens its
+deadlines for a worse path widens the bound with them. The stale note stays where it is, corrected
+in place, because older flows still grade against it.
+
+*THE COLD FETCHER IS CHOSEN, NOT NAMED, AND ITS COLDNESS IS ASSERTED.* The flow reads the regions
+off the deployed node map, takes the first eligible seat outside the publisher's region, and then
+disqualifies any candidate that appears in the object's committed holder set — a fetch from a holder
+measures a local disk read with a cross-region label on it. On the shipped topology that selects the
+europe-west1 seat against a us-west1 publisher.
+
+*ONE PRODUCT DEFECT, FOUND BEFORE ANY SPEND: the publish/fetch client ran with RPC retries OFF.*
+A single dropped or slow packet evicted the peer it was talking to and negative-cached it. The
+client's whole routing table at start-up is the bootstrap peers named on its command line, so on a
+one-peer `-peers` that is its entire route into the network: one lost packet and the operation has
+nobody left to ask. The daemon flag that sets this says what the value means — "0 = evict on the
+first miss (fast/trusted LAN only)" — and the client, the only silt process an ordinary user runs,
+was holding it. The comment above the client's configuration asserted the opposite ("it inherits the
+retry"); it did not. Gated by `core/node/swarmclient_test.go`, which loses exactly one packet and
+delivers every packet after it, with a vacuity arm and a retry-removed ablation.
+
+*A SECOND PRODUCT DEFECT, and this one hid a diagnosis.* A publish waits for its entry to COMMIT on
+a 360 s budget derived from the synchronizer's escape bound, whose own comment says "a client window
+below the chain's in-spec height cost manufactures failure verdicts for healthy commits". The CLI's
+whole-operation cap was a bare 5-minute literal — BELOW it — so the inner budget was unreachable
+from the command line, every time, on exactly the slow paths it exists to tolerate, and the caller
+heard `swarm operation timed out` instead of `accepted but not committed within 6m0s — the consensus
+gather did not finish; see the validators' -log debug`. The cap is now derived from the budget it
+wraps plus the legs the client runs first, 6m39s at shipped values, gated in
+`cmd/silt/clientceiling_test.go` and driven red on the literal. Confirmed on the wire: the impaired
+run below now prints the registry's own sentence where it used to print the generic one.
+
+*THE IMPAIRMENT IS SHAPED NARROWLY, AND CANNOT PASS VACUOUSLY.* netem on the root qdisc would
+degrade the IAP channel the sheet polls over, and a lost verdict is indistinguishable from a lost
+block. So the interface takes a `prio` root and the impairment hangs off one band, with `u32`
+filters steering only the swarm's own subnets — derived from the addresses the run deployed — into
+it. Two controls run every time: the qdisc is read back on every seat, and a seat that will not take
+the shaping aborts the flow rather than contributing a clean number; and netem's OWN counters must
+show swarm packets crossing the impaired band, so shaping that steered nothing reports NOT CREDITED
+and fails instead of grading a clean network with an adverse label on it.
+
+*DRIVEN LOCALLY, 2026-09-18, one condition at a time against a no-op control.* Same box, same
+cohort, minutes apart. Every arm credited on all four validator seats by netem's own counters.
+
+| profile | max inter-commit gap | heights | publishes landed |
+|---|---|---|---|
+| CONTROL — shaping present, `delay 0ms` | 4 s | 3 | 1/1 |
+| latency + jitter — `delay 80ms 20ms distribution normal` | 44 s | 1 | 1/1 |
+| loss — `loss 1%` (24/9/11/9 packets dropped) | 32 s | 2 | 1/1 |
+| reordering — `delay 20ms reorder 25% 50%` | 26 s | 1 | 1/1 |
+| **all four at once** | **802 s — 3.6× the bound** | **0** | **0/2** |
+
+*THE CONTROL IS WHAT MAKES THAT TABLE MEAN ANYTHING.* At `delay 0ms` the shaping machinery is
+present and credited and the chain commits three heights with a 4 s worst gap, so neither the qdisc
+nor the box nor the harness is the cost. Each condition ALONE then sits inside the 220 s escape
+bound with room to spare. The composition does not: the chain went 802 s without committing, no
+publish landed, and the registry reported that the consensus gather did not finish. The conditions
+compose super-additively — 44 + 32 + 26 individually against >802 s together.
+
+*WHAT THAT IS AND IS NOT EVIDENCE OF.* It is a reproduced, controlled observation that the four
+conditions cost far more together than apart on this hardware. It is NOT yet a product verdict: the
+box is a 2-CPU docker VM carrying thirteen containers, and this project's own record has that VM's
+per-height cadence swinging threefold between runs of an unchanged suite. The absolute seconds are
+the box's. The SHAPE — four arms inside the bound, the composition far outside it, with a 4 s
+control between them — is what the field tier has to confirm or refute on real hardware with one
+node per machine. That is the question only the cloud can answer, and it is the question this item
+exists to ask.
+
+*THREE HARNESS DEFECTS WERE FOUND BY DRIVING THE FLOWS, all of the "a bound that does not bound what
+it appears to" family this sheet has paid for before.* The teardown check read its answer through a
+pipeline, and this file runs under `pipefail`, so it took its status from a remote `grep -c` whose
+count was zero rather than from the comparison — it reported "the impairment did NOT come off" about
+four interfaces that were already clean, which is a verdict naming the wrong cause standing in front
+of the result it was guarding. The wall was priced at a clean network's block time while the flow
+graded against the escape bound, so it could report ZERO heights for a reason that was the wall's.
+And the publish was run through a 90 s transport timeout while the client's own ceiling is minutes,
+so the landed-publish count was the harness's number rather than the product's. All three are fixed
+and the reasons are written where they bit.
+
+*Still owed: the field tier.* Neither flow has been driven on the cloud. `21-cross-region-cold-fetch`
+cannot be rehearsed locally at all — the LOCAL backend excludes the natted nodes on purpose, so it
+SKIPs there — and `21-impaired-commit` has been rehearsed only on one small box.
 
 **22. Every item has a cloud-harness run.** Each item above named in a cloud scenario, with
 the gaps written down as decisions rather than left as silence.
