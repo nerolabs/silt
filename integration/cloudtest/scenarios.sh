@@ -727,10 +727,9 @@ flow_cross_nat() {
 # found no provider — so it cannot false-fail a healthy path. What it catches is
 # a retrieval that waited on something its own configuration does not explain.
 #
-# LOCAL_PROOF: go test ./e2e -run TestPublishCommitFetchOverTCP -count=1 (the
-#   round-trip, and the posture/elapsed lines this bound is read from);
-#   ./integration/nat/run.sh (EMULATED NAT — the real-middlebox cone/symmetric
-#   decision stays the cloud residue)
+# The round-trip, and the posture and elapsed lines this bound is read from, are
+# proven by the e2e publish-commit-fetch test; the NAT leg by the emulated-NAT
+# suite, whose own residue is the real-middlebox cone/symmetric decision.
 # ft_region NODE — the node's region. nodes.json carries the ZONE (us-west1-a),
 # which is the region plus a zone letter, so the region is the zone with its last
 # segment removed — the same derivation topology.py uses to lay out the subnets.
@@ -739,6 +738,7 @@ flow_cross_nat() {
 # single-region and skip itself forever.
 ft_region() { printf '%s' "$(node_field "$1" zone)" | sed 's/-[a-z]$//'; }
 
+# LOCAL_PROOF: go test ./e2e -run TestPublishCommitFetchOverTCP -count=1 && ./integration/nat/run.sh
 flow_cross_region_cold_fetch() {
   require_nodes "21-cross-region-cold-fetch" blocker nat-1 || return
   local pubregion; pubregion="$(ft_region nat-1)"
@@ -1024,8 +1024,10 @@ ft_impair_counters() {
 #     traffic (a wrong CIDR, a renamed interface) reports UNCREDITED and fails
 #     instead of grading a clean network with an adverse label on it.
 #
-# LOCAL_PROOF: SUITE=all ./integration/adversarial/run.sh (the same four
-#   conditions over real daemons and real TCP, deterministically, off-cloud)
+# The same four conditions run over real daemons and real TCP, deterministically
+# and off-cloud, in the netem suite — ONE CONDITION PER ARM there, which is
+# exactly why the composition this flow drives has to be driven here.
+# LOCAL_PROOF: SUITE=all ./integration/adversarial/run.sh
 flow_impaired_commit() {
   [ "${IMPAIR:-1}" = 1 ] || { record "21-impaired-commit" skip blocker "opt-out (IMPAIR=0)"; return; }
   require_nodes "21-impaired-commit" blocker val-a val-b || return
