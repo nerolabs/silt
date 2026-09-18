@@ -150,12 +150,12 @@ func selfRoot(id ports.ChunkID) ports.Hash {
 
 // gradeOne runs the PRODUCT's composed three-leg grade over exactly one
 // answer, building the `valid` leg the way auditLeaf builds it (por.go)
-// — via the product's own verifyStorageProof — so no leg is asserted by the
-// test.
-func gradeOne(t *testing.T, n *Node, id ports.ChunkID, porKey *por.Key, base [32]byte,
+// — via the product's own verifyStorageProofAgainst, under the AUDITED root the
+// caller supplies — so no leg is asserted by the test.
+func gradeOne(t *testing.T, n *Node, id ports.ChunkID, root ports.Hash, porKey *por.Key, base [32]byte,
 	want int, prover ports.NodeID, resp ports.Message) AuditReport {
 	t.Helper()
-	valid := resp.Found && resp.Proof != nil && verifyStorageProof(*resp.Proof, id)
+	valid := resp.Found && resp.Proof != nil && verifyStorageProofAgainst(*resp.Proof, id, root)
 	answers := []challengeAnswer{{
 		prover: prover, valid: valid, blocks: resp.PorBlocks,
 		proof: por.Proof{Mu: resp.PorMu, Sigma: resp.PorSigma},
@@ -270,7 +270,7 @@ func TestCareLinkHolderForgesWithZeroBytes_PINNED_DEFECT(t *testing.T) {
 	porKey := DerivePorKey(layoutKey)
 	base := porChallengeSeed(4242)
 
-	id, data, tags, sp, _ := honestShard(t, porKey)
+	id, data, tags, sp, auditedRoot := honestShard(t, porKey)
 	want := por.DefaultParams.Blocks(pipeline.DefaultChunkSize + ctOverhead)
 	if want != len(tags) {
 		t.Fatalf("setup: auditor wants %d blocks, honest shard has %d", want, len(tags))
@@ -287,7 +287,7 @@ func TestCareLinkHolderForgesWithZeroBytes_PINNED_DEFECT(t *testing.T) {
 		t.Fatalf("honest prove: %v", err)
 	}
 	honestNs := time.Since(t0).Nanoseconds()
-	hr := gradeOne(t, n, id, porKey, base, want, honest, ports.Message{
+	hr := gradeOne(t, n, id, auditedRoot, porKey, base, want, honest, ports.Message{
 		Kind: ports.MsgChallengeReply, Found: true, Proof: &sp,
 		PorBlocks: want, PorMu: hp.Mu, PorSigma: hp.Sigma,
 	})
@@ -302,10 +302,20 @@ func TestCareLinkHolderForgesWithZeroBytes_PINNED_DEFECT(t *testing.T) {
 	t1 := time.Now()
 	fp, mults := forgeZeroMu(layoutKey, id[:], fSeed, want, porSampleCount)
 	forgeNs := time.Since(t1).Nanoseconds()
-	fsp := ports.StorageProof{Root: selfRoot(id), Index: 0, Total: 1, Path: nil, Column: -1}
+	// THE FORGER CARRIES THE HONEST INCLUSION PROOF, AND THAT IS WHAT MAKES THIS PIN
+	// ABOUT KEY DISTRIBUTION RATHER THAN ABOUT LEG 1. It used to carry a self-rooted
+	// one-leaf proof, which leg 1 accepted while leg 1 was a tautology — so binding leg
+	// 1 to the audited root reddened this pin without touching the PoR key at all,
+	// exactly the coupling the FIX CASE below warns about. Leg 1 now binds, so the
+	// forger is handed `sp`: a real, audited-root inclusion proof, which any care-link
+	// holder can derive from the layout it is entitled to read. Leg 1 therefore passes
+	// honestly and the grade turns purely on whether a party with the key but no bytes
+	// can satisfy the PoR equation. That is the break this pin exists to hold, now
+	// isolated from the one next door.
+	fsp := sp
 
 	before := led.Balance(forger)
-	fr := gradeOne(t, n, id, porKey, base, want, forger, ports.Message{
+	fr := gradeOne(t, n, id, auditedRoot, porKey, base, want, forger, ports.Message{
 		Kind: ports.MsgChallengeReply, Found: true, Proof: &fsp,
 		PorBlocks: want, PorMu: fp.Mu, PorSigma: fp.Sigma,
 	})
@@ -323,7 +333,7 @@ func TestCareLinkHolderForgesWithZeroBytes_PINNED_DEFECT(t *testing.T) {
 	var wrongKey [32]byte
 	wrongKey[0] = 0x99
 	wp, _ := forgeZeroMu(wrongKey, id[:], fSeed, want, porSampleCount)
-	wr := gradeOne(t, n, id, porKey, base, want,
+	wr := gradeOne(t, n, id, auditedRoot, porKey, base, want,
 		ports.HashBytes([]byte("no-care-link")), ports.Message{
 			Kind: ports.MsgChallengeReply, Found: true, Proof: &fsp,
 			PorBlocks: want, PorMu: wp.Mu, PorSigma: wp.Sigma,
@@ -406,7 +416,7 @@ func TestChallengeProxyPassesAudit_PINNED_DEFECT(t *testing.T) {
 	porKey := DerivePorKey(layoutKey)
 	base := porChallengeSeed(7777)
 
-	id, data, tags, sp, _ := honestShard(t, porKey)
+	id, data, tags, sp, auditedRoot := honestShard(t, porKey)
 	want := por.DefaultParams.Blocks(pipeline.DefaultChunkSize + ctOverhead)
 
 	// A is a REAL node that really holds the shard and its proof.
@@ -437,19 +447,19 @@ func TestChallengeProxyPassesAudit_PINNED_DEFECT(t *testing.T) {
 		Kind: ports.MsgChallenge, ChunkID: id,
 		PorSeed: sliceOfSeed(porProverSeed(base, holderIDA)), PorCount: porSampleCount,
 	})
-	if rc := gradeOne(t, auditor, id, porKey, base, want, proxyB, relayOnly); rc.Passed != 0 {
+	if rc := gradeOne(t, auditor, id, auditedRoot, porKey, base, want, proxyB, relayOnly); rc.Passed != 0 {
 		t.Fatalf("CONTROL BROKEN: a plain RELAY of A's own-seed proof also passed (%+v) — "+
 			"porProverSeed's identity binding is not holding, so this test is not "+
 			"measuring challenge OUTSOURCING", rc)
 	}
 	// --- CONTROL: B with no proxy at all holds nothing and must fail.
-	if rn := gradeOne(t, auditor, id, porKey, base, want, proxyB,
+	if rn := gradeOne(t, auditor, id, auditedRoot, porKey, base, want, proxyB,
 		ports.Message{Kind: ports.MsgChallengeReply}); rn.Passed != 0 {
 		t.Fatal("CONTROL BROKEN: an empty reply was graded PASSED")
 	}
 
 	before := led.Balance(proxyB)
-	r := gradeOne(t, auditor, id, porKey, base, want, proxyB, relayed)
+	r := gradeOne(t, auditor, id, auditedRoot, porKey, base, want, proxyB, relayed)
 	minted := led.Balance(proxyB) - before
 	t.Logf("grade of B's proxied answer: %+v; credit minted to the data-less proxy: %d", r, minted)
 
@@ -460,40 +470,31 @@ func TestChallengeProxyPassesAudit_PINNED_DEFECT(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// GATE 5a — the Merkle leg does NOT bind to the audited root.
+// GATE 5a — CLOSED. The Merkle leg binds to the audited root.
 //
-// THE RULE THIS PIN RECORDS THE ABSENCE OF: leg 1 should prove the shard is the
-// one the audit is asking about. verifyStorageProof takes p.Root FROM THE
-// RESPONSE and never compares it to the audited root, and with {Index:0, Total:1,
-// Path:nil} manifest.VerifyProof reduces to leafHash(leaf)==root — so any party
-// knowing only the chunk id satisfies leg 1 with zero knowledge. Neither call
-// site binds p.Root to the root it is auditing: Node.auditLeaf passes m.Root
-// nowhere into the check, and Node.challengeHolderRetrievability does not bind
-// claim.Root. Leg 1 is a tautology and buys nothing.
-//
-// PIN. GREEN today. It goes RED when leg 1 binds to the audited root.
+// THE RULE, now asserted positively rather than pinned in its absence: leg 1 proves
+// the shard is the one the audit is asking about. The verifier used to take p.Root
+// FROM THE RESPONSE and never compare it to the audited root, and with
+// {Index:0, Total:1, Path:nil} manifest.VerifyProof reduces to leafHash(leaf)==root
+// — so any party knowing only the chunk id satisfied leg 1 with zero knowledge.
+// Both call sites now supply a root of their own: Node.auditLeaf threads the layout
+// root it already computed for colKey, and Node.challengeHolderRetrievability uses
+// the root it recomputes from the layout it loaded, never claim.Root (which the
+// claimant supplies) and never the response's.
 // ---------------------------------------------------------------------------
 
-// rtPOR5aPin returns "" while a self-rooted proof built from the chunk id alone is
-// still accepted by leg 1 both in isolation and composed, and the instruction once it
-// is not. TEETH: TestRetrievabilityPinsFireOnTheirRemediations.
-func rtPOR5aPin(acceptedInIsolation bool, r AuditReport) string {
-	if acceptedInIsolation && r.Passed == 1 && r.Failed == 0 {
-		return ""
-	}
-	return fmt.Sprintf("PIN IS RED — a self-rooted proof built from the chunk id alone was accepted in isolation=%v and graded %+v; "+
-		"pinned at isolation=true, Passed=1, Failed=0.\n"+
-		"  THE FIX CASE: isolation=false means verifyStorageProof now compares p.Root to the root it is auditing rather than taking it from\n"+
-		"  the response. Confirm BOTH call sites were fixed — Node.auditLeaf against the layout root and Node.challengeHolderRetrievability\n"+
-		"  against claim.Root — because fixing one leaves the other a tautology and this pin cannot tell them apart from a single RED.\n"+
-		"  The FIXTURE BROKEN arm above already asserts the honest inclusion proof still passes leg 1, so a RED here is not over-rejection.\n"+
-		"  Then replace this pin with the positive assertion that a proof naming a foreign root is refused.\n"+
-		"  THE OTHER CASE: isolation=true but Passed!=1 means leg 1 is still a tautology and a LATER leg changed. Leg 1 is what this pin holds;\n"+
-		"  re-derive which leg moved before re-pinning.",
-		acceptedInIsolation, r)
-}
-
-func TestMerkleLegDoesNotBindToAuditedRoot_PINNED_DEFECT(t *testing.T) {
+// TestForeignRootedProofIsRefused is the POSITIVE assertion that replaced
+// TestMerkleLegDoesNotBindToAuditedRoot_PINNED_DEFECT and its rtPOR5aPin predicate.
+// The pin's own FIX CASE named both call sites — Node.auditLeaf against the layout
+// root and Node.challengeHolderRetrievability against the judge's recomputed root —
+// and both now pass the verifier a root of their own, so the pin went red and was
+// retired in the same change that made it red.
+//
+// It asserts the two halves the pin insisted stay independently observable: leg 1
+// refusing in isolation, and the composed grade failing. A composed FAIL alone would
+// not prove the root binding landed — a later leg can produce one — which is why the
+// isolation arm is asserted first and separately.
+func TestForeignRootedProofIsRefused(t *testing.T) {
 	n, _ := aloneNode(t, 0)
 	n.SetLedger(credit.New(1, 500_000))
 
@@ -503,33 +504,36 @@ func TestMerkleLegDoesNotBindToAuditedRoot_PINNED_DEFECT(t *testing.T) {
 	id, _, tags, sp, auditedRoot := honestShard(t, porKey)
 	want := len(tags)
 
-	// A party that knows only the chunk id names its OWN root.
+	// A party that knows only the chunk id names its OWN root: a one-leaf tree over
+	// the shard. Under the old reader this verified against itself and the leg passed.
 	bogus := ports.StorageProof{Root: selfRoot(id), Index: 0, Total: 1, Path: nil, Column: -1}
 	if bogus.Root == auditedRoot {
 		t.Fatal("setup: the self-root collided with the audited root")
 	}
 
-	// Leg 1, in isolation: the product's own verifier accepts it.
-	acceptedInIsolation := verifyStorageProof(bogus, id)
-	t.Logf("verifyStorageProof(self-rooted, id) = %v; audited root = %x, claimed root = %x",
-		acceptedInIsolation, auditedRoot[:6], bogus.Root[:6])
+	// LEG 1, IN ISOLATION. This is the assertion the remediation is about.
+	if verifyStorageProofAgainst(bogus, id, auditedRoot) {
+		t.Fatalf("a self-rooted inclusion proof was accepted against the AUDITED root — the leg is still a "+
+			"tautology.\n  audited root = %x, claimed root = %x", auditedRoot[:6], bogus.Root[:6])
+	}
 
-	// Composed: the same self-rooted proof, carried by a zero-byte forger.
+	// NO OVER-REJECTION: the honest holder's real proof still passes leg 1 under the
+	// same root. A verifier that refuses everything would satisfy the arm above.
+	if !verifyStorageProofAgainst(sp, id, auditedRoot) {
+		t.Fatal("the honest inclusion proof was refused against its own audited root — the binding check " +
+			"over-rejects, which fails the claim in the other direction")
+	}
+
+	// COMPOSED: the same self-rooted proof carried by a zero-byte forger is graded
+	// FAILED rather than passed, and mints nothing.
 	fSeedProver := ports.HashBytes([]byte("zero-knowledge-rooter"))
 	fp, _ := forgeZeroMu(layoutKey, id[:], porProverSeed(base, fSeedProver), want, porSampleCount)
-	r := gradeOne(t, n, id, porKey, base, want, fSeedProver, ports.Message{
+	r := gradeOne(t, n, id, auditedRoot, porKey, base, want, fSeedProver, ports.Message{
 		Kind: ports.MsgChallengeReply, Found: true, Proof: &bogus,
 		PorBlocks: want, PorMu: fp.Mu, PorSigma: fp.Sigma,
 	})
-
-	// The honest holder's REAL proof must keep passing leg 1 (no over-rejection).
-	if !verifyStorageProof(sp, id) {
-		t.Fatal("FIXTURE BROKEN: the honest inclusion proof failed leg 1")
-	}
-
-	// PIN: leg 1 accepts a self-rooted proof both in isolation and composed.
-	if msg := rtPOR5aPin(acceptedInIsolation, r); msg != "" {
-		t.Fatal(msg)
+	if r.Passed != 0 || r.Failed != 1 {
+		t.Fatalf("a self-rooted proof was not graded FAILED by the composed grade: %+v", r)
 	}
 }
 
@@ -593,17 +597,10 @@ func TestRetrievabilityPinsFireOnTheirRemediations(t *testing.T) {
 			"detect the prover-identity remediation it exists to detect")
 	}
 
-	// ---. Both halves must be independently observable: leg 1 refusing in
-	// isolation is the real fix, a composed FAIL alone is a later leg moving. ---
-	if msg := rtPOR5aPin(true, pinned); msg != "" {
-		t.Fatalf("rtPOR5aPin fired on the state it is pinned to accept: %s", msg)
-	}
-	if rtPOR5aPin(false, pinned) == "" {
-		t.Fatal("rtPOR5aPin stayed silent when verifyStorageProof REFUSED the self-rooted proof in " +
-			"isolation — that is the leg-1 root binding landing, and the pin cannot see it")
-	}
-	if rtPOR5aPin(true, fixed) == "" {
-		t.Fatal("rtPOR5aPin stayed silent when leg 1 was still a tautology but the composed grade " +
-			"FAILED — a later leg moved and the pin cannot see it")
-	}
+	// GATE 5a's arms are GONE, not silenced: rtPOR5aPin was retired when the root
+	// binding landed, and its replacement (TestForeignRootedProofIsRefused) is an
+	// ordinary positive assertion that needs no teeth here. Both halves it insisted
+	// stay independently observable are asserted there — leg 1 refusing in isolation
+	// AND the composed grade failing — because a composed FAIL alone can be a later
+	// leg moving.
 }

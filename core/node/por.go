@@ -90,7 +90,42 @@ func copyProof(p ports.StorageProof) ports.StorageProof {
 	return p
 }
 
-func verifyStorageProof(p ports.StorageProof, leaf ports.ChunkID) bool {
+// verifyStorageProofAgainst is the BINDING check: does this inclusion proof put
+// `leaf` under the root the verifier is auditing? The root is the verifier's own,
+// never the response's, and a proof naming a different root is refused before the
+// path is walked.
+//
+// THE ROOT ARGUMENT IS THE WHOLE POINT. The check used to read p.Root — the root
+// the PROVER supplied — which makes the leg a tautology: anyone holding a chunk id
+// can name a one-leaf tree over it and produce a self-consistent proof that the
+// shard is in a tree of its own devising. What the audit needs to know is the
+// opposite question, whether the shard is in THIS object, and only the auditor's
+// root can answer it.
+//
+// p.Root is still compared rather than ignored, so a response that names a foreign
+// root is refused for naming it, not merely failed on the path walk — the two are
+// the same verdict here but not the same evidence, and a caller reading a log wants
+// the first.
+func verifyStorageProofAgainst(p ports.StorageProof, leaf ports.ChunkID, want ports.Hash) bool {
+	if p.Root != want {
+		return false
+	}
+	return manifest.VerifyProof(want, leaf, manifest.Proof{Index: p.Index, Total: p.Total, Path: p.Path})
+}
+
+// storageProofSelfConsistent is the WEAKER check, for the one place that cannot ask
+// the binding question: accepting a chunk someone pushed at us. A receiving node
+// holds no independent root for content it has not been asked to care for, so all
+// it can establish is that the proof it was handed is internally well-formed for
+// the root it names.
+//
+// IT IS NOT A BINDING CHECK AND MUST NOT BE READ AS ONE — that conflation is the
+// defect this split exists to end. What actually binds a stored shard to an object
+// is the audit, which runs verifyStorageProofAgainst under a root the auditor
+// derived from the care link. This function's only job is to refuse a proof that
+// could not be defended under ANY root, so the node does not take custody of bytes
+// whose accompanying proof is malformed.
+func storageProofSelfConsistent(p ports.StorageProof, leaf ports.ChunkID) bool {
 	return manifest.VerifyProof(p.Root, leaf, manifest.Proof{Index: p.Index, Total: p.Total, Path: p.Path})
 }
 
@@ -289,7 +324,7 @@ func (n *Node) auditEntry(entry ports.Entry, ch link.CareHandle, done func(Audit
 			if col := columnAt(i, dataN, m.K, m.N); col != noColumn {
 				key = colKey(root, col)
 			}
-			n.auditLeaf(leaves[i], key, porKey, want, &report, func() { nextLeaf(i + 1) })
+			n.auditLeaf(leaves[i], key, root, porKey, want, &report, func() { nextLeaf(i + 1) })
 		}
 		nextLeaf(0)
 	})
@@ -312,7 +347,7 @@ type challengeAnswer struct {
 	proof  por.Proof
 }
 
-func (n *Node) auditLeaf(id ports.ChunkID, key ports.Hash, porKey *por.Key,
+func (n *Node) auditLeaf(id ports.ChunkID, key ports.Hash, root ports.Hash, porKey *por.Key,
 	want int, report *AuditReport, done func()) {
 
 	n.resolveProviders(key, func(provs []ports.NodeID) {
@@ -340,7 +375,7 @@ func (n *Node) auditLeaf(id ports.ChunkID, key ports.Hash, porKey *por.Key,
 					if err == nil {
 						report.Challenges++
 						valid := resp.Found && resp.Proof != nil &&
-							verifyStorageProof(*resp.Proof, id)
+							verifyStorageProofAgainst(*resp.Proof, id, root)
 						answers = append(answers, challengeAnswer{
 							prover: p, valid: valid, blocks: resp.PorBlocks,
 							proof: por.Proof{Mu: resp.PorMu, Sigma: resp.PorSigma},

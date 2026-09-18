@@ -1339,7 +1339,9 @@ func (n *Node) hostShardLocally(id ports.ChunkID, data []byte, proof *ports.Stor
 	if !c.Verify() {
 		return false
 	}
-	if proof != nil && !verifyStorageProof(*proof, id) {
+	// Store-time acceptance holds no independent root (see storageProofSelfConsistent):
+	// this refuses a malformed proof, and the AUDIT is what binds the shard to an object.
+	if proof != nil && !storageProofSelfConsistent(*proof, id) {
 		return false
 	}
 	if err := n.store.Put(bg(), c); err != nil {
@@ -1826,8 +1828,11 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 			key = placementKey(msg.Proof.Root, msg.ChunkID, msg.Proof.Column)
 		}
 		ok := c.Verify() // never store what doesn't hash right
-		if ok && msg.Proof != nil && !verifyStorageProof(*msg.Proof, msg.ChunkID) {
-			ok = false // refuse chunks with proofs we couldn't defend under audit
+		if ok && msg.Proof != nil && !storageProofSelfConsistent(*msg.Proof, msg.ChunkID) {
+			// Refuse a proof that could not be defended under ANY root. This is NOT the
+			// binding check — a receiver has no root of its own for content it was not
+			// asked to care for — and the audit is where the shard is bound to an object.
+			ok = false
 		}
 		if ok && n.liar {
 			// Keep the receipt, ditch the goods: the liar keeps the proof so it

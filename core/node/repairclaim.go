@@ -418,6 +418,16 @@ func (n *Node) fetchSurvivors(root ports.Hash, refs []shardRef, done func(surviv
 // holder must present a Merkle proof binding the shard to the root, the committed
 // full block count, and an aggregated response that satisfies the equation under a
 // seed bound to the holder's own identity (so a relayed proof fails).
+//
+// "BINDING THE SHARD TO THE ROOT" IS NOW TRUE. The root is m.Root() — recomputed by
+// this judge from the layout it loaded under its own care handle — and never
+// claim.Root or the response's. claim.Root names which object's escrow pays the
+// bounty and arrives from the claimant, so binding to it would let a claimant
+// nominate the tree its own proof is checked against; and the judge already refuses
+// a claim whose root is not the object it cares for, so the honest case is
+// unaffected. Before this the leg read the RESPONSE's root, which made it a
+// tautology: a holder that kept a shard id could name a one-leaf tree over it and
+// satisfy the inclusion check while holding nothing of this object.
 func (n *Node) challengeHolderRetrievability(m *manifest.Layout, ch link.CareHandle, claim repairproof.RepairClaim, done func(bool)) {
 	porKey := DerivePorKey(ch.LayoutKey)
 	want := por.DefaultParams.Blocks(int(m.ChunkSize) + ctOverhead)
@@ -429,7 +439,7 @@ func (n *Node) challengeHolderRetrievability(m *manifest.Layout, ch link.CareHan
 		PorSeed: seed[:], PorCount: porSampleCount,
 	}, func(resp ports.Message, err error) {
 		if err != nil || !resp.Found || resp.Proof == nil ||
-			!verifyStorageProof(*resp.Proof, claim.ShardID) || !blocksOK(resp.PorBlocks, want) {
+			!verifyStorageProofAgainst(*resp.Proof, claim.ShardID, m.Root()) || !blocksOK(resp.PorBlocks, want) {
 			done(false)
 			return
 		}
