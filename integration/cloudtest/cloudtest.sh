@@ -216,7 +216,28 @@ apply() {
   # runs (841fa1b, 6218ba1) were lost to exactly this: 7 SPOT VMs preempted, wait_ready
   # timed out, ZERO scenarios graded. e2-small on-demand is ~cents/hr for the fleet.
   # SMOKE stays all-SPOT (cheap shakedown); explicit ALL_ON_DEMAND=false opts back in.
-  echo "==> provisioning model: $([ "${ALL_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && echo false || echo true)}" = true ] && echo 'ALL on-demand (STANDARD) — preemption-safe cert run' || echo 'SPOT for non-core (cheap; may be preempted — NOT for a graded cert)')"
+  #
+  # WITH ONE EXCEPTION, AND IT COST A READING. 21-impaired-commit shapes every
+  # validator seat and then holds it for the whole drive — 660 s at the shipped
+  # heights and escape bound. A seat somebody else can reclaim inside that window is
+  # a lost measurement, not a slow one: these fleets run instanceTerminationAction=
+  # DELETE, so a preemption removes the machine and the flow has nothing to grade.
+  # Run 5ad8344-49291 lost exactly that: a SMOKE sheet, both validators on SPOT, one
+  # of them preempted mid-drive, and the one flow the run existed to read returned
+  # no reading at all. So the CORE (validator + registry) goes on-demand whenever the
+  # impaired grade will be driven, even under SMOKE — the cheap shakedown stays cheap
+  # only when it is also opting out of the flow that needs the seats to survive.
+  # CORE_ON_DEMAND / ALL_ON_DEMAND set explicitly still win.
+  local core_od all_od
+  all_od="${ALL_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && echo false || echo true)}"
+  core_od="${CORE_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && [ "${IMPAIR:-1}" != 1 ] && echo false || echo true)}"
+  if [ "$all_od" = true ]; then
+    echo "==> provisioning model: ALL on-demand (STANDARD) — preemption-safe cert run"
+  elif [ "$core_od" = true ]; then
+    echo "==> provisioning model: CORE on-demand (validator+registry STANDARD — the seats 21-impaired-commit shapes survive the drive); SPOT elsewhere"
+  else
+    echo "==> provisioning model: SPOT for non-core (cheap; may be preempted — NOT for a graded cert)"
+  fi
   echo "==> terraform apply (run=$RUN_ID)"
   # Persist the run id so `nuke`/`down` from a FRESH shell target the right label.
   # RUN_ID embeds $$ (pid) by default, so a later `./cloudtest.sh nuke` in a new
@@ -240,8 +261,8 @@ apply() {
     -var "silt_binary_path=$FT_DIR/silt-linux-amd64" \
     -var "budget_amount_usd=${BUDGET_AMOUNT_USD:-0}" \
     -var "billing_account=${BILLING_ACCOUNT:-}" \
-    -var "core_on_demand=${CORE_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && echo false || echo true)}" \
-    -var "all_on_demand=${ALL_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && echo false || echo true)}"
+    -var "core_on_demand=$core_od" \
+    -var "all_on_demand=$all_od"
   tf output -json nodes > "${NODES_JSON:-$FT_DIR/nodes.json}"
   # Terraform's node output carries instance_name/zone/ips/role but NOT the silt
   # NodeID — yet scenarios.sh reads node_field <n> nodeid (the drills derive
