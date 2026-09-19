@@ -1880,11 +1880,13 @@ additive 4x saving that fixes nothing by itself.
 *NOT BUILT. The measurement is the deliverable,* and the assertions pin the numbers so they cannot
 rot while the decision is open — each names what to re-derive if it ever reads differently.
 
-**4 — A zero-byte prover fails the audit.** The largest piece and the one an outside adversary
-reaches first. It starts with a floor-box measurement of the candidate schemes' PRODUCTION cost, not
-with a library choice, because build-immutable #8 disqualifies a mechanism on its production cost
-however good its output. Last only because the three above convert to evidence faster, not because it
-matters least.
+**4 — A zero-byte prover fails the audit.** ⚠ *the measurement #8 demands is DONE and it picks the
+entry; the protocol is not built.* The largest piece and the one an outside adversary reaches first.
+It started with a floor-box measurement of the candidate schemes' PRODUCTION cost rather than a
+library choice, because build-immutable #8 disqualifies a mechanism on production cost however good
+its output — `core/por/production_cost_floor_test.go`, 2026-09-19, detail under item 10. Hash-only
+spot-checking is ~14-42x CHEAPER to produce than the scheme now shipping and a pairing scheme is
+~170-500x dearer, so the entry is decided and what remains is the audit protocol itself.
 
 **Then: what item 21's unheld second claim means for the date. (3) has reported, so this is now
 decidable, and the answer is that the structural close is REACHABLE before 2026-09-27.**
