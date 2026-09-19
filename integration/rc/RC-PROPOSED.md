@@ -2009,12 +2009,38 @@ Nothing has to be built to make the queue cover 100% of sources; it already does
 is that the proposer mint ONCE, over the prev it will actually build on, and deliver THAT — an
 ordering change inside the propose path rather than a new delivery mechanism.
 
-*NOT BUILT. The measurement is the deliverable,* and the assertions pin the numbers so they cannot
-rot while the decision is open — each names what to re-derive if it ever reads differently. This is
-the second time in two days that a route's stated premise did not survive being driven, and both
-times the reading was of a FUNCTION where the behaviour lives in a PATH. A build that had started
-from the sheet would have added a pre-delivery broadcast the sweep was already doing, left the
-alignment defect untouched, and measured no improvement at all.
+*THE ALIGNMENT HALF IS BUILT, 2026-09-19.* A proposer now embeds the registration it BROADCAST when
+the chain still accepts it, and mints fresh only when it does not. Both are valid and both commit;
+the difference is who else holds the bytes. The head window exists precisely so a registration
+survives the head advancing under it — `TestBondRegStaleAfterOneHead_factorII` already proves a
+one-head-stale reg validates AND commits — so nothing about validity had to change, only which copy
+the proposer reaches for.
+
+| | before | after |
+|---|---|---|
+| can an attester reconstruct the proposal's registration? | **no** | **yes** — the committed bytes are the queued bytes, 1,514,986 B, identical |
+| propose-path cost of the node's own registration | 17.27 ms (a fresh space-time answer) | **187 µs** |
+
+The second row is a floor-box saving nobody asked for and it is worth naming: a fresh registration
+is not a lookup — it reads the seed block out of the plot, proves that leaf, evaluates the VDF and
+signs the result, on the single serialized loop, inside the propose path. Re-minting when a valid
+registration was already in hand spent that twice for one claim. The gate is `ValidateBondReg`, the
+same check the block itself faces, so a kept copy can never outlive the window: the control drives a
+stale one and asserts the proposer mints fresh rather than burning its turn on a block its own
+validity rule would reject. Ablated red before the fix and green after.
+
+*THE RELAY HALF IS STILL NOT BUILT, and the alignment is exactly its precondition.* Only bytes an
+attester already holds can be replaced by a digest, and until this change there were none for a
+proposer's own registration. What remains is the wire: send the digest form to peers known to hold
+the registration, the full form to peers that do not, and decide what a miss costs — question 3
+priced the naive fallback at MORE than carrying, so the relay must avoid the miss rather than
+recover from it.
+
+*AND THE PREDICTION THAT WAS WRONG IS WORTH AS MUCH AS THE RESULT.* This is the second time in two
+days that a route's stated premise did not survive being driven, and both times the reading was of a
+FUNCTION where the behaviour lives in a PATH. A build that had started from the sheet would have
+added a pre-delivery broadcast the sweep was already doing, left the alignment defect untouched, and
+measured no improvement at all.
 
 **4 — A zero-byte prover fails the audit.** ⚠ *the measurement #8 demands is DONE and it picks the
 entry; the protocol is not built.* The largest piece and the one an outside adversary reaches first.

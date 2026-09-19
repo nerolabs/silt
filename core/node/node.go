@@ -694,6 +694,26 @@ type Node struct {
 	// submitting renewals forever, and the reason is logged once, not every
 	// 30 s sweep.
 	evictionLogged bool
+	// ownBondReg is the bond registration this node last MINTED AND BROADCAST for
+	// itself (SubmitBondRenewal), kept so the block this node proposes can commit
+	// the SAME BYTES its peers were already handed rather than a freshly minted
+	// equivalent.
+	//
+	// WHY KEEPING IT MATTERS, and it is not an optimization. A registration is a
+	// deterministic function of its prev, so two mints over one prev are identical
+	// — but the submit signs over the head at SWEEP time and the proposal is built
+	// after the reconcile settles, on whatever head that leaves. Re-minting at
+	// propose time therefore produced bytes NO attester held, while the bytes every
+	// attester did hold sat in their queues unused. Reusing the submitted
+	// registration is what makes a proposal's own registration reconstructable by
+	// its receivers, which is the precondition for ever relaying it by digest
+	// instead of by value (build-immutable #5: large payloads off the critical
+	// path).
+	//
+	// It is only reused while the chain still accepts it — the registration head
+	// window is bounded (chain.BondRegHeadWindow), so a stale one falls back to a
+	// fresh mint and nothing is trusted for longer than the chain allows.
+	ownBondReg *chain.BondReg
 	// peerBondRTT tracks each peer's recent bond-challenge reply latencies so the
 	// C1 partial-storage timing signal is the windowed-MINIMUM (low quantile) of
 	// the distribution, not a single wall-clock sample — build-immutable #3: a

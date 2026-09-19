@@ -106,6 +106,12 @@ func (n *Node) SubmitBondRenewal(peers []ports.NodeID) {
 	if !ok {
 		return
 	}
+	// KEEP WHAT WAS BROADCAST. The block this node proposes next should commit
+	// these bytes rather than a freshly minted equivalent over a later head: the
+	// peers being handed this copy are the same peers that will attest that block,
+	// and only bytes they already hold can ever be relayed to them by digest.
+	kept := reg
+	n.ownBondReg = &kept
 	// The signed-over head is the other half of the refusal correlation: a
 	// receiver whose committed window does not yet include this head refuses
 	// the reg with a bare "signature" error (chainrole MsgSubmitBondReg), so
@@ -118,4 +124,38 @@ func (n *Node) SubmitBondRenewal(peers []ports.NodeID) {
 		}
 		n.request(p, ports.Message{Kind: ports.MsgSubmitBondReg, Data: raw}, func(ports.Message, error) {})
 	}
+}
+
+// ownRegForBlock is the registration this node embeds in a block it proposes on
+// prev: the one it already BROADCAST, when the chain still accepts it, and a fresh
+// mint otherwise.
+//
+// MINT ONCE, AND PREFER THE COPY THE ATTESTERS WERE HANDED. Both are valid and both
+// commit; the difference is who else holds the bytes. A registration is a
+// deterministic function of its prev, so re-minting over a LATER head is not a
+// different registration in any meaningful sense — it is the same claim over a
+// different nonce, and it is bytes no attester has ever seen. Meanwhile the copy
+// they were handed on the sweep sits in their pending queues, verified, unused, and
+// valid for the block being built: the head window (chain.BondRegHeadWindow) exists
+// precisely so a registration survives the head advancing under it.
+//
+// The chain decides, never this function. ValidateBondReg is the same gate the
+// block will face — the head window and the re-registration interval both — so a
+// registration this returns is one the proposer's own block check will accept, and
+// a stale one falls through to a fresh mint rather than burning the proposer's turn
+// on a block its own validity rule would reject.
+//
+// A FRESH MINT IS NOT FREE, which is the second reason to prefer the kept copy: it
+// runs the VDF the space-time proof is built on, on the single serialized loop, for
+// a proof the node already produced.
+func (n *Node) ownRegForBlock(prev ports.Hash) (chain.BondReg, bool) {
+	if n.ownBondReg != nil && n.chain != nil && n.chain.ValidateBondReg(*n.ownBondReg) {
+		return *n.ownBondReg, true
+	}
+	reg, ok := n.RegisterBondReg(prev)
+	if ok {
+		kept := reg
+		n.ownBondReg = &kept
+	}
+	return reg, ok
 }

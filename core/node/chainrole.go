@@ -910,7 +910,7 @@ func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeI
 		// The IsSlashed gate: an evicted id's BondRenewalDue is
 		// true forever (bonded[id] deleted), and self-embedding a reg the apply
 		// path will discard only bloats the block (~1.5 MB) for nothing.
-		if reg, ok := n.RegisterBondReg(b.Prev); ok {
+		if reg, ok := n.ownRegForBlock(b.Prev); ok {
 			b.BondRegs = append(b.BondRegs, reg)
 		}
 	}
