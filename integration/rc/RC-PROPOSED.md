@@ -1986,8 +1986,35 @@ are unchanged, the signed hash is unchanged, nothing forks. **It is a transport 
 era**, so the frozen-format rule does not push it past the date. Retry de-duplication is a separate,
 additive 4x saving that fixes nothing by itself.
 
+*AND THE PREMISE OF THAT ROUTE IS HALF WRONG, MEASURED 2026-09-19 BEFORE ANY OF IT WAS BUILT.*
+`core/node/bondproof_predelivery_measure_test.go`. The reading above says the proposer's own
+registration reaches no attester, so pre-delivery has to be BUILT. That is true of `RegisterBondReg`
+read in isolation — which is what question 2 measured — and **false of the path**. `chainSyncTick`
+calls `SubmitBondRenewal` on every sweep with no proposer exemption, so a bonded validator with a due
+renewal broadcasts its own registration to every peer before it proposes. Driven rather than read:
+**3 of 3 peers**, which is the whole peer set.
+
+| measured | |
+|---|---|
+| is a registration a deterministic function of its prev? | **yes** — two mints over one prev are byte-identical at 1,514,986 B, and a different prev gives different bytes, so the nonce binds |
+| does a bonded validator broadcast its OWN registration before proposing? | **yes — 3 of 3 peers**, with `BondRenewalDue` true |
+| can an attester reconstruct the PROPOSAL's registration from what it was handed? | **only if the head held still.** Same prev: yes. One head later, the ordinary case: **no** |
+
+*SO THE GAP IS ALIGNMENT, NOT DELIVERY, AND THAT MAKES THE FIX SMALLER AND DIFFERENTLY SHAPED.*
+`SubmitBondRenewal` signs over the head at SWEEP time; the proposal is built after the reconcile
+settles, on whatever head that leaves. The two coincide exactly when the head does not move in
+between, and a live chain moves its head constantly — so today's pre-delivery hands every attester a
+registration that is real, verified, queued, and **the wrong bytes for the block that follows it**.
+Nothing has to be built to make the queue cover 100% of sources; it already does. What has to change
+is that the proposer mint ONCE, over the prev it will actually build on, and deliver THAT — an
+ordering change inside the propose path rather than a new delivery mechanism.
+
 *NOT BUILT. The measurement is the deliverable,* and the assertions pin the numbers so they cannot
-rot while the decision is open — each names what to re-derive if it ever reads differently.
+rot while the decision is open — each names what to re-derive if it ever reads differently. This is
+the second time in two days that a route's stated premise did not survive being driven, and both
+times the reading was of a FUNCTION where the behaviour lives in a PATH. A build that had started
+from the sheet would have added a pre-delivery broadcast the sweep was already doing, left the
+alignment defect untouched, and measured no improvement at all.
 
 **4 — A zero-byte prover fails the audit.** ⚠ *the measurement #8 demands is DONE and it picks the
 entry; the protocol is not built.* The largest piece and the one an outside adversary reaches first.
