@@ -983,16 +983,58 @@ ft_impair_on() {
 
 # ft_impair_off NODE — remove it, and report whether the interface came back
 # clean. A leftover qdisc would silently impair every later flow on this sheet.
+#
+#   0 = clean.  1 = STILL SHAPED.  2 = the seat is GONE, and nothing it once
+#   carried can shape anything.
+#
+# THE THIRD CASE IS NOT PEDANTRY, it is the one that bit. These fleets run on SPOT
+# instances with instanceTerminationAction=DELETE, so a preemption does not leave a
+# sick node — it removes the machine. ssh then fails, the count comes back empty,
+# and a two-state function reads "not zero" as "still shaped". The flow reported
+# that every later verdict on the sheet was running on a shaped wire and told the
+# reader to clear it by hand with `tc qdisc del` — on an instance that no longer
+# exists, which is a remedy nobody can carry out, for a hazard that is not there.
+# A vanished seat impairs nothing.
+#
+# Same shape, same reason as ft_impair_on: the count comes back in a variable,
+# never through a pipeline whose status pipefail would take from the count. It bit
+# here first and it bit loudly — the flow reported "the impairment did NOT come
+# off" about four interfaces that were already clean, which is a verdict naming the
+# wrong cause and would have buried the result it was guarding. This is the same
+# family of defect one layer out.
 ft_impair_off() {
   local n="$1" dev
-  dev="$(ft_impair_dev "$n")"; [ -z "$dev" ] && return 1
-  # Same shape, same reason as ft_impair_on: the count comes back in a variable,
-  # never through a pipeline whose status pipefail would take from the count. It
-  # bit here first and it bit loudly — the flow reported "the impairment did NOT
-  # come off" about four interfaces that were already clean, which is a verdict
-  # naming the wrong cause and would have buried the result it was guarding.
+  dev="$(ft_impair_dev "$n")"
+  # No device means ssh could not answer at all. Distinguish a seat that is GONE
+  # from one that is merely mute: a deleted instance is the expected end of a spot
+  # seat and carries no wire, while an unreachable-but-live one might still be
+  # shaped and must stay a blocker.
+  if [ -z "$dev" ]; then
+    ft_node_exists "$n" && return 1
+    return 2
+  fi
   local n_netem; n_netem="$(ssh_node "$n" "sudo tc qdisc del dev $dev root >/dev/null 2>&1; sudo tc qdisc show dev $dev | grep -c netem || true")"
+  if [ -z "$n_netem" ]; then
+    ft_node_exists "$n" && return 1
+    return 2
+  fi
   [ "${n_netem:-1}" -eq 0 ] 2>/dev/null
+}
+
+# ft_node_exists NODE — does this seat's instance still exist in the project?
+# Asked of the cloud rather than of the node, because the question is precisely
+# whether the node is there to answer. Local-backend runs answer from docker.
+ft_node_exists() {
+  local n="$1" inst zone
+  inst="$(node_field "$n" instance_name)"
+  [ -z "$inst" ] && return 1
+  if [ "$FT_BACKEND" = local ]; then
+    docker inspect "$inst" >/dev/null 2>&1
+    return
+  fi
+  zone="$(node_field "$n" zone)"
+  gcloud compute instances describe "$inst" --zone "$zone" --project "$PROJECT_ID" \
+    --format="value(name)" >/dev/null 2>&1
 }
 
 # ft_impair_counters NODE — netem's own packet/drop/reorder counters, which are
@@ -1138,11 +1180,28 @@ flow_impaired_commit() {
 
   # Unwind, always, and say so if a seat did not come back clean — a leftover
   # qdisc would quietly impair every flow after this one.
-  local dirty=""
-  for v in $applied; do ft_impair_off "$v" || dirty="$dirty $v"; done
+  local dirty="" vanished=""
+  for v in $applied; do
+    ft_impair_off "$v"
+    case $? in
+      0) ;;
+      2) vanished="$vanished $v" ;;
+      *) dirty="$dirty $v" ;;
+    esac
+  done
   if [ -n "$dirty" ]; then
     record "21-impaired-commit" fail blocker \
       "the impairment did NOT come off$dirty — every later flow on this sheet is running on a shaped wire and its verdict cannot be trusted; clear it by hand (sudo tc qdisc del dev <dev> root) before reading anything below"
+    return
+  fi
+  if [ -n "$vanished" ]; then
+    # A seat that no longer exists carries no wire, so nothing later on the sheet is
+    # shaped by it. What IS lost is this flow's own reading: the impaired-commit
+    # grade needs the seats it shaped, and one of them left mid-drive. Say which,
+    # and say that the cost is a missing measurement rather than a tainted sheet.
+    echo "    21-impaired-commit: seat(s)${vanished} no longer exist (spot preemption deletes the instance) — nothing they carried can still shape the sheet"
+    record "21-impaired-commit" gap "" \
+      "a shaped seat was PREEMPTED mid-drive (${vanished# }) and the instance was deleted with it, so this flow has no impaired-commit reading to grade. The rest of the sheet is UNAFFECTED: a deleted instance shapes nothing. Re-drive this flow alone, or run the impaired grade on non-spot seats if it keeps losing the race."
     return
   fi
   echo "    21-impaired-commit: impairment removed from${applied}, interfaces clean"
