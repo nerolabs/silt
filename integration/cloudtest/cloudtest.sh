@@ -91,11 +91,39 @@ STATE_TFVARS="terraform/topology.auto.tfvars.json"
 need() { command -v "$1" >/dev/null 2>&1 || { echo "missing prerequisite: $1"; exit 1; }; }
 check_prereqs() { need terraform; need gcloud; need go; need python3; need curl; }
 
+# ── provenance stamps ────────────────────────────────────────────────────────
+# A report must name the inputs that PRODUCED it, and gen_report.sh used to read
+# both from live HEAD at report time. A run takes about an hour, so any commit
+# landing inside that window relabelled the evidence: run d531fbf-90914 built its
+# fleet binary at d531fbf and its report header says a0ff08a, with the run id the
+# only field telling the truth. The stamps below are written at the moment each
+# input is CONSUMED, which is the only moment either is a fact.
+#
+# The harness stamp carries a CONTENT digest as well as a sha, because the two
+# answer different questions. The sha says which commit the drive logic came
+# from; the digest says whether scenarios.sh or lib.sh changed while the sheet
+# was being graded. That second one is not hypothetical — it happened on
+# d531fbf-90914, where scenarios.sh was edited six minutes before the first flow
+# recorded a verdict, and nothing in the run or the report said so.
+stamp_silt_sha() {
+  git -C "$REPO_ROOT" rev-parse --short HEAD > "$FT_DIR/.run-silt-sha" 2>/dev/null || true
+}
+
+harness_digest() { # content of every file that decides a verdict
+  cat "$FT_DIR/scenarios.sh" "$FT_DIR/lib.sh" 2>/dev/null | shasum -a 256 | cut -c1-16
+}
+
+stamp_harness() {
+  git -C "$FT_DIR" log -1 --format=%h -- . > "$FT_DIR/.run-harness-sha" 2>/dev/null || true
+  harness_digest > "$FT_DIR/.run-harness-digest"
+}
+
 build_binary() {
   echo "==> building silt (linux/amd64) @ $RUN_ID"
   ( cd "$REPO_ROOT" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
       go build -trimpath -ldflags '-s -w' -o "$FT_DIR/silt-linux-amd64" ./cmd/silt )
   ( cd "$REPO_ROOT" && go build -o "$FT_DIR/.silt-local" ./cmd/silt )   # for topology id-gen
+  stamp_silt_sha
 }
 
 gen_topology() {
@@ -305,6 +333,11 @@ run_scenarios() {
   . ./lib.sh
   # shellcheck disable=SC1091
   . ./scenarios.sh
+  # Stamp AFTER sourcing and before the first flow: this is the content that will
+  # grade the sheet. A re-drive (`FLOWS=… ./cloudtest.sh run`) re-stamps, which is
+  # correct — that pass is graded by whatever is on disk now, and the report should
+  # say which harness produced the rows it is printing.
+  stamp_harness
   # Persist the console (#7): ft_publish diagnostics and per-flow narration used to
   # die with the terminal, leaving a FAIL verdict with no trail after teardown. The
   # tee'd copy lands next to the run's report. (The pipeline subshell is fine: flows
@@ -411,6 +444,7 @@ build_binary_local() {
   ( cd "$REPO_ROOT" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
       go build -trimpath -ldflags '-s -w' -o "$FT_DIR/silt-linux-local" ./cmd/silt )
   ( cd "$REPO_ROOT" && go build -o "$FT_DIR/.silt-local" ./cmd/silt )   # for topology id-gen
+  stamp_silt_sha
 }
 
 # provision_local — the terraform-apply analogue: one container per topology node
