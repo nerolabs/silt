@@ -439,6 +439,8 @@ const porChallengeBurst = 128
 // only when `err == nil`, so a dropped challenge is not a failed audit, it is no
 // audit. The cost of exceeding the budget therefore lands on the CHALLENGER — a lost
 // measurement, and its own routing entry for a peer it flooded — never on the prover.
+//
+// ADVERSARY-SHAPE: capability=SpentChallengeBudget UNCOVERED: TestRefusedPorChallengeSendsNoReply DOES grant the capability -- it spends an honest holder's whole per-challenger window and then challenges, which is exactly the flood this claim assumes cannot be turned into a grade -- but it carries no control that DISCRIMINATES. The attack fails with the capability because the handler emits nothing, and fails without it because there is no refusal to mis-grade, so both arms fail and neither shows the capability is load-bearing. That test's second arm is an anti-vacuity control (a challenger inside its budget does get a reply), not a capability control. Same structural reason as core/node/por.go's ForeignSeedProof (recorded 2026-09-19): a CAPABILITY-CONTROL is only well defined where the defence is BROKEN, and this one holds.
 func (n *Node) allowPorChallenge(from ports.NodeID) bool {
 	return n.allowWindowed(n.porChallengeRate, from, porChallengeBurst)
 }

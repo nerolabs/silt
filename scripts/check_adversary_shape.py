@@ -335,9 +335,19 @@ RATCHET = (
     ('core/bond/bond.go', 'ForeignPlotLabels', 'e50876438657'),
     ('core/bond/bond.go', 'CrossEpochProofReplay', 'fe5526229678'),
     ('core/node/bondaudit.go', 'PeerAcceptedSelfAssertedBond', 'f95c92fcdd45'),
+    # ADDED 2026-09-19, and the growth is the point of the diff. Two audit-path fixes
+    # landed defence claims this gate had never seen, and it did not fire on them
+    # because it was not wired to CI — the wiring lands in the same change. NEITHER is
+    # a missing defence: both cite a fixture that GRANTS the capability and both fail
+    # the CAPABILITY-CONTROL leg for the structural reason this file's docstring
+    # names — the control is only well defined where the defence is BROKEN, and these
+    # two hold. They join the backlog for the same reason ForeignSeedProof is on it,
+    # not because nobody wrote the test.
+    ('core/node/bondaudit.go', 'SpentChallengeBudget', 'a01d32bd7212'),
     ('core/node/por.go', 'TagsWithoutBytes', 'e281e2c299e7'),
     ('core/node/por.go', 'UnderReportedBlockCount', '2aa4e533bae9'),
     ('core/node/por.go', 'ForeignSeedProof', '10e0a2bd116d'),
+    ('core/node/por.go', 'ProverSuppliedRoot', 'a27e44b36a78'),
     ('core/node/repairclaim.go', 'UntrustedClaimFields', '1e72f903ca2a'),
     ('core/node/repairclaim.go', 'JudgeWithoutCareHandle', '8759c679dacc'),
     ('core/node/repairclaim.go', 'CaretakerDiscoveryWithoutCareKey', '6798ee022955'),
@@ -348,7 +358,7 @@ RATCHET = (
     ('core/repairproof/gate.go', 'DataLessClaimant', '65c855794004'),
 )
 # Redundant on purpose: see "HOW IT MAY MOVE" above.
-RATCHET_COUNT = 19
+RATCHET_COUNT = 21
 
 
 def tracked_files(root=None):

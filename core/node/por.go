@@ -106,6 +106,8 @@ func copyProof(p ports.StorageProof) ports.StorageProof {
 // root is refused for naming it, not merely failed on the path walk — the two are
 // the same verdict here but not the same evidence, and a caller reading a log wants
 // the first.
+//
+// ADVERSARY-SHAPE: capability=ProverSuppliedRoot UNCOVERED: TestForeignRootedProofIsRefused DOES grant the capability -- it hands the verifier a self-rooted one-leaf tree over a chunk id, which is the proof this claim says the auditor's root refuses -- but it carries no control that DISCRIMINATES. Removing the capability means proving under the AUDITED root, which needs the bytes and is therefore the honest path rather than the same attack, so the fixture's second arm is a no-over-rejection control (the honest proof still passes) and not a capability control. Same structural reason as ForeignSeedProof further down this file (recorded 2026-09-19): a CAPABILITY-CONTROL is only well defined where the defence is BROKEN, and this one has held since the root binding landed.
 func verifyStorageProofAgainst(p ports.StorageProof, leaf ports.ChunkID, want ports.Hash) bool {
 	if p.Root != want {
 		return false

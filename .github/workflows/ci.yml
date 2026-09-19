@@ -378,6 +378,14 @@ jobs:
         run: python3 scripts/check_conflict_markers.py
       - name: Lint — no test may skip under -short in every merge-gating job
         run: python3 scripts/check_short_dark_tests.py
+      - name: Lint — every defence claim must name the fixture that grants the adversary its capability
+        # RATCHET MODE, and that is the only mode this step can run in: CAPABILITY-CONTROL
+        # is well defined only where a defence is BROKEN, so the grandfathered records
+        # cannot be driven to zero and --strict would be red forever. What this asserts
+        # is that no defence claim is NEW to the gate. The gate went to ratchet mode
+        # expressly so it could be wired here and then was not, and in the four days
+        # after, two audit-path fixes landed claims it would have caught.
+        run: python3 scripts/check_adversary_shape.py
   scheduled-workflow-proof:
     name: Scheduled workflow proof
     runs-on: ubuntu-latest
