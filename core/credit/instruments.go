@@ -1,6 +1,6 @@
 package credit
 
-// The finite-but-renewable durability instruments (H7 slice 3, decision D-S7).
+// The finite-but-renewable durability instruments.
 //
 // silt does NOT promise perpetual cold-data solvency — that promise is the Arweave
 // endowment identity in credits, and it holds only if the credit-denominated cost

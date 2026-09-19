@@ -1,0 +1,248 @@
+# A validator running on the DECLARED FLOOR SPEC — one core, 2 GiB of RAM,
+# 10 GiB of disk — alongside two ordinary validators that carry the quorum.
+#
+#  valA ── ordinary validator, hosts the chain-backed registry
+#  valB ── ordinary validator, attests
+#  witnessbox ── the SAME floor spec in the witness-validating posture: it keeps
+#            no chain, no registry and no state tree, and judges blocks against
+#            witnesses pulled from valA and valB. This is the posture VISION
+#            calls settled for the smallest box.
+#  witnessbox-blind ── the control: identical, except its -witness-from names a
+#            node that does not exist. It reaches the same blocks and must STALL
+#            on every one of them, never accept. Without it, "validated" and
+#            "stalled on everything" would be the same green.
+#  floor ── the box under test: cgroup-pinned to ONE core and 2 GiB with NO
+#            swap, so its memory ceiling is a HARD kernel bound and not a
+#            polite request. It bonds, validates, and prunes like any peer.
+#
+# Why the limits live here and not in the daemon's flags: `-mem-limit` is a
+# SOFT ceiling (the Go GC reclaims harder as the heap approaches it), and a
+# soft ceiling cannot answer "does this node survive on a 2 GiB box". The
+# cgroup can. `memswap_limit` equal to `mem_limit` means the guest gives the
+# container no swap at all, so exceeding the ceiling is a clean OOM-kill
+# (exit 137) rather than a thrash the harness would have to guess about.
+#
+# `cpuset` rather than `cpus`: a CPU QUOTA still reports every host core to
+# `nproc`, so the Go runtime would size GOMAXPROCS and its worker pools for a
+# multi-core box and the node under test would not be the node we ship to. A
+# cpuset makes `runtime.NumCPU()` return 1, which is what a one-core box does.
+#
+# Static IPs (no self-advertising entrypoint): the topology is fixed and small,
+# and the floor box's peers must be addressable before genesis, when there is
+# no chain to discover them through.
+#
+# Named volumes so /data PERSISTS across a container recreate. This is
+# load-bearing: the prune leg restarts the floor box and requires it to come
+# back from the SAME already-pruned store, which is what proves the shed is a
+# property of persisted state and not of a live in-memory view.
+
+networks:
+  floor:
+    driver: bridge
+    ipam:
+      config: [{ subnet: 10.140.0.0/24 }]
+
+volumes:
+  dataA:
+  dataB:
+  dataFloor:
+  dataBox:
+  dataBlind:
+
+services:
+  valA:
+    image: silt-floor
+    command:
+      - silt
+      - daemon
+      - -id-seed=9101
+      - -listen=0.0.0.0:4001
+      - -advertise=10.140.0.11:4001
+      - -serve-registry=0.0.0.0:4003
+      - -store=/data
+      - -validator
+      - -min-bond=1M
+      - -mature-validators=99
+      - -anchors=${ANCHORS:-unset}
+      - -attesters=${ATTESTERS:-unset}
+      - -persistent-peers=${PEERS_ALL:-unset}
+      - -quorum=1
+      - -min-bond-floor=0
+      - -bond=8M
+      - -bond-audit=1s
+      - -epoch-blocks=${EPOCH_BLOCKS:-4}
+      - -bond-ttl=${BOND_TTL:-2}
+      - -capacity=1G
+      - -mdns=false
+      - -log=info
+    mem_limit: 512m
+    memswap_limit: 512m
+    volumes:
+      - dataA:/data
+    networks:
+      floor:
+        ipv4_address: 10.140.0.11
+
+  valB:
+    image: silt-floor
+    command:
+      - silt
+      - daemon
+      - -id-seed=9102
+      - -listen=0.0.0.0:4001
+      - -advertise=10.140.0.12:4001
+      - -store=/data
+      - -validator
+      - -min-bond=1M
+      - -mature-validators=99
+      - -anchors=${ANCHORS:-unset}
+      - -attesters=${ATTESTERS:-unset}
+      - -persistent-peers=${PEERS_ALL:-unset}
+      - -bootstrap=${PEER_A:-unset}
+      - -registry=${REG_A:-unset}
+      - -quorum=1
+      - -min-bond-floor=0
+      - -bond=8M
+      - -bond-audit=1s
+      - -epoch-blocks=${EPOCH_BLOCKS:-4}
+      - -bond-ttl=${BOND_TTL:-2}
+      - -capacity=1G
+      - -mdns=false
+      - -log=info
+    mem_limit: 512m
+    memswap_limit: 512m
+    volumes:
+      - dataB:/data
+    networks:
+      floor:
+        ipv4_address: 10.140.0.12
+
+  # THE BOX UNDER TEST. Everything about this service that differs from valB is
+  # the floor spec: one core, 2 GiB, no swap, and a soft heap ceiling set below
+  # the hard one so the GC gets a chance to act before the kernel does.
+  floor:
+    image: silt-floor
+    command:
+      - silt
+      - daemon
+      - -id-seed=9103
+      - -listen=0.0.0.0:4001
+      - -advertise=10.140.0.13:4001
+      - -store=/data
+      - -validator
+      - -min-bond=1M
+      - -mature-validators=99
+      - -anchors=${ANCHORS:-unset}
+      - -attesters=${ATTESTERS:-unset}
+      - -persistent-peers=${PEERS_ALL:-unset}
+      - -bootstrap=${PEER_A:-unset}
+      - -registry=${REG_A:-unset}
+      - -quorum=1
+      - -min-bond-floor=0
+      - -bond=8M
+      - -bond-audit=1s
+      - -epoch-blocks=${EPOCH_BLOCKS:-4}
+      - -bond-ttl=${BOND_TTL:-2}
+      - -capacity=5G
+      - -mem-limit=1500M
+      - -mdns=false
+      - -log=info
+    cpuset: "0"
+    mem_limit: 2g
+    memswap_limit: 2g
+    volumes:
+      - dataFloor:/data
+    networks:
+      floor:
+        ipv4_address: 10.140.0.13
+
+  # THE WITNESS-VALIDATING FLOOR BOX. Same declared floor spec as `floor`, and
+  # everything that differs is the posture: no -validator, no bond, no replica.
+  #
+  # Every consensus-critical flag below MATCHES valA exactly, and that is not
+  # tidiness — a box derives this network's identity by MINTING the genesis its
+  # own configuration implies, so a single differing value gives it a different
+  # genesis hash, every era-4 signature fails to verify, and it audits a network
+  # that does not exist. The suite compares the two reported identities rather
+  # than trusting this comment.
+  witnessbox:
+    image: silt-floor
+    command:
+      - silt
+      - daemon
+      - -id-seed=9104
+      - -listen=0.0.0.0:4001
+      - -advertise=10.140.0.14:4001
+      - -store=/data
+      - -floor-box
+      - -witness-from=${PROVIDERS:-unset}
+      - -floor-box-interval=5s
+      - -min-bond=1M
+      - -mature-validators=99
+      - -anchors=${ANCHORS:-unset}
+      - -attesters=${PROVIDERS:-unset}
+      - -persistent-peers=${PEERS_ALL:-unset}
+      - -bootstrap=${PEER_A:-unset}
+      - -quorum=1
+      - -min-bond-floor=0
+      - -epoch-blocks=${EPOCH_BLOCKS:-4}
+      - -bond-ttl=${BOND_TTL:-2}
+      - -capacity=1G
+      - -mdns=false
+      - -log=info
+    cpuset: "1"
+    mem_limit: 2g
+    memswap_limit: 2g
+    volumes:
+      - dataBox:/data
+    networks:
+      floor:
+        ipv4_address: 10.140.0.14
+
+  # THE CONTROL. Identical to witnessbox except that its witness provider does
+  # not exist, and it is anchored by an operator checkpoint rather than by a
+  # provider's reported head — which is what lets it reach a block to judge at
+  # all with no provider reachable. It must never print a VALIDATED verdict.
+  #
+  # It is NOT pinned to the floor spec, and that is deliberate: it carries no
+  # resource claim. Its whole job is to show that a box which cannot reach a
+  # witness stalls rather than accepting, and that verdict is a property of the
+  # box's door, not of the machine it runs on. Pinning it would take 2 GiB from
+  # the box that IS measuring the floor spec, for evidence nobody asked for.
+  #
+  # Started by the suite, not at `up`: the checkpoint is a real committed block,
+  # so it cannot be known before the chain has one.
+  witnessbox-blind:
+    image: silt-floor
+    profiles: ["control"]
+    command:
+      - silt
+      - daemon
+      - -id-seed=9105
+      - -listen=0.0.0.0:4001
+      - -advertise=10.140.0.15:4001
+      - -store=/data
+      - -floor-box
+      - -witness-from=${GHOST_PROVIDER:-unset}
+      - -ws-checkpoint=${WS_CHECKPOINT:-unset}
+      - -floor-box-interval=5s
+      - -min-bond=1M
+      - -mature-validators=99
+      - -anchors=${ANCHORS:-unset}
+      - -attesters=${PROVIDERS:-unset}
+      - -persistent-peers=${PEERS_ALL:-unset}
+      - -bootstrap=${PEER_A:-unset}
+      - -quorum=1
+      - -min-bond-floor=0
+      - -epoch-blocks=${EPOCH_BLOCKS:-4}
+      - -bond-ttl=${BOND_TTL:-2}
+      - -capacity=1G
+      - -mdns=false
+      - -log=info
+    mem_limit: 512m
+    memswap_limit: 512m
+    volumes:
+      - dataBlind:/data
+    networks:
+      floor:
+        ipv4_address: 10.140.0.15

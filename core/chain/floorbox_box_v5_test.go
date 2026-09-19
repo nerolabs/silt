@@ -331,7 +331,7 @@ func TestParentBindingPrecedesTheCarrierLeg(t *testing.T) {
 	forged.LastCommit = []Attestation{{PubKey: pubOf(f.keys[1]), Sig: make([]byte, ed25519.SignatureSize), Round: 0, Phase: PhasePrecommit}}
 	forged.hashMemoSet = false
 	Sign(&forged, f.keys[0])
-	if err := validateCarrier(&forged, ports.Hash{}); err == nil {
+	if err := validateCarrier(&forged, ports.Hash{}, 0); err == nil {
 		t.Fatal("fixture VACUOUS: the forged carrier must be one validateCarrier refuses")
 	}
 	if err := f.c.ValidateCommit(&forged); !errors.Is(err, ErrWrongParent) {

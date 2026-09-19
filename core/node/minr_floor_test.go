@@ -155,7 +155,7 @@ func TestTheCensusIsASupersetOfAnyPopulation(t *testing.T) {
 	// The repair path, entered where repair.go and repairclaim.go enter it.
 	repairDone := false
 	var unfetched []ports.ChunkID
-	s.repair.fetchStripeByColumn(root, []shardRef{{id: shard.ID, stripe: 0, pos: col}},
+	s.repair.fetchStripeByColumn(root, []shardRef{{id: shard.ID, stripe: 0, pos: col}}, nil,
 		func(un []ports.ChunkID, _ map[uint64]int) { unfetched, repairDone = un, true })
 	s.sched.Run()
 	if !repairDone || len(unfetched) != 0 {

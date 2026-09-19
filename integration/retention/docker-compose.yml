@@ -1,0 +1,194 @@
+# Retention decay — standing that is not re-proven is taken away.
+#
+# The claim: a validator that registers a bond ONCE and then stops re-proving
+# loses its standing, so one proof cannot be coasted on forever. The mechanism
+# is the objective re-challenge TTL: standing lapses `-bond-ttl` committed
+# blocks after a validator's latest on-chain bond registration unless it renews
+# with a fresh space-time proof, and the sweep that evicts it runs inside block
+# application, so every replica decays standing at the same height.
+#
+#  v1 (10.160.0.11)  a bonded validator, and the one the suite reads from — it
+#                    stays up for the whole run, so every number below is read
+#                    from a node that never left.
+#  v2, v3            two more bonded validators. They keep the chain committing
+#                    while v4 is gone, and they are the control on the same
+#                    axis: identities that KEEP re-proving keep their standing
+#                    across the very window in which v4 loses its own.
+#  v4 (10.160.0.14)  the identity under test. It bonds, earns committed
+#                    standing, is stopped so it can no longer renew, and must
+#                    be evicted from the committed bonded set. It is restarted
+#                    at the end, because "decay denies coasting" is only the
+#                    whole claim if standing is RE-EARNED by fresh proof rather
+#                    than restored by merely coming back.
+#
+# WHY FOUR VALIDATORS, AND NOT THREE. With Byzantine quorum sizing (the default
+# for an untrusted objective swarm) a commit needs a support set of n−f where
+# f = ⌊(n−1)/3⌋. At n=3 that is f=0 and a support set of 3 — every validator.
+# Removing one therefore stops the chain, and the TTL sweep runs INSIDE block
+# application, so the eviction rides on the very blocks the removal prevents:
+# at three validators the mechanism cannot be observed by removal at all. At
+# n=4, f=1 and the support set is 3, so the three survivors still commit, the
+# sweep still runs, and the eviction is observable. After the eviction n=3
+# again and the three that remain are exactly the three that are alive.
+#
+# Static IPs (no self-advertising entrypoint): the anchor set must be
+# addressable before genesis, when there is no chain to discover it through.
+#
+# Named volumes so /data PERSISTS across a container stop and start. This is
+# load-bearing for the last leg: v4 comes back onto its OWN store, holding the
+# same plot and the same identity, so what it must do to regain standing is
+# submit a FRESH registration — not re-seal a new bond that would confound
+# "re-earned by proof" with "re-earned by being a different, newer bond".
+
+networks:
+  ret:
+    driver: bridge
+    ipam:
+      config: [{ subnet: 10.160.0.0/24 }]
+
+volumes:
+  data1:
+  data2:
+  data3:
+  data4:
+
+x-val: &val
+  image: silt-retention
+  networks: [ret]
+
+services:
+  v1:
+    <<: *val
+    command:
+      - silt
+      - daemon
+      - -id-seed=7101
+      - -listen=0.0.0.0:4001
+      - -advertise=10.160.0.11:4001
+      - -serve-registry=0.0.0.0:4003
+      - -store=/data
+      - -validator
+      - -min-bond=1M
+      - -min-bond-floor=0
+      - -mature-validators=99     # young forever: the launch set stays put, so the
+                                  # only thing that moves the bonded set is the TTL
+      - -anchors=${ANCHORS:-unset}
+      - -attesters=${ATTESTERS_1:-unset}
+      - -persistent-peers=${PEERS_ALL:-unset}
+      - -quorum=1
+      - -bond=${BOND_SIZE:-8M}
+      - -bond-audit=1s
+      - -bond-ttl=${BOND_TTL:-4}
+      - -epoch-blocks=0           # epochs OFF: a frozen validator set would let a
+                                  # lapsed member keep its VOTE until the next
+                                  # rotation, which is a separate rule with its own
+                                  # bounded slop. This suite measures the bonded set
+                                  # the TTL prunes, so the fewer moving parts the
+                                  # better.
+      - -capacity=1G
+      - -mdns=false
+      - -log=info
+    volumes:
+      - data1:/data
+    networks:
+      ret:
+        ipv4_address: 10.160.0.11
+
+  v2:
+    <<: *val
+    command:
+      - silt
+      - daemon
+      - -id-seed=7102
+      - -listen=0.0.0.0:4001
+      - -advertise=10.160.0.12:4001
+      - -store=/data
+      - -validator
+      - -min-bond=1M
+      - -min-bond-floor=0
+      - -mature-validators=99
+      - -anchors=${ANCHORS:-unset}
+      - -attesters=${ATTESTERS_2:-unset}
+      - -persistent-peers=${PEERS_ALL:-unset}
+      - -bootstrap=${PEER_1:-unset}
+      - -registry=${REG_1:-unset}
+      - -quorum=1
+      - -bond=${BOND_SIZE:-8M}
+      - -bond-audit=1s
+      - -bond-ttl=${BOND_TTL:-4}
+      - -epoch-blocks=0
+      - -capacity=1G
+      - -mdns=false
+      - -log=info
+    volumes:
+      - data2:/data
+    networks:
+      ret:
+        ipv4_address: 10.160.0.12
+
+  v3:
+    <<: *val
+    command:
+      - silt
+      - daemon
+      - -id-seed=7103
+      - -listen=0.0.0.0:4001
+      - -advertise=10.160.0.13:4001
+      - -store=/data
+      - -validator
+      - -min-bond=1M
+      - -min-bond-floor=0
+      - -mature-validators=99
+      - -anchors=${ANCHORS:-unset}
+      - -attesters=${ATTESTERS_3:-unset}
+      - -persistent-peers=${PEERS_ALL:-unset}
+      - -bootstrap=${PEER_1:-unset}
+      - -registry=${REG_1:-unset}
+      - -quorum=1
+      - -bond=${BOND_SIZE:-8M}
+      - -bond-audit=1s
+      - -bond-ttl=${BOND_TTL:-4}
+      - -epoch-blocks=0
+      - -capacity=1G
+      - -mdns=false
+      - -log=info
+    volumes:
+      - data3:/data
+    networks:
+      ret:
+        ipv4_address: 10.160.0.13
+
+  # THE IDENTITY UNDER TEST. Nothing about it differs from v2 and v3 — same
+  # bond, same cadence, same TTL. That is the point: the only thing that will
+  # separate it from them is that it stops re-proving.
+  v4:
+    <<: *val
+    command:
+      - silt
+      - daemon
+      - -id-seed=7104
+      - -listen=0.0.0.0:4001
+      - -advertise=10.160.0.14:4001
+      - -store=/data
+      - -validator
+      - -min-bond=1M
+      - -min-bond-floor=0
+      - -mature-validators=99
+      - -anchors=${ANCHORS:-unset}
+      - -attesters=${ATTESTERS_4:-unset}
+      - -persistent-peers=${PEERS_ALL:-unset}
+      - -bootstrap=${PEER_1:-unset}
+      - -registry=${REG_1:-unset}
+      - -quorum=1
+      - -bond=${BOND_SIZE:-8M}
+      - -bond-audit=1s
+      - -bond-ttl=${BOND_TTL:-4}
+      - -epoch-blocks=0
+      - -capacity=1G
+      - -mdns=false
+      - -log=info
+    volumes:
+      - data4:/data
+    networks:
+      ret:
+        ipv4_address: 10.160.0.14

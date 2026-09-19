@@ -1,7 +1,7 @@
 //go:build linux || darwin
 
 // Package reuseport centralizes the SO_REUSEPORT dial control used for TCP
-// hole-punching (#27). Both the transport (which fires the punch) and the
+// hole-punching. Both the transport (which fires the punch) and the
 // relay client (whose registration conn's local port the punch REUSES) must
 // set it, and the relay adapter can't import the transport, so the hook
 // lives here where both can reach it.

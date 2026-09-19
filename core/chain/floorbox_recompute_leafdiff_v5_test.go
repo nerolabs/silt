@@ -187,7 +187,7 @@ func generateLeafDiffScenarios(t *testing.T) []leafDiffScenario {
 	}
 
 	// (5) Class S — slash of a bonded+qualified culprit. Exercises slashed(+Root),
-	// bonded(+Root), qualified(+Root) diffs. Reuses the P1-b slash fixture + witness.
+	// bonded(+Root), qualified(+Root) diffs. Reuses the slash fixture + witness.
 	{
 		f := buildSlashFixture(t)
 		b := f.slashBlock()
@@ -195,7 +195,7 @@ func generateLeafDiffScenarios(t *testing.T) []leafDiffScenario {
 	}
 
 	// (6) Class T — a firing TTL sweep. Exercises dueBucket, bondRegHeight, regVersion,
-	// bonded(+Root), qualified(+Root) diffs. Reuses the P1-c TTL fixture + witness.
+	// bonded(+Root), qualified(+Root) diffs. Reuses the TTL fixture + witness.
 	{
 		f := buildTTLFixture(t)
 		b := f.sweepBlock()

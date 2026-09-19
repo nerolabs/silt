@@ -32,7 +32,7 @@ func TestCapacityFillsAndEstimates(t *testing.T) {
 	// column spills onto the next-closest node, which may already hold
 	// another column — so a stripe can end up with a few shards on one
 	// host. Spreading columns across distinct hosts/domains under spill is
-	// failure-domain-aware placement (Phase 1 #6), not yet built. The red
+	// failure-domain-aware placement, not yet built. The red
 	// line that must still hold: no node may hold k shards of one stripe,
 	// or it could reconstruct that stripe's data on its own.
 	if res.WorstOverlap >= o.Erasure.K {

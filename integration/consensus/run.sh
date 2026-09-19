@@ -13,17 +13,21 @@
 #
 #  (P0 negative control) an UNBONDED / no-earned-standing publish is REFUSED
 #  (no commit) — the write path is earned, not a stamp.
-#  (P1 convergence) before the partition, group 1's two validators agree
-#  on the same chain head (identical `silt chain-status`).
-#  (P2 partition) the partition is in effect (⚠ PARTITION log on C,D) and
-#  the two groups commit DIFFERENT heads — heavier group 1
-#  = [g,a1,a2] (height 2), lighter group 2 = [g,c1]
-#  (height 1). They do NOT converge onto a shared head
-#  while severed (no cross-group reorg).
-#  (P3 heal→converge) restart C WITHOUT -block-peers, bootstrapped to A. It
-#  reloads its persisted [g,c1], discovers group 1's
-#  longer history and CONVERGES on it, then its
-#  `chain-status` head EQUALS group 1's.
+#  (P1 convergence) the MAJORITY (valA,valB,valC) commits and all
+#  three replicas agree on one head. Three anchors is the
+#  smallest group that can commit at all: objective mode
+#  requires a DERIVED strict anchor majority, floor(A/2)+1 = 3
+#  of 4, which configuration cannot lower.
+#  (P2 partition) the majority advances while the severed
+#  minority (valD, one anchor) commits NOTHING and stalls. A
+#  sub-quorum side that cannot commit is quorum intersection
+#  (I1) holding — not a degraded fork. An earlier shape of this
+#  suite split the anchors 2-2 and expected two rival heads;
+#  under the 3-of-4 rule that split commits nothing on EITHER
+#  side, so it could never pass and never said why.
+#  (P3 heal) valD restarts without -block-peers, reloads its own
+#  persisted store, and CATCHES UP to the majority history —
+#  with nothing to drop, because it committed nothing.
 #
 # WHAT THIS HARNESS ASSERTS, corrected 2026-09-12. Convergence is NOT toward
 # whichever fork carries more bond: fork choice ranks on height then head hash
@@ -45,15 +49,39 @@ set -uo pipefail
 cd "$(dirname "$0")"
 ROOT=$(cd ../.. && pwd)
 
+# THIS SUITE CANNOT COMMIT AS WRITTEN, AND THE BUDGET IS NOT WHY.
+#
+# It seats FOUR anchors and partitions them 2-2 (A,B | C,D). In objective mode the
+# launch requirement is a DERIVED strict anchor majority, floor(A/2)+1 = 3 of 4, and it
+# is derived precisely so configuration cannot disable quorum intersection (daemon.go
+# prints it at start-up: "training wheels: 4 anchor(s), strict majority 3 required
+# (objective; derived)"). Neither side of a 2-2 split can reach 3, so no group commits
+# anything, ever -- observed: all four validators at 0 committed blocks. The publish
+# retries are therefore doomed by construction, and raising the per-suite budget only
+# buys more of them: driven at 300s it TIMED OUT, and driven at 900s on an idle box it
+# TIMED OUT again at 15m02s having reached the same place.
+#
+# The rule is not a regression. proposerQualifiedAt names this exact shape as the thing
+# it exists to refuse -- "the both-sybil-proposed 2-2 anchor split the intersecting-quorum
+# invariant (I1) must otherwise refuse". This suite encodes a pre-rule expectation, the
+# same way sybil's C2-a2 does. Fixing it is a decision about what the suite should claim
+# (seat an odd anchor count, split 3-1, or assert the refusal as the property), not a
+# timeout to tune.
 dc()      { docker compose "$@"; }
 dc_heal() { docker compose -f docker-compose.yml -f docker-compose.heal.yml "$@"; }
 cleanup() { [ "${KEEP:-0}" = 1 ] || dc_heal down -v >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 # Wait until a regex appears in a service's stdout (docker compose logs).
-await_log() { # service pattern [tries]
-  local svc=$1 pat=$2 tries=${3:-60} i
-  for i in $(seq 1 "$tries"); do
+# The timeout is a DEADLINE, not an iteration count. Each poll pays for a
+# `docker compose logs` whose cost grows with the log, so a loop of N sleep-1
+# iterations takes far longer than N seconds on a loaded host — every nominal
+# timeout in this suite understated its true wall-clock, without bound. Reading
+# the clock makes these numbers mean what they say.
+await_log() { # service pattern [timeout_s]
+  local svc=$1 pat=$2 t=${3:-60} deadline
+  deadline=$(( $(date +%s) + t ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
     dc logs "$svc" 2>&1 | grep -qE "$pat" && return 0
     sleep 1
   done
@@ -132,7 +160,7 @@ fi
 # Bring up the four validators and let objective standing accrue.
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== bring up the four validators (A,B heavier group | C,D lighter, partitioned) =="
+echo "== bring up the four validators (A,B,C majority | D minority, partitioned) =="
 dc up -d valA valB valC valD 2>&1 | grep -vE 'Network|Volume|Container.*(Creat|Start|Running)' || true
 # Fail loud if the daemons didn't come up (was previously suppressed → silent).
 for v in valA valB valC valD; do
@@ -142,8 +170,8 @@ done
 await_log valA 'peer: [0-9a-f]{64}@' 40 || { fail "valA never printed its peer line"; }
 await_log valA 'registry: chain-backed, serving' 40 || fail "valA registry never came up"
 await_log valB 'bootstrapped \(' 40 || fail "valB never bootstrapped"
-await_log valC 'peer: [0-9a-f]{64}@' 40 || fail "valC never printed its peer line"
-await_log valD 'bootstrapped \(' 40 || fail "valD never bootstrapped"
+await_log valC 'bootstrapped \(' 40 || fail "valC never bootstrapped"
+await_log valD 'peer: [0-9a-f]{64}@' 40 || fail "valD never printed its peer line"
 
 echo "  bonds sealed (objective standing):"
 for v in valA valB valC valD; do
@@ -151,9 +179,9 @@ for v in valA valB valC valD; do
   echo "    $v: ${bl:-<no bond line>}"
 done
 
-# P2a — the partition really is in effect on the lighter group.
-echo "  partition flag in effect on the lighter group:"
-for v in valC valD; do
+# P2a — the partition really is in effect on the minority validator.
+echo "  partition flag in effect on the minority validator:"
+for v in valD; do
   pl=$(dc logs "$v" 2>&1 | grep -oE '⚠ PARTITION:[^\n]*' | head -1)
   echo "    $v: ${pl:-<no partition line>}"
   [ -n "$pl" ] || fail "$v did not report the partition (-block-peers) in effect"
@@ -162,19 +190,37 @@ done
 echo "  letting objective standing accrue (14s)…"; sleep 14
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Drive commits: two publishes into group 1 (heavier), one into group 2.
+# Drive commits: two publishes into the MAJORITY, one attempted at the minority.
 # ─────────────────────────────────────────────────────────────────────────────
 REG_A="$ID_A@https://10.50.0.11:4003"
 REG_C="$ID_C@https://10.50.0.13:4003"
+REG_D="$ID_D@https://10.50.0.14:4003"
 BOOT_A="$ID_A@10.50.0.11:4001"
 BOOT_C="$ID_C@10.50.0.13:4001"
+BOOT_D="$ID_D@10.50.0.14:4001"
 
 # publish <container> <name> <boot> <reg> — retries until a link comes back, so we
 # don't race standing accrual. Runs the client from inside the group's registry node.
-publish() {
-  local svc=$1 name=$2 boot=$3 reg=$4 i out
-  for i in $(seq 1 40); do
-    out=$(dc exec -T "$svc" sh -c "head -c 32768 /dev/urandom > /tmp/$name.bin; \
+# The retry budget is a DEADLINE for the same reason await_log's is, and it matters
+# more here: each attempt runs a FULL publish inside the container, so forty of them
+# is many minutes of wall-clock on a loaded host, not forty seconds.
+publish() { # publish <svc> <name> <boot> <reg> [budget_s] [per_attempt_s]
+  local svc=$1 name=$2 boot=$3 reg=$4 out deadline attempt
+  # The per-attempt bound defaults to the whole budget, so it never cuts a publish that
+  # is going to succeed. Callers that EXPECT failure (the minority) pass a short one.
+  attempt=${6:-${5:-90}}
+  deadline=$(( $(date +%s) + ${5:-90} ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    # Bound the ATTEMPT, not just the loop. A publish aimed at a node that cannot commit
+    # does not fail fast — it waits on a commit that never comes, and a deadline checked
+    # only BETWEEN attempts never fires while one attempt hangs. Measured: a single
+    # minority attempt hung ~5 minutes and nearly took this suite past its cap.
+    # `docker compose` DIRECTLY, not the dc() helper: timeout(1) execs a BINARY and
+    # cannot invoke a shell function, so `timeout N dc …` dies instantly with
+    # "cannot open file: exec" and every attempt fails without ever running. That
+    # failure is silent in the ordinary case — the chain still advances on its own
+    # sweep, so the suite can look like it merely lost a link.
+    out=$(timeout "$attempt" docker compose exec -T "$svc" sh -c "head -c 32768 /dev/urandom > /tmp/$name.bin; \
       silt swarm add /tmp/$name.bin -peers '$boot' -registry '$reg' 2>&1")
     echo "$out" | grep -qoE 'silt:v1:[A-Za-z0-9_:-]+' && { echo "$out" | grep -oE 'silt:v1:[A-Za-z0-9_:-]+' | head -1; return 0; }
     sleep 1
@@ -184,121 +230,114 @@ publish() {
 }
 
 echo ""
-echo "== P1 convergence (pre-partition): group 1 commits, its replicas agree =="
+echo "== P1 convergence: the MAJORITY (A,B,C) commits and its replicas agree =="
+# Three anchors is the smallest group that can commit anything here: objective mode
+# requires the DERIVED strict anchor majority, floor(4/2)+1 = 3.
 L1=$(publish valA a1 "$BOOT_A" "$REG_A"); echo "  a1 link: ${L1:-<none>}"
-[ -n "$L1" ] || fail "group 1 first publish never committed"
+[ -n "$L1" ] || fail "the majority's first publish never committed"
 sleep 3
-HA=$(head_hash valA); HB=$(head_hash valB)
-hA=$(head_height valA); hB=$(head_height valB)
+HA=$(head_hash valA); HB=$(head_hash valB); HC=$(head_hash valC)
+hA=$(head_height valA); hB=$(head_height valB); hC=$(head_height valC)
 echo "  valA head: height=$hA hash=${HA:0:16}…"
 echo "  valB head: height=$hB hash=${HB:0:16}…"
-if [ -n "$HA" ] && [ "$HA" = "$HB" ]; then
-  echo "  P1 PASS: group-1 replicas agree on one head (${HA:0:16}…) — convergence"
+echo "  valC head: height=$hC hash=${HC:0:16}…"
+if [ -n "$HA" ] && [ "$HA" = "$HB" ] && [ "$HA" = "$HC" ]; then
+  echo "  P1 PASS: all three majority replicas agree on one head (${HA:0:16}…) — convergence"
 else
-  fail "P1 group-1 replicas DIVERGED (A=$HA B=$HB) — no convergence"
+  fail "P1 majority replicas DIVERGED (A=$HA B=$HB C=$HC) — no convergence"
 fi
 
 echo ""
-echo "== P2 partition: the two groups commit DIFFERENT heads and do not converge =="
+echo "== P2 partition: the MAJORITY advances; the SUB-QUORUM minority commits NOTHING =="
+# THIS IS THE CLAIM, and it is the opposite of a fork. An earlier shape of this suite
+# split the four anchors 2-2 and asserted the two sides committed DIFFERENT heads. That
+# expectation predates the derived strict-anchor-majority rule: with 3 of 4 required,
+# a 2-2 split commits nothing on EITHER side, so the suite could never pass and never
+# said why (it just ran out its budget). A minority that cannot commit is not a
+# degraded fork — it is quorum intersection (I1) holding, which is the property.
 L2=$(publish valA a2 "$BOOT_A" "$REG_A"); echo "  a2 link: ${L2:-<none>}"
-await_log valA 'chain: committed block 2' 30 || fail "group 1 never reached height 2 (heavier fork)"
-LC=$(publish valC c1 "$BOOT_C" "$REG_C"); echo "  c1 link: ${LC:-<none>}"
-await_log valC 'chain: committed block 1' 30 || fail "group 2 never committed its own fork"
+await_log valA 'chain: committed block 2' 30 || fail "the majority never reached height 2"
+
+# Drive work at the minority and require it to commit NOTHING. The publish is EXPECTED
+# to come back empty: a lone anchor cannot reach the 3-of-4 majority, so nothing it is
+# handed can ever be committed. Asserting the empty link alone would be weak (a publish
+# can fail for transport reasons), so the committed chain is checked directly.
+# A SHORT budget on purpose: this attempt is EXPECTED to come back empty, so spending
+# the success-path budget here would just buy 90s of proving the obvious — which is what
+# pushed this suite past its cap once already. Long enough to reach the daemon and be
+# refused, not long enough to matter.
+LD=$(publish valD d1 "$BOOT_D" "$REG_D" 20 15); echo "  d1 link: ${LD:-<none — expected: a sub-quorum commits nothing>}"
 sleep 3
 H1=$(head_hash valA); h1=$(head_height valA)
-H2=$(head_hash valC); h2=$(head_height valC)
-echo "  group 1 (heavier) head: height=$h1 hash=${H1:0:16}…"
-echo "  group 2 (lighter) head: height=$h2 hash=${H2:0:16}…"
-# The keystone under partition: honest sides do NOT diverge onto a shared-but-
-# conflicting head. Distinct heads (different hash), heavier side ahead in height,
-# and neither reorged toward the other while severed.
-if [ -n "$H1" ] && [ -n "$H2" ] && [ "$H1" != "$H2" ] && [ "${h1:-0}" -gt "${h2:-0}" ]; then
-  echo "  P2 PASS: distinct heads under partition (heavier h=$h1 ≠ lighter h=$h2); groups stayed on their own forks"
+H2=$(head_hash valD); h2=$(head_height valD)
+echo "  majority head: height=$h1 hash=${H1:0:16}…"
+echo "  minority head: height=${h2:-<none>} hash=${H2:0:16}…"
+if dc logs valD 2>&1 | grep -qE 'chain: committed block [1-9]'; then
+  fail "P2 the SUB-QUORUM minority COMMITTED a block — a lone anchor cannot hold the derived 3-of-4 majority, so this is a quorum-intersection violation (I1)"
+elif [ "${h1:-0}" -le 0 ]; then
+  fail "P2 the majority did not advance (h=$h1) — the partition proves nothing if nobody committed"
 else
-  fail "P2 groups did not fork as expected (H1=$H1 h1=$h1 | H2=$H2 h2=$h2)"
+  echo "  P2 PASS: the majority advanced to h=$h1 while the severed minority committed NOTHING (no block, stalled)"
 fi
-# NB (the audit consensus [low] not-cynical): valA's fork [g,a1,a2] is HEAVIER
-# (height 2) than group 2's [g,c1] (height 1), so even if valA fully received and
-# validated group 2's gossip it would CORRECTLY never reorg onto the lighter side.
-# A bare "did not reorg" grep therefore passes vacuously — it does NOT prove valA
-# never learned group 2, only that it never adopted a lighter chain. The CLI
-# exposes only the committed canonical chain (chain.cbor head/height/blocks), so
-# true inbound-fork isolation is not observable here (would need a product
-# "received a competing fork" counter). So we assert what IS observable and gate on
-# it honestly: (1) valA never reorged, AND (2) valA's OWN committed head is
-# UNCHANGED from its pre-gossip [g,a1,a2] — no silent merge/rewrite of its history.
-H_A_pre="$H1"; hA_pre="$h1"
-H_A_now=$(head_hash valA); hA_now=$(head_height valA)
-# The pattern tracks the daemon's current narration string. Standing caveat: with
-# the finality gate on, `dropped > 0` is structurally impossible, so this negative
-# can no longer go red for the reason it was written.
-if dc logs valA 2>&1 | grep -q 'adopted a competing fork'; then
-  fail "P2 valA reorged while still partitioned — it must never adopt group 2's fork"
-elif [ "$H_A_now" != "$H_A_pre" ] || [ "${hA_now:-0}" != "${hA_pre:-0}" ]; then
-  fail "P2 valA's committed head changed under partition (was h=$hA_pre ${H_A_pre:0:16}…, now h=$hA_now ${H_A_now:0:16}…) — silent cross-partition merge/rewrite"
-else
-  echo "  P2 PASS: valA held its OWN heavier chain byte-for-byte (h=$hA_now ${H_A_now:0:16}…) and never reorged onto the lighter fork"
-  echo "    (SCOPE: this proves valA did not ADOPT group 2, not that it never received the gossip — inbound-fork receipt is not CLI-observable; a bare 'no reorg' on a heavier side would be vacuous)"
-fi
+# The minority must stall, not fail closed in a way that loses its identity: it is still
+# a running, bonded validator that simply cannot reach quorum.
+await_log valD 'standing' 10 >/dev/null 2>&1 || true
+echo "  minority is alive and bonded, just quorum-short: $(dc logs valD 2>&1 | grep -oE 'bond: (sealed|reloaded)[^\n]*' | head -1)"
 
-echo ""
-echo "== P3 heal → converge on one history =="
-# Record the lighter side's OWN pre-heal head so we can prove it actually moved
-# OFF its fork (not that it was already on group 1's).
-H_C_pre=$(head_hash valC); hC_pre=$(head_height valC)
-echo "  valC pre-heal head: height=${hC_pre} hash=${H_C_pre:0:16}… (its own [g,c1] fork)"
-echo "  restart valC WITHOUT -block-peers, bootstrapped to valA (persisted chain reloads and reconciles)…"
-dc_heal up -d valC >/dev/null 2>&1 || fail "heal restart of valC failed"
-# The healed valC reloads its persisted [g,c1] and reconciles against group 1's
-# heavier fork. It converges either by an explicit REORG (drops c1, adopts a1,a2 —
-# the OnReorg narration) or by the catch-up sweep adopting the heavier history;
-# both land on the SAME head. GROUND TRUTH is the chain-status head hash — the
-# reorg log line is supporting evidence, reported if it fired but not required,
-# because the real-socket catch-up path may narrate "caught up" instead.
-await_log valC 'chain: (adopted a competing fork|caught up [0-9]+ block)' 90 \
-  || fail "P3 valC never reconciled a peer chain after heal (no reorg or catch-up line)"
-REORG_LINE=$(dc logs valC 2>&1 | grep -oE 'chain: adopted a competing fork, DROPPING [0-9]+ committed block\(s\)[^\n]*' | tail -1)
-CATCHUP_LINE=$(dc logs valC 2>&1 | grep -oE 'chain: caught up [0-9]+ block\(s\) from peers' | tail -1)
-RESTORE_LINE=$(dc logs valC 2>&1 | grep -oE 'chain: restored [0-9]+ block\(s\) from disk' | tail -1)
-echo "  valC on heal: reload=[${RESTORE_LINE:-<none>}] reorg=[${REORG_LINE:-<none>}] catchup=[${CATCHUP_LINE:-<none>}]"
-# Converge — retry-poll the head hash (the sweep is periodic; give it time to land).
+echo "== P3 heal → the minority catches up to the majority history =="
+# The minority committed NOTHING while severed, so this is a CATCH-UP, not a reorg off
+# a rival fork: there is no competing history to drop. That is the claim's last clause
+# ("catches up to the majority history on heal") and it is what a sub-quorum partition
+# is supposed to do.
+H_D_pre=$(head_hash valD); hD_pre=$(head_height valD)
+echo "  valD pre-heal head: height=${hD_pre:-<none>} hash=${H_D_pre:0:16}… (nothing committed while severed)"
+echo "  restart valD WITHOUT -block-peers, bootstrapped to valA (persisted store reloads and reconciles)…"
+dc_heal up -d valD >/dev/null 2>&1 || fail "heal restart of valD failed"
+await_log valD 'chain: (adopted a competing fork|caught up [0-9]+ block|restored [0-9]+ block)' 90 \
+  || fail "P3 valD never reconciled a peer chain after heal (no catch-up line)"
+REORG_LINE=$(dc logs valD 2>&1 | grep -oE 'chain: adopted a competing fork, DROPPING [0-9]+ committed block\(s\)[^\n]*' | tail -1)
+CATCHUP_LINE=$(dc logs valD 2>&1 | grep -oE 'chain: caught up [0-9]+ block\(s\) from peers' | tail -1)
+RESTORE_LINE=$(dc logs valD 2>&1 | grep -oE 'chain: restored [0-9]+ block\(s\) from disk' | tail -1)
+echo "  valD on heal: reload=[${RESTORE_LINE:-<none>}] reorg=[${REORG_LINE:-<none>}] catchup=[${CATCHUP_LINE:-<none>}]"
+# A minority that committed nothing must not need to DROP anything to converge.
+if [ -n "$REORG_LINE" ]; then
+  fail "P3 the healed minority DROPPED committed blocks — it had committed none, so there was no rival fork to drop"
+fi
 HC=""; hC=""
 for _ in $(seq 1 30); do
-  HC=$(head_hash valC); hC=$(head_height valC)
+  HC=$(head_hash valD); hC=$(head_height valD)
   HAf=$(head_hash valA); hAf=$(head_height valA)
   [ -n "$HAf" ] && [ "$HAf" = "$HC" ] && break
   sleep 2
 done
 echo "  after heal — valA head: height=$hAf hash=${HAf:0:16}…"
-echo "  after heal — valC head: height=$hC hash=${HC:0:16}…"
+echo "  after heal — valD head: height=$hC hash=${HC:0:16}…"
 if [ -n "$HAf" ] && [ "$HAf" = "$HC" ] && [ "${hC:-0}" = "${hAf:-0}" ]; then
-  if [ "$HC" != "$H_C_pre" ]; then
-    echo "  P3 PASS: valC left its own fork (${H_C_pre:0:16}…) and converged to group 1's head (${HAf:0:16}…, height $hAf)"
-  else
-    echo "  P3 PASS: valC head matches group 1 (${HAf:0:16}…) — converged on one history"
-  fi
-  # HARD assertion (blind field test #2 §C): prove valC actually RELOADED its own
-  # persisted fork before reconciling — otherwise a from-scratch peer catch-up (disk
-  # reload silently failed) reaches the SAME head and false-passes the "left its own
-  # fork" story (HC != H_C_pre holds either way). The daemon logs
-  # `chain: restored N block(s) from disk` at startup; N must be ≥ the pre-heal fork
-  # height valC committed on its side, so the reorg we assert is a reorg of a
-  # genuinely-reloaded fork, not an empty replay.
+  echo "  P3 PASS: the healed minority converged to the majority head (${HAf:0:16}…, height $hAf)"
+  # HOW it converged has to match WHAT it did while severed. A minority that committed
+  # nothing has nothing on disk to reload and nothing to drop, so demanding a
+  # "restored N block(s) from disk" line here would contradict the very property P2 just
+  # proved. Require the reload proof ONLY when there was something to reload; otherwise
+  # the CATCH-UP line is the evidence, and its absence is the real failure.
   RESTORE_N=$(printf '%s' "$RESTORE_LINE" | grep -oE '[0-9]+' | head -1)
-  if [ -z "$RESTORE_LINE" ]; then
-    fail "P3 valC converged but emitted NO 'chain: restored … from disk' line — the persisted-fork reload is unproven; convergence may be a from-scratch peer catch-up, not a reorg of valC's own reloaded fork"
-  elif [ "${RESTORE_N:-0}" -lt 1 ] 2>/dev/null; then
-    fail "P3 valC restored 0 blocks from disk — its persisted [g,c1] fork was not reloaded (expected ≥ ${hC_pre:-1})"
+  if [ "${hD_pre:-0}" -gt 0 ] 2>/dev/null; then
+    if [ -z "$RESTORE_LINE" ] || [ "${RESTORE_N:-0}" -lt 1 ] 2>/dev/null; then
+      fail "P3 valD had committed blocks (h=$hD_pre) but emitted no 'chain: restored … from disk' line — it did not rejoin on its own persisted store"
+    else
+      echo "  P3 reload PROVEN: valD restored ${RESTORE_N} block(s) from disk before reconciling"
+    fi
+  elif [ -z "$CATCHUP_LINE" ]; then
+    fail "P3 valD committed nothing while severed, so convergence must come from a CATCH-UP — but no 'caught up N block(s)' line was emitted"
   else
-    echo "  P3 reload PROVEN: valC restored ${RESTORE_N} block(s) from disk (pre-heal fork height ${hC_pre}) before reconciling — the convergence is a real reorg of a reloaded fork"
+    echo "  P3 catch-up PROVEN: valD held NO chain of its own (nothing to reload, nothing to drop) and took the majority history whole — ${CATCHUP_LINE}"
   fi
 else
-  fail "P3 valC did NOT converge to the heavier head (A=$HAf@$hAf  C=$HC@$hC)"
+  fail "P3 the healed minority did NOT converge to the majority head (A=$HAf@$hAf  D=$HC@$hC)"
 fi
 
 echo ""
 if [ "$pass" = 1 ]; then
-  echo "RESULT: PASS ✅  objective consensus: the two groups did not diverge onto a shared conflicting head, and converged on ONE history on heal (head hash equality)"
+  echo "RESULT: PASS ✅  objective consensus: a sub-quorum partition committed NOTHING while the majority advanced, and caught up on history on heal (head hash equality)"
 else
   echo "RESULT: FAIL ❌  (see the failing assertion(s) above)"
 fi

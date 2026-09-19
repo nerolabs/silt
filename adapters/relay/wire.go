@@ -1,4 +1,4 @@
-// Package relay is the universal NAT fallback (#27, cross-network
+// Package relay is the universal NAT fallback (cross-network
 // design 2c): when two peers are both behind home routers, neither can
 // accept the other's inbound connection — but both can make outbound
 // ones, so they meet at a third node that is reachable.
@@ -55,7 +55,7 @@ type ctrl struct {
 	// Addr carries the registrant's public host:port as the relay observed it
 	// (its NAT mapping's source) back in the register-ack — STUN-style. A NATed
 	// node can't know its own public endpoint; this is how it learns one, which
-	// hole-punching (#27) needs to hand a peer a target to dial.
+	// hole-punching needs to hand a peer a target to dial.
 	Addr string `cbor:"a,omitempty"`
 	// Paid marks a connect frame as the byte-stream leg of a PAID relay session
 	// (PoD §7.3 Batch 3). It carries the node-minted session handle the fetcher

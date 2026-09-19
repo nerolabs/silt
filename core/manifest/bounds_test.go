@@ -11,7 +11,7 @@ import (
 
 // A manifest that *declares* an out-of-bounds chunk-array count must be
 // rejected as the array header is read — before the node allocates a slice
-// against the attacker's number (Gate 1 / A6, #88). The crafted input is a
+// against the attacker's number (Gate 1 / A6). The crafted input is a
 // handful of bytes: a CBOR map {5: <array declaring MaxChunks+1 elements>}
 // with no elements actually supplied. If the bound were enforced only
 // after decode, the decoder would try to grow a slice toward billions of

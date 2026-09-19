@@ -9,7 +9,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// #43 part 2: a short-lived publish/fetch client (SetEphemeral) messages
+// part 2: a short-lived publish/fetch client (SetEphemeral) messages
 // storage nodes and then dies. Receivers must NOT route to it — otherwise
 // every publish injects a ghost that later costs a full timeout to evict,
 // and at scale that drowns lookups (the 300-file test: 327 routing entries,
@@ -38,7 +38,7 @@ func TestEphemeralSenderNotRouted(t *testing.T) {
 	cl.Sched.Run()
 
 	if inServerTable(eid) {
-		t.Fatal("server routed to an ephemeral client — routing table poisoned (#43 pt2)")
+		t.Fatal("server routed to an ephemeral client — routing table poisoned (pt2)")
 	}
 
 	// Control: a normal node making the identical contact MUST be routed,

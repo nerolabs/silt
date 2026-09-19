@@ -1,7 +1,7 @@
 // Package e2e drives the real `silt` binary as separate OS processes
 // over real TCP — the layer the in-process sim deliberately skips. It
 // exists because the class of bug the sim cannot see is exactly the one
-// that bit us in the field (#36: a reply that could never reach a NATed
+// that bit us in the field (a reply that could never reach a NATed
 // peer, invisible until real sockets carried it). Here a built binary
 // runs actual daemons, publishes through the chain-backed registry over
 // pinned HTTPS, and fetches back across the swarm — asserting the file
@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -142,7 +143,7 @@ var (
 	reRefuse    = regexp.MustCompile(`refusing to start`)
 )
 
-// TestFreeloadRoleSeparation (#47): a daemon started with -freeload announces the
+// TestFreeloadRoleSeparation: a daemon started with -freeload announces the
 // role and still comes up as a routing peer — it serves registry/relay/routing but
 // refuses to host content. Role separation for public-infra operators, not a broken
 // node.
@@ -410,6 +411,21 @@ func runClient(t *testing.T, args ...string) string {
 	return stdout.String()
 }
 
+// runClientStderr runs a one-shot client that must SUCCEED and returns its
+// stderr, which is where the client narrates — the posture it is holding the
+// network to, and what an operation actually cost against it. runClient
+// discards that half.
+func runClientStderr(t *testing.T, args ...string) string {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command(siltBin, args...)
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("client %v: %v\n--- stdout ---\n%s\n--- stderr ---\n%s", args, err, stdout.String(), stderr.String())
+	}
+	return stderr.String()
+}
+
 // runClientAllowErr runs a one-shot client and returns its combined output
 // and exit error (nil on success) instead of failing the test — for
 // asserting a command MUST fail (e.g. a publish the safe defaults refuse).
@@ -453,7 +469,7 @@ func TestDefaultsRefuseRubberStampCommit(t *testing.T) {
 }
 
 // TestBondEarnedStandingCommitsOverTCP is the e2e tier for the trust pivot
-// (T1b, #78): two validators earn consensus standing by proving their storage
+// (T1b): two validators earn consensus standing by proving their storage
 // bonds to EACH OTHER over TCP (gossip → challenge → verify → ledger), and a
 // publish then commits on the SAFE min-rep path — no `-quorum 0` trusted-
 // deployment shortcut. Standing is earned, not granted; a publish that commits
@@ -700,7 +716,7 @@ func TestObjectiveConsensusCommitsOverTCP(t *testing.T) {
 }
 
 // TestUnlinkablePublishOverTCP is the e2e tier for publisher privacy (T3,
-// #14/F1): three validators issue and REQUIRE publish tokens; a `swarm add`
+// persona 14 / F1): three validators issue and REQUIRE publish tokens; a `swarm add`
 // acquires a 2-of-3 token over real TCP (paying the fee with its identity, the
 // issuers never seeing the serial) and publishes — the entry commits and the
 // file round-trips, with no Publisher identity gating it.
@@ -833,7 +849,7 @@ func TestPublishCommitFetchOverTCP(t *testing.T) {
 	// chunks pulled across the swarm over TCP → verify → decode →
 	// decrypt.
 	dst := filepath.Join(t.TempDir(), "fetched.bin")
-	runClient(t, "swarm", "get", link, "-o", dst,
+	fetchErr := runClientStderr(t, "swarm", "get", link, "-o", dst,
 		"-peers", bootstrapA, "-registry", regRef)
 
 	got, err := os.ReadFile(dst)
@@ -842,5 +858,30 @@ func TestPublishCommitFetchOverTCP(t *testing.T) {
 	}
 	if !bytes.Equal(got, want) {
 		t.Fatalf("round-trip corrupted the file: got %d bytes, want %d", len(got), len(want))
+	}
+
+	// The retrieval narrated the deadline structure it ran under and what it
+	// spent against it. Both halves are load-bearing: a field harness derives
+	// its bound on a cross-region fetch from the posture line rather than from a
+	// number someone typed, and the elapsed line is what that bound is checked
+	// against. Asserted here so a rename cannot take the bound's source away
+	// while every unit test stays green.
+	if !strings.Contains(fetchErr, "fetch posture: ") {
+		t.Fatalf("the retrieval narrated no fetch posture, so a bound derived from the deployed\nconfiguration has nothing to read:\n%s", fetchErr)
+	}
+	if !strings.Contains(fetchErr, "operation ceiling ") {
+		t.Fatalf("the fetch posture named no operation ceiling — the outer bound every other\nnumber in it has to fit inside:\n%s", fetchErr)
+	}
+	m := regexp.MustCompile(`fetch elapsed: ([0-9.]+)s of a ([0-9.]+)s operation ceiling`).FindStringSubmatch(fetchErr)
+	if m == nil {
+		t.Fatalf("the retrieval reported no elapsed-against-ceiling pair:\n%s", fetchErr)
+	}
+	elapsed, _ := strconv.ParseFloat(m[1], 64)
+	ceiling, _ := strconv.ParseFloat(m[2], 64)
+	if ceiling <= 0 {
+		t.Fatalf("the reported operation ceiling is %v — a bound of zero grades nothing", ceiling)
+	}
+	if elapsed > ceiling {
+		t.Fatalf("the retrieval succeeded after %.3fs, past its own %.3fs ceiling: the client is\nnot enforcing the bound it reports", elapsed, ceiling)
 	}
 }

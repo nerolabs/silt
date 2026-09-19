@@ -14,7 +14,7 @@ import (
 
 // Stage stores the content but does NOT register the entry — the caller
 // publishes only after a confirmed scatter, so a failed distribution never
-// leaves a dangling registry entry (register-after-distribute, #65).
+// leaves a dangling registry entry (register-after-distribute).
 func TestStageStoresButDoesNotPublish(t *testing.T) {
 	ctx := context.Background()
 	store := memstore.New()
@@ -58,7 +58,7 @@ func TestStageStoresButDoesNotPublish(t *testing.T) {
 // RegisterAfterDistribute is the gate the networked publish paths (swarm
 // add, the UI) run from their Distribute callback. A FAILED scatter must
 // leave the registry untouched — the exact register-after-distribute promise
-// of #65: no link is ever registered for content the swarm didn't durably
+// of no link is ever registered for content the swarm didn't durably
 // take. This is the failing-first guard: revert either call site to publish
 // unconditionally and this fails.
 func TestRegisterAfterDistributeSkipsPublishOnScatterFailure(t *testing.T) {
@@ -82,7 +82,7 @@ func TestRegisterAfterDistributeSkipsPublishOnScatterFailure(t *testing.T) {
 		t.Fatalf("placement count must pass through, got %d", placed)
 	}
 	if _, ok, _ := reg.Lookup(ctx, h.Root); ok {
-		t.Fatal("a failed scatter left a dangling registry entry (#65 regression)")
+		t.Fatal("a failed scatter left a dangling registry entry (regression)")
 	}
 }
 

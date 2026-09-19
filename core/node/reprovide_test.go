@@ -18,7 +18,7 @@ func has(ids []ports.NodeID, want ports.NodeID) bool {
 	return false
 }
 
-// TestReprovideAfterRestartUsesColumnKey is the #69 regression. A restarting
+// TestReprovideAfterRestartUsesColumnKey is the regression. A restarting
 // daemon re-announces everything on its disk (AnnounceHeld), but a coded shard
 // must be announced under its COLUMN key hash(root‖column) — where readers
 // look — which it can only derive from that shard's proof. Proofs used to live
@@ -69,7 +69,7 @@ func TestReprovideAfterRestartUsesColumnKey(t *testing.T) {
 		t.Fatalf("after restart, expected self as provider under the column key")
 	}
 	if has(n.provs.IDs(ports.Hash(chunk.ID)), n.id) {
-		t.Fatalf("must NOT announce a coded shard under its bare id (the #69 bug)")
+		t.Fatalf("must NOT announce a coded shard under its bare id (the bug)")
 	}
 
 	// Without the persisted proof (the old behavior): it lands on the bare id

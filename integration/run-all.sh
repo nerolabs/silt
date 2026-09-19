@@ -8,7 +8,7 @@
 #
 # Usage:
 # ./integration/run-all .sh # the fast gate set (default)
-#  FULL=1 ./integration/run-all .sh # + the slow suites (soak, upgrade)
+#  FULL=1 ./integration/run-all .sh # + the slow suites (floor, soak, durability, retrieval, upgrade)
 #  SUITES="consensus bond nat"./integration/run-all .sh # an explicit subset
 #  SOAK_DURATION=120 ./integration/run-all .sh FULL=1
 #
@@ -27,10 +27,11 @@ mkdir -p "$OUT"
 # ── suite catalog: name | tier | per-suite timeout(s) | the M0 claim it gates ──
 # tier: gate = cheap, fast, run by default; slow = opt-in via FULL=1.
 SUITES_CATALOG=(
-  "consensus|gate|300|Objective bond-weighted commit admission: a sub-quorum partition commits nothing, stalls, and catches up to the majority history on heal"
+  "consensus|gate|600|Objective bond-weighted commit admission: a sub-quorum partition commits nothing, stalls, and catches up to the majority history on heal"
   "bond|gate|180|Proof-of-space-time bond cost (C1): a real plot is dear to make, cheap to verify, shortcut rejected"
-  "redteam|gate|300|accountability: equivocator slashed, forged block rejected, low-bond proposer refused"
+  "redteam|gate|480|accountability: equivocator slashed, forged block rejected, low-bond proposer refused"
   "sybil|gate|600|C2 no quiet capture: a young objective network commits with the honest anchors and refuses to advance for a bonded Sybil set without them"
+  "retention|gate|600|Retention decay denies coasting (C1 time dimension): an identity that stops re-proving is evicted from the committed bonded set within the re-challenge TTL, while the identities that keep re-proving keep their standing, and it re-earns standing only when a fresh registration commits"
   "takedown|gate|180|Per-operator, existence-checked, reversible takedown"
   "privacy|gate|360|Publisher unlinkability: the default chain refuses a durable file→publisher link (refuse-to-surveil), the private path works, token-quorum authorizes without identity"
   "client|gate|300|Web-UI path: publish→list→fetch bit-perfect over the daemon's HTTP API, and the local-security guard holds (no-token/wrong-token→401, DNS-rebinding/cross-origin→403)"
@@ -38,6 +39,7 @@ SUITES_CATALOG=(
   "audit|gate|240|A liar deletes shards but keeps proofs → the loss is caught over the wire and repaired"
   "economy|gate|180|Per-byte earning + blind-signed, publisher-unlinkable credits"
   "churn|gate|540|Repair-under-churn: kill holders, caretaker reconstructs from parity + re-scatters, bit-perfect"
+  "floor|slow|900|a validator on the declared floor spec (one core, 2 GiB, 10 GiB): validates and converges under a kernel-enforced memory ceiling with no swap (honest load AT DEPTH — the same ceiling under adversarial input is measured on pinned seats in redteam and sybil), sheds heavy bond proofs below the retention horizon, and restarts from the pruned store. A SECOND box on the same spec validates by proof instead of by replica: it reaches a verdict over real witnesses at distinct committed heights while holding no tree, and its no-provider control stalls without ever accepting"
   "chaos|gate|300|Crash-recovery: SIGKILL every holder, restart, #69 re-announce fires, cold-fetch bit-perfect (WAVES=2 probes a seed-crash discoverability gap)"
   "soak|slow|700|Sustained load + gentle churn: bit-perfect throughout, no crash-loop, bounded memory"
   "durability|slow|1800|Durability under permanent loss: shrink the swarm, caretaker reconstructs+re-scatters, content outlives the nodes (surfaces the durability↔retrievability boundary)"

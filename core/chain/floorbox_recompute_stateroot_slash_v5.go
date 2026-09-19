@@ -9,8 +9,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// era-4 (v5) trustless floor-box RECOMPUTE — Path-1 state-root recompute, sub-increment P1-b,
-// CLASS S (slashes) — the FIRST delta-derivable CHANGED-DIGEST class.
+// era-4 (v5) trustless floor-box RECOMPUTE — CLASS S (slashes) — the FIRST delta-derivable CHANGED-DIGEST class.
 //
 // research: floorbox-Rboundary-writeset-digest-reconstruction-
 //
@@ -77,9 +76,11 @@ type StateRootDigestWitness struct {
 // Like applyEntriesRevocationsWriteSet, the KEY set is a pure function of the payload (the
 // culprits) — completeness bound. The oldValue is left nil here; the matched witness carries the
 // pre-state claim and the fold verifies it against prevStateRoot. A bonded/qualified DELETE fires
-// only if the culprit was present pre-state; the box reads that presence from the anchored pre-set
-// id-lists (the digest witnesses), NOT from a witness scalar — see stateRootSlashDigestOps.
-// A culprit that was neither bonded nor qualified changes only slashed (and slashedRoot).
+// only if the culprit is present in the sets passed in, which are the RUNNING sets of the composed
+// transition — this class runs last, so a culprit this same block bonded is evicted from what the
+// registration wrote rather than from a pre-state it was never in
+// (floorbox_recompute_stateroot_compose_v5.go). A culprit that was neither bonded nor qualified
+// changes only slashed (and slashedRoot).
 func stateRootSlashWriteSet(b Block, preBonded, preQualified map[ports.NodeID]struct{}) []stateRootWrite {
 	type wr struct {
 		newValue []byte
@@ -122,67 +123,6 @@ func stateRootSlashWriteSet(b Block, preBonded, preQualified map[ports.NodeID]st
 	return out
 }
 
-// stateRootSlashDigestOps reconstructs the THREE touched whole-set digest scalars (slashedRoot,
-// bondedRoot, qualifiedRoot) as FoldOps, via the changed-digest primitive. For each: verify the
-// claimed pre-set id-list reconstructs the committed pre-digest, apply the payload- derived S
-// membership delta to the pre-set, and fold the post-digest as the changed leaf.
-//
-// The pre-set membership the S per-member write-set needs (was the culprit bonded / qualified) is
-// derived HERE from the anchored pre-sets and returned to the caller — so the per-member delta and
-// the digest delta agree on the pre-state by construction, and neither trusts a witness scalar.
-//
-// It returns the digest FoldOps, plus the pre-bonded / pre-qualified membership sets the per-member
-// write-set consumes. A missing/short/padded pre-set id-list stalls (nodeSetMTH != committed
-// pre-digest). A touched digest with no supplied witness stalls (the box will not fold an
-// unwitnessed digest change).
-func stateRootSlashDigestOps(
-	b Block,
-	digestWits []StateRootDigestWitness,
-) (ops []statehash.FoldOp, preBonded, preQualified map[ports.NodeID]struct{}, err error) {
-	byTag := make(map[string]*StateRootDigestWitness, len(digestWits))
-	for i := range digestWits {
-		byTag[digestWits[i].Tag] = &digestWits[i]
-	}
-
-	// Reconstruct + anchor each touched pre-set once. slashed / bonded / qualified are ALWAYS touched
-	// by a non-empty slash block (slashed always changes; bonded/qualified change iff any culprit was
-	// a member — but the digest scalar leaf is committed every block and its VALUE changes whenever
-	// the set changes, so the box must reconstruct all three to fold the block's committed StateRoot).
-	preSlashed, err := anchoredPreSet(byTag, tagSlashedRoot)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	bondedSet, err := anchoredPreSet(byTag, tagBondedRoot)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	qualifiedSet, err := anchoredPreSet(byTag, tagQualifiedRoot)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	preBonded = bondedSet
-	preQualified = qualifiedSet
-
-	// Apply the payload-derived S delta to each pre-set → post-set (copy, don't mutate the pre-sets;
-	// the per-member write-set still needs the pre-membership).
-	postSlashed := cloneIDSet(preSlashed)
-	postBonded := cloneIDSet(bondedSet)
-	postQualified := cloneIDSet(qualifiedSet)
-	for i := range b.Slashes {
-		culprit := b.Slashes[i].CulpritID()
-		postSlashed[culprit] = struct{}{} // slashed: ADD
-		delete(postBonded, culprit)       // bonded: evict (no-op if absent)
-		delete(postQualified, culprit)    // qualified: post-slash unqualified ⇒ evict (no-op if absent)
-	}
-
-	ops = []statehash.FoldOp{
-		digestFoldOp(tagSlashedRoot, byTag, postSlashed),
-		digestFoldOp(tagBondedRoot, byTag, postBonded),
-		digestFoldOp(tagQualifiedRoot, byTag, postQualified),
-	}
-	return ops, preBonded, preQualified, nil
-}
-
 // anchoredPreSet reconstructs one digest's pre-state id-set from its witness. It requires a witness
 // for the tag. The COMPLETENESS ANCHOR is enforced downstream by digestFoldOp + FoldChangedPaths:
 // the FoldOp's OldValue is nodeSetMTH(PreIDs), and FoldChangedPaths verifies that OldValue against
@@ -202,10 +142,29 @@ func stateRootSlashDigestOps(
 // RESEARCH-GATED (a consensus-adjacent verification rule) and is deliberately NOT implemented here.
 // EVIDENCE: anchor_preset_gates_test.go.6 (PINNED_DEFECT), with the unanchored-read census and the
 // oracle argument at its head. CONTAINMENT: the downgrade in (*Box).Validate.
-func anchoredPreSet(byTag map[string]*StateRootDigestWitness, tag string) (map[ports.NodeID]struct{}, error) {
+// anchoredPreSet returns the witnessed pre-state member set for a whole-set digest tag,
+// PROVEN against prevStateRoot before it is returned.
+//
+// The proof is what makes the set the chain's rather than the producer's. A whole-set
+// digest commits membership as nodeSetMTH over the member ids, so recomputing that digest
+// from the witnessed ids and Resolving it against the committed root refuses any set with
+// an id omitted or injected — the same check provenView.members makes, for the same reason.
+//
+// It is deliberately UNCONDITIONAL. Folding a changed digest also verifies its OldValue,
+// so it is tempting to let the fold do this work; but a fold op is only emitted when the
+// set actually changes, and the post-set is derived FROM the pre-set. An attacker forging
+// the pre-set therefore steers the very equality that decides whether the forgery is ever
+// checked, and the tags whose ops are conditional — or, for slashedRoot on a bond
+// registration, never emitted at all — are consumed as attacker-chosen data. Anchoring
+// here removes that dependency: every read is proven when it is read.
+func anchoredPreSet(byTag map[string]*StateRootDigestWitness, tag string, prevStateRoot ports.Hash) (map[ports.NodeID]struct{}, error) {
 	w, ok := byTag[tag]
 	if !ok || w.Proof.IsNil() {
 		return nil, fmt.Errorf("%w: no digest witness for touched %s", ErrRecomputeStateRootDigest, tag)
+	}
+	if !statehash.Resolve(prevStateRoot, statehash.Key(tag, nil), nodeSetMTH(w.PreIDs), w.Proof).IsProvenPresent() {
+		return nil, fmt.Errorf("%w: the %s pre-state member set does not resolve against prevStateRoot — "+
+			"an id has been omitted or injected", ErrRecomputeStateRootDigest, tag)
 	}
 	set := make(map[ports.NodeID]struct{}, len(w.PreIDs))
 	for _, id := range w.PreIDs {

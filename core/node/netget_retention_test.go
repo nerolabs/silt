@@ -79,7 +79,7 @@ func newNetgetRig(t *testing.T) *netgetRig {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	nodes[0].Distribute(entry, m, false, DerivePorKey(h.LayoutKey()), func(int, error) {})
+	nodes[0].Distribute(entry, m, false, func(int, error) {})
 	sched.Run()
 	return &netgetRig{sched: sched, net: net, nodes: nodes, reg: reg, m: m, h: h, data: data}
 }

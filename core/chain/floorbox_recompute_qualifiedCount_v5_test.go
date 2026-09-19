@@ -9,7 +9,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Tests for the trustless floor-box RECOMPUTE increment 4 (floorbox_recompute_qualifiedCount_v5.go):
+// Tests for the trustless floor-box RECOMPUTE in floorbox_recompute_qualifiedCount_v5.go:
 // the root-only reproduction of qualifiedCount (the distinct-qualified validator COUNT N that sizes
 // the count-quorum floor), replicating increments 1-3's C-1 pattern over the WHOLE bonded map and
 // consuming the `slashed`-over-bonded quorum-stack whole-set read.

@@ -552,7 +552,7 @@ func TestEra2CertificateAcceptedByEveryEra2Verifier(t *testing.T) {
 
 	// 6. validateCarrier: a v5 child carrying that precommit set over b.Prev == b.Hash.
 	child := &Block{Version: BlockVersionWitnessable, Height: b.Height + 1, Prev: h, LastCommit: carrier}
-	if err := validateCarrier(child, c.ChainID()); err != nil {
+	if err := validateCarrier(child, c.ChainID(), 0); err != nil {
 		t.Fatalf("validateCarrier (verifyAtt over b.Prev) refused the carried era-2 precommits: %v", err)
 	}
 }

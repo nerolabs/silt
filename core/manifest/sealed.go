@@ -64,6 +64,18 @@ type Layout struct {
 	Parity    [][]byte `cbor:"6,keyasint,omitempty"`
 	// Box is the sealed secrets (opaque without the content key).
 	Box []byte `cbor:"7,keyasint"`
+	// ShardRoots and LeafBytes are the spot-check commitment, described on
+	// Manifest. They sit in the OUTER layer because audit and repair are
+	// exactly what the layout key is for: a caretaker must be able to check
+	// a shard it may never read.
+	//
+	// They disclose nothing the outer layer did not already carry. Their
+	// length is a function of the shard count, which Layout publishes by
+	// construction — one chunk ID per shard, outside the inner box — so the
+	// sealed blob's size stays the function of shard count it already was
+	// and secretsPlainLen's mode-independence is untouched.
+	ShardRoots [][]byte `cbor:"8,keyasint,omitempty"`
+	LeafBytes  int      `cbor:"9,keyasint,omitempty"`
 }
 
 type secretsPart struct {
@@ -172,6 +184,7 @@ func Seal(m *Manifest, layoutKey, contentKey [32]byte) ([]byte, error) {
 	eb, err := encMode.Marshal(Layout{
 		Version: m.Version, ChunkSize: m.ChunkSize,
 		K: m.K, N: m.N, Chunks: m.Chunks, Parity: m.Parity,
+		ShardRoots: m.ShardRoots, LeafBytes: m.LeafBytes,
 		Box: box,
 	})
 	if err != nil {
@@ -196,12 +209,33 @@ func OpenLayout(blob []byte, layoutKey [32]byte) (*Layout, error) {
 	// OpenLayout returns before the full Validate (that needs the content
 	// key), so it enforces the declared-number bounds itself: the decoder
 	// already caps array element counts, this rejects an oversize declared
-	// chunk size and is belt-and-suspenders on the counts (#88, B7, #14).
+	// chunk size and is belt-and-suspenders on the counts (B7, persona 14).
 	if l.ChunkSize <= 0 || l.ChunkSize > MaxChunkSize {
 		return nil, fmt.Errorf("manifest: layout chunk size %d out of range", l.ChunkSize)
 	}
 	if len(l.Chunks) > MaxChunks || len(l.Parity) > MaxChunks {
 		return nil, fmt.Errorf("manifest: layout declares more than %d shards", MaxChunks)
+	}
+	// The shard-root list is attacker-reachable in the same way the chunk
+	// list is — it arrives as reassembled bytes and declares its own length
+	// — so it is bounded here beside them, and its alignment with the shard
+	// count is checked rather than assumed. An auditor that indexed an
+	// unaligned list would check one shard against another's root and fail
+	// an honest holder.
+	if len(l.ShardRoots) != 0 {
+		if want := len(l.Chunks) + len(l.Parity); len(l.ShardRoots) != want {
+			return nil, fmt.Errorf("manifest: layout has %d shard roots for %d shards", len(l.ShardRoots), want)
+		}
+		for i, r := range l.ShardRoots {
+			if len(r) != len(ports.Hash{}) {
+				return nil, fmt.Errorf("manifest: layout shard root %d has length %d", i, len(r))
+			}
+		}
+		if l.LeafBytes <= 0 || l.LeafBytes > MaxChunkSize {
+			return nil, fmt.Errorf("manifest: layout leaf width %d out of range", l.LeafBytes)
+		}
+	} else if l.LeafBytes != 0 {
+		return nil, fmt.Errorf("manifest: layout declares leaf width %d with no shard roots", l.LeafBytes)
 	}
 	return &l, nil
 }
@@ -234,6 +268,7 @@ func OpenFull(blob []byte, layoutKey, contentKey [32]byte) (*Manifest, error) {
 	m := &Manifest{
 		Version: l.Version, ChunkSize: l.ChunkSize, K: l.K, N: l.N,
 		Chunks: l.Chunks, Parity: l.Parity,
+		ShardRoots: l.ShardRoots, LeafBytes: l.LeafBytes,
 		Mode: s.Mode, FileSize: s.FileSize,
 		ChunkSecrets: s.ChunkSecrets, FileKey: s.FileKey,
 	}

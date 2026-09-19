@@ -393,7 +393,12 @@ func (n *Node) maybeAdvanceRound() {
 	// after r3. Reset-on-quiescence is not reset-on-entry (DiemBFT Fig. 1
 	// resets the timer on ENTERING a round — advanceToRound does that).
 	rs := n.roundsFor()
-	if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && !n.bondDrainInFlight && !rs.Armed {
+	// A queued equivocation proof arms the round clock for the same reason it arms
+	// the drain sweep (maybeProposeBondDrain): it is work this node owes the chain,
+	// and a proposal carrying it needs a round to be proposed in. Without this the
+	// pacemaker sleeps on a height the eviction still has to reach, so the drain
+	// could arm and then find its sign slot marked with no round advance coming.
+	if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && len(n.pendingSlashes) == 0 && !n.bondDrainInFlight && !rs.Armed {
 		return // truly idle — quiesce (B6), counter held
 	}
 	rs.Sweeps++

@@ -90,7 +90,7 @@ func getEconomySelf(t *testing.T, h http.Handler, query string) economySelf {
 }
 
 // A read endpoint moves nothing, so it must be reachable WITHOUT the bearer token
-// (the #89 read-only-localhost ergonomics). Every field is stamped local-exact. This
+// (the read-only-localhost ergonomics). Every field is stamped local-exact. This
 // is a real untokened request: getEconomySelf presents the token, and an earlier
 // version of this test called it while its comment said "no Authorization header".
 func TestEconomySelfIsReadOnlyAndLocalExact(t *testing.T) {

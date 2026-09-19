@@ -9,7 +9,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// TestStartReprovideKeepsHeldRecordsLivePastTTL is the #69 residual (confirmed dark ~30
+// TestStartReprovideKeepsHeldRecordsLivePastTTL is the residual (confirmed dark ~30
 // min after boot under a real streaming load test): provider records carry a
 // ProviderRecordTTL lease and GetProviders serves only Live records, but AnnounceHeld
 // runs once at startup — so a holder goes undiscoverable the moment its startup records
@@ -49,12 +49,12 @@ func TestStartReprovideKeepsHeldRecordsLivePastTTL(t *testing.T) {
 		return len(n.provs.Live(key, int64(at))) > 0
 	}
 
-	// Baseline (the #69 bug): with no reprovide, the startup record expires at the TTL.
+	// Baseline (the bug): with no reprovide, the startup record expires at the TTL.
 	n0, s0, key0 := build(false)
 	past := s0.Now().Add(ttl + 60*ports.Second)
 	s0.RunUntil(past)
 	if live(n0, key0, past) {
-		t.Fatal("precondition: without reprovide the held record must expire past its TTL (the #69 bug)")
+		t.Fatal("precondition: without reprovide the held record must expire past its TTL (the bug)")
 	}
 
 	// The fix: StartReprovide re-stamps every TTL/2, so the record is still Live two TTLs
@@ -63,7 +63,7 @@ func TestStartReprovideKeepsHeldRecordsLivePastTTL(t *testing.T) {
 	past1 := s1.Now().Add(ttl*2 + 60*ports.Second)
 	s1.RunUntil(past1)
 	if !live(n1, key1, past1) {
-		t.Fatal("StartReprovide must keep the held record Live past the TTL — else the holder goes undiscoverable (#69)")
+		t.Fatal("StartReprovide must keep the held record Live past the TTL — else the holder goes undiscoverable")
 	}
 }
 

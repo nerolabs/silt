@@ -18,7 +18,6 @@ import (
 	"github.com/nerolabs/silt/core/link"
 	"github.com/nerolabs/silt/core/manifest"
 	"github.com/nerolabs/silt/core/pipeline"
-	"github.com/nerolabs/silt/core/por"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -36,21 +35,21 @@ import (
 // durably enough to be retrievable: any MANIFEST chunk (or any chunk of an
 // uncoded file, which carries no parity) that landed on no node, OR any
 // erasure STRIPE left with fewer placed shards than reconstruction needs
-// (#64). A link is unretrievable in all three cases, so the caller must NOT
+// A link is unretrievable in all three cases, so the caller must NOT
 // register/return one for it.
-func (n *Node) Distribute(entry ports.Entry, m *manifest.Manifest, keepLocal bool, porKey *por.Key, done func(placed int, err error)) {
-	n.distributeFrom(n.store, entry, m, keepLocal, porKey, done)
+func (n *Node) Distribute(entry ports.Entry, m *manifest.Manifest, keepLocal bool, done func(placed int, err error)) {
+	n.distributeFrom(n.store, entry, m, keepLocal, done)
 }
 
 // DistributeFrom scatters a file staged in an external scratch store —
 // how the daemon's UI publishes without the staging ever touching the
 // node's storage pledge (the M9 rule: pledges bound hosting, not
 // staging). The scratch copies are deleted as they ship.
-func (n *Node) DistributeFrom(src ports.ChunkStore, entry ports.Entry, m *manifest.Manifest, porKey *por.Key, done func(placed int, err error)) {
-	n.distributeFrom(src, entry, m, false, porKey, done)
+func (n *Node) DistributeFrom(src ports.ChunkStore, entry ports.Entry, m *manifest.Manifest, done func(placed int, err error)) {
+	n.distributeFrom(src, entry, m, false, done)
 }
 
-func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manifest.Manifest, keepLocal bool, porKey *por.Key, done func(placed int, err error)) {
+func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manifest.Manifest, keepLocal bool, done func(placed int, err error)) {
 	leaves := m.Leaves()
 	// One cached Merkle tree for the whole distribution: a proof is built per
 	// shard below, and the standalone manifest.Prove is O(n) per call (it
@@ -72,7 +71,7 @@ func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manife
 	var distErr error
 	// shardPlaced[i] records whether ids[i] landed on at least one node, so
 	// after distribution we can verify every erasure stripe kept enough
-	// placed shards to be reconstructable (#64) — the data-shard analogue of
+	// placed shards to be reconstructable — the data-shard analogue of
 	// the required-chunk (manifest / uncoded) check below.
 	shardPlaced := make([]bool, len(ids))
 	// usedDomains counts how many of this file's columns already live in
@@ -128,7 +127,7 @@ func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manife
 	var nextGroup func(g, attempt int)
 	nextGroup = func(g, attempt int) {
 		if g == len(groups) {
-			// B7 / #64: before returning a link, verify every erasure stripe
+			// B7 / before returning a link, verify every erasure stripe
 			// kept enough placed shards to reconstruct. Column placement means
 			// a shard-position that landed on no node is missing from EVERY
 			// stripe; if that leaves a stripe with fewer stored shards than it
@@ -190,17 +189,16 @@ func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manife
 				}
 				// Shards travel with their Merkle inclusion proof (so hosts
 				// can answer storage challenges) tagged with their column,
-				// plus per-block PoR authenticators so an auditor can later
-				// verify possession WITHOUT fetching the bytes; manifest
-				// chunks aren't tree leaves, go bare, and aren't audited.
+				// plus the spot-check leaf width the object was committed at,
+				// so a host can open a challenge against the geometry the
+				// publisher used; manifest chunks aren't tree leaves, go bare,
+				// and aren't audited.
 				var proof *ports.StorageProof
 				if li := grp.members[k] - manifestN; li >= 0 {
 					if p, perr := tree.Prove(li); perr == nil {
 						proof = &ports.StorageProof{Root: root, Index: p.Index,
-							Total: p.Total, Path: p.Path, Column: columnOfLeaf(m, li)}
-						if porKey != nil {
-							proof.PorTags = porKey.Tags(id[:], c.Data)
-						}
+							Total: p.Total, Path: p.Path, Column: columnOfLeaf(m, li),
+							LeafBytes: m.LeafBytes}
 					}
 				}
 				n.placeAt(id, c.Data, proof, candidates, n.cfg.Replication,
@@ -407,8 +405,8 @@ func (n *Node) SurvivorNakamoto(key ports.ChunkID) int {
 // because nobody has the chunk: once the public rendezvous node caps out,
 // every byte to a NATed provider funnels through the relay, whose per-peer
 // splice slots saturate under concurrent fan-out and return "relay at
-// capacity" (#65). Those slots free within moments, so a backed-off re-sweep
-// usually succeeds — the fetch-side analogue of the #63 placement retry.
+// capacity". Those slots free within moments, so a backed-off re-sweep
+// usually succeeds — the fetch-side analogue of the placement retry.
 // We re-sweep only when at least one provider failed with a transport error
 // (timeout / relay refusal); a sweep where every provider cleanly answered
 // "don't have it" is a real miss and retrying it would just burn time.
@@ -466,7 +464,7 @@ func (n *Node) fetchFrom(id ports.ChunkID, provs []ports.NodeID, done func(bool)
 			// it must not trigger the FetchAttempts re-sweep amplification;
 			// the shard just goes unfetched this round and a later sweep, past
 			// the holder's cooldown, re-probes in case it recovered. Guarded by
-			// anyLive so we never skip our only remaining candidate (#69).
+			// anyLive so we never skip our only remaining candidate.
 			if anyLive {
 				if n.corpseGated(provs[i], now) {
 					n.Stats.HolderDialsSkipped++
@@ -548,12 +546,28 @@ func (n *Node) fetchColumn(root ports.Hash, col int, ids []ports.ChunkID, done f
 // on receipt. Reports which ids couldn't be fetched, plus the failure
 // domains the surviving columns live in — so repair can re-seed the
 // rebuilt columns into domains the survivors aren't already using.
-func (n *Node) fetchStripeByColumn(root ports.Hash, refs []shardRef, done func(unfetched []ports.ChunkID, usedDomains map[uint64]int)) {
+//
+// enough, when non-nil, ENDS THE WALK EARLY once the caller has what it came for.
+// It is called with the number of shards fetched so far and returns true to stop.
+// Repair passes nil — it wants every surviving column, because usedDomains is a
+// census and a partial one would re-seed into a domain it failed to notice. The
+// repair-claim judge passes a k-budget, because its verifier needs k survivors and
+// nothing more: see fetchSurvivors.
+//
+// EARLY EXIT IS NOT THE SAME AS A SHORTER REF LIST, and the difference is the point.
+// Trimming refs to k up front would make any k shards being unreachable a failure
+// the judge could have avoided by asking one more holder. The walk still traverses
+// as far as it must; it just stops paying once the need is met.
+func (n *Node) fetchStripeByColumn(root ports.Hash, refs []shardRef, enough func(fetched int) bool, done func(unfetched []ports.ChunkID, usedDomains map[uint64]int)) {
 	var unfetched []ports.ChunkID
 	usedDomains := map[uint64]int{}
+	fetched := 0
 	var next func(i int)
 	next = func(i int) {
-		if i == len(refs) {
+		if i == len(refs) || (enough != nil && enough(fetched)) {
+			// The refs never reached are not "unfetched" — nobody asked for them.
+			// Reporting them as missing would turn a satisfied budget into a
+			// durability alarm.
 			done(unfetched, usedDomains)
 			return
 		}
@@ -563,6 +577,7 @@ func (n *Node) fetchStripeByColumn(root ports.Hash, refs []shardRef, done func(u
 				if !ok {
 					unfetched = append(unfetched, r.id)
 				} else {
+					fetched++
 					for _, p := range provs { // note the surviving column's domain
 						if d := n.domainOf(p); d != 0 {
 							usedDomains[d]++
@@ -862,7 +877,6 @@ func (n *Node) netGetEntry(reg ports.Registry, entry ports.Entry, h link.Handle,
 func (n *Node) retainPulled(m *manifest.Manifest, h link.Handle, pulled []ports.ChunkID, done func()) {
 	tree := manifest.BuildTree(m.Leaves())
 	root := tree.Root()
-	porKey := DerivePorKey(h.LayoutKey())
 	leafIdx := make(map[ports.ChunkID]int, len(m.Leaves()))
 	for li, id := range m.Leaves() {
 		leafIdx[id] = li
@@ -880,10 +894,8 @@ func (n *Node) retainPulled(m *manifest.Manifest, h link.Handle, pulled []ports.
 		if li, ok := leafIdx[id]; ok {
 			if pr, perr := tree.Prove(li); perr == nil {
 				col := columnOfLeaf(m, li)
-				proof = &ports.StorageProof{Root: root, Index: pr.Index, Total: pr.Total, Path: pr.Path, Column: col}
-				if porKey != nil {
-					proof.PorTags = porKey.Tags(id[:], c.Data)
-				}
+				proof = &ports.StorageProof{Root: root, Index: pr.Index, Total: pr.Total,
+					Path: pr.Path, Column: col, LeafBytes: m.LeafBytes}
 				key = placementKey(root, id, col)
 			}
 		}
@@ -1006,7 +1018,7 @@ func columnShardIDs(m *manifest.Manifest) map[int][]ports.ChunkID {
 // dead-holder dial-storm class that PR re-introduced on the
 // holders read (a 100-stripe column has one shard per stripe, so an ungated dead
 // provider dialed every shard cost ~stripes × HolderDialTimeout serially). The
-// anyLive guard preserves the #69 sole-candidate rule: a lone holder that just
+// anyLive guard preserves the sole-candidate rule: a lone holder that just
 // restarted and is re-announcing is still probed, never written off as gone.
 func (n *Node) confirmColumnHolders(provs []ports.NodeID, shards []ports.ChunkID, done func([]ports.NodeID)) {
 	now := n.clock.Now()

@@ -56,7 +56,7 @@ func cmdClient(args []string) error {
 	capacity := fs.String("capacity", "5G", "storage you contribute to the network (0 = consume only)")
 	bootstrap := fs.String("bootstrap", "", "bootstrap peers: ID@HOST:PORT[,...]")
 	// Empty default is deliberate: no built-in seed domain (neutral infra,
-	// community-run) — see the discovery package doc (#27 Part A).
+	// community-run) — see the discovery package doc (Part A).
 	dnsSeed := fs.String("dns-seed", "", "domain whose TXT records list bootstrap peers")
 	registryURL := fs.String("registry", "", "registry ref for browsing/publishing (ID@https://host:port)")
 	uiAddr := fs.String("ui", "127.0.0.1:8090", "local web UI address")
@@ -217,7 +217,7 @@ func cmdClient(args []string) error {
 			})
 			// Provider records lease out after ProviderRecordTTL; without a periodic
 			// reprovide a contributing node's held content goes undiscoverable once the
-			// startup records lapse (#69). Re-announce on a timer set well inside the TTL.
+			// startup records lapse. Re-announce on a timer set well inside the TTL.
 			nd.StartReprovide()
 		})
 	})

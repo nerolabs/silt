@@ -13,7 +13,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// The deep-sheet exit gate Phase 3 asserts the retention prune from REAL
+// The deep-sheet exit gate asserts the retention prune from REAL
 // persisted state: chain-status must count payload-stripped blocks so an
 // operator (and the field harness) can confirm the prune engaged without
 // depending on a debug log line. This pins the count against a store holding

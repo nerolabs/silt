@@ -148,7 +148,7 @@ func newSweepRig(t *testing.T) *sweepRig {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	nodes[0].Distribute(entry, m, false, DerivePorKey(h.LayoutKey()), func(int, error) {})
+	nodes[0].Distribute(entry, m, false, func(int, error) {})
 	sched.Run()
 
 	care := nodes[1]

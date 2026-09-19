@@ -55,7 +55,7 @@ func TestAuditVerifiesWithoutFetching(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	publisher.Distribute(entry, m, false, node.DerivePorKey(h.LayoutKey()), func(int, error) {})
+	publisher.Distribute(entry, m, false, func(int, error) {})
 	cl.Sched.Run()
 
 	// Warm the auditor's copy of the (public) manifest chunks, so the audit's
@@ -81,10 +81,12 @@ func TestAuditVerifiesWithoutFetching(t *testing.T) {
 	fetchDuringAudit := cl.Net.Stats.Kinds[ports.MsgFetchChunk] - fetchBefore
 
 	if fetchDuringAudit != 0 {
-		t.Fatalf("audit fetched shard ground truth %d times — it must verify WITHOUT fetching (that is the whole point of a real PoR)", fetchDuringAudit)
+		t.Fatalf("audit issued %d MsgFetchChunk — it must decide WITHOUT fetching ground truth. The answer to a "+
+			"challenge carries a SAMPLE of the shard, which is the hash-only spot check working; a FETCH is the "+
+			"auditor going to get the bytes itself, which is the toy scheme a real PoR replaces", fetchDuringAudit)
 	}
 	if report.Failed == 0 {
-		t.Fatal("no audit failed — the liars (tags kept, bytes dropped) went uncaught")
+		t.Fatal("no audit failed — the liars (storage proof kept, bytes dropped) went uncaught")
 	}
 
 	// Outcome, not mechanism: every liar is slashed into debt; no honest

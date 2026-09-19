@@ -3,11 +3,12 @@ package node
 import "github.com/nerolabs/silt/ports"
 
 // proofMeta is the small, ALWAYS-RESIDENT slice of a StorageProof: the fields the
-// hot-path proof sites need without paging the big Path+PorTags. Existence
+// hot-path proof sites need without paging the full Merkle Path. Existence
 // checks, the iterate-all sweeps (HeldRoots, EnforceDenylist, chunkDenied), and
 // re-announce (placementKey needs Root+Column) all read only these. ~80-100 B per
-// held chunk resident, versus ~5.4 KB for the full proof — so a node with a disk
-// full of chunks keeps O(held) TINY metadata resident, and the full proofs live
+// held chunk resident, versus a full proof whose Merkle path grows with the object
+// — so a node with a disk full of chunks keeps O(held) TINY metadata resident, and
+// the full proofs live
 // in the backing store, paged into a bounded cache only to serve or audit. That
 // is the daemon OOM fix: resident proof RAM becomes O(hot), not O(total held).
 type proofMeta struct {

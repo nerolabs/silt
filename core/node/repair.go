@@ -138,7 +138,7 @@ func (n *Node) AnnounceHeld(done func(int)) {
 // only for -care'd roots). So without this a node holding content past the TTL goes
 // silently undiscoverable ~TTL after boot — every GetProviders returns empty and its
 // held content fails to fetch ("manifest chunks unreachable") while the daemon looks
-// healthy (the #69 residual; confirmed dark ~30 min after every restart under a real
+// healthy (the residual; confirmed dark ~30 min after every restart under a real
 // streaming load test). Re-announce at ProviderRecordTTL/2 (floored 60 s): a full
 // AnnounceHeld re-stamps this node's OWN records AND re-plants them on near-nodes, so
 // multi-holder discovery survives too — safe over a large held set now that the walk
@@ -266,6 +266,24 @@ type shardRef struct {
 	leafIdx int
 }
 
+// rebuiltShardMatchesCommitment recomputes a reconstructed shard's spot-check root
+// and compares it with the one the publisher committed for that leaf. An object
+// with no commitment cannot be checked and is allowed through unchanged — the audit
+// reports it as unaudited rather than this path refusing to repair it.
+func (n *Node) rebuiltShardMatchesCommitment(m *manifest.Layout, r shardRef, data []byte) bool {
+	if m.LeafBytes <= 0 || r.leafIdx < 0 || r.leafIdx >= len(m.ShardRoots) {
+		return true
+	}
+	var want ports.Hash
+	copy(want[:], m.ShardRoots[r.leafIdx])
+	if got := por.ShardRoot(data, m.LeafBytes); got != want {
+		n.logf(ports.LogWarn, "rebuilt shard does not match its committed spot-check root — not placing",
+			"root", m.Root(), "shard", r.id, "column", r.pos, "want", want, "got", got)
+		return false
+	}
+	return true
+}
+
 func (n *Node) repairRoot(ch link.CareHandle, done func()) {
 	if n.isDenied(ch.Root) {
 		done() // taken down: stop keeping it alive
@@ -357,7 +375,7 @@ func (n *Node) repairRootWithLayout(entry ports.Entry, ch link.CareHandle, done 
 			probeDone := n.clock.Now()
 			n.logf(ports.LogInfo, "repair sweep complete", "root", m.Root(), "shards", len(refs), "reachable", reach,
 				"manifest-heal-ms", msBetween(sweepStart, manifestDone), "probe-ms", msBetween(manifestDone, probeDone))
-			n.repairStripes(m, p, refs, reachable, shardDoms, 0, DerivePorKey(ch.LayoutKey), func() {
+			n.repairStripes(m, p, refs, reachable, shardDoms, 0, func() {
 				n.logf(ports.LogInfo, "repair pass complete", "root", m.Root(),
 					"repair-ms", msBetween(probeDone, n.clock.Now()), "total-ms", msBetween(sweepStart, n.clock.Now()))
 				done()
@@ -469,7 +487,7 @@ func (n *Node) probeShard(id ports.ChunkID, key ports.Hash, includeLocal bool, d
 		// so the caretaker never registers the loss and never repairs (the churn
 		// field-test stall). Guarded by anyLive so we never skip the only
 		// candidate: a lone holder that restarted and is re-announcing must
-		// still be probed, not written off as gone (#69).
+		// still be probed, not written off as gone.
 		now := n.clock.Now()
 		anyLive := false
 		for _, p := range provs {
@@ -529,7 +547,7 @@ func (n *Node) probeShard(id ports.ChunkID, key ports.Hash, includeLocal bool, d
 // that losing that domain would drop it below k (the same n-k budget that
 // guards shard loss, applied to domain loss).
 func (n *Node) repairStripes(m *manifest.Layout, p erasure.Params, refs []shardRef,
-	reachable map[ports.ChunkID]bool, shardDoms map[ports.ChunkID]map[uint64]bool, stripe int, porKey *por.Key, done func()) {
+	reachable map[ports.ChunkID]bool, shardDoms map[ports.ChunkID]map[uint64]bool, stripe int, done func()) {
 
 	// Group refs by stripe ONCE: the per-stripe walk below used to
 	// rescan the whole refs slice every stripe — O(stripes × refs) work per sweep,
@@ -539,11 +557,11 @@ func (n *Node) repairStripes(m *manifest.Layout, p erasure.Params, refs []shardR
 	for _, r := range refs {
 		byStripe[r.stripe] = append(byStripe[r.stripe], r)
 	}
-	n.repairStripesFrom(m, p, byStripe, reachable, shardDoms, stripe, porKey, done)
+	n.repairStripesFrom(m, p, byStripe, reachable, shardDoms, stripe, done)
 }
 
 func (n *Node) repairStripesFrom(m *manifest.Layout, p erasure.Params, byStripe [][]shardRef,
-	reachable map[ports.ChunkID]bool, shardDoms map[ports.ChunkID]map[uint64]bool, stripe int, porKey *por.Key, done func()) {
+	reachable map[ports.ChunkID]bool, shardDoms map[ports.ChunkID]map[uint64]bool, stripe int, done func()) {
 
 	if stripe == len(byStripe) {
 		done()
@@ -587,7 +605,7 @@ func (n *Node) repairStripesFrom(m *manifest.Layout, p erasure.Params, byStripe 
 	// every stripe of a large file O(stripes) deep on one stack, in one loop
 	// task. One tick per stripe bounds depth to O(1) and keeps the loop live.
 	next := func() {
-		n.clock.AfterFunc(0, func() { n.repairStripesFrom(m, p, byStripe, reachable, shardDoms, stripe+1, porKey, done) })
+		n.clock.AfterFunc(0, func() { n.repairStripesFrom(m, p, byStripe, reachable, shardDoms, stripe+1, done) })
 	}
 	if missing > n.cfg.RepairSlack || len(disperseShards) > 0 {
 		// Confirmation gate (network-durability §3: never trust one
@@ -616,7 +634,7 @@ func (n *Node) repairStripesFrom(m *manifest.Layout, p erasure.Params, byStripe 
 			n.Stats.Dispersals++
 			n.logf(ports.LogInfo, "dispersion re-spread", "root", m.Root(), "overexposed", len(disperseShards))
 		}
-		n.repairStripe(m, p, stripeRefs, disperseShards, dominant, porKey, next)
+		n.repairStripe(m, p, stripeRefs, disperseShards, dominant, next)
 		return
 	}
 	delete(n.repairConfirm, stripeKey{root: m.Root(), stripe: stripe})
@@ -655,7 +673,7 @@ func (n *Node) selfHoldEligible(usedDomains map[uint64]int) bool {
 	return sd != 0 && usedDomains[sd] == 0
 }
 
-func (n *Node) repairStripe(m *manifest.Layout, p erasure.Params, stripeRefs []shardRef, disperseShards map[ports.ChunkID]bool, avoidDomain uint64, porKey *por.Key, done func()) {
+func (n *Node) repairStripe(m *manifest.Layout, p erasure.Params, stripeRefs []shardRef, disperseShards map[ports.ChunkID]bool, avoidDomain uint64, done func()) {
 	// One cached Merkle tree for the whole stripe repair: place/spread below build
 	// a proof per shard, and the standalone manifest.Prove is O(n) per call, so this
 	// was O(shards·n) on the loop. The tree makes each proof O(log n) and gives the
@@ -693,15 +711,18 @@ func (n *Node) repairStripe(m *manifest.Layout, p erasure.Params, stripeRefs []s
 		for _, j := range quorum {
 			judges[j] = true
 		}
-		n.repairStripeFetch(m, p, stripeRefs, disperseShards, avoidDomain, porKey, root, tree, realData, heldBefore, judges, done)
+		n.repairStripeFetch(m, p, stripeRefs, disperseShards, avoidDomain, root, tree, realData, heldBefore, judges, done)
 	})
 }
 
-func (n *Node) repairStripeFetch(m *manifest.Layout, p erasure.Params, stripeRefs []shardRef, disperseShards map[ports.ChunkID]bool, avoidDomain uint64, porKey *por.Key, root ports.Hash, tree *manifest.Tree, realData int, heldBefore map[ports.ChunkID]bool, judges map[ports.NodeID]bool, done func()) {
+func (n *Node) repairStripeFetch(m *manifest.Layout, p erasure.Params, stripeRefs []shardRef, disperseShards map[ports.ChunkID]bool, avoidDomain uint64, root ports.Hash, tree *manifest.Tree, realData int, heldBefore map[ports.ChunkID]bool, judges map[ports.NodeID]bool, done func()) {
 	// Fetch by column: a stripe's shards register under their column key,
 	// not their own id, so a plain fetchAll (which resolves by id) would
 	// find nothing and every repair would fail to reconstruct.
-	n.fetchStripeByColumn(root, stripeRefs, func(unfetched []ports.ChunkID, usedDomains map[uint64]int) {
+	// nil budget: repair wants EVERY surviving column, because usedDomains is a
+	// census the re-seed reads and a partial one would place a rebuilt shard into a
+	// domain the walk simply never looked at.
+	n.fetchStripeByColumn(root, stripeRefs, nil, func(unfetched []ports.ChunkID, usedDomains map[uint64]int) {
 		// Build the stripe from whatever actually arrived.
 		shards := make([][]byte, p.N)
 		for _, r := range stripeRefs {
@@ -774,10 +795,8 @@ func (n *Node) repairStripeFetch(m *manifest.Layout, p erasure.Params, stripeRef
 			r := toSpread[i]
 			var proof *ports.StorageProof
 			if pr, perr := tree.Prove(r.leafIdx); perr == nil {
-				proof = &ports.StorageProof{Root: root, Index: pr.Index, Total: pr.Total, Path: pr.Path, Column: r.pos}
-				if porKey != nil {
-					proof.PorTags = porKey.Tags(r.id[:], shards[r.pos])
-				}
+				proof = &ports.StorageProof{Root: root, Index: pr.Index, Total: pr.Total,
+					Path: pr.Path, Column: r.pos, LeafBytes: m.LeafBytes}
 			}
 			n.IterativeFindNode(colKey(root, r.pos), func(closest []ports.NodeID) {
 				// Steer the extra copy AWAY from the crowded domain specifically,
@@ -795,14 +814,24 @@ func (n *Node) repairStripeFetch(m *manifest.Layout, p erasure.Params, stripeRef
 				return
 			}
 			r := toPlace[i]
+			// A REBUILT SHARD IS CHECKED AGAINST THE COMMITMENT BEFORE IT IS
+			// PLACED. Reconstruction is arithmetic over shards other nodes
+			// supplied, so "the stripe decoded" is not the same claim as "these
+			// are the committed bytes" (B7: our own prior steps lie until proven
+			// otherwise). Placing a shard whose spot-check root does not match
+			// would seat bytes that fail every future audit and slash the honest
+			// host that accepted them — a silent-loss shape (S3) that surfaces
+			// only as an unexplained audit failure much later.
+			if !n.rebuiltShardMatchesCommitment(m, r, shards[r.pos]) {
+				place(i + 1)
+				return
+			}
 			var proof *ports.StorageProof
-			hasTags := false
+			auditable := false
 			if pr, perr := tree.Prove(r.leafIdx); perr == nil {
-				proof = &ports.StorageProof{Root: root, Index: pr.Index, Total: pr.Total, Path: pr.Path, Column: r.pos}
-				if porKey != nil {
-					proof.PorTags = porKey.Tags(r.id[:], shards[r.pos])
-					hasTags = true
-				}
+				proof = &ports.StorageProof{Root: root, Index: pr.Index, Total: pr.Total,
+					Path: pr.Path, Column: r.pos, LeafBytes: m.LeafBytes}
+				auditable = m.LeafBytes > 0
 			}
 			// The bounty pays the NEW HOLDER, so name the FIRST node that accepts
 			// the rebuilt shard as the claim's payee (design §8b).
@@ -830,7 +859,7 @@ func (n *Node) repairStripeFetch(m *manifest.Layout, p erasure.Params, stripeRef
 					// name the holder and claim the bounty, verified by the quorum.
 					if placed > 0 || holder != (ports.NodeID{}) {
 						n.Stats.ShardsRebuilt++
-						n.emitRepairClaim(root, r, holder, hasTags)
+						n.emitRepairClaim(root, r, holder, auditable)
 					}
 					place(i + 1)
 				}

@@ -13,7 +13,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Integration tier for retest G3: through the REAL space-time verifier, an honest
+// Integration tier: through the REAL space-time verifier, an honest
 // validator's genuine live bond registration displaces a malicious genesis that
 // pre-squatted its plot root under an attacker key. The honest holder ends up
 // bonded on-chain; the unproven squatter does not.

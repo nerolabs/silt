@@ -46,10 +46,17 @@ type wireMsg struct {
 	BondRoot  []byte     `cbor:"19,keyasint,omitempty"`
 	BondSize  int64      `cbor:"20,keyasint,omitempty"`
 	// PoR challenge/proof (core/por), carried as opaque bytes.
-	PorSeed   []byte   `cbor:"21,keyasint,omitempty"`
-	PorCount  int      `cbor:"22,keyasint,omitempty"`
-	PorMu     [][]byte `cbor:"23,keyasint,omitempty"`
-	PorSigma  []byte   `cbor:"24,keyasint,omitempty"`
+	PorSeed []byte `cbor:"21,keyasint,omitempty"`
+	// 31, not 11: field 11 is a RETIRED slot (an early proof-of-retrieval field,
+	// removed later), and reusing a retired number lets an old peer's value decode
+	// as this one. Wire numbers are append-only here.
+	PorBase  []byte `cbor:"31,keyasint,omitempty"`
+	PorCount int    `cbor:"22,keyasint,omitempty"`
+	// 32 and 33, not 23 and 24: those two carried the retired aggregate
+	// scheme's mu vector and sigma, and a retired number reused is an old
+	// peer's value decoding as this one. Wire numbers are append-only here.
+	PorOpen   [][]byte `cbor:"32,keyasint,omitempty"`
+	PorPaths  [][]byte `cbor:"33,keyasint,omitempty"`
 	PorBlocks int      `cbor:"25,keyasint,omitempty"`
 	// Self-certifying provider records (H5): Provider on MsgAddProvider,
 	// ProviderRecs on MsgGetProvidersReply.
@@ -98,12 +105,15 @@ func fromWireRec(w wireProvRec) ports.ProviderRecord {
 }
 
 type wireProof struct {
-	Root    []byte   `cbor:"1,keyasint"`
-	Index   int      `cbor:"2,keyasint"`
-	Total   int      `cbor:"3,keyasint"`
-	Path    [][]byte `cbor:"4,keyasint,omitempty"`
-	Column  int      `cbor:"5,keyasint,omitempty"`
-	PorTags [][]byte `cbor:"6,keyasint,omitempty"`
+	Root   []byte   `cbor:"1,keyasint"`
+	Index  int      `cbor:"2,keyasint"`
+	Total  int      `cbor:"3,keyasint"`
+	Path   [][]byte `cbor:"4,keyasint,omitempty"`
+	Column int      `cbor:"5,keyasint,omitempty"`
+	// 7, not 6: field 6 carried the retired aggregate scheme's per-block
+	// authenticators, and a retired number reused decodes an old peer's value
+	// as this one.
+	LeafBytes int `cbor:"7,keyasint,omitempty"`
 }
 
 var encMode cbor.EncMode
@@ -162,25 +172,26 @@ func toWire(m ports.Message) wireMsg {
 		w.BondRoot = append([]byte(nil), m.BondRoot[:]...)
 	}
 	w.PorSeed = m.PorSeed
+	w.PorBase = m.PorBase
 	w.PorCount = m.PorCount
-	w.PorMu = cloneChunks(m.PorMu)
-	w.PorSigma = m.PorSigma
+	w.PorOpen = cloneChunks(m.PorOpen)
+	w.PorPaths = cloneChunks(m.PorPaths)
 	w.PorBlocks = m.PorBlocks
 	if m.Proof != nil {
 		w.Proof = &wireProof{
-			Root:    append([]byte(nil), m.Proof.Root[:]...),
-			Index:   m.Proof.Index,
-			Total:   m.Proof.Total,
-			Path:    idsToBytes(m.Proof.Path),
-			Column:  m.Proof.Column,
-			PorTags: cloneChunks(m.Proof.PorTags),
+			Root:      append([]byte(nil), m.Proof.Root[:]...),
+			Index:     m.Proof.Index,
+			Total:     m.Proof.Total,
+			Path:      idsToBytes(m.Proof.Path),
+			Column:    m.Proof.Column,
+			LeafBytes: m.Proof.LeafBytes,
 		}
 	}
 	return w
 }
 
-// cloneChunks deep-copies a slice of byte slices (PoR tags / mu vectors)
-// so the wire form never aliases the caller's buffers.
+// cloneChunks deep-copies a slice of byte slices (opened leaves and their
+// paths) so the wire form never aliases the caller's buffers.
 func cloneChunks(in [][]byte) [][]byte {
 	if len(in) == 0 {
 		return nil
@@ -230,12 +241,13 @@ func fromWire(w wireMsg) ports.Message {
 	m.BondSize = w.BondSize
 	copy(m.BondRoot[:], w.BondRoot)
 	m.PorSeed = w.PorSeed
+	m.PorBase = w.PorBase
 	m.PorCount = w.PorCount
-	m.PorMu = cloneChunks(w.PorMu)
-	m.PorSigma = w.PorSigma
+	m.PorOpen = cloneChunks(w.PorOpen)
+	m.PorPaths = cloneChunks(w.PorPaths)
 	m.PorBlocks = w.PorBlocks
 	if w.Proof != nil {
-		p := ports.StorageProof{Index: w.Proof.Index, Total: w.Proof.Total, Path: bytesToIDs(w.Proof.Path), Column: w.Proof.Column, PorTags: cloneChunks(w.Proof.PorTags)}
+		p := ports.StorageProof{Index: w.Proof.Index, Total: w.Proof.Total, Path: bytesToIDs(w.Proof.Path), Column: w.Proof.Column, LeafBytes: w.Proof.LeafBytes}
 		copy(p.Root[:], w.Proof.Root)
 		m.Proof = &p
 	}

@@ -10,7 +10,7 @@ import (
 // frame's 8-byte length header. A frame is attacker-controlled data off
 // the wire, so a malformed or short frame — or a header claiming more
 // payload than the frame holds — must be a clean error, never a panic or
-// a slice out of range (Gate 1 / anti-persona #14). Two byte slices
+// a slice out of range (Gate 1 / anti-persona 14). Two byte slices
 // exercise the multi-frame path, including the non-final-frame check.
 func FuzzJoin(f *testing.F) {
 	f.Add([]byte{}, []byte{})

@@ -33,7 +33,7 @@ func startClient(t *testing.T, cl *Client) {
 	}
 }
 
-// TestRegisterReportsObservedAddr is the #27 Phase-1 check: the relay reports
+// TestRegisterReportsObservedAddr is the Phase-1 check: the relay reports
 // a registrant its public host:port as observed (STUN-style), and the client
 // exposes it via Observed. A NATed node can't otherwise learn its own public
 // endpoint — hole-punching needs it.
@@ -64,7 +64,7 @@ func TestRegisterReportsObservedAddr(t *testing.T) {
 	}
 }
 
-// TestPunchCoordination is the #27 Phase-3 protocol check: when a registered
+// TestPunchCoordination is the Phase-3 protocol check: when a registered
 // peer requests a hole-punch with another registered peer, the relay tells
 // EACH the OTHER's observed endpoint (and only that — it forwards no bytes for
 // the direct path). Each client's onPunch fires with the peer id, an address
@@ -300,7 +300,7 @@ func TestSessionCap(t *testing.T) {
 // global one (server.go is an OR of the two). PerPeerSessions=1 with a
 // roomy MaxSessions: a second concurrent splice to the SAME target is refused
 // while the global cap is nowhere near, but a splice to a DIFFERENT target
-// still succeeds. This is the #65 knob that stops one NATed target's fan-out
+// still succeeds. This is the knob that stops one NATed target's fan-out
 // from being throttled by — or monopolising — another's; TestSessionCap only
 // exercises the global MaxSessions branch.
 func TestPerPeerSessionCap(t *testing.T) {

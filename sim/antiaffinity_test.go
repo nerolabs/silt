@@ -88,7 +88,7 @@ func TestRepairPreservesStripeAntiAffinity(t *testing.T) {
 		if err != nil {
 			t.Fatalf("seed %d: load: %v", seed, err)
 		}
-		a.Distribute(entry, m, false, node.DerivePorKey(h.LayoutKey()), func(int, error) {})
+		a.Distribute(entry, m, false, func(int, error) {})
 		cl.Sched.Run()
 
 		for _, c := range caretakers {
@@ -120,7 +120,7 @@ func TestRepairPreservesStripeAntiAffinity(t *testing.T) {
 		// column onto a doubled-up host. Cross-column co-residence — one host
 		// being closest to several column keys, more likely as churn shrinks
 		// the network — is bounded only loosely until failure-domain-aware
-		// placement (Phase 1 #6). The red line that must hold through repair:
+		// placement. The red line that must hold through repair:
 		// no host gathers k shards of a stripe, which would let it
 		// reconstruct that stripe's data alone.
 		if final >= m.K {

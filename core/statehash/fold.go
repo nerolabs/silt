@@ -11,11 +11,11 @@ import (
 	"github.com/pokt-network/smt/kvstore/simplemap"
 )
 
-// O(payload) multi-leaf state-root fold — the R-fold primitive (P1-a, verifies 2026-08-31).
+// O(payload) multi-leaf state-root fold — the R-fold primitive (verifies 2026-08-31).
 //
 // A semi-stateless floor box holds only the two committed roots, not the tree. To reproduce
 // validateEra3Roots' post-state StateRoot equality WITHOUT witnessing the WHOLE pre-state
-// (the superseded O(whole-state) P1-a), it recomputes the post-state root by folding ONLY the
+// (the superseded O(whole-state) form), it recomputes the post-state root by folding ONLY the
 // CHANGED paths: derive the write-set from the block payload, witness each changed leaf's
 // pre-state proof against prevStateRoot, apply the writes, and require the computed root equals
 // the committed StateRoot.

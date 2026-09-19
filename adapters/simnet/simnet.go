@@ -24,6 +24,27 @@ type Config struct {
 	LatencyMin ports.Duration
 	LatencyMax ports.Duration
 	Loss       float64
+	// RateBytesPerSec gives a link a FINITE CAPACITY, so a message costs time in
+	// proportion to its SIZE and messages behind it wait. 0 (the default) keeps the
+	// original behaviour exactly: delivery is atomic after a latency draw, and a
+	// 1.5 MB payload costs the same as a 200-byte one.
+	//
+	// WHY IT EXISTS. A latency-only model cannot express the whole failure class
+	// whose mechanism is "payload bytes ÷ link rate exceeds the deadline" — the
+	// deadline is met or missed on RTT alone, and a send queue that grows because the
+	// producer outruns the wire has nowhere to form. That blindness is structural,
+	// not a matter of enumerating more scenarios: no arrangement of LatencyMin,
+	// LatencyMax and Loss produces it. It is why the field tier was the first place
+	// such a failure could appear, which is the wrong tier to discover one at (V1).
+	//
+	// It is a MODEL, and a deliberately simple one: a single server with an
+	// unbounded queue per ordered pair. It reproduces serialization delay and
+	// head-of-line waiting, which is what the deadline arithmetic turns on. It does
+	// NOT model congestion control, loss-induced backoff or reordering — a sim that
+	// claimed those would be asserting a TCP stack it does not have. Impairment
+	// interactions stay the field tier's job; what moves down here is the part that
+	// is arithmetic.
+	RateBytesPerSec int64
 }
 
 func DefaultConfig() Config {
@@ -35,7 +56,7 @@ type Stats struct {
 	Sent      int
 	Delivered int
 	Dropped   int // loss + partitions + dead endpoints + unsolicited-into-NAT
-	Relayed   int // delivered the long way, spliced through the relay (#27)
+	Relayed   int // delivered the long way, spliced through the relay
 	// Kinds counts attempted sends per MsgKind, so a test can assert a
 	// message type never crossed the wire (e.g. an audit that must verify
 	// WITHOUT fetching ground truth sends zero MsgFetchChunk). Indexed by
@@ -44,14 +65,19 @@ type Stats struct {
 }
 
 type Network struct {
-	sched     Scheduler
-	rng       *rand.Rand
-	cfg       Config
+	sched Scheduler
+	rng   *rand.Rand
+	cfg   Config
+	// busyUntil is when each ordered pair's link finishes what is already queued on
+	// it. Keyed per (from, to) because that is the direction a send occupies; a
+	// shared full-duplex link would be a different model and a less pessimistic one.
+	// Empty whenever RateBytesPerSec is 0, so the default path allocates nothing.
+	busyUntil map[[2]ports.NodeID]ports.Time
 	endpoints map[ports.NodeID]*Endpoint
 	// partitioned maps node → group; nodes in different groups can't
 	// talk. Empty map = no partition.
 	group map[ports.NodeID]int
-	// nat models home routers (#27): a node listed here is un-dialable
+	// nat models home routers: a node listed here is un-dialable
 	// cold from off its LAN. Empty (the default) = a flat, public net,
 	// so directlyReachable short-circuits and there is zero overhead.
 	nat map[ports.NodeID]natBox
@@ -101,6 +127,7 @@ func New(sched Scheduler, seed int64, cfg Config) *Network {
 		sched:     sched,
 		rng:       rand.New(rand.NewSource(seed)),
 		cfg:       cfg,
+		busyUntil: make(map[[2]ports.NodeID]ports.Time),
 		endpoints: make(map[ports.NodeID]*Endpoint),
 		group:     make(map[ports.NodeID]int),
 		nat:       make(map[ports.NodeID]natBox),
@@ -156,7 +183,7 @@ func (e *Endpoint) Send(to ports.NodeID, msg ports.Message) error {
 		n.Stats.Dropped++
 		return nil
 	}
-	// NAT routing (#27): deliver direct if the destination is dialable,
+	// NAT routing: deliver direct if the destination is dialable,
 	// else splice through the relay, else the packet is an unsolicited
 	// inbound to a NAT with nowhere to go. In a flat net (no NAT
 	// configured) directlyReachable is always true, so neither the extra
@@ -192,12 +219,50 @@ func (e *Endpoint) Send(to ports.NodeID, msg ports.Message) error {
 		// Model-check mode: park the delivery; the driver decides when (and in what
 		// order relative to other parked messages) it fires. The latency draw above
 		// still happened, so the RNG stream is identical to timed mode.
+		//
+		// NO SERIALIZATION HERE, DELIBERATELY: held mode hands delivery ORDER to the
+		// driver, and a rate model only expresses itself as delivery TIME. Charging a
+		// link that the driver then drains out of order would be a number with no
+		// meaning attached. A model-check that wants the rate runs the timed oracle.
 		n.heldSeq++
 		n.heldQ = append(n.heldQ, heldMsg{id: n.heldSeq, from: e.id, to: to, kind: msg.Kind, deliver: deliver})
 		return nil
 	}
-	n.sched.AfterFunc(latency, deliver)
+	n.sched.AfterFunc(latency+n.occupy(e.id, to, msg), deliver)
 	return nil
+}
+
+// occupy charges this message's SERIALIZATION time to the (from, to) link and
+// returns how long it must wait before its last byte is on the wire — its own
+// transfer, plus whatever is still queued ahead of it.
+//
+// The queue is what makes this more than a size-scaled latency. A producer that
+// outruns the link does not merely see each message arrive late; the arrivals pile
+// up, and the message that matters waits behind bulk it has nothing to do with.
+// That is head-of-line waiting, and it is the half a per-message delay would miss.
+//
+// Returns 0 when no rate is configured, so the default network is byte-for-byte the
+// behaviour every existing scenario was written against.
+func (n *Network) occupy(from, to ports.NodeID, msg ports.Message) ports.Duration {
+	if n.cfg.RateBytesPerSec <= 0 {
+		return 0
+	}
+	// Data is what a real link carries; the struct's other fields are the sim's
+	// bookkeeping and charging for them would price a message by how the harness
+	// happens to represent it.
+	size := int64(len(msg.Data))
+	if size <= 0 {
+		return 0
+	}
+	serialize := ports.Duration(size * int64(ports.Second) / n.cfg.RateBytesPerSec)
+	now := n.sched.Now()
+	key := [2]ports.NodeID{from, to}
+	start := n.busyUntil[key]
+	if start < now {
+		start = now // link went idle; no credit for the gap
+	}
+	n.busyUntil[key] = start + ports.Time(serialize)
+	return ports.Duration(start-now) + serialize
 }
 
 // EnableHeldDelivery switches the network into model-check mode: Send parks each
@@ -295,7 +360,7 @@ func (n *Network) Alive(id ports.NodeID) bool {
 	return ok && !ep.dead
 }
 
-// --- NAT model (#27): the deterministic mirror of the Docker harness, so
+// --- NAT model: the deterministic mirror of the Docker harness, so
 // The relay and hole-punch paths get fast, CI-native coverage too. A real
 // home router lets a node dial out (and holds the reverse mapping open so
 // replies get back in) but drops unsolicited inbound — so two NATed nodes
@@ -325,7 +390,7 @@ func (n *Network) NAT(id ports.NodeID, lan int, symmetric bool) {
 // node that registered with it (so it can reach them, and they it).
 func (n *Network) Relay(id ports.NodeID) { n.relay, n.hasRelay = id, true }
 
-// HolePunch models the #27 coordinated simultaneous-open: both peers fire
+// HolePunch models the coordinated simultaneous-open: both peers fire
 // at each other's relay-observed endpoint at once. For endpoint-
 // independent (cone) NATs the crossing packets leave matching mappings
 // and a direct path opens; if either side is symmetric, its per-

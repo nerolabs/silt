@@ -9,7 +9,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Tests for the O(payload) HYBRID P1-a state-root recompute (floorbox_recompute_stateroot_v5.go).
+// Tests for the O(payload) HYBRID state-root recompute (floorbox_recompute_stateroot_v5.go).
 //
 // The recompute is the sound O(payload) spine for classes E + R: derive
 // the write-set from the payload, witness each changed leaf against prevStateRoot, fold the
@@ -303,7 +303,7 @@ func TestRecomputeStateRootAblationOmittedProof(t *testing.T) {
 }
 
 // TestRecomputeStateRootAttIncompleteWitnessStalls: class A (non-proposer att) is now IN scope
-// (P1-e), so a class-A block DISPATCHES. With an E/R-only witness (no AttScreens, no validatorsSeenRoot
+// so a class-A block DISPATCHES. With an E/R-only witness (no AttScreens, no validatorsSeenRoot
 // digest) the box cannot reconstruct the A delta ⇒ it stalls (never-Accept preserved). The stall moves
 // from the scope gate to the A dispatch, but it is still a stall — never a wrong-Accept.
 func TestRecomputeStateRootAttIncompleteWitnessStalls(t *testing.T) {

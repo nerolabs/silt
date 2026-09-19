@@ -2,6 +2,7 @@
 report.md
 report.html
 report-*.md
+report-*.html
 results.jsonl
 results-*.jsonl
 rss-*.jsonl
@@ -19,3 +20,11 @@ silt-linux-amd64
 nodes.local.json
 topology.local.json
 topology.json
+
+# Provenance stamps. Written at the moment each input is CONSUMED — the silt sha
+# when the fleet binary is built, the harness sha and digest when grading starts —
+# so the report names what actually produced the sheet rather than whatever HEAD
+# happens to be an hour later. Run artifacts like everything above.
+.run-silt-sha
+.run-harness-sha
+.run-harness-digest

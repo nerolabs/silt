@@ -119,7 +119,7 @@ func TestModelCheck_MixedWeightScatterMustConverge(t *testing.T) {
 		t.Fatalf("setup: heavy weight not split (r1heavy=%d r2heavy=%d)", r1heavy, r2heavy)
 	}
 
-	// PHASE 1 — SUSTAINED LOSS (the field's WAN reality, deterministic): the
+	// SUSTAINED LOSS (the field's WAN reality, deterministic): the
 	// mass restart's churn keeps delivery unstable, so half the round-changes are
 	// DROPPED ON THE WIRE each rotation. This is the faithful "GST never cleanly
 	// arrives" condition — the catch-up sees STALE round positions (a node
@@ -164,7 +164,7 @@ func TestModelCheck_MixedWeightScatterMustConverge(t *testing.T) {
 		}
 	}
 
-	// PHASE 2 — GST: delivery stabilizes. The after-GST guarantee is that
+	// AFTER GST: delivery stabilizes. The after-GST guarantee is that
 	// the increasing round duration + weight catch-up now converge the
 	// weight within a bounded number of clean rotations.
 	const gstBudget = 4

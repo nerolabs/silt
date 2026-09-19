@@ -48,7 +48,7 @@ type Loop struct {
 	// recovers and keeps running, so one bad task — e.g. handling a
 	// malformed frame that reaches a node-side decoder — fails that task
 	// rather than killing the node's single thread (Gate 1 / anti-persona
-	// #14). Set it before Run. If nil the panic is still contained but
+	// persona 14). Set it before Run. If nil the panic is still contained but
 	// silent; wire it to a logger in production so the drop is observable
 	// (tenets S3/V4). Set-once before Run, so no lock is needed.
 	OnPanic func(r any)

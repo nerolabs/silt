@@ -9,11 +9,11 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// era-4 (v5) trustless floor-box RECOMPUTE — lane-1 Part B core, increment 3.
+// era-4 (v5) trustless floor-box RECOMPUTE.
 //
 // This file reproduces a THIRD validity predicate — the F-1 DE-MATURE SUPER-QUORUM
 // requireDeMatureSuperQuorum (chain.go) — trustlessly, from the committed StateRoot +
-// witnesses ALONE. It replicates increment 1's C-1 pattern (floorbox_recompute_v5.go,
+// witnesses ALONE. It replicates the C-1 pattern of floorbox_recompute_v5.go (
 // recomputeEpochWeightQuorum) over a DIFFERENT keyspace: the WHOLE bonded map (the R-membership
 // budget path), rather than the frozen epochSet.
 //
@@ -31,24 +31,24 @@ import (
 //
 // THE MATURITY GATE (the increment-3-specific piece). requireDeMatureSuperQuorum fires ONLY
 // when !matureNow. So the trustless reproduction gates on the REPRODUCED maturity state:
-// recomputeDeMatureSuperQuorum calls recomputeMatureNow (increment 2) first and folds the
+// recomputeDeMatureSuperQuorum calls recomputeMatureNow (floorbox_recompute_maturity_v5.go) first and folds the
 // super-quorum ONLY when the maturity recompute returns mature == false. When mature == true
 // the full node does not run this predicate, so the recompute returns (met=true, nil) — a no-op
 // that matches the full node's skip. The maturity state is itself PROVEN from the committed
-// root (increment 2), so a producer cannot trick the box into enforcing (or skipping) the
+// root (recomputeMatureNow), so a producer cannot trick the box into enforcing (or skipping) the
 // de-mature bar in the wrong maturity state.
 //
 // THE THREE-PART PROOF (recomputeDeMatureSuperQuorum, the super-quorum fold):
 // 1. SET-COMPLETENESS: reconstruct nodeSetMTH(witnessedIDs) over the whole-bonded id-list;
 // require it equals the committed bondedRoot leaf (proven present against the StateRoot).
 // One omitted (or injected) member ⇒ a different MTH ⇒ mismatch ⇒ stall. This is the F1
-// bondedRoot digest FINALLY READ (F1 committed it inert; increment 3 consumes it for bonded).
+// bondedRoot digest FINALLY READ (F1 committed it inert; this file consumes it for bonded).
 // 2. PER-MEMBER WEIGHT: for EVERY id in the reconstructed set, Resolve the bonded[id]
 // value leaf against the committed StateRoot. A forged weight fails smt.VerifyProof ⇒ stall.
 // The digest gave membership; the inclusion proofs give the values.
 // 3. THRESHOLD: the ⅔ ratio is a fixed consensus constant, NOT a genesis knob, so this
 // predicate's fold reads no per-deployment config value — there is nothing here an attacker
-// could shift via the witness (exactly like increment 1's requireEpochWeightQuorum). The C-6
+// could shift via the witness (exactly like requireEpochWeightQuorum). The C-6
 // obligation is nonetheless exercised, not skipped: the recompute takes NO threshold from w.
 //
 // Then the fold + threshold, byte-for-byte the full node's (chain.go):
@@ -60,7 +60,7 @@ import (
 // never-Accepts. requireDeMatureSuperQuorum folds the WHOLE bonded map directly — it does NOT
 // consult effectiveEpochSet/liveQualifiedSet, so the recovery boundary does NOT change this fold
 // (there is no boundary case to carve out for it). The boundary remains the trust-the-directive
-// carve-out for the sets it DOES touch (epochSet, increment 1), out of scope here.
+// carve-out for the sets it DOES touch (epochSet), out of scope here.
 
 var (
 	// ErrRecomputeBondedSetIncomplete marks a stall where the witnessed whole-bonded id-list does
@@ -115,7 +115,7 @@ type BondedSetWitness struct {
 // the de-mature gate at this state (met == the err==nil case), or (false, reason) when the box
 // cannot verify a witness and must stall — NEVER folding an unverified set/weight.
 //
-// It gates on the REPRODUCED maturity state (increment 2): the super-quorum is folded ONLY when
+// It gates on the REPRODUCED maturity state (recomputeMatureNow): the super-quorum is folded ONLY when
 // the reproduced matureNow is false (the de-mature transition). When the chain is mature the full
 // node does not run this predicate, so the recompute returns (met=true, nil) to match the skip.
 // seenW is the increment-2 SeenSetWitness proving the maturity state; bondedW is this increment's
@@ -129,7 +129,7 @@ type BondedSetWitness struct {
 //
 // ⚠ PARTIAL GATE — the accept-flip assembler MUST re-add everMature && objective. The full-node
 // caller gate is `everMature && objective && !matureNow` (chain.go). This recompute
-// reproduces ONLY the `!matureNow` condition (via recomputeMatureNow, increment 2); it does NOT
+// reproduces ONLY the `!matureNow` condition (via recomputeMatureNow); it does NOT
 // reproduce `everMature` or `objective`. That deferral is legitimate under this increment's STOP
 // boundary (the box still never-Accepts, so folding the bar in a state a full node would skip is
 // inert TODAY). But it is a LATENT TRAP for: in the reachable state `!everMature &&
@@ -145,7 +145,7 @@ func (c *Chain) recomputeDeMatureSuperQuorum(
 	seenW SeenSetWitness,
 	bondedW BondedSetWitness,
 ) (met bool, reason error) {
-	// (0) THE MATURITY GATE (increment 2). requireDeMatureSuperQuorum runs only when !matureNow.
+	// (0) THE MATURITY GATE (recomputeMatureNow). requireDeMatureSuperQuorum runs only when !matureNow.
 	// Reproduce matureNow trustlessly; if the box cannot verify the maturity witness, stall. If
 	// the chain is mature, the full node does NOT run the de-mature predicate — return met=true
 	// (the gate is vacuous), matching the full node's skip.

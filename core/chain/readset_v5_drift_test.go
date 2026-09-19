@@ -11,7 +11,7 @@ import (
 )
 
 // R3 EXECUTION-DERIVED completeness guard — the load-bearing defense for the v5 witness
-// read-set producer (lane-1 Part A, the amended rule
+// read-set producer (the amended rule
 // era4-witness-floor-box-readset-v5-AMENDED-, residual R3).
 //
 // WHY THIS REPLACES THE PRIOR GUARD. The prior guard was a SECOND HAND-WRITTEN enumeration
@@ -75,8 +75,8 @@ func leafKeySet(c *Chain) map[string]string {
 
 // inertDigestRootTags is the set of the still-INERT whole-set digest-root tags: the three
 // whose keyspaces NO recompute reads yet (bonded / qualified / slashed). It is
-// stateRootDigestTagsV5 MINUS epochSetRoot (increment 1 READS it — requireEpochWeightQuorum
-// over Σ epochSet, floorbox_recompute_v5.go) MINUS validatorsSeenRoot (increment 2 READS it —
+// stateRootDigestTagsV5 MINUS epochSetRoot (requireEpochWeightQuorum READS it — requireEpochWeightQuorum
+// over Σ epochSet, floorbox_recompute_v5.go) MINUS validatorsSeenRoot (recomputeMatureNow READS it —
 // matureNow over C2Metric's validatorsSeen fold, floorbox_recompute_maturity_v5.go). As each
 // later increment reproduces the predicate over its keyspace, that root moves OUT of this set
 // (its exclusion removed, a red-on-drop ablation added), until the set is empty. The
@@ -87,8 +87,8 @@ var inertDigestRootTags = []string{
 }
 
 // digestRootLeafKeys is the set of the still-INERT whole-set digest-root leaf keys (tag||"",
-// empty raw key): qualifiedRoot / slashedRoot. epochSetRoot (increment 1), validatorsSeenRoot
-// (increment 2), and bondedRoot (increment 3) are DELIBERATELY EXCLUDED — their recomputes read
+// empty raw key): qualifiedRoot / slashedRoot. epochSetRoot (requireEpochWeightQuorum), validatorsSeenRoot
+// (recomputeMatureNow), and bondedRoot (recomputeDeMatureSuperQuorum) are DELIBERATELY EXCLUDED — their recomputes read
 // them, so they are no longer inert output commitments and must NOT be excluded from the
 // ground-truth derivation (else a dropped epochSet/validatorsSeen/bonded read the recompute needs
 // would stay green). Bound to inertDigestRootTags so a renamed or dropped inert root cannot
@@ -116,7 +116,7 @@ func digestRootLeafKeys() map[string]struct{} {
 // a genuine read: a dropped per-MEMBER read still reddens, because the member leaf itself — not
 // its digest root — carries that signal.
 //
-// epochSetRoot (increment 1), validatorsSeenRoot (increment 2), and bondedRoot (increment 3) are
+// epochSetRoot (requireEpochWeightQuorum), validatorsSeenRoot (recomputeMatureNow), and bondedRoot (recomputeDeMatureSuperQuorum) are
 // NO LONGER excluded (their recomputes read them): the exclusions were removed so each recompute's
 // dependence on its digest is caught by the same discipline the 24 member keyspaces get
 // (TestEpochSetRootReadReddensOnDrop, TestValidatorsSeenRootReadReddensOnDrop,
@@ -918,7 +918,7 @@ func sizeExcludingFrozenSet(rs []statehash.ReadEntry) int {
 // sharpest hazard AND the over-emission guard: a producer that instrumented apply's TTL sweep
 // would emit O(registry) keys here and the two sizes would DIVERGE.
 //
-// SCOPED to the bondRegHeight hazard (increment 1 refinement): the mature-block read-set now
+// SCOPED to the bondRegHeight hazard : the mature-block read-set now
 // ALSO carries the research-blessed O(frozen-set) weight-quorum read (epochSet + epochSetRoot — the
 // requireEpochWeightQuorum recompute reads the whole frozen set every mature block, RegCap-
 // bounded, box-fits — the research). That is a legitimate, separately-bounded class, NOT the banned
@@ -988,7 +988,7 @@ func TestWitnessReadSetV5BoundedNotRegistrySized(t *testing.T) {
 // equal-size assertion reddens. This is the boundedness ablation (the sharpest hazard:
 // instrumenting apply's scan defeats era-4).
 //
-// THE ASSERTION IS ON sizeExcludingFrozenSet, NOT raw len. Since increment 1, the RAW read-set
+// THE ASSERTION IS ON sizeExcludingFrozenSet, NOT raw len. Since requireEpochWeightQuorum landed, the RAW read-set
 // already scales with the registry via the LEGITIMATE sanctioned frozen-set per-member weight
 // reads (epochSet/bonded + their roots), so a raw-len comparison diverges even with the injected
 // scan NEUTERED — the test would stay GREEN without its defect (decoration). Excluding the
@@ -1180,7 +1180,7 @@ func TestWitnessReadSetV5AllKeyspacesRedOnDrop(t *testing.T) {
 // execution-derived guard, exactly as dropping any of the 24 member keyspaces does. This is the
 // discipline the digest root EARNS by becoming a genuine recompute read (the recompute of
 // requireEpochWeightQuorum reconstructs the frozen set's MTH and compares it to this committed
-// leaf). F1 committed epochSetRoot INERT (excluded from the ground truth); increment 1 removed
+// leaf). F1 committed epochSetRoot INERT (excluded from the ground truth); requireEpochWeightQuorum removed
 // that exclusion, so a producer that forgets to emit it now fails coverage.
 //
 // It reddens because at the boundary block (h4), where epochSet is (re)frozen, the write-diff
@@ -1199,7 +1199,7 @@ func TestEpochSetRootReadReddensOnDrop(t *testing.T) {
 // redden the execution-derived guard, exactly as dropping any of the 24 member keyspaces does.
 // This is the discipline the digest root EARNS by becoming a genuine recompute read (the recompute
 // of matureNow reconstructs the validatorsSeen set's MTH and compares it to this committed leaf).
-// F1 committed validatorsSeenRoot INERT (excluded from the ground truth); increment 2 removed that
+// F1 committed validatorsSeenRoot INERT (excluded from the ground truth); recomputeMatureNow removed that
 // exclusion, so a producer that forgets to emit it now fails coverage.
 //
 // It reddens because on a block where validatorsSeen mutates (an attestation seats a new
@@ -1219,7 +1219,7 @@ func TestValidatorsSeenRootReadReddensOnDrop(t *testing.T) {
 // execution-derived guard, exactly as dropping any of the 24 member keyspaces does. This is the
 // discipline the digest root EARNS by becoming a genuine recompute read (the recompute of
 // requireDeMatureSuperQuorum reconstructs the whole bonded set's MTH and compares it to this
-// committed leaf). F1 committed bondedRoot INERT (excluded from the ground truth); increment 3
+// committed leaf). F1 committed bondedRoot INERT (excluded from the ground truth); recomputeDeMatureSuperQuorum
 // removed that exclusion, so a producer that forgets to emit it now fails coverage.
 //
 // It reddens because on a block where bonded mutates (a bond reg seats or a slash evicts a
@@ -1248,21 +1248,21 @@ func TestBondedRootReadReddensOnDrop(t *testing.T) {
 // excluded (removing the exclusion early would redden every member of K as a false positive,
 // since the digest reacts to every member).
 //
-// The test also ASSERTS the current partition is exactly right: epochSetRoot (increment 1),
-// validatorsSeenRoot (increment 2), and bondedRoot (increment 3) are NO LONGER inert (they
+// The test also ASSERTS the current partition is exactly right: epochSetRoot (requireEpochWeightQuorum),
+// validatorsSeenRoot (recomputeMatureNow), and bondedRoot (recomputeDeMatureSuperQuorum) are NO LONGER inert (they
 // recompute), and the two named roots ARE still inert. A drift in either direction fails.
 func TestInertDigestRootsAwaitRecompute(t *testing.T) {
 	// epochSetRoot / validatorsSeenRoot / bondedRoot must have LEFT the inert set (increments 1/2/3
 	// recompute them).
 	for _, name := range inertDigestRootTags {
 		if name == "epochSetRoot" {
-			t.Fatal("epochSetRoot is still in inertDigestRootTags — increment 1 recomputes it, so it must be removed (its read is guarded by TestEpochSetRootReadReddensOnDrop)")
+			t.Fatal("epochSetRoot is still in inertDigestRootTags — requireEpochWeightQuorum recomputes it, so it must be removed (its read is guarded by TestEpochSetRootReadReddensOnDrop)")
 		}
 		if name == "validatorsSeenRoot" {
-			t.Fatal("validatorsSeenRoot is still in inertDigestRootTags — increment 2 recomputes it, so it must be removed (its read is guarded by TestValidatorsSeenRootReadReddensOnDrop)")
+			t.Fatal("validatorsSeenRoot is still in inertDigestRootTags — recomputeMatureNow recomputes it, so it must be removed (its read is guarded by TestValidatorsSeenRootReadReddensOnDrop)")
 		}
 		if name == "bondedRoot" {
-			t.Fatal("bondedRoot is still in inertDigestRootTags — increment 3 recomputes it, so it must be removed (its read is guarded by TestBondedRootReadReddensOnDrop)")
+			t.Fatal("bondedRoot is still in inertDigestRootTags — recomputeDeMatureSuperQuorum recomputes it, so it must be removed (its read is guarded by TestBondedRootReadReddensOnDrop)")
 		}
 	}
 	// The two named roots must still BE inert (no recompute reads them yet).

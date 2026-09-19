@@ -97,9 +97,9 @@ func TestRemoveIfNotSolePrunesDeadButKeepsSoleHolder(t *testing.T) {
 	if !hasID(p.Get(replicated), 1) {
 		t.Fatal("the live sibling must remain")
 	}
-	// #69 availability: the SOLE holder's record is kept so its content stays
+	// availability: the SOLE holder's record is kept so its content stays
 	// discoverable (re-probeable) rather than orphaned.
 	if !hasID(p.Get(soleKey), 9) {
-		t.Fatal("a SOLE dead holder must be KEPT — orphaning it makes its content undiscoverable (#69)")
+		t.Fatal("a SOLE dead holder must be KEPT — orphaning it makes its content undiscoverable")
 	}
 }

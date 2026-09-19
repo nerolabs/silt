@@ -1,6 +1,6 @@
 package main
 
-// Phase 2, Slice 3 — the durability endowment endpoint (POST /api/fund). A
+// the durability endowment endpoint (POST /api/fund). A
 // publisher/operator prepays an object's repair reserve from THIS daemon's own
 // EARNED credit balance, so content outlives churn before it self-funds via the
 // serve auto-skim. Standing is untouched (Invariant A). These tests cover the
@@ -130,7 +130,7 @@ func TestApiFundBadInputIs400(t *testing.T) {
 }
 
 // TestApiFundNeedsToken: funding spends credits, so it is a mutating call and
-// must be refused without the bearer token (the #89 gate).
+// must be refused without the bearer token (the gate).
 func TestApiFundNeedsToken(t *testing.T) {
 	_, h := fundServer(t, 10_000)
 	form := url.Values{"root": {ports.Hash{0x03}.String()}, "amount": {"100"}}

@@ -474,7 +474,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			if n.onCommit != nil {
 				n.onCommit(*b)
 			}
-			n.pruneOnCommit() // shed heavy proofs below the horizon (slice 5b)
+			n.pruneOnCommit() // shed heavy proofs below the horizon
 		}
 		n.reply(from, msg, ports.Message{Kind: ports.MsgCommitAck, OK: ok})
 	case ports.MsgGetChain:
@@ -494,6 +494,12 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		// the reassembled linkage, so a windowed fetch cannot corrupt the chain.
 		n.reply(from, msg, ports.Message{Kind: ports.MsgChainReply, OK: true,
 			Data: chain.EncodeBlocksUpTo(blocks, n.maxChainReplyBytes())})
+	case ports.MsgGetWitness:
+		// The witness seam: a box that holds no tree asks this node, which does, for the
+		// committed leaves and proofs it needs to judge a block for itself. Serving is not a
+		// trusted role and grants the asker nothing — every answer is checked against a root
+		// the box already holds, so a lie here produces a stall and never an acceptance.
+		n.reply(from, msg, n.serveWitness(msg))
 	case ports.MsgGetChainHead:
 		// Cheap head probe: answer "what is your head?" with (height, hash) so
 		// a peer whose head matches ours can SKIP the full-chain fetch + re-validate.
@@ -529,7 +535,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			// the wedge's cohort-regs-never-drain symptom was mis-attributed across
 			// three runs partly because this branch ate every refusal without a line.
 			//
-			// The CPU gate runs FIRST (Phase 1.2, the shape): every well-formed
+			// The CPU gate runs FIRST (the shape): every well-formed
 			// self-signed reg forces up to one VerifySpaceTime (~ms on the single
 			// loop, core/bond/verifycost_bench_test.go), so submits are budgeted per
 			// sender per sweep window BEFORE decode — a refusal costs a map lookup,
@@ -655,6 +661,8 @@ func replyKind(k ports.MsgKind) ports.MsgKind {
 		return ports.MsgCommitAck
 	case ports.MsgGetChainHead:
 		return ports.MsgChainHeadReply
+	case ports.MsgGetWitness:
+		return ports.MsgWitnessReply
 	case ports.MsgSubmitEntry:
 		return ports.MsgSubmitEntryAck
 	default:
@@ -694,7 +702,7 @@ func reorgDropped(old, now []chain.Block) int {
 }
 
 // pruneOnCommit sheds the heavy bond proofs below this node's retention horizon after a
-// commit (slice 5b — the enablement that closes the MATURING OOM). It is a no-op until BFT
+// commit (the enablement that closes the MATURING OOM). It is a no-op until BFT
 // finality gives an immutable anchor (pruneFloor returns 0 otherwise) and with a degenerate
 // BondTTL. A behind peer safely catches up AROUND the pruned window via suffix-sync from its
 // own finalized head; a deep-cold node is told to use a checkpoint/archive (ErrNeedCheckpoint).
@@ -709,7 +717,7 @@ func (n *Node) pruneOnCommit() {
 
 // reconstructFork prepends this node's OWN verified prefix below the served start height to
 // a peer-served run of blocks, so the reused genesis-rooted Reconcile sees a full chain
-// (slice 5, M1). It keys off what the peer ACTUALLY served (served[0].Height), not what we
+// (M1). It keys off what the peer ACTUALLY served (served[0].Height), not what we
 // requested: a peer honoring our suffix request serves [Fh, peerHead] (start Fh ⇒ we prepend
 // [0, Fh), a peer that serves the whole chain — an old peer, or an adversary serving a
 // genesis-rooted fork — serves start 0 (we use it as-is). Either way our own prefix is
@@ -784,7 +792,7 @@ var ErrNoChain = errors.New("node: validator role not enabled")
 // ErrNeedCheckpoint signals that this node is behind by more than the weak-subjectivity
 // window (safetyDepth ≈ 2·BondTTL): the peer has pruned the heavy bond proofs across the
 // gap, so this node cannot re-verify the intervening history and MUST NOT trust it from a
-// peer (the C1/long-range guard — slice 5). Cold sync in a weakly-subjective system needs
+// peer (the C1/long-range guard). Cold sync in a weakly-subjective system needs
 // an out-of-band anchor: obtain a recent -ws-checkpoint (socially), or sync from an
 // archive node that retains full history. Surfaced (not silently swallowed) so an
 // operator sees the remedy rather than an unexplained failure-to-catch-up (S5/I4).
@@ -1334,7 +1342,7 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 		return nc
 	}
 
-	// PHASE 2 (precommit): runs once the prepare-QC is assembled and
+	// THE PRECOMMIT LEG: runs once the prepare-QC is assembled and
 	// locked. the collection is CONCURRENT — the prepare-QC is
 	// broadcast to every attester at once and replies are collected
 	// until the quorum predicate holds. Gather latency = the slowest
@@ -1378,7 +1386,7 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 				if n.onCommit != nil {
 					n.onCommit(*b)
 				}
-				n.pruneOnCommit() // shed heavy proofs below the horizon (slice 5b)
+				n.pruneOnCommit() // shed heavy proofs below the horizon
 				n.broadcastCommit(b, broadcast, 0, func() { done(nil) })
 				return
 			}
@@ -1419,7 +1427,7 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 		finishPC()
 	}
 
-	// PHASE 1 (prepare): gather prepare signatures to the quorum, assemble the
+	// THE PREPARE LEG: gather prepare signatures to the quorum, assemble the
 	// prepare-QC, LOCK on it (durable — the lock is what a round-change
 	// carries), then run the precommit phase. The gatherer's own prepare goes
 	// in first (recorded above); on a forced re-proposal the ORIGINAL author's
@@ -1707,7 +1715,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 	// (accept-and-cap — the transport's maxFrame bounds any single reply).
 	fetchFull := func(p ports.NodeID, peerHead uint64, peerHeadKnown bool, next func()) {
 		n.Stats.ChainSyncFullFetches++
-		// Suffix-sync (slice 5, M1): request from our OWN finalized head, not genesis, so a
+		// Suffix-sync (M1): request from our OWN finalized head, not genesis, so a
 		// peer that has pruned its old heavy bond proofs still serves us un-pruned blocks
 		// across the gap. reqHeight is 0 without BFT finality (no immutable anchor) ⇒ a
 		// full-genesis fetch, unchanged. The peer serves [reqHeight, peerHead]; we anchor it
@@ -2050,7 +2058,24 @@ func (n *Node) maybeProposeBondDrain() {
 	// at fold would arm a proposal with no content, which fails the proposer's own
 	// empty-block check and spins on the sign slot.
 	issuerKeysDue := n.issuerKeysFoldable()
-	if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && !ownDue && !issuerKeysDue {
+	// A QUEUED EQUIVOCATION PROOF IS DESIGNEE WORK, and leaving it out of this rule
+	// made the replicated eviction wait on traffic that has nothing to do with it.
+	// slashEquivocators queues the proof so "the OBJECTIVE set evicts the culprit in
+	// lockstep on every replica (F2), not just this local ledger" — but the proof
+	// rides only a block someone proposes, and nothing here armed a proposal BECAUSE
+	// one was held. On a busy chain an unrelated renewal or entry carried it along
+	// soon enough to hide that; on an idle one it never landed at all.
+	//
+	// AND IDLE IS THE CASE THAT MATTERS: an attacker equivocates and then goes quiet,
+	// which is exactly the chain with no other work to arm the sweep. Measured on a
+	// three-anchor equivocation topology 2026-09-19 — both honest nodes committed,
+	// slashed the culprit, and then committed nothing for the rest of the window,
+	// with no sign-slot block, no round advance and no stall line. The chain was not
+	// wedged; it was quiescent, holding an eviction it had already proven.
+	//
+	// It cannot arm an empty proposal: proposeBlock's own empty-block check counts
+	// len(b.Slashes), so a slash-only block is carried, not refused.
+	if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && len(n.pendingSlashes) == 0 && !ownDue && !issuerKeysDue {
 		n.drainWaitSweeps = 0
 		return // nothing pending — stay quiet (B6)
 	}
@@ -2124,7 +2149,12 @@ func (n *Node) maybeProposeBondDrain() {
 		}
 	}
 	if dist > 0 {
-		if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && !issuerKeysDue {
+		// A queued equivocation proof is takeover-worthy for the same reason pending
+		// entries are: the designation is height-keyed, a silent designee stalls the
+		// head, and the eviction has nowhere else to ride. Omitting it here would arm
+		// the sweep above and then hand the proof back to a designee that is not
+		// proposing.
+		if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && len(n.pendingSlashes) == 0 && !issuerKeysDue {
 			// Own renewal only, and we are not the designated proposer:
 			// submit, never propose (Q2b-2). The reg reaches the chain via
 			// the designated proposer's queue; nothing to take over for.
