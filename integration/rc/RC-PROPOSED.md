@@ -1034,7 +1034,7 @@ verdict, not a participating validator.
 
 ## Tier C — field
 
-**21. Publish and fetch work on the internet as it is.** ⚠ *DRIVEN IN THE FIELD. The publish/fetch half is GREEN; the chain does NOT keep committing under all four conditions at once. The mechanism is NAMED — the ~1.5 MB bond proof on the consensus critical path against a deadline sized off a link rate the composed wire does not deliver — and the instrumentation turned up a SECOND failure, unbounded outbound frames, that OOM-killed a validator*
+**21. Publish and fetch work on the internet as it is.** ⚠ *DRIVEN IN THE FIELD. The publish/fetch half is GREEN; the chain does NOT keep committing under all four conditions at once. The mechanism is NAMED — the ~1.5 MB bond proof on the consensus critical path against a deadline sized off a link rate the composed wire does not deliver — and the instrumentation turned up a SECOND failure, unbounded outbound frames, that OOM-killed a validator — that one is now CLOSED, the outbound path has a bound*
 A NATed publisher in one region, a cold fetcher in another, bit-perfect bytes inside a bound
 derived from the deployed configuration. The chain keeps committing under sustained load with
 injected latency, jitter, loss and reordering.
@@ -1306,6 +1306,64 @@ another 1.5 MB. Taking the proof off the critical path shrinks the second findin
 magnitude but does not BOUND it — the outbound path would still have no cap, and #8 and S3 want a
 bound, not a small number.
 
+*THE SECOND FINDING IS NOW CLOSED: THE OUTBOUND PATH HAS A BOUND.* `Send` charges every frame —
+and the delivery goroutine that will carry it — against a budget before starting that goroutine,
+with a per-peer share so one backed-up link cannot consume what every other peer is owed. It is the
+dual of the inbound gate that already sits on the read path, and it is deliberately written to read
+like it (`adapters/tcpnet/outbound.go` beside `inbound.go`), with one difference that is forced
+rather than chosen: **it REFUSES where the inbound gate BLOCKS.** The inbound gate blocks a
+per-connection reader, which is safe — that stops draining one socket and TCP flow-control pushes
+back on the sender. `Send` runs on the node's single serialized loop (B2), so blocking there would
+stall every peer, every timer and every API call behind one slow socket: a bounded memory failure
+traded for a whole-node liveness failure. A frame that does not fit is therefore DROPPED, which is
+the transport's already-documented loss semantics — "a failed write or dial just drops the message
+and the core's timeout machinery owns recovery" — and it is returned to the caller and narrated in
+the debug log rather than swallowed.
+
+*THE GOROUTINE IS CHARGED WITH ITS FRAME, so the bound is on memory rather than on bytes.* A
+byte-only budget would let a flood of small frames sit comfortably inside it while the goroutine
+stacks carrying them — the larger cost at that size — grew without limit, which is the same
+unboundedness in a different allocation. Each admitted frame costs its own length plus a fixed
+charge for the goroutine that owns it, so one number bounds the whole outbound footprint and there
+is no second knob to size.
+
+*THE GATE IS DRIVEN AGAINST ITS OWN CONTROL, in the same test, on a peer that completes the TLS
+handshake and then never reads — the field condition reduced to a fixture that runs in a tenth of a
+second.* Forty-eight 1 MiB frames at that peer:
+
+| arm | peak in-flight outbound | frames refused |
+|---|---|---|
+| UNBOUNDED — the documented `0` sentinel, which is the pre-bound behaviour | **50,727,984 B** (everything the sender offered) | 0 |
+| BOUNDED — an 8 MiB budget, 2 MiB per-peer share | **1,056,833 B** | 47 |
+
+The control is what makes the second row mean anything: a bound that is never reached passes for
+free, so the unbounded arm has to blow past the cap the bounded arm asserts, and the test says so in
+those words when it does not. The bounded arm also fails if NOTHING was refused — a flood that
+fizzled would otherwise read as a bound that held.
+
+*AND THE POSITIVE CONTROL IS ON THE GATE'S OWN AXIS, because a bound that drops frames on a healthy
+link is a liveness regression wearing a memory fix's clothes — and it would pass the table above
+perfectly.* At the shipped budget a draining peer receives all 200 of 200 back-to-back 64 KiB frames
+and the budget returns to zero. That control is what SIZED the default rather than taste: driven at
+8 MiB instead, the same honest burst starts losing frames at number 28. The shipped value is
+`DefaultOutboundCap`, and the daemon's flag default is derived from that constant rather than
+restating it, so the number the tests exercise and the number an operator gets cannot drift apart.
+
+*THE SCOPE IS THE DAEMON, and that is a boundary rather than an oversight.* The transport ships
+unbounded and the DAEMON sets the cap, exactly as it already does for the inbound gate. The
+short-lived client processes — publish, fetch, the ephemeral issuer dial — keep the unbounded
+default, because the measurement is a long-running validator under sustained impairment and there
+is none for a client. Capping them on the strength of the validator's number would be a guess with
+a cost attached: the publish path's placement leg is the first thing a contended box loses, and
+this list has paid for that reading twice. Named here rather than left to be discovered.
+
+*WHAT THIS DOES NOT CLAIM.* It does not close the chain wedge. The wedge is the FIRST finding — the
+1.5 MB proof on the consensus critical path against a deadline sized off a link rate the impaired
+wire does not deliver — and a bound on the sender's queue does not make a block arrive inside its
+deadline. What it closes is the build-immutable #8 hit found beside it: the outbound path now has a
+ceiling instead of none, which is what #8 asks for ("a bound, not a small number"). The two findings
+share an upstream and remain two findings.
+
 *WHY NOTHING BELOW THE FIELD COULD HAVE CAUGHT EITHER.* `adapters/simnet.Config` is
 `{LatencyMin, LatencyMax, Loss}`, and a message is delivered atomically after a latency draw — no
 bandwidth, no serialization delay, no send queue. A failure whose entire mechanism is "payload bytes
@@ -1373,7 +1431,8 @@ gap honestly. The unit-tier repro above already covers the arithmetic determinis
 is UNTESTED here — what is missing is the loopback early-warning, and it is missing on purpose
 rather than by omission.
 
-*WHAT IS OWED.* (3) The structural close on the payload, and a bound on the outbound path. (4) A
+*WHAT IS OWED.* (3) The structural close on the payload. The bound on the outbound path is DONE
+(above). (4) A
 decision about what it means for the date — and the structural close is plausibly a NEW ERA rather
 than a validity tightening, which by the frozen-format rule does not happen before it. The
 publish/fetch half is done and is not affected by any of it.
@@ -1447,8 +1506,9 @@ wedge to this same traffic at FOUR validators: the proof rides the consensus cri
 link that cannot carry 1.5 MB inside the per-attempt deadline cannot commit a height at all, and
 the retry ladder re-ships the proof into the congestion it is recovering from. The residual is
 therefore a LIVENESS bound on the adverse internet, not only a participant-count bound on a
-healthy one. The same traffic is also what makes the unbounded outbound frame queue found beside
-it expensive. See item 21 for the evidence and the structural close.
+healthy one. The same traffic is also what made the outbound frame queue found beside it
+expensive; that queue is now BOUNDED, which removes the OOM without touching the wedge. See item 21
+for the evidence and the structural close.
 
 ## Tenets that could not be reduced to a demonstration
 

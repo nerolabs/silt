@@ -169,6 +169,10 @@ func cmdDaemon(args []string) error {
 	proofCacheSize := fs.String("proof-cache", "64M", "resident RAM budget for HOT storage proofs; the rest live on disk and page in only to serve/audit, so proof RAM is O(hot) not O(held) (0 = unbounded, legacy)")
 	memLimit := fs.String("mem-limit", "", "soft heap ceiling (e.g. 1500M, 85% of box RAM) — the Go GC reclaims aggressively as the heap approaches it, so a large-but-bounded working set can't grow into a kernel OOM-kill on a small box. Sets runtime/debug.SetMemoryLimit; equivalent to the GOMEMLIMIT env var (this flag wins if both are set). Empty = no soft limit (default). Not a hard cap: if the LIVE set genuinely exceeds it the GC thrashes rather than crashes — raise the limit or the box.")
 	inboundCap := fs.String("inbound-cap", "256M", "bound the in-flight INBOUND message working set: bytes read off the wire but not yet processed on the single loop. A fast/adversarial sender that outruns the loop otherwise piles decoded messages onto an unbounded queue and OOMs the node (a resource-exhaustion DoS). At the cap the reader stops draining that socket → TCP flow-control pushes back on the sender (alive > crashed). A single legal-but-oversized frame is still admitted alone; no single peer may hold more than 1/4 of the budget. 0 = unbounded (legacy). SIZING pulls in two directions: the cap bounds the OOM working set (bigger cap = more RAM headroom needed) AND it bounds worst-case message latency — a full budget means ~cap/drain-rate of queued work ahead of every newly admitted frame, consensus frames included (a saturated 256M draining at 2 MiB/s is ~128s of delay). Size to satisfy both at your expected-worst drain rate; the default assumes a healthy drain (the design notes E5 records the trade and the sequenced hardening).")
+	// The default is DERIVED from the transport's own constant rather than
+	// restated, so the shipped value and the budget the transport's tests
+	// exercise cannot drift apart.
+	outboundCap := fs.String("outbound-cap", fmt.Sprintf("%dM", tcpnet.DefaultOutboundCap>>20), "bound the in-flight OUTBOUND message working set: frames this node has marshalled and handed to a delivery goroutine that have not yet reached the peer's socket. Each of those goroutines RETAINS its whole frame while it waits on the per-peer write mutex and then on a socket whose send buffer is already full, so a node producing faster than a link drains otherwise grows without limit and OOMs itself — measured in the field under composed impairment as monotone RSS growth to ~1 GiB with no plateau, against an unshaped control that stayed flat. Over the cap a frame is DROPPED, not queued: this admission runs on the single serialized loop, which must never block, and the transport's loss semantics already hand recovery to the core's timeouts. A peer with nothing in flight is never refused, so the budget bites only a link that is already backed up; no single peer may hold more than 1/4 of it. 0 = unbounded (legacy). SIZING: bigger cap = more RAM a backed-up link can pin; smaller cap = frames dropped sooner on a slow peer. It is a memory budget, never a security parameter.")
 	carePublished := fs.Bool("care-published", true, "the daemon repairs content published through its own UI, so your own content stays alive as nodes churn (its manifest counts toward this node's pledge); =false to opt out")
 	economy := fs.Bool("economy", false, "OPT IN to the S7 durability repair economy (default OFF — the economy is built and running in shadow; payout is opt-in until the delivery price lands, the roadmap): when on, a verified repair PAYS the new holder of a rebuilt shard from the object's own escrow, priced by the protocol formula c·shardBytes/(U/p) credits — the witnessed fetch price of the ONE shard that holder moves, which is the act the bounty pays for (F1, ; until 2026-09-12 the price was c·(k·shardBytes)/(U/p), the fetch cost of a reconstruction that on the remote-placement path the payee does not perform, and it over-paid the holder's own basis 10–60×; on the self-hold path, where the paramedic keeps the shard it rebuilt and IS the payee (selfHoldEligible), the new price under-pays it by a factor of k —) — × the rarest-shard multiplier (a shard below one credit of fetch, which now means any object under ~262 KB, pays ZERO and is counted in stats.BountyBaseZero) — a network-wide price, never an operator-set amount. Off, the serve auto-skim still fills escrows but no bounty disburses (the half-open state /api/status reports as bountyOn:false). Standing is never affected either way (Invariant A: credits fund durability, never consensus weight). The economy-ON config is what the confirming field runs + the red team exercise")
 	fs.Parse(args)
@@ -284,6 +288,19 @@ func cmdDaemon(args []string) error {
 		}
 		tr.SetInboundCap(cap)
 		fmt.Printf("inbound-cap: %s in-flight message budget (backpressure over cap; a flood stalls, doesn't OOM)\n", *inboundCap)
+	}
+	// And bound the OUTBOUND working set, which is the same failure at the other
+	// end of the wire: every frame handed to a delivery goroutine is retained
+	// until it reaches the peer's socket, so a link that stops draining pins
+	// frames without limit. Over the cap a frame is dropped rather than queued —
+	// Send runs on the loop and must not block (tcpnet/outbound.go).
+	if *outboundCap != "" && *outboundCap != "0" {
+		cap, err := parseSize(*outboundCap)
+		if err != nil {
+			return err
+		}
+		tr.SetOutboundCap(cap)
+		fmt.Printf("outbound-cap: %s in-flight frame budget (a backed-up link drops frames, doesn't OOM)\n", *outboundCap)
 	}
 	if *advertise != "" {
 		tr.SetAdvertise(*advertise)

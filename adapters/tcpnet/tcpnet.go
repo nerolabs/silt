@@ -91,6 +91,12 @@ type Transport struct {
 	// inbound.go). nil-safe via a cap of 0 = unbounded; the daemon sets a real
 	// cap from -inbound-cap.
 	inbound *inboundGate
+	// outbound bounds the in-flight marshalled frames Send has handed to
+	// delivery goroutines but that have not reached their peer's socket, so a
+	// node producing faster than a link drains can't OOM itself (see
+	// outbound.go). nil-safe via a cap of 0 = unbounded; the daemon sets a real
+	// cap from -outbound-cap.
+	outbound *outboundGate
 
 	// inHandshakes counts inbound TLS handshakes currently in flight — the
 	// hub-stampede gauge for Layer 2 (Q3): when many spokes dial a hub at
@@ -219,7 +225,8 @@ func New(loop *eventloop.Loop, ident *identity.Identity, listenAddr string) (*Tr
 		self:       ident.NodeID(),
 		listenAddr: ln.Addr().String(),
 		ln:         ln,
-		inbound:    newInboundGate(0), // unbounded until the daemon sets a cap
+		inbound:    newInboundGate(0),  // unbounded until the daemon sets a cap
+		outbound:   newOutboundGate(0), // unbounded until the daemon sets a cap
 		peers:      make(map[ports.NodeID]addrPair),
 		relays:     make(map[ports.NodeID]string),
 		conns:      make(map[ports.NodeID]*peerConn),
@@ -444,6 +451,14 @@ func (t *Transport) SetHandler(h func(from ports.NodeID, msg ports.Message)) {
 // -inbound-cap. Call before serving.
 func (t *Transport) SetInboundCap(capBytes int64) { t.inbound.setCap(capBytes) }
 
+// SetOutboundCap bounds the in-flight outbound working set to capBytes — the
+// marshalled frames handed to a delivery goroutine that have not yet reached
+// their peer's socket (outbound.go). Over the cap a frame is DROPPED rather than
+// queued, because Send runs on the single serialized loop and must not block.
+// capBytes <= 0 = unbounded (the sim/test default). The daemon wires it from
+// -outbound-cap. Call before serving.
+func (t *Transport) SetOutboundCap(capBytes int64) { t.outbound.setCap(capBytes) }
+
 // SetLogger wires the observability port; nil disables it.
 func (t *Transport) SetLogger(lg ports.Logger) { t.lg = lg }
 
@@ -500,6 +515,21 @@ func (t *Transport) Send(to ports.NodeID, msg ports.Message) error {
 	if len(frame) > maxFrame {
 		return fmt.Errorf("tcpnet: frame of %d bytes exceeds max %d", len(frame), maxFrame)
 	}
+	// Admission control: charge this frame — and the delivery goroutine that
+	// will carry it — against the outbound budget BEFORE starting that
+	// goroutine, so a node producing faster than the link drains can't retain
+	// frames without limit and OOM itself (outbound.go). A refusal is a DROP,
+	// not backpressure: this runs on the single serialized loop, which must
+	// never block. The drop is the transport's documented loss semantics and is
+	// reported to the caller and the debug log rather than swallowed.
+	if !t.outbound.admit(to, int64(len(frame))) {
+		inFlight, share := t.outbound.peerBytes(to)
+		t.logf(ports.LogDebug, "outbound frame dropped: peer backlog is at its budget",
+			"to", to, "frame", len(frame), "inflight", inFlight, "share", share,
+			"total", t.outbound.usedBytes())
+		return fmt.Errorf("tcpnet: outbound budget full for %s: %d bytes already in flight against a %d-byte share; dropped a frame of %d bytes",
+			to, inFlight, share, len(frame))
+	}
 	go t.deliver(to, pair, frame, freshDial)
 	return nil
 }
@@ -514,6 +544,10 @@ func (t *Transport) Send(to ports.NodeID, msg ports.Message) error {
 // delivery; if the relay then reaches the peer, the direct address was
 // stale (the peer moved behind a NAT) and is dropped from the book.
 func (t *Transport) deliver(to ports.NodeID, pair addrPair, frame []byte, freshDial bool) {
+	// The frame is retained for the whole of this call — through the dial, the
+	// wait on the peer's write mutex, and the write into a possibly-full socket
+	// buffer — so the budget is held for exactly that long.
+	defer t.outbound.release(to, int64(len(frame)))
 	if !freshDial {
 		if pc := t.liveConn(to); pc != nil {
 			if pc.write(frame) == nil {
