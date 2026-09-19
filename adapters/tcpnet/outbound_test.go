@@ -237,7 +237,7 @@ func TestOutboundBacklogIsBoundedAgainstAPeerThatNeverReads(t *testing.T) {
 // The producer here writes 200 frames back to back with no pacing at all, which
 // is faster than any core path offers them: the loop hands the transport one
 // message per event. A budget that clears this clears the honest path. Driven at
-// an 8 MiB cap instead, the same burst loses frames from #28 on — so the number
+// an 8 MiB cap instead, the same burst loses frames from the 28th on — so the number
 // is load-bearing and the failure it guards is real, not hypothetical.
 func TestOutboundBoundDropsNothingWhenThePeerDrains(t *testing.T) {
 	const (
