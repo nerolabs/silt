@@ -1333,7 +1333,7 @@ verdict, not a participating validator.
 
 ## Tier C — field
 
-**21. Publish and fetch work on the internet as it is.** ⚠ *DRIVEN IN THE FIELD. The publish/fetch half is GREEN; the chain does NOT keep committing under all four conditions at once. The mechanism is NAMED — the ~1.5 MB bond proof on the consensus critical path against a deadline sized off a link rate the composed wire does not deliver — and the instrumentation turned up a SECOND failure, unbounded outbound frames, that OOM-killed a validator — that one is now CLOSED, the outbound path has a bound*
+**21. Publish and fetch work on the internet as it is.** ⚠ *DRIVEN IN THE FIELD. The publish/fetch half is GREEN; the chain does NOT keep committing under all four conditions at once. The mechanism is NAMED — the ~1.5 MB bond proof on the consensus critical path against a deadline sized off a link rate the composed wire does not deliver — and the route off that path is now BUILT (3,030,653 B -> 1,131 B per attester per round, transport, no era) but NOT YET DRIVEN UNDER IMPAIRMENT, which is the only tier that can hold the claim. The instrumentation also turned up a SECOND failure, unbounded outbound frames, that OOM-killed a validator — that one is CLOSED, the outbound path has a bound*
 A NATed publisher in one region, a cold fetcher in another, bit-perfect bytes inside a bound
 derived from the deployed configuration. The chain keeps committing under sustained load with
 injected latency, jitter, loss and reordering.
@@ -2104,11 +2104,25 @@ is the position every other closed item on this list reached before it closed. I
 item 10's last defeat, because that one is the piece an outside adversary reaches first and this one
 is a liveness bound on an adverse network rather than a claim the red team returns a verdict on.
 
-*WHAT DOES NOT CHANGE.* Item 21's second claim is NOT held today and this does not hold it — the
-wedge reproduced a third time at HEAD on run `d531fbf-90914`, 794 s against a 220 s bound, with the
-outbound bound in the binary. If the close does not land by the date the item ships disclosed with
-the mechanism named, the repro in the tree and the route measured. That is a better disclosure than
-the one this sheet was carrying a day ago, and it is still a disclosure.
+*WHAT DOES NOT CHANGE — AND THE PART THAT DID, 2026-09-19.* Item 21's second claim is NOT held
+today. The route is now BUILT rather than measured: the proof rides by digest to peers with a
+receipt, 3,030,653 B -> 1,131 B per attester per round, hash unchanged, no era. What is missing is
+the only tier that can hold the claim, which is a DRIVE UNDER IMPAIRMENT. The wedge exists on a link
+slower than the deadline assumes; unit and e2e do not run on such a link, so eight green commits say
+nothing about whether it closes.
+
+*AND THE FLOW THAT WOULD SAY IS THE ONE THAT KEEPS BEING LOST.* `21-impaired-commit` shapes two
+validator seats and drives heights against a 220 s bound — the only flow that reproduces these
+conditions. On run `5ad8344-49291` it returned no reading at all: GCP PREEMPTED a shaped seat
+mid-drive, and because the fleet runs SPOT with `instanceTerminationAction=DELETE` the instance was
+removed rather than stopped. The rest of that sheet was unaffected (11 pass / 0 gap), and the
+harness now attributes a vanished seat as a GAP naming the lost measurement instead of declaring the
+sheet untrustworthy. Before this reading is paid for again, the two shaped seats want non-spot
+provisioning: a 660 s scenario is a long time to hold a seat somebody else can reclaim.
+
+Until that run lands the item ships disclosed, with the mechanism named, the repro in the tree, the
+route measured AND BUILT, and the one tier it has not been driven at said in those words. That is a
+better disclosure than the one this sheet was carrying a day ago, and it is still a disclosure.
 
 **Unsequenced, and it needs the owner's call against the four above.** Six items on this list carry no
 verdict — 11, 12, 13, 17, 18 and 19 — and two of those silences are sharper than the rest: item 11's
