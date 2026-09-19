@@ -1333,7 +1333,7 @@ verdict, not a participating validator.
 
 ## Tier C — field
 
-**21. Publish and fetch work on the internet as it is.** ⚠ *DRIVEN IN THE FIELD. The publish/fetch half is GREEN; the chain does NOT keep committing under all four conditions at once. The mechanism is NAMED — the ~1.5 MB bond proof on the consensus critical path against a deadline sized off a link rate the composed wire does not deliver — and the route off that path is now BUILT (3,030,653 B -> 1,131 B per attester per round, transport, no era) but NOT YET DRIVEN UNDER IMPAIRMENT, which is the only tier that can hold the claim. The instrumentation also turned up a SECOND failure, unbounded outbound frames, that OOM-killed a validator — that one is CLOSED, the outbound path has a bound*
+**21. Publish and fetch work on the internet as it is.** ⚠ *DRIVEN IN THE FIELD. The publish/fetch half is GREEN; the chain does NOT keep committing under all four conditions at once. The mechanism is NAMED — the ~1.5 MB bond proof on the consensus critical path against a deadline sized off a link rate the composed wire does not deliver — the route off that path is BUILT (3,030,653 B -> 1,131 B per attester per round, transport, no era), and it has now been DRIVEN UNDER IMPAIRMENT — the tier that can hold the claim — where it DOES NOT CLOSE IT: run `5af09a9-88230` wedged for 796 s at HEAD with the relay firing, because the relay covers 1 of n-1 attesters by construction and a stalled renewal re-broadcasts 1.5 MB every 30 s until it saturates the outbound budget and drops the consensus frames that would clear the stall. The instrumentation also turned up a SECOND failure, unbounded outbound frames, that OOM-killed a validator — that one is CLOSED, the outbound path has a bound*
 A NATed publisher in one region, a cold fetcher in another, bit-perfect bytes inside a bound
 derived from the deployed configuration. The chain keeps committing under sustained load with
 injected latency, jitter, loss and reordering.
@@ -1810,6 +1810,77 @@ hash still reproduces via `AnswerDigest`, so the format already expresses a proo
 makes the close reachable before 2026-09-27 rather than blocked behind a hard fork. It stays
 sequenced after item 10's last defeat, which is the piece an outside adversary reaches first.
 
+*THE RELAY IS DRIVEN UNDER IMPAIRMENT AND IT DOES NOT CLOSE THE WEDGE — run `5af09a9-88230`,
+2026-09-19.* Seventeen nodes, four validators, three regions, every seat on-demand so none could be
+preempted; 31 resources destroyed with zero orphans. **23 pass · 0 gap · 1 fail · 6 skip**, and the
+one fail is this row. Under the composed profile the chain went **796 s without a commit** — h33→h33,
+zero heights, 0 of 2 publishes landed, impairment credited by netem's own counters on all four seats,
+interfaces verified clean afterwards. That is the FOURTH reproduction of the same shape: 802 s local,
+843 s field, 749 s local, and now 796 s in the field **at HEAD, with the relay built and firing**.
+
+*THE RELAY WAS NOT DARK, WHICH IS WHAT MAKES THIS A RESULT RATHER THAN A MISSED SETUP.* It engaged on
+the fleet from the first heights, and every other flow on the sheet passed, so the change is not a
+regression and the row is not a setup failure. What it is, is a coverage measurement — and the
+coverage is the finding.
+
+| prepare legs on the wedged heights (h33–h34) | count | bytes each |
+|---|---|---|
+| digest-relayed | **6** | 1,092–2,651 B |
+| carried | **30** | ~1,575,000 B |
+
+*THE SHED LEGS ARE ALWAYS ONE PEER PER PROPOSAL, AND THE REASON IS STRUCTURAL.*
+`peerCanReconstruct` needs evidence for EVERY registration in the block, and it has exactly two:
+the peer AUTHORED the registration, or the peer ACKNOWLEDGED this node's OWN. On a live chain
+renewals are staggered, so a block carries ONE OTHER validator's registration — and only its author
+qualifies. Every other attester is sent the full proof, which is the payload the wedge is made of.
+Coverage is therefore **1 of n−1 attesters by construction**, not by accident, and the relay leaves
+the critical path substantially as it found it.
+
+*THE ONE PATH THAT LIFTS THAT IS DESTROYED EVERY 30 s, AND THE JOURNALS SHOW IT WORKING FIRST.* At
+h1–h4 each proposer shed to ALL THREE peers — the acknowledgement path, full coverage, exactly as
+designed. It never happens again on the whole run. `SubmitBondRenewal` clears `ownRegAcks` on every
+sweep on the stated grounds that "a fresh registration means every prior ack is about different
+bytes". On a wedged chain the head does not move, and a registration is a deterministic function of
+its prev (`TestBondRegIsADeterministicFunctionOfItsPrev`) — so **the bytes are IDENTICAL and the
+receipts are discarded anyway**, every 30 s, faster than a stalled round can ever use them. val-a's
+h34 blocks carried val-a's own registration, its peers had acknowledged those exact bytes fifteen
+times over, and it shed to nobody.
+
+*AND THE STALLED RENEWAL STARVES CONSENSUS OF THE BUDGET THAT WAS ADDED TO SAVE IT.*
+`BondRenewalDue` stays true until a block COMMITS the renewal, so a wedged chain re-broadcasts the
+full ~1.5 MB to every peer on every sweep — **29 times on val-a inside this window, one per 30 s
+`ChainSyncInterval`, exactly**. That saturates the per-peer outbound budget, which then drops the
+consensus frames that would have ended the wedge:
+
+```
+gather: prepare request FAILED to=3247042e… height=34
+  err="tcpnet: outbound budget full: 67066043 bytes already in flight
+       against a 67108864-byte share; dropped a frame of 1575203 bytes"
+```
+
+All four of val-a's h34 r3 prepare legs died that way, on all four peers, within the same
+millisecond. The wedge STARTS on the original mechanism — carried bytes against a deadline sized off
+a floor the wire does not deliver — and then SUSTAINS ITSELF: the stall keeps the renewal due, the
+renewal storm fills the budget, and the budget drops the frames that would clear the stall.
+
+*THE BOUND IS NOT THE DEFECT, AND THE DISTINCTION MATTERS.* Worst RSS across the cohort was
+**0.92 GiB with no OOM kill**, against `oom_kill 1` at 1075 MiB and 1223 MiB on the two runs before
+the outbound gate existed. The gate did exactly what it was built to do. What it also did was
+convert an unbounded MEMORY failure into a bounded LIVENESS one — the trade its own design note
+predicted in writing ("a frame that does not fit is therefore DROPPED … and the core's timeout
+machinery owns recovery"). The measurement here is that the timeout machinery cannot own the
+recovery when the budget it needs is being consumed by the stall's own retransmissions.
+
+*SO ALL THREE FINDINGS HAVE ONE ROOT, AND IT IS NOT THE RELAY.* `SubmitBondRenewal` cannot tell
+"renewal due and not yet broadcast" from "renewal due, already broadcast, still waiting to commit".
+The first costs a re-broadcast every sweep; the second wipes the receipts that are the relay's only
+evidence; the third is the first one's traffic landing on a finite budget. The relay is correct and
+its four properties hold — what is now measured is that its coverage is thinnest exactly when the
+chain needs it most. The route stated in *The order of work* is therefore HALF the close, and the
+other half is a renewal that is broadcast once and remembered until it commits. That is named here
+rather than built, because a product change on the consensus path earns its own evidence cycle and
+its own drive under impairment.
+
 The publish/fetch half is done and is not affected by any of it. The chain half is NOT held today
 and none of the above holds it: if the close does not land by the date, this item ships disclosed
 with the mechanism named, the repro in the tree and the route measured.
@@ -2105,24 +2176,37 @@ item 10's last defeat, because that one is the piece an outside adversary reache
 is a liveness bound on an adverse network rather than a claim the red team returns a verdict on.
 
 *WHAT DOES NOT CHANGE — AND THE PART THAT DID, 2026-09-19.* Item 21's second claim is NOT held
-today. The route is now BUILT rather than measured: the proof rides by digest to peers with a
-receipt, 3,030,653 B -> 1,131 B per attester per round, hash unchanged, no era. What is missing is
-the only tier that can hold the claim, which is a DRIVE UNDER IMPAIRMENT. The wedge exists on a link
-slower than the deadline assumes; unit and e2e do not run on such a link, so eight green commits say
-nothing about whether it closes.
+today. The route was BUILT rather than measured: the proof rides by digest to peers with a receipt,
+3,030,653 B -> 1,131 B per attester per round, hash unchanged, no era. What was missing was the only
+tier that can hold the claim, a DRIVE UNDER IMPAIRMENT — the wedge exists on a link slower than the
+deadline assumes, and unit and e2e do not run on such a link.
 
-*AND THE FLOW THAT WOULD SAY IS THE ONE THAT KEEPS BEING LOST.* `21-impaired-commit` shapes two
-validator seats and drives heights against a 220 s bound — the only flow that reproduces these
-conditions. On run `5ad8344-49291` it returned no reading at all: GCP PREEMPTED a shaped seat
-mid-drive, and because the fleet runs SPOT with `instanceTerminationAction=DELETE` the instance was
-removed rather than stopped. The rest of that sheet was unaffected (11 pass / 0 gap), and the
-harness now attributes a vanished seat as a GAP naming the lost measurement instead of declaring the
-sheet untrustworthy. Before this reading is paid for again, the two shaped seats want non-spot
-provisioning: a 660 s scenario is a long time to hold a seat somebody else can reclaim.
+*THE SEATS WERE MADE NON-PREEMPTIBLE, AND THEN THE READING WAS TAKEN.* `21-impaired-commit` shapes
+every validator seat and holds it for the whole 660 s drive. On run `5ad8344-49291` it returned no
+reading at all: GCP PREEMPTED a shaped seat mid-drive, and because that sheet ran SPOT with
+`instanceTerminationAction=DELETE` the instance was removed rather than stopped. The harness now
+attributes a vanished seat as a GAP naming the lost measurement instead of declaring the sheet
+untrustworthy, and the core (validator + registry) now goes on-demand whenever the impaired grade
+will be driven — including under SMOKE, which is the sheet that lost it. Run `5af09a9-88230` then
+drove it on four non-preemptible validator seats across three regions, and nothing vanished.
 
-Until that run lands the item ships disclosed, with the mechanism named, the repro in the tree, the
-route measured AND BUILT, and the one tier it has not been driven at said in those words. That is a
-better disclosure than the one this sheet was carrying a day ago, and it is still a disclosure.
+*AND THE READING REFUTES THE ROUTE RATHER THAN CLOSING IT.* **796 s without a commit at HEAD with
+the relay firing** — the fourth reproduction of the same shape, and the detail is under item 21. The
+relay's coverage is **1 of n−1 attesters by construction**, because a block carries another
+validator's registration and only its author can be proven to hold the proof; the acknowledgement
+path that would lift it is cleared every 30 s by a re-broadcast of bytes that did not change; and
+that same re-broadcast — 29 of them in the window — saturates the per-peer outbound budget until it
+drops the consensus frames that would clear the stall. Three findings, one root:
+`SubmitBondRenewal` cannot tell a renewal that has not been broadcast from one that has been
+broadcast and is still waiting to commit.
+
+So the item ships DISCLOSED, and the disclosure is now a stronger one than a day ago: the mechanism
+is named, the repro is in the tree, the route is measured AND built AND driven at the tier that
+grades it, and the reason it does not close is a named defect with field evidence rather than an
+open question. What the close needs is no longer a measurement — it is a renewal broadcast once and
+remembered until it commits. That is ordinary engineering with a deterministic shape, but it is a
+product change on the consensus path, so it earns its own evidence cycle and its own drive under
+impairment rather than being folded into the run that found it.
 
 **Unsequenced, and it needs the owner's call against the four above.** Six items on this list carry no
 verdict — 11, 12, 13, 17, 18 and 19 — and two of those silences are sharper than the rest: item 11's
@@ -2178,6 +2262,15 @@ therefore a LIVENESS bound on the adverse internet, not only a participant-count
 healthy one. The same traffic is also what made the outbound frame queue found beside it
 expensive; that queue is now BOUNDED, which removes the OOM without touching the wedge. See item 21
 for the evidence and the structural close.
+
+*AND THE FIELD NOW SHOWS THE TRAFFIC IS SELF-SUSTAINING UNDER A STALL (run `5af09a9-88230`).*
+`BondRenewalDue` stays true until a block COMMITS the renewal, so a chain that has stopped
+committing re-broadcasts the full proof to every peer on every sweep — 29 times in one 10-minute
+window, one per 30 s `ChainSyncInterval`. The traffic this residual describes is therefore not
+merely periodic: on a wedged chain it is a positive feedback loop, and it fills the per-peer
+outbound budget until consensus frames are dropped outright. The residual's cap on the bonded set
+now has a second term — the renewal rate a STALLED chain emits, which is set by the sweep interval
+and not by the TTL.
 
 ## Tenets that could not be reduced to a demonstration
 
