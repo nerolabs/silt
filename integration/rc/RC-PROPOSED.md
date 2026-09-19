@@ -697,7 +697,7 @@ that reddened it, in the same change. No test was deleted.
 | the unsigned repair claim is judged by a node that cannot pay (arm a, the shipped-default half) | `TestRepairClaimBuysNoWorkWithoutTheEconomy` | **CLOSED** — 4,719,978 B → 0 |
 | the unsigned repair claim is unbounded PER SENDER (arm a, the count) | `TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT` | open — remedy REFUTED |
 | the care link IS the storage-proof verification key | `TestCareLinkHolderForgesWithZeroBytes_PINNED_DEFECT` | open — needs a ruling |
-| a data-less identity outsources the challenge to a real holder | `TestChallengeProxyPassesAudit_PINNED_DEFECT` | open — needs a ruling |
+| a data-less identity outsources the challenge to a real holder | `TestChallengeOutsourcingIsRefusedByTheProver` | **CLOSED** — Passed 1 → 0, mint 1000 → slashed |
 
 *THE ROOT WAS NEVER MISSING, ONLY UNUSED — which is the first thing build-immutable #6 says to
 check.* `verifyStorageProof` read `p.Root` from the RESPONSE, and with `{Index:0, Total:1, Path:nil}`
@@ -753,7 +753,7 @@ read off the run:
 | defect | measured |
 |---|---|
 | care-link forgery (`TestCareLinkHolderForgesWithZeroBytes_PINNED_DEFECT`) | 0 bytes read, 67 field mults against the honest prover's 8,643 — **129× less work, 17× faster** — graded `Passed:1`, mints 1000 credit. The wrong-key control fails, so the capability is load-bearing |
-| challenge proxy (`TestChallengeProxyPassesAudit_PINNED_DEFECT`) | a data-less identity has a real holder answer its own identity-bound challenge; graded `Passed:1`, mints 1000 credit |
+| challenge proxy (`TestChallengeOutsourcingIsRefusedByTheProver`, then the pin) | a data-less identity has a real holder answer its own identity-bound challenge; graded `Passed:1`, mints 1000 credit — **CLOSED 2026-09-19**, now `Passed:0 Failed:1` and the proxy is slashed |
 | unbounded claim, arm (a) (`TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT`) | a **110-byte** claim costs the judge **4,719,978 B** over 10 distinct chunks — **~42,900×** — and the sender pays nothing; 8 claims cost 8× that, linearly |
 
 *ARM (a) IS LIVE ON THE SHIPPED DEFAULT, which this sheet did not say and should have.*
@@ -806,6 +806,38 @@ used as an ORACLE because the challenge seed travels on the wire in `msg.PorSeed
 already takes `from` and `Node.handle` already has it in scope. Sending the challenge BASE and having
 the holder derive `porProverSeed(base, self)` leaves nothing to proxy. Structural, no latency gate,
 and precedented in this tree.
+
+*BUILT 2026-09-19, AND THE PRECEDENT THIS SHEET CITED WOULD HAVE BUILT THE WRONG THING.* The
+paragraph above — and the pin's own fix-case — pointed at `answerBondChallenge` already taking
+`from`. `from` is the FORWARDER. Binding the challenge to it would have authorised exactly the
+attack, and the guidance was followed only as far as checking it. The identity that must reach the
+prover is SELF. What shipped: the auditor sends the unbound base beside the derived seed, and the
+prover folds in its OWN id and compares. It is a CHECK rather than a re-derivation, which is what
+lets one new field serve both callers — the audit sweep binds under `porProverSeed`, the repair
+claim's retrievability leg under `repairproof.RepairChallengeSeed`, and the prover tests its own
+identity under both domains rather than being told which caller sent the frame.
+
+| | before | after |
+|---|---|---|
+| the data-less proxy's grade | `Passed:1 Failed:0` | `Passed:0 Failed:1` |
+| what it earned | **1000 credit minted** | slashed; the assertion is `minted <= 0` |
+| the holder's own record | — | `ProxiedChallengesRefused=1`, so the refusal is attributed rather than inferred |
+
+*IT IS ADDITIVE ON THE WIRE, AND THE LIMIT IS STATED.* `PorBase` is optional, on a fresh field
+number — 31, not the retired 11, because reusing a retired slot lets an old peer's value decode as
+the new one. The derived seed is unchanged, so an old prover behaves and grades exactly as before,
+and a new prover facing an old auditor has no base to check and answers verbatim. All four
+combinations are driven. The defeat therefore closes for every pair whose PROVER is current, which
+is as far as a change on this side can reach: it cannot fix a peer's software.
+
+*THE OVER-REJECTION ARM IS THE ONE THAT MATTERED, and catching it needed the fixture fixed first.*
+Refusing every challenge would satisfy the pin's fix-case perfectly while failing every honest audit
+on the network. The control that catches it is inside the converted gate — A answers its OWN
+identity-bound challenge, genuinely computing, and B still fails — and it could not have caught
+anything before: the old relay arm used a FABRICATED holder id unrelated to the node's own identity,
+so it would have passed however the prover behaved. Three ablations are driven, and the sender's
+half has its own arm because dropping `PorBase` at the auditor leaves every prover-side test green
+while the defence does nothing.
 
 *THE CARE-LINK BREAK NEEDS A SCHEME, AND THE SCHEME NEEDS A MEASUREMENT FIRST.* All three audit legs
 are satisfiable by a party holding the layout key and no bytes: the inclusion proof is derivable from
@@ -1798,8 +1830,10 @@ missing third gate in a set of two and an economy-off node has no honest claim t
 The per-sender bound stays open and the change says so; the pin over it is still green at the same
 number. Detail under item 10.
 
-**2 — The prover identity reaches the answering side.** Send the challenge BASE, derive
-`porProverSeed(base, self)` at the holder, and an honest holder can no longer be used as an oracle.
+**2 — ~~The prover identity reaches the answering side.~~ DONE 2026-09-19.** Send the challenge BASE,
+derive `porProverSeed(base, self)` at the holder, and an honest holder can no longer be used as an
+oracle. Driven: the proxy went from `Passed:1` and 1000 credit minted to `Passed:0 Failed:1` and
+slashed, with the refusal attributed on the holder's own counter. Item 10 is now FOUR of five.
 Second because it is a real fix with a named shape, an in-tree precedent (`answerBondChallenge`
 already takes `from`), and it takes item 10 to four of five. It touches an audit wire field, so it
 carries a mixed-version story and a control that honest holders are not over-rejected — over-rejection
