@@ -672,9 +672,9 @@ failures here, and an undriven half of the accountability claim is exactly that.
 is that the product drops a queued slash — this run cannot see that far, and the verdict says so in
 those words rather than implying a defect it did not measure.
 
-**10. A prover without the bytes fails the audit and is paid nothing.** ⚠ *both work bounds and one
-of the three defeats are CLOSED, and the claim path's shipped-default exposure with them; the two
-defeats that remain are BEING BUILT, not disclosed*
+**10. A prover without the bytes fails the audit and is paid nothing.** ⚠ *all three defeats and both
+work bounds are CLOSED at unit and e2e, and the claim path's shipped-default exposure with them; what
+remains is one COUNT bound, named, and a cloud run this has not been through*
 Three defeats: the
 care link printed on every publish is the storage-proof verification key; a data-less
 identity passes by relaying the challenge to a real holder; the inclusion proof is checked
@@ -696,7 +696,7 @@ that reddened it, in the same change. No test was deleted.
 | the challenge frame is not rate-limited | `TestPorChallengeRateLimitPerChallenger`, `TestRefusedPorChallengeSendsNoReply` | **CLOSED** |
 | the unsigned repair claim is judged by a node that cannot pay (arm a, the shipped-default half) | `TestRepairClaimBuysNoWorkWithoutTheEconomy` | **CLOSED** — 4,719,978 B → 0 |
 | the unsigned repair claim is unbounded PER SENDER (arm a, the count) | `TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT` | open — remedy REFUTED |
-| the care link IS the storage-proof verification key | `TestCareLinkHolderForgesWithZeroBytes_PINNED_DEFECT` | open — needs a ruling |
+| the care link IS the storage-proof verification key | `TestCareLinkHolderWithZeroBytesFailsTheAudit` | **CLOSED** — the key left the scheme |
 | a data-less identity outsources the challenge to a real holder | `TestChallengeOutsourcingIsRefusedByTheProver` | **CLOSED** — Passed 1 → 0, mint 1000 → slashed |
 
 *THE ROOT WAS NEVER MISSING, ONLY UNUSED — which is the first thing build-immutable #6 says to
@@ -740,19 +740,20 @@ gate that REPLIED would hand any peer a way to SLASH AN HONEST HOLDER by first s
 `auditLeaf` counts an answer only when `err == nil`, so the refusal emits nothing and a dropped
 challenge is not a failed audit — it is no audit. Both ablations are driven red, including that one.
 
-*WHAT REMAINS, AND THE RULING ON IT (2026-09-19): ALL THREE ARE BUILT, NOT DISCLOSED.* The prior
-reading — that this item reaches the date at three of five with the other two disclosed — was
+*THE RULING (2026-09-19): ALL THREE WERE BUILT, NOT DISCLOSED — AND ALL THREE ARE NOW CLOSED.* The
+prior reading — that this item reaches the date at three of five with the other two disclosed — was
 optimising for what fits in the window rather than for what a release candidate is. The
 done-condition is "a prover without the bytes fails the audit and is paid nothing", and an audit a
-caretaker can forge does not survive an outside adversary whatever the sheet says about it. The
-three are sequenced below by how directly each converts into evidence.
+caretaker can forge does not survive an outside adversary whatever the sheet says about it. What
+stays open is the per-sender COUNT bound on the repair claim, which is a work bound and not one of
+the three defeats; it is named in its own paragraph below rather than folded into this one.
 
 *THE MEASUREMENTS, TAKEN 2026-09-19 rather than recalled.* Each pin was driven and its own numbers
 read off the run:
 
 | defect | measured |
 |---|---|
-| care-link forgery (`TestCareLinkHolderForgesWithZeroBytes_PINNED_DEFECT`) | 0 bytes read, 67 field mults against the honest prover's 8,643 — **129× less work, 17× faster** — graded `Passed:1`, mints 1000 credit. The wrong-key control fails, so the capability is load-bearing |
+| care-link forgery (the pin, then `TestCareLinkHolderWithZeroBytesFailsTheAudit`) | 0 bytes read, 67 field mults against the honest prover's 8,643 — **129× less work, 17× faster** — graded `Passed:1`, mints 1000 credit — **CLOSED 2026-09-19**, now `Passed:0 Failed:1` and slashed |
 | challenge proxy (`TestChallengeOutsourcingIsRefusedByTheProver`, then the pin) | a data-less identity has a real holder answer its own identity-bound challenge; graded `Passed:1`, mints 1000 credit — **CLOSED 2026-09-19**, now `Passed:0 Failed:1` and the proxy is slashed |
 | unbounded claim, arm (a) (`TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT`) | a **110-byte** claim costs the judge **4,719,978 B** over 10 distinct chunks — **~42,900×** — and the sender pays nothing; 8 claims cost 8× that, linearly |
 
@@ -839,25 +840,126 @@ so it would have passed however the prover behaved. Three ablations are driven, 
 half has its own arm because dropping `PorBase` at the auditor leaves every prover-side test green
 while the defence does nothing.
 
-*THE CARE-LINK BREAK NEEDS A SCHEME, AND THE SCHEME NEEDS A MEASUREMENT FIRST.* All three audit legs
-are satisfiable by a party holding the layout key and no bytes: the inclusion proof is derivable from
-the layout it is entitled to read, the block count is public, and the PoR equation is solvable with
-the key. There is no fix inside the current primitive, because the party that must VERIFY is the
-party that could FORGE — Shacham–Waters private verification assumes the key is unknown to the
-prover, and here it is a published capability. So the remedy is a scheme change, and build-immutable
-#8 decides how it starts: measure the cost to PRODUCE the artifact on the floor box before committing
-to the mechanism, since a scheme whose output is tiny but whose production blows the floor is
-disqualified however elegant. The trade to measure is real in both directions — a publicly-verifiable
-pairing scheme buys O(1) proofs and pays in tagging; hash-only Merkle spot-checking is floor-box-cheap
-and pays in proof size, and on the measured 262,160 B shard a 67-sample challenge over 4 KiB blocks is
-the whole shard.
+*THE CARE-LINK BREAK IS CLOSED, 2026-09-19, BY REMOVING THE KEY RATHER THAN MOVING IT.* All three
+audit legs were satisfiable by a party holding the layout key and no bytes: the inclusion proof is
+derivable from the layout it is entitled to read, the block count is public, and the PoR equation is
+solvable with the key. There was no fix inside the primitive, because the party that had to VERIFY
+was the party that could FORGE — Shacham-Waters private verification assumes the key is unknown to
+the prover, and here it was a published capability. What shipped is option B: the auditor names
+sampled LEAVES, the prover returns their bytes with Merkle paths, and both are checked against a
+per-shard root the publisher commits in the sealed layout. There is no key in the scheme, so there
+is no party holding one.
 
-*THE RESEARCH CERTIFICATION THE PINS CITE NO LONGER EXISTS.*
-`TestCareLinkHolderForgesWithZeroBytes_PINNED_DEFECT`'s fix-case points at a
-`…REMEDIATION-OPTIONS…RESEARCH-CERTIFICATION-2026-09-12.md` carrying V1/V2/V3 and a pricing addendum.
-It went with the written record deleted on 2026-09-13. "Confirm WHICH option shipped" therefore
-cannot be answered by reading it, and the option space has to be re-derived from the mechanism. The
-pin text should say so when it is retired; until then, this paragraph is the correction.
+| | before | after |
+|---|---|---|
+| the zero-byte care-link holder's grade | `Passed:1 Failed:0` | `Passed:0 Failed:1` |
+| what it earned | **1000 credit minted** | slashed; the assertion is `minted <= 0` |
+| what the forger is handed | the layout key | the layout key, the object root, the COMMITTED shard root, the chunk id, its honest inclusion proof and the exact geometry — a strictly stronger adversary |
+| what it must produce | a solvable equation | a second preimage of a Merkle leaf |
+
+*THIS PIN'S FIX-CASE WAS RIGHT, AND THE ONE NEXT DOOR WAS NOT — BOTH WERE CHECKED RATHER THAN
+FOLLOWED.* The pin predicted two shapes — "the PoR key no longer rides the care link, or the grade no longer accepts a
+proof the key holder can solve for" — and the first is what landed. It also warned that the pin was
+COUPLED to leg 1 and gave the disambiguation; that coupling was already resolved when the root
+binding landed and the forger was moved onto the honest inclusion proof, so this RED is the key
+distribution and nothing else. That is the opposite outcome to D2's pin the same day, whose fix-case
+named `from` where the answer was `self` and would have authorised the attack it pinned; the
+practice that caught one and confirmed the other is the same practice. Its instruction to re-read a
+research certification could not be followed: that document went with the written record deleted on 2026-09-13, so the option space was
+re-derived from the mechanism instead, in `core/por/production_cost_floor_test.go`.
+
+*THE GEOMETRY IS MEASURED, NOT PICKED, and it is the second half of what #8 asks.* The production
+measurement chose the SCHEME; it left the scheme's two parameters open, and those are not free in
+the way a tuning knob is free — the leaf size moves production cost and audit wire cost in OPPOSITE
+directions. `core/por/spotcheck_geometry_test.go` sweeps it and two assertions hold the shipped
+constants to the two properties that justified the choice.
+
+| leaf | leaves/shard | path | bytes per sample | produce one commitment |
+|---|---|---|---|---|
+| 64 B | 4,097 | 13 | 480 B | 1.52 ms |
+| **128 B (shipped)** | **2,049** | **12** | **512 B** | **653 µs** |
+| 512 B | 513 | 10 | 832 B | 328 µs |
+| 3,968 B | 67 | 7 | 4,192 B | 149 µs |
+
+At the shipped leaf and 8 samples an audit moves **4,096 B per shard against the aggregate scheme's
+4,128 B** — so the wire cost did not move — and the commitment costs **653 µs against 6.2 ms to
+produce**, a 9.5x saving on the floor box. Detection: a holder that dropped the shard is caught with
+certainty, half of it 99.61% of the time, a quarter 89.99%, a tenth 56.95%.
+
+*THE SHEET'S OWN OBJECTION IS RETIRED, AND IT WAS ABOUT A NUMBER RATHER THAN A SCHEME.* "On the
+measured 262,160 B shard a 67-sample challenge over 4 KiB blocks is the whole shard" was true and is
+no longer the geometry: 67 was `porSampleCount` carried over from an aggregate scheme, where a large
+sample was free because the response was size-independent. A spot check picks its sample count from
+the detection it wants, and its leaf size from where the Merkle path stops dominating.
+
+*WHAT IT COSTS, STATED RATHER THAN BURIED.* The audit's response is no longer independent of shard
+size. It is bytes now, not arithmetic, and a much larger sample count would not stay under the
+aggregate it replaced. Three costs moved the other way and are worth the same sentence.
+
+| | aggregate scheme | hash-only spot check |
+|---|---|---|
+| producing one shard's commitment | 6.2 ms | **653 µs** |
+| answering one challenge | 8.3 ms | **1.44 ms** |
+| audit response per shard | 4,128 B | **4,096 B** |
+| per-shard state on every host | ~2,144 B of authenticators | **0 B** |
+| per-shard state in the object | 0 B | 32 B, in the sealed layout, once rather than per replica |
+
+The host-side removal is the same one that shrank a full storage proof from ~5.4 KB to under 700 B.
+The prover figure is measured with a PREPARED tree and the measurement asserts that it is the path
+taken: drawing each sample's Merkle proof standalone costs 6.3 ms, because `manifest.Prove`
+recomputes subtree hashes over half the leaves on every call. It matters beyond tidiness — the
+per-challenger DoS budget in `bondaudit.go` was sized from the 8.3 ms figure, and at 1.44 ms the same
+128-proof budget concedes ~0.6% of a 30 s window instead of ~3.5%. The number is left where it is
+rather than raised, in the safe direction.
+
+*A CHEATER MUST KEEP THE HASHES, AND THAT IS A FLOOR ON WHAT CHEATING SAVES.* The holder that simply
+loses a leaf fails every challenge, because the sibling hash on every other leaf's path is computed
+over the part it lost. The holder that PAYS keeps the 32-byte hash of each leaf it drops, so it can
+still answer for everything it kept. At a 128-byte leaf that costs it a quarter of the shard: a
+cheater that dropped every byte and kept the list still stores 25% of what it claims, and is caught
+on the first sample with certainty. Both arms are driven deterministically in the gate — a dropped
+leaf that IS sampled fails every round, one that is NOT sampled passes every round — rather than
+waiting on a 1-in-2,049 draw.
+
+*AND ONE THING IT DELIBERATELY DOES NOT CLOSE.* A shard is public: any node may fetch it and then
+answer an audit over it. Retrievability proves possession NOW, never exclusive provision, and that
+residual is unchanged — it is why a passing audit mints spendable credit and no consensus standing
+at all. The identity binding that makes one prover's answer useless to another lives in the SEED and
+is untouched by the scheme change.
+
+*WHAT TIER THIS IS PROVEN AT, SAID PLAINLY RATHER THAN LEFT TO BE ASSUMED.* **UNIT AND E2E.** The
+care-link close is driven at unit by the composed three-leg grade over the product's own derivations,
+with a no-over-rejection control and a detection control at both ends. E2E is the tier that matters
+here, because the scheme changes the publisher, the wire, the on-disk proof sidecar, repair and the
+bounty judge, and a unit suite sees none of those seams: the full `./e2e` package passes uncached in
+455 s, with `TestRepairBountyPaysOnTheWire` (78 s) driving publish → placement → proof sidecar →
+repair claim → identity-bound retrievability challenge → bounty over real sockets, and
+`TestPublishCommitFetchOverTCP`, `TestSwarmHoldersReportsPerColumnPlacement` and
+`TestUIFetchMakesTheConsumerAProvider` confirmed individually. `-short` was NOT used; it skips 39 of
+the 41.
+
+*AND THE TWO TIERS THAT ARE NOT DRIVEN, NAMED RATHER THAN IMPLIED.* E2E UNDER NETWORK IMPAIRMENT and
+FIELD. Build-immutable #1 wants a skipped tier stated with a reason: the reason is sequencing, and
+the next cloud run at HEAD is what converts this row from a local close into a held one. Nothing in
+the local evidence speaks to how a sampled response behaves on a lossy path, which is the one
+question the new shape raises that the old one did not — the aggregate response was a fixed 4,128 B
+and this one is 8 openings the auditor must receive all of.
+
+*ONE AMPLIFICATION THE NEW SHAPE INTRODUCES, FOUND AND CLOSED INSIDE THE CHANGE.* The aggregate
+response was a fixed size whatever the challenge asked for; a sampled one is not. `PorCount` is
+attacker-controlled, so an unclamped prover asked for every leaf would answer a 110-byte frame with
+a ~1 MB reply and one Merkle proof per leaf. The prover now answers at most the protocol's own
+sample count regardless of what the frame says — the honest auditor sends exactly that many, so
+nothing legitimate narrows — and the LEAF WIDTH is read from the proof that arrived with the shard
+rather than from the challenge, for the same reason: a challenger that could name a one-byte leaf
+could make a small frame cost a tree over a quarter of a million leaves.
+
+*AN OBJECT WITH NO COMMITMENT IS NOT AUDITABLE, AND THE SWEEP SAYS SO.* The auditor needs a number of
+its own; taking the shard root from a response would be the tautology the root binding closed next
+door. An object whose layout carries no shard roots is therefore counted as UNAUDITED and graded
+neither way, in a field of its own beside the verdicts rather than folded into them — nobody lied and
+nobody was checked, and a report that showed either as the other would be the dashboard that flatters
+(S5). The repair-bounty judge runs the same rule and DENIES rather than paying an unchecked claim.
 
 **11. Publishing is unlinkable and no surveillance artifact exists.** ❓ *NO VERDICT RECORDED — and one
 clause names a live defect*
