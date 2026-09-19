@@ -187,15 +187,28 @@ var rtSFO1Sizes = []struct {
 	framed           int
 	wasConv, wasPriv int
 }{
-	{1, 353, 345, 341},
-	{100, 354, 347, 343},
-	{1024, 355, 349, 345},
-	{65536, 357, 353, 349},
-	{262136, 357, 353, 349},  // the last single-frame object at the 256 KiB default
-	{262137, 425, 421, 383},  // the first two-frame object: the delta used to widen per data chunk
-	{600000, 493, 489, 417},  //
-	{2097152, 902, 898, 621}, // 9 chunks: 277 bytes of separation, before. The pad costs 281.
+	{1, 596, 345, 341},
+	{100, 597, 347, 343},
+	{1024, 598, 349, 345},
+	{65536, 600, 353, 349},
+	{262136, 600, 353, 349},   // the last single-frame object at the 256 KiB default
+	{262137, 702, 421, 383},   // the first two-frame object: the delta used to widen per data chunk
+	{600000, 804, 489, 417},   //
+	{2097152, 1417, 898, 621}, // 9 chunks: 277 bytes of separation, before. The pad costs 281.
 }
+
+// ⚠ `framed` MOVED WHEN THE SPOT-CHECK COMMITMENT LANDED, and the arithmetic is here
+// so a reader can check it rather than take it. Layout gained ShardRoots — one
+// 32-byte root per shard, in the OUTER layer where a caretaker reads it — plus the
+// leaf width they were built at. At L=1 that is 7 shards (1 data + 6 parity) x 34 B
+// for bstr(32), plus an array header, two map keys and a two-byte width: 353 -> 596,
+// a delta of 243. At L=2097152 it is 15 shards: 902 -> 1417, a delta of 515.
+//
+// IT IS NOT THE ORACLE RETURNING, and the two arms below are what say so. The new
+// field's length is a function of the SHARD COUNT alone, which Layout already
+// published by construction — one chunk ID per shard, outside the inner box — so the
+// modes stay equal at every size measured here and across the dense sweep. What
+// changed is a constant both modes pay.
 
 // rtSFO1ModeHidden is the gate predicate. It returns "" while the two modes are
 // INDISTINGUISHABLE by manifest frame length — the property the fix establishes — and a

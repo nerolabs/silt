@@ -13,8 +13,8 @@ import (
 // hand-rolled (toWire/fromWire map field-by-field), so a new field is
 // SILENTLY DROPPED over real TCP until it is added there — a unit test on
 // the port struct alone would never notice. This round-trips a message
-// carrying the full PoR surface (challenge + proof + per-shard tags on the
-// StorageProof) through encode → CBOR → decode and asserts every field
+// carrying the full PoR surface (challenge + inclusion proof + the opened
+// leaves and their paths) through encode → CBOR → decode and asserts every field
 // arrives intact, so an audit that depends on them can't fail invisibly in
 // the field.
 func TestPorFieldsSurviveWire(t *testing.T) {
@@ -24,24 +24,24 @@ func TestPorFieldsSurviveWire(t *testing.T) {
 		RID:      7,
 		ChunkID:  ports.ChunkID{0xab, 0xcd},
 		PorSeed:  bytes.Repeat([]byte{0x5a}, 32),
-		PorCount: 128,
+		PorCount: 8,
 	}
-	// A reply (prover → auditor): Merkle proof carrying PoR tags, plus the
-	// aggregated PoR response.
+	// A reply (prover → auditor): the shard's inclusion proof with the leaf
+	// width it was committed at, plus the opened leaves and their paths.
 	reply := ports.Message{
 		Kind:  ports.MsgChallengeReply,
 		RID:   7,
 		Found: true,
 		Proof: &ports.StorageProof{
-			Root:    ports.Hash{0x11},
-			Index:   2,
-			Total:   6,
-			Path:    []ports.Hash{{0x22}, {0x33}},
-			Column:  3,
-			PorTags: [][]byte{bytes.Repeat([]byte{1}, 32), bytes.Repeat([]byte{2}, 32)},
+			Root:      ports.Hash{0x11},
+			Index:     2,
+			Total:     6,
+			Path:      []ports.Hash{{0x22}, {0x33}},
+			Column:    3,
+			LeafBytes: 128,
 		},
-		PorMu:     [][]byte{bytes.Repeat([]byte{3}, 32), bytes.Repeat([]byte{4}, 32)},
-		PorSigma:  bytes.Repeat([]byte{5}, 32),
+		PorOpen:   [][]byte{bytes.Repeat([]byte{3}, 128), bytes.Repeat([]byte{4}, 128)},
+		PorPaths:  [][]byte{bytes.Repeat([]byte{5}, 64), bytes.Repeat([]byte{6}, 64)},
 		PorBlocks: 2,
 	}
 
@@ -65,18 +65,18 @@ func TestPorFieldsSurviveWire(t *testing.T) {
 		if got.PorBlocks != want.PorBlocks {
 			t.Errorf("PorBlocks lost: got %d want %d", got.PorBlocks, want.PorBlocks)
 		}
-		if !bytes.Equal(got.PorSigma, want.PorSigma) {
-			t.Errorf("PorSigma lost: got %x want %x", got.PorSigma, want.PorSigma)
+		if !equalChunks(got.PorOpen, want.PorOpen) {
+			t.Errorf("PorOpen lost: got %v want %v", got.PorOpen, want.PorOpen)
 		}
-		if !equalChunks(got.PorMu, want.PorMu) {
-			t.Errorf("PorMu lost: got %v want %v", got.PorMu, want.PorMu)
+		if !equalChunks(got.PorPaths, want.PorPaths) {
+			t.Errorf("PorPaths lost: got %v want %v", got.PorPaths, want.PorPaths)
 		}
 		if want.Proof != nil {
 			if got.Proof == nil {
 				t.Fatal("Proof dropped entirely over the wire")
 			}
-			if !equalChunks(got.Proof.PorTags, want.Proof.PorTags) {
-				t.Errorf("Proof.PorTags lost: got %v want %v", got.Proof.PorTags, want.Proof.PorTags)
+			if got.Proof.LeafBytes != want.Proof.LeafBytes {
+				t.Errorf("Proof.LeafBytes lost: got %d want %d", got.Proof.LeafBytes, want.Proof.LeafBytes)
 			}
 		}
 	}

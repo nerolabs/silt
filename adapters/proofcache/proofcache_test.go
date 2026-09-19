@@ -17,16 +17,15 @@ func TestConformance(t *testing.T) {
 }
 
 // mkProof builds a proof of a known resident size: 2 Path hashes (64 B) + 2
-// 32-byte PorTags (64 B) = 128 B of variable payload, plus proofcache's fixed
+// two 32-byte Path hashes = 64 B of variable payload, plus proofcache's fixed
 // per-entry overhead.
 func mkProof(b byte) (ports.ChunkID, ports.StorageProof) {
 	var id, root, p0, p1 ports.Hash
 	id[0], id[1] = b, b>>4 // spread ids so none collide
 	root[0] = b + 1
-	tag0, tag1 := make([]byte, 32), make([]byte, 32)
 	return id, ports.StorageProof{
 		Root: root, Index: int(b), Total: 8, Column: int(b) % 4,
-		Path: []ports.Hash{p0, p1}, PorTags: [][]byte{tag0, tag1},
+		Path: []ports.Hash{p0, p1},
 	}
 }
 
@@ -69,10 +68,9 @@ func mkProofN(i int) (ports.ChunkID, ports.StorageProof) {
 	var id, root, p0, p1 ports.Hash
 	id[0], id[1], id[2], id[3] = byte(i), byte(i>>8), byte(i>>16), byte(i>>24)
 	root[0] = byte(i)
-	tag0, tag1 := make([]byte, 32), make([]byte, 32)
 	return id, ports.StorageProof{
 		Root: root, Index: i, Total: 8, Column: i % 4,
-		Path: []ports.Hash{p0, p1}, PorTags: [][]byte{tag0, tag1},
+		Path: []ports.Hash{p0, p1},
 	}
 }
 

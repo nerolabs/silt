@@ -85,7 +85,7 @@ func buildOrphanWorld(t *testing.T) (store *memstore.Store, proofs *memproofs.St
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	nodes[0].Distribute(entry, m, false, DerivePorKey(h.LayoutKey()), func(int, error) {})
+	nodes[0].Distribute(entry, m, false, func(int, error) {})
 	sched.Run()
 
 	// Kill the SMALLEST holder carrying >RepairSlack columns: missing exceeds
@@ -227,7 +227,7 @@ func TestCareBootReconcilesOrphanedWorkingSet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load B: %v", err)
 	}
-	nodes[0].Distribute(entry, m, false, DerivePorKey(h.LayoutKey()), func(int, error) {})
+	nodes[0].Distribute(entry, m, false, func(int, error) {})
 	sched.Run()
 
 	// One orphan becomes a LEGITIMATE holding: register a proof for it in the

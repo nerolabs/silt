@@ -59,7 +59,7 @@ func TestRepairStripesTrampolinesHealthyStripeWalk(t *testing.T) {
 	}
 
 	done := false
-	n.repairStripes(m, p, refs, reachable, map[ports.ChunkID]map[uint64]bool{}, 0, nil, func() { done = true })
+	n.repairStripes(m, p, refs, reachable, map[ports.ChunkID]map[uint64]bool{}, 0, func() { done = true })
 
 	if done {
 		t.Fatal("repairStripes walked every healthy stripe INLINE on the caller's stack — " +

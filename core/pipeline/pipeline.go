@@ -22,6 +22,7 @@ import (
 	"github.com/nerolabs/silt/core/erasure"
 	"github.com/nerolabs/silt/core/link"
 	"github.com/nerolabs/silt/core/manifest"
+	"github.com/nerolabs/silt/core/por"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -185,11 +186,22 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 			return link.Handle{}, ports.Entry{}, fmt.Errorf("add: storing chunk %d: %w", i, err)
 		}
 		m.Chunks = append(m.Chunks, c.ID[:])
+		// Commit the shard's spot-check tree beside its ID. The root is a
+		// function of the ciphertext alone, so it is computed here, where the
+		// ciphertext exists, and never recomputed from a shard a peer supplied.
+		root := por.ShardRoot(ct, por.SpotLeafBytes)
+		m.ShardRoots = append(m.ShardRoots, root[:])
 		ctChunks = append(ctChunks, ct)
 	}
 
 	// Erasure-code the ciphertext stream: each stripe of k chunks gains
 	// n-k parity shards, stored like any other chunk.
+	//
+	// Parity roots accumulate separately and are appended after the loop,
+	// because ShardRoots is aligned with Leaves() — every data shard, then
+	// every parity shard — and the parity IDs only reach that order at the
+	// end.
+	var parityRoots [][]byte
 	p := opts.Erasure
 	for j := 0; j < p.Stripes(len(ctChunks)); j++ {
 		lo := j * p.K
@@ -204,7 +216,17 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 				return link.Handle{}, ports.Entry{}, fmt.Errorf("add: storing parity %d of stripe %d: %w", q, j, err)
 			}
 			m.Parity = append(m.Parity, c.ID[:])
+			proot := por.ShardRoot(shard, por.SpotLeafBytes)
+			parityRoots = append(parityRoots, proot[:])
 		}
+	}
+
+	m.ShardRoots = append(m.ShardRoots, parityRoots...)
+	if len(m.ShardRoots) > 0 {
+		// A zero-byte object has no shards, so it has nothing to commit and no
+		// geometry to commit it at. The manifest refuses a declared leaf width with
+		// no roots beneath it rather than carrying a number that describes nothing.
+		m.LeafBytes = por.SpotLeafBytes
 	}
 
 	root := m.Root()

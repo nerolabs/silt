@@ -407,15 +407,21 @@ func (n *Node) allowRoundCert(from ports.NodeID) bool {
 }
 
 // porChallengeBurst caps the PoR proofs this node computes for ONE challenger per
-// ChainSyncInterval window. Answering a storage challenge reads the whole shard
-// back and aggregates it — measured at 8.3 ms and 8,643 field multiplications over
-// a 256 KiB shard — on the node's single serialized loop (B2), and MsgChallenge
-// carries no signature and no standing requirement, so an unbounded challenger is a
-// remote CPU-and-disk DoS against every other thing that loop owes.
+// ChainSyncInterval window. Answering a storage challenge reads the whole shard back
+// and hashes it into a tree — measured at 1.44 ms over a 256 KiB shard
+// (core/por TestProverAnswerCostIsReported) — on the node's single serialized loop
+// (B2), and MsgChallenge carries no signature and no standing requirement, so an
+// unbounded challenger is a remote CPU-and-disk DoS against every other thing that
+// loop owes. The DISK half is unchanged by any scheme: a prover that did not read
+// the shard would not be proving it holds it.
 //
 // DERIVED FROM THE LOOP SHARE IT CONCEDES, not from a round number: 128 proofs at
-// the measured 8.3 ms is ~1.06 s of a 30 s window, so one challenger may take about
-// 3.5% of the loop and no more. The honest auditor clears it with room because its
+// the 8.3 ms the retired aggregate scheme cost was ~1.06 s of a 30 s window, or
+// about 3.5% of the loop per challenger. The hash-only spot check answers the same
+// challenge in 1.44 ms, so the SAME budget now concedes ~0.18 s, about 0.6%. The
+// number is left where it is rather than raised: it was sized against a cost that
+// has only fallen, so it is now conservative in the safe direction, and moving it
+// would spend a margin nothing is asking for. The honest auditor clears it with room because its
 // sweep is SERIALIZED — auditLeaf issues the next challenge from inside the previous
 // one's reply callback, and nextLeaf waits on the grade — so reaching 128 in a
 // window needs a round trip under 234 ms sustained, which is a pipelined requester

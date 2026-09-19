@@ -64,7 +64,7 @@ func TestTailShrinkLiarCaughtOnLastLeaf(t *testing.T) {
 	if len(m.Chunks) != 1 {
 		t.Fatalf("setup: expected a single-chunk file, got %d chunks", len(m.Chunks))
 	}
-	publisher.Distribute(entry, m, false, node.DerivePorKey(h.LayoutKey()), func(int, error) {})
+	publisher.Distribute(entry, m, false, func(int, error) {})
 	cl.Sched.Run()
 
 	var report node.AuditReport

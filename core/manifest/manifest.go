@@ -77,6 +77,30 @@ type Manifest struct {
 	// with implicit zero shards during encoding (see core/erasure),
 	// so every stripe has exactly N-K parity entries.
 	Parity [][]byte `cbor:"11,keyasint,omitempty"`
+	// ShardRoots commits every shard's spot-check tree, aligned one-for-one
+	// with Leaves(): data chunks in file order, then parity in stripe
+	// order. Each entry is the Merkle root over that shard's ciphertext
+	// leaves (core/por ShardRoot).
+	//
+	// IT IS THE AUDITOR'S ONLY INDEPENDENT NUMBER, which is why it lives
+	// here rather than travelling with the shard. A chunk ID commits the
+	// shard's bytes as a whole and says nothing about any part of them, so
+	// an auditor holding only the ID cannot check a sampled leaf against
+	// anything; one that took the root from the prover would be checking
+	// the prover's arithmetic against the prover's own tree. Committing it
+	// in the sealed layout puts it where a care-link holder reads it and a
+	// storage node never writes it.
+	//
+	// It does not change the file's identity: Root() is the Merkle root
+	// over Leaves(), which this field is not part of, so the same content
+	// published before and after this field exists has the same root and
+	// the same shards.
+	ShardRoots [][]byte `cbor:"12,keyasint,omitempty"`
+	// LeafBytes is the leaf width those roots were built at. It is
+	// committed per object rather than read from a build's constant so
+	// that retuning the geometry re-shapes NEW objects and leaves
+	// published ones verifiable by any later build.
+	LeafBytes int `cbor:"13,keyasint,omitempty"`
 }
 
 var (
@@ -196,6 +220,31 @@ func (m *Manifest) Validate() error {
 		if len(id) != len(ports.Hash{}) {
 			return fmt.Errorf("manifest: parity %d has ID length %d", i, len(id))
 		}
+	}
+	return m.validateShardRoots()
+}
+
+// validateShardRoots enforces the one invariant the audit leans on: a shard-root
+// list, when present, is aligned with Leaves() and complete. A partial list would
+// silently leave some shards unauditable, which is the failure shape S3 forbids —
+// the audit would report a pass count over a subset and nothing would say so.
+func (m *Manifest) validateShardRoots() error {
+	if len(m.ShardRoots) == 0 {
+		if m.LeafBytes != 0 {
+			return fmt.Errorf("manifest: leaf width %d declared with no shard roots", m.LeafBytes)
+		}
+		return nil
+	}
+	if want := len(m.Chunks) + len(m.Parity); len(m.ShardRoots) != want {
+		return fmt.Errorf("manifest: %d shard roots for %d shards", len(m.ShardRoots), want)
+	}
+	for i, r := range m.ShardRoots {
+		if len(r) != len(ports.Hash{}) {
+			return fmt.Errorf("manifest: shard root %d has length %d", i, len(r))
+		}
+	}
+	if m.LeafBytes <= 0 || m.LeafBytes > MaxChunkSize {
+		return fmt.Errorf("manifest: shard roots committed at leaf width %d", m.LeafBytes)
 	}
 	return nil
 }

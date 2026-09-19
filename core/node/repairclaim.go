@@ -39,7 +39,7 @@
 // a claim at all.
 //
 // - RETRIEVABILITY (where independent verifiers add value): challenge the named
-// holder with an identity-bound Shacham–Waters PoR (repairproof.RepairChallengeSeed
+// holder with an identity-bound spot check (repairproof.RepairChallengeSeed
 // closes the relay/double-count), so a data-less relay can't collect. A
 // retrievability shortfall DENIES the bounty but does not slash — it may be
 // transient.
@@ -63,7 +63,6 @@ import (
 	"github.com/nerolabs/silt/core/link"
 	"github.com/nerolabs/silt/core/manifest"
 	"github.com/nerolabs/silt/core/pipeline"
-	"github.com/nerolabs/silt/core/por"
 	"github.com/nerolabs/silt/core/repairproof"
 	"github.com/nerolabs/silt/ports"
 )
@@ -462,11 +461,11 @@ func (n *Node) fetchSurvivors(root ports.Hash, k int, refs []shardRef, done func
 	})
 }
 
-// challengeHolderRetrievability issues one identity-bound SW PoR challenge to the
-// claim's holder for the repaired shard and reports whether it verifies: the
-// holder must present a Merkle proof binding the shard to the root, the committed
-// full block count, and an aggregated response that satisfies the equation under a
-// seed bound to the holder's own identity (so a relayed proof fails).
+// challengeHolderRetrievability issues one identity-bound spot check to the claim's
+// holder for the repaired shard and reports whether it verifies: the holder must
+// present a Merkle proof binding the shard to the object's root, the committed full
+// leaf count, and the opened bytes of every leaf a seed bound to the holder's own
+// identity samples (so a relayed answer opened the wrong leaves).
 //
 // "BINDING THE SHARD TO THE ROOT" IS NOW TRUE. The root is m.Root() — recomputed by
 // this judge from the layout it loaded under its own care handle — and never
@@ -478,8 +477,16 @@ func (n *Node) fetchSurvivors(root ports.Hash, k int, refs []shardRef, done func
 // tautology: a holder that kept a shard id could name a one-leaf tree over it and
 // satisfy the inclusion check while holding nothing of this object.
 func (n *Node) challengeHolderRetrievability(m *manifest.Layout, ch link.CareHandle, claim repairproof.RepairClaim, done func(bool)) {
-	porKey := DerivePorKey(ch.LayoutKey)
-	want := por.DefaultParams.Blocks(int(m.ChunkSize) + ctOverhead)
+	// THE COMMITMENT OR NOTHING, the same rule the audit sweep runs: with no
+	// committed shard root there is no number of the judge's own to check an
+	// opened leaf against, so the leg denies rather than passing an unchecked
+	// claim. Denying a bounty is recoverable; paying an unproven one is not.
+	shardRoot, leafBytes, ok := shardCommitment(m, claim.ShardID)
+	if !ok {
+		done(false)
+		return
+	}
+	want := shardLeaves(m.ChunkSize, leafBytes)
 	n.rid++ // fresh deterministic base nonce, as the audit path draws one
 	base := porChallengeSeed(n.rid)
 	seed := repairproof.RepairChallengeSeed(base, claim.Holder)
@@ -494,10 +501,31 @@ func (n *Node) challengeHolderRetrievability(m *manifest.Layout, ch link.CareHan
 			done(false)
 			return
 		}
-		ok := repairproof.VerifyRetrievability(porKey, claim.ShardID[:], claim.Holder, base,
-			want, porSampleCount, por.Proof{Mu: resp.PorMu, Sigma: resp.PorSigma})
-		done(ok)
+		done(repairproof.VerifyRetrievability(shardRoot, want, leafBytes, claim.Holder, base,
+			porSampleCount, parseOpenings(resp, min(porSampleCount, want))))
 	})
+}
+
+// shardCommitment finds one shard's spot-check root in the layout it belongs to.
+// The lookup is by SHARD ID against the committed leaf order, so a claim naming a
+// shard this object does not contain resolves to nothing rather than to whichever
+// root sat at the index the claimant supplied.
+func shardCommitment(m *manifest.Layout, id ports.ChunkID) (ports.Hash, int, bool) {
+	if m.LeafBytes <= 0 {
+		return ports.Hash{}, 0, false
+	}
+	leaves := m.Leaves()
+	if len(m.ShardRoots) != len(leaves) {
+		return ports.Hash{}, 0, false
+	}
+	for i, leaf := range leaves {
+		if ports.ChunkID(leaf) == id {
+			var root ports.Hash
+			copy(root[:], m.ShardRoots[i])
+			return root, m.LeafBytes, true
+		}
+	}
+	return ports.Hash{}, 0, false
 }
 
 // careKey is the rendezvous DHT key the caretakers of an object register under:
@@ -542,8 +570,8 @@ func (n *Node) announceRepairQuorum(root ports.Hash) {
 // a claim the holder could never satisfy is never worth emitting.
 //
 // ADVERSARY-SHAPE: NOT-A-DEFENCE: 'a claim the holder could never satisfy is never worth emitting' is an emit-side economy rule about the HONEST paramedic's own behaviour. It asserts no incapability of any adversary, and suppressing an emit an adversary would not make is not a defence.
-func (n *Node) emitRepairClaim(root ports.Hash, r shardRef, holder ports.NodeID, hasTags bool) {
-	if !n.cfg.RepairEconomy || !hasTags || holder == (ports.NodeID{}) {
+func (n *Node) emitRepairClaim(root ports.Hash, r shardRef, holder ports.NodeID, auditable bool) {
+	if !n.cfg.RepairEconomy || !auditable || holder == (ports.NodeID{}) {
 		return
 	}
 	claim := repairproof.RepairClaim{

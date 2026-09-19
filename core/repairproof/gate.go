@@ -33,23 +33,23 @@ func RepairChallengeSeed(base [32]byte, repairer ports.NodeID) [32]byte {
 }
 
 // VerifyRetrievability checks that `repairer` actually holds the rebuilt shard NOW,
-// via a Shacham–Waters PoR challenge bound to its identity. porKey is derived from
-// the file's layout key (por.DeriveKey); unitID is the shard's ID (domain-separates
-// the tags); base is the challenge nonce for this round; blocks is the shard's
-// block count and count the number sampled. It returns true iff the prover
-// demonstrably holds every sampled block — a data-less claimant, or one relaying a
-// proof built under another identity's seed, cannot make it verify.
+// via a hash-only spot check bound to its identity. shardRoot is the commitment the
+// publisher wrote into the object's sealed layout; leaves and leafBytes are that
+// shard's committed geometry; base is the challenge nonce for this round. It returns
+// true iff the prover opened every sampled leaf against the committed root. A
+// data-less claimant cannot open one, and a claimant relaying an answer built under
+// another identity's seed opened the wrong leaves.
 //
-// ADVERSARY-SHAPE: capability=DataLessClaimant UNCOVERED: no fixture GRANTS AND CONTROLS FOR a claimant a passing retrievability answer without the bytes. This leg is also not the one that fails a NO-LOSS claim: the named holder genuinely holds, and TestClaimWithNoLossIsPaid_PINNED_DEFECT pins that gap.
-func VerifyRetrievability(porKey *por.Key, unitID []byte, repairer ports.NodeID, base [32]byte, blocks, count int, proof por.Proof) bool {
-	if porKey == nil || blocks <= 0 {
+// THE ROOT IS THE JUDGE'S, NEVER THE CLAIMANT'S. It is read from the layout the
+// judge opened under its own care handle; a claimant that could name it could name
+// a tree containing whatever sliver it kept.
+//
+// ADVERSARY-SHAPE: capability=DataLessClaimant UNCOVERED: no fixture GRANTS AND CONTROLS FOR a claimant a passing retrievability answer without the bytes. core/node's TestCareLinkHolderWithZeroBytesFailsTheAudit drives that adversary on the AUDIT surface and this leg shares the scheme, but a control that removes the capability leaves the identical failing answer, so it cannot discriminate. This leg is also not the one that fails a NO-LOSS claim: the named holder genuinely holds, and TestClaimWithNoLossIsPaid_PINNED_DEFECT pins that gap.
+func VerifyRetrievability(shardRoot ports.Hash, leaves, leafBytes int, repairer ports.NodeID, base [32]byte, count int, ops []por.Opening) bool {
+	if leaves <= 0 || leafBytes <= 0 {
 		return false
 	}
-	if count > blocks {
-		count = blocks
-	}
-	seed := RepairChallengeSeed(base, repairer)
-	return porKey.Verify(unitID, por.Challenge{Seed: seed, Blocks: blocks, Count: count}, proof)
+	return por.VerifyOpenings(shardRoot, leaves, leafBytes, RepairChallengeSeed(base, repairer), count, ops)
 }
 
 // Decision is the verdict for a repair-bounty claim.

@@ -21,17 +21,12 @@ import (
 )
 
 // SizeOf is the resident cost proofcache charges a proof against its budget: the
-// variable payload (Path hashes + PoR tags) plus a fixed per-entry overhead for
-// the map/list bookkeeping and the small scalar fields. Exported so callers and
-// tests can size a budget in terms of "how many hot proofs".
+// variable payload (Path hashes) plus a fixed per-entry overhead for the map/list
+// bookkeeping and the small scalar fields. Exported so callers and tests can size
+// a budget in terms of "how many hot proofs".
 func SizeOf(p ports.StorageProof) int64 {
 	const fixed = 96 // scalars + map element + list node + key, approx
-	n := int64(fixed)
-	n += int64(len(p.Path)) * 32
-	for _, tag := range p.PorTags {
-		n += int64(len(tag))
-	}
-	return n
+	return int64(fixed) + int64(len(p.Path))*32
 }
 
 type entry struct {
@@ -162,13 +157,6 @@ func (s *Store) Stats() (hits, misses, usedBytes int64) {
 func copyProof(p ports.StorageProof) ports.StorageProof {
 	if p.Path != nil {
 		p.Path = append([]ports.Hash(nil), p.Path...)
-	}
-	if p.PorTags != nil {
-		tags := make([][]byte, len(p.PorTags))
-		for i, t := range p.PorTags {
-			tags[i] = append([]byte(nil), t...)
-		}
-		p.PorTags = tags
 	}
 	return p
 }

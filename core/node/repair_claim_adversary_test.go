@@ -27,7 +27,6 @@ import (
 	"github.com/nerolabs/silt/core/link"
 	"github.com/nerolabs/silt/core/manifest"
 	"github.com/nerolabs/silt/core/pipeline"
-	"github.com/nerolabs/silt/core/por"
 	"github.com/nerolabs/silt/core/registry"
 	"github.com/nerolabs/silt/core/repairproof"
 	"github.com/nerolabs/silt/ports"
@@ -43,7 +42,6 @@ type repairAdv struct {
 	ledger *credit.Ledger
 	m      *manifest.Manifest
 	root   ports.Hash
-	porKey *por.Key
 	h      link.Handle
 }
 
@@ -113,12 +111,12 @@ func newRepairAdv(t *testing.T, seed int64) *repairAdv {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	nodes[0].Distribute(entry, m, false, DerivePorKey(h.LayoutKey()), func(int, error) {})
+	nodes[0].Distribute(entry, m, false, func(int, error) {})
 	sched.Run()
 
 	return &repairAdv{
 		sched: sched, net: net, nodes: nodes, reg: reg, ledger: ledger,
-		m: m, root: h.Root, porKey: DerivePorKey(h.LayoutKey()), h: h,
+		m: m, root: h.Root, h: h,
 	}
 }
 
@@ -319,7 +317,7 @@ func (s *repairAdv) stageShardOn(fetcher, holder *Node, id ports.ChunkID, pos, l
 	}
 	proof := &ports.StorageProof{
 		Root: s.root, Index: pr.Index, Total: pr.Total, Path: pr.Path, Column: pos,
-		PorTags: s.porKey.Tags(id[:], c.Data),
+		LeafBytes: s.m.LeafBytes,
 	}
 	s.nodes[0].placeAt(id, c.Data, proof, []ports.NodeID{holder.ID()}, 1, nil, func(int) {})
 	s.sched.Run()
@@ -483,7 +481,7 @@ func (s *repairAdv) rebuildLostShard(t *testing.T, repairer, holder *Node, strip
 	}
 	proof := &ports.StorageProof{
 		Root: s.root, Index: pr.Index, Total: pr.Total, Path: pr.Path, Column: pos,
-		PorTags: s.porKey.Tags(id[:], shards[pos]),
+		LeafBytes: s.m.LeafBytes,
 	}
 	s.nodes[0].placeAt(id, shards[pos], proof, []ports.NodeID{holder.ID()}, 1, nil, func(int) {})
 	s.sched.Run()

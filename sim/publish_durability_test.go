@@ -78,7 +78,7 @@ func TestPublishFailsLoudWhenManifestUnplaceable(t *testing.T) {
 
 	var derr error
 	placed := -1
-	pub.Distribute(entry, m, false, node.DerivePorKey(h.LayoutKey()), func(p int, e error) { placed = p; derr = e })
+	pub.Distribute(entry, m, false, func(p int, e error) { placed = p; derr = e })
 	cl.Sched.Run()
 
 	if derr == nil {
@@ -131,7 +131,7 @@ func TestRegisterAfterDistributeLeavesNoDanglingEntry(t *testing.T) {
 	}
 
 	var gotErr error
-	pub.Distribute(entry, m, false, node.DerivePorKey(h.LayoutKey()), func(p int, derr error) {
+	pub.Distribute(entry, m, false, func(p int, derr error) {
 		_, gotErr = pipeline.RegisterAfterDistribute(bgCtx, cl.Registry, entry, p, derr)
 	})
 	cl.Sched.Run()
@@ -175,7 +175,7 @@ func TestManifestPlacementRetriesTransientFailure(t *testing.T) {
 	}
 
 	var derr error
-	pub.Distribute(entry, m, false, node.DerivePorKey(h.LayoutKey()), func(_ int, e error) { derr = e })
+	pub.Distribute(entry, m, false, func(_ int, e error) { derr = e })
 	cl.Sched.Run()
 
 	if derr != nil {
@@ -246,7 +246,7 @@ func TestPublishFailsLoudWhenStripeUnrecoverable(t *testing.T) {
 			return &selectiveStore{ChunkStore: memstore.New(), refuse: refuse}
 		})
 	pub := cl.Nodes[0]
-	entry, m, h := codedFile(t, cl, pub, 4096, 1024)
+	entry, m, _ := codedFile(t, cl, pub, 4096, 1024)
 
 	// Refuse every data + parity leaf on the storage nodes; leave the manifest
 	// chunk placeable so the failure is unambiguously the data stripe, not
@@ -256,7 +256,7 @@ func TestPublishFailsLoudWhenStripeUnrecoverable(t *testing.T) {
 
 	var derr error
 	placed := -1
-	pub.Distribute(entry, m, false, node.DerivePorKey(h.LayoutKey()), func(p int, e error) { placed = p; derr = e })
+	pub.Distribute(entry, m, false, func(p int, e error) { placed = p; derr = e })
 	cl.Sched.Run()
 
 	if derr == nil {
@@ -283,7 +283,7 @@ func TestPublishSucceedsWhenStripeStillRecoverable(t *testing.T) {
 			return &selectiveStore{ChunkStore: memstore.New(), refuse: refuse}
 		})
 	pub := cl.Nodes[0]
-	entry, m, h := codedFile(t, cl, pub, 4096, 1024)
+	entry, m, _ := codedFile(t, cl, pub, 4096, 1024)
 
 	// Refuse only the parity shards; the real data shards still place, so the
 	// stripe keeps >= its real-data-shard count and stays recoverable.
@@ -292,7 +292,7 @@ func TestPublishSucceedsWhenStripeStillRecoverable(t *testing.T) {
 	}
 
 	var derr error
-	pub.Distribute(entry, m, false, node.DerivePorKey(h.LayoutKey()), func(_ int, e error) { derr = e })
+	pub.Distribute(entry, m, false, func(_ int, e error) { derr = e })
 	cl.Sched.Run()
 
 	if derr != nil {

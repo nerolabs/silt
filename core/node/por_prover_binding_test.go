@@ -6,6 +6,7 @@ import (
 	"github.com/nerolabs/silt/adapters/memstore"
 	"github.com/nerolabs/silt/adapters/simclock"
 
+	"github.com/nerolabs/silt/core/por"
 	"github.com/nerolabs/silt/core/repairproof"
 	"github.com/nerolabs/silt/ports"
 )
@@ -112,7 +113,7 @@ func TestTheAuditSweepPutsTheBaseOnTheWire(t *testing.T) {
 	auditor.provs.Add(ports.ProviderRecord{Key: ports.Hash(id), ID: holder, Expiry: 1 << 62})
 
 	var report AuditReport
-	auditor.auditLeaf(id, ports.Hash(id), ports.Hash(id), nil, 8, &report, func() {})
+	auditor.auditLeaf(id, ports.Hash(id), ports.Hash(id), ports.Hash{}, 8, por.SpotLeafBytes, &report, func() {})
 	sched.Run()
 
 	if len(rec.sent) == 0 {

@@ -18,7 +18,6 @@ import (
 	"github.com/nerolabs/silt/core/link"
 	"github.com/nerolabs/silt/core/manifest"
 	"github.com/nerolabs/silt/core/pipeline"
-	"github.com/nerolabs/silt/core/por"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -38,19 +37,19 @@ import (
 // erasure STRIPE left with fewer placed shards than reconstruction needs
 // A link is unretrievable in all three cases, so the caller must NOT
 // register/return one for it.
-func (n *Node) Distribute(entry ports.Entry, m *manifest.Manifest, keepLocal bool, porKey *por.Key, done func(placed int, err error)) {
-	n.distributeFrom(n.store, entry, m, keepLocal, porKey, done)
+func (n *Node) Distribute(entry ports.Entry, m *manifest.Manifest, keepLocal bool, done func(placed int, err error)) {
+	n.distributeFrom(n.store, entry, m, keepLocal, done)
 }
 
 // DistributeFrom scatters a file staged in an external scratch store —
 // how the daemon's UI publishes without the staging ever touching the
 // node's storage pledge (the M9 rule: pledges bound hosting, not
 // staging). The scratch copies are deleted as they ship.
-func (n *Node) DistributeFrom(src ports.ChunkStore, entry ports.Entry, m *manifest.Manifest, porKey *por.Key, done func(placed int, err error)) {
-	n.distributeFrom(src, entry, m, false, porKey, done)
+func (n *Node) DistributeFrom(src ports.ChunkStore, entry ports.Entry, m *manifest.Manifest, done func(placed int, err error)) {
+	n.distributeFrom(src, entry, m, false, done)
 }
 
-func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manifest.Manifest, keepLocal bool, porKey *por.Key, done func(placed int, err error)) {
+func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manifest.Manifest, keepLocal bool, done func(placed int, err error)) {
 	leaves := m.Leaves()
 	// One cached Merkle tree for the whole distribution: a proof is built per
 	// shard below, and the standalone manifest.Prove is O(n) per call (it
@@ -190,17 +189,16 @@ func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manife
 				}
 				// Shards travel with their Merkle inclusion proof (so hosts
 				// can answer storage challenges) tagged with their column,
-				// plus per-block PoR authenticators so an auditor can later
-				// verify possession WITHOUT fetching the bytes; manifest
-				// chunks aren't tree leaves, go bare, and aren't audited.
+				// plus the spot-check leaf width the object was committed at,
+				// so a host can open a challenge against the geometry the
+				// publisher used; manifest chunks aren't tree leaves, go bare,
+				// and aren't audited.
 				var proof *ports.StorageProof
 				if li := grp.members[k] - manifestN; li >= 0 {
 					if p, perr := tree.Prove(li); perr == nil {
 						proof = &ports.StorageProof{Root: root, Index: p.Index,
-							Total: p.Total, Path: p.Path, Column: columnOfLeaf(m, li)}
-						if porKey != nil {
-							proof.PorTags = porKey.Tags(id[:], c.Data)
-						}
+							Total: p.Total, Path: p.Path, Column: columnOfLeaf(m, li),
+							LeafBytes: m.LeafBytes}
 					}
 				}
 				n.placeAt(id, c.Data, proof, candidates, n.cfg.Replication,
@@ -879,7 +877,6 @@ func (n *Node) netGetEntry(reg ports.Registry, entry ports.Entry, h link.Handle,
 func (n *Node) retainPulled(m *manifest.Manifest, h link.Handle, pulled []ports.ChunkID, done func()) {
 	tree := manifest.BuildTree(m.Leaves())
 	root := tree.Root()
-	porKey := DerivePorKey(h.LayoutKey())
 	leafIdx := make(map[ports.ChunkID]int, len(m.Leaves()))
 	for li, id := range m.Leaves() {
 		leafIdx[id] = li
@@ -897,10 +894,8 @@ func (n *Node) retainPulled(m *manifest.Manifest, h link.Handle, pulled []ports.
 		if li, ok := leafIdx[id]; ok {
 			if pr, perr := tree.Prove(li); perr == nil {
 				col := columnOfLeaf(m, li)
-				proof = &ports.StorageProof{Root: root, Index: pr.Index, Total: pr.Total, Path: pr.Path, Column: col}
-				if porKey != nil {
-					proof.PorTags = porKey.Tags(id[:], c.Data)
-				}
+				proof = &ports.StorageProof{Root: root, Index: pr.Index, Total: pr.Total,
+					Path: pr.Path, Column: col, LeafBytes: m.LeafBytes}
 				key = placementKey(root, id, col)
 			}
 		}

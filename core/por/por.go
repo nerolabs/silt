@@ -1,12 +1,13 @@
-// Package por is a real proof-of-retrievability: a verifier holding a small
-// secret key can check that a prover still holds a chunk's bytes WITHOUT
-// fetching them — the property the toy scheme in core/node/por.go lacks (it
-// grades against ground truth it fetches itself).
+// Package por holds silt's proof of retrievability. The SHIPPED scheme is the
+// hash-only spot check in spotcheck.go; everything below it in this file is the
+// Shacham-Waters aggregate construction it replaced, kept because two measurements
+// price the replacement against it and a baseline you cannot run is not a baseline.
+// Nothing on any product path calls it.
 //
-// The construction is the private-verification Compact Proof of
-// Retrievability of Shacham & Waters, "Compact Proofs of Retrievability"
-// (ASIACRYPT 2008), §3 — adopted, not invented (tenet B8). It is a
-// homomorphic linear authenticator over a prime field:
+// THE RETIRED CONSTRUCTION, and the property that ended it. It is the
+// private-verification Compact Proof of Retrievability of Shacham & Waters,
+// "Compact Proofs of Retrievability" (ASIACRYPT 2008), §3 — a homomorphic linear
+// authenticator over a prime field:
 //
 //	setup: secret key = (PRF key k, sector secrets α₁..α_s ∈ Z_p)
 //	tag: for block i with sectors mᵢ₁..mᵢ_s, σᵢ = f_k(i) + Σⱼ αⱼ·mᵢⱼ (mod p)
@@ -14,34 +15,15 @@
 //	prove: μⱼ = Σᵢ νᵢ·mᵢⱼ and σ = Σᵢ νᵢ·σᵢ (aggregate — O(s), size-independent)
 //	verify: σ ?= Σᵢ νᵢ·f_k(i) + Σⱼ αⱼ·μⱼ (no data touched)
 //
-// A prover that has deleted or altered any sampled block cannot produce a
-// (μ, σ) that satisfies the verification equation except with negligible
-// probability: σ is pinned by the stored tags, μⱼ is pinned by the data it
-// no longer has, and it cannot forge a compensating μ without the secret αⱼ
-// (which the tags do not reveal — that is the scheme's soundness proof). The
-// verify key rides the silt care-link, so caretakers audit over ciphertext
-// while storage-node provers, holding only chunk bytes + tags, cannot forge.
+// Its soundness holds only while the verifying key is unknown to the prover
+// (Definition 2.1). In silt the key was derived from a file's layout key, which is
+// exactly what a care link publishes, so the party that had to verify was a party
+// that could forge: with the key and no bytes, set every μⱼ to zero and the αⱼ
+// terms vanish, leaving σ = Σᵢ νᵢ·f_k(i), which the key holder computes directly.
+// The defect was in the key's distribution and not in the arithmetic, so no change
+// inside the primitive could reach it.
 //
-// This package is pure: it speaks in bytes and keys, touches no store, no
-// network, no ports. Wiring it into the manifest, the node audit loop, and
-// the credit ledger is a separate change (Gate 4a).
-//
-// ⚠ THE DECLARATION BELOW IS NAMED FOR THE CLAIM THE GATE ACTUALLY MATCHES IN
-// THIS BLOCK, WHICH IS NOT THE ONE THE PROSE LEADS WITH. The gate binds one
-// declaration per comment block and reports the FIRST matching sentence, and this
-// block has two matches: the scheme setup line (a vocabulary false positive) and
-// 'storage-node provers, holding only chunk bytes + tags, cannot forge'. That
-// second one is a LayoutKey claim, and the fixture named below is the adversary
-// that holds it.
-//
-// WHAT IS STILL UNCOVERED HERE, and it is a DIFFERENT capability: no fixture
-// grants a prover the sector secrets a_j THEMSELVES. The forger in that fixture
-// sets every mu_j to ZERO, so the a_j terms drop out of the verification equation
-// and it never touches an alpha. A fixture for SectorSecretsAlpha drives a
-// NON-ZERO mu forged with the alphas. Shacham-Waters Definition 2.1 assumes the
-// key is not known to the prover; in silt it rides the care link.
-//
-// ADVERSARY-SHAPE: capability=LayoutKey fixture=TestCareLinkHolderForgesWithZeroBytes_PINNED_DEFECT
+// ADVERSARY-SHAPE: NOT-A-DEFENCE: this header describes a construction that is on no product path. Its incapability sentences are statements about the retired scheme's own soundness assumption and the reason it was retired, not claims silt makes about the shipped one.
 package por
 
 import (
@@ -119,13 +101,11 @@ type Key struct {
 // identical distribution as a random one. Changing this function or Keygen's
 // read pattern would change every derived key, so both are frozen.
 //
-// ⚠ 'which is what keeps a prover from forging' holds only for a prover that is
-// NOT a care-link holder. The fixture below grants the layout key to a prover
-// holding zero bytes and it forges a passing proof; its control asserts the same
-// forgery fails without the key. One fixture covers this claim and the identical
-// one at core/node/por.go's porKeyDomain.
+// ⚠ 'which is what keeps a prover from forging' IS FALSE FOR A CARE-LINK HOLDER,
+// and that is why this construction is retired. The sentence holds for a storage
+// node and for nobody else; a party with the layout key forges over zero bytes.
 //
-// ADVERSARY-SHAPE: capability=LayoutKey fixture=TestCareLinkHolderForgesWithZeroBytes_PINNED_DEFECT
+// ADVERSARY-SHAPE: NOT-A-DEFENCE: a retired construction's own documentation of the assumption it failed. The shipped scheme has no key and makes no such claim.
 func DeriveKey(seed []byte, params Params) (*Key, error) {
 	if params.SectorsPerBlock <= 0 {
 		return nil, errors.New("por: SectorsPerBlock must be positive")
@@ -185,7 +165,7 @@ func (k *Key) Params() Params { return k.params }
 // prover can't answer a challenge on chunk A with chunk B's stored tags).
 // The returned slice has one 32-byte tag per block; store it with the chunk.
 //
-// ADVERSARY-SHAPE: capability=CrossChunkTagSubstitution UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover chunk B's tags and driving them at a challenge on chunk A.
+// ADVERSARY-SHAPE: NOT-A-DEFENCE: a claim about the retired construction, which is on no product path. silt does not rely on it, so there is nothing here for a fixture to defend; the shipped scheme stores no tags to substitute.
 func (k *Key) Tags(unitID []byte, data []byte) [][]byte {
 	nb := k.params.Blocks(len(data))
 	tags := make([][]byte, nb)
@@ -278,7 +258,7 @@ type Proof struct {
 // bytes and tags can always answer; a holder that lost bytes cannot make the
 // answer verify.
 //
-// ADVERSARY-SHAPE: capability=TagsAfterByteLoss UNCOVERED: no fixture GRANTS AND CONTROLS FOR a holder its tags after the bytes are gone. See core/node/por.go: with the VERIFICATION key too, the answer verifies anyway.
+// ADVERSARY-SHAPE: NOT-A-DEFENCE: a claim about the retired construction, which is on no product path. Its successor has no tags to keep after the bytes are gone, and the adversary that mattered — a party with the verification key and no bytes — is asserted against in core/node's TestCareLinkHolderWithZeroBytesFailsTheAudit.
 func Prove(params Params, data []byte, tags [][]byte, c Challenge) (Proof, error) {
 	if params.SectorsPerBlock <= 0 {
 		return Proof{}, errors.New("por: bad params")

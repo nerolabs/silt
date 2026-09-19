@@ -5,22 +5,19 @@
 package prooftest
 
 import (
-	"bytes"
 	"testing"
 
 	"github.com/nerolabs/silt/ports"
 )
 
-// mkProof builds a distinct, fully-populated proof (Root, Path, PorTags, Column)
-// so a round-trip that drops any field is caught.
+// mkProof builds a distinct, fully-populated proof (Root, Path, Column) so a
+// round-trip that drops any field is caught.
 func mkProof(b byte, col int) (ports.ChunkID, ports.StorageProof) {
 	var id, root, p0, p1 ports.Hash
 	id[0], root[0], p0[0], p1[0] = b, b+1, b+2, b+3
-	tag0, tag1 := make([]byte, 32), make([]byte, 32)
-	tag0[0], tag1[0] = b+4, b+5
 	return id, ports.StorageProof{
 		Root: root, Index: int(b), Total: 8,
-		Path: []ports.Hash{p0, p1}, Column: col, PorTags: [][]byte{tag0, tag1},
+		Path: []ports.Hash{p0, p1}, Column: col,
 	}
 }
 
@@ -33,14 +30,6 @@ func eq(a, b ports.StorageProof) bool {
 	}
 	for i := range a.Path {
 		if a.Path[i] != b.Path[i] {
-			return false
-		}
-	}
-	if len(a.PorTags) != len(b.PorTags) {
-		return false
-	}
-	for i := range a.PorTags {
-		if !bytes.Equal(a.PorTags[i], b.PorTags[i]) {
 			return false
 		}
 	}

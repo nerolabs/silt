@@ -344,21 +344,47 @@ RATCHET = (
     # two hold. They join the backlog for the same reason ForeignSeedProof is on it,
     # not because nobody wrote the test.
     ('core/node/bondaudit.go', 'SpentChallengeBudget', 'a01d32bd7212'),
-    ('core/node/por.go', 'TagsWithoutBytes', 'e281e2c299e7'),
-    ('core/node/por.go', 'UnderReportedBlockCount', '2aa4e533bae9'),
-    ('core/node/por.go', 'ForeignSeedProof', '10e0a2bd116d'),
     ('core/node/por.go', 'ProverSuppliedRoot', 'a27e44b36a78'),
+    ('core/node/por.go', 'UnderReportedBlockCount', 'c7bd7d73b462'),
+    # NET -1 WHEN THE RETRIEVABILITY SCHEME WAS REPLACED. Three entries left and two
+    # arrived, and reading which is which is the whole value of this block:
+    #
+    #   GONE  core/node/por.go TagsWithoutBytes — the claim was about a prover holding
+    #         per-block authenticators after the bytes were gone. The shipped scheme
+    #         keeps no per-shard state on a host, so there is nothing to hold and the
+    #         sentence no longer exists to cover.
+    #   GONE  core/por/por.go CrossChunkTagSubstitution and TagsAfterByteLoss — both
+    #         describe the retired Shacham-Waters construction, which is now on no
+    #         product path. They are declared NOT-A-DEFENCE where they sit: silt does
+    #         not rely on them, so a fixture would be defending nothing.
+    #   MOVED core/node/por.go ForeignSeedProof, UnderReportedBlockCount and
+    #         core/repairproof/gate.go DataLessClaimant — the same claims, reworded
+    #         from the aggregate scheme's vocabulary ("proof aggregated under another
+    #         identity's seed", "block count") to the spot check's ("answer opened
+    #         under another identity's seed", "leaf count"). The digest moves with the
+    #         words; the backlog does not grow.
+    #   NEW   core/node/por.go ChallengerNamedGeometry — the prover reads its leaf
+    #         width from the proof that arrived with the shard, never from the
+    #         challenge, because a challenger that could name it could make a tiny
+    #         frame cost a tree over a quarter-million leaves. It cannot be covered
+    #         until the wire carries such a field, which it deliberately does not.
+    #   NEW   core/por/spotcheck.go CareLinkWithoutBytes — the care-link forgery that
+    #         ended the old scheme, now asserted against. Its fixture GRANTS the
+    #         capability in full and the defence HOLDS, so no control can
+    #         discriminate; it joins for the same structural reason as the two above
+    #         it.
+    ('core/node/por.go', 'ChallengerNamedGeometry', '04e50fe00249'),
+    ('core/node/por.go', 'ForeignSeedProof', 'e5a57c2964c9'),
     ('core/node/repairclaim.go', 'UntrustedClaimFields', '1e72f903ca2a'),
     ('core/node/repairclaim.go', 'JudgeWithoutCareHandle', '8759c679dacc'),
     ('core/node/repairclaim.go', 'CaretakerDiscoveryWithoutCareKey', '6798ee022955'),
-    ('core/por/por.go', 'CrossChunkTagSubstitution', '14b5ce355e3d'),
-    ('core/por/por.go', 'TagsAfterByteLoss', 'f861bd27c61f'),
+    ('core/por/spotcheck.go', 'CareLinkWithoutBytes', '957bb7cc32f9'),
     ('core/repairproof/claim.go', 'ClaimantChosenSurvivorSet', '426fa3a62ed1'),
     ('core/repairproof/gate.go', 'RelayedHolderProof', '624c8811e63a'),
-    ('core/repairproof/gate.go', 'DataLessClaimant', '65c855794004'),
+    ('core/repairproof/gate.go', 'DataLessClaimant', '32c19955d51c'),
 )
 # Redundant on purpose: see "HOW IT MAY MOVE" above.
-RATCHET_COUNT = 21
+RATCHET_COUNT = 20
 
 
 def tracked_files(root=None):
