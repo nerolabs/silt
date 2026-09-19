@@ -83,17 +83,19 @@ the code and its tests are the honest record" — so the paragraph contradicted 
 and the honest record it points at is now a test that runs. Nothing overclaims as a result: the
 preceding sentence already calls the interlock "the target", and the census carries the detail.
 
-*THE SAME PARAGRAPH IS ALSO IN `README.md`, AND IT IS NOT REMOVED.* The repo's front door says
-"This multiplicative interlock is the target, not yet the operative guarantee. Today consensus
-standing is gated by the bond axis alone." That is build status in the first document any reader
-opens — including the grader, who gets the repository and nothing else — and it is now imprecise:
-the census shows standing gated by the bond axis AND ITS TIME DIMENSION, because retention decay is
-wired and denying. It is left standing because `README.md` sentences are PUBLISHED CLAIMS, pinned as
-such by `canon_text_test.go`, whose own text says the wording must not be changed to make a gate
-pass. Changing it is the owner's call, and there are three options: remove it as the `VISION.md`
-paragraph was removed; correct "the bond axis alone" to "the bond axis and its time dimension" and
-keep the disclosure; or leave it and accept that the front door hands the grader a partial map of
-where the composition is weakest.
+*THE SAME PARAGRAPH IS ALSO IN `README.md`, AND IT WAS CORRECTED — the second of the three options,
+taken on 2026-09-15.* The front door had said "Today consensus standing is gated by the bond axis
+alone", which the census had already falsified: standing is gated by the bond axis AND ITS TIME
+DIMENSION, because retention decay is wired and denying. It now says so, keeps the disclosure that
+the multiplicative interlock is the target rather than the operative guarantee, and points at
+`core/chain/sybil_cost_census_v5_test.go` so the grader can read which axes deny from the test rather
+than from prose. The wording was corrected to match a measurement, never to make a gate pass —
+which is the distinction `README.md`-as-published-claim exists to protect.
+
+*THIS SHEET CARRIED THE OPEN QUESTION FOR FOUR DAYS AFTER IT WAS ANSWERED,* which is the drift R2
+forbids, and it is worth naming rather than quietly fixing: a decision that is made in the tree and
+left open on the sheet reads to the next session as work still owed, and the next session budgets
+for it.
 
 *THE INTEGRATION TIER, driven 2026-09-15 over real containers.* It needed no new suite: two of the
 three DENYING arms already have integration coverage in `integration/bond/`, and both passed — at
@@ -736,32 +738,116 @@ gate that REPLIED would hand any peer a way to SLASH AN HONEST HOLDER by first s
 `auditLeaf` counts an answer only when `err == nil`, so the refusal emits nothing and a dropped
 challenge is not a failed audit — it is no audit. Both ablations are driven red, including that one.
 
-*WHAT REMAINS IS NOT MORE CODE.* Arm (a) has no per-sender bound and its remedy is REFUTED on its
-own precondition rather than merely unbuilt: claim emission binds an empty reply callback, so a
-claim a budget refuses is lost forever. Narrowing what one claim costs is not bounding how many a
-sender sends. The care-link break needs a ruling on WHICH remediation option ships — the pin points
-at a research certification carrying V1/V2/V3 and a pricing addendum — because the care link must
-grant repair rights without handing over the PoR secret, and that is a key-distribution design
-choice. And the outsourcing defeat is the one the literature closes only with sealing or with
-latency, where build-immutable #3 forbids latency as a HARD gate. On the current evidence this item
-reaches the date at three of five closed with the other two disclosed and named, not closed.
+*WHAT REMAINS, AND THE RULING ON IT (2026-09-19): ALL THREE ARE BUILT, NOT DISCLOSED.* The prior
+reading — that this item reaches the date at three of five with the other two disclosed — was
+optimising for what fits in the window rather than for what a release candidate is. The
+done-condition is "a prover without the bytes fails the audit and is paid nothing", and an audit a
+caretaker can forge does not survive an outside adversary whatever the sheet says about it. The
+three are sequenced below by how directly each converts into evidence.
 
-**11. Publishing is unlinkable and no surveillance artifact exists.** A matching score
+*THE MEASUREMENTS, TAKEN 2026-09-19 rather than recalled.* Each pin was driven and its own numbers
+read off the run:
+
+| defect | measured |
+|---|---|
+| care-link forgery (`TestCareLinkHolderForgesWithZeroBytes_PINNED_DEFECT`) | 0 bytes read, 67 field mults against the honest prover's 8,643 — **129× less work, 17× faster** — graded `Passed:1`, mints 1000 credit. The wrong-key control fails, so the capability is load-bearing |
+| challenge proxy (`TestChallengeProxyPassesAudit_PINNED_DEFECT`) | a data-less identity has a real holder answer its own identity-bound challenge; graded `Passed:1`, mints 1000 credit |
+| unbounded claim, arm (a) (`TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT`) | a **110-byte** claim costs the judge **4,719,978 B** over 10 distinct chunks — **~42,900×** — and the sender pays nothing; 8 claims cost 8× that, linearly |
+
+*ARM (a) IS LIVE ON THE SHIPPED DEFAULT, which this sheet did not say and should have.*
+`handleRepairClaim` runs the registry lookup, the manifest fetch and the survivor walk BEFORE any
+economy check — `cfg.RepairEconomy` is tested only at settlement. So the amplification does not need
+`-economy`; it applies to every node that is a caretaker of the root. That makes it the only one of
+the three whose exposure is not behind a double opt-in, and the cheapest to narrow: the gate exists,
+it is in the wrong place. The per-sender BOUND stays open — its remedy is refuted on its own
+precondition, since claim emission binds an empty reply callback and a refused claim is lost forever
+— and narrowing the work is not the same as bounding the count, which the fix must say plainly.
+
+*THE OUTSOURCING DEFEAT IS TWO RESIDUALS, AND THE SHEET HAD MERGED THEM.* "The literature closes it
+with sealing or with latency" describes the WILLING COLLUDER — a holder running patched software
+that computes under any seed it is handed. That one is a Douceur limit, stays disclosed, and is why
+PoR grants no standing at all. The pinned defect is narrower and is not that: an honest holder is
+used as an ORACLE because the challenge seed travels on the wire in `msg.PorSeed` and
+`answerChallenge(msg)` copies it blindly, taking no prover parameter — while `answerBondChallenge`
+already takes `from` and `Node.handle` already has it in scope. Sending the challenge BASE and having
+the holder derive `porProverSeed(base, self)` leaves nothing to proxy. Structural, no latency gate,
+and precedented in this tree.
+
+*THE CARE-LINK BREAK NEEDS A SCHEME, AND THE SCHEME NEEDS A MEASUREMENT FIRST.* All three audit legs
+are satisfiable by a party holding the layout key and no bytes: the inclusion proof is derivable from
+the layout it is entitled to read, the block count is public, and the PoR equation is solvable with
+the key. There is no fix inside the current primitive, because the party that must VERIFY is the
+party that could FORGE — Shacham–Waters private verification assumes the key is unknown to the
+prover, and here it is a published capability. So the remedy is a scheme change, and build-immutable
+#8 decides how it starts: measure the cost to PRODUCE the artifact on the floor box before committing
+to the mechanism, since a scheme whose output is tiny but whose production blows the floor is
+disqualified however elegant. The trade to measure is real in both directions — a publicly-verifiable
+pairing scheme buys O(1) proofs and pays in tagging; hash-only Merkle spot-checking is floor-box-cheap
+and pays in proof size, and on the measured 262,160 B shard a 67-sample challenge over 4 KiB blocks is
+the whole shard.
+
+*THE RESEARCH CERTIFICATION THE PINS CITE NO LONGER EXISTS.*
+`TestCareLinkHolderForgesWithZeroBytes_PINNED_DEFECT`'s fix-case points at a
+`…REMEDIATION-OPTIONS…RESEARCH-CERTIFICATION-2026-09-12.md` carrying V1/V2/V3 and a pricing addendum.
+It went with the written record deleted on 2026-09-13. "Confirm WHICH option shipped" therefore
+cannot be answered by reading it, and the option space has to be re-derived from the mechanism. The
+pin text should say so when it is retired; until then, this paragraph is the correction.
+
+**11. Publishing is unlinkable and no surveillance artifact exists.** ❓ *NO VERDICT RECORDED — and one
+clause names a live defect*
+A matching score
 against chance; seize every disk and emitted byte after a fetch-heavy run and find no
 (fetcher, content) pair; published metadata no longer leaks the exact plaintext byte count,
 which today makes the padding defence a no-op.
 *integration → e2e → field.*
 
-**12. Takedown bites, cannot go global, and is provable.** Honouring operators stop serving
+*WHAT EXISTS, AND WHAT IT IS NOT.* `integration/privacy` passes and `flow_publisher_unlinkability`
+runs in the cloud, so there is evidence in the neighbourhood. Neither was driven against THIS item's
+clauses: no matching score against chance has been computed, and no seize-every-disk-and-emitted-byte
+sweep has been run. A passing suite nearby is not a verdict on the claim, and recording it as one is
+the exact move this list refuses elsewhere.
+
+*THE THIRD CLAUSE IS AN OPEN PRODUCT DEFECT STATED INSIDE A DONE-CONDITION,* which is a shape worth
+naming: "published metadata no longer leaks the exact plaintext byte count, WHICH TODAY MAKES THE
+PADDING DEFENCE A NO-OP". That is not a thing to test, it is a thing to fix, and nothing currently
+drives it either way.
+
+**12. Takedown bites, cannot go global, and is provable.** ❓ *NO VERDICT RECORDED — the strongest of the
+unattributed six*
+Honouring operators stop serving
 and others keep serving; no accepted operation removes more than one named root or works by
 identity; every honoured removal carries inclusion and consistency proofs.
 *integration → e2e → field.*
 
-**13. Bit-perfect or an explicit failure, and crash recovery needs no human.** An unplaceable
+*TWO OF THE THREE CLAUSES HAVE REAL EVIDENCE, UNATTRIBUTED.* `integration/takedown` PASSES at HEAD —
+after two product defects were found and fixed (a restart purge that swept a chunk index the async
+reload had not filled, so denied bytes stayed on disk; and a cold `AnnounceHeld` that re-advertised
+them to the DHT under bare ids). `8-takedown` in the cloud shows one operator stopping while another
+keeps serving bit-perfect, which is the per-operator, non-global half.
+
+*THE THIRD CLAUSE IS UNDRIVEN:* every honoured removal carrying INCLUSION AND CONSISTENCY PROOFS.
+That is the half that makes non-globality PROVABLE rather than merely true on the day, and it is the
+half `VISION.md` leans on ("silt can *prove* it never flipped a global switch"). Nothing reads those
+proofs today.
+
+**13. Bit-perfect or an explicit failure, and crash recovery needs no human.** ❓ *NO VERDICT RECORDED —
+the storage half has evidence, the two named clauses do not*
+An unplaceable
 publish names what could not be placed, returns no link, leaves no registry entry, and still
 succeeds on retry. A validator killed mid-consensus re-pins from its own last finalized
 checkpoint and never contradicts a signature it made before the crash.
 *e2e under impairment → field.*
+
+*WHAT EXISTS:* `integration/chaos` PASSES (SIGKILL every holder, restart, re-announce, cold-fetch
+bit-perfect), and the cloud's `7-restart-content` and `chaos-fetch` confirm bit-perfect retrieval
+after a hard crash on real hardware.
+
+*BOTH CLAUSES THIS ITEM ACTUALLY NAMES ARE UNDRIVEN.* Nobody has driven an unplaceable publish and
+asserted the S3 shape — names what could not be placed, returns NO link, leaves NO registry entry,
+and still succeeds on retry. And nobody has killed a validator mid-consensus and asserted it re-pins
+from its own last finalized checkpoint without contradicting a signature it made before the crash.
+The second is a consensus-safety property (a validator never signs twice at a height, and that memory
+survives restart) and it is asserted nowhere at this tier.
 
 **14. The floor box holds, and the chain prunes.** ✅ *done*
 A validator on the declared floor spec — one core, 2 GiB, 10 GiB of disk — validates against
@@ -912,22 +998,60 @@ operators — making a more decentralized network one that fewer parties can arc
 deep past the property of whoever can afford terabytes.
 *Evidence:* unit → integration.
 
-**17. The economy mints nothing, and the core squeeze is measured.** Balance-lane credit
+**17. The economy mints nothing, and the core squeeze is measured.** ❓ *NO VERDICT RECORDED — the
+no-minting half is gated elsewhere; the measured half is not taken*
+Balance-lane credit
 never becomes consensus standing; a colluding pair strictly loses; repair is funded from the
 object's own escrow; a false claim is slashed. Plus core-node net margin at two edge
 populations against held-constant demand, reported as a signed number.
 *unit → integration → e2e.*
 
-**18. Core carries nothing.** Seize a holder and fail to recover known plaintext, with a
+*THE NO-MINTING HALF HAS COVER, UNATTRIBUTED:* `integration/economy` passes, `flow_economy_repair`
+and `flow_delivery_lane` run in the cloud, and the γ→1/N firewall — credit never becoming standing —
+is asserted directly in `core/credit`'s invariant gate, which is the load-bearing one.
+
+*THE CORE SQUEEZE HAS NOT BEEN MEASURED.* "Core-node net margin at two edge populations against
+held-constant demand, REPORTED AS A SIGNED NUMBER" is the T-AR measurement — whether the edge tier
+that does most of the work stays a net-positive place to do it. A signed number is the entire point
+of the clause, and no run produces one. Note the tension the sheet should not hide: the vision
+already accepts witness pricing as the fix for the unpriced core-node externality, so this
+measurement is the one that would say whether the acceptance was warranted.
+
+**18. Core carries nothing.** ❓ *NO VERDICT RECORDED — and no suite is named for it*
+Seize a holder and fail to recover known plaintext, with a
 key-holder succeeding on the same objects in the same run; core resolves hashes, never names.
 *unit → e2e.*
 
-**19. An un-upgraded node stalls, and the network never updates itself.** A node that cannot
+*THE NAMING HALF IS STRUCTURAL AND THE SEIZURE HALF IS UNDRIVEN.* "Core resolves hashes, never
+names" is the Aslan boundary, and it is a property of what the core does not contain rather than
+something a run observes. The other half is a drill nobody has built: seize a holder and fail to
+recover known plaintext.
+
+*THE PAIRED CONTROL IS WHAT WOULD MAKE IT MEAN ANYTHING,* and the done-condition already names it —
+A KEY-HOLDER SUCCEEDING ON THE SAME OBJECTS IN THE SAME RUN. Without that arm, a seizure that
+recovers nothing proves only that the seizure was performed badly, which is the vacuity shape this
+list rejects everywhere else. Cheap to build, and it is the drill that answers the content-blind
+immutable for an outsider.
+
+**19. An un-upgraded node stalls, and the network never updates itself.** ❓ *NO VERDICT RECORDED — its
+suite sits in the opt-in tier and was not in the sweep*
+A node that cannot
 validate a shipped format stops rather than accepting it and says so while staying alive. A
 node whose consensus-reaching configuration diverges from what the chain committed refuses to
 start. No version-floor advisory below the signing threshold changes anything, and no node
 ever replaces its own binary.
 *integration → e2e.*
+
+*THE SUITE EXISTS AND WAS NOT RUN.* `integration/upgrade` is catalogued `slow`, so it is opt-in
+behind `FULL=1` and was not among the twelve gate suites in the sweep that produced this list's
+current local result. Its own catalog line says it reproduces the format-migration FINDING, so it is
+not a formality.
+
+*WHY THIS ONE IS SHARPER THAN ITS PLACE ON THE LIST SUGGESTS.* The stall behaviour is what the
+frozen-format immutable RESTS ON: "an un-upgraded node **stalls** at the era boundary rather than
+accept a format it cannot validate; that stall is the correct safety-first behaviour." Item 20 ships
+disclosed because closing its blocker needs a new era. An era boundary whose stall behaviour has
+never been driven is a gap directly under the mechanism the release leans on.
 
 **20. The floor box's verdict counts, or it is disclosed that it does not.** ⚠ *SHIPS DISCLOSED — two preconditions closed, one waits on the flip, one waits on a new era*
 *Done:* a validator on the floor spec returns the SAME verdict set as a tree-holding node —
@@ -1456,7 +1580,39 @@ gap honestly. The unit-tier repro above already covers the arithmetic determinis
 is UNTESTED here — what is missing is the loopback early-warning, and it is missing on purpose
 rather than by omission.
 
-*WHAT IS OWED.* (3) The structural close on the payload. The bound on the outbound path is DONE
+*THE ERA QUESTION IS NOT SETTLED, AND THE PREMISE IS THE PART TO TEST (2026-09-19).* The owed item
+below asks whether the structural close is a new era. Read carefully, it may be answering the wrong
+question, and the difference decides whether this item can close before the date.
+
+Moving the proof out of the COMMITTED BLOCK is a widening — registrations that are invalid today
+become valid — and a widening splits, so that is an era. But two facts in the tree point elsewhere.
+First, `Prune()` already drops `BondReg.Answer` from a finalized v5 block and the block STILL
+reproduces its own hash, because `v5PreimageBondRegs` folds `AnswerDigest` in place of `Answer` — the
+format already expresses a proof-less body. Second, and more to the point:
+**every attester already receives and verifies the registration before the block carrying it is
+proposed.** `SubmitBondRenewal(peers)` broadcasts the full ~1.5 MB reg to the same validator set the
+node reconciles against; each receiver runs `ValidateBondRegErr` — which pays the full
+`VerifySpaceTime` — and queues it. The proposer then folds that same registration into a block and
+re-ships the same 1.5 MB to the same attesters, who verify it a second time.
+
+So what the PROPOSAL MESSAGE carries may be separable from what the BLOCK COMMITS. If an attester
+reconstructs the full block from its own pending queue by digest, the committed bytes are identical,
+validity is identical, the signed hash is identical, and nothing forks — which is compact-block relay,
+settled prior art that was not a hard fork where it was first deployed. That is a transport change,
+not a format change, and it needs no era.
+
+*THIS IS A READING OF THE CODE, NOT A MEASUREMENT, and #7 says the next action is to gather the
+evidence rather than to act on it.* Three things must be measured before any of it is built: whether
+retry de-duplication alone (not re-shipping the payload on a retry of the same height and round) moves
+the wedge, since the journals show four copies per attester for one already-failed round; whether the
+attester's pending queue actually holds the registration at the moment the block arrives, given that a
+proposer's own F6 reg is minted fresh over `b.Prev` and at bootstrap is new to everyone; and what the
+fallback costs when it does not. The deterministic repro for all three now exists below the field tier
+— `simnet.RateBytesPerSec` with the same 1.5 MiB request on either side of the assumed floor — so this
+is answerable without a cloud spend.
+
+*WHAT IS OWED.* (3) The structural close on the payload, which starts with the measurement above
+rather than with the era ruling. The bound on the outbound path is DONE
 (above). (4) A
 decision about what it means for the date — and the structural close is plausibly a NEW ERA rather
 than a validity tightening, which by the frozen-format rule does not happen before it. The
@@ -1487,6 +1643,54 @@ once smoke is green. Two things to know before the full tier — `TTL_MINUTES=18
 every VM regardless of what the harness does, and `BUDGET_AMOUNT_USD` is 0 with no billing account,
 so NO budget alarm is configured and the TTL is the only backstop. Verify teardown explicitly
 rather than trusting the exit trap.
+
+---
+
+## The order of work, and why this order
+
+Set 2026-09-19, after the owner ruled that every open defect on this list is BUILT, MEASURED AND
+VALIDATED rather than disclosed. The ordering rule is how directly a piece converts into evidence,
+not how large it is.
+
+**1 — The repair judge's work is gated before it happens.** `handleRepairClaim` does the registry
+lookup, the manifest fetch and the survivor walk before `cfg.RepairEconomy` is ever tested, so a
+110-byte unsigned claim costs a judge 4.7 MB on the SHIPPED DEFAULT. The gate exists and is in the
+wrong place. First because it is the only open defect whose exposure is not behind a double opt-in,
+and because it is the smallest change on the list. The gate to build: a node not running the economy
+performs no fetch for an unsigned claim, with the ablation restoring the measured 4.7 MB, and a
+control proving an economy-ON node still judges. What it does NOT close is the per-sender bound, and
+the change must say so rather than reading as if it had.
+
+**2 — The prover identity reaches the answering side.** Send the challenge BASE, derive
+`porProverSeed(base, self)` at the holder, and an honest holder can no longer be used as an oracle.
+Second because it is a real fix with a named shape, an in-tree precedent (`answerBondChallenge`
+already takes `from`), and it takes item 10 to four of five. It touches an audit wire field, so it
+carries a mixed-version story and a control that honest holders are not over-rejected — over-rejection
+would pass the pin's fix-case while breaking every honest audit.
+
+**3 — Whether the bond proof has to ride the consensus critical path at all.** Measure before
+building, on the deterministic repro rather than in the field: does retry de-duplication alone move
+the wedge, does an attester's pending queue hold the registration when the block arrives, and what
+does the fallback cost when it does not. Third because its ANSWER decides whether item 21 can close
+before the date, and therefore what the remaining days are worth spending on — and because it is the
+one piece whose first deliverable is a number rather than a diff.
+
+**4 — A zero-byte prover fails the audit.** The largest piece and the one an outside adversary
+reaches first. It starts with a floor-box measurement of the candidate schemes' PRODUCTION cost, not
+with a library choice, because build-immutable #8 disqualifies a mechanism on its production cost
+however good its output. Last only because the three above convert to evidence faster, not because it
+matters least.
+
+**Then:** what item 21's unheld second claim means for the date, which cannot be decided honestly
+until (3) reports.
+
+**Unsequenced, and it needs the owner's call against the four above.** Six items on this list carry no
+verdict — 11, 12, 13, 17, 18 and 19 — and two of those silences are sharper than the rest: item 11's
+own done-condition names a live defect (published metadata leaks the exact plaintext byte count, which
+makes the padding defence a no-op), and item 19's suite sits in the opt-in tier untested while item 20
+ships disclosed on an era boundary whose stall behaviour has never been driven. Item 18's seizure
+drill is cheap and answers the content-blind immutable for an outsider. None of them are ordered here,
+because trading them against the four fixes above is not a builder's call to make silently.
 
 ---
 
