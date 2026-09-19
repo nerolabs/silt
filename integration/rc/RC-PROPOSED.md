@@ -672,8 +672,9 @@ failures here, and an undriven half of the accountability claim is exactly that.
 is that the product drops a queued slash — this run cannot see that far, and the verdict says so in
 those words rather than implying a defect it did not measure.
 
-**10. A prover without the bytes fails the audit and is paid nothing.** ⚠ *both work bounds and
-one of the three defeats are CLOSED; the two that remain need a ruling, not more code*
+**10. A prover without the bytes fails the audit and is paid nothing.** ⚠ *both work bounds and one
+of the three defeats are CLOSED, and the claim path's shipped-default exposure with them; the two
+defeats that remain are BEING BUILT, not disclosed*
 Three defeats: the
 care link printed on every publish is the storage-proof verification key; a data-less
 identity passes by relaying the challenge to a real holder; the inclusion proof is checked
@@ -693,7 +694,8 @@ that reddened it, in the same change. No test was deleted.
 | the inclusion proof is checked against a root the PROVER supplies | GATE 5a → `TestForeignRootedProofIsRefused` | **CLOSED** |
 | the unsigned repair claim's fetch is not budgeted (arm b) | GATE 1 (b) → `rc1SurvivorBudget` | **CLOSED** |
 | the challenge frame is not rate-limited | `TestPorChallengeRateLimitPerChallenger`, `TestRefusedPorChallengeSendsNoReply` | **CLOSED** |
-| the unsigned repair claim is unbounded PER SENDER (arm a) | `TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT` | open — remedy REFUTED |
+| the unsigned repair claim is judged by a node that cannot pay (arm a, the shipped-default half) | `TestRepairClaimBuysNoWorkWithoutTheEconomy` | **CLOSED** — 4,719,978 B → 0 |
+| the unsigned repair claim is unbounded PER SENDER (arm a, the count) | `TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT` | open — remedy REFUTED |
 | the care link IS the storage-proof verification key | `TestCareLinkHolderForgesWithZeroBytes_PINNED_DEFECT` | open — needs a ruling |
 | a data-less identity outsources the challenge to a real holder | `TestChallengeProxyPassesAudit_PINNED_DEFECT` | open — needs a ruling |
 
@@ -762,6 +764,38 @@ the three whose exposure is not behind a double opt-in, and the cheapest to narr
 it is in the wrong place. The per-sender BOUND stays open — its remedy is refuted on its own
 precondition, since claim emission binds an empty reply callback and a refused claim is lost forever
 — and narrowing the work is not the same as bounding the count, which the fix must say plainly.
+
+*THE SHIPPED-DEFAULT HALF IS CLOSED, 2026-09-19, and the fix is smaller than "narrow the work"
+because the code already decided the question twice.* `announceRepairQuorum` and `emitRepairClaim`
+are BOTH already gated on `cfg.RepairEconomy`. A node with the economy off never plants itself under
+`careKey(root)`, so no honest paramedic can discover it as a caretaker-judge, and it never emits a
+claim of its own. Its legitimate inbound claim traffic is therefore ZERO BY CONSTRUCTION, and the
+whole 4,719,978 B was attacker-directed with no honest case underneath it. This was the missing
+THIRD gate in a set of two, not a new policy — and the symmetry it rests on is asserted by its own
+test (`TestRepairClaimEconomyGateIsWhereTheOtherTwoAre`), so a later change that ungates announce or
+emit makes the argument's collapse visible rather than silent.
+
+| arm | shards fetched | distinct chunks | bytes | vote |
+|---|---|---|---|---|
+| economy OFF — the shipped default | **0** | **0** | **0** | 1 |
+| economy ON — positive control AND ablation | 9 | 10 | **4,719,978** | 1 |
+
+*THE CONTROL IS ALSO THE ABLATION, deliberately.* The gate's only effect is to make OFF differ from
+ON, so the economy-ON arm is simultaneously the proof that a participating node still judges and the
+pre-gate behaviour the gate removed. The test FAILS when that arm is cheap, because a gate that is
+never reached passes for free — the same shape every other gate on this list carries.
+
+*WHAT IT DOES NOT CLOSE, and the fix says so in the code rather than reading as if it had.* The
+per-sender bound. A node RUNNING the economy still pays the full cost per claim, from an unsigned
+frame, without limit. `TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT` is still GREEN at the
+same 4,719,978 B, which is the correct outcome and not an oversight: it pins the count, and this
+change moved the work.
+
+*WHAT IT GIVES UP, named rather than discovered later.* An economy-off node no longer slashes a
+claimant that names a shard id the manifest does not commit at that position. That punishment was a
+reduction on a local ledger the node never pays out of, delivered by a judge nobody could discover,
+and reported in a vote the emitting paramedic discards. The refusal is still ANSWERED rather than
+dropped, so a caller can tell a refusing judge from an unreachable one.
 
 *THE OUTSOURCING DEFEAT IS TWO RESIDUALS, AND THE SHEET HAD MERGED THEM.* "The literature closes it
 with sealing or with latency" describes the WILLING COLLUDER — a holder running patched software
@@ -1754,14 +1788,15 @@ is under *What "held" currently rests on* above. (Billable runs are pre-authoris
 refuses to spend until a local proof command has exited zero — it ran the e2e repair-bounty,
 publish/fetch and equivocation drills plus the transport suite before releasing the spend.)
 
-**1 — The repair judge's work is gated before it happens.** `handleRepairClaim` does the registry
-lookup, the manifest fetch and the survivor walk before `cfg.RepairEconomy` is ever tested, so a
-110-byte unsigned claim costs a judge 4.7 MB on the SHIPPED DEFAULT. The gate exists and is in the
-wrong place. First because it is the only open defect whose exposure is not behind a double opt-in,
-and because it is the smallest change on the list. The gate to build: a node not running the economy
-performs no fetch for an unsigned claim, with the ablation restoring the measured 4.7 MB, and a
-control proving an economy-ON node still judges. What it does NOT close is the per-sender bound, and
-the change must say so rather than reading as if it had.
+**1 — ~~The repair judge's work is gated before it happens.~~ DONE 2026-09-19.** `handleRepairClaim`
+did the registry lookup, the manifest fetch and the survivor walk before `cfg.RepairEconomy` was
+ever tested, so a 110-byte unsigned claim cost a judge 4.7 MB on the SHIPPED DEFAULT. The gate
+existed and was in the wrong place. Driven red at the measured figure, then green: **4,719,978 B →
+0** with the economy-ON control unchanged at 9 shards. It turned out smaller than "narrow the work"
+— `announceRepairQuorum` and `emitRepairClaim` are already gated on the same switch, so this was the
+missing third gate in a set of two and an economy-off node has no honest claim traffic to protect.
+The per-sender bound stays open and the change says so; the pin over it is still green at the same
+number. Detail under item 10.
 
 **2 — The prover identity reaches the answering side.** Send the challenge BASE, derive
 `porProverSeed(base, self)` at the holder, and an honest holder can no longer be used as an oracle.
