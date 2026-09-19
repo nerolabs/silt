@@ -1268,6 +1268,15 @@ region boundary; the bytes came back **BIT-PERFECT in 13 s against a 133 s bound
 posture derives over 4 chunks, inside its own 399 s operation ceiling. Every term in that bound came
 off the line the client printed.
 
+*AND IT IS STRONGER AT HEAD, on the FIRST drive of the sheet rather than a re-drive.* Run
+`d531fbf-90914` grades this row **PASS** where `5adb538-9631`'s sheet recorded a gap: the chosen
+out-of-region seat `val-b` (us-east1) held **0 of the object's 16 columns** — not 3 — and pulled
+every one of them across the region boundary over the relay from a NATed publisher in us-west1,
+bit-perfect in **10 s against the same 133 s derived bound** and the same 399 s ceiling. A seat
+holding none of the object is the strongest form of the claim and the form the flow originally asked
+for and could not find; the scoring rewrite is what let the sheet select it. This half of item 21 is
+now green at the field tier without a re-drive standing behind it.
+
 *"COLD" HAD TO BECOME A QUANTITY, and the first drive is what taught it.* The flow originally
 required a seat holding NONE of the object, and on a seventeen-node swarm at the shipped replication
 no such seat exists — an eight-chunk publish scatters twenty-odd placements over a dozen eligible
@@ -1668,20 +1677,63 @@ distinction matters exactly where item 9 lives, because the property is that eve
 lockstep, and a lockstep across four containers on one kernel is the cheapest possible version of
 that claim.
 
-**3 — AND NO CLOUD RUN EXISTS AT THE CURRENT HEAD, which is the one that should move first.** The
-last full cloud run is `46f3224-79920` (2026-09-16) and the field run is `5adb538-9631` (2026-09-18).
-The tree is **28 commits past the first and 20 past the second**, and those commits are not
-cosmetic — they include three product fixes on the audit path (the foreign-rooted proof refusal, the
-judge's budgeted survivor fetch, the challenge rate limit), a consensus fix (a queued equivocation
-proof now arms a proposal), and a transport change that bounds every outbound frame the daemon sends.
-Every one of those touches a path the cloud run exercised. So the cloud evidence behind several rows
-on this list is evidence about a binary that no longer exists.
+**3 — ~~AND NO CLOUD RUN EXISTS AT THE CURRENT HEAD~~ — CLOSED 2026-09-19 by run `d531fbf-90914`.**
+It was the sharpest of the three: the last full cloud run was `46f3224-79920` (2026-09-16) and the
+field run `5adb538-9631` (2026-09-18), leaving the tree **28 commits past the first and 20 past the
+second** — three product fixes on the audit path (the foreign-rooted proof refusal, the judge's
+budgeted survivor fetch, the challenge rate limit), a consensus fix (a queued equivocation proof now
+arms a proposal), and a transport change that bounds every outbound frame. Every one touches a path
+the cloud run exercises, so several rows rested on evidence about a binary that no longer existed.
+The re-validation below is what closes it, and nothing was built on top of the twenty-eight first.
 
-*THE ORDER THIS IMPLIES.* A cloud run at HEAD comes BEFORE the next fix lands, not after. Four more
-fixes on top of twenty-eight unvalidated commits makes any failure that surfaces harder to attribute,
-and this project has paid for that reading twice already — a suite that was never driven to completion
-on a box proven clean, and a field wedge that reached the field because no tier below could express
-it. Re-validating first is cheaper than attributing later.
+*THE RUN.* 19 nodes, 4 validators, three regions, `ECONOMY=1`, torn down to zero VMs and verified
+rather than trusted to the exit trap. **23 pass · 2 gap · 1 fail · 5 skip**, against `46f3224`'s
+22/0/0/6 and `5adb538`'s 22/1/1/6. A SMOKE rung was driven first on the same commit
+(`d531fbf-67723`, 11 pass, torn down) to price the cloud path before paying for the sheet.
+
+**NOTHING REGRESSED, AND ONE ROW MOVED FORWARD.** `21-cross-region-cold-fetch` was a gap on
+`5adb538` — no out-of-region candidate was cold enough to test — and is now a **PASS** in 14 s: a
+NATed publisher in us-west1 to `val-b` in us-east1 holding **zero** of the object's columns,
+bit-perfect. `184-equivocation-island` passes with the slash COMMITTED, which is the first full-sheet
+field exercise of the consensus quiescence fix. `8-takedown`, `7-restart-content` and
+`7-restart-standing` — the rows `46f3224` was run to confirm — still pass with the changed audit path
+underneath them.
+
+**THE MEMORY NUMBER, AND WHAT IT IS NOT.** Worst peak across the cohort 0.71 GiB; `val-d` 730.6 MiB,
+`val-a` 680.6, `val-b` 662.7, with the composed-impairment arm running on the same sheet, and
+`infra-node-liveness` PASS — no OOM-kill or crash-loop anywhere. The two pre-bound runs had `val-d`
+at 1075 MiB and 1223 MiB and OOM-killed both times. That is CONSISTENT with the outbound bound
+holding and is NOT a controlled measurement of it: different substrate (a cloud e2-small against a
+local docker VM with no cgroup ceiling), and no unbounded arm ran here. The controlled evidence for
+the bound stays the paired arms in `adapters/tcpnet`; this is corroboration at the field tier.
+
+**THE FAIL IS THE KNOWN WEDGE, REPRODUCED A THIRD TIME.** `21-impaired-commit`: 794 s without a
+commit against the computed 220 s escape bound, 0 of 2 publishes landed, impairment credited on all
+four validator seats. 802 s local, 843 s field, 794 s field at HEAD — three machines, same shape,
+same order. It reproduces WITH the outbound bound in the binary, which is the field confirmation of
+that fix's own stated non-claim: a bound on the sender's queue does not make a block arrive inside
+its deadline. Item 21's second claim is unchanged and still not held.
+
+**THE TWO GAPS ARE BOTH ON THE ECONOMY ROWS, AND BOTH SAY "UNTESTED", NOT "BROKEN".** `ECONOMY=1`
+was set deliberately — three of the five product commits live on the repair/audit path and
+`11-economy-repair` is the only field row that exercises it, having skipped on BOTH prior runs, so a
+default sheet would have re-confirmed every row except the ones the changed code is in. It converted
+two silent skips into two named gaps. `11-economy-repair`: only 2 of 3 needed columns had
+all-killable holders — shards landed on validators and caretakers the flow must not kill — so it
+could not force a reconstruction without touching consensus; the row names its own remedy (dedicated
+storage nodes, or a lower `-replication` to concentrate shards). `11b-economy-skim`: no skim grew
+either armed observer's reserve above its prepay baseline, which needs the serve-accounting journals
+attributed before a re-run rather than another drive.
+
+*A DISCIPLINE FAILURE ON THIS RUN, RECORDED BECAUSE IT IS THE KIND THAT GOES UNNOTICED.*
+`scenarios.sh` was edited at 13:01:20 and the first flow graded at 13:07:27, so the sheet was graded
+by a harness that changed after the run started. It is harmless here — the edit adds a `require_nodes`
+guard that is a no-op on a topology carrying `store-2`, and `8-takedown` passed on the same assertion
+as before — but "it happened to be harmless" is the reasoning this list has twice paid for. It also
+exposed a real defect: `gen_report.sh` resolved both provenance fields from live HEAD at report time,
+so this run's report header named `a0ff08a` for a fleet built at `d531fbf`, with the run id the only
+honest field on the page. Both stamps are now written when the input is consumed, and the report
+carries a banner when the grading files change under a live sheet.
 
 ---
 
@@ -1691,11 +1743,16 @@ Set 2026-09-19, after the owner ruled that every open defect on this list is BUI
 VALIDATED rather than disclosed. The ordering rule is how directly a piece converts into evidence,
 not how large it is.
 
-**0 — A cloud run at HEAD, before any of the four below.** Twenty-eight commits, three of them
-product fixes on the audit path and one on consensus, have landed since the last full cloud run. The
-held rows that lean on it lean on a binary that no longer exists. This is not a fifth fix; it is the
-precondition that keeps the next four attributable. (Billable runs are pre-authorised, and the
-harness refuses to spend until a local proof command has exited zero.)
+**0 — ~~A cloud run at HEAD, before any of the four below.~~ DONE 2026-09-19, run `d531fbf-90914`.**
+Twenty-eight commits, three of them product fixes on the audit path and one on consensus, had landed
+since the last full cloud run, so the held rows that lean on it leaned on a binary that no longer
+existed. It was not a fifth fix; it was the precondition that keeps the next four attributable, and
+it was driven before any of them. **23 pass · 2 gap · 1 fail · 5 skip** — nothing regressed,
+`21-cross-region-cold-fetch` moved gap→pass, the one fail is the known impairment wedge and the two
+gaps are newly-visible economy rows that `ECONOMY=1` turned from skips into findings. The evidence
+is under *What "held" currently rests on* above. (Billable runs are pre-authorised, and the harness
+refuses to spend until a local proof command has exited zero — it ran the e2e repair-bounty,
+publish/fetch and equivocation drills plus the transport suite before releasing the spend.)
 
 **1 — The repair judge's work is gated before it happens.** `handleRepairClaim` does the registry
 lookup, the manifest fetch and the survivor walk before `cfg.RepairEconomy` is ever tested, so a
