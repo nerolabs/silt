@@ -1686,12 +1686,24 @@ fallback costs when it does not. The deterministic repro for all three now exist
 — `simnet.RateBytesPerSec` with the same 1.5 MiB request on either side of the assumed floor — so this
 is answerable without a cloud spend.
 
-*WHAT IS OWED.* (3) The structural close on the payload, which starts with the measurement above
-rather than with the era ruling. The bound on the outbound path is DONE
-(above). (4) A
-decision about what it means for the date — and the structural close is plausibly a NEW ERA rather
-than a validity tightening, which by the frozen-format rule does not happen before it. The
-publish/fetch half is done and is not affected by any of it.
+*WHAT IS OWED.* (3) The structural close on the payload. The measurement it had to start with is
+DONE (2026-09-19, `core/node/bondproof_criticalpath_measure_test.go`) and it names the route:
+pre-deliver EVERY registration including the proposer's own — the one source an attester's queue
+never holds — then relay the block by digest, so the bytes are off the per-attempt deadline and out
+of the retry ladder. The bound on the outbound path is DONE (above).
+
+(4) ~~A decision about what it means for the date — and the structural close is plausibly a NEW ERA
+rather than a validity tightening, which by the frozen-format rule does not happen before it.~~
+**DECIDED: it is NOT an era, so the date does not rule it out.** The committed bytes, the validity
+rule and the signed hash are all unchanged under pre-delivery plus digest relay; only what the
+PROPOSAL MESSAGE carries moves. `Prune()` already drops `Answer` from a finalized v5 block and the
+hash still reproduces via `AnswerDigest`, so the format already expresses a proof-less body. That
+makes the close reachable before 2026-09-27 rather than blocked behind a hard fork. It stays
+sequenced after item 10's last defeat, which is the piece an outside adversary reaches first.
+
+The publish/fetch half is done and is not affected by any of it. The chain half is NOT held today
+and none of the above holds it: if the close does not land by the date, this item ships disclosed
+with the mechanism named, the repro in the tree and the route measured.
 
 **22. Every item has a cloud-harness run.** Each item above named in a cloud scenario, with
 the gaps written down as decisions rather than left as silence.
@@ -1839,12 +1851,34 @@ already takes `from`), and it takes item 10 to four of five. It touches an audit
 carries a mixed-version story and a control that honest holders are not over-rejected — over-rejection
 would pass the pin's fix-case while breaking every honest audit.
 
-**3 — Whether the bond proof has to ride the consensus critical path at all.** Measure before
-building, on the deterministic repro rather than in the field: does retry de-duplication alone move
-the wedge, does an attester's pending queue hold the registration when the block arrives, and what
-does the fallback cost when it does not. Third because its ANSWER decides whether item 21 can close
-before the date, and therefore what the remaining days are worth spending on — and because it is the
-one piece whose first deliverable is a number rather than a diff.
+**3 — ~~Whether the bond proof has to ride the consensus critical path at all.~~ MEASURED
+2026-09-19; the answer is below and it is not the one the reading predicted.** Driven on the
+deterministic rate repro rather than in the field, in
+`core/node/bondproof_criticalpath_measure_test.go`.
+
+| question | measured |
+|---|---|
+| does retry de-duplication alone move the wedge? | **no.** One 1,572,864 B proposal to ONE peer at a quarter of the assumed floor offers **6,291,456 B** under the shipped `-request-retries 3` against 1 send with retries off — **4.0x**, and 18,874,368 B across the field's three attesters for one height and round. But the FIRST attempt already misses, so de-duplication changes what the ladder COSTS and not whether anything FITS |
+| does the attester's queue hold the registration? | **split.** A peer's reg arrives by `MsgSubmitBondReg` and is queued: 1 of 1. The PROPOSER'S OWN is minted over `b.Prev` at propose time with no submit: **0 queued, 0 submits**, guarded on `minted=true` so the zeros are a missing submit and not a missing plot |
+| what does the fallback cost? | **more than carrying.** Carrying is 24.000 s of wire against a 14.000 s deadline and MISSES; a digest-only proposal fits; but a reconstruction MISS costs the digest round trip PLUS the same 24.000 s, arming the same 14.000 s deadline that already missed, later in the round |
+
+*SO COMPACT-BLOCK RELAY ALONE IS NOT THE WAY IN, and that is the correction to the reading.* The
+sheet suspected the proposal bytes were separable from the committed bytes because every attester
+already receives and verifies a peer's registration before the block carrying it is proposed. True —
+for a PEER's registration. The one source the queue never holds is the proposer's OWN, and that is
+the case a scheme built on the queue would stall on at every self-renewal and at bootstrap, where a
+fresh reg is new to everyone.
+
+*THE ROUTE THE NUMBERS POINT AT.* Pre-deliver EVERY registration including the proposer's own, so
+the queue covers 100% of sources and the fallback is never taken; the digest then replaces bytes
+that have already crossed, off the per-attempt deadline and out of the retry ladder — which is
+exactly what build-immutable #5 asks for, large payloads off the critical path. The committed bytes
+are unchanged, the signed hash is unchanged, nothing forks. **It is a transport change and needs no
+era**, so the frozen-format rule does not push it past the date. Retry de-duplication is a separate,
+additive 4x saving that fixes nothing by itself.
+
+*NOT BUILT. The measurement is the deliverable,* and the assertions pin the numbers so they cannot
+rot while the decision is open — each names what to re-derive if it ever reads differently.
 
 **4 — A zero-byte prover fails the audit.** The largest piece and the one an outside adversary
 reaches first. It starts with a floor-box measurement of the candidate schemes' PRODUCTION cost, not
@@ -1852,8 +1886,27 @@ with a library choice, because build-immutable #8 disqualifies a mechanism on it
 however good its output. Last only because the three above convert to evidence faster, not because it
 matters least.
 
-**Then:** what item 21's unheld second claim means for the date, which cannot be decided honestly
-until (3) reports.
+**Then: what item 21's unheld second claim means for the date. (3) has reported, so this is now
+decidable, and the answer is that the structural close is REACHABLE before 2026-09-27.**
+
+The blocker everyone expected was the frozen-format immutable: if taking the proof off the critical
+path were a widening of what a block may contain, it would be a NEW ERA and would not happen before
+the date. The measurement says it is not. The committed bytes, the validity rule and the signed hash
+are all unchanged under pre-delivery plus digest relay — only what the PROPOSAL MESSAGE carries
+moves, which is transport. `Prune()` already drops `Answer` from a finalized v5 block and the hash
+still reproduces, because `v5PreimageBondRegs` folds `AnswerDigest` in its place, so the format
+already expresses a proof-less body.
+
+What remains is ordinary engineering with a named shape and a deterministic repro beneath it, which
+is the position every other closed item on this list reached before it closed. It is sequenced AFTER
+item 10's last defeat, because that one is the piece an outside adversary reaches first and this one
+is a liveness bound on an adverse network rather than a claim the red team returns a verdict on.
+
+*WHAT DOES NOT CHANGE.* Item 21's second claim is NOT held today and this does not hold it — the
+wedge reproduced a third time at HEAD on run `d531fbf-90914`, 794 s against a 220 s bound, with the
+outbound bound in the binary. If the close does not land by the date the item ships disclosed with
+the mechanism named, the repro in the tree and the route measured. That is a better disclosure than
+the one this sheet was carrying a day ago, and it is still a disclosure.
 
 **Unsequenced, and it needs the owner's call against the four above.** Six items on this list carry no
 verdict — 11, 12, 13, 17, 18 and 19 — and two of those silences are sharper than the rest: item 11's
