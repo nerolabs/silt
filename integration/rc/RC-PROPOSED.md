@@ -940,10 +940,17 @@ the 41.
 
 *AND THE TWO TIERS THAT ARE NOT DRIVEN, NAMED RATHER THAN IMPLIED.* E2E UNDER NETWORK IMPAIRMENT and
 FIELD. Build-immutable #1 wants a skipped tier stated with a reason: the reason is sequencing, and
-the next cloud run at HEAD is what converts this row from a local close into a held one. Nothing in
-the local evidence speaks to how a sampled response behaves on a lossy path, which is the one
-question the new shape raises that the old one did not — the aggregate response was a fixed 4,128 B
-and this one is 8 openings the auditor must receive all of.
+the next cloud run at HEAD is what converts this row from a local close into a held one.
+
+*AND THE IMPAIRMENT RISK THIS SHEET REACHED FOR IS NOT THERE, WHICH IS ONLY KNOWN BECAUSE IT WAS
+MEASURED.* The reading was that a sampled response is several openings the auditor must receive all
+of, where the aggregate was one fixed-size value — so a lossy path would bite the new shape harder.
+It does not. The openings ride in ONE `MsgChallengeReply`, and encoded through the real codec that
+frame is **4,344 B against the aggregate shape's 4,591 B**: one frame either way, and the new one is
+SMALLER. A frame arrives or it does not, exactly as before. What actually grew on the wire is the
+MANIFEST, by 34 B per shard, which a fetcher pays once per object and not per audit. Stating a
+mechanism this sheet had not measured would have been the guess-in-a-lab-coat build-immutable #7
+names; the number above is what replaced it.
 
 *ONE AMPLIFICATION THE NEW SHAPE INTRODUCES, FOUND AND CLOSED INSIDE THE CHANGE.* The aggregate
 response was a fixed size whatever the challenge asked for; a sampled one is not. `PorCount` is
