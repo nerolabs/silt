@@ -1646,11 +1646,56 @@ rather than trusting the exit trap.
 
 ---
 
+## What "held" currently rests on, and where it does not reach
+
+Asked and checked 2026-09-19: is every item marked held backed by BOTH local and cloud evidence? It
+is not, in three different ways, and the three are worth keeping apart because only one of them is a
+problem with the claims themselves.
+
+**1 — Most held items never claimed a cloud tier, and are right not to.** Items 1, 4, 7, 8, 15 and 16
+declare ladders that stop at unit, integration or e2e. Item 4 is a source gate over the tree; a cloud
+run could not say anything about it. Items 7 and 8 are validity rules driven by injecting a forgery
+and asserting a stall, which is a thing a unit and an e2e tier do precisely and a seventeen-node fleet
+does not do at all. A missing cloud row there is a correct scope, not a gap — but it does mean "held"
+means "held at the tiers it declares", never "held everywhere".
+
+**2 — Two held items declare a FIELD tier they have not reached.** Item 9 (*model-check → e2e →
+field*) and item 14 (*unit → e2e under impairment → field*) are both marked held with the field rung
+undriven. By this list's own rule — "skipped", "gap" and "not run" are all failures — that is not
+what held should mean. Item 9's committed-slash half is the sharper case: it was driven with `LOCAL=1`
+over a four-node docker topology, which is the CLOUD HARNESS ON A LOCAL BOX and not the field. The
+distinction matters exactly where item 9 lives, because the property is that every replica evicts in
+lockstep, and a lockstep across four containers on one kernel is the cheapest possible version of
+that claim.
+
+**3 — AND NO CLOUD RUN EXISTS AT THE CURRENT HEAD, which is the one that should move first.** The
+last full cloud run is `46f3224-79920` (2026-09-16) and the field run is `5adb538-9631` (2026-09-18).
+The tree is **28 commits past the first and 20 past the second**, and those commits are not
+cosmetic — they include three product fixes on the audit path (the foreign-rooted proof refusal, the
+judge's budgeted survivor fetch, the challenge rate limit), a consensus fix (a queued equivocation
+proof now arms a proposal), and a transport change that bounds every outbound frame the daemon sends.
+Every one of those touches a path the cloud run exercised. So the cloud evidence behind several rows
+on this list is evidence about a binary that no longer exists.
+
+*THE ORDER THIS IMPLIES.* A cloud run at HEAD comes BEFORE the next fix lands, not after. Four more
+fixes on top of twenty-eight unvalidated commits makes any failure that surfaces harder to attribute,
+and this project has paid for that reading twice already — a suite that was never driven to completion
+on a box proven clean, and a field wedge that reached the field because no tier below could express
+it. Re-validating first is cheaper than attributing later.
+
+---
+
 ## The order of work, and why this order
 
 Set 2026-09-19, after the owner ruled that every open defect on this list is BUILT, MEASURED AND
 VALIDATED rather than disclosed. The ordering rule is how directly a piece converts into evidence,
 not how large it is.
+
+**0 — A cloud run at HEAD, before any of the four below.** Twenty-eight commits, three of them
+product fixes on the audit path and one on consensus, have landed since the last full cloud run. The
+held rows that lean on it lean on a binary that no longer exists. This is not a fifth fix; it is the
+precondition that keeps the next four attributable. (Billable runs are pre-authorised, and the
+harness refuses to spend until a local proof command has exited zero.)
 
 **1 — The repair judge's work is gated before it happens.** `handleRepairClaim` does the registry
 lookup, the manifest fetch and the survivor walk before `cfg.RepairEconomy` is ever tested, so a
