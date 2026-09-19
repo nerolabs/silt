@@ -46,7 +46,11 @@ type wireMsg struct {
 	BondRoot  []byte     `cbor:"19,keyasint,omitempty"`
 	BondSize  int64      `cbor:"20,keyasint,omitempty"`
 	// PoR challenge/proof (core/por), carried as opaque bytes.
-	PorSeed   []byte   `cbor:"21,keyasint,omitempty"`
+	PorSeed []byte `cbor:"21,keyasint,omitempty"`
+	// 31, not 11: field 11 is a RETIRED slot (an early proof-of-retrieval field,
+	// removed later), and reusing a retired number lets an old peer's value decode
+	// as this one. Wire numbers are append-only here.
+	PorBase   []byte   `cbor:"31,keyasint,omitempty"`
 	PorCount  int      `cbor:"22,keyasint,omitempty"`
 	PorMu     [][]byte `cbor:"23,keyasint,omitempty"`
 	PorSigma  []byte   `cbor:"24,keyasint,omitempty"`
@@ -162,6 +166,7 @@ func toWire(m ports.Message) wireMsg {
 		w.BondRoot = append([]byte(nil), m.BondRoot[:]...)
 	}
 	w.PorSeed = m.PorSeed
+	w.PorBase = m.PorBase
 	w.PorCount = m.PorCount
 	w.PorMu = cloneChunks(m.PorMu)
 	w.PorSigma = m.PorSigma
@@ -230,6 +235,7 @@ func fromWire(w wireMsg) ports.Message {
 	m.BondSize = w.BondSize
 	copy(m.BondRoot[:], w.BondRoot)
 	m.PorSeed = w.PorSeed
+	m.PorBase = w.PorBase
 	m.PorCount = w.PorCount
 	m.PorMu = cloneChunks(w.PorMu)
 	m.PorSigma = w.PorSigma

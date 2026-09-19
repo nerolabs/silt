@@ -485,7 +485,9 @@ func (n *Node) challengeHolderRetrievability(m *manifest.Layout, ch link.CareHan
 	seed := repairproof.RepairChallengeSeed(base, claim.Holder)
 	n.request(claim.Holder, ports.Message{
 		Kind: ports.MsgChallenge, ChunkID: claim.ShardID,
-		PorSeed: seed[:], PorCount: porSampleCount,
+		// The base rides along so the holder can confirm this challenge is bound to
+		// IT and not forwarded from somewhere else; the derived seed is unchanged.
+		PorSeed: seed[:], PorBase: base[:], PorCount: porSampleCount,
 	}, func(resp ports.Message, err error) {
 		if err != nil || !resp.Found || resp.Proof == nil ||
 			!verifyStorageProofAgainst(*resp.Proof, claim.ShardID, m.Root()) || !blocksOK(resp.PorBlocks, want) {

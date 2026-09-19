@@ -30,6 +30,7 @@ import (
 	"github.com/nerolabs/silt/core/manifest"
 	"github.com/nerolabs/silt/core/pipeline"
 	"github.com/nerolabs/silt/core/por"
+	"github.com/nerolabs/silt/core/repairproof"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -137,12 +138,14 @@ func storageProofSelfConsistent(p ports.StorageProof, leaf ports.ChunkID) bool {
 // proof, but it can RELAY the proof of an honest holder that can. porProverSeed
 // (below) folds the challenged identity into the seed so a relayed proof fails.
 //
-// RELAY is genuinely denied by the seed binding. OUTSOURCING is not, and the
-// fixture below is the adversary that has the capability this comment assumes
-// away: a willing holder A that computes under B's OWN seed on request. Its
-// control removes the oracle (A answers under A's seed) and asserts that fails.
+// RELAY was always denied by the seed binding. OUTSOURCING was NOT, until the
+// prover-identity binding landed on 2026-09-19: a willing holder A computed under
+// B's OWN seed on request because answerChallenge took no view of who the challenge
+// was addressed to. The fixture below is that adversary — A is granted to B as a
+// real oracle — and the challenge now reaches A carrying the auditor's base, so A
+// folds in its own id, sees a seed bound to B, and declines.
 //
-// ADVERSARY-SHAPE: capability=HonestHolderAsOracle fixture=TestChallengeProxyPassesAudit_PINNED_DEFECT
+// ADVERSARY-SHAPE: capability=HonestHolderAsOracle fixture=TestChallengeOutsourcingIsRefusedByTheProver
 func porChallengeSeed(nonce uint64) [32]byte {
 	var nb [8]byte
 	binary.BigEndian.PutUint64(nb[:], nonce)
@@ -182,8 +185,61 @@ func porChallenge(seed [32]byte, blocks, count int) por.Challenge {
 // bytes: it can still form a response over its (absent) data, but the μ it
 // produces cannot satisfy the verification equation — and no fetch is needed
 // to expose that.
+// challengeIsAddressedToMe reports whether msg.PorSeed is the seed bound to THIS
+// node's identity. It is the answer to challenge OUTSOURCING: the seed binding
+// already made a RELAYED proof useless (a proof computed under A's seed fails B's
+// verify), but nothing stopped a data-less identity B from forwarding the auditor's
+// verbatim challenge to a real holder A, which computed under B's seed on request
+// and could not tell it was answering for someone else. B returned A's work as its
+// own, was graded PASSED, and was paid — measured at 1000 credit to a prover holding
+// zero bytes.
+//
+// THE PROVER IDENTITY NOW REACHES THE PROVER, which is the structural close. It
+// arrives as the UNBOUND base rather than as a name, so nothing has to be trusted:
+// the node folds its OWN id into the base and compares. A forwarded challenge
+// carries the forwarder's derived seed, which cannot equal this node's, so the
+// oracle refuses. No latency gate, no new secret, nothing an adversary's own path
+// can move.
+//
+// BOTH BINDINGS ARE TESTED because two callers challenge through this one handler
+// with different domain separators — the audit sweep with porProverSeed, the repair
+// claim's retrievability leg with repairproof.RepairChallengeSeed. Testing the pair
+// against this node's own identity says "this challenge is addressed to me" without
+// the message having to declare which caller sent it, and a cross-domain collision
+// is a SHA-256 preimage coincidence. Both honest callers send a self-bound seed to
+// the node they are challenging, so neither honest path is narrowed.
+//
+// NO BASE, NO OPINION. An auditor that sends no base gets the old behaviour — the
+// seed is answered verbatim. That is what keeps this additive: an old auditor is
+// still served, and the defeat closes for every pair whose PROVER is current, which
+// is as far as a change on this side can reach.
+//
+// ADVERSARY-SHAPE: capability=HonestHolderAsOracle fixture=TestChallengeOutsourcingIsRefusedByTheProver
+func (n *Node) challengeIsAddressedToMe(msg ports.Message) bool {
+	if len(msg.PorBase) == 0 || len(msg.PorSeed) == 0 {
+		return true // no base supplied: nothing to check against, answer as before
+	}
+	var base, got [32]byte
+	copy(base[:], msg.PorBase)
+	copy(got[:], msg.PorSeed)
+	audit := porProverSeed(base, n.id)
+	repair := repairproof.RepairChallengeSeed(base, n.id)
+	return got == audit || got == repair
+}
+
 func (n *Node) answerChallenge(msg ports.Message) ports.Message {
 	reply := ports.Message{Kind: ports.MsgChallengeReply}
+	if !n.challengeIsAddressedToMe(msg) {
+		// Found=false, and that is the correct grade rather than a dropped frame:
+		// the party graded on this answer is the FORWARDER, not this node, so the
+		// refusal lands on the identity that tried to borrow a prover. Contrast the
+		// per-challenger rate limit in bondaudit.go, which must DROP because there
+		// the refusal would be graded against the honest holder itself.
+		n.logf(ports.LogInfo, "storage challenge refused — its seed is bound to another identity",
+			"chunk", msg.ChunkID, "self", n.id)
+		n.Stats.ProxiedChallengesRefused++
+		return reply
+	}
 	// The full proof (Path + PoR tags) lives in the backing; page it in. Same
 	// tradeoff as serving a cold chunk — the audited proof is by definition on
 	// the serve/audit path, not a hot-loop iterate.
@@ -372,7 +428,11 @@ func (n *Node) auditLeaf(id ports.ChunkID, key ports.Hash, root ports.Hash, porK
 			// seed) fails p's verify. p uses PorSeed verbatim, so no prover-side
 			// change is needed.
 			pseed := porProverSeed(base, p)
-			n.request(p, ports.Message{Kind: ports.MsgChallenge, ChunkID: id, PorSeed: pseed[:], PorCount: porSampleCount},
+			// The BASE travels with the derived seed so p can confirm the challenge
+			// is addressed to it (challengeIsAddressedToMe). The derived seed is
+			// unchanged and still what p answers under, so an old prover that
+			// ignores the base is graded exactly as before.
+			n.request(p, ports.Message{Kind: ports.MsgChallenge, ChunkID: id, PorSeed: pseed[:], PorBase: base[:], PorCount: porSampleCount},
 				func(resp ports.Message, err error) {
 					if err == nil {
 						report.Challenges++
@@ -405,7 +465,7 @@ func (n *Node) gradeAnswers(id ports.ChunkID, porKey *por.Key, base [32]byte,
 		// and under this prover's OWN seed H(base ‖ prover) (H1), so a proof
 		// relayed from another identity fails here.
 		//
-		// ADVERSARY-SHAPE: capability=ForeignSeedProof UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover a proof aggregated under ANOTHER identity's seed. TestChallengeProxyPassesAudit_PINNED_DEFECT DOES drive one -- its relayOnly arm is exactly a foreign-seed proof, and it is asserted to fail -- but it is NOT declared as cover here, because the only way to run that attack WITHOUT the capability is to send an empty reply, and an empty reply fails for every capability. A control that cannot discriminate cannot show the capability is load-bearing.
+		// ADVERSARY-SHAPE: capability=ForeignSeedProof UNCOVERED: no fixture GRANTS AND CONTROLS FOR a prover a proof aggregated under ANOTHER identity's seed. TestChallengeOutsourcingIsRefusedByTheProver DOES drive one -- its relayOnly arm is exactly a foreign-seed proof, now with the holder genuinely answering its OWN challenge so the arm tests what it says -- but it is NOT declared as cover here, because the only way to run that attack WITHOUT the capability is to send an empty reply, and an empty reply fails for every capability. A control that cannot discriminate cannot show the capability is load-bearing.
 		passed := a.valid && blocksOK(a.blocks, want) &&
 			porKey.Verify(id[:], porChallenge(porProverSeed(base, a.prover), want, porSampleCount), a.proof)
 		if n.ledger != nil {

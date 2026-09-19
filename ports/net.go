@@ -251,6 +251,27 @@ type Message struct {
 	// as PorBlocks so the auditor can reconstruct the identical challenge.
 	PorSeed  []byte
 	PorCount int
+	// PorBase is the UNBOUND seed PorSeed was derived from, carried so the
+	// PROVER can check that PorSeed is the one bound to its own identity
+	// rather than computing under whatever seed it is handed. Without it an
+	// honest holder is an ORACLE: a data-less identity forwards the auditor's
+	// verbatim challenge, the holder proves under the forwarder's seed, and
+	// the forwarder returns the answer as its own.
+	//
+	// It is a CHECK input, not a derivation input, and that is what lets one
+	// field cover two callers: the audit path binds with core/node's
+	// porProverSeed and the repair-claim retrievability leg with
+	// repairproof.RepairChallengeSeed, so a prover handed a base tests its own
+	// identity under both domains and answers only on a match. Deriving
+	// instead would have needed a discriminator saying which.
+	//
+	// OPTIONAL BY DESIGN, so the change is additive on the wire. Absent, the
+	// prover answers PorSeed verbatim exactly as before — an old auditor is
+	// still served and an old prover still passes a new auditor's challenge,
+	// since the new auditor sends both fields and the derived seed is
+	// unchanged. The oracle closes for a pair where the PROVER is current,
+	// which is the honest limit: this cannot fix a peer's software.
+	PorBase []byte
 	// PoR proof (MsgChallengeReply → prover): the aggregated response.
 	// PorMu is one field element per sector, PorSigma the aggregated tag,
 	// PorBlocks the prover's block count. These are core/por wire bytes; the

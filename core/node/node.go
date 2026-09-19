@@ -422,6 +422,14 @@ type Stats struct {
 	BountyBaseZero     int
 	BountiesReleased   int
 	FalseRepairSlashes int
+	// ProxiedChallengesRefused counts storage challenges this node declined to
+	// answer because their seed was bound to SOMEBODY ELSE's identity — the
+	// signature of a data-less party forwarding an auditor's verbatim challenge
+	// so a real holder computes its proof for it. A non-zero value is an
+	// outsourcing attempt this node refused to be the oracle for, never a fault
+	// of its own: an honest auditor always sends a self-bound seed, so the
+	// honest path never increments this.
+	ProxiedChallengesRefused int
 	// BountyDuplicatePosition counts release verdicts this judge refused to pay
 	// because it had ALREADY paid a bounty for that (root, stripe, position). A
 	// replayed claim used to draw the full bounty a second time out of the same

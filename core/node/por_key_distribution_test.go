@@ -367,47 +367,87 @@ func TestCareLinkHolderForgesWithZeroBytes_PINNED_DEFECT(t *testing.T) {
 
 // ---------------------------------------------------------------------------
 // GATE 2 — challenge OUTSOURCING. B holds no bytes; it forwards the auditor's
-// verbatim MsgChallenge to a real holder A, whose REAL answerChallenge computes
-// under B's seed, and returns A's answer as its own.
+// verbatim MsgChallenge to a real holder A and returns A's answer as its own.
 //
-// THE RULE THIS PIN RECORDS THE ABSENCE OF: a prover should not be able to have
-// someone else answer its identity-bound challenge. Node.handle's MsgChallenge
-// case has `from` in scope and calls n.answerChallenge(msg) without it, and
-// answerChallenge takes no prover parameter, so A computes under B's seed on
-// request and cannot tell it is answering for someone else. Contrast
-// answerBondChallenge, which does take `from`. The mission spec S2 row claims "proof
-// outsourcing/relay" is hardened: RELAY is genuinely denied by porProverSeed —
-// the control below proves it — but OUTSOURCING is not.
+// THE RULE, now ASSERTED rather than pinned absent: a prover cannot have someone
+// else answer its identity-bound challenge. It was absent because answerChallenge
+// took no view of WHO the challenge was addressed to, so A computed under B's seed
+// on request and could not tell. The close is the auditor sending the UNBOUND base
+// beside the derived seed and A folding in its OWN id before answering.
 //
-// PIN. GREEN today. It goes RED when the prover identity reaches answerChallenge.
+// THE PIN PREDICTED `from` AND `from` WOULD HAVE BEEN WRONG. Its fix-case pointed at
+// Node.handle's MsgChallenge case having `from` in scope. But `from` is the
+// FORWARDER — B — so binding to it would have authorised the attack precisely. The
+// identity that must reach the prover is SELF. Recorded because the pin's own
+// guidance was the misleading part, and the next reader deserves to know the
+// prediction was checked rather than followed.
 //
-// ADVERSARY-HOLDS: HonestHolderAsOracle -- B is granted a real holder A that
-// computes a real answer under B's OWN seed on request, which is the capability the
-// defence assumes no adversary has.
+// CONVERTED FROM A PIN, 2026-09-19. It is now an ordinary positive assertion.
+//
+// ADVERSARY-HOLDS: HonestHolderAsOracle -- B is granted a real holder A that HAS the
+// bytes, HAS the tags and is WILLING to compute on request, which is the capability
+// the defence assumes no adversary has. A is still willing here; what changed is
+// that it now declines a seed naming somebody else, which is the thing under test.
 // CAPABILITY-CONTROL: HonestHolderAsOracle -- the relay-only arm below removes the
-// oracle (A answers under A's seed, B forwards it) and asserts Passed=0, and the
-// empty-reply arm asserts B alone passes nothing.
+// oracle (A answers its OWN challenge, genuinely computing, and B forwards that) and
+// asserts Passed=0; the empty-reply arm asserts B alone passes nothing.
+//
+// ⚠ THE CONTROL DISCRIMINATED WHILE THE DEFENCE WAS BROKEN, AND NO LONGER DOES.
+// Pre-fix: capability present -> B PASSED and was paid 1000; capability removed ->
+// B failed. That is a textbook capability control and it is the evidence that the
+// oracle was load-bearing. Post-fix both arms fail, which is the structural state
+// this gate's docstring describes for a defence that HOLDS. The discrimination is
+// not lost, it is HISTORICAL, and it stays checkable: the teeth test feeds
+// por2Outsourcing the recorded pre-fix grade (Passed=1, 25000 minted) and requires
+// it to fire. That is why this stays `fixture=` rather than joining the UNCOVERED
+// backlog — the capability was granted AND shown to decide the outcome.
 // ---------------------------------------------------------------------------
 
-// rtPOR2Pin returns "" while a data-less identity that outsources its verbatim
-// challenge to a real holder still passes and is paid, and the instruction once it
-// does not. TEETH: TestRetrievabilityPinsFireOnTheirRemediations.
-func rtPOR2Pin(r AuditReport, minted int64) string {
-	if r.Passed == 1 && r.Failed == 0 && minted > 0 {
+// por2Outsourcing: THE POSITIVE ASSERTION THAT REPLACED THE PIN, 2026-09-19.
+// The pin it replaces recorded that a data-less identity B could forward the
+// auditor's verbatim challenge to a real holder A, have A compute under B's OWN
+// seed, and return the answer as its own — graded Passed=1 and paid 1000 credit
+// while holding zero bytes. It went red when the prover identity reached the
+// prover, which is what a pin is for.
+//
+// The shape that landed is the one the pin predicted, with one correction it could
+// not have known: the identity that must reach answerChallenge is SELF, not `from`.
+// `from` is the FORWARDER, so binding to it would have authorised exactly the attack.
+// The auditor now sends the UNBOUND base beside the derived seed and the prover
+// folds its own id in and compares, so a challenge addressed to somebody else is
+// refused without the prover having to trust anything in the message.
+//
+// The rule asserted now: the proxied answer is graded FAILED and the proxy is NOT
+// PAID for it.
+//
+// ⚠ "NOT PAID" IS THE PROPERTY, AND IT IS NOT THE SAME AS "NOTHING HAPPENS". The
+// measured delta is NEGATIVE — B is SLASHED — and that is the audit working rather
+// than an overreach: B announced itself as a provider of a shard it does not hold
+// and could not prove possession, which is exactly what an audit is for. Only the
+// ORACLE is new. The bound is therefore `minted <= 0`, which states the security
+// property (a data-less prover is never paid) without pinning a ledger figure that
+// this project's record shows moving with every re-pricing.
+//
+// The slash lands on B, the identity being graded, never on A. A is not audited by
+// this sweep at all; it only declined to compute.
+// TEETH: TestRetrievabilityPinsFireOnTheirRemediations.
+func por2Outsourcing(r AuditReport, minted int64) string {
+	if r.Passed == 0 && r.Failed == 1 && minted <= 0 {
 		return ""
 	}
-	return fmt.Sprintf("PIN IS RED — a data-less identity B that forwarded the auditor's verbatim challenge to holder A was graded %+v "+
-		"and minted %d credit; pinned at Passed=1, Failed=0 and a positive mint.\n"+
-		"  THE FIX CASE: Passed=0 means outsourcing is now denied. The expected shape is that the prover identity reaches\n"+
-		"  Node.answerChallenge — Node.handle's MsgChallenge case already has `from` in scope, and answerBondChallenge already takes it —\n"+
-		"  so A refuses to compute under a seed that is not bound to A. Confirm THAT is what landed, then replace this pin with the\n"+
-		"  positive assertion and update the row that claims outsourcing is hardened and was over-claiming while this pin was green.\n"+
-		"  Check the two controls above still hold, so the fix is not over-rejection of honest holders.\n"+
-		"  THE OTHER CASE: Passed=1 with a zero mint means the grade is unchanged and only the payment path moved. This pin is about the GRADE.",
+	return fmt.Sprintf("OUTSOURCING IS NO LONGER REFUSED — a data-less identity B that forwarded the auditor's verbatim challenge to "+
+		"holder A was graded %+v and its balance moved by %d; want Passed=0, Failed=1 and a delta that is not positive.\n"+
+		"  IF Passed IS 1, THE ORIGINAL DEFECT IS BACK: A computed under a seed bound to B and could not tell it was answering for\n"+
+		"  someone else. Check that the auditor still sends PorBase (auditLeaf) AND that answerChallenge still calls\n"+
+		"  challengeIsAddressedToMe — dropping EITHER restores the oracle, and dropping the sender's half is the quieter of the two,\n"+
+		"  because the prover-side check then silently has nothing to check against and every challenge is answered verbatim again.\n"+
+		"  IF THE DELTA IS POSITIVE, the grade moved but the payment path did not, which is the half this assertion exists to catch.\n"+
+		"  IF Failed IS 0 WITH Passed 0, the answer never reached the grade at all; find what dropped it before reading this as a\n"+
+		"  refusal, because an unreachable prover and a refusing one are not the same result.",
 		r, minted)
 }
 
-func TestChallengeProxyPassesAudit_PINNED_DEFECT(t *testing.T) {
+func TestChallengeOutsourcingIsRefusedByTheProver(t *testing.T) {
 	auditor, _ := aloneNode(t, 0)
 	led := credit.New(1, 500_000)
 	auditor.SetLedger(led)
@@ -419,8 +459,15 @@ func TestChallengeProxyPassesAudit_PINNED_DEFECT(t *testing.T) {
 	id, data, tags, sp, auditedRoot := honestShard(t, porKey)
 	want := por.DefaultParams.Blocks(pipeline.DefaultChunkSize + ctOverhead)
 
-	// A is a REAL node that really holds the shard and its proof.
+	// A is a REAL node that really holds the shard and its proof. It is given a
+	// distinct identity, because the defence now turns on WHOSE seed a prover is
+	// answering and a fixture where every node shares aloneNode's id cannot tell
+	// the honest case from the attack. A is never driven over the network here —
+	// answerChallenge is called directly — so re-identifying it after construction
+	// touches nothing else.
 	holderA, _ := aloneNode(t, 0)
+	holderIDA := ports.HashBytes([]byte("real-holder-A"))
+	holderA.id = holderIDA
 	if err := holderA.store.Put(bg(), ports.Chunk{ID: id, Data: data}); err != nil {
 		t.Fatalf("A store: %v", err)
 	}
@@ -433,20 +480,28 @@ func TestChallengeProxyPassesAudit_PINNED_DEFECT(t *testing.T) {
 	proxyB := ports.HashBytes([]byte("data-less-proxy-B"))
 	bSeed := porProverSeed(base, proxyB)
 
-	// The auditor's message to B, forwarded by B to A VERBATIM. answerChallenge
-	// takes no `from`, so A cannot tell it is answering for someone else.
-	challenge := ports.Message{Kind: ports.MsgChallenge, ChunkID: id, PorSeed: bSeed[:], PorCount: porSampleCount}
+	// THE AUDITOR'S MESSAGE TO B, FORWARDED BY B TO A VERBATIM — and "verbatim" is
+	// why PorBase is here. auditLeaf sends the base beside the derived seed, so a
+	// forwarded copy carries it too; a fixture that omitted it would be relaying a
+	// message no auditor sends and would grade a strawman.
+	challenge := ports.Message{Kind: ports.MsgChallenge, ChunkID: id,
+		PorSeed: bSeed[:], PorBase: base[:], PorCount: porSampleCount}
 	relayed := holderA.answerChallenge(challenge)
 
 	// --- CONTROL: the RELAY attack (which porProverSeed DOES deny) must fail.
-	// A answers under A's OWN seed and B returns it. If this passed too, the
-	// identity binding is broken outright and the finding below would be
-	// mis-attributed to outsourcing.
-	holderIDA := ports.HashBytes([]byte("real-holder-A"))
+	// A answers ITS OWN legitimate challenge — seed bound to A, so A really does
+	// compute — and B returns that answer as its own. This is the arm that proves
+	// the refusal above is about outsourcing and not about A having stopped
+	// answering anything: A DOES answer here, and B still fails, because the proof
+	// is bound to A's seed and B is graded under B's.
 	relayOnly := holderA.answerChallenge(ports.Message{
 		Kind: ports.MsgChallenge, ChunkID: id,
-		PorSeed: sliceOfSeed(porProverSeed(base, holderIDA)), PorCount: porSampleCount,
+		PorSeed: sliceOfSeed(porProverSeed(base, holderIDA)), PorBase: base[:], PorCount: porSampleCount,
 	})
+	if !relayOnly.Found {
+		t.Fatal("CONTROL BROKEN: A refused its OWN identity-bound challenge — the prover-side check is rejecting honest " +
+			"challenges, which would fail every honest audit while making the outsourcing arm below pass for the wrong reason")
+	}
 	if rc := gradeOne(t, auditor, id, auditedRoot, porKey, base, want, proxyB, relayOnly); rc.Passed != 0 {
 		t.Fatalf("CONTROL BROKEN: a plain RELAY of A's own-seed proof also passed (%+v) — "+
 			"porProverSeed's identity binding is not holding, so this test is not "+
@@ -461,11 +516,20 @@ func TestChallengeProxyPassesAudit_PINNED_DEFECT(t *testing.T) {
 	before := led.Balance(proxyB)
 	r := gradeOne(t, auditor, id, auditedRoot, porKey, base, want, proxyB, relayed)
 	minted := led.Balance(proxyB) - before
-	t.Logf("grade of B's proxied answer: %+v; credit minted to the data-less proxy: %d", r, minted)
+	t.Logf("grade of B's proxied answer: %+v; credit minted to the data-less proxy: %d "+
+		"(A refused to be the oracle: ProxiedChallengesRefused=%d)", r, minted, holderA.Stats.ProxiedChallengesRefused)
 
-	// PIN: the data-less proxy passes its audit and is paid for it.
-	if msg := rtPOR2Pin(r, minted); msg != "" {
+	// THE RULE: the data-less proxy fails its audit and is paid nothing.
+	if msg := por2Outsourcing(r, minted); msg != "" {
 		t.Fatal(msg)
+	}
+	// AND THE REFUSAL IS ATTRIBUTED, not merely absent. A grade of FAILED could also
+	// come from A being broken, offline, or holding nothing; the counter says A was
+	// present, understood the challenge, and declined it because the seed named
+	// somebody else.
+	if holderA.Stats.ProxiedChallengesRefused != 1 {
+		t.Fatalf("A recorded %d proxied-challenge refusals, want exactly 1 — the proxied answer graded FAILED for some other "+
+			"reason, so this test is not measuring the outsourcing defence", holderA.Stats.ProxiedChallengesRefused)
 	}
 }
 
@@ -585,13 +649,17 @@ func TestRetrievabilityPinsFireOnTheirRemediations(t *testing.T) {
 			"Sybil-resistant standing would reach the gamma->1/N firewall unnoticed")
 	}
 
-	// --- --
-	if msg := rtPOR2Pin(pinned, 25000); msg != "" {
-		t.Fatalf("rtPOR2Pin fired on the state it is pinned to accept: %s", msg)
+	// --- por2Outsourcing, the POSITIVE assertion that replaced the outsourcing pin.
+	// Its polarity is now the ordinary one, so the two arms swap: it must stay SILENT
+	// on the fixed state and FIRE on the pinned one. Kept here rather than deleted
+	// with the pin, because a positive assertion can rot into a tautology the same
+	// way a pin can — one that accepted the old Passed=1 grade would be green forever.
+	if msg := por2Outsourcing(fixed, -25000); msg != "" {
+		t.Fatalf("por2Outsourcing fired on the state it now asserts (proxy graded FAILED and slashed, never paid): %s", msg)
 	}
-	if rtPOR2Pin(fixed, 0) == "" {
-		t.Fatal("rtPOR2Pin stayed silent when the outsourcing proxy was graded FAILED — the pin cannot " +
-			"detect the prover-identity remediation it exists to detect")
+	if por2Outsourcing(pinned, 25000) == "" {
+		t.Fatal("por2Outsourcing stayed silent on the PRE-FIX grade (proxy Passed=1, 25000 minted) — the assertion cannot " +
+			"see the defect coming back, which is the only thing it is here to do")
 	}
 
 	// GATE 5a's arms are GONE, not silenced: rtPOR5aPin was retired when the root

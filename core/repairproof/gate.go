@@ -21,7 +21,7 @@ import (
 // bond-audit path — the same defense gave the standing bond, inherited here
 // for the durability bounty.
 //
-// ADVERSARY-SHAPE: capability=RelayedHolderProof UNCOVERED: no fixture GRANTS AND CONTROLS FOR a claimant an honest holder's proof of an already-present replica. The seed binding does deny a REPLAY; the outsourcing variant -- asking the holder to compute under the CLAIMANT's seed -- is pinned open on the audit path by TestChallengeProxyPassesAudit_PINNED_DEFECT and is untested here.
+// ADVERSARY-SHAPE: capability=RelayedHolderProof UNCOVERED: no fixture GRANTS AND CONTROLS FOR a claimant an honest holder's proof of an already-present replica. The seed binding does deny a REPLAY; the outsourcing variant -- asking the holder to compute under the CLAIMANT's seed -- was pinned open on the audit path and CLOSED there on 2026-09-19 by the prover-identity binding (TestChallengeOutsourcingIsRefusedByTheProver). This leg inherits that close rather than carrying its own: challengeHolderRetrievability now sends the base beside the derived seed and the prover tests BOTH this domain and the audit domain against its own id, asserted by TestProverIdentityBindingServesBothVersions. What stays uncovered here is the ORIGINAL claim above, a claimant holding an honest holder's own-seed proof, which no fixture grants.
 func RepairChallengeSeed(base [32]byte, repairer ports.NodeID) [32]byte {
 	h := sha256.New()
 	h.Write([]byte("silt/repair/challenge/prover/v1"))
