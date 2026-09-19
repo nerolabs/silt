@@ -112,6 +112,8 @@ func (n *Node) SubmitBondRenewal(peers []ports.NodeID) {
 	// and only bytes they already hold can ever be relayed to them by digest.
 	kept := reg
 	n.ownBondReg = &kept
+	// A fresh registration means every prior ack is about different bytes.
+	n.ownRegAcks = make(map[ports.NodeID]bool, len(peers))
 	// The signed-over head is the other half of the refusal correlation: a
 	// receiver whose committed window does not yet include this head refuses
 	// the reg with a bare "signature" error (chainrole MsgSubmitBondReg), so
@@ -122,7 +124,17 @@ func (n *Node) SubmitBondRenewal(peers []ports.NodeID) {
 		if p == n.id {
 			continue
 		}
-		n.request(p, ports.Message{Kind: ports.MsgSubmitBondReg, Data: raw}, func(ports.Message, error) {})
+		p := p
+		n.request(p, ports.Message{Kind: ports.MsgSubmitBondReg, Data: raw}, func(resp ports.Message, err error) {
+			// RECORD THE ACK, which is the whole reason this callback is no longer
+			// empty. A peer that acknowledged this registration holds these bytes, and
+			// that is the only evidence that lets the block carrying them be relayed
+			// to that peer by digest. An unacknowledged peer is not assumed to hold
+			// anything: it gets the proof carried, exactly as before.
+			if err == nil && resp.OK && n.ownRegAcks != nil {
+				n.ownRegAcks[p] = true
+			}
+		})
 	}
 }
 
@@ -156,6 +168,105 @@ func (n *Node) ownRegForBlock(prev ports.Hash) (chain.BondReg, bool) {
 	if ok {
 		kept := reg
 		n.ownBondReg = &kept
+		// Minted here rather than broadcast, so nobody has acknowledged these bytes
+		// and nobody may be sent them by digest.
+		n.ownRegAcks = nil
 	}
 	return reg, ok
+}
+
+// peerCanReconstruct reports whether v demonstrably holds the heavy space-time
+// proof of EVERY bond registration in b, so the block may be relayed to v with
+// those proofs replaced by the digests that already commit them.
+//
+// EVIDENCE, NEVER INFERENCE. There are exactly two ways to know, and both are
+// observations rather than expectations:
+//
+//   - v ACKNOWLEDGED this node's own registration (ownRegAcks). The ack is a
+//     receipt for specific bytes, and it is discarded the moment those bytes change.
+//   - v AUTHORED the registration. A validator holds its own proof by construction;
+//     it is the party that produced it.
+//
+// Anything else — "every validator is sent every submission, so v probably has it"
+// — is an assumption about the network, and a wrong one costs the round it is wrong
+// in. A peer this returns false for is sent the proofs carried, which is what the
+// wire did for every peer before this existed.
+//
+// ALL, not any: one unreconstructable registration makes the whole block
+// unvalidatable to v, so a mixed block falls back for that peer.
+func (n *Node) peerCanReconstruct(v ports.NodeID, b *chain.Block) bool {
+	if b.Version < chain.BlockVersionWitnessable || len(b.BondRegs) == 0 {
+		return false // only the witnessable era commits a proof by digest
+	}
+	for i := range b.BondRegs {
+		author := b.BondRegs[i].ValidatorID()
+		switch {
+		case author == v:
+			continue // it produced this proof
+		case author == n.id && n.ownRegAcks[v]:
+			continue // it acknowledged receiving this proof from us
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// reconstructShedProofs refills the heavy proofs of a block whose registrations
+// arrived by digest, from registrations this node already holds. It reports whether
+// EVERY shed proof was restored.
+//
+// THE DIGEST IS THE AUTHORITY AND THE CANDIDATE IS CHECKED AGAINST IT. AnswerDigest
+// is folded into the v5 preimage in place of the proof, so it is covered by the
+// proposer's own signature over the block: a candidate whose sha256 equals it IS the
+// committed proof, and one whose sha256 does not is refused. Nothing here trusts the
+// queue — the queue only supplies candidates, and a peer that poisoned it with a
+// registration of its own devising supplies one that fails this check.
+//
+// It restores the block to the exact bytes the proposer committed, so the ordinary
+// validity path runs afterwards UNCHANGED — the space-time proof is re-verified, the
+// head window is enforced, and an Answer-less block is still refused at the trust
+// floor. This adds no acceptance; it only puts back what the wire left out.
+func (n *Node) reconstructShedProofs(b *chain.Block) bool {
+	if !b.HeavyProofsShed() {
+		return true // nothing was shed
+	}
+	for i := range b.BondRegs {
+		if b.BondRegs[i].Answer != nil || b.BondRegs[i].AnswerDigest == nil {
+			continue
+		}
+		want := *b.BondRegs[i].AnswerDigest
+		answer, ok := n.heldAnswerFor(b.BondRegs[i].ValidatorID(), want)
+		if !ok {
+			n.Stats.ProposalsNeedingBodies++
+			return false
+		}
+		b.BondRegs[i].Answer = answer
+	}
+	return true
+}
+
+// heldAnswerFor finds a space-time proof this node already holds whose digest is
+// `want`. It searches the registrations a proposer would have been handed: the
+// pending submissions queue, and this node's own last broadcast registration.
+//
+// The identity is checked as well as the digest. A digest collision is not the
+// threat — sha256 makes that negligible — but reading a proof out from under the
+// wrong validator would silently attribute one validator's possession to another,
+// and the cheapest moment to refuse that is before it is substituted.
+func (n *Node) heldAnswerFor(validator ports.NodeID, want ports.Hash) ([]byte, bool) {
+	for _, pr := range n.pendingBondRegs {
+		if pr.R.ValidatorID() != validator || pr.R.Answer == nil {
+			continue
+		}
+		if chain.AnswerDigestOf(pr.R.Answer) == want {
+			return pr.R.Answer, true
+		}
+	}
+	if n.ownBondReg != nil && n.ownBondReg.ValidatorID() == validator && n.ownBondReg.Answer != nil {
+		if chain.AnswerDigestOf(n.ownBondReg.Answer) == want {
+			return n.ownBondReg.Answer, true
+		}
+	}
+	return nil, false
 }

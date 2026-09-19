@@ -2029,12 +2029,50 @@ same check the block itself faces, so a kept copy can never outlive the window: 
 stale one and asserts the proposer mints fresh rather than burning its turn on a block its own
 validity rule would reject. Ablated red before the fix and green after.
 
-*THE RELAY HALF IS STILL NOT BUILT, and the alignment is exactly its precondition.* Only bytes an
-attester already holds can be replaced by a digest, and until this change there were none for a
-proposer's own registration. What remains is the wire: send the digest form to peers known to hold
-the registration, the full form to peers that do not, and decide what a miss costs — question 3
-priced the naive fallback at MORE than carrying, so the relay must avoid the miss rather than
-recover from it.
+*AND THE RELAY HALF IS BUILT ON TOP OF IT, 2026-09-19.* A proposer now sends the digest form to
+peers it has evidence hold the proof, and the full form to everyone else. The block is UNCHANGED:
+`Prune` drops `Answer` and keeps the `AnswerDigest` the v5 preimage folds in its place, so the shed
+form HASHES IDENTICALLY — every attester signs the same hash whichever form reached it, the
+committed bytes are the same bytes, nothing forks. **Transport, no era.**
+
+*THE PROOF CROSSED TWICE PER ROUND, WHICH THE READING MISSED AND THE CODE SAID.* The proposal is not
+the only message carrying the block: `prepareQCEnv.Raw` is the same `chain.Encode(b)`, so the
+prepare-QC that opens the precommit leg ships the whole thing again. Shedding only the proposal
+would have halved a cost paid twice — and reported half the saving as the whole of it.
+
+| ONE attester, ONE round, ONE registration | carried | shed |
+|---|---|---|
+| the proposal | 1,515,272 B | **511 B** |
+| the prepare-QC | 1,515,381 B | **620 B** |
+| **round total** | **3,030,653 B** | **1,131 B — 2,680x** |
+
+The precommit leg is also where the evidence is STRONGEST, and it is free exactly when the second
+copy would otherwise be sent: a peer named in the prepare-QC PREPARED on this block — it received
+it, reconstructed it, validated it and signed its hash. It cannot have done that without holding the
+proof. That is a stronger claim than an acknowledgement.
+
+*FOUR PROPERTIES, EACH WITH A CONTROL.* (1) Shedding does not move the block hash — asserted here
+rather than inherited, because this is the use that depends on it. (2) A receiver rebuilds the
+COMMITTED proof and refuses any other candidate: the digest is covered by the proposer's signature,
+so only bytes whose sha256 matches it are substituted, and the negative arm drives a poisoned
+pending queue. (3) A proposer sheds only on EVIDENCE — an acknowledgement for those exact bytes, or
+the peer authored them — and a receipt dies with the bytes it is about, so a fresh broadcast clears
+every prior one. (4) **The relay stops at the GATHER legs.** A shed block offered at COMMIT is not
+stored, because a stored Answer-less registration can never be re-verified and trusting one is the
+no-discount break the trust floor refuses. That last one guards a hazard nobody would hit today but
+that a later "natural generalization" of a change saving 3 MB a round would walk straight into.
+
+*A MISS IS A RECOVERY AND NEVER THE PLAN.* Question 3 priced the naive fallback ABOVE carrying, so a
+receiver that cannot reconstruct answers `NeedBody` — a refusal that names its own remedy — and the
+proposer re-sends to that ONE peer with the proofs carried, dropping its stale receipt. `NeedBody` is
+deliberately distinct from a bare `OK=false`: reading a transport gap as a validity refusal is the
+attribution failure that hid this wedge for three billable runs. Both sides count their misses and
+both should read zero.
+
+*WHAT TIER, SAID PLAINLY.* Unit and e2e. NOT driven under network impairment and NOT in the field —
+and that is the tier that matters most here, because the wedge only appears on a link slower than
+the deadline assumes. The relay is not in the SMOKE fleet either; that was built at the alignment
+commit, before this existed.
 
 *AND THE PREDICTION THAT WAS WRONG IS WORTH AS MUCH AS THE RESULT.* This is the second time in two
 days that a route's stated premise did not survive being driven, and both times the reading was of a

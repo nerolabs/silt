@@ -896,6 +896,12 @@ func v5PreimageBondRegs(in []BondReg) []BondReg {
 // registration carries no heavy proof. Used to derive the committed digest and to check it.
 func answerDigestOf(answer []byte) ports.Hash { return sha256.Sum256(answer) }
 
+// AnswerDigestOf is answerDigestOf for callers outside this package. A node relaying a
+// registration by digest needs the same function the validity rule uses, or the two
+// could disagree about which bytes a digest commits — and the substitution is only
+// sound while they cannot.
+func AnswerDigestOf(answer []byte) ports.Hash { return answerDigestOf(answer) }
+
 // ValidatorID is the NodeID (hash of the public key) that a registration bonds.
 func (r BondReg) ValidatorID() ports.NodeID { return sha256.Sum256(r.Validator) }
 

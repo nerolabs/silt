@@ -294,6 +294,17 @@ type Message struct {
 	PorOpen   [][]byte
 	PorPaths  [][]byte
 	PorBlocks int
+	// NeedBody is an attester's answer to a proposal whose heavy bond-registration
+	// proofs were relayed by DIGEST and which it could not reconstruct from what it
+	// already holds. It is a REFUSAL that names its own remedy: the proposer re-sends
+	// the same block to this one peer with the proofs carried, and the round
+	// continues.
+	//
+	// It is not an error and it is not a vote against the block. A plain OK=false
+	// means the attester judged the block; this means it never got to. Conflating the
+	// two would let a transport miss read as a validity refusal in the journal, which
+	// is the attribution failure that hid the original wedge for three runs.
+	NeedBody bool
 	// Capacity gossip: every message from a capacity-pledging node
 	// carries its current used/total, so peers accumulate a sample of
 	// the network's storage for the M9 capacity estimate.

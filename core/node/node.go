@@ -430,6 +430,21 @@ type Stats struct {
 	// of its own: an honest auditor always sends a self-bound seed, so the
 	// honest path never increments this.
 	ProxiedChallengesRefused int
+	// ProposalsNeedingBodies counts proposals that arrived with their bond-registration
+	// proofs relayed by DIGEST and could not be reconstructed from what this node
+	// already held, so it had to ask for the bodies.
+	//
+	// IT SHOULD BE ZERO AND IT IS NOT AN ERROR COUNTER. A proposer sheds a proof only
+	// for a peer it has a receipt from, so a miss means the receipt was true when it
+	// was written and is not true now — an ack that crossed a restart, or a queue that
+	// turned over. Non-zero is the signal that the evidence and the reality have
+	// drifted, which is worth seeing before it becomes a stalled round rather than
+	// after (S5).
+	ProposalsNeedingBodies int
+	// DigestRelayResends counts proposals this node had to re-send with the proofs
+	// carried because the peer could not reconstruct the digest-relayed form. The
+	// proposer-side twin of ProposalsNeedingBodies, and the same expectation: zero.
+	DigestRelayResends int
 	// BountyDuplicatePosition counts release verdicts this judge refused to pay
 	// because it had ALREADY paid a bounty for that (root, stripe, position). A
 	// replayed claim used to draw the full bounty a second time out of the same
@@ -714,6 +729,15 @@ type Node struct {
 	// window is bounded (chain.BondRegHeadWindow), so a stale one falls back to a
 	// fresh mint and nothing is trusted for longer than the chain allows.
 	ownBondReg *chain.BondReg
+	// ownRegAcks names the peers that ACKNOWLEDGED the registration in ownBondReg.
+	// It is the evidence — not the assumption — that a peer can reconstruct that
+	// registration from its own queue, and it is what decides whether this node may
+	// relay the proof to that peer by digest instead of by value.
+	//
+	// It is reset whenever ownBondReg changes, because an ack is about one specific
+	// registration and carrying it forward would be a claim about bytes the peer was
+	// never sent (B7: an unconfirmed delivery is a defect, not an optimization).
+	ownRegAcks map[ports.NodeID]bool
 	// peerBondRTT tracks each peer's recent bond-challenge reply latencies so the
 	// C1 partial-storage timing signal is the windowed-MINIMUM (low quantile) of
 	// the distribution, not a single wall-clock sample — build-immutable #3: a

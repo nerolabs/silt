@@ -55,9 +55,14 @@ type wireMsg struct {
 	// 32 and 33, not 23 and 24: those two carried the retired aggregate
 	// scheme's mu vector and sigma, and a retired number reused is an old
 	// peer's value decoding as this one. Wire numbers are append-only here.
-	PorOpen   [][]byte `cbor:"32,keyasint,omitempty"`
-	PorPaths  [][]byte `cbor:"33,keyasint,omitempty"`
-	PorBlocks int      `cbor:"25,keyasint,omitempty"`
+	PorOpen  [][]byte `cbor:"32,keyasint,omitempty"`
+	PorPaths [][]byte `cbor:"33,keyasint,omitempty"`
+	// 34: an attester could not reconstruct a digest-relayed proposal and is asking
+	// for the bodies. Optional, so an old peer that never sets it is simply one that
+	// never asks — and a proposer only sheds proofs for a peer it has evidence holds
+	// them, so an old peer is never sent a block it would need this for.
+	NeedBody  bool `cbor:"34,keyasint,omitempty"`
+	PorBlocks int  `cbor:"25,keyasint,omitempty"`
 	// Self-certifying provider records (H5): Provider on MsgAddProvider,
 	// ProviderRecs on MsgGetProvidersReply.
 	Provider     *wireProvRec  `cbor:"26,keyasint,omitempty"`
@@ -174,6 +179,7 @@ func toWire(m ports.Message) wireMsg {
 	w.PorSeed = m.PorSeed
 	w.PorBase = m.PorBase
 	w.PorCount = m.PorCount
+	w.NeedBody = m.NeedBody
 	w.PorOpen = cloneChunks(m.PorOpen)
 	w.PorPaths = cloneChunks(m.PorPaths)
 	w.PorBlocks = m.PorBlocks
@@ -243,6 +249,7 @@ func fromWire(w wireMsg) ports.Message {
 	m.PorSeed = w.PorSeed
 	m.PorBase = w.PorBase
 	m.PorCount = w.PorCount
+	m.NeedBody = w.NeedBody
 	m.PorOpen = cloneChunks(w.PorOpen)
 	m.PorPaths = cloneChunks(w.PorPaths)
 	m.PorBlocks = w.PorBlocks
