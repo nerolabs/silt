@@ -639,6 +639,14 @@ flow_restart_survival() {
 # ── Flow 8: per-hash takedown on ONE operator only ──────────────────────────────
 # LOCAL_PROOF: ./integration/takedown/run.sh
 flow_takedown() {
+  # The non-globality claim needs TWO storage operators: one honouring the denylist
+  # and one still serving. A topology with a single store has nothing to compare, so
+  # the flow SKIPS naming the absent node rather than grading. Without this guard the
+  # serve leg ssh'd to a host that was never deployed, read an empty sha, and recorded
+  # "denied=1 served=0 — daemon never narrated denylist enforcement, or store-2 failed
+  # to serve" — a verdict naming a daemon fault on a run where the denial leg had in
+  # fact PASSED and the only missing thing was the second operator.
+  require_nodes "8-takedown" major store-1 store-2 || return
   flow_evidence_nodes store-1 store-2
   # SELF-CONTAINED (2026-08-20 randomization): reuse a prior link if one exists,
   # else publish our own — so this flow is ORDER-INDEPENDENT (it no longer GAPs
