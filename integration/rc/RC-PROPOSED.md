@@ -1408,6 +1408,31 @@ because it has too much. A composed arm is therefore cheap to add and will not d
 nightly, but it must NOT be sold as covering this item's failure: it closes a COVERAGE gap (the four
 conditions had never been exercised together anywhere) and buys no early warning of the wedge.
 
+*AND THE COMPOSED ARM DOES NOT REPRODUCE GREEN ON A DEVELOPER BOX, which is worth writing down
+before someone re-drives it and thinks they broke it.* Driven locally 2026-09-19 on a 2-CPU docker
+VM at host load 6–12: six of the seven P0 drills PASS, and
+`TestObjectiveConsensusCommitsOverTCP` FAILS at 371.9 s with `accepted but not committed within
+6m0s — the consensus gather did not finish`. The same arm at the SAME commit as the recorded green
+dispatch, driven on the same box, same path, same impairment minutes later, fails the SAME drill
+with the SAME sentence at 377.5 s — so the red is a property of this hardware, not of any change
+after that dispatch, and the control is what says so rather than an inference from the timing.
+
+| arm | bond-standing | objective-consensus | the other five |
+|---|---|---|---|
+| local, current HEAD | PASS 26.9 s | **FAIL 371.9 s** | PASS |
+| local, the dispatched-green commit | PASS 37.95 s | **FAIL 377.5 s** | PASS |
+| the dispatched CI run | PASS 27 s | PASS 50 s | PASS |
+
+*THAT IS A SECOND READING OF THE TIER, and it cuts against the line above.* The argument for the
+composed arm was that loopback has too much capacity for the four conditions to starve the wire, so
+the arm degrades timing without reproducing the field mechanism. On a contended two-core box the
+same profile takes one drill from 50 s to over 370 s and past a six-minute commit budget — which is
+either the arm being marginal on capacity after all, or a cadence effect this list has measured
+before (a threefold per-height swing on this VM between runs of an unchanged suite). WHICH ONE IS
+NOT ATTRIBUTED HERE: that needs the validators' debug journals across the failing window, and it is
+its own piece of work. What IS established is that the arm is green on CI hardware, red on this box
+at the same commit, and that a local red on it is not evidence about whatever change is in the tree.
+
 *A RATE ARM WAS TRIED AND IS NOT ADDED, AND THE REASON IS WORTH THE LINES.* `tc netem rate` caps
 bandwidth directly and is the loopback analogue of the `RateBytesPerSec` term now in simnet, so it
 looked like the arm that would see this class. Driven at `rate 1mbit` (128 KiB/s, half the assumed
