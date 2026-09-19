@@ -89,6 +89,40 @@ func (n *Node) handleRepairClaim(from ports.NodeID, msg ports.Message) {
 		deny("malformed claim")
 		return
 	}
+	// THE ECONOMY GATE, AND IT BELONGS AHEAD OF EVERYTHING BELOW IT. A node not
+	// running the repair economy pays no bounty, so every byte it spends judging is
+	// spent for nothing — and this test used to sit at SETTLEMENT, after the registry
+	// lookup, the manifest fetch and the whole survivor walk had already run. Measured
+	// on the shipped geometry (k=10, n=16): a 110-byte unsigned claim cost such a node
+	// 4,719,978 B over 10 distinct chunks, about 42,900x, and eight claims cost eight
+	// times that, linearly.
+	//
+	// IT IS THE THIRD GATE IN A SET OF TWO, not a new policy. announceRepairQuorum and
+	// emitRepairClaim are both already gated on this same switch, so a node with the
+	// economy off never plants itself under careKey(root) and is never DISCOVERABLE as
+	// a caretaker-judge, and never emits a claim of its own. Its honest inbound claim
+	// traffic is therefore zero by construction: every claim reaching here arrived from
+	// a peer that did not resolve it through the honest rendezvous. There was no honest
+	// case to protect and the whole cost was attacker-directed.
+	//
+	// WHAT IT GIVES UP, stated rather than left to be found: an economy-off node no
+	// longer slashes a claimant that names a shard id the manifest does not commit at
+	// that position. That punishment was a reduction on a local ledger the node never
+	// pays out of, delivered by a judge nobody could discover, and reported in a vote
+	// the emitting paramedic discards (emitRepairClaim binds an empty reply callback).
+	// A node that wants to judge turns the economy on.
+	//
+	// WHAT IT DOES NOT CLOSE: the per-sender bound. A node RUNNING the economy still
+	// pays the full cost per claim, from an unsigned frame, without limit. This
+	// narrows the work; it does not bound the count, and the two are not the same
+	// thing. TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT stays green over
+	// exactly that gap.
+	//
+	// ADVERSARY-SHAPE: NOT-A-DEFENCE: the careKey sentence above says why refusing costs nothing LEGITIMATE, not what stops an attack. The defence is the unconditional refusal on the next line, which holds against any sender whatever it knows: an adversary that planted a careKey record for an economy-off node, or simply dialled it directly, still gets the refusal and still buys 0 B. Nothing here assumes an adversary cannot reach or discover this node. The discoverability claim is checked anyway, by TestRepairClaimEconomyGateIsWhereTheOtherTwoAre, because the ARGUMENT for the gate rests on it even though the gate does not.
+	if !n.cfg.RepairEconomy {
+		deny("not running the repair economy — this node is not a caretaker-judge and plants no careKey record, so it judges nothing and pays nothing")
+		return
+	}
 	n.logf(ports.LogDebug, "repair claim received",
 		"root", claim.Root, "shard", claim.ShardID, "holder", claim.Holder, "claimant", from)
 	ch, ok := n.careHandleFor(claim.Root)
