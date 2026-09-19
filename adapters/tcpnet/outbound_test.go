@@ -270,7 +270,19 @@ func TestOutboundBoundDropsNothingWhenThePeerDrains(t *testing.T) {
 			t.Fatalf("only %d/%d frames arrived — the bound cost delivery on a healthy link", i, frames)
 		}
 	}
-	if used := trA.outbound.usedBytes(); used != 0 {
-		t.Fatalf("outbound budget not fully released after the drain: used=%d", used)
+	// The budget must return to zero — a gate that leaks a frame's charge on
+	// every send eventually refuses everything on a healthy link. It is polled
+	// rather than read once: arrival at the RECEIVER does not order the SENDER's
+	// release, which runs when the delivery goroutine returns from its write, so
+	// a single read here is a race that fails on one frame's charge.
+	for wait := time.Now().Add(10 * time.Second); ; {
+		used := trA.outbound.usedBytes()
+		if used == 0 {
+			break
+		}
+		if time.Now().After(wait) {
+			t.Fatalf("outbound budget not fully released after the drain: used=%d", used)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
