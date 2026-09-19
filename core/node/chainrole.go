@@ -1600,6 +1600,19 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 					// again. One round trip on a miss, which the measurement priced
 					// as worse than carrying — which is why it is a recovery and
 					// never the plan.
+					//
+					// THE COUNTER HAND-OFF RESTS ON B2, so say so. This callback has
+					// already decremented outstandingPrep; the increment below
+					// re-arms it for the replacement request, and the `return` skips
+					// the trailing finishPrep() because the inner callback owns it.
+					// Between that decrement and this increment the count is one
+					// low, and a finishPrep() from another peer observing zero there
+					// would declare NO PREPARE QUORUM on a round still in flight.
+					// Nothing can observe it: node logic runs on ONE serialized loop
+					// with no goroutines (B2), so no other callback interleaves
+					// between two statements here. If that ever stops being true
+					// this hand-off is the first thing that breaks, and it will
+					// break as a spurious no-quorum rather than as a crash.
 					delete(n.ownRegAcks, v)
 					n.Stats.DigestRelayResends++
 					n.logf(ports.LogInfo, "gather: peer could not reconstruct a digest-relayed proposal — re-sending with the proofs carried",
