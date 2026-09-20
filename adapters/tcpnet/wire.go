@@ -61,8 +61,13 @@ type wireMsg struct {
 	// for the bodies. Optional, so an old peer that never sets it is simply one that
 	// never asks — and a proposer only sheds proofs for a peer it has evidence holds
 	// them, so an old peer is never sent a block it would need this for.
-	NeedBody  bool `cbor:"34,keyasint,omitempty"`
-	PorBlocks int  `cbor:"25,keyasint,omitempty"`
+	NeedBody bool `cbor:"34,keyasint,omitempty"`
+	// 35: the answer-digests the SENDER holds, carried on MsgChainHeadReply so a
+	// proposer can relay those registrations' heavy proofs to it by digest. Advisory
+	// and bounded on receipt; a receiver still rebuilds only bytes matching the
+	// digest the proposer signed.
+	HeldRegs  [][]byte `cbor:"35,keyasint,omitempty"`
+	PorBlocks int      `cbor:"25,keyasint,omitempty"`
 	// Self-certifying provider records (H5): Provider on MsgAddProvider,
 	// ProviderRecs on MsgGetProvidersReply.
 	Provider     *wireProvRec  `cbor:"26,keyasint,omitempty"`
@@ -121,6 +126,12 @@ type wireProof struct {
 	LeafBytes int `cbor:"7,keyasint,omitempty"`
 }
 
+// maxHeldRegs bounds the advisory digest list a peer may report on a head reply.
+// The honest list holds one entry per validator whose registration is queued, so
+// this clears any plausible set by orders of magnitude while keeping an attacker's
+// allocation per message flat.
+const maxHeldRegs = 1024
+
 var encMode cbor.EncMode
 
 func init() {
@@ -146,6 +157,9 @@ func toWire(m ports.Message) wireMsg {
 	}
 	w.Nodes = idsToBytes(m.Nodes)
 	w.Providers = idsToBytes(m.Providers)
+	for _, h := range m.HeldRegs {
+		w.HeldRegs = append(w.HeldRegs, append([]byte(nil), h[:]...))
+	}
 	if m.Provider != nil {
 		r := toWireRec(*m.Provider)
 		w.Provider = &r
@@ -221,6 +235,27 @@ func fromWire(w wireMsg) ports.Message {
 	copy(m.ChunkID[:], w.ChunkID)
 	m.Nodes = bytesToIDs(w.Nodes)
 	m.Providers = bytesToIDs(w.Providers)
+	// BOUNDED ON RECEIPT, because this list arrives from a peer and nothing in the
+	// protocol makes it small. A malicious sender offering a million digests would
+	// otherwise buy an allocation for the price of one message. The cap is generous
+	// against any honest validator set — the queue it reports holds one slot per
+	// validator — and a sender past it simply has the excess ignored rather than
+	// the message refused, because the digests are advisory: losing them costs a
+	// carried proof, never correctness.
+	if n := len(w.HeldRegs); n > 0 {
+		if n > maxHeldRegs {
+			n = maxHeldRegs
+		}
+		m.HeldRegs = make([]ports.Hash, 0, n)
+		for _, b := range w.HeldRegs[:n] {
+			var h ports.Hash
+			if len(b) != len(h) {
+				continue // a wrong-sized entry is not a digest; drop it, keep the rest
+			}
+			copy(h[:], b)
+			m.HeldRegs = append(m.HeldRegs, h)
+		}
+	}
 	if w.Provider != nil {
 		r := fromWireRec(*w.Provider)
 		m.Provider = &r

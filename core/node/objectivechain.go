@@ -289,10 +289,19 @@ func (n *Node) ownRegForBlock(prev ports.Hash) (chain.BondReg, bool) {
 //     receipt for specific bytes, and it is discarded the moment those bytes change.
 //   - v AUTHORED the registration. A validator holds its own proof by construction;
 //     it is the party that produced it.
+//   - v REPORTED holding it, on the answer-digest list its last chain-sync head
+//     reply carried (peerHeldRegs). This is the widest of the three and the one the
+//     field made necessary: the first two only ever cover a registration this node
+//     or v authored, so on a live chain — where renewals are staggered and a block
+//     carries one OTHER validator's registration — exactly one attester out of n-1
+//     qualified, and the rest were sent ~1.5 MB they already held.
 //
 // Anything else — "every validator is sent every submission, so v probably has it"
 // — is an assumption about the network, and a wrong one costs the round it is wrong
-// in. A peer this returns false for is sent the proofs carried, which is what the
+// in. The third evidence is not that assumption: it is v's own statement about v's
+// own queue, which is a fact reported by the only party that can observe it and the
+// only party that pays when it is wrong (it answers NeedBody and takes the round
+// trip). A peer this returns false for is sent the proofs carried, which is what the
 // wire did for every peer before this existed.
 //
 // ALL, not any: one unreconstructable registration makes the whole block
@@ -308,6 +317,8 @@ func (n *Node) peerCanReconstruct(v ports.NodeID, b *chain.Block) bool {
 			continue // it produced this proof
 		case author == n.id && n.ownRegAcks[v]:
 			continue // it acknowledged receiving this proof from us
+		case n.peerReportedHolding(v, b.BondRegs[i].AnswerDigest):
+			continue // it told us, on its last head reply, that it holds these bytes
 		default:
 			return false
 		}
@@ -372,4 +383,73 @@ func (n *Node) heldAnswerFor(validator ports.NodeID, want ports.Hash) ([]byte, b
 		}
 	}
 	return nil, false
+}
+
+// heldRegDigests is the set of bond-registration answer-digests this node can
+// rebuild from what it already holds — its pending queue plus its own broadcast
+// registration. It is reported to peers on every chain-sync head reply, and it is
+// what lets a PROPOSER shed those registrations' heavy proofs to this node.
+//
+// WHY THE HOLDER REPORTS, rather than the submitter vouching for who acknowledged
+// it. A holder that misreports is sent a form it cannot rebuild, answers NeedBody
+// and pays the round trip itself; a third party asserting the same thing would put
+// that cost on the proposer. The claim and the cost of it being wrong belong with
+// the same party, and only this arrangement puts them there.
+//
+// It is ADVISORY AND NEVER AUTHORITY. Nothing here grants acceptance: a receiver
+// still rebuilds only bytes whose sha256 equals the digest the proposer SIGNED
+// (reconstructShedProofs), so a false entry buys a wasted round trip and can never
+// substitute a proof. That is the same bound the acknowledgement path already has.
+//
+// No hashing happens here — every digest was computed once when its registration
+// arrived, because this runs on the single serialized loop on a 30-second timer and
+// the answers are megabytes each (see pendingBondReg.D).
+func (n *Node) heldRegDigests() []ports.Hash {
+	if n.chain == nil || !n.chain.Objective() {
+		return nil
+	}
+	out := make([]ports.Hash, 0, len(n.pendingBondRegs)+1)
+	for i := range n.pendingBondRegs {
+		if n.pendingBondRegs[i].R.Answer != nil {
+			out = append(out, n.pendingBondRegs[i].D)
+		}
+	}
+	if n.ownBondReg != nil && n.ownBondReg.Answer != nil {
+		out = append(out, chain.AnswerDigestOf(n.ownBondReg.Answer))
+	}
+	return out
+}
+
+// noteHeldRegs records what a peer reported holding on its last head reply,
+// REPLACING any earlier report rather than accumulating one.
+//
+// Replacement is the whole discipline: the list is a snapshot of a queue that
+// drains as registrations commit, so a union of past reports would keep asserting
+// that a peer holds bytes it dropped heights ago — evidence that outlives the fact
+// it is about, which is precisely the defect the acknowledgement path already had
+// to fix once.
+func (n *Node) noteHeldRegs(peer ports.NodeID, digests []ports.Hash) {
+	if len(digests) == 0 {
+		delete(n.peerHeldRegs, peer)
+		return
+	}
+	if n.peerHeldRegs == nil {
+		n.peerHeldRegs = make(map[ports.NodeID]map[ports.Hash]bool)
+	}
+	held := make(map[ports.Hash]bool, len(digests))
+	for _, d := range digests {
+		held[d] = true
+	}
+	n.peerHeldRegs[peer] = held
+}
+
+// peerReportedHolding reports whether v's last head reply listed this registration's
+// answer-digest. A nil digest is never a match: the digest is what the proposer
+// SIGNS in place of the proof, so a registration without one cannot be relayed by
+// one either.
+func (n *Node) peerReportedHolding(v ports.NodeID, d *ports.Hash) bool {
+	if d == nil {
+		return false
+	}
+	return n.peerHeldRegs[v][*d]
 }

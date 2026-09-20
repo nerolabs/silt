@@ -548,10 +548,10 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		if fork := n.equivServedFork; fork != nil {
 			last := fork[len(fork)-1]
 			fh := last.Hash()
-			n.reply(from, msg, ports.Message{Kind: ports.MsgChainHeadReply, OK: true, Height: last.Height, Data: fh[:]})
+			n.reply(from, msg, ports.Message{Kind: ports.MsgChainHeadReply, OK: true, Height: last.Height, Data: fh[:], HeldRegs: n.heldRegDigests()})
 			return true
 		}
-		n.reply(from, msg, ports.Message{Kind: ports.MsgChainHeadReply, OK: true, Height: h, Data: hh[:]})
+		n.reply(from, msg, ports.Message{Kind: ports.MsgChainHeadReply, OK: true, Height: h, Data: hh[:], HeldRegs: n.heldRegDigests()})
 	case ports.MsgSubmitBondReg:
 		// A peer submitted a fresh bond renewal for us to include when we next
 		// propose (H2 non-proposer renewal). Queue it only if it verifies for our
@@ -2078,6 +2078,11 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 					// The probe's height also serves the windowed fetch: it
 					// ends the window loop without a final empty-window round-trip.
 					peerHeadHeight, peerHeadKnown = resp.Height, true
+					// And it carries what this peer can rebuild, which is what lets a
+					// block's heavy proofs be relayed to it by digest. Recorded on
+					// EVERY reply including an empty one, so a peer whose queue has
+					// drained stops being shed to rather than keeping stale evidence.
+					n.noteHeldRegs(p, resp.HeldRegs)
 					if peerHeadHeight > diag.maxPeerHead {
 						diag.maxPeerHead = peerHeadHeight
 					}

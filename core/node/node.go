@@ -759,6 +759,15 @@ type Node struct {
 	// out of the bonded set. sim.TestObjectiveBondRenewalSustainsAttestOnlyValidator
 	// drives exactly that ordering and is what caught it.
 	ownBondRegHead ports.Hash
+	// peerHeldRegs is what each peer last REPORTED holding — the answer-digests of
+	// the bond registrations in its own pending queue, carried on the chain-sync
+	// head reply. It is the third and widest evidence the digest relay has: the
+	// other two only ever cover a registration this node authored or the peer did,
+	// which on a live chain is one attester out of n-1.
+	//
+	// Advisory, replaced wholesale on each report, and never authority — a receiver
+	// still rebuilds only bytes matching the digest the proposer signed.
+	peerHeldRegs map[ports.NodeID]map[ports.Hash]bool
 	// peerBondRTT tracks each peer's recent bond-challenge reply latencies so the
 	// C1 partial-storage timing signal is the windowed-MINIMUM (low quantile) of
 	// the distribution, not a single wall-clock sample — build-immutable #3: a

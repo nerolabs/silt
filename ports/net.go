@@ -151,7 +151,7 @@ const (
 	MsgGetCanonicalIssuers   // ask a chain-holder for the deterministic canonical issuer set (top-k by committed bond) — publisher privacy (R-3)
 	MsgCanonicalIssuersReply // Data: concatenated 32-byte NodeIDs, heaviest-bond first; OK=false if no chain
 	MsgGetChainHead          // cheap chain-sync head probe: "what is your head?" — no payload
-	MsgChainHeadReply        // Height: head height; Data: 32-byte head hash (so a matching head skips the full-chain fetch)
+	MsgChainHeadReply        // Height: head height; Data: 32-byte head hash (so a matching head skips the full-chain fetch); HeldRegs: the answer-digests of the bond registrations the REPLIER holds, so a proposer may relay those proofs to it by digest
 	MsgPrepareQC             // Data: CBOR prepareQCEnv: "here is the prepare-QC for (h, r) — precommit"
 	MsgPrecommitReply        // OK + Data: CBOR precommit attestation (or OK=false refusal)
 	MsgRoundChange           // Data: CBOR roundChangeEnv: signed "advance (h, r→r')" carrying the sender's lock
@@ -291,6 +291,27 @@ type Message struct {
 	//
 	// These are core/por wire values; the ports layer stays crypto-agnostic
 	// and never imports core/por.
+	// HeldRegs are the answer-digests of the bond registrations the SENDER holds in
+	// its pending queue, reported on MsgChainHeadReply — the head probe that already
+	// crosses between every pair of nodes on every chain-sync sweep.
+	//
+	// It exists because shedding a registration's ~1.5 MB proof needs EVIDENCE that
+	// the receiver can rebuild it, and the only two evidences a proposer had were
+	// "the peer authored this registration" and "the peer acknowledged MY OWN". On a
+	// live chain renewals are staggered, so a block carries one OTHER validator's
+	// registration, only its author qualified, and every other attester was sent
+	// bytes it already held.
+	//
+	// THE HOLDER IS THE ONE WHO REPORTS, and that is the load-bearing choice rather
+	// than a convenience. A holder that misreports is sent a form it cannot rebuild,
+	// answers NeedBody and pays the round trip itself; a third party asserting it
+	// would put that cost on the proposer instead. The claim and the cost of it being
+	// wrong have to sit with the same party.
+	//
+	// It is advisory and never authority: a receiver still rebuilds only bytes whose
+	// sha256 matches the digest the proposer SIGNED, so a false entry costs a round
+	// trip and can never substitute a proof.
+	HeldRegs  []Hash
 	PorOpen   [][]byte
 	PorPaths  [][]byte
 	PorBlocks int
