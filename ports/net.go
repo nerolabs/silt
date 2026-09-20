@@ -143,7 +143,7 @@ const (
 	MsgGetIssuerKey          // ask a validator for its publish-token issuer public key
 	MsgIssuerKeyReply        // Data: the issuer public key (blindtoken.MarshalPub); OK=false if none
 	MsgSubmitBondReg         // Data: a fresh CBOR BondReg a validator submits for a proposer to include (H2 non-proposer renewal)
-	MsgSubmitBondRegAck      // OK: the renewal was received (queued if valid for the current head)
+	MsgSubmitBondRegAck      // OK: the renewal is HELD (queued) — false on any refusal, so the OK bit is a receipt for bytes the sender may relay by digest, never merely for a message that arrived
 	MsgRepairClaim           // Data: a CBOR repairproof.RepairClaim — "I placed a correct rebuilt shard on Holder; verify and pay the bounty" (H7)
 	MsgRepairVote            // OK: the caretaker independently verified correctness+retrievability and settled the verdict on its own ledger (H7)
 	MsgDeliveryReceipt       // RETIRED: the v2 flat receipt. Kind number kept; a server answers OK=false with the named retirement (core/node handleDeliveryReceipt). Deliveries are sessions: MsgDeliveryOpen/Fund/Settle below

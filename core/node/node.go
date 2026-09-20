@@ -738,6 +738,27 @@ type Node struct {
 	// registration and carrying it forward would be a claim about bytes the peer was
 	// never sent (B7: an unconfirmed delivery is a defect, not an optimization).
 	ownRegAcks map[ports.NodeID]bool
+	// ownRegDelivered latches the "every peer holds it, nobody has committed it"
+	// state for the registration in ownBondReg, so the renewal sweep says that ONCE
+	// rather than on every sweep. The distinction is the operator-visible half of
+	// the storm: a renewal that is not delivered wants a retry, and one that is
+	// delivered but uncommitted wants a proposer — the same log line for both hid
+	// which of the two a stalled chain was actually in (S5). Cleared whenever
+	// ownBondReg changes or anything is re-sent.
+	ownRegDelivered bool
+	// ownBondRegHead is the head ownBondReg was minted over. Keeping the broadcast
+	// copy is sound only while that head STILL STANDS: the storm this bounds is a
+	// chain whose head cannot move, and a head that has moved is a chain that is
+	// committing — which is exactly when a renewal must track it or lapse.
+	//
+	// It is deliberately NOT ValidateBondReg alone. That accepts a reg over the last
+	// BondRegHeadWindow heads, which is a bound on the NONCE's freshness, not on
+	// whether committing it would still renew standing: with a TTL tighter than the
+	// window, a registration stays window-valid well after the standing it defends
+	// has already decayed, and a node holding one broadcasts nothing while it drops
+	// out of the bonded set. sim.TestObjectiveBondRenewalSustainsAttestOnlyValidator
+	// drives exactly that ordering and is what caught it.
+	ownBondRegHead ports.Hash
 	// peerBondRTT tracks each peer's recent bond-challenge reply latencies so the
 	// C1 partial-storage timing signal is the windowed-MINIMUM (low quantile) of
 	// the distribution, not a single wall-clock sample — build-immutable #3: a

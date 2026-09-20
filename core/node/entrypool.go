@@ -167,19 +167,24 @@ type pendingBondReg struct {
 // resubmission from an already-queued validator REPLACES its bytes IN PLACE
 // (the fresh nonce wins) but keeps its original FIFO position: renewing
 // cannot queue-jump, and waiting cannot lose seniority.
-func (n *Node) queuePendingBondReg(reg chain.BondReg) {
+// It reports whether the registration is now HELD, which is what the submitter's
+// acknowledgement is about: the digest relay sheds a proposal's proofs only to peers
+// it has a receipt from, so a receipt for bytes this node rejected would send it a
+// block it cannot rebuild.
+func (n *Node) queuePendingBondReg(reg chain.BondReg) bool {
 	vid := reg.ValidatorID()
 	for i := range n.pendingBondRegs {
 		if n.pendingBondRegs[i].R.ValidatorID() == vid {
 			n.pendingBondRegs[i].R = reg
-			return
+			return true
 		}
 	}
 	if len(n.pendingBondRegs) >= maxMempool {
 		// Defense-in-depth: the pool is validator-bounded (one slot each), but a
 		// forged/unbonded-ID path must not grow it without bound. Reject when full.
 		n.logf(ports.LogDebug, "bond-reg mempool full: rejecting submission", "validator", vid, "cap", maxMempool)
-		return
+		return false
 	}
 	n.pendingBondRegs = append(n.pendingBondRegs, pendingBondReg{R: reg})
+	return true
 }

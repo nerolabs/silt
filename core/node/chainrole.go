@@ -559,6 +559,21 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		// submitter resubmits on its next renewal sweep. The reg is self-signed and
 		// self-verifying (bound to the submitter's own key), so accepting a peer's
 		// reg grants standing to the PEER, never to us.
+		//
+		// THE ACKNOWLEDGEMENT IS A RECEIPT FOR BYTES HELD, NOT FOR A MESSAGE
+		// RECEIVED, and it was the latter. The reply below was sent OK=true on every
+		// path — after a rate refusal, a decode failure, a sender-binding refusal, a
+		// validity refusal, and off the objective path entirely. The submitter writes
+		// ownRegAcks from this bit and the digest relay reads THAT as "this peer holds
+		// the proof", so an unconditional OK sheds a proposal to a peer that never
+		// queued the bytes. The peer then answers NeedBody and the proposer re-sends
+		// carried — a recovery ON the critical path, which is the cost this whole
+		// route exists to avoid, and the field counted it on every seat.
+		//
+		// A refusal still REPLIES (never silently, B5); it replies OK=false. An older
+		// submitter reads only the OK bit, so it simply records no receipt and
+		// re-sends on its next sweep, which is the correct behaviour for it too.
+		held := false
 		if n.chain != nil && n.chain.Objective() {
 			// NEVER refuse silently (B5 /): a dropped submit is indistinguishable
 			// from a discovery failure to the submitter AND to a field investigator —
@@ -601,11 +616,11 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 				_, next := n.chain.Head()
 				n.logf(ports.LogInfo, "bond-reg submit REFUSED", "from", from, "validator", reg.ValidatorID(), "size", reg.Size, "next_height", next, "err", verr)
 			} else {
-				n.queuePendingBondReg(reg)
+				held = n.queuePendingBondReg(reg)
 				n.maybeProposeAtRound() // a designee that already holds its round certificate proposes now
 			}
 		}
-		n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitBondRegAck, OK: true})
+		n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitBondRegAck, OK: held})
 	case ports.MsgSubmitIssuerKeyReg:
 		// A peer submitted its per-epoch demand-issuer key registration for
 		// us to fold when we next propose — the non-proposer path for the

@@ -102,35 +102,136 @@ func (n *Node) SubmitBondRenewal(peers []ports.NodeID) {
 		return
 	}
 	head, next := n.chain.Head()
-	reg, ok := n.RegisterBondReg(head)
-	if !ok {
+
+	// MINT ONCE, AND RE-SEND ONLY WHERE THERE IS NO RECEIPT.
+	//
+	// "Due" means no block has COMMITTED this registration yet. It does not mean
+	// none was SENT. Those were the same statement for as long as the head kept
+	// moving, and they came apart the moment it stopped: a chain that cannot commit
+	// holds BondRenewalDue true indefinitely, so this path re-minted and
+	// re-broadcast the full ~1.5 MB space-time proof to every peer on every sweep,
+	// for as long as the stall lasted.
+	//
+	// Measured in the field: 29 re-broadcasts from one validator inside one
+	// ten-minute window, one per 30 s sweep, until the per-peer outbound budget was
+	// full and the transport began DROPPING the consensus frames that would have
+	// ended the stall. The stall fed the traffic that sustained the stall, so the
+	// chain could not recover on its own.
+	//
+	// Clearing the receipts every sweep had the same root and its own cost. A
+	// registration is a deterministic function of its prev, so while the head holds
+	// still the bytes are IDENTICAL — the receipts were discarded and re-bought,
+	// each time at the price of a full proof per peer, and under impairment the
+	// replacement acknowledgements did not return before the next sweep cleared
+	// them again. The digest relay's only evidence for a proposer's OWN
+	// registration is these receipts, so that churn is what collapsed its coverage
+	// to the peers that authored their own.
+	minted := false
+	if n.ownBondReg == nil || n.ownBondRegHead != head || !n.chain.ValidateBondReg(*n.ownBondReg) {
+		// KEEP WHAT WAS BROADCAST. The block this node proposes next should commit
+		// these bytes rather than a freshly minted equivalent over a later head: the
+		// peers being handed this copy are the same peers that will attest that
+		// block, and only bytes they already hold can ever be relayed by digest. The
+		// chain decides when the kept copy stops standing — ValidateBondReg is the
+		// same gate the block itself will face, so a kept copy can never outlive its
+		// window.
+		reg, ok := n.RegisterBondReg(head)
+		if !ok {
+			return
+		}
+		kept := reg
+		n.ownBondReg = &kept
+		n.ownBondRegHead = head
+		// A fresh registration means every prior ack is about different bytes.
+		n.ownRegAcks = make(map[ports.NodeID]bool, len(peers))
+		n.ownRegDelivered = false
+		minted = true
+	}
+	if n.ownRegAcks == nil {
+		// A registration minted by the PROPOSE path deliberately carries no
+		// receipts, and a nil map cannot record the ones this broadcast earns.
+		n.ownRegAcks = make(map[ports.NodeID]bool, len(peers))
+	}
+
+	// Only peers WITHOUT a receipt are sent anything. A peer that acknowledged
+	// these exact bytes holds them; re-sending is the storm. A peer that did not —
+	// a lost packet, a refusal, a restart, or a receipt the relay dropped when it
+	// answered NeedBody — is retried here, which is what keeps a lost renewal from
+	// silently decaying the validator out of the bonded set.
+	//
+	// WHAT BOUNDS HOLDING A RECEIPT FOREVER, since a peer's pending queue does not
+	// survive its restart and nothing tells us that it restarted. The HEAD does, and
+	// it is the gate above. The copy is kept only while the head it was minted over
+	// is still the head, so the two cases close themselves:
+	//
+	//   - the chain is COMMITTING: the head moves, the branch above re-mints over
+	//     the new head and re-broadcasts to everybody, and a peer that restarted is
+	//     handed the registration again on the next block. This is the behaviour
+	//     that shipped before, unchanged, because a live chain was never the
+	//     problem.
+	//   - the chain is WEDGED: the head does not move, so the copy stands and no
+	//     traffic is sent. Nothing is lost by that silence — the TTL is denominated
+	//     in BLOCKS, so a chain that commits nothing cannot expire the standing this
+	//     renewal is defending either, and a peer that restarts into a wedged chain
+	//     is not going to propose its way out regardless.
+	//
+	// The gate is the HEAD rather than ValidateBondReg, and the difference is not
+	// cosmetic. ValidateBondReg accepts a reg over the last BondRegHeadWindow heads,
+	// which bounds the NONCE's freshness — not whether committing it would still
+	// renew standing. Where the TTL is tighter than that window, a registration
+	// stays window-valid after the standing it defends has already decayed, and a
+	// node holding one sends nothing while it drops out of the bonded set. Both
+	// conditions are checked, so the copy stands only while it is the current head's
+	// AND the chain would still take it.
+	//
+	// WHAT THIS DOES NOT BOUND, named rather than left to be discovered: a peer that
+	// refuses PERMANENTLY — a mixed swarm where it is not on the objective path, or
+	// a skew that never heals — never acknowledges, so it is retried every sweep for
+	// as long as that lasts. That is not a regression (every peer was retried every
+	// sweep before), and it cannot be fixed by giving up, because giving up on an
+	// unacknowledged peer is the lapse this retry exists to prevent. It is made
+	// VISIBLE instead: the re-send below names how many peers it is still chasing,
+	// so a permanent refusal reads as a stuck count rather than as silence (S5).
+	pending := make([]ports.NodeID, 0, len(peers))
+	for _, p := range peers {
+		if p == n.id || n.ownRegAcks[p] {
+			continue
+		}
+		pending = append(pending, p)
+	}
+	if len(pending) == 0 {
+		// Every peer holds it and no block has committed it. That is a chain that is
+		// not proposing, not a delivery that failed, and the two want different
+		// remedies — say so ONCE per registration rather than every sweep, which is
+		// the log-shaped version of the same storm (S5).
+		if !n.ownRegDelivered {
+			n.ownRegDelivered = true
+			n.logf(ports.LogInfo, "bond renewal delivered to every peer — waiting for a proposer to COMMIT it",
+				"signed_next_height", next, "size", n.ownBondReg.Size, "peers", len(peers))
+		}
 		return
 	}
-	// KEEP WHAT WAS BROADCAST. The block this node proposes next should commit
-	// these bytes rather than a freshly minted equivalent over a later head: the
-	// peers being handed this copy are the same peers that will attest that block,
-	// and only bytes they already hold can ever be relayed to them by digest.
-	kept := reg
-	n.ownBondReg = &kept
-	// A fresh registration means every prior ack is about different bytes.
-	n.ownRegAcks = make(map[ports.NodeID]bool, len(peers))
+	n.ownRegDelivered = false
 	// The signed-over head is the other half of the refusal correlation: a
 	// receiver whose committed window does not yet include this head refuses
 	// the reg with a bare "signature" error (chainrole MsgSubmitBondReg), so
 	// without this line a field read cannot tell WAN head-skew from forgery.
-	n.logf(ports.LogInfo, "bond renewal submitted", "signed_next_height", next, "size", reg.Size, "peers", len(peers))
-	raw := bondRegEncode(reg)
-	for _, p := range peers {
-		if p == n.id {
-			continue
-		}
+	if minted {
+		n.logf(ports.LogInfo, "bond renewal submitted", "signed_next_height", next, "size", n.ownBondReg.Size, "peers", len(pending))
+	} else {
+		n.logf(ports.LogInfo, "bond renewal re-sent to peers without a receipt",
+			"signed_next_height", next, "size", n.ownBondReg.Size, "peers", len(pending), "of", len(peers))
+	}
+	raw := bondRegEncode(*n.ownBondReg)
+	for _, p := range pending {
 		p := p
 		n.request(p, ports.Message{Kind: ports.MsgSubmitBondReg, Data: raw}, func(resp ports.Message, err error) {
 			// RECORD THE ACK, which is the whole reason this callback is no longer
-			// empty. A peer that acknowledged this registration holds these bytes, and
-			// that is the only evidence that lets the block carrying them be relayed
-			// to that peer by digest. An unacknowledged peer is not assumed to hold
-			// anything: it gets the proof carried, exactly as before.
+			// empty. A peer that acknowledged this registration HOLDS these bytes —
+			// the reply is OK only when the receiver queued them — and that is the
+			// only evidence that lets the block carrying them be relayed to that peer
+			// by digest. An unacknowledged peer is not assumed to hold anything: it
+			// gets the proof carried, exactly as before.
 			if err == nil && resp.OK && n.ownRegAcks != nil {
 				n.ownRegAcks[p] = true
 			}
@@ -168,9 +269,11 @@ func (n *Node) ownRegForBlock(prev ports.Hash) (chain.BondReg, bool) {
 	if ok {
 		kept := reg
 		n.ownBondReg = &kept
+		n.ownBondRegHead = prev
 		// Minted here rather than broadcast, so nobody has acknowledged these bytes
-		// and nobody may be sent them by digest.
+		// and nobody may be sent them by digest — nor has anything been delivered.
 		n.ownRegAcks = nil
+		n.ownRegDelivered = false
 	}
 	return reg, ok
 }
