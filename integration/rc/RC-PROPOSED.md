@@ -1333,7 +1333,7 @@ verdict, not a participating validator.
 
 ## Tier C — field
 
-**21. Publish and fetch work on the internet as it is.** ⚠ *DRIVEN IN THE FIELD. The publish/fetch half is GREEN; the chain does NOT keep committing under all four conditions at once. The mechanism is NAMED — the ~1.5 MB bond proof on the consensus critical path against a deadline sized off a link rate the composed wire does not deliver — the route off that path is BUILT (3,030,653 B -> 1,131 B per attester per round, transport, no era), and it has now been DRIVEN UNDER IMPAIRMENT — the tier that can hold the claim — where it DOES NOT CLOSE IT: run `5af09a9-88230` wedged for 796 s at HEAD with the relay firing, because the relay covers 1 of n-1 attesters by construction and a stalled renewal re-broadcasts 1.5 MB every 30 s until it saturates the outbound budget and drops the consensus frames that would clear the stall. The instrumentation also turned up a SECOND failure, unbounded outbound frames, that OOM-killed a validator — that one is CLOSED, the outbound path has a bound*
+**21. Publish and fetch work on the internet as it is.** ⚠ *DRIVEN IN THE FIELD. The publish/fetch half is GREEN; the chain does NOT keep committing under all four conditions at once. The mechanism is NAMED — the ~1.5 MB bond proof on the consensus critical path against a deadline sized off a link rate the composed wire does not deliver — the route off that path is BUILT (3,030,653 B -> 1,131 B per attester per round, transport, no era), and it has now been DRIVEN UNDER IMPAIRMENT — the tier that can hold the claim — where it DOES NOT CLOSE IT: run `5af09a9-88230` wedged for 796 s at HEAD with the relay firing, because the relay covers 1 of n-1 attesters by construction and a stalled renewal re-broadcast 1.5 MB every 30 s until it saturated the outbound budget and dropped the consensus frames that would clear the stall. THE RENEWAL ROOT IS NOW FIXED — broadcast once, remembered until it commits, and the ack means the bytes are HELD — which removes the amplifier but NOT the 1-of-n-1 coverage, and is UNDRIVEN under impairment. The instrumentation also turned up a SECOND failure, unbounded outbound frames, that OOM-killed a validator — that one is CLOSED, the outbound path has a bound*
 A NATed publisher in one region, a cold fetcher in another, bit-perfect bytes inside a bound
 derived from the deployed configuration. The chain keeps committing under sustained load with
 injected latency, jitter, loss and reordering.
@@ -1875,11 +1875,38 @@ recovery when the budget it needs is being consumed by the stall's own retransmi
 "renewal due and not yet broadcast" from "renewal due, already broadcast, still waiting to commit".
 The first costs a re-broadcast every sweep; the second wipes the receipts that are the relay's only
 evidence; the third is the first one's traffic landing on a finite budget. The relay is correct and
-its four properties hold — what is now measured is that its coverage is thinnest exactly when the
-chain needs it most. The route stated in *The order of work* is therefore HALF the close, and the
-other half is a renewal that is broadcast once and remembered until it commits. That is named here
-rather than built, because a product change on the consensus path earns its own evidence cycle and
-its own drive under impairment.
+its four properties hold — what is measured is that its coverage is thinnest exactly when the chain
+needs it most.
+
+*THAT ROOT IS NOW FIXED, AND WHAT THE FIX DOES NOT DO IS THE PART TO READ.* A renewal is broadcast
+ONCE and remembered until it commits: the copy stands while the head it was minted over is still
+the head, only peers WITHOUT a receipt are sent anything, and the acknowledgement now means the
+bytes are HELD rather than that the message arrived — `MsgSubmitBondRegAck` replied `OK=true` after
+every refusal, including the validity refusals, so a receipt the relay reads as "this peer holds the
+proof" was being written for peers that had queued nothing. Per sweep with the chain committing
+nothing: **[3 3 3 3 3 3] before, [3 0 0 0 0 0] after**.
+
+| the rule | why it is not the obvious one |
+|---|---|
+| keep while the HEAD has not moved | `ValidateBondReg` alone accepts a copy over the last `BondRegHeadWindow` heads — a bound on the NONCE's freshness, not on whether committing it still renews standing. With a TTL tighter than that window a copy stays window-valid after the standing it defends has decayed, and the node broadcasts nothing while it drops out of the bonded set |
+| re-send only where there is no receipt | a peer whose submit was lost must still be retried, or a single dropped packet lapses a validator — the positive control a traffic fix would otherwise pass by simply sending less |
+| the ack reports HELD, not RECEIVED | the relay's whole evidence rule rests on this bit, and an unconditional OK sheds a proposal to a peer that cannot rebuild it |
+
+The wrong version of the first rule was written first and
+`sim.TestObjectiveBondRenewalSustainsAttestOnlyValidator` — TTL 3 against the default window of 8 —
+stalled at round 5 with `0 prepares of 2 gathered`. The sim tier caught a liveness regression that
+every unit assertion had passed, which is V1 working exactly as written.
+
+*AND IT IS NOT A CLOSE.* The relay's coverage is STILL 1 of n−1 attesters by construction: a block
+carries one OTHER validator's registration and only its author can be proven to hold the proof, so
+blocks still push ~1.5 MB to n−2 attesters against a deadline sized off a floor the impaired wire
+does not deliver. What is removed is the amplifier that made the stall self-sustaining and the
+receipt churn that collapsed the relay's coverage where it had any. Whether that is enough is a
+question only a drive under impairment answers, and **it has not been driven** — timing the bond
+drill on loopback shows no difference (7.4/7.0/7.4 s against 8.7/7.1/7.0 s), which is expected,
+because loopback has too much capacity to express a cost that is about a wire. Lifting the
+structural 1-of-n−1 is a separate piece: it needs a proposer to learn that a peer holds a THIRD
+party's registration, and nothing on the wire carries that today.
 
 The publish/fetch half is done and is not affected by any of it. The chain half is NOT held today
 and none of the above holds it: if the close does not land by the date, this item ships disclosed
@@ -2200,13 +2227,24 @@ drops the consensus frames that would clear the stall. Three findings, one root:
 `SubmitBondRenewal` cannot tell a renewal that has not been broadcast from one that has been
 broadcast and is still waiting to commit.
 
-So the item ships DISCLOSED, and the disclosure is now a stronger one than a day ago: the mechanism
-is named, the repro is in the tree, the route is measured AND built AND driven at the tier that
-grades it, and the reason it does not close is a named defect with field evidence rather than an
-open question. What the close needs is no longer a measurement — it is a renewal broadcast once and
-remembered until it commits. That is ordinary engineering with a deterministic shape, but it is a
-product change on the consensus path, so it earns its own evidence cycle and its own drive under
-impairment rather than being folded into the run that found it.
+*AND THE ROOT IS BUILT, 2026-09-20.* A renewal is broadcast ONCE and remembered until it commits:
+the copy stands while the head it was minted over is still the head, only peers without a receipt
+are sent anything, and `MsgSubmitBondRegAck` reports that the bytes are HELD rather than that the
+message arrived. Per sweep with the chain committing nothing, **[3 3 3 3 3 3] before, [3 0 0 0 0 0]
+after**, with five unit properties red-before-green-after and each carrying its own control — the
+first sweep must still reach every peer, and a peer whose submit was dropped must still be retried,
+because a traffic fix that simply sends less would pass a no-traffic assertion while lapsing the
+validator. The first version of the keep-rule gated on `ValidateBondReg` alone and
+`sim.TestObjectiveBondRenewalSustainsAttestOnlyValidator` stalled at round 5; the sim tier caught a
+liveness regression every unit assertion had passed.
+
+So the item ships DISCLOSED, and the disclosure is stronger again: the mechanism is named, the repro
+is in the tree, the route is measured AND built AND driven at the tier that grades it, the reason it
+did not close is a named defect with field evidence, and that defect is now fixed with its
+regression tests at both tiers. What is NOT established is that any of it closes the wedge — the
+relay's coverage is still 1 of n−1 attesters by construction, and the fix has not been driven under
+impairment. The next reading is a re-drive of `21-impaired-commit` at HEAD; it is the cheapest
+remaining question on this item, and it is the only one that can answer it.
 
 **Unsequenced, and it needs the owner's call against the four above.** Six items on this list carry no
 verdict — 11, 12, 13, 17, 18 and 19 — and two of those silences are sharper than the rest: item 11's
