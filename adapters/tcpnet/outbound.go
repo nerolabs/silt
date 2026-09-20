@@ -45,6 +45,13 @@ type outboundGate struct {
 	perPeer int64                  // per-peer share of the cap; 0 = no per-peer limit
 	perUsed map[ports.NodeID]int64 // in-flight bytes per peer (only non-zero entries)
 	refused int64                  // frames dropped for want of budget (observability)
+	// refusedSmall counts how many of those were SMALL frames — the population the
+	// reserve exists to protect. It should read zero: a non-zero value means a peer
+	// filled even the reserved slice, which is the blinding shape returning at a
+	// larger backlog rather than a tuning question. Send narrates that case at WARN
+	// with this count attached, so it is one grep in a journal rather than the
+	// four-node cross-read the original diagnosis took (S5).
+	refusedSmall int64
 }
 
 // frameGoroutineCost prices the delivery goroutine each admitted frame owns: its
@@ -55,6 +62,36 @@ type outboundGate struct {
 // goroutine stacks carrying them — the larger cost at that size — grew without
 // bound, which is the same unboundedness in a different allocation.
 const frameGoroutineCost = 8 << 10
+
+// smallFrameBytes is the payload ceiling below which a frame draws on the
+// reserved slice of a share (see reserveNum/reserveDen). It is a SIZE rule and
+// deliberately not a message-kind rule: the transport is an adapter (B1), and
+// teaching it which of the core's message kinds are "important" would put a
+// consensus concern in the wire layer and leave every new kind silently in the
+// wrong class. Size is a property the transport already owns.
+//
+// The threshold is not delicate, because the two populations are four orders of
+// magnitude apart. Measured on the wire: the frames that were starved are 121 B
+// chain-sync probes and window requests; a shed proposal is ~511 B and a shed
+// prepare-QC ~620 B; an attestation and a round-change are smaller again. The
+// payload that starves them is a carried bond proof at ~1,575,000 B, and the
+// default chunk push is 256 KiB. 64 KiB sits two orders above everything
+// consensus and chain-sync send and two below the smallest bulk, so no honest
+// control frame is near the line and no payload frame sneaks under it.
+const smallFrameBytes = 64 << 10
+
+// reserveNum/reserveDen is the slice of every share (and of the global cap) that
+// only small frames may use. Bulk is admitted only up to the remainder, so a
+// control frame always has somewhere to go behind a backlog.
+//
+// An eighth is generous on purpose and the generosity is nearly free: it costs
+// bulk 12.5% of a share it only reaches when the link is already backed up, and
+// it buys room for roughly a thousand control frames per peer at the shipped
+// budget (each charged its bytes plus frameGoroutineCost, so ~8.3 KiB for a
+// 121-byte probe against an 8 MiB reserve). The quantity that matters is that a
+// stalled round's probes, window requests and refusals all fit with room to
+// spare; sizing it tight would re-create the failure at a smaller backlog.
+const reserveNum, reserveDen = 1, 8
 
 // DefaultOutboundCap is the budget the daemon ships (-outbound-cap). It mirrors
 // the inbound cap, because the two bound the same quantity at the two ends of
@@ -117,14 +154,44 @@ func (g *outboundGate) admit(peer ports.NodeID, n int64) bool {
 	cost := frameCost(n)
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if (g.cap > 0 && g.used > 0 && g.used+cost > g.cap) ||
-		(g.perPeer > 0 && g.perUsed[peer] > 0 && g.perUsed[peer]+cost > g.perPeer) {
+	capLimit, peerLimit := g.limitsForLocked(n)
+	if (capLimit > 0 && g.used > 0 && g.used+cost > capLimit) ||
+		(peerLimit > 0 && g.perUsed[peer] > 0 && g.perUsed[peer]+cost > peerLimit) {
 		g.refused++
+		if n <= smallFrameBytes {
+			g.refusedSmall++
+		}
 		return false
 	}
 	g.used += cost
 	g.perUsed[peer] += cost
 	return true
+}
+
+// limitsFor returns the global and per-peer ceilings an n-byte frame is held to.
+// A small frame may use the whole budget; a bulk frame is held short of the
+// reserve, so it can never take the last of a share and blind the node behind it.
+//
+// THE RESERVE COMES OUT OF THE SHARE, never on top of it: the ceiling an operator
+// sets stays the ceiling, and what changes is only who may reach the last eighth
+// of it. The empty-pool rule in admit is untouched, so a lone bulk frame larger
+// than its reduced limit still moves when the pool is idle — an oversized-but-legal
+// chunk is never refused for its size, exactly as before.
+func (g *outboundGate) limitsForLocked(n int64) (capLimit, peerLimit int64) {
+	capLimit, peerLimit = g.cap, g.perPeer
+	if n <= smallFrameBytes {
+		return capLimit, peerLimit
+	}
+	return bulkLimit(capLimit), bulkLimit(peerLimit)
+}
+
+// bulkLimit is a ceiling less the slice reserved for small frames. Zero stays
+// zero: an unbounded budget reserves nothing because it refuses nothing.
+func bulkLimit(limit int64) int64 {
+	if limit <= 0 {
+		return limit
+	}
+	return limit - limit*reserveNum/reserveDen
 }
 
 func (g *outboundGate) release(peer ports.NodeID, n int64) {
@@ -157,4 +224,13 @@ func (g *outboundGate) refusedFrames() int64 {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.refused
+}
+
+// refusedSmallFrames counts the dropped frames that were small enough to draw on
+// the reserve. Zero is the expected reading; any other value is a peer whose
+// backlog consumed even the slice kept for control traffic.
+func (g *outboundGate) refusedSmallFrames() int64 {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.refusedSmall
 }

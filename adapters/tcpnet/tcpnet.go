@@ -524,6 +524,22 @@ func (t *Transport) Send(to ports.NodeID, msg ports.Message) error {
 	// reported to the caller and the debug log rather than swallowed.
 	if !t.outbound.admit(to, int64(len(frame))) {
 		inFlight, share := t.outbound.peerBytes(to)
+		// A CONTROL-SIZED frame refused is a different and worse event than a bulk
+		// frame refused, and the two read identically until you say so. Bulk being
+		// held back is the gate working: the link is backed up and the core's
+		// timeout machinery owns the retry. A small frame being refused means the
+		// backlog consumed even the slice reserved for control traffic, so this node
+		// can no longer probe a peer's head, fetch the window that would catch it up,
+		// or refuse fast — which is the blinding shape the reserve exists to prevent,
+		// returning at a larger backlog. The field diagnosis that found it took a
+		// journal read across four nodes; this line is what makes it one grep.
+		if int64(len(frame)) <= smallFrameBytes {
+			t.logf(ports.LogWarn, "outbound CONTROL frame dropped: the peer backlog consumed even the reserve — this node is going blind to that peer",
+				"to", to, "frame", len(frame), "inflight", inFlight, "share", share,
+				"total", t.outbound.usedBytes(), "refused_small", t.outbound.refusedSmallFrames())
+			return fmt.Errorf("tcpnet: outbound budget full for %s: %d bytes already in flight against a %d-byte share; dropped a %d-byte CONTROL frame (the small-frame reserve is exhausted)",
+				to, inFlight, share, len(frame))
+		}
 		t.logf(ports.LogDebug, "outbound frame dropped: peer backlog is at its budget",
 			"to", to, "frame", len(frame), "inflight", inFlight, "share", share,
 			"total", t.outbound.usedBytes())
