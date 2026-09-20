@@ -1333,7 +1333,7 @@ verdict, not a participating validator.
 
 ## Tier C — field
 
-**21. Publish and fetch work on the internet as it is.** ⚠ *DRIVEN IN THE FIELD. The publish/fetch half is GREEN; the chain does NOT keep committing under all four conditions at once. The mechanism is NAMED — the ~1.5 MB bond proof on the consensus critical path against a deadline sized off a link rate the composed wire does not deliver — the route off that path is BUILT (3,030,653 B -> 1,131 B per attester per round, transport, no era), and it has now been DRIVEN UNDER IMPAIRMENT — the tier that can hold the claim — where it DOES NOT CLOSE IT: run `5af09a9-88230` wedged for 796 s at HEAD with the relay firing, because the relay covers 1 of n-1 attesters by construction and a stalled renewal re-broadcast 1.5 MB every 30 s until it saturated the outbound budget and dropped the consensus frames that would clear the stall. THE RENEWAL ROOT IS NOW FIXED — broadcast once, remembered until it commits, and the ack means the bytes are HELD — which removes the amplifier but NOT the 1-of-n-1 coverage, and is UNDRIVEN under impairment. The instrumentation also turned up a SECOND failure, unbounded outbound frames, that OOM-killed a validator — that one is CLOSED, the outbound path has a bound*
+**21. Publish and fetch work on the internet as it is.** ⚠ *DRIVEN IN THE FIELD. The publish/fetch half is GREEN; the chain does NOT keep committing under all four conditions at once. The mechanism is NAMED — the ~1.5 MB bond proof on the consensus critical path against a deadline sized off a link rate the composed wire does not deliver — the route off that path is BUILT (3,030,653 B -> 1,131 B per attester per round, transport, no era), and it has now been DRIVEN UNDER IMPAIRMENT — the tier that can hold the claim — where it DOES NOT CLOSE IT: run `5af09a9-88230` wedged for 796 s at HEAD with the relay firing, because the relay covers 1 of n-1 attesters by construction and a stalled renewal re-broadcast 1.5 MB every 30 s until it saturated the outbound budget and dropped the consensus frames that would clear the stall. THE RENEWAL ROOT IS FIXED AND RE-DRIVEN (run `7eaf3bd-75421`): the storm is gone in the field — 29 submits down to 1, coverage 17% up to 37.5%, one height shed to every peer — and the chain STILL wedges at 814 s on the 15 legs that still carry the proof by value. The re-drive also found that the outbound bound has NO FRAME-KIND FAIRNESS: 20 of 23 dropped frames were 121-byte chain-sync probes, and all four validators went blind at once (`max-peer-head=0`). Two independent pieces of work remain. The instrumentation also turned up a SECOND failure, unbounded outbound frames, that OOM-killed a validator — that one is CLOSED, the outbound path has a bound*
 A NATed publisher in one region, a cold fetcher in another, bit-perfect bytes inside a bound
 derived from the deployed configuration. The chain keeps committing under sustained load with
 injected latency, jitter, loss and reordering.
@@ -1908,6 +1908,57 @@ because loopback has too much capacity to express a cost that is about a wire. L
 structural 1-of-n−1 is a separate piece: it needs a proposer to learn that a peer holds a THIRD
 party's registration, and nothing on the wire carries that today.
 
+*RE-DRIVEN AFTER THE RENEWAL FIX — run `7eaf3bd-75421`, 2026-09-20. THE AMPLIFIER IS GONE, THE WEDGE
+IS NOT, AND THE RUN FOUND SOMETHING SHARPER THAN EITHER.* Same fleet shape, every seat on-demand,
+31 resources destroyed with zero orphans. **23 pass · 0 gap · 1 fail · 6 skip** — the one fail is
+this row again, **814 s without a commit**, h46→h46, zero heights, 0 of 2 publishes landed,
+impairment credited on all four seats. A fifth reproduction of the same shape.
+
+*WHAT THE FIX DID, MEASURED RATHER THAN ARGUED.* The three findings the previous run attributed were
+all downstream of one root, and that root is closed:
+
+| | run `5af09a9` (before) | run `7eaf3bd` (after) |
+|---|---|---|
+| `bond renewal submitted` inside the impaired window | **29** on one seat | **1** across all four |
+| relay coverage of registration-bearing prepare legs | 6 of 36 — **17%** | 9 of 24 — **37.5%** |
+| a height shed to EVERY peer | none after h4 | **h45, 4 of 4** |
+| `outbound budget full` | yes | **still yes — 23 frames dropped** |
+
+The storm is gone in the field, not only in a unit test. Coverage more than doubled, and a height
+shed to every peer for the first time since bootstrap — the receipt churn really was what collapsed
+it. Worst RSS 0.87 GiB with no OOM, so the outbound bound still holds.
+
+*AND THE WEDGE STILL REPRODUCES, WITH THE CAUSE NOW ISOLATED.* **Fifteen prepare legs still carried
+~1,574,000 B each.** That is the 1-of-n−1 coverage limit and nothing else: a block carrying one
+OTHER validator's registration can be shed only to its author, so the remaining attesters are sent
+the proof by value against a deadline the impaired wire does not meet. Removing the amplifier did
+not move the wedge, which is the cleanest possible statement of where the remaining work is.
+
+*THE NEW FINDING IS THAT THE BOUND HAS NO FRAME-KIND FAIRNESS, AND IT IS ARGUABLY SHARPER THAN THE
+COVERAGE LIMIT.* Of the 23 frames the outbound budget dropped, **20 were 121 bytes** — chain-sync
+window requests and head probes, not proposals. The per-peer share is fair between PEERS and blind
+between FRAME KINDS, so 1.57 MB of proposal retries sit in front of the small control frames that
+recovery depends on. Every seat, simultaneously:
+
+```
+chain sync sweep made NO progress while behind our-next=47 max-peer-head=0
+  peers=4 probe-fails=4
+  last-err="window@46 from f9008cef: tcpnet: outbound budget full ..."
+```
+
+`max-peer-head=0` and `probe-fails=4` on **all four validators at once** — the entire set went blind
+to each other's heads, attributed by the nodes' own error string to the budget rather than to the
+shaping. A node that cannot send a 121-byte probe cannot discover that it is behind, cannot fetch
+the window that would catch it up, and cannot fail fast either: a refusal reply is 121 bytes too.
+This is head-of-line blocking INSIDE the bound that closed the OOM, and it would bite on any
+congested link even if the coverage limit were closed tomorrow.
+
+*SO THE ITEM NOW CARRIES TWO SEPARATE PIECES OF WORK, AND THEY ARE INDEPENDENT.* Lifting coverage
+to every attester takes the heavy bytes off the critical path; reserving a share of the outbound
+budget for small control frames keeps a congested link from blinding the node that is trying to
+recover on it. Neither subsumes the other, and this run is what separated them — which is what the
+previous sheet could not do, because the renewal storm was masking both.
+
 The publish/fetch half is done and is not affected by any of it. The chain half is NOT held today
 and none of the above holds it: if the close does not land by the date, this item ships disclosed
 with the mechanism named, the repro in the tree and the route measured.
@@ -2238,13 +2289,26 @@ validator. The first version of the keep-rule gated on `ValidateBondReg` alone a
 `sim.TestObjectiveBondRenewalSustainsAttestOnlyValidator` stalled at round 5; the sim tier caught a
 liveness regression every unit assertion had passed.
 
-So the item ships DISCLOSED, and the disclosure is stronger again: the mechanism is named, the repro
-is in the tree, the route is measured AND built AND driven at the tier that grades it, the reason it
-did not close is a named defect with field evidence, and that defect is now fixed with its
-regression tests at both tiers. What is NOT established is that any of it closes the wedge — the
-relay's coverage is still 1 of n−1 attesters by construction, and the fix has not been driven under
-impairment. The next reading is a re-drive of `21-impaired-commit` at HEAD; it is the cheapest
-remaining question on this item, and it is the only one that can answer it.
+*AND THE RE-DRIVE HAS REPORTED, 2026-09-20, run `7eaf3bd-75421`.* The renewal fix holds in the field:
+**29 submits inside the impaired window became 1**, relay coverage went **17% → 37.5%**, and a height
+shed to every peer for the first time since bootstrap. The chain still wedged, at **814 s**, on the
+**15 prepare legs that still carry ~1,574,000 B** — which is the 1-of-n−1 coverage limit with the
+amplifier removed from in front of it, and therefore the cleanest statement of the remaining work
+this item has ever had.
+
+The re-drive also turned up a defect neither previous run could see, because the renewal storm was
+masking it: **the outbound bound is fair between peers and blind between frame kinds.** 20 of the 23
+dropped frames were 121-byte chain-sync probes and window requests, and all four validators reported
+`max-peer-head=0 probe-fails=4` simultaneously — blind to each other, by their own attribution, while
+1.57 MB proposal retries held the budget. A node that cannot send a 121-byte probe cannot discover it
+is behind, cannot fetch the window that would catch it up, and cannot refuse fast either.
+
+So the item ships DISCLOSED, and TWO independent pieces of work are named rather than one. Lifting
+coverage to every attester takes the heavy bytes off the critical path. Reserving a share of the
+outbound budget for small control frames keeps a congested link from blinding the node trying to
+recover on it. Neither subsumes the other; the second would bite on any congested link even if the
+first landed tomorrow. Both are ordinary engineering with field evidence behind them, and neither is
+an era.
 
 **Unsequenced, and it needs the owner's call against the four above.** Six items on this list carry no
 verdict — 11, 12, 13, 17, 18 and 19 — and two of those silences are sharper than the rest: item 11's
