@@ -1333,7 +1333,7 @@ verdict, not a participating validator.
 
 ## Tier C — field
 
-**21. Publish and fetch work on the internet as it is.** ⚠ *DRIVEN IN THE FIELD. The publish/fetch half is GREEN; the chain does NOT keep committing under all four conditions at once. The mechanism is NAMED — the ~1.5 MB bond proof on the consensus critical path against a deadline sized off a link rate the composed wire does not deliver — the route off that path is BUILT (3,030,653 B -> 1,131 B per attester per round, transport, no era), and it has now been DRIVEN UNDER IMPAIRMENT — the tier that can hold the claim — where it DOES NOT CLOSE IT: run `5af09a9-88230` wedged for 796 s at HEAD with the relay firing, because the relay covers 1 of n-1 attesters by construction and a stalled renewal re-broadcast 1.5 MB every 30 s until it saturated the outbound budget and dropped the consensus frames that would clear the stall. THE RENEWAL ROOT IS FIXED AND RE-DRIVEN (run `7eaf3bd-75421`): the storm is gone in the field — 29 submits down to 1, coverage 17% up to 37.5%, one height shed to every peer — and the chain STILL wedges at 814 s on the 15 legs that still carry the proof by value. The re-drive also found that the outbound bound has NO FRAME-KIND FAIRNESS: 20 of 23 dropped frames were 121-byte chain-sync probes, and all four validators went blind at once (`max-peer-head=0`). Two independent pieces of work remain. The instrumentation also turned up a SECOND failure, unbounded outbound frames, that OOM-killed a validator — that one is CLOSED, the outbound path has a bound*
+**21. Publish and fetch work on the internet as it is.** ⚠ *DRIVEN IN THE FIELD. The publish/fetch half is GREEN; the chain does NOT keep committing under all four conditions at once. The mechanism is NAMED — the ~1.5 MB bond proof on the consensus critical path against a deadline sized off a link rate the composed wire does not deliver — the route off that path is BUILT (3,030,653 B -> 1,131 B per attester per round, transport, no era), and it has now been DRIVEN UNDER IMPAIRMENT — the tier that can hold the claim — where it DOES NOT CLOSE IT: run `5af09a9-88230` wedged for 796 s at HEAD with the relay firing, because the relay covers 1 of n-1 attesters by construction and a stalled renewal re-broadcast 1.5 MB every 30 s until it saturated the outbound budget and dropped the consensus frames that would clear the stall. THREE CAUSES WERE FOUND, BUILT AND DRIVEN (runs `7eaf3bd-75421`, `1b0b933-52703`): the renewal storm (29 submits -> 0), the outbound bound's blindness to frame size (20 control frames dropped -> 0), and the relay's 1-of-n-1 coverage (an inventory that reaches 42:25 on a healthy chain). The chain STILL wedges at 796 s, six reproductions deep, and the reason is now a single sentence: THE CONSENSUS CRITICAL PATH SHARES ONE ORDERED PER-PEER CONNECTION WITH THE PAYLOAD THAT CONGESTS IT. Every fix above the transport moved its own number without moving the wedge, because each still needs a round trip on the connection the payload owns. This is transport work, not consensus work. The instrumentation also turned up a SECOND failure, unbounded outbound frames, that OOM-killed a validator — that one is CLOSED, the outbound path has a bound*
 A NATed publisher in one region, a cold fetcher in another, bit-perfect bytes inside a bound
 derived from the deployed configuration. The chain keeps committing under sustained load with
 injected latency, jitter, loss and reordering.
@@ -1987,6 +1987,63 @@ identically to a bulk frame being held back: bulk refused is the gate working, a
 is the backlog consuming even the reserve. The original diagnosis took a journal cross-read over
 four nodes; it is one grep now. **It is UNDRIVEN under impairment** — the next reading would say
 whether the seats still go blind, and it does not close the wedge, which is the other piece.
+
+*ALL THREE CAUSES CLOSED AND DRIVEN TOGETHER — run `1b0b933-52703`, 2026-09-20. TWO HOLD, THE THIRD
+CANNOT, AND THE REASON IS THE MOST USEFUL THING THIS ITEM HAS LEARNED.* Same fleet, every seat
+on-demand, 31 resources destroyed with zero orphans. **23 pass · 0 gap · 1 fail · 6 skip**, and the
+one fail is this row at **796 s**, h54→h54 — a sixth reproduction.
+
+| inside the impaired window | `5af09a9` | `7eaf3bd` | `1b0b933` |
+|---|---|---|---|
+| `bond renewal submitted` | 29 on one seat | 1 | **0** |
+| `CONTROL frame dropped` (121 B probes) | 20 of 23 drops | 20 of 23 drops | **0** |
+| `outbound budget full` | yes | yes | 7, all BULK — the gate working |
+| relay coverage, registration-bearing legs | 6 of 36 | 9 of 24 | 9 of 28 |
+| heavy legs still carried | — | 15 | **19** |
+
+*TWO OF THE THREE FIXES HOLD UNDER IMPAIRMENT AND ARE NOW FIELD-CONFIRMED.* The renewal is
+broadcast once and never re-broadcast on a stalled chain. No control frame was dropped at all, where
+the previous run dropped twenty; the seven refusals left are bulk being held back, which is the
+budget doing its job.
+
+*THE THIRD CANNOT WORK WHERE IT IS NEEDED, AND THE DEPENDENCY IS CIRCULAR.* Coverage was **42 shed
+against 25 carried at h54**, immediately before the shaping went on — the inventory works. Inside the
+window it collapses to one peer per proposal, which is the author case and nothing else. The reason
+is in the sweep log, on every seat, every 30 s, for the whole wedge:
+
+```
+chain sync sweep made NO progress while behind our-next=55 max-peer-head=0
+  peers=4 probe-fails=4 head-matches=0 windows=0 suffix-appends=0 reconciles=0 last-err=
+```
+
+The inventory rides the head REPLY. The head reply is exactly what cannot arrive during the wedge.
+**The evidence channel is starved by the same congestion the evidence exists to relieve**, so the
+mechanism is strongest on a healthy chain and absent on a stalled one. That is a design fault in the
+route, found by driving it, and no amount of local testing would have shown it: every tier below the
+field delivers the reply.
+
+*AND THE PROBE FAILURE HAS MOVED ONE LAYER DOWN, WHICH IS THE OTHER HALF OF THE READING.* Last run
+`last-err` named `outbound budget full` and 20 of 23 dropped frames were 121-byte probes. This run
+**no control frame was dropped and `last-err` is empty** — `probe-fails` now counts a TIMEOUT, not a
+refusal. The frames are admitted by the gate, written to the socket, and then wait behind megabytes
+in the **shared, ordered, per-peer TLS stream**. An application-level budget can decide what to hand
+the socket; it cannot reorder what the socket has already accepted.
+
+*SO THE RESERVE FIXED A REAL DEFECT AT THE WRONG LAYER FOR THIS PURPOSE.* It is still correct and
+still wanted — dropping a control frame is strictly worse than delaying one, and the drops are gone.
+But head-of-line blocking on a single ordered connection is below where any admission control
+reaches, and that is what now starves the sweep. The remedies are structural and the list already
+names them under build-immutable #5's settled prior art: **succinct proofs > FEC > QUIC** — either
+stop putting megabytes on that connection, or stop making control traffic share one ordered stream
+with them.
+
+*WHAT THIS LEAVES ITEM 21 WITH, stated plainly.* The second claim is NOT held, and the remaining
+cause is now a single sentence: **the consensus critical path shares one ordered per-peer connection
+with the payload that congests it.** Every mechanism that tries to fix this above the transport —
+retry de-duplication, alignment, digest relay, an evidence inventory — has been built and measured,
+and each one moved the number without moving the wedge, because each one still needs a round trip on
+the connection the payload owns. That is a coherent finding, it is six reproductions deep, and it
+points at transport work rather than consensus work.
 
 The publish/fetch half is done and is not affected by any of it. The chain half is NOT held today
 and none of the above holds it: if the close does not land by the date, this item ships disclosed
