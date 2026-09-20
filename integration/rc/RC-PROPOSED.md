@@ -2045,6 +2045,57 @@ and each one moved the number without moving the wedge, because each one still n
 the connection the payload owns. That is a coherent finding, it is six reproductions deep, and it
 points at transport work rather than consensus work.
 
+*THE REMAINING CAUSE IS NOW REPRODUCED BELOW THE FIELD TIER, 2026-09-20.*
+`adapters/tcpnet/headofline_measure_test.go`. A reader draining at a FIXED RATE is the one property
+of the impaired link that matters — bytes leave the socket slower than the sender offers them — and
+it is what neither tier below could express: simnet delivers a message atomically after a latency
+draw, so there is no stream to be behind, and loopback could not show it while it had unlimited
+capacity.
+
+| a 121-byte control frame, connection draining at 8 MiB/s | |
+|---|---|
+| with nothing ahead of it | **1 ms** |
+| behind a 16,777,216-byte bulk frame (2 s of wire) | **1.927 s — 2488x** |
+| the same frame on a SEPARATE connection, same bulk in flight | **1 ms** |
+
+Three billable runs bought that attribution; it now costs 2.5 seconds on a laptop, and any remedy
+can be graded against it without spending another.
+
+*THE FIXTURE'S FIRST CUT DID NOT REPRODUCE IT, and that is worth carrying.* `Send` hands every frame
+to its own goroutine, so the order two frames reach the wire in is decided by whichever wins the
+per-peer write mutex. A 512 KiB payload vanishes into a loopback socket buffer instantly, releasing
+the mutex before the control frame queues — the control frame then arrived FIRST, 64 ms either way,
+measuring nothing. The assertion caught it rather than passing quietly. The payload is now sized past
+the buffers and the control frame is offered only once the bulk write is parked.
+
+*AND THE THREE REMEDIES ARE PRICED. NONE OF THEM FITS THE DATE, which is the finding.*
+
+| remedy | what it buys | what it costs | before 2026-09-27? |
+|---|---|---|---|
+| **A separate control connection** | measured: 1.927 s → 1 ms | a connection ROLE negotiated at setup — without one the peer's `adopt()` replaces its general conversation with the control conn and sends bulk back down it, which is worse than nothing. Reaches ten non-test lifecycle call sites plus `viaRelay`, the hole-punch upgrade, the relay splice and NATed reply routing; the NAT suites run in docker | **no** — days, and it wants a field drive after |
+| **QUIC** | independent streams as a protocol property, without hand-rolling them | a new transport adapter, handshake, NAT/relay story re-derived, a UDP ops surface | **no** |
+| **Succinct proofs** | removes the bulk entirely — nothing to queue behind | changes what a block commits, so a NEW ERA behind a height-gated hard fork | **no**, by the frozen-format immutable |
+
+*B8 POINTS AT QUIC AND THE DATE POINTS AWAY FROM ALL THREE.* The separate connection is the
+HTTP/1.1 parallel-connections workaround — proven and boring, but it is multiplexing hand-rolled out
+of connections, and QUIC exists precisely because TCP head-of-line blocking could not be fixed
+inside TCP. "We never reinvent a primitive… novel-and-unproven is worse than me-too" argues for the
+real thing rather than the workaround, and the real thing is not a week's work.
+
+*A CHEAPER HALF-MEASURE WAS CONSIDERED AND DOES NOT CLOSE IT.* A per-peer priority queue would let
+control frames jump ahead of QUEUED bulk without any new connection. It cannot preempt the bulk
+frame already mid-write, so the worst case is still one whole payload's wire time — ~28 s at the
+field's measured 53 KB/s, against an 8 s probe deadline. It would improve the average and leave the
+failure reachable, which is the shape build-immutable #3 warns about: a number moved, a property not
+held.
+
+*SO ITEM 21'S SECOND CLAIM CANNOT CLOSE BEFORE THE DATE, and that is now evidenced rather than
+feared.* It ships disclosed with: the mechanism named to one sentence, six field reproductions, four
+candidate fixes built and eliminated by measurement, a local repro that costs seconds, and three
+remedies priced with their blast radius. The transport work is real, it is scoped, and it is the
+next thing — it is simply not a week's work, and starting it hurriedly against a hard date is how a
+NAT-traversing transport acquires the kind of defect this list has paid for before.
+
 The publish/fetch half is done and is not affected by any of it. The chain half is NOT held today
 and none of the above holds it: if the close does not land by the date, this item ships disclosed
 with the mechanism named, the repro in the tree and the route measured.
@@ -2395,6 +2446,17 @@ outbound budget for small control frames keeps a congested link from blinding th
 recover on it. Neither subsumes the other; the second would bite on any congested link even if the
 first landed tomorrow. Both are ordinary engineering with field evidence behind them, and neither is
 an era.
+
+*BOTH WERE BUILT, DRIVEN AND HELD — AND THE WEDGE DID NOT MOVE (run `1b0b933-52703`).* The renewal
+storm is gone (29 submits → 0) and no control frame is dropped at all (20 → 0). The chain still
+wedged at 796 s, and the cause reduced to one sentence: **the consensus critical path shares one
+ordered per-peer connection with the payload that congests it.** That is now reproduced locally at
+2488x in 2.5 seconds, and the three remedies are priced above. **NONE of them fits 2026-09-27** — a
+separate control connection needs a role negotiated at connection setup and reaches the relay
+splice, the hole-punch upgrade and NATed reply routing; QUIC is a new transport adapter; succinct
+proofs are a new era by the frozen-format rule. The date question for this item is therefore settled
+in the negative, with evidence rather than by fear, and the disclosure it ships with is the
+strongest this list carries.
 
 **Unsequenced, and it needs the owner's call against the four above.** Six items on this list carry no
 verdict — 11, 12, 13, 17, 18 and 19 — and two of those silences are sharper than the rest: item 11's
