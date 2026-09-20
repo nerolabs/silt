@@ -1959,6 +1959,35 @@ budget for small control frames keeps a congested link from blinding the node th
 recover on it. Neither subsumes the other, and this run is what separated them — which is what the
 previous sheet could not do, because the renewal storm was masking both.
 
+*THE SECOND OF THOSE IS BUILT, 2026-09-20.* An eighth of every share, and of the global cap, is
+reserved for frames of 64 KiB or less; bulk is admitted only up to the remainder. It is a SIZE rule
+and deliberately not a message-kind rule — the transport is an adapter (B1), and teaching it which
+of the core's kinds matter would put a consensus concern in the wire layer and leave every new kind
+silently in the wrong class. The two populations are four orders of magnitude apart (121 B probes, a
+shed proposal at ~511 B, against carried proofs at ~1,575,000 B and a 256 KiB chunk), so the
+threshold is not delicate. **The reserve comes out of the share, never on top of it**, so the
+ceiling an operator sets stays the ceiling.
+
+| the arm | before | after |
+|---|---|---|
+| bulk fills a 16 MiB share, then a 121 B probe | **refused** — bulk reached within 1 B of the share | **admitted** |
+| a peer's total in flight against its share | — | never exceeds it (the reserve is subtractive) |
+| a draining peer at the shipped budget, 200 back-to-back frames | all delivered | all delivered |
+| the unbounded control against the bounded arm | 50,727,984 B vs 1,056,833 B, 47 refused | unchanged |
+
+*AND THE FILL IS WHAT MAKES THAT A TEST RATHER THAN A COINCIDENCE.* Admitting uniform 1 MiB frames
+until one is refused stops an average of half a frame short — hundreds of kilobytes of slack, which
+a 121-byte frame fits into comfortably, so the assertion would have passed on the very behaviour it
+exists to catch. The field had 5,560 bytes of slack in a 67,108,864-byte share. The top-up frame is
+therefore sized to the headroom actually left, bulk fills to within ONE BYTE, and the probe behind
+it is refused before the fix.
+
+A refused CONTROL frame now narrates itself at WARN with the count attached, instead of reading
+identically to a bulk frame being held back: bulk refused is the gate working, a small frame refused
+is the backlog consuming even the reserve. The original diagnosis took a journal cross-read over
+four nodes; it is one grep now. **It is UNDRIVEN under impairment** — the next reading would say
+whether the seats still go blind, and it does not close the wedge, which is the other piece.
+
 The publish/fetch half is done and is not affected by any of it. The chain half is NOT held today
 and none of the above holds it: if the close does not land by the date, this item ships disclosed
 with the mechanism named, the repro in the tree and the route measured.
