@@ -626,6 +626,11 @@ func (t *Transport) ctrlLaneFor(to ports.NodeID, pair addrPair) *peerConn {
 	// a completed conversation reached, and a peer this node only ever exchanges
 	// small frames with must not become invisible to it.
 	t.observeConn(to, conn.RemoteAddr(), false)
+	// SAY THAT THE LANE IS LIVE, once per lane per peer. A field run that goes green
+	// after this change has to be attributable TO it, and nothing else in a journal
+	// distinguishes "the lane carried the probe" from "the probe got lucky". One
+	// line per peer is the cheapest evidence that settles it (S5).
+	t.logf(ports.LogInfo, "control lane established — small frames to this peer bypass its payload", "to", to)
 	pc := t.adoptCtrl(to, conn)
 	go func() {
 		defer t.dropCtrlConn(to, pc)
@@ -863,6 +868,7 @@ func (t *Transport) readLoop(conn *tls.Conn, viaRelay bool) {
 	// hole-punch state that hangs off the bulk slot is untouched by it.
 	if isCtrlConn(conn.ConnectionState()) {
 		pc := t.adoptCtrl(from, conn)
+		t.logf(ports.LogInfo, "control lane accepted — small frames from this peer arrive off its payload", "from", from)
 		// The address class is observed on either lane, for the same reason: it is a
 		// fact about the peer's address. What the control lane does NOT do is become
 		// the bulk conversation, so the relay and hole-punch state hanging off that
