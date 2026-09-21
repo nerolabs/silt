@@ -1333,7 +1333,7 @@ verdict, not a participating validator.
 
 ## Tier C — field
 
-**21. Publish and fetch work on the internet as it is.** ⚠ *DRIVEN IN THE FIELD. The publish/fetch half is GREEN; the chain does NOT keep committing under all four conditions at once. The mechanism is NAMED — the ~1.5 MB bond proof on the consensus critical path against a deadline sized off a link rate the composed wire does not deliver — the route off that path is BUILT (3,030,653 B -> 1,131 B per attester per round, transport, no era), and it has now been DRIVEN UNDER IMPAIRMENT — the tier that can hold the claim — where it DOES NOT CLOSE IT: run `5af09a9-88230` wedged for 796 s at HEAD with the relay firing, because the relay covers 1 of n-1 attesters by construction and a stalled renewal re-broadcast 1.5 MB every 30 s until it saturated the outbound budget and dropped the consensus frames that would clear the stall. THREE CAUSES WERE FOUND, BUILT AND DRIVEN (runs `7eaf3bd-75421`, `1b0b933-52703`): the renewal storm (29 submits -> 0), the outbound bound's blindness to frame size (20 control frames dropped -> 0), and the relay's 1-of-n-1 coverage (an inventory that reaches 42:25 on a healthy chain). The chain STILL wedges at 796 s, six reproductions deep, and the reason is now a single sentence: THE CONSENSUS CRITICAL PATH SHARES ONE ORDERED PER-PEER CONNECTION WITH THE PAYLOAD THAT CONGESTS IT. Every fix above the transport moved its own number without moving the wedge, because each still needs a round trip on the connection the payload owns. This is transport work, not consensus work. The instrumentation also turned up a SECOND failure, unbounded outbound frames, that OOM-killed a validator — that one is CLOSED, the outbound path has a bound*
+**21. Publish and fetch work on the internet as it is.** ✅ *HELD — BOTH HALVES DRIVEN IN THE FIELD. Run `5654432-46734`: 24 pass / 0 gap / 0 fail, the chain kept committing under all four conditions at once — 4 heights, 3/3 publishes, max gap 68 s inside the 220 s bound, impairment credited on 4 of 4 seats by netem's own counters. It took five composed mechanisms and seven reproductions to get there, and it is ONE pass against a failure that reproduced seven times, so a second clean drive is what makes it durable. The history below is kept in full because every eliminated candidate is part of the evidence. The mechanism is NAMED — the ~1.5 MB bond proof on the consensus critical path against a deadline sized off a link rate the composed wire does not deliver — the route off that path is BUILT (3,030,653 B -> 1,131 B per attester per round, transport, no era), and it has now been DRIVEN UNDER IMPAIRMENT — the tier that can hold the claim — where it DOES NOT CLOSE IT: run `5af09a9-88230` wedged for 796 s at HEAD with the relay firing, because the relay covers 1 of n-1 attesters by construction and a stalled renewal re-broadcast 1.5 MB every 30 s until it saturated the outbound budget and dropped the consensus frames that would clear the stall. THREE CAUSES WERE FOUND, BUILT AND DRIVEN (runs `7eaf3bd-75421`, `1b0b933-52703`): the renewal storm (29 submits -> 0), the outbound bound's blindness to frame size (20 control frames dropped -> 0), and the relay's 1-of-n-1 coverage (an inventory that reaches 42:25 on a healthy chain). The chain STILL wedges at 796 s, six reproductions deep, and the reason is now a single sentence: THE CONSENSUS CRITICAL PATH SHARES ONE ORDERED PER-PEER CONNECTION WITH THE PAYLOAD THAT CONGESTS IT. Every fix above the transport moved its own number without moving the wedge, because each still needs a round trip on the connection the payload owns. This is transport work, not consensus work. The instrumentation also turned up a SECOND failure, unbounded outbound frames, that OOM-killed a validator — that one is CLOSED, the outbound path has a bound*
 A NATed publisher in one region, a cold fetcher in another, bit-perfect bytes inside a bound
 derived from the deployed configuration. The chain keeps committing under sustained load with
 injected latency, jitter, loss and reordering.
@@ -2143,6 +2143,57 @@ arrives. **It is UNDRIVEN under impairment**, and the field chain it is expected
 sweeps complete → the held-registration inventory propagates → coverage rises → proposals shed small
 → the shed proposal itself rides the lane — is a plausible composition and not a measured one. Six
 reproductions say what this item's hypotheses are worth before they are driven.
+
+*THE SECOND CLAIM IS HELD. Run `5654432-46734`, 2026-09-21 — **24 pass · 0 gap · 0 fail · 6 skip**,
+the first clean sheet this list has recorded.*
+
+```
+21-impaired-commit: PASS — the chain KEPT COMMITTING under
+[delay 80ms 20ms distribution normal loss 1% reorder 25% 50%]:
+4 heights h77->h81 under continuous publish (3/3 landed),
+max inter-commit gap 68s within the computed 220s escape bound,
+impairment credited by netem's own counters on 4 of 4 seats —
+val-a:85359326B/505drop  val-b:114417850B/720drop
+val-c:89219492B/623drop  val-d:98531949B/562drop
+```
+
+*IT CANNOT HAVE PASSED VACUOUSLY, which is what the flow's two controls are for.* The shaping was
+read back on every seat before the drive, and netem's OWN counters show 85–114 MB crossing the
+impaired band per seat with 505–720 drops each — so the wire really was adverse, and the interfaces
+were verified clean afterwards. A profile that steered nothing would have reported UNCREDITED and
+failed.
+
+| the same row, run by run | gap | heights | publishes |
+|---|---|---|---|
+| `5adb538-9631` — the original field red | 843 s | 0 | 0/2 |
+| `5af09a9-88230` — the relay alone | 796 s | 0 | 0/2 |
+| `7eaf3bd-75421` — + renewal fix, + control-frame reserve | 814 s | 0 | 0/2 |
+| `1b0b933-52703` — + held-registration inventory | 796 s | 0 | 0/2 |
+| `f34745d-56790` — + control lane | 418 s | 3 | 2/3 |
+| `4c147a2-45568` — + last-resort delivery (lane carrying bulk) | 395 s | 1 | 0/2 |
+| **`5654432-46734` — + lane supplementary to the bulk conversation** | **68 s** | **4** | **3/3** |
+
+*WHAT CLOSED IT WAS THE COMPOSITION, and no single piece of it.* Five mechanisms had to hold at
+once, and each was measured moving its own number without moving the wedge before the last one
+landed: a renewal broadcast ONCE and remembered until it commits; an acknowledgement that means the
+bytes are HELD rather than that a message arrived; an eighth of every outbound share reserved for
+frames under 64 KiB; a holder-reported inventory of the registrations it can rebuild; and a control
+lane the payload never rides. Six reproductions were spent learning that the first four were each
+necessary and none was sufficient.
+
+*AND THE LAST TWO DEFECTS WERE THE LANE'S OWN, both found by driving it.* The lane could BE a peer's
+first contact, so a NATed fetcher — small requests, chunk-sized replies — never opened a bulk conn
+and every large reply to it was dropped: four flows fetched the sha256 of the empty string. The
+last-resort delivery fixed the loss and then became the routine path, putting 65,677-byte frames on
+the connection whose purpose is carrying small ones past exactly those. Making the lane SUPPLEMENTARY
+— never a first contact — closed both, and `lanefail` went from 98/79/109 to **zero on every seat**.
+
+*WHAT THIS IS AND IS NOT.* It is one PASS against seven reproductions of the failure, on one fleet
+shape, at one profile. The failure was robust and this result is not yet: a second clean drive is
+what turns a held claim into a durable one, and the honest reading until then is that the composition
+held ONCE under the conditions the claim names. The residual the ladder still shows — a registration's
+FIRST round carries, because the inventory is not fresh until the holder's next sweep — is unchanged
+and is now the difference between 68 s and something smaller, rather than between committing and not.
 
 The publish/fetch half is done and is not affected by any of it. The chain half is NOT held today
 and none of the above holds it: if the close does not land by the date, this item ships disclosed
