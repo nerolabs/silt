@@ -2096,6 +2096,54 @@ remedies priced with their blast radius. The transport work is real, it is scope
 next thing — it is simply not a week's work, and starting it hurriedly against a hard date is how a
 NAT-traversing transport acquires the kind of defect this list has paid for before.
 
+*AND THE CONTROL LANE IS BUILT, 2026-09-21 — the first remedy taken, against the owner's ruling to
+build regardless of the date.* A second TLS connection per peer that bulk payload never rides.
+
+| bulk and control to the SAME peer, 2 s of bulk in flight | |
+|---|---|
+| before | **2.404 s**, on the `silt/1` lane |
+| after | **instant**, on the `silt-ctrl/1` lane |
+
+*THE ROLE IS NEGOTIATED IN THE HANDSHAKE, VIA ALPN, AND THAT IS FORCED RATHER THAN CHOSEN.* A conn
+is adopted as the live conversation with a peer the moment its handshake completes — before any
+frame is read — so nothing a frame could carry is available in time. TLS already solves exactly
+this, and using it keeps the role a property of the CONNECTION rather than of a convention about
+its first message. It costs no new dependency, which is the other half of why this was preferred
+over QUIC for the first cut: B8 still points at QUIC as the destination, and this does not close
+that question, it defers it behind a measurement.
+
+*THE SPLIT IS BY SIZE, NOT BY MESSAGE KIND* — the same `smallFrameBytes` the outbound reserve uses.
+The transport is an adapter (B1) and must not learn the core's message taxonomy to route correctly.
+The two populations are four orders of magnitude apart, so the threshold is not delicate, and the
+two mechanisms are the same judgement made twice rather than two knobs to keep in step.
+
+*THREE DEFECTS THE CHANGE INTRODUCED, EACH CAUGHT BY A GATE THAT ALREADY EXISTED.* They are the
+honest cost of a second connection and they are recorded because the next person to touch this will
+meet them again:
+
+| what broke | how it was caught |
+|---|---|
+| every reply to a NATed peer was refused before it was sent — `Send`'s guard admits a peer with no address only when a live BULK conn exists, and a peer whose first contact is small now has only a CONTROL one | `natted_test.go` |
+| a peer reached only over small frames became invisible to the DHT eclipse cap — `observeConn` was skipped on the lane to keep the bulk slot's relay and hole-punch state untouched | `class_test.go` |
+| a pre-lane peer paid a fresh TCP connect and TLS handshake on EVERY small frame, which is a per-message toll on exactly the mixed-version case that must stay cheap | the fixture hung |
+
+The class is a fact about the peer's ADDRESS and not about which lane carried a frame, so both lanes
+observe now and only the bulk slot is left alone. A pre-lane peer is remembered and re-probed when
+its bulk conversation drops, so upgrading is not punished by a written-off flag. And a failed lane
+write FALLS BACK to the shared conn rather than dropping the frame — retry, don't evict: a second
+connection must never become a way to lose messages one connection delivered.
+
+The `wanguard` ledger caught the `dialPeer` → `dialPeerLane` rename as two stale entries and two
+unregistered deadline sites. The deadlines are unchanged; the entries are renamed. That gate is
+doing exactly what it was built for.
+
+*WHAT IS NOT CLAIMED.* It does not make a carried proof arrive sooner — that is the proof's own
+size, which is succinct-proof work and a new era. It stops the payload deciding when everything else
+arrives. **It is UNDRIVEN under impairment**, and the field chain it is expected to unlock — lane →
+sweeps complete → the held-registration inventory propagates → coverage rises → proposals shed small
+→ the shed proposal itself rides the lane — is a plausible composition and not a measured one. Six
+reproductions say what this item's hypotheses are worth before they are driven.
+
 The publish/fetch half is done and is not affected by any of it. The chain half is NOT held today
 and none of the above holds it: if the close does not land by the date, this item ships disclosed
 with the mechanism named, the repro in the tree and the route measured.
