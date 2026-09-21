@@ -558,13 +558,20 @@ func (t *Transport) Send(to ports.NodeID, msg ports.Message) error {
 		// journal read across four nodes; this line is what makes it one grep.
 		if int64(len(frame)) <= smallFrameBytes {
 			t.logf(ports.LogWarn, "outbound CONTROL frame dropped: the peer backlog consumed even the reserve — this node is going blind to that peer",
-				"to", to, "frame", len(frame), "inflight", inFlight, "share", share,
+				"to", to, "kind", msg.Kind, "frame", len(frame), "inflight", inFlight, "share", share,
 				"total", t.outbound.usedBytes(), "refused_small", t.outbound.refusedSmallFrames())
 			return fmt.Errorf("tcpnet: outbound budget full for %s: %d bytes already in flight against a %d-byte share; dropped a %d-byte CONTROL frame (the small-frame reserve is exhausted)",
 				to, inFlight, share, len(frame))
 		}
+		// THE KIND IS REPORTED, NEVER ACTED ON. A field read of the drop log can
+		// say WHAT was dropped only if the line names it: a sheet showed 780 bulk
+		// drops in eleven minutes, 185 of them at almost exactly twice a carried
+		// bond proof, and nothing in the record could say which message that was.
+		// This is observability, not routing — the admission class stays a pure
+		// size rule (smallFrameBytes), so no consensus concern enters the wire
+		// layer and no new kind lands silently in the wrong class.
 		t.logf(ports.LogDebug, "outbound frame dropped: peer backlog is at its budget",
-			"to", to, "frame", len(frame), "inflight", inFlight, "share", share,
+			"to", to, "kind", msg.Kind, "frame", len(frame), "inflight", inFlight, "share", share,
 			"total", t.outbound.usedBytes())
 		return fmt.Errorf("tcpnet: outbound budget full for %s: %d bytes already in flight against a %d-byte share; dropped a frame of %d bytes",
 			to, inFlight, share, len(frame))

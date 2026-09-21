@@ -4,11 +4,14 @@ package tcpnet
 
 import (
 	"crypto/tls"
+	"fmt"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/nerolabs/silt/adapters/identity"
+	"github.com/nerolabs/silt/adapters/logfile"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -404,4 +407,64 @@ func TestTheSmallFrameReserveComesOutOfTheShareRatherThanOnTopOfIt(t *testing.T)
 		t.Fatalf("the peer holds %d B against a %d B share: the reserve is ADDITIVE, so the gate's real ceiling "+
 			"exceeds the cap the operator set", total, share)
 	}
+}
+
+// A DROPPED FRAME NAMES THE MESSAGE IT DROPPED.
+//
+// The drop log reported a size and a peer and nothing else, which is enough to
+// see that a link is saturated and not enough to say what saturated it. A field
+// sheet showed 780 bulk drops inside an eleven-minute window, 185 of them at
+// almost exactly twice a carried bond proof, and no artifact in the run could
+// answer which message that was — the reader is left correlating byte counts
+// against guesses.
+//
+// The kind is REPORTED and never acted on. Admission stays a pure size rule, so
+// this cannot become a back door for consensus concerns entering the wire layer.
+func TestADroppedFrameNamesItsMessageKind(t *testing.T) {
+	const (
+		payload = 1 << 20 // 1 MiB, the order of a carried bond proof
+		frames  = 24
+		cap     = 4 << 20 // small enough that the backlog bites quickly
+	)
+	var out strings.Builder
+	tr, _ := newTransport(t, 460)
+	defer tr.Close()
+	tr.SetLogger(logfile.New(&out, ports.LogDebug))
+	tr.SetOutboundCap(cap)
+	id, addr := stalledPeer(t, 461)
+	tr.AddPeer(id, addr)
+
+	// MsgGetChain is the kind a chain-sync window response rides, and it is the
+	// one the field sheet could not distinguish from a proposal retry.
+	body := make([]byte, payload)
+	var refused int
+	for i := 0; i < frames; i++ {
+		if err := tr.Send(id, ports.Message{Kind: ports.MsgGetChain, Data: body}); err != nil {
+			refused++
+		}
+	}
+	if refused == 0 {
+		t.Fatalf("no frame was refused at a %d-byte cap, so the drop line never fired and this proves nothing", cap)
+	}
+	line := out.String()
+	if !strings.Contains(line, "outbound frame dropped") {
+		t.Fatalf("a refusal did not write the drop line at all:\n%s", line)
+	}
+	// The kind renders through MsgKind's own String, so the line carries a NAME
+	// a field reader recognises rather than a positional number they must look up.
+	want := fmt.Sprintf("kind=%v", ports.MsgGetChain)
+	if !strings.Contains(line, want) {
+		t.Fatalf("the drop line does not name the kind it dropped (want %q) — a field read cannot tell a window response from a proposal retry:\n%s", want, firstDropLine(line))
+	}
+}
+
+// firstDropLine keeps a failure message to the one line that matters; a
+// saturated fixture writes hundreds.
+func firstDropLine(s string) string {
+	for _, l := range strings.Split(s, "\n") {
+		if strings.Contains(l, "outbound frame dropped") {
+			return l
+		}
+	}
+	return s
 }
