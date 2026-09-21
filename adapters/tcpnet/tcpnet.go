@@ -597,6 +597,24 @@ func (t *Transport) ctrlLaneFor(to ports.NodeID, pair addrPair) *peerConn {
 	if pc := t.ctrlConn(to); pc != nil {
 		return pc
 	}
+	// THE LANE IS SUPPLEMENTARY, NEVER THE FIRST CONTACT, and that is not a
+	// preference — it is what keeps a NATed peer reachable with bulk.
+	//
+	// A peer that is undialable can only be sent what it can be sent over a conn IT
+	// opened. If its first frame is small and opens a control lane, it never opens a
+	// bulk conn at all, and every large reply to it then takes the last-resort path
+	// onto the control lane. That is the field shape exactly: a NATed fetcher sends
+	// small requests and receives chunk-sized replies, so 65,677-byte frames rode the
+	// lane and re-created, on the lane, the head-of-line blocking the lane exists to
+	// remove (run 4c147a2-45568: 26 of 40 sampled lane frames were the last resort).
+	//
+	// Requiring an established bulk conversation first costs one small frame's worth
+	// of latency per peer, once, and leaves every existing invariant where it was:
+	// the bulk conn is still the live conversation, still the one a NATed peer's
+	// replies ride, still the slot the relay and hole-punch state hangs off.
+	if t.liveConn(to) == nil {
+		return nil
+	}
 	if t.lacksCtrlLane(to) {
 		return nil // pre-lane peer: do not pay a dial to rediscover that every time
 	}

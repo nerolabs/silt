@@ -430,23 +430,24 @@ func newLaneReader(t *testing.T, seed int64, bytesPerSec int) *laneReader {
 	return lr
 }
 
-// A LARGE REPLY TO AN UNDIALABLE PEER WHOSE ONLY CONN IS THE CONTROL LANE.
+// A LARGE REPLY MUST REACH AN UNDIALABLE PEER WHOSE BULK CONN HAS DIED.
 //
-// This is the defect the control lane introduced and the field sheet caught, and it
-// is here because every local gate passed while it was live. A peer whose first
-// contact is SMALL now has a control conn and no bulk conn. When that peer is also
-// undialable — a NATed fetcher, which is the ordinary case — a LARGE reply found no
-// live bulk conn, no address to dial, and was dropped: run f34745d-56790 read it as
-// four flows fetching the sha256 of the empty string.
+// This is the defect the control lane introduced, and the shape it left behind.
 //
-// natted_test.go covers the same shape with SMALL messages and stayed green
-// throughout, which is exactly why this one is written in terms of a payload.
+// Originally the lane could BE a peer's first contact, so a peer whose first frame
+// was small had a control conn and no bulk conn — and a large reply to it, when it
+// was also undialable, found no conn, no address, and was dropped. Run
+// f34745d-56790 read that as four flows fetching the sha256 of the empty string.
+// natted_test.go covers the same undialable-peer shape with SMALL messages and
+// stayed green throughout, because the frames it sends are exactly the ones the lane
+// carries correctly; only a payload exposes it.
 //
-// The rule: the lane may never be the reason a frame is not delivered. Putting a
-// large frame on it costs the head-of-line blocking the lane exists to avoid — a
-// latency cost — and dropping it is a silent-loss shape (S3). They are not
-// comparable.
-func TestALargePayloadReachesAPeerKnownOnlyOverTheControlLane(t *testing.T) {
+// The lane is now supplementary — it is never a first contact, so that state does not
+// arise from the normal path. What CAN still arise is the bulk conn dying while the
+// lane survives, and the last-resort delivery has to hold there or the same data loss
+// comes back through a smaller door. So this constructs that state directly rather
+// than relying on an ordering that is now prevented.
+func TestALargePayloadReachesAPeerWhoseBulkConnDied(t *testing.T) {
 	// The "NATed" node advertises nothing, so the far end can never dial it.
 	natted, loopN := newTransportAt(t, 800, "0.0.0.0:0")
 	defer func() { natted.Close(); loopN.Stop() }()
@@ -460,10 +461,13 @@ func TestALargePayloadReachesAPeerKnownOnlyOverTheControlLane(t *testing.T) {
 	nattedID := identity.FromSeed(800).NodeID()
 	natted.AddPeer(publicID, public.Addr())
 
-	// The NATed node's first contact is SMALL, so it opens the control lane and no
-	// bulk conn — the precondition the field hit and the local gates did not.
-	if err := natted.Send(publicID, ports.Message{Kind: ports.MsgGetChainHead}); err != nil {
-		t.Fatalf("opening send: %v", err)
+	// Two small frames: the first establishes the bulk conversation, the second gets
+	// the lane. That ordering is the fix, so the fixture has to honour it.
+	for i := 0; i < 2; i++ {
+		if err := natted.Send(publicID, ports.Message{Kind: ports.MsgGetChainHead}); err != nil {
+			t.Fatalf("send %d: %v", i, err)
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 	for deadline := time.Now().Add(10 * time.Second); public.ctrlConn(nattedID) == nil; {
 		if time.Now().After(deadline) {
@@ -471,26 +475,71 @@ func TestALargePayloadReachesAPeerKnownOnlyOverTheControlLane(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	// Now kill the bulk conversation, leaving only the lane — the state a dropped
+	// conn leaves behind for a peer nobody can dial.
+	pc := public.liveConn(nattedID)
+	if pc == nil {
+		t.Fatal("PREMISE BROKEN: no bulk conn to drop, so the fixture is not in the state under test")
+	}
+	public.dropConn(nattedID, pc)
 	if public.liveConn(nattedID) != nil {
-		t.Fatal("PREMISE BROKEN: a BULK conn to the NATed peer also exists, so the large frame below has an " +
-			"ordinary path and the assertion proves nothing")
+		t.Fatal("PREMISE BROKEN: the bulk conn survived the drop")
 	}
 
-	// Now the public node answers with a PAYLOAD, the way a chunk fetch is answered.
+	// A PAYLOAD, the way a chunk fetch is answered.
 	const payload = 256 << 10
 	if err := public.Send(nattedID, ports.Message{Kind: ports.MsgFetchChunkReply, Data: make([]byte, payload)}); err != nil {
 		t.Fatalf("the large reply was refused outright: %v", err)
 	}
-
 	select {
 	case n := <-got:
 		if n != payload {
 			t.Fatalf("the reply arrived with %d bytes, want %d", n, payload)
 		}
 	case <-time.After(20 * time.Second):
-		t.Fatal("a large reply to a peer reachable ONLY over the control lane was never delivered. That is the " +
-			"lane creating a way to lose data that one connection did not have — the field read it as fetches " +
-			"returning the hash of the empty string")
+		t.Fatal("a large reply to a peer reachable ONLY over the control lane was never delivered. The lane " +
+			"must never be the reason a frame is not delivered: head-of-line blocking is a latency cost, and " +
+			"dropping the frame is a silent-loss shape (S3)")
+	}
+}
+
+// AND THE LANE IS NOT A FIRST CONTACT, which is what keeps the case above rare
+// instead of routine. A NATed fetcher sends small requests and receives chunk-sized
+// replies; if its opening frame took the lane it would never open a bulk conn at
+// all, and every reply to it would ride the lane — putting 65 KiB frames on the
+// connection whose whole purpose is to carry small ones past them. The field counted
+// 26 of 40 sampled lane frames taking that path.
+func TestTheFirstFrameToAPeerOpensTheBulkConversationNotTheLane(t *testing.T) {
+	tr, loop := newTransport(t, 810)
+	defer func() { tr.Close(); loop.Stop() }()
+	peer, loopP := newTransport(t, 811)
+	defer func() { peer.Close(); loopP.Stop() }()
+	peerID := identity.FromSeed(811).NodeID()
+	tr.AddPeer(peerID, peer.Addr())
+
+	if err := tr.Send(peerID, ports.Message{Kind: ports.MsgGetChainHead}); err != nil {
+		t.Fatalf("opening send: %v", err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); tr.liveConn(peerID) == nil; {
+		if time.Now().After(deadline) {
+			t.Fatal("the first small frame opened no BULK conversation — an undialable peer would then have no " +
+				"path for a large reply, which is the data loss this ordering exists to prevent")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if tr.ctrlConn(peerID) != nil {
+		t.Fatal("the FIRST frame to a peer opened a control lane. The lane must be supplementary to an " +
+			"established bulk conversation, or a peer that only ever sends small frames never opens one")
+	}
+	// The second small frame may take the lane: the bulk conversation now exists.
+	if err := tr.Send(peerID, ports.Message{Kind: ports.MsgGetChainHead}); err != nil {
+		t.Fatalf("second send: %v", err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); tr.ctrlConn(peerID) == nil; {
+		if time.Now().After(deadline) {
+			t.Fatal("no lane was ever established, so small frames never get off the payload's connection")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
