@@ -1333,7 +1333,7 @@ verdict, not a participating validator.
 
 ## Tier C — field
 
-**21. Publish and fetch work on the internet as it is.** ✅ *HELD — BOTH HALVES DRIVEN IN THE FIELD. Run `5654432-46734`: 24 pass / 0 gap / 0 fail, the chain kept committing under all four conditions at once — 4 heights, 3/3 publishes, max gap 68 s inside the 220 s bound, impairment credited on 4 of 4 seats by netem's own counters. It took five composed mechanisms and seven reproductions to get there, and it is ONE pass against a failure that reproduced seven times, so a second clean drive is what makes it durable. The history below is kept in full because every eliminated candidate is part of the evidence. The mechanism is NAMED — the ~1.5 MB bond proof on the consensus critical path against a deadline sized off a link rate the composed wire does not deliver — the route off that path is BUILT (3,030,653 B -> 1,131 B per attester per round, transport, no era), and it has now been DRIVEN UNDER IMPAIRMENT — the tier that can hold the claim — where it DOES NOT CLOSE IT: run `5af09a9-88230` wedged for 796 s at HEAD with the relay firing, because the relay covers 1 of n-1 attesters by construction and a stalled renewal re-broadcast 1.5 MB every 30 s until it saturated the outbound budget and dropped the consensus frames that would clear the stall. THREE CAUSES WERE FOUND, BUILT AND DRIVEN (runs `7eaf3bd-75421`, `1b0b933-52703`): the renewal storm (29 submits -> 0), the outbound bound's blindness to frame size (20 control frames dropped -> 0), and the relay's 1-of-n-1 coverage (an inventory that reaches 42:25 on a healthy chain). The chain STILL wedges at 796 s, six reproductions deep, and the reason is now a single sentence: THE CONSENSUS CRITICAL PATH SHARES ONE ORDERED PER-PEER CONNECTION WITH THE PAYLOAD THAT CONGESTS IT. Every fix above the transport moved its own number without moving the wedge, because each still needs a round trip on the connection the payload owns. This is transport work, not consensus work. The instrumentation also turned up a SECOND failure, unbounded outbound frames, that OOM-killed a validator — that one is CLOSED, the outbound path has a bound*
+**21. Publish and fetch work on the internet as it is.** ⚠ *PUBLISH/FETCH HELD; THE CHAIN HALF SHIPS DISCLOSED — the pass did NOT reproduce. Run `5654432-46734` passed at a 68 s max gap; run `e1c3edc-53073`, the second drive of the SAME binary, FAILED at 404 s against the same 220 s bound. One pass and one fail against a failure that reproduced seven times is "sometimes", not held. The composition is not what failed — the control lane was live on all four seats with zero lane failures, zero last-resort deliveries and zero starved control frames — and the number that remains is the shed's COVERAGE: 19 gather legs relayed by digest at ~1 KB against 21 that carried the full ~1,574,000 B, so roughly half the critical path still moves multi-megabyte payloads on a wire the deadline assumes is faster. The history below is kept in full because every eliminated candidate is part of the evidence. The mechanism is NAMED — the ~1.5 MB bond proof on the consensus critical path against a deadline sized off a link rate the composed wire does not deliver — the route off that path is BUILT (3,030,653 B -> 1,131 B per attester per round, transport, no era), and it has now been DRIVEN UNDER IMPAIRMENT — the tier that can hold the claim — where it DOES NOT CLOSE IT: run `5af09a9-88230` wedged for 796 s at HEAD with the relay firing, because the relay covers 1 of n-1 attesters by construction and a stalled renewal re-broadcast 1.5 MB every 30 s until it saturated the outbound budget and dropped the consensus frames that would clear the stall. THREE CAUSES WERE FOUND, BUILT AND DRIVEN (runs `7eaf3bd-75421`, `1b0b933-52703`): the renewal storm (29 submits -> 0), the outbound bound's blindness to frame size (20 control frames dropped -> 0), and the relay's 1-of-n-1 coverage (an inventory that reaches 42:25 on a healthy chain). The chain STILL wedges at 796 s, six reproductions deep, and the reason is now a single sentence: THE CONSENSUS CRITICAL PATH SHARES ONE ORDERED PER-PEER CONNECTION WITH THE PAYLOAD THAT CONGESTS IT. Every fix above the transport moved its own number without moving the wedge, because each still needs a round trip on the connection the payload owns. This is transport work, not consensus work. The instrumentation also turned up a SECOND failure, unbounded outbound frames, that OOM-killed a validator — that one is CLOSED, the outbound path has a bound*
 A NATed publisher in one region, a cold fetcher in another, bit-perfect bytes inside a bound
 derived from the deployed configuration. The chain keeps committing under sustained load with
 injected latency, jitter, loss and reordering.
@@ -2144,8 +2144,8 @@ sweeps complete → the held-registration inventory propagates → coverage rise
 → the shed proposal itself rides the lane — is a plausible composition and not a measured one. Six
 reproductions say what this item's hypotheses are worth before they are driven.
 
-*THE SECOND CLAIM IS HELD. Run `5654432-46734`, 2026-09-21 — **24 pass · 0 gap · 0 fail · 6 skip**,
-the first clean sheet this list has recorded.*
+*THE SECOND CLAIM PASSED ONCE. Run `5654432-46734`, 2026-09-21 — **24 pass · 0 gap · 0 fail · 6 skip**,
+the first clean sheet this list recorded. It did not survive a second drive; see below.*
 
 ```
 21-impaired-commit: PASS — the chain KEPT COMMITTING under
@@ -2172,6 +2172,7 @@ failed.
 | `f34745d-56790` — + control lane | 418 s | 3 | 2/3 |
 | `4c147a2-45568` — + last-resort delivery (lane carrying bulk) | 395 s | 1 | 0/2 |
 | **`5654432-46734` — + lane supplementary to the bulk conversation** | **68 s** | **4** | **3/3** |
+| `e1c3edc-53073` — the SAME binary, driven a second time | **404 s** | 3 | 2/3 |
 
 *WHAT CLOSED IT WAS THE COMPOSITION, and no single piece of it.* Five mechanisms had to hold at
 once, and each was measured moving its own number without moving the wedge before the last one
@@ -2194,6 +2195,77 @@ what turns a held claim into a durable one, and the honest reading until then is
 held ONCE under the conditions the claim names. The residual the ladder still shows — a registration's
 FIRST round carries, because the inventory is not fresh until the holder's next sweep — is unchanged
 and is now the difference between 68 s and something smaller, rather than between committing and not.
+
+*AND IT DID NOT REPRODUCE. Run `e1c3edc-53073`, 2026-09-21 — 23 pass · 0 gap · 1 fail · 6 skip, and the
+fail is this row.* The product source is IDENTICAL to `5654432` (`git diff 5654432..HEAD -- '*.go'` is
+empty; the two commits between them are this list and the harness line that reports the lane), so this
+is the same binary driven twice and not a regression.
+
+```
+21-impaired-commit: FAIL — a height went 404 s without a commit, past the
+computed 220 s escape bound, network live: 3 heights h57->h60,
+2/3 publishes landed, impairment credited on 4 of 4 seats.
+```
+
+| the same row, same binary | gap | heights | publishes |
+|---|---|---|---|
+| `5654432-46734` | **68 s** | 4 | 3/3 |
+| `e1c3edc-53073` | **404 s** | 3 | 2/3 |
+
+*SO THE SECOND CLAIM IS NOT HELD.* One pass and one fail against a failure that reproduced seven times
+is "sometimes", and sometimes is not held. The previous entry's own reading was the right one — the
+failure was robust and the result was not — and this is what it looks like when that caution was
+warranted. The row above is restored to its pre-`5654432` state: item 21's second claim ships
+DISCLOSED.
+
+*AND THE COMPOSITION IS NOT WHAT FAILED, which is the part worth carrying.* The impaired flow now
+reads four counters off each shaped seat at both ends of the drive and reports the difference, so a
+verdict carries its own attribution instead of losing it to teardown. Every mechanism did its job:
+
+```
+val-a:lane+0(19)/fail+0/lastresort+0/ctrldrop+0
+val-b:lane+0(20)/fail+0/lastresort+0/ctrldrop+0
+val-c:lane+0(23)/fail+0/lastresort+0/ctrldrop+0
+val-d:lane+0(18)/fail+0/lastresort+0/ctrldrop+0
+```
+
+18-23 control lanes live per seat, zero lane failures, zero last-resort deliveries, and **zero control
+frames starved** — the blinding shape the reserve exists to prevent did not occur once. The four
+counters are defined on the wire rather than by convention, because the previous entry's `lanefail`
+was a shorthand that could not be reconstructed from the artifacts it was quoted beside: `lane` counts
+`control lane established` and carries its running total beside the window's delta, because a lane is
+a STATE and a bare zero would read the same for "live throughout" and "never came up"; `fail` counts a
+lane dial or write that fell back to the shared conn; `lastresort` counts `for want of any other path`;
+`ctrldrop` counts a frame under 64 KiB refused by the outbound budget. The last three are EVENTS and
+are reported as deltas, because one that happened before the drive says nothing about the drive. The renewal
+storm did not return either: 16 re-sends across the whole window against the 29-per-sweep the original
+wedge showed.
+
+*WHAT THE WINDOW ACTUALLY SHOWS, counted strictly between the shaping going on and the verdict landing:*
+
+| in the 11-minute drive window | |
+|---|---|
+| gather legs relayed BY DIGEST | **19** — payload 755-1,835 B |
+| gather legs that CARRIED the proof | **21** — payload ~1,574,000 B |
+| reconstruction misses (`NeedBody`) | **2** — the fallback is not the problem |
+| CONTROL frames dropped | **0** |
+| bulk frames dropped for want of budget | **780**, every one ≥ 1 MB, **1.49 GB** total |
+| `BondChallenge` request timeouts | **266** |
+
+*THE COVERAGE IS THE NUMBER, AND IT IS 47%.* When the shed fires a gather leg costs about a kilobyte;
+when it does not it costs 1.57 MB. Twenty-one legs carried inside one drive. The holder-reported
+inventory lifted coverage off the 1-of-n−1 floor, and it did not lift it to 1 — so roughly half the
+critical path still moves multi-megabyte payloads across a wire the deadline assumes is faster. That
+is the same residual this item has named since the inventory landed, now measured on a run that
+FAILED rather than one that passed, which is the more useful side of it to have the number from.
+
+*AND ONE QUANTITY IS OBSERVED AND UNEXPLAINED, recorded as a lead rather than a finding.* 185 of the
+780 dropped frames are 3,153,981 B or 3,154,556 B — almost exactly TWICE a carried proof. No committed
+block in the run carried two registrations (187 blocks at 1 bond-reg, 36 at 0), so a two-registration
+block is not the explanation. The suggestive neighbour is chain-sync: `val-c` logged 179 `GetChain`
+retries and 54 `GetChain` timeouts, and a window response carrying two blocks would be about this size.
+That is a hypothesis with a neighbour, not a measurement — nothing printed correlates a frame size with
+its message kind, and the cheap next step is to make the drop line say which kind it dropped.
 
 The publish/fetch half is done and is not affected by any of it. The chain half is NOT held today
 and none of the above holds it: if the close does not land by the date, this item ships disclosed
@@ -2556,6 +2628,17 @@ splice, the hole-punch upgrade and NATed reply routing; QUIC is a new transport 
 proofs are a new era by the frozen-format rule. The date question for this item is therefore settled
 in the negative, with evidence rather than by fear, and the disclosure it ships with is the
 strongest this list carries.
+
+*THE CONTROL CONNECTION WAS BUILT ANYWAY, AND IT PASSED ONCE AND THEN FAILED — 2026-09-21.* The lane
+that "does not fit the date" was built, and run `5654432-46734` committed under the full profile at a
+68 s max gap. Run `e1c3edc-53073` drove the SAME BINARY a second time and the chain went 404 s without
+a commit. So the paragraph above stands and the interlude does not overturn it: the item ships
+DISCLOSED. What the second drive bought is a measurement the first could not give, because a passing
+verdict captured no evidence and the fleet was destroyed under it — the lane itself is CLEAN (zero
+failures, zero last-resort deliveries, zero starved control frames on four seats) and the shed's
+COVERAGE is 47% (19 legs at ~1 KB against 21 that carried ~1,574,000 B). The remaining work is
+therefore coverage, not another mechanism above the transport, and it is stated as a number for the
+first time on a run that failed.
 
 **Unsequenced, and it needs the owner's call against the four above.** Six items on this list carry no
 verdict — 11, 12, 13, 17, 18 and 19 — and two of those silences are sharper than the rest: item 11's
