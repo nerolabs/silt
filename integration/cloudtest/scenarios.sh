@@ -1230,9 +1230,18 @@ flow_impaired_commit() {
     if [ -z "$lane_d" ]; then
       lane="$lane ${v}:UNREAD"
     else
-      local le lf ll lc
+      local le lf ll lc ne
       read -r le lf ll lc <<< "$lane_d"
-      lane="$lane ${v}:lane+${le}/fail+${lf}/lastresort+${ll}/ctrldrop+${lc}"
+      # ESTABLISHED CARRIES ITS RUNNING TOTAL AS WELL AS ITS DELTA, and the other
+      # three do not, because they are different kinds of number. A lane failure, a
+      # last-resort delivery and a dropped control frame are EVENTS: one that
+      # happened before the drive says nothing about the drive. A lane being
+      # ESTABLISHED is a STATE — a lane that came up while the fleet was warming is
+      # still the lane the drive rode — so a bare delta of zero reads identically
+      # for "live throughout" and "never came up", which are opposite readings of
+      # the same pass. Reported as delta(total).
+      ne="$(printf '%s' "$lane_now" | cut -d' ' -f1)"
+      lane="$lane ${v}:lane+${le}(${ne:-?})/fail+${lf}/lastresort+${ll}/ctrldrop+${lc}"
     fi
   done
 
