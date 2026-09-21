@@ -306,6 +306,61 @@ func TestTheCommitPathAlwaysCarriesTheProof(t *testing.T) {
 	t.Log("a shed block offered at COMMIT is not stored — the relay's boundary holds")
 }
 
+// THE PREPARE-QC LEG HAS MORE EVIDENCE AVAILABLE TO IT THAN QC MEMBERSHIP, and using
+// only membership sent the full proof to a peer that had already been shed to.
+//
+// The prepare-QC names the quorum whose replies arrived FIRST. It is not the set of
+// peers holding the block: at four validators a quorum of two leaves a third attester
+// out for being one reply late, and that attester is still sent the precommit. It
+// prepared on nothing, so `prepared` is false for it — but it may hold the proof for
+// reasons that have nothing to do with this round, and the proposal leg already shed
+// to it on exactly those grounds a moment earlier. Carrying on the second leg after
+// shedding on the first is a whole proof sent to a peer this node has evidence holds
+// it, once per round, for as long as it keeps missing the quorum.
+func TestThePrepareQCLegShedsOnEveryEvidenceAndNotOnQuorumMembershipAlone(t *testing.T) {
+	nodes, ids, _, _, _ := tier2AnchorNet(t, 5)
+	// The block carries a THIRD PARTY's registration, which is the ordinary case on a
+	// live chain: renewals are staggered, so the proposer is committing somebody
+	// else's proof and its own receipts say nothing about it.
+	p, author := nodes[0], nodes[1]
+	author.EnableBond(ids[1].Signer(), 2<<20)
+	head, _ := author.chain.Head()
+	reg, ok := author.RegisterBondReg(head)
+	if !ok {
+		t.Fatal("VACUOUS: no registration was minted")
+	}
+	b := &chain.Block{Version: chain.BlockVersionWitnessable, Height: 1, Prev: head,
+		BondRegs: []chain.BondReg{reg}}
+	d := chain.AnswerDigestOf(reg.Answer)
+	b.BondRegs[0].AnswerDigest = &d
+
+	inQC, lateButHolding, silent := ids[2].NodeID(), ids[3].NodeID(), ids[4].NodeID()
+	prepared := map[ports.NodeID]bool{inQC: true}
+	// The late peer holds the proof and said so on its last head reply — the same
+	// evidence the PROPOSAL leg sheds on.
+	p.noteHeldRegs(lateButHolding, []ports.Hash{d})
+
+	if shed, _ := p.shedQCLegFor(inQC, b, prepared); !shed {
+		t.Fatal("a peer named in the prepare-QC was sent the proof carried. Preparing on a block is " +
+			"proof it reconstructed and signed that block, which is the strongest possession evidence " +
+			"there is — if this does not shed, the precommit leg sheds for nobody")
+	}
+	if shed, why := p.shedQCLegFor(lateButHolding, b, prepared); !shed {
+		t.Fatalf("AN ATTESTER OUTSIDE THE QUORUM WAS SENT THE WHOLE PROOF A SECOND TIME (%s), having "+
+			"reported holding it and having been shed to on the proposal leg for that same report. The "+
+			"prepare-QC names the peers that replied first, not the peers that hold the block; a peer "+
+			"one reply late still holds what it holds", why)
+	}
+	if shed, why := p.shedQCLegFor(silent, b, prepared); shed {
+		t.Fatalf("a peer that neither prepared nor gave any evidence was shed for (%s) — that is a guess "+
+			"about the network, and a wrong one costs a round trip PLUS the payload it tried to avoid", why)
+	} else if why != carryPeerUnreported {
+		t.Fatalf("the carry was attributed as %s; a registration this node did not author, from a peer "+
+			"that reported nothing, is peer-unreported. A field read that cannot tell the two evidence "+
+			"paths apart cannot tell which one to repair", why)
+	}
+}
+
 // canRebuild is peerCanReconstruct's verdict alone, for the assertions that are about
 // whether a peer qualifies rather than about why it did not. The reason is asserted
 // where it is the subject (TestThePrepareQCLegShedsOnEveryEvidenceAndNotOnQuorumMembershipAlone).

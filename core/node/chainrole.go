@@ -1487,10 +1487,10 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 			outstanding++
 			qcPayload := qcRaw
 			qcShed, qcWhy := false, carryNoDigestForm
-			if shedQCRaw != nil && prepared[v] {
-				qcPayload, qcShed, qcWhy = shedQCRaw, true, carryNotShed
-			} else if shedQCRaw != nil {
-				_, qcWhy = n.peerCanReconstruct(v, b)
+			if shedQCRaw != nil {
+				if qcShed, qcWhy = n.shedQCLegFor(v, b, prepared); qcShed {
+					qcPayload = shedQCRaw
+				}
 			}
 			n.noteGatherLeg(qcShed, qcWhy)
 			n.logf(ports.LogDebug, "gather: requesting precommit", "to", v, "height", b.Height, "round", round, "bytes", len(qcPayload), "digest-relayed", qcShed, "carry-reason", qcWhy.String())
