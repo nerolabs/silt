@@ -1333,7 +1333,7 @@ verdict, not a participating validator.
 
 ## Tier C — field
 
-**21. Publish and fetch work on the internet as it is.** ⚠ *PUBLISH/FETCH HELD; THE CHAIN HALF SHIPS DISCLOSED — the pass did NOT reproduce. Run `5654432-46734` passed at a 68 s max gap; run `e1c3edc-53073`, the second drive of the SAME binary, FAILED at 404 s against the same 220 s bound. One pass and one fail against a failure that reproduced seven times is "sometimes", not held. The composition is not what failed — the control lane was live on all four seats with zero lane failures, zero last-resort deliveries and zero starved control frames — and the number that remains is the shed's COVERAGE: 19 gather legs relayed by digest at ~1 KB against 21 that carried the full ~1,574,000 B, so roughly half the critical path still moves multi-megabyte payloads on a wire the deadline assumes is faster. The history below is kept in full because every eliminated candidate is part of the evidence. The mechanism is NAMED — the ~1.5 MB bond proof on the consensus critical path against a deadline sized off a link rate the composed wire does not deliver — the route off that path is BUILT (3,030,653 B -> 1,131 B per attester per round, transport, no era), and it has now been DRIVEN UNDER IMPAIRMENT — the tier that can hold the claim — where it DOES NOT CLOSE IT: run `5af09a9-88230` wedged for 796 s at HEAD with the relay firing, because the relay covers 1 of n-1 attesters by construction and a stalled renewal re-broadcast 1.5 MB every 30 s until it saturated the outbound budget and dropped the consensus frames that would clear the stall. THREE CAUSES WERE FOUND, BUILT AND DRIVEN (runs `7eaf3bd-75421`, `1b0b933-52703`): the renewal storm (29 submits -> 0), the outbound bound's blindness to frame size (20 control frames dropped -> 0), and the relay's 1-of-n-1 coverage (an inventory that reaches 42:25 on a healthy chain). The chain STILL wedges at 796 s, six reproductions deep, and the reason is now a single sentence: THE CONSENSUS CRITICAL PATH SHARES ONE ORDERED PER-PEER CONNECTION WITH THE PAYLOAD THAT CONGESTS IT. Every fix above the transport moved its own number without moving the wedge, because each still needs a round trip on the connection the payload owns. This is transport work, not consensus work. The instrumentation also turned up a SECOND failure, unbounded outbound frames, that OOM-killed a validator — that one is CLOSED, the outbound path has a bound*
+**21. Publish and fetch work on the internet as it is.** ⚠ *PUBLISH/FETCH HELD; THE CHAIN HALF SHIPS DISCLOSED — the pass did NOT reproduce. The coverage number now REPRODUCES BELOW THE FIELD TIER (`core/node/bondreg_relay_coverage_measure_test.go`): 95% on a wire that delivers, 33% on one at a quarter of the deadline's assumed floor, with the field's 47% between them — and the attribution says the two arms carry for OPPOSITE reasons. On a congested wire every carried leg carries the proposer's OWN registration, because the ~1.5 MB submit that would have given the peer the bytes has not completed on the same connection, so the remaining coverage is the FIRST CROSSING and not an evidence gap. That is a ceiling on this mechanism. The same run prices the wire and the gather legs are not what saturates it: renewal submits are 5.0x the legs the relay covers on a fast wire and 43.8x on a congested one, where they alone ask for 0.8x the link's whole capacity. Run `5654432-46734` passed at a 68 s max gap; run `e1c3edc-53073`, the second drive of the SAME binary, FAILED at 404 s against the same 220 s bound. One pass and one fail against a failure that reproduced seven times is "sometimes", not held. The composition is not what failed — the control lane was live on all four seats with zero lane failures, zero last-resort deliveries and zero starved control frames — and the FIELD reading of the shed's COVERAGE on that run was 19 gather legs relayed by digest at ~1 KB against 21 that carried the full ~1,574,000 B, so roughly half the critical path still moved multi-megabyte payloads on a wire the deadline assumes is faster (the local two-arm measurement above now brackets that number and says what the carried half is). The history below is kept in full because every eliminated candidate is part of the evidence. The mechanism is NAMED — the ~1.5 MB bond proof on the consensus critical path against a deadline sized off a link rate the composed wire does not deliver — the route off that path is BUILT (3,030,653 B -> 1,131 B per attester per round, transport, no era), and it has now been DRIVEN UNDER IMPAIRMENT — the tier that can hold the claim — where it DOES NOT CLOSE IT: run `5af09a9-88230` wedged for 796 s at HEAD with the relay firing, because the relay covers 1 of n-1 attesters by construction and a stalled renewal re-broadcast 1.5 MB every 30 s until it saturated the outbound budget and dropped the consensus frames that would clear the stall. THREE CAUSES WERE FOUND, BUILT AND DRIVEN (runs `7eaf3bd-75421`, `1b0b933-52703`): the renewal storm (29 submits -> 0), the outbound bound's blindness to frame size (20 control frames dropped -> 0), and the relay's 1-of-n-1 coverage (an inventory that reaches 42:25 on a healthy chain). The chain STILL wedges at 796 s, six reproductions deep, and the reason is now a single sentence: THE CONSENSUS CRITICAL PATH SHARES ONE ORDERED PER-PEER CONNECTION WITH THE PAYLOAD THAT CONGESTS IT. Every fix above the transport moved its own number without moving the wedge, because each still needs a round trip on the connection the payload owns. This is transport work, not consensus work. The instrumentation also turned up a SECOND failure, unbounded outbound frames, that OOM-killed a validator — that one is CLOSED, the outbound path has a bound*
 A NATed publisher in one region, a cold fetcher in another, bit-perfect bytes inside a bound
 derived from the deployed configuration. The chain keeps committing under sustained load with
 injected latency, jitter, loss and reordering.
@@ -2264,8 +2264,88 @@ FAILED rather than one that passed, which is the more useful side of it to have 
 block in the run carried two registrations (187 blocks at 1 bond-reg, 36 at 0), so a two-registration
 block is not the explanation. The suggestive neighbour is chain-sync: `val-c` logged 179 `GetChain`
 retries and 54 `GetChain` timeouts, and a window response carrying two blocks would be about this size.
-That is a hypothesis with a neighbour, not a measurement — nothing printed correlates a frame size with
-its message kind, and the cheap next step is to make the drop line say which kind it dropped.
+That is a hypothesis with a neighbour, not a measurement — nothing printed correlated a frame size with
+its message kind, and the cheap next step was to make the drop line say which kind it dropped. That is
+done, so the next impaired run answers it; one candidate is eliminated below.
+
+*THE COVERAGE NUMBER LEAVES THE CLOUD, 2026-09-21, AND IT SPLITS IN TWO.*
+`core/node/bondreg_relay_coverage_measure_test.go` drives four bonded validators on the REAL daemon
+wiring — each on its own chain-sync sweep, minting real space-time proofs, broadcasting real renewals,
+proposing real blocks — over two wires, and reads the coverage off the proposers themselves. Every
+gather leg now records whether it shed and, when it did not, WHICH evidence was missing, so the ratio
+arrives with its attribution instead of leaving a reader to guess at it.
+
+| at the shipped TTL of 32 | a fast wire | 64 KiB/s — a quarter of the assumed floor |
+|---|---|---|
+| heights committed | 11 | **1** |
+| registration-bearing gather legs | 60 | 30 |
+| shed | **57 (95%)** | **10 (33%)** |
+| carried, for want of evidence about a THIRD PARTY's registration | 3 | 0 |
+| carried, for want of evidence about the proposer's OWN | **0** | **20** |
+
+The field's 47% sits between the two arms. The fast arm now carries a floor at 80% and a second
+assertion that a proposer never carries its own registration on a wire that delivers; ablating the
+holder-reported inventory takes it to 73% and fails both, so the gate has teeth and it is catchable on
+a developer's machine in twenty seconds rather than on a billable run.
+
+*AND THE FIELD READS IT DIRECTLY NOW, rather than by arithmetic over frame sizes.* Every gather leg
+names its carry reason on the daemon's own log line, the node counts the four quantities
+(`GatherLegsShed`, `GatherLegsCarried` and the two attributions) so they ride the status block, and
+`21-impaired-commit` baselines them before the wire is shaped and reports the DELTA in its verdict
+whichever way that verdict goes. All three previous readings of this number were taken by hand off
+dropped-frame sizes after the fact, on a fleet that was destroyed under them. A window with no
+registration-bearing leg reports that it had none rather than printing a ratio with no denominator.
+
+*THE TWO ARMS CARRY FOR OPPOSITE REASONS, AND ONLY ONE OF THEM IS A GAP IN THE MECHANISM.* On a wire
+that delivers, every miss is a peer that had not yet reported holding a third party's registration —
+evidence arriving late, which more evidence would close. On a wire that does not, every single miss is
+the proposer's OWN registration, and the peer has not reported holding it because it does not hold it:
+the ~1.5 MB `MsgSubmitBondReg` that would have given it the bytes has not completed on the same
+congested connection. **The relay cannot shed bytes a peer has never received.** Coverage on a
+congested link is therefore gated on exactly the quantity it exists to avoid sending, and the
+remaining 53% is not an evidence gap to be closed but the first crossing itself. That is a ceiling on
+this mechanism, measured rather than argued, and it is the correction to "the work is coverage".
+
+*AND THE GATHER LEGS ARE NOT WHAT SATURATES THE LINK.* The same run prices every message kind the wire
+was asked to carry, which nothing had done before:
+
+| bytes offered to the wire | a fast wire | 64 KiB/s |
+|---|---|---|
+| `MsgSubmitBondReg` (renewal) | 45,395,784 | 1,327,117,662 |
+| `MsgProposeBlock` + `MsgPrepareQC` (the legs the relay covers) | 9,144,597 | 30,316,674 |
+| renewal as a multiple of the gather legs | **5.0x** | **43.8x** |
+
+On the congested arm the link's ENTIRE capacity over the run, across all twelve ordered pairs, is
+1,698,693,120 B, and the renewal submits alone ask for 0.8x of it. The digest relay took the gather
+legs from ~90 MB to 9.1 MB on the fast arm and that work holds; what it does not touch is the term
+five to forty times larger beside it. The payload in "the consensus critical path shares one ordered
+per-peer connection with the payload that congests it" now has a name and a number, and it is the
+renewal submit rather than the proposal. That is the same traffic the bonded-set bandwidth residual
+below describes, priced against the thing the relay covers for the first time.
+
+*ONE COVERAGE DEFECT WAS FOUND BY THE ATTRIBUTION AND IS FIXED.* The two gather legs did not use the
+same rule. The proposal leg sheds on any of the three evidences; the prepare-QC leg shed only for a
+peer NAMED IN THE QC. The QC names the quorum whose replies arrived first, not the peers holding the
+block — at four validators a quorum of two leaves a third attester out for being one reply late — so
+an attester that had just been shed to on the proposal leg was sent the whole proof again on the
+precommit leg of the same round, for as long as it kept missing the quorum. Both legs now consult the
+same evidences. Measured over eleven heights on a fast wire, across the identical number of sends:
+
+| the prepare-QC leg carried | |
+|---|---|
+| on QC membership alone | 19,726,159 B |
+| on every evidence | **4,578,693 B — 4.3x** |
+
+*AND ONE ROUTE WAS BUILT ON A READING AND THE MEASUREMENT REFUSED IT.* The submit rate suggested
+copies stacking: a sweep fires every 30 s, a 1.5 MB submit needs 24 s at this rate, so a second
+identical copy should be queuing behind the first on the same ordered connection — which would also
+have explained the dropped frames at twice a proof. A one-in-flight-per-peer rule was built to
+suppress exactly that, and it fired **zero** times. The submits do not stack: 876 sends across 72
+sweeps, four nodes and three peers is **1.01 per peer per sweep**, which is the design's cadence and
+not an amplifier. The rule was removed rather than shipped — a mechanism that never fires is not a
+saving — and the rate it would have been justified by is reported by the measurement instead.
+**The 2x-a-proof dropped frames are not two copies of one registration queued on one connection from
+this path**, so the lead stands open with one candidate eliminated.
 
 The publish/fetch half is done and is not affected by any of it. The chain half is NOT held today
 and none of the above holds it: if the close does not land by the date, this item ships disclosed
@@ -2694,6 +2774,16 @@ therefore a LIVENESS bound on the adverse internet, not only a participant-count
 healthy one. The same traffic is also what made the outbound frame queue found beside it
 expensive; that queue is now BOUNDED, which removes the OOM without touching the wedge. See item 21
 for the evidence and the structural close.
+
+*AND IT IS NOW PRICED AGAINST THE THING THAT WAS BEING OPTIMISED, 2026-09-21.* Driven in
+`core/node/bondreg_relay_coverage_measure_test.go`, four validators at the shipped TTL: the renewal
+submits offered 45,395,784 B to a fast wire against 9,144,597 B for the proposal and prepare-QC legs
+the digest relay covers — **5.0x** — and 1,327,117,662 B against 30,316,674 B on a wire at a quarter
+of the assumed floor — **43.8x**, where the submits alone ask for 0.8x the link's entire capacity
+across every ordered pair. The rate is the design's and not an amplifier: 1.01 submits per peer per
+sweep, with no copy ever queued behind an unanswered one. So this residual is not merely the larger
+of two terms on a congested link; it is the term, and the relay's remaining coverage gap is
+DOWNSTREAM of it — a peer cannot report holding bytes this traffic has not delivered to it.
 
 *AND THE FIELD NOW SHOWS THE TRAFFIC IS SELF-SUSTAINING UNDER A STALL (run `5af09a9-88230`).*
 `BondRenewalDue` stays true until a block COMMITS the renewal, so a chain that has stopped
