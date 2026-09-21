@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"io"
+	"net"
 	"testing"
 	"time"
 
@@ -72,41 +73,50 @@ func newSlowReader(t *testing.T, seed int64, bytesPerSec int) *slowReader {
 	}
 	sr := &slowReader{id: ident.NodeID(), addr: ln.Addr().String(), arrivals: make(chan arrival, 64)}
 	done := make(chan struct{})
+	// ACCEPT IN A LOOP. This fixture offers no ALPN, so it is a pre-lane peer: the
+	// transport dials a control lane, finds none negotiated, closes it and falls back
+	// to the shared conn. A single Accept would be consumed by that refused dial and
+	// the real conn would never be taken — which is what this fixture is for, a peer
+	// that has only one ordered stream.
 	go func() {
-		c, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		go func() {
-			<-done
-			c.Close()
-		}()
-		// Drain at the configured rate, one small slice at a time, and report a
-		// message the moment its last byte has been read.
-		const slice = 4 << 10
-		pause := time.Duration(int64(time.Second) * int64(slice) / int64(bytesPerSec))
-		buf := make([]byte, slice)
-		var hdr [4]byte
 		for {
-			if _, err := io.ReadFull(c, hdr[:]); err != nil {
+			c, err := ln.Accept()
+			if err != nil {
 				return
 			}
-			n := int(binary.BigEndian.Uint32(hdr[:]))
-			for left := n; left > 0; {
-				take := slice
-				if left < take {
-					take = left
+			go func(c net.Conn) {
+				go func() {
+					<-done
+					c.Close()
+				}()
+				// Drain at the configured rate, one small slice at a time, and report a
+				// message the moment its last byte has been read.
+				const slice = 4 << 10
+				pause := time.Duration(int64(time.Second) * int64(slice) / int64(bytesPerSec))
+				buf := make([]byte, slice)
+				var hdr [4]byte
+				for {
+					if _, err := io.ReadFull(c, hdr[:]); err != nil {
+						return
+					}
+					n := int(binary.BigEndian.Uint32(hdr[:]))
+					for left := n; left > 0; {
+						take := slice
+						if left < take {
+							take = left
+						}
+						if _, err := io.ReadFull(c, buf[:take]); err != nil {
+							return
+						}
+						left -= take
+						time.Sleep(pause)
+					}
+					select {
+					case sr.arrivals <- arrival{size: n, at: time.Now()}:
+					default:
+					}
 				}
-				if _, err := io.ReadFull(c, buf[:take]); err != nil {
-					return
-				}
-				left -= take
-				time.Sleep(pause)
-			}
-			select {
-			case sr.arrivals <- arrival{size: n, at: time.Now()}:
-			default:
-			}
+			}(c)
 		}
 	}()
 	t.Cleanup(func() { close(done); ln.Close() })
@@ -264,4 +274,157 @@ func TestASecondConnectionCarriesTheControlFrameImmediately(t *testing.T) {
 			"separating the streams does NOT buy what the field failure needs, and the remedy has to be the "+
 			"one that removes the payload instead", got, wire)
 	}
+}
+
+// THE LANE, DRIVEN AGAINST THE FIXTURE THAT MEASURES THE DEFECT.
+//
+// Both frames go to the SAME peer, which is the field shape and the arm the two
+// measurements above could not make: the bulk payload and the control frame are
+// addressed to one node, and the only question is whether they share a stream.
+//
+// laneReader accepts BOTH lanes from one dialer and timestamps arrivals on each, so
+// a control frame that overtakes a bulk frame is visible as an ordering fact rather
+// than inferred from two separate peers.
+func TestTheControlLaneCarriesASmallFramePastABulkOneToTheSamePeer(t *testing.T) {
+	const (
+		rate = 8 << 20
+		bulk = 16 << 20
+		wait = 120 * time.Second
+	)
+	lr := newLaneReader(t, 701, rate)
+	tr, loop := newTransport(t, 700)
+	defer func() { tr.Close(); loop.Stop() }()
+	tr.AddPeer(lr.id, lr.addr)
+
+	// Open the bulk conversation and let its handshake settle.
+	if err := tr.Send(lr.id, ports.Message{Kind: ports.MsgStoreChunk, Data: make([]byte, 1<<10)}); err != nil {
+		t.Fatalf("opening send: %v", err)
+	}
+	select {
+	case <-lr.arrivals:
+	case <-time.After(wait):
+		t.Fatal("the opening frame never arrived")
+	}
+
+	if err := tr.Send(lr.id, ports.Message{Kind: ports.MsgStoreChunk, Data: make([]byte, bulk)}); err != nil {
+		t.Fatalf("bulk send: %v", err)
+	}
+	time.Sleep(500 * time.Millisecond) // the bulk write is parked on the bulk socket
+	start := time.Now()
+	if err := tr.Send(lr.id, ports.Message{Kind: ports.MsgGetChainHead, Data: make([]byte, 121)}); err != nil {
+		t.Fatalf("control send: %v", err)
+	}
+
+	var got time.Duration
+	var lane string
+	for deadline := time.After(wait); ; {
+		select {
+		case a := <-lr.arrivals:
+			if a.size < bulk/2 {
+				got, lane = a.at.Sub(start), a.lane
+				goto done
+			}
+		case <-deadline:
+			t.Fatal("the control frame never arrived")
+		}
+	}
+done:
+	wire := time.Duration(int64(time.Second) * int64(bulk) / int64(rate))
+	t.Logf("MEASURED — bulk and control to the SAME peer, %v of bulk in flight:", wire)
+	t.Logf("  the control frame arrived in %v, on the %q lane", got.Round(time.Millisecond), lane)
+
+	if lane != alpnCtrl {
+		t.Fatalf("the control frame rode the %q lane, not %q — the size rule or the dial did not route it, so "+
+			"the measurement below is of the shared stream", lane, alpnCtrl)
+	}
+	if got > wire/4 {
+		t.Fatalf("the control frame took %v against %v of bulk wire time even on its own lane. The lanes are "+
+			"not independent — check that the bulk conn is not being reused for it", got, wire)
+	}
+}
+
+// laneReader accepts both ALPN lanes from one dialer and reports which lane each
+// framed message arrived on.
+type laneReader struct {
+	id       ports.NodeID
+	addr     string
+	arrivals chan laneArrival
+}
+
+type laneArrival struct {
+	size int
+	at   time.Time
+	lane string
+}
+
+func newLaneReader(t *testing.T, seed int64, bytesPerSec int) *laneReader {
+	t.Helper()
+	ident := identity.FromSeed(seed)
+	cert, err := ident.Certificate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ClientAuth:   tls.RequireAnyClientCert,
+		MinVersion:   tls.VersionTLS13,
+		NextProtos:   []string{alpnBulk, alpnCtrl},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lr := &laneReader{id: ident.NodeID(), addr: ln.Addr().String(), arrivals: make(chan laneArrival, 64)}
+	done := make(chan struct{})
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				go func() { <-done; c.Close() }()
+				tc := c.(*tls.Conn)
+				if err := tc.Handshake(); err != nil {
+					return
+				}
+				lane := tc.ConnectionState().NegotiatedProtocol
+				// The CONTROL lane drains immediately; the BULK lane drains at the
+				// configured rate. That is the asymmetry the real wire has — a
+				// congested link is congested for the payload riding it, and the
+				// point of a second lane is that the small frame is not on it.
+				slice := 4 << 10
+				pause := time.Duration(int64(time.Second) * int64(slice) / int64(bytesPerSec))
+				if lane == alpnCtrl {
+					pause = 0
+				}
+				buf := make([]byte, slice)
+				var hdr [4]byte
+				for {
+					if _, err := io.ReadFull(tc, hdr[:]); err != nil {
+						return
+					}
+					n := int(binary.BigEndian.Uint32(hdr[:]))
+					for left := n; left > 0; {
+						take := slice
+						if left < take {
+							take = left
+						}
+						if _, err := io.ReadFull(tc, buf[:take]); err != nil {
+							return
+						}
+						left -= take
+						if pause > 0 {
+							time.Sleep(pause)
+						}
+					}
+					select {
+					case lr.arrivals <- laneArrival{size: n, at: time.Now(), lane: lane}:
+					default:
+					}
+				}
+			}(c)
+		}
+	}()
+	t.Cleanup(func() { close(done); ln.Close() })
+	return lr
 }

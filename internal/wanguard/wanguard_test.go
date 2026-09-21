@@ -110,8 +110,8 @@ var ledger = map[siteKey]string{
 	// nests below RequestTimeout; the upper layer (core/node requestAttempt)
 	// retries; and the consensus set is never-evicted (persistent-peers).
 	// confirmed the observed EOFs were µs teardowns, not this deadline firing.
-	"adapters/tcpnet/tcpnet.go|dialPeer|net.Dialer.Timeout": "first-contact-modest — direct-peer dial (2s, nested < RequestTimeout); upper-layer requestAttempt retries; consensus set never-evicted; §1-correct, not a flat steady-state constant",
-	"adapters/tcpnet/tcpnet.go|dialPeer|conn.SetDeadline":   "first-contact-modest — relayed-peer TLS handshake (5s); cleared after handshake; upper-layer retries",
+	"adapters/tcpnet/tcpnet.go|dialPeerLane|net.Dialer.Timeout": "first-contact-modest — direct-peer dial (2s, nested < RequestTimeout); upper-layer requestAttempt retries; consensus set never-evicted; §1-correct, not a flat steady-state constant",
+	"adapters/tcpnet/tcpnet.go|dialPeerLane|conn.SetDeadline":   "first-contact-modest — relayed-peer TLS handshake (5s); cleared after handshake; upper-layer retries",
 }
 
 func TestTransportDeadlinesAreLedgered(t *testing.T) {
