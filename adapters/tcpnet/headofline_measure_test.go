@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nerolabs/silt/adapters/eventloop"
 	"github.com/nerolabs/silt/adapters/identity"
 	"github.com/nerolabs/silt/ports"
 )
@@ -427,4 +428,81 @@ func newLaneReader(t *testing.T, seed int64, bytesPerSec int) *laneReader {
 	}()
 	t.Cleanup(func() { close(done); ln.Close() })
 	return lr
+}
+
+// A LARGE REPLY TO AN UNDIALABLE PEER WHOSE ONLY CONN IS THE CONTROL LANE.
+//
+// This is the defect the control lane introduced and the field sheet caught, and it
+// is here because every local gate passed while it was live. A peer whose first
+// contact is SMALL now has a control conn and no bulk conn. When that peer is also
+// undialable — a NATed fetcher, which is the ordinary case — a LARGE reply found no
+// live bulk conn, no address to dial, and was dropped: run f34745d-56790 read it as
+// four flows fetching the sha256 of the empty string.
+//
+// natted_test.go covers the same shape with SMALL messages and stayed green
+// throughout, which is exactly why this one is written in terms of a payload.
+//
+// The rule: the lane may never be the reason a frame is not delivered. Putting a
+// large frame on it costs the head-of-line blocking the lane exists to avoid — a
+// latency cost — and dropping it is a silent-loss shape (S3). They are not
+// comparable.
+func TestALargePayloadReachesAPeerKnownOnlyOverTheControlLane(t *testing.T) {
+	// The "NATed" node advertises nothing, so the far end can never dial it.
+	natted, loopN := newTransportAt(t, 800, "0.0.0.0:0")
+	defer func() { natted.Close(); loopN.Stop() }()
+	public, loopP := newTransport(t, 801)
+	defer func() { public.Close(); loopP.Stop() }()
+
+	got := make(chan int, 4)
+	natted.SetHandler(func(_ ports.NodeID, m ports.Message) { got <- len(m.Data) })
+
+	publicID := identity.FromSeed(801).NodeID()
+	nattedID := identity.FromSeed(800).NodeID()
+	natted.AddPeer(publicID, public.Addr())
+
+	// The NATed node's first contact is SMALL, so it opens the control lane and no
+	// bulk conn — the precondition the field hit and the local gates did not.
+	if err := natted.Send(publicID, ports.Message{Kind: ports.MsgGetChainHead}); err != nil {
+		t.Fatalf("opening send: %v", err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); public.ctrlConn(nattedID) == nil; {
+		if time.Now().After(deadline) {
+			t.Fatal("PREMISE BROKEN: no control lane was established, so nothing below is about the lane")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if public.liveConn(nattedID) != nil {
+		t.Fatal("PREMISE BROKEN: a BULK conn to the NATed peer also exists, so the large frame below has an " +
+			"ordinary path and the assertion proves nothing")
+	}
+
+	// Now the public node answers with a PAYLOAD, the way a chunk fetch is answered.
+	const payload = 256 << 10
+	if err := public.Send(nattedID, ports.Message{Kind: ports.MsgFetchChunkReply, Data: make([]byte, payload)}); err != nil {
+		t.Fatalf("the large reply was refused outright: %v", err)
+	}
+
+	select {
+	case n := <-got:
+		if n != payload {
+			t.Fatalf("the reply arrived with %d bytes, want %d", n, payload)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("a large reply to a peer reachable ONLY over the control lane was never delivered. That is the " +
+			"lane creating a way to lose data that one connection did not have — the field read it as fetches " +
+			"returning the hash of the empty string")
+	}
+}
+
+// newTransportAt is newTransport with an explicit listen address, so a test can
+// build a node that advertises nothing dialable.
+func newTransportAt(t *testing.T, seed int64, listen string) (*Transport, *eventloop.Loop) {
+	t.Helper()
+	loop := eventloop.New()
+	go loop.Run()
+	tr, err := New(loop, identity.FromSeed(seed), listen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tr, loop
 }

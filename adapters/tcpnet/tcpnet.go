@@ -686,6 +686,9 @@ func (t *Transport) deliver(to ports.NodeID, pair addrPair, frame []byte, freshD
 		}
 	}
 	if pair.empty() {
+		if t.writeViaCtrlLane(to, frame) {
+			return
+		}
 		t.logf(ports.LogDebug, "no path to peer", "to", to)
 		return
 	}
@@ -718,6 +721,37 @@ func (t *Transport) deliver(to ports.NodeID, pair addrPair, frame []byte, freshD
 		}
 		return
 	}
+	// Every dial failed. The control lane is still a path to this peer, and using
+	// it beats dropping the frame.
+	t.writeViaCtrlLane(to, frame)
+}
+
+// writeViaCtrlLane sends a frame down the control lane as a LAST RESORT, and
+// reports whether it went. It is the path for a frame that has nowhere else to go.
+//
+// A LANE THAT ADDS A WAY TO LOSE DATA IS WORSE THAN NO LANE, and this is where that
+// nearly happened. A peer whose first contact is small now has a control conn and no
+// bulk conn; when that peer is also undialable — a NATed fetcher, which is the
+// ordinary case — a LARGE reply found no live bulk conn, no address to dial, and was
+// dropped on the floor. The field sheet read it as fetches returning the sha256 of
+// the empty string.
+//
+// So the rule is that the lane may never be the reason a frame is not delivered.
+// Putting a large frame on it costs exactly the head-of-line blocking the lane
+// exists to avoid, which is a latency cost paid by one peer's traffic; dropping it
+// is a silent-loss shape (S3) and is not comparable.
+func (t *Transport) writeViaCtrlLane(to ports.NodeID, frame []byte) bool {
+	pc := t.ctrlConn(to)
+	if pc == nil {
+		return false
+	}
+	if err := pc.write(frame); err != nil {
+		t.dropCtrlConn(to, pc)
+		return false
+	}
+	t.logf(ports.LogDebug, "frame delivered over the control lane for want of any other path",
+		"to", to, "bytes", len(frame))
+	return true
 }
 
 // dialPeer dials with the target's identity pinned: if the far end's
