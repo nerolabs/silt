@@ -1057,6 +1057,39 @@ ft_impair_counters() {
     }'
 }
 
+# ft_lane_counters NODE — the control lane's own four numbers, counted out of the
+# node's debug.log. Structured transport lines go to that file and never to
+# journald, so this is where the lane narrates itself.
+#
+#   established   a lane came up to a peer (the mechanism is live at all)
+#   failed        a lane dial or a lane write failed (each one fell back to the
+#                 shared conn, so this is a cost and not a loss)
+#   last-resort   a frame rode the lane because no other path existed — rare is
+#                 correct, routine means the lane is carrying bulk again
+#   ctrl-dropped  a small frame was refused by the outbound budget, which is the
+#                 blinding shape the reserve exists to prevent; must be zero
+#
+# Prints "established failed last-resort ctrl-dropped", or nothing if the file
+# cannot be read.
+ft_lane_counters() {
+  ssh_node "$1" "sudo awk '/control lane established/{e++} /control lane dial failed/{f++} /control lane write failed/{f++} /for want of any other path/{l++} /outbound CONTROL frame dropped/{c++} END{printf \"%d %d %d %d\\n\", e+0, f+0, l+0, c+0}' /var/lib/silt/debug.log 2>/dev/null"
+}
+
+# ft_lane_delta BASELINE FINAL — the four counters' movement across a window,
+# as "e f l c". A count read after the fact mixes the window being graded with
+# every minute of the run before it; the difference is the only form of the
+# number that belongs to the drive. Missing readings give an empty field rather
+# than a zero, because "not read" and "did not happen" are different findings.
+ft_lane_delta() {
+  python3 -c "
+import sys
+b = sys.argv[1].split(); f = sys.argv[2].split()
+if len(b) != 4 or len(f) != 4:
+    print('')
+else:
+    print(' '.join(str(int(x) - int(y)) for x, y in zip(f, b)))" "$1" "$2" 2>/dev/null
+}
+
 # ── Flow 21b: the chain keeps committing under injected impairment ─────────────
 # Sustained publish load across a fleet whose swarm traffic is carrying latency,
 # jitter, loss and reordering at once, graded on the SAME computed per-height
@@ -1093,6 +1126,18 @@ flow_impaired_commit() {
   # shellcheck disable=SC2086
   flow_evidence_nodes $vals
   : "${H_ESCAPE_S:=220}"
+
+  # BASELINE THE LANE BEFORE THE WIRE IS SHAPED. This flow's verdict is the only
+  # place the control lane is graded under the conditions it was built for, and a
+  # PASS used to leave no trace of HOW it passed: evidence is captured on a
+  # non-green verdict, the fleet is destroyed at the end of the sheet, and the
+  # per-seat numbers went with it. The counts belong to the drive, so they are
+  # read at both ends of it and reported as the difference.
+  local lane_base="" lane_v
+  for v in $vals; do
+    lane_v="$(ft_lane_counters "$v" || true)"
+    lane_base="$lane_base ${v}=$(printf '%s' "${lane_v:-unread}" | tr ' ' ',')"
+  done
 
   # Apply, and read back. A seat that will not take the shaping is not silently
   # left clean: the applied set is unwound and the flow reports what happened.
@@ -1165,6 +1210,32 @@ flow_impaired_commit() {
   [ "$final_gap" -gt "$maxgap" ] && [ "$wedged" = 1 ] && maxgap="$final_gap"
   local heights=$(( last_h - h0 ))
 
+  # WHAT THE LANE DID ACROSS THE WINDOW, read before unwinding and reported
+  # whichever way the verdict goes. Four numbers per seat, each with a reading:
+  # a lane that never came up did not carry the drive; a lane failure fell back
+  # to the shared conn and cost latency rather than a message; a last-resort
+  # delivery that is routine means the lane is carrying bulk again, which is the
+  # head-of-line blocking it exists to remove; and a dropped CONTROL frame is
+  # the node going blind to a peer, which must not happen at all.
+  # The baseline lookup and the counter read both go through a variable and both
+  # carry `|| true`. This file runs under `set -e -o pipefail`, where a grep that
+  # matches nothing and a seat that will not answer are ordinary outcomes that
+  # would otherwise abort the flow BEFORE it reports the drive it just finished —
+  # losing the verdict to the instrumentation added to explain it.
+  local lane="" lane_now lane_was lane_d
+  for v in $applied; do
+    lane_now="$(ft_lane_counters "$v" || true)"
+    lane_was="$(printf '%s' "$lane_base" | tr ' ' '\n' | grep "^${v}=" | cut -d= -f2 | tr ',' ' ' || true)"
+    lane_d="$(ft_lane_delta "$lane_was" "$lane_now" || true)"
+    if [ -z "$lane_d" ]; then
+      lane="$lane ${v}:UNREAD"
+    else
+      local le lf ll lc
+      read -r le lf ll lc <<< "$lane_d"
+      lane="$lane ${v}:lane+${le}/fail+${lf}/lastresort+${ll}/ctrldrop+${lc}"
+    fi
+  done
+
   # DID THE IMPAIRMENT BITE? Read netem's own counters before unwinding, on
   # every seat that took the shaping.
   local bit=0 seats=0 cred=""
@@ -1213,7 +1284,7 @@ flow_impaired_commit() {
   fi
   if [ "$wedged" = 1 ] || [ "$maxgap" -gt "$H_ESCAPE_S" ]; then
     record "21-impaired-commit" fail blocker \
-      "the chain STOPPED committing under [$IMPAIR_NETEM]: a height went ${maxgap}s without a commit, past the computed ${H_ESCAPE_S}s escape bound, with the network live (h${h0}->h${last_h}, ${pub_ok}/${pubs} publishes landed, impairment credited on ${bit} seat(s)); last client output: $(printf '%s' "$lastout" | tail -1 | head -c 200)"
+      "the chain STOPPED committing under [$IMPAIR_NETEM]: a height went ${maxgap}s without a commit, past the computed ${H_ESCAPE_S}s escape bound, with the network live (h${h0}->h${last_h}, ${pub_ok}/${pubs} publishes landed, impairment credited on ${bit} seat(s)); control lane over the window:${lane}; last client output: $(printf '%s' "$lastout" | tail -1 | head -c 200)"
     return
   fi
   if [ "$heights" -lt 1 ]; then
@@ -1224,10 +1295,10 @@ flow_impaired_commit() {
     # consensus — the mistake this sheet has already paid for more than once.
     if [ "$pub_ok" -eq 0 ]; then
       record "21-impaired-commit" fail blocker \
-        "under [$IMPAIR_NETEM] ZERO of ${pubs} publishes landed and the chain committed NOTHING in ${wall}s (h${h0}, impairment credited on ${bit} seat(s)) — the PUBLISH path is what stopped, so read this as a client/publish finding and not yet as a consensus one; last client output: $(printf '%s' "$lastout" | tail -1 | head -c 200)"
+        "under [$IMPAIR_NETEM] ZERO of ${pubs} publishes landed and the chain committed NOTHING in ${wall}s (h${h0}, impairment credited on ${bit} seat(s); control lane over the window:${lane}) — the PUBLISH path is what stopped, so read this as a client/publish finding and not yet as a consensus one; last client output: $(printf '%s' "$lastout" | tail -1 | head -c 200)"
     else
       record "21-impaired-commit" fail blocker \
-        "under [$IMPAIR_NETEM] ${pub_ok} of ${pubs} publishes LANDED but the chain committed NOTHING in ${wall}s (h${h0}, impairment credited on ${bit} seat(s)) — proposals were produced and no height followed, which is a consensus finding the escape bound cannot excuse"
+        "under [$IMPAIR_NETEM] ${pub_ok} of ${pubs} publishes LANDED but the chain committed NOTHING in ${wall}s (h${h0}, impairment credited on ${bit} seat(s); control lane over the window:${lane}) — proposals were produced and no height followed, which is a consensus finding the escape bound cannot excuse"
     fi
     return
   fi
@@ -1236,7 +1307,7 @@ flow_impaired_commit() {
   # a line that asserted all four over a single-condition profile would be
   # claiming more than the run drove.
   slo_assert "21-impaired-commit" blocker \
-    "the chain KEPT COMMITTING under the injected profile [$IMPAIR_NETEM]: ${heights} height(s) h${h0}->h${last_h} under continuous publish (${pub_ok}/${pubs} landed), max inter-commit gap ${maxgap}s within the computed ${H_ESCAPE_S}s escape bound, impairment credited by netem's own counters on ${bit} of ${seats} seat(s) —${cred}" 1 "$(( $(date +%s) - t0 ))"
+    "the chain KEPT COMMITTING under the injected profile [$IMPAIR_NETEM]: ${heights} height(s) h${h0}->h${last_h} under continuous publish (${pub_ok}/${pubs} landed), max inter-commit gap ${maxgap}s within the computed ${H_ESCAPE_S}s escape bound, impairment credited by netem's own counters on ${bit} of ${seats} seat(s) —${cred}; control lane over the window:${lane}" 1 "$(( $(date +%s) - t0 ))"
 }
 
 # ── adversarial: equivocation → slash ────────
