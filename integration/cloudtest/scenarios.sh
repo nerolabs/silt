@@ -1075,19 +1075,52 @@ ft_lane_counters() {
   ssh_node "$1" "sudo awk '/control lane established/{e++} /control lane dial failed/{f++} /control lane write failed/{f++} /for want of any other path/{l++} /outbound CONTROL frame dropped/{c++} END{printf \"%d %d %d %d\\n\", e+0, f+0, l+0, c+0}' /var/lib/silt/debug.log 2>/dev/null"
 }
 
-# ft_lane_delta BASELINE FINAL — the four counters' movement across a window,
-# as "e f l c". A count read after the fact mixes the window being graded with
-# every minute of the run before it; the difference is the only form of the
-# number that belongs to the drive. Missing readings give an empty field rather
-# than a zero, because "not read" and "did not happen" are different findings.
-ft_lane_delta() {
+# ft_relay_counters NODE — the digest relay's coverage, counted off the node's own
+# gather lines in debug.log (validators run -log debug).
+#
+# A gather leg is one proposal or one prepare-QC to one attester. It either crosses by
+# DIGEST at about a kilobyte or CARRIES the space-time proofs at ~1,574,000 B each, and
+# a link that cannot move the carried form inside the per-attempt deadline cannot commit
+# the height at all — so this ratio is the quantity the adverse-network liveness claim
+# rests on. Three runs read it by hand off frame sizes; the line now states it.
+#
+#   shed            the leg crossed by digest
+#   own-unacked     it carried, and nothing evidenced that the peer holds THIS node's
+#                   own registration. On a wire that delivers this is zero; where it is
+#                   not, the peer has no bytes, because the submit that would deliver
+#                   them has not completed on the same link
+#   peer-unreported it carried, and the peer had not reported holding a THIRD party's
+#                   registration — the holder inventory arriving after the proposal
+#
+# Legs with nothing to shed (a block carrying no registration) are in NONE of the three,
+# so the denominator is the legs where shedding was possible at all.
+#
+# Prints "shed own-unacked peer-unreported", or nothing if the file cannot be read.
+ft_relay_counters() {
+  ssh_node "$1" "sudo awk '/carry-reason=none/{s++} /carry-reason=own-reg-unacked/{o++} /carry-reason=peer-unreported/{p++} END{printf \"%d %d %d\\n\", s+0, o+0, p+0}' /var/lib/silt/debug.log 2>/dev/null"
+}
+
+# ft_counter_delta BASELINE FINAL — a counter row's movement across a window, field by
+# field. A count read after the fact mixes the window being graded with every minute of
+# the run before it, and the warm-up minutes run on an UNSHAPED wire; the difference is
+# the only form of the number that belongs to the drive. Missing or mismatched readings
+# give an empty result rather than zeros, because "not read" and "did not happen" are
+# different findings and a zero would report the first as the second.
+ft_counter_delta() {
   python3 -c "
 import sys
 b = sys.argv[1].split(); f = sys.argv[2].split()
-if len(b) != 4 or len(f) != 4:
+if not b or len(b) != len(f):
     print('')
 else:
     print(' '.join(str(int(x) - int(y)) for x, y in zip(f, b)))" "$1" "$2" 2>/dev/null
+}
+
+# ft_lane_delta is the control lane's four counters through that same arithmetic.
+ft_lane_delta() {
+  local d; d="$(ft_counter_delta "$1" "$2")"
+  [ "$(printf '%s' "$d" | wc -w)" -eq 4 ] || return 0
+  printf '%s\n' "$d"
 }
 
 # ── Flow 21b: the chain keeps committing under injected impairment ─────────────
@@ -1133,10 +1166,17 @@ flow_impaired_commit() {
   # non-green verdict, the fleet is destroyed at the end of the sheet, and the
   # per-seat numbers went with it. The counts belong to the drive, so they are
   # read at both ends of it and reported as the difference.
-  local lane_base="" lane_v
+  local lane_base="" lane_v rly_base="" rly_v
   for v in $vals; do
     lane_v="$(ft_lane_counters "$v" || true)"
     lane_base="$lane_base ${v}=$(printf '%s' "${lane_v:-unread}" | tr ' ' ',')"
+    # THE RELAY'S COVERAGE IS BASELINED FOR THE SAME REASON THE LANE IS. Every one
+    # of these is an EVENT, so a count read after the fact mixes the graded window
+    # with every minute of warm-up before it — and the warm-up commits heights on an
+    # unshaped wire, which is exactly the regime that sheds best. Reading the total
+    # would credit the impaired drive with the clean one's coverage.
+    rly_v="$(ft_relay_counters "$v" || true)"
+    rly_base="$rly_base ${v}=$(printf '%s' "${rly_v:-unread}" | tr ' ' ',')"
   done
 
   # Apply, and read back. A seat that will not take the shaping is not silently
@@ -1245,6 +1285,37 @@ flow_impaired_commit() {
     fi
   done
 
+  # AND WHAT THE RELAY COVERED ACROSS THE SAME WINDOW. One line for the fleet, because
+  # coverage is a property of the drive and not of a seat: the legs are spread across
+  # whichever validators proposed. The attribution travels with it — a carried leg for
+  # want of evidence about a THIRD PARTY's registration is the holder inventory arriving
+  # late, which more evidence closes; one for want of evidence about the proposer's OWN
+  # is the ~1.5 MB submit not having completed on this link, which no evidence can.
+  local rly_shed=0 rly_own=0 rly_peer=0 rly_unread="" rly=""
+  for v in $applied; do
+    local rly_now rly_was rly_d
+    rly_now="$(ft_relay_counters "$v" || true)"
+    rly_was="$(printf '%s' "$rly_base" | tr ' ' '\n' | grep "^${v}=" | cut -d= -f2 | tr ',' ' ' || true)"
+    rly_d="$(ft_counter_delta "$rly_was" "$rly_now" || true)"
+    if [ -z "$rly_d" ]; then
+      rly_unread="$rly_unread $v"
+    else
+      local rs ro rp
+      read -r rs ro rp <<< "$rly_d"
+      rly_shed=$(( rly_shed + rs )); rly_own=$(( rly_own + ro )); rly_peer=$(( rly_peer + rp ))
+    fi
+  done
+  local rly_carried=$(( rly_own + rly_peer )) rly_legs=$(( rly_shed + rly_own + rly_peer ))
+  if [ "$rly_legs" -gt 0 ]; then
+    rly=" digest relay over the window: ${rly_shed}/${rly_legs} legs shed ($(( 100 * rly_shed / rly_legs ))%), ${rly_carried} carried ~1,574,000 B each (own-reg unevidenced ${rly_own}, peer-reg unevidenced ${rly_peer})"
+  else
+    # NOT THE SAME AS 100%, and saying so is the point. No registration-bearing leg ran
+    # in this window, so there was nothing to shed and nothing to carry — a coverage
+    # figure printed here would be a ratio with no denominator.
+    rly=" digest relay over the window: NO registration-bearing gather leg ran, so there is no coverage to read"
+  fi
+  [ -n "$rly_unread" ] && rly="$rly; counters UNREAD on${rly_unread}"
+
   # DID THE IMPAIRMENT BITE? Read netem's own counters before unwinding, on
   # every seat that took the shaping.
   local bit=0 seats=0 cred=""
@@ -1293,7 +1364,7 @@ flow_impaired_commit() {
   fi
   if [ "$wedged" = 1 ] || [ "$maxgap" -gt "$H_ESCAPE_S" ]; then
     record "21-impaired-commit" fail blocker \
-      "the chain STOPPED committing under [$IMPAIR_NETEM]: a height went ${maxgap}s without a commit, past the computed ${H_ESCAPE_S}s escape bound, with the network live (h${h0}->h${last_h}, ${pub_ok}/${pubs} publishes landed, impairment credited on ${bit} seat(s)); control lane over the window:${lane}; last client output: $(printf '%s' "$lastout" | tail -1 | head -c 200)"
+      "the chain STOPPED committing under [$IMPAIR_NETEM]: a height went ${maxgap}s without a commit, past the computed ${H_ESCAPE_S}s escape bound, with the network live (h${h0}->h${last_h}, ${pub_ok}/${pubs} publishes landed, impairment credited on ${bit} seat(s)); control lane over the window:${lane};${rly}; last client output: $(printf '%s' "$lastout" | tail -1 | head -c 200)"
     return
   fi
   if [ "$heights" -lt 1 ]; then
@@ -1307,7 +1378,7 @@ flow_impaired_commit() {
         "under [$IMPAIR_NETEM] ZERO of ${pubs} publishes landed and the chain committed NOTHING in ${wall}s (h${h0}, impairment credited on ${bit} seat(s); control lane over the window:${lane}) — the PUBLISH path is what stopped, so read this as a client/publish finding and not yet as a consensus one; last client output: $(printf '%s' "$lastout" | tail -1 | head -c 200)"
     else
       record "21-impaired-commit" fail blocker \
-        "under [$IMPAIR_NETEM] ${pub_ok} of ${pubs} publishes LANDED but the chain committed NOTHING in ${wall}s (h${h0}, impairment credited on ${bit} seat(s); control lane over the window:${lane}) — proposals were produced and no height followed, which is a consensus finding the escape bound cannot excuse"
+        "under [$IMPAIR_NETEM] ${pub_ok} of ${pubs} publishes LANDED but the chain committed NOTHING in ${wall}s (h${h0}, impairment credited on ${bit} seat(s); control lane over the window:${lane};${rly}) — proposals were produced and no height followed, which is a consensus finding the escape bound cannot excuse"
     fi
     return
   fi
@@ -1316,7 +1387,7 @@ flow_impaired_commit() {
   # a line that asserted all four over a single-condition profile would be
   # claiming more than the run drove.
   slo_assert "21-impaired-commit" blocker \
-    "the chain KEPT COMMITTING under the injected profile [$IMPAIR_NETEM]: ${heights} height(s) h${h0}->h${last_h} under continuous publish (${pub_ok}/${pubs} landed), max inter-commit gap ${maxgap}s within the computed ${H_ESCAPE_S}s escape bound, impairment credited by netem's own counters on ${bit} of ${seats} seat(s) —${cred}; control lane over the window:${lane}" 1 "$(( $(date +%s) - t0 ))"
+    "the chain KEPT COMMITTING under the injected profile [$IMPAIR_NETEM]: ${heights} height(s) h${h0}->h${last_h} under continuous publish (${pub_ok}/${pubs} landed), max inter-commit gap ${maxgap}s within the computed ${H_ESCAPE_S}s escape bound, impairment credited by netem's own counters on ${bit} of ${seats} seat(s) —${cred}; control lane over the window:${lane};${rly}" 1 "$(( $(date +%s) - t0 ))"
 }
 
 # ── adversarial: equivocation → slash ────────

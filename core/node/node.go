@@ -445,6 +445,26 @@ type Stats struct {
 	// carried because the peer could not reconstruct the digest-relayed form. The
 	// proposer-side twin of ProposalsNeedingBodies, and the same expectation: zero.
 	DigestRelayResends int
+	// THE RELAY'S COVERAGE, which is what the adverse-network liveness bound now rests
+	// on. A gather leg — a proposal or a prepare-QC to one attester — either crosses by
+	// DIGEST at ~1 KB or CARRIES the space-time proofs at ~1.5 MB each, and a link that
+	// cannot move the carried form inside the per-attempt deadline cannot commit the
+	// height at all. Coverage is Shed/(Shed+Carried).
+	//
+	// Legs with nothing to shed (a pre-witnessable block, a block carrying no
+	// registration) are counted in NEITHER: they are not a coverage failure, and
+	// putting them in the denominator would report a working relay as a broken one.
+	GatherLegsShed    int
+	GatherLegsCarried int
+	// AND WHICH REGISTRATION WENT UNEVIDENCED, because the two cases are different
+	// failures. OwnUnacked is this node's own registration: on a wire that delivers it
+	// is zero, and where it is not, the peer has no evidence because it has no bytes —
+	// the submit that would deliver them has not completed on the same link, which no
+	// further evidence can fix. PeerUnreported is a third party's: the peer is sent
+	// every renewal, so it is usually the holder's report arriving after the proposal.
+	// See carryReason.
+	GatherLegsCarriedOwnUnacked     int
+	GatherLegsCarriedPeerUnreported int
 	// BountyDuplicatePosition counts release verdicts this judge refused to pay
 	// because it had ALREADY paid a bounty for that (root, stripe, position). A
 	// replayed claim used to draw the full bounty a second time out of the same

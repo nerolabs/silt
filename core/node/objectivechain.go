@@ -278,11 +278,57 @@ func (n *Node) ownRegForBlock(prev ports.Hash) (chain.BondReg, bool) {
 	return reg, ok
 }
 
+// carryReason names why a gather leg was sent with its heavy proofs CARRIED rather
+// than relayed by digest. The relay's coverage — the share of legs that shed — is the
+// quantity the adverse-network liveness bound rests on, and a bare ratio cannot say
+// what to do about it. These separate the two cases, which were measured to be
+// different failures wanting different work (core/node/bondreg_relay_coverage_measure_test.go).
+type carryReason uint8
+
+const (
+	carryNotShed carryReason = iota // the leg shed; there is no carry to give a reason for
+	// carryNoDigestForm: the block predates the witnessable era or carries no
+	// registration, so there is no heavy proof to shed and no saving to be had. Counted
+	// in neither half of the coverage ratio — it is not a coverage failure, and putting
+	// it in the denominator would report a working relay as a broken one.
+	carryNoDigestForm
+	// carryOwnRegUnacked: the block carries THIS node's own registration and nothing
+	// evidences that the peer holds it. On a wire that delivers this is zero, because
+	// the proposer commits the copy it broadcast and a broadcast is acknowledged only
+	// once the peer has queued the bytes. On a wire that does not, it is EVERY carried
+	// leg — and the peer has no evidence because it has no bytes: the ~1.5 MB submit
+	// that would have delivered them has not completed on the same congested link.
+	// There is no more evidence to add for that case. The relay cannot shed bytes a
+	// peer has never received, so this is the first crossing and not an evidence gap.
+	carryOwnRegUnacked
+	// carryPeerUnreported: the block carries a THIRD party's registration the peer has
+	// not reported holding. Every validator is sent every renewal, so this is usually
+	// the report arriving after the proposal rather than the bytes being absent — the
+	// inventory rides a 30-second head probe while a round is shorter than that. This
+	// is the half more evidence would close.
+	carryPeerUnreported
+)
+
+func (c carryReason) String() string {
+	switch c {
+	case carryNotShed:
+		return "none"
+	case carryNoDigestForm:
+		return "no-digest-form"
+	case carryOwnRegUnacked:
+		return "own-reg-unacked"
+	case carryPeerUnreported:
+		return "peer-unreported"
+	}
+	return "unknown"
+}
+
 // peerCanReconstruct reports whether v demonstrably holds the heavy space-time
 // proof of EVERY bond registration in b, so the block may be relayed to v with
-// those proofs replaced by the digests that already commit them.
+// those proofs replaced by the digests that already commit them — and, when it does
+// not, which registration went unevidenced.
 //
-// EVIDENCE, NEVER INFERENCE. There are exactly two ways to know, and both are
+// EVIDENCE, NEVER INFERENCE. There are exactly three ways to know, and all three are
 // observations rather than expectations:
 //
 //   - v ACKNOWLEDGED this node's own registration (ownRegAcks). The ack is a
@@ -306,9 +352,13 @@ func (n *Node) ownRegForBlock(prev ports.Hash) (chain.BondReg, bool) {
 //
 // ALL, not any: one unreconstructable registration makes the whole block
 // unvalidatable to v, so a mixed block falls back for that peer.
-func (n *Node) peerCanReconstruct(v ports.NodeID, b *chain.Block) bool {
+//
+// THE REASON IS REPORTED, not left for a reader to derive. The evidences are
+// disjunctive, so a bare false says only that none of them held, and which
+// registration went unevidenced is what separates a gap worth closing from a ceiling.
+func (n *Node) peerCanReconstruct(v ports.NodeID, b *chain.Block) (bool, carryReason) {
 	if b.Version < chain.BlockVersionWitnessable || len(b.BondRegs) == 0 {
-		return false // only the witnessable era commits a proof by digest
+		return false, carryNoDigestForm // only the witnessable era commits a proof by digest
 	}
 	for i := range b.BondRegs {
 		author := b.BondRegs[i].ValidatorID()
@@ -319,11 +369,34 @@ func (n *Node) peerCanReconstruct(v ports.NodeID, b *chain.Block) bool {
 			continue // it acknowledged receiving this proof from us
 		case n.peerReportedHolding(v, b.BondRegs[i].AnswerDigest):
 			continue // it told us, on its last head reply, that it holds these bytes
+		case author == n.id:
+			return false, carryOwnRegUnacked
 		default:
-			return false
+			return false, carryPeerUnreported
 		}
 	}
-	return true
+	return true, carryNotShed
+}
+
+// noteGatherLeg records one gather leg's outcome against the relay's coverage, which
+// is the share of registration-bearing legs that crossed by digest rather than
+// carrying ~1.5 MB of space-time proof.
+//
+// A leg with nothing to shed is counted in NEITHER. Coverage is a property of the
+// legs where shedding was possible at all, and folding the era-less and
+// registration-less ones into the denominator would report a relay that is working
+// perfectly as one that covers a few percent.
+func (n *Node) noteGatherLeg(shed bool, why carryReason) {
+	switch {
+	case shed:
+		n.Stats.GatherLegsShed++
+	case why == carryOwnRegUnacked:
+		n.Stats.GatherLegsCarried++
+		n.Stats.GatherLegsCarriedOwnUnacked++
+	case why == carryPeerUnreported:
+		n.Stats.GatherLegsCarried++
+		n.Stats.GatherLegsCarriedPeerUnreported++
+	}
 }
 
 // reconstructShedProofs refills the heavy proofs of a block whose registrations

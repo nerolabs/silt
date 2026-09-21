@@ -12,7 +12,7 @@ import (
 //
 // Every validator already HOLDS every peer's registration: a renewal is broadcast
 // to the whole set and each receiver verifies and queues it. What no proposer could
-// see was that fact. peerCanReconstruct had exactly two evidences — the peer
+// see was that fact. The shed verdict had exactly two evidences — the peer
 // AUTHORED the registration, or it ACKNOWLEDGED this node's OWN — and on a live
 // chain renewals are staggered, so a block carries one OTHER validator's
 // registration and only its author qualified. Measured in the field on run
@@ -37,10 +37,10 @@ func TestAProposerShedsToAPeerThatReportedHoldingAThirdPartysRegistration(t *tes
 	b := blockCarrying(t, proposer, reg)
 
 	// BEFORE any report: only the author qualifies. This is the field's 1-of-n-1.
-	if !proposer.peerCanReconstruct(ids[2].NodeID(), b) {
+	if !canRebuild(proposer, ids[2].NodeID(), b) {
 		t.Fatal("PREMISE BROKEN: the registration's own AUTHOR must always qualify")
 	}
-	if proposer.peerCanReconstruct(other, b) {
+	if canRebuild(proposer, other, b) {
 		t.Fatal("PREMISE BROKEN: a peer that has reported nothing must NOT qualify, or the assertion below " +
 			"passes without the report doing anything")
 	}
@@ -48,7 +48,7 @@ func TestAProposerShedsToAPeerThatReportedHoldingAThirdPartysRegistration(t *tes
 	// The peer reports its queue on its next head reply.
 	proposer.noteHeldRegs(other, []ports.Hash{*b.BondRegs[0].AnswerDigest})
 
-	if !proposer.peerCanReconstruct(other, b) {
+	if !canRebuild(proposer, other, b) {
 		t.Fatal("a peer that REPORTED holding this registration is still sent the proof carried. That is the " +
 			"1-of-n-1 coverage the field measured: every attester already holds the bytes, and the proposer " +
 			"cannot see it")
@@ -70,7 +70,7 @@ func TestReportingADifferentDigestDoesNotQualifyAPeer(t *testing.T) {
 	wrong[0] = 0xAB
 	proposer.noteHeldRegs(other, []ports.Hash{wrong})
 
-	if proposer.peerCanReconstruct(other, b) {
+	if canRebuild(proposer, other, b) {
 		t.Fatal("a peer that reported an UNRELATED digest was treated as holding this registration — the " +
 			"report is being read as a flag rather than as a statement about specific bytes")
 	}
@@ -91,12 +91,12 @@ func TestAnEmptyReportClearsWhatAPeerWasHolding(t *testing.T) {
 	d := *b.BondRegs[0].AnswerDigest
 
 	proposer.noteHeldRegs(other, []ports.Hash{d})
-	if !proposer.peerCanReconstruct(other, b) {
+	if !canRebuild(proposer, other, b) {
 		t.Fatal("PREMISE BROKEN: the peer did not qualify after reporting the digest")
 	}
 	// Its queue drained — the next reply carries nothing.
 	proposer.noteHeldRegs(other, nil)
-	if proposer.peerCanReconstruct(other, b) {
+	if canRebuild(proposer, other, b) {
 		t.Fatal("a peer that reported an EMPTY queue is still treated as holding the registration. A report " +
 			"must replace the last one, never accumulate: a union of past reports asserts bytes the peer " +
 			"dropped heights ago")
@@ -106,7 +106,7 @@ func TestAnEmptyReportClearsWhatAPeerWasHolding(t *testing.T) {
 	another[0] = 0x7F
 	proposer.noteHeldRegs(other, []ports.Hash{d})
 	proposer.noteHeldRegs(other, []ports.Hash{another})
-	if proposer.peerCanReconstruct(other, b) {
+	if canRebuild(proposer, other, b) {
 		t.Fatal("a later report did not displace the earlier one — the evidence accumulates")
 	}
 }
@@ -131,14 +131,14 @@ func TestOneUnreportedRegistrationMakesTheWholeBlockCarry(t *testing.T) {
 
 	// The peer reports only the FIRST.
 	proposer.noteHeldRegs(other, []ports.Hash{*b.BondRegs[0].AnswerDigest})
-	if proposer.peerCanReconstruct(other, b) {
+	if canRebuild(proposer, other, b) {
 		t.Fatal("a block with a registration the peer did NOT report was still shed to it. One missing proof " +
 			"makes the whole block unvalidatable there, so the rule is ALL, never ANY")
 	}
 	// With both reported it qualifies — the arm that keeps the check above from
 	// passing for the wrong reason.
 	proposer.noteHeldRegs(other, []ports.Hash{*b.BondRegs[0].AnswerDigest, *b.BondRegs[1].AnswerDigest})
-	if !proposer.peerCanReconstruct(other, b) {
+	if !canRebuild(proposer, other, b) {
 		t.Fatal("a peer that reported BOTH registrations was still refused")
 	}
 }
@@ -176,7 +176,7 @@ func TestAHoldersReportNamesWhatItCanRebuild(t *testing.T) {
 
 // blockCarrying builds a witnessable block carrying regs, with each registration's
 // answer committed by digest exactly as the proposer path does — the digest is the
-// thing peerCanReconstruct reads, so a fixture that skipped it would test nothing.
+// thing the shed verdict reads, so a fixture that skipped it would test nothing.
 func blockCarrying(t *testing.T, proposer *Node, regs ...chain.BondReg) *chain.Block {
 	t.Helper()
 	head, _ := proposer.chain.Head()
@@ -232,7 +232,7 @@ func TestAHeadProbeCarriesTheHoldersInventoryToTheProber(t *testing.T) {
 	// AND THE BLOCK THE PROBER WOULD PROPOSE IS NOW SHEDDABLE TO THAT PEER — the
 	// end the whole path exists for, asserted rather than inferred from the map.
 	b := blockCarrying(t, prober, reg)
-	if !prober.peerCanReconstruct(holder.ID(), b) {
+	if !canRebuild(prober, holder.ID(), b) {
 		t.Fatal("the digest arrived and the proposer still will not shed to that peer")
 	}
 }

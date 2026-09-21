@@ -1485,10 +1485,15 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 			}
 			v := v
 			outstanding++
-			qcPayload, qcShed := qcRaw, false
+			qcPayload := qcRaw
+			qcShed, qcWhy := false, carryNoDigestForm
 			if shedQCRaw != nil && prepared[v] {
-				qcPayload, qcShed = shedQCRaw, true
+				qcPayload, qcShed, qcWhy = shedQCRaw, true, carryNotShed
+			} else if shedQCRaw != nil {
+				_, qcWhy = n.peerCanReconstruct(v, b)
 			}
+			n.noteGatherLeg(qcShed, qcWhy)
+			n.logf(ports.LogDebug, "gather: requesting precommit", "to", v, "height", b.Height, "round", round, "bytes", len(qcPayload), "digest-relayed", qcShed, "carry-reason", qcWhy.String())
 			n.request(v, ports.Message{Kind: ports.MsgPrepareQC, Data: qcPayload},
 				func(resp ports.Message, err error) {
 					outstanding--
@@ -1595,10 +1600,14 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 		// Relay by digest only where there is a RECEIPT that this peer holds the
 		// proofs; everyone else is sent them carried, exactly as before.
 		payload, shed := envRaw, false
-		if shedEnv != nil && n.peerCanReconstruct(v, b) {
+		can, why := n.peerCanReconstruct(v, b)
+		if shedEnv != nil && can {
 			payload, shed = shedEnv, true
+		} else if shedEnv == nil {
+			why = carryNoDigestForm
 		}
-		n.logf(ports.LogDebug, "gather: requesting prepare", "to", v, "height", b.Height, "round", round, "bytes", len(payload), "digest-relayed", shed, "have", counted(atts), "need", quorum)
+		n.noteGatherLeg(shed, why)
+		n.logf(ports.LogDebug, "gather: requesting prepare", "to", v, "height", b.Height, "round", round, "bytes", len(payload), "digest-relayed", shed, "carry-reason", why.String(), "have", counted(atts), "need", quorum)
 		n.request(v, ports.Message{Kind: ports.MsgProposeBlock, Data: payload},
 			func(resp ports.Message, err error) {
 				outstandingPrep--

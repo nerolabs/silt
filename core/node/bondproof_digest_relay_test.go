@@ -172,15 +172,15 @@ func TestAProposerShedsOnlyForPeersItHasEvidenceFor(t *testing.T) {
 	proposer.ownRegAcks = map[ports.NodeID]bool{acked: true}
 
 	t.Logf("MEASURED — which peers may be sent the proposal with its proof shed:")
-	t.Logf("  a peer that ACKNOWLEDGED the registration: %v", proposer.peerCanReconstruct(acked, b))
-	t.Logf("  a peer that did not:                       %v", proposer.peerCanReconstruct(silent, b))
-	t.Logf("  the validator that AUTHORED it:            %v", proposer.peerCanReconstruct(proposer.ID(), b))
+	t.Logf("  a peer that ACKNOWLEDGED the registration: %v", canRebuild(proposer, acked, b))
+	t.Logf("  a peer that did not:                       %v", canRebuild(proposer, silent, b))
+	t.Logf("  the validator that AUTHORED it:            %v", canRebuild(proposer, proposer.ID(), b))
 
-	if !proposer.peerCanReconstruct(acked, b) {
+	if !canRebuild(proposer, acked, b) {
 		t.Fatal("a peer that acknowledged this exact registration was not shed for — then the relay never engages " +
 			"and the proposal carries the proof to everyone, which is the state this change exists to leave")
 	}
-	if proposer.peerCanReconstruct(silent, b) {
+	if canRebuild(proposer, silent, b) {
 		t.Fatal("A PEER WITH NO RECEIPT WAS SHED FOR. That is a guess about the network, and a wrong guess costs the " +
 			"round it is wrong in — the fallback is a round trip PLUS the same payload, measured as worse than " +
 			"carrying. Evidence only.")
@@ -304,4 +304,12 @@ func TestTheCommitPathAlwaysCarriesTheProof(t *testing.T) {
 	}
 	_ = net
 	t.Log("a shed block offered at COMMIT is not stored — the relay's boundary holds")
+}
+
+// canRebuild is peerCanReconstruct's verdict alone, for the assertions that are about
+// whether a peer qualifies rather than about why it did not. The reason is asserted
+// where it is the subject (TestThePrepareQCLegShedsOnEveryEvidenceAndNotOnQuorumMembershipAlone).
+func canRebuild(n *Node, v ports.NodeID, b *chain.Block) bool {
+	ok, _ := n.peerCanReconstruct(v, b)
+	return ok
 }

@@ -62,6 +62,11 @@ type Stats struct {
 	// WITHOUT fetching ground truth sends zero MsgFetchChunk). Indexed by
 	// MsgKind; an array keeps Stats value-copyable.
 	Kinds [64]int
+	// KindBytes is the same array priced in PAYLOAD BYTES — len(msg.Data), the
+	// quantity `occupy` charges the link for. A message count cannot separate a
+	// kind that crossed often from one that crossed heavily, and on a rate-limited
+	// link it is the bytes that decide whether anything fits inside a deadline.
+	KindBytes [64]int64
 }
 
 type Network struct {
@@ -170,6 +175,7 @@ func (e *Endpoint) Send(to ports.NodeID, msg ports.Message) error {
 	n.Stats.Sent++
 	if int(msg.Kind) < len(n.Stats.Kinds) {
 		n.Stats.Kinds[msg.Kind]++
+		n.Stats.KindBytes[msg.Kind] += int64(len(msg.Data))
 	}
 	dst, ok := n.endpoints[to]
 	if !ok {
