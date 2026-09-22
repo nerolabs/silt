@@ -301,11 +301,36 @@ func timeOnce(t *testing.T, f func()) time.Duration { return timeN(t, 1, f) }
 // timeN runs f n times and returns the mean. A mean over repeats, never a single
 // sample: this box's own record has a threefold spread between runs of unchanged
 // work, so one reading is not a measurement.
+// timeBatches is how many independent batches timeN runs before taking the floor.
+// A cost is read at its MINIMUM rather than its mean, because the noise on a shared
+// machine is one-sided: a scheduler preemption or a neighbouring job can only ever
+// make an operation look SLOWER, never faster. A mean folds that inflation into the
+// answer and cannot recover it, so a single preempted batch moves the reported cost
+// by more than the quantity being measured. This is build-immutable #5's rule about
+// noisy signals — minimum-filter to the floor rather than trust one sample — applied
+// to the instrument rather than to a peer's latency.
+const timeBatches = 5
+
+// timeN reports the per-iteration cost of f: the FLOOR over timeBatches independent
+// batches of n iterations each, not the mean of one batch.
+//
+// The ratios these measurements are asserted against sit close enough to their bars
+// that the instrument's own spread decides the verdict. Measured over one batch, the
+// same unchanged code reported a production ratio anywhere from 4.0x to 8.8x across
+// consecutive runs on idle and loaded machines alike — a band wide enough to cross a
+// 4x bar in either direction, which makes the assertion a coin flip rather than a
+// measurement.
 func timeN(t *testing.T, n int, f func()) time.Duration {
 	t.Helper()
-	start := time.Now()
-	for i := 0; i < n; i++ {
-		f()
+	best := time.Duration(0)
+	for b := 0; b < timeBatches; b++ {
+		start := time.Now()
+		for i := 0; i < n; i++ {
+			f()
+		}
+		if d := time.Since(start) / time.Duration(n); b == 0 || d < best {
+			best = d
+		}
 	}
-	return time.Since(start) / time.Duration(n)
+	return best
 }

@@ -40,6 +40,17 @@ import (
 // 256 KiB frame plus the AES-256-GCM overhead the pipeline adds.
 const spotShardBytes = shardBytes
 
+// spotProduceIters is how many iterations each timed batch runs. It is sized so a
+// batch lasts tens of milliseconds rather than a few, because the quantity under
+// test — committing one shard by hashing — takes under a millisecond, and a batch
+// that short is decided by whether the scheduler happened to interrupt it. Timing a
+// sub-millisecond operation over a handful of repetitions measures the machine's
+// mood, not the operation: the same unchanged code reported production ratios from
+// 4.0x to 8.8x that way, a band wide enough to cross the 4x bar this file asserts.
+// Longer batches plus timeN's floor over several of them put the spread well inside
+// the margin.
+const spotProduceIters = 100
+
 // swAuditBytes is the shipped scheme's per-shard audit response: SectorsPerBlock mu
 // elements plus one sigma, each ElemBytes wide. Independent of the shard size,
 // which is the property the hash-only scheme gives up.
@@ -63,7 +74,7 @@ func TestSpotCheckGeometryIsReported(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	swProduce := timeN(t, 20, func() {
+	swProduce := timeN(t, spotProduceIters, func() {
 		k, err := DeriveKey([]byte("geometry"), DefaultParams)
 		if err != nil {
 			t.Fatal(err)
@@ -84,7 +95,7 @@ func TestSpotCheckGeometryIsReported(t *testing.T) {
 		leaves := (spotShardBytes + leaf - 1) / leaf
 		path := pathLenFor(leaves)
 		sample := leaf + path*32
-		produce := timeN(t, 20, func() { hashOnlyRoot(data, leaf) })
+		produce := timeN(t, spotProduceIters, func() { hashOnlyRoot(data, leaf) })
 		l := samplesFor(0.5, 0.999)
 		t.Logf("  %5d   %6d  %4d  %8d   %7v   %11d   %11d   %6d",
 			leaf, leaves, path, sample, produce, 5*sample, 8*sample, l*sample)
