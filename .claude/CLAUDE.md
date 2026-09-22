@@ -1,5 +1,17 @@
 # silt
 
+## Mothballed
+
+Active development stopped on 2026-09-22 by the owner's decision. The project resumes at an
+unset later date.
+
+Read `docs/MOTHBALLED.md` before anything else. It says what is true by evidence tier, where
+the work stopped, which candidates were built and eliminated, and which confidently-written
+claims in this repository were later falsified. Every dated claim in the record is a snapshot
+— re-run the command that produced a number before reasoning from it.
+
+Do not resume building unasked. If the owner asks for work, the rules below still govern it.
+
 ## The canon
 
 Two documents govern this project. There are no others.
@@ -12,8 +24,10 @@ canon, and it is expected to be cut apart.
 
 ## The build
 
-Build the vision. Honor the tenets. Decide for yourself. Say when the release candidate is
-ready to review.
+Build the vision. Honor the tenets. Decide for yourself.
+
+The release-candidate date of 2026-09-27 lapsed unmet and the list is now a record rather
+than a plan.
 
 ## Code carries no process
 
