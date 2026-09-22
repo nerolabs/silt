@@ -40,6 +40,15 @@ type coverage struct {
 	submits, submitBytes      int64
 	proposals, proposalBytes  int64
 	prepareQCs, prepareQCByte int64
+	// What ARRIVED, against what was offered above. A submit that is still crossing
+	// when the run ends was never a delivery, and the difference is what separates
+	// "the peer holds no bytes to report" from "the peer holds them and the receipt
+	// was lost" — the same coverage figure, two different remedies.
+	submitsArrived int64
+	// And what each end made of them: how many the receivers QUEUED, and how many
+	// acknowledgements the senders never saw return.
+	held, acksLost             int
+	probesAnswered, probesLost int
 }
 
 func (c coverage) legs() int { return c.shed + c.carried }
@@ -125,6 +134,10 @@ func driveCoverage(t *testing.T, netcfg simnet.Config, intervals int, ttl uint64
 		c.carried += s.GatherLegsCarried
 		c.ownUnacked += s.GatherLegsCarriedOwnUnacked
 		c.peerUnreported += s.GatherLegsCarriedPeerUnreported
+		c.held += s.BondRegSubmitsHeld
+		c.acksLost += s.BondRegSubmitAcksLost
+		c.probesAnswered += s.ChainHeadProbesAnswered
+		c.probesLost += s.ChainHeadProbesLost
 		t.Logf("    node %d: shed %3d  carried %3d  (own-unacked %d, peer-unreported %d)",
 			i, s.GatherLegsShed, s.GatherLegsCarried,
 			s.GatherLegsCarriedOwnUnacked, s.GatherLegsCarriedPeerUnreported)
@@ -132,6 +145,7 @@ func driveCoverage(t *testing.T, netcfg simnet.Config, intervals int, ttl uint64
 	st := net.Stats
 	c.sweeps, c.peersPer, c.rate = intervals, N-1, netcfg.RateBytesPerSec
 	c.submits, c.submitBytes = int64(st.Kinds[ports.MsgSubmitBondReg]), st.KindBytes[ports.MsgSubmitBondReg]
+	c.submitsArrived = int64(st.KindDelivered[ports.MsgSubmitBondReg])
 	c.proposals, c.proposalBytes = int64(st.Kinds[ports.MsgProposeBlock]), st.KindBytes[ports.MsgProposeBlock]
 	c.prepareQCs, c.prepareQCByte = int64(st.Kinds[ports.MsgPrepareQC]), st.KindBytes[ports.MsgPrepareQC]
 	_, c.head = nodes[0].Chain().Head()
@@ -151,8 +165,12 @@ func (c coverage) report(t *testing.T, arm string) {
 	if slots := c.sweeps * c.peersPer * 4; slots > 0 {
 		perSlot = float64(c.submits) / float64(slots)
 	}
-	t.Logf("      MsgSubmitBondReg %4d sends %12d B  (%.2f per peer per sweep)",
-		c.submits, c.submitBytes, perSlot)
+	t.Logf("      MsgSubmitBondReg %4d sends %12d B  (%.2f per peer per sweep), %d ARRIVED",
+		c.submits, c.submitBytes, perSlot, c.submitsArrived)
+	t.Logf("        of those arrivals the receivers QUEUED %d; the senders lost %d acknowledgements",
+		c.held, c.acksLost)
+	t.Logf("      chain-head probes (the other carrier of the same evidence): %d answered, %d lost",
+		c.probesAnswered, c.probesLost)
 	t.Logf("      MsgProposeBlock  %4d sends %12d B", c.proposals, c.proposalBytes)
 	t.Logf("      MsgPrepareQC     %4d sends %12d B", c.prepareQCs, c.prepareQCByte)
 	gather := c.proposalBytes + c.prepareQCByte
@@ -202,10 +220,11 @@ func TestTheDigestRelaysCoverageOnAHealthyWireAndACongestedOne(t *testing.T) {
 	// = 256 KiB/s, so a 1.5 MB proposal is given 14 s and needs 24 s. Same arithmetic
 	// as TestLargePayloadTimesOutOnALinkBelowTheAssumedFloor, driven here against the
 	// whole consensus loop instead of one request.
-	congested := driveCoverage(t, simnet.Config{
+	congestedNet := simnet.Config{
 		LatencyMin: 5 * ports.Millisecond, LatencyMax: 50 * ports.Millisecond,
 		RateBytesPerSec: 64 << 10,
-	}, 72, shippedBondTTL)
+	}
+	congested := driveCoverage(t, congestedNet, 72, shippedBondTTL)
 	congested.report(t, "a congested wire (64 KiB/s, a quarter of the assumed floor)")
 
 	if healthy.legs() == 0 || congested.legs() == 0 {
@@ -217,6 +236,37 @@ func TestTheDigestRelaysCoverageOnAHealthyWireAndACongestedOne(t *testing.T) {
 	if healthy.head == 0 {
 		t.Fatal("VACUOUS: the healthy arm committed nothing. Coverage over a chain that never commits " +
 			"is a ratio of attempts, not of the legs a live chain actually runs.")
+	}
+
+	// THE LIVENESS GATE, and it is the one this measurement exists to defend. A link
+	// below the deadline's assumed floor used to stop the chain outright: the congested
+	// arm reached height 1 and stayed there, because every exchange large enough to
+	// carry a registration expired while its bytes were still crossing, so no receipt
+	// was ever recorded, every gather leg carried ~1.5 MB, and the renewal path re-sent
+	// the same proof to every peer on every sweep — the stall feeding the traffic that
+	// sustained the stall.
+	//
+	// It is deliberately a floor on COMMITS and not on coverage. Coverage on this arm
+	// is a property of the wire as much as of the relay and is reported rather than
+	// asserted; whether the chain moves at all is a property of the system, and it is
+	// the claim an adverse-network liveness bound actually makes.
+	//
+	// THE FLOOR IS WHERE THE WEDGE WAS, not where the work stops. The chain moves here
+	// now and it did not before, and that is the whole of what this gate asserts. It is
+	// NOT a claim that this arm is healthy: the deadline reaches the size-extension cap
+	// and the link still queues multiple ~1.5 MB payloads per ordered pair behind it, so
+	// most acknowledgements are still lost and coverage is far below the fast arm's.
+	// What remains is above this mechanism, not inside it.
+	const congestedCommitFloor = 2
+	if congested.head < congestedCommitFloor {
+		t.Fatalf("the chain reached height %d on a wire a quarter of the deadline's assumed floor "+
+			"(%d gather legs, %.0f%% shed, %d acknowledgements lost, %d head probes lost). Below %d this is "+
+			"the wedge again: a deadline sized against a constant the link is a quarter of expires while "+
+			"the bytes are still on the wire, so the receipts that would shed the next block are destroyed "+
+			"and the renewal path re-sends the full proof every sweep. Check the per-peer rate estimate "+
+			"(peerrate.go) before reading any coverage figure on this arm.",
+			congested.head, congested.legs(), congested.pct(), congested.acksLost, congested.probesLost,
+			congestedCommitFloor)
 	}
 
 	// THE GATE ON THE FAST ARM, which is the only arm where a coverage figure is a

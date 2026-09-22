@@ -224,8 +224,8 @@ func TestFallbackCostsARoundTripOnTopOfTheSamePayload(t *testing.T) {
 	// The deadline the sender arms for each shape, read off the product rather than
 	// recomputed here — a test that restated the formula would pass through a change
 	// to it.
-	full := nd.requestTimeoutFor(ports.Message{Kind: ports.MsgProposeBlock, Data: make([]byte, payloadBytes)})
-	digest := nd.requestTimeoutFor(ports.Message{Kind: ports.MsgProposeBlock, Data: make([]byte, 32)})
+	full, _ := nd.requestTimeoutFor(unknownPeer, ports.Message{Kind: ports.MsgProposeBlock, Data: make([]byte, payloadBytes)})
+	digest, _ := nd.requestTimeoutFor(unknownPeer, ports.Message{Kind: ports.MsgProposeBlock, Data: make([]byte, 32)})
 	wire := ports.Duration(int64(payloadBytes) * int64(ports.Second) / rate)
 
 	t.Logf("MEASURED — one %d-byte registration on a link at %d B/s (a quarter of the assumed %d B/s floor):",

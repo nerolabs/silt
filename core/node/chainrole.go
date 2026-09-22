@@ -617,6 +617,9 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 				n.logf(ports.LogInfo, "bond-reg submit REFUSED", "from", from, "validator", reg.ValidatorID(), "size", reg.Size, "next_height", next, "err", verr)
 			} else {
 				held = n.queuePendingBondReg(reg)
+				if held {
+					n.Stats.BondRegSubmitsHeld++
+				}
 				n.maybeProposeAtRound() // a designee that already holds its round certificate proposes now
 			}
 		}
@@ -2092,6 +2095,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 					// EVERY reply including an empty one, so a peer whose queue has
 					// drained stops being shed to rather than keeping stale evidence.
 					n.noteHeldRegs(p, resp.HeldRegs)
+					n.Stats.ChainHeadProbesAnswered++
 					if peerHeadHeight > diag.maxPeerHead {
 						diag.maxPeerHead = peerHeadHeight
 					}
@@ -2111,6 +2115,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 					}
 				} else {
 					diag.probeFails++
+					n.Stats.ChainHeadProbesLost++
 					if err != nil {
 						diag.lastErr = fmt.Sprintf("head probe %x: %v", p[:4], err)
 					}

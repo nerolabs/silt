@@ -67,6 +67,13 @@ type Stats struct {
 	// kind that crossed often from one that crossed heavily, and on a rate-limited
 	// link it is the bytes that decide whether anything fits inside a deadline.
 	KindBytes [64]int64
+	// KindDelivered is the same array counted at ARRIVAL rather than at the send.
+	// Kinds counts what was offered to the link; on a rate-limited one those are
+	// different numbers, because `occupy` queues a send behind whatever is already
+	// crossing and the run can end with bytes still on the wire. Reading an offered
+	// count as an arrived one is how a link that is merely SLOW gets reported as a
+	// link that LOSES — two failures with different remedies.
+	KindDelivered [64]int
 }
 
 type Network struct {
@@ -218,6 +225,9 @@ func (e *Endpoint) Send(to ports.NodeID, msg ports.Message) error {
 			n.holes[[2]ports.NodeID{to, e.id}] = true
 		}
 		n.Stats.Delivered++
+		if int(msg.Kind) < len(n.Stats.KindDelivered) {
+			n.Stats.KindDelivered[msg.Kind]++
+		}
 		dst.observe(e.id, relayed) // the class the receiving transport would record
 		dst.handler(e.id, msg)
 	}

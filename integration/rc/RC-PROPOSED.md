@@ -2780,10 +2780,54 @@ for the evidence and the structural close.
 submits offered 45,395,784 B to a fast wire against 9,144,597 B for the proposal and prepare-QC legs
 the digest relay covers — **5.0x** — and 1,327,117,662 B against 30,316,674 B on a wire at a quarter
 of the assumed floor — **43.8x**, where the submits alone ask for 0.8x the link's entire capacity
-across every ordered pair. The rate is the design's and not an amplifier: 1.01 submits per peer per
-sweep, with no copy ever queued behind an unanswered one. So this residual is not merely the larger
-of two terms on a congested link; it is the term, and the relay's remaining coverage gap is
-DOWNSTREAM of it — a peer cannot report holding bytes this traffic has not delivered to it.
+across every ordered pair. So this residual is not merely the larger of two terms on a congested
+link; it is the term.
+
+*AND THE READING OF THAT 43.8x WAS WRONG, CORRECTED 2026-09-22 BY COUNTING ARRIVALS.* The sheet
+above read the congested arm as a ceiling — 1.01 submits per peer per sweep called the design's
+cadence, and the relay's remaining coverage gap called downstream of a delivery that never happened,
+because a peer cannot report holding bytes it has never received. The simnet counted ATTEMPTED sends
+only, so "offered" was being read as "delivered". Counted at arrival instead: **860 of the 876
+submits ARRIVED and all 860 were QUEUED by their receivers**, while **864 acknowledgements expired**
+and **609 of 863 chain-head probes** — the other carrier of the same evidence — were lost with them.
+The peers hold the bytes. Only the receipt for them is destroyed.
+
+*THE MECHANISM, AND IT IS ONE DEADLINE.* `requestTimeoutFor` extended a request by
+len(payload)/`RequestSizeFloorBytesPerSec`, a constant 256 KiB/s. A 1,514,986 B registration is given
+6.28 s and needs 23.1 s at 64 KiB/s, so the exchange expires while its bytes are still crossing and
+can never succeed however often it is retried. Nothing records the delivery, so the proposer carries
+the full proof on every gather leg AND the renewal path re-sends it to every peer on every sweep. The
+1.01 per peer per sweep is therefore an AMPLIFIER, not a cadence: on a fast wire, where the receipts
+return, the identical code emits **0.03**. Build-immutable #5 names the constant as the defect —
+*never a magic constant*.
+
+*THE DEADLINE IS NOW THE PEER'S, BUILT 2026-09-22, and it does not touch the renewal path.* The size
+extension is computed against a per-peer rate (`core/node/peerrate.go`): a min-filtered window of
+COMPLETED exchanges, plus a bounded loss backoff whose every step is paid for by a reply and which is
+released whole by the first completed exchange of comparable size. The two are separate state on
+purpose — an expiry cannot tell a slow link from a departed peer (build-immutable #3), and a corpse
+must be evicted rather than indulged. The estimate can only ever LENGTHEN a deadline, never shorten
+one, and `requestSizeExtensionCap` still bounds the total, so a peer presenting an arbitrarily slow
+path holds a round open for exactly as long as it can today.
+
+| the congested arm, four validators, shipped TTL | before | after |
+|---|---|---|
+| head reached | **1** — wedged | **2** |
+| relay coverage | 33% | **44%** |
+| renewal submits offered | 876 / 1,327,117,662 B | **468 / 708,082,198 B** |
+| submits per peer per sweep | 1.01 | **0.54** |
+
+The fast arm is byte-for-byte unchanged — 95% coverage, 30 submits, zero lost acknowledgements, zero
+lost probes — which is the property the design is built around rather than a happy accident.
+
+*AND WHAT IT DOES NOT CLOSE, said plainly.* The arm is not healthy at head 2. The deadline now
+reaches `requestSizeExtensionCap` and the link still queues several ~1.5 MB payloads per ordered pair
+behind it, so most acknowledgements are still lost. Two terms are named by that and neither is inside
+this mechanism: the 30 s cap is itself a constant of the same species, and `maxChainReplyBytes`
+derives from `RequestSizeFloorBytesPerSec` GLOBALLY rather than per peer, so a node still serves
+chain-sync windows sized for a link its peer does not have. This is also simnet, which has ONE
+ordered link per pair; the field has the control lane, so the probe half of the reading is not yet
+attributed in the field. `21-impaired-commit` baselines the relay counters and will state it.
 
 *AND THE FIELD NOW SHOWS THE TRAFFIC IS SELF-SUSTAINING UNDER A STALL (run `5af09a9-88230`).*
 `BondRenewalDue` stays true until a block COMMITS the renewal, so a chain that has stopped

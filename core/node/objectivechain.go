@@ -234,7 +234,16 @@ func (n *Node) SubmitBondRenewal(peers []ports.NodeID) {
 			// gets the proof carried, exactly as before.
 			if err == nil && resp.OK && n.ownRegAcks != nil {
 				n.ownRegAcks[p] = true
+				return
 			}
+			// AND COUNT THE ONES THAT DID NOT COME BACK, because silence here is not
+			// the same as a proof that did not cross. The deadline this request runs
+			// under is sized off RequestSizeFloorBytesPerSec, so on a link below that
+			// floor it expires while the bytes are still on the wire — the peer queues
+			// them and replies, and the reply lands after nobody is listening. The
+			// registration is then held by the peer, unknown to its author, re-sent in
+			// full on the next sweep, and carried again in the proposal (S5).
+			n.Stats.BondRegSubmitAcksLost++
 		})
 	}
 }

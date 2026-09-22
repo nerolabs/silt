@@ -105,18 +105,18 @@ func TestChainReplyDeadlineCoversWindow(t *testing.T) {
 	n, _ := aloneNode(t, 0)
 	base := n.cfg.RequestTimeout
 	want := base + requestSizeExtensionCap/2
-	if got := n.requestTimeoutFor(ports.Message{Kind: ports.MsgGetChain}); got != want {
+	if got, _ := n.requestTimeoutFor(unknownPeer, ports.Message{Kind: ports.MsgGetChain}); got != want {
 		t.Fatalf("a windowed chain fetch must arm a reply-sized deadline (base %v + window/floor %v), got %v",
 			base, requestSizeExtensionCap/2, got)
 	}
 	// Every other empty-payload request keeps the base deadline — the extension
 	// is for the anticipated chain reply, not a blanket raise.
-	if got := n.requestTimeoutFor(ports.Message{Kind: ports.MsgGetChainHead}); got != base {
+	if got, _ := n.requestTimeoutFor(unknownPeer, ports.Message{Kind: ports.MsgGetChainHead}); got != base {
 		t.Fatalf("the head probe must keep the base deadline, got %v", got)
 	}
 	// No floor ⇒ no derivable window ⇒ base deadline (legacy behavior).
 	n.cfg.RequestSizeFloorBytesPerSec = 0
-	if got := n.requestTimeoutFor(ports.Message{Kind: ports.MsgGetChain}); got != base {
+	if got, _ := n.requestTimeoutFor(unknownPeer, ports.Message{Kind: ports.MsgGetChain}); got != base {
 		t.Fatalf("without a floor the chain fetch must keep the base deadline, got %v", got)
 	}
 }

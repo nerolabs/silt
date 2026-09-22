@@ -457,14 +457,38 @@ type Stats struct {
 	GatherLegsShed    int
 	GatherLegsCarried int
 	// AND WHICH REGISTRATION WENT UNEVIDENCED, because the two cases are different
-	// failures. OwnUnacked is this node's own registration: on a wire that delivers it
-	// is zero, and where it is not, the peer has no evidence because it has no bytes —
-	// the submit that would deliver them has not completed on the same link, which no
-	// further evidence can fix. PeerUnreported is a third party's: the peer is sent
+	// failures. OwnUnacked is this node's own registration: on a wire that delivers it is
+	// zero. Where it is not, the peer usually HOLDS the bytes and this node does not know
+	// it — measured on a link a quarter of the deadline's assumed floor, 860 of 876
+	// submits arrived and were queued while 864 acknowledgements expired, so the gap is a
+	// receipt rather than a delivery. PeerUnreported is a third party's: the peer is sent
 	// every renewal, so it is usually the holder's report arriving after the proposal.
 	// See carryReason.
 	GatherLegsCarriedOwnUnacked     int
 	GatherLegsCarriedPeerUnreported int
+	// WHAT THE RECEIVING SIDE ACTUALLY TOOK, which is the other half of the
+	// own-unevidenced story and the half that decides its remedy. BondRegSubmitsHeld
+	// counts renewal submits this node queued: the peer is holding those bytes and
+	// could be shed to. BondRegSubmitAcksLost counts this node's own submits whose
+	// acknowledgement did not return inside the request deadline — the bytes may well
+	// have crossed, but nothing recorded that they did, so the next sweep re-sends
+	// the full proof and the proposal carries it.
+	//
+	// A congested link makes these two the SAME registration seen from both ends: the
+	// receiver holds it, the sender does not know, and the difference is a receipt
+	// rather than a byte. Reading a lost receipt as an undelivered proof is what
+	// turns a bookkeeping gap into an apparent ceiling.
+	BondRegSubmitsHeld    int
+	BondRegSubmitAcksLost int
+	// AND THE OTHER CARRIER OF THE SAME EVIDENCE. A peer's held-registration
+	// inventory rides its chain-sync head reply, so a probe that does not come back
+	// carries no inventory either. ChainHeadProbesAnswered counts the replies that
+	// did return; ChainHeadProbesLost counts the ones that did not. The probe request
+	// is tiny, so its deadline gets no size extension — on a link with bulk already
+	// queued ahead of the reply, it expires regardless of how small it is, and both
+	// evidences for a registration go missing together.
+	ChainHeadProbesAnswered int
+	ChainHeadProbesLost     int
 	// BountyDuplicatePosition counts release verdicts this judge refused to pay
 	// because it had ALREADY paid a bounty for that (root, stripe, position). A
 	// replayed claim used to draw the full bounty a second time out of the same
@@ -530,6 +554,12 @@ type pending struct {
 	cb     func(ports.Message, error)
 	cancel func()
 	to     ports.NodeID
+	// What this exchange was sized against, kept so its outcome can be observed as a
+	// rate. payload is the EFFECTIVE payload requestTimeoutFor used — which for a
+	// windowed chain fetch is the anticipated reply, not the tiny request — so the
+	// quantity sampled is the quantity the deadline was computed from.
+	sent    ports.Time
+	payload int64
 }
 
 type Node struct {
@@ -795,6 +825,10 @@ type Node struct {
 	// disclosed deterrent. Persists across bond re-advertisement (peerBonds is
 	// replaced wholesale). See bondaudit.go latWindow.
 	peerBondRTT map[ports.NodeID]*latWindow
+	// peerRate is each peer's observed transport rate floor, used ONLY to size a
+	// request deadline (see peerrate.go). Kept apart from peerBondRTT deliberately:
+	// one signal, one job.
+	peerRate map[ports.NodeID]*peerPath
 	// bondChallengeRate caps VDF-evals served per challenger per audit window —
 	// the cheap gate in front of the costly AnswerSpaceTime so an unbounded
 	// challenger can't pin the single goroutine. See bondaudit.go.
@@ -1490,6 +1524,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		peerDomains:         make(map[ports.NodeID]uint64),
 		peerBonds:           make(map[ports.NodeID]bondInfo),
 		peerBondRTT:         make(map[ports.NodeID]*latWindow),
+		peerRate:            make(map[ports.NodeID]*peerPath),
 		bondChallengeRate:   make(map[ports.NodeID]*challengerRate),
 		bondSubmitRate:      make(map[ports.NodeID]*challengerRate),
 		roundCertRate:       make(map[ports.NodeID]*challengerRate),
@@ -1643,17 +1678,31 @@ func (n *Node) request(to ports.NodeID, msg ports.Message, cb func(ports.Message
 // deadline cannot cover — a tight fixed transport deadline is the category error
 // that wedged quorum-2 genesis cross-region while the identical block committed on a
 // single-zone quorum-1 SMOKE. The extension is
-// len(payload)/RequestSizeFloorBytesPerSec of transfer time, capped at 30 s so a
+// len(payload)/sizeFloorFor(to) of transfer time, capped at 30 s so a
 // pathological block can't hang the round. Few-KB steady-state blocks gain ~nothing.
 // See; the structural close is a succinct proof.
-func (n *Node) requestTimeoutFor(msg ports.Message) ports.Duration {
+//
+// THE RATE IS THE PEER'S, NOT A CONSTANT. RequestSizeFloorBytesPerSec is the floor
+// this starts from and never goes above; where a peer's own path has been observed
+// SLOWER than it, the extension is computed against what was observed (peerrate.go).
+// A constant is exactly what build-immutable #5 forbids here, and the failure it
+// produces is not a slow request but an unachievable one — on a link a quarter of the
+// constant, a large payload's reply is declared lost while its bytes are still on the
+// wire, so the exchange can never succeed however many times it is retried.
+//
+// It also returns the EFFECTIVE payload the deadline was sized from, so the exchange's
+// outcome can be sampled back into the estimate against the same quantity.
+func (n *Node) requestTimeoutFor(to ports.NodeID, msg ports.Message) (ports.Duration, int64) {
 	if msg.Kind == ports.MsgFetchChunk || msg.Kind == ports.MsgHasChunk {
+		// A speculative holder dial is not size-extended at all, so it has no rate to
+		// observe: a sample from it would be measuring the dial policy, not the link.
 		if n.cfg.HolderDialTimeout > 0 && n.cfg.HolderDialTimeout < n.cfg.RequestTimeout {
-			return n.cfg.HolderDialTimeout
+			return n.cfg.HolderDialTimeout, 0
 		}
-		return n.cfg.RequestTimeout
+		return n.cfg.RequestTimeout, 0
 	}
 	timeout := n.cfg.RequestTimeout
+	payload := int64(0)
 	if n.cfg.RequestSizeFloorBytesPerSec > 0 {
 		// Size-extend for the larger direction of the exchange. Outbound
 		// payload: the case (a ~1.5 MB bond-reg block must cross the wire
@@ -1664,19 +1713,19 @@ func (n *Node) requestTimeoutFor(msg ports.Message) ports.Duration {
 		// near the floor can meet, and the slow-but-honest WAN peers
 		// pagination exists for stall. The window and this deadline derive
 		// from the same two symbols, so they cannot drift.
-		payload := int64(len(msg.Data))
+		payload = int64(len(msg.Data))
 		if msg.Kind == ports.MsgGetChain {
 			if w := int64(n.maxChainReplyBytes()); w > payload {
 				payload = w
 			}
 		}
-		extra := ports.Duration(payload * int64(ports.Second) / n.cfg.RequestSizeFloorBytesPerSec)
+		extra := ports.Duration(payload * int64(ports.Second) / n.sizeFloorFor(to))
 		if extra > requestSizeExtensionCap {
 			extra = requestSizeExtensionCap
 		}
 		timeout += extra
 	}
-	return timeout
+	return timeout, payload
 }
 
 // requestSizeExtensionCap bounds the payload-scaled deadline extension: a
@@ -1718,11 +1767,17 @@ func (n *Node) requestAttempt(to ports.NodeID, msg ports.Message, attempt int, c
 	// so a discovery-plane "dead" can never shorten a bond audit's or a
 	// consensus RPC's wait (#3: one signal, one job).
 	discovery := msg.Kind == ports.MsgFindNode || msg.Kind == ports.MsgGetProviders || msg.Kind == ports.MsgAddProvider
-	timeout := n.requestTimeoutFor(msg)
-	p := &pending{cb: cb, to: to}
+	timeout, payload := n.requestTimeoutFor(to, msg)
+	p := &pending{cb: cb, to: to, sent: n.clock.Now(), payload: payload}
 	p.cancel = n.clock.AfterFunc(timeout, func() {
 		delete(n.pending, rid)
 		n.Stats.Timeouts++
+		// WHAT THE EXPIRY PROVED, before deciding what to do about it: this peer's
+		// path did not carry `payload` inside `timeout`. That is the only sample a
+		// failing link ever offers — the exchanges large enough to measure it are the
+		// ones that stop completing — so the retry below, and every later attempt, is
+		// sized against it (peerrate.go).
+		n.observeRequestTimeout(to, payload)
 		if !holderFetch && attempt < n.cfg.RequestRetries {
 			// A concurrent phase (the sweep's 32-wide probe fan-out)
 			// launches many walks before the first ladder to a corpse
@@ -1883,7 +1938,12 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 		}
 		delete(n.pending, msg.RID)
 		p.cancel()
-		n.reachable[from] = n.clock.Now() // a reply proves we can dial them
+		now := n.clock.Now()
+		n.reachable[from] = now // a reply proves we can dial them
+		// A completed exchange is the estimator's other sample: what this peer's path
+		// actually achieved, which is what keeps the deadline from staying stretched
+		// after the congestion that stretched it has cleared.
+		n.observeRequestRate(from, p.payload, ports.Duration(now-p.sent))
 		p.cb(msg, nil)
 		return
 	}
