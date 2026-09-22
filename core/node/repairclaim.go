@@ -39,7 +39,7 @@
 // a claim at all.
 //
 // - RETRIEVABILITY (where independent verifiers add value): challenge the named
-// holder with an identity-bound Shacham–Waters PoR (repairproof.RepairChallengeSeed
+// holder with an identity-bound spot check (repairproof.RepairChallengeSeed
 // closes the relay/double-count), so a data-less relay can't collect. A
 // retrievability shortfall DENIES the bounty but does not slash — it may be
 // transient.
@@ -63,7 +63,6 @@ import (
 	"github.com/nerolabs/silt/core/link"
 	"github.com/nerolabs/silt/core/manifest"
 	"github.com/nerolabs/silt/core/pipeline"
-	"github.com/nerolabs/silt/core/por"
 	"github.com/nerolabs/silt/core/repairproof"
 	"github.com/nerolabs/silt/ports"
 )
@@ -87,6 +86,40 @@ func (n *Node) handleRepairClaim(from ports.NodeID, msg ports.Message) {
 	claim, err := repairproof.UnmarshalClaim(msg.Data)
 	if err != nil {
 		deny("malformed claim")
+		return
+	}
+	// THE ECONOMY GATE, AND IT BELONGS AHEAD OF EVERYTHING BELOW IT. A node not
+	// running the repair economy pays no bounty, so every byte it spends judging is
+	// spent for nothing — and this test used to sit at SETTLEMENT, after the registry
+	// lookup, the manifest fetch and the whole survivor walk had already run. Measured
+	// on the shipped geometry (k=10, n=16): a 110-byte unsigned claim cost such a node
+	// 4,719,978 B over 10 distinct chunks, about 42,900x, and eight claims cost eight
+	// times that, linearly.
+	//
+	// IT IS THE THIRD GATE IN A SET OF TWO, not a new policy. announceRepairQuorum and
+	// emitRepairClaim are both already gated on this same switch, so a node with the
+	// economy off never plants itself under careKey(root) and is never DISCOVERABLE as
+	// a caretaker-judge, and never emits a claim of its own. Its honest inbound claim
+	// traffic is therefore zero by construction: every claim reaching here arrived from
+	// a peer that did not resolve it through the honest rendezvous. There was no honest
+	// case to protect and the whole cost was attacker-directed.
+	//
+	// WHAT IT GIVES UP, stated rather than left to be found: an economy-off node no
+	// longer slashes a claimant that names a shard id the manifest does not commit at
+	// that position. That punishment was a reduction on a local ledger the node never
+	// pays out of, delivered by a judge nobody could discover, and reported in a vote
+	// the emitting paramedic discards (emitRepairClaim binds an empty reply callback).
+	// A node that wants to judge turns the economy on.
+	//
+	// WHAT IT DOES NOT CLOSE: the per-sender bound. A node RUNNING the economy still
+	// pays the full cost per claim, from an unsigned frame, without limit. This
+	// narrows the work; it does not bound the count, and the two are not the same
+	// thing. TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT stays green over
+	// exactly that gap.
+	//
+	// ADVERSARY-SHAPE: NOT-A-DEFENCE: the careKey sentence above says why refusing costs nothing LEGITIMATE, not what stops an attack. The defence is the unconditional refusal on the next line, which holds against any sender whatever it knows: an adversary that planted a careKey record for an economy-off node, or simply dialled it directly, still gets the refusal and still buys 0 B. Nothing here assumes an adversary cannot reach or discover this node. The discoverability claim is checked anyway, by TestRepairClaimEconomyGateIsWhereTheOtherTwoAre, because the ARGUMENT for the gate rests on it even though the gate does not.
+	if !n.cfg.RepairEconomy {
+		deny("not running the repair economy — this node is not a caretaker-judge and plants no careKey record, so it judges nothing and pays nothing")
 		return
 	}
 	n.logf(ports.LogDebug, "repair claim received",
@@ -224,7 +257,7 @@ func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, claim repa
 	// short-survivor fetch, and with the short-final-stripe `present` fix in
 	// repairproof it is genuinely transient: padding now counts toward k, so no
 	// geometry is permanently unjudgeable.
-	n.fetchSurvivors(m.Root(), survivorRefs, func(survivors map[int][]byte, reachable int) {
+	n.fetchSurvivors(m.Root(), m.K, survivorRefs, func(survivors map[int][]byte, reachable int) {
 		correctnessOK, cerr := repairproof.VerifyByRecompute(p, survivors, realData, claim.ShardPos, claim.ShardID)
 		if cerr != nil {
 			// Structurally un-judgeable — usually TOO FEW SURVIVORS, and
@@ -384,14 +417,29 @@ func (n *Node) settleRepairVerdict(claimant ports.NodeID, claim repairproof.Repa
 // stripe position plus the count reachable. It is a paramedic, not a hoarder:
 // copies it did not already host are dropped afterwards, so judging a claim never
 // silently turns a judge into a holder.
-func (n *Node) fetchSurvivors(root ports.Hash, refs []shardRef, done func(survivors map[int][]byte, reachable int)) {
+//
+// THE FETCH IS BUDGETED TO k, WHICH IS WHAT THE VERIFIER NEEDS. survivorRefs is the
+// complement of ONE position over the stripe, so it is n−1 long; walking it to the
+// end cost the judge 15 shard fetches at the shipped k=10/n=16 for a verification
+// that consumes 10. An inbound repair claim is UNSIGNED and free to send, so the
+// gap between what the message costs its sender and what judging it costs the judge
+// is pure amplification, and it was 50% wider than it needed to be. The budget does
+// not close that gap — the per-sender half of it has no remedy that survives its own
+// precondition, since claim emission is one-shot and a refused claim is lost
+// forever — but it does stop the judge paying for shards no verdict will read.
+//
+// k COMES FROM THE MANIFEST THE JUDGE LOADED, never from the claim: a claimant that
+// could name its own k would set it to 1 and the recompute would have nothing to
+// check against.
+func (n *Node) fetchSurvivors(root ports.Hash, k int, refs []shardRef, done func(survivors map[int][]byte, reachable int)) {
 	heldBefore := make(map[ports.ChunkID]bool, len(refs))
 	for _, r := range refs {
 		if ok, _ := n.store.Has(bg(), r.id); ok {
 			heldBefore[r.id] = true
 		}
 	}
-	n.fetchStripeByColumn(root, refs, func(_ []ports.ChunkID, _ map[uint64]int) {
+	enough := func(fetched int) bool { return k > 0 && fetched >= k }
+	n.fetchStripeByColumn(root, refs, enough, func(_ []ports.ChunkID, _ map[uint64]int) {
 		survivors := make(map[int][]byte, len(refs))
 		for _, r := range refs {
 			c, err := n.store.Get(bg(), r.id)
@@ -413,30 +461,71 @@ func (n *Node) fetchSurvivors(root ports.Hash, refs []shardRef, done func(surviv
 	})
 }
 
-// challengeHolderRetrievability issues one identity-bound SW PoR challenge to the
-// claim's holder for the repaired shard and reports whether it verifies: the
-// holder must present a Merkle proof binding the shard to the root, the committed
-// full block count, and an aggregated response that satisfies the equation under a
-// seed bound to the holder's own identity (so a relayed proof fails).
+// challengeHolderRetrievability issues one identity-bound spot check to the claim's
+// holder for the repaired shard and reports whether it verifies: the holder must
+// present a Merkle proof binding the shard to the object's root, the committed full
+// leaf count, and the opened bytes of every leaf a seed bound to the holder's own
+// identity samples (so a relayed answer opened the wrong leaves).
+//
+// "BINDING THE SHARD TO THE ROOT" IS NOW TRUE. The root is m.Root() — recomputed by
+// this judge from the layout it loaded under its own care handle — and never
+// claim.Root or the response's. claim.Root names which object's escrow pays the
+// bounty and arrives from the claimant, so binding to it would let a claimant
+// nominate the tree its own proof is checked against; and the judge already refuses
+// a claim whose root is not the object it cares for, so the honest case is
+// unaffected. Before this the leg read the RESPONSE's root, which made it a
+// tautology: a holder that kept a shard id could name a one-leaf tree over it and
+// satisfy the inclusion check while holding nothing of this object.
 func (n *Node) challengeHolderRetrievability(m *manifest.Layout, ch link.CareHandle, claim repairproof.RepairClaim, done func(bool)) {
-	porKey := DerivePorKey(ch.LayoutKey)
-	want := por.DefaultParams.Blocks(int(m.ChunkSize) + ctOverhead)
+	// THE COMMITMENT OR NOTHING, the same rule the audit sweep runs: with no
+	// committed shard root there is no number of the judge's own to check an
+	// opened leaf against, so the leg denies rather than passing an unchecked
+	// claim. Denying a bounty is recoverable; paying an unproven one is not.
+	shardRoot, leafBytes, ok := shardCommitment(m, claim.ShardID)
+	if !ok {
+		done(false)
+		return
+	}
+	want := shardLeaves(m.ChunkSize, leafBytes)
 	n.rid++ // fresh deterministic base nonce, as the audit path draws one
 	base := porChallengeSeed(n.rid)
 	seed := repairproof.RepairChallengeSeed(base, claim.Holder)
 	n.request(claim.Holder, ports.Message{
 		Kind: ports.MsgChallenge, ChunkID: claim.ShardID,
-		PorSeed: seed[:], PorCount: porSampleCount,
+		// The base rides along so the holder can confirm this challenge is bound to
+		// IT and not forwarded from somewhere else; the derived seed is unchanged.
+		PorSeed: seed[:], PorBase: base[:], PorCount: porSampleCount,
 	}, func(resp ports.Message, err error) {
 		if err != nil || !resp.Found || resp.Proof == nil ||
-			!verifyStorageProof(*resp.Proof, claim.ShardID) || !blocksOK(resp.PorBlocks, want) {
+			!verifyStorageProofAgainst(*resp.Proof, claim.ShardID, m.Root()) || !blocksOK(resp.PorBlocks, want) {
 			done(false)
 			return
 		}
-		ok := repairproof.VerifyRetrievability(porKey, claim.ShardID[:], claim.Holder, base,
-			want, porSampleCount, por.Proof{Mu: resp.PorMu, Sigma: resp.PorSigma})
-		done(ok)
+		done(repairproof.VerifyRetrievability(shardRoot, want, leafBytes, claim.Holder, base,
+			porSampleCount, parseOpenings(resp, min(porSampleCount, want))))
 	})
+}
+
+// shardCommitment finds one shard's spot-check root in the layout it belongs to.
+// The lookup is by SHARD ID against the committed leaf order, so a claim naming a
+// shard this object does not contain resolves to nothing rather than to whichever
+// root sat at the index the claimant supplied.
+func shardCommitment(m *manifest.Layout, id ports.ChunkID) (ports.Hash, int, bool) {
+	if m.LeafBytes <= 0 {
+		return ports.Hash{}, 0, false
+	}
+	leaves := m.Leaves()
+	if len(m.ShardRoots) != len(leaves) {
+		return ports.Hash{}, 0, false
+	}
+	for i, leaf := range leaves {
+		if ports.ChunkID(leaf) == id {
+			var root ports.Hash
+			copy(root[:], m.ShardRoots[i])
+			return root, m.LeafBytes, true
+		}
+	}
+	return ports.Hash{}, 0, false
 }
 
 // careKey is the rendezvous DHT key the caretakers of an object register under:
@@ -481,8 +570,8 @@ func (n *Node) announceRepairQuorum(root ports.Hash) {
 // a claim the holder could never satisfy is never worth emitting.
 //
 // ADVERSARY-SHAPE: NOT-A-DEFENCE: 'a claim the holder could never satisfy is never worth emitting' is an emit-side economy rule about the HONEST paramedic's own behaviour. It asserts no incapability of any adversary, and suppressing an emit an adversary would not make is not a defence.
-func (n *Node) emitRepairClaim(root ports.Hash, r shardRef, holder ports.NodeID, hasTags bool) {
-	if !n.cfg.RepairEconomy || !hasTags || holder == (ports.NodeID{}) {
+func (n *Node) emitRepairClaim(root ports.Hash, r shardRef, holder ports.NodeID, auditable bool) {
+	if !n.cfg.RepairEconomy || !auditable || holder == (ports.NodeID{}) {
 		return
 	}
 	claim := repairproof.RepairClaim{

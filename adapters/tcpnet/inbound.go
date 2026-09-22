@@ -13,7 +13,7 @@ import (
 // fast sender's messages pile up faster than the loop drains them, the decoded
 // payloads accumulate, and the node OOM-crash-loops. This is a resource-exhaustion
 // DoS on a remote-controlled input path — a security floor (build-immutables #4/#5,
-// personas #13/#14; the memory twin of the CPU-flood), not an efficiency knob.
+// personas 13 and 14; the memory twin of the CPU-flood), not an efficiency knob.
 //
 // The reader (per-connection goroutine) acquires this budget BEFORE reading a
 // frame's body and releases it when the LOOP finishes handling that message. When

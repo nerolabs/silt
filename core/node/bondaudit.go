@@ -1,4 +1,4 @@
-// Bond audit (T1b, #78): validators challenge each other's identity-bound
+// Bond audit (T1b): validators challenge each other's identity-bound
 // storage bonds over the network, so consensus standing is continuously
 // backed by real held storage rather than self-reported serving. This is the
 // live half of the mechanism whose primitive (core/bond) and ledger
@@ -89,7 +89,7 @@ func (w *latWindow) min() ports.Duration {
 // it. Holding the plot is the cost; a validator must EnableBond to build
 // consensus standing. If a plot store is attached (SetPlotStore) and already
 // holds this identity's plot, it is RELOADED and re-verified against its
-// committed root (B7) — a restart never re-plots (#93); otherwise the plot is
+// committed root (B7) — a restart never re-plots; otherwise the plot is
 // generated once and persisted. (The plot is still held in memory; a
 // disk-backed lazy commitment and moving plotting off the core loop are the
 // recorded hardening follow-ups — see the core/bond package doc.)
@@ -105,10 +105,30 @@ func (n *Node) EnableBond(signer ed25519.PrivateKey, size int64) (reloaded bool)
 		n.signer = signer
 	}
 	pk := plotPubKey(signer)
+
+	// A store that offers random access keeps the plot on disk: the plot is sealed
+	// block by block and answered by sparse reads, so the memory cost is the leaves
+	// and their tree rather than the plot's own size. That matters because standing
+	// is proportional to bonded size — if the largest plot a node can hold is set by
+	// its MEMORY, the biggest bond a small operator can post is a fraction of the
+	// disk it bought, and consensus weight concentrates on larger machines for no
+	// reason anyone chose. Stores without random access keep the resident path.
+	streaming, _ := n.plotStore.(ports.PlotBlockStore)
+
 	if n.plotStore != nil {
-		if root, blocks, ok, err := n.plotStore.Load(n.id); ok && err == nil {
+		if streaming != nil {
+			if root, blocks, _, ok, err := streaming.LoadBlocks(n.id); ok && err == nil {
+				if c, rerr := bond.ReconstructFrom(pk, size, blocks); rerr == nil && c.Root == root {
+					n.bond = c // reloaded from disk, re-verified against its own bytes
+					return true
+				}
+				n.logf(ports.LogWarn, "bond plot reload failed; re-plotting", "id", n.id)
+			} else if err != nil {
+				n.logf(ports.LogWarn, "bond plot load error; re-plotting", "err", err)
+			}
+		} else if root, blocks, ok, err := n.plotStore.Load(n.id); ok && err == nil {
 			if c, rerr := bond.Reconstruct(pk, size, blocks); rerr == nil && c.Root == root {
-				n.bond = c // reloaded from disk, re-verified — no re-plot (#93)
+				n.bond = c // reloaded from disk, re-verified — no re-plot
 				return true
 			}
 			n.logf(ports.LogWarn, "bond plot reload failed; re-plotting", "id", n.id)
@@ -116,6 +136,24 @@ func (n *Node) EnableBond(signer ed25519.PrivateKey, size int64) (reloaded bool)
 			n.logf(ports.LogWarn, "bond plot load error; re-plotting", "err", err)
 		}
 	}
+
+	if streaming != nil {
+		if dst, err := streaming.OpenBlocks(n.id, bond.NumBlocks(size)); err == nil {
+			if c, serr := bond.SealInto(pk, size, dst); serr == nil {
+				if cerr := streaming.CommitBlocks(n.id, c.Root); cerr == nil {
+					n.bond = c
+					return false
+				} else {
+					n.logf(ports.LogWarn, "bond plot commit failed; sealing in memory", "err", cerr)
+				}
+			} else {
+				n.logf(ports.LogWarn, "streamed bond seal failed; sealing in memory", "err", serr)
+			}
+		} else {
+			n.logf(ports.LogWarn, "bond plot open failed; sealing in memory", "err", err)
+		}
+	}
+
 	n.bond = bond.Seal(pk, size)
 	if n.plotStore != nil {
 		if err := n.plotStore.Save(n.id, n.bond.Root, n.bond.Blocks()); err != nil {
@@ -280,7 +318,7 @@ func (n *Node) bondAuditOnce(now uint64) {
 // as a failure.
 // challengerRate tracks one challenger's bond-challenge eval budget in the
 // current window. The same shape budgets bond-reg SUBMITS per sender
-// (allowBondSubmit — the Phase 1.2 CPU gate).
+// (allowBondSubmit — the CPU gate).
 type challengerRate struct {
 	windowStart ports.Time
 	count       int
@@ -366,6 +404,51 @@ func (n *Node) allowBondSubmit(from ports.NodeID) bool {
 // cheap gate in FRONT of the certificate's envelope verification.
 func (n *Node) allowRoundCert(from ports.NodeID) bool {
 	return n.allowWindowed(n.roundCertRate, from, roundCertBurst)
+}
+
+// porChallengeBurst caps the PoR proofs this node computes for ONE challenger per
+// ChainSyncInterval window. Answering a storage challenge reads the whole shard back
+// and hashes it into a tree — measured at 1.44 ms over a 256 KiB shard
+// (core/por TestProverAnswerCostIsReported) — on the node's single serialized loop
+// (B2), and MsgChallenge carries no signature and no standing requirement, so an
+// unbounded challenger is a remote CPU-and-disk DoS against every other thing that
+// loop owes. The DISK half is unchanged by any scheme: a prover that did not read
+// the shard would not be proving it holds it.
+//
+// DERIVED FROM THE LOOP SHARE IT CONCEDES, not from a round number: 128 proofs at
+// the 8.3 ms the retired aggregate scheme cost was ~1.06 s of a 30 s window, or
+// about 3.5% of the loop per challenger. The hash-only spot check answers the same
+// challenge in 1.44 ms, so the SAME budget now concedes ~0.18 s, about 0.6%. The
+// number is left where it is rather than raised: it was sized against a cost that
+// has only fallen, so it is now conservative in the safe direction, and moving it
+// would spend a margin nothing is asking for. The honest auditor clears it with room because its
+// sweep is SERIALIZED — auditLeaf issues the next challenge from inside the previous
+// one's reply callback, and nextLeaf waits on the grade — so reaching 128 in a
+// window needs a round trip under 234 ms sustained, which is a pipelined requester
+// rather than the shape the audit path has.
+//
+// THE RESIDUAL IS THE SAME ONE EVERY GATE IN THIS FILE CARRIES: the budget is
+// per-challenger, so N identities buy N budgets. Making one identity expensive is
+// M0's job, not this gate's; what this gate denies is the free unbounded flood from
+// one.
+const porChallengeBurst = 128
+
+// allowPorChallenge reports whether a storage challenge from `from` may be answered
+// now. It is the cheap gate in front of the shard read and the aggregation, so a
+// refusal costs this node nothing and the flooder gains no amplification.
+//
+// ⚠ A REFUSAL MUST NEVER REACH THE AUDITOR AS A DENIAL, and that is why the caller
+// drops the frame instead of replying. The auditor grades `Found=false` as a prover
+// that could not produce a proof — the same verdict as a liar — so a rate limit that
+// replied would let any peer slash an honest holder by first spending its budget.
+// An absent reply is scored differently and deliberately: auditLeaf counts an answer
+// only when `err == nil`, so a dropped challenge is not a failed audit, it is no
+// audit. The cost of exceeding the budget therefore lands on the CHALLENGER — a lost
+// measurement, and its own routing entry for a peer it flooded — never on the prover.
+//
+// ADVERSARY-SHAPE: capability=SpentChallengeBudget UNCOVERED: TestRefusedPorChallengeSendsNoReply DOES grant the capability -- it spends an honest holder's whole per-challenger window and then challenges, which is exactly the flood this claim assumes cannot be turned into a grade -- but it carries no control that DISCRIMINATES. The attack fails with the capability because the handler emits nothing, and fails without it because there is no refusal to mis-grade, so both arms fail and neither shows the capability is load-bearing. That test's second arm is an anti-vacuity control (a challenger inside its budget does get a reply), not a capability control. Same structural reason as core/node/por.go's ForeignSeedProof (recorded 2026-09-19): a CAPABILITY-CONTROL is only well defined where the defence is BROKEN, and this one holds.
+func (n *Node) allowPorChallenge(from ports.NodeID) bool {
+	return n.allowWindowed(n.porChallengeRate, from, porChallengeBurst)
 }
 
 // allowWindowed charges one unit of `from`'s per-ChainSyncInterval budget in

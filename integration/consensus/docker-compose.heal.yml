@@ -1,22 +1,23 @@
-# Heal override: restart valC on its SAME persisted -store (/data) WITHOUT
-# -block-peers and bootstrapped to valA, per the -block-peers help text
-# ("HEAL by restarting without the flag — the persisted chain reloads and
-# reconciles"). run.sh applies this with:
+# Heal override: restart the MINORITY validator (valD) on its SAME persisted
+# -store (/data) WITHOUT -block-peers and bootstrapped to valA, per the
+# -block-peers help text ("HEAL by restarting without the flag — the persisted
+# chain reloads and reconciles"). run.sh applies this with:
 #
-#  docker compose -f docker-compose.yml -f docker-compose.heal.yml up -d valC
+#  docker compose -f docker-compose.yml -f docker-compose.heal.yml up -d valD
 #
 # Everything else (the store volume, IP, network) is inherited from the base
-# file; only valC's command changes: the partition flag is gone and it now
-# bootstraps to / attests valA, so it discovers group 1's heavier fork and
-# reorgs onto it.
+# file; only valD's command changes: the partition flag is gone and it now
+# bootstraps to / attests valA, so it discovers the majority history and catches
+# up to it. valD committed nothing while severed — a lone anchor cannot reach the
+# derived 3-of-4 majority — so this is a CATCH-UP, not a reorg off a rival fork.
 services:
-  valC:
+  valD:
     command:
       - silt
       - daemon
-      - -id-seed=7003
+      - -id-seed=7004
       - -listen=0.0.0.0:4001
-      - -advertise=10.50.0.13:4001
+      - -advertise=10.50.0.14:4001
       - -serve-registry=0.0.0.0:4003
       - -store=/data
       - -validator

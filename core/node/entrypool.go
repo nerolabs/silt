@@ -160,6 +160,17 @@ func (n *Node) foldPendingEntries(b *chain.Block) {
 // first-time maturer reg queued 22 minutes behind lower-ID renewals).
 type pendingBondReg struct {
 	R chain.BondReg
+	// D is sha256 of R.Answer, computed ONCE when the registration is queued.
+	//
+	// It is cached rather than derived because of what it costs: the answer is
+	// ~1.5 MB on the shipped parameters and a digest of it measures ~1.2 ms on the
+	// single serialized loop (core/node/bondreg_digest_cost_measure_test.go). This
+	// node reports its held digests on every chain-sync sweep, to every peer, so
+	// deriving them there would put a term proportional to the validator set on a
+	// 30-second timer, forever — and growing that set is the point. Arrival is
+	// already paying a full space-time verification, so one more hash there is in
+	// the noise. Build-immutable #8: measure the production cost, not the output.
+	D ports.Hash
 }
 
 // queuePendingBondReg records a peer-submitted (or refill-modeled) bond
@@ -167,19 +178,26 @@ type pendingBondReg struct {
 // resubmission from an already-queued validator REPLACES its bytes IN PLACE
 // (the fresh nonce wins) but keeps its original FIFO position: renewing
 // cannot queue-jump, and waiting cannot lose seniority.
-func (n *Node) queuePendingBondReg(reg chain.BondReg) {
+// It reports whether the registration is now HELD, which is what the submitter's
+// acknowledgement is about: the digest relay sheds a proposal's proofs only to peers
+// it has a receipt from, so a receipt for bytes this node rejected would send it a
+// block it cannot rebuild.
+func (n *Node) queuePendingBondReg(reg chain.BondReg) bool {
 	vid := reg.ValidatorID()
+	d := chain.AnswerDigestOf(reg.Answer)
 	for i := range n.pendingBondRegs {
 		if n.pendingBondRegs[i].R.ValidatorID() == vid {
 			n.pendingBondRegs[i].R = reg
-			return
+			n.pendingBondRegs[i].D = d
+			return true
 		}
 	}
 	if len(n.pendingBondRegs) >= maxMempool {
 		// Defense-in-depth: the pool is validator-bounded (one slot each), but a
 		// forged/unbonded-ID path must not grow it without bound. Reject when full.
 		n.logf(ports.LogDebug, "bond-reg mempool full: rejecting submission", "validator", vid, "cap", maxMempool)
-		return
+		return false
 	}
-	n.pendingBondRegs = append(n.pendingBondRegs, pendingBondReg{R: reg})
+	n.pendingBondRegs = append(n.pendingBondRegs, pendingBondReg{R: reg, D: d})
+	return true
 }

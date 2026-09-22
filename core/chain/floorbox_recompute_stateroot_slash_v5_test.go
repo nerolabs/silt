@@ -9,7 +9,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Tests for the P1-b class-S changed-whole-set-digest state-root recompute
+// Tests for the class-S changed-whole-set-digest state-root recompute
 // (floorbox_recompute_stateroot_slash_v5.go).
 //
 // research: floorbox-Rboundary-writeset-digest-reconstruction-
@@ -248,28 +248,38 @@ func TestRecomputeStateRootSlashAgreesWithApply(t *testing.T) {
 func TestRecomputeStateRootSlashDigestsAreByteExact(t *testing.T) {
 	f := buildSlashFixture(t)
 	b := f.slashBlock()
+	w := f.witnessForSlash(t, b)
 
 	// Real post-state via apply.
 	clone := f.c.cloneForDryRun()
 	clone.apply(b)
 
-	ops, _, _, err := stateRootSlashDigestOps(b, []StateRootDigestWitness{
-		f.digestWitness(t, tagSlashedRoot, f.preIDsSlashed()),
-		f.digestWitness(t, tagBondedRoot, f.preIDsBonded()),
-		f.digestWitness(t, tagQualifiedRoot, f.preIDsQualified()),
-	})
+	idSets, err := f.c.composeIDSetTransition(f.prevRoot, b, w, false)
 	if err != nil {
-		t.Fatalf("stateRootSlashDigestOps: %v", err)
+		t.Fatalf("composeIDSetTransition: %v", err)
 	}
+	ops := idSets.digestOps()
 	want := map[string][]byte{
 		string(statehash.Key(tagSlashedRoot, nil)):   nodeSetMTHFromBool(clone.slashed),
 		string(statehash.Key(tagBondedRoot, nil)):    nodeSetMTHFromInt64(clone.bonded),
 		string(statehash.Key(tagQualifiedRoot, nil)): nodeSetMTHFromInt64(clone.qualified),
 	}
+	emitted := map[string]bool{}
 	for _, op := range ops {
-		w := want[string(op.Key)]
-		if string(op.NewValue) != string(w) {
-			t.Fatalf("digest %x NewValue not byte-exact: got %x want %x", op.Key, op.NewValue, w)
+		v, ok := want[string(op.Key)]
+		if !ok {
+			continue
+		}
+		emitted[string(op.Key)] = true
+		if string(op.NewValue) != string(v) {
+			t.Fatalf("digest %x NewValue not byte-exact: got %x want %x", op.Key, op.NewValue, v)
+		}
+	}
+	// A digest the slash MOVED and did not emit folds to the pre-state value and the box would
+	// agree with a root that still counts the culprit, so absence is a failure here.
+	for key := range want {
+		if !emitted[key] {
+			t.Fatalf("the slash changed the set behind %x and no digest op was emitted for it", key)
 		}
 	}
 }
@@ -296,10 +306,15 @@ func TestRecomputeStateRootSlashAblationForgedQualifiedScreen(t *testing.T) {
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a forged qualified pre-set (culprit dropped) must stall, got nil")
 	}
-	// It stalls either at the fold's pre-digest anchor (VerifyProof) or at the terminal mismatch —
-	// both are correct never-Accept outcomes.
-	if !errors.Is(err, ErrRecomputeStateRootFold) && !errors.Is(err, ErrRecomputeStateRootMismatch) {
-		t.Fatalf("ABLATION FAILED: expected a fold/mismatch stall, got %v", err)
+	// It stalls at the pre-set anchor, at the fold's pre-digest anchor, or at the terminal
+	// mismatch — all three are correct never-Accept outcomes. Which one fires depends on how
+	// early the forged set is proven, and that is an implementation choice, not a safety
+	// property: demanding one exact class would redden whenever a check moves earlier, which is
+	// the direction a soundness fix always travels.
+	if !errors.Is(err, ErrRecomputeStateRootDigest) &&
+		!errors.Is(err, ErrRecomputeStateRootFold) &&
+		!errors.Is(err, ErrRecomputeStateRootMismatch) {
+		t.Fatalf("ABLATION FAILED: expected a digest/fold/mismatch stall, got %v", err)
 	}
 }
 
@@ -450,13 +465,17 @@ func TestRecomputeStateRootSlashAblationCircularAnchor(t *testing.T) {
 	}
 
 	err = recomputeViaHead(f.c, f.prevRoot, committed, b, w)
-	if !errors.Is(err, ErrRecomputeStateRootFold) {
-		t.Fatalf("ABLATION FAILED: a StateRoot-anchored (circular) digest proof must fail the fold's "+
-			"prevStateRoot verify, got %v", err)
+	// The id-lists here are HONEST and only the proof's anchor is circular, so the refusal lands
+	// wherever that proof is first checked against prevStateRoot — at the pre-set anchor now that
+	// whole-set reads are proven when they are read, or at the fold otherwise. Both refuse a proof
+	// that anchors to the root it is being used to derive.
+	if !errors.Is(err, ErrRecomputeStateRootDigest) && !errors.Is(err, ErrRecomputeStateRootFold) {
+		t.Fatalf("ABLATION FAILED: a StateRoot-anchored (circular) digest proof must be refused against "+
+			"prevStateRoot, got %v", err)
 	}
 }
 
-// --- Ablation 7: a slash+non-proposer-att compound. Class A is now IN scope (P1-e), so the block
+// --- Ablation 7: a slash+non-proposer-att compound. Class A is now IN scope, so the block
 // DISPATCHES to the A reconstruction. The slash witness carries no A witness (AttScreens /
 // validatorsSeenRoot digest), so the A dispatch stalls (never-Accept preserved). ---
 func TestRecomputeStateRootSlashAblationCompoundOutOfScope(t *testing.T) {

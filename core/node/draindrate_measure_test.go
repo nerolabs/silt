@@ -5,7 +5,7 @@ package node
 // the REAL single-loop drain rate for the cheapest bulk a flood can ride —
 // measured on a real node handler over a real transport, not the v2b drill's
 // hypothetical 2 MiB/s. MsgStoreChunk is that bulk (the drill's own flood kind;
-// bond-reg submits are now rate-gated, Phase 1.2). This is a MEASUREMENT harness,
+// bond-reg submits are now rate-gated). This is a MEASUREMENT harness,
 // not a pass/fail gate — it prints the number and the derived cap/drain at the
 // shipped 256M against the 2 s saturation bound, so the verdict is evidence, not
 // a guess. Records into's E5 rider.

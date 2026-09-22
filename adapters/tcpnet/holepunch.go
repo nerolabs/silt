@@ -41,7 +41,7 @@ func (t *Transport) maybeRequestPunch(to ports.NodeID) {
 // HolePunch attempts a DIRECT connection to peer at its observed endpoint
 // peerAddr, dialing from localPort (the relay-registration port, reused so the
 // NAT reuses the mapping the relay observed) while the peer does the same — a
-// coordinated TCP simultaneous-open (#27). The crossing SYNs establish a direct
+// coordinated TCP simultaneous-open. The crossing SYNs establish a direct
 // path through both cone NATs; on symmetric NAT this just fails and the relay
 // path stays. On success the direct conn is adopted (via the normal read loop),
 // so subsequent sends to peer bypass the relay. This is the onPunch callback

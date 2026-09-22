@@ -11,7 +11,7 @@ import (
 // FuzzUnmarshal drives arbitrary bytes through the manifest decoder. A
 // manifest arrives as reassembled chunk data — attacker-controlled bytes
 // — so Unmarshal must return an error on anything malformed and never
-// panic (Gate 1 / anti-persona #14). Any input that panics is a
+// panic (Gate 1 / anti-persona 14). Any input that panics is a
 // top-severity bug (tenets S1/S3).
 func FuzzUnmarshal(f *testing.F) {
 	// Seed with a valid manifest so the fuzzer starts from real CBOR

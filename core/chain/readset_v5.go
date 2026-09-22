@@ -8,7 +8,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// era-4 (v5) witness read-set producer — lane-1 Part A.
+// era-4 (v5) witness read-set producer.
 //
 // For a v5 block, WitnessReadSetV5 emits the WITNESS read-set as a
 // []statehash.ReadEntry: the set of committed-state keys the v5 WITNESSABLE
@@ -145,30 +145,30 @@ func (c *Chain) WitnessReadSetV5(b Block) []statehash.ReadEntry {
 	// for the three activation tallies — O(RegCap), the heavier class (NOT the delta).
 	c.readSetBoundaryDelta(b, acc)
 
-	// ---- (7) trustless recompute increment 1: the epochSetRoot completeness leaf ----
+	// ---- (7) trustless recompute (requireEpochWeightQuorum): the epochSetRoot completeness leaf ----
 	// The root-only recompute of requireEpochWeightQuorum (floorbox_recompute_v5.go) proves
 	// SET-COMPLETENESS of the frozen epochSet by reconstructing the committed epochSetRoot
 	// digest from the witnessed id-list. So the box must witness the epochSetRoot leaf itself
 	// (a presence proof of the committed MTH). One leaf, O(1) — the per-member epochSet weights
 	// (the composition) are already emitted by readSetBoundaryDelta and readSetAtts. F1
-	// committed this root inert; increment 1 makes it a genuine read.
+	// committed this root inert; requireEpochWeightQuorum makes it a genuine read.
 	c.readSetEpochSetRoot(acc)
 
-	// ---- (8) trustless recompute increment 2: the validatorsSeenRoot completeness leaf ----
+	// ---- (8) trustless recompute (recomputeMatureNow): the validatorsSeenRoot completeness leaf ----
 	// The root-only recompute of matureNow (the maturity-latch metric, floorbox_recompute_maturity_v5.go)
 	// proves SET-COMPLETENESS of validatorsSeen by reconstructing the committed validatorsSeenRoot
 	// digest from the witnessed id-list. So the box must witness the validatorsSeenRoot leaf itself
 	// (a presence proof of the committed MTH), plus each member's slashed/bonded/bondDomain leaves
 	// (the C2Metric per-member inputs, the composition). F1 committed this root inert;
-	// increment 2 makes it a genuine read.
+	// recomputeMatureNow makes it a genuine read.
 	c.readSetValidatorsSeenRoot(acc)
 
-	// ---- (9) trustless recompute increment 3: the bondedRoot completeness leaf ----
+	// ---- (9) trustless recompute (recomputeDeMatureSuperQuorum): the bondedRoot completeness leaf ----
 	// The root-only recompute of requireDeMatureSuperQuorum (floorbox_recompute_dematureQuorum_v5.go)
 	// proves SET-COMPLETENESS of the WHOLE bonded map by reconstructing the committed bondedRoot
 	// digest from the witnessed id-list. So the box must witness the bondedRoot leaf itself (a
 	// presence proof of the committed MTH), plus each bonded member's weight leaf (the C-1
-	// composition the super-quorum fold sums). F1 committed this root inert; increment 3 makes it a
+	// composition the super-quorum fold sums). F1 committed this root inert; recomputeDeMatureSuperQuorum makes it a
 	// genuine read.
 	c.readSetBondedRoot(acc)
 

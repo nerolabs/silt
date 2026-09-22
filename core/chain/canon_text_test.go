@@ -300,7 +300,7 @@ var o3tWalkAnchors = []struct{ Rel, Why string }{
 	{"integration/run-all.sh",
 		"integration/ (101 of the 173 walked files at 75c0f89) AND the .sh extension"},
 	{"docs/TENETS.md",
-		"docs/ — the area anchor. It was docs/threat-model.md until the written record was " +
+		"docs/ — the area anchor. It was a threat-model document until the written record was " +
 			"deleted; docs/ now holds only TENETS.md and VISION.md, so the anchor moved to the " +
 			"survivor rather than being retired. The area still needs one: dropping docs/ leaves " +
 			"the count above the floor, so the count alone cannot see the loss"},

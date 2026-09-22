@@ -1,15 +1,11 @@
 package chain
 
 import (
-	"encoding/binary"
-	"fmt"
-
 	"github.com/nerolabs/silt/core/statehash"
 	"github.com/nerolabs/silt/ports"
 )
 
-// era-4 (v5) trustless floor-box RECOMPUTE — Path-1 state-root recompute, sub-increment P1-c,
-// CLASS T (TTL sweep) — the SECOND delta-derivable changed-whole-set-digest class.
+// era-4 (v5) trustless floor-box RECOMPUTE — CLASS T (TTL sweep) — the SECOND delta-derivable changed-whole-set-digest class.
 //
 // research: floorbox-Rboundary-writeset-digest-reconstruction-
 // (T: inherits the CRUX dueBucket reconstruction)
@@ -30,7 +26,7 @@ import (
 // - the bucket itself → deletes dueBucket||b.Height (its LAST member leaves)
 // bondDomain||id is NOT deleted (apply keeps it — chain.go deletes bonded/bondRegHeight/
 // regVersion only). The two touched whole-set digests (bondedRoot, qualifiedRoot) are reconstructed
-// by the same changed-digest primitive class S ships (stateRootSlashDigestOps): witness the pre-set
+// by the same changed-digest primitive every id-keyed class shares: witness the pre-set
 // id-list against prevStateRoot, apply the payload/accelerator-derived DELETE delta, fold the
 // post-digest as the changed leaf.
 //
@@ -41,7 +37,14 @@ import (
 // bucket leaf itself is DELETED (its last member leaves), so its FoldOp is NewValue=nil with the
 // off-path delete siblings. Height-contiguity (the dueBucket gate's invariant): the box reads the
 // bucket keyed at EXACTLY b.Height — an id in that bucket is due at b.Height by construction of
-// dueBucketMoveOnReg (due = regH+ttl+1), so every member of dueBucket[b.Height] expires this block.
+// dueBucketMoveOnReg (due = regH+ttl+1).
+//
+// A MEMBER THAT RE-REGISTERS THIS BLOCK DOES NOT EXPIRE. apply runs the registration loop first and
+// the sweep reads bondRegHeight after it, so a renewal at the due height resets the clock and the id
+// keeps its standing — its bucket membership leaves through the registration's own move instead. The
+// composition owns that ordering; this class contributes the delta and the whole-set digests, and
+// the bucket leaf is emitted once from the merged membership
+// (floorbox_recompute_stateroot_compose_v5.go).
 //
 // COST — HONEST (R-cost-wholeset, R-membership). NOT O(payload). Reconstructing bondedRoot/
 // qualifiedRoot needs the WHOLE post-set id-list (MTH is a whole-list fold, no incremental update),
@@ -76,8 +79,8 @@ type StateRootTTLWitness struct {
 // - qualified||id DELETE — IFF the id was qualified pre-state (from the anchored pre-set)
 //
 // bondDomain||id is NOT deleted (apply keeps it). The dueBucket||h leaf DELETE is NOT emitted here —
-// it is the bucket FoldOp stateRootTTLDigestOps builds (carrying its own proof + delete siblings),
-// so emitting it here too would double-apply the same key in the fold. The expired id-set is the
+// it is one bucket FoldOp the composition builds from the merged membership delta (carrying its own
+// proof + delete siblings), so emitting it here too would name the same key twice in the fold. The expired id-set is the
 // accelerator witness (dueBucket[h] members), NOT a whole bondRegHeight scan. Membership in
 // qualified is read from the anchored pre-qualified set, never a witness scalar.
 func stateRootTTLWriteSet(expired []ports.NodeID, height uint64, preQualified map[ports.NodeID]struct{}) []stateRootWrite {
@@ -94,76 +97,6 @@ func stateRootTTLWriteSet(expired []ports.NodeID, height uint64, preQualified ma
 		}
 	}
 	return out
-}
-
-// stateRootTTLDigestOps reconstructs the TWO touched whole-set digest scalars (bondedRoot,
-// qualifiedRoot) as FoldOps via the changed-digest primitive, AND the dueBucket bucket DELETE
-// FoldOp. It first anchors the expired set against the committed dueBucket MTH (the CRUX
-// completeness closure), then applies the DELETE delta to the anchored pre-bonded / pre-qualified
-// sets and folds each post-digest.
-//
-// It returns the digest+bucket FoldOps plus the pre-bonded / pre-qualified membership sets and the
-// verified expired id-set the per-member write-set consumes — so the per-member delta and the
-// digest delta agree on the pre-state by construction, and neither trusts a witness scalar.
-//
-// A missing/short/padded expired set stalls (dueBucketMTH(Members) != committed bucket MTH, caught
-// by the bucket FoldOp's OldValue verify). A touched digest with no supplied pre-set witness stalls.
-func stateRootTTLDigestOps(
-	tw StateRootTTLWitness,
-	digestWits []StateRootDigestWitness,
-) (ops []statehash.FoldOp, preBonded, preQualified map[ports.NodeID]struct{}, expired []ports.NodeID, err error) {
-	byTag := make(map[string]*StateRootDigestWitness, len(digestWits))
-	for i := range digestWits {
-		byTag[digestWits[i].Tag] = &digestWits[i]
-	}
-
-	bondedSet, err := anchoredPreSet(byTag, tagBondedRoot)
-	if err != nil {
-		return nil, nil, nil, nil, err
-	}
-	qualifiedSet, err := anchoredPreSet(byTag, tagQualifiedRoot)
-	if err != nil {
-		return nil, nil, nil, nil, err
-	}
-	preBonded = bondedSet
-	preQualified = qualifiedSet
-	expired = tw.Members
-
-	// Apply the DELETE delta to each pre-set → post-set (copy; the per-member write-set still needs
-	// the pre-membership).
-	postBonded := cloneIDSet(bondedSet)
-	postQualified := cloneIDSet(qualifiedSet)
-	for _, id := range expired {
-		delete(postBonded, id)    // an expired bond leaves bonded (no-op if absent)
-		delete(postQualified, id) // an expired bond leaves qualified (no-op if absent)
-	}
-
-	// The dueBucket bucket FoldOp: OldValue = the committed bucket MTH (verified against
-	// prevStateRoot), NewValue = nil (the bucket empties this block). The box requires
-	// dueBucketMTH(expired) == the committed bucket MTH — the CRUX completeness anchor — by routing
-	// dueBucketMTH(expired) as the FoldOp OldValue, which FoldChangedPaths verifies against
-	// prevStateRoot. A short/padded expired list yields a wrong OldValue ⇒ the fold's VerifyProof
-	// fails ⇒ stall.
-	if tw.BucketProof.IsNil() {
-		return nil, nil, nil, nil, fmt.Errorf("%w: no dueBucket witness for TTL sweep at height %d",
-			ErrRecomputeStateRootDigest, tw.Height)
-	}
-	var hk [8]byte
-	binary.BigEndian.PutUint64(hk[:], tw.Height)
-	bucketOp := statehash.FoldOp{
-		Key:            statehash.Key(tagDueBucket, hk[:]),
-		OldValue:       dueBucketMTHFromSlice(expired),
-		NewValue:       nil, // the bucket empties
-		Proof:          tw.BucketProof,
-		DeleteSiblings: tw.BucketDeleteSiblings,
-	}
-
-	ops = []statehash.FoldOp{
-		bucketOp,
-		digestFoldOp(tagBondedRoot, byTag, postBonded),
-		digestFoldOp(tagQualifiedRoot, byTag, postQualified),
-	}
-	return ops, preBonded, preQualified, expired, nil
 }
 
 // dueBucketMTHFromSlice reconstructs a due-bucket's committed MTH leaf value from a claimed member

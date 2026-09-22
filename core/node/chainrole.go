@@ -259,6 +259,25 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
 			return true
 		}
+		// PUT BACK WHAT THE WIRE LEFT OUT, BEFORE ANYTHING JUDGES THE BLOCK. A
+		// proposer may relay a bond registration's heavy proof by the digest that
+		// already commits it, for a peer it has evidence holds the bytes. Refilling
+		// from what this node already holds restores the exact bytes the proposer
+		// committed — each candidate checked against the signed digest — so every
+		// rule below runs on the full block and none of them is relaxed.
+		//
+		// A MISS IS NOT A VERDICT. If the proof cannot be reconstructed this node has
+		// not judged the block, it never read it; it says so with NeedBody and the
+		// proposer re-sends the same block carrying the proofs. Answering a transport
+		// miss with a bare refusal would put "this validator rejected your block" in
+		// the journal for what is actually a delivery gap — the attribution failure
+		// that hid the original wedge for three billable runs.
+		if !n.reconstructShedProofs(b) {
+			n.logf(ports.LogInfo, "gather/prepare: proposal relayed by digest could not be reconstructed — asking for the bodies",
+				"from", from, "height", b.Height, "regs", len(b.BondRegs))
+			n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false, NeedBody: true})
+			return true
+		}
 		if verr := n.chain.ValidateProposal(b); verr != nil {
 			n.logf(ports.LogDebug, "gather/prepare: REJECTED (ValidateProposal)", "from", from, "height", b.Height, "bytes", len(msg.Data), "regs", len(b.BondRegs), "reason", verr)
 			n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
@@ -381,6 +400,17 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			n.reply(from, msg, ports.Message{Kind: ports.MsgPrecommitReply, OK: false})
 			return true
 		}
+		// Refill a digest-relayed prepare-QC before anything judges it, the same way
+		// the prepare leg does and for the same reason: this node prepared on this
+		// block moments ago, so it holds the proof, and the QC that carries the block
+		// a second time need not carry the proof with it. A miss is a delivery gap and
+		// says so rather than reading as a refusal to precommit.
+		if !n.reconstructShedProofs(b) {
+			n.logf(ports.LogInfo, "gather/precommit: prepare-QC relayed by digest could not be reconstructed — asking for the bodies",
+				"from", from, "height", b.Height, "round", env.Round)
+			n.reply(from, msg, ports.Message{Kind: ports.MsgPrecommitReply, OK: false, NeedBody: true})
+			return true
+		}
 		if verr := n.chain.VerifyPrepareQC(b, env.QC, env.Round); verr != nil {
 			n.logf(ports.LogDebug, "gather/precommit: REFUSED (prepare-QC invalid)", "from", from, "height", b.Height, "round", env.Round, "reason", verr)
 			n.reply(from, msg, ports.Message{Kind: ports.MsgPrecommitReply, OK: false})
@@ -474,7 +504,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			if n.onCommit != nil {
 				n.onCommit(*b)
 			}
-			n.pruneOnCommit() // shed heavy proofs below the horizon (slice 5b)
+			n.pruneOnCommit() // shed heavy proofs below the horizon
 		}
 		n.reply(from, msg, ports.Message{Kind: ports.MsgCommitAck, OK: ok})
 	case ports.MsgGetChain:
@@ -494,6 +524,12 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		// the reassembled linkage, so a windowed fetch cannot corrupt the chain.
 		n.reply(from, msg, ports.Message{Kind: ports.MsgChainReply, OK: true,
 			Data: chain.EncodeBlocksUpTo(blocks, n.maxChainReplyBytes())})
+	case ports.MsgGetWitness:
+		// The witness seam: a box that holds no tree asks this node, which does, for the
+		// committed leaves and proofs it needs to judge a block for itself. Serving is not a
+		// trusted role and grants the asker nothing — every answer is checked against a root
+		// the box already holds, so a lie here produces a stall and never an acceptance.
+		n.reply(from, msg, n.serveWitness(msg))
 	case ports.MsgGetChainHead:
 		// Cheap head probe: answer "what is your head?" with (height, hash) so
 		// a peer whose head matches ours can SKIP the full-chain fetch + re-validate.
@@ -512,10 +548,10 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		if fork := n.equivServedFork; fork != nil {
 			last := fork[len(fork)-1]
 			fh := last.Hash()
-			n.reply(from, msg, ports.Message{Kind: ports.MsgChainHeadReply, OK: true, Height: last.Height, Data: fh[:]})
+			n.reply(from, msg, ports.Message{Kind: ports.MsgChainHeadReply, OK: true, Height: last.Height, Data: fh[:], HeldRegs: n.heldRegDigests()})
 			return true
 		}
-		n.reply(from, msg, ports.Message{Kind: ports.MsgChainHeadReply, OK: true, Height: h, Data: hh[:]})
+		n.reply(from, msg, ports.Message{Kind: ports.MsgChainHeadReply, OK: true, Height: h, Data: hh[:], HeldRegs: n.heldRegDigests()})
 	case ports.MsgSubmitBondReg:
 		// A peer submitted a fresh bond renewal for us to include when we next
 		// propose (H2 non-proposer renewal). Queue it only if it verifies for our
@@ -523,13 +559,28 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		// submitter resubmits on its next renewal sweep. The reg is self-signed and
 		// self-verifying (bound to the submitter's own key), so accepting a peer's
 		// reg grants standing to the PEER, never to us.
+		//
+		// THE ACKNOWLEDGEMENT IS A RECEIPT FOR BYTES HELD, NOT FOR A MESSAGE
+		// RECEIVED, and it was the latter. The reply below was sent OK=true on every
+		// path — after a rate refusal, a decode failure, a sender-binding refusal, a
+		// validity refusal, and off the objective path entirely. The submitter writes
+		// ownRegAcks from this bit and the digest relay reads THAT as "this peer holds
+		// the proof", so an unconditional OK sheds a proposal to a peer that never
+		// queued the bytes. The peer then answers NeedBody and the proposer re-sends
+		// carried — a recovery ON the critical path, which is the cost this whole
+		// route exists to avoid, and the field counted it on every seat.
+		//
+		// A refusal still REPLIES (never silently, B5); it replies OK=false. An older
+		// submitter reads only the OK bit, so it simply records no receipt and
+		// re-sends on its next sweep, which is the correct behaviour for it too.
+		held := false
 		if n.chain != nil && n.chain.Objective() {
 			// NEVER refuse silently (B5 /): a dropped submit is indistinguishable
 			// from a discovery failure to the submitter AND to a field investigator —
 			// the wedge's cohort-regs-never-drain symptom was mis-attributed across
 			// three runs partly because this branch ate every refusal without a line.
 			//
-			// The CPU gate runs FIRST (Phase 1.2, the shape): every well-formed
+			// The CPU gate runs FIRST (the shape): every well-formed
 			// self-signed reg forces up to one VerifySpaceTime (~ms on the single
 			// loop, core/bond/verifycost_bench_test.go), so submits are budgeted per
 			// sender per sweep window BEFORE decode — a refusal costs a map lookup,
@@ -565,11 +616,14 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 				_, next := n.chain.Head()
 				n.logf(ports.LogInfo, "bond-reg submit REFUSED", "from", from, "validator", reg.ValidatorID(), "size", reg.Size, "next_height", next, "err", verr)
 			} else {
-				n.queuePendingBondReg(reg)
+				held = n.queuePendingBondReg(reg)
+				if held {
+					n.Stats.BondRegSubmitsHeld++
+				}
 				n.maybeProposeAtRound() // a designee that already holds its round certificate proposes now
 			}
 		}
-		n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitBondRegAck, OK: true})
+		n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitBondRegAck, OK: held})
 	case ports.MsgSubmitIssuerKeyReg:
 		// A peer submitted its per-epoch demand-issuer key registration for
 		// us to fold when we next propose — the non-proposer path for the
@@ -655,6 +709,8 @@ func replyKind(k ports.MsgKind) ports.MsgKind {
 		return ports.MsgCommitAck
 	case ports.MsgGetChainHead:
 		return ports.MsgChainHeadReply
+	case ports.MsgGetWitness:
+		return ports.MsgWitnessReply
 	case ports.MsgSubmitEntry:
 		return ports.MsgSubmitEntryAck
 	default:
@@ -694,7 +750,7 @@ func reorgDropped(old, now []chain.Block) int {
 }
 
 // pruneOnCommit sheds the heavy bond proofs below this node's retention horizon after a
-// commit (slice 5b — the enablement that closes the MATURING OOM). It is a no-op until BFT
+// commit (the enablement that closes the MATURING OOM). It is a no-op until BFT
 // finality gives an immutable anchor (pruneFloor returns 0 otherwise) and with a degenerate
 // BondTTL. A behind peer safely catches up AROUND the pruned window via suffix-sync from its
 // own finalized head; a deep-cold node is told to use a checkpoint/archive (ErrNeedCheckpoint).
@@ -709,7 +765,7 @@ func (n *Node) pruneOnCommit() {
 
 // reconstructFork prepends this node's OWN verified prefix below the served start height to
 // a peer-served run of blocks, so the reused genesis-rooted Reconcile sees a full chain
-// (slice 5, M1). It keys off what the peer ACTUALLY served (served[0].Height), not what we
+// (M1). It keys off what the peer ACTUALLY served (served[0].Height), not what we
 // requested: a peer honoring our suffix request serves [Fh, peerHead] (start Fh ⇒ we prepend
 // [0, Fh), a peer that serves the whole chain — an old peer, or an adversary serving a
 // genesis-rooted fork — serves start 0 (we use it as-is). Either way our own prefix is
@@ -784,7 +840,7 @@ var ErrNoChain = errors.New("node: validator role not enabled")
 // ErrNeedCheckpoint signals that this node is behind by more than the weak-subjectivity
 // window (safetyDepth ≈ 2·BondTTL): the peer has pruned the heavy bond proofs across the
 // gap, so this node cannot re-verify the intervening history and MUST NOT trust it from a
-// peer (the C1/long-range guard — slice 5). Cold sync in a weakly-subjective system needs
+// peer (the C1/long-range guard). Cold sync in a weakly-subjective system needs
 // an out-of-band anchor: obtain a recent -ws-checkpoint (socially), or sync from an
 // archive node that retains full history. Surfaced (not silently swallowed) so an
 // operator sees the remedy rather than an unexplained failure-to-catch-up (S5/I4).
@@ -902,7 +958,7 @@ func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeI
 		// The IsSlashed gate: an evicted id's BondRenewalDue is
 		// true forever (bonded[id] deleted), and self-embedding a reg the apply
 		// path will discard only bloats the block (~1.5 MB) for nothing.
-		if reg, ok := n.RegisterBondReg(b.Prev); ok {
+		if reg, ok := n.ownRegForBlock(b.Prev); ok {
 			b.BondRegs = append(b.BondRegs, reg)
 		}
 	}
@@ -1304,6 +1360,21 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 		done(fmt.Errorf("propose: encode envelope: %w", err))
 		return
 	}
+	// THE SAME BLOCK WITH THE HEAVY PROOFS LEFT OUT, for peers that already hold
+	// them. Prune drops BondReg.Answer and keeps the AnswerDigest the v5 preimage
+	// folds in its place, so this block HASHES IDENTICALLY to the one above: every
+	// attester signs the same hash whichever form it was sent, and nothing about the
+	// committed bytes, the validity rule or fork-choice changes. It is transport.
+	//
+	// Encoded ONCE rather than per peer. The choice below is per peer; the two
+	// encodings are not.
+	var shedEnv []byte
+	if len(b.BondRegs) > 0 && b.Version >= chain.BlockVersionWitnessable {
+		shed := b.Prune()
+		if se, serr := cbor.Marshal(proposeEnv{Raw: chain.Encode(&shed), Round: round, NewView: newView}); serr == nil {
+			shedEnv = se
+		}
+	}
 	n.logf(ports.LogDebug, "gather: starting (two-phase)", "height", b.Height, "round", round, "bytes", len(raw), "regs", len(b.BondRegs), "quorum", quorum, "attesters", len(attesters))
 
 	// supportMet: would this coalition commit? The count floor is the
@@ -1334,7 +1405,7 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 		return nc
 	}
 
-	// PHASE 2 (precommit): runs once the prepare-QC is assembled and
+	// THE PRECOMMIT LEG: runs once the prepare-QC is assembled and
 	// locked. the collection is CONCURRENT — the prepare-QC is
 	// broadcast to every attester at once and replies are collected
 	// until the quorum predicate holds. Gather latency = the slowest
@@ -1350,6 +1421,27 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 		if err != nil {
 			done(fmt.Errorf("propose: encode prepare-QC: %w", err))
 			return
+		}
+		// AND AGAIN FOR THE PRECOMMIT LEG, where the evidence is stronger than any
+		// receipt. The prepare-QC carries the WHOLE BLOCK a second time, so without
+		// this the heavy proof crosses to every attester TWICE per round and shedding
+		// only the proposal halves a cost that is paid twice.
+		//
+		// A peer named in this QC PREPARED on this block: it received it, validated
+		// it, and signed its hash. It cannot have done that without holding the proof
+		// — reconstruction restores the committed bytes before anything validates, so
+		// a prepare is proof of possession in a way an ack is not. Every other peer
+		// gets the block carried, as before.
+		var shedQCRaw []byte
+		prepared := make(map[ports.NodeID]bool, len(qc))
+		for _, a := range qc {
+			prepared[a.AttesterID()] = true
+		}
+		if shedEnv != nil {
+			shedBlk := b.Prune()
+			if sq, sqerr := cbor.Marshal(prepareQCEnv{Raw: chain.Encode(&shedBlk), Round: round, QC: qc}); sqerr == nil {
+				shedQCRaw = sq
+			}
 		}
 		// Our own precommit ALWAYS — as attester it counts; as author it is
 		// count-neutral extra evidence (mark already durable: adoptLock /
@@ -1378,7 +1470,7 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 				if n.onCommit != nil {
 					n.onCommit(*b)
 				}
-				n.pruneOnCommit() // shed heavy proofs below the horizon (slice 5b)
+				n.pruneOnCommit() // shed heavy proofs below the horizon
 				n.broadcastCommit(b, broadcast, 0, func() { done(nil) })
 				return
 			}
@@ -1396,7 +1488,16 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 			}
 			v := v
 			outstanding++
-			n.request(v, ports.Message{Kind: ports.MsgPrepareQC, Data: qcRaw},
+			qcPayload := qcRaw
+			qcShed, qcWhy := false, carryNoDigestForm
+			if shedQCRaw != nil {
+				if qcShed, qcWhy = n.shedQCLegFor(v, b, prepared); qcShed {
+					qcPayload = shedQCRaw
+				}
+			}
+			n.noteGatherLeg(qcShed, qcWhy)
+			n.logf(ports.LogDebug, "gather: requesting precommit", "to", v, "height", b.Height, "round", round, "bytes", len(qcPayload), "digest-relayed", qcShed, "carry-reason", qcWhy.String())
+			n.request(v, ports.Message{Kind: ports.MsgPrepareQC, Data: qcPayload},
 				func(resp ports.Message, err error) {
 					outstanding--
 					if finishedPC {
@@ -1405,6 +1506,27 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 					switch {
 					case err != nil:
 						n.logf(ports.LogDebug, "gather: precommit request FAILED", "to", v, "height", b.Height, "err", err)
+					case resp.NeedBody && qcShed:
+						// It prepared and then could not reconstruct — its queue turned
+						// over between the two legs. Re-send this leg carrying the block.
+						n.Stats.DigestRelayResends++
+						n.logf(ports.LogInfo, "gather: peer could not reconstruct a digest-relayed prepare-QC — re-sending with the proofs carried",
+							"to", v, "height", b.Height, "round", round)
+						outstanding++
+						n.request(v, ports.Message{Kind: ports.MsgPrepareQC, Data: qcRaw},
+							func(resp2 ports.Message, err2 error) {
+								outstanding--
+								if finishedPC {
+									return
+								}
+								if err2 == nil && resp2.OK {
+									if att, aerr := attDecode(resp2.Data); aerr == nil {
+										pcs = append(pcs, att)
+									}
+								}
+								finishPC()
+							})
+						return
 					case !resp.OK:
 						n.logf(ports.LogDebug, "gather: precommit REFUSED", "to", v, "height", b.Height)
 					default:
@@ -1419,7 +1541,7 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 		finishPC()
 	}
 
-	// PHASE 1 (prepare): gather prepare signatures to the quorum, assemble the
+	// THE PREPARE LEG: gather prepare signatures to the quorum, assemble the
 	// prepare-QC, LOCK on it (durable — the lock is what a round-change
 	// carries), then run the precommit phase. The gatherer's own prepare goes
 	// in first (recorded above); on a forced re-proposal the ORIGINAL author's
@@ -1478,8 +1600,18 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 		}
 		v := v
 		outstandingPrep++
-		n.logf(ports.LogDebug, "gather: requesting prepare", "to", v, "height", b.Height, "round", round, "bytes", len(raw), "have", counted(atts), "need", quorum)
-		n.request(v, ports.Message{Kind: ports.MsgProposeBlock, Data: envRaw},
+		// Relay by digest only where there is a RECEIPT that this peer holds the
+		// proofs; everyone else is sent them carried, exactly as before.
+		payload, shed := envRaw, false
+		can, why := n.peerCanReconstruct(v, b)
+		if shedEnv != nil && can {
+			payload, shed = shedEnv, true
+		} else if shedEnv == nil {
+			why = carryNoDigestForm
+		}
+		n.noteGatherLeg(shed, why)
+		n.logf(ports.LogDebug, "gather: requesting prepare", "to", v, "height", b.Height, "round", round, "bytes", len(payload), "digest-relayed", shed, "carry-reason", why.String(), "have", counted(atts), "need", quorum)
+		n.request(v, ports.Message{Kind: ports.MsgProposeBlock, Data: payload},
 			func(resp ports.Message, err error) {
 				outstandingPrep--
 				if finishedPrep {
@@ -1488,6 +1620,45 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 				switch {
 				case err != nil:
 					n.logf(ports.LogDebug, "gather: prepare request FAILED", "to", v, "height", b.Height, "err", err)
+				case resp.NeedBody && shed:
+					// The receipt was stale: this peer no longer holds what it
+					// acknowledged. Re-send the same block CARRYING the proofs, to
+					// this one peer, and stop shedding for it until it acknowledges
+					// again. One round trip on a miss, which the measurement priced
+					// as worse than carrying — which is why it is a recovery and
+					// never the plan.
+					//
+					// THE COUNTER HAND-OFF RESTS ON B2, so say so. This callback has
+					// already decremented outstandingPrep; the increment below
+					// re-arms it for the replacement request, and the `return` skips
+					// the trailing finishPrep() because the inner callback owns it.
+					// Between that decrement and this increment the count is one
+					// low, and a finishPrep() from another peer observing zero there
+					// would declare NO PREPARE QUORUM on a round still in flight.
+					// Nothing can observe it: node logic runs on ONE serialized loop
+					// with no goroutines (B2), so no other callback interleaves
+					// between two statements here. If that ever stops being true
+					// this hand-off is the first thing that breaks, and it will
+					// break as a spurious no-quorum rather than as a crash.
+					delete(n.ownRegAcks, v)
+					n.Stats.DigestRelayResends++
+					n.logf(ports.LogInfo, "gather: peer could not reconstruct a digest-relayed proposal — re-sending with the proofs carried",
+						"to", v, "height", b.Height, "round", round)
+					outstandingPrep++
+					n.request(v, ports.Message{Kind: ports.MsgProposeBlock, Data: envRaw},
+						func(resp2 ports.Message, err2 error) {
+							outstandingPrep--
+							if finishedPrep {
+								return
+							}
+							if err2 == nil && resp2.OK {
+								if att, aerr := attDecode(resp2.Data); aerr == nil {
+									atts = append(atts, att)
+								}
+							}
+							finishPrep()
+						})
+					return
 				case !resp.OK:
 					n.logf(ports.LogDebug, "gather: prepare REFUSED", "to", v, "height", b.Height)
 				default:
@@ -1707,7 +1878,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 	// (accept-and-cap — the transport's maxFrame bounds any single reply).
 	fetchFull := func(p ports.NodeID, peerHead uint64, peerHeadKnown bool, next func()) {
 		n.Stats.ChainSyncFullFetches++
-		// Suffix-sync (slice 5, M1): request from our OWN finalized head, not genesis, so a
+		// Suffix-sync (M1): request from our OWN finalized head, not genesis, so a
 		// peer that has pruned its old heavy bond proofs still serves us un-pruned blocks
 		// across the gap. reqHeight is 0 without BFT finality (no immutable anchor) ⇒ a
 		// full-genesis fetch, unchanged. The peer serves [reqHeight, peerHead]; we anchor it
@@ -1919,6 +2090,12 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 					// The probe's height also serves the windowed fetch: it
 					// ends the window loop without a final empty-window round-trip.
 					peerHeadHeight, peerHeadKnown = resp.Height, true
+					// And it carries what this peer can rebuild, which is what lets a
+					// block's heavy proofs be relayed to it by digest. Recorded on
+					// EVERY reply including an empty one, so a peer whose queue has
+					// drained stops being shed to rather than keeping stale evidence.
+					n.noteHeldRegs(p, resp.HeldRegs)
+					n.Stats.ChainHeadProbesAnswered++
 					if peerHeadHeight > diag.maxPeerHead {
 						diag.maxPeerHead = peerHeadHeight
 					}
@@ -1938,6 +2115,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 					}
 				} else {
 					diag.probeFails++
+					n.Stats.ChainHeadProbesLost++
 					if err != nil {
 						diag.lastErr = fmt.Sprintf("head probe %x: %v", p[:4], err)
 					}
@@ -2050,7 +2228,24 @@ func (n *Node) maybeProposeBondDrain() {
 	// at fold would arm a proposal with no content, which fails the proposer's own
 	// empty-block check and spins on the sign slot.
 	issuerKeysDue := n.issuerKeysFoldable()
-	if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && !ownDue && !issuerKeysDue {
+	// A QUEUED EQUIVOCATION PROOF IS DESIGNEE WORK, and leaving it out of this rule
+	// made the replicated eviction wait on traffic that has nothing to do with it.
+	// slashEquivocators queues the proof so "the OBJECTIVE set evicts the culprit in
+	// lockstep on every replica (F2), not just this local ledger" — but the proof
+	// rides only a block someone proposes, and nothing here armed a proposal BECAUSE
+	// one was held. On a busy chain an unrelated renewal or entry carried it along
+	// soon enough to hide that; on an idle one it never landed at all.
+	//
+	// AND IDLE IS THE CASE THAT MATTERS: an attacker equivocates and then goes quiet,
+	// which is exactly the chain with no other work to arm the sweep. Measured on a
+	// three-anchor equivocation topology 2026-09-19 — both honest nodes committed,
+	// slashed the culprit, and then committed nothing for the rest of the window,
+	// with no sign-slot block, no round advance and no stall line. The chain was not
+	// wedged; it was quiescent, holding an eviction it had already proven.
+	//
+	// It cannot arm an empty proposal: proposeBlock's own empty-block check counts
+	// len(b.Slashes), so a slash-only block is carried, not refused.
+	if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && len(n.pendingSlashes) == 0 && !ownDue && !issuerKeysDue {
 		n.drainWaitSweeps = 0
 		return // nothing pending — stay quiet (B6)
 	}
@@ -2124,7 +2319,12 @@ func (n *Node) maybeProposeBondDrain() {
 		}
 	}
 	if dist > 0 {
-		if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && !issuerKeysDue {
+		// A queued equivocation proof is takeover-worthy for the same reason pending
+		// entries are: the designation is height-keyed, a silent designee stalls the
+		// head, and the eviction has nowhere else to ride. Omitting it here would arm
+		// the sweep above and then hand the proof back to a designee that is not
+		// proposing.
+		if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && len(n.pendingSlashes) == 0 && !issuerKeysDue {
 			// Own renewal only, and we are not the designated proposer:
 			// submit, never propose (Q2b-2). The reg reaches the chain via
 			// the designated proposer's queue; nothing to take over for.

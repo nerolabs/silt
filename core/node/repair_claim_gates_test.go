@@ -57,8 +57,21 @@ package node
 // ▶ PIN 1 (c) CLOSED by the position screen in judgeRepairClaim: an
 // out-of-range claim.ShardPos is judged against the manifest and refused before the
 // survivor loop, so it now costs ZERO fetches where it used to cost all n, four
-// times over. Arms (a) and (b) are untouched and still pinned: no per-sender bound
-// exists (refuted on its precondition) and the fetch is still not budgeted to k.
+// times over.
+//
+// ▶ PIN 1 (b) CLOSED: fetchSurvivors passes fetchStripeByColumn a k-budget and the
+// walk ends once k shards are in hand, so an honest in-range claim costs the judge
+// k rather than the stripe width — 10 rather than 15 at the shipped k=10/n=16. The
+// early exit is on SUCCESSFUL fetches, not on the ref list, so a short fetch still
+// walks further rather than failing a claim it could have judged. Repair passes a
+// nil budget deliberately: usedDomains is a census the re-seed reads, and a partial
+// one would place a rebuilt shard into a domain the walk never looked at.
+//
+// ▶ ARM (a) IS UNTOUCHED AND STILL PINNED. No per-sender bound exists, and the
+// remedy is refuted on its own precondition rather than merely unbuilt: claim
+// emission binds an empty reply callback, so a claim a budget refuses is lost
+// forever (T-RETRY-IS-THE-PRECONDITION). Budgeting the fetch narrows what each
+// claim costs; it does not bound how many claims one sender may send.
 //
 // ⚠ THE FETCH IS n−1, NOT k — and there is no k anywhere in that path. An earlier
 // revision of this file and of the judge's own
@@ -188,28 +201,39 @@ func rtRC1Amplification(claims int, one, many int64, reachedOne int) string {
 		claims, many, limit, reachedOne)
 }
 
-// pin1InRange: survivorRefs is the complement of ONE position over the stripe and
-// fetchStripeByColumn walks it to the end, so an honest in-range claim reaches n−1,
-// not the k that VerifyByRecompute consumes. This arm holds the correction.
+// rc1SurvivorBudget: THE POSITIVE ASSERTION THAT REPLACED PIN ARM (b).
+// The pin it replaces recorded that survivorRefs is the complement of ONE position
+// over the stripe and fetchStripeByColumn walked it to the end, so an honest
+// in-range claim reached n−1 where VerifyByRecompute consumes k. fetchSurvivors now
+// passes fetchStripeByColumn a k-budget and the walk ends once k shards are in hand,
+// which reddened the pin — which is what a pin is for.
 //
-// ⚠ WHAT THIS COUNTS, MEASURED 2026-09-12 — the number is right and its NAME was not.
-// It is DISTINCT CHUNKS WRITTEN, which on this fixture is 15 = 14 survivor shards
-// plus the object's manifest chunk, because the judge already hosted one of the 15
-// survivor refs and fetchSurvivors does not re-Put what heldBefore already holds.
-// Two off-by-ones cancel. The pinned 15 is therefore a correct assertion about store
-// writes and NOT a direct count of survivor fetches; the survivor fetch is n−1 by
-// construction in judgeRepairClaim, which is where that claim is actually anchored.
-// Filed as an open residual rather than re-derived here: changing the arm changes a
-// measured number.
-func pin1InRange(reachedOne, k, nShards int) string {
-	if reachedOne == nShards-1 {
+// ⚠ WHAT THIS COUNTS, AND THE OFF-BY-ONE IS DELIBERATE — measured 2026-09-12, held
+// through the budget. It is DISTINCT CHUNKS WRITTEN, which is one MORE than the
+// shards fetched (the object's manifest chunk) and one FEWER (the judge already
+// hosted one of the refs, and fetchSurvivors does not re-Put what heldBefore
+// holds). The two cancel, so the pinned figure was 15 for an n−1 walk and the
+// asserted figure is k for a k-budgeted one. It is a correct assertion about store
+// writes and NOT a direct count of survivor fetches; the fetch width itself is
+// anchored in fetchSurvivors, where the budget is applied.
+//
+// THE UPPER BOUND IS ASSERTED SEPARATELY FROM THE EXACT VALUE. k alone would pass if
+// the budget were replaced by something that happened to reach k for an unrelated
+// reason on this fixture; requiring it to be strictly below the old n−1 width is what
+// says the walk actually stopped early. The fixture guards n−1 > k, so the two arms
+// cannot collapse into one.
+// TEETH: TestRTRC_PinsFireOnTheirRemediations.
+func rc1SurvivorBudget(reachedOne, k, nShards int) string {
+	if reachedOne == k && reachedOne < nShards-1 {
 		return ""
 	}
-	return fmt.Sprintf("PIN 1 PIN IS RED (mechanism arm, in-range) — one honest in-range claim wrote %d distinct CHUNKS, pinned at n−1 = %d (k=%d, n=%d).\n"+
-		"  If it is now %d, the fetch has been budgeted to k and the PIN 1 mechanism is repaired — retire this arm and assert the budget positively.\n"+
-		"  If it is anything else, the complement-of-one-position construction in judgeRepairClaim changed. Re-derive before re-pinning: this number\n"+
-		"  is the per-claim cost the amplification arm above multiplies, and corrected canon on exactly this word (it said k; it is n−1).",
-		reachedOne, nShards-1, k, nShards, k)
+	return fmt.Sprintf("THE SURVIVOR FETCH IS NO LONGER BUDGETED TO k — one honest in-range claim wrote %d distinct CHUNKS, want k = %d and strictly below n−1 = %d (n=%d).\n"+
+		"  IF IT IS %d, the k-budget in fetchSurvivors was removed and the walk runs the whole complement again: an unsigned claim costs the judge\n"+
+		"  the stripe width for a verification that consumes k, and the per-sender amplification arm above multiplies THAT number.\n"+
+		"  IF IT IS BELOW k, the judge can no longer gather enough survivors to recompute and every honest claim now defers — check whether the\n"+
+		"  budget is being applied to refs rather than to SUCCESSFUL fetches, which is the failure mode the early exit exists to avoid.\n"+
+		"  IF IT IS ANYTHING ELSE, the complement-of-one-position construction in judgeRepairClaim changed; re-derive before re-asserting.",
+		reachedOne, k, nShards-1, nShards, nShards-1)
 }
 
 // rtRC1OutOfRangeRefused: THE POSITIVE ASSERTION THAT REPLACED PIN ARM (c) ON
@@ -235,7 +259,7 @@ func rtRC1OutOfRangeRefused(outOfRangePos, reachedOOR, reachedOne, nShards int) 
 		outOfRangePos, nShards-1, reachedOOR, reachedOne, nShards, nShards)
 }
 
-func TestSurvivorFetchIsUnboundedPerSenderAndIsNMinusOneWide_PINNED_DEFECT(t *testing.T) {
+func TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT(t *testing.T) {
 	const claims = 8
 
 	measure := func(n, pos int) (fetched int64, reached int, wire int, released, slashes, shards int) {
@@ -303,7 +327,7 @@ func TestSurvivorFetchIsUnboundedPerSenderAndIsNMinusOneWide_PINNED_DEFECT(t *te
 	// This is the arm that holds the record correction. survivorRefs is the
 	// complement of ONE position over the stripe, and fetchStripeByColumn walks it
 	// to the end; VerifyByRecompute needs only k.
-	if msg := pin1InRange(reachedOne, k, nShards); msg != "" {
+	if msg := rc1SurvivorBudget(reachedOne, k, nShards); msg != "" {
 		t.Fatal(msg)
 	}
 
@@ -532,12 +556,12 @@ func TestRTRC_PinsFireOnTheirRemediations(t *testing.T) {
 			"limit a bound would allow, not only strictly inside it")
 	}
 
-	// --- PIN 1 (b), in-range width. Pinned at n−1. ---
-	if msg := pin1InRange(nShards-1, k, nShards); msg != "" {
-		t.Fatalf("pin1InRange fired on the pinned n−1 width: %s", msg)
+	// --- (b), in-range width. NO LONGER A PIN: asserted at the k budget. ---
+	if msg := rc1SurvivorBudget(k, k, nShards); msg != "" {
+		t.Fatalf("rc1SurvivorBudget fired on the budgeted width it asserts: %s", msg)
 	}
-	if pin1InRange(k, k, nShards) == "" {
-		t.Fatal("pin1InRange stayed silent when the fetch reached exactly k — the survivor budget " +
+	if rc1SurvivorBudget(nShards-1, k, nShards) == "" {
+		t.Fatal("rc1SurvivorBudget stayed silent on the OLD n−1 width — the survivor budget " +
 			"landing is what this arm exists to detect, and it is the number corrected")
 	}
 

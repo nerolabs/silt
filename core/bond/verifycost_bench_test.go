@@ -10,7 +10,7 @@ import (
 // bond answer at the field config (BondVDFDelay=1000, BondLabelSamples=64) — the
 // per-message CPU an attacker can force through MsgSubmitBondReg with a self-signed
 // garbage reg (the signature is theirs, so it passes; the space-time verify is where
-// the node burns). This is the number the Phase 1.2 submit gate is sized against,
+// the node burns). This is the number the submit gate is sized against,
 // and one input to the E5 drain-rate model (a flood's drain rate ≈ frame size /
 // (this + decode)). Sizes bracket the field (sybils 1 MiB, anchors 64 MiB).
 //

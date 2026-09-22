@@ -93,7 +93,7 @@ type CapacityReporter interface {
 // shard is announced under its COLUMN key hash(root‖column), which it can only
 // compute from that shard's proof. Keeping proofs in memory meant a restart
 // re-announced coded shards under the wrong key, leaving a disk full of
-// content undiscoverable (#69). Persisting them alongside the chunks lets the
+// content undiscoverable. Persisting them alongside the chunks lets the
 // re-announce reconstruct the right keys — and lets the node still answer
 // storage-audit challenges after a restart. A nil ProofStore means
 // no persistence (memory-only, fine for sims and ephemeral clients).
@@ -117,7 +117,7 @@ type ProofStore interface {
 // the large space-time dataset behind its consensus standing. Plotting is
 // deliberately expensive (that is the Sybil cost), so a restart must RELOAD
 // the plot and re-verify it against its committed root (B7: persisted state is
-// re-verified, not trusted) rather than re-plotting from scratch (#93). A nil
+// re-verified, not trusted) rather than re-plotting from scratch. A nil
 // PlotStore means memory-only — the node re-plots on every start, fine for
 // sims and tests.
 type PlotStore interface {
@@ -125,6 +125,40 @@ type PlotStore interface {
 	Save(id NodeID, root Hash, blocks [][]byte) error
 	// Load returns the persisted root and blocks; ok is false if none exists.
 	Load(id NodeID) (root Hash, blocks [][]byte, ok bool, err error)
+}
+
+// PlotBlocks is random access to one plot's fixed-width blocks. Blocks are
+// addressed by index and are all the same size, so a file-backed store is a
+// fixed-stride seek — no index and no codec.
+//
+// It is the face a plot store offers when the plot must NOT be held in memory. A
+// plot is large by design, and holding every block resident makes the largest bond
+// an operator can post a function of its MEMORY rather than of the disk it
+// actually bought. That caps how much standing the smallest machines can hold and
+// concentrates consensus weight on larger ones — a re-centralization through a
+// resource bound rather than through anyone's decision. Producing a plot is cheap
+// in CPU and expensive only in residency, and answering a challenge reads a
+// handful of blocks, so the plot belongs on disk and is read back sparsely.
+type PlotBlocks interface {
+	// ReadBlock fills into with block i. into is the store's block size.
+	ReadBlock(i int, into []byte) error
+	// WriteBlock stores block i.
+	WriteBlock(i int, b []byte) error
+}
+
+// PlotBlockStore is a PlotStore that can also hand out random access to a plot's
+// blocks, so a plot can be sealed to disk and answered from disk instead of being
+// held in memory. A store that does not implement it keeps the resident path.
+type PlotBlockStore interface {
+	PlotStore
+	// OpenBlocks prepares storage for an n-block plot belonging to id and returns
+	// random access to it. An existing plot for id is replaced.
+	OpenBlocks(id NodeID, n int) (PlotBlocks, error)
+	// CommitBlocks finalizes a plot opened with OpenBlocks under its committed root.
+	CommitBlocks(id NodeID, root Hash) error
+	// LoadBlocks reopens a persisted plot for random access instead of reading it
+	// whole. ok is false when no readable plot exists for id.
+	LoadBlocks(id NodeID) (root Hash, blocks PlotBlocks, n int, ok bool, err error)
 }
 
 // Entry is what gets published to the global registry: the Merkle root
@@ -324,7 +358,7 @@ type DurabilitySnapshot struct {
 // double-sign the slash rule treats as proven malice (round-scoped per the
 // research — Tendermint's persisted priv_validator_state, whose schema is
 // (height, round, step); the height-only form wedged a contested height
-// permanently). Round 0 / Phase 0 is the legacy era-1 mark (a bare-hash
+// permanently). Round 0 is the legacy era-1 mark (a bare-hash
 // signature); marks persisted before rounds load as that.
 type SignMark struct {
 	Height uint64

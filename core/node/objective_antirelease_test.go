@@ -13,7 +13,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Integration tier for retest G4 (c): through the REAL space-time verifier, a
+// Integration tier: through the REAL space-time verifier, a
 // validator's objective standing decays once it stops renewing — modelling a
 // prover that registered a genuine bond and then RELEASED its plot. A validator
 // that keeps renewing (it still holds the plot, so it can answer the fresh

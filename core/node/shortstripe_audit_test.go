@@ -10,6 +10,7 @@ import (
 	"github.com/nerolabs/silt/core/crypto"
 	"github.com/nerolabs/silt/core/pipeline"
 	"github.com/nerolabs/silt/core/por"
+	"github.com/nerolabs/silt/ports"
 )
 
 // TestAuditorAndHonestProverAgreeOnEveryShardLength puts the coupling under load,
@@ -48,11 +49,14 @@ func TestAuditorAndHonestProverAgreeOnEveryShardLength(t *testing.T) {
 				t.Fatalf("load: %v", err)
 			}
 			// The auditor's number, computed exactly as auditEntry computes it.
-			want := por.DefaultParams.Blocks(int(m.ChunkSize) + ctOverhead)
+			want := shardLeaves(m.ChunkSize, m.LeafBytes)
 			if want < 1 {
-				t.Fatalf("the auditor would demand %d blocks", want)
+				t.Fatalf("the auditor would demand %d leaves", want)
 			}
-			porKey := DerivePorKey(h.LayoutKey())
+			if m.LeafBytes != por.SpotLeafBytes || len(m.ShardRoots) != len(m.Leaves()) {
+				t.Fatalf("the published object committed %d shard roots at leaf width %d for %d shards — "+
+					"an object with no commitment is not auditable at all", len(m.ShardRoots), m.LeafBytes, len(m.Leaves()))
+			}
 			for i, id := range append(m.ChunkIDs(), m.ParityIDs()...) {
 				ck, err := store.Get(ctx, id)
 				if err != nil {
@@ -61,10 +65,15 @@ func TestAuditorAndHonestProverAgreeOnEveryShardLength(t *testing.T) {
 				if got := len(ck.Data); got != int(m.ChunkSize)+ctOverhead {
 					t.Fatalf("leaf %d is %d B, but the auditor sizes it at %d — the committed geometry is not the stored one", i, got, int(m.ChunkSize)+ctOverhead)
 				}
-				leaf := id
-				honest := len(porKey.Tags(leaf[:], ck.Data))
+				honest := por.SpotLeaves(len(ck.Data), m.LeafBytes)
 				if !blocksOK(honest, want) {
-					t.Fatalf("leaf %d: an HONEST prover reports %d blocks and the auditor demands %d — every holder of this object would fail its audit", i, honest, want)
+					t.Fatalf("leaf %d: an HONEST prover reports %d leaves and the auditor demands %d — every holder of this object would fail its audit", i, honest, want)
+				}
+				var committed ports.Hash
+				copy(committed[:], m.ShardRoots[i])
+				if got := por.ShardRoot(ck.Data, m.LeafBytes); got != committed {
+					t.Fatalf("leaf %d: the stored shard's spot-check root %x is not the one the manifest commits (%x) — "+
+						"an honest holder would fail every audit of this object", i, got[:6], committed[:6])
 				}
 			}
 			// Both regimes are genuinely driven: one case commits a short frame, the

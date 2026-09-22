@@ -7,7 +7,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Retest G3 (Accountability, High) INVERTED as a regression: a malicious genesis
+// INVERTED as a regression: a malicious genesis
 // pre-squats an honest validator's real plot root R under the attacker's key with
 // NO space-time proof (genesis regs are declared). Before the fix, the F1
 // first-owner dedup then worked AGAINST the true holder — when V later registered

@@ -105,16 +105,17 @@ jobs:
             echo "$out" | grep '^--- SKIP'; exit 1
           fi
           echo "OK — every named untagged gate ran and passed"
-      # EVERY OTHER `go test` IN THIS FILE PASSES `-short`, AND THESE FIVE TESTS SKIP
+      # EVERY OTHER `go test` IN THIS FILE PASSES `-short`, AND THESE SIX TESTS SKIP
       # UNDER IT. Measured: they executed in NO CI job at all — `--- SKIP` on each, exit
       # 0, a green check standing for zero execution
       # 2026-09-10, count 2; instance 1 was a seat choosing -short by hand, this one is
       # the workflow itself, so it recurred on every push). NO `-short` here, deliberately.
       #
-      # These are the ones that ASSERT, so a skip costs real coverage. Four carry
+      # These are the ones that ASSERT, so a skip costs real coverage. Five carry
       # substantive t.Fatalf regressions: the nested-evidence fixed point ("Q2/Q3
       # REGRESSED"), the field-confirmed OOM budget (" REPRODUCED"), the C3
-      # serve-Gini honest-null pin, and the §0.1 reconstruct resident floor. The fifth,
+      # serve-Gini honest-null pin, the §0.1 reconstruct resident floor, and the digest
+      # relay's coverage floor on a wire with nothing in its way. The sixth,
       # TestSlashesBytesCapWorstCaseCost, asserts only PRECONDITIONS — its four figures
       # go through t.Logf, so running it buys execution, not protection of the numbers
       # (said in full at core/chain.SlashesBytesCap). It is here because it is the
@@ -125,21 +126,23 @@ jobs:
       #
       # Measured on a throttled 2-core box: 36.9 s of test time, 58 s wall including the
       # test-binary builds. TestRNestGate_SelfArmorMeasurement dominates at 28-30 s; the
-      # other four total ~6 s. -timeout 20m leaves headroom on a slower runner.
+      # coverage measurement mints real space-time proofs on two arms and takes ~20 s;
+      # the other four total ~6 s. -timeout 20m leaves headroom on a slower runner.
       #
       # scripts/check_short_dark_tests.py READS THIS `-run` LIST as the source of truth
       # for what runs unshortened. Dropping a name here does not just lose the run — it
       # turns that test dark, and the lint goes red in the repo-lints job.
       - name: the -short-dark asserting tests really ran (no other job executes these)
         run: |
-          out=$(go test -count=1 -v ./core/chain/ ./cmd/silt/ ./core/erasure/ -run '^(TestRNestGate_SelfArmorMeasurement|TestServeGiniHonestNullIsMixDependentNotSampleSizeDependent|TestReconcileMemoryBounded|TestSlashesBytesCapWorstCaseCost|TestReconstructMemoryFootprint_SimVsProd)$' -timeout 20m 2>&1)
+          out=$(go test -count=1 -v ./core/chain/ ./cmd/silt/ ./core/erasure/ ./core/node/ -run '^(TestRNestGate_SelfArmorMeasurement|TestServeGiniHonestNullIsMixDependentNotSampleSizeDependent|TestReconcileMemoryBounded|TestSlashesBytesCapWorstCaseCost|TestReconstructMemoryFootprint_SimVsProd|TestTheDigestRelaysCoverageOnAHealthyWireAndACongestedOne)$' -timeout 20m 2>&1)
           echo "$out"
           for tst in \
             TestRNestGate_SelfArmorMeasurement \
             TestServeGiniHonestNullIsMixDependentNotSampleSizeDependent \
             TestReconcileMemoryBounded \
             TestSlashesBytesCapWorstCaseCost \
-            TestReconstructMemoryFootprint_SimVsProd ; do
+            TestReconstructMemoryFootprint_SimVsProd \
+            TestTheDigestRelaysCoverageOnAHealthyWireAndACongestedOne ; do
             echo "$out" | grep -q "^--- PASS: ${tst} " || {
               echo "::error::${tst} did not PASS unshortened. Either it was renamed (fix BOTH lists in this step), it skipped, or it failed. A -run filter matching nothing still exits 0, which is why this asserts by name."; exit 1; }
           done
@@ -147,7 +150,7 @@ jobs:
             echo "::error::a test SKIPPED in the step whose entire purpose is that these do not skip."
             echo "$out" | grep '^--- SKIP'; exit 1
           fi
-          echo "OK — five formerly-dark tests executed unshortened, none skipped"
+          echo "OK — six formerly-dark tests executed unshortened, none skipped"
 
   race:
     name: Go — race detector
@@ -378,6 +381,14 @@ jobs:
         run: python3 scripts/check_conflict_markers.py
       - name: Lint — no test may skip under -short in every merge-gating job
         run: python3 scripts/check_short_dark_tests.py
+      - name: Lint — every defence claim must name the fixture that grants the adversary its capability
+        # RATCHET MODE, and that is the only mode this step can run in: CAPABILITY-CONTROL
+        # is well defined only where a defence is BROKEN, so the grandfathered records
+        # cannot be driven to zero and --strict would be red forever. What this asserts
+        # is that no defence claim is NEW to the gate. The gate went to ratchet mode
+        # expressly so it could be wired here and then was not, and in the four days
+        # after, two audit-path fixes landed claims it would have caught.
+        run: python3 scripts/check_adversary_shape.py
   scheduled-workflow-proof:
     name: Scheduled workflow proof
     runs-on: ubuntu-latest

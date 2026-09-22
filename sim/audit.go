@@ -106,7 +106,7 @@ func Audit(seed int64, o AuditOpts) (AuditResult, error) {
 		return res, err
 	}
 	placed := 0
-	publisher.Distribute(entry, m, false, node.DerivePorKey(h.LayoutKey()), func(p int, _ error) { placed = p })
+	publisher.Distribute(entry, m, false, func(p int, _ error) { placed = p })
 	cl.Sched.Run()
 	say(fmt.Sprintf("scatter   | %d chunk replica placements accepted (some by liars, who kept nothing)", placed))
 
@@ -120,9 +120,9 @@ func Audit(seed int64, o AuditOpts) (AuditResult, error) {
 	if !done {
 		return res, fmt.Errorf("audit(seed=%d): sweep never completed", seed)
 	}
-	say(fmt.Sprintf("audit     | %d challenges | %d passed (+%d credits each) | %d failed (-%d each) | %d unverifiable",
+	say(fmt.Sprintf("audit     | %d challenges | %d passed (+%d credits each) | %d failed (-%d each) | %d unverifiable | %d unaudited",
 		res.Report.Challenges, res.Report.Passed, ledger.AuditReward,
-		res.Report.Failed, ledger.AuditSlash, res.Report.NoTruth))
+		res.Report.Failed, ledger.AuditSlash, res.Report.NoTruth, res.Report.Unaudited))
 
 	for _, nd := range cl.Nodes {
 		_, failed := ledger.Audits(nd.ID())

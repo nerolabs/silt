@@ -65,7 +65,7 @@ const frameOverhead = 4 << 20
 
 // maxFrame bounds an inbound frame: large enough to carry the biggest legal
 // chunk (a frame carries at most one chunk) plus its envelope, small enough
-// to still cap per-frame allocation against a hostile peer (#14). It is
+// to still cap per-frame allocation against a hostile peer (persona 14). It is
 // derived from the manifest chunk-size ceiling, not a standalone number, so
 // the transport can always carry a chunk the manifest layer accepts — the
 // two limits can't drift apart. The minimum production chunk is 64
@@ -91,6 +91,12 @@ type Transport struct {
 	// inbound.go). nil-safe via a cap of 0 = unbounded; the daemon sets a real
 	// cap from -inbound-cap.
 	inbound *inboundGate
+	// outbound bounds the in-flight marshalled frames Send has handed to
+	// delivery goroutines but that have not reached their peer's socket, so a
+	// node producing faster than a link drains can't OOM itself (see
+	// outbound.go). nil-safe via a cap of 0 = unbounded; the daemon sets a real
+	// cap from -outbound-cap.
+	outbound *outboundGate
 
 	// inHandshakes counts inbound TLS handshakes currently in flight — the
 	// hub-stampede gauge for Layer 2 (Q3): when many spokes dial a hub at
@@ -118,6 +124,15 @@ type Transport struct {
 	// The newest conn wins the slot; a displaced one keeps serving its
 	// own readLoop until it dies naturally.
 	conns map[ports.NodeID]*peerConn
+	// ctrlConns is the control lane: a second conn per peer that bulk never rides,
+	// so a small frame is not queued behind a multi-megabyte one in a single ordered
+	// stream. Kept separate from conns rather than beside it in peerConn because the
+	// bulk slot carries the relay and hole-punch state, and a control dial must not
+	// disturb any of it. See ctrllane.go.
+	ctrlConns map[ports.NodeID]*peerConn
+	// noCtrlLane remembers peers that did not negotiate the control lane, so a
+	// pre-lane peer is not re-probed with a fresh dial on every small frame.
+	noCtrlLane map[ports.NodeID]bool
 	// classes is the observed (class, group) per peer with a live
 	// conversation (class.go); salt is per process, drawn at New, never
 	// persisted.
@@ -141,7 +156,7 @@ type Transport struct {
 	// requestPunch asks our relay to coordinate a hole-punch with a peer we
 	// currently reach through the relay (wired to relay.Client.RequestPunch by
 	// the daemon; nil if we run no relay client). punchedAt rate-limits those
-	// requests per peer so a busy relay path doesn't spam them (#27).
+	// requests per peer so a busy relay path doesn't spam them.
 	requestPunch func(ports.NodeID)
 	punchedAt    map[ports.NodeID]time.Time
 }
@@ -179,7 +194,7 @@ type peerConn struct {
 	// viaRelay marks a conn that rides the relay splice (either we dialed
 	// the peer's relay form, or the peer reached us through the relay). A
 	// relay conn, once established, is reused for every subsequent frame —
-	// so the hole-punch upgrade (#27) must be triggered on that reuse, not
+	// so the hole-punch upgrade must be triggered on that reuse, not
 	// only at dial time, or a steady-state relay path never tries to go
 	// direct. Set once at adopt; a later direct (punched) conn replaces the
 	// slot with a fresh peerConn whose viaRelay is false.
@@ -208,6 +223,10 @@ func New(loop *eventloop.Loop, ident *identity.Identity, listenAddr string) (*Tr
 		Certificates: []tls.Certificate{cert},
 		ClientAuth:   tls.RequireAnyClientCert, // verified by pubkey hash after handshake
 		MinVersion:   tls.VersionTLS13,
+		// Both lanes are accepted; which one a conn is decides where it is adopted
+		// (ctrllane.go). A dialer that offers neither negotiates nothing and is
+		// adopted as bulk, which is every pre-lane peer.
+		NextProtos: []string{alpnBulk, alpnCtrl},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("tcpnet: %w", err)
@@ -219,10 +238,13 @@ func New(loop *eventloop.Loop, ident *identity.Identity, listenAddr string) (*Tr
 		self:       ident.NodeID(),
 		listenAddr: ln.Addr().String(),
 		ln:         ln,
-		inbound:    newInboundGate(0), // unbounded until the daemon sets a cap
+		inbound:    newInboundGate(0),  // unbounded until the daemon sets a cap
+		outbound:   newOutboundGate(0), // unbounded until the daemon sets a cap
 		peers:      make(map[ports.NodeID]addrPair),
 		relays:     make(map[ports.NodeID]string),
 		conns:      make(map[ports.NodeID]*peerConn),
+		ctrlConns:  make(map[ports.NodeID]*peerConn),
+		noCtrlLane: make(map[ports.NodeID]bool),
 		punchedAt:  make(map[ports.NodeID]time.Time),
 		classes:    make(map[ports.NodeID]peerClass),
 		v4Width:    defaultV4Width,
@@ -241,11 +263,15 @@ func (t *Transport) Self() ports.NodeID { return t.self }
 func (t *Transport) Close() error {
 	err := t.ln.Close()
 	t.mu.Lock()
-	open := make([]*peerConn, 0, len(t.conns))
+	open := make([]*peerConn, 0, len(t.conns)+len(t.ctrlConns))
 	for _, pc := range t.conns {
 		open = append(open, pc)
 	}
+	for _, pc := range t.ctrlConns { // the control lane closes with everything else
+		open = append(open, pc)
+	}
 	t.conns = make(map[ports.NodeID]*peerConn)
+	t.ctrlConns = make(map[ports.NodeID]*peerConn)
 	t.mu.Unlock()
 	for _, pc := range open {
 		pc.conn.Close()
@@ -444,6 +470,14 @@ func (t *Transport) SetHandler(h func(from ports.NodeID, msg ports.Message)) {
 // -inbound-cap. Call before serving.
 func (t *Transport) SetInboundCap(capBytes int64) { t.inbound.setCap(capBytes) }
 
+// SetOutboundCap bounds the in-flight outbound working set to capBytes — the
+// marshalled frames handed to a delivery goroutine that have not yet reached
+// their peer's socket (outbound.go). Over the cap a frame is DROPPED rather than
+// queued, because Send runs on the single serialized loop and must not block.
+// capBytes <= 0 = unbounded (the sim/test default). The daemon wires it from
+// -outbound-cap. Call before serving.
+func (t *Transport) SetOutboundCap(capBytes int64) { t.outbound.setCap(capBytes) }
+
 // SetLogger wires the observability port; nil disables it.
 func (t *Transport) SetLogger(lg ports.Logger) { t.lg = lg }
 
@@ -470,7 +504,11 @@ func (t *Transport) Send(to ports.NodeID, msg ports.Message) error {
 		// only its direct address counts here.
 		pair.relay = ""
 	}
-	if pair.empty() && (freshDial || t.liveConn(to) == nil) {
+	// EITHER LANE COUNTS AS A LIVE CONVERSATION. A peer that has only ever exchanged
+	// small frames has a control conn and no bulk conn, and an undialable peer is
+	// answered over whichever one it opened — reading only the bulk slot here refused
+	// every reply to a NATed peer whose first contact happened to be small.
+	if pair.empty() && (freshDial || (t.liveConn(to) == nil && t.ctrlConn(to) == nil)) {
 		t.logf(ports.LogDebug, "send with no known address", "to", to)
 		return fmt.Errorf("tcpnet: no known address for %s", to)
 	}
@@ -500,8 +538,147 @@ func (t *Transport) Send(to ports.NodeID, msg ports.Message) error {
 	if len(frame) > maxFrame {
 		return fmt.Errorf("tcpnet: frame of %d bytes exceeds max %d", len(frame), maxFrame)
 	}
+	// Admission control: charge this frame — and the delivery goroutine that
+	// will carry it — against the outbound budget BEFORE starting that
+	// goroutine, so a node producing faster than the link drains can't retain
+	// frames without limit and OOM itself (outbound.go). A refusal is a DROP,
+	// not backpressure: this runs on the single serialized loop, which must
+	// never block. The drop is the transport's documented loss semantics and is
+	// reported to the caller and the debug log rather than swallowed.
+	if !t.outbound.admit(to, int64(len(frame))) {
+		inFlight, share := t.outbound.peerBytes(to)
+		// A CONTROL-SIZED frame refused is a different and worse event than a bulk
+		// frame refused, and the two read identically until you say so. Bulk being
+		// held back is the gate working: the link is backed up and the core's
+		// timeout machinery owns the retry. A small frame being refused means the
+		// backlog consumed even the slice reserved for control traffic, so this node
+		// can no longer probe a peer's head, fetch the window that would catch it up,
+		// or refuse fast — which is the blinding shape the reserve exists to prevent,
+		// returning at a larger backlog. The field diagnosis that found it took a
+		// journal read across four nodes; this line is what makes it one grep.
+		if int64(len(frame)) <= smallFrameBytes {
+			t.logf(ports.LogWarn, "outbound CONTROL frame dropped: the peer backlog consumed even the reserve — this node is going blind to that peer",
+				"to", to, "kind", msg.Kind, "frame", len(frame), "inflight", inFlight, "share", share,
+				"total", t.outbound.usedBytes(), "refused_small", t.outbound.refusedSmallFrames())
+			return fmt.Errorf("tcpnet: outbound budget full for %s: %d bytes already in flight against a %d-byte share; dropped a %d-byte CONTROL frame (the small-frame reserve is exhausted)",
+				to, inFlight, share, len(frame))
+		}
+		// THE KIND IS REPORTED, NEVER ACTED ON. A field read of the drop log can
+		// say WHAT was dropped only if the line names it: a sheet showed 780 bulk
+		// drops in eleven minutes, 185 of them at almost exactly twice a carried
+		// bond proof, and nothing in the record could say which message that was.
+		// This is observability, not routing — the admission class stays a pure
+		// size rule (smallFrameBytes), so no consensus concern enters the wire
+		// layer and no new kind lands silently in the wrong class.
+		t.logf(ports.LogDebug, "outbound frame dropped: peer backlog is at its budget",
+			"to", to, "kind", msg.Kind, "frame", len(frame), "inflight", inFlight, "share", share,
+			"total", t.outbound.usedBytes())
+		return fmt.Errorf("tcpnet: outbound budget full for %s: %d bytes already in flight against a %d-byte share; dropped a frame of %d bytes",
+			to, inFlight, share, len(frame))
+	}
+	// THE CONTROL LANE. A frame small enough to be starved goes on the connection
+	// bulk never touches, so it is not queued behind a multi-megabyte payload in one
+	// ordered stream — the wedge's last cause, measured at 2488x on the fixture in
+	// headofline_measure_test.go. A reachability dial-back is excluded: its whole
+	// meaning is a fresh inbound dial to the advertised address, which a reused lane
+	// would misreport.
+	if ctrlLaneEligible(len(frame)) && !freshDial {
+		if pc := t.ctrlLaneFor(to, pair); pc != nil {
+			go t.deliverOnCtrl(to, pc, pair, frame)
+			return nil
+		}
+	}
 	go t.deliver(to, pair, frame, freshDial)
 	return nil
+}
+
+// ctrlLaneFor returns the control conn for to, dialing one if there is an address to
+// dial and none is live yet.
+//
+// A nil return is the ordinary fallback and not a failure: a NATed peer cannot be
+// dialled at all, an old peer negotiates no lane, and a dial can simply fail. Each
+// of those sends the frame down the bulk conn, which is exactly what every frame did
+// before this existed. The lane is an improvement that degrades to the status quo,
+// never a dependency.
+func (t *Transport) ctrlLaneFor(to ports.NodeID, pair addrPair) *peerConn {
+	if pc := t.ctrlConn(to); pc != nil {
+		return pc
+	}
+	// THE LANE IS SUPPLEMENTARY, NEVER THE FIRST CONTACT, and that is not a
+	// preference — it is what keeps a NATed peer reachable with bulk.
+	//
+	// A peer that is undialable can only be sent what it can be sent over a conn IT
+	// opened. If its first frame is small and opens a control lane, it never opens a
+	// bulk conn at all, and every large reply to it then takes the last-resort path
+	// onto the control lane. That is the field shape exactly: a NATed fetcher sends
+	// small requests and receives chunk-sized replies, so 65,677-byte frames rode the
+	// lane and re-created, on the lane, the head-of-line blocking the lane exists to
+	// remove (run 4c147a2-45568: 26 of 40 sampled lane frames were the last resort).
+	//
+	// Requiring an established bulk conversation first costs one small frame's worth
+	// of latency per peer, once, and leaves every existing invariant where it was:
+	// the bulk conn is still the live conversation, still the one a NATed peer's
+	// replies ride, still the slot the relay and hole-punch state hangs off.
+	if t.liveConn(to) == nil {
+		return nil
+	}
+	if t.lacksCtrlLane(to) {
+		return nil // pre-lane peer: do not pay a dial to rediscover that every time
+	}
+	// Only a direct address is dialled for the lane. Standing up a second relayed
+	// splice to carry control traffic would consume the relay operator's capped
+	// bandwidth twice over for one conversation, and a relay's own queue is the
+	// thing being escaped in the first place.
+	if pair.direct == "" {
+		return nil
+	}
+	conn, err := t.dialPeerLane(to, pair.direct, true)
+	if err != nil {
+		t.logf(ports.LogDebug, "control lane dial failed — falling back to the shared conn", "to", to, "err", err)
+		return nil
+	}
+	if !isCtrlConn(conn.ConnectionState()) {
+		// The peer did not negotiate the lane: pre-lane software. Close this conn
+		// rather than leave a second bulk conversation open to it, remember so the
+		// next small frame does not pay for the same discovery, and let every frame
+		// ride the one connection exactly as before.
+		conn.Close()
+		t.markNoCtrlLane(to)
+		return nil
+	}
+	// OBSERVE, exactly as a bulk dial does. The class is a fact about the PEER's
+	// address, not about which lane carried a frame — the eclipse cap keys on where
+	// a completed conversation reached, and a peer this node only ever exchanges
+	// small frames with must not become invisible to it.
+	t.observeConn(to, conn.RemoteAddr(), false)
+	// SAY THAT THE LANE IS LIVE, once per lane per peer. A field run that goes green
+	// after this change has to be attributable TO it, and nothing else in a journal
+	// distinguishes "the lane carried the probe" from "the probe got lucky". One
+	// line per peer is the cheapest evidence that settles it (S5).
+	t.logf(ports.LogInfo, "control lane established — small frames to this peer bypass its payload", "to", to)
+	pc := t.adoptCtrl(to, conn)
+	go func() {
+		defer t.dropCtrlConn(to, pc)
+		t.serveFrames(conn, to)
+	}()
+	return pc
+}
+
+// deliverOnCtrl writes a frame to an established control conn, and falls back to the
+// ordinary delivery ladder if that write fails.
+//
+// RETRY, DON'T EVICT (build-immutable #5): a lane conn that has gone away must not
+// take the frame with it. The lane is an optimisation over the shared conn, so its
+// failure mode has to be the shared conn — anything else makes adding a second
+// connection a way to LOSE messages that one connection delivered.
+func (t *Transport) deliverOnCtrl(to ports.NodeID, pc *peerConn, pair addrPair, frame []byte) {
+	if err := pc.write(frame); err != nil {
+		t.logf(ports.LogDebug, "control lane write failed — falling back to the shared conn", "to", to, "err", err)
+		t.dropCtrlConn(to, pc)
+		t.deliver(to, pair, frame, false) // owns the budget release from here
+		return
+	}
+	t.outbound.release(to, int64(len(frame)))
 }
 
 // deliver rides the live conversation with to when one exists — this is
@@ -514,13 +691,17 @@ func (t *Transport) Send(to ports.NodeID, msg ports.Message) error {
 // delivery; if the relay then reaches the peer, the direct address was
 // stale (the peer moved behind a NAT) and is dropped from the book.
 func (t *Transport) deliver(to ports.NodeID, pair addrPair, frame []byte, freshDial bool) {
+	// The frame is retained for the whole of this call — through the dial, the
+	// wait on the peer's write mutex, and the write into a possibly-full socket
+	// buffer — so the budget is held for exactly that long.
+	defer t.outbound.release(to, int64(len(frame)))
 	if !freshDial {
 		if pc := t.liveConn(to); pc != nil {
 			if pc.write(frame) == nil {
 				// A relay conn is reused for every frame, so this is the only
 				// place a steady-state relay path can be nudged toward a direct
 				// link. Cooldown-gated, so it's at most one request per peer per
-				// interval regardless of traffic (#27).
+				// interval regardless of traffic.
 				if pc.viaRelay {
 					t.maybeRequestPunch(to)
 				}
@@ -530,6 +711,9 @@ func (t *Transport) deliver(to ports.NodeID, pair addrPair, frame []byte, freshD
 		}
 	}
 	if pair.empty() {
+		if t.writeViaCtrlLane(to, frame) {
+			return
+		}
 		t.logf(ports.LogDebug, "no path to peer", "to", to)
 		return
 	}
@@ -556,12 +740,43 @@ func (t *Transport) deliver(to ports.NodeID, pair addrPair, frame []byte, freshD
 		go t.readLoop(conn, viaRelay)
 		if viaRelay {
 			// We reached the peer through the relay; try to upgrade to a direct
-			// link so the bulk traffic leaves the relay (#27). Harmless if it
+			// link so the bulk traffic leaves the relay. Harmless if it
 			// fails — this relay conn keeps serving.
 			t.maybeRequestPunch(to)
 		}
 		return
 	}
+	// Every dial failed. The control lane is still a path to this peer, and using
+	// it beats dropping the frame.
+	t.writeViaCtrlLane(to, frame)
+}
+
+// writeViaCtrlLane sends a frame down the control lane as a LAST RESORT, and
+// reports whether it went. It is the path for a frame that has nowhere else to go.
+//
+// A LANE THAT ADDS A WAY TO LOSE DATA IS WORSE THAN NO LANE, and this is where that
+// nearly happened. A peer whose first contact is small now has a control conn and no
+// bulk conn; when that peer is also undialable — a NATed fetcher, which is the
+// ordinary case — a LARGE reply found no live bulk conn, no address to dial, and was
+// dropped on the floor. The field sheet read it as fetches returning the sha256 of
+// the empty string.
+//
+// So the rule is that the lane may never be the reason a frame is not delivered.
+// Putting a large frame on it costs exactly the head-of-line blocking the lane
+// exists to avoid, which is a latency cost paid by one peer's traffic; dropping it
+// is a silent-loss shape (S3) and is not comparable.
+func (t *Transport) writeViaCtrlLane(to ports.NodeID, frame []byte) bool {
+	pc := t.ctrlConn(to)
+	if pc == nil {
+		return false
+	}
+	if err := pc.write(frame); err != nil {
+		t.dropCtrlConn(to, pc)
+		return false
+	}
+	t.logf(ports.LogDebug, "frame delivered over the control lane for want of any other path",
+		"to", to, "bytes", len(frame))
+	return true
 }
 
 // dialPeer dials with the target's identity pinned: if the far end's
@@ -571,7 +786,16 @@ func (t *Transport) deliver(to ports.NodeID, pair addrPair, frame []byte, freshD
 // session with the TARGET runs end-to-end through the relay's splice,
 // so a relay (or anyone) injecting frames still dies at the handshake.
 func (t *Transport) dialPeer(to ports.NodeID, addr string) (*tls.Conn, error) {
+	return t.dialPeerLane(to, addr, false)
+}
+
+// dialPeerLane dials to at addr, negotiating either the bulk or the control lane.
+// The lane is an ALPN offer, so the far end knows which conversation this conn is
+// before it reads a byte — which is what it needs, because a conn is adopted the
+// moment its handshake completes.
+func (t *Transport) dialPeerLane(to ports.NodeID, addr string, ctrl bool) (*tls.Conn, error) {
 	cfg := identity.ClientConfig(t.cert, to)
+	cfg.NextProtos = lanesFor(ctrl)
 	if relayID, relayAddr, ok := relay.SplitAddr(addr); ok {
 		raw, err := relay.DialThrough(t.cert, relayID, relayAddr, to)
 		if err != nil {
@@ -630,6 +854,9 @@ func (t *Transport) dropConn(id ports.NodeID, pc *peerConn) {
 	if t.conns[id] == pc {
 		delete(t.conns, id)
 		delete(t.classes, id) // the class map is bounded by live conns; the table keeps its own copy
+		// A reconnection is the cheap moment to re-probe for the lane: a peer that
+		// upgraded its software should not stay written off.
+		delete(t.noCtrlLane, id)
 	}
 	t.mu.Unlock()
 	pc.conn.Close()
@@ -642,7 +869,7 @@ func (t *Transport) dropConn(id ports.NodeID, pc *peerConn) {
 // relay contributed a pipe, not an identity.
 func (t *Transport) RelayInbound(raw net.Conn) {
 	// Inbound through the relay splice: mark the conn relay-backed so reusing
-	// it triggers the hole-punch upgrade (#27).
+	// it triggers the hole-punch upgrade.
 	t.readLoop(tls.Server(raw, &tls.Config{
 		Certificates: []tls.Certificate{t.cert},
 		ClientAuth:   tls.RequireAnyClientCert,
@@ -662,7 +889,7 @@ func (t *Transport) acceptLoop() {
 
 func (t *Transport) readLoop(conn *tls.Conn, viaRelay bool) {
 	// A malformed frame from a peer must fail this conversation, not the
-	// node (Gate 1 / anti-persona #14). The decoders below are panic-free
+	// node (Gate 1 / anti-persona 14). The decoders below are panic-free
 	// by construction — the fuzz targets prove it — but this guard is the
 	// net underneath: a panic anywhere in the read path drops the conn
 	// instead of unwinding into the runtime and killing every other peer's
@@ -694,12 +921,36 @@ func (t *Transport) readLoop(conn *tls.Conn, viaRelay bool) {
 		conn.Close()
 		return
 	}
+	// WHICH LANE THIS CONN IS was settled in the handshake (ctrllane.go). A control
+	// conn is adopted into its own slot and does nothing else: it contributes no
+	// address observation and never becomes the bulk conversation, so the relay and
+	// hole-punch state that hangs off the bulk slot is untouched by it.
+	if isCtrlConn(conn.ConnectionState()) {
+		pc := t.adoptCtrl(from, conn)
+		t.logf(ports.LogInfo, "control lane accepted — small frames from this peer arrive off its payload", "from", from)
+		// The address class is observed on either lane, for the same reason: it is a
+		// fact about the peer's address. What the control lane does NOT do is become
+		// the bulk conversation, so the relay and hole-punch state hanging off that
+		// slot is untouched by it.
+		t.observeConn(from, conn.RemoteAddr(), viaRelay)
+		defer t.dropCtrlConn(from, pc)
+		t.serveFrames(conn, from)
+		return
+	}
 	// This conn is now the live conversation with from — in particular,
 	// our replies to a NATed peer ride it, because no dial can ever go
 	// the other way.
 	pc := t.adopt(from, conn, viaRelay)
 	t.observeConn(from, conn.RemoteAddr(), viaRelay) // the observed contacted-at address
 	defer t.dropConn(from, pc)
+	t.serveFrames(conn, from)
+}
+
+// serveFrames reads framed messages off conn until it closes, decoding each and
+// posting it to the loop. It is shared by both lanes: a control conn and a bulk conn
+// carry the same frames and differ only in what else may be queued ahead of them, so
+// the inbound budget, the frame cap and the decode path are the same for each.
+func (t *Transport) serveFrames(conn *tls.Conn, from ports.NodeID) {
 	for {
 		var hdr [4]byte
 		if _, err := io.ReadFull(conn, hdr[:]); err != nil {

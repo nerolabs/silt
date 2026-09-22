@@ -13,7 +13,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Integration tier for retest G1: at the node composition level (objective mode
+// Integration tier: at the node composition level (objective mode
 // on), a malicious genesis carrying a proof-free Slash against an honest bonded
 // validator must not establish — so the objective validator set can never be
 // corrupted by an unverified genesis eviction. The clean genesis (same bonds, no

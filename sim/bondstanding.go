@@ -6,7 +6,7 @@
 // balances but earns ZERO standing, so it can neither propose nor form a
 // quorum. And standing must be SUSTAINED: once validators stop re-proving
 // their bonds, DecayStale retires their standing and their votes stop
-// counting. This is the deterministic sim-proof behind #78 / D1 / D3.
+// counting. This is the deterministic sim-proof behind / D1 / D3.
 package sim
 
 import (
@@ -156,7 +156,7 @@ func BondStanding(seed int64, o BondStandingOpts) (BondStandingResult, error) {
 		return res, err
 	}
 	distributed := false
-	publisher.Distribute(entry, m, false, node.DerivePorKey(h.LayoutKey()), func(int, error) { distributed = true })
+	publisher.Distribute(entry, m, false, func(int, error) { distributed = true })
 	sched.Run()
 	if !distributed {
 		return res, fmt.Errorf("bondstanding(seed=%d): distribution never completed", seed)

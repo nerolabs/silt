@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/nerolabs/silt/adapters/discovery"
@@ -347,7 +348,7 @@ func swarmAdd(args []string) error {
 			// Stage stores the chunks + manifest but does NOT register the
 			// entry yet; we publish only after a confirmed scatter, so a
 			// placement failure never leaves a dangling registry entry that
-			// no link reaches (register-after-distribute, #65).
+			// no link reaches (register-after-distribute).
 			var aerr error
 			var entry ports.Entry
 			h, entry, aerr = pipeline.Stage(context.Background(), e.nd.Store(), f, opts)
@@ -362,9 +363,9 @@ func swarmAdd(args []string) error {
 				done()
 				return
 			}
-			e.nd.Distribute(entry, mf, false, node.DerivePorKey(h.LayoutKey()), func(p int, derr error) {
+			e.nd.Distribute(entry, mf, false, func(p int, derr error) {
 				// Publish only on a confirmed scatter; a failed one leaves the
-				// registry untouched so no dangling entry survives (#65).
+				// registry untouched so no dangling entry survives.
 				placed, err = pipeline.RegisterAfterDistribute(context.Background(), reg, entry, p, derr)
 				done()
 			})
@@ -470,11 +471,20 @@ func swarmGet(args []string) error {
 		return err
 	}
 
+	// Announce the deadline structure BEFORE going to the network, so it is on
+	// the record whether the retrieval below succeeded or timed out. A failed
+	// fetch otherwise reports only which chunk had no reachable provider, which
+	// cannot distinguish a swarm that has lost the content from a path slower
+	// than the deadlines this client is holding it to.
+	posture := node.DeriveFetchPosture(node.SwarmClientConfig(), swarmClientCeiling())
+	fmt.Fprintf(os.Stderr, "fetch posture: %s\n", posture)
+
 	f, err := os.Create(*out)
 	if err != nil {
 		return err
 	}
 	var getErr error
+	started := time.Now()
 	if rerr := run(func(done func()) {
 		e.nd.NetGet(reg, h, f, func(err error) { getErr = err; done() })
 	}); rerr != nil {
@@ -487,6 +497,11 @@ func swarmGet(args []string) error {
 		os.Remove(*out)
 		return getErr
 	}
+	// What the retrieval actually cost, against the ceiling it was held to. The
+	// pair is the point: an elapsed figure with no bound beside it grades
+	// nothing, and a bound with no measurement beside it is a claim.
+	fmt.Fprintf(os.Stderr, "fetch elapsed: %.3fs of a %.3fs operation ceiling\n",
+		time.Since(started).Seconds(), swarmClientOperationCeiling().Seconds())
 	return f.Close()
 }
 

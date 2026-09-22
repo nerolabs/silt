@@ -1,12 +1,12 @@
 package e2e
 
-// Phase 2 economy path, validated on a REAL daemon over real HTTP (the local
+// economy path, validated on a REAL daemon over real HTTP (the local
 // prerequisite before the billable cloud economy run — build-immutables #6/#7:
 // reproduce locally first). This exercises Slices 1–3 integrated end to end:
-// -economy (Slice 1) arms the bounty payout; -care-published makes the daemon
-// caretake what it publishes; /api/fund (Slice 3) endows the object's durability
+// -economy arms the bounty payout; -care-published makes the daemon
+// caretake what it publishes; /api/fund endows the object's durability
 // reserve from the daemon's own earned balance; and /api/status's durability block
-// (Slice 2) surfaces bountyOn + the per-object reserve. It does NOT test the bounty
+// surfaces bountyOn + the per-object reserve. It does NOT test the bounty
 // PAYOUT (that needs a multi-node reconstruction + a judge quorum — covered in sim
 // by TestRepairBountyPaysHolderWithoutMovingStanding); it validates that the economy
 // config, the endowment path, and the telemetry all come up and agree on a live
@@ -109,7 +109,7 @@ func TestEconomyEndToEndOnLiveDaemon(t *testing.T) {
 	ui := a.waitFor(t, reUI, 20*time.Second)
 	base, token := "http://"+ui[1], ui[2]
 
-	// The economy must report ON (Slice 1's -economy flag → bountyOn), and the daemon
+	// The economy must report ON (the -economy flag → bountyOn), and the daemon
 	// carries its starter credit balance (what it could spend to fund durability).
 	s0 := getStatus(t, base, token)
 	if s0.Durability == nil || !s0.Durability.BountyOn {
@@ -151,7 +151,7 @@ func TestEconomyEndToEndOnLiveDaemon(t *testing.T) {
 		t.Fatal("published+cared object never appeared in the durability telemetry")
 	}
 
-	// Endow the object's reserve from the daemon's own balance (Slice 3), and confirm
+	// Endow the object's reserve from the daemon's own balance, and confirm
 	// the telemetry reflects the funded reserve + the debited balance.
 	balBefore := getStatus(t, base, token).Durability.Balance
 	const endow = 5000

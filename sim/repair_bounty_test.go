@@ -58,7 +58,7 @@ func TestRepairBountyPaysHolderWithoutMovingStanding(t *testing.T) {
 		t.Fatalf("load: %v", err)
 	}
 	distributed := false
-	publisher.Distribute(entry, m, false, node.DerivePorKey(h.LayoutKey()), func(int, error) { distributed = true })
+	publisher.Distribute(entry, m, false, func(int, error) { distributed = true })
 	cl.Sched.Run()
 	if !distributed {
 		t.Fatal("distribution never completed")

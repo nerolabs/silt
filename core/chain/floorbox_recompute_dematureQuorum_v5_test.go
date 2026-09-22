@@ -8,10 +8,10 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Tests for the trustless floor-box RECOMPUTE increment 3 (floorbox_recompute_dematureQuorum_v5.go):
+// Tests for the trustless floor-box RECOMPUTE in floorbox_recompute_dematureQuorum_v5.go:
 // the root-only reproduction of requireDeMatureSuperQuorum (the de-mature super-quorum over the
 // WHOLE bonded map), replicating increments 1/2's C-1 pattern AND gating on the reproduced maturity
-// state (increment 2's recomputeMatureNow).
+// state (recomputeMatureNow).
 //
 // The HARD ABLATIONS (red-before-green), each injected and watched to flip the verdict, so a
 // green here is not decoration:
@@ -30,7 +30,7 @@ import (
 // dematureFixture is an objective v5 chain that has MATURED (everMature latched) but whose live
 // decentralization is BELOW the bar (matureNow == false), so requireDeMatureSuperQuorum binds. It
 // carries the committed StateRoot, a Prover over its v5 leaves, and the seated (whole-bonded)
-// members. The maturity gate is reproduced from the SAME committed state via increment 2's
+// members. The maturity gate is reproduced from the SAME committed state via
 // SeenSetWitness.
 type dematureFixture struct {
 	c       *Chain

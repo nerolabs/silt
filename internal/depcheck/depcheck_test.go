@@ -9,7 +9,7 @@
 // 3. No cmd/ entry point constructs the credit-Gated registry
 // (registry.NewGated): it hard-requires a durable Publisher and has no
 // token path, so it is sim/test-only and must never back a persistent
-// network (#99, M0 privacy). The production registry is the chain.
+// network (M0 privacy). The production registry is the chain.
 //
 // Test files are exempt: tests may use os, math/rand, etc.
 package depcheck
@@ -84,7 +84,7 @@ func TestCoreImportsNoAdaptersAndNoEffects(t *testing.T) {
 // TestGatedRegistryFencedOffFromProduction fails the build if any cmd/ file
 // references registry.NewGated. The credit-Gated registry records a durable
 // Publisher on every entry (no token path), so it is the non-M0, sim/test
-// path and must never be wired into a persistent daemon (#99).
+// path and must never be wired into a persistent daemon.
 func TestGatedRegistryFencedOffFromProduction(t *testing.T) {
 	repoRoot, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
@@ -111,7 +111,7 @@ func TestGatedRegistryFencedOffFromProduction(t *testing.T) {
 			}
 			pkg, ok := sel.X.(*ast.Ident)
 			if ok && pkg.Name == "registry" && sel.Sel.Name == "NewGated" {
-				t.Errorf("%s constructs registry.NewGated — the credit-Gated registry is sim/test-only (records a durable Publisher, no token path); a persistent daemon must use the chain (#99)", rel)
+				t.Errorf("%s constructs registry.NewGated — the credit-Gated registry is sim/test-only (records a durable Publisher, no token path); a persistent daemon must use the chain", rel)
 			}
 			return true
 		})

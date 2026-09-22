@@ -1,6 +1,6 @@
 package e2e
 
-// The LOCAL proof of the full S7 economy loop — the Phase 2 Slice 4 integration
+// The LOCAL proof of the full S7 economy loop — the integration
 // that must be green before the billable ECONOMY=1 cloud run confirms it
 // (build-immutable #7; the cloudtest preflight runs this as RUN_LOCAL_PROOF):
 //

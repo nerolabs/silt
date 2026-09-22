@@ -187,15 +187,28 @@ var rtSFO1Sizes = []struct {
 	framed           int
 	wasConv, wasPriv int
 }{
-	{1, 353, 345, 341},
-	{100, 354, 347, 343},
-	{1024, 355, 349, 345},
-	{65536, 357, 353, 349},
-	{262136, 357, 353, 349},  // the last single-frame object at the 256 KiB default
-	{262137, 425, 421, 383},  // the first two-frame object: the delta used to widen per data chunk
-	{600000, 493, 489, 417},  //
-	{2097152, 902, 898, 621}, // 9 chunks: 277 bytes of separation, before. The pad costs 281.
+	{1, 596, 345, 341},
+	{100, 597, 347, 343},
+	{1024, 598, 349, 345},
+	{65536, 600, 353, 349},
+	{262136, 600, 353, 349},   // the last single-frame object at the 256 KiB default
+	{262137, 702, 421, 383},   // the first two-frame object: the delta used to widen per data chunk
+	{600000, 804, 489, 417},   //
+	{2097152, 1417, 898, 621}, // 9 chunks: 277 bytes of separation, before. The pad costs 281.
 }
+
+// ⚠ `framed` MOVED WHEN THE SPOT-CHECK COMMITMENT LANDED, and the arithmetic is here
+// so a reader can check it rather than take it. Layout gained ShardRoots — one
+// 32-byte root per shard, in the OUTER layer where a caretaker reads it — plus the
+// leaf width they were built at. At L=1 that is 7 shards (1 data + 6 parity) x 34 B
+// for bstr(32), plus an array header, two map keys and a two-byte width: 353 -> 596,
+// a delta of 243. At L=2097152 it is 15 shards: 902 -> 1417, a delta of 515.
+//
+// IT IS NOT THE ORACLE RETURNING, and the two arms below are what say so. The new
+// field's length is a function of the SHARD COUNT alone, which Layout already
+// published by construction — one chunk ID per shard, outside the inner box — so the
+// modes stay equal at every size measured here and across the dense sweep. What
+// changed is a constant both modes pay.
 
 // rtSFO1ModeHidden is the gate predicate. It returns "" while the two modes are
 // INDISTINGUISHABLE by manifest frame length — the property the fix establishes — and a
@@ -213,7 +226,7 @@ func rtSFO1ModeHidden(L, conv, priv int) string {
 			"  bond and no token reads Entry.ManifestChunks off the unauthenticated MsgGetChain\n"+
 			"  (core/node/chainrole.go), fetches that chunk over the unauthenticated MsgFetchChunk\n"+
 			"  (core/node/node.go), and recovers the publisher's own secret/not-secret classification of the\n"+
-			"  root — docs/threat-catalog.md F8.\n"+
+			"  root.\n"+
 			"  IT WAS 345 vs 341 AT FileSize=1 ON 00082b8. That is the state this gate exists to prevent.\n"+
 			"  DO THIS: the close is manifest.secretsPlainLen, which pads secretsPart to a length that is a\n"+
 			"  function of the DATA-SHARD COUNT ALONE. Find what made that length mode-dependent again — a\n"+
@@ -418,7 +431,7 @@ func TestSubFrameRootIsChunkSizeIndependentAcrossTheLegalRange(t *testing.T) {
 				"  This was measured TOTAL at 00082b8 — 3,978 of 4,088 chunk sizes in [9,4096] collapse to one root,\n"+
 				"  and the only salting values are chunkSize <= L+7 (arm (b)).\n"+
 				"  DO THIS: confirm the re-salt is DELIBERATE. Inventing a salt here without a research is the\n"+
-				"  unreviewed novelty B8 forbids, and docs/threat-catalog.md F3's text depends on which reading is\n"+
+				"  unreviewed novelty B8 forbids, and the published privacy statement depends on which reading is\n"+
 				"  true. Route to the research before recording it as a mitigation.",
 				L, cs, got, predicted)
 		}
@@ -467,7 +480,7 @@ func TestSubFrameRootIsChunkSizeIndependentAcrossTheLegalRange(t *testing.T) {
 	if collapsedTotal := legal - saltingTotal; collapsedTotal != 134_217_610 {
 		t.Fatalf("the legal chunk-size range is [%d,%d] (%d values) of which %d salt, so %d collapse — "+
 			"this gate pins 134,217,610 (99.99992%%). If chunk.MinChunkSize or manifest.MaxChunkSize moved, the "+
-			"privacy statement in docs/threat-catalog.md F3 moves with it; update both together.",
+			"published privacy statement moves with it; update both together.",
 			chunk.MinChunkSize, manifest.MaxChunkSize, legal, saltingTotal, collapsedTotal)
 	}
 
@@ -521,7 +534,7 @@ func rtSFO5Pin(wantExact int64, got int64, mode crypto.Mode) string {
 			"    1. Confirm the research CERTIFIED the change. Entry sits at cbor key 3 inside chain.Block and is\n"+
 			"       inside the signing preimage, so this is a FORMAT change and an era question, not a local edit.\n"+
 			"    2. Confirm the project settled. It was an OPEN OWNER CALL when this pin was written.\n"+
-			"    3. Re-read docs/threat-catalog.md F3(a) and docs/math/02-convergent-encryption.md's 'no confirmation\n"+
+			"    3. Re-read the convergent-encryption derivation.md's 'no confirmation\n"+
 			"       surface' clause. BOTH were measured FALSE at 00082b8 BECAUSE of this field. A fix here is the\n"+
 			"       first thing that could make them true, and correcting them without the fix is NOT a mitigation.\n"+
 			"    4. Replace this pin with the positive assertion and state the blinding rule it enforces.",

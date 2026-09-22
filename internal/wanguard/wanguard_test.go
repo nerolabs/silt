@@ -110,8 +110,8 @@ var ledger = map[siteKey]string{
 	// nests below RequestTimeout; the upper layer (core/node requestAttempt)
 	// retries; and the consensus set is never-evicted (persistent-peers).
 	// confirmed the observed EOFs were µs teardowns, not this deadline firing.
-	"adapters/tcpnet/tcpnet.go|dialPeer|net.Dialer.Timeout": "first-contact-modest — direct-peer dial (2s, nested < RequestTimeout); upper-layer requestAttempt retries; consensus set never-evicted; §1-correct, not a flat steady-state constant",
-	"adapters/tcpnet/tcpnet.go|dialPeer|conn.SetDeadline":   "first-contact-modest — relayed-peer TLS handshake (5s); cleared after handshake; upper-layer retries",
+	"adapters/tcpnet/tcpnet.go|dialPeerLane|net.Dialer.Timeout": "first-contact-modest — direct-peer dial (2s, nested < RequestTimeout); upper-layer requestAttempt retries; consensus set never-evicted; §1-correct, not a flat steady-state constant",
+	"adapters/tcpnet/tcpnet.go|dialPeerLane|conn.SetDeadline":   "first-contact-modest — relayed-peer TLS handshake (5s); cleared after handshake; upper-layer retries",
 }
 
 func TestTransportDeadlinesAreLedgered(t *testing.T) {
@@ -155,7 +155,7 @@ func TestTransportDeadlinesAreLedgered(t *testing.T) {
 	}
 	sort.Slice(unregistered, func(i, j int) bool { return unregistered[i] < unregistered[j] })
 	for _, k := range unregistered {
-		t.Errorf("unregistered transport deadline at %s\n  site: %q\n  → route it through the durable-WAN policy (core/node requestAttempt: size-aware + retry + negative-cache), OR add a wanguard ledger entry declaring its shape (payload-scaled / fail-fast / keepalive-idle / server-DoS-bound / first-contact-modest) and why a flat deadline is correct there (docs/network-durability.md, build-immutable #5).", found[k], k)
+		t.Errorf("unregistered transport deadline at %s\n  site: %q\n  → route it through the durable-WAN policy (core/node requestAttempt: size-aware + retry + negative-cache), OR add a wanguard ledger entry declaring its shape (payload-scaled / fail-fast / keepalive-idle / server-DoS-bound / first-contact-modest) and why a flat deadline is correct there (the durable-WAN policy, build-immutable #5).", found[k], k)
 	}
 
 	// Stale: a ledger entry whose site is gone — keep the ledger honest.

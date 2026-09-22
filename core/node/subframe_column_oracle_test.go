@@ -327,7 +327,7 @@ func TestManifestChunksCarryNoProofSoChallengeDisclosesNothing(t *testing.T) {
 	}
 
 	distErr := make(chan error, 1)
-	nodes[0].Distribute(entry, full, false, DerivePorKey(h.LayoutKey()), func(_ int, err error) { distErr <- err })
+	nodes[0].Distribute(entry, full, false, func(_ int, err error) { distErr <- err })
 	sched.Run()
 	select {
 	case err := <-distErr:

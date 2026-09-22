@@ -76,7 +76,7 @@ func newConfirmRig(t *testing.T) *confirmRig {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	nodes[0].Distribute(entry, m, false, DerivePorKey(h.LayoutKey()), func(int, error) {})
+	nodes[0].Distribute(entry, m, false, func(int, error) {})
 	sched.Run()
 
 	care := nodes[1]
@@ -176,7 +176,7 @@ func TestRepairConfirmResetsOnCleanSweep(t *testing.T) {
 	// The blip clears: the holder comes back. A real restarted daemon
 	// re-announces at boot (proof of life clears its corpse entry); the sim
 	// endpoint just revives silently, so recovery here rides the documented
-	// cooldown-expiry re-admission (#69) — advance past HolderCooldown so the
+	// cooldown-expiry re-admission — advance past HolderCooldown so the
 	// walk re-finds the sole holder's records.
 	r.net.Restart(r.victim.ID())
 	lapsed := false

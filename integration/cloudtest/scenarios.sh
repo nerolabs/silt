@@ -38,6 +38,17 @@ set -uo pipefail
 # only non- GAP was a publish missing exactly that stale window, so the
 # re-derivation stays comfortably above 240.)
 # Fetch is ~3 legs (discovery → manifest → parallel chunk fetches) ≈ 102s → 120.
+#
+# FETCH_SLO_S IS DERIVED FROM THE WRONG PROCESS, and is kept only as the coarse
+# liveness window the older flows already grade against. The publish/fetch client
+# is a SEPARATE process from the daemon and takes none of its flags: it holds its
+# own per-attempt deadline, its own retry ladder, and its own whole-operation
+# ceiling. So the `-request-timeout 8s` the leg arithmetic above is built on is
+# the configuration of a process that performs no fetch, and the 34s/leg figure
+# does not describe the client at all. The flow that actually grades a retrieval
+# against its configuration — 21-cross-region-cold-fetch — reads the posture the
+# CLIENT narrates and derives its bound from that. Where a number here and a
+# number there disagree, the client's is the one describing the fetch.
 : "${COMMIT_SLO_S:=90}"
 : "${FETCH_SLO_S:=120}"
 : "${RESTART_SLO_S:=60}"
@@ -628,6 +639,14 @@ flow_restart_survival() {
 # ── Flow 8: per-hash takedown on ONE operator only ──────────────────────────────
 # LOCAL_PROOF: ./integration/takedown/run.sh
 flow_takedown() {
+  # The non-globality claim needs TWO storage operators: one honouring the denylist
+  # and one still serving. A topology with a single store has nothing to compare, so
+  # the flow SKIPS naming the absent node rather than grading. Without this guard the
+  # serve leg ssh'd to a host that was never deployed, read an empty sha, and recorded
+  # "denied=1 served=0 — daemon never narrated denylist enforcement, or store-2 failed
+  # to serve" — a verdict naming a daemon fault on a run where the denial leg had in
+  # fact PASSED and the only missing thing was the second operator.
+  require_nodes "8-takedown" major store-1 store-2 || return
   flow_evidence_nodes store-1 store-2
   # SELF-CONTAINED (2026-08-20 randomization): reuse a prior link if one exists,
   # else publish our own — so this flow is ORDER-INDEPENDENT (it no longer GAPs
@@ -687,6 +706,688 @@ flow_cross_nat() {
   else
     slo_assert "9-cross-nat" major "natted nodes did not exchange a file via the relay — publish landed ($link) but the FETCH leg on nat-2 returned '${got:-<none>}' (want $sha)" 0
   fi
+}
+
+# ── Flow 21: publish and fetch on the internet as it is — the cross-REGION leg ──
+# A NATed publisher in one region and a COLD fetcher in another: the object must
+# arrive bit-perfect, inside a bound DERIVED from the configuration the fetching
+# client is actually running under.
+#
+# It is a different claim from 9-cross-nat, which fetches on nat-2 — the other
+# side of the SAME NAT subnet, in the SAME region. That proves the relay path.
+# This proves the relay path plus a real inter-region wire, from a seat that has
+# never held a byte of the object and has no warm route to the publisher (which
+# is un-dialable, so every byte crosses the relay).
+#
+# WHY THE BOUND IS READ FROM THE CLIENT AND NOT COMPUTED HERE. The publish/fetch
+# client is its own process with its own deadlines; it is NOT the daemon, and it
+# does not take the daemon's flags. This file's FETCH_SLO_S was derived from
+# `-request-timeout 8s` times the daemon's retries — the configuration of a
+# process that performs no fetch. So the client narrates the posture it holds
+# (per-RPC worst case with retries and backoff, holder-dial deadline, sweep
+# schedule, provider count, and the ceiling it enforces on itself) and the bound
+# is built from those numbers. A deployment that widens its deadlines for a worse
+# path widens this bound with them; nothing here is a typed constant.
+#
+# THE BOUND IS THE ALL-TIMEOUT WORST CASE, deliberately: every lookup spending
+# its full retry ladder and every sweep dialing every provider to the deadline.
+# It is generous — a fetch where all of that actually happened would FAIL, having
+# found no provider — so it cannot false-fail a healthy path. What it catches is
+# a retrieval that waited on something its own configuration does not explain.
+#
+# The round-trip, and the posture and elapsed lines this bound is read from, are
+# proven by the e2e publish-commit-fetch test; the NAT leg by the emulated-NAT
+# suite, whose own residue is the real-middlebox cone/symmetric decision.
+# ft_region NODE — the node's region. nodes.json carries the ZONE (us-west1-a),
+# which is the region plus a zone letter, so the region is the zone with its last
+# segment removed — the same derivation topology.py uses to lay out the subnets.
+# Reading a "region" field straight off nodes.json returns nothing: there isn't
+# one, and a flow that compared two empty strings would call every topology
+# single-region and skip itself forever.
+ft_region() { printf '%s' "$(node_field "$1" zone)" | sed 's/-[a-z]$//'; }
+
+# LOCAL_PROOF: go test ./e2e -run TestPublishCommitFetchOverTCP -count=1 && ./integration/nat/run.sh
+flow_cross_region_cold_fetch() {
+  require_nodes "21-cross-region-cold-fetch" blocker nat-1 || return
+  local pubregion; pubregion="$(ft_region nat-1)"
+  if [ -z "$pubregion" ]; then
+    record "21-cross-region-cold-fetch" gap blocker \
+      "could not read the publisher's region off the node map — nothing below can claim to be cross-region"
+    return
+  fi
+
+  # The candidate cold fetchers: every node in a region OTHER than the
+  # publisher's that is a plausible client seat. Chosen from the topology rather
+  # than named, so moving a node between regions cannot silently turn this back
+  # into a same-region fetch — the thing 9-cross-nat already covers.
+  local cands; cands="$(FT_PUB_REGION="$pubregion" python3 -c "
+import json, os, re
+t = json.load(open('$NODES_JSON'))
+pub = os.environ['FT_PUB_REGION']
+def region(v):
+    return re.sub(r'-[a-z]\$', '', v.get('zone', ''))
+# natted/natgw share the publisher's NAT subnet by construction; the island and
+# adversary seats live in a separate consensus universe and are not client seats.
+skip = {'natgw', 'natted', 'island', 'adversary', 'sybil'}
+out = [(region(v), n) for n, v in t.items()
+       if region(v) and region(v) != pub and v.get('role', '') not in skip]
+print(' '.join(n for _, n in sorted(out)))" 2>/dev/null)"
+  if [ -z "$cands" ]; then
+    record "21-cross-region-cold-fetch" skip blocker \
+      "no node outside the publisher's region ($pubregion) — a single-region topology cannot carry the cross-region claim (PIN_ZONE / SMOKE collapses the regions on purpose)"
+    return
+  fi
+  # shellcheck disable=SC2086
+  flow_evidence_nodes nat-1 relay $cands
+  # The publisher and the relay both have to answer before any of this means
+  # anything. An unreachable seat otherwise spends the whole publish window and
+  # then presents as a property failure — a preempted VM wearing a bit-perfect
+  # verdict's clothes.
+  client_preflight "21-cross-region-cold-fetch" blocker nat-1 relay || return
+
+  # Publish from the NATed seat: nat-1 is un-dialable, so the link and every byte
+  # behind it must cross the relay.
+  local res; res="$(ft_publish nat-1 262144 || true)"
+  if [ -z "$res" ]; then
+    publish_verdict "21-cross-region-cold-fetch" blocker \
+      "the PUBLISH leg never landed a link from the NATed seat (nat-1 to relay to validators) — the cross-region fetch was never reached"
+    return
+  fi
+  local link="${res%% *}" sha="${res##* }"
+
+  # HOW COLD THE FETCHER IS IS MEASURED, NOT ASSUMED — and "cold" is the right
+  # amount of strict, which is not "holds nothing". On a swarm of this size with
+  # the shipped replication, every seat holds SOME shard of any object: an
+  # eight-chunk publish scatters twenty-odd placements over a dozen eligible
+  # holders. Demanding a seat that holds none of it selects nothing and the flow
+  # reports itself untestable, which is what the first drive did.
+  #
+  # What the claim needs is a fetcher that cannot assemble the object without
+  # crossing the wire. So the holder set is read off the chain, each out-of-region
+  # candidate is scored by how many of the object's columns it already holds, the
+  # COLDEST is chosen, and a candidate holding every column is disqualified —
+  # that one would measure a local disk read with a cross-region label on it. The
+  # count travels into the verdict, because "cold" is a quantity here and a
+  # verdict that hid it would be claiming more than it measured.
+  local holders; holders="$(ssh_node nat-1 "/usr/local/bin/silt swarm holders '$link' -peers '$PEERS' -registry '$REGREF' 2>/dev/null" || true)"
+  local ncols; ncols="$(printf '%s' "$holders" | grep -cE '^(column [0-9]+|uncoded)' || true)"
+  local fetcher="" fetcher_held=0 c cid held
+  for c in $cands; do
+    cid="$(node_field "$c" nodeid)"
+    [ -z "$cid" ] && continue
+    ssh_node "$c" "test -x /usr/local/bin/silt" || continue
+    held="$(printf '%s' "$holders" | grep -cE "^(column [0-9]+|uncoded).*$cid" || true)"
+    held="${held:-0}"
+    # Holds every column: nothing to cross a region for.
+    [ "${ncols:-0}" -gt 0 ] && [ "$held" -ge "$ncols" ] && continue
+    if [ -z "$fetcher" ] || [ "$held" -lt "$fetcher_held" ]; then
+      fetcher="$c"; fetcher_held="$held"
+    fi
+  done
+  if [ -z "$fetcher" ]; then
+    record "21-cross-region-cold-fetch" gap blocker \
+      "no usable out-of-region fetcher among ($cands): each either holds every one of the object's ${ncols} columns already — a local disk read with a cross-region label on it — or has no client binary; the property is UNTESTED rather than failed"
+    return
+  fi
+  client_preflight "21-cross-region-cold-fetch" blocker "$fetcher" || return
+  local fetchregion; fetchregion="$(ft_region "$fetcher")"
+  echo "    21-cross-region-cold-fetch: NATed publisher nat-1 ($pubregion) -> coldest out-of-region seat $fetcher ($fetchregion), already holding ${fetcher_held} of ${ncols} columns"
+
+  # The fetch. SSH_NODE_TIMEOUT is raised past the client's own operation
+  # ceiling for this call: at the default 90s the harness's transport would be
+  # the real bound and the derived one would never be the thing that graded —
+  # a bound that does not bound what it appears to.
+  local t0 t1 outp
+  t0="$(date +%s)"
+  outp="$(SSH_NODE_TIMEOUT=420 ssh_node "$fetcher" \
+    "/usr/local/bin/silt swarm get '$link' -o /tmp/ft_xr.bin -peers '$PEERS' -registry '$REGREF' 2>&1; sha256sum /tmp/ft_xr.bin 2>/dev/null | cut -d' ' -f1" || true)"
+  t1="$(date +%s)"
+  local wall=$(( t1 - t0 ))
+
+  local got; got="$(printf '%s' "$outp" | grep -oE '^[0-9a-f]{64}$' | tail -1)"
+  local posture; posture="$(printf '%s' "$outp" | grep -m1 'fetch posture: ' || true)"
+  local elapsed; elapsed="$(printf '%s' "$outp" | grep -oE 'fetch elapsed: [0-9.]+s' | grep -oE '[0-9.]+' | head -1)"
+
+  if [ -z "$posture" ]; then
+    record "21-cross-region-cold-fetch" gap blocker \
+      "the client narrated no fetch posture on $fetcher, so there is NO deployed configuration to derive a bound from and the wall-clock ${wall}s grades nothing; client output: $(printf '%s' "$outp" | tr '\n' ';' | head -c 300)"
+    return
+  fi
+
+  # Build the bound out of the numbers the client just reported. Every symbol
+  # below comes from that line; the object's shape (262144 B at the 65536-byte
+  # chunk ft_publish uses) is this harness's own choice and is the only thing
+  # added to it.
+  local bound; bound="$(FT_POSTURE="$posture" python3 -c "
+import math, os, re
+line = os.environ['FT_POSTURE']
+def g(pat):
+    m = re.search(pat, line)
+    return float(m.group(1)) if m else None
+per_rpc  = g(r'per-RPC <= ([0-9.]+)s')
+per_dial = g(r'per-dial ([0-9.]+)s')
+sweeps   = g(r'([0-9]+) sweeps')
+swp_bo   = g(r'sweeps \+ ([0-9.]+)s backoff')
+provs    = g(r'replication ([0-9]+)')
+ceiling  = g(r'operation ceiling ([0-9.]+)s')
+if None in (per_rpc, per_dial, sweeps, swp_bo, provs, ceiling):
+    raise SystemExit(1)
+chunks = math.ceil(262144 / 65536)
+# One provider lookup per chunk, plus the registry-entry and manifest lookups
+# ahead of them; then every sweep of every chunk dialing every provider to the
+# deadline, with the sweep backoff in between.
+lookups = chunks + 2
+bound = lookups * per_rpc + chunks * (sweeps * provs * per_dial + swp_bo)
+print('%d %d %d' % (round(bound), round(ceiling), chunks))" 2>/dev/null || true)"
+  if [ -z "$bound" ]; then
+    record "21-cross-region-cold-fetch" gap blocker \
+      "the fetch posture did not parse into a bound — the line's shape changed and this flow would otherwise grade against nothing: $posture"
+    return
+  fi
+  # shellcheck disable=SC2086
+  set -- $bound
+  local derived="$1" ceiling="$2" chunks="$3"
+  # The measurement is the client's own elapsed where it reported one (it times
+  # the retrieval, not the ssh round trip); the wall-clock is the fallback and
+  # is strictly larger, so falling back can only be conservative.
+  local measured="${elapsed%%.*}"; measured="${measured:-$wall}"
+  echo "    21-cross-region-cold-fetch: derived bound ${derived}s over ${chunks} chunks (client ceiling ${ceiling}s); measured ${measured}s (ssh wall ${wall}s)"
+
+  if [ -z "$sha" ] || [ "$got" != "$sha" ]; then
+    slo_assert "21-cross-region-cold-fetch" blocker \
+      "the cold cross-region fetch was NOT bit-perfect: $fetcher ($fetchregion) returned '${got:-<none>}' for an object published from the NATed seat nat-1 ($pubregion), want $sha — derived bound ${derived}s, measured ${measured}s" 0 "$wall"
+    return
+  fi
+  if [ "$measured" -gt "$derived" ] 2>/dev/null; then
+    slo_assert "21-cross-region-cold-fetch" blocker \
+      "bit-perfect from $fetcher ($fetchregion) but in ${measured}s, PAST the ${derived}s its own configuration accounts for (${chunks} chunks; client ceiling ${ceiling}s): the retrieval waited on something the deployed deadlines do not explain — read the client's fetch posture and the relay's journal before attributing" 0 "$wall"
+    return
+  fi
+  slo_assert "21-cross-region-cold-fetch" blocker \
+    "BIT-PERFECT across regions from a cold seat: NATed publisher nat-1 ($pubregion) -> $fetcher ($fetchregion), which held ${fetcher_held} of the object's ${ncols} columns and pulled the rest over the relay, in ${measured}s against the ${derived}s its deployed configuration derives (${chunks} chunks, ceiling ${ceiling}s)" 1 "$wall"
+}
+
+# ── Field impairment: tc netem on the silt traffic, and nothing else ───────────
+# Build-immutable #5 names four everyday conditions — jitter, latency, packet
+# loss and reordering — and the consensus drills are certified under all four on
+# an impaired loopback every night. What that cannot answer is whether the chain
+# keeps COMMITTING across a real inter-region wire while they are applied, under
+# a publish stream, on the deployed binaries. That is this flow.
+#
+# THE SHAPING IS DELIBERATELY NARROW. netem on the root qdisc would degrade the
+# IAP control channel this harness polls over, and a lost verdict would then be
+# indistinguishable from a lost block. So the interface gets a `prio` root and
+# the impairment is attached to one band, with u32 filters steering only traffic
+# destined for the swarm's own subnets into it. Control traffic keeps the clean
+# bands. We impair the product, not our ability to watch it.
+#
+# `reorder` REQUIRES a delay — tc refuses it outright otherwise — so the default
+# profile carries all four conditions in one shape and cannot be reduced to a
+# subset by accident.
+: "${IMPAIR_NETEM:=delay 80ms 20ms distribution normal loss 1% reorder 25% 50%}"
+: "${IMPAIR_HEIGHTS:=3}"
+
+# ft_impair_dev NODE — the interface the node's default route leaves by.
+#
+# EVERY `ip` AND `tc` CALL IN THIS SECTION GOES THROUGH sudo, READBACKS INCLUDED.
+# On the deployed image these live in /sbin and /usr/sbin, which are not on the
+# login user's PATH — so an unprivileged readback returns "tc: command not found"
+# rather than a count. That is not a cosmetic difference: it made ft_impair_on
+# report FAILURE for shaping it had just successfully applied, which left the
+# node shaped and out of the unwind list, and every flow after it on the sheet
+# was then graded over an impaired wire while the flow said it had never touched
+# anything. Measured on a real VM 2026-09-18.
+ft_impair_dev() { ssh_node "$1" "sudo ip route show default 2>/dev/null | awk '{for(i=1;i<=NF;i++) if(\$i==\"dev\") {print \$(i+1); exit}}'"; }
+
+# ft_impair_cidrs — the swarm's own subnets, derived from the addresses the run
+# actually deployed rather than from a written-down list: every node's /24, NAT
+# subnet included. A node that moves regions moves its subnet with it, so the
+# shaping cannot drift away from where the traffic is.
+ft_impair_cidrs() {
+  python3 -c "
+import json
+t = json.load(open('$FT_TOPO'))
+nets = {'.'.join(v['ip'].split('.')[:3]) + '.0/24'
+        for v in t['nodes'].values() if v.get('ip')}
+print(' '.join(sorted(nets)))" 2>/dev/null
+}
+
+# ft_impair_on NODE — apply the profile to this node's swarm-bound egress.
+# Returns 0 only if the netem qdisc is present afterwards: an impairment that
+# could not be applied must never be reported as one that was.
+ft_impair_on() {
+  local n="$1" dev cidrs cmd
+  dev="$(ft_impair_dev "$n")"; [ -z "$dev" ] && return 1
+  cidrs="$(ft_impair_cidrs)"; [ -z "$cidrs" ] && return 1
+  # One line: it crosses `gcloud compute ssh --command`, where an embedded
+  # newline is one more thing to get wrong for no benefit. priomap sends every
+  # ToS class to band 0 so NOTHING lands in the impaired band by default — only
+  # the u32 filters below put traffic there.
+  cmd="sudo tc qdisc del dev $dev root 2>/dev/null; sudo tc qdisc add dev $dev root handle 1: prio bands 4 priomap 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 && sudo tc qdisc add dev $dev parent 1:4 handle 40: netem ${IMPAIR_NETEM}"
+  local c
+  for c in $cidrs; do
+    cmd="$cmd && sudo tc filter add dev $dev protocol ip parent 1: prio 1 u32 match ip dst $c flowid 1:4"
+  done
+  # Read the answer back into a variable rather than piping it into a test. This
+  # file runs under `set -o pipefail`, and the remote `grep -c` exits NON-ZERO
+  # when its count is zero — so a pipeline here takes its status from the count
+  # rather than from the comparison, and reports the opposite of what it found.
+  local n_netem; n_netem="$(ssh_node "$n" "$cmd >/dev/null 2>&1; sudo tc qdisc show dev $dev | grep -c netem || true")"
+  if [ "${n_netem:-0}" -ge 1 ] 2>/dev/null; then return 0; fi
+  # A partial application must not be left behind. Whatever went wrong, this node
+  # may already be carrying a root qdisc, and a node that is shaped but absent
+  # from the caller's unwind list is the worst of both worlds.
+  ssh_node "$n" "sudo tc qdisc del dev $dev root >/dev/null 2>&1; true" >/dev/null 2>&1
+  return 1
+}
+
+# ft_impair_off NODE — remove it, and report whether the interface came back
+# clean. A leftover qdisc would silently impair every later flow on this sheet.
+#
+#   0 = clean.  1 = STILL SHAPED.  2 = the seat is GONE, and nothing it once
+#   carried can shape anything.
+#
+# THE THIRD CASE IS NOT PEDANTRY, it is the one that bit. These fleets run on SPOT
+# instances with instanceTerminationAction=DELETE, so a preemption does not leave a
+# sick node — it removes the machine. ssh then fails, the count comes back empty,
+# and a two-state function reads "not zero" as "still shaped". The flow reported
+# that every later verdict on the sheet was running on a shaped wire and told the
+# reader to clear it by hand with `tc qdisc del` — on an instance that no longer
+# exists, which is a remedy nobody can carry out, for a hazard that is not there.
+# A vanished seat impairs nothing.
+#
+# Same shape, same reason as ft_impair_on: the count comes back in a variable,
+# never through a pipeline whose status pipefail would take from the count. It bit
+# here first and it bit loudly — the flow reported "the impairment did NOT come
+# off" about four interfaces that were already clean, which is a verdict naming the
+# wrong cause and would have buried the result it was guarding. This is the same
+# family of defect one layer out.
+ft_impair_off() {
+  local n="$1" dev
+  dev="$(ft_impair_dev "$n")"
+  # No device means ssh could not answer at all. Distinguish a seat that is GONE
+  # from one that is merely mute: a deleted instance is the expected end of a spot
+  # seat and carries no wire, while an unreachable-but-live one might still be
+  # shaped and must stay a blocker.
+  if [ -z "$dev" ]; then
+    ft_node_exists "$n" && return 1
+    return 2
+  fi
+  local n_netem; n_netem="$(ssh_node "$n" "sudo tc qdisc del dev $dev root >/dev/null 2>&1; sudo tc qdisc show dev $dev | grep -c netem || true")"
+  if [ -z "$n_netem" ]; then
+    ft_node_exists "$n" && return 1
+    return 2
+  fi
+  [ "${n_netem:-1}" -eq 0 ] 2>/dev/null
+}
+
+# ft_node_exists NODE — does this seat's instance still exist in the project?
+# Asked of the cloud rather than of the node, because the question is precisely
+# whether the node is there to answer. Local-backend runs answer from docker.
+ft_node_exists() {
+  local n="$1" inst zone
+  inst="$(node_field "$n" instance_name)"
+  [ -z "$inst" ] && return 1
+  if [ "$FT_BACKEND" = local ]; then
+    docker inspect "$inst" >/dev/null 2>&1
+    return
+  fi
+  zone="$(node_field "$n" zone)"
+  gcloud compute instances describe "$inst" --zone "$zone" --project "$PROJECT_ID" \
+    --format="value(name)" >/dev/null 2>&1
+}
+
+# ft_impair_counters NODE — netem's own packet/drop/reorder counters, which are
+# the evidence that swarm traffic actually crossed the impaired band rather than
+# the clean ones. Prints "sent dropped reordered" or nothing.
+ft_impair_counters() {
+  local n="$1" dev
+  dev="$(ft_impair_dev "$n")"; [ -z "$dev" ] && return 1
+  # `tc -s qdisc show` lists every qdisc on the interface, each followed by its
+  # own Sent line. Take the FIRST netem block and stop: reading past it would
+  # report the root prio's totals, which include the clean bands and would credit
+  # an impairment that steered nothing.
+  ssh_node "$n" "sudo tc -s qdisc show dev $dev 2>/dev/null" | awk '
+    /qdisc netem/ { innetem = 1; next }
+    innetem && /^ *Sent / {
+      sent = $2; d = 0
+      for (i = 1; i <= NF; i++) if ($i == "(dropped") { d = $(i+1); gsub(/,/, "", d) }
+      printf "%s %s\n", sent, d
+      exit
+    }'
+}
+
+# ft_lane_counters NODE — the control lane's own four numbers, counted out of the
+# node's debug.log. Structured transport lines go to that file and never to
+# journald, so this is where the lane narrates itself.
+#
+#   established   a lane came up to a peer (the mechanism is live at all)
+#   failed        a lane dial or a lane write failed (each one fell back to the
+#                 shared conn, so this is a cost and not a loss)
+#   last-resort   a frame rode the lane because no other path existed — rare is
+#                 correct, routine means the lane is carrying bulk again
+#   ctrl-dropped  a small frame was refused by the outbound budget, which is the
+#                 blinding shape the reserve exists to prevent; must be zero
+#
+# Prints "established failed last-resort ctrl-dropped", or nothing if the file
+# cannot be read.
+ft_lane_counters() {
+  ssh_node "$1" "sudo awk '/control lane established/{e++} /control lane dial failed/{f++} /control lane write failed/{f++} /for want of any other path/{l++} /outbound CONTROL frame dropped/{c++} END{printf \"%d %d %d %d\\n\", e+0, f+0, l+0, c+0}' /var/lib/silt/debug.log 2>/dev/null"
+}
+
+# ft_relay_counters NODE — the digest relay's coverage, counted off the node's own
+# gather lines in debug.log (validators run -log debug).
+#
+# A gather leg is one proposal or one prepare-QC to one attester. It either crosses by
+# DIGEST at about a kilobyte or CARRIES the space-time proofs at ~1,574,000 B each, and
+# a link that cannot move the carried form inside the per-attempt deadline cannot commit
+# the height at all — so this ratio is the quantity the adverse-network liveness claim
+# rests on. Three runs read it by hand off frame sizes; the line now states it.
+#
+#   shed            the leg crossed by digest
+#   own-unacked     it carried, and nothing evidenced that the peer holds THIS node's
+#                   own registration. On a wire that delivers this is zero; where it is
+#                   not, the peer has no bytes, because the submit that would deliver
+#                   them has not completed on the same link
+#   peer-unreported it carried, and the peer had not reported holding a THIRD party's
+#                   registration — the holder inventory arriving after the proposal
+#
+# Legs with nothing to shed (a block carrying no registration) are in NONE of the three,
+# so the denominator is the legs where shedding was possible at all.
+#
+# Prints "shed own-unacked peer-unreported", or nothing if the file cannot be read.
+ft_relay_counters() {
+  ssh_node "$1" "sudo awk '/carry-reason=none/{s++} /carry-reason=own-reg-unacked/{o++} /carry-reason=peer-unreported/{p++} END{printf \"%d %d %d\\n\", s+0, o+0, p+0}' /var/lib/silt/debug.log 2>/dev/null"
+}
+
+# ft_counter_delta BASELINE FINAL — a counter row's movement across a window, field by
+# field. A count read after the fact mixes the window being graded with every minute of
+# the run before it, and the warm-up minutes run on an UNSHAPED wire; the difference is
+# the only form of the number that belongs to the drive. Missing or mismatched readings
+# give an empty result rather than zeros, because "not read" and "did not happen" are
+# different findings and a zero would report the first as the second.
+ft_counter_delta() {
+  python3 -c "
+import sys
+b = sys.argv[1].split(); f = sys.argv[2].split()
+if not b or len(b) != len(f):
+    print('')
+else:
+    print(' '.join(str(int(x) - int(y)) for x, y in zip(f, b)))" "$1" "$2" 2>/dev/null
+}
+
+# ft_lane_delta is the control lane's four counters through that same arithmetic.
+ft_lane_delta() {
+  local d; d="$(ft_counter_delta "$1" "$2")"
+  [ "$(printf '%s' "$d" | wc -w)" -eq 4 ] || return 0
+  printf '%s\n' "$d"
+}
+
+# ── Flow 21b: the chain keeps committing under injected impairment ─────────────
+# Sustained publish load across a fleet whose swarm traffic is carrying latency,
+# jitter, loss and reordering at once, graded on the SAME computed per-height
+# escape bound the unimpaired soak uses. The bound does not move for the
+# impairment on purpose: the synchronizer's round schedule is what it is, and a
+# claim that the chain survives the adverse internet is a claim it survives it
+# inside the timing the design already commits to.
+#
+# NOTHING HERE CAN PASS VACUOUSLY. Two controls, both driven in the same run:
+#   - the impairment must be PRESENT — the netem qdisc is read back on every
+#     seat after it is applied, and a seat that would not take it aborts the
+#     flow rather than contributing a clean number to an impaired verdict;
+#   - the impairment must have BITTEN — netem's own counters must show swarm
+#     packets crossing the impaired band, so a shaping rule that steered no
+#     traffic (a wrong CIDR, a renamed interface) reports UNCREDITED and fails
+#     instead of grading a clean network with an adverse label on it.
+#
+# The same four conditions run over real daemons and real TCP, deterministically
+# and off-cloud, in the netem suite — ONE CONDITION PER ARM there, which is
+# exactly why the composition this flow drives has to be driven here.
+# LOCAL_PROOF: SUITE=all ./integration/adversarial/run.sh
+flow_impaired_commit() {
+  [ "${IMPAIR:-1}" = 1 ] || { record "21-impaired-commit" skip blocker "opt-out (IMPAIR=0)"; return; }
+  require_nodes "21-impaired-commit" blocker val-a val-b || return
+  local vals; vals="$(python3 -c "import json;print(' '.join(n for n,v in json.load(open('$NODES_JSON')).items() if v['role']=='validator'))")"
+  # A validator the substrate took away is not a shaping failure. Without this
+  # the flow reaches a preempted seat, cannot read an interface off it, and
+  # reports "tc/netem unavailable, or the interface or subnet map did not match"
+  # about a machine that no longer exists — a refusal naming the wrong cause,
+  # and one that would send the next reader to the wrong place. Seen on a SPOT
+  # instance 2026-09-18.
+  # shellcheck disable=SC2086
+  require_live "21-impaired-commit" blocker $vals || return
+  # shellcheck disable=SC2086
+  flow_evidence_nodes $vals
+  : "${H_ESCAPE_S:=220}"
+
+  # BASELINE THE LANE BEFORE THE WIRE IS SHAPED. This flow's verdict is the only
+  # place the control lane is graded under the conditions it was built for, and a
+  # PASS used to leave no trace of HOW it passed: evidence is captured on a
+  # non-green verdict, the fleet is destroyed at the end of the sheet, and the
+  # per-seat numbers went with it. The counts belong to the drive, so they are
+  # read at both ends of it and reported as the difference.
+  local lane_base="" lane_v rly_base="" rly_v
+  for v in $vals; do
+    lane_v="$(ft_lane_counters "$v" || true)"
+    lane_base="$lane_base ${v}=$(printf '%s' "${lane_v:-unread}" | tr ' ' ',')"
+    # THE RELAY'S COVERAGE IS BASELINED FOR THE SAME REASON THE LANE IS. Every one
+    # of these is an EVENT, so a count read after the fact mixes the graded window
+    # with every minute of warm-up before it — and the warm-up commits heights on an
+    # unshaped wire, which is exactly the regime that sheds best. Reading the total
+    # would credit the impaired drive with the clean one's coverage.
+    rly_v="$(ft_relay_counters "$v" || true)"
+    rly_base="$rly_base ${v}=$(printf '%s' "${rly_v:-unread}" | tr ' ' ',')"
+  done
+
+  # Apply, and read back. A seat that will not take the shaping is not silently
+  # left clean: the applied set is unwound and the flow reports what happened.
+  local applied="" v
+  for v in $vals; do
+    if ft_impair_on "$v"; then applied="$applied $v"; else
+      # ft_impair_on already removed anything it partially applied on $v; unwind
+      # the seats that DID take it, so the sheet after this flow runs clean.
+      local u; for u in $applied; do ft_impair_off "$u" >/dev/null 2>&1 || true; done
+      record "21-impaired-commit" gap blocker \
+        "could not apply the impairment on $v (tc/netem unavailable, or the interface or subnet map did not match) — the chain was NOT driven under impairment, so this is UNTESTED; a run that continued here would have graded a clean network as an adverse one"
+      return
+    fi
+  done
+  echo "    21-impaired-commit: [$IMPAIR_NETEM] applied to swarm-bound egress on${applied}"
+
+  local h0 last_h last_t t0 now h gap maxgap=0 pubs=0 pub_ok=0 lastout="" wedged=0
+  imp_height() { ssh_node "$1" "/usr/local/bin/silt chain-status -store /var/lib/silt 2>&1" \
+    | grep -oE 'head height:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | tail -1; }
+  imp_ceiling() {
+    local c=0 x hh
+    for x in $vals; do hh="$(imp_height "$x")"; hh="${hh:-0}"; [ "$hh" -gt "$c" ] 2>/dev/null && c="$hh"; done
+    printf '%s' "$c"
+  }
+  h0="$(imp_ceiling)"; h0="${h0:-0}"; t0="$(date +%s)"; last_h="$h0"; last_t="$t0"
+  # THE WALL IS PRICED OFF THE BOUND THIS FLOW GRADES AGAINST, not off a clean
+  # network's block time. Asking for N heights inside N x 64s while accepting up
+  # to H_ESCAPE_S per height lets the flow fail for running out of WINDOW while
+  # every height it saw was inside its bound — a window masquerading as a
+  # property. Measured here: under the default profile the chain kept committing
+  # and took minutes per height, so a 192s wall reported ZERO heights for a
+  # reason that was the wall's.
+  #
+  # And it must also hold ONE WHOLE PUBLISH. The verdict below reports how many
+  # of the stream's publishes landed, and that count means nothing if the window
+  # closed while the first one was still inside its own budget — the publish
+  # client waits on its entry COMMITTING and gives up only at its own ceiling.
+  # IMPAIR_PUBLISH_S is that ceiling plus room to report; it is the floor on the
+  # wall, never a second bound the flow grades against.
+  : "${IMPAIR_PUBLISH_S:=600}"
+  local wall=$(( IMPAIR_HEIGHTS * H_ESCAPE_S ))
+  [ "$wall" -lt "$IMPAIR_PUBLISH_S" ] && wall="$IMPAIR_PUBLISH_S"
+  echo "    21-impaired-commit: driving ${IMPAIR_HEIGHTS} heights from h${h0} under load (wall ${wall}s; per-height escape bound ${H_ESCAPE_S}s)…"
+  while :; do
+    now="$(date +%s)"
+    [ $(( now - t0 )) -ge "$wall" ] && break
+    # SSH_NODE_TIMEOUT is raised past the client's own operation ceiling. At the
+    # 90s default every impaired publish is killed by the harness's transport
+    # before the client can finish or give up, and pub_ok then counts zero for a
+    # reason that belongs to this script rather than to the product. Measured:
+    # a publish under the default profile scattered all its shards in ~10s and
+    # then waited on its registry entry COMMITTING, which is chain-cadence-bound.
+    # The client is the thing that decides to give up; this transport must only
+    # outlast it, so it rides the same IMPAIR_PUBLISH_S the wall is floored at.
+    lastout="$(SSH_NODE_TIMEOUT=$IMPAIR_PUBLISH_S ssh_node val-a "head -c 8192 </dev/urandom >/tmp/ft_imp.bin; /usr/local/bin/silt swarm add /tmp/ft_imp.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 65536 2>&1 || true")"
+    pubs=$(( pubs + 1 ))
+    printf '%s' "$lastout" | grep -qE 'silt:v1:' && pub_ok=$(( pub_ok + 1 ))
+    h="$(imp_ceiling)"; h="${h:-$last_h}"
+    now="$(date +%s)"
+    if [ "$h" -gt "$last_h" ] 2>/dev/null; then
+      gap=$(( now - last_t )); [ "$gap" -gt "$maxgap" ] && maxgap="$gap"
+      last_h="$h"; last_t="$now"
+      [ $(( h - h0 )) -ge "$IMPAIR_HEIGHTS" ] && break
+    elif [ $(( now - last_t )) -gt $(( H_ESCAPE_S * 2 )) ]; then
+      wedged=1; break
+    fi
+    sleep 8
+  done
+  local final_gap=$(( $(date +%s) - last_t ))
+  [ "$final_gap" -gt "$maxgap" ] && [ "$wedged" = 1 ] && maxgap="$final_gap"
+  local heights=$(( last_h - h0 ))
+
+  # WHAT THE LANE DID ACROSS THE WINDOW, read before unwinding and reported
+  # whichever way the verdict goes. Four numbers per seat, each with a reading:
+  # a lane that never came up did not carry the drive; a lane failure fell back
+  # to the shared conn and cost latency rather than a message; a last-resort
+  # delivery that is routine means the lane is carrying bulk again, which is the
+  # head-of-line blocking it exists to remove; and a dropped CONTROL frame is
+  # the node going blind to a peer, which must not happen at all.
+  # The baseline lookup and the counter read both go through a variable and both
+  # carry `|| true`. This file runs under `set -e -o pipefail`, where a grep that
+  # matches nothing and a seat that will not answer are ordinary outcomes that
+  # would otherwise abort the flow BEFORE it reports the drive it just finished —
+  # losing the verdict to the instrumentation added to explain it.
+  local lane="" lane_now lane_was lane_d
+  for v in $applied; do
+    lane_now="$(ft_lane_counters "$v" || true)"
+    lane_was="$(printf '%s' "$lane_base" | tr ' ' '\n' | grep "^${v}=" | cut -d= -f2 | tr ',' ' ' || true)"
+    lane_d="$(ft_lane_delta "$lane_was" "$lane_now" || true)"
+    if [ -z "$lane_d" ]; then
+      lane="$lane ${v}:UNREAD"
+    else
+      local le lf ll lc ne
+      read -r le lf ll lc <<< "$lane_d"
+      # ESTABLISHED CARRIES ITS RUNNING TOTAL AS WELL AS ITS DELTA, and the other
+      # three do not, because they are different kinds of number. A lane failure, a
+      # last-resort delivery and a dropped control frame are EVENTS: one that
+      # happened before the drive says nothing about the drive. A lane being
+      # ESTABLISHED is a STATE — a lane that came up while the fleet was warming is
+      # still the lane the drive rode — so a bare delta of zero reads identically
+      # for "live throughout" and "never came up", which are opposite readings of
+      # the same pass. Reported as delta(total).
+      ne="$(printf '%s' "$lane_now" | cut -d' ' -f1)"
+      lane="$lane ${v}:lane+${le}(${ne:-?})/fail+${lf}/lastresort+${ll}/ctrldrop+${lc}"
+    fi
+  done
+
+  # AND WHAT THE RELAY COVERED ACROSS THE SAME WINDOW. One line for the fleet, because
+  # coverage is a property of the drive and not of a seat: the legs are spread across
+  # whichever validators proposed. The attribution travels with it — a carried leg for
+  # want of evidence about a THIRD PARTY's registration is the holder inventory arriving
+  # late, which more evidence closes; one for want of evidence about the proposer's OWN
+  # is the ~1.5 MB submit not having completed on this link, which no evidence can.
+  local rly_shed=0 rly_own=0 rly_peer=0 rly_unread="" rly=""
+  for v in $applied; do
+    local rly_now rly_was rly_d
+    rly_now="$(ft_relay_counters "$v" || true)"
+    rly_was="$(printf '%s' "$rly_base" | tr ' ' '\n' | grep "^${v}=" | cut -d= -f2 | tr ',' ' ' || true)"
+    rly_d="$(ft_counter_delta "$rly_was" "$rly_now" || true)"
+    if [ -z "$rly_d" ]; then
+      rly_unread="$rly_unread $v"
+    else
+      local rs ro rp
+      read -r rs ro rp <<< "$rly_d"
+      rly_shed=$(( rly_shed + rs )); rly_own=$(( rly_own + ro )); rly_peer=$(( rly_peer + rp ))
+    fi
+  done
+  local rly_carried=$(( rly_own + rly_peer )) rly_legs=$(( rly_shed + rly_own + rly_peer ))
+  if [ "$rly_legs" -gt 0 ]; then
+    rly=" digest relay over the window: ${rly_shed}/${rly_legs} legs shed ($(( 100 * rly_shed / rly_legs ))%), ${rly_carried} carried ~1,574,000 B each (own-reg unevidenced ${rly_own}, peer-reg unevidenced ${rly_peer})"
+  else
+    # NOT THE SAME AS 100%, and saying so is the point. No registration-bearing leg ran
+    # in this window, so there was nothing to shed and nothing to carry — a coverage
+    # figure printed here would be a ratio with no denominator.
+    rly=" digest relay over the window: NO registration-bearing gather leg ran, so there is no coverage to read"
+  fi
+  [ -n "$rly_unread" ] && rly="$rly; counters UNREAD on${rly_unread}"
+
+  # DID THE IMPAIRMENT BITE? Read netem's own counters before unwinding, on
+  # every seat that took the shaping.
+  local bit=0 seats=0 cred=""
+  for v in $applied; do
+    seats=$(( seats + 1 ))
+    local ctr sent drops
+    ctr="$(ft_impair_counters "$v" || true)"
+    sent="${ctr%% *}"; drops="${ctr##* }"
+    if [ -n "$sent" ] && [ "$sent" -gt 0 ] 2>/dev/null; then
+      bit=$(( bit + 1 )); cred="$cred ${v}:${sent}B/${drops}drop"
+    fi
+  done
+
+  # Unwind, always, and say so if a seat did not come back clean — a leftover
+  # qdisc would quietly impair every flow after this one.
+  local dirty="" vanished=""
+  for v in $applied; do
+    ft_impair_off "$v"
+    case $? in
+      0) ;;
+      2) vanished="$vanished $v" ;;
+      *) dirty="$dirty $v" ;;
+    esac
+  done
+  if [ -n "$dirty" ]; then
+    record "21-impaired-commit" fail blocker \
+      "the impairment did NOT come off$dirty — every later flow on this sheet is running on a shaped wire and its verdict cannot be trusted; clear it by hand (sudo tc qdisc del dev <dev> root) before reading anything below"
+    return
+  fi
+  if [ -n "$vanished" ]; then
+    # A seat that no longer exists carries no wire, so nothing later on the sheet is
+    # shaped by it. What IS lost is this flow's own reading: the impaired-commit
+    # grade needs the seats it shaped, and one of them left mid-drive. Say which,
+    # and say that the cost is a missing measurement rather than a tainted sheet.
+    echo "    21-impaired-commit: seat(s)${vanished} no longer exist (spot preemption deletes the instance) — nothing they carried can still shape the sheet"
+    record "21-impaired-commit" gap "" \
+      "a shaped seat was PREEMPTED mid-drive (${vanished# }) and the instance was deleted with it, so this flow has no impaired-commit reading to grade. The rest of the sheet is UNAFFECTED: a deleted instance shapes nothing. Re-drive this flow alone, or run the impaired grade on non-spot seats if it keeps losing the race."
+    return
+  fi
+  echo "    21-impaired-commit: impairment removed from${applied}, interfaces clean"
+
+  if [ "$bit" -eq 0 ]; then
+    record "21-impaired-commit" fail blocker \
+      "NOT CREDITED: the chain advanced ${heights} height(s) but netem's counters show NO swarm packet crossing the impaired band on any seat — the shaping steered nothing (wrong subnet map or interface), so this measured a CLEAN network and must not be read as an adverse-internet result"
+    return
+  fi
+  if [ "$wedged" = 1 ] || [ "$maxgap" -gt "$H_ESCAPE_S" ]; then
+    record "21-impaired-commit" fail blocker \
+      "the chain STOPPED committing under [$IMPAIR_NETEM]: a height went ${maxgap}s without a commit, past the computed ${H_ESCAPE_S}s escape bound, with the network live (h${h0}->h${last_h}, ${pub_ok}/${pubs} publishes landed, impairment credited on ${bit} seat(s)); control lane over the window:${lane};${rly}; last client output: $(printf '%s' "$lastout" | tail -1 | head -c 200)"
+    return
+  fi
+  if [ "$heights" -lt 1 ]; then
+    # WHICH HALF STOPPED. The chain advances on proposals, and on this topology a
+    # proposal is what a publish produces, so "no height" and "no publish" are
+    # different findings and the second explains the first. Separating them here
+    # is what keeps the verdict from attributing a publish-path failure to
+    # consensus — the mistake this sheet has already paid for more than once.
+    if [ "$pub_ok" -eq 0 ]; then
+      record "21-impaired-commit" fail blocker \
+        "under [$IMPAIR_NETEM] ZERO of ${pubs} publishes landed and the chain committed NOTHING in ${wall}s (h${h0}, impairment credited on ${bit} seat(s); control lane over the window:${lane}) — the PUBLISH path is what stopped, so read this as a client/publish finding and not yet as a consensus one; last client output: $(printf '%s' "$lastout" | tail -1 | head -c 200)"
+    else
+      record "21-impaired-commit" fail blocker \
+        "under [$IMPAIR_NETEM] ${pub_ok} of ${pubs} publishes LANDED but the chain committed NOTHING in ${wall}s (h${h0}, impairment credited on ${bit} seat(s); control lane over the window:${lane};${rly}) — proposals were produced and no height followed, which is a consensus finding the escape bound cannot excuse"
+    fi
+    return
+  fi
+  # The verdict names the PROFILE, not the four conditions. IMPAIR_NETEM is a
+  # variable — the arms that reduce a finding drive one condition at a time, and
+  # a line that asserted all four over a single-condition profile would be
+  # claiming more than the run drove.
+  slo_assert "21-impaired-commit" blocker \
+    "the chain KEPT COMMITTING under the injected profile [$IMPAIR_NETEM]: ${heights} height(s) h${h0}->h${last_h} under continuous publish (${pub_ok}/${pubs} landed), max inter-commit gap ${maxgap}s within the computed ${H_ESCAPE_S}s escape bound, impairment credited by netem's own counters on ${bit} of ${seats} seat(s) —${cred}; control lane over the window:${lane};${rly}" 1 "$(( $(date +%s) - t0 ))"
 }
 
 # ── adversarial: equivocation → slash ────────
@@ -753,10 +1454,46 @@ flow_equivocation_island() {
   # 3) An HONEST island anchor slashes the double-sign on the reconcile path — the
   #  accountability property on the wire. Assert the product's own slash line (#7).
   local slashline; slashline="$(waitfor "$honest" "chain: slashed equivocator ${byzid}" 120 || true)"
-  if [ -n "$slashline" ]; then
-    slo_assert "184-equivocation-island" blocker "accountability FIRED on the wire: a contained island anchor double-signed and an honest anchor SLASHED it (${slashline##*chain: }) — proven equivocation → permanent eviction (F2), zero blast radius to the main sheet (separate consensus universe)" 1
-  else
+  if [ -z "$slashline" ]; then
     record "184-equivocation-island" fail blocker "the equivocator double-signed but NO honest island anchor slashed it within 120s — the accountability detection did not fire; attribute from the island journals (reconcile/FindEquivocations path) before re-running (#7)"
+    return
+  fi
+
+  # 4) THE REPLICATED HALF (item 9's distinctive clause). The line above is what ONE
+  #  node DECIDED; this is what the HISTORY committed. They are different claims and
+  #  the gap between them is where an eviction that never lands would hide: a local
+  #  ledger evicting alone is not F2, which is the whole point of queuing the proof
+  #  for on-chain recording.
+  #
+  #  THE ISLAND IS THE RIGHT PLACE AND integration/redteam IS NOT. The drain that
+  #  carries a queued proof is gated on Objective() in its first line, and redteam's
+  #  equivocation seats run -objective=false, so there the proof can never ride
+  #  whatever the product does. The island is -objective with four anchors, so a
+  #  proposal can actually carry it.
+  #
+  #  The wait is bounded and its failure is SEPARATED from the detection above, so a
+  #  committed-set miss can never be read as "the slash did not fire".
+  local isl_slash="" i
+  for i in $(seq 1 24); do
+    isl_slash="$(ssh_node "$honest" "/usr/local/bin/silt chain-status -store /var/lib/silt 2>&1" \
+      | grep -oE 'slashed-id:[[:space:]]+[0-9a-f]{64}' | grep -oE '[0-9a-f]{64}' | sort -u)"
+    printf '%s' "$isl_slash" | grep -q "$byzid" && break
+    sleep 5
+  done
+  local isl_head; isl_head="$(ssh_node "$honest" "/usr/local/bin/silt chain-status -store /var/lib/silt 2>&1" \
+    | grep -oE 'head height:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | tail -1)"
+  local isl_extra; isl_extra="$(printf '%s' "$isl_slash" | grep -v "^${byzid}$" | tr '\n' ' ')"
+
+  if [ -n "$isl_extra" ]; then
+    # Unconditionally wrong whatever else is true: only PROVEN equivocation may slash.
+    record "184-equivocation-island" fail blocker \
+      "an identity OTHER THAN the equivocator is in the island's COMMITTED slash set — $isl_extra. A committed slash evicts that identity on every replica (F2), so no honest node may ever appear here (item 9)"
+  elif printf '%s' "$isl_slash" | grep -q "$byzid"; then
+    slo_assert "184-equivocation-island" blocker \
+      "accountability FIRED AND COMMITTED: an island anchor double-signed, an honest anchor slashed it (${slashline##*chain: }), and the HISTORY carries the eviction at head ${isl_head} with NOBODY else in the committed slash set — F2 on every replica, not one local ledger, zero blast radius to the main sheet" 1
+  else
+    record "184-equivocation-island" fail blocker \
+      "the slash FIRED but the island's committed slash set is still empty at head ${isl_head} after 120s — the local ledger evicted the equivocator and the history did not, so replicas do NOT evict in lockstep (F2). If the head is not advancing, the chain is quiescent and the queued proof is not arming a proposal (core/node maybeProposeBondDrain must count pendingSlashes); if it IS advancing, blocks are being proposed and the proof is not riding them"
   fi
 }
 
@@ -2566,6 +3303,7 @@ run_all_scenarios() {
   local mid=(
     flow_become_validator flow_publish_fetch flow_care_link flow_convergence
     flow_fault_tolerance flow_restart_survival flow_takedown flow_cross_nat
+    flow_cross_region_cold_fetch
     adv_equivocation flow_equivocation_island adv_partition adv_proposal_reject
     flow_publisher_unlinkability flow_durability_turnover flow_chaos_crash
     flow_web_ui_guard flow_c2_no_capture flow_economy_repair flow_delivery_lane
@@ -2588,6 +3326,11 @@ run_all_scenarios() {
 
   # DESTRUCTIVE / one-way LAST — never randomized (they permanently stop validators;
   # a shuffled position would strand the flows after them on a broken quorum).
+  # Pinned OUT of the shuffle: this one shapes the wire every other flow rides
+  # on. It unwinds what it applied and verifies the interfaces came back clean,
+  # but a position inside a randomized order would put every later flow's verdict
+  # downstream of that teardown succeeding.
+  run_flow flow_impaired_commit           # the chain commits under injected latency/jitter/loss/reordering (IMPAIR=0 opts out)
   run_flow flow_soak_publish_drain        # opt-in (SOAK=1, MATURING=0): launch publish/drain soak
   run_flow flow_maturing_handoff          # opt-in (MATURING=1 SYBILS=8): handoff/shed drills. LAST: stops validators.
   run_flow flow_deep_heights              # opt-in (DEEP=1): Phase 3 exit gate — drive to h≥DEEP_TARGET with the prune field-exercised. After the drills (continues the matured chain; self-heals stopped validators or GAPs).

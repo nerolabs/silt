@@ -47,7 +47,7 @@ import (
 // (b) RegVersion in-block cross-check gap. apply's rotate tally reads the JUST-WRITTEN
 // regVersion of an in-block bond (chain.go); the box anchored regVersion against PRE-state
 // only (absent for a fresh in-block bond → RegVersionKnown=false → excluded → false-stall).
-// FIXED by DIRECTION B (regVerWrites → anchorRotateMember in-block cross-check). Driven by
+// FIXED (regVerWrites → anchorRotateMember in-block cross-check). Driven by
 // TestScheduleOracle_OpenBreak_B_InBlockRegVersionTallyDivergence — now asserts AGREE-on-honest
 // + STALL-on-suppressed.
 //
@@ -227,11 +227,11 @@ func boundaryWitnessFor(t *testing.T, c *Chain, prover *statehash.Prover, b Bloc
 			BondRegScreens: w.BondRegScreens,
 			BondRegBuckets: w.BondRegBuckets,
 		}
-		_, bWrites, err := c.bondRegOps(prover.Root(), b, tmp)
+		idSets, err := c.composeIDSetTransition(prover.Root(), b, tmp, false)
 		if err != nil {
-			t.Fatalf("bondRegOps (witness build): %v", err)
+			t.Fatalf("composeIDSetTransition (witness build): %v", err)
 		}
-		for _, wr := range bWrites {
+		for _, wr := range idSets.netWrites() {
 			w.ChangedLeaves = append(w.ChangedLeaves, leafWit(wr.key))
 		}
 	}
@@ -247,7 +247,7 @@ func boundaryWitnessFor(t *testing.T, c *Chain, prover *statehash.Prover, b Bloc
 			t.Fatalf("Prove(epochSet %x): %v", id[:], err)
 		}
 		// An in-block bonded member carries its POST-write regVersion (from the applied clone) — the
-		// DIRECTION B cross-check input; a steady-state member's post == pre so the RegVersionProof
+		// in-block cross-check input; a steady-state member's post == pre so the RegVersionProof
 		// still resolves.
 		rv, ok := clone.regVersion[id]
 		rw.Members = append(rw.Members, StateRootRotateMember{

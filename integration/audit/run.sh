@@ -3,8 +3,8 @@
 # daemons in REAL containers.
 #
 # The `silt sim run audit` claim (in-process): a storage node that KEEPS its
-# storage proof but DELETES the data is CAUGHT by a verify-without-fetch PoR
-# challenge, loses standing, and durability survives.
+# storage proof but DELETES the data is CAUGHT by a PoR challenge it cannot
+# answer, loses standing, and durability survives.
 #
 # This harness drives the REAL daemon over TCP and gates the LITERAL claim — the
 # gap this test used to only assert-around is now CLOSED (wired -liar +
@@ -13,14 +13,17 @@
 #  1. Publish an erasure-coded file (-replication 2) so shards scatter across
 #  four honest holders (1,2,3,5) plus one PoR liar (holder4, -liar).
 #  2. A caretaker (-care <careLink> -audit 15s, -log info) runs both its repair
-#  loop AND the verify-without-fetch PoR audit sweep.
+#  loop AND the PoR audit sweep.
 #  3. POSITIVE CONTROL: before any damage, the caretaker reports NO repair and
 #  the file is retrievable from the intact swarm.
 #  4. GATED: the -audit sweep CHALLENGES every shard's holders and grades
-#  their proofs against the key derived from the care link — NO ground-truth
-#  fetch. The honest holders PASS; the liar (which advertises + answers but
-#  proves over data it dropped) FAILS and is slashed. Assert passed≥1 AND
-#  FAILED≥1 — the "caught without fetch + standing slash" claim, over the wire.
+#  their answers against the per-shard root the object COMMITS in its sealed
+#  layout — the auditor never fetches ground truth to decide. The answer does
+#  carry a sample of the shard's own bytes, which is what the hash-only spot
+#  check replaced the aggregate scheme with; "no ground-truth fetch" is the
+#  property, not "no bytes on the wire". The honest holders PASS; the liar
+#  (which advertises but holds nothing to open) FAILS and is slashed. Assert
+#  passed≥1 AND FAILED≥1 — the catch + standing slash, over the wire.
 #  5. THE ATTACK / OUTCOME: on top of the liar, `rm` an honest holder's shard
 #  files while it keeps running. Gated on the OUTCOME (immutable: test the
 #  outcome, not the mechanism) — the file must stay bit-perfect retrievable.
@@ -129,7 +132,7 @@ dc exec -T holder1 sh -c "silt swarm get '$LINK' -o /tmp/pre.bin -peers '$PEERS'
 PRE=$(grep -oE '^[a-f0-9]{64}' /tmp/audit_pre.txt | tail -1)
 [ "$PRE" = "$WANT" ] && echo "  intact file retrievable: yes (bit-perfect)" || { echo "FAIL: intact file not retrievable"; cat /tmp/audit_pre.txt; pass=0; }
 
-echo "== PoR AUDIT: the caretaker's -audit sweep verifies proofs WITHOUT fetching =="
+echo "== PoR AUDIT: the caretaker's -audit sweep grades answers against the COMMITTED shard root =="
 # holder4 is a -liar: it advertises as a provider and answers MsgChallenge, but
 # proves over data it dropped, so the auditor's verify (no ground-truth fetch)
 # REJECTS it and slashes it — while the honest holders PASS. This is the literal
@@ -143,14 +146,14 @@ for _ in $(seq 1 40); do
 done
 auditlog | tail -3 | sed 's/^/    /'
 if [ "${apassed:-0}" -ge 1 ]; then
-  echo "  honest holders PASSED the verify-without-fetch challenge (max passed=$apassed) ✅"
+  echo "  honest holders PASSED the spot-check challenge (max passed=$apassed) ✅"
 else
   echo "FAIL: no honest holder ever passed an audit challenge (auditor never got a valid proof)"; pass=0
 fi
 if [ "${afailed:-0}" -ge 1 ]; then
   echo "  the -liar was CAUGHT without fetching its bytes and slashed (max FAILED=$afailed) ✅"
 else
-  echo "FAIL: the -liar was never caught by the audit sweep — verify-without-fetch not reachable"; pass=0
+  echo "FAIL: the -liar was never caught by the audit sweep — the PoR audit path is not reachable"; pass=0
 fi
 
 echo "== the attack: on TOP of the liar, rm an honest holder's shard files (it KEEPS running) =="
@@ -200,7 +203,7 @@ echo "== regression gate: the PoR-audit / liar path IS wire-reachable =="
 help=$(docker run --rm --entrypoint silt silt-audit daemon -h 2>&1 || true)
 if echo "$help" | grep -qE '^\s*-liar\b' && echo "$help" | grep -qE '^\s*-audit\b'; then
   echo "  confirmed: -liar and -audit both exist on 'silt daemon' — Node.Audit is"
-  echo "  driven over the real wire, and the verify-without-fetch catch + slash is"
+  echo "  driven over the real wire, and the audit catch + slash is"
   echo "  asserted above (not just the detect-via-probe + repair half)."
 else
   echo "FAIL: -liar and/or -audit flag missing — the PoR-audit assertions above could"
@@ -209,7 +212,7 @@ fi
 
 echo
 if [ "$pass" = 1 ]; then
-  echo "RESULT: PASS ✅  the -audit sweep caught the -liar WITHOUT fetching its bytes and"
+  echo "RESULT: PASS ✅  the -audit sweep caught the -liar without fetching ground truth and"
   echo "        slashed it (honest holders passed); then an honest holder's bytes were"
   echo "        deleted on top of the liar and the file still survived bit-perfect"
   echo "        (durability outcome), with the caretaker's repair activity observed."

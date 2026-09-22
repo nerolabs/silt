@@ -117,20 +117,25 @@ func TestTheParamsCarryingGenesisHashIsPinned(t *testing.T) {
 	//	 moves and Entry.ManifestChunks with it. BOTH literals
 	//	 move here, and the paramless one moving is the tell that
 	//	 this is an ENTRY change and not a params change.
+	//	af49c742…95c8 -> f23be065…d95b, 2026-09-19: Layout gained the retrievability
+	//	 scheme's per-shard commitment (ShardRoots + the leaf
+	//	 width), so the manifesto's manifest chunk ID moves again.
+	//	 BOTH literals move, the same tell as the padding move:
+	//	 an ENTRY change, not a params change.
 	//
 	// WHY IT IS PAID ONCE PER MOVE. Block.Hash covers Params and (*Chain).ChainID is
 	// blocks[0].Hash, so every field added here — and every byte of every Entry — re-mints
 	// every genesis and re-runs the graded set. Era 4 is open, no live network exists, and the
-	// freeze is at the RC, so this is a second deliberate re-seed rather than a break.
+	// freeze is at the RC, so these are deliberate re-seeds rather than breaks.
 	//
-	// WHAT NEITHER MOVE TOUCHES: the freeze read-set. No SMT tag was added or renamed,
+	// WHAT NONE OF THE MOVES TOUCHES: the freeze read-set. No SMT tag was added or renamed,
 	// StateView.Params is class 3 ("never witnessed, never a parameter"), and no Block keyasint was
-	// added — key 18 is INSIDE ConsensusParams, and the padding is inside a sealed blob that no
-	// block field describes. A genesis-hash change and a block-format change have different prices;
-	// both of these are the first kind.
+	// added — key 18 is INSIDE ConsensusParams, and both the padding and the shard-root
+	// commitment are inside a sealed blob that no block field describes. A genesis-hash change
+	// and a block-format change have different prices; all three of these are the first kind.
 	const (
-		wantParamless  = "fdfb676c0476b8d798e5fb0f15ebe39447b2ba00707d47f814dc205ba92ceb58"
-		wantWithParams = "af49c742d07e36c2e4f3180b699357259e135efe91907d7533c32c35d89395c8"
+		wantParamless  = "eddda80fce507066118c951775e01e614acd809de045fddde06281e7c37191ff"
+		wantWithParams = "f23be065e5bfba5cbf3fc820c7b916b330d859d01e7c7cd33fbe93ba9531d95b"
 	)
 	p := representativeParams()
 	withParams, _, _, err := genesis.Build(memstore.New(), &p)

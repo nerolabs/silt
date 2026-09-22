@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Read-cost bounding for a public registry (#48 — keep registries cheap to run). A
+// Read-cost bounding for a public registry (keep registries cheap to run). A
 // registry is a costless public good only if a single caller can't drive unbounded
 // lookup cost; without a bound, a flood of lookups is a free way to make a volunteer's
 // registry expensive. (The one truly unbounded endpoint, the whole-registry `GET /all`

@@ -23,11 +23,12 @@ import (
 // theirs to agree on — which is why each exclusion below carries its OWN reason and not a shared
 // one.
 var paramsExcluded = map[string]string{
-	"Archive":                "retention policy — whether THIS node keeps full bodies. An operator's storage choice by design (build-immutable #8); it reaches no validity verdict.",
-	"WSCheckpoint":           "narrowing-only, and sharing it would DESTROY weak subjectivity. The pin is the operator's OWN trust anchor and silt is weakly subjective by design (TENETS Part 0); a network-wide value would make every node trust the same anchor, which is the opposite of the property.",
-	"MinProposerRep":         "binding it would be INEFFECTIVE, not merely unnecessary: the INPUT is the local reputation view, so two nodes sharing a threshold still diverge. The real fix for that leg is objective mode, which replaces the reputation gate with committed bond.",
-	"MinAttesterRep":         "same as MinProposerRep — the threshold is not the divergent term, the local view is.",
-	"LivenessRecoveryHeight": "STRUCTURALLY UNBINDABLE. It is set AFTER launch, on a chain that by construction cannot commit it — the recovery re-bases one boundary against the LIVE qualified set precisely because the chain is stalled. Rule 8's second arm cannot reach it.",
+	"ArchiveProofHeavyWindow": "retention policy — how many recent blocks an archival node keeps heavy bond possession proofs for. An operator's storage choice; a shed proof leaves the block's hash and its committed state root intact, so it reaches no validity verdict.",
+	"Archive":                 "retention policy — whether THIS node keeps full bodies. An operator's storage choice by design (build-immutable #8); it reaches no validity verdict.",
+	"WSCheckpoint":            "narrowing-only, and sharing it would DESTROY weak subjectivity. The pin is the operator's OWN trust anchor and silt is weakly subjective by design (TENETS Part 0); a network-wide value would make every node trust the same anchor, which is the opposite of the property.",
+	"MinProposerRep":          "binding it would be INEFFECTIVE, not merely unnecessary: the INPUT is the local reputation view, so two nodes sharing a threshold still diverge. The real fix for that leg is objective mode, which replaces the reputation gate with committed bond.",
+	"MinAttesterRep":          "same as MinProposerRep — the threshold is not the divergent term, the local view is.",
+	"LivenessRecoveryHeight":  "STRUCTURALLY UNBINDABLE. It is set AFTER launch, on a chain that by construction cannot commit it — the recovery re-bases one boundary against the LIVE qualified set precisely because the chain is stalled. Rule 8's second arm cannot reach it.",
 }
 
 func TestConsensusParamsMembershipIsComplete(t *testing.T) {

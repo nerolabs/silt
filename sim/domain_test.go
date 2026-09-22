@@ -7,7 +7,6 @@ import (
 	"github.com/nerolabs/silt/core/crypto"
 	"github.com/nerolabs/silt/core/erasure"
 	"github.com/nerolabs/silt/core/manifest"
-	"github.com/nerolabs/silt/core/node"
 	"github.com/nerolabs/silt/core/pipeline"
 	"github.com/nerolabs/silt/ports"
 )
@@ -110,7 +109,7 @@ func TestDispersionAuditRespreadsConcentratedStripe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.Distribute(entry, m, false, node.DerivePorKey(h.LayoutKey()), func(int, error) {})
+	a.Distribute(entry, m, false, func(int, error) {})
 	cl.Sched.Run()
 
 	before := cl.worstDomainExclusive(m, domOf)
@@ -165,7 +164,7 @@ func TestFailureDomainPlacementSpreadsColumns(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		a.Distribute(entry, m, false, node.DerivePorKey(h.LayoutKey()), func(int, error) {})
+		a.Distribute(entry, m, false, func(int, error) {})
 		cl.Sched.Run()
 		return m
 	}

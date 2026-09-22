@@ -1,6 +1,6 @@
 package node
 
-// Phase 1.2 — the MsgSubmitBondReg CPU gate (the shape, one message kind over).
+// The MsgSubmitBondReg CPU gate (the shape, one message kind over).
 // The submit path had NO per-sender bound: every well-formed, self-signed reg
 // forces up to one VerifySpaceTime (~ms of single-loop CPU, measured in
 // core/bond/verifycost_bench_test.go), so one authenticated identity holding a

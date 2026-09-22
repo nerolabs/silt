@@ -46,7 +46,7 @@ func TestPorAuditsGrantNoStandingWithoutBondOverTheWire(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	publisher.Distribute(entry, m, false, node.DerivePorKey(h.LayoutKey()), func(int, error) {})
+	publisher.Distribute(entry, m, false, func(int, error) {})
 	cl.Sched.Run()
 	for _, id := range entry.ManifestChunks {
 		auditor.FetchChunk(id, func(error) {})

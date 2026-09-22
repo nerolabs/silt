@@ -91,11 +91,39 @@ STATE_TFVARS="terraform/topology.auto.tfvars.json"
 need() { command -v "$1" >/dev/null 2>&1 || { echo "missing prerequisite: $1"; exit 1; }; }
 check_prereqs() { need terraform; need gcloud; need go; need python3; need curl; }
 
+# ── provenance stamps ────────────────────────────────────────────────────────
+# A report must name the inputs that PRODUCED it, and gen_report.sh used to read
+# both from live HEAD at report time. A run takes about an hour, so any commit
+# landing inside that window relabelled the evidence: run d531fbf-90914 built its
+# fleet binary at d531fbf and its report header says a0ff08a, with the run id the
+# only field telling the truth. The stamps below are written at the moment each
+# input is CONSUMED, which is the only moment either is a fact.
+#
+# The harness stamp carries a CONTENT digest as well as a sha, because the two
+# answer different questions. The sha says which commit the drive logic came
+# from; the digest says whether scenarios.sh or lib.sh changed while the sheet
+# was being graded. That second one is not hypothetical — it happened on
+# d531fbf-90914, where scenarios.sh was edited six minutes before the first flow
+# recorded a verdict, and nothing in the run or the report said so.
+stamp_silt_sha() {
+  git -C "$REPO_ROOT" rev-parse --short HEAD > "$FT_DIR/.run-silt-sha" 2>/dev/null || true
+}
+
+harness_digest() { # content of every file that decides a verdict
+  cat "$FT_DIR/scenarios.sh" "$FT_DIR/lib.sh" 2>/dev/null | shasum -a 256 | cut -c1-16
+}
+
+stamp_harness() {
+  git -C "$FT_DIR" log -1 --format=%h -- . > "$FT_DIR/.run-harness-sha" 2>/dev/null || true
+  harness_digest > "$FT_DIR/.run-harness-digest"
+}
+
 build_binary() {
   echo "==> building silt (linux/amd64) @ $RUN_ID"
   ( cd "$REPO_ROOT" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
       go build -trimpath -ldflags '-s -w' -o "$FT_DIR/silt-linux-amd64" ./cmd/silt )
   ( cd "$REPO_ROOT" && go build -o "$FT_DIR/.silt-local" ./cmd/silt )   # for topology id-gen
+  stamp_silt_sha
 }
 
 gen_topology() {
@@ -188,7 +216,28 @@ apply() {
   # runs (841fa1b, 6218ba1) were lost to exactly this: 7 SPOT VMs preempted, wait_ready
   # timed out, ZERO scenarios graded. e2-small on-demand is ~cents/hr for the fleet.
   # SMOKE stays all-SPOT (cheap shakedown); explicit ALL_ON_DEMAND=false opts back in.
-  echo "==> provisioning model: $([ "${ALL_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && echo false || echo true)}" = true ] && echo 'ALL on-demand (STANDARD) — preemption-safe cert run' || echo 'SPOT for non-core (cheap; may be preempted — NOT for a graded cert)')"
+  #
+  # WITH ONE EXCEPTION, AND IT COST A READING. 21-impaired-commit shapes every
+  # validator seat and then holds it for the whole drive — 660 s at the shipped
+  # heights and escape bound. A seat somebody else can reclaim inside that window is
+  # a lost measurement, not a slow one: these fleets run instanceTerminationAction=
+  # DELETE, so a preemption removes the machine and the flow has nothing to grade.
+  # Run 5ad8344-49291 lost exactly that: a SMOKE sheet, both validators on SPOT, one
+  # of them preempted mid-drive, and the one flow the run existed to read returned
+  # no reading at all. So the CORE (validator + registry) goes on-demand whenever the
+  # impaired grade will be driven, even under SMOKE — the cheap shakedown stays cheap
+  # only when it is also opting out of the flow that needs the seats to survive.
+  # CORE_ON_DEMAND / ALL_ON_DEMAND set explicitly still win.
+  local core_od all_od
+  all_od="${ALL_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && echo false || echo true)}"
+  core_od="${CORE_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && [ "${IMPAIR:-1}" != 1 ] && echo false || echo true)}"
+  if [ "$all_od" = true ]; then
+    echo "==> provisioning model: ALL on-demand (STANDARD) — preemption-safe cert run"
+  elif [ "$core_od" = true ]; then
+    echo "==> provisioning model: CORE on-demand (validator+registry STANDARD — the seats 21-impaired-commit shapes survive the drive); SPOT elsewhere"
+  else
+    echo "==> provisioning model: SPOT for non-core (cheap; may be preempted — NOT for a graded cert)"
+  fi
   echo "==> terraform apply (run=$RUN_ID)"
   # Persist the run id so `nuke`/`down` from a FRESH shell target the right label.
   # RUN_ID embeds $$ (pid) by default, so a later `./cloudtest.sh nuke` in a new
@@ -212,8 +261,8 @@ apply() {
     -var "silt_binary_path=$FT_DIR/silt-linux-amd64" \
     -var "budget_amount_usd=${BUDGET_AMOUNT_USD:-0}" \
     -var "billing_account=${BILLING_ACCOUNT:-}" \
-    -var "core_on_demand=${CORE_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && echo false || echo true)}" \
-    -var "all_on_demand=${ALL_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && echo false || echo true)}"
+    -var "core_on_demand=$core_od" \
+    -var "all_on_demand=$all_od"
   tf output -json nodes > "${NODES_JSON:-$FT_DIR/nodes.json}"
   # Terraform's node output carries instance_name/zone/ips/role but NOT the silt
   # NodeID — yet scenarios.sh reads node_field <n> nodeid (the drills derive
@@ -305,6 +354,11 @@ run_scenarios() {
   . ./lib.sh
   # shellcheck disable=SC1091
   . ./scenarios.sh
+  # Stamp AFTER sourcing and before the first flow: this is the content that will
+  # grade the sheet. A re-drive (`FLOWS=… ./cloudtest.sh run`) re-stamps, which is
+  # correct — that pass is graded by whatever is on disk now, and the report should
+  # say which harness produced the rows it is printing.
+  stamp_harness
   # Persist the console (#7): ft_publish diagnostics and per-flow narration used to
   # die with the terminal, leaving a FAIL verdict with no trail after teardown. The
   # tee'd copy lands next to the run's report. (The pipeline subshell is fine: flows
@@ -411,6 +465,7 @@ build_binary_local() {
   ( cd "$REPO_ROOT" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
       go build -trimpath -ldflags '-s -w' -o "$FT_DIR/silt-linux-local" ./cmd/silt )
   ( cd "$REPO_ROOT" && go build -o "$FT_DIR/.silt-local" ./cmd/silt )   # for topology id-gen
+  stamp_silt_sha
 }
 
 # provision_local — the terraform-apply analogue: one container per topology node
@@ -446,7 +501,11 @@ PY
     argv="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['nodes']['$name']['argv'])")"
     argv="${argv#daemon }"; argv="daemon $argv"
     docker rm -f "$inst" >/dev/null 2>&1 || true
+    # NET_ADMIN so `tc` can shape this container's egress: the impairment flow
+    # applies netem to the swarm subnets, and without the capability it would
+    # report "could not apply" here and stay unrehearsed until the cloud.
     docker run -d --name "$inst" --network "$net" --ip "$ip" \
+      --cap-add NET_ADMIN \
       --label "cloudtest-local=$RUN_ID" \
       "$LOCAL_IMG" >/dev/null
     # COPY (never bind-mount) the binary + shims: a host-side edit of a bind-mounted

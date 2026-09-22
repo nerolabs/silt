@@ -1,14 +1,14 @@
 // Package client holds fetcher-side helpers that compose the node with real transport
 // for privacy operations a long-lived daemon does not perform directly.
 //
-// D3 issuance-mixing — slice 1, the ephemeral-identity withdrawal. The token
+// D3 issuance-mixing — the ephemeral-identity withdrawal. The token
 // issuer authenticates whoever dials it via the end-to-end TLS handshake, so a demand
 // withdrawal made over a fetcher's durable identity LINKS that withdrawal to the
 // fetcher — the blind signature hides only the token serial, not the network identity.
 // This severs that link: the withdrawal is made over a FRESH EPHEMERAL identity (a
 // throwaway keypair) and paid with a PREPAID BLIND CREDIT rather than a durable account,
 // so the issuer authenticates only an unlinkable ephemeral key and charges no account it
-// can tie to the fetcher. Relay-routing (the IP link, slice 2) and epoch-batching
+// can tie to the fetcher. Relay-routing (the IP link) and epoch-batching
 // (timing, deferred to the H8 mixnet) are the further D3 hardening.
 package client
 
@@ -47,10 +47,10 @@ import (
 //
 // issuerAddr severs one or two links depending on its form (D3):
 // - a DIRECT "host:port" hides the fetcher's IDENTITY (the issuer authenticates only
-// The ephemeral key but the issuer still sees the fetcher's IP (slice 1);
+// The ephemeral key but the issuer still sees the fetcher's IP;
 // - a RELAY-form "relay:R@host:port" (the issuer's advertised relay address) ALSO
 // hides the fetcher's IP: the ephemeral transport dials the issuer THROUGH the relay,
-// so the issuer's inbound connection is from the relay, not the fetcher (slice 2).
+// so the issuer's inbound connection is from the relay, not the fetcher.
 // The end-to-end TLS still authenticates the ephemeral key across the relay pipe.
 //
 // Timing-correlation (epoch-batching) is the remaining D3 hardening, deferred to the H8
@@ -74,7 +74,7 @@ func WithdrawDemandTokenPrivately(rng io.Reader, issuerID ports.NodeID, issuerAd
 	defer tr.Close()
 
 	nd := node.New(ephID, node.DefaultConfig(), walltime.New(loop), tr, memstore.New())
-	nd.SetEphemeral(true) // a short-lived client: peers must not route to it (#43)
+	nd.SetEphemeral(true) // a short-lived client: peers must not route to it
 	tr.AddPeer(issuerID, issuerAddr)
 
 	type result struct {

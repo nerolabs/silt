@@ -124,14 +124,14 @@ func Economy(seed int64, o EconomyOpts) (EconomyResult, error) {
 			if err != nil {
 				return res, err
 			}
-			nd.Distribute(entry, m, false, node.DerivePorKey(h.LayoutKey()), func(int, error) {})
+			nd.Distribute(entry, m, false, func(int, error) {})
 			cl.Sched.Run()
 		}
 	}
 	say(fmt.Sprintf("phase seed-pub | %d/%d publishes ok | grants spent, all balances at 0 | Gini %.2f",
 		res.SeedPublishOK, o.Nodes, ledger.Gini()))
 
-	// Phase 2: traffic. Every node retrieves every content file (except
+	// Traffic: Every node retrieves every content file (except
 	// its own publisher); freeloaders do extra rounds. Retrieved chunks
 	// are discarded afterward — consumers consume, they don't become
 	// mirrors — so repeat fetches keep paying the hosts.
@@ -187,7 +187,7 @@ func Economy(seed int64, o EconomyOpts) (EconomyResult, error) {
 	say(fmt.Sprintf("phase traffic  | %d retrievals | credits now flow to hosts | Gini %.2f | top balance %d",
 		gets, res.Gini, res.TopBalance))
 
-	// Phase 3: the gate. Everyone attempts a second publish.
+	// The gate: Everyone attempts a second publish.
 	for i, nd := range cl.Nodes {
 		data := []byte(fmt.Sprintf("second file from %s", nd.ID()))
 		_, err := pipeline.Add(bgCtx, nd.Store(), reg, bytes.NewReader(data),

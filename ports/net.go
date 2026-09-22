@@ -127,7 +127,7 @@ const (
 	MsgHasChunk              // ChunkID: cheap availability probe (repair loop)
 	MsgHasChunkReply         // Found
 	MsgChallenge             // ChunkID + PorSeed/PorCount: prove you hold this shard of Proof.Root
-	MsgChallengeReply        // Found + Proof + PoR proof (PorMu/PorSigma/PorBlocks)
+	MsgChallengeReply        // Found + Proof + the opened leaves (PorOpen/PorPaths/PorBlocks)
 	MsgProposeBlock          // Data: CBOR block awaiting attestation
 	MsgAttestReply           // OK + Data: CBOR attestation (or OK=false refusal)
 	MsgCommitBlock           // Data: CBOR block with quorum attached
@@ -143,7 +143,7 @@ const (
 	MsgGetIssuerKey          // ask a validator for its publish-token issuer public key
 	MsgIssuerKeyReply        // Data: the issuer public key (blindtoken.MarshalPub); OK=false if none
 	MsgSubmitBondReg         // Data: a fresh CBOR BondReg a validator submits for a proposer to include (H2 non-proposer renewal)
-	MsgSubmitBondRegAck      // OK: the renewal was received (queued if valid for the current head)
+	MsgSubmitBondRegAck      // OK: the renewal is HELD (queued) — false on any refusal, so the OK bit is a receipt for bytes the sender may relay by digest, never merely for a message that arrived
 	MsgRepairClaim           // Data: a CBOR repairproof.RepairClaim — "I placed a correct rebuilt shard on Holder; verify and pay the bounty" (H7)
 	MsgRepairVote            // OK: the caretaker independently verified correctness+retrievability and settled the verdict on its own ledger (H7)
 	MsgDeliveryReceipt       // RETIRED: the v2 flat receipt. Kind number kept; a server answers OK=false with the named retirement (core/node handleDeliveryReceipt). Deliveries are sessions: MsgDeliveryOpen/Fund/Settle below
@@ -151,7 +151,7 @@ const (
 	MsgGetCanonicalIssuers   // ask a chain-holder for the deterministic canonical issuer set (top-k by committed bond) — publisher privacy (R-3)
 	MsgCanonicalIssuersReply // Data: concatenated 32-byte NodeIDs, heaviest-bond first; OK=false if no chain
 	MsgGetChainHead          // cheap chain-sync head probe: "what is your head?" — no payload
-	MsgChainHeadReply        // Height: head height; Data: 32-byte head hash (so a matching head skips the full-chain fetch)
+	MsgChainHeadReply        // Height: head height; Data: 32-byte head hash (so a matching head skips the full-chain fetch); HeldRegs: the answer-digests of the bond registrations the REPLIER holds, so a proposer may relay those proofs to it by digest
 	MsgPrepareQC             // Data: CBOR prepareQCEnv: "here is the prepare-QC for (h, r) — precommit"
 	MsgPrecommitReply        // OK + Data: CBOR precommit attestation (or OK=false refusal)
 	MsgRoundChange           // Data: CBOR roundChangeEnv: signed "advance (h, r→r')" carrying the sender's lock
@@ -192,6 +192,13 @@ const (
 	// block field, never a transition or fork-choice input (I5).
 	MsgRoundCert    // Data: CBOR roundCertEnv {Height, Round, Raws}: the signed round-change envelopes for exactly Round
 	MsgRoundCertAck // OK: the certificate verified and was recorded; OK=false: wrong height or below quorum
+	// APPENDED, never inserted: the WITNESS seam — how a box that holds no tree asks a node
+	// that does for the committed leaves, whole-set member lists, ancestor window and
+	// transparency-log extension proofs it needs to validate a block. Serving is NOT a trusted
+	// role: every answer is checked by the asker against a root it already holds, so a lying
+	// server produces a stall and never an acceptance (core/chain WitnessProvider).
+	MsgGetWitness   // Data: CBOR witnessReq — one accessor call (leaf, members, ancestors or log extension) against a named head
+	MsgWitnessReply // Data: CBOR witnessResp — the answer, or OK=false when this node has no witness to serve
 )
 
 // StorageProof is a Merkle inclusion proof shipped alongside a chunk:
@@ -210,14 +217,18 @@ type StorageProof struct {
 	// together. -1 means "no column" (manifest chunks and uncoded
 	// files), keyed by chunk id.
 	Column int
-	// PorTags are the per-block proof-of-retrievability authenticators for
-	// this shard (core/por), computed by the publisher under a key derived
-	// from the file's layout key. They travel with the chunk at store time
-	// and are kept by the host (like the Merkle Path) so it can later PROVE
-	// possession without the auditor fetching the bytes. One 32-byte tag per
-	// por-block; len(PorTags) is the shard's block count. Nil for chunks
-	// shipped without PoR (e.g. manifest chunks, which audits don't sample).
-	PorTags [][]byte
+	// LeafBytes is the width of one leaf of this shard's spot-check tree, as
+	// the publisher committed it in the object's sealed layout. A host is
+	// told the geometry rather than assuming a build constant, so a prover
+	// answers about the tree its shard was actually committed under and a
+	// retuned geometry cannot orphan a published object.
+	//
+	// It is also why the CHALLENGE does not carry a leaf width. A challenger
+	// that could name one could name a single-byte leaf and make a small
+	// frame cost the prover a tree over a quarter of a million leaves.
+	// Zero for chunks shipped without a commitment (manifest chunks, which
+	// audits do not sample).
+	LeafBytes int
 }
 
 // Message is the single wire envelope. RID correlates requests with
@@ -232,25 +243,89 @@ type Message struct {
 	Data      []byte
 	Found     bool
 	OK        bool
-	// Proof-of-retrieval fields: Proof (the Merkle inclusion proof, now
-	// carrying PorTags) rides on StoreChunk so hosts can later prove
-	// possession, and comes back on ChallengeReply. Nonce freshens a bond
-	// challenge (MsgBondChallenge).
+	// Proof-of-retrieval fields: Proof (the Merkle inclusion proof) rides on
+	// StoreChunk so hosts can later prove which object a shard belongs to,
+	// and comes back on ChallengeReply. Nonce freshens a bond challenge
+	// (MsgBondChallenge).
 	Proof *StorageProof
 	Nonce uint64
 	// PoR challenge (MsgChallenge → auditor): PorSeed expands to the sampled
-	// block indices and coefficients; PorCount is how many blocks to sample.
-	// The block count itself is len(the host's stored PorTags), echoed back
-	// as PorBlocks so the auditor can reconstruct the identical challenge.
+	// leaf indices; PorCount is how many leaves to sample. The leaf count
+	// itself is the auditor's own number, recomputed from the object's
+	// committed geometry, and is echoed back as PorBlocks only so a
+	// disagreement is visible rather than silently graded.
 	PorSeed  []byte
 	PorCount int
-	// PoR proof (MsgChallengeReply → prover): the aggregated response.
-	// PorMu is one field element per sector, PorSigma the aggregated tag,
-	// PorBlocks the prover's block count. These are core/por wire bytes; the
-	// ports layer stays crypto-agnostic and never imports core/por.
-	PorMu     [][]byte
-	PorSigma  []byte
+	// PorBase is the UNBOUND seed PorSeed was derived from, carried so the
+	// PROVER can check that PorSeed is the one bound to its own identity
+	// rather than computing under whatever seed it is handed. Without it an
+	// honest holder is an ORACLE: a data-less identity forwards the auditor's
+	// verbatim challenge, the holder proves under the forwarder's seed, and
+	// the forwarder returns the answer as its own.
+	//
+	// It is a CHECK input, not a derivation input, and that is what lets one
+	// field cover two callers: the audit path binds with core/node's
+	// porProverSeed and the repair-claim retrievability leg with
+	// repairproof.RepairChallengeSeed, so a prover handed a base tests its own
+	// identity under both domains and answers only on a match. Deriving
+	// instead would have needed a discriminator saying which.
+	//
+	// OPTIONAL BY DESIGN, so the change is additive on the wire. Absent, the
+	// prover answers PorSeed verbatim exactly as before — an old auditor is
+	// still served and an old prover still passes a new auditor's challenge,
+	// since the new auditor sends both fields and the derived seed is
+	// unchanged. The oracle closes for a pair where the PROVER is current,
+	// which is the honest limit: this cannot fix a peer's software.
+	PorBase []byte
+	// PoR proof (MsgChallengeReply → prover): the opened leaves. PorOpen
+	// carries one sampled leaf's bytes per entry, in the order the seed drew
+	// the indices, and PorPaths the matching Merkle path — that sample's
+	// sibling hashes concatenated, 32 bytes each, bottom-up. PorBlocks is
+	// the prover's own leaf count.
+	//
+	// THE BYTES ARE THE PROOF, which is what makes this scheme keyless: a
+	// prover answers only by producing shard content it holds. They are
+	// ciphertext the auditor cannot read and could have fetched anyway, so
+	// carrying them discloses nothing a care-link holder did not already
+	// have (B4).
+	//
+	// These are core/por wire values; the ports layer stays crypto-agnostic
+	// and never imports core/por.
+	// HeldRegs are the answer-digests of the bond registrations the SENDER holds in
+	// its pending queue, reported on MsgChainHeadReply — the head probe that already
+	// crosses between every pair of nodes on every chain-sync sweep.
+	//
+	// It exists because shedding a registration's ~1.5 MB proof needs EVIDENCE that
+	// the receiver can rebuild it, and the only two evidences a proposer had were
+	// "the peer authored this registration" and "the peer acknowledged MY OWN". On a
+	// live chain renewals are staggered, so a block carries one OTHER validator's
+	// registration, only its author qualified, and every other attester was sent
+	// bytes it already held.
+	//
+	// THE HOLDER IS THE ONE WHO REPORTS, and that is the load-bearing choice rather
+	// than a convenience. A holder that misreports is sent a form it cannot rebuild,
+	// answers NeedBody and pays the round trip itself; a third party asserting it
+	// would put that cost on the proposer instead. The claim and the cost of it being
+	// wrong have to sit with the same party.
+	//
+	// It is advisory and never authority: a receiver still rebuilds only bytes whose
+	// sha256 matches the digest the proposer SIGNED, so a false entry costs a round
+	// trip and can never substitute a proof.
+	HeldRegs  []Hash
+	PorOpen   [][]byte
+	PorPaths  [][]byte
 	PorBlocks int
+	// NeedBody is an attester's answer to a proposal whose heavy bond-registration
+	// proofs were relayed by DIGEST and which it could not reconstruct from what it
+	// already holds. It is a REFUSAL that names its own remedy: the proposer re-sends
+	// the same block to this one peer with the proofs carried, and the round
+	// continues.
+	//
+	// It is not an error and it is not a vote against the block. A plain OK=false
+	// means the attester judged the block; this means it never got to. Conflating the
+	// two would let a transport miss read as a validity refusal in the journal, which
+	// is the attribution failure that hid the original wedge for three runs.
+	NeedBody bool
 	// Capacity gossip: every message from a capacity-pledging node
 	// carries its current used/total, so peers accumulate a sample of
 	// the network's storage for the M9 capacity estimate.
@@ -296,7 +371,7 @@ type Message struct {
 	// `swarm get` publisher or fetcher that keeps nothing and then dies).
 	// Receivers must NOT add such a sender to their routing table: routing
 	// to a peer that will vanish poisons the table with ghosts and drowns
-	// lookups in timeouts (#43).
+	// lookups in timeouts.
 	Ephemeral bool
 	// Height is the chain-sync cursor (MsgGetChain).
 	Height uint64
@@ -335,6 +410,7 @@ func (k MsgKind) String() string {
 		MsgRoundChange: "RoundChange", MsgRoundChangeAck: "RoundChangeAck",
 		MsgCommitBlock: "CommitBlock", MsgCommitAck: "CommitAck",
 		MsgGetChain: "GetChain", MsgChainReply: "ChainReply",
+		MsgGetWitness: "GetWitness", MsgWitnessReply: "WitnessReply",
 		MsgGetChainHead: "GetChainHead", MsgChainHeadReply: "ChainHeadReply",
 		MsgCheckReachability: "CheckReachability", MsgReachabilityReply: "ReachabilityReply",
 		MsgSubmitBondReg: "SubmitBondReg", MsgSubmitBondRegAck: "SubmitBondRegAck",
@@ -364,7 +440,7 @@ func (k MsgKind) String() string {
 // IsReply reports whether this kind terminates a pending request.
 func (m Message) IsReply() bool {
 	switch m.Kind {
-	case MsgFindNodeReply, MsgGetProvidersReply, MsgAddProviderAck, MsgStoreChunkAck, MsgFetchChunkReply, MsgHasChunkReply, MsgChallengeReply, MsgAttestReply, MsgCommitAck, MsgChainReply, MsgChainHeadReply, MsgBondReply, MsgTokenReply, MsgIssuerKeyReply, MsgSubmitBondRegAck, MsgSubmitEntryAck, MsgRepairVote, MsgDeliveryReceiptAck, MsgCanonicalIssuersReply, MsgPrecommitReply, MsgRoundChangeAck, MsgRelayOpenAck, MsgRelayPayAck, MsgDemandIssuerKeysReply, MsgDemandTokenReply, MsgSubmitIssuerKeyRegAck, MsgDeliveryOpenAck, MsgDeliveryFundAck, MsgDeliverySettleAck, MsgRoundCertAck:
+	case MsgFindNodeReply, MsgGetProvidersReply, MsgAddProviderAck, MsgStoreChunkAck, MsgFetchChunkReply, MsgHasChunkReply, MsgChallengeReply, MsgAttestReply, MsgCommitAck, MsgChainReply, MsgChainHeadReply, MsgBondReply, MsgTokenReply, MsgIssuerKeyReply, MsgSubmitBondRegAck, MsgSubmitEntryAck, MsgRepairVote, MsgDeliveryReceiptAck, MsgCanonicalIssuersReply, MsgPrecommitReply, MsgRoundChangeAck, MsgRelayOpenAck, MsgRelayPayAck, MsgDemandIssuerKeysReply, MsgDemandTokenReply, MsgSubmitIssuerKeyRegAck, MsgDeliveryOpenAck, MsgDeliveryFundAck, MsgDeliverySettleAck, MsgRoundCertAck, MsgWitnessReply:
 		return true
 	}
 	return false

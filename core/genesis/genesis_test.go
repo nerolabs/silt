@@ -45,7 +45,8 @@ func TestGenesisIsDeterministic(t *testing.T) {
 //	pre-4′ (padded manifest frame) hash 7becf754…32ce · manifest chunk 8063c7a3…4610
 //	4′ (true-length manifest) hash f428d0a8…0951 · manifest chunk 5478750c…d107 · root fce9eeeb…20d6
 //	 (true-length DATA frame) hash e44344ea…72c0 · manifest chunk f761f80b…fcf6 · root 31768fb4…7dd1
-//	now (padded secrets box) hash fdfb676c…eb58 · manifest chunk b12a4f0a…e06d · root 31768fb4…7dd1
+//	(padded secrets box) hash fdfb676c…eb58 · manifest chunk b12a4f0a…e06d · root 31768fb4…7dd1
+//	now (spot-check commitment) hash eddda80f…91ff · manifest chunk 6c711481…7ab5 · root 31768fb4…7dd1
 //
 // Three literals, not one, because WHICH of them moves is the diagnosis. The sub-frame
 // change re-framed the manifesto's own 2,042 bytes — a single-frame object — so its data and parity
@@ -54,14 +55,19 @@ func TestGenesisIsDeterministic(t *testing.T) {
 // stands and only the manifest chunk ID and the block hash move. The 2026-09-11 move is
 // manifest.secretsPlainLen padding the inner secrets box to close, the keyless
 // encryption-mode oracle F8: the sealed blob grew by a mode-independent amount, so the frame
-// that carries it did too. From here the genesis hash moves ONLY by an explicit, recorded
-// decision; any drift turns this RED. ABLATION: set ManifestFrameBytes: 64 << 10 in
+// that carries it did too. The 2026-09-19 move is the retrievability scheme: Layout gained
+// ShardRoots, one 32-byte commitment per shard in the OUTER layer where a caretaker reads it,
+// plus the leaf width they were built at. It is the same shape as the padding move — inside
+// the MANIFEST, which the root does not cover — so the root stands again and only the
+// manifest chunk ID and the block hash move, which is how a reader can tell a manifest change
+// from a geometry change without reading the diff. From here the genesis hash moves ONLY by an
+// explicit, recorded decision; any drift turns this RED. ABLATION: set ManifestFrameBytes: 64 << 10 in
 // genesis.Options → RED on the manifest chunk ID and on the block hash, GREEN on the root.
 func TestGenesisBlockHashIsPinned(t *testing.T) {
 	const (
-		wantHash  = "fdfb676c0476b8d798e5fb0f15ebe39447b2ba00707d47f814dc205ba92ceb58"
+		wantHash  = "eddda80fce507066118c951775e01e614acd809de045fddde06281e7c37191ff"
 		wantRoot  = "31768fb45fcf6e7fbf5568f916c790ea905d85220d20717bfe91442934867dd1"
-		wantChunk = "b12a4f0a24bbb6e6b5e2c625c10f7b6ccd9d46d10a2b14daffc80c76139ae06d"
+		wantChunk = "6c71148176b1d089c908b53f3d39b0b404848c11d325f69cb132544931aa7ab5"
 	)
 	b, h, entry, err := genesis.Build(memstore.New(), nil)
 	if err != nil {

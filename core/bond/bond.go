@@ -150,7 +150,14 @@ type Commitment struct {
 	pk     []byte
 	seed   []byte
 	blocks [][]byte
-	leaves []ports.Hash
+	// src backs a plot that lives on disk rather than in memory. Exactly one of
+	// blocks and src is set: blocks for a plot sealed into memory, src for one
+	// streamed to a store. Answering reads a handful of blocks per challenge, so
+	// the streamed plot pays a few random reads where the resident one pays its
+	// whole size in RAM.
+	src      ports.PlotBlocks
+	released bool
+	leaves   []ports.Hash
 	// tree is the leaves' Merkle tree, precomputed once so each inclusion proof
 	// an answer builds is O(log n) instead of O(n): a challenge draws O(k) proofs
 	// and a large plot has up to ~16k leaves, so recomputing subtree hashes per
@@ -171,6 +178,66 @@ func plotSeedN(pk []byte, n int) []byte {
 	binary.BigEndian.PutUint64(nb[:], uint64(n))
 	h.Write(nb[:])
 	return h.Sum(nil)
+}
+
+// block returns plot block i, from memory or from the backing store, or nil if
+// this commitment cannot produce it — out of range, never written, or released.
+func (c *Commitment) block(i int) []byte {
+	if c.released || i < 0 || i >= len(c.leaves) {
+		return nil
+	}
+	if c.blocks != nil {
+		if i < len(c.blocks) {
+			return c.blocks[i]
+		}
+		return nil
+	}
+	if c.src == nil {
+		return nil
+	}
+	buf := make([]byte, BlockSize)
+	if err := c.src.ReadBlock(i, buf); err != nil {
+		return nil
+	}
+	return buf
+}
+
+// SealInto plots the same bond Seal does, streaming each block to dst as it is
+// labeled and reading earlier blocks back from dst when a label needs them. Peak
+// memory is the leaves and their tree — 32 bytes per block, so a few tens of MiB
+// for a multi-GiB plot — instead of the plot itself.
+//
+// The result is byte-identical to Seal's for the same (pk, size): the labels are
+// a pure function of the public seed and the plot's own earlier bytes, and this
+// changes only where those bytes are kept while they are produced.
+func SealInto(pk []byte, size int64, dst ports.PlotBlocks) (*Commitment, error) {
+	n := NumBlocks(size)
+	seed := plotSeedN(pk, n)
+	leaves := make([]ports.Hash, n)
+	scratch := make([]byte, BlockSize)
+
+	var readErr error
+	read := func(i int) []byte {
+		buf := make([]byte, BlockSize)
+		if err := dst.ReadBlock(i, buf); err != nil {
+			readErr = fmt.Errorf("bond: reading plot block %d back while sealing: %w", i, err)
+			return scratch
+		}
+		return buf
+	}
+	for i := 0; i < n; i++ {
+		b := plotBlockFrom(seed, i, n, read)
+		if readErr != nil {
+			return nil, readErr
+		}
+		if err := dst.WriteBlock(i, b); err != nil {
+			return nil, fmt.Errorf("bond: writing plot block %d: %w", i, err)
+		}
+		leaves[i] = ports.HashBytes(b)
+	}
+	tree := manifest.BuildTree(leaves)
+	return &Commitment{Size: size, Root: tree.Root(), pk: append([]byte(nil), pk...),
+		seed: seed, src: dst, leaves: leaves, tree: tree}, nil
 }
 
 // Seal plots the identity-bound bond of ~size bytes for validator key pk from
@@ -196,7 +263,6 @@ func Seal(pk []byte, size int64) *Commitment {
 
 // Blocks exposes the plot blocks so the project can persist them
 // (ports. PlotStore) and reload on restart instead of re-plotting
-// (#93).
 func (c *Commitment) Blocks() [][]byte { return c.blocks }
 
 // ReleaseBlocks drops the resident plot bytes, keeping only the commitment
@@ -208,7 +274,30 @@ func (c *Commitment) Blocks() [][]byte { return c.blocks }
 // cheaply recompute them (that is the whole point of the depth-robust labeling).
 // So a released commitment fails a live audit — the wire-level consequence the
 // sim asserts.
-func (c *Commitment) ReleaseBlocks() { c.blocks = nil }
+func (c *Commitment) ReleaseBlocks() { c.blocks, c.src, c.released = nil, nil, true }
+
+// ReconstructFrom rebuilds a Commitment over a plot held in a store rather than in
+// memory, RE-DERIVING the leaves and Merkle root from the stored bytes rather than
+// trusting a persisted root. It reads each block once to hash it and keeps none of
+// them, so reloading a plot on restart costs the leaves and their tree — 32 bytes
+// per block — instead of the plot's own size.
+//
+// The caller should check the returned Root against the root it persisted, which
+// catches silent on-disk corruption.
+func ReconstructFrom(pk []byte, size int64, src ports.PlotBlocks) (*Commitment, error) {
+	n := NumBlocks(size)
+	leaves := make([]ports.Hash, n)
+	buf := make([]byte, BlockSize)
+	for i := 0; i < n; i++ {
+		if err := src.ReadBlock(i, buf); err != nil {
+			return nil, fmt.Errorf("bond: reading stored plot block %d: %w", i, err)
+		}
+		leaves[i] = ports.HashBytes(buf)
+	}
+	tree := manifest.BuildTree(leaves)
+	return &Commitment{Size: size, Root: tree.Root(), pk: append([]byte(nil), pk...),
+		seed: plotSeedN(pk, n), src: src, leaves: leaves, tree: tree}, nil
+}
 
 // Reconstruct rebuilds a Commitment from persisted plot blocks for validator key
 // pk, RE-DERIVING the leaves and Merkle root from the bytes rather than trusting
@@ -318,7 +407,7 @@ func (c *Commitment) answer(effNonce uint64, k int) (Answer, bool) {
 	// Possession samples.
 	idxs := challengeIndices(c.Root, len(c.leaves), effNonce)
 	for _, i := range idxs {
-		if i >= len(c.blocks) || c.blocks[i] == nil {
+		if c.block(i) == nil {
 			return Answer{}, false
 		}
 		p, err := c.proveLeaf(i)
@@ -326,7 +415,7 @@ func (c *Commitment) answer(effNonce uint64, k int) (Answer, bool) {
 			return Answer{}, false
 		}
 		a.Indices = append(a.Indices, i)
-		a.Blocks = append(a.Blocks, c.blocks[i])
+		a.Blocks = append(a.Blocks, c.block(i))
 		a.Proofs = append(a.Proofs, p)
 	}
 	// Labeling opens.
@@ -347,33 +436,33 @@ func (c *Commitment) labelOpens(effNonce uint64, k int) ([]int, []LabelOpen, boo
 	li := labelIndices(c.Root, n, effNonce, k)
 	bundles := make([]LabelOpen, len(li))
 	for j, v := range li {
-		if v >= len(c.blocks) || c.blocks[v] == nil {
+		if c.block(v) == nil {
 			return nil, nil, false
 		}
 		np, err := c.proveLeaf(v)
 		if err != nil {
 			return nil, nil, false
 		}
-		lo := LabelOpen{Node: c.blocks[v], NodeProof: np}
+		lo := LabelOpen{Node: c.block(v), NodeProof: np}
 		if v > 0 {
-			if c.blocks[v-1] == nil {
+			if c.block(v-1) == nil {
 				return nil, nil, false
 			}
 			pp, err := c.proveLeaf(v - 1)
 			if err != nil {
 				return nil, nil, false
 			}
-			lo.Pred, lo.PredProof = c.blocks[v-1], pp
+			lo.Pred, lo.PredProof = c.block(v-1), pp
 		}
 		for _, p := range parentIndices(c.seed, v, n) {
-			if p >= len(c.blocks) || c.blocks[p] == nil {
+			if c.block(p) == nil {
 				return nil, nil, false
 			}
 			pp, err := c.proveLeaf(p)
 			if err != nil {
 				return nil, nil, false
 			}
-			lo.Parents = append(lo.Parents, c.blocks[p])
+			lo.Parents = append(lo.Parents, c.block(p))
 			lo.ParentProofs = append(lo.ParentProofs, pp)
 		}
 		bundles[j] = lo
@@ -397,14 +486,14 @@ func (c *Commitment) AnswerSpaceTime(nonce uint64, p vdf.Params, delay uint64, k
 	}
 	// Read the seed block (must be possessed BEFORE the VDF) and prove it.
 	si := seedIndex(c.Root, len(c.leaves), nonce)
-	if si >= len(c.blocks) || c.blocks[si] == nil {
+	if c.block(si) == nil {
 		return Answer{}, false
 	}
 	seedProof, err := c.proveLeaf(si)
 	if err != nil {
 		return Answer{}, false
 	}
-	seedBlock := c.blocks[si]
+	seedBlock := c.block(si)
 	proof, err := vdf.Eval(p, challengeSeedST(c.Root, nonce, seedBlock), delay)
 	if err != nil {
 		return Answer{}, false
@@ -650,15 +739,23 @@ const (
 // blocks array, then labels via labelBlock. blocks must already hold the finalized
 // bytes of blocks 0.i-1.
 func plotBlock(seed []byte, i, n int, blocks [][]byte) []byte {
+	return plotBlockFrom(seed, i, n, func(j int) []byte { return blocks[j] })
+}
+
+// plotBlockFrom is plotBlock with the earlier blocks SUPPLIED rather than indexed
+// out of a resident slice. It is the one definition of a plot label; the two
+// callers differ only in where the predecessor and DRSample parents come from —
+// a slice in memory, or a store on disk.
+func plotBlockFrom(seed []byte, i, n int, at func(int) []byte) []byte {
 	var pred []byte
 	if i > 0 {
-		pred = blocks[i-1] // the chain: immediate predecessor's full bytes
+		pred = at(i - 1) // the chain: immediate predecessor's full bytes
 	} else {
 		pred = make([]byte, BlockSize) // genesis: zero block
 	}
 	var parents [][]byte
 	for _, p := range parentIndices(seed, i, n) {
-		parents = append(parents, blocks[p]) // long-range dependencies, full bytes
+		parents = append(parents, at(p)) // long-range dependencies, full bytes
 	}
 	return labelBlock(seed, i, pred, parents)
 }

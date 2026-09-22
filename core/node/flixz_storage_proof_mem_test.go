@@ -20,10 +20,19 @@ import (
 // proofs (the prod backing), reloads through the bounded proofcache exactly as the
 // daemon does, and measures resident heap.
 //
-// Before: `n.proofs` held the FULL StorageProof (Path + PorTags, ~5.4 KB)
-// for every held chunk → O(total) resident → at catalog scale it OOMs (the flixz
-// report). After: resident = tiny proofMeta (~80-100 B/chunk, O(N) but small)
-// + a bounded proofcache (≤ budget, paged from disk) → O(hot).
+// Before: `n.proofs` held the FULL StorageProof for every held chunk → O(total)
+// resident → at catalog scale it OOMs (the flixz report). After: resident = tiny
+// proofMeta (~80-100 B/chunk, O(N) but small) + a bounded proofcache (≤ budget,
+// paged from disk) → O(hot).
+//
+// THE PER-PROOF SIZE FELL BY TWO ORDERS OF MAGNITUDE when the aggregate PoR
+// scheme was replaced. A full proof used to be a Merkle path plus the shard's
+// per-block authenticators, ~5.4 KB; the hash-only spot check keeps no per-shard
+// state on the host at all, so a full proof is now the Merkle path and a leaf
+// width — under 700 B for a million-shard object. The O(hot) property is what
+// this test asserts and it is unchanged; the constant it saves against is much
+// smaller, which is why the O(total) figure below is computed from the path
+// geometry rather than from the old tag count.
 //
 //	SILT_FLIXZ_DIAG=1 SILT_FLIXZ_N=200000 go test ./core/node/ -run Flixz -v
 //
@@ -42,19 +51,17 @@ func TestFlixzStorageProofMemoryIsOHot(t *testing.T) {
 	}
 	const budget = 64 << 20 // the daemon's default -proof-cache
 
-	// A realistic full proof: 4 Merkle-path hashes (128 B) + PoR tags. Production
-	// shards run many por-blocks; size the tags so one full proof ≈ 5.4 KB, the
-	// figure used for the O(total) blow-up.
-	const porBlocks = 166 // 166 * 32 B ≈ 5.3 KB of tags + 128 B path ≈ 5.4 KB
+	// A realistic full proof at catalog scale: the object's Merkle path. A
+	// million-shard object is a 20-level tree, so 20 sibling hashes = 640 B is
+	// the widest a real path gets; that is the per-proof cost the cache budget
+	// is being measured against.
+	const pathHashes = 20
+	const fullProofBytes = pathHashes*32 + 96 // path + proofcache's fixed per-entry overhead
 	mkFull := func(i int) ports.StorageProof {
 		var root ports.Hash
 		root[0], root[1], root[2] = byte(i), byte(i>>8), byte(i>>16)
-		path := make([]ports.Hash, 4)
-		tags := make([][]byte, porBlocks)
-		for j := range tags {
-			tags[j] = make([]byte, 32)
-		}
-		return ports.StorageProof{Root: root, Index: i % 8, Total: 8, Column: i % 4, Path: path, PorTags: tags}
+		return ports.StorageProof{Root: root, Index: i % 8, Total: 8, Column: i % 4,
+			Path: make([]ports.Hash, pathHashes), LeafBytes: 128}
 	}
 
 	// Populate a REAL on-disk proof store (the daemon's diskproofs backing).
@@ -97,7 +104,7 @@ func TestFlixzStorageProofMemoryIsOHot(t *testing.T) {
 
 	// The precise O(hot) claim, measured on the DELIBERATE resident structures
 	// (not a noisy HeapInuse delta, which includes unreturned GC spans):
-	// - the FULL proofs (Path + PorTags) live in a BOUNDED cache: used ≤ budget,
+	// - the FULL proofs (the Merkle path) live in a BOUNDED cache: used ≤ budget,
 	// No matter how large the catalog. This is the O(hot)
 	// guarantee.
 	// - the resident metadata is O(N) but TINY: ~sizeof(proofMeta) per chunk.
@@ -106,10 +113,10 @@ func TestFlixzStorageProofMemoryIsOHot(t *testing.T) {
 	metaMiB := float64(N) * metaBytesPerChunk / (1 << 20)
 	fullMiB := float64(cacheUsed) / (1 << 20)
 	residentMiB := metaMiB + fullMiB
-	oTotalMiB := float64(N) * 5.4 / 1024 // what the OLD full-map pinned: N × ~5.4 KB
+	oTotalMiB := float64(N) * fullProofBytes / (1 << 20) // what the OLD full-map pinned: N × one full proof
 
 	t.Logf("N=%d held: resident proof RAM = %.1f MiB (bounded cache %.1f MiB + O(N) meta %.1f MiB); "+
-		"the OLD full-map would pin O(total) ≈ %.0f MiB. Reduction ×%.1f.",
+		"the OLD full-map would pin O(total) ≈ %.1f MiB. Reduction ×%.1f.",
 		N, residentMiB, fullMiB, metaMiB, oTotalMiB, oTotalMiB/residentMiB)
 
 	// THE WALL 1: the FULL-proof resident RAM is bounded by the cache budget,
@@ -120,6 +127,6 @@ func TestFlixzStorageProofMemoryIsOHot(t *testing.T) {
 	// THE WALL 2: total resident proof RAM is FAR below the O(total) full-map —
 	// the reduction that turns flixz's catalog from an OOM into a bounded head.
 	if residentMiB >= oTotalMiB {
-		t.Fatalf("resident %.1f MiB is not below O(total) %.0f MiB —  gives no reduction at N=%d", residentMiB, oTotalMiB, N)
+		t.Fatalf("resident %.1f MiB is not below O(total) %.1f MiB — the cache gives no reduction at N=%d", residentMiB, oTotalMiB, N)
 	}
 }

@@ -2,6 +2,13 @@
 
 A content-addressed, erasure-coded storage and distribution network.
 
+> **Mothballed 2026-09-22 — paused, not abandoned.** Active development stopped; the
+> project resumes at a later date. The storage plane works and is field-driven. The trust
+> plane has one open liveness mechanism on adverse networks, and the mission claim has
+> never been put to the external red team that is the only standard this project accepts
+> for it. See [`docs/MOTHBALLED.md`](docs/MOTHBALLED.md) for the handover — what is true by
+> evidence tier, where the work stopped, and what not to re-derive.
+
 > **Early and experimental — 0.x, unaudited.** silt is published to get technical
 > feedback, not to be trusted with data you cannot afford to lose.
 
@@ -70,8 +77,12 @@ target is that forging N standings costs N× of every non-substitutable resource
 which is exactly what honest provision costs.
 
 **This multiplicative interlock is the target, not yet the operative guarantee.**
-Today consensus standing is gated by the bond axis alone. The other axes are
-designed and staged, not fully wired.
+Today consensus standing is gated by the bond axis and its time dimension: a bond
+must be sized, backed by real sealed bytes, and continuously re-proved, and one
+plot cannot back two identities. Served demand and address diversity are designed
+and staged, and do not yet enter the standing number.
+`core/chain/sybil_cost_census_v5_test.go` reports which of the five is denying and
+which is unwired, arm by arm, and fails if that changes without being noticed.
 
 ### How you would know
 
@@ -189,3 +200,6 @@ Two documents govern this repository:
 
 Where the build differs from the vision, the code and its tests are the honest
 record.
+
+[`docs/MOTHBALLED.md`](docs/MOTHBALLED.md) records the state the project was paused in. It is
+not canon, and it is a snapshot dated 2026-09-22 rather than a plan.

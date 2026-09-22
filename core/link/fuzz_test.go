@@ -5,7 +5,7 @@ import "testing"
 // FuzzParse drives arbitrary strings through every link parser. A link is
 // user-supplied text (CLI arg, API field, pasted share handle) — untrusted
 // input — so each parser must return an error on anything malformed and
-// never panic (Gate 1 / anti-persona #14). ParseAnyCare is included
+// never panic (Gate 1 / anti-persona 14). ParseAnyCare is included
 // because it composes Parse and ParseCare.
 func FuzzParse(f *testing.F) {
 	// Seed with real links so the fuzzer mutates outward from valid

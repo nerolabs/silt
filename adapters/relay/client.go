@@ -59,7 +59,7 @@ func dialRelay(cert tls.Certificate, relayID ports.NodeID, relayAddr string) (*t
 	cfg := identity.ClientConfig(cert, relayID)
 	// Dial with SO_REUSEPORT so the local port this registration binds can
 	// later be RE-bound by the hole-punch dial (which must fire from the same
-	// port the relay observed, #27). Without it the punch dial fails to bind
+	// port the relay observed). Without it the punch dial fails to bind
 	// (the port is already held by this conn) and every upgrade stays on the
 	// relay — the exact bug behind.
 	conn, err := tls.DialWithDialer(
@@ -86,15 +86,15 @@ type Client struct {
 	mu        sync.Mutex
 	conn      net.Conn // current control conn, nil between attempts
 	closed    bool
-	observed  string // our public host:port as the relay last reported it (#27)
-	localPort int    // local port of the control conn — reused for the punch dial (#27)
+	observed  string // our public host:port as the relay last reported it
+	localPort int    // local port of the control conn — reused for the punch dial
 	writeMu   sync.Mutex
 	onPunch   func(peer ports.NodeID, peerAddr string, localPort int)
 }
 
 // Observed returns this node's public host:port as the relay saw it at
 // registration ("" until the first successful register). A NATed node uses it
-// as the endpoint a peer should aim a hole-punch at (#27).
+// as the endpoint a peer should aim a hole-punch at.
 func (c *Client) Observed() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -102,7 +102,7 @@ func (c *Client) Observed() string {
 }
 
 // LocalPort is the control conn's local port. A hole-punch dials the peer from
-// this same port so the NAT reuses the mapping the relay observed (#27).
+// this same port so the NAT reuses the mapping the relay observed.
 func (c *Client) LocalPort() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -132,7 +132,7 @@ func (c *Client) send(fr ctrl) error {
 // RequestPunch asks the relay to coordinate a hole-punch with target: the relay
 // tells each side the other's observed endpoint (Addr), and both dial it from
 // their registration port at once — DCUtR upgrading a relay to a direct link
-// (#27). Best-effort; if the punch fails the relay path stays.
+// Best-effort; if the punch fails the relay path stays.
 func (c *Client) RequestPunch(target ports.NodeID) {
 	_ = c.send(ctrl{Op: "punch", Target: target[:]})
 }
@@ -205,7 +205,7 @@ func (c *Client) Close() {
 // acknowledged us; the return value says why the session ended.
 func (c *Client) session(registered func(error)) (err error) {
 	// A malformed frame from the relay must end this session, not crash
-	// the client (Gate 1 / anti-persona #14); Run's backoff loop then
+	// the client (Gate 1 / anti-persona 14); Run's backoff loop then
 	// reconnects. The panic surfaces as the session's error.
 	defer safe.Recover("relay: client session", &err)
 	conn, err := dialRelay(c.cert, c.relayID, c.relayAddr)
@@ -220,7 +220,7 @@ func (c *Client) session(registered func(error)) (err error) {
 	}
 	c.conn = conn
 	if la, ok := conn.LocalAddr().(*net.TCPAddr); ok {
-		c.localPort = la.Port // the port a hole-punch will reuse (#27)
+		c.localPort = la.Port // the port a hole-punch will reuse
 	}
 	c.mu.Unlock()
 
@@ -235,7 +235,7 @@ func (c *Client) session(registered func(error)) (err error) {
 		conn.Close()
 		return fmt.Errorf("relay register refused (%v %s)", err, fr.Err)
 	}
-	if fr.Addr != "" { // the relay's STUN-style view of our public endpoint (#27)
+	if fr.Addr != "" { // the relay's STUN-style view of our public endpoint
 		c.mu.Lock()
 		c.observed = fr.Addr
 		c.mu.Unlock()
@@ -274,7 +274,7 @@ func (c *Client) session(registered func(error)) (err error) {
 			go c.acceptStream(fr.Stream)
 		case fr.Op == "punch" && c.onPunch != nil && len(fr.Target) == 32 && fr.Addr != "":
 			// The relay is coordinating a hole-punch: dial fr.Addr from our
-			// registration port, right now, while the peer does the same (#27).
+			// registration port, right now, while the peer does the same.
 			var peer ports.NodeID
 			copy(peer[:], fr.Target)
 			c.mu.Lock()

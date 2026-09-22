@@ -12,7 +12,7 @@ import (
 
 var reRegistryOnly = regexp.MustCompile(`registry-only: ([0-9a-f]{64}) serving a file-backed registry at https://(\S+)`)
 
-// TestRegistryOnlyMode (#47): a daemon started with -registry-only serves a file-backed
+// TestRegistryOnlyMode: a daemon started with -registry-only serves a file-backed
 // registry over HTTPS while constructing NO storage node at all — the leanest public-
 // registry role, below -freeload (which is still a full routing node that just refuses
 // to host content). We prove it serves publish + lookup over real TLS, and that it never

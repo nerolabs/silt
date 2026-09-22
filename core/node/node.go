@@ -160,7 +160,7 @@ type Config struct {
 	// FetchAttempts is how many times a chunk fetch re-sweeps its providers
 	// when every provider failed *transiently* (a timeout or a relay-at-
 	// capacity refusal, not a clean "don't have it"): the post-cap relay path
-	// saturates under concurrent fan-out (#65) and its freed slots make a
+	// saturates under concurrent fan-out and its freed slots make a
 	// backed-off retry succeed. FetchBackoff is the base delay, grown
 	// linearly per attempt. FetchAttempts <= 1 disables the retry.
 	FetchAttempts int
@@ -173,7 +173,7 @@ type Config struct {
 	// BondAuditInterval is how often a validator challenges the storage
 	// bonds of the validators it knows, and BondMaxAge is how long a bond
 	// may go un-re-proven before its standing decays — so consensus
-	// standing must be backed by *sustained* held storage (T1b, #78).
+	// standing must be backed by *sustained* held storage (T1b).
 	BondAuditInterval ports.Duration
 	BondMaxAge        ports.Duration
 	// ChainSyncInterval is how often a validator reconciles its chain replica
@@ -335,7 +335,7 @@ type corpse struct {
 	// (measured: a 45s all-timeout sweep recurring every ~30s,
 	// indefinitely, on a fully healed object). The cap sits under the
 	// reprovide period (ProviderRecordTTL/2), and recovery is announced-in
-	// anyway — any inbound message deletes the entry (proof of life, #69),
+	// anyway — any inbound message deletes the entry (proof of life),
 	// so a recovered holder is never re-admitted slower than today.
 	// Analogue: negative caching with backoff (RFC 2308; libp2p dial
 	// backoff).
@@ -351,7 +351,7 @@ const corpseStreakCap = 5
 // corpseGated reports whether a peer should be skipped by a speculative dial
 // right now: still inside its cooldown, or already proven dead by a full
 // ladder during the CURRENT repair tick. Callers keep their own
-// sole-candidate guards (#69 anyLive) — the gate never decides "unreachable",
+// sole-candidate guards (anyLive) — the gate never decides "unreachable",
 // only "don't pay for this corpse again yet".
 func (n *Node) corpseGated(id ports.NodeID, now ports.Time) bool {
 	c, ok := n.dead[id]
@@ -422,6 +422,73 @@ type Stats struct {
 	BountyBaseZero     int
 	BountiesReleased   int
 	FalseRepairSlashes int
+	// ProxiedChallengesRefused counts storage challenges this node declined to
+	// answer because their seed was bound to SOMEBODY ELSE's identity — the
+	// signature of a data-less party forwarding an auditor's verbatim challenge
+	// so a real holder computes its proof for it. A non-zero value is an
+	// outsourcing attempt this node refused to be the oracle for, never a fault
+	// of its own: an honest auditor always sends a self-bound seed, so the
+	// honest path never increments this.
+	ProxiedChallengesRefused int
+	// ProposalsNeedingBodies counts proposals that arrived with their bond-registration
+	// proofs relayed by DIGEST and could not be reconstructed from what this node
+	// already held, so it had to ask for the bodies.
+	//
+	// IT SHOULD BE ZERO AND IT IS NOT AN ERROR COUNTER. A proposer sheds a proof only
+	// for a peer it has a receipt from, so a miss means the receipt was true when it
+	// was written and is not true now — an ack that crossed a restart, or a queue that
+	// turned over. Non-zero is the signal that the evidence and the reality have
+	// drifted, which is worth seeing before it becomes a stalled round rather than
+	// after (S5).
+	ProposalsNeedingBodies int
+	// DigestRelayResends counts proposals this node had to re-send with the proofs
+	// carried because the peer could not reconstruct the digest-relayed form. The
+	// proposer-side twin of ProposalsNeedingBodies, and the same expectation: zero.
+	DigestRelayResends int
+	// THE RELAY'S COVERAGE, which is what the adverse-network liveness bound now rests
+	// on. A gather leg — a proposal or a prepare-QC to one attester — either crosses by
+	// DIGEST at ~1 KB or CARRIES the space-time proofs at ~1.5 MB each, and a link that
+	// cannot move the carried form inside the per-attempt deadline cannot commit the
+	// height at all. Coverage is Shed/(Shed+Carried).
+	//
+	// Legs with nothing to shed (a pre-witnessable block, a block carrying no
+	// registration) are counted in NEITHER: they are not a coverage failure, and
+	// putting them in the denominator would report a working relay as a broken one.
+	GatherLegsShed    int
+	GatherLegsCarried int
+	// AND WHICH REGISTRATION WENT UNEVIDENCED, because the two cases are different
+	// failures. OwnUnacked is this node's own registration: on a wire that delivers it is
+	// zero. Where it is not, the peer usually HOLDS the bytes and this node does not know
+	// it — measured on a link a quarter of the deadline's assumed floor, 860 of 876
+	// submits arrived and were queued while 864 acknowledgements expired, so the gap is a
+	// receipt rather than a delivery. PeerUnreported is a third party's: the peer is sent
+	// every renewal, so it is usually the holder's report arriving after the proposal.
+	// See carryReason.
+	GatherLegsCarriedOwnUnacked     int
+	GatherLegsCarriedPeerUnreported int
+	// WHAT THE RECEIVING SIDE ACTUALLY TOOK, which is the other half of the
+	// own-unevidenced story and the half that decides its remedy. BondRegSubmitsHeld
+	// counts renewal submits this node queued: the peer is holding those bytes and
+	// could be shed to. BondRegSubmitAcksLost counts this node's own submits whose
+	// acknowledgement did not return inside the request deadline — the bytes may well
+	// have crossed, but nothing recorded that they did, so the next sweep re-sends
+	// the full proof and the proposal carries it.
+	//
+	// A congested link makes these two the SAME registration seen from both ends: the
+	// receiver holds it, the sender does not know, and the difference is a receipt
+	// rather than a byte. Reading a lost receipt as an undelivered proof is what
+	// turns a bookkeeping gap into an apparent ceiling.
+	BondRegSubmitsHeld    int
+	BondRegSubmitAcksLost int
+	// AND THE OTHER CARRIER OF THE SAME EVIDENCE. A peer's held-registration
+	// inventory rides its chain-sync head reply, so a probe that does not come back
+	// carries no inventory either. ChainHeadProbesAnswered counts the replies that
+	// did return; ChainHeadProbesLost counts the ones that did not. The probe request
+	// is tiny, so its deadline gets no size extension — on a link with bulk already
+	// queued ahead of the reply, it expires regardless of how small it is, and both
+	// evidences for a registration go missing together.
+	ChainHeadProbesAnswered int
+	ChainHeadProbesLost     int
 	// BountyDuplicatePosition counts release verdicts this judge refused to pay
 	// because it had ALREADY paid a bounty for that (root, stripe, position). A
 	// replayed claim used to draw the full bounty a second time out of the same
@@ -460,7 +527,7 @@ type Stats struct {
 	ChainSyncHeadMatches int
 	ChainSyncFullFetches int
 	// ChainSyncNeedCheckpoint: sweeps where a peer could not be synced from because this
-	// node is behind the weak-subjectivity window and the peer pruned the gap (slice 5).
+	// node is behind the weak-subjectivity window and the peer pruned the gap.
 	// A nonzero value means an operator must obtain a recent -ws-checkpoint out-of-band or
 	// point at an archive node — surfaced, never silent (I4/S5).
 	ChainSyncNeedCheckpoint int
@@ -487,6 +554,12 @@ type pending struct {
 	cb     func(ports.Message, error)
 	cancel func()
 	to     ports.NodeID
+	// What this exchange was sized against, kept so its outcome can be observed as a
+	// rate. payload is the EFFECTIVE payload requestTimeoutFor used — which for a
+	// windowed chain fetch is the anticipated reply, not the tiny request — so the
+	// quantity sampled is the quantity the deadline was computed from.
+	sent    ports.Time
+	payload int64
 }
 
 type Node struct {
@@ -515,7 +588,7 @@ type Node struct {
 	// not since timed out — proof WE can dial THEM, not merely that they
 	// reached us. Only these are persisted as warm-restart seeds, so a
 	// restart re-seeds from live peers instead of reloading every dead
-	// ephemeral identity we ever heard from (#43).
+	// ephemeral identity we ever heard from.
 	reachable map[ports.NodeID]ports.Time
 
 	// dead is the negative cache of peers a dial just failed to reach: a
@@ -526,7 +599,7 @@ type Node struct {
 	// on any request timeout; consulted only in the fetch/repair/walk dial
 	// paths so consensus re-probes are unaffected. Cooldown expiry lets a
 	// recovered holder back in — and any inbound message clears the entry
-	// immediately (proof of life, #69). Each entry carries a streak-decayed
+	// immediately (proof of life). Each entry carries a streak-decayed
 	// cooldown and the repair-tick epoch of its last exhaustion: see
 	// corpse and corpseGated.
 	dead map[ports.NodeID]corpse
@@ -600,7 +673,7 @@ type Node struct {
 	reachProbes map[uint64]*reachProbe
 	reach       Reachability
 	// observedAddr is this node's public host:port as a relay reported it
-	// (STUN-style, #27) — the endpoint a peer aims a hole-punch at. "" until
+	// (STUN-style) — the endpoint a peer aims a hole-punch at. "" until
 	// a relay registration reports one.
 	observedAddr string
 
@@ -621,7 +694,7 @@ type Node struct {
 	freeload bool
 	// ephemeral marks this node as a short-lived client (publish/fetch that
 	// keeps nothing): its outgoing messages are stamped so peers don't route
-	// to it. See ports.Message.Ephemeral (#43).
+	// to it. See ports.Message.Ephemeral.
 	ephemeral bool
 	// liar makes the node accept chunk placements, keep the PROOF, and
 	// throw away the DATA — then claim to have the chunk when asked.
@@ -663,7 +736,7 @@ type Node struct {
 	// only to serve or audit — so resident proof RAM is O(hot), not O(total
 	// held) (the daemon OOM fix). See proofbacking.go.
 	proofMeta map[ports.ChunkID]proofMeta
-	// proofs is the durable, full-proof backing (#69: a restart re-announces coded
+	// proofs is the durable, full-proof backing (a restart re-announces coded
 	// shards under the right key and still answers audits). Defaults to an in-core
 	// in-memory store (sims/clients); a daemon injects a bounded, disk-backed store
 	// (adapters/proofcache over adapters/diskproofs) via SetProofStore.
@@ -675,7 +748,7 @@ type Node struct {
 	capRep   ports.CapacityReporter
 	peerCaps map[ports.NodeID]capInfo
 
-	// bond audit (T1b, #78): bond is this node's own sealed storage bond
+	// bond audit (T1b): bond is this node's own sealed storage bond
 	// (nil = none advertised); peerBonds accumulates the bond roots/sizes
 	// peers gossip, which a validator challenges to make consensus standing
 	// cost real held storage. See bondaudit.go.
@@ -686,6 +759,65 @@ type Node struct {
 	// submitting renewals forever, and the reason is logged once, not every
 	// 30 s sweep.
 	evictionLogged bool
+	// ownBondReg is the bond registration this node last MINTED AND BROADCAST for
+	// itself (SubmitBondRenewal), kept so the block this node proposes can commit
+	// the SAME BYTES its peers were already handed rather than a freshly minted
+	// equivalent.
+	//
+	// WHY KEEPING IT MATTERS, and it is not an optimization. A registration is a
+	// deterministic function of its prev, so two mints over one prev are identical
+	// — but the submit signs over the head at SWEEP time and the proposal is built
+	// after the reconcile settles, on whatever head that leaves. Re-minting at
+	// propose time therefore produced bytes NO attester held, while the bytes every
+	// attester did hold sat in their queues unused. Reusing the submitted
+	// registration is what makes a proposal's own registration reconstructable by
+	// its receivers, which is the precondition for ever relaying it by digest
+	// instead of by value (build-immutable #5: large payloads off the critical
+	// path).
+	//
+	// It is only reused while the chain still accepts it — the registration head
+	// window is bounded (chain.BondRegHeadWindow), so a stale one falls back to a
+	// fresh mint and nothing is trusted for longer than the chain allows.
+	ownBondReg *chain.BondReg
+	// ownRegAcks names the peers that ACKNOWLEDGED the registration in ownBondReg.
+	// It is the evidence — not the assumption — that a peer can reconstruct that
+	// registration from its own queue, and it is what decides whether this node may
+	// relay the proof to that peer by digest instead of by value.
+	//
+	// It is reset whenever ownBondReg changes, because an ack is about one specific
+	// registration and carrying it forward would be a claim about bytes the peer was
+	// never sent (B7: an unconfirmed delivery is a defect, not an optimization).
+	ownRegAcks map[ports.NodeID]bool
+	// ownRegDelivered latches the "every peer holds it, nobody has committed it"
+	// state for the registration in ownBondReg, so the renewal sweep says that ONCE
+	// rather than on every sweep. The distinction is the operator-visible half of
+	// the storm: a renewal that is not delivered wants a retry, and one that is
+	// delivered but uncommitted wants a proposer — the same log line for both hid
+	// which of the two a stalled chain was actually in (S5). Cleared whenever
+	// ownBondReg changes or anything is re-sent.
+	ownRegDelivered bool
+	// ownBondRegHead is the head ownBondReg was minted over. Keeping the broadcast
+	// copy is sound only while that head STILL STANDS: the storm this bounds is a
+	// chain whose head cannot move, and a head that has moved is a chain that is
+	// committing — which is exactly when a renewal must track it or lapse.
+	//
+	// It is deliberately NOT ValidateBondReg alone. That accepts a reg over the last
+	// BondRegHeadWindow heads, which is a bound on the NONCE's freshness, not on
+	// whether committing it would still renew standing: with a TTL tighter than the
+	// window, a registration stays window-valid well after the standing it defends
+	// has already decayed, and a node holding one broadcasts nothing while it drops
+	// out of the bonded set. sim.TestObjectiveBondRenewalSustainsAttestOnlyValidator
+	// drives exactly that ordering and is what caught it.
+	ownBondRegHead ports.Hash
+	// peerHeldRegs is what each peer last REPORTED holding — the answer-digests of
+	// the bond registrations in its own pending queue, carried on the chain-sync
+	// head reply. It is the third and widest evidence the digest relay has: the
+	// other two only ever cover a registration this node authored or the peer did,
+	// which on a live chain is one attester out of n-1.
+	//
+	// Advisory, replaced wholesale on each report, and never authority — a receiver
+	// still rebuilds only bytes matching the digest the proposer signed.
+	peerHeldRegs map[ports.NodeID]map[ports.Hash]bool
 	// peerBondRTT tracks each peer's recent bond-challenge reply latencies so the
 	// C1 partial-storage timing signal is the windowed-MINIMUM (low quantile) of
 	// the distribution, not a single wall-clock sample — build-immutable #3: a
@@ -693,15 +825,24 @@ type Node struct {
 	// disclosed deterrent. Persists across bond re-advertisement (peerBonds is
 	// replaced wholesale). See bondaudit.go latWindow.
 	peerBondRTT map[ports.NodeID]*latWindow
+	// peerRate is each peer's observed transport rate floor, used ONLY to size a
+	// request deadline (see peerrate.go). Kept apart from peerBondRTT deliberately:
+	// one signal, one job.
+	peerRate map[ports.NodeID]*peerPath
 	// bondChallengeRate caps VDF-evals served per challenger per audit window —
 	// the cheap gate in front of the costly AnswerSpaceTime so an unbounded
 	// challenger can't pin the single goroutine. See bondaudit.go.
 	bondChallengeRate map[ports.NodeID]*challengerRate
 	// bondSubmitRate is the same gate for MsgSubmitBondReg: submits examined per
 	// sender per ChainSyncInterval window, charged BEFORE decode+verify (the
-	// Phase 1.2 CPU-DoS floor). See allowBondSubmit in bondaudit.go.
+	// CPU-DoS floor). See allowBondSubmit in bondaudit.go.
 	bondSubmitRate map[ports.NodeID]*challengerRate
 	roundCertRate  map[ports.NodeID]*challengerRate // MsgRoundCert per-sender window budget
+	// porChallengeRate caps the PoR proofs computed per challenger per window —
+	// answering reads the whole shard back and aggregates it on the single loop,
+	// and MsgChallenge is unsigned. See allowPorChallenge for why a refusal is a
+	// DROP and never a Found=false reply.
+	porChallengeRate map[ports.NodeID]*challengerRate
 	// issuerKeySubmitRate is the per-sender budget for MsgSubmitIssuerKeyReg (see
 	// allowIssuerKeySubmit): a refusal costs a map lookup, before decode or verify.
 	issuerKeySubmitRate map[ports.NodeID]*challengerRate
@@ -713,11 +854,11 @@ type Node struct {
 	// allowEntrySubmit in bondaudit.go.
 	entrySubmitRate map[ports.NodeID]*challengerRate
 	// plotStore persists the bond plot so a restart reloads it instead of
-	// re-plotting (#93); nil = memory-only (re-plots each start).
+	// re-plotting; nil = memory-only (re-plots each start).
 	plotStore ports.PlotStore
 
 	// tokenIssuer, when set, makes this validator blind-sign publish-token
-	// requests (T3, #14/F1) — the publisher-privacy issuance role.
+	// requests (T3, persona 14 / F1) — the publisher-privacy issuance role.
 	tokenIssuer *blindtoken.Issuer
 	// issuer-key distribution: our own issuer pubkey (DER, served on
 	// MsgGetIssuerKey) and a cache of peers' issuer keys (fetched), so tokens
@@ -853,6 +994,11 @@ type Node struct {
 	// (nil = not a validator).
 	chain  *chain.Chain
 	signer ed25519.PrivateKey
+	// witnessProviders caches the SERVING side of the witness seam: one prover over the
+	// committed leaf set, rebuilt only when the head moves. Serving a witness is otherwise
+	// dominated by building that prover, which would let a stranger make this node redo the
+	// work once per request. Single-entry, so the cache itself cannot be grown by a peer.
+	witnessProviders chain.ProviderCache
 	// declaredChainID is the REQUESTER-side network identity an operator declared on a node that
 	// holds no chain (SetNetworkIdentity). It is read ONLY by RequesterChainID, never by chainID —
 	// see core/node/networkidentity.go for why the two must not be collapsed.
@@ -1002,7 +1148,7 @@ func (n *Node) DurabilitySnapshot(root ports.Hash) ports.DurabilitySnapshot {
 }
 
 // RootDurability pairs a cared object's root with its durability snapshot — the
-// per-object row of the durability telemetry (Phase 2). Pure observability.
+// per-object row of the durability telemetry. Pure observability.
 type RootDurability struct {
 	Root     ports.Hash
 	Snapshot ports.DurabilitySnapshot
@@ -1116,7 +1262,7 @@ type EconomySelf struct {
 // CaredDurability snapshots the durability accounting of every object this node
 // caretakes (n.care) — the reserve that funds each one's repairs, what it has
 // earned via the serve auto-skim, and what it has paid out. This is the
-// built-but-previously-invisible S7 economy made observable (Phase 2, "wire
+// built-but-previously-invisible S7 economy made observable ("wire
 // credit.G/Horizon into live telemetry"): the raw snapshots the caller turns into
 // funded-horizon / g. Empty with no ledger. Loop-owned (reads n.care); call it on
 // the event loop. Observability; reading moves nothing.
@@ -1150,7 +1296,7 @@ func (n *Node) logf(lvl ports.LogLevel, event string, kv ...any) {
 func (n *Node) SetFreeload(v bool) { n.freeload = v }
 
 // SetEphemeral marks this node as a short-lived client so peers don't add
-// it to their routing tables (#43).
+// it to their routing tables.
 func (n *Node) SetEphemeral(v bool) { n.ephemeral = v }
 
 // SetLiar toggles fake-storage behavior (see the liar field).
@@ -1165,7 +1311,7 @@ func (n *Node) SetEclipser(v bool) { n.eclipser = v }
 func (n *Node) SetShrinkLiar(v bool) { n.shrinkLiar = v }
 
 // SetObservedAddr records this node's public host:port as a relay reported it
-// (#27); ObservedAddr returns it ("" until known). A NATed node hands this to a
+// ObservedAddr returns it ("" until known). A NATed node hands this to a
 // peer as the endpoint to aim a hole-punch at.
 func (n *Node) SetObservedAddr(a string) { n.observedAddr = a }
 
@@ -1187,7 +1333,7 @@ func (n *Node) IsStaticPeer(id ports.NodeID) bool { return n.staticPeers[id] }
 // ObservedAddr is this node's relay-observed public endpoint ("" if unknown).
 func (n *Node) ObservedAddr() string { return n.observedAddr }
 
-// SetProofStore swaps in a durable proof backing (#69); call before LoadProofs
+// SetProofStore swaps in a durable proof backing; call before LoadProofs
 // and bootstrap. A daemon passes a bounded, disk-backed store (proofcache over
 // diskproofs) so resident proof RAM stays O(hot). Passing nil is a no-op — the
 // node keeps its default in-memory backing (sims, ephemeral clients).
@@ -1197,7 +1343,7 @@ func (n *Node) SetProofStore(ps ports.ProofStore) {
 	}
 }
 
-// SetPlotStore attaches durable bond-plot persistence (#93); call before
+// SetPlotStore attaches durable bond-plot persistence; call before
 // EnableBond so a restart reloads the plot instead of re-plotting. nil keeps
 // the plot memory-only (re-plotted each start; fine for sims/tests).
 func (n *Node) SetPlotStore(ps ports.PlotStore) { n.plotStore = ps }
@@ -1205,7 +1351,7 @@ func (n *Node) SetPlotStore(ps ports.PlotStore) { n.plotStore = ps }
 // LoadProofs repopulates the resident proof METADATA from the backing store, so
 // a restarted node re-announces its held coded shards under the correct column
 // key (AnnounceHeld reads proofMeta) instead of their bare ids — the difference
-// between a disk full of content being discoverable or invisible (#69). It reads
+// between a disk full of content being discoverable or invisible. It reads
 // one proof at a time (Keys+Get) to extract its metadata, so startup RAM stays
 // O(hot), not O(total held) — the full proofs stay in the backing, paged later
 // only to serve or audit. Call after New (and SetProofStore), before AnnounceHeld.
@@ -1260,16 +1406,27 @@ const proofReloadBatch = 128
 // demand so serving never waits for the scan. Call after New + SetProofStore,
 // in place of LoadProofs, on a daemon path. A metadata sidecar (O(delta) cold start)
 // is the tracked fast-follow that makes the background scan itself cheap.
-func (n *Node) StartProofReload() {
+//
+// done (may be nil) fires ON THE LOOP once the index is fully resident. IT IS NOT AN
+// OPTIONAL NICETY: anything that SWEEPS proofMeta exactly once is wrong until this
+// fires, because it would sweep a map the scan has not filled yet. An announce that
+// races the scan self-corrects on the next reprovide sweep, which is why the scan was
+// safe to make async — but a ONE-SHOT sweep has no next sweep to correct it. The
+// operator denylist purge is exactly that shape, and it silently purged nothing on
+// every restart until it was moved behind this callback.
+func (n *Node) StartProofReload(done func()) {
 	// Defer even Keys (a full store listing) off the startup path onto the
 	// loop.
 	n.clock.AfterFunc(0, func() {
 		keys, err := n.proofs.Keys()
 		if err != nil {
 			n.logf(ports.LogWarn, "proof reload failed", "err", err)
+			if done != nil {
+				done() // the index is as resident as it will get; sweepers must still run
+			}
 			return
 		}
-		n.reloadProofBatch(keys, 0, 0)
+		n.reloadProofBatch(keys, 0, 0, done)
 	})
 }
 
@@ -1277,7 +1434,7 @@ func (n *Node) StartProofReload() {
 // then reschedules itself for the next window until the store is drained. Runs only
 // on the loop goroutine (scheduled via clock.AfterFunc), so the proofMeta writes need
 // no synchronisation.
-func (n *Node) reloadProofBatch(keys []ports.ChunkID, from, loaded int) {
+func (n *Node) reloadProofBatch(keys []ports.ChunkID, from, loaded int, done func()) {
 	end := from + proofReloadBatch
 	if end > len(keys) {
 		end = len(keys)
@@ -1291,11 +1448,14 @@ func (n *Node) reloadProofBatch(keys []ports.ChunkID, from, loaded int) {
 		loaded++
 	}
 	if end < len(keys) {
-		n.clock.AfterFunc(0, func() { n.reloadProofBatch(keys, end, loaded) })
+		n.clock.AfterFunc(0, func() { n.reloadProofBatch(keys, end, loaded, done) })
 		return
 	}
 	if loaded > 0 {
 		n.logf(ports.LogInfo, "reloaded storage proofs (lazy)", "count", loaded)
+	}
+	if done != nil {
+		done()
 	}
 }
 
@@ -1320,7 +1480,9 @@ func (n *Node) hostShardLocally(id ports.ChunkID, data []byte, proof *ports.Stor
 	if !c.Verify() {
 		return false
 	}
-	if proof != nil && !verifyStorageProof(*proof, id) {
+	// Store-time acceptance holds no independent root (see storageProofSelfConsistent):
+	// this refuses a malformed proof, and the AUDIT is what binds the shard to an object.
+	if proof != nil && !storageProofSelfConsistent(*proof, id) {
 		return false
 	}
 	if err := n.store.Put(bg(), c); err != nil {
@@ -1362,9 +1524,11 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		peerDomains:         make(map[ports.NodeID]uint64),
 		peerBonds:           make(map[ports.NodeID]bondInfo),
 		peerBondRTT:         make(map[ports.NodeID]*latWindow),
+		peerRate:            make(map[ports.NodeID]*peerPath),
 		bondChallengeRate:   make(map[ports.NodeID]*challengerRate),
 		bondSubmitRate:      make(map[ports.NodeID]*challengerRate),
 		roundCertRate:       make(map[ports.NodeID]*challengerRate),
+		porChallengeRate:    make(map[ports.NodeID]*challengerRate),
 		entrySubmitRate:     make(map[ports.NodeID]*challengerRate),
 		issuerKeySubmitRate: make(map[ports.NodeID]*challengerRate),
 		slashedLocal:        make(map[ports.NodeID]bool),
@@ -1433,7 +1597,7 @@ func (n *Node) Store() ports.ChunkStore { return n.store }
 // ReachablePeers reports the peers we've had a successful round-trip with
 // and haven't since timed out — the set worth persisting as warm-restart
 // seeds, as opposed to every address we've ever observed. See the
-// reachable field (#43).
+// reachable field.
 func (n *Node) ReachablePeers() map[ports.NodeID]bool {
 	out := make(map[ports.NodeID]bool, len(n.reachable))
 	for id := range n.reachable {
@@ -1514,17 +1678,31 @@ func (n *Node) request(to ports.NodeID, msg ports.Message, cb func(ports.Message
 // deadline cannot cover — a tight fixed transport deadline is the category error
 // that wedged quorum-2 genesis cross-region while the identical block committed on a
 // single-zone quorum-1 SMOKE. The extension is
-// len(payload)/RequestSizeFloorBytesPerSec of transfer time, capped at 30 s so a
+// len(payload)/sizeFloorFor(to) of transfer time, capped at 30 s so a
 // pathological block can't hang the round. Few-KB steady-state blocks gain ~nothing.
 // See; the structural close is a succinct proof.
-func (n *Node) requestTimeoutFor(msg ports.Message) ports.Duration {
+//
+// THE RATE IS THE PEER'S, NOT A CONSTANT. RequestSizeFloorBytesPerSec is the floor
+// this starts from and never goes above; where a peer's own path has been observed
+// SLOWER than it, the extension is computed against what was observed (peerrate.go).
+// A constant is exactly what build-immutable #5 forbids here, and the failure it
+// produces is not a slow request but an unachievable one — on a link a quarter of the
+// constant, a large payload's reply is declared lost while its bytes are still on the
+// wire, so the exchange can never succeed however many times it is retried.
+//
+// It also returns the EFFECTIVE payload the deadline was sized from, so the exchange's
+// outcome can be sampled back into the estimate against the same quantity.
+func (n *Node) requestTimeoutFor(to ports.NodeID, msg ports.Message) (ports.Duration, int64) {
 	if msg.Kind == ports.MsgFetchChunk || msg.Kind == ports.MsgHasChunk {
+		// A speculative holder dial is not size-extended at all, so it has no rate to
+		// observe: a sample from it would be measuring the dial policy, not the link.
 		if n.cfg.HolderDialTimeout > 0 && n.cfg.HolderDialTimeout < n.cfg.RequestTimeout {
-			return n.cfg.HolderDialTimeout
+			return n.cfg.HolderDialTimeout, 0
 		}
-		return n.cfg.RequestTimeout
+		return n.cfg.RequestTimeout, 0
 	}
 	timeout := n.cfg.RequestTimeout
+	payload := int64(0)
 	if n.cfg.RequestSizeFloorBytesPerSec > 0 {
 		// Size-extend for the larger direction of the exchange. Outbound
 		// payload: the case (a ~1.5 MB bond-reg block must cross the wire
@@ -1535,19 +1713,19 @@ func (n *Node) requestTimeoutFor(msg ports.Message) ports.Duration {
 		// near the floor can meet, and the slow-but-honest WAN peers
 		// pagination exists for stall. The window and this deadline derive
 		// from the same two symbols, so they cannot drift.
-		payload := int64(len(msg.Data))
+		payload = int64(len(msg.Data))
 		if msg.Kind == ports.MsgGetChain {
 			if w := int64(n.maxChainReplyBytes()); w > payload {
 				payload = w
 			}
 		}
-		extra := ports.Duration(payload * int64(ports.Second) / n.cfg.RequestSizeFloorBytesPerSec)
+		extra := ports.Duration(payload * int64(ports.Second) / n.sizeFloorFor(to))
 		if extra > requestSizeExtensionCap {
 			extra = requestSizeExtensionCap
 		}
 		timeout += extra
 	}
-	return timeout
+	return timeout, payload
 }
 
 // requestSizeExtensionCap bounds the payload-scaled deadline extension: a
@@ -1589,11 +1767,17 @@ func (n *Node) requestAttempt(to ports.NodeID, msg ports.Message, attempt int, c
 	// so a discovery-plane "dead" can never shorten a bond audit's or a
 	// consensus RPC's wait (#3: one signal, one job).
 	discovery := msg.Kind == ports.MsgFindNode || msg.Kind == ports.MsgGetProviders || msg.Kind == ports.MsgAddProvider
-	timeout := n.requestTimeoutFor(msg)
-	p := &pending{cb: cb, to: to}
+	timeout, payload := n.requestTimeoutFor(to, msg)
+	p := &pending{cb: cb, to: to, sent: n.clock.Now(), payload: payload}
 	p.cancel = n.clock.AfterFunc(timeout, func() {
 		delete(n.pending, rid)
 		n.Stats.Timeouts++
+		// WHAT THE EXPIRY PROVED, before deciding what to do about it: this peer's
+		// path did not carry `payload` inside `timeout`. That is the only sample a
+		// failing link ever offers — the exchanges large enough to measure it are the
+		// ones that stop completing — so the retry below, and every later attempt, is
+		// sized against it (peerrate.go).
+		n.observeRequestTimeout(to, payload)
 		if !holderFetch && attempt < n.cfg.RequestRetries {
 			// A concurrent phase (the sweep's 32-wide probe fan-out)
 			// launches many walks before the first ladder to a corpse
@@ -1633,7 +1817,7 @@ func (n *Node) requestAttempt(to ports.NodeID, msg ports.Message, attempt int, c
 		// quorum.
 		if msg.Kind != ports.MsgBondChallenge && !n.staticPeers[to] {
 			n.table.Remove(to)
-			delete(n.reachable, to) // no longer proven reachable (#43)
+			delete(n.reachable, to) // no longer proven reachable
 			// Negative-cache the corpse so the fetch/repair loop skips it for a
 			// cooldown instead of re-eating a full RequestTimeout on the same dead
 			// holder every sweep. A reply later (n.reachable set in handle)
@@ -1681,7 +1865,7 @@ func (n *Node) requestAttempt(to ports.NodeID, msg ports.Message, attempt int, c
 			// the re-dial (one full RequestTimeout per HolderCooldown, forever),
 			// because the stale record is never removed. A SOLE holder's record is
 			// KEPT (RemoveIfNotSole) so its content stays discoverable and
-			// re-probeable (#69/); a recovered holder re-announces (reprovide) to
+			// re-probeable; a recovered holder re-announces (reprovide) to
 			// rejoin the set, and its inbound message clears its corpse entry (proof
 			// of life, above).
 			if pruned := n.provs.RemoveIfNotSole(to); pruned > 0 {
@@ -1721,12 +1905,12 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 	}
 	// Any message is proof of life — but a short-lived client (publish/fetch
 	// that keeps nothing) will vanish, so routing to it only poisons the
-	// table with ghosts; process its message, but don't add it (#43).
+	// table with ghosts; process its message, but don't add it.
 	if !msg.Ephemeral {
 		n.table.Observe(from)
 		// Proof of life also clears the dead-peer negative cache: if this peer was
 		// negative-cached as unreachable (a prior dial timed out → a corpse entry), hearing
-		// from it means it RECOVERED — a restart+reprovide (#69), or a NATed peer now
+		// from it means it RECOVERED — a restart+reprovide, or a NATed peer now
 		// reachable via the relay. A truly departed holder sends nothing and stays
 		// gated (so the dial-storm gate on the diversity sweep still holds), but a
 		// recovered one must be re-dialable at once or the sweep/walk keep skipping a
@@ -1754,7 +1938,12 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 		}
 		delete(n.pending, msg.RID)
 		p.cancel()
-		n.reachable[from] = n.clock.Now() // a reply proves we can dial them (#43)
+		now := n.clock.Now()
+		n.reachable[from] = now // a reply proves we can dial them
+		// A completed exchange is the estimator's other sample: what this peer's path
+		// actually achieved, which is what keeps the deadline from staying stretched
+		// after the congestion that stretched it has cleared.
+		n.observeRequestRate(from, p.payload, ports.Duration(now-p.sent))
 		p.cb(msg, nil)
 		return
 	}
@@ -1807,8 +1996,11 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 			key = placementKey(msg.Proof.Root, msg.ChunkID, msg.Proof.Column)
 		}
 		ok := c.Verify() // never store what doesn't hash right
-		if ok && msg.Proof != nil && !verifyStorageProof(*msg.Proof, msg.ChunkID) {
-			ok = false // refuse chunks with proofs we couldn't defend under audit
+		if ok && msg.Proof != nil && !storageProofSelfConsistent(*msg.Proof, msg.ChunkID) {
+			// Refuse a proof that could not be defended under ANY root. This is NOT the
+			// binding check — a receiver has no root of its own for content it was not
+			// asked to care for — and the audit is where the shard is bound to an object.
+			ok = false
 		}
 		if ok && n.liar {
 			// Keep the receipt, ditch the goods: the liar keeps the proof so it
@@ -1834,7 +2026,7 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 				if msg.Proof != nil {
 					// Resident metadata for the hot-path sites; the full proof
 					// write-throughs to the backing (persisted so a restart
-					// re-announces under the right key and can still audit, #69),
+					// re-announces under the right key and can still audit),
 					// paged back into the cache only when served or audited.
 					n.proofMeta[msg.ChunkID] = metaOf(*msg.Proof)
 					if err := n.proofs.Put(msg.ChunkID, *msg.Proof); err != nil {
@@ -1863,7 +2055,7 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 			bytes := int64(len(c.Data))
 			// Object-aware serve: a coded shard carries its object root in the
 			// storage proof, so route a durability auto-skim of the serve revenue
-			// into THAT object's escrow (H7 slice 3 — popular data self-funds its
+			// into THAT object's escrow (popular data self-funds its
 			// repair). Chunks with no proof-anchored root (manifest chunks, uncoded
 			// files) keep the plain serve; the server's net credit is the same either
 			// way, only a slice is diverted to durability.
@@ -1887,6 +2079,13 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 	case ports.MsgChallenge:
 		if n.chunkDenied(msg.ChunkID) {
 			n.reply(from, msg, ports.Message{Kind: ports.MsgChallengeReply, Found: false})
+			return
+		}
+		if !n.allowPorChallenge(from) {
+			// DROPPED, not denied. Replying Found=false here would grade this node
+			// as a prover without the bytes, so a rate limit would become a way to
+			// slash an honest holder. An absent reply is not counted by the auditor
+			// at all. See allowPorChallenge.
 			return
 		}
 		n.reply(from, msg, n.answerChallenge(msg))

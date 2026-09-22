@@ -235,7 +235,7 @@ func (c *Chain) validateIssuerKeys(b *Block) error {
 // apply writes whatever it is handed, so the door is checked here explicitly.
 //
 // Unlike Revocations and Slashes — both REJECTED at genesis because apply would act
-// on them unverified against ANOTHER identity (immutable #5 / retest G1) — a key
+// on them unverified against ANOTHER identity (immutable #5) — a key
 // registration is SELF-AUTHORIZING: IssuerID is derived from Pub, and the signature
 // must verify under that same Pub, so a genesis registration can only ever bind the
 // registrant's OWN key. It cannot touch a third party. So it is admitted, but only

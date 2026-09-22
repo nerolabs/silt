@@ -100,7 +100,7 @@ func TestScatterOverRealTLS(t *testing.T) {
 			done()
 			return
 		}
-		a.nd.Distribute(entry, m, false, node.DerivePorKey(h.LayoutKey()), func(int, error) { done() })
+		a.nd.Distribute(entry, m, false, func(int, error) { done() })
 	})
 
 	var out bytes.Buffer
@@ -165,7 +165,7 @@ func TestImpostorGetsNothing(t *testing.T) {
 
 // A frame whose handling panics must fail that request, not the node: the
 // receiver stays up and still delivers the next message. This is the Gate
-// 1 anti-persona-#14 outcome proven over the real TLS transport — readLoop
+// 1 anti-persona 14 outcome proven over the real TLS transport — readLoop
 // decode → event-loop dispatch → recovery net — not just at the helper
 // level.
 func TestPanickyHandlerDoesNotKillTheNode(t *testing.T) {

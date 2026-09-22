@@ -9,11 +9,11 @@ import (
 )
 
 // TestCtOverheadMatchesGCM pins the constant the auditor uses to recompute a
-// full shard's expected PoR block count from the layout's plaintext
-// ChunkSize (por tags are over ciphertext = plaintext + GCM tag). If crypto's
-// AEAD overhead ever drifts from ctOverhead, the full-shard block-count
-// cross-check (option B) would reject honest shards — so we fail loudly here,
-// at build time, instead of in the field.
+// full shard's expected leaf count from the layout's plaintext ChunkSize (the
+// spot-check tree is over ciphertext = plaintext + GCM tag). If crypto's AEAD
+// overhead ever drifts from ctOverhead, the full-shard leaf-count cross-check
+// would reject honest shards — so we fail loudly here, at build time, instead of
+// in the field.
 func TestCtOverheadMatchesGCM(t *testing.T) {
 	pt := make([]byte, 1000)
 	if _, err := rand.Read(pt); err != nil {
@@ -40,34 +40,43 @@ func TestCtOverheadMatchesGCM(t *testing.T) {
 	}
 }
 
-// TestDerivePorKeyMatchesAcrossCapabilities is the wiring's key-agreement
-// invariant: the publisher (holding the full Handle) and a caretaker/auditor
-// (holding only the degraded care capability) derive the SAME PoR key, so a
-// tag made at publish time verifies at audit time — while the key never
-// travels and a storage node (no layout key) cannot reproduce it. We prove
-// agreement by round-tripping a real proof across the two independently
-// derived keys.
-func TestDerivePorKeyMatchesAcrossCapabilities(t *testing.T) {
-	// A publisher's full handle and the care handle it degrades to.
-	pubKey := DerivePorKey(linkLayoutKey(t))
-	audKey := DerivePorKey(linkLayoutKey(t)) // same layout key → same por key
-
-	unitID := []byte("some-chunk-id")
+// TestShardCommitmentIsKeylessAndReproducible is the wiring's agreement invariant,
+// and what replaced a key-agreement one. The publisher commits a shard's spot-check
+// root at publish time and an auditor checks openings against it much later; the two
+// must arrive at the same root from the bytes alone, with NO key anywhere — which is
+// the property that closed the care-link forgery. A storage node computing the root
+// over the bytes it holds gets the same value, and that is not a weakness: the root
+// is a public commitment, and holding it buys nothing without the bytes it commits.
+func TestShardCommitmentIsKeylessAndReproducible(t *testing.T) {
 	data := make([]byte, 5000)
 	if _, err := rand.Read(data); err != nil {
 		t.Fatalf("rand: %v", err)
 	}
-	tags := pubKey.Tags(unitID, data)
-	c, err := por.NewChallenge(rand.Reader, len(tags), len(tags))
-	if err != nil {
-		t.Fatalf("challenge: %v", err)
+	published := por.ShardRoot(data, por.SpotLeafBytes)
+	audited := por.ShardRoot(data, por.SpotLeafBytes)
+	if published != audited {
+		t.Fatal("two independent computations of a shard root over the same bytes disagreed — " +
+			"a publisher's commitment would not verify at audit time")
 	}
-	proof, err := por.Prove(por.DefaultParams, data, tags, c)
+
+	// A holder of the bytes opens the sampled leaves; the auditor verifies with the
+	// root and the geometry alone, touching no key and no other state.
+	leaves := por.SpotLeaves(len(data), por.SpotLeafBytes)
+	seed := [32]byte{0x9c}
+	ops, err := por.Open(data, por.SpotLeafBytes, seed, por.SpotSampleCount)
 	if err != nil {
-		t.Fatalf("prove: %v", err)
+		t.Fatalf("open: %v", err)
 	}
-	if !audKey.Verify(unitID, c, proof) {
-		t.Fatal("auditor's independently-derived key rejected the publisher's tags")
+	if !por.VerifyOpenings(published, leaves, por.SpotLeafBytes, seed, por.SpotSampleCount, ops) {
+		t.Fatal("an auditor holding only the committed root rejected an honest holder's openings")
+	}
+
+	// AND THE ROOT IS BOUND TO THESE BYTES: one flipped byte moves it, so a
+	// commitment cannot be reused across shards.
+	altered := append([]byte(nil), data...)
+	altered[0] ^= 0xff
+	if por.ShardRoot(altered, por.SpotLeafBytes) == published {
+		t.Fatal("a one-byte change left the shard root unmoved")
 	}
 }
 

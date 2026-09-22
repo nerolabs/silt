@@ -14,7 +14,7 @@ import (
 // project the wire message onto the port type via fromWire. This is the
 // most exposed decoder in the system — raw bytes from any peer that
 // completes a TLS handshake — so it must always fail with an error and
-// never panic (Gate 1 / anti-persona #14). readLoop also has a recover
+// never panic (Gate 1 / anti-persona 14). readLoop also has a recover
 // net under it, but the point of the fuzzer is that the net is never
 // needed here.
 func FuzzEnvelopeDecode(f *testing.F) {

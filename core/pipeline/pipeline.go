@@ -22,6 +22,7 @@ import (
 	"github.com/nerolabs/silt/core/erasure"
 	"github.com/nerolabs/silt/core/link"
 	"github.com/nerolabs/silt/core/manifest"
+	"github.com/nerolabs/silt/core/por"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -70,7 +71,7 @@ type Options struct {
 	// registry is credit-gated, ignored otherwise.
 	Publisher ports.NodeID
 	// Token, when set, is a quorum-issued publish credential that authorizes
-	// the entry WITHOUT a durable Publisher identity (T3, #14/F1). Acquire it
+	// the entry WITHOUT a durable Publisher identity (T3, persona 14 / F1). Acquire it
 	// (node.AcquireToken) before calling Add and pass it here; the entry then
 	// carries the token instead of a publisher.
 	Token *ports.PublishToken
@@ -94,7 +95,7 @@ type Options struct {
 // the right path for callers that don't distribute separately (local add,
 // genesis, sim). A networked publish that scatters to peers should instead
 // Stage, distribute, and publish only once distribution is confirmed, so a
-// failed scatter never leaves a dangling registry entry (#65) — see Stage.
+// failed scatter never leaves a dangling registry entry — see Stage.
 func Add(ctx context.Context, store ports.ChunkStore, reg ports.Registry, r io.Reader, opts Options) (link.Handle, error) {
 	h, entry, err := Stage(ctx, store, r, opts)
 	if err != nil {
@@ -111,7 +112,7 @@ func Add(ctx context.Context, store ports.ChunkStore, reg ports.Registry, r io.R
 // publishing. The caller publishes (reg.Publish) only after confirming the
 // content is distributed, so a loud placement failure never leaves a
 // dangling registry entry pointing at content that isn't actually placed
-// (register-after-distribute, #65 / tenet S5). The returned entry carries
+// (register-after-distribute / tenet S5). The returned entry carries
 // the manifest-chunk pointers, so the caller can LoadFull and Distribute
 // straight from it without a registry round-trip.
 func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Options) (link.Handle, ports.Entry, error) {
@@ -185,11 +186,22 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 			return link.Handle{}, ports.Entry{}, fmt.Errorf("add: storing chunk %d: %w", i, err)
 		}
 		m.Chunks = append(m.Chunks, c.ID[:])
+		// Commit the shard's spot-check tree beside its ID. The root is a
+		// function of the ciphertext alone, so it is computed here, where the
+		// ciphertext exists, and never recomputed from a shard a peer supplied.
+		root := por.ShardRoot(ct, por.SpotLeafBytes)
+		m.ShardRoots = append(m.ShardRoots, root[:])
 		ctChunks = append(ctChunks, ct)
 	}
 
 	// Erasure-code the ciphertext stream: each stripe of k chunks gains
 	// n-k parity shards, stored like any other chunk.
+	//
+	// Parity roots accumulate separately and are appended after the loop,
+	// because ShardRoots is aligned with Leaves() — every data shard, then
+	// every parity shard — and the parity IDs only reach that order at the
+	// end.
+	var parityRoots [][]byte
 	p := opts.Erasure
 	for j := 0; j < p.Stripes(len(ctChunks)); j++ {
 		lo := j * p.K
@@ -204,7 +216,17 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 				return link.Handle{}, ports.Entry{}, fmt.Errorf("add: storing parity %d of stripe %d: %w", q, j, err)
 			}
 			m.Parity = append(m.Parity, c.ID[:])
+			proot := por.ShardRoot(shard, por.SpotLeafBytes)
+			parityRoots = append(parityRoots, proot[:])
 		}
+	}
+
+	m.ShardRoots = append(m.ShardRoots, parityRoots...)
+	if len(m.ShardRoots) > 0 {
+		// A zero-byte object has no shards, so it has nothing to commit and no
+		// geometry to commit it at. The manifest refuses a declared leaf width with
+		// no roots beneath it rather than carrying a number that describes nothing.
+		m.LeafBytes = por.SpotLeafBytes
 	}
 
 	root := m.Root()
@@ -249,7 +271,7 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 	}
 	// Deliberately NOT published here: the caller registers it after
 	// distribution is confirmed (Add does so immediately; a networked
-	// publish waits for a successful scatter) — see #65.
+	// publish waits for a successful scatter) — see
 	return h, entry, nil
 }
 
@@ -261,14 +283,14 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 //	nd.Distribute(entry, m, false, porKey, func(placed int, derr error) {
 //	 n, err:= pipeline.RegisterAfterDistribute(ctx, reg, entry, placed, derr)
 //
-// ...
+//
 //
 //	})
 //
 // On a failed scatter (derr != nil) the registry is left untouched and the
 // scatter error is returned, so a loud placement failure never leaves a
 // dangling entry that names content the swarm can't actually serve
-// (register-after-distribute, #65 / tenet S5). Only on a confirmed scatter is
+// (register-after-distribute / tenet S5). Only on a confirmed scatter is
 // the entry published — and any publish error is surfaced too, never
 // swallowed. Extracting the gate here means both call sites share one tested
 // decision instead of duplicating "publish iff derr == nil" by hand.

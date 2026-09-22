@@ -23,6 +23,26 @@
 # The Sybils are NOT anchors. So even bonded and quorum-complete they cannot commit
 # while the network is young without an anchor — chain: ErrAnchorRequired. That is
 # C2. role.sh self-advertises each container's routable IP.
+#
+# a1 IS PINNED TO THE DECLARED FLOOR SPEC — one core, 2 GiB, no swap. It is the
+# honest seat the Sybil farm actually feeds: every extra identity submits a bond
+# registration for a1 to verify, bank and commit, so the farm's size is a1's
+# working set. Pinning it makes this topology answer the part of the floor-box
+# claim that honest consensus traffic cannot — silt stays under its memory
+# ceiling on ADVERSARIAL input, on the smallest box it claims to run on.
+#
+# The limits are a cgroup and not the daemon's `-mem-limit`, because
+# `-mem-limit` is a SOFT ceiling (it sets runtime/debug.SetMemoryLimit, so the
+# GC reclaims harder as the heap climbs) and a soft ceiling cannot answer "does
+# this node survive on a 2 GiB box". `memswap_limit` equal to `mem_limit` means
+# no swap at all, so crossing the ceiling is a clean OOM-kill the harness can
+# read rather than a thrash it would have to guess about. `cpuset` and not a CPU
+# quota, because a quota still reports every host core to `nproc` and the Go
+# runtime would size GOMAXPROCS for a box wider than the one that ships.
+#
+# The soft `-mem-limit=1500M` rides ALONGSIDE the hard ceiling, because it is
+# part of the floor-box configuration the product ships: the GC gets a chance to
+# act before the kernel does.
 
 networks:
   swarm:
@@ -58,8 +78,12 @@ services:
       - -bond-audit=1s
       - -domain=honest
       - -capacity=1G
+      - -mem-limit=1500M
       - -mdns=false
       - -log=info
+    cpuset: "0"
+    mem_limit: 2g
+    memswap_limit: 2g
     networks:
       swarm: { ipv4_address: 10.90.0.2 }
 
