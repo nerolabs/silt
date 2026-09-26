@@ -233,14 +233,14 @@ func (f *composedFixture) mintTokenAt(t *testing.T, epoch uint64, priv *rsa.Priv
 		t.Fatalf("serial: %v", err)
 	}
 	pub := &priv.PublicKey
-	blinded, secret, err := demand.Withdraw(rand.Reader, pub, epoch, serial)
+	blinded, secret, err := demand.Withdraw(rand.Reader, pub, f.chain.ChainID(), epoch, serial)
 	if err != nil {
 		t.Fatalf("withdraw: %v", err)
 	}
 	if err := f.ledger.ChargePublish(f.fetcher.NodeID()); err != nil {
 		t.Fatalf("the fetcher must pay the withdrawal fee: %v", err)
 	}
-	tok, uerr := demand.Unblind(pub, epoch, serial, demand.SignWithdrawal(rand.Reader, priv, blinded), secret)
+	tok, uerr := demand.Unblind(pub, f.chain.ChainID(), epoch, serial, demand.SignWithdrawal(rand.Reader, priv, f.chain.ChainID(), blinded), secret)
 	if uerr != nil {
 		t.Fatalf("unblind: %v", uerr)
 	}

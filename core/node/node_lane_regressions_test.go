@@ -160,11 +160,11 @@ func TestRestartDoesNotRePayTheSameWireReceipt(t *testing.T) {
 
 	// One real blind withdrawal, one fee, one receipt.
 	serial, _ := blindtoken.NewSerial(rand.Reader)
-	blinded, secret, err := demand.Withdraw(rand.Reader, &key.PublicKey, 0, serial)
+	blinded, secret, err := demand.Withdraw(rand.Reader, &key.PublicKey, srv.chainID(), 0, serial)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tok, uerr := demand.Unblind(&key.PublicKey, 0, serial, demand.SignWithdrawal(rand.Reader, key, blinded), secret)
+	tok, uerr := demand.Unblind(&key.PublicKey, srv.chainID(), 0, serial, demand.SignWithdrawal(rand.Reader, key, srv.chainID(), blinded), secret)
 	if uerr != nil {
 		t.Fatal(uerr)
 	}
@@ -264,11 +264,11 @@ func TestUnwitnessedReceiptLeavesTheSelfMintAlone(t *testing.T) {
 
 	// The premise leg: this fixture CAN reverse. Without it the assertion above would
 	// pass on a lane that never reaches the ledger for any reason at all.
-	blinded, secret, err := demand.Withdraw(rand.Reader, &key.PublicKey, 0, serial)
+	blinded, secret, err := demand.Withdraw(rand.Reader, &key.PublicKey, srv.chainID(), 0, serial)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tok, uerr := demand.Unblind(&key.PublicKey, 0, serial, demand.SignWithdrawal(rand.Reader, key, blinded), secret)
+	tok, uerr := demand.Unblind(&key.PublicKey, srv.chainID(), 0, serial, demand.SignWithdrawal(rand.Reader, key, srv.chainID(), blinded), secret)
 	if uerr != nil {
 		t.Fatal(uerr)
 	}

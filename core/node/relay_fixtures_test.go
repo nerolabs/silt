@@ -82,14 +82,14 @@ func commitSelfDemandKey(t *testing.T, n *Node, ident *identity.Identity, key *r
 // mintAnchorUnder is the issuer side of a blind withdrawal under key for issue
 // epoch e, done directly and statelessly (goroutine-safe; the burn is exercised
 // separately over the wire by TestRelayAnchorsAreBoughtOnTheRelaysOwnLedger).
-func mintAnchorUnder(t *testing.T, key *rsa.PrivateKey, e uint64) relaypay.Anchor {
+func mintAnchorUnder(t *testing.T, key *rsa.PrivateKey, cid ports.Hash, e uint64) relaypay.Anchor {
 	t.Helper()
 	serial, err := blindtoken.NewSerial(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 	pub := &key.PublicKey
-	blinded, secret, err := blindtoken.BlindRelayAnchor(rand.Reader, pub, e, serial)
+	blinded, secret, err := blindtoken.BlindRelayAnchor(rand.Reader, pub, cid, e, serial)
 	if err != nil {
 		t.Fatalf("BlindRelayAnchor: %v", err)
 	}
@@ -97,7 +97,7 @@ func mintAnchorUnder(t *testing.T, key *rsa.PrivateKey, e uint64) relaypay.Ancho
 	if err != nil {
 		t.Fatal(err)
 	}
-	sig, err := blindtoken.UnblindRelayAnchor(pub, e, serial, blindSig, secret)
+	sig, err := blindtoken.UnblindRelayAnchor(pub, cid, e, serial, blindSig, secret)
 	if err != nil {
 		t.Fatalf("UnblindRelayAnchor: %v", err)
 	}
@@ -113,7 +113,7 @@ func mintAnchorsFor(t *testing.T, n *Node, e uint64, k int) []relaypay.Anchor {
 	}
 	out := make([]relaypay.Anchor, 0, k)
 	for i := 0; i < k; i++ {
-		out = append(out, mintAnchorUnder(t, v.(*rsa.PrivateKey), e))
+		out = append(out, mintAnchorUnder(t, v.(*rsa.PrivateKey), n.chainID(), e))
 	}
 	return out
 }

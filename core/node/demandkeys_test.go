@@ -95,8 +95,8 @@ func TestIssuerKey_OffCommitmentKeyIsRefused(t *testing.T) {
 
 	// A token signed by the targeted key must therefore verify against nothing.
 	if ks := f.nd.DemandIssuerKeyset(f.issuer); ks != nil {
-		tok := blindTokenUnder(t, targeted)
-		if _, ok := ks.VerifyInWindow(0, tok); ok {
+		tok := blindTokenUnder(t, targeted, f.nd.chainID())
+		if _, ok := ks.VerifyInWindow(f.nd.chainID(), 0, tok); ok {
 			t.Fatal("a token signed by an off-commitment key verified")
 		}
 	}
@@ -110,7 +110,7 @@ func TestIssuerKey_OffCommitmentKeyIsRefused(t *testing.T) {
 	if ks == nil || ks.Key(0) == nil {
 		t.Fatal("the committed key was not held after a successful pin")
 	}
-	if _, ok := ks.VerifyInWindow(0, blindTokenUnder(t, f.committed)); !ok {
+	if _, ok := ks.VerifyInWindow(f.nd.chainID(), 0, blindTokenUnder(t, f.committed, f.nd.chainID())); !ok {
 		t.Fatal("a token signed by the COMMITTED key did not verify")
 	}
 }
@@ -147,10 +147,10 @@ func TestIssuerKey_PinFollowsTheChain(t *testing.T) {
 	}
 	f.nd.pinDemandIssuerKey(f.issuer, 0, &other.PublicKey)
 	ks := f.nd.DemandIssuerKeyset(f.issuer)
-	if _, ok := ks.VerifyInWindow(0, blindTokenUnder(t, f.committed)); !ok {
+	if _, ok := ks.VerifyInWindow(f.nd.chainID(), 0, blindTokenUnder(t, f.committed, f.nd.chainID())); !ok {
 		t.Fatal("the pinned committed key was displaced by a later serve")
 	}
-	if _, ok := ks.VerifyInWindow(0, blindTokenUnder(t, other)); ok {
+	if _, ok := ks.VerifyInWindow(f.nd.chainID(), 0, blindTokenUnder(t, other, f.nd.chainID())); ok {
 		t.Fatal("a second key for the SAME epoch was accepted after the pin")
 	}
 }
@@ -205,23 +205,23 @@ func TestIssuerKey_SelfIssuanceGetsNoException(t *testing.T) {
 // blindTokenUnder runs a full blind withdrawal under priv for issue epoch 0,
 // producing a token that verifies under priv's public key AT EPOCH 0 and nothing
 // else.
-func blindTokenUnder(t *testing.T, priv *rsa.PrivateKey) demand.Token {
+func blindTokenUnder(t *testing.T, priv *rsa.PrivateKey, cid ports.Hash) demand.Token {
 	t.Helper()
-	return blindTokenUnderAt(t, priv, 0)
+	return blindTokenUnderAt(t, priv, cid, 0)
 }
 
 // blindTokenUnderAt is blindTokenUnder for an explicit issue epoch — the (b1) shape.
-func blindTokenUnderAt(t *testing.T, priv *rsa.PrivateKey, epoch uint64) demand.Token {
+func blindTokenUnderAt(t *testing.T, priv *rsa.PrivateKey, cid ports.Hash, epoch uint64) demand.Token {
 	t.Helper()
 	serial := make([]byte, 32)
 	if _, err := rand.Read(serial); err != nil {
 		t.Fatalf("serial: %v", err)
 	}
-	blinded, secret, err := demand.Withdraw(rand.Reader, &priv.PublicKey, epoch, serial)
+	blinded, secret, err := demand.Withdraw(rand.Reader, &priv.PublicKey, cid, epoch, serial)
 	if err != nil {
 		t.Fatalf("withdraw: %v", err)
 	}
-	tok, uerr := demand.Unblind(&priv.PublicKey, epoch, serial, demand.SignWithdrawal(rand.Reader, priv, blinded), secret)
+	tok, uerr := demand.Unblind(&priv.PublicKey, cid, epoch, serial, demand.SignWithdrawal(rand.Reader, priv, cid, blinded), secret)
 	if uerr != nil {
 		t.Fatalf("unblind: %v", uerr)
 	}
