@@ -110,15 +110,81 @@ anything above the transport that still needs a round trip on the congested conn
 raising the outbound cap; the control lane's three invariants; a one-in-flight-per-peer
 submit rule (built, fired zero times, removed).
 
-**The structural answers, all of which were priced and all of which are large:** a separate
-control connection (needs a role negotiated at connection setup, and reaches the relay
-splice, the hole-punch upgrade and NATed reply routing), QUIC (a new transport adapter), or
-succinct proofs (which replace the 1.5 MB payload with a small one, and are a **new era** by
-the frozen-format rule).
+**The separate control connection is already built, and did not end the wedge.** It landed
+on 2026-09-21 (`adapters/tcpnet/ctrllane.go`): frames at or under 64 KiB ride a second TLS
+connection negotiated by ALPN (`silt-ctrl/1`). On the field run that followed, the lane was
+live on all four seats with zero lane failures and zero starved control frames, and the
+chain still went 418 s without a commit (RC item 21). An earlier draft of this section
+listed it as an unbuilt option; that was wrong.
+
+The likely reason, not yet driven in the field: the field shaped each seat with one netem
+band for all swarm traffic, so both connections share one FIFO queue at the slow link. The
+control connection escapes TCP's in-order delivery, not the bytes queued ahead of it at the
+bottleneck. Only sending fewer bulk bytes, or not sending them on the critical path,
+addresses that.
+
+**The structural answers still open, both large:** QUIC (a new transport adapter, and
+subject to the same shared-bottleneck limit), or succinct proofs (which replace the 1.5 MB
+payload with a small one, and are a **new era** by the frozen-format rule).
 
 Succinct proofs are the one that dissolves the problem rather than managing it. A resumption
 with materially better tooling should probably start there and treat the transport work as
 what it is — mitigation of a payload that should not be on the critical path at all.
+
+---
+
+## Re-measured 2026-11-17 (branch `builder/have-bondreg-and-paced-bulk`)
+
+Three fixes suggested by an outside reader were built and measured below the field tier.
+None has been driven in the field. Re-run the commands before citing a number.
+
+| Change | What it does |
+|---|---|
+| `MsgHaveBondReg` | A receiver that queues a renewal sends the digest back unsolicited, so the receipt is recorded even after the submit request's deadline expired. The submitter stops re-sending a proof the peer holds. |
+| Pieced framing (`silt/2`) | On a negotiated bulk connection, frames over 16 KiB go as 16 KiB pieces, and a small frame goes at the next piece boundary. `TCP_NOTSENT_LOWAT` bounds the kernel's unsent queue. Older peers negotiate `silt/1` and the old format. |
+| `simnet.Config.CtrlLaneBytes` | Optional second queue per pair in the simulator, modelling a bottleneck that queues each connection separately. |
+
+The suggested acknowledgement window for pieces was not built. It caps throughput at
+window ÷ RTT on every link, about 320 KiB/s at 32 KiB and 100 ms. The suggested backoff
+change in `peerrate.go` was not built either; it was described as following from the pieces.
+
+**Coverage on the congested arm, 64 KiB/s, 72 sweeps, eight seeds.** Mean, with range. One
+queue per pair is the closer model of the field's netem shaping.
+
+| | Height | Shed | Renewal submits |
+|---|---|---|---|
+| One queue, before | 2.4 (2–3) | 47% | 470 |
+| One queue, with `MsgHaveBondReg` | 5.1 (4–7) | 71% | 36 |
+| Separate queues, before | 8.0 (6–9) | 74% | 81 (60–210) |
+| Separate queues, with `MsgHaveBondReg` | 8.0 (6–9) | 72% | 41 |
+| Fast wire, for reference | 11 | 93–95% | 30 |
+
+Command: `go test ./core/node/ -run TestTheDigestRelaysCoverageOnAHealthyWireAndACongestedOne -v`
+(seed 17 only; the eight-seed sweep used `driveCoverageSeeded`).
+
+**A 121-byte frame behind bulk on one connection, macOS loopback.**
+
+| Rate, bulk | Unpieced | Pieced |
+|---|---|---|
+| 8 MiB/s, 16 MiB | 1.81 s | 0.07–0.22 s across runs |
+| 64 KiB/s, 1.5 MB | 24.0 s | 12.6 s |
+
+Darwin accepts `TCP_NOTSENT_LOWAT` but does not enforce it on write, so about 800 KB of the
+proof was still ahead of the small frame at 64 KiB/s; disabling the option changed nothing.
+Linux enforces it in `sendmsg`. The Linux figure has not been measured; CI's unshortened
+step now runs `TestPiecedFramingAtTheCongestedFieldRate` on Linux.
+
+**What this says.** `MsgHaveBondReg` removes most of the renewal traffic and roughly doubles
+progress where small frames share the bulk queue. On a separately queued control lane it
+adds nothing to height, because the head-probe inventory already carries the same evidence.
+Neither fix reaches the fast wire's 11 heights, and neither is evidence about the field.
+
+**A silent loss found on the way, and fixed.** `TestOutboundBoundDropsNothingWhenThePeerDrains`
+failed intermittently on macOS on `main`: 5 of 6 batches of 15 runs. Two hundred sends to a
+peer with no live connection each dialled it; macOS's accept backlog is 128
+(`kern.ipc.somaxconn`), so some dials were reset in `connect`, and `deliver` dropped those
+frames without an error. Senders now share one dial per peer, and a frame dropped because
+every dial failed is logged. Same conditions after the fix: 0 of 6 batches failed.
 
 ---
 
