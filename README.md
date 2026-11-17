@@ -206,4 +206,4 @@ not canon, and it is a snapshot dated 2026-09-22 rather than a plan.
 
 ## License
 
-Apache License 2.0. See [`LICENSE`](LICENSE).
+Copyright 2026 AELaboratories, Inc. Licensed under the Apache License 2.0. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
