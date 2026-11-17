@@ -49,6 +49,9 @@ type coverage struct {
 	// acknowledgements the senders never saw return.
 	held, acksLost             int
 	probesAnswered, probesLost int
+	// unsolicited counts receipts first recorded from MsgHaveBondReg rather than from
+	// the acknowledgement it races.
+	unsolicited int
 }
 
 func (c coverage) legs() int { return c.shed + c.carried }
@@ -65,13 +68,19 @@ func (c coverage) pct() float64 {
 // renewals and proposing real blocks — over a wire with the supplied characteristics,
 // and reports the digest relay's coverage across the whole run.
 func driveCoverage(t *testing.T, netcfg simnet.Config, intervals int, ttl uint64) coverage {
+	return driveCoverageSeeded(t, 17, netcfg, intervals, ttl)
+}
+
+// driveCoverageSeeded is driveCoverage with the network's random seed named, so a
+// difference between two arms can be checked against the spread across seeds.
+func driveCoverageSeeded(t *testing.T, seed int64, netcfg simnet.Config, intervals int, ttl uint64) coverage {
 	t.Helper()
 	const (
 		bondSize = int64(2) << 20
 		N        = 4
 	)
 	sched := simclock.New()
-	net := simnet.New(sched, 17, netcfg)
+	net := simnet.New(sched, seed, netcfg)
 
 	ids := make([]*identity.Identity, N)
 	anchors := map[ports.NodeID]bool{}
@@ -136,6 +145,7 @@ func driveCoverage(t *testing.T, netcfg simnet.Config, intervals int, ttl uint64
 		c.peerUnreported += s.GatherLegsCarriedPeerUnreported
 		c.held += s.BondRegSubmitsHeld
 		c.acksLost += s.BondRegSubmitAcksLost
+		c.unsolicited += s.BondRegReceiptsUnsolicited
 		c.probesAnswered += s.ChainHeadProbesAnswered
 		c.probesLost += s.ChainHeadProbesLost
 		t.Logf("    node %d: shed %3d  carried %3d  (own-unacked %d, peer-unreported %d)",
@@ -167,8 +177,8 @@ func (c coverage) report(t *testing.T, arm string) {
 	}
 	t.Logf("      MsgSubmitBondReg %4d sends %12d B  (%.2f per peer per sweep), %d ARRIVED",
 		c.submits, c.submitBytes, perSlot, c.submitsArrived)
-	t.Logf("        of those arrivals the receivers QUEUED %d; the senders lost %d acknowledgements",
-		c.held, c.acksLost)
+	t.Logf("        of those arrivals the receivers QUEUED %d; the senders lost %d acknowledgements; %d receipts were first recorded unsolicited",
+		c.held, c.acksLost, c.unsolicited)
 	t.Logf("      chain-head probes (the other carrier of the same evidence): %d answered, %d lost",
 		c.probesAnswered, c.probesLost)
 	t.Logf("      MsgProposeBlock  %4d sends %12d B", c.proposals, c.proposalBytes)
@@ -227,6 +237,18 @@ func TestTheDigestRelaysCoverageOnAHealthyWireAndACongestedOne(t *testing.T) {
 	congested := driveCoverage(t, congestedNet, 72, shippedBondTTL)
 	congested.report(t, "a congested wire (64 KiB/s, a quarter of the assumed floor)")
 
+	// THE SAME WIRE WITH THE CONTROL LANE QUEUED SEPARATELY: tcpnet puts every frame
+	// at or under smallFrameBytes on a second connection, and a fair-queueing
+	// bottleneck gives that connection its own queue, so a shed proposal, a head
+	// probe's reply and a receipt never wait behind a carried proof. It is the BEST
+	// case for the lane. Through one FIFO bottleneck — a netem band, which is how the
+	// field shapes a seat — both connections share the queue, and the single-queue
+	// arm above is the closer model.
+	lanedNet := congestedNet
+	lanedNet.CtrlLaneBytes = 64 << 10
+	laned := driveCoverage(t, lanedNet, 72, shippedBondTTL)
+	laned.report(t, "the same congested wire with a control lane")
+
 	if healthy.legs() == 0 || congested.legs() == 0 {
 		t.Fatal("VACUOUS: an arm ran not one gather leg carrying a bond registration, so it measured " +
 			"nothing. Either the run never proposed a registration-bearing block or the era boundary " +
@@ -267,6 +289,25 @@ func TestTheDigestRelaysCoverageOnAHealthyWireAndACongestedOne(t *testing.T) {
 			"(peerrate.go) before reading any coverage figure on this arm.",
 			congested.head, congested.legs(), congested.pct(), congested.acksLost, congested.probesLost,
 			congestedCommitFloor)
+	}
+
+	// THE RECEIPT OUTLIVES ITS DEADLINE. On this arm the submit request expires while
+	// its ~1.5 MB is still crossing, so the acknowledgement lands with nobody waiting.
+	// Before MsgHaveBondReg every one of those registrations was re-sent in full on
+	// the next sweep — 0.54 submits per peer per sweep, which is a lost receipt every
+	// time — and the re-sends are bytes on the same queue the consensus frames wait
+	// in. With the receipt re-sent unsolicited it is recorded when it lands, and the
+	// rate falls to the cadence a registration is actually due at (0.03 on the fast
+	// arm). The bound sits well above that and well below the old rate.
+	const congestedSubmitsPerPeerPerSweep = 0.1
+	if slots := congested.sweeps * congested.peersPer * 4; slots > 0 {
+		if rate := float64(congested.submits) / float64(slots); rate > congestedSubmitsPerPeerPerSweep {
+			t.Fatalf("on the congested wire each validator re-sent its full registration %.2f times per peer "+
+				"per sweep (%d sends; %d acknowledgements lost, %d receipts recorded unsolicited). Above %.2f the "+
+				"lost acknowledgement is being read as an undelivered proof again: check that a receiver sends "+
+				"MsgHaveBondReg when it queues a submit, and that the submitter credits it.",
+				rate, congested.submits, congested.acksLost, congested.unsolicited, congestedSubmitsPerPeerPerSweep)
+		}
 	}
 
 	// THE GATE ON THE FAST ARM, which is the only arm where a coverage figure is a

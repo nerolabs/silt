@@ -480,6 +480,12 @@ type Stats struct {
 	// turns a bookkeeping gap into an apparent ceiling.
 	BondRegSubmitsHeld    int
 	BondRegSubmitAcksLost int
+	// BondRegReceiptsUnsolicited counts receipts for this node's own registration that
+	// were FIRST recorded from a MsgHaveBondReg rather than from the acknowledgement.
+	// Both are sent at the same moment, so on a wire that delivers it is whichever
+	// latency draw lands first; on one where the request expires, it is the lost
+	// acknowledgements above, recovered.
+	BondRegReceiptsUnsolicited int
 	// AND THE OTHER CARRIER OF THE SAME EVIDENCE. A peer's held-registration
 	// inventory rides its chain-sync head reply, so a probe that does not come back
 	// carries no inventory either. ChainHeadProbesAnswered counts the replies that

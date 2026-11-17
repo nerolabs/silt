@@ -199,6 +199,13 @@ const (
 	// server produces a stall and never an acceptance (core/chain WitnessProvider).
 	MsgGetWitness   // Data: CBOR witnessReq — one accessor call (leaf, members, ancestors or log extension) against a named head
 	MsgWitnessReply // Data: CBOR witnessResp — the answer, or OK=false when this node has no witness to serve
+	// APPENDED, never inserted: the receipt that survives its request's deadline. A
+	// renewal submit carries ~1.5 MB, so on a slow link the submitter's request expires
+	// while the bytes are still crossing and the MsgSubmitBondRegAck that follows has
+	// nobody waiting for it. This is the same receipt sent unsolicited, so it is
+	// recorded whenever it lands. It has no Data, so it is a control-sized frame and
+	// never queues behind the payload it acknowledges.
+	MsgHaveBondReg // HeldRegs: the answer-digest of the registration the sender just QUEUED from the receiver; unsolicited, never a reply
 )
 
 // StorageProof is a Merkle inclusion proof shipped alongside a chunk:
@@ -411,6 +418,7 @@ func (k MsgKind) String() string {
 		MsgCommitBlock: "CommitBlock", MsgCommitAck: "CommitAck",
 		MsgGetChain: "GetChain", MsgChainReply: "ChainReply",
 		MsgGetWitness: "GetWitness", MsgWitnessReply: "WitnessReply",
+		MsgHaveBondReg:  "HaveBondReg",
 		MsgGetChainHead: "GetChainHead", MsgChainHeadReply: "ChainHeadReply",
 		MsgCheckReachability: "CheckReachability", MsgReachabilityReply: "ReachabilityReply",
 		MsgSubmitBondReg: "SubmitBondReg", MsgSubmitBondRegAck: "SubmitBondRegAck",
