@@ -168,11 +168,13 @@ Command: `go test ./core/node/ -run TestTheDigestRelaysCoverageOnAHealthyWireAnd
 |---|---|---|
 | 8 MiB/s, 16 MiB | 1.81 s | 0.07–0.22 s across runs |
 | 64 KiB/s, 1.5 MB | 24.0 s | 12.6 s |
+| 64 KiB/s, 1.5 MB, Linux (CI, one run) | 23.9 s | 2.3 s |
 
 Darwin accepts `TCP_NOTSENT_LOWAT` but does not enforce it on write, so about 800 KB of the
 proof was still ahead of the small frame at 64 KiB/s; disabling the option changed nothing.
-Linux enforces it in `sendmsg`. The Linux figure has not been measured; CI's unshortened
-step now runs `TestPiecedFramingAtTheCongestedFieldRate` on Linux.
+Linux enforces it in `sendmsg`, and there the pieced wait fell to a tenth of the unpieced
+one. That figure is one CI run on GitHub's Ubuntu runner over loopback; CI's unshortened
+step reruns `TestPiecedFramingAtTheCongestedFieldRate` on every pull request.
 
 **What this says.** `MsgHaveBondReg` removes most of the renewal traffic and roughly doubles
 progress where small frames share the bulk queue. On a separately queued control lane it
