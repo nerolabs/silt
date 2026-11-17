@@ -45,6 +45,20 @@ type Config struct {
 	// interactions stay the field tier's job; what moves down here is the part that
 	// is arithmetic.
 	RateBytesPerSec int64
+	// CtrlLaneBytes gives each ordered pair a SECOND queue for messages whose Data is
+	// at most this many bytes, the way tcpnet routes a frame at or under
+	// smallFrameBytes onto its control connection. A small message then waits only
+	// behind other small messages, never behind a payload.
+	//
+	// That is a bottleneck that queues each connection SEPARATELY — a fair-queueing
+	// router. Two connections through a single FIFO queue, which is how a netem band
+	// shapes them, share that queue, and a small frame on the second connection still
+	// waits behind every payload byte queued ahead of it. The default of one queue per
+	// pair is the closer model of that, and of a peer with only one connection.
+	//
+	// It only has an effect with a RateBytesPerSec, because without one nothing
+	// queues.
+	CtrlLaneBytes int64
 }
 
 func DefaultConfig() Config {
@@ -84,7 +98,7 @@ type Network struct {
 	// it. Keyed per (from, to) because that is the direction a send occupies; a
 	// shared full-duplex link would be a different model and a less pessimistic one.
 	// Empty whenever RateBytesPerSec is 0, so the default path allocates nothing.
-	busyUntil map[[2]ports.NodeID]ports.Time
+	busyUntil map[laneKey]ports.Time
 	endpoints map[ports.NodeID]*Endpoint
 	// partitioned maps node → group; nodes in different groups can't
 	// talk. Empty map = no partition.
@@ -139,7 +153,7 @@ func New(sched Scheduler, seed int64, cfg Config) *Network {
 		sched:     sched,
 		rng:       rand.New(rand.NewSource(seed)),
 		cfg:       cfg,
-		busyUntil: make(map[[2]ports.NodeID]ports.Time),
+		busyUntil: make(map[laneKey]ports.Time),
 		endpoints: make(map[ports.NodeID]*Endpoint),
 		group:     make(map[ports.NodeID]int),
 		nat:       make(map[ports.NodeID]natBox),
@@ -248,6 +262,12 @@ func (e *Endpoint) Send(to ports.NodeID, msg ports.Message) error {
 	return nil
 }
 
+// laneKey names one queue: an ordered pair, and which of its two connections.
+type laneKey struct {
+	from, to ports.NodeID
+	ctrl     bool
+}
+
 // occupy charges this message's SERIALIZATION time to the (from, to) link and
 // returns how long it must wait before its last byte is on the wire — its own
 // transfer, plus whatever is still queued ahead of it.
@@ -272,7 +292,7 @@ func (n *Network) occupy(from, to ports.NodeID, msg ports.Message) ports.Duratio
 	}
 	serialize := ports.Duration(size * int64(ports.Second) / n.cfg.RateBytesPerSec)
 	now := n.sched.Now()
-	key := [2]ports.NodeID{from, to}
+	key := laneKey{from: from, to: to, ctrl: n.cfg.CtrlLaneBytes > 0 && size <= n.cfg.CtrlLaneBytes}
 	start := n.busyUntil[key]
 	if start < now {
 		start = now // link went idle; no credit for the gap
