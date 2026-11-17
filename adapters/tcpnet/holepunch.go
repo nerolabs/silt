@@ -76,9 +76,12 @@ func (t *Transport) HolePunch(peer ports.NodeID, peerAddr string, localPort int)
 			Certificates: []tls.Certificate{t.cert},
 			ClientAuth:   tls.RequireAnyClientCert,
 			MinVersion:   tls.VersionTLS13,
+			NextProtos:   acceptedLanes,
 		})
 	} else {
-		conn = tls.Client(raw, identity.ClientConfig(t.cert, peer))
+		cfg := identity.ClientConfig(t.cert, peer)
+		cfg.NextProtos = lanesFor(false)
+		conn = tls.Client(raw, cfg)
 	}
 	t.logf(ports.LogInfo, "hole-punch: direct connection established", "peer", peer, "addr", peerAddr)
 	t.readLoop(conn, false) // direct now; adopt replaces the relay conn so reuse stops requesting punches

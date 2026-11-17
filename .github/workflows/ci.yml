@@ -105,7 +105,7 @@ jobs:
             echo "$out" | grep '^--- SKIP'; exit 1
           fi
           echo "OK — every named untagged gate ran and passed"
-      # EVERY OTHER `go test` IN THIS FILE PASSES `-short`, AND THESE SIX TESTS SKIP
+      # EVERY OTHER `go test` IN THIS FILE PASSES `-short`, AND THESE SEVEN TESTS SKIP
       # UNDER IT. Measured: they executed in NO CI job at all — `--- SKIP` on each, exit
       # 0, a green check standing for zero execution
       # 2026-09-10, count 2; instance 1 was a seat choosing -short by hand, this one is
@@ -119,7 +119,10 @@ jobs:
       # TestSlashesBytesCapWorstCaseCost, asserts only PRECONDITIONS — its four figures
       # go through t.Logf, so running it buys execution, not protection of the numbers
       # (said in full at core/chain.SlashesBytesCap). It is here because it is the
-      # derivation witness for a FROZEN era-4 parameter and must at least run.
+      # derivation witness for a FROZEN era-4 parameter and must at least run. The
+      # seventh, TestPiecedFramingAtTheCongestedFieldRate, asserts that pieced framing
+      # lets a small frame past a 1.5 MB proof on one connection at 64 KiB/s; it is the
+      # only place that bound is measured on Linux, where TCP_NOTSENT_LOWAT is enforced.
       #
       # NOT in the race job: TestReconcileMemoryBounded self-skips under -race too,
       # so -race would put it straight back in the dark.
@@ -127,14 +130,15 @@ jobs:
       # Measured on a throttled 2-core box: 36.9 s of test time, 58 s wall including the
       # test-binary builds. TestRNestGate_SelfArmorMeasurement dominates at 28-30 s; the
       # coverage measurement mints real space-time proofs on two arms and takes ~20 s;
-      # the other four total ~6 s. -timeout 20m leaves headroom on a slower runner.
+      # the other four total ~6 s. The pieced-framing measurement drains ~1.5 MB at
+      # 64 KiB/s twice, ~50 s. -timeout 20m leaves headroom on a slower runner.
       #
       # scripts/check_short_dark_tests.py READS THIS `-run` LIST as the source of truth
       # for what runs unshortened. Dropping a name here does not just lose the run — it
       # turns that test dark, and the lint goes red in the repo-lints job.
       - name: the -short-dark asserting tests really ran (no other job executes these)
         run: |
-          out=$(go test -count=1 -v ./core/chain/ ./cmd/silt/ ./core/erasure/ ./core/node/ -run '^(TestRNestGate_SelfArmorMeasurement|TestServeGiniHonestNullIsMixDependentNotSampleSizeDependent|TestReconcileMemoryBounded|TestSlashesBytesCapWorstCaseCost|TestReconstructMemoryFootprint_SimVsProd|TestTheDigestRelaysCoverageOnAHealthyWireAndACongestedOne)$' -timeout 20m 2>&1)
+          out=$(go test -count=1 -v ./core/chain/ ./cmd/silt/ ./core/erasure/ ./core/node/ ./adapters/tcpnet/ -run '^(TestRNestGate_SelfArmorMeasurement|TestServeGiniHonestNullIsMixDependentNotSampleSizeDependent|TestReconcileMemoryBounded|TestSlashesBytesCapWorstCaseCost|TestReconstructMemoryFootprint_SimVsProd|TestTheDigestRelaysCoverageOnAHealthyWireAndACongestedOne|TestPiecedFramingAtTheCongestedFieldRate)$' -timeout 20m 2>&1)
           echo "$out"
           for tst in \
             TestRNestGate_SelfArmorMeasurement \
@@ -142,7 +146,8 @@ jobs:
             TestReconcileMemoryBounded \
             TestSlashesBytesCapWorstCaseCost \
             TestReconstructMemoryFootprint_SimVsProd \
-            TestTheDigestRelaysCoverageOnAHealthyWireAndACongestedOne ; do
+            TestTheDigestRelaysCoverageOnAHealthyWireAndACongestedOne \
+            TestPiecedFramingAtTheCongestedFieldRate ; do
             echo "$out" | grep -q "^--- PASS: ${tst} " || {
               echo "::error::${tst} did not PASS unshortened. Either it was renamed (fix BOTH lists in this step), it skipped, or it failed. A -run filter matching nothing still exits 0, which is why this asserts by name."; exit 1; }
           done
@@ -150,7 +155,7 @@ jobs:
             echo "::error::a test SKIPPED in the step whose entire purpose is that these do not skip."
             echo "$out" | grep '^--- SKIP'; exit 1
           fi
-          echo "OK — six formerly-dark tests executed unshortened, none skipped"
+          echo "OK — seven formerly-dark tests executed unshortened, none skipped"
 
   race:
     name: Go — race detector
