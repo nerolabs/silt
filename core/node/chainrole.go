@@ -552,6 +552,8 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			return true
 		}
 		n.reply(from, msg, ports.Message{Kind: ports.MsgChainHeadReply, OK: true, Height: h, Data: hh[:], HeldRegs: n.heldRegDigests()})
+	case ports.MsgHaveBondReg:
+		n.noteHaveBondReg(from, msg.HeldRegs)
 	case ports.MsgSubmitBondReg:
 		// A peer submitted a fresh bond renewal for us to include when we next
 		// propose (H2 non-proposer renewal). Queue it only if it verifies for our
@@ -619,6 +621,18 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 				held = n.queuePendingBondReg(reg)
 				if held {
 					n.Stats.BondRegSubmitsHeld++
+					// THE RECEIPT, AGAIN, AND UNSOLICITED. The acknowledgement below
+					// answers a request the submitter may already have abandoned: its
+					// deadline started when the first byte left, and on a link slower
+					// than the deadline assumes it expires while the last bytes are
+					// still crossing. The bytes are now held here regardless, and the
+					// submitter is the one node that needs to know — without it, it
+					// re-sends the full proof every sweep and carries it in every
+					// proposal. A digest-only frame costs a few hundred bytes and rides
+					// the control lane, so it is not queued behind the payload it is
+					// about.
+					d := chain.AnswerDigestOf(reg.Answer)
+					n.send(from, ports.Message{Kind: ports.MsgHaveBondReg, HeldRegs: []ports.Hash{d}})
 				}
 				n.maybeProposeAtRound() // a designee that already holds its round certificate proposes now
 			}

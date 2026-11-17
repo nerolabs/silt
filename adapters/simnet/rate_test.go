@@ -127,3 +127,40 @@ func TestNoRateConfiguredChargesNothingForSize(t *testing.T) {
 			"model is not opt-in, and every scenario written against atomic delivery has silently changed", at)
 	}
 }
+
+// A CONTROL LANE TAKES THE SMALL MESSAGE OUT FROM BEHIND THE BULK, and only that
+// message. The same 2 MiB-then-10-byte sequence that queues above arrives at ~0 when
+// the pair has a second queue for small frames — and the bulk itself is not made any
+// faster, because the lane removes waiting, not transfer time.
+func TestCtrlLaneSeparatesSmallFramesFromBulk(t *testing.T) {
+	sched := simclock.New()
+	net := New(sched, 1, Config{RateBytesPerSec: rateNode, CtrlLaneBytes: 64 << 10})
+	a := ports.HashBytes([]byte("A"))
+	b := ports.HashBytes([]byte("B"))
+	net.Endpoint(a)
+	net.Endpoint(b)
+	var small, bulk ports.Time
+	net.Endpoint(b).SetHandler(func(_ ports.NodeID, m ports.Message) {
+		if len(m.Data) < 100 {
+			small = sched.Now()
+		} else {
+			bulk = sched.Now()
+		}
+	})
+
+	if err := net.Endpoint(a).Send(b, ports.Message{Data: make([]byte, 2*rateNode)}); err != nil {
+		t.Fatalf("send bulk: %v", err)
+	}
+	if err := net.Endpoint(a).Send(b, ports.Message{Data: make([]byte, 10)}); err != nil {
+		t.Fatalf("send small: %v", err)
+	}
+	sched.Run()
+	if small > ports.Time(ports.Millisecond) {
+		t.Fatalf("a 10-byte message behind 2 MiB of bulk arrived at %v with a control lane configured — it "+
+			"is still sharing the bulk's queue", small)
+	}
+	if bulk < ports.Time(2*ports.Second) {
+		t.Fatalf("2 MiB on a 1 MiB/s link arrived at %v with a control lane configured, before its own "+
+			"transfer time — the lane is making bulk free, not making small frames independent of it", bulk)
+	}
+}

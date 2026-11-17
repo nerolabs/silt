@@ -248,6 +248,35 @@ func (n *Node) SubmitBondRenewal(peers []ports.NodeID) {
 	}
 }
 
+// noteHaveBondReg records a peer's unsolicited receipt for this node's own
+// registration: the peer queued these bytes, whether or not the request that
+// carried them was still waiting when it said so.
+//
+// IT IS THE SAME EVIDENCE AS THE ACKNOWLEDGEMENT, and is kept to the same rule: a
+// receipt is for specific bytes. Only a digest that matches the copy this node is
+// sending now is credited, so a receipt for a registration that has since been
+// re-minted over a new head records nothing — exactly as the acknowledgement path
+// discards its receipts when the bytes change.
+//
+// A peer that claims to hold bytes it does not is the only one that pays for the lie:
+// it is then sent a proposal by digest, cannot rebuild it, and answers NeedBody.
+func (n *Node) noteHaveBondReg(from ports.NodeID, digests []ports.Hash) {
+	if n.ownBondReg == nil || n.ownBondReg.Answer == nil || n.ownRegAcks == nil {
+		return
+	}
+	own := chain.AnswerDigestOf(n.ownBondReg.Answer)
+	for _, d := range digests {
+		if d != own {
+			continue
+		}
+		if !n.ownRegAcks[from] {
+			n.ownRegAcks[from] = true
+			n.Stats.BondRegReceiptsUnsolicited++
+		}
+		return
+	}
+}
+
 // ownRegForBlock is the registration this node embeds in a block it proposes on
 // prev: the one it already BROADCAST, when the chain still accepts it, and a fresh
 // mint otherwise.

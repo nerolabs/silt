@@ -47,13 +47,19 @@ const (
 	alpnCtrl = "silt-ctrl/1"
 )
 
-// lanesFor returns the ALPN list a dialer offers for a lane.
+// lanesFor returns the ALPN list a dialer offers for a lane. The bulk lane offers
+// pieced framing first and the unpieced format after it, so a peer that predates
+// pieces negotiates the format it knows.
 func lanesFor(ctrl bool) []string {
 	if ctrl {
 		return []string{alpnCtrl}
 	}
-	return []string{alpnBulk}
+	return []string{alpnBulkPieced, alpnBulk}
 }
+
+// acceptedLanes is what a listener accepts, in the order it prefers them: a TLS
+// server picks the first of its own protocols that the dialer also offered.
+var acceptedLanes = []string{alpnBulkPieced, alpnBulk, alpnCtrl}
 
 // isCtrlConn reports whether a completed handshake negotiated the control lane.
 // An empty protocol is a peer that offered none, which is the bulk lane.
@@ -101,7 +107,7 @@ func (t *Transport) adoptCtrl(id ports.NodeID, conn *tls.Conn) *peerConn {
 	if pc, ok := t.ctrlConns[id]; ok && pc.conn == conn {
 		return pc
 	}
-	pc := &peerConn{conn: conn}
+	pc := newPeerConn(conn, false)
 	t.ctrlConns[id] = pc
 	return pc
 }

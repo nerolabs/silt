@@ -133,6 +133,9 @@ type Transport struct {
 	// noCtrlLane remembers peers that did not negotiate the control lane, so a
 	// pre-lane peer is not re-probed with a fresh dial on every small frame.
 	noCtrlLane map[ports.NodeID]bool
+	// dials is the dial in progress per peer, which every sender that finds no live
+	// conn joins instead of dialing again (deliver).
+	dials map[ports.NodeID]*dialCall
 	// classes is the observed (class, group) per peer with a live
 	// conversation (class.go); salt is per process, drawn at New, never
 	// persisted.
@@ -199,9 +202,18 @@ type peerConn struct {
 	// direct. Set once at adopt; a later direct (punched) conn replaces the
 	// slot with a fresh peerConn whose viaRelay is false.
 	viaRelay bool
+	// pieced marks a conn whose handshake negotiated pieced framing (pieces.go). Its
+	// writes are ordered by turn rather than wmu, and bulk serializes its pieced
+	// frames.
+	pieced bool
+	turn   writeTurn
+	bulk   sync.Mutex
 }
 
 func (p *peerConn) write(frame []byte) error {
+	if p.pieced {
+		return p.writePieced(frame)
+	}
 	p.wmu.Lock()
 	defer p.wmu.Unlock()
 	var hdr [4]byte
@@ -226,7 +238,7 @@ func New(loop *eventloop.Loop, ident *identity.Identity, listenAddr string) (*Tr
 		// Both lanes are accepted; which one a conn is decides where it is adopted
 		// (ctrllane.go). A dialer that offers neither negotiates nothing and is
 		// adopted as bulk, which is every pre-lane peer.
-		NextProtos: []string{alpnBulk, alpnCtrl},
+		NextProtos: acceptedLanes,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("tcpnet: %w", err)
@@ -245,6 +257,7 @@ func New(loop *eventloop.Loop, ident *identity.Identity, listenAddr string) (*Tr
 		conns:      make(map[ports.NodeID]*peerConn),
 		ctrlConns:  make(map[ports.NodeID]*peerConn),
 		noCtrlLane: make(map[ports.NodeID]bool),
+		dials:      make(map[ports.NodeID]*dialCall),
 		punchedAt:  make(map[ports.NodeID]time.Time),
 		classes:    make(map[ports.NodeID]peerClass),
 		v4Width:    defaultV4Width,
@@ -717,6 +730,78 @@ func (t *Transport) deliver(to ports.NodeID, pair addrPair, frame []byte, freshD
 		t.logf(ports.LogDebug, "no path to peer", "to", to)
 		return
 	}
+	if freshDial {
+		if t.dialAndWrite(to, pair, frame) == nil {
+			t.lastResort(to, frame)
+		}
+		return
+	}
+	// ONE DIAL PER PEER AT A TIME. A burst of sends to a peer with no live conn used
+	// to dial once per frame: two hundred frames, two hundred concurrent connects to
+	// one listener. A listener's accept backlog is finite (128 on macOS), so the
+	// surplus connects were reset, and each reset dropped its frame with nothing
+	// said. Every sender after the first now waits for that one dial and writes on
+	// the conn it produced, which is the conn they would all have shared anyway.
+	call, leader := t.joinDial(to)
+	if !leader {
+		<-call.done
+		if call.pc != nil && call.pc.write(frame) == nil {
+			return
+		}
+		t.lastResort(to, frame)
+		return
+	}
+	defer t.finishDial(to, call)
+	if call.pc = t.dialAndWrite(to, pair, frame); call.pc == nil {
+		t.lastResort(to, frame)
+	}
+}
+
+// dialCall is one dial in progress to a peer, shared by every sender that finds no
+// live conn while it runs. pc is the conn it produced, or nil if every address
+// failed; it is set before done is closed.
+type dialCall struct {
+	done chan struct{}
+	pc   *peerConn
+}
+
+// joinDial returns the dial in progress to id, or starts one and reports that the
+// caller leads it.
+func (t *Transport) joinDial(id ports.NodeID) (*dialCall, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if call, ok := t.dials[id]; ok {
+		return call, false
+	}
+	call := &dialCall{done: make(chan struct{})}
+	t.dials[id] = call
+	return call, true
+}
+
+// finishDial releases every sender waiting on call.
+func (t *Transport) finishDial(id ports.NodeID, call *dialCall) {
+	t.mu.Lock()
+	if t.dials[id] == call {
+		delete(t.dials, id)
+	}
+	t.mu.Unlock()
+	close(call.done)
+}
+
+// lastResort tries the control lane for a frame that has no other path, and says
+// so when that fails too. A frame dropped here is the transport's documented loss
+// semantics — the core's timeouts own the retry — but it is never dropped silently.
+func (t *Transport) lastResort(to ports.NodeID, frame []byte) {
+	if t.writeViaCtrlLane(to, frame) {
+		return
+	}
+	t.logf(ports.LogDebug, "every dial to peer failed — frame dropped", "to", to, "bytes", len(frame))
+}
+
+// dialAndWrite dials to, direct address first and then the relay form, adopts the
+// conn, writes frame on it and starts its read loop. It returns the conn, or nil if
+// no address could be dialled or the first write failed.
+func (t *Transport) dialAndWrite(to ports.NodeID, pair addrPair, frame []byte) *peerConn {
 	directFailed := false
 	for _, addr := range []string{pair.direct, pair.relay} {
 		if addr == "" {
@@ -735,20 +820,20 @@ func (t *Transport) deliver(to ports.NodeID, pair addrPair, frame []byte, freshD
 		t.observeConn(to, conn.RemoteAddr(), viaRelay) // the handshake completed in dialPeer
 		if err := pc.write(frame); err != nil {
 			t.dropConn(to, pc)
-			return
+			return nil
 		}
-		go t.readLoop(conn, viaRelay)
+		go t.readLoopWith(conn, viaRelay, pc)
 		if viaRelay {
 			// We reached the peer through the relay; try to upgrade to a direct
 			// link so the bulk traffic leaves the relay. Harmless if it
 			// fails — this relay conn keeps serving.
 			t.maybeRequestPunch(to)
 		}
-		return
+		return pc
 	}
-	// Every dial failed. The control lane is still a path to this peer, and using
-	// it beats dropping the frame.
-	t.writeViaCtrlLane(to, frame)
+	// Every dial failed. The caller falls back to the control lane, which is still a
+	// path to this peer and beats dropping the frame.
+	return nil
 }
 
 // writeViaCtrlLane sends a frame down the control lane as a LAST RESORT, and
@@ -836,7 +921,19 @@ func (t *Transport) adopt(id ports.NodeID, conn *tls.Conn, viaRelay bool) *peerC
 	if pc, ok := t.conns[id]; ok && pc.conn == conn {
 		return pc
 	}
-	pc := &peerConn{conn: conn, viaRelay: viaRelay}
+	pc := newPeerConn(conn, viaRelay)
+	t.conns[id] = pc
+	return pc
+}
+
+// reinstate makes pc the live conversation with id, as adopt does for its conn, but
+// keeps pc itself as the wrapper rather than making a second one.
+func (t *Transport) reinstate(id ports.NodeID, pc *peerConn) *peerConn {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if cur, ok := t.conns[id]; ok && cur.conn == pc.conn {
+		return cur
+	}
 	t.conns[id] = pc
 	return pc
 }
@@ -874,6 +971,9 @@ func (t *Transport) RelayInbound(raw net.Conn) {
 		Certificates: []tls.Certificate{t.cert},
 		ClientAuth:   tls.RequireAnyClientCert,
 		MinVersion:   tls.VersionTLS13,
+		// A relayed conn is the one conversation with a peer that never gets a
+		// control lane, so it is where pieced framing matters most.
+		NextProtos: acceptedLanes,
 	}), true)
 }
 
@@ -887,7 +987,16 @@ func (t *Transport) acceptLoop() {
 	}
 }
 
-func (t *Transport) readLoop(conn *tls.Conn, viaRelay bool) {
+func (t *Transport) readLoop(conn *tls.Conn, viaRelay bool) { t.readLoopWith(conn, viaRelay, nil) }
+
+// readLoopWith is readLoop for a conn this node dialed and already wraps in pc.
+//
+// ONE WRAPPER PER CONN. The write lock lives on the wrapper, so two wrappers around
+// the same conn let two writers into one stream at once. Re-adopting a dialed conn
+// whose slot another dial has since taken would create exactly that — and a pieced
+// frame, which releases its turn between pieces, then interleaves with another one
+// and the receiver ends the conversation.
+func (t *Transport) readLoopWith(conn *tls.Conn, viaRelay bool, dialed *peerConn) {
 	// A malformed frame from a peer must fail this conversation, not the
 	// node (Gate 1 / anti-persona 14). The decoders below are panic-free
 	// by construction — the fuzz targets prove it — but this guard is the
@@ -940,7 +1049,12 @@ func (t *Transport) readLoop(conn *tls.Conn, viaRelay bool) {
 	// This conn is now the live conversation with from — in particular,
 	// our replies to a NATed peer ride it, because no dial can ever go
 	// the other way.
-	pc := t.adopt(from, conn, viaRelay)
+	var pc *peerConn
+	if dialed != nil {
+		pc = t.reinstate(from, dialed)
+	} else {
+		pc = t.adopt(from, conn, viaRelay)
+	}
 	t.observeConn(from, conn.RemoteAddr(), viaRelay) // the observed contacted-at address
 	defer t.dropConn(from, pc)
 	t.serveFrames(conn, from)
@@ -951,6 +1065,14 @@ func (t *Transport) readLoop(conn *tls.Conn, viaRelay bool) {
 // carry the same frames and differ only in what else may be queued ahead of them, so
 // the inbound budget, the frame cap and the decode path are the same for each.
 func (t *Transport) serveFrames(conn *tls.Conn, from ports.NodeID) {
+	if isPiecedConn(conn.ConnectionState()) {
+		_ = t.readPieced(conn, from, func(frame []byte, release func()) {
+			if !t.dispatchFrame(frame, from, release) {
+				conn.Close() // ends the conversation, as the unpieced loop below does
+			}
+		})
+		return
+	}
 	for {
 		var hdr [4]byte
 		if _, err := io.ReadFull(conn, hdr[:]); err != nil {
@@ -968,52 +1090,56 @@ func (t *Transport) serveFrames(conn *tls.Conn, from ports.NodeID) {
 		// LOOP finishes handling the message (or immediately on any pre-dispatch drop),
 		// so it tracks decoded-but-unprocessed bytes. cap 0 = unbounded (sims/tests).
 		t.inbound.acquire(from, int64(n))
-		admitted := true
-		release := func() {
-			if admitted {
-				admitted = false
-				t.inbound.release(from, int64(n))
-			}
-		}
+		release := t.inboundRelease(from, int64(n))
 		frame := make([]byte, n)
 		if _, err := io.ReadFull(conn, frame); err != nil {
 			release()
 			return
 		}
-		var env envelope
-		if err := cbor.Unmarshal(frame, &env); err != nil {
-			release()
+		if !t.dispatchFrame(frame, from, release) {
 			return
 		}
-		// A frame claiming to be from someone other than the
-		// authenticated key is a forgery; kill the connection.
-		var claimed ports.NodeID
-		copy(claimed[:], env.From)
-		if claimed != from {
-			t.logf(ports.LogWarn, "forged frame dropped", "authenticated", from, "claimed", claimed)
-			release()
-			return
-		}
-		t.learnGossip(from, env.Addr, true)
-		if env.Relay != "" {
-			// First-hand relay-capability gossip: from itself offers
-			// relay service there. Recorded for the moment this node
-			// finds itself NATed with no -relay-via configured.
-			t.mu.Lock()
-			t.relays[from] = env.Relay
-			t.mu.Unlock()
-		}
-		for idHex, addr := range env.Contacts {
-			if id, err := ports.ParseHash(idHex); err == nil {
-				t.learnGossip(id, addr, false)
-			}
-		}
-		msg := fromWire(env.Msg)
-		t.loop.Post(msg.Kind.String(), func() {
-			defer release() // free the budget once the loop has processed this message
-			if t.handler != nil {
-				t.handler(from, msg)
-			}
-		})
 	}
+}
+
+// dispatchFrame decodes one frame and posts its message to the loop, which releases
+// the frame's inbound budget once it has handled it. It reports false for a frame
+// that does not decode or claims another sender, and either ends the conversation.
+func (t *Transport) dispatchFrame(frame []byte, from ports.NodeID, release func()) bool {
+	var env envelope
+	if err := cbor.Unmarshal(frame, &env); err != nil {
+		release()
+		return false
+	}
+	// A frame claiming to be from someone other than the
+	// authenticated key is a forgery; kill the connection.
+	var claimed ports.NodeID
+	copy(claimed[:], env.From)
+	if claimed != from {
+		t.logf(ports.LogWarn, "forged frame dropped", "authenticated", from, "claimed", claimed)
+		release()
+		return false
+	}
+	t.learnGossip(from, env.Addr, true)
+	if env.Relay != "" {
+		// First-hand relay-capability gossip: from itself offers
+		// relay service there. Recorded for the moment this node
+		// finds itself NATed with no -relay-via configured.
+		t.mu.Lock()
+		t.relays[from] = env.Relay
+		t.mu.Unlock()
+	}
+	for idHex, addr := range env.Contacts {
+		if id, err := ports.ParseHash(idHex); err == nil {
+			t.learnGossip(id, addr, false)
+		}
+	}
+	msg := fromWire(env.Msg)
+	t.loop.Post(msg.Kind.String(), func() {
+		defer release() // free the budget once the loop has processed this message
+		if t.handler != nil {
+			t.handler(from, msg)
+		}
+	})
+	return true
 }
