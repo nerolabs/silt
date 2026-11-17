@@ -203,3 +203,7 @@ record.
 
 [`docs/MOTHBALLED.md`](docs/MOTHBALLED.md) records the state the project was paused in. It is
 not canon, and it is a snapshot dated 2026-09-22 rather than a plan.
+
+## License
+
+Apache License 2.0. See [`LICENSE`](LICENSE).
