@@ -41,7 +41,7 @@ is only as strong as the highest tier that drove it.
 | **Storage plane** | publish, fetch, erasure coding, repair, NAT traversal — driven to the field tier and holding |
 | **Consensus safety** | the five invariants asserted under adversarial scheduling; model-checked |
 | **Sybil composition** | **three of five axes deny** (bond size, possession, retention). Demand and diversity are *unwired* and report themselves as unwired rather than passing vacuously. Until 2026-11-18 the bond-size and possession axes rested on a plot that was 128× compressible; see "Re-measured 2026-11-18" |
-| **Trust plane liveness on an adverse network** | **open.** This is the wedge. On 2026-11-18 one paired field run passed with the label-node plot and failed on `main` (812 s); see "Re-measured 2026-11-18". One pair is not a distribution |
+| **Trust plane liveness on an adverse network** | **open.** This is the wedge. On 2026-11-18, across three paired field runs, `main` failed all three and the label-node plot passed two; the third stalled on a separate defect in view-change re-proposal, since fixed and not yet field-driven. See "Re-measured 2026-11-18" |
 | **The M0 verdict** | **never commissioned.** It belongs to an external red team and no external party has run it |
 
 Six RC items carry **no verdict at all** — 11, 12, 13, 17, 18, 19. A suite passing nearby is
@@ -249,19 +249,36 @@ no NAT.
 Command: `LOCAL=1 EQV_ISLAND=0 FLOWS="first_run become_validator impaired" ./cloudtest.sh` from
 `integration/cloudtest`.
 
-**The field, paired.** GCP, 13 nodes, four validators in us-west1, us-east1 and europe-west1,
-the same impairment on all four, 64 MiB bonds, one harness. `IMPAIR_HEIGHTS=16` stretches the
-window past the first renewals, so both arms carry proof-bearing blocks.
+**The field, three pairs.** GCP, 13 nodes, four validators in us-west1, us-east1 and
+europe-west1, the same impairment on all four, 64 MiB bonds, one harness. `IMPAIR_HEIGHTS=16`
+stretches the window past the first renewals, so both arms carry proof-bearing blocks. Pair 1
+ran in the original project; pairs 2 and 3 ran in `silt-fieldtest-2` on the persistent network,
+after the original project's VPC control plane stopped accepting changes on every network.
 
-| Build | Run | Heights | Worst gap (220 s bound) | Registration-bearing legs | Validator peak RSS |
-|---|---|---|---|---|---|
-| `main` | `main16c-11c56276` | 8, then stalled | **812 s** | 84, 65 carried | 0.75 GiB |
-| Label-node plot | `lbl16-d1e8cae9` | **16 of 16** | **69 s** | 96, 29 carried | 0.17 GiB |
+| Pair | `main` (`11c56276`) | Label-node plot |
+|---|---|---|
+| 1 | FAIL, 812 s after 8 heights (`main16c`) | PASS, 16 of 16, worst gap 69 s (`lbl16`) |
+| 2 | FAIL, 626 s after 2 heights (`ctl2b`) | PASS, 17 of 17, worst gap 122 s (`lbl2`) |
+| 3 | FAIL, 823 s after 6 heights (`ctl3`) | **FAIL, 515 s after 4 heights** (`lbl3`) |
 
-The control reproduces September's field wedge (794–843 s). The label-node arm commits through
-the renewals with the proof on the critical path. A three-height run of the label-node build
-(`full-d1e8cae9`) also passed, at 61 s, but carried no registration in its window. One paired
-run is the field tier's first evidence for this change, not a distribution.
+The control reproduces September's field wedge in all three. The smaller proof turns most of
+it into commits, and not all of it.
+
+**What stalled `lbl3`, and it is not the proof's size.** Height 16 needed a view change. Every
+validator was locked on the block, and a lock holds the bytes the wire delivered, which for a
+prepare-QC relayed by digest is the block with its bond proofs shed. The round's designee
+re-proposed those bytes as they were. Peers without a receipt were sent a block they could not
+rebuild, and the designee's own commit was refused at the trust floor (`commit rejected by own
+replica: … pruned block at/above the node's trust floor`) in every round that followed. The same
+refusal appears in one of the local `main` runs (`11c56276-72289`), so the defect predates the
+label-node plot; the smaller proof makes the digest relay engage more often, which gives it more
+chances to fire.
+
+`proposeAtNewView` now puts the shed proofs back before it gathers, as the prepare and precommit
+handlers do before they judge a block, and a designee that cannot declines the round so it times
+out to the next one. `TestAForcedReProposalCarriesTheProofsItWasLockedOnWithout` reproduces the
+stall's mechanism red on the previous code and passes on the fix. The fixed build has not yet been
+driven in the field.
 
 Command: `EQV_ISLAND=0 IMPAIR_HEIGHTS=16 FLOWS="first_run become_validator impaired"
 ./cloudtest.sh up`, then `run`, then `down`, with the pre-flight gate's `RUN_*` set and

@@ -1732,6 +1732,17 @@ func (n *Node) proposeAtNewView(rs *heightRounds, round uint64, newView [][]byte
 			fin(err)
 			return true
 		}
+		// A lock holds the bytes the wire delivered, and a prepare-QC relayed by digest
+		// delivered the block with its bond proofs shed. Put them back before gathering,
+		// as the prepare and precommit handlers do before they judge a block: the gather
+		// decides per peer what to shed from the FULL block, and this node's own commit
+		// of a shed block is refused at the trust floor. A designee that cannot rebuild
+		// the proofs declines the round instead of gathering on a block it can never
+		// commit, and the round times out to the next designee.
+		if !n.reconstructShedProofs(lb) {
+			fin(fmt.Errorf("locked block at height %d relayed by digest could not be reconstructed — declining to re-propose", lb.Height))
+			return true
+		}
 		n.gatherTwoPhase(lb, attesters, peers, 0, round, newView, forced.QC, fin)
 		return true
 	}
