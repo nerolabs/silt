@@ -346,13 +346,18 @@ ft_escape_progress() {
 # ── Flow 1: build & first run ──────────────────────────────────────────────────
 # LOCAL_PROOF: LOCAL=1 SMOKE=1 ./integration/cloudtest/cloudtest.sh (this flow runs verbatim on the docker backend)
 flow_first_run() {
-  local n ok=1 bad=""
+  local n ok=1 bad="" seen=0
   for n in $(node_names); do
+    seen=$((seen + 1))
     [ "$(node_field "$n" role)" = natgw ] && continue
     if ! ssh_node "$n" "systemctl is-active --quiet silt.service"; then ok=0; bad="$bad $n"; fi
   done
   # shellcheck disable=SC2086
   flow_evidence_nodes $bad   # a fail captures exactly the non-active nodes' journals
+  if [ "$seen" -eq 0 ]; then
+    slo_assert "1-first-run" blocker "no nodes to check — an empty fleet is not a running one" 0
+    return
+  fi
   slo_assert "1-first-run" blocker "all silt nodes report service active${bad:+ (down:$bad)}" "$ok"
 }
 

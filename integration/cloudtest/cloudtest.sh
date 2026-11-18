@@ -359,6 +359,12 @@ run_scenarios() {
   # correct — that pass is graded by whatever is on disk now, and the report should
   # say which harness produced the rows it is printing.
   stamp_harness
+  # A sheet needs a fleet behind it. Without one, every flow would grade an empty
+  # node list as a pass; require_fleet records the single honest verdict instead.
+  if ! require_fleet; then
+    echo "    no fleet to grade — no flow was run"
+    return 0
+  fi
   # Persist the console (#7): ft_publish diagnostics and per-flow narration used to
   # die with the terminal, leaving a FAIL verdict with no trail after teardown. The
   # tee'd copy lands next to the run's report. (The pipeline subshell is fine: flows
