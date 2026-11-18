@@ -30,6 +30,28 @@ node_field() { # node_field NAME FIELD
   python3 -c "import json,sys;print(json.load(open('$NODES_JSON'))['$1']['$2'])"
 }
 node_names() { python3 -c "import json;print(' '.join(json.load(open('$NODES_JSON')).keys()))"; }
+# fleet_size prints how many nodes $NODES_JSON lists, or nothing when the file is
+# missing or unreadable.
+fleet_size() { python3 -c "import json;print(len(json.load(open('$NODES_JSON'))))" 2>/dev/null; }
+
+# require_fleet records a blocker FAIL and returns 1 when there is no fleet to grade.
+# Every flow that loops over node_names starts from "ok" and fails a node it finds
+# down, so on an empty list it finds nothing and PASSES. A `run` after an `up` that
+# provisioned nothing graded "all silt nodes report service active" green against
+# zero nodes. A sheet with no fleet behind it is one failure, not a set of passes.
+require_fleet() {
+  local n; n="$(fleet_size)"
+  if [ -z "$n" ]; then
+    record "infra-fleet-present" fail blocker "no fleet to grade: $NODES_JSON is missing or unreadable, so provisioning produced no nodes and no flow ran"
+    return 1
+  fi
+  if [ "$n" -eq 0 ]; then
+    record "infra-fleet-present" fail blocker "no fleet to grade: $NODES_JSON lists no nodes, so no flow ran"
+    return 1
+  fi
+  return 0
+}
+
 node_exists() { python3 -c "import json,sys;sys.exit(0 if '$1' in json.load(open('$NODES_JSON')) else 1)" 2>/dev/null; }
 
 # ── remote exec over IAP (reaches natted nodes too; no key management) ──────────
