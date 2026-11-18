@@ -39,13 +39,27 @@ func (s *sliceBlocks) WriteBlock(i int, b []byte) error {
 // If they ever diverge, an operator who seals to disk commits to a different bond
 // than one who seals in memory, and the same identity would fail its own audit.
 func TestSealIntoProducesTheSamePlot(t *testing.T) {
-	for _, size := range []int64{1 << 20, 4 << 20} {
-		t.Run(sizeLabel(size), func(t *testing.T) {
+	cases := []struct {
+		name   string
+		size   int64
+		window int
+	}{
+		{"1MiB", 1 << 20, sealWindowBytes},
+		{"4MiB", 4 << 20, sealWindowBytes},
+		// A window far smaller than the plot, so most long-range parents are read back
+		// from the store. The default window holds a test-sized plot whole and would
+		// never exercise that path.
+		{"4MiB-window-16KiB", 4 << 20, 16 << 10},
+		{"1MiB-window-one-block", 1 << 20, BlockSize},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
 			key := pk(9)
+			size := tc.size
 			resident := Seal(key, size)
 
 			store := newSliceBlocks(NumBlocks(size))
-			streamed, err := SealInto(key, size, store)
+			streamed, err := sealInto(key, size, store, tc.window)
 			if err != nil {
 				t.Fatalf("SealInto: %v", err)
 			}

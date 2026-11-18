@@ -498,7 +498,7 @@ const livenessForwardEntries = 4
 // sender-bound — a receiver refuses any reg not submitted by its own
 // validator BEFORE the ~ms space-time verify ("submit REFUSED (relay)", the
 // CPU-DoS closer) — so a forwarded reg is dropped 100 % of the time after
-// ~1.5 MB of egress and after burning the forwarder's own per-window submit
+// a proof's worth of egress and after burning the forwarder's own per-window submit
 // budget at the designee. And it is redundant: an owner's SubmitBondRenewal
 // already broadcasts its due reg to every peer it syncs with, so in the
 // field every eligible proposer already holds it.

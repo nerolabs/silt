@@ -63,8 +63,8 @@ const (
 	floorBoxSealMemoryBudget = floorBoxMemoryBytes / 2
 )
 
-// TestSealFitsTheFloorBoxMemoryBudget measures what Seal costs per plot byte and rejects
-// a plot size the floor box could not produce.
+// TestSealFitsTheFloorBoxMemoryBudget measures what SealInto costs in memory and
+// rejects a plot size the floor box could not produce.
 //
 // Standing is proportional to bonded size, so the largest plot the floor box can seal is
 // the ceiling on the influence a small operator can ever hold. If that ceiling is set by
@@ -73,11 +73,13 @@ const (
 // a re-centralization arrived at through a resource bound rather than through any policy
 // anyone chose.
 //
-// The cost is measured at sizes safe to run anywhere and extrapolated, rather than
-// sealing a floor-sized plot to find out: the measurement itself must fit the box.
+// SealInto's memory is a fixed window of recent labels plus a part proportional to the
+// plot. The proportional part is measured with a small window at sizes safe to run
+// anywhere and extrapolated, rather than sealing a floor-sized plot to find out: the
+// measurement itself must fit the box. Allocation is counted cumulatively, which bounds
+// the peak from above.
 func TestSealFitsTheFloorBoxMemoryBudget(t *testing.T) {
-	// Residency per plot byte on the path a node with a real plot store takes,
-	// measured over a range wide enough that fixed overhead stops dominating.
+	const window = 64 << 10
 	var ratio float64
 	var perMiB time.Duration
 	for _, size := range []int64{4 << 20, 16 << 20, 64 << 20} {
@@ -86,7 +88,7 @@ func TestSealFitsTheFloorBoxMemoryBudget(t *testing.T) {
 		var before, after runtime.MemStats
 		runtime.ReadMemStats(&before)
 		start := time.Now()
-		c, err := SealInto(pk(7), size, dst)
+		c, err := sealInto(pk(7), size, dst, window)
 		elapsed := time.Since(start)
 		runtime.ReadMemStats(&after)
 		if err != nil {
@@ -94,31 +96,36 @@ func TestSealFitsTheFloorBoxMemoryBudget(t *testing.T) {
 		}
 		runtime.KeepAlive(c)
 
-		ratio = float64(after.HeapAlloc-before.HeapAlloc) / float64(size)
+		allocated := int64(after.TotalAlloc - before.TotalAlloc)
+		ratio = float64(allocated-window) / float64(size)
 		perMiB = elapsed / time.Duration(size>>20)
-		t.Logf("%s plot: %d blocks, %.3fx resident, %v to seal (%v/MiB)",
-			sizeLabel(size), NumBlocks(size), ratio, elapsed.Round(time.Millisecond), perMiB.Round(time.Millisecond))
+		t.Logf("%s plot: %d blocks, %d KiB allocated with a %d KiB window (%.4fx the plot beyond it), %v to seal (%v/MiB)",
+			sizeLabel(size), NumBlocks(size), allocated>>10, window>>10, ratio,
+			elapsed.Round(time.Millisecond), perMiB.Round(time.Millisecond))
+		if allocated > size/4 {
+			t.Fatalf("SEALING IS NOT BOUNDED BY ITS WINDOW — a %s plot allocated %d KiB with a %d KiB window",
+				sizeLabel(size), allocated>>10, window>>10)
+		}
 	}
 	if ratio <= 0 {
-		t.Fatal("GATE VACUOUS: measured no residency at all — the measurement is not observing Seal")
+		t.Fatal("GATE VACUOUS: measured no residency at all — the measurement is not observing the seal")
 	}
 
-	need := int64(ratio * float64(floorBoxPlotBytes))
-	t.Logf("floor box: %d MiB plot needs ~%d MiB resident at %.2fx; the seal budget is %d MiB",
-		floorBoxPlotBytes>>20, need>>20, ratio, floorBoxSealMemoryBudget>>20)
+	need := sealWindowBytes + int64(ratio*float64(floorBoxPlotBytes))
+	t.Logf("floor box: %d MiB plot needs ~%d MiB (%d MiB window + %.4fx the plot); the seal budget is %d MiB",
+		floorBoxPlotBytes>>20, need>>20, sealWindowBytes>>20, ratio, floorBoxSealMemoryBudget>>20)
 
 	if need > floorBoxSealMemoryBudget {
-		maxPlot := int64(float64(floorBoxSealMemoryBudget) / ratio)
+		maxPlot := int64(float64(floorBoxSealMemoryBudget-sealWindowBytes) / ratio)
 		t.Fatalf("THE FLOOR BOX CANNOT SEAL ITS OWN PLOT — producing the %d MiB plot its disk budget allows "+
-			"needs ~%d MiB resident (%.3fx the plot size), against a %d MiB seal budget on a %d MiB box. "+
+			"needs ~%d MiB, against a %d MiB seal budget on a %d MiB box. "+
 			"The largest bond a small operator can post is therefore ~%d MiB, set by RAM rather than by the "+
 			"%d GiB of disk they bought. Standing is proportional to bonded size, so this caps the floor "+
-			"tier's consensus weight at roughly a %dth of what its disk could back, and concentrates weight "+
-			"on larger machines by resource bound rather than by design. Sealing is not slow — about %v per "+
-			"MiB — so the constraint is residency, not work.",
-			floorBoxPlotBytes>>20, need>>20, ratio, floorBoxSealMemoryBudget>>20, floorBoxMemoryBytes>>20,
-			maxPlot>>20, floorBoxDiskBytes>>30, floorBoxPlotBytes/maxPlot, perMiB.Round(time.Millisecond))
+			"tier's consensus weight by resource bound rather than by design. Sealing takes about %v per "+
+			"MiB, so the constraint is residency, not work.",
+			floorBoxPlotBytes>>20, need>>20, floorBoxSealMemoryBudget>>20, floorBoxMemoryBytes>>20,
+			maxPlot>>20, floorBoxDiskBytes>>30, perMiB.Round(time.Millisecond))
 	}
-	t.Logf("the floor box can produce the plot its disk budget allows: %d MiB needs ~%d MiB resident",
+	t.Logf("the floor box can produce the plot its disk budget allows: %d MiB needs ~%d MiB",
 		floorBoxPlotBytes>>20, need>>20)
 }

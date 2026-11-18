@@ -14,13 +14,13 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Integration/sim tier for the M0 Sybil fix /F2. The unit tests
-// (core/bond/sybil_test.go) prove the crypto — byte-binding defeats a leaves-only
-// recompute, and the read-bound VDF seed defeats a released plot. This drives that
-// property THROUGH THE LIVE AUDIT WIRE (gossip → MsgBondChallenge → answer →
-// VerifySpaceTime → ledger): a validator that pledges a bond, advertises it, then
-// RELEASES the resident bytes (holding at most the 32-byte leaves — the attacker
-// that frees the space to save disk) FAILS the live audit and earns ZERO standing,
+// Integration/sim tier for the released-plot defence. The unit tests
+// (core/bond/sybil_test.go, labels_only_test.go) prove the crypto — every 32 bytes
+// of the plot is a label a sparse prover has to recompute, and the read-bound VDF
+// seed defeats a released plot. This drives that property THROUGH THE LIVE AUDIT
+// WIRE (gossip → MsgBondChallenge → answer → VerifySpaceTime → ledger): a validator
+// that pledges a bond, advertises it, then RELEASES the resident bytes (holding at
+// most the block-level tree — the attacker that frees the space to save disk) FAILS the live audit and earns ZERO standing,
 // while an honest full-plot validator earns it. You cannot get standing for
 // storage you no longer hold.
 func TestReleasedBondEarnsNoStandingOverTheNetwork(t *testing.T) {
