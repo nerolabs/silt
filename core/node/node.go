@@ -65,8 +65,8 @@ type Config struct {
 	// RequestTimeout is generous for jittery consensus. 0 = fall back to RequestTimeout.
 	HolderDialTimeout ports.Duration
 	// RequestSizeFloorBytesPerSec extends a request's per-attempt deadline for a
-	// LARGE outbound payload. A block carrying a validator's one-time ~1.5 MB
-	// space-time bond registration must cross a real WAN and be re-verified before
+	// LARGE outbound payload. A block carrying validators' space-time bond
+	// registrations (~120 KB each at the bond floor) must cross a real WAN and be re-verified before
 	// the attester can reply — which a flat RTT-scale RequestTimeout cannot cover,
 	// so a fresh quorum-2 genesis WEDGED cross-region while the identical block
 	// committed on a single-zone quorum-1 SMOKE (the two-substrate immutable
@@ -80,16 +80,16 @@ type Config struct {
 	RequestSizeFloorBytesPerSec int64
 	// MaxBondRegBytesPerBlock caps the total BYTES of bond registrations a proposer
 	// embeds in ONE block. At a fresh multi-validator objective genesis,
-	// every founding validator submits its ~1.5 MB space-time bond proof; embedding all
-	// of them piles into one ~8 MB block the quorum gather cannot move + re-verify over a
-	// real 3-region WAN before the round churns — the research stalled here with regs=5 /
-	// 7.9 MB. The founding set are ANCHORS (chain.launchAnchor), so genesis commits SMALL
+	// every founding validator submits its space-time bond proof; embedding all of them
+	// piles into one block whose size grows with the founding set, which the quorum
+	// gather has to move and re-verify over a real WAN before the round churns. The
+	// founding set are ANCHORS (chain.launchAnchor), so genesis commits SMALL
 	// On anchor attestations at zero committed bond while the deferred registrations
 	// drain over the next blocks (each validator still gains real bonded weight and
 	// reaches MatureValidators). A BYTE budget (not a count) is the right lever
-	// because the blocker is SIZE, not number: at genesis a full ~1.5 MB proof means
-	// ~1 reg/block, but small steady-state renewals (fewer label samples / smaller
-	// plots) pack many per block — so an attest-only validator's renewals are NOT
+	// because the blocker is SIZE, not number: a full proof at the bond floor is ~120 KB,
+	// so a 2 MiB budget carries ~17, and small steady-state renewals (fewer label
+	// samples / smaller plots) pack more per block — so an attest-only validator's renewals are NOT
 	// starved under a tight TTL (a count cap would lapse them; sim/bond_renewal
 	// proves it). Default ~2 MiB keeps a block within the size proved gathers while
 	// fitting one full proof or many small renewals. The proposer always embeds at
@@ -100,8 +100,8 @@ type Config struct {
 	// proposers are safe.
 	MaxBondRegBytesPerBlock int64
 	// MaxEntryBytesPerBlock caps the total BYTES of mempool ENTRIES a proposer
-	// folds into one block — SEPARATE from the reg budget by design: a single
-	// ~1.5 MB bond reg fills the whole reg cap, so a shared budget would leave
+	// folds into one block — SEPARATE from the reg budget by design: bond regs can
+	// fill the whole reg cap, so a shared budget would leave
 	// the tens-of-bytes entry no room and the publish starvation would
 	// reappear one layer down; and the dual — an entry flood must never crowd
 	// out consensus-critical renewals. Independent budgets guarantee each
@@ -287,10 +287,11 @@ func DefaultConfig() Config {
 		RequestRetries:    0, // sim/tests: no RPC retry (evict on first miss); the daemon enables it
 		RequestBackoff:    250 * ports.Millisecond,
 		HolderDialTimeout: 0, // sim/tests: holder fetches use RequestTimeout; the daemon sets a tighter one
-		// 256 KB/s — a pessimistic transcontinental lossy path. A ~1.5 MB bond-registration
-		// block then gains ~6 s of transport headroom over the base RequestTimeout.
+		// 256 KB/s — a pessimistic transcontinental lossy path. A block carrying the full
+		// 2 MiB registration budget then gains ~8 s of transport headroom over the base
+		// RequestTimeout, and one carrying a single ~120 KB registration ~0.5 s.
 		RequestSizeFloorBytesPerSec: 262144,
-		MaxBondRegBytesPerBlock:     2 << 20,  // ~2 MiB/block stays gatherable; one full ~1.5 MB genesis proof or many small renewals
+		MaxBondRegBytesPerBlock:     2 << 20,  // ~2 MiB/block stays gatherable; ~17 full ~120 KB proofs, or more small renewals
 		MaxEntryBytesPerBlock:       64 << 10, // entries are tens of bytes — 64 KiB admits hundreds/block; reg+entry sum stays WAN-gatherable
 		Replication:                 3,
 		RepairInterval:              60 * ports.Second,
@@ -447,7 +448,7 @@ type Stats struct {
 	DigestRelayResends int
 	// THE RELAY'S COVERAGE, which is what the adverse-network liveness bound now rests
 	// on. A gather leg — a proposal or a prepare-QC to one attester — either crosses by
-	// DIGEST at ~1 KB or CARRIES the space-time proofs at ~1.5 MB each, and a link that
+	// DIGEST at ~1 KB or CARRIES the space-time proofs at ~120 KB each, and a link that
 	// cannot move the carried form inside the per-attempt deadline cannot commit the
 	// height at all. Coverage is Shed/(Shed+Carried).
 	//
@@ -548,8 +549,8 @@ type Stats struct {
 	// catch-up cost split. ChainSyncSuffixAppends: blocks adopted through the
 	// extension fast path (validated once, via the normal Append commit path — the
 	// O(delta) route). ChainSyncFullReconciles: slow-path Reconcile invocations,
-	// each a full genesis replay of the reconstructed fork (~1s per 1.5 MB reg
-	// block on the event loop — the h≈56 knee). Steady-state catch-up must live
+	// each a full genesis replay of the reconstructed fork, re-verifying every reg
+	// block on the event loop, so O(height). Steady-state catch-up must live
 	// entirely in SuffixAppends; FullReconciles climbing during plain catch-up is
 	// the regression signal.
 	ChainSyncSuffixAppends  int
@@ -1684,8 +1685,8 @@ func (n *Node) request(to ports.NodeID, msg ports.Message, cb func(ports.Message
 // - a speculative holder-fetch dial (MsgFetchChunk/MsgHasChunk) gets the TIGHTER
 // HolderDialTimeout (fail fast on a dead holder under churn, no size extension);
 // - a lean consensus/mesh RPC gets the base RequestTimeout;
-// - a LARGE outbound payload (a block carrying a validator's one-time ~1.5 MB
-// space-time bond registration gets a size-extended deadline: it must cross a real
+// - a LARGE outbound payload (a block carrying validators' space-time bond
+// registrations, ~120 KB each at the bond floor) gets a size-extended deadline: it must cross a real
 // WAN and be re-verified before the attester can reply, which a flat RTT-scale
 // deadline cannot cover — a tight fixed transport deadline is the category error
 // that wedged quorum-2 genesis cross-region while the identical block committed on a
@@ -1717,7 +1718,7 @@ func (n *Node) requestTimeoutFor(to ports.NodeID, msg ports.Message) (ports.Dura
 	payload := int64(0)
 	if n.cfg.RequestSizeFloorBytesPerSec > 0 {
 		// Size-extend for the larger direction of the exchange. Outbound
-		// payload: the case (a ~1.5 MB bond-reg block must cross the wire
+		// payload: the case (a bond-reg block must cross the wire
 		// before the attester can reply). ANTICIPATED REPLY: a windowed
 		// chain fetch sends a tiny MsgGetChain{Height} but asks for up to
 		// maxChainReplyBytes back — without this the reply is bounded by

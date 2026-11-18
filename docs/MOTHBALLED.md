@@ -40,8 +40,8 @@ is only as strong as the highest tier that drove it.
 |---|---|
 | **Storage plane** | publish, fetch, erasure coding, repair, NAT traversal — driven to the field tier and holding |
 | **Consensus safety** | the five invariants asserted under adversarial scheduling; model-checked |
-| **Sybil composition** | **three of five axes deny** (bond size, possession, retention). Demand and diversity are *unwired* and report themselves as unwired rather than passing vacuously |
-| **Trust plane liveness on an adverse network** | **open.** This is the wedge |
+| **Sybil composition** | **three of five axes deny** (bond size, possession, retention). Demand and diversity are *unwired* and report themselves as unwired rather than passing vacuously. Until 2026-11-18 the bond-size and possession axes rested on a plot that was 128× compressible; see "Re-measured 2026-11-18" |
+| **Trust plane liveness on an adverse network** | **open.** This is the wedge. On 2026-11-18 one paired field run passed with the label-node plot and failed on `main` (812 s); see "Re-measured 2026-11-18". One pair is not a distribution |
 | **The M0 verdict** | **never commissioned.** It belongs to an external red team and no external party has run it |
 
 Six RC items carry **no verdict at all** — 11, 12, 13, 17, 18, 19. A suite passing nearby is
@@ -187,6 +187,85 @@ peer with no live connection each dialled it; macOS's accept backlog is 128
 (`kern.ipc.somaxconn`), so some dials were reset in `connect`, and `deliver` dropped those
 frames without an error. Senders now share one dial per peer, and a frame dropped because
 every dial failed is logged. Same conditions after the fix: 0 of 6 batches failed.
+
+---
+
+## Re-measured 2026-11-18 (branch `builder/bond-plot-label-nodes`)
+
+The field rows at the end of this section are one paired run per arm. Re-run the commands
+before citing a number.
+
+**A soundness flaw in the bond plot, found and fixed.** Each 4 KiB plot block was its 32-byte
+label expanded by chained SHA-256, so the label alone determined the block. A prover could keep
+only the labels, 1/128 of the claimed plot, regenerate any block on demand, rebuild the
+committed root and pass `VerifySpaceTime`. The existing regression covered a prover that kept
+block hashes, not one that kept labels. The bond-size and possession axes were therefore about
+128× weaker than claimed.
+
+The fix makes each graph node its 32-byte label, so every stored byte is a hash output.
+`TestSparseLabelProverRecomputesMostOfThePlot` keeps every 128th label and counts what one
+challenge forces it to recompute: 97% of the plot. The disk format moved to v4, so an older
+plot re-plots.
+
+**The proof is about 12× smaller.** The Merkle leaves are the labels, and an answer is the
+opened labels plus one multiproof that sends each shared path node once. The verifier derives
+every index, so none are sent.
+
+| Bond | Old answer | New answer |
+|---|---|---|
+| 64 MiB | ~1.46 MB | 92 KB |
+| 1.08 GB (the floor) | ~1.5 MB | ~121 KB |
+| 5 GiB | — | ~135 KB |
+
+Command: `go test ./core/bond -run TestMeasure_AnswerSizeBreakdown -v`. The floor and 5 GiB
+rows are computed from the index sets without sealing a plot that size.
+
+**Sealing costs more time and stays inside the floor box's memory.** Sealing runs at about
+40% of the old per-byte rate (78 vs 185 MB/s, both measured under background QoS on the same
+machine). `SealInto` keeps the most recent 256 MiB of labels in memory and reads older parents
+back from disk. A 5 GiB plot on the 2 GiB floor box needs about 336 MiB
+(`TestSealFitsTheFloorBoxMemoryBudget`). `PlotSealThroughput` was left at 270 MB/s, so the
+derived floor stays at 1.08 GB. Re-deriving the floor at the new rate would lower it to about
+460 MB, and that is an owner decision.
+
+**The local impairment harness passes with the new proof.** `LOCAL=1` docker harness, flow
+`21-impaired-commit` (80 ms ± 20 ms, 1% loss, 25% reorder on all four validators, three heights,
+220 s escape bound), 64 MiB bonds:
+
+| Build | Runs | Worst gap | Heights | Bond regs per block |
+|---|---|---|---|---|
+| `main` | 2 | 270–374 s | 2 of 3 | 1 |
+| `main` + catch-up window fix (PR #864) | 2 | 371–623 s | 2–3 of 3 | 1 |
+| Label-node plot | 2 | 35 s, 68 s | 3 of 3 | 4–5 |
+
+The old proof filled the 2 MiB per-block registration budget alone, so the founding validators'
+registrations drained one per block through the impaired window. The new one fits four or five
+per block. In the second label-node run the window still carried registrations (8
+registration-bearing gather legs, 6 carrying the proof) and the chain kept committing; flow
+`4-become-validator` passed in the same run. The first run carried none in its window, so it
+alone shows less. Two runs are not a distribution, and the local harness has no real WAN and
+no NAT.
+
+Command: `LOCAL=1 EQV_ISLAND=0 FLOWS="first_run become_validator impaired" ./cloudtest.sh` from
+`integration/cloudtest`.
+
+**The field, paired.** GCP, 13 nodes, four validators in us-west1, us-east1 and europe-west1,
+the same impairment on all four, 64 MiB bonds, one harness. `IMPAIR_HEIGHTS=16` stretches the
+window past the first renewals, so both arms carry proof-bearing blocks.
+
+| Build | Run | Heights | Worst gap (220 s bound) | Registration-bearing legs | Validator peak RSS |
+|---|---|---|---|---|---|
+| `main` | `main16c-11c56276` | 8, then stalled | **812 s** | 84, 65 carried | 0.75 GiB |
+| Label-node plot | `lbl16-d1e8cae9` | **16 of 16** | **69 s** | 96, 29 carried | 0.17 GiB |
+
+The control reproduces September's field wedge (794–843 s). The label-node arm commits through
+the renewals with the proof on the critical path. A three-height run of the label-node build
+(`full-d1e8cae9`) also passed, at 61 s, but carried no registration in its window. One paired
+run is the field tier's first evidence for this change, not a distribution.
+
+Command: `EQV_ISLAND=0 IMPAIR_HEIGHTS=16 FLOWS="first_run become_validator impaired"
+./cloudtest.sh up`, then `run`, then `down`, with the pre-flight gate's `RUN_*` set and
+`RUN_LOCAL_PROOF="SUITE=all ./integration/adversarial/run.sh"`.
 
 ---
 

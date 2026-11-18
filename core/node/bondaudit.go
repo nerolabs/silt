@@ -107,8 +107,9 @@ func (n *Node) EnableBond(signer ed25519.PrivateKey, size int64) (reloaded bool)
 	pk := plotPubKey(signer)
 
 	// A store that offers random access keeps the plot on disk: the plot is sealed
-	// block by block and answered by sparse reads, so the memory cost is the leaves
-	// and their tree rather than the plot's own size. That matters because standing
+	// block by block and answered by sparse reads, so the memory cost is a window of
+	// recent labels while sealing and the block-level tree after, rather than the
+	// plot's own size. That matters because standing
 	// is proportional to bonded size — if the largest plot a node can hold is set by
 	// its MEMORY, the biggest bond a small operator can post is a fraction of the
 	// disk it bought, and consensus weight concentrates on larger machines for no

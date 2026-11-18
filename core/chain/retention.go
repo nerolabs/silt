@@ -1,7 +1,7 @@
 package chain
 
 // Rolling retention horizon (the read-only half of the H2 payload-selective-prune OOM fix). A
-// validator's chain grows O(all history) in the ~1.5 MB space-time bond proof (BondReg.Answer)
+// validator's chain grows O(all history) in the space-time bond proof (BondReg.Answer)
 // carried by every registration block, which OOMs a small box (the flixz-corroborated MATURING
 // crash). The fix bounds the RESIDENT heavy payload to a recent finalized window: blocks
 // strictly below the retention horizon are prune-eligible — their heavy Answer may be dropped
@@ -91,7 +91,7 @@ func (c *Chain) pruneFloor() uint64 {
 }
 
 // PruneBelowHorizon payload-selectively prunes every stored block strictly below the prune
-// floor that still carries a heavy BondReg.Answer — dropping the ~1.5 MB proof while keeping
+// floor that still carries a heavy BondReg.Answer — dropping the proof while keeping
 // the header + consensus sigs (Block.Prune). Because the durable store and the
 // serve path both read c.blocks (chainstore.Save(Blocks(0)); chainrole serve Blocks(from)),
 // this one in-place shed bounds resident, on-disk, AND served heavy payload to a recent

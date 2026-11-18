@@ -12,7 +12,7 @@ import (
 
 // TestSlashesBytesCapWorstCaseCost is the MEASUREMENT harness, not a gate: it
 // builds the worst ADMISSIBLE Slashes field — genuine proofs whose evidence blocks each
-// carry a full-size (~1.5 MB) BondReg.Answer, the payload pruning exists to shed — packed
+// carry a large (~1.5 MB) BondReg.Answer, the payload pruning exists to shed — packed
 // up to SlashesBytesCap, and reports (1) the encoded bytes, (2) the heap delta of holding
 // the decoded field resident, and (3) the validateSlashes wall time. The owner settles
 // the cap VALUE on immutable-#8 grounds from these numbers
@@ -27,11 +27,11 @@ func TestSlashesBytesCapWorstCaseCost(t *testing.T) {
 	w := newWorld(DefaultConfig())
 	g := w.genesis()
 
-	// A reg-laden evidence block: one BondReg carrying a synthetic Answer of the
-	// shipped proof size. The bytes are opaque to Hash/CheckEquivocation (only the
+	// A reg-laden evidence block: one BondReg carrying a synthetic Answer well above
+	// the shipped proof size, so the measured cost is an upper bound. The bytes are opaque to Hash/CheckEquivocation (only the
 	// signature over the body matters for evidence), so a synthetic payload measures
 	// the same cost as a real proof without the VDF.
-	const answerBytes = 1536 << 10 // ~1.5 MB, the shipped space-time proof size
+	const answerBytes = 1536 << 10 // ~1.5 MB; the shipped proof is ~120 KB at the bond floor
 	regLaden := func(seed byte, proposer ed25519.PrivateKey) *Block {
 		b := &Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(seed)}}
 		b.BondRegs = []BondReg{{Validator: pubOf(w.vals[1]), Answer: make([]byte, answerBytes)}}

@@ -783,7 +783,7 @@ type Block struct {
 
 	// hashMemo caches Hash. A block's hashed content is immutable once minted
 	// (Sign computes the hash it signs) or decoded, but Hash re-marshaled the
-	// whole body — BondRegs' ~1.5 MB proofs included — and re-hashed it on
+	// whole body — BondRegs' space-time proofs included — and re-hashed it on
 	// EVERY call. blockByHash recomputes per scan step and
 	// recentBondRegNonces does up to K=8 such lookups per validated block, so
 	// a deep-chain Reconcile paid O(depth × K × scan) full-body hashes on the
@@ -1111,7 +1111,7 @@ func (b *Block) HeavyProofsShed() bool {
 }
 
 // Prune returns a payload-selective pruned copy of a FULL block: the heavy space-time
-// proofs (BondReg.Answer, ~1.5 MB each) are dropped and the pre-prune hash is stored, so
+// proofs (BondReg.Answer, ~120 KB each at the bond floor) are dropped and the pre-prune hash is stored, so
 // the block still hash-links and still carries its consensus signatures while shedding
 // what OOMs a small box (build-immutable #8). A pruned block is NOT equivocation
 // evidence: its body no longer reproduces its hash, so CheckEquivocation refuses it — a
@@ -1162,7 +1162,7 @@ func (b Block) Prune() Block {
 }
 
 // hasHeavyBondProof reports whether any of the block's bond registrations still carries
-// its heavy space-time Answer (the ~1.5 MB payload the retention prune sheds) — so an
+// its heavy space-time Answer (the payload the retention prune sheds) — so an
 // entry-only or already-pruned block is skipped rather than needlessly marked pruned.
 func (b *Block) hasHeavyBondProof() bool {
 	for i := range b.BondRegs {
@@ -2212,7 +2212,7 @@ func (c *Chain) RequiredQuorum() int {
 
 // validatorSetSize is N, the set the Byzantine quorum is sized against. It must be
 // STABLE across a ramp: sizing against the live `qualifiedCount` made RequiredQuorum
-// shift block-to-block as ~1.5 MB bond registrations drained in, so no fork ever
+// shift block-to-block as bond registrations drained in, so no fork ever
 // held a quorum of a consistent set (quorum-intersection safety needs a FIXED n) —
 // the "0 of 2 gathered" stall. During the young window the set is the fixed anchor
 // set (seeded at genesis — the sanctioned trust, immutable #3); after the handoff it
@@ -2513,8 +2513,8 @@ func (c *Chain) validateBondRegs(b *Block) error {
 	// reg for identity X is a valid payload only if X is not slashed (R∞ — the
 	// Defect-A commit path, closed structurally) and X's last committed reg
 	// is ≥ R blocks old (first registrations are exempt: bondRegHeight unset).
-	// This is what bounds reg-BLOCK volume — the ~1.5 MB Answer per committed
-	// reg was the OOM driver; the proposer-side filter keeps honest
+	// This is what bounds reg-BLOCK volume — the Answer each committed reg carries
+	// was the OOM driver; the proposer-side filter keeps honest
 	// proposers clean, this makes a storm block INVALID so it cannot commit.
 	// Validation runs against the PARENT state, so a block carrying two regs for
 	// the same identity needs its own in-block check (seenReg) or a one-block
@@ -2761,8 +2761,8 @@ func (c *Chain) BondRenewalDue(id ports.NodeID) bool {
 	}
 	_, next := c.Head() // height of the block being proposed next
 	// renewal PHASE-JITTER: validators
-	// that all registered near genesis hit TTL/2 together, so 5–7 heavy ~1.5 MB
-	// space-time proofs land in ONE block every few heights — and each attester
+	// that all registered near genesis hit TTL/2 together, so 5–7 space-time proofs
+	// land in ONE block every few heights — and each attester
 	// verifies every proof on the gather's critical path before it will sign,
 	// inflating the two-phase gather latency on the 1 vCPU box (the deep-drive
 	// crawl; real networks spread naturally via organic join-times).
@@ -4591,7 +4591,7 @@ func (c *Chain) regGateActive(h uint64) bool {
 // RESTORES standing the identity already held — a current frozen-epoch member
 // re-proving a Root it already owns — which is EXEMPT from the R interval. The R
 // interval defends against a reg-FLOOD of fresh identities/plots (each carrying
-// a ~1.5 MB Answer, the OOM driver); a returning frozen-set member re-proving
+// a space-time Answer, the OOM driver); a returning frozen-set member re-proving
 // its OWN plot is not that — it can only restore weight the honest set already
 // trusted for this epoch, never admit new weight, so it cannot cheapen capture
 // (unlike shrinking the quorum denominator — the rejected fix (1)). This removes

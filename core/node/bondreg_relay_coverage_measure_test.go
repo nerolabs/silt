@@ -98,7 +98,7 @@ func driveCoverageSeeded(t *testing.T, seed int64, netcfg simnet.Config, interva
 	// shed form, and the measurement would be reporting a relay that cannot engage.
 	//
 	// THE TTL IS THE SHIPPED ONE. Renewal is due at half of it, so the TTL sets how
-	// often a ~1.5 MB registration has to cross the wire at all — which is the
+	// often a registration has to cross the wire at all — which is the
 	// quantity every byte figure below is proportional to. A tighter TTL makes a
 	// livelier measurement and an unquotable one.
 	cfg := chain.Config{
@@ -311,11 +311,15 @@ func TestTheDigestRelaysCoverageOnAHealthyWireAndACongestedOne(t *testing.T) {
 	}
 
 	// THE GATE ON THE FAST ARM, which is the only arm where a coverage figure is a
-	// property of the relay rather than of the wire. The floor is set well under the
-	// measured value and well over the two states this mechanism has already been in:
-	// 1-of-n−1 by construction (~33% at four validators) and 37.5%. A regression that
-	// put it back in either would fail here, on a developer's machine, in seconds.
-	const fastArmCoverageFloor = 80
+	// property of the relay rather than of the wire. A leg sheds only when the attester
+	// is evidenced for EVERY registration in the block (peerCanReconstruct), and a
+	// block carries three or four registrations at this proof size, so a leg is
+	// stricter than one registration. Across eight seeds the fast arm measures 54–71%.
+	// With the holder-reported inventory disabled it measures 33% on every seed, which
+	// is 1-of-n−1 by construction; the mechanism has also been at 37.5%. The floor sits
+	// between: a regression to either state fails here, on a developer's machine, in
+	// seconds.
+	const fastArmCoverageFloor = 45
 	if healthy.pct() < fastArmCoverageFloor {
 		t.Fatalf("the digest relay covered only %.0f%% of gather legs on a wire with nothing in its way "+
 			"(%d shed, %d carried — own-reg unevidenced %d, peer-reg unevidenced %d). Below %d%% the relay "+
