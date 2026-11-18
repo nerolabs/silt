@@ -567,6 +567,12 @@ type pending struct {
 	// quantity sampled is the quantity the deadline was computed from.
 	sent    ports.Time
 	payload int64
+	// replySized marks an exchange whose payload was the ANTICIPATED reply. Its
+	// outcome is sampled against the reply that actually came back: an empty window
+	// returning in a round trip did not carry the window it was sized for, and
+	// sampling it as if it had would read as a fast path and release the backoff a
+	// slow one needs.
+	replySized bool
 }
 
 type Node struct {
@@ -1721,14 +1727,25 @@ func (n *Node) requestTimeoutFor(to ports.NodeID, msg ports.Message) (ports.Dura
 		// pagination exists for stall. The window and this deadline derive
 		// from the same two symbols, so they cannot drift.
 		payload = int64(len(msg.Data))
+		limit := requestSizeExtensionCap
 		if msg.Kind == ports.MsgGetChain {
-			if w := int64(n.maxChainReplyBytes()); w > payload {
-				payload = w
+			w := msg.MaxReplyBytes
+			if w <= 0 {
+				w = int64(n.maxChainReplyBytes())
+			}
+			payload = max(payload, w)
+			// A window is never smaller than one block, so the deadline must carry
+			// the largest block a peer can serve whatever window was asked for.
+			// Otherwise a node one proof-carrying block behind, on a path too slow
+			// to move that block inside the cap, can never fetch it.
+			if u := n.syncUnitBytes(); u > 0 {
+				payload = max(payload, u)
+				limit = max(limit, n.syncExtensionCap(u))
 			}
 		}
 		extra := ports.Duration(payload * int64(ports.Second) / n.sizeFloorFor(to))
-		if extra > requestSizeExtensionCap {
-			extra = requestSizeExtensionCap
+		if extra > limit {
+			extra = limit
 		}
 		timeout += extra
 	}
@@ -1739,6 +1756,37 @@ func (n *Node) requestTimeoutFor(to ports.NodeID, msg ports.Message) (ports.Dura
 // pathological payload cannot hang a round past this, and the chain-serve
 // window is derived FROM it (maxChainReplyBytes), so the two cannot drift.
 const requestSizeExtensionCap = 30 * ports.Second
+
+// chainWindowFor is the reply window to ask `to` for: what its path carries in half
+// the extension cap at the rate its deadline is sized against. For a peer with no
+// history this is maxChainReplyBytes; for one whose path has shown slower, the window
+// shrinks with it, so the reply still fits the deadline instead of outgrowing it.
+func (n *Node) chainWindowFor(to ports.NodeID) int64 {
+	if n.cfg.RequestSizeFloorBytesPerSec <= 0 {
+		return 0
+	}
+	return n.sizeFloorFor(to) * int64(requestSizeExtensionCap/ports.Second) / 2
+}
+
+// syncUnitBytes is the largest single block this node expects a peer to serve: one
+// carrying a bond registration's proof, measured by this node's own registration,
+// which every validator builds with the same parameters. Zero when it holds none.
+func (n *Node) syncUnitBytes() int64 {
+	if n.ownBondReg == nil {
+		return 0
+	}
+	return int64(len(n.ownBondReg.Answer))
+}
+
+// syncExtensionCap bounds a chain-fetch deadline: the time one block of unit bytes
+// takes at the slowest rate this node will assume for a path without a measurement
+// of it (the configured floor at its deepest loss backoff), and never less than the
+// ordinary cap. A chain fetch runs between consensus rounds rather than inside one,
+// so a longer wait delays a catch-up sweep and holds up no round.
+func (n *Node) syncExtensionCap(unit int64) ports.Duration {
+	slowest := max(n.cfg.RequestSizeFloorBytesPerSec>>maxRateBackoffShifts, 1)
+	return max(requestSizeExtensionCap, ports.Duration(unit*int64(ports.Second)/slowest))
+}
 
 // maxChainReplyBytes is the byte budget for one MsgGetChain reply window — the
 // chain-serve bound (a node marshaling its whole bond-reg-laden chain into
@@ -1775,7 +1823,7 @@ func (n *Node) requestAttempt(to ports.NodeID, msg ports.Message, attempt int, c
 	// consensus RPC's wait (#3: one signal, one job).
 	discovery := msg.Kind == ports.MsgFindNode || msg.Kind == ports.MsgGetProviders || msg.Kind == ports.MsgAddProvider
 	timeout, payload := n.requestTimeoutFor(to, msg)
-	p := &pending{cb: cb, to: to, sent: n.clock.Now(), payload: payload}
+	p := &pending{cb: cb, to: to, sent: n.clock.Now(), payload: payload, replySized: msg.Kind == ports.MsgGetChain}
 	p.cancel = n.clock.AfterFunc(timeout, func() {
 		delete(n.pending, rid)
 		n.Stats.Timeouts++
@@ -1950,7 +1998,11 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 		// A completed exchange is the estimator's other sample: what this peer's path
 		// actually achieved, which is what keeps the deadline from staying stretched
 		// after the congestion that stretched it has cleared.
-		n.observeRequestRate(from, p.payload, ports.Duration(now-p.sent))
+		sampled := p.payload
+		if p.replySized {
+			sampled = int64(len(msg.Data))
+		}
+		n.observeRequestRate(from, sampled, ports.Duration(now-p.sent))
 		p.cb(msg, nil)
 		return
 	}

@@ -66,8 +66,11 @@ type wireMsg struct {
 	// proposer can relay those registrations' heavy proofs to it by digest. Advisory
 	// and bounded on receipt; a receiver still rebuilds only bytes matching the
 	// digest the proposer signed.
-	HeldRegs  [][]byte `cbor:"35,keyasint,omitempty"`
-	PorBlocks int      `cbor:"25,keyasint,omitempty"`
+	HeldRegs [][]byte `cbor:"35,keyasint,omitempty"`
+	// 36: the reply window a MsgGetChain requester can receive inside its deadline.
+	// Optional: an old requester omits it and is served the server's own window.
+	MaxReplyBytes int64 `cbor:"36,keyasint,omitempty"`
+	PorBlocks     int   `cbor:"25,keyasint,omitempty"`
 	// Self-certifying provider records (H5): Provider on MsgAddProvider,
 	// ProviderRecs on MsgGetProvidersReply.
 	Provider     *wireProvRec  `cbor:"26,keyasint,omitempty"`
@@ -183,6 +186,7 @@ func toWire(m ports.Message) wireMsg {
 	w.CapUsed, w.CapTotal = m.CapUsed, m.CapTotal
 	w.ServedBytes, w.RepairsDone = m.ServedBytes, m.RepairsDone
 	w.Height = m.Height
+	w.MaxReplyBytes = m.MaxReplyBytes
 	w.Domain = m.Domain
 	w.Lease = m.Lease
 	w.Ephemeral = m.Ephemeral
@@ -276,6 +280,7 @@ func fromWire(w wireMsg) ports.Message {
 	m.CapUsed, m.CapTotal = w.CapUsed, w.CapTotal
 	m.ServedBytes, m.RepairsDone = w.ServedBytes, w.RepairsDone
 	m.Height = w.Height
+	m.MaxReplyBytes = w.MaxReplyBytes
 	m.Domain = w.Domain
 	m.Lease = w.Lease
 	m.Ephemeral = w.Ephemeral
