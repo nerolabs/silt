@@ -41,7 +41,7 @@ is only as strong as the highest tier that drove it.
 | **Storage plane** | publish, fetch, erasure coding, repair, NAT traversal — driven to the field tier and holding |
 | **Consensus safety** | the five invariants asserted under adversarial scheduling; model-checked |
 | **Sybil composition** | **three of five axes deny** (bond size, possession, retention). Demand and diversity are *unwired* and report themselves as unwired rather than passing vacuously. Until 2026-11-18 the bond-size and possession axes rested on a plot that was 128× compressible; see "Re-measured 2026-11-18" |
-| **Trust plane liveness on an adverse network** | **open.** This is the wedge |
+| **Trust plane liveness on an adverse network** | **open.** This is the wedge. On 2026-11-18 one paired field run passed with the label-node plot and failed on `main` (812 s); see "Re-measured 2026-11-18". One pair is not a distribution |
 | **The M0 verdict** | **never commissioned.** It belongs to an external red team and no external party has run it |
 
 Six RC items carry **no verdict at all** — 11, 12, 13, 17, 18, 19. A suite passing nearby is
@@ -192,7 +192,8 @@ every dial failed is logged. Same conditions after the fix: 0 of 6 batches faile
 
 ## Re-measured 2026-11-18 (branch `builder/bond-plot-label-nodes`)
 
-Nothing here is field evidence. Re-run the commands before citing a number.
+The field rows at the end of this section are one paired run per arm. Re-run the commands
+before citing a number.
 
 **A soundness flaw in the bond plot, found and fixed.** Each 4 KiB plot block was its 32-byte
 label expanded by chained SHA-256, so the label alone determined the block. A prover could keep
@@ -243,10 +244,28 @@ per block. In the second label-node run the window still carried registrations (
 registration-bearing gather legs, 6 carrying the proof) and the chain kept committing; flow
 `4-become-validator` passed in the same run. The first run carried none in its window, so it
 alone shows less. Two runs are not a distribution, and the local harness has no real WAN and
-no NAT. The field is the next tier.
+no NAT.
 
 Command: `LOCAL=1 EQV_ISLAND=0 FLOWS="first_run become_validator impaired" ./cloudtest.sh` from
 `integration/cloudtest`.
+
+**The field, paired.** GCP, 13 nodes, four validators in us-west1, us-east1 and europe-west1,
+the same impairment on all four, 64 MiB bonds, one harness. `IMPAIR_HEIGHTS=16` stretches the
+window past the first renewals, so both arms carry proof-bearing blocks.
+
+| Build | Run | Heights | Worst gap (220 s bound) | Registration-bearing legs | Validator peak RSS |
+|---|---|---|---|---|---|
+| `main` | `main16c-11c56276` | 8, then stalled | **812 s** | 84, 65 carried | 0.75 GiB |
+| Label-node plot | `lbl16-d1e8cae9` | **16 of 16** | **69 s** | 96, 29 carried | 0.17 GiB |
+
+The control reproduces September's field wedge (794–843 s). The label-node arm commits through
+the renewals with the proof on the critical path. A three-height run of the label-node build
+(`full-d1e8cae9`) also passed, at 61 s, but carried no registration in its window. One paired
+run is the field tier's first evidence for this change, not a distribution.
+
+Command: `EQV_ISLAND=0 IMPAIR_HEIGHTS=16 FLOWS="first_run become_validator impaired"
+./cloudtest.sh up`, then `run`, then `down`, with the pre-flight gate's `RUN_*` set and
+`RUN_LOCAL_PROOF="SUITE=all ./integration/adversarial/run.sh"`.
 
 ---
 
