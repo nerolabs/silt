@@ -382,6 +382,11 @@ type Message struct {
 	Ephemeral bool
 	// Height is the chain-sync cursor (MsgGetChain).
 	Height uint64
+	// MaxReplyBytes is the largest MsgGetChain reply window the requester can receive
+	// inside the deadline it armed, sized to its peer's observed path. The server
+	// serves the smaller of this and its own window, and always at least one block.
+	// Zero asks for the server's own window, which is what an older requester gets.
+	MaxReplyBytes int64
 	// Bond gossip: a validator advertises its storage-bond commitment root
 	// and size on every message (like capacity/domain), so peers can
 	// challenge it to prove it still holds real, identity-bound storage —

@@ -522,8 +522,15 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		// bond-reg-laden chain into one buffer was the measured 144 MB serve-side
 		// OOM driver. The requester loops windows (fetchFull); Reconcile validates
 		// the reassembled linkage, so a windowed fetch cannot corrupt the chain.
+		// The requester may ask for less: the window its path to us carries inside
+		// the deadline it armed. Never more than our own bound, and a node with no
+		// bound keeps the legacy whole-suffix serve.
+		window := n.maxChainReplyBytes()
+		if w := msg.MaxReplyBytes; w > 0 && window > 0 && w < int64(window) {
+			window = int(w)
+		}
 		n.reply(from, msg, ports.Message{Kind: ports.MsgChainReply, OK: true,
-			Data: chain.EncodeBlocksUpTo(blocks, n.maxChainReplyBytes())})
+			Data: chain.EncodeBlocksUpTo(blocks, window)})
 	case ports.MsgGetWitness:
 		// The witness seam: a box that holds no tree asks this node, which does, for the
 		// committed leaves and proofs it needs to judge a block for itself. Serving is not a
@@ -1974,7 +1981,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 		}
 		var fetchWindow func(h uint64)
 		fetchWindow = func(h uint64) {
-			n.request(p, ports.Message{Kind: ports.MsgGetChain, Height: h},
+			n.request(p, ports.Message{Kind: ports.MsgGetChain, Height: h, MaxReplyBytes: n.chainWindowFor(p)},
 				func(resp ports.Message, err error) {
 					if err != nil || !resp.OK {
 						// Mid-loop failure: the partial suffix is DISCARDED, never
