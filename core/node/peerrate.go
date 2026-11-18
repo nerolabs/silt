@@ -146,7 +146,7 @@ func (n *Node) observeRequestRate(to ports.NodeID, payload int64, elapsed ports.
 		// in for not knowing whether a payload of this size fits; a completed exchange of
 		// this size answers that question directly, and `measured` now carries the
 		// answer. Releasing on a small reply instead would be the category error — a
-		// 121-byte probe returning says nothing about whether 1.5 MB fits, and on a
+		// 121-byte probe returning says nothing about whether a proof-carrying block fits, and on a
 		// congested link those small replies arrive often enough to reset the backoff
 		// before it can ever reach the path's real rate.
 		p.backoff, p.paidBy = 0, 0

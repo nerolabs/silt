@@ -200,7 +200,7 @@ const (
 	MsgGetWitness   // Data: CBOR witnessReq — one accessor call (leaf, members, ancestors or log extension) against a named head
 	MsgWitnessReply // Data: CBOR witnessResp — the answer, or OK=false when this node has no witness to serve
 	// APPENDED, never inserted: the receipt that survives its request's deadline. A
-	// renewal submit carries ~1.5 MB, so on a slow link the submitter's request expires
+	// renewal submit carries the whole space-time proof, so on a slow link the submitter's request expires
 	// while the bytes are still crossing and the MsgSubmitBondRegAck that follows has
 	// nobody waiting for it. This is the same receipt sent unsolicited, so it is
 	// recorded whenever it lands. It has no Data, so it is a control-sized frame and
@@ -302,7 +302,7 @@ type Message struct {
 	// its pending queue, reported on MsgChainHeadReply — the head probe that already
 	// crosses between every pair of nodes on every chain-sync sweep.
 	//
-	// It exists because shedding a registration's ~1.5 MB proof needs EVIDENCE that
+	// It exists because shedding a registration's proof needs EVIDENCE that
 	// the receiver can rebuild it, and the only two evidences a proposer had were
 	// "the peer authored this registration" and "the peer acknowledged MY OWN". On a
 	// live chain renewals are staggered, so a block carries one OTHER validator's

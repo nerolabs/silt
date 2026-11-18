@@ -603,7 +603,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 				// A submit is always the sender's OWN renewal (SubmitBondRenewal
 				// self-submits; the reg is bound to the submitter's key). A relayed
 				// third-party reg is refused BEFORE signature/proof work — otherwise
-				// replaying one captured valid ~1.5 MB reg re-pays the full verify
+				// replaying one captured valid reg re-pays the full verify
 				// per message (queue dedup sits after the verify).
 				n.logf(ports.LogInfo, "bond-reg submit REFUSED (relay)", "from", from, "validator", vid)
 			} else if verr := n.chain.ValidateBondRegErr(reg); verr != nil {
@@ -882,7 +882,7 @@ func (n *Node) ProposeEntry(e ports.Entry, attesters, broadcast []ports.NodeID, 
 // identity the refuse-to-surveil chain rejects, a double-spent token) — WITHOUT gathering
 // or committing. The async publish path (chainhost.Host.PublishAsync) calls this to return
 // those refusals to the HTTP client immediately, then runs the slow commit gather in the
-// background (so the ~1.5MB genesis gather no longer blocks the handler under a flat 10s
+// background (so a slow genesis gather no longer blocks the handler under a flat 10s
 // deadline — Layer 1). A lean single-entry candidate block suffices: the entry-level
 // refusals and proposer eligibility do not depend on the bond-registration the real
 // proposeBlock also attaches (a bad bond-reg surfaces async, as the proposer's own concern).
@@ -971,7 +971,7 @@ func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeI
 	if n.chain.Objective() && n.bond != nil && !n.chain.IsSlashed(n.id) && n.chain.BondRenewalDue(n.id) {
 		// The IsSlashed gate: an evicted id's BondRenewalDue is
 		// true forever (bonded[id] deleted), and self-embedding a reg the apply
-		// path will discard only bloats the block (~1.5 MB) for nothing.
+		// path will discard only bloats the block (~120 KB) for nothing.
 		if reg, ok := n.ownRegForBlock(b.Prev); ok {
 			b.BondRegs = append(b.BondRegs, reg)
 		}
@@ -1002,13 +1002,13 @@ func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeI
 			}
 		}
 		// Layer 2b: cap the total BYTES of bond registrations embedded per block. A
-		// fresh multi-validator genesis where every founding validator submits its ~1.5 MB
-		// space-time proof otherwise piles into one ~8 MB block the quorum gather can't move
-		// + re-verify over a WAN (the research stalled at regs=5 / 7.9 MB). The founding set are
+		// fresh multi-validator genesis where every founding validator submits its space-time
+		// proof otherwise piles into one block that grows with the founding set, which the
+		// quorum gather has to move and re-verify over a WAN. The founding set are
 		// anchors, so genesis commits SMALL on the anchor bootstrap while the deferred
 		// registrations drain over the next blocks. A BYTE budget (not a count) is the right
-		// lever: at genesis a full ~1.5 MB proof means ~1 reg/block, but small steady-state
-		// renewals pack many per block so an attest-only validator is never starved under a
+		// lever: a full proof at the bond floor is ~120 KB, and small steady-state renewals
+		// pack more per block so an attest-only validator is never starved under a
 		// tight TTL (sim/bond_renewal). Embed in ARRIVAL order; account for the proposer's
 		// own reg (F6) already appended.
 		budget := n.cfg.MaxBondRegBytesPerBlock
@@ -2004,8 +2004,8 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 					// fast path — a window that provably EXTENDS our exact
 					// committed head is adopted through the normal Append commit
 					// path, validating ONLY the new blocks. The slow tail below
-					// re-validates the WHOLE reconstructed fork from genesis (~1s
-					// per 1.5 MB reg block, ON the event loop), which is O(height)
+					// re-validates the WHOLE reconstructed fork from genesis (every
+					// reg block re-verified, ON the event loop), which is O(height)
 					// per catch-up: at h≈56 under MATURING reg weight one
 					// reconcile outlasted the round durations, starved the sweeps,
 					// and wedged the chain (the field-measured knee). Gated on

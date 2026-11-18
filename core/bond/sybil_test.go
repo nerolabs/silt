@@ -1,61 +1,34 @@
 package bond
 
 import (
-	"bytes"
+	"slices"
 	"testing"
 
-	"github.com/nerolabs/silt/core/manifest"
 	"github.com/nerolabs/silt/core/vdf"
-	"github.com/nerolabs/silt/ports"
 )
 
-// These are the M0 red-team Sybil PoCs (F1/F2) INVERTED as regressions: each
-// asserts the attack that used to PASS is now DENIED. See–§2. The G2
-// prefix-plot regressions live in prefix_plot_sybil_test.go.
-
-// F1 (leaves-only prover): the red-team stored only the 32-byte leaves (1/128 of
-// the plot) and recomputed any probed block on demand, because the old plotBlock
-// derived block i from its parents' LEAVES. The fix binds block i to its parents'
-// full BYTES over a depth-robust graph, so a prover that kept only the leaves
-// cannot reconstruct a block: without the true parent bytes, the recompute yields
-// a block whose hash no longer matches the committed leaf.
-func TestByteBindingDefeatsLeavesOnly(t *testing.T) {
-	const n = 128
-	seed := plotSeedN(pk(9), n)
-	blocks := make([][]byte, n)
-	for i := 0; i < n; i++ {
-		blocks[i] = plotBlock(seed, i, n, blocks)
+// A plot answers only while it holds its labels. A prover that keeps the commitment
+// and the block-level tree but frees the plot, intending to recompute on demand,
+// holds no label to open and no seed label to start the VDF from.
+func TestReleasedPlotCannotAnswer(t *testing.T) {
+	pkA := pk(9)
+	c := Seal(pkA, 1<<20)
+	if _, ok := c.AnswerSpaceTime(5, vdf.Default(), stDelay, testK); !ok {
+		t.Fatal("setup: the held plot must answer")
 	}
-	leaves := make([]ports.Hash, n)
-	for i := range blocks {
-		leaves[i] = ports.HashBytes(blocks[i])
+	c.ReleaseBlocks()
+	if _, ok := c.AnswerSpaceTime(5, vdf.Default(), stDelay, testK); ok {
+		t.Fatal("a released plot still answered a space-time challenge")
 	}
-
-	// A leaves-only adversary discarded the block bytes and keeps only `leaves`.
-	// Standing in anything but the true parent bytes (here: zeroed blocks, the
-	// information a leaves-only prover actually holds about the bytes — none)
-	// must NOT reproduce the committed block.
-	const target = n - 1
-	starved := make([][]byte, n)
-	for i := range starved {
-		starved[i] = make([]byte, BlockSize)
-	}
-	forged := plotBlock(seed, target, n, starved)
-	if ports.HashBytes(forged) == leaves[target] {
-		t.Fatal("F1 regression: block recomputed without parent bytes — a leaves-only prover would still pass")
-	}
-	// Sanity: with the true parent bytes it DOES reproduce (the plot is a
-	// deterministic function of the held bytes, so an honest holder answers).
-	if !bytes.Equal(plotBlock(seed, target, n, blocks), blocks[target]) {
-		t.Fatal("honest recompute from held bytes must reproduce the block")
+	if _, ok := c.Answer(5, testK); ok {
+		t.Fatal("a released plot still answered a space-only challenge")
 	}
 }
 
-// F2 (VDF gates nothing): the red-team seeded the VDF from the PUBLIC
-// challengeSeed(root, nonce), ran it with zero resident bytes, then re-derived
-// the sampled blocks — releasing the space forfeited nothing. The fix seeds the
-// VDF from a plot block read BEFORE the VDF (seedIndex), carried with an
-// inclusion proof, so an answer that did not read the real plot block fails.
+// The VDF is seeded from a plot label read BEFORE the VDF (seedIndex), and that label
+// is opened under the same multiproof as the rest of the answer. An answer whose seed
+// label is not the committed one fails, so a VDF run from public data alone, or from
+// another plot's label, buys nothing.
 func TestVDFBoundToPlotRead(t *testing.T) {
 	pkA := pk(4)
 	c := Seal(pkA, 1<<20)
@@ -66,57 +39,61 @@ func TestVDFBoundToPlotRead(t *testing.T) {
 	if !ok || !VerifySpaceTime(pkA, c.Root, c.Size, nonce, honest, p, stDelay, testK) {
 		t.Fatal("setup: honest space-time answer must verify")
 	}
-	// The honest answer must actually carry the pre-VDF seed read.
-	if len(honest.SeedBlock) != BlockSize || honest.SeedProof.Total != NumBlocks(c.Size) {
-		t.Fatal("honest space-time answer must carry the plot-read seed block + proof")
+	si := seedIndex(c.Root, c.n, nonce)
+	idx := openedIndices(c.seed, c.Root, c.n, vdfDerivedNonce(honest.VDFY), resolveK(testK), si)
+	at := slices.Index(idx, si)
+	if at < 0 {
+		t.Fatal("the space-time opens do not include the seed label")
 	}
-	if honest.SeedProof.Index != seedIndex(c.Root, NumBlocks(c.Size), nonce) {
-		t.Fatal("seed proof must be for the challenge-selected seed index")
+	want, _ := c.label(si)
+	if string(honest.Labels[at*LabelSize:(at+1)*LabelSize]) != string(want[:]) {
+		t.Fatal("the answer's seed label is not the plot's label at seedIndex")
 	}
 
-	// (a) Tamper the seed block: the inclusion proof no longer binds it to the
-	// committed root, so a prover that fabricated the seed instead of reading the
-	// real plot block is rejected.
+	// (a) Tamper the seed label: it no longer folds to the committed root.
 	tampered := honest
-	tampered.SeedBlock = append([]byte(nil), honest.SeedBlock...)
-	tampered.SeedBlock[0] ^= 0xff
+	tampered.Labels = append([]byte(nil), honest.Labels...)
+	tampered.Labels[at*LabelSize] ^= 0xff
 	if VerifySpaceTime(pkA, c.Root, c.Size, nonce, tampered, p, stDelay, testK) {
-		t.Fatal("F2 regression: a tampered VDF seed block passed")
+		t.Fatal("a tampered VDF seed label passed")
 	}
 
-	// (b) A zero-resident prover that seeded the VDF from public data alone
-	// carries no plot-read proof — rejected.
-	noSeed := honest
-	noSeed.SeedBlock = nil
-	noSeed.SeedProof = manifest.Proof{}
-	if VerifySpaceTime(pkA, c.Root, c.Size, nonce, noSeed, p, stDelay, testK) {
-		t.Fatal("F2 regression: an answer with no plot-read seed passed")
+	// (b) Leave the seed label out, as a prover that never read the plot would.
+	missing := honest
+	missing.Labels = append(append([]byte(nil), honest.Labels[:at*LabelSize]...), honest.Labels[(at+1)*LabelSize:]...)
+	if VerifySpaceTime(pkA, c.Root, c.Size, nonce, missing, p, stDelay, testK) {
+		t.Fatal("an answer with no seed label passed")
 	}
 
-	// (c) Seeding from ANOTHER plot's block (a prover that holds a different, or
-	// smaller, plot) fails: the seed proof is against the wrong root/index.
+	// (c) Seed the VDF from ANOTHER plot's label at the same position and rerun it:
+	// the VDF verifies against that label, but the label does not fold to this root.
 	other := Seal(pk(5), 1<<20)
-	otherST, ok := other.AnswerSpaceTime(nonce, p, stDelay, testK)
-	if !ok {
-		t.Fatal("setup: other plot answer")
+	foreign, _ := other.label(si)
+	proof, err := vdf.Eval(p, challengeSeedST(c.Root, nonce, foreign[:]), stDelay)
+	if err != nil {
+		t.Fatal(err)
 	}
-	crossed := honest
-	crossed.SeedBlock = otherST.SeedBlock
-	crossed.SeedProof = otherST.SeedProof
+	crossed := Answer{PK: pkA, VDFY: proof.Y, VDFPi: proof.Pi, VDFT: proof.T}
+	cidx := openedIndices(c.seed, c.Root, c.n, vdfDerivedNonce(proof.Y), resolveK(testK), si)
+	labels, sib, ok := c.open(cidx)
+	if !ok {
+		t.Fatal("setup: open the honest labels for the crossed answer")
+	}
+	cat := slices.Index(cidx, si)
+	copy(labels[cat*LabelSize:], foreign[:])
+	crossed.Labels, crossed.Siblings = labels, sib
 	if VerifySpaceTime(pkA, c.Root, c.Size, nonce, crossed, p, stDelay, testK) {
-		t.Fatal("F2 regression: a VDF seed block from another plot passed")
+		t.Fatal("a VDF seeded from another plot's label passed")
 	}
 }
 
-// F3 (dedup carries no cost) is structural, not a runtime bypass: distinct
-// identities produce distinct plots, so cost lives in the (now byte-bound) proof
-// and the root-owner dedup is only a same-root tiebreak. The distinct-plot
-// property is asserted by TestPlotDeterministicAndIdentityBound; this records the
-// coupling so a future change that re-collapses plots is caught here too.
+// Distinct identities produce distinct plots, so cost lives in the proof and the
+// root-owner dedup is only a same-root tiebreak. This records the coupling so a change
+// that re-collapses plots is caught here too.
 func TestDistinctIdentitiesDistinctPlots(t *testing.T) {
 	a := Seal(pk(1), 1<<20)
 	b := Seal(pk(2), 1<<20)
 	if a.Root == b.Root {
-		t.Fatal("F3 regression: two identities share a plot root — cost would not scale with identities")
+		t.Fatal("two identities share a plot root — cost would not scale with identities")
 	}
 }

@@ -1,7 +1,8 @@
 package bond
 
 import (
-	"bytes"
+	"math/bits"
+	"slices"
 	"testing"
 
 	"github.com/nerolabs/silt/core/vdf"
@@ -105,39 +106,33 @@ func TestSpaceTimeRejectsMissingOrForgedWork(t *testing.T) {
 	}
 }
 
-// The probed blocks are chosen by the VDF OUTPUT, not the raw nonce — so a
-// prover cannot know which blocks to keep ready until it has done the work.
-func TestSpaceTimeBlocksDerivedFromWork(t *testing.T) {
+// The opened labels are chosen by the VDF OUTPUT, not the raw nonce — so a prover
+// does not learn which labels to keep ready until it has done the work.
+func TestSpaceTimeLabelsDerivedFromWork(t *testing.T) {
 	c := Seal(pk(1), 1<<20)
 	const nonce = 7
-	spaceOnly, _ := c.Answer(nonce, testK)
-	spaceTime, _ := c.AnswerSpaceTime(nonce, vdf.Default(), stDelay, testK)
-	if bytes.Equal(intsToBytes(spaceOnly.Indices), intsToBytes(spaceTime.Indices)) {
-		t.Fatal("space-time indices equal the raw-nonce indices — the work does not steer block selection")
+	k := resolveK(testK)
+	spaceOnly := openedIndices(c.seed, c.Root, c.n, nonce, k)
+	ans, _ := c.AnswerSpaceTime(nonce, vdf.Default(), stDelay, testK)
+	spaceTime := openedIndices(c.seed, c.Root, c.n, vdfDerivedNonce(ans.VDFY), k, seedIndex(c.Root, c.n, nonce))
+	if slices.Equal(spaceOnly, spaceTime) {
+		t.Fatal("space-time opens equal the raw-nonce opens — the work does not steer label selection")
 	}
-}
-
-func intsToBytes(xs []int) []byte {
-	b := make([]byte, 0, len(xs)*8)
-	for _, x := range xs {
-		b = append(b, byte(x), byte(x>>8), byte(x>>16), byte(x>>24))
-	}
-	return b
 }
 
 // pk fakes a validator ed25519 public key for tests: the bond seed is H(pk, n),
 // and bond treats pk as opaque bytes, so any distinct 32 bytes stand in for a key.
 func pk(b byte) []byte { h := ports.HashBytes([]byte{b}); return h[:] }
 
-// BenchmarkSeal reports the plot (and therefore re-plot) cost per bond size —
-// the constant behind the F2 tuning claim "re-plot ≫ one epoch." Run with `go
-// test ./core/bond -run x -bench Seal -benchmem`. Byte-binding over the
-// depth-robust graph makes each block hash its parents' full bytes, so plotting
-// is deliberately more expensive than the old leaves-only labeling; that expense
-// is the Sybil cost and the anti-release floor.
+// BenchmarkSeal reports the plot (and therefore re-plot) cost per bond size — the
+// constant behind the tuning claim "re-plot ≫ one epoch." Run with `go test
+// ./core/bond -run x -bench Seal -benchmem`. Every 32 bytes of the plot is one
+// sequential label over its predecessor and DRSample parents; that expense is the
+// Sybil cost and the anti-release floor.
 func BenchmarkSeal(b *testing.B) {
-	for _, size := range []int64{1 << 20, 4 << 20} {
+	for _, size := range []int64{1 << 20, 4 << 20, 16 << 20} {
 		b.Run(sizeLabel(size), func(b *testing.B) {
+			b.SetBytes(size)
 			for i := 0; i < b.N; i++ {
 				_ = Seal(pk(byte(i)), size)
 			}
@@ -181,72 +176,78 @@ func TestPlotDeterministicAndIdentityBound(t *testing.T) {
 	}
 }
 
-// The space-hardness lever (M0 F1 fix): a block depends on the BYTES of earlier
-// blocks, so it cannot be recomputed in isolation — perturbing a predecessor's
-// or a parent's block bytes changes the block. Binding to bytes (not the
-// 32-byte leaves) is what stops a prover from storing only leaves and
-// recomputing any single block on demand instead of storing the plot.
-func TestPlotBlockDependsOnEarlierBlockBytes(t *testing.T) {
-	const n = 64
+// A label depends on its predecessor's and its parents' labels, so it cannot be
+// recomputed in isolation: perturbing any of them changes it. This is the edge set
+// that makes recomputing a discarded label a walk back through the graph.
+func TestLabelDependsOnItsPredecessorAndParents(t *testing.T) {
+	const n = 1024
 	seed := plotSeedN(pk(7), n)
-	// Build an honest small plot (full blocks, as Seal does).
-	blocks := make([][]byte, n)
-	for i := 0; i < n; i++ {
-		blocks[i] = plotBlock(seed, i, n, blocks)
+	plot := make([]ports.Hash, n)
+	honest := func(j int) ports.Hash { return plot[j] }
+	for i := range plot {
+		plot[i] = labelOf(seed, i, honest)
 	}
-	const target = n - 1 // a late block: depends on its predecessor + parents
-
-	honest := plotBlock(seed, target, n, blocks)
-
-	// Flip a byte of the immediate predecessor's BLOCK; the block must change.
-	perturbed := cloneBlocks(blocks)
-	perturbed[target-1][0] ^= 0xff
-	if bytes.Equal(honest, plotBlock(seed, target, n, perturbed)) {
-		t.Fatal("block does not depend on its predecessor's bytes — plot is not byte-chained")
+	const target = n - 1
+	if labelOf(seed, target, honest) != plot[target] {
+		t.Fatal("recomputing a label from the true labels must reproduce it")
 	}
-
-	// Flip a byte of one long-range parent's BLOCK; the block must change too.
-	parents := parentIndices(seed, target, n)
-	if len(parents) == 0 {
-		t.Fatal("expected long-range parents for a late block")
-	}
-	perturbed2 := cloneBlocks(blocks)
-	perturbed2[parents[0]][0] ^= 0xff
-	if bytes.Equal(honest, plotBlock(seed, target, n, perturbed2)) {
-		t.Fatal("block does not depend on its long-range parent's bytes — no depth to the graph")
-	}
-}
-
-func cloneBlocks(in [][]byte) [][]byte {
-	out := make([][]byte, len(in))
-	for i, b := range in {
-		out[i] = append([]byte(nil), b...)
-	}
-	return out
-}
-
-// Dependency indices are always earlier blocks (a DAG, never a cycle) and
-// deterministic from the public (seed, i, n).
-func TestParentIndicesAreEarlierAndDeterministic(t *testing.T) {
-	const n = 500
-	seed := plotSeedN(pk(3), n)
-	if p := parentIndices(seed, 0, n); p != nil {
-		t.Fatalf("block 0 should have no parents, got %v", p)
-	}
-	for i := 1; i < n; i++ {
-		p1 := parentIndices(seed, i, n)
-		p2 := parentIndices(seed, i, n)
-		if len(p1) != plotParents {
-			t.Fatalf("block %d: got %d parents, want %d", i, len(p1), plotParents)
+	perturbed := func(bad int) func(int) ports.Hash {
+		return func(j int) ports.Hash {
+			l := plot[j]
+			if j == bad {
+				l[0] ^= 0xff
+			}
+			return l
 		}
+	}
+	if labelOf(seed, target, perturbed(target-1)) == plot[target] {
+		t.Fatal("a label does not depend on its predecessor — the plot is not chained")
+	}
+	for m, p := range parentIndices(seed, target) {
+		if labelOf(seed, target, perturbed(p)) == plot[target] {
+			t.Fatalf("a label does not depend on its parent %d (node %d) — the graph has no depth", m, p)
+		}
+	}
+}
+
+// Parents are always earlier nodes (a DAG, never a cycle) and deterministic from the
+// public (seed, i).
+func TestParentIndicesAreEarlierAndDeterministic(t *testing.T) {
+	const n = 1 << 14
+	seed := plotSeedN(pk(3), n)
+	for i := 1; i < n; i++ {
+		p1 := parentIndices(seed, i)
+		p2 := parentIndices(seed, i)
 		for k, p := range p1 {
 			if p < 0 || p >= i {
-				t.Fatalf("block %d parent %d = %d is not an earlier block", i, k, p)
+				t.Fatalf("node %d parent %d = %d is not an earlier node", i, k, p)
 			}
 			if p != p2[k] {
-				t.Fatalf("block %d parent %d not deterministic", i, k)
+				t.Fatalf("node %d parent %d not deterministic", i, k)
 			}
 		}
+	}
+}
+
+// DRSample draws a parent's distance log-uniformly, so parents spread across every
+// distance band rather than clustering near the node. A draw that collapsed to short
+// edges would leave the graph shallow and a discarded label cheap to recompute.
+func TestParentDistancesSpanEveryBand(t *testing.T) {
+	const n = 1 << 16
+	seed := plotSeedN(pk(4), n)
+	bands := make([]int, 17)
+	for i := n / 2; i < n; i++ {
+		for _, p := range parentIndices(seed, i) {
+			bands[bits.Len(uint(i-p))]++
+		}
+	}
+	for b := 2; b <= 15; b++ {
+		if bands[b] == 0 {
+			t.Fatalf("no parent at distance 2^%d — the draw is not log-uniform: %v", b-1, bands)
+		}
+	}
+	if long := bands[15] + bands[16]; long < (n/2)*plotParents/32 {
+		t.Fatalf("only %d of %d parents reach past distance 2^14: %v", long, (n/2)*plotParents, bands)
 	}
 }
 
@@ -266,7 +267,7 @@ func TestHeldBondAnswersItsOwnChallenge(t *testing.T) {
 	}
 }
 
-// V3, test-the-adversary: a prover that does NOT hold the bytes cannot
+// Test-the-adversary: a prover that does NOT hold the bytes cannot
 // satisfy the root. Corrupting a probed block, or answering with another
 // identity's bond, both fail — so passing genuinely proves held storage.
 func TestForgedOrUnheldBondFails(t *testing.T) {
@@ -277,14 +278,31 @@ func TestForgedOrUnheldBondFails(t *testing.T) {
 		t.Fatal("setup: holder should answer")
 	}
 
-	// Corrupt one probed block: the inclusion proof no longer binds to the
-	// committed root, i.e. the prover no longer has the real bytes.
-	bad := ans
-	bad.Blocks = append([][]byte(nil), ans.Blocks...)
-	bad.Blocks[0] = append([]byte(nil), ans.Blocks[0]...)
-	bad.Blocks[0][0] ^= 0xff
-	if Verify(pkA, c.Root, c.Size, 42, bad, testK) {
-		t.Fatal("forged block accepted — storage not actually proven")
+	// Corrupt any one opened label: the multiproof no longer folds to the committed
+	// root, i.e. the prover no longer has the real bytes.
+	for j := 0; j < len(ans.Labels)/LabelSize; j++ {
+		bad := ans
+		bad.Labels = append([]byte(nil), ans.Labels...)
+		bad.Labels[j*LabelSize] ^= 0xff
+		if Verify(pkA, c.Root, c.Size, 42, bad, testK) {
+			t.Fatalf("forged label %d accepted — storage not actually proven", j)
+		}
+	}
+	// So does corrupting any sibling, dropping one, or appending one.
+	for j := 0; j < len(ans.Siblings)/LabelSize; j++ {
+		bad := ans
+		bad.Siblings = append([]byte(nil), ans.Siblings...)
+		bad.Siblings[j*LabelSize] ^= 0xff
+		if Verify(pkA, c.Root, c.Size, 42, bad, testK) {
+			t.Fatalf("forged sibling %d accepted", j)
+		}
+	}
+	short := ans
+	short.Siblings = ans.Siblings[:len(ans.Siblings)-LabelSize]
+	long := ans
+	long.Siblings = append(append([]byte(nil), ans.Siblings...), make([]byte, LabelSize)...)
+	if Verify(pkA, c.Root, c.Size, 42, short, testK) || Verify(pkA, c.Root, c.Size, 42, long, testK) {
+		t.Fatal("a multiproof with a missing or surplus sibling accepted")
 	}
 
 	// Another identity's bond does not answer for this root (identity-bound).

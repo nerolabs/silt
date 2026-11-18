@@ -137,11 +137,20 @@ func TestAnchorStopHaltsBondedNonAnchors(t *testing.T) {
 		peers += ids[i] + "@" + ports[i]
 	}
 
-	src := filepath.Join(t.TempDir(), "p.bin")
-	if err := os.WriteFile(src, make([]byte, 4096), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	// Each publish carries DISTINCT content. Convergent mode names a file by its bytes,
+	// so republishing the same file is refused as already registered, and a refused
+	// publish gives the resumed chain nothing to commit. The resume clincher must be
+	// driven by new work, not by whatever bond registrations happen to be pending.
+	dir := t.TempDir()
+	publishes := 0
 	publishCommits := func(budget time.Duration) bool {
+		publishes++
+		src := filepath.Join(dir, fmt.Sprintf("p%d.bin", publishes))
+		body := make([]byte, 4096)
+		copy(body, fmt.Sprintf("anchor-stop publish %d", publishes))
+		if err := os.WriteFile(src, body, 0o644); err != nil {
+			t.Fatal(err)
+		}
 		deadline := time.Now().Add(budget)
 		for time.Now().Before(deadline) {
 			out, _ := runClientAllowErr(t, "swarm", "add", src,

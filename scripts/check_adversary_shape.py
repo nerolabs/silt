@@ -327,13 +327,13 @@ def claim_key(rel, cap, sentence):
 # carried by the decision entry and by review, not by the machine.
 # ---------------------------------------------------------------------------
 RATCHET = (
-    ('core/bond/bond.go', 'SybilPlotSharing', '23a5decdc9ea'),
-    ('core/bond/bond.go', 'VDFOutputPrediction', '1badfd3b7eed'),
-    ('core/bond/bond.go', 'SeedBlockWithoutPlot', 'f689249c9dcd'),
-    ('core/bond/bond.go', 'OnDemandPlotRecompute', '4526713b8ced'),
-    ('core/bond/bond.go', 'SeedBlockInclusionProof', 'f8b6c80eb0df'),
-    ('core/bond/bond.go', 'ForeignPlotLabels', 'e50876438657'),
-    ('core/bond/bond.go', 'CrossEpochProofReplay', 'fe5526229678'),
+    ('core/bond/bond.go', 'SybilPlotSharing', 'af8d68461194'),
+    ('core/bond/bond.go', 'VDFOutputPrediction', '8c8b5c830a91'),
+    ('core/bond/bond.go', 'SeedBlockWithoutPlot', 'ba79407c323c'),
+    ('core/bond/bond.go', 'OnDemandPlotRecompute', '413773340c6a'),
+    ('core/bond/bond.go', 'SeedBlockInclusionProof', '077ab5989a12'),
+    ('core/bond/bond.go', 'ForeignPlotLabels', '79646f125ed2'),
+    ('core/bond/bond.go', 'CrossEpochProofReplay', 'e997cda10586'),
     ('core/node/bondaudit.go', 'PeerAcceptedSelfAssertedBond', 'f95c92fcdd45'),
     # ADDED 2026-09-19, and the growth is the point of the diff. Two audit-path fixes
     # landed defence claims this gate had never seen, and it did not fire on them

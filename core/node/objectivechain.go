@@ -84,7 +84,7 @@ func (n *Node) SubmitBondRenewal(peers []ports.NodeID) {
 	// Q1(c): an F2 eviction is permanent (the chain never clears slashed),
 	// but it also deletes bonded[id] — which makes BondRenewalDue read true
 	// FOREVER for this node. Without this gate an evicted daemon re-broadcast
-	// its full ~1.5 MB space-time proof every sweep, unbounded, and honest
+	// its full space-time proof every sweep, unbounded, and honest
 	// proposers committed each one as a fresh block: the island OOM's dominant
 	// driver (the bond-renewal storm). Back off permanently and say why, once —
 	// silence here would read as a discovery failure (B5).
@@ -109,7 +109,7 @@ func (n *Node) SubmitBondRenewal(peers []ports.NodeID) {
 	// none was SENT. Those were the same statement for as long as the head kept
 	// moving, and they came apart the moment it stopped: a chain that cannot commit
 	// holds BondRenewalDue true indefinitely, so this path re-minted and
-	// re-broadcast the full ~1.5 MB space-time proof to every peer on every sweep,
+	// re-broadcast the full space-time proof to every peer on every sweep,
 	// for as long as the stall lasted.
 	//
 	// Measured in the field: 29 re-broadcasts from one validator inside one
@@ -334,7 +334,7 @@ const (
 	// evidences that the peer holds it. On a wire that delivers this is zero, because
 	// the proposer commits the copy it broadcast and a broadcast is acknowledged only
 	// once the peer has queued the bytes. On a wire that does not, it is EVERY carried
-	// leg — and the peer has no evidence because it has no bytes: the ~1.5 MB submit
+	// leg — and the peer has no evidence because it has no bytes: the proof-carrying submit
 	// that would have delivered them has not completed on the same congested link.
 	// There is no more evidence to add for that case. The relay cannot shed bytes a
 	// peer has never received, so this is the first crossing and not an evidence gap.
@@ -378,7 +378,7 @@ func (c carryReason) String() string {
 //     field made necessary: the first two only ever cover a registration this node
 //     or v authored, so on a live chain — where renewals are staggered and a block
 //     carries one OTHER validator's registration — exactly one attester out of n-1
-//     qualified, and the rest were sent ~1.5 MB they already held.
+//     qualified, and the rest were sent a proof they already held.
 //
 // Anything else — "every validator is sent every submission, so v probably has it"
 // — is an assumption about the network, and a wrong one costs the round it is wrong
@@ -442,7 +442,7 @@ func (n *Node) shedQCLegFor(v ports.NodeID, b *chain.Block, prepared map[ports.N
 
 // noteGatherLeg records one gather leg's outcome against the relay's coverage, which
 // is the share of registration-bearing legs that crossed by digest rather than
-// carrying ~1.5 MB of space-time proof.
+// carrying the space-time proof (~120 KB at the bond floor).
 //
 // A leg with nothing to shed is counted in NEITHER. Coverage is a property of the
 // legs where shedding was possible at all, and folding the era-less and

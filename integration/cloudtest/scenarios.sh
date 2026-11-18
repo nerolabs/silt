@@ -1079,7 +1079,7 @@ ft_lane_counters() {
 # gather lines in debug.log (validators run -log debug).
 #
 # A gather leg is one proposal or one prepare-QC to one attester. It either crosses by
-# DIGEST at about a kilobyte or CARRIES the space-time proofs at ~1,574,000 B each, and
+# DIGEST at about a kilobyte or CARRIES the space-time proofs (~120 KB each at the bond floor), and
 # a link that cannot move the carried form inside the per-attempt deadline cannot commit
 # the height at all — so this ratio is the quantity the adverse-network liveness claim
 # rests on. Three runs read it by hand off frame sizes; the line now states it.
@@ -1290,7 +1290,7 @@ flow_impaired_commit() {
   # whichever validators proposed. The attribution travels with it — a carried leg for
   # want of evidence about a THIRD PARTY's registration is the holder inventory arriving
   # late, which more evidence closes; one for want of evidence about the proposer's OWN
-  # is the ~1.5 MB submit not having completed on this link, which no evidence can.
+  # is the proof-carrying submit not having completed on this link, which no evidence can.
   local rly_shed=0 rly_own=0 rly_peer=0 rly_unread="" rly=""
   for v in $applied; do
     local rly_now rly_was rly_d
@@ -1307,7 +1307,7 @@ flow_impaired_commit() {
   done
   local rly_carried=$(( rly_own + rly_peer )) rly_legs=$(( rly_shed + rly_own + rly_peer ))
   if [ "$rly_legs" -gt 0 ]; then
-    rly=" digest relay over the window: ${rly_shed}/${rly_legs} legs shed ($(( 100 * rly_shed / rly_legs ))%), ${rly_carried} carried ~1,574,000 B each (own-reg unevidenced ${rly_own}, peer-reg unevidenced ${rly_peer})"
+    rly=" digest relay over the window: ${rly_shed}/${rly_legs} legs shed ($(( 100 * rly_shed / rly_legs ))%), ${rly_carried} carried the proof (own-reg unevidenced ${rly_own}, peer-reg unevidenced ${rly_peer})"
   else
     # NOT THE SAME AS 100%, and saying so is the point. No registration-bearing leg ran
     # in this window, so there was nothing to shed and nothing to carry — a coverage

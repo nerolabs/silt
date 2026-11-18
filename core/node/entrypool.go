@@ -162,9 +162,9 @@ type pendingBondReg struct {
 	R chain.BondReg
 	// D is sha256 of R.Answer, computed ONCE when the registration is queued.
 	//
-	// It is cached rather than derived because of what it costs: the answer is
-	// ~1.5 MB on the shipped parameters and a digest of it measures ~1.2 ms on the
-	// single serialized loop (core/node/bondreg_digest_cost_measure_test.go). This
+	// It is cached rather than derived because of what it costs: the answer carries
+	// the whole space-time proof, and digesting it runs on the single serialized loop
+	// (core/node/bondreg_digest_cost_measure_test.go measures it). This
 	// node reports its held digests on every chain-sync sweep, to every peer, so
 	// deriving them there would put a term proportional to the validator set on a
 	// 30-second timer, forever — and growing that set is the point. Arrival is

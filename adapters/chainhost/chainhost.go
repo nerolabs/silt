@@ -149,7 +149,7 @@ func (h *Host) PublishAsync(_ context.Context, e ports.Entry) error {
 // (the gather could not reach quorum this round) — rather than waiting out the whole budget.
 // A gather still in progress returns (false, nil): pending, keep polling. This is what keeps
 // a publish-retry-until-standing caller (bond earned-standing, revocation) able to retry
-// promptly while a genuinely slow ~1.5 MB genesis gather is still allowed to finish.
+// promptly while a genuinely slow genesis gather is still allowed to finish.
 func (h *Host) PublishStatus(_ context.Context, root ports.Hash) (committed bool, failErr error) {
 	if err := h.onLoop(func(done func()) {
 		_, committed = h.Node.Chain().LookupRoot(root)
