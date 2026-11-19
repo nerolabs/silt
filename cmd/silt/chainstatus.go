@@ -33,6 +33,7 @@ func cmdChainStatus(args []string) error {
 	fs := flag.NewFlagSet("chain-status", flag.ExitOnError)
 	storeDir := fs.String("store", ".silt-daemon", "store directory holding chain.cbor (matches `silt daemon -store`)")
 	epochBlocks := fs.Uint64("epoch-blocks", DerivedEpochBlocks, "the swarm's epoch cadence (matches `silt daemon -epoch-blocks`), used only to diagnose a head stuck at an epoch boundary; 0 disables the diagnosis")
+	at := fs.Int64("at", -1, "also print the hash of the block at this height (the `hash at H:` line), so replicas at different heads can be compared at a height they all hold; -1 prints none")
 	fs.Parse(args)
 
 	path := filepath.Join(*storeDir, "chain.cbor")
@@ -84,6 +85,25 @@ func cmdChainStatus(args []string) error {
 	}
 	fmt.Printf("  head height:  %d\n", head.Height)
 	fmt.Printf("  head hash:    %s\n", headHash)
+	// COMPARING REPLICAS AT A COMMON HEIGHT. A live chain keeps committing, so two
+	// replicas read moments apart report different heads even when they agree on
+	// every block. The hash at a height both hold is the comparison that means
+	// something. The label is a SCRAPE SURFACE: scenarios.sh reads
+	// `hash at [0-9]+:[[:space:]]*[0-9a-f]+`. Gate:
+	// TestChainStatusReportsTheHashAtAHeight.
+	if *at >= 0 {
+		found := false
+		for i := range blocks {
+			if blocks[i].Height == uint64(*at) {
+				fmt.Printf("  hash at %d: %s\n", *at, blocks[i].Hash())
+				found = true
+				break
+			}
+		}
+		if !found {
+			fmt.Printf("  hash at %d: none (this replica holds no block at that height)\n", *at)
+		}
+	}
 	fmt.Printf("  blocks:       %d (incl. genesis)\n", len(blocks))
 	fmt.Printf("  entries:      %d committed\n", entries)
 	// The retention prune sheds the heavy bond proofs of blocks below the rolling

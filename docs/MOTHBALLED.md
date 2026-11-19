@@ -293,6 +293,19 @@ validator journals, so these runs do not show whether a view change fired in the
 unit test is the evidence that the re-proposal path itself is fixed. Across the label-node plot's
 six field runs, five passed and the one failure was this defect.
 
+**The deep sheet** (`deep-84fe26a8`, `main` with both fixes, every default flow plus
+`DEEP=1`): **26 pass, 1 fail.** The chain reached h128 from h44 at about 23 s per height, the
+retention prune engaged on all four validators (49 blocks shed each, 7 MiB on disk), and the
+impaired-commit, partition-heal, equivocation, takedown, crash, cross-region and NAT rows all
+passed, with no node above 0.25 GiB. The one fail, `12c-deep-converge`, was the probe: it read
+each validator's height and head hash in separate calls while the chain kept committing, and
+paired h134 with h135's hash. All four validators' journals record identical blocks at h133 through
+h136. The probe now compares every validator's hash at the lowest head they all hold
+(`chain-status -at`), and `check_deep_converge.sh` drives it against a moving chain and a real fork.
+
+The maturity handoff (`MATURING=1 SYBILS=8`) has not been driven in the field: its 27-node
+topology exceeds the new project's default CPU and external-IP quotas.
+
 Command: `EQV_ISLAND=0 IMPAIR_HEIGHTS=16 FLOWS="first_run become_validator impaired"
 ./cloudtest.sh up`, then `run`, then `down`, with the pre-flight gate's `RUN_*` set and
 `RUN_LOCAL_PROOF="SUITE=all ./integration/adversarial/run.sh"`.
