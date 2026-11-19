@@ -41,7 +41,7 @@ is only as strong as the highest tier that drove it.
 | **Storage plane** | publish, fetch, erasure coding, repair, NAT traversal — driven to the field tier and holding |
 | **Consensus safety** | the five invariants asserted under adversarial scheduling; model-checked |
 | **Sybil composition** | **three of five axes deny** (bond size, possession, retention). Demand and diversity are *unwired* and report themselves as unwired rather than passing vacuously. Until 2026-11-18 the bond-size and possession axes rested on a plot that was 128× compressible; see "Re-measured 2026-11-18" |
-| **Trust plane liveness on an adverse network** | **open.** This is the wedge. On 2026-11-18, across three paired field runs, `main` failed all three and the label-node plot passed two; the third stalled on a separate defect in view-change re-proposal, since fixed and not yet field-driven. See "Re-measured 2026-11-18" |
+| **Trust plane liveness on an adverse network** | **open.** This is the wedge. On 2026-11-18, across three paired field runs, `main` failed all three and the label-node plot passed two; the third stalled on a separate defect in view-change re-proposal, since fixed; the fixed build then passed three of three. See "Re-measured 2026-11-18" |
 | **The M0 verdict** | **never commissioned.** It belongs to an external red team and no external party has run it |
 
 Six RC items carry **no verdict at all** — 11, 12, 13, 17, 18, 19. A suite passing nearby is
@@ -277,8 +277,21 @@ chances to fire.
 `proposeAtNewView` now puts the shed proofs back before it gathers, as the prepare and precommit
 handlers do before they judge a block, and a designee that cannot declines the round so it times
 out to the next one. `TestAForcedReProposalCarriesTheProofsItWasLockedOnWithout` reproduces the
-stall's mechanism red on the previous code and passes on the fix. The fixed build has not yet been
-driven in the field.
+stall's mechanism red on the previous code and passes on the fix.
+
+**The fixed build in the field, three runs** (`fix1`–`fix3`, commit `dfd1c266`, same harness,
+project and window):
+
+| Run | Heights | Worst gap | Registration-bearing legs | Publishes |
+|---|---|---|---|---|
+| `fix1` | 16 of 16 | 93 s | 96, 27 carried | 9 of 9 |
+| `fix2` | 17 of 17 | 69 s | 88, 35 carried | 11 of 11 |
+| `fix3` | 16 of 16 | 91 s | 80, 28 carried | 10 of 10 |
+
+All three pass, with the digest relay heavily engaged in each window. Passing runs keep no
+validator journals, so these runs do not show whether a view change fired in their windows; the
+unit test is the evidence that the re-proposal path itself is fixed. Across the label-node plot's
+six field runs, five passed and the one failure was this defect.
 
 Command: `EQV_ISLAND=0 IMPAIR_HEIGHTS=16 FLOWS="first_run become_validator impaired"
 ./cloudtest.sh up`, then `run`, then `down`, with the pre-flight gate's `RUN_*` set and
