@@ -2486,23 +2486,50 @@ flow_deep_heights() {
     slo_assert "12b-deep-prune" major "retention prune ENGAGED on every validator at depth (horizon ≈ h${horizon} = epoch-floored h_end−2·TTL):${pr_detail} — payload-stripped counts read from persisted chain.cbor via chain-status, on-disk bytes carried as the weight evidence" "$pr_ok"
   fi
 
-  # 12c — convergence at depth on the PRUNED chain (the flow-5 probe): all
-  # validators within 2 of tip sharing the tip head hash — steady-state sync
-  # (suffix-append around the pruned gap) still converges after the drive.
-  local tip=0 hh hv agree=1 tip_hash="" detail=""
+  grade_deep_converge
+}
+
+# grade_deep_converge grades 12c on the four validators' chain-status (dh_status).
+# Defined at top level so the offline self-test (check_deep_converge.sh) can drive
+# it with a stubbed dh_status.
+grade_deep_converge() {
+  # 12c — convergence at depth on the PRUNED chain: every validator within 2 of the
+  # tip, and every validator holding the SAME block at a height all of them hold.
+  #
+  # COMPARE AT A COMMON HEIGHT. The chain keeps committing after the drive (~23
+  # s/height), so replicas read moments apart report different heads even when they
+  # agree on every block. An earlier version compared head hashes among validators
+  # that happened to read the same height: a commit between a validator's height read
+  # and its hash read paired height h with block h+1's hash and graded an agreeing
+  # chain as a fork, and on a moving chain two validators may never be read at the
+  # same height, so a real fork could pass. The lowest head every validator has
+  # reached is a height they all hold; their hashes there must be identical.
+  local tip=0 low="" hv agree=1 common_hash="" detail="" v hh
+  local -a dh_h
+  local i=0
   for v in val-a val-b val-c val-d; do
-    hv="$(dh_height "$v")"; hv="${hv:-0}"; [ "$hv" -gt "$tip" ] 2>/dev/null && tip="$hv"
+    hv="$(dh_status "$v" | grep -oE 'head height:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | tail -1)"; hv="${hv:-0}"
+    dh_h[i]="$hv"; i=$((i + 1))
+    [ "$hv" -gt "$tip" ] 2>/dev/null && tip="$hv"
+    if [ -z "$low" ] || [ "$hv" -lt "$low" ] 2>/dev/null; then low="$hv"; fi
   done
+  [ $(( tip - low )) -le 2 ] 2>/dev/null || agree=0
+  i=0
   for v in val-a val-b val-c val-d; do
-    hv="$(dh_height "$v")"; hv="${hv:-0}"
-    hh="$(dh_status "$v" | grep -oE 'head hash:[[:space:]]*[0-9a-f]+' | grep -oE '[0-9a-f]{16,}' | tail -1)"
-    detail="$detail $v=h${hv}:${hh:0:12}"
-    [ $(( tip - hv )) -le 2 ] 2>/dev/null || agree=0
-    if [ "$hv" = "$tip" ]; then
-      if [ -z "$tip_hash" ]; then tip_hash="$hh"; elif [ "$hh" != "$tip_hash" ]; then agree=0; fi
-    fi
+    hh="$(dh_hash_at "$v" "$low")"
+    detail="$detail $v=h${dh_h[i]}@h${low}:${hh:0:12}"; i=$((i + 1))
+    if [ -z "$hh" ]; then agree=0
+    elif [ -z "$common_hash" ]; then common_hash="$hh"
+    elif [ "$hh" != "$common_hash" ]; then agree=0; fi
   done
-  slo_assert "12c-deep-converge" major "convergence at depth on the pruned chain: all validators within 2 of tip=h${tip} and tip-height validators share head hash ${tip_hash:0:12}… (${detail# })" "$agree"
+  slo_assert "12c-deep-converge" major "convergence at depth on the pruned chain: all validators within 2 of tip=h${tip} and every validator holds the same block at the common height h${low} (${common_hash:0:12}…) (${detail# })" "$agree"
+}
+
+# dh_hash_at prints the hash of the block at height H on validator V, read from its
+# own persisted chain (chain-status -at), or nothing when it holds no such block.
+dh_hash_at() {
+  ssh_node "$1" "/usr/local/bin/silt chain-status -store /var/lib/silt -at $2 2>&1" \
+    | grep -oE "hash at $2:[[:space:]]*[0-9a-f]+" | grep -oE '[0-9a-f]{16,}' | tail -1
 }
 
 # A cold objective genesis network needs its peer mesh established and its first

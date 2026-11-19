@@ -37,6 +37,8 @@ jobs:
         run: ./integration/cloudtest/check_escape_fingerprint.sh
       - name: cloudtest empty-fleet self-test (a sheet with no fleet behind it fails, never passes)
         run: ./integration/cloudtest/check_empty_fleet.sh
+      - name: cloudtest deep-converge self-test (replicas compared at a common height, a moving chain is not a fork)
+        run: ./integration/cloudtest/check_deep_converge.sh
       - name: go test + coverage floor
         run: |
           # -coverpkg=./... credits cross-package coverage, so the pure

@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -156,4 +157,35 @@ func captureStdout(t *testing.T, f func()) string {
 	buf := make([]byte, 1<<16)
 	n, _ := r.Read(buf)
 	return string(buf[:n])
+}
+
+// TestChainStatusReportsTheHashAtAHeight pins the `hash at H:` line the field
+// harness compares replicas by. Replicas read moments apart on a live chain report
+// different heads; the hash at a height every replica holds is what shows whether
+// they agree, so the line must name the block at exactly that height, and say so
+// plainly when the replica holds none.
+func TestChainStatusReportsTheHashAtAHeight(t *testing.T) {
+	dir := t.TempDir()
+	g := chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{{Root: ports.HashBytes([]byte("g"))}}}
+	b1 := chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{{Root: ports.HashBytes([]byte("1"))}}}
+	b2 := chain.Block{Version: 1, Height: 2, Prev: b1.Hash(), Entries: []ports.Entry{{Root: ports.HashBytes([]byte("2"))}}}
+	if err := chainstore.Save(filepath.Join(dir, "chain.cbor"), []chain.Block{g, b1, b2}); err != nil {
+		t.Fatal(err)
+	}
+	run := func(args ...string) string {
+		return captureStdout(t, func() {
+			if err := cmdChainStatus(append([]string{"-store", dir}, args...)); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	if out := run("-at", "1"); !strings.Contains(out, fmt.Sprintf("hash at 1: %s", b1.Hash())) {
+		t.Fatalf("chain-status -at 1 must print block 1's hash, not the head's:\n%s", out)
+	}
+	if out := run("-at", "9"); !strings.Contains(out, "hash at 9: none") {
+		t.Fatalf("a height the replica does not hold must say so rather than print a hash:\n%s", out)
+	}
+	if out := run(); strings.Contains(out, "hash at") {
+		t.Fatalf("without -at, no `hash at` line may appear (it is a scrape surface):\n%s", out)
+	}
 }
