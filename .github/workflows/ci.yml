@@ -39,6 +39,8 @@ jobs:
         run: ./integration/cloudtest/check_empty_fleet.sh
       - name: cloudtest deep-converge self-test (replicas compared at a common height, a moving chain is not a fork)
         run: ./integration/cloudtest/check_deep_converge.sh
+      - name: cloudtest scale-publish self-test (paced load is offered on schedule, a step passes only when every publish committed in time)
+        run: ./integration/cloudtest/check_scale_publish.sh
       - name: go test + coverage floor
         run: |
           # -coverpkg=./... credits cross-package coverage, so the pure
