@@ -3405,13 +3405,13 @@ flow_scale_publish() {
       || { record "scale-publish" fail major "could not install the load generator on $g"; return; }
     wait_publisher_warm "$g"
   done
-  local rate row ok=1 eager_p95="" low
+  local rate row ok=1 eager_p95="" low failed=""
   low="$(printf '%s\n' $SCALE_RATES | sort -n | head -1)"
   for rate in $SCALE_RATES; do
     row="$(scale_step "eager-r$rate" "$rate")"
     [ -n "$row" ] || row='{"verdict":"fail","why":"the step produced no grade"}'
     local verdict; verdict="$(python3 -c "import json,sys;print(json.loads(sys.argv[1])['verdict'])" "$row" 2>/dev/null || echo fail)"
-    [ "$verdict" = pass ] || ok=0
+    [ "$verdict" = pass ] || { ok=0; failed="$failed ${rate}/s"; }
     [ "$rate" = "$low" ] && eager_p95="$(python3 -c "import json,sys;print(json.loads(sys.argv[1]).get('lat_p95_s') or '')" "$row" 2>/dev/null)"
     record "scale-publish-r$rate" "$verdict" major "$(scale_row_detail "$row" 2>/dev/null || printf '%s' "$row")"
   done
@@ -3430,9 +3430,9 @@ flow_scale_publish() {
       record "scale-publish-control" pass info "sweep-only control (-propose-delay 0): $(scale_row_detail "$row" 2>/dev/null || printf '%s' "$row")"
       python3 -c "import sys;sys.exit(0 if float(sys.argv[1]) < float(sys.argv[2]) else 1)" "${eager_p95:-1e9}" "$ctl_p95" || ok=0
     fi
-    slo_assert "scale-publish" major "every load step passed (${SCALE_RATES// //}/s) and at ${low}/s the p95 time to a committed link was ${eager_p95:-n/a}s proposing when entries wait against ${ctl_p95:-n/a}s sweep-only" "$ok"
+    slo_assert "scale-publish" major "load steps ${SCALE_RATES// //}/s: $([ -z "$failed" ] && echo "all passed" || echo "failed at${failed}"); at ${low}/s the p95 time to a committed link was ${eager_p95:-n/a}s proposing when entries wait against ${ctl_p95:-n/a}s sweep-only" "$ok"
   else
-    slo_assert "scale-publish" major "every load step passed (${SCALE_RATES// //}/s); no sweep-only control was run" "$ok"
+    slo_assert "scale-publish" major "load steps ${SCALE_RATES// //}/s: $([ -z "$failed" ] && echo "all passed" || echo "failed at${failed}"); no sweep-only control was run" "$ok"
   fi
 }
 
