@@ -3299,6 +3299,143 @@ flow_soak_publish_drain() {
   fi
 }
 
+# ── publish throughput under paced load (opt-in: SCALE=1 topology, FLOWS=scale) ──
+# Drives the chain with a stepped publish load from one generator per region and
+# grades, per step, what a publisher sees: whether its publish committed and how
+# long the link took. The chain side of each step (blocks, entries per block, the
+# gap between blocks, view changes, proposals held for a late parent) is read
+# from the validators' own logs for the same window, so a slow step names its
+# cause. One control step then runs with every validator on sweep-only proposals
+# (-propose-delay 0) at the lowest rate, and the flow passes only if proposing
+# when entries wait beats it on the field's own WAN.
+: "${SCALE_RATES:=1 2 5 10}"        # offered publishes/s summed over the generators, one step each
+: "${SCALE_STEP_S:=300}"            # length of each step's schedule
+: "${SCALE_DRAIN_S:=420}"           # after a schedule ends: the client's 360 s commit budget plus margin
+: "${SCALE_P95_S:=20}"              # p95 bound on time to a committed link
+: "${SCALE_MIN_OK:=0.99}"           # fraction of attempted publishes that must return a link
+: "${SCALE_INFLIGHT:=64}"           # concurrent publishes per generator before one is skipped
+: "${SCALE_CONTROL:=1}"             # 0 omits the sweep-only control step
+
+scale_gens() { node_names | tr ' ' '\n' | grep -E '^load-[0-9]+$' | tr '\n' ' '; }
+
+# scale_window_counts NODE FROM_EPOCH TO_EPOCH -> lines from the node's debug.log
+# window: "read" once if the log was readable, "rc height=H round=R" per recorded
+# view change (the same view change is recorded once per peer, so the caller counts
+# distinct pairs), "held" per proposal held for a late parent. No "read" line means
+# the node could not be read, which is unknown, not zero.
+scale_window_counts() {
+  local a b
+  a="$(epoch_to_iso "$2")"; b="$(epoch_to_iso "$3")"
+  ssh_node "$1" "sudo test -r /var/lib/silt/debug.log && echo READ && sudo awk -v a='$a' -v b='$b' '\$1 >= a && \$1 < b' /var/lib/silt/debug.log" \
+    | awk '/^READ$/ { print "read"; next }
+           /round-change: recorded/ { h = r = ""; for (i = 1; i <= NF; i++) { if ($i ~ /^height=/) h = $i; if ($i ~ /^round=/) r = $i } print "rc", h, r }
+           /held a proposal one height ahead/ { print "held" }'
+}
+
+# scale_step LABEL RATE -> one graded JSON row on stdout (progress on stderr)
+scale_step() {
+  local label="$1" rate="$2" g n iv start_at deadline all dir vals v best=0 lines
+  local -a gens; read -r -a gens <<< "$(scale_gens)"; n="${#gens[@]}"
+  dir="$FT_DIR/scale-$RUN_ID/$label"; mkdir -p "$dir"
+  iv="$(python3 -c "print(max(1, round(1000 * $n / $rate)))")"
+  start_at=$(( $(date +%s) + 15 + 6 * n ))
+  echo "  scale $label: ${rate}/s over ${n} generators (one publish per ${iv} ms each) for ${SCALE_STEP_S}s from $(epoch_to_iso "$start_at")Z" >&2
+  for g in "${gens[@]}"; do
+    ssh_node "$g" "setsid nohup /tmp/scale_gen.sh $iv $SCALE_STEP_S $SCALE_INFLIGHT /tmp/scale-$label.log '$PEERS' '$REGREF' $TOKEN_QUORUM $start_at >/dev/null 2>&1 </dev/null & echo started" >/dev/null
+  done
+  deadline=$(( start_at + SCALE_STEP_S + SCALE_DRAIN_S ))
+  sleep $(( start_at + SCALE_STEP_S - $(date +%s) > 0 ? start_at + SCALE_STEP_S - $(date +%s) : 0 ))
+  while :; do
+    all=1
+    for g in "${gens[@]}"; do ssh_node "$g" "grep -q '^done ' /tmp/scale-$label.log" || all=0; done
+    [ "$all" = 1 ] || [ "$(date +%s)" -ge "$deadline" ] && break
+    sleep 15
+  done
+  for g in "${gens[@]}"; do
+    ssh_node "$g" "cat /tmp/scale-$label.log" > "$dir/$g.log"
+    # A schedule still running at the deadline must not bleed into the next step.
+    [ "$all" = 1 ] || ssh_node "$g" "pkill -f scale_gen.sh; pkill -f 'silt swarm add'" >/dev/null 2>&1 || true
+  done
+  # Commit times from the validator that logged the most commits in the window
+  # (a validator that caught up by sync logs no banner for those heights).
+  vals="val-a val-b val-c val-d"
+  for v in $vals; do
+    ssh_node "$v" "sudo journalctl -u silt --no-pager -o short-unix --since @$start_at" | grep 'chain: committed block' > "$dir/commits-$v.txt" || true
+    lines="$(wc -l < "$dir/commits-$v.txt" | tr -d ' ')"
+    [ "${lines:-0}" -gt "$best" ] && { best="$lines"; cp "$dir/commits-$v.txt" "$dir/commits.txt"; }
+  done
+  [ -f "$dir/commits.txt" ] || : > "$dir/commits.txt"
+  local rc="?" held="?" unread=0
+  : > "$dir/window.txt"
+  for v in $vals; do
+    scale_window_counts "$v" "$start_at" $(( start_at + SCALE_STEP_S )) > "$dir/window-$v.txt"
+    grep -q '^read$' "$dir/window-$v.txt" || unread=$(( unread + 1 ))
+    cat "$dir/window-$v.txt" >> "$dir/window.txt"
+  done
+  if [ "$unread" = 0 ]; then
+    rc="$(grep '^rc ' "$dir/window.txt" | sort -u | wc -l | tr -d ' ')"
+    held="$(grep -c '^held' "$dir/window.txt" | tr -d ' ')"
+  fi
+  python3 "$FT_DIR/scale_grade.py" --label "$label" --rate "$rate" --start "$start_at" --dur "$SCALE_STEP_S" \
+    --p95 "$SCALE_P95_S" --min-ok "$SCALE_MIN_OK" --commits "$dir/commits.txt" --rounds "$rc" --held "$held" \
+    $(for g in "${gens[@]}"; do printf '%s ' "$dir/$g.log"; done) | tee "$dir/row.json"
+}
+
+scale_row_detail() { # scale_row_detail JSON -> the one-line numbers a report row carries
+  python3 -c "
+import json,sys; r=json.loads(sys.argv[1]); f=lambda x: 'n/a' if x is None else f'{x:.1f}s'
+print(f\"offered {r['offered_per_s']}/s: {r['ok']}/{r['attempted']} committed ({r['committed_per_s']}/s; {r['fail']} failed, {r['skip']} skipped, {r['pending']} unfinished); \"
+      f\"time to link p50 {f(r['lat_p50_s'])} p95 {f(r['lat_p95_s'])} max {f(r['lat_max_s'])}; \"
+      f\"{r['blocks']} blocks, {r['entries_per_block']} entries/block, block gap p50 {f(r['block_gap_p50_s'])} max {f(r['block_gap_max_s'])}; \"
+      f\"view changes {r['round_changes']}, proposals held for a late parent {r['held_proposals']}\"
+      + (f\"; last publish error: {r['last_fail']}\" if r['last_fail'] else '') + (f\" — {r['why']}\" if r['why'] else ''))" "$1"
+}
+
+# LOCAL_PROOF: go test ./core/node -run 'TestAnAttesterOneBlockBehind|TestAHeldProposal|TestAnEarlyOffer|TestAnEntryArmsNoEarlyOffer|TestEntrySubmitBudgets' -count=1 && SCALE_EAGER_MS=1000 SCALE_RATES=1,5,20 SCALE_MINUTES=2 go test ./core/node -run 'TestMeasure_PublishThroughputOnANormalWAN$' -v -count=1 && ./integration/cloudtest/check_scale_publish.sh — the simulator carries the same WAN, quorum and token sizes; the CLI publish path, real per-address limits and wall-clock RTT are the cloud's job
+flow_scale_publish() {
+  local -a gens; read -r -a gens <<< "$(scale_gens)"
+  if [ "${#gens[@]}" = 0 ]; then
+    record "scale-publish" fail major "no load generators in the topology — launch with SCALE=1"
+    return
+  fi
+  require_nodes "scale-publish" major val-a val-b val-c val-d "${gens[@]}" || return
+  local g
+  for g in "${gens[@]}"; do
+    [ "$(ssh_node "$g" "base64 -d > /tmp/scale_gen.sh <<< '$(base64 < "$FT_DIR/scale_gen.sh" | tr -d '\n')' && chmod +x /tmp/scale_gen.sh && echo ok")" = ok ] \
+      || { record "scale-publish" fail major "could not install the load generator on $g"; return; }
+    wait_publisher_warm "$g"
+  done
+  local rate row ok=1 eager_p95="" low failed=""
+  low="$(printf '%s\n' $SCALE_RATES | sort -n | head -1)"
+  for rate in $SCALE_RATES; do
+    row="$(scale_step "eager-r$rate" "$rate")"
+    [ -n "$row" ] || row='{"verdict":"fail","why":"the step produced no grade"}'
+    local verdict; verdict="$(python3 -c "import json,sys;print(json.loads(sys.argv[1])['verdict'])" "$row" 2>/dev/null || echo fail)"
+    [ "$verdict" = pass ] || { ok=0; failed="$failed ${rate}/s"; }
+    [ "$rate" = "$low" ] && eager_p95="$(python3 -c "import json,sys;print(json.loads(sys.argv[1]).get('lat_p95_s') or '')" "$row" 2>/dev/null)"
+    record "scale-publish-r$rate" "$verdict" major "$(scale_row_detail "$row" 2>/dev/null || printf '%s' "$row")"
+  done
+  if [ "$SCALE_CONTROL" = 1 ]; then
+    local v ctl_p95=""
+    echo "  scale control: every validator to sweep-only proposals (-propose-delay 0), then ${low}/s" >&2
+    for v in val-a val-b val-c val-d; do relaunch_with "$v" "-propose-delay 0"; done
+    ft_wait_new_block val-b "$(ft_commit_height val-b)" 240 || echo "  ⚠ no commit within 240s of the control relaunch" >&2
+    row="$(scale_step "control-r$low" "$low")"
+    ctl_p95="$(python3 -c "import json,sys;print(json.loads(sys.argv[1]).get('lat_p95_s') or '')" "$row" 2>/dev/null)"
+    for v in val-a val-b val-c val-d; do restore_argv "$v"; done
+    if [ -z "$ctl_p95" ]; then
+      record "scale-publish-control" fail major "the sweep-only control step committed nothing to compare against: $(scale_row_detail "$row" 2>/dev/null || printf '%s' "$row")"
+      ok=0
+    else
+      record "scale-publish-control" pass info "sweep-only control (-propose-delay 0): $(scale_row_detail "$row" 2>/dev/null || printf '%s' "$row")"
+      python3 -c "import sys;sys.exit(0 if float(sys.argv[1]) < float(sys.argv[2]) else 1)" "${eager_p95:-1e9}" "$ctl_p95" || ok=0
+    fi
+    slo_assert "scale-publish" major "load steps ${SCALE_RATES// //}/s: $([ -z "$failed" ] && echo "all passed" || echo "failed at${failed}"); at ${low}/s the p95 time to a committed link was ${eager_p95:-n/a}s proposing when entries wait against ${ctl_p95:-n/a}s sweep-only" "$ok"
+  else
+    slo_assert "scale-publish" major "load steps ${SCALE_RATES// //}/s: $([ -z "$failed" ] && echo "all passed" || echo "failed at${failed}"); no sweep-only control was run" "$ok"
+  fi
+}
+
 # shuffle_seeded SEED ITEM... — deterministic Fisher-Yates over the args, keyed by
 # SEED (same seed ⇒ same order, always replayable — the determinism discipline: a
 # random test you cannot reproduce is worse than a fixed one). Python because bash
@@ -3363,6 +3500,7 @@ run_all_scenarios() {
   # but a position inside a randomized order would put every later flow's verdict
   # downstream of that teardown succeeding.
   run_flow flow_impaired_commit           # the chain commits under injected latency/jitter/loss/reordering (IMPAIR=0 opts out)
+  run_flow flow_scale_publish             # opt-in (SCALE=1 FLOWS=scale): publish throughput under a stepped load, with a sweep-only control
   run_flow flow_soak_publish_drain        # opt-in (SOAK=1, MATURING=0): launch publish/drain soak
   run_flow flow_maturing_handoff          # opt-in (MATURING=1 SYBILS=8): handoff/shed drills. LAST: stops validators.
   run_flow flow_deep_heights              # opt-in (DEEP=1): Phase 3 exit gate — drive to h≥DEEP_TARGET with the prune field-exercised. After the drills (continues the matured chain; self-heals stopped validators or GAPs).
