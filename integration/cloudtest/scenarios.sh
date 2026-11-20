@@ -68,8 +68,12 @@ ft_regref() { # the deterministic pinned registry ref (boot validator NodeID@htt
   python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta']['regref'])"
 }
 
-PEERS=""; REGREF=""
-ft_init_refs() { PEERS="$(ft_peers)"; REGREF="$(ft_regref)"; }
+ft_regrefs() { # every registry the topology serves, boot first; the boot ref alone if it names no list
+  python3 -c "import json;m=json.load(open('$FT_TOPO'))['meta'];print(m.get('regrefs') or m['regref'])"
+}
+
+PEERS=""; REGREF=""; REGREFS=""
+ft_init_refs() { PEERS="$(ft_peers)"; REGREF="$(ft_regref)"; REGREFS="$(ft_regrefs)"; }
 
 # silt:v1: links carry the root in BASE64URL, not hex. The takedown denylist keys
 # on the HEX root, so decode it (mirrors the local takedown/run.sh helper). Without
@@ -3315,6 +3319,11 @@ flow_soak_publish_drain() {
 : "${SCALE_MIN_OK:=0.99}"           # fraction of attempted publishes that must return a link
 : "${SCALE_INFLIGHT:=64}"           # concurrent publishes per generator before one is skipped
 : "${SCALE_CONTROL:=1}"             # 0 omits the sweep-only control step
+: "${SCALE_REGISTRIES:=all}"        # all: each publish starts at a random validator's registry and moves past
+                                    # one that is down or rate-limiting; one: the boot validator's registry only
+: "${SCALE_ONE_REGISTRY:=1}"        # with SCALE_REGISTRIES=all, 1 adds a step through the boot validator's
+                                    # registry alone, so the gain from more registries is measured
+: "${SCALE_ONE_REGISTRY_RATE:=}"    # that step's rate; empty = the top of SCALE_RATES
 
 scale_gens() { node_names | tr ' ' '\n' | grep -E '^load-[0-9]+$' | tr '\n' ' '; }
 
@@ -3339,9 +3348,9 @@ scale_step() {
   dir="$FT_DIR/scale-$RUN_ID/$label"; mkdir -p "$dir"
   iv="$(python3 -c "print(max(1, round(1000 * $n / $rate)))")"
   start_at=$(( $(date +%s) + 15 + 6 * n ))
-  echo "  scale $label: ${rate}/s over ${n} generators (one publish per ${iv} ms each) for ${SCALE_STEP_S}s from $(epoch_to_iso "$start_at")Z" >&2
+  echo "  scale $label: ${rate}/s over ${n} generators (one publish per ${iv} ms each) (registries: $(printf '%s' "${SCALE_REG:-$REGREF}" | tr ',' '\n' | grep -c @)) for ${SCALE_STEP_S}s from $(epoch_to_iso "$start_at")Z" >&2
   for g in "${gens[@]}"; do
-    ssh_node "$g" "setsid nohup /tmp/scale_gen.sh $iv $SCALE_STEP_S $SCALE_INFLIGHT /tmp/scale-$label.log '$PEERS' '$REGREF' $TOKEN_QUORUM $start_at >/dev/null 2>&1 </dev/null & echo started" >/dev/null
+    ssh_node "$g" "setsid nohup /tmp/scale_gen.sh $iv $SCALE_STEP_S $SCALE_INFLIGHT /tmp/scale-$label.log '$PEERS' '${SCALE_REG:-$REGREF}' $TOKEN_QUORUM $start_at >/dev/null 2>&1 </dev/null & echo started" >/dev/null
   done
   deadline=$(( start_at + SCALE_STEP_S + SCALE_DRAIN_S ))
   sleep $(( start_at + SCALE_STEP_S - $(date +%s) > 0 ? start_at + SCALE_STEP_S - $(date +%s) : 0 ))
@@ -3388,10 +3397,12 @@ print(f\"offered {r['offered_per_s']}/s: {r['ok']}/{r['attempted']} committed ({
       f\"time to link p50 {f(r['lat_p50_s'])} p95 {f(r['lat_p95_s'])} max {f(r['lat_max_s'])}; \"
       f\"{r['blocks']} blocks, {r['entries_per_block']} entries/block, block gap p50 {f(r['block_gap_p50_s'])} max {f(r['block_gap_max_s'])}; \"
       f\"view changes {r['round_changes']}, proposals held for a late parent {r['held_proposals']}\"
+      + (f\"; client legs p50/p95 over {r['legs_n']}: \" + ', '.join(f\"{k} {v:.2f}/{r['legs_p95_s'][k]:.2f}s\" for k, v in r['legs_p50_s'].items()) if r.get('legs_n') else '')
+      + (f\"; accepted by registry: \" + ', '.join(f\"{k.split('//')[-1]} {v}\" for k, v in r['accepted_by'].items()) if r.get('accepted_by') else '')
       + (f\"; last publish error: {r['last_fail']}\" if r['last_fail'] else '') + (f\" — {r['why']}\" if r['why'] else ''))" "$1"
 }
 
-# LOCAL_PROOF: go test ./core/node -run 'TestAnAttesterOneBlockBehind|TestAHeldProposal|TestAnEarlyOffer|TestAnEntryArmsNoEarlyOffer|TestEntrySubmitBudgets' -count=1 && SCALE_EAGER_MS=1000 SCALE_RATES=1,5,20 SCALE_MINUTES=2 go test ./core/node -run 'TestMeasure_PublishThroughputOnANormalWAN$' -v -count=1 && ./integration/cloudtest/check_scale_publish.sh — the simulator carries the same WAN, quorum and token sizes; the CLI publish path, real per-address limits and wall-clock RTT are the cloud's job
+# LOCAL_PROOF: go test ./core/node -run 'TestAnAttesterOneBlockBehind|TestAHeldProposal|TestAnEarlyOffer|TestAnEntryArmsNoEarlyOffer|TestEntrySubmitBudgets' -count=1 && go test ./adapters/httpregistry -run 'TestSet_|TestOnAccepted' -count=1 && go test ./cmd/silt -run 'TestOpenRegistries|TestPublishLegs|TestAcquirePublishTokenMarks' -count=1 && SCALE_EAGER_MS=1000 SCALE_RATES=1,5,20 SCALE_MINUTES=2 go test ./core/node -run 'TestMeasure_PublishThroughputOnANormalWAN$' -v -count=1 && ./integration/cloudtest/check_scale_publish.sh — the simulator carries the same WAN, quorum and token sizes; the CLI publish path, real per-address limits and wall-clock RTT are the cloud's job
 flow_scale_publish() {
   local -a gens; read -r -a gens <<< "$(scale_gens)"
   if [ "${#gens[@]}" = 0 ]; then
@@ -3405,8 +3416,10 @@ flow_scale_publish() {
       || { record "scale-publish" fail major "could not install the load generator on $g"; return; }
     wait_publisher_warm "$g"
   done
-  local rate row ok=1 eager_p95="" low failed=""
+  local rate row ok=1 eager_p95="" low top failed="" SCALE_REG="$REGREF"
   low="$(printf '%s\n' $SCALE_RATES | sort -n | head -1)"
+  top="${SCALE_ONE_REGISTRY_RATE:-$(printf '%s\n' $SCALE_RATES | sort -n | tail -1)}"
+  [ "$SCALE_REGISTRIES" = all ] && SCALE_REG="$REGREFS"
   for rate in $SCALE_RATES; do
     row="$(scale_step "eager-r$rate" "$rate")"
     [ -n "$row" ] || row='{"verdict":"fail","why":"the step produced no grade"}'
@@ -3415,6 +3428,16 @@ flow_scale_publish() {
     [ "$rate" = "$low" ] && eager_p95="$(python3 -c "import json,sys;print(json.loads(sys.argv[1]).get('lat_p95_s') or '')" "$row" 2>/dev/null)"
     record "scale-publish-r$rate" "$verdict" major "$(scale_row_detail "$row" 2>/dev/null || printf '%s' "$row")"
   done
+  if [ "$SCALE_REGISTRIES" = all ] && [ "$SCALE_ONE_REGISTRY" = 1 ] && [ "$SCALE_REG" != "$REGREF" ]; then
+    echo "  scale one-registry: ${top}/s through the boot validator's registry alone" >&2
+    row="$(SCALE_REG="$REGREF" scale_step "one-registry-r$top" "$top")"
+    if python3 -c "import json,sys;sys.exit(0 if json.loads(sys.argv[1]).get('attempted') else 1)" "$row" 2>/dev/null; then
+      record "scale-publish-one-registry" pass info "one registry (the boot validator's) at ${top}/s: $(scale_row_detail "$row" 2>/dev/null || printf '%s' "$row")"
+    else
+      record "scale-publish-one-registry" fail major "the one-registry step produced no grade: $row"
+      ok=0
+    fi
+  fi
   if [ "$SCALE_CONTROL" = 1 ]; then
     local v ctl_p95=""
     echo "  scale control: every validator to sweep-only proposals (-propose-delay 0), then ${low}/s" >&2

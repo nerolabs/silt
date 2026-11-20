@@ -341,6 +341,10 @@ def main():
     # so REGREF is never empty (the old log-scrape regex could not match the real
     # `registry: chain-backed, serving <id>@https://...` banner) and never 0.0.0.0.
     regref = f'{nodes[boot]["nodeid"]}@https://{nodes[boot]["ip"]}:{REGISTRY_PORT}'
+    # Under SCALE every validator serves the chain-backed registry too, so the load
+    # can enter through all of them; regrefs lists them, boot first.
+    reg_hosts = [boot] + [v for v in validators if v != boot] if SCALE else [boot]
+    regrefs = ",".join(f'{nodes[v]["nodeid"]}@https://{nodes[v]["ip"]}:{REGISTRY_PORT}' for v in reg_hosts)
 
     # Bond economics: FAST proves the mechanism cheaply; FAITHFUL is economically real.
     if BOND_MODE == "faithful":
@@ -386,6 +390,8 @@ def main():
                  f"-anchors {anchors} -attesters {attesters} -quorum {quorum} "
                  f"-persistent-peers {persistent} "
                  f"-bond {bond} -bond-audit 30s -capacity 5G")
+            if name != boot and name in reg_hosts:
+                a += f" -serve-registry 0.0.0.0:{REGISTRY_PORT}"
             if name == boot:
                 a += f" -serve-registry 0.0.0.0:{REGISTRY_PORT}"   # boot validator issues tokens
                 #  paid DELIVERY lane, armed on the boot validator only (it is the token
@@ -540,7 +546,7 @@ def main():
         "maturers": maturers, "n_mat": n_mat,
         "island": island, "island_anchors": island_anchors, "island_boot": island_boot,
         "maturing": MATURING, "mature_bar": mature_bar,
-        "relay_ref": relay_ref, "regref": regref, "anchors": anchors, "boot": boot,
+        "relay_ref": relay_ref, "regref": regref, "regrefs": regrefs, "anchors": anchors, "boot": boot,
         "public_cidr": PUBLIC_CIDR, "nat_cidr": NAT_CIDR,
     }
     here = os.path.dirname(os.path.abspath(__file__))

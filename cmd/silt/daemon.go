@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	mathrand "math/rand/v2"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // registers /debug/pprof/* on http.DefaultServeMux (gated by -debug-addr)
@@ -2285,6 +2286,38 @@ func dialableRelayAddr(bound, advertise string) string {
 // loopback) or "ID@https://host:port" (TLS pinned to the hosting
 // daemon's identity).
 func openRegistry(ref string) (ports.Registry, error) {
+	c, err := openRegistryClient(ref)
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// openRegistries opens a comma-separated list of registry refs. One ref is that
+// registry. Several are a set that starts at a random one, so publishers spread
+// over every listed registry and a publish moves past any that is down.
+func openRegistries(refs string) (ports.Registry, error) {
+	var cs []*httpregistry.Client
+	for _, ref := range strings.Split(refs, ",") {
+		if ref = strings.TrimSpace(ref); ref == "" {
+			continue
+		}
+		c, err := openRegistryClient(ref)
+		if err != nil {
+			return nil, err
+		}
+		cs = append(cs, c)
+	}
+	switch len(cs) {
+	case 0:
+		return nil, fmt.Errorf("registry %q names no registry", refs)
+	case 1:
+		return cs[0], nil
+	}
+	return httpregistry.NewSet(cs, mathrand.IntN(len(cs))), nil
+}
+
+func openRegistryClient(ref string) (*httpregistry.Client, error) {
 	if at := strings.Index(ref, "@"); at == 64 {
 		hostID, err := ports.ParseHash(ref[:at])
 		if err != nil {

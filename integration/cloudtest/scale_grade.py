@@ -10,6 +10,12 @@ A step passes only when every generator finished its schedule, no publish was
 skipped or left unfinished, at least --min-ok of the attempted publishes returned a
 link, and the 95th-percentile time to a committed link is within --p95. Throughput
 that merely keeps up on average is not enough: the p95 is what a publisher sees.
+
+Where a publish line carries the client's legs (join, issuers, keys, credits,
+sign, stage, place, submit, commit), the row reports each leg's p50 and p95 over
+the committed publishes, and "outside": the generator's time less the client's
+own total, which is process start and writing the object. Where it names the
+registry that accepted the entry, the row counts committed publishes per registry.
 """
 import argparse, json, re, sys
 
@@ -24,7 +30,7 @@ def pct(xs, p):
 
 
 def read_gen(path):
-    g = {"ok": [], "fail": 0, "fail_detail": "", "skip": 0, "done": None, "seen": 0}
+    g = {"ok": [], "fail": 0, "fail_detail": "", "skip": 0, "done": None, "seen": 0, "legs": [], "regs": {}}
     with open(path) as f:
         for line in f:
             p = line.split()
@@ -33,15 +39,35 @@ def read_gen(path):
             if p[0] == "pub" and len(p) >= 6:
                 g["seen"] += 1
                 if p[5] == "ok":
-                    g["ok"].append((int(p[3]) - int(p[2])) / 1e9)
+                    lat = (int(p[3]) - int(p[2])) / 1e9
+                    g["ok"].append(lat)
+                    legs = read_legs(p[7] if len(p) > 7 else "-")
+                    if "total" in legs:
+                        legs["outside"] = lat - legs["total"]
+                        g["legs"].append(legs)
+                    if len(p) > 8 and p[8] != "-":
+                        g["regs"][p[8]] = g["regs"].get(p[8], 0) + 1
                 else:
                     g["fail"] += 1
-                    g["fail_detail"] = " ".join(p[6:])[:200]
+                    g["fail_detail"] = (p[6] if len(p) > 6 else "")[:200]
             elif p[0] == "skip":
                 g["skip"] += 1
             elif p[0] == "done" and len(p) >= 2:
                 g["done"] = int(p[1])
     return g
+
+
+def read_legs(tok):
+    """join=0.312,issuers=0.101,…,total=6.004 -> an ordered dict of seconds; - -> {}."""
+    legs = {}
+    for kv in tok.split(","):
+        k, sep, v = kv.partition("=")
+        if sep:
+            try:
+                legs[k] = float(v)
+            except ValueError:
+                pass
+    return legs
 
 
 def read_commits(path, start, end):
@@ -84,6 +110,15 @@ def main():
     pending = attempted - ok - fail - skip
     blocks, entries, gaps = read_commits(a.commits, a.start, a.start + a.dur)
     p95 = pct(lat, 0.95)
+    leg_rows = [l for g in gens for l in g["legs"]]
+    leg_names = []
+    for l in leg_rows:
+        leg_names += [k for k in l if k not in leg_names]
+    legs = {k: [l[k] for l in leg_rows if k in l] for k in leg_names}
+    regs = {}
+    for g in gens:
+        for r, c in g["regs"].items():
+            regs[r] = regs.get(r, 0) + c
 
     why = []
     if unfinished_gens:
@@ -107,6 +142,10 @@ def main():
         "entries_per_block": round(entries / blocks, 1) if blocks else 0,
         "block_gap_p50_s": pct(gaps, 0.5), "block_gap_max_s": max(gaps) if gaps else None,
         "round_changes": a.rounds, "held_proposals": a.held,
+        "legs_n": len(leg_rows),
+        "legs_p50_s": {k: round(pct(v, 0.5), 3) for k, v in legs.items()},
+        "legs_p95_s": {k: round(pct(v, 0.95), 3) for k, v in legs.items()},
+        "accepted_by": dict(sorted(regs.items())),
         "last_fail": next((g["fail_detail"] for g in gens if g["fail_detail"]), ""),
         "verdict": "fail" if why else "pass", "why": "; ".join(why),
     }
