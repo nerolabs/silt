@@ -183,6 +183,12 @@ type Config struct {
 	// not fire once at boot, because peer reputation is re-earned live by bond
 	// audits and isn't ready the instant the daemon starts.
 	ChainSyncInterval ports.Duration
+	// ProposeDelay lets the designee propose that long after publish entries reach its
+	// mempool, or after a commit leaves entries waiting, instead of only on the sync
+	// sweep. On the sweep alone a block follows its work by up to ChainSyncInterval,
+	// which capped the chain at one entry budget per interval. The delay batches the
+	// entries that arrive close together into one block. 0 = sweep only.
+	ProposeDelay ports.Duration
 	// BootstrapRetryInterval is how often an ISOLATED node (empty routing table)
 	// re-runs the Kademlia join against its original -bootstrap seeds. silt's
 	// join is otherwise one-shot, so a node that started before its bootstrap
@@ -1017,8 +1023,15 @@ type Node struct {
 	// see core/node/networkidentity.go for why the two must not be collapsed.
 	declaredChainID ports.Hash
 	onCommit        func(chain.Block)
-	onSlash         func(culprit ports.NodeID, height uint64)
-	onReorg         func(dropped int, newHeight uint64)
+	// parkedProposals are prepare requests one height ahead, held until this node's
+	// head moves (proposalpark.go). answeringParked marks their re-dispatch, so a
+	// held request is never held twice.
+	parkedProposals []parkedProposal
+	answeringParked bool
+	// proposeArmed is set while a ProposeDelay offer is scheduled (eagerpropose.go).
+	proposeArmed bool
+	onSlash      func(culprit ports.NodeID, height uint64)
+	onReorg      func(dropped int, newHeight uint64)
 	// blockedPeers simulates a NETWORK PARTITION: messages to/from these peers
 	// are dropped, as if the link were down. Test-harness / field-drill control
 	// (the daemon's -block-peers), used to exercise partition→heal over the

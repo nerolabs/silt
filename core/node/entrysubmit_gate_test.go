@@ -76,3 +76,32 @@ func TestEntrySubmitFloodBoundedPerSender(t *testing.T) {
 		t.Fatalf("the flooder's budget did not refill after the window: queued %d → %d (want +1)", before, len(nd.pendingEntries))
 	}
 }
+
+// A bonded validator relaying its clients' publishes is one sender carrying many
+// clients' traffic, so it is budgeted as a relay, not as a client: past the client
+// budget its submits still reach the mempool, while a sender holding no seat on the
+// committed chain stays capped at the client budget.
+func TestEntrySubmitBudgetsARelayingValidatorAboveAClient(t *testing.T) {
+	nodes, ids, _, _, _ := tier2AnchorNet(t, 4)
+	nd := nodes[0]
+	if !nd.chain.Objective() {
+		t.Fatal("the fixture chain is not objective, so it proves nothing about bonded relays")
+	}
+	const sent = 3 * entrySubmitBurst
+	submit := func(from ports.NodeID, tag string) int {
+		before := len(nd.pendingEntries)
+		for i := 0; i < sent; i++ {
+			e := mkEntry(fmt.Sprintf("%s-%d", tag, i))
+			nd.handleChain(from, ports.Message{Kind: ports.MsgSubmitEntry, Data: entryEncode(e)})
+		}
+		return len(nd.pendingEntries) - before
+	}
+	if got := submit(ids[1].NodeID(), "relay"); got != sent {
+		t.Fatalf("a relaying validator's %d submits in one window queued %d: it was budgeted as one client, "+
+			"so every publish it relays past the client budget waits for its own turn as designee", sent, got)
+	}
+	stranger := identity.FromSeed(9504).NodeID()
+	if got := submit(stranger, "client"); got != entrySubmitBurst {
+		t.Fatalf("a sender with no seat queued %d of %d submits in one window, want the client budget %d", got, sent, entrySubmitBurst)
+	}
+}

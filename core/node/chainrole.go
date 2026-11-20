@@ -279,6 +279,9 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			return true
 		}
 		if verr := n.chain.ValidateProposal(b); verr != nil {
+			if errors.Is(verr, chain.ErrWrongParent) && n.parkProposal(from, msg, b.Height) {
+				return true // answered when the parent lands or the hold expires
+			}
 			n.logf(ports.LogDebug, "gather/prepare: REJECTED (ValidateProposal)", "from", from, "height", b.Height, "bytes", len(msg.Data), "regs", len(b.BondRegs), "reason", verr)
 			n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
 			return true
@@ -507,6 +510,10 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			n.pruneOnCommit() // shed heavy proofs below the horizon
 		}
 		n.reply(from, msg, ports.Message{Kind: ports.MsgCommitAck, OK: ok})
+		if ok {
+			n.answerParkedProposals(func(parkedProposal) bool { return true })
+			n.offerProposal()
+		}
 	case ports.MsgGetChain:
 		blocks := n.chain.Blocks(msg.Height)
 		// ADVERSARY / TEST-HARNESS: an objective-mode equivocator serves its crafted
@@ -702,7 +709,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		// single loop. Charge one unit before decode; a refusal is a map lookup,
 		// and a refused honest submit heals by the client's resubmit (B5 NAK).
 		if !n.allowEntrySubmit(from) {
-			n.logf(ports.LogInfo, "entry submit REFUSED (rate)", "from", from, "budget", entrySubmitBurst)
+			n.logf(ports.LogInfo, "entry submit REFUSED (rate)", "from", from, "budget", n.entrySubmitBudget(from))
 			n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitEntryAck, OK: false, Data: []byte("rate limited")})
 		} else if e, err := entryDecode(msg.Data); err != nil {
 			n.logf(ports.LogInfo, "entry submit REFUSED (decode)", "from", from, "bytes", len(msg.Data), "err", err)
@@ -1492,7 +1499,8 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 					n.onCommit(*b)
 				}
 				n.pruneOnCommit() // shed heavy proofs below the horizon
-				n.broadcastCommit(b, broadcast, 0, func() { done(nil) })
+				n.broadcastCommit(b, broadcast, func() { done(nil) })
+				n.offerProposal()
 				return
 			}
 			if outstanding == 0 && !sending {
@@ -1758,17 +1766,33 @@ func (n *Node) proposeAtNewView(rs *heightRounds, round uint64, newView [][]byte
 	return true
 }
 
-func (n *Node) broadcastCommit(b *chain.Block, validators []ports.NodeID, i int, done func()) {
-	if i >= len(validators) {
+// broadcastCommit sends a committed block to every validator at once and calls done
+// when each has answered or timed out. Sent one after another, the last validator
+// heard of the commit a round trip per peer late, and a dead peer held back every
+// peer after it for its full request deadline; until a validator hears of the commit
+// it cannot judge the next height's proposal.
+func (n *Node) broadcastCommit(b *chain.Block, validators []ports.NodeID, done func()) {
+	raw := chain.Encode(b)
+	pending := 0
+	for _, v := range validators {
+		if v != n.id {
+			pending++
+		}
+	}
+	if pending == 0 {
 		done()
 		return
 	}
-	if validators[i] == n.id {
-		n.broadcastCommit(b, validators, i+1, done)
-		return
+	for _, v := range validators {
+		if v == n.id {
+			continue
+		}
+		n.request(v, ports.Message{Kind: ports.MsgCommitBlock, Data: raw}, func(ports.Message, error) {
+			if pending--; pending == 0 {
+				done()
+			}
+		})
 	}
-	n.request(validators[i], ports.Message{Kind: ports.MsgCommitBlock, Data: chain.Encode(b)},
-		func(ports.Message, error) { n.broadcastCommit(b, validators, i+1, done) })
 }
 
 // slashEquivocators finds validators who signed a different block at the same
@@ -2238,7 +2262,13 @@ func (n *Node) chainSyncTick() {
 // on any other proposal. Racing drains from two eligible proposers converge
 // like racing publishes (fork-choice; under §3 finality a quorum commit is
 // final), and the loser's peers simply resubmit.
-func (n *Node) maybeProposeBondDrain() {
+func (n *Node) maybeProposeBondDrain() { n.proposeDrain(false) }
+
+// proposeDrain is the drain decision. early marks an offer between sweeps
+// (eagerpropose.go): it may only let the round's designee propose sooner. It never
+// counts as an idle sweep, so it cannot hurry the takeover walk, and a blocked sign
+// slot is the sweep's to report.
+func (n *Node) proposeDrain(early bool) {
 	if n.chain == nil || !n.chain.Objective() || n.signer == nil || n.bondDrainInFlight {
 		return
 	}
@@ -2295,6 +2325,9 @@ func (n *Node) maybeProposeBondDrain() {
 	// moves the round and the next round's slot is signable (the liveness
 	// escape).
 	if rs := n.roundsFor(); n.signMarkSet && slotCompare(height, rs.Round, chain.PhasePrepare, n.signMark) <= 0 {
+		if early {
+			return
+		}
 		// NEVER refuse silently when work is being blocked (B5 /): pending
 		// regs + a blocked slot, sweep after sweep, is the wedge signature —
 		// the one line that would have named the field stall on the first run.
@@ -2349,6 +2382,9 @@ func (n *Node) maybeProposeBondDrain() {
 			d := int((height + rs.Round) % uint64(len(props)))
 			dist = (self - d + len(props)) % len(props)
 		}
+	}
+	if dist > 0 && early {
+		return // only the designee proposes between sweeps
 	}
 	if dist > 0 {
 		// A queued equivocation proof is takeover-worthy for the same reason pending

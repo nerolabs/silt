@@ -359,6 +359,29 @@ const roundCertBurst = 4
 // amplifier; this gate bounds the residual per-message floor.
 const entrySubmitBurst = 32
 
+// relayEntrySubmitBurst is the same budget for a sender the committed chain lists as
+// an eligible proposer. A validator is not one client: it relays every publish its own
+// clients hand it, so one validator sender carries the whole of that traffic. At the
+// client budget a validator could forward about one publish a second to each peer,
+// which capped the chain far below what its blocks hold; the excess waited in the
+// relaying validator's own queue until it was the designee. 2048 per window covers
+// the ceiling measured on a 4-validator WAN (about 46 publishes a second, some 1,400
+// per window) with headroom. A hostile validator still pays a bond for the seat, and
+// at the measured 0.13 ms to verify a three-signature token it can buy at most about
+// 0.3 s of verification per window on each peer.
+const relayEntrySubmitBurst = 2048
+
+// entrySubmitBudget is the per-window budget for sender. Only an objective chain's
+// eligible proposers relay: that set is derived from committed bonds and anchors, so
+// a seat on it costs a bond. A subjective chain qualifies by local reputation, which
+// is not a price, and its publishes do not travel the submit lane at all.
+func (n *Node) entrySubmitBudget(from ports.NodeID) int {
+	if n.chain != nil && n.chain.Objective() && n.chain.ProposerEligible(from) {
+		return relayEntrySubmitBurst
+	}
+	return entrySubmitBurst
+}
+
 // allowEntrySubmit reports whether a MsgSubmitEntry from `from` may be examined
 // now, charging one unit against its per-window budget. The cheap gate in
 // FRONT of entryDecode + ValidateEntry (which, under -require-tokens, does the
@@ -384,7 +407,7 @@ func (n *Node) allowEntrySubmit(from ports.NodeID) bool {
 		n.entrySubmitRate[from] = &challengerRate{windowStart: now, count: 1}
 		return true
 	}
-	if r.count >= entrySubmitBurst {
+	if r.count >= n.entrySubmitBudget(from) {
 		return false // budget spent this window — refuse before decode/verify
 	}
 	r.count++
