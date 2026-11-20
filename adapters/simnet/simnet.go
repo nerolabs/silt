@@ -114,6 +114,10 @@ type Network struct {
 	relay    ports.NodeID
 	hasRelay bool
 	Stats    Stats
+	// Observe, when set, sees every message charged to a rated link: its sender,
+	// receiver, the message, and how long it waits before its last byte is on the
+	// wire. A measurement reads link pressure through it; nil costs nothing.
+	Observe func(from, to ports.NodeID, msg ports.Message, wait ports.Duration)
 	// classes is the class oracle (class.go): what a direct delivery from id
 	// presents to the receiving endpoint.
 	classes map[ports.NodeID]simClass
@@ -298,7 +302,11 @@ func (n *Network) occupy(from, to ports.NodeID, msg ports.Message) ports.Duratio
 		start = now // link went idle; no credit for the gap
 	}
 	n.busyUntil[key] = start + ports.Time(serialize)
-	return ports.Duration(start-now) + serialize
+	wait := ports.Duration(start-now) + serialize
+	if n.Observe != nil {
+		n.Observe(from, to, msg, wait)
+	}
+	return wait
 }
 
 // EnableHeldDelivery switches the network into model-check mode: Send parks each

@@ -74,6 +74,7 @@ func (n *Node) queuePendingEntry(e ports.Entry) bool {
 	}
 	_, height := n.chain.Head()
 	n.pendingEntries = append(n.pendingEntries, pendingEntry{E: e, At: height})
+	n.offerProposal()
 	return true
 }
 

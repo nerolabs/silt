@@ -157,6 +157,7 @@ var nodeConfigDecls = map[string]nodeConfigDecl{
 	"BondAuditInterval":           {class: nodeClassLocal, why: "How often THIS node challenges peers' bonds. It drives the LOCAL reputation view, which the objective path deliberately does not read (D2 / red-team F6)."},
 	"BondMaxAge":                  {class: nodeClassLocal, why: "Local decay of un-re-proven standing in the reputation view. The ON-CHAIN lapse is chain.Config.BondTTLBlocks, which IS carried."},
 	"ChainSyncInterval":           {class: nodeClassLocal, why: "Reconcile cadence. It changes WHEN this node catches up, never WHAT it accepts."},
+	"ProposeDelay":                {class: nodeClassLocal, why: "When THIS node offers a proposal after work arrives. An early offer runs the same designee check and the same block rules as the sweep; it changes WHEN a block is proposed, never WHAT any validator accepts."},
 	"BootstrapRetryInterval":      {class: nodeClassLocal, why: "Kademlia re-join cadence for an isolated node."},
 	"BootstrapWellConnected":      {class: nodeClassLocal, why: "Routing-table size at which a node stops refreshing buckets."},
 	"BondMaxAnswerLatency":        {class: nodeClassLocal, why: "Reply deadline on a LIVE bond challenge (C1 BREAK 1 enforcement leg). It is wall-clock and SOFT by nature, so it gates the local reputation view; it is not a chain validity term, and making it one would make validity fastest-evaluator-sensitive."},
