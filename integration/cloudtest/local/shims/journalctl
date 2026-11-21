@@ -5,10 +5,12 @@
 # the harness uses:
 #   journalctl -u silt[.service] --no-pager [-n N] [--since "@EPOCH"] [-b]
 #   journalctl -b --no-pager            (whole-"boot" scan, no -u — liveness scan)
+#   -o short-unix prefixes each line with its epoch, as journald does (whole
+#   seconds here; journald carries microseconds)
 set -u
 LOG=/var/log/silt.log
 BOOTS=/var/log/silt.boots
-n=0 ; since="" ; thisboot=0
+n=0 ; since="" ; thisboot=0 ; unix=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -n) n="$2"; shift ;;
@@ -16,6 +18,8 @@ while [ $# -gt 0 ]; do
     --since) since="$2"; shift ;;
     --since=*) since="${1#--since=}" ;;
     -b) thisboot=1 ;;
+    -o) [ "$2" = short-unix ] && unix=1; shift ;;
+    -o*) [ "${1#-o}" = short-unix ] && unix=1 ;;
     *) : ;;   # -u silt, silt.service, --no-pager — ignorable
   esac
   shift
@@ -28,7 +32,9 @@ if [ "$thisboot" = 1 ] && [ -f "$BOOTS" ]; then
   b="$(tail -1 "$BOOTS" 2>/dev/null | tr -dc '0-9')"
   [ -n "$b" ] && [ "$b" -gt "${cutoff:-0}" ] && cutoff="$b"
 fi
-if [ "${cutoff:-0}" -gt 0 ] 2>/dev/null; then
+if [ "$unix" = 1 ]; then
+  out="$(awk -F'\t' -v c="${cutoff:-0}" '$1 >= c { e=$1; $1=""; sub(/^\t?/,""); print e " " $0 }' OFS='\t' "$LOG")"
+elif [ "${cutoff:-0}" -gt 0 ] 2>/dev/null; then
   out="$(awk -F'\t' -v c="$cutoff" '$1 >= c { $1=""; sub(/^\t?/,""); print }' OFS='\t' "$LOG")"
 else
   out="$(cut -f2- "$LOG")"

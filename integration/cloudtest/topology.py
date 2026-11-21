@@ -107,6 +107,22 @@ if os.environ.get("SMOKE") == "1":
     _keep = {"val-a", "val-b", "store-1", "fetch-1"}
     NODES = [n for n in NODES if n[0] in _keep]
 
+# SCALE=1 is the publish-throughput topology: the four validators across three
+# regions, the two stores and the publisher the warm-up uses, plus one load
+# generator per region. Each generator is an ordinary client host that runs many
+# `silt swarm add` processes at a paced rate, so the load arrives from several
+# client addresses in several regions, as it would on a worldwide network, and
+# no single client address meets the registry's per-address request limit.
+SCALE = 0 if os.environ.get("SMOKE") == "1" else int(os.environ.get("SCALE", "0"))
+if SCALE:
+    _keep = {"val-a", "val-b", "val-c", "val-d", "store-1", "store-2", "fetch-1"}
+    NODES = [n for n in NODES if n[0] in _keep]
+    NODES += [
+        ("load-1", "fetcher", 6601, "10.20.0.61", PRIMARY_ZONE),
+        ("load-2", "fetcher", 6602, "10.20.0.62", "us-east1-b"),
+        ("load-3", "fetcher", 6603, "10.20.0.63", "europe-west1-b"),
+    ]
+
 # ECONOMY killable pool (opt-in with the economy grade, 2026-08-20). The economy
 # flow reserves every base non-validator storage-capable node for its own
 # machinery (store-2 caretaker, relay judge, store-1 skim observer), validators
@@ -206,7 +222,7 @@ for _i in range(SYBILS):
 # node — consensus containment. On GCP they get NO external IP (Cloud NAT egress),
 # so zero IN_USE_ADDRESSES quota; on LOCAL they are 4 more docker containers.
 # EQV_ISLAND=0 opts out (SMOKE trims it — a 4-node shakeout needn't carry it).
-EQV_ISLAND = 0 if os.environ.get("SMOKE") == "1" else int(os.environ.get("EQV_ISLAND", "1"))
+EQV_ISLAND = 0 if os.environ.get("SMOKE") == "1" or SCALE else int(os.environ.get("EQV_ISLAND", "1"))
 if EQV_ISLAND:
     for _i in range(4):
         NODES.append((f"island-{chr(ord('a')+_i)}", "island", 6701 + _i,

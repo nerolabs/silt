@@ -11,6 +11,7 @@ flow-evidence-*.log
 publish-diag-*.log
 failed-nodes-*.log
 *-console-*.log
+scale-*/
 archive/
 
 # Local build + topology outputs
