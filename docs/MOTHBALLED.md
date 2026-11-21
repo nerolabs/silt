@@ -303,8 +303,29 @@ paired h134 with h135's hash. All four validators' journals record identical blo
 h136. The probe now compares every validator's hash at the lowest head they all hold
 (`chain-status -at`), and `check_deep_converge.sh` drives it against a moving chain and a real fork.
 
-The maturity handoff (`MATURING=1 SYBILS=8`) has not been driven in the field: its 27-node
-topology exceeds the new project's default CPU and external-IP quotas.
+**The maturity sheet** (`mature-ca6499e7`, `main` at `ca6499e7`, every default flow plus
+`MATURING=1 SYBILS=8 ECONOMY=1 DEEP=1`, `t2d-standard-1` machines): **33 pass, 1 gap, 0 fail.**
+
+- The young-to-mature latch tripped on the wire, and the drive reached h49 within 5490 s.
+- With the four MinBond epoch members declining to attest, the honest coalition still
+  committed (`10a`). Those four members alone could not advance past the honest ceiling h52,
+  and the chain resumed once honest weight returned (`10b`).
+- A validator restarted from checkpoint h55 caught up to h57 with the latch still held (`10c`).
+- The deep drive then took the chain from h58 to h132 at about 42 s per height. The prune
+  engaged on all four validators, and all four held the same block at h133 (`12c`, the
+  corrected probe).
+- The repair economy, skim, equivocation island, partition-heal, impaired-commit (worst gap
+  126 s against a 220 s bound), crash, cross-region and NAT rows all passed. No node exceeded
+  0.20 GiB.
+
+The gap is `184-low-bond`. The adversary VM carries a qualifying 64 MiB bond, so the field
+never offers an under-bonded proposal to reject. Only the in-process tests cover that rule.
+Under the ground-truth rule a gap counts as a failure, so the row stays open until the
+harness deploys a sub-MinBond identity.
+
+The 27-node topology needs more than the new project's default quotas: 64 CPUs across all
+regions and 16 external addresses in `us-west1` (both granted). The E2 CPU quota in
+`us-west1` stayed at 24, so the sheet ran on T2D machines.
 
 Command: `EQV_ISLAND=0 IMPAIR_HEIGHTS=16 FLOWS="first_run become_validator impaired"
 ./cloudtest.sh up`, then `run`, then `down`, with the pre-flight gate's `RUN_*` set and
