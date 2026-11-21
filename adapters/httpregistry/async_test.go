@@ -214,3 +214,51 @@ func TestAsyncPublish_TerminalFailureFastFails(t *testing.T) {
 		t.Fatalf("a terminal gather failure must fast-fail, not poll to the budget (took %s)", time.Since(start))
 	}
 }
+
+// OnAccepted marks the moment the registry took the entry, so a publisher can tell the
+// time spent submitting from the time spent waiting for a block. It fires once, before
+// the commit wait, and never on a refusal: a refused entry was not accepted.
+func TestOnAccepted_FiresOnceBeforeTheCommitWait(t *testing.T) {
+	const commitDelay = 400 * time.Millisecond
+	reg := &asyncReg{committed: map[ports.Hash]ports.Entry{}, failed: map[ports.Hash]error{}, commitDelay: commitDelay}
+	addr, shutdown, err := httpregistry.Serve("127.0.0.1:0", reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer shutdown()
+	c := httpregistry.NewClient("http://" + addr)
+	var fired int
+	var acceptedAt time.Time
+	var base string
+	c.OnAccepted(func(b string) { fired++; acceptedAt = time.Now(); base = b })
+
+	if err := c.Publish(context.Background(), ports.Entry{Root: ports.HashBytes([]byte("accept-mark")), FileSize: 1}); err != nil {
+		t.Fatal(err)
+	}
+	returnedAt := time.Now()
+	if fired != 1 {
+		t.Fatalf("OnAccepted fired %d times for one publish, want 1", fired)
+	}
+	if base != "http://"+addr {
+		t.Fatalf("OnAccepted named %q, want the registry's base http://%s", base, addr)
+	}
+	if wait := returnedAt.Sub(acceptedAt); wait < commitDelay {
+		t.Fatalf("Publish returned %s after the accept mark, want at least the %s commit wait: the mark landed after the commit, not before it", wait, commitDelay)
+	}
+
+	refusing := &asyncReg{committed: map[ports.Hash]ports.Entry{}, failed: map[ports.Hash]error{}, refuse: ports.ErrDupPublish}
+	addr2, shutdown2, err := httpregistry.Serve("127.0.0.1:0", refusing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer shutdown2()
+	c2 := httpregistry.NewClient("http://" + addr2)
+	refusedFired := 0
+	c2.OnAccepted(func(string) { refusedFired++ })
+	if err := c2.Publish(context.Background(), ports.Entry{Root: ports.HashBytes([]byte("accept-refused")), FileSize: 1}); !errors.Is(err, ports.ErrDupPublish) {
+		t.Fatalf("refusal = %v, want ErrDupPublish", err)
+	}
+	if refusedFired != 0 {
+		t.Fatalf("OnAccepted fired %d times for a refused publish, want 0", refusedFired)
+	}
+}

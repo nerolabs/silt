@@ -220,7 +220,7 @@ func TestPublishTokenFailureNamesTheCreditCause(t *testing.T) {
 	// Node state is the loop's, so the whole acquisition runs ON the loop — the
 	// same way swarmAdd's run(.) drives it.
 	loop.Post("test", func() {
-		acquirePublishToken(nd, []ports.NodeID{unreachable}, 1, func(tok *ports.PublishToken, err error) {
+		acquirePublishToken(nd, []ports.NodeID{unreachable}, 1, nil, func(tok *ports.PublishToken, err error) {
 			gotErr = err
 			close(done)
 		})

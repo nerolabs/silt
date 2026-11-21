@@ -19,14 +19,18 @@ if ! date +%N | grep -qE '^[0-9]+$'; then
 fi
 
 # A stub silt: sleeps STUB_SLEEP, then prints a link, or an error for the index in
-# the object's name when STUB_FAIL_EVERY divides it.
+# the object's name when STUB_FAIL_EVERY divides it. Either way it prints its legs
+# first, as the client does, so the error stays the last line.
 cat > "$tmp/silt" <<'EOF'
 #!/usr/bin/env bash
 sleep "${STUB_SLEEP:-0.05}"
 i="$(basename "$3" .bin)"
 if [ "${STUB_FAIL_EVERY:-0}" -gt 0 ] && [ $(( i % STUB_FAIL_EVERY )) -eq 0 ]; then
+  echo "publish elapsed: join 0.010s total 0.010s" >&2
   echo "swarm add: could not gather enough publish-token signatures" >&2; exit 1
 fi
+echo "publish elapsed: join 0.010s place 0.020s commit 0.030s total 0.060s" >&2
+echo "publish accepted by registry https://10.0.0.$(( i % 2 + 1 )):8443" >&2
 echo "published silt:v1:stub$i"
 EOF
 chmod +x "$tmp/silt"
@@ -42,6 +46,8 @@ field() { python3 -c "import json,sys;print(json.loads(open(sys.argv[1]).read())
 expect "a 2 s schedule at 20/s attempts 40 publishes" 40 "$(awk '/^done/ {print $2}' "$tmp/g1.log")"
 expect "every attempted publish is logged" 40 "$(count pub "$tmp/g1.log")"
 expect "every stub publish returned a link" 40 "$(grep -c '^pub .* ok ' "$tmp/g1.log" | tr -d ' ')"
+expect "a publish line carries the client's legs" 40 \
+  "$(grep -c '^pub .* ok - join=0.010,place=0.020,commit=0.030,total=0.060 https://10.0.0.[12]:8443$' "$tmp/g1.log" | tr -d ' ')"
 
 # 2. A full in-flight cap: publishes that take 1 s at 20/s with room for two in flight.
 STUB_SLEEP=1 ./scale_gen.sh 50 1 2 "$tmp/g2.log" peers reg 2
@@ -70,6 +76,12 @@ expect "a step with every publish committed fast passes" pass "$(field "$tmp/row
 expect "blocks in the window are counted" 29 "$(field "$tmp/row.json" blocks)"
 expect "entries per block come from the commit lines" 2.0 "$(field "$tmp/row.json" entries_per_block)"
 expect "the block gap is measured" 1.0 "$(field "$tmp/row.json" block_gap_p50_s)"
+expect "legs are read from every committed publish" 40 "$(field "$tmp/row.json" legs_n)"
+expect "committed publishes are counted per accepting registry" "{'https://10.0.0.1:8443': 20, 'https://10.0.0.2:8443': 20}" \
+  "$(field "$tmp/row.json" accepted_by)"
+expect "a leg's p50 is reported" 0.03 "$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['legs_p50_s']['commit'])" "$tmp/row.json")"
+expect "time outside the client is the generator's time less its total" yes \
+  "$(python3 -c "import json,sys;print('yes' if json.load(open(sys.argv[1]))['legs_p50_s']['outside'] > 0 else 'no')" "$tmp/row.json")"
 
 grade 0.01 "$tmp/g1.log"
 expect "a p95 over the bound fails the step" fail "$(field "$tmp/row.json" verdict)"

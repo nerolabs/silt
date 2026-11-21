@@ -13,7 +13,11 @@
 # after another over SSH still share one window.
 #
 # OUT receives one line per event (times are Unix nanoseconds):
-#   pub  IDX START END RC ok|fail DETAIL   a publish finished; ok means a link came back
+#   pub  IDX START END RC ok|fail DETAIL LEGS REG
+#                                          a publish finished; ok means a link came back.
+#                                          LEGS is the client's `publish elapsed:` line as
+#                                          join=0.312,issuers=0.101,…,total=6.004, or -;
+#                                          REG the registry that accepted the entry, or -
 #   skip IDX AT                            MAX_INFLIGHT publishes were still running when
 #                                          IDX was due, so it was not started
 #   done ATTEMPTED AT                      the schedule ended and every publish finished
@@ -27,7 +31,7 @@ dir="$(mktemp -d)"
 : > "$out"
 
 one() {
-  local i="$1" f s e rc o link detail
+  local i="$1" f s e rc o link detail legs took
   f="$dir/$i.bin"
   s="$(date +%s%N)"
   head -c 8192 </dev/urandom >"$f"
@@ -35,11 +39,14 @@ one() {
   e="$(date +%s%N)"
   rm -f "$f"
   link="$(printf '%s' "$o" | grep -oE 'silt:v1:[^[:space:]]+' | head -1)"
+  legs="$(printf '%s\n' "$o" | sed -n 's/^publish elapsed: //p' | tail -1 |
+    awk '{ for (j = 1; j < NF; j += 2) { v = $(j + 1); sub(/s$/, "", v); printf "%s%s=%s", (j > 1 ? "," : ""), $j, v } }')"
+  took="$(printf '%s\n' "$o" | sed -n 's/^publish accepted by registry //p' | tail -1)"
   if [ -n "$link" ]; then
-    echo "pub $i $s $e $rc ok -" >>"$out"
+    echo "pub $i $s $e $rc ok - ${legs:--} ${took:--}" >>"$out"
   else
     detail="$(printf '%s' "$o" | grep -vE '^[[:space:]]*$' | tail -1 | tr -s ' \t' '_' | cut -c1-200)"
-    echo "pub $i $s $e $rc fail ${detail:--}" >>"$out"
+    echo "pub $i $s $e $rc fail ${detail:--} ${legs:--} ${took:--}" >>"$out"
   fi
 }
 

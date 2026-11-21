@@ -66,7 +66,13 @@ func rankByCanonical(reachable, canon []ports.NodeID) []ports.NodeID {
 // waits for ALL its round-trips to resolve before the next, so nothing about
 // timing picks the signers. This collapses the gather's wall-clock from
 // ~(2·len(validators)+k) sequential WAN round-trips to ~3.
-func acquirePublishToken(nd *node.Node, validators []ports.NodeID, k int, cont func(*ports.PublishToken, error)) {
+//
+// mark, when non-nil, is called with "keys", "credits" and "sign" as each stage
+// resolves, so a publisher can see which stage its gather time went to.
+func acquirePublishToken(nd *node.Node, validators []ports.NodeID, k int, mark func(string), cont func(*ports.PublishToken, error)) {
+	if mark == nil {
+		mark = func(string) {}
+	}
 	// Stage 1: issuer keys, concurrent, best-effort; skip keys already cached.
 	fetchKeys := func(next func()) {
 		pending := 0
@@ -121,7 +127,9 @@ func acquirePublishToken(nd *node.Node, validators []ports.NodeID, k int, cont f
 	}
 	// Stage 3: spend the credits for the k blind signatures (no charge at spend).
 	fetchKeys(func() {
+		mark("keys")
 		mintCredits(func(credits map[ports.NodeID]ports.PublishCredit) {
+			mark("credits")
 			serial, err := blindtoken.NewSerial(rand.Reader)
 			if err != nil {
 				cont(nil, err)
@@ -129,6 +137,7 @@ func acquirePublishToken(nd *node.Node, validators []ports.NodeID, k int, cont f
 			}
 			nd.AcquireTokenWithCredits(rand.Reader, serial, validators, nd.IssuerKeyOf, credits, k,
 				func(tok *ports.PublishToken, aerr error) {
+					mark("sign")
 					if aerr != nil && mintErr != nil {
 						// BOTH are %w: the acquisition sentinel is what callers already match
 						// on, and the mint cause is what an operator needs to match on next.
@@ -276,7 +285,7 @@ func declareNetworkIdentity(run func(fn func(done func())) error, nd *node.Node,
 func swarmAdd(args []string) error {
 	fs := flag.NewFlagSet("swarm add", flag.ExitOnError)
 	peers := fs.String("peers", "", "bootstrap peers: ID@HOST:PORT[,...] (required)")
-	regURL := fs.String("registry", "", "registry URL (required)")
+	regURL := fs.String("registry", "", "registry ref, or several comma-separated: the publish starts at a random one and moves to the next while one is down, rate-limiting or failing (required)")
 	mode := fs.String("mode", "private", "encryption mode: private (default — random per-file key, unprobeable) or convergent (dedups identical content but is vulnerable to the guessed-plaintext confirmation attack; M0 H6, non-secret data only)")
 	chunkSize := fs.Int("chunk-size", pipeline.DefaultChunkSize, "chunk size in bytes")
 	tokenQuorum := fs.Int("token-quorum", 0, "publisher privacy: acquire a publish token from this many validators so the publish carries no Publisher identity. The signers are chosen by a NETWORK-CANONICAL ordering (ranked by committed bond, fetched from a chain-holding peer), the SAME for every publisher, so the signer subset can't narrow the publisher's anonymity set (R-3); falls back to -peers order if no peer serves a chain. 0 = off")
@@ -306,17 +315,26 @@ func swarmAdd(args []string) error {
 	}
 	defer f.Close()
 
+	// Where the publish's time went, printed whether it succeeded or not: a slow
+	// or failed publish is exactly the one whose legs need reading.
+	legs := newPublishLegs(time.Now())
+	defer func() { fmt.Fprintf(os.Stderr, "publish elapsed: %s\n", legs) }()
 	e, run, err := joinSwarm(*peers, *replication)
 	if err != nil {
 		return err
 	}
 	defer e.close()
+	legs.mark("join")
 	if serr := declareNetworkIdentity(run, e.nd, declaredChainID, chainIDDeclared); serr != nil {
 		return serr
 	}
-	reg, err := openRegistry(*regURL)
+	reg, err := openRegistries(*regURL)
 	if err != nil {
 		return err
+	}
+	var acceptedBy string
+	if hc, ok := reg.(interface{ OnAccepted(func(string)) }); ok {
+		hc.OnAccepted(func(base string) { legs.mark("submit"); acceptedBy = base })
 	}
 
 	var validators []ports.NodeID
@@ -363,10 +381,15 @@ func swarmAdd(args []string) error {
 				done()
 				return
 			}
+			legs.mark("stage")
 			e.nd.Distribute(entry, mf, false, func(p int, derr error) {
+				legs.mark("place")
 				// Publish only on a confirmed scatter; a failed one leaves the
 				// registry untouched so no dangling entry survives.
 				placed, err = pipeline.RegisterAfterDistribute(context.Background(), reg, entry, p, derr)
+				if derr == nil && err == nil {
+					legs.mark("commit")
+				}
 				done()
 			})
 		}
@@ -389,7 +412,7 @@ func swarmAdd(args []string) error {
 			publish(&tok)
 		} else if *tokenQuorum > 0 {
 			acquire := func(signers []ports.NodeID) {
-				acquirePublishToken(e.nd, signers, *tokenQuorum, func(tok *ports.PublishToken, aerr error) {
+				acquirePublishToken(e.nd, signers, *tokenQuorum, legs.mark, func(tok *ports.PublishToken, aerr error) {
 					if aerr != nil {
 						err = aerr
 						done()
@@ -420,6 +443,7 @@ func swarmAdd(args []string) error {
 				// anonymity-narrowing fallback. The ranking is deterministic,
 				// so any chain-holder answers the same.
 				e.nd.FetchCanonicalIssuersFromAny(validators, func(canon []ports.NodeID, ferr error) {
+					legs.mark("issuers")
 					if ferr != nil || len(canon) == 0 {
 						fmt.Fprintln(os.Stderr, "note: no canonical issuer set from peers; signing from -peers in given order — the signer subset may narrow the publisher anonymity set (connect to canonical validators for full privacy)")
 						acquire(validators)
@@ -438,6 +462,9 @@ func swarmAdd(args []string) error {
 	}
 	if err != nil {
 		return err
+	}
+	if acceptedBy != "" {
+		fmt.Fprintf(os.Stderr, "publish accepted by registry %s\n", acceptedBy)
 	}
 	fmt.Fprintf(os.Stderr, "scattered %d chunk replicas into the swarm; client keeps nothing\n", placed)
 	fmt.Fprintf(os.Stderr, "care link (repair rights, no decryption): %s\n", h.Care())
