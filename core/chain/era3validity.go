@@ -235,6 +235,9 @@ func (c *Chain) cloneForDryRun() *Chain {
 	// ---- committedLog: the RFC-6962 transparency log, deep-copied so apply's
 	// Append hits the clone's log, not the live one ----
 	s.revLog = c.revLog.Clone()
+	// ---- the kept state tree: shared read-only, so the clone's root costs its
+	// own changes, not a rebuild (statetree.go) ----
+	s.rootCache = c.dryRunRootCache()
 	return s
 }
 

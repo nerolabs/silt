@@ -103,6 +103,9 @@ const (
 	injected
 	// transient: scoped to a single operation and never accumulated.
 	transient
+	// cache: a copy of committed state kept to make a computation cheaper. It
+	// may be dropped at any time; dropping it changes cost, never a verdict.
+	cache
 )
 
 // stateClass classifies EVERY field of Chain. The reason string is not a
@@ -242,6 +245,11 @@ var stateClass = map[string]struct {
 	// RE-DERIVED 2026-09-11. Both line citations were stale — chain.go is revlog leaf
 	// bytes and retention.go is a doc comment. Symbols instead, so a move cannot
 	// silently invalidate them.
+	"rootCache": {cache, "the v5 state tree kept between blocks, so `StateRootForVersion` " +
+		"applies a block's changed leaves instead of rebuilding from every leaf. Its root equals " +
+		"the rebuild's because the SMT is history independent; a write the journal cannot " +
+		"account for (`sizesMatch`) drops it back to a rebuild. `adopt` takes the winner's, " +
+		"which describes the adopted state."},
 	"trustFloorOverride": {transient, "set only on the `Reconcile` scratch chain and read " +
 		"within that replay by `trustFloor`; never accumulated across blocks, and " +
 		"deliberately NOT copied by `adopt`"},
