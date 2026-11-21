@@ -93,6 +93,22 @@ expect "generator CPU busy max is reported" 95.5 "$(field "$tmp/row.json" gen_cp
 expect "generator CPU steal p50 is reported" 2.0 "$(field "$tmp/row.json" gen_cpu_steal_p50)"
 expect "generator CPU does not change the verdict" pass "$(field "$tmp/row.json" verdict)"
 
+# A validator's load over the step: CPU from two cumulative readings, and the event
+# loop's busy share, queue wait and top handlers from its budget lines. A validator
+# whose files say nothing is unknown, not idle.
+printf '1000 5000000000\n1100 100000000000\n' > "$tmp/cpu-a.txt"
+printf 'read\nbudget Publish 12000 2000\nbudget FindNode 3000 1000\nrc height=4 round=1\nbudget Publish 6000 500\n' > "$tmp/win-a.txt"
+printf '1000 9000000000\n1100 2000000000\n' > "$tmp/cpu-b.txt"; echo read > "$tmp/win-b.txt"
+grade 20 "$tmp/g1.log" --validator "val-a=$tmp/win-a.txt=$tmp/cpu-a.txt" --validator "val-b=$tmp/win-b.txt=$tmp/cpu-b.txt"
+vfield() { python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['validators'][sys.argv[2]][sys.argv[3]])" "$tmp/row.json" "$1" "$2"; }
+expect "a validator's cores come from its two CPU readings" 0.95 "$(vfield val-a cores)"
+expect "the loop's busy share is its handler time over the step" 0.7 "$(vfield val-a loop_busy)"
+expect "the loop's queue wait is summed" 3.5 "$(vfield val-a loop_wait_s)"
+expect "the top handlers are ranked by loop time" "[['Publish', 18.0], ['FindNode', 3.0]]" "$(vfield val-a loop_top)"
+expect "a CPU count that went backwards (a restart) is unknown, not zero" None "$(vfield val-b cores)"
+expect "a window with no budget lines is unknown, not idle" None "$(vfield val-b loop_busy)"
+expect "validator load does not change the verdict" pass "$(field "$tmp/row.json" verdict)"
+
 grade 0.01 "$tmp/g1.log"
 expect "a p95 over the bound fails the step" fail "$(field "$tmp/row.json" verdict)"
 

@@ -3330,15 +3330,18 @@ scale_gens() { node_names | tr ' ' '\n' | grep -E '^load-[0-9]+$' | tr '\n' ' ';
 # scale_window_counts NODE FROM_EPOCH TO_EPOCH -> lines from the node's debug.log
 # window: "read" once if the log was readable, "rc height=H round=R" per recorded
 # view change (the same view change is recorded once per peer, so the caller counts
-# distinct pairs), "held" per proposal held for a late parent. No "read" line means
-# the node could not be read, which is unknown, not zero.
+# distinct pairs), "held" per proposal held for a late parent, and "budget KIND
+# TOTAL_MS WAIT_MS" per event-loop budget line (the loop's time per handler kind
+# over each 30 s window, and the time that kind's tasks queued). No "read" line
+# means the node could not be read, which is unknown, not zero.
 scale_window_counts() {
   local a b
   a="$(epoch_to_iso "$2")"; b="$(epoch_to_iso "$3")"
   ssh_node "$1" "sudo test -r /var/lib/silt/debug.log && echo READ && sudo awk -v a='$a' -v b='$b' '\$1 >= a && \$1 < b' /var/lib/silt/debug.log" \
     | awk '/^READ$/ { print "read"; next }
            /round-change: recorded/ { h = r = ""; for (i = 1; i <= NF; i++) { if ($i ~ /^height=/) h = $i; if ($i ~ /^round=/) r = $i } print "rc", h, r }
-           /held a proposal one height ahead/ { print "held" }'
+           /held a proposal one height ahead/ { print "held" }
+           /eventloop budget/ { k = t = w = ""; for (i = 1; i <= NF; i++) { if ($i ~ /^kind=/) k = substr($i, 6); if ($i ~ /^total_ms=/) t = substr($i, 10); if ($i ~ /^wait_total_ms=/) w = substr($i, 15) } if (k != "") print "budget", k, t, w }'
 }
 
 # scale_step LABEL RATE -> one graded JSON row on stdout (progress on stderr)
@@ -3353,7 +3356,13 @@ scale_step() {
     ssh_node "$g" "setsid nohup /tmp/scale_gen.sh $iv $SCALE_STEP_S $SCALE_INFLIGHT /tmp/scale-$label.log '$PEERS' '${SCALE_REG:-$REGREF}' $TOKEN_QUORUM $start_at >/dev/null 2>&1 </dev/null & echo started" >/dev/null
   done
   deadline=$(( start_at + SCALE_STEP_S + SCALE_DRAIN_S ))
+  # Each validator's CPU over the step: cumulative CPU time read as the step
+  # starts and as its schedule ends, each with the time it was read.
+  vals="val-a val-b val-c val-d"
+  sleep $(( start_at - $(date +%s) > 0 ? start_at - $(date +%s) : 0 ))
+  for v in $vals; do echo "$(date +%s) $(node_cpu_ns "$v")" > "$dir/cpu-$v.txt"; done
   sleep $(( start_at + SCALE_STEP_S - $(date +%s) > 0 ? start_at + SCALE_STEP_S - $(date +%s) : 0 ))
+  for v in $vals; do echo "$(date +%s) $(node_cpu_ns "$v")" >> "$dir/cpu-$v.txt"; done
   while :; do
     all=1
     for g in "${gens[@]}"; do ssh_node "$g" "grep -q '^done ' /tmp/scale-$label.log" || all=0; done
@@ -3367,7 +3376,6 @@ scale_step() {
   done
   # Commit times from the validator that logged the most commits in the window
   # (a validator that caught up by sync logs no banner for those heights).
-  vals="val-a val-b val-c val-d"
   for v in $vals; do
     ssh_node "$v" "sudo journalctl -u silt --no-pager -o short-unix --since @$start_at" | grep 'chain: committed block' > "$dir/commits-$v.txt" || true
     lines="$(wc -l < "$dir/commits-$v.txt" | tr -d ' ')"
@@ -3387,6 +3395,7 @@ scale_step() {
   fi
   python3 "$FT_DIR/scale_grade.py" --label "$label" --rate "$rate" --start "$start_at" --dur "$SCALE_STEP_S" \
     --p95 "$SCALE_P95_S" --min-ok "$SCALE_MIN_OK" --commits "$dir/commits.txt" --rounds "$rc" --held "$held" \
+    $(for v in $vals; do printf -- '--validator %s=%s=%s ' "$v" "$dir/window-$v.txt" "$dir/cpu-$v.txt"; done) \
     $(for g in "${gens[@]}"; do printf '%s ' "$dir/$g.log"; done) | tee "$dir/row.json"
 }
 
@@ -3400,6 +3409,7 @@ print(f\"offered {r['offered_per_s']}/s: {r['ok']}/{r['attempted']} committed ({
       + (f\"; client legs p50/p95 over {r['legs_n']}: \" + ', '.join(f\"{k} {v:.2f}/{r['legs_p95_s'][k]:.2f}s\" for k, v in r['legs_p50_s'].items()) if r.get('legs_n') else '')
       + (f\"; accepted by registry: \" + ', '.join(f\"{k.split('//')[-1]} {v}\" for k, v in r['accepted_by'].items()) if r.get('accepted_by') else '')
       + (f\"; generator CPU busy p50/max {r['gen_cpu_busy_p50']:.0f}/{r['gen_cpu_busy_max']:.0f}% (steal p50 {r['gen_cpu_steal_p50']:.0f}%)\" if r.get('gen_cpu_n') else '')
+      + ''.join(f\"; {k} {'n/a' if v['cores'] is None else format(v['cores'], '.2f')} cores, loop {'n/a' if v['loop_busy'] is None else format(v['loop_busy'], '.0%')} busy, queued {'n/a' if v['loop_wait_s'] is None else format(v['loop_wait_s'], '.0f') + 's'}\" + (' (' + ', '.join(f'{h} {t:.0f}s' for h, t in v['loop_top']) + ')' if v['loop_top'] else '') for k, v in (r.get('validators') or {}).items())
       + (f\"; last publish error: {r['last_fail']}\" if r['last_fail'] else '') + (f\" — {r['why']}\" if r['why'] else ''))" "$1"
 }
 
