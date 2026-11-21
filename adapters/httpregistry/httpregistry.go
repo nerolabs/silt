@@ -317,11 +317,21 @@ func serve(addr string, reg ports.Registry, tlsCfg *tls.Config) (boundAddr strin
 
 // Client implements ports.Registry against a Serve endpoint.
 type Client struct {
-	base string
-	hc   *http.Client
+	base     string
+	hc       *http.Client
+	accepted func(base string)
 }
 
+// OnAccepted registers fn to run once per Publish, when the registry has taken the
+// entry (200 or 202) and before the client waits on its commit. It splits a
+// publish's registry time into submission and the wait for a block. fn receives
+// the registry's base URL, so a publisher can say which registry took its entry.
+func (c *Client) OnAccepted(fn func(base string)) { c.accepted = fn }
+
 var _ ports.Registry = (*Client)(nil)
+
+// Base is the registry's base URL, as the client dials it.
+func (c *Client) Base() string { return c.base }
 
 func NewClient(baseURL string) *Client {
 	return &Client{base: baseURL, hc: &http.Client{Timeout: 10 * time.Second}}
@@ -352,9 +362,12 @@ func (c *Client) Publish(ctx context.Context, e ports.Entry) error {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.hc.Do(req)
 	if err != nil {
-		return fmt.Errorf("httpregistry publish: %w", err)
+		return fmt.Errorf("httpregistry publish: %w: %w", ErrUnavailable, err)
 	}
 	defer resp.Body.Close()
+	if c.accepted != nil && (resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusAccepted) {
+		c.accepted(c.base)
+	}
 	switch resp.StatusCode {
 	case http.StatusOK:
 		return nil
@@ -420,9 +433,18 @@ func (c *Client) Publish(ctx context.Context, e ports.Entry) error {
 		if bytes.Contains(msg, []byte("HTTP request to an HTTPS server")) {
 			return fmt.Errorf("httpregistry publish: this registry is key-pinned HTTPS — use the ID@https://host:port ref the daemon prints, not http://")
 		}
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			return fmt.Errorf("httpregistry publish: %w: %s: %s", ErrUnavailable, resp.Status, msg)
+		}
 		return fmt.Errorf("httpregistry publish: %s: %s", resp.Status, msg)
 	}
 }
+
+// ErrUnavailable marks a publish the registry never took: the request did not reach
+// it, it was rate-limited, or it failed on the server. The same entry can go to
+// another registry. A refusal with a reason is not unavailability, because every
+// honest registry would give the same answer.
+var ErrUnavailable = errors.New("registry unavailable")
 
 func mustRead(r io.Reader) []byte {
 	b, _ := io.ReadAll(io.LimitReader(r, 4096))
