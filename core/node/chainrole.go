@@ -890,45 +890,23 @@ func (n *Node) ProposeEntry(e ports.Entry, attesters, broadcast []ports.NodeID, 
 		attesters, broadcast, quorum, done)
 }
 
-// ValidateEntryProposal runs the LOCAL pre-check for publishing e — the same checks a
-// proposeBlock does before it gathers: proposer eligibility + the entry-level refusals a
-// client must learn SYNCHRONOUSLY (no publish token when required, a durable Publisher
-// identity the refuse-to-surveil chain rejects, a double-spent token) — WITHOUT gathering
-// or committing. The async publish path (chainhost.Host.PublishAsync) calls this to return
-// those refusals to the HTTP client immediately, then runs the slow commit gather in the
-// background (so a slow genesis gather no longer blocks the handler under a flat 10s
-// deadline — Layer 1). A lean single-entry candidate block suffices: the entry-level
-// refusals and proposer eligibility do not depend on the bond-registration the real
-// proposeBlock also attaches (a bad bond-reg surfaces async, as the proposer's own concern).
+// ValidateEntryProposal runs the local pre-check for publishing e: this node's
+// eligibility to propose, then the entry-level refusals a client must learn
+// synchronously (no publish token when required, a durable Publisher identity the
+// refuse-to-surveil chain rejects, a double-spent token). The async publish path
+// (chainhost.Host.PublishAsync) returns these refusals to the HTTP client at once and
+// leaves the commit to the block pipeline.
+//
+// It runs on the event loop once per submitted publish, so it never builds a
+// candidate block: the post-apply roots such a block would carry cost a rebuild of
+// the whole state tree, and they depend on how the proposer assembles the block, not
+// on e. Every block is still held to its roots when it is proposed, attested and
+// committed.
 func (n *Node) ValidateEntryProposal(e ports.Entry) error {
 	if n.chain == nil {
 		return ErrNoChain
 	}
-	prev, height := n.chain.Head()
-	b := &chain.Block{Version: chain.BlockVersion, Height: height, Prev: prev, Entries: []ports.Entry{e}}
-	// Mint-flip (era-3 step 2c, extended for era-4 step 4d): once an era is active, a
-	// lower-version candidate would be rejected by the boundary rule, so a real publish
-	// would falsely fail this local pre-check. Mint the version the real proposer would —
-	// v5 with roots at/above H_era4, else v4 with roots at/above H_era3 — so the pre-check
-	// tracks production. This candidate carries no folded content, so its post-apply roots
-	// are over the single-entry block, exactly what the real single-entry proposal would
-	// commit. era-4 is checked first (MintVersion returns v5 only where v4 also holds).
-	if mv := n.chain.MintVersion(b.Height); mv >= chain.BlockVersionWitnessable {
-		b.LastCommit = n.chain.HeadCarrier() // track production: a real v5 proposal carries the carrier
-		if err := n.chain.PopulateEra4Roots(b); err != nil {
-			return fmt.Errorf("validate-entry: era-4 root population: %w", err)
-		}
-	} else if mv >= chain.BlockVersionStateRoot {
-		if err := n.chain.PopulateEra3Roots(b); err != nil {
-			return fmt.Errorf("validate-entry: era-3 root population: %w", err)
-		}
-	}
-	// Watermark-exempt: this signed candidate exists only for the local
-	// pre-check and is NEVER released to the wire — a signature no peer can
-	// hold is not equivocation evidence. Only released signatures (proposeBlock
-	// gather, attest replies) consult and advance the sign mark.
-	chain.Sign(b, n.signer)
-	return n.chain.ValidateProposal(b)
+	return n.chain.ValidateSubmission(n.signer.Public().(ed25519.PublicKey), e)
 }
 
 // ProposeRevocation runs consensus on a TAKEDOWN: an append-only block
