@@ -817,6 +817,25 @@ func (n *Node) reconstructFork(served []chain.Block) ([]chain.Block, error) {
 	return full, nil
 }
 
+// holdsAll reports whether every served block is the block this node already
+// holds at that height. Such a window has nothing to adopt, and a block that is our
+// own carries no conflicting signature to slash, so the genesis replay it would
+// otherwise reach could only re-prove our own history. A peer a block behind when
+// probed, which commits that block before serving, answers with exactly this window.
+func (n *Node) holdsAll(served []chain.Block) bool {
+	start := served[0].Height
+	ours := n.chain.Blocks(start)
+	if len(ours) < len(served) {
+		return false
+	}
+	for i := range served {
+		if served[i].Height != start+uint64(i) || served[i].Hash() != ours[i].Hash() {
+			return false
+		}
+	}
+	return true
+}
+
 // appendExtension adopts a served window iff it provably EXTENDS this node's
 // exact committed head, through the normal Append commit path. The
 // proof is the hash chain: the served block at our next height carrying
@@ -1942,7 +1961,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 		reqHeight, finActive := n.chain.FinalizedHeight()
 		var served []chain.Block
 		finish := func() {
-			if len(served) == 0 {
+			if len(served) == 0 || n.holdsAll(served) {
 				next()
 				return
 			}
