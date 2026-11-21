@@ -21,6 +21,9 @@
 #   skip IDX AT                            MAX_INFLIGHT publishes were still running when
 #                                          IDX was due, so it was not started
 #   done ATTEMPTED AT                      the schedule ended and every publish finished
+#   cpu  AT BUSY STEAL                     every 5 s: the host's CPU busy and steal over the
+#                                          last 5 s, in percent, so a grade can tell a
+#                                          saturated generator from a saturated network
 # Lines are short single writes to an O_APPEND file, so concurrent publishers do
 # not interleave within a line.
 set -u
@@ -50,8 +53,28 @@ one() {
   fi
 }
 
+# cpu_sample reads /proc/stat's aggregate line every 5 s. Busy is everything but
+# idle and iowait, steal included: time the hypervisor withheld is time the
+# generator wanted and did not get. It is disowned, so the in-flight count below
+# never counts it.
+cpu_sample() {
+  local a b
+  a="$(head -1 /proc/stat)"
+  while sleep 5; do
+    b="$(head -1 /proc/stat)"
+    printf '%s\n%s\n' "$a" "$b" | awk -v at="$(date +%s%N)" '
+      { t = 0; for (j = 2; j <= NF; j++) t += $j; tot[NR] = t; idle[NR] = $5 + $6; st[NR] = $9 }
+      END { d = tot[2] - tot[1]; if (d > 0) printf "cpu %s %.1f %.1f\n", at, 100 * (d - (idle[2] - idle[1])) / d, 100 * (st[2] - st[1]) / d }' >>"$out"
+    a="$b"
+  done
+}
+
 now="$(date +%s)"
 [ "$start_at" -gt "$now" ] && sleep $(( start_at - now ))
+if [ -r /proc/stat ]; then
+  cpu_sample & cpu_pid=$!; disown "$cpu_pid"
+  trap 'kill "$cpu_pid" 2>/dev/null' EXIT
+fi
 t0="$(date +%s%N)"; i=0
 while :; do
   due=$(( t0 + i * iv_ns ))

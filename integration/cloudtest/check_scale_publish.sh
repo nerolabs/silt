@@ -83,6 +83,16 @@ expect "a leg's p50 is reported" 0.03 "$(python3 -c "import json,sys;print(json.
 expect "time outside the client is the generator's time less its total" yes \
   "$(python3 -c "import json,sys;print('yes' if json.load(open(sys.argv[1]))['legs_p50_s']['outside'] > 0 else 'no')" "$tmp/row.json")"
 
+# Generator CPU samples, as a Linux generator appends them, are summarized over
+# every generator's samples; a generator that logged none adds nothing.
+{ cat "$tmp/g1.log"; printf 'cpu 1 20.0 1.0\ncpu 2 40.0 2.0\ncpu 3 95.5 4.0\n'; } > "$tmp/g6.log"
+grade 20 "$tmp/g6.log" "$tmp/g1.log"
+expect "generator CPU samples are counted" 3 "$(field "$tmp/row.json" gen_cpu_n)"
+expect "generator CPU busy p50 is reported" 40.0 "$(field "$tmp/row.json" gen_cpu_busy_p50)"
+expect "generator CPU busy max is reported" 95.5 "$(field "$tmp/row.json" gen_cpu_busy_max)"
+expect "generator CPU steal p50 is reported" 2.0 "$(field "$tmp/row.json" gen_cpu_steal_p50)"
+expect "generator CPU does not change the verdict" pass "$(field "$tmp/row.json" verdict)"
+
 grade 0.01 "$tmp/g1.log"
 expect "a p95 over the bound fails the step" fail "$(field "$tmp/row.json" verdict)"
 

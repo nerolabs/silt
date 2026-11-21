@@ -3399,10 +3399,11 @@ print(f\"offered {r['offered_per_s']}/s: {r['ok']}/{r['attempted']} committed ({
       f\"view changes {r['round_changes']}, proposals held for a late parent {r['held_proposals']}\"
       + (f\"; client legs p50/p95 over {r['legs_n']}: \" + ', '.join(f\"{k} {v:.2f}/{r['legs_p95_s'][k]:.2f}s\" for k, v in r['legs_p50_s'].items()) if r.get('legs_n') else '')
       + (f\"; accepted by registry: \" + ', '.join(f\"{k.split('//')[-1]} {v}\" for k, v in r['accepted_by'].items()) if r.get('accepted_by') else '')
+      + (f\"; generator CPU busy p50/max {r['gen_cpu_busy_p50']:.0f}/{r['gen_cpu_busy_max']:.0f}% (steal p50 {r['gen_cpu_steal_p50']:.0f}%)\" if r.get('gen_cpu_n') else '')
       + (f\"; last publish error: {r['last_fail']}\" if r['last_fail'] else '') + (f\" — {r['why']}\" if r['why'] else ''))" "$1"
 }
 
-# LOCAL_PROOF: go test ./core/node -run 'TestAnAttesterOneBlockBehind|TestAHeldProposal|TestAnEarlyOffer|TestAnEntryArmsNoEarlyOffer|TestEntrySubmitBudgets' -count=1 && go test ./adapters/httpregistry -run 'TestSet_|TestOnAccepted' -count=1 && go test ./cmd/silt -run 'TestOpenRegistries|TestPublishLegs|TestAcquirePublishTokenMarks' -count=1 && SCALE_EAGER_MS=1000 SCALE_RATES=1,5,20 SCALE_MINUTES=2 go test ./core/node -run 'TestMeasure_PublishThroughputOnANormalWAN$' -v -count=1 && ./integration/cloudtest/check_scale_publish.sh — the simulator carries the same WAN, quorum and token sizes; the CLI publish path, real per-address limits and wall-clock RTT are the cloud's job
+# LOCAL_PROOF: go test ./core/node -run 'TestAnAttesterOneBlockBehind|TestAHeldProposal|TestAnEarlyOffer|TestAnEntryArmsNoEarlyOffer|TestEntrySubmitBudgets|TestDistributeOverlapsPlacementGroups|TestPlaceAtAsksForCopiesAtOnce' -count=1 && go test ./adapters/httpregistry -run 'TestSet_|TestOnAccepted' -count=1 && go test ./cmd/silt -run 'TestOpenRegistries|TestPublishLegs|TestAcquirePublishTokenMarks' -count=1 && SCALE_EAGER_MS=1000 SCALE_RATES=1,5,20 SCALE_MINUTES=2 go test ./core/node -run 'TestMeasure_PublishThroughputOnANormalWAN$' -v -count=1 && ./integration/cloudtest/check_scale_publish.sh — the simulator carries the same WAN, quorum and token sizes; the CLI publish path, real per-address limits and wall-clock RTT are the cloud's job
 flow_scale_publish() {
   local -a gens; read -r -a gens <<< "$(scale_gens)"
   if [ "${#gens[@]}" = 0 ]; then
@@ -3420,15 +3421,12 @@ flow_scale_publish() {
   low="$(printf '%s\n' $SCALE_RATES | sort -n | head -1)"
   top="${SCALE_ONE_REGISTRY_RATE:-$(printf '%s\n' $SCALE_RATES | sort -n | tail -1)}"
   [ "$SCALE_REGISTRIES" = all ] && SCALE_REG="$REGREFS"
-  for rate in $SCALE_RATES; do
-    row="$(scale_step "eager-r$rate" "$rate")"
-    [ -n "$row" ] || row='{"verdict":"fail","why":"the step produced no grade"}'
-    local verdict; verdict="$(python3 -c "import json,sys;print(json.loads(sys.argv[1])['verdict'])" "$row" 2>/dev/null || echo fail)"
-    [ "$verdict" = pass ] || { ok=0; failed="$failed ${rate}/s"; }
-    [ "$rate" = "$low" ] && eager_p95="$(python3 -c "import json,sys;print(json.loads(sys.argv[1]).get('lat_p95_s') or '')" "$row" 2>/dev/null)"
-    record "scale-publish-r$rate" "$verdict" major "$(scale_row_detail "$row" 2>/dev/null || printf '%s' "$row")"
-  done
-  if [ "$SCALE_REGISTRIES" = all ] && [ "$SCALE_ONE_REGISTRY" = 1 ] && [ "$SCALE_REG" != "$REGREF" ]; then
+  # The one-registry comparison runs straight after the all-registries step at
+  # the same rate, so both meet the network in the same state; run after a
+  # heavier step, it would also be draining that step's backlog.
+  local one_due=0
+  if [ "$SCALE_REGISTRIES" = all ] && [ "$SCALE_ONE_REGISTRY" = 1 ] && [ "$SCALE_REG" != "$REGREF" ]; then one_due=1; fi
+  one_registry_step() {
     echo "  scale one-registry: ${top}/s through the boot validator's registry alone" >&2
     row="$(SCALE_REG="$REGREF" scale_step "one-registry-r$top" "$top")"
     if python3 -c "import json,sys;sys.exit(0 if json.loads(sys.argv[1]).get('attempted') else 1)" "$row" 2>/dev/null; then
@@ -3437,7 +3435,18 @@ flow_scale_publish() {
       record "scale-publish-one-registry" fail major "the one-registry step produced no grade: $row"
       ok=0
     fi
-  fi
+    one_due=0
+  }
+  for rate in $SCALE_RATES; do
+    row="$(scale_step "eager-r$rate" "$rate")"
+    [ -n "$row" ] || row='{"verdict":"fail","why":"the step produced no grade"}'
+    local verdict; verdict="$(python3 -c "import json,sys;print(json.loads(sys.argv[1])['verdict'])" "$row" 2>/dev/null || echo fail)"
+    [ "$verdict" = pass ] || { ok=0; failed="$failed ${rate}/s"; }
+    [ "$rate" = "$low" ] && eager_p95="$(python3 -c "import json,sys;print(json.loads(sys.argv[1]).get('lat_p95_s') or '')" "$row" 2>/dev/null)"
+    record "scale-publish-r$rate" "$verdict" major "$(scale_row_detail "$row" 2>/dev/null || printf '%s' "$row")"
+    if [ "$one_due" = 1 ] && [ "$rate" = "$top" ]; then one_registry_step; fi
+  done
+  if [ "$one_due" = 1 ]; then one_registry_step; fi
   if [ "$SCALE_CONTROL" = 1 ]; then
     local v ctl_p95=""
     echo "  scale control: every validator to sweep-only proposals (-propose-delay 0), then ${low}/s" >&2

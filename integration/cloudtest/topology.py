@@ -122,6 +122,14 @@ if SCALE:
         ("load-2", "fetcher", 6602, "10.20.0.62", "us-east1-b"),
         ("load-3", "fetcher", 6603, "10.20.0.63", "europe-west1-b"),
     ]
+# Each generator runs up to SCALE_INFLIGHT publish processes at once, every one a
+# full client, so on the fleet's 2-vCPU shared-core default a busy step can be
+# limited by its generators rather than by the network. SCALE_LOAD_MACHINE sizes
+# the generators alone (empty = the fleet default).
+_MACHINE = {}
+_LOAD_MACHINE = os.environ.get("SCALE_LOAD_MACHINE", "e2-standard-4")
+if SCALE and _LOAD_MACHINE:
+    _MACHINE = {g: _LOAD_MACHINE for g in ("load-1", "load-2", "load-3")}
 
 # ECONOMY killable pool (opt-in with the economy grade, 2026-08-20). The economy
 # flow reserves every base non-validator storage-capable node for its own
@@ -566,7 +574,8 @@ def main():
         tfvars = {
             "nodes": {name: {"role": n["role"], "ip": n["ip"], "zone": n["zone"],
                              "region": n["region"], "argv": n["argv"],
-                             "internal_only": name in _INTERNAL_ONLY}
+                             "internal_only": name in _INTERNAL_ONLY,
+                             "machine_type": _MACHINE.get(name, "")}
                       for name, n in nodes.items()},
             "region_cidrs": region_cidrs,
             "public_cidr": PUBLIC_CIDR, "nat_cidr": NAT_CIDR,
