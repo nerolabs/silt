@@ -3324,6 +3324,8 @@ flow_soak_publish_drain() {
 : "${SCALE_ONE_REGISTRY:=1}"        # with SCALE_REGISTRIES=all, 1 adds a step through the boot validator's
                                     # registry alone, so the gain from more registries is measured
 : "${SCALE_ONE_REGISTRY_RATE:=}"    # that step's rate; empty = the top of SCALE_RATES
+: "${SCALE_FILL_RATE:=20}"          # with SCALE_FILL_S, the rate that ages the chain before the graded steps
+: "${SCALE_FILL_S:=0}"              # seconds of ungraded publishing first, so the steps meet a chain with history; 0 = none
 
 scale_gens() { node_names | tr ' ' '\n' | grep -E '^load-[0-9]+$' | tr '\n' ' '; }
 
@@ -3447,6 +3449,19 @@ flow_scale_publish() {
     fi
     one_due=0
   }
+  # A fresh chain hides any cost that grows with history, so the graded steps can
+  # first meet a chain aged by an ungraded fill. Its row records how many entries
+  # it committed, which is the history the steps then run against.
+  if [ "$SCALE_FILL_S" -gt 0 ]; then
+    echo "  scale fill: ${SCALE_FILL_RATE}/s for ${SCALE_FILL_S}s, ungraded, to age the chain" >&2
+    row="$(SCALE_STEP_S="$SCALE_FILL_S" scale_step "fill-r$SCALE_FILL_RATE" "$SCALE_FILL_RATE")"
+    if python3 -c "import json,sys;sys.exit(0 if json.loads(sys.argv[1]).get('ok') else 1)" "$row" 2>/dev/null; then
+      record "scale-publish-fill" pass info "aged the chain before the graded steps: $(scale_row_detail "$row" 2>/dev/null || printf '%s' "$row")"
+    else
+      record "scale-publish-fill" fail major "the fill committed nothing, so the graded steps would meet a fresh chain: $row"
+      ok=0
+    fi
+  fi
   for rate in $SCALE_RATES; do
     row="$(scale_step "eager-r$rate" "$rate")"
     [ -n "$row" ] || row='{"verdict":"fail","why":"the step produced no grade"}'
