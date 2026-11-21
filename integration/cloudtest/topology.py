@@ -130,6 +130,12 @@ _MACHINE = {}
 _LOAD_MACHINE = os.environ.get("SCALE_LOAD_MACHINE", "e2-standard-4")
 if SCALE and _LOAD_MACHINE:
     _MACHINE = {g: _LOAD_MACHINE for g in ("load-1", "load-2", "load-3")}
+# SCALE_VALIDATOR_MACHINE sizes the four validators alone (empty = the fleet
+# default), so a step can be repeated on bigger validators to tell a CPU-bound
+# validator from one bound by a single busy thread or by the protocol.
+_VALIDATOR_MACHINE = os.environ.get("SCALE_VALIDATOR_MACHINE", "")
+if SCALE and _VALIDATOR_MACHINE:
+    _MACHINE.update({v: _VALIDATOR_MACHINE for v in ("val-a", "val-b", "val-c", "val-d")})
 
 # ECONOMY killable pool (opt-in with the economy grade, 2026-08-20). The economy
 # flow reserves every base non-validator storage-capable node for its own

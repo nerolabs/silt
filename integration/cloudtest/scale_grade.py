@@ -19,6 +19,12 @@ registry that accepted the entry, the row counts committed publishes per registr
 Where the generators sampled their own CPU, the row reports busy and steal over
 every sample, so a step limited by its generators reads differently from one
 limited by the network.
+
+For each --validator NAME=WINDOW=CPU the row reports the cores the validator's
+process used over the step (from two cumulative CPU readings) and its event
+loop's busy share and queue wait (from the loop's per-handler budget lines). The
+loop is one thread: a validator near one core with a busy loop is loop-bound,
+however many cores its machine has.
 """
 import argparse, json, re, sys
 
@@ -75,6 +81,35 @@ def read_legs(tok):
     return legs
 
 
+def read_validator(spec, dur):
+    """NAME=WINDOW=CPU -> (name, {cores, loop_busy, loop_wait_s, loop_top}); a value
+    that could not be read is None, never zero."""
+    name, window, cpu = spec.split("=", 2)
+    v = {"cores": None, "loop_busy": None, "loop_wait_s": None, "loop_top": []}
+    try:
+        reads = [l.split() for l in open(cpu) if len(l.split()) == 2]
+        # A restart between the reads resets a process's count; that is unknown.
+        if len(reads) == 2 and int(reads[1][0]) > int(reads[0][0]) and int(reads[1][1]) >= int(reads[0][1]):
+            v["cores"] = round((int(reads[1][1]) - int(reads[0][1])) / 1e9 / (int(reads[1][0]) - int(reads[0][0])), 2)
+    except (OSError, ValueError):
+        pass
+    try:
+        by, wait, seen = {}, 0, False
+        for l in open(window):
+            p = l.split()
+            if len(p) == 4 and p[0] == "budget":
+                seen = True
+                by[p[1]] = by.get(p[1], 0) + int(p[2] or 0)
+                wait += int(p[3] or 0)
+        if seen and dur:
+            v["loop_busy"] = round(sum(by.values()) / 1000 / dur, 2)
+            v["loop_wait_s"] = round(wait / 1000, 1)
+            v["loop_top"] = [[k, round(ms / 1000, 1)] for k, ms in sorted(by.items(), key=lambda kv: -kv[1])[:3]]
+    except OSError:
+        pass
+    return name, v
+
+
 def read_commits(path, start, end):
     times, entries = [], 0
     with open(path) as f:
@@ -102,6 +137,7 @@ def main():
     ap.add_argument("--commits", required=True)
     ap.add_argument("--rounds", default="?", help="round-change lines in the window, or ? if unread")
     ap.add_argument("--held", default="?", help="proposals held one height ahead in the window, or ? if unread")
+    ap.add_argument("--validator", action="append", default=[], help="NAME=WINDOW=CPU: a validator's window and CPU files")
     ap.add_argument("gens", nargs="+")
     a = ap.parse_args()
 
@@ -156,6 +192,7 @@ def main():
         "gen_cpu_n": len(busy),
         "gen_cpu_busy_p50": pct(busy, 0.5), "gen_cpu_busy_max": max(busy) if busy else None,
         "gen_cpu_steal_p50": pct(steal, 0.5),
+        "validators": dict(sorted(read_validator(v, a.dur) for v in a.validator)),
         "last_fail": next((g["fail_detail"] for g in gens if g["fail_detail"]), ""),
         "verdict": "fail" if why else "pass", "why": "; ".join(why),
     }

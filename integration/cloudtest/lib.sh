@@ -325,6 +325,16 @@ node_mem_bytes() {
     2>/dev/null | tr -dc '0-9'
 }
 
+# node_cpu_ns NODE — the node's cumulative CPU time in nanoseconds: the cgroup's
+# CPUUsageNSec where systemd accounts CPU, else the service process's user plus
+# system time from /proc. Two reads give the cores a node used between them; a
+# restart in between resets the process count, which the reader must catch.
+# Empty on any failure, as node_mem_bytes is.
+node_cpu_ns() {
+  ssh_node "$1" 'n="$(systemctl show silt.service -p CPUUsageNSec --value 2>/dev/null | tr -dc 0-9)"; if [ -z "$n" ]; then p="$(systemctl show silt.service -p MainPID --value 2>/dev/null)"; [ "${p:-0}" -gt 0 ] && n="$(awk -v hz="$(getconf CLK_TCK)" "{ printf \"%.0f\", (\$14 + \$15) * 1e9 / hz }" /proc/$p/stat)"; fi; echo "$n"' \
+    2>/dev/null | tr -dc '0-9'
+}
+
 # mem_sampler_start — background loop: one JSONL row per node per sweep. Writes its PID
 # to $MEM_SAMPLER_PIDFILE so mem_sampler_stop can end it. Strictly additive and
 # failure-tolerant: a missed read is simply skipped, and the sampler never touches a

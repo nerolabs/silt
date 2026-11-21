@@ -15,7 +15,7 @@ for a in "$@"; do
   case "$a" in
     start|stop|restart|is-active|status|daemon-reload|show) verb="$a" ;;
     -p) : ;;
-    MemoryCurrent) prop=MemoryCurrent ;;
+    MemoryCurrent|CPUUsageNSec|MainPID) prop="$a" ;;
     --value) want_value=1 ;;
     --quiet) quiet=1 ;;
     *) : ;;   # silt.service, --no-pager, -l — all ignorable here
@@ -64,6 +64,16 @@ case "$verb" in
       else
         [ "$want_value" = 1 ] && echo "[not set]" || echo "MemoryCurrent=[not set]"
       fi
+    elif [ "$prop" = CPUUsageNSec ]; then
+      # The daemon's user plus system time, as the cgroup's CPU accounting
+      # would report it for a one-process service.
+      pid="$(daemon_pid)"
+      ns=""
+      [ -n "$pid" ] && ns="$(awk -v hz="$(getconf CLK_TCK)" '{ printf "%.0f", ($14 + $15) * 1e9 / hz }' "/proc/$pid/stat" 2>/dev/null)"
+      [ "$want_value" = 1 ] && echo "${ns:-[not set]}" || echo "CPUUsageNSec=${ns:-[not set]}"
+    elif [ "$prop" = MainPID ]; then
+      pid="$(daemon_pid)"
+      [ "$want_value" = 1 ] && echo "${pid:-0}" || echo "MainPID=${pid:-0}"
     fi
     exit 0 ;;
   *) echo "systemctl-shim: unsupported: $*" >&2; exit 1 ;;
