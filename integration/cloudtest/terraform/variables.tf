@@ -71,6 +71,10 @@ variable "nodes" {
     # IAP): zero IN_USE_ADDRESSES quota. Used by the ECONOMY killable stores —
     # ECONOMY=1 SYBILS=8 saturates every region's default 8-IP quota.
     internal_only = optional(bool, false)
+    # A machine type for this node alone; empty means var.machine_type. The
+    # publish-throughput topology gives its load generators bigger boxes, so a
+    # step is limited by the network under test rather than by the clients.
+    machine_type = optional(string, "")
   }))
 }
 

@@ -16,6 +16,9 @@ sign, stage, place, submit, commit), the row reports each leg's p50 and p95 over
 the committed publishes, and "outside": the generator's time less the client's
 own total, which is process start and writing the object. Where it names the
 registry that accepted the entry, the row counts committed publishes per registry.
+Where the generators sampled their own CPU, the row reports busy and steal over
+every sample, so a step limited by its generators reads differently from one
+limited by the network.
 """
 import argparse, json, re, sys
 
@@ -30,7 +33,7 @@ def pct(xs, p):
 
 
 def read_gen(path):
-    g = {"ok": [], "fail": 0, "fail_detail": "", "skip": 0, "done": None, "seen": 0, "legs": [], "regs": {}}
+    g = {"ok": [], "fail": 0, "fail_detail": "", "skip": 0, "done": None, "seen": 0, "legs": [], "regs": {}, "cpu": []}
     with open(path) as f:
         for line in f:
             p = line.split()
@@ -54,6 +57,8 @@ def read_gen(path):
                 g["skip"] += 1
             elif p[0] == "done" and len(p) >= 2:
                 g["done"] = int(p[1])
+            elif p[0] == "cpu" and len(p) >= 4:
+                g["cpu"].append((float(p[2]), float(p[3])))
     return g
 
 
@@ -115,6 +120,8 @@ def main():
     for l in leg_rows:
         leg_names += [k for k in l if k not in leg_names]
     legs = {k: [l[k] for l in leg_rows if k in l] for k in leg_names}
+    busy = [b for g in gens for b, _ in g["cpu"]]
+    steal = [st for g in gens for _, st in g["cpu"]]
     regs = {}
     for g in gens:
         for r, c in g["regs"].items():
@@ -146,6 +153,9 @@ def main():
         "legs_p50_s": {k: round(pct(v, 0.5), 3) for k, v in legs.items()},
         "legs_p95_s": {k: round(pct(v, 0.95), 3) for k, v in legs.items()},
         "accepted_by": dict(sorted(regs.items())),
+        "gen_cpu_n": len(busy),
+        "gen_cpu_busy_p50": pct(busy, 0.5), "gen_cpu_busy_max": max(busy) if busy else None,
+        "gen_cpu_steal_p50": pct(steal, 0.5),
         "last_fail": next((g["fail_detail"] for g in gens if g["fail_detail"]), ""),
         "verdict": "fail" if why else "pass", "why": "; ".join(why),
     }

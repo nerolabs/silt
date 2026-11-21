@@ -124,33 +124,74 @@ func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manife
 	// failing loud per B7.
 	const placeAttempts = 4
 
-	var nextGroup func(g, attempt int)
-	nextGroup = func(g, attempt int) {
-		if g == len(groups) {
-			// B7 / before returning a link, verify every erasure stripe
-			// kept enough placed shards to reconstruct. Column placement means
-			// a shard-position that landed on no node is missing from EVERY
-			// stripe; if that leaves a stripe with fewer stored shards than it
-			// needs, the file is unrecoverable and we must fail loud — never
-			// register a link for content the swarm can't rebuild.
-			if m.K != 0 && distErr == nil {
-				if s, cnt, stored, need := understockedStripe(m, manifestN, shardPlaced); s >= 0 {
-					distErr = fmt.Errorf("stripe %d unrecoverable: only %d of %d shards placed, need %d (network full or unreachable)",
-						s, cnt, stored, need)
-				}
-			}
-			n.logf(ports.LogInfo, "file distributed", "root", root, "chunks", len(ids), "placements", placed)
-			done(placed, distErr)
+	// Groups are independent — each has its own key, its own lookup and its
+	// own holders — so up to placeGroupsInFlight of them run at once. Run one
+	// after another, a small file's eight groups cost eight lookups and
+	// twenty-four sends end to end; overlapped, the publish waits for roughly
+	// the slowest single group. The cap bounds the chunk bytes in flight for a
+	// large file. Every callback lands on the node's loop, so the shared
+	// counters below need no locking.
+	const placeGroupsInFlight = 8
+
+	started, finished, ended := 0, 0, false
+	var startGroup func(g, attempt int)
+	var pump func()
+	groupDone := func() {
+		finished++
+		pump()
+	}
+	pump = func() {
+		for started < len(groups) && started-finished < placeGroupsInFlight {
+			started++
+			startGroup(started-1, 0)
+		}
+		if finished < len(groups) || ended {
 			return
 		}
+		ended = true
+		// B7 / before returning a link, verify every erasure stripe
+		// kept enough placed shards to reconstruct. Column placement means
+		// a shard-position that landed on no node is missing from EVERY
+		// stripe; if that leaves a stripe with fewer stored shards than it
+		// needs, the file is unrecoverable and we must fail loud — never
+		// register a link for content the swarm can't rebuild.
+		if m.K != 0 && distErr == nil {
+			if s, cnt, stored, need := understockedStripe(m, manifestN, shardPlaced); s >= 0 {
+				distErr = fmt.Errorf("stripe %d unrecoverable: only %d of %d shards placed, need %d (network full or unreachable)",
+					s, cnt, stored, need)
+			}
+		}
+		n.logf(ports.LogInfo, "file distributed", "root", root, "chunks", len(ids), "placements", placed)
+		done(placed, distErr)
+	}
+	startGroup = func(g, attempt int) {
 		grp := groups[g]
 		n.IterativeFindNode(grp.key, func(closest []ports.NodeID) {
 			// Steer a coded column onto a domain no other column has used
 			// yet. Manifest chunks and uncoded files place on raw closest —
 			// they carry no column anti-affinity to preserve.
+			//
+			// Columns in flight together have not landed yet, so steering on
+			// landed holders alone would let them all pick the same domain.
+			// A column instead claims the domains of the holders it is about
+			// to ask as soon as it chooses them; a holder that accepts in
+			// place of one of those counts when it lands.
 			candidates := closest
+			claimed := map[ports.NodeID]bool{}
 			if grp.column {
 				candidates = n.preferFreshDomain(closest, usedDomains)
+				for _, id := range candidates {
+					if len(claimed) == n.cfg.Replication {
+						break
+					}
+					if id == n.id {
+						continue
+					}
+					claimed[id] = true
+					if d := n.domainOf(id); d != 0 {
+						usedDomains[d]++
+					}
+				}
 			}
 			groupPlaced := 0
 			var nextMember func(k int)
@@ -164,7 +205,7 @@ func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manife
 					// retry it too but let the per-stripe check above be judge.
 					if groupPlaced == 0 && (grp.required || grp.column) {
 						if attempt+1 < placeAttempts {
-							nextGroup(g, attempt+1)
+							startGroup(g, attempt+1)
 							return
 						}
 						if grp.required && distErr == nil {
@@ -176,7 +217,7 @@ func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manife
 								kind, ids[grp.members[0]], placeAttempts)
 						}
 					}
-					nextGroup(g+1, 0)
+					groupDone()
 					return
 				}
 				id := ids[grp.members[k]]
@@ -205,7 +246,8 @@ func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manife
 					func(target ports.NodeID) {
 						placed++
 						groupPlaced++
-						if grp.column {
+						if grp.column && !claimed[target] {
+							claimed[target] = true
 							if d := n.domainOf(target); d != 0 {
 								usedDomains[d]++
 							}
@@ -226,7 +268,7 @@ func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manife
 			nextMember(0)
 		})
 	}
-	nextGroup(0, 0)
+	pump()
 }
 
 // understockedStripe returns the first erasure stripe left with too few
@@ -269,38 +311,49 @@ func understockedStripe(m *manifest.Manifest, manifestN int, shardPlaced []bool)
 // OK=false) just means the next candidate gets asked — spill-over is
 // how a capacity-bounded network fills evenly. accepted (optional)
 // fires per accepting node; done receives the acceptance count.
+//
+// The first want candidates are asked at once, and each refusal or error
+// hands its slot to the next candidate in line. So the copies cost one round
+// trip rather than want of them, no more than want sends are ever
+// outstanding, and the holders are the ones a one-at-a-time walk would reach.
 func (n *Node) placeAt(id ports.ChunkID, data []byte, proof *ports.StorageProof,
 	candidates []ports.NodeID, want int, accepted func(ports.NodeID), done func(placed int)) {
 
-	placed := 0
-	var try func(i int)
-	try = func(i int) {
-		if placed >= want || i >= len(candidates) {
-			done(placed)
-			return
-		}
-		target := candidates[i]
-		if target == n.id {
-			try(i + 1)
-			return
-		}
-		msg := ports.Message{Kind: ports.MsgStoreChunk, ChunkID: id, Data: data, Proof: proof}
-		n.request(target, msg, func(resp ports.Message, err error) {
-			// Debug narration: an errored/refused attempt walks to the NEXT
-			// candidate, but the store may have completed on this one — a lost ack
-			// mints a silent extra copy. Name every attempt so the disk census can
-			// be correlated with the sender's view.
-			n.logf(ports.LogDebug, "place attempt", "chunk", id, "target", target, "ok", err == nil && resp.OK, "err", err)
-			if err == nil && resp.OK {
-				placed++
-				if accepted != nil {
-					accepted(target)
-				}
+	placed, inFlight, next, ended := 0, 0, 0, false
+	var fill func()
+	fill = func() {
+		for placed+inFlight < want && next < len(candidates) {
+			target := candidates[next]
+			next++
+			if target == n.id {
+				continue
 			}
-			try(i + 1)
-		})
+			inFlight++
+			msg := ports.Message{Kind: ports.MsgStoreChunk, ChunkID: id, Data: data, Proof: proof}
+			n.request(target, msg, func(resp ports.Message, err error) {
+				// Debug narration: an errored/refused attempt walks to the NEXT
+				// candidate, but the store may have completed on this one — a lost ack
+				// mints a silent extra copy. Name every attempt so the disk census can
+				// be correlated with the sender's view.
+				n.logf(ports.LogDebug, "place attempt", "chunk", id, "target", target, "ok", err == nil && resp.OK, "err", err)
+				inFlight--
+				if err == nil && resp.OK {
+					placed++
+					if accepted != nil {
+						accepted(target)
+					}
+				}
+				fill()
+			})
+		}
+		// A reply that arrives inside n.request re-enters fill, so the outer
+		// call can find the walk already finished.
+		if inFlight == 0 && !ended {
+			ended = true
+			done(placed)
+		}
 	}
-	try(0)
+	fill()
 }
 
 // resolveProviders finds nodes claiming to hold id: local records plus

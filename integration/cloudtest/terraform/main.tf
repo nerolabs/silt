@@ -160,7 +160,7 @@ locals {
 resource "google_compute_instance" "natgw" {
   for_each     = local.natgw_nodes
   name         = "silt-ft-${each.key}-${var.run_id}"
-  machine_type = var.machine_type
+  machine_type = coalesce(each.value.machine_type, var.machine_type)
   zone         = each.value.zone
   labels       = local.labels
   tags         = ["natgw", "public-node"]
@@ -201,7 +201,7 @@ resource "google_compute_instance" "natgw" {
 resource "google_compute_instance" "public" {
   for_each     = local.public_nodes
   name         = "silt-ft-${each.key}-${var.run_id}"
-  machine_type = var.machine_type
+  machine_type = coalesce(each.value.machine_type, var.machine_type)
   zone         = each.value.zone
   labels       = merge(local.labels, { role = each.value.role })
   tags         = ["public-node"]
@@ -255,7 +255,7 @@ resource "google_compute_instance" "public" {
 resource "google_compute_instance" "natted" {
   for_each     = local.nat_nodes
   name         = "silt-ft-${each.key}-${var.run_id}"
-  machine_type = var.machine_type
+  machine_type = coalesce(each.value.machine_type, var.machine_type)
   zone         = each.value.zone
   labels       = merge(local.labels, { role = each.value.role })
   tags         = ["natted"]
@@ -313,7 +313,7 @@ resource "google_compute_instance" "natted" {
 resource "google_compute_instance" "noip" {
   for_each     = local.noip_nodes
   name         = "silt-ft-${each.key}-${var.run_id}"
-  machine_type = var.machine_type
+  machine_type = coalesce(each.value.machine_type, var.machine_type)
   zone         = each.value.zone
   labels       = merge(local.labels, { role = each.value.role })
   tags         = ["public-node"]
@@ -364,7 +364,7 @@ resource "google_compute_instance" "noip" {
 resource "google_compute_instance" "island" {
   for_each     = local.island_nodes
   name         = "silt-ft-${each.key}-${var.run_id}"
-  machine_type = var.machine_type
+  machine_type = coalesce(each.value.machine_type, var.machine_type)
   zone         = each.value.zone
   labels       = merge(local.labels, { role = each.value.role })
   tags         = ["island"]
