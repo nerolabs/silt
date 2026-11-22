@@ -235,18 +235,20 @@ func (c *Chain) stateRootLeaves() []statehash.Leaf {
 // token or takedown, and so grow without bound: the ones the kept state tree
 // tracks by journal rather than by comparing whole leaf sets.
 func (c *Chain) growingLeaves() []statehash.Leaf {
-	leaves := make([]statehash.Leaf, 0, len(c.byRoot)+len(c.spent)+len(c.revoked))
+	leaves := make([]statehash.Leaf, 0, c.byRoot.Len()+c.spent.Len()+len(c.revoked))
 	add := func(tag string, rawKey, value []byte) {
 		leaves = append(leaves, statehash.Leaf{Key: statehash.Key(tag, rawKey), Value: value})
 	}
 
 	// ---- Class A: set-membership (value = Present marker) ----
-	for root := range c.byRoot {
+	c.byRoot.Range(func(root ports.Hash, _ ports.Entry) bool {
 		add(tagByRoot, root[:], statehash.Present)
-	}
-	for serial := range c.spent {
+		return true
+	})
+	c.spent.Range(func(serial string, _ struct{}) bool {
 		add(tagSpent, []byte(serial), statehash.Present)
-	}
+		return true
+	})
 	for root := range c.revoked {
 		add(tagRevoked, root[:], statehash.Present)
 	}

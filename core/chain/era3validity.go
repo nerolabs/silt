@@ -202,15 +202,12 @@ func (c *Chain) cloneForDryRun() *Chain {
 	// ---- input history: apply appends b to blocks; copy so the live slice is untouched ----
 	s.blocks = append([]Block(nil), c.blocks...)
 	// ---- committedSet maps: deep-copied ----
-	s.byRoot = make(map[ports.Hash]ports.Entry, len(c.byRoot))
-	for k, v := range c.byRoot {
-		s.byRoot[k] = v
-	}
+	// byRoot and spent grow with every file published, so they are persistent
+	// maps: the clone shares their nodes, and apply on the clone copies only the
+	// paths it writes (pmap.go).
+	s.byRoot = c.byRoot
+	s.spent = c.spent
 	s.revoked = cloneBoolMapHash(c.revoked)
-	s.spent = make(map[string]bool, len(c.spent))
-	for k, v := range c.spent {
-		s.spent[k] = v
-	}
 	s.validatorsSeen = cloneBoolMapID(c.validatorsSeen)
 	s.slashed = cloneBoolMapID(c.slashed)
 	s.bonded = cloneInt64MapID(c.bonded)

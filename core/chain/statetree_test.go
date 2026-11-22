@@ -111,7 +111,7 @@ func TestKeptTreeFallsBackWhenItCannotAccount(t *testing.T) {
 	}
 
 	r := ports.HashBytes([]byte("written around the journal"))
-	c.byRoot[r] = ports.Entry{Root: r}
+	c.byRoot.Set(r, ports.Entry{Root: r})
 	got, err := c.StateRootForVersion(BlockVersionWitnessable)
 	if err != nil || got != rebuiltRootV5(t, c) {
 		t.Fatalf("after a write the journal missed: root %s (%v), rebuild %s", got, err, rebuiltRootV5(t, c))
@@ -136,5 +136,31 @@ func BenchmarkPostApplyRootsKeptTree(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+// byRoot and spent are shared between a chain and its dry-run clone rather than
+// copied, so this is the property the drift gate's shared-backing check cannot
+// see for them: applying a block on the clone leaves the source's committed
+// entries and spent serials exactly as they were, and the clone holds both.
+func TestDryRunCloneWritesNeverReachTheSource(t *testing.T) {
+	c := keptTreeChain(t, 50)
+	before := rebuiltRootV5(t, c)
+	clone := c.cloneForDryRun()
+	b := keptTreeBlock(c, 50)
+	clone.apply(b)
+
+	e := b.Entries[0]
+	if c.byRoot.Has(e.Root) || c.spent.Has(string(e.Token.Serial)) {
+		t.Fatal("applying a block on the clone wrote its entry or serial into the source")
+	}
+	if !clone.byRoot.Has(e.Root) || !clone.spent.Has(string(e.Token.Serial)) {
+		t.Fatal("the clone does not hold the block it applied")
+	}
+	if got := rebuiltRootV5(t, c); got != before {
+		t.Fatal("the source's state root changed when the clone applied a block")
+	}
+	if c.byRoot.Len() != 50 || clone.byRoot.Len() != 51 {
+		t.Fatalf("entry counts: source %d (want 50), clone %d (want 51)", c.byRoot.Len(), clone.byRoot.Len())
 	}
 }

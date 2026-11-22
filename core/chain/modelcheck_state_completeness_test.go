@@ -359,8 +359,10 @@ func populateCommitted(c *Chain) {
 	id := ports.NodeID{9}
 	root := ports.Hash{7}
 
-	c.byRoot = map[ports.Hash]ports.Entry{root: {Root: root}}
-	c.spent = map[string]bool{"serial-9": true}
+	c.byRoot = pmap[ports.Hash, ports.Entry]{}
+	c.byRoot.Set(root, ports.Entry{Root: root})
+	c.spent = pmap[string, struct{}]{}
+	c.spent.Set("serial-9", struct{}{})
 	c.revoked = map[ports.Hash]bool{root: true}
 	c.slashed = map[ports.NodeID]bool{id: true}
 	c.bonded = map[ports.NodeID]int64{id: 1 << 21}

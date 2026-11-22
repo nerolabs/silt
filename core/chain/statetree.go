@@ -85,7 +85,7 @@ func (rc *stateTreeCache) sizesMatch(c *Chain) bool {
 			want[g.space]--
 		}
 	}
-	return want == [growingSpaces]int{len(c.byRoot), len(c.spent), len(c.revoked)}
+	return want == [growingSpaces]int{c.byRoot.Len(), c.spent.Len(), len(c.revoked)}
 }
 
 // changes lists what the tree must change to describe c, and c's bounded leaves.
@@ -123,7 +123,7 @@ func boundedByKey(c *Chain) map[string][]byte {
 }
 
 func growingSizes(c *Chain) [growingSpaces]int {
-	return [growingSpaces]int{len(c.byRoot), len(c.spent), len(c.revoked)}
+	return [growingSpaces]int{c.byRoot.Len(), c.spent.Len(), len(c.revoked)}
 }
 
 // buildRootCache builds c's tree from every leaf: the one full rebuild, after
