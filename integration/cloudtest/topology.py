@@ -130,6 +130,13 @@ _MACHINE = {}
 _LOAD_MACHINE = os.environ.get("SCALE_LOAD_MACHINE", "e2-standard-4")
 if SCALE and _LOAD_MACHINE:
     _MACHINE = {g: _LOAD_MACHINE for g in ("load-1", "load-2", "load-3")}
+# SCALE_REGISTRY_RATE raises the per-client-IP request budget of every registry the
+# validators serve (daemon -registry-rate; empty = the daemon default). The scale
+# flow's few generator machines stand in for many publishers, each of which would
+# have its own address; at the default budget a high step measures the per-IP
+# limit, not the network.
+_REGISTRY_RATE = os.environ.get("SCALE_REGISTRY_RATE", "") if SCALE else ""
+_REGISTRY_FLAGS = f" -registry-rate {_REGISTRY_RATE}" if _REGISTRY_RATE else ""
 # SCALE_VALIDATOR_MACHINE sizes the four validators alone (empty = the fleet
 # default), so a step can be repeated on bigger validators to tell a CPU-bound
 # validator from one bound by a single busy thread or by the protocol.
@@ -405,9 +412,9 @@ def main():
                  f"-persistent-peers {persistent} "
                  f"-bond {bond} -bond-audit 30s -capacity 5G")
             if name != boot and name in reg_hosts:
-                a += f" -serve-registry 0.0.0.0:{REGISTRY_PORT}"
+                a += f" -serve-registry 0.0.0.0:{REGISTRY_PORT}{_REGISTRY_FLAGS}"
             if name == boot:
-                a += f" -serve-registry 0.0.0.0:{REGISTRY_PORT}"   # boot validator issues tokens
+                a += f" -serve-registry 0.0.0.0:{REGISTRY_PORT}{_REGISTRY_FLAGS}"   # boot validator issues tokens
                 #  paid DELIVERY lane, armed on the boot validator only (it is the token
                 # issuer, -validator implies the role): the flow_delivery_lane grade drives
                 # `swarm receipt` against it. The three companion flags are the daemon's own
