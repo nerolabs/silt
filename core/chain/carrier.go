@@ -219,11 +219,10 @@ func (c *Chain) applyCarrier(b Block, parentProposer ports.NodeID) {
 // headProposerID returns the ProposerID of this chain's head block — the parent of the block
 // about to be applied. Reported absent for an empty chain (before the genesis is applied).
 func (c *Chain) headProposerID() (ports.NodeID, bool) {
-	if len(c.blocks) == 0 {
+	if c.blocks.Len() == 0 {
 		return ports.NodeID{}, false
 	}
-	head := c.blocks[len(c.blocks)-1]
-	return head.ProposerID(), true
+	return c.blocks.Last().ProposerID(), true
 }
 
 // HeadCarrier returns the LastCommit carrier a proposer building on this chain's head must
@@ -294,8 +293,8 @@ func (c *Chain) HeadCarrier() []Attestation {
 
 // headBlock returns this chain's head block by value.
 func (c *Chain) headBlock() (Block, bool) {
-	if len(c.blocks) == 0 {
+	if c.blocks.Len() == 0 {
 		return Block{}, false
 	}
-	return c.blocks[len(c.blocks)-1], true
+	return *c.blocks.Last(), true
 }

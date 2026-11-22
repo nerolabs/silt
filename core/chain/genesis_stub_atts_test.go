@@ -48,7 +48,7 @@ func assertGenesisStripped(t *testing.T, c *Chain, victim ports.NodeID, path str
 	if c.Len() == 0 {
 		t.Fatalf("%s: no genesis committed", path)
 	}
-	if n := len(c.blocks[0].Atts); n != 0 {
+	if n := len(c.blocks.At(0).Atts); n != 0 {
 		t.Errorf("%s: committed genesis carries %d Atts — the unsigned stub was NOT STRIPPED before apply (M: strip, do not refuse, do not keep)", path, n)
 	}
 	if c.validatorsSeen[victim] {

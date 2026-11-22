@@ -103,7 +103,7 @@ func (w *seamEra) mint(t *testing.T, signers, seat []ed25519.PrivateKey, seed by
 		// block's hash. Height 1 carries no carrier by rule — there is no committed
 		// parent to precommit over — so the first block seats nobody in this era.
 		if next > 1 {
-			parent := w.c.blocks[len(w.c.blocks)-1]
+			parent := (*w.c.blocks.Last())
 			for _, k := range seat {
 				b.LastCommit = append(b.LastCommit, AttestAt(&parent, k, 0, PhasePrecommit, w.c.ChainID()))
 			}
@@ -308,34 +308,34 @@ func assertShedHolds(t *testing.T, era3, era4, epochBlocks uint64) {
 			// refuses to run any height on it; it is pinned by its own gate.
 			t.Logf("the state-root format never hands off (coefficient %d, stopped at height %d: %v) — a format "+
 				"whose validator set cannot grow can never mature, which is why the daemon refuses it",
-				w.c.MatureCoefficient(), len(w.c.blocks), driveErr)
+				w.c.MatureCoefficient(), w.c.blocks.Len(), driveErr)
 			return
 		}
 		t.Fatalf("GATE VACUOUS: the network never handed off (coefficient %d, bar 2), so there is no latch to "+
 			"re-arm and this asserts nothing. The chain stopped at height %d with: %v.",
-			w.c.MatureCoefficient(), len(w.c.blocks), driveErr)
+			w.c.MatureCoefficient(), w.c.blocks.Len(), driveErr)
 	}
 	matured, _ := w.c.Head()
-	mintedAt := w.c.blocks[len(w.c.blocks)-1].Version
+	mintedAt := (*w.c.blocks.Last()).Version
 
 	// The re-arming history: the launch anchors alone, seating nobody, so it never
 	// matures. It is built on its OWN replica from the same genesis, which is how an
 	// adversary builds it — every root and digest is honest for the state it commits.
 	rival := newSeamEra(t, 3, 4, era3, era4, epochBlocks)
-	for len(rival.c.blocks) < len(w.c.blocks)+2 {
-		b := rival.mint(t, rival.ak, rival.ak, byte(0xF0+len(rival.c.blocks)))
+	for rival.c.blocks.Len() < w.c.blocks.Len()+2 {
+		b := rival.mint(t, rival.ak, rival.ak, byte(0xF0+rival.c.blocks.Len()))
 		if err := rival.c.Append(*b); err != nil {
 			t.Fatalf("building the rival history at height %d (v%d): %v", b.Height, b.Version, err)
 		}
 	}
-	fork := append([]Block(nil), rival.c.blocks...)
-	if fork[0].Hash() != w.c.blocks[0].Hash() {
+	fork := rival.c.blocks.Slice(0)
+	if fork[0].Hash() != w.c.blocks.At(0).Hash() {
 		t.Fatalf("GATE VACUOUS: the rival history branches from a different genesis — Reconcile refuses it " +
 			"as foreign before the shed is ever tested")
 	}
-	if len(fork) <= len(w.c.blocks) {
+	if len(fork) <= w.c.blocks.Len() {
 		t.Fatalf("GATE VACUOUS: the rival history (%d blocks) is not longer than ours (%d) — fork-choice "+
-			"refuses it on height alone and the shed is never tested", len(fork), len(w.c.blocks))
+			"refuses it on height alone and the shed is never tested", len(fork), w.c.blocks.Len())
 	}
 
 	adopted, err := w.c.Reconcile(fork)
@@ -357,7 +357,7 @@ func assertShedHolds(t *testing.T, era3, era4, epochBlocks uint64) {
 	// Positive control: a history that CONTAINS our finalized head and extends it must
 	// still adopt, so the refusal above is the finality gate doing its job rather than
 	// Reconcile saying no to everything.
-	ext := append([]Block(nil), w.c.blocks...)
+	ext := w.c.blocks.Slice(0)
 	for i := 0; i < 2; i++ {
 		b := w.mint(t, w.vk, w.vk, byte(0xE0+i))
 		if err := w.c.Append(*b); err != nil {

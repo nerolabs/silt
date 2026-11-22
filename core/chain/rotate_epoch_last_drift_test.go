@@ -143,7 +143,7 @@ func TestRotateEpochIsLastInApply(t *testing.T) {
 // MinBond floor; any other c.<field> is a NEW read — reddens.
 //
 // RED-on-injection (verified, then restored): adding a reference to a history field in
-// liveQualifiedSet, e.g. `_ = len(c.blocks)` or gating on `c.bondRegHeight[id]`, makes
+// liveQualifiedSet, e.g. `_ = c.blocks.Len()` or gating on `c.bondRegHeight[id]`, makes
 // "blocks"/"bondRegHeight" appear in the reference set and this test fatals with the
 // disallowed-field name. GREEN on current code (references are exactly bonded/slashed/cfg).
 func TestLiveQualifiedSetReadsOnlyFinalMaps(t *testing.T) {
@@ -241,7 +241,7 @@ func TestIdQualifiesReadsOnlyFinalMaps(t *testing.T) {
 // A refactor that read history would make the first assertion redden.
 //
 // RED-on-injection (verified, then restored): if liveQualifiedSet filtered on
-// len(c.blocks), appending a block would change the output and the "history must not
+// c.blocks.Len(), appending a block would change the output and the "history must not
 // change the output" assertion fatals. GREEN on current code.
 func TestLiveQualifiedSetIsPureFunctionOfFinalMaps(t *testing.T) {
 	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true}
@@ -256,7 +256,7 @@ func TestLiveQualifiedSetIsPureFunctionOfFinalMaps(t *testing.T) {
 	}
 
 	// Mutate HISTORY (append a fabricated block). The output must NOT move.
-	c.blocks = append(c.blocks, Block{Height: 999})
+	c.blocks.Append(Block{Height: 999})
 	afterHistory := c.liveQualifiedSet()
 	if !reflect.DeepEqual(before, afterHistory) {
 		t.Fatalf("liveQualifiedSet changed after a HISTORY mutation (appended block): %v -> %v — "+

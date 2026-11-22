@@ -123,14 +123,15 @@ func (c *Chain) PruneBelowHorizon() int {
 		return 0
 	}
 	n := 0
-	for i := range c.blocks {
-		if c.blocks[i].Height >= floor {
+	for i := 0; i < c.blocks.Len(); i++ {
+		b := c.blocks.At(i)
+		if b.Height >= floor {
 			break // height-ordered; nothing at/above the floor is prune-eligible
 		}
-		if c.blocks[i].IsPruned() || !c.blocks[i].hasHeavyBondProof() {
+		if b.IsPruned() || !b.hasHeavyBondProof() {
 			continue // already pruned, or nothing heavy to shed (entry-only block)
 		}
-		c.blocks[i] = c.blocks[i].Prune()
+		c.blocks.Set(i, b.Prune())
 		n++
 	}
 	return n
