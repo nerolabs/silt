@@ -21,7 +21,7 @@ import (
 // TestTheSlashCapRefusalIsWiredAtStartup_Source already uses in this package.
 //
 // THE RUNTIME COVER IS IN e2e, AND IT IS NOT OPTIONAL. The shape a source gate cannot
-// see: the check lifted into a helper defined later in daemon.go and called BEFORE chainstore.Recover left
+// see: the check lifted into a helper defined later in daemon.go and called BEFORE chainWriter.Recover left
 // every gate in this file GREEN while the mechanism was dead — the binary served under a divergent
 // -bond-label-k with zero refusal lines. e2e/consensus_config_bind_test.go drives both halves in real
 // processes and is what actually holds the seam; the order assertion below was re-anchored on that
@@ -141,7 +141,7 @@ func TestTheGenesisWiringIsOnTheProductionPath_Source(t *testing.T) {
 // relative to the mint it is a TAUTOLOGY; an earlier draft of this gate pinned mint -> check and
 // published that ordering as the reason, which is false and was measured false (a tree with the
 // check moved ahead of the mint refuses identically). What kills the mechanism is placing the
-// check ahead of chainstore.Recover: the chain is then empty, CheckConsensusParams returns nil on
+// check ahead of chainWriter.Recover: the chain is then empty, CheckConsensusParams returns nil on
 // blocks[0], and the daemon serves under a config its own chain contradicts. That was measured
 // too, with the previous form of this gate GREEN over it.
 //
@@ -174,7 +174,7 @@ func TestTheParamsRefusalIsWiredAtStartup_Source(t *testing.T) {
 	}
 
 	// ORDER, LOWER BOUND: after the replay that populates the chain from disk.
-	const recover_ = "chainstore.Recover("
+	const recover_ = "chainWriter.Recover("
 	recoverAt := strings.Index(s, recover_)
 	if recoverAt < 0 {
 		t.Fatalf("SOURCE GATE: the string %q is absent from daemon.go, so this gate cannot locate the "+
@@ -182,7 +182,7 @@ func TestTheParamsRefusalIsWiredAtStartup_Source(t *testing.T) {
 			"startup at all.%s", recover_, ungatedDisclosure)
 	}
 	if callAt < recoverAt {
-		t.Fatal("SOURCE GATE: by string OFFSET the params check precedes chainstore.Recover in daemon.go. " +
+		t.Fatal("SOURCE GATE: by string OFFSET the params check precedes chainWriter.Recover in daemon.go. " +
 			"CheckConsensusParams reads blocks[0] and returns nil on an EMPTY chain, and the chain is empty " +
 			"until the replay fills it — so the check would pass unconditionally on every start while the " +
 			"divergent config it exists to catch is loaded a moment later. MEASURED: in that position the " +

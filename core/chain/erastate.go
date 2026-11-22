@@ -161,7 +161,7 @@ func CensusOf(blocks []Block) VersionCensus {
 // half (LockedIn, ActivationHeight) is the readiness tally, which is itself derived from committed
 // history in rotateEpoch. Config is not read.
 func (c *Chain) EraState() EraState {
-	census := CensusOf(c.blocks.Slice(0))
+	census := c.blocks.Census()
 	return EraState{
 		Census: census,
 		Era3:   eraStatus(BlockVersionStateRoot, c.era3LockedIn, c.era3Height, census),

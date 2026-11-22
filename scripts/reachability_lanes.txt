@@ -211,7 +211,7 @@ claim: The daemon half of item 19. A chain carrying no v5 block is a healthy dar
 substantial: Cost 906 against an inline budget of 80, `cannot inline StartupEraLines` — the second-widest margin in this file. THIS RECORD USED TO NAME THE WRAPPER, cmd/silt.eraStartupLines, and that was an arithmetic accident waiting to fire: the wrapper is ONE body line whose cost of 120 is two non-inlinable call charges (Go prices a call to a non-inlinable callee at about 57), not body substance. Fold those two calls into one — pass the EraState in, or let StartupEraLines take the chain — and the wrapper drops under budget, this gate REFUSES the record, and CI goes red on a refactor that changed nothing about reachability. Naming the reducer removes the accident at no cost to the signal: deleting the boot-path call drops BOTH main.eraStartupLines and core/chain.StartupEraLines from the binary.
 
 lane: freeze-refuse-to-start
-symbol: github.com/nerolabs/silt/adapters/chainstore.Recover
+symbol: github.com/nerolabs/silt/adapters/chainstore.(*Writer).Recover
 label: the two refuse-to-start arms that are built
 claim: Manifest item 20 arm (a). The checklist claims a daemon that refuses rather than serves when its on-disk chain is torn or has lost block 0; this is the function that returns that refusal, and the daemon exits 3 on it. A refusal nothing calls is a chain silently served from a damaged store.
 substantial: Cost 802 against an inline budget of 80, `cannot inline Recover`. No function literal in the body.

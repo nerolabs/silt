@@ -2423,15 +2423,34 @@ func (c *Chain) recentBondRegNonces(prev ports.Hash) []uint64 {
 	return nonces
 }
 
-// blockByHash finds a committed block by its hash, scanning from the tip (recent
-// blocks — the drain window — are found in the first few steps).
+// blockByHash finds a committed block by its hash, through the history's index: a
+// hash the chain does not hold costs one lookup, not a walk of the whole history.
 func (c *Chain) blockByHash(h ports.Hash) (Block, bool) {
-	for i := c.blocks.Len() - 1; i >= 0; i-- {
-		if b := c.blocks.At(i); b.Hash() == h {
-			return *b, true
-		}
+	i, ok := c.blocks.IndexOf(h)
+	if !ok {
+		return Block{}, false
 	}
-	return Block{}, false
+	return *c.blocks.At(i), true
+}
+
+// ReleaseBlocks drops from memory the committed blocks that archive holds and that
+// this node will never change again: those below the height under which it sheds
+// heavy proofs, already in their shed form. Reading one back, for a peer catching up
+// or a lookup, fetches it from archive. The archive must hold this chain's own
+// blocks; each is checked against the chain before its block is released. It
+// returns how many blocks it released.
+func (c *Chain) ReleaseBlocks(archive BlockArchive) (int, error) {
+	floor := c.pruneFloor()
+	if c.cfg.Archive {
+		floor = c.archiveProofFloor()
+	}
+	if floor == 0 {
+		return 0, nil
+	}
+	final := func(b *Block) bool {
+		return b.Height < floor && (b.HeavyProofsShed() || !b.hasHeavyBondProof())
+	}
+	return c.blocks.release(int(floor), archive, final)
 }
 
 // validateBondRegWindow accepts a reg if it validates against ANY nonce in the
@@ -3258,6 +3277,10 @@ func (c *Chain) EpochBlocks() uint64 { return c.cfg.EpochBlocks }
 func (c *Chain) ConfigQuorum() int { return c.cfg.Quorum }
 
 func (c *Chain) Len() int { return c.blocks.Len() }
+
+// BlockAt returns the committed block at height, which is below Len. A block
+// released from memory is read back from the chain's archive.
+func (c *Chain) BlockAt(height uint64) Block { return *c.blocks.At(int(height)) }
 
 // FinalizedHeight is the height this node treats as irreversibly final — the anchor a
 // behind peer suffix-syncs FROM and the prune floor derives from. In OBJECTIVE
@@ -4127,7 +4150,7 @@ func (c *Chain) apply(b Block) {
 	c.blocks.Append(b)
 	for _, e := range b.Entries {
 		had := c.byRoot.Has(e.Root)
-		c.byRoot.Set(e.Root, e)
+		c.byRoot.Set(e.Root, indexedEntry(e))
 		c.rootCache.noteGrown(spaceByRoot, e.Root[:], had, true)
 		if e.Token != nil {
 			had := c.spent.Has(string(e.Token.Serial))
@@ -4860,9 +4883,31 @@ func (c *Chain) adopt(t *Chain) {
 	c.issuerKeyCommit = t.issuerKeyCommit
 }
 
+// LookupRoot returns the committed entry for root, without its publish token.
+// The index holds one entry per published file for the life of the chain, and a
+// token, a quorum of blind signatures, is most of an entry's size; keeping it here
+// would also keep every token in memory after its block is released. A token's
+// serial is in the spent set, and the whole entry, token included, is in its block.
 func (c *Chain) LookupRoot(root ports.Hash) (ports.Entry, bool) {
 	return c.byRoot.Get(root)
 }
+
+// indexedEntry is e as the root index keeps it: without its token.
+func indexedEntry(e ports.Entry) ports.Entry {
+	e.Token = nil
+	return e
+}
+
+// ReleasedBlocks is how many committed blocks the chain holds only in its archive.
+func (c *Chain) ReleasedBlocks() int {
+	if h := c.blocks.HotFrom(); h > bvWidth {
+		return h - bvWidth
+	}
+	return 0
+}
+
+// EntryCount is the number of entries committed, without reading any block.
+func (c *Chain) EntryCount() int { return c.byRoot.Len() }
 
 func (c *Chain) AllEntries() []ports.Entry {
 	var out []ports.Entry

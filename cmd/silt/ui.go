@@ -973,7 +973,7 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 		out.Network = s.nd.EstimateNetwork()
 		if ch := s.nd.Chain(); ch != nil {
 			era := ch.EraState()
-			out.Chain = &chainInfo{Height: ch.Len(), Entries: len(ch.AllEntries()),
+			out.Chain = &chainInfo{Height: ch.Len(), Entries: ch.EntryCount(),
 				HeadVersion: era.Census.HeadVersion, Era: era}
 		}
 		out.Durability = s.durabilitySnapshot(uptime)
@@ -1540,6 +1540,9 @@ func (s *uiServer) apiRegistry(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, rows)
 }
 
+// uiChainBlocks is how many of the most recent blocks the chain page lists.
+const uiChainBlocks = 500
+
 func (s *uiServer) apiChain(w http.ResponseWriter, _ *http.Request) {
 	type row struct {
 		Height   uint64 `json:"height"`
@@ -1554,7 +1557,13 @@ func (s *uiServer) apiChain(w http.ResponseWriter, _ *http.Request) {
 		if ch == nil {
 			return
 		}
-		for _, b := range ch.Blocks(0) {
+		// The most recent blocks only: older ones live in the chain log, not in
+		// memory, and a page of every block would read the whole log per request.
+		from := uint64(0)
+		if n := uint64(ch.Len()); n > uiChainBlocks {
+			from = n - uiChainBlocks
+		}
+		for _, b := range ch.Blocks(from) {
 			rows = append(rows, row{
 				Height: b.Height, Hash: b.Hash().String(),
 				Entries: len(b.Entries), Proposer: b.ProposerID().String(), Atts: len(b.Atts),

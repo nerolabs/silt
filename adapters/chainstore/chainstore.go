@@ -23,11 +23,13 @@
 package chainstore
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -157,88 +159,293 @@ func save(path string, blocks []chain.Block) (int64, error) {
 }
 
 // Writer keeps a chain replica's file in step with the replica, appending the
-// blocks committed since its last Sync. It is not safe for concurrent use; the
-// daemon calls it from its event loop.
+// blocks committed since its last Sync, and reads blocks back from it: it is the
+// chain's archive (chain.BlockArchive), which lets the chain release old blocks
+// from memory. It is not safe for concurrent use; the daemon calls it from its
+// event loop.
 type Writer struct {
 	path string
-	f    *os.File // open for appending after the first rewrite
-	// held is how many blocks the file holds, and head the hash of the last of
-	// them. held is -1 until the first Sync, which rewrites the file whatever it
-	// held: that migrates a legacy file and drops a torn final frame.
+	// f is the file, open for reading and writing, and offs the offset of each
+	// readable frame in it, one per block from genesis. Both stay valid for
+	// reading after a failed write; only a rewrite replaces them.
+	f    *os.File
+	offs []int64
+	// held is how many blocks the file holds for appending to, and head the hash
+	// of the last of them. held is -1 when the next Sync must rewrite the file
+	// whatever it holds: before the first Sync or Recover, after a failed write,
+	// and after a legacy file is read.
 	held int
 	head ports.Hash
-	// size is the file's length; compactAt is twice its length after the last
-	// rewrite, past which the next Sync rewrites instead of appending.
+	// size is the length of the file's valid frames; compactAt is twice its
+	// length after the last rewrite, past which the next Sync rewrites instead of
+	// appending.
 	size, compactAt int64
 }
 
-// NewWriter returns a Writer for path. It touches nothing until the first Sync.
+// NewWriter returns a Writer for path. It touches nothing until the first Sync
+// or Recover.
 func NewWriter(path string) *Writer { return &Writer{path: path, held: -1} }
+
+// releaseEvery is how many replayed blocks pass between the replay's chances to
+// shed heavy proofs and release old blocks, so a restart never holds the whole
+// history in memory at once.
+const releaseEvery = 256
+
+// Durable is how many blocks, from genesis, the file holds as the chain last
+// synced them; 0 when the next Sync will rewrite it.
+func (w *Writer) Durable() uint64 {
+	if w.held < 0 {
+		return 0
+	}
+	return uint64(w.held)
+}
+
+// Block reads the block at height back from the file.
+func (w *Writer) Block(height uint64) (chain.Block, error) {
+	if w.f == nil || height >= uint64(len(w.offs)) {
+		return chain.Block{}, fmt.Errorf("chainstore: block %d is not in %s", height, w.path)
+	}
+	off := w.offs[height]
+	var hdr [4]byte
+	if _, err := w.f.ReadAt(hdr[:], off); err != nil {
+		return chain.Block{}, err
+	}
+	n := int(binary.BigEndian.Uint32(hdr[:]))
+	if n > maxFrame {
+		return chain.Block{}, fmt.Errorf("%w: block %d declares %d bytes", ErrCorruptFrame, height, n)
+	}
+	buf := make([]byte, n+4)
+	if _, err := w.f.ReadAt(buf, off+4); err != nil {
+		return chain.Block{}, err
+	}
+	if crc32.Checksum(buf[:n], crcTable) != binary.BigEndian.Uint32(buf[n:]) {
+		return chain.Block{}, fmt.Errorf("%w: block %d fails its checksum", ErrCorruptFrame, height)
+	}
+	b, err := chain.Decode(buf[:n])
+	if err != nil {
+		return chain.Block{}, fmt.Errorf("block %d: %w", height, err)
+	}
+	return *b, nil
+}
 
 // Sync makes the file hold c's committed chain. When c still extends what the
 // file holds it appends only the new blocks, then fsyncs; otherwise, or once
 // appends have doubled the file, it rewrites the whole file atomically.
 func (w *Writer) Sync(c *chain.Chain) error {
 	if w.held > 0 && w.held <= c.Len() && w.size < w.compactAt {
-		tail := c.Blocks(uint64(w.held - 1))
-		if len(tail) > 0 && tail[0].Hash() == w.head {
-			return w.append(tail[1:])
+		if last := c.BlockAt(uint64(w.held - 1)); last.Hash() == w.head {
+			return w.append(c.Blocks(uint64(w.held)))
 		}
 	}
-	return w.rewrite(c.Blocks(0))
+	return w.rewrite(c)
 }
 
 func (w *Writer) append(blocks []chain.Block) error {
 	if len(blocks) == 0 {
 		return nil
 	}
-	data := appendFrames(nil, blocks)
-	if _, err := w.f.Write(data); err != nil {
+	offs := make([]int64, 0, len(blocks))
+	data := make([]byte, 0, 4096)
+	for i := range blocks {
+		offs = append(offs, w.size+int64(len(data)))
+		data = appendFrames(data, blocks[i:i+1])
+	}
+	if _, err := w.f.WriteAt(data, w.size); err != nil {
 		return w.reset(err)
 	}
 	if err := w.f.Sync(); err != nil {
 		return w.reset(err)
 	}
+	w.offs = append(w.offs[:w.held], offs...)
 	w.held += len(blocks)
 	w.head = blocks[len(blocks)-1].Hash()
 	w.size += int64(len(data))
 	return nil
 }
 
-func (w *Writer) rewrite(blocks []chain.Block) error {
+// rewrite writes c's whole chain to a new file and swaps it in, a block at a time
+// so no more than one block is in memory for it. Blocks c has released are read
+// from the old file, which stays open until the new one has replaced it.
+func (w *Writer) rewrite(c *chain.Chain) error {
+	dir := filepath.Dir(w.path)
+	tmp, err := os.CreateTemp(dir, ".chain-*")
+	if err != nil {
+		return w.reset(err)
+	}
+	tmpName := tmp.Name()
+	fail := func(err error) error {
+		tmp.Close()
+		os.Remove(tmpName)
+		return w.reset(err)
+	}
+	bw := bufio.NewWriterSize(tmp, 1<<20)
+	if _, err := bw.Write(logMagic); err != nil {
+		return fail(err)
+	}
+	size := int64(len(logMagic))
+	n := c.Len()
+	offs := make([]int64, 0, n)
+	var frame []byte
+	var head ports.Hash
+	for h := 0; h < n; h++ {
+		b := c.BlockAt(uint64(h))
+		frame = appendFrames(frame[:0], []chain.Block{b})
+		if _, err := bw.Write(frame); err != nil {
+			return fail(err)
+		}
+		offs = append(offs, size)
+		size += int64(len(frame))
+		head = b.Hash()
+	}
+	if err := bw.Flush(); err != nil {
+		return fail(err)
+	}
+	if err := tmp.Sync(); err != nil {
+		return fail(err)
+	}
+	if err := tmp.Chmod(0o644); err != nil {
+		return fail(err)
+	}
+	if err := os.Rename(tmpName, w.path); err != nil {
+		return fail(err)
+	}
+	if df, err := os.Open(dir); err == nil {
+		_ = df.Sync()
+		df.Close()
+	}
+	// tmp is the file now at path, still open for writing; reopen it for both.
+	tmp.Close()
+	f, err := os.OpenFile(w.path, os.O_RDWR, 0)
+	if err != nil {
+		return w.reset(err)
+	}
 	if w.f != nil {
 		w.f.Close()
-		w.f = nil
 	}
-	size, err := save(w.path, blocks)
-	if err != nil {
-		return w.reset(err)
-	}
-	f, err := os.OpenFile(w.path, os.O_WRONLY|os.O_APPEND, 0)
-	if err != nil {
-		return w.reset(err)
-	}
-	w.f, w.held, w.size, w.compactAt = f, len(blocks), size, 2*size
-	w.head = ports.Hash{}
-	if len(blocks) > 0 {
-		w.head = blocks[len(blocks)-1].Hash()
-	}
+	w.f, w.offs, w.held, w.head, w.size, w.compactAt = f, offs, n, head, size, 2*size
 	return nil
 }
 
-// reset forgets what the file holds after a failed write, which may have left a
-// partial frame, so the next Sync rewrites it whole.
+// reset forgets what the file holds for appending after a failed write, which
+// may have left a partial frame, so the next Sync rewrites it whole. The file
+// stays open for reading the frames before it.
 func (w *Writer) reset(err error) error {
-	if w.f != nil {
-		w.f.Close()
-		w.f = nil
-	}
 	w.held = -1
 	return err
 }
 
 // Close releases the file. The Writer may still be used; its next Sync rewrites.
-func (w *Writer) Close() error { return w.reset(nil) }
+// A chain that released blocks to it can no longer read them, so a daemon closes
+// it only on its way out.
+func (w *Writer) Close() error {
+	w.held = -1
+	if w.f == nil {
+		return nil
+	}
+	err := w.f.Close()
+	w.f, w.offs = nil, nil
+	return err
+}
+
+// Replay loads the file into c, block by block, re-verifying each block's
+// structure and signatures through chain.Reload but not the live reputation gate
+// (see the package doc and chain.appendStructural). As it goes it lets c shed
+// heavy proofs and release old blocks to this Writer, exactly as a running node
+// does after each commit, so a restart holds no more history in memory than the
+// node did before it stopped. It returns how many blocks were restored. A file
+// that fails after a valid prefix restores that prefix and returns the error.
+//
+// Afterwards the Writer holds the file as replayed: the next Sync appends to it.
+// A torn final frame, an append a crash interrupted before its fsync returned,
+// is cut off, as the commit it carried was never durable.
+func (w *Writer) Replay(c *chain.Chain) (int, error) {
+	f, err := os.OpenFile(w.path, os.O_RDWR, 0)
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	r := bufio.NewReaderSize(f, 1<<20)
+	magic, err := r.Peek(len(logMagic))
+	if err != nil || !bytes.Equal(magic, logMagic) {
+		// A legacy file, or one too short to be anything: read it whole as
+		// before. The first Sync rewrites it as a log.
+		f.Close()
+		blocks, err := Load(w.path)
+		if len(blocks) == 0 {
+			return 0, err
+		}
+		n, rerr := c.Reload(blocks)
+		if rerr != nil {
+			return n, rerr
+		}
+		return n, err
+	}
+	r.Discard(len(logMagic))
+	w.f, w.offs, w.held = f, nil, -1
+	off := int64(len(logMagic))
+	var hdr [4]byte
+	var payload []byte
+	var last chain.Block
+	finish := func() {
+		w.held, w.size, w.compactAt = len(w.offs), off, 2*off
+		w.head = ports.Hash{}
+		if len(w.offs) > 0 {
+			w.head = last.Hash()
+		}
+	}
+	// failed keeps the valid prefix readable but never appends after a bad
+	// frame: the next Sync rewrites the file.
+	failed := func(err error) (int, error) {
+		finish()
+		w.held = -1
+		return len(w.offs), err
+	}
+	for {
+		if _, err := io.ReadFull(r, hdr[:]); err != nil {
+			break // the end, or a torn length header
+		}
+		n := int(binary.BigEndian.Uint32(hdr[:]))
+		if n > maxFrame {
+			return failed(fmt.Errorf("%w: frame %d declares %d bytes", ErrCorruptFrame, len(w.offs), n))
+		}
+		if cap(payload) < n+4 {
+			payload = make([]byte, n+4)
+		}
+		payload = payload[:n+4]
+		if _, err := io.ReadFull(r, payload); err != nil {
+			break // torn final frame
+		}
+		if crc32.Checksum(payload[:n], crcTable) != binary.BigEndian.Uint32(payload[n:]) {
+			return failed(fmt.Errorf("%w: frame %d fails its checksum", ErrCorruptFrame, len(w.offs)))
+		}
+		b, err := chain.Decode(payload[:n])
+		if err != nil {
+			return failed(fmt.Errorf("frame %d: %w", len(w.offs), err))
+		}
+		if _, err := c.Reload([]chain.Block{*b}); err != nil {
+			return failed(err)
+		}
+		w.offs = append(w.offs, off)
+		off += int64(4 + n + 4)
+		last = *b
+		if len(w.offs)%releaseEvery == 0 {
+			w.held = len(w.offs)
+			c.PruneBelowHorizon()
+			if _, err := c.ReleaseBlocks(w); err != nil {
+				return failed(err)
+			}
+		}
+	}
+	finish()
+	if fi, err := f.Stat(); err == nil && fi.Size() > off {
+		if err := f.Truncate(off); err != nil {
+			w.held = -1 // the next Sync rewrites instead
+		}
+	}
+	return len(w.offs), nil
+}
 
 // LossError reports that replaying path would DISCARD finalized history: the
 // file is torn (undecodable — no valid prefix survives, Restored = 0) or a
@@ -279,10 +486,18 @@ func (e *LossError) Unwrap() error { return e.Cause }
 // operator's acceptance must never destroy it. A missing file is an empty
 // history, never a loss.
 func Recover(path string, c *chain.Chain, acceptLoss bool) (restored int, loss *LossError, refused error) {
-	n, err := Replay(path, c)
+	return NewWriter(path).Recover(c, acceptLoss)
+}
+
+// Recover is the package's Recover through w, which then holds the file as
+// replayed, or, after an accepted loss, rewrites a new one at its next Sync.
+func (w *Writer) Recover(c *chain.Chain, acceptLoss bool) (restored int, loss *LossError, refused error) {
+	path := w.path
+	n, err := w.Replay(c)
 	if err == nil {
 		return n, nil, nil
 	}
+	w.held = -1
 	loss = &LossError{Restored: n, Cause: err}
 	if !acceptLoss {
 		return n, loss, loss
@@ -304,19 +519,8 @@ func Recover(path string, c *chain.Chain, acceptLoss bool) (restored int, loss *
 	return n, loss, nil
 }
 
-// Replay loads path into c and reloads our own persisted history via
-// chain.Reload — re-verifying each block's structure and signatures, but not
-// the live reputation gate (see the package doc and chain.appendStructural).
-// Returns how many blocks were restored. A file that fails to load after a valid
-// prefix restores that prefix and returns the load error.
+// Replay loads path into c through a new Writer (see Writer.Replay) and returns
+// how many blocks were restored.
 func Replay(path string, c *chain.Chain) (int, error) {
-	blocks, err := Load(path)
-	if len(blocks) == 0 {
-		return 0, err
-	}
-	n, rerr := c.Reload(blocks)
-	if rerr != nil {
-		return n, rerr
-	}
-	return n, err
+	return NewWriter(path).Replay(c)
 }
