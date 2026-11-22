@@ -109,14 +109,34 @@ func fromJSON(ej entryJSON) (ports.Entry, error) {
 }
 
 // Serve exposes reg on addr over plain HTTP (tests, trusted loopback).
-func Serve(addr string, reg ports.Registry) (boundAddr string, shutdown func(), err error) {
-	return serve(addr, reg, nil)
+func Serve(addr string, reg ports.Registry, opts ...ServeOption) (boundAddr string, shutdown func(), err error) {
+	return serve(addr, reg, nil, opts...)
+}
+
+// ServeOption adjusts how a registry is served.
+type ServeOption func(*serveConfig)
+
+type serveConfig struct {
+	ratePerSec, burst float64
+}
+
+// WithClientRate sets the sustained requests per second the registry serves to one
+// client IP, with a burst of twice that. The default suits a registry whose clients
+// each have their own address. Many clients behind one address (a carrier or office
+// NAT) share one budget, and a registry serving them needs more; so does a load test
+// whose few generator machines stand in for many publishers.
+func WithClientRate(perSec float64) ServeOption {
+	return func(c *serveConfig) {
+		if perSec > 0 {
+			c.ratePerSec, c.burst = perSec, 2*perSec
+		}
+	}
 }
 
 // ServeTLS exposes reg over TLS with the daemon's identity certificate;
 // clients pin the daemon's NodeID (NewPinnedClient) — same
 // key-is-identity scheme as tcpnet, no CA anywhere.
-func ServeTLS(addr string, ident *identity.Identity, reg ports.Registry) (boundAddr string, shutdown func(), err error) {
+func ServeTLS(addr string, ident *identity.Identity, reg ports.Registry, opts ...ServeOption) (boundAddr string, shutdown func(), err error) {
 	cert, err := ident.Certificate()
 	if err != nil {
 		return "", nil, err
@@ -124,7 +144,7 @@ func ServeTLS(addr string, ident *identity.Identity, reg ports.Registry) (boundA
 	return serve(addr, reg, &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		MinVersion:   tls.VersionTLS13,
-	})
+	}, opts...)
 }
 
 // asyncPublisher is an optional Registry capability (chainhost.Host implements it; a plain
@@ -189,10 +209,14 @@ var (
 // finish") in favour of whatever generic message the outer cap carries.
 func PublishCommitBudget() time.Duration { return publishPollTimeout }
 
-func serve(addr string, reg ports.Registry, tlsCfg *tls.Config) (boundAddr string, shutdown func(), err error) {
+func serve(addr string, reg ports.Registry, tlsCfg *tls.Config, opts ...ServeOption) (boundAddr string, shutdown func(), err error) {
+	cfg := serveConfig{ratePerSec: defaultRatePerSec, burst: defaultBurst}
+	for _, o := range opts {
+		o(&cfg)
+	}
 	// Read-cost bounding: a per-IP rate limit + server timeouts keep a public
 	// registry cheap to run and hard to exhaust (slowloris, lookup floods).
-	lim := newIPRateLimiter(defaultRatePerSec, defaultBurst)
+	lim := newIPRateLimiter(cfg.ratePerSec, cfg.burst)
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /publish", func(w http.ResponseWriter, r *http.Request) {

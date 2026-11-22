@@ -77,6 +77,7 @@ func cmdDaemon(args []string) error {
 	persistentPeers := fs.String("persistent-peers", "", "comma-separated ID@HOST:PORT of a STATIC consensus/anchor peer set — address-configured up front and NEVER evicted by churn (Tendermint persistent_peers). At genesis there is no chain, so a proposer cannot DISCOVER its attesters' addresses (silt's routing table holds bare NodeIDs; addresses live in the transport layer, learned only from inbound frames/gossip) — configure the validator set here so proposer-initiated quorum can form on a fresh multi-region net (Layer 2; the durable-WAN policy §8). These are AddPeer'd at boot AND exempt from reachability eviction (§2)")
 	registryURL := fs.String("registry", "", "registry ref: ID@https://host:port (key-pinned — copy the daemon's 'registry:' line verbatim; a bare http:// or unkeyed https:// is refused)")
 	serveRegistry := fs.String("serve-registry", "", "host the registry at this address (persisted in the store dir)")
+	registryRate := fs.Float64("registry-rate", 20, "requests per second the registry serves to one client IP, with a burst of twice that. Raise it when many publishers share an address (a carrier or office NAT), or for a load test whose few machines stand in for many publishers")
 	idSeed := fs.Int64("id-seed", 0, "derive the identity from a seed (default: persistent keyfile) — for scripted demos")
 	care := fs.String("care", "", "comma-separated care links (siltcare:...) to repair — no decryption possible or needed")
 	repairInterval := fs.Duration("repair-interval", 60*time.Second, "how often a caretaker sweeps each -care'd root for lost shards (probe → reconstruct past the slack). A liveness cadence, not a security parameter — the repair-bounty legs stay structural at any setting. Lower it on a small/local swarm so repair (and the e2e proof) fires in seconds")
@@ -264,7 +265,7 @@ func cmdDaemon(args []string) error {
 		if err != nil {
 			return err
 		}
-		bound, shutdown, err := httpregistry.ServeTLS(*serveRegistry, ident, freg)
+		bound, shutdown, err := httpregistry.ServeTLS(*serveRegistry, ident, freg, httpregistry.WithClientRate(*registryRate))
 		if err != nil {
 			return err
 		}
@@ -1638,7 +1639,7 @@ func cmdDaemon(args []string) error {
 	case *serveRegistry != "" && *validator:
 		host := &chainhost.Host{Loop: loop, Node: nd,
 			Attesters: attesterIDs, Broadcast: attesterIDs, Quorum: *quorum}
-		bound, _, err := httpregistry.ServeTLS(*serveRegistry, ident, host)
+		bound, _, err := httpregistry.ServeTLS(*serveRegistry, ident, host, httpregistry.WithClientRate(*registryRate))
 		if err != nil {
 			return err
 		}
@@ -1649,7 +1650,7 @@ func cmdDaemon(args []string) error {
 		if err != nil {
 			return err
 		}
-		bound, _, err := httpregistry.ServeTLS(*serveRegistry, ident, freg)
+		bound, _, err := httpregistry.ServeTLS(*serveRegistry, ident, freg, httpregistry.WithClientRate(*registryRate))
 		if err != nil {
 			return err
 		}
