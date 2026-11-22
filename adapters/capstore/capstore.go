@@ -27,10 +27,31 @@ var (
 	_ ports.CapacityReporter = (*Store)(nil)
 )
 
+// sizer is a chunk store that can report every chunk's size without reading it.
+type sizer interface {
+	Sizes(ctx context.Context) (map[ports.ChunkID]int64, error)
+}
+
 // Open wraps inner with a budget of total bytes, measuring existing
-// contents first.
+// contents first. A store that can report sizes without reading its chunks is
+// measured that way: reading every stored chunk at start cost a storing node
+// time in proportion to everything it holds, 46 minutes for 1.5 GB on a small
+// cloud disk, before it could serve or rejoin consensus. Measured by size, a
+// chunk that would fail its hash still counts until it is removed, as it still
+// occupies the disk.
 func Open(inner ports.ChunkStore, total int64) (*Store, error) {
 	s := &Store{inner: inner, total: total, sizes: make(map[ports.ChunkID]int64)}
+	if sz, ok := inner.(sizer); ok {
+		sizes, err := sz.Sizes(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("capstore: measuring existing store: %w", err)
+		}
+		for id, n := range sizes {
+			s.sizes[id] = n
+			s.used += n
+		}
+		return s, nil
+	}
 	ids, err := inner.List(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("capstore: measuring existing store: %w", err)

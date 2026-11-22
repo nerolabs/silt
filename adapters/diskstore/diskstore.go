@@ -103,6 +103,32 @@ func (s *Store) List(_ context.Context) ([]ports.ChunkID, error) {
 	return ids, err
 }
 
+// Sizes reports every stored chunk's size from the filesystem, in one walk and
+// without reading a chunk.
+func (s *Store) Sizes(_ context.Context) (map[ports.ChunkID]int64, error) {
+	out := map[ports.ChunkID]int64{}
+	objects := filepath.Join(s.root, "objects")
+	err := filepath.WalkDir(objects, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		id, perr := ports.ParseHash(d.Name())
+		if perr != nil {
+			return nil // skip temp files and strays
+		}
+		info, err := d.Info()
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil // removed during the walk
+		}
+		if err != nil {
+			return err
+		}
+		out[id] = info.Size()
+		return nil
+	})
+	return out, err
+}
+
 func (s *Store) Delete(_ context.Context, id ports.ChunkID) error {
 	err := os.Remove(s.path(id))
 	if errors.Is(err, fs.ErrNotExist) {
