@@ -95,9 +95,9 @@ func (c *Chain) pruneFloor() uint64 {
 // the header + consensus sigs (Block.Prune). Because the durable store and the
 // serve path both read c.blocks (the chainstore writer; chainrole serve Blocks(from)),
 // this one in-place shed bounds resident AND served heavy payload to a recent finalized
-// window. On disk it takes effect at the store's next compaction, which rewrites the file
-// from c.blocks whenever appends have doubled it; until then the file keeps the full
-// bodies it appended. Returns the number of blocks newly pruned. Idempotent (skips
+// window. On disk it takes effect when the store next rewrites the file from c.blocks,
+// which it does once the proofs shed here are a quarter of the file; until then the file
+// keeps the full bodies it appended. Returns the number of blocks newly pruned. Idempotent (skips
 // already-pruned and entry-only blocks). ENABLED: the node calls this after each
 // commit; a behind peer safely catches up via suffix-sync from its own finalized head, and a
 // deep-cold node beyond the WS window is told to use a checkpoint/archive. Safe to call on

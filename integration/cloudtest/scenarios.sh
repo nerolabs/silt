@@ -3428,9 +3428,12 @@ print(f\"offered {r['offered_per_s']}/s: {r['ok']}/{r['attempted']} committed ({
 
 # LOCAL_PROOF: go test ./core/node -run 'TestAnAttesterOneBlockBehind|TestAHeldProposal|TestAnEarlyOffer|TestAnEntryArmsNoEarlyOffer|TestEntrySubmitBudgets|TestDistributeOverlapsPlacementGroups|TestPlaceAtAsksForCopiesAtOnce' -count=1 && go test ./adapters/httpregistry -run 'TestSet_|TestOnAccepted' -count=1 && go test ./cmd/silt -run 'TestOpenRegistries|TestPublishLegs|TestAcquirePublishTokenMarks' -count=1 && SCALE_EAGER_MS=1000 SCALE_RATES=1,5,20 SCALE_MINUTES=2 go test ./core/node -run 'TestMeasure_PublishThroughputOnANormalWAN$' -v -count=1 && ./integration/cloudtest/check_scale_publish.sh — the simulator carries the same WAN, quorum and token sizes; the CLI publish path, real per-address limits and wall-clock RTT are the cloud's job
 flow_scale_publish() {
+  # Opt-in: a sheet launched without SCALE=1 has no load generators and grades no
+  # throughput. With SCALE=1, a topology that lacks them is a failure.
+  [ "${SCALE:-0}" = 1 ] || return 0
   local -a gens; read -r -a gens <<< "$(scale_gens)"
   if [ "${#gens[@]}" = 0 ]; then
-    record "scale-publish" fail major "no load generators in the topology — launch with SCALE=1"
+    record "scale-publish" fail major "SCALE=1 but the topology has no load generators"
     return
   fi
   require_nodes "scale-publish" major val-a val-b val-c val-d "${gens[@]}" || return

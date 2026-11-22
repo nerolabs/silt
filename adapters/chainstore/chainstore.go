@@ -180,6 +180,49 @@ type Writer struct {
 	// length after the last rewrite, past which the next Sync rewrites instead of
 	// appending.
 	size, compactAt int64
+	// heavy lists, in height order, the frames the file holds that carry heavy
+	// bond proofs, with the bytes of proof each carries.
+	heavy []heavyFrame
+}
+
+// heavyFrame is a frame written with heavy bond proofs: its height and the bytes
+// of proof a prune would take out of it.
+type heavyFrame struct {
+	height uint64
+	bytes  int64
+}
+
+// proofBytes is how many bytes of heavy bond proof b carries.
+func proofBytes(b *chain.Block) int64 {
+	var n int64
+	for i := range b.BondRegs {
+		n += int64(len(b.BondRegs[i].Answer))
+	}
+	return n
+}
+
+// noteHeavy records b's frame if it carries heavy proofs.
+func (w *Writer) noteHeavy(b *chain.Block) {
+	if b.CarriesHeavyProofs() {
+		w.heavy = append(w.heavy, heavyFrame{height: b.Height, bytes: proofBytes(b)})
+	}
+}
+
+// shedOutweighs reports whether the proofs c has shed that the file still carries
+// are a quarter of the file or more. Past that point a rewrite takes them out of
+// the file; below it a file that is mostly live history is not rewritten for each
+// proof the horizon passes, so the cost of rewriting stays proportional to what it
+// reclaims. A prune sheds every heavy block below its floor, so the shed frames are
+// a prefix of heavy.
+func (w *Writer) shedOutweighs(c *chain.Chain) bool {
+	var shed int64
+	for _, f := range w.heavy {
+		if c.CarriesHeavyProofsAt(f.height) {
+			break
+		}
+		shed += f.bytes
+	}
+	return 4*shed >= w.size
 }
 
 // NewWriter returns a Writer for path. It touches nothing until the first Sync
@@ -229,10 +272,11 @@ func (w *Writer) Block(height uint64) (chain.Block, error) {
 }
 
 // Sync makes the file hold c's committed chain. When c still extends what the
-// file holds it appends only the new blocks, then fsyncs; otherwise, or once
-// appends have doubled the file, it rewrites the whole file atomically.
+// file holds it appends only the new blocks, then fsyncs; otherwise, once appends
+// have doubled the file, or once the proofs c has shed are a quarter of it, it
+// rewrites the whole file atomically.
 func (w *Writer) Sync(c *chain.Chain) error {
-	if w.held > 0 && w.held <= c.Len() && w.size < w.compactAt {
+	if w.held > 0 && w.held <= c.Len() && w.size < w.compactAt && !w.shedOutweighs(c) {
 		if last := c.BlockAt(uint64(w.held - 1)); last.Hash() == w.head {
 			return w.append(c.Blocks(uint64(w.held)))
 		}
@@ -257,6 +301,9 @@ func (w *Writer) append(blocks []chain.Block) error {
 		return w.reset(err)
 	}
 	w.offs = append(w.offs[:w.held], offs...)
+	for i := range blocks {
+		w.noteHeavy(&blocks[i])
+	}
 	w.held += len(blocks)
 	w.head = blocks[len(blocks)-1].Hash()
 	w.size += int64(len(data))
@@ -285,6 +332,7 @@ func (w *Writer) rewrite(c *chain.Chain) error {
 	size := int64(len(logMagic))
 	n := c.Len()
 	offs := make([]int64, 0, n)
+	var heavy []heavyFrame
 	var frame []byte
 	var head ports.Hash
 	for h := 0; h < n; h++ {
@@ -292,6 +340,9 @@ func (w *Writer) rewrite(c *chain.Chain) error {
 		frame = appendFrames(frame[:0], []chain.Block{b})
 		if _, err := bw.Write(frame); err != nil {
 			return fail(err)
+		}
+		if b.CarriesHeavyProofs() {
+			heavy = append(heavy, heavyFrame{height: b.Height, bytes: proofBytes(&b)})
 		}
 		offs = append(offs, size)
 		size += int64(len(frame))
@@ -323,6 +374,7 @@ func (w *Writer) rewrite(c *chain.Chain) error {
 		w.f.Close()
 	}
 	w.f, w.offs, w.held, w.head, w.size, w.compactAt = f, offs, n, head, size, 2*size
+	w.heavy = heavy
 	return nil
 }
 
@@ -383,7 +435,7 @@ func (w *Writer) Replay(c *chain.Chain) (int, error) {
 		return n, err
 	}
 	r.Discard(len(logMagic))
-	w.f, w.offs, w.held = f, nil, -1
+	w.f, w.offs, w.held, w.heavy = f, nil, -1, nil
 	off := int64(len(logMagic))
 	var hdr [4]byte
 	var payload []byte
@@ -428,6 +480,7 @@ func (w *Writer) Replay(c *chain.Chain) (int, error) {
 			return failed(err)
 		}
 		w.offs = append(w.offs, off)
+		w.noteHeavy(b)
 		off += int64(4 + n + 4)
 		last = *b
 		if len(w.offs)%releaseEvery == 0 {
