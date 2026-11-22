@@ -570,9 +570,11 @@ func cmdDaemon(args []string) error {
 	}
 	if effFloor > 0 {
 		cfg.MinBondBytes = effFloor
-		if bsz, _ := parseSize(*bondSize); bsz < effFloor {
+		if bsz, _ := parseSize(*bondSize); bsz < effFloor && *lowbondPropose == "" {
 			// Fail closed rather than let the operator run a validator that
 			// silently earns nothing — mirrors the -bond/-min-bond check below.
+			// -lowbond-propose is the one exception: that adversary exists to be
+			// under-bonded, so an honest validator can be shown refusing it.
 			return fmt.Errorf("bond: -bond (%s) is below the anti-release floor (%d MiB), so this validator would earn NO standing: raise -bond, or pass -min-bond-floor 0 to accept sub-floor bonds (trusted/demo swarms only)", *bondSize, effFloor>>20)
 		}
 	}
@@ -1284,7 +1286,10 @@ func cmdDaemon(args []string) error {
 		// proposes. Must follow EnableBond so a bond exists to register.
 		if useObjective {
 			if bsz, _ := parseSize(*bondSize); bsz < minBondBytes {
-				return fmt.Errorf("objective consensus requires -bond (%s) to clear -min-bond (%s)", *bondSize, *minBond)
+				if *lowbondPropose == "" {
+					return fmt.Errorf("objective consensus requires -bond (%s) to clear -min-bond (%s)", *bondSize, *minBond)
+				}
+				fmt.Printf("⚠ ADVERSARY: -lowbond-propose set — starting with -bond %s below -min-bond %s, which can never qualify (red-team harness, never honest)\n", *bondSize, *minBond)
 			}
 			nd.EnableObjectiveChain()
 			fmt.Printf("consensus: OBJECTIVE fork-choice (default; on-chain bond ≥ %s); %d anchor(s) bootstrap the launch set, shed at maturity\n",
