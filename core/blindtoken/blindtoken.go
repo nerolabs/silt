@@ -301,6 +301,15 @@ func blindD(rng io.Reader, pub *rsa.PublicKey, msg []byte, domain string) (blind
 // Boneh-DeMillo-Lipton fault-attack countermeasure Go pairs with CRT in
 // decryptAndCheck. It is also a free correctness check on our own signer.
 //
+// The modexp itself runs by the Chinese Remainder Theorem when the key carries its
+// CRT values (privateExp), as crypto/rsa's does: two half-size exponentiations mod P
+// and Q recombined, about a third of the cost of one full-size Exp. Every issued token
+// costs this on the issuer's event loop, so it bounds how fast a validator can issue.
+// The result is the same number, so no signature changes. Blinding covers the CRT
+// path as it covers the full one (the value reduced mod P and Q is b·u^e, unknown to
+// the caller), and the check in 3 is the countermeasure CRT specifically needs: a
+// fault in one half-exponentiation would otherwise reveal a factor of N.
+//
 // The WIRE FORMAT is unchanged: the returned bytes are s.Bytes, exactly as before.
 //
 // DECLARED RESIDUAL — A LOCAL CACHE CHANNEL, WITH A DEPLOYMENT ASSUMPTION (crypto
@@ -349,7 +358,7 @@ func SignBlinded(rng io.Reader, priv *rsa.PrivateKey, blinded []byte) ([]byte, e
 	}
 	bb := new(big.Int).Mul(b, new(big.Int).Exp(u, e, priv.N))
 	bb.Mod(bb, priv.N)
-	s := new(big.Int).Exp(bb, priv.D, priv.N)
+	s := privateExp(priv, bb)
 	s.Mul(s, uInv)
 	s.Mod(s, priv.N)
 	// Verify-after-sign. A fault in the modexp (or a corrupt key) must not leave the
@@ -358,6 +367,24 @@ func SignBlinded(rng io.Reader, priv *rsa.PrivateKey, blinded []byte) ([]byte, e
 		return nil, ErrSignFault
 	}
 	return s.Bytes(), nil
+}
+
+// privateExp returns c^D mod N for c in [0, N). With the key's CRT values it
+// computes c^Dp mod P and c^Dq mod Q and recombines them by Garner's formula,
+// m2 + Q·((m1 − m2)·Qinv mod P); without them it falls back to one full-size Exp.
+func privateExp(priv *rsa.PrivateKey, c *big.Int) *big.Int {
+	pc := priv.Precomputed
+	if len(priv.Primes) != 2 || pc.Dp == nil || pc.Dq == nil || pc.Qinv == nil {
+		return new(big.Int).Exp(c, priv.D, priv.N)
+	}
+	p, q := priv.Primes[0], priv.Primes[1]
+	m1 := new(big.Int).Exp(new(big.Int).Mod(c, p), pc.Dp, p)
+	m2 := new(big.Int).Exp(new(big.Int).Mod(c, q), pc.Dq, q)
+	h := m1.Sub(m1, m2)
+	h.Mul(h, pc.Qinv)
+	h.Mod(h, p) // Euclidean: in [0, P) even when m1 < m2
+	h.Mul(h, q)
+	return h.Add(h, m2)
 }
 
 // canonicalRep decodes a big-endian RSA representative and requires it to be in

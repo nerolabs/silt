@@ -73,3 +73,41 @@ func TestLoadCorrupt(t *testing.T) {
 		t.Fatalf("corrupt key should error, got ok=%v err=%v", ok, err)
 	}
 }
+
+// A key read back from disk carries its CRT values. Blind signing uses them to run
+// at about a third of the full-size cost; a key without them still signs correctly
+// but would cap how fast a validator can issue tokens.
+func TestLoadedKeysCarryTheirCRTValues(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.LoadOrCreate(rand.Reader); err != nil {
+		t.Fatal(err)
+	}
+	k, ok, err := s.Load()
+	if err != nil || !ok {
+		t.Fatalf("load: ok=%v err=%v", ok, err)
+	}
+	if pc := k.Precomputed; pc.Dp == nil || pc.Dq == nil || pc.Qinv == nil {
+		t.Fatal("the issuer key loaded without its CRT values")
+	}
+
+	es, err := OpenEpochs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := es.EnsureBand(rand.Reader, 1, 1, 2); err != nil {
+		t.Fatal(err)
+	}
+	keys, err := es.Load()
+	if err != nil || len(keys) == 0 {
+		t.Fatalf("epoch load: %d keys, err=%v", len(keys), err)
+	}
+	for epoch, k := range keys {
+		if pc := k.Precomputed; pc.Dp == nil || pc.Dq == nil || pc.Qinv == nil {
+			t.Fatalf("epoch %d's demand key loaded without its CRT values", epoch)
+		}
+	}
+}
