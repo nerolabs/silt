@@ -22,7 +22,7 @@ func mintCredit(t *testing.T, issuer *blindtoken.Issuer) ports.PublishCredit {
 	t.Helper()
 	pub := issuer.Public()
 	serial, _ := blindtoken.NewSerial(rand.Reader)
-	blinded, secret, err := blindtoken.BlindCredit(rand.Reader, pub, serial)
+	blinded, secret, err := blindtoken.BlindCredit(rand.Reader, pub, 0, serial)
 	if err != nil {
 		t.Fatalf("blind credit: %v", err)
 	}
@@ -30,7 +30,7 @@ func mintCredit(t *testing.T, issuer *blindtoken.Issuer) ports.PublishCredit {
 	if err != nil {
 		t.Fatalf("issue credit: %v", err)
 	}
-	csig, uerr := blindtoken.UnblindCredit(pub, serial, sig, secret)
+	csig, uerr := blindtoken.UnblindCredit(pub, 0, serial, sig, secret)
 	if uerr != nil {
 		t.Fatalf("unblind credit: %v", uerr)
 	}
@@ -62,7 +62,7 @@ func mockIssuerHandlerEpoch(tr *tcpnet.Transport, issuer *blindtoken.Issuer, saw
 		if msg.Kind != ports.MsgDemandTokenRequest {
 			return
 		}
-		if msg.Credit == nil || !blindtoken.VerifyCredit(pub, msg.Credit.Serial, msg.Credit.Sig) || spent[string(msg.Credit.Serial)] {
+		if msg.Credit == nil || !blindtoken.VerifyCredit(pub, 0, msg.Credit.Serial, msg.Credit.Sig) || spent[string(msg.Credit.Serial)] {
 			tr.Send(from, ports.Message{Kind: ports.MsgDemandTokenReply, RID: msg.RID, OK: false})
 			return
 		}
@@ -190,7 +190,7 @@ func TestPrivateWithdrawalRefusedWithoutCredit(t *testing.T) {
 		if msg.Kind != ports.MsgTokenRequest {
 			return
 		}
-		if msg.Credit == nil || !blindtoken.VerifyCredit(issuerPub, msg.Credit.Serial, msg.Credit.Sig) {
+		if msg.Credit == nil || !blindtoken.VerifyCredit(issuerPub, 0, msg.Credit.Serial, msg.Credit.Sig) {
 			tr.Send(from, ports.Message{Kind: ports.MsgTokenReply, RID: msg.RID, OK: false})
 			return
 		}

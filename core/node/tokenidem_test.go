@@ -68,7 +68,7 @@ func TestTokenIssueRetryIdempotent_CreditPath(t *testing.T) {
 	ledger.Register(durable)
 
 	cs, _ := blindtoken.NewSerial(rand.Reader)
-	cblind, csecret, err := blindtoken.BlindCredit(rand.Reader, pub, cs)
+	cblind, csecret, err := blindtoken.BlindCredit(rand.Reader, pub, 0, cs)
 	if err != nil {
 		t.Fatal(err)
 	}

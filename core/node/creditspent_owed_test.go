@@ -42,7 +42,7 @@ func TestUnloadedCreditStoreRefusesCreditBearingRequests(t *testing.T) {
 	if _, ok := csWithdraw(t, iss, eph, &committed.PublicKey, &cr); ok {
 		t.Fatal("unloaded guard: the wire handler issued a demand token for a credit the guard cannot check against its store")
 	}
-	if iss.creditSpent[string(cr.Serial)] {
+	if iss.creditSpent[creditSpentKey(0, cr.Serial)] {
 		t.Fatal("unloaded guard: the refused credit was marked spent")
 	}
 	if n, _ := csStoreHas(t, store, cr.Serial); n != 0 {

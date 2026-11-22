@@ -92,7 +92,7 @@ func csMintCredit(t *testing.T, iss *Node, ledger *credit.Ledger, publishPub *rs
 	if err != nil {
 		t.Fatal(err)
 	}
-	blinded, secret, err := blindtoken.BlindCredit(rand.Reader, publishPub, cserial)
+	blinded, secret, err := blindtoken.BlindCredit(rand.Reader, publishPub, 0, cserial)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func csMintCredit(t *testing.T, iss *Node, ledger *credit.Ledger, publishPub *rs
 	if !rep.OK {
 		t.Fatal("credit mint refused")
 	}
-	sig, err := blindtoken.UnblindCredit(publishPub, cserial, rep.Data, secret)
+	sig, err := blindtoken.UnblindCredit(publishPub, 0, cserial, rep.Data, secret)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestCreditSpentSurvivesIssuerRestart(t *testing.T) {
 
 	// RESTART: same identity, same publish key, same committed demand key, same store.
 	iss2, ledger2 := csBootIssuer(t, csIssuerSeed, publishKey, committed, store)
-	if !iss2.creditSpent[string(cr.Serial)] {
+	if !iss2.creditSpent[creditSpentKey(0, cr.Serial)] {
 		t.Errorf("after LoadCreditSpent the restarted issuer's creditSpent does not hold the spent serial "+
 			"(store has %d entries)", func() int { n, _ := csStoreHas(t, store, cr.Serial); return n }())
 	}
@@ -249,7 +249,7 @@ func TestCreditSpentStoreFailureRefusesTheWithdrawal(t *testing.T) {
 
 	iss, ledger := csBootIssuer(t, csIssuerSeed, publishKey, committed, store)
 	cr, _ := csMintCredit(t, iss, ledger, &publishKey.PublicKey, durable)
-	key := string(cr.Serial)
+	key := creditSpentKey(cr.Epoch, cr.Serial)
 
 	injected := errors.New("injected: credit-spent store append failed")
 	store.fail = injected
@@ -356,7 +356,7 @@ func TestCreditSpentCapRefusesNeverEvicts(t *testing.T) {
 	if _, ok := csWithdraw(t, iss, eph, &committed.PublicKey, &crB); ok {
 		t.Fatal("RED: the wire handler issued a token for a new credit at the cap")
 	}
-	if iss.creditSpent[string(crB.Serial)] {
+	if iss.creditSpent[creditSpentKey(0, crB.Serial)] {
 		t.Error("the refused credit was marked spent")
 	}
 
@@ -365,7 +365,7 @@ func TestCreditSpentCapRefusesNeverEvicts(t *testing.T) {
 		t.Fatalf("store holds %d records (crA present: %v) after the refusal, want %d and present — a record was EVICTED", n, has, maxCreditSpent)
 	}
 	for i, s := range []int{0, len(pad) / 2, len(pad) - 1} {
-		if !iss.creditSpent[string(pad[s])] {
+		if !iss.creditSpent[creditSpentKey(0, pad[s])] {
 			t.Errorf("padded record %d (sample %d) is no longer held in memory — evicted", s, i)
 		}
 	}

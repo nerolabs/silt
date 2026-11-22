@@ -49,7 +49,7 @@ func TestCreditDecouplesFeeFromPublish(t *testing.T) {
 
 	// MINT: a normal, charged token request blinded in the CREDIT domain.
 	cs, _ := blindtoken.NewSerial(rand.Reader)
-	cblind, csecret, err := blindtoken.BlindCredit(rand.Reader, pub, cs)
+	cblind, csecret, err := blindtoken.BlindCredit(rand.Reader, pub, 0, cs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestCreditDecouplesFeeFromPublish(t *testing.T) {
 		t.Fatal("mint (a charged credit request) should succeed")
 	}
 	credit := ports.PublishCredit{Serial: cs, Sig: mustUnblindCredit(t, pub, cs, mint.Data, csecret)}
-	if !blindtoken.VerifyCredit(pub, credit.Serial, credit.Sig) {
+	if !blindtoken.VerifyCredit(pub, 0, credit.Serial, credit.Sig) {
 		t.Fatal("minted credit must verify under the credit domain")
 	}
 	if charged := start - ledger.Balance(durable); charged != fee {
@@ -103,9 +103,9 @@ func TestCreditAndTokenDomainsAreDistinct(t *testing.T) {
 	pub := &key.PublicKey
 	serial, _ := blindtoken.NewSerial(rand.Reader)
 
-	cb, cs, _ := blindtoken.BlindCredit(rand.Reader, pub, serial)
+	cb, cs, _ := blindtoken.BlindCredit(rand.Reader, pub, 0, serial)
 	csig := mustUnblindCredit(t, pub, serial, mustSignBlinded(t, key, cb), cs)
-	if !blindtoken.VerifyCredit(pub, serial, csig) {
+	if !blindtoken.VerifyCredit(pub, 0, serial, csig) {
 		t.Fatal("a credit signature must verify as a credit")
 	}
 	if blindtoken.Verify(pub, serial, csig) {
@@ -117,7 +117,7 @@ func TestCreditAndTokenDomainsAreDistinct(t *testing.T) {
 	if !blindtoken.Verify(pub, serial, tsig) {
 		t.Fatal("a token signature must verify as a token")
 	}
-	if blindtoken.VerifyCredit(pub, serial, tsig) {
+	if blindtoken.VerifyCredit(pub, 0, serial, tsig) {
 		t.Fatal("a token signature must NOT verify as a credit")
 	}
 }
@@ -175,7 +175,7 @@ func mustSerial(t *testing.T) []byte {
 // unblind step runs the RFC 9474 §4.4 Finalize verification.
 func mustUnblindCredit(t *testing.T, pub *rsa.PublicKey, serial, blindSig, secret []byte) []byte {
 	t.Helper()
-	sig, err := blindtoken.UnblindCredit(pub, serial, blindSig, secret)
+	sig, err := blindtoken.UnblindCredit(pub, 0, serial, blindSig, secret)
 	if err != nil {
 		t.Fatalf("unblind credit: %v", err)
 	}

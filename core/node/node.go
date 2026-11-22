@@ -896,6 +896,7 @@ type Node struct {
 	// credit-bearing request is refused. See tokenrole.go for the shape and
 	// the (disclosed) liveness cap.
 	creditSpent         map[string]bool
+	creditFloor         uint64 // lowest credit epoch still accepted; durable, only rises
 	creditStore         ports.PaidSerialStore
 	creditGuardRefusals uint64 // refusals by guard state (full / store / unloaded)
 	creditLoaded        bool

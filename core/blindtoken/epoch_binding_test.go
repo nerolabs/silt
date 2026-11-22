@@ -118,8 +118,8 @@ func TestDemandDomainStillSeparatesFromPublishAndCredit(t *testing.T) {
 
 	pb, ps, _ := Blind(rand.Reader, &k.PublicKey, serial)
 	publishSig := mustUnblind(t, &k.PublicKey, serial, mustSign(t, k, pb), ps)
-	cb, cs, _ := BlindCredit(rand.Reader, &k.PublicKey, serial)
-	creditSig, cerr := UnblindCredit(&k.PublicKey, serial, mustSign(t, k, cb), cs)
+	cb, cs, _ := BlindCredit(rand.Reader, &k.PublicKey, 0, serial)
+	creditSig, cerr := UnblindCredit(&k.PublicKey, 0, serial, mustSign(t, k, cb), cs)
 	if cerr != nil {
 		t.Fatalf("unblind credit: %v", cerr)
 	}
@@ -128,20 +128,20 @@ func TestDemandDomainStillSeparatesFromPublishAndCredit(t *testing.T) {
 	if VerifyDemand(&k.PublicKey, 0, serial, publishSig) || VerifyDemand(&k.PublicKey, 0, serial, creditSig) {
 		t.Fatal("a publish token or credit verified as a demand token")
 	}
-	if Verify(&k.PublicKey, serial, demandSig) || VerifyCredit(&k.PublicKey, serial, demandSig) {
+	if Verify(&k.PublicKey, serial, demandSig) || VerifyCredit(&k.PublicKey, 0, serial, demandSig) {
 		t.Fatal("a demand token verified as a publish token or credit")
 	}
 }
 
-// TestPublishAndCreditFDHAreUnchanged: the publish and credit domains must hash
-// EXACTLY as before (v1, no epoch). Committed publish tokens are re-verified against
-// the issuer key on every chain replay, so a change here would invalidate history.
-func TestPublishAndCreditFDHAreUnchanged(t *testing.T) {
+// TestPublishFDHIsUnchanged: the publish domain must hash EXACTLY as before (v1, no
+// epoch). Committed publish tokens are re-verified against the issuer key on every
+// chain replay, so a change here would invalidate history. (Credits never reach the
+// chain, so the credit domain could move to v2; TestCreditFDHInputBindsTheEpoch pins it.)
+func TestPublishFDHIsUnchanged(t *testing.T) {
 	k := testKey(t)
 	serial := []byte("0123456789abcdef0123456789abcdef")
 	for _, tc := range []struct{ domain, name string }{
 		{"silt/blindtoken/fdh/v1", "publish"},
-		{"silt/blindcredit/fdh/v1", "credit"},
 	} {
 		pub := &k.PublicKey
 		nLen := (pub.N.BitLen() + 7) / 8
@@ -161,5 +161,53 @@ func TestPublishAndCreditFDHAreUnchanged(t *testing.T) {
 			t.Fatalf("the %s FDH input changed — committed publish tokens re-verify "+
 				"against this on every replay", tc.name)
 		}
+	}
+}
+
+// TestCreditFDHInputBindsTheEpoch pins the credit FDH input byte for byte: domain ‖
+// ctr ‖ epoch(8B big-endian) ‖ serial under "silt/blindcredit/fdh/v2". A credit signed
+// for one epoch verifies under that epoch only, and a v1 (epoch-less) credit no longer
+// verifies at all.
+func TestCreditFDHInputBindsTheEpoch(t *testing.T) {
+	k := testKey(t)
+	pub := &k.PublicKey
+	serial := []byte("0123456789abcdef0123456789abcdef")
+	const epoch = uint64(0x0102030405060708)
+	nLen := (pub.N.BitLen() + 7) / 8
+	var out []byte
+	for ctr := uint32(0); len(out) < nLen+8; ctr++ {
+		h := sha256.New()
+		h.Write([]byte("silt/blindcredit/fdh/v2"))
+		var cb [4]byte
+		binary.BigEndian.PutUint32(cb[:], ctr)
+		h.Write(cb[:])
+		var eb [8]byte
+		binary.BigEndian.PutUint64(eb[:], epoch)
+		h.Write(eb[:])
+		h.Write(serial)
+		out = h.Sum(out)
+	}
+	want := new(big.Int).SetBytes(out)
+	want.Mod(want, pub.N)
+	if got := fullDomainHashD(pub, demandMsg(epoch, serial), creditDomain); got.Cmp(want) != 0 {
+		t.Fatal("the credit FDH input is not domain ‖ ctr ‖ epoch(8B big-endian) ‖ serial")
+	}
+
+	cb, cs, err := BlindCredit(rand.Reader, pub, epoch, serial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig, err := UnblindCredit(pub, epoch, serial, mustSign(t, k, cb), cs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !VerifyCredit(pub, epoch, serial, sig) {
+		t.Fatal("a credit does not verify under its own epoch")
+	}
+	if VerifyCredit(pub, epoch+1, serial, sig) || VerifyCredit(pub, epoch-1, serial, sig) {
+		t.Fatal("a credit verified under another epoch: its epoch could be re-dated")
+	}
+	if verifyD(pub, serial, sig, "silt/blindcredit/fdh/v1") {
+		t.Fatal("a v2 credit verified as a v1 credit")
 	}
 }

@@ -42,7 +42,17 @@ const fdhDomain = "silt/blindtoken/fdh/v1"
 // second per-publish fee — the ledger link the red-team exploited. This is
 // online Chaumian e-cash (Chaum 1982): the coin is a blind-signed serial,
 // double-spend is caught by the issuer's spent-set.
-const creditDomain = "silt/blindcredit/fdh/v1"
+//
+// v2 BINDS A CREDIT EPOCH INTO THE SIGNED MESSAGE, in the demand layout (demandMsg:
+// uint64BE(epoch) ‖ serial). A v1 credit never expired, so the issuer's spent-set could
+// never shed a record and every issuer eventually refused all credits. With the epoch
+// signed in, a credit's epoch is a pure function of the credit: the issuer accepts it
+// only within a window of its own clock and drops spent records once their epoch has
+// left that window. The issuer signs blind, so it never checks the epoch at mint; a
+// credit minted for a far epoch simply cannot be spent until that epoch comes round.
+// Credits never reach the chain (only the issuer that minted one verifies it), so
+// retiring v1 changes no committed history.
+const creditDomain = "silt/blindcredit/fdh/v2"
 
 // demandDomain is the FDH domain for BLIND-SAMPLING RETRIEVAL TOKENS P1, issue. A
 // retrieval token is a blind signature under an issuer key, domain-separated from
@@ -199,11 +209,12 @@ func Blind(rng io.Reader, pub *rsa.PublicKey, serial []byte) (blinded, secret []
 	return blindD(rng, pub, serial, fdhDomain)
 }
 
-// BlindCredit blinds serial as a PREPAID CREDIT (domain-separated from a publish
-// token, same key). Used at bulk mint time; the returned credit spends later for
-// a token with no per-publish fee (F4).
-func BlindCredit(rng io.Reader, pub *rsa.PublicKey, serial []byte) (blinded, secret []byte, err error) {
-	return blindD(rng, pub, serial, creditDomain)
+// BlindCredit blinds serial as a PREPAID CREDIT for credit epoch epoch
+// (domain-separated from a publish token, same key). Used at bulk mint time; the
+// returned credit spends later for a token with no per-publish fee (F4), while its
+// epoch is still within the issuer's window.
+func BlindCredit(rng io.Reader, pub *rsa.PublicKey, epoch uint64, serial []byte) (blinded, secret []byte, err error) {
+	return blindD(rng, pub, demandMsg(epoch, serial), creditDomain)
 }
 
 // BlindDemand blinds serial as a RETRIEVAL TOKEN for ISSUE EPOCH epoch,
@@ -435,9 +446,9 @@ func Unblind(pub *rsa.PublicKey, serial, blindSig, secret []byte) ([]byte, error
 	return unblindD(pub, serial, blindSig, secret, fdhDomain)
 }
 
-// UnblindCredit is Unblind for a PREPAID CREDIT (credit domain).
-func UnblindCredit(pub *rsa.PublicKey, serial, blindSig, secret []byte) ([]byte, error) {
-	return unblindD(pub, serial, blindSig, secret, creditDomain)
+// UnblindCredit is Unblind for a PREPAID CREDIT (credit domain) of credit epoch epoch.
+func UnblindCredit(pub *rsa.PublicKey, epoch uint64, serial, blindSig, secret []byte) ([]byte, error) {
+	return unblindD(pub, demandMsg(epoch, serial), blindSig, secret, creditDomain)
 }
 
 // UnblindDemand is Unblind for a RETRIEVAL TOKEN issued at epoch (demand domain).
@@ -494,10 +505,11 @@ func Verify(pub *rsa.PublicKey, serial, sig []byte) bool {
 }
 
 // VerifyCredit checks that sig is a valid issuer signature on a prepaid CREDIT
-// serial (credit domain). A publish-token signature fails this check and vice
-// versa, so the two are not interchangeable even under one key.
-func VerifyCredit(pub *rsa.PublicKey, serial, sig []byte) bool {
-	return verifyD(pub, serial, sig, creditDomain)
+// serial of credit epoch epoch (credit domain). A publish-token signature fails this
+// check and vice versa, so the two are not interchangeable even under one key, and a
+// credit verifies under its own epoch only.
+func VerifyCredit(pub *rsa.PublicKey, epoch uint64, serial, sig []byte) bool {
+	return verifyD(pub, demandMsg(epoch, serial), sig, creditDomain)
 }
 
 // VerifyDemand checks that sig is a valid issuer signature on a RETRIEVAL TOKEN
