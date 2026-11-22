@@ -1,6 +1,7 @@
 package chainstore
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"fmt"
 	"os"
@@ -17,19 +18,22 @@ import (
 type objectiveWorld struct {
 	cfg  chain.Config
 	prop ed25519.PrivateKey
+	// answer is the bond proof each renewal carries.
+	answer []byte
 }
 
 const renewEvery = 7
 
 func verifyValid(_ []byte, _ ports.Hash, _ int64, _ uint64, answer []byte) bool {
-	return string(answer) == "valid"
+	return bytes.HasPrefix(answer, []byte("valid"))
 }
 
 func newObjectiveWorld() objectiveWorld {
 	return objectiveWorld{
 		cfg: chain.Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true,
 			BondTTLBlocks: 16, EpochBlocks: 0},
-		prop: testKey(41),
+		prop:   testKey(41),
+		answer: []byte("valid"),
 	}
 }
 
@@ -48,7 +52,7 @@ func (w objectiveWorld) genesis(t *testing.T, c *chain.Chain) {
 	g := &chain.Block{Version: chain.BlockVersionWitnessable, Height: 0,
 		Entries: []ports.Entry{{Root: ports.HashBytes([]byte("genesis")), FileSize: 1,
 			ManifestChunks: []ports.ChunkID{ports.HashBytes([]byte("genesis-manifest"))}}},
-		BondRegs: []chain.BondReg{chain.NewBondReg(w.prop, w.bondRoot(), 8<<20, []byte("valid"), ports.Hash{}, 1)}}
+		BondRegs: []chain.BondReg{chain.NewBondReg(w.prop, w.bondRoot(), 8<<20, w.answer, ports.Hash{}, 1)}}
 	if err := c.PopulateEra4Roots(g); err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +72,7 @@ func (w objectiveWorld) commit(t *testing.T, c *chain.Chain, wr *Writer, i int) 
 			ManifestChunks: []ports.ChunkID{ports.HashBytes([]byte(fmt.Sprintf("manifest-%d", i)))},
 			Token:          &ports.PublishToken{Serial: []byte(fmt.Sprintf("serial-%d", i))}}}}
 	if i%renewEvery == 0 {
-		b.BondRegs = []chain.BondReg{chain.NewBondReg(w.prop, w.bondRoot(), 8<<20, []byte("valid"), prev, 1)}
+		b.BondRegs = []chain.BondReg{chain.NewBondReg(w.prop, w.bondRoot(), 8<<20, w.answer, prev, 1)}
 	}
 	if err := c.PopulateEra4Roots(&b); err != nil {
 		t.Fatalf("roots at %d: %v", h, err)
@@ -246,4 +250,54 @@ func appendBytes(t *testing.T, path string, b []byte) {
 func hashAt(c *chain.Chain, h int) ports.Hash {
 	b := c.BlockAt(uint64(h))
 	return b.Hash()
+}
+
+// The proofs a node sheds leave the file too, not only memory. Each renewal here
+// carries a proof the size of a real one, so the file is mostly proofs, as a young
+// network's is; by the time the horizon has passed most of them, a reader of the
+// file must see them shed, and the shed proofs the file still carries must stay
+// under a quarter of it. The saves that rewrite the file to get there stay few.
+func TestShedProofsLeaveTheFile(t *testing.T) {
+	w := newObjectiveWorld()
+	w.answer = append([]byte("valid"), make([]byte, 120<<10)...)
+	path := filepath.Join(t.TempDir(), "chain.cbor")
+	c := w.fresh()
+	wr := NewWriter(path)
+	defer wr.Close()
+	w.genesis(t, c)
+	const n = 300
+	rewrites := 0
+	for i := 0; i < n; i++ {
+		before := wr.compactAt
+		w.commit(t, c, wr, i)
+		if wr.compactAt != before {
+			rewrites++
+		}
+	}
+	onDisk, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var shedOnDisk int
+	var stale int64
+	for h := range onDisk {
+		b := &onDisk[h]
+		if b.HeavyProofsShed() {
+			shedOnDisk++
+		}
+		if b.CarriesHeavyProofs() && !c.CarriesHeavyProofsAt(uint64(h)) {
+			stale += proofBytes(b)
+		}
+	}
+	size := fileSize(t, path)
+	if shedOnDisk == 0 {
+		t.Fatalf("the file holds no block with its proofs shed (file %d bytes, chain released %d)", size, c.ReleasedBlocks())
+	}
+	if 4*stale >= size {
+		t.Fatalf("the file still carries %d bytes of proofs the chain has shed, of %d", stale, size)
+	}
+	if rewrites > n/5 {
+		t.Fatalf("%d of %d saves rewrote the file", rewrites, n)
+	}
+	t.Logf("file %d bytes, %d blocks shed on disk, %d stale proof bytes, %d rewrites in %d saves", size, shedOnDisk, stale, rewrites, n)
 }

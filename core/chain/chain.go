@@ -1165,6 +1165,10 @@ func (b Block) Prune() Block {
 // hasHeavyBondProof reports whether any of the block's bond registrations still carries
 // its heavy space-time Answer (the payload the retention prune sheds) — so an
 // entry-only or already-pruned block is skipped rather than needlessly marked pruned.
+// CarriesHeavyProofs reports whether b still carries a heavy bond proof that a
+// prune would shed.
+func (b *Block) CarriesHeavyProofs() bool { return b.hasHeavyBondProof() }
+
 func (b *Block) hasHeavyBondProof() bool {
 	for i := range b.BondRegs {
 		if b.BondRegs[i].Answer != nil {
@@ -3281,6 +3285,17 @@ func (c *Chain) Len() int { return c.blocks.Len() }
 // BlockAt returns the committed block at height, which is below Len. A block
 // released from memory is read back from the chain's archive.
 func (c *Chain) BlockAt(height uint64) Block { return *c.blocks.At(int(height)) }
+
+// CarriesHeavyProofsAt reports whether the block at height still carries a heavy
+// bond proof. A released block never does, since only blocks without one are
+// released, so the answer never reads the archive.
+func (c *Chain) CarriesHeavyProofsAt(height uint64) bool {
+	i := int(height)
+	if i >= c.blocks.Len() || c.blocks.Released(i) {
+		return false
+	}
+	return c.blocks.At(i).hasHeavyBondProof()
+}
 
 // FinalizedHeight is the height this node treats as irreversibly final — the anchor a
 // behind peer suffix-syncs FROM and the prune floor derives from. In OBJECTIVE
