@@ -163,26 +163,17 @@ func TestSaveLeavesNoTempAndDecodes(t *testing.T) {
 	}
 }
 
-// TestRecoverRefusesATornTail is the gate (this lane, scope call S3): a
-// chain.cbor whose tail is torn (the file truncated mid-array, the shape a
-// power loss or OOM-kill leaves) must REFUSE to start — Recover returns a
-// LossError with no prefix — unless the operator accepts the loss explicitly.
-// Before this rule the daemon printed the failure and started from genesis,
-// silently discarding finalized history (the field run, h83, 87 MiB).
-func TestRecoverRefusesATornTail(t *testing.T) {
-	fullRep := map[ports.NodeID]int64{}
-	for i := int64(1); i <= 5; i++ {
-		fullRep[idOf(testKey(i))] = 1000
-	}
-	c := committedChain(t, func(n ports.NodeID) int64 { return fullRep[n] })
+// TestRecoverRefusesATornLegacyFile is the gate (this lane, scope call S3): a
+// legacy chain.cbor is rewritten whole and atomically, so a torn one (the file
+// truncated mid-array) is damage, not an interrupted save. It must REFUSE to
+// start — Recover returns a LossError with no prefix — unless the operator
+// accepts the loss explicitly. Before this rule the daemon printed the failure
+// and started from genesis, silently discarding finalized history (the field
+// run, h83, 87 MiB).
+func TestRecoverRefusesATornLegacyFile(t *testing.T) {
+	c := persistedChain(t)
 	path := filepath.Join(t.TempDir(), "chain.cbor")
-	if err := Save(path, c.Blocks(0)); err != nil {
-		t.Fatalf("save: %v", err)
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	raw := chain.EncodeBlocks(c.Blocks(0))
 	// Tear the tail: keep the first two thirds of the bytes.
 	if err := os.WriteFile(path, raw[:len(raw)*2/3], 0o644); err != nil {
 		t.Fatal(err)
@@ -191,7 +182,7 @@ func TestRecoverRefusesATornTail(t *testing.T) {
 	fresh := chain.New(chain.DefaultConfig(), func(ports.NodeID) int64 { return 0 })
 	n, loss, refused := Recover(path, fresh, false)
 	if refused == nil {
-		t.Fatalf("a torn chain.cbor must REFUSE to start; Recover returned restored=%d loss=%v refused=nil", n, loss)
+		t.Fatalf("a torn legacy chain.cbor must REFUSE to start; Recover returned restored=%d loss=%v refused=nil", n, loss)
 	}
 	var le *LossError
 	if !errors.As(refused, &le) || le.Restored != 0 {
@@ -208,6 +199,68 @@ func TestRecoverRefusesATornTail(t *testing.T) {
 	if refused2 != nil || loss2 == nil || n2 != 0 {
 		t.Fatalf("with acceptLoss the refusal lifts and the loss stays reported: n=%d loss=%v refused=%v", n2, loss2, refused2)
 	}
+}
+
+// A log's fsync'd frames cannot be torn by a crash; only the append in flight
+// can. An incomplete final frame is therefore a commit that never became durable,
+// and recovery keeps every block before it without refusing, as a crash before
+// the old whole-file rename kept the previous file.
+func TestRecoverKeepsTheBlocksBeforeATornFinalFrame(t *testing.T) {
+	c := persistedChain(t)
+	path := filepath.Join(t.TempDir(), "chain.cbor")
+	if err := Save(path, c.Blocks(0)); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := len(appendFrames(nil, c.Blocks(1)))
+	for _, cut := range []int{1, 3, 5, last / 2, last - 1} {
+		if err := os.WriteFile(path, raw[:len(raw)-last+cut], 0o644); err != nil {
+			t.Fatal(err)
+		}
+		fresh := chain.New(chain.DefaultConfig(), func(ports.NodeID) int64 { return 0 })
+		n, loss, refused := Recover(path, fresh, false)
+		if refused != nil || loss != nil || n != 1 {
+			t.Fatalf("%d bytes of the final frame: want the 1-block prefix and no loss, got n=%d loss=%v refused=%v", cut, n, loss, refused)
+		}
+	}
+}
+
+// A complete frame whose bytes changed on disk fails its checksum: that is
+// damage to durable history, so recovery refuses and names the frame, keeping
+// the blocks before it only on the operator's word.
+func TestRecoverRefusesAFrameThatFailsItsChecksum(t *testing.T) {
+	c := persistedChain(t)
+	path := filepath.Join(t.TempDir(), "chain.cbor")
+	if err := Save(path, c.Blocks(0)); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := len(appendFrames(nil, c.Blocks(1)))
+	raw[len(raw)-last/2] ^= 0x01 // one bit inside the final frame's payload
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fresh := chain.New(chain.DefaultConfig(), func(ports.NodeID) int64 { return 0 })
+	n, _, refused := Recover(path, fresh, false)
+	if refused == nil || n != 1 || !errors.Is(refused, ErrCorruptFrame) {
+		t.Fatalf("a frame failing its checksum must refuse with the 1-block prefix: n=%d refused=%v", n, refused)
+	}
+}
+
+// persistedChain is committedChain with every party qualified.
+func persistedChain(t *testing.T) *chain.Chain {
+	t.Helper()
+	fullRep := map[ports.NodeID]int64{}
+	for i := int64(1); i <= 5; i++ {
+		fullRep[idOf(testKey(i))] = 1000
+	}
+	return committedChain(t, func(n ports.NodeID) int64 { return fullRep[n] })
 }
 
 // TestRecoverRefusesACorruptSuffixKeepsPrefixOnlyWhenAccepted: a block that

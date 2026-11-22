@@ -1241,8 +1241,11 @@ func cmdDaemon(args []string) error {
 		// restore-time regime line, the next under-latch names its layer in one
 		// diff — last-save regime ≠ restore regime ⇒ store/replay; equal-but-
 		// wedged ⇒ downstream of restore; head hash pins the content itself.
+		// The writer appends each commit's blocks to the file rather than rewriting
+		// the whole chain, so a commit's save costs its own blocks, not the chain.
+		chainWriter := chainstore.NewWriter(chainPath)
 		saveChain = func(why string) {
-			if err := chainstore.Save(chainPath, ch.Blocks(0)); err != nil {
+			if err := chainWriter.Sync(ch); err != nil {
 				fmt.Fprintln(os.Stderr, "chain save:", err)
 				return
 			}
