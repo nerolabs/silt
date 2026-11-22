@@ -250,6 +250,10 @@ var stateClass = map[string]struct {
 		"the rebuild's because the SMT is history independent; a write the journal cannot " +
 		"account for (`sizesMatch`) drops it back to a rebuild. `adopt` takes the winner's, " +
 		"which describes the adopted state."},
+	"openNodes": {injected, "set by `SetStateNodeStore`: where a state tree's nodes are " +
+		"kept, never what they are. Roots are the same in any store, so it cannot touch a " +
+		"verdict. `Reconcile` passes it to its scratch chain; dry-run clones keep their " +
+		"parent's tree and never build one."},
 	"trustFloorOverride": {transient, "set only on the `Reconcile` scratch chain and read " +
 		"within that replay by `trustFloor`; never accumulated across blocks, and " +
 		"deliberately NOT copied by `adopt`"},

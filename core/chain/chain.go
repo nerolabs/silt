@@ -40,6 +40,7 @@ import (
 	"github.com/fxamacker/cbor/v2"
 
 	"github.com/nerolabs/silt/core/publishtoken"
+	"github.com/nerolabs/silt/core/statehash"
 	"github.com/nerolabs/silt/core/translog"
 	"github.com/nerolabs/silt/ports"
 )
@@ -1772,6 +1773,9 @@ type Chain struct {
 	// its own changes, not a rebuild from every leaf (statetree.go). A cache:
 	// nil only makes the next root a full rebuild.
 	rootCache *stateTreeCache
+	// openNodes opens a store for a new state tree's nodes; nil keeps them in
+	// memory (SetStateNodeStore).
+	openNodes func() (statehash.NodeStore, error)
 }
 
 // New starts an empty replica. rep is the local reputation view —
@@ -1826,6 +1830,16 @@ func New(cfg Config, rep func(ports.NodeID) int64) *Chain {
 // effect; injected so core/chain does not depend on core/bond or core/vdf.
 func (c *Chain) SetBondVerifier(f func(pk []byte, root ports.Hash, size int64, nonce uint64, answer []byte) bool) {
 	c.verifyBond = f
+}
+
+// SetStateNodeStore makes the chain keep each state tree it builds in a store
+// open returns, instead of in memory. The tree's nodes are most of a validator's
+// memory that grows with every published file, so a node keeps them on disk;
+// the tree's roots are the same wherever its nodes live. The chain closes a
+// tree's store when it replaces or discards the tree. If open fails the tree
+// is kept in memory, which changes cost and never a root.
+func (c *Chain) SetStateNodeStore(open func() (statehash.NodeStore, error)) {
+	c.openNodes = open
 }
 
 // objective reports whether fork-choice runs on on-chain bonds (F6) rather than
@@ -4730,6 +4744,13 @@ func (c *Chain) Reconcile(fork []Block) (bool, error) {
 	tmp := New(c.cfg, c.rep)
 	tmp.tokenQuorum, tmp.issuerKey = c.tokenQuorum, c.issuerKey
 	tmp.verifyBond = c.verifyBond // so the fork's bond registrations re-verify (F6)
+	tmp.openNodes = c.openNodes
+	adopted := false
+	defer func() {
+		if !adopted {
+			tmp.dropRootCache()
+		}
+	}()
 	// Pin the pruned-tolerance floor to THIS node's own anchor: a
 	// pruned block in the fork is trusted only strictly below the RECEIVER's finalized/
 	// checkpoint anchor, never a height the fork's own (attacker-supplied) replayed state
@@ -4748,6 +4769,7 @@ func (c *Chain) Reconcile(fork []Block) (bool, error) {
 		return false, nil
 	}
 	c.adopt(tmp)
+	adopted = true
 	return true, nil
 }
 
@@ -4798,6 +4820,9 @@ func bytesLess(a, b []byte) bool {
 func (c *Chain) adopt(t *Chain) {
 	c.blocks = t.blocks
 	c.byRoot = t.byRoot
+	if c.rootCache != t.rootCache {
+		c.dropRootCache()
+	}
 	c.rootCache = t.rootCache // t's tree describes t's state, which is now ours
 	c.revoked = t.revoked
 	c.revLog = t.revLog

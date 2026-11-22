@@ -129,14 +129,34 @@ func growingSizes(c *Chain) [growingSpaces]int {
 // buildRootCache builds c's tree from every leaf: the one full rebuild, after
 // which each block costs only its changes.
 func (c *Chain) buildRootCache() bool {
-	tree, err := statehash.NewTree(c.stateRootLeavesV5())
+	c.dropRootCache()
+	tree, err := c.newStateTree(c.stateRootLeavesV5())
 	if err != nil {
-		c.rootCache = nil
 		return false
 	}
 	c.rootCache = &stateTreeCache{tree: tree, bounded: boundedByKey(c),
 		grown: map[string]grownLeaf{}, sizes: growingSizes(c), owned: true}
 	return true
+}
+
+// newStateTree builds a tree over leaves in the store c's opener gives, or in
+// memory when c has none or it fails.
+func (c *Chain) newStateTree(leaves []statehash.Leaf) (*statehash.Tree, error) {
+	if c.openNodes != nil {
+		if nodes, err := c.openNodes(); err == nil {
+			return statehash.NewTreeIn(nodes, leaves)
+		}
+	}
+	return statehash.NewTree(leaves)
+}
+
+// dropRootCache releases c's tree when c owns it. A dry-run clone that still
+// holds the tree finds its nodes gone and computes its root from every leaf.
+func (c *Chain) dropRootCache() {
+	if rc := c.rootCache; rc != nil && rc.owned {
+		rc.tree.Close()
+	}
+	c.rootCache = nil
 }
 
 // syncRootCache brings c's own tree up to date with c's state, building it the

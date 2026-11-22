@@ -39,6 +39,7 @@ import (
 	"github.com/nerolabs/silt/adapters/logfile"
 	"github.com/nerolabs/silt/adapters/markstore"
 	"github.com/nerolabs/silt/adapters/memstore"
+	"github.com/nerolabs/silt/adapters/nodestore"
 	"github.com/nerolabs/silt/adapters/proofcache"
 	"github.com/nerolabs/silt/adapters/relay"
 	"github.com/nerolabs/silt/adapters/tcpnet"
@@ -55,6 +56,7 @@ import (
 	"github.com/nerolabs/silt/core/node"
 	"github.com/nerolabs/silt/core/pipeline"
 	"github.com/nerolabs/silt/core/relaypay"
+	"github.com/nerolabs/silt/core/statehash"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -1087,6 +1089,27 @@ func cmdDaemon(args []string) error {
 			fmt.Println("publisher: durable Publisher entries PERMITTED — publishes may record permanent linkage (trusted deployment)")
 		}
 		chainPath = filepath.Join(*storeDir, "chain.cbor")
+		// The state tree's nodes live on disk beside the chain log: in memory
+		// they grow by about a kilobyte per published file. The files are a
+		// cache the replay below rebuilds, so the last run's are deleted, and
+		// one store is opened and closed here so an unwritable directory
+		// refuses to start instead of quietly keeping the tree in memory.
+		stateDir := filepath.Join(*storeDir, "state")
+		if err := nodestore.RemoveStale(stateDir); err != nil {
+			return fmt.Errorf("state tree directory %s: %w", stateDir, err)
+		}
+		probe, err := nodestore.Open(stateDir)
+		if err != nil {
+			return fmt.Errorf("state tree directory %s: %w", stateDir, err)
+		}
+		probe.Close()
+		ch.SetStateNodeStore(func() (statehash.NodeStore, error) {
+			s, err := nodestore.Open(stateDir)
+			if err != nil {
+				return nil, err
+			}
+			return s, nil
+		})
 		// ROOT CAUSE FIX — wire the bond verifier BEFORE the replay.
 		// objective is MinBond>0 AND verifyBond!=nil;
 		// EnableObjectiveChain used to wire it ~80 lines below, so
