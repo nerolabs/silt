@@ -519,7 +519,7 @@ func TestStageCover_ArmC_ReverseCover(t *testing.T) {
 // production table carries no test pins, and the attribution the research asked for is
 // preserved because the gate names the rows.
 var nodeBodyDigests = map[string]string{
-	"ValidateEntry":              "f6844363fb7212b625f60ca726f3d361b7b3eaca7f4af22efb33703c2f5bf3e5",
+	"ValidateEntry":              "cef1d4028128af1a32fd2118fd9050e01bd9b02c04af8804ae272ea4691143cf",
 	"RequiredQuorum":             "c3a413ba707abae6cfdd40806fe5c195a79a2c4a7e4fa2939d8ee1cb92257454",
 	"ValidateProposal":           "738ec66e39b2ef23ac2ce02df76d98a07a0690259f974fea08ebc5f2edd0742a",
 	"attesterQualifiedAt":        "fd5de208dcecba70d1fcaf32172ef185c20b12020413ba7fff0ddd04fef3723f",
@@ -547,7 +547,7 @@ var nodeBodyDigests = map[string]string{
 	"validateEra4Version":        "9a1a52aa6d4d5182afddeae6b3b3da3fb6b1b93e1a517b6b026c687afd33edac",
 	"validateIssuerKeys":         "801f04536b8794a5fca36adb65e76c58589c677da378e42da613fed6af75f324",
 	"validateSlashes":            "f25ef6ac451e5ebdc983c76c737866c068ac0d1dad383f9491138fa2730be65a",
-	"validateTakedowns":          "4250eff489a8869f843815a411c1351ff9ba616c31c4c0a3a7f5d7637e1d52aa",
+	"validateTakedowns":          "b1e55b6425c6d1b6c32d4963551aa52405a71fc736be0d11dde2403b95025928",
 	"validatorSetSize":           "393c775422214e528015d9833602d1ee7b6a58e4e5da45c2f339d604f4aae919",
 }
 

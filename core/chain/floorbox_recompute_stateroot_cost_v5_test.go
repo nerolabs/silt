@@ -69,7 +69,7 @@ func measureRecomputeWitness(t *testing.T, padTo int) recomputeCost {
 	// minting thousands of blocks). This grows the pre-state N without changing the payload.
 	for i := 0; i < padTo; i++ {
 		r := ports.HashBytes([]byte(fmt.Sprintf("pad-%d", i)))
-		c.byRoot[r] = ports.Entry{Root: r}
+		c.byRoot.Set(r, ports.Entry{Root: r})
 	}
 
 	leaves := c.stateRootLeavesV5()

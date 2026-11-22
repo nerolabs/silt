@@ -362,9 +362,9 @@ func perturbLeaf(clone *Chain, key, curVal []byte) bool {
 	copy(hash[:], raw)
 	switch tag {
 	case tagByRoot:
-		delete(clone.byRoot, hash)
+		clone.byRoot.Delete(hash)
 	case tagSpent:
-		delete(clone.spent, string(raw))
+		clone.spent.Delete(string(raw))
 	case tagRevoked:
 		delete(clone.revoked, hash)
 	case tagSlashed:

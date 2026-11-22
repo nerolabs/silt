@@ -245,7 +245,7 @@ func TestRecomputeStateRootAblationOmittedWrite(t *testing.T) {
 	// differs from this forged one ⇒ mismatch.
 	clone := f.c.cloneForDryRun()
 	clone.apply(b)
-	clone.byRoot[entry(99).Root] = entry(99) // inject an extra committed leaf NOT in b's payload
+	clone.byRoot.Set(entry(99).Root, entry(99)) // inject an extra committed leaf NOT in b's payload
 	forged, err := clone.StateRootForVersion(BlockVersionWitnessable)
 	if err != nil {
 		t.Fatal(err)

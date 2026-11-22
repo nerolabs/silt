@@ -137,15 +137,14 @@ func (v liveView) Slashed(id ports.NodeID) (bool, Availability) { return v.c.sla
 func (v liveView) BondedOf(id ports.NodeID) (int64, Availability) { return v.c.bonded[id], Present }
 
 func (v liveView) ByRoot(r ports.Hash) (bool, Availability) {
-	_, ok := v.c.byRoot[r]
-	if !ok {
+	if !v.c.byRoot.Has(r) {
 		return false, ProvenAbsent
 	}
 	return true, Present
 }
 
 func (v liveView) Spent(serial []byte) (bool, Availability) {
-	return v.c.spent[string(serial)], Present
+	return v.c.spent.Has(string(serial)), Present
 }
 
 func (v liveView) Revoked(r ports.Hash) (bool, Availability) { return v.c.revoked[r], Present }

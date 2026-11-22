@@ -360,7 +360,7 @@ func (c *Chain) readSetEntries(b Block, acc *readSetAcc) {
 // chain holds it (it does — the producer runs against the committed state). O(payload).
 func (c *Chain) readSetTakedowns(b Block, acc *readSetAcc) {
 	for _, r := range b.Revocations {
-		if e, ok := c.byRoot[r]; ok {
+		if e, ok := c.byRoot.Get(r); ok {
 			acc.addPresent(tagByRoot, r[:], encodeEntryPresence(e))
 		} else {
 			// The root is not committed on this chain: the revocation is invalid and the

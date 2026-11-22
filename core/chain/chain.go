@@ -1545,7 +1545,7 @@ type Chain struct {
 	cfg     Config
 	rep     func(ports.NodeID) int64
 	blocks  []Block
-	byRoot  map[ports.Hash]ports.Entry
+	byRoot  pmap[ports.Hash, ports.Entry]
 	revoked map[ports.Hash]bool
 	// revLog is the CT-style transparency log (core/translog): every honored
 	// revocation and un-revocation is appended as an event, in commit order, so a
@@ -1578,7 +1578,7 @@ type Chain struct {
 	// it can be spent only once (double-spend rejected chain-wide).
 	tokenQuorum int
 	issuerKey   func(ports.NodeID) *rsa.PublicKey
-	spent       map[string]bool
+	spent       pmap[string, struct{}]
 	// bonded is the OBJECTIVE validator set for fork-choice (F6): NodeID → the
 	// bonded size from its latest on-chain BondReg. A pure function of the blocks,
 	// so every replica computes it identically — which is the whole point.
@@ -1794,11 +1794,9 @@ func New(cfg Config, rep func(ports.NodeID) int64) *Chain {
 			"era-3 boundary", cfg.Era4ActivationHeight, cfg.Era3ActivationHeight))
 	}
 	return &Chain{cfg: cfg, rep: rep,
-		byRoot:         make(map[ports.Hash]ports.Entry),
 		revoked:        make(map[ports.Hash]bool),
 		revLog:         translog.New(),
 		validatorsSeen: make(map[ports.NodeID]bool),
-		spent:          make(map[string]bool),
 		bonded:         make(map[ports.NodeID]int64),
 		bondRootOwner:  make(map[ports.Hash]ports.NodeID),
 		bondRootProven: make(map[ports.Hash]bool),
@@ -3418,7 +3416,7 @@ func (c *Chain) ValidateProposal(b *Block) error {
 // block sharing a root or a serial) stays in ValidateProposal, where the block
 // exists.
 func (c *Chain) ValidateEntry(e ports.Entry) error {
-	if _, exists := c.byRoot[e.Root]; exists {
+	if c.byRoot.Has(e.Root) {
 		return fmt.Errorf("%w: %s", ErrDupRoot, e.Root)
 	}
 	if len(e.ManifestChunks) == 0 {
@@ -3444,7 +3442,7 @@ func (c *Chain) ValidateEntry(e ports.Entry) error {
 		// replayed (already-spent) token must fail here, cheaply, not after N
 		// verifies. A fresh (unspent) token still pays Verify — but a fresh
 		// blind-signed token is issuance-limited, not a free flood amplifier.
-		if c.spent[string(e.Token.Serial)] {
+		if c.spent.Has(string(e.Token.Serial)) {
 			return fmt.Errorf("%w: %x", ErrTokenSpent, e.Token.Serial)
 		}
 		qualified := func(v ports.NodeID) bool { return c.attesterQualified(v) }
@@ -3465,7 +3463,7 @@ func (c *Chain) ValidateEntry(e ports.Entry) error {
 // revoke-what-you-publish is (correctly) refused as nonsensical.
 func (c *Chain) validateTakedowns(b *Block) error {
 	for _, r := range b.Revocations {
-		if _, ok := c.byRoot[r]; !ok {
+		if !c.byRoot.Has(r) {
 			return fmt.Errorf("%w: %s", ErrRevokeUnknownRoot, r)
 		}
 	}
@@ -4116,12 +4114,12 @@ func (c *Chain) apply(b Block) {
 	parentProposer, _ := c.headProposerID()
 	c.blocks = append(c.blocks, b)
 	for _, e := range b.Entries {
-		_, had := c.byRoot[e.Root]
-		c.byRoot[e.Root] = e
+		had := c.byRoot.Has(e.Root)
+		c.byRoot.Set(e.Root, e)
 		c.rootCache.noteGrown(spaceByRoot, e.Root[:], had, true)
 		if e.Token != nil {
-			_, had := c.spent[string(e.Token.Serial)]
-			c.spent[string(e.Token.Serial)] = true // serial is now spent chain-wide
+			had := c.spent.Has(string(e.Token.Serial))
+			c.spent.Set(string(e.Token.Serial), struct{}{}) // serial is now spent chain-wide
 			c.rootCache.noteGrown(spaceSpent, e.Token.Serial, had, true)
 		}
 	}
@@ -4840,8 +4838,7 @@ func (c *Chain) adopt(t *Chain) {
 }
 
 func (c *Chain) LookupRoot(root ports.Hash) (ports.Entry, bool) {
-	e, ok := c.byRoot[root]
-	return e, ok
+	return c.byRoot.Get(root)
 }
 
 func (c *Chain) AllEntries() []ports.Entry {
