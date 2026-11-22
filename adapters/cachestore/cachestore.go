@@ -150,6 +150,28 @@ func (s *Store) List(ctx context.Context) ([]ports.ChunkID, error) {
 // Stats reports cache effectiveness: cumulative hits and misses, and the
 // bytes currently resident. For observability — did the cache earn its
 // memory?
+// Sizes reports every stored chunk's size from the store beneath, without reading
+// a chunk when it can say so itself, and by reading each one past the cache
+// otherwise.
+func (s *Store) Sizes(ctx context.Context) (map[ports.ChunkID]int64, error) {
+	if sz, ok := s.inner.(interface {
+		Sizes(context.Context) (map[ports.ChunkID]int64, error)
+	}); ok {
+		return sz.Sizes(ctx)
+	}
+	ids, err := s.inner.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[ports.ChunkID]int64, len(ids))
+	for _, id := range ids {
+		if c, err := s.inner.Get(ctx, id); err == nil {
+			out[id] = int64(len(c.Data))
+		}
+	}
+	return out, nil
+}
+
 func (s *Store) Stats() (hits, misses, usedBytes int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

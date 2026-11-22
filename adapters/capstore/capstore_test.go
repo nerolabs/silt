@@ -5,7 +5,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/nerolabs/silt/adapters/cachestore"
 	"github.com/nerolabs/silt/adapters/capstore"
+	"github.com/nerolabs/silt/adapters/diskstore"
 	"github.com/nerolabs/silt/adapters/memstore"
 	"github.com/nerolabs/silt/adapters/storetest"
 	"github.com/nerolabs/silt/ports"
@@ -68,5 +70,67 @@ func TestReopenMeasuresExisting(t *testing.T) {
 	}
 	if used, _ := s.Capacity(); used != 40 {
 		t.Fatalf("reopen measured %d used, want 40", used)
+	}
+}
+
+// readCounting is a disk store that counts chunk reads.
+type readCounting struct {
+	*diskstore.Store
+	reads int
+}
+
+func (r *readCounting) Get(ctx context.Context, id ports.ChunkID) (ports.Chunk, error) {
+	r.reads++
+	return r.Store.Get(ctx, id)
+}
+
+// Reopening over a disk store measures what it holds by size, without reading a
+// chunk: a storing node's start must not cost a read of everything it stores.
+// The measure is the same one reading every chunk gives.
+func TestReopenOverADiskStoreReadsNoChunk(t *testing.T) {
+	ctx := context.Background()
+	disk, err := diskstore.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want int64
+	for i := 0; i < 50; i++ {
+		c := ports.NewChunk(append(make([]byte, 100+i), byte(i)))
+		if err := disk.Put(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+		want += int64(len(c.Data))
+	}
+	counted := &readCounting{Store: disk}
+	s, err := capstore.Open(counted, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if used, _ := s.Capacity(); used != want {
+		t.Fatalf("measured %d bytes, the store holds %d", used, want)
+	}
+	if counted.reads != 0 {
+		t.Fatalf("opening read %d chunks to measure them", counted.reads)
+	}
+}
+
+// A read cache between the budget and the disk does not bring the reads back.
+func TestReopenThroughACacheReadsNoChunk(t *testing.T) {
+	ctx := context.Background()
+	disk, err := diskstore.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := ports.NewChunk(make([]byte, 300))
+	if err := disk.Put(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	counted := &readCounting{Store: disk}
+	s, err := capstore.Open(cachestore.Open(counted, 1<<20), 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if used, _ := s.Capacity(); used != 300 || counted.reads != 0 {
+		t.Fatalf("measured %d bytes with %d chunk reads, want 300 with none", used, counted.reads)
 	}
 }
