@@ -228,7 +228,14 @@ var stateRootTags = []string{
 // iteration order (Go map order is random; the SMT root is order-invariant, so the
 // leaf SET is what matters, not the slice order).
 func (c *Chain) stateRootLeaves() []statehash.Leaf {
-	var leaves []statehash.Leaf
+	return append(c.growingLeaves(), c.boundedLeaves()...)
+}
+
+// growingLeaves are the keyspaces that gain a leaf per published file, spent
+// token or takedown, and so grow without bound: the ones the kept state tree
+// tracks by journal rather than by comparing whole leaf sets.
+func (c *Chain) growingLeaves() []statehash.Leaf {
+	leaves := make([]statehash.Leaf, 0, len(c.byRoot)+len(c.spent)+len(c.revoked))
 	add := func(tag string, rawKey, value []byte) {
 		leaves = append(leaves, statehash.Leaf{Key: statehash.Key(tag, rawKey), Value: value})
 	}
@@ -243,6 +250,18 @@ func (c *Chain) stateRootLeaves() []statehash.Leaf {
 	for root := range c.revoked {
 		add(tagRevoked, root[:], statehash.Present)
 	}
+	return leaves
+}
+
+// boundedLeaves are the remaining era-3 leaves, whose count is bounded by the
+// validator set rather than by history.
+func (c *Chain) boundedLeaves() []statehash.Leaf {
+	var leaves []statehash.Leaf
+	add := func(tag string, rawKey, value []byte) {
+		leaves = append(leaves, statehash.Leaf{Key: statehash.Key(tag, rawKey), Value: value})
+	}
+
+	// ---- Class A, bounded: set-membership (value = Present marker) ----
 	for id := range c.slashed {
 		add(tagSlashed, id[:], statehash.Present)
 	}
@@ -302,7 +321,13 @@ func (c *Chain) StateRoot() (ports.Hash, error) {
 // due-bucket leaf value is the MTH over the CANONICAL sorted id list, so it is
 // independent of Go map iteration order.
 func (c *Chain) stateRootLeavesV5() []statehash.Leaf {
-	leaves := c.stateRootLeaves()
+	return append(c.growingLeaves(), c.boundedLeavesV5()...)
+}
+
+// boundedLeavesV5 is the v5 leaf set without the growing keyspaces: the era-3
+// bounded leaves plus the era-4 additions below.
+func (c *Chain) boundedLeavesV5() []statehash.Leaf {
+	leaves := c.boundedLeaves()
 	add := func(tag string, rawKey, value []byte) {
 		leaves = append(leaves, statehash.Leaf{Key: statehash.Key(tag, rawKey), Value: value})
 	}
@@ -442,6 +467,9 @@ func dueBucketMTH(ids map[ports.NodeID]struct{}) []byte {
 // version, so the recompute a validator runs matches the era of the block it checks.
 func (c *Chain) StateRootForVersion(version uint64) (ports.Hash, error) {
 	if version >= BlockVersionWitnessable {
+		if r, ok := c.keptRootV5(); ok {
+			return r, nil
+		}
 		return statehash.Root(c.stateRootLeavesV5())
 	}
 	return statehash.Root(c.stateRootLeaves())

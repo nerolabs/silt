@@ -1768,6 +1768,10 @@ type Chain struct {
 	// load-bearing edge: without it a peer could inflate the acceptance floor by
 	// presenting a fork with a high finalized head.
 	trustFloorOverride *uint64
+	// rootCache keeps the v5 state tree between blocks so a block's root costs
+	// its own changes, not a rebuild from every leaf (statetree.go). A cache:
+	// nil only makes the next root a full rebuild.
+	rootCache *stateTreeCache
 }
 
 // New starts an empty replica. rep is the local reputation view —
@@ -4112,20 +4116,28 @@ func (c *Chain) apply(b Block) {
 	parentProposer, _ := c.headProposerID()
 	c.blocks = append(c.blocks, b)
 	for _, e := range b.Entries {
+		_, had := c.byRoot[e.Root]
 		c.byRoot[e.Root] = e
+		c.rootCache.noteGrown(spaceByRoot, e.Root[:], had, true)
 		if e.Token != nil {
+			_, had := c.spent[string(e.Token.Serial)]
 			c.spent[string(e.Token.Serial)] = true // serial is now spent chain-wide
+			c.rootCache.noteGrown(spaceSpent, e.Token.Serial, had, true)
 		}
 	}
 	for _, r := range b.Revocations {
+		_, had := c.revoked[r]
 		c.revoked[r] = true
+		c.rootCache.noteGrown(spaceRevoked, r[:], had, true)
 		c.revLog.Append(RevocationLeaf(RevOp, r, b.Height)) // append-only transparency record
 	}
 	// Un-revocations clear a prior takedown (validated as
 	// currently-revoked). delete rather than set-false so the map stays a
 	// clean set and adopt's pure-replay rebuild yields identical state.
 	for _, r := range b.Unrevocations {
+		_, had := c.revoked[r]
 		delete(c.revoked, r)
+		c.rootCache.noteGrown(spaceRevoked, r[:], had, false)
 		c.revLog.Append(RevocationLeaf(UnrevOp, r, b.Height)) // the reversal is logged too
 	}
 	// Record on-chain bond registrations (objective validator set, F6). A
@@ -4790,6 +4802,7 @@ func bytesLess(a, b []byte) bool {
 func (c *Chain) adopt(t *Chain) {
 	c.blocks = t.blocks
 	c.byRoot = t.byRoot
+	c.rootCache = t.rootCache // t's tree describes t's state, which is now ours
 	c.revoked = t.revoked
 	c.revLog = t.revLog
 	c.validatorsSeen = t.validatorsSeen
