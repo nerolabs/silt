@@ -136,7 +136,7 @@ func era4Corpus(t *testing.T, check func(t *testing.T, c *Chain, label string)) 
 	// TTL-expires at h6 (site 3026 delete + due-bucket delete). h6-1 = 5 >
 	// regH(1)+. the sweep fires when height-regH > ttl, i.e. 6-1=5 > 4.
 	for h := uint64(4); h <= 6; h++ {
-		prev = c.blocks[len(c.blocks)-1].Hash()
+		prev = (*c.blocks.Last()).Hash()
 		bh := &Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h))}}
 		Sign(bh, a)
 		apply(bh, "h"+string(rune('0'+h))+" ttl-drive")
@@ -383,7 +383,7 @@ func TestEra3ReplayByteIdenticalOverCorpus(t *testing.T) {
 
 		// Drive a few more heights (TTL expiry fires here when ttl>0).
 		for h := uint64(3); h <= 7; h++ {
-			prev = c.blocks[len(c.blocks)-1].Hash()
+			prev = (*c.blocks.Last()).Hash()
 			bh := &Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h))}}
 			Sign(bh, a)
 			c.apply(*bh)

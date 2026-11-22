@@ -54,7 +54,7 @@ const unnamedNetwork = "(unnamed)"
 // with no genesis, so it has no identity to report at all. It says so rather than rendering a zero
 // hash, which would be a measurement-shaped non-measurement.
 func (c *Chain) NetworkIdentity() string {
-	if len(c.blocks) == 0 {
+	if c.blocks.Len() == 0 {
 		return "no genesis is loaded, so this node has NO network identity yet — neither a name nor a tag"
 	}
 	return NetworkIdentityOf(c.committedNetworkName(), c.ChainID())
@@ -64,10 +64,10 @@ func (c *Chain) NetworkIdentity() string {
 // would report the operator's own input back, which is the vacuity a committed field exists to
 // close. A genesis that predates the bind carries no params and is therefore unnamed.
 func (c *Chain) committedNetworkName() string {
-	if len(c.blocks) == 0 || c.blocks[0].Params == nil {
+	if c.blocks.Len() == 0 || c.blocks.At(0).Params == nil {
 		return ""
 	}
-	return c.blocks[0].Params.NetworkName
+	return c.blocks.At(0).Params.NetworkName
 }
 
 // NetworkIdentityOf is the rendering rule itself, separated from the chain so it can be driven
@@ -93,7 +93,7 @@ func NetworkIdentityOf(name string, id ports.Hash) string {
 // any genesis seed, so both halves describe the chain this daemon will actually serve.
 func NetworkIdentityLines(c *Chain) []string {
 	lines := []string{"network: " + c.NetworkIdentity()}
-	if len(c.blocks) == 0 {
+	if c.blocks.Len() == 0 {
 		return lines
 	}
 	return append(lines, "network:   the genesis hash is the IDENTITY and the name is a LABEL: two networks may "+

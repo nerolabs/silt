@@ -56,12 +56,11 @@ func (v liveView) PrunedTolerated(h uint64) (bool, Availability) {
 func (v liveView) Head() HeadRef {
 	prev, next := v.c.Head()
 	h := HeadRef{Hash: prev, NextHeight: next, ChainID: v.c.ChainID()}
-	n := len(v.c.blocks)
-	if n == 0 {
+	if v.c.blocks.Len() == 0 {
 		h.Empty = true
 		return h
 	}
-	last := v.c.blocks[n-1]
+	last := v.c.blocks.Last()
 	h.ProposerID = last.ProposerID()
 	if last.StateRoot != nil {
 		sr := *last.StateRoot

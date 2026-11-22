@@ -165,9 +165,30 @@ func o3tWalkHeavier(fset *token.FileSet, fd *ast.FuncDecl) []string {
 		id, ok := s.X.(*ast.Ident)
 		return ok && isParam[id.Name]
 	}
+	// blockElem: e is a handle on one element of <param>.blocks — <param>.blocks[i],
+	// <param>.blocks.At(i) or <param>.blocks.Last(). Never pure itself; only its Height and
+	// Hash() are.
+	var isPure func(e ast.Expr) bool
+	blockElem := func(e ast.Expr) bool {
+		switch x := e.(type) {
+		case *ast.IndexExpr:
+			return paramBlocks(x.X) && isPure(x.Index)
+		case *ast.CallExpr:
+			s, ok := x.Fun.(*ast.SelectorExpr)
+			if !ok || !paramBlocks(s.X) {
+				return false
+			}
+			switch s.Sel.Name {
+			case "At":
+				return len(x.Args) == 1 && isPure(x.Args[0])
+			case "Last":
+				return len(x.Args) == 0
+			}
+		}
+		return false
+	}
 	// isPure: e carries no chain state — literals, untainted locals, arithmetic over pure parts,
 	// and the three allowed value reads.
-	var isPure func(e ast.Expr) bool
 	isPure = func(e ast.Expr) bool {
 		switch x := e.(type) {
 		case nil:
@@ -202,8 +223,8 @@ func o3tWalkHeavier(fset *token.FileSet, fd *ast.FuncDecl) []string {
 			}
 			return isPure(x.X) && isPure(x.Index)
 		case *ast.SelectorExpr:
-			// <param>.blocks[i].Height
-			if ix, ok := x.X.(*ast.IndexExpr); ok && paramBlocks(ix.X) && isPure(ix.Index) && x.Sel.Name == "Height" {
+			// <param>.blocks[i].Height, <param>.blocks.At(i).Height, <param>.blocks.Last().Height
+			if blockElem(x.X) && x.Sel.Name == "Height" {
 				return true
 			}
 			return false
@@ -222,9 +243,12 @@ func o3tWalkHeavier(fset *token.FileSet, fd *ast.FuncDecl) []string {
 				}
 				return false
 			}
-			// <param>.blocks[i].Hash
-			if s, ok := x.Fun.(*ast.SelectorExpr); ok && len(x.Args) == 0 && s.Sel.Name == "Hash" {
-				if ix, ok := s.X.(*ast.IndexExpr); ok && paramBlocks(ix.X) && isPure(ix.Index) {
+			// <param>.blocks[i].Hash() (or through At / Last), and <param>.blocks.Len()
+			if s, ok := x.Fun.(*ast.SelectorExpr); ok && len(x.Args) == 0 {
+				if s.Sel.Name == "Hash" && blockElem(s.X) {
+					return true
+				}
+				if s.Sel.Name == "Len" && paramBlocks(s.X) {
 					return true
 				}
 			}
@@ -327,10 +351,18 @@ func o3tWalkHeavier(fset *token.FileSet, fd *ast.FuncDecl) []string {
 				}
 				report(x.Pos(), root.Name+".blocks[...]."+name+"  "+why(name))
 			case *ast.SelectorExpr:
-				if paramBlocks(inner) {
+				// A.blocks.<sel>: only the element and length accessors, Len / At / Last. Every
+				// other selector reads the history's representation itself.
+				if paramBlocks(inner) && name != "Len" && name != "At" && name != "Last" {
 					report(x.Pos(), root.Name+".blocks."+name+"  a read on the blocks slice itself")
 				}
 				// otherwise the inner a.<x> is flagged on its own visit; do not double-report.
+			case *ast.CallExpr:
+				// A.blocks.At(i).<sel> / A.blocks.Last().<sel>: only Height / Hash.
+				if blockElem(inner) && o3tHeavierAllowedOnBlock[name] {
+					return true
+				}
+				report(x.Pos(), types.ExprString(inner)+"."+name+"  "+why(name))
 			default:
 				report(x.Pos(), root.Name+"...."+name+"  a read through an unexpected expression shape")
 			}
@@ -343,7 +375,7 @@ func o3tWalkHeavier(fset *token.FileSet, fd *ast.FuncDecl) []string {
 			case *ast.SelectorExpr:
 				root := rootIdent(fn.X)
 				allowedHash := false
-				if ix, ok := fn.X.(*ast.IndexExpr); ok && paramBlocks(ix.X) && fn.Sel.Name == "Hash" && len(x.Args) == 0 {
+				if fn.Sel.Name == "Hash" && len(x.Args) == 0 && blockElem(fn.X) {
 					allowedHash = true
 				}
 				if !allowedHash && (root == nil || tainted[root.Name] == "") {
@@ -498,6 +530,13 @@ func heavier(lhs, rhs *Chain) bool {
 		return false
 	}
 	n := len(lhs.blocks) - 1
+	if len(lhs.blocks.Last().Atts) > 0 || rhs.blocks.tail != nil {
+		return false
+	}
+	h2 := rhs.blocks.At(0)
+	if lhs.blocks.Last().Height != rhs.blocks.At(n).Height || lhs.blocks.Last().Hash() == rhs.blocks.Last().Hash() || rhs.blocks.Len() < 0 {
+		return h2 == nil
+	}
 	return bytesLess(ha[:], hb[:]) && n >= 0
 }
 `
@@ -522,6 +561,9 @@ func heavier(lhs, rhs *Chain) bool {
 		"y var = ca", "z := y", "z.everMature (alias of lhs)",
 		"call to helper()", "tainted value rhs passed to helper()",
 		"call to bytes.Compare()",
+		"lhs.blocks.Last().Atts", "tainted value lhs.blocks.Last().Atts passed to len()",
+		"rhs.blocks.tail",
+		"h2 := rhs.blocks.At(0)",
 	}
 	for _, want := range expected {
 		if !strings.Contains(joined, want) {
@@ -542,7 +584,7 @@ func heavier(lhs, rhs *Chain) bool {
 	}
 	for _, line := range v {
 		site, _, _ := strings.Cut(line, "  ") // the guidance text after the dash names Height/Hash on purpose
-		for _, pure := range []string{"].Height", "].Hash", "ah :=", "bh :=", "ha :=", "hb :=", "n :="} {
+		for _, pure := range []string{"].Height", "].Hash", ").Height", ").Hash", "blocks.Len", "ah :=", "bh :=", "ha :=", "hb :=", "n :="} {
 			if strings.Contains(site, pure) {
 				t.Fatalf("SOURCE GATE: PIN OVER-BITES — a Height/Hash/len(blocks) value read was flagged:\n  %s", line)
 			}

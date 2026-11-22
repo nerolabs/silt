@@ -238,10 +238,10 @@ var ErrParamsDiverge = fmt.Errorf("chain: local consensus config contradicts the
 // Returns nil when the chain's genesis predates the bind (Params == nil) — the surviving paramless
 // path, disclosed rather than silently tolerated.
 func (c *Chain) CheckConsensusParams(bondLabelSamples int, bondVDFDelay uint64) error {
-	if len(c.blocks) == 0 || c.blocks[0].Params == nil {
+	if c.blocks.Len() == 0 || c.blocks.At(0).Params == nil {
 		return nil
 	}
-	committed := *c.blocks[0].Params
+	committed := *c.blocks.At(0).Params
 	local := ParamsFromConfig(c.cfg, bondLabelSamples, bondVDFDelay)
 	diff := local.Diff(committed)
 	if len(diff) == 0 {

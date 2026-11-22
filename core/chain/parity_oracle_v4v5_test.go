@@ -95,7 +95,7 @@ func (w *parityWorld) mint(version uint64, proposer ed25519.PrivateKey, attester
 	prev, h := w.c.Head()
 	b := &Block{Version: version, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h + 40))}}
 	if carry && h >= 2 {
-		for _, a := range w.c.blocks[len(w.c.blocks)-1].Atts {
+		for _, a := range (*w.c.blocks.Last()).Atts {
 			if isCarrierPrecommit(a.Phase) {
 				b.LastCommit = append(b.LastCommit, a)
 			}

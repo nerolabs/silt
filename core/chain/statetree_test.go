@@ -139,10 +139,10 @@ func BenchmarkPostApplyRootsKeptTree(b *testing.B) {
 	}
 }
 
-// byRoot and spent are shared between a chain and its dry-run clone rather than
-// copied, so this is the property the drift gate's shared-backing check cannot
-// see for them: applying a block on the clone leaves the source's committed
-// entries and spent serials exactly as they were, and the clone holds both.
+// byRoot, spent and blocks are shared between a chain and its dry-run clone rather
+// than copied, so this is the property the drift gate's shared-backing check cannot
+// see for them: applying a block on the clone leaves the source's committed entries,
+// spent serials and history exactly as they were, and the clone holds all three.
 func TestDryRunCloneWritesNeverReachTheSource(t *testing.T) {
 	c := keptTreeChain(t, 50)
 	before := rebuiltRootV5(t, c)
@@ -162,5 +162,11 @@ func TestDryRunCloneWritesNeverReachTheSource(t *testing.T) {
 	}
 	if c.byRoot.Len() != 50 || clone.byRoot.Len() != 51 {
 		t.Fatalf("entry counts: source %d (want 50), clone %d (want 51)", c.byRoot.Len(), clone.byRoot.Len())
+	}
+	if c.blocks.Len() != 51 || clone.blocks.Len() != 52 {
+		t.Fatalf("block counts: source %d (want 51), clone %d (want 52)", c.blocks.Len(), clone.blocks.Len())
+	}
+	if head, _ := c.Head(); head != keptTreeBlock(c, 50).Prev {
+		t.Fatal("the source's head moved when the clone applied a block")
 	}
 }

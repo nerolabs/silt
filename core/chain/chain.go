@@ -1544,7 +1544,7 @@ var (
 type Chain struct {
 	cfg     Config
 	rep     func(ports.NodeID) int64
-	blocks  []Block
+	blocks  blockVec
 	byRoot  pmap[ports.Hash, ports.Entry]
 	revoked map[ports.Hash]bool
 	// revLog is the CT-style transparency log (core/translog): every honored
@@ -2412,9 +2412,9 @@ func (c *Chain) recentBondRegNonces(prev ports.Hash) []uint64 {
 // blockByHash finds a committed block by its hash, scanning from the tip (recent
 // blocks — the drain window — are found in the first few steps).
 func (c *Chain) blockByHash(h ports.Hash) (Block, bool) {
-	for i := len(c.blocks) - 1; i >= 0; i-- {
-		if c.blocks[i].Hash() == h {
-			return c.blocks[i], true
+	for i := c.blocks.Len() - 1; i >= 0; i-- {
+		if b := c.blocks.At(i); b.Hash() == h {
+			return *b, true
 		}
 	}
 	return Block{}, false
@@ -3200,10 +3200,10 @@ func (c *Chain) RevocationConsistencyProof(m, n int) ([]ports.Hash, error) {
 // Head returns the current tip hash and the height the NEXT block must
 // carry. An empty chain expects height 0 with a zero Prev.
 func (c *Chain) Head() (ports.Hash, uint64) {
-	if len(c.blocks) == 0 {
+	if c.blocks.Len() == 0 {
 		return ports.Hash{}, 0
 	}
-	last := c.blocks[len(c.blocks)-1]
+	last := c.blocks.Last()
 	return last.Hash(), last.Height + 1
 }
 
@@ -3224,10 +3224,10 @@ func (c *Chain) Head() (ports.Hash, uint64) {
 // identical value; blocks[0].Hash memoizes on the stored block, so this is O(1) after first
 // call.
 func (c *Chain) ChainID() ports.Hash {
-	if len(c.blocks) == 0 {
+	if c.blocks.Len() == 0 {
 		return ports.Hash{}
 	}
-	return c.blocks[0].Hash()
+	return c.blocks.At(0).Hash()
 }
 
 // EpochBlocks returns the configured epoch length in blocks (0 = epochs disabled).
@@ -3243,32 +3243,30 @@ func (c *Chain) EpochBlocks() uint64 { return c.cfg.EpochBlocks }
 // path gathers max(ConfigQuorum, RequiredQuorum) whatever floor its caller passed.
 func (c *Chain) ConfigQuorum() int { return c.cfg.Quorum }
 
-func (c *Chain) Len() int { return len(c.blocks) }
+func (c *Chain) Len() int { return c.blocks.Len() }
 
 // FinalizedHeight is the height this node treats as irreversibly final — the anchor a
 // behind peer suffix-syncs FROM and the prune floor derives from. In OBJECTIVE
 // mode every committed block is super-quorum-final (the same property the Reconcile
 // finality gate rests on — launch: the pinned anchor majority IS the finality quorum;
 // mature: the >⅔-frozen-weight commit quorum IS the finality quorum), so the finalized
-// head is the committed tip: len(c.blocks)-1. WITHOUT BFT finality (a trusted/demo config)
+// head is the committed tip, the last block. WITHOUT BFT finality (a trusted/demo config)
 // there is no immutable anchor, so it returns 0 — sync then falls back to full-genesis
 // (ok, ForFinalizedHeight callers request {Height:0}) and nothing prunes (pruneFloor is
 // also 0). ok is false when there is no finalized anchor.
 func (c *Chain) FinalizedHeight() (height uint64, ok bool) {
-	if !c.finalityQuorumActive() || len(c.blocks) == 0 {
+	if !c.finalityQuorumActive() || c.blocks.Len() == 0 {
 		return 0, false
 	}
-	return uint64(len(c.blocks) - 1), true
+	return uint64(c.blocks.Len() - 1), true
 }
 
 // Blocks returns the suffix of the chain starting at height from.
 func (c *Chain) Blocks(from uint64) []Block {
-	if from >= uint64(len(c.blocks)) {
+	if from >= uint64(c.blocks.Len()) {
 		return nil
 	}
-	out := make([]Block, len(c.blocks)-int(from))
-	copy(out, c.blocks[from:])
-	return out
+	return c.blocks.Slice(int(from))
 }
 
 // ValidateProposal checks everything an attester must believe before
@@ -4003,7 +4001,7 @@ func (c *Chain) validateStructural(b *Block) error {
 // It must be the first block, at height 0 with a zero parent, and its
 // proposer signature must check out (so a corrupted genesis is caught).
 func (c *Chain) AppendGenesis(b Block) error {
-	if len(c.blocks) != 0 {
+	if c.blocks.Len() != 0 {
 		return fmt.Errorf("chain: genesis must be the first block")
 	}
 	if b.Height != 0 || b.Prev != (ports.Hash{}) {
@@ -4112,7 +4110,7 @@ func (c *Chain) apply(b Block) {
 	// one id the carrier fold excludes (the parent's proposer does not seat itself off its
 	// own block). Absent only for the genesis, which carries no attestations by rule.
 	parentProposer, _ := c.headProposerID()
-	c.blocks = append(c.blocks, b)
+	c.blocks.Append(b)
 	for _, e := range b.Entries {
 		had := c.byRoot.Has(e.Root)
 		c.byRoot.Set(e.Root, e)
@@ -4668,10 +4666,10 @@ func (c *Chain) Reconcile(fork []Block) (bool, error) {
 	if len(fork) == 0 {
 		return false, ErrEmptyFork
 	}
-	if len(c.blocks) == 0 {
+	if c.blocks.Len() == 0 {
 		return false, ErrNoGenesis
 	}
-	if fork[0].Height != 0 || fork[0].Hash() != c.blocks[0].Hash() {
+	if fork[0].Height != 0 || fork[0].Hash() != c.blocks.At(0).Hash() {
 		return false, ErrForeignGenesis // must branch from our own genesis
 	}
 	// Weak-subjectivity guard: refuse — regardless of weight — any fork that does
@@ -4722,8 +4720,8 @@ func (c *Chain) Reconcile(fork []Block) (bool, error) {
 	// weight-committed blocks are exactly as final and the gate engages there too
 	// (finalityQuorumActive).
 	if c.finalityQuorumActive() {
-		if headIdx := len(c.blocks) - 1; headIdx > 0 { // genesis divergence is already ErrForeignGenesis
-			if len(fork) <= headIdx || fork[headIdx].Hash() != c.blocks[headIdx].Hash() {
+		if headIdx := c.blocks.Len() - 1; headIdx > 0 { // genesis divergence is already ErrForeignGenesis
+			if len(fork) <= headIdx || fork[headIdx].Hash() != c.blocks.At(headIdx).Hash() {
 				return false, ErrPreFinalityReorg
 			}
 		}
@@ -4774,13 +4772,13 @@ func (c *Chain) Reconcile(fork []Block) (bool, error) {
 // (TestHeavierReadsOnlyHeightAndHeadHash). Do not add a read here; a fork-choice
 // input must be Hash-covered and shared by every replica.
 func heavier(a, b *Chain) bool {
-	ah, bh := a.blocks[len(a.blocks)-1].Height, b.blocks[len(b.blocks)-1].Height
+	ah, bh := a.blocks.Last().Height, b.blocks.Last().Height
 	if ah != bh {
 		return ah > bh
 	}
 	// Equal height ⇒ a deterministic head-hash tiebreak, so honest replicas still
 	// converge on one of two genuinely-equivalent forks.
-	ha, hb := a.blocks[len(a.blocks)-1].Hash(), b.blocks[len(b.blocks)-1].Hash()
+	ha, hb := a.blocks.Last().Hash(), b.blocks.Last().Hash()
 	return bytesLess(ha[:], hb[:])
 }
 
@@ -4843,8 +4841,8 @@ func (c *Chain) LookupRoot(root ports.Hash) (ports.Entry, bool) {
 
 func (c *Chain) AllEntries() []ports.Entry {
 	var out []ports.Entry
-	for _, b := range c.blocks {
-		out = append(out, b.Entries...)
+	for i := 0; i < c.blocks.Len(); i++ {
+		out = append(out, c.blocks.At(i).Entries...)
 	}
 	return out
 }
