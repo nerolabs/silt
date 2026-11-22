@@ -8,9 +8,11 @@
 package node
 
 import (
+	"bytes"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -237,14 +239,19 @@ func (n *Node) tokenChargeFor(from ports.NodeID, credit *ports.PublishCredit) (f
 	if n.tokenIssuer == nil {
 		return nil, errNoTokenIssuer // no key to verify the credit against — fail closed
 	}
-	if len(credit.Serial) == 0 || !blindtoken.VerifyCredit(n.tokenIssuer.Public(), credit.Serial, credit.Sig) {
+	if len(credit.Serial) != blindtoken.SerialSize || !blindtoken.VerifyCredit(n.tokenIssuer.Public(), credit.Epoch, credit.Serial, credit.Sig) {
 		return nil, errCreditRefused // a credit was presented but does not verify
 	}
 	if n.creditStore != nil && !n.creditLoaded {
 		// A guard that does not yet know what it already spent must not spend.
 		return nil, errCreditGuardUnloaded
 	}
-	key := string(credit.Serial)
+	now := creditEpochAt(n.clock.Now())
+	n.sweepCreditSpent(now)
+	if !creditEpochSpendable(credit.Epoch, now, n.creditFloor) {
+		return nil, errCreditExpired
+	}
+	key := creditSpentKey(credit.Epoch, credit.Serial)
 	if n.creditSpent[key] {
 		return nil, errCreditRefused // double-spend
 	}
@@ -260,7 +267,7 @@ func (n *Node) tokenChargeFor(from ports.NodeID, credit *ports.PublishCredit) (f
 		// guard chose. (The earlier comment here, "a signing failure does not burn
 		// the credit", was false: the charge precedes the signature.)
 		if n.creditStore != nil {
-			if err := n.creditStore.Append(ports.PaidSerial{Serial: credit.Serial, Server: n.creditGuardOwner()}); err != nil {
+			if err := n.creditStore.Append(ports.PaidSerial{Serial: credit.Serial, Server: n.creditGuardOwner(), Epoch: credit.Epoch}); err != nil {
 				return fmt.Errorf("%w: %w", errCreditStore, err) // not marked: the requester retries once the store heals
 			}
 		}
@@ -282,17 +289,33 @@ func (n *Node) tokenChargeFor(from ports.NodeID, credit *ports.PublishCredit) (f
 // The store is a SECOND guardstore.Disk (creditspent.log) behind the unchanged
 // ports.PaidSerialStore — never a namespace in paidserials.log, whose Compact keeps
 // only the ledger's live paid serials and would evict every credit record at the
-// first epoch sweep. Record shape: Serial = credit serial, Epoch = 0 (credits are not
-// epoch-bound), Server = zero.
+// first epoch sweep. Record shape: Serial = credit serial, Epoch = the credit's epoch,
+// Server = the publish key's owner; plus one floor record (creditFloorSerial).
 //
-// There is NO sweep: credits never expire, so nothing is ever eligible to leave the
-// set. The cap below is therefore a LIVENESS ceiling, disclosed: an issuer that has
-// recorded maxCreditSpent spends refuses every further credit-bearing request
-// (errCreditGuardFull) and keeps serving credit-free ones. Refusal is the under-issue
-// direction; eviction would re-open the hole one record at a time. The structural
-// close — an epoch in the credit's FDH message so the set can sweep on the band
-// advance — is a credit-format change under the D3 research and is its own,
-// research-gated Rock.
+// CREDITS EXPIRE, SO THE SET SWEEPS. A credit's epoch is signed into it (blindtoken
+// creditDomain v2), and an issuer accepts a credit only while its epoch is the current
+// credit epoch or the one before (one ahead is allowed for clock skew). A credit epoch
+// is creditEpochLength of the issuer's own clock, so a credit stays spendable for one
+// to two of them. When the epoch advances, the issuer raises its floor to the oldest
+// spendable epoch, drops every record below it, and compacts the log with the floor
+// written into it. A record leaves the set only once its credit can no longer be
+// spent, so the sweep never re-opens a double spend.
+//
+// THE FLOOR IS DURABLE AND ONLY RISES. Spendability is judged against the clock, and
+// a clock that moves backwards would make swept epochs spendable again with their
+// records gone. The floor record makes the sweep's own judgement outlive the clock:
+// no credit below the floor is accepted, whatever the clock says later, including
+// after a restart.
+//
+// PRIVACY. The issuer sees a spent credit's epoch, so a credit hides among the credits
+// minted for the same epoch rather than among all credits ever minted.
+// creditEpochLength sets that trade.
+//
+// The cap below remains, now a bound on two epochs' spends rather than on all time:
+// an issuer that has recorded maxCreditSpent live spends refuses further credit-bearing
+// requests (errCreditGuardFull) until the next sweep, and keeps serving credit-free
+// ones. Refusal is the under-issue direction; eviction would re-open the hole one
+// record at a time.
 var (
 	// errCreditStore: the durable append failed. The credit is NOT marked spent and
 	// no token is signed; the requester can retry once the store heals.
@@ -303,7 +326,73 @@ var (
 	// errCreditGuardUnloaded: a store is attached but LoadCreditSpent has not
 	// succeeded. Credit-bearing requests are refused; credit-free ones are served.
 	errCreditGuardUnloaded = errors.New("node: credit-spent guard attached but not loaded")
+	// errCreditExpired: the credit verifies, but its epoch is outside the spending
+	// window, or below the floor of epochs already swept.
+	errCreditExpired = errors.New("node: publish credit epoch is not spendable now")
 )
+
+// creditEpochLength is the length of one credit epoch. A credit is spendable through
+// its own epoch and the next, so for two to four weeks after it is minted, and it
+// hides among the credits minted in the same fortnight.
+const creditEpochLength = 14 * 24 * 3600 * ports.Second
+
+// creditEpochAt is the credit epoch containing t. The daemon's clock counts from the
+// Unix epoch, so credit epochs are fixed fortnights of UTC.
+func creditEpochAt(t ports.Time) uint64 {
+	if t < 0 {
+		return 0
+	}
+	return uint64(t) / uint64(creditEpochLength)
+}
+
+// creditEpochSpendable reports whether a credit of epoch e may be spent at credit
+// epoch now, given the floor of epochs already swept.
+func creditEpochSpendable(e, now, floor uint64) bool {
+	return e >= floor && e+1 >= now && e <= now+1
+}
+
+// creditSpentKey keys the spent set by epoch and serial: a credit is the signature
+// over both, so the same serial under two epochs is two credits, each paid for.
+func creditSpentKey(epoch uint64, serial []byte) string {
+	k := make([]byte, 8, 8+len(serial))
+	binary.BigEndian.PutUint64(k, epoch)
+	return string(append(k, serial...))
+}
+
+// creditFloorSerial marks the floor record in creditspent.log. It is shorter than
+// any credit serial (spending requires exactly blindtoken.SerialSize bytes), so no
+// credit can be mistaken for it.
+var creditFloorSerial = []byte("silt/credit-spent/floor")
+
+// sweepCreditSpent raises the floor to the oldest epoch still spendable at now and
+// drops the records below it, compacting the log first. If the compaction fails the
+// floor stays where it was and nothing is dropped: the window check still refuses
+// the expired credits, and the next spend retries the sweep.
+func (n *Node) sweepCreditSpent(now uint64) {
+	if now == 0 || now-1 <= n.creditFloor {
+		return
+	}
+	floor := now - 1
+	if n.creditStore != nil {
+		owner := n.creditGuardOwner()
+		live := []ports.PaidSerial{{Serial: creditFloorSerial, Server: owner, Epoch: floor}}
+		for k := range n.creditSpent {
+			if e := binary.BigEndian.Uint64([]byte(k[:8])); e >= floor {
+				live = append(live, ports.PaidSerial{Serial: []byte(k[8:]), Server: owner, Epoch: e})
+			}
+		}
+		if err := n.creditStore.Compact(live); err != nil {
+			n.logf(ports.LogWarn, "credit-spent sweep: compaction failed; expired records kept until the next spend", "err", err)
+			return
+		}
+	}
+	for k := range n.creditSpent {
+		if binary.BigEndian.Uint64([]byte(k[:8])) < floor {
+			delete(n.creditSpent, k)
+		}
+	}
+	n.creditFloor = floor
+}
 
 // maxCreditSpent is the guard's record cap. A cap at MINT is impossible: the issuer
 // cannot count outstanding blind credits.
@@ -339,11 +428,16 @@ func (n *Node) LoadCreditSpent() error {
 		return err
 	}
 	fresh := make(map[string]bool, len(entries))
+	var floor uint64
 	for _, e := range entries {
 		if len(e.Serial) == 0 {
 			continue
 		}
-		fresh[string(e.Serial)] = true
+		if bytes.Equal(e.Serial, creditFloorSerial) {
+			floor = max(floor, e.Epoch)
+			continue
+		}
+		fresh[creditSpentKey(e.Epoch, e.Serial)] = true
 	}
 	if len(fresh) > maxCreditSpent {
 		return fmt.Errorf("node: persisted credit-spent guard holds %d entries, cap is %d", len(fresh), maxCreditSpent)
@@ -360,6 +454,7 @@ func (n *Node) LoadCreditSpent() error {
 		}
 	}
 	n.creditSpent = fresh
+	n.creditFloor = floor
 	n.creditLoaded = true
 	return nil
 }
@@ -397,7 +492,8 @@ func (n *Node) AcquireCredits(rng io.Reader, v ports.NodeID, count int,
 			done(nil, err)
 			return
 		}
-		blinded, secret, err := blindtoken.BlindCredit(rng, pub, serial)
+		epoch := creditEpochAt(n.clock.Now())
+		blinded, secret, err := blindtoken.BlindCredit(rng, pub, epoch, serial)
 		if err != nil {
 			done(nil, err)
 			return
@@ -408,8 +504,8 @@ func (n *Node) AcquireCredits(rng io.Reader, v ports.NodeID, count int,
 					// RFC 9474 §4.4 Finalize: a credit that does not
 					// verify under the issuer's own key is dropped here, not carried
 					// forward as a credit that fails at spend time.
-					if sig, uerr := blindtoken.UnblindCredit(pub, serial, resp.Data, secret); uerr == nil {
-						credits = append(credits, ports.PublishCredit{Serial: serial, Sig: sig})
+					if sig, uerr := blindtoken.UnblindCredit(pub, epoch, serial, resp.Data, secret); uerr == nil {
+						credits = append(credits, ports.PublishCredit{Serial: serial, Sig: sig, Epoch: epoch})
 					}
 				}
 				next(i + 1)
@@ -565,13 +661,16 @@ func (n *Node) creditGuardOwner() ports.NodeID {
 // logCreditGuardRefusal makes the three guard-state refusals visible on the ISSUER: a
 // credit refused because the durable guard is full, broken, or not yet loaded is an
 // operator condition, not a client error; without this line the only symptom of an
-// issuer at cap was a DEBUG line on the client. The recovery from a full guard is
-// rotate-the-publish-key AND clear creditspent.log, together.
+// issuer at cap was a DEBUG line on the client. A full guard clears itself when the
+// next credit epoch sweeps the oldest spends. An expired credit is the client's
+// condition, so it logs at debug only.
 func (n *Node) logCreditGuardRefusal(err error) {
 	switch {
 	case errors.Is(err, errCreditGuardFull):
 		n.creditGuardRefusals++
-		n.logf(ports.LogWarn, "publish credit refused: credit-spent guard FULL — rotate the publish key and clear creditspent.log together", "recorded", len(n.creditSpent), "cap", maxCreditSpent)
+		n.logf(ports.LogWarn, "publish credit refused: credit-spent guard FULL — the spends of the current credit window reached the cap; credits are refused until the next credit epoch sweeps the oldest", "recorded", len(n.creditSpent), "cap", maxCreditSpent, "floor", n.creditFloor)
+	case errors.Is(err, errCreditExpired):
+		n.logf(ports.LogDebug, "publish credit refused: its epoch is outside the spending window", "floor", n.creditFloor)
 	case errors.Is(err, errCreditStore):
 		n.creditGuardRefusals++
 		n.logf(ports.LogWarn, "publish credit refused: credit-spent store write failed", "err", err)

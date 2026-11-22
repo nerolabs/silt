@@ -18,7 +18,7 @@ package blindtoken
 // collision dies at block 1 because the counter sits between the domain and the message
 // and changes per block. `MinModulusBits = 2048` forces nine blocks, so a one-block
 // expansion never happens. That rescue is a property of fullDomainHashD's field order —
-// pinned byte-exactly by TestPublishAndCreditFDHAreUnchanged and its two siblings, but never
+// pinned byte-exactly by TestPublishFDHIsUnchanged and its three siblings, but never
 // reviewed or reasoned about as a separation argument, and subtler than the property it
 // rescues. silt's canon on proof-versus-structure says to gate the structure, not the
 // accident. Prefix-freeness is the structure.
@@ -65,8 +65,8 @@ package blindtoken
 // The runtime half and the source half fail independently, which is the point of having
 // both.
 // 5. CONTROL, and the reason this file does not duplicate a field-order pin: move the
-// counter to `domain ‖ msg ‖ ctr`. All five tests here stay GREEN; the three existing
-// byte-exact pins (TestPublishAndCreditFDHAreUnchanged,
+// counter to `domain ‖ msg ‖ ctr`. All five tests here stay GREEN; the four existing
+// byte-exact pins (TestPublishFDHIsUnchanged, TestCreditFDHInputBindsTheEpoch,
 // TestDemandFDHInputBindsTheEpochByteExactly, TestRelayAnchorDomainIsPinnedByteExactly)
 // all go RED. Verified by running them under the patch, not assumed.
 
@@ -341,9 +341,9 @@ func TestEveryOrderedDomainPairRefusesTheOthersSignature(t *testing.T) {
 // so the single-block case that would make the shift work cannot arise.
 //
 // It is an EXPLANATION with evidence, not a safety argument and not a field-order pin. The
-// field order is already pinned three times over — TestPublishAndCreditFDHAreUnchanged,
-// TestDemandFDHInputBindsTheEpochByteExactly and TestRelayAnchorDomainIsPinnedByteExactly
-// each recompute `domain ‖ ctr ‖ msg` independently and compare against fullDomainHashD, so
+// field order is already pinned four times over — TestPublishFDHIsUnchanged,
+// TestCreditFDHInputBindsTheEpoch, TestDemandFDHInputBindsTheEpochByteExactly and
+// TestRelayAnchorDomainIsPinnedByteExactly each recompute `domain ‖ ctr ‖ msg` independently and compare against fullDomainHashD, so
 // moving the counter reddens those. This test exists so the next reader of
 // TestFDHDomainSetIsPairwisePrefixFree can tell a structural guard from a live exposure
 // without re-deriving the algebra.

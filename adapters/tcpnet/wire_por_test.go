@@ -92,7 +92,7 @@ func TestCreditSurvivesWire(t *testing.T) {
 		Kind:   ports.MsgTokenRequest,
 		RID:    9,
 		Data:   bytes.Repeat([]byte{0xaa}, 16), // the blinded serial
-		Credit: &ports.PublishCredit{Serial: bytes.Repeat([]byte{0xbb}, 24), Sig: bytes.Repeat([]byte{0xcc}, 32)},
+		Credit: &ports.PublishCredit{Serial: bytes.Repeat([]byte{0xbb}, 24), Sig: bytes.Repeat([]byte{0xcc}, 32), Epoch: 1505},
 	}
 	b, err := encMode.Marshal(envelope{Msg: toWire(want)})
 	if err != nil {
@@ -111,6 +111,9 @@ func TestCreditSurvivesWire(t *testing.T) {
 	}
 	if !bytes.Equal(got.Credit.Sig, want.Credit.Sig) {
 		t.Errorf("Credit.Sig lost: got %x want %x", got.Credit.Sig, want.Credit.Sig)
+	}
+	if got.Credit.Epoch != want.Credit.Epoch {
+		t.Errorf("Credit.Epoch lost: got %d want %d (the epoch is signed into the credit)", got.Credit.Epoch, want.Credit.Epoch)
 	}
 }
 

@@ -88,10 +88,12 @@ type wireMsg struct {
 	RepairsDone int64 `cbor:"30,keyasint,omitempty"`
 }
 
-// wireCredit mirrors ports.PublishCredit for the wire.
+// wireCredit mirrors ports.PublishCredit for the wire. Epoch is signed into the
+// credit with its serial, so a credit that loses it no longer verifies.
 type wireCredit struct {
 	Serial []byte `cbor:"1,keyasint,omitempty"`
 	Sig    []byte `cbor:"2,keyasint,omitempty"`
+	Epoch  uint64 `cbor:"3,keyasint,omitempty"`
 }
 
 // wireProvRec mirrors ports.ProviderRecord with CBOR-friendly []byte fields.
@@ -177,6 +179,7 @@ func toWire(m ports.Message) wireMsg {
 		w.Credit = &wireCredit{
 			Serial: append([]byte(nil), m.Credit.Serial...),
 			Sig:    append([]byte(nil), m.Credit.Sig...),
+			Epoch:  m.Credit.Epoch,
 		}
 	}
 	if len(m.Data) > 0 {
@@ -274,6 +277,7 @@ func fromWire(w wireMsg) ports.Message {
 		m.Credit = &ports.PublishCredit{
 			Serial: append([]byte(nil), w.Credit.Serial...),
 			Sig:    append([]byte(nil), w.Credit.Sig...),
+			Epoch:  w.Credit.Epoch,
 		}
 	}
 	m.Nonce = w.Nonce

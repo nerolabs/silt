@@ -106,7 +106,7 @@ func TestRelayAnchorDomainIsPinnedByteExactly(t *testing.T) {
 		t.Fatal("VerifyRelayAnchor rejects a raw RSA signature over the independently recomputed " +
 			"relay-domain FDH — the verify path is not pinned to uint64BE(epoch) ‖ serial under \"silt/blindrelay/fdh/v1\"")
 	}
-	if Verify(pub, serial, rawSig) || VerifyCredit(pub, serial, rawSig) || VerifyDemand(pub, epoch, serial, rawSig) {
+	if Verify(pub, serial, rawSig) || VerifyCredit(pub, 0, serial, rawSig) || VerifyDemand(pub, epoch, serial, rawSig) {
 		t.Fatal("a relay-anchor signature verified as a publish token, a credit, or a demand token — domain separation is broken")
 	}
 }
@@ -130,7 +130,7 @@ func TestRelayAnchorSignatureIsNotADemandSignature(t *testing.T) {
 	if VerifyDemand(pub, epoch, serial, anchorSig) {
 		t.Fatal("a relay ANCHOR signature verified as a DEMAND token under the same key/epoch/serial — one fee could pay two lanes")
 	}
-	if Verify(pub, serial, anchorSig) || VerifyCredit(pub, serial, anchorSig) {
+	if Verify(pub, serial, anchorSig) || VerifyCredit(pub, 0, serial, anchorSig) {
 		t.Fatal("a relay anchor signature verified as a publish token or a credit")
 	}
 

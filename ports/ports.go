@@ -205,6 +205,9 @@ type PublishToken struct {
 type PublishCredit struct {
 	Serial []byte
 	Sig    []byte
+	// Epoch is the credit epoch signed into the credit with its serial; the issuer
+	// accepts the credit only while that epoch is within its spending window.
+	Epoch uint64 `cbor:",omitempty"`
 }
 
 // Registry is the append-only log of published roots. v1 is a single
