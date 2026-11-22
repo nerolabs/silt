@@ -305,10 +305,17 @@ var (
 	errCreditGuardUnloaded = errors.New("node: credit-spent guard attached but not loaded")
 )
 
-// maxCreditSpent is the guard's record cap — the same order as the paid-serial
-// guard's floor (core/credit maxPaidSerialFloor). A cap at MINT is impossible: the
-// issuer cannot count outstanding blind credits.
-const maxCreditSpent = 65_536
+// maxCreditSpent is the guard's record cap. A cap at MINT is impossible: the issuer
+// cannot count outstanding blind credits.
+//
+// Every publish spends one credit at each issuer whose signature its token carries,
+// so the cap is also how many credit-paid publishes an issuer can ever sign for: the
+// network as a whole stops accepting them after about issuers × cap / quorum. At
+// 65,536 a four-validator network reached it in under an hour of field load. 2^20
+// holds a million records in about 89 MB of memory and 78 MB of log per issuer, which
+// covers weeks at tens of thousands of publishes a day. It postpones the cliff; it
+// does not remove it. Removing it needs credits that expire, so the set can sweep.
+const maxCreditSpent = 1 << 20
 
 // SetCreditSpentStore attaches the durable credit-spent store and marks the guard
 // UNLOADED. Until LoadCreditSpent succeeds every credit-bearing token request is
