@@ -1161,7 +1161,11 @@ func cmdDaemon(args []string) error {
 		// byte-perfect and merely unreadable by THIS binary, so
 		// acceptance PRESERVES it as chain.cbor.rejected-<unix> before
 		// anything is saved.
-		n, loss, refused := chainstore.Recover(chainPath, ch, *acceptChainLoss)
+		// The writer that replays the chain log is the one every later save goes
+		// through: it learns where each block sits in the file as it replays, so
+		// saves append from there, and the chain can release old blocks to it.
+		chainWriter := chainstore.NewWriter(chainPath)
+		n, loss, refused := chainWriter.Recover(ch, *acceptChainLoss)
 		if refused != nil {
 			fmt.Fprintf(os.Stderr, "chain replay: REFUSING TO START — %v. %s is UNTOUCHED. Inspect it (silt chain-status -store, or run the binary that wrote it); a %d-block valid prefix would be kept and the suffix re-synced from peers, which is IMPOSSIBLE below the swarm's prune horizon without a fresh -ws-checkpoint. If the loss is understood, restart with -accept-chain-loss: the original is preserved as %s.rejected-<unix>, never overwritten.\n", refused, chainPath, n, chainPath)
 			if lg != nil {
@@ -1185,8 +1189,8 @@ func cmdDaemon(args []string) error {
 			// divergence must name which map failed to rebuild — this line
 			// does that at every restore.
 			r := ch.Regime()
-			fmt.Printf("chain: restored %d block(s) from disk (everMature=%v matureEpoch=%v seen=%d bonded=%d epochStart=%d epochSet=%d)\n",
-				n, r.EverMature, r.MatureEpoch, r.ValidatorsSeen, r.Bonded, r.EpochStart, r.EpochSetSize)
+			fmt.Printf("chain: restored %d block(s) from disk (everMature=%v matureEpoch=%v seen=%d bonded=%d epochStart=%d epochSet=%d released=%d)\n",
+				n, r.EverMature, r.MatureEpoch, r.ValidatorsSeen, r.Bonded, r.EpochStart, r.EpochSetSize, ch.ReleasedBlocks())
 		}
 		// Every fresh chain is born carrying the founding manifesto at
 		// height 0 (declared, not agreed), and the daemon seeds the
@@ -1234,7 +1238,7 @@ func cmdDaemon(args []string) error {
 		// genesis seed above. The check is only ever meaningful against a chain LOADED FROM
 		// DISK: on a fresh node the committed params and the local ones are both
 		// ParamsFromConfig over this same cfg in the same process, so relative to the mint
-		// the check is a tautology in either position. Placed ahead of chainstore.Recover it
+		// the check is a tautology in either position. Placed ahead of chainWriter.Recover it
 		// reads an EMPTY blocks[0], returns nil, and the daemon serves under a config its
 		// own chain contradicts — measured, with the source gates green over it. It returns
 		// rather than warns: a warning lets the node start and reach the divergent verdicts
@@ -1269,16 +1273,19 @@ func cmdDaemon(args []string) error {
 		// wedged ⇒ downstream of restore; head hash pins the content itself.
 		// The writer appends each commit's blocks to the file rather than rewriting
 		// the whole chain, so a commit's save costs its own blocks, not the chain.
-		chainWriter := chainstore.NewWriter(chainPath)
 		saveChain = func(why string) {
 			if err := chainWriter.Sync(ch); err != nil {
 				fmt.Fprintln(os.Stderr, "chain save:", err)
 				return
 			}
+			// Blocks now durable and final leave memory; the log serves them.
+			if _, err := ch.ReleaseBlocks(chainWriter); err != nil {
+				fmt.Fprintln(os.Stderr, "chain release:", err)
+			}
 			head, next := ch.Head()
 			r := ch.Regime()
-			fmt.Printf("chain: saved %d block(s) [%s] head=%d:%s (everMature=%v matureEpoch=%v seen=%d bonded=%d epochStart=%d epochSet=%d)\n",
-				next, why, next-1, head, r.EverMature, r.MatureEpoch, r.ValidatorsSeen, r.Bonded, r.EpochStart, r.EpochSetSize)
+			fmt.Printf("chain: saved %d block(s) [%s] head=%d:%s (everMature=%v matureEpoch=%v seen=%d bonded=%d epochStart=%d epochSet=%d released=%d)\n",
+				next, why, next-1, head, r.EverMature, r.MatureEpoch, r.ValidatorsSeen, r.Bonded, r.EpochStart, r.EpochSetSize, ch.ReleasedBlocks())
 		}
 		// Durable never-sign-twice watermark: the mark is fsync'd
 		// BEFORE any consensus signature is released, so a crash/restart cannot

@@ -45,7 +45,7 @@ func TestDaemonPrintsTheNetworkIdentityAtStartUp(t *testing.T) {
 			"build whose unit tests are all green.", call)
 	}
 	at := strings.Index(s, call)
-	for _, before := range []string{"chainstore.Recover(chainPath, ch, *acceptChainLoss)", "genesis.Build(store, &gp)"} {
+	for _, before := range []string{"chainWriter.Recover(ch, *acceptChainLoss)", "genesis.Build(store, &gp)"} {
 		if i := strings.Index(s, before); i < 0 || i > at {
 			t.Fatalf("SOURCE GATE: RED — in daemon.go's TEXT the network-identity call appears BEFORE "+
 				"%q, so at run time it would describe a chain the daemon has not finished loading: an empty "+

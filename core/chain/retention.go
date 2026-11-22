@@ -124,6 +124,10 @@ func (c *Chain) PruneBelowHorizon() int {
 	}
 	n := 0
 	for i := 0; i < c.blocks.Len(); i++ {
+		if c.blocks.Released(i) {
+			i = c.blocks.HotFrom() - 1 // released blocks are final and already shed
+			continue
+		}
 		b := c.blocks.At(i)
 		if b.Height >= floor {
 			break // height-ordered; nothing at/above the floor is prune-eligible

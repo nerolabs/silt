@@ -107,7 +107,17 @@ func TestUnlinkablePublishViaQuorumToken(t *testing.T) {
 	if got.Publisher != (ports.NodeID{}) {
 		t.Fatal("a token-authorized publish must carry NO Publisher identity (F1)")
 	}
-	if got.Token == nil {
+	// The committed record is the block: the root index keeps entries without
+	// their tokens.
+	var committed *ports.Entry
+	for _, b := range publisher.Chain().Blocks(0) {
+		for i := range b.Entries {
+			if b.Entries[i].Root == e.Root {
+				committed = &b.Entries[i]
+			}
+		}
+	}
+	if committed == nil || committed.Token == nil {
 		t.Fatal("the committed entry lost its publish token")
 	}
 

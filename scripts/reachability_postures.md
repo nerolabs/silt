@@ -65,7 +65,7 @@ value in `reachability_lanes.txt` must occur EXACTLY ONCE in this file.
     reducer, not the wrapper: the wrapper's inline margin is two call charges rather than
     body substance, so merging its two calls would refuse the record with nothing about
     reachability changed.
-  - **Item 20 — the two refuse-to-start arms that are built.** `chainstore.Recover` refuses a
+  - **Item 20 — the two refuse-to-start arms that are built.** `chainstore.(*Writer).Recover` refuses a
     torn or block-0-missing replay; `(*Chain).CheckConsensusParams` refuses a start whose
     argv contradicts the config its own genesis committed. Both are linked into `./cmd/silt`,
     and both return rather than warn. The third arm — comparing the persisted `blocks[0]`

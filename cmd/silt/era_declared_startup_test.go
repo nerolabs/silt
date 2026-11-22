@@ -114,7 +114,7 @@ func TestDaemonPrintsTheEraPairAtStartUp(t *testing.T) {
 	// It must run where a chain exists and is fully loaded. Ahead of the replay it reports an
 	// empty chain on every restart; ahead of the genesis seed, on every fresh node.
 	call := strings.Index(s, "for _, ln := range eraStartupLines(ch) {")
-	for _, before := range []string{"chainstore.Recover(chainPath, ch, *acceptChainLoss)", "genesis.Build(store, &gp)"} {
+	for _, before := range []string{"chainWriter.Recover(ch, *acceptChainLoss)", "genesis.Build(store, &gp)"} {
 		if at := strings.Index(s, before); at < 0 || at > call {
 			t.Fatalf("SOURCE GATE: RED — in daemon.go's TEXT the era-pair call appears BEFORE "+
 				"%q, so at run time it would describe a chain the daemon has not finished loading. "+
