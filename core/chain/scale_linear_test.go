@@ -56,17 +56,15 @@ func allocated() uint64 {
 // the per-file sets made each block cost the whole chain and a restart cost its
 // square. Allocation per entry is the deterministic witness: it stays flat as the
 // chain grows fourfold when the copy is shared, and grows with the chain when it is
-// not. (Timing would say the same, noisily.)
+// not. (Timing would say the same, noisily.) Small enough to run under -short, so
+// every merge-gating job carries it.
 func TestCommitAndReloadCostStayFlatAsTheChainGrows(t *testing.T) {
-	if testing.Short() {
-		t.Skip("builds two chains of tens of thousands of entries")
-	}
 	defer func(was bool) { checkKeptRoots = was }(checkKeptRoots)
 	checkKeptRoots = false // the cross-check rebuilds the tree per block, which is the cost under test
 
 	const perBlock = 10
 	var commit, reload [2]float64
-	for i, nblocks := range []int{1000, 4000} {
+	for i, nblocks := range []int{500, 2000} {
 		c, perEntry := scaleChain(t, nblocks, perBlock)
 		commit[i] = perEntry
 		blocks := c.Blocks(0)
