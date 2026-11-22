@@ -1630,7 +1630,7 @@ print(','.join(n['nodeid'] for name,n in t['nodes'].items()
 }
 
 # ── adversarial: forged-block + low-bond proposals rejected ────────────────
-# LOCAL_PROOF: go test ./e2e -run 'TestForgedBlockRejectedOverTCP|TestLowBondProposerRejectedOverTCP' -count=1
+# LOCAL_PROOF: go test ./e2e -run 'TestForgedBlockRejectedOverTCP|TestLowBondProposerRejectedOverTCP|TestLowBondProposerRejectedObjectiveOverTCP' -count=1
 adv_proposal_reject() {
   require_nodes "184-forged-block" major adversary || return
   local ida; ida="$(node_field val-a nodeid)"
@@ -1647,23 +1647,34 @@ adv_proposal_reject() {
   local ok1=0; waitfor adversary "forge-block proposal correctly REJECTED by ${ida}" 90 >/dev/null && ok1=1
   slo_assert "184-forged-block" major "forged-signature proposal rejected (adversary logged 'correctly REJECTED by val-a')$([ "$ok1" = 1 ] || echo ' — adversary never logged the reject within 90s (or val-a wrongly ACCEPTED it)')" "$ok1"
   restore_argv adversary
-  # low-bond: the adversary carries a full, qualifying 64M bond. While its bond is not
-  # yet committed on-chain it is (correctly) rejected as an unqualified proposer — the
-  # PASS this drill was written for. But once its bond commits it becomes a QUALIFIED
-  # proposer, and val-a CORRECTLY accepts its well-formed block: that "UNEXPECTEDLY
-  # ACCEPTED" is right product behavior, not a defect, so it must NOT be a FAIL. The
-  # outcome therefore flips on the adversary's standing race between runs. Score
-  # it honestly: a logged reject is a PASS; a logged accept is a GAP (this node is
-  # qualified — a genuine under-bond REJECTION test needs a dedicated sub-min-bond
-  # identity); silence is a GAP (not driven). low-bond rejection is verifies
-  # in-process either way.
-  relaunch_with adversary "-lowbond-propose ${ida}"
-  if waitfor adversary "lowbond-propose proposal correctly REJECTED by ${ida}" 90 >/dev/null; then
-    slo_assert "184-low-bond" major "under-bonded proposer rejected (adversary logged 'correctly REJECTED by val-a')" 1
+  # low-bond: the adversary relaunches as a FRESH identity holding a 1M bond, below
+  # -min-bond, so it can never qualify whatever the timing. (Its own 64M identity
+  # qualifies once its bond commits, so proposing as itself raced its own standing.)
+  # Only -lowbond-propose lets a daemon start under-bonded in objective mode. A PASS
+  # needs the adversary to log the rejection AND val-a to have refused that identity
+  # as an unqualified proposer, so a refusal for any other reason (a stale parent, a
+  # wedged target) cannot pass for the bond defence.
+  local lb_seed=6991 lb_id
+  lb_id="$(ssh_node adversary "/usr/local/bin/silt id -id-seed $lb_seed" | grep -oE '^[a-f0-9]{64}$' | head -1)"
+  if [ ${#lb_id} -ne 64 ]; then
+    record "184-low-bond" gap major "could not derive the low-bond identity (seed $lb_seed) on the adversary — not driven"
+    restore_argv adversary; return
+  fi
+  local lb_since; lb_since="$(date -u +%Y-%m-%dT%H:%M:%S)"
+  relaunch_with adversary "-lowbond-propose ${ida} -id-seed ${lb_seed} -bond 1M"
+  local lb_logged=0 lb_reason=0
+  waitfor adversary "lowbond-propose proposal correctly REJECTED by ${ida}" 120 >/dev/null && lb_logged=1
+  if [ "$lb_logged" = 1 ]; then
+    lb_reason="$(ssh_node val-a "sudo awk -v a='$lb_since' '\$1 >= a' /var/lib/silt/debug.log | grep 'REJECTED (ValidateProposal)' | grep '${lb_id:0:16}' | grep -c 'reputation below threshold'" | tr -dc '0-9')"
+  fi
+  if [ "$lb_logged" = 1 ] && [ "${lb_reason:-0}" -gt 0 ]; then
+    slo_assert "184-low-bond" major "under-bonded proposer ${lb_id:0:8} (1M bond < -min-bond) refused by val-a as unqualified" 1
+  elif [ "$lb_logged" = 1 ]; then
+    slo_assert "184-low-bond" major "val-a refused the under-bonded proposer ${lb_id:0:8} but its debug log names no unqualified-proposer reason for it — refused for something other than the bond defence" 0
   elif waitfor adversary "lowbond-propose proposal UNEXPECTEDLY ACCEPTED by ${ida}" 5 >/dev/null; then
-    record "184-low-bond" gap major "adversary holds a qualifying 64M bond and was CORRECTLY accepted as a proposer — an under-bond REJECTION test needs a dedicated sub-min-bond identity; the property is covered by the in-process tests"
+    slo_assert "184-low-bond" major "val-a ACCEPTED a proposal from an identity holding a 1M bond below -min-bond" 0
   else
-    record "184-low-bond" gap major "no reject/accept line from the adversary within 90s — low-bond not driven this run"
+    record "184-low-bond" gap major "no reject/accept line from the low-bond adversary within 120s — not driven this run"
   fi
   restore_argv adversary
 }

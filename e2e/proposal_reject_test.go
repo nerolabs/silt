@@ -67,3 +67,35 @@ func TestLowBondProposerRejectedOverTCP(t *testing.T) {
 
 	l.waitFor(t, regexp.MustCompile(`lowbond-propose proposal correctly REJECTED by `+idA), 30*time.Second)
 }
+
+// TestLowBondProposerRejectedObjectiveOverTCP is the low-bond drill under objective
+// consensus, the posture the field runs. An honest validator refuses to start with a
+// bond below -min-bond, so the adversary flag -lowbond-propose lifts that start-up
+// refusal for the adversary alone: it joins with a 1M bond under a 4M minimum and a
+// fresh identity, so it can never qualify, and its well-formed proposal must be
+// refused by the honest anchor whatever the timing.
+func TestLowBondProposerRejectedObjectiveOverTCP(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e spawns processes; skipped under -short")
+	}
+	idA := identity.FromSeed(8101).NodeID().String()
+	idB := identity.FromSeed(8102).NodeID().String()
+	objective := func(store, seed string, extra ...string) []string {
+		return append([]string{
+			"-listen", "127.0.0.1:0", "-store", store, "-validator",
+			"-min-bond", "4M", "-mature-validators", "2",
+			"-anchors", idA + "," + idB, "-quorum", "1",
+			"-min-bond-floor", "0", "-bond-audit", "1s",
+			"-capacity", "1G", "-mdns=false", "-id-seed", seed,
+		}, extra...)
+	}
+	a := startDaemon(t, "A(anchor)", objective(t.TempDir(), "8101", "-bond", "8M", "-attesters", idB)...)
+	pa := a.waitFor(t, rePeer, 20*time.Second)
+	bootA := idA + "@" + pa[2]
+	b := startDaemon(t, "B(anchor)", objective(t.TempDir(), "8102", "-bond", "8M", "-bootstrap", bootA)...)
+	b.waitFor(t, reBootstrap, 20*time.Second)
+
+	l := startDaemon(t, "L(low-bond)", objective(t.TempDir(), "8103",
+		"-bond", "1M", "-bootstrap", bootA, "-lowbond-propose", idA)...)
+	l.waitFor(t, regexp.MustCompile(`lowbond-propose proposal correctly REJECTED by `+idA), 60*time.Second)
+}
