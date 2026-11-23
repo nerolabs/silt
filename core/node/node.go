@@ -1123,6 +1123,14 @@ type Node struct {
 
 	// foreignFormat is the latest block refused for its format; see ForeignFormat.
 	foreignFormat ForeignFormat
+
+	// takedowns lists the on-chain takedowns honoured since start, each with its
+	// receipt; takedownLogSeen is the revocation-log size already honoured, and
+	// takedownReceiptSize the log size of the last receipt, the checkpoint the next
+	// one extends.
+	takedowns           []TakedownRecord
+	takedownLogSeen     uint64
+	takedownReceiptSize uint64
 }
 
 // capInfo is what one peer has gossiped about itself: its capacity pledge (M9) and,
