@@ -997,8 +997,8 @@ naming: "published metadata no longer leaks the exact plaintext byte count, WHIC
 PADDING DEFENCE A NO-OP". That is not a thing to test, it is a thing to fix, and nothing currently
 drives it either way.
 
-**12. Takedown bites, cannot go global, and is provable.** ⚠ *all three clauses driven to e2e and
-mutation-checked; the field run is not driven*
+**12. Takedown bites, cannot go global, and is provable.** ✅ *held — e2e, netem (loss, composed,
+and every nightly arm) and the field sheet*
 Honouring operators stop serving
 and others keep serving; no accepted operation removes more than one named root or works by
 identity; every honoured removal carries inclusion and consistency proofs.
@@ -1030,8 +1030,16 @@ dropped a revoked root's bytes only at its next restart.
 What the receipt does not prove: who else still serves the root. That half of non-globality is
 observed (the second operator serves it), not proven.
 
-**13. Bit-perfect or an explicit failure, and crash recovery needs no human.** ⚠ *both named clauses
-driven to e2e and mutation-checked; partial-loss impairment and the field are not driven*
+*HELD, 2026-11-23.* Under netem the drill passes at 2% loss with 120±40 ms delay, under the composed
+arm, and in every arm of the nightly workflow (`SUITE=recovery`, dispatched green on the branch). On
+the field sheet `8dc553d9-56375` (default topology, t2d, three regions) row `12-chain-takedown`
+PASSES: val-d's takedown committed, val-c honoured it and purged 2 held chunks, its receipt verified
+on val-b's own replica, val-b derived the identical receipt and refused a forged one, and fetch-1
+still fetched the root bit-perfect. The sheet graded 26 pass / 0 gap / 0 fail.
+
+**13. Bit-perfect or an explicit failure, and crash recovery needs no human.** ✅ *held — e2e, netem
+(loss, composed, every nightly arm), and the field sheet for the crash clause; the unplaceable
+clause has no field shape (below)*
 An unplaceable
 publish names what could not be placed, returns no link, leaves no registry entry, and still
 succeeds on retry. A validator killed mid-consensus re-pins from its own last finalized
@@ -1056,7 +1064,9 @@ survives restart) and it is asserted nowhere at this tier.
 | An unplaceable publish names what could not be placed, returns no link, leaves no registry entry, succeeds on retry | Held, two ways. Full swarm (one-byte pledges): `chunk … placed on no node after 4 attempts`, no link, committed entries unchanged; once roomy holders join, the same file publishes and fetches bit-perfect. Unreachable holders (SIGSTOP): fails in 10 s with the same naming, no link, no entry; resumed, the retry is bit-perfect. Registering on a failed scatter reddens it. | e2e (`TestUnplaceablePublishFailsExplicitlyThenSucceedsOnRetry`, `TestPublishToUnreachableHoldersFailsExplicitlyThenSucceedsOnRetry`) |
 | A validator killed mid-consensus re-pins from its own disk with no human | Held. Killed by SIGKILL at its own proposal's prepare above its committed head, with a second validator stopped so the height waits for it; restarted with the identical command line, it restores at least the blocks it had saved and commits past the crash height. | e2e (`TestValidatorKilledMidConsensusRestartsWithoutContradictingItself`) |
 | …and never contradicts a signature it made before the crash | Held. Every signature is now logged after its mark is durable (`sign: mark recorded`); across all lifetimes no slot carries two hashes. Deleting the mark before the restart reddens it: the restarted proposer signs h=3 r=0 prepare twice with different hashes. | same, mutation-checked |
-| Impairment short of total loss; field | Not driven. | — |
+| Impairment short of total loss | Held. All three drills pass at 2% loss with 120±40 ms delay and under the composed arm (delay, jitter, 1% loss, 25% reorder); the publish to unreachable holders fails in 16–23 s instead of 10. They now run in every nightly netem arm (`SUITE=recovery`, in `all`), dispatched green on the branch. | netem |
+| Field: crash | Held. Row `13-validator-crash`, sheet `8dc553d9-56375`: with val-b and val-d stopped, val-a was SIGKILLed at its own takedown proposal's prepare twice (h=12 r=1, h=14 r=2), restarted with the same command line, restored its 12 and 14 saved blocks, re-signed and committed each crash height (154 s and 183 s after the kill); no slot signed twice in its audit trail; nobody slashed. The re-proposed block is identical after the restart, so this row cannot catch a forgotten mark; the e2e drill, which forces a different block, does. | field |
+| Field: unplaceable publish | No field shape. Every field node pledges storage, validators included, so placement fails only if the whole network stops, and a publish then fails at token issuance before it reaches placement. The clause rests on e2e plus netem. | — |
 
 Two observations from the drill, neither a failure of this item. Recovery is slow: with the proposer crashed at its own prepare and one other validator down, the chain resumed 1m53s–2m22s after the restart, inside the 430 s liveness envelope. And the double-sign the mutation produced was never slashed: equivocation is detected on a fork served during sync, so two conflicting prepares that never commit go unpunished.
 
