@@ -26,7 +26,16 @@ func (n *Node) SetDenylist(d *denylist.Set) { n.denylist = d }
 // §9), never a global switch. An operator that wants to enforce on-chain
 // takedowns opts in with this. The operator-local denylist (SetDenylist) is
 // always honored regardless.
-func (n *Node) SetHonorChainRevocations(honor bool) { n.honorChainRevocations = honor }
+//
+// Honouring runs forward from here: the takedowns already in the log are this
+// node's startup purge to apply (EnforceDenylist), and each new one is dropped as
+// it commits and recorded with its receipt (honourTakedowns).
+func (n *Node) SetHonorChainRevocations(honor bool) {
+	n.honorChainRevocations = honor
+	if honor && n.chain != nil {
+		n.takedownLogSeen = uint64(n.chain.RevocationLogSize())
+	}
+}
 
 // isDenied is the node's effective takedown check: the operator's local list
 // (always), plus — only if the operator has subscribed — the roots its chain

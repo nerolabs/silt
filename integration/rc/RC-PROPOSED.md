@@ -997,8 +997,8 @@ naming: "published metadata no longer leaks the exact plaintext byte count, WHIC
 PADDING DEFENCE A NO-OP". That is not a thing to test, it is a thing to fix, and nothing currently
 drives it either way.
 
-**12. Takedown bites, cannot go global, and is provable.** ❓ *NO VERDICT RECORDED — the strongest of the
-unattributed six*
+**12. Takedown bites, cannot go global, and is provable.** ⚠ *all three clauses driven to e2e and
+mutation-checked; the field run is not driven*
 Honouring operators stop serving
 and others keep serving; no accepted operation removes more than one named root or works by
 identity; every honoured removal carries inclusion and consistency proofs.
@@ -1014,6 +1014,21 @@ keeps serving bit-perfect, which is the per-operator, non-global half.
 That is the half that makes non-globality PROVABLE rather than merely true on the day, and it is the
 half `VISION.md` leans on ("silt can *prove* it never flipped a global switch"). Nothing reads those
 proofs today.
+
+*VERDICT, 2026-11-23, at main 2ea5b401 plus the change that records it.* The proofs existed in the
+library (`RevocationInclusionProof`, `RevocationConsistencyProof`) and every v4/v5 block commits the
+log root, but nothing produced a proof for a removal, nothing read one, and an honouring operator
+dropped a revoked root's bytes only at its next restart.
+
+| Clause | Result | Tier |
+|---|---|---|
+| Honouring operators stop serving | Held, and now at once: an honouring node drops the held bytes of each root a committed or caught-up block revokes (`takedown: honoured … purged=N`), not at its next restart. | e2e (`TestHonouredTakedownCarriesAReceiptAnAuditorVerifies`); docker `integration/takedown` PASS |
+| Others keep serving | Held: the validator that did not subscribe serves the revoked root bit-perfect after both takedowns. | same |
+| No operation removes more than one named root or works by identity | Held by the existing existence check; each receipt names exactly one root. | unit (`TestRevokeUnknownRoot_Denied`) |
+| Every honoured removal carries inclusion and consistency proofs | Held. Each removal logs a `chain.RevocationReceipt`: the takedown's leaf, its inclusion proof against the anchoring block's committed LogRoot, and a consistency proof from the operator's previous receipt. An auditor holding a DIFFERENT validator's replica verifies both (`silt takedown-verify`), the second extending the first; derives the same receipt itself (`silt takedown-receipt`); and refuses the first receipt claimed for the second root. Unit: nine forgeries refused, and a replica with a takedown erased from its own history cannot prove its record. | e2e + unit; dropping the inclusion check or the honour hook reddens them |
+
+What the receipt does not prove: who else still serves the root. That half of non-globality is
+observed (the second operator serves it), not proven.
 
 **13. Bit-perfect or an explicit failure, and crash recovery needs no human.** ⚠ *both named clauses
 driven to e2e and mutation-checked; partial-loss impairment and the field are not driven*

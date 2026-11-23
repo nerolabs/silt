@@ -517,6 +517,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 				n.onCommit(*b)
 			}
 			n.pruneOnCommit() // shed heavy proofs below the horizon
+			n.honourTakedowns()
 		}
 		n.reply(from, msg, ports.Message{Kind: ports.MsgCommitAck, OK: ok})
 		if ok {
@@ -1506,6 +1507,7 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 					n.onCommit(*b)
 				}
 				n.pruneOnCommit() // shed heavy proofs below the horizon
+				n.honourTakedowns()
 				n.broadcastCommit(b, broadcast, func() { done(nil) })
 				n.offerProposal()
 				return
@@ -1997,6 +1999,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 					n.onReorg(dropped, uint64(len(now)-1))
 				}
 				n.logf(ports.LogInfo, "chain reconciled from peer", "peer", p, "len", n.chain.Len())
+				n.honourTakedowns()
 			} else if errors.Is(rerr, chain.ErrPrunedAboveHorizon) {
 				// Deep-cold (behind > safetyDepth): the peer pruned the gap and we
 				// cannot re-verify it — refuse to trust it from a peer (C1 guard).
@@ -2075,6 +2078,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 							diag.suffixAppends += k
 							if k > 0 {
 								n.logf(ports.LogInfo, "chain caught up from peer (suffix append)", "peer", p, "appended", k, "len", n.chain.Len())
+								n.honourTakedowns()
 							}
 							if aerr != nil {
 								diag.lastErr = fmt.Sprintf("suffix stop@%d from %x: %v", h, p[:4], aerr)

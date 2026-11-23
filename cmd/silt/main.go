@@ -36,6 +36,8 @@ Usage:
 
   silt id           [-id-seed N | -store DIR] [-listen ADDR]   (print a node's ID without launching it)
   silt chain-status [-store DIR]                               (read-only: head height + hash of a validator's chain)
+  silt takedown-receipt -root HEX [-store DIR] [-from N]      (read-only: the proof of a root's on-chain takedown, from a replica's own blocks)
+  silt takedown-verify -receipt B64 [-store DIR]              (read-only: check a published takedown receipt against this replica)
 
   silt daemon [-listen ADDR] [-store DIR] [-capacity 2G] [-bootstrap ID@ADDR,...]
                 [-dns-seed DOMAIN] [-serve-registry ADDR | -registry REF] [-care CARELINK,...]
@@ -77,6 +79,10 @@ func main() {
 		err = cmdID(os.Args[2:])
 	case "chain-status":
 		err = cmdChainStatus(os.Args[2:])
+	case "takedown-receipt":
+		err = cmdTakedownReceipt(os.Args[2:])
+	case "takedown-verify":
+		err = cmdTakedownVerify(os.Args[2:])
 	case "daemon":
 		err = cmdDaemon(os.Args[2:])
 	case "client":
