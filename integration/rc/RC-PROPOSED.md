@@ -1289,7 +1289,7 @@ never been driven is a gap directly under the mechanism the release leans on.
 | Refuses to start when its consensus config diverges | Held. | e2e (`e2e/consensus_config_bind_test.go`) |
 | Upgrades cleanly within the versioned formats | Held. ce6e4316 (main before the disk state tree and the append-only chain log) to HEAD, whole-swarm and rolling: the chain reloads at the head V1 itself reported, content bit-perfect. | docker |
 | No node replaces its own binary | Held, structurally: no shipped code locates or execs its own binary. | source gate (`TestNoShippedCodeReplacesItsOwnBinary`) |
-| No version-floor advisory below the signing threshold changes anything | Vacuous. TENETS R4 says the mechanism "lives in the code"; it does not exist. Nothing enforces a floor, so nothing below a threshold can. | not built |
+| No version-floor advisory below the signing threshold changes anything | Vacuous. TENETS R4 says the mechanism "lives in the code"; it does not exist. Nothing enforces a floor, so nothing below a threshold can. | not built — **to be built after item 20** (owner decision, 2026-11-23): a threshold-signed version-floor advisory with criticality tiers, enforcement clocked on observing the signed advisory and recallable, so this clause is driven rather than vacuous |
 
 **20. The floor box's verdict counts, or it is disclosed that it does not.** ⚠ *SHIPS DISCLOSED — two preconditions closed, one waits on the flip, one waits on a new era*
 *Done:* a validator on the floor spec returns the SAME verdict set as a tree-holding node —
