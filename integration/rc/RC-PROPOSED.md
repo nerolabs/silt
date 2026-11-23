@@ -1015,8 +1015,8 @@ That is the half that makes non-globality PROVABLE rather than merely true on th
 half `VISION.md` leans on ("silt can *prove* it never flipped a global switch"). Nothing reads those
 proofs today.
 
-**13. Bit-perfect or an explicit failure, and crash recovery needs no human.** ❓ *NO VERDICT RECORDED —
-the storage half has evidence, the two named clauses do not*
+**13. Bit-perfect or an explicit failure, and crash recovery needs no human.** ⚠ *both named clauses
+driven to e2e and mutation-checked; partial-loss impairment and the field are not driven*
 An unplaceable
 publish names what could not be placed, returns no link, leaves no registry entry, and still
 succeeds on retry. A validator killed mid-consensus re-pins from its own last finalized
@@ -1033,6 +1033,17 @@ and still succeeds on retry. And nobody has killed a validator mid-consensus and
 from its own last finalized checkpoint without contradicting a signature it made before the crash.
 The second is a consensus-safety property (a validator never signs twice at a height, and that memory
 survives restart) and it is asserted nowhere at this tier.
+
+*VERDICT, 2026-11-23, at main 2ea5b401 plus the change that records it.*
+
+| Clause | Result | Tier |
+|---|---|---|
+| An unplaceable publish names what could not be placed, returns no link, leaves no registry entry, succeeds on retry | Held, two ways. Full swarm (one-byte pledges): `chunk … placed on no node after 4 attempts`, no link, committed entries unchanged; once roomy holders join, the same file publishes and fetches bit-perfect. Unreachable holders (SIGSTOP): fails in 10 s with the same naming, no link, no entry; resumed, the retry is bit-perfect. Registering on a failed scatter reddens it. | e2e (`TestUnplaceablePublishFailsExplicitlyThenSucceedsOnRetry`, `TestPublishToUnreachableHoldersFailsExplicitlyThenSucceedsOnRetry`) |
+| A validator killed mid-consensus re-pins from its own disk with no human | Held. Killed by SIGKILL at its own proposal's prepare above its committed head, with a second validator stopped so the height waits for it; restarted with the identical command line, it restores at least the blocks it had saved and commits past the crash height. | e2e (`TestValidatorKilledMidConsensusRestartsWithoutContradictingItself`) |
+| …and never contradicts a signature it made before the crash | Held. Every signature is now logged after its mark is durable (`sign: mark recorded`); across all lifetimes no slot carries two hashes. Deleting the mark before the restart reddens it: the restarted proposer signs h=3 r=0 prepare twice with different hashes. | same, mutation-checked |
+| Impairment short of total loss; field | Not driven. | — |
+
+Two observations from the drill, neither a failure of this item. Recovery is slow: with the proposer crashed at its own prepare and one other validator down, the chain resumed 1m53s–2m22s after the restart, inside the 430 s liveness envelope. And the double-sign the mutation produced was never slashed: equivocation is detected on a fork served during sync, so two conflicting prepares that never commit go unpunished.
 
 **14. The floor box holds, and the chain prunes.** ✅ *done*
 A validator on the declared floor spec — one core, 2 GiB, 10 GiB of disk — validates against
