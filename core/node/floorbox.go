@@ -146,6 +146,7 @@ func (n *Node) fetchAbovePin(sources []ports.NodeID, i int, pin FloorBoxPin,
 			}
 			window, dErr := chain.DecodeBlocks(resp.Data)
 			if dErr != nil {
+				n.noteUndecodable(sources[i], "witness-fetch", dErr)
 				next()
 				return
 			}

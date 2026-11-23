@@ -44,7 +44,7 @@ SUITES_CATALOG=(
   "soak|slow|700|Sustained load + gentle churn: bit-perfect throughout, no crash-loop, bounded memory"
   "durability|slow|1800|Durability under permanent loss: shrink the swarm, caretaker reconstructs+re-scatters, content outlives the nodes (surfaces the durability↔retrievability boundary)"
   "retrieval|slow|900|Retrieval/discoverability at scale + identity churn: cold-fetch success-rate floor (reproduces #43)"
-  "upgrade|slow|180|Rolling binary upgrade on a persisted store (reproduces the format-migration FINDING)"
+  "upgrade|slow|180|Binary upgrade on a persisted store: from v0.1.1, HEAD refuses the pre-format chain and keeps its bytes (FINDING); with V1_REF=<recent> EXPECT=clean, it reloads at V1's head, content bit-perfect"
 )
 
 # Resolve the list of suites to run.

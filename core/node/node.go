@@ -552,6 +552,10 @@ type Stats struct {
 	// fetches. windows/full-fetch ≈ suffix bytes / maxChainReplyBytes; a
 	// value equal to FullFetches means every fetch fit one window.
 	ChainSyncWindows int
+	// ForeignFormatBlocks: blocks peers sent in a format this build does not
+	// validate, each refused. A count that keeps rising while the head holds still
+	// is an un-upgraded node stalled at an era boundary; see ForeignFormat.
+	ForeignFormatBlocks int
 	// catch-up cost split. ChainSyncSuffixAppends: blocks adopted through the
 	// extension fast path (validated once, via the normal Append commit path — the
 	// O(delta) route). ChainSyncFullReconciles: slow-path Reconcile invocations,
@@ -1116,6 +1120,9 @@ type Node struct {
 	// lg narrates through the observability port; nil = off. The sim
 	// leaves it nil, so determinism and benchmarks are untouched.
 	lg ports.Logger
+
+	// foreignFormat is the latest block refused for its format; see ForeignFormat.
+	foreignFormat ForeignFormat
 }
 
 // capInfo is what one peer has gossiped about itself: its capacity pledge (M9) and,

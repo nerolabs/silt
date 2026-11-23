@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"math/rand"
 	"testing"
 
@@ -345,5 +346,32 @@ func TestRevocationByQuorum(t *testing.T) {
 	}
 	if _, ok, _ := reg.Lookup(nil, entry(1).Root); !ok {
 		t.Fatal("un-revoked root must resolve again even for a subscribing registry")
+	}
+}
+
+// A refused version names the block it refused: errors.As recovers the format and
+// the claimed height, errors.Is still matches ErrBlockVersion, and the message text
+// the daemon's refusal line quotes is unchanged.
+func TestVersionErrorNamesTheRefusedBlock(t *testing.T) {
+	future := Block{Version: BlockVersionWitnessable + 1, Height: 7}
+	_, err := Decode(Encode(&future))
+	var ve *VersionError
+	if !errors.As(err, &ve) || !errors.Is(err, ErrBlockVersion) {
+		t.Fatalf("want a VersionError matching ErrBlockVersion, got %v", err)
+	}
+	if ve.Got != BlockVersionWitnessable+1 || ve.Height != 7 || ve.Index != -1 || !ve.Newer() {
+		t.Fatalf("VersionError does not describe the block: %+v", ve)
+	}
+	if want := fmt.Sprintf("chain: unsupported block version: got %d, want 1..%d", BlockVersionWitnessable+1, BlockVersionWitnessable); err.Error() != want {
+		t.Fatalf("message changed:\n got %q\nwant %q", err.Error(), want)
+	}
+
+	legacy := Block{Version: 0, Height: 3}
+	_, err = DecodeBlocks(EncodeBlocks([]Block{legacy}))
+	if !errors.As(err, &ve) || ve.Index != 0 || ve.Got != 0 || ve.Newer() {
+		t.Fatalf("a version-0 block in a batch: %v (%+v)", err, ve)
+	}
+	if want := fmt.Sprintf("chain: unsupported block version: block 0 got 0, want 1..%d", BlockVersionWitnessable); err.Error() != want {
+		t.Fatalf("batch message changed:\n got %q\nwant %q", err.Error(), want)
 	}
 }

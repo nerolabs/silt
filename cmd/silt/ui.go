@@ -514,6 +514,11 @@ type chainInfo struct {
 	// row exists to close.
 	HeadVersion uint64         `json:"headVersion"`
 	Era         chain.EraState `json:"era"`
+	// ForeignFormat counts the blocks peers sent in a format this build does not
+	// validate, with the latest one. A rising count under a head that holds still is
+	// this node stalled at an era boundary it has not been upgraded for. Always
+	// present, so a zero count reads as "none seen", not "not computed".
+	ForeignFormat node.ForeignFormat `json:"foreignFormat"`
 }
 
 // statusInfo is the GET /api/status document. It is a NAMED type because it is cached:
@@ -974,7 +979,7 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 		if ch := s.nd.Chain(); ch != nil {
 			era := ch.EraState()
 			out.Chain = &chainInfo{Height: ch.Len(), Entries: ch.EntryCount(),
-				HeadVersion: era.Census.HeadVersion, Era: era}
+				HeadVersion: era.Census.HeadVersion, Era: era, ForeignFormat: s.nd.ForeignFormat()}
 		}
 		out.Durability = s.durabilitySnapshot(uptime)
 		if fs := s.nd.FaucetStats(); fs.Configured {

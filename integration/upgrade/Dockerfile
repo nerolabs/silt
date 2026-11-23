@@ -1,5 +1,5 @@
 # Runtime image for the rolling-upgrade / on-disk-format-stability harness
-# (field test #11). Unlike the other harnesses, this image carries BOTH
+# Unlike the other harnesses, this image carries BOTH
 # prebuilt binaries — an OLD release (silt-v1) and HEAD (silt-v2) — so a single
 # image, reattached to the SAME named volume, can play a node on either version.
 # The upgrade is a container RECREATE with a different SILT_VERSION env, pointed
