@@ -1213,7 +1213,7 @@ of the clause, and no run produces one. Note the tension the sheet should not hi
 already accepts witness pricing as the fix for the unpriced core-node externality, so this
 measurement is the one that would say whether the acceptance was warranted.
 
-**18. Core carries nothing.** ❓ *NO VERDICT RECORDED — and no suite is named for it*
+**18. Core carries nothing.** ✅ *seizure drill with its key-holder control driven to e2e, mutation-checked; naming half gated structurally*
 Seize a holder and fail to recover known plaintext, with a
 key-holder succeeding on the same objects in the same run; core resolves hashes, never names.
 *unit → e2e.*
@@ -1228,6 +1228,22 @@ A KEY-HOLDER SUCCEEDING ON THE SAME OBJECTS IN THE SAME RUN. Without that arm, a
 recovers nothing proves only that the seizure was performed badly, which is the vacuity shape this
 list rejects everywhere else. Cheap to build, and it is the drill that answers the content-blind
 immutable for an outsider.
+
+*VERDICT, 2026-11-23, at main 2ea5b401 plus the change that records it.*
+`TestSeizedNetworkYieldsNoPlaintextWhileTheKeyHolderReadsIt` publishes a known plaintext, stops every
+process, and reads every byte of all four stores, the validator's included (145 files, 71 MB). The
+seizer holds the disks, the plaintext, the file's name and its care link.
+
+| Arm | Result |
+|---|---|
+| Search every seized byte for the canary, the file name, and a 32-byte window of the plaintext every 997 bytes | Nothing found. Storing private-mode frames unencrypted reddens it at the first `objects/` file. |
+| Confirmation attack: encrypt the known plaintext's first chunk as a convergent publish would, look for it | Misses the private publish; FINDS a convergent publish of a second file in the same run, the disclosed cost of `-mode convergent`. The hit is the control that the attack reaches the data. |
+| Fetch with the care link | Refused by the client. The cryptographic guarantee is the sealed manifest: the care link carries the layout key only, and the file key is boxed under the content key. |
+| Key-holder, same disks restarted | Bit-perfect; a link with one key character changed does not read it. |
+
+The naming half: `TestStoredAndCommittedStructuresCarryNoNames` walks every field reachable from
+`chain.Block`, `manifest.Manifest` and `ports.Entry`; the only text is the network's label and the
+mode enum. Adding `Name string` to `Entry` reddens it. A name smuggled into a byte field is ungated.
 
 **19. An un-upgraded node stalls, and the network never updates itself.** ⚠ *three of four clauses
 driven to e2e; the version-floor advisory the fourth governs is not built*
