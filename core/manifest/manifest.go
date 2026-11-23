@@ -63,8 +63,9 @@ type Manifest struct {
 	// mode only), aligned with Chunks. Whoever has the manifest can
 	// decrypt; whoever only has chunks cannot.
 	ChunkSecrets [][]byte `cbor:"6,keyasint,omitempty"`
-	// FileKey is the per-file key (private mode only). Plaintext in v1 —
-	// acceptable in the sim, revisit with encrypted manifests.
+	// FileKey is the per-file key (private mode only). It never reaches
+	// storage in the clear: Seal boxes it, with ChunkSecrets, under the
+	// content key, which only the full link carries.
 	FileKey []byte `cbor:"7,keyasint,omitempty"`
 	// Erasure-coding parameters: stripes of K consecutive chunks carry
 	// N-K parity shards each. K=0 means no coding (an M1 manifest).
