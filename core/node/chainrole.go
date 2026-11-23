@@ -126,6 +126,10 @@ func (n *Node) recordSignLock(height, round uint64, phase uint8, h ports.Hash, l
 		}
 	}
 	n.signMark, n.signMarkSet = mark, true
+	// The audit trail of every consensus signature this node releases, written
+	// after the mark is durable and before the signature leaves: an operator, or a
+	// crash drill, can read across restarts that no slot was ever signed twice.
+	n.logf(ports.LogDebug, "sign: mark recorded", "height", height, "round", round, "phase", phase, "hash", h)
 	return true
 }
 
@@ -1379,6 +1383,7 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 		done(fmt.Errorf("propose height %d: sign-mark could not be persisted — refusing to sign (Q1b)", b.Height))
 		return
 	}
+	n.logf(ports.LogDebug, "propose: signed own proposal", "height", b.Height, "round", round, "hash", b.Hash(), "entries", len(b.Entries))
 	raw := chain.Encode(b)
 	envRaw, err := cbor.Marshal(proposeEnv{Raw: raw, Round: round, NewView: newView})
 	if err != nil {
