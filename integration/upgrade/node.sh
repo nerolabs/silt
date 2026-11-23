@@ -30,10 +30,11 @@ BIN="/usr/local/bin/silt-${SILT_VERSION}"
 
 set -- "$BIN" daemon -store=/data -capacity="${CAPACITY:-5G}"
 
-# Listen/advertise: v0.1.1 has no -advertise and stamps its -listen address on
-# outgoing messages, so it must listen on the concrete container IP. HEAD binds
-# the wildcard and advertises the routable IP explicitly.
-if [ "$SILT_VERSION" = "v1" ]; then
+# Listen/advertise: a release without -advertise (v0.1.1) stamps its -listen
+# address on outgoing messages, so it must listen on the concrete container IP. A
+# release that has the flag binds the wildcard and advertises the routable IP. The
+# flag set is read from the binary itself, so V1 may be any ref, old or recent.
+if ! "$BIN" daemon -h 2>&1 | grep -q -- '-advertise'; then
   set -- "$@" -listen="${NODE_IP}:${PORT}"
 else
   set -- "$@" -listen="0.0.0.0:${PORT}" -advertise="${NODE_IP}:${PORT}" -mdns=false -log=info

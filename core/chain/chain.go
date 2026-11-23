@@ -1402,10 +1402,35 @@ func Decode(raw []byte) (*Block, error) {
 		return nil, fmt.Errorf("chain: decode block: %w", err)
 	}
 	if !versionSupported(b.Version) {
-		return nil, fmt.Errorf("%w: got %d, want 1..%d", ErrBlockVersion, b.Version, BlockVersionWitnessable)
+		return nil, &VersionError{Index: -1, Height: b.Height, Got: b.Version}
 	}
 	return &b, nil
 }
+
+// VersionError is a block whose format version this build does not validate. It
+// matches ErrBlockVersion under errors.Is, and errors.As recovers the version and
+// the height the block claims, so a node can say what it refused and why. The
+// height is the sender's claim: a format this build cannot read is a format whose
+// other fields it has no grounds to trust either.
+type VersionError struct {
+	Index  int    // position in a decoded batch, or -1 for a single block
+	Height uint64 // the height the refused block claims
+	Got    uint64 // its format version
+}
+
+func (e *VersionError) Error() string {
+	if e.Index < 0 {
+		return fmt.Sprintf("%v: got %d, want 1..%d", ErrBlockVersion, e.Got, BlockVersionWitnessable)
+	}
+	return fmt.Sprintf("%v: block %d got %d, want 1..%d", ErrBlockVersion, e.Index, e.Got, BlockVersionWitnessable)
+}
+
+func (e *VersionError) Unwrap() error { return ErrBlockVersion }
+
+// Newer reports whether the block is from an era after this build's: the network
+// has moved on and this binary must be upgraded by its operator. Otherwise the
+// block predates the versioned formats.
+func (e *VersionError) Newer() bool { return e.Got > BlockVersionWitnessable }
 
 func EncodeBlocks(bs []Block) []byte {
 	raw, err := encMode.Marshal(bs)
@@ -1452,7 +1477,7 @@ func DecodeBlocks(raw []byte) ([]Block, error) {
 	}
 	for i := range bs {
 		if !versionSupported(bs[i].Version) {
-			return nil, fmt.Errorf("%w: block %d got %d, want 1..%d", ErrBlockVersion, i, bs[i].Version, BlockVersionWitnessable)
+			return nil, &VersionError{Index: i, Height: bs[i].Height, Got: bs[i].Version}
 		}
 	}
 	return bs, nil

@@ -1218,8 +1218,8 @@ recovers nothing proves only that the seizure was performed badly, which is the 
 list rejects everywhere else. Cheap to build, and it is the drill that answers the content-blind
 immutable for an outsider.
 
-**19. An un-upgraded node stalls, and the network never updates itself.** ❓ *NO VERDICT RECORDED — its
-suite sits in the opt-in tier and was not in the sweep*
+**19. An un-upgraded node stalls, and the network never updates itself.** ⚠ *three of four clauses
+driven to e2e; the version-floor advisory the fourth governs is not built*
 A node that cannot
 validate a shipped format stops rather than accepting it and says so while staying alive. A
 node whose consensus-reaching configuration diverges from what the chain committed refuses to
@@ -1237,6 +1237,17 @@ frozen-format immutable RESTS ON: "an un-upgraded node **stalls** at the era bou
 accept a format it cannot validate; that stall is the correct safety-first behaviour." Item 20 ships
 disclosed because closing its blocker needs a new era. An era boundary whose stall behaviour has
 never been driven is a gap directly under the mechanism the release leans on.
+
+*VERDICT, 2026-11-23, at main 2ea5b401 plus the change that records it.*
+
+| Clause | Result | Tier |
+|---|---|---|
+| Stops on a format it cannot validate, says so, stays alive | Held. A running validator handed a block one format past its own over real TCP refuses it, keeps its head, logs `foreign-format:` at warn with the remedy, and answers head probes. Before this change the refusal was silent: debug-level on two paths and unlogged on the commit path. | e2e (`TestRunningValidatorStallsLoudlyOnALaterEraBlock`), node, mutation-checked |
+| Refuses to start on a chain it cannot read | Held. `integration/upgrade` from v0.1.1: HEAD refuses, names the loss, leaves `chain.cbor` byte-identical, and under `-accept-chain-loss` keeps it as `.rejected-<unix>`. The names registered in that chain go with it. | docker |
+| Refuses to start when its consensus config diverges | Held. | e2e (`e2e/consensus_config_bind_test.go`) |
+| Upgrades cleanly within the versioned formats | Held. ce6e4316 (main before the disk state tree and the append-only chain log) to HEAD, whole-swarm and rolling: the chain reloads at the head V1 itself reported, content bit-perfect. | docker |
+| No node replaces its own binary | Held, structurally: no shipped code locates or execs its own binary. | source gate (`TestNoShippedCodeReplacesItsOwnBinary`) |
+| No version-floor advisory below the signing threshold changes anything | Vacuous. TENETS R4 says the mechanism "lives in the code"; it does not exist. Nothing enforces a floor, so nothing below a threshold can. | not built |
 
 **20. The floor box's verdict counts, or it is disclosed that it does not.** ⚠ *SHIPS DISCLOSED — two preconditions closed, one waits on the flip, one waits on a new era*
 *Done:* a validator on the floor spec returns the SAME verdict set as a tree-holding node —

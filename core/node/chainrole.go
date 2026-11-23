@@ -255,6 +255,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		}
 		b, err := chain.Decode(env.Raw)
 		if err != nil {
+			n.noteUndecodable(from, "prepare", err)
 			n.logf(ports.LogDebug, "gather/prepare: DECODE failed", "from", from, "bytes", len(msg.Data), "err", err)
 			n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
 			return true
@@ -400,6 +401,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		}
 		b, err := chain.Decode(env.Raw)
 		if err != nil {
+			n.noteUndecodable(from, "precommit", err)
 			n.reply(from, msg, ports.Message{Kind: ports.MsgPrecommitReply, OK: false})
 			return true
 		}
@@ -500,6 +502,9 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		n.reply(from, msg, ports.Message{Kind: ports.MsgRoundCertAck, OK: true})
 	case ports.MsgCommitBlock:
 		b, err := chain.Decode(msg.Data)
+		if err != nil {
+			n.noteUndecodable(from, "commit", err)
+		}
 		ok := err == nil && n.chain.Append(*b) == nil
 		if ok {
 			n.Stats.BlocksCommitted++
@@ -2028,6 +2033,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 					}
 					window, derr := chain.DecodeBlocks(resp.Data)
 					if derr != nil {
+						n.noteUndecodable(p, "chain-sync", derr)
 						diag.lastErr = fmt.Sprintf("undecodable window@%d from %x: %v", h, p[:4], derr)
 						n.logf(ports.LogDebug, "windowed chain fetch: undecodable reply", "peer", p, "err", derr)
 						next()

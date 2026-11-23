@@ -1,4 +1,4 @@
-# Rolling-upgrade / on-disk-format-stability topology (field test #11).
+# Rolling-upgrade / on-disk-format-stability topology.
 #
 #  ┌──────────── swarm 10.130.0.0/24 ────────────┐
 #  │ │
@@ -39,7 +39,7 @@ services:
       REG_SERVE: 0.0.0.0:4003
       VALIDATOR: 1
       CAPACITY: 1               # rendezvous only: refuse content so it lives on the holders
-      EXTRA: -id-seed=1         # deterministic NodeID → a registry ref the driver can build up front
+      EXTRA: -id-seed=1 ${SEED_EXTRA:-}   # deterministic NodeID → a registry ref the driver can build up front; SEED_EXTRA carries an operator flag such as -accept-chain-loss
     volumes:
       - seed-data:/data
     networks:
