@@ -945,7 +945,7 @@ bounty judge, and a unit suite sees none of those seams: the full `./e2e` packag
 455 s, with `TestRepairBountyPaysOnTheWire` (78 s) driving publish → placement → proof sidecar →
 repair claim → identity-bound retrievability challenge → bounty over real sockets, and
 `TestPublishCommitFetchOverTCP`, `TestSwarmHoldersReportsPerColumnPlacement` and
-`TestUIFetchMakesTheConsumerAProvider` confirmed individually. `-short` was NOT used; it skips 39 of
+`TestUIFetchAnnouncesOnlyWhenTheConsumerOptsIn` confirmed individually. `-short` was NOT used; it skips 39 of
 the 41.
 
 *AND THE TWO TIERS THAT ARE NOT DRIVEN, NAMED RATHER THAN IMPLIED.* E2E UNDER NETWORK IMPAIRMENT and

@@ -777,7 +777,9 @@ func (n *Node) netGetEntry(reg ports.Registry, entry ports.Entry, h link.Handle,
 		finish := func() {
 			err := pipeline.Get(bg(), n.store, reg, h, w)
 			if err == nil {
-				n.logf(ports.LogInfo, "file retrieved", "root", h.Root)
+				// No root: an INFO line is written to this node's disk by default,
+				// and a dated list of the roots it read is a reading history.
+				n.logf(ports.LogInfo, "file retrieved", "chunks", len(m.Leaves()))
 			}
 			settle(m, err, done)
 		}

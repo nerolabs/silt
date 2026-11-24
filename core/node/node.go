@@ -2109,8 +2109,11 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 				n.Stats.ChunksReceived++
 				n.provs.Add(n.providerRecord(key)) // we are now a provider
 				// Debug narration: every byte-write into the store names its
-				// path, so a disk census is attributable to a call site.
-				n.logf(ports.LogDebug, "chunk stored", "chunk", msg.ChunkID, "from", from, "key", key, "lease", msg.Lease)
+				// path, so a disk census is attributable to a call site. It
+				// does NOT name the sender: the line is written to disk beside
+				// the chunk's placement key, and the sender of a fresh object
+				// is its publisher.
+				n.logf(ports.LogDebug, "chunk stored", "chunk", msg.ChunkID, "key", key, "lease", msg.Lease)
 				if msg.Proof != nil {
 					// Resident metadata for the hot-path sites; the full proof
 					// write-throughs to the backing (persisted so a restart
