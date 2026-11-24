@@ -18,11 +18,10 @@ package node
 // scheduler is single-goroutine and would deadlock the pattern. Production uses
 // walltime, so this is the faithful tier for the seam.
 //
-// TestNoDoubleSettleReaperAndPump is RE-SPECIFIED back to a PAYING first settle
-// (min(count, Σ face) > 0, the anchored session) — the recorded goalpost move that
-// retires the interim's "pays 0". Its LOAD-BEARING property
-// (single-settle-at-close: a second settle of the same handle is always a no-op) is
-// unchanged and still asserted.
+// TestNoDoubleSettleReaperAndPump has a PAYING first settle
+// (credit.RelayNet(min(count, Σ face)) > 0, the anchored session). Its LOAD-BEARING
+// property (single-settle-at-close: a second settle of the same handle is always a
+// no-op) is asserted on top of it.
 
 import (
 	"crypto/ed25519"
@@ -128,11 +127,10 @@ func TestResolveRelayAuthorizerOwnershipOffLoop(t *testing.T) {
 // second) finds it absent and pays 0 — single-settle. This test settles once (the
 // pump-completion path), then settles the SAME handle again (the reaper path), and
 // asserts the second settle is a no-op: it pays 0 and the operator balance does not
-// move (twice, or at all — see the interim note below).
+// move again.
 //
-// The first settle PAYS again — min(count, Σ face) against an anchored session
-// (the interim's pay-0 re-specification is retired). The second settle of the
-// same handle must pay 0 and move nothing.
+// The first settle PAYS credit.RelayNet(min(count, Σ face)) against an anchored
+// session. The second settle of the same handle must pay 0 and move nothing.
 //
 // Ablation: remove the `delete(n.relaySessions, handle)` from SettleRelaySession →
 // a SECOND settle finds the session and pays again (observable in the balance), and
@@ -149,7 +147,7 @@ func TestNoDoubleSettleReaperAndPump(t *testing.T) {
 		t.Fatal("anchored open over the wire failed")
 	}
 
-	// Pay all S increments so there would have been credit to settle, pre-interim.
+	// Pay all S increments so there is credit to settle.
 	for k := 1; k <= S; k++ {
 		fetcher.SubmitRelayPay(relay.id, handle, c.Preimage(k), k, func(int, error) {})
 		sched.Run()
@@ -157,8 +155,8 @@ func TestNoDoubleSettleReaperAndPump(t *testing.T) {
 
 	balBefore := ledger.Balance(relay.id)
 	first := relay.SettleRelaySession(handle) // pump-completion settle
-	if want := int64(S) * relaypay.RelayIncrementCredit; first != want {
-		t.Fatalf("first settle paid %d for an anchored session with %d paid increments, want min(count, face) = %d (the paid > 0 precondition is restored)", first, S, want)
+	if want := credit.RelayNet(int64(S) * relaypay.RelayIncrementCredit); first != want || first <= 0 {
+		t.Fatalf("first settle paid %d for an anchored session with %d paid increments, want RelayNet(min(count, face)) = %d > 0", first, S, want)
 	}
 	balAfterFirst := ledger.Balance(relay.id)
 	if balAfterFirst != balBefore+first {

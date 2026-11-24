@@ -1,11 +1,13 @@
 package credit
 
-// The relay-lane prepayment anchor: the LEDGER-tier RED-first gates. (conservation re-derived: Δ Σ_L = settled − Σ
-// face ≤ 0, equality iff fully consumed — C-1 withdraws the 2026-09-03 "unchanged" corollary), §2.4 (the six doors), §5 (guard window
-// == keyset window is THE security property), §9. Build shape: step 3
-// (SpendRelayAnchors(anchors []RelayAnchor{Epoch, Serial}, current) (face, reason): verify-none, guard-check all, reserve k, durable
-// append all, record all, return k × l.fee; RedeemRelayCredit(relay, ephID, chainValue, budget) pays min(chainValue, budget) to
-// acct(relay) only, never acct(ephID)).
+// The relay-lane prepayment anchor: the LEDGER-tier gates. Conservation per
+// session: Δ Σ_L = settled − Σ face < 0, where Σ face − settled is the relay burn
+// (RelayBurnedCredits) plus the unconsumed remainder; every anchored session is a
+// strict loss to the ledger. The guard window equals the keyset window.
+// SpendRelayAnchors(anchors) (face, reason): guard-check all, reserve k, durable
+// append all, record all, return k × l.fee. RedeemRelayCredit(relay, ephID,
+// chainValue, budget) pays RelayNet(min(chainValue, budget)) to acct(relay) only,
+// never acct(ephID).
 //
 // RULES: none of these call fund; T-2/T-4/T-5 burn through the REAL
 // ChargePublish path. The buyer is the fetcher's DURABLE identity holding the
@@ -105,20 +107,18 @@ func TestRelaySettlementRefusesUnanchoredSession(t *testing.T) {
 	}
 }
 
-// TestRelayLaneConservesTotalSupplyOnOnePerNodeLedger is the gate, CORRECTED per:
-// on ONE per-node ledger, through the REAL ChargePublish burn × k, then open
-// (SpendRelayAnchors) → pay c → settle:
+// TestRelayLaneConservesTotalSupplyOnOnePerNodeLedger: on ONE per-node ledger,
+// through the REAL ChargePublish burn × k, then open (SpendRelayAnchors) → pay c →
+// settle:
 //
-//	after ≤ before
-//	after − before == settled − k·fee (exactly)
-//	settled ≤ k·fee
-//	settled == min(c, k·fee) (the pay rule)
-//	after == before ⇔ min(c, k·fee) == k·fee (equality iff fully consumed)
+//	gross   == min(c, k·fee)
+//	settled == RelayNet(gross) (the pay rule)
+//	burned  == gross − settled (the RelayBurnedCredits delta)
+//	before  == after + burned + (k·fee − gross) (supply is accounted for exactly)
+//	after   <  before (every anchored session is a strict loss, full consumption included)
 //
 // And the ephemeral is never registered. The unanchored variant leaves the total
-// unchanged. The three pair-total tests in relay_test.go are REWRITTEN to this
-// oracle, not extended. RED on main: the interim pays 0, so the fully-consumed
-// case has after == before − k·fee.
+// and the burn counter unchanged.
 func TestRelayLaneConservesTotalSupplyOnOnePerNodeLedger(t *testing.T) {
 	for _, k := range []int{1, 3, 6} {
 		kFee := int64(k) * shippedFee
@@ -139,24 +139,30 @@ func TestRelayLaneConservesTotalSupplyOnOnePerNodeLedger(t *testing.T) {
 					t.Fatalf("SpendRelayAnchors(k=%d) = (face %d, reason %q), want (k·fee = %d, \"\") — face is an identity with the burn", k, face, reason, kFee)
 				}
 
+				burnedBefore := l.RelayBurnedCredits()
 				settled := l.RedeemRelayCredit(relay, eph, c, face)
 				after := sumConserved(l)
-				want := minI64(c, kFee)
+				burned := l.RelayBurnedCredits() - burnedBefore
+				gross := minI64(c, kFee)
+				want := RelayNet(gross)
 
 				if settled != want {
-					t.Fatalf("settled %d for chainValue %d against budget %d, want min(c, k·fee) = %d", settled, c, face, want)
+					t.Fatalf("settled %d for chainValue %d against budget %d, want RelayNet(min(c, k·fee)) = RelayNet(%d) = %d", settled, c, face, gross, want)
 				}
 				if settled > kFee {
-					t.Fatalf("settled %d > Σ face %d — INV-RELAY-CONS violated (a mint)", settled, kFee)
+					t.Fatalf("settled %d > Σ face %d — a mint", settled, kFee)
 				}
-				if after > before {
-					t.Fatalf("ledger total ROSE %d → %d across acquire→open→pay→settle — the banned dual, Δ Σ_L > 0", before, after)
+				if burned != gross-settled {
+					t.Fatalf("relay burn moved by %d, want gross − settled = %d − %d = %d", burned, gross, settled, gross-settled)
 				}
 				if after-before != settled-kFee {
 					t.Fatalf("Δ Σ_L = %d, want settled − k·fee = %d − %d = %d", after-before, settled, kFee, settled-kFee)
 				}
-				if (after == before) != (want == kFee) {
-					t.Fatalf("after == before is %v but full consumption is %v — equality must hold iff min(c, k·fee) == k·fee (C-1)", after == before, want == kFee)
+				if before != after+burned+(kFee-gross) {
+					t.Fatalf("supply before %d != after %d + burned %d + unconsumed remainder %d", before, after, burned, kFee-gross)
+				}
+				if after >= before {
+					t.Fatalf("ledger total %d → %d across acquire→open→pay→settle, want a strict loss at every consumption level", before, after)
 				}
 				if _, ok := l.accounts[eph]; ok {
 					t.Fatalf("the ephemeral was registered by the settlement — acct(ephID) was touched")
@@ -175,6 +181,9 @@ func TestRelayLaneConservesTotalSupplyOnOnePerNodeLedger(t *testing.T) {
 		}
 		if got := sumConserved(l); got != before {
 			t.Fatalf("unanchored settle moved the total %d → %d", before, got)
+		}
+		if got := l.RelayBurnedCredits(); got != 0 {
+			t.Fatalf("unanchored settle burned %d, want 0", got)
 		}
 	})
 }
@@ -291,9 +300,9 @@ func TestRelayCredentialIsSpentOncePerLedger(t *testing.T) {
 // TestRelaySettlementIgnoresForwardedBytesIsBoundedByAnchor is the gate, ledger
 // tier: Count = S_max (the WHOLE chain revealed), forwarded = 0 (the ledger
 // cannot see forwarding — that is the whole reason the bound must come from
-// the anchor), one anchor ⇒ settled ≤ face, and the ledger total moves at
-// settle by exactly settled. RED on main (pays 0); reddens again under the
-// ablation "restore budget:= S × inc" (settled would be S_max, not face).
+// the anchor), one anchor ⇒ settled = RelayNet(face) < face, and the ledger
+// total moves at settle by exactly settled. Reddens under the ablation
+// "budget := S × inc" (settled would be RelayNet(S_max), not RelayNet(face)).
 func TestRelaySettlementIgnoresForwardedBytesIsBoundedByAnchor(t *testing.T) {
 	l := New(shippedFee, shippedGrant)
 	relay, buyer, eph := id(1), id(2), id(3)
@@ -310,8 +319,8 @@ func TestRelaySettlementIgnoresForwardedBytesIsBoundedByAnchor(t *testing.T) {
 	if settled > face {
 		t.Fatalf("settled %d > face %d for a fully revealed S_max chain — settlement is bounded by S, not by the anchor (-3 re-opened)", settled, face)
 	}
-	if settled != face {
-		t.Fatalf("settled %d, want min(S_max = %d, face = %d) = %d", settled, relayChainMaxCredit, face, face)
+	if want := RelayNet(minI64(relayChainMaxCredit, face)); settled != want {
+		t.Fatalf("settled %d, want RelayNet(min(S_max = %d, face = %d)) = %d", settled, relayChainMaxCredit, face, want)
 	}
 	if got := sumConserved(l) - afterSpend; got != settled {
 		t.Fatalf("the settle moved the ledger total by %d, want exactly settled = %d", got, settled)
@@ -376,8 +385,8 @@ func TestRelaySettlementNeverLeavesAnAccountNegative(t *testing.T) {
 		face, _ := l.SpendRelayAnchors(anchors)
 		relayBefore := l.Balance(relay)
 		settled := l.RedeemRelayCredit(relay, eph, 1<<40, face)
-		if settled != k*shippedFee {
-			t.Fatalf("settled %d against budget %d for an over-long chain, want the budget %d", settled, face, k*shippedFee)
+		if want := RelayNet(k * shippedFee); settled != want {
+			t.Fatalf("settled %d against budget %d for an over-long chain, want RelayNet(budget) = %d", settled, face, want)
 		}
 		nonNegative(t, l, "after the settle")
 		if got := l.Balance(buyer); got != buyerAfterBurn {

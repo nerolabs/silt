@@ -245,6 +245,10 @@ type Ledger struct {
 	deliveryRestartOrphans         int64 // guard entries restored from disk with no session state (their remainders are gone)
 	deliverySettledIncrements      int64
 
+	// relayBurnedCredits is the relay lane's settlement burn, lifetime (relay.go
+	// RelayBurnNum/RelayBurnDen). A node-wide aggregate, never joined to an identity.
+	relayBurnedCredits int64
+
 	provisional map[provKey]*provisionalServe
 	provOrder   []*provKey
 	provIndex   map[provKey]int

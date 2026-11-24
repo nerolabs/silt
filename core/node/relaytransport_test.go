@@ -91,10 +91,10 @@ func relayPairForTest(t *testing.T, relayLog ports.Logger) (fetcher, relay *Node
 }
 
 // TestRelayFullSessionConservedSettlement: a full live session over the wire —
-// anchored with one credential — settles for exactly min(count × increment, face)
-// into the relay's balance, moves no other account, never registers the ephemeral,
-// and a second settle is a no-op. (Under the interim this pinned "pays 0"
-// retires that.)
+// anchored with one credential — settles for exactly
+// credit.RelayNet(min(count × increment, face)) into the relay's balance, burns the
+// rest of that gross (RelayBurnedCredits), moves no other account, never registers
+// the ephemeral, and a second settle is a no-op.
 func TestRelayFullSessionConservedSettlement(t *testing.T) {
 	const S = 6
 	fetcher, relay, ledger, sched := relayPairForTest(t, nil)
@@ -139,9 +139,14 @@ func TestRelayFullSessionConservedSettlement(t *testing.T) {
 	}
 
 	// Settle at close: redeem the highest held preimage ONCE, bounded by the anchor.
+	burnedBefore := ledger.RelayBurnedCredits()
 	paid := relay.SettleRelaySession(handle)
-	if want := int64(S) * relaypay.RelayIncrementCredit; paid != want {
-		t.Fatalf("settlement paid %d for an anchored session with S=%d paid increments, want min(count × inc, face) = %d", paid, S, want)
+	gross := int64(S) * relaypay.RelayIncrementCredit
+	if want := credit.RelayNet(gross); paid != want {
+		t.Fatalf("settlement paid %d for an anchored session with S=%d paid increments, want RelayNet(min(count × inc, face)) = %d", paid, S, want)
+	}
+	if burned := ledger.RelayBurnedCredits() - burnedBefore; burned != gross-paid {
+		t.Fatalf("relay burn moved by %d, want gross − paid = %d", burned, gross-paid)
 	}
 	if got := ledger.Balance(relayID); got != relayBalBefore+paid {
 		t.Fatalf("relay balance %d, want %d + settled %d", got, relayBalBefore, paid)

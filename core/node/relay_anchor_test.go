@@ -6,7 +6,7 @@ package node
 // wire, T-3 two-relay). Build shape: (RelayOpen v2 + the
 // commitment M), §1.4 (the verify ORDER: free guards → k bounds → sha256(Fetcher)==from → ed25519 over M → RSA under the SELF keyset
 // newest-first, stop at first failure → SpendRelayAnchors all-or-nothing → seen-maps → budget = Σ face → admit), §1.5 (ceiling =
-// min(count, budget) × B), §1.6 (settle min(count, budget) to acct(relay); log reason=anchored), §5 steps 5-6 (OpenRelaySession(ephID,
+// min(count, budget) × B), §1.6 (settle credit.RelayNet(min(count, budget)) to acct(relay); log reason=anchored), §5 steps 5-6 (OpenRelaySession(ephID,
 // root, S, funding, anchors, fetcherPub, sig); AcquireRelayAnchors; the named S5 errors).
 //
 // ABLATIONS that must redden: verify under peerDemandKeys instead of self (T-3
@@ -299,9 +299,9 @@ func TestRelayOpenRefusesUnanchoredSession(t *testing.T) {
 // answerDemandTokenRequest → tokenChargeFor → ChargePublish on the RELAY's ledger —
 // the paying ledger is the settling ledger, (iii)); a fresh EPHEMERAL E opens over
 // the wire, pays c, and the relay settles. Then: D's balance fell by exactly k·fee;
-// settled == min(c, k·fee); Δ Σ_L == settled − k·fee ≤ 0; E is never registered;
-// and the S5 line carries reason=anchored (the recorded goalpost move from the
-// interim's no-anchor).
+// settled == credit.RelayNet(min(c, k·fee)); supply before == after + relay burn +
+// unconsumed remainder, so Δ Σ_L == settled − k·fee < 0; E is never registered;
+// and the S5 line carries reason=anchored.
 func TestRelayAnchorsAreBoughtOnTheRelaysOwnLedger(t *testing.T) {
 	const k = relayAnchorKMax // 1 since the 2026-09-06 re-price (was 2 of a k_max of 6)
 	const S = 6               // c = S × inc = 6 ≪ k·fee: partial consumption, Δ < 0
@@ -362,14 +362,23 @@ func TestRelayAnchorsAreBoughtOnTheRelaysOwnLedger(t *testing.T) {
 		}
 	}
 
+	burnedBefore := r.ledger.RelayBurnedCredits()
 	paid := r.node.SettleRelaySession(handle)
-	want := minI64(int64(S)*relaypay.RelayIncrementCredit, k*shippedFee)
+	burned := r.ledger.RelayBurnedCredits() - burnedBefore
+	gross := minI64(int64(S)*relaypay.RelayIncrementCredit, k*shippedFee)
+	want := credit.RelayNet(gross)
 	if paid != want {
-		t.Fatalf("settled %d, want min(c = %d, k·fee = %d) = %d", paid, S*relaypay.RelayIncrementCredit, k*shippedFee, want)
+		t.Fatalf("settled %d, want RelayNet(min(c = %d, k·fee = %d)) = %d", paid, S*relaypay.RelayIncrementCredit, k*shippedFee, want)
+	}
+	if burned != gross-paid {
+		t.Fatalf("relay burn moved by %d, want gross − settled = %d", burned, gross-paid)
 	}
 	after := ledgerTotal(r.ledger)
-	if after-before != paid-k*shippedFee || after > before {
-		t.Fatalf("Δ Σ_L = %d, want settled − k·fee = %d (≤ 0)", after-before, paid-k*shippedFee)
+	if before != after+burned+(k*shippedFee-gross) {
+		t.Fatalf("supply before %d != after %d + relay burn %d + unconsumed remainder %d", before, after, burned, k*shippedFee-gross)
+	}
+	if after-before != paid-k*shippedFee || after >= before {
+		t.Fatalf("Δ Σ_L = %d, want settled − k·fee = %d (< 0)", after-before, paid-k*shippedFee)
 	}
 	for _, bal := range r.ledger.Balances() {
 		if bal < 0 {
@@ -452,7 +461,7 @@ func TestRelayCredentialIsSpentOncePerLedger(t *testing.T) {
 // face BY DERIVATION, so no chain can exceed one face and the over-pay
 // is closed STRUCTURALLY — pinned first — and this gate keeps the node-tier settlement
 // identity at the ceiling: a full chain, zero bytes forwarded, settles exactly
-// min(count, face) = face.
+// credit.RelayNet(min(count, face)) = credit.RelayNet(face).
 func TestRelaySettlementIgnoresForwardedBytesIsBoundedByAnchor(t *testing.T) {
 	if relaypay.MaxChainLength*relaypay.RelayIncrementCredit != int(shippedFee) {
 		t.Fatalf("S_max·credit = %d != face %d — the structural close of the S × inc over-pay is gone", relaypay.MaxChainLength*relaypay.RelayIncrementCredit, shippedFee)
@@ -483,8 +492,8 @@ func TestRelaySettlementIgnoresForwardedBytesIsBoundedByAnchor(t *testing.T) {
 	if paid > shippedFee {
 		t.Fatalf("settled %d > face %d with count %d and ZERO bytes forwarded — settlement is bounded by S, not by the anchor", paid, shippedFee, sess.Count())
 	}
-	if paid != minI64(int64(sess.Count())*relaypay.RelayIncrementCredit, shippedFee) {
-		t.Fatalf("settled %d, want min(count = %d, face = %d)", paid, sess.Count(), shippedFee)
+	if want := credit.RelayNet(minI64(int64(sess.Count())*relaypay.RelayIncrementCredit, shippedFee)); paid != want {
+		t.Fatalf("settled %d, want RelayNet(min(count = %d, face = %d)) = %d", paid, sess.Count(), shippedFee, want)
 	}
 	if got := ledgerTotal(r.ledger) - afterOpen; got != paid {
 		t.Fatalf("the settle moved the total by %d, want exactly settled = %d", got, paid)
@@ -810,8 +819,9 @@ func TestRelayCeilingNeverExceedsBudget(t *testing.T) {
 // (l.fee × k, SpendRelayAnchors), not ShippedAnchorFace and not S. With a ledger fee
 // strictly below the shipped face, one anchor funds FEWER increments than S_max, so a
 // full-length chain is longer than its funding again: AuthorizedBytes must stay ≤
-// budget × B and the settle ≤ face. Ablations "restore budget:= S × inc" and "drop
-// the min(count, budget) ceiling" redden here and nowhere else in this package.
+// budget × B and the settle = credit.RelayNet(min(count, face)) ≤ face. Ablations
+// "restore budget:= S × inc" and "drop the min(count, budget) ceiling" redden here
+// and nowhere else in this package.
 func TestRelayBudgetIsTheLedgerFaceNotTheChainLength(t *testing.T) {
 	const lowFee = int64(relaypay.ShippedAnchorFace * 4 / 5) // 40,000 < the shipped face
 	cl := newAnchorCluster(t, 9300, 1, 0, shippedGrant, nil)
@@ -840,8 +850,8 @@ func TestRelayBudgetIsTheLedgerFaceNotTheChainLength(t *testing.T) {
 	}
 	afterOpen := ledgerTotal(r.ledger)
 	paid := r.node.SettleRelaySession(handle)
-	if paid > lowFee || paid != minI64(int64(sess.Count())*relaypay.RelayIncrementCredit, lowFee) {
-		t.Fatalf("settled %d with count %d, want min(count, face = %d) — settlement is bounded by S or by the shipped face, not by the ledger's face", paid, sess.Count(), lowFee)
+	if want := credit.RelayNet(minI64(int64(sess.Count())*relaypay.RelayIncrementCredit, lowFee)); paid > lowFee || paid != want {
+		t.Fatalf("settled %d with count %d, want RelayNet(min(count, face = %d)) = %d — settlement is bounded by S or by the shipped face, not by the ledger's face", paid, sess.Count(), lowFee, want)
 	}
 	if got := ledgerTotal(r.ledger) - afterOpen; got != paid {
 		t.Fatalf("the settle moved the total by %d, want exactly settled = %d", got, paid)
