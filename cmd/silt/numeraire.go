@@ -49,10 +49,9 @@ func fileSizeOrUnknown(f *os.File) int64 {
 //
 // TWO things can put a publish there, and both are named because a publisher can act on
 // neither once the object is stored. (1) A chunk size the operator chose. (2) The OBJECT:
-// a single-frame object is stored at its true length, so ITS
-// shard is its own bytes and no chunk size changes that — at the shipped default every
-// object of 262,119 B or less pays a base of ZERO 26,190 B before F1; the class widened
-// 10.008×). Case (2) is created by this same change, so leaving
+// a single-frame object is stored at its padded length (pipeline.DataFrameSize), so ITS
+// shard is set by its own size and no chunk size changes that — at the shipped default every
+// object of 258,040 B or less pays a base of ZERO. Case (2) is created by this same change, so leaving
 // It silent would ship a warning that misses the class it invented.
 //
 // The daemon has no publish geometry at start-up to refuse on, and the judge that names a
@@ -140,12 +139,14 @@ func publishShardBytes(chunkBytes, objectBytes int64) int64 {
 // WHAT AN UNSET -chunk-size DOES, precisely, because the first version of this comment
 // overstated it. An unset flag IS DefaultChunkSize, so the GEOMETRY cause can never fire
 // without one; the OBJECT cause can, and is meant to. Measured at the shipped default
-// with no flag set: 1,024 B fires (ZERO), 100,000 B fires (ZERO), 262,119 B fires (ZERO),
-// and 262,120 B is the first silent size. So a default publish is silent for a FULL-FRAME
-// object and speaks for a short-framed one — every object of 262,119 B or less warns.
+// with no flag set: 1,024 B fires (ZERO), 100,000 B fires (ZERO), 258,040 B fires (ZERO),
+// and 258,041 B is the first silent size. So a default publish is silent for a FULL-FRAME
+// object and speaks for a short-framed one — every object of 258,040 B or less warns.
+// The boundary sits where the frame padding reaches a full frame: every object from
+// 258,041 B pads (PaddedLength of its 258,049-byte frame) to 262,144 B.
 //
-// THE BOUNDARY DID NOT MOVE WITH F1; THE ARM DID. 262,119/262,120 is the same pair before
-// and after, because both the base and the threshold fell by the same factor. What
+// F1 DID NOT MOVE THE BOUNDARY; IT MOVED THE ARM, because both the base and the threshold
+// fell by the same factor. What
 // changed is that the sizes below it used to warn TRUNCATES and now warn ZERO — they pay
 // nothing rather than paying short. That IS the accepted cost of the re-pricing, and the
 // shortFrame fix text below already said the right thing for it.

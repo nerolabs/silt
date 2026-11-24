@@ -134,8 +134,8 @@ func TestTheParamsCarryingGenesisHashIsPinned(t *testing.T) {
 	// commitment are inside a sealed blob that no block field describes. A genesis-hash change
 	// and a block-format change have different prices; all three of these are the first kind.
 	const (
-		wantParamless  = "eddda80fce507066118c951775e01e614acd809de045fddde06281e7c37191ff"
-		wantWithParams = "f23be065e5bfba5cbf3fc820c7b916b330d859d01e7c7cd33fbe93ba9531d95b"
+		wantParamless  = "c445f7e05700cd330c7b4936cb6d017c6f586049c80cc56790f0908e3b9037e5"
+		wantWithParams = "fb4d3a5bdb126452ec79915d3549b5d09a0b067a4effb90da33f37d6903e1dfa"
 	)
 	p := representativeParams()
 	withParams, _, _, err := genesis.Build(memstore.New(), &p)

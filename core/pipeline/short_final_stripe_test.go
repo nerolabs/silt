@@ -29,15 +29,15 @@ func storedBytes(t *testing.T, store ports.ChunkStore, ids []ports.ChunkID) (tot
 	return total, sizes
 }
 
-// TestSingleFrameObjectIsFramedAtItsTrueLength is. A single-frame object is alone in its
+// TestSingleFrameObjectIsFramedAtItsPaddedLength: a single-frame object is alone in its
 // erasure stripe, so nothing forces it to full length: it and its six parity shards are
-// computed at the frame's true length, and the geometry travels in manifest.ChunkSize.
-// At the 256 KiB default a 1 KB object stored 7 × 262,160 = 1,835,120 B of mostly zeros
-// (the erasure floor the research priced at +300 %); it now stores 7 × 1,048 = 7,336 B.
+// computed at the frame's Padmé length, and the geometry travels in manifest.ChunkSize.
+// At the 256 KiB default a 1 KB object stored 7 × 262,160 = 1,835,120 B of mostly zeros;
+// it stores 7 × 1,104 = 7,728 B (a 1,032-byte frame padded to 1,088).
 //
 // Ablation that must go RED: split the file at opts.ChunkSize again (chunk.Split in
 // Stage), or keep manifest.ChunkSize = opts.ChunkSize.
-func TestSingleFrameObjectIsFramedAtItsTrueLength(t *testing.T) {
+func TestSingleFrameObjectIsFramedAtItsPaddedLength(t *testing.T) {
 	ctx := context.Background()
 	store := memstore.New()
 	data := bytes.Repeat([]byte{0x5c}, 1024)
@@ -51,12 +51,15 @@ func TestSingleFrameObjectIsFramedAtItsTrueLength(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	frame := len(data) + chunk.HeaderSize
+	frame := 1088 // PaddedLength(1024 + HeaderSize): 64-byte steps between 1,024 and 2,047
+	if pipeline.PaddedLength(int64(len(data)+chunk.HeaderSize)) != int64(frame) {
+		t.Fatalf("PaddedLength(%d) = %d, want %d", len(data)+chunk.HeaderSize, pipeline.PaddedLength(int64(len(data)+chunk.HeaderSize)), frame)
+	}
 	if len(m.Chunks) != 1 {
 		t.Fatalf("a 1 KB object made %d data chunks, want 1", len(m.Chunks))
 	}
 	if m.ChunkSize != int64(frame) {
-		t.Fatalf("manifest.ChunkSize = %d, want the TRUE frame length %d — the geometry the auditor reads must be the one that was used", m.ChunkSize, frame)
+		t.Fatalf("manifest.ChunkSize = %d, want the padded frame length %d — the geometry the auditor reads must be the one that was used", m.ChunkSize, frame)
 	}
 	total, sizes := storedBytes(t, store, append(m.ChunkIDs(), m.ParityIDs()...))
 	shard := frame + crypto.Overhead
@@ -127,33 +130,37 @@ func (r memRegistry) Lookup(_ context.Context, root ports.Hash) (ports.Entry, bo
 }
 
 // TestDataFrameSizeIsWhatStageCommits drives the two halves of ONE rule against each
-// other: DataFrameSize decides from a LENGTH, splitFile decides from a STREAM that cannot
-// know the length ahead, and the committed manifest.ChunkSize must be what the first says
-// for every object. It also fixes the re-addressing boundary, which the first published
-// statement of this change got wrong by one byte: an object of exactly chunkSize −
-// HeaderSize FILLS the first frame and is unchanged; the largest object that re-addresses
-// is chunkSize − HeaderSize − 1.
+// other: DataFrameSize and FrameCount decide from a LENGTH, Stage decides from a STREAM
+// that cannot know the length ahead, and the committed geometry — manifest.ChunkSize, the
+// data-frame count, and the size the entry publishes — must be what the first says for
+// every object. It also fixes the boundaries: the largest object framed below chunkSize
+// is the largest whose padded frame is still shorter than a full one, and the first
+// object stored with a filler frame is the first whose Padmé length needs one more full
+// frame than its content does.
 func TestDataFrameSizeIsWhatStageCommits(t *testing.T) {
 	ctx := context.Background()
 	const cs = 4096
-	// LITERAL expectations, not DataFrameSize applied to itself: the table is the
-	// independent statement of the rule and both the helper and Stage are checked
+	// LITERAL expectations, not the helpers applied to themselves: the table is the
+	// independent statement of the rule and both the helpers and Stage are checked
 	// against it. cs − HeaderSize = 4088 is the largest object that fills one frame.
-	for _, c := range []struct{ size, wantFrame int }{
-		{0, cs},      // no frames at all: no chunk, no shard, the asked-for geometry
-		{1, 9},       // the minimum frame
-		{9, 17},      //
-		{1000, 1008}, //
-		{4086, 4094}, //
-		{4087, 4095}, // the LARGEST object that re-addresses: cs − HeaderSize − 1
-		{4088, cs},   // fills the first frame exactly — unchanged
-		{4089, cs},   // two frames
-		{cs, cs},     //
-		{2 * cs, cs},
-		{3*cs + 17, cs},
+	for _, c := range []struct{ size, wantFrame, wantFrames int }{
+		{0, cs, 0},         // no frames at all: no chunk, no shard, the asked-for geometry
+		{1, 10, 1},         // the minimum frame: PaddedLength(1+8) = 10
+		{9, 18, 1},         // PaddedLength(17) = 18
+		{1000, 1024, 1},    // PaddedLength(1008) = 1024
+		{3960, 3968, 1},    // the LARGEST object framed below cs: PaddedLength(3968) = 3968
+		{3961, cs, 1},      // PaddedLength(3969) = 4096: one full frame
+		{4088, cs, 1},      // fills the first frame exactly
+		{4089, cs, 2},      // two frames
+		{cs, cs, 2},        //
+		{2 * cs, cs, 3},    //
+		{3*cs + 17, cs, 4}, //
+		{131072, cs, 33},   // Padmé(2^17) = 2^17: 33 frames, all content
+		{131073, cs, 34},   // Padmé = 135,168 needs 34 frames, the content 33: one filler
 	} {
 		store := memstore.New()
-		h, entry, err := pipeline.Stage(ctx, store, bytes.NewReader(bytes.Repeat([]byte{0x3c}, c.size)),
+		payload := bytes.Repeat([]byte{0x3c}, c.size)
+		h, entry, err := pipeline.Stage(ctx, store, bytes.NewReader(payload),
 			pipeline.Options{ChunkSize: cs, Mode: crypto.Convergent})
 		if err != nil {
 			t.Fatalf("size %d: stage: %v", c.size, err)
@@ -165,14 +172,27 @@ func TestDataFrameSizeIsWhatStageCommits(t *testing.T) {
 		if m.ChunkSize != int64(c.wantFrame) {
 			t.Fatalf("size %d: Stage committed ChunkSize %d, want %d", c.size, m.ChunkSize, c.wantFrame)
 		}
+		if len(m.Chunks) != c.wantFrames {
+			t.Fatalf("size %d: Stage stored %d data frames, want %d", c.size, len(m.Chunks), c.wantFrames)
+		}
 		// No excused row: size 0 is checked here too. Carving it out is exactly how the
 		// helper came to disagree with Stage at 0 while this gate stayed green.
 		if got := pipeline.DataFrameSize(c.size, cs); got != c.wantFrame {
 			t.Fatalf("size %d: DataFrameSize says %d, Stage commits %d — the length rule and the stream rule disagree", c.size, got, c.wantFrame)
 		}
+		if got := pipeline.FrameCount(int64(c.size), cs); got != c.wantFrames {
+			t.Fatalf("size %d: FrameCount says %d, Stage stores %d", c.size, got, c.wantFrames)
+		}
+		if want := pipeline.PublishedSize(c.wantFrames, c.wantFrame); entry.FileSize != want {
+			t.Fatalf("size %d: entry publishes %d, the stored geometry is %d", c.size, entry.FileSize, want)
+		}
+		var got bytes.Buffer
+		if err := pipeline.Get(ctx, store, memRegistry{entry}, h, &got); err != nil || !bytes.Equal(got.Bytes(), payload) {
+			t.Fatalf("size %d: round trip: err=%v, %d of %d bytes match", c.size, err, got.Len(), len(payload))
+		}
 	}
-	if pipeline.DataFrameSize(1, cs) != chunk.MinChunkSize {
-		t.Fatalf("a 1-byte object does not frame at the minimum %d — manifest.ChunkSize can legitimately be that small", chunk.MinChunkSize)
+	if pipeline.DataFrameSize(1, cs) != chunk.MinChunkSize+1 {
+		t.Fatalf("a 1-byte object does not frame at %d — manifest.ChunkSize can legitimately be that small", chunk.MinChunkSize+1)
 	}
 }
 

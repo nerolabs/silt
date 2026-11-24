@@ -9,8 +9,7 @@ package node
 // present, RED when it is FIXED. A RED on a pin is not a regression; it is the pin
 // doing its job. Skip-until-fixed was explicitly REFUSED, because a t.Skip costs the
 // same lines and reports green either way. The mechanism and the precedent are
-// core/pipeline's TestSingleDataShardStripeHasSixDistinctShards_PINNED_DEFECT and
-// TestEntryFileSizeIsTheExactByteCount_PINNED_DEFECT.
+// core/pipeline's TestSingleDataShardStripeHasSixDistinctShards_PINNED_DEFECT.
 //
 // AS OF 2026-09-12, TWO OF THE PINS HAVE BEEN REDEEMED and this file holds a MIX:
 //
@@ -526,7 +525,7 @@ func TestClaimWithNoLossIsPaid_PINNED_DEFECT(t *testing.T) {
 // A pin that cannot fire reports green forever and is indistinguishable from one that
 // works. Ablating the product is the right evidence, but an ablation that lives only in
 // prose does not survive a context reset. Same mechanism as
-// TestPinRedensWhenFileSizeIsBlinded.
+// TestPublishedSizeGateRedensOnAnExactCount.
 //
 // THIS TEST IS NOT A PIN. Its polarity is ordinary: GREEN when each predicate can
 // fire. It covers the CONVERTED predicates too — a positive assertion that cannot

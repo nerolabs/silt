@@ -387,9 +387,10 @@ func TestPaddedFramingAblationCollapsesBothModes(t *testing.T) {
 // ══════════════════════════════════════════════════════════════════════════════
 // The chunk-size salt collapse is TOTAL, not three-point.
 //
-// pipeline.DataFrameSize returns objectBytes+chunk.HeaderSize whenever that is strictly less
-// than chunkSize, so a sub-frame object's framed bytes — and therefore its ciphertext, chunk
-// IDs and root — do not mention chunkSize AT ANY VALUE above L+7.
+// pipeline.DataFrameSize returns PaddedLength(objectBytes+chunk.HeaderSize) whenever that is
+// strictly less than chunkSize, so a sub-frame object's framed bytes — and therefore its
+// ciphertext, chunk IDs and root — do not mention chunkSize AT ANY VALUE at or above
+// PaddedLength(L+8).
 //
 // WHY THIS GATE EXISTS RATHER THAN THE ONE ALREADY IN THE TREE. The existing gate,
 // TestConvergentDedupNowSpansTheChunkSize (core/pipeline/short_final_stripe_test.go), samples
@@ -423,13 +424,14 @@ func TestSubFrameRootIsChunkSizeIndependentAcrossTheLegalRange(t *testing.T) {
 	// the floor and manifest.MaxChunkSize the ceiling, both read from source rather than
 	// written as literals, so a change to either widens this sweep automatically.
 	predicted := rtRootAt(t, payload, manifest.MaxChunkSize)
-	probes := []int{L + 8, L + 9, 128, 256, 1024, 4096, 64 << 10, 256 << 10, 1 << 20, 4 << 20, 64 << 20, manifest.MaxChunkSize}
+	frame := int(pipeline.PaddedLength(L + chunk.HeaderSize))
+	probes := []int{frame, frame + 1, 128, 256, 1024, 4096, 64 << 10, 256 << 10, 1 << 20, 4 << 20, 64 << 20, manifest.MaxChunkSize}
 	for _, cs := range probes {
 		if got := rtRootAt(t, payload, cs); got != predicted {
 			t.Fatalf("PIN IS RED — a %d-byte object published at chunkSize=%d now yields root %s, "+
 				"not %s. The salt is BACK: the chunk size is once again an input to a sub-frame object's root.\n"+
-				"  This was measured TOTAL at 00082b8 — 3,978 of 4,088 chunk sizes in [9,4096] collapse to one root,\n"+
-				"  and the only salting values are chunkSize <= L+7 (arm (b)).\n"+
+				"  The collapse is TOTAL above the boundary arm (b) derives: the only salting values are\n"+
+				"  chunkSize < PaddedLength(L+8).\n"+
 				"  DO THIS: confirm the re-salt is DELIBERATE. Inventing a salt here without a research is the\n"+
 				"  unreviewed novelty B8 forbids, and the published privacy statement depends on which reading is\n"+
 				"  true. Route to the research before recording it as a mitigation.",
@@ -437,7 +439,8 @@ func TestSubFrameRootIsChunkSizeIndependentAcrossTheLegalRange(t *testing.T) {
 		}
 	}
 
-	// (b) THE COMPLEMENT, exhaustively. The surviving salt is exactly [chunk.MinChunkSize, L+7]
+	// (b) THE COMPLEMENT, exhaustively. The surviving salt is exactly [chunk.MinChunkSize, F-1],
+	// F = PaddedLength(L+8),
 	// and nothing else. Asserting the complement is what converts "we sampled and saw a
 	// collapse" into a closed statement about the range — and a closed complement is a rule a
 	// future reader cannot re-derive as "three points". Exhaustive over [9, 4096]: 4,088
@@ -454,11 +457,11 @@ func TestSubFrameRootIsChunkSizeIndependentAcrossTheLegalRange(t *testing.T) {
 		t.Fatal("no chunk size in [9,4096] salts at all — the complement arm is vacuous and cannot " +
 			"detect a change in the boundary. Re-derive the boundary from pipeline.DataFrameSize before trusting arm (a).")
 	}
-	wantBoundary := L + chunk.HeaderSize - 1 // 118: the largest chunkSize that still salts
+	wantBoundary := int(pipeline.PaddedLength(L+chunk.HeaderSize)) - 1 // 119: the largest chunkSize that still salts
 	if salted[0] != chunk.MinChunkSize || salted[len(salted)-1] != wantBoundary || len(salted) != wantBoundary-chunk.MinChunkSize+1 {
 		t.Fatalf("BOUNDARY MOVED — the salting chunk sizes for a %d-byte object are %d values spanning "+
 			"[%d,%d]; the pinned complement is the contiguous range [%d,%d] (%d values), i.e. exactly "+
-			"chunkSize <= L+chunk.HeaderSize-1, which is where pipeline.DataFrameSize stops returning L+%d. "+
+			"chunkSize < PaddedLength(L+%d), which is where pipeline.DataFrameSize starts returning the padded frame. "+
 			"A moved boundary changes how many publishers accidentally salt; establish why and update this.",
 			L, len(salted), salted[0], salted[len(salted)-1], chunk.MinChunkSize, wantBoundary,
 			wantBoundary-chunk.MinChunkSize+1, chunk.HeaderSize)
@@ -470,16 +473,13 @@ func TestSubFrameRootIsChunkSizeIndependentAcrossTheLegalRange(t *testing.T) {
 	}
 
 	// (c) THE SHAPE, stated as a fraction of the legal range so it cannot be re-read as
-	// "three values". NOTE FOR THE RECORD — the measurement says 134,217,609 of
-	// 134,217,720 collapse; the measured count is 134,217,610. The legal range is
-	// [9, 134217728] = 134,217,720 values, of which exactly [9,118] = 110 salt, leaving
-	// 134,217,610. The report is off by one. This gate asserts the DERIVED count, so it
-	// cannot inherit that error.
+	// "three values". The legal range is [9, 134217728] = 134,217,720 values, of which
+	// exactly [9,119] = 111 salt a 111-byte object, leaving 134,217,609.
 	legal := manifest.MaxChunkSize - chunk.MinChunkSize + 1
 	saltingTotal := wantBoundary - chunk.MinChunkSize + 1
-	if collapsedTotal := legal - saltingTotal; collapsedTotal != 134_217_610 {
+	if collapsedTotal := legal - saltingTotal; collapsedTotal != 134_217_609 {
 		t.Fatalf("the legal chunk-size range is [%d,%d] (%d values) of which %d salt, so %d collapse — "+
-			"this gate pins 134,217,610 (99.99992%%). If chunk.MinChunkSize or manifest.MaxChunkSize moved, the "+
+			"this gate pins 134,217,609 (99.99992%%). If chunk.MinChunkSize or manifest.MaxChunkSize moved, the "+
 			"published privacy statement moves with it; update both together.",
 			chunk.MinChunkSize, manifest.MaxChunkSize, legal, saltingTotal, collapsedTotal)
 	}
@@ -498,95 +498,85 @@ func TestSubFrameRootIsChunkSizeIndependentAcrossTheLegalRange(t *testing.T) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ports.Entry.FileSize is the exact byte count.
+// ports.Entry.FileSize publishes the padded geometry, never the plaintext length.
 //
-// It is hash-covered (inside chain.Block.Entries), replicated to every node, permanent, and
-// never validated by consensus. So the exact plaintext length of every object is global,
-// keyless and unverified — for private-mode objects exactly as for convergent ones.
+// The field is hash-covered (inside chain.Block.Entries), replicated to every node,
+// permanent, and never validated by consensus, so whatever it carries is global and
+// keyless. It carries pipeline.PublishedSize of the stored data frames: their count times
+// their payload room. Both are already visible to anyone holding the shards, and both are
+// functions of the object's Padmé class (pipeline.PaddedLength), so the field adds nothing
+// to what storage shows and narrows the length no further than the class. The exact length
+// travels only inside the sealed manifest, which pipeline.Get checks against.
 //
-// WHAT IS PINNED HERE AND WHAT IS DELIBERATELY NOT. This gate pins the MEASUREMENT: the
-// publisher writes the exact count. It does NOT assert anything about what silt CLAIMS. The
-// Two published claims measured false — "before, padding blurred it to
-// 'somewhere in one chunk'"'s "no confirmation surface" for private mode. Correcting what silt
-// claims about privacy is a published-claim change: research-gated. A test asserting doc text
-// would be this seat deciding a question that is not its to decide, and would ALSO decay the
-// moment the doc was reworded for any other reason (the
-// a claim about a gate is itself a claim). The measurement is the durable half. The
-// doc is not this file's to make.
-//
-// This is also the finding that makes "re-pad the sub-frame" a no-op, so it must stay visible
-// next to TestPaddedFramingAblationCollapsesBothModes.
+// This is also what makes the sub-frame padding a defence rather than a no-op: padding the
+// stored frame while the entry published the exact count hid nothing.
 // ══════════════════════════════════════════════════════════════════════════════
 
-// rtSFO5Pin returns "" while Entry.FileSize is still the exact count, and the instruction once
-// it is blinded. Teeth: TestPinRedensWhenFileSizeIsBlinded.
-func rtSFO5Pin(wantExact int64, got int64, mode crypto.Mode) string {
-	if got == wantExact {
-		return ""
+// rtPublishedSizeLeak returns "" when an entry's published size is the padded geometry and
+// reveals nothing finer than the Padmé class, and a description of the leak otherwise.
+// Teeth: TestPublishedSizeGateRedensOnAnExactCount.
+func rtPublishedSizeLeak(exact int64, published int64, frames, frameBytes int, sameClassPublished int64) string {
+	if want := pipeline.PublishedSize(frames, frameBytes); published != want {
+		return fmt.Sprintf("a %d-byte object publishes FileSize=%d, but its stored geometry (%d frames of %d B) is %d: "+
+			"the entry carries something storage does not show", exact, published, frames, frameBytes, want)
 	}
-	return fmt.Sprintf(
-		"PIN IS RED — ports.Entry.FileSize IS NO LONGER THE EXACT BYTE COUNT.\n"+
-			"  A %d-byte object published in %q mode now records FileSize=%d.\n"+
-			"  At 00082b8 this field was the exact, hash-covered, consensus-unvalidated plaintext length of every\n"+
-			"  object on the chain. Blinding or bucketing it is the ONLY remedy that closes the length\n"+
-			"  oracle — re-padding the sub-frame does not (§'Consequence for the fix').\n"+
-			"  DO THIS, in the same commit:\n"+
-			"    1. Confirm the research CERTIFIED the change. Entry sits at cbor key 3 inside chain.Block and is\n"+
-			"       inside the signing preimage, so this is a FORMAT change and an era question, not a local edit.\n"+
-			"    2. Confirm the project settled. It was an OPEN OWNER CALL when this pin was written.\n"+
-			"    3. Re-read the convergent-encryption derivation.md's 'no confirmation\n"+
-			"       surface' clause. BOTH were measured FALSE at 00082b8 BECAUSE of this field. A fix here is the\n"+
-			"       first thing that could make them true, and correcting them without the fix is NOT a mitigation.\n"+
-			"    4. Replace this pin with the positive assertion and state the blinding rule it enforces.",
-		wantExact, mode, got)
+	if published != sameClassPublished {
+		return fmt.Sprintf("a %d-byte object publishes %d but another object in its Padmé class (%d B) publishes %d: "+
+			"the published size separates lengths inside one class", exact, published, pipeline.PaddedLength(exact), sameClassPublished)
+	}
+	return ""
 }
 
-func TestEntryFileSizeIsTheExactByteCount_PINNED_DEFECT(t *testing.T) {
+func TestEntryFileSizePublishesOnlyThePaddedGeometry(t *testing.T) {
 	cs := pipeline.DefaultChunkSize
-	// Non-uniform sizes, including both modes. Private mode is the one that matters: the
-	// published claim says private mode has "no confirmation surface", and the exact length is
-	// published for private objects exactly as for convergent ones.
-	for _, L := range []int{1, 999, 262135, 262137, 600000} {
+	// Non-uniform sizes in both modes, each paired with the smallest length in the same
+	// size class: the two must publish the same number. Sizes span the single-frame range,
+	// the full-frame boundary, and multi-frame objects with and without filler frames.
+	payload := cs - chunk.HeaderSize
+	class := func(n int) int64 { // the rule's own two regimes, restated
+		if n <= payload {
+			return pipeline.PaddedLength(int64(n + chunk.HeaderSize))
+		}
+		return -pipeline.PaddedLength(int64(n))
+	}
+	for _, L := range []int{1, 999, 262135, 262136, 262137, 600000, 9_000_001} {
+		lo := L
+		for lo > 1 && class(lo-1) == class(L) {
+			lo--
+		}
 		for _, mode := range []crypto.Mode{crypto.Convergent, crypto.Private} {
 			o := rtStage(t, L, mode, cs, 0, erasure.Params{})
-			if msg := rtSFO5Pin(int64(L), o.entry.FileSize, mode); msg != "" {
-				t.Fatal(msg)
+			twin := rtStage(t, lo, mode, cs, 0, erasure.Params{})
+			blob, err := pipeline.LoadBlob(context.Background(), o.store, o.entry)
+			if err != nil {
+				t.Fatalf("LoadBlob: %v", err)
+			}
+			lay, err := manifest.OpenLayout(blob, o.handle.LayoutKey())
+			if err != nil {
+				t.Fatalf("OpenLayout: %v", err)
+			}
+			if msg := rtPublishedSizeLeak(int64(L), o.entry.FileSize, len(lay.Chunks), int(lay.ChunkSize), twin.entry.FileSize); msg != "" {
+				t.Fatalf("%s mode: %s", mode, msg)
+			}
+			if o.entry.FileSize < int64(L) {
+				t.Fatalf("%s mode: a %d-byte object publishes %d, less than it holds", mode, L, o.entry.FileSize)
 			}
 		}
 	}
-
-	// THE MECHANISM. The number alone could be right for the wrong reason — e.g. if Entry
-	// stopped carrying the field and something else filled it in. Assert the field is
-	// populated by the publisher and survives the boundary where the framing changes, and that
-	// the sealed manifest's own copy agrees with it. The manifest copy is INSIDE the content
-	// box and is the one pipeline.Get checks against; the Entry copy is the public one and is
-	// checked by nothing. That asymmetry is the finding.
-	o := rtStage(t, 262135, crypto.Private, cs, 0, erasure.Params{})
-	blob, err := pipeline.LoadBlob(context.Background(), o.store, o.entry)
-	if err != nil {
-		t.Fatalf("LoadBlob: %v", err)
-	}
-	if _, err := manifest.OpenLayout(blob, o.handle.LayoutKey()); err != nil {
-		t.Fatalf("OpenLayout: %v", err)
-	}
-	if o.entry.FileSize != 262135 {
-		t.Fatalf("mechanism arm: Entry.FileSize=%d for a 262,135-byte object", o.entry.FileSize)
-	}
 }
 
-// TestPinRedensWhenFileSizeIsBlinded is the TEETH.
-func TestPinRedensWhenFileSizeIsBlinded(t *testing.T) {
-	// Bucketed to a coarse ladder — one of the two named remedies. Must redden.
-	if msg := rtSFO5Pin(999, 1024, crypto.Private); msg == "" {
-		t.Fatal("rtSFO5Pin stayed silent when a 999-byte object reported FileSize=1024 — the pin cannot detect " +
-			"the bucketing remedy it exists to detect")
+// TestPublishedSizeGateRedensOnAnExactCount is the TEETH.
+func TestPublishedSizeGateRedensOnAnExactCount(t *testing.T) {
+	// The exact count where the geometry says 1,024: must redden.
+	if msg := rtPublishedSizeLeak(999, 999, 1, 1032, 1024); msg == "" {
+		t.Fatal("the gate stayed silent when a 999-byte object published its exact length")
 	}
-	// Dropped entirely — the other remedy ("nothing in consensus reads it"). Must redden.
-	if msg := rtSFO5Pin(999, 0, crypto.Private); msg == "" {
-		t.Fatal("rtSFO5Pin stayed silent when FileSize was dropped to 0 — a removal of the field would land unnoticed")
+	// Right geometry, but a class-mate publishes differently: must redden.
+	if msg := rtPublishedSizeLeak(999, 1024, 1, 1032, 1016); msg == "" {
+		t.Fatal("the gate stayed silent when two objects in one Padmé class published different sizes")
 	}
-	// The pinned state must stay silent.
-	if msg := rtSFO5Pin(999, 999, crypto.Private); msg != "" {
-		t.Fatalf("rtSFO5Pin fired on the pinned state it is supposed to accept: %s", msg)
+	// The padded state must stay silent.
+	if msg := rtPublishedSizeLeak(999, 1024, 1, 1032, 1024); msg != "" {
+		t.Fatalf("the gate fired on the padded state it is supposed to accept: %s", msg)
 	}
 }

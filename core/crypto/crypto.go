@@ -216,3 +216,19 @@ func newGCM(key []byte) (cipher.AEAD, error) {
 	}
 	return cipher.NewGCM(block)
 }
+
+// Keystream fills dst with AES-256-CTR output under a key derived from (key, domain),
+// starting at a counter block that carries index. It is a pseudorandom byte source, not
+// a cipher: callers use it where bytes must be deterministic in the key and
+// indistinguishable from ciphertext to anyone without it, and never XOR it with data.
+func Keystream(key [SecretSize]byte, domain string, index uint64, dst []byte) {
+	k := DeriveKey(key, domain)
+	block, err := aes.NewCipher(k[:])
+	if err != nil {
+		panic(err) // a 32-byte key; cannot fail
+	}
+	var iv [aes.BlockSize]byte
+	binary.BigEndian.PutUint64(iv[:8], index)
+	clear(dst)
+	cipher.NewCTR(block, iv[:]).XORKeyStream(dst, dst)
+}

@@ -78,7 +78,7 @@ func TestAuditorAndHonestProverAgreeOnEveryShardLength(t *testing.T) {
 			}
 			// Both regimes are genuinely driven: one case commits a short frame, the
 			// other the full chunk size. (What the short frame must BE is
-			// TestSingleFrameObjectIsFramedAtItsTrueLength's claim, in core/pipeline.)
+			// TestSingleFrameObjectIsFramedAtItsPaddedLength's claim, in core/pipeline.)
 			if short := m.ChunkSize < int64(c.chunkSize); short != c.wantShort {
 				t.Fatalf("manifest.ChunkSize = %d against a %d-byte chunk size; short=%v, want %v", m.ChunkSize, c.chunkSize, short, c.wantShort)
 			}

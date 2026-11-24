@@ -57,9 +57,14 @@ func Split(r io.Reader, chunkSize int) ([][]byte, error) {
 }
 
 // Join writes the original stream reassembled from frames to w.
-// Every frame except the last must be full; any inconsistency is an error
-// rather than a silent truncation.
+//
+// The frames must read as a run of full frames, then at most one partial frame, then
+// any number of empty frames (header length zero). The empty tail is padding: a
+// publisher adds it so the frame COUNT shows only the object's size class, and Join
+// writes nothing for it. A full or partial frame after a short one is an error rather
+// than a silent truncation, as is any other inconsistency.
 func Join(w io.Writer, frames [][]byte) error {
+	ended := false // a frame shorter than its room has been seen: only empty frames may follow
 	for i, frame := range frames {
 		if len(frame) < MinChunkSize {
 			return fmt.Errorf("%w: frame %d is %d bytes", ErrBadFrame, i, len(frame))
@@ -69,8 +74,11 @@ func Join(w io.Writer, frames [][]byte) error {
 		if n > payloadSize {
 			return fmt.Errorf("%w: frame %d claims %d payload bytes, has room for %d", ErrBadFrame, i, n, payloadSize)
 		}
-		if i < len(frames)-1 && n != payloadSize {
-			return fmt.Errorf("%w: non-final frame %d is short (%d of %d bytes)", ErrBadFrame, i, n, payloadSize)
+		if ended && n != 0 {
+			return fmt.Errorf("%w: frame %d carries %d bytes after the content ended", ErrBadFrame, i, n)
+		}
+		if n < payloadSize {
+			ended = true
 		}
 		if _, err := w.Write(frame[HeaderSize : HeaderSize+n]); err != nil {
 			return err

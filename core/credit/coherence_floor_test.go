@@ -145,9 +145,10 @@ func TestSolvencyBandIsExact(t *testing.T) {
 
 // TestZeroClassIsTheAcceptedCost RUNS the cost the project accepted, so it cannot rot into
 // a sentence: the class of objects whose base repair bounty is ZERO widens 10.008×, from ≤
-// 26,190 B to ≤ 262,119 B of object. The boundary is stated in OBJECT bytes because that
-// is what a publisher chooses; a single-frame object is stored at its true length, so its
-// shard is its own bytes + an 8-byte frame header + the 16-byte tag.
+// 26,190 B to ≤ 262,119 B of object, for an object framed at its true length (shard = its
+// own bytes + an 8-byte frame header + the 16-byte tag). The publish path pads a single
+// frame to its Padmé length, which lowers the boundary in OBJECT bytes to 258,040 B
+// (cmd/silt numeraire_test); the shard arithmetic pinned here is unchanged.
 func TestZeroClassIsTheAcceptedCost(t *testing.T) {
 	const frameHeader, overhead = 8, 16
 	shard := func(object int64) int64 { return object + frameHeader + overhead }

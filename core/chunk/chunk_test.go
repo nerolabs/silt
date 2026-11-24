@@ -99,6 +99,48 @@ func TestJoinRejectsShortMiddleFrame(t *testing.T) {
 	}
 }
 
+// TestJoinWritesNothingForTrailingEmptyFrames: frames after the content ends that carry a
+// zero-length header are padding, and Join must write nothing for them however their
+// payload bytes read.
+func TestJoinWritesNothingForTrailingEmptyFrames(t *testing.T) {
+	data := make([]byte, testChunkSize+5)
+	rand.New(rand.NewSource(2)).Read(data)
+	frames, _ := Split(bytes.NewReader(data), testChunkSize)
+	for i := 0; i < 3; i++ {
+		filler := make([]byte, testChunkSize)
+		rand.New(rand.NewSource(int64(10 + i))).Read(filler[HeaderSize:])
+		frames = append(frames, filler)
+	}
+	var out bytes.Buffer
+	if err := Join(&out, frames); err != nil {
+		t.Fatalf("join with trailing empty frames: %v", err)
+	}
+	if !bytes.Equal(out.Bytes(), data) {
+		t.Fatalf("join wrote %d bytes, want the %d content bytes", out.Len(), len(data))
+	}
+}
+
+// TestJoinRejectsContentAfterTheEnd: once a frame is shorter than its room, every later
+// frame must be empty. A full or partial frame after it is reordering or splicing.
+func TestJoinRejectsContentAfterTheEnd(t *testing.T) {
+	data := make([]byte, 2*(testChunkSize-HeaderSize))
+	full, _ := Split(bytes.NewReader(data), testChunkSize)
+	short, _ := Split(bytes.NewReader([]byte{1, 2, 3}), testChunkSize)
+	empty := make([]byte, testChunkSize)
+	for _, c := range []struct {
+		name   string
+		frames [][]byte
+	}{
+		{"full after short", [][]byte{short[0], full[0]}},
+		{"short after short", [][]byte{short[0], short[0]}},
+		{"full after empty", [][]byte{full[0], empty, full[1]}},
+	} {
+		if err := Join(&bytes.Buffer{}, c.frames); err == nil {
+			t.Fatalf("%s: Join accepted content after the end", c.name)
+		}
+	}
+}
+
 func BenchmarkSplit64KiB(b *testing.B) {
 	data := make([]byte, 8<<20)
 	rand.New(rand.NewSource(1)).Read(data)

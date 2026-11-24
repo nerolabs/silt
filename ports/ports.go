@@ -169,7 +169,10 @@ type PlotBlockStore interface {
 type Entry struct {
 	Root           Hash
 	ManifestChunks []ChunkID
-	FileSize       int64
+	// FileSize is the object's PADDED size: the payload room of its stored data frames
+	// (pipeline.PublishedSize), which shows its size class and nothing finer. The exact
+	// plaintext length is sealed inside the manifest. Nothing in consensus reads it.
+	FileSize int64
 	// Publisher identifies who pays the publish fee when the registry
 	// is credit-gated. Zero in ungated (local CLI) use.
 	Publisher NodeID

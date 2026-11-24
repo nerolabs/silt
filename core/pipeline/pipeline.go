@@ -14,6 +14,8 @@ package pipeline
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"io"
 
@@ -44,10 +46,10 @@ import (
 //
 // It is a MAXIMUM frame size, not a fixed one. A frame that shares an erasure stripe with
 // another frame is padded to it, because shards within a stripe must be equal-length; a
-// single-frame object (splitFile) and a single-frame manifest (ManifestFrameSize) are
-// framed at their true length, and the length actually used travels in
-// manifest.ChunkSize. So a small MANIFEST and a small FILE both escape the padding, and a
-// multi-frame file's tail still pays it.
+// single-frame object is framed at its padded length (DataFrameSize) and a single-frame
+// manifest at its true length (ManifestFrameSize), and the length actually used travels
+// in manifest.ChunkSize. A sealed manifest's length depends only on its chunk count and
+// mode, never on the plaintext length (core/manifest/sealed.go).
 //
 // Changing this changes the root every NEW publish of the same bytes produces (convergent
 // dedup does not span the boundary); core/genesis keeps its own 64 KiB chunk, and both of
@@ -132,7 +134,7 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 	// The frame size the file was ACTUALLY split at, read off the artifact rather than
 	// re-decided: splitFile emits equal-length frames, so frame 0's length is the
 	// geometry. It equals opts.ChunkSize except for a single-frame object, which
-	// splitFile frames at its true length. Every later consumer
+	// splitFile frames at its Padmé length. Every later consumer
 	// of the geometry — the erasure stripe, the PoR auditor's expected block count
 	// (core/node/por.go), the repair judge's — reads this field, so the short frame
 	// stays a fully committed, auditor-fixed geometry rather than a special case.
@@ -163,27 +165,27 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 	}
 
 	ctChunks := make([][]byte, 0, len(frames))
-	for i, frame := range frames {
+	sealFrame := func(i int, frame []byte) error {
 		var ct []byte
 		switch opts.Mode {
 		case crypto.Convergent:
 			var secret [crypto.SecretSize]byte
 			ct, secret, err = crypto.ConvergentEncrypt(frame)
 			if err != nil {
-				return link.Handle{}, ports.Entry{}, fmt.Errorf("add: chunk %d: %w", i, err)
+				return fmt.Errorf("add: chunk %d: %w", i, err)
 			}
 			m.ChunkSecrets = append(m.ChunkSecrets, secret[:])
 		case crypto.Private:
 			ct, err = crypto.PrivateEncrypt(fileKey, uint64(i), frame)
 			if err != nil {
-				return link.Handle{}, ports.Entry{}, fmt.Errorf("add: chunk %d: %w", i, err)
+				return fmt.Errorf("add: chunk %d: %w", i, err)
 			}
 		default:
-			return link.Handle{}, ports.Entry{}, fmt.Errorf("add: unknown mode %q", opts.Mode)
+			return fmt.Errorf("add: unknown mode %q", opts.Mode)
 		}
 		c := ports.NewChunk(ct)
 		if err := store.Put(ctx, c); err != nil {
-			return link.Handle{}, ports.Entry{}, fmt.Errorf("add: storing chunk %d: %w", i, err)
+			return fmt.Errorf("add: storing chunk %d: %w", i, err)
 		}
 		m.Chunks = append(m.Chunks, c.ID[:])
 		// Commit the shard's spot-check tree beside its ID. The root is a
@@ -192,6 +194,24 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 		root := por.ShardRoot(ct, por.SpotLeafBytes)
 		m.ShardRoots = append(m.ShardRoots, root[:])
 		ctChunks = append(ctChunks, ct)
+		return nil
+	}
+	for i, frame := range frames {
+		if err := sealFrame(i, frame); err != nil {
+			return link.Handle{}, ports.Entry{}, err
+		}
+	}
+	// Filler frames bring the frame COUNT up to the object's Padmé class, as the frame
+	// LENGTH already is for a single-frame object (DataFrameSize). They carry a zero-length
+	// header, so Join writes nothing for them, and a payload no one without the content can
+	// tell from real data — see fillerSeed.
+	if want := FrameCount(m.FileSize, opts.ChunkSize); want > len(frames) {
+		seed := fillerSeed(opts.Mode, fileKey, m.ChunkSecrets, m.FileSize)
+		for i := len(frames); i < want; i++ {
+			if err := sealFrame(i, fillerFrame(seed, uint64(i), frameBytes)); err != nil {
+				return link.Handle{}, ports.Entry{}, err
+			}
+		}
 	}
 
 	// Erasure-code the ciphertext stream: each stripe of k chunks gains
@@ -265,9 +285,12 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 	entry := ports.Entry{
 		Root:           root,
 		ManifestChunks: manifestIDs,
-		FileSize:       m.FileSize,
-		Publisher:      opts.Publisher,
-		Token:          opts.Token,
+		// The PADDED payload capacity of the stored frames, never m.FileSize: the entry is
+		// committed where anyone reads it, so it publishes exactly what the shards' own
+		// lengths and count already show a holder, and the plaintext length stays sealed.
+		FileSize:  PublishedSize(len(m.Chunks), frameBytes),
+		Publisher: opts.Publisher,
+		Token:     opts.Token,
 	}
 	// Deliberately NOT published here: the caller registers it after
 	// distribution is confirmed (Add does so immediately; a networked
@@ -366,10 +389,14 @@ func Get(ctx context.Context, store ports.ChunkStore, reg ports.Registry, h link
 }
 
 // DataFrameSize is the frame size an object of objectBytes is split at, and it is THE
-// rule: its own length plus the frame header when the whole object fits in one frame,
-// else the chunk size. The boundary is therefore objectBytes <= chunkSize − HeaderSize − 1
-// (262,135 B at the 256 KiB default); an object of exactly chunkSize − HeaderSize FILLS
-// the first frame and is unchanged. Same shape as ManifestFrameSize, and deliberately so.
+// rule. An object that fits in one frame is framed at the Padmé length (PaddedLength) of
+// its frame — its bytes plus the header — capped at chunkSize; every larger object uses
+// chunkSize. The frame is therefore a function of the object's size class and never of its
+// exact length: the shard a holder stores, and the length the registry entry publishes,
+// show the class. Padding the FRAME rather than the content is what keeps the classes
+// whole at the one-frame boundary: Padmé never rounds past the next power of two, so at a
+// power-of-two chunkSize (the default) the largest single-frame class ends exactly at a
+// full frame instead of straddling the step to two frames.
 //
 // splitFile implements this over a STREAM, which cannot know the length ahead, so the two
 // must be driven against each other rather than trusted to agree —
@@ -385,28 +412,90 @@ func DataFrameSize(objectBytes, chunkSize int) int {
 		// shard that does not exist.
 		return chunkSize
 	}
-	if fs := objectBytes + chunk.HeaderSize; fs < chunkSize {
-		return fs
+	if objectBytes > chunkSize-chunk.HeaderSize {
+		return chunkSize
 	}
-	return chunkSize
+	return min(int(PaddedLength(int64(objectBytes+chunk.HeaderSize))), chunkSize)
+}
+
+// FrameCount is how many data frames an object of objectBytes is stored as: one when it
+// fits in a single frame, else enough full frames to hold its Padmé length. Past one frame
+// the class is taken over the content length, since every frame there is full. The frames
+// past the ones the content fills are filler (fillerFrame), so the count, like the frame
+// length, shows the object's Padmé class and not its exact length.
+func FrameCount(objectBytes int64, chunkSize int) int {
+	payload := int64(chunkSize - chunk.HeaderSize)
+	switch {
+	case objectBytes <= 0:
+		return 0
+	case objectBytes <= payload:
+		return 1
+	}
+	p := PaddedLength(objectBytes)
+	return int((p + payload - 1) / payload)
+}
+
+// PublishedSize is the size a registry entry carries for an object stored as frames
+// data frames of frameBytes each: their total payload capacity. It is computed from the
+// geometry alone, so it says nothing a holder of the shards cannot read off their
+// lengths and count.
+func PublishedSize(frames, frameBytes int) int64 {
+	if frames == 0 {
+		return 0
+	}
+	return int64(frames) * int64(frameBytes-chunk.HeaderSize)
+}
+
+// fillerDomain separates the filler keystream from every other use of the same key.
+const fillerDomain = "silt/pipeline/filler-frame"
+
+// fillerSeed is the key a file's filler frames are drawn from. It must make them
+// deterministic in the content and indistinguishable from the real frames' ciphertext to
+// anyone without the content. In private mode the file key does that. In convergent mode
+// the seed is a hash of every real frame's convergent secret and the true length, so the
+// same content always yields the same fillers (dedup still holds) while two different
+// files never share one — an all-zero filler would encrypt to the same chunk everywhere
+// and mark itself, and the object's true frame count with it.
+func fillerSeed(mode crypto.Mode, fileKey [crypto.KeySize]byte, secrets [][]byte, size int64) [crypto.SecretSize]byte {
+	if mode == crypto.Private {
+		return crypto.DeriveKey(fileKey, fillerDomain)
+	}
+	h := sha256.New()
+	h.Write([]byte(fillerDomain))
+	var n [8]byte
+	binary.BigEndian.PutUint64(n[:], uint64(size))
+	h.Write(n[:])
+	for _, s := range secrets {
+		h.Write(s)
+	}
+	var seed [crypto.SecretSize]byte
+	copy(seed[:], h.Sum(nil))
+	return seed
+}
+
+// fillerFrame is filler frame index of frameBytes: a zero-length header, which chunk.Join
+// reads as no content, over a payload drawn from seed's keystream.
+func fillerFrame(seed [crypto.SecretSize]byte, index uint64, frameBytes int) []byte {
+	f := make([]byte, frameBytes)
+	crypto.Keystream(seed, fillerDomain, index, f[chunk.HeaderSize:])
+	return f
 }
 
 // splitFile frames the file's own bytes. It is chunk.Split with ONE exception: an object
-// whose entire content fits in a single frame is framed at its TRUE length instead of
-// being padded up to chunkSize. Such a frame is ALONE in its erasure stripe, so nothing
-// forces it to full length — equal-length shards are a within-stripe constraint — and the
-// six parity shards are computed at that same true length. A 1 KB object at the 256 KiB
-// default stored 7 × 262,160 = 1,835,120 B of mostly zeros; it now stores 7 × 1,048 B.
+// whose entire content fits in a single frame is framed at its padded length
+// (DataFrameSize) instead of being padded up to chunkSize. Such a frame is ALONE in its
+// erasure stripe, so nothing forces it to full length — equal-length shards are a
+// within-stripe constraint — and the six parity shards are computed at that same length.
+// A 1 KB object at the 256 KiB default stored 7 × 262,160 = 1,835,120 B of mostly zeros;
+// it stores 7 × 1,048 B.
 //
-// Every OTHER object is byte-identical to before: two or more frames share a stripe with
-// each other, so the tail stays padded and chunk.Split does the whole job. The frame size
+// Every OTHER object is framed at chunkSize: two or more frames share a stripe with each
+// other, so the tail stays padded and chunk.Split does the whole job. The frame size
 // travels in manifest.ChunkSize, so the audit, the repair judge and the reader all read
 // the geometry that was used rather than the one that was asked for. It can legitimately
-// be as small as chunk.MinChunkSize (a 1-byte object commits ChunkSize = 9), so a
-// consumer that divides by the field or assumes a floor must say so.
-//
-// This changes the chunk IDs — and therefore the root — of every object at or below
-// chunkSize − 9. See DefaultChunkSize on what that costs and what it does not.
+// be as small as 10 bytes (a 1-byte object commits ChunkSize = PaddedLength(9) = 10), so a
+// consumer that divides by the field or assumes a floor must say so. Filler frames
+// (FrameCount) are Stage's job, not this function's: they need the content key.
 func splitFile(r io.Reader, chunkSize int) ([][]byte, error) {
 	if chunkSize < chunk.MinChunkSize {
 		return chunk.Split(r, chunkSize) // one place reports a bad chunk size
