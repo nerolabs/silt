@@ -3296,7 +3296,7 @@ EOF
   prog_j="$(econ_repair_progress "$judge")"
   ft_add_validator_evidence
   if [ "${paid:-0}" -gt 0 ] 2>/dev/null; then
-    slo_assert "11-economy-repair" major "the S7 repair economy CLOSED on the wire: killed 3 columns' holders → the caretaker RECONSTRUCTED from parity → a verified-repair bounty drew the object's reserve down (paid=$paid credits over $repairs repair(s)) — durability paid for itself on a real network, standing untouched (Invariant A). Post-kill cycle: $care ${prog_c:-none}; $judge ${prog_j:-none}" 1
+    slo_assert "11-economy-repair" major "the S7 repair economy CLOSED on the wire: killed 3 columns' holders → the caretaker RECONSTRUCTED from parity → a verified-repair bounty drew the object's reserve down (paid=$paid credits over $repairs repair(s)) — durability paid for itself on a real network. Post-kill cycle: $care ${prog_c:-none}; $judge ${prog_j:-none}" 1
   elif econ_cycle_hopeless "$prog_c" && econ_cycle_hopeless "$prog_j"; then
     record "11-economy-repair" gap major "PREMISE DEFEATED, not a timing miss: after the kill both caretakers' latest sweeps report FULL reachability with zero repair activity ($care $prog_c; $judge $prog_j) — the dead shards are still counted reachable (the records-vs-bytes / includeLocal shape), so no repair can ever fire; attribute the reachability source before re-running"
   else
@@ -3359,8 +3359,10 @@ EOF
 #  SKIP behind the binding probe while no
 #  binding is committed (a skip keeps the RC gate reachable — the
 #  recommendation; OWNER RATIFICATION of skip-vs-gap is owed and
-#  recorded in the PR; the skip text says what is untested). This
-#  row turns green once the binding commits, with NO harness change.
+#  recorded in the PR; the skip text says what is untested). The
+#  client is chain-less (`swarm receipt` runs on an ephemeral node),
+#  so it resolves no issuer key whatever the chain holds; this row
+#  stays a skip until the withdrawal runs under a chain-holding parent.
 # SURFACES, items 1–2): the boot banner is a fmt.Printf -> journald,
 # read over the WHOLE unit journal (never the 800-line window — the boot validator emits
 # ~27 journald lines per block, 79 % TLS-handshake noise from the registry listener);
@@ -3499,28 +3501,23 @@ import json;t=json.load(open('$FT_TOPO'));n=t['nodes']['$offnode'];print(n['node
     return
   fi
   if printf '%s' "$out" | grep -q "committed E->key binding"; then
-    # UNBOUND LANE (no committed E->key binding on this chain; era-4 itself IS active —
-    # the harness passes no -era4-activation-height, so every daemon takes the default of 1):
-    # the refusal at the withdrawal —
+    # UNRESOLVED LANE (the chain-less client can check no served key against the
+    # committed E->key binding): the refusal at the withdrawal —
     # nothing withdrawn, nothing spent, and the server banked NOTHING (debug.log after the
     # baseline). The lane-off sentence must NOT appear (distinct contracts).
     local conflated=0
     printf '%s' "$out" | grep -q "serves no demand issuer key" && conflated=1
     if [ "$off_noise" = 1 ]; then
-      record "13-delivery-lane" gap major "UNBOUND lane: the armed server refused as expected, but the lane-off control at ${offnode} could not be driven (transport noise after 3 attempts: $(printf '%s' "$off" | head -c 200)) — property UNTESTED"
-      record "13b-delivery-settlement" skip major "UNTESTED on this chain (see 13-delivery-lane; no committed E->key binding — era-4 itself is live here)"; return
+      record "13-delivery-lane" gap major "UNRESOLVED lane: the armed server refused as expected, but the lane-off control at ${offnode} could not be driven (transport noise after 3 attempts: $(printf '%s' "$off" | head -c 200)) — property UNTESTED"
+      record "13b-delivery-settlement" skip major "UNTESTED (see 13-delivery-lane): the receipt client holds no chain replica, so it resolves no issuer key"; return
     fi
     local ok=0; [ "$conflated" = 0 ] && [ -z "$sbanked" ] && [ "$off_ok" = 1 ] && ok=1
-    slo_assert "13-delivery-lane" major "UNBOUND lane (no committed E->key binding): armed + announced on ${boot}; client refused at the withdrawal naming the committed E->key binding (nothing spent); server debug.log (+$(( $(ssh_node "$boot" "sudo wc -l < /var/lib/silt/debug.log 2>/dev/null" | tr -dc '0-9') - n0 )) lines since baseline) banked nothing$([ "$conflated" = 1 ] && echo '; WRONG: conflated with the lane-off sentence')$([ -n "$sbanked" ] && echo "; WRONG: server banked: $sbanked"); lane-off control at ${offnode} $([ "$off_ok" = 1 ] && echo refused-with-marker || echo "WRONG: $off")${afford:+; $afford}" "$ok" $((t1 - t0))
-    # THE PROBE IS A BINDING PROBE, NOT AN ERA PROBE: the client's
-    # sentence covers two causes — the issuer committed no binding at all OR the keys it
-    # served are off-commitment — and no surface on the CLI or the status route tells them
-    # apart. A broken commit path reads here as this same SKIP; the skip
-    # text names both causes so an operator reads it as "untested", never as "green".
-    # A THIRD cause is now ruled OUT rather than carried: era-4 being inactive. This harness
-    # passes no -era4-activation-height, so every daemon takes the binary default of 1 and
-    # mints era-4 from height 1.
-    record "13b-delivery-settlement" skip major "UNTESTED on this chain: the client was refused at the withdrawal because the issuer served no key that resolves against a COMMITTED E->key binding. WHY no binding committed is not measured by this row — era-4 itself is LIVE here (this harness passes no -era4-activation-height, so every daemon takes the default of 1 and mints era-4 from height 1), so the old 'era-4 is dark' reading is void and the remaining candidates (the issuer never registered a key, or its keys are off-commitment) are not separated. Row 13 is what holds today; this row grades the wire settlement once a binding commits, with no harness change." $((t1 - t0))
+    slo_assert "13-delivery-lane" major "UNRESOLVED lane (chain-less client, no key checkable against the committed E->key binding): armed + announced on ${boot}; client refused at the withdrawal naming the committed E->key binding (nothing spent); server debug.log (+$(( $(ssh_node "$boot" "sudo wc -l < /var/lib/silt/debug.log 2>/dev/null" | tr -dc '0-9') - n0 )) lines since baseline) banked nothing$([ "$conflated" = 1 ] && echo '; WRONG: conflated with the lane-off sentence')$([ -n "$sbanked" ] && echo "; WRONG: server banked: $sbanked"); lane-off control at ${offnode} $([ "$off_ok" = 1 ] && echo refused-with-marker || echo "WRONG: $off")${afford:+; $afford}" "$ok" $((t1 - t0))
+    # The refusal is the CLIENT's: `swarm receipt` runs on a chain-less ephemeral node,
+    # so it pins no served key whatever the issuer's chain commits (node.ErrNoChainToResolve,
+    # "holds no chain replica"). Whether the boot validator committed its binding is not
+    # read here; the predicate is gated in core/node.
+    record "13b-delivery-settlement" skip major "UNTESTED: the receipt client holds no chain replica, so it can check no key the issuer served against the committed E->key binding and withdraws nothing. The wire settlement needs the withdrawal to run under a chain-holding parent, which the CLI does not have; row 13 is what holds today." $((t1 - t0))
     return
   fi
   if [ -z "$out" ] || printf '%s' "$out" | grep -qiE "timeout|timed out|connection refused|no route|dial|i/o|unreachable|EOF"; then

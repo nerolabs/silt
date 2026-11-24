@@ -76,6 +76,12 @@ var (
 	// sentinel instead of this one.
 	ErrNoIssuerKey = errors.New("node: peer has no issuer key")
 
+	// ErrNoChainToResolve: the issuer served demand keys, but this node holds no chain
+	// replica, so none of them can be checked against the committed E ↦ key_E binding
+	// and none is pinned. It is distinct from "keys served, none on-commitment": that
+	// is a fact about the issuer's chain, this one is a fact about the caller.
+	ErrNoChainToResolve = errors.New("node: no chain replica to resolve issuer keys against")
+
 	errNoCanonicalIssuers = errors.New("node: peer served no canonical issuer set (no chain)")
 
 	// errNoTokenIssuer refuses a CREDIT-BEARING request on a node that runs no
