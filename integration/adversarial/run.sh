@@ -53,7 +53,7 @@ ROOT=$(cd ../.. && pwd)
 # couple of minutes each on a clean loopback), so a suite that includes them gets a
 # longer default; the nightly job's own 45-minute ceiling stays the outer bound.
 case "${SUITE:-adversarial}" in
-  recovery|all) : "${TIMEOUT:=2400s}" ;;
+  recovery|privacy|all) : "${TIMEOUT:=2400s}" ;;
   *)            : "${TIMEOUT:=900s}" ;;
 esac
 
@@ -65,7 +65,9 @@ esac
 #  and publish→fetch bit-perfect — the "does the network
 #  stay live and serve" half the adversarial drills ride on.
 #  recovery — the unplaceable-publish, crash and takedown-receipt drills.
-#  all — all three, the full P0 netem gate in one run.
+#  privacy — publisher matching against chance, the (fetcher, content) sweep,
+#  and the seized-disk drill.
+#  all — all four, the full P0 netem gate in one run.
 # NOTE: the cold-start re-mesh test (TestBootstrapRetryRecoversColdStartRace) is
 # deliberately EXCLUDED from the netem suite — it runs with -request-timeout 500ms
 # -request-retries 0 (a clean-localhost timing test of the self-heal LOGIC, "not
@@ -81,6 +83,12 @@ SUBSTRATE='TestObjectiveConsensusCommitsOverTCP|TestBondEarnedStandingCommitsOve
 #  carries a receipt another replica verifies. Loss and delay are what these drills
 #  meet on a WAN, where a timeout stands in for a refusal and a round can stretch.
 RECOVERY='TestUnplaceablePublishFailsExplicitlyThenSucceedsOnRetry|TestPublishToUnreachableHoldersFailsExplicitlyThenSucceedsOnRetry|TestValidatorKilledMidConsensusRestartsWithoutContradictingItself|TestHonouredTakedownCarriesAReceiptAnAuditorVerifies'
+# privacy — what an adversary holding every disk and every announcement can link:
+#  publishers matched to their objects no better than chance, no (fetcher, content)
+#  pair on any disk or in any announcement, a UI fetch that announces only when the
+#  operator opts in, and a seized network that yields no plaintext. Loss and delay
+#  change which announcements land and when, which is what the matching game reads.
+PRIVACY='TestPublishersAndFetchersCannotBeLinkedToTheirObjects|TestUIFetchAnnouncesOnlyWhenTheConsumerOptsIn|TestSeizedNetworkYieldsNoPlaintextWhileTheKeyHolderReadsIt'
 # `noun` is the verdict line's subject, set explicitly per SUITE. It used to be
 # derived by chopping `kind` at its first space, which mangled SUITE=all into
 # "every FULL property held" — a verdict line that cannot name what it verifies
@@ -89,8 +97,9 @@ case "${SUITE:-adversarial}" in
   adversarial) : "${TESTS:=$ADVERSARIAL}"; kind="adversarial-consensus drills"; noun="adversarial-consensus"; verb="DENIED its attack" ;;
   substrate)   : "${TESTS:=$SUBSTRATE}";   kind="P0 substrate liveness";        noun="P0-substrate-liveness"; verb="held" ;;
   recovery)    : "${TESTS:=$RECOVERY}";    kind="recovery and takedown drills";  noun="recovery"; verb="held" ;;
-  all)         : "${TESTS:=$ADVERSARIAL|$SUBSTRATE|$RECOVERY}"; kind="full P0 netem gate (substrate + adversarial + recovery)"; noun="P0 netem gate"; verb="held/denied" ;;
-  *) echo "unknown SUITE='$SUITE' (use adversarial | substrate | recovery | all, or set TESTS=<regex>)"; exit 1 ;;
+  privacy)     : "${TESTS:=$PRIVACY}";     kind="unlinkability and seizure drills"; noun="privacy"; verb="held" ;;
+  all)         : "${TESTS:=$ADVERSARIAL|$SUBSTRATE|$RECOVERY|$PRIVACY}"; kind="full P0 netem gate (substrate + adversarial + recovery + privacy)"; noun="P0 netem gate"; verb="held/denied" ;;
+  *) echo "unknown SUITE='$SUITE' (use adversarial | substrate | recovery | privacy | all, or set TESTS=<regex>)"; exit 1 ;;
 esac
 MODCACHE="$(go env GOMODCACHE 2>/dev/null || true)"
 

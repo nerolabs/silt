@@ -157,7 +157,7 @@ func acquirePublishToken(nd *node.Node, validators []ports.NodeID, k int, mark f
 // the data; the client keeps nothing.
 func cmdSwarm(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: silt swarm add|get|holders|receipt ... -peers ID@ADDR[,...] -registry URL")
+		return fmt.Errorf("usage: silt swarm add|get|holders|announcers|receipt ... -peers ID@ADDR[,...] -registry URL")
 	}
 	switch args[0] {
 	case "add":
@@ -166,10 +166,12 @@ func cmdSwarm(args []string) error {
 		return swarmGet(args[1:])
 	case "holders":
 		return swarmHolders(args[1:])
+	case "announcers":
+		return swarmAnnouncers(args[1:])
 	case "receipt":
 		return swarmReceipt(args[1:])
 	default:
-		return fmt.Errorf("unknown swarm command %q (add, get, holders, receipt)", args[0])
+		return fmt.Errorf("unknown swarm command %q (add, get, holders, announcers, receipt)", args[0])
 	}
 }
 
@@ -225,6 +227,82 @@ func swarmHolders(args []string) error {
 			strs[i] = id.String()
 		}
 		fmt.Printf("%s: %s\n", label, strings.Join(strs, ","))
+	}
+	return nil
+}
+
+// swarmAnnouncers prints every node the DHT says announces something about an object:
+// the provider records under each manifest chunk ID and under the object's care key,
+// which need only the root, and — when given a link rather than a bare root — the
+// byte-confirmed holders of each erasure column too. It is the observer's view of who
+// has put their name next to an object. Read-only — it plants nothing and stores
+// nothing.
+func swarmAnnouncers(args []string) error {
+	fs := flag.NewFlagSet("swarm announcers", flag.ExitOnError)
+	peers := fs.String("peers", "", "bootstrap peers: ID@HOST:PORT[,...] (required)")
+	regURL := fs.String("registry", "", "registry URL (required)")
+	pos := parseFlexible(fs, args)
+	if len(pos) != 1 || *peers == "" || *regURL == "" {
+		return fmt.Errorf("usage: silt swarm announcers <link|root> -peers ID@ADDR -registry URL")
+	}
+	var root ports.Hash
+	h, linkErr := link.Parse(pos[0])
+	if linkErr == nil {
+		root = h.Root
+	} else if r, err := ports.ParseHash(pos[0]); err == nil {
+		root = r
+	} else {
+		return fmt.Errorf("announcers: %q is neither a link (%v) nor a root (%v)", pos[0], linkErr, err)
+	}
+	e, run, err := joinSwarm(*peers, 0)
+	if err != nil {
+		return err
+	}
+	defer e.close()
+	reg, err := openRegistry(*regURL)
+	if err != nil {
+		return err
+	}
+	var named map[string][]ports.NodeID
+	var cols map[int][]ports.NodeID
+	var opErr error
+	if rerr := run(func(done func()) {
+		e.nd.RootAnnouncers(reg, root, func(m map[string][]ports.NodeID, err error) {
+			named, opErr = m, err
+			if err != nil || linkErr != nil {
+				done()
+				return
+			}
+			e.nd.ColumnHolders(reg, h, func(m map[int][]ports.NodeID, err error) { cols, opErr = m, err; done() })
+		})
+	}); rerr != nil {
+		return rerr
+	}
+	if opErr != nil {
+		return opErr
+	}
+	ids := func(l []ports.NodeID) string {
+		s := make([]string, len(l))
+		for i, id := range l {
+			s[i] = id.String()
+		}
+		return strings.Join(s, ",")
+	}
+	labels := make([]string, 0, len(named))
+	for l := range named {
+		labels = append(labels, l)
+	}
+	sort.Strings(labels)
+	for _, l := range labels {
+		fmt.Printf("%s: %s\n", l, ids(named[l]))
+	}
+	colNums := make([]int, 0, len(cols))
+	for c := range cols {
+		colNums = append(colNums, c)
+	}
+	sort.Ints(colNums)
+	for _, c := range colNums {
+		fmt.Printf("column %d: %s\n", c, ids(cols[c]))
 	}
 	return nil
 }

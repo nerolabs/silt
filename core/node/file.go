@@ -985,6 +985,42 @@ func (n *Node) ColumnHolders(reg ports.Registry, h link.Handle, done func(map[in
 	})
 }
 
+// RootAnnouncers is everyone the DHT says announces something about root, computed from
+// the root alone — what anyone who reads the chain can ask, with no link and no layout
+// key. It resolves the provider records under each of the entry's manifest chunk IDs
+// (public: they are in the committed entry) and under careKey(root), and returns them
+// keyed "manifest <chunk id>" and "care". Records are reported as announced, not
+// byte-confirmed: the question it answers is what an announcement tells an observer.
+func (n *Node) RootAnnouncers(reg ports.Registry, root ports.Hash, done func(map[string][]ports.NodeID, error)) {
+	n.lookupEntryAsync(reg, root, func(entry ports.Entry, ok bool, err error) {
+		if err != nil || !ok {
+			done(nil, fmt.Errorf("announcers %s: %w", root, ports.ErrNoSuchEntry))
+			return
+		}
+		keys := make([]ports.ChunkID, 0, len(entry.ManifestChunks)+1)
+		labels := make([]string, 0, cap(keys))
+		for _, id := range entry.ManifestChunks {
+			keys = append(keys, id)
+			labels = append(labels, "manifest "+id.String())
+		}
+		keys = append(keys, ports.ChunkID(careKey(root)))
+		labels = append(labels, "care")
+		result := make(map[string][]ports.NodeID, len(keys))
+		var next func(i int)
+		next = func(i int) {
+			if i == len(keys) {
+				done(result, nil)
+				return
+			}
+			n.resolveProviders(keys[i], func(provs []ports.NodeID) {
+				result[labels[i]] = provs
+				next(i + 1)
+			})
+		}
+		next(0)
+	})
+}
+
 // columnHoldersEntry is ColumnHolders past the (async) registry resolution.
 func (n *Node) columnHoldersEntry(entry ports.Entry, h link.Handle, done func(map[int][]ports.NodeID, error)) {
 	n.fetchAll(entry.ManifestChunks, func(missing []ports.ChunkID) {
