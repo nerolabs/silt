@@ -509,6 +509,9 @@ type Stats struct {
 	// value is a replay the dedup caught, direction D. It counts REFUSALS, not
 	// payments — it never moves standing.
 	BountyDuplicatePosition int
+	// BountyNoPriorLoss counts release verdicts this judge refused to pay because
+	// nothing showed the position was ever lost: a copy of a live shard repairs nothing.
+	BountyNoPriorLoss int
 	// detector A4: repair bounties this judge paid to ITSELF, count and
 	// credits. claim.Holder is a field of an inbound, attacker-declared
 	// MsgRepairClaim and nothing refuses a claim naming the judge as the holder,
@@ -671,6 +674,12 @@ type Node struct {
 	// day the flag flips (held in tension; correction 2026-09-12 — this comment
 	// used to claim a restarted judge "denies rather than double-pays").
 	bountyPaid map[bountyPosKey]bool
+
+	// lossSeen records when this node's own repair sweep last found a cared position
+	// unreachable: the judge's first evidence that a claimed repair replaced a real
+	// loss (repairclaim.go priorLoss). Bounded at maxLossSeen entries, oldest first out.
+	lossSeen      map[bountyPosKey]ports.Time
+	lossSeenOrder []bountyPosKey
 
 	// sweepEpoch counts repair ticks. A corpse whose ladder exhausted during
 	// the CURRENT tick is skipped for the tick's remainder regardless of its
@@ -1559,6 +1568,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		dead:                make(map[ports.NodeID]corpse),
 		repairConfirm:       make(map[stripeKey]int),
 		bountyPaid:          make(map[bountyPosKey]bool),
+		lossSeen:            make(map[bountyPosKey]ports.Time),
 		staticPeers:         make(map[ports.NodeID]bool),
 		reachProbes:         make(map[uint64]*reachProbe),
 		proofMeta:           make(map[ports.ChunkID]proofMeta),

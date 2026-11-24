@@ -233,6 +233,7 @@ func TestRepairJudge_ShortFinalStripeIsJudgeableAndPays(t *testing.T) {
 	holder := s.nodes[9]
 	holderBalance := s.ledger.Balance(holder.ID())
 	s.stageShardOn(judge, holder, parityID, pos, leafIdx)
+	s.sawLost(judge, stripe, pos)
 
 	s.deliverClaim(judge, s.nodes[2].ID(), repairClaimFor(s.root, stripe, pos, parityID, holder.ID()))
 
@@ -304,6 +305,7 @@ func TestRepairJudge_DeniedPositionStaysPayable(t *testing.T) {
 	// The honest repair of the SAME position must still be payable.
 	holder := s.nodes[9]
 	s.stageShardOn(judge, holder, parityID, pos, leafIdx)
+	s.sawLost(judge, 0, pos)
 	s.deliverClaim(judge, s.nodes[3].ID(), repairClaimFor(s.root, 0, pos, parityID, holder.ID()))
 
 	if judge.Stats.BountiesReleased != 1 {
@@ -353,6 +355,7 @@ func TestRepairJudge_ReleaseThatPaidNothingStaysPayable(t *testing.T) {
 		pos, parityID, leafIdx := w.parityTarget()
 		holder := w.nodes[9]
 		w.stageShardOn(judge, holder, parityID, pos, leafIdx)
+		w.sawLost(judge, 0, pos)
 		w.deliverClaim(judge, w.nodes[3].ID(), repairClaimFor(w.root, 0, pos, parityID, holder.ID()))
 		if judge.Stats.BountiesReleased != 1 {
 			t.Fatalf("VACUOUS: the witness arrangement did not pay against a FUNDED escrow (BountiesReleased=%d, EscrowPaid=%d). "+
@@ -367,6 +370,7 @@ func TestRepairJudge_ReleaseThatPaidNothingStaysPayable(t *testing.T) {
 	holder := s.nodes[9]
 	holderBalance := s.ledger.Balance(holder.ID())
 	s.stageShardOn(judge, holder, parityID, pos, leafIdx)
+	s.sawLost(judge, 0, pos)
 
 	if bal := s.ledger.EscrowBalance(s.root); bal != 0 {
 		t.Fatalf("PREMISE BROKEN: the escrow holds %d credits before the first claim — this arm needs an EMPTY one, and the serve auto-skim has evidently funded it", bal)

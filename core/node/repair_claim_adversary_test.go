@@ -289,6 +289,14 @@ func TestRepair_ComputeButDontStoreIsDenied(t *testing.T) {
 	}
 }
 
+// sawLost records that the judge's own repair sweep found (stripe, pos) unreachable:
+// the prior-loss evidence a bounty needs. Fixtures that stage a COPY on a holder to
+// exercise some other judging rule use it to say the copy replaced a real loss;
+// TestRepair_HonestClaimIsPaid drives a real loss end to end instead.
+func (s *repairAdv) sawLost(judge *Node, stripe, pos int) {
+	judge.noteLoss(bountyPosKey{root: s.root, stripe: stripe, pos: pos})
+}
+
 // stageShardOn fetches the real shard from the swarm and re-places it on `holder`
 // WITH a valid Merkle proof and PoR tags. An honest holder keeps the bytes (and can
 // answer retrievability); a liar holder (SetLiar) keeps the receipt + tags but drops
@@ -550,9 +558,9 @@ func TestRepair_HonestClaimIsPaid(t *testing.T) {
 	// the position sat on THREE nodes and shardIsReachable answered true; after the
 	// rebuild it sits on ONE — the named holder — and shardIsReachable answers FALSE.
 	// A loss witness shaped as a restoration differential would redden this control
-	// for that reason alone, which is why rtRC3Pin's failure text names the fixture
-	// before it names payment. The fix, when it is needed, is an announce in
-	// rebuildLostShard, not a change to the judge.
+	// for that reason alone. The judge's prior-loss check is the other shape: it asks
+	// whether anyone BUT the claimed holder still serves the position, which a rebuild
+	// that lives on one node satisfies.
 	restored := false
 	s.nodes[3].fetchFrom(parityID, []ports.NodeID{holder.ID()}, func(ok bool) { restored = ok })
 	s.sched.Run()

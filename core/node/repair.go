@@ -576,6 +576,7 @@ func (n *Node) repairStripesFrom(m *manifest.Layout, p erasure.Params, byStripe 
 	for _, r := range stripeRefs {
 		if !reachable[r.id] {
 			missing++
+			n.noteLoss(bountyPosKey{root: m.Root(), stripe: stripe, pos: r.pos})
 		} else if doms := shardDoms[r.id]; len(doms) == 1 {
 			for d := range doms {
 				exclusive[d]++

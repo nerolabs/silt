@@ -11,17 +11,16 @@ package node
 // same lines and reports green either way. The mechanism and the precedent are
 // core/pipeline's TestSingleDataShardStripeHasSixDistinctShards_PINNED_DEFECT.
 //
-// AS OF 2026-09-12, TWO OF THE PINS HAVE BEEN REDEEMED and this file holds a MIX:
+// THREE OF THE PINS HAVE BEEN REDEEMED and this file holds a MIX:
 //
 //	PIN 1 arms (a) and (b) are still PINS. Arm (c) is NOT — it is a positive
 //	 assertion that an out-of-range position is refused before any fetch.
 //	PIN 2 NOT a pin. It asserts the dedup positively, and its name no longer
 //	 carries _PINNED_DEFECT.
-//	PIN 3 still a PIN, and it must STAY one. Its closer is the loss witness,
-//	 which is GATED behind. A RED here means
-//	 something gated was built.
+//	PIN 3 NOT a pin. It asserts that a claim for a never-lost shard is denied
+//	 for want of prior loss.
 //
-// Both conversions followed the same route: the fix reddened the pin, and the
+// All three conversions followed the same route: the fix reddened the pin, and the
 // pin was replaced by the positive assertion of the rule that made it red. No
 // test was deleted.
 //
@@ -48,10 +47,12 @@ package node
 //	 escrow. ▶ CLOSED 2026-09-12 by node-side (root, stripe, pos) dedup on
 //	 PAID; the gate below asserts the rule instead of the defect.
 //
-//	PIN 3 Nothing on the judge's path ever checks that the claimed shard was
+//	PIN 3 Nothing on the judge's path ever checked that the claimed shard was
 //	 EVER MISSING. Correctness recomputes the position from survivors and
 //	 retrievability challenges the named holder; both pass for a shard
 //	 that was never lost and was merely COPIED onto a second holder.
+//	 ▶ CLOSED by the judge's prior-loss requirement (repairclaim.go priorLoss);
+//	 the gate below asserts the rule instead of the defect.
 //
 // ▶ PIN 1 (c) CLOSED by the position screen in judgeRepairClaim: an
 // out-of-range claim.ShardPos is judged against the manifest and refused before the
@@ -388,6 +389,7 @@ func TestReplayedClaimForAPaidPositionDrawsNothing(t *testing.T) {
 	pos, parityID, leafIdx := s.parityTarget()
 	holder := s.nodes[9]
 	s.stageShardOn(judge, holder, parityID, pos, leafIdx)
+	s.sawLost(judge, 0, pos)
 
 	claim := repairClaimFor(s.root, 0, pos, parityID, holder.ID())
 
@@ -421,6 +423,7 @@ func TestReplayedClaimForAPaidPositionDrawsNothing(t *testing.T) {
 		t.Fatal("PIN 2 PREMISE BROKEN: the fixture's first two parity shards share an id, so the second arm does not name a different position")
 	}
 	s.stageShardOn(judge, holder, otherID, otherPos, otherLeaf)
+	s.sawLost(judge, 0, otherPos)
 	s.deliverClaim(judge, s.nodes[2].ID(), repairClaimFor(s.root, 0, otherPos, otherID, holder.ID()))
 	if judge.Stats.BountiesReleased != firstReleases+1 {
 		t.Fatalf("a DIFFERENT position of the same object was refused: BountiesReleased=%d, want %d. The dedup key is (root, stripe, position); "+
@@ -430,55 +433,33 @@ func TestReplayedClaimForAPaidPositionDrawsNothing(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PIN 3 — a claim with NO LOSS is PAID.
+// PIN 3, REDEEMED — a claim with NO LOSS is DENIED.
 //
-// THE RULE THIS PIN RECORDS THE ABSENCE OF: a durability bounty pays for a
-// REPAIR, so a shard that was never missing was never repaired, and copying it
-// onto a second holder should pay nothing. It pays the full bounty.
+// THE RULE: a durability bounty pays for a REPAIR, so a shard that was never missing
+// was never repaired, and copying it onto a second holder pays nothing. Both judging
+// legs pass for such a copy, so the judge also requires prior loss: its own sweep saw
+// the position unreachable, or no holder other than the claimed one serves it now.
 //
-// The arrangement is the no-loss one, and the pin PROVES the no-loss premise
-// before it judges: the shard is still retrievable from its ORIGINAL providers at
-// the moment the claim is delivered. Nothing was rebuilt; a live copy was moved.
-//
-// ⚠ THIS PIN USED TO AGREE WITH A SHIPPED TEST, AND THAT AGREEMENT WAS THE
-// FINDING. TestRepair_HonestClaimIsPaid (repair_claim_adversary_test.go) built
-// the identical arrangement with the same stageShardOn helper and asserted
-// BountiesReleased == 1 as the INTENDED rule, while this pin asserted the same
-// outcome as a DEFECT. resolved it in THIS pin's favour, and on 2026-09-13 that
-// control was re-derived over a REAL loss — a position destroyed across the swarm
-// and rebuilt from the survivors — so the two arrangements are now disjoint. This
-// one is still the no-loss arrangement and is still the only test in the tree
-// that asserts a no-loss claim pays.
-//
-// PIN. GREEN today. It goes RED when a prior-loss requirement lands.
-// ─────────────────────────────────────────────────────────────────────────────
-// rtRC3Pin returns "" while a claim for a shard that was NEVER LOST still pays, once,
-// and the instruction once it does not.
+// The arrangement is the no-loss one, and the test PROVES the no-loss premise before
+// it judges: the shard is still retrievable from its ORIGINAL providers at the moment
+// the claim is delivered. Nothing was rebuilt; a live copy was moved. Its counterpart
+// over a REAL loss is TestRepair_HonestClaimIsPaid, which must stay green beside it.
 // TEETH: TestRTRC_PinsFireOnTheirRemediations.
-func rtRC3Pin(before, after int64, releases int) string {
-	if after > before && releases == 1 {
+// ─────────────────────────────────────────────────────────────────────────────
+
+// rc3NoLossDenied returns "" when a claim for a never-lost shard paid nothing,
+// released nothing, and was refused for want of prior loss (not for another reason).
+func rc3NoLossDenied(before, after int64, releases, noPriorLoss int) string {
+	if after == before && releases == 0 && noPriorLoss == 1 {
 		return ""
 	}
-	return fmt.Sprintf("PIN 3 PIN IS RED — a claim for a shard that was NEVER LOST no longer pays as pinned: EscrowPaid %d -> %d, BountiesReleased=%d (pinned at a positive delta and exactly 1).\n"+
-		"  THE FIX CASE: no payment and no release means the judge now requires evidence of prior loss for the claimed (root, stripe, position).\n"+
-		"  That is the repair this pin was waiting for, and since 2026-09-13 it CAN land alone: TestRepair_HonestClaimIsPaid was\n"+
-		"  re-derived over a REAL loss and no longer asserts the opposite on this arrangement, so it\n"+
-		"  should stay GREEN in the same run.\n"+
-		"  IF IT WENT RED TOO, CHECK THE FIXTURE BEFORE YOU CHECK PAYMENT. Two causes are known and this list is NOT exhaustive:\n"+
-		"    (a) the loss witness is shaped as a RESTORATION DIFFERENTIAL — the position unreachable before the claim, reachable after.\n"+
-		"        That control cannot satisfy that shape today: rebuildLostShard places through placeAt, which sends MsgStoreChunk and\n"+
-		"        announces NOTHING to the nodes near the column key, so after the rebuild the position is not discoverable under\n"+
-		"        colKey(root, pos) and lives on ONE node, down from three (measured 2026-09-13). Teach rebuildLostShard to announce\n"+
-		"        before you conclude anything about payment.\n"+
-		"    (b) payment itself broke.\n"+
-		"  Retire this pin by replacing it with the positive assertion of the rule, never by deleting it. The judge's two legs (correctness\n"+
-		"  recompute in judgeRepairClaim, retrievability in\n"+
-		"  challengeHolderRetrievability) both pass for a live shard merely COPIED to a new holder; nothing on the path asserted prior loss.\n"+
-		"  THE OTHER CASE: more than one release, or a payment where the premise arm above did not hold, is a different defect. Re-derive first.",
-		before, after, releases)
+	return fmt.Sprintf("a claim for a shard that was NEVER LOST was not refused for want of prior loss: EscrowPaid %d -> %d, "+
+		"BountiesReleased=%d, BountyNoPriorLoss=%d (want no payment, no release, one prior-loss refusal). A payment means "+
+		"the judge pays for copies again; a refusal with BountyNoPriorLoss=0 means something earlier refused it and this "+
+		"test no longer reaches the rule it gates.", before, after, releases, noPriorLoss)
 }
 
-func TestClaimWithNoLossIsPaid_PINNED_DEFECT(t *testing.T) {
+func TestClaimWithNoLossIsDenied(t *testing.T) {
 	s := newRepairAdv(t, 1203)
 	s.fundEscrow(5_000_000)
 	judge := s.careJudge()
@@ -501,7 +482,7 @@ func TestClaimWithNoLossIsPaid_PINNED_DEFECT(t *testing.T) {
 	})
 	s.sched.Run()
 	if !reachable {
-		t.Fatalf("PIN 3 PREMISE BROKEN: no provider other than the staged holder answers for column %d — the shard may actually have been lost, so this is not a no-loss arrangement", pos)
+		t.Fatalf("PREMISE BROKEN: no provider other than the staged holder answers for column %d — the shard may actually have been lost, so this is not a no-loss arrangement", pos)
 	}
 
 	before := s.ledger.EscrowPaid(s.root)
@@ -509,11 +490,9 @@ func TestClaimWithNoLossIsPaid_PINNED_DEFECT(t *testing.T) {
 	s.deliverClaim(judge, s.nodes[2].ID(), claim)
 	after := s.ledger.EscrowPaid(s.root)
 
-	t.Logf("PIN 3 MEASURED: the shard was NEVER missing (live on its original providers) and a copy was staged on %s; EscrowPaid %d -> %d, BountiesReleased=%d",
-		holder.ID().String()[:8], before, after, judge.Stats.BountiesReleased)
-
-	// PIN: the no-loss claim is paid, once.
-	if msg := rtRC3Pin(before, after, judge.Stats.BountiesReleased); msg != "" {
+	t.Logf("the shard was NEVER missing (live on its original providers) and a copy was staged on %s; EscrowPaid %d -> %d, BountiesReleased=%d, BountyNoPriorLoss=%d",
+		holder.ID().String()[:8], before, after, judge.Stats.BountiesReleased, judge.Stats.BountyNoPriorLoss)
+	if msg := rc3NoLossDenied(before, after, judge.Stats.BountiesReleased, judge.Stats.BountyNoPriorLoss); msg != "" {
 		t.Fatal(msg)
 	}
 }
@@ -600,17 +579,15 @@ func TestRTRC_PinsFireOnTheirRemediations(t *testing.T) {
 			"what distinguishes 'the dedup refused it' from 'something earlier refused it'")
 	}
 
-	// ---, a no-loss claim is paid. ---
-	if msg := rtRC3Pin(0, 5000, 1); msg != "" {
-		t.Fatalf("rtRC3Pin fired on the pinned no-loss payment: %s", msg)
+	// --- PIN 3, REDEEMED: a no-loss claim is denied for want of prior loss. ---
+	if msg := rc3NoLossDenied(0, 0, 0, 1); msg != "" {
+		t.Fatalf("rc3NoLossDenied fired on the rule it asserts: %s", msg)
 	}
-	if rtRC3Pin(0, 0, 0) == "" {
-		t.Fatal("rtRC3Pin stayed silent when the no-loss claim paid nothing — a prior-loss requirement " +
-			"landing is what this pin exists to detect, and it is the RED that must be read together " +
-			"with TestRepair_HonestClaimIsPaid")
+	if rc3NoLossDenied(0, 5000, 1, 0) == "" {
+		t.Fatal("rc3NoLossDenied stayed silent when a no-loss claim PAID — the defect it exists to catch")
 	}
-	if rtRC3Pin(0, 5000, 2) == "" {
-		t.Fatal("rtRC3Pin stayed silent on TWO releases — 'paid, once' is the pinned shape and a " +
-			"double release is a different defect")
+	if rc3NoLossDenied(0, 0, 0, 0) == "" {
+		t.Fatal("rc3NoLossDenied stayed silent on a refusal for some OTHER reason — the counter is what " +
+			"shows the prior-loss rule, not an earlier gate, refused it")
 	}
 }

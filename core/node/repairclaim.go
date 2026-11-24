@@ -303,8 +303,25 @@ func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, claim repa
 			n.logf(ports.LogDebug, "repair claim holder challenge",
 				"root", claim.Root, "holder", claim.Holder, "ok", retrOK)
 			decision := repairproof.Decide(correctnessOK, []bool{retrOK}, n.cfg.RepairQuorumTau)
-			n.settleRepairVerdict(from, claim, p, shardBytes, reachable+1, decision)
-			n.reply(from, msg, ports.Message{Kind: ports.MsgRepairVote, OK: decision.Release})
+			if !decision.Release {
+				n.settleRepairVerdict(from, claim, p, shardBytes, reachable+1, decision)
+				n.reply(from, msg, ports.Message{Kind: ports.MsgRepairVote, OK: false})
+				return
+			}
+			// PRIOR LOSS. Both legs above pass for a live shard merely COPIED to a new
+			// holder, and a bounty pays for a repair: nothing was repaired unless the
+			// position had been lost. No evidence of loss is a denial, never a slash —
+			// a holder that came back, or a duplicate rebuild, is not a lie.
+			n.priorLoss(claim, from, func(lost bool) {
+				if !lost {
+					n.Stats.BountyNoPriorLoss++
+					deny(fmt.Sprintf("no prior loss: stripe %d position %d is still served by a holder other than the claimed one, and this node never saw it lost",
+						claim.Stripe, claim.ShardPos))
+					return
+				}
+				n.settleRepairVerdict(from, claim, p, shardBytes, reachable+1, decision)
+				n.reply(from, msg, ports.Message{Kind: ports.MsgRepairVote, OK: true})
+			})
 		})
 	})
 }
@@ -613,4 +630,70 @@ func (n *Node) careHandleFor(root ports.Hash) (link.CareHandle, bool) {
 		}
 	}
 	return link.CareHandle{}, false
+}
+
+// maxLossSeen bounds Node.lossSeen; lossEvidenceWindow is how long a loss this node's
+// sweep observed stays evidence for a claim. A repair claim follows its loss within a
+// few sweeps; an hour leaves margin for a slow, deferred judgment and no more.
+const (
+	maxLossSeen        = 4096
+	lossEvidenceWindow = 3600 * ports.Second
+)
+
+// noteLoss records that this node's sweep just found a cared position unreachable.
+func (n *Node) noteLoss(k bountyPosKey) {
+	if _, ok := n.lossSeen[k]; !ok {
+		if len(n.lossSeenOrder) >= maxLossSeen {
+			delete(n.lossSeen, n.lossSeenOrder[0])
+			n.lossSeenOrder = n.lossSeenOrder[1:]
+		}
+		n.lossSeenOrder = append(n.lossSeenOrder, k)
+	}
+	n.lossSeen[k] = n.clock.Now()
+}
+
+// priorLoss reports whether the claimed position was lost before the repair the claim
+// is for. Either of two facts is evidence:
+//
+//   - this node's own sweep found the position unreachable within lossEvidenceWindow;
+//   - right now, no holder other than the claimed holder and the claimant serves the
+//     shard's bytes (each provider confirmed with a HasChunk round-trip, our own store
+//     included). A rebuilt shard lives on its new holder alone, so an honest claim
+//     passes this even when the judge's sweep has not reached the stripe; a copy of a
+//     live shard fails it, because the shard's original holders still answer.
+func (n *Node) priorLoss(claim repairproof.RepairClaim, claimant ports.NodeID, done func(bool)) {
+	k := bountyPosKey{root: claim.Root, stripe: claim.Stripe, pos: claim.ShardPos}
+	if at, ok := n.lossSeen[k]; ok && n.clock.Now()-at <= ports.Time(lossEvidenceWindow) {
+		done(true)
+		return
+	}
+	if ok, _ := n.store.Has(bg(), claim.ShardID); ok {
+		done(false)
+		return
+	}
+	n.resolveProviders(colKey(claim.Root, claim.ShardPos), func(provs []ports.NodeID) {
+		var try func(i int)
+		try = func(i int) {
+			if i >= len(provs) {
+				done(true)
+				return
+			}
+			pr := provs[i]
+			if pr == n.id || pr == claim.Holder || pr == claimant {
+				try(i + 1)
+				return
+			}
+			n.request(pr, ports.Message{Kind: ports.MsgHasChunk, ChunkID: claim.ShardID},
+				func(resp ports.Message, err error) {
+					if err == nil && resp.Found {
+						n.logf(ports.LogDebug, "repair claim: position still served elsewhere",
+							"root", claim.Root, "pos", claim.ShardPos, "by", pr)
+						done(false)
+						return
+					}
+					try(i + 1)
+				})
+		}
+		try(0)
+	})
 }
