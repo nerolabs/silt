@@ -65,6 +65,7 @@ type uiServer struct {
 	peerCount     func() int
 	links         *linkbook.Book   // client mode only (nil on a plain daemon)
 	carePublished bool             // daemon repairs content published through its own UI
+	serveFetched  bool             // UI fetches are retained, hosted and announced (consumer==provider)
 	token         string           // per-daemon bearer token gating state-changing calls
 	webOrigins    []string         // extra web origins allowed to draw content (e.g. https://app.example.com); off by default. Lets a hosted resolver surface render from this local node.
 	addressCap    addressCapConfig // The configured observed-address cap, reported with series A/B/E
@@ -1648,11 +1649,11 @@ func (s *uiServer) apiPublish(w http.ResponseWriter, r *http.Request) {
 		httpError(w, 502, opErr)
 		return
 	}
-	// Auto-caretake our own content: without a caretaker, a published
-	// file's redundancy only decays as nodes churn. The publishing daemon
-	// is the natural first caretaker, so it starts repairing this root (its
-	// manifest now counts toward this node's pledge). Opt out with
-	// -care-published=false.
+	// Caretaking our own content is opt-in (-care-published). Care announces this
+	// node's durable identity as the root's caretaker, and doing that seconds after
+	// the commit names this node as the publisher to anyone watching the announces.
+	// Without a caretaker a file's redundancy decays as nodes churn, so the response
+	// says so and hands back the care link for another node to run.
 	cared := false
 	if s.carePublished && s.reg != nil {
 		ch := h.Care()
@@ -1767,24 +1768,29 @@ func (s *uiServer) apiFetch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Swarm fetch on the MAIN node — not a throwaway ephemeral node. This is
-	// the consumer==provider path: NetGetRetain pulls the missing shards into
-	// THIS node's own store (bounded by its -capacity pledge), so content you
-	// draw is content you now HOLD and can serve back. The old code fetched
-	// through a per-request ephemeral node (memstore, SetEphemeral) that kept
-	// nothing — making the client a pure leech (chunks-held stays 0, nothing to
-	// share back) and leaking a 127.0.0.1 address-book entry on every fetch.
-	// Fetching on s.nd means the next read of the same link hits the local-store
-	// fast path above — and RETAIN wires the rest of the promise: the
-	// pulled shards get real storage proofs minted from the link's layout key,
-	// register under their placement keys, and ANNOUNCE, so the node is a
-	// discoverable, audit-answerable provider of what it consumed rather than a
-	// silent hoarder (plain NetGet now drops its working set after assembly).
+	// Swarm fetch on the MAIN node — not a throwaway ephemeral node, which kept
+	// nothing and leaked a 127.0.0.1 address-book entry on every fetch.
+	//
+	// By default this is plain NetGet: the pulled shards are a working set,
+	// dropped once the file is assembled, so the fetch leaves no record on this
+	// node's disk and announces nothing. With -serve-fetched it is the
+	// consumer==provider path, NetGetRetain: the shards are kept as real hosting
+	// with storage proofs minted from the link's layout key, registered under
+	// their placement keys, and ANNOUNCED. That announcement is under this
+	// node's durable identity at keys derived from the root, and a provider
+	// that is not one of the placement-chosen holders is visibly a fetcher, so
+	// retaining is the publication of a (fetcher, content) pair and is opt-in.
+	// Retaining silently instead — bytes kept but not announced — is refused:
+	// it would hold pledge capacity no fetcher can discover.
 	var buf bytes.Buffer
 	var opErr error
 	fetchDone := make(chan struct{})
 	s.loop.Post("api-fetch", func() {
-		s.nd.NetGetRetain(s.reg, h, &buf, func(err error) { opErr = err; close(fetchDone) })
+		get := s.nd.NetGet
+		if s.serveFetched {
+			get = s.nd.NetGetRetain
+		}
+		get(s.reg, h, &buf, func(err error) { opErr = err; close(fetchDone) })
 	})
 	select {
 	case <-fetchDone:

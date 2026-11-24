@@ -38,6 +38,7 @@ func TestConcurrentUIPublishesAllSucceed(t *testing.T) {
 		"-serve-registry", "127.0.0.1:0",
 		"-validator", "-quorum", "0", "-min-rep", "0",
 		"-capacity", "1G", "-mdns=false", "-id-seed", "1001",
+		"-care-published=true", // the caretake path is the one this regression lives on; it is opt-in
 		"-ui", "127.0.0.1:0", "-inbound-cap", "0")
 	ui := a.waitFor(t, reUI, 20*time.Second)
 	base, token := "http://"+ui[1], ui[2]
