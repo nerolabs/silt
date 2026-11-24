@@ -231,8 +231,8 @@ func swarmHolders(args []string) error {
 	return nil
 }
 
-// swarmAnnouncers prints every node the DHT says announces something about an object:
-// the provider records under each manifest chunk ID and under the object's care key,
+// swarmAnnouncers prints the object's root, then every node the DHT says announces
+// something about it: the provider records under each manifest chunk ID and under the object's care key,
 // which need only the root, and — when given a link rather than a bare root — the
 // byte-confirmed holders of each erasure column too. It is the observer's view of who
 // has put their name next to an object. Read-only — it plants nothing and stores
@@ -288,6 +288,7 @@ func swarmAnnouncers(args []string) error {
 		}
 		return strings.Join(s, ",")
 	}
+	fmt.Printf("root %s\n", root)
 	labels := make([]string, 0, len(named))
 	for l := range named {
 		labels = append(labels, l)
