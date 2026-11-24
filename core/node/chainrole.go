@@ -24,6 +24,15 @@ func (n *Node) EnableChain(ch *chain.Chain, priv ed25519.PrivateKey) {
 	n.signer = priv
 }
 
+// FollowChain keeps ch as a NON-VOTING replica: the node syncs committed blocks,
+// validates each against the same rules a validator applies, and serves reads from
+// it, but it holds no consensus key, so it never proposes, attests, changes rounds or
+// takes submissions. A repair judge follows the chain this way to read who is bonded.
+func (n *Node) FollowChain(ch *chain.Chain) { n.EnableChain(ch, nil) }
+
+// chainFollower reports whether this node keeps a replica without voting.
+func (n *Node) chainFollower() bool { return n.chain != nil && n.signer == nil }
+
 // Chain exposes the local replica (dashboards, tests).
 func (n *Node) Chain() *chain.Chain { return n.chain }
 
@@ -246,6 +255,17 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			return true
 		}
 		return false
+	}
+	if n.chainFollower() {
+		// A follower takes part in nothing that needs a signature. It refuses
+		// every consensus write and keeps serving reads (GetChain, GetChainHead,
+		// GetWitness, CommitBlock adoption) from the replica below.
+		switch msg.Kind {
+		case ports.MsgProposeBlock, ports.MsgPrepareQC, ports.MsgRoundChange, ports.MsgRoundCert,
+			ports.MsgHaveBondReg, ports.MsgSubmitBondReg, ports.MsgSubmitIssuerKeyReg, ports.MsgSubmitEntry:
+			n.reply(from, msg, ports.Message{Kind: replyKind(msg.Kind), OK: false})
+			return true
+		}
 	}
 	switch msg.Kind {
 	case ports.MsgProposeBlock:
@@ -2220,6 +2240,19 @@ func (n *Node) StartChainSync(seed []ports.NodeID, onCatchUp func(added int)) {
 
 func (n *Node) chainSyncTick() {
 	peers := n.syncTargets()
+	if n.chainFollower() {
+		// A follower only reconciles: it proposes, renews and submits nothing, and a
+		// round change is a signed vote it does not cast.
+		if len(peers) > 0 {
+			n.SyncChain(peers, func(added int, _ error) {
+				if added > 0 && n.chainSyncOnCatchUp != nil {
+					n.chainSyncOnCatchUp(added)
+				}
+			})
+		}
+		n.clock.AfterFunc(n.cfg.ChainSyncInterval, n.chainSyncTick)
+		return
+	}
 	if len(peers) > 0 {
 		n.SyncChain(peers, func(added int, _ error) {
 			if added > 0 && n.chainSyncOnCatchUp != nil {
