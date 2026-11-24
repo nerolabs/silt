@@ -119,6 +119,45 @@ func startDaemon(t *testing.T, name string, args ...string) *daemon {
 	return d
 }
 
+var (
+	rePeerLine = regexp.MustCompile(`^peer: `)
+	reBindBusy = regexp.MustCompile(`bind: address already in use`)
+)
+
+// restartDaemon relaunches a daemon on the address it held before it was stopped.
+//
+// While a node is down its peers keep redialing its address. On Linux a dial to a
+// closed loopback port inside the ephemeral range can pick that same port as its own
+// source and connect to itself (TCP simultaneous open); the dialer drops the socket at
+// once, but for that instant the port is taken and the restart's bind fails. The race
+// is the test rig's — a real node restarts on a routable address no local dial borrows
+// — so a bind collision is retried, and any other failure is left to the caller. The
+// daemon binds every listener before it prints its `peer:` line.
+func restartDaemon(t *testing.T, name string, args ...string) *daemon {
+	t.Helper()
+	const attempts = 5
+	for i := 1; ; i++ {
+		d := startDaemon(t, name, args...)
+		deadline := time.Now().Add(20 * time.Second)
+		for time.Now().Before(deadline) {
+			if d.out.find(rePeerLine) != nil {
+				return d
+			}
+			if d.out.find(reBindBusy) != nil {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		if d.out.find(reBindBusy) == nil || i == attempts {
+			return d // listening, or failing for a reason the caller's own wait reports
+		}
+		t.Logf("restart %s: its address was briefly taken (attempt %d of %d), retrying", name, i, attempts)
+		d.cmd.Process.Kill()
+		d.cmd.Wait()
+		time.Sleep(time.Duration(i) * 250 * time.Millisecond)
+	}
+}
+
 func (d *daemon) waitFor(t *testing.T, re *regexp.Regexp, timeout time.Duration) []string {
 	t.Helper()
 	deadline := time.Now().Add(timeout)

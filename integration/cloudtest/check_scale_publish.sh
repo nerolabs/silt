@@ -20,10 +20,12 @@ fi
 
 # A stub silt: sleeps STUB_SLEEP, then prints a link, or an error for the index in
 # the object's name when STUB_FAIL_EVERY divides it. Either way it prints its legs
-# first, as the client does, so the error stays the last line.
+# first, as the client does, so the error stays the last line. The default sleep is
+# well above the 0.060 s total the stub reports, so the generator's own measurement
+# always exceeds it and the time outside the client is positive on any runner.
 cat > "$tmp/silt" <<'EOF'
 #!/usr/bin/env bash
-sleep "${STUB_SLEEP:-0.05}"
+sleep "${STUB_SLEEP:-0.15}"
 i="$(basename "$3" .bin)"
 if [ "${STUB_FAIL_EVERY:-0}" -gt 0 ] && [ $(( i % STUB_FAIL_EVERY )) -eq 0 ]; then
   echo "publish elapsed: join 0.010s total 0.010s" >&2

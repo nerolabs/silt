@@ -978,8 +978,8 @@ neither way, in a field of its own beside the verdicts rather than folded into t
 nobody was checked, and a report that showed either as the other would be the dashboard that flatters
 (S5). The repair-bounty judge runs the same rule and DENIES rather than paying an unchecked claim.
 
-**11. Publishing is unlinkable and no surveillance artifact exists.** ❓ *NO VERDICT RECORDED — and one
-clause names a live defect*
+**11. Publishing is unlinkable and no surveillance artifact exists.** ✅ *held — e2e, netem (loss,
+composed, every nightly arm) and the field sheet*
 A matching score
 against chance; seize every disk and emitted byte after a fetch-heavy run and find no
 (fetcher, content) pair; published metadata no longer leaks the exact plaintext byte count,
@@ -996,6 +996,52 @@ the exact move this list refuses elsewhere.
 naming: "published metadata no longer leaks the exact plaintext byte count, WHICH TODAY MAKES THE
 PADDING DEFENCE A NO-OP". That is not a thing to test, it is a thing to fix, and nothing currently
 drives it either way.
+
+*VERDICT, 2026-11-24.* The size clause was a defect and is fixed. Driving the other two found three
+more ways the shipped defaults named a user beside content, and those are fixed too, each by the
+owner's decision.
+
+| Finding | Before | After |
+|---|---|---|
+| Exact plaintext size | `Entry.FileSize` committed the exact length of every object, and a single-frame object was stored at it. | Every observable — published size, shard length, data-frame count — shows only the object's Padmé class; filler frames hide the content frame count (`pipeline.PaddedLength`, `FrameCount`, `PublishedSize`). |
+| UI publish names the publisher | `-care-published` defaulted on: the daemon announced its durable identity as the root's caretaker seconds after the commit. | Off by default; the publish page says why and hands back the care link. |
+| UI fetch names the reader | The fetched shards were retained and announced under the reader's durable identity at the root's placement keys, so anyone with the link could list who read it. | Plain fetch by default: nothing kept, nothing announced. `-serve-fetched` opts in. |
+| Logs name a party beside content | `chunk stored` (debug) named the sender — for a fresh object, its publisher; `file retrieved` (INFO, on disk by default on a validator) named the root read. | Neither does. |
+
+Not changed, and why: every shipped publish path pays from a throwaway identity
+(`identity.Generate` per `joinSwarm`), never a bonded one, so splitting its legs or minting credits
+ahead would only separate one throwaway from another on the same IP. The IP a node sees is the
+disclosed trilemma wall.
+
+| Clause | Result | Tier |
+|---|---|---|
+| Matching score against chance | Held. Fourteen objects by five publishers; the adversary holds every seized disk, every announcement the DHT answers for, and the chain. Three strategies scored separately against chance with a three-σ bar: `announce` 2.40, `own-disk` 1.45–2.73, `named` 0.20–1.80, against chance 2.40 (bar 6.56). Control: a publisher on `-care-published=true -economy` is singled out on both its objects (P = 1.00). Mutation: caretaking on by default scores 7.20. | e2e `TestPublishersAndFetchersCannotBeLinkedToTheirObjects` |
+| No (fetcher, content) pair on any disk or announcement after a fetch-heavy run | Held. 56 UI reads by four fetchers, every daemon at `-debug`, ~790 files seized: no record outside a fetcher's own store names it beside an object, no announcement names it, and inside its own store only debug lines do. Control: a `-serve-fetched` fetcher is announced 39 times. Mutations: retain on by default and the root back at INFO are both reported. | same; `TestUIFetchAnnouncesOnlyWhenTheConsumerOptsIn` |
+| Published metadata does not leak the exact byte count | Held. Positive gate replaces the defect pin; publishing `m.FileSize` again reddens it. | unit `TestEntryFileSizePublishesOnlyThePaddedGeometry` |
+
+Under netem the privacy suite (`SUITE=privacy`, its own nightly job) passes at 2 % loss with
+120 ± 40 ms and under the composed arm. A UI read there takes 40–60 s at loss and ~26 s composed,
+against ~0.1 s clean: `fetchAll` resolves each key to convergence one after another. That is a
+latency finding for item 21, not a privacy one.
+
+What this does not claim: a node still sees who it exchanges bytes with, and a debug log, which the
+operator turns on, still narrates what its own node read.
+
+*FIELD, 2026-11-24.* On sheet `52b5a73f-37362` (default topology, t2d, three regions) row
+`11-unlinkability` PASSES: store-1 published 3 MB through its UI on the default flags; fetch-1 read it
+three times through its UI, all three crossing the network; fetch-1 was on 1 announcer line before the
+reads and 1 after; no node's store named fetch-1 beside the root or a manifest chunk; and the control —
+fetch-1 relaunched with `-serve-fetched=true` — was then seen on 12 lines. The SHEET IS NOT A GRADE: the
+host restarted during its last row (`21-impaired-commit`), after 24 pass / 4 skip / 0 fail, so the
+report was never written, so it does not count.
+
+On the clean sheet `f3944ea9-14008` (same topology, uninterrupted) the report grades PASS, 27 pass /
+0 gap / 0 fail, and row `11-unlinkability` PASSES again: three UI reads by fetch-1 all crossed the
+network; fetch-1 was on 2 announcer lines before the reads and 2 after; no node's store named it
+beside the root or a manifest chunk; the `-serve-fetched` control then put it on 11 lines. The six
+rows the default topology does not run are opt-in topologies (`5-sybil-no-capture`,
+`10-maturing-handoff`, `11-economy-repair`, `12-deep-heights`), the equivocation row graded on its
+island, and `13b-delivery-settlement`, which belongs to item 17.
 
 **12. Takedown bites, cannot go global, and is provable.** ✅ *held — e2e, netem (loss, composed,
 and every nightly arm) and the field sheet*

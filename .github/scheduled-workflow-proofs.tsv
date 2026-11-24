@@ -15,4 +15,4 @@
 # commit that records its id. It names which tree was proven.
 #
 # workflow path<TAB>run id<TAB>head sha<TAB>date<TAB>note
-.github/workflows/nightly-netem.yml	35405751385	2204418a7c3a68225f5e93ad4281d1debccc4699	2026-09-19	the COMPOSED arm added: all four conditions at once, which no arm had ever driven together. Dispatched green before merge — 5 netem arms + flakynet, all success. The composed arm closes a coverage gap and buys NO early warning of the field wedge (loopback's capacity is never the constraint); a netem-rate arm was tried and left out because its red named the placement leg, not a consensus deadline.
+.github/workflows/nightly-netem.yml	45454440286	35c48b0172396dba431a40cca7911369a00eee58	2026-11-24	the privacy drills added as their own job per arm (SUITE=privacy); all 12 jobs green on workflow_dispatch

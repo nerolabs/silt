@@ -45,6 +45,7 @@ Usage:
   silt swarm add <file>     -peers ID@ADDR[,...] -registry REF
   silt swarm get <link>     -o <out> -peers ID@ADDR[,...] -registry REF
   silt swarm holders <link> -peers ID@ADDR[,...] -registry REF   (per-column shard holders)
+  silt swarm announcers <link|root> -peers ID@ADDR[,...] -registry REF   (every node announcing an object)
 
   silt client [-store DIR] [-capacity 5G] [-bootstrap ID@ADDR,...]
                 [-registry REF] [-ui ADDR]   (desktop app: serves + consumes, opens a browser UI)

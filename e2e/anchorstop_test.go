@@ -192,7 +192,7 @@ func TestAnchorStopHaltsBondedNonAnchors(t *testing.T) {
 	// see it. Same-history resume, not a fresh chain: the anchors reload their
 	// persisted stores.
 	for i := 0; i < nAnchors; i++ {
-		daemons[i] = startDaemon(t, fmt.Sprintf("val%dr", i), argsFor(i)...)
+		daemons[i] = restartDaemon(t, fmt.Sprintf("val%dr", i), argsFor(i)...)
 	}
 	daemons[0].waitFor(t, reRegistry, 30*time.Second)
 

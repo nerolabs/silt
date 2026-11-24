@@ -52,7 +52,7 @@ else
 fi
 
 # ── Phase 3: DRIVE ───────────────────────────────────────────────────────────
-echo "== e2e adversarial-consensus drills (run=${TESTS}) =="
+echo "== e2e ${KIND:-adversarial-consensus drills} (run=${TESTS}) =="
 # No -short: the drills spawn real daemons over real TCP. -count=1 forbids a
 # cached pass. Output is tee'd so the run streams live AND can be counted.
 { go test ./e2e -run "${TESTS}" -count=1 -v -timeout "${TIMEOUT:-900s}"; echo $? >/tmp/netem.code; } 2>&1 | tee /tmp/netem.out

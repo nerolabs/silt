@@ -1818,6 +1818,113 @@ flow_chaos_crash() {
   fi
 }
 
+ul_node_id() { # ul_node_id NODE — the identity the running daemon uses: -id-seed when it has one, else identity.pem
+  ssh_node "$1" "s=\$(grep -o -- '-id-seed [0-9]*' /etc/systemd/system/silt.service | head -1 | awk '{print \$2}'); if [ -n \"\$s\" ]; then /usr/local/bin/silt id -id-seed \$s; else sudo /usr/local/bin/silt id -store /var/lib/silt; fi" 2>/dev/null | grep -oE '[a-f0-9]{64}' | head -1
+}
+
+# ── unlinkability (#11): a UI publish and a UI fetch leave no identity beside content ──
+# store-1 publishes 3 MB through its own UI and fetch-1 reads it three times through its
+# own UI, both on the default flags. Then the observer's view: every announcement the
+# DHT holds about the object, before and after the reads, and every node's disk
+# seized. Pass: the publisher announces no care for it; the reads add no announcement
+# naming the reader; no line on any other node names the reader beside the object's root or
+# manifest chunks; and the reader's own store keeps no non-debug line naming them. Control: the same reader, relaunched
+# with -serve-fetched=true, reads once more and the observer must then see it.
+# LOCAL_PROOF: go test ./e2e -run TestPublishersAndFetchersCannotBeLinkedToTheirObjects
+flow_unlinkability() {
+  require_nodes "11-unlinkability" major store-1 fetch-1 val-b || return
+  require_live  "11-unlinkability" major store-1 fetch-1 val-b || return
+  local pub=store-1 obs=val-b rdr="" rid=""
+  relaunch_with "$pub" "-ui=127.0.0.1:8081 -registry $REGREF"
+  sleep 10
+  local ptok pid rid
+  ptok="$(ssh_node "$pub" "sudo cat /var/lib/silt/ui-token" 2>/dev/null | tr -dc 'a-f0-9')"
+  pid="$(ul_node_id "$pub")"
+  if [ -z "$ptok" ] || [ -z "$pid" ]; then
+    record "11-unlinkability" fail major "setup: token='${ptok:+set}' publisher id='$pid' — could not read the publisher's token or identity"
+    restore_argv "$pub"; return
+  fi
+  # 3 MB: twelve frames, so a stripe needs ten distinct shards and no node that holds
+  # a few of them by placement can read the object without crossing the network. A
+  # single-frame object is one shard wide (k = 1) and any holder reads it locally.
+  ssh_node "$pub" "head -c 3000000 </dev/urandom >/tmp/ft_ul.bin" >/dev/null 2>&1
+  local sha body link="" attempt
+  sha="$(ssh_node "$pub" "sha256sum /tmp/ft_ul.bin | cut -d' ' -f1" 2>/dev/null)"
+  for attempt in 1 2 3 4 5; do
+    body="$(ssh_node "$pub" "curl -s -m 240 -H 'Authorization: Bearer $ptok' -F file=@/tmp/ft_ul.bin http://127.0.0.1:8081/api/publish" 2>/dev/null || true)"
+    link="$(printf '%s' "$body" | grep -oE 'silt:v1:[^"]+' | head -1)"
+    [ -n "$link" ] && break
+    sleep 20
+  done
+  if [ -z "$link" ]; then
+    record "11-unlinkability" fail major "the UI publish on $pub returned no link after 5 attempts: $(printf '%s' "$body" | head -c 200)"
+    restore_argv "$pub"; return
+  fi
+  local before after i got ok_fetch=1
+  sleep 15
+  before="$(ssh_node "$obs" "/usr/local/bin/silt swarm announcers '$link' -peers '$PEERS' -registry '$REGREF' 2>&1" 2>/dev/null || true)"
+  rdr=fetch-1; rid="$(ul_node_id "$rdr")"
+  [ -n "$rid" ] || { record "11-unlinkability" fail major "setup: could not read $rdr's identity"; restore_argv "$pub"; return; }
+  relaunch_with "$rdr" "-ui=127.0.0.1:8081 -registry $REGREF"
+  sleep 10
+  local q code readerr=""
+  q="$(printf '%s' "$link" | sed 's/:/%3A/g')"
+  ul_read() { # ul_read — one UI read on the reader; sets code and got
+    code="$(ssh_node "$rdr" "rm -f /tmp/ft_ul_get.bin; curl -s -m 300 -o /tmp/ft_ul_get.bin -w '%{http_code}' 'http://127.0.0.1:8081/api/fetch?link=$q'" 2>/dev/null || true)"
+    got="$(ssh_node "$rdr" "sha256sum /tmp/ft_ul_get.bin 2>/dev/null | cut -d' ' -f1" 2>/dev/null || true)"
+  }
+  local nret0; nret0="$(ssh_node "$rdr" "sudo grep -c 'file retrieved' /var/lib/silt/debug.log" 2>/dev/null | tr -dc '0-9')"
+  for i in 1 2 3; do
+    ul_read
+    if [ "$got" != "$sha" ]; then
+      ok_fetch=0
+      readerr="read $i: HTTP ${code:-none}, $(ssh_node "$rdr" "head -c 160 /tmp/ft_ul_get.bin 2>/dev/null" 2>/dev/null | tr -dc '[:print:]')"
+    fi
+  done
+  # The reads must have crossed the network: the reader logs a retrieval for each.
+  local nret; nret="$(ssh_node "$rdr" "sudo grep -c 'file retrieved' /var/lib/silt/debug.log" 2>/dev/null | tr -dc '0-9')"
+  nret=$(( ${nret:-0} - ${nret0:-0} ))
+  sleep 15
+  after="$(ssh_node "$obs" "/usr/local/bin/silt swarm announcers '$link' -peers '$PEERS' -registry '$REGREF' 2>&1" 2>/dev/null || true)"
+  # The object's identifiers, read off the observer's own view: its root and its
+  # manifest chunk IDs (public, in the committed entry).
+  local needles; needles="$(printf '%s\n' "$after" | grep -oE '^(root|manifest) [a-f0-9]{64}' | awk '{print $2}' | sort -u | tr '\n' '|')"
+  needles="${needles%|}"
+  local problems=""
+  printf '%s\n' "$after" | grep -qE '^manifest [a-f0-9]{64}' || problems="${problems} the observer's view named no manifest chunk: $(printf '%s' "$after" | tail -1 | head -c 160);"
+  [ "${nret:-0}" -ge 3 ] || problems="${problems} $rdr logged ${nret:-0} retrievals for 3 reads — the reads did not all cross the network;"
+  printf '%s\n' "$after" | grep -E '^care:' | grep -q "$pid" && problems="${problems} the publisher announces itself as the object's caretaker;"
+  # The reader may hold a shard or two by placement; what the reads ADD is the leak.
+  local nb na
+  nb="$(printf '%s\n' "$before" | grep -c "$rid" || true)"; na="$(printf '%s\n' "$after" | grep -c "$rid" || true)"
+  [ "${na:-0}" -gt "${nb:-0}" ] && problems="${problems} the reads made $rdr an announcer ($nb -> $na lines name it);"
+  local n hits own
+  for n in $(node_names); do
+    node_exists "$n" || continue
+    if [ "$n" = "$rdr" ]; then
+      own="$(ssh_node "$n" "sudo grep -rIhE '$needles' /var/lib/silt 2>/dev/null | grep -vE '^[^ ]+ debug ' | head -3" 2>/dev/null || true)"
+      [ -n "$own" ] && problems="${problems} $rdr keeps a non-debug record of what it read: $(printf '%s' "$own" | head -c 160);"
+      continue
+    fi
+    hits="$(ssh_node "$n" "sudo grep -rIhE '$needles' /var/lib/silt 2>/dev/null | grep -F '$rid' | head -3" 2>/dev/null || true)"
+    [ -n "$hits" ] && problems="${problems} $n:/var/lib/silt names $rdr beside the object: $(printf '%s' "$hits" | head -c 160);"
+  done
+  [ "$ok_fetch" = 1 ] || problems="${problems} a UI read did not return the published bytes ($readerr);"
+  # CONTROL: the same reader, opted in to serving what it reads, must now be visible to
+  # the same observer — otherwise "not announced" above could mean "cannot be seen".
+  relaunch_with "$rdr" "-ui=127.0.0.1:8081 -registry $REGREF -serve-fetched=true"
+  sleep 10
+  ul_read
+  sleep 15
+  local ctrl nc
+  ctrl="$(ssh_node "$obs" "/usr/local/bin/silt swarm announcers '$link' -peers '$PEERS' -registry '$REGREF' 2>&1" 2>/dev/null || true)"
+  nc="$(printf '%s\n' "$ctrl" | grep -c "$rid" || true)"
+  [ "${nc:-0}" -gt "${na:-0}" ] || problems="${problems} CONTROL: $rdr with -serve-fetched=true read the object and the observer sees it on ${nc:-0} lines, no more than ${na:-0} (its read: HTTP ${code:-none}, $([ "$got" = "$sha" ] && echo bit-perfect || echo "NOT the published bytes"));"
+  record "11-unlinkability" "$([ -z "$problems" ] && echo pass || echo fail)" major \
+    "UI publish of 3 MB on $pub + 3 UI reads on $rdr (${nret:-0} crossed the network), default flags; $rdr on ${nb:-0} announcer lines before the reads and ${na:-0} after; every node's /var/lib/silt grepped for $rdr beside the root and manifest chunks; control: $rdr with -serve-fetched on ${nc:-0} lines${problems:+ — FAIL:$problems}"
+  restore_argv "$pub"; restore_argv "$rdr"
+}
+
 # ── Flow 12: an on-chain takedown, honoured with a receipt an auditor verifies ───
 # val-d proposes the takedown; val-c, the only node subscribed to on-chain takedowns,
 # drops the root's held bytes and logs the removal with its receipt; val-b, holding
@@ -3728,7 +3835,7 @@ run_all_scenarios() {
     adv_equivocation flow_equivocation_island adv_partition adv_proposal_reject
     flow_publisher_unlinkability flow_durability_turnover flow_chaos_crash
     flow_web_ui_guard flow_c2_no_capture flow_economy_repair flow_delivery_lane
-    flow_chain_takedown flow_validator_crash
+    flow_chain_takedown flow_validator_crash flow_unlinkability
   )
   if [ "${RANDOMIZE:-1}" = 1 ]; then
     local seed="${SEED:-$RUN_ID}"

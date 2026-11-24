@@ -71,6 +71,36 @@ jobs:
       - name: Full P0 gate (substrate + adversarial) under [${{ matrix.netem || 'CLEAN' }}]
         run: SUITE=all NETEM="${{ matrix.netem }}" ./integration/adversarial/run.sh
 
+  privacy-netem:
+    # The unlinkability and seizure drills, in their own jobs: under loss a UI read
+    # takes ~45 s and the matching game makes 56 of them, which does not fit beside
+    # the P0 gate inside one 45-minute job. Impairment changes which announcements
+    # land and when, and that is what the matching game reads.
+    name: ${{ matrix.arm }} — privacy drills under netem (docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arm: clean
+            netem: ""
+          - arm: jitter
+            netem: "delay 80ms 20ms distribution normal"
+          - arm: loss
+            netem: "delay 120ms 40ms distribution normal loss 2%"
+          - arm: reorder
+            netem: "delay 20ms reorder 25% 50%"
+          - arm: composed
+            netem: "delay 80ms 20ms distribution normal loss 1% reorder 25% 50%"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Privacy drills under [${{ matrix.netem || 'CLEAN' }}]
+        run: SUITE=privacy NETEM="${{ matrix.netem }}" ./integration/adversarial/run.sh
+
   flakynet:
     name: Flaky-network consensus bootstrap (docker + netem)
     runs-on: ubuntu-latest

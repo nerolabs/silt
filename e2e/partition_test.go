@@ -127,7 +127,7 @@ func TestPartitionHealsToHeavierForkOverTCP(t *testing.T) {
 	// HEAL: restart the minority WITHOUT the partition; it reconnects and catches up.
 	daemons[minority].cmd.Process.Kill()
 	daemons[minority].cmd.Wait()
-	healed := startDaemon(t, "val2(healed)", commonArgs(minority, storeC)...)
+	healed := restartDaemon(t, "val2(healed)", commonArgs(minority, storeC)...)
 	healed.waitFor(t, reBootstrap, 20*time.Second)
 
 	// The minority catches up to the majority's heavier chain — a forward sync, NOT a

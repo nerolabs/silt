@@ -173,6 +173,7 @@ Work against a real swarm, and inspect:
 silt swarm add <file>     -peers ID@ADDR[,...] -registry REF
 silt swarm get <link>     -o <out> -peers ID@ADDR[,...] -registry REF
 silt swarm holders <link> -peers ID@ADDR[,...] -registry REF
+silt swarm announcers <link|root> -peers ID@ADDR[,...] -registry REF
 
 silt id [-store DIR] [-listen ADDR]     # a node's ID, without launching it
 silt chain-status [-store DIR]          # head height and hash, read-only
