@@ -184,7 +184,7 @@ func TestSeizedNetworkYieldsNoPlaintextWhileTheKeyHolderReadsIt(t *testing.T) {
 	}
 
 	// Restart the same disks for the remaining arms.
-	a = startDaemon(t, "seize-0-again", "-listen", ports[0], "-advertise", ports[0], "-store", stores[0],
+	a = restartDaemon(t, "seize-0-again", "-listen", ports[0], "-advertise", ports[0], "-store", stores[0],
 		"-mdns=false", "-id-seed", seeds[0],
 		"-serve-registry", regPort, "-validator", "-quorum", "0", "-min-rep", "0", "-capacity", "1")
 	a.waitFor(t, reRegistry, 20*time.Second)

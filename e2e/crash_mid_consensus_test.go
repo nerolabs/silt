@@ -206,7 +206,7 @@ func TestValidatorKilledMidConsensusRestartsWithoutContradictingItself(t *testin
 			k, hit.mark.Height, hit.mark.Round, hit.mark.Phase, hit.saved)
 
 		// Restart with the identical command line.
-		daemons[victim] = startDaemon(t, fmt.Sprintf("val%d-restart%d", victim, k), argsFor(victim)...)
+		daemons[victim] = restartDaemon(t, fmt.Sprintf("val%d-restart%d", victim, k), argsFor(victim)...)
 		r := daemons[victim].waitFor(t, reRestoredBlocks, 30*time.Second)
 		if got, _ := strconv.Atoi(r[1]); got < hit.saved {
 			t.Fatalf("crash %d: the restart restored %d block(s), fewer than the %d it had saved — it did not re-pin from its own disk", k, got, hit.saved)
@@ -224,7 +224,7 @@ func TestValidatorKilledMidConsensusRestartsWithoutContradictingItself(t *testin
 			if !resumed {
 				for _, l := range signLines()[hit.lines:] {
 					if h, _ := strconv.ParseUint(l[1], 10, 64); h >= hit.mark.Height {
-						daemons[staller] = startDaemon(t, fmt.Sprintf("val%d-back%d", staller, k), argsFor(staller)...)
+						daemons[staller] = restartDaemon(t, fmt.Sprintf("val%d-back%d", staller, k), argsFor(staller)...)
 						resumed = true
 						break
 					}
