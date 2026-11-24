@@ -978,8 +978,8 @@ neither way, in a field of its own beside the verdicts rather than folded into t
 nobody was checked, and a report that showed either as the other would be the dashboard that flatters
 (S5). The repair-bounty judge runs the same rule and DENIES rather than paying an unchecked claim.
 
-**11. Publishing is unlinkable and no surveillance artifact exists.** ⏳ *e2e, netem (loss, composed,
-every nightly arm) and the field row green; the field SHEET it ran on was interrupted, so a clean sheet is owed*
+**11. Publishing is unlinkable and no surveillance artifact exists.** ✅ *held — e2e, netem (loss,
+composed, every nightly arm) and the field sheet*
 A matching score
 against chance; seize every disk and emitted byte after a fetch-heavy run and find no
 (fetcher, content) pair; published metadata no longer leaks the exact plaintext byte count,
@@ -1033,7 +1033,15 @@ three times through its UI, all three crossing the network; fetch-1 was on 1 ann
 reads and 1 after; no node's store named fetch-1 beside the root or a manifest chunk; and the control —
 fetch-1 relaunched with `-serve-fetched=true` — was then seen on 12 lines. The SHEET IS NOT A GRADE: the
 host restarted during its last row (`21-impaired-commit`), after 24 pass / 4 skip / 0 fail, so the
-report was never written. A clean uninterrupted sheet is owed before this item reads held.
+report was never written, so it does not count.
+
+On the clean sheet `f3944ea9-14008` (same topology, uninterrupted) the report grades PASS, 27 pass /
+0 gap / 0 fail, and row `11-unlinkability` PASSES again: three UI reads by fetch-1 all crossed the
+network; fetch-1 was on 2 announcer lines before the reads and 2 after; no node's store named it
+beside the root or a manifest chunk; the `-serve-fetched` control then put it on 11 lines. The six
+rows the default topology does not run are opt-in topologies (`5-sybil-no-capture`,
+`10-maturing-handoff`, `11-economy-repair`, `12-deep-heights`), the equivocation row graded on its
+island, and `13b-delivery-settlement`, which belongs to item 17.
 
 **12. Takedown bites, cannot go global, and is provable.** ✅ *held — e2e, netem (loss, composed,
 and every nightly arm) and the field sheet*
