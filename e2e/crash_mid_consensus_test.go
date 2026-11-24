@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
 
@@ -166,11 +165,12 @@ func TestValidatorKilledMidConsensusRestartsWithoutContradictingItself(t *testin
 	var crashes []crash
 	for k := 0; k < kills; k++ {
 		v := daemons[victim]
-		// Hold the staller still across the crash: with it and the victim both down,
-		// two of four cannot commit, so the crash height waits for the victim.
-		if err := daemons[staller].cmd.Process.Signal(syscall.SIGSTOP); err != nil {
-			t.Fatal(err)
-		}
+		// Stop the staller across the crash: with it and the victim both down, two of
+		// four cannot commit, so the crash height waits for the victim. Stopped, not
+		// frozen: a frozen process accepts connections and answers none, so every
+		// request to it waits out its deadline and the drill would measure that.
+		_ = daemons[staller].cmd.Process.Kill()
+		_ = daemons[staller].cmd.Wait()
 		// Aim: wait until the victim's durable mark names a height its chain has not
 		// committed, then kill it at once.
 		var hit *crash
@@ -224,7 +224,7 @@ func TestValidatorKilledMidConsensusRestartsWithoutContradictingItself(t *testin
 			if !resumed {
 				for _, l := range signLines()[hit.lines:] {
 					if h, _ := strconv.ParseUint(l[1], 10, 64); h >= hit.mark.Height {
-						_ = daemons[staller].cmd.Process.Signal(syscall.SIGCONT)
+						daemons[staller] = startDaemon(t, fmt.Sprintf("val%d-back%d", staller, k), argsFor(staller)...)
 						resumed = true
 						break
 					}
@@ -236,7 +236,6 @@ func TestValidatorKilledMidConsensusRestartsWithoutContradictingItself(t *testin
 				}
 			}
 			if time.Now().After(deadline) {
-				_ = daemons[staller].cmd.Process.Signal(syscall.SIGCONT)
 				if b, err := os.ReadFile(logPath); err == nil {
 					_ = os.WriteFile(filepath.Join(os.TempDir(), "crash-drill-victim-debug.log"), b, 0o644)
 				}

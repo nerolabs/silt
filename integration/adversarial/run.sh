@@ -49,7 +49,13 @@ ROOT=$(cd ../.. && pwd)
 # Note: `=` not `:=` — an explicit NETEM="" must STAY empty (the clean-network
 # control), while an UNSET NETEM gets the default impairment.
 : "${NETEM=delay 80ms 20ms distribution normal}"
-: "${TIMEOUT:=900s}"
+# The recovery drills run long (the crash drill waits out a proposer crash twice, a
+# couple of minutes each on a clean loopback), so a suite that includes them gets a
+# longer default; the nightly job's own 45-minute ceiling stays the outer bound.
+case "${SUITE:-adversarial}" in
+  recovery|all) : "${TIMEOUT:=2400s}" ;;
+  *)            : "${TIMEOUT:=900s}" ;;
+esac
 
 # SUITE presets (override with an explicit TESTS='<regex>' for one property):
 #  adversarial (default) — the M0 consensus DENIAL drills (equivocation-slash,
@@ -58,7 +64,8 @@ ROOT=$(cd ../.. && pwd)
 #  objective quorum commit, bond-earned-standing commit,
 #  and publish→fetch bit-perfect — the "does the network
 #  stay live and serve" half the adversarial drills ride on.
-#  all — both, the full P0 netem gate in one run.
+#  recovery — the unplaceable-publish, crash and takedown-receipt drills.
+#  all — all three, the full P0 netem gate in one run.
 # NOTE: the cold-start re-mesh test (TestBootstrapRetryRecoversColdStartRace) is
 # deliberately EXCLUDED from the netem suite — it runs with -request-timeout 500ms
 # -request-retries 0 (a clean-localhost timing test of the self-heal LOGIC, "not
@@ -67,6 +74,13 @@ ROOT=$(cd ../.. && pwd)
 # netem-hardening that specific race is tracked, not faked green here.
 ADVERSARIAL='TestEquivocatorSlashedOverTCP|TestPartitionHealsToHeavierForkOverTCP|TestForgedBlockRejectedOverTCP|TestLowBondProposerRejectedOverTCP'
 SUBSTRATE='TestObjectiveConsensusCommitsOverTCP|TestBondEarnedStandingCommitsOverTCP|TestPublishCommitFetchOverTCP'
+# recovery — bit-perfect or an explicit failure, and crash recovery with no human:
+#  an unplaceable publish (full swarm, and holders that stop answering) names what
+#  it could not place and registers nothing; a validator killed at its own proposal
+#  restarts from disk and never signs a slot twice; an honoured on-chain takedown
+#  carries a receipt another replica verifies. Loss and delay are what these drills
+#  meet on a WAN, where a timeout stands in for a refusal and a round can stretch.
+RECOVERY='TestUnplaceablePublishFailsExplicitlyThenSucceedsOnRetry|TestPublishToUnreachableHoldersFailsExplicitlyThenSucceedsOnRetry|TestValidatorKilledMidConsensusRestartsWithoutContradictingItself|TestHonouredTakedownCarriesAReceiptAnAuditorVerifies'
 # `noun` is the verdict line's subject, set explicitly per SUITE. It used to be
 # derived by chopping `kind` at its first space, which mangled SUITE=all into
 # "every FULL property held" — a verdict line that cannot name what it verifies
@@ -74,8 +88,9 @@ SUBSTRATE='TestObjectiveConsensusCommitsOverTCP|TestBondEarnedStandingCommitsOve
 case "${SUITE:-adversarial}" in
   adversarial) : "${TESTS:=$ADVERSARIAL}"; kind="adversarial-consensus drills"; noun="adversarial-consensus"; verb="DENIED its attack" ;;
   substrate)   : "${TESTS:=$SUBSTRATE}";   kind="P0 substrate liveness";        noun="P0-substrate-liveness"; verb="held" ;;
-  all)         : "${TESTS:=$ADVERSARIAL|$SUBSTRATE}"; kind="full P0 netem gate (substrate + adversarial)"; noun="P0 netem gate"; verb="held/denied" ;;
-  *) echo "unknown SUITE='$SUITE' (use adversarial | substrate | all, or set TESTS=<regex>)"; exit 1 ;;
+  recovery)    : "${TESTS:=$RECOVERY}";    kind="recovery and takedown drills";  noun="recovery"; verb="held" ;;
+  all)         : "${TESTS:=$ADVERSARIAL|$SUBSTRATE|$RECOVERY}"; kind="full P0 netem gate (substrate + adversarial + recovery)"; noun="P0 netem gate"; verb="held/denied" ;;
+  *) echo "unknown SUITE='$SUITE' (use adversarial | substrate | recovery | all, or set TESTS=<regex>)"; exit 1 ;;
 esac
 MODCACHE="$(go env GOMODCACHE 2>/dev/null || true)"
 

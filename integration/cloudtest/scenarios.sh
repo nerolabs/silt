@@ -1818,6 +1818,187 @@ flow_chaos_crash() {
   fi
 }
 
+# ── Flow 12: an on-chain takedown, honoured with a receipt an auditor verifies ───
+# val-d proposes the takedown; val-c, the only node subscribed to on-chain takedowns,
+# drops the root's held bytes and logs the removal with its receipt; val-b, holding
+# its OWN replica, verifies that receipt, derives the same one itself, and refuses a
+# forged copy; fetch-1, which never subscribed, still fetches the root bit-perfect.
+# LOCAL_PROOF: go test ./e2e -run TestHonouredTakedownCarriesAReceiptAnAuditorVerifies -count=1
+flow_chain_takedown() {
+  require_nodes "12-chain-takedown" major val-b val-c val-d fetch-1 || return
+  flow_evidence_nodes val-b val-c val-d
+  local res link wantsha root
+  res="$(ft_publish fetch-1 262144 || true)"; link="${res%% *}"; wantsha="${res##* }"
+  if [ -z "$link" ]; then publish_verdict "12-chain-takedown" major "no link — the chain takedown is UNTESTED"; return; fi
+  root="$(b64url_to_hex "$(printf '%s' "$link" | cut -d: -f3)")"
+  if [ ${#root} -ne 64 ]; then record "12-chain-takedown" gap minor "could not decode a 64-hex root from $link"; return; fi
+
+  local t0; t0="$(date +%s)"
+  relaunch_with val-c "-honor-chain-revocations"
+  relaunch_with val-d "-revoke $root"
+  local prop
+  prop="$(waitfor_since val-d "takedown: proposed on-chain revocation of $root" "$t0" 600 || true)"
+  if [ -z "$prop" ]; then
+    record "12-chain-takedown" fail major "val-d did not commit the takedown of ${root:0:16}… within 600s of -revoke"
+    restore_argv val-d; restore_argv val-c; return
+  fi
+  # The honoured line is read from the WHOLE debug.log: a validator logs at debug,
+  # and a tail window scrolls past it in seconds.
+  local honoured="" deadline=$(( $(date +%s) + 300 ))
+  while [ -z "$honoured" ] && [ "$(date +%s)" -lt "$deadline" ]; do
+    honoured="$(ssh_node val-c "sudo grep -E 'takedown: honoured root=$root ' /var/lib/silt/debug.log | tail -1" 2>/dev/null || true)"
+    [ -n "$honoured" ] || sleep 4
+  done
+  if [ -z "$honoured" ]; then
+    local nore; nore="$(ssh_node val-c "sudo grep -E 'takedown: honoured WITHOUT' /var/lib/silt/debug.log | tail -1" 2>/dev/null || true)"
+    record "12-chain-takedown" fail major "val-c honours on-chain takedowns but logged no receipt for ${root:0:16}… within 300s of the commit${nore:+ (it said: ${nore##*takedown: })}"
+    restore_argv val-d; restore_argv val-c; return
+  fi
+  local receipt purged
+  receipt="$(printf '%s' "$honoured" | grep -oE 'receipt=[A-Za-z0-9_-]+' | cut -d= -f2)"
+  purged="$(printf '%s' "$honoured" | grep -oE 'purged=[0-9]+' | cut -d= -f2)"
+
+  # The auditor: val-b's own replica, polled until it holds the anchoring block.
+  local vout="" verified=0
+  deadline=$(( $(date +%s) + 180 ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    vout="$(ssh_node val-b "/usr/local/bin/silt takedown-verify -store /var/lib/silt -receipt '$receipt' 2>&1" 2>/dev/null || true)"
+    printf '%s' "$vout" | grep -q 'VERIFIED:' && { verified=1; break; }
+    printf '%s' "$vout" | grep -q 'sync it and retry' || break
+    sleep 5
+  done
+  local derived same=0
+  derived="$(ssh_node val-b "/usr/local/bin/silt takedown-receipt -store /var/lib/silt -root $root 2>&1" 2>/dev/null | grep -oE '^receipt: \S+' | cut -d' ' -f2)"
+  [ -n "$derived" ] && [ "$derived" = "$receipt" ] && same=1
+  local forged fout forged_refused=0
+  forged="$(python3 - "$receipt" "$root" <<'PY'
+import base64, sys
+s, root = sys.argv[1], bytes.fromhex(sys.argv[2])
+raw = bytearray(base64.urlsafe_b64decode(s + "=" * (-len(s) % 4)))
+i = raw.find(root)
+raw[i] ^= 1
+print(base64.urlsafe_b64encode(bytes(raw)).decode().rstrip("="))
+PY
+)"
+  fout="$(ssh_node val-b "/usr/local/bin/silt takedown-verify -store /var/lib/silt -receipt '$forged' 2>&1" 2>/dev/null || true)"
+  printf '%s' "$fout" | grep -q 'NOT VERIFIED' && forged_refused=1
+
+  # Not global: a node that never subscribed still serves the root.
+  local sgot served=0
+  sgot="$(ssh_node fetch-1 "rm -f /tmp/ft_td.bin; /usr/local/bin/silt swarm get '$link' -o /tmp/ft_td.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_td.bin | cut -d' ' -f1" 2>/dev/null || true)"
+  [ -n "$wantsha" ] && [ "$sgot" = "$wantsha" ] && served=1
+  restore_argv val-d; restore_argv val-c
+
+  local ok=0
+  [ "$verified" = 1 ] && [ "$same" = 1 ] && [ "$forged_refused" = 1 ] && [ "$served" = 1 ] && ok=1
+  slo_assert "12-chain-takedown" major "val-c honoured the on-chain takedown (purged ${purged:-?} held chunk(s)) and its receipt verified on val-b's own replica (verified=$verified derived-equal=$same forged-refused=$forged_refused); fetch-1 still served it bit-perfect (served=$served)$([ "$verified" = 1 ] || echo "; val-b said: $(printf '%s' "$vout" | tail -1 | head -c 200)")" "$ok" $(( $(date +%s) - t0 ))
+}
+
+# ── Flow 13: a validator killed mid-consensus never contradicts itself ───────────
+# Each crash: a file is published with every validator up; val-b and val-d are
+# stopped (stopped, not frozen: a frozen process accepts connections and answers
+# none, so every request to it waits out its deadline); val-a is relaunched with
+# -revoke of that root, so it proposes the takedown, signs its own prepare, and
+# cannot gather. That signature is the slot a forgetful restart would re-sign with a
+# different block, and the kill lands on it: val-a is SIGKILLed the moment its
+# durable mark names a height above its committed head and is its own proposal's.
+# Restarted with the identical command line, val-a must restore at least what it
+# had saved; val-b then returns, so the height waits only for val-a, which must sign
+# at it again and commit it. Across every lifetime its audit trail (`sign: mark
+# recorded`, debug.log) must show no slot signed twice, and nobody may be slashed.
+# The kill pattern is anchored: the shell running it carries the same text.
+# LOCAL_PROOF: go test ./e2e -run TestValidatorKilledMidConsensusRestartsWithoutContradictingItself -count=1
+flow_validator_crash() {
+  require_nodes "13-validator-crash" major val-a val-b val-c val-d fetch-1 || return
+  flow_evidence_nodes val-a val-b val-c val-d
+  local victim=val-a releaser=val-b staller=val-d crashes=2 t_start; t_start="$(date +%s)"
+  local marks="" k fail_detail=""
+  release_all() { svc "$releaser" start >/dev/null 2>&1; svc "$staller" start >/dev/null 2>&1; restore_argv "$victim" >/dev/null 2>&1; }
+  for k in $(seq 1 "$crashes"); do
+    local res link root
+    res="$(ft_publish fetch-1 65536 || true)"; link="${res%% *}"
+    if [ -z "$link" ]; then fail_detail="crash $k: the setup publish landed no link"; break; fi
+    root="$(b64url_to_hex "$(printf '%s' "$link" | cut -d: -f3)")"
+    svc "$staller" stop >/dev/null 2>&1; svc "$releaser" stop >/dev/null 2>&1
+    local t0; t0="$(date +%s)"
+    relaunch_with "$victim" "-revoke $root" >/dev/null 2>&1
+    # Aim on the node: poll the durable mark against the last committed height every
+    # 20 ms. The committed height is read from the whole log once, then from its
+    # tail: with two validators down the log fills with dial failures.
+    local aim
+    aim="$(SSH_NODE_TIMEOUT=420 ssh_node "$victim" "sudo bash -c '
+      L=/var/lib/silt/debug.log; M=/var/lib/silt/signmark.json
+      end=\$(( \$(date +%s) + 300 ))
+      c=\$(grep -oE \"block committed height=[0-9]+\" \$L | tail -1 | grep -oE \"[0-9]+\\$\")
+      while [ \$(date +%s) -lt \$end ]; do
+        m=\$(cat \$M 2>/dev/null)
+        h=\$(printf %s \"\$m\" | grep -oE \"\\\"height\\\":[0-9]+\" | cut -d: -f2)
+        ct=\$(tail -c 20000 \$L | grep -oE \"block committed height=[0-9]+\" | tail -1 | grep -oE \"[0-9]+\\$\"); [ -n \"\$ct\" ] && c=\$ct
+        if [ -n \"\$h\" ] && [ -n \"\$c\" ] && [ \"\$h\" -gt \"\$c\" ]; then
+          r=\$(printf %s \"\$m\" | grep -oE \"\\\"round\\\":[0-9]+\" | cut -d: -f2); r=\${r:-0}
+          x=\$(printf %s \"\$m\" | grep -oE \"\\\"hash\\\":\\\"[0-9a-f]+\" | cut -d\\\" -f4)
+          if tail -c 400000 \$L | grep -q \"propose: signed own proposal height=\$h round=\$r hash=\$x \"; then
+            pkill -9 -f \"^/usr/local/bin/silt daemon\"
+            sleep 1
+            m=\$(cat \$M)
+            h=\$(printf %s \"\$m\" | grep -oE \"\\\"height\\\":[0-9]+\" | cut -d: -f2)
+            r=\$(printf %s \"\$m\" | grep -oE \"\\\"round\\\":[0-9]+\" | cut -d: -f2); r=\${r:-0}
+            p=\$(printf %s \"\$m\" | grep -oE \"\\\"phase\\\":[0-9]+\" | cut -d: -f2); p=\${p:-0}
+            x=\$(printf %s \"\$m\" | grep -oE \"\\\"hash\\\":\\\"[0-9a-f]+\" | cut -d\\\" -f4)
+            n=\$(grep -c \"sign: mark recorded\" \$L)
+            echo KILLED \$h \$r \$p \$x \$((c + 1)) \$n; exit 0
+          fi
+        fi
+        sleep 0.02
+      done; echo NOAIM'" 2>/dev/null | grep -E '^(KILLED|NOAIM)' | tail -1)"
+    if [ "${aim%% *}" != KILLED ]; then
+      release_all
+      fail_detail="crash $k: $victim never signed its own takedown proposal above its committed head within 300s — the kill could not be aimed"
+      break
+    fi
+    # shellcheck disable=SC2086
+    set -- $aim; local mh=$2 mr=$3 mp=$4 mx=$5 saved=$6 lines=$7
+    marks="$marks $mh:$mr:$mp:$mx"
+    svc "$victim" start >/dev/null 2>&1 || true
+    local rest
+    rest="$(waitfor_since "$victim" 'chain: restored [0-9]+ block|REFUSING TO START' "$t0" 180 || true)"
+    if printf '%s' "$rest" | grep -q 'REFUSING TO START' || [ -z "$rest" ]; then
+      release_all; fail_detail="crash $k: the restart needed a human or never restored (${rest:-no restore line in 180s})"; break
+    fi
+    local restored; restored="$(printf '%s' "$rest" | grep -oE 'restored [0-9]+' | grep -oE '[0-9]+')"
+    if [ "${restored:-0}" -lt "$saved" ]; then
+      release_all; fail_detail="crash $k: restored $restored block(s), fewer than the $saved it had saved"; break
+    fi
+    # val-b returns: three can commit, and the height waits only for val-a.
+    svc "$releaser" start >/dev/null 2>&1
+    local deadline=$(( $(date +%s) + 300 )) resigned=0 committed=0
+    while [ "$(date +%s)" -lt "$deadline" ]; do
+      [ "$resigned" = 1 ] || { ssh_node "$victim" "sudo grep 'sign: mark recorded' /var/lib/silt/debug.log | tail -n +$((lines + 1)) | grep -qE 'height=$mh '" 2>/dev/null && resigned=1; }
+      if [ "$resigned" = 1 ]; then
+        local sv; sv="$(waitfor_since "$victim" 'chain: saved [0-9]+ block' "$t0" 5 | grep -oE 'saved [0-9]+' | grep -oE '[0-9]+' || true)"
+        [ -n "$sv" ] && [ "$sv" -gt "$mh" ] && { committed=1; break; }
+      fi
+      sleep 4
+    done
+    svc "$staller" start >/dev/null 2>&1
+    restore_argv "$victim" >/dev/null 2>&1
+    if [ "$resigned" != 1 ]; then fail_detail="crash $k: the restarted $victim never signed at the crash height $mh within 300s"; break; fi
+    if [ "$committed" != 1 ]; then fail_detail="crash $k: the restarted $victim signed at h=$mh but did not commit it within 300s"; break; fi
+    echo "  crash $k: killed at its own proposal's mark h=$mh r=$mr phase=$mp with $saved saved; restored $restored; re-signed and committed $(( $(date +%s) - t0 ))s after the kill"
+  done
+  if [ -n "$fail_detail" ]; then record "13-validator-crash" fail major "$fail_detail"; return; fi
+
+  # The audit trail across every lifetime, plus each crash mark as signed.
+  local twice
+  twice="$(ssh_node "$victim" "sudo grep -oE 'sign: mark recorded height=[0-9]+ round=[0-9]+ phase=[0-9]+ hash=[0-9a-f]+' /var/lib/silt/debug.log" 2>/dev/null \
+    | sed -E 's/.*height=([0-9]+) round=([0-9]+) phase=([0-9]+) hash=([0-9a-f]+)/\1:\2:\3:\4/' \
+    | { cat; for m in $marks; do echo "$m"; done; } \
+    | awk -F: '{ k=$1":"$2":"$3; if (k in h && h[k] != $4) { print k" "h[k]" "$4; exit } h[k]=$4 }')"
+  local slashed; slashed="$(ssh_node val-b "/usr/local/bin/silt chain-status -store /var/lib/silt 2>/dev/null" | grep -oE 'slashed:[[:space:]]*[0-9]+' | grep -oE '[0-9]+$')"
+  local ok=0; [ -z "$twice" ] && [ "$slashed" = 0 ] && ok=1
+  slo_assert "13-validator-crash" major "$victim SIGKILLed ${crashes}× at its own proposal's prepare (marks:$marks), restarted with the same command line and no human, restored its saved chain, re-signed at each crash height and committed it; no slot signed twice${twice:+ — SIGNED TWICE: $twice}; slashed on val-b: ${slashed:-?}" "$ok" $(( $(date +%s) - t_start ))
+}
+
 # ── client/UI (#4): the web-UI local-security guard (#89) over a real VM ─────────
 # LOCAL_PROOF: ./integration/client/run.sh
 flow_web_ui_guard() {
@@ -3547,6 +3728,7 @@ run_all_scenarios() {
     adv_equivocation flow_equivocation_island adv_partition adv_proposal_reject
     flow_publisher_unlinkability flow_durability_turnover flow_chaos_crash
     flow_web_ui_guard flow_c2_no_capture flow_economy_repair flow_delivery_lane
+    flow_chain_takedown flow_validator_crash
   )
   if [ "${RANDOMIZE:-1}" = 1 ]; then
     local seed="${SEED:-$RUN_ID}"
