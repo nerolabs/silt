@@ -16,7 +16,7 @@ import (
 // that reaches the validators' head, so it can read committed state such as who is
 // bonded, while it signs nothing. A proposal sent straight to it is refused, and its
 // never-sign-twice mark stays unset for the whole run, so no consensus signature ever
-// left it.
+// left it. The follower holds an identity key throughout: following is a role.
 func TestChainFollowerSyncsAndNeverVotes(t *testing.T) {
 	const bondSize = int64(2) << 20
 	sched := simclock.New()
@@ -36,6 +36,9 @@ func TestChainFollowerSyncsAndNeverVotes(t *testing.T) {
 			t.Fatal(err)
 		}
 		if follow {
+			// The follower holds an identity key, as a caretaker does: following is a
+			// role, so the refusals below must hold with a key present.
+			nd.EnableBond(id.Signer(), bondSize)
 			nd.FollowChain(ch)
 		} else {
 			nd.EnableBond(id.Signer(), bondSize)

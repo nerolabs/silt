@@ -591,3 +591,33 @@ func TestRTRC_PinsFireOnTheirRemediations(t *testing.T) {
 			"shows the prior-loss rule, not an earlier gate, refused it")
 	}
 }
+
+// TestUnbondedClaimantIsDenied: a claim from a claimant with no committed bond is
+// refused before any survivor is fetched, even when everything else about it would
+// pay (a real copy on the holder, a recorded loss). A false claim is answered by
+// slashing the claimant's bond; with no bond it would cost nothing. The control is
+// the same claim from a bonded claimant, which pays.
+func TestUnbondedClaimantIsDenied(t *testing.T) {
+	s := newRepairAdv(t, 1207)
+	s.fundEscrow(5_000_000)
+	judge := s.careJudge()
+	pos, parityID, leafIdx := s.parityTarget()
+	holder := s.nodes[9]
+	s.stageShardOn(judge, holder, parityID, pos, leafIdx)
+	s.sawLost(judge, 0, pos)
+
+	unbonded, bonded := s.nodes[2].ID(), s.nodes[3].ID()
+	judge.claimantBonded = func(id ports.NodeID) bool { return id != unbonded }
+	claim := repairClaimFor(s.root, 0, pos, parityID, holder.ID())
+
+	before := s.ledger.EscrowPaid(s.root)
+	s.deliverClaim(judge, unbonded, claim)
+	if paid := s.ledger.EscrowPaid(s.root); paid != before || judge.Stats.ClaimantUnbonded != 1 || judge.Stats.BountiesReleased != 0 {
+		t.Fatalf("an unbonded claimant's claim was not refused for its bond: EscrowPaid %d -> %d, ClaimantUnbonded=%d, BountiesReleased=%d",
+			before, paid, judge.Stats.ClaimantUnbonded, judge.Stats.BountiesReleased)
+	}
+	s.deliverClaim(judge, bonded, claim)
+	if judge.Stats.BountiesReleased != 1 {
+		t.Fatalf("control: the same claim from a bonded claimant did not pay (BountiesReleased=%d)", judge.Stats.BountiesReleased)
+	}
+}

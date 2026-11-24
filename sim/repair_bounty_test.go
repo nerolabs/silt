@@ -38,6 +38,8 @@ func TestRepairBountyPaysHolderWithoutMovingStanding(t *testing.T) {
 		// anywhere (a bounty that minted reputation, an erroneous slash) is visible.
 		ledger.RecordBondChallenge(nd.ID(), nd.ID(), 64<<20, true, 1)
 		baseline[nd.ID()] = ledger.Reputation(nd.ID())
+		// The cluster keeps no chain; every node is bonded in this scenario.
+		nd.SetBondReader(func(ports.NodeID) bool { return true })
 	}
 
 	publisher := cl.Nodes[0]

@@ -2731,6 +2731,13 @@ func SlashesEncodedSize(s []Equivocation) int {
 // Exposed for observability and tests.
 func (c *Chain) BondedSize(id ports.NodeID) int64 { return c.bonded[id] }
 
+// BondQualified reports whether id holds a committed bond at or above the network's
+// bond floor and has not been slashed: the party a slash can reach. A network with no
+// bond floor qualifies nobody, because a bond of nothing is nothing to lose.
+func (c *Chain) BondQualified(id ports.NodeID) bool {
+	return c.cfg.MinBond > 0 && !c.slashed[id] && c.bonded[id] >= c.cfg.MinBond
+}
+
 // ProposerEligible reports whether id currently qualifies to propose — the same
 // rule ValidateProposal applies. Read-only probe for the node layer, so a
 // validator can decide whether a proposal is worth attempting (the

@@ -62,6 +62,9 @@ func newRepairAdv(t *testing.T, seed int64) *repairAdv {
 		nd := New(id, cfg, sched, net.Endpoint(id), memstore.New())
 		nd.SetLedger(ledger)
 		ledger.Register(id)
+		// The fixture keeps no chain, so it stands in for one in which every node holds
+		// a committed bond; TestUnbondedClaimantIsDenied drives the refusal.
+		nd.claimantBonded = func(ports.NodeID) bool { return true }
 		nodes = append(nodes, nd)
 	}
 	for i, nd := range nodes {

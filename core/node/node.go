@@ -512,6 +512,9 @@ type Stats struct {
 	// BountyNoPriorLoss counts release verdicts this judge refused to pay because
 	// nothing showed the position was ever lost: a copy of a live shard repairs nothing.
 	BountyNoPriorLoss int
+	// ClaimantUnbonded counts repair claims refused because the claimant holds no
+	// committed bond on this node's chain, so a false claim could cost it nothing.
+	ClaimantUnbonded int
 	// detector A4: repair bounties this judge paid to ITSELF, count and
 	// credits. claim.Holder is a field of an inbound, attacker-declared
 	// MsgRepairClaim and nothing refuses a claim naming the judge as the holder,
@@ -678,6 +681,14 @@ type Node struct {
 	// lossSeen records when this node's own repair sweep last found a cared position
 	// unreachable: the judge's first evidence that a claimed repair replaced a real
 	// loss (repairclaim.go priorLoss). Bounded at maxLossSeen entries, oldest first out.
+	// following marks a non-voting chain replica (FollowChain).
+	following bool
+
+	// claimantBonded answers whether a repair claimant holds a committed bond a slash
+	// can reach. It reads this node's chain (chainBondQualified); a node with no chain
+	// can confirm nobody. A field so that judging fixtures can stand in for a chain.
+	claimantBonded func(ports.NodeID) bool
+
 	lossSeen      map[bountyPosKey]ports.Time
 	lossSeenOrder []bountyPosKey
 
@@ -1608,8 +1619,20 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 	} else {
 		n.peerCaps = make(map[ports.NodeID]capInfo)
 	}
+	n.claimantBonded = n.chainBondQualified
 	tr.SetHandler(n.handle)
 	return n
+}
+
+// SetBondReader replaces where this node reads committed bonds from when it judges a
+// repair claimant. The default is its own chain replica; a simulation that runs
+// without a chain supplies the bonds its scenario assumes.
+func (n *Node) SetBondReader(bonded func(ports.NodeID) bool) { n.claimantBonded = bonded }
+
+// chainBondQualified reads id's committed bond from this node's replica. Without a
+// replica it confirms nobody.
+func (n *Node) chainBondQualified(id ports.NodeID) bool {
+	return n.chain != nil && n.chain.BondQualified(id)
 }
 
 // send stamps outgoing messages with our current capacity pledge — the

@@ -26,12 +26,19 @@ func (n *Node) EnableChain(ch *chain.Chain, priv ed25519.PrivateKey) {
 
 // FollowChain keeps ch as a NON-VOTING replica: the node syncs committed blocks,
 // validates each against the same rules a validator applies, and serves reads from
-// it, but it holds no consensus key, so it never proposes, attests, changes rounds or
-// takes submissions. A repair judge follows the chain this way to read who is bonded.
-func (n *Node) FollowChain(ch *chain.Chain) { n.EnableChain(ch, nil) }
+// it, but never proposes, attests, changes rounds or takes submissions. A repair judge
+// follows the chain this way to read who is bonded. The node's identity key, if it has
+// one, is untouched: following is a role, not the absence of a key.
+func (n *Node) FollowChain(ch *chain.Chain) {
+	n.chain = ch
+	n.following = true
+}
+
+// ChainFollower reports whether this node keeps a replica without voting.
+func (n *Node) ChainFollower() bool { return n.chainFollower() }
 
 // chainFollower reports whether this node keeps a replica without voting.
-func (n *Node) chainFollower() bool { return n.chain != nil && n.signer == nil }
+func (n *Node) chainFollower() bool { return n.chain != nil && n.following }
 
 // Chain exposes the local replica (dashboards, tests).
 func (n *Node) Chain() *chain.Chain { return n.chain }
@@ -111,6 +118,9 @@ func slotCompare(height, round uint64, phase uint8, m ports.SignMark) int {
 // (fail-safe: a missed signing turn costs one gather round; a signature
 // without a durable mark risks a permanent honest self-slash).
 func (n *Node) recordSign(height, round uint64, phase uint8, h ports.Hash) bool {
+	if n.following {
+		return false // a follower releases no consensus signature, whatever reached here
+	}
 	return n.recordSignLock(height, round, phase, h, nil)
 }
 
@@ -2314,7 +2324,7 @@ func (n *Node) maybeProposeBondDrain() { n.proposeDrain(false) }
 // counts as an idle sweep, so it cannot hurry the takeover walk, and a blocked sign
 // slot is the sweep's to report.
 func (n *Node) proposeDrain(early bool) {
-	if n.chain == nil || !n.chain.Objective() || n.signer == nil || n.bondDrainInFlight {
+	if n.chain == nil || !n.chain.Objective() || n.signer == nil || n.following || n.bondDrainInFlight {
 		return
 	}
 	// The IsSlashed gate: an evicted node's BondRenewalDue

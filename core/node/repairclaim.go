@@ -159,6 +159,15 @@ func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, claim repa
 		n.reply(from, msg, ports.Message{Kind: ports.MsgRepairVote, OK: false})
 	}
 
+	// BONDED CLAIMANTS ONLY. A false claim is answered by slashing the claimant's bond,
+	// so a claimant with no committed bond on this judge's chain risks nothing and its
+	// claim is a free bet on the escrow. Checked first: it costs no fetch.
+	if !n.claimantBonded(from) {
+		n.Stats.ClaimantUnbonded++
+		deny("the claimant holds no committed bond on this judge's chain")
+		return
+	}
+
 	m, err := pipeline.LoadLayout(bg(), n.store, entry, ch)
 	if err != nil || m.K == 0 || len(m.Chunks) == 0 {
 		deny("layout not loadable")
@@ -591,6 +600,12 @@ func (n *Node) emitRepairClaim(root ports.Hash, r shardRef, holder ports.NodeID,
 	if !n.cfg.RepairEconomy || !auditable || holder == (ports.NodeID{}) {
 		return
 	}
+	if !n.claimantBonded(n.id) {
+		// Judges pay only a bonded claimant, so an unbonded one's claim is refused
+		// everywhere; sending it only costs every judge a round trip.
+		n.logf(ports.LogDebug, "repair claim not emitted: this node holds no committed bond", "root", root, "pos", r.pos)
+		return
+	}
 	claim := repairproof.RepairClaim{
 		Root: root, Stripe: r.stripe, ShardPos: r.pos, ShardID: r.id, Holder: holder,
 	}
@@ -656,19 +671,17 @@ func (n *Node) noteLoss(k bountyPosKey) {
 // is for. Either of two facts is evidence:
 //
 //   - this node's own sweep found the position unreachable within lossEvidenceWindow;
-//   - right now, no holder other than the claimed holder and the claimant serves the
-//     shard's bytes (each provider confirmed with a HasChunk round-trip, our own store
-//     included). A rebuilt shard lives on its new holder alone, so an honest claim
+//   - right now, no holder other than the claimed holder, the claimant and this judge
+//     serves the shard's bytes (each provider confirmed with a HasChunk round-trip). The
+//     judge's own store does not count: judging other claims pulls survivors into it, so
+//     its copy says nothing about the swarm. A rebuilt shard lives on its new holder
+//     alone, so an honest claim
 //     passes this even when the judge's sweep has not reached the stripe; a copy of a
 //     live shard fails it, because the shard's original holders still answer.
 func (n *Node) priorLoss(claim repairproof.RepairClaim, claimant ports.NodeID, done func(bool)) {
 	k := bountyPosKey{root: claim.Root, stripe: claim.Stripe, pos: claim.ShardPos}
 	if at, ok := n.lossSeen[k]; ok && n.clock.Now()-at <= ports.Time(lossEvidenceWindow) {
 		done(true)
-		return
-	}
-	if ok, _ := n.store.Has(bg(), claim.ShardID); ok {
-		done(false)
 		return
 	}
 	n.resolveProviders(colKey(claim.Root, claim.ShardPos), func(provs []ports.NodeID) {

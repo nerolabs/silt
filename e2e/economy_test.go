@@ -24,6 +24,11 @@ import (
 
 // statusDurability is the subset of GET /api/status this test asserts on.
 type statusDurability struct {
+	Chain *struct {
+		Height     int  `json:"height"`
+		Following  bool `json:"following"`
+		SelfBonded bool `json:"selfBonded"`
+	} `json:"chain"`
 	Durability *struct {
 		BountyOn       bool  `json:"bountyOn"`
 		Balance        int64 `json:"balance"`

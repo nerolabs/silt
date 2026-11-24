@@ -29,6 +29,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nerolabs/silt/adapters/identity"
 )
 
 // econChunk mirrors the cloud economy geometry (§0.1: the economy grade runs
@@ -91,19 +93,57 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 		t.Skip("e2e spawns processes; skipped under -short")
 	}
 
-	// A: lone trusted validator + registry (-quorum 0), same shape as
-	// TestPublishCommitFetchOverTCP — consensus-on-the-wire has its own e2e
-	// tests; the seam under test here is the repair economy.
-	a := startDaemon(t, "A",
-		"-listen", "127.0.0.1:0", "-store", t.TempDir(),
-		"-serve-registry", "127.0.0.1:0",
-		"-validator", "-quorum", "0", "-min-rep", "0",
-		"-capacity", "1G", "-mdns=false", "-id-seed", "9001")
-	peer := a.waitFor(t, rePeer, 20*time.Second)
-	idA, addrA := peer[1], peer[2]
-	regRef := a.waitFor(t, reRegistry, 20*time.Second)[1]
-	bootstrapA := idA + "@" + addrA
-
+	// THE NETWORK IS OBJECTIVE AND BONDED, because the bounty is. A judge pays only a
+	// claimant its chain shows holding a committed bond (a false claim is answered by
+	// slashing that bond), so the repair loop needs a chain that commits bonds: four
+	// anchor validators that drain their own bond registrations. The caretakers below
+	// carry the same consensus flags, so they compute the same genesis and sync it.
+	const nVal = 4
+	valIDs := make([]string, nVal)
+	valPort := make([]string, nVal)
+	for i := range valIDs {
+		valIDs[i] = identity.FromSeed(int64(9001 + i)).NodeID().String()
+		valPort[i] = reservePort(t)
+	}
+	regPort := reservePort(t)
+	var v0 *daemon
+	consensus := []string{
+		"-objective", "-min-bond", "1M", "-min-bond-floor", "0",
+		"-mature-validators", "99", "-anchors", strings.Join(valIDs, ","),
+		"-quorum", "2",
+	}
+	for i := 0; i < nVal; i++ {
+		var att, persistent []string
+		for j := 0; j < nVal; j++ {
+			if j != i {
+				att = append(att, valIDs[j])
+				persistent = append(persistent, valIDs[j]+"@"+valPort[j])
+			}
+		}
+		args := append([]string{
+			"-id-seed", fmt.Sprint(9001 + i), "-listen", valPort[i], "-advertise", valPort[i],
+			"-store", t.TempDir(), "-validator", "-bond", "8M", "-bond-audit", "2s",
+			"-attesters", strings.Join(att, ","), "-persistent-peers", strings.Join(persistent, ","),
+			"-capacity", "1G", "-mdns=false",
+		}, consensus...)
+		if i == 0 {
+			args = append(args, "-serve-registry", regPort)
+		} else {
+			args = append(args, "-bootstrap", valIDs[0]+"@"+valPort[0])
+		}
+		d := startDaemon(t, fmt.Sprintf("V%d", i), args...)
+		d.waitFor(t, rePeer, 20*time.Second)
+		if i == 0 {
+			v0 = d
+		}
+	}
+	regRef := v0.waitFor(t, reRegistry, 30*time.Second)[1]
+	bootstrapA := valIDs[0] + "@" + valPort[0]
+	// A publish gathers its token from the issuers it is pointed at: all of them.
+	var issuerPeers []string
+	for i := range valIDs {
+		issuerPeers = append(issuerPeers, valIDs[i]+"@"+valPort[i])
+	}
 	// 12 storage nodes: the killable pool. With -replication 1 each coded
 	// column lands on one holder, so killing 3 columns kills ~3 daemons and
 	// the stripe stays comfortably above k reachable.
@@ -220,9 +260,19 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 		if err := os.WriteFile(src, want, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		out, err := runClientAllowErr(t, "swarm", "add", src,
-			"-peers", bootstrapA, "-registry", regRef,
-			"-chunk-size", fmt.Sprint(econChunk), "-replication", "1")
+		// The first publish waits for the anchors to commit their bonds: until then no
+		// quorum of issuers can sign a publish token.
+		var out string
+		var err error
+		for deadline := time.Now().Add(90 * time.Second); ; {
+			out, err = runClientAllowErr(t, "swarm", "add", src,
+				"-peers", strings.Join(issuerPeers, ","), "-registry", regRef, "-token-quorum", "2",
+				"-chunk-size", fmt.Sprint(econChunk), "-replication", "1")
+			if err == nil || time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(2 * time.Second)
+		}
 		if err != nil {
 			t.Fatalf("publish failed: %v\n%s", err, out)
 		}
@@ -269,18 +319,59 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 		store       string
 		base, token string
 	}
+	// C1 is a BONDED VALIDATOR that caretakes: it rebuilds and claims, and judges pay it
+	// because its bond is committed. C2 is a FOLLOWER (-economy without -validator): a
+	// non-voting replica that judges C1's claim against the bonds it has synced. C2
+	// sweeps slowly so C1 rebuilds first: a rebuild by the unbonded C2 would claim
+	// nothing and would leave C1 nothing to repair.
 	var caretakers []caretaker
-	for i, seed := range []string{"9201", "9202"} {
+	for i, role := range []struct {
+		seed  string
+		extra []string
+	}{
+		{"9201", []string{"-validator", "-bond", "8M", "-bond-audit", "2s", "-repair-interval", "2s"}},
+		{"9202", []string{"-repair-interval", "30s", "-log", "debug"}},
+	} {
 		store := t.TempDir()
-		d := startDaemon(t, fmt.Sprintf("C%d", i+1),
+		args := append([]string{
 			"-listen", "127.0.0.1:0", "-store", store,
-			"-bootstrap", bootstrapA, "-registry", regRef,
-			"-care", careLink, "-economy", "-repair-interval", "2s",
+			"-bootstrap", bootstrapA, "-registry", regRef, "-attesters", strings.Join(valIDs, ","),
+			"-care", careLink, "-economy",
 			"-ui", "127.0.0.1:0", "-log", "info",
-			"-capacity", "1G", "-mdns=false", "-id-seed", seed)
+			"-capacity", "1G", "-mdns=false", "-id-seed", role.seed,
+		}, consensus...)
+		d := startDaemon(t, fmt.Sprintf("C%d", i+1), append(args, role.extra...)...)
 		ui := d.waitFor(t, reUI, 20*time.Second)
 		d.waitFor(t, reCaretaking, 20*time.Second)
 		caretakers = append(caretakers, caretaker{d: d, store: store, base: "http://" + ui[1], token: ui[2]})
+	}
+	// THE CLAIMANT'S BOND IS COMMITTED AND THE JUDGE HAS SEEN IT, before anything is
+	// lost: C1 emits no claim while its own replica shows it unbonded, and C2 pays no
+	// claimant its replica does not show bonded.
+	var bondedAt int
+	for deadline := time.Now().Add(120 * time.Second); ; {
+		c1 := getStatus(t, caretakers[0].base, caretakers[0].token)
+		if c1.Chain != nil && c1.Chain.SelfBonded {
+			bondedAt = c1.Chain.Height
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("premise: C1's bond never committed on its own replica")
+		}
+		time.Sleep(2 * time.Second)
+	}
+	for deadline := time.Now().Add(60 * time.Second); ; {
+		c2 := getStatus(t, caretakers[1].base, caretakers[1].token)
+		if c2.Chain == nil || !c2.Chain.Following {
+			t.Fatalf("premise: C2 (-economy, no -validator) is not following the chain: %+v", c2.Chain)
+		}
+		if c2.Chain.Height >= bondedAt {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("premise: the follower C2 never synced to the height (%d) at which C1's bond committed (C2 at %d)", bondedAt, c2.Chain.Height)
+		}
+		time.Sleep(2 * time.Second)
 	}
 	// The repair/claim/judge narration lands in <store>/debug.log (-log info);
 	// surface it when the loop fails so the break names itself (#7). The tail

@@ -520,6 +520,12 @@ type chainInfo struct {
 	// this node stalled at an era boundary it has not been upgraded for. Always
 	// present, so a zero count reads as "none seen", not "not computed".
 	ForeignFormat node.ForeignFormat `json:"foreignFormat"`
+	// Following is true on a non-voting replica (a repair judge that is not a
+	// validator). SelfBonded is whether this replica shows this node's own bond
+	// committed at the bond floor and unslashed: the bond a false repair claim it made
+	// would be slashed from, and without which judges refuse its claims.
+	Following  bool `json:"following"`
+	SelfBonded bool `json:"selfBonded"`
 }
 
 // statusInfo is the GET /api/status document. It is a NAMED type because it is cached:
@@ -980,7 +986,8 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 		if ch := s.nd.Chain(); ch != nil {
 			era := ch.EraState()
 			out.Chain = &chainInfo{Height: ch.Len(), Entries: ch.EntryCount(),
-				HeadVersion: era.Census.HeadVersion, Era: era, ForeignFormat: s.nd.ForeignFormat()}
+				HeadVersion: era.Census.HeadVersion, Era: era, ForeignFormat: s.nd.ForeignFormat(),
+				Following: s.nd.ChainFollower(), SelfBonded: ch.BondQualified(s.nd.ID())}
 		}
 		out.Durability = s.durabilitySnapshot(uptime)
 		if fs := s.nd.FaucetStats(); fs.Configured {

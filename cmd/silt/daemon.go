@@ -408,6 +408,15 @@ func cmdDaemon(args []string) error {
 	} else if strings.TrimSpace(*witnessFrom) != "" {
 		return errors.New("-witness-from is only meaningful with -floor-box: a node that keeps its own replica reads committed state from it, never from a provider")
 	}
+	// A REPAIR JUDGE FOLLOWS THE CHAIN. With -economy this node judges repair claims and
+	// pays bounties, and it pays only a claimant the chain shows bonded, so it must read
+	// committed bonds. A validator already holds a replica; any other economy node keeps a
+	// NON-VOTING one (node.FollowChain) under the same consensus flags as the network.
+	// A floor box keeps no replica, so it cannot judge.
+	if *economy && *floorBox {
+		return errors.New("-economy and -floor-box are incompatible: a repair judge pays only a claimant the chain shows bonded, so it keeps a chain replica, and a floor box keeps none")
+	}
+	follow := *economy && !*validator
 	// SOURCE GATE, canon rule 8 first arm: the publish default must stay at or above the
 	// chunk size that pays a non-zero repair bounty, or the publish warning's threshold
 	// falls to 0 and the whole disclosure — ZERO arm included — goes permanently silent.
@@ -472,6 +481,9 @@ func cmdDaemon(args []string) error {
 	// validates by proof claims no consensus standing, so the floor never applies
 	// to it.
 	//
+	// A FOLLOWER IS ON THIS PATH for the same reason: it keeps a replica it never votes
+	// on, validated under the rules the validators committed into genesis.
+	//
 	// A FLOOR BOX IS ON THIS PATH. It keeps no replica, but it judges blocks under
 	// the objective rules, and every value derived from this decision is committed
 	// into the genesis those rules are read from. A box excluded here derives a
@@ -479,7 +491,7 @@ func cmdDaemon(args []string) error {
 	// rule working exactly as intended, refusing a configuration nobody is running —
 	// so it would stall on every block and never say why in terms an operator could
 	// act on.
-	objectivePath := (*validator || *floorBox) && *objective && *minRep > 0
+	objectivePath := (*validator || *floorBox || follow) && *objective && *minRep > 0
 	effFloor, defaulted := effectiveBondFloor(floorSet, explicitFloor, objectivePath)
 	// The bond itself gets the same safe-by-default treatment as the floor that
 	// judges it. Shipping a default BELOW the floor this same code arms produced a
@@ -971,7 +983,7 @@ func cmdDaemon(args []string) error {
 	var minBondBytes int64
 	anchorSet := map[ports.NodeID]bool{}
 	useObjective := false
-	if *validator || *floorBox {
+	if *validator || *floorBox || follow {
 		for _, s := range strings.Split(*anchorList, ",") {
 			if strings.TrimSpace(s) == "" {
 				continue
@@ -1149,7 +1161,7 @@ func cmdDaemon(args []string) error {
 		fmt.Printf("floor box: validating by PROOF — no replica, no registry, no state tree\n")
 		fmt.Println("network: " + chain.NetworkIdentityOf(*networkName, boxChainID))
 	}
-	if *validator {
+	if *validator || follow {
 		// / this lane (scope call S3): a replay that would discard
 		// finalized history REFUSES TO START unless the operator
 		// accepts the loss with -accept-chain-loss. Before this the
@@ -1261,7 +1273,12 @@ func cmdDaemon(args []string) error {
 		for _, ln := range networkIdentityLines(ch) {
 			fmt.Println(ln)
 		}
-		nd.EnableChain(ch, ident.Signer())
+		if follow {
+			nd.FollowChain(ch)
+			fmt.Println("chain: FOLLOWING — a non-voting replica for judging repair claims (no proposals, no attestations)")
+		} else {
+			nd.EnableChain(ch, ident.Signer())
+		}
 		// The ledger's consensus epoch is READ from this node's chain,
 		// never passed by a caller. Wired here, right after the chain is enabled and
 		// before any lane can accept a receipt or a relay open; wired ONCE (the
@@ -1288,6 +1305,11 @@ func cmdDaemon(args []string) error {
 			fmt.Printf("chain: saved %d block(s) [%s] head=%d:%s (everMature=%v matureEpoch=%v seen=%d bonded=%d epochStart=%d epochSet=%d released=%d)\n",
 				next, why, next-1, head, r.EverMature, r.MatureEpoch, r.ValidatorsSeen, r.Bonded, r.EpochStart, r.EpochSetSize, ch.ReleasedBlocks())
 		}
+		if follow {
+			nd.OnCommit(func(chain.Block) { saveChain("commit") })
+		}
+	}
+	if *validator {
 		// Durable never-sign-twice watermark: the mark is fsync'd
 		// BEFORE any consensus signature is released, so a crash/restart cannot
 		// make this validator contradict a signature it already shipped — which
@@ -1643,6 +1665,8 @@ func cmdDaemon(args []string) error {
 			}
 			saveChain("commit")
 		})
+	}
+	if *validator || follow {
 		for _, s := range strings.Split(*attesters, ",") {
 			if strings.TrimSpace(s) == "" {
 				continue
@@ -2012,6 +2036,12 @@ func cmdDaemon(args []string) error {
 			// This comes BEFORE chain sync on purpose — a restarted node re-earns
 			// its view of peer reputation here, and SyncChain needs that view to
 			// judge which fork carries real standing (F1).
+			if follow {
+				nd.StartChainSync(attesterIDs, func(added int) {
+					fmt.Printf("chain: caught up %d block(s) from peers\n", added)
+					saveChain("catch-up")
+				})
+			}
 			if *floorBox {
 				// The blocks come from the peer set, the witnesses from the providers, and they are
 				// deliberately separate lists: a box that could not reach a block has nothing to
