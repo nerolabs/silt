@@ -1818,8 +1818,11 @@ flow_chaos_crash() {
   fi
 }
 
+ul_node_id() { # ul_node_id NODE — the identity the running daemon uses: -id-seed when it has one, else identity.pem
+  ssh_node "$1" "s=\$(grep -o -- '-id-seed [0-9]*' /etc/systemd/system/silt.service | head -1 | awk '{print \$2}'); if [ -n \"\$s\" ]; then /usr/local/bin/silt id -id-seed \$s; else sudo /usr/local/bin/silt id -store /var/lib/silt; fi" 2>/dev/null | grep -oE '[a-f0-9]{64}' | head -1
+}
+
 # ── unlinkability (#11): a UI publish and a UI fetch leave no identity beside content ──
-# LOCAL_PROOF: go test ./e2e -run TestPublishersAndFetchersCannotBeLinkedToTheirObjects
 # store-1 publishes 3 MB through its own UI and fetch-1 reads it three times through its
 # own UI, both on the default flags. Then the observer's view: every announcement the
 # DHT holds about the object, before and after the reads, and every node's disk
@@ -1827,9 +1830,7 @@ flow_chaos_crash() {
 # naming the reader; no line on any other node names the reader beside the object's root or
 # manifest chunks; and the reader's own store keeps no non-debug line naming them. Control: the same reader, relaunched
 # with -serve-fetched=true, reads once more and the observer must then see it.
-ul_node_id() { # ul_node_id NODE — the identity the running daemon uses: -id-seed when it has one, else identity.pem
-  ssh_node "$1" "s=\$(grep -o -- '-id-seed [0-9]*' /etc/systemd/system/silt.service | head -1 | awk '{print \$2}'); if [ -n \"\$s\" ]; then /usr/local/bin/silt id -id-seed \$s; else sudo /usr/local/bin/silt id -store /var/lib/silt; fi" 2>/dev/null | grep -oE '[a-f0-9]{64}' | head -1
-}
+# LOCAL_PROOF: go test ./e2e -run TestPublishersAndFetchersCannotBeLinkedToTheirObjects
 flow_unlinkability() {
   require_nodes "11-unlinkability" major store-1 fetch-1 val-b || return
   require_live  "11-unlinkability" major store-1 fetch-1 val-b || return
