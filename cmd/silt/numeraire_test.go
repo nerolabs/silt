@@ -109,8 +109,8 @@ func TestPublishWarningFiresOnlyWhenThePublishShortPaysTheRepairer(t *testing.T)
 	// SILENT, and it is the only silent case: a base at or above the default's. An UNSET
 	// -chunk-size is DefaultChunkSize (pinned by the source gate below), so the GEOMETRY
 	// cause cannot fire without a flag — but the OBJECT cause can and does, so this
-	// table is NOT "everything published at the default". 262,120 B is the first
-	// silent size; the firing side below drives 262,119.
+	// table is NOT "everything published at the default". 258,041 B is the first
+	// silent size; the firing side below drives 258,040.
 	for _, c := range []struct {
 		chunk  int64
 		object int64
@@ -118,8 +118,8 @@ func TestPublishWarningFiresOnlyWhenThePublishShortPaysTheRepairer(t *testing.T)
 		{int64(pipeline.DefaultChunkSize), objectSizeUnknown},
 		{int64(pipeline.DefaultChunkSize), 1_500_000},
 		{int64(pipeline.DefaultChunkSize), 262_136}, // exactly one FULL frame: unchanged
-		{int64(pipeline.DefaultChunkSize), 262_135}, // the largest object that re-addresses
-		{int64(pipeline.DefaultChunkSize), 262_120}, // the FIRST silent size
+		{int64(pipeline.DefaultChunkSize), 262_135}, // one byte short of a full frame: padded to one
+		{int64(pipeline.DefaultChunkSize), 258_041}, // the FIRST silent size: its frame pads to full
 		{int64(pipeline.DefaultChunkSize), 0},       // an EMPTY file stores no shard at all
 		{1 << 20, objectSizeUnknown},
 		{1 << 20, 1 << 22},
@@ -156,7 +156,7 @@ func TestPublishWarningFiresOnlyWhenThePublishShortPaysTheRepairer(t *testing.T)
 	for _, c := range []struct{ chunk, object int64 }{
 		{16_384, objectSizeUnknown}, {65_536, objectSizeUnknown}, {min - 1, objectSizeUnknown},
 		{int64(pipeline.DefaultChunkSize), 1_024}, {int64(pipeline.DefaultChunkSize), 100_000},
-		{int64(pipeline.DefaultChunkSize), 262_119},
+		{int64(pipeline.DefaultChunkSize), 258_040},
 	} {
 		m := bountyPriceWarning(c.chunk, c.object)
 		if m == "" || strings.Contains(m, "TRUNCATES") || !strings.Contains(m, "ZERO") {
@@ -176,9 +176,9 @@ func TestPublishWarningFiresOnlyWhenThePublishShortPaysTheRepairer(t *testing.T)
 	}
 	// CAUSE 2, the OBJECT — the class the re-pricing creates, at the SHIPPED
 	// DEFAULT chunk size, which the geometry arm can never see. Under F1 the whole
-	// class pays a base of ZERO up to 262,119 B (26,190 B before; the 10.008×
-	// widening is the accepted cost).
-	for _, size := range []int64{1_024, 10_240, 26_190, 26_191, 100_000, 262_119} {
+	// class pays a base of ZERO up to 258,040 B, where the frame padding reaches a
+	// full frame.
+	for _, size := range []int64{1_024, 10_240, 26_190, 26_191, 100_000, 258_040} {
 		m := bountyPriceWarning(int64(pipeline.DefaultChunkSize), size)
 		if !strings.Contains(m, "ZERO") || !strings.Contains(m, "NO chunk size changes this") || !strings.Contains(m, "prepay-only") {
 			t.Fatalf("a %d B object at the shipped default: want a ZERO warning naming the object cause and prepay-only durability, got %q", size, m)
@@ -187,10 +187,9 @@ func TestPublishWarningFiresOnlyWhenThePublishShortPaysTheRepairer(t *testing.T)
 			t.Fatalf("a %d B object was told to raise -chunk-size, which cannot help it: %q", size, m)
 		}
 	}
-	// The boundary itself did NOT move with F1 — only the arm did. 262,119 fires and
-	// 262,120 is silent, before and after; it is in the silent table above too.
-	if m := bountyPriceWarning(int64(pipeline.DefaultChunkSize), 262_120); m != "" {
-		t.Fatalf("262,120 B is the first silent size and it warned: %q", m)
+	// The boundary: 258,040 fires and 258,041 is silent; it is in the silent table above too.
+	if m := bountyPriceWarning(int64(pipeline.DefaultChunkSize), 258_041); m != "" {
+		t.Fatalf("258,041 B is the first silent size and it warned: %q", m)
 	}
 	// SOURCE GATE — labelled. Its runtime cover is the silent-side table above, which
 	// passes pipeline.DefaultChunkSize as a LITERAL and never reads the flag: the source

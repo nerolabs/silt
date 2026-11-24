@@ -60,14 +60,17 @@ func TestGenesisIsDeterministic(t *testing.T) {
 // plus the leaf width they were built at. It is the same shape as the padding move — inside
 // the MANIFEST, which the root does not cover — so the root stands again and only the
 // manifest chunk ID and the block hash move, which is how a reader can tell a manifest change
-// from a geometry change without reading the diff. From here the genesis hash moves ONLY by an
+// from a geometry change without reading the diff. The 2026-11-24 move IS a geometry change,
+// so the root moves too: the manifesto's single frame is padded to its Padmé length
+// (2,050 → 2,176 B, pipeline.DataFrameSize) and the entry publishes that frame's payload
+// room (2,168 B) instead of the exact 2,042. From here the genesis hash moves ONLY by an
 // explicit, recorded decision; any drift turns this RED. ABLATION: set ManifestFrameBytes: 64 << 10 in
 // genesis.Options → RED on the manifest chunk ID and on the block hash, GREEN on the root.
 func TestGenesisBlockHashIsPinned(t *testing.T) {
 	const (
-		wantHash  = "eddda80fce507066118c951775e01e614acd809de045fddde06281e7c37191ff"
-		wantRoot  = "31768fb45fcf6e7fbf5568f916c790ea905d85220d20717bfe91442934867dd1"
-		wantChunk = "6c71148176b1d089c908b53f3d39b0b404848c11d325f69cb132544931aa7ab5"
+		wantHash  = "c445f7e05700cd330c7b4936cb6d017c6f586049c80cc56790f0908e3b9037e5"
+		wantRoot  = "f175832cfc9c3166dfcc4bf64071a54c2c3a620753ed4c11cfc265e96f9bc032"
+		wantChunk = "97c7f266460df3e34b8f1247a1c801c5aab6231525ba530577e1e73e24534726"
 	)
 	b, h, entry, err := genesis.Build(memstore.New(), nil)
 	if err != nil {
