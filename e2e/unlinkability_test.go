@@ -15,8 +15,8 @@ package e2e
 //     -care-published=true, the behaviour that names the publisher, and the adversary
 //     must find it: that is what shows the game can score a leak at all.
 //
-//   - SWEEP. Fetchers that joined after every publish fetch every object repeatedly
-//     through their own UI. No record anywhere outside a fetcher's own store may carry
+//   - SWEEP. Fetchers that joined after every publish read every object through their
+//     own UI, concurrently. No record anywhere outside a fetcher's own store may carry
 //     a fetcher's identity beside an object's identifiers, and no announcement may name
 //     a fetcher. Inside its own store, only the debug log may name what it read. A
 //     control fetcher runs with -serve-fetched=true and must be named.
@@ -78,6 +78,7 @@ func TestPublishersAndFetchersCannotBeLinkedToTheirObjects(t *testing.T) {
 		t.Skip("e2e spawns processes; skipped under -short")
 	}
 	rng := rand.New(rand.NewSource(11))
+	testStart := time.Now()
 
 	// ── The network. ────────────────────────────────────────────────────────────
 	vStore := t.TempDir()
@@ -120,7 +121,10 @@ func TestPublishersAndFetchersCannotBeLinkedToTheirObjects(t *testing.T) {
 	// under the object's care key, which placement never uses: an unambiguous announcement.
 	publishers = append(publishers, start("Pc", "9829", true, "-care-published=true", "-economy"))
 
+	t.Logf("network of %d daemons up in %s", len(all), time.Since(testStart).Round(time.Second))
+
 	// ── Publish: three rounds, the publishers in a fresh order each round. ─────────
+	publishStart := time.Now()
 	var objects []*ulObject
 	for round := 0; round < 3; round++ {
 		order := rng.Perm(len(publishers))
@@ -147,66 +151,114 @@ func TestPublishersAndFetchersCannotBeLinkedToTheirObjects(t *testing.T) {
 		}
 	}
 
+	t.Logf("published %d objects in %s", len(objects), time.Since(publishStart).Round(time.Second))
 	atPublish := make([]string, len(all))
 	for i, n := range all {
 		atPublish[i] = n.id
 	}
 
 	// ── Fetch-heavy run: fetchers that joined after every publish, so none can have
-	// been a placement target, each read every object twice through its own UI. ─────
+	// been a placement target. ─────────────────────────────────────────────────────────
 	var fetchers []*ulNode
 	for i := 0; i < 3; i++ {
 		fetchers = append(fetchers, start(fmt.Sprintf("F%d", i+1), fmt.Sprint(9831+i), true))
 	}
 	const ctrlFetch = 3
 	fetchers = append(fetchers, start("Fc", "9839", true, "-serve-fetched=true"))
-	client := &http.Client{Timeout: 3 * time.Minute}
-	fetches := 0
-	for pass := 0; pass < 2; pass++ {
-		for _, fi := range rng.Perm(len(fetchers)) {
-			f := fetchers[fi]
-			for _, oi := range rng.Perm(len(objects)) {
+	// The fetchers read concurrently, each every object once in its own order: under
+	// netem one UI read of a few hundred KB takes tens of seconds, and the reads, not the
+	// order, are what the sweep needs.
+	client := &http.Client{Timeout: 4 * time.Minute}
+	type readResult struct {
+		took time.Duration
+		err  error
+	}
+	results := make(chan readResult, len(fetchers)*len(objects))
+	readStart := time.Now()
+	for fi, f := range fetchers {
+		order := rng.Perm(len(objects))
+		go func(fi int, f *ulNode, order []int) {
+			for _, oi := range order {
 				o := objects[oi]
+				began := time.Now()
 				var got []byte
-				deadline := time.Now().Add(60 * time.Second)
+				var err error
+				deadline := time.Now().Add(5 * time.Minute)
 				for {
-					resp, err := client.Get(f.ui + "/api/fetch?link=" + url.QueryEscape(o.link))
+					var resp *http.Response
+					resp, err = client.Get(f.ui + "/api/fetch?link=" + url.QueryEscape(o.link))
 					if err == nil {
 						got, _ = io.ReadAll(resp.Body)
 						resp.Body.Close()
 						if resp.StatusCode == http.StatusOK {
 							break
 						}
+						err = fmt.Errorf("status %d: %s", resp.StatusCode, lastLine(string(got)))
 					}
 					if time.Now().After(deadline) {
-						t.Fatalf("%s fetch of object %d never succeeded: err=%v last=%q", f.name, oi, err, lastLine(string(got)))
+						break
 					}
 					time.Sleep(time.Second) // the entry may still be committing
 				}
-				if !bytes.Equal(got, o.payload) {
-					t.Fatalf("%s fetched object %d: %d bytes, not the %d published", f.name, oi, len(got), len(o.payload))
+				if err == nil && !bytes.Equal(got, o.payload) {
+					err = fmt.Errorf("%d bytes, not the %d published", len(got), len(o.payload))
 				}
-				fetches++
+				if err != nil {
+					err = fmt.Errorf("%s read of object %d: %w", f.name, oi, err)
+				}
+				results <- readResult{time.Since(began), err}
 			}
-		}
+		}(fi, f, order)
 	}
+	fetches := 0
+	var took []time.Duration
+	for i := 0; i < len(fetchers)*len(objects); i++ {
+		r := <-results
+		if r.err != nil {
+			t.Fatal(r.err)
+		}
+		fetches++
+		took = append(took, r.took)
+	}
+	sort.Slice(took, func(i, j int) bool { return took[i] < took[j] })
+	t.Logf("%d UI reads in %s: fastest %s, median %s, slowest %s", fetches, time.Since(readStart).Round(time.Second),
+		took[0].Round(time.Millisecond), took[len(took)/2].Round(time.Millisecond), took[len(took)-1].Round(time.Millisecond))
 
 	// ── Observe: everything the DHT will say about each object. Caring starts once the
 	// entry resolves, so the control's announcements may trail its publish: an observer
 	// can look later, and so does this one, for the control's objects only. ──────────────
 	time.Sleep(3 * time.Second) // let the control fetcher's announces land
+	observeStart := time.Now()
+	type observed struct {
+		oi  int
+		out string
+		err error
+	}
+	views := make(chan observed, len(objects))
 	for oi, o := range objects {
-		var out string
-		deadline := time.Now().Add(90 * time.Second)
-		for {
-			out = runClient(t, "swarm", "announcers", o.link, "-peers", boot, "-registry", regRef)
-			if o.publisher != ctrlPub || strings.Contains(ulLine(out, "care"), publishers[ctrlPub].id) || time.Now().After(deadline) {
-				break
+		go func(oi int, o *ulObject) {
+			var out string
+			var err error
+			deadline := time.Now().Add(3 * time.Minute)
+			for {
+				out, err = runClientAllowErr(t, "swarm", "announcers", o.link, "-peers", boot, "-registry", regRef)
+				done := err == nil && (o.publisher != ctrlPub || strings.Contains(ulLine(out, "care"), publishers[ctrlPub].id))
+				if done || time.Now().After(deadline) {
+					break
+				}
+				time.Sleep(2 * time.Second)
 			}
-			time.Sleep(2 * time.Second)
+			views <- observed{oi, out, err}
+		}(oi, o)
+	}
+	for range objects {
+		v := <-views
+		if v.err != nil {
+			t.Fatalf("object %d: swarm announcers: %v\n%s", v.oi, v.err, v.out)
 		}
+		o := objects[v.oi]
 		o.announced = map[string][]string{}
-		for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		for _, line := range strings.Split(strings.TrimSpace(v.out), "\n") {
 			m := reAnnounceLine.FindStringSubmatch(strings.TrimSpace(line))
 			if m == nil {
 				continue
@@ -218,9 +270,10 @@ func TestPublishersAndFetchersCannotBeLinkedToTheirObjects(t *testing.T) {
 			o.announced[m[1]] = ids
 		}
 		if len(o.announced) == 0 {
-			t.Fatalf("object %d: swarm announcers printed nothing parseable:\n%s", oi, out)
+			t.Fatalf("object %d: swarm announcers printed nothing parseable:\n%s", v.oi, v.out)
 		}
 	}
+	t.Logf("observed %d objects in %s", len(objects), time.Since(observeStart).Round(time.Second))
 
 	// ── Seize every disk. Stop every daemon first so its logs are complete. ──────────
 	for _, n := range all {

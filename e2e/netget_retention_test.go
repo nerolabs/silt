@@ -58,7 +58,9 @@ func TestUIFetchAnnouncesOnlyWhenTheConsumerOptsIn(t *testing.T) {
 	for i := range payload {
 		payload[i] = byte(i*13 + 1)
 	}
+	pubStart := time.Now()
 	status, body, err := uiPublish(baseA, tokenA, "consume.bin", payload)
+	t.Logf("publish took %s", time.Since(pubStart).Round(time.Millisecond))
 	if err != nil || status != http.StatusOK {
 		t.Fatalf("publish: status=%d err=%v body=%s", status, err, body)
 	}
@@ -95,6 +97,8 @@ func TestUIFetchAnnouncesOnlyWhenTheConsumerOptsIn(t *testing.T) {
 	}
 	// A consumer reads the link through its own UI (a read: token-free on localhost).
 	fetch := func(name, base string) {
+		began := time.Now()
+		defer func() { t.Logf("%s /api/fetch took %s", name, time.Since(began).Round(time.Millisecond)) }()
 		resp, err := (&http.Client{Timeout: 3 * time.Minute}).Get(
 			base + "/api/fetch?link=" + url.QueryEscape(pub.Link))
 		if err != nil {

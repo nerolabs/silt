@@ -67,7 +67,9 @@ esac
 #  recovery — the unplaceable-publish, crash and takedown-receipt drills.
 #  privacy — publisher matching against chance, the (fetcher, content) sweep,
 #  and the seized-disk drill.
-#  all — all four, the full P0 netem gate in one run.
+#  all — adversarial, substrate and recovery: the full P0 netem gate in one run.
+#  privacy runs on its own: under loss a UI read takes ~45 s and the drill makes
+#  56 of them, which does not fit beside the rest in one job.
 # NOTE: the cold-start re-mesh test (TestBootstrapRetryRecoversColdStartRace) is
 # deliberately EXCLUDED from the netem suite — it runs with -request-timeout 500ms
 # -request-retries 0 (a clean-localhost timing test of the self-heal LOGIC, "not
@@ -98,7 +100,7 @@ case "${SUITE:-adversarial}" in
   substrate)   : "${TESTS:=$SUBSTRATE}";   kind="P0 substrate liveness";        noun="P0-substrate-liveness"; verb="held" ;;
   recovery)    : "${TESTS:=$RECOVERY}";    kind="recovery and takedown drills";  noun="recovery"; verb="held" ;;
   privacy)     : "${TESTS:=$PRIVACY}";     kind="unlinkability and seizure drills"; noun="privacy"; verb="held" ;;
-  all)         : "${TESTS:=$ADVERSARIAL|$SUBSTRATE|$RECOVERY|$PRIVACY}"; kind="full P0 netem gate (substrate + adversarial + recovery + privacy)"; noun="P0 netem gate"; verb="held/denied" ;;
+  all)         : "${TESTS:=$ADVERSARIAL|$SUBSTRATE|$RECOVERY}"; kind="full P0 netem gate (substrate + adversarial + recovery)"; noun="P0 netem gate"; verb="held/denied" ;;
   *) echo "unknown SUITE='$SUITE' (use adversarial | substrate | recovery | privacy | all, or set TESTS=<regex>)"; exit 1 ;;
 esac
 MODCACHE="$(go env GOMODCACHE 2>/dev/null || true)"
@@ -127,7 +129,7 @@ mc_mount=()
 set +e
 docker run --rm --cap-add NET_ADMIN \
   -v "$ROOT":/silt:ro "${mc_mount[@]}" \
-  -e NETEM="$NETEM" -e TESTS="$TESTS" -e TIMEOUT="$TIMEOUT" \
+  -e NETEM="$NETEM" -e TESTS="$TESTS" -e TIMEOUT="$TIMEOUT" -e KIND="$kind" \
   -e GOFLAGS=-buildvcs=false \
   -e GOCACHE=/tmp/go-build \
   silt-adversarial sh /silt/integration/adversarial/netem-run.sh
