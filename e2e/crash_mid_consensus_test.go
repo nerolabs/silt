@@ -199,7 +199,20 @@ func TestValidatorKilledMidConsensusRestartsWithoutContradictingItself(t *testin
 			}
 		}
 		if hit == nil {
-			t.Fatalf("crash %d: the victim never held its own proposal's prepare above its committed head within 90s — the kill could not be aimed", k)
+			// Evidence, so a miss names its cause: what the victim was doing in the window —
+			// whether it was designated, proposed, changed round, or simply saw no pending work.
+			var tail []string
+			for _, ln := range strings.Split(v.out.dump(), "\n") {
+				if strings.Contains(ln, "propos") || strings.Contains(ln, "round") || strings.Contains(ln, "designee") ||
+					strings.Contains(ln, "committed block") || strings.Contains(ln, "drain") {
+					tail = append(tail, ln)
+				}
+			}
+			if len(tail) > 25 {
+				tail = tail[len(tail)-25:]
+			}
+			t.Fatalf("crash %d: the victim never held its own proposal's prepare above its committed head within 90s — the kill could not be aimed. Victim's last proposal/round lines:\n%s",
+				k, strings.Join(tail, "\n"))
 		}
 		crashes = append(crashes, *hit)
 		t.Logf("crash %d: killed holding a mark at h=%d r=%d phase=%d with %d block(s) saved",
