@@ -634,6 +634,9 @@ func (n *Node) emitRepairClaim(root ports.Hash, r shardRef, holder ports.NodeID,
 	claim := repairproof.RepairClaim{
 		Root: root, Stripe: r.stripe, ShardPos: r.pos, ShardID: r.id, Holder: holder, LeafIndex: r.leafIdx,
 	}
+	if n.forgeRepairClaims {
+		claim.ShardID = ports.ChunkID(ports.HashBytes(append([]byte("forged:"), r.id[:]...)))
+	}
 	signed, err := repairproof.SignClaim(n.signer, n.chainID(), claim)
 	if err != nil {
 		return

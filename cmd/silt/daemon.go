@@ -160,6 +160,7 @@ func cmdDaemon(args []string) error {
 	forgeBlock := fs.String("forge-block", "", "ADVERSARY / TEST-HARNESS ONLY: propose a block with a FORGED (corrupted) proposer signature to this peer ID, to prove an honest validator rejects it before attesting (forged-block→reject). Never honest")
 	lowbondPropose := fs.String("lowbond-propose", "", "ADVERSARY / TEST-HARNESS ONLY: as an under-bonded validator, propose a well-formed block to this peer ID, to prove an honest validator refuses a proposer without a qualifying bond (low-bond→reject). Never honest")
 	equivocate := fs.String("equivocate", "", "ADVERSARY / TEST-HARNESS ONLY: run this validator as a Byzantine EQUIVOCATOR (proving accountability over the real wire). OBJECTIVE mode (3-of-4): the value is a trigger; this validator participates honestly then SERVES a conflicting signed block at a height it prepared, so an honest peer slashes the double-sign on sync (slash-on-detection — a fork can't be committed under a BFT quorum). LEGACY mode: given \"idX,idYZ\" it commit-places block X on idX and a heavier fork (Y,Z) on idYZ. NEVER use on a real network; a correct node refuses to equivocate")
+	forgeRepairClaim := fs.Bool("forge-repair-claim", false, "ADVERSARY / TEST-HARNESS ONLY: every repair claim this caretaker emits names a shard id the object does not commit at the claimed leaf — a signed lie, to prove a judge reports it and the chain evicts this node's bond. Never honest")
 	liar := fs.Bool("liar", false, "ADVERSARY / TEST-HARNESS ONLY: run this storage node as a PoR LIAR — it keeps its storage proof but silently drops the shard bytes (\"keep the receipt, ditch the goods\"). It still answers a MsgChallenge, but holds nothing to open against the committed shard root, so an -audit auditor CATCHES it and slashes its standing. Never honest")
 	goodPropose := fs.String("goodpropose", "", "TEST-HARNESS ONLY: POSITIVE CONTROL for -forge-block/-lowbond-propose. As a properly-bonded proposer, send a WELL-FORMED block to this peer ID and prove the honest target ACCEPTS it — so a target that refuses EVERY proposal (a broken/wedged node) cannot make the forged/low-bond REJECT tests false-pass ('reject the good one too' would otherwise look identical to 'reject the bad one', audit). Retries until its bond earns standing. Logs 'goodpropose proposal ACCEPTED by <id>' on accept, 'goodpropose proposal UNEXPECTEDLY REJECTED by <id>' after giving up")
 	wsCheckpoint := fs.String("ws-checkpoint", "", "weak-subjectivity checkpoint HEIGHT:HASH (M0 F-1): a recent trusted committed block this node REFUSES to reorg at or before, regardless of fork weight — the long-range-attack defense that makes the objective maturity latch safe for a fresh/long-offline node. Obtain it out-of-band (the daemon prints `checkpoint: HEIGHT:HASH` for its committed head; cross-check several independent nodes). It must be recent — within ~the bond-TTL window. Empty = genesis-trusting (safe only at launch, on a trusted swarm, or before the network matures)")
@@ -1964,6 +1965,10 @@ func cmdDaemon(args []string) error {
 		})
 	}
 	nd.SetLedger(nd0ledger)
+	if *forgeRepairClaim {
+		nd.SetForgeRepairClaims(true) // ADVERSARY HARNESS: sign claims naming a shard the object does not commit
+		fmt.Println("ADVERSARY: emitting FALSE repair claims (a wrong shard id at the claimed leaf) — never honest")
+	}
 	if *liar {
 		nd.SetLiar(true) // ADVERSARY HARNESS: keep the proof tags, drop the bytes
 		fmt.Println("ADVERSARY: running as a PoR LIAR (keeps proof tags, drops shard bytes) — never honest")

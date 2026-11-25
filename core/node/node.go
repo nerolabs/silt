@@ -688,6 +688,9 @@ type Node struct {
 	// following marks a non-voting chain replica (FollowChain).
 	following bool
 
+	// forgeRepairClaims is the adversary seam SetForgeRepairClaims sets.
+	forgeRepairClaims bool
+
 	// claimantBonded answers whether a repair claimant holds a committed bond a slash
 	// can reach. It reads this node's chain (chainBondQualified); a node with no chain
 	// can confirm nobody. A field so that judging fixtures can stand in for a chain.
@@ -1367,6 +1370,11 @@ func (n *Node) SetEphemeral(v bool) { n.ephemeral = v }
 
 // SetLiar toggles fake-storage behavior (see the liar field).
 func (n *Node) SetLiar(v bool) { n.liar = v }
+
+// SetForgeRepairClaims makes every repair claim this node emits name a shard id the
+// object does not commit at the claimed leaf: a signed false claim. Adversary/test seam
+// for the on-chain false-repair slash (cf. SetLiar).
+func (n *Node) SetForgeRepairClaims(v bool) { n.forgeRepairClaims = v }
 
 // SetEclipser toggles provider-record suppression (see the eclipser field) — the
 // H5-B key-surround adversary that owns the NodeIDs closest to a key.

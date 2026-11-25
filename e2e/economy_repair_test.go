@@ -112,6 +112,25 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e spawns processes; skipped under -short")
 	}
+	repairEconomyOnTheWire(t, false)
+}
+
+// TestFalseRepairClaimIsSlashedOverTCP: the same network, but the bonded caretaker C1
+// signs FALSE claims (-forge-repair-claim: each names a shard the object does not commit
+// at its leaf). The follower judge C2 refuses to pay, turns the claim into slash evidence
+// and sends it to the validators; the chain commits it and C1's own replica shows its
+// bond evicted. Nothing is paid.
+func TestFalseRepairClaimIsSlashedOverTCP(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e spawns processes; skipped under -short")
+	}
+	repairEconomyOnTheWire(t, true)
+}
+
+// repairEconomyOnTheWire drives one repair over real TCP on an objective bonded network.
+// Honest (forge false), the follower judge pays the claim. Forged, it reports it and the
+// chain evicts the claimant.
+func repairEconomyOnTheWire(t *testing.T, forge bool) {
 
 	// THE NETWORK IS OBJECTIVE AND BONDED, because the bounty is. A judge pays only a
 	// claimant its chain shows holding a committed bond (a false claim is answered by
@@ -349,7 +368,7 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 		seed  string
 		extra []string
 	}{
-		{"9201", []string{"-validator", "-bond", "8M", "-bond-audit", "2s", "-repair-interval", "2s"}},
+		{"9201", append([]string{"-validator", "-bond", "8M", "-bond-audit", "2s", "-repair-interval", "2s"}, forgeFlag(forge)...)},
 		{"9202", []string{"-repair-interval", "30s", "-log", "debug"}},
 	} {
 		store := t.TempDir()
@@ -736,6 +755,39 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	// well under this locally, so 180s holds with margin — and this
 	// deadline is the regression signal: a failure here means the sweep
 	// bound broke, not calibration.
+	if forge {
+		// THE LIE IS SLASHED. C1's claims are refused and reported; the evidence commits
+		// and C1's own replica stops showing its bond.
+		for deadline := time.Now().Add(180 * time.Second); ; {
+			c1 := getStatus(t, caretakers[0].base, caretakers[0].token)
+			if c1.Chain != nil && !c1.Chain.SelfBonded {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("the false claimant C1 is still bonded on its own replica 180s after the loss.\n--- C1 debug.log ---\n%s\n--- C2 debug.log ---\n%s",
+					debugTail(caretakers[0]), debugTail(caretakers[1]))
+			}
+			time.Sleep(2 * time.Second)
+		}
+		for _, c := range caretakers {
+			s := getStatus(t, c.base, c.token)
+			if s.Durability == nil {
+				continue
+			}
+			for _, o := range s.Durability.Objects {
+				if o.Root == root && o.Paid != 0 {
+					t.Fatalf("%s paid %d for a false claim", c.d.name, o.Paid)
+				}
+			}
+		}
+		// The eviction is the slash this test drove, not a lapse: the judge reported a
+		// false claim. (The honest run's control is that C1 stays bonded throughout.)
+		if j := getStatus(t, caretakers[1].base, caretakers[1].token); j.Stats == nil || j.Stats.FalseRepairReports < 1 {
+			t.Fatalf("C1 lost its bond but the judge C2 reported no false claim: %+v", j.Stats)
+		}
+		t.Logf("the judge reported C1's false claim, C1's bond is evicted on its own replica, and nothing was paid")
+		return
+	}
 	var paid, funded, repairs int64
 	payer := ""
 	deadline := time.Now().Add(180 * time.Second)
@@ -769,6 +821,10 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 		t.Fatalf("the bounty was paid on %s, want the follower judge C2", payer)
 	}
 	t.Logf("bounty paid on the wire by the follower judge %s: paid=%d over %d repair(s), funded=%d", payer, paid, repairs, funded)
+	// The control for the forged run: an honest claimant keeps its bond.
+	if c1 := getStatus(t, caretakers[0].base, caretakers[0].token); c1.Chain == nil || !c1.Chain.SelfBonded {
+		t.Fatal("the honest claimant C1 lost its bond, so an eviction in the forged run would prove nothing")
+	}
 
 	// The S2 half: the bounty paid for a reconstruction that actually restored
 	// availability — the file still round-trips bit-perfect with 3 columns'
@@ -782,4 +838,11 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	if !bytes.Equal(got, want) {
 		t.Fatalf("post-repair fetch corrupted: got %d bytes, want %d", len(got), len(want))
 	}
+}
+
+func forgeFlag(forge bool) []string {
+	if forge {
+		return []string{"-forge-repair-claim"}
+	}
+	return nil
 }

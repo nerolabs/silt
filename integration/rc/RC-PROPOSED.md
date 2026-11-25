@@ -1265,9 +1265,8 @@ operators — making a more decentralized network one that fewer parties can arc
 deep past the property of whoever can afford terabytes.
 *Evidence:* unit → integration.
 
-**17. The economy mints nothing, and the core squeeze is measured.** ⏳ *unit and e2e green on four
-clauses and the measurement taken; owed: a multi-process false-claim slash, the integration tier,
-and an ECONOMY=1 field sheet*
+**17. The economy mints nothing, and the core squeeze is measured.** ⏳ *unit and e2e green on all
+four clauses and the measurement taken; owed: the integration tier and an ECONOMY=1 field sheet*
 Balance-lane credit
 never becomes consensus standing; a colluding pair strictly loses; repair is funded from the
 object's own escrow; a false claim is slashed. Plus core-node net margin at two edge
@@ -1293,7 +1292,7 @@ are fixed by the owner's decisions.
 | Balance-lane credit never becomes standing | True, unguarded: consensus could have imported the ledger. | Guarded. Consensus on the objective (default) path reads committed bonds only. | unit Invariant A; `TestConsensusNeverReadsTheCreditLedger`; e2e single-process settlements leave `Reputation` unmoved |
 | A colluding pair strictly loses | False twice: a copy of a never-lost shard drew the escrow; a relay wash broke even. | A bounty needs prior loss (the judge's sweep saw it, or nobody but the claimed holder serves it) and a bonded claimant; a relay settlement burns 1/8, so every wash loses. | `TestClaimWithNoLossIsDenied`, `TestUnbondedClaimantIsDenied`, `TestRelayWashLoopIsAStrictLoss`, `TestRelayBurnIsAtLeastOneCreditOnEverySettlement`, e2e `TestPaidRelaySessionEndToEnd` (ledger total strictly falls) |
 | Repair is funded from the object's own escrow | True. | Unchanged, now on an objective bonded network: four anchors, a bonded validator caretaker that claims, a non-voting follower judge that pays. | unit escrow tests; e2e `TestRepairBountyPaysOnTheWire` (the follower pays) |
-| A false claim is slashed | False in production: the "slash" lowered a local number consensus never read. | Claims are signed and name their leaf; a judge turns a claim its manifest refutes into a `chain.FalseRepairProof` and sends it to validators; the chain evicts the claimant on every replica. | `TestFalseRepairProofConvictsOnlyASignedFalseClaim`, `TestFalseClaimBecomesSlashEvidence`, `TestFalseRepairClaimIsSlashedOnChain` (in-process network) |
+| A false claim is slashed | False in production: the "slash" lowered a local number consensus never read. | Claims are signed and name their leaf; a judge turns a claim its manifest refutes into a `chain.FalseRepairProof` and sends it to validators; the chain evicts the claimant on every replica. | `TestFalseRepairProofConvictsOnlyASignedFalseClaim`, `TestFalseClaimBecomesSlashEvidence`, `TestFalseRepairClaimIsSlashedOnChain` (in-process network), e2e `TestFalseRepairClaimIsSlashedOverTCP` (a `-forge-repair-claim` caretaker's bond is evicted; the honest run's claimant keeps its bond) |
 
 *THE MEASUREMENT* (`TestCoreMarginAtTwoEdgePopulations`): four anchor validators, the same demand
 (four 768 KiB objects, each fetched three times), a 120 s window at the shipped 60 s bond-audit
@@ -1309,8 +1308,7 @@ does not squeeze it; it relieves it (+7.8 credits), because storage nodes take s
 validators. The deficit is the unpriced core work itself — consensus and bond audits, constant across
 both populations — which is the externality witness pricing is accepted to pay for.
 
-Owed before held: a multi-process e2e in which a false claim crosses TCP and the chain evicts its
-claimant; the integration tier; and an ECONOMY=1 field sheet of `flow_economy_repair`, which now uses a
+Owed before held: the integration tier; and an ECONOMY=1 field sheet of `flow_economy_repair`, which now uses a
 bonded validator as paramedic and relaunches the judge as a follower (`follow_args`). The
 `13b-delivery-settlement` skip is now attributed correctly: the receipt client holds no chain, and the
 settlement needs a chain-holding parent.
