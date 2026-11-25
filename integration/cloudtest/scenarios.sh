@@ -391,6 +391,53 @@ flow_publish_fetch() {
   slo_assert "2-publish-fetch" blocker "fetched from $fetchnode $([ "$ok" = 1 ] && echo 'bit-perfect' || echo "MISMATCH (want=$sha got=$got)")" "$ok" $((t1 - t0))
 }
 
+# ── Flow 20: the floor box's verdict counts ─────────────────────────────────────
+# A floor box holds no replica, no registry and no state tree; it judges the block
+# above an operator checkpoint against witnesses fetched from the validators and
+# reports the verdict a tree-holding node reaches. fetch-1 is relaunched as one,
+# anchored on val-a's current head and carrying the network's consensus flags
+# (topology meta follow_args, so it mints the same genesis); a publish lands a
+# block above the checkpoint; the box must print ACCEPTED for that height. A
+# REFUSED is a divergence from the full node (FAIL); a STALL is a box that could
+# not see (GAP, with its reason).
+# LOCAL_PROOF: go test ./e2e -run TestFloorBoxAcceptsTheNetworksNextBlockOverTCP -count=1
+flow_floor_box() {
+  local box="fetch-1"
+  require_nodes "20-floor-box" major "$box" val-a store-1 || return
+  require_live "20-floor-box" major "$box" val-a store-1 || return
+  flow_evidence_nodes "$box" val-a
+  local st h x follow_args anchors
+  st="$(ssh_node val-a "sudo /usr/local/bin/silt chain-status -store /var/lib/silt" 2>/dev/null || true)"
+  h="$(printf '%s' "$st" | awk '/head height/{print $3}' | tr -dc '0-9')"
+  x="$(printf '%s' "$st" | awk '/head hash/{print $3}' | tr -dc '0-9a-f')"
+  if [ -z "$h" ] || [ "${#x}" -ne 64 ]; then
+    record "20-floor-box" gap major "could not read val-a's head to build the checkpoint (chain-status said: $(printf '%s' "$st" | head -c 200))"
+    return
+  fi
+  follow_args="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta']['follow_args'])")"
+  anchors="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta']['anchors'])")"
+  local t0; t0="$(date +%s)"
+  relaunch_with "$box" "-floor-box -witness-from $anchors -ws-checkpoint $h:$x -floor-box-interval 5s $follow_args"
+  if ! waitfor_since "$box" "anchored on the operator's checkpoint $h:" "$t0" 60 >/dev/null; then
+    record "20-floor-box" gap major "the floor box on $box never anchored on $h:${x:0:16}… — $(jlog "$box" 40 | tail -5 | tr '\n' ' ' | head -c 400)"
+    restore_argv "$box"; return
+  fi
+  ft_publish store-1 65536 >/dev/null 2>&1 || true   # land a block above the checkpoint
+  local above=$((h + 1)) line
+  line="$(waitfor_since "$box" "floor-box: verdict=(ACCEPTED|REFUSED) height=$above " "$t0" 240 || true)"
+  local t1; t1="$(date +%s)"
+  local last; last="$(jlog "$box" 200 | grep -oE 'floor-box: verdict=[A-Z]+ height=[0-9]+.*' | tail -1 | head -c 300)"
+  restore_argv "$box"
+  case "$line" in
+    *verdict=ACCEPTED*)
+      slo_assert "20-floor-box" major "a floor box on $box (no replica, no tree) anchored on val-a's checkpoint $h:${x:0:16}… ACCEPTED height $above against witnesses from the validators — the full node's verdict, reached by proof" 1 $((t1 - t0)) ;;
+    *verdict=REFUSED*)
+      slo_assert "20-floor-box" major "the floor box REFUSED height $above, a block the network committed — its verdict diverges from the full node's: $line" 0 $((t1 - t0)) ;;
+    *)
+      record "20-floor-box" gap major "the floor box reached no verdict on height $above within 240s; last line: ${last:-none}" $((t1 - t0)) ;;
+  esac
+}
+
 # ── Flow 3: care link — repair/audit without decrypting ─────────────────────────
 # LOCAL_PROOF: go test ./e2e -run TestRepairBountyPaysOnTheWire -count=1 (captures the siltcare: link from a real publish)
 flow_care_link() {
@@ -3857,7 +3904,7 @@ run_all_scenarios() {
     adv_equivocation flow_equivocation_island adv_partition adv_proposal_reject
     flow_publisher_unlinkability flow_durability_turnover flow_chaos_crash
     flow_web_ui_guard flow_c2_no_capture flow_economy_repair flow_delivery_lane
-    flow_chain_takedown flow_validator_crash flow_unlinkability
+    flow_chain_takedown flow_validator_crash flow_unlinkability flow_floor_box
   )
   if [ "${RANDOMIZE:-1}" = 1 ]; then
     local seed="${SEED:-$RUN_ID}"

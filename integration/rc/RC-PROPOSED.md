@@ -1382,7 +1382,7 @@ never been driven is a gap directly under the mechanism the release leans on.
 | No node replaces its own binary | Held, structurally: no shipped code locates or execs its own binary. | source gate (`TestNoShippedCodeReplacesItsOwnBinary`) |
 | No version-floor advisory below the signing threshold changes anything | Vacuous. TENETS R4 says the mechanism "lives in the code"; it does not exist. Nothing enforces a floor, so nothing below a threshold can. | not built — **to be built after item 20** (owner decision, 2026-11-23): a threshold-signed version-floor advisory with criticality tiers, enforcement clocked on observing the signed advisory and recallable, so this clause is driven rather than vacuous |
 
-**20. The floor box's verdict counts, or it is disclosed that it does not.** ⚠ *SHIPS DISCLOSED — three preconditions closed, the anchor waits on the flip; the differential matches on every class but issuer-key registrations*
+**20. The floor box's verdict counts, or it is disclosed that it does not.** ⏳ *FLIPPED — every precondition closed, the differential exact; unit, model-check, e2e and the floor integration suite green; the field row is owed*
 *Done:* a validator on the floor spec returns the SAME verdict set as a tree-holding node —
 Accept for a block a full node accepts, Reject for one it refuses, a stall only where it
 genuinely cannot see — established from committed roots and witnesses alone.
@@ -1495,6 +1495,23 @@ one prunes whole epoch buckets of `issuerKeyCommit`, and the state tree carries 
 digest for a bucket (unlike the TTL sweep's `dueBucket`), so the box cannot prove what the delete
 removed. Closing it is a state-format change. Disabling the box's state-root recompute reddens the
 forged-root case and the pin.
+**— CLOSED, 2026-11-25 (no new era: there is no live chain, so v5 changed in place, by the
+owner's call).** The keyspace is now one leaf per epoch bucket plus an index of the epochs present,
+so every write a registration makes is a point the box derives and proves (class I,
+`floorbox_recompute_stateroot_issuerkey_v5.go`). The differential matches on all eighteen blocks.
+
+*THE FLIP, 2026-11-25.* `(*Box).Validate` returns the composition's verdict. Landed with it: the
+anchor rule (precondition 3) — the daemon refuses `-floor-box` without `-ws-checkpoint`, and the
+trust-on-first-use path is gone — and the box asking its providers to hold the pinned head while it
+waits (a provider keeps snapshots only for heads it was asked about, so without it the block above a
+checkpoint found no provider able to witness its pre-state). Evidence: unit (the differential, the
+cold auditor accepting what its witness covers and never a forged root); e2e
+`TestFloorBoxAcceptsTheNetworksNextBlockOverTCP` (a checkpointed box ACCEPTS the block committed
+above it; an unanchored box refuses to start; removing the pin hold makes it stall); the floor
+integration suite on local docker (`integration/floor/run.sh`, PASS: under a kernel-enforced
+2 GiB, the witness box accepted heights 25, 27 and 28 at fresh checkpoints, refused and stalled
+nothing; the no-provider control stalled and never accepted). Owed: the field row
+`20-floor-box`.
 
 *What the flip does NOT deliver on its own, stated so it is not read as more:* participation.
 Nothing adopts the verdict today — `AuditAbovePin` reports and returns, the daemon prints and
