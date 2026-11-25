@@ -92,6 +92,8 @@ func main() {
 		err = cmdGenesis(os.Args[2:])
 	case "swarm":
 		err = cmdSwarm(os.Args[2:])
+	case "advisory":
+		err = cmdAdvisory(os.Args[2:])
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 	default:

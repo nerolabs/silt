@@ -133,6 +133,7 @@ var nodeConfigDecls = map[string]nodeConfigDecl{
 
 	// ---- LOCAL: transport, discovery, repair and retention policy ----
 	"PublishWorkCounters":         {class: nodeClassLocal, why: "Gossip disclosure switch (-privacy). It governs what this node PUBLISHES about itself, never what it ACCEPTS from anyone."},
+	"AdvertiseRelease":            {class: nodeClassLocal, why: "The release this node stamps on its own messages. It governs what this node SAYS about itself, never what it ACCEPTS: no block-validity verdict reads a message's release. An enforced version floor reads the SENDER's release, which is that sender's own claim."},
 	"K":                           {class: nodeClassLocal, why: "Kademlia bucket size — routing-table shape. Discovery topology reaches no validity verdict."},
 	"Alpha":                       {class: nodeClassLocal, why: "Lookup parallelism; a performance knob on discovery."},
 	"RequestTimeout":              {class: nodeClassLocal, why: "Transport deadline. build-immutable #3/#4: transport deadlines are DELIBERATELY decoupled from every security bound, so hardening the network never moves a validity term."},

@@ -114,3 +114,11 @@ func (c *Chain) VersionFloor() (a advisory.Advisory, committedAt uint64, ok bool
 	}
 	return c.versionFloor.Advisory, c.versionFloor.CommittedAt, true
 }
+
+// AdvisoryAdmissible reports whether s would be admitted on the next witnessable block: signed to
+// the maintainers' threshold for this network, with a sequence above the one in force. It is what
+// a validator checks before queueing a submitted advisory for a block.
+func (c *Chain) AdvisoryAdmissible(s *advisory.Signed) error {
+	b := Block{Version: BlockVersionWitnessable, Advisory: s}
+	return c.validateVersionFloor(&b)
+}

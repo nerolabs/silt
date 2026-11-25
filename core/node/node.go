@@ -16,6 +16,7 @@ import (
 	"crypto/rsa"
 	"errors"
 	"fmt"
+	"github.com/nerolabs/silt/core/advisory"
 	"slices"
 
 	"github.com/nerolabs/silt/core/blindtoken"
@@ -46,6 +47,10 @@ type Config struct {
 	// So the flag that governs the reader governs the wire. cmd/silt sets this from
 	// -privacy; every other caller (tests, sim) gets the withholding default.
 	PublishWorkCounters bool
+	// AdvertiseRelease, when non-zero, is the release this node stamps on its messages instead
+	// of its build's (core/release.Number). It exists to drive a node that presents as an older
+	// release against a version floor; an operator has no reason to set it.
+	AdvertiseRelease uint32
 
 	K              int            // Kademlia bucket size
 	Alpha          int            // lookup parallelism
@@ -519,6 +524,9 @@ type Stats struct {
 	// FalseRepairReports counts signed false repair claims this judge turned into
 	// on-chain slash evidence and sent to the validators.
 	FalseRepairReports int
+	// FloorRefused counts consensus messages refused from nodes advertising a release below an
+	// enforced version floor (versionfloor.go).
+	FloorRefused int
 	// detector A4: repair bounties this judge paid to ITSELF, count and
 	// credits. claim.Holder is a field of an inbound, attacker-declared
 	// MsgRepairClaim and nothing refuses a claim naming the judge as the holder,
@@ -1084,6 +1092,13 @@ type Node struct {
 	// and has not yet recorded on-chain; proposeBlock drains them into Block.Slashes
 	// so every replica evicts the culprit from the objective set in lockstep (F2).
 	pendingSlashes []chain.Equivocation
+	// pendingAdvisory is the highest-sequence version-floor advisory submitted to this node and
+	// not yet recorded by the chain; floorNotedSeq, floorEnforceNoted and floorRefusedLogged keep
+	// the operator warnings to once each (versionfloor.go).
+	pendingAdvisory    *advisory.Signed
+	floorNotedSeq      uint64
+	floorEnforceNoted  bool
+	floorRefusedLogged map[ports.NodeID]bool
 	// pendingBondRegs are fresh bond renewals PEERS submitted
 	// (MsgSubmitBondReg) that this node will fold into the next block it
 	// proposes — the NON-PROPOSER renewal path (H2 /). Without it a validator
@@ -1683,6 +1698,7 @@ func (n *Node) send(to ports.NodeID, msg ports.Message) error {
 		}
 	}
 	msg.Domain = n.domainID
+	msg.Release = n.release()
 	msg.Ephemeral = n.ephemeral
 	if n.bond != nil {
 		msg.BondRoot, msg.BondSize = n.bond.Root, n.bond.Size
@@ -2073,6 +2089,10 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 		n.peerBonds[from] = bondInfo{root: msg.BondRoot, size: msg.BondSize}
 	}
 
+	if n.floorRefuses(msg) {
+		n.refuseBelowFloor(from, msg)
+		return
+	}
 	if msg.IsReply() {
 		p, ok := n.pending[msg.RID]
 		if !ok || p.to != from {
