@@ -35,8 +35,14 @@ type stateRootFixture struct {
 // EpochBlocks large so no boundary fires on the test heights.
 func buildStateRootFixture(t *testing.T) stateRootFixture {
 	t.Helper()
-	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
-		EpochBlocks: 1024, MatureValidators: 0, BondTTLBlocks: 64}
+	return buildStateRootFixtureWith(t, func(c Config) Config { return c })
+}
+
+// buildStateRootFixtureWith is buildStateRootFixture over a config the caller adjusts.
+func buildStateRootFixtureWith(t *testing.T, mod func(Config) Config) stateRootFixture {
+	t.Helper()
+	cfg := mod(Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
+		EpochBlocks: 1024, MatureValidators: 0, BondTTLBlocks: 64})
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
 

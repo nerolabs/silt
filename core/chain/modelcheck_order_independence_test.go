@@ -687,6 +687,15 @@ var orderVacuous = map[string]string{
 		"TestIssuerKeyFirstWriteWinsIsOrderIndependent (issuerkey_test.go). A covering fixture " +
 		"here would have to mint a v5 block and flip its IssuerKeys slice order.",
 
+	"versionFloor": "the version-floor advisory in force. Populated only by a block carrying an " +
+		"Advisory, which is v5-ONLY, so both orderings leave it empty. There is no within-block order " +
+		"to flip: a block carries at most one advisory. Across blocks, validity admits an advisory " +
+		"only with a sequence above the one in force, so every valid history commits advisories in " +
+		"ascending sequence and the record is the highest-sequence advisory with its committing " +
+		"height. The stale-replay refusal that makes this so is driven in " +
+		"TestAdvisoryBlockVerdictFollowsTheGenesisMaintainers and proven load-bearing by " +
+		"versionFloorProbe.",
+
 	"epochStart": "era-4 O-1 — the boundary height scalar. It is a pure function of height " +
 		"(h of the last rotation), not of event ORDER within a block, so two orderings of the " +
 		"same history reach the identical epochStart trivially; matureOrderings leaves it at a " +

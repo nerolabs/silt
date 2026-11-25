@@ -138,6 +138,13 @@ const (
 	tagIssuerKey       = "issuerKeyCommit\x00"
 	tagIssuerKeyEpochs = "issuerKeyEpochs\x00"
 
+	// versionFloor (v5 only): ONE scalar leaf, the version-floor advisory in force and the
+	// height that committed it (encodeVersionFloor; versionfloor.go). Emitted only once an
+	// advisory has been committed, so every root of a chain that never carried one is unchanged.
+	// PREFIX-SAFE: `versionFloor\x00` diverges from `validatorsSeen\x00` and
+	// `validatorsSeenRoot\x00` at byte 1 (`e` vs `a`), and no other tag starts with `v`.
+	tagVersionFloor = "versionFloor\x00"
+
 	// revLogSize (era-4 / v5 only) — freeze-manifest item 1, the SAFETY leaf. ONE
 	// scalar leaf whose value is EncodeUint64 of the revocation log's size AFTER this
 	// block's own appends. Certified 2026-09-07 (freeze manifest §4.1), settled the
@@ -214,7 +221,7 @@ var stateRootDigestTagsV5 = []string{
 // These are NOT in stateRootTags (the era-3 set), which keeps the v4 root byte-identical
 // to era-3.
 var stateRootTagsV5 = []string{
-	"qualified", "dueBucket", "epochStart", "era4LockedIn", "era4Height", "issuerKeyCommit",
+	"qualified", "dueBucket", "epochStart", "era4LockedIn", "era4Height", "issuerKeyCommit", "versionFloor",
 }
 
 // stateRootTags is the set of committedSet field names this file commits, used by
@@ -392,6 +399,11 @@ func (c *Chain) boundedLeavesV5() []statehash.Leaf {
 	}
 	if len(issuerEpochs) > 0 {
 		add(tagIssuerKeyEpochs, nil, encodeIssuerKeyEpochs(issuerEpochs))
+	}
+
+	// versionFloor: the advisory in force, once there is one (see tagVersionFloor).
+	if c.versionFloor != nil {
+		add(tagVersionFloor, nil, encodeVersionFloor(*c.versionFloor))
 	}
 
 	// era-4 activation scalars: one scalar leaf each (4d). Committed here as v5-only so a

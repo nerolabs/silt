@@ -1,6 +1,7 @@
 package genesis_test
 
 import (
+	"bytes"
 	"encoding/hex"
 	"reflect"
 	"testing"
@@ -122,6 +123,10 @@ func TestTheParamsCarryingGenesisHashIsPinned(t *testing.T) {
 	//	 width), so the manifesto's manifest chunk ID moves again.
 	//	 BOTH literals move, the same tell as the padding move:
 	//	 an ENTRY change, not a params change.
+	//	fb4d3a5b…1dfa -> 6925d5b9…eee3, 2026-11-25: the version-floor advisory: ConsensusParams gained
+	//	 Maintainers and MaintainerThreshold at cbor keys 19 and
+	//	 20, and representativeParams gained values for both.
+	//	 The paramless literal did NOT move: a params change.
 	//
 	// WHY IT IS PAID ONCE PER MOVE. Block.Hash covers Params and (*Chain).ChainID is
 	// blocks[0].Hash, so every field added here — and every byte of every Entry — re-mints
@@ -135,7 +140,7 @@ func TestTheParamsCarryingGenesisHashIsPinned(t *testing.T) {
 	// and a block-format change have different prices; all three of these are the first kind.
 	const (
 		wantParamless  = "c445f7e05700cd330c7b4936cb6d017c6f586049c80cc56790f0908e3b9037e5"
-		wantWithParams = "fb4d3a5bdb126452ec79915d3549b5d09a0b067a4effb90da33f37d6903e1dfa"
+		wantWithParams = "6925d5b97098f0db272d36f64565ba90565e31373abce467a864c3e65c9feee3"
 	)
 	p := representativeParams()
 	withParams, _, _, err := genesis.Build(memstore.New(), &p)
@@ -185,6 +190,8 @@ func representativeParams() chain.ConsensusParams {
 		// fixture would have moved if it were left at "" — which is precisely why the zero-value
 		// sweep above refuses a zero here. A value-equality pin is blind to any field its fixture
 		// leaves at zero, and a committed field nothing exercises is how an inert half ships green.
-		NetworkName: "the fixture network",
+		NetworkName:         "the fixture network",
+		Maintainers:         [][]byte{bytes.Repeat([]byte{0xa1}, 32), bytes.Repeat([]byte{0xb2}, 32)},
+		MaintainerThreshold: 2,
 	}
 }

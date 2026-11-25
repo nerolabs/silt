@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/nerolabs/silt/core/advisory"
 	"reflect"
 	"sort"
 	"strings"
@@ -187,6 +188,15 @@ func generateLeafDiffScenarios(t *testing.T) []leafDiffScenario {
 		}
 		out = append(out, leafDiffScenario{"issuer-key-add-and-prune", f.c, f.prevRoot, b,
 			f.withIssuerKeyLeaves(t, b, f.witnessForBoundary(t, b))})
+	}
+
+	// (2c) A version-floor advisory: the block writes the advisory leaf, absent before.
+	{
+		f := buildStateRootFixtureWith(t, withMaintainers)
+		b := f.nextERBlock()
+		b.Advisory = signedAdvisory(t, f.c.ChainID(), advisory.Advisory{Seq: 1, Floor: 2, Tier: advisory.TierNotice}, 0, 1)
+		out = append(out, leafDiffScenario{"version-floor-advisory", f.c, f.prevRoot, b,
+			f.withKeys(t, f.witnessForBlock(t, b), versionFloorReadKeys(b))})
 	}
 
 	// (3) Steady-state E/R block (no maturity change; already-latched chain).

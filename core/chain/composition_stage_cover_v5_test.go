@@ -43,7 +43,7 @@ import (
 // nodeStageFiles are the files the node's stage list is derived over arm A step 1. A stage
 // that moves to another file must be added here, or arm A reddens on the missing FuncDecl —
 // that is the intended failure.
-var nodeStageFiles = []string{"chain.go", "era3validity.go", "issuerkey.go", "carrier.go"}
+var nodeStageFiles = []string{"chain.go", "era3validity.go", "issuerkey.go", "carrier.go", "versionfloor.go"}
 
 // compositionFiles are the files the composition's calls are derived over. The composition index
 // is built over these PLUS nodeStageFiles, so the one DIRECT call into the node's files
@@ -376,8 +376,8 @@ func TestStageCover_ArmA_DerivedCallCover(t *testing.T) {
 	if !callsViewMethod(comp.decls["ValidateProposalV5"].Body, "CommittedRoots") {
 		t.Fatal("SOURCE GATE: arm A — ValidateProposalV5 does not call v.CommittedRoots(b): the substituted step is not wired")
 	}
-	if len(nodeStages) != 24 {
-		t.Fatalf("SOURCE GATE: arm A — nodeStages has %d rows; the rule table has 24", len(nodeStages))
+	if len(nodeStages) != 25 {
+		t.Fatalf("SOURCE GATE: arm A — nodeStages has %d rows; the rule table has 25", len(nodeStages))
 	}
 }
 
@@ -417,7 +417,7 @@ func callsViewMethod(body *ast.BlockStmt, method string) bool {
 // error-message tweak inside validateBondRegs and be turned off within a month; that
 // calibration is the, and its cost (an inline change INSIDE a called stage is unseen) is the
 // stated bound.
-const nodeAcceptPathDigest = "3c5a5d5eab3bf79b968472642b4cdfa2f7a130b4136e20b51654a18843670aa2"
+const nodeAcceptPathDigest = "e163e040ca7f6c893ee1e9dffbd7a000d50d9ebdbe22182dc312191a806739c8"
 
 // TestStageCover_ArmB_NodeBodyDigest is a CHANGE DETECTOR, not a cover proof.
 // Ablation: add `&& true` to the P5 clause chain in ValidateProposal ⇒ RED.
@@ -519,9 +519,11 @@ func TestStageCover_ArmC_ReverseCover(t *testing.T) {
 // production table carries no test pins, and the attribution the research asked for is
 // preserved because the gate names the rows.
 var nodeBodyDigests = map[string]string{
+	"admitAdvisory":              "fcf57befb907d0e6d87c85df06bfddfedd20d2bc325d1db2abb71c00141c8952",
+	"validateVersionFloor":       "6676aa0ede6c5f5ec26537cb5344e970f952ba4905a8fa5bce7d8d1438f19219",
 	"ValidateEntry":              "cef1d4028128af1a32fd2118fd9050e01bd9b02c04af8804ae272ea4691143cf",
 	"RequiredQuorum":             "c3a413ba707abae6cfdd40806fe5c195a79a2c4a7e4fa2939d8ee1cb92257454",
-	"ValidateProposal":           "738ec66e39b2ef23ac2ce02df76d98a07a0690259f974fea08ebc5f2edd0742a",
+	"ValidateProposal":           "f3a800b727f5e7898fad329377f31d6e7a1c6a414f046628f97e2f0862901038",
 	"attesterQualifiedAt":        "fd5de208dcecba70d1fcaf32172ef185c20b12020413ba7fff0ddd04fef3723f",
 	"collectQuorumSigs":          "c0b0a3aa3f475f6bcd0e7621b07d0005d575a21fadcc7e3f6aa457b0d634e603",
 	"effectiveEpochSet":          "8da6023fc1b8b0e5482b8f8c275ad9d93a7db8edf304750fdd15e6bfca4d292a",

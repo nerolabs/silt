@@ -2,6 +2,7 @@ package chain
 
 import (
 	"fmt"
+	"github.com/nerolabs/silt/core/advisory"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -175,6 +176,11 @@ var stateClass = map[string]struct {
 		"it, and the v5 marshaller commits it. INERT to consensus — no validity predicate, " +
 		"quorum, fork-choice rule, or floor-box recompute reads it; the only reader is the " +
 		"demand-lane redeemer, out of band. v5-only leaf (`tagIssuerKey`)."},
+	"versionFloor": {committedSet, "the version-floor advisory in force and the height that " +
+		"committed it (versionfloor.go). `apply` writes it, `adopt` swaps it, the dry-run clone " +
+		"copies it, and the v5 marshaller commits it once set. Its one reader is the advisory's own " +
+		"validity rule (the sequence must rise); node behaviour — warnings and, at the enforce tier, " +
+		"refusing consensus from old releases — reads it outside validity. v5-only leaf (`tagVersionFloor`)."},
 
 	// RE-DERIVED 2026-09-11. The load-bearing clause — "no quorum/validity predicate
 	// reads it" — HOLDS at source. The parenthetical that followed it, "its only reader
@@ -391,6 +397,7 @@ func populateCommitted(c *Chain) {
 	c.dueBucket = map[uint64]map[ports.NodeID]struct{}{43: {id: struct{}{}}}
 	// per-epoch demand-issuer key binding: epoch -> issuer -> fingerprint.
 	c.issuerKeyCommit = map[uint64]map[ports.NodeID]ports.Hash{2: {id: ports.Hash{0xAB}}}
+	c.versionFloor = &versionFloorState{Advisory: advisory.Advisory{Seq: 1, Floor: 2, Tier: advisory.TierNotice}, CommittedAt: 3}
 
 	rl := translog.New()
 	rl.Append(RevocationLeaf(RevOp, root, 5))

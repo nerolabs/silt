@@ -33,6 +33,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/nerolabs/silt/core/advisory"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -323,6 +324,13 @@ type Config struct {
 	// carries no omitempty on any field, and NetworkIdentity narrates the zero rather than
 	// rendering a blank.
 	NetworkName string
+
+	// Maintainers and MaintainerThreshold are who may declare a version-floor advisory
+	// (core/advisory): ed25519 public keys, and how many of them must sign. Genesis commits both,
+	// so every node honours the same signers. A threshold below 2 — or no keys — accepts no
+	// advisory at all: no single key may declare a floor (TENETS R4).
+	Maintainers         [][]byte
+	MaintainerThreshold int
 }
 
 // WSCheckpoint is a recent trusted (height, hash) a replica will not reorg before.
@@ -781,6 +789,10 @@ type Block struct {
 	// AppendGenesis fixtures byte-identical. That paramless path SURVIVING is a disclosed residual,
 	// not an oversight: only the daemon refuses to launch a new untrusted network without it.
 	Params *ConsensusParams `cbor:"20,keyasint,omitempty"`
+	// Advisory is a threshold-signed version-floor advisory (versionfloor.go), at most one per
+	// block. Witnessable blocks only; nil on every block that carries none, so omitempty keeps
+	// their encoding and hash unchanged.
+	Advisory *advisory.Signed `cbor:"21,keyasint,omitempty"`
 
 	// hashMemo caches Hash. A block's hashed content is immutable once minted
 	// (Sign computes the hash it signs) or decoded, but Hash re-marshaled the
@@ -1052,13 +1064,13 @@ func (b *Block) bodyHash() ports.Hash {
 		// sha256 of its content — so coverage of Answer/Slashes on v5 is TRANSITIVE through that
 		// rule, not direct. Mutating either makes the block INVALID rather than differently
 		// hashed, which is the property the era-aware runtime pin encodes.
-		unsigned = Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: v5PreimageBondRegs(b.BondRegs), Slashes: nil, SlashesDigest: b.SlashesDigest, Params: b.Params, StateRoot: b.StateRoot, LogRoot: b.LogRoot, IssuerKeys: b.IssuerKeys, LastCommit: b.LastCommit}
+		unsigned = Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: v5PreimageBondRegs(b.BondRegs), Slashes: nil, SlashesDigest: b.SlashesDigest, Params: b.Params, StateRoot: b.StateRoot, LogRoot: b.LogRoot, IssuerKeys: b.IssuerKeys, LastCommit: b.LastCommit, Advisory: b.Advisory}
 	} else {
 		// pre-v5: BYTE-IDENTICAL to before the digests landed. AnswerDigest and SlashesDigest are POINTERS and
 		// are nil on every pre-v5 block (validity refuses a pre-v5 block that carries either), so
 		// omitempty omits them and no committed v2/v4 hash moves. That is the frozen-format
 		// immutable, and TestCarrierHashDriftGuard's WITH-a-bond-reg cases are what hold it.
-		unsigned = Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: b.BondRegs, Slashes: b.Slashes, SlashesDigest: b.SlashesDigest, Params: b.Params, StateRoot: b.StateRoot, LogRoot: b.LogRoot, IssuerKeys: b.IssuerKeys, LastCommit: b.LastCommit}
+		unsigned = Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: b.BondRegs, Slashes: b.Slashes, SlashesDigest: b.SlashesDigest, Params: b.Params, StateRoot: b.StateRoot, LogRoot: b.LogRoot, IssuerKeys: b.IssuerKeys, LastCommit: b.LastCommit, Advisory: b.Advisory}
 	}
 	buf := hashBufPool.Get().(*bytes.Buffer)
 	buf.Reset()
@@ -1789,6 +1801,10 @@ type Chain struct {
 	// consensus — no validity predicate, quorum, fork-choice rule, or floor-box
 	// recompute reads it. See issuerkey.go.
 	issuerKeyCommit map[uint64]map[ports.NodeID]ports.Hash
+	// versionFloor is the version-floor advisory in force and the height that committed it, nil
+	// until one is (versionfloor.go). Committed as the v5-only leaf tagVersionFloor, emitted only
+	// when set, so no root of a chain without an advisory moves.
+	versionFloor *versionFloorState
 	// trustFloorOverride, when non-nil, pins the pruned-tolerance floor to the
 	// RECEIVING node's own anchor during a Reconcile replay, so the throwaway
 	// `tmp` replica trusts a payload-pruned block only strictly below the
@@ -3410,7 +3426,7 @@ func (c *Chain) ValidateProposal(b *Block) error {
 		return fmt.Errorf("%w: proposer %s has %d, needs %d",
 			ErrLowReputation, b.ProposerID(), c.rep(b.ProposerID()), c.cfg.MinProposerRep)
 	}
-	if len(b.Entries) == 0 && len(b.Revocations) == 0 && len(b.Unrevocations) == 0 && len(b.BondRegs) == 0 && len(b.Slashes) == 0 && len(b.IssuerKeys) == 0 {
+	if len(b.Entries) == 0 && len(b.Revocations) == 0 && len(b.Unrevocations) == 0 && len(b.BondRegs) == 0 && len(b.Slashes) == 0 && len(b.IssuerKeys) == 0 && b.Advisory == nil {
 		return errors.New("chain: empty block")
 	}
 	if err := c.validateTakedowns(b); err != nil {
@@ -3423,6 +3439,9 @@ func (c *Chain) ValidateProposal(b *Block) error {
 		return err
 	}
 	if err := c.validateIssuerKeys(b); err != nil {
+		return err
+	}
+	if err := c.validateVersionFloor(b); err != nil {
 		return err
 	}
 	seen := make(map[ports.Hash]bool)
@@ -4027,7 +4046,7 @@ func (c *Chain) validateStructural(b *Block) error {
 	if !ed25519.Verify(ed25519.PublicKey(b.Proposer), h[:], b.ProposerSig) {
 		return fmt.Errorf("%w: proposer", ErrBadSignature)
 	}
-	if len(b.Entries) == 0 && len(b.Revocations) == 0 && len(b.Unrevocations) == 0 && len(b.BondRegs) == 0 && len(b.Slashes) == 0 && len(b.IssuerKeys) == 0 {
+	if len(b.Entries) == 0 && len(b.Revocations) == 0 && len(b.Unrevocations) == 0 && len(b.BondRegs) == 0 && len(b.Slashes) == 0 && len(b.IssuerKeys) == 0 && b.Advisory == nil {
 		return errors.New("chain: empty block")
 	}
 	if err := c.validateTakedowns(b); err != nil {
@@ -4037,6 +4056,9 @@ func (c *Chain) validateStructural(b *Block) error {
 		return err
 	}
 	if err := c.validateIssuerKeys(b); err != nil {
+		return err
+	}
+	if err := c.validateVersionFloor(b); err != nil {
 		return err
 	}
 	seen := make(map[ports.NodeID]bool)
@@ -4116,6 +4138,9 @@ func (c *Chain) AppendGenesis(b Block) error {
 	// this door is open where the Revocations/Slashes doors are shut.
 	if err := c.validateGenesisIssuerKeys(&b); err != nil {
 		return err
+	}
+	if b.Advisory != nil {
+		return ErrAdvisoryAtGenesis
 	}
 	// The same door, for the STRONGER lever. AppendGenesis skips
 	// validateSlashes, and apply unconditionally evicts every Slashes culprit
@@ -4325,6 +4350,9 @@ func (c *Chain) apply(b Block) {
 	// keyspace, which no validity predicate, quorum, or fork-choice rule reads
 	// (issuerkey.go).
 	c.applyIssuerKeys(b)
+	// record this block's version-floor advisory as the one in force (versionfloor.go). Writes
+	// only the versionFloor leaf, which only the advisory's own validity rule reads.
+	c.applyVersionFloor(b)
 	// Track distinct qualified validators for the maturity metric — a
 	// monotonic, chain-internal, auditable measure of decentralization.
 	//
@@ -4928,6 +4956,8 @@ func (c *Chain) adopt(t *Chain) {
 	// adopted truth. A forgotten swap here reddens
 	// TestAdoptCopiesEveryCommittedField.
 	c.issuerKeyCommit = t.issuerKeyCommit
+	// The advisory in force is derived state like everything above.
+	c.versionFloor = t.versionFloor
 }
 
 // LookupRoot returns the committed entry for root, without its publish token.

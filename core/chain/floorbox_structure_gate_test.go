@@ -46,10 +46,10 @@ func buildStructFixture(t *testing.T) structFixture {
 		keys[i] = key(int64(77000 + i))
 		anchors[idOf(keys[i])] = true
 	}
-	c := New(Config{
+	c := New(withMaintainers(Config{
 		Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true,
 		Anchors: anchors, AnchorQuorum: 1, MatureValidators: 0,
-	}, func(ports.NodeID) int64 { return 0 })
+	}), func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
 
 	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}

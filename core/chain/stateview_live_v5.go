@@ -174,6 +174,13 @@ func (v liveView) BondDomain(id ports.NodeID) (uint64, Availability) {
 
 // ---- class 2: scalars, in their committed leaf encoding ----
 
+func (v liveView) VersionFloor() ([]byte, Availability) {
+	if v.c.versionFloor == nil {
+		return nil, ProvenAbsent
+	}
+	return encodeVersionFloor(*v.c.versionFloor), Present
+}
+
 func (v liveView) Scalar(tag string) ([]byte, Availability) {
 	switch tag {
 	case tagEverMature:
