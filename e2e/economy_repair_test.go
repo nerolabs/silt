@@ -103,7 +103,7 @@ func TestEconomyFollowerNeedsTheNetworksConsensusFlags(t *testing.T) {
 
 	b := startDaemon(t, "economy-floor-box",
 		"-listen", "127.0.0.1:0", "-store", t.TempDir(), "-economy", "-floor-box",
-		"-witness-from", strings.Repeat("ab", 32), "-ws-checkpoint", "1:" + strings.Repeat("cd", 32),
+		"-witness-from", strings.Repeat("ab", 32), "-ws-checkpoint", "1:"+strings.Repeat("cd", 32),
 		"-capacity", "1G", "-mdns=false", "-id-seed", "9303")
 	b.waitFor(t, regexp.MustCompile(`-economy and -floor-box are incompatible`), 20*time.Second)
 }
