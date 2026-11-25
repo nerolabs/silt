@@ -136,7 +136,7 @@ func TestWitnessProviderDrivesTheDoorLikeTheDouble(t *testing.T) {
 	// Through the double: the honest block runs the whole composition and lands on the
 	// documented downgrade. This is the vacuity guard for the arm below — if the double
 	// stopped reaching the downgrade, comparing against it would prove nothing.
-	assertBoxReachesTheDowngrade(t, boxOver(t, f, double), b, w)
+	assertBoxAccepts(t, boxOver(t, f, double), b, w)
 
 	// Through the production provider: the same outcome, by the same name.
 	outProd, errProd := boxOver(t, f, prod).Validate(b, w)

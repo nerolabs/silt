@@ -176,6 +176,7 @@ services:
       - -store=/data
       - -floor-box
       - -witness-from=${PROVIDERS:-unset}
+      - -ws-checkpoint=${WS_CHECKPOINT-}
       - -floor-box-interval=5s
       - -min-bond=1M
       - -mature-validators=99

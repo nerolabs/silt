@@ -49,7 +49,7 @@ func boxDoorFiles(t *testing.T) []string {
 // and asserts they are exactly exportedBoxDoors. Ablation: declare a tenth exported *Chain
 // method in any floorbox_*.go ⇒ RED.
 // SOURCE GATE: an AST inventory of FuncDecls. RUNTIME GATE: TestWitnessReadSetV5_LegacyFence (the
-// producer's fence) and TestBoxDoor_HonestBlockReachesTheDowngrade (the one real door).
+// producer's fence) and TestBoxDoor_HonestBlockIsAccepted (the one real door).
 func TestExportedBoxDoorInventory(t *testing.T) {
 	fset := token.NewFileSet()
 	var got []string
@@ -95,10 +95,10 @@ func TestWitnessReadSetV5_LegacyFence(t *testing.T) {
 // them DIRECTLY: a gate whose refusal arm is green while its twin fails is refusing for the wrong
 // reason, and a box that stalls on everything satisfies box.Accept ⇒ node.Accept trivially.
 var twinHelpers = map[string]string{
-	"assertHonestTwinAgrees":       "the carrier gates: the box agrees with the node on the honest block, warm and cold",
-	"assertHonestTwinAccepts":      "the structure gates: the node and the composition over liveView Accept the honest block",
-	"assertBoxReachesTheDowngrade": "the door gates and the D0 cold-auditor arms: the honest block runs the composition through the box to the downgrade",
-	"requireV5Fixture":             "the stage-cover arms: arm D, which calls assertHonestTwinAccepts",
+	"assertHonestTwinAgrees":  "the carrier gates: the box agrees with the node on the honest block, warm and cold",
+	"assertHonestTwinAccepts": "the structure gates: the node and the composition over liveView Accept the honest block",
+	"assertBoxAccepts":        "the door gates and the D0 cold-auditor arms: the honest block runs the composition through the box to the downgrade",
+	"requireV5Fixture":        "the stage-cover arms: arm D, which calls assertHonestTwinAccepts",
 }
 
 // twinGateFiles are the gate files under the rule.
@@ -249,7 +249,7 @@ var exportedPackageSurface = map[string]string{
 // a reason on every entry. It also asserts StateView carries its unexported seal method. Ablation:
 // declare `func ExportedAblationDoor` in validate_v5.go ⇒ RED naming it; delete sealedStateView
 // from the interface ⇒ RED. SOURCE GATE: an AST inventory of exported declarations. RUNTIME GATE:
-// TestBoxDoor_HonestBlockReachesTheDowngrade (the one door, driven to its downgrade) and
+// TestBoxDoor_HonestBlockIsAccepted (the one door, driven to its downgrade) and
 // TestBothNodeEntryPointsDispatchToTheComposition (the two sealed callers of the composition).
 func TestExportedPackageSurfaceInventory(t *testing.T) {
 	var files []string

@@ -214,23 +214,22 @@ func boxOver(t *testing.T, f structFixture, src WitnessSource) *Box {
 	return box
 }
 
-// assertBoxReachesTheDowngrade is the door's HONEST TWIN: the honest block runs the whole
-// composition through the box, over genuine witnesses, up to the downgrade. It proves the door can
-// reach the far end — a door that stalled on everything would pass every refusal gate below for the
-// wrong reason.
-func assertBoxReachesTheDowngrade(t *testing.T, box *Box, b Block, w StateRootWitness) {
+// assertBoxAccepts is the door's HONEST TWIN: the honest block runs the whole composition through
+// the box, over genuine witnesses, to Accept. It proves the door can reach the far end — a door
+// that stalled on everything would pass every refusal gate below for the wrong reason.
+func assertBoxAccepts(t *testing.T, box *Box, b Block, w StateRootWitness) {
 	t.Helper()
 	out, err := box.Validate(b, w)
-	if out != IndeterminateTrustlessly || !errors.Is(err, ErrRecomputeGated) {
-		t.Fatalf("NON-VACUITY BROKEN: the honest block must run the composition through the door to the  "+
-			"downgrade (IndeterminateTrustlessly / ErrRecomputeGated); got %s / %v", out, err)
+	if out != Accept || err != nil {
+		t.Fatalf("NON-VACUITY BROKEN: the honest block must run the composition through the door to "+
+			"Accept; got %s / %v", out, err)
 	}
 }
 
-// TestBoxDoor_HonestBlockReachesTheDowngrade drives the whole v5 path through the box: P1 over the
+// TestBoxDoor_HonestBlockIsAccepted drives the whole v5 path through the box: P1 over the
 // derived head, every class-2 read Resolved through the prover source, P13a through the recompute
 // with the box-owned parent proposer, the two quorum stacks, then the one-line downgrade.
-func TestBoxDoor_HonestBlockReachesTheDowngrade(t *testing.T) {
+func TestBoxDoor_HonestBlockIsAccepted(t *testing.T) {
 	f := buildStructFixture(t)
 	src := newProverSource(t, f.c)
 	box := boxOver(t, f, src)
@@ -238,7 +237,7 @@ func TestBoxDoor_HonestBlockReachesTheDowngrade(t *testing.T) {
 	if err := f.c.ValidateCommit(&b); err != nil {
 		t.Fatalf("oracle: %v", err)
 	}
-	assertBoxReachesTheDowngrade(t, box, b, structWitnessFor(t, f, src, b))
+	assertBoxAccepts(t, box, b, structWitnessFor(t, f, src, b))
 	// The downgrade is the ONLY thing between the door and Accept: with no source the same block
 	// stalls at its first committed read, by name — never-Accept is earned twice.
 	blind := boxOver(t, f, nil)
@@ -253,7 +252,7 @@ func TestNewBox_RefusesWhatItCannotOwn(t *testing.T) {
 	parent := f.c.Blocks(1)[0]
 	src := newProverSource(t, f.c)
 	honest := f.mkBlock(t, nil)
-	assertBoxReachesTheDowngrade(t, boxOver(t, f, src), honest, structWitnessFor(t, f, src, honest))
+	assertBoxAccepts(t, boxOver(t, f, src), honest, structWitnessFor(t, f, src, honest))
 	// at the box: an unset budget is refused at construction; ∞ is not expressible.
 	if _, err := NewBox(f.c, parent, BoxConfig{}, nil); !errors.Is(err, ErrBudgetNotPositive) {
 		t.Fatalf("NewBox with an unset BudgetBytes must REFUSE (ErrBudgetNotPositive); got %v", err)
@@ -305,7 +304,7 @@ func TestParentBindingPrecedesTheCarrierLeg(t *testing.T) {
 	src := newProverSource(t, f.c)
 	box := boxOver(t, f, src)
 	honest := f.mkBlock(t, nil)
-	assertBoxReachesTheDowngrade(t, box, honest, structWitnessFor(t, f, src, honest))
+	assertBoxAccepts(t, box, honest, structWitnessFor(t, f, src, honest))
 
 	// Arm 1: the stale valid replay.
 	stale := f.c.Blocks(1)[0]
@@ -362,7 +361,7 @@ func TestBoxBudgetCoversTheWitness(t *testing.T) {
 		t.Fatal("fixture VACUOUS: the honest witness measures 0 bytes")
 	}
 	frame := len(Encode(&b))
-	assertBoxReachesTheDowngrade(t, boxOver(t, f, src), b, w)
+	assertBoxAccepts(t, boxOver(t, f, src), b, w)
 	garbage := b
 	garbage.hashMemoSet = false
 	garbage.ProposerSig = make([]byte, ed25519.SignatureSize)

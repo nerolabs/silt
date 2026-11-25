@@ -297,7 +297,7 @@ type StateView interface {
 	// can declare, so the only views that can drive the exported composition are liveView (the
 	// node) and provenView (the box). Without it, an out-of-package caller could implement
 	// StateView, answer Accept from CommittedRoots, and take Accept out of ValidateCommitV5
-	// with no (*Box).Validate downgrade in front of it — a second door opened by the same
+	// with none of the box door's own checks in front of it — a second door opened by the same
 	// round that closed nine. The inventory gate (TestExportedPackageSurfaceInventory) lists
 	// every exported entry of the box files with the reason each is permitted.
 	sealedStateView()

@@ -39,15 +39,19 @@ import (
 // this round does not take; what this round closes is that everything downstream of the parent is
 // bound to it by the box, not by the driver.
 //
-// THE DOOR NEVER RETURNS Accept — AND THAT IS A PROPERTY OF (*Box).Validate, NOT OF THE
-// COMPOSITION. ValidateCommitV5 over provenView DOES return Accept for an honest block with
-// genuine witnesses (TestBoxDoor_HonestBlockReachesTheDowngrade drives it there); the one-line
-// downgrade in Validate — Accept ⇒ IndeterminateTrustlessly / ErrRecomputeGated — is the ONLY
-// thing between the door and Accept, because flipping the box to Accept is, a consensus-rule
-// change (I1)and research-gated, and not this round. One line, so the flip is one line to remove
-// and reviewed on its own. Belt: a nil source stalls at the first class-2 read. What keeps the
-// composition from being a SECOND door around this downgrade is that StateView is SEALED
+// THE DOOR RETURNS THE COMPOSITION'S VERDICT. ValidateCommitV5 over provenView with genuine
+// witnesses Accepts exactly the blocks the full node accepts over liveView and Rejects exactly the
+// ones it refuses (TestFloorBoxAndFullNodeReturnTheSameVerdicts, over the production witness
+// provider); where the box cannot see — no source, an unverifiable witness — it stalls and never
+// accepts. That equivalence is what lets the verdict count, and the door used to withhold it: a
+// one-line downgrade turned Accept into IndeterminateTrustlessly until it was demonstrated.
+// What keeps the composition from being a SECOND door is that StateView is SEALED
 // (stateview_v5.go): only liveView and provenView can drive ValidateCommitV5.
+//
+// A verdict is not participation. The box adopts nothing it judges and advances no head; an
+// ACCEPTING box is anchored on an operator checkpoint (the daemon refuses -floor-box without
+// -ws-checkpoint), because a box that accepted on a provider's reported head would inherit that
+// provider's choice of history.
 
 var (
 	// ErrBoxLegacyMode is NewBox's refusal of a chain in the LEGACY (non-objective) regime, or
@@ -193,7 +197,7 @@ func (s *Box) view() provenView {
 // 3. a pruned block stalls (ErrPrunedBlockUnreproducible);
 // 4. ValidateCommitV5: P1 binds (b.Prev, b.Height) to the box's OWN head FIRST — so the carrier
 // leg (P12) and the class-A fold (P13a) run over a parent the box chose, not the author;
-// 5. the downgrade: Accept ⇒ IndeterminateTrustlessly / ErrRecomputeGated.
+// 5. the composition's verdict, returned as it is.
 func (s *Box) Validate(b Block, w StateRootWitness) (FloorBoxOutcome, error) {
 	if err := s.budget.Check(len(Encode(&b))+witnessBytes(w), "frame+witness"); err != nil {
 		return IndeterminateTrustlessly, err
@@ -233,11 +237,7 @@ func (s *Box) Validate(b Block, w StateRootWitness) (FloorBoxOutcome, error) {
 		// CommittedRoots has already rejected a nil blk.StateRoot and stalled on a nil head root.
 		return s.c.recomputeStateRootEntriesRevocations(*head.StateRoot, *blk.StateRoot, *blk, w, head.ProposerID, head.ChainID)
 	}
-	out, err := ValidateCommitV5(v, &b)
-	if out == Accept {
-		return IndeterminateTrustlessly, ErrRecomputeGated // the flip is not this round
-	}
-	return out, err
+	return ValidateCommitV5(v, &b)
 }
 
 // witnessBytes measures a witness bundle STRUCTURALLY — every byte slice, hash, id and scalar

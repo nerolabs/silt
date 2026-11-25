@@ -225,7 +225,7 @@ type StateRootWitness struct {
 // composition's P13a. A direct caller would be a second door with no P1 in front of it.
 //
 // It reads EpochBlocks / epochsEnabled / BondTTLBlocks from the box's OWN cfg for the scope gate — never from the witness.
-// This does NOT flip the box to Accept (the STOP boundary is the downgrade in (*Box).Validate).
+// Its result is one conjunct of the composition, whose verdict the door returns ((*Box).Validate).
 func (c *Chain) recomputeStateRootEntriesRevocations(
 	prevStateRoot ports.Hash,
 	committedStateRoot ports.Hash,

@@ -57,7 +57,7 @@ func TestBundleTakesTheHonestBlockThroughTheDoor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the provider could not build a bundle for an honest block on its own chain: %v", err)
 	}
-	assertBoxReachesTheDowngrade(t, boxOver(t, f, prov), b, w)
+	assertBoxAccepts(t, boxOver(t, f, prov), b, w)
 }
 
 // TestBundleIsNotTrusted: the three ways a provider can lie about the bundle, each required to
@@ -74,7 +74,7 @@ func TestBundleIsNotTrusted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bundle: %v", err)
 	}
-	assertBoxReachesTheDowngrade(t, boxOver(t, f, prov), honest, honestW)
+	assertBoxAccepts(t, boxOver(t, f, prov), honest, honestW)
 
 	// The lies are aimed at a leaf the box DERIVES from the payload — the entry's byRoot leaf —
 	// because the bundle deliberately over-supplies, and a lie planted on a key the box never asks
@@ -156,7 +156,7 @@ func TestBundleOverSupplyIsIgnored(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bundle: %v", err)
 	}
-	assertBoxReachesTheDowngrade(t, boxOver(t, f, prov), b, w)
+	assertBoxAccepts(t, boxOver(t, f, prov), b, w)
 
 	// This block touches no whole-set digest, so every digest pre-image in the bundle is
 	// over-supply. Inject a member into all five: the verdict must not move.
@@ -170,7 +170,7 @@ func TestBundleOverSupplyIsIgnored(t *testing.T) {
 		dup[i].PreIDs = append(append([]ports.NodeID(nil), dup[i].PreIDs...), stranger)
 	}
 	w.DigestPreSets = dup
-	assertBoxReachesTheDowngrade(t, boxOver(t, f, prov), b, w)
+	assertBoxAccepts(t, boxOver(t, f, prov), b, w)
 }
 
 // TestBundleServesAYoungChainsMaturityWitness. On a chain that has not latched maturity the box
@@ -212,7 +212,7 @@ func TestBundleServesAYoungChainsMaturityWitness(t *testing.T) {
 	if yw.Maturity == nil || len(yw.Maturity.SeenSet.IDs) == 0 || len(yw.Maturity.SeenSet.Members) == 0 {
 		t.Fatal("a young chain's class-M witness must carry the validatorsSeen set and one proof per member")
 	}
-	assertBoxReachesTheDowngrade(t, boxOver(t, young, yp), b, yw)
+	assertBoxAccepts(t, boxOver(t, young, yp), b, yw)
 
 	// And it is not trusted either: a member dropped from the set no longer reconstructs the
 	// committed digest, so the box stalls rather than folding a short set.
@@ -313,7 +313,7 @@ func TestBundleWireCarriesTheWholeBundle(t *testing.T) {
 			len(back.Maturity.SeenSet.Members), len(w.Maturity.SeenSet.Members))
 	}
 	// The property that matters: the DECODED bundle judges the block exactly as the sent one does.
-	assertBoxReachesTheDowngrade(t, boxOver(t, f, prov), b, back)
+	assertBoxAccepts(t, boxOver(t, f, prov), b, back)
 
 	// A bundle whose own fields disagree is refused rather than served short: a member set that
 	// names an id it carries no witness for would stall the box for a reason it would attribute to

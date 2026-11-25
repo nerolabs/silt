@@ -150,7 +150,7 @@ type QualifiedCountWitness struct {
 // map is anchored on the committed bondedRoot (set-completeness), with each member's bonded weight
 // and slashed bit proven per-member against the committed StateRoot.
 //
-// This does NOT flip the box to Accept (the STOP boundary is the downgrade in (*Box).Validate): it reproduces ONE predicate.
+// Its result is one conjunct of the composition, whose verdict the door returns ((*Box).Validate): it reproduces ONE predicate.
 func (c *Chain) recomputeQualifiedCount(
 	committedStateRoot ports.Hash,
 	w QualifiedCountWitness,

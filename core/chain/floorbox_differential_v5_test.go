@@ -2,7 +2,6 @@ package chain
 
 import (
 	"crypto/ed25519"
-	"errors"
 	"testing"
 
 	"github.com/nerolabs/silt/core/manifest"
@@ -16,11 +15,8 @@ import (
 // the two verdict sets must be identical. "Same security as a tree-holding node" is then a
 // measured equivalence over this corpus, not an assertion.
 //
-// The box's door ends in the gated downgrade (Accept ⇒ IndeterminateTrustlessly /
-// ErrRecomputeGated). That pair is read here as Accept, because it is reached only when the
-// composition accepted; every other IndeterminateTrustlessly is a STALL, and with an honest
-// prover-backed source serving every read a stall means the box could not see what the node saw,
-// which fails the differential.
+// The box's verdict is taken as its door returns it. With an honest prover-backed source serving
+// every read, a stall means the box could not see what the node saw, which fails the differential.
 //
 // The corpus is honest blocks of each payload class the fixture can commit (entries, revocations,
 // un-revocations, bond registrations, false-repair slashes, issuer-key registrations), and blocks
@@ -177,9 +173,6 @@ func TestFloorBoxAndFullNodeReturnTheSameVerdicts(t *testing.T) {
 				w = StateRootWitness{}
 			}
 			bo, berr := box.Validate(b, w)
-			if bo == IndeterminateTrustlessly && errors.Is(berr, ErrRecomputeGated) {
-				bo = Accept // the gated downgrade: the composition accepted
-			}
 			if bo != node {
 				t.Fatalf("DIVERGENCE: the full node says %s (%v), the floor box says %s (%v)", node, nerr, bo, berr)
 			}
