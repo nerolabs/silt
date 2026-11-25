@@ -33,13 +33,10 @@ import (
 // about the transport. So this fixture drives the node's OWN consensus path until a v5 block
 // carrying a real StateRoot is committed, and the gates assert that before anything else.
 //
-// WHAT THE GREEN VERDICT IS. It is the DOWNGRADE — IndeterminateTrustlessly /
-// ErrRecomputeGated — not Accept. (*chain.Box).Validate maps Accept to that one line deliberately
-// (floorbox_box_v5.go): flipping it is a consensus-rule change and is not this seam's to make.
-// Reaching the downgrade means the whole composition ran to a verdict of Accept over witnesses
-// and was downgraded at the door — which is exactly "validates against witnesses". The forged
-// twin in each gate is what keeps that reading honest: a box that stalled on everything would
-// reach the downgrade on nothing.
+// WHAT THE GREEN VERDICT IS. It is ACCEPT: the whole composition ran over witnesses fetched across
+// the wire and reached the verdict a tree-holding node reaches — which is exactly "validates
+// against witnesses". The forged twin in each gate is what keeps that reading honest: a box that
+// accepted everything would accept the forged twin too.
 
 // witnessableValidators builds a swarm whose genesis declares era-4 live from height 1, drives its
 // own consensus path to a committed v5 block, and returns a serving validator, a floor box that
@@ -241,8 +238,8 @@ func (s witnessableSwarm) judge(t *testing.T, b chain.Block, peers []ports.NodeI
 // transport from a node that does.
 //
 // Ablation: make (*WitnessProvider).Bundle omit one changed leaf, or make serveWitness answer
-// OK=false for the leaf reads, and this gate goes red — the box stalls instead of reaching the
-// downgrade. The forged arm below is the standing proof that the green arm is not a stall in
+// OK=false for the leaf reads, and this gate goes red — the box stalls instead of accepting. The
+// forged arm below is the standing proof that the green arm is not a stall in
 // disguise.
 func TestFloorBoxValidatesOverTheWireWithoutHoldingTheTree(t *testing.T) {
 	s := witnessableValidators(t)
@@ -252,21 +249,21 @@ func TestFloorBoxValidatesOverTheWireWithoutHoldingTheTree(t *testing.T) {
 		t.Fatal("NOT A TRANSPORT GATE: no witness request crossed the wire, so whatever the box read, it " +
 			"did not read it from the serving node")
 	}
-	if out != chain.IndeterminateTrustlessly || !errors.Is(err, chain.ErrRecomputeGated) {
+	if out != chain.Accept || err != nil {
 		t.Fatalf("the floor box did NOT validate against witnesses: it must run the composition to the "+
-			"door's downgrade (IndeterminateTrustlessly / ErrRecomputeGated), which is the verdict Accept "+
+			"verdict ACCEPT the full node reaches for it "+
 			"is mapped to; got %s / %v after %d witness request(s)", out, err, wire)
 	}
 
 	// THE FORGED TWIN. Same box, same providers, same transport — a block whose committed StateRoot
-	// has been moved. It must NOT reach the downgrade. Without this arm, "reached the downgrade"
-	// and "stalled on everything" would be indistinguishable outcomes of a gate that reads only the
-	// honest block.
+	// has been moved. It must NOT be accepted. Without this arm, "accepted the honest block" and
+	// "accepts everything" would be indistinguishable outcomes of a gate that reads only the honest
+	// block.
 	forged := s.cand
 	moved := ports.HashBytes([]byte("a state root the block did not commit"))
 	forged.StateRoot = &moved
-	if _, fErr, _ := s.judge(t, forged, []ports.NodeID{s.server.ID()}); errors.Is(fErr, chain.ErrRecomputeGated) {
-		t.Fatal("VACUITY BROKEN: the box reached the DOWNGRADE on a block whose committed StateRoot was " +
+	if fOut, _, _ := s.judge(t, forged, []ports.NodeID{s.server.ID()}); fOut == chain.Accept {
+		t.Fatal("VACUITY BROKEN: the box ACCEPTED a block whose committed StateRoot was " +
 			"moved — it is not reproducing the transition at all, and the honest arm above is green for " +
 			"the wrong reason")
 	}
@@ -301,8 +298,8 @@ func TestFloorBoxStallsWhenNoProviderIsReachable(t *testing.T) {
 	}
 
 	// VACUITY GUARD. The stall above must be the PROVIDER's absence and not a box that stalls on
-	// everything: the same box, the same block, one reachable provider, reaches the downgrade.
-	if out, err, _ := s.judge(t, s.cand, []ports.NodeID{s.server.ID()}); !errors.Is(err, chain.ErrRecomputeGated) {
+	// everything: the same box, the same block, one reachable provider, reaches ACCEPT.
+	if out, err, _ := s.judge(t, s.cand, []ports.NodeID{s.server.ID()}); out != chain.Accept {
 		t.Fatalf("VACUITY BROKEN: this box does not reach a verdict even with a live provider (%s / %v), "+
 			"so the stall above is evidence about the box, not about the missing provider", out, err)
 	}
@@ -321,7 +318,7 @@ func TestFloorBoxFailsOverToASecondProvider(t *testing.T) {
 
 	// The second validator is an ordinary peer with no relationship to the box: it serves because
 	// it holds the tree, not because it was designated.
-	if out, err, _ := s.judge(t, s.cand, []ports.NodeID{ghost, s.second.ID()}); !errors.Is(err, chain.ErrRecomputeGated) {
+	if out, err, _ := s.judge(t, s.cand, []ports.NodeID{ghost, s.second.ID()}); out != chain.Accept {
 		t.Fatalf("the box did not walk past a dead provider to a live one — liveness rests on a single "+
 			"provider, the choke the open multi-provider tier exists to prevent; got %s / %v", out, err)
 	}
@@ -341,7 +338,7 @@ func TestFloorBoxFinishesAtTheHeadItAnchoredOn(t *testing.T) {
 
 	// One full validation at the head the box anchored on, so the serving node has built and
 	// cached a provider over it.
-	if _, err, _ := s.judge(t, s.cand, []ports.NodeID{s.server.ID()}); !errors.Is(err, chain.ErrRecomputeGated) {
+	if out, err, _ := s.judge(t, s.cand, []ports.NodeID{s.server.ID()}); out != chain.Accept {
 		t.Fatalf("CONTROL BROKEN: the box does not reach a verdict at the undisturbed head: %v", err)
 	}
 
@@ -364,7 +361,7 @@ func TestFloorBoxFinishesAtTheHeadItAnchoredOn(t *testing.T) {
 	s.sched.Run()
 
 	// The box's validation, re-run against the head it anchored on. It must still complete.
-	if out, err, _ := s.judge(t, s.cand, []ports.NodeID{s.server.ID()}); !errors.Is(err, chain.ErrRecomputeGated) {
+	if out, err, _ := s.judge(t, s.cand, []ports.NodeID{s.server.ID()}); out != chain.Accept {
 		t.Fatalf("the box could not finish at the head it anchored on once the serving node had moved "+
 			"past it — a box on a live chain would re-anchor and race forever; got %s / %v", out, err)
 	}
@@ -390,9 +387,8 @@ func (s witnessableSwarm) commitOneMore(t *testing.T, label string) {
 // judges it against witnesses. Nothing it reads is trusted — the parent is refused unless it
 // hashes to the pin, and every witness is checked against the pinned root.
 //
-// This is the shape a daemon can be driven through, and it is the whole of what a floor box can do
-// until the door's Accept downgrade is taken: it audits ONE block above a pin, and never adopts
-// it, so it never advances its own head.
+// This is the shape a daemon can be driven through, and it is the whole of what a floor box does:
+// it judges ONE block above a pin, and never adopts it, so it never advances its own head.
 func TestFloorBoxAuditsTheBlockAboveItsPin(t *testing.T) {
 	s := witnessableValidators(t)
 
@@ -429,9 +425,9 @@ func TestFloorBoxAuditsTheBlockAboveItsPin(t *testing.T) {
 	if v.Height != pin.Height+1 {
 		t.Fatalf("the box audited height %d, want %d", v.Height, pin.Height+1)
 	}
-	if v.Outcome != chain.IndeterminateTrustlessly || !errors.Is(v.Err, chain.ErrRecomputeGated) {
+	if v.Outcome != chain.Accept || v.Err != nil {
 		t.Fatalf("the box did not validate the block above its pin against witnesses: want the door's "+
-			"downgrade (IndeterminateTrustlessly / ErrRecomputeGated); got %s / %v", v.Outcome, v.Err)
+			"verdict ACCEPT; got %s / %v", v.Outcome, v.Err)
 	}
 
 	// 4. THE PIN IS WHAT MAKES A WRONG HISTORY DETECTABLE. A pin the source does not serve is
@@ -644,9 +640,9 @@ func TestFloorBoxValidatesEveryTransitionClassAliveNetworkProduces(t *testing.T)
 		if !got {
 			t.Fatalf("height %d was never judged", h)
 		}
-		if v.Outcome != chain.IndeterminateTrustlessly || !errors.Is(v.Err, chain.ErrRecomputeGated) {
+		if v.Outcome != chain.Accept || v.Err != nil {
 			t.Fatalf("height %d (regs=%d): the floor box could not judge a block the network committed; "+
-				"want the door's downgrade, got %s / %v", h, len(run.committed[h].BondRegs), v.Outcome, v.Err)
+				"want ACCEPT, got %s / %v", h, len(run.committed[h].BondRegs), v.Outcome, v.Err)
 		}
 	}
 	compound := compoundHeights(run.committed, bondTTL)

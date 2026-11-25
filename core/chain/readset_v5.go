@@ -106,10 +106,11 @@ func (c *Chain) WitnessReadSetV5(b Block) []statehash.ReadEntry {
 	acc := newReadSetAcc()
 
 	// ---- (1) validity + apply branch reads, per transition, O(1) each ----
-	c.readSetEntries(b, acc)   // publish: byRoot absent, spent absent (when a token rides)
-	c.readSetTakedowns(b, acc) // revoke: byRoot present; unrevoke: revoked present
-	c.readSetBondRegs(b, acc)  // reg: slashed/bondRootOwner/bondRootProven/bonded/bondRegHeight + qualified/dueBucket delta
-	c.readSetSlashes(b, acc)   // slash: slashed write, bonded delete, qualified maintain
+	c.readSetEntries(b, acc)    // publish: byRoot absent, spent absent (when a token rides)
+	c.readSetTakedowns(b, acc)  // revoke: byRoot present; unrevoke: revoked present
+	c.readSetBondRegs(b, acc)   // reg: slashed/bondRootOwner/bondRootProven/bonded/bondRegHeight + qualified/dueBucket delta
+	c.readSetSlashes(b, acc)    // slash: slashed write, bonded delete, qualified maintain
+	c.readSetIssuerKeys(b, acc) // issuer-key reg: the epoch index + every named and every pruned bucket
 
 	// ---- (2) the attestation loop (apply:3293-3298) ----
 	// Per attester in b.Atts that is a qualified non-proposer, the recompute reads the
@@ -660,6 +661,45 @@ func (c *Chain) readSetTTLCompleteness(b Block, acc *readSetAcc) {
 			acc.addAbsent(tagRegVersion, id[:])
 		}
 		c.addQualifiedRead(acc, id)
+	}
+}
+
+// readSetIssuerKeys emits class I's reads (floorbox_recompute_stateroot_issuerkey_v5.go): on a
+// registration-carrying block, the epoch index, the bucket of every epoch a registration names
+// (present or absent), and the bucket of every epoch the block's prune deletes. A block with no
+// registration reads nothing here: apply writes no issuer-key leaf for it.
+func (c *Chain) readSetIssuerKeys(b Block, acc *readSetAcc) {
+	if len(b.IssuerKeys) == 0 {
+		return
+	}
+	var epochs []uint64
+	for e, byIssuer := range c.issuerKeyCommit {
+		if len(byIssuer) > 0 {
+			epochs = append(epochs, e)
+		}
+	}
+	if len(epochs) > 0 {
+		acc.addScalar(tagIssuerKeyEpochs, encodeIssuerKeyEpochs(epochs))
+	} else {
+		acc.addAbsent(tagIssuerKeyEpochs, nil)
+	}
+	bucketRead := func(e uint64) {
+		var ek [8]byte
+		binary.BigEndian.PutUint64(ek[:], e)
+		if byIssuer := c.issuerKeyCommit[e]; len(byIssuer) > 0 {
+			acc.addPresent(tagIssuerKey, ek[:], encodeIssuerKeyBucket(byIssuer))
+		} else {
+			acc.addAbsent(tagIssuerKey, ek[:])
+		}
+	}
+	for _, r := range b.IssuerKeys {
+		bucketRead(r.Epoch)
+	}
+	cur := c.blockEpoch(b.Height)
+	for _, e := range epochs {
+		if issuerKeyEpochOutOfBand(e, cur) {
+			bucketRead(e)
+		}
 	}
 }
 

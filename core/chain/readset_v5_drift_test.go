@@ -560,6 +560,14 @@ func buildV5ReadSetCorpus(t *testing.T) ([]v5ReadSetCorpusBlock, *Chain) {
 	Sign(b10, a)
 	record(b10, "h10 renew-move", "renew-move")
 
+	// h11: an ISSUER-KEY registration (class I) by the bonded a, for the block's own epoch. It
+	// adds that epoch's bucket and writes the index, so both keyspaces enter the ground truth.
+	prev = b10.Hash()
+	b11 := &Block{Version: 1, Height: 11, Prev: prev, Entries: []ports.Entry{entry(11)},
+		IssuerKeys: []IssuerKeyReg{SignIssuerKeyReg(a, c.blockEpoch(11), ports.Hash{0x31})}}
+	Sign(b11, a)
+	record(b11, "h11 issuer-key", "issuer-key")
+
 	return corpus, snap
 }
 
@@ -1153,7 +1161,7 @@ func allV5GuardCorpora(t *testing.T) []v5GuardCorpus {
 }
 
 // TestWitnessReadSetV5AllKeyspacesRedOnDrop is THE DEFINITIVE COMPLETENESS PROOF: drop EACH of
-// the 24 committed keyspaces from the producer, one at a time, over the UNION of the maintenance
+// the 26 committed keyspaces from the producer, one at a time, over the UNION of the maintenance
 // and validity corpora, and assert the execution-derived guard goes RED for EVERY one. A
 // keyspace reddens if some corpus block has a ground-truth read of it the ablated producer no
 // longer covers. All 24 must redden — including spent and revoked, which the prior guard was
@@ -1162,8 +1170,8 @@ func allV5GuardCorpora(t *testing.T) []v5GuardCorpus {
 // guard exists to kill.
 func TestWitnessReadSetV5AllKeyspacesRedOnDrop(t *testing.T) {
 	tags := v5CommittedKeyspaceTags()
-	if len(tags) != 24 {
-		t.Fatalf("expected 24 committed keyspaces, got %d — the completeness proof must cover the full set", len(tags))
+	if len(tags) != 26 {
+		t.Fatalf("expected 26 committed keyspaces, got %d — the completeness proof must cover the full set", len(tags))
 	}
 	for _, tag := range tags {
 		tag := tag
@@ -1335,16 +1343,17 @@ func keyspaceReddensOnDrop(t *testing.T, tag string) bool {
 	return false
 }
 
-// v5CommittedKeyspaceTags is the closed set of the 24 committed v5 keyspaces the drift guard
+// v5CommittedKeyspaceTags is the closed set of the 26 committed v5 keyspaces the drift guard
 // iterates: the tag constants of statehash.go MINUS the five whole-set digest roots (which
-// allDigestRootLeafKeys covers) and MINUS tagIssuerKey (nothing folds that keyspace,
-// v5TagsNotReadByBox). tagRevLogSize joined with freeze-manifest item 1.
+// allDigestRootLeafKeys covers). tagRevLogSize joined with freeze-manifest item 1; tagIssuerKey
+// and tagIssuerKeyEpochs when the box began reproducing issuer-key registrations (class I).
 func v5CommittedKeyspaceTags() []string {
 	return []string{
 		tagByRoot, tagSpent, tagRevoked, tagSlashed, tagValidatorsSeen, tagBonded, tagEpochSet,
 		tagBondRootOwner, tagBondRootProven, tagBondRegHeight, tagRegVersion, tagBondDomain,
 		tagQualified, tagDueBucket, tagEverMature, tagMatureEpoch, tagGateLockedIn, tagGateHeight,
 		tagEra3LockedIn, tagEra3Height, tagEpochStart, tagEra4LockedIn, tagEra4Height, tagRevLogSize,
+		tagIssuerKey, tagIssuerKeyEpochs,
 	}
 }
 

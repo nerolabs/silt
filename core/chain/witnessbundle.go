@@ -214,6 +214,10 @@ func (p *WitnessProvider) bundleKeys(b Block, post map[string][]byte) [][]byte {
 	for _, wr := range stateRootSlashWriteSet(b, p.idSet(tagBondedRoot), p.idSet(tagQualifiedRoot)) {
 		add(wr.key)
 	}
+	// Class I reads the index and every named epoch's bucket whether or not they change.
+	for _, k := range issuerKeyReadKeys(b) {
+		add(k)
+	}
 	ids := map[ports.NodeID]struct{}{}
 	roots := map[ports.Hash]struct{}{}
 	for i := range b.LastCommit {

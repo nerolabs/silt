@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"github.com/nerolabs/silt/core/link"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -204,7 +205,15 @@ func TestSeizedNetworkYieldsNoPlaintextWhileTheKeyHolderReadsIt(t *testing.T) {
 	}
 
 	// Control: a wrong key on the same disks fails, and the key-holder reads the file.
-	wrong := privLink[:len(privLink)-1] + map[bool]string{true: "A", false: "B"}[!strings.HasSuffix(privLink, "A")]
+	// The wrong key differs in a KEY BYTE. Editing the link's last character is not enough: the
+	// final base64 character of a 32-byte key carries two spare bits the decoder ignores, so
+	// flipping one of those leaves the key, and the link, unchanged.
+	h, perr := link.Parse(privLink)
+	if perr != nil {
+		t.Fatalf("parse the private link: %v", perr)
+	}
+	h.Key[0] ^= 0x01
+	wrong := h.String()
 	wrongOut := filepath.Join(t.TempDir(), "wrong.bin")
 	if _, err := runClientAllowErr(t, "swarm", "get", wrong, "-o", wrongOut, "-peers", bootstrap, "-registry", regRef); err == nil {
 		if got, _ := os.ReadFile(wrongOut); bytes.Equal(got, priv) {

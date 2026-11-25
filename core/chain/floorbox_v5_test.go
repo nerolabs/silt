@@ -157,7 +157,7 @@ func TestFloorBox_SubV5BlockRejectedAtTheDoor(t *testing.T) {
 	box := boxOver(t, f, src)
 	b := f.mkBlock(t, nil)
 	w := structWitnessFor(t, f, src, b)
-	assertBoxReachesTheDowngrade(t, box, b, w)
+	assertBoxAccepts(t, box, b, w)
 
 	for _, v := range []uint64{1, 2, 3, BlockVersionStateRoot} { // v1..v4, all sub-v5
 		sub := b

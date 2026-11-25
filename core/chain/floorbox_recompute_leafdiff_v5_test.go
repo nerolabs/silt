@@ -172,6 +172,23 @@ func generateLeafDiffScenarios(t *testing.T) []leafDiffScenario {
 		out = append(out, leafDiffScenario{"on-boundary-maturity-crossing", f.c, f.prevRoot, b, f.witnessForHandoff(t, b)})
 	}
 
+	// (2b) Class I — an issuer-key registration that adds a bucket AND prunes one. The prune
+	// fixture holds an epoch-0 bucket and sits at epoch 5; a registration for epoch 5 adds
+	// that bucket, and the registration-carrying branch prunes epoch 0 (out of band), so the
+	// block writes a new bucket, deletes an old one and rewrites the index.
+	{
+		f := buildPruneFixture(t, true)
+		b := f.boundaryBlock(nil)
+		cur := f.c.blockEpoch(b.Height)
+		b.IssuerKeys = []IssuerKeyReg{SignIssuerKeyReg(key(55002), cur, ports.Hash{0x88})}
+		Sign(&b, f.proposer)
+		if f.c.issuerKeyCommit[0] == nil || !issuerKeyEpochOutOfBand(0, cur) {
+			t.Fatalf("scenario issuer-key: precondition failed (epoch-0 bucket %v, out of band %v)", f.c.issuerKeyCommit[0] != nil, issuerKeyEpochOutOfBand(0, cur))
+		}
+		out = append(out, leafDiffScenario{"issuer-key-add-and-prune", f.c, f.prevRoot, b,
+			f.withIssuerKeyLeaves(t, b, f.witnessForBoundary(t, b))})
+	}
+
 	// (3) Steady-state E/R block (no maturity change; already-latched chain).
 	{
 		f := buildStateRootFixture(t)
@@ -287,13 +304,7 @@ func v5EmittableLeafTags(t *testing.T) map[string]struct{} {
 // through the real scope gate and requires a stall — so if a future increment brings
 // the class in scope, that test reddens and forces the tag out of this set and into a
 // real scenario.
-var leafDiffOutOfScopeTags = map[string]string{
-	"issuerKeyCommit": "per-epoch demand-issuer key binding. Written only by a block " +
-		"carrying IssuerKeys, a transition class the O(payload) recompute does not reproduce; " +
-		"stateRootScopeGate stalls on it (ErrRecomputeStateRootScopeStall). The keyspace is INERT " +
-		"to consensus — no validity predicate, quorum, fork-choice rule, or recompute reads it — " +
-		"so there is no fold for a diff to be compared against.",
-}
+var leafDiffOutOfScopeTags = map[string]string{}
 
 // TestLeafDiff_IssuerKeyCommitIsPayloadOnly earns the WORD "ONLY" in the exemption above.
 //

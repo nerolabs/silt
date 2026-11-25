@@ -72,31 +72,19 @@ package chain
 // forgery oracled the shipped way, kept as the CONTROL that makes the difference visible.
 //
 // ────────────────────────────────────────────────────────────────────────────────────────
-// WHY THESE ARE PINS AND NOT ASSERTIONS
+// CLOSED — THE GATES BELOW ASSERT THE RULE
 // ────────────────────────────────────────────────────────────────────────────────────────
 //
-// The remedy — do inside anchoredPreSet what provenView.members already does — changes a
-// consensus-adjacent verification rule, so it is not made here. These land as PINNED_DEFECT
-// instead: each asserts CURRENT BROKEN BEHAVIOUR, passes today, and REDDENS the moment the behaviour
-// moves — which forces the record to be updated rather than letting the defect close silently.
-// t.Skip is refused by that same decision; a skip is a dark test.
+// The remedy landed: anchoredPreSet now does at the read what provenView.members does — it
+// Resolves nodeSetMTH(PreIDs) against prevStateRoot before returning the set, unconditionally, so
+// no read depends on a later fold op. Each gate below asserts the closed rule, oracled against the
+// root the box itself would derive from the forged witness (the proposer model, not the vandal
+// model), and its structure arm shows the refusal happens AT THE READ rather than by a fold that
+// happened to cover the tag. The teeth tests feed each assertion the input it exists to catch.
 //
-// The idiom (PIN + TEETH + MECHANISM) is documented in full at the head of
-// core/pipeline/subframe_manifest_oracle_test.go. Each pin here carries:
-// 1. the SYMPTOM, via forgedPreSetMustStall: the box must refuse to certify the root its own fold
-// derives from the forged witness;
-// 2. the STRUCTURE, via anchoringMustNotDependOnTheFoldOp: no fold op is emitted for the forged
-// tag, so the refusal demonstrates anchoring AT THE READ rather than a fold that happened to
-// cover it. A test whose tag IS folded proves less than it appears to;
-// 3. TEETH — TestTheStallAssertionSpeaksWhenTheBoxAccepts, TestTheAnchoringAssertionSpeaksWhenThe
-// TagIsFolded and TestTheRejectAssertionSpeaksWhenAnchoredPreSetAccepts, which feed each
-// predicate the input it exists to catch and assert it speaks up. An assertion whose teeth are
-// untested has never been shown capable of failing.
-//
-// CONTAINMENT, so nobody reads these as "main is exploitable today": (*Box).Validate still applies
-// the downgrade — Accept ⇒ IndeterminateTrustlessly / ErrRecomputeGated. The box never accepts on
-// this path yet. That downgrade is the only barrier between this finding and damage, and it is
-// deliberately not touched here. The finding is what happens on the day the gate flips.
+// This matters most now that the box's verdict counts: the door no longer downgrades Accept, so an
+// unanchored read would be a wrong accept on a quorum-signed forged block. The rule, not a
+// containment, is what stands between the two.
 
 import (
 	"bytes"

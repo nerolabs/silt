@@ -125,7 +125,7 @@ type BondedSetWitness struct {
 // reproduces the whole-bonded fold; requireDeMatureSuperQuorum consults no epoch set, so the
 // recovery boundary does not change it (no boundary carve-out for this predicate).
 //
-// This does NOT flip the box to Accept (the STOP boundary is the downgrade in (*Box).Validate): it reproduces ONE predicate.
+// Its result is one conjunct of the composition, whose verdict the door returns ((*Box).Validate): it reproduces ONE predicate.
 //
 // ⚠ PARTIAL GATE — the accept-flip assembler MUST re-add everMature && objective. The full-node
 // caller gate is `everMature && objective && !matureNow` (chain.go). This recompute

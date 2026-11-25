@@ -326,7 +326,7 @@ func (c *Chain) applyIssuerKeys(b Block) {
 func (c *Chain) pruneIssuerKeyCommit(h uint64) {
 	cur := c.blockEpoch(h)
 	for e := range c.issuerKeyCommit {
-		if e > cur+issuerKeyPrePublish || (cur > issuerKeyPrePublish && e+issuerKeyPrePublish < cur) {
+		if issuerKeyEpochOutOfBand(e, cur) {
 			delete(c.issuerKeyCommit, e)
 		}
 	}

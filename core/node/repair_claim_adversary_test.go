@@ -128,6 +128,14 @@ func newRepairAdv(t *testing.T, seed int64) *repairAdv {
 // start the perpetual repair-tick loop and stop sched.Run from ever reaching
 // quiescence — the handler is driven directly here, so the loop isn't needed. The
 // judge fetches the manifest itself when it judges.
+// careJudgeOn makes fixture node i a caretaker-judge of the object, as careJudge does node 1.
+func (s *repairAdv) careJudgeOn(i int) *Node {
+	j := s.nodes[i]
+	j.reg = s.reg
+	j.care = append(j.care, s.h.Care())
+	return j
+}
+
 func (s *repairAdv) careJudge() *Node {
 	j := s.nodes[1]
 	j.reg = s.reg
@@ -412,7 +420,7 @@ func (s *repairAdv) stripeRefsOf(stripe int) []shardRef {
 // is exactly what a loss premise has to get right.
 func (s *repairAdv) shardIsReachable(from *Node, id ports.ChunkID, pos int) bool {
 	reachable := false
-	from.probeShard(id, colKey(s.root, pos), true, func(ok bool, _ map[uint64]bool) { reachable = ok })
+	from.probeShard(id, colKey(s.root, pos), true, func(ok bool, _ map[uint64]bool, _ map[ports.NodeID]bool) { reachable = ok })
 	s.sched.Run()
 	return reachable
 }

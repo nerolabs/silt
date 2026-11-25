@@ -1382,7 +1382,7 @@ never been driven is a gap directly under the mechanism the release leans on.
 | No node replaces its own binary | Held, structurally: no shipped code locates or execs its own binary. | source gate (`TestNoShippedCodeReplacesItsOwnBinary`) |
 | No version-floor advisory below the signing threshold changes anything | Vacuous. TENETS R4 says the mechanism "lives in the code"; it does not exist. Nothing enforces a floor, so nothing below a threshold can. | not built — **to be built after item 20** (owner decision, 2026-11-23): a threshold-signed version-floor advisory with criticality tiers, enforcement clocked on observing the signed advisory and recallable, so this clause is driven rather than vacuous |
 
-**20. The floor box's verdict counts, or it is disclosed that it does not.** ⚠ *SHIPS DISCLOSED — two preconditions closed, one waits on the flip, one waits on a new era*
+**20. The floor box's verdict counts, or it is disclosed that it does not.** ✅ *held — FLIPPED: every precondition closed, the differential exact; unit, model-check, e2e, the floor integration suite and the field row*
 *Done:* a validator on the floor spec returns the SAME verdict set as a tree-holding node —
 Accept for a block a full node accepts, Reject for one it refuses, a stall only where it
 genuinely cannot see — established from committed roots and witnesses alone.
@@ -1453,8 +1453,16 @@ bar, not a refactor.
    choice of history. It is not implemented separately ON PURPOSE: there is no accepting posture to
    attach the requirement to, so a flag added now would gate nothing and could not be driven red.
    It is a daemon refusal in the same idiom as the cold-start one, in the same commit as the flip.
-4. **A pruned block's body is not bound to its hash — THE BLOCKER, and the owner ruled it must be
-   closed first (2026-09-15).** For a pruned block the hash is a stored linkage token rather than a
+4. ~~**A pruned block's body is not bound to its hash.**~~ **— CLOSED for v5 (era 4), which is every
+   block after genesis at the shipped `-era4-activation-height` of 1.** A v5 block's hash preimage
+   folds each heavy payload by digest (`BondReg.AnswerDigest`, `Block.SlashesDigest`), validity
+   requires each digest to equal its content (`validateBlockDigests`), and `Prune` therefore sets no
+   `Pruned` token on a v5 block: the pruned body recomputes its own hash, so rewriting its carrier,
+   state root or entries moves the hash (`TestPrunedV5BlockIsSelfCovering`). The box additionally
+   refuses to judge any block whose heavy proofs are shed (`ErrPrunedBlockUnreproducible`). The hole
+   remains for PRE-v5 history only — a network that activated era 4 late — and the box never judges
+   such a block. The original statement, kept for the record: **— THE BLOCKER, and the owner ruled it
+   must be closed first (2026-09-15).** For a pruned block the hash is a stored linkage token rather than a
    content commitment, so an adversary can keep the token and the real signatures while rewriting
    the body — including the carrier that seats validators. Closing it means the block must carry a
    commitment that SURVIVES pruning, which is a FORMAT change and therefore a new era, not a
@@ -1478,6 +1486,34 @@ points at.
 *And one gate this item must add rather than inherit:* a differential that drives the SAME
 composition over `liveView` and `provenView` across a block corpus and requires the two verdict
 sets to be identical. Flipping without it asserts "same security" rather than demonstrating it.
+**— BUILT, 2026-11-25:** `TestFloorBoxAndFullNodeReturnTheSameVerdicts` drives eighteen blocks —
+honest entries, revocations, un-revocations, bond registrations, false-repair slashes and
+issuer-key registrations, and blocks broken in one rule each — through the full node's `liveView`
+and through the box's own door over the production `WitnessProvider`. Every verdict matches EXCEPT
+ONE, pinned: the box STALLS on an honest issuer-key registration, which the node accepts. Applying
+one prunes whole epoch buckets of `issuerKeyCommit`, and the state tree carries no completeness
+digest for a bucket (unlike the TTL sweep's `dueBucket`), so the box cannot prove what the delete
+removed. Closing it is a state-format change. Disabling the box's state-root recompute reddens the
+forged-root case and the pin.
+**— CLOSED, 2026-11-25 (no new era: there is no live chain, so v5 changed in place, by the
+owner's call).** The keyspace is now one leaf per epoch bucket plus an index of the epochs present,
+so every write a registration makes is a point the box derives and proves (class I,
+`floorbox_recompute_stateroot_issuerkey_v5.go`). The differential matches on all eighteen blocks.
+
+*THE FLIP, 2026-11-25.* `(*Box).Validate` returns the composition's verdict. Landed with it: the
+anchor rule (precondition 3) — the daemon refuses `-floor-box` without `-ws-checkpoint`, and the
+trust-on-first-use path is gone — and the box asking its providers to hold the pinned head while it
+waits (a provider keeps snapshots only for heads it was asked about, so without it the block above a
+checkpoint found no provider able to witness its pre-state). Evidence: unit (the differential, the
+cold auditor accepting what its witness covers and never a forged root); e2e
+`TestFloorBoxAcceptsTheNetworksNextBlockOverTCP` (a checkpointed box ACCEPTS the block committed
+above it; an unanchored box refuses to start; removing the pin hold makes it stall); the floor
+integration suite on local docker (`integration/floor/run.sh`, PASS: under a kernel-enforced
+2 GiB, the witness box accepted heights 25, 27 and 28 at fresh checkpoints, refused and stalled
+nothing; the no-provider control stalled and never accepted). Field: sheet `ab2fd4bd-23660` (default
+topology, t2d, three regions) grades PASS, 28 pass / 0 gap / 0 fail; row `20-floor-box` — fetch-1
+relaunched as a floor box with no replica, anchored on val-a's checkpoint 13, ACCEPTED height 14
+against witnesses from the validators.
 
 *What the flip does NOT deliver on its own, stated so it is not read as more:* participation.
 Nothing adopts the verdict today — `AuditAbovePin` reports and returns, the daemon prints and

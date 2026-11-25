@@ -191,7 +191,7 @@ type SeenSetStreamWitness struct {
 // never the witness. This is the first predicate whose fold reads genesis config, so the C-6
 // obligation has TEETH here (the config-from-witness ablation).
 //
-// This does NOT flip the box to Accept (the STOP boundary is the downgrade in (*Box).Validate): it reproduces ONE predicate.
+// Its result is one conjunct of the composition, whose verdict the door returns ((*Box).Validate): it reproduces ONE predicate.
 //
 // This is the RESIDENT-MAP adapter over the streaming core: it wraps w.Members in a pull provider and
 // delegates to recomputeMatureNowStreaming, so the fold logic lives in ONE place and the resident and

@@ -111,25 +111,32 @@ const (
 	tagSlashedRoot        = "slashedRoot\x00"
 	tagValidatorsSeenRoot = "validatorsSeenRoot\x00"
 
-	// per-epoch demand-issuer key binding (era-4 / v5 only). One VALUE-CARRYING
-	// leaf per (epoch, issuer): rawKey = uint64BE(epoch) || issuerNodeID (40 bytes),
-	// value = the 32-byte sha256 fingerprint of that epoch's RSA blind-signing public
-	// key. The tag is \x00-terminated so tag||rawKey stays injective against every
-	// other field, and `issuerKeyCommit\x00` cannot collide with any
-	// existing tag — no other tag shares the `issuerKey` prefix.
+	// per-epoch demand-issuer key binding (era-4 / v5 only). ONE leaf per epoch bucket:
+	// rawKey = uint64BE(epoch), value = the bucket's canonical member list — each member
+	// is issuerNodeID (32 bytes) || the 32-byte sha256 fingerprint of that epoch's RSA
+	// blind-signing public key, sorted ascending by issuer, no duplicates, never empty
+	// (encodeIssuerKeyBucket). Beside it, ONE index scalar (tagIssuerKeyEpochs, empty raw
+	// key) lists the epochs present, ascending; it is absent when no epoch is.
 	//
-	// PER-MEMBER, NOT AN MTH SCALAR (deliberate). The F1 whole-set digest roots
-	// exist so a root-only box can prove SET COMPLETENESS of a whole-set fold;
-	// nothing folds this keyspace. A redeemer resolves ONE (epoch, issuer) leaf,
-	// which a per-member inclusion proof answers directly and a digest scalar would
-	// not. If a root-only recompute ever folds this keyspace it needs its own
-	// digest root added to stateRootDigestTagsV5 first.
+	// WHY A BUCKET AND AN INDEX, NOT A LEAF PER MEMBER. A registration-carrying block prunes
+	// every epoch that has left the retention band (pruneIssuerKeyCommit), deleting whole
+	// buckets. With per-member leaves a root-only verifier (the floor box) could not prove
+	// which leaves such a delete removed: the state tree proves points, not ranges, and an
+	// omitted member would read as never present. The index commits WHICH epochs exist and
+	// each bucket leaf commits ALL of its members, so every write a registration makes —
+	// the touched buckets, the index, and every pruned bucket — is a point the box derives
+	// from the payload and proves against the pre-state root. A redeemer that wants one
+	// (epoch, issuer) binding proves that epoch's bucket and reads the member from it.
+	//
+	// The tags are \x00-terminated so tag||rawKey stays injective against every other
+	// field, and no other tag shares the `issuerKey` prefix.
 	//
 	// v5-ONLY: emitted by stateRootLeavesV5 only, so a v4 block's root stays
 	// byte-identical to the frozen era-3 leaf set, and a v4 block carrying a
 	// registration is REJECTED (validateIssuerKeys) so no committed state can escape
 	// its own committed root.
-	tagIssuerKey = "issuerKeyCommit\x00"
+	tagIssuerKey       = "issuerKeyCommit\x00"
+	tagIssuerKeyEpochs = "issuerKeyEpochs\x00"
 
 	// revLogSize (era-4 / v5 only) — freeze-manifest item 1, the SAFETY leaf. ONE
 	// scalar leaf whose value is EncodeUint64 of the revocation log's size AFTER this
@@ -177,7 +184,7 @@ const (
 // readset drift guard partitions that list into inert/read digest ROOTS and provenView.members
 // resolves its entries as id-list digests. revLog is classified committedLog and is committed by
 // its own LogRoot; this leaf commits its SIZE, which the LogRoot does not.
-var stateRootDerivedTagsV5 = []string{"revLogSize"}
+var stateRootDerivedTagsV5 = []string{"revLogSize", "issuerKeyEpochs"}
 
 // stateRootDigestTagsV5 is the five v5-only WHOLE-SET digest-root tags added in F1. They
 // are NOT committedSet field names — they are DERIVED digests over existing keyspaces —
@@ -370,16 +377,21 @@ func (c *Chain) boundedLeavesV5() []statehash.Leaf {
 	}
 	add(tagRevLogSize, nil, statehash.EncodeUint64(uint64(revLogSize)))
 
-	// issuerKeyCommit: one value-carrying leaf per (epoch, issuer), key =
-	// uint64BE(epoch) || issuerNodeID, value = the 32-byte key fingerprint. Order-free
-	// (one leaf per member), so the committed root is independent of Go map iteration
-	// order — the same property the bonded/epochSet/qualified per-member leaves have.
+	// issuerKeyCommit: one leaf per non-empty epoch bucket (its canonical member list)
+	// and the index of epochs present (see tagIssuerKey). Both encodings are canonical, so
+	// the committed root is independent of Go map iteration order.
+	var issuerEpochs []uint64
 	for epoch, byIssuer := range c.issuerKeyCommit {
+		if len(byIssuer) == 0 {
+			continue
+		}
+		issuerEpochs = append(issuerEpochs, epoch)
 		var ek [8]byte
 		binary.BigEndian.PutUint64(ek[:], epoch)
-		for id, fp := range byIssuer {
-			add(tagIssuerKey, append(ek[:], id[:]...), statehash.EncodeID(ports.NodeID(fp)))
-		}
+		add(tagIssuerKey, ek[:], encodeIssuerKeyBucket(byIssuer))
+	}
+	if len(issuerEpochs) > 0 {
+		add(tagIssuerKeyEpochs, nil, encodeIssuerKeyEpochs(issuerEpochs))
 	}
 
 	// era-4 activation scalars: one scalar leaf each (4d). Committed here as v5-only so a

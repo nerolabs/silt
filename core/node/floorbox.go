@@ -14,11 +14,10 @@ import (
 //
 // WHAT IT DOES, stated narrowly because the narrowness is the honest part. It takes a block from
 // a peer, judges it against the committed state root of a parent the OPERATOR pinned, and reports
-// the verdict. It does not follow the chain, and it cannot: (*chain.Box).Validate maps Accept to a
-// downgrade, so a box never adopts the block it just judged and never advances its own head. That
-// downgrade is one line and removing it is a consensus-rule change; until it is taken, "audit the
-// block above the pin" is the whole of what a floor box can be driven to do, and this function is
-// exactly that and nothing more.
+// the verdict — Accept and Reject exactly as a tree-holding node decides them, or a stall where it
+// cannot see. It does not follow the chain: a box never adopts the block it just judged and never
+// advances its own head. Signing, head advance and pin adoption are separate work, so "judge the
+// block above the pin" is the whole of what a floor box does, and this function is exactly that.
 //
 // WHY THE PARENT IS A PIN AND NOT A FETCH. Everything else the box reads is checked against a root
 // it already holds, so it may take it from a stranger. The parent is the one thing that is not:
@@ -114,6 +113,9 @@ func (n *Node) AuditAbovePin(cold *chain.Chain, pin FloorBoxPin, budgetBytes int
 	}
 	n.fetchAbovePin(sources, 0, pin, func(parent, child *chain.Block, err error) {
 		if err != nil {
+			if errors.Is(err, ErrFloorBoxNothingAbovePin) {
+				n.holdPinAtProviders(pin, providers)
+			}
 			done(FloorBoxVerdict{Height: pin.Height + 1, Outcome: chain.IndeterminateTrustlessly, Err: err})
 			return
 		}
@@ -172,4 +174,20 @@ func (n *Node) fetchAbovePin(sources []ports.NodeID, i int, pin FloorBoxPin,
 			}
 			done(parent, child, nil)
 		})
+}
+
+// holdPinAtProviders asks each provider one cheap question naming the pinned head while the pin is
+// still its head. A provider keeps witness snapshots only for heads it has been asked about (its
+// current one and the one before), so a pin nobody asked about is gone the moment the next block
+// commits — and that block is the one the box is waiting to judge. Asking now, while nothing is
+// committed above the pin, makes each provider hold the pinned state when it is needed. The answer
+// is not read: nothing the box decides rests on it.
+func (n *Node) holdPinAtProviders(pin FloorBoxPin, providers []ports.NodeID) {
+	raw, err := cbor.Marshal(witnessReq{Call: witnessCallAncestors, Head: pin.Hash, K: 1})
+	if err != nil {
+		return
+	}
+	for _, p := range providers {
+		n.request(p, ports.Message{Kind: ports.MsgGetWitness, Data: raw}, func(ports.Message, error) {})
+	}
 }

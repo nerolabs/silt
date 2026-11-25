@@ -225,7 +225,7 @@ type StateRootWitness struct {
 // composition's P13a. A direct caller would be a second door with no P1 in front of it.
 //
 // It reads EpochBlocks / epochsEnabled / BondTTLBlocks from the box's OWN cfg for the scope gate — never from the witness.
-// This does NOT flip the box to Accept (the STOP boundary is the downgrade in (*Box).Validate).
+// Its result is one conjunct of the composition, whose verdict the door returns ((*Box).Validate).
 func (c *Chain) recomputeStateRootEntriesRevocations(
 	prevStateRoot ports.Hash,
 	committedStateRoot ports.Hash,
@@ -424,6 +424,13 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	for i := range w.ChangedLeaves {
 		witByKey[string(w.ChangedLeaves[i].Key)] = &w.ChangedLeaves[i]
 	}
+	// Class I (issuer-key registrations): its writes depend on the witnessed bucket and index
+	// values, which it verifies against prevStateRoot itself before deriving them.
+	iWrites, iErr := c.issuerKeyWrites(prevStateRoot, b, witByKey)
+	if iErr != nil {
+		return nil, iErr
+	}
+	writeSet = append(writeSet, iWrites...)
 	ops := make([]statehash.FoldOp, 0, len(writeSet)+len(digestOps))
 	ops = append(ops, digestOps...)
 	for _, wr := range writeSet {
@@ -481,35 +488,10 @@ func (c *Chain) stateRootScopeGate(prevStateRoot ports.Hash, b Block, w StateRoo
 	// qualified digest — rotateOps stalls at that one boundary. Both are stalls in the class
 	// dispatch, not here (they need the witness/block, not just the scope predicate).
 	//
-	// (issuer-key registrations): a block carrying IssuerKeys writes the
-	// issuerKeyCommit keyspace, which this box does not reproduce. The fold would
-	// then compute a post-root missing those leaves and land on
-	// ErrRecomputeStateRootMismatch — a stall either way, but one that reads as
-	// "forged root". Stall EXPLICITLY so the out-of-scope class is named rather than
-	// mis-attributed. The box never-Accepts.
-	//
-	// THIS PAYLOAD PREDICATE IS EXACT ONLY BECAUSE apply MAKES IT SO, 2026-09-03.
-	// It was NOT exact: applyIssuerKeys used to prune the keyspace by BLOCK HEIGHT
-	// on every apply, so a zero-registration block at an epoch turn deleted
-	// committed leaves this gate waved through and this fold never reproduced — a
-	// two-way box/full-node split (box AGREES with a forged root; box reads an
-	// honest block as forged). The close is at the source: the prune now runs only
-	// inside the registration-carrying branch (core/chain/issuerkey.go), so
-	// "len(b.IssuerKeys) == 0 ⇒ no issuerKeyCommit write" is a property of apply,
-	// not an assumption of the gate. The reason it is closed THERE and not here:
-	// the box has no sound way to reproduce a height-driven delete over this
-	// keyspace — statehash offers point membership/non-membership only (no range
-	// proof), and issuerKeyCommit carries no set-completeness digest leaf (unlike
-	// dueBucket's MTH, which is exactly what makes class T's height-driven sweep
-	// witnessable). A witness-supplied member list would be omission-forgeable,
-	// and the conservative alternative — stall at every epoch boundary — would
-	// make every boundary block Indeterminate forever.
-	// TestLeafDiff_IssuerKeyCommitIsPayloadOnly and the C3 split gates pin
-	// it.
-	if len(b.IssuerKeys) > 0 {
-		return fmt.Errorf("%w: block carries %d demand-issuer key registration(s) (issuerKeyCommit)",
-			ErrRecomputeStateRootScopeStall, len(b.IssuerKeys))
-	}
+	// Class I (issuer-key registrations) is IN scope: issuerKeyWrites derives its bucket and
+	// index writes over witnessed, root-verified pre-state (floorbox_recompute_stateroot_issuerkey_v5.go).
+	// The payload predicate "len(b.IssuerKeys) == 0 ⇒ no issuerKeyCommit write" stays a property
+	// of apply: the prune runs only inside the registration-carrying branch (issuerkey.go).
 
 	// Class T (TTL sweep): an expiry fires at b.Height iff dueBucket[uint64BE(h)] is occupied
 	// (chain.go). The box distinguishes the two cases from the dueBucket witness against

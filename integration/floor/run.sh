@@ -45,12 +45,12 @@
 # post-state in apply's order and emits each changed leaf once; a box that
 # derived each class from the pre-state alone stalls here on block after block.
 #
-# WHAT A "VALIDATED" VERDICT IS, so a green run is not read as more than it is:
-# the box ran the whole committed-state transition to a verdict of accept over
-# witnesses, and its door WITHHELD the accept. That downgrade is deliberate and
-# is one line of product code; taking it is a consensus-rule change. So the box
-# audits and reports, and it adopts nothing and advances no head. It is not a
-# consensus participant today, and nothing here claims it is.
+# WHAT AN "ACCEPTED" VERDICT IS, so a green run is not read as more than it is:
+# the box ran the whole committed-state transition over witnesses and reached
+# the verdict a tree-holding node reaches for the same block. It counts as a
+# verdict; it is not participation — the box adopts nothing and advances no
+# head, and it is anchored on an operator checkpoint (it refuses to start
+# without one). It is not a consensus participant, and nothing here claims it is.
 #
 # The legs:
 #  1. SPEC BINDS (the vacuity guard) — read memory.max, memory.swap.max and
@@ -72,15 +72,18 @@
 #     reload the already-pruned store, still report the shed, and commit again.
 #     Without this leg the prune could be a live in-memory view that a restart
 #     silently undoes.
-#  6. VALIDATES AGAINST WITNESSES — the witness box, holding no tree, reaches a
-#     VALIDATED verdict on a block the network committed. Guarded twice: it must
+#  6. ACCEPTS AGAINST WITNESSES — the witness box, holding no tree and anchored
+#     on a checkpoint taken from valA, ACCEPTS the block the network commits
+#     above it; re-anchored at fresh checkpoints until it has done so at the
+#     required number of distinct heights. A box without a checkpoint refuses to
+#     start. Guarded twice: it must
 #     be on the SAME network (it derives the genesis hash from its own config, so
 #     a mismatch would make it audit a network that does not exist), and it must
 #     hold no chain replica (a box that kept one would not be proving anything
 #     about witnesses).
 #  7. STALLS WITH NO PROVIDER — the control box, anchored on an operator
 #     checkpoint and pointed at a provider that does not exist, reaches the same
-#     blocks and STALLS on every one. Never a VALIDATED line, never an ACCEPT.
+#     blocks and STALLS on every one. Never an ACCEPTED line.
 #     Without this leg, leg 6's green is indistinguishable from a box that
 #     stalls on everything.
 #
@@ -412,8 +415,29 @@ echo "  committed to ${REACHED2} from the pruned store; peak since restart $(hum
 echo "  ✓ the shed is a property of persisted state, and the box still commits"
 
 # ---- leg 6: it validates against witnesses, holding no tree -----------------
-echo "== leg 6: the witness box validates against witnesses, holding no tree =="
-dc up -d witnessbox >/dev/null 2>&1 || fail "could not start the witness box"
+echo "== leg 6: the witness box accepts against witnesses, holding no tree =="
+# THE ANCHOR RULE first: a box whose verdict counts refuses to start without an
+# operator checkpoint.
+WS_CHECKPOINT="" dc up -d witnessbox >/dev/null 2>&1
+sleep 8
+dc logs witnessbox 2>&1 | grep -q 'floor-box needs -ws-checkpoint' \
+  || fail "a witness box with no -ws-checkpoint did not refuse to start with the anchor-rule message — $(dc logs witnessbox 2>&1 | tail -5)"
+dc rm -sf witnessbox >/dev/null 2>&1
+echo "  ✓ a box with no checkpoint refuses to start"
+
+# anchor_box <round>: take valA's current head as the checkpoint and (re)start the
+# box on it. The box asks its providers to hold that head while it waits, and
+# judges the block that lands above it.
+anchor_box() {
+  local h x
+  h=$(head_height valA); x=$(head_hash valA)
+  case "$h" in ''|*[!0-9]*) fail "could not read valA's head to build the witness box's checkpoint" ;; esac
+  [ -n "$x" ] || fail "could not read valA's head hash to build the witness box's checkpoint"
+  export WS_CHECKPOINT="${h}:${x}"
+  dc up -d --force-recreate witnessbox >/dev/null 2>&1 || fail "could not start the witness box"
+  echo "    round $1: anchored at ${h}:${x:0:16}…"
+}
+anchor_box 1
 sleep 10
 [ "$(dc ps -q witnessbox | wc -l | tr -d ' ')" != "0" ] \
   || fail "the witness box exited at start-up — $(dc logs witnessbox 2>&1 | tail -10)"
@@ -441,34 +465,43 @@ echo "  the box holds ${BOX_BLOCKS} block(s) of its own"
 # independent claims — one is about reading witnesses, the other about what
 # happens when there are none — and a suite that stopped at the first failure
 # would leave the second undriven, which this list counts as a failure of its own.
+#
+# A pinned box judges ONE height (it adopts nothing, so its pin never moves). The
+# distinct heights come from re-anchoring it, as an operator would, on a fresh
+# checkpoint once each verdict lands. Verdict lines accumulate across the
+# recreations only within one container's log, so each round's ACCEPTED height is
+# collected as it lands.
 L6=FAIL; L7=FAIL; L6_WHY=""; L7_WHY=""
-
-VALIDATED=0; waited=0
+ACCEPTED_HEIGHTS=""; waited=0; round=1
 while [ "$waited" -lt "$WITNESS_BUDGET" ]; do
-  VALIDATED=$(box_verdicts witnessbox VALIDATED)
-  [ "$VALIDATED" -ge "$WITNESS_HEIGHTS" ] && break
+  got=$(dc logs witnessbox 2>/dev/null | grep -oE 'floor-box: verdict=ACCEPTED height=[0-9]+' | awk -F= '{print $NF}' | tail -1)
+  if [ -n "$got" ] && ! printf '%s\n' $ACCEPTED_HEIGHTS | grep -qx "$got"; then
+    ACCEPTED_HEIGHTS="$ACCEPTED_HEIGHTS $got"
+    n=$(printf '%s\n' $ACCEPTED_HEIGHTS | grep -c .)
+    echo "    accepted height ${got} (${n}/${WITNESS_HEIGHTS})"
+    [ "$n" -ge "$WITNESS_HEIGHTS" ] && break
+    round=$((round + 1)); anchor_box "$round"
+  fi
   sleep 5; waited=$((waited + 5))
-  [ $((waited % 30)) -eq 0 ] && echo "    validated=${VALIDATED}/${WITNESS_HEIGHTS} (${waited}s/${WITNESS_BUDGET}s)"
 done
+ACCEPTED=$(printf '%s\n' $ACCEPTED_HEIGHTS | grep -c .)
 STALLED=$(box_verdicts witnessbox STALL)
-ACCEPTED=$(box_verdicts witnessbox ACCEPT)
-echo "  verdicts — validated=${VALIDATED} at distinct heights, stalled=${STALLED}, accepted=${ACCEPTED}"
-# Whatever else happens, an ACCEPT is a different order of failure and ends the run:
-# the box's door withholds accept by construction, so one here means the posture
-# changed under the operator and nothing below is worth measuring.
-[ "$ACCEPTED" -eq 0 ] || fail "the witness box printed ${ACCEPTED} ACCEPT verdict(s). Its door withholds accept by construction, so this is not a slow leg — it is a different build than the one this suite describes."
-if [ "$VALIDATED" -ge "$WITNESS_HEIGHTS" ]; then
+REFUSED=$(box_verdicts witnessbox REFUSED)
+echo "  verdicts — accepted=${ACCEPTED} at distinct heights (${ACCEPTED_HEIGHTS# }), stalled=${STALLED}, refused=${REFUSED} (last round)"
+# A REFUSED line here is a block the honest network committed and the box judged
+# invalid: a divergence from the full node, which is a different order of failure.
+[ "$REFUSED" -eq 0 ] || fail "the witness box REFUSED ${REFUSED} block(s) the network committed — its verdict diverges from the full node's: $(dc logs witnessbox 2>&1 | grep -oE 'verdict=REFUSED.*' | tail -2)"
+if [ "$ACCEPTED" -ge "$WITNESS_HEIGHTS" ]; then
   L6=PASS
-  echo "  ✓ judged ${VALIDATED} distinct heights by proof, holding no chain of its own"
-  echo "    (VALIDATED means the transition ran to a verdict of accept over witnesses and the"
-  echo "     door withheld it: this box adopts nothing and advances no head)"
+  echo "  ✓ accepted ${ACCEPTED} distinct heights by proof, holding no chain of its own"
+  echo "    (ACCEPTED is the full node's verdict, reached from committed roots and witnesses;"
+  echo "     the box adopts nothing and advances no head)"
 else
-  L6_WHY="validated ${VALIDATED} of ${WITNESS_HEIGHTS} required distinct heights; stalled at ${STALLED}"
-  echo "  ✗ the witness box reached a VALIDATED verdict at only ${VALIDATED} of the ${WITNESS_HEIGHTS}"
-  echo "    distinct heights this leg requires. The stall reason is the evidence, not the count:"
+  L6_WHY="accepted ${ACCEPTED} of ${WITNESS_HEIGHTS} required distinct heights; stalled at ${STALLED}"
+  echo "  ✗ the witness box accepted only ${ACCEPTED} of the ${WITNESS_HEIGHTS} distinct heights"
+  echo "    this leg requires. The stall reason is the evidence, not the count:"
   dc logs witnessbox 2>&1 | grep -oE 'verdict=STALL height=[0-9]+ providers=[0-9]+ reason=.*' | tail -2 | sed 's/^/    /'
 fi
-
 # ---- leg 7: and it stalls when no provider is reachable ---------------------
 echo "== leg 7: with no witness provider reachable, it STALLS — never accepts =="
 # The control is anchored by an OPERATOR CHECKPOINT rather than by a provider's
@@ -491,20 +524,17 @@ while [ "$waited" -lt "$WITNESS_BUDGET" ]; do
   [ "$BLIND_STALLED" -ge 1 ] && break
   sleep 5; waited=$((waited + 5))
 done
-BLIND_OK=$(box_verdicts witnessbox-blind VALIDATED)
-BLIND_ACCEPT=$(box_verdicts witnessbox-blind ACCEPT)
-echo "  control verdicts — stalled=${BLIND_STALLED} validated=${BLIND_OK} accepted=${BLIND_ACCEPT}"
+BLIND_ACCEPT=$(box_verdicts witnessbox-blind ACCEPTED)
+echo "  control verdicts — stalled=${BLIND_STALLED} accepted=${BLIND_ACCEPT}"
 [ "$BLIND_ACCEPT" -eq 0 ] \
   || fail "the control box ACCEPTED a block with no witness provider reachable. Safety must never rest on the tier above; this is the failure the whole posture exists to exclude."
-[ "$BLIND_OK" -eq 0 ] \
-  || fail "the control box reported ${BLIND_OK} VALIDATED verdict(s) while its only provider does not exist — it is not reading witnesses from where it says it is, and leg 6 would be green for the wrong reason."
 if [ "$BLIND_STALLED" -ge 1 ]; then
   L7=PASS
   echo "  ✓ the control stalled at ${BLIND_STALLED} distinct height(s) and never accepted"
 else
   L7_WHY="reached no verdict at all in ${WITNESS_BUDGET}s"
   echo "  ✗ the control box reached no verdict at all within ${WITNESS_BUDGET}s. A box that neither"
-  echo "    validates nor stalls has stopped auditing without saying so — the worst of the three."
+  echo "    accepts nor stalls has stopped auditing without saying so — the worst of the three."
   dc logs --tail 8 witnessbox-blind 2>&1 | sed 's/^/    /'
 fi
 
@@ -515,7 +545,7 @@ echo "  peak memory         : $(human_bytes "$PRE_PEAK") (${PCT}% of the ceiling
 echo "  height / shed       : ${HF} / ${SHED} blocks"
 echo "  restart             : reloaded the pruned store, committed to ${REACHED2}"
 echo
-echo "  by proof            : leg 6 ${L6} — ${VALIDATED} distinct heights validated, ${STALLED} stalled"
+echo "  by proof            : leg 6 ${L6} — ${ACCEPTED} distinct heights accepted, ${STALLED} stalled"
 echo "  with no provider    : leg 7 ${L7} — ${BLIND_STALLED} stall(s), 0 accepts"
 echo
 echo "  measured here        : the ceiling on HONEST load, at depth. The same ceiling under"
@@ -524,11 +554,11 @@ echo "                         integration/redteam pins the honest detector and 
 echo "                         proposal target to this spec, integration/sybil pins the honest"
 echo "                         anchor the bonded farm feeds. Those chains are SHALLOW, so they"
 echo "                         measure the adversarial paths and this run measures depth."
-echo "  not claimed here     : that the witness box PARTICIPATES — its door withholds accept by"
-echo "                         design, so it audits and reports, and adopts nothing"
+echo "  not claimed here     : that the witness box PARTICIPATES — its ACCEPTED is the full node's"
+echo "                         verdict, but it adopts nothing and advances no head"
 echo
 if [ "$L6" = PASS ] && [ "$L7" = PASS ]; then
-  echo "RESULT: PASS ✅  the floor box validates, stays under a kernel-enforced $(human_bytes "$WANT_MEM") at ${PCT}% peak on honest load at depth, prunes at depth, and restarts from the pruned store; a second box on the same spec judges ${VALIDATED} committed heights against witnesses while holding no tree, and its no-provider control stalls without ever accepting"
+  echo "RESULT: PASS ✅  the floor box validates, stays under a kernel-enforced $(human_bytes "$WANT_MEM") at ${PCT}% peak on honest load at depth, prunes at depth, and restarts from the pruned store; a second box on the same spec accepts ${ACCEPTED} committed heights against witnesses while holding no tree, and its no-provider control stalls without ever accepting"
   exit 0
 fi
 [ "$L6" = FAIL ] && echo "  leg 6 FAILED: ${L6_WHY}"

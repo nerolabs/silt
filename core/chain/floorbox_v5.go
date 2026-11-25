@@ -90,12 +90,11 @@ func (o FloorBoxOutcome) String() string {
 }
 
 var (
-	// ErrRecomputeGated marks an IndeterminateTrustlessly whose cause is the not-yet-built,
-	// research-gated bounded witnessable recompute. It is the honest seam: the box got past
-	// every check it CAN perform and stalled because the accept core is gated, not because the
-	// block is bad. A caller distinguishes "I cannot decide yet (gated)" from
-	// "recovery-boundary indeterminate" by this reason.
-	ErrRecomputeGated = errors.New("chain: floor-box v5 witnessable recompute reached a verdict of accept and the box's door withholds it — a floor box audits and reports, and adopts nothing")
+	// ErrRecomputeGated marks an IndeterminateTrustlessly from a proven view whose state-root
+	// recompute (P13a) is not wired: the view got past every check it can perform without the
+	// recompute and cannot decide the StateRoot conjunct. The box's door always wires it, so this
+	// reaches a caller only from a view built without one.
+	ErrRecomputeGated = errors.New("chain: floor-box v5 proven view has no state-root recompute wired, so it cannot decide the StateRoot conjunct")
 
 	// ErrRecoveryBoundaryStall marks the cold auditor's UNCONDITIONAL stall at an ambiguous
 	// recovery boundary (D0 of on direction (a')). There is no directive, no opt-in and no

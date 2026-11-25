@@ -55,8 +55,8 @@ import (
 // property and would grow the keystone the freeze exists to stop growing.
 //
 // NON-VACUITY. This file is in twinGateFiles, so every Test* here calls
-// assertBoxReachesTheDowngrade directly: the fixture's honest block must run the WHOLE composition
-// through the box to the downgrade. A box that stalled on everything would satisfy "never Accept"
+// assertBoxAccepts directly: the fixture's honest block must run the WHOLE composition
+// through the box to Accept. A box that stalled on everything would satisfy "never Accept"
 // trivially, and that is the failure mode the twin catches.
 
 // coldAuditorClass is one v5 block class: the payload that makes a block a member of it, the
@@ -73,6 +73,7 @@ type coldAuditorClass struct {
 	blockField string // the Block field this class drives; "" = a block SHAPE, not a payload field
 	mutate     func(t *testing.T, f structFixture, b *Block)
 	nodeAccept bool   // the node's own oracle verdict for the honest twin of this class
+	wantAccept bool   // the box ACCEPTS the honest twin: the fixture's witness covers the class
 	wantSentry error  // errors.Is target, or nil
 	wantSubstr string // substring of the refusal text, or ""
 }
@@ -84,27 +85,25 @@ func coldAuditorClasses() []coldAuditorClass {
 		{
 			name: "entries", blockField: "Entries", nodeAccept: true,
 			mutate:     func(t *testing.T, f structFixture, b *Block) { b.Entries = []ports.Entry{entry(0x51), entry(0x52)} },
-			wantSentry: ErrRecomputeGated,
+			wantAccept: true,
 		},
 		{
-			// Since tagRevLogSize landed these two classes no longer stall at P13b:
-			// the parent log size Resolves from the parent's committed StateRoot, the extension
-			// verifies, and the block reaches the SAME far end as the entries class — accepted by
-			// the composition and downgraded at the door. They are now the second and third arms
-			// that exercise root forgery rather than witness starvation, which is what the
-			// divergent-root leg of each was waiting for.
+			// Since tagRevLogSize landed these two classes no longer stall at P13b: the parent log
+			// size Resolves from the parent's committed StateRoot, the extension verifies, and the
+			// block is ACCEPTED like the entries class. With it they are the arms whose divergent
+			// root is refused by the recompute itself rather than by witness starvation.
 			name: "revocations", blockField: "Revocations", nodeAccept: true,
 			mutate: func(t *testing.T, f structFixture, b *Block) {
 				b.Revocations = []ports.Hash{entry(1).Root} // the root the fixture committed at h1
 			},
-			wantSentry: ErrRecomputeGated,
+			wantAccept: true,
 		},
 		{
 			name: "unrevocations", blockField: "Unrevocations", nodeAccept: true,
 			mutate: func(t *testing.T, f structFixture, b *Block) {
 				b.Unrevocations = []ports.Hash{entry(1).Root} // revoked by the fixture's own h2 block
 			},
-			wantSentry: ErrRecomputeGated,
+			wantAccept: true,
 		},
 		{
 			name: "bondregs", blockField: "BondRegs", nodeAccept: true,
@@ -125,8 +124,10 @@ func coldAuditorClasses() []coldAuditorClass {
 			mutate: func(t *testing.T, f structFixture, b *Block) {
 				b.IssuerKeys = []IssuerKeyReg{SignIssuerKeyReg(f.keys[0], 0, ports.Hash{0x77})}
 			},
-			wantSentry: ErrRecomputeStateRootScopeStall,
-			wantSubstr: "issuerKeyCommit",
+			// Class I is reproduced now; a box with no witness cannot read the epoch index it
+			// needs, and stalls naming the read.
+			wantSentry: ErrRecomputeIssuerKey,
+			wantSubstr: "no witness",
 		},
 		{
 			name: "carrier", blockField: "LastCommit", nodeAccept: true,
@@ -253,14 +254,14 @@ func forgeDivergentRoot(t *testing.T, f structFixture, honest Block) Block {
 }
 
 // TestColdAuditor_NeverAcceptsAnyV5BlockClass is D0's suite. For every v5 block class: the node's
-// own oracle first, then the honest-rooted block through the door (verdict never Accept, refusal
-// named), then the same block with a DIVERGENT committed root, re-signed and re-check (verdict
-// never Accept).
+// own oracle first, then the honest-rooted block through the door — ACCEPTED where the fixture's
+// witness covers the class, otherwise refused BY NAME — then the same block with a DIVERGENT
+// committed root, re-signed and re-check, which is never accepted.
 //
-// ABLATION (the whole table): delete the downgrade in (*Box).Validate — `if out == Accept { return
-// IndeterminateTrustlessly, ErrRecomputeGated }` — and the entries arm returns ACCEPT ⇒ RED.
-// Per-class ablations, each of which reddens exactly one arm by changing the name it lands on:
-// remove the `len(b.IssuerKeys) > 0` clause from stateRootScopeGate (issuerkeys); remove the digest
+// ABLATION: make the door accept without the state-root recompute and every divergent-root arm
+// returns ACCEPT ⇒ RED. Per-class ablations, each of which reddens exactly one arm by changing the
+// name it lands on:
+// make issuerKeyWrites treat a missing read as an absent leaf (issuerkeys); remove the digest
 // pre-set requirement from the class-S/B/A digest reconstruction (bondregs, slashes, carrier); drop
 // the countDelta derivation in assembleStateRootRecomputeOps so the committed log size folds as 0
 // (revocations, unrevocations).
@@ -270,7 +271,7 @@ func TestColdAuditor_NeverAcceptsAnyV5BlockClass(t *testing.T) {
 	tf := buildStructFixture(t)
 	tsrc := newProverSource(t, tf.c)
 	honestTwin := tf.mkBlock(t, nil)
-	assertBoxReachesTheDowngrade(t, boxOver(t, tf, tsrc), honestTwin, structWitnessFor(t, tf, tsrc, honestTwin))
+	assertBoxAccepts(t, boxOver(t, tf, tsrc), honestTwin, structWitnessFor(t, tf, tsrc, honestTwin))
 
 	for _, cls := range coldAuditorClasses() {
 		t.Run(cls.name, func(t *testing.T) {
@@ -286,8 +287,14 @@ func TestColdAuditor_NeverAcceptsAnyV5BlockClass(t *testing.T) {
 
 			w := structWitnessFor(t, f, src, honest)
 			out, err := box.Validate(honest, w)
-			assertNeverAccept(t, cls.name+"/honest-root", out, err)
-			assertRefusalNamed(t, cls, out, err)
+			if cls.wantAccept {
+				if out != Accept || err != nil {
+					t.Fatalf("%s/honest-root: the witness covers this class and the node accepts it; the box must too, got %s / %v", cls.name, out, err)
+				}
+			} else {
+				assertNeverAccept(t, cls.name+"/honest-root", out, err)
+				assertRefusalNamed(t, cls, out, err)
+			}
 
 			// The attack: a divergent committed root, re-signed and
 			// re-check.
@@ -340,7 +347,7 @@ func TestColdAuditor_ClassCoverageIsComplete(t *testing.T) {
 	f := buildStructFixture(t)
 	src := newProverSource(t, f.c)
 	b := f.mkBlock(t, nil)
-	assertBoxReachesTheDowngrade(t, boxOver(t, f, src), b, structWitnessFor(t, f, src, b))
+	assertBoxAccepts(t, boxOver(t, f, src), b, structWitnessFor(t, f, src, b))
 
 	driven := map[string]string{}
 	for _, cls := range coldAuditorClasses() {
@@ -407,7 +414,7 @@ func TestColdAuditor_StallsUnconditionallyAtARecoveryBoundary(t *testing.T) {
 	f := buildStructFixture(t)
 	src := newProverSource(t, f.c)
 	b := f.mkBlock(t, nil)
-	assertBoxReachesTheDowngrade(t, boxOver(t, f, src), b, structWitnessFor(t, f, src, b))
+	assertBoxAccepts(t, boxOver(t, f, src), b, structWitnessFor(t, f, src, b))
 
 	// Point the chain's own recovery config at the height under test. LivenessRecoveryHeight and
 	// EpochBlocks are PUBLIC consensus config the box reads as class 3 — the ambiguity is never
@@ -462,7 +469,7 @@ func TestColdAuditor_TheBoundaryPostureIsThePositionOfTheBoxNotTheClaimOfTheBloc
 	src := newProverSource(t, f.c)
 	b := f.mkBlock(t, nil)
 	w := structWitnessFor(t, f, src, b)
-	assertBoxReachesTheDowngrade(t, boxOver(t, f, src), b, w)
+	assertBoxAccepts(t, boxOver(t, f, src), b, w)
 
 	const far = 100 // an epoch boundary far above the box's head
 	f.c.cfg.EpochBlocks = 2
@@ -542,7 +549,7 @@ func TestColdAuditor_RefusesPrunedBlocks(t *testing.T) {
 	b := f.mkBlock(t, nil)
 	w := structWitnessFor(t, f, src, b)
 	box := boxOver(t, f, src)
-	assertBoxReachesTheDowngrade(t, box, b, w)
+	assertBoxAccepts(t, box, b, w)
 
 	// The block must actually HAVE something to shed. retires `Pruned` for v5, so a v5 block
 	// with no bond registrations has nothing to prune and Prune is a legitimate no-op on it
@@ -643,7 +650,7 @@ func TestColdAuditor_NoTrustFloorOnTheContractSurface(t *testing.T) {
 	f := buildStructFixture(t)
 	src := newProverSource(t, f.c)
 	b := f.mkBlock(t, nil)
-	assertBoxReachesTheDowngrade(t, boxOver(t, f, src), b, structWitnessFor(t, f, src, b))
+	assertBoxAccepts(t, boxOver(t, f, src), b, structWitnessFor(t, f, src, b))
 
 	// (1) The composition takes no *Chain receiver and no floor argument. ValidateCommitV5 is a
 	// package function, so "no receiver" is structural; the arguments are checked by type.
@@ -733,7 +740,7 @@ func TestColdAuditor_TheKnobIsGoneFromTheTypeSystem(t *testing.T) {
 	f := buildStructFixture(t)
 	src := newProverSource(t, f.c)
 	b := f.mkBlock(t, nil)
-	assertBoxReachesTheDowngrade(t, boxOver(t, f, src), b, structWitnessFor(t, f, src, b))
+	assertBoxAccepts(t, boxOver(t, f, src), b, structWitnessFor(t, f, src, b))
 
 	// BoxConfig carries ONLY box-owned TRUST ANCHORS, each of which can make the box refuse MORE
 	// and can never make it accept where the node rejects. Any other field is a knob.
