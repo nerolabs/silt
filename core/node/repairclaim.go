@@ -484,8 +484,8 @@ func (n *Node) fetchSurvivors(root ports.Hash, k int, refs []shardRef, done func
 	// the judgment is done — unless another judgment of the same stripe still has it borrowed.
 	// Concurrent judgments are ordinary (every position a caretaker rebuilds is claimed at once),
 	// and a judgment that found a survivor present because ANOTHER had just fetched it would
-	// otherwise lose it to that judgment's cleanup and come up short of k. Only a shard this node
-	// held before any judgment borrowed it is its own, and that is never dropped.
+	// otherwise lose it to that judgment's cleanup and come up short of k. A shard this node
+	// already held is not a borrow, and it stays where it is.
 	var borrowed []ports.ChunkID
 	for _, r := range refs {
 		if n.judgeBorrows[r.id] > 0 {
