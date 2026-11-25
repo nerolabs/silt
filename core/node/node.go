@@ -1045,6 +1045,10 @@ type Node struct {
 	// placement can spread columns across distinct domains.
 	domainID    uint64
 	peerDomains map[ports.NodeID]uint64
+	// peerRelease is the release each peer last advertised (ports.Message.Release), bounded by
+	// maxPeerInfo like the maps beside it. It is how a node reports how much of the validator set
+	// is still below a version floor (VersionFloor).
+	peerRelease map[ports.NodeID]uint32
 
 	// Observed-address keying (address_class.go): the transport's classifier
 	// the DHT reads, the configured cap, and the operator-typed -bootstrap seeds.
@@ -1099,6 +1103,7 @@ type Node struct {
 	floorNotedSeq      uint64
 	floorEnforceNoted  bool
 	floorRefusedLogged map[ports.NodeID]bool
+	floorNotice        func(line string)
 	// pendingBondRegs are fresh bond renewals PEERS submitted
 	// (MsgSubmitBondReg) that this node will fold into the next block it
 	// proposes — the NON-PROPOSER renewal path (H2 /). Without it a validator
@@ -1625,6 +1630,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		proofMeta:           make(map[ports.ChunkID]proofMeta),
 		proofs:              newMemProofs(), // default in-mem backing; daemon injects the bounded disk-backed store
 		peerDomains:         make(map[ports.NodeID]uint64),
+		peerRelease:         make(map[ports.NodeID]uint32),
 		peerBonds:           make(map[ports.NodeID]bondInfo),
 		peerBondRTT:         make(map[ports.NodeID]*latWindow),
 		peerRate:            make(map[ports.NodeID]*peerPath),
@@ -2065,6 +2071,8 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 	// that keeps nothing) will vanish, so routing to it only poisons the
 	// table with ghosts; process its message, but don't add it.
 	if !msg.Ephemeral {
+		evictPeerInfoIfFull(n.peerRelease, from)
+		n.peerRelease[from] = msg.Release
 		n.table.Observe(from)
 		// Proof of life also clears the dead-peer negative cache: if this peer was
 		// negative-cached as unreachable (a prior dial timed out → a corpse entry), hearing

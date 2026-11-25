@@ -2,6 +2,7 @@ package node
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/nerolabs/silt/core/advisory"
@@ -102,6 +103,14 @@ type VersionFloorStatus struct {
 	Release     uint32 `json:"release"`
 	BelowFloor  bool   `json:"belowFloor"`
 	Note        string `json:"note,omitempty"`
+	// Adoption, as this node has heard it: of the validators eligible to propose, how many last
+	// advertised a release below the floor, and how many this node has not heard from. An
+	// enforced floor removes the weight below it from the quorum, so this is what tells the
+	// maintainers whether enforcing would halt the chain.
+	Validators          int   `json:"validators"`
+	ValidatorsBelow     int   `json:"validatorsBelow"`
+	ValidatorsUnheard   int   `json:"validatorsUnheard"`
+	BondedBelowPermille int64 `json:"bondedBelowPermille"`
 }
 
 func tierName(t advisory.Tier) string {
@@ -135,8 +144,35 @@ func (n *Node) VersionFloor() (VersionFloorStatus, bool) {
 		s.EnforcingAt = at + a.GraceBlocks
 		s.Enforcing = n.floorEnforced() != 0
 	}
+	if a.Floor != 0 {
+		var total, below int64
+		for _, id := range n.chain.EligibleProposers() {
+			s.Validators++
+			w := n.chain.BondedSize(id)
+			total += w
+			rel, heard := n.peerRelease[id]
+			if id == n.id {
+				rel, heard = s.Release, true
+			}
+			switch {
+			case !heard:
+				s.ValidatorsUnheard++
+			case rel < a.Floor:
+				s.ValidatorsBelow++
+				below += w
+			}
+		}
+		if total > 0 {
+			s.BondedBelowPermille = below * 1000 / total
+		}
+	}
 	return s, true
 }
+
+// SetFloorNotice routes the operator-facing version-floor lines to fn as well as the log: a
+// daemon prints them on its console, where an operator who has not opened the log still sees
+// them.
+func (n *Node) SetFloorNotice(fn func(line string)) { n.floorNotice = fn }
 
 // noteVersionFloor tells the operator about a new advisory once, and about enforcement once it
 // starts. It runs on the chain-sync tick.
@@ -145,27 +181,37 @@ func (n *Node) noteVersionFloor() {
 	if !ok {
 		return
 	}
+	say := func(lvl ports.LogLevel, line string, kv ...any) {
+		n.logf(lvl, line, kv...)
+		if n.floorNotice != nil {
+			n.floorNotice(line)
+		}
+	}
 	if s.Seq != n.floorNotedSeq {
 		n.floorNotedSeq = s.Seq
 		n.floorEnforceNoted = false
 		switch {
 		case s.Tier == "recall":
-			n.logf(ports.LogInfo, "version-floor: the maintainers recalled the floor; no release is required", "seq", s.Seq)
+			say(ports.LogInfo, fmt.Sprintf("version-floor: the maintainers recalled the floor (advisory %d); no release is required", s.Seq), "seq", s.Seq)
 		case s.BelowFloor:
-			n.logf(ports.LogWarn, "version-floor: this node runs a release below the network's floor — upgrade",
-				"release", s.Release, "floor", s.Floor, "tier", s.Tier, "enforcingAt", s.EnforcingAt, "note", s.Note)
+			when := "it is a warning; nothing is enforced"
+			if s.EnforcingAt != 0 {
+				when = fmt.Sprintf("from block %d validators stop counting this node's consensus messages", s.EnforcingAt)
+			}
+			say(ports.LogWarn, fmt.Sprintf("version-floor: this node runs a release below the network's floor — upgrade (release %d, floor %d, tier %s; %s). %s",
+				s.Release, s.Floor, s.Tier, when, s.Note), "release", s.Release, "floor", s.Floor, "tier", s.Tier, "enforcingAt", s.EnforcingAt)
 		default:
-			n.logf(ports.LogInfo, "version-floor: advisory in force; this node meets it",
+			say(ports.LogInfo, fmt.Sprintf("version-floor: advisory %d in force (floor %d, tier %s); this node runs release %d and meets it", s.Seq, s.Floor, s.Tier, s.Release),
 				"release", s.Release, "floor", s.Floor, "tier", s.Tier)
 		}
 	}
 	if s.Enforcing && !n.floorEnforceNoted {
 		n.floorEnforceNoted = true
 		if s.BelowFloor {
-			n.logf(ports.LogWarn, "version-floor: ENFORCED — validators no longer count this node's consensus messages; it still stores and serves",
+			say(ports.LogWarn, fmt.Sprintf("version-floor: ENFORCED — validators no longer count this node's consensus messages; it still stores and serves (release %d, floor %d)", s.Release, s.Floor),
 				"release", s.Release, "floor", s.Floor)
 		} else {
-			n.logf(ports.LogWarn, "version-floor: ENFORCED — refusing consensus messages from nodes below the floor", "floor", s.Floor)
+			say(ports.LogWarn, fmt.Sprintf("version-floor: ENFORCED — refusing consensus messages from nodes below release %d", s.Floor), "floor", s.Floor)
 		}
 	}
 }

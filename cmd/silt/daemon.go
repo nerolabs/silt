@@ -617,6 +617,7 @@ func cmdDaemon(args []string) error {
 	clk := walltime.New(loop)
 	nd := node.New(id, cfg, clk, tr, store)
 	nd.SetSigner(ident.Signer()) // sign self-certifying provider records (H5), not just chain blocks
+	nd.SetFloorNotice(func(line string) { fmt.Println(line) })
 	// The DHT eclipse cap reads the transport's observed (class, group) per peer
 	// — never the declared -domain label. Shadow by default: counted, never
 	// applied. The reserve is refused below K/2 (the table would clamp it; the

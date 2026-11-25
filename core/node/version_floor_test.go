@@ -146,6 +146,13 @@ func TestVersionFloorWarnsThenRefusesConsensusFromOldReleases(t *testing.T) {
 		}
 	}
 
+	// Every validator has been heard from; the old one is reported below the floor, with its
+	// third of the bonded weight, so the maintainers can see what enforcing would remove.
+	if s, _ := vals[0].VersionFloor(); s.Validators != 3 || s.ValidatorsBelow != 1 || s.ValidatorsUnheard != 0 || s.BondedBelowPermille != 333 {
+		t.Fatalf("adoption readout: %d validators, %d below, %d unheard, %d‰ of bond below; want 3, 1, 0, 333‰",
+			s.Validators, s.ValidatorsBelow, s.ValidatorsUnheard, s.BondedBelowPermille)
+	}
+
 	// Inside the grace period nothing is refused.
 	for i, v := range vals {
 		if v.Stats.FloorRefused != 0 {
