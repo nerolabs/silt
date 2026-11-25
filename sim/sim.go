@@ -10,6 +10,8 @@ package sim
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/sha256"
 	"fmt"
 	"math/rand"
 
@@ -48,7 +50,16 @@ func NewCluster(seed int64, nNodes int, netCfg simnet.Config, nodeCfg node.Confi
 // has settled routing tables.
 func NewClusterWithStores(seed int64, nNodes int, netCfg simnet.Config, nodeCfg node.Config,
 	storeFor func(i int) ports.ChunkStore) *Cluster {
-	return newCluster(seed, nNodes, netCfg, nodeCfg, storeFor, nil)
+	return newCluster(seed, nNodes, netCfg, nodeCfg, storeFor, nil, false)
+}
+
+// NewClusterWithKeys is NewCluster with every node holding an identity key its NodeID
+// is the hash of, as a daemon's does: for scenarios in which a node signs what it sends
+// (a repair claim is signed by its claimant, who must be the sender). The keys come
+// from the seed, so the run stays reproducible; the ids differ from NewCluster's.
+func NewClusterWithKeys(seed int64, nNodes int, netCfg simnet.Config, nodeCfg node.Config) *Cluster {
+	return newCluster(seed, nNodes, netCfg, nodeCfg,
+		func(int) ports.ChunkStore { return memstore.New() }, nil, true)
 }
 
 // NewClusterWithDomains is NewCluster with nodes spread across nDomains
@@ -58,11 +69,11 @@ func NewClusterWithStores(seed int64, nNodes int, netCfg simnet.Config, nodeCfg 
 func NewClusterWithDomains(seed int64, nNodes int, netCfg simnet.Config, nodeCfg node.Config, nDomains int) *Cluster {
 	return newCluster(seed, nNodes, netCfg, nodeCfg,
 		func(int) ports.ChunkStore { return memstore.New() },
-		func(i int) string { return fmt.Sprintf("dom%d", i%nDomains) })
+		func(i int) string { return fmt.Sprintf("dom%d", i%nDomains) }, false)
 }
 
 func newCluster(seed int64, nNodes int, netCfg simnet.Config, nodeCfg node.Config,
-	storeFor func(i int) ports.ChunkStore, domainFor func(i int) string) *Cluster {
+	storeFor func(i int) ports.ChunkStore, domainFor func(i int) string, keyed bool) *Cluster {
 	sched := simclock.New()
 	net := simnet.New(sched, seed, netCfg)
 	rng := rand.New(rand.NewSource(seed))
@@ -70,13 +81,25 @@ func newCluster(seed int64, nNodes int, netCfg simnet.Config, nodeCfg node.Confi
 
 	for i := 0; i < nNodes; i++ {
 		var id ports.NodeID
-		rng.Read(id[:])
+		var key ed25519.PrivateKey
+		if keyed {
+			keySeed := make([]byte, ed25519.SeedSize)
+			rng.Read(keySeed)
+			key = ed25519.NewKeyFromSeed(keySeed)
+			id = sha256.Sum256(key.Public().(ed25519.PublicKey))
+		} else {
+			rng.Read(id[:])
+		}
 		ep := net.Endpoint(id)
 		cfg := nodeCfg
 		if domainFor != nil {
 			cfg.Domain = domainFor(i)
 		}
-		cl.Nodes = append(cl.Nodes, node.New(id, cfg, sched, ep, storeFor(i)))
+		nd := node.New(id, cfg, sched, ep, storeFor(i))
+		if key != nil {
+			nd.SetSigner(key)
+		}
+		cl.Nodes = append(cl.Nodes, nd)
 	}
 	for i, nd := range cl.Nodes {
 		if i == 0 {

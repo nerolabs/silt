@@ -51,12 +51,13 @@
 // standing — PayBounty is `neutral`, SlashFalseRepair is `reduces` — so the γ→1/N
 // firewall holds (the one load-bearing invariant, core/credit/invariant_a_test.go).
 //
-// ADVERSARY-SHAPE: capability=UntrustedClaimFields UNCOVERED: no fixture GRANTS AND CONTROLS FOR 'never trusting the claim on its face'. NARROWED 2026-09-12: the already-paid half is CLOSED -- node-side (root, stripe, pos) dedup on PAID, asserted by TestReplayedClaimForAPaidPositionDrawsNothing -- and the claimed position is now screened against the manifest before any fetch. What remains uncovered is that the position was ever LOST: TestClaimWithNoLossIsPaid_PINNED_DEFECT drives attacker-chosen claim fields straight at the judge and pins that gap, its closer is GATED behind, and it carries no control that removes the capability, so it is not declared as cover.
+// ADVERSARY-SHAPE: capability=UntrustedClaimFields UNCOVERED: no fixture GRANTS AND CONTROLS FOR 'never trusting the claim on its face'. NARROWED 2026-09-12: the already-paid half is CLOSED -- node-side (root, stripe, pos) dedup on PAID, asserted by TestReplayedClaimForAPaidPositionDrawsNothing -- and the claimed position is now screened against the manifest before any fetch. That the position was ever LOST is now required (priorLoss), and TestClaimWithNoLossIsDenied drives attacker-chosen claim fields straight at the judge to assert it; its control is TestRepair_HonestClaimIsPaid over a real loss.
 package node
 
 import (
 	"fmt"
 
+	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/core/credit"
 	"github.com/nerolabs/silt/core/crypto"
 	"github.com/nerolabs/silt/core/erasure"
@@ -83,11 +84,12 @@ func (n *Node) handleRepairClaim(from ports.NodeID, msg ports.Message) {
 		n.reply(from, msg, ports.Message{Kind: ports.MsgRepairVote, OK: false})
 	}
 
-	claim, err := repairproof.UnmarshalClaim(msg.Data)
+	signed, err := repairproof.UnmarshalSignedClaim(msg.Data)
 	if err != nil {
 		deny("malformed claim")
 		return
 	}
+	claim = signed.Claim
 	// THE ECONOMY GATE, AND IT BELONGS AHEAD OF EVERYTHING BELOW IT. A node not
 	// running the repair economy pays no bounty, so every byte it spends judging is
 	// spent for nothing — and this test used to sit at SETTLEMENT, after the registry
@@ -122,6 +124,17 @@ func (n *Node) handleRepairClaim(from ports.NodeID, msg ports.Message) {
 		deny("not running the repair economy — this node is not a caretaker-judge and plants no careKey record, so it judges nothing and pays nothing")
 		return
 	}
+	// THE CLAIMANT SIGNED IT, AND IS THE SENDER. The signature is what makes a false
+	// claim slashable on chain; a claim signed by someone other than the peer that sent
+	// it would let a sender put a third party's name to a lie, so it is refused.
+	if err := signed.Verify(n.chainID()); err != nil {
+		deny("claim signature does not verify")
+		return
+	}
+	if signed.Claimant() != from {
+		deny("claim signed by a key other than its sender's")
+		return
+	}
 	n.logf(ports.LogDebug, "repair claim received",
 		"root", claim.Root, "shard", claim.ShardID, "holder", claim.Holder, "claimant", from)
 	ch, ok := n.careHandleFor(claim.Root)
@@ -141,7 +154,7 @@ func (n *Node) handleRepairClaim(from ports.NodeID, msg ports.Message) {
 				deny("manifest unreachable (transient)")
 				return
 			}
-			n.judgeRepairClaim(from, msg, claim, ch, entry, 0)
+			n.judgeRepairClaim(from, msg, signed, ch, entry, 0)
 		})
 	})
 }
@@ -152,7 +165,8 @@ func (n *Node) handleRepairClaim(from ports.NodeID, msg ports.Message) {
 const judgeRetryAttempts = 3
 
 // judgeRepairClaim runs the two legs once the manifest is in hand and settles.
-func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, claim repairproof.RepairClaim, ch link.CareHandle, entry ports.Entry, attempt int) {
+func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, signed repairproof.SignedClaim, ch link.CareHandle, entry ports.Entry, attempt int) {
+	claim := signed.Claim
 	deny := func(reason string) {
 		n.logf(ports.LogInfo, "repair claim denied", "reason", reason,
 			"root", claim.Root, "shard", claim.ShardID, "claimant", from)
@@ -233,11 +247,19 @@ func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, claim repa
 			claim.ShardPos, claim.Stripe))
 		return
 	}
+	if claim.LeafIndex != targetRef.leafIdx {
+		// The claim names a leaf that is not this position's. Inconsistent, but not a
+		// statement the root refutes, so it is denied rather than slashed.
+		deny(fmt.Sprintf("claimed leaf %d is not the leaf of stripe %d position %d (%d)",
+			claim.LeafIndex, claim.Stripe, claim.ShardPos, targetRef.leafIdx))
+		return
+	}
 	if targetRef.id != claim.ShardID {
 		n.logf(ports.LogWarn, "repair claim names a shard id the manifest does not commit at that position",
 			"root", claim.Root, "stripe", claim.Stripe, "pos", claim.ShardPos,
 			"claimed", claim.ShardID, "committed", targetRef.id, "claimant", from)
 		n.settleRepairVerdict(from, claim, p, 0, 0, repairproof.Decision{Release: false, Slash: true})
+		n.reportFalseRepair(signed, m)
 		n.reply(from, msg, ports.Message{Kind: ports.MsgRepairVote, OK: false})
 		return
 	}
@@ -286,7 +308,7 @@ func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, claim repa
 					"root", claim.Root, "shard", claim.ShardID,
 					"fetched", len(survivors), "need", p.K, "attempt", attempt+1)
 				n.clock.AfterFunc(n.cfg.HolderCooldown, func() {
-					n.judgeRepairClaim(from, msg, claim, ch, entry, attempt+1)
+					n.judgeRepairClaim(from, msg, signed, ch, entry, attempt+1)
 				})
 				return
 			}
@@ -606,10 +628,17 @@ func (n *Node) emitRepairClaim(root ports.Hash, r shardRef, holder ports.NodeID,
 		n.logf(ports.LogDebug, "repair claim not emitted: this node holds no committed bond", "root", root, "pos", r.pos)
 		return
 	}
-	claim := repairproof.RepairClaim{
-		Root: root, Stripe: r.stripe, ShardPos: r.pos, ShardID: r.id, Holder: holder,
+	if n.signer == nil {
+		return // a claim is signed by its claimant; an unkeyed node can make none
 	}
-	data, err := claim.Marshal()
+	claim := repairproof.RepairClaim{
+		Root: root, Stripe: r.stripe, ShardPos: r.pos, ShardID: r.id, Holder: holder, LeafIndex: r.leafIdx,
+	}
+	signed, err := repairproof.SignClaim(n.signer, n.chainID(), claim)
+	if err != nil {
+		return
+	}
+	data, err := signed.Marshal()
 	if err != nil {
 		return
 	}
@@ -709,4 +738,26 @@ func (n *Node) priorLoss(claim repairproof.RepairClaim, claimant ports.NodeID, d
 		}
 		try(0)
 	})
+}
+
+// reportFalseRepair turns a signed claim the manifest refutes into on-chain slash
+// evidence: the claim beside the Merkle path of the leaf it names, from the object's
+// root. Any validator verifies it with nothing but the root (chain.FalseRepairProof),
+// and the slash evicts the claimant's bond on every replica.
+func (n *Node) reportFalseRepair(signed repairproof.SignedClaim, m *manifest.Layout) {
+	leaves := m.Leaves()
+	idx := signed.Claim.LeafIndex
+	pr, err := manifest.Prove(leaves, idx)
+	if err != nil {
+		return
+	}
+	e := chain.Equivocation{Culprit: signed.Pub, FalseRepair: &chain.FalseRepairProof{
+		Claim: signed, Leaf: leaves[idx], Total: pr.Total, Path: pr.Path}}
+	if err := chain.CheckEquivocation(&e, n.chainID(), n.eraFloor()); err != nil {
+		n.logf(ports.LogWarn, "false repair claim could not be made into evidence", "claimant", signed.Claimant(), "err", err)
+		return
+	}
+	n.Stats.FalseRepairReports++
+	n.logf(ports.LogWarn, "false repair claim reported for on-chain slashing", "claimant", signed.Claimant(), "root", signed.Claim.Root)
+	n.SubmitSlash(e)
 }

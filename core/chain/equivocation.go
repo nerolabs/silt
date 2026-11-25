@@ -25,6 +25,11 @@ type Equivocation struct {
 	Culprit []byte `cbor:"1,keyasint"` // the equivocator's ed25519 public key
 	A       Block  `cbor:"2,keyasint"`
 	B       Block  `cbor:"3,keyasint"`
+	// FalseRepair, when set, makes this record the OTHER self-attributing offence the
+	// chain slashes: a signed false repair claim (false_repair.go). A and B are then
+	// empty, and Culprit is the claimant's key. Absent, the record encodes exactly as a
+	// double-sign proof always has.
+	FalseRepair *FalseRepairProof `cbor:"4,keyasint,omitempty"`
 }
 
 // CulpritID is the NodeID (hash of the public key) of the equivocator.
@@ -139,6 +144,9 @@ func CheckEquivocation(e *Equivocation, chainID ports.Hash, floor EraFloor) erro
 	}
 	if len(e.Culprit) != ed25519.PublicKeySize {
 		return ErrNotEquivocation
+	}
+	if e.FalseRepair != nil {
+		return checkFalseRepair(e, chainID)
 	}
 	if e.A.IsPruned() || e.B.IsPruned() {
 		return ErrPrunedEvidence // a pruned body cannot reproduce its hash: no height is bound

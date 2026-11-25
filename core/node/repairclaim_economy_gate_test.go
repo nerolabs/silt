@@ -44,10 +44,7 @@ func TestRepairClaimBuysNoWorkWithoutTheEconomy(t *testing.T) {
 		attacker := s.nodes[2]
 		s.bond(attacker)
 		claim := repairClaimFor(s.root, 0, pos, parityID, s.nodes[7].ID())
-		data, err := claim.Marshal()
-		if err != nil {
-			t.Fatalf("marshal: %v", err)
-		}
+		data := s.claimData(judge, attacker.ID(), claim)
 		before := s.net.Stats.Kinds[ports.MsgRepairVote]
 		judge.handleRepairClaim(attacker.ID(), ports.Message{Kind: ports.MsgRepairClaim, Data: data})
 		s.sched.Run()

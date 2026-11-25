@@ -516,6 +516,9 @@ type Stats struct {
 	// ClaimantUnbonded counts repair claims refused because the claimant holds no
 	// committed bond on this node's chain, so a false claim could cost it nothing.
 	ClaimantUnbonded int
+	// FalseRepairReports counts signed false repair claims this judge turned into
+	// on-chain slash evidence and sent to the validators.
+	FalseRepairReports int
 	// detector A4: repair bounties this judge paid to ITSELF, count and
 	// credits. claim.Holder is a field of an inbound, attacker-declared
 	// MsgRepairClaim and nothing refuses a claim naming the judge as the holder,

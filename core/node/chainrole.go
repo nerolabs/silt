@@ -272,12 +272,16 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		// GetWitness, CommitBlock adoption) from the replica below.
 		switch msg.Kind {
 		case ports.MsgProposeBlock, ports.MsgPrepareQC, ports.MsgRoundChange, ports.MsgRoundCert,
-			ports.MsgHaveBondReg, ports.MsgSubmitBondReg, ports.MsgSubmitIssuerKeyReg, ports.MsgSubmitEntry:
+			ports.MsgHaveBondReg, ports.MsgSubmitBondReg, ports.MsgSubmitIssuerKeyReg, ports.MsgSubmitEntry,
+			ports.MsgSubmitSlash:
 			n.reply(from, msg, ports.Message{Kind: replyKind(msg.Kind), OK: false})
 			return true
 		}
 	}
 	switch msg.Kind {
+	case ports.MsgSubmitSlash:
+		n.handleSubmitSlash(from, msg)
+		return true
 	case ports.MsgProposeBlock:
 		// PREPARE phase. Attest only what we would
 		// accept: same rules, our reputation view. The envelope carries the
@@ -1869,6 +1873,67 @@ func (n *Node) eraFloor() chain.EraFloor {
 	return n.chain.EraFloor()
 }
 
+// queueSlash queues one verified slash proof for on-chain recording, once per culprit,
+// unless the culprit is already slashed or the proof alone exceeds SlashesBytesCap (it
+// could never commit, and queuing it would make every later proposal invalid). The
+// caller has verified e.
+func (n *Node) queueSlash(e chain.Equivocation) {
+	cid := e.CulpritID()
+	if n.chain == nil || n.chain.IsSlashed(cid) || n.slashQueued[cid] {
+		return
+	}
+	if sz := chain.SlashesEncodedSize([]chain.Equivocation{e}); sz > chain.SlashesBytesCap {
+		if !n.slashOverCapLogged[cid] {
+			n.slashOverCapLogged[cid] = true
+			n.logf(ports.LogWarn, "equivocation proof exceeds SlashesBytesCap; not queued for on-chain slashing", "culprit", cid, "height", e.A.Height, "bytes", sz, "cap", chain.SlashesBytesCap)
+		}
+		return
+	}
+	n.pendingSlashes = append(n.pendingSlashes, e)
+	n.slashQueued[cid] = true
+}
+
+// handleSubmitSlash takes slash evidence from a node that does not propose (a repair
+// judge reporting a false claim). It is verified exactly as this node verifies its own,
+// against its own chain id and era floor, so a forged accusation is refused here and
+// could not commit anyway.
+func (n *Node) handleSubmitSlash(from ports.NodeID, msg ports.Message) {
+	var e chain.Equivocation
+	if err := cbor.Unmarshal(msg.Data, &e); err != nil {
+		n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitSlashAck, OK: false})
+		return
+	}
+	if err := chain.CheckEquivocation(&e, n.chainID(), n.eraFloor()); err != nil {
+		n.logf(ports.LogInfo, "submitted slash proof refused", "from", from, "err", err)
+		n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitSlashAck, OK: false})
+		return
+	}
+	n.queueSlash(e)
+	n.logf(ports.LogWarn, "slash proof accepted for on-chain recording", "culprit", e.CulpritID(), "from", from, "falseRepair", e.FalseRepair != nil)
+	n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitSlashAck, OK: true})
+}
+
+// SubmitSlash records a verified slash proof this node found: queued here if this node
+// proposes, and sent to every validator it syncs from, whichever of them proposes next.
+func (n *Node) SubmitSlash(e chain.Equivocation) {
+	if n.chain == nil {
+		return
+	}
+	if !n.chainFollower() && n.signer != nil {
+		n.queueSlash(e)
+	}
+	raw, err := encSlash(e)
+	if err != nil {
+		return
+	}
+	for _, p := range n.syncTargets() {
+		if p == n.id {
+			continue
+		}
+		n.request(p, ports.Message{Kind: ports.MsgSubmitSlash, Data: raw}, func(ports.Message, error) {})
+	}
+}
+
 func (n *Node) slashEquivocators(a, b []chain.Block) {
 	if n.ledger == nil {
 		return
@@ -1895,17 +1960,7 @@ func (n *Node) slashEquivocators(a, b []chain.Block) {
 		// also honestly attested and serves it as a peer, so it is logged by
 		// name, once per culprit; the culprit keeps its on-chain seat —
 		// the cap's second face, see SlashesBytesCap.
-		if n.chain != nil && !n.chain.IsSlashed(cid) && !n.slashQueued[cid] {
-			if sz := chain.SlashesEncodedSize([]chain.Equivocation{e}); sz > chain.SlashesBytesCap {
-				if !n.slashOverCapLogged[cid] {
-					n.slashOverCapLogged[cid] = true
-					n.logf(ports.LogWarn, "equivocation proof exceeds SlashesBytesCap; not queued for on-chain slashing", "culprit", cid, "height", e.A.Height, "bytes", sz, "cap", chain.SlashesBytesCap)
-				}
-			} else {
-				n.pendingSlashes = append(n.pendingSlashes, e)
-				n.slashQueued[cid] = true
-			}
-		}
+		n.queueSlash(e)
 		if n.slashedLocal[cid] {
 			continue
 		}
@@ -2702,4 +2757,13 @@ func (n *Node) SubmitIssuerKeyRegs(peers []ports.NodeID) {
 	if sent > 0 {
 		n.logf(ports.LogInfo, "issuer-key registrations submitted", "count", sent, "peers", len(peers), "next_epoch", epoch)
 	}
+}
+
+// encSlash is the canonical CBOR a slash proof travels in.
+func encSlash(e chain.Equivocation) ([]byte, error) {
+	enc, err := cbor.CanonicalEncOptions().EncMode()
+	if err != nil {
+		return nil, err
+	}
+	return enc.Marshal(e)
 }

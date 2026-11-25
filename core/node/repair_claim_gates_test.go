@@ -108,6 +108,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/nerolabs/silt/adapters/identity"
+	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/core/repairproof"
 	"github.com/nerolabs/silt/ports"
 )
@@ -275,10 +277,7 @@ func TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT(t *testing.T) {
 		// A holder that does not hold this parity shard: the retrievability leg
 		// denies, so nothing is ever paid and nothing is ever slashed.
 		claim := repairClaimFor(s.root, 0, pos, parityID, s.nodes[7].ID())
-		data, err := claim.Marshal()
-		if err != nil {
-			t.Fatalf("marshal: %v", err)
-		}
+		data := s.claimData(judge, attacker.ID(), claim)
 		for i := 0; i < n; i++ {
 			judge.handleRepairClaim(attacker.ID(), ports.Message{Kind: ports.MsgRepairClaim, Data: data})
 			s.sched.Run()
@@ -619,5 +618,45 @@ func TestUnbondedClaimantIsDenied(t *testing.T) {
 	s.deliverClaim(judge, bonded, claim)
 	if judge.Stats.BountiesReleased != 1 {
 		t.Fatalf("control: the same claim from a bonded claimant did not pay (BountiesReleased=%d)", judge.Stats.BountiesReleased)
+	}
+}
+
+// TestFalseClaimBecomesSlashEvidence: a judge holding a chain that catches a signed
+// claim naming a shard the manifest does not commit at that leaf turns it into slash
+// evidence: one proof, queued, that verifies under the judge's own chain id and era
+// floor, naming the claimant. TestFalseRepairClaimIsSlashedOnChain carries such a proof
+// to commitment.
+func TestFalseClaimBecomesSlashEvidence(t *testing.T) {
+	s := newRepairAdv(t, 1211)
+	s.fundEscrow(5_000_000)
+	judge := s.careJudge()
+	// The judge reads the object's entry from its chain, so the chain carries it.
+	entry, ok, err := s.reg.Lookup(context.Background(), s.root)
+	if err != nil || !ok {
+		t.Fatalf("setup: the fixture's object has no registry entry: %v", err)
+	}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{entry}}
+	jkey := identity.FromSeed(1001).Signer() // s.nodes[1], the fixture's judge
+	chain.Sign(g, jkey)
+	ch := chain.New(chain.Config{Quorum: 1}, func(ports.NodeID) int64 { return 0 })
+	if err := ch.AppendGenesis(*g); err != nil {
+		t.Fatal(err)
+	}
+	judge.EnableChain(ch, jkey)
+
+	pos, _, _ := s.parityTarget()
+	claimant := s.nodes[2].ID()
+	lie := repairClaimFor(s.root, 0, pos, ports.ChunkID(ports.HashBytes([]byte("never committed here"))), s.nodes[9].ID())
+	s.deliverClaim(judge, claimant, lie)
+
+	if judge.Stats.FalseRepairReports != 1 || len(judge.pendingSlashes) != 1 {
+		t.Fatalf("a false claim did not become one queued slash proof: reports=%d queued=%d", judge.Stats.FalseRepairReports, len(judge.pendingSlashes))
+	}
+	e := judge.pendingSlashes[0]
+	if e.FalseRepair == nil || e.CulpritID() != claimant {
+		t.Fatalf("the queued proof is not a false-repair proof against the claimant: %+v", e.CulpritID())
+	}
+	if err := chain.CheckEquivocation(&e, judge.chainID(), judge.eraFloor()); err != nil {
+		t.Fatalf("the judge queued evidence its own chain refuses: %v", err)
 	}
 }

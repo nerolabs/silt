@@ -206,6 +206,12 @@ const (
 	// recorded whenever it lands. It has no Data, so it is a control-sized frame and
 	// never queues behind the payload it acknowledges.
 	MsgHaveBondReg // HeldRegs: the answer-digest of the registration the sender just QUEUED from the receiver; unsolicited, never a reply
+	// APPENDED, never inserted: slash evidence found by a node that does not propose. A
+	// repair judge that catches a signed false claim (often a non-voting follower) sends
+	// the proof to validators, which verify it as they verify their own and queue it for
+	// their next block.
+	MsgSubmitSlash    // Data: canonical CBOR of ONE chain.Equivocation (a double-sign or a false-repair proof)
+	MsgSubmitSlashAck // OK: the proof verified and is queued (or its culprit is already slashed)
 )
 
 // StorageProof is a Merkle inclusion proof shipped alongside a chunk:
@@ -423,6 +429,7 @@ func (k MsgKind) String() string {
 		MsgCommitBlock: "CommitBlock", MsgCommitAck: "CommitAck",
 		MsgGetChain: "GetChain", MsgChainReply: "ChainReply",
 		MsgGetWitness: "GetWitness", MsgWitnessReply: "WitnessReply",
+		MsgSubmitSlash: "SubmitSlash", MsgSubmitSlashAck: "SubmitSlashAck",
 		MsgHaveBondReg:  "HaveBondReg",
 		MsgGetChainHead: "GetChainHead", MsgChainHeadReply: "ChainHeadReply",
 		MsgCheckReachability: "CheckReachability", MsgReachabilityReply: "ReachabilityReply",
@@ -453,7 +460,7 @@ func (k MsgKind) String() string {
 // IsReply reports whether this kind terminates a pending request.
 func (m Message) IsReply() bool {
 	switch m.Kind {
-	case MsgFindNodeReply, MsgGetProvidersReply, MsgAddProviderAck, MsgStoreChunkAck, MsgFetchChunkReply, MsgHasChunkReply, MsgChallengeReply, MsgAttestReply, MsgCommitAck, MsgChainReply, MsgChainHeadReply, MsgBondReply, MsgTokenReply, MsgIssuerKeyReply, MsgSubmitBondRegAck, MsgSubmitEntryAck, MsgRepairVote, MsgDeliveryReceiptAck, MsgCanonicalIssuersReply, MsgPrecommitReply, MsgRoundChangeAck, MsgRelayOpenAck, MsgRelayPayAck, MsgDemandIssuerKeysReply, MsgDemandTokenReply, MsgSubmitIssuerKeyRegAck, MsgDeliveryOpenAck, MsgDeliveryFundAck, MsgDeliverySettleAck, MsgRoundCertAck, MsgWitnessReply:
+	case MsgFindNodeReply, MsgGetProvidersReply, MsgAddProviderAck, MsgStoreChunkAck, MsgFetchChunkReply, MsgHasChunkReply, MsgChallengeReply, MsgAttestReply, MsgCommitAck, MsgChainReply, MsgChainHeadReply, MsgBondReply, MsgTokenReply, MsgIssuerKeyReply, MsgSubmitBondRegAck, MsgSubmitEntryAck, MsgRepairVote, MsgDeliveryReceiptAck, MsgCanonicalIssuersReply, MsgPrecommitReply, MsgRoundChangeAck, MsgRelayOpenAck, MsgRelayPayAck, MsgDemandIssuerKeysReply, MsgDemandTokenReply, MsgSubmitIssuerKeyRegAck, MsgDeliveryOpenAck, MsgDeliveryFundAck, MsgDeliverySettleAck, MsgRoundCertAck, MsgWitnessReply, MsgSubmitSlashAck:
 		return true
 	}
 	return false
