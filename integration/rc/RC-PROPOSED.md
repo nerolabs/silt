@@ -1265,8 +1265,8 @@ operators — making a more decentralized network one that fewer parties can arc
 deep past the property of whoever can afford terabytes.
 *Evidence:* unit → integration.
 
-**17. The economy mints nothing, and the core squeeze is measured.** ⏳ *unit and e2e green on all
-four clauses and the measurement taken; owed: the integration tier and an ECONOMY=1 field sheet*
+**17. The economy mints nothing, and the core squeeze is measured.** ✅ *held — unit and e2e on all
+four clauses, the repair flow on local docker and on an ECONOMY=1 field sheet, and the measurement*
 Balance-lane credit
 never becomes consensus standing; a colluding pair strictly loses; repair is funded from the
 object's own escrow; a false claim is slashed. Plus core-node net margin at two edge
@@ -1308,8 +1308,14 @@ does not squeeze it; it relieves it (+7.8 credits), because storage nodes take s
 validators. The deficit is the unpriced core work itself — consensus and bond audits, constant across
 both populations — which is the externality witness pricing is accepted to pay for.
 
-Owed before held: the integration tier; and an ECONOMY=1 field sheet of `flow_economy_repair`, which now uses a
-bonded validator as paramedic and relaunches the judge as a follower (`follow_args`). The
+*INTEGRATION AND FIELD, 2026-11-25.* `flow_economy_repair` (a bonded validator as paramedic, the judge
+relaunched as a non-voting follower with the topology's `follow_args`) passes on local docker
+(`LOCAL=1 ECONOMY=1`, 5 pass / 0 gap / 0 fail: paid 12 credits over 2 repairs) and on the cloud sheet
+`697dacb9-24055` (default topology plus the ECONOMY stores, t2d, three regions; 30 pass / 0 gap / 0
+fail): rows 11-economy-repair (paid 31 credits over 5 repairs), 11b-economy-skim and
+11c-economy-horizon. Those tiers carry the repair path — clauses 2 and 3 on the honest side. The
+false-claim slash (clause 4) is held at unit, in-process network and multi-process e2e; the firewall
+(clause 1) at unit and as a source guard. The
 `13b-delivery-settlement` skip is now attributed correctly: the receipt client holds no chain, and the
 settlement needs a chain-holding parent.
 
