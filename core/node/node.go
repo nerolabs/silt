@@ -691,6 +691,10 @@ type Node struct {
 	// forgeRepairClaims is the adversary seam SetForgeRepairClaims sets.
 	forgeRepairClaims bool
 
+	// judgeBorrows counts the in-flight repair judgments holding each survivor shard this node
+	// fetched only to judge (fetchSurvivors). Bounded by the shards of the stripes being judged.
+	judgeBorrows map[ports.ChunkID]int
+
 	// claimantBonded answers whether a repair claimant holds a committed bond a slash
 	// can reach. It reads this node's chain (chainBondQualified); a node with no chain
 	// can confirm nobody. A field so that judging fixtures can stand in for a chain.
@@ -698,6 +702,13 @@ type Node struct {
 
 	lossSeen      map[bountyPosKey]ports.Time
 	lossSeenOrder []bountyPosKey
+
+	// heldBy records, per cared position, the peers this node's last sweep confirmed holding
+	// its bytes — the judge's memory of who held a position before a repair, against which
+	// a claim's "the position was lost" is checked (repairclaim.go priorLoss). Bounded at
+	// maxLossSeen positions, oldest first out.
+	heldBy      map[bountyPosKey]map[ports.NodeID]bool
+	heldByOrder []bountyPosKey
 
 	// sweepEpoch counts repair ticks. A corpse whose ladder exhausted during
 	// the CURRENT tick is skipped for the tick's remainder regardless of its
@@ -1592,6 +1603,8 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		repairConfirm:       make(map[stripeKey]int),
 		bountyPaid:          make(map[bountyPosKey]bool),
 		lossSeen:            make(map[bountyPosKey]ports.Time),
+		heldBy:              make(map[bountyPosKey]map[ports.NodeID]bool),
+		judgeBorrows:        make(map[ports.ChunkID]int),
 		staticPeers:         make(map[ports.NodeID]bool),
 		reachProbes:         make(map[uint64]*reachProbe),
 		proofMeta:           make(map[ports.ChunkID]proofMeta),

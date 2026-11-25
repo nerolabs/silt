@@ -387,10 +387,11 @@ func (n *Node) repairRootWithLayout(entry ports.Entry, ch link.CareHandle, done 
 				r := refs[next]
 				next++
 				inFlight++
-				n.probeShard(r.id, colKey(m.Root(), r.pos), true, func(ok bool, domains map[uint64]bool) {
+				n.probeShard(r.id, colKey(m.Root(), r.pos), true, func(ok bool, domains map[uint64]bool, holders map[ports.NodeID]bool) {
 					reachable[r.id] = ok
 					if ok {
 						shardDoms[r.id] = domains
+						n.noteHolders(bountyPosKey{root: m.Root(), stripe: r.stripe, pos: r.pos}, holders)
 					}
 					inFlight--
 					completed++
@@ -417,7 +418,7 @@ func (n *Node) healManifest(ids []ports.ChunkID, i int, done func()) {
 	}
 	id := ids[i]
 	next := func() { n.healManifest(ids, i+1, done) }
-	n.probeShard(id, id, false, func(ok bool, _ map[uint64]bool) {
+	n.probeShard(id, id, false, func(ok bool, _ map[uint64]bool, _ map[ports.NodeID]bool) {
 		if ok {
 			next()
 			return
@@ -467,9 +468,10 @@ func storedShards(m *manifest.Layout, p erasure.Params) []shardRef {
 // domain (fragile) from one already across two (safe), and to see the
 // difference after it adds a copy. includeLocal counts our own store; the
 // manifest-heal path sets it false to ask whether the SWARM still holds it.
-func (n *Node) probeShard(id ports.ChunkID, key ports.Hash, includeLocal bool, done func(ok bool, domains map[uint64]bool)) {
+func (n *Node) probeShard(id ports.ChunkID, key ports.Hash, includeLocal bool, done func(ok bool, domains map[uint64]bool, holders map[ports.NodeID]bool)) {
 	n.Stats.Probes++
 	domains := map[uint64]bool{}
+	holders := map[ports.NodeID]bool{} // the PEERS that confirmed the bytes (never this node)
 	found := false
 	if includeLocal {
 		if ok, _ := n.store.Has(bg(), id); ok {
@@ -503,7 +505,7 @@ func (n *Node) probeShard(id ports.ChunkID, key ports.Hash, includeLocal bool, d
 		var try func(i int)
 		try = func(i int) {
 			if i >= len(provs) {
-				done(found, domains)
+				done(found, domains, holders)
 				return
 			}
 			if provs[i] == n.id {
@@ -524,6 +526,7 @@ func (n *Node) probeShard(id ports.ChunkID, key ports.Hash, includeLocal bool, d
 				func(resp ports.Message, err error) {
 					if err == nil && resp.Found {
 						found = true
+						holders[pr] = true
 						if d := n.domainOf(pr); d != 0 {
 							domains[d] = true
 						}

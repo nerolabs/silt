@@ -346,7 +346,7 @@ func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, signed rep
 			n.priorLoss(claim, from, func(lost bool) {
 				if !lost {
 					n.Stats.BountyNoPriorLoss++
-					deny(fmt.Sprintf("no prior loss: stripe %d position %d is still served by a holder other than the claimed one, and this node never saw it lost",
+					deny(fmt.Sprintf("no prior loss: stripe %d position %d is still served by a holder it had before, and this node never saw it lost",
 						claim.Stripe, claim.ShardPos))
 					return
 				}
@@ -480,11 +480,24 @@ func (n *Node) settleRepairVerdict(claimant ports.NodeID, claim repairproof.Repa
 // could name its own k would set it to 1 and the recompute would have nothing to
 // check against.
 func (n *Node) fetchSurvivors(root ports.Hash, k int, refs []shardRef, done func(survivors map[int][]byte, reachable int)) {
-	heldBefore := make(map[ports.ChunkID]bool, len(refs))
+	// SHARED BORROWS. A survivor this node fetched for a judgment is borrowed, and dropped when
+	// the judgment is done — unless another judgment of the same stripe still has it borrowed.
+	// Concurrent judgments are ordinary (every position a caretaker rebuilds is claimed at once),
+	// and a judgment that found a survivor present because ANOTHER had just fetched it would
+	// otherwise lose it to that judgment's cleanup and come up short of k. Only a shard this node
+	// held before any judgment borrowed it is its own, and that is never dropped.
+	var borrowed []ports.ChunkID
 	for _, r := range refs {
-		if ok, _ := n.store.Has(bg(), r.id); ok {
-			heldBefore[r.id] = true
+		if n.judgeBorrows[r.id] > 0 {
+			n.judgeBorrows[r.id]++
+			borrowed = append(borrowed, r.id)
+			continue
 		}
+		if ok, _ := n.store.Has(bg(), r.id); ok {
+			continue // genuinely held: not a borrow
+		}
+		n.judgeBorrows[r.id]++
+		borrowed = append(borrowed, r.id)
 	}
 	enough := func(fetched int) bool { return k > 0 && fetched >= k }
 	n.fetchStripeByColumn(root, refs, enough, func(_ []ports.ChunkID, _ map[uint64]int) {
@@ -500,9 +513,10 @@ func (n *Node) fetchSurvivors(root ports.Hash, k int, refs []shardRef, done func
 				survivors[r.pos] = c.Data
 			}
 		}
-		for _, r := range refs {
-			if !heldBefore[r.id] {
-				n.dropHosted(r.id) // drop only what we fetched for this judgement
+		for _, id := range borrowed {
+			if n.judgeBorrows[id]--; n.judgeBorrows[id] <= 0 {
+				delete(n.judgeBorrows, id)
+				n.dropHosted(id) // the last judgment to borrow it returns it
 			}
 		}
 		done(survivors, len(survivors))
@@ -699,23 +713,46 @@ func (n *Node) noteLoss(k bountyPosKey) {
 	n.lossSeen[k] = n.clock.Now()
 }
 
-// priorLoss reports whether the claimed position was lost before the repair the claim
-// is for. Either of two facts is evidence:
+// noteHolders records the peers a sweep just confirmed holding a cared position.
+func (n *Node) noteHolders(k bountyPosKey, holders map[ports.NodeID]bool) {
+	if len(holders) == 0 {
+		return
+	}
+	if _, ok := n.heldBy[k]; !ok {
+		if len(n.heldByOrder) >= maxLossSeen {
+			delete(n.heldBy, n.heldByOrder[0])
+			n.heldByOrder = n.heldByOrder[1:]
+		}
+		n.heldByOrder = append(n.heldByOrder, k)
+	}
+	cp := make(map[ports.NodeID]bool, len(holders))
+	for id := range holders {
+		cp[id] = true
+	}
+	n.heldBy[k] = cp
+}
+
+// priorLoss reports whether the claimed position was lost before the repair the claim is for.
+// Either of two facts is evidence:
 //
 //   - this node's own sweep found the position unreachable within lossEvidenceWindow;
-//   - right now, no holder other than the claimed holder, the claimant and this judge
-//     serves the shard's bytes (each provider confirmed with a HasChunk round-trip). The
-//     judge's own store does not count: judging other claims pulls survivors into it, so
-//     its copy says nothing about the swarm. A rebuilt shard lives on its new holder
-//     alone, so an honest claim
-//     passes this even when the judge's sweep has not reached the stripe; a copy of a
-//     live shard fails it, because the shard's original holders still answer.
+//   - right now, none of the holders this node's sweeps last confirmed for the position still
+//     serves its bytes (each current provider confirmed with a HasChunk round-trip). A repair
+//     places the rebuilt shard on new holders — one or several — so an honest claim passes even
+//     when the judge's sweep has not reached the stripe since the loss; a copy of a live shard
+//     fails, because the holders the judge saw serving it still do. A judge with no record of
+//     the position falls back to the strict form: no holder but the claimed one and the
+//     claimant may serve it.
+//
+// The judge's own store never counts: judging other claims pulls survivors into it, so its
+// copy says nothing about the swarm.
 func (n *Node) priorLoss(claim repairproof.RepairClaim, claimant ports.NodeID, done func(bool)) {
 	k := bountyPosKey{root: claim.Root, stripe: claim.Stripe, pos: claim.ShardPos}
 	if at, ok := n.lossSeen[k]; ok && n.clock.Now()-at <= ports.Time(lossEvidenceWindow) {
 		done(true)
 		return
 	}
+	before, known := n.heldBy[k]
 	n.resolveProviders(colKey(claim.Root, claim.ShardPos), func(provs []ports.NodeID) {
 		var try func(i int)
 		try = func(i int) {
@@ -724,14 +761,14 @@ func (n *Node) priorLoss(claim repairproof.RepairClaim, claimant ports.NodeID, d
 				return
 			}
 			pr := provs[i]
-			if pr == n.id || pr == claim.Holder || pr == claimant {
-				try(i + 1)
+			if pr == n.id || pr == claim.Holder || pr == claimant || (known && !before[pr]) {
+				try(i + 1) // a holder the judge never saw before the repair does not show the shard was live
 				return
 			}
 			n.request(pr, ports.Message{Kind: ports.MsgHasChunk, ChunkID: claim.ShardID},
 				func(resp ports.Message, err error) {
 					if err == nil && resp.Found {
-						n.logf(ports.LogDebug, "repair claim: position still served elsewhere",
+						n.logf(ports.LogDebug, "repair claim: position still served by a prior holder",
 							"root", claim.Root, "pos", claim.ShardPos, "by", pr)
 						done(false)
 						return

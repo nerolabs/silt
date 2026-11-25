@@ -189,7 +189,7 @@ func TestProbeShardSkipsCooledHolder(t *testing.T) {
 	me.dead[deadID] = corpse{until: me.clock.Now().Add(me.cfg.HolderCooldown)}
 
 	var ok, done bool
-	me.probeShard(key, key, false, func(found bool, _ map[uint64]bool) { ok, done = found, true })
+	me.probeShard(key, key, false, func(found bool, _ map[uint64]bool, _ map[ports.NodeID]bool) { ok, done = found, true })
 	sched.Run()
 
 	if !done {

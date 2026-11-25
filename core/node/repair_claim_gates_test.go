@@ -660,3 +660,116 @@ func TestFalseClaimBecomesSlashEvidence(t *testing.T) {
 		t.Fatalf("the judge queued evidence its own chain refuses: %v", err)
 	}
 }
+
+// TestOverlappingSurvivorFetchesKeepEachOthersShards: two judgments fetching survivors of the
+// SAME stripe at once must each end with what they fetched. A judgment drops, when it finishes,
+// the survivors it fetched for itself; a second judgment that found one of those already present
+// (because the first had just fetched it) counted it without fetching it, and lost it when the
+// first one's cleanup ran — leaving it short of k and the claim unjudgeable. The interleave is
+// forced: A fetches positions 0-9 and B, started while A is part-way, needs 5-14, so B is still
+// fetching 10-14 when A finishes and drops 0-9.
+func TestOverlappingSurvivorFetchesKeepEachOthersShards(t *testing.T) {
+	s := newRepairAdv(t, 1213)
+	judge := s.careJudge()
+	refs := s.stripeRefsOf(0)
+	k := s.m.K
+	if len(refs) < k+5 {
+		t.Fatalf("fixture: stripe 0 stores %d shards, need at least k+5 = %d", len(refs), k+5)
+	}
+	a, b := refs[0:k], refs[5:k+5]
+	var aGot, bGot map[int][]byte
+	judge.fetchSurvivors(s.root, k, a, func(sv map[int][]byte, _ int) { aGot = sv })
+	// Run A until it holds some, but not all, of its survivors.
+	held := func() int {
+		n := 0
+		for _, r := range a {
+			if ok, _ := judge.store.Has(bg(), r.id); ok {
+				n++
+			}
+		}
+		return n
+	}
+	for i := 0; i < 400 && held() < 7; i++ {
+		s.sched.RunUntil(s.sched.Now().Add(5 * ports.Millisecond))
+	}
+	if h := held(); h < 6 || h >= k || aGot != nil {
+		t.Fatalf("fixture: could not stop A part-way (it holds %d of %d, done=%v)", h, k, aGot != nil)
+	}
+	judge.fetchSurvivors(s.root, k, b, func(sv map[int][]byte, _ int) { bGot = sv })
+	s.sched.Run()
+	if len(aGot) < k {
+		t.Fatalf("A ended with %d survivors, want %d", len(aGot), k)
+	}
+	if len(bGot) < k {
+		t.Fatalf("B ended with %d survivors, want %d — it lost shards the overlapping judgment dropped", len(bGot), k)
+	}
+}
+
+// judgeSawHolders runs the judge's own sweep probe for (stripe 0, pos) and records the holders it
+// confirms, as a repair sweep does.
+func (s *repairAdv) judgeSawHolders(t *testing.T, judge *Node, id ports.ChunkID, pos int) map[ports.NodeID]bool {
+	t.Helper()
+	var seen map[ports.NodeID]bool
+	judge.probeShard(id, colKey(s.root, pos), false, func(ok bool, _ map[uint64]bool, h map[ports.NodeID]bool) {
+		if ok {
+			judge.noteHolders(bountyPosKey{root: s.root, stripe: 0, pos: pos}, h)
+			seen = h
+		}
+	})
+	s.sched.Run()
+	if len(seen) == 0 {
+		t.Fatalf("fixture: the judge's sweep confirmed no holder for position %d", pos)
+	}
+	return seen
+}
+
+// TestRepairPlacedOnSeveralHoldersIsPaid: a repair that leaves the rebuilt shard on more than one
+// new holder (a caretaker places to its replication) is a real repair, and a judge that saw who
+// held the position before the loss pays it — none of those holders serves it now. A judge with no
+// such record cannot tell the extra copy from a live original, and keeps the strict refusal.
+func TestRepairPlacedOnSeveralHoldersIsPaid(t *testing.T) {
+	s := newRepairAdv(t, 46)
+	s.fundEscrow(5_000_000)
+	judge := s.careJudge()
+	paramedic := s.nodes[2]
+	pos, parityID, leafIdx := s.parityTarget()
+	before := s.judgeSawHolders(t, judge, parityID, pos)
+
+	s.loseStripePosition(t, s.nodes[3], parityID, pos)
+	holder, extra := s.nodes[9], s.nodes[10]
+	if before[holder.ID()] || before[extra.ID()] {
+		t.Fatal("fixture: the new holders must not be holders the judge saw before the loss")
+	}
+	s.rebuildLostShard(t, paramedic, holder, 0, pos, parityID, leafIdx)
+	s.stageShardOn(paramedic, extra, parityID, pos, leafIdx) // the repair's second copy
+	claim := repairClaimFor(s.root, 0, pos, parityID, holder.ID())
+
+	s.deliverClaim(judge, paramedic.ID(), claim)
+	if judge.Stats.BountiesReleased != 1 {
+		t.Fatalf("a repair left on two new holders was not paid by a judge that saw the prior holders: BountiesReleased=%d, BountyNoPriorLoss=%d",
+			judge.Stats.BountiesReleased, judge.Stats.BountyNoPriorLoss)
+	}
+	blind := s.careJudgeOn(12)
+	s.deliverClaim(blind, paramedic.ID(), claim)
+	if blind.Stats.BountiesReleased != 0 || blind.Stats.BountyNoPriorLoss != 1 {
+		t.Fatalf("control: a judge with no record of the position must keep the strict refusal (the extra copy could be a live original); released=%d noPriorLoss=%d",
+			blind.Stats.BountiesReleased, blind.Stats.BountyNoPriorLoss)
+	}
+}
+
+// TestCopyOfALiveShardIsDeniedWithHistory: the copy attack against a judge that has swept the
+// position — the holders it saw still serve the shard, so nothing was lost and nothing is paid.
+func TestCopyOfALiveShardIsDeniedWithHistory(t *testing.T) {
+	s := newRepairAdv(t, 1203)
+	s.fundEscrow(5_000_000)
+	judge := s.careJudge()
+	pos, parityID, leafIdx := s.parityTarget()
+	s.judgeSawHolders(t, judge, parityID, pos)
+	holder := s.nodes[9]
+	s.stageShardOn(judge, holder, parityID, pos, leafIdx)
+	before := s.ledger.EscrowPaid(s.root)
+	s.deliverClaim(judge, s.nodes[2].ID(), repairClaimFor(s.root, 0, pos, parityID, holder.ID()))
+	if msg := rc3NoLossDenied(before, s.ledger.EscrowPaid(s.root), judge.Stats.BountiesReleased, judge.Stats.BountyNoPriorLoss); msg != "" {
+		t.Fatal(msg)
+	}
+}
