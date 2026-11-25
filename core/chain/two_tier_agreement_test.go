@@ -48,7 +48,7 @@ type tierVerdicts struct {
 func eachTier(t *testing.T, f rotateFixture, b Block, committed ports.Hash) tierVerdicts {
 	t.Helper()
 	var v tierVerdicts
-	v.box = recomputeViaHead(f.c, f.prevRoot, committed, b, f.witnessForBoundary(t, b))
+	v.box = recomputeViaHead(f.c, f.prevRoot, committed, b, f.withIssuerKeyLeaves(t, b, f.witnessForBoundary(t, b)))
 	live := f.c.cloneForDryRun()
 	blk := b
 	v.fullNode = live.validateEra3Roots(&blk)
@@ -133,10 +133,11 @@ func TestEpochTurnForgedRootDoesNotSplitTheTiers(t *testing.T) {
 	t.Logf("both tiers reject: box=%v", v.box)
 }
 
-// TestRegistrationCarryingBlockStallsRatherThanSplits keeps the other half honest. When
-// the block DOES carry registrations the class is genuinely out of the box's scope, so the box
-// must STALL BY NAME — not agree, and not report a forged root.
-func TestRegistrationCarryingBlockStallsRatherThanSplits(t *testing.T) {
+// TestRegistrationCarryingBlockAgreesOnBothTiers keeps the other half honest. A block that
+// carries a registration adds an epoch bucket and prunes the out-of-band one; the box reproduces
+// both from witnessed, root-verified reads, so it must AGREE with the full node on the honest
+// block and REJECT the same block under a forged root.
+func TestRegistrationCarryingBlockAgreesOnBothTiers(t *testing.T) {
 	f := buildPruneFixture(t, true)
 	b := f.boundaryBlock(nil)
 	b.IssuerKeys = []IssuerKeyReg{
@@ -153,8 +154,18 @@ func TestRegistrationCarryingBlockStallsRatherThanSplits(t *testing.T) {
 	if v.fullNode != nil {
 		t.Fatalf("fixture: the full node must accept the honest registration block, got %v", v.fullNode)
 	}
-	if !errors.Is(v.box, ErrRecomputeStateRootScopeStall) {
-		t.Fatalf("a registration-carrying block must stall the box BY NAME, got %v", v.box)
+	if v.box != nil {
+		t.Fatalf("the box must reproduce an honest registration-carrying block, got %v", v.box)
 	}
 	assertTiersAgree(t, "registration-carrying", v)
+
+	forged := ports.HashBytes([]byte("forged registration root"))
+	fb := b
+	fb.StateRoot = &forged
+	Sign(&fb, f.proposer)
+	fv := eachTier(t, f, fb, forged)
+	if fv.fullNode == nil || fv.box == nil {
+		t.Fatalf("a forged root on a registration-carrying block must be refused on both tiers: node=%v box=%v", fv.fullNode, fv.box)
+	}
+	assertTiersAgree(t, "registration-carrying-forged", fv)
 }

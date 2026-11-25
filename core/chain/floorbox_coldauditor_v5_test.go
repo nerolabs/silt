@@ -125,8 +125,10 @@ func coldAuditorClasses() []coldAuditorClass {
 			mutate: func(t *testing.T, f structFixture, b *Block) {
 				b.IssuerKeys = []IssuerKeyReg{SignIssuerKeyReg(f.keys[0], 0, ports.Hash{0x77})}
 			},
-			wantSentry: ErrRecomputeStateRootScopeStall,
-			wantSubstr: "issuerKeyCommit",
+			// Class I is reproduced now; a box with no witness cannot read the epoch index it
+			// needs, and stalls naming the read.
+			wantSentry: ErrRecomputeIssuerKey,
+			wantSubstr: "no witness",
 		},
 		{
 			name: "carrier", blockField: "LastCommit", nodeAccept: true,
@@ -260,7 +262,7 @@ func forgeDivergentRoot(t *testing.T, f structFixture, honest Block) Block {
 // ABLATION (the whole table): delete the downgrade in (*Box).Validate — `if out == Accept { return
 // IndeterminateTrustlessly, ErrRecomputeGated }` — and the entries arm returns ACCEPT ⇒ RED.
 // Per-class ablations, each of which reddens exactly one arm by changing the name it lands on:
-// remove the `len(b.IssuerKeys) > 0` clause from stateRootScopeGate (issuerkeys); remove the digest
+// make issuerKeyWrites treat a missing read as an absent leaf (issuerkeys); remove the digest
 // pre-set requirement from the class-S/B/A digest reconstruction (bondregs, slashes, carrier); drop
 // the countDelta derivation in assembleStateRootRecomputeOps so the committed log size folds as 0
 // (revocations, unrevocations).

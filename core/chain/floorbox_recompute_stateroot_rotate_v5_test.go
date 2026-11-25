@@ -91,6 +91,26 @@ func (f rotateFixture) boundaryBlock(bondReg *BondReg) Block {
 	return b
 }
 
+// withIssuerKeyLeaves adds class I's leaves to w, as the production WitnessProvider serves
+// them: the epoch index and every named epoch's bucket whether or not they change, and every
+// bucket the block's prune deletes (with its delete siblings).
+func (f rotateFixture) withIssuerKeyLeaves(t *testing.T, b Block, w StateRootWitness) StateRootWitness {
+	t.Helper()
+	if len(b.IssuerKeys) == 0 {
+		return w
+	}
+	for _, k := range issuerKeyReadKeys(b) {
+		w.ChangedLeaves = append(w.ChangedLeaves, f.leafWitness(t, stateRootWrite{key: k, newValue: []byte{1}}))
+	}
+	cur := f.c.blockEpoch(b.Height)
+	for e, byIssuer := range f.c.issuerKeyCommit {
+		if len(byIssuer) > 0 && issuerKeyEpochOutOfBand(e, cur) {
+			w.ChangedLeaves = append(w.ChangedLeaves, f.leafWitness(t, stateRootWrite{key: issuerKeyBucketKey(e), newValue: nil}))
+		}
+	}
+	return w
+}
+
 func (f rotateFixture) preValue(key []byte) []byte {
 	for _, lf := range f.c.stateRootLeavesV5() {
 		if string(lf.Key) == string(key) {

@@ -52,7 +52,7 @@ func TestForgedPrunedRootIsRefusedByTheBox(t *testing.T) {
 }
 
 // TestForgedRootDiffersOnlyInIssuerKeyCommit keeps the measurement of the attack's surface:
-// the forged post-state differs from the honest one in exactly one leaf, so the gate above is
+// the forged post-state differs from the honest one in exactly the deleted bucket and the index, so the gate above is
 // testing the issuerKeyCommit blind spot and nothing else.
 func TestForgedRootDiffersOnlyInIssuerKeyCommit(t *testing.T) {
 	f := buildPruneFixture(t, true)
@@ -66,8 +66,10 @@ func TestForgedRootDiffersOnlyInIssuerKeyCommit(t *testing.T) {
 	for k := range committedLeafDiff(honestC, forgeC) {
 		tags[tagOfKey(k)]++
 	}
-	if len(tags) != 1 || tags["issuerKeyCommit"] != 1 {
-		t.Fatalf("expected the delta to be exactly one issuerKeyCommit leaf, got %v", tags)
+	// The bucket is one leaf and the index lists it, so removing a whole epoch moves exactly
+	// those two: the bucket leaf and the index scalar.
+	if len(tags) != 2 || tags["issuerKeyCommit"] != 1 || tags["issuerKeyEpochs"] != 1 {
+		t.Fatalf("expected the delta to be exactly one issuerKeyCommit bucket leaf and the issuerKeyEpochs index, got %v", tags)
 	}
 	var _ ports.Hash
 }

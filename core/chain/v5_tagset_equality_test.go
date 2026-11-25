@@ -32,9 +32,7 @@ import (
 // v5TagsNotReadByBox is the TIGHT allowlist of declared tags no box-side file may
 // reference. An entry whose tag becomes referenced must be removed (the test fails
 // until it is), and an entry naming an undeclared tag fails too.
-var v5TagsNotReadByBox = map[string]string{
-	"tagIssuerKey": "per-epoch issuer-key leaf: nothing folds this keyspace and no validity predicate, quorum or fork-choice rule reads it (statehash.go tagIssuerKey doc; chain.go applyIssuerKeys comment). A redeemer resolves ONE leaf by inclusion proof, outside the box.",
-}
+var v5TagsNotReadByBox = map[string]string{}
 
 // v5TagSetSides is everything the gate compares, so the teeth can run the same
 // comparison over edited inputs.
@@ -271,7 +269,7 @@ func TestV5TagSetEqualityHasTeeth(t *testing.T) {
 	src, _ := os.ReadFile("statehash.go")
 
 	// Teeth 1: the carrier shape — drop the tagIssuerKey constant.
-	edited := strings.Replace(string(src), "tagIssuerKey = \"issuerKeyCommit\\x00\"", "", 1)
+	edited := strings.Replace(string(src), "tagIssuerKey       = \"issuerKeyCommit\\x00\"", "", 1)
 	if edited == string(src) {
 		t.Fatal("SOURCE GATE: teeth fixture — tagIssuerKey declaration not found verbatim; update the teeth")
 	}
@@ -309,6 +307,8 @@ func TestV5TagSetEqualityHasTeeth(t *testing.T) {
 		s.boxRefs[k] = true
 	}
 	s.boxRefs["tagIssuerKey"] = true
+	// The live allowlist may be empty, so the arm seeds the entry it makes stale.
+	s.allow = map[string]string{"tagIssuerKey": "seeded by the teeth"}
 	if g := v5TagSetGaps(s); !anyContains(g, "STALE") {
 		t.Errorf("SOURCE GATE: TEETH FAILED — a referenced tag still on the allowlist produced no STALE gap: %v", g)
 	}

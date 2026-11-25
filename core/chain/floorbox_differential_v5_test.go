@@ -25,16 +25,13 @@ import (
 // The corpus is honest blocks of each payload class the fixture can commit (entries, revocations,
 // un-revocations, bond registrations, false-repair slashes, issuer-key registrations), and blocks
 // broken in exactly one rule. Every case must yield Accept or Reject on the full node (a liveView
-// never stalls), and the box must match it — except the one pinned gap below. The box reads through
+// never stalls), and the box must match it. The box reads through
 // the production WitnessProvider, the serving path a real box uses.
 func TestFloorBoxAndFullNodeReturnTheSameVerdicts(t *testing.T) {
 	type tcase struct {
 		name  string
 		build func(f structFixture) Block
 		want  FloorBoxOutcome // the full node's verdict, asserted so the corpus is known to span both
-		// pinnedGap names the ONE known divergence: the box stalls by this error where the node
-		// decides. A pin, not a pass — it records the gap and reddens when the gap closes.
-		pinnedGap error
 	}
 	reseal := func(f structFixture, b *Block) {
 		b.ProposerSig, b.PrepareQC, b.Atts = nil, nil, nil
@@ -69,75 +66,70 @@ func TestFloorBoxAndFullNodeReturnTheSameVerdicts(t *testing.T) {
 			return f.mkBlock(t, func(b *Block) {
 				b.BondRegs = []BondReg{bondReg(key(99300), twoMiB, b.Prev)}
 			})
-		}, Accept, nil},
+		}, Accept},
 		{"honest false-repair slash", func(f structFixture) Block {
 			return f.mkBlock(t, func(b *Block) { b.Slashes = []Equivocation{falseRepair(f, f.keys[3], false)} })
-		}, Accept, nil},
+		}, Accept},
 		{"forged false-repair slash (a true claim)", func(f structFixture) Block {
 			return f.mkBlock(t, func(b *Block) { b.Slashes = []Equivocation{falseRepair(f, f.keys[3], true)} })
-		}, Reject, nil},
-		{"honest entry block", func(f structFixture) Block { return f.mkBlock(t, nil) }, Accept, nil},
+		}, Reject},
+		{"honest entry block", func(f structFixture) Block { return f.mkBlock(t, nil) }, Accept},
 		{"honest revocation block", func(f structFixture) Block {
 			return f.mkBlock(t, func(b *Block) { b.Entries = nil; b.Revocations = []ports.Hash{committed(f)} })
-		}, Accept, nil},
+		}, Accept},
 		{"honest revocation and un-revocation", func(f structFixture) Block {
 			return f.mkBlock(t, func(b *Block) { b.Revocations = []ports.Hash{committed(f)} })
-		}, Accept, nil},
-		// THE ONE DIVERGENCE, PINNED. A registration-carrying block prunes whole epoch buckets of
-		// issuerKeyCommit, and the state tree carries no completeness digest for a bucket, so the
-		// box cannot prove what a delete removed and stalls (stateRootScopeGate). Closing it is a
-		// state-format change. When it lands this arm goes RED: replace it with the plain Accept
-		// case, never delete it.
+		}, Accept},
 		{"honest issuer-key-only block", func(f structFixture) Block {
 			return f.mkBlock(t, func(b *Block) {
 				b.Entries = nil
 				b.IssuerKeys = []IssuerKeyReg{SignIssuerKeyReg(f.keys[1], 0, fp)}
 			})
-		}, Accept, ErrRecomputeStateRootScopeStall},
+		}, Accept},
 		{"unbonded issuer key", func(f structFixture) Block {
 			return f.mkBlock(t, func(b *Block) {
 				b.Entries = nil
 				b.IssuerKeys = []IssuerKeyReg{SignIssuerKeyReg(key(99101), 0, fp)}
 			})
-		}, Reject, nil},
-		{"empty block", func(f structFixture) Block { return f.mkBlock(t, func(b *Block) { b.Entries = nil }) }, Reject, nil},
+		}, Reject},
+		{"empty block", func(f structFixture) Block { return f.mkBlock(t, func(b *Block) { b.Entries = nil }) }, Reject},
 		{"forged proposer signature", func(f structFixture) Block {
 			b := f.mkBlock(t, nil)
 			b.ProposerSig = append([]byte(nil), b.ProposerSig...)
 			b.ProposerSig[0] ^= 1
 			return b
-		}, Reject, nil},
+		}, Reject},
 		{"wrong parent", func(f structFixture) Block {
 			b := f.mkBlock(t, nil)
 			b.Prev = ports.HashBytes([]byte("not the parent"))
 			reseal(f, &b)
 			return b
-		}, Reject, nil},
+		}, Reject},
 		{"wrong height", func(f structFixture) Block {
 			b := f.mkBlock(t, nil)
 			b.Height++
 			reseal(f, &b)
 			return b
-		}, Reject, nil},
+		}, Reject},
 		{"forged state root", func(f structFixture) Block {
 			b := f.mkBlock(t, nil)
 			bad := ports.HashBytes([]byte("forged state"))
 			b.StateRoot = &bad
 			reseal(f, &b)
 			return b
-		}, Reject, nil},
+		}, Reject},
 		{"forged log root", func(f structFixture) Block {
 			b := f.mkBlock(t, nil)
 			bad := ports.HashBytes([]byte("forged log"))
 			b.LogRoot = &bad
 			reseal(f, &b)
 			return b
-		}, Reject, nil},
+		}, Reject},
 		{"below-quorum certificate", func(f structFixture) Block {
 			b := f.mkBlock(t, nil)
 			b.Atts = b.Atts[:1]
 			return b
-		}, Reject, nil},
+		}, Reject},
 		{"certificate signed by strangers", func(f structFixture) Block {
 			b := f.mkBlock(t, nil)
 			b.Atts = nil
@@ -145,20 +137,20 @@ func TestFloorBoxAndFullNodeReturnTheSameVerdicts(t *testing.T) {
 				b.Atts = append(b.Atts, AttestAt(&b, key(99200+i), 0, PhasePrecommit, f.c.ChainID()))
 			}
 			return b
-		}, Reject, nil},
+		}, Reject},
 		{"pre-v5 version", func(f structFixture) Block {
 			b := f.mkBlock(t, nil)
 			b.Version = BlockVersionRounds
 			reseal(f, &b)
 			return b
-		}, Reject, nil},
+		}, Reject},
 		{"entry mutated after signing", func(f structFixture) Block {
 			b := f.mkBlock(t, nil)
 			b.Entries = append([]ports.Entry(nil), b.Entries...)
 			b.Entries[0].FileSize++
 			b.hashMemoSet = false
 			return b
-		}, Reject, nil},
+		}, Reject},
 	}
 
 	sawAccept, sawReject := false, false
@@ -187,13 +179,6 @@ func TestFloorBoxAndFullNodeReturnTheSameVerdicts(t *testing.T) {
 			bo, berr := box.Validate(b, w)
 			if bo == IndeterminateTrustlessly && errors.Is(berr, ErrRecomputeGated) {
 				bo = Accept // the gated downgrade: the composition accepted
-			}
-			if tc.pinnedGap != nil {
-				if bo != IndeterminateTrustlessly || !errors.Is(berr, tc.pinnedGap) {
-					t.Fatalf("PINNED GAP MOVED: the box was pinned to stall with %v where the node says %s; it now says %s (%v). "+
-						"If the gap closed, replace this arm with the plain %s case", tc.pinnedGap, node, bo, berr, node)
-				}
-				return
 			}
 			if bo != node {
 				t.Fatalf("DIVERGENCE: the full node says %s (%v), the floor box says %s (%v)", node, nerr, bo, berr)
