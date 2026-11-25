@@ -27,9 +27,9 @@ package e2e
 // activation default discharges the era-4 FORMAT only on fixtures that commit; on THIS one
 // it discharges nothing.
 //
-// THE REFUSAL BELOW IS NOT ATTRIBUTABLE TO THE BINDING. `silt swarm receipt` runs on the
-// chain-less ephemeral node joinSwarm builds, so pinDemandIssuerKey refuses at `n.chain ==
-// nil` before the commitment check. Deleting that check outright leaves this test GREEN.
+// THE REFUSAL BELOW IS NOT ATTRIBUTABLE TO THE BINDING, AND NOW SAYS SO. `silt swarm
+// receipt` runs on the chain-less ephemeral node joinSwarm builds, so it can resolve no
+// served key whatever the issuer's chain holds; the client reports node.ErrNoChainToResolve.
 // The predicate's own two-armed gate is core/node
 // TestIssuerKeyBindingResolvesInTheObjectiveBondedEpochPosture; what THIS test gates is the
 // harness's flag literals and the operator-facing refusal strings, which is still worth
@@ -84,6 +84,9 @@ func TestPaidDeliveryLaneArmsInTheHarnessPosture(t *testing.T) {
 	}
 	if !strings.Contains(out, "committed E->key binding") {
 		t.Fatalf("the refusal must name the committed binding (the harness classifies on it): %s", out)
+	}
+	if !strings.Contains(out, "holds no chain replica") {
+		t.Fatalf("the refusal must name its real cause, the client's missing chain: %s", out)
 	}
 	if strings.Contains(out, "serves no demand issuer key") {
 		t.Fatalf("the lane-on refusal is conflated with the lane-off sentence: %s", out)

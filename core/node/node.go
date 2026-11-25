@@ -16,6 +16,7 @@ import (
 	"crypto/rsa"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/nerolabs/silt/core/blindtoken"
 	"github.com/nerolabs/silt/core/bond"
@@ -509,6 +510,15 @@ type Stats struct {
 	// value is a replay the dedup caught, direction D. It counts REFUSALS, not
 	// payments — it never moves standing.
 	BountyDuplicatePosition int
+	// BountyNoPriorLoss counts release verdicts this judge refused to pay because
+	// nothing showed the position was ever lost: a copy of a live shard repairs nothing.
+	BountyNoPriorLoss int
+	// ClaimantUnbonded counts repair claims refused because the claimant holds no
+	// committed bond on this node's chain, so a false claim could cost it nothing.
+	ClaimantUnbonded int
+	// FalseRepairReports counts signed false repair claims this judge turned into
+	// on-chain slash evidence and sent to the validators.
+	FalseRepairReports int
 	// detector A4: repair bounties this judge paid to ITSELF, count and
 	// credits. claim.Holder is a field of an inbound, attacker-declared
 	// MsgRepairClaim and nothing refuses a claim naming the judge as the holder,
@@ -671,6 +681,23 @@ type Node struct {
 	// day the flag flips (held in tension; correction 2026-09-12 — this comment
 	// used to claim a restarted judge "denies rather than double-pays").
 	bountyPaid map[bountyPosKey]bool
+
+	// lossSeen records when this node's own repair sweep last found a cared position
+	// unreachable: the judge's first evidence that a claimed repair replaced a real
+	// loss (repairclaim.go priorLoss). Bounded at maxLossSeen entries, oldest first out.
+	// following marks a non-voting chain replica (FollowChain).
+	following bool
+
+	// forgeRepairClaims is the adversary seam SetForgeRepairClaims sets.
+	forgeRepairClaims bool
+
+	// claimantBonded answers whether a repair claimant holds a committed bond a slash
+	// can reach. It reads this node's chain (chainBondQualified); a node with no chain
+	// can confirm nobody. A field so that judging fixtures can stand in for a chain.
+	claimantBonded func(ports.NodeID) bool
+
+	lossSeen      map[bountyPosKey]ports.Time
+	lossSeenOrder []bountyPosKey
 
 	// sweepEpoch counts repair ticks. A corpse whose ladder exhausted during
 	// the CURRENT tick is skipped for the tick's remainder regardless of its
@@ -1344,6 +1371,11 @@ func (n *Node) SetEphemeral(v bool) { n.ephemeral = v }
 // SetLiar toggles fake-storage behavior (see the liar field).
 func (n *Node) SetLiar(v bool) { n.liar = v }
 
+// SetForgeRepairClaims makes every repair claim this node emits name a shard id the
+// object does not commit at the claimed leaf: a signed false claim. Adversary/test seam
+// for the on-chain false-repair slash (cf. SetLiar).
+func (n *Node) SetForgeRepairClaims(v bool) { n.forgeRepairClaims = v }
+
 // SetEclipser toggles provider-record suppression (see the eclipser field) — the
 // H5-B key-surround adversary that owns the NodeIDs closest to a key.
 func (n *Node) SetEclipser(v bool) { n.eclipser = v }
@@ -1559,6 +1591,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		dead:                make(map[ports.NodeID]corpse),
 		repairConfirm:       make(map[stripeKey]int),
 		bountyPaid:          make(map[bountyPosKey]bool),
+		lossSeen:            make(map[bountyPosKey]ports.Time),
 		staticPeers:         make(map[ports.NodeID]bool),
 		reachProbes:         make(map[uint64]*reachProbe),
 		proofMeta:           make(map[ports.ChunkID]proofMeta),
@@ -1598,8 +1631,20 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 	} else {
 		n.peerCaps = make(map[ports.NodeID]capInfo)
 	}
+	n.claimantBonded = n.chainBondQualified
 	tr.SetHandler(n.handle)
 	return n
+}
+
+// SetBondReader replaces where this node reads committed bonds from when it judges a
+// repair claimant. The default is its own chain replica; a simulation that runs
+// without a chain supplies the bonds its scenario assumes.
+func (n *Node) SetBondReader(bonded func(ports.NodeID) bool) { n.claimantBonded = bonded }
+
+// chainBondQualified reads id's committed bond from this node's replica. Without a
+// replica it confirms nobody.
+func (n *Node) chainBondQualified(id ports.NodeID) bool {
+	return n.chain != nil && n.chain.BondQualified(id)
 }
 
 // send stamps outgoing messages with our current capacity pledge — the
@@ -2107,7 +2152,17 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 				ok = false
 			} else {
 				n.Stats.ChunksReceived++
+				newKey := !slices.Contains(n.provs.IDs(key), n.id)
 				n.provs.Add(n.providerRecord(key)) // we are now a provider
+				if newKey && msg.Proof != nil {
+					// ANNOUNCE A NEW PLACEMENT KEY NOW, not at the next reprovide. A reader
+					// asks the few nodes closest to the key; a publish places on exactly
+					// those, but a repair places on whichever candidate accepts, which may
+					// sit outside them. Unannounced, a rebuilt shard is invisible: the
+					// caretaker rebuilds the same position again and a judge cannot fetch it
+					// as a survivor. Once per key, so a column's later stripes cost nothing.
+					n.announceAll([]ports.ChunkID{ports.ChunkID(key)}, func() {})
+				}
 				// Debug narration: every byte-write into the store names its
 				// path, so a disk census is attributable to a call site. It
 				// does NOT name the sender: the line is written to disk beside

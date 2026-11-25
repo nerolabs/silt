@@ -62,6 +62,9 @@ func newRepairAdv(t *testing.T, seed int64) *repairAdv {
 		nd := New(id, cfg, sched, net.Endpoint(id), memstore.New())
 		nd.SetLedger(ledger)
 		ledger.Register(id)
+		// The fixture keeps no chain, so it stands in for one in which every node holds
+		// a committed bond; TestUnbondedClaimantIsDenied drives the refusal.
+		nd.claimantBonded = func(ports.NodeID) bool { return true }
 		nodes = append(nodes, nd)
 	}
 	for i, nd := range nodes {
@@ -148,12 +151,40 @@ func (s *repairAdv) bond(nd *Node) int64 {
 // deliverClaim hands a crafted claim to the judge as if `from` had broadcast it,
 // then runs the network to quiescence so the two legs settle.
 func (s *repairAdv) deliverClaim(judge *Node, from ports.NodeID, claim repairproof.RepairClaim) {
-	data, err := claim.Marshal()
+	judge.handleRepairClaim(from, ports.Message{Kind: ports.MsgRepairClaim, Data: s.claimData(judge, from, claim)})
+	s.sched.Run()
+}
+
+// claimData is the wire form of claim as `from` would send it: the claim's leaf index
+// filled in from the fixture's own manifest (a test that wants a wrong one signs its
+// own), signed with from's identity key under the judge's chain id.
+func (s *repairAdv) claimData(judge *Node, from ports.NodeID, claim repairproof.RepairClaim) []byte {
+	for _, r := range s.stripeRefsOf(claim.Stripe) {
+		if r.pos == claim.ShardPos {
+			claim.LeafIndex = r.leafIdx
+		}
+	}
+	return signClaimAs(from, judge.chainID(), claim)
+}
+
+// signClaimAs signs claim with the identity key of a fixture node (identity seeds
+// 1000+i), or with a stranger's key when from is not one of them.
+func signClaimAs(from ports.NodeID, chainID ports.Hash, claim repairproof.RepairClaim) []byte {
+	key := identity.FromSeed(999_999).Signer()
+	for i := int64(0); i < 64; i++ {
+		if id := identity.FromSeed(1000 + i); id.NodeID() == from {
+			key = id.Signer()
+		}
+	}
+	signed, err := repairproof.SignClaim(key, chainID, claim)
 	if err != nil {
 		panic(err)
 	}
-	judge.handleRepairClaim(from, ports.Message{Kind: ports.MsgRepairClaim, Data: data})
-	s.sched.Run()
+	data, err := signed.Marshal()
+	if err != nil {
+		panic(err)
+	}
+	return data
 }
 
 // parityTarget names STRIPE 0's first parity shard: its stripe position, its
@@ -289,14 +320,22 @@ func TestRepair_ComputeButDontStoreIsDenied(t *testing.T) {
 	}
 }
 
+// sawLost records that the judge's own repair sweep found (stripe, pos) unreachable:
+// the prior-loss evidence a bounty needs. Fixtures that stage a COPY on a holder to
+// exercise some other judging rule use it to say the copy replaced a real loss;
+// TestRepair_HonestClaimIsPaid drives a real loss end to end instead.
+func (s *repairAdv) sawLost(judge *Node, stripe, pos int) {
+	judge.noteLoss(bountyPosKey{root: s.root, stripe: stripe, pos: pos})
+}
+
 // stageShardOn fetches the real shard from the swarm and re-places it on `holder`
 // WITH a valid Merkle proof and PoR tags. An honest holder keeps the bytes (and can
 // answer retrievability); a liar holder (SetLiar) keeps the receipt + tags but drops
 // the bytes. The caller sets liar-ness.
 //
 // ⚠ IT STAGES A NO-LOSS ARRANGEMENT: the shard is live on its own providers the
-// whole time and a COPY is moved. That is the arrangement
-// TestClaimWithNoLossIsPaid_PINNED_DEFECT exists to pin, and it is why the
+// whole time and a COPY is moved. That is the arrangement the judge denies for
+// want of prior loss (TestClaimWithNoLossIsDenied), and it is why the
 // three §11 controls stopped using this helper on 2026-09-13 — see the loss
 // arrangement banner below. Reach for loseStripePosition + rebuildLostShard
 // instead unless a no-loss stage is the point of the test.
@@ -339,14 +378,11 @@ func (s *repairAdv) stageShardOn(fetcher, holder *Node, id ports.ChunkID, pos, l
 // Legs that can only fail together are one leg wearing two names, so keep that
 // one-input discipline when editing any of the three.
 //
-// ⚠ THIS ASSERTS ONE HALF OF THE INTENT, AND ONLY ONE. The rule has two halves: a
-// real repair IS paid, and a no-loss claim is NOT. The judge delivers the first
-// today; the second is still broken, still pinned by
-// TestClaimWithNoLossIsPaid_PINNED_DEFECT, and its closer — the loss witness
-// — is GATED behind. A repair erases its own evidence (T-LOSS-IS-A-TRANSIENT), so
-// the JUDGE still cannot see the loss these helpers stage; they stage it for the
-// FIXTURE, not for the judge. Nothing in this file may be cited as "the bounty now
-// pays for repair" or as grounds to retire the pin.
+// THE RULE HAS TWO HALVES and these controls assert the first: a real repair IS
+// paid. The second, that a no-loss claim is NOT, is TestClaimWithNoLossIsDenied: the
+// judge requires prior loss (its own sweep saw the position lost, or nobody but the
+// claimed holder serves it now). A repair erases its own evidence
+// (T-LOSS-IS-A-TRANSIENT), which is why the second fact is read at judging time.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // stripeRefsOf lists one stripe's STORED shard refs, derived from the fixture's own
@@ -498,10 +534,9 @@ func (s *repairAdv) rebuildLostShard(t *testing.T, repairer, holder *Node, strip
 // PAYS for that repair — the bounty flows to the holder, still moving no standing.
 // Without this, the deny/slash tests could be passing by rejecting everything.
 //
-// ⚠ READ THE LOSS ARRANGEMENT BANNER ABOVE BEFORE CITING THIS TEST. It asserts one half
-// of — that a real repair is paid. The other half, that a no-loss claim pays NOTHING,
-// is still broken and is what TestClaimWithNoLossIsPaid_PINNED_DEFECT pins. This
-// test does not move that pin.
+// READ THE LOSS ARRANGEMENT BANNER ABOVE BEFORE CITING THIS TEST. It asserts one half
+// of the rule — that a real repair is paid. The other half, that a no-loss claim pays
+// NOTHING, is TestClaimWithNoLossIsDenied.
 func TestRepair_HonestClaimIsPaid(t *testing.T) {
 	s := newRepairAdv(t, 44)
 	s.fundEscrow(5_000_000)
@@ -546,13 +581,14 @@ func TestRepair_HonestClaimIsPaid(t *testing.T) {
 	// retrievability leg is unaffected; this arm asks the same question of the same
 	// holder, over real bytes instead of a PoR proof.
 	//
-	// MEASURED, 2026-09-13, and it is state this fixture introduces: before the loss
-	// the position sat on THREE nodes and shardIsReachable answered true; after the
-	// rebuild it sits on ONE — the named holder — and shardIsReachable answers FALSE.
-	// A loss witness shaped as a restoration differential would redden this control
-	// for that reason alone, which is why rtRC3Pin's failure text names the fixture
-	// before it names payment. The fix, when it is needed, is an announce in
-	// rebuildLostShard, not a change to the judge.
+	// The rebuilt position lives on ONE node, the named holder, and it is FINDABLE
+	// under its column key: a holder announces a placement key the first time it
+	// stores a shard under it. Unannounced (as it once was), the next sweep cannot see
+	// the rebuild and rebuilds the position again, and no judge can fetch it as a
+	// survivor.
+	if !s.shardIsReachable(s.nodes[3], parityID, pos) {
+		t.Fatalf("the rebuilt position %d is not discoverable under its column key: the holder did not announce it", pos)
+	}
 	restored := false
 	s.nodes[3].fetchFrom(parityID, []ports.NodeID{holder.ID()}, func(ok bool) { restored = ok })
 	s.sched.Run()
@@ -629,10 +665,9 @@ func TestRepair_QuorumIsDiscoverableAcrossNodes(t *testing.T) {
 // gate like this one.
 //
 // IT IS FILE-SCOPED ON PURPOSE. The no-loss arrangement is the entire point of
-// TestClaimWithNoLossIsPaid_PINNED_DEFECT and of the judge fixtures in
-// repair_claim_gates_test.go, repairclaim_judge_fixes_test.go and
-// judge_defer_test.go. They must keep staging it, and a repo-wide form of this
-// rule would demand they stop.
+// TestClaimWithNoLossIsDenied, and the judge fixtures in repair_claim_gates_test.go,
+// repairclaim_judge_fixes_test.go and judge_defer_test.go stage a copy and record the
+// loss it stands for (sawLost). A repo-wide form of this rule would demand they stop.
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestRepair_ControlsStageTheLossAtTheirCallSites(t *testing.T) {
@@ -698,10 +733,8 @@ func TestRepair_ControlsStageTheLossAtTheirCallSites(t *testing.T) {
 		t.Fatalf("SOURCE GATE: a §11 REPAIR-CLAIM CONTROL NO LONGER CALLS THE LOSS HELPER:\n%s\n\n"+
 			"  Each of these delivers a repair claim to the judge without calling %s, so it is judging a\n"+
 			"  claim for a position that was never missing. Under that\n"+
-			"  arrangement must pay NOTHING, and the shipped judge pays it — which is the defect\n"+
-			"  TestClaimWithNoLossIsPaid_PINNED_DEFECT pins, not a control.\n"+
-			"  NOTHING ELSE CATCHES THIS. The judge has no loss check (is still\n"+
-			"  GATED), so the control itself stays GREEN either way and the roadmap F8 silently becomes false.\n"+
+			"  arrangement must pay NOTHING, and the judge denies it for want of prior loss\n"+
+			"  (TestClaimWithNoLossIsDenied), so such a test is no control of payment.\n"+
 			"  If a no-loss stage is genuinely the point of a new test, put it in repair_claim_gates_test.go\n"+
 			"  beside, where that arrangement is the subject rather than the premise.",
 			strings.Join(offenders, "\n"), lossHelper)

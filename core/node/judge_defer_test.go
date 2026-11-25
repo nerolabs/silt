@@ -23,6 +23,7 @@ func TestJudgeDefersTransientlyUnjudgeableClaim(t *testing.T) {
 	pos, parityID, leafIdx := s.parityTarget()
 	holder := s.nodes[9]
 	s.stageShardOn(judge, holder, parityID, pos, leafIdx)
+	s.sawLost(judge, 0, pos)
 
 	// The judge is manifest-warm (a caretaker's steady state — Care's warm
 	// start): fetch the manifest chunks BEFORE the survivor holders go down,

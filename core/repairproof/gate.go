@@ -44,7 +44,7 @@ func RepairChallengeSeed(base [32]byte, repairer ports.NodeID) [32]byte {
 // judge opened under its own care handle; a claimant that could name it could name
 // a tree containing whatever sliver it kept.
 //
-// ADVERSARY-SHAPE: capability=DataLessClaimant UNCOVERED: no fixture GRANTS AND CONTROLS FOR a claimant a passing retrievability answer without the bytes. core/node's TestCareLinkHolderWithZeroBytesFailsTheAudit drives that adversary on the AUDIT surface and this leg shares the scheme, but a control that removes the capability leaves the identical failing answer, so it cannot discriminate. This leg is also not the one that fails a NO-LOSS claim: the named holder genuinely holds, and TestClaimWithNoLossIsPaid_PINNED_DEFECT pins that gap.
+// ADVERSARY-SHAPE: capability=DataLessClaimant UNCOVERED: no fixture GRANTS AND CONTROLS FOR a claimant a passing retrievability answer without the bytes. core/node's TestCareLinkHolderWithZeroBytesFailsTheAudit drives that adversary on the AUDIT surface and this leg shares the scheme, but a control that removes the capability leaves the identical failing answer, so it cannot discriminate. This leg is also not the one that fails a NO-LOSS claim: the named holder genuinely holds, and the judge's prior-loss check refuses it (TestClaimWithNoLossIsDenied).
 func VerifyRetrievability(shardRoot ports.Hash, leaves, leafBytes int, repairer ports.NodeID, base [32]byte, count int, ops []por.Opening) bool {
 	if leaves <= 0 || leafBytes <= 0 {
 		return false

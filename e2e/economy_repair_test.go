@@ -29,6 +29,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nerolabs/silt/adapters/identity"
 )
 
 // econChunk mirrors the cloud economy geometry (§0.1: the economy grade runs
@@ -86,24 +88,101 @@ func TestCareWithoutRegistryRefusesToStart(t *testing.T) {
 	d.waitFor(t, regexp.MustCompile(`-care needs a registry`), 20*time.Second)
 }
 
+// TestEconomyFollowerNeedsTheNetworksConsensusFlags: -economy on a non-validator keeps
+// a non-voting chain replica, which must be built under the network's consensus flags.
+// Without them it refuses to start and says which flags it needs; and a floor box,
+// which keeps no replica, cannot judge at all.
+func TestEconomyFollowerNeedsTheNetworksConsensusFlags(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e spawns processes; skipped under -short")
+	}
+	d := startDaemon(t, "follower-without-flags",
+		"-listen", "127.0.0.1:0", "-store", t.TempDir(), "-economy",
+		"-capacity", "1G", "-mdns=false", "-id-seed", "9302")
+	d.waitFor(t, regexp.MustCompile(`-economy keeps a NON-VOTING chain replica`), 20*time.Second)
+
+	b := startDaemon(t, "economy-floor-box",
+		"-listen", "127.0.0.1:0", "-store", t.TempDir(), "-economy", "-floor-box",
+		"-witness-from", strings.Repeat("ab", 32),
+		"-capacity", "1G", "-mdns=false", "-id-seed", "9303")
+	b.waitFor(t, regexp.MustCompile(`-economy and -floor-box are incompatible`), 20*time.Second)
+}
+
 func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e spawns processes; skipped under -short")
 	}
+	repairEconomyOnTheWire(t, false)
+}
 
-	// A: lone trusted validator + registry (-quorum 0), same shape as
-	// TestPublishCommitFetchOverTCP — consensus-on-the-wire has its own e2e
-	// tests; the seam under test here is the repair economy.
-	a := startDaemon(t, "A",
-		"-listen", "127.0.0.1:0", "-store", t.TempDir(),
-		"-serve-registry", "127.0.0.1:0",
-		"-validator", "-quorum", "0", "-min-rep", "0",
-		"-capacity", "1G", "-mdns=false", "-id-seed", "9001")
-	peer := a.waitFor(t, rePeer, 20*time.Second)
-	idA, addrA := peer[1], peer[2]
-	regRef := a.waitFor(t, reRegistry, 20*time.Second)[1]
-	bootstrapA := idA + "@" + addrA
+// TestFalseRepairClaimIsSlashedOverTCP: the same network, but the bonded caretaker C1
+// signs FALSE claims (-forge-repair-claim: each names a shard the object does not commit
+// at its leaf). The follower judge C2 refuses to pay, turns the claim into slash evidence
+// and sends it to the validators; the chain commits it and C1's own replica shows its
+// bond evicted. Nothing is paid.
+func TestFalseRepairClaimIsSlashedOverTCP(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e spawns processes; skipped under -short")
+	}
+	repairEconomyOnTheWire(t, true)
+}
 
+// repairEconomyOnTheWire drives one repair over real TCP on an objective bonded network.
+// Honest (forge false), the follower judge pays the claim. Forged, it reports it and the
+// chain evicts the claimant.
+func repairEconomyOnTheWire(t *testing.T, forge bool) {
+
+	// THE NETWORK IS OBJECTIVE AND BONDED, because the bounty is. A judge pays only a
+	// claimant its chain shows holding a committed bond (a false claim is answered by
+	// slashing that bond), so the repair loop needs a chain that commits bonds: four
+	// anchor validators that drain their own bond registrations. The caretakers below
+	// carry the same consensus flags, so they compute the same genesis and sync it.
+	const nVal = 4
+	valIDs := make([]string, nVal)
+	valPort := make([]string, nVal)
+	for i := range valIDs {
+		valIDs[i] = identity.FromSeed(int64(9001 + i)).NodeID().String()
+		valPort[i] = reservePort(t)
+	}
+	regPort := reservePort(t)
+	var v0 *daemon
+	consensus := []string{
+		"-objective", "-min-bond", "1M", "-min-bond-floor", "0",
+		"-mature-validators", "99", "-anchors", strings.Join(valIDs, ","),
+		"-quorum", "2",
+	}
+	for i := 0; i < nVal; i++ {
+		var att, persistent []string
+		for j := 0; j < nVal; j++ {
+			if j != i {
+				att = append(att, valIDs[j])
+				persistent = append(persistent, valIDs[j]+"@"+valPort[j])
+			}
+		}
+		args := append([]string{
+			"-id-seed", fmt.Sprint(9001 + i), "-listen", valPort[i], "-advertise", valPort[i],
+			"-store", t.TempDir(), "-validator", "-bond", "8M", "-bond-audit", "2s",
+			"-attesters", strings.Join(att, ","), "-persistent-peers", strings.Join(persistent, ","),
+			"-capacity", "1G", "-mdns=false",
+		}, consensus...)
+		if i == 0 {
+			args = append(args, "-serve-registry", regPort)
+		} else {
+			args = append(args, "-bootstrap", valIDs[0]+"@"+valPort[0])
+		}
+		d := startDaemon(t, fmt.Sprintf("V%d", i), args...)
+		d.waitFor(t, rePeer, 20*time.Second)
+		if i == 0 {
+			v0 = d
+		}
+	}
+	regRef := v0.waitFor(t, reRegistry, 30*time.Second)[1]
+	bootstrapA := valIDs[0] + "@" + valPort[0]
+	// A publish gathers its token from the issuers it is pointed at: all of them.
+	var issuerPeers []string
+	for i := range valIDs {
+		issuerPeers = append(issuerPeers, valIDs[i]+"@"+valPort[i])
+	}
 	// 12 storage nodes: the killable pool. With -replication 1 each coded
 	// column lands on one holder, so killing 3 columns kills ~3 daemons and
 	// the stripe stays comfortably above k reachable.
@@ -220,9 +299,19 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 		if err := os.WriteFile(src, want, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		out, err := runClientAllowErr(t, "swarm", "add", src,
-			"-peers", bootstrapA, "-registry", regRef,
-			"-chunk-size", fmt.Sprint(econChunk), "-replication", "1")
+		// The first publish waits for the anchors to commit their bonds: until then no
+		// quorum of issuers can sign a publish token.
+		var out string
+		var err error
+		for deadline := time.Now().Add(90 * time.Second); ; {
+			out, err = runClientAllowErr(t, "swarm", "add", src,
+				"-peers", strings.Join(issuerPeers, ","), "-registry", regRef, "-token-quorum", "2",
+				"-chunk-size", fmt.Sprint(econChunk), "-replication", "1")
+			if err == nil || time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(2 * time.Second)
+		}
 		if err != nil {
 			t.Fatalf("publish failed: %v\n%s", err, out)
 		}
@@ -269,18 +358,59 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 		store       string
 		base, token string
 	}
+	// C1 is a BONDED VALIDATOR that caretakes: it rebuilds and claims, and judges pay it
+	// because its bond is committed. C2 is a FOLLOWER (-economy without -validator): a
+	// non-voting replica that judges C1's claim against the bonds it has synced. C2
+	// sweeps slowly so C1 rebuilds first: a rebuild by the unbonded C2 would claim
+	// nothing and would leave C1 nothing to repair.
 	var caretakers []caretaker
-	for i, seed := range []string{"9201", "9202"} {
+	for i, role := range []struct {
+		seed  string
+		extra []string
+	}{
+		{"9201", append([]string{"-validator", "-bond", "8M", "-bond-audit", "2s", "-repair-interval", "2s"}, forgeFlag(forge)...)},
+		{"9202", []string{"-repair-interval", "30s", "-log", "debug"}},
+	} {
 		store := t.TempDir()
-		d := startDaemon(t, fmt.Sprintf("C%d", i+1),
+		args := append([]string{
 			"-listen", "127.0.0.1:0", "-store", store,
-			"-bootstrap", bootstrapA, "-registry", regRef,
-			"-care", careLink, "-economy", "-repair-interval", "2s",
+			"-bootstrap", bootstrapA, "-registry", regRef, "-attesters", strings.Join(valIDs, ","),
+			"-care", careLink, "-economy",
 			"-ui", "127.0.0.1:0", "-log", "info",
-			"-capacity", "1G", "-mdns=false", "-id-seed", seed)
+			"-capacity", "1G", "-mdns=false", "-id-seed", role.seed,
+		}, consensus...)
+		d := startDaemon(t, fmt.Sprintf("C%d", i+1), append(args, role.extra...)...)
 		ui := d.waitFor(t, reUI, 20*time.Second)
 		d.waitFor(t, reCaretaking, 20*time.Second)
 		caretakers = append(caretakers, caretaker{d: d, store: store, base: "http://" + ui[1], token: ui[2]})
+	}
+	// THE CLAIMANT'S BOND IS COMMITTED AND THE JUDGE HAS SEEN IT, before anything is
+	// lost: C1 emits no claim while its own replica shows it unbonded, and C2 pays no
+	// claimant its replica does not show bonded.
+	var bondedAt int
+	for deadline := time.Now().Add(120 * time.Second); ; {
+		c1 := getStatus(t, caretakers[0].base, caretakers[0].token)
+		if c1.Chain != nil && c1.Chain.SelfBonded {
+			bondedAt = c1.Chain.Height
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("premise: C1's bond never committed on its own replica")
+		}
+		time.Sleep(2 * time.Second)
+	}
+	for deadline := time.Now().Add(60 * time.Second); ; {
+		c2 := getStatus(t, caretakers[1].base, caretakers[1].token)
+		if c2.Chain == nil || !c2.Chain.Following {
+			t.Fatalf("premise: C2 (-economy, no -validator) is not following the chain: %+v", c2.Chain)
+		}
+		if c2.Chain.Height >= bondedAt {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("premise: the follower C2 never synced to the height (%d) at which C1's bond committed (C2 at %d)", bondedAt, c2.Chain.Height)
+		}
+		time.Sleep(2 * time.Second)
 	}
 	// The repair/claim/judge narration lands in <store>/debug.log (-log info);
 	// surface it when the loop fails so the break names itself (#7). The tail
@@ -625,7 +755,41 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	// well under this locally, so 180s holds with margin — and this
 	// deadline is the regression signal: a failure here means the sweep
 	// bound broke, not calibration.
+	if forge {
+		// THE LIE IS SLASHED. C1's claims are refused and reported; the evidence commits
+		// and C1's own replica stops showing its bond.
+		for deadline := time.Now().Add(180 * time.Second); ; {
+			c1 := getStatus(t, caretakers[0].base, caretakers[0].token)
+			if c1.Chain != nil && !c1.Chain.SelfBonded {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("the false claimant C1 is still bonded on its own replica 180s after the loss.\n--- C1 debug.log ---\n%s\n--- C2 debug.log ---\n%s",
+					debugTail(caretakers[0]), debugTail(caretakers[1]))
+			}
+			time.Sleep(2 * time.Second)
+		}
+		for _, c := range caretakers {
+			s := getStatus(t, c.base, c.token)
+			if s.Durability == nil {
+				continue
+			}
+			for _, o := range s.Durability.Objects {
+				if o.Root == root && o.Paid != 0 {
+					t.Fatalf("%s paid %d for a false claim", c.d.name, o.Paid)
+				}
+			}
+		}
+		// The eviction is the slash this test drove, not a lapse: the judge reported a
+		// false claim. (The honest run's control is that C1 stays bonded throughout.)
+		if j := getStatus(t, caretakers[1].base, caretakers[1].token); j.Stats == nil || j.Stats.FalseRepairReports < 1 {
+			t.Fatalf("C1 lost its bond but the judge C2 reported no false claim: %+v", j.Stats)
+		}
+		t.Logf("the judge reported C1's false claim, C1's bond is evicted on its own replica, and nothing was paid")
+		return
+	}
 	var paid, funded, repairs int64
+	payer := ""
 	deadline := time.Now().Add(180 * time.Second)
 	for paid == 0 && time.Now().Before(deadline) {
 		for _, c := range caretakers {
@@ -636,6 +800,7 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 			for _, o := range s.Durability.Objects {
 				if o.Root == root && o.Paid > paid {
 					paid, funded, repairs = o.Paid, o.Funded, o.Repairs
+					payer = c.d.name
 				}
 			}
 		}
@@ -650,7 +815,16 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	if repairs < 1 || paid > funded {
 		t.Fatalf("escrow accounting dishonest: paid=%d funded=%d repairs=%d", paid, funded, repairs)
 	}
-	t.Logf("bounty paid on the wire: paid=%d over %d repair(s), funded=%d", paid, repairs, funded)
+	// The judge that paid is the FOLLOWER: it read the claimant's bond from a replica it
+	// keeps without voting. (The claimant never judges its own claim.)
+	if payer != "C2" {
+		t.Fatalf("the bounty was paid on %s, want the follower judge C2", payer)
+	}
+	t.Logf("bounty paid on the wire by the follower judge %s: paid=%d over %d repair(s), funded=%d", payer, paid, repairs, funded)
+	// The control for the forged run: an honest claimant keeps its bond.
+	if c1 := getStatus(t, caretakers[0].base, caretakers[0].token); c1.Chain == nil || !c1.Chain.SelfBonded {
+		t.Fatal("the honest claimant C1 lost its bond, so an eviction in the forged run would prove nothing")
+	}
 
 	// The S2 half: the bounty paid for a reconstruction that actually restored
 	// availability — the file still round-trips bit-perfect with 3 columns'
@@ -664,4 +838,11 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	if !bytes.Equal(got, want) {
 		t.Fatalf("post-repair fetch corrupted: got %d bytes, want %d", len(got), len(want))
 	}
+}
+
+func forgeFlag(forge bool) []string {
+	if forge {
+		return []string{"-forge-repair-claim"}
+	}
+	return nil
 }

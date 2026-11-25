@@ -1265,8 +1265,8 @@ operators — making a more decentralized network one that fewer parties can arc
 deep past the property of whoever can afford terabytes.
 *Evidence:* unit → integration.
 
-**17. The economy mints nothing, and the core squeeze is measured.** ❓ *NO VERDICT RECORDED — the
-no-minting half is gated elsewhere; the measured half is not taken*
+**17. The economy mints nothing, and the core squeeze is measured.** ✅ *held — unit and e2e on all
+four clauses, the repair flow on local docker and on an ECONOMY=1 field sheet, and the measurement*
 Balance-lane credit
 never becomes consensus standing; a colluding pair strictly loses; repair is funded from the
 object's own escrow; a false claim is slashed. Plus core-node net margin at two edge
@@ -1283,6 +1283,41 @@ that does most of the work stays a net-positive place to do it. A signed number 
 of the clause, and no run produces one. Note the tension the sheet should not hide: the vision
 already accepts witness pricing as the fix for the unpriced core-node externality, so this
 measurement is the one that would say whether the acceptance was warranted.
+
+*VERDICT, 2026-11-25.* Driving the clauses found two of them false in the shipped code, and both
+are fixed by the owner's decisions.
+
+| Clause | Before | Now | Evidence |
+|---|---|---|---|
+| Balance-lane credit never becomes standing | True, unguarded: consensus could have imported the ledger. | Guarded. Consensus on the objective (default) path reads committed bonds only. | unit Invariant A; `TestConsensusNeverReadsTheCreditLedger`; e2e single-process settlements leave `Reputation` unmoved |
+| A colluding pair strictly loses | False twice: a copy of a never-lost shard drew the escrow; a relay wash broke even. | A bounty needs prior loss (the judge's sweep saw it, or nobody but the claimed holder serves it) and a bonded claimant; a relay settlement burns 1/8, so every wash loses. | `TestClaimWithNoLossIsDenied`, `TestUnbondedClaimantIsDenied`, `TestRelayWashLoopIsAStrictLoss`, `TestRelayBurnIsAtLeastOneCreditOnEverySettlement`, e2e `TestPaidRelaySessionEndToEnd` (ledger total strictly falls) |
+| Repair is funded from the object's own escrow | True. | Unchanged, now on an objective bonded network: four anchors, a bonded validator caretaker that claims, a non-voting follower judge that pays. | unit escrow tests; e2e `TestRepairBountyPaysOnTheWire` (the follower pays) |
+| A false claim is slashed | False in production: the "slash" lowered a local number consensus never read. | Claims are signed and name their leaf; a judge turns a claim its manifest refutes into a `chain.FalseRepairProof` and sends it to validators; the chain evicts the claimant on every replica. | `TestFalseRepairProofConvictsOnlyASignedFalseClaim`, `TestFalseClaimBecomesSlashEvidence`, `TestFalseRepairClaimIsSlashedOnChain` (in-process network), e2e `TestFalseRepairClaimIsSlashedOverTCP` (a `-forge-repair-claim` caretaker's bond is evicted; the honest run's claimant keeps its bond) |
+
+*THE MEASUREMENT* (`TestCoreMarginAtTwoEdgePopulations`): four anchor validators, the same demand
+(four 768 KiB objects, each fetched three times), a 120 s window at the shipped 60 s bond-audit
+cadence, every byte a validator moves priced at the serve-mint denomination (393,216 B per credit).
+
+| Storage nodes | Mean margin per validator | Range | Earned | Validator bytes by role (all four) |
+|---|---|---|---|---|
+| 3 | **−22.9 credits** | −21.3 to −24.9 | 0–3 | consensus 8.2 MB, bond audit 3.7 MB, routing 3.5 MB, storage 24.2 MB |
+| 9 | **−15.1 credits** | −9.1 to −19.4 | 0 | consensus 8.2 MB, bond audit 3.7 MB, routing 2.7 MB, storage 9.2 MB |
+
+The core is a net-negative place to work at both populations. Edge growth at held-constant demand
+does not squeeze it; it relieves it (+7.8 credits), because storage nodes take storage traffic off the
+validators. The deficit is the unpriced core work itself — consensus and bond audits, constant across
+both populations — which is the externality witness pricing is accepted to pay for.
+
+*INTEGRATION AND FIELD, 2026-11-25.* `flow_economy_repair` (a bonded validator as paramedic, the judge
+relaunched as a non-voting follower with the topology's `follow_args`) passes on local docker
+(`LOCAL=1 ECONOMY=1`, 5 pass / 0 gap / 0 fail: paid 12 credits over 2 repairs) and on the cloud sheet
+`697dacb9-24055` (default topology plus the ECONOMY stores, t2d, three regions; 30 pass / 0 gap / 0
+fail): rows 11-economy-repair (paid 31 credits over 5 repairs), 11b-economy-skim and
+11c-economy-horizon. Those tiers carry the repair path — clauses 2 and 3 on the honest side. The
+false-claim slash (clause 4) is held at unit, in-process network and multi-process e2e; the firewall
+(clause 1) at unit and as a source guard. The
+`13b-delivery-settlement` skip is now attributed correctly: the receipt client holds no chain, and the
+settlement needs a chain-holding parent.
 
 **18. Core carries nothing.** ✅ *seizure drill with its key-holder control driven to e2e, mutation-checked; naming half gated structurally*
 Seize a holder and fail to recover known plaintext, with a

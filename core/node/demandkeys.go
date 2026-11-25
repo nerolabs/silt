@@ -277,6 +277,8 @@ func (n *Node) FetchDemandIssuerKeys(issuer ports.NodeID, done func(pinned int, 
 			done(0, err)
 		case !resp.OK || len(resp.Data) == 0:
 			done(0, ErrNoIssuerKey)
+		case n.chain == nil:
+			done(0, ErrNoChainToResolve)
 		default:
 			var w demandKeysetWire
 			if uerr := cbor.Unmarshal(resp.Data, &w); uerr != nil {

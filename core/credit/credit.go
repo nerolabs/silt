@@ -245,6 +245,10 @@ type Ledger struct {
 	deliveryRestartOrphans         int64 // guard entries restored from disk with no session state (their remainders are gone)
 	deliverySettledIncrements      int64
 
+	// relayBurnedCredits is the relay lane's settlement burn, lifetime (relay.go
+	// RelayBurnNum/RelayBurnDen). A node-wide aggregate, never joined to an identity.
+	relayBurnedCredits int64
+
 	provisional map[provKey]*provisionalServe
 	provOrder   []*provKey
 	provIndex   map[provKey]int
@@ -824,7 +828,10 @@ const falseRepairSlash = 1_000_000
 
 // SlashFalseRepair records a PROVEN false repair claim against a caretaker
 // (the failing correctness transcript verified by core/repairproof before this is
-// called). It applies a crushing but finite reputation penalty. Like every slash
+// called) on this node's local ledger. It is not the binding penalty: a false claim
+// that names a shard the object does not commit is also sent to the validators as a
+// chain.FalseRepairProof, and the chain evicts the claimant's bond on every replica.
+// Here it applies a crushing but finite reputation penalty. Like every slash
 // it can only ever LOWER standing — a reduces-class press under Invariant A, never
 // Sybil-amplifiable. It does NOT touch bondedBytes: the storage bond is
 // independent of the repair lie, so only the earned standing is docked, and an

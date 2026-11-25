@@ -569,6 +569,12 @@ def main():
         "maturing": MATURING, "mature_bar": mature_bar,
         "relay_ref": relay_ref, "regref": regref, "regrefs": regrefs, "anchors": anchors, "boot": boot,
         "public_cidr": PUBLIC_CIDR, "nat_cidr": NAT_CIDR,
+        # The consensus flags a NON-VOTING replica needs to follow this network's chain
+        # (a node with -economy that is not a validator keeps one to judge repair claims).
+        # They must equal the validators' or the follower computes a different genesis.
+        "follow_args": (f"-objective -min-bond {min_bond} -min-bond-floor {min_floor} "
+                        f"-mature-validators {mature_bar}{margin_flag} -anchors {anchors} "
+                        f"-attesters {anchors} -quorum {quorum}"),
     }
     here = os.path.dirname(os.path.abspath(__file__))
     # TOPO_OUT namespaces the state file per backend (cloud=topology.json,

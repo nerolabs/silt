@@ -119,7 +119,9 @@ func TestPublishersAndFetchersCannotBeLinkedToTheirObjects(t *testing.T) {
 	const ctrlPub = 4
 	// The control cares for what it publishes, with the economy on so it also announces
 	// under the object's care key, which placement never uses: an unambiguous announcement.
-	publishers = append(publishers, start("Pc", "9829", true, "-care-published=true", "-economy"))
+	publishers = append(publishers, start("Pc", "9829", true, "-care-published=true", "-economy",
+		// -economy keeps a chain replica, built under V's trusted consensus flags.
+		"-quorum", "0", "-min-rep", "0"))
 
 	t.Logf("network of %d daemons up in %s", len(all), time.Since(testStart).Round(time.Second))
 

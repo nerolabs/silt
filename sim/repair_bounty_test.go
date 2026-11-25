@@ -26,7 +26,7 @@ func TestRepairBountyPaysHolderWithoutMovingStanding(t *testing.T) {
 	cfg := node.DefaultConfig()
 	cfg.Replication = 1 // parity is the only redundancy → churn bites and repair fires
 	cfg.RepairEconomy = true
-	cl := NewCluster(seed, 48, simnet.DefaultConfig(), cfg)
+	cl := NewClusterWithKeys(seed, 48, simnet.DefaultConfig(), cfg) // claims are signed by their claimant
 
 	// One shared ledger, generously granted so a funder can prepay the reserve.
 	ledger := credit.New(50_000, 100<<20)
@@ -38,6 +38,8 @@ func TestRepairBountyPaysHolderWithoutMovingStanding(t *testing.T) {
 		// anywhere (a bounty that minted reputation, an erroneous slash) is visible.
 		ledger.RecordBondChallenge(nd.ID(), nd.ID(), 64<<20, true, 1)
 		baseline[nd.ID()] = ledger.Reputation(nd.ID())
+		// The cluster keeps no chain; every node is bonded in this scenario.
+		nd.SetBondReader(func(ports.NodeID) bool { return true })
 	}
 
 	publisher := cl.Nodes[0]

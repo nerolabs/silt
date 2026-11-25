@@ -132,10 +132,10 @@ var standingClassification = map[string]standingClass{
 	"Epoch":           neutral, // reads max(watermark, source); a pure observer
 	"LoadPaidSerials": neutral, // restores the guard from disk; moves nothing
 
-	// PoD relay lane (relay.go interim: pays 0 until). Relay/gateway
-	// bandwidth compensation would settle a sender-funded PayWord chain
-	// into the relay operator's BALANCE once the prepayment anchor binds
-	// it — a conserved transfer, never a mint. Like the delivery lane it
+	// PoD relay lane. Relay/gateway bandwidth compensation settles a
+	// sender-funded PayWord chain into the relay operator's BALANCE, bounded
+	// by the prepayment anchors spent at open, less the relay burn — never a
+	// mint. Like the delivery lane it
 	// MUST never move standing: a PayWord chain is fundable with zero
 	// object bytes by design (it pays for forwarding, which is
 	// unprovable), so this press buying even one unit of standing would
@@ -146,6 +146,8 @@ var standingClassification = map[string]standingClass{
 	// returns their face — the session budget. Guard map, durable store and
 	// counters only; no field Reputation reads.
 	"SpendRelayAnchors": neutral,
+	// The relay lane's lifetime settlement burn: a read-only accessor.
+	"RelayBurnedCredits": neutral,
 	// The delivery lane's anchor spend (the same guard press with the server
 	// recorded), the count-denominated settlement (pays out of an anchor budget into
 	// the server's BALANCE and the object's escrow, reverses the provisional lane per
@@ -218,7 +220,7 @@ func TestInvariantA_NoNonMintPressRaisesStanding(t *testing.T) {
 		paidOnLane(l, n, other, obj, testSerial(531), 0)   // witnessed delivery credit (PoD neutral lane)
 		// PayWord relay credit (PoD relay lane), pressed against an ANCHORED session
 		// so the settle body actually pays: buy one anchor through the
-		// real burn, spend it, settle the whole budget to n.
+		// real burn, spend it, settle the whole budget to n (net of the relay burn).
 		l.acct(other).balance += l.Fee() // other is the durable buyer; fund the burn
 		if err := l.ChargePublish(other); err != nil {
 			t.Fatalf("round %d: issuance burn: %v", round, err)
@@ -227,8 +229,8 @@ func TestInvariantA_NoNonMintPressRaisesStanding(t *testing.T) {
 		if face != l.Fee() || reason != "" {
 			t.Fatalf("round %d: SpendRelayAnchors = (%d, %q), want (%d, \"\") — the relay press would be vacuous", round, face, reason, l.Fee())
 		}
-		if paid := l.RedeemRelayCredit(n, other, 1<<30, face); paid != face {
-			t.Fatalf("round %d: RedeemRelayCredit paid %d against budget %d — the relay press is vacuous", round, paid, face)
+		if paid := l.RedeemRelayCredit(n, other, 1<<30, face); paid != RelayNet(face) {
+			t.Fatalf("round %d: RedeemRelayCredit paid %d against budget %d, want RelayNet(budget) = %d — the relay press is vacuous", round, paid, face, RelayNet(face))
 		}
 		// delivery settlement, pressed against an ANCHORED, paying session:
 		// buy one anchor through the real burn, spend it at open naming n as the

@@ -369,10 +369,12 @@ func TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding(t *testing.T) {
 		t.Fatalf("the client BANKED a receipt on a chain with no committed E->key binding; "+
 			"got: %s", out)
 	}
-	if !strings.Contains(out, "no key that resolves against a committed E->key binding") {
-		t.Fatalf("the refusal must name the missing committed binding — that is the one "+
-			"sentence that tells an operator this is an era-4 gate and not a broken peer. "+
-			"Got: %s", out)
+	// The CLI runs on a chain-less ephemeral node, so the refusal names THAT: it holds no
+	// chain to check the served keys against. Reporting a missing binding on the issuer's
+	// chain instead would blame the wrong party.
+	if !strings.Contains(out, "holds no chain replica") || !strings.Contains(out, "committed E->key binding") {
+		t.Fatalf("the refusal must say this client holds no chain to resolve against the "+
+			"committed E->key binding. Got: %s", out)
 	}
 	// The lane-off sentence must NOT appear: this server IS running the lane.
 	if strings.Contains(out, "serves no demand issuer key") {

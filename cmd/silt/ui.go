@@ -43,6 +43,7 @@ import (
 
 	"github.com/nerolabs/silt/adapters/eventloop"
 	"github.com/nerolabs/silt/adapters/linkbook"
+	"github.com/nerolabs/silt/adapters/tcpnet"
 	"github.com/nerolabs/silt/core/credit"
 	"github.com/nerolabs/silt/core/crypto"
 	"github.com/nerolabs/silt/core/link"
@@ -63,12 +64,13 @@ type uiServer struct {
 	validator     bool
 	started       time.Time
 	peerCount     func() int
-	links         *linkbook.Book   // client mode only (nil on a plain daemon)
-	carePublished bool             // daemon repairs content published through its own UI
-	serveFetched  bool             // UI fetches are retained, hosted and announced (consumer==provider)
-	token         string           // per-daemon bearer token gating state-changing calls
-	webOrigins    []string         // extra web origins allowed to draw content (e.g. https://app.example.com); off by default. Lets a hosted resolver surface render from this local node.
-	addressCap    addressCapConfig // The configured observed-address cap, reported with series A/B/E
+	links         *linkbook.Book                       // client mode only (nil on a plain daemon)
+	carePublished bool                                 // daemon repairs content published through its own UI
+	serveFetched  bool                                 // UI fetches are retained, hosted and announced (consumer==provider)
+	token         string                               // per-daemon bearer token gating state-changing calls
+	traffic       func() map[string]tcpnet.KindTraffic // the transport's meter; nil when there is none
+	webOrigins    []string                             // extra web origins allowed to draw content (e.g. https://app.example.com); off by default. Lets a hosted resolver surface render from this local node.
+	addressCap    addressCapConfig                     // The configured observed-address cap, reported with series A/B/E
 	// statusExtra, when non-nil, fills the one optional extra block on GET
 	// /api/status. IT IS NIL IN EVERY DEFAULT BUILD AND NOTHING CAN SET IT: the only
 	// implementation is the B_bootstrap renderer in bbootstrap.go, which
@@ -520,6 +522,12 @@ type chainInfo struct {
 	// this node stalled at an era boundary it has not been upgraded for. Always
 	// present, so a zero count reads as "none seen", not "not computed".
 	ForeignFormat node.ForeignFormat `json:"foreignFormat"`
+	// Following is true on a non-voting replica (a repair judge that is not a
+	// validator). SelfBonded is whether this replica shows this node's own bond
+	// committed at the bond floor and unslashed: the bond a false repair claim it made
+	// would be slashed from, and without which judges refuse its claims.
+	Following  bool `json:"following"`
+	SelfBonded bool `json:"selfBonded"`
 }
 
 // statusInfo is the GET /api/status document. It is a NAMED type because it is cached:
@@ -575,6 +583,10 @@ type statusInfo struct {
 	// F2 marker). A marker that named less than it covers would be a false fact in the
 	// other direction, so the set is enumerated here and the name is the set (S7).
 	CountersWithheld bool `json:"countersWithheld,omitempty"`
+	// Traffic is the transport's meter: frames and bytes sent and received per
+	// message kind since start (tcpnet.Transport.Traffic). Node-wide, no peer
+	// identities; served to the token holder only, like the delivery telemetry.
+	Traffic map[string]tcpnet.KindTraffic `json:"traffic,omitempty"`
 	// Privacy reports the -privacy posture on every response, tokened or not: mode is the
 	// flag in force, default is the compiled default. A page renders the pre-release
 	// banner when mode is "off"; a fleet observer can tell "withheld by policy" from
@@ -710,6 +722,7 @@ func (s *uiServer) readerView(doc *statusInfo, r *http.Request) *statusInfo {
 		out.ServeMint = nil                                 // F2: its skim sum reconstructs a lone object's funded figure
 		out.ServeMintWithheld = true
 		out.DeliverySettlement = nil // token holders only, with the counters (the same shape one lane over)
+		out.Traffic = nil            // token holders only: what this node spends its bandwidth on
 	}
 	if auth.privacy && !auth.token {
 		// The node-wide serve counters. Assign, never mutate — the Stats
@@ -976,11 +989,15 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 		}
 		st := s.nd.Stats
 		out.Stats = &st
+		if s.traffic != nil {
+			out.Traffic = s.traffic()
+		}
 		out.Network = s.nd.EstimateNetwork()
 		if ch := s.nd.Chain(); ch != nil {
 			era := ch.EraState()
 			out.Chain = &chainInfo{Height: ch.Len(), Entries: ch.EntryCount(),
-				HeadVersion: era.Census.HeadVersion, Era: era, ForeignFormat: s.nd.ForeignFormat()}
+				HeadVersion: era.Census.HeadVersion, Era: era, ForeignFormat: s.nd.ForeignFormat(),
+				Following: s.nd.ChainFollower(), SelfBonded: ch.BondQualified(s.nd.ID())}
 		}
 		out.Durability = s.durabilitySnapshot(uptime)
 		if fs := s.nd.FaucetStats(); fs.Configured {

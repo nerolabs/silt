@@ -782,6 +782,12 @@ func demandKeyResolutionError(server ports.NodeID, pinned int, keyErr error) err
 		// a server that runs the lane.
 		return fmt.Errorf("%s %s (no token was withdrawn, so nothing was spent): that server serves no demand issuer key — it is not running -accept-delivery-receipts: %w",
 			notBankedMarker, server, keyErr)
+	case errors.Is(keyErr, node.ErrNoChainToResolve):
+		// The issuer runs the lane and served its keys; THIS process has no chain to
+		// check them against. Nothing was withdrawn. The withdrawal needs a parent that
+		// holds a chain replica to resolve the key (Node.ResolvedDemandIssuerKey).
+		return fmt.Errorf("%s %s (no token was withdrawn, so nothing was spent): this client holds no chain replica, so no key the issuer served can be checked against the committed E->key binding: %w",
+			notBankedMarker, server, keyErr)
 	case keyErr != nil:
 		return fmt.Errorf("resolve demand issuer keys from %s against the committed binding (pinned %d): %w",
 			server, pinned, keyErr)

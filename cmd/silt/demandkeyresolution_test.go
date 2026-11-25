@@ -18,6 +18,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nerolabs/silt/core/node"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -54,6 +55,27 @@ func TestDemandKeyResolutionErrorIsLegibleOnBothBranches(t *testing.T) {
 		}
 		if !errors.Is(err, served) {
 			t.Fatalf("the served error must stay wrapped for the caller, got: %s", msg)
+		}
+	})
+
+	// A chain-less caller is told so, not told the issuer's chain lacks a binding: the
+	// two causes need different remedies, and only one of them is the issuer's.
+	t.Run("the caller holds no chain", func(t *testing.T) {
+		err := demandKeyResolutionError(server, 0, node.ErrNoChainToResolve)
+		if err == nil {
+			t.Fatal("a caller with no chain must refuse: it cannot anchor any key")
+		}
+		msg := err.Error()
+		if !errors.Is(err, node.ErrNoChainToResolve) || errors.Is(err, errNoCommittedDemandKeyBinding) {
+			t.Fatalf("the refusal must carry the no-chain cause and not the issuer-side one, got: %s", msg)
+		}
+		for _, want := range []string{notBankedMarker, "holds no chain replica", "committed E->key binding"} {
+			if !strings.Contains(msg, want) {
+				t.Fatalf("the refusal must say %q, got: %s", want, msg)
+			}
+		}
+		if strings.Contains(msg, "serves no demand issuer key") {
+			t.Fatalf("a chain-less caller is conflated with a lane-off server: %s", msg)
 		}
 	})
 

@@ -24,6 +24,22 @@ func (n *Node) EnableChain(ch *chain.Chain, priv ed25519.PrivateKey) {
 	n.signer = priv
 }
 
+// FollowChain keeps ch as a NON-VOTING replica: the node syncs committed blocks,
+// validates each against the same rules a validator applies, and serves reads from
+// it, but never proposes, attests, changes rounds or takes submissions. A repair judge
+// follows the chain this way to read who is bonded. The node's identity key, if it has
+// one, is untouched: following is a role, not the absence of a key.
+func (n *Node) FollowChain(ch *chain.Chain) {
+	n.chain = ch
+	n.following = true
+}
+
+// ChainFollower reports whether this node keeps a replica without voting.
+func (n *Node) ChainFollower() bool { return n.chainFollower() }
+
+// chainFollower reports whether this node keeps a replica without voting.
+func (n *Node) chainFollower() bool { return n.chain != nil && n.following }
+
 // Chain exposes the local replica (dashboards, tests).
 func (n *Node) Chain() *chain.Chain { return n.chain }
 
@@ -102,6 +118,9 @@ func slotCompare(height, round uint64, phase uint8, m ports.SignMark) int {
 // (fail-safe: a missed signing turn costs one gather round; a signature
 // without a durable mark risks a permanent honest self-slash).
 func (n *Node) recordSign(height, round uint64, phase uint8, h ports.Hash) bool {
+	if n.following {
+		return false // a follower releases no consensus signature, whatever reached here
+	}
 	return n.recordSignLock(height, round, phase, h, nil)
 }
 
@@ -247,7 +266,22 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		}
 		return false
 	}
+	if n.chainFollower() {
+		// A follower takes part in nothing that needs a signature. It refuses
+		// every consensus write and keeps serving reads (GetChain, GetChainHead,
+		// GetWitness, CommitBlock adoption) from the replica below.
+		switch msg.Kind {
+		case ports.MsgProposeBlock, ports.MsgPrepareQC, ports.MsgRoundChange, ports.MsgRoundCert,
+			ports.MsgHaveBondReg, ports.MsgSubmitBondReg, ports.MsgSubmitIssuerKeyReg, ports.MsgSubmitEntry,
+			ports.MsgSubmitSlash:
+			n.reply(from, msg, ports.Message{Kind: replyKind(msg.Kind), OK: false})
+			return true
+		}
+	}
 	switch msg.Kind {
+	case ports.MsgSubmitSlash:
+		n.handleSubmitSlash(from, msg)
+		return true
 	case ports.MsgProposeBlock:
 		// PREPARE phase. Attest only what we would
 		// accept: same rules, our reputation view. The envelope carries the
@@ -1839,6 +1873,67 @@ func (n *Node) eraFloor() chain.EraFloor {
 	return n.chain.EraFloor()
 }
 
+// queueSlash queues one verified slash proof for on-chain recording, once per culprit,
+// unless the culprit is already slashed or the proof alone exceeds SlashesBytesCap (it
+// could never commit, and queuing it would make every later proposal invalid). The
+// caller has verified e.
+func (n *Node) queueSlash(e chain.Equivocation) {
+	cid := e.CulpritID()
+	if n.chain == nil || n.chain.IsSlashed(cid) || n.slashQueued[cid] {
+		return
+	}
+	if sz := chain.SlashesEncodedSize([]chain.Equivocation{e}); sz > chain.SlashesBytesCap {
+		if !n.slashOverCapLogged[cid] {
+			n.slashOverCapLogged[cid] = true
+			n.logf(ports.LogWarn, "equivocation proof exceeds SlashesBytesCap; not queued for on-chain slashing", "culprit", cid, "height", e.A.Height, "bytes", sz, "cap", chain.SlashesBytesCap)
+		}
+		return
+	}
+	n.pendingSlashes = append(n.pendingSlashes, e)
+	n.slashQueued[cid] = true
+}
+
+// handleSubmitSlash takes slash evidence from a node that does not propose (a repair
+// judge reporting a false claim). It is verified exactly as this node verifies its own,
+// against its own chain id and era floor, so a forged accusation is refused here and
+// could not commit anyway.
+func (n *Node) handleSubmitSlash(from ports.NodeID, msg ports.Message) {
+	var e chain.Equivocation
+	if err := cbor.Unmarshal(msg.Data, &e); err != nil {
+		n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitSlashAck, OK: false})
+		return
+	}
+	if err := chain.CheckEquivocation(&e, n.chainID(), n.eraFloor()); err != nil {
+		n.logf(ports.LogInfo, "submitted slash proof refused", "from", from, "err", err)
+		n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitSlashAck, OK: false})
+		return
+	}
+	n.queueSlash(e)
+	n.logf(ports.LogWarn, "slash proof accepted for on-chain recording", "culprit", e.CulpritID(), "from", from, "falseRepair", e.FalseRepair != nil)
+	n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitSlashAck, OK: true})
+}
+
+// SubmitSlash records a verified slash proof this node found: queued here if this node
+// proposes, and sent to every validator it syncs from, whichever of them proposes next.
+func (n *Node) SubmitSlash(e chain.Equivocation) {
+	if n.chain == nil {
+		return
+	}
+	if !n.chainFollower() && n.signer != nil {
+		n.queueSlash(e)
+	}
+	raw, err := encSlash(e)
+	if err != nil {
+		return
+	}
+	for _, p := range n.syncTargets() {
+		if p == n.id {
+			continue
+		}
+		n.request(p, ports.Message{Kind: ports.MsgSubmitSlash, Data: raw}, func(ports.Message, error) {})
+	}
+}
+
 func (n *Node) slashEquivocators(a, b []chain.Block) {
 	if n.ledger == nil {
 		return
@@ -1865,17 +1960,7 @@ func (n *Node) slashEquivocators(a, b []chain.Block) {
 		// also honestly attested and serves it as a peer, so it is logged by
 		// name, once per culprit; the culprit keeps its on-chain seat —
 		// the cap's second face, see SlashesBytesCap.
-		if n.chain != nil && !n.chain.IsSlashed(cid) && !n.slashQueued[cid] {
-			if sz := chain.SlashesEncodedSize([]chain.Equivocation{e}); sz > chain.SlashesBytesCap {
-				if !n.slashOverCapLogged[cid] {
-					n.slashOverCapLogged[cid] = true
-					n.logf(ports.LogWarn, "equivocation proof exceeds SlashesBytesCap; not queued for on-chain slashing", "culprit", cid, "height", e.A.Height, "bytes", sz, "cap", chain.SlashesBytesCap)
-				}
-			} else {
-				n.pendingSlashes = append(n.pendingSlashes, e)
-				n.slashQueued[cid] = true
-			}
-		}
+		n.queueSlash(e)
 		if n.slashedLocal[cid] {
 			continue
 		}
@@ -2220,6 +2305,19 @@ func (n *Node) StartChainSync(seed []ports.NodeID, onCatchUp func(added int)) {
 
 func (n *Node) chainSyncTick() {
 	peers := n.syncTargets()
+	if n.chainFollower() {
+		// A follower only reconciles: it proposes, renews and submits nothing, and a
+		// round change is a signed vote it does not cast.
+		if len(peers) > 0 {
+			n.SyncChain(peers, func(added int, _ error) {
+				if added > 0 && n.chainSyncOnCatchUp != nil {
+					n.chainSyncOnCatchUp(added)
+				}
+			})
+		}
+		n.clock.AfterFunc(n.cfg.ChainSyncInterval, n.chainSyncTick)
+		return
+	}
 	if len(peers) > 0 {
 		n.SyncChain(peers, func(added int, _ error) {
 			if added > 0 && n.chainSyncOnCatchUp != nil {
@@ -2281,7 +2379,7 @@ func (n *Node) maybeProposeBondDrain() { n.proposeDrain(false) }
 // counts as an idle sweep, so it cannot hurry the takeover walk, and a blocked sign
 // slot is the sweep's to report.
 func (n *Node) proposeDrain(early bool) {
-	if n.chain == nil || !n.chain.Objective() || n.signer == nil || n.bondDrainInFlight {
+	if n.chain == nil || !n.chain.Objective() || n.signer == nil || n.following || n.bondDrainInFlight {
 		return
 	}
 	// The IsSlashed gate: an evicted node's BondRenewalDue
@@ -2659,4 +2757,13 @@ func (n *Node) SubmitIssuerKeyRegs(peers []ports.NodeID) {
 	if sent > 0 {
 		n.logf(ports.LogInfo, "issuer-key registrations submitted", "count", sent, "peers", len(peers), "next_epoch", epoch)
 	}
+}
+
+// encSlash is the canonical CBOR a slash proof travels in.
+func encSlash(e chain.Equivocation) ([]byte, error) {
+	enc, err := cbor.CanonicalEncOptions().EncMode()
+	if err != nil {
+		return nil, err
+	}
+	return enc.Marshal(e)
 }

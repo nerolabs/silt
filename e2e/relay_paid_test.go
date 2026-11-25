@@ -406,7 +406,8 @@ func TestPaidRelaySessionEndToEnd(t *testing.T) {
 	// build-checked) — and the
 	// ledger TOTAL moved by settled − k·fee ≤ 0 across purchase → open → pay →
 	// settle: the unconsumed face is burned, never re-minted.
-	wantCredit := min(int64(S)*relaypay.RelayIncrementCredit, k*fee)
+	// The relay is paid the settlement less the relay burn (credit.RelayNet).
+	wantCredit := credit.RelayNet(min(int64(S)*relaypay.RelayIncrementCredit, k*fee))
 
 	deadline := time.Now().Add(5 * time.Second)
 	settled := func() bool {
@@ -421,10 +422,10 @@ func TestPaidRelaySessionEndToEnd(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if bal := readBalance(rID.NodeID()); bal != balStart+wantCredit {
-		t.Fatalf("operator balance = %d after settle, want %d (+min(count × inc, Σ face) = %d) — got a payout of %d for %d increments", bal, balStart+wantCredit, wantCredit, bal-balStart, S)
+		t.Fatalf("operator balance = %d after settle, want %d (+RelayNet(min(count × inc, Σ face)) = %d) — got a payout of %d for %d increments", bal, balStart+wantCredit, wantCredit, bal-balStart, S)
 	}
-	if delta := readTotal() - totalStart; delta != wantCredit-k*fee || delta > 0 {
-		t.Fatalf("ledger total moved by %d across purchase → settle, want settled − k·fee = %d (≤ 0; the remainder is burned)", delta, wantCredit-k*fee)
+	if delta := readTotal() - totalStart; delta != wantCredit-k*fee || delta >= 0 {
+		t.Fatalf("ledger total moved by %d across purchase → settle, want paid − k·fee = %d (< 0; the burn and the remainder are destroyed)", delta, wantCredit-k*fee)
 	}
 	if rep := readReputation(); rep != repBefore {
 		t.Fatalf("relay Reputation() moved from %d to %d on a relay settlement — the Invariant-A firewall is breached (relay credit must be balance-only)", repBefore, rep)

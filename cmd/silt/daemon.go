@@ -160,6 +160,7 @@ func cmdDaemon(args []string) error {
 	forgeBlock := fs.String("forge-block", "", "ADVERSARY / TEST-HARNESS ONLY: propose a block with a FORGED (corrupted) proposer signature to this peer ID, to prove an honest validator rejects it before attesting (forged-block→reject). Never honest")
 	lowbondPropose := fs.String("lowbond-propose", "", "ADVERSARY / TEST-HARNESS ONLY: as an under-bonded validator, propose a well-formed block to this peer ID, to prove an honest validator refuses a proposer without a qualifying bond (low-bond→reject). Never honest")
 	equivocate := fs.String("equivocate", "", "ADVERSARY / TEST-HARNESS ONLY: run this validator as a Byzantine EQUIVOCATOR (proving accountability over the real wire). OBJECTIVE mode (3-of-4): the value is a trigger; this validator participates honestly then SERVES a conflicting signed block at a height it prepared, so an honest peer slashes the double-sign on sync (slash-on-detection — a fork can't be committed under a BFT quorum). LEGACY mode: given \"idX,idYZ\" it commit-places block X on idX and a heavier fork (Y,Z) on idYZ. NEVER use on a real network; a correct node refuses to equivocate")
+	forgeRepairClaim := fs.Bool("forge-repair-claim", false, "ADVERSARY / TEST-HARNESS ONLY: every repair claim this caretaker emits names a shard id the object does not commit at the claimed leaf — a signed lie, to prove a judge reports it and the chain evicts this node's bond. Never honest")
 	liar := fs.Bool("liar", false, "ADVERSARY / TEST-HARNESS ONLY: run this storage node as a PoR LIAR — it keeps its storage proof but silently drops the shard bytes (\"keep the receipt, ditch the goods\"). It still answers a MsgChallenge, but holds nothing to open against the committed shard root, so an -audit auditor CATCHES it and slashes its standing. Never honest")
 	goodPropose := fs.String("goodpropose", "", "TEST-HARNESS ONLY: POSITIVE CONTROL for -forge-block/-lowbond-propose. As a properly-bonded proposer, send a WELL-FORMED block to this peer ID and prove the honest target ACCEPTS it — so a target that refuses EVERY proposal (a broken/wedged node) cannot make the forged/low-bond REJECT tests false-pass ('reject the good one too' would otherwise look identical to 'reject the bad one', audit). Retries until its bond earns standing. Logs 'goodpropose proposal ACCEPTED by <id>' on accept, 'goodpropose proposal UNEXPECTEDLY REJECTED by <id>' after giving up")
 	wsCheckpoint := fs.String("ws-checkpoint", "", "weak-subjectivity checkpoint HEIGHT:HASH (M0 F-1): a recent trusted committed block this node REFUSES to reorg at or before, regardless of fork weight — the long-range-attack defense that makes the objective maturity latch safe for a fresh/long-offline node. Obtain it out-of-band (the daemon prints `checkpoint: HEIGHT:HASH` for its committed head; cross-check several independent nodes). It must be recent — within ~the bond-TTL window. Empty = genesis-trusting (safe only at launch, on a trusted swarm, or before the network matures)")
@@ -408,6 +409,15 @@ func cmdDaemon(args []string) error {
 	} else if strings.TrimSpace(*witnessFrom) != "" {
 		return errors.New("-witness-from is only meaningful with -floor-box: a node that keeps its own replica reads committed state from it, never from a provider")
 	}
+	// A REPAIR JUDGE FOLLOWS THE CHAIN. With -economy this node judges repair claims and
+	// pays bounties, and it pays only a claimant the chain shows bonded, so it must read
+	// committed bonds. A validator already holds a replica; any other economy node keeps a
+	// NON-VOTING one (node.FollowChain) under the same consensus flags as the network.
+	// A floor box keeps no replica, so it cannot judge.
+	if *economy && *floorBox {
+		return errors.New("-economy and -floor-box are incompatible: a repair judge pays only a claimant the chain shows bonded, so it keeps a chain replica, and a floor box keeps none")
+	}
+	follow := *economy && !*validator
 	// SOURCE GATE, canon rule 8 first arm: the publish default must stay at or above the
 	// chunk size that pays a non-zero repair bounty, or the publish warning's threshold
 	// falls to 0 and the whole disclosure — ZERO arm included — goes permanently silent.
@@ -472,6 +482,9 @@ func cmdDaemon(args []string) error {
 	// validates by proof claims no consensus standing, so the floor never applies
 	// to it.
 	//
+	// A FOLLOWER IS ON THIS PATH for the same reason: it keeps a replica it never votes
+	// on, validated under the rules the validators committed into genesis.
+	//
 	// A FLOOR BOX IS ON THIS PATH. It keeps no replica, but it judges blocks under
 	// the objective rules, and every value derived from this decision is committed
 	// into the genesis those rules are read from. A box excluded here derives a
@@ -479,7 +492,7 @@ func cmdDaemon(args []string) error {
 	// rule working exactly as intended, refusing a configuration nobody is running —
 	// so it would stall on every block and never say why in terms an operator could
 	// act on.
-	objectivePath := (*validator || *floorBox) && *objective && *minRep > 0
+	objectivePath := (*validator || *floorBox || follow) && *objective && *minRep > 0
 	effFloor, defaulted := effectiveBondFloor(floorSet, explicitFloor, objectivePath)
 	// The bond itself gets the same safe-by-default treatment as the floor that
 	// judges it. Shipping a default BELOW the floor this same code arms produced a
@@ -971,7 +984,7 @@ func cmdDaemon(args []string) error {
 	var minBondBytes int64
 	anchorSet := map[ports.NodeID]bool{}
 	useObjective := false
-	if *validator || *floorBox {
+	if *validator || *floorBox || follow {
 		for _, s := range strings.Split(*anchorList, ",") {
 			if strings.TrimSpace(s) == "" {
 				continue
@@ -1030,6 +1043,9 @@ func cmdDaemon(args []string) error {
 			// mature one with a weak-subjectivity checkpoint. Asserted safe-by-default
 			// in invariant_b_test.go (S6).
 			if !coldStartScaffoldOK(useObjective, len(anchorSet), *matureValidators, *wsCheckpoint) {
+				if follow {
+					return errors.New("consensus: refusing to start — -economy keeps a NON-VOTING chain replica so this node can read who is bonded when it judges repair claims, and a replica must be built under the network's own consensus flags. Pass the validators' -anchors, -min-bond, -min-bond-floor, -mature-validators and -quorum (or -min-rep 0 to follow a trusted swarm's chain), with -attesters naming validators to sync from")
+				}
 				return fmt.Errorf("consensus: refusing to start — an untrusted objective validator with no cold-start scaffolding would treat itself as mature from genesis (no anchor co-sign), letting a young or Sybil quorum self-certify and capture. Launch a fresh network with -anchors ID,... and -mature-validators N (the training-wheels launch set), OR join an already-mature network with -ws-checkpoint HEIGHT:HASH; alternatively -min-rep 0 for a trusted swarm, or -objective=false for the legacy (non-M0) path (a launch set needs at least 2 anchors: at 1 the Byzantine threshold is 0, the anchor majority is self-satisfied by the proposer, and finality engages at 0 — the sole anchor commits alone and those blocks read as final)")
 			}
 		}
@@ -1149,7 +1165,7 @@ func cmdDaemon(args []string) error {
 		fmt.Printf("floor box: validating by PROOF — no replica, no registry, no state tree\n")
 		fmt.Println("network: " + chain.NetworkIdentityOf(*networkName, boxChainID))
 	}
-	if *validator {
+	if *validator || follow {
 		// / this lane (scope call S3): a replay that would discard
 		// finalized history REFUSES TO START unless the operator
 		// accepts the loss with -accept-chain-loss. Before this the
@@ -1261,7 +1277,12 @@ func cmdDaemon(args []string) error {
 		for _, ln := range networkIdentityLines(ch) {
 			fmt.Println(ln)
 		}
-		nd.EnableChain(ch, ident.Signer())
+		if follow {
+			nd.FollowChain(ch)
+			fmt.Println("chain: FOLLOWING — a non-voting replica for judging repair claims (no proposals, no attestations)")
+		} else {
+			nd.EnableChain(ch, ident.Signer())
+		}
 		// The ledger's consensus epoch is READ from this node's chain,
 		// never passed by a caller. Wired here, right after the chain is enabled and
 		// before any lane can accept a receipt or a relay open; wired ONCE (the
@@ -1288,6 +1309,11 @@ func cmdDaemon(args []string) error {
 			fmt.Printf("chain: saved %d block(s) [%s] head=%d:%s (everMature=%v matureEpoch=%v seen=%d bonded=%d epochStart=%d epochSet=%d released=%d)\n",
 				next, why, next-1, head, r.EverMature, r.MatureEpoch, r.ValidatorsSeen, r.Bonded, r.EpochStart, r.EpochSetSize, ch.ReleasedBlocks())
 		}
+		if follow {
+			nd.OnCommit(func(chain.Block) { saveChain("commit") })
+		}
+	}
+	if *validator {
 		// Durable never-sign-twice watermark: the mark is fsync'd
 		// BEFORE any consensus signature is released, so a crash/restart cannot
 		// make this validator contradict a signature it already shipped — which
@@ -1643,6 +1669,8 @@ func cmdDaemon(args []string) error {
 			}
 			saveChain("commit")
 		})
+	}
+	if *validator || follow {
 		for _, s := range strings.Split(*attesters, ",") {
 			if strings.TrimSpace(s) == "" {
 				continue
@@ -1749,6 +1777,7 @@ func cmdDaemon(args []string) error {
 			selfPeer:  fmt.Sprintf("%s@%s", id, tr.Addr()),
 			validator: *validator, started: time.Now(),
 			peerCount:     func() int { return tr.PeerCount() },
+			traffic:       tr.Traffic,
 			carePublished: *carePublished,
 			serveFetched:  *serveFetched,
 			token:         token,
@@ -1936,6 +1965,10 @@ func cmdDaemon(args []string) error {
 		})
 	}
 	nd.SetLedger(nd0ledger)
+	if *forgeRepairClaim {
+		nd.SetForgeRepairClaims(true) // ADVERSARY HARNESS: sign claims naming a shard the object does not commit
+		fmt.Println("ADVERSARY: emitting FALSE repair claims (a wrong shard id at the claimed leaf) — never honest")
+	}
 	if *liar {
 		nd.SetLiar(true) // ADVERSARY HARNESS: keep the proof tags, drop the bytes
 		fmt.Println("ADVERSARY: running as a PoR LIAR (keeps proof tags, drops shard bytes) — never honest")
@@ -2012,6 +2045,12 @@ func cmdDaemon(args []string) error {
 			// This comes BEFORE chain sync on purpose — a restarted node re-earns
 			// its view of peer reputation here, and SyncChain needs that view to
 			// judge which fork carries real standing (F1).
+			if follow {
+				nd.StartChainSync(attesterIDs, func(added int) {
+					fmt.Printf("chain: caught up %d block(s) from peers\n", added)
+					saveChain("catch-up")
+				})
+			}
 			if *floorBox {
 				// The blocks come from the peer set, the witnesses from the providers, and they are
 				// deliberately separate lists: a box that could not reach a block has nothing to
