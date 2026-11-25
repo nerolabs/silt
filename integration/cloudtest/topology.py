@@ -162,6 +162,37 @@ if ECONOMY:
     NODES.append(("store-4", "storage", 6104, "10.20.0.24", PRIMARY_ZONE))
 _INTERNAL_ONLY = {"store-3", "store-4"}  # no-external-IP main-swarm nodes (quota)
 
+# Version-floor advisory grade (opt-in, VERSION_FLOOR=1; TENETS R4, item 19 clause 4). The genesis
+# names three maintainer keys at threshold 2, so every chain node's consensus flags carry them. Three
+# validators present as upgraded to the next release (-advertise-release); val-d stays on this
+# build's, so an enforced floor removes a quarter of the bond and the chain stays live. The keys are
+# made once per run directory and reused, so a regenerated topology mints the same genesis.
+VERSION_FLOOR = 0 if os.environ.get("SMOKE") == "1" else int(os.environ.get("VERSION_FLOOR", "0"))
+FLOOR_OLD = "val-d"
+FLOOR_UI_PORT = 8099
+
+
+def floor_maintainers():
+    """Make (or reuse) the run's three maintainer keys; return (key_dir, [pub hex], release)."""
+    key_dir = os.path.join(os.path.dirname(os.environ.get("TOPO_OUT", os.path.abspath(__file__))), "floor-keys")
+    os.makedirs(key_dir, exist_ok=True)
+    pubs = []
+    for i in range(3):
+        key, pub = os.path.join(key_dir, f"m{i}.key"), os.path.join(key_dir, f"m{i}.pub")
+        if not (os.path.exists(key) and os.path.exists(pub)):
+            for f in (key, pub):
+                if os.path.exists(f):
+                    os.remove(f)
+            out = subprocess.run(shlex.split(SILT_BIN) + ["advisory", "keygen", "-out", key],
+                                 capture_output=True, text=True, check=True).stdout
+            with open(pub, "w") as f:
+                f.write(out.split("maintainer public key: ")[1].split()[0])
+        with open(pub) as f:
+            pubs.append(f.read().strip())
+    usage = subprocess.run(shlex.split(SILT_BIN) + ["advisory"], capture_output=True, text=True, check=True).stdout
+    rel = int(usage.split("This build is release ")[1].split(".")[0])
+    return key_dir, pubs, rel
+
 # C2 Sybil-capture cohort (opt-in; adds cost, runs on SPOT). A set of bonded but
 # NON-ANCHOR validators, all committing ONE shared -domain (modeling one operator's
 # satellite keys), that attempt to advance the chain WITHOUT the launch anchors.
@@ -381,6 +412,11 @@ def main():
     # per-head cheapness honestly.
     mature_bar = 2 if MATURING else n_val
     margin_flag = " -operator-margin 1" if MATURING else ""
+    floor_keys, floor_pubs, floor_release = ("", [], 0)
+    if VERSION_FLOOR:
+        floor_keys, floor_pubs, floor_release = floor_maintainers()
+        # Rides margin_flag so every role that mints the main chain's genesis carries it.
+        margin_flag += f" -maintainers {','.join(floor_pubs)} -maintainer-threshold 2"
     syb_bond = min_bond if MATURING else bond
 
     # -request-timeout 8s: a belt for the multi-region cert run. The product now
@@ -452,6 +488,8 @@ def main():
                 a += " -accept-delivery-receipts -delivery-idle-window 24m -grant-capacity 64 -grant-per-hour 64"
             else:
                 a += f" -bootstrap {bootstrap}"
+            if VERSION_FLOOR and name == "val-a":
+                a += f" -ui 127.0.0.1:{FLOOR_UI_PORT}"   # the maintainers submit through val-a's API
             return a
         if role == "storage":
             return f"daemon -id-seed {n['seed']} {common} -advertise {ip}:{SWARM_PORT} -bootstrap {bootstrap} -capacity 5G"
@@ -559,6 +597,10 @@ def main():
 
     for name, n in nodes.items():
         n["argv"] = argv(name)
+        # Every main-chain validator but FLOOR_OLD presents as upgraded (the adversary, the
+        # sybils and the maturers too), so the only bond below the floor is val-d's.
+        if VERSION_FLOOR and name != FLOOR_OLD and " -validator" in n["argv"]:
+            n["argv"] += f" -advertise-release {floor_release + 1}"
 
     meta = {
         "swarm_port": SWARM_PORT, "relay_port": RELAY_PORT, "registry_port": REGISTRY_PORT,
@@ -569,6 +611,8 @@ def main():
         "maturing": MATURING, "mature_bar": mature_bar,
         "relay_ref": relay_ref, "regref": regref, "regrefs": regrefs, "anchors": anchors, "boot": boot,
         "public_cidr": PUBLIC_CIDR, "nat_cidr": NAT_CIDR,
+        "version_floor": VERSION_FLOOR, "floor_keys": floor_keys, "floor_old": FLOOR_OLD,
+        "floor_release": floor_release, "floor_ui_port": FLOOR_UI_PORT,
         # The consensus flags a NON-VOTING replica needs to follow this network's chain
         # (a node with -economy that is not a validator keeps one to judge repair claims).
         # They must equal the validators' or the follower computes a different genesis.
