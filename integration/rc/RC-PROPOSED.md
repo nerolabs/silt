@@ -1382,7 +1382,7 @@ never been driven is a gap directly under the mechanism the release leans on.
 | No node replaces its own binary | Held, structurally: no shipped code locates or execs its own binary. | source gate (`TestNoShippedCodeReplacesItsOwnBinary`) |
 | No version-floor advisory below the signing threshold changes anything | Vacuous. TENETS R4 says the mechanism "lives in the code"; it does not exist. Nothing enforces a floor, so nothing below a threshold can. | not built — **to be built after item 20** (owner decision, 2026-11-23): a threshold-signed version-floor advisory with criticality tiers, enforcement clocked on observing the signed advisory and recallable, so this clause is driven rather than vacuous |
 
-**20. The floor box's verdict counts, or it is disclosed that it does not.** ⏳ *FLIPPED — every precondition closed, the differential exact; unit, model-check, e2e and the floor integration suite green; the field row is owed*
+**20. The floor box's verdict counts, or it is disclosed that it does not.** ✅ *held — FLIPPED: every precondition closed, the differential exact; unit, model-check, e2e, the floor integration suite and the field row*
 *Done:* a validator on the floor spec returns the SAME verdict set as a tree-holding node —
 Accept for a block a full node accepts, Reject for one it refuses, a stall only where it
 genuinely cannot see — established from committed roots and witnesses alone.
@@ -1510,8 +1510,10 @@ cold auditor accepting what its witness covers and never a forged root); e2e
 above it; an unanchored box refuses to start; removing the pin hold makes it stall); the floor
 integration suite on local docker (`integration/floor/run.sh`, PASS: under a kernel-enforced
 2 GiB, the witness box accepted heights 25, 27 and 28 at fresh checkpoints, refused and stalled
-nothing; the no-provider control stalled and never accepted). Owed: the field row
-`20-floor-box`.
+nothing; the no-provider control stalled and never accepted). Field: sheet `ab2fd4bd-23660` (default
+topology, t2d, three regions) grades PASS, 28 pass / 0 gap / 0 fail; row `20-floor-box` — fetch-1
+relaunched as a floor box with no replica, anchored on val-a's checkpoint 13, ACCEPTED height 14
+against witnesses from the validators.
 
 *What the flip does NOT deliver on its own, stated so it is not read as more:* participation.
 Nothing adopts the verdict today — `AuditAbovePin` reports and returns, the daemon prints and
