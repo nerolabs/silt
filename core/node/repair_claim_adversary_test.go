@@ -557,13 +557,14 @@ func TestRepair_HonestClaimIsPaid(t *testing.T) {
 	// retrievability leg is unaffected; this arm asks the same question of the same
 	// holder, over real bytes instead of a PoR proof.
 	//
-	// MEASURED, 2026-09-13, and it is state this fixture introduces: before the loss
-	// the position sat on THREE nodes and shardIsReachable answered true; after the
-	// rebuild it sits on ONE — the named holder — and shardIsReachable answers FALSE.
-	// A loss witness shaped as a restoration differential would redden this control
-	// for that reason alone. The judge's prior-loss check is the other shape: it asks
-	// whether anyone BUT the claimed holder still serves the position, which a rebuild
-	// that lives on one node satisfies.
+	// The rebuilt position lives on ONE node, the named holder, and it is FINDABLE
+	// under its column key: a holder announces a placement key the first time it
+	// stores a shard under it. Unannounced (as it once was), the next sweep cannot see
+	// the rebuild and rebuilds the position again, and no judge can fetch it as a
+	// survivor.
+	if !s.shardIsReachable(s.nodes[3], parityID, pos) {
+		t.Fatalf("the rebuilt position %d is not discoverable under its column key: the holder did not announce it", pos)
+	}
 	restored := false
 	s.nodes[3].fetchFrom(parityID, []ports.NodeID{holder.ID()}, func(ok bool) { restored = ok })
 	s.sched.Run()

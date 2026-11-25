@@ -2959,8 +2959,11 @@ flow_economy_repair() {
     record "11-economy-repair" gap major "ECONOMY=1 but the fleet lacks the dedicated killable stores (store-3/store-4) — it was brought up WITHOUT ECONOMY=1. Re-provision with ECONOMY=1 so topology.py adds them; economy UNTESTED this run"
     return
   fi
-  local care="store-2"   # paramedic candidate: a storage node, NEVER an anchor/validator,
-                         # so killing shard-holders can never touch consensus.
+  # The paramedic is a BONDED VALIDATOR: judges pay only a claimant whose bond the
+  # chain commits (a false claim is answered by slashing it), and on this chain a bond
+  # is voting weight, so a bonded claimant votes. Killing shard-holders still never
+  # touches consensus: only storage nodes hold the object's shards.
+  local care="val-b"
 
   # 1) Publish an erasure-coded object; capture BOTH the silt: link and the siltcare:.
   # RETRY the publish (run the field run GAPped here): a chain-backed registry publish
@@ -3044,8 +3047,30 @@ flow_economy_repair() {
   # never completed a sweep inside the window). Local-proof parity: the wire run
   # confirms the proven configuration, it does not test a new cadence (#7).
   relaunch_with "$care"  "-care $carelink -economy -registry $REGREF -repair-interval 2s -ui=127.0.0.1:8098"
-  relaunch_with "$judge" "-care $carelink -economy -registry $REGREF -repair-interval 2s -ui=127.0.0.1:8098"
+  # The judge is not a validator, so -economy makes it FOLLOW the chain: it takes the
+  # validators' consensus flags (topology meta follow_args) to compute the same genesis,
+  # and reads the paramedic's bond from that replica.
+  local follow_args; follow_args="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta']['follow_args'])")"
+  relaunch_with "$judge" "-care $carelink -economy -registry $REGREF -repair-interval 30s -ui=127.0.0.1:8098 $follow_args"
   sleep 20   # restart + re-bootstrap + warm the manifest + arm the repair sweeps
+  # The judge must be FOLLOWING and caught up to the paramedic's head, with the
+  # paramedic's own bond committed, before anything is lost: a judge behind the bond
+  # refuses the claim, which would read here as a missing payout.
+  local st_c st_j h_c h_j fol bonded ready=0
+  for _ in $(seq 1 36); do
+    st_c="$(ssh_node "$care" "curl -s -H \"Authorization: Bearer \$(sudo cat /var/lib/silt/ui-token)\" http://127.0.0.1:8098/api/status" 2>/dev/null || true)"
+    st_j="$(ssh_node "$judge" "curl -s -H \"Authorization: Bearer \$(sudo cat /var/lib/silt/ui-token)\" http://127.0.0.1:8098/api/status" 2>/dev/null || true)"
+    h_c="$(printf '%s' "$st_c" | python3 -c 'import json,sys;print((json.load(sys.stdin).get("chain") or {}).get("height",0))' 2>/dev/null || echo 0)"
+    bonded="$(printf '%s' "$st_c" | python3 -c 'import json,sys;print((json.load(sys.stdin).get("chain") or {}).get("selfBonded",False))' 2>/dev/null || echo False)"
+    h_j="$(printf '%s' "$st_j" | python3 -c 'import json,sys;print((json.load(sys.stdin).get("chain") or {}).get("height",0))' 2>/dev/null || echo 0)"
+    fol="$(printf '%s' "$st_j" | python3 -c 'import json,sys;print((json.load(sys.stdin).get("chain") or {}).get("following",False))' 2>/dev/null || echo False)"
+    if [ "$bonded" = True ] && [ "$fol" = True ] && [ "${h_j:-0}" -ge "${h_c:-1}" ] 2>/dev/null; then ready=1; break; fi
+    sleep 5
+  done
+  if [ "$ready" != 1 ]; then
+    record "11-economy-repair" gap major "premise not established: paramedic $care selfBonded=$bonded at height ${h_c:-?}; judge $judge following=$fol at height ${h_j:-?} — the judge must follow the chain past the paramedic's committed bond before a claim can be paid"
+    econ_restore; return
+  fi
 
   # 3) Fund the object's reserve on BOTH caretakers, each from its own grant
   #  balance (Slice 3): which one ends up the judge is timing, and PayBounty

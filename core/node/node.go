@@ -16,6 +16,7 @@ import (
 	"crypto/rsa"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/nerolabs/silt/core/blindtoken"
 	"github.com/nerolabs/silt/core/bond"
@@ -2140,7 +2141,17 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 				ok = false
 			} else {
 				n.Stats.ChunksReceived++
+				newKey := !slices.Contains(n.provs.IDs(key), n.id)
 				n.provs.Add(n.providerRecord(key)) // we are now a provider
+				if newKey && msg.Proof != nil {
+					// ANNOUNCE A NEW PLACEMENT KEY NOW, not at the next reprovide. A reader
+					// asks the few nodes closest to the key; a publish places on exactly
+					// those, but a repair places on whichever candidate accepts, which may
+					// sit outside them. Unannounced, a rebuilt shard is invisible: the
+					// caretaker rebuilds the same position again and a judge cannot fetch it
+					// as a survivor. Once per key, so a column's later stripes cost nothing.
+					n.announceAll([]ports.ChunkID{ports.ChunkID(key)}, func() {})
+				}
 				// Debug narration: every byte-write into the store names its
 				// path, so a disk census is attributable to a call site. It
 				// does NOT name the sender: the line is written to disk beside

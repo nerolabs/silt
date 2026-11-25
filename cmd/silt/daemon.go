@@ -1042,6 +1042,9 @@ func cmdDaemon(args []string) error {
 			// mature one with a weak-subjectivity checkpoint. Asserted safe-by-default
 			// in invariant_b_test.go (S6).
 			if !coldStartScaffoldOK(useObjective, len(anchorSet), *matureValidators, *wsCheckpoint) {
+				if follow {
+					return errors.New("consensus: refusing to start — -economy keeps a NON-VOTING chain replica so this node can read who is bonded when it judges repair claims, and a replica must be built under the network's own consensus flags. Pass the validators' -anchors, -min-bond, -min-bond-floor, -mature-validators and -quorum (or -min-rep 0 to follow a trusted swarm's chain), with -attesters naming validators to sync from")
+				}
 				return fmt.Errorf("consensus: refusing to start — an untrusted objective validator with no cold-start scaffolding would treat itself as mature from genesis (no anchor co-sign), letting a young or Sybil quorum self-certify and capture. Launch a fresh network with -anchors ID,... and -mature-validators N (the training-wheels launch set), OR join an already-mature network with -ws-checkpoint HEIGHT:HASH; alternatively -min-rep 0 for a trusted swarm, or -objective=false for the legacy (non-M0) path (a launch set needs at least 2 anchors: at 1 the Byzantine threshold is 0, the anchor majority is self-satisfied by the proposer, and finality engages at 0 — the sole anchor commits alone and those blocks read as final)")
 			}
 		}

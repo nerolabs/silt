@@ -851,6 +851,10 @@ func (n *Node) repairStripeFetch(m *manifest.Layout, p erasure.Params, stripeRef
 				if n.selfHoldEligible(usedDomains) &&
 					n.hostShardLocally(r.id, shards[r.pos], proof) {
 					holder = n.id
+					// Announce the self-held position now, for the reason a stored
+					// placement announces (MsgStoreChunk): unannounced, the next sweep
+					// cannot see it and rebuilds it again.
+					n.announceAll([]ports.ChunkID{ports.ChunkID(colKey(root, r.pos))}, func() {})
 					usedDomains[n.domainOf(n.id)]++
 					heldBefore[r.id] = true // now genuinely held — cleanup must not drop it
 					want--

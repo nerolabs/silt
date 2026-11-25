@@ -88,6 +88,26 @@ func TestCareWithoutRegistryRefusesToStart(t *testing.T) {
 	d.waitFor(t, regexp.MustCompile(`-care needs a registry`), 20*time.Second)
 }
 
+// TestEconomyFollowerNeedsTheNetworksConsensusFlags: -economy on a non-validator keeps
+// a non-voting chain replica, which must be built under the network's consensus flags.
+// Without them it refuses to start and says which flags it needs; and a floor box,
+// which keeps no replica, cannot judge at all.
+func TestEconomyFollowerNeedsTheNetworksConsensusFlags(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e spawns processes; skipped under -short")
+	}
+	d := startDaemon(t, "follower-without-flags",
+		"-listen", "127.0.0.1:0", "-store", t.TempDir(), "-economy",
+		"-capacity", "1G", "-mdns=false", "-id-seed", "9302")
+	d.waitFor(t, regexp.MustCompile(`-economy keeps a NON-VOTING chain replica`), 20*time.Second)
+
+	b := startDaemon(t, "economy-floor-box",
+		"-listen", "127.0.0.1:0", "-store", t.TempDir(), "-economy", "-floor-box",
+		"-witness-from", strings.Repeat("ab", 32),
+		"-capacity", "1G", "-mdns=false", "-id-seed", "9303")
+	b.waitFor(t, regexp.MustCompile(`-economy and -floor-box are incompatible`), 20*time.Second)
+}
+
 func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e spawns processes; skipped under -short")
@@ -717,6 +737,7 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	// deadline is the regression signal: a failure here means the sweep
 	// bound broke, not calibration.
 	var paid, funded, repairs int64
+	payer := ""
 	deadline := time.Now().Add(180 * time.Second)
 	for paid == 0 && time.Now().Before(deadline) {
 		for _, c := range caretakers {
@@ -727,6 +748,7 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 			for _, o := range s.Durability.Objects {
 				if o.Root == root && o.Paid > paid {
 					paid, funded, repairs = o.Paid, o.Funded, o.Repairs
+					payer = c.d.name
 				}
 			}
 		}
@@ -741,7 +763,12 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	if repairs < 1 || paid > funded {
 		t.Fatalf("escrow accounting dishonest: paid=%d funded=%d repairs=%d", paid, funded, repairs)
 	}
-	t.Logf("bounty paid on the wire: paid=%d over %d repair(s), funded=%d", paid, repairs, funded)
+	// The judge that paid is the FOLLOWER: it read the claimant's bond from a replica it
+	// keeps without voting. (The claimant never judges its own claim.)
+	if payer != "C2" {
+		t.Fatalf("the bounty was paid on %s, want the follower judge C2", payer)
+	}
+	t.Logf("bounty paid on the wire by the follower judge %s: paid=%d over %d repair(s), funded=%d", payer, paid, repairs, funded)
 
 	// The S2 half: the bounty paid for a reconstruction that actually restored
 	// availability — the file still round-trips bit-perfect with 3 columns'
