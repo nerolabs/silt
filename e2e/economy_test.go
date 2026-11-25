@@ -24,6 +24,10 @@ import (
 
 // statusDurability is the subset of GET /api/status this test asserts on.
 type statusDurability struct {
+	Traffic map[string]struct {
+		OutBytes int64 `json:"outBytes"`
+		InBytes  int64 `json:"inBytes"`
+	} `json:"traffic"`
 	Chain *struct {
 		Height     int  `json:"height"`
 		Following  bool `json:"following"`

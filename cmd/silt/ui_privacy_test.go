@@ -436,6 +436,9 @@ func TestPrivacyWithheldDocumentsCarryOnlyAllowedKeys(t *testing.T) {
 	if _, has := status["deliverySettlement"]; has {
 		t.Fatalf("privacy=on untokened /api/status carries the deliverySettlement block — token holders only")
 	}
+	if _, has := status["traffic"]; has {
+		t.Fatalf("privacy=on untokened /api/status carries the traffic meter — token holders only")
+	}
 	// The Go type says the same thing: every statusInfo field either is in the allow-list
 	// by its JSON name, or is one of the two withheld fields (stats, and balance inside
 	// durability). A new field on statusInfo must be classified here before it ships.
@@ -445,7 +448,7 @@ func TestPrivacyWithheldDocumentsCarryOnlyAllowedKeys(t *testing.T) {
 		if name == "" || name == "-" {
 			continue
 		}
-		if !allowedStatus[name] && name != "stats" && name != "faucet" && name != "serveMint" && name != "deliverySettlement" {
+		if !allowedStatus[name] && name != "stats" && name != "faucet" && name != "serveMint" && name != "deliverySettlement" && name != "traffic" {
 			t.Fatalf("statusInfo field %s (json %q) is neither allowed on the privacy view nor declared withheld — classify it", f.Name, name)
 		}
 	}

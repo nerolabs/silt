@@ -105,6 +105,7 @@ type Transport struct {
 	// handshake failure so the next -log debug run can attribute the EOF (high
 	// concurrency + elapsed ≈ the dialer's budget ⇒ the stampede/deadline variant).
 	inHandshakes atomic.Int64
+	traffic      trafficMeter
 
 	mu sync.Mutex
 	// peers is the address book: up to two addresses per peer, one per
@@ -589,6 +590,7 @@ func (t *Transport) Send(to ports.NodeID, msg ports.Message) error {
 		return fmt.Errorf("tcpnet: outbound budget full for %s: %d bytes already in flight against a %d-byte share; dropped a frame of %d bytes",
 			to, inFlight, share, len(frame))
 	}
+	t.traffic.sent(msg.Kind, len(frame))
 	// THE CONTROL LANE. A frame small enough to be starved goes on the connection
 	// bulk never touches, so it is not queued behind a multi-megabyte payload in one
 	// ordered stream — the wedge's last cause, measured at 2488x on the fixture in
@@ -1135,6 +1137,7 @@ func (t *Transport) dispatchFrame(frame []byte, from ports.NodeID, release func(
 		}
 	}
 	msg := fromWire(env.Msg)
+	t.traffic.received(msg.Kind, len(frame))
 	t.loop.Post(msg.Kind.String(), func() {
 		defer release() // free the budget once the loop has processed this message
 		if t.handler != nil {

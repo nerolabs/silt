@@ -1776,6 +1776,7 @@ func cmdDaemon(args []string) error {
 			selfPeer:  fmt.Sprintf("%s@%s", id, tr.Addr()),
 			validator: *validator, started: time.Now(),
 			peerCount:     func() int { return tr.PeerCount() },
+			traffic:       tr.Traffic,
 			carePublished: *carePublished,
 			serveFetched:  *serveFetched,
 			token:         token,
