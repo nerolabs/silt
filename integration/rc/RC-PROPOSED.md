@@ -569,6 +569,15 @@ daemon's `-mature-validators` help no longer claims more than the measure does. 
 record, (3) a diversity signal that is not self-declared — which is item 2's unwired axis — and the
 artifact's wording on the conditional, the curator model and the configuration under test.
 
+*CLAIM 3's FIX, 2026-11-26 (owner decision: all three parts).* The anchor shed now waits for a
+genesis-committed floor of non-anchor bonded storage (16 TiB by default, `-mature-bonded`) and for
+maturity to hold through a genesis-committed window (four bond re-proof cycles by default,
+`-mature-window`); `TestMaturityWaitsForTheBondedStorageFloor` reproduces the red team's 24-bond
+attack against the floor, and the window is driven at the node, the floor box and the snapshot
+model. This artifact now states the assumption beneath the claim — an adversary below two-thirds
+of the bonded storage — which `VISION.md` already made, and restates the measure's promise as what
+it can promise: it sees bonded storage, not operators.
+
 *CLAIMS IN, GAPS OUT — the owner ruled this 2026-09-15, and it amended this item.* The
 done-condition used to read "plus what is out of scope". It no longer does. Handing the grader a
 list of our own gaps means the grader confirms the gaps we already knew, and a verdict reached

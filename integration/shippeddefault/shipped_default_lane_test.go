@@ -746,6 +746,7 @@ var shippedDefences = []defenceDefault{
 	{"epoch freeze cadence", "epoch-blocks defaulted to", "-epoch-blocks"},
 	{"faucet rate limit", "faucet: rate-limited by default", "-grant-capacity"},
 	{"maturity bonded-storage floor", "mature-bonded defaulted to", "-mature-bonded"},
+	{"maturity window", "mature-window defaulted to", "-mature-window"},
 }
 
 // TestShippedDefaultLane_EveryDefenceIsOnBeforeAnyFlag is the positive half of this lane's claim,

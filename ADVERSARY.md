@@ -95,9 +95,22 @@ that much work legitimately holds that much standing, and that residual is bound
 concentration metric rather than eliminated. A cheaper-than-honest path to standing denies it.
 
 **The claim, half two — no quiet capture.** A young network leans on explicit, time-boxed anchor
-validators. They shed on a measured decentralization threshold through a **one-way latch** that,
-once tripped, never re-arms — so a later dip in decentralization cannot hand the launch anchors
-permanent power. The claim is that maturity is reached before the scaffolding can be captured.
+validators. They shed through a **one-way latch** that, once tripped, never re-arms — so a later
+dip in decentralization cannot hand the launch anchors permanent power. The latch trips only when
+three things have held at every block of a window: the non-anchor bonded weight is spread so that
+at least `MatureValidators` operator-sized groups are needed to reach a third of it; the network
+holds at least `MatureBondedBytes` of non-anchor bonded storage; and both have held for
+`MatureWindowBlocks` consecutive blocks. All three are committed at genesis. An untrusted network
+defaults the floor to 16 TiB and the window to four bond re-proof cycles.
+
+**The assumption, which is part of the claim.** Like every proof-of-stake system, silt assumes the
+adversary controls less than two-thirds of the bonded weight that decides commits. No measure on an
+open network can tell one operator holding many bonds from many operators holding one each — that
+is a settled impossibility — so the claim is not that the measure sees operators. It is that
+tripping the latch and then capturing a commit quorum costs more than two-thirds of the network's
+non-anchor bonded storage: at least two-thirds of the floor, sealed, and re-proved through the
+whole window. The claim is that maturity is reached before the scaffolding can be captured by an
+adversary below that bound.
 
 **You have denied it if you can:**
 
@@ -105,8 +118,11 @@ permanent power. The claim is that maturity is reached before the scaffolding ca
   by re-using one plot, by synthetic or non-unique bytes, by self-dealt demand, by massing
   identities cheaply, or by any route that makes the *N*th standing cheaper than the first;
 - hold standing without continuously re-proving the storage that backs it;
-- make the decentralization measure report a value the real operator distribution does not
-  support, in either direction;
+- make the maturity measure report the network mature while its non-anchor bonded storage is
+  below the floor, before the window has held, or with its bonded weight more concentrated than
+  the coefficient requires — or report it immature when all three hold;
+- trip the latch, or capture a commit quorum after it, while controlling less than two-thirds of
+  the non-anchor bonded storage;
 - cause the shed latch to re-arm, or to trip early, or to never trip on a genuinely decentralized
   set;
 - capture, stall, or fork consensus with a bonded minority, or cause a validator set to be frozen

@@ -412,9 +412,10 @@ def main():
     # per-head cheapness honestly.
     mature_bar = 2 if MATURING else n_val
     # MATURING exercises the anchor handoff itself, on field-sized bonds far below the shipped
-    # 16 TiB maturity floor, so it opts out of the floor. It is genesis config: every chain role
+    # 16 TiB maturity floor and inside one field sheet's time, so it opts out of the floor and the
+    # maturity window. It is genesis config: every chain role
     # carries it through margin_flag.
-    margin_flag = " -operator-margin 1 -mature-bonded 0" if MATURING else ""
+    margin_flag = " -operator-margin 1 -mature-bonded 0 -mature-window 0" if MATURING else ""
     floor_keys, floor_pubs, floor_release = ("", [], 0)
     if VERSION_FLOOR:
         floor_keys, floor_pubs, floor_release = floor_maintainers()

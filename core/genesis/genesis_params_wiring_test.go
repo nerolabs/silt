@@ -133,6 +133,11 @@ func TestTheParamsCarryingGenesisHashIsPinned(t *testing.T) {
 	//	 representativeParams a value for it. The paramless
 	//	 literal did NOT move: a params change.
 	//
+	//	d8a9ff25…1bb0 -> 67c1a8a7…d8f7, 2026-11-26: the maturity window: ConsensusParams
+	//	 gained MatureWindowBlocks at cbor key 22, and
+	//	 representativeParams a value for it. The paramless
+	//	 literal did NOT move: a params change.
+	//
 	// WHY IT IS PAID ONCE PER MOVE. Block.Hash covers Params and (*Chain).ChainID is
 	// blocks[0].Hash, so every field added here — and every byte of every Entry — re-mints
 	// every genesis and re-runs the graded set. Era 4 is open, no live network exists, and the
@@ -145,7 +150,7 @@ func TestTheParamsCarryingGenesisHashIsPinned(t *testing.T) {
 	// and a block-format change have different prices; all three of these are the first kind.
 	const (
 		wantParamless  = "c445f7e05700cd330c7b4936cb6d017c6f586049c80cc56790f0908e3b9037e5"
-		wantWithParams = "d8a9ff2563ce7c71b81eacc14ef3f0ed64172f4befa3a0e174b5f94ee4291bb0"
+		wantWithParams = "67c1a8a761a0d23bd818cd721a9939b9f482f888aa8d0716d635b0867f99d8f7"
 	)
 	p := representativeParams()
 	withParams, _, _, err := genesis.Build(memstore.New(), &p)
@@ -199,5 +204,6 @@ func representativeParams() chain.ConsensusParams {
 		Maintainers:         [][]byte{bytes.Repeat([]byte{0xa1}, 32), bytes.Repeat([]byte{0xb2}, 32)},
 		MaintainerThreshold: 2,
 		MatureBondedBytes:   16 << 40,
+		MatureWindowBlocks:  128,
 	}
 }

@@ -74,3 +74,32 @@ func TestMaturityWaitsForTheBondedStorageFloor(t *testing.T) {
 		}
 	}
 }
+
+// TestMaturityLatchWaitsForTheWindow: the latch trips only once the network has been mature at every
+// block of a run as long as MatureWindowBlocks, and a block that is not mature restarts the run.
+func TestMaturityLatchWaitsForTheWindow(t *testing.T) {
+	c := New(Config{MatureWindowBlocks: 3}, func(ports.NodeID) int64 { return 0 }) // MatureValidators 0: Mature() is true
+	for h := uint64(1); h <= 2; h++ {
+		c.applyMaturityLatch(h)
+		if c.everMature {
+			t.Fatalf("latched at height %d, inside a 3-block window", h)
+		}
+	}
+	c.applyMaturityLatch(3)
+	if !c.everMature {
+		t.Fatalf("not latched after 3 consecutive mature blocks (since=%d)", c.matureSince)
+	}
+
+	// A lapse restarts the run.
+	d := New(Config{MatureWindowBlocks: 3, MatureValidators: 1}, func(ports.NodeID) int64 { return 0 })
+	d.matureSince = 5       // a run began at height 4
+	d.applyMaturityLatch(5) // MatureValidators 1 with nothing bonded: not mature
+	if d.matureSince != 0 || d.everMature {
+		t.Fatalf("a block that is not mature must end the run: since=%d latched=%v", d.matureSince, d.everMature)
+	}
+	for h, want := range map[uint64]bool{0: true, 1: true} {
+		if got := maturityRunComplete(1, 0, h); got != want {
+			t.Fatalf("a window of %d must complete at once", h)
+		}
+	}
+}

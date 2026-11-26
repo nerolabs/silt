@@ -121,6 +121,9 @@ func (p *WitnessProvider) Bundle(b Block) (StateRootWitness, error) {
 		return StateRootWitness{}, err
 	}
 	if !boolLeaf(p.leaves[string(statehash.Key(tagEverMature, nil))]) {
+		if mat.MatureSince, err = p.scalarWitness(tagMatureSince); err != nil {
+			return StateRootWitness{}, err
+		}
 		if mat.SeenSet, err = seenSetWitness(post, postValue); err != nil {
 			return StateRootWitness{}, err
 		}

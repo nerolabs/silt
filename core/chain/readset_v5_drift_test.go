@@ -337,6 +337,9 @@ func perturbLeaf(clone *Chain, key, curVal []byte) bool {
 	case tagEpochStart:
 		clone.epochStart++
 		return true
+	case tagMatureSince:
+		clone.matureSince++
+		return true
 	case tagEra4LockedIn:
 		clone.era4LockedIn = !clone.era4LockedIn
 		return true
@@ -1206,8 +1209,8 @@ func allV5GuardCorpora(t *testing.T) []v5GuardCorpus {
 // guard exists to kill.
 func TestWitnessReadSetV5AllKeyspacesRedOnDrop(t *testing.T) {
 	tags := v5CommittedKeyspaceTags()
-	if len(tags) != 27 {
-		t.Fatalf("expected 27 committed keyspaces, got %d — the completeness proof must cover the full set", len(tags))
+	if len(tags) != 28 {
+		t.Fatalf("expected 28 committed keyspaces, got %d — the completeness proof must cover the full set", len(tags))
 	}
 	for _, tag := range tags {
 		tag := tag
@@ -1379,18 +1382,18 @@ func keyspaceReddensOnDrop(t *testing.T, tag string) bool {
 	return false
 }
 
-// v5CommittedKeyspaceTags is the closed set of the 27 committed v5 keyspaces the drift guard
+// v5CommittedKeyspaceTags is the closed set of the 28 committed v5 keyspaces the drift guard
 // iterates: the tag constants of statehash.go MINUS the five whole-set digest roots (which
 // allDigestRootLeafKeys covers). tagRevLogSize joined with freeze-manifest item 1; tagIssuerKey
 // and tagIssuerKeyEpochs when the box began reproducing issuer-key registrations (class I);
-// tagVersionFloor with the version-floor advisory.
+// tagVersionFloor with the version-floor advisory; tagMatureSince with the maturity window.
 func v5CommittedKeyspaceTags() []string {
 	return []string{
 		tagByRoot, tagSpent, tagRevoked, tagSlashed, tagValidatorsSeen, tagBonded, tagEpochSet,
 		tagBondRootOwner, tagBondRootProven, tagBondRegHeight, tagRegVersion, tagBondDomain,
 		tagQualified, tagDueBucket, tagEverMature, tagMatureEpoch, tagGateLockedIn, tagGateHeight,
 		tagEra3LockedIn, tagEra3Height, tagEpochStart, tagEra4LockedIn, tagEra4Height, tagRevLogSize,
-		tagIssuerKey, tagIssuerKeyEpochs, tagVersionFloor,
+		tagIssuerKey, tagIssuerKeyEpochs, tagVersionFloor, tagMatureSince,
 	}
 }
 

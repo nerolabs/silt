@@ -111,6 +111,7 @@ func cmdDaemon(args []string) error {
 	attesters := fs.String("attesters", "", "comma-separated validator IDs to gather attestations from")
 	anchorList := fs.String("anchors", "", "launch-window training wheels (AT LEAST TWO on an objective launch — one anchor commits alone with zero attestations and those blocks read as final, so the daemon refuses it): comma-separated anchor validator IDs whose sign-off an immature-network commit also requires (empty = no training wheels)")
 	anchorQuorum := fs.Int("anchor-quorum", 0, "LEGACY (non-objective) only: anchor attestations an immature-network commit needs (0 = off). In OBJECTIVE mode this is IGNORED — the launch gate is a DERIVED strict anchor majority ⌊A/2⌋+1, so config cannot disable quorum intersection")
+	matureWindow := fs.Uint64("mature-window", 0, "GENESIS CONFIG: how many consecutive blocks the network must stay mature (both -mature-validators and -mature-bonded met at every block) before the launch anchors shed; a block below either bar restarts the count. Unset: an untrusted (objective) validator defaults to four bond re-proof cycles (4 × -bond-ttl), so every bond is re-proved four times while the network holds; 0 = shed at the first mature block")
 	matureBonded := fs.String("mature-bonded", "", "GENESIS CONFIG: the total non-anchor bonded storage the network must also hold before the launch anchors shed (e.g. 16T). The Nakamoto coefficient (-mature-validators) measures how spread the bonded weight is but cannot tell one operator with many keys from many operators; this floor prices that, because shedding and then capturing a commit quorum costs more than two-thirds of it in sealed, re-proved storage. Unset: an untrusted (objective) validator defaults to 16 TiB (DerivedMatureBondedBytes); 0 = no floor")
 	matureValidators := fs.Int("mature-validators", 0, "required NAKAMOTO COEFFICIENT (M0 H4): the anchor requirement sheds once this many operators are needed to reach ⅓ of the bonded weight, counting operators as bonds ÷ -operator-margin and as distinct declared domains, whichever is fewer. Both are estimates: one operator that bonds enough storage and declares many domains counts as many operators, so the shed is safe only while an adversary's bonded budget stays below the bound in docs/VISION.md (0 = never require anchors)")
 	lambdaHFloor := fs.Float64("lambda-h-floor", 0, "honest-arrival floor λ_H (the maturity-before-capture conditional theorem): the minimum operator/domain-distinct bonded-arrival RATE (distinct arrivals per block-height, measured over -lambda-h-window) the launch was verified against. Below this floor — while the network is still YOUNG (pre-maturity latch) — the deployment has LEFT the theorem's hypothesis H (T_mature→∞, maturity-precedes-capture no longer proven) and a LOUD λ_H FLOOR-EXIT marker is surfaced to the log. OBSERVABILITY ONLY: it changes no validity predicate, no consensus rule, no security parameter — it reads the committed C2 metric and narrates. 0 = disabled (default; existing deployments and sims unaffected). Set it to the floor you verified your adversary budget W_A / shed threshold M_req against (P2: M_req > W_A/(2·w_min))")
@@ -474,11 +475,13 @@ func cmdDaemon(args []string) error {
 	// released and recomputed just-in-time. At bond.PlotSealThroughput (~270 MB/s)
 	// and the ~2s compute window that is ~540 MiB, so the default carries ~2x margin.
 	floorSet, ttlSet, byzSet, marginSet, epochSet, quorumSet := false, false, false, false, false, false
-	bondSet, tokensSet, grantSet, matureBondedSet := false, false, false, false
+	bondSet, tokensSet, grantSet, matureBondedSet, matureWindowSet := false, false, false, false, false
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
 		case "mature-bonded":
 			matureBondedSet = true
+		case "mature-window":
+			matureWindowSet = true
 		case "grant-capacity", "grant-per-hour":
 			grantSet = true
 		case "require-tokens":
@@ -556,6 +559,12 @@ func cmdDaemon(args []string) error {
 	// sweep) lets an honest attest-only validator renew without proposing, so the
 	// default costs no liveness.
 	effTTL, ttlDefaulted := effectiveBondTTL(ttlSet, *bondTTL, objectivePath)
+	matureWindowBlocks := *matureWindow
+	if !matureWindowSet && objectivePath && effTTL > 0 {
+		matureWindowBlocks = DerivedMatureWindowCycles * effTTL
+		fmt.Printf("consensus: mature-window defaulted to %d blocks (%d bond re-proof cycles of %d) for this untrusted (objective) swarm — the launch anchors shed only after the network stays mature that long, so the storage that trips the shed must be held and re-proved, not borrowed for a moment. Override with -mature-window, identically across the swarm (0: shed at once, safe only for a trusted or demo swarm)\n",
+			matureWindowBlocks, DerivedMatureWindowCycles, effTTL)
+	}
 
 	// No window below the witnessable format. Heights from 1 up to an era-4
 	// activation mint the earlier formats, and those formats carry two defects a
@@ -1128,9 +1137,9 @@ func cmdDaemon(args []string) error {
 			MinProposerRep: *minRep, MinAttesterRep: *minRep, Quorum: *quorum,
 			ByzantineQuorum: effByz,
 			Anchors:         anchorSet, AnchorQuorum: *anchorQuorum, MatureValidators: *matureValidators,
-			MatureBondedBytes: matureBondedBytes,
-			OperatorMargin:    effMargin,
-			AllowPublisher:    *allowPublisher, MinBond: minBondBytes,
+			MatureBondedBytes: matureBondedBytes, MatureWindowBlocks: matureWindowBlocks,
+			OperatorMargin: effMargin,
+			AllowPublisher: *allowPublisher, MinBond: minBondBytes,
 			MinBondBytes: cfg.MinBondBytes, BondTTLBlocks: effTTL,
 			EpochBlocks:            effEpoch,
 			WSCheckpoint:           wsCP,
@@ -2887,6 +2896,12 @@ func derivedTokenQuorum(n int) int {
 	}
 	return q
 }
+
+// DerivedMatureWindowCycles is how many bond re-proof cycles (-bond-ttl blocks each) an untrusted
+// swarm must stay mature before its anchors shed (owner decision 2026-11-26). Four cycles means
+// every bond behind the shed is re-proved four times while the network holds, so the storage has
+// to be kept, not rented for the length of one block.
+const DerivedMatureWindowCycles = 4
 
 // DerivedMatureBondedBytes is the bonded-storage floor an untrusted swarm's anchor shed waits for
 // when the operator sets none (owner decision 2026-11-26). The coefficient that gates the shed

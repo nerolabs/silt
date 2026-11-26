@@ -130,6 +130,8 @@ type ConsensusParams struct {
 	MaintainerThreshold int      `cbor:"20,keyasint"`
 	// MatureBondedBytes is the total bonded storage maturity also requires (Config).
 	MatureBondedBytes int64 `cbor:"21,keyasint"`
+	// MatureWindowBlocks is how long the network must stay mature before the latch (Config).
+	MatureWindowBlocks uint64 `cbor:"22,keyasint"`
 }
 
 // SortedAnchors renders an anchor set as the canonical sorted slice this struct commits.
@@ -181,6 +183,7 @@ func ParamsFromConfig(cfg Config, bondLabelSamples int, bondVDFDelay uint64) Con
 		Maintainers:             advisory.SortKeys(cfg.Maintainers),
 		MaintainerThreshold:     cfg.MaintainerThreshold,
 		MatureBondedBytes:       cfg.MatureBondedBytes,
+		MatureWindowBlocks:      cfg.MatureWindowBlocks,
 	}
 }
 
@@ -220,6 +223,7 @@ func (p ConsensusParams) Diff(q ConsensusParams) []string {
 	add("-maintainers", fmt.Sprintf("%x", p.Maintainers), fmt.Sprintf("%x", q.Maintainers))
 	add("-maintainer-threshold", p.MaintainerThreshold, q.MaintainerThreshold)
 	add("-mature-bonded", p.MatureBondedBytes, q.MatureBondedBytes)
+	add("-mature-window", p.MatureWindowBlocks, q.MatureWindowBlocks)
 	return out
 }
 
