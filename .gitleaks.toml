@@ -1,0 +1,11 @@
+# gitleaks configuration: the default rules, plus the false positives this repository is
+# known to carry, each named by the exact shape it allows.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Field-evidence logs: a node's debug 'chunk stored' line prints the DHT placement key a chunk is stored under — a SHA-256 of public data, not a credential."
+regexTarget = "line"
+regexes = [
+  '''debug chunk stored chunk=[0-9a-f]{64} from=[0-9a-f]{64} key=[0-9a-f]{64}''',
+]
