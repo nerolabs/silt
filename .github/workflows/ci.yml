@@ -448,6 +448,6 @@ jobs:
           go-version: "1.26"
           cache: true
       - name: govulncheck — known vulnerabilities in code silt calls
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.3 ./...
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
       - name: gitleaks — secrets anywhere in the repository's history
         run: go run github.com/zricethezav/gitleaks/v8@v8.18.4 detect --source . --redact --verbose
