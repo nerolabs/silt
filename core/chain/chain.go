@@ -2966,6 +2966,10 @@ func (c *Chain) RequireTokens(quorum int, issuerKey func(ports.NodeID) *rsa.Publ
 	c.issuerKey = issuerKey
 }
 
+// TokenQuorum is how many validator signatures a publish token must carry for an entry to be
+// accepted on this chain; 0 when tokens are not required.
+func (c *Chain) TokenQuorum() int { return c.tokenQuorum }
+
 // Mature reports whether the network has decentralized enough for the launch-
 // window anchors to no longer be required: its NAKAMOTO COEFFICIENT over the
 // non-anchor bonded set is at least MatureValidators (H4 /). Unlike the old

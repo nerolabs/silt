@@ -210,9 +210,19 @@ a defence that arms without naming its off switch.
 *Also measured, and reported as numbers rather than asserted:* the publish-token replay guard is ON
 unconditionally — it is a validity rule in the accept path, not a flag, so no configuration can
 disable it. The validator's bond possession audit defaults to 60 s. The proof-of-retrievability
-audit sweep (`-audit`) defaults to 0, and `-require-tokens` defaults to 0; both are per-deployment
-choices rather than defences this item can call flagless, and naming them here is what stops the
+audit sweep (`-audit`) defaults to 0, and `-require-tokens` defaulted to 0; both were per-deployment
+choices rather than defences this item could call flagless, and naming them here is what stopped the
 item from claiming more than it drove.
+
+*TOKENS AND THE FAUCET DEFAULT ON, 2026-11-26 (owner decision).* An untrusted (objective) validator
+now requires publish tokens unless told otherwise — ⌊(n−1)/3⌋+1 signatures of its n launch anchors,
+never fewer than two, so at least one honest issuer signs and charges every token — and publishers
+learn the requirement from the validators' canonical-issuer answer and acquire tokens on their own,
+from the CLI and from the web UI. The faucet is rate-limited by default on the same validators: a
+bucket of 64 starter grants refilled at 64 an hour, inside the guard's admissible ceiling of 327,
+and an empty bucket still advances a fresh identity one publish fee, so no publish is refused for
+it. Both announce themselves at start-up with their override, and the faucet joins the census in
+`TestShippedDefaultLane_EveryDefenceIsOnBeforeAnyFlag`.
 
 **4. The repo reads without the record that was deleted.** ✅ *gated*
 *Done:* no milestone, lane, catalog, slice, issue or change-request identifiers in source,

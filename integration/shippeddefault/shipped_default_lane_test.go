@@ -744,6 +744,7 @@ var shippedDefences = []defenceDefault{
 	{"Byzantine quorum sizing", "Byzantine quorum sizing defaulted ON", "-byzantine-quorum"},
 	{"operator split margin", "operator-margin defaulted to", "-operator-margin"},
 	{"epoch freeze cadence", "epoch-blocks defaulted to", "-epoch-blocks"},
+	{"faucet rate limit", "faucet: rate-limited by default", "-grant-capacity"},
 }
 
 // TestShippedDefaultLane_EveryDefenceIsOnBeforeAnyFlag is the positive half of this lane's claim,

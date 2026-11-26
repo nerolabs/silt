@@ -332,7 +332,7 @@ func testClientNode(t *testing.T, seed int64) (*node.Node, *eventloop.Loop) {
 //
 // It walks swarmAdd's OWN body — a call anywhere else in swarm.go does not satisfy it — and
 // carries three anti-vacuity anchors so a rename cannot make it pass by finding nothing: swarmAdd
-// itself, swarmAdd's FetchCanonicalIssuersFromAny call, and the parseDeclaredChainID assignment
+// itself, swarmAdd's FetchPublishRequirementsFromAny call, and the parseDeclaredChainID assignment
 // the argument arms bind against.
 func TestSwarmAddCallsDeclareNetworkIdentity(t *testing.T) {
 	fset := token.NewFileSet()
@@ -404,10 +404,10 @@ func TestSwarmAddCallsDeclareNetworkIdentity(t *testing.T) {
 			", route (a); residual.")
 	}
 	// Anchor 2: the walk reaches real calls. swarmAdd's own token block calls
-	// FetchCanonicalIssuersFromAny, so if this is absent the walk is looking at the wrong tree.
-	if !calls["FetchCanonicalIssuersFromAny"] {
+	// FetchPublishRequirementsFromAny, so if this is absent the walk is looking at the wrong tree.
+	if !calls["FetchPublishRequirementsFromAny"] {
 		t.Fatal("SOURCE GATE: reading the wrong body — swarmAdd's own token block calls " +
-			"FetchCanonicalIssuersFromAny and this walk did not see it")
+			"FetchPublishRequirementsFromAny and this walk did not see it")
 	}
 	// Anchor 3: the assignment the argument arms bind against exists. Without it those arms would
 	// have nothing to compare to and would pass by finding nothing.
