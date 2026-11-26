@@ -111,6 +111,7 @@ func cmdDaemon(args []string) error {
 	attesters := fs.String("attesters", "", "comma-separated validator IDs to gather attestations from")
 	anchorList := fs.String("anchors", "", "launch-window training wheels (AT LEAST TWO on an objective launch — one anchor commits alone with zero attestations and those blocks read as final, so the daemon refuses it): comma-separated anchor validator IDs whose sign-off an immature-network commit also requires (empty = no training wheels)")
 	anchorQuorum := fs.Int("anchor-quorum", 0, "LEGACY (non-objective) only: anchor attestations an immature-network commit needs (0 = off). In OBJECTIVE mode this is IGNORED — the launch gate is a DERIVED strict anchor majority ⌊A/2⌋+1, so config cannot disable quorum intersection")
+	matureBonded := fs.String("mature-bonded", "", "GENESIS CONFIG: the total non-anchor bonded storage the network must also hold before the launch anchors shed (e.g. 16T). The Nakamoto coefficient (-mature-validators) measures how spread the bonded weight is but cannot tell one operator with many keys from many operators; this floor prices that, because shedding and then capturing a commit quorum costs more than two-thirds of it in sealed, re-proved storage. Unset: an untrusted (objective) validator defaults to 16 TiB (DerivedMatureBondedBytes); 0 = no floor")
 	matureValidators := fs.Int("mature-validators", 0, "required NAKAMOTO COEFFICIENT (M0 H4): the anchor requirement sheds once this many operators are needed to reach ⅓ of the bonded weight, counting operators as bonds ÷ -operator-margin and as distinct declared domains, whichever is fewer. Both are estimates: one operator that bonds enough storage and declares many domains counts as many operators, so the shed is safe only while an adversary's bonded budget stays below the bound in docs/VISION.md (0 = never require anchors)")
 	lambdaHFloor := fs.Float64("lambda-h-floor", 0, "honest-arrival floor λ_H (the maturity-before-capture conditional theorem): the minimum operator/domain-distinct bonded-arrival RATE (distinct arrivals per block-height, measured over -lambda-h-window) the launch was verified against. Below this floor — while the network is still YOUNG (pre-maturity latch) — the deployment has LEFT the theorem's hypothesis H (T_mature→∞, maturity-precedes-capture no longer proven) and a LOUD λ_H FLOOR-EXIT marker is surfaced to the log. OBSERVABILITY ONLY: it changes no validity predicate, no consensus rule, no security parameter — it reads the committed C2 metric and narrates. 0 = disabled (default; existing deployments and sims unaffected). Set it to the floor you verified your adversary budget W_A / shed threshold M_req against (P2: M_req > W_A/(2·w_min))")
 	lambdaHWindow := fs.Uint64("lambda-h-window", 20, "trailing window (block-heights) the honest-arrival rate λ_H is averaged over for the -lambda-h-floor alarm. λ_H = Δ(min-Nakamoto-coefficient)/Δheight over this many committed heights — the realized net operator/domain-distinct arrival rate. Widen it to smooth per-block churn (TTL lapses can transiently drop the coefficient), narrow it to react faster. Observability only")
@@ -473,9 +474,11 @@ func cmdDaemon(args []string) error {
 	// released and recomputed just-in-time. At bond.PlotSealThroughput (~270 MB/s)
 	// and the ~2s compute window that is ~540 MiB, so the default carries ~2x margin.
 	floorSet, ttlSet, byzSet, marginSet, epochSet, quorumSet := false, false, false, false, false, false
-	bondSet, tokensSet, grantSet := false, false, false
+	bondSet, tokensSet, grantSet, matureBondedSet := false, false, false, false
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
+		case "mature-bonded":
+			matureBondedSet = true
 		case "grant-capacity", "grant-per-hour":
 			grantSet = true
 		case "require-tokens":
@@ -518,6 +521,16 @@ func cmdDaemon(args []string) error {
 	// act on.
 	objectivePath := (*validator || *floorBox || follow) && *objective && *minRep > 0
 	effFloor, defaulted := effectiveBondFloor(floorSet, explicitFloor, objectivePath)
+	var matureBondedBytes int64
+	if matureBondedSet {
+		var perr error
+		if matureBondedBytes, perr = parseSize(*matureBonded); perr != nil {
+			return fmt.Errorf("-mature-bonded %q: %w", *matureBonded, perr)
+		}
+	} else if objectivePath {
+		matureBondedBytes = DerivedMatureBondedBytes
+		fmt.Printf("consensus: mature-bonded defaulted to %d TiB for this untrusted (objective) swarm — the launch anchors shed only once that much non-anchor storage is bonded, so one operator cannot trip the shed with many small bonds. Override with -mature-bonded, identically across the swarm (0: no floor, safe only for a trusted or demo swarm)\n", DerivedMatureBondedBytes>>40)
+	}
 	// The bond itself gets the same safe-by-default treatment as the floor that
 	// judges it. Shipping a default BELOW the floor this same code arms produced a
 	// stock validator that refused its own defaults: the operator sees a bond
@@ -1115,8 +1128,9 @@ func cmdDaemon(args []string) error {
 			MinProposerRep: *minRep, MinAttesterRep: *minRep, Quorum: *quorum,
 			ByzantineQuorum: effByz,
 			Anchors:         anchorSet, AnchorQuorum: *anchorQuorum, MatureValidators: *matureValidators,
-			OperatorMargin: effMargin,
-			AllowPublisher: *allowPublisher, MinBond: minBondBytes,
+			MatureBondedBytes: matureBondedBytes,
+			OperatorMargin:    effMargin,
+			AllowPublisher:    *allowPublisher, MinBond: minBondBytes,
 			MinBondBytes: cfg.MinBondBytes, BondTTLBlocks: effTTL,
 			EpochBlocks:            effEpoch,
 			WSCheckpoint:           wsCP,
@@ -2873,6 +2887,15 @@ func derivedTokenQuorum(n int) int {
 	}
 	return q
 }
+
+// DerivedMatureBondedBytes is the bonded-storage floor an untrusted swarm's anchor shed waits for
+// when the operator sets none (owner decision 2026-11-26). The coefficient that gates the shed
+// cannot tell one operator with many keys from many operators: at -mature-validators 4 and the
+// derived operator margin, about 24 plots of the 1 GiB bond floor satisfy it, and one disk holds
+// those. A floor of 16 TiB of non-anchor bonded storage makes the shed, and the two-thirds of
+// weight that capture needs after it, cost more than 10 TiB of sealed, continuously re-proved
+// storage. A network smaller than that keeps its anchors, which is the safe side.
+const DerivedMatureBondedBytes = int64(16) << 40
 
 // grantDenyFloorOneFee is the -grant-deny-floor default: the sentinel resolves to ONE
 // publish fee read from the ledger, never a duplicated literal. An empty bucket advances

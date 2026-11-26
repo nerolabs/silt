@@ -571,5 +571,5 @@ func v5MatureNow(v StateView) (bool, FloorBoxOutcome, error) {
 	if domainsK < k {
 		k = domainsK
 	}
-	return k >= p.MatureValidators, Accept, nil
+	return k >= p.MatureValidators && total >= p.MatureBondedBytes, Accept, nil
 }

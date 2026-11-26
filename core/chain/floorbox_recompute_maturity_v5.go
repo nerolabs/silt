@@ -348,7 +348,8 @@ func (c *Chain) recomputeMatureNowStreaming(committedStateRoot ports.Hash, w See
 	if nakamotoDomains < matureCoefficient {
 		matureCoefficient = nakamotoDomains
 	}
-	return matureCoefficient >= c.cfg.MatureValidators, nil
+	// The bonded-storage floor (Config.MatureBondedBytes), over the same qualifying total.
+	return matureCoefficient >= c.cfg.MatureValidators && total >= c.cfg.MatureBondedBytes, nil
 }
 
 // nakamotoCoefficient is the fewest of the given (bond-or-group) weights whose combined value

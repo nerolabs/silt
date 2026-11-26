@@ -128,6 +128,8 @@ type ConsensusParams struct {
 	// signed it), so two nodes that differ on them are on different networks.
 	Maintainers         [][]byte `cbor:"19,keyasint"`
 	MaintainerThreshold int      `cbor:"20,keyasint"`
+	// MatureBondedBytes is the total bonded storage maturity also requires (Config).
+	MatureBondedBytes int64 `cbor:"21,keyasint"`
 }
 
 // SortedAnchors renders an anchor set as the canonical sorted slice this struct commits.
@@ -178,6 +180,7 @@ func ParamsFromConfig(cfg Config, bondLabelSamples int, bondVDFDelay uint64) Con
 		NetworkName:             cfg.NetworkName,
 		Maintainers:             advisory.SortKeys(cfg.Maintainers),
 		MaintainerThreshold:     cfg.MaintainerThreshold,
+		MatureBondedBytes:       cfg.MatureBondedBytes,
 	}
 }
 
@@ -216,6 +219,7 @@ func (p ConsensusParams) Diff(q ConsensusParams) []string {
 	add("-network-name", p.NetworkName, q.NetworkName)
 	add("-maintainers", fmt.Sprintf("%x", p.Maintainers), fmt.Sprintf("%x", q.Maintainers))
 	add("-maintainer-threshold", p.MaintainerThreshold, q.MaintainerThreshold)
+	add("-mature-bonded", p.MatureBondedBytes, q.MatureBondedBytes)
 	return out
 }
 

@@ -96,6 +96,13 @@ type Config struct {
 	// is that stake concentration is invisible — but it pays the full cost-to-corrupt
 	// and ByzantineQuorum still bounds it to ≤ ⅓ of weight for safety.)
 	MatureValidators int
+	// MatureBondedBytes is the total committed bonded storage the network must also hold
+	// before it counts as mature (0 = no floor). The Nakamoto coefficient above measures how
+	// SPREAD the bonded weight is; it cannot tell one operator with many keys from many
+	// operators, so a lone operator who bonds enough small plots can satisfy it. The floor
+	// prices that: tripping the one-way latch, and then holding the two-thirds of weight a
+	// commit needs, costs more than two-thirds of this much sealed, re-proved storage.
+	MatureBondedBytes int64
 	// OperatorMargin is M, the conservative keys-per-operator inflation factor the
 	// C2 concentration metric (C2Metric / Mature) discounts the bond-distinct
 	// Nakamoto coefficient by: since on-chain data carries no operator label, one
@@ -3037,7 +3044,7 @@ func (c *Chain) matureNow() bool {
 	// MatureValidators distinct declared domains. At M=1 with no domains set this
 	// is the plain bond-distinct coefficient (unchanged behavior). min only ever
 	// RAISES the bar to shed, so it can never weaken an existing config.
-	return c.MatureCoefficient() >= c.cfg.MatureValidators
+	return c.MatureCoefficient() >= c.cfg.MatureValidators && c.C2Metric().TotalBondedBytes >= c.cfg.MatureBondedBytes
 }
 
 // MatureCoefficient is the operator-and-domain-distinct bonded-distinctness count over
