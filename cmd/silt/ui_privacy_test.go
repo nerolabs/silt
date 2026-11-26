@@ -420,6 +420,7 @@ func TestPrivacyWithheldDocumentsCarryOnlyAllowedKeys(t *testing.T) {
 	status := privacyGet(t, s, s.apiStatus, "/api/status", "", "")
 	allowedStatus := map[string]bool{"id": true, "peer": true, "uptimeSec": true, "capUsed": true, "capTotal": true,
 		"chunks": true, "peers": true, "network": true, "validator": true, "reachability": true, "chain": true,
+		"floorBox":   true, // consensus facts only: heights and verdicts, nothing about who fetched what
 		"durability": true, "addressCap": true, "countersWithheld": true, "privacy": true, "serveMintWithheld": true,
 		"snapshotTakenAtUnix": true, "snapshotAgeSec": true, "snapshotIntervalSec": true}
 	for k := range status {

@@ -37,6 +37,7 @@ Run **one at a time** — each binds fixed loopback ports (7100–7103, and
 
 | Script | Flows | What it proves |
 |---|---|---|
+| `live-network.sh` | — | A live network to watch: 3 validators, storage nodes of four sizes, 3 floor boxes following the chain by their own verdicts, and simulated people publishing and fetching. Prints one observatory link that watches every node. `--check 180` runs it for 3 minutes and checks every fetch is bit-perfect and every floor box accepts. Uses random ports. |
 | `flow2-publish-fetch.sh` | 2 | Cross-process swarm publish/fetch, bit-perfect after the publisher leaves and after a holder is killed. |
 | `flow4-earned-standing.sh` | 4 | Earned-standing commit **plus** a negative control: an unbonded publish is refused — not a rubber-stamp. |
 | `flows567-convergence-fault-restart.sh` | 5, 6, 7 | 3-validator convergence (identical head hash), survivor-quorum commit after a kill, and restart with **no re-plot** + chain catch-up + storage re-announce. |

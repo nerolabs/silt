@@ -54,6 +54,31 @@ const fmtB = b => b >= 1<<30 ? (b/(1<<30)).toFixed(2)+" GB" : b >= 1<<20 ? (b/(1
               : b >= 1024 ? (b/1024).toFixed(1)+" KB" : (b||0)+" B";
 let timer = null, lastServed = null, lastAt = 0;
 
+// A floor box keeps no chain; its column shows how far it has followed the chain by its own
+// verdicts, and its latest verdict.
+function roleCell(st) {
+  if (st.floorBox) return '<span class="pill on">floor box</span>';
+  return st.validator ? '<span class="pill on">validator</span>' : '<span class="pill">storage</span>';
+}
+function chainCell(st) {
+  const fb = st.floorBox;
+  if (fb) {
+    const cls = fb.lastVerdict === "ACCEPTED" || fb.lastVerdict === "WAITING" ? "ok"
+              : fb.lastVerdict === "REFUSED" ? "bad" : "warn";
+    const why = fb.reason ? ` title="${fb.reason.replace(/"/g, "&quot;")}"` : "";
+    return `<span class="${cls}"${why}>following h${fb.following} · ${fb.lastVerdict || "starting"}</span>
+      <span class="dim">(${fb.accepted} accepted since h${fb.checkpoint})</span>`;
+  }
+  return st.chain ? "h" + st.chain.height : "—";
+}
+
+// observatory.html?peers=URL,URL fills the list and starts observing, so a script that runs a
+// whole network can hand out one link that watches all of it.
+window.addEventListener("load", () => {
+  const p = new URLSearchParams(location.search).get("peers");
+  if (p) { document.getElementById("peers").value = p; document.getElementById("go").click(); }
+});
+
 document.getElementById("go").onclick = () => {
   clearInterval(timer);
   lastServed = null;
@@ -112,11 +137,11 @@ async function observe() {
   document.querySelector("#daemons tbody").innerHTML = results.map(r => r.dead
     ? `<tr><td class="mono">${r.u}</td><td colspan=5 class="bad">unreachable</td></tr>`
     : `<tr><td class="mono">${r.status.id.slice(0,16)}…</td>
-        <td>${r.status.validator ? '<span class="pill on">validator</span>' : '<span class="pill">storage</span>'}</td>
+        <td>${roleCell(r.status)}</td>
         <td>${r.status.capTotal ? fmtB(r.status.capUsed)+" / "+fmtB(r.status.capTotal) : "∞"}</td>
         <td>${r.status.chunks}</td>
         <td>${siltRender.servedCell(r.status)}</td>
-        <td>${r.status.chain ? "h"+r.status.chain.height : "—"}</td></tr>`).join("");
+        <td>${chainCell(r.status)}</td></tr>`).join("");
 
   // Files: union of registries + shard spread across daemons
   const reg = new Map();

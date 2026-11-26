@@ -102,7 +102,7 @@ func cmdDaemon(args []string) error {
 	revokeRoot := fs.String("revoke", "", "as a validator, list this root hash for takedown on chain once it is committed, signed by the curator key (-curator-key, default this node) and paid with a publish token where publishing needs one; honoured only by nodes that follow that curator (-honor-curators)")
 	curatorKey := fs.String("curator-key", "", "identity file (PEM, as `silt id` mints) whose key signs -revoke takedowns as their curator; default this node's own identity")
 	validator := fs.Bool("validator", false, "keep a chain replica and take part in consensus")
-	floorBox := fs.Bool("floor-box", false, "FLOOR BOX: validate by PROOF instead of by replica — keep no chain, no registry and no state tree, and judge a block against witnesses pulled from nodes that do hold one (-witness-from). This is the posture VISION calls settled for the smallest box: a semi-stateless witness-validating full validator, the same security as a tree-holding node with a narrower self-sufficiency. Its liveness rests on at least ONE reachable honest witness provider from an open, un-permissioned tier — any archival or pruning node may serve — and never on a particular one; its SAFETY rests on nothing above it, because every witness is checked against a root the box already holds, so a provider that lies, omits or vanishes produces a STALL and never an acceptance. WHAT IT DOES TODAY, stated narrowly: anchored on the operator's -ws-checkpoint (required), it judges the block above that checkpoint and reports the verdict — ACCEPTED or REFUSED exactly as a tree-holding node would decide it, or a STALL where it cannot see. It does NOT follow the chain and does NOT attest: it adopts nothing it judged and never advances its own head. Refused together with -validator: this node keeps a replica or it does not")
+	floorBox := fs.Bool("floor-box", false, "FLOOR BOX: validate by PROOF instead of by replica — keep no chain, no registry and no state tree, and judge a block against witnesses pulled from nodes that do hold one (-witness-from). This is the posture VISION calls settled for the smallest box: a semi-stateless witness-validating full validator, the same security as a tree-holding node with a narrower self-sufficiency. Its liveness rests on at least ONE reachable honest witness provider from an open, un-permissioned tier — any archival or pruning node may serve — and never on a particular one; its SAFETY rests on nothing above it, because every witness is checked against a root the box already holds, so a provider that lies, omits or vanishes produces a STALL and never an acceptance. WHAT IT DOES TODAY, stated narrowly: anchored on the operator's -ws-checkpoint (required), it judges the block above its pin and reports the verdict — ACCEPTED or REFUSED exactly as a tree-holding node would decide it, or a STALL where it cannot see — and follows the chain from its own verdicts: each block it accepts becomes its pin, and it never moves on a block it did not accept. It does NOT attest. Refused together with -validator: this node keeps a replica or it does not")
 	floorBoxInterval := fs.Duration("floor-box-interval", 10*time.Second, "FLOOR BOX: how often to re-anchor and audit the block above the anchor. A liveness cadence, not a security parameter — the box's verdict is the same at any setting, because nothing it reads is trusted on a clock. Lower it on a fast local swarm so a verdict appears in seconds")
 	witnessFrom := fs.String("witness-from", "", "FLOOR BOX: comma-separated node IDs to pull witnesses from. PLURAL and un-permissioned by design: safety never rests on these nodes, but LIVENESS does, and a box pinned to one has handed that node a switch over its ability to audit at all — so list several and the box walks past whichever is unreachable. They need no relationship with this node beyond reachability, and mixing them inside one judgement is safe because every answer is checked against a root this box already holds. Empty with -floor-box is refused")
 	uiAddr := fs.String("ui", "", "serve the web UI at this address (e.g. 127.0.0.1:8081)")
@@ -191,6 +191,10 @@ func cmdDaemon(args []string) error {
 	carePublished := fs.Bool("care-published", false, "the daemon also repairs content published through its own UI. OFF by default because caring announces this node's durable identity as the new root's caretaker seconds after it commits, which links the publish to this node; hand the care link to another node to run -care instead")
 	economy := fs.Bool("economy", false, "OPT IN to the S7 durability repair economy (default OFF — the economy is built and running in shadow; payout is opt-in until the delivery price lands, the roadmap): when on, a verified repair PAYS the new holder of a rebuilt shard from the object's own escrow, priced by the protocol formula c·shardBytes/(U/p) credits — the witnessed fetch price of the ONE shard that holder moves, which is the act the bounty pays for (F1, ; until 2026-09-12 the price was c·(k·shardBytes)/(U/p), the fetch cost of a reconstruction that on the remote-placement path the payee does not perform, and it over-paid the holder's own basis 10–60×; on the self-hold path, where the paramedic keeps the shard it rebuilt and IS the payee (selfHoldEligible), the new price under-pays it by a factor of k —) — × the rarest-shard multiplier (a shard below one credit of fetch, which now means any object under ~262 KB, pays ZERO and is counted in stats.BountyBaseZero) — a network-wide price, never an operator-set amount. Off, the serve auto-skim still fills escrows but no bounty disburses (the half-open state /api/status reports as bountyOn:false). Standing is never affected either way (Invariant A: credits fund durability, never consensus weight). The economy-ON config is what the confirming field runs + the red team exercise")
 	fs.Parse(args)
+	var boxState *floorBoxState // a -floor-box daemon's audit progress, shared with the web UI
+	if *floorBox {
+		boxState = &floorBoxState{}
+	}
 
 	maintainerKeys, err := parseMaintainers(*maintainersFlag, *maintainerThreshold)
 	if err != nil {
@@ -1857,7 +1861,7 @@ func cmdDaemon(args []string) error {
 			return err
 		}
 		ui := &uiServer{
-			loop: loop, nd: nd, reg: reg, capRep: capRep,
+			loop: loop, nd: nd, reg: reg, capRep: capRep, floorBox: boxState,
 			selfPeer:  fmt.Sprintf("%s@%s", id, tr.Addr()),
 			validator: *validator, started: time.Now(),
 			peerCount:     func() int { return tr.PeerCount() },
@@ -2173,7 +2177,7 @@ func cmdDaemon(args []string) error {
 				if len(sources) == 0 {
 					sources = floorProviders
 				}
-				startFloorBox(nd, clk, ch, boxChainID, sources, floorProviders, *wsCheckpoint, *floorBoxInterval)
+				startFloorBox(nd, clk, ch, boxChainID, sources, floorProviders, *wsCheckpoint, *floorBoxInterval, boxState)
 			}
 			if *validator {
 				nd.StartBondAudit()
@@ -3041,41 +3045,52 @@ func networkIdentityLines(ch *chain.Chain) []string {
 // startFloorBox runs the audit cycle of a validator that keeps no replica.
 //
 // THE CYCLE, and what each step is trusted for. The box pins on the operator's -ws-checkpoint,
-// waits for a block to land above the pin, and judges that block against witnesses. Only the PIN
-// is a trust decision — it is the root every other answer is checked against — and it is the
-// operator's: a box whose Accept counts never anchors on a provider's reported head.
+// waits for a block to land above the pin, and judges that block against witnesses. The operator's
+// checkpoint is the only trust decision — the root every later answer is checked against — and a
+// box whose Accept counts never anchors on a provider's reported head.
 //
-// THE VERDICT IS NEVER AN ADOPTION. An ACCEPTED line is the full node's verdict, reached by the
-// box from committed roots and witnesses; the box still adopts nothing and advances no head, and
-// the line says so rather than letting "accepted" be read as "committed".
+// THE BOX FOLLOWS THE CHAIN FROM ITS OWN VERDICTS. When the box accepts the block above its pin,
+// that block's committed roots are as trusted as the pin's were — the box checked the block against
+// them — so the pin advances to it and the next cycle judges the block after. A refusal or a stall
+// leaves the pin where it is: the box never moves on a block it did not accept, and never re-takes
+// an anchor from a provider. While it is behind it judges block after block without waiting; at the
+// head it waits -floor-box-interval between looks.
 func startFloorBox(nd *node.Node, clk ports.Clock, cold *chain.Chain, chainID ports.Hash,
-	sources, providers []ports.NodeID, wsCheckpoint string, interval time.Duration) {
+	sources, providers []ports.NodeID, wsCheckpoint string, interval time.Duration, state *floorBoxState) {
 	// The checkpoint was required and parsed at start-up (the anchor rule), so it is present here.
 	pin := node.FloorBoxPin{ChainID: chainID}
 	h, hash, _ := parseCheckpoint(wsCheckpoint)
 	pin.Height, pin.Hash = h, hash
+	state.start(h)
 	fmt.Printf("floor box: anchored on the operator's checkpoint %d:%s — every witness is checked against this block's committed roots, so nothing else needs trusting\n", h, hash)
 	var cycle func()
 	cycle = func() {
-		again := func() { clk.AfterFunc(ports.Duration(interval), cycle) }
+		again := func(wait time.Duration) { clk.AfterFunc(ports.Duration(wait), cycle) }
 		nd.AuditAbovePin(cold, pin, floorBoxWitnessBudgetBytes, sources, providers,
 			func(v node.FloorBoxVerdict) {
 				switch {
 				case errors.Is(v.Err, node.ErrFloorBoxNothingAbovePin):
 					fmt.Printf("floor-box: verdict=WAITING height=%d reason=nothing committed above the pin yet\n", pin.Height)
+					state.record("WAITING", pin.Height, pin.Height, "")
+					again(interval)
 				case v.Outcome == chain.Accept:
 					// The verdict counts: the same Accept a tree-holding node reaches, from committed
-					// roots and witnesses. It is a verdict, not participation — the box adopts nothing
-					// and its pin stays the operator's checkpoint.
-					fmt.Printf("floor-box: verdict=ACCEPTED height=%d providers=%d (judged against witnesses, holding no tree — the full node's verdict; this box adopts nothing)\n", v.Height, len(providers))
+					// roots and witnesses. The box follows it: the accepted block becomes the pin.
+					pin.Height, pin.Hash = v.Height, v.Hash
+					fmt.Printf("floor-box: verdict=ACCEPTED height=%d providers=%d (judged against witnesses, holding no tree — the full node's verdict; following: pin advanced to %d)\n", v.Height, len(providers), v.Height)
+					state.record("ACCEPTED", v.Height, pin.Height, "")
+					again(0) // behind the head, judge the next block at once
 				case v.Outcome == chain.Reject:
 					fmt.Printf("floor-box: verdict=REFUSED height=%d providers=%d reason=%v\n", v.Height, len(providers), v.Err)
+					state.record("REFUSED", v.Height, pin.Height, fmt.Sprint(v.Err))
+					again(interval)
 				default:
-					// A stall is no verdict. The operator's checkpoint is a deliberate pin and is not
-					// re-taken: moving it would be the box quietly choosing a different anchor.
+					// A stall is no verdict. The pin stays: moving it would be the box quietly choosing
+					// a different anchor.
 					fmt.Printf("floor-box: verdict=STALL height=%d providers=%d reason=%v\n", v.Height, len(providers), v.Err)
+					state.record("STALL", v.Height, pin.Height, fmt.Sprint(v.Err))
+					again(interval)
 				}
-				again()
 			})
 	}
 	cycle()

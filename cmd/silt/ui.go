@@ -70,6 +70,7 @@ type uiServer struct {
 	capRep        ports.CapacityReporter
 	selfPeer      string // "id@addr" for the ephemeral clients
 	validator     bool
+	floorBox      *floorBoxState // nil unless this daemon runs -floor-box
 	started       time.Time
 	peerCount     func() int
 	links         *linkbook.Book                       // client mode only (nil on a plain daemon)
@@ -564,6 +565,7 @@ type statusInfo struct {
 	Stats        *node.Stats      `json:"stats,omitempty"`
 	Network      node.NetEstimate `json:"network"`
 	Validator    bool             `json:"validator"`
+	FloorBox     *floorBoxInfo    `json:"floorBox,omitempty"` // a -floor-box daemon's audit progress
 	Reachability string           `json:"reachability"`
 	Chain        *chainInfo       `json:"chain,omitempty"`
 	Durability   *durabilityInfo  `json:"durability,omitempty"`
@@ -987,6 +989,7 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 	uptime := now.Sub(s.started)
 	out.UptimeSec = int64(uptime.Seconds())
 	out.Validator = s.validator
+	out.FloorBox = s.floorBox.info()
 	out.Peers = s.peerCount()
 	out.SnapshotTakenAtUnix = now.Unix()
 	out.SnapshotIntervalSec = int64(statusSnapshotInterval / time.Second)
