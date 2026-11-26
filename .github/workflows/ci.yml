@@ -302,8 +302,10 @@ jobs:
         # -timeout 25m: the economy repair test's pay window is 600s (the
         # measured sweep-under-dead-holders band) — go test's
         # default 10m killed the binary mid-window (a sleeping-goroutine
-        # panic at the poll loop, not a test verdict).
-        run: go test ./e2e/ -count=1 -v -timeout 25m
+        # panic at the poll loop, not a test verdict). 35m since the package
+        # took 22 of 25 minutes on a loaded runner and the crash drill may retry a
+        # crash the network finished without its victim.
+        run: go test ./e2e/ -count=1 -v -timeout 35m
       - name: go test -race ./e2e (in-process paid-relay seam)
         # The paid-relay e2e (TestPaidRelaySessionEndToEnd) is IN-PROCESS: it
         # runs real event loops + goroutines in this test binary, not spawned
