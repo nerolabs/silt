@@ -1,14 +1,57 @@
 # silt
 
-A content-addressed, erasure-coded storage and distribution network.
+**Share a file as a link. The network keeps it alive, and the computers storing it can't read it.**
 
-> **Active again.** silt was paused from 2026-09-22 and resumed in November 2026. The
-> September handover, kept as history, is [`docs/MOTHBALLED.md`](docs/MOTHBALLED.md); the
-> state of each release-candidate item is in
-> [`integration/rc/RC-PROPOSED.md`](integration/rc/RC-PROPOSED.md).
+silt is a peer-to-peer storage network. A file is encrypted on your machine, split into pieces
+with redundancy, and spread across other people's nodes; the link you get is both its address and
+its key. Nodes that store pieces cannot read them, and the network repairs a file as nodes come and
+go. There is **no coin, no token and nothing to buy**: a small proof-of-storage chain keeps the
+shared registry honest, and the only currency is credit earned by storing and serving.
 
-> **Early and experimental — 0.x, unaudited.** silt is published to get technical
-> feedback, not to be trusted with data you cannot afford to lose.
+> **Experimental. Read before you rely on it.**
+> - silt is 0.x and has not been audited. Don't keep your only copy of anything in it.
+> - It does not hide your IP address from the nodes you talk to. Don't use it where being
+>   identified could put you at risk.
+> - If you run a node, you store encrypted pieces of other people's files. In many countries that
+>   makes you a hosting provider; see the operator guide before you run one in public.
+
+## Try it
+
+```sh
+git clone https://github.com/nerolabs/silt && cd silt
+./examples/try-a-local-network.sh
+```
+
+That starts a small silt network on your own machine — three validators and a storage node, on
+loopback only — and prints the address of the web UI and the commands to publish and fetch. Ctrl-C
+stops it. You need Go 1.26 to build from source; release binaries are on the
+[releases page](https://github.com/nerolabs/silt/releases).
+
+## Break it
+
+silt makes three claims, stated so you can attack them in [`ADVERSARY.md`](ADVERSARY.md): a publish
+can't be linked to the identity that made it, and nodes keep no record of who fetched what; content
+can be removed by its hash, but never everywhere at once and never by targeting a person; and
+standing in the network can't be farmed more cheaply than honest work earns it. The project counts
+itself finished only when someone other than its author tries to break all three and fails.
+
+| Claim | Last red-team result | Status |
+|---|---|---|
+| Privacy | Broken twice, November 2026 (blind Claude red team) | Both fixed; not yet re-tested by an outsider |
+| Accountability | Not broken; review incomplete | Second pass owed |
+| Sybil resistance | Broken on "no quiet capture", November 2026 | Open |
+
+Found something? See [`SECURITY.md`](SECURITY.md).
+
+## How it compares
+
+| | What it is | How silt differs |
+|---|---|---|
+| IPFS | Content-addressed sharing; files stay up while someone pins them | silt encrypts every file, repairs it automatically, and pays nodes in credit for keeping it |
+| Filecoin | Paid storage deals, settled in its own cryptocurrency | silt has no token: storage is proven, not bought |
+| Storj | Paid cloud storage on community nodes, coordinated by central satellites | silt has no coordinator and no payment rail |
+| Tahoe-LAFS | Encrypted, erasure-coded storage across servers you choose | silt is open to anyone, with an on-chain registry and repair economy |
+| Hyphanet (Freenet) | Anonymous publishing and retrieval through routed hops | silt keeps files alive deliberately rather than by popularity, and does not route for anonymity |
 
 ## What silt is
 
@@ -40,11 +83,12 @@ silt exists to **hold the privacy × accountability × Sybil trilemma** — to r
 trade any corner away. Every prior system in this space picks two corners and
 surrenders the third.
 
-- **Privacy.** Publishing is unlinkable to a durable identity. silt refuses to
-  surveil who fetches what, pursuing access-privacy to the metadata-layer limit the
-  anonymity trilemma allows — not an absolute blob-layer guarantee. A serving node
-  necessarily sees what it serves and to whom, for as long as serving requires;
-  silt records nothing beyond that, and nothing of it leaves the node.
+- **Privacy.** silt is designed so a publish cannot be linked to the durable identity
+  that made it, and so no node keeps a record of who fetched what. It pursues
+  access-privacy to the metadata-layer limit the anonymity trilemma allows — not an
+  absolute guarantee: a serving node necessarily sees what it serves and to whom, while
+  serving, and nothing hides a node's IP address from its peers. These are claims under
+  test; their last results are in the table above.
 - **Accountability.** Genuinely harmful content can be removed by acting on a
   **hash**, never on an identity and never through a global switch. Takedown is
   pluralistic, curators are themselves accountable, and every honored removal is
