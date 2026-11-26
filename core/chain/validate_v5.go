@@ -137,7 +137,7 @@ var nodeStages = []nodeStage{
 	{ID: "P2", Node: "", Mirror: ""},                           // proposer key size
 	{ID: "P3", Node: "", Mirror: ""},                           // proposer signature over b.Hash
 	{ID: "P4", Node: "", Mirror: "v5RequireProposerQualified"}, // proposerQualifiedAt (+ the branches, P4a)
-	{ID: "P5", Node: "", Mirror: ""},                           // non-empty block, SIX clauses
+	{ID: "P5", Node: "", Mirror: ""},                           // non-empty block, SEVEN clauses
 	{ID: "P6", Node: "validateTakedowns", Mirror: "v5ValidateTakedowns"},
 	{ID: "P7", Node: "validateBondRegs", Mirror: "v5ValidateBondRegs", Nested: []nodeStage{
 		{Node: "validateBondRegWindow", Mirror: "v5ValidateBondRegWindow", Nested: []nodeStage{
@@ -146,7 +146,10 @@ var nodeStages = []nodeStage{
 	}},
 	{ID: "P8", Node: "validateSlashes", Mirror: "v5ValidateSlashes"},
 	{ID: "P8b", Node: "validateIssuerKeys", Mirror: "v5ValidateIssuerKeys"}, // v5-ONLY
-	{ID: "P9", Node: "ValidateEntry", Mirror: "v5ValidateEntries"},          // the entry loop + per-entry rule
+	{ID: "P8c", Node: "validateVersionFloor", Mirror: "v5ValidateVersionFloor", Nested: []nodeStage{ // v5-ONLY
+		{Node: "admitAdvisory", Mirror: "admitAdvisory"}, // shared: each path supplies the sequence in force
+	}},
+	{ID: "P9", Node: "ValidateEntry", Mirror: "v5ValidateEntries"}, // the entry loop + per-entry rule
 	{ID: "P10", Node: "validateEra3Version", Mirror: "v5ValidateEraVersions"},
 	{ID: "P11", Node: "validateEra4Version", Mirror: "v5ValidateEraVersions"},
 	{ID: "P12", Node: "validateCarrier", Mirror: "validateCarrier"}, // called DIRECTLY: receiverless
@@ -259,9 +262,9 @@ func ValidateProposalV5(v StateView, b *Block) (FloorBoxOutcome, error) {
 		return out, err
 	}
 
-	// ---- 4. P5 non-empty block — SIX clauses (IssuerKeys is the sixth). ----
+	// ---- 4. P5 non-empty block — SEVEN clauses (IssuerKeys the sixth, Advisory the seventh). ----
 	if len(b.Entries) == 0 && len(b.Revocations) == 0 && len(b.Unrevocations) == 0 &&
-		len(b.BondRegs) == 0 && len(b.Slashes) == 0 && len(b.IssuerKeys) == 0 {
+		len(b.BondRegs) == 0 && len(b.Slashes) == 0 && len(b.IssuerKeys) == 0 && b.Advisory == nil {
 		return Reject, errors.New("chain: empty block")
 	}
 
@@ -278,6 +281,9 @@ func ValidateProposalV5(v StateView, b *Block) (FloorBoxOutcome, error) {
 		return out, err
 	}
 	if out, err := v5ValidateIssuerKeys(v, b); out != Accept {
+		return out, err
+	}
+	if out, err := v5ValidateVersionFloor(v, b); out != Accept {
 		return out, err
 	}
 

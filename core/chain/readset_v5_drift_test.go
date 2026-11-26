@@ -2,6 +2,7 @@ package chain
 
 import (
 	"encoding/binary"
+	"github.com/nerolabs/silt/core/advisory"
 	"sort"
 	"testing"
 
@@ -353,6 +354,26 @@ func perturbLeaf(clone *Chain, key, curVal []byte) bool {
 		}
 		clone.revLog.Append(RevocationLeaf(RevOp, ports.Hash{0xDE, 0xAD}, 0))
 		return true
+	case tagIssuerKey:
+		// One epoch's bucket: add a member to it, on a private copy of the map.
+		if len(raw) != 8 {
+			return false
+		}
+		clone.issuerKeyCommit = cloneIssuerKeyCommit(clone.issuerKeyCommit)
+		e := binary.BigEndian.Uint64(raw)
+		if clone.issuerKeyCommit[e] == nil {
+			return false
+		}
+		clone.issuerKeyCommit[e][ports.NodeID{0xEE}] = ports.Hash{0xEE}
+		return true
+	case tagVersionFloor:
+		if clone.versionFloor == nil {
+			return false
+		}
+		vf := *clone.versionFloor
+		vf.Advisory.Seq++
+		clone.versionFloor = &vf
+		return true
 	}
 	// Map keyspaces: flip the leaf's presence (delete it), which any recompute that reads it
 	// will observe. raw is the map key.
@@ -435,8 +456,8 @@ func buildV5ReadSetCorpus(t *testing.T) ([]v5ReadSetCorpusBlock, *Chain) {
 	a, bb, cc, dd := key(90001), key(90002), key(90003), key(90004)
 	sq := key(90005)
 
-	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
-		EpochBlocks: 4, MatureValidators: 2, BondTTLBlocks: 4}
+	cfg := withMaintainers(Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
+		EpochBlocks: 4, MatureValidators: 2, BondTTLBlocks: 4})
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
 
@@ -567,6 +588,14 @@ func buildV5ReadSetCorpus(t *testing.T) ([]v5ReadSetCorpusBlock, *Chain) {
 		IssuerKeys: []IssuerKeyReg{SignIssuerKeyReg(a, c.blockEpoch(11), ports.Hash{0x31})}}
 	Sign(b11, a)
 	record(b11, "h11 issuer-key", "issuer-key")
+
+	// h12: a version-floor ADVISORY, signed by two of the corpus chain's maintainers. It writes
+	// the advisory leaf, which enters the ground truth.
+	prev = b11.Hash()
+	b12 := &Block{Version: 1, Height: 12, Prev: prev, Entries: []ports.Entry{entry(12)},
+		Advisory: signedAdvisory(t, c.ChainID(), advisory.Advisory{Seq: 1, Floor: 2, Tier: advisory.TierNotice}, 0, 1)}
+	Sign(b12, a)
+	record(b12, "h12 version-floor", "version-floor")
 
 	return corpus, snap
 }
@@ -757,6 +786,13 @@ func TestGroundTruthPerturbationCovers(t *testing.T) {
 			if isDerivedDigestRootLeaf(string(lf.Key)) {
 				digestSeen[string(lf.Key)] = true
 				continue // derived output commitment (all 5): can't perturb, but must be present.
+			}
+			// The issuer-key epoch index is a function of which buckets exist (statehash.go), so
+			// no state changes it without also changing a bucket leaf: an independent perturbation
+			// is unreachable. Class I's read of it is in the write-diff ground truth of every
+			// registration-carrying block, which writes it.
+			if tag, _, _ := splitLeafKey(lf.Key); tag == tagIssuerKeyEpochs {
+				continue
 			}
 			clone := snap.cloneForDryRun()
 			if !perturbLeaf(clone, lf.Key, lf.Value) {
@@ -1170,8 +1206,8 @@ func allV5GuardCorpora(t *testing.T) []v5GuardCorpus {
 // guard exists to kill.
 func TestWitnessReadSetV5AllKeyspacesRedOnDrop(t *testing.T) {
 	tags := v5CommittedKeyspaceTags()
-	if len(tags) != 26 {
-		t.Fatalf("expected 26 committed keyspaces, got %d — the completeness proof must cover the full set", len(tags))
+	if len(tags) != 27 {
+		t.Fatalf("expected 27 committed keyspaces, got %d — the completeness proof must cover the full set", len(tags))
 	}
 	for _, tag := range tags {
 		tag := tag
@@ -1343,17 +1379,18 @@ func keyspaceReddensOnDrop(t *testing.T, tag string) bool {
 	return false
 }
 
-// v5CommittedKeyspaceTags is the closed set of the 26 committed v5 keyspaces the drift guard
+// v5CommittedKeyspaceTags is the closed set of the 27 committed v5 keyspaces the drift guard
 // iterates: the tag constants of statehash.go MINUS the five whole-set digest roots (which
 // allDigestRootLeafKeys covers). tagRevLogSize joined with freeze-manifest item 1; tagIssuerKey
-// and tagIssuerKeyEpochs when the box began reproducing issuer-key registrations (class I).
+// and tagIssuerKeyEpochs when the box began reproducing issuer-key registrations (class I);
+// tagVersionFloor with the version-floor advisory.
 func v5CommittedKeyspaceTags() []string {
 	return []string{
 		tagByRoot, tagSpent, tagRevoked, tagSlashed, tagValidatorsSeen, tagBonded, tagEpochSet,
 		tagBondRootOwner, tagBondRootProven, tagBondRegHeight, tagRegVersion, tagBondDomain,
 		tagQualified, tagDueBucket, tagEverMature, tagMatureEpoch, tagGateLockedIn, tagGateHeight,
 		tagEra3LockedIn, tagEra3Height, tagEpochStart, tagEra4LockedIn, tagEra4Height, tagRevLogSize,
-		tagIssuerKey, tagIssuerKeyEpochs,
+		tagIssuerKey, tagIssuerKeyEpochs, tagVersionFloor,
 	}
 }
 

@@ -392,6 +392,31 @@ func v5ValidateIssuerKeys(v StateView, b *Block) (FloorBoxOutcome, error) {
 	return Accept, nil
 }
 
+// v5ValidateVersionFloor is the floor-box mirror of validateVersionFloor: the sequence in force
+// comes from the committed leaf, resolved against the parent's state root.
+func v5ValidateVersionFloor(v StateView, b *Block) (FloorBoxOutcome, error) {
+	if b.Advisory == nil {
+		return Accept, nil
+	}
+	raw, av := v.VersionFloor()
+	var seq uint64
+	switch av {
+	case NoWitness:
+		return IndeterminateTrustlessly, stall("versionFloor (advisory in force)")
+	case Present:
+		s, ok := decodeVersionFloor(raw)
+		if !ok {
+			return IndeterminateTrustlessly, stall("versionFloor (not canonical)")
+		}
+		seq = s.Advisory.Seq
+	}
+	p := v.Params()
+	if err := admitAdvisory(b, v.Head().ChainID, p.Maintainers, p.MaintainerThreshold, seq); err != nil {
+		return Reject, err
+	}
+	return Accept, nil
+}
+
 // v5BlockEpoch mirrors Chain.blockEpoch: h / EpochBlocks, epoch 0 with epochs disabled.
 func v5BlockEpoch(p Params, h uint64) uint64 {
 	if p.EpochBlocks == 0 {

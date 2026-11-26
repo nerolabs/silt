@@ -354,6 +354,10 @@ func (v provenView) BondDomain(id ports.NodeID) (uint64, Availability) {
 // Scalar resolves a committed scalar leaf (raw key empty). A ProvenAbsent scalar is a STALL, not a
 // zero: an absent latch leaf on a root that should always commit one means the box is looking at a
 // root it does not understand, and defaulting it to false is how a one-way latch silently resets.
+func (v provenView) VersionFloor() ([]byte, Availability) {
+	return v.resolveLeaf(tagVersionFloor, nil)
+}
+
 func (v provenView) Scalar(tag string) ([]byte, Availability) {
 	raw, av := v.resolveLeaf(tag, nil)
 	if av != Present {

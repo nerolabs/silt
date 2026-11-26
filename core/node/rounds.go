@@ -398,7 +398,7 @@ func (n *Node) maybeAdvanceRound() {
 	// and a proposal carrying it needs a round to be proposed in. Without this the
 	// pacemaker sleeps on a height the eviction still has to reach, so the drain
 	// could arm and then find its sign slot marked with no round advance coming.
-	if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && len(n.pendingSlashes) == 0 && !n.bondDrainInFlight && !rs.Armed {
+	if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && len(n.pendingSlashes) == 0 && !n.advisoryPending() && !n.bondDrainInFlight && !rs.Armed {
 		return // truly idle — quiesce (B6), counter held
 	}
 	rs.Sweeps++
@@ -648,6 +648,9 @@ func (n *Node) mempoolSig() uint64 {
 	sig := uint64(len(n.pendingEntries))<<40 | uint64(len(n.pendingBondRegs))<<20 | uint64(len(n.pendingSlashes))<<8
 	if n.issuerKeysFoldable() {
 		sig |= 1
+	}
+	if n.advisoryPending() {
+		sig |= 1 << 2
 	}
 	if n.bond != nil && n.chain.BondRenewalDue(n.id) {
 		sig |= 2

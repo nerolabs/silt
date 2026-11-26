@@ -194,6 +194,14 @@ func structWitnessFor(t *testing.T, f structFixture, src *proverSource, b Block)
 		}
 		w.ChangedLeaves = append(w.ChangedLeaves, StateRootChangedLeafWitness{Key: wr.key, OldValue: preValue(wr.key), Proof: wit})
 	}
+	// The advisory leaf the block writes, witnessed at its pre-state.
+	for _, k := range versionFloorReadKeys(b) {
+		wit, err := src.prover.Prove(k)
+		if err != nil {
+			t.Fatalf("Prove: %v", err)
+		}
+		w.ChangedLeaves = append(w.ChangedLeaves, StateRootChangedLeafWitness{Key: k, OldValue: preValue(k), Proof: wit})
+	}
 	w.Maturity = latchedMaturityWitness(t, src.prover, preValue)
 	return w
 }

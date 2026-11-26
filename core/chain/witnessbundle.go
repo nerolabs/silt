@@ -218,6 +218,10 @@ func (p *WitnessProvider) bundleKeys(b Block, post map[string][]byte) [][]byte {
 	for _, k := range issuerKeyReadKeys(b) {
 		add(k)
 	}
+	// The advisory leaf: read for the sequence check, and written by the block.
+	for _, k := range versionFloorReadKeys(b) {
+		add(k)
+	}
 	ids := map[ports.NodeID]struct{}{}
 	roots := map[ports.Hash]struct{}{}
 	for i := range b.LastCommit {

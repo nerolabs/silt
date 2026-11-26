@@ -280,6 +280,9 @@ type StateView interface {
 	// tags: tagEverMature, tagMatureEpoch, tagGateLockedIn, tagGateHeight, tagEra3LockedIn,
 	// tagEra3Height, tagEra4LockedIn, tagEra4Height, tagEpochStart.
 	Scalar(tag string) ([]byte, Availability)
+	// VersionFloor is the committed advisory leaf (tagVersionFloor). Unlike the scalars above it
+	// may be PROVEN ABSENT: no advisory has been committed yet.
+	VersionFloor() ([]byte, Availability)
 
 	// ---- THE ONE SUBSTITUTED STEP (P13 = P13a StateRoot ∧ P13b LogRoot). Not shared, by design. ----
 	//

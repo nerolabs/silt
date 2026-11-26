@@ -16,6 +16,7 @@ import (
 	"crypto/rsa"
 	"errors"
 	"fmt"
+	"github.com/nerolabs/silt/core/advisory"
 	"slices"
 
 	"github.com/nerolabs/silt/core/blindtoken"
@@ -46,6 +47,10 @@ type Config struct {
 	// So the flag that governs the reader governs the wire. cmd/silt sets this from
 	// -privacy; every other caller (tests, sim) gets the withholding default.
 	PublishWorkCounters bool
+	// AdvertiseRelease, when non-zero, is the release this node stamps on its messages instead
+	// of its build's (core/release.Number). It exists to drive a node that presents as an older
+	// release against a version floor; an operator has no reason to set it.
+	AdvertiseRelease uint32
 
 	K              int            // Kademlia bucket size
 	Alpha          int            // lookup parallelism
@@ -519,6 +524,9 @@ type Stats struct {
 	// FalseRepairReports counts signed false repair claims this judge turned into
 	// on-chain slash evidence and sent to the validators.
 	FalseRepairReports int
+	// FloorRefused counts consensus messages refused from nodes advertising a release below an
+	// enforced version floor (versionfloor.go).
+	FloorRefused int
 	// detector A4: repair bounties this judge paid to ITSELF, count and
 	// credits. claim.Holder is a field of an inbound, attacker-declared
 	// MsgRepairClaim and nothing refuses a claim naming the judge as the holder,
@@ -1037,6 +1045,10 @@ type Node struct {
 	// placement can spread columns across distinct domains.
 	domainID    uint64
 	peerDomains map[ports.NodeID]uint64
+	// peerRelease is the release each peer last advertised (ports.Message.Release), bounded by
+	// maxPeerInfo like the maps beside it. It is how a node reports how much of the validator set
+	// is still below a version floor (VersionFloor).
+	peerRelease map[ports.NodeID]uint32
 
 	// Observed-address keying (address_class.go): the transport's classifier
 	// the DHT reads, the configured cap, and the operator-typed -bootstrap seeds.
@@ -1084,6 +1096,14 @@ type Node struct {
 	// and has not yet recorded on-chain; proposeBlock drains them into Block.Slashes
 	// so every replica evicts the culprit from the objective set in lockstep (F2).
 	pendingSlashes []chain.Equivocation
+	// pendingAdvisory is the highest-sequence version-floor advisory submitted to this node and
+	// not yet recorded by the chain; floorNotedSeq, floorEnforceNoted and floorRefusedLogged keep
+	// the operator warnings to once each (versionfloor.go).
+	pendingAdvisory    *advisory.Signed
+	floorNotedSeq      uint64
+	floorEnforceNoted  bool
+	floorRefusedLogged map[ports.NodeID]bool
+	floorNotice        func(line string)
 	// pendingBondRegs are fresh bond renewals PEERS submitted
 	// (MsgSubmitBondReg) that this node will fold into the next block it
 	// proposes — the NON-PROPOSER renewal path (H2 /). Without it a validator
@@ -1610,6 +1630,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		proofMeta:           make(map[ports.ChunkID]proofMeta),
 		proofs:              newMemProofs(), // default in-mem backing; daemon injects the bounded disk-backed store
 		peerDomains:         make(map[ports.NodeID]uint64),
+		peerRelease:         make(map[ports.NodeID]uint32),
 		peerBonds:           make(map[ports.NodeID]bondInfo),
 		peerBondRTT:         make(map[ports.NodeID]*latWindow),
 		peerRate:            make(map[ports.NodeID]*peerPath),
@@ -1683,6 +1704,7 @@ func (n *Node) send(to ports.NodeID, msg ports.Message) error {
 		}
 	}
 	msg.Domain = n.domainID
+	msg.Release = n.release()
 	msg.Ephemeral = n.ephemeral
 	if n.bond != nil {
 		msg.BondRoot, msg.BondSize = n.bond.Root, n.bond.Size
@@ -2049,6 +2071,8 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 	// that keeps nothing) will vanish, so routing to it only poisons the
 	// table with ghosts; process its message, but don't add it.
 	if !msg.Ephemeral {
+		evictPeerInfoIfFull(n.peerRelease, from)
+		n.peerRelease[from] = msg.Release
 		n.table.Observe(from)
 		// Proof of life also clears the dead-peer negative cache: if this peer was
 		// negative-cached as unreachable (a prior dial timed out → a corpse entry), hearing
@@ -2073,6 +2097,10 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 		n.peerBonds[from] = bondInfo{root: msg.BondRoot, size: msg.BondSize}
 	}
 
+	if n.floorRefuses(msg) {
+		n.refuseBelowFloor(from, msg)
+		return
+	}
 	if msg.IsReply() {
 		p, ok := n.pending[msg.RID]
 		if !ok || p.to != from {

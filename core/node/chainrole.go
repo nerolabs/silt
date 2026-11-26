@@ -273,7 +273,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		switch msg.Kind {
 		case ports.MsgProposeBlock, ports.MsgPrepareQC, ports.MsgRoundChange, ports.MsgRoundCert,
 			ports.MsgHaveBondReg, ports.MsgSubmitBondReg, ports.MsgSubmitIssuerKeyReg, ports.MsgSubmitEntry,
-			ports.MsgSubmitSlash:
+			ports.MsgSubmitSlash, ports.MsgSubmitAdvisory:
 			n.reply(from, msg, ports.Message{Kind: replyKind(msg.Kind), OK: false})
 			return true
 		}
@@ -281,6 +281,9 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 	switch msg.Kind {
 	case ports.MsgSubmitSlash:
 		n.handleSubmitSlash(from, msg)
+		return true
+	case ports.MsgSubmitAdvisory:
+		n.handleSubmitAdvisory(from, msg)
 		return true
 	case ports.MsgProposeBlock:
 		// PREPARE phase. Attest only what we would
@@ -1161,6 +1164,8 @@ func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeI
 		}
 		n.pendingSlashes = still
 	}
+	// the maintainers' version-floor advisory, if one is owed to the chain (versionfloor.go).
+	n.foldAdvisory(b)
 	// fold this node's staged per-epoch demand-issuer key commitments in. v5-ONLY —
 	// the era-3 leaf set does not commit this keyspace, so a v4 block carrying one
 	// is REJECTED (chain.validateIssuerKeys); staging them below the era-4 boundary
@@ -1248,7 +1253,7 @@ func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeI
 	// SMT path) and the signature — makes a workless attempt cost nothing; the as-built
 	// first cut paid PopulateEra4Roots + Sign ~40 times in one round on a designee whose
 	// forward had not landed. Same predicate as chain.go "chain: empty block".
-	if len(b.Entries) == 0 && len(b.Revocations) == 0 && len(b.Unrevocations) == 0 && len(b.BondRegs) == 0 && len(b.Slashes) == 0 && len(b.IssuerKeys) == 0 {
+	if len(b.Entries) == 0 && len(b.Revocations) == 0 && len(b.Unrevocations) == 0 && len(b.BondRegs) == 0 && len(b.Slashes) == 0 && len(b.IssuerKeys) == 0 && b.Advisory == nil {
 		done(fmt.Errorf("propose: nothing to carry (empty block — waiting for forwarded or submitted work)"))
 		return
 	}
@@ -2304,6 +2309,7 @@ func (n *Node) StartChainSync(seed []ports.NodeID, onCatchUp func(added int)) {
 }
 
 func (n *Node) chainSyncTick() {
+	n.noteVersionFloor()
 	peers := n.syncTargets()
 	if n.chainFollower() {
 		// A follower only reconciles: it proposes, renews and submits nothing, and a
@@ -2417,7 +2423,7 @@ func (n *Node) proposeDrain(early bool) {
 	//
 	// It cannot arm an empty proposal: proposeBlock's own empty-block check counts
 	// len(b.Slashes), so a slash-only block is carried, not refused.
-	if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && len(n.pendingSlashes) == 0 && !ownDue && !issuerKeysDue {
+	if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && len(n.pendingSlashes) == 0 && !ownDue && !issuerKeysDue && !n.advisoryPending() {
 		n.drainWaitSweeps = 0
 		return // nothing pending — stay quiet (B6)
 	}
@@ -2502,7 +2508,7 @@ func (n *Node) proposeDrain(early bool) {
 		// head, and the eviction has nowhere else to ride. Omitting it here would arm
 		// the sweep above and then hand the proof back to a designee that is not
 		// proposing.
-		if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && len(n.pendingSlashes) == 0 && !issuerKeysDue {
+		if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && len(n.pendingSlashes) == 0 && !issuerKeysDue && !n.advisoryPending() {
 			// Own renewal only, and we are not the designated proposer:
 			// submit, never propose (Q2b-2). The reg reaches the chain via
 			// the designated proposer's queue; nothing to take over for.

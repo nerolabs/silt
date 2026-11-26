@@ -13,7 +13,7 @@ import (
 // Core resolves hashes, never names. Everything the core commits to the chain
 // (Block), stores beside the content (the sealed Manifest) or registers (Entry) is
 // walked field by field, and the only text it may carry is the pinned set below:
-// the network's own label and the encryption mode. A content name, a path or a
+// the network's own label, the encryption mode, and the maintainers' version-floor note. A content name, a path or a
 // title would have to arrive as a new string field, and it fails here until the
 // set is changed on purpose.
 //
@@ -24,6 +24,8 @@ func TestStoredAndCommittedStructuresCarryNoNames(t *testing.T) {
 	allowed := map[string]string{
 		"Block.Params.NetworkName": "the network's label, committed at genesis; names the network, never content",
 		"Manifest.Mode":            "the encryption mode enum",
+		"Block.Advisory.Advisory.Note": "the maintainers' version-floor note to operators, at most 280 bytes, written by " +
+			"the maintainers and signed by a threshold of their genesis-committed keys; no publisher can reach it",
 	}
 	var found []string
 	seen := map[reflect.Type]bool{}

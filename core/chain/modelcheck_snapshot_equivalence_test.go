@@ -3,6 +3,7 @@ package chain
 import (
 	"crypto/ed25519"
 	"errors"
+	"github.com/nerolabs/silt/core/advisory"
 	"reflect"
 	"testing"
 	"unsafe"
@@ -1753,6 +1754,7 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	qualifiedC := v5RootWorld(t)
 	dueBucketC := v5RootWorld(t)
 	issuerKeyC := v5RootWorld(t)
+	versionFloorC, versionFloorReplay := versionFloorWorld(t)
 
 	check := func(replayed *Chain, ps []probe) {
 		snap := snapshotBoot(replayed)
@@ -1788,6 +1790,7 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	check(qualifiedC, []probe{qualifiedRootProbe(t, qualifiedC)})
 	check(dueBucketC, []probe{dueBucketRootProbe(t, dueBucketC)})
 	check(issuerKeyC, []probe{issuerKeyRootProbe(t, issuerKeyC)})
+	check(versionFloorC, []probe{versionFloorProbe(versionFloorReplay)})
 }
 
 // ---------------------------------------------------------------------------
@@ -1956,6 +1959,37 @@ func issuerKeyRootProbe(t *testing.T, c *Chain) probe {
 	}
 }
 
+// versionFloorWorld is a v5 world with the test maintainers configured and an advisory in force,
+// and the block that replays that advisory. Set DIRECTLY, as v5RootWorld sets issuerKeyCommit: the
+// probe asks whether validity depends on the record, not how the record was written (that path is
+// driven in versionfloor_test.go).
+func versionFloorWorld(t *testing.T) (*Chain, *Block) {
+	c := v5RootWorld(t)
+	c.cfg = withMaintainers(c.cfg)
+	in := advisory.Advisory{Seq: 1, Floor: 2, Tier: advisory.TierEnforce, GraceBlocks: 3}
+	c.versionFloor = &versionFloorState{Advisory: in, CommittedAt: 0}
+	prev, h := c.Head()
+	// The snapshot model carries no block history, so a booted node's chain id is the zero hash.
+	// The replay is signed for the network the probe's booted nodes believe they are on, so the
+	// advisory record is the only variable between the two verdicts.
+	id := snapshotBoot(c).ChainID()
+	replay := &Block{Version: BlockVersionWitnessable, Height: h, Prev: prev, Advisory: signedAdvisory(t, id, in, 0, 1)}
+	return c, replay
+}
+
+// versionFloorProbe: the replay of the advisory in force must be REFUSED as stale; a snapshot that
+// lost the record sees no advisory in force and ADMITS it. The hazard is real: a replayed advisory
+// restarts its grace period from the replay's height, and a replayed advisory that a recall
+// withdrew re-imposes the floor the maintainers lifted.
+func versionFloorProbe(replay *Block) probe {
+	return probe{
+		name: "a replay of the version-floor advisory in force must be REFUSED (ErrAdvisoryStale); a " +
+			"snapshot that lost versionFloor sees none in force and wrongly ADMITS it",
+		detect: []string{"versionFloor"},
+		ask:    func(c *Chain) string { return verdict(c.validateVersionFloor(replay)) },
+	}
+}
+
 // probeUncovered names committed fields for which no probe yet exists. It is a
 // DECLARED, SHRINKING debt, asserted below so it cannot grow silently: a field
 // nobody probes is a field whose necessity is unproven.
@@ -2101,6 +2135,7 @@ func buildLeaveOneOutWorlds(t *testing.T) []worldGroup {
 	qualifiedC := v5RootWorld(t)
 	dueBucketC := v5RootWorld(t)
 	issuerKeyC := v5RootWorld(t)
+	versionFloorC, versionFloorReplay := versionFloorWorld(t)
 
 	return []worldGroup{
 		{"launch", func(*testing.T) *Chain { return replayed }, probes(revokedRoot, keys, prev)},
@@ -2122,6 +2157,7 @@ func buildLeaveOneOutWorlds(t *testing.T) []worldGroup {
 		{"v5-qualified-root", func(*testing.T) *Chain { return qualifiedC }, []probe{qualifiedRootProbe(t, qualifiedC)}},
 		{"v5-duebucket-root", func(*testing.T) *Chain { return dueBucketC }, []probe{dueBucketRootProbe(t, dueBucketC)}},
 		{"v5-issuerkey-root", func(*testing.T) *Chain { return issuerKeyC }, []probe{issuerKeyRootProbe(t, issuerKeyC)}},
+		{"v5-version-floor", func(*testing.T) *Chain { return versionFloorC }, []probe{versionFloorProbe(versionFloorReplay)}},
 	}
 }
 

@@ -2,6 +2,7 @@ package chain
 
 import (
 	"crypto/ed25519"
+	"github.com/nerolabs/silt/core/advisory"
 	"testing"
 
 	"github.com/nerolabs/silt/core/manifest"
@@ -86,6 +87,22 @@ func TestFloorBoxAndFullNodeReturnTheSameVerdicts(t *testing.T) {
 			return f.mkBlock(t, func(b *Block) {
 				b.Entries = nil
 				b.IssuerKeys = []IssuerKeyReg{SignIssuerKeyReg(key(99101), 0, fp)}
+			})
+		}, Reject},
+		{"honest version-floor advisory", func(f structFixture) Block {
+			return f.mkBlock(t, func(b *Block) {
+				b.Entries = nil
+				b.Advisory = signedAdvisory(t, f.c.ChainID(), advisory.Advisory{Seq: 1, Floor: 2, Tier: advisory.TierEnforce, GraceBlocks: 8}, 0, 1)
+			})
+		}, Accept},
+		{"advisory below the maintainers' threshold", func(f structFixture) Block {
+			return f.mkBlock(t, func(b *Block) {
+				b.Advisory = signedAdvisory(t, f.c.ChainID(), advisory.Advisory{Seq: 1, Floor: 2, Tier: advisory.TierEnforce}, 2)
+			})
+		}, Reject},
+		{"advisory signed for another network", func(f structFixture) Block {
+			return f.mkBlock(t, func(b *Block) {
+				b.Advisory = signedAdvisory(t, ports.HashBytes([]byte("elsewhere")), advisory.Advisory{Seq: 1, Floor: 2, Tier: advisory.TierNotice}, 0, 1)
 			})
 		}, Reject},
 		{"empty block", func(f structFixture) Block { return f.mkBlock(t, func(b *Block) { b.Entries = nil }) }, Reject},

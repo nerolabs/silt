@@ -431,6 +431,8 @@ func (c *Chain) assembleStateRootRecomputeOps(
 		return nil, iErr
 	}
 	writeSet = append(writeSet, iWrites...)
+	// The advisory leaf: the block's advisory and its height, derived from the payload alone.
+	writeSet = append(writeSet, versionFloorWrites(b)...)
 	ops := make([]statehash.FoldOp, 0, len(writeSet)+len(digestOps))
 	ops = append(ops, digestOps...)
 	for _, wr := range writeSet {

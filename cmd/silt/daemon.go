@@ -160,6 +160,9 @@ func cmdDaemon(args []string) error {
 	forgeBlock := fs.String("forge-block", "", "ADVERSARY / TEST-HARNESS ONLY: propose a block with a FORGED (corrupted) proposer signature to this peer ID, to prove an honest validator rejects it before attesting (forged-block→reject). Never honest")
 	lowbondPropose := fs.String("lowbond-propose", "", "ADVERSARY / TEST-HARNESS ONLY: as an under-bonded validator, propose a well-formed block to this peer ID, to prove an honest validator refuses a proposer without a qualifying bond (low-bond→reject). Never honest")
 	equivocate := fs.String("equivocate", "", "ADVERSARY / TEST-HARNESS ONLY: run this validator as a Byzantine EQUIVOCATOR (proving accountability over the real wire). OBJECTIVE mode (3-of-4): the value is a trigger; this validator participates honestly then SERVES a conflicting signed block at a height it prepared, so an honest peer slashes the double-sign on sync (slash-on-detection — a fork can't be committed under a BFT quorum). LEGACY mode: given \"idX,idYZ\" it commit-places block X on idX and a heavier fork (Y,Z) on idYZ. NEVER use on a real network; a correct node refuses to equivocate")
+	maintainersFlag := fs.String("maintainers", "", "GENESIS CONFIG: the ed25519 public keys (hex, comma-separated) that may declare a version-floor advisory, committed into the genesis block with -maintainer-threshold. An advisory takes effect only when -maintainer-threshold of these keys sign it; no single key can. Empty (default) = no advisory is ever admitted. Make keys with `silt advisory keygen`")
+	maintainerThreshold := fs.Int("maintainer-threshold", 0, "GENESIS CONFIG: how many -maintainers must sign a version-floor advisory. At least 2 and at most the number of keys when -maintainers is set")
+	advertiseRelease := fs.Uint("advertise-release", 0, "TEST-HARNESS ONLY: stamp this release number on every message instead of this build's, so a current binary can present as an older release against a version floor. Never set by an operator")
 	forgeRepairClaim := fs.Bool("forge-repair-claim", false, "ADVERSARY / TEST-HARNESS ONLY: every repair claim this caretaker emits names a shard id the object does not commit at the claimed leaf — a signed lie, to prove a judge reports it and the chain evicts this node's bond. Never honest")
 	liar := fs.Bool("liar", false, "ADVERSARY / TEST-HARNESS ONLY: run this storage node as a PoR LIAR — it keeps its storage proof but silently drops the shard bytes (\"keep the receipt, ditch the goods\"). It still answers a MsgChallenge, but holds nothing to open against the committed shard root, so an -audit auditor CATCHES it and slashes its standing. Never honest")
 	goodPropose := fs.String("goodpropose", "", "TEST-HARNESS ONLY: POSITIVE CONTROL for -forge-block/-lowbond-propose. As a properly-bonded proposer, send a WELL-FORMED block to this peer ID and prove the honest target ACCEPTS it — so a target that refuses EVERY proposal (a broken/wedged node) cannot make the forged/low-bond REJECT tests false-pass ('reject the good one too' would otherwise look identical to 'reject the bad one', audit). Retries until its bond earns standing. Logs 'goodpropose proposal ACCEPTED by <id>' on accept, 'goodpropose proposal UNEXPECTEDLY REJECTED by <id>' after giving up")
@@ -183,6 +186,11 @@ func cmdDaemon(args []string) error {
 	carePublished := fs.Bool("care-published", false, "the daemon also repairs content published through its own UI. OFF by default because caring announces this node's durable identity as the new root's caretaker seconds after it commits, which links the publish to this node; hand the care link to another node to run -care instead")
 	economy := fs.Bool("economy", false, "OPT IN to the S7 durability repair economy (default OFF — the economy is built and running in shadow; payout is opt-in until the delivery price lands, the roadmap): when on, a verified repair PAYS the new holder of a rebuilt shard from the object's own escrow, priced by the protocol formula c·shardBytes/(U/p) credits — the witnessed fetch price of the ONE shard that holder moves, which is the act the bounty pays for (F1, ; until 2026-09-12 the price was c·(k·shardBytes)/(U/p), the fetch cost of a reconstruction that on the remote-placement path the payee does not perform, and it over-paid the holder's own basis 10–60×; on the self-hold path, where the paramedic keeps the shard it rebuilt and IS the payee (selfHoldEligible), the new price under-pays it by a factor of k —) — × the rarest-shard multiplier (a shard below one credit of fetch, which now means any object under ~262 KB, pays ZERO and is counted in stats.BountyBaseZero) — a network-wide price, never an operator-set amount. Off, the serve auto-skim still fills escrows but no bounty disburses (the half-open state /api/status reports as bountyOn:false). Standing is never affected either way (Invariant A: credits fund durability, never consensus weight). The economy-ON config is what the confirming field runs + the red team exercise")
 	fs.Parse(args)
+
+	maintainerKeys, err := parseMaintainers(*maintainersFlag, *maintainerThreshold)
+	if err != nil {
+		return err
+	}
 
 	// Soft heap ceiling (flixz OOM mitigation): the field cohort OOM-crash-loops
 	// on a 2 GB box from a large-but-bounded working set colliding with Go's
@@ -360,6 +368,7 @@ func cmdDaemon(args []string) error {
 	// only what the daemon genuinely needs to differ on.
 	cfg := node.DefaultConfig()
 	cfg.PublishWorkCounters = !privacyOn
+	cfg.AdvertiseRelease = uint32(*advertiseRelease)
 	cfg.RequestTimeout = ports.Duration(2 * time.Second) // patient vs the 500ms default (real WAN)
 	cfg.BondAuditInterval = ports.Duration(*bondAudit)
 	cfg.RepairInterval = ports.Duration(*repairInterval)
@@ -608,6 +617,7 @@ func cmdDaemon(args []string) error {
 	clk := walltime.New(loop)
 	nd := node.New(id, cfg, clk, tr, store)
 	nd.SetSigner(ident.Signer()) // sign self-certifying provider records (H5), not just chain blocks
+	nd.SetFloorNotice(func(line string) { fmt.Println(line) })
 	// The DHT eclipse cap reads the transport's observed (class, group) per peer
 	// — never the declared -domain label. Shadow by default: counted, never
 	// applied. The reserve is refused below K/2 (the table would clamp it; the
@@ -1112,6 +1122,8 @@ func cmdDaemon(args []string) error {
 			Era3ActivationHeight: *era3Activation,
 			Era4ActivationHeight: *era4Activation,
 			NetworkName:          *networkName,
+			Maintainers:          maintainerKeys,
+			MaintainerThreshold:  *maintainerThreshold,
 		}, ledger.Reputation)
 		if *allowPublisher {
 			fmt.Println("publisher: durable Publisher entries PERMITTED — publishes may record permanent linkage (trusted deployment)")
@@ -1249,6 +1261,11 @@ func cmdDaemon(args []string) error {
 					fmt.Printf("genesis: block %s — height 0 COMMITS this network's consensus config (-quorum=%d -min-bond=%d -min-bond-floor=%d -epoch-blocks=%d -bond-label-k=%d bond-vdf-delay=%d [compiled default, no flag], %d anchor(s), -era3-activation-height=%d -era4-activation-height=%d) and its name (-network-name=%q). A node configured differently computes a different genesis hash and cannot join this network.\n",
 						gbh, gp.Quorum, gp.MinBond, gp.MinBondBytes, gp.EpochBlocks, gp.BondLabelSamples, gp.BondVDFDelay, len(gp.Anchors),
 						gp.Era3ActivationHeight, gp.Era4ActivationHeight, gp.NetworkName)
+					if len(gp.Maintainers) > 0 {
+						fmt.Printf("genesis: version-floor advisories need %d of %d maintainer key(s) (-maintainers, -maintainer-threshold)\n", gp.MaintainerThreshold, len(gp.Maintainers))
+					} else {
+						fmt.Println("genesis: no maintainer keys — this network admits no version-floor advisory")
+					}
 				}
 			} else {
 				fmt.Fprintln(os.Stderr, "genesis seed:", gerr)

@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/nerolabs/silt/core/advisory"
 	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/core/dht"
 	"io"
@@ -288,6 +289,7 @@ func (s *uiServer) apiRoutes() map[string]http.HandlerFunc {
 		"GET /api/chain":                 s.apiChain,
 		"POST /api/publish":              s.apiPublish,
 		"POST /api/fund":                 s.apiFund,
+		"POST /api/advisory":             s.apiAdvisory,
 		"GET /api/fetch":                 s.apiFetch,
 		"GET /api/library":               s.apiLibrary,
 		"POST /api/library/add":          s.apiLibraryAdd,
@@ -528,6 +530,9 @@ type chainInfo struct {
 	// would be slashed from, and without which judges refuse its claims.
 	Following  bool `json:"following"`
 	SelfBonded bool `json:"selfBonded"`
+	// VersionFloor is the maintainers' version-floor advisory in force and this node's release
+	// against it; absent until one is committed.
+	VersionFloor *node.VersionFloorStatus `json:"versionFloor,omitempty"`
 }
 
 // statusInfo is the GET /api/status document. It is a NAMED type because it is cached:
@@ -998,6 +1003,9 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 			out.Chain = &chainInfo{Height: ch.Len(), Entries: ch.EntryCount(),
 				HeadVersion: era.Census.HeadVersion, Era: era, ForeignFormat: s.nd.ForeignFormat(),
 				Following: s.nd.ChainFollower(), SelfBonded: ch.BondQualified(s.nd.ID())}
+			if vf, ok := s.nd.VersionFloor(); ok {
+				out.Chain.VersionFloor = &vf
+			}
 		}
 		out.Durability = s.durabilitySnapshot(uptime)
 		if fs := s.nd.FaucetStats(); fs.Configured {
@@ -1915,4 +1923,27 @@ func (s *uiServer) apiLibraryRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]bool{"ok": true})
+}
+
+// apiAdvisory takes a maintainers' signed version-floor advisory (hex canonical CBOR in the
+// `advisory` form field) and hands it to the validators. The token gate on POST applies; the
+// advisory's own signatures are what make it count, checked here against this node's chain.
+func (s *uiServer) apiAdvisory(w http.ResponseWriter, r *http.Request) {
+	raw, err := hex.DecodeString(strings.TrimSpace(r.FormValue("advisory")))
+	if err != nil {
+		httpError(w, 400, fmt.Errorf("advisory: want hex canonical CBOR: %v", err))
+		return
+	}
+	adv, err := advisory.Unmarshal(raw)
+	if err != nil {
+		httpError(w, 400, err)
+		return
+	}
+	var subErr error
+	s.onLoop(func() { subErr = s.nd.SubmitAdvisory(&adv) })
+	if subErr != nil {
+		httpError(w, 400, subErr)
+		return
+	}
+	writeJSON(w, map[string]any{"queued": true, "seq": adv.Advisory.Seq, "floor": adv.Advisory.Floor})
 }

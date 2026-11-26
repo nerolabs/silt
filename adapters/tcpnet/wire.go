@@ -86,6 +86,9 @@ type wireMsg struct {
 	// (cbor.Unmarshal into a struct skips unknown keys), so this is additive.
 	ServedBytes int64 `cbor:"29,keyasint,omitempty"`
 	RepairsDone int64 `cbor:"30,keyasint,omitempty"`
+	// Release is the sender's software release (ports.Message.Release). omitempty, so an old
+	// peer's frame and a new frame with release 0 decode alike.
+	Release uint32 `cbor:"37,keyasint,omitempty"`
 }
 
 // wireCredit mirrors ports.PublishCredit for the wire. Epoch is signed into the
@@ -191,6 +194,7 @@ func toWire(m ports.Message) wireMsg {
 	w.Height = m.Height
 	w.MaxReplyBytes = m.MaxReplyBytes
 	w.Domain = m.Domain
+	w.Release = m.Release
 	w.Lease = m.Lease
 	w.Ephemeral = m.Ephemeral
 	w.BondSize = m.BondSize
@@ -286,6 +290,7 @@ func fromWire(w wireMsg) ports.Message {
 	m.Height = w.Height
 	m.MaxReplyBytes = w.MaxReplyBytes
 	m.Domain = w.Domain
+	m.Release = w.Release
 	m.Lease = w.Lease
 	m.Ephemeral = w.Ephemeral
 	m.BondSize = w.BondSize

@@ -2,6 +2,7 @@ package chain
 
 import (
 	"errors"
+	"github.com/nerolabs/silt/core/advisory"
 	"reflect"
 	"sort"
 	"strings"
@@ -128,6 +129,15 @@ func coldAuditorClasses() []coldAuditorClass {
 			// needs, and stalls naming the read.
 			wantSentry: ErrRecomputeIssuerKey,
 			wantSubstr: "no witness",
+		},
+		{
+			name: "advisory", blockField: "Advisory", nodeAccept: true,
+			mutate: func(t *testing.T, f structFixture, b *Block) {
+				b.Advisory = signedAdvisory(t, f.c.ChainID(), advisory.Advisory{Seq: 1, Floor: 2, Tier: advisory.TierNotice}, 0, 2)
+			},
+			// The box reads the advisory in force for the sequence check and derives the leaf the
+			// block writes from the payload, so it reproduces the class and ACCEPTS the honest twin.
+			wantAccept: true,
 		},
 		{
 			name: "carrier", blockField: "LastCommit", nodeAccept: true,

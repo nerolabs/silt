@@ -42,6 +42,7 @@ func TestPeerInfoMapsBoundedUnderSybilFlood(t *testing.T) {
 		"peerCaps":    len(n.peerCaps),
 		"peerBonds":   len(n.peerBonds),
 		"peerDomains": len(n.peerDomains),
+		"peerRelease": len(n.peerRelease),
 	} {
 		if got > maxPeerInfo {
 			t.Fatalf("%s grew to %d under a %d-sybil flood — not bounded by maxPeerInfo=%d", name, got, sybils, maxPeerInfo)

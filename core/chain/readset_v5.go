@@ -106,11 +106,12 @@ func (c *Chain) WitnessReadSetV5(b Block) []statehash.ReadEntry {
 	acc := newReadSetAcc()
 
 	// ---- (1) validity + apply branch reads, per transition, O(1) each ----
-	c.readSetEntries(b, acc)    // publish: byRoot absent, spent absent (when a token rides)
-	c.readSetTakedowns(b, acc)  // revoke: byRoot present; unrevoke: revoked present
-	c.readSetBondRegs(b, acc)   // reg: slashed/bondRootOwner/bondRootProven/bonded/bondRegHeight + qualified/dueBucket delta
-	c.readSetSlashes(b, acc)    // slash: slashed write, bonded delete, qualified maintain
-	c.readSetIssuerKeys(b, acc) // issuer-key reg: the epoch index + every named and every pruned bucket
+	c.readSetEntries(b, acc)      // publish: byRoot absent, spent absent (when a token rides)
+	c.readSetTakedowns(b, acc)    // revoke: byRoot present; unrevoke: revoked present
+	c.readSetBondRegs(b, acc)     // reg: slashed/bondRootOwner/bondRootProven/bonded/bondRegHeight + qualified/dueBucket delta
+	c.readSetSlashes(b, acc)      // slash: slashed write, bonded delete, qualified maintain
+	c.readSetIssuerKeys(b, acc)   // issuer-key reg: the epoch index + every named and every pruned bucket
+	c.readSetVersionFloor(b, acc) // advisory: the advisory in force, present or absent
 
 	// ---- (2) the attestation loop (apply:3293-3298) ----
 	// Per attester in b.Atts that is a qualified non-proposer, the recompute reads the
@@ -813,5 +814,18 @@ func (c *Chain) addEpochSetRead(acc *readSetAcc, id ports.NodeID) {
 		acc.addPresent(tagEpochSet, id[:], statehash.EncodeInt64(w))
 	} else {
 		acc.addAbsent(tagEpochSet, id[:])
+	}
+}
+
+// readSetVersionFloor emits the advisory read for the witness provider: the leaf in force,
+// present or proven absent.
+func (c *Chain) readSetVersionFloor(b Block, acc *readSetAcc) {
+	if b.Advisory == nil {
+		return
+	}
+	if c.versionFloor != nil {
+		acc.addScalar(tagVersionFloor, encodeVersionFloor(*c.versionFloor))
+	} else {
+		acc.addAbsent(tagVersionFloor, nil)
 	}
 }

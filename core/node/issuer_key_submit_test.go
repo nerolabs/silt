@@ -40,6 +40,8 @@ func TestMsgKindNumbersArePinned(t *testing.T) {
 		"MsgHaveBondReg":           {int(ports.MsgHaveBondReg), 65},
 		"MsgSubmitSlash":           {int(ports.MsgSubmitSlash), 66},
 		"MsgSubmitSlashAck":        {int(ports.MsgSubmitSlashAck), 67},
+		"MsgSubmitAdvisory":        {int(ports.MsgSubmitAdvisory), 68},
+		"MsgSubmitAdvisoryAck":     {int(ports.MsgSubmitAdvisoryAck), 69},
 	}
 	for name, v := range pins {
 		if v[0] != v[1] {

@@ -438,6 +438,120 @@ flow_floor_box() {
   esac
 }
 
+# ── Flow 19: the version-floor advisory (opt-in, VERSION_FLOOR=1) ────────────────
+# TENETS R4 and item 19's fourth clause. The genesis names three maintainer keys at
+# threshold 2 (topology meta floor_keys); every validator but val-d presents as the next
+# release. One maintainer's advisory must be refused and change nothing; the threshold's
+# enforce-tier advisory must commit, val-d must warn, and once the grace passes the
+# upgraded validators must refuse val-d's consensus messages while the chain keeps
+# committing and val-d keeps following it. A recall lifts the floor, so later flows run
+# on an unrestricted network.
+# LOCAL_PROOF: go test ./e2e -run TestVersionFloorOverTCP -count=1
+flow_version_floor() {
+  [ "${VERSION_FLOOR:-0}" = 1 ] || { record "19-version-floor" skip minor "opt-in (VERSION_FLOOR=1): the maintainers' version-floor advisory grade"; return; }
+  local old; old="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta']['floor_old'])")"
+  require_nodes "19-version-floor" major val-a "$old" store-1 || return
+  require_live "19-version-floor" major val-a "$old" store-1 || return
+  flow_evidence_nodes val-a "$old"
+  local keys rel port bin chain
+  keys="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta']['floor_keys'])")"
+  rel="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta']['floor_release'])")"
+  port="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta']['floor_ui_port'])")"
+  bin="$FT_DIR/.silt-local"
+  chain="$(ssh_node val-a "sudo /usr/local/bin/silt chain-status -store /var/lib/silt -at 0" 2>/dev/null | awk '/hash at 0:/{print $4}' | tr -dc '0-9a-f')"
+  if [ "${#chain}" -ne 64 ]; then
+    record "19-version-floor" gap major "could not read the chain id (genesis hash) from val-a"
+    return
+  fi
+  local work; work="$(mktemp -d)"
+  sign() { "$bin" advisory sign -key "$keys/m$2.key" -chain-id "$chain" -file "$work/$1" "${@:3}" >/dev/null; }
+  submit() { # submit FILE → the daemon's answer
+    local b64; b64="$(base64 < "$work/$1" | tr -d '\n')"
+    ssh_node val-a "echo $b64 | base64 -d > /tmp/ft_floor.adv && sudo /usr/local/bin/silt advisory submit -file /tmp/ft_floor.adv -api http://127.0.0.1:$port -token \$(sudo cat /var/lib/silt/ui-token) 2>&1" 2>/dev/null || true
+  }
+  status() { ssh_node val-a "curl -s -H \"Authorization: Bearer \$(sudo cat /var/lib/silt/ui-token)\" http://127.0.0.1:$port/api/status" 2>/dev/null || true; }
+  field() { python3 -c "import json,sys
+try: d=json.loads(sys.stdin.read())
+except Exception: print(''); sys.exit()
+v=(d.get('chain') or {}).get('versionFloor') or {}
+print({'seq':v.get('seq',0),'enforcing':v.get('enforcing',False),'below':v.get('validatorsBelow',-1),'refused':(d.get('stats') or {}).get('FloorRefused',0),'height':(d.get('chain') or {}).get('height',0)}['$1'])"; }
+  local t0; t0="$(date +%s)"
+
+  # One maintainer: refused, nothing in force.
+  sign lone.adv 0 -seq 1 -floor $((rel + 1)) -tier enforce -grace 4 -note "one key"
+  local ans; ans="$(submit lone.adv)"
+  if ! printf '%s' "$ans" | grep -q threshold; then
+    slo_assert "19-version-floor" major "val-a did not refuse an advisory one maintainer signed: ${ans:0:300}" 0 $(( $(date +%s) - t0 ))
+    rm -rf "$work"; return
+  fi
+  ft_publish store-1 65536 >/dev/null 2>&1 || true
+  if [ "$(status | field seq)" != 0 ]; then
+    slo_assert "19-version-floor" major "an advisory below the threshold put a floor in force on val-a" 0 $(( $(date +%s) - t0 ))
+    rm -rf "$work"; return
+  fi
+
+  # The threshold: two maintainers sign the same enforce-tier advisory.
+  sign floor.adv 0 -seq 1 -floor $((rel + 1)) -tier enforce -grace 4 -note "field: upgrade to release $((rel + 1))"
+  sign floor.adv 2
+  ans="$(submit floor.adv)"
+  if ! printf '%s' "$ans" | grep -q '"queued":true'; then
+    record "19-version-floor" gap major "val-a did not queue the threshold's advisory: ${ans:0:300}"
+    rm -rf "$work"; return
+  fi
+  if ! waitfor_since "$old" "version-floor: this node runs a release below the network's floor" "$t0" 300 >/dev/null; then
+    slo_assert "19-version-floor" major "the advisory never reached $old as a warning within 300s (val-a seq $(status | field seq))" 0 $(( $(date +%s) - t0 ))
+    rm -rf "$work"; return
+  fi
+  local below; below="$(status | field below)"
+
+  # Past the grace: refusals, and the chain keeps committing.
+  local deadline=$(( $(date +%s) + 600 )) st enforcing=False refused=0 h1=0
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    ft_publish store-1 65536 >/dev/null 2>&1 || true
+    st="$(status)"
+    enforcing="$(printf '%s' "$st" | field enforcing)"; refused="$(printf '%s' "$st" | field refused)"
+    [ "$enforcing" = True ] && [ "${refused:-0}" -gt 0 ] && break
+    sleep 10
+  done
+  if [ "$enforcing" != True ] || [ "${refused:-0}" -le 0 ]; then
+    slo_assert "19-version-floor" major "no enforcement or no refusal at val-a within 600s (enforcing=$enforcing refused=$refused)" 0 $(( $(date +%s) - t0 ))
+    rm -rf "$work"; return
+  fi
+  h1="$(status | field height)"
+  ft_publish store-1 65536 >/dev/null 2>&1 || true
+  local h2=0; deadline=$(( $(date +%s) + 300 ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    h2="$(status | field height)"
+    [ "${h2:-0}" -gt "${h1:-0}" ] && break
+    ft_publish store-1 65536 >/dev/null 2>&1 || true
+    sleep 10
+  done
+  local hold; hold="$(ssh_node "$old" "sudo /usr/local/bin/silt chain-status -store /var/lib/silt" 2>/dev/null | awk '/head height/{print $3}' | tr -dc '0-9')"
+
+  # A recall lifts the floor for the flows after this one.
+  sign recall.adv 1 -seq 2 -tier recall
+  sign recall.adv 2
+  submit recall.adv >/dev/null
+  local recalled=0; deadline=$(( $(date +%s) + 300 ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    [ "$(status | field seq)" = 2 ] && { recalled=1; break; }
+    ft_publish store-1 65536 >/dev/null 2>&1 || true
+    sleep 10
+  done
+  rm -rf "$work"
+  local t1; t1="$(date +%s)"
+  if [ "${h2:-0}" -le "${h1:-0}" ]; then
+    slo_assert "19-version-floor" major "the chain stopped committing under enforcement (val-a height $h1 → $h2)" 0 $((t1 - t0)); return
+  fi
+  if [ -z "$hold" ] || [ "$hold" -lt $(( h1 - 2 )) ]; then
+    slo_assert "19-version-floor" major "$old stopped following the chain under enforcement (its head ${hold:-?}, network ${h1})" 0 $((t1 - t0)); return
+  fi
+  if [ "$recalled" != 1 ]; then
+    slo_assert "19-version-floor" major "the recall never committed within 300s — the floor may still be enforced for later flows" 0 $((t1 - t0)); return
+  fi
+  slo_assert "19-version-floor" major "one maintainer's advisory refused with nothing in force; the threshold's commits, $old warns, val-a reports $below validator(s) below the floor, then refuses $refused consensus message(s) from it while the chain advances ($h1 → $h2) and $old follows (head $hold); the recall lifts it" 1 $((t1 - t0))
+}
+
 # ── Flow 3: care link — repair/audit without decrypting ─────────────────────────
 # LOCAL_PROOF: go test ./e2e -run TestRepairBountyPaysOnTheWire -count=1 (captures the siltcare: link from a real publish)
 flow_care_link() {
@@ -3905,6 +4019,7 @@ run_all_scenarios() {
     flow_publisher_unlinkability flow_durability_turnover flow_chaos_crash
     flow_web_ui_guard flow_c2_no_capture flow_economy_repair flow_delivery_lane
     flow_chain_takedown flow_validator_crash flow_unlinkability flow_floor_box
+    flow_version_floor
   )
   if [ "${RANDOMIZE:-1}" = 1 ]; then
     local seed="${SEED:-$RUN_ID}"

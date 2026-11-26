@@ -199,6 +199,11 @@ func (c *Chain) cloneForDryRun() *Chain {
 	// per-epoch issuer-key binding: deep-copied for the same reason —
 	// apply on the clone must maintain the copy, not the live chain.
 	s.issuerKeyCommit = cloneIssuerKeyCommit(c.issuerKeyCommit)
+	// the advisory in force: copied, so apply on the clone cannot reach the live record.
+	if c.versionFloor != nil {
+		vf := *c.versionFloor
+		s.versionFloor = &vf
+	}
 	// ---- input history: a persistent vector, shared; apply's append on the clone
 	// copies only the path it writes (blockvec.go) ----
 	s.blocks = c.blocks

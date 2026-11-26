@@ -2,6 +2,7 @@ package chain
 
 import (
 	"fmt"
+	"github.com/nerolabs/silt/core/advisory"
 	"sort"
 
 	"github.com/nerolabs/silt/ports"
@@ -120,6 +121,13 @@ type ConsensusParams struct {
 	// is serving by a name READ FROM THE CHAIN rather than from its own flags, and so that two
 	// networks that differ only by name are different networks. See Config.NetworkName.
 	NetworkName string `cbor:"18,keyasint"`
+	// --- version-floor advisories (TENETS R4) ---
+	//
+	// Who may declare one: the maintainer keys, sorted, and how many must sign. They reach a
+	// validity verdict (a block carrying an advisory is refused unless the threshold of these keys
+	// signed it), so two nodes that differ on them are on different networks.
+	Maintainers         [][]byte `cbor:"19,keyasint"`
+	MaintainerThreshold int      `cbor:"20,keyasint"`
 }
 
 // SortedAnchors renders an anchor set as the canonical sorted slice this struct commits.
@@ -168,6 +176,8 @@ func ParamsFromConfig(cfg Config, bondLabelSamples int, bondVDFDelay uint64) Con
 		BondLabelSamples:        bondLabelSamples,
 		BondVDFDelay:            bondVDFDelay,
 		NetworkName:             cfg.NetworkName,
+		Maintainers:             advisory.SortKeys(cfg.Maintainers),
+		MaintainerThreshold:     cfg.MaintainerThreshold,
 	}
 }
 
@@ -204,6 +214,8 @@ func (p ConsensusParams) Diff(q ConsensusParams) []string {
 	// disagrees with the genesis is serving a chain it would mis-report. Naming it here is what
 	// makes that diagnosable instead of a bare hash mismatch.
 	add("-network-name", p.NetworkName, q.NetworkName)
+	add("-maintainers", fmt.Sprintf("%x", p.Maintainers), fmt.Sprintf("%x", q.Maintainers))
+	add("-maintainer-threshold", p.MaintainerThreshold, q.MaintainerThreshold)
 	return out
 }
 

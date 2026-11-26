@@ -327,6 +327,20 @@ var configDecls = map[string]configDecl{
 		// quiet UNPROVEN in a regime that could not have read the field anyway.
 		readIn: []string{regimeLegacy, regimeTrustedOptOut, regimeObjective, regimeEpochs, regimeYoungAnchors},
 	},
+	"Maintainers": {
+		class: classConsensusCritical,
+		why: "Who may declare a version-floor advisory. A block carrying an advisory is refused unless the " +
+			"threshold of these keys signed it, so two replicas holding different key sets reach different " +
+			"verdicts on the same advisory-carrying block. The fixture block here carries none, so the probe " +
+			"cannot cross; the verdict is driven by TestAdvisoryBlockVerdictFollowsTheGenesisMaintainers.",
+		binding: "genesis-covered: ConsensusParams.Maintainers, sorted, and a node refuses to start on a genesis " +
+			"that commits a different set.",
+	},
+	"MaintainerThreshold": {
+		class:   classConsensusCritical,
+		why:     "How many maintainer signatures an advisory needs; same reasoning as Maintainers.",
+		binding: "genesis-covered: ConsensusParams.MaintainerThreshold, checked at start like Maintainers.",
+	},
 	"Archive": {
 		class:  classLocal,
 		why:    "Retention policy: whether THIS node keeps full bodies. An operator's storage choice, deliberately per-node (build-immutable #8) — it must never reach a validity verdict.",
@@ -424,6 +438,10 @@ var configMemberships = map[string]configMembership{
 
 	// ---- CATEGORY (b): AN IDENTITY PROPERTY OF THE NETWORK. Carried, and it moves no verdict. ----
 	"NetworkName": {carriedAs: "NetworkName"},
+
+	// ---- who may declare a version-floor advisory. Carried, and it moves an advisory block's verdict. ----
+	"Maintainers":         {carriedAs: "Maintainers"},
+	"MaintainerThreshold": {carriedAs: "MaintainerThreshold"},
 
 	// ---- THE EXCLUSIONS. Read them as distinct arguments, not one policy. ----
 	"ArchiveProofHeavyWindow": {reasonNotCarried: "RETENTION ONLY — it reaches no verdict. It bounds how long an " +
@@ -531,6 +549,10 @@ func perturbConfig(cfg Config, field string) (Config, bool) {
 		// probe caught twice — it would report zero divergence without ever having
 		// moved the field, and this category's whole complement rests on that zero being MEASURED.
 		cfg.NetworkName = "a DIFFERENT network's name"
+	case "Maintainers":
+		cfg.Maintainers = [][]byte{key(7).Public().(ed25519.PublicKey), key(8).Public().(ed25519.PublicKey)}
+	case "MaintainerThreshold":
+		cfg.MaintainerThreshold = 2
 	case "WSCheckpoint":
 		cfg.WSCheckpoint = WSCheckpoint{Height: 1, Hash: ports.HashBytes([]byte("elsewhere"))}
 	case "LivenessRecoveryHeight":

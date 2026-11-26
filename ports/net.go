@@ -212,6 +212,9 @@ const (
 	// their next block.
 	MsgSubmitSlash    // Data: canonical CBOR of ONE chain.Equivocation (a double-sign or a false-repair proof)
 	MsgSubmitSlashAck // OK: the proof verified and is queued (or its culprit is already slashed)
+	// Data: canonical CBOR of ONE advisory.Signed, the maintainers' version-floor advisory
+	MsgSubmitAdvisory
+	MsgSubmitAdvisoryAck // OK: the advisory verified against this node's chain and is queued for a block
 )
 
 // StorageProof is a Merkle inclusion proof shipped alongside a chunk:
@@ -376,6 +379,11 @@ type Message struct {
 	// across distinct domains, not just node IDs. 0 means "unset" — treated
 	// as its own unique domain, never a grouping constraint.
 	Domain uint64
+	// Release is the sender's software release (core/release.Number), stamped on every message
+	// it sends. 0 means it advertised none: a build older than the field. It is the sender's own
+	// claim, which is all a version floor needs: the floor asks honest operators to upgrade, and
+	// patched validators stop counting consensus messages from nodes that say they have not.
+	Release uint32
 	// Lease marks a StoreChunk as a demand-driven cache copy: the receiver
 	// holds and serves it but lets it expire if it stops being read, so a
 	// hot file fans out under load and contracts on cooldown.
