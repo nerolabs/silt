@@ -4,7 +4,23 @@
 useDefault = true
 
 [allowlist]
-description = "Field-evidence logs: a node's debug 'chunk stored' line prints the DHT placement key a chunk is stored under — a SHA-256 of public data, not a credential."
+description = """Two known shapes in committed field-evidence logs.
+1. A node's debug 'chunk stored' line prints the DHT placement key a chunk is stored under — a
+   SHA-256 of public data, not a credential (matched by its exact line shape below).
+2. The August 2026 evidence commits below captured each field daemon's start-up line, which carries
+   its web-UI bearer token. Those UIs were bound to loopback on cloud VMs that were destroyed when
+   each run ended, so the tokens unlock nothing. They are allowed by COMMIT, not by pattern, so a
+   token committed anywhere else is still found."""
+commits = [
+  "3130a6ad39053c220d40dfba0b44b4beffd82d9c",
+  "4969e911d188cd4b34cf0c364552a2a410ddb7d0",
+  "56f9fd875e5f266138e57bc002620fa276a80516",
+  "9aaede32d28a8e7542d2a8b58291c46d22fd0db7",
+  "b8a594ea514ff44cadb5342986c68b1eac6e22ed",
+  "d9635c41e40ba051cfd445c4c687ae0f76e22dbe",
+  "da6912670009e93fc5efd5bb32e23f4b299a0d66",
+  "fe2376a4e060a3bfad9578f7231f88e607335ee0",
+]
 regexTarget = "line"
 regexes = [
   '''debug chunk stored chunk=[0-9a-f]{64} from=[0-9a-f]{64} key=[0-9a-f]{64}''',
