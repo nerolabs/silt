@@ -324,7 +324,7 @@ func TestSessionCarriesNoPerObjectMap(t *testing.T) {
 	if _, err := settleOverWire(t, fetcher, server, sched, handle, m, obj, 16); err != nil { // 16 × 256 KiB = the 4 MiB served: full ack
 		t.Fatal(err)
 	}
-	if _, live := ledger.ProvisionalLaneForTest(server.id, fetcher.id, obj); live {
+	if _, live := ledger.ProvisionalLaneForTest(server.id, obj); live {
 		t.Fatal("a fully acknowledged lane survived — the object-level record must die with the settlement that needed it")
 	}
 }

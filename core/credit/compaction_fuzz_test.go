@@ -197,7 +197,7 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 	for step := 0; step < ops; step++ {
 		idx := rng.Intn(poolSize)
 		ln := pool[idx]
-		k := provKey{server: server, requester: ln.req, root: ln.obj}
+		k := provKey{server: server, root: ln.obj}
 
 		// Three possible actions weighted: 50% serve, 30% redeem, 20% force-serve.
 		action := rng.Intn(10)
@@ -216,7 +216,7 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 						continue
 					}
 					for pi, pl := range pool {
-						ek := provKey{server: server, requester: pl.req, root: pl.obj}
+						ek := provKey{server: server, root: pl.obj}
 						if ek == *kp {
 							piCopy := pi
 							evictedPoolIdx = &piCopy
@@ -262,7 +262,7 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 							continue
 						}
 						for pi, pl := range pool {
-							ek := provKey{server: server, requester: pl.req, root: pl.obj}
+							ek := provKey{server: server, root: pl.obj}
 							if ek == *kp {
 								piCopy := pi
 								evictedPoolIdx = &piCopy
@@ -336,7 +336,7 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 						continue
 					}
 					for pi, pl := range pool {
-						ek := provKey{server: server, requester: pl.req, root: pl.obj}
+						ek := provKey{server: server, root: pl.obj}
 						if ek == *kp {
 							piCopy := pi
 							evictedPoolIdx = &piCopy
