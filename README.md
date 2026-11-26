@@ -44,7 +44,8 @@ itself finished only when someone other than its author tries to break all three
 
 A second, independent red team runs before release, and this table will carry its results.
 
-Found something? See [`SECURITY.md`](SECURITY.md).
+Found something? See [`SECURITY.md`](SECURITY.md). To report abuse of the network, write to
+abuse@silthq.com; the [operator guide](docs/OPERATING.md#reporting-abuse) says what happens next.
 
 ## How it compares
 

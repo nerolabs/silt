@@ -106,8 +106,16 @@ Only the curator that listed a file can lift its listing.
 
 ## Reporting abuse
 
-Report a file to the operators and curators who can act on it, with its link or root hash. The
-silt project hosts no files, runs no network, maintains no denylist and has no takedown authority.
+Report a file to the operators and curators who can act on it, with its link or root hash.
+
+To report abuse of silt to the project, write to **abuse@silthq.com** with the link or root hash.
+The project hosts no files, runs no network, maintains no denylist and has no takedown authority,
+so it cannot remove a file from anyone's node. It will point you to the operators and curators who
+can act.
+
+Report child sexual abuse material to your national hotline as well, such as NCMEC in the US or the
+IWF in the UK.
+
 To report a security problem in the software itself, see [`SECURITY.md`](../SECURITY.md).
 
 ## Updates
