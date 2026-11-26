@@ -805,6 +805,10 @@ type Block struct {
 	// block. Witnessable blocks only; nil on every block that carries none, so omitempty keeps
 	// their encoding and hash unchanged.
 	Advisory *advisory.Signed `cbor:"21,keyasint,omitempty"`
+	// TakedownAuths carries each takedown's curator authority (curator.go): on a witnessable block
+	// the i-th entry authorizes the i-th takedown, every revocation then every un-revocation. Nil
+	// on every block with no takedown, so omitempty keeps their encoding and hash unchanged.
+	TakedownAuths []TakedownAuth `cbor:"22,keyasint,omitempty"`
 
 	// hashMemo caches Hash. A block's hashed content is immutable once minted
 	// (Sign computes the hash it signs) or decoded, but Hash re-marshaled the
@@ -1076,13 +1080,13 @@ func (b *Block) bodyHash() ports.Hash {
 		// sha256 of its content — so coverage of Answer/Slashes on v5 is TRANSITIVE through that
 		// rule, not direct. Mutating either makes the block INVALID rather than differently
 		// hashed, which is the property the era-aware runtime pin encodes.
-		unsigned = Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: v5PreimageBondRegs(b.BondRegs), Slashes: nil, SlashesDigest: b.SlashesDigest, Params: b.Params, StateRoot: b.StateRoot, LogRoot: b.LogRoot, IssuerKeys: b.IssuerKeys, LastCommit: b.LastCommit, Advisory: b.Advisory}
+		unsigned = Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: v5PreimageBondRegs(b.BondRegs), Slashes: nil, SlashesDigest: b.SlashesDigest, Params: b.Params, StateRoot: b.StateRoot, LogRoot: b.LogRoot, IssuerKeys: b.IssuerKeys, LastCommit: b.LastCommit, Advisory: b.Advisory, TakedownAuths: b.TakedownAuths}
 	} else {
 		// pre-v5: BYTE-IDENTICAL to before the digests landed. AnswerDigest and SlashesDigest are POINTERS and
 		// are nil on every pre-v5 block (validity refuses a pre-v5 block that carries either), so
 		// omitempty omits them and no committed v2/v4 hash moves. That is the frozen-format
 		// immutable, and TestCarrierHashDriftGuard's WITH-a-bond-reg cases are what hold it.
-		unsigned = Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: b.BondRegs, Slashes: b.Slashes, SlashesDigest: b.SlashesDigest, Params: b.Params, StateRoot: b.StateRoot, LogRoot: b.LogRoot, IssuerKeys: b.IssuerKeys, LastCommit: b.LastCommit, Advisory: b.Advisory}
+		unsigned = Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: b.BondRegs, Slashes: b.Slashes, SlashesDigest: b.SlashesDigest, Params: b.Params, StateRoot: b.StateRoot, LogRoot: b.LogRoot, IssuerKeys: b.IssuerKeys, LastCommit: b.LastCommit, Advisory: b.Advisory, TakedownAuths: b.TakedownAuths}
 	}
 	buf := hashBufPool.Get().(*bytes.Buffer)
 	buf.Reset()
@@ -3612,14 +3616,54 @@ func (c *Chain) ValidateEntry(e ports.Entry) error {
 // published within the SAME block are not yet committed, so same-block
 // revoke-what-you-publish is (correctly) refused as nonsensical.
 func (c *Chain) validateTakedowns(b *Block) error {
-	for _, r := range b.Revocations {
-		if !c.byRoot.Has(r) {
-			return fmt.Errorf("%w: %s", ErrRevokeUnknownRoot, r)
+	if err := checkTakedownAuthority(b, c.ChainID()); err != nil {
+		return err
+	}
+	serials := map[string]bool{}
+	for _, e := range b.Entries {
+		if e.Token != nil {
+			serials[string(e.Token.Serial)] = true
 		}
 	}
-	for _, r := range b.Unrevocations {
-		if !c.revoked[r] {
-			return fmt.Errorf("%w: %s", ErrUnrevokeNotRevoked, r)
+	for _, t := range takedownOps(b) {
+		switch t.Op {
+		case RevOp:
+			if !c.byRoot.Has(t.Root) {
+				return fmt.Errorf("%w: %s", ErrRevokeUnknownRoot, t.Root)
+			}
+			if t.Auth != nil && c.revoked[t.Key] {
+				return fmt.Errorf("%w: %s", ErrAlreadyListed, t.Root)
+			}
+		case UnrevOp:
+			if !c.revoked[t.Key] {
+				return fmt.Errorf("%w: %s", ErrUnrevokeNotRevoked, t.Root)
+			}
+		}
+		if t.Auth != nil {
+			// Each authority is single-use: a replayed signature, in this block or any before, is
+			// refused, so nobody re-lists a root its curator lifted.
+			k := string(t.spentKey())
+			if c.spent.Has(k) || serials[k] {
+				return fmt.Errorf("%w: takedown of %s (curator nonce %d)", ErrTakedownReplayed, t.Root, t.Auth.Nonce)
+			}
+			serials[k] = true
+		}
+		// The fee: a curated takedown on a network that requires publish tokens pays with one,
+		// checked exactly as a publish's is — the cheap spent check first, then the signatures.
+		if t.Auth == nil || c.tokenQuorum == 0 {
+			continue
+		}
+		tok := t.Auth.Token
+		if tok == nil {
+			return fmt.Errorf("%w: takedown of %s", ErrTokenRequired, t.Root)
+		}
+		if c.spent.Has(string(tok.Serial)) || serials[string(tok.Serial)] {
+			return fmt.Errorf("%w: %x", ErrTokenSpent, tok.Serial)
+		}
+		serials[string(tok.Serial)] = true
+		qualified := func(v ports.NodeID) bool { return c.attesterQualified(v) }
+		if err := publishtoken.Verify(*tok, c.tokenQuorum, c.issuerKey, qualified); err != nil {
+			return fmt.Errorf("chain: takedown of %s: %w", t.Root, err)
 		}
 	}
 	return nil
@@ -4279,20 +4323,33 @@ func (c *Chain) apply(b Block) {
 			c.rootCache.noteGrown(spaceSpent, e.Token.Serial, had, true)
 		}
 	}
-	for _, r := range b.Revocations {
-		_, had := c.revoked[r]
-		c.revoked[r] = true
-		c.rootCache.noteGrown(spaceRevoked, r[:], had, true)
-		c.revLog.Append(RevocationLeaf(RevOp, r, b.Height)) // append-only transparency record
-	}
-	// Un-revocations clear a prior takedown (validated as
-	// currently-revoked). delete rather than set-false so the map stays a
-	// clean set and adopt's pure-replay rebuild yields identical state.
-	for _, r := range b.Unrevocations {
-		_, had := c.revoked[r]
-		delete(c.revoked, r)
-		c.rootCache.noteGrown(spaceRevoked, r[:], had, false)
-		c.revLog.Append(RevocationLeaf(UnrevOp, r, b.Height)) // the reversal is logged too
+	// Takedowns, in log order: each sets or clears its listing (a curator's, keyed by
+	// (curator, root), or an older era's bare root) and appends its leaf to the append-only
+	// transparency log, which names the curator. Un-revocations delete rather than set false so
+	// the map stays a clean set and adopt's pure-replay rebuild yields identical state.
+	for _, t := range takedownOps(&b) {
+		_, had := c.revoked[t.Key]
+		if t.Op == RevOp {
+			c.revoked[t.Key] = true
+		} else {
+			delete(c.revoked, t.Key)
+		}
+		c.rootCache.noteGrown(spaceRevoked, t.Key[:], had, t.Op == RevOp)
+		c.revLog.Append(t.leaf(b.Height))
+		if t.Auth != nil {
+			// The authority is spent, so it cannot be replayed.
+			k := t.spentKey()
+			_, sh := c.spent.Get(string(k))
+			c.spent.Set(string(k), struct{}{})
+			c.rootCache.noteGrown(spaceSpent, k, sh, true)
+		}
+		if t.Auth != nil && t.Auth.Token != nil {
+			// The fee's serial is spent chain-wide, like a publish token's.
+			serial := t.Auth.Token.Serial
+			_, sh := c.spent.Get(string(serial))
+			c.spent.Set(string(serial), struct{}{})
+			c.rootCache.noteGrown(spaceSpent, serial, sh, true)
+		}
 	}
 	// Record on-chain bond registrations (objective validator set, F6). A
 	// height>0 registration was already VERIFIED by validateBondRegs (real

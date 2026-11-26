@@ -29,6 +29,11 @@ func TestHonouredTakedownCarriesAReceiptAnAuditorVerifies(t *testing.T) {
 	}
 	idA := identity.FromSeed(4881).NodeID().String()
 	idB := identity.FromSeed(4882).NodeID().String()
+	// The curators: each revoker signs its takedown with its own key. B follows two of them; the
+	// third (4885) lists a root too, and B must not honour it.
+	idCur1 := identity.FromSeed(4883).NodeID().String()
+	idCur2 := identity.FromSeed(4884).NodeID().String()
+	idUnfollowed := identity.FromSeed(4885).NodeID().String()
 	storeA, storeB := t.TempDir(), t.TempDir()
 	a := startDaemon(t, "takedown-A",
 		"-listen", "127.0.0.1:0", "-store", storeA,
@@ -43,7 +48,7 @@ func TestHonouredTakedownCarriesAReceiptAnAuditorVerifies(t *testing.T) {
 		"-listen", "127.0.0.1:0", "-store", storeB,
 		"-bootstrap", bootstrapA, "-validator",
 		"-objective=false", "-min-rep", "100", "-quorum", "1",
-		"-bond", "8M", "-bond-audit", "1s", "-honor-chain-revocations",
+		"-bond", "8M", "-bond-audit", "1s", "-honor-curators", idCur1+","+idCur2,
 		"-capacity", "1G", "-mdns=false", "-id-seed", "4882")
 	b.waitFor(t, reBootstrap, 20*time.Second)
 
@@ -91,16 +96,26 @@ func TestHonouredTakedownCarriesAReceiptAnAuditorVerifies(t *testing.T) {
 		d.waitFor(t, regexp.MustCompile(`proposed on-chain revocation of `+root), 60*time.Second)
 	}
 	reHonoured := func(root ports.Hash) *regexp.Regexp {
-		return regexp.MustCompile(`takedown: honoured root=` + root.String() + ` purged=(\d+) .*receipt=([A-Za-z0-9_-]+)`)
+		return regexp.MustCompile(`takedown: honoured root=` + root.String() + ` curator=(\S+) purged=(\d+) .*receipt=([A-Za-z0-9_-]+)`)
 	}
 
 	revoke("4883", h1.Root.String())
 	m1 := waitForInLog(t, filepath.Join(storeB, "debug.log"), reHonoured(h1.Root), 60*time.Second)
-	if m1[1] == "0" {
+	if m1[2] == "0" {
 		t.Fatal("the honouring operator held none of the revoked root, so its removal dropped nothing and the drill tests nothing")
 	}
+	if m1[1] != idCur1 {
+		t.Fatalf("the honoured takedown names curator %s, want %s", m1[1], idCur1)
+	}
+	// A curator B does not follow lists h2 FIRST; then a followed curator lists it. B honours in
+	// log order, so had it honoured the unfollowed listing its line would come first, naming 4885.
+	revoke("4885", h2.Root.String())
 	revoke("4884", h2.Root.String())
 	m2 := waitForInLog(t, filepath.Join(storeB, "debug.log"), reHonoured(h2.Root), 60*time.Second)
+	if m2[1] != idCur2 {
+		t.Fatalf("B honoured h2 on curator %s's listing; it follows only %s and %s (4885 is %s)", m2[1], idCur1, idCur2, idUnfollowed)
+	}
+	m1, m2 = m1[1:], m2[1:] // drop the curator: [purged, receipt] as below
 
 	// The auditor holds A's replica, not B's. Wait until it has the anchoring blocks.
 	verify := func(receipt string) (string, error) {
@@ -127,7 +142,7 @@ func TestHonouredTakedownCarriesAReceiptAnAuditorVerifies(t *testing.T) {
 	}
 
 	// The auditor can also derive the proof itself, and gets the operator's receipt.
-	out := runClient(t, "takedown-receipt", "-store", storeA, "-root", h1.Root.String())
+	out := runClient(t, "takedown-receipt", "-store", storeA, "-root", h1.Root.String(), "-curator", idCur1)
 	if got := regexp.MustCompile(`receipt: (\S+)`).FindStringSubmatch(out); got == nil || got[1] != m1[2] {
 		t.Fatalf("the auditor's own derivation differs from the operator's receipt:\n%s", out)
 	}

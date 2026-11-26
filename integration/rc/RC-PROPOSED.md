@@ -1103,6 +1103,17 @@ and others keep serving; no accepted operation removes more than one named root 
 identity; every honoured removal carries inclusion and consistency proofs.
 *integration → e2e → field.*
 
+*2026-11-26: takedowns are curator-signed and paid (owner decision: curator lists, a fee per
+takedown).* A current block's takedown carries its curator's signature and, where publishing needs
+a token, a token as the fee; the bare proposer takedown the September red team named ("any proposer
+revokes anything") is refused by the node and the floor box alike. Listings are per (curator, root);
+operators honour only the curators they follow (`-honor-curators`), and the log leaf and receipt
+name the curator. Evidence: `TestATakedownNeedsItsCuratorsSignature`, `TestListingsArePerCurator`,
+`TestATakedownReceiptNamesItsCurator`, `TestATakedownPaysAFee` (each red under its mutation), and
+`TestHonouredTakedownCarriesAReceiptAnAuditorVerifies`, where an unfollowed curator's listing of
+the same root is skipped. The field flow `12-chain-takedown` follows val-d as a named curator; it has
+not been re-run in the field since this change.
+
 *TWO OF THE THREE CLAUSES HAVE REAL EVIDENCE, UNATTRIBUTED.* `integration/takedown` PASSES at HEAD —
 after two product defects were found and fixed (a restart purge that swept a chunk index the async
 reload had not filled, so denied bytes stayed on disk; and a cold `AnnounceHeld` that re-advertised

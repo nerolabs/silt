@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
 	"errors"
@@ -96,8 +97,10 @@ func cmdDaemon(args []string) error {
 	dnsSeed := fs.String("dns-seed", "", "domain whose TXT records list bootstrap peers")
 	mdns := fs.Bool("mdns", true, "announce and discover peers on the local network (LAN multicast); needs a non-loopback -listen")
 	denylistPath := fs.String("denylist", "", "operator takedown list: a file of denied root hashes to refuse to store/serve (you choose which lists to honor)")
-	honorRevocations := fs.Bool("honor-chain-revocations", false, "SUBSCRIBE to the chain's on-chain takedowns (M0 F5): also deny roots a quorum has revoked on-chain. Default OFF — following the chain does not impose someone else's takedowns; honoring is a per-operator choice, proportional to who trusts you, never a global switch. The operator-local -denylist is always honored")
-	revokeRoot := fs.String("revoke", "", "as a validator, propose an on-chain takedown of this root hash once standing is earned and the root is committed (M0 F5: quorum-gated, existence-checked; honored only by nodes that -honor-chain-revocations)")
+	honorCuratorsFlag := fs.String("honor-curators", "", "comma-separated curator IDs whose on-chain takedowns this node honours (drops and refuses the roots they list); \"self\" names this node. Anyone can be a curator, and each takedown names its curator and pays a fee, so following one is a choice of whose judgment to trust. Default: none — following the chain imposes no one's takedowns. The operator-local -denylist is always honoured")
+	honorRevocations := fs.Bool("honor-chain-revocations", false, "honour takedowns committed before curators existed (older chain eras only, which name no curator); on a current chain use -honor-curators")
+	revokeRoot := fs.String("revoke", "", "as a validator, list this root hash for takedown on chain once it is committed, signed by the curator key (-curator-key, default this node) and paid with a publish token where publishing needs one; honoured only by nodes that follow that curator (-honor-curators)")
+	curatorKey := fs.String("curator-key", "", "identity file (PEM, as `silt id` mints) whose key signs -revoke takedowns as their curator; default this node's own identity")
 	validator := fs.Bool("validator", false, "keep a chain replica and take part in consensus")
 	floorBox := fs.Bool("floor-box", false, "FLOOR BOX: validate by PROOF instead of by replica — keep no chain, no registry and no state tree, and judge a block against witnesses pulled from nodes that do hold one (-witness-from). This is the posture VISION calls settled for the smallest box: a semi-stateless witness-validating full validator, the same security as a tree-holding node with a narrower self-sufficiency. Its liveness rests on at least ONE reachable honest witness provider from an open, un-permissioned tier — any archival or pruning node may serve — and never on a particular one; its SAFETY rests on nothing above it, because every witness is checked against a root the box already holds, so a provider that lies, omits or vanishes produces a STALL and never an acceptance. WHAT IT DOES TODAY, stated narrowly: anchored on the operator's -ws-checkpoint (required), it judges the block above that checkpoint and reports the verdict — ACCEPTED or REFUSED exactly as a tree-holding node would decide it, or a STALL where it cannot see. It does NOT follow the chain and does NOT attest: it adopts nothing it judged and never advances its own head. Refused together with -validator: this node keeps a replica or it does not")
 	floorBoxInterval := fs.Duration("floor-box-interval", 10*time.Second, "FLOOR BOX: how often to re-anchor and audit the block above the anchor. A liveness cadence, not a security parameter — the box's verdict is the same at any setting, because nothing it reads is trusted on a clock. Lower it on a fast local swarm so a verdict appears in seconds")
@@ -1386,7 +1389,16 @@ func cmdDaemon(args []string) error {
 		}
 		if *honorRevocations {
 			nd.SetHonorChainRevocations(true) // per-operator opt-in (F5); default OFF
-			fmt.Println("takedowns: honoring on-chain revocations (per-operator subscription, F5)")
+			fmt.Println("takedowns: honoring pre-curator on-chain revocations (per-operator subscription, F5)")
+		}
+		if *honorCuratorsFlag != "" {
+			curators, cerr := parseCurators(*honorCuratorsFlag, id)
+			if cerr != nil {
+				fmt.Fprintln(os.Stderr, "-honor-curators:", cerr)
+				os.Exit(2)
+			}
+			nd.SetHonorCurators(curators)
+			fmt.Printf("takedowns: honouring the on-chain takedowns of %d curator(s): %s\n", len(curators), strings.TrimSpace(*honorCuratorsFlag))
 		}
 		if sz, perr := parseSize(*bondSize); perr == nil && sz > 0 {
 			if nd.EnableBond(ident.Signer(), sz) {
@@ -2311,19 +2323,47 @@ func cmdDaemon(args []string) error {
 						// immediately — it polls until the root is committed on-chain and
 						// this validator has standing to gather a quorum. Without this a
 						// bogus/uncommitted root leaves the daemon silently inert.
-						fmt.Printf("revoke: target %s — waiting until it is committed on-chain and this validator has standing to gather a takedown quorum\n", root)
+						curator := ident.Signer()
+						if *curatorKey != "" {
+							ck, kerr := identity.Load(*curatorKey)
+							if kerr != nil {
+								fmt.Fprintln(os.Stderr, "-curator-key:", kerr)
+								os.Exit(2)
+							}
+							curator = ck.Signer()
+						}
+						fmt.Printf("revoke: target %s, curator %s — waiting until it is committed on-chain and this validator has standing to gather a takedown quorum\n",
+							root, ports.HashBytes(curator.Public().(ed25519.PublicKey)))
 						sawCommitted := false
+						var fee *ports.PublishToken // acquired once, reused across quorum retries
 						var tryRevoke func()
 						tryRevoke = func() {
-							if _, ok := nd.Chain().LookupRoot(root); !ok {
+							ch := nd.Chain()
+							if _, ok := ch.LookupRoot(root); !ok {
 								clk.AfterFunc(2*ports.Second, tryRevoke) // root not committed yet
 								return
+							}
+							if ch.Listed(chain.Listing{Curator: ports.HashBytes(curator.Public().(ed25519.PublicKey)), Root: root}) {
+								fmt.Printf("takedown: proposed on-chain revocation of %s (this curator's listing is live)\n", root)
+								return // committed, perhaps by an attempt whose reply was lost
 							}
 							if !sawCommitted {
 								sawCommitted = true
 								fmt.Printf("revoke: %s is committed — gathering a takedown quorum\n", root)
 							}
-							nd.ProposeRevocation([]ports.Hash{root}, attesterIDs, attesterIDs, *quorum, func(err error) {
+							if k := ch.TokenQuorum(); k > 0 && fee == nil {
+								acquirePublishToken(nd, ch.CanonicalIssuers(canonicalIssuers), k, nil, func(t *ports.PublishToken, terr error) {
+									if terr != nil {
+										fmt.Printf("revoke: no fee token yet (%v); retrying\n", terr)
+									}
+									fee = t
+									clk.AfterFunc(2*ports.Second, tryRevoke)
+								})
+								return
+							}
+							auth := chain.SignTakedown(curator, ch.ChainID(), chain.RevOp, root, uint64(time.Now().UnixNano())) // a fresh nonce per listing
+							auth.Token = fee
+							nd.ProposeRevocation([]ports.Hash{root}, []chain.TakedownAuth{auth}, attesterIDs, attesterIDs, *quorum, func(err error) {
 								if err != nil {
 									clk.AfterFunc(2*ports.Second, tryRevoke) // no quorum yet; retry
 									return
@@ -3066,3 +3106,28 @@ func parseCheckpoint(s string) (uint64, ports.Hash, error) {
 // Four MiB leaves room for an ordinary block's payload proofs and the whole-set pre-images the
 // state-root recompute folds, well inside the 2 GiB the declared floor spec allows.
 const floorBoxWitnessBudgetBytes = 4 << 20
+
+// parseCurators reads -honor-curators: comma-separated curator IDs (hex), where "self" names this
+// node.
+func parseCurators(s string, self ports.NodeID) ([]ports.NodeID, error) {
+	var out []ports.NodeID
+	for _, f := range strings.Split(s, ",") {
+		f = strings.TrimSpace(f)
+		switch f {
+		case "":
+			continue
+		case "self":
+			out = append(out, self)
+			continue
+		}
+		id, err := ports.ParseHash(f)
+		if err != nil {
+			return nil, fmt.Errorf("%q is not a curator ID: %w", f, err)
+		}
+		out = append(out, id)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("names no curator")
+	}
+	return out, nil
+}

@@ -104,6 +104,7 @@ func (w *parityWorld) mint(version uint64, proposer ed25519.PrivateKey, attester
 	if mutate != nil {
 		mutate(b)
 	}
+	curateTakedowns(b, w.c.ChainID()) // a v5 takedown carries its curator's authority; v4's stay bare
 	// TWO PASSES for the roots. A v4 block's post-apply state includes the seating write from
 	// b.Atts (validatorsSeen — the era-3 transition input that is NOT hash-covered, the
 	// defect), so its roots depend on WHO attests, while the attestations sign the hash that

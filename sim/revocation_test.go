@@ -114,7 +114,7 @@ func proposeEntry(n *node.Node, e ports.Entry, attesters, broadcast []ports.Node
 func proposeRevocation(n *node.Node, roots []ports.Hash, attesters, broadcast []ports.NodeID, quorum int, sched *simclock.Scheduler) error {
 	var err error
 	done := false
-	n.ProposeRevocation(roots, attesters, broadcast, quorum, func(e error) { err, done = e, true })
+	n.ProposeRevocation(roots, nil, attesters, broadcast, quorum, func(e error) { err, done = e, true })
 	sched.Run()
 	if !done {
 		return errNotDone

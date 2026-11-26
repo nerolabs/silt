@@ -93,9 +93,12 @@ func coldAuditorClasses() []coldAuditorClass {
 			// size Resolves from the parent's committed StateRoot, the extension verifies, and the
 			// block is ACCEPTED like the entries class. With it they are the arms whose divergent
 			// root is refused by the recompute itself rather than by witness starvation.
+			// The fixture's h2 already lists this root under testCurator, so a SECOND curator lists
+			// it here: listings are per (curator, root), and this block carries its own authority.
 			name: "revocations", blockField: "Revocations", nodeAccept: true,
 			mutate: func(t *testing.T, f structFixture, b *Block) {
 				b.Revocations = []ports.Hash{entry(1).Root} // the root the fixture committed at h1
+				b.TakedownAuths = []TakedownAuth{SignTakedown(secondCurator, f.c.ChainID(), RevOp, entry(1).Root, nextNonce())}
 			},
 			wantAccept: true,
 		},
@@ -155,6 +158,7 @@ func coldAuditorClasses() []coldAuditorClass {
 // table does not drive it. The coverage meta-test requires the union to be EXACTLY Block's
 // exported fields, so a new payload field reddens rather than silently escaping the suite.
 var coldAuditorUndriven = map[string]string{
+	"TakedownAuths": "rides the revocations and unrevocations classes, which populate it (one authority per takedown); it is never populated alone, and a block carrying it with no takedown is refused structurally (checkTakedownAuthority) before any state read",
 	// The Height row is written the way it is because its FIRST version was the coverage hole this
 	// list exists to prevent. It said "P1 binds it to the box's OWN head before any other read",
 	// which is measurably false — the budget check, the recovery decision and the pruned refusal all

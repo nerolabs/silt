@@ -549,7 +549,7 @@ var nodeBodyDigests = map[string]string{
 	"validateEra4Version":        "9a1a52aa6d4d5182afddeae6b3b3da3fb6b1b93e1a517b6b026c687afd33edac",
 	"validateIssuerKeys":         "801f04536b8794a5fca36adb65e76c58589c677da378e42da613fed6af75f324",
 	"validateSlashes":            "f25ef6ac451e5ebdc983c76c737866c068ac0d1dad383f9491138fa2730be65a",
-	"validateTakedowns":          "b1e55b6425c6d1b6c32d4963551aa52405a71fc736be0d11dde2403b95025928",
+	"validateTakedowns":          "fd89ef0deb83674650e17fe35c3bb74d12480e1b4ca4a85a57436a41d4180c18",
 	"validatorSetSize":           "393c775422214e528015d9833602d1ee7b6a58e4e5da45c2f339d604f4aae919",
 }
 

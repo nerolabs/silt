@@ -36,10 +36,14 @@ in particular:
 - **Publishing** a file's identifier to the registry requires a quorum
   of validators whose reputation is *earned* (passed storage audits,
   bytes served) — not bought, not granted.
-- **Takedown** of a published identifier uses the *same* quorum: an
-  append-only revocation record that every replica applies and no single
-  node can force. Removing content is exactly as governed as adding it,
-  and just as auditable.
+- **Takedown** of a published identifier is a *curator's* signed
+  listing, paid for with the same token a publish costs and committed
+  through the same quorum: an append-only record, naming its curator,
+  that every replica applies and no single node can force. Anyone can be
+  a curator; each operator chooses which curators to follow
+  (`-honor-curators`), and a node following none honours no on-chain
+  takedown. Removing content is exactly as governed as adding it, and
+  just as auditable.
 - **Operators additionally choose** which local denylists to honor —
   their jurisdiction's, a trusted third party's — the way every network
   operator chooses which blocklists to run. The project supplies none of

@@ -80,7 +80,8 @@ func (f structFixture) mkBlock(t *testing.T, mutate func(*Block)) Block {
 	if mutate != nil {
 		mutate(b)
 	}
-	setBlockDigests(b) // an honest v5 proposer commits Answer/Slashes by digest before signing
+	curateTakedowns(b, f.c.ChainID()) // a v5 takedown carries its curator's authority
+	setBlockDigests(b)                // an honest v5 proposer commits Answer/Slashes by digest before signing
 	state, log, err := f.c.postApplyRoots(*b)
 	if err != nil {
 		t.Fatalf("postApplyRoots: %v", err)

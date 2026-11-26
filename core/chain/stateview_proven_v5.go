@@ -475,12 +475,10 @@ func (v provenView) logExtends(b *Block, k int) (FloorBoxOutcome, error) {
 // of the same root each contribute an entry, unlike the STATE write-set which nets them.
 // TestRevocationLogLeavesMirrorsApply pins the derivation against a real apply.
 func revocationLogLeaves(b *Block) []ports.Hash {
-	out := make([]ports.Hash, 0, len(b.Revocations)+len(b.Unrevocations))
-	for _, r := range b.Revocations {
-		out = append(out, RevocationLeaf(RevOp, r, b.Height))
-	}
-	for _, r := range b.Unrevocations {
-		out = append(out, RevocationLeaf(UnrevOp, r, b.Height))
+	ops := takedownOps(b)
+	out := make([]ports.Hash, 0, len(ops))
+	for _, t := range ops {
+		out = append(out, t.leaf(b.Height))
 	}
 	return out
 }

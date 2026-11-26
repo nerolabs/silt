@@ -35,15 +35,15 @@ func commitV4(t *testing.T, c *Chain, prop ed25519.PrivateKey, b *Block) {
 func TestRevocationReceiptProvesInclusionAndConsistency(t *testing.T) {
 	c, prop := era3ValidityChain(t) // height 2 revokes entry(1) in a v1 block: no LogRoot
 
-	if _, err := c.RevocationReceiptFor(entry(1).Root); !errors.Is(err, ErrNoLogRoot) {
+	if _, err := c.RevocationReceiptFor(Listing{Root: entry(1).Root}); !errors.Is(err, ErrNoLogRoot) {
 		t.Fatalf("a revocation no block's LogRoot commits yet has no receipt, got %v", err)
 	}
-	if _, err := c.RevocationReceiptFor(entry(9).Root); !errors.Is(err, ErrNotRevoked) {
+	if _, err := c.RevocationReceiptFor(Listing{Root: entry(9).Root}); !errors.Is(err, ErrNotRevoked) {
 		t.Fatalf("an unrevoked root has no receipt, got %v", err)
 	}
 
 	commitV4(t, c, prop, &Block{Entries: []ports.Entry{entry(9)}}) // height 3
-	first, err := c.RevocationReceiptFor(entry(1).Root)
+	first, err := c.RevocationReceiptFor(Listing{Root: entry(1).Root})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestRevocationReceiptProvesInclusionAndConsistency(t *testing.T) {
 	}
 
 	commitV4(t, c, prop, &Block{Revocations: []ports.Hash{entry(9).Root}}) // height 4
-	second, err := c.RevocationReceiptFor(entry(9).Root)
+	second, err := c.RevocationReceiptFor(Listing{Root: entry(9).Root})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestReceiptFromBlocksMatchesTheChainAndCatchesAnEditedReplica(t *testing.T)
 	commitV4(t, c, prop, &Block{Entries: []ports.Entry{entry(9)}})
 	commitV4(t, c, prop, &Block{Revocations: []ports.Hash{entry(9).Root}})
 
-	want, err := c.RevocationReceiptFor(entry(9).Root)
+	want, err := c.RevocationReceiptFor(Listing{Root: entry(9).Root})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,21 +119,21 @@ func TestReceiptFromBlocksMatchesTheChainAndCatchesAnEditedReplica(t *testing.T)
 		t.Fatal(err)
 	}
 	blocks := c.Blocks(0)
-	got, err := ReceiptFromBlocks(blocks, entry(9).Root, 1)
+	got, err := ReceiptFromBlocks(blocks, Listing{Root: entry(9).Root}, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(EncodeReceipt(got)) != string(EncodeReceipt(want)) {
 		t.Fatalf("the auditor's receipt differs from the chain's:\n got %+v\nwant %+v", got, want)
 	}
-	if _, err := ReceiptFromBlocks(blocks, entry(0).Root, 0); !errors.Is(err, ErrNotRevoked) {
+	if _, err := ReceiptFromBlocks(blocks, Listing{Root: entry(0).Root}, 0); !errors.Is(err, ErrNotRevoked) {
 		t.Fatalf("an unrevoked root has no receipt, got %v", err)
 	}
 
 	// Edit the replica after the fact: drop the first takedown from its block.
 	edited := append([]Block(nil), blocks...)
 	edited[2].Revocations = nil
-	if _, err := ReceiptFromBlocks(edited, entry(9).Root, 0); err == nil {
+	if _, err := ReceiptFromBlocks(edited, Listing{Root: entry(9).Root}, 0); err == nil {
 		t.Fatal("a replica with a takedown erased from its history still proved its record")
 	}
 }

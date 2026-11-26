@@ -19,9 +19,18 @@ import (
 // sets it true; the effect is then "proportional to who trusts you" (TENETS
 // §9), the same voluntary, per-operator stance as the local denylist — never
 // a global switch that every chain-follower inherits.
+//
+// Curators names the curators this reader follows (curator.go): a root any of them lists is taken
+// down for this reader. HonorRevocations covers only takedowns committed before curators existed,
+// which name no one.
 type ReplicaRegistry struct {
 	C                *Chain
 	HonorRevocations bool
+	Curators         []ports.NodeID
+}
+
+func (r ReplicaRegistry) takenDown(root ports.Hash) bool {
+	return (r.HonorRevocations && r.C.Revoked(root)) || r.C.ListedBy(root, r.Curators)
 }
 
 var _ ports.Registry = ReplicaRegistry{}
@@ -31,7 +40,7 @@ func (r ReplicaRegistry) Publish(context.Context, ports.Entry) error {
 }
 
 func (r ReplicaRegistry) Lookup(_ context.Context, root ports.Hash) (ports.Entry, bool, error) {
-	if r.HonorRevocations && r.C.Revoked(root) {
+	if r.takenDown(root) {
 		return ports.Entry{}, false, nil // taken down for THIS subscribing reader
 	}
 	e, ok := r.C.LookupRoot(root)
@@ -40,12 +49,12 @@ func (r ReplicaRegistry) Lookup(_ context.Context, root ports.Hash) (ports.Entry
 
 func (r ReplicaRegistry) All(context.Context) ([]ports.Entry, error) {
 	all := r.C.AllEntries()
-	if !r.HonorRevocations {
+	if !r.HonorRevocations && len(r.Curators) == 0 {
 		return all, nil
 	}
 	kept := all[:0]
 	for _, e := range all {
-		if !r.C.Revoked(e.Root) {
+		if !r.takenDown(e.Root) {
 			kept = append(kept, e)
 		}
 	}

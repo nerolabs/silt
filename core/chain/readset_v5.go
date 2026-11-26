@@ -372,8 +372,33 @@ func (c *Chain) readSetTakedowns(b Block, acc *readSetAcc) {
 			acc.addPresent(tagByRoot, r[:], statehash.Present)
 		}
 	}
-	for _, r := range b.Unrevocations {
-		acc.addPresent(tagRevoked, r[:], statehash.Present)
+	// The listings a block's takedowns read: an un-revocation's must be present, and a curator's
+	// new listing must be absent (the already-listed check). A fee token's serial is read too.
+	for _, t := range takedownOps(&b) {
+		switch {
+		case t.Op == UnrevOp:
+			acc.addPresent(tagRevoked, t.Key[:], statehash.Present)
+		case t.Auth != nil:
+			if c.revoked[t.Key] {
+				acc.addPresent(tagRevoked, t.Key[:], statehash.Present)
+			} else {
+				acc.addAbsent(tagRevoked, t.Key[:])
+			}
+		}
+		if t.Auth != nil {
+			if k := t.spentKey(); c.spent.Has(string(k)) {
+				acc.addPresent(tagSpent, k, statehash.Present)
+			} else {
+				acc.addAbsent(tagSpent, k)
+			}
+		}
+		if t.Auth != nil && t.Auth.Token != nil {
+			if c.spent.Has(string(t.Auth.Token.Serial)) {
+				acc.addPresent(tagSpent, []byte(t.Auth.Token.Serial), statehash.Present)
+			} else {
+				acc.addAbsent(tagSpent, []byte(t.Auth.Token.Serial))
+			}
+		}
 	}
 	// The committed revocation-log SIZE (tagRevLogSize, freeze-manifest item 1). A block that
 	// touches the log moves that scalar by k = len(Revocations)+len(Unrevocations), and the

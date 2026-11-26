@@ -1181,6 +1181,9 @@ type Node struct {
 	// honorChainRevocations opts this operator in to enforcing the chain's
 	// on-chain takedown records (default off — per-operator, not global; F5).
 	honorChainRevocations bool
+	// honorCurators are the takedown curators this operator follows (SetHonorCurators): a root
+	// any of them lists on chain is dropped and refused here.
+	honorCurators []ports.NodeID
 
 	// lg narrates through the observability port; nil = off. The sim
 	// leaves it nil, so determinism and benchmarks are untouched.

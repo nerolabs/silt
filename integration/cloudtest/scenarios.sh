@@ -2087,7 +2087,7 @@ flow_unlinkability() {
 }
 
 # ── Flow 12: an on-chain takedown, honoured with a receipt an auditor verifies ───
-# val-d proposes the takedown; val-c, the only node subscribed to on-chain takedowns,
+# val-d proposes the takedown as its own curator; val-c, the only node following that curator,
 # drops the root's held bytes and logs the removal with its receipt; val-b, holding
 # its OWN replica, verifies that receipt, derives the same one itself, and refuses a
 # forged copy; fetch-1, which never subscribed, still fetches the root bit-perfect.
@@ -2101,8 +2101,11 @@ flow_chain_takedown() {
   root="$(b64url_to_hex "$(printf '%s' "$link" | cut -d: -f3)")"
   if [ ${#root} -ne 64 ]; then record "12-chain-takedown" gap minor "could not decode a 64-hex root from $link"; return; fi
 
+  local curator
+  curator="$(ssh_node val-d "/usr/local/bin/silt id -store /var/lib/silt 2>/dev/null | head -1" 2>/dev/null | tr -d '[:space:]' || true)"
+  if [ ${#curator} -ne 64 ]; then record "12-chain-takedown" gap minor "could not read val-d's curator ID (silt id said '${curator}')"; return; fi
   local t0; t0="$(date +%s)"
-  relaunch_with val-c "-honor-chain-revocations"
+  relaunch_with val-c "-honor-curators $curator"
   relaunch_with val-d "-revoke $root"
   local prop
   prop="$(waitfor_since val-d "takedown: proposed on-chain revocation of $root" "$t0" 600 || true)"
@@ -2136,7 +2139,7 @@ flow_chain_takedown() {
     sleep 5
   done
   local derived same=0
-  derived="$(ssh_node val-b "/usr/local/bin/silt takedown-receipt -store /var/lib/silt -root $root 2>&1" 2>/dev/null | grep -oE '^receipt: \S+' | cut -d' ' -f2)"
+  derived="$(ssh_node val-b "/usr/local/bin/silt takedown-receipt -store /var/lib/silt -root $root -curator $curator 2>&1" 2>/dev/null | grep -oE '^receipt: \S+' | cut -d' ' -f2)"
   [ -n "$derived" ] && [ "$derived" = "$receipt" ] && same=1
   local forged fout forged_refused=0
   forged="$(python3 - "$receipt" "$root" <<'PY'

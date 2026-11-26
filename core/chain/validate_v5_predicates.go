@@ -250,24 +250,91 @@ func v5RequireProposerQualified(v StateView, b *Block) (FloorBoxOutcome, error) 
 // P6 takedowns, P8 slashes, P8b issuer keys, P9 entries, P10/P11 era versions
 // ---------------------------------------------------------------------------
 
-// v5ValidateTakedowns mirrors Chain.validateTakedowns.
+// v5ValidateTakedowns mirrors Chain.validateTakedowns: the shared authority check, then each
+// takedown against the witnessed state — the root exists, the curator's listing is or is not
+// present, and the fee token is unspent and signed by the issuer quorum.
 func v5ValidateTakedowns(v StateView, b *Block) (FloorBoxOutcome, error) {
-	for _, r := range b.Revocations {
-		committed, av := v.ByRoot(r)
-		if av == NoWitness {
-			return IndeterminateTrustlessly, stall("byRoot[" + r.String() + "]")
-		}
-		if !committed {
-			return Reject, fmt.Errorf("%w: %s", ErrRevokeUnknownRoot, r)
+	if err := checkTakedownAuthority(b, v.Head().ChainID); err != nil {
+		return Reject, err
+	}
+	p := v.Params()
+	serials := map[string]bool{}
+	for _, e := range b.Entries {
+		if e.Token != nil {
+			serials[string(e.Token.Serial)] = true
 		}
 	}
-	for _, r := range b.Unrevocations {
-		revoked, av := v.Revoked(r)
-		if av == NoWitness {
-			return IndeterminateTrustlessly, stall("revoked[" + r.String() + "]")
+	for _, t := range takedownOps(b) {
+		switch t.Op {
+		case RevOp:
+			committed, av := v.ByRoot(t.Root)
+			if av == NoWitness {
+				return IndeterminateTrustlessly, stall("byRoot[" + t.Root.String() + "]")
+			}
+			if !committed {
+				return Reject, fmt.Errorf("%w: %s", ErrRevokeUnknownRoot, t.Root)
+			}
+			if t.Auth != nil {
+				listed, av := v.Revoked(t.Key)
+				if av == NoWitness {
+					return IndeterminateTrustlessly, stall("revoked[" + t.Key.String() + "]")
+				}
+				if listed {
+					return Reject, fmt.Errorf("%w: %s", ErrAlreadyListed, t.Root)
+				}
+			}
+		case UnrevOp:
+			revoked, av := v.Revoked(t.Key)
+			if av == NoWitness {
+				return IndeterminateTrustlessly, stall("revoked[" + t.Key.String() + "]")
+			}
+			if !revoked {
+				return Reject, fmt.Errorf("%w: %s", ErrUnrevokeNotRevoked, t.Root)
+			}
 		}
-		if !revoked {
-			return Reject, fmt.Errorf("%w: %s", ErrUnrevokeNotRevoked, r)
+		if t.Auth != nil {
+			k := t.spentKey()
+			used, av := v.Spent(k)
+			if av == NoWitness {
+				return IndeterminateTrustlessly, stall(fmt.Sprintf("spent[%x]", k))
+			}
+			if used || serials[string(k)] {
+				return Reject, fmt.Errorf("%w: takedown of %s (curator nonce %d)", ErrTakedownReplayed, t.Root, t.Auth.Nonce)
+			}
+			serials[string(k)] = true
+		}
+		if t.Auth == nil || p.TokenQuorum == 0 {
+			continue
+		}
+		tok := t.Auth.Token
+		if tok == nil {
+			return Reject, fmt.Errorf("%w: takedown of %s", ErrTokenRequired, t.Root)
+		}
+		spent, av := v.Spent(tok.Serial)
+		if av == NoWitness {
+			return IndeterminateTrustlessly, stall(fmt.Sprintf("spent[%x]", tok.Serial))
+		}
+		if spent || serials[string(tok.Serial)] {
+			return Reject, fmt.Errorf("%w: %x", ErrTokenSpent, tok.Serial)
+		}
+		serials[string(tok.Serial)] = true
+		var stallErr error
+		qualified := func(id ports.NodeID) bool {
+			ok, out, err := v5AttesterQualifiedAt(v, id, 0)
+			if out != Accept {
+				if stallErr == nil {
+					stallErr = err
+				}
+				return false
+			}
+			return ok
+		}
+		err := publishtoken.Verify(*tok, p.TokenQuorum, p.IssuerKey, qualified)
+		if stallErr != nil {
+			return IndeterminateTrustlessly, stallErr
+		}
+		if err != nil {
+			return Reject, fmt.Errorf("chain: takedown of %s: %w", t.Root, err)
 		}
 	}
 	return Accept, nil

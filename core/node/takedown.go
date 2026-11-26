@@ -11,6 +11,7 @@ import (
 // it was the network's committed takedown and not this operator's own invention.
 type TakedownRecord struct {
 	Root    ports.Hash
+	Curator ports.NodeID            // who listed it; zero for a takedown from before curators
 	Purged  int                     // held chunks dropped
 	Receipt chain.RevocationReceipt // zero when Err is set
 	Err     string                  // why no receipt could be produced or verified
@@ -29,7 +30,7 @@ func (n *Node) Takedowns() []TakedownRecord { return append([]TakedownRecord(nil
 // It costs one comparison when no revocation was committed: the revocation log's
 // size against the size this node last honoured.
 func (n *Node) honourTakedowns() {
-	if !n.honorChainRevocations || n.chain == nil {
+	if (!n.honorChainRevocations && len(n.honorCurators) == 0) || n.chain == nil {
 		return
 	}
 	size := uint64(n.chain.RevocationLogSize())
@@ -45,13 +46,14 @@ func (n *Node) honourTakedowns() {
 		n.takedownLogSeen = size
 		return
 	}
-	for _, root := range n.chain.RevocationsSince(n.takedownLogSeen) {
-		if !n.chain.Revoked(root) {
-			continue // reversed by a later block in the same catch-up
+	for _, l := range n.chain.RevocationsSince(n.takedownLogSeen) {
+		if !n.honours(l) || !n.chain.Listed(l) {
+			continue // a curator this operator does not follow, or lifted later in the same catch-up
 		}
+		root := l.Root
 		purged := n.purgeRoot(root)
-		rec := TakedownRecord{Root: root, Purged: purged}
-		r, err := n.chain.RevocationReceiptFor(root)
+		rec := TakedownRecord{Root: root, Curator: l.Curator, Purged: purged}
+		r, err := n.chain.RevocationReceiptFor(l)
 		if err == nil {
 			err = n.chain.ExtendFrom(&r, n.takedownReceiptSize)
 		}
@@ -64,7 +66,7 @@ func (n *Node) honourTakedowns() {
 		} else {
 			rec.Receipt = r
 			n.takedownReceiptSize = r.Size
-			n.logf(ports.LogInfo, "takedown: honoured", "root", root, "purged", purged,
+			n.logf(ports.LogInfo, "takedown: honoured", "root", root, "curator", l.Curator, "purged", purged,
 				"revoked_at", r.Height, "log_index", r.Index, "log_size", r.Size, "anchor", r.At,
 				"receipt", base64.RawURLEncoding.EncodeToString(chain.EncodeReceipt(r)))
 		}

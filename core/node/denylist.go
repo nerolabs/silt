@@ -12,6 +12,7 @@
 package node
 
 import (
+	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/core/denylist"
 	"github.com/nerolabs/silt/ports"
 )
@@ -37,6 +38,31 @@ func (n *Node) SetHonorChainRevocations(honor bool) {
 	}
 }
 
+// SetHonorCurators makes this node honour the on-chain takedowns of the named curators, and only
+// theirs (chain/curator.go). Anyone can be a curator, so following one is a choice of whose
+// judgment to trust; a node following none honours no on-chain takedown. As with
+// SetHonorChainRevocations, honouring runs forward from here.
+func (n *Node) SetHonorCurators(curators []ports.NodeID) {
+	n.honorCurators = append([]ports.NodeID(nil), curators...)
+	if len(curators) > 0 && n.chain != nil {
+		n.takedownLogSeen = uint64(n.chain.RevocationLogSize())
+	}
+}
+
+// honours reports whether this operator follows the listing's curator (a zero curator is a
+// takedown from before curators, honoured under SetHonorChainRevocations).
+func (n *Node) honours(l chain.Listing) bool {
+	if l.Curator == (ports.NodeID{}) {
+		return n.honorChainRevocations
+	}
+	for _, c := range n.honorCurators {
+		if c == l.Curator {
+			return true
+		}
+	}
+	return false
+}
+
 // isDenied is the node's effective takedown check: the operator's local list
 // (always), plus — only if the operator has subscribed — the roots its chain
 // replica has committed as revoked. Neither source is controlled by any
@@ -45,7 +71,10 @@ func (n *Node) isDenied(root ports.Hash) bool {
 	if n.denylist.Denied(root) {
 		return true
 	}
-	return n.honorChainRevocations && n.chain != nil && n.chain.Revoked(root)
+	if n.chain == nil {
+		return false
+	}
+	return (n.honorChainRevocations && n.chain.Revoked(root)) || n.chain.ListedBy(root, n.honorCurators)
 }
 
 // WouldDeny reports this node's EFFECTIVE, per-operator takedown decision for
