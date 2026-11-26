@@ -532,10 +532,35 @@ structurally, so the run confirmed a green local integration rather than discove
 `go test -timeout 40m ./...` (what `release.yml` runs); its 1M-element fold-cost MEASUREMENT rung
 exceeds Go's default 10m timeout, which is a property of the invocation, not a defect.
 
-**6. The claims the adversary receives exist as an artifact.** ⚠ *written, not yet cold-read*
+**6. The claims the adversary receives exist as an artifact.** ⚠ *cold-read 2026-11-26 by a blind adversary, which denied claims 1 and 3; fixes in flight*
 *Done:* an in-repo statement of the three denials in checkable form, written so a cold reader
 can construct attacks from it. `ADVERSARY.md`, at the repository root.
 *Evidence:* a cold read — by someone who has not read this list.
+
+*THE COLD READ, 2026-11-26.* A blind Claude adversary, given only the repository and this
+artifact's instructions — not this list's rationale — attacked the three claims at main `2ff8f640`
+and returned:
+
+| claim | verdict | how |
+|---|---|---|
+| 1, privacy | **DENIED** | (a) a validator's own UI publish handed the entry to every other validator with `SubmitEntry`, from its durable bonded identity; (b) every serving node keeps a `(server, fetcher, root)` provisional lane in memory (`core/credit/delivery.go`), a who-fetched-what record |
+| 2, accountability | UPHELD, incomplete | no forgery of the log's proofs and no identity-level operation found; the storage-plane second pass was stopped partway and is owed |
+| 3, Sybil | **DENIED** on "no quiet capture" | a validator's `Domain` is self-declared, so one operator with 24 equal bonds and 24 invented domains measures as four operators and trips the one-way latch (`TestRedteamOneOperatorTripsMaturityLatch`, kept in the red team's worktree) |
+
+What it said about this artifact, cold: "artifact silt writes" does not say whether process memory
+counts; "the bonded identity that paid" does not fit the token path, where a throwaway identity
+pays; "operation" does not say block or log entry; "curator" maps to nothing in the code (there is
+one chain-wide revocation list and an operator's on/off flag); and the artifact does not name the
+configuration under test — under the shipped defaults tokens are not required, the faucet is
+unlimited, chain revocations are not honoured and `-mature-validators` is 0. Claim 3's second half
+is stated unconditionally here, while `VISION.md` states it as a conditional theorem bounded by the
+adversary's bonded budget; the attack above spent three times that budget.
+
+Fixes in flight: (1a) the validator's own publish now reaches the validators from the publish
+client's throwaway identity (`TestForwardedEntryReachesNoValidatorUnderTheValidatorsIdentity`); the
+daemon's `-mature-validators` help no longer claims more than the measure does. Open: (1b) the lane
+record, (3) a diversity signal that is not self-declared — which is item 2's unwired axis — and the
+artifact's wording on the conditional, the curator model and the configuration under test.
 
 *CLAIMS IN, GAPS OUT — the owner ruled this 2026-09-15, and it amended this item.* The
 done-condition used to read "plus what is out of scope". It no longer does. Handing the grader a
