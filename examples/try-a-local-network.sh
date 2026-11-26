@@ -29,8 +29,8 @@ else
   SILT="$REPO/silt"
 fi
 
-W="${SILT_TRY_DIR:-$(mktemp -d -t silt-try)}"
-mkdir -p "$W"
+W="${SILT_TRY_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/silt-try.XXXXXX")}"
+[ -n "$W" ] && mkdir -p "$W" || { echo "could not create a scratch directory"; exit 1; }
 PIDS=()
 cleanup() { for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null; done; wait 2>/dev/null; }
 trap cleanup EXIT INT TERM
