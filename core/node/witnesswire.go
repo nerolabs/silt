@@ -155,6 +155,7 @@ func (n *Node) serveWitness(msg ports.Message) ports.Message {
 	// A box names one head for the whole of one validation, and this node keeps committing under
 	// it; serving from the current head instead would mix two states into one judgement, and
 	// refusing outright would make a box on a live chain re-anchor forever.
+	n.witnessFollowedAt = n.clock.Now() // a box is following: retain heads as they commit
 	p, ok := n.witnessProviders.For(n.chain, req.Head)
 	if !ok {
 		return deny()
@@ -245,3 +246,17 @@ func witnessFromProof(proof []byte) (statehash.Witness, error) {
 
 // compile-time: the serving side answers exactly the seam the box reads through.
 var _ chain.WitnessSource = (*chain.WitnessProvider)(nil)
+
+// witnessFollowWindow is how long after a box's last witness request this node keeps
+// snapshotting the heads it commits.
+const witnessFollowWindow = 600 * ports.Second
+
+// retainWitnessHead snapshots the committed head for witness serving when a box has asked this
+// node for witnesses recently. A snapshot costs one pass over the state, so a node nobody follows
+// pays nothing.
+func (n *Node) retainWitnessHead() {
+	if n.chain == nil || n.witnessFollowedAt == 0 || ports.Duration(n.clock.Now()-n.witnessFollowedAt) > witnessFollowWindow {
+		return
+	}
+	n.witnessProviders.Retain(n.chain)
+}

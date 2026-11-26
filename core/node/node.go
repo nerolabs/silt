@@ -1080,6 +1080,10 @@ type Node struct {
 	// dominated by building that prover, which would let a stranger make this node redo the
 	// work once per request. Single-entry, so the cache itself cannot be grown by a peer.
 	witnessProviders chain.ProviderCache
+	// witnessFollowedAt is when a box last asked this node for a witness. While it is recent
+	// (witnessFollowWindow) the node snapshots each head it commits, so a box that lags can still
+	// be served the head it is validating from (retainWitnessHead).
+	witnessFollowedAt ports.Time
 	// declaredChainID is the REQUESTER-side network identity an operator declared on a node that
 	// holds no chain (SetNetworkIdentity). It is read ONLY by RequesterChainID, never by chainID —
 	// see core/node/networkidentity.go for why the two must not be collapsed.

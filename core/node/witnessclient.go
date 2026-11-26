@@ -176,7 +176,7 @@ func (c *witnessCache) store(req witnessReq, r witnessResp) error {
 		// this block's bundle. Unlike a leaf refusal, another provider may well serve it, so
 		// this is returned as an error and the walk moves on.
 		if !r.OK {
-			return errors.New("node: the provider has no state-root witness bundle for this block")
+			return fmt.Errorf("node: the provider has no state-root witness bundle for this block — it keeps the last %d heads it committed; a box further behind than that must re-anchor on a newer checkpoint", chain.ProviderRetain)
 		}
 		w, err := chain.DecodeStateRootWitness(r.Bundle, witnessBundleMaxBytes, witnessProofMaxBytes)
 		if err != nil {

@@ -209,49 +209,93 @@ func flaggedIDs(m map[ports.NodeID]bool) []ports.NodeID {
 	return out
 }
 
-// ProviderCache holds the provider a serving node answers from, plus the ONE before it, so a run
-// of witness requests about the same head pays for the leaf set and the prover once.
+// ProviderCache holds the providers a serving node answers from: one per recent head it
+// committed, up to ProviderRetain of them, so a run of witness requests about the same head pays
+// for the leaf set and the prover once.
 //
-// WHY THE PREVIOUS SNAPSHOT IS RETAINED, and it is not an optimization. A box validates the block
-// at h+1 against the committed state at h, and it names h on every request of that validation so
-// the answers cannot come from two states. Meanwhile the serving node keeps committing. Without
-// the retained snapshot, the first block the serving node commits mid-validation makes every
-// remaining request refuse — the box stalls, re-anchors, and races the same way again, which on a
-// live chain is a box that can never finish. One snapshot back is what makes a validation that
-// started at h able to END at h.
+// WHY RECENT HEADS ARE RETAINED, and it is not an optimization. A box validates the block at h+1
+// against the committed state at h, and it names h on every request of that validation so the
+// answers cannot come from two states. Meanwhile the serving node keeps committing. A box that
+// is still validating, or has fallen a few blocks behind on a slow link, asks about a head the
+// node has already moved past; refusing it makes the box re-anchor and race the chain forever.
+// The node therefore keeps a snapshot of each head it commits while a box is following it
+// (Retain), and serves any of the last ProviderRetain of them by name. A box further behind than
+// that is refused, and must re-anchor on a newer checkpoint.
 //
-// TWO, AND NOT MORE. The retained set is bounded by construction rather than by a policy: a box
-// validates forward, so the useful working set is the head and the head it is judging from. A map
-// keyed by a peer-supplied hash would let a stranger make the node build an unbounded number of
-// provers.
+// BOUNDED BY CONSTRUCTION. Only heads this node itself committed are ever held, never a head a
+// peer names, so a stranger cannot make the node build provers; and there are at most
+// ProviderRetain of them.
 type ProviderCache struct {
-	p    *WitnessProvider
-	prev *WitnessProvider
+	held []*WitnessProvider // oldest first
+}
+
+// ProviderRetain is how many recent heads a serving node keeps a witness snapshot of: how far
+// behind the chain a following box can fall and still catch up.
+const ProviderRetain = 8
+
+func (pc *ProviderCache) find(head ports.Hash) *WitnessProvider {
+	for _, p := range pc.held {
+		if p.head == head {
+			return p
+		}
+	}
+	return nil
+}
+
+func (pc *ProviderCache) push(p *WitnessProvider) {
+	pc.held = append(pc.held, p)
+	if len(pc.held) > ProviderRetain {
+		pc.held = append([]*WitnessProvider(nil), pc.held[len(pc.held)-ProviderRetain:]...)
+	}
 }
 
 // For returns a provider over the head the caller NAMED. A retained snapshot that matches is
-// served as it stands; otherwise the cache rebuilds over the chain's current head and demotes what
-// it held. The zero hash means "whatever head you are on", which is how a box discovers the head to
-// anchor its first request against.
+// served as it stands; otherwise the cache builds one over the chain's current head. The zero
+// hash means "whatever head you are on", which is how a box discovers the head to anchor its
+// first request against.
 func (pc *ProviderCache) For(c *Chain, want ports.Hash) (*WitnessProvider, bool) {
 	if c == nil {
 		return nil, false
 	}
 	if want != (ports.Hash{}) {
-		for _, held := range []*WitnessProvider{pc.p, pc.prev} {
-			if held != nil && held.head == want {
-				return held, true
-			}
+		if p := pc.find(want); p != nil {
+			return p, true
 		}
 	}
 	head, _ := c.Head()
-	if pc.p != nil && pc.p.head == head {
-		return pc.p, true
+	if p := pc.find(head); p != nil {
+		return p, true
 	}
 	p, ok := NewWitnessProvider(c)
 	if !ok {
 		return nil, false
 	}
-	pc.prev, pc.p = pc.p, p
+	pc.push(p)
 	return p, true
+}
+
+// Retain snapshots the chain's current head, if it is not held already. A serving node calls it
+// at every commit while a box is following, so the heads a lagging box will ask about exist when
+// it asks.
+func (pc *ProviderCache) Retain(c *Chain) {
+	if c == nil {
+		return
+	}
+	head, _ := c.Head()
+	if pc.find(head) != nil {
+		return
+	}
+	if p, ok := NewWitnessProvider(c); ok {
+		pc.push(p)
+	}
+}
+
+// RetainedHeights reports the next-heights of the retained snapshots, oldest first.
+func (pc *ProviderCache) RetainedHeights() []uint64 {
+	out := make([]uint64, 0, len(pc.held))
+	for _, p := range pc.held {
+		_, next := p.Head()
+		out = append(out, next)
+	}
+	return out
 }
