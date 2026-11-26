@@ -1804,6 +1804,7 @@ var scalarSuppressObligations = map[string]scalarSuppressPath{
 	// block by handoffPreState. Both are driven.
 	tagMatureEpoch:  {"suppress-anchored", "TestRecomputeStateRootRotateMatureEpochOldValueSuppressionStalls + TestColdBoxForgedMatureEpochOldValueStalls"},
 	tagEverMature:   {"suppress-anchored", "TestClassMEverMatureOldValueSuppressionStalls"},
+	tagMatureSince:  {"suppress-anchored", "TestClassMMatureSinceOldValueSuppressionStalls"},
 	tagGateLockedIn: {"suppress-anchored", "TestOpenBreak_GateLockedInOldValuePredicate"},
 	tagEra3LockedIn: {"suppress-anchored", "TestOpenBreak_Era3LockedInOldValuePredicate"},
 	tagEra4LockedIn: {"suppress-anchored", "TestOpenBreak_Era4LockedInOldValuePredicate"},
@@ -1907,7 +1908,7 @@ func TestScalarSuppressSplitIsComplete(t *testing.T) {
 	// everMature latch). This list is the pin: adding a scalar to the recompute without adding it here
 	// (and to scalarSuppressObligations) reddens.
 	scalarTags := []string{
-		tagEpochStart, tagMatureEpoch, tagEverMature,
+		tagEpochStart, tagMatureEpoch, tagEverMature, tagMatureSince,
 		tagGateLockedIn, tagEra3LockedIn, tagEra4LockedIn,
 	}
 	for _, tag := range scalarTags {

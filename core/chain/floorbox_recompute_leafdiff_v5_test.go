@@ -465,9 +465,11 @@ func TestLeafDiffGuardAblationClassMRemoved(t *testing.T) {
 	if len(missing) == 0 {
 		t.Fatalf("ABLATION FAILED: with class M removed the guard stayed GREEN — the off-boundary everMature write was not detected as unreproduced")
 	}
-	wantTag := tagOfKey(tagEverMature) // the tag with its trailing NUL stripped, as tagOfKey reports it
-	if len(missing) != 1 || missing[0] != wantTag {
-		t.Fatalf("ABLATION: expected the guard to redden naming exactly {%q}, got %v", wantTag, missing)
+	// Class M owns two writes at a crossing: the latch and the maturity window's run start.
+	want := []string{tagOfKey(tagEverMature), tagOfKey(tagMatureSince)} // NUL-stripped, as tagOfKey reports
+	sort.Strings(want)
+	if len(missing) != len(want) || missing[0] != want[0] || missing[1] != want[1] {
+		t.Fatalf("ABLATION: expected the guard to redden naming exactly %v, got %v", want, missing)
 	}
 
 	// And with class M IN (the real pipeline), the same block is GREEN — the RED→GREEN pair.

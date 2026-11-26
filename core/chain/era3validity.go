@@ -189,6 +189,7 @@ func (c *Chain) cloneForDryRun() *Chain {
 		era4LockedIn: c.era4LockedIn,
 		era4Height:   c.era4Height,
 		epochStart:   c.epochStart,
+		matureSince:  c.matureSince,
 		matureEpoch:  c.matureEpoch,
 	}
 	// ---- era-4 (v5) maintenance-spine maps: deep-copied so apply on the clone

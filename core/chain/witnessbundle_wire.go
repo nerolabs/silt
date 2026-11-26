@@ -67,6 +67,7 @@ type maturityWire struct {
 	EverMature  rotateScalarWire `cbor:"1,keyasint"`
 	MatureEpoch rotateScalarWire `cbor:"2,keyasint"`
 	SeenSet     *seenSetWire     `cbor:"3,keyasint"`
+	MatureSince rotateScalarWire `cbor:"4,keyasint,omitempty"`
 }
 
 // memberStateWire is one validatorsSeen member's committed state and the three proofs that anchor
@@ -186,6 +187,7 @@ func EncodeStateRootWitness(w StateRootWitness) ([]byte, error) {
 		out.Maturity = &maturityWire{
 			EverMature:  rotateScalarWire{OldValue: w.Maturity.EverMature.OldValue, Proof: pf(w.Maturity.EverMature.Proof)},
 			MatureEpoch: rotateScalarWire{OldValue: w.Maturity.MatureEpoch.OldValue, Proof: pf(w.Maturity.MatureEpoch.Proof)},
+			MatureSince: rotateScalarWire{OldValue: w.Maturity.MatureSince.OldValue, Proof: pf(w.Maturity.MatureSince.Proof)},
 		}
 		if ss := w.Maturity.SeenSet; len(ss.IDs) > 0 {
 			sw := &seenSetWire{IDs: ss.IDs, SeenRootWitness: pf(ss.SeenRootWitness), SeenRootValue: ss.SeenRootValue}
@@ -304,7 +306,12 @@ func DecodeStateRootWitness(raw []byte, maxBytes, maxProofBytes int) (StateRootW
 	if in.Maturity != nil {
 		ev, e1 := proof(in.Maturity.EverMature.Proof)
 		me, e2 := proof(in.Maturity.MatureEpoch.Proof)
-		for _, e := range []error{e1, e2} {
+		var ms statehash.Witness
+		var e3 error
+		if len(in.Maturity.MatureSince.Proof) > 0 { // carried only while the latch is open
+			ms, e3 = proof(in.Maturity.MatureSince.Proof)
+		}
+		for _, e := range []error{e1, e2, e3} {
 			if e != nil {
 				return StateRootWitness{}, e
 			}
@@ -312,6 +319,7 @@ func DecodeStateRootWitness(raw []byte, maxBytes, maxProofBytes int) (StateRootW
 		w.Maturity = &StateRootMaturityWitness{
 			EverMature:  StateRootRotateScalar{OldValue: in.Maturity.EverMature.OldValue, Proof: ev},
 			MatureEpoch: StateRootRotateScalar{OldValue: in.Maturity.MatureEpoch.OldValue, Proof: me},
+			MatureSince: StateRootRotateScalar{OldValue: in.Maturity.MatureSince.OldValue, Proof: ms},
 		}
 		if ss := in.Maturity.SeenSet; ss != nil {
 			rw, rErr := proof(ss.SeenRootWitness)

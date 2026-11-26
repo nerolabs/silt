@@ -201,6 +201,8 @@ func (v liveView) Scalar(tag string) ([]byte, Availability) {
 		return statehash.EncodeUint64(v.c.era4Height), Present
 	case tagEpochStart:
 		return statehash.EncodeUint64(v.c.epochStart), Present
+	case tagMatureSince:
+		return statehash.EncodeUint64(v.c.matureSince), Present
 	}
 	return nil, NoWitness // an unknown tag is a programming error: STALL, never a default
 }

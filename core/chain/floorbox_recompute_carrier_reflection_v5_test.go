@@ -150,7 +150,8 @@ var foldInputCoverageTable = map[string]map[string]r12Disposition{
 	},
 	// ---- class M: the everMature latch bundle ----
 	"StateRootMaturityWitness": {
-		"EverMature": {"already-anchored", "class-M scalar, SUPPRESS-ANCHORED: scalarSuppressObligations[tagEverMature] (pre-state anchor against prevStateRoot plus a driven suppression gate); fields under StateRootRotateScalar"},
+		"EverMature":  {"already-anchored", "class-M scalar, SUPPRESS-ANCHORED: scalarSuppressObligations[tagEverMature] (pre-state anchor against prevStateRoot plus a driven suppression gate); fields under StateRootRotateScalar"},
+		"MatureSince": {"already-anchored", "class-M scalar, SUPPRESS-ANCHORED: scalarSuppressObligations[tagMatureSince] (pre-state anchor in handoffPreState against prevStateRoot while the latch is open, plus a driven suppression gate); fields under StateRootRotateScalar"},
 		// The class-A screen's BRANCH SELECTOR. Homed on this carrier because it is REQUIRED on
 		// every block, while the class-P rotate witness is nil off-boundary. Anchored
 		// UNCONDITIONALLY by handoffPreState before any class dispatches.

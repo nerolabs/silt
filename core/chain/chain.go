@@ -96,6 +96,18 @@ type Config struct {
 	// is that stake concentration is invisible — but it pays the full cost-to-corrupt
 	// and ByzantineQuorum still bounds it to ≤ ⅓ of weight for safety.)
 	MatureValidators int
+	// MatureBondedBytes is the total committed bonded storage the network must also hold
+	// before it counts as mature (0 = no floor). The Nakamoto coefficient above measures how
+	// SPREAD the bonded weight is; it cannot tell one operator with many keys from many
+	// operators, so a lone operator who bonds enough small plots can satisfy it. The floor
+	// prices that: tripping the one-way latch, and then holding the two-thirds of weight a
+	// commit needs, costs more than two-thirds of this much sealed, re-proved storage.
+	MatureBondedBytes int64
+	// MatureWindowBlocks is how many consecutive blocks the network must stay mature before the
+	// one-way latch trips (0 or 1 = at once). A coefficient and a floor met for one block can be
+	// met with storage held for one block; the window makes the shed cost storage held and
+	// re-proved across this many blocks, and any block that falls below either bar restarts it.
+	MatureWindowBlocks uint64
 	// OperatorMargin is M, the conservative keys-per-operator inflation factor the
 	// C2 concentration metric (C2Metric / Mature) discounts the bond-distinct
 	// Nakamoto coefficient by: since on-chain data carries no operator label, one
@@ -1768,6 +1780,11 @@ type Chain struct {
 	// the E-2 epoch pointer. On a v4 block it is not emitted, so the era-3 root
 	// stays byte-identical.
 	epochStart uint64
+	// matureSince is one plus the height that began the current unbroken run of maturity
+	// (Mature at every block since), or 0 while the network is not mature. It drives the
+	// maturity window (Config.MatureWindowBlocks) and changes only when maturity begins or
+	// lapses; after the latch it is no longer read. A v5-only scalar leaf (tagMatureSince).
+	matureSince uint64
 	// matureEpoch is the ONE-WAY handoff flag: set at the first
 	// epoch rotation at-or-after the everMature latch trips, never cleared. The
 	// latch (everMature) records the consensus FACT of maturity the moment it
@@ -2990,6 +3007,34 @@ func (c *Chain) Mature() bool {
 	return c.matureNow()
 }
 
+// applyMaturityLatch advances the maturity window for block h and trips the one-way latch once
+// the network has been mature at every block of a run at least MatureWindowBlocks long.
+// matureSince records the run's first height plus one; a block that is not mature ends the run.
+func (c *Chain) applyMaturityLatch(h uint64) {
+	if c.everMature {
+		return
+	}
+	if !c.Mature() {
+		c.matureSince = 0
+		return
+	}
+	if c.matureSince == 0 {
+		c.matureSince = h + 1
+	}
+	if maturityRunComplete(c.matureSince, h, c.cfg.MatureWindowBlocks) {
+		c.everMature = true
+	}
+}
+
+// maturityRunComplete reports whether a run of maturity that began at height since-1 has, at
+// height h, lasted at least window blocks (h counted). A window of 0 or 1 completes at once.
+func maturityRunComplete(since, h, window uint64) bool {
+	if window <= 1 {
+		return true
+	}
+	return h+2-since >= window
+}
+
 // EverMature reports the one-way maturity LATCH: whether the network has been
 // mature at ANY committed height. This — not the live Mature — is what gates the
 // launch anchors, so once a network first decentralizes the anchors never re-arm. A
@@ -3037,7 +3082,7 @@ func (c *Chain) matureNow() bool {
 	// MatureValidators distinct declared domains. At M=1 with no domains set this
 	// is the plain bond-distinct coefficient (unchanged behavior). min only ever
 	// RAISES the bar to shed, so it can never weaken an existing config.
-	return c.MatureCoefficient() >= c.cfg.MatureValidators
+	return c.MatureCoefficient() >= c.cfg.MatureValidators && c.C2Metric().TotalBondedBytes >= c.cfg.MatureBondedBytes
 }
 
 // MatureCoefficient is the operator-and-domain-distinct bonded-distinctness count over
@@ -4379,9 +4424,7 @@ func (c *Chain) apply(b Block) {
 	// permanently, so the launch anchors never re-arm. Checked AFTER this
 	// block's bonds/slashes/TTL are applied, so it reflects the post-block
 	// bonded set. Monotonic — only ever set, never cleared.
-	if !c.everMature && c.Mature() {
-		c.everMature = true
-	}
+	c.applyMaturityLatch(b.Height)
 	// Epoch rotation, LAST — after this block's bonds, TTL
 	// expiries, slashes, and the maturity latch — so a boundary block that also
 	// trips maturity hands off in the same commit. The boundary block itself was
@@ -4948,6 +4991,7 @@ func (c *Chain) adopt(t *Chain) {
 	// fork re-ran every rotation, so its snapshot/handoff ARE the adopted truth.
 	c.epochSet = t.epochSet
 	c.epochStart = t.epochStart
+	c.matureSince = t.matureSince
 	c.matureEpoch = t.matureEpoch
 	// era-4 (v5) maintenance-spine maps are derived state like everything above:
 	// the replayed fork re-ran every apply, so t's qualified/dueBucket ARE the
