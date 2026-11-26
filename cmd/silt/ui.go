@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/nerolabs/silt/adapters/chainhost"
 	"github.com/nerolabs/silt/core/advisory"
 	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/core/dht"
@@ -57,8 +58,11 @@ import (
 var uiFiles embed.FS
 
 type uiServer struct {
-	loop          *eventloop.Loop
-	nd            *node.Node
+	loop *eventloop.Loop
+	nd   *node.Node
+	// forwardPeers, on a validator hosting the registry, lists the validators to hand a UI
+	// publish to and their addresses ("id@addr,…") to seed the ephemeral client with.
+	forwardPeers  func() ([]ports.NodeID, string)
 	reg           ports.Registry // may be nil (no registry configured)
 	capRep        ports.CapacityReporter
 	selfPeer      string // "id@addr" for the ephemeral clients
@@ -1626,7 +1630,19 @@ func (s *uiServer) apiPublish(w http.ResponseWriter, r *http.Request) {
 		mode = crypto.Convergent
 	}
 
-	e, run, err := joinSwarm(s.selfPeer, 0)
+	// On a validator that hosts the registry, the publish is handed to the validators from
+	// the ephemeral client's throwaway identity, so the client is seeded with their
+	// addresses too (forwardPeers).
+	seeds, validators := s.selfPeer, []ports.NodeID(nil)
+	host, selfHosted := s.reg.(*chainhost.Host)
+	if selfHosted && s.forwardPeers != nil {
+		var extra string
+		validators, extra = s.forwardPeers()
+		if extra != "" {
+			seeds += "," + extra
+		}
+	}
+	e, run, err := joinSwarm(seeds, 0)
 	if err != nil {
 		httpError(w, 502, err)
 		return
@@ -1635,7 +1651,8 @@ func (s *uiServer) apiPublish(w http.ResponseWriter, r *http.Request) {
 
 	var h link.Handle
 	var placed int
-	var opErr error
+	var opErr, distErr error
+	var staged ports.Entry
 	rerr := run(func(done func()) {
 		var aerr error
 		var entry ports.Entry
@@ -1660,15 +1677,25 @@ func (s *uiServer) apiPublish(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		e.nd.DistributeFrom(e.nd.Store(), entry, m, func(p int, derr error) {
-			// Publish only on a confirmed scatter; a failed one leaves the
-			// registry untouched so no dangling entry survives.
-			placed, opErr = pipeline.RegisterAfterDistribute(context.Background(), s.reg, entry, p, derr)
+			placed, distErr, staged = p, derr, entry
 			done()
 		})
 	})
 	if rerr != nil {
 		httpError(w, 504, rerr)
 		return
+	}
+	// Register only on a confirmed scatter, so a failed one leaves no dangling entry. It runs
+	// off the ephemeral client's loop: a validator's own publish forwards the entry FROM that
+	// client (ForwardEntry), which must be able to send while the commit is awaited.
+	if opErr == nil {
+		reg := s.reg
+		if selfHosted && len(validators) > 0 {
+			reg = host.Via(func(entry ports.Entry) error {
+				return run(func(done func()) { e.nd.ForwardEntry(entry, validators); done() })
+			})
+		}
+		placed, opErr = pipeline.RegisterAfterDistribute(context.Background(), reg, staged, placed, distErr)
 	}
 	if opErr != nil {
 		httpError(w, 502, opErr)
