@@ -1813,6 +1813,27 @@ func cmdDaemon(args []string) error {
 			addressCap: addressCapConfig{Mode: addrMode.String(), Width: *dhtAddressWidth,
 				CapDirect: *dhtDomainCap, CapRelay: *dhtRelayCap, Reserve: *dhtAddressReserve},
 		}
+		if _, ok := reg.(*chainhost.Host); ok {
+			// A UI publish on this validator is handed to every validator — this one included —
+			// from the publish client's throwaway identity, never from this node's.
+			ui.forwardPeers = func() ([]ports.NodeID, string) {
+				want := map[ports.NodeID]bool{id: true}
+				for _, a := range attesterIDs {
+					want[a] = true
+				}
+				var ids []ports.NodeID
+				for v := range want {
+					ids = append(ids, v)
+				}
+				var addrs []string
+				for _, pr := range tr.Peers() {
+					if want[pr.ID] && pr.ID != id {
+						addrs = append(addrs, pr.ID.String()+"@"+pr.Addr)
+					}
+				}
+				return ids, strings.Join(addrs, ",")
+			}
+		}
 		// installs the status renderer only when -bbootstrap is set, and only in a
 		// tagged build. A no-op otherwise, so ui.statusExtra stays nil and there
 		// is no path from /api/status to the ledger's census.
