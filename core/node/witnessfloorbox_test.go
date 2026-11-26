@@ -685,3 +685,53 @@ func compoundHeights(committed map[uint64]chain.Block, ttl uint64) []uint64 {
 	}
 	return out
 }
+
+// TestFloorBoxCatchesUpAfterFallingBehind. A box on a slow link falls behind the chain it
+// audits: by the time it asks about a head, the serving node may have committed several more
+// blocks. The serving node freezes every head it commits, so the heads a lagging box needs exist
+// when it asks — including heads no box ever asked about.
+//
+// The box validates once (so the server counts as followed), the server commits three more
+// blocks through its own commit path, and then: every one of those heads is held, and the box,
+// still anchored three blocks back, reaches its verdict. Before the retention the server kept
+// only its current head and the one before, built on request, and this box stalled forever.
+// TestFloorBoxWhoseCheckpointIsAlreadyBehindIsServed is the harder case.
+func TestFloorBoxCatchesUpAfterFallingBehind(t *testing.T) {
+	s := witnessableValidators(t)
+	if out, err, _ := s.judge(t, s.cand, []ports.NodeID{s.server.ID()}); out != chain.Accept {
+		t.Fatalf("CONTROL BROKEN: the box does not reach a verdict at the undisturbed head: %v", err)
+	}
+	var heads []ports.Hash
+	for i := 0; i < 3; i++ {
+		s.commitOneMore(t, fmt.Sprintf("catch-up-%d", i))
+		h, _ := s.server.Chain().Head()
+		heads = append(heads, h)
+	}
+	for i, h := range heads {
+		p, ok := s.server.witnessProviders.For(s.server.Chain(), h)
+		if got, _ := p.Head(); !ok || got != h {
+			t.Fatalf("head %d committed while a box was following is not held for witness serving (held next-heights %v)",
+				i, s.server.witnessProviders.RetainedHeights())
+		}
+	}
+	if out, err, _ := s.judge(t, s.cand, []ports.NodeID{s.server.ID()}); out != chain.Accept {
+		t.Fatalf("a box three blocks behind could not reach its verdict: %s / %v", out, err)
+	}
+}
+
+// TestFloorBoxWhoseCheckpointIsAlreadyBehindIsServed. A box's FIRST request names its operator's
+// checkpoint, and the network may have committed past it before the box connected — on a loaded
+// CI runner the providers were three blocks on, and the box stalled on every provider. Retention
+// cannot wait for a box to start following: the server freezes every head it commits, and builds
+// the leaves only for a head a box names.
+func TestFloorBoxWhoseCheckpointIsAlreadyBehindIsServed(t *testing.T) {
+	s := witnessableValidators(t)
+	s.server.retainWitnessHead() // the fixture built this head by direct Append, not the commit path
+	for i := 0; i < 3; i++ {
+		s.commitOneMore(t, fmt.Sprintf("before-the-box-%d", i))
+	}
+	if out, err, _ := s.judge(t, s.cand, []ports.NodeID{s.server.ID()}); out != chain.Accept {
+		t.Fatalf("a box whose checkpoint the server committed past before the box asked could not reach its verdict: %s / %v (held next-heights %v)",
+			out, err, s.server.witnessProviders.RetainedHeights())
+	}
+}

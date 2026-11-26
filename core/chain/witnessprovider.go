@@ -52,6 +52,10 @@ type WitnessProvider struct {
 	// is anchored against the block's OWN post-apply root and so cannot come from a snapshot of
 	// the parent state at all.
 	snap *Chain
+	// built is whether the leaf set, prover, member lists and ancestor window have been derived
+	// from snap. A retained head is frozen cheaply at commit (snap alone) and built only when a
+	// box names it (ensure).
+	built bool
 }
 
 // A provider IS the serving half of the witness seam, and the compiler is what keeps that
@@ -69,37 +73,54 @@ const ancestorWindow = 64
 // to serve says so, rather than serving an empty tree that would answer every read with a
 // confident absence.
 func NewWitnessProvider(c *Chain) (*WitnessProvider, bool) {
-	if c == nil {
+	p := freezeHead(c)
+	if p == nil || !p.ensure() {
 		return nil, false
 	}
+	return p, true
+}
+
+// freezeHead records c's current head as a private copy of the chain (cloneForDryRun shares the
+// persistent block vector, byRoot and spent, and copies the validator-sized maps), without
+// deriving anything from it. It is cheap enough to do at every commit.
+func freezeHead(c *Chain) *WitnessProvider {
+	if c == nil {
+		return nil
+	}
+	head, next := c.Head()
+	snap := c.cloneForDryRun()
+	return &WitnessProvider{head: head, next: next, snap: snap, log: snap.revLog}
+}
+
+// ensure derives what the provider serves from its frozen copy, once. It reports false if the
+// copy cannot produce a prover over its own leaves.
+func (p *WitnessProvider) ensure() bool {
+	if p.built {
+		return p.prover != nil
+	}
+	p.built = true
+	c := p.snap
 	leafSet := c.stateRootLeavesV5()
 	pr, err := statehash.NewProver(leafSet)
 	if err != nil {
-		return nil, false
+		return false
 	}
-	head, next := c.Head()
-	p := &WitnessProvider{
-		head:    head,
-		next:    next,
-		prover:  pr,
-		leaves:  make(map[string][]byte, len(leafSet)),
-		members: make(map[string][]ports.NodeID, 5),
-		log:     c.revLog,
-	}
+	p.prover = pr
+	p.leaves = make(map[string][]byte, len(leafSet))
 	for _, l := range leafSet {
 		p.leaves[string(l.Key)] = l.Value
 	}
-	p.snap = c.cloneForDryRun()
 	// The five whole-set keyspaces the composition folds. Each is served as the COMPLETE
 	// claimed id-list; the reader checks completeness itself by re-deriving the MTH and
 	// comparing it against the committed digest root, so one omitted or injected id stalls.
+	p.members = make(map[string][]ports.NodeID, 5)
 	p.members[tagEpochSetRoot] = sortIDs(weightedIDs(c.epochSet))
 	p.members[tagQualifiedRoot] = sortIDs(weightedIDs(c.qualified))
 	p.members[tagBondedRoot] = sortIDs(weightedIDs(c.bonded))
 	p.members[tagValidatorsSeenRoot] = sortIDs(flaggedIDs(c.validatorsSeen))
 	p.members[tagSlashedRoot] = sortIDs(flaggedIDs(c.slashed))
 
-	cur := head
+	cur := p.head
 	for i := 0; i < ancestorWindow; i++ {
 		p.chain = append(p.chain, cur)
 		blk, ok := c.blockByHash(cur)
@@ -108,7 +129,7 @@ func NewWitnessProvider(c *Chain) (*WitnessProvider, bool) {
 		}
 		cur = blk.Prev
 	}
-	return p, true
+	return true
 }
 
 // Head reports the head hash this provider was built over, and the height the chain would
@@ -209,49 +230,98 @@ func flaggedIDs(m map[ports.NodeID]bool) []ports.NodeID {
 	return out
 }
 
-// ProviderCache holds the provider a serving node answers from, plus the ONE before it, so a run
-// of witness requests about the same head pays for the leaf set and the prover once.
+// ProviderCache holds the providers a serving node answers from: one per recent head it
+// committed, up to ProviderRetain of them, so a run of witness requests about the same head pays
+// for the leaf set and the prover once.
 //
-// WHY THE PREVIOUS SNAPSHOT IS RETAINED, and it is not an optimization. A box validates the block
-// at h+1 against the committed state at h, and it names h on every request of that validation so
-// the answers cannot come from two states. Meanwhile the serving node keeps committing. Without
-// the retained snapshot, the first block the serving node commits mid-validation makes every
-// remaining request refuse — the box stalls, re-anchors, and races the same way again, which on a
-// live chain is a box that can never finish. One snapshot back is what makes a validation that
-// started at h able to END at h.
+// WHY RECENT HEADS ARE RETAINED, and it is not an optimization. A box validates the block at h+1
+// against the committed state at h, and it names h on every request of that validation so the
+// answers cannot come from two states. Meanwhile the serving node keeps committing. A box that
+// is still validating, or has fallen a few blocks behind on a slow link, asks about a head the
+// node has already moved past; refusing it makes the box re-anchor and race the chain forever.
+// The node therefore freezes each head it commits (Retain), and serves any of the last
+// ProviderRetain of them by name; it does so whether or not a box is following yet, because a
+// box's FIRST request names its operator's checkpoint, which the node may have committed before
+// the box connected. A box further behind than that is refused, and must re-anchor on a newer
+// checkpoint.
 //
-// TWO, AND NOT MORE. The retained set is bounded by construction rather than by a policy: a box
-// validates forward, so the useful working set is the head and the head it is judging from. A map
-// keyed by a peer-supplied hash would let a stranger make the node build an unbounded number of
-// provers.
+// BOUNDED BY CONSTRUCTION. Only heads this node itself committed are ever held, never a head a
+// peer names, so a stranger cannot make the node build provers; and there are at most
+// ProviderRetain of them.
 type ProviderCache struct {
-	p    *WitnessProvider
-	prev *WitnessProvider
+	held []*WitnessProvider // oldest first
+}
+
+// ProviderRetain is how many recent heads a serving node keeps a witness snapshot of: how far
+// behind the chain a following box can fall and still catch up.
+const ProviderRetain = 8
+
+func (pc *ProviderCache) find(head ports.Hash) *WitnessProvider {
+	for _, p := range pc.held {
+		if p.head == head {
+			return p
+		}
+	}
+	return nil
+}
+
+func (pc *ProviderCache) push(p *WitnessProvider) {
+	pc.held = append(pc.held, p)
+	if len(pc.held) > ProviderRetain {
+		pc.held = append([]*WitnessProvider(nil), pc.held[len(pc.held)-ProviderRetain:]...)
+	}
 }
 
 // For returns a provider over the head the caller NAMED. A retained snapshot that matches is
-// served as it stands; otherwise the cache rebuilds over the chain's current head and demotes what
-// it held. The zero hash means "whatever head you are on", which is how a box discovers the head to
-// anchor its first request against.
+// served as it stands; otherwise the cache builds one over the chain's current head. The zero
+// hash means "whatever head you are on", which is how a box discovers the head to anchor its
+// first request against.
 func (pc *ProviderCache) For(c *Chain, want ports.Hash) (*WitnessProvider, bool) {
 	if c == nil {
 		return nil, false
 	}
 	if want != (ports.Hash{}) {
-		for _, held := range []*WitnessProvider{pc.p, pc.prev} {
-			if held != nil && held.head == want {
-				return held, true
-			}
+		if p := pc.find(want); p != nil {
+			return p, p.ensure()
 		}
 	}
 	head, _ := c.Head()
-	if pc.p != nil && pc.p.head == head {
-		return pc.p, true
+	p := pc.find(head)
+	if p == nil {
+		if p = freezeHead(c); p == nil {
+			return nil, false
+		}
+		pc.push(p)
 	}
-	p, ok := NewWitnessProvider(c)
-	if !ok {
+	if !p.ensure() {
 		return nil, false
 	}
-	pc.prev, pc.p = pc.p, p
 	return p, true
+}
+
+// Retain freezes the chain's current head, if it is not held already. A serving node calls it at
+// every commit, so the heads a box will ask about exist when it asks — including a box whose first
+// request names a checkpoint the node committed before the box ever connected. Freezing is cheap;
+// the leaf set and prover are built only for a head a box actually names.
+func (pc *ProviderCache) Retain(c *Chain) {
+	if c == nil {
+		return
+	}
+	head, _ := c.Head()
+	if pc.find(head) != nil {
+		return
+	}
+	if p := freezeHead(c); p != nil {
+		pc.push(p)
+	}
+}
+
+// RetainedHeights reports the next-heights of the retained snapshots, oldest first.
+func (pc *ProviderCache) RetainedHeights() []uint64 {
+	out := make([]uint64, 0, len(pc.held))
+	for _, p := range pc.held {
+		_, next := p.Head()
+		out = append(out, next)
+	}
+	return out
 }
