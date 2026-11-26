@@ -10,6 +10,17 @@ These are the local loopback form of the acceptance flows: running `flows567-…
 from the docs walks them on one box. The GCP multi-machine field test lives in
 [`integration/cloudtest/`](../integration/cloudtest/).
 
+## Try silt on your own machine
+
+```sh
+./examples/try-a-local-network.sh
+```
+
+Starts three validators and a storage node on loopback, with the web UI on the first, and prints
+the UI's address and the commands to publish and fetch. Nothing leaves the machine; Ctrl-C stops
+it. `--check` publishes one file, fetches it back and exits. It uses `silt` from `PATH` if there is
+one, and builds it from the repository otherwise.
+
 ## Run them
 
 ```sh
