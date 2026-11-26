@@ -1351,8 +1351,8 @@ The naming half: `TestStoredAndCommittedStructuresCarryNoNames` walks every fiel
 `chain.Block`, `manifest.Manifest` and `ports.Entry`; the only text is the network's label and the
 mode enum. Adding `Name string` to `Entry` reddens it. A name smuggled into a byte field is ungated.
 
-**19. An un-upgraded node stalls, and the network never updates itself.** ⚠ *all four clauses
-driven to e2e; the version-floor advisory is built (unit, model-check, e2e); its field row is not run*
+**19. An un-upgraded node stalls, and the network never updates itself.** ✅ *held — all four clauses
+driven to e2e; the version-floor advisory built and confirmed in the field (sheet 332bffa5-59810)*
 A node that cannot
 validate a shipped format stops rather than accepting it and says so while staying alive. A
 node whose consensus-reaching configuration diverges from what the chain committed refuses to
@@ -1380,7 +1380,7 @@ never been driven is a gap directly under the mechanism the release leans on.
 | Refuses to start when its consensus config diverges | Held. | e2e (`e2e/consensus_config_bind_test.go`) |
 | Upgrades cleanly within the versioned formats | Held. ce6e4316 (main before the disk state tree and the append-only chain log) to HEAD, whole-swarm and rolling: the chain reloads at the head V1 itself reported, content bit-perfect. | docker |
 | No node replaces its own binary | Held, structurally: no shipped code locates or execs its own binary. | source gate (`TestNoShippedCodeReplacesItsOwnBinary`) |
-| No version-floor advisory below the signing threshold changes anything | Held. Genesis commits the maintainer keys and threshold (at least 2). An advisory carrying fewer distinct maintainer signatures, or signed for another network, is refused by the daemon and by block validity on both the full-node and floor-box paths, and nothing is in force. The threshold's advisory commits on every replica; the grace period counts in blocks from its committed height; a recall lifts it; a replay is refused as stale. | unit (`TestOnlyAThresholdOfDistinctMaintainersDeclaresAFloor`, `TestAdvisoryBlockVerdictFollowsTheGenesisMaintainers`), model-check (leave-one-out `versionFloorProbe`, the floor-box differential), node (`TestVersionFloorWarnsThenRefusesConsensusFromOldReleases`), e2e (`TestVersionFloorOverTCP`), mutation-checked. Field: not run |
+| No version-floor advisory below the signing threshold changes anything | Held. Genesis commits the maintainer keys and threshold (at least 2). An advisory carrying fewer distinct maintainer signatures, or signed for another network, is refused by the daemon and by block validity on both the full-node and floor-box paths, and nothing is in force. The threshold's advisory commits on every replica; the grace period counts in blocks from its committed height; a recall lifts it; a replay is refused as stale. | unit (`TestOnlyAThresholdOfDistinctMaintainersDeclaresAFloor`, `TestAdvisoryBlockVerdictFollowsTheGenesisMaintainers`), model-check (leave-one-out `versionFloorProbe`, the floor-box differential), node (`TestVersionFloorWarnsThenRefusesConsensusFromOldReleases`), e2e (`TestVersionFloorOverTCP`), mutation-checked, field (sheet `332bffa5-59810`, VERSION_FLOOR=1, row `19-version-floor` PASS, 29/0/0) |
 
 *THE VERSION-FLOOR ADVISORY, 2026-11-26.* Owner decisions 2026-11-25: a genesis-committed maintainer
 key set at a k-of-n threshold; the advisory rides a block and its grace is counted in blocks; the
@@ -1390,7 +1390,11 @@ Notice and urgent only warn, on the daemon's console, its log and `/api/status`.
 makes maintainer keys and signs, shows and submits an advisory. Over TCP, four validators with one
 on the old release: the advisory commits on all four, the old node warns, after the grace the three
 upgraded validators refuse its consensus messages, the chain stays live and the old node follows it
-and still serves content, and a recall lifts the floor.
+and still serves content, and a recall lifts the floor. In the field (sheet `332bffa5-59810`, four
+validators across three regions, val-d on the old release): one maintainer's advisory was refused
+with nothing in force; the threshold's committed, val-d warned, val-a reported one validator below
+the floor and then refused four of val-d's consensus messages while the chain advanced and val-d
+followed; the recall lifted it, and the rest of the sheet ran after it at 29 pass, 0 gap, 0 fail.
 
 *THE HAZARD THE FIRST RUN FOUND.* With three equal validators and one old, enforcement HALTED the
 chain: an enforced floor removes the old releases' weight from a quorum that needs more than
