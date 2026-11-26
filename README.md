@@ -13,7 +13,8 @@ shared registry honest, and the only currency is credit earned by storing and se
 > - It does not hide your IP address from the nodes you talk to. Don't use it where being
 >   identified could put you at risk.
 > - If you run a node, you store encrypted pieces of other people's files. In many countries that
->   makes you a hosting provider; see the operator guide before you run one in public.
+>   makes you a hosting provider; see the [operator guide](docs/OPERATING.md) before you run one
+>   in public.
 
 ## Try it
 
@@ -37,9 +38,11 @@ itself finished only when someone other than its author tries to break all three
 
 | Claim | Last red-team result | Status |
 |---|---|---|
-| Privacy | Broken twice, November 2026 (blind Claude red team) | Both fixed; not yet re-tested by an outsider |
-| Accountability | Not broken; review incomplete | Second pass owed |
-| Sybil resistance | Broken on "no quiet capture", November 2026 | Open |
+| Privacy | Two findings, November 2026 (blind Claude red team) | Both fixed (#904, #906) |
+| Accountability | Not broken; the review found that any validator could propose a takedown | Fixed: takedowns are curator-signed, paid and single-use (#915) |
+| Sybil resistance | One finding on "no quiet capture", November 2026 | Fixed: the launch anchors shed only after enough bonded storage holds for a sustained window (#912, #913) |
+
+A second, independent red team runs before release, and this table will carry its results.
 
 Found something? See [`SECURITY.md`](SECURITY.md).
 
