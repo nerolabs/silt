@@ -524,6 +524,10 @@ type Stats struct {
 	// FalseRepairReports counts signed false repair claims this judge turned into
 	// on-chain slash evidence and sent to the validators.
 	FalseRepairReports int
+	// RepairClaimsDeferred counts claims this judge refused for the claimant's window budget
+	// and asked to be re-sent; RepairClaimsResent counts deferred claims this paramedic re-sent.
+	RepairClaimsDeferred int
+	RepairClaimsResent   int
 	// FloorRefused counts consensus messages refused from nodes advertising a release below an
 	// enforced version floor (versionfloor.go).
 	FloorRefused int
@@ -912,6 +916,9 @@ type Node struct {
 	// and MsgChallenge is unsigned. See allowPorChallenge for why a refusal is a
 	// DROP and never a Found=false reply.
 	porChallengeRate map[ports.NodeID]*challengerRate
+	// repairClaimRate is the per-claimant window budget on repair claims judged
+	// (repairClaimBurst, repairclaim.go).
+	repairClaimRate map[ports.NodeID]*challengerRate
 	// issuerKeySubmitRate is the per-sender budget for MsgSubmitIssuerKeyReg (see
 	// allowIssuerKeySubmit): a refusal costs a map lookup, before decode or verify.
 	issuerKeySubmitRate map[ports.NodeID]*challengerRate
@@ -1638,6 +1645,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		bondSubmitRate:      make(map[ports.NodeID]*challengerRate),
 		roundCertRate:       make(map[ports.NodeID]*challengerRate),
 		porChallengeRate:    make(map[ports.NodeID]*challengerRate),
+		repairClaimRate:     make(map[ports.NodeID]*challengerRate),
 		entrySubmitRate:     make(map[ports.NodeID]*challengerRate),
 		issuerKeySubmitRate: make(map[ports.NodeID]*challengerRate),
 		slashedLocal:        make(map[ports.NodeID]bool),

@@ -166,41 +166,39 @@ func (c *countStore) Delete(ctx context.Context, id ports.ChunkID) error {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PIN 1 — the survivor fetch is UNBOUNDED per sender, and it is n−1 wide.
+// THE SURVIVOR FETCH IS BOUNDED PER CLAIMANT, and it is k wide.
 //
-// THE RULE THIS PIN RECORDS THE ABSENCE OF: the work one sender can force out of
-// a judge within one window must be BOUNDED, and the fetch should be budgeted to
-// the k survivors VerifyByRecompute actually consumes. Neither holds.
+// THE RULE: the work one sender can force out of a judge within one window is bounded, and
+// the fetch is budgeted to the k survivors VerifyByRecompute consumes. Both were pinned as
+// defects and both are now asserted.
 //
 // The claims here are deliberately NOT punishable: each names the REAL,
 // manifest-committed shard id (so the correctness leg passes and nothing is
 // slashed) and a holder that does not hold it (so the retrievability leg denies
 // and nothing is paid). The sender therefore pays nothing at all — no slash, no
-// fee, no standing — while the judge performs a full stripe fetch per claim.
-//
-// PIN. GREEN today. It goes RED when either half is repaired.
-// ───────────────────────────────────────────────────────────────────────────── The
-// pin, in three independently reddenable arms. Each returns "" while the pinned
-// behaviour is present and the instruction once it is not. TEETH:
-// TestRTRC_PinsFireOnTheirRemediations.
+// fee — so whatever the judge fetches on its behalf is pure amplification, and the
+// per-claimant window budget (repairClaimBurst) is what bounds it.
+// ─────────────────────────────────────────────────────────────────────────────
+// Three independently reddenable arms. Each returns "" while the rule holds and the
+// diagnosis once it does not. TEETH: TestRTRC_PinsFireOnTheirRemediations.
 
-// rtRC1Amplification: a per-sender per-window bound would hold the window's total
-// within a small constant of ONE claim's cost. It does not.
-func rtRC1Amplification(claims int, one, many int64, reachedOne int) string {
-	limit := 3 * one
-	if many > limit {
+// rtRC1BoundedPerClaimant: THE POSITIVE ASSERTION THAT REPLACED PIN ARM (a). The pin
+// recorded that 8 claims from one sender cost a judge 8× one claim's fetch. A burst of claims
+// from one claimant now costs at most repairClaimBurst claims' worth inside the window; the
+// rest are deferred with a retry-after before any lookup or fetch. many must also reach at
+// least ONE claim's cost, or the fixture never judged anything and the bound is vacuous.
+func rtRC1BoundedPerClaimant(claims int, one, many int64, reachedOne int) string {
+	limit := int64(repairClaimBurst)*one + one/2
+	if many >= one && many <= limit {
 		return ""
 	}
-	return fmt.Sprintf("PIN 1 PIN IS RED (amplification arm) — THE DEFECT IS FIXED OR HAS MOVED: %d claims from ONE sender cost the judge %d B, "+
-		"within the %d B (3x one claim) that a per-sender per-window bound would allow. The pin asserts the UNBOUNDED behaviour, so this RED "+
-		"means a bound now exists on the path (an admission check ahead of fetchSurvivors, or a per-sender window in handleRepairClaim).\n"+
-		"  BEFORE REPLACING THIS PIN:\n"+
-		"    1. Confirm the bound is real and not an artifact of the probe failing to reach fetchSurvivors — %d distinct shards were reached for one claim.\n"+
-		"    2.  REFUTED the rate-budget remedy on its precondition: emitRepairClaim binds an EMPTY reply\n"+
-		"       callback, so a refused claim is invisible to its sender and lost forever (T-RETRY-IS-THE-PRECONDITION). If a rate budget landed\n"+
-		"       anyway, that refutation is now contradicted and the decision entry must be re-opened BEFORE this pin is retired.\n"+
-		"    3. Then replace this arm with the positive assertion of whatever bound shipped.",
-		claims, many, limit, reachedOne)
+	if many < one {
+		return fmt.Sprintf("ARM (a) VACUOUS — a burst of %d claims cost the judge %d B, below ONE claim's %d B: nothing was judged, so the bound "+
+			"is not what held the cost down. Check the fixture reaches fetchSurvivors (%d distinct shards for one claim).", claims, many, one, reachedOne)
+	}
+	return fmt.Sprintf("ARM (a) IS RED — THE PER-CLAIMANT BOUND IS GONE: a burst of %d claims from ONE claimant cost the judge %d B, above the %d B "+
+		"(repairClaimBurst=%d claims) the window budget allows. Restore the allowWindowed check ahead of the lookup in handleRepairClaim.",
+		claims, many, limit, repairClaimBurst)
 }
 
 // rc1SurvivorBudget: THE POSITIVE ASSERTION THAT REPLACED PIN ARM (b).
@@ -261,9 +259,14 @@ func rtRC1OutOfRangeRefused(outOfRangePos, reachedOOR, reachedOne, nShards int) 
 		outOfRangePos, nShards-1, reachedOOR, reachedOne, nShards, nShards)
 }
 
-func TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT(t *testing.T) {
+func TestSurvivorFetchIsBoundedPerClaimant(t *testing.T) {
 	const claims = 8
 
+	// measure sends n claims as ONE BURST, inside one budget window, and then lets the judge
+	// work. A sequential sender waits out each judgment (about a minute of simulated fetch
+	// timeouts here), which is the honest rate and is inside the budget by design; the burst
+	// is the attack the bound exists for.
+	var deferred int
 	measure := func(n, pos int) (fetched int64, reached int, wire int, released, slashes, shards int) {
 		s := newRepairAdv(t, 1201)
 		s.fundEscrow(5_000_000)
@@ -280,8 +283,9 @@ func TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT(t *testing.T) {
 		data := s.claimData(judge, attacker.ID(), claim)
 		for i := 0; i < n; i++ {
 			judge.handleRepairClaim(attacker.ID(), ports.Message{Kind: ports.MsgRepairClaim, Data: data})
-			s.sched.Run()
 		}
+		s.sched.Run()
+		deferred = judge.Stats.RepairClaimsDeferred
 		return cs.putBytes, len(cs.distinct), len(data), judge.Stats.BountiesReleased, judge.Stats.FalseRepairSlashes, s.shardFetches(cs)
 	}
 
@@ -294,6 +298,9 @@ func TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT(t *testing.T) {
 
 	one, reachedOne, wire, rel1, sl1, shardsOne := measure(1, inRangePos)
 	many, _, _, relN, slN, _ := measure(claims, inRangePos)
+	if deferred != claims-repairClaimBurst {
+		t.Fatalf("the judge deferred %d of a %d-claim burst; the budget judges %d and defers the rest", deferred, claims, repairClaimBurst)
+	}
 
 	t.Logf("PIN 1 MEASURED: k=%d n=%d; claim wire size = %d B; judge store writes for 1 claim = %d B over %d DISTINCT chunks, of which %d are the OBJECT'S OWN shards; for %d claims = %d B (%.1f x one claim)",
 		k, nShards, wire, one, reachedOne, shardsOne, claims, many, float64(many)/float64(one))
@@ -315,10 +322,8 @@ func TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT(t *testing.T) {
 			"a fetch budgeted to k from one that is not. Re-point the fixture at a stripe with n−1 > k before believing this pin.", k, nShards)
 	}
 
-	// ── PIN (a) — the amplification is UNBOUNDED per sender. ──
-	// A per-sender per-window cap would hold the window's total within a small
-	// constant of ONE claim's cost, however many claims arrive. It does not.
-	if msg := rtRC1Amplification(claims, one, many, reachedOne); msg != "" {
+	// ── (a) — a burst from one claimant costs at most repairClaimBurst claims. ──
+	if msg := rtRC1BoundedPerClaimant(claims, one, many, reachedOne); msg != "" {
 		t.Fatal(msg)
 	}
 
@@ -521,16 +526,14 @@ func TestRTRC_PinsFireOnTheirRemediations(t *testing.T) {
 	const k, nShards = 10, 16
 
 	// --- PIN 1 (a), amplification. Pinned: 8 claims cost ~8x one claim. ---
-	if msg := rtRC1Amplification(8, 1000, 8000, nShards-1); msg != "" {
-		t.Fatalf("rtRC1Amplification fired on the unbounded state it is pinned to accept: %s", msg)
+	if msg := rtRC1BoundedPerClaimant(8, 1000, int64(repairClaimBurst)*1000, nShards-1); msg != "" {
+		t.Fatalf("rtRC1BoundedPerClaimant fired on the bounded state it asserts: %s", msg)
 	}
-	if rtRC1Amplification(8, 1000, 1000, nShards-1) == "" {
-		t.Fatal("rtRC1Amplification stayed silent when 8 claims cost no more than ONE — a per-sender " +
-			"per-window bound landing is exactly what this arm exists to detect")
+	if rtRC1BoundedPerClaimant(8, 1000, 8000, nShards-1) == "" {
+		t.Fatal("rtRC1BoundedPerClaimant stayed silent when 8 claims cost 8x one — the unbounded state it replaced")
 	}
-	if rtRC1Amplification(8, 1000, 3000, nShards-1) == "" {
-		t.Fatal("rtRC1Amplification stayed silent at exactly the 3x boundary — the arm must fire at the " +
-			"limit a bound would allow, not only strictly inside it")
+	if rtRC1BoundedPerClaimant(8, 1000, 0, nShards-1) == "" {
+		t.Fatal("rtRC1BoundedPerClaimant stayed silent when nothing was judged — a vacuous zero must fire")
 	}
 
 	// --- (b), in-range width. NO LONGER A PIN: asserted at the k budget. ---
@@ -771,5 +774,42 @@ func TestCopyOfALiveShardIsDeniedWithHistory(t *testing.T) {
 	s.deliverClaim(judge, s.nodes[2].ID(), repairClaimFor(s.root, 0, pos, parityID, holder.ID()))
 	if msg := rc3NoLossDenied(before, s.ledger.EscrowPaid(s.root), judge.Stats.BountiesReleased, judge.Stats.BountyNoPriorLoss); msg != "" {
 		t.Fatal(msg)
+	}
+}
+
+// TestDeferredRepairClaimsAreResentAndJudged is the precondition the per-claimant budget rests
+// on: a claim the judge defers is not lost. A paramedic sends a burst of four claims to one judge
+// through the real emit path; the judge judges repairClaimBurst of them and defers the rest with a
+// retry-after, and the paramedic re-sends each deferred claim until it is judged. All four end up
+// judged, at four claims' worth of survivor fetch.
+func TestDeferredRepairClaimsAreResentAndJudged(t *testing.T) {
+	const claims = 4
+	run := func(n int) (fetched int64, deferred, resent int) {
+		s := newRepairAdv(t, 1201)
+		s.fundEscrow(5_000_000)
+		judge := s.careJudge()
+		cs := newCountStore(judge.store)
+		judge.store = cs
+		pos, parityID, _ := s.parityTarget()
+		paramedic := s.nodes[2]
+		s.bond(paramedic)
+		data := s.claimData(judge, paramedic.ID(), repairClaimFor(s.root, 0, pos, parityID, s.nodes[7].ID()))
+		for i := 0; i < n; i++ {
+			paramedic.sendRepairClaim(judge.ID(), data, 0)
+		}
+		s.sched.Run()
+		return cs.putBytes, judge.Stats.RepairClaimsDeferred, paramedic.Stats.RepairClaimsResent
+	}
+	one, _, _ := run(1)
+	all, deferred, resent := run(claims)
+	t.Logf("one claim: %d B judged; a burst of %d: %d B judged, %d deferred, %d re-sent", one, claims, all, deferred, resent)
+	if one <= 0 {
+		t.Fatal("VACUOUS: one claim sent through the emit path reached no survivor fetch")
+	}
+	if deferred < claims-repairClaimBurst || resent < deferred {
+		t.Fatalf("the judge deferred %d and the paramedic re-sent %d; want at least %d deferred, each re-sent", deferred, resent, claims-repairClaimBurst)
+	}
+	if all < int64(claims)*one-one/2 {
+		t.Fatalf("a burst of %d claims was judged at %d B, below %d claims' worth (%d B each): a deferred claim was lost", claims, all, claims, one)
 	}
 }
