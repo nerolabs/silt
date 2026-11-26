@@ -75,7 +75,7 @@ func TestSupersedeLeavesNoRemainder(t *testing.T) {
 	if got := l.Balance(server); got != paid {
 		t.Fatalf("balance %d after redeem + re-serve, want exactly the paid leg %d — a remainder survived the supersede and minted for bytes the receipt already paid", got, paid)
 	}
-	if p, ok := l.provisional[provKey{server: server, requester: fetcher, root: obj}]; !ok || p.bytes != ServeMintBytesPerCredit {
+	if p, ok := l.provisional[provKey{server: server, root: obj}]; !ok || p.bytes != ServeMintBytesPerCredit {
 		t.Fatalf("post-redeem lane bytes = %+v, want a fresh lane holding exactly the second serve", p)
 	}
 }

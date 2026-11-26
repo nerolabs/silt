@@ -99,7 +99,7 @@ func TestDeliveryAcceptStrictlyDominatesSuppressionAtEverySize(t *testing.T) {
 		if paid != wantPaid || margin != wantPaid-objNet(B) {
 			t.Fatalf("B=%d: paid %d (want %d), margin %d, want paid − reversed self-mint = %d", B, paid, wantPaid, margin, wantPaid-objNet(B))
 		}
-		if _, live := bank.provisional[provKey{server: server, requester: fetcher, root: root}]; live {
+		if _, live := bank.provisional[provKey{server: server, root: root}]; live {
 			t.Fatalf("B=%d: a fully acknowledged lane survived the settlement", B)
 		}
 		if B == 64<<20 && margin != 75 {
@@ -113,7 +113,7 @@ func TestDeliveryAcceptStrictlyDominatesSuppressionAtEverySize(t *testing.T) {
 				t.Fatalf("B=%d partial j−1=%d: bank − suppress = %d, want > 0 for the acknowledged part", B, j-1, pm)
 			}
 			tail := B - (j-1)*r29U
-			p, live := partial.provisional[provKey{server: server, requester: fetcher, root: root}]
+			p, live := partial.provisional[provKey{server: server, root: root}]
 			if !live || p.bytes != tail || p.net != objNet(tail) || p.skim != objSkim(tail) {
 				t.Fatalf("B=%d partial: lane %+v, want the un-acknowledged tail of %d bytes with its own floors (%d, %d) retained", B, p, tail, objNet(tail), objSkim(tail))
 			}
@@ -134,7 +134,7 @@ func TestProvisionalLaneEqualsCreditedBalanceAndReversesPerIncrement(t *testing.
 	l := New(fee, 0)
 	server, fetcher := id(1), id(2)
 	root := ports.HashBytes([]byte("r29-b2"))
-	k := provKey{server: server, requester: fetcher, root: root}
+	k := provKey{server: server, root: root}
 	const B = int64(64 << 20)
 	var served int64
 	for served < B {
@@ -486,7 +486,7 @@ func TestAckReversalUsesTheBudgetCappedCount(t *testing.T) {
 	if why != ReasonPaid || settled != 1 || paid != 1 {
 		t.Fatalf("(%d, %d, %q), want one increment settled", settled, paid, why)
 	}
-	bytes, live := l.ProvisionalLaneForTest(server, fetcher, root)
+	bytes, live := l.ProvisionalLaneForTest(server, root)
 	if !live || bytes != B-r29U {
 		t.Fatalf("lane holds %d bytes (live %v), want B − one increment = %d — the reversal used the raw count", bytes, live, B-r29U)
 	}
@@ -573,7 +573,7 @@ func TestWitnessingNeverDefundsTheEscrow(t *testing.T) {
 	if got := l.EscrowBalance(root); got <= afterServe || got != 256*SkimNum/SkimDen {
 		t.Fatalf("escrow after witnessing %d (after serve alone %d) — witnessing must ADD funding (want 32 = ⌊256/8⌋), never claw it back and replace it with nothing", got, afterServe)
 	}
-	if _, live := l.ProvisionalLaneForTest(server, fetcher, root); live {
+	if _, live := l.ProvisionalLaneForTest(server, root); live {
 		t.Fatal("the fully witnessed lane survived")
 	}
 }
