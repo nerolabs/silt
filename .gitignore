@@ -121,3 +121,8 @@ integration/cloudtest/terraform/network/*.tfstate.*
 # macOS Spotlight/Time Machine artifacts, created in-tree by the OS, never by the build.
 .metadata_never_index
 
+
+# the field run's maintainer private keys (VERSION_FLOOR=1)
+integration/cloudtest/floor-keys/
+# the sessions-dashboard status file (local, not published)
+STATUS.md
