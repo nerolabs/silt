@@ -253,11 +253,15 @@ func (p *WitnessProvider) bundleKeys(b Block, post map[string][]byte) [][]byte {
 	for i := range b.Entries {
 		roots[b.Entries[i].Root] = struct{}{}
 	}
-	for _, r := range b.Revocations {
-		roots[r] = struct{}{}
-	}
-	for _, r := range b.Unrevocations {
-		roots[r] = struct{}{}
+	for _, t := range takedownOps(&b) {
+		roots[t.Root] = struct{}{}
+		add(statehash.Key(tagRevoked, t.Key[:])) // the listing a curated takedown sets or clears
+		if t.Auth != nil {
+			add(statehash.Key(tagSpent, t.spentKey()))
+		}
+		if t.Auth != nil && t.Auth.Token != nil {
+			add(statehash.Key(tagSpent, []byte(t.Auth.Token.Serial)))
+		}
 	}
 	for id := range ids {
 		for _, tag := range []string{tagBonded, tagBondRegHeight, tagRegVersion, tagBondDomain,

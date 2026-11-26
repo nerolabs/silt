@@ -20,6 +20,7 @@ func cmdTakedownReceipt(args []string) error {
 	fs := flag.NewFlagSet("takedown-receipt", flag.ExitOnError)
 	storeDir := fs.String("store", ".silt-daemon", "store directory holding chain.cbor (a validator's, or any replica's)")
 	rootHex := fs.String("root", "", "the revoked root, hex")
+	curatorHex := fs.String("curator", "", "the curator whose listing to prove, hex (as the honouring node's log names it); empty for a takedown from before curators")
 	from := fs.Uint64("from", 0, "a checkpoint log size to prove consistency from (an earlier receipt's size); 0 proves from the empty log")
 	fs.Parse(args)
 
@@ -31,7 +32,13 @@ func cmdTakedownReceipt(args []string) error {
 	if err != nil {
 		return fmt.Errorf("takedown-receipt: %w", err)
 	}
-	r, err := chain.ReceiptFromBlocks(blocks, root, *from)
+	l := chain.Listing{Root: root}
+	if *curatorHex != "" {
+		if l.Curator, err = ports.ParseHash(strings.TrimSpace(*curatorHex)); err != nil {
+			return fmt.Errorf("takedown-receipt: -curator: %w", err)
+		}
+	}
+	r, err := chain.ReceiptFromBlocks(blocks, l, *from)
 	if err != nil {
 		return fmt.Errorf("takedown-receipt: %w", err)
 	}
@@ -69,14 +76,17 @@ func cmdTakedownVerify(args []string) error {
 		return fmt.Errorf("takedown-verify: NOT VERIFIED — %w", err)
 	}
 	printReceipt(r)
-	fmt.Printf("VERIFIED: the takedown of %s at height %d is leaf %d of the revocation log block %d commits (size %d), and that log extends the checkpoint at size %d\n",
-		r.Root, r.Height, r.Index, r.At, r.Size, r.PrevSize)
+	fmt.Printf("VERIFIED: the takedown of %s (curator %s) at height %d is leaf %d of the revocation log block %d commits (size %d), and that log extends the checkpoint at size %d\n",
+		r.Root, r.Curator, r.Height, r.Index, r.At, r.Size, r.PrevSize)
 	return nil
 }
 
 func printReceipt(r chain.RevocationReceipt) {
 	fmt.Printf("takedown receipt:\n")
 	fmt.Printf("  root:        %s (one root; a takedown names exactly one)\n", r.Root)
+	if r.Curator != (ports.NodeID{}) {
+		fmt.Printf("  curator:     %s (who listed it; the log leaf names it)\n", r.Curator)
+	}
 	fmt.Printf("  revoked at:  height %d, log leaf %d\n", r.Height, r.Index)
 	fmt.Printf("  anchored at: block %d %s, log root %s, size %d\n", r.At, r.BlockHash, r.LogRoot, r.Size)
 	fmt.Printf("  extends:     the log at size %d (root %s)\n", r.PrevSize, r.PrevLogRoot)

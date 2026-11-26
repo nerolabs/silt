@@ -598,11 +598,18 @@ func applyEntriesRevocationsWriteSet(b Block) []stateRootWrite {
 			remember(statehash.Key(tagSpent, []byte(e.Token.Serial)), statehash.Present, false)
 		}
 	}
-	for _, r := range b.Revocations {
-		remember(statehash.Key(tagRevoked, r[:]), statehash.Present, false)
-	}
-	for _, r := range b.Unrevocations {
-		remember(statehash.Key(tagRevoked, r[:]), nil, true)
+	for _, t := range takedownOps(&b) {
+		if t.Op == RevOp {
+			remember(statehash.Key(tagRevoked, t.Key[:]), statehash.Present, false)
+		} else {
+			remember(statehash.Key(tagRevoked, t.Key[:]), nil, true)
+		}
+		if t.Auth != nil {
+			remember(statehash.Key(tagSpent, t.spentKey()), statehash.Present, false)
+		}
+		if t.Auth != nil && t.Auth.Token != nil {
+			remember(statehash.Key(tagSpent, []byte(t.Auth.Token.Serial)), statehash.Present, false)
+		}
 	}
 	out := make([]stateRootWrite, 0, len(order)+1)
 	for _, k := range order {

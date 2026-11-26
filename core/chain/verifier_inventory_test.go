@@ -52,6 +52,7 @@ const (
 	o3tClassProposerSig        o3tVerifyClass = "proposer-sig"          // bare hash IS the proposer scheme
 	o3tClassBondRegSig         o3tVerifyClass = "bondreg-sig"           // r.signingBytes(nonce)
 	o3tClassIssuerKeySig       o3tVerifyClass = "issuerkey-sig"         // issuerKeyRegMsg(...)
+	o3tClassCuratorSig         o3tVerifyClass = "curator-sig"           // TakedownSigBytes(chainID, op, root)
 	o3tClassRoundChangeSig     o3tVerifyClass = "roundchange-sig"       // core/node: the view-change envelope, rc.sigBytes
 	o3tClassRelayOpenSig       o3tVerifyClass = "relay-open-sig"        // core/node: the relay-open commitment
 	o3tClassDeliverySessionSig o3tVerifyClass = "delivery-session-sig"  // the durable fetcher's signature over the delivery session open/fund commitment
@@ -101,6 +102,8 @@ var o3tVerifyAllowlist = map[o3tVerifySite]o3tVerifyRow{
 		Why: "BondReg signature over r.signingBytes(nonce)"},
 	{"chain", "issuerkey.go", "VerifyIssuerKeyReg"}: {Count: 1, Classes: []o3tVerifyClass{o3tClassIssuerKeySig},
 		Why: "IssuerKey registration signature over issuerKeyRegMsg(id, epoch, fp)"},
+	{"chain", "curator.go", "verify"}: {Count: 1, Classes: []o3tVerifyClass{o3tClassCuratorSig},
+		Why: "a takedown curator's signature over TakedownSigBytes(chainID, op, root), domain-separated; shared by the node's validateTakedowns and the floor box's v5ValidateTakedowns"},
 	// The era-4 (v5) accept composition MIRRORS the node's proposer-signature and bond-reg-signature
 	// checks over StateView (floor-box structure round 1A, validate_v5.go). Same schemes, same
 	// classes as the node sites they mirror; every ATTESTATION verify in the composition routes

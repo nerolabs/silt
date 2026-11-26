@@ -40,6 +40,41 @@ type RevocationReceipt struct {
 	PrevSize    uint64       `cbor:"9,keyasint,omitempty"`
 	PrevLogRoot ports.Hash   `cbor:"10,keyasint"`
 	Consistency []ports.Hash `cbor:"11,keyasint,omitempty"`
+	// Curator is the curator whose listing this is; zero for a takedown committed before
+	// curators. The log leaf names it, so the receipt proves who asked for the removal.
+	Curator ports.NodeID `cbor:"12,keyasint,omitempty"`
+}
+
+// Listing names one takedown listing: a curator's listing of a root, or, for a takedown committed
+// before curators, the bare root (a zero Curator).
+type Listing struct {
+	Curator ports.NodeID
+	Root    ports.Hash
+}
+
+// key is the listing's revoked-keyspace key.
+func (l Listing) key() ports.Hash {
+	if l.Curator == (ports.NodeID{}) {
+		return l.Root
+	}
+	return ListingKey(l.Curator, l.Root)
+}
+
+func (t takedownOp) listing() Listing { return Listing{Curator: t.Curator, Root: t.Root} }
+
+// Listed reports whether a listing is live: listed and not since lifted.
+func (c *Chain) Listed(l Listing) bool { return c.revoked[l.key()] }
+
+// ListedBy reports whether any of the given curators has a live listing of root. It is the
+// question an operator asks of the curators it follows; a curator it does not follow lists
+// nothing, as far as that operator is concerned.
+func (c *Chain) ListedBy(root ports.Hash, curators []ports.NodeID) bool {
+	for _, cur := range curators {
+		if c.revoked[ListingKey(cur, root)] {
+			return true
+		}
+	}
+	return false
 }
 
 var (
@@ -47,15 +82,14 @@ var (
 	ErrNoLogRoot  = errors.New("chain: no committed revocation log root at or above the revoking block")
 )
 
-// RevocationReceiptFor builds the receipt for root's live revocation, anchored at the
-// revoking block's own LogRoot or, on a block from before the log root was committed,
-// at the nearest later block that commits one. It walks back from the head, reading
-// only the blocks above the revocation.
-func (c *Chain) RevocationReceiptFor(root ports.Hash) (RevocationReceipt, error) {
-	if !c.revoked[root] {
+// RevocationReceiptFor builds the receipt for a live listing, anchored at the revoking block's
+// own LogRoot or, on a block from before the log root was committed, at the nearest later block
+// that commits one. It walks back from the head, reading only the blocks above the revocation.
+func (c *Chain) RevocationReceiptFor(l Listing) (RevocationReceipt, error) {
+	if !c.revoked[l.key()] {
 		return RevocationReceipt{}, ErrNotRevoked
 	}
-	return buildReceipt(c.revLog, c.blocks.Len(), c.blocks.At, root)
+	return buildReceipt(c.revLog, c.blocks.Len(), c.blocks.At, l)
 }
 
 // ExtendFrom attaches the proof that the receipt's log extends the checkpoint at
@@ -67,30 +101,24 @@ func (c *Chain) ExtendFrom(r *RevocationReceipt, prevSize uint64) error {
 
 // ReceiptFromBlocks is RevocationReceiptFor for an auditor holding only a replica's
 // blocks: it rebuilds the revocation log from the blocks' own takedown records, then
-// builds root's receipt and, when prevSize > 0, its consistency from that checkpoint.
+// builds the listing's receipt and, when prevSize > 0, its consistency from that checkpoint.
 // The receipt is then checked against the block it anchors at, so a replica whose
 // committed LogRoot disagrees with its own records yields an error, never a receipt.
-func ReceiptFromBlocks(blocks []Block, root ports.Hash, prevSize uint64) (RevocationReceipt, error) {
+func ReceiptFromBlocks(blocks []Block, l Listing, prevSize uint64) (RevocationReceipt, error) {
 	log := translog.New()
 	revoked := false
 	for i := range blocks {
-		for _, r := range blocks[i].Revocations {
-			log.Append(RevocationLeaf(RevOp, r, blocks[i].Height))
-			if r == root {
-				revoked = true
-			}
-		}
-		for _, r := range blocks[i].Unrevocations {
-			log.Append(RevocationLeaf(UnrevOp, r, blocks[i].Height))
-			if r == root {
-				revoked = false
+		for _, t := range takedownOps(&blocks[i]) {
+			log.Append(t.leaf(blocks[i].Height))
+			if t.listing() == l {
+				revoked = t.Op == RevOp
 			}
 		}
 	}
 	if !revoked {
 		return RevocationReceipt{}, ErrNotRevoked
 	}
-	r, err := buildReceipt(log, len(blocks), func(i int) *Block { return &blocks[i] }, root)
+	r, err := buildReceipt(log, len(blocks), func(i int) *Block { return &blocks[i] }, l)
 	if err != nil {
 		return RevocationReceipt{}, err
 	}
@@ -103,18 +131,19 @@ func ReceiptFromBlocks(blocks []Block, root ports.Hash, prevSize uint64) (Revoca
 	return r, nil
 }
 
-func buildReceipt(log *translog.Log, n int, at func(int) *Block, root ports.Hash) (RevocationReceipt, error) {
+func buildReceipt(log *translog.Log, n int, at func(int) *Block, l Listing) (RevocationReceipt, error) {
 	size := uint64(log.Size()) // events through the block being visited
 	var anchor *Block
 	var anchorSize uint64
 	for h := n - 1; h >= 0; h-- {
 		b := at(h)
-		start := size - uint64(len(b.Revocations)+len(b.Unrevocations))
+		ops := takedownOps(b)
+		start := size - uint64(len(ops))
 		if b.LogRoot != nil {
 			anchor, anchorSize = b, size
 		}
-		for j := len(b.Revocations) - 1; j >= 0; j-- {
-			if b.Revocations[j] != root {
+		for j := len(ops) - 1; j >= 0; j-- {
+			if ops[j].Op != RevOp || ops[j].listing() != l {
 				continue
 			}
 			if anchor == nil {
@@ -126,14 +155,14 @@ func buildReceipt(log *translog.Log, n int, at func(int) *Block, root ports.Hash
 				return RevocationReceipt{}, err
 			}
 			return RevocationReceipt{
-				Root: root, Height: b.Height, Index: idx,
+				Root: l.Root, Curator: l.Curator, Height: b.Height, Index: idx,
 				At: anchor.Height, BlockHash: anchor.Hash(), LogRoot: *anchor.LogRoot, Size: anchorSize,
 				Inclusion: proof,
 			}, nil
 		}
 		size = start
 	}
-	return RevocationReceipt{}, fmt.Errorf("chain: %s is revoked but no block revokes it", root)
+	return RevocationReceipt{}, fmt.Errorf("chain: %s is listed but no block lists it", l.Root)
 }
 
 func extendFrom(log *translog.Log, r *RevocationReceipt, prevSize uint64) error {
@@ -171,6 +200,9 @@ func VerifyRevocationReceipt(r RevocationReceipt, anchor Block) error {
 		return fmt.Errorf("leaf %d is outside a log of size %d", r.Index, r.Size)
 	}
 	leaf := RevocationLeaf(RevOp, r.Root, r.Height)
+	if r.Curator != (ports.NodeID{}) {
+		leaf = CuratedRevocationLeaf(RevOp, r.Curator, r.Root, r.Height)
+	}
 	if !translog.VerifyInclusion(leaf, int(r.Index), int(r.Size), r.LogRoot, r.Inclusion) {
 		return fmt.Errorf("the revocation of %s at height %d is not leaf %d of the log block %d commits", r.Root, r.Height, r.Index, r.At)
 	}
@@ -198,18 +230,19 @@ func DecodeReceipt(raw []byte) (RevocationReceipt, error) {
 	return r, nil
 }
 
-// RevocationsSince lists, in log order, the roots revoked by log events at index
-// seen and above, walking back from the head only as far as those events reach.
-// Reversals are not listed; whether a root is still revoked is Revoked's to say.
-func (c *Chain) RevocationsSince(seen uint64) []ports.Hash {
+// RevocationsSince lists, in log order, the listings made by log events at index seen and above,
+// walking back from the head only as far as those events reach. Lifted listings are not listed;
+// whether one is still live is Listed's to say.
+func (c *Chain) RevocationsSince(seen uint64) []Listing {
 	size := uint64(c.revLog.Size())
-	var out []ports.Hash
+	var out []Listing
 	for h := c.blocks.Len() - 1; h >= 0 && size > seen; h-- {
 		b := c.blocks.At(h)
-		start := size - uint64(len(b.Revocations)+len(b.Unrevocations))
-		for j := len(b.Revocations) - 1; j >= 0; j-- {
-			if start+uint64(j) >= seen {
-				out = append(out, b.Revocations[j])
+		ops := takedownOps(b)
+		start := size - uint64(len(ops))
+		for j := len(ops) - 1; j >= 0; j-- {
+			if ops[j].Op == RevOp && start+uint64(j) >= seen {
+				out = append(out, ops[j].listing())
 			}
 		}
 		size = start

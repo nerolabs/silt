@@ -1015,18 +1015,18 @@ func (n *Node) ValidateEntryProposal(e ports.Entry) error {
 	return n.chain.ValidateSubmission(n.signer.Public().(ed25519.PublicKey), e)
 }
 
-// ProposeRevocation runs consensus on a TAKEDOWN: an append-only block
-// that marks roots denied. It needs the same reputation quorum as a
-// publication, so removing content is exactly as governed as adding it —
-// no single node can take a file down, and the record of the takedown is
-// itself immutable and replicated.
-func (n *Node) ProposeRevocation(roots []ports.Hash, attesters, broadcast []ports.NodeID, quorum int, done func(error)) {
+// ProposeRevocation runs consensus on a TAKEDOWN: an append-only block that records curators'
+// listings of roots. Each root carries its curator's authority (auths[i] for roots[i]: the
+// curator's signature and, where publishing needs a token, a token as the fee). It needs the same
+// quorum as a publication, the record is immutable and replicated, and it names its curator;
+// whether any node drops the bytes is up to each operator, by the curators it follows.
+func (n *Node) ProposeRevocation(roots []ports.Hash, auths []chain.TakedownAuth, attesters, broadcast []ports.NodeID, quorum int, done func(error)) {
 	if n.chain == nil {
 		done(ErrNoChain)
 		return
 	}
 	prev, height := n.chain.Head()
-	n.proposeBlock(&chain.Block{Version: chain.BlockVersion, Height: height, Prev: prev, Revocations: roots},
+	n.proposeBlock(&chain.Block{Version: chain.BlockVersion, Height: height, Prev: prev, Revocations: roots, TakedownAuths: auths},
 		attesters, broadcast, quorum, done)
 }
 
@@ -1331,6 +1331,9 @@ func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeI
 		}
 	} else {
 		b.Version = chain.BlockVersionRounds // era 2: minted blocks carry two-phase certificates
+	}
+	if !chain.CarriesTakedownAuthority(b) {
+		b.TakedownAuths = nil // an older era's takedowns are bare, under its frozen rules
 	}
 	chain.Sign(b, n.signer)
 	if err := n.chain.ValidateProposal(b); err != nil {

@@ -77,8 +77,12 @@ provable quantity rather than a promise.
   consistency proofs can be forged or made to disagree with the log itself;
 - show that a curator can suppress content without it being attributable to them.
 
-**Where the mechanism lives.** The revocation and un-revocation path in `core/chain/chain.go`,
-the transparency log and its committed size leaf, `integration/takedown/`.
+**Where the mechanism lives.** Curator authority in `core/chain/curator.go`: every takedown on a
+current block carries its curator's signature over (network, operation, root) and, where publishing
+needs a token, a token as its fee; a bare proposer takedown is refused. Listings are kept per
+(curator, root), and only the listing curator can lift its own. The revocation and un-revocation
+path in `core/chain/chain.go` and its floor-box mirror, the transparency log (whose leaves name the
+curator) and its committed size leaf, operators' `-honor-curators`, `integration/takedown/`.
 
 ---
 

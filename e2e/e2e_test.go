@@ -657,13 +657,13 @@ func TestChainRevocationCommitsOverTCP(t *testing.T) {
 
 	// A third validator is told to REVOKE that root: once it has earned standing
 	// and seen the root committed, it proposes an on-chain takedown that commits
-	// through the quorum. It also subscribes to on-chain takedowns (F5).
+	// through the quorum, signed by its own key as the curator. It follows itself (F5).
 	c := startDaemon(t, "C",
 		"-listen", "127.0.0.1:0", "-store", t.TempDir(),
 		"-bootstrap", bootstrapA, "-validator",
 		"-objective=false", "-min-rep", "100", "-quorum", "1", "-attesters", idA,
 		"-bond", "8M", "-bond-audit", "1s",
-		"-revoke", h.Root.String(), "-honor-chain-revocations",
+		"-revoke", h.Root.String(), "-honor-curators", "self",
 		"-capacity", "1G", "-mdns=false", "-id-seed", "3003")
 	c.waitFor(t, reBootstrap, 20*time.Second)
 
