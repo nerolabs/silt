@@ -22,6 +22,7 @@ import (
 func (n *Node) EnableChain(ch *chain.Chain, priv ed25519.PrivateKey) {
 	n.chain = ch
 	n.signer = priv
+	n.retainWitnessHead() // the head it starts on is servable after it commits past it
 }
 
 // FollowChain keeps ch as a NON-VOTING replica: the node syncs committed blocks,
@@ -32,6 +33,7 @@ func (n *Node) EnableChain(ch *chain.Chain, priv ed25519.PrivateKey) {
 func (n *Node) FollowChain(ch *chain.Chain) {
 	n.chain = ch
 	n.following = true
+	n.retainWitnessHead()
 }
 
 // ChainFollower reports whether this node keeps a replica without voting.
