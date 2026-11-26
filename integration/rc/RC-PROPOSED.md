@@ -679,9 +679,9 @@ failures here, and an undriven half of the accountability claim is exactly that.
 is that the product drops a queued slash — this run cannot see that far, and the verdict says so in
 those words rather than implying a defect it did not measure.
 
-**10. A prover without the bytes fails the audit and is paid nothing.** ⚠ *all three defeats and both
-work bounds are CLOSED at unit and e2e, and the claim path's shipped-default exposure with them; what
-remains is one COUNT bound, named, and a cloud run this has not been through*
+**10. A prover without the bytes fails the audit and is paid nothing.** ✅ *all three defeats, both
+work bounds and the per-claimant COUNT bound are closed at unit and e2e; the claim path ran in the field
+with item 17 (sheet 697dacb9-24055, ECONOMY=1)*
 Three defeats: the
 care link printed on every publish is the storage-proof verification key; a data-less
 identity passes by relaying the challenge to a real holder; the inclusion proof is checked
@@ -702,7 +702,7 @@ that reddened it, in the same change. No test was deleted.
 | the unsigned repair claim's fetch is not budgeted (arm b) | GATE 1 (b) → `rc1SurvivorBudget` | **CLOSED** |
 | the challenge frame is not rate-limited | `TestPorChallengeRateLimitPerChallenger`, `TestRefusedPorChallengeSendsNoReply` | **CLOSED** |
 | the unsigned repair claim is judged by a node that cannot pay (arm a, the shipped-default half) | `TestRepairClaimBuysNoWorkWithoutTheEconomy` | **CLOSED** — 4,719,978 B → 0 |
-| the unsigned repair claim is unbounded PER SENDER (arm a, the count) | `TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT` | open — remedy REFUTED |
+| the unsigned repair claim is unbounded PER SENDER (arm a, the count) | the per-sender pin (since 2026-11-26 the positive assertion `TestSurvivorFetchIsBoundedPerClaimant`) | open — remedy REFUTED |
 | the care link IS the storage-proof verification key | `TestCareLinkHolderWithZeroBytesFailsTheAudit` | **CLOSED** — the key left the scheme |
 | a data-less identity outsources the challenge to a real holder | `TestChallengeOutsourcingIsRefusedByTheProver` | **CLOSED** — Passed 1 → 0, mint 1000 → slashed |
 
@@ -762,7 +762,7 @@ read off the run:
 |---|---|
 | care-link forgery (the pin, then `TestCareLinkHolderWithZeroBytesFailsTheAudit`) | 0 bytes read, 67 field mults against the honest prover's 8,643 — **129× less work, 17× faster** — graded `Passed:1`, mints 1000 credit — **CLOSED 2026-09-19**, now `Passed:0 Failed:1` and slashed |
 | challenge proxy (`TestChallengeOutsourcingIsRefusedByTheProver`, then the pin) | a data-less identity has a real holder answer its own identity-bound challenge; graded `Passed:1`, mints 1000 credit — **CLOSED 2026-09-19**, now `Passed:0 Failed:1` and the proxy is slashed |
-| unbounded claim, arm (a) (`TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT`) | a **110-byte** claim costs the judge **4,719,978 B** over 10 distinct chunks — **~42,900×** — and the sender pays nothing; 8 claims cost 8× that, linearly |
+| unbounded claim, arm (a) (the per-sender pin (since 2026-11-26 the positive assertion `TestSurvivorFetchIsBoundedPerClaimant`)) | a **110-byte** claim costs the judge **4,719,978 B** over 10 distinct chunks — **~42,900×** — and the sender pays nothing; 8 claims cost 8× that, linearly |
 
 *ARM (a) IS LIVE ON THE SHIPPED DEFAULT, which this sheet did not say and should have.*
 `handleRepairClaim` runs the registry lookup, the manifest fetch and the survivor walk BEFORE any
@@ -793,9 +793,21 @@ ON, so the economy-ON arm is simultaneously the proof that a participating node 
 pre-gate behaviour the gate removed. The test FAILS when that arm is cheap, because a gate that is
 never reached passes for free — the same shape every other gate on this list carries.
 
-*WHAT IT DOES NOT CLOSE, and the fix says so in the code rather than reading as if it had.* The
+*THE PER-CLAIMANT BOUND, CLOSED 2026-11-26.* The refutation below rested on its precondition —
+claim emission bound an empty reply callback, so a refused claim was lost forever. Both halves are
+built now. The judge checks the claimant's committed bond and then a per-claimant window budget
+(`repairClaimBurst`, two claims per `ChainSyncInterval`) BEFORE any registry lookup, manifest fetch or
+survivor walk; a claim over the budget is refused with a retry-after and nothing else. The paramedic
+re-sends a deferred claim after the delay the judge names, up to twelve sends. Measured: a burst of
+eight unpunishable claims from one claimant cost the judge 1.8× one claim's survivor fetch, where it
+cost 8.0×; an honest burst of four sent through the emit path was judged in full after re-sends.
+Mutation-checked: without the budget both `TestSurvivorFetchIsBoundedPerClaimant` and
+`TestDeferredRepairClaimsAreResentAndJudged` go red. N bonded identities buy N budgets; making an
+identity expensive is M0's job, and item 17 made a false claim cost the claimant its bond.
+
+*WHAT IT DID NOT CLOSE in September, and the fix said so in the code rather than reading as if it had.* The
 per-sender bound. A node RUNNING the economy still pays the full cost per claim, from an unsigned
-frame, without limit. `TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT` is still GREEN at the
+frame, without limit. the per-sender pin (since 2026-11-26 the positive assertion `TestSurvivorFetchIsBoundedPerClaimant`) is still GREEN at the
 same 4,719,978 B, which is the correct outcome and not an oversight: it pins the count, and this
 change moved the work.
 
