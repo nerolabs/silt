@@ -183,7 +183,9 @@ func (n *Node) answerCanonicalIssuers() ports.Message {
 	for _, id := range ids {
 		data = append(data, id[:]...)
 	}
-	return ports.Message{Kind: ports.MsgCanonicalIssuersReply, OK: true, Data: data}
+	// Height carries the publish-token quorum this validator requires, so a publisher learns
+	// from the same answer which signers to ask and how many tokens' signatures it needs.
+	return ports.Message{Kind: ports.MsgCanonicalIssuersReply, OK: true, Data: data, Height: uint64(n.chain.TokenQuorum())}
 }
 
 // FetchCanonicalIssuers asks a chain-holding validator v for the deterministic
@@ -192,13 +194,19 @@ func (n *Node) answerCanonicalIssuers() ports.Message {
 // arbitrary subset of its own peer list, closing the signer-subset deanonymization
 // channel. done fires with the ids (heaviest bond first) or an error.
 func (n *Node) FetchCanonicalIssuers(v ports.NodeID, done func([]ports.NodeID, error)) {
+	n.fetchIssuersAndQuorum(v, func(ids []ports.NodeID, _ int, err error) { done(ids, err) })
+}
+
+// fetchIssuersAndQuorum is FetchCanonicalIssuers that also returns the publish-token quorum the
+// answering validator requires (0 = tokens not required there).
+func (n *Node) fetchIssuersAndQuorum(v ports.NodeID, done func([]ports.NodeID, int, error)) {
 	n.request(v, ports.Message{Kind: ports.MsgGetCanonicalIssuers}, func(resp ports.Message, err error) {
 		const idLen = len(ports.Hash{})
 		switch {
 		case err != nil:
-			done(nil, err)
+			done(nil, 0, err)
 		case !resp.OK || len(resp.Data) == 0 || len(resp.Data)%idLen != 0:
-			done(nil, errNoCanonicalIssuers)
+			done(nil, 0, errNoCanonicalIssuers)
 		default:
 			ids := make([]ports.NodeID, 0, len(resp.Data)/idLen)
 			for i := 0; i+idLen <= len(resp.Data); i += idLen {
@@ -206,9 +214,41 @@ func (n *Node) FetchCanonicalIssuers(v ports.NodeID, done func([]ports.NodeID, e
 				copy(id[:], resp.Data[i:i+idLen])
 				ids = append(ids, id)
 			}
-			done(ids, nil)
+			done(ids, int(resp.Height), nil)
 		}
 	})
+}
+
+// FetchPublishRequirementsFromAny is FetchCanonicalIssuersFromAny that also returns the
+// publish-token quorum the network requires, so a publisher that was told nothing learns
+// whether it needs a token and from how many signers.
+func (n *Node) FetchPublishRequirementsFromAny(vs []ports.NodeID, done func(issuers []ports.NodeID, quorum int, err error)) {
+	if len(vs) == 0 {
+		done(nil, 0, errNoCanonicalIssuers)
+		return
+	}
+	pending, finished := len(vs), false
+	lastErr := errNoCanonicalIssuers
+	for _, v := range vs {
+		n.fetchIssuersAndQuorum(v, func(ids []ports.NodeID, q int, err error) {
+			pending--
+			if finished {
+				return
+			}
+			if err == nil && len(ids) > 0 {
+				finished = true
+				done(ids, q, nil)
+				return
+			}
+			if err != nil {
+				lastErr = err
+			}
+			if pending == 0 {
+				finished = true
+				done(nil, 0, lastErr)
+			}
+		})
+	}
 }
 
 // FetchCanonicalIssuersFromAny asks EVERY validator concurrently and returns the
