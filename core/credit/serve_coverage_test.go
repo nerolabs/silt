@@ -83,7 +83,7 @@ func TestServedByteSplitIsExactAcrossEveryTerminalState(t *testing.T) {
 	if st.WitnessedBytes != 8*U || st.InFlightBytes != 0 || st.ReceiptCoverage != 1.0 {
 		t.Fatalf("after full ack: witnessed %d in-flight %d coverage %v, want %d, 0, 1.0", st.WitnessedBytes, st.InFlightBytes, st.ReceiptCoverage, 8*U)
 	}
-	if _, live := l.provisional[provKey{server: server, requester: fetcher, root: root}]; live {
+	if _, live := l.provisional[provKey{server: server, root: root}]; live {
 		t.Fatal("a fully acknowledged lane survived the settlement")
 	}
 

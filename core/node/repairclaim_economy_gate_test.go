@@ -22,10 +22,9 @@ import (
 // to protect, and the whole cost is attacker-directed.
 //
 // WHAT THIS GATE DOES NOT CLOSE, said plainly because the shape invites the
-// misreading: it narrows the WORK, it does not bound the COUNT. A node running the
-// economy still pays the measured cost per claim, unsigned and unlimited, and
-// TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT stays green over exactly that.
-// Narrowing is not bounding.
+// misreading: it narrows the WORK, it does not bound the COUNT. For a node running the
+// economy the count is bounded separately, per claimant and per window
+// (TestSurvivorFetchIsBoundedPerClaimant). Narrowing is not bounding.
 func TestRepairClaimBuysNoWorkWithoutTheEconomy(t *testing.T) {
 	// measure delivers ONE honest-looking, unpunishable claim to a caretaker judge
 	// and reports what it cost. The claim names the real manifest-committed shard id

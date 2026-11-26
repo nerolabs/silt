@@ -162,8 +162,19 @@ func TestValidatorKilledMidConsensusRestartsWithoutContradictingItself(t *testin
 		saved int
 		lines int // sign lines in the victim's log at the kill
 	}
-	var crashes []crash
-	for k := 0; k < kills; k++ {
+	// crashes are the ones that DROVE a re-sign; every attempt, driven or not, is in
+	// attempts and its signatures are audited for contradictions all the same. A crash
+	// is not driven when the victim's last signature before the kill completed the
+	// crash height's quorum (a precommit that was already on the wire): the network
+	// commits that height without the victim, the restarted victim correctly syncs past
+	// it, and there was nothing to re-sign. Such an attempt is retried, up to
+	// maxAttempts, until kills crashes have driven a re-sign.
+	const maxAttempts = 5
+	var crashes, attempts []crash
+	for k := 0; len(crashes) < kills; k++ {
+		if k >= maxAttempts {
+			t.Fatalf("after %d attempts only %d crash(es) drove a re-sign at the crash height; the drill needs %d", k, len(crashes), kills)
+		}
 		v := daemons[victim]
 		// Stop the staller across the crash: with it and the victim both down, two of
 		// four cannot commit, so the crash height waits for the victim. Stopped, not
@@ -214,7 +225,7 @@ func TestValidatorKilledMidConsensusRestartsWithoutContradictingItself(t *testin
 			t.Fatalf("crash %d: the victim never held its own proposal's prepare above its committed head within 90s — the kill could not be aimed. Victim's last proposal/round lines:\n%s",
 				k, strings.Join(tail, "\n"))
 		}
-		crashes = append(crashes, *hit)
+		attempts = append(attempts, *hit)
 		t.Logf("crash %d: killed holding a mark at h=%d r=%d phase=%d with %d block(s) saved",
 			k, hit.mark.Height, hit.mark.Round, hit.mark.Phase, hit.saved)
 
@@ -257,6 +268,18 @@ func TestValidatorKilledMidConsensusRestartsWithoutContradictingItself(t *testin
 			time.Sleep(100 * time.Millisecond)
 		}
 		t.Logf("crash %d: rejoined and committed past h=%d %s after the restart", k, hit.mark.Height, time.Since(restartedAt).Round(time.Second))
+		resigned := false
+		for _, l := range signLines()[hit.lines:] {
+			if h, _ := strconv.ParseUint(l[1], 10, 64); h == hit.mark.Height {
+				resigned = true
+				break
+			}
+		}
+		if !resigned {
+			t.Logf("crash %d: NOT DRIVEN — h=%d committed with the victim's pre-crash signature, so the restart had nothing to re-sign; retrying", k, hit.mark.Height)
+			continue
+		}
+		crashes = append(crashes, *hit)
 	}
 
 	stop.Store(true)
@@ -303,7 +326,7 @@ func TestValidatorKilledMidConsensusRestartsWithoutContradictingItself(t *testin
 		p    uint8
 	}
 	signed := map[slot]string{}
-	for _, c := range crashes {
+	for _, c := range attempts {
 		signed[slot{c.mark.Height, c.mark.Round, c.mark.Phase}] = c.mark.Hash.String()
 	}
 	all := signLines()
@@ -333,6 +356,6 @@ func TestValidatorKilledMidConsensusRestartsWithoutContradictingItself(t *testin
 		}
 		t.Logf("crash %d: after the restart the victim signed %d time(s) at h=%d, none contradicting", k, again, c.mark.Height)
 	}
-	t.Logf("%d crash(es), %d signatures audited across %d process lifetimes; %d blocks agreed on four replicas",
-		len(crashes), len(all), len(crashes)+1, len(longest))
+	t.Logf("%d crash(es) drove a re-sign (%d attempted), %d signatures audited across %d process lifetimes; %d blocks agreed on four replicas",
+		len(crashes), len(attempts), len(all), len(attempts)+1, len(longest))
 }

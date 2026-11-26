@@ -617,6 +617,7 @@ func (c *Chain) readSetScalars(acc *readSetAcc) {
 	acc.addScalar(tagEra3LockedIn, statehash.EncodeBool(c.era3LockedIn))
 	acc.addScalar(tagEra3Height, statehash.EncodeUint64(c.era3Height))
 	acc.addScalar(tagEpochStart, statehash.EncodeUint64(c.epochStart))
+	acc.addScalar(tagMatureSince, statehash.EncodeUint64(c.matureSince))
 	acc.addScalar(tagEra4LockedIn, statehash.EncodeBool(c.era4LockedIn))
 	acc.addScalar(tagEra4Height, statehash.EncodeUint64(c.era4Height))
 }

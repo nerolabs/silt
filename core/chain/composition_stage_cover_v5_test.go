@@ -531,7 +531,7 @@ var nodeBodyDigests = map[string]string{
 	"era3Active":                 "883666c754351a281949e98123de50205e93d7114e02ea4226e56448cc8206d2",
 	"handedOff":                  "07e38df939a4eadebcb2decd5d90589fe3b8d409502125fb677a17aea77a53b1",
 	"MintVersion":                "3ab4343e9609983702264795731dda4380c085a38767ea43f0ed5f6fd1287ada",
-	"matureNow":                  "1ae3776705326b6589ed476873070414d3f733d9df6f9480098e7bfda1d8a41e",
+	"matureNow":                  "f82c242948dcc95294e763833413d96926ace7d7f5fcb448a359c3a08e08e75f",
 	"postApplyRoots":             "cf7fec5d6d0ec420f664095e1352cf3b1700998284b23b3cae8137874ba2d531",
 	"recentBondRegNonces":        "ba7a00623b0f6c0d94b95b73921a0e91f66b983d2f4d42e29cd779a46d42454d",
 	"regGateActive":              "4d369be6273149966e31991f923749eef5d1b2162b0d865f78a10ed4a0a5ee72",

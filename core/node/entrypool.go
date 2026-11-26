@@ -101,6 +101,20 @@ func (n *Node) SubmitEntry(e ports.Entry, peers []ports.NodeID) {
 	}
 }
 
+// ForwardEntry hands an entry to peers for whichever of them proposes next, without holding a
+// chain. It is the submit an ephemeral publishing client makes: the receivers learn the
+// entry and the client's throwaway identity, nothing more. A validator publishing its own
+// content uses it so the entry never leaves under the validator's durable identity.
+func (n *Node) ForwardEntry(e ports.Entry, peers []ports.NodeID) {
+	raw := entryEncode(e)
+	for _, p := range peers {
+		if p == n.id {
+			continue
+		}
+		n.request(p, ports.Message{Kind: ports.MsgSubmitEntry, Data: raw}, func(ports.Message, error) {})
+	}
+}
+
 // foldPendingEntries appends mempool entries to a block under construction —
 // FIFO, re-validated against the CURRENT head (a root committed or a token
 // serial spent since submit is dropped, exactly the reg queue's discipline;

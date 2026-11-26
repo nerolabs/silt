@@ -152,6 +152,7 @@ func latchedMaturityWitness(t *testing.T, prover *statehash.Prover, preValue fun
 	return &StateRootMaturityWitness{
 		EverMature:  handoffScalarWit(t, prover, preValue, tagEverMature),
 		MatureEpoch: handoffScalarWit(t, prover, preValue, tagMatureEpoch),
+		MatureSince: handoffScalarWit(t, prover, preValue, tagMatureSince),
 	}
 }
 

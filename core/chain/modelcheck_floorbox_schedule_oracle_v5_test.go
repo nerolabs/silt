@@ -279,7 +279,7 @@ func boundaryWitnessFor(t *testing.T, c *Chain, prover *statehash.Prover, b Bloc
 	rw.Era4LockedIn = scalarWit(tagEra4LockedIn)
 	rw.Era4Height = scalarWit(tagEra4Height)
 	w.Rotate = &rw
-	w.Maturity = &StateRootMaturityWitness{EverMature: scalarWit(tagEverMature), MatureEpoch: scalarWit(tagMatureEpoch)}
+	w.Maturity = &StateRootMaturityWitness{EverMature: scalarWit(tagEverMature), MatureEpoch: scalarWit(tagMatureEpoch), MatureSince: scalarWit(tagMatureSince)}
 
 	if c.cfg.BondTTLBlocks > 0 {
 		var hk [8]byte

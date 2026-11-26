@@ -19,9 +19,9 @@ package credit
 //
 // THE BREAK IS RECORDING SURPLUS, NOT RECORDING. An earlier
 // form of this comment read as "recording per se is the break". That rule is REFUTED by
-// silt's own default build: core/credit/delivery.go keeps provKey{server, requester,
-// root} on every object-aware serve, with no flag and no tag, because the D-S7
-// durability economy needs it. What puts THIS instrument inside the line is T-DONT3
+// silt's own default build: core/credit/delivery.go keeps a provisional lane on every
+// object-aware serve, with no flag and no tag, because the D-S7 durability economy needs
+// it — keyed by server and object only, so it records no fetcher. What puts THIS instrument inside the line is T-DONT3
 // prong (a), SURPLUS — a per-requester `when` that no decided function needs — and
 // prong (c), PURPOSE: the age axis exists to relate a fetcher to bytes over time. The
 // tag's OUTCOME is unchanged; only the generalised reason behind it was wrong.
