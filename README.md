@@ -2,12 +2,10 @@
 
 A content-addressed, erasure-coded storage and distribution network.
 
-> **Mothballed 2026-09-22 — paused, not abandoned.** Active development stopped; the
-> project resumes at a later date. The storage plane works and is field-driven. The trust
-> plane has one open liveness mechanism on adverse networks, and the mission claim has
-> never been put to the external red team that is the only standard this project accepts
-> for it. See [`docs/MOTHBALLED.md`](docs/MOTHBALLED.md) for the handover — what is true by
-> evidence tier, where the work stopped, and what not to re-derive.
+> **Active again.** silt was paused from 2026-09-22 and resumed in November 2026. The
+> September handover, kept as history, is [`docs/MOTHBALLED.md`](docs/MOTHBALLED.md); the
+> state of each release-candidate item is in
+> [`integration/rc/RC-PROPOSED.md`](integration/rc/RC-PROPOSED.md).
 
 > **Early and experimental — 0.x, unaudited.** silt is published to get technical
 > feedback, not to be trusted with data you cannot afford to lose.

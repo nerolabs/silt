@@ -1,16 +1,16 @@
 # silt
 
-## Mothballed
+## Status
 
-Active development stopped on 2026-09-22 by the owner's decision. The project resumes at an
-unset later date.
+Active. silt was mothballed from 2026-09-22 and resumed in November 2026; on 2026-11-26 the
+owner took it out of mothball with one goal: launch it, as a completed product, to its first
+community. `docs/MOTHBALLED.md` is now history — it records where the work stood in September
+and which confidently-written claims were later falsified, and it is worth reading for that.
+Every dated claim in the record is a snapshot; re-run the command that produced a number
+before reasoning from it.
 
-Read `docs/MOTHBALLED.md` before anything else. It says what is true by evidence tier, where
-the work stopped, which candidates were built and eliminated, and which confidently-written
-claims in this repository were later falsified. Every dated claim in the record is a snapshot
-— re-run the command that produced a number before reasoning from it.
-
-Do not resume building unasked. If the owner asks for work, the rules below still govern it.
+The launch bar is the RC list with every item held — built, not disclosed — and the external
+adversary's verdict on the three claims in `ADVERSARY.md`.
 
 ## The canon
 
@@ -26,8 +26,8 @@ canon, and it is expected to be cut apart.
 
 Build the vision. Honor the tenets. Decide for yourself.
 
-The release-candidate date of 2026-09-27 lapsed unmet and the list is now a record rather
-than a plan.
+The release-candidate date of 2026-09-27 lapsed unmet. The list is the plan again: an item is
+done when it is held, and none ships disclosed.
 
 ## Code carries no process
 

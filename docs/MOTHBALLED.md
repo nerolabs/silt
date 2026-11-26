@@ -1,4 +1,9 @@
-# silt — mothballed 2026-09-22
+# silt — mothballed 2026-09-22 (resumed November 2026)
+
+> **History, not the entry point.** silt resumed in November 2026 and left mothball on
+> 2026-11-26. This document is kept as the September handover. Where it and
+> [`integration/rc/RC-PROPOSED.md`](../integration/rc/RC-PROPOSED.md) disagree, the RC list
+> is current: RC items 11–20 are held, each with its evidence named there.
 
 > **Status: paused, not abandoned.** Work stopped on 2026-09-22 by the owner's decision.
 > The project resumes at an unset later date. Nothing here is canon; the canon is

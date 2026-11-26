@@ -1,13 +1,10 @@
 # silt — the release candidate list
 
-> **MOTHBALLED 2026-09-22. This is a record, not a plan.** The date below lapsed unmet.
-> Every verdict, number and run identifier here is a snapshot dated 2026-09-22 or earlier;
-> re-run the command that produced a number before reasoning from it. The handover is
-> [`docs/MOTHBALLED.md`](../../docs/MOTHBALLED.md), and it says which claims on this list
-> were later falsified.
->
-> The list is kept in full, including every eliminated candidate and every wrong prediction,
-> because the next attempt starts from the evidence rather than from a summary of it.
+> **The plan again.** silt was mothballed 2026-09-22 and resumed in November 2026. The
+> September snapshots below are kept, including every eliminated candidate and every wrong
+> prediction, because the next attempt starts from the evidence rather than from a summary of
+> it; each item's status line says what holds now. An item is done when it is held. None ships
+> disclosed: the owner ruled on 2026-11-26 that silt launches as a completed product.
 
 **The line this list draws:** a release candidate is the point at which handing silt to an
 adversary is a responsible act. Not the point at which it is pleasant to use.
