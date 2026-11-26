@@ -245,3 +245,13 @@ func witnessFromProof(proof []byte) (statehash.Witness, error) {
 
 // compile-time: the serving side answers exactly the seam the box reads through.
 var _ chain.WitnessSource = (*chain.WitnessProvider)(nil)
+
+// retainWitnessHead freezes the committed head for witness serving, so a box can be served any
+// of the last chain.ProviderRetain heads by name. Freezing copies only the validator-sized state;
+// the leaf set and prover are built if and when a box names the head.
+func (n *Node) retainWitnessHead() {
+	if n.chain == nil {
+		return
+	}
+	n.witnessProviders.Retain(n.chain)
+}
