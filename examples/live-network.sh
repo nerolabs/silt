@@ -64,7 +64,9 @@ NAMES=(); UIS=()
 
 node() { # node NAME [flags…] — start a daemon with a web UI and remember its UI address
   local name=$1; shift
-  "$SILT" daemon -listen 127.0.0.1:0 -store "$W/$name" -mdns=false -ui 127.0.0.1:0 "$@" >"$W/$name.out" 2>&1 &
+  # -privacy=off publishes each node's serving counters to the observatory, so the watcher sees
+  # bytes move. A real operator's node withholds them by default; this is a simulation.
+  "$SILT" daemon -listen 127.0.0.1:0 -store "$W/$name" -mdns=false -ui 127.0.0.1:0 -privacy=off "$@" >"$W/$name.out" 2>&1 &
   PIDS+=($!); NAMES+=("$name")
 }
 ui_of() { await "$W/$1.out" '^ui: http' 60 | awk '{print $2}'; }

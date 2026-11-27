@@ -99,7 +99,8 @@ async function observe() {
         (await fetch(u + "/api/roots")).json(),
         (await fetch(u + "/api/registry")).json(),
       ]);
-      return { u, status, roots: roots||[], registry: registry||[] };
+      // /api/roots answers {rows: [...]}; an older daemon answered the bare list.
+      return { u, status, roots: (roots && roots.rows) || (Array.isArray(roots) ? roots : []), registry: registry||[] };
     } catch { return { u, dead: true }; }
   }));
   const live = results.filter(r => !r.dead);
@@ -125,7 +126,7 @@ async function observe() {
   const est = live.length ? live[0].status.network : {EstimatedNodes:0,EstimatedTotal:0};
   document.getElementById("totals").innerHTML = `
     <div class="card"><h2>Daemons observed</h2><div class="big">${live.length}</div>
-      <div class="sub">${results.length - live.length} unreachable · swarm self-estimates ~${est.EstimatedNodes} peers</div></div>
+      <div class="sub">${results.length - live.length} unreachable · swarm self-estimates ~${Math.round(est.EstimatedNodes)} peers</div></div>
     <div class="card"><h2>Pledged storage (observed)</h2><div class="big">${fmtB(capUsed)}</div>
       <div class="sub">of ${fmtB(capTotal)} · network self-estimate ${fmtB(est.EstimatedTotal)}</div></div>
     <div class="card"><h2>Chunks hosted</h2><div class="big">${chunks}</div>
