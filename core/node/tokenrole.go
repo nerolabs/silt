@@ -154,6 +154,47 @@ func (n *Node) FetchIssuerKey(v ports.NodeID, done func(error)) {
 	})
 }
 
+// issuerKeyRetry is how long IssuerKeyOrFetch waits before asking the same issuer again.
+const issuerKeyRetry = 10 * ports.Second
+
+// maxIssuerKeyAsked bounds issuerKeyAsked: an attacker can name arbitrary signers in a
+// token, and each one must not cost this node memory forever.
+const maxIssuerKeyAsked = 4096
+
+// IssuerKeyOrFetch is IssuerKeyOf for the chain's token check. A validator learns issuer
+// keys only for the peers it bond-audits and its configured attesters; once the network
+// matures, a token is gathered from whichever bonded validators are heaviest, and a
+// signer outside that set was silently ignored — so a takedown's fee token of "0 of 2"
+// known signers was refused round after round (field sheet c71e06b1-30404). An unknown
+// signer now triggers one fetch of its key (deduplicated, retried after issuerKeyRetry),
+// so the proposer's next round verifies. It never blocks the check it is called from.
+func (n *Node) IssuerKeyOrFetch(v ports.NodeID) *rsa.PublicKey {
+	if pub := n.IssuerKeyOf(v); pub != nil {
+		return pub
+	}
+	now := n.clock.Now()
+	if at, ok := n.issuerKeyAsked[v]; ok && now < at.Add(issuerKeyRetry) {
+		return nil
+	}
+	if len(n.issuerKeyAsked) >= maxIssuerKeyAsked {
+		for id, at := range n.issuerKeyAsked {
+			if now >= at.Add(issuerKeyRetry) {
+				delete(n.issuerKeyAsked, id)
+			}
+		}
+		if len(n.issuerKeyAsked) >= maxIssuerKeyAsked {
+			return nil
+		}
+	}
+	n.issuerKeyAsked[v] = now
+	n.FetchIssuerKey(v, func(err error) {
+		if err == nil {
+			delete(n.issuerKeyAsked, v)
+		}
+	})
+	return nil
+}
+
 // IssuerKeyOf returns v's token-issuer public key — this node's own, or one
 // cached from a FetchIssuerKey. Used as the chain's issuerKey lookup and as the
 // publisher's blind-against key.

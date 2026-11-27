@@ -944,6 +944,9 @@ type Node struct {
 	// can be blinded against and verified across the network.
 	issuerKeyDER   []byte
 	peerIssuerKeys map[ports.NodeID]*rsa.PublicKey
+	// issuerKeyAsked is when IssuerKeyOrFetch last asked each issuer for its key, so a
+	// validator meeting an unknown signer fetches its key once per backoff, not per check.
+	issuerKeyAsked map[ports.NodeID]ports.Time
 	// Prepaid publish credits (M0 privacy D3 / F4). A token request may
 	// carry a prepaid credit this issuer verifies and marks spent INSTEAD OF
 	// charging the requester's durable identity — so the per-publish fee no
@@ -1662,6 +1665,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		slashQueued:         make(map[ports.NodeID]bool),
 		slashOverCapLogged:  make(map[ports.NodeID]bool),
 		peerIssuerKeys:      make(map[ports.NodeID]*rsa.PublicKey),
+		issuerKeyAsked:      make(map[ports.NodeID]ports.Time),
 		peerDemandKeys:      make(map[ports.NodeID]*demand.Keyset), // pinned per-epoch demand keysets
 		creditSpent:         make(map[string]bool),
 		tokenIssued:         make(map[string]tokenIssuedEntry),
