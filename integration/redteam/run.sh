@@ -307,13 +307,14 @@ echo "  equiv-x memory.peak = $(ft_peak_report "${PEAK_X:-}" "$FLOOR_MEM")"
 # the queued proof, the honest recipient attests, and the replicated eviction (F2) has a block to
 # ride. Convergent mode, so a retry re-proposes the same block rather than signing a new one.
 if [ "$EQUIV_OK" = 1 ]; then
-  drove=""
+  drove="" lastpub=""
   for _ in $(seq 1 20); do
-    drove="$(dc exec -T equiv-x sh -c "head -c 32768 /dev/zero > /tmp/after.bin; silt swarm add /tmp/after.bin -mode convergent -peers '${ID_EQUIV_X}@127.0.0.1:4001' -registry '${ID_EQUIV_X}@https://127.0.0.1:8443'" 2>&1 | grep -oE 'silt:v1:[^ ]+' | head -1 || true)"
+    lastpub="$(dc exec -T equiv-x sh -c "head -c 32768 /dev/zero > /tmp/after.bin; silt swarm add /tmp/after.bin -mode convergent -peers '${ID_EQUIV_X}@127.0.0.1:4001' -registry '${ID_EQUIV_X}@https://127.0.0.1:8443'" 2>&1 || true)"
+    drove="$(printf '%s' "$lastpub" | grep -oE 'silt:v1:[^ ]+' | head -1)"
     [ -n "$drove" ] && break
     sleep 3
   done
-  echo "  post-detection publish through the detector: ${drove:-<none committed>}"
+  echo "  post-detection publish through the detector: ${drove:-<none committed> — last: $(printf '%s' "$lastpub" | tail -2 | tr '\n' ' ' | cut -c1-300)}"
 fi
 [ "$EQUIV_OK" = 1 ] && wait_slash_committed equiv-yz "$ID_EQUIV_A" 90
 collect_slash_set equiv-a equiv-x equiv-yz
