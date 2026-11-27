@@ -439,11 +439,13 @@ func swarmAdd(args []string) error {
 	if rerr := run(func(done func()) {
 		publish := func(tok *ports.PublishToken) {
 			opts := pipeline.Options{ChunkSize: *chunkSize, Mode: m, Rand: rand.Reader} // Rand needed for the private default (H6)
-			switch {
-			case tok != nil:
-				opts.Token = tok // unlinkable: no Publisher identity
-			case *allowPublisher:
-				opts.Publisher = e.nd.ID() // opt-in: records permanent linkage
+			opts.Token = tok                                                            // nil when the network requires none
+			if *allowPublisher {
+				// Opt-in: record the durable publisher, WITH the token the network requires. A default
+				// chain refuses a publisher entry before it looks at the token (refuse-to-surveil); a
+				// chain that allows publishers still requires the token. Before tokens became the
+				// default the token branch won and silently dropped this request.
+				opts.Publisher = e.nd.ID()
 			}
 			// Default (neither): publish carries no durable identity — M0-safe
 			// on the chain; a credit-gated registry will refuse it, which is
@@ -495,12 +497,7 @@ func swarmAdd(args []string) error {
 				return
 			}
 			publish(&tok)
-		} else if *tokenQuorum != 0 && !(*allowPublisher && *tokenQuorum < 0) {
-			// An explicit -allow-publisher with the default quorum asks to record this node as the
-			// publisher; acquiring a token here would silently drop that request and publish
-			// unlinkably instead. Honour it: the entry carries the publisher, and a default chain
-			// refuses it (refuse-to-surveil) where the caller can see why. An explicit positive
-			// -token-quorum still wins, as it always has.
+		} else if *tokenQuorum != 0 {
 			acquire := func(signers []ports.NodeID, k int) {
 				acquirePublishToken(e.nd, signers, k, legs.mark, func(tok *ports.PublishToken, aerr error) {
 					if aerr != nil {
