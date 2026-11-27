@@ -2113,7 +2113,7 @@ flow_chain_takedown() {
   if [ ${#root} -ne 64 ]; then record "12-chain-takedown" gap minor "could not decode a 64-hex root from $link"; return; fi
 
   local curator
-  curator="$(ssh_node val-d "/usr/local/bin/silt id -store /var/lib/silt 2>/dev/null | head -1" 2>/dev/null | tr -d '[:space:]' || true)"
+  curator="$(node_field val-d nodeid 2>/dev/null | tr -d '[:space:]')"  # val-d signs as itself: its NodeID is the curator ID
   if [ ${#curator} -ne 64 ]; then record "12-chain-takedown" gap minor "could not read val-d's curator ID (silt id said '${curator}')"; return; fi
   local t0; t0="$(date +%s)"
   relaunch_with val-c "-honor-curators $curator"
