@@ -167,7 +167,7 @@ ACCEPTED". The PHASE 1 and PHASE 3 arms this item reads were never the failing p
 
 *Still owed:* the field tier.
 
-**3. The shipped default is the defended configuration, and the stock binary runs.** ⚠ *the defended half is gated; "reaches serving" is unreachable BY DESIGN and the condition is restated*
+**3. The shipped default is the defended configuration, and the stock binary runs.** ⚠ *the defended half is gated; "reaches serving" is unreachable BY DESIGN and the condition is restated — the restated condition awaits the owner's sign-off; 2026-11-27: an anchor launch no longer needs -mature-validators (derived, 4)*
 *Done:* every defence this list demonstrates runs flagless; the stock EDGE node reaches serving on
 pure defaults; the stock VALIDATOR refuses, for a reason that names what the operator must supply.
 *Evidence:* integration → e2e → field. Gates four other items.
@@ -223,6 +223,16 @@ bucket of 64 starter grants refilled at 64 an hour, inside the guard's admissibl
 and an empty bucket still advances a fresh identity one publish fee, so no publish is refused for
 it. Both announce themselves at start-up with their override, and the faucet joins the census in
 `TestShippedDefaultLane_EveryDefenceIsOnBeforeAnyFlag`.
+
+*2026-11-27 — AN ANCHOR LAUNCH DERIVES ITS COEFFICIENT.* Starting the `silt-experiment` network
+showed a gap in "the stock binary runs": three validators given `-anchors` and nothing else refused
+to start, naming `-mature-validators` and leaving the operator to guess a value. The coefficient is
+now derived like the other launch parameters (`DerivedMatureValidators` = 4, the smallest operator
+set that tolerates one fault), announced on start-up with its override, and gated by
+`e2e/TestAnAnchorLaunchDerivesItsMaturityCoefficient` (red with the derivation removed). It is a
+floor, not the barrier: the shed still waits for 16 TiB of non-anchor bonded storage held through
+the maturity window. A validator with neither anchors nor a checkpoint is still refused
+(`TestInvariantB_S6_ColdStartScaffoldRefusedByDefault`, unchanged).
 
 **4. The repo reads without the record that was deleted.** ✅ *gated*
 *Done:* no milestone, lane, catalog, slice, issue or change-request identifiers in source,
@@ -539,7 +549,7 @@ structurally, so the run confirmed a green local integration rather than discove
 `go test -timeout 40m ./...` (what `release.yml` runs); its 1M-element fold-cost MEASUREMENT rung
 exceeds Go's default 10m timeout, which is a property of the invocation, not a defect.
 
-**6. The claims the adversary receives exist as an artifact.** ⚠ *cold-read 2026-11-26 by a blind adversary, which denied claims 1 and 3; fixes in flight*
+**6. The claims the adversary receives exist as an artifact.** ⚠ *cold-read 2026-11-26 by a blind adversary, which denied claims 1 and 3; every fix has LANDED (2026-11-26/27: #904, #906 for claim 1; #912, #913 for claim 3; #915 for the accountability finding); a second, independent red team re-reads them before this is held*
 *Done:* an in-repo statement of the three denials in checkable form, written so a cold reader
 can construct attacks from it. `ADVERSARY.md`, at the repository root.
 *Evidence:* a cold read — by someone who has not read this list.
@@ -595,6 +605,16 @@ build falls short of the claim is not, and is not there.
 *The out-of-scope material still exists* — in this list, under *What this list deliberately does
 not cover*. It is for the owner, to hand over separately if the grader spends its budget on a
 gap the vision already concedes. It is not in the artifact.
+
+*2026-11-27 — WHERE IT STANDS.* The claims are the artifact (`ADVERSARY.md`), and the blind cold
+read denied claims 1 and 3 and found one accountability gap. All three are fixed on `main`:
+claim 1's two findings by #904 (a validator's own publish reaches the validators from a throwaway
+identity) and #906 (a serving node's provisional lane names no fetcher); claim 3 by #912 and #913
+(the anchor shed waits for a floor of bonded storage held through a sustained window, and
+ADVERSARY.md states the assumption); the accountability gap — any proposer could take a root down —
+by #915 (takedowns are curator-signed, paid and single-use). A fix is not a re-test: this item is
+held when a second red team, independent of the first, reads the fixed claims and fails to deny them.
+That run waits on the owner's Cyber Verification Program enrollment.
 
 **7. No consensus state derives from a field the block hash does not cover.** ✅ *gated*
 *Done:* the seating map — which sets the maturity coefficient and decides whether the launch
