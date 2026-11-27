@@ -947,6 +947,8 @@ type Node struct {
 	// issuerKeyAsked is when IssuerKeyOrFetch last asked each issuer for its key, so a
 	// validator meeting an unknown signer fetches its key once per backoff, not per check.
 	issuerKeyAsked map[ports.NodeID]ports.Time
+	// manifests holds recently opened manifests for ranged reads (NetGetRange).
+	manifests manifestCache
 	// Prepaid publish credits (M0 privacy D3 / F4). A token request may
 	// carry a prepaid credit this issuer verifies and marks spent INSTEAD OF
 	// charging the requester's durable identity — so the per-publish fee no

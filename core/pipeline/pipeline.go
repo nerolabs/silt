@@ -16,6 +16,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 
@@ -584,59 +585,189 @@ func LoadLayout(ctx context.Context, store ports.ChunkStore, entry ports.Entry, 
 // loss. Every reconstructed chunk is re-verified against the manifest's
 // (root-committed) hash before use.
 func fetchDataChunks(ctx context.Context, store ports.ChunkStore, m *manifest.Manifest) ([][]byte, error) {
+	return fetchDataRange(ctx, store, m, 0, len(m.ChunkIDs())-1)
+}
+
+// fetchDataRange returns the ciphertext data chunks first..last (inclusive), in order. It
+// reads only those chunks while they are all present and hash-correct; a stripe that has
+// lost one of them is read in full — its other data shards and its parity — and rebuilt,
+// and every rebuilt chunk is checked against the hash the root commits before it is used.
+// A range therefore costs the chunks it covers, plus one stripe's worth for each stripe
+// that has to be repaired, never the whole file.
+func fetchDataRange(ctx context.Context, store ports.ChunkStore, m *manifest.Manifest, first, last int) ([][]byte, error) {
 	dataIDs := m.ChunkIDs()
+	if first > last {
+		return nil, nil
+	}
+	if first < 0 || last >= len(dataIDs) {
+		return nil, fmt.Errorf("chunks %d..%d outside the file's %d", first, last, len(dataIDs))
+	}
+	get := func(id ports.ChunkID) ([]byte, bool) {
+		c, err := store.Get(ctx, id)
+		if err != nil || ports.HashBytes(c.Data) != id {
+			return nil, false // lost or corrupt — to the decoder, corruption IS loss
+		}
+		return c.Data, true
+	}
+	out := make([][]byte, last-first+1)
 	if m.K == 0 { // uncoded manifest: every chunk must be present
-		out := make([][]byte, len(dataIDs))
-		for i, id := range dataIDs {
-			c, err := store.Get(ctx, id)
-			if err != nil {
-				return nil, fmt.Errorf("chunk %d: %w (no erasure coding to recover with)", i, err)
+		for i := first; i <= last; i++ {
+			d, ok := get(dataIDs[i])
+			if !ok {
+				return nil, fmt.Errorf("chunk %d: %w (no erasure coding to recover with)", i, ports.ErrNotFound)
 			}
-			out[i] = c.Data
+			out[i-first] = d
 		}
 		return out, nil
 	}
 
 	p := erasure.Params{K: m.K, N: m.N}
 	parityIDs := m.ParityIDs()
-	out := make([][]byte, len(dataIDs))
-	for j := 0; j < p.Stripes(len(dataIDs)); j++ {
+	for j := first / p.K; j <= last/p.K; j++ {
 		lo := j * p.K
 		hi := min(lo+p.K, len(dataIDs))
 		realData := hi - lo
+		want0, want1 := max(lo, first), min(hi-1, last)
 
 		shards := make([][]byte, p.N)
 		missing := 0
-		for i := 0; i < realData; i++ {
-			c, err := store.Get(ctx, dataIDs[lo+i])
-			if err != nil {
-				missing++ // lost or corrupt — parity's problem now
-				continue
+		for i := want0; i <= want1; i++ {
+			if d, ok := get(dataIDs[i]); ok {
+				shards[i-lo] = d
+			} else {
+				missing++
 			}
-			shards[i] = c.Data
 		}
 		if missing > 0 {
-			for q := 0; q < p.ParityShards(); q++ {
-				c, err := store.Get(ctx, parityIDs[j*p.ParityShards()+q])
-				if err != nil {
-					continue
+			// Rebuild needs the stripe: the data shards the range did not cover, then parity.
+			for i := 0; i < realData; i++ {
+				if shards[i] == nil && (lo+i < want0 || lo+i > want1) {
+					if d, ok := get(dataIDs[lo+i]); ok {
+						shards[i] = d
+					}
 				}
-				shards[p.K+q] = c.Data
+			}
+			for q := 0; q < p.ParityShards(); q++ {
+				if d, ok := get(parityIDs[j*p.ParityShards()+q]); ok {
+					shards[p.K+q] = d
+				}
 			}
 			if err := erasure.ReconstructStripe(p, shards, realData); err != nil {
 				return nil, fmt.Errorf("stripe %d: %d data shard(s) lost and %w", j, missing, err)
 			}
-			// Reconstruction is only trusted if the recovered bytes hash
-			// to the IDs the Merkle root committed to.
-			for i := 0; i < realData; i++ {
-				if ports.HashBytes(shards[i]) != dataIDs[lo+i] {
-					return nil, fmt.Errorf("stripe %d: reconstructed chunk %d does not match its manifest hash", j, lo+i)
+			for i := want0; i <= want1; i++ {
+				if ports.HashBytes(shards[i-lo]) != dataIDs[i] {
+					return nil, fmt.Errorf("stripe %d: reconstructed chunk %d does not match its manifest hash", j, i)
 				}
 			}
 		}
-		copy(out[lo:hi], shards[:realData])
+		for i := want0; i <= want1; i++ {
+			out[i-first] = shards[i-lo]
+		}
 	}
 	return out, nil
+}
+
+// ErrRangeNotSatisfiable is a byte range that starts past the end of the file.
+var ErrRangeNotSatisfiable = errors.New("range not satisfiable")
+
+// OpenManifest looks up h's entry and opens its manifest with the full link, refusing a
+// manifest that is not the one h's root names. A ranged reader opens it once and reads
+// many ranges against it.
+func OpenManifest(ctx context.Context, store ports.ChunkStore, reg ports.Registry, h link.Handle) (*manifest.Manifest, error) {
+	entry, ok, err := reg.Lookup(ctx, h.Root)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("%s: %w", h.Root, ports.ErrNoSuchEntry)
+	}
+	m, err := LoadFull(ctx, store, entry, h)
+	if err != nil {
+		return nil, err
+	}
+	if m.Root() != h.Root {
+		return nil, fmt.Errorf("manifest root %s does not match requested root %s", m.Root(), h.Root)
+	}
+	return m, nil
+}
+
+// RangeChunks returns the data chunks, first..last inclusive, that hold bytes [off, off+n)
+// of m's file, with n clamped to the file's end; ok is false when the clamped range is
+// empty. Every content frame but the last carries a full payload (chunk.Split), so byte o
+// lives in frame o / (ChunkSize − HeaderSize); filler frames only ever follow the content.
+func RangeChunks(m *manifest.Manifest, off, n int64) (first, last int, ok bool, err error) {
+	if off < 0 || n < 0 {
+		return 0, 0, false, fmt.Errorf("negative range %d+%d", off, n)
+	}
+	if off > m.FileSize || (off == m.FileSize && n > 0) {
+		return 0, 0, false, fmt.Errorf("%w: offset %d, file is %d bytes", ErrRangeNotSatisfiable, off, m.FileSize)
+	}
+	end := min(off+n, m.FileSize)
+	if end <= off {
+		return 0, 0, false, nil
+	}
+	payload := m.ChunkSize - chunk.HeaderSize
+	if payload <= 0 {
+		return 0, 0, false, fmt.Errorf("manifest frame size %d holds no payload", m.ChunkSize)
+	}
+	return int(off / payload), int((end - 1) / payload), true, nil
+}
+
+// ReadRange writes bytes [off, off+n) of m's file to w, n clamped to the file's end. It
+// fetches, and decrypts, only the chunks the range covers (fetchDataRange). Each chunk
+// decrypts on its own — a convergent chunk with its own secret, a private one with the
+// file key and its own index — so no other part of the file is needed.
+func ReadRange(ctx context.Context, store ports.ChunkStore, m *manifest.Manifest, off, n int64, w io.Writer) error {
+	first, last, ok, err := RangeChunks(m, off, n)
+	if err != nil || !ok {
+		return err
+	}
+	mode, err := crypto.ParseMode(m.Mode)
+	if err != nil {
+		return err
+	}
+	var fileKey [crypto.KeySize]byte
+	if mode == crypto.Private {
+		copy(fileKey[:], m.FileKey)
+	}
+	cts, err := fetchDataRange(ctx, store, m, first, last)
+	if err != nil {
+		return err
+	}
+	payload := m.ChunkSize - chunk.HeaderSize
+	end := min(off+n, m.FileSize)
+	for k, ct := range cts {
+		i := first + k
+		var pt []byte
+		switch mode {
+		case crypto.Convergent:
+			var secret [crypto.SecretSize]byte
+			copy(secret[:], m.ChunkSecrets[i])
+			pt, err = crypto.ConvergentDecrypt(ct, secret)
+		case crypto.Private:
+			pt, err = crypto.PrivateDecrypt(fileKey, uint64(i), ct)
+		}
+		if err != nil {
+			return fmt.Errorf("chunk %d: %w", i, err)
+		}
+		if len(pt) < chunk.HeaderSize {
+			return fmt.Errorf("chunk %d: %w", i, chunk.ErrBadFrame)
+		}
+		have := int64(binary.BigEndian.Uint64(pt[:chunk.HeaderSize]))
+		if have > int64(len(pt)-chunk.HeaderSize) {
+			return fmt.Errorf("chunk %d: %w: claims %d payload bytes", i, chunk.ErrBadFrame, have)
+		}
+		base := int64(i) * payload // file offset of this frame's first payload byte
+		lo, hi := max(off, base)-base, min(end, base+have)-base
+		if hi < lo || (hi < min(end, base+payload)-base) {
+			return fmt.Errorf("chunk %d: %w: holds %d bytes, the range needs %d", i, chunk.ErrBadFrame, have, min(end, base+payload)-base)
+		}
+		if _, err := w.Write(pt[chunk.HeaderSize+lo : chunk.HeaderSize+hi]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func fileSizeOf(frames [][]byte) int64 {

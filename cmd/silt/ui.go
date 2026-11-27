@@ -1810,6 +1810,11 @@ func (s *uiServer) apiFetch(w http.ResponseWriter, r *http.Request) {
 		httpError(w, 400, err)
 		return
 	}
+	w.Header().Set("Accept-Ranges", "bytes")
+	if spec := r.Header.Get("Range"); spec != "" {
+		s.apiFetchRange(w, h, spec)
+		return
+	}
 
 	// Local-store fast path: if this node already holds the content,
 	// reconstruct it straight from the local store — no ephemeral swarm node,
@@ -1872,6 +1877,98 @@ func (s *uiServer) apiFetch(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition",
 		fmt.Sprintf("attachment; filename=%q", h.Root.String()[:16]+".bin"))
 	io.Copy(w, &buf)
+}
+
+// apiFetchRange serves one HTTP byte range of the file h names (RFC 9110 §14): 206 with
+// Content-Range, or 416 when the range is unsatisfiable. It pulls only the chunks the range
+// covers (NetGetRange), so a video player can read a large file a few seconds at a time.
+// Only a single range is served; a multi-range or malformed header is answered 416 rather
+// than ignored, because ignoring it means sending, and holding in memory, the whole file.
+func (s *uiServer) apiFetchRange(w http.ResponseWriter, h link.Handle, spec string) {
+	onLoop := func(name string, fn func(done func())) error {
+		fin := make(chan struct{})
+		s.loop.Post(name, func() { fn(func() { close(fin) }) })
+		select {
+		case <-fin:
+			return nil
+		case <-time.After(2 * time.Minute):
+			return fmt.Errorf("swarm fetch timed out")
+		}
+	}
+	var size int64
+	var serr error
+	if err := onLoop("api-fetch-size", func(done func()) {
+		s.nd.NetFileSize(s.reg, h, func(n int64, err error) { size, serr = n, err; done() })
+	}); err != nil {
+		httpError(w, 504, err)
+		return
+	}
+	if serr != nil {
+		httpError(w, 502, serr)
+		return
+	}
+	off, n, err := parseByteRange(spec, size)
+	if err != nil {
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", size))
+		httpError(w, http.StatusRequestedRangeNotSatisfiable, err)
+		return
+	}
+	var buf bytes.Buffer
+	var gerr error
+	if err := onLoop("api-fetch-range", func(done func()) {
+		s.nd.NetGetRange(s.reg, h, off, n, &buf, func(err error) { gerr = err; done() })
+	}); err != nil {
+		httpError(w, 504, err)
+		return
+	}
+	if gerr != nil {
+		httpError(w, 502, gerr)
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", off, off+n-1, size))
+	w.Header().Set("Content-Length", strconv.FormatInt(n, 10))
+	w.WriteHeader(http.StatusPartialContent)
+	io.Copy(w, &buf)
+}
+
+// parseByteRange resolves one RFC 9110 byte range ("bytes=a-b", "bytes=a-", "bytes=-n")
+// against a file of size bytes, returning the offset and length, the end clamped to the
+// file. A multi-range set, a malformed spec or a range wholly past the end is an error.
+func parseByteRange(spec string, size int64) (off, n int64, err error) {
+	unit, set, ok := strings.Cut(strings.TrimSpace(spec), "=")
+	if !ok || strings.TrimSpace(unit) != "bytes" || strings.Contains(set, ",") {
+		return 0, 0, fmt.Errorf("only a single bytes range is served: %q", spec)
+	}
+	a, b, ok := strings.Cut(strings.TrimSpace(set), "-")
+	if !ok {
+		return 0, 0, fmt.Errorf("malformed range %q", spec)
+	}
+	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
+	switch {
+	case a == "" && b == "":
+		return 0, 0, fmt.Errorf("malformed range %q", spec)
+	case a == "": // suffix: the last b bytes
+		k, perr := strconv.ParseInt(b, 10, 64)
+		if perr != nil || k <= 0 || size == 0 {
+			return 0, 0, fmt.Errorf("unsatisfiable range %q of %d bytes", spec, size)
+		}
+		k = min(k, size)
+		return size - k, k, nil
+	}
+	first, perr := strconv.ParseInt(a, 10, 64)
+	if perr != nil || first < 0 || first >= size {
+		return 0, 0, fmt.Errorf("unsatisfiable range %q of %d bytes", spec, size)
+	}
+	last := size - 1
+	if b != "" {
+		l, perr := strconv.ParseInt(b, 10, 64)
+		if perr != nil || l < first {
+			return 0, 0, fmt.Errorf("malformed range %q", spec)
+		}
+		last = min(l, size-1)
+	}
+	return first, last - first + 1, nil
 }
 
 // apiLibrary lists the user's saved links (files they hold keys for),
