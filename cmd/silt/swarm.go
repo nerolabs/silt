@@ -532,10 +532,11 @@ func swarmAdd(args []string) error {
 					e.nd.FetchPublishRequirementsFromAny(validators, func(canon []ports.NodeID, q int, ferr error) {
 						legs.mark("issuers")
 						k := *tokenQuorum
-						if k < 0 && ferr != nil && len(appendRegistryValidators(nil, *regURL)) > 0 {
-							// A chain-backed registry is named, so this network has validators, and none
-							// of them answered. Its requirement is unknown, not zero: publishing without a
-							// token would only be refused.
+						if k < 0 && ferr != nil && !node.IsNoChainAnswer(ferr) && len(appendRegistryValidators(nil, *regURL)) > 0 {
+							// The registry's node was named and could not be reached, so this network's
+							// requirement is unknown, not zero: publishing without a token might only be
+							// refused. A peer that answered "I hold no chain" did answer — a plain registry
+							// host on a token-free network — and the publish goes ahead without a token.
 							err = fmt.Errorf("could not learn this network's publish requirements from any of %d peer(s) (%v); retry, or name a validator in -peers", len(validators), ferr)
 							done()
 							return
