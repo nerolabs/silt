@@ -75,6 +75,19 @@ func TestAPIFetchServesByteRanges(t *testing.T) {
 	if status, hdr, _ := get(fmt.Sprintf("bytes=%d-", size)); status != http.StatusRequestedRangeNotSatisfiable || hdr.Get("Content-Range") != fmt.Sprintf("bytes */%d", size) {
 		t.Fatalf("a range past the end: status %d, Content-Range %q", status, hdr.Get("Content-Range"))
 	}
+	{ // the query form a browser page uses: ?offset=&length=
+		req, _ := http.NewRequest("GET", base+"/api/fetch?link="+url.QueryEscape(lnk)+"&offset=262000&length=1001", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := (&http.Client{Timeout: time.Minute}).Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusPartialContent || !bytes.Equal(b, data[262000:263001]) {
+			t.Fatalf("?offset=&length=: status %d, %d bytes", resp.StatusCode, len(b))
+		}
+	}
 	status, hdr, body := get("")
 	if status != http.StatusOK || !bytes.Equal(body, data) || hdr.Get("Accept-Ranges") != "bytes" {
 		t.Fatalf("a plain GET: status %d, %d bytes, Accept-Ranges %q", status, len(body), hdr.Get("Accept-Ranges"))

@@ -1621,7 +1621,10 @@ func (s *uiServer) apiPublish(w http.ResponseWriter, r *http.Request) {
 		httpError(w, 400, fmt.Errorf("this daemon has no registry configured"))
 		return
 	}
-	if err := r.ParseMultipartForm(512 << 20); err != nil {
+	// 32 MB of an upload in memory; the rest spills to a temporary file. It was 512 MB, which
+	// a 2 GB floor box cannot spare beside a publish — and Stage now streams, so a large file
+	// costs disk, not RAM, end to end.
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		httpError(w, 400, err)
 		return
 	}
@@ -1811,7 +1814,22 @@ func (s *uiServer) apiFetch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Accept-Ranges", "bytes")
-	if spec := r.Header.Get("Range"); spec != "" {
+	spec := r.Header.Get("Range")
+	if q := r.URL.Query(); q.Get("length") != "" {
+		// The same range as query parameters, for a browser page whose Range header would
+		// cost a CORS preflight to a local node: ?offset=O&length=N is bytes=O-(O+N-1).
+		off, oerr := strconv.ParseInt(q.Get("offset"), 10, 64)
+		n, nerr := strconv.ParseInt(q.Get("length"), 10, 64)
+		if q.Get("offset") == "" {
+			off, oerr = 0, nil
+		}
+		if oerr != nil || nerr != nil || off < 0 || n <= 0 {
+			httpError(w, 400, fmt.Errorf("offset and length must be a non-negative offset and a positive length"))
+			return
+		}
+		spec = fmt.Sprintf("bytes=%d-%d", off, off+n-1)
+	}
+	if spec != "" {
 		s.apiFetchRange(w, h, spec)
 		return
 	}
