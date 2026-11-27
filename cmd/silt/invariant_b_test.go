@@ -229,4 +229,13 @@ func TestInvariantB_S7_PublishSignerSetIsCanonical(t *testing.T) {
 	if len(got) != 2 || got[0] != c || got[1] != a {
 		t.Fatalf("unreachable canonical entries must be skipped, keeping canonical order: got %v", got)
 	}
+	// A reachable peer that is not canonical — the storage node a publisher entered through —
+	// is never a signer: it cannot issue, and listing it would tie the signer set to the
+	// publisher's entry point. (Live network, 2026-11-27: a publish through a storage node asked
+	// it for a token signature and failed.)
+	store := id(9)
+	got = rankByCanonical([]ports.NodeID{store, a}, canon)
+	if len(got) != 1 || got[0] != a {
+		t.Fatalf("a non-canonical entry peer must not be ranked as a signer: got %v", got)
+	}
 }

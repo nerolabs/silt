@@ -84,6 +84,12 @@ var (
 
 	errNoCanonicalIssuers = errors.New("node: peer served no canonical issuer set (no chain)")
 
+	// errEmptyIssuerSet is a chain-holder's answer that ranks no issuers. It is still an answer:
+
+	// it carries the quorum the network requires.
+
+	errEmptyIssuerSet = fmt.Errorf("%w: the validator's chain ranks no issuers", errNoCanonicalIssuers)
+
 	// errNoTokenIssuer refuses a CREDIT-BEARING request on a node that runs no
 	// publish issuer. There is no key to verify the credit against, so the credit
 	// cannot be honoured — fail closed. Before this guard the verify call
@@ -685,3 +691,7 @@ func (n *Node) logCreditGuardRefusal(err error) {
 		n.logf(ports.LogWarn, "publish credit refused: credit-spent guard attached but not loaded", "err", err)
 	}
 }
+
+// IsNoChainAnswer reports whether err is a peer's answer that it holds no chain (and so no
+// publish requirements), as opposed to a failure to reach it.
+func IsNoChainAnswer(err error) bool { return errors.Is(err, errNoCanonicalIssuers) }

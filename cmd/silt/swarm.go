@@ -30,9 +30,11 @@ import (
 // from the swarm client's ephemeral identity. Runs on the node's loop; cont fires
 // once with the token or an error.
 // rankByCanonical reorders the publisher's reachable validators by a
-// network-canonical ordering (ledger-derived, heaviest bond first): canonical
-// entries the publisher can reach come first in canonical order, then any remaining
-// reachable peers (stable). So two publishers with overlapping reachable sets pick
+// network-canonical ordering (ledger-derived, heaviest bond first): the canonical
+// entries the publisher can reach, in canonical order, and nothing else. A reachable
+// peer that is not canonical — a storage node the publisher entered through — is never
+// a signer: it cannot issue, and listing it would make the signer set depend on the
+// publisher's entry point. So two publishers with overlapping reachable sets pick
 // the SAME signer subset up to reachability — the subset is no longer an arbitrary
 // per-publisher choice that leaks who published (R-3 /). Deterministic: same
 // (reachable, canon) → same order, independent of the input peer order.
@@ -45,12 +47,6 @@ func rankByCanonical(reachable, canon []ports.NodeID) []ports.NodeID {
 	seen := make(map[ports.NodeID]bool, len(reachable))
 	for _, id := range canon { // canonical order first, but only what we can dial
 		if reach[id] && !seen[id] {
-			out = append(out, id)
-			seen[id] = true
-		}
-	}
-	for _, id := range reachable { // then any reachable non-canonical peers, stable
-		if !seen[id] {
 			out = append(out, id)
 			seen[id] = true
 		}
@@ -73,7 +69,10 @@ func acquirePublishToken(nd *node.Node, validators []ports.NodeID, k int, mark f
 	if mark == nil {
 		mark = func(string) {}
 	}
-	// Stage 1: issuer keys, concurrent, best-effort; skip keys already cached.
+	// Stage 1: issuer keys, concurrent, best-effort; skip keys already cached. A signer is often
+	// known only by ID — the canonical issuer list names validators, and a publisher that joined
+	// through a storage node has never heard their addresses — so each one is first located
+	// through the DHT, and only then asked for its key.
 	fetchKeys := func(next func()) {
 		pending := 0
 		fired := false
@@ -87,7 +86,10 @@ func acquirePublishToken(nd *node.Node, validators []ports.NodeID, k int, mark f
 				continue
 			}
 			pending++
-			nd.FetchIssuerKey(v, func(error) { pending--; settle() }) // best-effort
+			v := v
+			locatePeers(nd, []ports.NodeID{v}, func() {
+				nd.FetchIssuerKey(v, func(error) { pending--; settle() }) // best-effort
+			})
 		}
 		fired = true
 		settle()
@@ -422,6 +424,10 @@ func swarmAdd(args []string) error {
 			validators = append(validators, p.ID)
 		}
 	}
+	// A chain-backed registry is named "ID@URL", and that ID is a validator. A publisher whose
+	// -peers are storage nodes (which hold no chain) still learns the network's publish
+	// requirements from it, rather than concluding that the network asks for no token.
+	validators = appendRegistryValidators(validators, *regURL)
 
 	var h link.Handle
 	// Price the publish before it is staged: the shard a repair will pull is the
@@ -519,38 +525,51 @@ func swarmAdd(args []string) error {
 			// it can dial, so the ranking is applied to the reachable -peers.
 			if len(validators) > 0 {
 				// Try EVERY validator, not just validators[0]: the ranking is
-				// deterministic, so any chain-holder answers the same.
-				e.nd.FetchPublishRequirementsFromAny(validators, func(canon []ports.NodeID, q int, ferr error) {
-					legs.mark("issuers")
-					k := *tokenQuorum
-					if k < 0 {
-						k = q // learn the network's requirement
-					}
-					if k == 0 {
-						publish(nil) // this network requires no token
-						return
-					}
-					if ferr != nil || len(canon) == 0 {
-						fmt.Fprintln(os.Stderr, "note: no canonical issuer set from peers; signing from -peers in given order — the signer subset may narrow the publisher anonymity set (connect to canonical validators for full privacy)")
-						acquire(validators, k)
-						return
-					}
-					signers := rankByCanonical(validators, canon)
-					if len(signers) < k {
-						// The network asks for more signatures than the named peers can give:
-						// continue down the same canonical list, which every publisher shares,
-						// so the signer set still says nothing about this publisher.
-						have := map[ports.NodeID]bool{}
-						for _, id := range signers {
-							have[id] = true
+				// deterministic, so any chain-holder answers the same. Each is located through
+				// the DHT first: the registry's validator is known only by ID to a publisher
+				// that joined through a storage node.
+				locatePeers(e.nd, validators, func() {
+					e.nd.FetchPublishRequirementsFromAny(validators, func(canon []ports.NodeID, q int, ferr error) {
+						legs.mark("issuers")
+						k := *tokenQuorum
+						if k < 0 && ferr != nil && !node.IsNoChainAnswer(ferr) && len(appendRegistryValidators(nil, *regURL)) > 0 {
+							// The registry's node was named and could not be reached, so this network's
+							// requirement is unknown, not zero: publishing without a token might only be
+							// refused. A peer that answered "I hold no chain" did answer — a plain registry
+							// host on a token-free network — and the publish goes ahead without a token.
+							err = fmt.Errorf("could not learn this network's publish requirements from any of %d peer(s) (%v); retry, or name a validator in -peers", len(validators), ferr)
+							done()
+							return
 						}
-						for _, id := range canon {
-							if !have[id] {
-								signers = append(signers, id)
+						if k < 0 {
+							k = q // learn the network's requirement
+						}
+						if k == 0 {
+							publish(nil) // this network requires no token
+							return
+						}
+						if ferr != nil || len(canon) == 0 {
+							fmt.Fprintln(os.Stderr, "note: no canonical issuer set from peers; signing from -peers in given order — the signer subset may narrow the publisher anonymity set (connect to canonical validators for full privacy)")
+							acquire(validators, k)
+							return
+						}
+						signers := rankByCanonical(validators, canon)
+						if len(signers) < k {
+							// The network asks for more signatures than the named peers can give:
+							// continue down the same canonical list, which every publisher shares,
+							// so the signer set still says nothing about this publisher.
+							have := map[ports.NodeID]bool{}
+							for _, id := range signers {
+								have[id] = true
+							}
+							for _, id := range canon {
+								if !have[id] {
+									signers = append(signers, id)
+								}
 							}
 						}
-					}
-					acquire(signers, k)
+						acquire(signers, k)
+					})
 				})
 			} else if *tokenQuorum > 0 {
 				acquire(validators, *tokenQuorum)
@@ -821,4 +840,42 @@ func demandKeyResolutionError(server ports.NodeID, pinned int, keyErr error) err
 	default:
 		return nil
 	}
+}
+
+// locatePeers looks each id up through the DHT, concurrently, so the requests that follow can
+// dial peers this node knows only by ID; next runs once every lookup has finished.
+func locatePeers(nd *node.Node, ids []ports.NodeID, next func()) {
+	pending := len(ids)
+	if pending == 0 {
+		next()
+		return
+	}
+	for _, id := range ids {
+		nd.IterativeFindNode(id, func([]ports.NodeID) {
+			if pending--; pending == 0 {
+				next()
+			}
+		})
+	}
+}
+
+// appendRegistryValidators appends the validator IDs named by "ID@URL" registry references to ids,
+// skipping any already present.
+func appendRegistryValidators(ids []ports.NodeID, refs string) []ports.NodeID {
+	have := map[ports.NodeID]bool{}
+	for _, id := range ids {
+		have[id] = true
+	}
+	for _, ref := range strings.Split(refs, ",") {
+		ref = strings.TrimSpace(ref)
+		at := strings.Index(ref, "@")
+		if at <= 0 {
+			continue
+		}
+		if id, err := ports.ParseHash(ref[:at]); err == nil && !have[id] {
+			have[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }

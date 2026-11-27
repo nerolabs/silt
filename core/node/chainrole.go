@@ -207,7 +207,11 @@ func (n *Node) fetchIssuersAndQuorum(v ports.NodeID, done func([]ports.NodeID, i
 		switch {
 		case err != nil:
 			done(nil, 0, err)
-		case !resp.OK || len(resp.Data) == 0 || len(resp.Data)%idLen != 0:
+		case resp.OK && len(resp.Data) == 0:
+			// A chain-holder answered: its chain ranks no issuers. The quorum it states is still its
+			// answer — on a network that requires no token, it is the whole answer.
+			done(nil, int(resp.Height), errEmptyIssuerSet)
+		case !resp.OK || len(resp.Data)%idLen != 0:
 			done(nil, 0, errNoCanonicalIssuers)
 		default:
 			ids := make([]ports.NodeID, 0, len(resp.Data)/idLen)
@@ -240,6 +244,13 @@ func (n *Node) FetchPublishRequirementsFromAny(vs []ports.NodeID, done func(issu
 			if err == nil && len(ids) > 0 {
 				finished = true
 				done(ids, q, nil)
+				return
+			}
+			if errors.Is(err, errEmptyIssuerSet) {
+				// An authoritative answer with no issuers: report its quorum, not a failure, so a
+				// publisher on a token-free network is not told the requirement is unknown.
+				finished = true
+				done(nil, q, nil)
 				return
 			}
 			if err != nil {

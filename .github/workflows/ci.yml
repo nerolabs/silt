@@ -435,6 +435,13 @@ jobs:
         # loopback, one publish, one bit-perfect fetch.
         timeout-minutes: 10
         run: ./examples/try-a-local-network.sh --check
+      - name: examples/live-network.sh --check 180
+        # The live network: three validators, storage nodes of four sizes, three floor boxes
+        # following the chain, and four simulated people publishing and fetching for three
+        # minutes — one of them through a storage node. Every fetch must come back bit-perfect and
+        # every floor box must accept the blocks it judges.
+        timeout-minutes: 12
+        run: ./examples/live-network.sh --check 180
 
   security:
     name: Security — govulncheck and a full-history secrets scan

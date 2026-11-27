@@ -49,6 +49,9 @@ type FloorBoxVerdict struct {
 	Height  uint64
 	Outcome chain.FloorBoxOutcome
 	Err     error
+	// Hash is the judged block's hash, set when a block was reached. On Accept it is what a
+	// following box advances its pin to.
+	Hash ports.Hash
 }
 
 // WitnessHead asks the providers which committed head they will answer witness requests from, and
@@ -124,7 +127,7 @@ func (n *Node) AuditAbovePin(cold *chain.Chain, pin FloorBoxPin, budgetBytes int
 		}
 		n.ValidateWithWitnesses(mkBox, *child, providers, pin.Hash,
 			func(out chain.FloorBoxOutcome, vErr error) {
-				done(FloorBoxVerdict{Height: child.Height, Outcome: out, Err: vErr})
+				done(FloorBoxVerdict{Height: child.Height, Outcome: out, Err: vErr, Hash: child.Hash()})
 			})
 	})
 }
