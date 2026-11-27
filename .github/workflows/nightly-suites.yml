@@ -1,0 +1,33 @@
+name: nightly-suites
+
+# Every integration suite under integration/*/run.sh, nightly, ONE JOB PER SUITE.
+#
+# WHY. On 2026-11-27 a clean-clone run of ./integration/run-all.sh found four suites red that no
+# check had run since September: two had broken the day before (a client default changed) and
+# would have shipped, and one (retention) failed inside the sweep and passed alone. A suite nobody
+# runs is not a gate. One job per suite means each runs on its own machine, so a red names its
+# suite and cannot be caused by a neighbour's load, and the slow ones do not serialise.
+on:
+  schedule:
+    - cron: "47 10 * * *"   # 10:47 UTC daily, after nightly-netem
+  workflow_dispatch: {}
+
+jobs:
+  suite:
+    name: ${{ matrix.suite }} — integration suite (docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false   # one suite's finding must not hide the others'
+      matrix:
+        suite: [consensus, bond, redteam, sybil, retention, takedown, privacy, client, nat, audit,
+                economy, churn, floor, chaos, soak, durability, retrieval, upgrade]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the upgrade suite builds from an earlier tag
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: integration/${{ matrix.suite }}/run.sh
+        run: ./integration/${{ matrix.suite }}/run.sh
