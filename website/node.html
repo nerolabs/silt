@@ -53,7 +53,8 @@
   <p>One binary, no runtime. Build it from source; there are no binary releases. You need Go 1.26:</p>
   <pre class="code">git clone https://github.com/nerolabs/silt && cd silt
 <span class="o">go</span> build -o silt ./cmd/silt</pre>
-  <p>There is no public silt network yet. To try it, run a whole network on your own
+  <p>There is no public silt network to join. The project runs only a small, closed test
+  network for the flixz.com demo, which stores no one else's files. To try silt, run a whole network on your own
   machine: <code>./examples/try-a-local-network.sh</code>. To join a network someone else
   runs, start a node that pledges 2&nbsp;GB of storage and name one of its peers:</p>
   <pre class="code"><span class="o">silt</span> daemon \

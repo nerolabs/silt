@@ -12,15 +12,22 @@ immutable #6 in [docs/TENETS.md](docs/TENETS.md): core resolves hashes, never na
 
 ## The project publishes software. It does not run the network.
 
-The organization behind Silt writes and publishes source code and
-occasionally cuts released binaries. That is all it does. It:
+AE Laboratories, the maintainer, writes and publishes source code. There are
+no binary releases. For every network but one, that is all it does. It:
 
-- **runs no nodes** and operates no part of the network,
-- **maintains no denylist** and holds no takedown authority,
+- **runs no nodes** on any network but its own closed test network (below),
+- **maintains no denylist** for anyone else's nodes and holds no takedown authority,
 - ships **no built-in list, no phone-home, no override, no backdoor**,
 - receives, at most, a DMCA-designated agent for the *project's own*
   touchpoints (the website and the release artifacts) — not for the
   network, which it does not operate.
+
+**The one exception is a closed test network.** AE Laboratories runs one
+small test network to host the [flixz.com](https://flixz.com) demo. It
+stores only the maintainer's own files, and its nodes accept connections
+only from the demo's server. No one else can publish to it or join it.
+Abuse reports about it go to abuse@silthq.com and follow the rules in the
+[operator guide](docs/OPERATING.md#reporting-abuse).
 
 This is deliberate and load-bearing. A pure software publisher stands on
 the strongest legal footing — publishing code is expression — and there

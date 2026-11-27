@@ -112,9 +112,18 @@ Only the curator that listed a file can lift its listing.
 Report a file to the operators and curators who can act on it, with its link or root hash.
 
 To report abuse of silt to the project, write to **abuse@silthq.com** with the link or root hash.
-The project hosts no files, runs no network, maintains no denylist and has no takedown authority,
-so it cannot remove a file from anyone's node. It will point you to the operators and curators who
-can act.
+
+The project provides software only. On every network but its own test network, it hosts no files,
+runs no nodes, keeps no denylist and has no takedown authority, so it cannot remove a file from
+anyone's node. It will point you to the operators and curators who can act.
+
+The exception is one closed test network that AE Laboratories runs for the
+[flixz.com](https://flixz.com) demo. It stores only the maintainer's own files, and no one else can
+publish to it or join it. Reports about it follow three rules:
+
+- Nobody at the project opens or downloads a reported link, and no automated tool fetches it.
+- Reports of child sexual abuse material go to the NCMEC CyberTipline the same day.
+- A reported file's root hash goes on the test network's own denylist.
 
 Report child sexual abuse material to your national hotline as well, such as NCMEC in the US or the
 IWF in the UK.
