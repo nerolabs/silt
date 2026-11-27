@@ -25,6 +25,9 @@ var creditSide = map[string]bool{
 	module + "core/credit":   true,
 	module + "core/relaypay": true,
 	module + "core/node":     true,
+	// Witnessed demand (RC item 2, the demand axis): self-dealt demand must not buy standing, and
+	// the structural half of that is that the chain cannot read a witnessed increment at all.
+	module + "core/demand": true,
 }
 
 // moduleImports returns the in-module packages the non-test files of pkg import.

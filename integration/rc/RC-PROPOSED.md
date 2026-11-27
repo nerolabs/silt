@@ -167,6 +167,20 @@ ACCEPTED". The PHASE 1 and PHASE 3 arms this item reads were never the failing p
 
 *Still owed:* the field tier.
 
+*2026-11-27 — THE DEMAND AXIS IS NOW DRIVEN, AND WHERE BOTH AXES DENY IS THE OWNER'S CALL.* A
+design read of the canon finds the census tests demand and diversity in the wrong place. The canon
+forbids demand from becoming standing for now (VISION: bandwidth credit "can never become standing";
+TENETS S7: the two ledgers stay separate until the sealing problem is solved) and prices it by
+cost-to-wash. It puts diversity at the DHT bucket ("address- and AS-diversity buckets deny massing
+free keys near a target"), not at `idQualifies`.
+The demand half is now measured end to end: `core/node/TestSelfDealtDemandIsAStrictLossAndBuysNoStanding`
+drives a paid, fully settled self-dealt wash on the node path, with the server witnessing every
+increment (the control), and it costs the operator exactly the skim. The structural half is
+`internal/depcheck`'s standing firewall, which now names `core/demand`: it goes red if `core/chain`
+reaches it. Diversity's mechanism exists as the DHT address cap, which ships in SHADOW mode and keys
+on /24s only, not ASes. Turning it on, AS keying and relabelling the two census verdicts wait on the
+owner (four decisions, in the 2026-11-27 report).
+
 **3. The shipped default is the defended configuration, and the stock binary runs.** ⚠ *the defended half is gated; "reaches serving" is unreachable BY DESIGN and the condition is restated — the restated condition awaits the owner's sign-off; 2026-11-27: an anchor launch no longer needs -mature-validators (derived, 4)*
 *Done:* every defence this list demonstrates runs flagless; the stock EDGE node reaches serving on
 pure defaults; the stock VALIDATOR refuses, for a reason that names what the operator must supply.
