@@ -156,8 +156,16 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
   # 9-cross-nat FAIL left no clue which leg died).
   printf 0 > "$FT_DIR/.ft_publish_gap"; : > "$FT_DIR/.ft_publish_lasterr"
   local node="$1" size="${2:-1048576}" out link lasterr="" any_output=0
-  ssh_node "$node" "head -c $size </dev/urandom >/tmp/ft_src.bin; sha256sum /tmp/ft_src.bin | cut -d' ' -f1" >/tmp/ft_src_sha 2>/dev/null
-  local sha; sha="$(cat /tmp/ft_src_sha 2>/dev/null)"
+  # Creating the source file is one ssh call; a transient ssh failure there used to leave the
+  # publish loop below retrying `open /tmp/ft_src.bin: no such file` for its whole budget. Retry
+  # the creation until it reports the file's hash.
+  local sha="" try
+  for try in 1 2 3 4 5; do
+    ssh_node "$node" "head -c $size </dev/urandom >/tmp/ft_src.bin; sha256sum /tmp/ft_src.bin | cut -d' ' -f1" >/tmp/ft_src_sha 2>/dev/null
+    sha="$(cat /tmp/ft_src_sha 2>/dev/null)"
+    [ ${#sha} -eq 64 ] && break
+    sleep 5
+  done
   local deadline=$(( $(date +%s) + PUBLISH_RETRY_S ))
   while [ "$(date +%s)" -lt "$deadline" ]; do
     # 2>&1 INSIDE the remote command: ssh_node suppresses gcloud stderr (2>/dev/null),

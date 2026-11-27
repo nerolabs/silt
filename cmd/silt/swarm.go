@@ -495,7 +495,12 @@ func swarmAdd(args []string) error {
 				return
 			}
 			publish(&tok)
-		} else if *tokenQuorum != 0 {
+		} else if *tokenQuorum != 0 && !(*allowPublisher && *tokenQuorum < 0) {
+			// An explicit -allow-publisher with the default quorum asks to record this node as the
+			// publisher; acquiring a token here would silently drop that request and publish
+			// unlinkably instead. Honour it: the entry carries the publisher, and a default chain
+			// refuses it (refuse-to-surveil) where the caller can see why. An explicit positive
+			// -token-quorum still wins, as it always has.
 			acquire := func(signers []ports.NodeID, k int) {
 				acquirePublishToken(e.nd, signers, k, legs.mark, func(tok *ports.PublishToken, aerr error) {
 					if aerr != nil {
