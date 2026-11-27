@@ -3,14 +3,70 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Silt — Roadmap</title>
+<title>Silt roadmap</title>
+<meta name="description" content="Where silt is now, what comes next, and what is still unsolved.">
+<link rel="canonical" href="https://silthq.com/roadmap">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<main style="max-width:40rem;margin:4rem auto;padding:0 1rem">
-<h1>Roadmap</h1>
-<p>This page is being rewritten. A current roadmap will be here before the project is announced.</p>
-<p><a href="/">Back to silt</a></p>
-</main>
+<nav>
+  <a href="/" class="wordmark" style="text-decoration:none">Sil<b>t</b></a>
+  <span class="spacer"></span>
+  <a href="/#how" class="hide-sm">How it works</a>
+  <a class='hide-sm' href='/node'>Run a node</a>
+  <a href='/docs'>Docs</a>
+  <a class='hide-sm' href='/roadmap'>Roadmap</a>
+  <a href="https://github.com/nerolabs/silt" class="ghost">GitHub</a>
+</nav>
+
+<div class="doc">
+  <p class="eyebrow">Roadmap</p>
+  <h1>Roadmap</h1>
+  <p class="lead">Where silt is now, what comes next, and what is still unsolved. This page
+  changes every time the site is updated or a version is tagged.</p>
+  <p class="dim">Updated 27 November 2026.</p>
+
+  <h2>Now: getting ready to announce</h2>
+  <p>silt is experimental. There is no binary release; you build it from source. Before we
+  announce it, these must all be true:</p>
+  <ul>
+    <li><b>A live network you can watch.</b> One script runs a whole network on your machine —
+    validators, storage nodes, floor boxes and simulated people publishing and fetching — and
+    the web UI shows it moving. <i>Done; in review.</i></li>
+    <li><b>A second, independent red team</b> against the three claims in
+    <a href="https://github.com/nerolabs/silt/blob/main/ADVERSARY.md">ADVERSARY.md</a>. The
+    first one's findings are all fixed.</li>
+    <li><b>A real application on the network.</b> <a href="https://flixz.com">flixz.com</a>
+    serves its film library from silt, through a resolver layer that silt itself never sees.</li>
+    <li><b>This site rewritten</b> for a source-only, experimental release.</li>
+  </ul>
+
+  <h2>Next: the experimental network</h2>
+  <ul>
+    <li>A public test network: validators in several regions, storage nodes and floor boxes,
+    with simulated users clearly labelled as simulated.</li>
+    <li>Your bug reports, and your attempts to break it. See
+    <a href="https://github.com/nerolabs/silt/blob/main/SECURITY.md">SECURITY.md</a>.</li>
+  </ul>
+
+  <h2>Later, and unsolved</h2>
+  <ul>
+    <li><b>How many validators.</b> Every validator must receive the others' bond proofs on the
+    live wire, which caps the bonded set at around 125 today. The design target is far larger.
+    This is research, not a patch.</li>
+    <li><b>Standing that can't be farmed.</b> Standing is earned by proving storage. Two more
+    axes — real demand, and diversity of who holds what — are designed but not built.</li>
+    <li><b>An external audit</b>, and binary releases once the source-only phase has done its job.</li>
+  </ul>
+</div>
+
+<footer>
+  <div class="wrap">
+    <div class="meta"><span>silthq.com</span><span>·</span><span class="dim">the infrastructure is not the content</span></div>
+  </div>
+</footer>
 </body>
 </html>

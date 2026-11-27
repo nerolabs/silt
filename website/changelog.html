@@ -3,14 +3,75 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Silt — Changelog</title>
+<title>Silt changelog</title>
+<meta name="description" content="What changed in silt, newest first.">
+<link rel="canonical" href="https://silthq.com/changelog">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<main style="max-width:40rem;margin:4rem auto;padding:0 1rem">
-<h1>Changelog</h1>
-<p>This page is being rewritten. A current changelog will be here before the project is announced.</p>
-<p><a href="/">Back to silt</a></p>
-</main>
+<nav>
+  <a href="/" class="wordmark" style="text-decoration:none">Sil<b>t</b></a>
+  <span class="spacer"></span>
+  <a href="/#how" class="hide-sm">How it works</a>
+  <a class='hide-sm' href='/node'>Run a node</a>
+  <a href='/docs'>Docs</a>
+  <a class='hide-sm' href='/roadmap'>Roadmap</a>
+  <a href="https://github.com/nerolabs/silt" class="ghost">GitHub</a>
+</nav>
+
+<div class="doc">
+  <p class="eyebrow">Changelog</p>
+  <h1>Changelog</h1>
+  <p class="lead">What changed, newest first. There is no binary release; every entry is on the
+  <code>main</code> branch, and you build it from source.</p>
+
+  <h2>27 November 2026</h2>
+  <ul>
+    <li>A live network you can watch: <code>examples/live-network.sh</code> runs validators,
+    storage nodes, floor boxes and simulated people, and prints one link to watch them all.</li>
+    <li>Floor boxes follow the chain: each block a box accepts becomes its starting point for the
+    next.</li>
+    <li>Publishing works through any node, not only a validator.</li>
+    <li>This site's source is back in the repository. The internal roadmap and changelog pages
+    were removed, and the July pre-release binaries were withdrawn.</li>
+  </ul>
+
+  <h2>26 November 2026</h2>
+  <ul>
+    <li>Takedowns are signed by a named curator, paid for like a publish, and single-use.
+    Operators choose which curators they follow; a node that follows none honours no on-chain
+    takedown.</li>
+    <li>A floor box that falls behind, or starts from an older checkpoint, can catch up.</li>
+    <li>The launch validators step aside only after enough independent storage has been bonded
+    and has stayed bonded for a sustained window.</li>
+    <li>A new network requires publish tokens by default, and rate-limits the free grant that
+    pays for a newcomer's first publish.</li>
+    <li>Fixes for two privacy findings from the first red team.</li>
+    <li>A security policy, dependency and secret scans in CI, and a one-command local network.</li>
+  </ul>
+
+  <h2>Before November 2026, in brief</h2>
+  <ul>
+    <li><b>July.</b> The core: files chunked, encrypted, erasure-coded and addressed by a Merkle
+    root; a Kademlia DHT; daemons forming a real swarm; the first chain. Two early pre-releases,
+    since withdrawn.</li>
+    <li><b>August.</b> Proof of retrieval and space-time storage bonds; blind publish tokens, so a
+    publish names no one; fork reconciliation; a repair economy; state roots committed in every
+    block.</li>
+    <li><b>September.</b> The credit and delivery economy; eclipse defences in the DHT; the floor
+    box, a validator that keeps no chain and checks each block against proofs. Development paused
+    on 22 September.</li>
+    <li><b>November.</b> Resumed, with a blind red team and the fixes above.</li>
+  </ul>
+</div>
+
+<footer>
+  <div class="wrap">
+    <div class="meta"><span>silthq.com</span><span>·</span><span class="dim">the infrastructure is not the content</span></div>
+  </div>
+</footer>
 </body>
 </html>
