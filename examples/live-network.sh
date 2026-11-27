@@ -43,7 +43,14 @@ W="${SILT_LIVE_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/silt-live.XXXXXX")}"
 mkdir -p "$W/people" || { echo "could not create $W"; exit 1; }
 : >"$W/links.txt"; : >"$W/people.log"
 PIDS=()
-cleanup() { for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null; done; wait 2>/dev/null; }
+# Stop every node and person, and anything they started (an in-flight publish or fetch), without
+# waiting on a child that ignores the signal: everything this run started runs under $W.
+cleanup() {
+  for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null; done
+  sleep 1
+  pkill -9 -f "$W/" 2>/dev/null
+  return 0
+}
 trap cleanup EXIT INT TERM
 
 await() { # await FILE REGEX SECONDS — wait for a line, print it
