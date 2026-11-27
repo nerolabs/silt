@@ -673,6 +673,17 @@ func cmdDaemon(args []string) error {
 	fmt.Printf("dht-address-cap: %s — cap_direct=%d cap_relay=%d reserve=%d (K=%d): eclipse floor per bucket = %d paid /%d prefixes + %d free slots; IPv6 /32; loopback/link-local exempt, RFC1918 classified%s\n",
 		addrMode, *dhtDomainCap, *dhtRelayCap, *dhtAddressReserve, cfg.K, paidPrefixes, *dhtAddressWidth, cfg.K-*dhtAddressReserve,
 		map[bool]string{true: " (shadow: counting would-be refusals, refusing nothing)", false: ""}[addrMode == dht.AddressCapShadow])
+	if addrMode == dht.AddressCapShadow {
+		// The shadow run's evidence, in the log a field run collects: what the cap WOULD have
+		// refused at the shipped settings. Turning the cap on is an owner's decision that rests on
+		// these numbers, and a node without -ui otherwise reports them nowhere.
+		var tally func()
+		tally = func() {
+			fmt.Println(addressCapShadowTally(nd.Table().ShadowRefusals(), *dhtAddressReserve, *dhtRelayCap, nd.Table().Size()))
+			clk.AfterFunc(addressCapTallyEvery, tally)
+		}
+		clk.AfterFunc(addressCapTallyEvery, tally)
+	}
 	if *blockPeers != "" {
 		var blocked []ports.NodeID
 		for _, s := range strings.Split(*blockPeers, ",") {
