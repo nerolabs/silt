@@ -86,7 +86,8 @@
         proving it holds real storage — an <b>identity-bound proof-of-space-time
         bond</b>, challenged and re-proved, that costs real disk. Nothing is bought.
         <b>Anyone can publish:</b> each publish carries a blind token signed by the
-        validators, so <b>the record names no one</b> and cannot be linked to who made it.</p>
+        validators, designed so <b>the record names no one</b> and can't be linked to who
+        made it. That's a claim under test: see the <a href="https://github.com/nerolabs/silt#break-it">red-team table</a>.</p>
       </div>
       <div class="layer">
         <div><div class="k">Reaches across NATs</div><h3>Two home routers still connect</h3></div>
@@ -168,8 +169,8 @@
       <span class="dim">silt has no binary release and has not been audited. Don't keep
       your only copy of anything in it, and don't use it where being identified could put
       you at risk: it does not hide your IP address from the nodes you talk to. It has
-      been through one blind red team; every finding is fixed, and a second, independent
-      red team runs before release. Please read the
+      been through one blind red team; every finding is fixed, but not yet re-tested by anyone
+      else, and a second, independent red team runs before version 1.0. Please read the
       <a href="https://github.com/nerolabs/silt/blob/main/ADVERSARY.md">threat model</a>
       — finding a way to break a promise it makes is exactly the review we most
       want.</span>
@@ -221,13 +222,12 @@ git clone https://github.com/nerolabs/silt && cd silt
     </div>
     <div style="margin-top:2rem;max-width:62ch">
       <h4>Can it be misused?</h4>
-      <p class="dim">Like any storage, yes. silt removes content by its hash, on the nodes
-      whose operators choose to: each operator keeps their own denylist and follows the
-      takedown curators they trust, and every on-chain takedown is recorded and names its
-      curator. No one can remove a file from every node at once, and nothing acts on a
-      person. To report abuse, write to <a href="mailto:abuse@silthq.com">abuse@silthq.com</a>;
-      the <a href="https://github.com/nerolabs/silt/blob/main/docs/OPERATING.md">operator
-      guide</a> says what operators can do.</p>
+      <p class="dim">Yes, like any storage. Operators remove content by its hash: each keeps a
+      denylist and can follow takedown lists from curators they trust, such as hotlines. Every
+      takedown is recorded. To report abuse, write to
+      <a href="mailto:abuse@silthq.com">abuse@silthq.com</a>; the
+      <a href="https://github.com/nerolabs/silt/blob/main/docs/OPERATING.md">operator guide</a>
+      says what operators can do.</p>
     </div>
   </div>
 </section>
