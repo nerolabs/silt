@@ -73,6 +73,24 @@ func (n *Node) NetGetRange(reg ports.Registry, h link.Handle, off, length int64,
 	})
 }
 
+// NetFileSize reports the size of the file h names, opening (and caching) its manifest, so
+// a caller can resolve a range against the file's end before asking for it.
+func (n *Node) NetFileSize(reg ports.Registry, h link.Handle, done func(int64, error)) {
+	n.lookupEntryAsync(reg, h.Root, func(entry ports.Entry, ok bool, err error) {
+		if err != nil || !ok {
+			done(0, fmt.Errorf("netget range %s: %w", h.Root, ports.ErrNoSuchEntry))
+			return
+		}
+		n.rangeManifest(entry, h, func(m *manifest.Manifest, err error) {
+			if err != nil {
+				done(0, fmt.Errorf("netget range: %w", err))
+				return
+			}
+			done(m.FileSize, nil)
+		})
+	})
+}
+
 // rangeManifest returns h's opened manifest, from the cache or by pulling its chunks. The
 // root check is made here, because a ranged read never runs pipeline.Get, which is where a
 // whole-file fetch makes it.
