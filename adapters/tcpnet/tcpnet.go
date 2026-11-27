@@ -79,13 +79,16 @@ type Peer struct {
 }
 
 type Transport struct {
-	loop       *eventloop.Loop
-	ident      *identity.Identity
-	cert       tls.Certificate
-	self       ports.NodeID
-	listenAddr string
-	ln         net.Listener
-	handler    func(from ports.NodeID, msg ports.Message)
+	// writers, when set, restricts the write message kinds to listed addresses (writers.go).
+	writers       atomic.Pointer[writerPolicy]
+	writesRefused atomic.Int64
+	loop          *eventloop.Loop
+	ident         *identity.Identity
+	cert          tls.Certificate
+	self          ports.NodeID
+	listenAddr    string
+	ln            net.Listener
+	handler       func(from ports.NodeID, msg ports.Message)
 	// inbound bounds the in-flight decoded-message working set so a fast or
 	// adversarial sender can't outrun the single loop and OOM the node (see
 	// inbound.go). nil-safe via a cap of 0 = unbounded; the daemon sets a real
@@ -674,7 +677,7 @@ func (t *Transport) ctrlLaneFor(to ports.NodeID, pair addrPair) *peerConn {
 	pc := t.adoptCtrl(to, conn)
 	go func() {
 		defer t.dropCtrlConn(to, pc)
-		t.serveFrames(conn, to)
+		t.serveFrames(conn, to, false)
 	}()
 	return pc
 }
@@ -1045,7 +1048,7 @@ func (t *Transport) readLoopWith(conn *tls.Conn, viaRelay bool, dialed *peerConn
 		// slot is untouched by it.
 		t.observeConn(from, conn.RemoteAddr(), viaRelay)
 		defer t.dropCtrlConn(from, pc)
-		t.serveFrames(conn, from)
+		t.serveFrames(conn, from, viaRelay)
 		return
 	}
 	// This conn is now the live conversation with from — in particular,
@@ -1059,17 +1062,18 @@ func (t *Transport) readLoopWith(conn *tls.Conn, viaRelay bool, dialed *peerConn
 	}
 	t.observeConn(from, conn.RemoteAddr(), viaRelay) // the observed contacted-at address
 	defer t.dropConn(from, pc)
-	t.serveFrames(conn, from)
+	t.serveFrames(conn, from, viaRelay)
 }
 
 // serveFrames reads framed messages off conn until it closes, decoding each and
 // posting it to the loop. It is shared by both lanes: a control conn and a bulk conn
 // carry the same frames and differ only in what else may be queued ahead of them, so
 // the inbound budget, the frame cap and the decode path are the same for each.
-func (t *Transport) serveFrames(conn *tls.Conn, from ports.NodeID) {
+func (t *Transport) serveFrames(conn *tls.Conn, from ports.NodeID, viaRelay bool) {
+	writer := t.writerConn(conn.RemoteAddr(), viaRelay) // decided once, for the whole connection
 	if isPiecedConn(conn.ConnectionState()) {
 		_ = t.readPieced(conn, from, func(frame []byte, release func()) {
-			if !t.dispatchFrame(frame, from, release) {
+			if !t.dispatchFrame(frame, from, release, writer) {
 				conn.Close() // ends the conversation, as the unpieced loop below does
 			}
 		})
@@ -1098,7 +1102,7 @@ func (t *Transport) serveFrames(conn *tls.Conn, from ports.NodeID) {
 			release()
 			return
 		}
-		if !t.dispatchFrame(frame, from, release) {
+		if !t.dispatchFrame(frame, from, release, writer) {
 			return
 		}
 	}
@@ -1107,7 +1111,7 @@ func (t *Transport) serveFrames(conn *tls.Conn, from ports.NodeID) {
 // dispatchFrame decodes one frame and posts its message to the loop, which releases
 // the frame's inbound budget once it has handled it. It reports false for a frame
 // that does not decode or claims another sender, and either ends the conversation.
-func (t *Transport) dispatchFrame(frame []byte, from ports.NodeID, release func()) bool {
+func (t *Transport) dispatchFrame(frame []byte, from ports.NodeID, release func(), writer bool) bool {
 	var env envelope
 	if err := cbor.Unmarshal(frame, &env); err != nil {
 		release()
@@ -1138,6 +1142,13 @@ func (t *Transport) dispatchFrame(frame []byte, from ports.NodeID, release func(
 	}
 	msg := fromWire(env.Msg)
 	t.traffic.received(msg.Kind, len(frame))
+	if t.refusesWrite(msg.Kind, writer) {
+		// Dropped, connection kept: the peer may still read. It sees a timeout, as it would
+		// from any node that declined; nothing it sent reaches the node.
+		t.noteRefusal(from, msg.Kind)
+		release()
+		return true
+	}
 	t.loop.Post(msg.Kind.String(), func() {
 		defer release() // free the budget once the loop has processed this message
 		if t.handler != nil {

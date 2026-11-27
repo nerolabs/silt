@@ -118,6 +118,32 @@ type ServeOption func(*serveConfig)
 
 type serveConfig struct {
 	ratePerSec, burst float64
+	publishers        []*net.IPNet // nil: anyone may POST /publish
+}
+
+// WithPublishers limits POST /publish to clients connecting from nets; lookups stay open to
+// everyone. It is the registry's half of -writers: a network that lets anyone join to read
+// must not let them publish through its registry. The address is the TCP peer's — no
+// forwarded-for header is trusted.
+func WithPublishers(nets []*net.IPNet) ServeOption {
+	return func(c *serveConfig) { c.publishers = nets }
+}
+
+func publisherAllowed(nets []*net.IPNet, remoteAddr string) bool {
+	if nets == nil {
+		return true
+	}
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	for _, n := range nets {
+		if ip != nil && n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // WithClientRate sets the sustained requests per second the registry serves to one
@@ -220,6 +246,10 @@ func serve(addr string, reg ports.Registry, tlsCfg *tls.Config, opts ...ServeOpt
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /publish", func(w http.ResponseWriter, r *http.Request) {
+		if !publisherAllowed(cfg.publishers, r.RemoteAddr) {
+			http.Error(w, "this registry accepts publishes only from its operator's listed addresses", http.StatusForbidden)
+			return
+		}
 		var ej entryJSON
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&ej); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

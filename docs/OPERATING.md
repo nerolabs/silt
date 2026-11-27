@@ -130,6 +130,26 @@ IWF in the UK.
 
 To report a security problem in the software itself, see [`SECURITY.md`](../SECURITY.md).
 
+## Letting others read but not write
+
+`-writers` lists the addresses (IPs or CIDRs) that may write to your node. Anyone else can
+still join, look files up, fetch, sync the chain, check blocks as a floor box, and serve what
+they hold. They cannot write:
+
+- store a piece on your node;
+- get a publish token from it;
+- register a bond or an issuer key with it, which is how an identity gains standing;
+- submit an entry, or publish through its registry.
+
+```
+silt daemon … -writers 203.0.113.7,10.0.0.0/8
+```
+
+Set the same list on every node you run. A node that leaves it out lets anyone write to it.
+A connection through a relay is never a writer, because its address is the relay's. The node's
+status (`writers.refused`) counts what it turned away, and its log names each peer the first
+time it is refused.
+
 ## Updates
 
 Maintainers can publish a signed advisory that sets a minimum version. A node below it warns its
