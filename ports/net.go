@@ -438,6 +438,7 @@ func (k MsgKind) String() string {
 		MsgGetChain: "GetChain", MsgChainReply: "ChainReply",
 		MsgGetWitness: "GetWitness", MsgWitnessReply: "WitnessReply",
 		MsgSubmitSlash: "SubmitSlash", MsgSubmitSlashAck: "SubmitSlashAck",
+		MsgSubmitAdvisory: "SubmitAdvisory", MsgSubmitAdvisoryAck: "SubmitAdvisoryAck",
 		MsgHaveBondReg:  "HaveBondReg",
 		MsgGetChainHead: "GetChainHead", MsgChainHeadReply: "ChainHeadReply",
 		MsgCheckReachability: "CheckReachability", MsgReachabilityReply: "ReachabilityReply",

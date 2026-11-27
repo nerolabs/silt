@@ -26,15 +26,50 @@ var openKinds = func() []ports.MsgKind {
 		ports.MsgCheckReachability,
 		ports.MsgSubmitSlash, ports.MsgSubmitAdvisory,
 	}
-	// Every reply and acknowledgement: they answer this node's own requests, and one that
-	// matches none is ignored by the node.
+	// Every reply: they answer this node's own requests. The set is ports.Message.IsReply —
+	// exactly the kinds the node matches against its pending requests (by RID and sender), so
+	// one that answers nothing it asked is dropped there. TestOpenKindsAreExactlyTheGoldenList
+	// pins the whole set, so a new kind cannot open by being classed a reply unnoticed.
 	for k := ports.MsgKind(1); k != 0; k++ {
-		if name := k.String(); strings.HasSuffix(name, "Reply") || strings.HasSuffix(name, "Ack") {
+		// RepairVote counts as a reply (it answers a repair claim) but it decides a bounty
+		// payout, so it stays closed to non-writers like every other credit movement.
+		if (ports.Message{Kind: k}).IsReply() && k != ports.MsgRepairVote {
 			open = append(open, k)
 		}
 	}
-	return open
+	// The answer to this node's own reachability check: matched by nonce, not request id, so
+	// IsReply does not list it — and without it a public node would believe it is unreachable.
+	return append(open, ports.MsgReachabilityReply)
 }()
+
+// pinnedKinds come only from the operator's own fixed node identities — never from a publish
+// client's throwaway identity — so under -writer-ids they need a listed ID as well as a writer
+// address: a bond or issuer-key registration, consensus, bond audits, repair claims and votes,
+// and the credit lanes. A compromised writer host can then still publish (its throwaway
+// identities are indistinguishable), but cannot act as a validator or move credit.
+var pinnedKinds = []ports.MsgKind{
+	ports.MsgSubmitBondReg, ports.MsgSubmitIssuerKeyReg, ports.MsgHaveBondReg,
+	ports.MsgProposeBlock, ports.MsgPrepareQC, ports.MsgCommitBlock, ports.MsgRoundChange, ports.MsgRoundCert,
+	ports.MsgBondChallenge, ports.MsgRepairClaim, ports.MsgRepairVote,
+	ports.MsgDeliveryReceipt, ports.MsgDeliveryOpen, ports.MsgDeliveryFund, ports.MsgDeliverySettle,
+	ports.MsgRelayOpen, ports.MsgRelayPay, ports.MsgDemandTokenRequest,
+}
+
+// parseWriterIDs reads -writer-ids: comma-separated node IDs.
+func parseWriterIDs(s string) ([]ports.NodeID, error) {
+	var out []ports.NodeID
+	for _, f := range strings.Split(s, ",") {
+		if f = strings.TrimSpace(f); f == "" {
+			continue
+		}
+		id, err := ports.ParseHash(f)
+		if err != nil {
+			return nil, fmt.Errorf("-writer-ids: %q: %w", f, err)
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
 
 // parseWriters reads -writers: comma-separated IPs (one address) or CIDRs. Empty is nil:
 // everyone may write.

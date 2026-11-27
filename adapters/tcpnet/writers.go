@@ -17,6 +17,9 @@ import (
 type writerPolicy struct {
 	nets []*net.IPNet
 	open map[ports.MsgKind]bool
+	// pinned kinds also need the sender's identity in ids (SetWriterIDs); nil: no pinning.
+	pinned map[ports.MsgKind]bool
+	ids    map[ports.NodeID]bool
 
 	mu    sync.Mutex
 	named map[ports.NodeID]bool // peers whose first refusal was logged at INFO
@@ -49,6 +52,25 @@ func (t *Transport) SetWriters(nets []*net.IPNet, open []ports.MsgKind) {
 		p.open[k] = true
 	}
 	t.writers.Store(p)
+}
+
+// SetWriterIDs additionally requires, for the pinned kinds, that the sender be one of ids —
+// the operator's own fixed node identities. Call it after SetWriters and before the node
+// starts; it does nothing without SetWriters.
+func (t *Transport) SetWriterIDs(ids []ports.NodeID, pinned []ports.MsgKind) {
+	p := t.writers.Load()
+	if p == nil || len(ids) == 0 {
+		return
+	}
+	np := &writerPolicy{nets: p.nets, open: p.open, named: p.named,
+		pinned: map[ports.MsgKind]bool{}, ids: map[ports.NodeID]bool{}}
+	for _, k := range pinned {
+		np.pinned[k] = true
+	}
+	for _, id := range ids {
+		np.ids[id] = true
+	}
+	t.writers.Store(np)
 }
 
 // WritesRefused counts inbound messages dropped because a non-writer may not send them.
@@ -101,13 +123,17 @@ func (t *Transport) noteWriter(id ports.NodeID, writer bool) {
 	t.mu.Unlock()
 }
 
-// refusesWrite reports whether a message of kind must be dropped on a non-writer's connection.
-func (t *Transport) refusesWrite(kind ports.MsgKind, writer bool) bool {
-	if writer {
+// refusesWrite reports whether a message of kind from `from` must be dropped: a non-writer
+// may send only open kinds, and a pinned kind also needs a listed identity.
+func (t *Transport) refusesWrite(kind ports.MsgKind, writer bool, from ports.NodeID) bool {
+	p := t.writers.Load()
+	if p == nil {
 		return false
 	}
-	p := t.writers.Load()
-	return p != nil && !p.open[kind]
+	if p.pinned != nil && p.pinned[kind] && !(writer && p.ids[from]) {
+		return true
+	}
+	return !writer && !p.open[kind]
 }
 
 // noteRefusal counts a refused message and logs it: at INFO the first time a peer is

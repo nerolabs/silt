@@ -1153,7 +1153,7 @@ func (t *Transport) dispatchFrame(frame []byte, from ports.NodeID, release func(
 	}
 	msg := fromWire(env.Msg)
 	t.traffic.received(msg.Kind, len(frame))
-	if t.refusesWrite(msg.Kind, writer) {
+	if t.refusesWrite(msg.Kind, writer, from) {
 		// Dropped, connection kept: the peer may still read. It sees a timeout, as it would
 		// from any node that declined; nothing it sent reaches the node.
 		t.noteRefusal(from, msg.Kind)

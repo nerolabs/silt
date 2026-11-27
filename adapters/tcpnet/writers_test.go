@@ -89,3 +89,46 @@ func TestAListedWriterCanWrite(t *testing.T) {
 		t.Fatal("IsWriter is false for a peer connecting from a listed address")
 	}
 }
+
+// TestPinnedKindsNeedAListedIdentity: at a writer address, an unlisted identity — a publish
+// client's throwaway one — may still store a piece, but may not submit a bond registration;
+// a listed identity may do both.
+func TestPinnedKindsNeedAListedIdentity(t *testing.T) {
+	for _, listed := range []bool{false, true} {
+		seed := int64(730)
+		if listed {
+			seed = 740
+		}
+		sender, receiver, got := writersPair(t, seed, "127.0.0.0/8")
+		var ids []ports.NodeID
+		if listed {
+			ids = append(ids, identity.FromSeed(seed).NodeID())
+		} else {
+			ids = append(ids, identity.FromSeed(999).NodeID())
+		}
+		receiver.SetWriterIDs(ids, []ports.MsgKind{ports.MsgSubmitBondReg})
+		to := identity.FromSeed(seed + 1).NodeID()
+		sender.Send(to, ports.Message{Kind: ports.MsgSubmitBondReg})
+		sender.Send(to, ports.Message{Kind: ports.MsgStoreChunk})
+		seen := map[ports.MsgKind]bool{} // the two may arrive on different lanes, in either order
+		deadline := time.After(3 * time.Second)
+	collect:
+		for {
+			select {
+			case k := <-got:
+				seen[k] = true
+			case <-deadline:
+				break collect
+			}
+		}
+		if !seen[ports.MsgStoreChunk] {
+			t.Fatalf("listed=%v: a store from a writer address was refused", listed)
+		}
+		if seen[ports.MsgSubmitBondReg] != listed {
+			t.Fatalf("listed=%v: bond registration delivered=%v", listed, seen[ports.MsgSubmitBondReg])
+		}
+		if want := map[bool]int64{false: 1, true: 0}[listed]; receiver.WritesRefused() != want {
+			t.Fatalf("listed=%v: WritesRefused = %d, want %d", listed, receiver.WritesRefused(), want)
+		}
+	}
+}

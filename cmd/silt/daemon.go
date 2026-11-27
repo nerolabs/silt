@@ -80,6 +80,7 @@ func cmdDaemon(args []string) error {
 	persistentPeers := fs.String("persistent-peers", "", "comma-separated ID@HOST:PORT of a STATIC consensus/anchor peer set — address-configured up front and NEVER evicted by churn (Tendermint persistent_peers). At genesis there is no chain, so a proposer cannot DISCOVER its attesters' addresses (silt's routing table holds bare NodeIDs; addresses live in the transport layer, learned only from inbound frames/gossip) — configure the validator set here so proposer-initiated quorum can form on a fresh multi-region net (Layer 2; the durable-WAN policy §8). These are AddPeer'd at boot AND exempt from reachability eviction (§2)")
 	registryURL := fs.String("registry", "", "registry ref: ID@https://host:port (key-pinned — copy the daemon's 'registry:' line verbatim; a bare http:// or unkeyed https:// is refused)")
 	serveRegistry := fs.String("serve-registry", "", "host the registry at this address (persisted in the store dir)")
+	writerIDsFlag := fs.String("writer-ids", "", "with -writers: comma-separated node IDs that alone may send the kinds only an operator's fixed nodes send — bond and issuer-key registration, consensus, bond audits, repair claims and votes, the credit lanes — so a compromised writer host can still publish but cannot act as a validator or move credit. List every node you run")
 	writersFlag := fs.String("writers", "", "comma-separated addresses or CIDRs (e.g. 203.0.113.7,10.0.0.0/8) that may WRITE to this node: store a piece, get a publish token, register a bond or issuer key, submit an entry, POST to its registry. Everyone else can still join, look up, fetch, sync the chain and serve what they hold — they cannot write. Empty (the default) lets every peer write. For a network that lets anyone read but only its operator publish")
 	registryRate := fs.Float64("registry-rate", 20, "requests per second the registry serves to one client IP, with a burst of twice that. Raise it when many publishers share an address (a carrier or office NAT), or for a load test whose few machines stand in for many publishers")
 	idSeed := fs.Int64("id-seed", 0, "derive the identity from a seed (default: persistent keyfile) — for scripted demos")
@@ -680,6 +681,12 @@ func cmdDaemon(args []string) error {
 	if writers != nil {
 		tr.SetWriters(writers, openKinds)
 		nd.SetWriterOracle(tr)
+		if ids, ierr := parseWriterIDs(*writerIDsFlag); ierr != nil {
+			return ierr
+		} else if len(ids) > 0 {
+			tr.SetWriterIDs(ids, pinnedKinds)
+			fmt.Printf("writers: registrations, consensus, repair and credit lanes only from %d listed node identit(ies)\n", len(ids))
+		}
 		fmt.Printf("writers: only %s may write to this node; anyone else may join, read and serve (lookups, fetches, chain sync, witnesses) and nothing more\n", *writersFlag)
 	}
 	nd.SetPeerClassifier(tr)
