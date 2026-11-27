@@ -41,7 +41,7 @@ itself finished only when someone other than its author tries to break all three
 | Accountability | Not broken; the review found that any validator could propose a takedown | Fixed: takedowns are curator-signed, paid and single-use (#915) |
 | Sybil resistance | One finding on "no quiet capture", November 2026 | Fixed: the launch anchors shed only after enough bonded storage holds for a sustained window (#912, #913) |
 
-A second, independent red team runs before release, and this table will carry its results.
+Every finding above is fixed but not yet re-tested by anyone else. A second, independent red team runs before version 1.0, and this table will carry its results.
 
 Found something? See [`SECURITY.md`](SECURITY.md). To report abuse of the network, write to
 abuse@silthq.com; the [operator guide](docs/OPERATING.md#reporting-abuse) says what happens next.
@@ -52,7 +52,10 @@ abuse@silthq.com; the [operator guide](docs/OPERATING.md#reporting-abuse) says w
 |---|---|---|
 | IPFS | Content-addressed sharing; files stay up while someone pins them | silt encrypts every file, repairs it automatically, and pays nodes in credit for keeping it |
 | Filecoin | Paid storage deals, settled in its own cryptocurrency | silt has no token: storage is proven, not bought |
-| Storj | Paid cloud storage on community nodes, coordinated by central satellites | silt has no coordinator and no payment rail |
+| Storj | Paid cloud storage on community nodes, coordinated by central satellites | silt has no permanent coordinator (launch validators step aside as the network grows) and no payment rail |
+| Sia | Encrypted, erasure-coded storage contracts, paid in its own cryptocurrency | silt has no token: nodes earn credit by storing and serving, and nothing is bought |
+| Swarm | Storage and bandwidth incentivised with a token on Ethereum | silt has no token and no external chain |
+| Chia | A cryptocurrency secured by proof of space and time | silt uses a proof of space and time to seat validators, but has no coin and is a storage network, not a currency |
 | Tahoe-LAFS | Encrypted, erasure-coded storage across servers you choose | silt is open to anyone, with an on-chain registry and repair economy |
 | Hyphanet (Freenet) | Anonymous publishing and retrieval through routed hops | silt keeps files alive deliberately rather than by popularity, and does not route for anonymity |
 
@@ -99,8 +102,8 @@ surrenders the third.
   proofs.
 - **Sybil-resistance.** Standing cannot be cheaply forged. Identity is free and
   pseudonymous; *influence* costs sustained, challenged, real work — and the
-  publishing act stays cryptographically unlinkable from the bonded identity that
-  did the work.
+  publishing act is designed to stay cryptographically unlinkable from the bonded identity
+  that did the work (a claim under test; see the red-team table above).
 
 This is **hold**, not **resolve**. It is not a claim to have solved a research
 problem all at once. It is a refusal to trade a corner away, and a design in which

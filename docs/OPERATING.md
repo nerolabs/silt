@@ -14,6 +14,9 @@ A storage node keeps encrypted pieces of other people's files and serves them to
 - **Your node is visible.** Peers see your IP address, and you see theirs. silt does not hide
   addresses; it is not an anonymity network.
 
+Run a public node on a separate machine or a server, not on your home connection or a computer
+that holds anything you care about.
+
 In many countries, storing and serving other people's data makes you a hosting provider, with
 duties when you are told that something you host is unlawful. The rest of this guide covers the
 tools silt gives you to meet those duties. Check what applies where you run the node.
