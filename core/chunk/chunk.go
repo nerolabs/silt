@@ -31,27 +31,43 @@ var ErrBadFrame = errors.New("chunk: malformed frame")
 // Split reads r to EOF and returns frames of exactly chunkSize bytes.
 // An empty input yields zero frames.
 func Split(r io.Reader, chunkSize int) ([][]byte, error) {
+	var frames [][]byte
+	if err := SplitEach(r, chunkSize, func(f []byte) error {
+		frames = append(frames, f)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return frames, nil
+}
+
+// SplitEach is Split one frame at a time: it hands each frame to fn as soon as it is read,
+// so a caller can process a file of any size holding one frame. It is the only framing
+// implementation — Split collects its frames — so the two can never disagree on bytes. A
+// frame is fn's to keep; SplitEach never reuses it.
+func SplitEach(r io.Reader, chunkSize int, fn func(frame []byte) error) error {
 	if chunkSize < MinChunkSize {
-		return nil, fmt.Errorf("chunk: chunkSize %d < minimum %d", chunkSize, MinChunkSize)
+		return fmt.Errorf("chunk: chunkSize %d < minimum %d", chunkSize, MinChunkSize)
 	}
 	payloadSize := chunkSize - HeaderSize
-	var frames [][]byte
 	for {
 		frame := make([]byte, chunkSize)
 		n, err := io.ReadFull(r, frame[HeaderSize:])
 		if n == 0 {
 			if err == io.EOF || err == io.ErrUnexpectedEOF || err == nil {
-				return frames, nil
+				return nil
 			}
-			return nil, err
+			return err
 		}
 		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-			return nil, err
+			return err
 		}
 		binary.BigEndian.PutUint64(frame[:HeaderSize], uint64(n))
-		frames = append(frames, frame)
+		if ferr := fn(frame); ferr != nil {
+			return ferr
+		}
 		if n < payloadSize {
-			return frames, nil
+			return nil
 		}
 	}
 }

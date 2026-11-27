@@ -128,30 +128,17 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 	if err := opts.Erasure.Validate(); err != nil {
 		return link.Handle{}, ports.Entry{}, fmt.Errorf("add: %w", err)
 	}
-	frames, err := splitFile(r, opts.ChunkSize)
-	if err != nil {
-		return link.Handle{}, ports.Entry{}, fmt.Errorf("add: %w", err)
-	}
-	// The frame size the file was ACTUALLY split at, read off the artifact rather than
-	// re-decided: splitFile emits equal-length frames, so frame 0's length is the
-	// geometry. It equals opts.ChunkSize except for a single-frame object, which
-	// splitFile frames at its Padmé length. Every later consumer
-	// of the geometry — the erasure stripe, the PoR auditor's expected block count
-	// (core/node/por.go), the repair judge's — reads this field, so the short frame
-	// stays a fully committed, auditor-fixed geometry rather than a special case.
-	frameBytes := opts.ChunkSize
-	if len(frames) > 0 {
-		frameBytes = len(frames[0])
-	}
-
+	// STREAMING: the file is read one frame at a time and coded one stripe at a time, so a
+	// publish holds one stripe (K frames and its parity), never the file. Frame size and file
+	// size are known only once the stream ends, so they are filled in then; nothing before
+	// the manifest is marshalled reads them.
 	m := &manifest.Manifest{
-		Version:   manifest.Version,
-		Mode:      string(opts.Mode),
-		ChunkSize: int64(frameBytes),
-		FileSize:  fileSizeOf(frames),
-		K:         opts.Erasure.K,
-		N:         opts.Erasure.N,
+		Version: manifest.Version,
+		Mode:    string(opts.Mode),
+		K:       opts.Erasure.K,
+		N:       opts.Erasure.N,
 	}
+	var err error
 
 	var fileKey [crypto.KeySize]byte
 	if opts.Mode == crypto.Private {
@@ -165,7 +152,30 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 		m.FileKey = fileKey[:]
 	}
 
-	ctChunks := make([][]byte, 0, len(frames))
+	p := opts.Erasure
+	var stripe [][]byte // the ciphertext of the stripe being filled
+	var parityRoots [][]byte
+	stripes := 0
+	flush := func() error {
+		if len(stripe) == 0 {
+			return nil
+		}
+		parity, err := erasure.EncodeStripe(p, stripe)
+		if err != nil {
+			return fmt.Errorf("add: encoding stripe %d: %w", stripes, err)
+		}
+		for q, shard := range parity {
+			c := ports.NewChunk(shard)
+			if err := store.Put(ctx, c); err != nil {
+				return fmt.Errorf("add: storing parity %d of stripe %d: %w", q, stripes, err)
+			}
+			m.Parity = append(m.Parity, idBytes(c.ID))
+			proot := por.ShardRoot(shard, por.SpotLeafBytes)
+			parityRoots = append(parityRoots, proot[:])
+		}
+		stripe, stripes = nil, stripes+1
+		return nil
+	}
 	sealFrame := func(i int, frame []byte) error {
 		var ct []byte
 		switch opts.Mode {
@@ -188,27 +198,43 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 		if err := store.Put(ctx, c); err != nil {
 			return fmt.Errorf("add: storing chunk %d: %w", i, err)
 		}
-		m.Chunks = append(m.Chunks, c.ID[:])
+		m.Chunks = append(m.Chunks, idBytes(c.ID))
 		// Commit the shard's spot-check tree beside its ID. The root is a
 		// function of the ciphertext alone, so it is computed here, where the
 		// ciphertext exists, and never recomputed from a shard a peer supplied.
 		root := por.ShardRoot(ct, por.SpotLeafBytes)
 		m.ShardRoots = append(m.ShardRoots, root[:])
-		ctChunks = append(ctChunks, ct)
+		if stripe = append(stripe, ct); len(stripe) == p.K {
+			return flush()
+		}
 		return nil
 	}
-	for i, frame := range frames {
-		if err := sealFrame(i, frame); err != nil {
-			return link.Handle{}, ports.Entry{}, err
+	frameBytes, frames := 0, 0
+	if err := splitFileEach(r, opts.ChunkSize, func(frame []byte) error {
+		if frames == 0 {
+			// The frame size the file was ACTUALLY split at, read off the artifact rather than
+			// re-decided: frames are equal-length, so frame 0's length is the geometry. It
+			// equals opts.ChunkSize except for a single-frame object, framed at its Padmé
+			// length; the stripe, the PoR auditor and the repair judge all read this field.
+			frameBytes = len(frame)
 		}
+		m.FileSize += int64(frameLen(frame))
+		frames++
+		return sealFrame(frames-1, frame)
+	}); err != nil {
+		return link.Handle{}, ports.Entry{}, fmt.Errorf("add: %w", err)
 	}
+	if frames == 0 {
+		frameBytes = opts.ChunkSize
+	}
+	m.ChunkSize = int64(frameBytes)
 	// Filler frames bring the frame COUNT up to the object's Padmé class, as the frame
 	// LENGTH already is for a single-frame object (DataFrameSize). They carry a zero-length
 	// header, so Join writes nothing for them, and a payload no one without the content can
 	// tell from real data — see fillerSeed.
-	if want := FrameCount(m.FileSize, opts.ChunkSize); want > len(frames) {
+	if want := FrameCount(m.FileSize, opts.ChunkSize); want > frames {
 		seed := fillerSeed(opts.Mode, fileKey, m.ChunkSecrets, m.FileSize)
-		for i := len(frames); i < want; i++ {
+		for i := frames; i < want; i++ {
 			if err := sealFrame(i, fillerFrame(seed, uint64(i), frameBytes)); err != nil {
 				return link.Handle{}, ports.Entry{}, err
 			}
@@ -222,24 +248,8 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 	// because ShardRoots is aligned with Leaves() — every data shard, then
 	// every parity shard — and the parity IDs only reach that order at the
 	// end.
-	var parityRoots [][]byte
-	p := opts.Erasure
-	for j := 0; j < p.Stripes(len(ctChunks)); j++ {
-		lo := j * p.K
-		hi := min(lo+p.K, len(ctChunks))
-		parity, err := erasure.EncodeStripe(p, ctChunks[lo:hi])
-		if err != nil {
-			return link.Handle{}, ports.Entry{}, fmt.Errorf("add: encoding stripe %d: %w", j, err)
-		}
-		for q, shard := range parity {
-			c := ports.NewChunk(shard)
-			if err := store.Put(ctx, c); err != nil {
-				return link.Handle{}, ports.Entry{}, fmt.Errorf("add: storing parity %d of stripe %d: %w", q, j, err)
-			}
-			m.Parity = append(m.Parity, c.ID[:])
-			proot := por.ShardRoot(shard, por.SpotLeafBytes)
-			parityRoots = append(parityRoots, proot[:])
-		}
+	if err := flush(); err != nil { // the final, possibly short, stripe
+		return link.Handle{}, ports.Entry{}, err
 	}
 
 	m.ShardRoots = append(m.ShardRoots, parityRoots...)
@@ -497,6 +507,36 @@ func fillerFrame(seed [crypto.SecretSize]byte, index uint64, frameBytes int) []b
 // be as small as 10 bytes (a 1-byte object commits ChunkSize = PaddedLength(9) = 10), so a
 // consumer that divides by the field or assumes a floor must say so. Filler frames
 // (FrameCount) are Stage's job, not this function's: they need the content key.
+func splitFileEach(r io.Reader, chunkSize int, fn func([]byte) error) error {
+	if chunkSize < chunk.MinChunkSize {
+		return chunk.SplitEach(r, chunkSize, fn) // one place reports a bad chunk size
+	}
+	head := make([]byte, chunkSize-chunk.HeaderSize)
+	n, err := io.ReadFull(r, head)
+	switch {
+	case err == io.EOF:
+		return nil // empty input yields zero frames, exactly as chunk.Split does
+	case err == io.ErrUnexpectedEOF:
+		// The whole object arrived inside one frame, so its length is known now.
+		return chunk.SplitEach(bytes.NewReader(head[:n]), DataFrameSize(n, chunkSize), fn)
+	case err != nil:
+		return err
+	}
+	return chunk.SplitEach(io.MultiReader(bytes.NewReader(head), r), chunkSize, fn)
+}
+
+// idBytes copies a chunk id out of its chunk. Keeping c.ID[:] instead keeps the whole
+// ports.Chunk alive — its Data included — for as long as the manifest holds the id: the
+// manifest's id lists pinned every staged chunk's ciphertext and parity, so a publish held
+// 1.6× the file in memory even with Stage streaming (measured: 617 MB live staging a 512 MB
+// file). TestStageHoldsOneStripeNotTheFile guards it.
+func idBytes(id ports.ChunkID) []byte {
+	b := make([]byte, len(id))
+	copy(b, id[:])
+	return b
+}
+
+// splitFile is splitFileEach collected: every frame of the object at once.
 func splitFile(r io.Reader, chunkSize int) ([][]byte, error) {
 	if chunkSize < chunk.MinChunkSize {
 		return chunk.Split(r, chunkSize) // one place reports a bad chunk size
