@@ -467,7 +467,7 @@ func (n *Node) fetchFrom(id ports.ChunkID, provs []ports.NodeID, done func(bool)
 	attempt := 0
 	var sweep func()
 	sweep = func() {
-		if ok, _ := n.store.Has(bg(), id); ok {
+		if ok, _ := n.store.Has(bg(), id); ok || n.overflowed(id) {
 			// Defer: the first sweep runs on the caller's stack, so an
 			// inline done here recurses a per-column chain O(ids) deep when the
 			// column is already held.
@@ -529,7 +529,7 @@ func (n *Node) fetchFrom(id ports.ChunkID, provs []ports.NodeID, done func(bool)
 				func(resp ports.Message, err error) {
 					if err == nil && resp.Found {
 						c := ports.Chunk{ID: id, Data: resp.Data}
-						if c.Verify() && n.store.Put(bg(), c) == nil { // a node that trusts is a bug
+						if c.Verify() && n.putPulled(c) == nil { // a node that trusts is a bug
 							// Debug narration: fetch-pulls write bytes with NO
 							// provider record — name them so a disk census can tell a
 							// pulled copy from a placed one.
@@ -732,6 +732,8 @@ func (n *Node) netGetEntry(reg ports.Registry, entry ports.Entry, h link.Handle,
 		}
 	}
 	snapshot(entry.ManifestChunks)
+	n.wantWorking(entry.ManifestChunks)
+	var wantedLeaves []ports.ChunkID
 	// settle disposes of the working set (drop, or host+announce on a retained
 	// success), then reports err. leaves is nil on the early error paths.
 	settle := func(m *manifest.Manifest, getErr error, after func(error)) {
@@ -748,6 +750,9 @@ func (n *Node) netGetEntry(reg ports.Registry, entry ports.Entry, h link.Handle,
 				pulled = append(pulled, id)
 			}
 		}
+		// The in-memory overflow is never hosted, so it is released whatever happens next.
+		n.releaseWorking(entry.ManifestChunks)
+		n.releaseWorking(wantedLeaves)
 		if retain && getErr == nil && m != nil {
 			n.retainPulled(m, h, pulled, func() { after(nil) })
 			return
@@ -765,17 +770,19 @@ func (n *Node) netGetEntry(reg ports.Registry, entry ports.Entry, h link.Handle,
 			settle(nil, fmt.Errorf("netget: %d of %d manifest chunks unreachable", len(missing), len(entry.ManifestChunks)), done)
 			return
 		}
-		m, err := pipeline.LoadFull(bg(), n.store, entry, h)
+		m, err := pipeline.LoadFull(bg(), workingStore{n}, entry, h)
 		if err != nil {
 			settle(nil, fmt.Errorf("netget: %w", err), done)
 			return
 		}
 		snapshot(m.Leaves())
+		wantedLeaves = m.Leaves()
+		n.wantWorking(wantedLeaves)
 		// Whatever ends up in the local store, the pipeline is the judge:
 		// it verifies every hash against the root and repairs from parity
 		// where it can.
 		finish := func() {
-			err := pipeline.Get(bg(), n.store, reg, h, w)
+			err := pipeline.Get(bg(), workingStore{n}, reg, h, w)
 			if err == nil {
 				// No root: an INFO line is written to this node's disk by default,
 				// and a dated list of the roots it read is a reading history.

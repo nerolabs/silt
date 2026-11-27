@@ -401,17 +401,20 @@ func evictPeerInfoIfFull[V any](m map[ports.NodeID]V, keep ports.NodeID) {
 
 // Stats are per-node counters the sim reports on.
 type Stats struct {
-	QueriesSent     int // DHT + fetch requests issued
-	Timeouts        int
-	ChunksServed    int
-	ChunksReceived  int // chunks pushed to us via StoreChunk
-	BytesServed     int64
-	Probes          int // shard availability checks (repair loop)
-	Repairs         int // stripes repaired
-	ShardsRebuilt   int // shards reconstructed and re-distributed
-	RepairFailures  int // repair attempts that couldn't reconstruct (retried next sweep)
-	Dispersals      int // stripes re-spread by the dispersion audit (over-concentrated in a domain)
-	BlocksCommitted int // chain blocks appended to the local replica
+	// WorkingSetOverflow counts fetched pieces held in memory because the pledge was full
+	// (workingset.go). A node that counts these is fetching with no room in its pledge.
+	WorkingSetOverflow int
+	QueriesSent        int // DHT + fetch requests issued
+	Timeouts           int
+	ChunksServed       int
+	ChunksReceived     int // chunks pushed to us via StoreChunk
+	BytesServed        int64
+	Probes             int // shard availability checks (repair loop)
+	Repairs            int // stripes repaired
+	ShardsRebuilt      int // shards reconstructed and re-distributed
+	RepairFailures     int // repair attempts that couldn't reconstruct (retried next sweep)
+	Dispersals         int // stripes re-spread by the dispersion audit (over-concentrated in a domain)
+	BlocksCommitted    int // chain blocks appended to the local replica
 	// H7 durability-bounty accounting (this node's own view; ledgers are
 	// per-node-local). RepairClaims: claims this node emitted after placing a
 	// rebuilt shard. BountiesReleased / FalseRepairSlashes: verdicts this node
@@ -1080,6 +1083,10 @@ type Node struct {
 	// dominated by building that prover, which would let a stranger make this node redo the
 	// work once per request. Single-entry, so the cache itself cannot be grown by a peer.
 	witnessProviders chain.ProviderCache
+	// workingWant and workOverflow hold the pieces an in-flight fetch wants and, when the pledge
+	// is full, the ones held in memory instead (workingset.go).
+	workingWant  map[ports.ChunkID]int
+	workOverflow map[ports.ChunkID][]byte
 	// declaredChainID is the REQUESTER-side network identity an operator declared on a node that
 	// holds no chain (SetNetworkIdentity). It is read ONLY by RequesterChainID, never by chainID —
 	// see core/node/networkidentity.go for why the two must not be collapsed.
