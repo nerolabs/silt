@@ -25,8 +25,7 @@ git clone https://github.com/nerolabs/silt && cd silt
 
 That starts a small silt network on your own machine — three validators and a storage node, on
 loopback only — and prints the address of the web UI and the commands to publish and fetch. Ctrl-C
-stops it. You need Go 1.26 to build from source; release binaries are on the
-[releases page](https://github.com/nerolabs/silt/releases).
+stops it. You need Go 1.26 to build it from source; there are no binary releases.
 
 ## Break it
 
@@ -177,7 +176,8 @@ go build ./cmd/silt          # single binary at ./silt
 go test ./...                # the suite
 ```
 
-Cross-compile release binaries for macOS, Windows, and Linux, with checksums:
+Cross-compile binaries for macOS, Windows, and Linux, with checksums (for your own use; the
+project publishes no binaries yet):
 
 ```sh
 ./build.sh v0.1.0            # writes dist/ plus dist/SHA256SUMS

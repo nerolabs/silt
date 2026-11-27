@@ -26,7 +26,6 @@ There is no bug bounty.
 
 - The three claims in `ADVERSARY.md`, attacked any way you can construct.
 - The `silt` node, daemon, CLI and web UI in this repository.
-- The release binaries and their checksums.
 
 Out of scope: denial of service by volume alone, attacks that need control of the reporter's own
 machine, and findings in third-party dependencies without a path through silt (report those
