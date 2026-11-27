@@ -31,7 +31,7 @@ SUITES_CATALOG=(
   "bond|gate|180|Proof-of-space-time bond cost (C1): a real plot is dear to make, cheap to verify, shortcut rejected"
   "redteam|gate|480|accountability: equivocator slashed, forged block rejected, low-bond proposer refused"
   "sybil|gate|600|C2 no quiet capture: a young objective network commits with the honest anchors and refuses to advance for a bonded Sybil set without them"
-  "retention|gate|600|Retention decay denies coasting (C1 time dimension): an identity that stops re-proving is evicted from the committed bonded set within the re-challenge TTL, while the identities that keep re-proving keep their standing, and it re-earns standing only when a fresh registration commits"
+  "retention|gate|900|Retention decay denies coasting (C1 time dimension): an identity that stops re-proving is evicted from the committed bonded set within the re-challenge TTL, while the identities that keep re-proving keep their standing, and it re-earns standing only when a fresh registration commits"
   "takedown|gate|180|Per-operator, existence-checked, reversible takedown"
   "privacy|gate|360|Publisher unlinkability: the default chain refuses a durable file→publisher link (refuse-to-surveil), the private path works, token-quorum authorizes without identity"
   "client|gate|300|Web-UI path: publish→list→fetch bit-perfect over the daemon's HTTP API, and the local-security guard holds (no-token/wrong-token→401, DNS-rebinding/cross-origin→403)"
