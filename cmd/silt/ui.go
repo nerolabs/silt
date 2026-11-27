@@ -1993,17 +1993,20 @@ func (s *uiServer) apiAdvisory(w http.ResponseWriter, r *http.Request) {
 // or returns nil when it requires none. A daemon holding the chain reads the quorum and the
 // canonical signers from it; one that does not asks the validators behind its registry.
 func (s *uiServer) publishToken(e *ephemeral, run func(fn func(done func())) error) (*ports.PublishToken, error) {
-	k, hasChain := 0, false
+	k := 0
 	var signers []ports.NodeID
 	s.onLoop(func() {
 		if ch := s.nd.Chain(); ch != nil {
-			hasChain = true
 			if k = ch.TokenQuorum(); k > 0 {
 				signers = ch.CanonicalIssuers(canonicalIssuers)
 			}
 		}
 	})
-	if !hasChain && len(s.registryValidators) > 0 {
+	// A chain replica that is not a validator's (an -economy follower, which judges repair
+	// claims) reports quorum 0: only a validator sets the token requirement on its chain. That 0
+	// is "this replica was not told", not "the network requires none", so it asks the network,
+	// as a node with no chain does. Trusting it published token-less and the validators refused.
+	if k == 0 && len(s.registryValidators) > 0 {
 		if err := run(func(done func()) {
 			e.nd.FetchPublishRequirementsFromAny(s.registryValidators, func(canon []ports.NodeID, q int, ferr error) {
 				if ferr == nil {
