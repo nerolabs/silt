@@ -93,9 +93,10 @@ siltcare:v1:<span class="o">&lt;root&gt;</span>:<span class="g">&lt;layout-key&g
   share (at the cost of a confirmation-of-file attack). From the link key
   the software derives, one-way, a <b>layout key</b> (stripe structure — enough to
   repair and audit) and a <b>content key</b> (the decryption material). Hand a
-  caretaker the care link and they can keep your file durable — finite but
-  renewable: funded for a horizon, auto-skim-extended, and re-endowed before
-  expiry (perpetual only if the balance grows) — without ever reading a byte of it.</p>
+  caretaker the care link and they can keep your file durable without ever reading a
+  byte of it. Durability is paid in <b>credit</b>, the accounting unit nodes earn by
+  serving bytes (it is not a currency, and can't be bought or taken out of silt): a
+  caretaker funds a file for a period, and renews it before the period ends.</p>
 
   <h2 id="api">Daemon HTTP API</h2>
   <p>A validator can host the registry over pinned HTTPS. Reads serve from the
@@ -104,7 +105,7 @@ siltcare:v1:<span class="o">&lt;root&gt;</span>:<span class="g">&lt;layout-key&g
     <tr><th class="mono">endpoint</th><th>does</th></tr>
     <tr><td class="mono">GET /lookup?root=…</td><td>Resolve a root to its registry entry, or 404.</td></tr>
     <tr><td class="mono">GET /all</td><td>Every registered entry.</td></tr>
-    <tr><td class="mono">POST /publish</td><td>Propose an entry; commits only with quorum. 402 if the publisher can't afford it.</td></tr>
+    <tr><td class="mono">POST /publish</td><td>Propose an entry; commits only with quorum. Answers 402 if the entry's publish fee isn't covered by credit.</td></tr>
   </table>
   <p>The registry reference clients use is <span class="mono">&lt;host-ID&gt;@https://host:port</span> —
   self-authenticating: the TLS handshake must present the key that hashes to that ID.</p>

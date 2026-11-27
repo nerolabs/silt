@@ -34,17 +34,15 @@
       <i style="height:4%;background:#6e5124"></i><i style="height:12%;background:#241f18"></i>
       <i style="height:8%;background:#332619"></i><i style="height:14%;background:#1d1913"></i>
     </div>
-    <p class="eyebrow settle">Content-blind by architecture · no speculative token · earned standing</p>
+    <p class="eyebrow settle">Content-blind by architecture · no coin, no token · experimental</p>
     <h1 class="thesis settle settle-2">The infrastructure is <em>not</em> the content.</h1>
     <p class="sub settle settle-3">
-      Silt is resilient, content-blind, neutral storage
-      infrastructure — files split into encrypted fragments, scattered and
-      healed across many machines. A node <b>cannot read what it holds; it was
-      built to be unable to.</b> Standing to publish is <b>earned</b> — backed by an
-      identity-bound storage bond, coin-free, no speculative token — and by default
-      the published record <b>names no author</b>, with opt-in blind tokens for true
-      cryptographic unlinkability (a transport IP+timing link remains until
-      issuance-mixing ships, Pre-V1). Meaning lives elsewhere, with whoever holds the keys.
+      Silt is peer-to-peer storage. A file is encrypted on your machine, split into
+      pieces with redundancy, and spread across other people's nodes; the link you
+      get is both its address and its key. A node <b>cannot read what it holds; it
+      was built to be unable to</b>, and the network repairs a file as nodes come and
+      go. A publish <b>names no author</b>. There is <b>no coin, no token and nothing
+      to buy</b>. Meaning lives elsewhere, with whoever holds the keys.
     </p>
     <div class="cta-row settle settle-4">
       <a href="#download" class="btn">Build from source</a>
@@ -82,14 +80,13 @@
         open a file you need a <b>link</b> — a key that travels between people, never through the network.</p>
       </div>
       <div class="layer">
-        <div><div class="k">Governed by earned standing</div><h3>Write-access is earned, not bought</h3></div>
-        <p>The registry is a chain the operators keep together. Publishing a new
-        entry needs a quorum of nodes whose standing clears a bar — earned by an
-        <b>identity-bound proof-of-space-time bond</b>: challenged, held storage that
-        costs real disk. Passing audits proves you still hold the bond but mints no
-        standing; served bandwidth funds durability, not standing. Coin-free, no
-        speculative token. <b>The published record names no author by default</b> —
-        with opt-in blind tokens, publishing becomes cryptographically unlinkable from the identity that earned standing.</p>
+        <div><div class="k">Governed by earned standing</div><h3>A validator's seat is earned, not bought</h3></div>
+        <p>The registry is a chain the validators keep together. A file is registered
+        when a quorum of validators commits it, and a validator earns its seat by
+        proving it holds real storage — an <b>identity-bound proof-of-space-time
+        bond</b>, challenged and re-proved, that costs real disk. Nothing is bought.
+        <b>Anyone can publish:</b> each publish carries a blind token signed by the
+        validators, so <b>the record names no one</b> and cannot be linked to who made it.</p>
       </div>
       <div class="layer">
         <div><div class="k">Reaches across NATs</div><h3>Two home routers still connect</h3></div>
@@ -132,8 +129,8 @@
     </div>
     <ul class="rules">
       <li><span><b>Pledge what you mean.</b> <span class="dim">Start a node with a fixed budget — <span class="mono">silt daemon -capacity 2G</span>. The network continuously knows its own total size.</span></span></li>
-      <li><span><b>Serve, don't hoard.</b> <span class="dim">Storing without serving is freeloading. Bytes served fund the durability economy; consensus standing is backed by the storage bond, not bandwidth.</span></span></li>
-      <li><span><b>Prove you hold it.</b> <span class="dim">Auditors challenge you to prove possession with a fresh nonce. Keep the proof but ditch the data and you're slashed into debt.</span></span></li>
+      <li><span><b>Serve, don't hoard.</b> <span class="dim">Serving earns <b>credit</b>: an accounting unit each node keeps, earned by serving bytes and spent to keep files alive. It is not a currency — it can't be bought, sold or taken out of silt. A validator's seat comes from its storage bond, not from credit.</span></span></li>
+      <li><span><b>Prove you hold it.</b> <span class="dim">A validator's storage bond is challenged with a fresh nonce, again and again. Drop the data and it fails the challenge and loses its seat.</span></span></li>
       <li><span><b>Never trust, always verify.</b> <span class="dim">Every shard is hash-checked on receipt; every block re-validated by every replica. Lying wastes a round-trip, never corrupts data.</span></span></li>
     </ul>
   </div>
@@ -167,22 +164,19 @@
   <div class="wrap">
     <div class="stratum-label">Get Silt · build it from source</div>
     <div style="margin:0 0 1.6rem;padding:1rem 1.2rem;border:1px solid var(--ochre);border-radius:8px;max-width:60ch">
-      <b style="color:var(--ochre)">Pre-V1 — build from source.</b>
-      <span class="dim">Silt is early and there is no official release yet. The
-      storage plane is field-proven cross-network at small scale (sim-proven at
-      scale); the trust plane now runs real mechanisms — a space-time storage bond,
-      objective, bond-weighted commit admission, unlinkable publishing, per-operator
-      takedowns — hardened by an <b>internal</b> adversarial pass and covered at the
-      unit, in-process-simulation, and localhost real-daemon tiers; its adversarial
-      drills are <b>not yet certified multi-machine</b>. It has <b>not</b> yet had
-      external re-verification, so treat
-      it as <b>unaudited</b>. The march is learning-phase 0.x → feature-complete
-      0.9.0 (RC) → 1.0.0 = V1, cut only when it's field-proven across machines and
-      signed. Build it from source (below), don't store anything you can't afford
-      to lose, and please read the
+      <b style="color:var(--ochre)">Experimental — build from source.</b>
+      <span class="dim">silt has no binary release and has not been audited. Don't keep
+      your only copy of anything in it, and don't use it where being identified could put
+      you at risk: it does not hide your IP address from the nodes you talk to. It has
+      been through one blind red team; every finding is fixed, and a second, independent
+      red team runs before release. Please read the
       <a href="https://github.com/nerolabs/silt/blob/main/ADVERSARY.md">threat model</a>
       — finding a way to break a promise it makes is exactly the review we most
       want.</span>
+      <p class="dim" style="margin:0.8rem 0 0"><b style="color:var(--bone)">Who builds silt.</b>
+      AE Laboratories maintains silt and makes its decisions. It is built with Claude,
+      Anthropic's AI model, which writes most of the code and the tests. The source is
+      Apache-2.0 on <a href="https://github.com/nerolabs/silt">GitHub</a>.</p>
     </div>
     <h2 style="font-size:clamp(1.9rem,4.5vw,2.8rem);max-width:16ch">Run the client. It serves while it fetches.</h2>
     <p class="dim" style="margin-top:1rem;max-width:58ch">One self-contained binary — no runtime, no install. The desktop client
@@ -225,6 +219,16 @@ git clone https://github.com/nerolabs/silt && cd silt
         question: is the data still here?</p>
       </div>
     </div>
+    <div style="margin-top:2rem;max-width:62ch">
+      <h4>Can it be misused?</h4>
+      <p class="dim">Like any storage, yes. silt removes content by its hash, on the nodes
+      whose operators choose to: each operator keeps their own denylist and follows the
+      takedown curators they trust, and every on-chain takedown is recorded and names its
+      curator. No one can remove a file from every node at once, and nothing acts on a
+      person. To report abuse, write to <a href="mailto:abuse@silthq.com">abuse@silthq.com</a>;
+      the <a href="https://github.com/nerolabs/silt/blob/main/docs/OPERATING.md">operator
+      guide</a> says what operators can do.</p>
+    </div>
   </div>
 </section>
 
@@ -245,7 +249,7 @@ git clone https://github.com/nerolabs/silt && cd silt
     </div>
     <div class="meta">
       <span>silthq.com</span><span>·</span>
-      <span>Apache-2.0</span><span>·</span>
+      <span>© 2026 AE Laboratories · Apache-2.0</span><span>·</span>
       <span class="dim">the infrastructure is not the content</span>
     </div>
   </div>
