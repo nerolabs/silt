@@ -532,7 +532,12 @@ func cmdDaemon(args []string) error {
 	objectivePath := (*validator || *floorBox || follow) && *objective && *minRep > 0
 	effFloor, defaulted := effectiveBondFloor(floorSet, explicitFloor, objectivePath)
 	var matureBondedBytes int64
-	if matureBondedSet {
+	if matureBondedSet && strings.TrimSpace(*matureBonded) == "0" {
+		// The documented "no floor": parseSize refuses a zero size (a zero pledge or bond is a
+		// mistake), so the flag's own documented opt-out crash-looped every node that passed it —
+		// the maturing field topology does, and the whole opt-in sheet could not start.
+		matureBondedBytes = 0
+	} else if matureBondedSet {
 		var perr error
 		if matureBondedBytes, perr = parseSize(*matureBonded); perr != nil {
 			return fmt.Errorf("-mature-bonded %q: %w", *matureBonded, perr)
