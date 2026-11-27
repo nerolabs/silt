@@ -104,8 +104,15 @@ for i in $(seq 1 "$FLOOR_BOXES"); do
     -witness-from "$ANCHORS" -attesters "$ANCHORS" -bootstrap "$PEERA" -capacity 512M "${CONSENSUS[@]}"
 done
 
-for n in "${NAMES[@]}"; do UIS+=("$(ui_of "$n")") || exit 1; done
-OBS="${UIS[0]%/}/observatory.html?peers=$(IFS=,; echo "${UIS[*]:1}")"
+# A node prints its UI as http://HOST:PORT/?token=T. The base is what the observatory polls; the
+# token rides only on the first link, so this browser can act on that one node.
+BASES=()
+for n in "${NAMES[@]}"; do
+  u=$(ui_of "$n") || exit 1
+  UIS+=("$u"); b=${u%%\?*}; BASES+=("${b%/}")
+done
+TOK0=$(printf '%s' "${UIS[0]}" | sed -nE 's/.*[?&]token=([0-9a-f]+).*/\1/p')
+OBS="${BASES[0]}/observatory.html?token=$TOK0&peers=$(IFS=,; echo "${BASES[*]:1}")"
 
 # A simulated person: publishes files of varied sizes and fetches other people's, through their
 # own entry node, and checks every fetch against the publisher's hash.
