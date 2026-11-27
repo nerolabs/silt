@@ -397,7 +397,7 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	// The post value is threaded into class P (below) so P can gate its freeze on it WITHOUT
 	// re-emitting (single owner — no double-emit at a boundary-coincident crossing). See
 	// floorbox_recompute_stateroot_maturitylatch_v5.go.
-	mOps, postEverMature, mErr := c.maturityLatchOps(committedStateRoot, w, pre)
+	mOps, postEverMature, mErr := c.maturityLatchOps(committedStateRoot, w, pre, b.Height)
 	if mErr != nil {
 		return nil, mErr
 	}

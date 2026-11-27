@@ -71,6 +71,11 @@ type StateRootMaturityWitness struct {
 	// both a wrong-accept (a mid-epoch joiner folded in) and a false stall, with every witness
 	// proof passing.
 	MatureEpoch StateRootRotateScalar
+	// MatureSince is the committed pre-state matureSince scalar (the maturity window's run start,
+	// tagMatureSince), proven against prevStateRoot. REQUIRED only while the latch is open
+	// (pre-state everMature false): the box advances the run from it and decides whether this
+	// block completes the window. A latched chain never reads it.
+	MatureSince StateRootRotateScalar
 	// SeenSet is the maturity witness (validatorsSeen id-list + per-member bonded/domain/slashed proofs
 	// + the validatorsSeenRoot digest proof) recomputeMatureNow verifies against committedStateRoot.
 	// REQUIRED only when the pre-latch everMature is FALSE (the box must reconstruct matureNow to know
@@ -91,6 +96,7 @@ func (c *Chain) maturityLatchOps(
 	committedStateRoot ports.Hash,
 	w StateRootWitness,
 	pre stateRootHandoffPre,
+	h uint64,
 ) (ops []statehash.FoldOp, postEverMature bool, reason error) {
 	// The class-M witness and BOTH handoff scalars were already anchored against prevStateRoot
 	// by handoffPreState, which the entry runs UNCONDITIONALLY before any class dispatches.
@@ -108,9 +114,22 @@ func (c *Chain) maturityLatchOps(
 	if mErr != nil {
 		return nil, false, fmt.Errorf("%w: maturity recompute for the latch decision: %v", ErrRecomputeStateRootMaturity, mErr)
 	}
-	if !matureNow {
-		// No crossing this block: everMature stays false, no leaf write.
-		return nil, false, nil
+	// The maturity window (applyMaturityLatch): a block that is not mature ends the run; a mature
+	// block starts one if none is open and trips the latch once the run spans the window. The
+	// run's start is the anchored pre-state matureSince, never a live read.
+	postSince := uint64(0)
+	if matureNow {
+		postSince = pre.matureSince
+		if postSince == 0 {
+			postSince = h + 1
+		}
+	}
+	if op, changed := scalarFoldOp(tagMatureSince, mw.MatureSince, statehash.EncodeUint64(postSince)); changed {
+		ops = append(ops, op)
+	}
+	if !matureNow || !maturityRunComplete(postSince, h, c.cfg.MatureWindowBlocks) {
+		// No crossing this block: everMature stays false.
+		return ops, false, nil
 	}
 	// The crossing: everMature false→true. Fold the committed scalar (monotonic one-way latch).
 	// scalarFoldOp emits iff post != pre; here pre is false and post is true, so it always emits.
@@ -127,6 +146,9 @@ func (c *Chain) maturityLatchOps(
 type stateRootHandoffPre struct {
 	// everMature is the committed pre-state tagEverMature value (the class-M latch input).
 	everMature bool
+	// matureSince is the committed pre-state tagMatureSince value (the maturity window's run
+	// start), anchored only while everMature is false.
+	matureSince uint64
 	// matureEpoch is the committed pre-state tagMatureEpoch value — the value apply's attestation
 	// loop reads (chain.go, BEFORE rotateEpoch:3306, rotate-LAST). It is the class-A
 	// screen's branch selector.
@@ -180,6 +202,18 @@ func (c *Chain) handoffPreState(prevStateRoot ports.Hash, w StateRootWitness) (s
 	pre := stateRootHandoffPre{
 		everMature:  decodeBoolLeaf(mw.EverMature.OldValue),
 		matureEpoch: decodeBoolLeaf(mw.MatureEpoch.OldValue),
+	}
+	if !pre.everMature {
+		// The window's run start, read only while the latch is open.
+		if err := anchorRotateScalar(prevStateRoot, tagMatureSince, mw.MatureSince); err != nil {
+			return stateRootHandoffPre{}, fmt.Errorf("%w: matureSince.OldValue not proven present against prevStateRoot (pre-state anchor): %v",
+				ErrRecomputeStateRootMaturity, err)
+		}
+		since, ok := decodeUint64Leaf(mw.MatureSince.OldValue)
+		if !ok {
+			return stateRootHandoffPre{}, fmt.Errorf("%w: committed matureSince is not a canonical uint64", ErrRecomputeStateRootMaturity)
+		}
+		pre.matureSince = since
 	}
 	// Defensive cross-check. matureEpoch ⇒ everMature is emergent from rotateEpoch
 	// (chain.go early-returns unless everMature) and pinned by

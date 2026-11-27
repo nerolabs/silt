@@ -92,7 +92,7 @@ func TestPricedLaneRequiresTheFaucet(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(src)
-	conf := strings.Index(s, "faucetConfigure(ledger, *grantCapacity, *grantPerHour, *grantDenyFloor")
+	conf := strings.Index(s, "faucetConfigure(ledger, capFlag, rateFlag, *grantDenyFloor")
 	guard := strings.Index(s, "(*acceptRelayPayments || *acceptReceipts) && !ledger.FaucetStats().Configured")
 	if conf < 0 || guard < 0 || guard < conf {
 		t.Fatalf("SOURCE GATE: daemon.go must refuse -accept-relay-payments with an unconfigured faucet, AFTER faucetConfigure (configure %d, guard %d)", conf, guard)
@@ -111,7 +111,7 @@ func TestDaemonGrantsTheOwnerBeforeAnyOtherAccount(t *testing.T) {
 	}
 	s := string(src)
 	newL := strings.Index(s, "ledger := credit.New(")
-	conf := strings.Index(s, "faucetConfigure(ledger, *grantCapacity, *grantPerHour, *grantDenyFloor")
+	conf := strings.Index(s, "faucetConfigure(ledger, capFlag, rateFlag, *grantDenyFloor")
 	owner := strings.Index(s, "ledger.GrantOwner(id)")
 	attach := strings.Index(s, "nd.SetLedger(")
 	if newL < 0 || conf < 0 || owner < 0 || attach < 0 {
@@ -150,5 +150,15 @@ func TestFaucetTelemetryIsWithheldWithTheCounters(t *testing.T) {
 	var f2 faucetInfo
 	if err := json.Unmarshal(pub2["faucet"], &f2); err != nil || f2.Configured {
 		t.Fatalf("unconfigured faucet block = %s (err %v), want configured:false present", pub2["faucet"], err)
+	}
+}
+
+// TestDerivedTokenQuorum: a default publish token needs at least one honest issuer's signature
+// under a Byzantine third, and never fewer than two signatures.
+func TestDerivedTokenQuorum(t *testing.T) {
+	for n, want := range map[int]int{1: 1, 2: 2, 3: 2, 4: 2, 6: 2, 7: 3, 10: 4} {
+		if got := derivedTokenQuorum(n); got != want {
+			t.Errorf("derivedTokenQuorum(%d) = %d, want %d", n, got, want)
+		}
 	}
 }

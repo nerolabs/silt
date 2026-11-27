@@ -69,6 +69,10 @@ const (
 	tagDueBucket  = "dueBucket\x00"
 	tagQualified  = "qualified\x00"
 	tagEpochStart = "epochStart\x00"
+	// matureSince (v5 only): ONE scalar leaf, one plus the height that began the current
+	// unbroken run of maturity, 0 while not mature (Chain.matureSince). Always emitted, so the
+	// box reads a present value on every block it must decide the latch for.
+	tagMatureSince = "matureSince\x00"
 
 	// era-4 (v5) activation-scalar tags — the era-4 witnessable-transitions activation
 	// state (era4LockedIn/era4Height), committed as V5-ONLY scalar leaves in 4d. era-3
@@ -221,7 +225,7 @@ var stateRootDigestTagsV5 = []string{
 // These are NOT in stateRootTags (the era-3 set), which keeps the v4 root byte-identical
 // to era-3.
 var stateRootTagsV5 = []string{
-	"qualified", "dueBucket", "epochStart", "era4LockedIn", "era4Height", "issuerKeyCommit", "versionFloor",
+	"qualified", "dueBucket", "epochStart", "matureSince", "era4LockedIn", "era4Height", "issuerKeyCommit", "versionFloor",
 }
 
 // stateRootTags is the set of committedSet field names this file commits, used by
@@ -367,6 +371,7 @@ func (c *Chain) boundedLeavesV5() []statehash.Leaf {
 
 	// epochStart: one scalar leaf (O-1).
 	add(tagEpochStart, nil, statehash.EncodeUint64(c.epochStart))
+	add(tagMatureSince, nil, statehash.EncodeUint64(c.matureSince))
 
 	// revLogSize: one scalar leaf, the revocation log's size AFTER this block's appends
 	// (freeze-manifest item 1). UNCONDITIONAL — C-a always-emit: an empty log commits

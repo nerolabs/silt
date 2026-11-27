@@ -241,6 +241,18 @@ var configDecls = map[string]configDecl{
 		binding: genesisBind,
 		readIn:  []string{regimeYoungAnchors},
 	},
+	"MatureWindowBlocks": {
+		class:   classConsensusCritical,
+		why:     "How long maturity must hold before the latch; same regime-selection failure as MatureValidators.",
+		binding: genesisBind,
+		readIn:  []string{regimeYoungAnchors},
+	},
+	"MatureBondedBytes": {
+		class:   classConsensusCritical,
+		why:     "The bonded-storage floor maturity also requires; same regime-selection failure as MatureValidators.",
+		binding: genesisBind,
+		readIn:  []string{regimeYoungAnchors},
+	},
 	"OperatorMargin": {
 		class:   classConsensusCritical,
 		why:     "The M discount on the C2 concentration metric that feeds Mature(); same regime-selection failure as MatureValidators.",
@@ -425,6 +437,8 @@ var configMemberships = map[string]configMembership{
 	"Anchors":                 {carriedAs: "Anchors"},
 	"AnchorQuorum":            {carriedAs: "AnchorQuorum"},
 	"MatureValidators":        {carriedAs: "MatureValidators"},
+	"MatureBondedBytes":       {carriedAs: "MatureBondedBytes"},
+	"MatureWindowBlocks":      {carriedAs: "MatureWindowBlocks"},
 	"OperatorMargin":          {carriedAs: "OperatorMargin"},
 	"MinBond":                 {carriedAs: "MinBond"},
 	"MinBondBytes":            {carriedAs: "MinBondBytes"},
@@ -515,6 +529,10 @@ func perturbConfig(cfg Config, field string) (Config, bool) {
 		cfg.AnchorQuorum += 2
 	case "MatureValidators":
 		cfg.MatureValidators += 9
+	case "MatureWindowBlocks":
+		cfg.MatureWindowBlocks = 1 << 40 // a window no fixture outlasts
+	case "MatureBondedBytes":
+		cfg.MatureBondedBytes = 1 << 50 // far above the fixture's bonded total, so maturity is out of reach
 	case "OperatorMargin":
 		cfg.OperatorMargin += 4
 	case "AllowPublisher":

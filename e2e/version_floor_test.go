@@ -194,7 +194,9 @@ func TestVersionFloorOverTCP(t *testing.T) {
 	}
 	waitAll := func(what string, ok func(i int, s floorStatus) bool) {
 		t.Helper()
-		deadline := time.Now().Add(90 * time.Second)
+		// Generous for a loaded CI runner: locally the whole test takes about six minutes,
+		// and each wait spans several commits.
+		deadline := time.Now().Add(240 * time.Second)
 		for {
 			done := true
 			for i, u := range uis {
@@ -206,7 +208,15 @@ func TestVersionFloorOverTCP(t *testing.T) {
 				return
 			}
 			if time.Now().After(deadline) {
-				t.Fatalf("timed out waiting for %s:\n%s", what, heights())
+				var tails []string
+				for _, dm := range []*daemon{a, b, c, d} {
+					lines := strings.Split(strings.TrimSpace(dm.out.dump()), "\n")
+					if len(lines) > 12 {
+						lines = lines[len(lines)-12:]
+					}
+					tails = append(tails, "--- "+dm.name+" ---\n"+strings.Join(lines, "\n"))
+				}
+				t.Fatalf("timed out waiting for %s:\n%s\n%s", what, heights(), strings.Join(tails, "\n"))
 			}
 			more()
 		}

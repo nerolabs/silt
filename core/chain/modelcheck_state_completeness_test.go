@@ -189,6 +189,10 @@ var stateClass = map[string]struct {
 	// accessor, the rotate fold). They are the commitment, not a predicate, so the
 	// claim survives — but a reader checking the parenthetical would have found it
 	// false and had no way to tell which half was load-bearing.
+	"matureSince": {committedSet, "one plus the height that began the current unbroken run of " +
+		"maturity, 0 while not mature (applyMaturityLatch). `apply` writes it, `adopt` swaps it, the " +
+		"dry-run clone copies it, and the v5 marshaller commits it on every root. Its one reader is the " +
+		"maturity latch's window rule. v5-only leaf (`tagMatureSince`)."},
 	"epochStart": {committedSet, "era-4 4b (O-1) — PROMOTED from observable to committed. " +
 		"Narrow by design: no quorum/validity predicate reads it (its only " +
 		"NON-COMMITMENT reader is `Regime`; the commitment path reads it too, which is what " +
@@ -392,6 +396,7 @@ func populateCommitted(c *Chain) {
 	c.everMature = true
 	c.matureEpoch = true
 	c.epochStart = 17
+	c.matureSince = 9
 	// era-4 (v5) maintenance spine.
 	c.qualified = map[ports.NodeID]int64{id: 1 << 21}
 	c.dueBucket = map[uint64]map[ports.NodeID]struct{}{43: {id: struct{}{}}}

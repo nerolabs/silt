@@ -117,7 +117,7 @@ func (l *Ledger) SettleDelivery(server, fetcher ports.NodeID, root ports.Hash, c
 	// Per-increment reversal of the provisional lane. If the lane was already
 	// evicted its mint was reversed at eviction and there is nothing here to reverse:
 	// the settlement pays the conserved leg only (rule (b), one delivery one payment).
-	k := provKey{server: server, requester: fetcher, root: root}
+	k := provKey{server: server, root: root}
 	if p, ok := l.provisional[k]; ok {
 		// The reversal is denominated in the SAME budget-capped whole increments the
 		// payment is: a count the budget
@@ -296,10 +296,11 @@ func (l *Ledger) DeliverySettlementStats() DeliverySettlementStats {
 		RestoredGuardEntries: l.deliveryRestartOrphans, GuardFullRefusals: l.guardFullRefusalsDelivery}
 }
 
-// ProvisionalLaneForTest reports whether a provisional lane is live and its byte
-// accumulator. Test seam for the node tier; reading moves nothing.
-func (l *Ledger) ProvisionalLaneForTest(server, requester ports.NodeID, root ports.Hash) (bytes int64, live bool) {
-	p, ok := l.provisional[provKey{server: server, requester: requester, root: root}]
+// ProvisionalLaneForTest reports whether a server's provisional lane for an object is live,
+// and its byte accumulator. Test seam for the node tier; reading moves nothing, and a lane
+// names no fetcher, so there is none to read.
+func (l *Ledger) ProvisionalLaneForTest(server ports.NodeID, root ports.Hash) (bytes int64, live bool) {
+	p, ok := l.provisional[provKey{server: server, root: root}]
 	if !ok {
 		return 0, false
 	}

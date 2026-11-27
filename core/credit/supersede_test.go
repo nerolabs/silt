@@ -197,7 +197,7 @@ func TestOneSettlementReversesExactlyOnce(t *testing.T) {
 		t.Fatalf("first settlement: settled=%d reason=%q", settled, r)
 	}
 	afterFirst := l.Balance(srv)
-	if _, live := l.provisional[provKey{server: srv, requester: fetcher, root: obj}]; live {
+	if _, live := l.provisional[provKey{server: srv, root: obj}]; live {
 		t.Fatal("a fully acknowledged lane survived its settlement — the deletion is what bounds the reversal")
 	}
 
@@ -232,7 +232,7 @@ func TestOneSettlementReversesExactlyOnce(t *testing.T) {
 
 // TestRecordedTokenDoesNotReverseAgain is the ordering constraint a naive fix breaks: a
 // token already recorded in the guard must be refused BEFORE anything is reversed. The
-// provisional lane key is (server, requester, root) — a lane, not a delivery — so a
+// provisional lane key is (server, root) — a lane, not a delivery — so a
 // receipt cannot say which serve it acknowledges. If a recorded anchor could reach a
 // settlement it would reverse a RE-SERVED lane's fresh self-mint, for free, on every
 // re-presentation. On the session lane the refusal is at the OPEN (ReasonAlreadyPaid),

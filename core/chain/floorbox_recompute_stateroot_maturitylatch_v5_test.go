@@ -251,6 +251,7 @@ func (f offBoundaryMaturityFixture) witnessForCrossing(t *testing.T, b Block) St
 	w.Maturity = &StateRootMaturityWitness{
 		EverMature:  StateRootRotateScalar{OldValue: f.preValue(statehash.Key(tagEverMature, nil)), Proof: f.prove(t, statehash.Key(tagEverMature, nil))},
 		MatureEpoch: StateRootRotateScalar{OldValue: f.preValue(statehash.Key(tagMatureEpoch, nil)), Proof: f.prove(t, statehash.Key(tagMatureEpoch, nil))},
+		MatureSince: StateRootRotateScalar{OldValue: f.preValue(statehash.Key(tagMatureSince, nil)), Proof: f.prove(t, statehash.Key(tagMatureSince, nil))},
 		SeenSet:     f.seenWitnessPost(t, applied),
 	}
 
@@ -451,6 +452,7 @@ func TestRecomputeStateRootClassMOmittedWriteStalls(t *testing.T) {
 			w.Maturity = &StateRootMaturityWitness{
 				EverMature:  StateRootRotateScalar{OldValue: statehash.EncodeBool(true), Proof: w.Maturity.EverMature.Proof},
 				MatureEpoch: w.Maturity.MatureEpoch,
+				MatureSince: w.Maturity.MatureSince,
 			}
 
 			err := recomputeViaHead(c, prevRoot, committed, b, w)
@@ -495,5 +497,50 @@ func TestRecomputeStateRootClassMForgedMaturityScreenStalls(t *testing.T) {
 				t.Fatalf("ABLATION FAILED: a forged maturity screen must stall with ErrRecomputeStateRootMaturity, got %v", err)
 			}
 		})
+	}
+}
+
+// TestClassMMatureSinceOldValueSuppressionStalls: the maturity window's run start is anchored
+// against prevStateRoot before the box decides the run. A witness that claims the run had already
+// begun at this height (so the box would emit no matureSince write) must stall against a root that
+// omits the write, never agree with it.
+func TestClassMMatureSinceOldValueSuppressionStalls(t *testing.T) {
+	f := buildOffBoundaryMaturityFixture(t)
+	b := f.crossingBlock()
+	committed := f.committedRoot(t, b)
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, f.witnessForCrossing(t, b)); err != nil {
+		t.Fatalf("baseline must agree: %v", err)
+	}
+	fw := f.witnessForCrossing(t, b)
+	fw.Maturity.MatureSince.OldValue = statehash.EncodeUint64(b.Height + 1)
+	sup := f.applied(b)
+	sup.matureSince = 0
+	forgedRoot, err := sup.StateRootForVersion(BlockVersionWitnessable)
+	if err != nil {
+		t.Fatalf("forgedRoot: %v", err)
+	}
+	if forgedRoot == committed {
+		t.Fatalf("GATE VACUOUS: the suppressed root equals the honest one")
+	}
+	if rerr := recomputeViaHead(f.c, f.prevRoot, forgedRoot, b, fw); rerr == nil {
+		t.Fatalf("ANCHOR REGRESSED: the box agreed with a forged MatureSince.OldValue that suppressed the run-start write")
+	}
+}
+
+// TestFloorBoxAgreesOnABlockThatStartsTheMaturityWindow: with a window longer than one block, the
+// first mature block starts the run (matureSince) and does NOT latch. The box must reproduce exactly
+// that — the run-start write and no everMature write — and agree with the node's root.
+func TestFloorBoxAgreesOnABlockThatStartsTheMaturityWindow(t *testing.T) {
+	f := buildOffBoundaryMaturityFixture(t)
+	f.c.cfg.MatureWindowBlocks = 3
+	b := f.crossingBlock()
+	applied := f.applied(b)
+	if applied.everMature || applied.matureSince != b.Height+1 {
+		t.Fatalf("fixture: with a 3-block window the first mature block must start the run (since=%d, want %d) and not latch (everMature=%v)",
+			applied.matureSince, b.Height+1, applied.everMature)
+	}
+	committed := f.committedRoot(t, b)
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, f.witnessForCrossing(t, b)); err != nil {
+		t.Fatalf("the box must agree with the node on a run-starting block: %v", err)
 	}
 }

@@ -103,15 +103,17 @@ func cmdDaemon(args []string) error {
 	floorBoxInterval := fs.Duration("floor-box-interval", 10*time.Second, "FLOOR BOX: how often to re-anchor and audit the block above the anchor. A liveness cadence, not a security parameter — the box's verdict is the same at any setting, because nothing it reads is trusted on a clock. Lower it on a fast local swarm so a verdict appears in seconds")
 	witnessFrom := fs.String("witness-from", "", "FLOOR BOX: comma-separated node IDs to pull witnesses from. PLURAL and un-permissioned by design: safety never rests on these nodes, but LIVENESS does, and a box pinned to one has handed that node a switch over its ability to audit at all — so list several and the box walks past whichever is unreachable. They need no relationship with this node beyond reachability, and mixing them inside one judgement is safe because every answer is checked against a root this box already holds. Empty with -floor-box is refused")
 	uiAddr := fs.String("ui", "", "serve the web UI at this address (e.g. 127.0.0.1:8081)")
-	grantCapacity := fs.Int64("grant-capacity", 0, "Faucet rate limit — bucket capacity in starter grants. 0 (default) = the faucet is UNLIMITED, exactly as before the faucet. Set together with -grant-per-hour: a fresh identity's 500,000 starter grant is then applied at its first SPEND (publish, token purchase, escrow funding) only if the bucket admits; otherwise it stays grant-pending and is retried at its next spend (never permanently denied). Metered per node, on the node's own monotonic clock — never on the chain epoch. A soft, disclosed deterrent on the RATE of fresh grants (dN/dt), not a bound on the total: a patient farm recovers every deferred grant. Start-up refuses a capacity whose worst-case guard occupancy exceeds a quarter of the paid-serial cap")
-	grantPerHour := fs.Int64("grant-per-hour", 0, "Faucet rate limit — sustained refill, in starter grants per hour, accrued continuously. 0 (default) = unlimited. The rate is a SECURITY PARAMETER bounded by build-immutable #4 on both sides: no value is recommended here, and a shipped default requires a research-verified admissible interval and an owner decision; until then an operator who sets it owns the posture, and the start-up line prints what the value implies")
+	grantCapacity := fs.Int64("grant-capacity", 0, "Faucet rate limit — bucket capacity in starter grants. Unset: an untrusted (objective) validator defaults to 64 (DerivedGrantCapacity), every other node is unlimited; set this and -grant-per-hour both to 0 for an unlimited faucet. Set together with -grant-per-hour: a fresh identity's 500,000 starter grant is then applied at its first SPEND (publish, token purchase, escrow funding) only if the bucket admits; otherwise it stays grant-pending and is retried at its next spend (never permanently denied). Metered per node, on the node's own monotonic clock — never on the chain epoch. A soft, disclosed deterrent on the RATE of fresh grants (dN/dt), not a bound on the total: a patient farm recovers every deferred grant. Start-up refuses a capacity whose worst-case guard occupancy exceeds a quarter of the paid-serial cap")
+	grantPerHour := fs.Int64("grant-per-hour", 0, "Faucet rate limit — sustained refill, in starter grants per hour, accrued continuously. Unset: an untrusted (objective) validator defaults to 64 an hour (DerivedGrantPerHour; its derivation is beside the constant), every other node is unlimited. The rate is a SECURITY PARAMETER bounded by build-immutable #4 on both sides; an operator who sets it owns the posture, and the start-up line prints what the value implies")
 	grantDenyFloor := fs.Int64("grant-deny-floor", grantDenyFloorOneFee, "What an identity receives when the faucet bucket is EMPTY: -1 (default) = an ADVANCE of ONE publish fee (settled 2026-09-06: the honest onboarding floor stays structurally non-zero while a farm's per-identity yield is cut tenfold); 0 = nothing, it stays grant-pending and retries at its next spend (deny); N > 0 = an advance of N credits. An advance is never a settlement — the identity stays grant-pending and is topped up to the full grant when a token later admits it; a settled floor would cap an honest identity below the affordability cliff forever. Only meaningful with -grant-capacity/-grant-per-hour set")
 	privacyFlag := fs.String("privacy", privacyModeName(privacyDefaultWithheld), "on|off. on: node-wide serve counters (stats, durability.balance, /api/economy/self revenue) and library link keys are withheld from readers that do not present the API token; the operator's own tokened reads are unchanged. off: publish them to any reader the guard admits — the node is then labelled as publishing PRE-RELEASE information on every response and on the dashboard. Any other value refuses to start")
 	debugAddr := fs.String("debug-addr", "", "serve Go pprof (heap/goroutine/profile) at this address (e.g. 127.0.0.1:6060) — diagnostic only, off by default. Used to attribute the MATURING consensus-node memory footprint (`go tool pprof http://addr/debug/pprof/heap`). Also dumps a heap profile to <store>/heap-<pid>.pprof on SIGUSR1 for cloud nodes without a reachable port.")
 	attesters := fs.String("attesters", "", "comma-separated validator IDs to gather attestations from")
 	anchorList := fs.String("anchors", "", "launch-window training wheels (AT LEAST TWO on an objective launch — one anchor commits alone with zero attestations and those blocks read as final, so the daemon refuses it): comma-separated anchor validator IDs whose sign-off an immature-network commit also requires (empty = no training wheels)")
 	anchorQuorum := fs.Int("anchor-quorum", 0, "LEGACY (non-objective) only: anchor attestations an immature-network commit needs (0 = off). In OBJECTIVE mode this is IGNORED — the launch gate is a DERIVED strict anchor majority ⌊A/2⌋+1, so config cannot disable quorum intersection")
-	matureValidators := fs.Int("mature-validators", 0, "required NAKAMOTO COEFFICIENT (M0 H4): the anchor requirement sheds only once this many bond-DISTINCT operators are needed to reach ⅓ of the bonded weight — cost-to-corrupt, not a head-count, so one operator with many keys can't trip the wheels off (0 = never require anchors)")
+	matureWindow := fs.Uint64("mature-window", 0, "GENESIS CONFIG: how many consecutive blocks the network must stay mature (both -mature-validators and -mature-bonded met at every block) before the launch anchors shed; a block below either bar restarts the count. Unset: an untrusted (objective) validator defaults to four bond re-proof cycles (4 × -bond-ttl), so every bond is re-proved four times while the network holds; 0 = shed at the first mature block")
+	matureBonded := fs.String("mature-bonded", "", "GENESIS CONFIG: the total non-anchor bonded storage the network must also hold before the launch anchors shed (e.g. 16T). The Nakamoto coefficient (-mature-validators) measures how spread the bonded weight is but cannot tell one operator with many keys from many operators; this floor prices that, because shedding and then capturing a commit quorum costs more than two-thirds of it in sealed, re-proved storage. Unset: an untrusted (objective) validator defaults to 16 TiB (DerivedMatureBondedBytes); 0 = no floor")
+	matureValidators := fs.Int("mature-validators", 0, "required NAKAMOTO COEFFICIENT (M0 H4): the anchor requirement sheds once this many operators are needed to reach ⅓ of the bonded weight, counting operators as bonds ÷ -operator-margin and as distinct declared domains, whichever is fewer. Both are estimates: one operator that bonds enough storage and declares many domains counts as many operators, so the shed is safe only while an adversary's bonded budget stays below the bound in docs/VISION.md (0 = never require anchors)")
 	lambdaHFloor := fs.Float64("lambda-h-floor", 0, "honest-arrival floor λ_H (the maturity-before-capture conditional theorem): the minimum operator/domain-distinct bonded-arrival RATE (distinct arrivals per block-height, measured over -lambda-h-window) the launch was verified against. Below this floor — while the network is still YOUNG (pre-maturity latch) — the deployment has LEFT the theorem's hypothesis H (T_mature→∞, maturity-precedes-capture no longer proven) and a LOUD λ_H FLOOR-EXIT marker is surfaced to the log. OBSERVABILITY ONLY: it changes no validity predicate, no consensus rule, no security parameter — it reads the committed C2 metric and narrates. 0 = disabled (default; existing deployments and sims unaffected). Set it to the floor you verified your adversary budget W_A / shed threshold M_req against (P2: M_req > W_A/(2·w_min))")
 	lambdaHWindow := fs.Uint64("lambda-h-window", 20, "trailing window (block-heights) the honest-arrival rate λ_H is averaged over for the -lambda-h-floor alarm. λ_H = Δ(min-Nakamoto-coefficient)/Δheight over this many committed heights — the realized net operator/domain-distinct arrival rate. Widen it to smooth per-block churn (TTL lapses can transiently drop the coefficient), narrow it to react faster. Observability only")
 	operatorMargin := fs.Int("operator-margin", 1, "operator margin M (M0 C2 / D-C2): the maturity shed discounts the bond-distinct Nakamoto coefficient by M (⌊k̂/M⌋) — since on-chain data carries no operator label, one operator may split a stake across ~M keys, so a splitter must clear mature-validators×M distinct bonds to shed the wheels. LEFT UNSET it defaults to a conservative M>1 for an untrusted objective swarm (safe-by-default, like -min-bond-floor); an explicit 1 = no split margin (single-operator/trusted). M stays a heuristic — unverifiable on-chain")
@@ -154,7 +156,7 @@ func cmdDaemon(args []string) error {
 	era3Activation := fs.Uint64("era3-activation-height", 1, "GENESIS CONFIG: the height at or above which era-3 (v4, the committed state root) is the required block format. Committed into the genesis block (chain.ConsensusParams cbor key 13), so a node that sets it differently computes a DIFFERENT genesis hash and cannot join — divergence is impossible to join with rather than fatal at some later block. 1 (default) starts a NEW network at the highest era from its first block, which is the settled launch posture: there is then no readiness tally and no latch, so the boundary is a genesis constant rather than a value the network votes itself into. 0 = no pre-latch override: era-3 activates only when era-3-aware bonded WEIGHT crosses the >2/3 super-quorum over a frozen epoch, which never fires without -epoch-blocks. TO JOIN AN EXISTING CHAIN, set what its genesis commits — the refusal at start-up names the field and the two values")
 	era4Activation := fs.Uint64("era4-activation-height", 1, "GENESIS CONFIG: the height at or above which era-4 (v5, witnessable transitions) is the required block format. Committed at chain.ConsensusParams cbor key 14, same joining rule as -era3-activation-height, and it MUST be >= it (a v5 block commits a superset of the v4 leaves, so era-4 cannot activate below the era-3 boundary; a misconfigured pair is refused at start-up). 1 (default) = the settled launch posture: every block above the genesis is era-4, so the sub-era-4 interval where a consensus attestation carries NO chain id is EMPTY. That is not only convenience — the era-4 attestation form binds the chain id, and emptying the interval below the boundary is what leaves no height at which a signature harvested from another silt network could be replayed as evidence here. 0 = no pre-latch override (the >2/3 readiness tally, needs -epoch-blocks)")
 	networkName := fs.String("network-name", "", "GENESIS CONFIG: this network's canonical text NAME, committed into the genesis block (chain.ConsensusParams cbor key 18) and reported at start-up beside the genesis hash. It reaches NO validity verdict — nothing in the block-validation path reads it. It exists so a node reports the network it is actually serving by a name read FROM THE CHAIN, instead of reading this flag back to you. THE HASH IS THE IDENTITY AND THE NAME IS A LABEL: name collisions are not preventable and are not meant to be, two networks may both choose \"silt mainnet\", and neither can choose the other's genesis hash — so the name is never displayed without the hash. Empty (default) = an unnamed network, reported as such. Changing it on a chain this node has already joined is REFUSED at start-up")
-	requireTokens := fs.Int("require-tokens", 0, "publisher privacy: require every published entry to carry a publish token blind-signed by this many validators, instead of a Publisher identity (0 = off; validators issue tokens)")
+	requireTokens := fs.Int("require-tokens", 0, "publisher privacy: require every published entry to carry a publish token blind-signed by this many validators, instead of a Publisher identity. Unset: an untrusted (objective) validator requires the number derived from its launch anchors (at least one honest signer, never fewer than two); every other node requires none. 0 = off (a trusted or demo swarm). Validators issue tokens; publishers acquire them automatically")
 	allowPublisher := fs.Bool("allow-publisher", false, "permit entries that carry a durable Publisher identity (records a PERMANENT Publisher→root link on the append-only chain; off by default for privacy/M0 — only for explicitly trusted deployments)")
 	blockPeers := fs.String("block-peers", "", "TEST-HARNESS / FIEL: comma-separated peer IDs to PARTITION away from — this node drops all messages to/from them, simulating a severed link (partition→heal). HEAL by restarting without the flag (the persisted chain reloads and reconciles). Empty = no partition; a real deployment never sets it")
 	forgeBlock := fs.String("forge-block", "", "ADVERSARY / TEST-HARNESS ONLY: propose a block with a FORGED (corrupted) proposer signature to this peer ID, to prove an honest validator rejects it before attesting (forged-block→reject). Never honest")
@@ -473,9 +475,17 @@ func cmdDaemon(args []string) error {
 	// released and recomputed just-in-time. At bond.PlotSealThroughput (~270 MB/s)
 	// and the ~2s compute window that is ~540 MiB, so the default carries ~2x margin.
 	floorSet, ttlSet, byzSet, marginSet, epochSet, quorumSet := false, false, false, false, false, false
-	bondSet := false
+	bondSet, tokensSet, grantSet, matureBondedSet, matureWindowSet := false, false, false, false, false
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
+		case "mature-bonded":
+			matureBondedSet = true
+		case "mature-window":
+			matureWindowSet = true
+		case "grant-capacity", "grant-per-hour":
+			grantSet = true
+		case "require-tokens":
+			tokensSet = true
 		case "bond":
 			bondSet = true
 		case "min-bond-floor":
@@ -514,6 +524,16 @@ func cmdDaemon(args []string) error {
 	// act on.
 	objectivePath := (*validator || *floorBox || follow) && *objective && *minRep > 0
 	effFloor, defaulted := effectiveBondFloor(floorSet, explicitFloor, objectivePath)
+	var matureBondedBytes int64
+	if matureBondedSet {
+		var perr error
+		if matureBondedBytes, perr = parseSize(*matureBonded); perr != nil {
+			return fmt.Errorf("-mature-bonded %q: %w", *matureBonded, perr)
+		}
+	} else if objectivePath {
+		matureBondedBytes = DerivedMatureBondedBytes
+		fmt.Printf("consensus: mature-bonded defaulted to %d TiB for this untrusted (objective) swarm — the launch anchors shed only once that much non-anchor storage is bonded, so one operator cannot trip the shed with many small bonds. Override with -mature-bonded, identically across the swarm (0: no floor, safe only for a trusted or demo swarm)\n", DerivedMatureBondedBytes>>40)
+	}
 	// The bond itself gets the same safe-by-default treatment as the floor that
 	// judges it. Shipping a default BELOW the floor this same code arms produced a
 	// stock validator that refused its own defaults: the operator sees a bond
@@ -539,6 +559,12 @@ func cmdDaemon(args []string) error {
 	// sweep) lets an honest attest-only validator renew without proposing, so the
 	// default costs no liveness.
 	effTTL, ttlDefaulted := effectiveBondTTL(ttlSet, *bondTTL, objectivePath)
+	matureWindowBlocks := *matureWindow
+	if !matureWindowSet && objectivePath && effTTL > 0 {
+		matureWindowBlocks = DerivedMatureWindowCycles * effTTL
+		fmt.Printf("consensus: mature-window defaulted to %d blocks (%d bond re-proof cycles of %d) for this untrusted (objective) swarm — the launch anchors shed only after the network stays mature that long, so the storage that trips the shed must be held and re-proved, not borrowed for a moment. Override with -mature-window, identically across the swarm (0: shed at once, safe only for a trusted or demo swarm)\n",
+			matureWindowBlocks, DerivedMatureWindowCycles, effTTL)
+	}
 
 	// No window below the witnessable format. Heights from 1 up to an era-4
 	// activation mint the earlier formats, and those formats carry two defects a
@@ -880,12 +906,18 @@ func cmdDaemon(args []string) error {
 	// chain-less daemon so the chain-gated call sites below never nil-panic.
 	saveChain := func(string) {}
 	ledger := credit.New(relaypay.ShippedAnchorFace, 500_000) // the ONE fee constant: publish fee == relay anchor face (k_max derives from it); starter grant so a fresh publisher can pay token fees
-	// The faucet rate limit, configured only when BOTH flags are set. There is no shipped
-	// default: a number nobody can derive is refused-until-set, not invented. The bucket
-	// keys on Go's monotonic reading via time.Since, never the
-	// chain epoch. The start-up assertion ties the four constants the guard's cliff
-	// depends on.
-	if err := faucetConfigure(ledger, *grantCapacity, *grantPerHour, *grantDenyFloor); err != nil {
+	// The faucet rate limit. An untrusted (objective) validator is rate-limited by default
+	// (DerivedGrantCapacity / DerivedGrantPerHour); an operator who sets either flag owns the
+	// posture, and both set to 0 leaves the faucet unlimited (a trusted or demo swarm). The
+	// bucket keys on Go's monotonic reading via time.Since, never the chain epoch. The
+	// start-up assertion ties the four constants the guard's cliff depends on.
+	capFlag, rateFlag := *grantCapacity, *grantPerHour
+	if !grantSet && *validator && objectivePath {
+		capFlag, rateFlag = DerivedGrantCapacity, DerivedGrantPerHour
+		fmt.Printf("faucet: rate-limited by default for this untrusted (objective) validator — %d starter grants, refilled at %d per hour; a fresh identity past the bucket still gets one publish fee, so publishing is never refused for it. Override with -grant-capacity and -grant-per-hour (both 0: unlimited, a trusted or demo swarm)\n",
+			DerivedGrantCapacity, DerivedGrantPerHour)
+	}
+	if err := faucetConfigure(ledger, capFlag, rateFlag, *grantDenyFloor); err != nil {
 		return err
 	}
 	// The second half, structural rather than a default: a PRICED lane may not be enabled
@@ -1105,6 +1137,7 @@ func cmdDaemon(args []string) error {
 			MinProposerRep: *minRep, MinAttesterRep: *minRep, Quorum: *quorum,
 			ByzantineQuorum: effByz,
 			Anchors:         anchorSet, AnchorQuorum: *anchorQuorum, MatureValidators: *matureValidators,
+			MatureBondedBytes: matureBondedBytes, MatureWindowBlocks: matureWindowBlocks,
 			OperatorMargin: effMargin,
 			AllowPublisher: *allowPublisher, MinBond: minBondBytes,
 			MinBondBytes: cfg.MinBondBytes, BondTTLBlocks: effTTL,
@@ -1565,9 +1598,20 @@ func cmdDaemon(args []string) error {
 				nd.EnableRelayAccept()
 				fmt.Println("relay payments: ACCEPTING — verifying sender-funded PayWord chains anchored to blind prepayment credentials under this node's committed demand key; settlement pays min(count, Σ face) (balance only, never standing); DARK until THIS NODE commits a demand issuer key (era-4/v5 is live from height 1 on the shipped -era4-activation-height default; the missing piece is the committed IssuerKeyReg, which needs an objective, bonded, epoch-enabled validator)")
 			}
-			if *requireTokens > 0 {
-				ch.RequireTokens(*requireTokens, nd.IssuerKeyOf)
-				fmt.Printf("publish tokens: required (%d validator signatures), issuing\n", *requireTokens)
+			// An untrusted (objective) swarm requires publish tokens unless the operator says
+			// otherwise: every entry then carries a token blind-signed by validators instead of any
+			// identity, so a publish is paid for and unlinkable by default. The value is derived
+			// from the anchor set, which every validator of the network shares, so they all
+			// require the same quorum (derivedTokenQuorum). -require-tokens 0 opts out (a trusted
+			// or demo swarm).
+			reqTokens := *requireTokens
+			if !tokensSet && useObjective && len(anchorSet) > 0 {
+				reqTokens = derivedTokenQuorum(len(anchorSet))
+				fmt.Printf("publish tokens: required by default for this untrusted (objective) swarm — %d validator signatures of the %d launch anchors, so at least one honest issuer signs and charges every token; publishers acquire them automatically. Override with -require-tokens, identically across the swarm (0 opts out: a trusted or demo swarm)\n", reqTokens, len(anchorSet))
+			}
+			if reqTokens > 0 {
+				ch.RequireTokens(reqTokens, nd.IssuerKeyOf)
+				fmt.Printf("publish tokens: required (%d validator signatures), issuing\n", reqTokens)
 			}
 		} else {
 			return fmt.Errorf("token issuer key: %w", kerr)
@@ -1812,6 +1856,34 @@ func cmdDaemon(args []string) error {
 			privacy:       privacyOn,
 			addressCap: addressCapConfig{Mode: addrMode.String(), Width: *dhtAddressWidth,
 				CapDirect: *dhtDomainCap, CapRelay: *dhtRelayCap, Reserve: *dhtAddressReserve},
+		}
+		for _, ref := range strings.Split(*registryURL, ",") {
+			if at := strings.Index(strings.TrimSpace(ref), "@"); at > 0 {
+				if rid, err := ports.ParseHash(strings.TrimSpace(ref)[:at]); err == nil {
+					ui.registryValidators = append(ui.registryValidators, rid)
+				}
+			}
+		}
+		if _, ok := reg.(*chainhost.Host); ok {
+			// A UI publish on this validator is handed to every validator — this one included —
+			// from the publish client's throwaway identity, never from this node's.
+			ui.forwardPeers = func() ([]ports.NodeID, string) {
+				want := map[ports.NodeID]bool{id: true}
+				for _, a := range attesterIDs {
+					want[a] = true
+				}
+				var ids []ports.NodeID
+				for v := range want {
+					ids = append(ids, v)
+				}
+				var addrs []string
+				for _, pr := range tr.Peers() {
+					if want[pr.ID] && pr.ID != id {
+						addrs = append(addrs, pr.ID.String()+"@"+pr.Addr)
+					}
+				}
+				return ids, strings.Join(addrs, ",")
+			}
 		}
 		// installs the status renderer only when -bbootstrap is set, and only in a
 		// tagged build. A no-op otherwise, so ui.statusExtra stays nil and there
@@ -2793,6 +2865,53 @@ func effectiveOperatorMargin(marginSet bool, explicit int, objectivePath bool) (
 // bounded by build-immutable #4 on both sides, so it is set deliberately against an
 // admissible interval. The assumption the derivation rests on is printed beside the
 // operator's values so whoever reads one line knows what would move them.
+// DerivedGrantCapacity and DerivedGrantPerHour are the faucet an untrusted validator runs when
+// the operator sets neither flag (owner decision 2026-11-26). The interval they sit in:
+//   - above: the guard assertion in faucetConfigure admits a bucket of at most
+//     MaxPaidSerial/4 / ((grant/fee) × (W+1)) = 65,536/4 / (10 × 5) = 327 grants;
+//   - below: honest identities that need a FULL grant are durable ones — a node funding
+//     durability — which arrive at a validator at the rate nodes join, far under 64 an hour on
+//     any network this build runs. A publish uses a fresh throwaway identity, and an empty
+//     bucket still advances it one publish fee (-grant-deny-floor's default), so the faucet
+//     never refuses a publish; it cuts what a farm of fresh identities collects tenfold.
+//
+// 64 and 64 sit inside that interval and are the values the field sheet ran its token-issuing
+// validator with. faucet.grantsDenied on /api/status is the signal to re-derive them.
+const (
+	DerivedGrantCapacity = 64
+	DerivedGrantPerHour  = 64
+)
+
+// derivedTokenQuorum is how many validator signatures a publish token needs by default on a
+// network of n launch anchors: enough that at least one honest issuer signed — and so charged
+// its fee — when up to a third of the validators are faulty (⌊(n−1)/3⌋+1), and never fewer than
+// two, so no single key can mint a token. It is capped at n: 2 of 3 or 4 anchors, 3 of 7.
+func derivedTokenQuorum(n int) int {
+	q := (n-1)/3 + 1
+	if q < 2 {
+		q = 2
+	}
+	if q > n {
+		q = n
+	}
+	return q
+}
+
+// DerivedMatureWindowCycles is how many bond re-proof cycles (-bond-ttl blocks each) an untrusted
+// swarm must stay mature before its anchors shed (owner decision 2026-11-26). Four cycles means
+// every bond behind the shed is re-proved four times while the network holds, so the storage has
+// to be kept, not rented for the length of one block.
+const DerivedMatureWindowCycles = 4
+
+// DerivedMatureBondedBytes is the bonded-storage floor an untrusted swarm's anchor shed waits for
+// when the operator sets none (owner decision 2026-11-26). The coefficient that gates the shed
+// cannot tell one operator with many keys from many operators: at -mature-validators 4 and the
+// derived operator margin, about 24 plots of the 1 GiB bond floor satisfy it, and one disk holds
+// those. A floor of 16 TiB of non-anchor bonded storage makes the shed, and the two-thirds of
+// weight that capture needs after it, cost more than 10 TiB of sealed, continuously re-proved
+// storage. A network smaller than that keeps its anchors, which is the safe side.
+const DerivedMatureBondedBytes = int64(16) << 40
+
 // grantDenyFloorOneFee is the -grant-deny-floor default: the sentinel resolves to ONE
 // publish fee read from the ledger, never a duplicated literal. An empty bucket advances
 // one fee; 0 opts into deny.

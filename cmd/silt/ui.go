@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/nerolabs/silt/adapters/chainhost"
 	"github.com/nerolabs/silt/core/advisory"
 	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/core/dht"
@@ -57,8 +58,14 @@ import (
 var uiFiles embed.FS
 
 type uiServer struct {
-	loop          *eventloop.Loop
-	nd            *node.Node
+	loop *eventloop.Loop
+	nd   *node.Node
+	// registryValidators are the validators behind -registry, asked for the network's publish
+	// requirements by a daemon that holds no chain of its own.
+	registryValidators []ports.NodeID
+	// forwardPeers, on a validator hosting the registry, lists the validators to hand a UI
+	// publish to and their addresses ("id@addr,…") to seed the ephemeral client with.
+	forwardPeers  func() ([]ports.NodeID, string)
 	reg           ports.Registry // may be nil (no registry configured)
 	capRep        ports.CapacityReporter
 	selfPeer      string // "id@addr" for the ephemeral clients
@@ -1626,16 +1633,37 @@ func (s *uiServer) apiPublish(w http.ResponseWriter, r *http.Request) {
 		mode = crypto.Convergent
 	}
 
-	e, run, err := joinSwarm(s.selfPeer, 0)
+	// On a validator that hosts the registry, the publish is handed to the validators from
+	// the ephemeral client's throwaway identity, so the client is seeded with their
+	// addresses too (forwardPeers).
+	seeds, validators := s.selfPeer, []ports.NodeID(nil)
+	host, selfHosted := s.reg.(*chainhost.Host)
+	if selfHosted && s.forwardPeers != nil {
+		var extra string
+		validators, extra = s.forwardPeers()
+		if extra != "" {
+			seeds += "," + extra
+		}
+	}
+	e, run, err := joinSwarm(seeds, 0)
 	if err != nil {
 		httpError(w, 502, err)
 		return
 	}
 	defer e.close()
 
+	// The network's publish token, when it requires one, acquired by the throwaway client
+	// before the content is staged: the entry then carries the token and no identity.
+	tok, terr := s.publishToken(e, run)
+	if terr != nil {
+		httpError(w, 502, fmt.Errorf("publish token: %w", terr))
+		return
+	}
+
 	var h link.Handle
 	var placed int
-	var opErr error
+	var opErr, distErr error
+	var staged ports.Entry
 	rerr := run(func(done func()) {
 		var aerr error
 		var entry ports.Entry
@@ -1646,7 +1674,7 @@ func (s *uiServer) apiPublish(w http.ResponseWriter, r *http.Request) {
 		// Stage (not Add): store the content, register only after a confirmed
 		// scatter, so a placement failure never leaves a dangling entry.
 		h, entry, aerr = pipeline.Stage(context.Background(), e.nd.Store(), f, pipeline.Options{
-			Mode: mode, Rand: rand.Reader,
+			Mode: mode, Rand: rand.Reader, Token: tok,
 		})
 		if aerr != nil {
 			opErr = aerr
@@ -1660,15 +1688,25 @@ func (s *uiServer) apiPublish(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		e.nd.DistributeFrom(e.nd.Store(), entry, m, func(p int, derr error) {
-			// Publish only on a confirmed scatter; a failed one leaves the
-			// registry untouched so no dangling entry survives.
-			placed, opErr = pipeline.RegisterAfterDistribute(context.Background(), s.reg, entry, p, derr)
+			placed, distErr, staged = p, derr, entry
 			done()
 		})
 	})
 	if rerr != nil {
 		httpError(w, 504, rerr)
 		return
+	}
+	// Register only on a confirmed scatter, so a failed one leaves no dangling entry. It runs
+	// off the ephemeral client's loop: a validator's own publish forwards the entry FROM that
+	// client (ForwardEntry), which must be able to send while the commit is awaited.
+	if opErr == nil {
+		reg := s.reg
+		if selfHosted && len(validators) > 0 {
+			reg = host.Via(func(entry ports.Entry) error {
+				return run(func(done func()) { e.nd.ForwardEntry(entry, validators); done() })
+			})
+		}
+		placed, opErr = pipeline.RegisterAfterDistribute(context.Background(), reg, staged, placed, distErr)
 	}
 	if opErr != nil {
 		httpError(w, 502, opErr)
@@ -1947,3 +1985,48 @@ func (s *uiServer) apiAdvisory(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, map[string]any{"queued": true, "seq": adv.Advisory.Seq, "floor": adv.Advisory.Floor})
 }
+
+// publishToken acquires, through the publish client e, the publish token the network requires,
+// or returns nil when it requires none. A daemon holding the chain reads the quorum and the
+// canonical signers from it; one that does not asks the validators behind its registry.
+func (s *uiServer) publishToken(e *ephemeral, run func(fn func(done func())) error) (*ports.PublishToken, error) {
+	k, hasChain := 0, false
+	var signers []ports.NodeID
+	s.onLoop(func() {
+		if ch := s.nd.Chain(); ch != nil {
+			hasChain = true
+			if k = ch.TokenQuorum(); k > 0 {
+				signers = ch.CanonicalIssuers(canonicalIssuers)
+			}
+		}
+	})
+	if !hasChain && len(s.registryValidators) > 0 {
+		if err := run(func(done func()) {
+			e.nd.FetchPublishRequirementsFromAny(s.registryValidators, func(canon []ports.NodeID, q int, ferr error) {
+				if ferr == nil {
+					k, signers = q, canon
+				}
+				done()
+			})
+		}); err != nil {
+			return nil, err
+		}
+	}
+	if k == 0 {
+		return nil, nil
+	}
+	var tok *ports.PublishToken
+	var aerr error
+	if err := run(func(done func()) {
+		acquirePublishToken(e.nd, signers, k, func(string) {}, func(t *ports.PublishToken, err error) {
+			tok, aerr = t, err
+			done()
+		})
+	}); err != nil {
+		return nil, err
+	}
+	return tok, aerr
+}
+
+// canonicalIssuers caps the canonical issuer list a UI publish ranks its token signers from.
+const canonicalIssuers = 32

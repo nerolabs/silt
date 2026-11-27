@@ -33,6 +33,20 @@ type Host struct {
 	// not stored here; only failures are recorded, and each fresh PublishAsync for a root
 	// clears the prior attempt's failure (a convergent retry re-proposes the same root).
 	outcomes sync.Map // ports.Hash -> error
+
+	// forward, when set, hands an accepted entry to the validators instead of this node's
+	// SubmitEntry, which would send it under this node's durable identity (see Via).
+	forward func(ports.Entry) error
+}
+
+// Via returns a registry that publishes through this host's local checks and commit wait,
+// but hands the accepted entry to the validators through forward rather than from this
+// node. A validator publishing its own content passes a forward that sends from an
+// ephemeral identity, so no validator learns that the entry came from this one: the entry
+// that reaches them carries a throwaway sender, like any client's.
+func (h *Host) Via(forward func(ports.Entry) error) *Host {
+	return &Host{Loop: h.Loop, Node: h.Node, Attesters: h.Attesters, Broadcast: h.Broadcast,
+		Quorum: h.Quorum, Timeout: h.Timeout, forward: forward}
 }
 
 var _ ports.Registry = (*Host)(nil)
@@ -97,6 +111,7 @@ func (h *Host) Publish(ctx context.Context, e ports.Entry) error {
 // Only the slow gather is async — every refusal is still synchronous. nil = accepted.
 func (h *Host) PublishAsync(_ context.Context, e ports.Entry) error {
 	var vErr error
+	forwarded := false
 	err := h.onLoop(func(done func()) {
 		if existing, ok := h.Node.Chain().LookupRoot(e.Root); ok {
 			if existing.Root == e.Root && existing.FileSize == e.FileSize {
@@ -122,7 +137,11 @@ func (h *Host) PublishAsync(_ context.Context, e ports.Entry) error {
 			// from the chain by Lookup/PublishStatus, and a client re-submission
 			// (a fresh PublishAsync) is a mempool-dedup no-op that re-broadcasts
 			// to any proposer that lost it.
-			h.Node.SubmitEntry(e, h.Broadcast)
+			if h.forward != nil {
+				forwarded = true // handed over below, off this node's loop and identity
+			} else {
+				h.Node.SubmitEntry(e, h.Broadcast)
+			}
 			done()
 			return
 		}
@@ -140,6 +159,9 @@ func (h *Host) PublishAsync(_ context.Context, e ports.Entry) error {
 	})
 	if err != nil {
 		return err
+	}
+	if vErr == nil && forwarded {
+		return h.forward(e)
 	}
 	return vErr
 }

@@ -3,6 +3,7 @@ package chain
 import (
 	"crypto/ed25519"
 	"errors"
+	"fmt"
 	"github.com/nerolabs/silt/core/advisory"
 	"reflect"
 	"testing"
@@ -1755,6 +1756,7 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	dueBucketC := v5RootWorld(t)
 	issuerKeyC := v5RootWorld(t)
 	versionFloorC, versionFloorReplay := versionFloorWorld(t)
+	matureSinceC := matureSinceWorld(t)
 
 	check := func(replayed *Chain, ps []probe) {
 		snap := snapshotBoot(replayed)
@@ -1791,6 +1793,7 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	check(dueBucketC, []probe{dueBucketRootProbe(t, dueBucketC)})
 	check(issuerKeyC, []probe{issuerKeyRootProbe(t, issuerKeyC)})
 	check(versionFloorC, []probe{versionFloorProbe(versionFloorReplay)})
+	check(matureSinceC, []probe{matureSinceProbe(matureSinceC)})
 }
 
 // ---------------------------------------------------------------------------
@@ -1990,6 +1993,36 @@ func versionFloorProbe(replay *Block) probe {
 	}
 }
 
+// matureSinceWorld is a chain inside a maturity run: a 3-block window, mature at every block
+// (MatureValidators 0), and a run that began two blocks before the next one.
+func matureSinceWorld(t *testing.T) *Chain {
+	c := v5RootWorld(t)
+	c.cfg.MatureWindowBlocks = 3
+	c.cfg.MatureValidators = 0
+	c.everMature = false
+	c.matureSince = matureSinceProbeHeight - 1 // the run began two blocks before the probe height
+	return c
+}
+
+// matureSinceProbeHeight is the height the probe asks about: the third block of the world's run.
+const matureSinceProbeHeight = 10
+
+// matureSinceProbe: the next block completes the window and trips the latch; a snapshot that lost
+// matureSince restarts the run there and does NOT latch — the anchors would stay required for two
+// more blocks than the committed history says, a different validity regime.
+func matureSinceProbe(_ *Chain) probe {
+	h := uint64(matureSinceProbeHeight)
+	return probe{
+		name:   "the block that completes a 3-block maturity window must trip the latch; a snapshot that lost matureSince restarts the run and does not",
+		detect: []string{"matureSince"},
+		ask: func(c *Chain) string {
+			d := c.cloneForDryRun()
+			d.applyMaturityLatch(h)
+			return fmt.Sprint(d.everMature)
+		},
+	}
+}
+
 // probeUncovered names committed fields for which no probe yet exists. It is a
 // DECLARED, SHRINKING debt, asserted below so it cannot grow silently: a field
 // nobody probes is a field whose necessity is unproven.
@@ -2136,6 +2169,7 @@ func buildLeaveOneOutWorlds(t *testing.T) []worldGroup {
 	dueBucketC := v5RootWorld(t)
 	issuerKeyC := v5RootWorld(t)
 	versionFloorC, versionFloorReplay := versionFloorWorld(t)
+	matureSinceC := matureSinceWorld(t)
 
 	return []worldGroup{
 		{"launch", func(*testing.T) *Chain { return replayed }, probes(revokedRoot, keys, prev)},
@@ -2158,6 +2192,7 @@ func buildLeaveOneOutWorlds(t *testing.T) []worldGroup {
 		{"v5-duebucket-root", func(*testing.T) *Chain { return dueBucketC }, []probe{dueBucketRootProbe(t, dueBucketC)}},
 		{"v5-issuerkey-root", func(*testing.T) *Chain { return issuerKeyC }, []probe{issuerKeyRootProbe(t, issuerKeyC)}},
 		{"v5-version-floor", func(*testing.T) *Chain { return versionFloorC }, []probe{versionFloorProbe(versionFloorReplay)}},
+		{"maturity-window", func(*testing.T) *Chain { return matureSinceC }, []probe{matureSinceProbe(matureSinceC)}},
 	}
 }
 

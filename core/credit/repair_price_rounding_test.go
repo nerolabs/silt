@@ -1,6 +1,9 @@
 package credit
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 // (BOULDER2 residual-closures research 2026-09-07 §2.6): the repair price divides
 // into credits ONCE, at the end — ⌊c·shardBytes·(lost+1)/(U/p)⌋ — instead of flooring
@@ -94,38 +97,38 @@ func TestRepairBountyTruncationIsExactIntegerArithmetic(t *testing.T) {
 	}
 }
 
-// TestSubFrameObjectDurabilityIsPrepayOnly RUNS the consequence the C5 deliberation first
-// stated the wrong way round. The claim was that a sub-frame object, whose repair bounty
-// base is now ZERO, is "kept alive by the serve economy instead". Measured, it is not:
-// the auto-skim accumulates on a per-(server, requester, root) LANE, so a small object
-// served once each to many DIFFERENT fetchers never reaches one credit on any lane. Its
-// durability is prepay-only.
+// TestObjectSkimAccruesAcrossFetchers: the serve auto-skim accumulates on a per-(server, root)
+// lane, so what an object funds for its own durability depends on the bytes of it served, not
+// on how many different fetchers took them. It replaced the measurement of the old
+// per-(server, fetcher, root) lane, under which a small object served once each to many
+// fetchers never reached one credit on any lane and its durability was prepay-only: at a
+// 1,048-byte shard, 5,000 serves spread over 250 fetchers skimmed 0 credits, and the same
+// serves to one fetcher skimmed 1.
 //
-// The band is the point, not the endpoints: it takes 3,002 serves of the same object TO
-// THE SAME FETCHER to fund the first escrow credit at a 1,048-byte shard, against 12 at
-// the padded 262,160-byte shard.
-func TestSubFrameObjectDurabilityIsPrepayOnly(t *testing.T) {
+// It takes 3,002 serves of a 1,048-byte shard, and 12 of a padded 262,160-byte one, to fund
+// the first escrow credit — now from any mix of fetchers.
+func TestObjectSkimAccruesAcrossFetchers(t *testing.T) {
 	const (
-		paddedShard = 262_160 // a full 256 KiB frame + the GCM tag, as it was
-		shortShard  = 1_048   // a 1 KB object's own bytes + header + tag, as it is
+		paddedShard = 262_160 // a full 256 KiB frame + the GCM tag
+		shortShard  = 1_048   // a 1 KB object's own bytes + header + tag
 		serves      = 5_000
 		fetchers    = 250
 	)
-	spread := func(shardBytes int64) int64 {
+	skim := func(shardBytes int64, nFetchers int) int64 {
 		l := New(50_000, 1_000_000)
 		server, payee := id(251), id(252) // fetchers are bytes 0..249, so no id collides
 		root := objRoot("sub-frame")
 		for i := 0; i < serves; i++ {
-			l.RecordServeToObject(server, id(byte(i%fetchers)), root, payee, shardBytes)
+			l.RecordServeToObject(server, id(byte(i%nFetchers)), root, payee, shardBytes)
 		}
 		return l.EscrowBalance(root)
 	}
-	sameLane := func(shardBytes int64) int {
+	firstCredit := func(shardBytes int64) int {
 		l := New(50_000, 1_000_000)
-		server, requester, payee := id(251), id(0), id(252)
+		server, payee := id(251), id(252)
 		root := objRoot("one-lane")
 		for i := 1; ; i++ {
-			l.RecordServeToObject(server, requester, root, payee, shardBytes)
+			l.RecordServeToObject(server, id(byte(i%fetchers)), root, payee, shardBytes)
 			if l.EscrowBalance(root) > 0 {
 				return i
 			}
@@ -134,16 +137,41 @@ func TestSubFrameObjectDurabilityIsPrepayOnly(t *testing.T) {
 			}
 		}
 	}
-	if got := spread(paddedShard); got != 250 {
-		t.Fatalf("padded shard: %d serves over %d fetchers skimmed %d credits, want 250", serves, fetchers, got)
+	for _, shard := range []int64{paddedShard, shortShard} {
+		spread, single := skim(shard, fetchers), skim(shard, 1)
+		if spread != single {
+			t.Fatalf("%d B shard: %d serves skimmed %d credits over %d fetchers and %d over one — the skim must depend on the object's bytes served, not on who fetched them",
+				shard, serves, spread, fetchers, single)
+		}
 	}
-	if got := spread(shortShard); got != 0 {
-		t.Fatalf("short shard: %d serves over %d fetchers skimmed %d credits, want 0 — a sub-frame object earns NO skim in the many-fetchers pattern, so its durability is prepay-only", serves, fetchers, got)
+	if got := skim(shortShard, fetchers); got <= 0 {
+		t.Fatalf("short shard: %d serves over %d fetchers skimmed %d credits — a popular small object must fund its own durability", serves, fetchers, got)
 	}
-	if got := sameLane(paddedShard); got != 12 {
-		t.Fatalf("padded shard: first escrow credit after %d same-lane serves, want 12", got)
+	if got := firstCredit(paddedShard); got != 12 {
+		t.Fatalf("padded shard: first escrow credit after %d serves, want 12", got)
 	}
-	if got := sameLane(shortShard); got != 3_002 {
-		t.Fatalf("short shard: first escrow credit after %d same-lane serves, want 3,002", got)
+	if got := firstCredit(shortShard); got != 3_002 {
+		t.Fatalf("short shard: first escrow credit after %d serves, want 3,002", got)
+	}
+}
+
+// TestAServingLedgerRecordsNoFetcherPerObject is the privacy half (ADVERSARY.md claim 1: no
+// recoverable (fetcher, content) pair). A server that serves one object to many fetchers holds
+// ONE provisional lane for it, and the lane's key has no field that could name a fetcher.
+func TestAServingLedgerRecordsNoFetcherPerObject(t *testing.T) {
+	l := New(50_000, 1_000_000)
+	server, payee := id(251), id(252)
+	root := objRoot("fetched-by-many")
+	for i := 0; i < 40; i++ {
+		l.RecordServeToObject(server, id(byte(i)), root, payee, 262_160)
+	}
+	if len(l.provisional) != 1 {
+		t.Fatalf("serving one object to 40 fetchers left %d provisional lanes; one lane per (server, object) records no fetcher", len(l.provisional))
+	}
+	kt := reflect.TypeOf(provKey{})
+	for i := 0; i < kt.NumField(); i++ {
+		if f := kt.Field(i); f.Name != "server" && f.Name != "root" {
+			t.Fatalf("provKey has a field %q: a lane keyed by anything beyond (server, root) can record who fetched what", f.Name)
+		}
 	}
 }

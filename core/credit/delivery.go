@@ -14,7 +14,7 @@ package credit
 // serve path self-records one credit per Dλ bytes as it serves (RecordServeToObject, two
 // floors over the lane's byte accumulator since) — an unfunded self-mint that predates
 // PoD and is exactly the "per-receipt subsidy" conservation bans, if it stacked with the
-// receipt credit. So every object-aware serve is tracked as PROVISIONAL per (requester,
+// receipt credit. So every object-aware serve is tracked as PROVISIONAL per (server,
 // root), and a redeem for that delivery reverses the provisional self-credit before
 // applying the conserved one (the form (i) — robust when the server cannot know at serve
 // time whether a receipt will follow). A serve never redeemed keeps its self-record:
@@ -198,24 +198,27 @@ const (
 	laneRelay                     // a relay anchor
 )
 
-// provKey identifies one delivery lane: server served object root to requester.
-// The receipt's Fetcher key hashes to the requester NodeID (NodeID =
-// sha256(pubkey)), which is what lets a redeem find the serve.
+// provKey identifies one delivery lane: the server's serves of object root, to anyone.
 //
-// server is part of the identity so distinct servers writing the SAME (root,
-// requester) into ONE ledger get distinct lanes. Per-node prod has
-// a single server per ledger (server = n.id), so this field is constant there
-// and the shape is unchanged in effect. But the shared-ledger SIM routes every
-// operator's serves into one Ledger; without server in the key, serves of the
-// same object to the same fetcher by two servers collide on one lane, and the
-// terminal reversal (redeem or eviction) then debits ONE server's provisional
-// mint for work the other did — a conservation break that reverses or pays the
-// wrong account. server in the key keeps each (server, requester, root) its own
-// lane, so every reversal hits the exact account that was credited.
+// THE LANE CARRIES NO FETCHER. A lane keyed by fetcher as well would be a record of
+// which identity fetched which object, held by every serving node — a who-fetched-what
+// mechanism, which silt refuses to build (ADVERSARY.md, claim 1). Nothing needs it: a
+// redeemed receipt reverses only the bytes it acknowledges, out of the server's
+// provisional self-mint for that object, and the server is paid once per byte either
+// way, so conservation holds per (server, root). Pooling also lets an object's skim
+// accumulate across its fetchers, so a small object served once each to many fetchers
+// funds its own durability instead of flooring to zero on every one of them.
+//
+// server is part of the identity so distinct servers writing the SAME root into ONE
+// ledger get distinct lanes. Per-node prod has a single server per ledger (server =
+// n.id), so this field is constant there. But the shared-ledger SIM routes every
+// operator's serves into one Ledger; without server in the key, serves of the same
+// object by two servers collide on one lane, and the terminal reversal (redeem or
+// eviction) then debits ONE server's provisional mint for work the other did — a
+// conservation break. server in the key keeps each reversal on the account credited.
 type provKey struct {
-	server    ports.NodeID
-	requester ports.NodeID
-	root      ports.Hash
+	server ports.NodeID
+	root   ports.Hash
 }
 
 // provisionalServe is the self-credit a serve recorded before any receipt: the
@@ -280,8 +283,8 @@ func (l *Ledger) reverseLane(server ports.NodeID, root ports.Hash, net, skim int
 // evicted, never-redeemed serve loses its self-record — an under-pay at the
 // >maxProvisional tail, never an over-pay, never a denial. Verified by
 // TestMoneyPumpConservation.
-func (l *Ledger) laneFor(server, requester ports.NodeID, root ports.Hash) *provisionalServe {
-	k := provKey{server: server, requester: requester, root: root}
+func (l *Ledger) laneFor(server ports.NodeID, root ports.Hash) *provisionalServe {
+	k := provKey{server: server, root: root}
 	p, ok := l.provisional[k]
 	if !ok {
 		// FIFO-evict the oldest LIVE lane while the map is at cap. Tombstones

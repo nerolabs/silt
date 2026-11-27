@@ -367,7 +367,7 @@ func swarmAdd(args []string) error {
 	regURL := fs.String("registry", "", "registry ref, or several comma-separated: the publish starts at a random one and moves to the next while one is down, rate-limiting or failing (required)")
 	mode := fs.String("mode", "private", "encryption mode: private (default — random per-file key, unprobeable) or convergent (dedups identical content but is vulnerable to the guessed-plaintext confirmation attack; M0 H6, non-secret data only)")
 	chunkSize := fs.Int("chunk-size", pipeline.DefaultChunkSize, "chunk size in bytes")
-	tokenQuorum := fs.Int("token-quorum", 0, "publisher privacy: acquire a publish token from this many validators so the publish carries no Publisher identity. The signers are chosen by a NETWORK-CANONICAL ordering (ranked by committed bond, fetched from a chain-holding peer), the SAME for every publisher, so the signer subset can't narrow the publisher's anonymity set (R-3); falls back to -peers order if no peer serves a chain. 0 = off")
+	tokenQuorum := fs.Int("token-quorum", -1, "publisher privacy: -1 (default) = acquire exactly the publish token the network requires, learned from its validators; N > 0 = acquire a token from this many validators; 0 = publish without a token. A token lets the publish carry no Publisher identity. The signers are chosen by a NETWORK-CANONICAL ordering (ranked by committed bond, fetched from a chain-holding peer), the SAME for every publisher, so the signer subset can't narrow the publisher's anonymity set (R-3); falls back to -peers order if no peer serves a chain")
 	allowPublisher := fs.Bool("allow-publisher", false, "record this node's durable Publisher identity on the entry (permanent linkage; off by default for privacy — prefer -token-quorum or an ungated publish)")
 	replication := fs.Int("replication", 0, "how many closest holders receive each chunk (0 = default). Parity across holders backstops copies, so even 1 is viable; a lower factor makes shard loss (and thus caretaker repair) reproducible on a small swarm")
 	saveToken := fs.String("save-token", "", "after acquiring a -token-quorum publish token, write it (CBOR) to this file so it can be RE-PRESENTED later with -use-token. A publish-token serial is single-use, so this is the seam that lets a harness drive the DOUBLE-SPEND rejection over the wire ")
@@ -489,9 +489,9 @@ func swarmAdd(args []string) error {
 				return
 			}
 			publish(&tok)
-		} else if *tokenQuorum > 0 {
-			acquire := func(signers []ports.NodeID) {
-				acquirePublishToken(e.nd, signers, *tokenQuorum, legs.mark, func(tok *ports.PublishToken, aerr error) {
+		} else if *tokenQuorum != 0 {
+			acquire := func(signers []ports.NodeID, k int) {
+				acquirePublishToken(e.nd, signers, k, legs.mark, func(tok *ports.PublishToken, aerr error) {
 					if aerr != nil {
 						err = aerr
 						done()
@@ -511,27 +511,51 @@ func swarmAdd(args []string) error {
 			// (validators ranked by committed bond, fetched from a chain-holding peer)
 			// rather than an arbitrary subset of -peers, so the signer subset stops
 			// being a per-publisher quasi-identifier that can collapse the publisher
-			// anonymity set. Fall back to -peers if no peer serves a chain (with an
-			// honest warning). Reachability caveat: a chainless publisher can only sign
-			// with validators it can dial, so the ranking is applied to the reachable
-			// -peers; connecting to the canonical validator set makes it fully global.
+			// anonymity set. The same answer carries the token quorum the network
+			// requires, which is what -token-quorum's default (-1) uses: a publisher
+			// told nothing acquires exactly the tokens the network asks for. Fall back
+			// to -peers if no peer serves a chain (with an honest warning).
+			// Reachability caveat: a chainless publisher can only sign with validators
+			// it can dial, so the ranking is applied to the reachable -peers.
 			if len(validators) > 0 {
-				// Try EVERY validator for the canonical set, not just
-				// validators[0]: a single un-synced/unreachable validator
-				// (e.g. one that just restarted) otherwise drops us into the
-				// anonymity-narrowing fallback. The ranking is deterministic,
-				// so any chain-holder answers the same.
-				e.nd.FetchCanonicalIssuersFromAny(validators, func(canon []ports.NodeID, ferr error) {
+				// Try EVERY validator, not just validators[0]: the ranking is
+				// deterministic, so any chain-holder answers the same.
+				e.nd.FetchPublishRequirementsFromAny(validators, func(canon []ports.NodeID, q int, ferr error) {
 					legs.mark("issuers")
-					if ferr != nil || len(canon) == 0 {
-						fmt.Fprintln(os.Stderr, "note: no canonical issuer set from peers; signing from -peers in given order — the signer subset may narrow the publisher anonymity set (connect to canonical validators for full privacy)")
-						acquire(validators)
+					k := *tokenQuorum
+					if k < 0 {
+						k = q // learn the network's requirement
+					}
+					if k == 0 {
+						publish(nil) // this network requires no token
 						return
 					}
-					acquire(rankByCanonical(validators, canon))
+					if ferr != nil || len(canon) == 0 {
+						fmt.Fprintln(os.Stderr, "note: no canonical issuer set from peers; signing from -peers in given order — the signer subset may narrow the publisher anonymity set (connect to canonical validators for full privacy)")
+						acquire(validators, k)
+						return
+					}
+					signers := rankByCanonical(validators, canon)
+					if len(signers) < k {
+						// The network asks for more signatures than the named peers can give:
+						// continue down the same canonical list, which every publisher shares,
+						// so the signer set still says nothing about this publisher.
+						have := map[ports.NodeID]bool{}
+						for _, id := range signers {
+							have[id] = true
+						}
+						for _, id := range canon {
+							if !have[id] {
+								signers = append(signers, id)
+							}
+						}
+					}
+					acquire(signers, k)
 				})
+			} else if *tokenQuorum > 0 {
+				acquire(validators, *tokenQuorum)
 			} else {
-				acquire(validators)
+				publish(nil)
 			}
 		} else {
 			publish(nil)

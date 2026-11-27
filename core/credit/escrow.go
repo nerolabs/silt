@@ -342,7 +342,7 @@ func (l *Ledger) RecordServeToObject(server, requester ports.NodeID, root ports.
 	// both terminal sites (redeem, eviction): a remainder on the account would
 	// survive a witnessed supersede and later mint for bytes the receipt already
 	// paid.
-	p := l.laneFor(server, requester, root)
+	p := l.laneFor(server, root)
 	p.bytes += bytes
 	l.serveBytesObjectAware += bytes // A2: the witnessable denominator (credit.go)
 	netTotal := p.bytes * (SkimDen - SkimNum) / (SkimDen * ServeMintBytesPerCredit)

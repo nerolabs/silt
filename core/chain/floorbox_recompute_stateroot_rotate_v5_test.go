@@ -280,7 +280,7 @@ func (f rotateFixture) witnessForBoundary(t *testing.T, b Block) StateRootWitnes
 	// Class M maturity witness. This fixture is mature-from-genesis (MatureValidators=0), so everMature
 	// is already latched pre-state (pre=true) — class M emits nothing and reads no SeenSet, but the entry
 	// still requires the witness so the latch is never silently skipped.
-	w.Maturity = &StateRootMaturityWitness{EverMature: f.scalarWit(t, tagEverMature), MatureEpoch: f.scalarWit(t, tagMatureEpoch)}
+	w.Maturity = &StateRootMaturityWitness{EverMature: f.scalarWit(t, tagEverMature), MatureEpoch: f.scalarWit(t, tagMatureEpoch), MatureSince: f.scalarWit(t, tagMatureSince)}
 
 	// dueBucket scope-gate proof (non-membership at b.Height, unless a bond reg TTL bucket collides).
 	if f.c.cfg.BondTTLBlocks > 0 {
@@ -944,6 +944,7 @@ func (f handoffFixture) witnessForHandoff(t *testing.T, b Block) StateRootWitnes
 	w.Maturity = &StateRootMaturityWitness{
 		EverMature:  scalarWit(tagEverMature),
 		MatureEpoch: scalarWit(tagMatureEpoch),
+		MatureSince: scalarWit(tagMatureSince),
 		SeenSet:     f.seenWitnessPost(t, applied),
 	}
 

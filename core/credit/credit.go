@@ -206,7 +206,7 @@ type Ledger struct {
 	escrow map[ports.Hash]*objectEscrow
 
 	// provisional tracks each object-aware serve's self-credit per
-	// (requester, root) so a later witnessed receipt can SUPERSEDE it
+	// (server, root) — never per fetcher — so a later witnessed receipt can SUPERSEDE it
 	// instead of stacking on it (the PoD conservation rule — delivery.go).
 	// provOrder is the deterministic FIFO for the cap eviction (B2: no map
 	// iteration in core). It holds pointers so a lane removed at redeem can be

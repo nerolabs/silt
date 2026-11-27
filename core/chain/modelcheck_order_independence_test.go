@@ -696,6 +696,13 @@ var orderVacuous = map[string]string{
 		"TestAdvisoryBlockVerdictFollowsTheGenesisMaintainers and proven load-bearing by " +
 		"versionFloorProbe.",
 
+	"matureSince": "the maturity window's run start. Written only by applyMaturityLatch, from the " +
+		"post-block Mature() verdict and the block height — both functions of the committed set after " +
+		"the block, not of the order events arrived in within it — so two orderings reaching the same " +
+		"committed set reach the same value. Neither ordering here runs an objective chain with " +
+		"MatureValidators set, so both leave it at 0; the window's behaviour is driven by " +
+		"TestMaturityLatchWaitsForTheWindow and the floor-box agreement gates.",
+
 	"epochStart": "era-4 O-1 — the boundary height scalar. It is a pure function of height " +
 		"(h of the last rotation), not of event ORDER within a block, so two orderings of the " +
 		"same history reach the identical epochStart trivially; matureOrderings leaves it at a " +

@@ -302,8 +302,10 @@ jobs:
         # -timeout 25m: the economy repair test's pay window is 600s (the
         # measured sweep-under-dead-holders band) — go test's
         # default 10m killed the binary mid-window (a sleeping-goroutine
-        # panic at the poll loop, not a test verdict).
-        run: go test ./e2e/ -count=1 -v -timeout 25m
+        # panic at the poll loop, not a test verdict). 35m since the package
+        # took 22 of 25 minutes on a loaded runner and the crash drill may retry a
+        # crash the network finished without its victim.
+        run: go test ./e2e/ -count=1 -v -timeout 35m
       - name: go test -race ./e2e (in-process paid-relay seam)
         # The paid-relay e2e (TestPaidRelaySessionEndToEnd) is IN-PROCESS: it
         # runs real event loops + goroutines in this test binary, not spawned
@@ -418,3 +420,34 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python3 scripts/check_scheduled_workflow_proof.py
+
+  try-local-network:
+    name: Try silt — the local network a newcomer runs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      - name: examples/try-a-local-network.sh --check
+        # The first thing a newcomer runs: three objective validators and a storage node on
+        # loopback, one publish, one bit-perfect fetch.
+        timeout-minutes: 10
+        run: ./examples/try-a-local-network.sh --check
+
+  security:
+    name: Security — govulncheck and a full-history secrets scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the secrets scan reads every commit, not only the tip
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      - name: govulncheck — known vulnerabilities in code silt calls
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
+      - name: gitleaks — secrets anywhere in the repository's history
+        run: go run github.com/zricethezav/gitleaks/v8@v8.18.4 detect --source . --redact --verbose

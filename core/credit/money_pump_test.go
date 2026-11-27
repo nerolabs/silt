@@ -89,7 +89,7 @@ func TestMoneyPumpConservation(t *testing.T) {
 	}
 
 	// Verify lane 0 was evicted (FIFO).
-	if _, stillPresent := l.provisional[provKey{server: server, requester: fetcher, root: obj}]; stillPresent {
+	if _, stillPresent := l.provisional[provKey{server: server, root: obj}]; stillPresent {
 		t.Fatal("setup: lane 0 was NOT evicted — flood did not push it out; test precondition violated")
 	}
 	if got := len(l.provisional); got > maxProvisional {
@@ -152,7 +152,8 @@ func TestMoneyPumpConservation(t *testing.T) {
 
 // TestSharedLedgerServerCollisionConservation is the regression gate. It covers
 // the SHARED-LEDGER sim shape the per-node gate above cannot reach: ≥2 DISTINCT
-// servers serving the SAME (requester, root) into ONE ledger.
+// servers serving the SAME root into ONE ledger (the lane carried a fetcher then; it is
+// keyed by (server, root) now, and the server half is what this gate holds).
 //
 // The defect: provKey omitted the server, so two distinct servers serving the
 // same object to the same fetcher COLLIDED on one provisional lane. serverB's

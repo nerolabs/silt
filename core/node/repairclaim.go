@@ -113,11 +113,9 @@ func (n *Node) handleRepairClaim(from ports.NodeID, msg ports.Message) {
 	// the emitting paramedic discards (emitRepairClaim binds an empty reply callback).
 	// A node that wants to judge turns the economy on.
 	//
-	// WHAT IT DOES NOT CLOSE: the per-sender bound. A node RUNNING the economy still
-	// pays the full cost per claim, from an unsigned frame, without limit. This
-	// narrows the work; it does not bound the count, and the two are not the same
-	// thing. TestSurvivorFetchIsUnboundedPerSender_PINNED_DEFECT stays green over
-	// exactly that gap.
+	// It narrows the work; it does not bound the count. The count is bounded below, for
+	// a node running the economy, by the bonded-claimant check and the per-claimant
+	// window budget (TestSurvivorFetchIsBoundedPerClaimant).
 	//
 	// ADVERSARY-SHAPE: NOT-A-DEFENCE: the careKey sentence above says why refusing costs nothing LEGITIMATE, not what stops an attack. The defence is the unconditional refusal on the next line, which holds against any sender whatever it knows: an adversary that planted a careKey record for an economy-off node, or simply dialled it directly, still gets the refusal and still buys 0 B. Nothing here assumes an adversary cannot reach or discover this node. The discoverability claim is checked anyway, by TestRepairClaimEconomyGateIsWhereTheOtherTwoAre, because the ARGUMENT for the gate rests on it even though the gate does not.
 	if !n.cfg.RepairEconomy {
@@ -133,6 +131,27 @@ func (n *Node) handleRepairClaim(from ports.NodeID, msg ports.Message) {
 	}
 	if signed.Claimant() != from {
 		deny("claim signed by a key other than its sender's")
+		return
+	}
+	// BONDED CLAIMANTS ONLY. A false claim is answered by slashing the claimant's bond,
+	// so a claimant with no committed bond on this judge's chain risks nothing and its
+	// claim is a free bet on the escrow. Checked before any lookup or fetch: it costs
+	// one chain read.
+	if !n.claimantBonded(from) {
+		n.Stats.ClaimantUnbonded++
+		deny("the claimant holds no committed bond on this judge's chain")
+		return
+	}
+	// THE PER-CLAIMANT BUDGET. Judging a claim fetches k survivor shards, so each claim a
+	// sender can make costs this judge k shards of bandwidth. repairClaimBurst claims per
+	// window are judged; the rest are refused with a retry-after, before any lookup or
+	// fetch, and the paramedic re-sends them (emitRepairClaim), so an honest burst is
+	// delayed rather than lost.
+	if !n.allowWindowed(n.repairClaimRate, from, repairClaimBurst) {
+		n.Stats.RepairClaimsDeferred++
+		n.logf(ports.LogDebug, "repair claim over the claimant's budget; asked to retry", "claimant", from, "root", claim.Root)
+		n.reply(from, msg, ports.Message{Kind: ports.MsgRepairVote, OK: false,
+			Data: []byte(repairClaimRetry), Height: uint64(n.repairClaimRetryAfter(from) / ports.Second)})
 		return
 	}
 	n.logf(ports.LogDebug, "repair claim received",
@@ -171,15 +190,6 @@ func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, signed rep
 		n.logf(ports.LogInfo, "repair claim denied", "reason", reason,
 			"root", claim.Root, "shard", claim.ShardID, "claimant", from)
 		n.reply(from, msg, ports.Message{Kind: ports.MsgRepairVote, OK: false})
-	}
-
-	// BONDED CLAIMANTS ONLY. A false claim is answered by slashing the claimant's bond,
-	// so a claimant with no committed bond on this judge's chain risks nothing and its
-	// claim is a free bet on the escrow. Checked first: it costs no fetch.
-	if !n.claimantBonded(from) {
-		n.Stats.ClaimantUnbonded++
-		deny("the claimant holds no committed bond on this judge's chain")
-		return
 	}
 
 	m, err := pipeline.LoadLayout(bg(), n.store, entry, ch)
@@ -666,8 +676,7 @@ func (n *Node) emitRepairClaim(root ports.Hash, r shardRef, holder ports.NodeID,
 			if t == n.id || t == holder {
 				continue // the paramedic doesn't judge its own claim; the holder isn't a judge
 			}
-			n.request(t, ports.Message{Kind: ports.MsgRepairClaim, Data: data},
-				func(ports.Message, error) {}) // fire-and-forget: each judge settles its own ledger
+			n.sendRepairClaim(t, data, 0)
 			sent++
 		}
 		// A claim with no eligible judge dies silently and no bounty can ever
@@ -800,4 +809,58 @@ func (n *Node) reportFalseRepair(signed repairproof.SignedClaim, m *manifest.Lay
 	n.Stats.FalseRepairReports++
 	n.logf(ports.LogWarn, "false repair claim reported for on-chain slashing", "claimant", signed.Claimant(), "root", signed.Claim.Root)
 	n.SubmitSlash(e)
+}
+
+// repairClaimBurst is how many claims ONE claimant may have judged per window
+// (ChainSyncInterval, 30 s by default). Each judged claim fetches k survivor shards, so the
+// burst bounds what one bonded sender can make a judge fetch: two claims' worth per window,
+// however many it sends. An honest paramedic emits a claim per repair it completed, and a
+// repair costs it k shard fetches of its own, so its rate is far below the burst except after
+// a sweep that rebuilt several shards at once; those claims are refused with a retry-after and
+// re-sent, delayed rather than lost.
+const repairClaimBurst = 2
+
+// repairClaimRetry marks a refusal that is a deferral: the judge has not judged the claim and
+// asks the claimant to send it again after the vote's Height seconds.
+const repairClaimRetry = "retry"
+
+// maxRepairClaimSends bounds how many times a paramedic sends one claim to one judge.
+const maxRepairClaimSends = 12
+
+// repairClaimRetryAfter is when the claimant's window reopens at this judge.
+func (n *Node) repairClaimRetryAfter(from ports.NodeID) ports.Duration {
+	window := n.cfg.ChainSyncInterval
+	if window <= 0 {
+		window = 30 * ports.Second
+	}
+	r := n.repairClaimRate[from]
+	if r == nil {
+		return ports.Second
+	}
+	left := window - ports.Duration(n.clock.Now()-r.windowStart)
+	if left < ports.Second {
+		left = ports.Second
+	}
+	return left
+}
+
+// sendRepairClaim sends a signed claim to one judge, and sends it again when the judge defers
+// it for the claimant's budget, after the delay the judge names. Any other answer settles it:
+// each judge settles its own ledger.
+func (n *Node) sendRepairClaim(judge ports.NodeID, data []byte, sends int) {
+	n.request(judge, ports.Message{Kind: ports.MsgRepairClaim, Data: data}, func(reply ports.Message, err error) {
+		if err != nil || reply.OK || string(reply.Data) != repairClaimRetry {
+			return
+		}
+		if sends+1 >= maxRepairClaimSends {
+			n.logf(ports.LogWarn, "repair claim deferred by its judge too many times; giving up", "judge", judge, "sends", sends+1)
+			return
+		}
+		after := ports.Duration(reply.Height) * ports.Second
+		if after < ports.Second {
+			after = ports.Second
+		}
+		n.Stats.RepairClaimsResent++
+		n.clock.AfterFunc(after, func() { n.sendRepairClaim(judge, data, sends+1) })
+	})
 }
