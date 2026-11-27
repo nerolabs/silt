@@ -2665,6 +2665,30 @@ second; it belongs to item 13 and is tracked there.
 the gaps written down as decisions rather than left as silence.
 *field.*
 
+*2026-11-27 — THE OPT-IN ROWS RAN, ALL OF THEM.* Sheet `c71e06b1-30404`, with
+`MATURING=1 SYBILS=8 ECONOMY=1 DEEP=1 VERSION_FLOOR=1` on a 29-node, three-region topology: **34 pass
+/ 2 gap / 3 fail**. Every opt-in row passed: the young→mature handoff (10), the stall and capture
+drills (10a, 10b), weak-subjectivity cold sync under the latch (10c), the deep drive to h130 with
+pruning engaged and convergence on the pruned chain (12, 12b, 12c), and the version floor (19). The
+first attempt (`65c6182b-93179`) graded nothing: every core node crash-looped on `-mature-bonded 0`,
+fixed in #931.
+
+The three failures are findings, not drill tuning:
+- `11-unlinkability`: a follower (`-economy`) node's web UI published with no token, because its
+  replica reports quorum 0. Fixed in #932, with an e2e test that reproduces the field error.
+- `12-chain-takedown`: validators held no issuer key for the heavier bonded signers of val-d's fee
+  token and refused it "0 of 2" for 600 s. Fixed in #934 (fetch an unknown signer's key); the field
+  row going green needs another MATURING sheet.
+- `13-validator-crash`: the known intermittent restart-commit row (passed on `65c6182b-98679`).
+
+The gaps: `20-floor-box` reached no witness provider within 240 s, and `11-economy-repair` paid no
+bounty within 900 s after three columns were killed.
+
+*FIRST FIELD READ OF THE ADDRESS CAP'S SHADOW (item 2, #930):* across 25 nodes the cap would have
+refused 195 routing-table entries (direct 54, relayed 19, unverified 122), most on `sybil-2` (19).
+This topology carries Sybils on purpose, so these numbers are an upper bound for an honest network,
+not its rate.
+
 *It does NOT carry item 5's whole-suite run,* and an earlier revision of this list said it did.
 `cloudtest` drives its own scenario set against a 27-node cloud topology; item 5 is about the
 suites under `integration/*/run.sh`, which run sequentially on a developer box. The two are
