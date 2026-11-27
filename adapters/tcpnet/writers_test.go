@@ -29,7 +29,7 @@ func writersPair(t *testing.T, seed int64, writers string) (*tcpnet.Transport, *
 	if err != nil {
 		t.Fatal(err)
 	}
-	receiver.SetWriters([]*net.IPNet{n}, []ports.MsgKind{ports.MsgStoreChunk, ports.MsgTokenRequest, ports.MsgSubmitBondReg})
+	receiver.SetWriters([]*net.IPNet{n}, []ports.MsgKind{ports.MsgFetchChunk, ports.MsgFetchChunkReply})
 	got := make(chan ports.MsgKind, 8)
 	receiver.SetHandler(func(_ ports.NodeID, m ports.Message) { got <- m.Kind })
 	sender.AddPeer(identity.FromSeed(seed+1).NodeID(), receiver.Addr())
@@ -49,12 +49,13 @@ func expect(t *testing.T, got chan ports.MsgKind, want ports.MsgKind) {
 }
 
 // TestANonWriterCanReadButNotWrite: from an address outside the writer list, a store, a
-// token request and a bond registration are dropped, while a fetch on the same connection
-// is delivered — a joiner reads, and cannot write.
+// token request, a bond registration and a credit-lane message are dropped, while a fetch on
+// the same connection is delivered — a joiner reads, and cannot write. The gate is an
+// allow-list, so the credit lane is closed without being named.
 func TestANonWriterCanReadButNotWrite(t *testing.T) {
 	sender, receiver, got := writersPair(t, 700, "192.0.2.0/24") // TEST-NET-1: not loopback
 	to := identity.FromSeed(701).NodeID()
-	for _, k := range []ports.MsgKind{ports.MsgStoreChunk, ports.MsgTokenRequest, ports.MsgSubmitBondReg, ports.MsgFetchChunk} {
+	for _, k := range []ports.MsgKind{ports.MsgStoreChunk, ports.MsgTokenRequest, ports.MsgSubmitBondReg, ports.MsgDeliveryFund, ports.MsgFetchChunk} {
 		if err := sender.Send(to, ports.Message{Kind: k}); err != nil {
 			t.Fatal(err)
 		}
@@ -65,8 +66,11 @@ func TestANonWriterCanReadButNotWrite(t *testing.T) {
 		t.Fatalf("a write (%v) from a non-writer address was delivered", k)
 	case <-time.After(500 * time.Millisecond):
 	}
-	if n := receiver.WritesRefused(); n != 3 {
-		t.Fatalf("WritesRefused = %d, want 3", n)
+	if n := receiver.WritesRefused(); n != 4 {
+		t.Fatalf("WritesRefused = %d, want 4", n)
+	}
+	if receiver.IsWriter(identity.FromSeed(700).NodeID()) {
+		t.Fatal("IsWriter is true for a peer connecting from an unlisted address")
 	}
 }
 
@@ -80,5 +84,8 @@ func TestAListedWriterCanWrite(t *testing.T) {
 	expect(t, got, ports.MsgStoreChunk)
 	if n := receiver.WritesRefused(); n != 0 {
 		t.Fatalf("WritesRefused = %d for a listed writer", n)
+	}
+	if !receiver.IsWriter(identity.FromSeed(710).NodeID()) {
+		t.Fatal("IsWriter is false for a peer connecting from a listed address")
 	}
 }

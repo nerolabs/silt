@@ -506,6 +506,12 @@ const (
 // wire. known=false means "no completed conversation": the DHT treats such an
 // entry as unclassified, bounded by the reserve. Group 0 is exempt (loopback,
 // link-local, unspecified): never capped per group.
+// WriterOracle reports whether a peer's connection comes from an operator-listed writer
+// address (-writers). A node without one treats every peer as a writer.
+type WriterOracle interface {
+	IsWriter(id NodeID) bool
+}
+
 type PeerClassifier interface {
 	ClassOf(id NodeID) (class PeerClass, group uint64, known bool)
 }

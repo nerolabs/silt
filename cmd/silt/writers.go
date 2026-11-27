@@ -8,17 +8,33 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// writeKinds are the inbound messages that write to a node: they put bytes on its disk, mint
-// a publish token, give an identity standing (a bond or issuer-key registration), or submit
-// an entry. -writers limits exactly these. Reads — lookups, fetches, provider records, chain
-// sync, witnesses — are never limited: a joiner must be able to read and serve.
-var writeKinds = []ports.MsgKind{
-	ports.MsgStoreChunk,
-	ports.MsgTokenRequest,
-	ports.MsgSubmitBondReg,
-	ports.MsgSubmitIssuerKeyReg,
-	ports.MsgSubmitEntry,
-}
+// openKinds are what a peer that is NOT a listed writer may send under -writers; everything
+// else from it is dropped. They are the reads a joiner needs — find peers and providers,
+// fetch and check pieces, sync the chain, pull witnesses, learn issuer keys, test its own
+// reachability — the replies to this node's own requests, a provider record (the node keeps
+// a non-writer's only for content it already knows: knownKeyFor), and the two submissions
+// that carry a proof anyone can check: equivocation evidence and a signed advisory. It is an
+// allow-list: storing a piece, publish tokens, bond and issuer-key registration, entries, the
+// credit lanes, repair claims and consensus messages are closed, and so is any kind added
+// later until it is listed here.
+var openKinds = func() []ports.MsgKind {
+	open := []ports.MsgKind{
+		ports.MsgFindNode, ports.MsgGetProviders, ports.MsgAddProvider,
+		ports.MsgFetchChunk, ports.MsgHasChunk, ports.MsgChallenge,
+		ports.MsgGetChain, ports.MsgGetChainHead, ports.MsgGetWitness,
+		ports.MsgGetIssuerKey, ports.MsgGetCanonicalIssuers, ports.MsgGetDemandIssuerKeys,
+		ports.MsgCheckReachability,
+		ports.MsgSubmitSlash, ports.MsgSubmitAdvisory,
+	}
+	// Every reply and acknowledgement: they answer this node's own requests, and one that
+	// matches none is ignored by the node.
+	for k := ports.MsgKind(1); k != 0; k++ {
+		if name := k.String(); strings.HasSuffix(name, "Reply") || strings.HasSuffix(name, "Ack") {
+			open = append(open, k)
+		}
+	}
+	return open
+}()
 
 // parseWriters reads -writers: comma-separated IPs (one address) or CIDRs. Empty is nil:
 // everyone may write.

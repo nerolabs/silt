@@ -7,16 +7,16 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// writerPolicy restricts the message kinds that WRITE to a node — store a piece, issue a
-// publish token, accept a bond or issuer-key registration, submit an entry — to peers whose
-// connection comes from an operator-listed address. Everything a reader needs (lookups,
-// fetches, provider records, chain sync, witnesses) stays open to anyone. It is what lets a
-// test network accept joiners that read and serve but cannot write: without it, a joined
-// node could stash its own files on the operator's disks without ever publishing (a store
-// needs no commit), or bond its way into minting its own publish tokens.
+// writerPolicy is -writers: a peer whose connection comes from a listed address may send
+// anything; every other peer may send only the OPEN kinds — the reads a joiner needs
+// (lookups, fetches, chain sync, witnesses, issuer keys, reachability), the replies to this
+// node's own requests, and the few submissions that carry a self-verifying proof. Everything
+// else from a non-writer is dropped: storing a piece, minting a publish token, registering a
+// bond or issuer key, submitting an entry, the credit lanes, repair claims, consensus. It is
+// an ALLOW-list, so a message kind added later is closed to non-writers until it is listed.
 type writerPolicy struct {
-	nets  []*net.IPNet
-	kinds map[ports.MsgKind]bool
+	nets []*net.IPNet
+	open map[ports.MsgKind]bool
 
 	mu    sync.Mutex
 	named map[ports.NodeID]bool // peers whose first refusal was logged at INFO
@@ -26,7 +26,6 @@ type writerPolicy struct {
 // refusal is a DEBUG line, so a stream of new identities cannot flood the operator's log.
 const maxNamedRefusals = 1024
 
-// firstRefusal reports whether this is the first refused write from id worth an INFO line.
 func (p *writerPolicy) firstRefusal(id ports.NodeID) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -37,23 +36,36 @@ func (p *writerPolicy) firstRefusal(id ports.NodeID) bool {
 	return true
 }
 
-// SetWriters limits kinds to connections from nets. Call it before the node starts; with
-// no nets, every peer may write (the default). A RELAYED connection is never a writer: its
-// address is the relay's, not the sender's.
-func (t *Transport) SetWriters(nets []*net.IPNet, kinds []ports.MsgKind) {
+// SetWriters lets peers connecting from nets send anything, and everyone else only open.
+// Call it before the node starts; with no nets every peer may send anything (the default).
+// A RELAYED connection is never a writer: its address is the relay's, not the sender's.
+func (t *Transport) SetWriters(nets []*net.IPNet, open []ports.MsgKind) {
 	if len(nets) == 0 {
 		t.writers.Store(nil)
 		return
 	}
-	p := &writerPolicy{nets: nets, kinds: map[ports.MsgKind]bool{}, named: map[ports.NodeID]bool{}}
-	for _, k := range kinds {
-		p.kinds[k] = true
+	p := &writerPolicy{nets: nets, open: map[ports.MsgKind]bool{}, named: map[ports.NodeID]bool{}}
+	for _, k := range open {
+		p.open[k] = true
 	}
 	t.writers.Store(p)
 }
 
-// WritesRefused counts inbound write messages dropped because they came from a non-writer.
+// WritesRefused counts inbound messages dropped because a non-writer may not send them.
 func (t *Transport) WritesRefused() int64 { return t.writesRefused.Load() }
+
+// IsWriter reports whether id's most recent connection came from a listed writer address
+// (ports.WriterOracle). With no -writers every peer is a writer; a peer never seen is not.
+func (t *Transport) IsWriter(id ports.NodeID) bool {
+	if t.writers.Load() == nil {
+		return true
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.writerIDs[id]
+}
+
+var _ ports.WriterOracle = (*Transport)(nil)
 
 // writerConn reports whether a connection from remote may write.
 func (t *Transport) writerConn(remote net.Addr, viaRelay bool) bool {
@@ -76,17 +88,30 @@ func (t *Transport) writerConn(remote net.Addr, viaRelay bool) bool {
 	return false
 }
 
-// refusesWrite reports whether msg must be dropped on a connection that is not a writer's.
+// noteWriter records whether id's current connection is a writer's, for IsWriter.
+func (t *Transport) noteWriter(id ports.NodeID, writer bool) {
+	if t.writers.Load() == nil {
+		return
+	}
+	t.mu.Lock()
+	if t.writerIDs == nil {
+		t.writerIDs = map[ports.NodeID]bool{}
+	}
+	t.writerIDs[id] = writer
+	t.mu.Unlock()
+}
+
+// refusesWrite reports whether a message of kind must be dropped on a non-writer's connection.
 func (t *Transport) refusesWrite(kind ports.MsgKind, writer bool) bool {
 	if writer {
 		return false
 	}
 	p := t.writers.Load()
-	return p != nil && p.kinds[kind]
+	return p != nil && !p.open[kind]
 }
 
-// noteRefusal counts a refused write and logs it: at INFO the first time a peer is refused,
-// so an operator sees who tried, and at DEBUG after that.
+// noteRefusal counts a refused message and logs it: at INFO the first time a peer is
+// refused, so an operator sees who tried, and at DEBUG after that.
 func (t *Transport) noteRefusal(from ports.NodeID, kind ports.MsgKind) {
 	t.writesRefused.Add(1)
 	level := ports.LogDebug

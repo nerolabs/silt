@@ -82,6 +82,8 @@ type Transport struct {
 	// writers, when set, restricts the write message kinds to listed addresses (writers.go).
 	writers       atomic.Pointer[writerPolicy]
 	writesRefused atomic.Int64
+	writerIDs     map[ports.NodeID]bool   // under mu: each peer's current connection is a writer's
+	observedIPs   map[ports.NodeID]net.IP // under mu: the address each peer last connected from
 	loop          *eventloop.Loop
 	ident         *identity.Identity
 	cert          tls.Certificate
@@ -520,6 +522,14 @@ func (t *Transport) Send(to ports.NodeID, msg ports.Message) error {
 		// the checker through a relay is precisely not being public, so
 		// only its direct address counts here.
 		pair.relay = ""
+		// And only at the host the asker actually connected FROM. The advertised address is
+		// the peer's own claim: dialing it would let anyone point this node at any host and
+		// port. A peer whose claimed host differs from where it connected from is answered
+		// not-reachable (no dial), which costs an honest multi-homed node a relay at worst.
+		if !t.dialBackMatchesObserved(to, pair.direct) {
+			t.logf(ports.LogDebug, "reachability dial-back refused: advertised host is not the observed one", "to", to, "advertised", pair.direct)
+			return fmt.Errorf("tcpnet: advertised address of %s is not where it connected from", to)
+		}
 	}
 	// EITHER LANE COUNTS AS A LIVE CONVERSATION. A peer that has only ever exchanged
 	// small frames has a control conn and no bulk conn, and an undialable peer is
@@ -1071,6 +1081,7 @@ func (t *Transport) readLoopWith(conn *tls.Conn, viaRelay bool, dialed *peerConn
 // the inbound budget, the frame cap and the decode path are the same for each.
 func (t *Transport) serveFrames(conn *tls.Conn, from ports.NodeID, viaRelay bool) {
 	writer := t.writerConn(conn.RemoteAddr(), viaRelay) // decided once, for the whole connection
+	t.noteWriter(from, writer)
 	if isPiecedConn(conn.ConnectionState()) {
 		_ = t.readPieced(conn, from, func(frame []byte, release func()) {
 			if !t.dispatchFrame(frame, from, release, writer) {

@@ -421,6 +421,7 @@ func TestPrivacyWithheldDocumentsCarryOnlyAllowedKeys(t *testing.T) {
 	allowedStatus := map[string]bool{"id": true, "peer": true, "uptimeSec": true, "capUsed": true, "capTotal": true,
 		"chunks": true, "peers": true, "network": true, "validator": true, "reachability": true, "chain": true,
 		"floorBox":   true, // consensus facts only: heights and verdicts, nothing about who fetched what
+		"writers":    true, // -writers: one aggregate count of refused writes; says nothing about any reader
 		"durability": true, "addressCap": true, "countersWithheld": true, "privacy": true, "serveMintWithheld": true,
 		"snapshotTakenAtUnix": true, "snapshotAgeSec": true, "snapshotIntervalSec": true}
 	for k := range status {

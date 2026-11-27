@@ -678,8 +678,9 @@ func cmdDaemon(args []string) error {
 	}
 	tr.SetAddressWidth(*dhtAddressWidth, 32)
 	if writers != nil {
-		tr.SetWriters(writers, writeKinds)
-		fmt.Printf("writers: only %s may write to this node (store, publish token, bond/issuer-key registration, entry, registry publish); anyone may join, read and serve\n", *writersFlag)
+		tr.SetWriters(writers, openKinds)
+		nd.SetWriterOracle(tr)
+		fmt.Printf("writers: only %s may write to this node; anyone else may join, read and serve (lookups, fetches, chain sync, witnesses) and nothing more\n", *writersFlag)
 	}
 	nd.SetPeerClassifier(tr)
 	nd.SetAddressDiversity(addrMode, *dhtDomainCap, *dhtRelayCap, *dhtAddressReserve)
