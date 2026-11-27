@@ -1,0 +1,125 @@
+package node
+
+import (
+	"bytes"
+	"context"
+	"testing"
+
+	"github.com/nerolabs/silt/adapters/identity"
+	"github.com/nerolabs/silt/adapters/memstore"
+	"github.com/nerolabs/silt/core/chunk"
+	"github.com/nerolabs/silt/ports"
+)
+
+// putCounter counts the chunks a node writes into its store: every piece a fetch pulls.
+type putCounter struct {
+	ports.ChunkStore
+	puts map[ports.ChunkID]int
+}
+
+func (p *putCounter) Put(ctx context.Context, c ports.Chunk) error {
+	p.puts[c.ID]++
+	return p.ChunkStore.Put(ctx, c)
+}
+
+func rangeConsumer(r *netgetRig, seed int64) (*Node, *putCounter) {
+	store := &putCounter{ChunkStore: memstore.New(), puts: map[ports.ChunkID]int{}}
+	id := identity.FromSeed(seed).NodeID()
+	cfg := DefaultConfig()
+	cfg.Replication = 1
+	nd := New(id, cfg, r.sched, r.net.Endpoint(id), store)
+	nd.Bootstrap([]ports.NodeID{r.nodes[0].ID(), r.nodes[1].ID(), r.nodes[2].ID()}, func() {})
+	r.sched.Run()
+	return nd, store
+}
+
+func (r *netgetRig) getRange(t *testing.T, nd *Node, off, n int64) []byte {
+	t.Helper()
+	var out bytes.Buffer
+	var err error
+	finished := false
+	nd.NetGetRange(r.reg, r.h, off, n, &out, func(e error) { err, finished = e, true })
+	r.sched.Run()
+	if !finished || err != nil {
+		t.Fatalf("NetGetRange(%d, %d): finished=%v err=%v", off, n, finished, err)
+	}
+	return out.Bytes()
+}
+
+// TestARangedFetchPullsOnlyItsChunks. Over the network, a range inside one frame pulls that
+// one data chunk (plus the manifest, once) and nothing else; a second range reuses the
+// cached manifest; and nothing the fetches pulled is kept.
+func TestARangedFetchPullsOnlyItsChunks(t *testing.T) {
+	r := newNetgetRig(t)
+	nd, store := rangeConsumer(r, 3991)
+	payload := r.m.ChunkSize - chunk.HeaderSize
+	entry, _, _ := r.reg.Lookup(bg(), r.h.Root)
+
+	off := 13*payload + 7
+	if got := r.getRange(t, nd, off, 50); !bytes.Equal(got, r.data[off:off+50]) {
+		t.Fatal("the range came back wrong")
+	}
+	leaves := 0
+	for id := range store.puts {
+		for _, l := range r.m.Leaves() {
+			if l == id {
+				leaves++
+			}
+		}
+	}
+	if leaves != 1 || store.puts[r.m.ChunkIDs()[13]] != 1 {
+		t.Fatalf("a range inside frame 13 pulled %d file shard(s); want only chunk 13 (puts: %d)", leaves, len(store.puts))
+	}
+	for _, id := range entry.ManifestChunks {
+		if store.puts[id] != 1 {
+			t.Fatalf("the manifest chunk was pulled %d times on the first range, want 1", store.puts[id])
+		}
+	}
+
+	// A second range crossing the stripe boundary (chunks 9 and 10): the manifest comes from
+	// the cache, so no manifest chunk is pulled again.
+	off = 10*payload - 20
+	if got := r.getRange(t, nd, off, 40); !bytes.Equal(got, r.data[off:off+40]) {
+		t.Fatal("the stripe-crossing range came back wrong")
+	}
+	for _, id := range entry.ManifestChunks {
+		if store.puts[id] != 1 {
+			t.Fatalf("the second range pulled the manifest again (%d puts) instead of using the cache", store.puts[id])
+		}
+	}
+	if held := r.heldOf(nd, r.candidates(t)); held != 0 {
+		t.Fatalf("a ranged fetch kept %d pieces it pulled", held)
+	}
+}
+
+// TestARangedFetchRebuildsAChunkNoOneHolds: the only holder of a covered chunk is gone, so
+// the range is rebuilt from its stripe's other shards and parity, and is exact.
+func TestARangedFetchRebuildsAChunkNoOneHolds(t *testing.T) {
+	r := newNetgetRig(t)
+	target := r.m.ChunkIDs()[4]
+	for _, nd := range r.nodes {
+		if ok, _ := nd.Store().Has(bg(), target); ok {
+			nd.Store().Delete(bg(), target)
+		}
+	}
+	nd, _ := rangeConsumer(r, 3992)
+	payload := r.m.ChunkSize - chunk.HeaderSize
+	off := 4*payload + 100
+	if got := r.getRange(t, nd, off, 300); !bytes.Equal(got, r.data[off:off+300]) {
+		t.Fatal("a range over a chunk no one holds came back wrong")
+	}
+	if nd.Stats.ParityColumnLookups == 0 {
+		t.Fatal("CONTROL: no parity was used, so the lost chunk was not actually lost")
+	}
+}
+
+func TestARangedFetchPastTheEndIsRefused(t *testing.T) {
+	r := newNetgetRig(t)
+	nd, _ := rangeConsumer(r, 3993)
+	var err error
+	nd.NetGetRange(r.reg, r.h, int64(len(r.data)), 1, &bytes.Buffer{}, func(e error) { err = e })
+	r.sched.Run()
+	if err == nil {
+		t.Fatal("a range starting at the end of the file was accepted")
+	}
+}
