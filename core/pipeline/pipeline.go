@@ -169,7 +169,7 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 			if err := store.Put(ctx, c); err != nil {
 				return fmt.Errorf("add: storing parity %d of stripe %d: %w", q, stripes, err)
 			}
-			m.Parity = append(m.Parity, c.ID[:])
+			m.Parity = append(m.Parity, idBytes(c.ID))
 			proot := por.ShardRoot(shard, por.SpotLeafBytes)
 			parityRoots = append(parityRoots, proot[:])
 		}
@@ -198,7 +198,7 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 		if err := store.Put(ctx, c); err != nil {
 			return fmt.Errorf("add: storing chunk %d: %w", i, err)
 		}
-		m.Chunks = append(m.Chunks, c.ID[:])
+		m.Chunks = append(m.Chunks, idBytes(c.ID))
 		// Commit the shard's spot-check tree beside its ID. The root is a
 		// function of the ciphertext alone, so it is computed here, where the
 		// ciphertext exists, and never recomputed from a shard a peer supplied.
@@ -523,6 +523,17 @@ func splitFileEach(r io.Reader, chunkSize int, fn func([]byte) error) error {
 		return err
 	}
 	return chunk.SplitEach(io.MultiReader(bytes.NewReader(head), r), chunkSize, fn)
+}
+
+// idBytes copies a chunk id out of its chunk. Keeping c.ID[:] instead keeps the whole
+// ports.Chunk alive — its Data included — for as long as the manifest holds the id: the
+// manifest's id lists pinned every staged chunk's ciphertext and parity, so a publish held
+// 1.6× the file in memory even with Stage streaming (measured: 617 MB live staging a 512 MB
+// file). TestStageHoldsOneStripeNotTheFile guards it.
+func idBytes(id ports.ChunkID) []byte {
+	b := make([]byte, len(id))
+	copy(b, id[:])
+	return b
 }
 
 // splitFile is splitFileEach collected: every frame of the object at once.

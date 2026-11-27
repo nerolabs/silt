@@ -39,7 +39,6 @@ import (
 	"github.com/nerolabs/silt/adapters/lan"
 	"github.com/nerolabs/silt/adapters/logfile"
 	"github.com/nerolabs/silt/adapters/markstore"
-	"github.com/nerolabs/silt/adapters/memstore"
 	"github.com/nerolabs/silt/adapters/nodestore"
 	"github.com/nerolabs/silt/adapters/proofcache"
 	"github.com/nerolabs/silt/adapters/relay"
@@ -2610,9 +2609,10 @@ func parseSize(s string) (int64, error) {
 // clients don't accumulate reputation. Returned run posts fn onto the
 // node's loop and waits for completion.
 type ephemeral struct {
-	nd   *node.Node
-	loop *eventloop.Loop
-	tr   *tcpnet.Transport
+	nd       *node.Node
+	loop     *eventloop.Loop
+	tr       *tcpnet.Transport
+	stageDir string // the client's on-disk staging store, removed by close
 }
 
 func joinSwarm(peers string, replication int) (*ephemeral, func(fn func(done func())) error, error) {
@@ -2635,7 +2635,24 @@ func joinSwarm(peers string, replication int) (*ephemeral, func(fn func(done fun
 	if replication > 0 {
 		cfg.Replication = replication // a publisher may pick a lower redundancy (parity backstops copies)
 	}
-	nd := node.New(ident.NodeID(), cfg, walltime.New(loop), tr, memstore.New())
+	// The client stages on DISK, in a directory removed when it closes. A publish stages the
+	// whole object plus its parity before placing it, so an in-memory store held 1.6× the
+	// file in RAM — a 2.4 GB film could not be published from a 2 GB box. Staged pieces are
+	// ciphertext, so a directory a crash leaves behind holds nothing readable.
+	stageDir, err := os.MkdirTemp("", "silt-client-")
+	if err != nil {
+		tr.Close()
+		loop.Stop()
+		return nil, nil, err
+	}
+	stage, err := diskstore.Open(stageDir)
+	if err != nil {
+		os.RemoveAll(stageDir)
+		tr.Close()
+		loop.Stop()
+		return nil, nil, err
+	}
+	nd := node.New(ident.NodeID(), cfg, walltime.New(loop), tr, stage)
 	nd.SetSigner(ident.Signer()) // sign self-certifying provider records (H5)
 	nd.SetEphemeral(true)        // a publish/fetch client that keeps nothing — peers must not route to it
 	if os.Getenv("SILT_SWARM_DEBUG") != "" {
@@ -2648,6 +2665,7 @@ func joinSwarm(peers string, replication int) (*ephemeral, func(fn func(done fun
 
 	ps, err := discovery.ParseList(peers)
 	if err != nil {
+		(&ephemeral{loop: loop, tr: tr, stageDir: stageDir}).close()
 		return nil, nil, err
 	}
 	var seeds []ports.NodeID
@@ -2667,8 +2685,9 @@ func joinSwarm(peers string, replication int) (*ephemeral, func(fn func(done fun
 			return fmt.Errorf("swarm operation timed out after %s", swarmClientOperationCeiling())
 		}
 	}
-	e := &ephemeral{nd: nd, loop: loop, tr: tr}
+	e := &ephemeral{nd: nd, loop: loop, tr: tr, stageDir: stageDir}
 	if err := run(func(done func()) { nd.Bootstrap(seeds, func() { done() }) }); err != nil {
+		e.close()
 		return nil, nil, err
 	}
 	return e, run, nil
@@ -2677,6 +2696,9 @@ func joinSwarm(peers string, replication int) (*ephemeral, func(fn func(done fun
 func (e *ephemeral) close() {
 	e.tr.Close()
 	e.loop.Stop()
+	if e.stageDir != "" {
+		os.RemoveAll(e.stageDir)
+	}
 }
 
 // AntiReleaseComputeWindow is the COMPUTE budget the anti-release floor is sized

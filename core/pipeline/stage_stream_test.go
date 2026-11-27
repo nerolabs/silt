@@ -9,6 +9,7 @@ import (
 	"io"
 	"math/rand"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -134,5 +135,73 @@ func TestStageCodesAStripeBeforeReadingTheNext(t *testing.T) {
 	}
 	if limit := int64(k+2) * payload; st.at > limit {
 		t.Fatalf("the first parity shard was stored after %d bytes of input had been read (the file is %d); a streaming Stage stores it within about one stripe (%d)", st.at, len(data), limit)
+	}
+}
+
+// heapProbe discards what it is given and, every so often, measures the live heap.
+type heapProbe struct {
+	puts int
+	base uint64
+	max  uint64
+}
+
+func (h *heapProbe) Put(_ context.Context, c ports.Chunk) error {
+	if h.puts++; h.puts%64 == 0 {
+		runtime.GC()
+		var ms runtime.MemStats
+		runtime.ReadMemStats(&ms)
+		if ms.HeapAlloc > h.base && ms.HeapAlloc-h.base > h.max {
+			h.max = ms.HeapAlloc - h.base
+		}
+	}
+	return nil
+}
+func (h *heapProbe) Get(context.Context, ports.ChunkID) (ports.Chunk, error) {
+	return ports.Chunk{}, ports.ErrNotFound
+}
+func (h *heapProbe) Has(context.Context, ports.ChunkID) (bool, error) { return false, nil }
+func (h *heapProbe) Delete(context.Context, ports.ChunkID) error      { return nil }
+func (h *heapProbe) List(context.Context) ([]ports.ChunkID, error)    { return nil, nil }
+
+// zeroReader is an endless source that allocates nothing.
+type zeroReader struct{ left int64 }
+
+func (z *zeroReader) Read(p []byte) (int, error) {
+	if z.left <= 0 {
+		return 0, io.EOF
+	}
+	n := int64(len(p))
+	if n > z.left {
+		n = z.left
+	}
+	clear(p[:n])
+	z.left -= n
+	return int(n), nil
+}
+
+// TestStageHoldsOneStripeNotTheFile measures the live heap while Stage publishes a 48 MB file
+// in both modes. A streaming Stage holds a stripe and the manifest's ids; the manifest once
+// kept c.ID[:], which pinned every chunk's ciphertext (617 MB live staging 512 MB).
+func TestStageHoldsOneStripeNotTheFile(t *testing.T) {
+	if testing.Short() {
+		t.Skip("measures the heap over a 48 MB publish")
+	}
+	const size = 48 << 20
+	for _, mode := range []crypto.Mode{crypto.Convergent, crypto.Private} {
+		runtime.GC()
+		var ms runtime.MemStats
+		runtime.ReadMemStats(&ms)
+		probe := &heapProbe{base: ms.HeapAlloc}
+		if _, _, err := pipeline.Stage(context.Background(), probe, &zeroReader{left: size},
+			pipeline.Options{ChunkSize: 64 << 10, Mode: mode, Rand: rand.New(rand.NewSource(1))}); err != nil {
+			t.Fatal(err)
+		}
+		if probe.puts < 700 {
+			t.Fatalf("CONTROL: only %d chunks staged", probe.puts)
+		}
+		if limit := uint64(12 << 20); probe.max > limit {
+			t.Fatalf("%s: Stage held %d MB live publishing a %d MB file; streaming holds about one stripe (limit %d MB)", mode, probe.max>>20, size>>20, limit>>20)
+		}
+		t.Logf("%s: max live heap while staging %d MB: %.1f MB", mode, size>>20, float64(probe.max)/(1<<20))
 	}
 }
