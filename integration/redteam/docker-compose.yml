@@ -170,6 +170,10 @@ services:
       - -min-rep=100
       - -quorum=1
       - -attesters=${ID_EQUIV_YZ:-unset}
+      # The detector hosts a registry so the drill can publish through it AFTER the double-sign:
+      # a block has to commit after the detection to carry the queued slash proof (the
+      # committed complement, F2). Without one, nothing ever proposed again.
+      - -serve-registry=127.0.0.1:8443
       - -bootstrap=${ID_EQUIV_A:-unset}@10.110.0.21:4001
       - -bond=8M
       - -bond-audit=1s

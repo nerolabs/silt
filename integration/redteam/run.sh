@@ -301,6 +301,20 @@ echo "  equiv-x memory.peak = $(ft_peak_report "${PEAK_X:-}" "$FLOOR_MEM")"
 # THE SLASH SET, READ BEFORE THE SEATS GO AWAY. This is the last moment the
 # equivocation topology's committed history exists on this host — and the on-chain
 # half gets a bounded wait first, because detection only QUEUES the proof.
+# DRIVE A BLOCK AFTER THE DETECTION. The slash proof is QUEUED by the detector and reaches
+# committed state only inside a block, and in this topology nothing proposes on its own after the
+# double-sign. A publish through the detector's own registry makes it propose; its proposal carries
+# the queued proof, the honest recipient attests, and the replicated eviction (F2) has a block to
+# ride. Convergent mode, so a retry re-proposes the same block rather than signing a new one.
+if [ "$EQUIV_OK" = 1 ]; then
+  drove=""
+  for _ in $(seq 1 20); do
+    drove="$(dc exec -T equiv-x sh -c "head -c 32768 /dev/zero > /tmp/after.bin; silt swarm add /tmp/after.bin -mode convergent -peers '${ID_EQUIV_X}@127.0.0.1:4001' -registry '${ID_EQUIV_X}@https://127.0.0.1:8443'" 2>&1 | grep -oE 'silt:v1:[^ ]+' | head -1 || true)"
+    [ -n "$drove" ] && break
+    sleep 3
+  done
+  echo "  post-detection publish through the detector: ${drove:-<none committed>}"
+fi
 [ "$EQUIV_OK" = 1 ] && wait_slash_committed equiv-yz "$ID_EQUIV_A" 90
 collect_slash_set equiv-a equiv-x equiv-yz
 
