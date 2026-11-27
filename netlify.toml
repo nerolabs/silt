@@ -1,0 +1,26 @@
+# Deploy config for silthq.com, versioned in the repo so a deploy is reproducible and reviewable.
+# The site is static: website/ is published as it stands, with no build step. (The September
+# site generated its changelog, roadmap and build log from internal Markdown at deploy time;
+# those generators and their sources are gone, and the new changelog and roadmap are ordinary
+# pages in website/, updated with every site update or tagged version.)
+#
+# Netlify's Git integration reads this file: a push to main deploys silthq.com, and a pull
+# request gets a deploy preview.
+
+[build]
+  command = "echo 'static site: nothing to build'"
+  publish = "website"
+
+# Canonical host is the bare apex. Send www there.
+[[redirects]]
+  from = "https://www.silthq.com/*"
+  to = "https://silthq.com/:splat"
+  status = 301
+  force = true
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
