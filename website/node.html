@@ -16,7 +16,7 @@
   <a href="/" class="wordmark" style="text-decoration:none">Sil<b>t</b></a>
   <span class="spacer"></span>
   <a href="/#how" class="hide-sm">How it works</a>
-  <a class='hide-sm' href='/node'>Run a node</a>
+  <a href='/node'>Run a node</a>
   <a href='/docs'>Docs</a>
   <a class='hide-sm' href='/roadmap'>Roadmap</a>
   <a href="https://github.com/nerolabs/silt" class="ghost">GitHub</a>
@@ -30,8 +30,8 @@
     <span class="dim">Silt is still hardening toward V1 (there's no official release
     yet — build from source). Running a public node means storing opaque ciphertext
     you can't inspect; understand your local law and load a denylist you trust. Read the
-    <a href="https://github.com/nerolabs/silt/blob/main/docs/threat-model.md">threat model</a>
-    and the <a href="https://github.com/nerolabs/silt/blob/main/docs/safety-denylist.md">safety model</a>
+    <a href="https://github.com/nerolabs/silt/blob/main/ADVERSARY.md">threat model</a>
+    and the <a href="https://github.com/nerolabs/silt/blob/main/docs/OPERATING.md">safety model</a>
     first. This isn't legal advice.</span>
   </div>
   <p class="lead">A node gives the network storage and bandwidth, and asks nothing
@@ -50,13 +50,15 @@
   </ul>
 
   <h2>Quick start</h2>
-  <p>One binary, no runtime. Build it from source (signed releases land when V1 is cut):</p>
+  <p>One binary, no runtime. Build it from source; there are no binary releases. You need Go 1.26:</p>
   <pre class="code">git clone https://github.com/nerolabs/silt && cd silt
 <span class="o">go</span> build -o silt ./cmd/silt</pre>
-  <p>Start a node that pledges 2&nbsp;GB of storage and joins an existing swarm:</p>
+  <p>There is no public silt network yet. To try it, run a whole network on your own
+  machine: <code>./examples/try-a-local-network.sh</code>. To join a network someone else
+  runs, start a node that pledges 2&nbsp;GB of storage and name one of its peers:</p>
   <pre class="code"><span class="o">silt</span> daemon \
   -capacity 2G \
-  -bootstrap <span class="g">&lt;PEER-ID&gt;</span>@seed.example.com:4001 \
+  -bootstrap <span class="g">&lt;PEER-ID&gt;</span>@HOST:4001 \
   -listen 0.0.0.0:4001</pre>
   <p>It mints a keypair on first run (your identity is that key — keep the store
   directory safe), joins via the peer you named, announces what it holds, and
@@ -109,7 +111,7 @@
   chunks held and served, the network's self-estimated size, chain height, and the
   opaque roots you host shards of — everything a node can honestly say about itself.</p>
 
-  <p style="margin-top:3rem"><a href="/#download" class="btn">Download Silt</a> &nbsp;
+  <p style="margin-top:3rem"><a href="/#download" class="btn">Build Silt from source</a> &nbsp;
   <a class='btn ghost' href='/docs'>Full documentation</a></p>
 </div>
 

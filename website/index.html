@@ -17,10 +17,10 @@
   <span class="wordmark">Sil<b>t</b></span>
   <span class="spacer"></span>
   <a href="#how" class="hide-sm">How it works</a>
-  <a class='hide-sm' href='/node'>Run a node</a>
-  <a class='hide-sm' href='/docs'>Docs</a>
+  <a href='/node'>Run a node</a>
+  <a href='/docs'>Docs</a>
   <a class='hide-sm' href='/roadmap'>Roadmap</a>
-  <a href="#download">Download</a>
+  <a href="#download">Build</a>
   <a href="https://github.com/nerolabs/silt" class="ghost">GitHub</a>
 </nav>
 
@@ -47,13 +47,13 @@
       issuance-mixing ships, Pre-V1). Meaning lives elsewhere, with whoever holds the keys.
     </p>
     <div class="cta-row settle settle-4">
-      <a href="#download" class="btn">Download a client</a>
+      <a href="#download" class="btn">Build from source</a>
       <a class='btn ghost' href='/node'>Run a public node</a>
     </div>
     <div class="genesis settle settle-4" title="the founding block every fresh network carries">
       <b>// genesis</b> — every Silt network is born carrying one file: this charter.<br>
       block&nbsp; 71cfe874f29d58b7cafdd8597c7c2a33c7187ac73fbb4e443a81b0b209e8d179<br>
-      link&nbsp;&nbsp; silt:v1:fce9eeeb23ac…:d7e3b68647…
+      link&nbsp;&nbsp; silt:v1:xDd02Q7eNPqp…:TwMWvSMrH9aJ…
     </div>
   </div>
 </section>
@@ -152,7 +152,8 @@
       becoming a stranger again.</p>
       <p class="dim" style="max-width:52ch"><a href='/docs#consensus'>How reputation and quorum work →</a></p>
     </div>
-    <div class="chain" aria-label="example chain">
+    <p class="dim" style="font-size:0.8rem;margin:0 0 0.5rem">An illustration, not live data.</p>
+    <div class="chain" aria-label="an illustration of the chain">
       <div class="block gen"><span class="lbl">genesis</span><span class="h">the founding charter · declared, not agreed</span><span class="att">held by all</span></div>
       <div class="block"><span class="lbl">block 1</span><span class="h">3 files registered</span><span class="att">✓ 4 attestations</span></div>
       <div class="block"><span class="lbl">block 2</span><span class="h">1 file registered</span><span class="att">✓ 5 attestations</span></div>
@@ -164,7 +165,7 @@
 <!-- DOWNLOAD -->
 <section id="download" class="plane">
   <div class="wrap">
-    <div class="stratum-label">Get Silt · one binary, every platform</div>
+    <div class="stratum-label">Get Silt · build it from source</div>
     <div style="margin:0 0 1.6rem;padding:1rem 1.2rem;border:1px solid var(--ochre);border-radius:8px;max-width:60ch">
       <b style="color:var(--ochre)">Pre-V1 — build from source.</b>
       <span class="dim">Silt is early and there is no official release yet. The
@@ -179,7 +180,7 @@
       0.9.0 (RC) → 1.0.0 = V1, cut only when it's field-proven across machines and
       signed. Build it from source (below), don't store anything you can't afford
       to lose, and please read the
-      <a href="https://github.com/nerolabs/silt/blob/main/docs/threat-model.md">threat model</a>
+      <a href="https://github.com/nerolabs/silt/blob/main/ADVERSARY.md">threat model</a>
       — finding a way to break a promise it makes is exactly the review we most
       want.</span>
     </div>
@@ -190,20 +191,15 @@
     takes one command:</p>
     <pre class="code"><span class="c"># clone and build for your machine…</span>
 git clone https://github.com/nerolabs/silt && cd silt
-<span class="o">go</span> build -o silt ./cmd/silt   &&   ./silt client
-
-<span class="c"># …or cross-compile every target at once</span>
-<span class="o">./build.sh</span> v1.0.0             <span class="c"># → dist/silt-v1.0.0-&lt;os&gt;-&lt;arch&gt;</span></pre>
+<span class="o">go</span> build -o silt ./cmd/silt   &&   ./silt client</pre>
     <p class="dim" style="margin-top:1.4rem">
-      Signed, checksummed binaries for <b style="color:var(--bone);font-weight:500">macOS,
-      Windows, and Linux</b> will land on the
-      <a href="https://github.com/nerolabs/silt/releases">releases page</a> when V1
-      is cut. Until then, build from source (one command above).</p>
+      There are no binary releases: silt is experimental, and you build it from source. You
+      need Go 1.26.</p>
     <p class="dim" style="margin-top:1rem">
       <b style="color:var(--bone);font-weight:500">▶ Want to see it work?</b>
-      <a href="https://github.com/nerolabs/silt/blob/main/docs/local-test-network.md">Build your own Silt test network on your own computer</a>
-      — a hands-on walkthrough from a one-command simulation to a real multi-node
-      swarm on your laptop that survives a node death.
+      <a href="https://github.com/nerolabs/silt/blob/main/examples/README.md">Build your own Silt test network on your own computer</a>
+      — one script runs a whole network on your machine, with validators, storage nodes,
+      floor boxes and simulated people publishing and fetching, and a web page to watch it.
     </p>
   </div>
 </section>
@@ -249,7 +245,7 @@ git clone https://github.com/nerolabs/silt && cd silt
     </div>
     <div class="meta">
       <span>silthq.com</span><span>·</span>
-      <span>open source</span><span>·</span>
+      <span>Apache-2.0</span><span>·</span>
       <span class="dim">the infrastructure is not the content</span>
     </div>
   </div>
