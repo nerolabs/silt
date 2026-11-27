@@ -179,14 +179,11 @@ func (z *zeroReader) Read(p []byte) (int, error) {
 	return int(n), nil
 }
 
-// TestStageHoldsOneStripeNotTheFile measures the live heap while Stage publishes a 48 MB file
+// TestStageHoldsOneStripeNotTheFile measures the live heap while Stage publishes a 24 MB file
 // in both modes. A streaming Stage holds a stripe and the manifest's ids; the manifest once
 // kept c.ID[:], which pinned every chunk's ciphertext (617 MB live staging 512 MB).
 func TestStageHoldsOneStripeNotTheFile(t *testing.T) {
-	if testing.Short() {
-		t.Skip("measures the heap over a 48 MB publish")
-	}
-	const size = 48 << 20
+	const size = 24 << 20 // runs under -short too: it is the only guard on the leak
 	for _, mode := range []crypto.Mode{crypto.Convergent, crypto.Private} {
 		runtime.GC()
 		var ms runtime.MemStats
@@ -196,7 +193,7 @@ func TestStageHoldsOneStripeNotTheFile(t *testing.T) {
 			pipeline.Options{ChunkSize: 64 << 10, Mode: mode, Rand: rand.New(rand.NewSource(1))}); err != nil {
 			t.Fatal(err)
 		}
-		if probe.puts < 700 {
+		if probe.puts < 350 {
 			t.Fatalf("CONTROL: only %d chunks staged", probe.puts)
 		}
 		if limit := uint64(12 << 20); probe.max > limit {
