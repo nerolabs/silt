@@ -1653,7 +1653,7 @@ func cmdDaemon(args []string) error {
 				fmt.Printf("publish tokens: required by default for this untrusted (objective) swarm — %d validator signatures of the %d launch anchors, so at least one honest issuer signs and charges every token; publishers acquire them automatically. Override with -require-tokens, identically across the swarm (0 opts out: a trusted or demo swarm)\n", reqTokens, len(anchorSet))
 			}
 			if reqTokens > 0 {
-				ch.RequireTokens(reqTokens, nd.IssuerKeyOf)
+				ch.RequireTokens(reqTokens, nd.IssuerKeyOrFetch)
 				fmt.Printf("publish tokens: required (%d validator signatures), issuing\n", reqTokens)
 			}
 		} else {
