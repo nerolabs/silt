@@ -16,7 +16,7 @@
   <a href="/" class="wordmark" style="text-decoration:none">Sil<b>t</b></a>
   <span class="spacer"></span>
   <a href="/#how" class="hide-sm">How it works</a>
-  <a class='hide-sm' href='/node'>Run a node</a>
+  <a href='/node'>Run a node</a>
   <a href='/docs'>Docs</a>
   <a class='hide-sm' href='/roadmap'>Roadmap</a>
   <a href="https://github.com/nerolabs/silt" class="ghost">GitHub</a>
@@ -30,9 +30,9 @@
   reference for the command line, the link format, the HTTP API, and consensus.</p>
 
   <p class="dim" style="font-size:0.9rem">Pre-V1: the storage plane is
-  field-proven; the trust plane now runs real mechanisms (a space-time storage
+  field-proven at small scale; the trust plane now runs real mechanisms (a space-time storage
   bond, objective, bond-weighted commit admission, unlinkable publishing, per-operator
-  takedowns), hardened through independent adversarial review and covered at the
+  takedowns), hardened through internal adversarial review and covered at the
   unit, simulation, and real-daemon end-to-end tiers, but not yet externally
   <i>re</i>-verified, so treat
   it as unaudited. Build from source; see the <a href='/roadmap'>roadmap</a>
@@ -40,7 +40,7 @@
 
   <div style="margin:0 0 1.4rem;padding:1rem 1.2rem;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,0.02)">
     <b>▶ New here?</b>
-    <a href="https://github.com/nerolabs/silt/blob/main/docs/local-test-network.md">Build your own Silt test network on your own computer</a>
+    <a href="https://github.com/nerolabs/silt/blob/main/examples/README.md">Build your own Silt test network on your own computer</a>
     — a hands-on, end-to-end walkthrough: run the whole swarm in one command,
     then stand up a real multi-node network on your laptop, publish a file, and
     watch it survive a node death.
@@ -145,7 +145,7 @@ siltcare:v1:<span class="o">&lt;root&gt;</span>:<span class="g">&lt;layout-key&g
   designed but not yet wired into the standing number. This is Silt's mission —
   held as a composition in tension, not a single primitive — with the full honest
   accounting in
-  <a href="https://github.com/nerolabs/silt/blob/main/docs/design/m0.md">docs/design/m0.md</a>.</p>
+  <a href="https://github.com/nerolabs/silt/blob/main/ADVERSARY.md">ADVERSARY.md</a> (claim 3).</p>
   <p>This is deliberately not proof-of-work. It's cheap, and a block is final once
   an intersecting quorum stands behind it — from then on the chain prefers a
   visible stall to a silent rewrite (finalized history is never reorged). The
@@ -165,7 +165,7 @@ siltcare:v1:<span class="o">&lt;root&gt;</span>:<span class="g">&lt;layout-key&g
   dead ends, the decisions — distinct from the <a href='/changelog'>changelog</a>
   (what shipped) and the <a href='/roadmap'>roadmap</a> (what's next).</p>
 
-  <p style="margin-top:3rem"><a href="/#download" class="btn">Download Silt</a> &nbsp;
+  <p style="margin-top:3rem"><a href="/#download" class="btn">Build Silt from source</a> &nbsp;
   <a class='btn ghost' href='/node'>Run a node</a></p>
 </div>
 
