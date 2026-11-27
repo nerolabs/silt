@@ -114,3 +114,28 @@ jobs:
         run: NETEM="" ./integration/flakynet/run.sh
       - name: GCP-shaped impairment (jitter; findings are reproducers, exit 0)
         run: ./integration/flakynet/run.sh
+
+  # Every other integration suite under integration/*/run.sh, ONE JOB PER SUITE, on a clean
+  # network. On 2026-11-27 a clean-clone run of integration/run-all.sh found four suites red that no
+  # check had run since September: two broke the day before on a changed client default, and
+  # retention failed inside the sweep but passed alone. A suite nobody runs is not a gate; one job
+  # per suite gives each its own machine, so a red names its suite and cannot come from a
+  # neighbour's load. (adversarial is the jobs above; flakynet is the GCP-parameter durability rig.)
+  suite:
+    name: ${{ matrix.suite }} — integration suite (docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false   # one suite's finding must not hide the others'
+      matrix:
+        suite: [consensus, bond, redteam, sybil, retention, takedown, privacy, client, nat, audit,
+                economy, churn, floor, chaos, soak, durability, retrieval, upgrade]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the upgrade suite builds from an earlier tag
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: integration/${{ matrix.suite }}/run.sh
+        run: ./integration/${{ matrix.suite }}/run.sh
