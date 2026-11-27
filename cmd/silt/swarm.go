@@ -544,6 +544,12 @@ func swarmAdd(args []string) error {
 						if k < 0 {
 							k = q // learn the network's requirement
 						}
+						if k > 0 && ferr == nil && q > k {
+							// A token with fewer signatures than the network requires is refused at commit, so
+							// asking for fewer only manufactures a failure. Raise it, and say so.
+							fmt.Fprintf(os.Stderr, "note: -token-quorum %d is below this network's requirement of %d; gathering %d\n", k, q, q)
+							k = q
+						}
 						if k == 0 {
 							publish(nil) // this network requires no token
 							return

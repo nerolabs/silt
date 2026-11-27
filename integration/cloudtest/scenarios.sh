@@ -89,14 +89,17 @@ b64url_to_hex() {
 # above 0). Default 2. A -token-quorum publish needs the PUBLISHER to reach that
 # many validators for signatures — distinct from validator<->validator reachability.
 # At genesis there are no committed bonds to rank canonical signers, so it falls back
-# to -peers order (a nominal-privacy note). Set TOKEN_QUORUM=1 (or 0) for a first
-# bootstrap run if publisher->validator egress is the thing under test.
+# to -peers order (a nominal-privacy note). The network's derived quorum is the floor: the client
+# raises a lower TOKEN_QUORUM to it rather than mint a token the chain refuses.
 #
 # H6 (blind field test 2026-08-12): a fresh network has no committed bonds, so a
 # token-quorum≥2 publish can't rank canonical signers and the headline publish→fetch
 # GAPs out of the box. The SMOKE path is precisely that first-bootstrap case, so
 # default it to 1 there (an explicit TOKEN_QUORUM= still wins); the full run keeps 2.
-if [ "${SMOKE:-0}" = 1 ]; then : "${TOKEN_QUORUM:=1}"; else : "${TOKEN_QUORUM:=2}"; fi
+# Since 2026-11-26 every untrusted network DERIVES its token quorum (at least 2) and the client
+# learns it from the validators, so the harness default is -1 (learn): a hard-coded 1 now mints a
+# token the chain refuses, and the whole smoke sheet failed on it. An explicit TOKEN_QUORUM= wins.
+: "${TOKEN_QUORUM:=-1}"
 
 # ft_reachable_peers NODE — from NODE, how many of the -peers validators are TCP-
 # reachable on the swarm port? Prints "OK/TOTAL"; lists unreachable refs on stderr.
@@ -225,8 +228,8 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
     echo "  note: token-quorum needs the publisher to reach >= $TOKEN_QUORUM validators to"
     echo "        gather signatures. A shortfall here — not validator<->validator — is the"
     echo "        usual cause of 'could not gather enough publish-token signatures' and a"
-    echo "        chain stuck at height 0. Retry a bootstrap run with TOKEN_QUORUM=1, or"
-    echo "        fix publisher egress to the validators."
+    echo "        chain stuck at height 0. Fix publisher egress to the validators; a quorum below"
+    echo "        the network's derived requirement is raised by the client, not honoured."
   } | tee -a "$FT_DIR/publish-diag-${RUN_ID:-local}.log" >&2
   return 1
 }
