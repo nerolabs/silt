@@ -89,14 +89,17 @@ b64url_to_hex() {
 # above 0). Default 2. A -token-quorum publish needs the PUBLISHER to reach that
 # many validators for signatures — distinct from validator<->validator reachability.
 # At genesis there are no committed bonds to rank canonical signers, so it falls back
-# to -peers order (a nominal-privacy note). Set TOKEN_QUORUM=1 (or 0) for a first
-# bootstrap run if publisher->validator egress is the thing under test.
+# to -peers order (a nominal-privacy note). The network's derived quorum is the floor: the client
+# raises a lower TOKEN_QUORUM to it rather than mint a token the chain refuses.
 #
 # H6 (blind field test 2026-08-12): a fresh network has no committed bonds, so a
 # token-quorum≥2 publish can't rank canonical signers and the headline publish→fetch
 # GAPs out of the box. The SMOKE path is precisely that first-bootstrap case, so
 # default it to 1 there (an explicit TOKEN_QUORUM= still wins); the full run keeps 2.
-if [ "${SMOKE:-0}" = 1 ]; then : "${TOKEN_QUORUM:=1}"; else : "${TOKEN_QUORUM:=2}"; fi
+# Since 2026-11-26 every untrusted network DERIVES its token quorum (at least 2) and the client
+# learns it from the validators, so the harness default is -1 (learn): a hard-coded 1 now mints a
+# token the chain refuses, and the whole smoke sheet failed on it. An explicit TOKEN_QUORUM= wins.
+: "${TOKEN_QUORUM:=-1}"
 
 # ft_reachable_peers NODE — from NODE, how many of the -peers validators are TCP-
 # reachable on the swarm port? Prints "OK/TOTAL"; lists unreachable refs on stderr.
@@ -153,8 +156,16 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
   # 9-cross-nat FAIL left no clue which leg died).
   printf 0 > "$FT_DIR/.ft_publish_gap"; : > "$FT_DIR/.ft_publish_lasterr"
   local node="$1" size="${2:-1048576}" out link lasterr="" any_output=0
-  ssh_node "$node" "head -c $size </dev/urandom >/tmp/ft_src.bin; sha256sum /tmp/ft_src.bin | cut -d' ' -f1" >/tmp/ft_src_sha 2>/dev/null
-  local sha; sha="$(cat /tmp/ft_src_sha 2>/dev/null)"
+  # Creating the source file is one ssh call; a transient ssh failure there used to leave the
+  # publish loop below retrying `open /tmp/ft_src.bin: no such file` for its whole budget. Retry
+  # the creation until it reports the file's hash.
+  local sha="" try
+  for try in 1 2 3 4 5; do
+    ssh_node "$node" "head -c $size </dev/urandom >/tmp/ft_src.bin; sha256sum /tmp/ft_src.bin | cut -d' ' -f1" >/tmp/ft_src_sha 2>/dev/null
+    sha="$(cat /tmp/ft_src_sha 2>/dev/null)"
+    [ ${#sha} -eq 64 ] && break
+    sleep 5
+  done
   local deadline=$(( $(date +%s) + PUBLISH_RETRY_S ))
   while [ "$(date +%s)" -lt "$deadline" ]; do
     # 2>&1 INSIDE the remote command: ssh_node suppresses gcloud stderr (2>/dev/null),
@@ -225,8 +236,8 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
     echo "  note: token-quorum needs the publisher to reach >= $TOKEN_QUORUM validators to"
     echo "        gather signatures. A shortfall here — not validator<->validator — is the"
     echo "        usual cause of 'could not gather enough publish-token signatures' and a"
-    echo "        chain stuck at height 0. Retry a bootstrap run with TOKEN_QUORUM=1, or"
-    echo "        fix publisher egress to the validators."
+    echo "        chain stuck at height 0. Fix publisher egress to the validators; a quorum below"
+    echo "        the network's derived requirement is raised by the client, not honoured."
   } | tee -a "$FT_DIR/publish-diag-${RUN_ID:-local}.log" >&2
   return 1
 }
@@ -2102,7 +2113,7 @@ flow_chain_takedown() {
   if [ ${#root} -ne 64 ]; then record "12-chain-takedown" gap minor "could not decode a 64-hex root from $link"; return; fi
 
   local curator
-  curator="$(ssh_node val-d "/usr/local/bin/silt id -store /var/lib/silt 2>/dev/null | head -1" 2>/dev/null | tr -d '[:space:]' || true)"
+  curator="$(node_field val-d nodeid 2>/dev/null | tr -d '[:space:]')"  # val-d signs as itself: its NodeID is the curator ID
   if [ ${#curator} -ne 64 ]; then record "12-chain-takedown" gap minor "could not read val-d's curator ID (silt id said '${curator}')"; return; fi
   local t0; t0="$(date +%s)"
   relaunch_with val-c "-honor-curators $curator"

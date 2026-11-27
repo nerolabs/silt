@@ -88,11 +88,13 @@ echo "== let both validators accrue consensus standing (bond audits) =="
 sleep 16
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CLAIM (b) CONTROL 1: a token-less publish is REFUSED (-require-tokens is on).
+# CLAIM (b) CONTROL 1: a token-less publish is REFUSED (-require-tokens is on). Since 2026-11-26 the
+# client acquires the network's required token by default, so the token-less publish is asked for
+# explicitly (-token-quorum 0); without that it was not token-less, and this control read as a breach.
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== CLAIM (b) control 1: a token-less publish is REFUSED =="
-dc exec -T holder sh -c "head -c 65536 /dev/urandom > /tmp/f0.bin; silt swarm add /tmp/f0.bin -peers '$PEERS' -registry '$REG'" >/tmp/econ_add0.out 2>&1 || true
+dc exec -T holder sh -c "head -c 65536 /dev/urandom > /tmp/f0.bin; silt swarm add /tmp/f0.bin -token-quorum 0 -peers '$PEERS' -registry '$REG'" >/tmp/econ_add0.out 2>&1 || true
 tail -1 /tmp/econ_add0.out | sed 's/^/  /'
 if grep -qiE 'entry has no publish token|token.*required' /tmp/econ_add0.out; then
   echo "  control 1: PASS — token-less publish refused ('entry has no publish token (required)')"

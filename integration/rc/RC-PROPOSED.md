@@ -181,7 +181,7 @@ reaches it. Diversity's mechanism exists as the DHT address cap, which ships in 
 on /24s only, not ASes. Turning it on, AS keying and relabelling the two census verdicts wait on the
 owner (four decisions, in the 2026-11-27 report).
 
-**3. The shipped default is the defended configuration, and the stock binary runs.** ⚠ *the defended half is gated; "reaches serving" is unreachable BY DESIGN and the condition is restated*
+**3. The shipped default is the defended configuration, and the stock binary runs.** ⚠ *the defended half is gated; "reaches serving" is unreachable BY DESIGN and the condition is restated — the restated condition awaits the owner's sign-off; 2026-11-27: an anchor launch no longer needs -mature-validators (derived, 4)*
 *Done:* every defence this list demonstrates runs flagless; the stock EDGE node reaches serving on
 pure defaults; the stock VALIDATOR refuses, for a reason that names what the operator must supply.
 *Evidence:* integration → e2e → field. Gates four other items.
@@ -237,6 +237,16 @@ bucket of 64 starter grants refilled at 64 an hour, inside the guard's admissibl
 and an empty bucket still advances a fresh identity one publish fee, so no publish is refused for
 it. Both announce themselves at start-up with their override, and the faucet joins the census in
 `TestShippedDefaultLane_EveryDefenceIsOnBeforeAnyFlag`.
+
+*2026-11-27 — AN ANCHOR LAUNCH DERIVES ITS COEFFICIENT.* Starting the `silt-experiment` network
+showed a gap in "the stock binary runs": three validators given `-anchors` and nothing else refused
+to start, naming `-mature-validators` and leaving the operator to guess a value. The coefficient is
+now derived like the other launch parameters (`DerivedMatureValidators` = 4, the smallest operator
+set that tolerates one fault), announced on start-up with its override, and gated by
+`e2e/TestAnAnchorLaunchDerivesItsMaturityCoefficient` (red with the derivation removed). It is a
+floor, not the barrier: the shed still waits for 16 TiB of non-anchor bonded storage held through
+the maturity window. A validator with neither anchors nor a checkpoint is still refused
+(`TestInvariantB_S6_ColdStartScaffoldRefusedByDefault`, unchanged).
 
 **4. The repo reads without the record that was deleted.** ✅ *gated*
 *Done:* no milestone, lane, catalog, slice, issue or change-request identifiers in source,
@@ -553,7 +563,7 @@ structurally, so the run confirmed a green local integration rather than discove
 `go test -timeout 40m ./...` (what `release.yml` runs); its 1M-element fold-cost MEASUREMENT rung
 exceeds Go's default 10m timeout, which is a property of the invocation, not a defect.
 
-**6. The claims the adversary receives exist as an artifact.** ⚠ *cold-read 2026-11-26 by a blind adversary, which denied claims 1 and 3; fixes in flight*
+**6. The claims the adversary receives exist as an artifact.** ⚠ *cold-read 2026-11-26 by a blind adversary, which denied claims 1 and 3; every fix has LANDED (2026-11-26/27: #904, #906 for claim 1; #912, #913 for claim 3; #915 for the accountability finding); a second, independent red team re-reads them before this is held*
 *Done:* an in-repo statement of the three denials in checkable form, written so a cold reader
 can construct attacks from it. `ADVERSARY.md`, at the repository root.
 *Evidence:* a cold read — by someone who has not read this list.
@@ -609,6 +619,16 @@ build falls short of the claim is not, and is not there.
 *The out-of-scope material still exists* — in this list, under *What this list deliberately does
 not cover*. It is for the owner, to hand over separately if the grader spends its budget on a
 gap the vision already concedes. It is not in the artifact.
+
+*2026-11-27 — WHERE IT STANDS.* The claims are the artifact (`ADVERSARY.md`), and the blind cold
+read denied claims 1 and 3 and found one accountability gap. All three are fixed on `main`:
+claim 1's two findings by #904 (a validator's own publish reaches the validators from a throwaway
+identity) and #906 (a serving node's provisional lane names no fetcher); claim 3 by #912 and #913
+(the anchor shed waits for a floor of bonded storage held through a sustained window, and
+ADVERSARY.md states the assumption); the accountability gap — any proposer could take a root down —
+by #915 (takedowns are curator-signed, paid and single-use). A fix is not a re-test: this item is
+held when a second red team, independent of the first, reads the fixed claims and fails to deny them.
+That run waits on the owner's Cyber Verification Program enrollment.
 
 **7. No consensus state derives from a field the block hash does not cover.** ✅ *gated*
 *Done:* the seating map — which sets the maturity coefficient and decides whether the launch
@@ -1626,7 +1646,7 @@ verdict, not a participating validator.
 
 ## Tier C — field
 
-**21. Publish and fetch work on the internet as it is.** ⚠ *PUBLISH/FETCH HELD; THE CHAIN HALF SHIPS DISCLOSED — the pass did NOT reproduce. The coverage number now REPRODUCES BELOW THE FIELD TIER (`core/node/bondreg_relay_coverage_measure_test.go`): 95% on a wire that delivers, 33% on one at a quarter of the deadline's assumed floor, with the field's 47% between them — and the attribution says the two arms carry for OPPOSITE reasons. On a congested wire every carried leg carries the proposer's OWN registration. THAT WAS READ AS A CEILING — the peer has no bytes to report — AND IT IS NOT ONE: counted at ARRIVAL rather than at the send, 860 of 876 submits arrived and all 860 were QUEUED by their receivers while 864 acknowledgements expired, so the gap is a RECEIPT and not a delivery. The cause is one constant: a per-attempt deadline sized off `RequestSizeFloorBytesPerSec` = 256 KiB/s, which a 1.5 MB payload cannot meet on a link a quarter of it, so the exchange expires while its bytes are still crossing and can never succeed however often it is retried. Made per-peer 2026-09-22 (`core/node/peerrate.go`): the congested arm went from wedged at height 1 to committing, 33% -> 44% coverage, 876 -> 468 submits, with the fast arm byte-for-byte unchanged. It is NOT closed — the deadline now reaches the 30 s size-extension cap and the link still queues several 1.5 MB payloads per ordered pair. The same run prices the wire and the gather legs are not what saturates it: renewal submits are 5.0x the legs the relay covers on a fast wire and 43.8x on a congested one, where they alone ask for 0.8x the link's whole capacity — though the congested figure is inflated by the same lost receipt, since 1.01 submits per peer per sweep is what a destroyed acknowledgement produces and the fast wire emits 0.03 from identical code. Run `5654432-46734` passed at a 68 s max gap; run `e1c3edc-53073`, the second drive of the SAME binary, FAILED at 404 s against the same 220 s bound. One pass and one fail against a failure that reproduced seven times is "sometimes", not held. The composition is not what failed — the control lane was live on all four seats with zero lane failures, zero last-resort deliveries and zero starved control frames — and the FIELD reading of the shed's COVERAGE on that run was 19 gather legs relayed by digest at ~1 KB against 21 that carried the full ~1,574,000 B, so roughly half the critical path still moved multi-megabyte payloads on a wire the deadline assumes is faster (the local two-arm measurement above now brackets that number and says what the carried half is). The history below is kept in full because every eliminated candidate is part of the evidence. The mechanism is NAMED — the ~1.5 MB bond proof on the consensus critical path against a deadline sized off a link rate the composed wire does not deliver — the route off that path is BUILT (3,030,653 B -> 1,131 B per attester per round, transport, no era), and it has now been DRIVEN UNDER IMPAIRMENT — the tier that can hold the claim — where it DOES NOT CLOSE IT: run `5af09a9-88230` wedged for 796 s at HEAD with the relay firing, because the relay covers 1 of n-1 attesters by construction and a stalled renewal re-broadcast 1.5 MB every 30 s until it saturated the outbound budget and dropped the consensus frames that would clear the stall. THREE CAUSES WERE FOUND, BUILT AND DRIVEN (runs `7eaf3bd-75421`, `1b0b933-52703`): the renewal storm (29 submits -> 0), the outbound bound's blindness to frame size (20 control frames dropped -> 0), and the relay's 1-of-n-1 coverage (an inventory that reaches 42:25 on a healthy chain). The chain STILL wedges at 796 s, six reproductions deep, and the reason is now a single sentence: THE CONSENSUS CRITICAL PATH SHARES ONE ORDERED PER-PEER CONNECTION WITH THE PAYLOAD THAT CONGESTS IT. Every fix above the transport moved its own number without moving the wedge, because each still needs a round trip on the connection the payload owns. This is transport work, not consensus work. The instrumentation also turned up a SECOND failure, unbounded outbound frames, that OOM-killed a validator — that one is CLOSED, the outbound path has a bound*
+**21. Publish and fetch work on the internet as it is.** ✅ *held — two consecutive full-topology field sheets, 2026-11-27: `21-impaired-commit` (the chain kept committing under delay 80 ms ± 20 ms, 1% loss and 25% reordering on every validator's egress, with publishing continuous) and `21-cross-region-cold-fetch` (bit-perfect from a NATed us-west1 publisher to a cold europe-west1 seat) PASS on both; sheets `b1f1de29-30885` (26/1/1) and `65c6182b-98679` (28/0/0). The September record below is kept in full as the history of the wedge.*
 A NATed publisher in one region, a cold fetcher in another, bit-perfect bytes inside a bound
 derived from the deployed configuration. The chain keeps committing under sustained load with
 injected latency, jitter, loss and reordering.
@@ -2643,6 +2663,17 @@ this path**, so the lead stands open with one candidate eliminated.
 The publish/fetch half is done and is not affected by any of it. The chain half is NOT held today
 and none of the above holds it: if the close does not land by the date, this item ships disclosed
 with the mechanism named, the repro in the tree and the route measured.
+
+*2026-11-27 — HELD, AND WHAT CHANGED SINCE THE WEDGE.* The September runs went one pass, one
+fail. Since then the renewal resend storm is gone (876 submits to 12 on the congested arm of
+`core/node/bondreg_relay_coverage_measure_test.go`, which now commits where it wedged at height 1),
+a bond submit is ~64 KB rather than ~1.5 MB, the control lane carries consensus frames on their own
+connection, and the nightly composed netem arm has been green four nights running on `main`. The
+field confirms it twice in a row on the full topology. Two harness defects surfaced first and are
+fixed in #925 (a hard-coded `-token-quorum 1` that the derived quorum refuses, and a publish of a
+missing source file). Still intermittent and NOT counted here: `13-validator-crash` failed on the
+first sheet (the restarted validator signed h=14 but did not commit it in 300 s) and passed on the
+second; it belongs to item 13 and is tracked there.
 
 **22. Every item has a cloud-harness run.** Each item above named in a cloud scenario, with
 the gaps written down as decisions rather than left as silence.

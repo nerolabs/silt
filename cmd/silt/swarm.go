@@ -439,11 +439,13 @@ func swarmAdd(args []string) error {
 	if rerr := run(func(done func()) {
 		publish := func(tok *ports.PublishToken) {
 			opts := pipeline.Options{ChunkSize: *chunkSize, Mode: m, Rand: rand.Reader} // Rand needed for the private default (H6)
-			switch {
-			case tok != nil:
-				opts.Token = tok // unlinkable: no Publisher identity
-			case *allowPublisher:
-				opts.Publisher = e.nd.ID() // opt-in: records permanent linkage
+			opts.Token = tok                                                            // nil when the network requires none
+			if *allowPublisher {
+				// Opt-in: record the durable publisher, WITH the token the network requires. A default
+				// chain refuses a publisher entry before it looks at the token (refuse-to-surveil); a
+				// chain that allows publishers still requires the token. Before tokens became the
+				// default the token branch won and silently dropped this request.
+				opts.Publisher = e.nd.ID()
 			}
 			// Default (neither): publish carries no durable identity — M0-safe
 			// on the chain; a credit-gated registry will refuse it, which is
@@ -543,6 +545,12 @@ func swarmAdd(args []string) error {
 						}
 						if k < 0 {
 							k = q // learn the network's requirement
+						}
+						if k > 0 && ferr == nil && q > k {
+							// A token with fewer signatures than the network requires is refused at commit, so
+							// asking for fewer only manufactures a failure. Raise it, and say so.
+							fmt.Fprintf(os.Stderr, "note: -token-quorum %d is below this network's requirement of %d; gathering %d\n", k, q, q)
+							k = q
 						}
 						if k == 0 {
 							publish(nil) // this network requires no token

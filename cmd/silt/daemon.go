@@ -483,8 +483,11 @@ func cmdDaemon(args []string) error {
 	// and the ~2s compute window that is ~540 MiB, so the default carries ~2x margin.
 	floorSet, ttlSet, byzSet, marginSet, epochSet, quorumSet := false, false, false, false, false, false
 	bondSet, tokensSet, grantSet, matureBondedSet, matureWindowSet := false, false, false, false, false
+	matureValidatorsSet := false
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
+		case "mature-validators":
+			matureValidatorsSet = true
 		case "mature-bonded":
 			matureBondedSet = true
 		case "mature-window":
@@ -532,7 +535,12 @@ func cmdDaemon(args []string) error {
 	objectivePath := (*validator || *floorBox || follow) && *objective && *minRep > 0
 	effFloor, defaulted := effectiveBondFloor(floorSet, explicitFloor, objectivePath)
 	var matureBondedBytes int64
-	if matureBondedSet {
+	if matureBondedSet && strings.TrimSpace(*matureBonded) == "0" {
+		// The documented "no floor": parseSize refuses a zero size (a zero pledge or bond is a
+		// mistake), so the flag's own documented opt-out crash-looped every node that passed it —
+		// the maturing field topology does, and the whole opt-in sheet could not start.
+		matureBondedBytes = 0
+	} else if matureBondedSet {
 		var perr error
 		if matureBondedBytes, perr = parseSize(*matureBonded); perr != nil {
 			return fmt.Errorf("-mature-bonded %q: %w", *matureBonded, perr)
@@ -673,6 +681,17 @@ func cmdDaemon(args []string) error {
 	fmt.Printf("dht-address-cap: %s — cap_direct=%d cap_relay=%d reserve=%d (K=%d): eclipse floor per bucket = %d paid /%d prefixes + %d free slots; IPv6 /32; loopback/link-local exempt, RFC1918 classified%s\n",
 		addrMode, *dhtDomainCap, *dhtRelayCap, *dhtAddressReserve, cfg.K, paidPrefixes, *dhtAddressWidth, cfg.K-*dhtAddressReserve,
 		map[bool]string{true: " (shadow: counting would-be refusals, refusing nothing)", false: ""}[addrMode == dht.AddressCapShadow])
+	if addrMode == dht.AddressCapShadow {
+		// The shadow run's evidence, in the log a field run collects: what the cap WOULD have
+		// refused at the shipped settings. Turning the cap on is an owner's decision that rests on
+		// these numbers, and a node without -ui otherwise reports them nowhere.
+		var tally func()
+		tally = func() {
+			fmt.Println(addressCapShadowTally(nd.Table().ShadowRefusals(), *dhtAddressReserve, *dhtRelayCap, nd.Table().Size()))
+			clk.AfterFunc(addressCapTallyEvery, tally)
+		}
+		clk.AfterFunc(addressCapTallyEvery, tally)
+	}
 	if *blockPeers != "" {
 		var blocked []ports.NodeID
 		for _, s := range strings.Split(*blockPeers, ",") {
@@ -1054,6 +1073,14 @@ func cmdDaemon(args []string) error {
 				return fmt.Errorf("anchor %q: %w", s, err)
 			}
 			anchorSet[aid] = true
+		}
+		if len(anchorSet) > 0 && !matureValidatorsSet && *objective && *minRep > 0 {
+			// An anchor launch set with no coefficient used to refuse to start, naming a flag the
+			// operator then had to guess a value for. The coefficient is derived like the other
+			// launch parameters; the bonded-storage floor and the sustained window remain the
+			// real barrier to the shed.
+			*matureValidators = DerivedMatureValidators
+			fmt.Printf("consensus: mature-validators defaulted to %d for this untrusted (objective) launch — the anchors shed only once that many independent operators are needed to reach a third of the bonded weight (and the mature-bonded floor and window also hold). Override with -mature-validators, identically across the swarm\n", DerivedMatureValidators)
 		}
 		if len(anchorSet) > 0 {
 			// In OBJECTIVE mode the launch requirement is DERIVED — a strict anchor
@@ -2955,6 +2982,14 @@ const DerivedMatureWindowCycles = 4
 // weight that capture needs after it, cost more than 10 TiB of sealed, continuously re-proved
 // storage. A network smaller than that keeps its anchors, which is the safe side.
 const DerivedMatureBondedBytes = int64(16) << 40
+
+// DerivedMatureValidators is the Nakamoto coefficient an untrusted launch's anchor shed waits for
+// when the operator names anchors but no coefficient. Four is the smallest set of independent
+// operators that tolerates one faulty one (n >= 3f+1 at f = 1): below it, one operator can stall or
+// split a third of the weight. It is a floor, not the barrier — the shed also waits for
+// DerivedMatureBondedBytes of non-anchor bonded storage held through the maturity window, so a
+// small network keeps its anchors.
+const DerivedMatureValidators = 4
 
 // grantDenyFloorOneFee is the -grant-deny-floor default: the sentinel resolves to ONE
 // publish fee read from the ledger, never a duplicated literal. An empty bucket advances

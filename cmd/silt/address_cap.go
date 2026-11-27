@@ -52,3 +52,23 @@ func pickRelay(self ports.NodeID, relays []tcpnet.Peer, refused map[ports.NodeID
 	}
 	return best, found
 }
+
+// addressCapTallyEvery is how often a shadow-mode daemon logs its would-refuse tally.
+const addressCapTallyEvery = 600 * ports.Second
+
+// addressCapShadowTally renders the shadow run's evidence as one log line: the would-be refusals
+// at the SHIPPED reserve and relay cap (the shadow also records other candidate settings), by peer
+// class, beside how many entries the routing table holds.
+func addressCapShadowTally(refusals map[dht.ShadowKey]int, reserve, capRelay, tableSize int) string {
+	byClass := map[string]int{}
+	total := 0
+	for k, v := range refusals {
+		if k.Reserve != reserve || k.CapRelay != capRelay {
+			continue
+		}
+		byClass[className(k.Class)] += v
+		total += v
+	}
+	return fmt.Sprintf("dht-address-cap: shadow tally — would refuse %d (direct %d, relayed %d, unverified %d) at reserve=%d cap_relay=%d; routing table holds %d",
+		total, byClass["direct"], byClass["relayed"], byClass["unverified"], reserve, capRelay, tableSize)
+}

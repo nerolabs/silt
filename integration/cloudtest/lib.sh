@@ -471,3 +471,27 @@ slo_assert() { # slo_assert FLOW SEVERITY "detail" OK ELAPSED
   if [ "$ok" = 1 ]; then record "$flow" pass "$sev" "$detail" "$elapsed"
   else record "$flow" fail "$sev" "$detail" "$elapsed"; fi
 }
+
+# scan_address_cap_shadow — the DHT address cap ships in SHADOW mode: it counts the entries it would
+# refuse and refuses none. Turning it on is an owner's decision that should rest on field numbers,
+# so every shadow-mode daemon logs a tally every 10 minutes ("dht-address-cap: shadow tally — would
+# refuse N (direct a, relayed b, unverified c) …") and this row collects each node's last one. It is
+# evidence for a decision, not a gate: it never fails the sheet.
+scan_address_cap_shadow() {
+  local n line total=0 nodes=0 worst="" worst_n=-1 dsum=0 rsum=0 usum=0 v d r u
+  for n in $(node_names); do
+    line="$(ssh_node "$n" "sudo journalctl -u silt --no-pager -o cat 2>/dev/null | grep -F 'shadow tally' | tail -1" 2>/dev/null || true)"
+    [ -n "$line" ] || continue
+    v="$(printf '%s' "$line" | sed -nE 's/.*would refuse ([0-9]+) \(direct ([0-9]+), relayed ([0-9]+), unverified ([0-9]+)\).*/\1 \2 \3 \4/p')"
+    [ -n "$v" ] || continue
+    read -r v d r u <<<"$v"
+    nodes=$((nodes + 1)); total=$((total + v)); dsum=$((dsum + d)); rsum=$((rsum + r)); usum=$((usum + u))
+    [ "$v" -gt "$worst_n" ] && { worst_n=$v; worst=$n; }
+  done
+  if [ "$nodes" -eq 0 ]; then
+    record "infra-address-cap-shadow" skip info "no node logged a shadow tally (a run shorter than the 10-minute tally, or the cap not in shadow mode)"
+    return 0
+  fi
+  record "infra-address-cap-shadow" pass info "address cap SHADOW evidence from $nodes node(s): would have refused $total routing-table entries in all (direct $dsum, relayed $rsum, unverified $usum); most on $worst ($worst_n). Read before turning the cap on."
+}
+

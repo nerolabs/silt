@@ -377,7 +377,7 @@ run_scenarios() {
   # The node-liveness precondition runs LAST, before teardown: scan the whole cohort
   # for OOM-kills / crash-loops and surface it as a first-class finding (a run whose
   # nodes died cannot grade its flows — proof-oom field corroboration 2026-08-17).
-  { run_all_scenarios || true; mem_sampler_stop; scan_node_memory || true; scan_node_liveness || true; } 2>&1 | tee -a "$FT_DIR/console-$RUN_ID.log"
+  { run_all_scenarios || true; mem_sampler_stop; scan_node_memory || true; scan_node_liveness || true; scan_address_cap_shadow || true; } 2>&1 | tee -a "$FT_DIR/console-$RUN_ID.log"
 }
 
 report() {
