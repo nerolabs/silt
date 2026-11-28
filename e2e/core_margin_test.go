@@ -214,7 +214,7 @@ func measureCoreMargin(t *testing.T, edge, run int) marginRow {
 		// A publish right after start can race the validators' issuer-key exchange: the
 		// registry's validator has not yet fetched the other signer's key and refuses the
 		// token "1 of 2". That one refusal is retried (a node fetches an unknown signer's key
-		// on demand, #934); any other failure fails the test. A refused attempt adds a little
+		// on demand, so the next attempt verifies); any other failure fails the test. A refused attempt adds a little
 		// traffic to the measured window — small beside the demand being measured.
 		var out string
 		obj := o
