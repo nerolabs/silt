@@ -176,7 +176,7 @@ func (n *Node) StartReprovide() {
 // lookup asks. The sweep only refreshes records elsewhere, so it can take its time.
 const (
 	announceInFlight  = 4
-	announcePerSecond = 20
+	announcePerSecond = 5 // 20 still kept six nodes on two vCPUs at ~27% CPU each: each key is ~10 RPCs
 )
 
 func (n *Node) announceAll(ids []ports.ChunkID, done func()) {
