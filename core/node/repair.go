@@ -121,7 +121,10 @@ func (n *Node) AnnounceHeld(done func(int)) {
 		if m, ok := n.proofMeta[id]; ok { // resident: Root+Column, no paging in this all-held sweep
 			key = placementKey(m.Root, id, m.Column)
 		}
-		n.provs.Add(n.providerRecord(key))
+		// No local record is signed here. Signing one per held piece up front — 300k ed25519
+		// signatures per sweep, on the loop — was 60% of a storage node's CPU on the test
+		// network. The node answers for what it holds on demand (withSelfIfHeld), and the paced
+		// announce below refreshes the local record as it reaches each key.
 		held++
 		if !seen[key] {
 			seen[key] = true
@@ -204,12 +207,13 @@ func (n *Node) announceAll(ids []ports.ChunkID, done func()) {
 				}
 				start()
 			}
+			rec := n.providerRecord(id) // self-certifying announcement (H5)
+			n.provs.Add(rec)            // and this node's own record, refreshed at the paced rate
 			if len(targets) == 0 {
 				finish()
 				return
 			}
 			pending := len(targets)
-			rec := n.providerRecord(id) // self-certifying announcement (H5)
 			for _, t := range targets { // a key's targets in parallel too
 				n.request(t, ports.Message{Kind: ports.MsgAddProvider, Target: id, Provider: &rec},
 					func(ports.Message, error) {
