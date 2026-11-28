@@ -8,6 +8,8 @@ import (
 	"github.com/nerolabs/silt/adapters/identity"
 	"github.com/nerolabs/silt/adapters/memstore"
 	"github.com/nerolabs/silt/core/chunk"
+	"github.com/nerolabs/silt/core/link"
+	"github.com/nerolabs/silt/core/manifest"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -156,5 +158,39 @@ func TestASecondRangeSkipsTheRegistry(t *testing.T) {
 	}
 	if size != int64(len(r.data)) {
 		t.Fatalf("NetFileSize = %d, want %d", size, len(r.data))
+	}
+}
+
+// TestTheManifestCacheIsBoundedByBytes: it holds many small manifests, evicts oldest first
+// when the byte budget is reached, and never caches one larger than the whole budget.
+func TestTheManifestCacheIsBoundedByBytes(t *testing.T) {
+	var c manifestCache
+	mk := func(chunks int) *manifest.Manifest {
+		m := &manifest.Manifest{Chunks: make([][]byte, chunks)}
+		return m
+	}
+	h := func(i int) link.Handle { return link.Handle{Root: ports.HashBytes([]byte{byte(i), byte(i >> 8)})} }
+	for i := 0; i < 100; i++ {
+		c.put(h(i), mk(100))
+	}
+	if len(c.order) != 100 || c.get(h(0)) == nil {
+		t.Fatalf("100 small manifests: %d cached; all should fit", len(c.order))
+	}
+	big := (manifestCacheBytes / 56) / 3 // a third of the budget each
+	for i := 1000; i < 1004; i++ {
+		c.put(h(i), mk(big))
+	}
+	if c.bytes > manifestCacheBytes {
+		t.Fatalf("cache holds %d bytes, over its %d budget", c.bytes, manifestCacheBytes)
+	}
+	if c.get(h(0)) != nil {
+		t.Fatal("the oldest entry survived a byte-budget eviction")
+	}
+	if c.get(h(1003)) == nil {
+		t.Fatal("the newest entry was evicted")
+	}
+	c.put(h(9999), mk(2*manifestCacheBytes/56))
+	if c.get(h(9999)) != nil {
+		t.Fatal("a manifest larger than the whole budget was cached")
 	}
 }
