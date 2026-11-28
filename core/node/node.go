@@ -401,6 +401,9 @@ func evictPeerInfoIfFull[V any](m map[ports.NodeID]V, keep ports.NodeID) {
 
 // Stats are per-node counters the sim reports on.
 type Stats struct {
+	// ShardsPlaced counts every placement a Distribute landed: a publish's progress, which a
+	// client watches so a large upload is bounded by stalling, not by its size.
+	ShardsPlaced int64
 	// WorkingSetOverflow counts fetched pieces held in memory because the pledge was full
 	// (workingset.go). A node that counts these is fetching with no room in its pledge.
 	WorkingSetOverflow int

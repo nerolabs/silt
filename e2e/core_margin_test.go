@@ -211,8 +211,25 @@ func measureCoreMargin(t *testing.T, edge, run int) marginRow {
 		rng.Read(want)
 		src := filepath.Join(t.TempDir(), fmt.Sprintf("o%d.bin", o))
 		os.WriteFile(src, want, 0o644)
-		out := runClient(t, "swarm", "add", src, "-peers", strings.Join(issuers, ","),
-			"-registry", regRef, "-token-quorum", "2", "-chunk-size", "262144")
+		// A publish right after start can race the validators' issuer-key exchange: the
+		// registry's validator has not yet fetched the other signer's key and refuses the
+		// token "1 of 2". That one refusal is retried (a node fetches an unknown signer's key
+		// on demand, so the next attempt verifies); any other failure fails the test. A refused attempt adds a little
+		// traffic to the measured window — small beside the demand being measured.
+		var out string
+		obj := o
+		for deadline := time.Now().Add(60 * time.Second); ; {
+			o, err := runClientAllowErr(t, "swarm", "add", src, "-peers", strings.Join(issuers, ","),
+				"-registry", regRef, "-token-quorum", "2", "-chunk-size", "262144")
+			out = o
+			if err == nil {
+				break
+			}
+			if !strings.Contains(o, "too few distinct qualified validator signatures") || time.Now().After(deadline) {
+				t.Fatalf("run %d: publish %d failed: %v\n%s", run, obj, err, o)
+			}
+			time.Sleep(2 * time.Second)
+		}
 		link := regexp.MustCompile(`silt:v1:\S+`).FindString(out)
 		if link == "" {
 			t.Fatalf("run %d: publish %d printed no link:\n%s", run, o, out)
