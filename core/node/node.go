@@ -950,6 +950,8 @@ type Node struct {
 	// issuerKeyAsked is when IssuerKeyOrFetch last asked each issuer for its key, so a
 	// validator meeting an unknown signer fetches its key once per backoff, not per check.
 	issuerKeyAsked map[ports.NodeID]ports.Time
+	// writers, when set (-writers), says which peers connect from operator-listed addresses.
+	writers ports.WriterOracle
 	// heldKeys indexes the placement keys this node holds a coded shard under (holdsKey).
 	heldKeys    map[ports.Hash]bool
 	heldKeysAt  ports.Time
@@ -2211,7 +2213,7 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 		// nil record is the legacy self-vouch (accepted only when not strict).
 		// Fetchers also hash-verify chunk bytes, so a lying provider wastes time.
 		// An eclipser drops the record (H5-B) but still acks, hiding the suppression.
-		if rec, ok := n.acceptAnnounce(msg.Target, from, msg.Provider); ok && !n.eclipser {
+		if rec, ok := n.acceptAnnounce(msg.Target, from, msg.Provider); ok && !n.eclipser && n.knownKeyFor(from, msg.Target) {
 			n.provs.Add(rec)
 		}
 		n.reply(from, msg, ports.Message{Kind: ports.MsgAddProviderAck, OK: true})

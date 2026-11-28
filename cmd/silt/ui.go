@@ -78,6 +78,7 @@ type uiServer struct {
 	serveFetched  bool                                 // UI fetches are retained, hosted and announced (consumer==provider)
 	token         string                               // per-daemon bearer token gating state-changing calls
 	traffic       func() map[string]tcpnet.KindTraffic // the transport's meter; nil when there is none
+	writesRefused func() int64                         // -writers' refusal count; nil when anyone may write
 	webOrigins    []string                             // extra web origins allowed to draw content (e.g. https://app.example.com); off by default. Lets a hosted resolver surface render from this local node.
 	addressCap    addressCapConfig                     // The configured observed-address cap, reported with series A/B/E
 	// statusExtra, when non-nil, fills the one optional extra block on GET
@@ -226,6 +227,11 @@ type relayFanInInfo struct {
 	Clients   int     `json:"clients"`  // RELAYED entries in the table
 	TopShare  float64 `json:"topShare"` // the top relay's share of them (0 when none)
 	PerRelay  []int   `json:"perRelay"` // clients per relay, descending, unnamed
+}
+
+type writersInfo struct {
+	Restricted bool  `json:"restricted"`
+	Refused    int64 `json:"refused"`
 }
 
 func className(c ports.PeerClass) string {
@@ -601,6 +607,9 @@ type statusInfo struct {
 	// message kind since start (tcpnet.Transport.Traffic). Node-wide, no peer
 	// identities; served to the token holder only, like the delivery telemetry.
 	Traffic map[string]tcpnet.KindTraffic `json:"traffic,omitempty"`
+	// Writers is present when -writers limits who may write: the node is open to read and
+	// serve, closed to writes from anyone else, and Refused counts what it turned away.
+	Writers *writersInfo `json:"writers,omitempty"`
 	// Privacy reports the -privacy posture on every response, tokened or not: mode is the
 	// flag in force, default is the compiled default. A page renders the pre-release
 	// banner when mode is "off"; a fleet observer can tell "withheld by policy" from
@@ -1008,6 +1017,9 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 			out.Traffic = s.traffic()
 		}
 		out.Network = s.nd.EstimateNetwork()
+		if s.writesRefused != nil {
+			out.Writers = &writersInfo{Restricted: true, Refused: s.writesRefused()}
+		}
 		if ch := s.nd.Chain(); ch != nil {
 			era := ch.EraState()
 			out.Chain = &chainInfo{Height: ch.Len(), Entries: ch.EntryCount(),

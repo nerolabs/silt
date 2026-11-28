@@ -93,6 +93,12 @@ func (t *Transport) observeConn(id ports.NodeID, remote net.Addr, viaRelay bool)
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if !viaRelay {
+		if t.observedIPs == nil {
+			t.observedIPs = map[ports.NodeID]net.IP{}
+		}
+		t.observedIPs[id] = remoteIP(remote)
+	}
 	group, _ := addrGroup(t.salt, remoteIP(remote), t.v4Width, t.v6Width)
 	class := ports.ClassDirect
 	if viaRelay {
@@ -117,3 +123,17 @@ func (t *Transport) ClassOf(id ports.NodeID) (ports.PeerClass, uint64, bool) {
 }
 
 var _ ports.PeerClassifier = (*Transport)(nil)
+
+// dialBackMatchesObserved reports whether addr's host is the address id last connected from
+// directly. With no direct observation there is nothing to match, and no dial-back.
+func (t *Transport) dialBackMatchesObserved(id ports.NodeID, addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	want := net.ParseIP(host)
+	t.mu.Lock()
+	got := t.observedIPs[id]
+	t.mu.Unlock()
+	return want != nil && got != nil && want.Equal(got)
+}

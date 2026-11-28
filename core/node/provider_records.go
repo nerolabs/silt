@@ -88,6 +88,27 @@ func (n *Node) acceptedProviderIDs(key ports.Hash, recs []ports.ProviderRecord) 
 	return out
 }
 
+// SetWriterOracle tells the node which peers connect from operator-listed writer addresses
+// (-writers), so it can hold a non-writer's provider records to content it already knows.
+func (n *Node) SetWriterOracle(o ports.WriterOracle) { n.writers = o }
+
+// knownKeyFor reports whether to keep from's provider record for key. A writer's always; a
+// non-writer's only for a key this node, or a writer, already provides — content the operator
+// published. Otherwise a joiner could announce "I hold X" for any hash and make the operator's
+// nodes an index of who holds content the operator never published. A viewer re-serving the
+// operator's own files announces keys that are already known, and is kept.
+func (n *Node) knownKeyFor(from ports.NodeID, key ports.Hash) bool {
+	if n.writers == nil || n.writers.IsWriter(from) {
+		return true
+	}
+	for _, p := range n.provs.IDs(key) {
+		if p == n.id || n.writers.IsWriter(p) {
+			return true
+		}
+	}
+	return false
+}
+
 // heldKeyIndexAge is how stale the held-key index may get. A piece stored since the last
 // rebuild already has a fresh provider record from its store; one dropped since is answered
 // for at most this much longer, and a fetch that finds it gone moves on.
