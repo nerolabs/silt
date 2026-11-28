@@ -947,6 +947,10 @@ type Node struct {
 	// issuerKeyAsked is when IssuerKeyOrFetch last asked each issuer for its key, so a
 	// validator meeting an unknown signer fetches its key once per backoff, not per check.
 	issuerKeyAsked map[ports.NodeID]ports.Time
+	// heldKeys indexes the placement keys this node holds a coded shard under (holdsKey).
+	heldKeys    map[ports.Hash]bool
+	heldKeysAt  ports.Time
+	heldKeysLen int
 	// manifests holds recently opened manifests for ranged reads (NetGetRange).
 	manifests manifestCache
 	// Prepaid publish credits (M0 privacy D3 / F4). A token request may
@@ -2165,6 +2169,7 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 			// Serve only LIVE records: a lapsed record is a departed holder, and
 			// re-serving it propagates the dial-storm to whoever asked us.
 			recs = n.provs.Live(msg.Target, int64(n.clock.Now()))
+			recs = n.withSelfIfHeld(msg.Target, recs)
 		}
 		n.reply(from, msg, ports.Message{
 			Kind:         ports.MsgGetProvidersReply,
