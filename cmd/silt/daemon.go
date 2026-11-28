@@ -329,6 +329,9 @@ func cmdDaemon(args []string) error {
 		tr.SetAdvertise(*advertise)
 	}
 	var store ports.ChunkStore
+	if err := useStoreTempDir(*storeDir); err != nil {
+		return err
+	}
 	disk, err := diskstore.Open(*storeDir)
 	if err != nil {
 		return err
@@ -3202,4 +3205,24 @@ func parseCurators(s string, self ports.NodeID) ([]ports.NodeID, error) {
 		return nil, fmt.Errorf("names no curator")
 	}
 	return out, nil
+}
+
+// useStoreTempDir points this daemon's temporary files — a publish client's staged pieces and
+// an uploaded file's spill — at <store>/tmp, emptied at startup, unless the operator set
+// TMPDIR. A large publish stages its whole object plus parity before placing it, and the
+// system temp directory is often a small RAM-backed tmpfs: a 2.5 GB film failed there with
+// "disk quota exceeded", and a smaller one would quietly have cost RAM instead of disk.
+// Leftovers from a crash are ciphertext, and are removed here.
+func useStoreTempDir(storeDir string) error {
+	if os.Getenv("TMPDIR") != "" {
+		return nil
+	}
+	dir := filepath.Join(storeDir, "tmp")
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("clearing %s: %w", dir, err)
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	return os.Setenv("TMPDIR", dir)
 }
