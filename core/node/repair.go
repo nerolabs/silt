@@ -165,11 +165,16 @@ func (n *Node) StartReprovide() {
 // With domain diversity on (H5-B) the target set is the K NodeID-closest PLUS a
 // domain-SPREAD near set, so the record also lands on honest nodes in domains an
 // adversary surrounding the closest NodeIDs doesn't control — keeping it findable.
-// announceInFlight bounds how many keys one announce sweep works on at once. A storage node
-// holds ~10^5 keys and a sweep must finish well inside ProviderRecordTTL, or records lapse
-// before they are refreshed: one key at a time — a lookup, then each target in turn — took
-// more than five hours for 140k keys on the test network, against a 30-minute TTL.
-const announceInFlight = 16
+// An announce sweep is PACED. A storage node holds ~10^5 keys, each a lookup plus an
+// announcement to each of its closest nodes; sweeping that as fast as the network answers
+// starved the test network's whole VM — six nodes on two vCPUs, a sweep every 15 minutes —
+// until its own network interface timed out. Discoverability does not ride on the sweep: a
+// holder answers for what it holds (withSelfIfHeld), and placement puts pieces on the nodes a
+// lookup asks. The sweep only refreshes records elsewhere, so it can take its time.
+const (
+	announceInFlight  = 4
+	announcePerSecond = 20
+)
 
 func (n *Node) announceAll(ids []ports.ChunkID, done func()) {
 	if len(ids) == 0 {
@@ -215,12 +220,21 @@ func (n *Node) announceAll(ids []ports.ChunkID, done func()) {
 			}
 		})
 	}
+	// At most announceInFlight keys at once, and at most announcePerSecond started per second.
+	gap := ports.Second / announcePerSecond
+	paused := false
 	start = func() {
-		for next < len(ids) && next-finished < announceInFlight {
-			id := ids[next]
-			next++
-			one(id)
+		if paused || next >= len(ids) || next-finished >= announceInFlight {
+			return
 		}
+		id := ids[next]
+		next++
+		one(id)
+		paused = true
+		n.clock.AfterFunc(gap, func() {
+			paused = false
+			start()
+		})
 	}
 	start()
 }
