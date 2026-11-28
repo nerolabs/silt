@@ -138,11 +138,21 @@ func (n *Node) holdsKey(key ports.Hash) bool {
 	if n.chunkDenied(ports.ChunkID(key)) {
 		return false
 	}
+	// A piece in a fetch's working set is being READ, not hosted. Answering for it would name
+	// this node as a provider of what it is fetching — the (fetcher, content) link the privacy
+	// design forbids, and the leak TestPublishersAndFetchersCannotBeLinkedToTheirObjects caught.
+	// A node that keeps what it fetched (-serve-fetched) hosts it through retainPulled, which
+	// gives it a proof and announces it on purpose.
+	if n.workingWant[ports.ChunkID(key)] > 0 {
+		return false
+	}
 	if ok, _ := n.store.Has(bg(), ports.ChunkID(key)); ok {
 		return true
 	}
 	now := n.clock.Now()
-	if n.heldKeys == nil || now >= n.heldKeysAt.Add(heldKeyIndexAge) || len(n.proofMeta) != n.heldKeysLen {
+	// Rebuilt on age alone: rebuilding whenever proofMeta changed size meant a full pass over
+	// ~10^5 entries on every lookup while a node was still reloading or taking new pieces.
+	if n.heldKeys == nil || now >= n.heldKeysAt.Add(heldKeyIndexAge) {
 		idx := make(map[ports.Hash]bool, len(n.proofMeta))
 		for id, m := range n.proofMeta {
 			idx[placementKey(m.Root, id, m.Column)] = true
