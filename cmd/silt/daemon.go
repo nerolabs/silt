@@ -39,7 +39,6 @@ import (
 	"github.com/nerolabs/silt/adapters/lan"
 	"github.com/nerolabs/silt/adapters/logfile"
 	"github.com/nerolabs/silt/adapters/markstore"
-	"github.com/nerolabs/silt/adapters/memstore"
 	"github.com/nerolabs/silt/adapters/nodestore"
 	"github.com/nerolabs/silt/adapters/proofcache"
 	"github.com/nerolabs/silt/adapters/relay"
@@ -337,6 +336,9 @@ func cmdDaemon(args []string) error {
 		tr.SetAdvertise(*advertise)
 	}
 	var store ports.ChunkStore
+	if err := useStoreTempDir(*storeDir); err != nil {
+		return err
+	}
 	disk, err := diskstore.Open(*storeDir)
 	if err != nil {
 		return err
@@ -2631,9 +2633,10 @@ func parseSize(s string) (int64, error) {
 // clients don't accumulate reputation. Returned run posts fn onto the
 // node's loop and waits for completion.
 type ephemeral struct {
-	nd   *node.Node
-	loop *eventloop.Loop
-	tr   *tcpnet.Transport
+	nd       *node.Node
+	loop     *eventloop.Loop
+	tr       *tcpnet.Transport
+	stageDir string // the client's on-disk staging store, removed by close
 }
 
 func joinSwarm(peers string, replication int) (*ephemeral, func(fn func(done func())) error, error) {
@@ -2656,7 +2659,24 @@ func joinSwarm(peers string, replication int) (*ephemeral, func(fn func(done fun
 	if replication > 0 {
 		cfg.Replication = replication // a publisher may pick a lower redundancy (parity backstops copies)
 	}
-	nd := node.New(ident.NodeID(), cfg, walltime.New(loop), tr, memstore.New())
+	// The client stages on DISK, in a directory removed when it closes. A publish stages the
+	// whole object plus its parity before placing it, so an in-memory store held 1.6× the
+	// file in RAM — a 2.4 GB film could not be published from a 2 GB box. Staged pieces are
+	// ciphertext, so a directory a crash leaves behind holds nothing readable.
+	stageDir, err := os.MkdirTemp("", "silt-client-")
+	if err != nil {
+		tr.Close()
+		loop.Stop()
+		return nil, nil, err
+	}
+	stage, err := diskstore.Open(stageDir)
+	if err != nil {
+		os.RemoveAll(stageDir)
+		tr.Close()
+		loop.Stop()
+		return nil, nil, err
+	}
+	nd := node.New(ident.NodeID(), cfg, walltime.New(loop), tr, stage)
 	nd.SetSigner(ident.Signer()) // sign self-certifying provider records (H5)
 	nd.SetEphemeral(true)        // a publish/fetch client that keeps nothing — peers must not route to it
 	if os.Getenv("SILT_SWARM_DEBUG") != "" {
@@ -2669,6 +2689,7 @@ func joinSwarm(peers string, replication int) (*ephemeral, func(fn func(done fun
 
 	ps, err := discovery.ParseList(peers)
 	if err != nil {
+		(&ephemeral{loop: loop, tr: tr, stageDir: stageDir}).close()
 		return nil, nil, err
 	}
 	var seeds []ports.NodeID
@@ -2679,17 +2700,20 @@ func joinSwarm(peers string, replication int) (*ephemeral, func(fn func(done fun
 	run := func(fn func(done func())) error {
 		ch := make(chan struct{})
 		loop.Post("api", func() { fn(func() { close(ch) }) })
-		select {
-		case <-ch:
-			return nil
-		case <-time.After(swarmClientOperationCeiling()):
-			// The same ceiling the client REPORTS in its fetch posture, so the
-			// number an operator is shown cannot drift from the one enforced.
-			return fmt.Errorf("swarm operation timed out after %s", swarmClientOperationCeiling())
-		}
+		return awaitWithProgress(ch, swarmClientOperationCeiling(), progressPoll, func() int64 {
+			got := make(chan int64, 1)
+			loop.Post("api-progress", func() { got <- nd.Stats.ShardsPlaced })
+			select {
+			case v := <-got:
+				return v
+			case <-time.After(progressPoll):
+				return -1 // the loop is busy; read as no news, not as progress
+			}
+		})
 	}
-	e := &ephemeral{nd: nd, loop: loop, tr: tr}
+	e := &ephemeral{nd: nd, loop: loop, tr: tr, stageDir: stageDir}
 	if err := run(func(done func()) { nd.Bootstrap(seeds, func() { done() }) }); err != nil {
+		e.close()
 		return nil, nil, err
 	}
 	return e, run, nil
@@ -2698,6 +2722,9 @@ func joinSwarm(peers string, replication int) (*ephemeral, func(fn func(done fun
 func (e *ephemeral) close() {
 	e.tr.Close()
 	e.loop.Stop()
+	if e.stageDir != "" {
+		os.RemoveAll(e.stageDir)
+	}
 }
 
 // AntiReleaseComputeWindow is the COMPUTE budget the anti-release floor is sized
@@ -3201,4 +3228,54 @@ func parseCurators(s string, self ports.NodeID) ([]ports.NodeID, error) {
 		return nil, fmt.Errorf("names no curator")
 	}
 	return out, nil
+}
+
+// useStoreTempDir points this daemon's temporary files — a publish client's staged pieces and
+// an uploaded file's spill — at <store>/tmp, emptied at startup, unless the operator set
+// TMPDIR. A large publish stages its whole object plus parity before placing it, and the
+// system temp directory is often a small RAM-backed tmpfs: a 2.5 GB film failed there with
+// "disk quota exceeded", and a smaller one would quietly have cost RAM instead of disk.
+// Leftovers from a crash are ciphertext, and are removed here.
+func useStoreTempDir(storeDir string) error {
+	if os.Getenv("TMPDIR") != "" {
+		return nil
+	}
+	dir := filepath.Join(storeDir, "tmp")
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("clearing %s: %w", dir, err)
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	return os.Setenv("TMPDIR", dir)
+}
+
+// progressPoll is how often a client operation checks whether it is still making progress.
+const progressPoll = 15 * time.Second
+
+// awaitWithProgress waits for done. It gives up only when ceiling passes with no progress —
+// progress() reports a count that rises while work lands (a publish's placed shards). The
+// ceiling is the derived backstop against a HANG (swarmClientOperationCeiling); a fixed
+// deadline instead capped how LARGE a publish could be: a 2.5 GB film needs ~4 GB of pieces
+// placed, half an hour at a couple of MB/s, and was killed at 6m39s every time.
+func awaitWithProgress(done <-chan struct{}, ceiling, poll time.Duration, progress func() int64) error {
+	deadline := time.Now().Add(ceiling)
+	last := progress()
+	tick := time.NewTicker(poll)
+	defer tick.Stop()
+	for {
+		select {
+		case <-done:
+			return nil
+		case <-tick.C:
+			if v := progress(); v > last {
+				last, deadline = v, time.Now().Add(ceiling)
+			}
+			if time.Now().After(deadline) {
+				// The same ceiling the client REPORTS in its fetch posture, so the number an
+				// operator is shown cannot drift from the one enforced.
+				return fmt.Errorf("swarm operation made no progress for %s", ceiling)
+			}
+		}
+	}
 }

@@ -165,44 +165,64 @@ func (n *Node) StartReprovide() {
 // With domain diversity on (H5-B) the target set is the K NodeID-closest PLUS a
 // domain-SPREAD near set, so the record also lands on honest nodes in domains an
 // adversary surrounding the closest NodeIDs doesn't control — keeping it findable.
+// announceInFlight bounds how many keys one announce sweep works on at once. A storage node
+// holds ~10^5 keys and a sweep must finish well inside ProviderRecordTTL, or records lapse
+// before they are refreshed: one key at a time — a lookup, then each target in turn — took
+// more than five hours for 140k keys on the test network, against a 30-minute TTL.
+const announceInFlight = 16
+
 func (n *Node) announceAll(ids []ports.ChunkID, done func()) {
-	var next func(i int)
-	next = func(i int) {
-		if i == len(ids) {
-			done()
-			return
-		}
-		id := ids[i]
+	if len(ids) == 0 {
+		done()
+		return
+	}
+	next, finished := 0, 0
+	var start func()
+	one := func(id ports.ChunkID) {
 		n.IterativeFindNode(id, func(closest []ports.NodeID) {
-			targets := n.announceTargets(id, closest)
-			var send func(j int)
-			send = func(j int) {
-				if j == len(targets) {
-					next(i + 1)
-					return
+			var targets []ports.NodeID
+			for _, t := range n.announceTargets(id, closest) {
+				if t == n.id {
+					continue
 				}
-				if targets[j] == n.id {
-					send(j + 1)
-					return
-				}
-				// Don't re-announce to a cooled-dead target: planting a record on a
-				// holder we just failed to reach only eats another full RequestTimeout
-				// (the announce leak — the last ungated provider-record consumer;
-				// resolve/repair/walk are already gated). A dead announce target can't
-				// store the record anyway, so skipping loses nothing.
-				if n.corpseGated(targets[j], n.clock.Now()) {
+				if n.corpseGated(t, n.clock.Now()) {
 					n.Stats.HolderDialsSkipped++
-					send(j + 1)
+					continue
+				}
+				targets = append(targets, t)
+			}
+			finish := func() {
+				finished++
+				if finished == len(ids) {
+					done()
 					return
 				}
-				rec := n.providerRecord(id) // self-certifying announcement (H5)
-				n.request(targets[j], ports.Message{Kind: ports.MsgAddProvider, Target: id, Provider: &rec},
-					func(ports.Message, error) { send(j + 1) })
+				start()
 			}
-			send(0)
+			if len(targets) == 0 {
+				finish()
+				return
+			}
+			pending := len(targets)
+			rec := n.providerRecord(id) // self-certifying announcement (H5)
+			for _, t := range targets { // a key's targets in parallel too
+				n.request(t, ports.Message{Kind: ports.MsgAddProvider, Target: id, Provider: &rec},
+					func(ports.Message, error) {
+						if pending--; pending == 0 {
+							finish()
+						}
+					})
+			}
 		})
 	}
-	next(0)
+	start = func() {
+		for next < len(ids) && next-finished < announceInFlight {
+			id := ids[next]
+			next++
+			one(id)
+		}
+	}
+	start()
 }
 
 // announceTargets is the set of nodes to plant a provider record on: the distance-

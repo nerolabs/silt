@@ -246,6 +246,7 @@ func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manife
 					func(target ports.NodeID) {
 						placed++
 						groupPlaced++
+						n.Stats.ShardsPlaced++
 						if grp.column && !claimed[target] {
 							claimed[target] = true
 							if d := n.domainOf(target); d != 0 {

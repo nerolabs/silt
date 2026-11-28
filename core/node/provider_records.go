@@ -108,3 +108,46 @@ func (n *Node) knownKeyFor(from ports.NodeID, key ports.Hash) bool {
 	}
 	return false
 }
+
+// heldKeyIndexAge is how stale the held-key index may get. A piece stored since the last
+// rebuild already has a fresh provider record from its store; one dropped since is answered
+// for at most this much longer, and a fetch that finds it gone moves on.
+const heldKeyIndexAge = 60 * ports.Second
+
+// withSelfIfHeld adds a fresh, signed record for this node to recs when it holds a piece
+// under key and recs does not already name it. A holder is the ground truth for what it
+// holds; its own stored record could lapse (a 30-minute TTL against a re-announce sweep that
+// took hours) and the node would answer "no providers" for content on its own disk — which
+// is how every film re-imported more than half an hour earlier became unfindable.
+func (n *Node) withSelfIfHeld(key ports.Hash, recs []ports.ProviderRecord) []ports.ProviderRecord {
+	for _, r := range recs {
+		if r.ID == n.id {
+			return recs
+		}
+	}
+	if !n.holdsKey(key) {
+		return recs
+	}
+	return append(recs, n.providerRecord(key))
+}
+
+// holdsKey reports whether this node holds a piece under placement key: a piece stored under
+// its own id (a manifest chunk, an uncoded chunk), or a coded shard of a column whose key it
+// is (an index over proofMeta, rebuilt at most every heldKeyIndexAge).
+func (n *Node) holdsKey(key ports.Hash) bool {
+	if n.chunkDenied(ports.ChunkID(key)) {
+		return false
+	}
+	if ok, _ := n.store.Has(bg(), ports.ChunkID(key)); ok {
+		return true
+	}
+	now := n.clock.Now()
+	if n.heldKeys == nil || now >= n.heldKeysAt.Add(heldKeyIndexAge) || len(n.proofMeta) != n.heldKeysLen {
+		idx := make(map[ports.Hash]bool, len(n.proofMeta))
+		for id, m := range n.proofMeta {
+			idx[placementKey(m.Root, id, m.Column)] = true
+		}
+		n.heldKeys, n.heldKeysAt, n.heldKeysLen = idx, now, len(n.proofMeta)
+	}
+	return n.heldKeys[key]
+}

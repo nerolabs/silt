@@ -401,6 +401,9 @@ func evictPeerInfoIfFull[V any](m map[ports.NodeID]V, keep ports.NodeID) {
 
 // Stats are per-node counters the sim reports on.
 type Stats struct {
+	// ShardsPlaced counts every placement a Distribute landed: a publish's progress, which a
+	// client watches so a large upload is bounded by stalling, not by its size.
+	ShardsPlaced int64
 	// WorkingSetOverflow counts fetched pieces held in memory because the pledge was full
 	// (workingset.go). A node that counts these is fetching with no room in its pledge.
 	WorkingSetOverflow int
@@ -949,6 +952,12 @@ type Node struct {
 	issuerKeyAsked map[ports.NodeID]ports.Time
 	// writers, when set (-writers), says which peers connect from operator-listed addresses.
 	writers ports.WriterOracle
+	// heldKeys indexes the placement keys this node holds a coded shard under (holdsKey).
+	heldKeys    map[ports.Hash]bool
+	heldKeysAt  ports.Time
+	heldKeysLen int
+	// manifests holds recently opened manifests for ranged reads (NetGetRange).
+	manifests manifestCache
 	// Prepaid publish credits (M0 privacy D3 / F4). A token request may
 	// carry a prepaid credit this issuer verifies and marks spent INSTEAD OF
 	// charging the requester's durable identity — so the per-publish fee no
@@ -2165,6 +2174,7 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 			// Serve only LIVE records: a lapsed record is a departed holder, and
 			// re-serving it propagates the dial-storm to whoever asked us.
 			recs = n.provs.Live(msg.Target, int64(n.clock.Now()))
+			recs = n.withSelfIfHeld(msg.Target, recs)
 		}
 		n.reply(from, msg, ports.Message{
 			Kind:         ports.MsgGetProvidersReply,
