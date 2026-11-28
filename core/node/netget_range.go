@@ -58,6 +58,12 @@ func (c *manifestCache) put(h link.Handle, m *manifest.Manifest) {
 // nothing it pulled: what this call fetched is dropped when it settles, and what the node
 // already held stays as it was.
 func (n *Node) NetGetRange(reg ports.Registry, h link.Handle, off, length int64, w io.Writer, done func(error)) {
+	// A cached manifest needs no registry round trip: the root check was made when it was
+	// opened, and a player asks for the same file a few seconds at a time.
+	if m := n.manifests.get(h); m != nil {
+		n.netGetRange(m, h, off, length, w, done)
+		return
+	}
 	n.lookupEntryAsync(reg, h.Root, func(entry ports.Entry, ok bool, err error) {
 		if err != nil || !ok {
 			done(fmt.Errorf("netget range %s: %w", h.Root, ports.ErrNoSuchEntry))
@@ -76,6 +82,10 @@ func (n *Node) NetGetRange(reg ports.Registry, h link.Handle, off, length int64,
 // NetFileSize reports the size of the file h names, opening (and caching) its manifest, so
 // a caller can resolve a range against the file's end before asking for it.
 func (n *Node) NetFileSize(reg ports.Registry, h link.Handle, done func(int64, error)) {
+	if m := n.manifests.get(h); m != nil {
+		done(m.FileSize, nil)
+		return
+	}
 	n.lookupEntryAsync(reg, h.Root, func(entry ports.Entry, ok bool, err error) {
 		if err != nil || !ok {
 			done(0, fmt.Errorf("netget range %s: %w", h.Root, ports.ErrNoSuchEntry))
@@ -201,15 +211,20 @@ func (n *Node) netGetRange(m *manifest.Manifest, h link.Handle, off, length int6
 			cols = append(cols, c)
 		}
 		sort.Ints(cols)
-		var next func(i int)
-		next = func(i int) {
-			if i == len(cols) {
-				after()
-				return
-			}
-			n.fetchColumn(h.Root, cols[i], byCol[cols[i]], func([]ports.ChunkID) { next(i + 1) })
+		if len(cols) == 0 {
+			after()
+			return
 		}
-		next(0)
+		// The columns in parallel: each is its own provider lookup and holder, and a range
+		// waits for its slowest column, not for the sum of them.
+		pending := len(cols)
+		for _, c := range cols {
+			n.fetchColumn(h.Root, c, byCol[c], func([]ports.ChunkID) {
+				if pending--; pending == 0 {
+					after()
+				}
+			})
+		}
 	}
 
 	k, par := m.K, m.N-m.K
