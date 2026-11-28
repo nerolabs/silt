@@ -2679,14 +2679,16 @@ func joinSwarm(peers string, replication int) (*ephemeral, func(fn func(done fun
 	run := func(fn func(done func())) error {
 		ch := make(chan struct{})
 		loop.Post("api", func() { fn(func() { close(ch) }) })
-		select {
-		case <-ch:
-			return nil
-		case <-time.After(swarmClientOperationCeiling()):
-			// The same ceiling the client REPORTS in its fetch posture, so the
-			// number an operator is shown cannot drift from the one enforced.
-			return fmt.Errorf("swarm operation timed out after %s", swarmClientOperationCeiling())
-		}
+		return awaitWithProgress(ch, swarmClientOperationCeiling(), progressPoll, func() int64 {
+			got := make(chan int64, 1)
+			loop.Post("api-progress", func() { got <- nd.Stats.ShardsPlaced })
+			select {
+			case v := <-got:
+				return v
+			case <-time.After(progressPoll):
+				return -1 // the loop is busy; read as no news, not as progress
+			}
+		})
 	}
 	e := &ephemeral{nd: nd, loop: loop, tr: tr, stageDir: stageDir}
 	if err := run(func(done func()) { nd.Bootstrap(seeds, func() { done() }) }); err != nil {
@@ -3225,4 +3227,34 @@ func useStoreTempDir(storeDir string) error {
 		return err
 	}
 	return os.Setenv("TMPDIR", dir)
+}
+
+// progressPoll is how often a client operation checks whether it is still making progress.
+const progressPoll = 15 * time.Second
+
+// awaitWithProgress waits for done. It gives up only when ceiling passes with no progress —
+// progress() reports a count that rises while work lands (a publish's placed shards). The
+// ceiling is the derived backstop against a HANG (swarmClientOperationCeiling); a fixed
+// deadline instead capped how LARGE a publish could be: a 2.5 GB film needs ~4 GB of pieces
+// placed, half an hour at a couple of MB/s, and was killed at 6m39s every time.
+func awaitWithProgress(done <-chan struct{}, ceiling, poll time.Duration, progress func() int64) error {
+	deadline := time.Now().Add(ceiling)
+	last := progress()
+	tick := time.NewTicker(poll)
+	defer tick.Stop()
+	for {
+		select {
+		case <-done:
+			return nil
+		case <-tick.C:
+			if v := progress(); v > last {
+				last, deadline = v, time.Now().Add(ceiling)
+			}
+			if time.Now().After(deadline) {
+				// The same ceiling the client REPORTS in its fetch posture, so the number an
+				// operator is shown cannot drift from the one enforced.
+				return fmt.Errorf("swarm operation made no progress for %s", ceiling)
+			}
+		}
+	}
 }
