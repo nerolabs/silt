@@ -121,7 +121,9 @@ func (n *Node) holdsKey(key ports.Hash) bool {
 		return true
 	}
 	now := n.clock.Now()
-	if n.heldKeys == nil || now >= n.heldKeysAt.Add(heldKeyIndexAge) || len(n.proofMeta) != n.heldKeysLen {
+	// Rebuilt on age alone: rebuilding whenever proofMeta changed size meant a full pass over
+	// ~10^5 entries on every lookup while a node was still reloading or taking new pieces.
+	if n.heldKeys == nil || now >= n.heldKeysAt.Add(heldKeyIndexAge) {
 		idx := make(map[ports.Hash]bool, len(n.proofMeta))
 		for id, m := range n.proofMeta {
 			idx[placementKey(m.Root, id, m.Column)] = true
