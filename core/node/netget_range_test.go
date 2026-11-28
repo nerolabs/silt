@@ -123,3 +123,38 @@ func TestARangedFetchPastTheEndIsRefused(t *testing.T) {
 		t.Fatal("a range starting at the end of the file was accepted")
 	}
 }
+
+// lookupCounter counts registry lookups.
+type lookupCounter struct {
+	ports.Registry
+	n int
+}
+
+func (l *lookupCounter) Lookup(ctx context.Context, root ports.Hash) (ports.Entry, bool, error) {
+	l.n++
+	return l.Registry.Lookup(ctx, root)
+}
+
+// TestASecondRangeSkipsTheRegistry: once a file's manifest is open, later ranges and size
+// queries make no registry round trip — a player reads one file many times a minute.
+func TestASecondRangeSkipsTheRegistry(t *testing.T) {
+	r := newNetgetRig(t)
+	reg := &lookupCounter{Registry: r.reg}
+	r.reg = reg
+	nd, _ := rangeConsumer(r, 3994)
+	r.getRange(t, nd, 0, 100)
+	first := reg.n
+	if first == 0 {
+		t.Fatal("CONTROL: the first range never looked the file up")
+	}
+	r.getRange(t, nd, 5000, 100)
+	var size int64
+	nd.NetFileSize(r.reg, r.h, func(n int64, err error) { size = n })
+	r.sched.Run()
+	if reg.n != first {
+		t.Fatalf("later reads made %d more registry lookups; a cached manifest needs none", reg.n-first)
+	}
+	if size != int64(len(r.data)) {
+		t.Fatalf("NetFileSize = %d, want %d", size, len(r.data))
+	}
+}
