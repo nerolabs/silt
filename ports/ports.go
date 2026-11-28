@@ -97,6 +97,25 @@ type CapacityReporter interface {
 // re-announce reconstruct the right keys — and lets the node still answer
 // storage-audit challenges after a restart. A nil ProofStore means
 // no persistence (memory-only, fine for sims and ephemeral clients).
+// ProofMeta is the part of a StorageProof a node keeps resident for every proof it holds.
+type ProofMeta struct {
+	Root                 Hash
+	Index, Total, Column int
+}
+
+// ErrNoMetaIndex reports that a store has no complete proof-metadata index yet.
+var ErrNoMetaIndex = errors.New("no proof metadata index")
+
+// ProofMetaIndex is an optional ProofStore extension that returns every proof's metadata in
+// one read. Without it a node rebuilds its resident index after a restart by reading every
+// proof file — one random read per proof, which on a disk-bound host took 75 minutes over
+// 140k proofs and slowed every request meanwhile. Metas returns ErrNoMetaIndex until
+// WriteMetaIndex has recorded a complete picture once; after that the store keeps it current.
+type ProofMetaIndex interface {
+	Metas() (map[ChunkID]ProofMeta, error)
+	WriteMetaIndex(map[ChunkID]ProofMeta) error
+}
+
 type ProofStore interface {
 	Put(id ChunkID, p StorageProof) error
 	// Get returns one proof by id; ok is false if none is stored. This is the

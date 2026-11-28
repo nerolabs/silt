@@ -160,3 +160,21 @@ func copyProof(p ports.StorageProof) ports.StorageProof {
 	}
 	return p
 }
+
+// Metas and WriteMetaIndex delegate to the backing's metadata index when it has one
+// (ports.ProofMetaIndex), so a cached store restarts as fast as its backing allows.
+func (s *Store) Metas() (map[ports.ChunkID]ports.ProofMeta, error) {
+	if mi, ok := s.inner.(ports.ProofMetaIndex); ok {
+		return mi.Metas()
+	}
+	return nil, ports.ErrNoMetaIndex
+}
+
+func (s *Store) WriteMetaIndex(m map[ports.ChunkID]ports.ProofMeta) error {
+	if mi, ok := s.inner.(ports.ProofMetaIndex); ok {
+		return mi.WriteMetaIndex(m)
+	}
+	return nil
+}
+
+var _ ports.ProofMetaIndex = (*Store)(nil)

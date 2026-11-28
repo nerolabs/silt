@@ -15,12 +15,17 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/nerolabs/silt/ports"
 )
 
-type Store struct{ root string }
+type Store struct {
+	root string
+	mu   sync.Mutex // serializes the metadata log with the proof writes it records
+	log  *os.File   // the metadata log, open for append; nil until the index exists
+}
 
 var _ ports.ProofStore = (*Store)(nil)
 
@@ -29,7 +34,11 @@ func Open(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("diskproofs: %w", err)
 	}
-	return &Store{root: dir}, nil
+	s := &Store{root: dir}
+	if err := s.openLogLocked(); err != nil {
+		return nil, fmt.Errorf("diskproofs: %w", err)
+	}
+	return s, nil
 }
 
 // diskProof is the on-disk shape: hashes as byte strings (compact), fields
@@ -52,6 +61,8 @@ func (s *Store) path(id ports.ChunkID) string {
 }
 
 func (s *Store) Put(id ports.ChunkID, p ports.StorageProof) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	dp := diskProof{
 		Root:   append([]byte(nil), p.Root[:]...),
 		Index:  p.Index,
@@ -85,13 +96,22 @@ func (s *Store) Put(id ports.ChunkID, p ports.StorageProof) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), dst)
+	if err := os.Rename(tmp.Name(), dst); err != nil {
+		return err
+	}
+	s.appendMeta(opPut, id, ports.ProofMeta{Root: p.Root, Index: p.Index, Total: p.Total, Column: p.Column})
+	return nil
 }
 
 func (s *Store) Delete(id ports.ChunkID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	err := os.Remove(s.path(id))
 	if os.IsNotExist(err) {
 		return nil
+	}
+	if err == nil {
+		s.appendMeta(opDel, id, ports.ProofMeta{})
 	}
 	return err
 }
@@ -137,6 +157,10 @@ func idFromName(name string) (ports.ChunkID, bool) {
 // sidecar is unreadable/corrupt — treated as absent, same as Load skips it). One
 // file read: this is the per-id page the bounded proof cache does on a miss.
 func (s *Store) Get(id ports.ChunkID) (ports.StorageProof, bool, error) {
+	return s.getLocked(id) // a read takes no lock: files are replaced by rename
+}
+
+func (s *Store) getLocked(id ports.ChunkID) (ports.StorageProof, bool, error) {
 	b, err := os.ReadFile(s.path(id))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -151,7 +175,9 @@ func (s *Store) Get(id ports.ChunkID) (ports.StorageProof, bool, error) {
 // Keys walks the two-level tree and returns every stored chunk id, so a restart
 // can repopulate resident proof metadata one Get at a time (bounded RAM) instead
 // of loading the whole store into a map.
-func (s *Store) Keys() ([]ports.ChunkID, error) {
+func (s *Store) Keys() ([]ports.ChunkID, error) { return s.keysLocked() }
+
+func (s *Store) keysLocked() ([]ports.ChunkID, error) {
 	var out []ports.ChunkID
 	err := filepath.WalkDir(s.root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {

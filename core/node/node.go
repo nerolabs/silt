@@ -1552,6 +1552,23 @@ func (n *Node) StartProofReload(done func()) {
 	// Defer even Keys (a full store listing) off the startup path onto the
 	// loop.
 	n.clock.AfterFunc(0, func() {
+		// A store with a metadata index returns every proof's metadata in one sequential read
+		// (ports.ProofMetaIndex): no per-proof reads, so a restart costs seconds, not the
+		// 75 minutes 140k random reads took on a disk-bound host.
+		if mi, ok := n.proofs.(ports.ProofMetaIndex); ok {
+			if metas, err := mi.Metas(); err == nil {
+				for id, m := range metas {
+					n.proofMeta[id] = proofMeta{Root: m.Root, Index: m.Index, Total: m.Total, Column: m.Column}
+				}
+				n.logf(ports.LogInfo, "reloaded storage proofs (index)", "count", len(metas))
+				if done != nil {
+					done()
+				}
+				return
+			} else if !errors.Is(err, ports.ErrNoMetaIndex) {
+				n.logf(ports.LogWarn, "proof metadata index unreadable; reloading proof by proof", "err", err)
+			}
+		}
 		keys, err := n.proofs.Keys()
 		if err != nil {
 			n.logf(ports.LogWarn, "proof reload failed", "err", err)
@@ -1587,6 +1604,16 @@ func (n *Node) reloadProofBatch(keys []ports.ChunkID, from, loaded int, done fun
 	}
 	if loaded > 0 {
 		n.logf(ports.LogInfo, "reloaded storage proofs (lazy)", "count", loaded)
+	}
+	// Record what the slow path learned, so the next restart takes the fast one.
+	if mi, ok := n.proofs.(ports.ProofMetaIndex); ok {
+		metas := make(map[ports.ChunkID]ports.ProofMeta, len(n.proofMeta))
+		for id, m := range n.proofMeta {
+			metas[id] = ports.ProofMeta{Root: m.Root, Index: m.Index, Total: m.Total, Column: m.Column}
+		}
+		if err := mi.WriteMetaIndex(metas); err != nil {
+			n.logf(ports.LogWarn, "writing the proof metadata index failed", "err", err)
+		}
 	}
 	if done != nil {
 		done()
