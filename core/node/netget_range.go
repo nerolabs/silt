@@ -11,15 +11,27 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// manifestCacheSize bounds how many opened manifests a node keeps for ranged reads. A video
-// player asks for a file a few seconds at a time, and re-pulling a large file's manifest
-// (about 1.5 MB for a 2.4 GB file at the default chunk size) for every range would cost more
-// than the range itself.
-const manifestCacheSize = 16
+// The manifest cache keeps opened manifests for ranged reads. A video player asks for a file
+// a few seconds at a time, and re-pulling a large file's manifest (about 1.5 MB for a 2.4 GB
+// file at the default chunk size) for every range would cost more than the range itself. It
+// is bounded by BYTES as well as count: sixteen entries thrashed under one site's 21 featured
+// renditions, and a count alone says nothing about memory on a 2 GB floor box.
+const (
+	manifestCacheEntries = 256
+	manifestCacheBytes   = 64 << 20
+)
 
 type manifestCache struct {
 	byKey map[string]*manifest.Manifest
 	order []string // oldest first
+	bytes int64
+}
+
+// manifestBytes estimates the memory an opened manifest holds: its per-chunk ids, secrets and
+// shard roots, which is all that grows with the file.
+func manifestBytes(m *manifest.Manifest) int64 {
+	n := int64(len(m.Chunks)+len(m.Parity)+len(m.ShardRoots)+len(m.ChunkSecrets)) * 56 // 32-byte value + slice header
+	return n + 512
 }
 
 func manifestCacheKey(h link.Handle) string {
@@ -42,12 +54,19 @@ func (c *manifestCache) put(h link.Handle, m *manifest.Manifest) {
 	if _, ok := c.byKey[k]; ok {
 		return
 	}
-	if len(c.order) >= manifestCacheSize {
-		delete(c.byKey, c.order[0])
+	size := manifestBytes(m)
+	if size > manifestCacheBytes {
+		return // larger than the whole budget: serve it, never cache it
+	}
+	for len(c.order) > 0 && (len(c.order) >= manifestCacheEntries || c.bytes+size > manifestCacheBytes) {
+		old := c.order[0]
+		c.bytes -= manifestBytes(c.byKey[old])
+		delete(c.byKey, old)
 		c.order = c.order[1:]
 	}
 	c.byKey[k] = m
 	c.order = append(c.order, k)
+	c.bytes += size
 }
 
 // NetGetRange writes bytes [off, off+length) of the file h names to w, length clamped to the
